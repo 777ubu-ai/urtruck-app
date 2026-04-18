@@ -1,0 +1,51 @@
+# Environment
+.env
+.env.local
+.env.production
+.env.*.local
+
+# Dependencies
+node_modules/
+.expo/
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Build
+dist/
+build/
+web-build/
+*.egg-info/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+
+# Database
+*.sqlite
+*.sqlite3
+*.db
+
+# Secrets
+*.pem
+*.key
+*.cert
+*.p12
+backend/certs/
+deploy.sh
+
+# Tests
+TEST_RESULTS.md
+TOLIK_REPORT.md
+coverage/
