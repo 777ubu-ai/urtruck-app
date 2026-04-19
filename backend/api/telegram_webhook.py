@@ -37,23 +37,28 @@ def _send_message(chat_id: int, text: str):
         print(f"[TG-bot] sendMessage failed: {e}")
 
 
-def _verify_telegram_signature(body_bytes: bytes, secret_token: str) -> bool:
-    """Проверка X-Telegram-Bot-Api-Secret-Token если настроен."""
+def _verify_telegram_signature(secret_token: str) -> bool:
+    """Проверяет X-Telegram-Bot-Api-Secret-Token против env TELEGRAM_WEBHOOK_SECRET.
+
+    Telegram при setWebhook?secret_token=X отправляет этот же X в заголовке —
+    сверяем побайтово.
+    """
+    import hmac
+    expected = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
+    if not expected:
+        return True  # secret не настроен — пропускаем (dev/polling mode)
     if not secret_token:
-        return True  # Если secret не настроен — пропускаем (для polling mode)
-    import hashlib, hmac
-    expected = hashlib.sha256(BOT_TOKEN.encode()).hexdigest()[:32]
+        return False  # secret задан, а заголовка нет — отказ
     return hmac.compare_digest(secret_token, expected)
 
 
 @tg_webhook_router.post("/webhook")
 async def telegram_webhook(request: Request):
     """Принимает Telegram Bot Update с проверкой подписи."""
-    # Проверка подписи (если настроен secret_token при setWebhook)
     sig = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
-    body_bytes = await request.body()
-    if sig and not _verify_telegram_signature(body_bytes, sig):
+    if not _verify_telegram_signature(sig):
         raise HTTPException(status_code=403, detail="Invalid Telegram signature")
+    body_bytes = await request.body()
 
     try:
         body = json.loads(body_bytes)

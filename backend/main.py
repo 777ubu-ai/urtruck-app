@@ -16,6 +16,19 @@ if _env.exists():
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Добавляет базовые security-заголовки ко всем ответам."""
+    async def dispatch(self, request: StarletteRequest, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        return response
 
 from api.routes import router
 from api.admin import admin_router
@@ -66,6 +79,7 @@ app.add_middleware(
     expose_headers=["X-Total-Count"],
 )
 app.add_middleware(MetricsMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 
 # Версия для мягкого обновления
 import time as _time
