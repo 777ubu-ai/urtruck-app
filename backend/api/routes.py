@@ -40,7 +40,7 @@ def root():
 
 
 @router.get("/stats")
-def stats():
+def stats(user=Depends(require_level(1))):
     """Общая статистика системы."""
     from database.db import get_conn
     with get_conn() as c:
@@ -127,7 +127,7 @@ async def ocr_passport(file: UploadFile = File(...), user_id: str = Query(...), 
 
 
 @router.post("/blacklist/check")
-def blacklist_check_endpoint(req: CheckQuickRequest):
+def blacklist_check_endpoint(req: CheckQuickRequest, user=Depends(require_level(1))):
     entries = blacklist_mgr.check_blacklist(phone=req.phone, plate=req.plate, name=req.name)
     return {"found": len(entries), "entries": entries}
 
@@ -142,7 +142,7 @@ def blacklist_add_endpoint(req: BlacklistAddRequest, user=Depends(require_level(
 
 
 @router.get("/alerts/active")
-def active_alerts():
+def active_alerts(user=Depends(require_level(1))):
     return {"alerts": db.get_active_alerts()}
 
 
@@ -159,16 +159,16 @@ def full_report(user_id: str, user=Depends(require_level(1))):
 
 
 @router.get("/mentions")
-def mentions(phone: str = None, plate: str = None):
+def mentions(phone: str = None, plate: str = None, user=Depends(require_level(1))):
     return {"mentions": db.get_mentions(phone=phone, plate=plate)}
 
 
 @router.post("/report/driver")
-def report_driver(req: BlacklistAddRequest):
+def report_driver(req: BlacklistAddRequest, user=Depends(require_level(1))):
     """Пользовательская жалоба на водителя."""
     entry = blacklist_mgr.add_to_blacklist(
         phone=req.phone, plate=req.plate, name=req.name,
-        reason=f"[USER REPORT] {req.reason}",
+        reason=f"[USER REPORT by {user['id']}] {req.reason}",
         source="user_report",
         severity=req.severity or "medium",
     )
@@ -181,20 +181,20 @@ def report_driver(req: BlacklistAddRequest):
 
 
 @router.get("/verification/{user_id}/history")
-def verification_history(user_id: str):
+def verification_history(user_id: str, user=Depends(require_level(1))):
     """История всех проверок водителя."""
     return {"logs": db.get_logs(user_id, limit=50)}
 
 
 @router.post("/gov/check")
-def gov_check(req: CheckQuickRequest):
+def gov_check(req: CheckQuickRequest, user=Depends(require_level(1))):
     """Трансграничная проверка по 5 странам СНГ."""
     from verification.gov_checkers import cross_check_all
     return cross_check_all(phone=req.phone, plate=req.plate)
 
 
 @router.post("/biometric/liveness")
-async def biometric_liveness(file: UploadFile = File(...), user_id: str = Query(...)):
+async def biometric_liveness(file: UploadFile = File(...), user_id: str = Query(...), user=Depends(require_level(1))):
     """Liveness check — проверка что на фото живой человек."""
     import tempfile
     from biometrics.liveness import check_liveness
@@ -210,7 +210,7 @@ async def biometric_liveness(file: UploadFile = File(...), user_id: str = Query(
 
 @router.post("/biometric/face_match")
 async def biometric_face_match(selfie: UploadFile = File(...), document: UploadFile = File(...),
-                                user_id: str = Query(...)):
+                                user_id: str = Query(...), user=Depends(require_level(1))):
     """Сверка лица на селфи с фото документа."""
     import tempfile
     from biometrics.liveness import face_match
@@ -226,7 +226,7 @@ async def biometric_face_match(selfie: UploadFile = File(...), document: UploadF
 
 
 @router.post("/parsers/whatsapp_screenshot")
-async def whatsapp_screenshot(file: UploadFile = File(...)):
+async def whatsapp_screenshot(file: UploadFile = File(...), user=Depends(require_level(1))):
     """Импорт скриншота WhatsApp чата — OCR + анализ."""
     import tempfile
     from parsers.whatsapp_monitor import process_screenshot
@@ -237,7 +237,7 @@ async def whatsapp_screenshot(file: UploadFile = File(...)):
 
 
 @router.get("/gov/{country}")
-def gov_single(country: str, phone: str = None, plate: str = None):
+def gov_single(country: str, phone: str = None, plate: str = None, user=Depends(require_level(1))):
     """Проверка по конкретной стране: kz/ru/uz/kg/tj."""
     from verification import gov_checkers
     fn = {
