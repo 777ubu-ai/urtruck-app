@@ -12,7 +12,7 @@ from api.models import (
     CheckFullRequest, CheckQuickRequest, BlacklistAddRequest,
     ScoreResponse, OCRResponse,
 )
-from api.verification_gate import require_level, get_user
+from api.verification_gate import require_level, get_user, require_admin
 from scoring.engine import calculate_score, quick_check
 from scoring.color_code import color_from_score, label_from_color
 from scoring.weights import apply_penalties_and_bonuses
@@ -133,7 +133,7 @@ def blacklist_check_endpoint(req: CheckQuickRequest, user=Depends(require_level(
 
 
 @router.post("/blacklist/add")
-def blacklist_add_endpoint(req: BlacklistAddRequest, user=Depends(require_level(1))):
+def blacklist_add_endpoint(req: BlacklistAddRequest, user=Depends(require_admin)):
     entry = blacklist_mgr.add_to_blacklist(
         phone=req.phone, plate=req.plate, name=req.name,
         reason=req.reason, source=req.source, severity=req.severity,
@@ -142,12 +142,12 @@ def blacklist_add_endpoint(req: BlacklistAddRequest, user=Depends(require_level(
 
 
 @router.get("/alerts/active")
-def active_alerts(user=Depends(require_level(1))):
+def active_alerts(user=Depends(require_admin)):
     return {"alerts": db.get_active_alerts()}
 
 
 @router.get("/report/{user_id}")
-def full_report(user_id: str, user=Depends(require_level(1))):
+def full_report(user_id: str, user=Depends(require_admin)):
     score = db.get_score(user_id) or {}
     logs = db.get_logs(user_id, limit=20)
     return {
