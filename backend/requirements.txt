@@ -1,0 +1,17 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+pydantic==2.9.2
+pytesseract==0.3.13
+Pillow==10.4.0
+httpx==0.27.2
+redis==5.1.0
+apscheduler==3.10.4
+python-multipart==0.0.12
+python-dateutil==2.9.0
+
+# MVP optional (установить через pip если используется):
+# dlib==19.24.2
+# face-recognition==1.3.0
+# opencv-python-headless==4.10.0.84
+# numpy
+# boto3  # только если STORAGE_PROVIDER=s3

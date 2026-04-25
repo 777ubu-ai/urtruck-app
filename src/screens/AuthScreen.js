@@ -1,23 +1,23 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Platform, Linking, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Platform, Linking, ActivityIndicator, ScrollView, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
-import { useTheme } from '../utils/ThemeContext';
 import { useAuth } from '../utils/AuthContext';
 import { useToast } from '../components/Toast';
 import { regAPI } from '../utils/registration';
-import { accentColors } from '../utils/theme';
+import { DS } from '../utils/theme';
 import { push } from '../utils/push';
+
+const LOGO = require('../../assets/logo.jpg');
+const IS_BETA = true; // TODO: read from API /api/version
 
 export default function AuthScreen({ navigation, route }) {
   const { t } = useI18n();
-  const { theme, isDark } = useTheme();
-  const { signIn } = useAuth();
+  const { signIn, setRole } = useAuth();
   const { toast } = useToast();
   const role = route?.params?.role || null;
-  const accent = role === 'driver' ? accentColors.driver : accentColors.client;
 
-  const [step, setStep] = useState('phone'); // phone | code
+  const [step, setStep] = useState('phone');
   const [phone, setPhone] = useState('+7');
   const [code, setCode] = useState('');
   const [channel, setChannel] = useState('');
@@ -29,9 +29,8 @@ export default function AuthScreen({ navigation, route }) {
   const digits = phone.replace(/\D/g, '');
   const validPhone = digits.length >= 10;
 
-  // Отправить код через выбранный канал
   const sendOTP = async (ch) => {
-    if (!validPhone) { setError('Введите полный номер телефона'); return; }
+    if (!validPhone) { setError('Введите полный номер'); return; }
     setChannel(ch);
     setLoading(true);
     setError('');
@@ -40,15 +39,15 @@ export default function AuthScreen({ navigation, route }) {
     try {
       const r = await regAPI.sendCode(phone, ch);
       if (r.mock && r.code) setMockCode(r.code);
+      if (r.beta && r.code) setMockCode(r.code);
       if (r.deeplink) setDeeplink(r.deeplink);
-      // Если был fallback (WhatsApp/SMS → Telegram)
       if (r.fallback) {
         setChannel(r.channel || 'telegram');
-        toast(`${ch === 'whatsapp' ? 'WhatsApp' : 'SMS'} недоступен — код отправлен в Telegram`, 'info', 4000);
+        toast(`${ch} недоступен — код в Telegram`, 'info', 4000);
       }
       setStep('code');
     } catch (e) {
-      setError('Не удалось отправить код');
+      setError(t('send_error'));
     } finally {
       setLoading(false);
     }
@@ -62,149 +61,129 @@ export default function AuthScreen({ navigation, route }) {
       const r = await regAPI.verifyCode(phone, code);
       if (r.token) {
         signIn(phone, r.verification_level || 1);
-        toast('✅ Вход выполнен', 'success');
-        if (push.isSupported()) push.subscribe().catch(() => {});
-        if (role) navigation.replace('Reg', { role });
-        else navigation.replace('Role');
+        toast(r.beta ? '✅ Beta-вход' : '✅ Вход выполнен', 'success');
+        push.autoRegister?.().catch(() => {});
+        if (r.beta && r.role && r.role !== 'guest') {
+          setRole(r.role);
+          navigation.reset({ index: 0, routes: [{ name: 'Main', params: { role: r.role } }] });
+        } else if (role) {
+          navigation.replace('Reg', { role });
+        } else {
+          navigation.replace('Role');
+        }
       } else {
         setError(r.detail || 'Неверный код');
       }
     } catch (e) {
-      setError('Ошибка проверки');
+      setError(t('generic_error'));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <SafeAreaView style={[s.safe, { backgroundColor: theme.bg }]}>
+    <SafeAreaView style={s.safe}>
       <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
-        {/* Back */}
         <TouchableOpacity style={s.back} onPress={() => {
-          if (step === 'code') { setStep('phone'); setCode(''); setError(''); setMockCode(null); }
+          if (step === 'code') { setStep('phone'); setCode(''); setError(''); }
           else navigation.goBack();
         }}>
-          <Text style={[s.backText, { color: theme.text }]}>‹ Назад</Text>
+          <Text style={s.backText}>← Назад</Text>
         </TouchableOpacity>
 
         {/* Logo */}
         <View style={s.logo}>
-          <Text style={{ fontSize: 48 }}>🚛</Text>
-          <Text style={[s.logoTitle, { color: theme.text }]}>
-            {role === 'driver' ? 'Вход водителя' : role === 'client' ? 'Вход отправителя' : 'Вход в UrTruck'}
-          </Text>
+          <Image source={LOGO} style={s.logoImg} />
+          <Text style={s.logoTitle}>UrTruck</Text>
+          <Text style={s.logoSub}>INTERNATIONAL LOGISTICS</Text>
         </View>
 
         {step === 'phone' && (
           <>
-            {/* Телефон */}
-            <Text style={[s.label, { color: theme.textMuted }]}>Номер телефона</Text>
+            <Text style={s.label}>НОМЕР ТЕЛЕФОНА</Text>
             <TextInput
-              style={[s.phoneInput, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border }]}
+              style={[s.input, error && s.inputError]}
               value={phone}
               onChangeText={(v) => { setPhone(v); setError(''); }}
               placeholder="+7 777 123 45 67"
-              placeholderTextColor={theme.textDim}
+              placeholderTextColor="#475569"
               keyboardType="phone-pad"
               autoFocus
             />
-
             {error ? <Text style={s.err}>{error}</Text> : null}
 
-            {/* 3 кнопки каналов — СРАЗУ НА ЭКРАНЕ */}
-            <Text style={[s.label, { color: theme.textMuted, marginTop: 20 }]}>Получить код через:</Text>
+            <Text style={[s.label, { marginTop: 24 }]}>ПОЛУЧИТЬ КОД ЧЕРЕЗ</Text>
 
-            <TouchableOpacity
-              style={[s.channelBtn, { backgroundColor: '#25D366' }]}
-              onPress={() => sendOTP('whatsapp')}
-              disabled={!validPhone || loading}
-              activeOpacity={0.85}
-            >
-              {loading && channel === 'whatsapp' ? <ActivityIndicator color="#FFF" /> : (
-                <><Text style={s.channelIcon}>💬</Text><Text style={s.channelText}>WhatsApp</Text><Text style={s.channelArrow}>→</Text></>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[s.channelBtn, { backgroundColor: '#0088CC' }]}
-              onPress={() => sendOTP('telegram')}
-              disabled={!validPhone || loading}
-              activeOpacity={0.85}
-            >
+            {/* Telegram — первый */}
+            <TouchableOpacity style={s.channelTg} onPress={() => sendOTP('telegram')} disabled={!validPhone || loading} activeOpacity={0.85}>
               {loading && channel === 'telegram' ? <ActivityIndicator color="#FFF" /> : (
-                <><Text style={s.channelIcon}>✈️</Text><Text style={s.channelText}>Telegram</Text><Text style={s.channelArrow}>→</Text></>
+                <><Text style={s.chIcon}>✈️</Text><Text style={s.chText}>Telegram</Text><Text style={s.chArrow}>→</Text></>
               )}
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[s.channelBtn, { backgroundColor: '#6B7280' }]}
-              onPress={() => sendOTP('sms')}
-              disabled={!validPhone || loading}
-              activeOpacity={0.85}
-            >
+            {/* SMS — второй */}
+            <TouchableOpacity style={s.channelSms} onPress={() => sendOTP('sms')} disabled={!validPhone || loading} activeOpacity={0.85}>
               {loading && channel === 'sms' ? <ActivityIndicator color="#FFF" /> : (
-                <><Text style={s.channelIcon}>📱</Text><Text style={s.channelText}>SMS</Text><Text style={s.channelArrow}>→</Text></>
+                <><Text style={s.chIcon}>📱</Text><Text style={s.chText}>SMS</Text><Text style={s.chArrow}>→</Text></>
               )}
             </TouchableOpacity>
 
-            {!validPhone && (
-              <Text style={[s.hint, { color: theme.textDim }]}>
-                Введите номер — кнопки станут активными
-              </Text>
+            {/* WhatsApp — скоро */}
+            <View style={s.channelWa}>
+              <Text style={s.chIcon}>💬</Text>
+              <Text style={[s.chText, { color: '#475569' }]}>WhatsApp</Text>
+              <View style={s.soonBadge}><Text style={s.soonText}>скоро</Text></View>
+            </View>
+
+            {IS_BETA && (
+              <Text style={s.betaHint}>🧪 Beta: введите любой номер, код 0000</Text>
             )}
+
+            {!validPhone && <Text style={s.hint}>Введите номер — кнопки станут активными</Text>}
           </>
         )}
 
         {step === 'code' && (
           <>
-            <Text style={[s.sentTo, { color: theme.textMuted }]}>
-              Код отправлен в {channel === 'whatsapp' ? 'WhatsApp' : channel === 'telegram' ? 'Telegram' : 'SMS'} на {phone}
+            <Text style={s.sentTo}>
+              Код отправлен в {channel === 'telegram' ? 'Telegram' : channel === 'sms' ? 'SMS' : channel}
             </Text>
 
-            {/* Telegram deep link */}
             {channel === 'telegram' && deeplink && (
-              <TouchableOpacity
-                style={s.tgBtn}
-                onPress={() => Linking.openURL(deeplink).catch(() => toast('Не удалось открыть Telegram', 'error'))}
-              >
+              <TouchableOpacity style={s.tgBtn} onPress={() => Linking.openURL(deeplink).catch(() => {})}>
                 <Text style={s.tgBtnText}>✈️ Открыть Telegram — получить код</Text>
               </TouchableOpacity>
             )}
 
-            {/* Mock баннер */}
             {mockCode && (
-              <View style={[s.mockBanner, { borderColor: accent }]}>
-                <Text style={{ color: accent, fontSize: 12, fontWeight: '700' }}>🧪 DEV · код: {mockCode}</Text>
+              <View style={s.mockBanner}>
+                <Text style={s.mockText}>🧪 Код: {mockCode}</Text>
               </View>
             )}
 
-            {/* Ввод кода */}
-            <Text style={[s.label, { color: theme.textMuted, marginTop: 16 }]}>Введите 4-значный код</Text>
+            <Text style={[s.label, { marginTop: 16 }]}>ВВЕДИТЕ КОД</Text>
             <TextInput
-              style={[s.codeInput, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border }]}
+              style={[s.input, s.codeInput, error && s.inputError]}
               value={code}
               onChangeText={(v) => { setCode(v.replace(/\D/g, '').slice(0, 4)); setError(''); }}
               placeholder="• • • •"
-              placeholderTextColor={theme.textDim}
+              placeholderTextColor="#475569"
               keyboardType="number-pad"
               maxLength={4}
               autoFocus
             />
-
             {error ? <Text style={s.err}>{error}</Text> : null}
 
             <TouchableOpacity
-              style={[s.verifyBtn, { backgroundColor: code.length === 4 ? accent : theme.border }]}
+              style={[s.verifyBtn, code.length !== 4 && s.verifyBtnDisabled]}
               onPress={verify}
               disabled={code.length !== 4 || loading}
             >
-              {loading ? <ActivityIndicator color="#FFF" /> : (
-                <Text style={s.verifyBtnText}>Подтвердить</Text>
-              )}
+              {loading ? <ActivityIndicator color="#FFF" /> : <Text style={s.verifyBtnText}>Подтвердить</Text>}
             </TouchableOpacity>
 
             <TouchableOpacity style={s.resend} onPress={() => { setStep('phone'); setCode(''); setError(''); }}>
-              <Text style={[s.resendText, { color: theme.textMuted }]}>← Изменить номер или способ</Text>
+              <Text style={s.resendText}>← Изменить номер или способ</Text>
             </TouchableOpacity>
           </>
         )}
@@ -214,52 +193,60 @@ export default function AuthScreen({ navigation, route }) {
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1 },
+  safe: { flex: 1, backgroundColor: '#0a0f1a' },
   scroll: { padding: 20, paddingBottom: 40 },
   back: { paddingVertical: 8 },
-  backText: { fontSize: 15, fontWeight: '600' },
+  backText: { color: '#94a3b8', fontSize: 14, fontFamily: DS.font.body },
 
-  logo: { alignItems: 'center', marginTop: 20, marginBottom: 30 },
-  logoTitle: { fontSize: 22, fontWeight: '800', marginTop: 10 },
+  logo: { alignItems: 'center', marginTop: 24, marginBottom: 32 },
+  logoImg: { width: 72, height: 72, borderRadius: 18 },
+  logoTitle: { fontSize: 32, fontWeight: '800', color: '#ffffff', letterSpacing: -1, marginTop: 12, fontFamily: DS.font.heading },
+  logoSub: { fontSize: 11, letterSpacing: 3, color: '#64748b', marginTop: 6, textTransform: 'uppercase', fontFamily: DS.font.body },
 
-  label: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 },
-  phoneInput: { borderWidth: 1.5, borderRadius: 16, padding: 18, fontSize: 22, fontWeight: '700', textAlign: 'center', letterSpacing: 2 },
-
-  channelBtn: {
-    flexDirection: 'row', alignItems: 'center',
-    height: 56, borderRadius: 14, paddingHorizontal: 18, marginBottom: 10,
-    shadowColor: '#000', shadowOpacity: 0.15, shadowOffset: { width: 0, height: 4 }, shadowRadius: 8,
-    elevation: 3,
+  label: { fontSize: 11, fontWeight: '400', color: '#64748b', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 8, fontFamily: DS.font.body },
+  input: {
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', borderRadius: 12,
+    paddingVertical: 14, paddingHorizontal: 16,
+    color: '#ffffff', fontSize: 20, fontWeight: '700', textAlign: 'center', letterSpacing: 2,
+    fontFamily: DS.font.body,
   },
-  channelIcon: { fontSize: 22, marginRight: 12 },
-  channelText: { color: '#FFF', fontSize: 16, fontWeight: '700', flex: 1 },
-  channelArrow: { color: 'rgba(255,255,255,0.7)', fontSize: 18, fontWeight: '700' },
+  inputError: { borderColor: '#ef4444' },
+  codeInput: { fontSize: 28, letterSpacing: 16, fontWeight: '800' },
 
-  hint: { fontSize: 12, textAlign: 'center', marginTop: 10 },
-  err: { color: '#EF4444', fontSize: 13, textAlign: 'center', marginTop: 8 },
-
-  sentTo: { fontSize: 14, textAlign: 'center', marginBottom: 12 },
-
-  tgBtn: {
-    backgroundColor: '#0088CC', borderRadius: 14, paddingVertical: 16,
-    alignItems: 'center', marginBottom: 12,
+  channelTg: {
+    flexDirection: 'row', alignItems: 'center', height: 56, borderRadius: 12,
+    paddingHorizontal: 18, marginBottom: 10, backgroundColor: '#0088CC',
   },
-  tgBtnText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
-
-  mockBanner: {
-    borderWidth: 1, borderRadius: 10, padding: 10,
-    alignItems: 'center', marginBottom: 10,
-    backgroundColor: 'rgba(245,158,11,0.08)',
+  channelSms: {
+    flexDirection: 'row', alignItems: 'center', height: 56, borderRadius: 12,
+    paddingHorizontal: 18, marginBottom: 10, backgroundColor: '#22c55e',
   },
-
-  codeInput: {
-    borderWidth: 1.5, borderRadius: 16, padding: 18,
-    fontSize: 32, fontWeight: '800', textAlign: 'center', letterSpacing: 20,
+  channelWa: {
+    flexDirection: 'row', alignItems: 'center', height: 56, borderRadius: 12,
+    paddingHorizontal: 18, marginBottom: 10,
+    backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
   },
+  chIcon: { fontSize: 22, marginRight: 12 },
+  chText: { color: '#ffffff', fontSize: 16, fontWeight: '600', flex: 1, fontFamily: DS.font.body },
+  chArrow: { color: 'rgba(255,255,255,0.5)', fontSize: 18, fontWeight: '700' },
+  soonBadge: { backgroundColor: 'rgba(255,255,255,0.08)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
+  soonText: { color: '#475569', fontSize: 11, fontWeight: '600' },
 
-  verifyBtn: { height: 56, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginTop: 16 },
-  verifyBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+  betaHint: { color: '#22c55e', fontSize: 12, textAlign: 'center', marginTop: 16, fontFamily: DS.font.body },
+  hint: { color: '#475569', fontSize: 12, textAlign: 'center', marginTop: 12, fontFamily: DS.font.body },
+  err: { color: '#ef4444', fontSize: 13, textAlign: 'center', marginTop: 8, fontFamily: DS.font.body },
+
+  sentTo: { color: '#94a3b8', fontSize: 14, textAlign: 'center', marginBottom: 12, fontFamily: DS.font.body },
+  tgBtn: { backgroundColor: '#0088CC', borderRadius: 12, paddingVertical: 16, alignItems: 'center', marginBottom: 12 },
+  tgBtnText: { color: '#FFF', fontSize: 15, fontWeight: '600', fontFamily: DS.font.body },
+  mockBanner: { borderWidth: 1, borderColor: 'rgba(34,197,94,0.3)', borderRadius: 12, padding: 12, alignItems: 'center', marginBottom: 12, backgroundColor: 'rgba(34,197,94,0.05)' },
+  mockText: { color: '#22c55e', fontSize: 14, fontWeight: '700' },
+
+  verifyBtn: { backgroundColor: '#22c55e', borderRadius: 12, paddingVertical: 16, alignItems: 'center', marginTop: 16 },
+  verifyBtnDisabled: { backgroundColor: 'rgba(255,255,255,0.06)' },
+  verifyBtnText: { color: '#ffffff', fontSize: 16, fontWeight: '600', fontFamily: DS.font.body },
 
   resend: { alignItems: 'center', padding: 14, marginTop: 8 },
-  resendText: { fontSize: 13 },
+  resendText: { color: '#64748b', fontSize: 13, fontFamily: DS.font.body },
 });

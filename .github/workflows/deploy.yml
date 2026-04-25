@@ -1,0 +1,79 @@
+name: UrTruck Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web
+        run: npx expo export --platform web
+
+      - name: Post-process (SW + manifest)
+        run: |
+          cp sw-template.js dist/sw.js
+          python3 <<'PY'
+          import re, json
+          with open('dist/index.html', 'r') as f:
+              html = f.read()
+          # Inject manifest + PWA meta
+          if '<link rel="manifest"' not in html:
+              html = html.replace('</head>', '<link rel="manifest" href="/manifest.json" />\n</head>')
+          with open('dist/index.html', 'w') as f:
+              f.write(html)
+          # Manifest
+          manifest = {
+              "name": "UrTruck · FTL Market",
+              "short_name": "UrTruck",
+              "start_url": "/",
+              "display": "standalone",
+              "background_color": "#0B0F1A",
+              "theme_color": "#0B0F1A",
+          }
+          with open('dist/manifest.json', 'w') as f:
+              json.dump(manifest, f)
+          PY
+
+      - name: Deploy to server
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PASS: ${{ secrets.SERVER_PASS }}
+          REMOTE_DIR: ${{ secrets.REMOTE_DIR || '/home/ubuntu/urtruck-app' }}
+        run: |
+          sudo apt-get install -y sshpass
+          sshpass -p "$SERVER_PASS" scp -o StrictHostKeyChecking=no -r dist/* "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/"
+          sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" "chmod -R 755 $REMOTE_DIR"
+
+      - name: Deploy backend
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PASS: ${{ secrets.SERVER_PASS }}
+          BACKEND_DIR: ${{ secrets.BACKEND_DIR || '/home/ubuntu/urtruck-security' }}
+        run: |
+          sshpass -p "$SERVER_PASS" scp -o StrictHostKeyChecking=no -r backend/* "$SERVER_USER@$SERVER_HOST:$BACKEND_DIR/"
+          sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" "source ~/.nvm/nvm.sh && pm2 restart urtruck-security-api"
+
+      - name: Health check
+        run: |
+          sleep 5
+          curl -sf http://${{ secrets.SERVER_HOST }}:8080/ > /dev/null && echo "✅ Frontend OK"
+          curl -sf http://${{ secrets.SERVER_HOST }}:8001/health > /dev/null && echo "✅ Backend OK"

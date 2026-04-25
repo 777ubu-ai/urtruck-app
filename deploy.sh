@@ -9,8 +9,8 @@ fi
 SERVER_HOST="${SSH_HOST:?SSH_HOST not set — add to .env}"
 SERVER_USER="${SSH_USER:-ubuntu}"
 SERVER="${SERVER_USER}@${SERVER_HOST}"
-REMOTE_DIR="/home/ubuntu/urtruck-app"
-VERSIONS_DIR="/home/ubuntu/urtruck-versions"
+REMOTE_DIR="/home/ubuntu/urtruck/frontend"
+VERSIONS_DIR="/home/ubuntu/urtruck/versions"
 
 # Автоинкремент версии
 CURRENT_VERSION=$(cat .version 2>/dev/null || echo "56")
@@ -38,7 +38,7 @@ new_head = '''<meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no, maximum-scale=1" />
     <title>UrTruck · FTL Market</title>
     <meta name="description" content="UrTruck — FTL грузоперевозки без посредников" />
-    <meta name="theme-color" content="#0B0F1A" />
+    <meta name="theme-color" content="#0A1628" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="UrTruck" />
@@ -50,12 +50,12 @@ new_head = '''<meta charset="utf-8" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🚛</text></svg>" />
-    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🚛</text></svg>" />'''
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 128 128%22><rect width=%22128%22 height=%22128%22 fill=%22%230A1628%22 rx=%2228%22/><text x=%2264%22 y=%2272%22 text-anchor=%22middle%22 font-family=%22sans-serif%22 font-size=%2226%22 font-weight=%22900%22 fill=%22%23378ADD%22>UrTruck</text><text x=%2264%22 y=%2296%22 text-anchor=%22middle%22 font-family=%22sans-serif%22 font-size=%2210%22 font-weight=%22700%22 fill=%22%23FFFFFF%22>LOGISTICS</text></svg>" />
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 128 128%22><rect width=%22128%22 height=%22128%22 fill=%22%230A1628%22 rx=%2228%22/><text x=%2264%22 y=%2272%22 text-anchor=%22middle%22 font-family=%22sans-serif%22 font-size=%2226%22 font-weight=%22900%22 fill=%22%23378ADD%22>UrTruck</text><text x=%2264%22 y=%2296%22 text-anchor=%22middle%22 font-family=%22sans-serif%22 font-size=%2210%22 font-weight=%22700%22 fill=%22%23FFFFFF%22>LOGISTICS</text></svg>" />'''
 
 html = re.sub(r'<meta charset="utf-8" />.*?<title>UrTruck</title>', new_head, html, flags=re.DOTALL)
 
-loading_html = '''<div id="root"><div style="display:flex;flex:1;height:100vh;align-items:center;justify-content:center;background:#0B0F1A;flex-direction:column;gap:16px"><div style="font-size:60px;animation:truck 1.5s ease-out">🚛</div><div style="color:#FAFAF9;font-size:32px;font-weight:900;letter-spacing:-1px">UrTruck</div><div style="color:#78716C;font-size:13px">FTL Market</div></div></div><style>@keyframes truck{from{transform:translateX(-300px);opacity:0}to{transform:translateX(0);opacity:1}}</style><script>
+loading_html = '''<div id="root"><div style="display:flex;flex:1;height:100vh;align-items:center;justify-content:center;background:#0A1628;flex-direction:column;gap:16px"><div style="color:#378ADD;font-size:46px;font-weight:900;letter-spacing:-1.5px;font-family:-apple-system,BlinkMacSystemFont,sans-serif">UrTruck</div><div style="color:#FFFFFF;font-size:12px;font-weight:700;letter-spacing:3px">INTERNATIONAL LOGISTICS</div></div></div><style>@keyframes truck{from{transform:translateX(-300px);opacity:0}to{transform:translateX(0);opacity:1}}</style><script>
 (async()=>{
   const V='v5-market';
   const cur=localStorage.getItem('ur_sw_v');
@@ -94,13 +94,13 @@ manifest = {
     "description": "FTL грузоперевозки без посредников",
     "start_url": "/",
     "display": "standalone",
-    "background_color": "#0B0F1A",
-    "theme_color": "#0B0F1A",
+    "background_color": "#0A1628",
+    "theme_color": "#0A1628",
     "orientation": "portrait",
     "icons": [
-        {"src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' fill='%230C0A09' rx='32'/><text x='96' y='140' font-size='120' text-anchor='middle'>🚛</text></svg>",
+        {"src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' fill='%230A1628' rx='36'/><text x='96' y='108' text-anchor='middle' font-family='sans-serif' font-size='40' font-weight='900' fill='%23378ADD'>UrTruck</text><text x='96' y='144' text-anchor='middle' font-family='sans-serif' font-size='14' font-weight='700' fill='%23FFFFFF'>LOGISTICS</text></svg>",
          "sizes": "192x192", "type": "image/svg+xml"},
-        {"src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' fill='%230C0A09' rx='80'/><text x='256' y='370' font-size='320' text-anchor='middle'>🚛</text></svg>",
+        {"src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' fill='%230A1628' rx='96'/><text x='256' y='288' text-anchor='middle' font-family='sans-serif' font-size='106' font-weight='900' fill='%23378ADD'>UrTruck</text><text x='256' y='380' text-anchor='middle' font-family='sans-serif' font-size='36' font-weight='700' fill='%23FFFFFF'>LOGISTICS</text></svg>",
          "sizes": "512x512", "type": "image/svg+xml"}
     ]
 }

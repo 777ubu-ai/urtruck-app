@@ -47,6 +47,7 @@ from api.marketplace import mp_router
 from api.chat import chat_router
 from api.notifications import notif_router
 from api.profile import profile_router
+from api.auth_otp import auth_otp_router
 from database import db
 from database import registration_dal
 from database import reviews_dal
@@ -104,6 +105,7 @@ app.include_router(mp_router, prefix="/api/v1/market")
 app.include_router(chat_router, prefix="/api/v1/chat")
 app.include_router(notif_router, prefix="/api/v1/notifications")
 app.include_router(profile_router, prefix="/api/v1/users")
+app.include_router(auth_otp_router, prefix="/api/auth")
 app.include_router(ss_router, prefix="/api/v1/searches")
 app.include_router(metrics_router, prefix="")
 app.include_router(admin_router, prefix="/admin")

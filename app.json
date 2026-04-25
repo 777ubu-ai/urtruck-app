@@ -1,0 +1,64 @@
+{
+  "expo": {
+    "name": "UrTruck",
+    "slug": "urtruck",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "urtruck",
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "backgroundColor": "#0a0f1a",
+      "resizeMode": "contain"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/favicon.png"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.urtruck.app",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "UrTruck использует микрофон для записи голосовых сообщений в чате",
+        "NSCameraUsageDescription": "UrTruck использует камеру для селфи и фото документов",
+        "NSPhotoLibraryUsageDescription": "UrTruck использует фото для аватара, груза и документов",
+        "NSLocationWhenInUseUsageDescription": "UrTruck использует геолокацию для отслеживания рейсов"
+      }
+    },
+    "android": {
+      "package": "com.urtruck.app",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0a0f1a"
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-av",
+        {
+          "microphonePermission": "UrTruck использует микрофон для записи голосовых сообщений"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "898bd902-ea62-49f6-96c3-b6e02219f828"
+      }
+    }
+  }
+}

@@ -13,10 +13,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import httpx
 
-# WhatsApp Meta Cloud API
-WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN", "")
-WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "")
-WA_MOCK = not (WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID)
+# Новый WhatsApp модуль (Meta Cloud API)
+from services import whatsapp as wa
+
+# BETA bypass
+try:
+    from config import BETA_MODE, BETA_OTP_CODE
+except Exception:
+    BETA_MODE = False
+    BETA_OTP_CODE = "0000"
+
+# Совместимость со старыми именами env (на случай если кто ещё пользуется)
+WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN", "") or os.getenv("WHATSAPP_TOKEN", "")
+WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "") or os.getenv("WHATSAPP_PHONE_ID", "")
+WA_MOCK = not wa.is_configured()
 
 # SMS (Mobizon KZ / Twilio)
 SMS_PROVIDER = os.getenv("SMS_PROVIDER", "mock")  # mobizon | twilio | mock
@@ -38,30 +48,8 @@ def generate_code() -> str:
 
 # ---------- WhatsApp ----------
 def send_whatsapp(phone: str, code: str) -> dict:
-    if WA_MOCK:
-        print(f"[OTP·WA MOCK] {phone}: {code}")
-        return {"sent": True, "mock": True, "channel": "whatsapp", "code": code}
-    try:
-        url = f"https://graph.facebook.com/v18.0/{WHATSAPP_PHONE_NUMBER_ID}/messages"
-        r = httpx.post(url,
-            headers={"Authorization": f"Bearer {WHATSAPP_ACCESS_TOKEN}", "Content-Type": "application/json"},
-            json={
-                "messaging_product": "whatsapp",
-                "to": phone.replace("+", ""),
-                "type": "template",
-                "template": {
-                    "name": "otp_code",
-                    "language": {"code": "ru"},
-                    "components": [{"type": "body", "parameters": [{"type": "text", "text": code}]}],
-                },
-            },
-            timeout=10.0,
-        )
-        r.raise_for_status()
-        return {"sent": True, "mock": False, "channel": "whatsapp"}
-    except Exception as e:
-        print(f"[OTP·WA ERROR] {e}")
-        return {"sent": False, "error": str(e), "channel": "whatsapp"}
+    """Делегируем в services/whatsapp.py — там actual Meta Cloud call."""
+    return wa.send_otp(phone, code)
 
 
 # ---------- SMS ----------
@@ -116,38 +104,74 @@ def send_telegram(phone: str, code: str) -> dict:
 
 
 # ---------- Router с fallback ----------
+def _try(channel_fn, phone, code, name):
+    """Вызвать send_* и вернуть (True, result) при реальной доставке, иначе (False, result)."""
+    try:
+        r = channel_fn(phone, code) or {}
+    except Exception as e:
+        return False, {"sent": False, "channel": name, "error": str(e)}
+    # Считаем доставку успешной только если реально ушло (не mock и sent=True)
+    delivered = bool(r.get("sent")) and not r.get("mock")
+    return delivered, r
+
+
 def send_otp(phone: str, code: str, channel: str = "whatsapp") -> dict:
-    """Единая точка с автоматическим fallback на Telegram.
-    Цепочка: выбранный канал → если MOCK/fail → Telegram (всегда работает).
-    Юзер ВСЕГДА получит код."""
+    """Отправка OTP с fallback WhatsApp → Telegram → SMS.
+
+    BETA_MODE: ничего не отправляем, возвращаем код сразу (тестеры вводят 0000).
+
+    channel — предпочтительный канал. Если MOCK/fail — fallback на следующий.
+    Если все каналы MOCK — возвращаем последний mock-результат с кодом в ответе.
+    """
+    # ── BETA bypass ──────────────────────────────────────────
+    if BETA_MODE:
+        return {
+            "sent": True, "mock": False, "beta": True,
+            "channel": "beta",
+            "code": BETA_OTP_CODE,
+            "message": f"Beta-режим: введите код {BETA_OTP_CODE}",
+        }
+
     channel = (channel or "whatsapp").lower()
 
-    if channel == "whatsapp":
-        result = send_whatsapp(phone, code)
-        if result.get("mock") or not result.get("sent"):
-            # WhatsApp mock/недоступен → fallback Telegram
-            tg = send_telegram(phone, code)
-            tg["fallback"] = True
-            tg["original_channel"] = "whatsapp"
-            return tg
-        return result
+    # Приоритет по умолчанию: WA → TG → SMS. Если юзер выбрал конкретный — он первый.
+    order = {
+        "whatsapp": ["whatsapp", "telegram", "sms"],
+        "telegram": ["telegram", "whatsapp", "sms"],
+        "sms":      ["sms", "whatsapp", "telegram"],
+    }.get(channel, ["whatsapp", "telegram", "sms"])
 
-    if channel == "sms":
-        result = send_sms(phone, code)
-        if result.get("mock") or not result.get("sent"):
-            # SMS mock/недоступен → fallback Telegram
-            tg = send_telegram(phone, code)
-            tg["fallback"] = True
-            tg["original_channel"] = "sms"
-            return tg
-        return result
+    senders = {
+        "whatsapp": send_whatsapp,
+        "telegram": send_telegram,
+        "sms":      send_sms,
+    }
 
-    return send_telegram(phone, code)
+    attempts = []
+    last = None
+    for name in order:
+        delivered, r = _try(senders[name], phone, code, name)
+        attempts.append({"channel": name, "sent": r.get("sent"), "mock": r.get("mock", False), "error": r.get("error")})
+        last = r
+        if delivered:
+            r["attempts"] = attempts
+            if name != channel:
+                r["fallback"] = True
+                r["original_channel"] = channel
+            return r
+
+    # Все каналы mock/fail — возвращаем последний (с кодом для dev). Telegram deeplink если был.
+    if last is None:
+        last = {"sent": False, "channel": channel, "error": "no_channels"}
+    last["attempts"] = attempts
+    return last
 
 
 def info() -> dict:
     return {
-        "whatsapp": {"mode": "MOCK" if WA_MOCK else "REAL"},
+        "beta_mode": BETA_MODE,
+        "priority_chain": ["whatsapp", "telegram", "sms"],
+        "whatsapp": wa.info(),
         "sms": {"mode": "MOCK" if SMS_MOCK else SMS_PROVIDER.upper()},
         "telegram": {
             "mode": "MOCK" if TG_MOCK else "REAL",

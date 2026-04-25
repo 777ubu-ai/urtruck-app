@@ -1,0 +1,12 @@
+{
+  "appId": "com.urtruck.app",
+  "appName": "UrTruck",
+  "webDir": "dist",
+  "server": {
+    "url": "https://urtruck.kz",
+    "cleartext": false
+  },
+  "android": {
+    "backgroundColor": "#0A1628"
+  }
+}

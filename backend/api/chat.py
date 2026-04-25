@@ -1,0 +1,241 @@
+"""Server-side Chat API. Сообщения сохраняются в БД."""
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from typing import Optional
+
+from database.db import get_conn, new_id
+from api.verification_gate import require_level
+from api.push import send_to_user
+
+chat_router = APIRouter()
+
+# Специальные юзеры
+SUPPORT_ID = "urtruck-support-bot"
+SUPPORT_NAME = "UrTruck Support"
+VOLODYA_ID = "ai-volodya-test"
+VOLODYA_NAME = "ИИ Володя (Тест)"
+
+
+def _ensure_special_users():
+    """Создаёт Support и Володю в БД если нет."""
+    with get_conn() as c:
+        for uid, name, role, vtype in [
+            (SUPPORT_ID, SUPPORT_NAME, "support", None),
+            (VOLODYA_ID, VOLODYA_NAME, "driver", "tent"),
+        ]:
+            exists = c.execute("SELECT 1 FROM drivers_registration WHERE id = ?", (uid,)).fetchone()
+            if not exists:
+                c.execute(
+                    "INSERT INTO drivers_registration (id, phone, full_name, role, status, verification_level, vehicle_type) "
+                    "VALUES (?, ?, ?, ?, 'approved', 3, ?)",
+                    (uid, f"bot_{uid[:8]}", name, role, vtype),
+                )
+
+
+def _count_bot_messages_in_room(room_id: str, bot_id: str) -> int:
+    with get_conn() as c:
+        r = c.execute("SELECT COUNT(*) FROM chat_messages WHERE room_id = ? AND sender_id = ?", (room_id, bot_id)).fetchone()
+    return r[0] if r else 0
+
+
+def _bot_send(room_id: str, sender_id: str, text: str):
+    with get_conn() as c:
+        c.execute(
+            "INSERT INTO chat_messages (room_id, sender_id, text) VALUES (?,?,?)",
+            (room_id, sender_id, text),
+        )
+        c.execute("UPDATE chat_rooms SET last_message = ?, last_at = CURRENT_TIMESTAMP WHERE id = ?",
+                   (text[:50], room_id))
+
+
+def _maybe_support_reply(room_id: str, user: dict):
+    """Support отвечает ОДИН РАЗ — приветствие. Не перебивает живых."""
+    if _count_bot_messages_in_room(room_id, SUPPORT_ID) > 0:
+        return  # уже ответил — молчит
+    name = user.get("full_name") or user.get("phone") or "друг"
+    _bot_send(room_id, SUPPORT_ID,
+        f"👋 Здравствуйте, {name}!\n\n"
+        f"Я — UrTruck Support. Менеджер ответит в рабочее время (09:00-18:00 KZ).\n\n"
+        f"А пока могу помочь:\n"
+        f"• Как опубликовать груз?\n"
+        f"• Как найти водителя?\n"
+        f"• Проблема с регистрацией?\n\n"
+        f"Напишите ваш вопрос — передам менеджеру."
+    )
+
+
+def _volodya_reply(room_id: str, user_text: str, user: dict):
+    """ИИ Володя — тестовый водитель. Контекстные ответы."""
+    text_lower = (user_text or "").lower()
+
+    if "цен" in text_lower or "сколько" in text_lower or "price" in text_lower:
+        reply = "🚛 Зависит от маршрута. Алматы→Москва: $3000-4000 тентом. Реф +30%. Скиньте точный маршрут — посчитаю."
+    elif "маршрут" in text_lower or "откуда" in text_lower or "куда" in text_lower:
+        reply = "📍 Я сейчас в Алматы. Готов выехать в направлении Астана, Москва, Ташкент. Когда загрузка?"
+    elif "когда" in text_lower or "срок" in text_lower or "дата" in text_lower:
+        reply = "📅 Могу выехать завтра утром. Доставка Алматы→Москва ~5-7 дней. Астана — 1 день."
+    elif "привет" in text_lower or "здравст" in text_lower or "салам" in text_lower or "hello" in text_lower:
+        name = user.get("full_name") or "друг"
+        reply = f"👋 Привет, {name}! Я Володя, водитель-тент 22т KAMAZ. Чем могу помочь?"
+    elif "груз" in text_lower or "товар" in text_lower or "загрузк" in text_lower:
+        reply = "📦 Какой груз? Тент 22т, длина 13.6м. Беру всё кроме опасных. Фото кузова могу скинуть."
+    elif "документ" in text_lower or "ттн" in text_lower or "cmr" in text_lower:
+        reply = "📄 ТТН оформлю. CMR есть. Все документы для границы в порядке."
+    elif "голос" in text_lower or "аудио" in text_lower or "voice" in text_lower:
+        reply = "🎤 Получил голосовое. К сожалению, пока могу отвечать только текстом. Напишите суть — отвечу."
+    else:
+        reply = "✅ Понял. Уточните детали — маршрут, дату загрузки и тип груза. Посчитаю цену."
+
+    _bot_send(room_id, VOLODYA_ID, reply)
+
+
+def _init():
+    schema = Path(__file__).resolve().parent.parent / "database" / "chat_schema.sql"
+    if schema.exists():
+        with get_conn() as c:
+            c.executescript(schema.read_text(encoding="utf-8"))
+            c.commit()
+    _ensure_special_users()
+
+_init()
+
+
+def _get_or_create_room(user1: str, user2: str, cargo_id: str = None, trip_id: str = None) -> str:
+    p1, p2 = sorted([user1, user2])
+    with get_conn() as c:
+        row = c.execute("SELECT id FROM chat_rooms WHERE participant_1 = ? AND participant_2 = ?", (p1, p2)).fetchone()
+        if row:
+            return row["id"]
+        rid = new_id()
+        c.execute(
+            "INSERT INTO chat_rooms (id, participant_1, participant_2, cargo_id, trip_id) VALUES (?,?,?,?,?)",
+            (rid, p1, p2, cargo_id, trip_id),
+        )
+        return rid
+
+
+class SendMessageIn(BaseModel):
+    to_user_id: str
+    text: Optional[str] = None
+    photo_url: Optional[str] = None
+    is_voice: bool = False
+    voice_duration: Optional[int] = None
+    cargo_id: Optional[str] = None
+    trip_id: Optional[str] = None
+
+
+@chat_router.post("/send")
+def send_message(body: SendMessageIn, user=Depends(require_level(1))):
+    if not body.text and not body.photo_url:
+        raise HTTPException(status_code=400, detail="text или photo_url обязателен")
+
+    room_id = _get_or_create_room(user["id"], body.to_user_id, body.cargo_id, body.trip_id)
+
+    with get_conn() as c:
+        c.execute(
+            "INSERT INTO chat_messages (room_id, sender_id, text, photo_url, is_voice, voice_duration) VALUES (?,?,?,?,?,?)",
+            (room_id, user["id"], body.text, body.photo_url, 1 if body.is_voice else 0, body.voice_duration),
+        )
+        preview = (body.text or "📷 Фото")[:50]
+        c.execute("UPDATE chat_rooms SET last_message = ?, last_at = CURRENT_TIMESTAMP WHERE id = ?", (preview, room_id))
+
+    # Push получателю
+    try:
+        sender_name = user.get("full_name") or user.get("phone") or "Пользователь"
+        send_to_user(body.to_user_id, f"💬 {sender_name}", preview, url="/chat")
+    except Exception:
+        pass
+
+    # ИИ Support: если получатель = SUPPORT_ID и менеджер офлайн → один ответ
+    if body.to_user_id == SUPPORT_ID:
+        _maybe_support_reply(room_id, user)
+
+    # ИИ Володя (тестовый водитель): контекстный ответ
+    if body.to_user_id == VOLODYA_ID:
+        _volodya_reply(room_id, body.text or "", user)
+
+    return {"ok": True, "room_id": room_id}
+
+
+@chat_router.get("/rooms")
+def my_rooms(user=Depends(require_level(1))):
+    uid = user["id"]
+    with get_conn() as c:
+        rows = c.execute("""
+            SELECT r.*,
+                   (SELECT COUNT(*) FROM chat_messages m WHERE m.room_id = r.id AND m.is_read = 0 AND m.sender_id != ?) as unread
+            FROM chat_rooms r
+            WHERE r.participant_1 = ? OR r.participant_2 = ?
+            ORDER BY r.last_at DESC LIMIT 50
+        """, (uid, uid, uid)).fetchall()
+
+    rooms = []
+    for r in rows:
+        d = dict(r)
+        other_id = d["participant_2"] if d["participant_1"] == uid else d["participant_1"]
+        # Имя собеседника
+        partner = c.execute("SELECT full_name, phone FROM drivers_registration WHERE id = ?", (other_id,)).fetchone() if False else None
+        d["partner_id"] = other_id
+        d["partner_name"] = None
+        rooms.append(d)
+
+    # Дотягиваем имена
+    with get_conn() as c:
+        for room in rooms:
+            p = c.execute("SELECT full_name, phone FROM drivers_registration WHERE id = ?", (room["partner_id"],)).fetchone()
+            if p:
+                room["partner_name"] = p["full_name"] or p["phone"]
+    return {"rooms": rooms}
+
+
+@chat_router.get("/messages/{room_id}")
+def get_messages(room_id: str, limit: int = 100, offset: int = 0, user=Depends(require_level(1))):
+    uid = user["id"]
+    with get_conn() as c:
+        # Проверка что юзер участник
+        room = c.execute("SELECT * FROM chat_rooms WHERE id = ?", (room_id,)).fetchone()
+        if not room:
+            raise HTTPException(status_code=404)
+        if uid not in (room["participant_1"], room["participant_2"]):
+            raise HTTPException(status_code=403, detail="Вы не участник этого чата")
+
+        rows = c.execute(
+            "SELECT * FROM chat_messages WHERE room_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            (room_id, limit, offset),
+        ).fetchall()
+
+        # Отмечаем как прочитанные
+        c.execute(
+            "UPDATE chat_messages SET is_read = 1 WHERE room_id = ? AND sender_id != ? AND is_read = 0",
+            (room_id, uid),
+        )
+
+    return {"messages": [dict(r) for r in reversed(rows)], "room": dict(room)}
+
+
+@chat_router.get("/contacts")
+def special_contacts():
+    """Список постоянных контактов: Support + ИИ Володя."""
+    return {"contacts": [
+        {"id": SUPPORT_ID, "name": SUPPORT_NAME, "role": "support", "icon": "🛡", "online": True,
+         "desc": "Поддержка — ответим на любой вопрос"},
+        {"id": VOLODYA_ID, "name": VOLODYA_NAME, "role": "driver", "icon": "🚛", "online": True,
+         "desc": "Тестовый водитель — проверьте как работает чат"},
+    ]}
+
+
+@chat_router.get("/unread")
+def unread_count(user=Depends(require_level(1))):
+    uid = user["id"]
+    with get_conn() as c:
+        row = c.execute("""
+            SELECT COUNT(*) as cnt FROM chat_messages m
+            JOIN chat_rooms r ON m.room_id = r.id
+            WHERE (r.participant_1 = ? OR r.participant_2 = ?)
+              AND m.sender_id != ? AND m.is_read = 0
+        """, (uid, uid, uid)).fetchone()
+    return {"unread": row["cnt"] if row else 0}

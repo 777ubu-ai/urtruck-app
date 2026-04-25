@@ -1,0 +1,204 @@
+import React, { useState, useRef, useEffect } from 'react';
+import {
+  View, Text, Modal, Pressable, TouchableOpacity, StyleSheet,
+  TextInput, Animated, Easing, ActivityIndicator, Platform,
+} from 'react-native';
+import { useTheme } from '../utils/ThemeContext';
+import { useToast } from './Toast';
+import { useI18n } from '../utils/useI18n';
+import { reviewsAPI } from '../utils/reviews';
+import { accentColors } from '../utils/theme';
+
+const TAGS_BY_ROLE = {
+  driver: [
+    { k: 'punctual', l: '⏱ Пунктуален' },
+    { k: 'clean', l: '✨ Чистый кузов' },
+    { k: 'polite', l: '👍 Вежлив' },
+    { k: 'careful', l: '📦 Бережно вёз' },
+    { k: 'fast', l: '⚡ Быстро' },
+    { k: 'good_price', l: '💰 Честная цена' },
+  ],
+  client: [
+    { k: 'fast_pay', l: '💰 Быстро оплатил' },
+    { k: 'honest', l: '🤝 Честный' },
+    { k: 'clear_docs', l: '📄 Документы в порядке' },
+    { k: 'reachable', l: '📞 На связи' },
+    { k: 'good_cargo', l: '📦 Нормальный груз' },
+  ],
+};
+
+export default function RatingModal({ visible, onClose, onSubmitted, targetId, targetRole, targetName, tripId }) {
+  const { theme, isDark } = useTheme();
+  const { toast } = useToast();
+  const { t } = useI18n();
+  const [rating, setRating] = useState(0);
+  const [hover, setHover] = useState(0);
+  const [text, setText] = useState('');
+  const [tags, setTags] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const slide = useRef(new Animated.Value(500)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      slide.setValue(500); opacity.setValue(0);
+      setRating(0); setText(''); setTags([]); setHover(0);
+      Animated.parallel([
+        Animated.timing(slide, { toValue: 0, duration: 320, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 1, duration: 250, useNativeDriver: true }),
+      ]).start();
+    }
+  }, [visible]);
+
+  const available = TAGS_BY_ROLE[targetRole] || TAGS_BY_ROLE.driver;
+
+  const toggleTag = (k) => {
+    setTags(prev => prev.includes(k) ? prev.filter(t => t !== k) : [...prev, k]);
+  };
+
+  const submit = async () => {
+    if (rating === 0) { toast('Выбери количество звёзд', 'error'); return; }
+    setLoading(true);
+    try {
+      const r = await reviewsAPI.create({
+        tripId, targetId, targetRole, rating, text: text.trim() || null, tags,
+      });
+      if (r.ok) {
+        toast('✓ Спасибо за отзыв!', 'success');
+        onSubmitted?.(r);
+        onClose?.();
+      } else {
+        toast(r.detail || t('send_error'), 'error');
+      }
+    } catch (e) {
+      toast(t('network_error'), 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!visible) return null;
+
+  const ratingLabels = ['', 'Ужасно 😟', 'Плохо 😕', 'Нормально 🙂', 'Хорошо 😊', 'Отлично 🎉'];
+  const ratingColor = rating >= 4 ? '#22C55E' : rating >= 3 ? '#F59E0B' : rating > 0 ? '#EF4444' : theme.textMuted;
+
+  return (
+    <Modal transparent visible={visible} animationType="none" onRequestClose={onClose}>
+      <Animated.View style={[s.backdrop, { opacity, backgroundColor: theme.overlay }]}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <Animated.View style={[
+          s.sheet,
+          { backgroundColor: theme.cardElevated, transform: [{ translateY: slide }] },
+        ]}>
+          <View style={[s.handle, { backgroundColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(15,23,42,0.15)' }]} />
+
+          <Text style={[s.title, { color: theme.text }]}>
+            Как прошёл рейс?
+          </Text>
+          <Text style={[s.subtitle, { color: theme.textMuted }]}>
+            {targetName ? `Оцени ${targetRole === 'driver' ? 'водителя' : 'заказчика'} ${targetName}` : 'Оцени партнёра'}
+          </Text>
+
+          {/* 5 звёзд */}
+          <View style={s.starsRow}>
+            {[1, 2, 3, 4, 5].map(n => (
+              <Pressable
+                key={n}
+                onPress={() => setRating(n)}
+                onHoverIn={() => Platform.OS === 'web' && setHover(n)}
+                onHoverOut={() => Platform.OS === 'web' && setHover(0)}
+                style={s.starBtn}
+              >
+                <Text style={[
+                  s.star,
+                  { opacity: (hover || rating) >= n ? 1 : 0.25 },
+                ]}>⭐</Text>
+              </Pressable>
+            ))}
+          </View>
+          <Text style={[s.ratingLabel, { color: ratingColor }]}>
+            {ratingLabels[hover || rating] || 'Выбери звёзды'}
+          </Text>
+
+          {/* Теги */}
+          {rating > 0 && (
+            <View style={s.tagsWrap}>
+              {available.map(t => {
+                const active = tags.includes(t.k);
+                return (
+                  <TouchableOpacity
+                    key={t.k}
+                    style={[
+                      s.tag,
+                      {
+                        backgroundColor: active ? accentColors.driver : theme.card,
+                        borderColor: active ? accentColors.driver : theme.border,
+                      },
+                    ]}
+                    onPress={() => toggleTag(t.k)}
+                  >
+                    <Text style={[s.tagText, { color: active ? '#FFF' : theme.text }]}>{t.l}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+
+          {/* Комментарий */}
+          {rating > 0 && (
+            <TextInput
+              style={[s.textarea, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border }]}
+              placeholder="Комментарий (необязательно)"
+              placeholderTextColor={theme.textMuted}
+              multiline
+              value={text}
+              onChangeText={setText}
+              maxLength={500}
+            />
+          )}
+
+          <TouchableOpacity
+            style={[s.submit, { backgroundColor: rating > 0 ? accentColors.browse : theme.border }]}
+            onPress={submit}
+            disabled={rating === 0 || loading}
+          >
+            {loading ? <ActivityIndicator color="#FFF" /> : (
+              <Text style={s.submitText}>Отправить отзыв</Text>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={onClose} style={s.skip}>
+            <Text style={[s.skipText, { color: theme.textMuted }]}>Не сейчас</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      </Animated.View>
+    </Modal>
+  );
+}
+
+const s = StyleSheet.create({
+  backdrop: { flex: 1, justifyContent: 'flex-end' },
+  sheet: {
+    borderTopLeftRadius: 28, borderTopRightRadius: 28,
+    padding: 24, paddingBottom: 32,
+  },
+  handle: { width: 48, height: 5, borderRadius: 3, alignSelf: 'center', marginBottom: 16 },
+  title: { fontSize: 22, fontWeight: '800', textAlign: 'center', marginBottom: 6 },
+  subtitle: { fontSize: 13, textAlign: 'center', marginBottom: 22 },
+  starsRow: { flexDirection: 'row', justifyContent: 'center', gap: 8 },
+  starBtn: { padding: 6 },
+  star: { fontSize: 42 },
+  ratingLabel: { fontSize: 14, fontWeight: '700', textAlign: 'center', marginTop: 8, marginBottom: 14, minHeight: 20 },
+  tagsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
+  tag: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
+  tagText: { fontSize: 12, fontWeight: '600' },
+  textarea: {
+    borderWidth: 1, borderRadius: 12, padding: 12, minHeight: 70,
+    fontSize: 14, marginBottom: 14, textAlignVertical: 'top',
+  },
+  submit: { height: 54, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
+  submitText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+  skip: { padding: 12, alignItems: 'center', marginTop: 4 },
+  skipText: { fontSize: 13 },
+});
