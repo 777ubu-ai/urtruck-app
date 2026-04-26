@@ -80,19 +80,9 @@ export default function ProfileScreen({ navigation, route }) {
     featured: true,
   };
   const menuItems = [
-    { icon: '⭐', label: t('myReviews'), value: '→', screen: 'Reviews' },
-    { icon: '❤️', label: t('menu_favorites'), value: '→', screen: 'MyTripsList' },
-    { icon: '🏆', label: t('menu_top_carriers'), value: '→', screen: 'Stats' },
-    { icon: '📋', label: t('archiveSection'), value: '→', screen: 'Archive' },
-    // разделитель
     { icon: '💬', label: t('chatsSection'), value: '→', screen: 'ChatsList' },
-    { icon: '🔔', label: t('menu_notifications'), value: '→', screen: 'Notifications' },
-    { icon: '🛡', label: t('menu_security'), value: '→', screen: 'Security' },
-    { icon: '🚫', label: t('blacklistSection'), value: '→', screen: 'Blacklist' },
-    { icon: '🛃', label: t('menu_queues'), value: '→', screen: 'Queue' },
-    { icon: '📚', label: t('eduSection'), value: '→', screen: 'Education' },
-    { icon: '❓', label: t('menu_how_it_works'), value: '→', screen: 'HowItWorks' },
-    { icon: 'ℹ️', label: t('menu_about'), value: '→', screen: 'About' },
+    { icon: '⭐', label: t('myReviews'), value: '→', screen: 'Reviews' },
+    { icon: '✏️', label: t('editProfile') || 'Редактировать профиль', value: '→', screen: 'EditProfile' },
   ];
 
   return (
@@ -112,10 +102,10 @@ export default function ProfileScreen({ navigation, route }) {
             </View>
           )}
           <Text style={[s.name, { color: theme.text }]}>
-            {profile.display_name || profile.full_name || session?.user?.phone || 'Добавьте имя'}
+            {profile.display_name || profile.full_name || 'Добавьте имя'}
           </Text>
           <Text style={[s.phone, { color: theme.textMuted }]}>
-            {session?.user?.phone || ''}
+            {session?.user?.phone || ''} · {isDriver ? 'Водитель' : 'Грузоотправитель'}
           </Text>
           <Text style={[s.subtitle, { color: theme.textSecondary }]}>
             {isDriver

@@ -47,12 +47,21 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     (async () => {
+      const token = await regAPI.getToken();
+      if (!token) {
+        // Нет токена → чистый logout, невозможно состояние "session без token"
+        await storage.remove(KEY);
+        setSession(null);
+        setHasToken(false);
+        setVerificationLevel(0);
+        setLoading(false);
+        return;
+      }
+      setHasToken(true);
       const raw = await storage.get(KEY);
       if (raw) {
         try { setSession(JSON.parse(raw)); } catch {}
       }
-      const token = await regAPI.getToken();
-      setHasToken(!!token);
       const savedLevel = await regAPI.getLevel();
       setVerificationLevel(savedLevel);
       setLoading(false);
@@ -69,12 +78,21 @@ export const AuthProvider = ({ children }) => {
     return data;
   }, []);
 
-  const signIn = (phone, level = 1) => {
+  const signIn = async (phone, level = 1, token = null) => {
+    // Если передан token — сохраняем. Если нет — проверяем что уже есть в storage.
+    if (token) {
+      await storage.set('ur_reg_token', token);
+    }
+    const existing = await regAPI.getToken();
+    if (!existing) {
+      throw new Error('NO_TOKEN');
+    }
     const s = { user: { phone, role: null, id: 'u_' + Date.now() } };
     setSession(s);
     setVerificationLevel(level);
     setHasToken(true);
-    storage.set(KEY, JSON.stringify(s));
+    await storage.set(KEY, JSON.stringify(s));
+    return true;
   };
 
   const setRole = (role) => {

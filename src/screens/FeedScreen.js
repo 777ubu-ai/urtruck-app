@@ -16,7 +16,7 @@ import { useToast } from '../components/Toast';
 import { routeStats } from '../utils/geo';
 import SecurityBadge from '../components/SecurityBadge';
 import { useVerificationGate } from '../components/VerificationGate';
-import { LEVELS } from '../utils/AuthContext';
+import { LEVELS, useAuth } from '../utils/AuthContext';
 import { SkeletonCard } from '../components/Skeleton';
 import { IS_BETA } from '../config/supabase';
 
@@ -65,6 +65,8 @@ export default function FeedScreen({ navigation, route }) {
   const { theme } = useTheme();
   const { toast } = useToast();
   const { requireLevel, Gate } = useVerificationGate();
+  const { session } = useAuth();
+  const myUserId = session?.user?.id;
   const [, setTick] = useState(0);
   const [showForm, setShowForm] = useState(false);
   const [search, setSearch] = useState('');
@@ -87,16 +89,27 @@ export default function FeedScreen({ navigation, route }) {
           tons: c.weight_tons, m3: c.volume_m3,
           price: c.price, pickup: c.pickup_date,
           bids: c.bids_count, photos: c.photos,
-          photo: c.photos?.[0], isMine: false,
+          photo: c.photos?.[0], isMine: c.owner_id === myUserId,
           createdAt: c.created_at, _server: true,
         }));
         setServerData(mapped);
       } else {
-        // Клиент видит: рейсы + зарег. водители с авто
-        const [tripsRes, driversRes] = await Promise.all([
+        // Клиент видит: свои грузы + рейсы + водители
+        const [tripsRes, driversRes, myRes] = await Promise.all([
           marketAPI.listTrips({ truckType: filterType || '' }),
           marketAPI.listDrivers({ truckType: filterType || '' }),
+          marketAPI.myDashboard().catch(() => ({})),
         ]);
+        // Мои грузы — в начале ленты
+        const myCargos = ((myRes || {}).my_cargos || []).map(c => ({
+          id: c.id, from: c.from_city, to: c.to_city,
+          cargo: c.cargo_desc, type: c.cargo_type,
+          tons: c.weight_tons, m3: c.volume_m3,
+          price: c.price, pickup: c.pickup_date,
+          bids: c.bids_count, photos: c.photos,
+          photo: (c.photos || [])[0], isMine: true,
+          createdAt: c.created_at, _server: true,
+        }));
         const tripsMapped = ((tripsRes || {}).trips || []).map(t => ({
           id: t.id, name: t.driver_name || 'Водитель',
           country: 'KZ', type: t.truck_type || 'tent',
@@ -117,10 +130,10 @@ export default function FeedScreen({ navigation, route }) {
           rating: d.rating || 0, reviews: d.reviews_count || 0,
           verified: true,
           plate_truck: d.vehicle_plate,
-          phone: '***',  // скрыт
+          phone: '***',
           _server: true, _isDriver: true,
         }));
-        setServerData([...tripsMapped, ...driversMapped]);
+        setServerData([...myCargos, ...tripsMapped, ...driversMapped]);
       }
     } catch (e) {
       console.warn('[Feed] Server load failed, using local:', e);
@@ -261,18 +274,17 @@ export default function FeedScreen({ navigation, route }) {
         photos: cargoPhotos,
       });
       if (r.ok) {
-        showOk(t('publishFree') || '✓ Груз опубликован и виден всем', 'success');
+        showOk('✓ Груз опубликован', 'success');
         setShowForm(false);
         setFromCity(''); setToCity(''); setCargoDesc(''); setWeight(''); setVol('');
         setPrice(''); setPickupDate(''); setCargoPhotos([]); setFormErrors({});
         loadFromServer();
       } else {
-        // HOT-003: дружелюбная ошибка, без технических деталей
-        showOk(t('generic_error'), 'error');
+        showOk(r.status === 401 ? 'Сессия истекла. Войдите заново.' : (r.detail || t('generic_error')), 'error');
       }
     } catch (e) {
       console.error('[submitCargo] failed:', e);
-      showOk(t('network_error'), 'error');
+      showOk(t('network_error') + ': ' + (e.message || ''), 'error');
     }
   };
 
@@ -324,10 +336,7 @@ export default function FeedScreen({ navigation, route }) {
               {item.pickup && <Text style={[s.badge, { color: theme.textMuted, backgroundColor: theme.border }]}>📅 {item.pickup}</Text>}
             </View>
           </View>
-          <View style={{ alignItems: 'flex-end', gap: 6 }}>
-            <TouchableOpacity onPress={() => { toggleFavorite(item.id); toast(fav ? '💔' : '❤️', 'info', 1000); }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Text style={{ fontSize: 20 }}>{fav ? '❤️' : '🤍'}</Text>
-            </TouchableOpacity>
+          <View style={{ alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
             <Text style={s.price}>${item.price}</Text>
             <Text style={[s.bidsCount, { color: theme.textMuted }]}>{item.bids || 0} {t('bids')}</Text>
           </View>
@@ -382,11 +391,6 @@ export default function FeedScreen({ navigation, route }) {
 
   return (
     <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]} edges={['top']}>
-      {IS_BETA && (
-        <View style={s.betaBar}>
-          <Text style={s.betaBarText}>🧪 BETA · вход по коду <Text style={{ fontWeight: '900' }}>0000</Text></Text>
-        </View>
-      )}
       <View style={s.header}>
         <View style={{ flex: 1 }}>
           <GradientText style={s.title} colors={isDriver ? ['#2563EB', '#7C3AED'] : ['#F59E0B', '#EF4444']}>

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "727434965766",
+    "project_id": "bizchat-4d11d",
+    "storage_bucket": "bizchat-4d11d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:727434965766:android:59eb3a8d2ee518f4a72487",
+        "android_client_info": {
+          "package_name": "com.urtruck.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCPJoEW5tFHbNcX6BPSkZf_wdA5pYu4xrk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

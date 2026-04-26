@@ -91,7 +91,6 @@ export default function CargoDetail({ navigation, route }) {
             <View style={s.photoBadge}><Text style={s.photoBadgeText}>📸 {t('cargoPhoto')}</Text></View>
           </View>
         ) : null}
-        <RouteMap from={cargo.from} to={cargo.to} height={160} />
         <View style={[s.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <View style={s.routeRow}>
             <View style={[s.dot, { backgroundColor: '#EF4444' }]} /><Text style={[s.city, { color: theme.text }]}>{cargo.from}</Text>
@@ -184,12 +183,12 @@ const s = StyleSheet.create({
   bidBtn: { backgroundColor: '#22C55E', borderRadius: 14, paddingHorizontal: 22, paddingVertical: 14 },
   bidBtnText: { color: '#fff', fontSize: 14, fontWeight: '800' },
   bidsTitle: { fontSize: 14, fontWeight: '700', marginBottom: 8 },
-  bidCard: { borderRadius: 12, padding: 12, borderWidth: 1, marginBottom: 6, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  bidLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  bidCard: { borderRadius: 12, padding: 12, borderWidth: 1, marginBottom: 6, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  bidLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, marginRight: 8 },
   bidFlag: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   bidName: { fontSize: 13, fontWeight: '600' },
   bidInfo: { color: '#FBBF24', fontSize: 11 },
-  bidAmt: { color: '#22C55E', fontSize: 17, fontWeight: '900' },
+  bidAmt: { color: '#22C55E', fontSize: 16, fontWeight: '900', flexShrink: 0 },
   confirmBanner: { backgroundColor: '#22C55E20', borderWidth: 1, borderColor: '#22C55E', borderRadius: 12, padding: 14, marginBottom: 12, alignItems: 'center' },
   confirmText: { color: '#22C55E', fontSize: 14, fontWeight: '800' },
   photoWrap: { borderRadius: 16, overflow: 'hidden', borderWidth: 1, marginBottom: 12, position: 'relative' },

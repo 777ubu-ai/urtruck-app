@@ -53,9 +53,9 @@ export default function ShareModal({ visible, onClose, shareText = 'UrTruck!', p
   };
 
   const CHANNELS = [
-    { name: 'WhatsApp', icon: '💚', color: '#25D366', onPress: handleWhatsApp },
-    { name: 'Telegram', icon: '✈️', color: '#0088CC', onPress: handleTelegram },
-    { name: 'WeChat', icon: '💬', color: '#7BB32E', onPress: handleWeChat },
+    { name: 'WhatsApp', icon: 'WA', color: '#25D366', onPress: handleWhatsApp },
+    { name: 'Telegram', icon: 'TG', color: '#0088CC', onPress: handleTelegram },
+    { name: 'WeChat', icon: 'WC', color: '#7BB32E', onPress: handleWeChat },
     { name: 'Ссылка', icon: '🔗', color: '#64748B', onPress: copyLink },
   ];
 

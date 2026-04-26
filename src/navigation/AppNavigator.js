@@ -72,20 +72,15 @@ function MainTabs({ route }) {
     >
       <Tab.Screen name="Feed" component={FeedScreen} initialParams={{ role }}
         options={{
-          tabBarLabel: role === 'driver' ? t('cargos') : t('trucks'),
+          tabBarLabel: role === 'driver' ? 'Грузы' : 'Машины',
           tabBarIcon: ({ color }) => <Text style={{ fontSize: 20, color }}>{role === 'driver' ? '📦' : '🚛'}</Text>,
-          tabBarBadge: unread > 0 ? unread : undefined,
-          tabBarBadgeStyle: { backgroundColor: '#EF4444', fontSize: 10, minWidth: 18, height: 18, borderRadius: 9 },
         }}
       />
-      <Tab.Screen name="Track" component={TrackScreen} initialParams={{ role }}
-        options={{ tabBarLabel: t('myTrips'), tabBarIcon: ({ color }) => <Text style={{ fontSize: 20, color }}>📍</Text> }}
-      />
-      <Tab.Screen name="Wallet" component={WalletScreen} initialParams={{ role }}
-        options={{ tabBarLabel: t('wallet'), tabBarIcon: ({ color }) => <Text style={{ fontSize: 20, color }}>💰</Text> }}
+      <Tab.Screen name="MyTripsList" component={MyTripsScreen} initialParams={{ role }}
+        options={{ tabBarLabel: 'Сделки', tabBarIcon: ({ color }) => <Text style={{ fontSize: 20, color }}>🤝</Text> }}
       />
       <Tab.Screen name="Profile" component={ProfileScreen} initialParams={{ role }}
-        options={{ tabBarLabel: t('profile'), tabBarIcon: ({ color }) => <Text style={{ fontSize: 20, color }}>👤</Text> }}
+        options={{ tabBarLabel: 'Профиль', tabBarIcon: ({ color }) => <Text style={{ fontSize: 20, color }}>👤</Text> }}
       />
     </Tab.Navigator>
   );
@@ -105,14 +100,13 @@ export default function AppNavigator() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {!hasToken ? (
-        // Никогда не входил — онбординг
+        // Тестовый режим: сразу выбор роли
         <>
-          <Stack.Screen name="Splash" component={SplashScreen} />
-          <Stack.Screen name="Onboarding" component={OnboardingScreen} />
-          <Stack.Screen name="Auth" component={AuthScreen} />
           <Stack.Screen name="Role" component={RoleScreen} />
-          <Stack.Screen name="Reg" component={RegScreen} />
-          <Stack.Screen name="HowItWorks" component={HowItWorksScreen} />
+          <Stack.Screen name="Main" component={MainTabs} />
+          <Stack.Screen name="CargoDetail" component={CargoDetail} />
+          <Stack.Screen name="DriverDetail" component={DriverDetail} />
+          <Stack.Screen name="Chat" component={ChatScreen} />
         </>
       ) : !session ? (
         // Гостевая сессия — есть доступ в ленту, но без phone

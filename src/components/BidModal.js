@@ -102,7 +102,7 @@ export default function BidModal({ visible, onClose, onSubmit, currentPrice = 30
 
 const s = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
-  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 40, borderWidth: 1 },
+  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 50, borderWidth: 1 },
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: '#44403C', alignSelf: 'center', marginBottom: 18 },
   title: { fontSize: 20, fontWeight: '800', marginBottom: 4 },
   subtitle: { fontSize: 12, marginBottom: 18 },
