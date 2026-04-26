@@ -19,14 +19,14 @@ const LANGS = { RU: 'Русский', UZ: 'Ўзбекча', KZ: 'Қазақша'
 const LANG_KEYS = Object.keys(LANGS);
 
 export default function ChatScreen({ navigation, route }) {
-  const { partner, role, cargoId, tripId } = route.params || {};
+  const { partner, role, cargoId, tripId, roomId: initialRoomId } = route.params || {};
   const { t } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
   const { session } = useAuth();
   const myId = session?.user?.id;
   const [messages, setMessages] = useState([]);
-  const [roomId, setRoomId] = useState(null);
+  const [roomId, setRoomId] = useState(initialRoomId || null);
   const [input, setInput] = useState('');
   const [showPhrases, setShowPhrases] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -55,6 +55,10 @@ export default function ChatScreen({ navigation, route }) {
   };
 
   useEffect(() => {
+    if (initialRoomId) {
+      loadMessages(initialRoomId);
+      return;
+    }
     if (!partner?.id) return;
     chatAPI.rooms().then(d => {
       const room = (d.rooms || []).find(r =>
@@ -65,7 +69,7 @@ export default function ChatScreen({ navigation, route }) {
         loadMessages(room.id);
       }
     }).catch(() => {});
-  }, [partner?.id]);
+  }, [partner?.id, initialRoomId]);
 
   // Polling каждые 3 сек — подтягиваем ответы (Support/Володя/живые)
   useEffect(() => {

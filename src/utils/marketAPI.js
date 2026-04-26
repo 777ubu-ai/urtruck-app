@@ -77,7 +77,7 @@ export const marketAPI = {
     const params = new URLSearchParams();
     if (cargoId) params.set('cargo_id', cargoId);
     if (tripId) params.set('trip_id', tripId);
-    const r = await fetch(`${BASE}/bids?${params}`);
+    const r = await fetch(`${BASE}/bids?${params}`, { headers: await headers() });
     return r.json();
   },
 
@@ -85,7 +85,9 @@ export const marketAPI = {
     const r = await fetch(`${BASE}/bids/${bidId}/accept`, {
       method: 'POST', headers: await headers(),
     });
-    return r.json();
+    const d = await r.json();
+    if (!r.ok) return { ok: false, detail: d.detail || `Ошибка ${r.status}`, status: r.status };
+    return d;
   },
 
   // ─── My Dashboard ───
@@ -99,5 +101,22 @@ export const marketAPI = {
     const params = new URLSearchParams({ truck_type: truckType });
     const r = await fetch(`${BASE}/drivers?${params}`);
     return r.json();
+  },
+
+  // ─── Deals ───
+  async getDeal(dealId) {
+    const r = await fetch(`${BASE}/deals/${dealId}`, { headers: await headers() });
+    const d = await r.json();
+    if (!r.ok) return { ok: false, detail: d.detail || `Ошибка ${r.status}`, status: r.status };
+    return d;
+  },
+
+  async updateDealStatus(dealId, newStatus) {
+    const r = await fetch(`${BASE}/deals/${dealId}/status?new_status=${newStatus}`, {
+      method: 'PATCH', headers: await headers(),
+    });
+    const d = await r.json();
+    if (!r.ok) return { ok: false, detail: d.detail || `Ошибка ${r.status}`, status: r.status };
+    return d;
   },
 };
