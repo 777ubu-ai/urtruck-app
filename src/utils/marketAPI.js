@@ -68,7 +68,9 @@ export const marketAPI = {
       method: 'POST', headers: await headers(),
       body: JSON.stringify(data),
     });
-    return r.json();
+    const d = await r.json();
+    if (!r.ok) return { ok: false, detail: d.detail || `Ошибка ${r.status}`, status: r.status };
+    return d;
   },
 
   async listBids({ cargoId, tripId } = {}) {

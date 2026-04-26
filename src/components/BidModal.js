@@ -9,6 +9,7 @@ export default function BidModal({ visible, onClose, onSubmit, currentPrice = 30
   const [bid, setBid] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const { t } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
@@ -16,10 +17,10 @@ export default function BidModal({ visible, onClose, onSubmit, currentPrice = 30
   const quickPrices = [currentPrice, currentPrice + 200, currentPrice + 400];
 
   const handleSubmit = async () => {
-    if (!bid) return;
+    if (!bid || loading) return;
     setLoading(true);
+    setError('');
     try {
-      // Серверная ставка
       const r = await marketAPI.createBid({
         cargo_id: cargoId || null,
         trip_id: tripId || null,
@@ -27,16 +28,18 @@ export default function BidModal({ visible, onClose, onSubmit, currentPrice = 30
         message: message.trim() || null,
       });
       if (r.ok) {
-        toast('✓ Предложение отправлено владельцу', 'success');
-        onSubmit?.(parseInt(bid));
         setBid('');
         setMessage('');
+        onSubmit?.(parseInt(bid));
         onClose();
+        toast('✓ Ставка отправлена', 'success');
+      } else if (r.status === 401) {
+        setError('Сессия истекла. Войдите заново.');
       } else {
-        toast(r.detail || t('send_error'), 'error');
+        setError(r.detail || 'Не удалось отправить ставку');
       }
     } catch (e) {
-      toast(t('network_error'), 'error');
+      setError('Нет связи с сервером');
     } finally {
       setLoading(false);
     }
@@ -85,6 +88,8 @@ export default function BidModal({ visible, onClose, onSubmit, currentPrice = 30
             maxLength={200}
           />
 
+          {error ? <Text style={s.errorText}>{error}</Text> : null}
+
           <TouchableOpacity
             style={[s.submitBtn, (!bid || loading) && s.submitBtnDisabled]}
             onPress={handleSubmit}
@@ -115,6 +120,7 @@ const s = StyleSheet.create({
   dollar: { fontSize: 18, fontWeight: '700', marginRight: 4 },
   input: { flex: 1, fontSize: 18, fontWeight: '700', paddingVertical: 16 },
   messageInput: { borderWidth: 1, borderRadius: 12, padding: 12, fontSize: 14, marginBottom: 14 },
+  errorText: { color: '#EF4444', fontSize: 13, textAlign: 'center', marginBottom: 10 },
   submitBtn: { backgroundColor: '#22C55E', borderRadius: 14, paddingVertical: 16, alignItems: 'center' },
   submitBtnDisabled: { backgroundColor: '#292524' },
   submitBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },

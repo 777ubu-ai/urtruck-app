@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TextInput, Pressable, StyleSheet, Keyboard } from 'react-native';
 import { useTheme } from '../utils/ThemeContext';
 import { searchCities, formatCity, COUNTRIES, addCustomCity, subscribeToCities } from '../utils/cities';
 
@@ -9,8 +9,8 @@ export default function CityInput({ value, onChange, placeholder, style }) {
   const [query, setQuery] = useState(value || '');
   const [, setTick] = useState(0);
   const ref = useRef(null);
+  const picking = useRef(false);
 
-  // Перерисовываемся когда список городов обновляется
   useEffect(() => subscribeToCities(() => setTick(x => x + 1)), []);
 
   const suggestions = focused && query.length >= 1 ? searchCities(query) : [];
@@ -21,9 +21,9 @@ export default function CityInput({ value, onChange, placeholder, style }) {
   };
 
   const pick = (city) => {
+    picking.current = true;
     let formatted;
     if (city.isCustom) {
-      // Новый город — сохраняем для всех будущих
       addCustomCity(city.name, 'XX');
       formatted = city.name + ', 📍';
     } else {
@@ -32,6 +32,14 @@ export default function CityInput({ value, onChange, placeholder, style }) {
     setQuery(formatted);
     onChange(formatted);
     setFocused(false);
+    Keyboard.dismiss();
+    setTimeout(() => { picking.current = false; }, 100);
+  };
+
+  const handleBlur = () => {
+    setTimeout(() => {
+      if (!picking.current) setFocused(false);
+    }, 300);
   };
 
   return (
@@ -44,17 +52,16 @@ export default function CityInput({ value, onChange, placeholder, style }) {
         placeholder={placeholder}
         placeholderTextColor={theme.textMuted}
         onFocus={() => setFocused(true)}
-        onBlur={() => setTimeout(() => setFocused(false), 200)}
+        onBlur={handleBlur}
       />
       {suggestions.length > 0 && (
         <View style={[s.dropdown, { backgroundColor: theme.card, borderColor: theme.border }]}>
           {suggestions.map((c, i) => (
-            <TouchableOpacity
+            <Pressable
               key={c.name + c.country + i}
               style={[s.item, i < suggestions.length - 1 && { borderBottomColor: theme.border, borderBottomWidth: 1 }, c.isCustom && { backgroundColor: theme.border + '40' }]}
               onPress={() => pick(c)}
             >
-              {/* HOT2-004: показываем флаг + код страны (Android/старые emoji шрифты иногда ломают 🇷🇺) */}
               <Text style={s.flag}>{c.isCustom ? '➕' : (COUNTRIES[c.country]?.flag || '🏳️')}</Text>
               <View style={{ flex: 1 }}>
                 <Text style={[s.cityName, { color: theme.text }]}>
@@ -65,7 +72,7 @@ export default function CityInput({ value, onChange, placeholder, style }) {
                   {!c.isCustom && c.country && ` · ${c.country}`}
                 </Text>
               </View>
-            </TouchableOpacity>
+            </Pressable>
           ))}
         </View>
       )}

@@ -67,6 +67,7 @@ export default function FeedScreen({ navigation, route }) {
   const { requireLevel, Gate } = useVerificationGate();
   const { session } = useAuth();
   const myUserId = session?.user?.id;
+  const listRef = React.useRef(null);
   const [, setTick] = useState(0);
   const [showForm, setShowForm] = useState(false);
   const [search, setSearch] = useState('');
@@ -76,10 +77,12 @@ export default function FeedScreen({ navigation, route }) {
   const [serverData, setServerData] = useState([]);
   const [sortBy, setSortBy] = useState('newest');
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
 
   // Загрузка данных С СЕРВЕРА (главное изменение!)
   const loadFromServer = async () => {
+    setLoadError(false);
     try {
       if (isDriver) {
         const { cargos } = await marketAPI.listCargos({ cargoType: filterType || '' });
@@ -136,7 +139,8 @@ export default function FeedScreen({ navigation, route }) {
         setServerData([...myCargos, ...tripsMapped, ...driversMapped]);
       }
     } catch (e) {
-      console.warn('[Feed] Server load failed, using local:', e);
+      console.warn('[Feed] Server load failed:', e);
+      setLoadError(true);
     } finally {
       setInitialLoading(false);
     }
@@ -274,11 +278,12 @@ export default function FeedScreen({ navigation, route }) {
         photos: cargoPhotos,
       });
       if (r.ok) {
-        showOk('✓ Груз опубликован', 'success');
+        showOk('✓ Груз опубликован и виден всем водителям', 'success', 4000);
         setShowForm(false);
         setFromCity(''); setToCity(''); setCargoDesc(''); setWeight(''); setVol('');
         setPrice(''); setPickupDate(''); setCargoPhotos([]); setFormErrors({});
-        loadFromServer();
+        await loadFromServer();
+        setTimeout(() => listRef.current?.scrollToOffset?.({ offset: 0, animated: true }), 300);
       } else {
         showOk(r.status === 401 ? 'Сессия истекла. Войдите заново.' : (r.detail || t('generic_error')), 'error');
       }
@@ -331,14 +336,15 @@ export default function FeedScreen({ navigation, route }) {
             <Text style={[s.cargoName, { color: theme.textSecondary }]} numberOfLines={2} ellipsizeMode="tail">{sanitizeDesc(item.cargo)}</Text>
             <View style={s.badges}>
               <Text style={[s.badge, { color: TCOLORS[item.type] || '#666', backgroundColor: (TCOLORS[item.type] || '#666') + '15' }]}>{t(item.type) || item.type}</Text>
-              <Text style={[s.badge, { color: theme.textSecondary, backgroundColor: theme.border }]}>{item.tons}t · {item.m3}m³</Text>
-              {stats && <Text style={[s.badge, { color: theme.text, backgroundColor: theme.border }]}>📏 {stats.km}км · ~{stats.days}дн</Text>}
+              {(item.tons > 0 || item.m3 > 0) && <Text style={[s.badge, { color: theme.textSecondary, backgroundColor: theme.border }]}>{item.tons > 0 ? item.tons + 'т' : ''}{item.tons > 0 && item.m3 > 0 ? ' · ' : ''}{item.m3 > 0 ? item.m3 + 'м³' : ''}</Text>}
+              {stats && <Text style={[s.badge, { color: theme.text, backgroundColor: theme.border }]}>{stats.km}км · ~{stats.days}дн</Text>}
               {item.pickup && <Text style={[s.badge, { color: theme.textMuted, backgroundColor: theme.border }]}>📅 {item.pickup}</Text>}
             </View>
           </View>
-          <View style={{ alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
-            <Text style={s.price}>${item.price}</Text>
+          <View style={{ alignItems: 'flex-end', justifyContent: 'space-between', flexShrink: 0, maxWidth: 100 }}>
+            <Text style={s.price}>${item.price || 0}</Text>
             <Text style={[s.bidsCount, { color: theme.textMuted }]}>{item.bids || 0} {t('bids')}</Text>
+            <Text style={{ color: '#22C55E', fontSize: 11, fontWeight: '700', marginTop: 4 }}>{item.isMine ? 'Подробнее →' : isDriver ? 'Откликнуться →' : 'Подробнее →'}</Text>
           </View>
         </View>
         {photo && <Image source={{ uri: photo }} style={s.cargoPreview} />}
@@ -582,6 +588,7 @@ export default function FeedScreen({ navigation, route }) {
         </View>
       ) : (
         <FlatList
+          ref={listRef}
           data={filteredData}
           keyExtractor={i => i.id}
           renderItem={isDriver ? renderCargo : renderDriver}
@@ -590,12 +597,21 @@ export default function FeedScreen({ navigation, route }) {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accent} />}
           ListEmptyComponent={
             <View style={{ padding: 40, alignItems: 'center' }}>
-              <Text style={{ fontSize: 48, marginBottom: 10 }}>🔍</Text>
-              <Text style={{ color: theme.textMuted, fontSize: 14 }}>
-                {minRating > 0 ? `Нет ${minRating}★+ результатов. Попробуй снизить планку.` :
+              <Text style={{ fontSize: 48, marginBottom: 10 }}>{loadError ? '⚠️' : '🔍'}</Text>
+              <Text style={{ color: theme.textMuted, fontSize: 14, textAlign: 'center' }}>
+                {loadError ? 'Не удалось загрузить. Проверьте интернет.' :
+                 minRating > 0 ? `Нет ${minRating}★+ результатов.` :
                  filterType ? 'По фильтру ничего не найдено.' :
-                 'Пока пусто. Будь первым!'}
+                 'Пока нет активных грузов'}
               </Text>
+              {loadError && (
+                <TouchableOpacity
+                  style={{ marginTop: 16, backgroundColor: '#22C55E', borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12 }}
+                  onPress={() => { setRefreshing(true); loadFromServer().finally(() => setRefreshing(false)); }}
+                >
+                  <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Обновить</Text>
+                </TouchableOpacity>
+              )}
             </View>
           }
         />

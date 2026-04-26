@@ -8,6 +8,7 @@
 """
 from fastapi import Depends, Header, HTTPException
 from database import registration_dal as reg_dal
+from config import BETA_MODE
 
 
 LEVEL_NAMES = {
@@ -43,7 +44,7 @@ def require_level(min_level: int):
     def dependency(authorization: str = Header(None)) -> dict:
         driver = _extract_driver(authorization)
         current = driver.get("verification_level", 0) or 0
-        if current < min_level:
+        if current < min_level and not BETA_MODE:
             # 403 с payload который фронт использует для показа VerificationGate
             raise HTTPException(
                 status_code=403,

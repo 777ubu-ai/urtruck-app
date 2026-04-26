@@ -9,7 +9,6 @@ import { addNotification, removeCargo } from '../utils/store';
 import { routeStats } from '../utils/geo';
 import BidModal from '../components/BidModal';
 import ShareModal from '../components/ShareModal';
-import RouteMap from '../components/RouteMap';
 import { useVerificationGate } from '../components/VerificationGate';
 import { LEVELS } from '../utils/AuthContext';
 import { marketAPI } from '../utils/marketAPI';
@@ -79,7 +78,7 @@ export default function CargoDetail({ navigation, route }) {
     <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]} edges={['top']}>
       <View style={s.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={[s.backBtn, { backgroundColor: theme.card, borderColor: theme.border }]}><Text style={[s.backText, { color: theme.text }]}>‹</Text></TouchableOpacity>
-        <Text style={[s.headerTitle, { color: theme.text }]}>{t('cargos')}</Text>
+        <Text style={[s.headerTitle, { color: theme.text }]} numberOfLines={1}>{cargo.from} → {cargo.to}</Text>
         <TouchableOpacity onPress={() => setShareModal(true)}><Text style={{ fontSize: 20 }}>↗️</Text></TouchableOpacity>
       </View>
       <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 0 }}>
@@ -100,15 +99,20 @@ export default function CargoDetail({ navigation, route }) {
           <View style={s.grid}>
             {(() => {
               const stats = routeStats(cargo.from, cargo.to);
-              const items = [
-                [t('cargoDesc'), sanitizeDesc(cargo.cargo)],
-                [t('weight') + '/' + t('volume'), cargo.tons + 't · ' + cargo.m3 + 'm³'],
-                [t('truckType'), t(cargo.type)],
-                [t('pickupDate'), cargo.pickup || '—'],
-              ];
+              const desc = sanitizeDesc(cargo.cargo);
+              const items = [];
+              if (desc) items.push([t('cargoDesc'), desc]);
+              if (cargo.tons > 0 || cargo.m3 > 0) {
+                const parts = [];
+                if (cargo.tons > 0) parts.push(cargo.tons + 'т');
+                if (cargo.m3 > 0) parts.push(cargo.m3 + 'м³');
+                items.push([t('weight') + '/' + t('volume'), parts.join(' · ')]);
+              }
+              items.push([t('truckType'), t(cargo.type) || cargo.type || '—']);
+              if (cargo.pickup) items.push([t('pickupDate'), cargo.pickup]);
               if (stats) {
-                items.push(['📏 Расстояние', stats.km + ' км']);
-                items.push(['⏱ Примерно', '~' + stats.days + ' дн.']);
+                items.push(['Расстояние', stats.km + ' км']);
+                items.push(['Срок доставки', '~' + stats.days + ' дн.']);
               }
               return items.map(([l, v]) => (
                 <View key={l} style={s.gridItem}><Text style={[s.gridLabel, { color: theme.textMuted }]}>{l}</Text><Text style={[s.gridValue, { color: theme.text }]}>{v}</Text></View>
@@ -117,11 +121,13 @@ export default function CargoDetail({ navigation, route }) {
           </View>
         </View>
         <View style={s.priceBlock}>
-          <View><Text style={s.priceLabel}>{t('price')}</Text><Text style={s.priceValue}>${cargo.price}</Text><Text style={s.beta}>{t('contactFree')}</Text></View>
-          <TouchableOpacity style={s.bidBtn} onPress={async () => {
-            const ok = await requireLevel(LEVELS.PHONE, 'bid');
-            if (ok) setBidModal(true);
-          }}><Text style={s.bidBtnText}>{t('suggestPrice')}</Text></TouchableOpacity>
+          <View><Text style={s.priceLabel}>{t('price')}</Text><Text style={s.priceValue}>${cargo.price || 0}</Text></View>
+          {!cargo.isMine && (
+            <TouchableOpacity style={s.bidBtn} onPress={async () => {
+              const ok = await requireLevel(LEVELS.PHONE, 'bid');
+              if (ok) setBidModal(true);
+            }}><Text style={s.bidBtnText}>{t('suggestPrice')}</Text></TouchableOpacity>
+          )}
         </View>
         <Text style={[s.bidsTitle, { color: theme.text }]}>{t('bids')} ({bids.length})</Text>
         {bids.length === 0 && (

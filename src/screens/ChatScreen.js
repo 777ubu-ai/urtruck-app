@@ -94,21 +94,26 @@ export default function ChatScreen({ navigation, route }) {
   };
 
   const sendPhoto = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') { toast('Нужен доступ к фото', 'warn'); return; }
-    const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8 });
-    if (r.canceled || !r.assets?.[0]) return;
-    const compressed = await compressImage(r.assets[0].uri, { maxSide: 800, quality: 0.7 });
-    setMessages(prev => [...prev, {
-      id: Date.now().toString(), from: 'me',
-      text: '', isPhoto: true, photoUri: compressed,
-      time: new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}),
-    }]);
-    // Сохраняем на сервере
-    if (partner?.id) {
-      chatAPI.send({ toUserId: partner.id, photoUrl: compressed, cargoId, tripId }).catch(() => {});
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') { toast('Нужен доступ к фото', 'warn'); return; }
+      const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.7 });
+      if (r.canceled || !r.assets?.[0]) return;
+      const uri = r.assets[0].uri;
+      let photoUri = uri;
+      try { photoUri = await compressImage(uri, { maxSide: 800, quality: 0.7 }); } catch { /* fallback: оригинал */ }
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(), from: 'me',
+        text: '', isPhoto: true, photoUri,
+        time: new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}),
+      }]);
+      if (partner?.id) {
+        chatAPI.send({ toUserId: partner.id, photoUrl: photoUri, cargoId, tripId }).catch(() => {});
+      }
+      toast('📷 Фото отправлено', 'success', 1500);
+    } catch (e) {
+      toast('Не удалось отправить фото', 'error');
     }
-    toast('📷 Фото отправлено', 'success', 1500);
   };
 
   // HOT-006: единая запись/воспроизведение через voiceRecorder.

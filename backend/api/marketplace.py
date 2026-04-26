@@ -19,11 +19,13 @@ mp_router = APIRouter()
 
 
 def _init():
-    schema = Path(__file__).resolve().parent.parent / "database" / "marketplace_schema.sql"
-    if schema.exists():
-        with get_conn() as c:
-            c.executescript(schema.read_text(encoding="utf-8"))
-            c.commit()
+    base = Path(__file__).resolve().parent.parent / "database"
+    for name in ["marketplace_schema.sql", "deals_schema.sql"]:
+        schema = base / name
+        if schema.exists():
+            with get_conn() as c:
+                c.executescript(schema.read_text(encoding="utf-8"))
+                c.commit()
 
 _init()
 
@@ -330,11 +332,17 @@ def my_dashboard(user=Depends(require_level(1))):
         try: cargo["photos"] = json.loads(cargo.get("photos") or "[]")
         except: cargo["photos"] = []
 
+        # Мои сделки
+        my_deals = [dict(r) for r in c.execute(
+            "SELECT * FROM deals WHERE shipper_id = ? OR driver_id = ? ORDER BY created_at DESC LIMIT 50",
+            (uid, uid)).fetchall()]
+
     return {
         "my_cargos": my_cargos,
         "my_trips": my_trips,
         "my_bids": my_bids,
         "incoming_bids": incoming_bids,
+        "my_deals": my_deals,
     }
 
 
@@ -442,16 +450,58 @@ def accept_bid(bid_id: str, user=Depends(require_level(1))):
         if not row:
             raise HTTPException(status_code=404)
         bid = dict(row)
-        # Проверяем что это владелец груза/рейса
+
+        from_city, to_city = "", ""
+        shipper_id = user["id"]
+        driver_id = bid["bidder_id"]
+
+        # Проверяем владельца + обновляем статус
         if bid["cargo_id"]:
-            cargo = c.execute("SELECT owner_id FROM cargos WHERE id = ?", (bid["cargo_id"],)).fetchone()
+            cargo = c.execute("SELECT owner_id, from_city, to_city FROM cargos WHERE id = ?", (bid["cargo_id"],)).fetchone()
             if not cargo or cargo["owner_id"] != user["id"]:
                 raise HTTPException(status_code=403)
             c.execute("UPDATE cargos SET status = 'taken', taken_by = ? WHERE id = ?",
                        (bid["bidder_id"], bid["cargo_id"]))
+            from_city, to_city = cargo["from_city"], cargo["to_city"]
+
+        if bid["trip_id"]:
+            trip = c.execute("SELECT driver_id, from_city, to_city FROM trips WHERE id = ?", (bid["trip_id"],)).fetchone()
+            if trip:
+                from_city, to_city = trip["from_city"], trip["to_city"]
+                shipper_id = bid["bidder_id"]
+                driver_id = trip["driver_id"]
+                if trip["driver_id"] != user["id"]:
+                    raise HTTPException(status_code=403)
+                c.execute("UPDATE trips SET status = 'booked', booked_by = ? WHERE id = ?",
+                           (bid["bidder_id"], bid["trip_id"]))
+
         c.execute("UPDATE bids SET status = 'accepted' WHERE id = ?", (bid_id,))
         c.execute("UPDATE bids SET status = 'rejected' WHERE (cargo_id = ? OR trip_id = ?) AND id != ? AND status = 'pending'",
                    (bid.get("cargo_id"), bid.get("trip_id"), bid_id))
+
+        # Создаём chat_room (inline — в том же соединении, иначе SQLite lock)
+        p1, p2 = sorted([shipper_id, driver_id])
+        existing_room = c.execute(
+            "SELECT id FROM chat_rooms WHERE participant_1 = ? AND participant_2 = ?", (p1, p2)
+        ).fetchone()
+        if existing_room:
+            chat_room_id = existing_room["id"]
+        else:
+            chat_room_id = new_id()
+            c.execute(
+                "INSERT INTO chat_rooms (id, participant_1, participant_2, cargo_id, trip_id) VALUES (?,?,?,?,?)",
+                (chat_room_id, p1, p2, bid.get("cargo_id"), bid.get("trip_id")),
+            )
+
+        # Создаём deal
+        deal_id = new_id()
+        c.execute("""
+            INSERT INTO deals (id, cargo_id, trip_id, bid_id, shipper_id, driver_id,
+                               from_city, to_city, amount, status, chat_room_id)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)
+        """, (deal_id, bid.get("cargo_id"), bid.get("trip_id"), bid_id,
+              shipper_id, driver_id, from_city, to_city, bid["amount"],
+              "accepted", chat_room_id))
 
     # Push водителю
     try:
@@ -459,4 +509,61 @@ def accept_bid(bid_id: str, user=Depends(require_level(1))):
     except Exception:
         pass
 
-    return {"ok": True}
+    return {"ok": True, "deal_id": deal_id, "chat_room_id": chat_room_id}
+
+
+# ═══ Deals ═══
+
+@mp_router.get("/deals")
+def list_deals(user=Depends(require_level(1))):
+    uid = user["id"]
+    with get_conn() as c:
+        rows = c.execute("""
+            SELECT * FROM deals
+            WHERE shipper_id = ? OR driver_id = ?
+            ORDER BY created_at DESC LIMIT 100
+        """, (uid, uid)).fetchall()
+    return {"deals": [dict(r) for r in rows]}
+
+
+@mp_router.get("/deals/{deal_id}")
+def get_deal(deal_id: str, user=Depends(require_level(1))):
+    uid = user["id"]
+    with get_conn() as c:
+        row = c.execute("SELECT * FROM deals WHERE id = ?", (deal_id,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Сделка не найдена")
+    d = dict(row)
+    if uid not in (d["shipper_id"], d["driver_id"]):
+        raise HTTPException(status_code=403)
+    return d
+
+
+@mp_router.patch("/deals/{deal_id}/status")
+def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level(1))):
+    VALID = ["accepted", "in_progress", "delivered", "cancelled"]
+    if new_status not in VALID:
+        raise HTTPException(status_code=400, detail=f"Допустимые статусы: {', '.join(VALID)}")
+    uid = user["id"]
+    with get_conn() as c:
+        row = c.execute("SELECT * FROM deals WHERE id = ?", (deal_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404)
+        deal = dict(row)
+        if uid not in (deal["shipper_id"], deal["driver_id"]):
+            raise HTTPException(status_code=403)
+        c.execute("UPDATE deals SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                   (new_status, deal_id))
+        if new_status == "delivered" and deal["cargo_id"]:
+            c.execute("UPDATE cargos SET status = 'completed' WHERE id = ?", (deal["cargo_id"],))
+        elif new_status == "cancelled" and deal["cargo_id"]:
+            c.execute("UPDATE cargos SET status = 'active', taken_by = NULL WHERE id = ?", (deal["cargo_id"],))
+    # Push другой стороне
+    try:
+        other_id = deal["driver_id"] if uid == deal["shipper_id"] else deal["shipper_id"]
+        labels = {"in_progress": "🚛 Рейс начался", "delivered": "✅ Доставлен", "cancelled": "❌ Отменено"}
+        if new_status in labels:
+            send_to_user(other_id, labels[new_status], f"{deal['from_city']}→{deal['to_city']} · ${deal['amount']}", url="/")
+    except Exception:
+        pass
+    return {"ok": True, "status": new_status}

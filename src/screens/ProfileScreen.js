@@ -13,16 +13,9 @@ import { API_BASE } from '../config/env';
 
 const LANGS = [
   { code: 'RU', flag: '🇷🇺', name: 'Русский' },
-  { code: 'EN', flag: '🇬🇧', name: 'English' },
-  { code: 'UZ', flag: '🇺🇿', name: 'O\'zbek' },
-  { code: 'KZ', flag: '🇰🇿', name: 'Қазақша' },
-  { code: 'KG', flag: '🇰🇬', name: 'Кыргызча' },
   { code: 'CN', flag: '🇨🇳', name: '中文' },
-  { code: 'DE', flag: '🇩🇪', name: 'Deutsch' },
-  { code: 'FR', flag: '🇫🇷', name: 'Français' },
-  { code: 'TJ', flag: '🇹🇯', name: 'Тоҷикӣ' },
-  { code: 'GE', flag: '🇬🇪', name: 'ქართული' },
-  { code: 'TM', flag: '🇹🇲', name: 'Türkmen' },
+  { code: 'EN', flag: '🇬🇧', name: 'English' },
+  { code: 'KZ', flag: '🇰🇿', name: 'Қазақша' },
 ];
 
 const confirm = (title, msg, onOk) => {
@@ -148,12 +141,7 @@ export default function ProfileScreen({ navigation, route }) {
         ))}
 
         <View style={[s.settingsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <View style={s.settingRow}>
-            <Text style={[s.settingLabel, { color: theme.text }]}>🌙 {t('darkTheme')}</Text>
-            <Switch value={isDark} onValueChange={toggleTheme} trackColor={{ false: '#292524', true: accent }} thumbColor="#fff" />
-          </View>
-
-          <View style={{ marginTop: 10 }}>
+          <View style={{ marginTop: 0 }}>
             <Text style={[s.settingLabel, { color: theme.text, marginBottom: 10 }]}>🌐 {t('language')}</Text>
             <View style={s.langGrid}>
               {LANGS.map(l => (
