@@ -1,0 +1,30 @@
+workflows:
+  android-aab:
+    name: Android AAB for Google Play
+    max_build_duration: 30
+    instance_type: mac_mini_m2
+    environment:
+      java: 17
+      node: 18
+    scripts:
+      - name: Install dependencies
+        script: npm install
+
+      - name: Prebuild Android
+        script: npx expo prebuild --platform android --clean
+
+      - name: Patch cleartext HTTP
+        script: |
+          # Android blocks HTTP by default — we need it for 185.22.65.11
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+          if ! grep -q "usesCleartextTraffic" "$MANIFEST"; then
+            sed -i.bak 's/android:supportsRtl="true"/android:supportsRtl="true" android:usesCleartextTraffic="true"/' "$MANIFEST"
+          fi
+
+      - name: Build AAB (debug signing)
+        script: |
+          cd android
+          ./gradlew bundleRelease
+
+    artifacts:
+      - android/app/build/outputs/**/*.aab

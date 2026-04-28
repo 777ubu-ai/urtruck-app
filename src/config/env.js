@@ -1,17 +1,22 @@
-// Центральная конфигурация API URL
-// В production заменить на реальный домен
-// Для dev: используется IP сервера
+import { Platform } from 'react-native';
 
-const IS_LOCALHOST = typeof window !== 'undefined' && window.location?.hostname === 'localhost';
+const SERVER_URL = 'http://185.22.65.11:8001';
+const WEB_PROXY_URL = '/security';
 
-export const API_URL = IS_LOCALHOST
-  ? 'http://185.22.65.11:8001'
-  : '/security';
+const IS_WEB = Platform.OS === 'web';
+const IS_LOCALHOST =
+  IS_WEB &&
+  typeof window !== 'undefined' &&
+  window.location?.hostname === 'localhost';
+
+export const API_URL = IS_WEB
+  ? (IS_LOCALHOST ? SERVER_URL : WEB_PROXY_URL)
+  : SERVER_URL;
 
 export const API_BASE = `${API_URL}/api/v1`;
 
-export const WEB_URL = IS_LOCALHOST
-  ? 'http://185.22.65.11:8080'
+export const WEB_URL = IS_WEB
+  ? (IS_LOCALHOST ? 'http://185.22.65.11:8080' : '')
   : '';
 
-export const IS_BETA = true; // TODO: read from /api/version
+export const IS_BETA = true;

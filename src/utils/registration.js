@@ -32,7 +32,8 @@ export const regAPI = {
       headers: { 'Authorization': `Bearer ${token}` },
     });
     if (r.status === 401) {
-      await this.clearToken();
+      // Не удаляем token — возможно сеть/сервер временно недоступен.
+      // Юзер сам выйдет через signOut если нужно.
       return null;
     }
     const data = await r.json();
