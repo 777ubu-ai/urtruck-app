@@ -239,3 +239,68 @@ def unread_count(user=Depends(require_level(1))):
               AND m.sender_id != ? AND m.is_read = 0
         """, (uid, uid, uid)).fetchone()
     return {"unread": row["cnt"] if row else 0}
+
+
+# ── Translation ──
+
+@chat_router.get("/translate/info")
+def translate_info():
+    """Debug: какой провайдер, есть ли ключ. Сам ключ НЕ показывает."""
+    from services.translate_service import get_info
+    return get_info()
+
+class TranslateIn(BaseModel):
+    message_id: int
+    target_lang: str
+
+@chat_router.post("/translate")
+def translate_message(body: TranslateIn, user=Depends(require_level(1))):
+    """Перевести сообщение чата. Кэшируется."""
+    from services.translate_service import translate_text
+
+    # Инициализация таблицы переводов
+    schema = Path(__file__).resolve().parent.parent / "database" / "translations_schema.sql"
+    if schema.exists():
+        with get_conn() as c:
+            c.executescript(schema.read_text(encoding="utf-8"))
+
+    with get_conn() as c:
+        # Проверяем что сообщение существует и юзер имеет доступ
+        msg = c.execute("SELECT * FROM chat_messages WHERE id = ?", (body.message_id,)).fetchone()
+        if not msg:
+            raise HTTPException(status_code=404, detail="Сообщение не найдено")
+        room = c.execute("SELECT * FROM chat_rooms WHERE id = ?", (msg["room_id"],)).fetchone()
+        if not room or user["id"] not in (room["participant_1"], room["participant_2"]):
+            raise HTTPException(status_code=403)
+
+        # Проверяем кэш
+        cached = c.execute(
+            "SELECT translated_text, provider FROM chat_translations WHERE message_id = ? AND target_lang = ?",
+            (body.message_id, body.target_lang),
+        ).fetchone()
+        if cached:
+            return {
+                "translated_text": cached["translated_text"],
+                "original_text": msg["text"],
+                "target_lang": body.target_lang,
+                "provider": cached["provider"],
+                "cached": True,
+            }
+
+    # Переводим
+    result = translate_text(msg["text"] or "", body.target_lang)
+
+    # Сохраняем в кэш
+    with get_conn() as c:
+        c.execute(
+            "INSERT OR REPLACE INTO chat_translations (message_id, target_lang, translated_text, provider) VALUES (?,?,?,?)",
+            (body.message_id, body.target_lang, result["translated_text"], result["provider"]),
+        )
+
+    return {
+        "translated_text": result["translated_text"],
+        "original_text": msg["text"],
+        "target_lang": body.target_lang,
+        "provider": result["provider"],
+        "cached": False,
+    }

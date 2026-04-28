@@ -69,6 +69,10 @@ export default function OnboardingScreen({ navigation }) {
           </View>
 
           <Animated.View style={[s.logoBlock, anim(logoA)]}>
+            <View style={s.heroWrap}>
+              <Image source={require('../../assets/hero.jpg')} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+              <View style={s.heroOverlay} />
+            </View>
             <Image source={LOGO} style={s.logoImg} />
             <Text style={s.logoTitle}>UrTruck</Text>
             <Text style={s.logoSub}>INTERNATIONAL LOGISTICS</Text>
@@ -152,8 +156,10 @@ const s = StyleSheet.create({
   topBar: { flexDirection: 'row', justifyContent: 'space-between', paddingTop: 8, marginBottom: 12 },
   langPill: { borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6 },
   langText: { color: '#94a3b8', fontSize: 12, fontFamily: DS.font.body },
+  heroWrap: { width: '100%', height: 160, borderRadius: 20, marginBottom: 20, overflow: 'hidden' },
+  heroOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.25)' },
   logoBlock: { alignItems: 'center', marginBottom: 28 },
-  logoImg: { width: 72, height: 72, borderRadius: 18 },
+  logoImg: { width: 56, height: 56, borderRadius: 14 },
   logoTitle: { fontSize: 32, fontWeight: '800', color: '#fff', letterSpacing: -1, marginTop: 12, fontFamily: DS.font.heading },
   logoSub: { fontSize: 11, letterSpacing: 3, color: '#64748b', marginTop: 6, textTransform: 'uppercase', fontFamily: DS.font.body },
   cta: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#22c55e', borderRadius: 12, padding: 18, marginBottom: 16 },

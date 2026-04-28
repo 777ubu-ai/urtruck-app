@@ -50,7 +50,7 @@ export default function CargoDetail({ navigation, route }) {
       .then(d => {
         const mapped = (d.bids || []).map(b => ({
           id: b.id, bidderId: b.bidder_id,
-          name: b.bidder_name || b.bidder_phone || 'Аноним',
+          name: b.bidder_name || b.bidder_phone || t('anonymous'),
           co: 'KZ', rating: 0, amount: b.amount,
           time: b.created_at?.slice(11, 16) || '•', message: b.message,
           status: b.status, isMine: b.bidder_id === myUserId,
@@ -101,7 +101,7 @@ export default function CargoDetail({ navigation, route }) {
         const labels = { in_progress: '🚛 Перевозка начата', delivered: '✅ Доставлено!', cancelled: '❌ Отменено' };
         toast(labels[newStatus] || 'Статус обновлён', 'success');
       } else {
-        toast(r.detail || 'Не удалось обновить', 'error');
+        toast(r.detail || t('update_failed'), 'error');
       }
     } catch {
       toast('Нет связи с сервером', 'error');
@@ -151,10 +151,10 @@ export default function CargoDetail({ navigation, route }) {
               items.push([t('truckType'), t(cargo.type) || cargo.type || '—']);
               if (cargo.pickup) items.push([t('pickupDate'), cargo.pickup]);
               if (stats) {
-                items.push(['Расстояние', stats.km + ' км']);
-                items.push(['Срок доставки', '~' + stats.days + ' дн.']);
+                items.push([t('distance'), stats.km + ' км']);
+                items.push([t('delivery_time'), '~' + stats.days + ' дн.']);
               }
-              items.push(['Оплата', 'Уточняется в чате']);
+              items.push([t('payment_label'), t('payment_tbd')]);
               return items.map(([l, v]) => (
                 <View key={l} style={s.gridItem}><Text style={[s.gridLabel, { color: theme.textMuted }]}>{l}</Text><Text style={[s.gridValue, { color: theme.text }]}>{v}</Text></View>
               ));
@@ -212,7 +212,7 @@ export default function CargoDetail({ navigation, route }) {
                           if (r.deal_id) { setDealId(r.deal_id); setDealStatus('accepted'); }
                           loadBids();
                         } else {
-                          toast(r.detail || 'Не удалось принять ставку', 'error');
+                          toast(r.detail || t('accept_failed'), 'error');
                         }
                       } catch {
                         toast('Нет связи с сервером', 'error');
@@ -266,7 +266,7 @@ export default function CargoDetail({ navigation, route }) {
       {dealStatus === 'delivered' && cargo.isMine && !reviewSent && acceptedDriverId && (
         <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
           <View style={[s.reviewBlock, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Text style={[s.reviewTitle, { color: theme.text }]}>Оцените водителя</Text>
+            <Text style={[s.reviewTitle, { color: theme.text }]}>{t('rate_driver')}</Text>
             <View style={s.starsRow}>
               {[1,2,3,4,5].map(n => (
                 <TouchableOpacity key={n} onPress={() => setReviewRating(n)}>
@@ -295,14 +295,14 @@ export default function CargoDetail({ navigation, route }) {
                     text: reviewText.trim() || null,
                   });
                   setReviewSent(true);
-                  toast('Спасибо за оценку!', 'success');
+                  toast(t('thanks_for_review'), 'success');
                 } catch {
-                  toast('Не удалось отправить', 'error');
+                  toast(t('review_failed'), 'error');
                 }
                 setReviewLoading(false);
               }}
             >
-              <Text style={s.reviewSubmitText}>{reviewLoading ? '...' : 'Отправить оценку'}</Text>
+              <Text style={s.reviewSubmitText}>{reviewLoading ? '...' : t('submit_rating')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -318,14 +318,14 @@ export default function CargoDetail({ navigation, route }) {
             style={s.chatBtn}
             onPress={() => navigation.navigate('Chat', { roomId: chatRoomId, role })}
           >
-            <Text style={s.chatBtnText}>💬 Открыть чат с водителем</Text>
+            <Text style={s.chatBtnText}>💬 {t('open_chat')}</Text>
           </TouchableOpacity>
         </View>
       )}
       {cargo.isMine && !chatRoomId && (
         <View style={{ padding: 16, paddingTop: 0 }}>
           <TouchableOpacity style={s.deleteMyBtn} onPress={onDeleteCargo}>
-            <Text style={s.deleteMyBtnText}>🗑 Удалить мой груз</Text>
+            <Text style={s.deleteMyBtnText}>🗑 {t('delete_cargo')}</Text>
           </TouchableOpacity>
         </View>
       )}

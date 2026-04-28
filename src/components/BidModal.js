@@ -34,12 +34,12 @@ export default function BidModal({ visible, onClose, onSubmit, currentPrice = 30
         onClose();
         toast('✓ Ставка отправлена', 'success');
       } else if (r.status === 401) {
-        setError('Сессия истекла. Войдите заново.');
+        setError(t('session_expired'));
       } else {
-        setError(r.detail || 'Не удалось отправить ставку');
+        setError(r.detail || t('bid_failed'));
       }
     } catch (e) {
-      setError('Нет связи с сервером');
+      setError(t('no_connection'));
     } finally {
       setLoading(false);
     }

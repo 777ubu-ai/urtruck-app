@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
 import { useAuth } from '../utils/AuthContext';
+import { t } from '../utils/i18n';
 import { regAPI } from '../utils/registration';
 
 const DARK = {
@@ -39,7 +40,7 @@ export default function RoleScreen({ navigation }) {
       // 3. Main
       navigation.reset({ index: 0, routes: [{ name: 'Main', params: { role } }] });
     } catch (e) {
-      setError('Не удалось подключиться к серверу');
+      setError(t('connection_failed'));
       setLoading(null);
     }
   };
@@ -50,13 +51,13 @@ export default function RoleScreen({ navigation }) {
     try {
       const data = await regAPI.ensureGuest();
       if (!data?.token) {
-        setError('Сервер недоступен');
+        setError(t('server_unavailable'));
         setLoading(null);
         return;
       }
       navigation.reset({ index: 0, routes: [{ name: 'Main', params: { role: 'client' } }] });
     } catch (e) {
-      setError('Не удалось подключиться');
+      setError(t('connection_failed'));
       setLoading(null);
     }
   };

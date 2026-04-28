@@ -40,4 +40,12 @@ export const chatAPI = {
     const r = await fetch(`${BASE}/unread`, { headers: await headers() });
     return r.json();
   },
+
+  async translate(messageId, targetLang) {
+    const r = await fetch(`${BASE}/translate`, {
+      method: 'POST', headers: await headers(),
+      body: JSON.stringify({ message_id: messageId, target_lang: targetLang }),
+    });
+    return r.json();
+  },
 };

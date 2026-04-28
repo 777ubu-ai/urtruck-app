@@ -344,7 +344,7 @@ export default function FeedScreen({ navigation, route }) {
           <View style={{ alignItems: 'flex-end', justifyContent: 'space-between', flexShrink: 0, maxWidth: 100 }}>
             <Text style={s.price}>${item.price || 0}</Text>
             <Text style={[s.bidsCount, { color: theme.textMuted }]}>{item.bids || 0} {t('bids')}</Text>
-            <Text style={{ color: '#22C55E', fontSize: 11, fontWeight: '700', marginTop: 4 }}>{item.isMine ? 'Подробнее →' : isDriver ? 'Откликнуться →' : 'Подробнее →'}</Text>
+            <Text style={{ color: '#22C55E', fontSize: 11, fontWeight: '700', marginTop: 4 }}>{item.isMine ? t('details') + ' →' : isDriver ? t('respond') + ' →' : t('details') + ' →'}</Text>
           </View>
         </View>
         {photo && <Image source={{ uri: photo }} style={s.cargoPreview} />}
@@ -602,7 +602,7 @@ export default function FeedScreen({ navigation, route }) {
                 {loadError ? 'Не удалось загрузить. Проверьте интернет.' :
                  minRating > 0 ? `Нет ${minRating}★+ результатов.` :
                  filterType ? 'По фильтру ничего не найдено.' :
-                 'Пока нет активных грузов'}
+                 t('no_active_cargos')}
               </Text>
               {loadError && (
                 <TouchableOpacity
@@ -829,13 +829,13 @@ const s = StyleSheet.create({
   filterActions: { flexDirection: 'row', gap: 10, marginTop: 24 },
   filterActionBtn: { flex: 1, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
   filterActionText: { fontSize: 15, fontWeight: '800' },
-  card: { borderRadius: 16, padding: 16, borderWidth: 1 },
+  card: { borderRadius: 16, padding: 18, borderWidth: 1 },
   cardRow: { flexDirection: 'row', alignItems: 'flex-start' },
-  route: { fontSize: 16, fontWeight: '800', marginBottom: 4 },
+  route: { fontSize: 18, fontWeight: '800', marginBottom: 6, letterSpacing: -0.3 },
   cargoName: { fontSize: 12, marginBottom: 8 },
   badges: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
   badge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 16, fontSize: 10, fontWeight: '700', overflow: 'hidden' },
-  price: { color: '#22C55E', fontSize: 20, fontWeight: '900' },
+  price: { color: '#22C55E', fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
   bidsCount: { fontSize: 10, marginTop: 2 },
   driverName: { fontSize: 16, fontWeight: '700' },
   rating: { color: '#FBBF24', fontSize: 12, fontWeight: '700', marginVertical: 4 },

@@ -3,6 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, FlatList, Keyboard
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { useI18n } from '../utils/useI18n';
+import { getLanguage } from '../utils/i18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useToast } from '../components/Toast';
 import { compressImage } from '../utils/imageCompress';
@@ -31,6 +32,8 @@ export default function ChatScreen({ navigation, route }) {
   const [showPhrases, setShowPhrases] = useState(false);
   const [recording, setRecording] = useState(false);
   const [lang, setLang] = useState('RU');
+  const [translations, setTranslations] = useState({});
+  const [translating, setTranslating] = useState(null);
   const flatListRef = useRef(null);
   // HOT-006: refs для MediaRecorder (web)
   const mediaRecorderRef = useRef(null);
@@ -100,7 +103,7 @@ export default function ChatScreen({ navigation, route }) {
   const sendPhoto = async () => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') { toast('Нужен доступ к фото', 'warn'); return; }
+      if (status !== 'granted') { toast(t('photo_permission'), 'warn'); return; }
       const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.7 });
       if (r.canceled || !r.assets?.[0]) return;
       const uri = r.assets[0].uri;
@@ -114,9 +117,9 @@ export default function ChatScreen({ navigation, route }) {
       if (partner?.id) {
         chatAPI.send({ toUserId: partner.id, photoUrl: photoUri, cargoId, tripId }).catch(() => {});
       }
-      toast('📷 Фото отправлено', 'success', 1500);
+      toast('📷 ' + t('photo_sent'), 'success', 1500);
     } catch (e) {
-      toast('Не удалось отправить фото', 'error');
+      toast(t('photo_failed'), 'error');
     }
   };
 
@@ -240,11 +243,43 @@ export default function ChatScreen({ navigation, route }) {
     const statusIcon = isMe ? (item.is_read ? '✓✓' : '✓') : '';
     const statusColor = isMe ? (item.is_read ? '#60A5FA' : 'rgba(255,255,255,0.4)') : '';
 
+    const tr = translations[item.id];
+    const showingTranslation = tr && !tr.showOriginal;
+
     return (
       <View style={[s.msgRow, isMe && s.msgRowMe]}>
         <View style={[s.bubble, isMe ? s.bubbleMe : [s.bubbleThem, { backgroundColor: theme.card }]]}>
-          <Text style={[s.msgText, isMe ? s.msgTextMe : { color: theme.text }]}>{item.text}</Text>
-          {item.translated && <View style={s.translated}><Text style={s.translatedText}>🌐 {item.translated}</Text></View>}
+          <Text style={[s.msgText, isMe ? s.msgTextMe : { color: theme.text }]}>
+            {showingTranslation ? tr.text : item.text}
+          </Text>
+          {!isMe && item.id && (
+            <TouchableOpacity
+              style={{ marginTop: 4 }}
+              onPress={async () => {
+                if (tr) {
+                  setTranslations(prev => ({ ...prev, [item.id]: { ...tr, showOriginal: !tr.showOriginal } }));
+                  return;
+                }
+                setTranslating(item.id);
+                try {
+                  const r = await chatAPI.translate(item.id, getLanguage().toLowerCase());
+                  if (r.translated_text) {
+                    setTranslations(prev => ({ ...prev, [item.id]: { text: r.translated_text, provider: r.provider, showOriginal: false } }));
+                  } else {
+                    toast(t('translation_unavailable'), 'info');
+                  }
+                } catch {
+                  toast(t('translation_unavailable'), 'info');
+                }
+                setTranslating(null);
+              }}
+              disabled={translating === item.id}
+            >
+              <Text style={{ color: isMe ? 'rgba(255,255,255,0.5)' : theme.textMuted, fontSize: 10 }}>
+                {translating === item.id ? '...' : tr ? (tr.showOriginal ? t('hide_original') : t('show_original')) : '🌐 ' + t('translate')}
+              </Text>
+            </TouchableOpacity>
+          )}
           <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 4, marginTop: 3 }}>
             <Text style={[s.msgTime, isMe && s.msgTimeMe]}>{item.time}</Text>
             {statusIcon ? <Text style={{ fontSize: 10, color: statusColor }}>{statusIcon}</Text> : null}
@@ -290,12 +325,12 @@ const s = StyleSheet.create({
   msgList: { padding: 14, paddingBottom: 8 },
   chatOpened: { alignSelf: 'center', marginBottom: 16 },
   chatOpenedText: { fontSize: 10, paddingHorizontal: 14, paddingVertical: 5, borderRadius: 16, overflow: 'hidden' },
-  msgRow: { marginBottom: 8 },
+  msgRow: { marginBottom: 10 },
   msgRowMe: { alignItems: 'flex-end' },
-  bubble: { maxWidth: '80%', padding: 12, borderRadius: 16 },
+  bubble: { maxWidth: '78%', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18 },
   bubbleMe: { backgroundColor: '#2563EB', borderBottomRightRadius: 4 },
   bubbleThem: { borderBottomLeftRadius: 4 },
-  msgText: { fontSize: 14 },
+  msgText: { fontSize: 15, lineHeight: 21 },
   msgTextMe: { color: '#fff' },
   translated: { marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)' },
   translatedText: { color: 'rgba(255,255,255,0.5)', fontSize: 11, fontStyle: 'italic' },

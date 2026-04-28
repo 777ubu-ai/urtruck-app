@@ -95,10 +95,10 @@ export default function ProfileScreen({ navigation, route }) {
             </View>
           )}
           <Text style={[s.name, { color: theme.text }]}>
-            {profile.display_name || profile.full_name || 'Добавьте имя'}
+            {profile.display_name || profile.full_name || t('add_name')}
           </Text>
           <Text style={[s.phone, { color: theme.textMuted }]}>
-            {session?.user?.phone || ''} · {isDriver ? 'Водитель' : 'Грузоотправитель'}
+            {session?.user?.phone || ''} · {isDriver ? t('role_driver') : t('role_shipper')}
           </Text>
           <Text style={[s.subtitle, { color: theme.textSecondary }]}>
             {isDriver
@@ -141,6 +141,23 @@ export default function ProfileScreen({ navigation, route }) {
         ))}
 
         <View style={[s.settingsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+            <Text style={[s.settingLabel, { color: theme.text }]}>Тема</Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TouchableOpacity
+                style={{ paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8, backgroundColor: isDark ? 'transparent' : accent }}
+                onPress={() => toggleTheme()}
+              >
+                <Text style={{ color: isDark ? theme.textMuted : '#fff', fontSize: 12, fontWeight: '700' }}>☀️ Светлая</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8, backgroundColor: isDark ? accent : 'transparent' }}
+                onPress={() => { if (!isDark) toggleTheme(); }}
+              >
+                <Text style={{ color: isDark ? '#fff' : theme.textMuted, fontSize: 12, fontWeight: '700' }}>🌙 Тёмная</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
           <View style={{ marginTop: 0 }}>
             <Text style={[s.settingLabel, { color: theme.text, marginBottom: 10 }]}>🌐 {t('language')}</Text>
             <View style={s.langGrid}>
