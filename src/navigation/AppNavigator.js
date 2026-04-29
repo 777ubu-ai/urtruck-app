@@ -99,32 +99,14 @@ export default function AppNavigator() {
 
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
-      {!hasToken ? (
-        // Тестовый режим: сразу выбор роли
+      {!hasToken || !session || !hasRole ? (
+        // Нет токена / нет сессии / нет роли → выбор роли
         <>
           <Stack.Screen name="Role" component={RoleScreen} />
           <Stack.Screen name="Main" component={MainTabs} />
           <Stack.Screen name="CargoDetail" component={CargoDetail} />
           <Stack.Screen name="DriverDetail" component={DriverDetail} />
           <Stack.Screen name="Chat" component={ChatScreen} />
-        </>
-      ) : !session ? (
-        // Гостевая сессия — есть доступ в ленту, но без phone
-        <>
-          <Stack.Screen name="Main" component={MainTabs} initialParams={{ role: 'client' }} />
-          <Stack.Screen name="Auth" component={AuthScreen} />
-          <Stack.Screen name="Role" component={RoleScreen} />
-          <Stack.Screen name="Reg" component={RegScreen} />
-          <Stack.Screen name="HowItWorks" component={HowItWorksScreen} />
-          <Stack.Screen name="CargoDetail" component={CargoDetail} />
-          <Stack.Screen name="DriverDetail" component={DriverDetail} />
-          <Stack.Screen name="Chat" component={ChatScreen} />
-        </>
-      ) : !hasRole ? (
-        <>
-          <Stack.Screen name="Role" component={RoleScreen} />
-          <Stack.Screen name="Reg" component={RegScreen} />
-          <Stack.Screen name="HowItWorks" component={HowItWorksScreen} />
         </>
       ) : (
         // Полностью в приложении
