@@ -92,8 +92,45 @@ export const marketAPI = {
 
   // ─── My Dashboard ───
   async myDashboard() {
-    const r = await fetch(`${BASE}/my`, { headers: await headers() });
-    return r.json();
+    try {
+      const r = await fetch(`${BASE}/my`, { headers: await headers() });
+      const d = await r.json().catch(() => ({}));
+
+      // Гость без токена — это НЕ ошибка загрузки.
+      // Просто показываем пустые сделки/грузы/ставки.
+      if (r.status === 401 || r.status === 403) {
+        return {
+          authRequired: true,
+          my_deals: [],
+          my_items: [],
+          my_bids: [],
+          deals: [],
+          items: [],
+          bids: [],
+        };
+      }
+
+      if (!r.ok) {
+        return {
+          ok: false,
+          detail: d.detail || `Ошибка ${r.status}`,
+          status: r.status,
+          my_deals: [],
+          my_items: [],
+          my_bids: [],
+        };
+      }
+
+      return d;
+    } catch (e) {
+      return {
+        ok: false,
+        detail: e.message || 'Ошибка загрузки',
+        my_deals: [],
+        my_items: [],
+        my_bids: [],
+      };
+    }
   },
 
   // ─── Drivers (approved, для клиентов) ───

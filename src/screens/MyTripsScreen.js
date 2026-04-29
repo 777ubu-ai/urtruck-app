@@ -14,7 +14,7 @@ export default function MyTripsScreen({ navigation, route }) {
   const { theme } = useTheme();
   const { toast } = useToast();
 
-  const [tab, setTab] = useState('my'); // my | bids
+  const [tab, setTab] = useState('deals'); // deals | my | bids
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -33,6 +33,7 @@ export default function MyTripsScreen({ navigation, route }) {
 
   const myItems = isDriver ? (data?.my_trips || []) : (data?.my_cargos || []);
   const myBids = isDriver ? (data?.my_bids || []) : (data?.incoming_bids || []);
+  const myDeals = data?.my_deals || [];
 
   const renderMyItem = ({ item }) => {
     const from = item.from_city || '—';
@@ -62,6 +63,33 @@ export default function MyTripsScreen({ navigation, route }) {
           <Text style={[s.date, { color: theme.textDim }]}>{(item.created_at || '').slice(0, 10)}</Text>
         </View>
       </TouchableOpacity>
+    );
+  };
+
+  const renderDeal = ({ item }) => {
+    const statusColors = { accepted: '#22C55E', in_progress: '#3B82F6', delivered: '#22C55E', cancelled: '#EF4444' };
+    const statusLabels = { accepted: '🤝 Согласовано', in_progress: '🚛 В пути', delivered: '✅ Доставлен', cancelled: '❌ Отменён' };
+    return (
+      <View style={[s.card, { backgroundColor: theme.card, borderColor: (statusColors[item.status] || theme.border), borderWidth: 2 }]}>
+        <View style={s.cardTop}>
+          <Text style={[s.route, { color: theme.text }]}>{item.from_city} → {item.to_city}</Text>
+          <View style={[s.statusPill, { backgroundColor: (statusColors[item.status] || '#78716C') + '20' }]}>
+            <Text style={[s.statusText, { color: statusColors[item.status] || '#78716C' }]}>{statusLabels[item.status] || item.status}</Text>
+          </View>
+        </View>
+        <View style={s.cardBottom}>
+          <Text style={[s.price, { color: '#22C55E' }]}>${item.amount}</Text>
+          <Text style={[s.date, { color: theme.textDim }]}>{(item.created_at || '').slice(0, 10)}</Text>
+        </View>
+        {item.chat_room_id && (
+          <TouchableOpacity
+            style={[s.acceptBtn, { backgroundColor: '#3B82F6' }]}
+            onPress={() => navigation.navigate('Chat', { roomId: item.chat_room_id, role })}
+          >
+            <Text style={s.acceptBtnText}>💬 Открыть чат</Text>
+          </TouchableOpacity>
+        )}
+      </View>
     );
   };
 
@@ -110,42 +138,45 @@ export default function MyTripsScreen({ navigation, route }) {
         <TouchableOpacity onPress={() => navigation.goBack()} style={s.back}>
           <Text style={[s.backText, { color: theme.text }]}>‹</Text>
         </TouchableOpacity>
-        <Text style={[s.headerTitle, { color: theme.text }]}>
-          {isDriver ? '🚛 Мои рейсы' : '📦 Мои грузы'}
-        </Text>
+        <Text style={[s.headerTitle, { color: theme.text }]}>🤝 Сделки и грузы</Text>
         <View style={{ width: 44 }} />
       </View>
 
       {/* Tabs */}
       <View style={[s.tabs, { backgroundColor: theme.card }]}>
         <TouchableOpacity
+          style={[s.tab, tab === 'deals' && { backgroundColor: '#22C55E' }]}
+          onPress={() => setTab('deals')}
+        >
+          <Text style={[s.tabText, { color: tab === 'deals' ? '#FFF' : theme.textMuted }]}>Сделки ({myDeals.length})</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
           style={[s.tab, tab === 'my' && { backgroundColor: accent }]}
           onPress={() => setTab('my')}
         >
           <Text style={[s.tabText, { color: tab === 'my' ? '#FFF' : theme.textMuted }]}>
-            {isDriver ? 'Мои рейсы' : 'Мои грузы'} ({myItems.length})
+            {isDriver ? 'Рейсы' : 'Грузы'} ({myItems.length})
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[s.tab, tab === 'bids' && { backgroundColor: accent }]}
           onPress={() => setTab('bids')}
         >
-          <Text style={[s.tabText, { color: tab === 'bids' ? '#FFF' : theme.textMuted }]}>
-            {isDriver ? 'Мои ставки' : 'Входящие ставки'} ({myBids.length})
-          </Text>
+          <Text style={[s.tabText, { color: tab === 'bids' ? '#FFF' : theme.textMuted }]}>Ставки ({myBids.length})</Text>
         </TouchableOpacity>
       </View>
 
       <FlatList
-        data={tab === 'my' ? myItems : myBids}
+        data={tab === 'deals' ? myDeals : tab === 'my' ? myItems : myBids}
         keyExtractor={i => i.id}
-        renderItem={tab === 'my' ? renderMyItem : renderBid}
+        renderItem={tab === 'deals' ? renderDeal : tab === 'my' ? renderMyItem : renderBid}
         contentContainerStyle={{ padding: 16 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
         ListEmptyComponent={
           <Text style={{ color: theme.textMuted, textAlign: 'center', marginTop: 40, fontSize: 14 }}>
-            {tab === 'my'
-              ? (isDriver ? 'У вас пока нет рейсов. Опубликуйте первый!' : 'У вас пока нет грузов.')
+            {data?.authRequired ? 'Войдите, чтобы видеть свои сделки и грузы'
+              : tab === 'deals' ? 'Пока нет сделок. Создайте груз или сделайте ставку!'
+              : tab === 'my' ? (isDriver ? 'У вас пока нет рейсов.' : 'У вас пока нет грузов.')
               : (isDriver ? 'Вы пока не делали ставок.' : 'Пока нет входящих предложений.')}
           </Text>
         }

@@ -1,4 +1,4 @@
-// Client for /security/api/v1/register/*
+// Client for /api/v1/register/*
 import { storage } from './storage';
 import { compressImage } from './imageCompress';
 import { getLanguage } from './i18n';
