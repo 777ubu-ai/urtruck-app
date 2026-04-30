@@ -3,6 +3,7 @@ import { View, Text, FlatList, TouchableOpacity, StyleSheet, Modal, TextInput, A
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { useI18n } from '../utils/useI18n';
+import { formatBids } from '../utils/i18n';
 import { useTheme } from '../utils/ThemeContext';
 import { getCargos, addCargo, addTrip, getTrips, subscribe, getUnreadNotifications, isFavorite, toggleFavorite } from '../utils/store';
 import { marketAPI } from '../utils/marketAPI';
@@ -369,7 +370,7 @@ export default function FeedScreen({ navigation, route }) {
           </View>
           <View style={{ alignItems: 'flex-end', justifyContent: 'space-between', flexShrink: 0, maxWidth: 100 }}>
             <Text style={s.price}>{item.price > 0 ? `$${item.price}` : 'Договорная'}</Text>
-            <Text style={[s.bidsCount, { color: theme.textMuted }]}>{item.bids || 0} {t('bids')}</Text>
+            <Text style={[s.bidsCount, { color: theme.textMuted }]}>{formatBids(item.bids)}</Text>
             <Text style={{ color: '#22C55E', fontSize: 11, fontWeight: '700', marginTop: 4 }}>{item.isMine ? t('details') + ' →' : isDriver ? t('respond') + ' →' : t('details') + ' →'}</Text>
           </View>
         </View>

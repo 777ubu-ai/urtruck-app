@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, TextInput, StyleSheet, ScrollView, Alert, Image, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
+import { formatBids } from '../utils/i18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useToast } from '../components/Toast';
 import { PhotoGallery } from '../components/PhotoGallery';
@@ -179,7 +180,7 @@ export default function CargoDetail({ navigation, route }) {
             }}><Text style={s.bidBtnText}>{t('suggestPrice')}</Text></TouchableOpacity>
           )}
         </View>
-        <Text style={[s.bidsTitle, { color: theme.text }]}>{t('bids')} ({bids.length})</Text>
+        <Text style={[s.bidsTitle, { color: theme.text }]}>{formatBids(bids.length)}</Text>
         {bids.length === 0 && (
           <Text style={{ color: theme.textMuted, textAlign: 'center', padding: 20, fontSize: 13 }}>
             Пока нет предложений. Будьте первым!

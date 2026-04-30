@@ -2713,4 +2713,22 @@ export const t = (key) => {
   return translations.RU[key] || key;
 };
 
+// Склонение для русского: 1 ставка, 2 ставки, 5 ставок
+function pluralRu(n, one, few, many) {
+  const abs = Math.abs(n) % 100;
+  const last = abs % 10;
+  if (abs >= 11 && abs <= 14) return many;
+  if (last === 1) return one;
+  if (last >= 2 && last <= 4) return few;
+  return many;
+}
+
+export const formatBids = (count) => {
+  const n = count || 0;
+  if (currentLang === 'RU' || currentLang === 'KZ' || currentLang === 'KG') {
+    return `${n} ${pluralRu(n, 'ставка', 'ставки', 'ставок')}`;
+  }
+  return `${n} ${t('bids')}`;
+};
+
 export default translations;
