@@ -1,8 +1,11 @@
 const { test, expect, request: playwrightRequest } = require('@playwright/test');
 
+const LIVE = process.env.RUN_LIVE_TESTS === '1';
 const API = 'https://urtruck.kz/api/v1';
 
 test('API smoke: create driver trip and client cargo', async () => {
+  test.skip(!LIVE, 'Live tests disabled. Set RUN_LIVE_TESTS=1 to run against production.');
+  console.log('⚠️ RUNNING LIVE TEST: this creates real data in production');
   const request = await playwrightRequest.newContext({
     ignoreHTTPSErrors: true,
   });

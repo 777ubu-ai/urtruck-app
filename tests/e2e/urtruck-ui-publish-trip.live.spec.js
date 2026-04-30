@@ -1,8 +1,11 @@
 const { test, expect } = require('@playwright/test');
 
+const LIVE = process.env.RUN_LIVE_TESTS === '1';
 const BASE = 'https://urtruck.kz/?v=playwright-trip-testid';
 
 test('UI: driver opens publish trip form and submits without crash', async ({ page }) => {
+  test.skip(!LIVE, 'Live tests disabled. Set RUN_LIVE_TESTS=1 to run against production.');
+  console.log('⚠️ RUNNING LIVE TEST: this creates real data in production');
   const errors = [];
   const stamp = Date.now();
 
