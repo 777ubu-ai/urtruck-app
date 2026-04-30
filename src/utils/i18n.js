@@ -2622,7 +2622,6 @@ const translations = {
 import { storage } from './storage';
 import { Platform, NativeModules } from 'react-native';
 
-let currentLang = 'RU';
 const listeners = new Set();
 const KEY = 'ur_lang';
 
@@ -2640,6 +2639,21 @@ const LANG_ALIAS = {
   ka: 'GE', kat: 'GE', geo: 'GE',
   tk: 'TM', tuk: 'TM',
 };
+
+// Sync detect at module load — best effort before async storage
+let currentLang = (() => {
+  try {
+    let code = '';
+    if (typeof navigator !== 'undefined' && navigator.language) {
+      code = navigator.language.toLowerCase();
+    }
+    if (!code) return 'RU';
+    const base = code.split('-')[0];
+    if (LANG_ALIAS[code]) return LANG_ALIAS[code];
+    if (LANG_ALIAS[base]) return LANG_ALIAS[base];
+    return 'RU'; // unsupported → RU
+  } catch { return 'RU'; }
+})();
 
 function detectSystemLang() {
   let code;
