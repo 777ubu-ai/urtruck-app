@@ -92,44 +92,26 @@ export const marketAPI = {
 
   // ─── My Dashboard ───
   async myDashboard() {
+    const empty = { my_trips: [], my_cargos: [], my_bids: [], incoming_bids: [], my_deals: [] };
     try {
-      const r = await fetch(`${BASE}/my`, { headers: await headers() });
+      // Skip /market/my if no token (guest) — avoids 401/500
+      const h = await headers();
+      if (!h.Authorization) {
+        return { ...empty, authRequired: true, skipped: true };
+      }
+      const r = await fetch(`${BASE}/my`, { headers: h });
       const d = await r.json().catch(() => ({}));
-
-      // Гость без токена — это НЕ ошибка загрузки.
-      // Просто показываем пустые сделки/грузы/ставки.
       if (r.status === 401 || r.status === 403) {
-        return {
-          authRequired: true,
-          my_deals: [],
-          my_items: [],
-          my_bids: [],
-          deals: [],
-          items: [],
-          bids: [],
-        };
+        return { ...empty, authRequired: true };
       }
-
       if (!r.ok) {
-        return {
-          ok: false,
-          detail: d.detail || `Ошибка ${r.status}`,
-          status: r.status,
-          my_deals: [],
-          my_items: [],
-          my_bids: [],
-        };
+        console.warn('[myDashboard] server error:', r.status);
+        return { ...empty, serverError: true };
       }
-
-      return d;
+      return { ...empty, ...d };
     } catch (e) {
-      return {
-        ok: false,
-        detail: e.message || 'Ошибка загрузки',
-        my_deals: [],
-        my_items: [],
-        my_bids: [],
-      };
+      console.warn('[myDashboard] fetch error:', e.message);
+      return { ...empty, serverError: true };
     }
   },
 

@@ -3,7 +3,7 @@ import { View, Text, TextInput, Pressable, StyleSheet, Keyboard } from 'react-na
 import { useTheme } from '../utils/ThemeContext';
 import { searchCities, formatCity, COUNTRIES, addCustomCity, subscribeToCities } from '../utils/cities';
 
-export default function CityInput({ value, onChange, placeholder, style }) {
+export default function CityInput({ value, onChange, placeholder, style, testID }) {
   const { theme } = useTheme();
   const [focused, setFocused] = useState(false);
   const [query, setQuery] = useState(value || '');
@@ -46,6 +46,7 @@ export default function CityInput({ value, onChange, placeholder, style }) {
     <View style={[s.wrap, style]}>
       <TextInput
         ref={ref}
+        testID={testID}
         style={[s.input, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border }]}
         value={query}
         onChangeText={handleChange}

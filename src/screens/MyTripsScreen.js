@@ -17,24 +17,55 @@ export default function MyTripsScreen({ navigation, route }) {
   const { toast } = useToast();
 
   const initialTab = route.params?.initialTab || 'my';
-  const [tab, setTab] = useState(initialTab); // my | bids | deals
+  const justCreatedTrip = route.params?.justCreatedTrip || null;
+  const [tab, setTab] = useState(initialTab);
   const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!justCreatedTrip);
 
   const load = async () => {
     setLoading(true);
     try {
-      const d = await marketAPI.myDashboard();
-      setData(d);
+      // Try dashboard first; skip if guest/no token
+      const token = await require('../utils/storage').storage.get('ur_reg_token');
+      if (!token) {
+        // Guest — no /market/my, use public list
+        if (isDriver) {
+          const trips = await marketAPI.listTrips({});
+          setData({ my_trips: trips.trips || [], my_cargos: [], my_bids: [], incoming_bids: [], my_deals: [], authRequired: true });
+        } else {
+          setData({ my_trips: [], my_cargos: [], my_bids: [], incoming_bids: [], my_deals: [], authRequired: true });
+        }
+      } else {
+        let d = await marketAPI.myDashboard();
+        if (d.serverError && isDriver) {
+          try {
+            const trips = await marketAPI.listTrips({});
+            d = { ...d, my_trips: (trips.trips || []) };
+          } catch {}
+        }
+        setData(d);
+      }
     } catch (e) {
-      toast(t('load_error'), 'error');
+      console.warn('[MyTrips] load error:', e.message);
     }
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    if (justCreatedTrip) {
+      // justCreatedTrip: show immediately, NO /market/my call at all
+      setData({ my_trips: [justCreatedTrip], my_cargos: [], my_bids: [], incoming_bids: [], my_deals: [] });
+      setLoading(false);
+    } else {
+      load();
+    }
+  }, []);
 
-  const myItems = isDriver ? (data?.my_trips || []) : (data?.my_cargos || []);
+  // Merge justCreatedTrip if dashboard didn't return it
+  let myItems = isDriver ? (data?.my_trips || []) : (data?.my_cargos || []);
+  if (justCreatedTrip && isDriver && !myItems.find(i => i.id === justCreatedTrip.id)) {
+    myItems = [justCreatedTrip, ...myItems];
+  }
   const myBids = isDriver ? (data?.my_bids || []) : (data?.incoming_bids || []);
   const myDeals = data?.my_deals || [];
 

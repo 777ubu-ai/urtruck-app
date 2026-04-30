@@ -101,7 +101,7 @@ export default function FeedScreen({ navigation, route }) {
         const [tripsRes, driversRes, myRes] = await Promise.all([
           marketAPI.listTrips({ truckType: filterType || '' }),
           marketAPI.listDrivers({ truckType: filterType || '' }),
-          marketAPI.myDashboard().catch(() => ({})),
+          marketAPI.myDashboard().catch(() => ({ my_cargos: [] })),
         ]);
         // Мои грузы — в начале ленты
         const myCargos = ((myRes || {}).my_cargos || []).map(c => ({
@@ -307,17 +307,23 @@ export default function FeedScreen({ navigation, route }) {
     if (tripErrors.length > 0) { showOk(tripErrors[0], 'error', 4000); return; }
     setSubmitting(true);
     try {
-      const r = await marketAPI.createTrip({
+      const tripPayload = {
         from_city: tripFrom, to_city: tripTo, transit: tripTransit,
-        truck_type: truckType || 'tent', departure: tripDateFrom, arrival: tripDateTo,
-        price: parseInt(price) || 0,
-      });
+        truck_type: truckType || 'tent',
+        capacity_tons: Number(weight) || 20,
+        available_m3: Number(vol) || 82,
+        price: Number(price) || 0,
+        departure: tripDateFrom || null,
+        arrival: tripDateTo || null,
+      };
+      const r = await marketAPI.createTrip(tripPayload);
       if (r.ok) {
         showOk('✓ Маршрут опубликован', 'success', 4000);
         setShowForm(false);
         setTripFrom(''); setTripTo(''); setTripTransit(''); setTripDateFrom(''); setTripDateTo('');
-        // Navigate to My Trips so driver sees their new route
-        setTimeout(() => navigation.navigate('MyTripsList', { role, initialTab: 'my' }), 1500);
+        // Navigate with justCreated so MyTrips shows it even if /my fails
+        const justCreated = { id: r.id, ...tripPayload, status: 'active', created_at: new Date().toISOString() };
+        setTimeout(() => navigation.navigate('MyTripsList', { role, initialTab: 'my', justCreatedTrip: justCreated }), 1000);
       } else {
         showOk(r.detail || t('send_error'), 'error');
       }
@@ -436,8 +442,14 @@ export default function FeedScreen({ navigation, route }) {
           <Text style={{ fontSize: 18 }}>🔔</Text>
           {/* Badge disabled — only show when real server notifications integrated */}
         </TouchableOpacity>
-        <TouchableOpacity style={[s.actionBtn, { backgroundColor: accent }]} onPress={() => setShowForm(true)}>
-          <Text style={[s.actionBtnText, { color: isDriver ? '#fff' : '#0C0A09' }]}>{isDriver ? '🚛 ' + t('postTrip') : '＋ ' + t('postCargo')}</Text>
+        <TouchableOpacity
+          style={[s.actionBtn, { backgroundColor: accent }]}
+          onPress={() => setShowForm(true)}
+          testID={isDriver ? 'publish-trip-button' : 'publish-cargo-button'}
+          accessibilityRole="button"
+          accessibilityLabel={isDriver ? 'Опубликовать маршрут' : 'Разместить груз'}
+        >
+          <Text style={[s.actionBtnText, { color: isDriver ? '#fff' : '#0C0A09' }]}>{isDriver ? t('postTrip') : t('postCargo')}</Text>
         </TouchableOpacity>
       </View>
 
@@ -645,14 +657,14 @@ export default function FeedScreen({ navigation, route }) {
                 <>
                   <Text style={[s.formLabel, { color: theme.textMuted }]}>{t('tripRoute')}</Text>
                   <View style={{ zIndex: 200, marginBottom: 4 }}>
-                    <CityInput value={tripFrom} onChange={setTripFrom} placeholder={'📍 ' + t('fromCountry')} />
+                    <CityInput value={tripFrom} onChange={setTripFrom} placeholder={'📍 ' + t('fromCountry')} testID="trip-from-input" />
                   </View>
                   <View style={{ zIndex: 100, marginBottom: 4 }}>
-                    <CityInput value={tripTo} onChange={setTripTo} placeholder={'🏁 ' + t('toCountry')} />
+                    <CityInput value={tripTo} onChange={setTripTo} placeholder={'🏁 ' + t('toCountry')} testID="trip-to-input" />
                   </View>
                   <Text style={[s.formLabel, { color: theme.textMuted }]}>{t('transit')}</Text>
                   <View style={{ zIndex: 150, marginBottom: 4 }}>
-                    <CityInput value={tripTransit} onChange={setTripTransit} placeholder={'🔄 ' + t('transitOptional')} />
+                    <CityInput value={tripTransit} onChange={setTripTransit} placeholder={'🔄 ' + t('transitOptional')} testID="trip-transit-input" />
                   </View>
                   <Text style={[s.formLabel, { color: theme.textMuted }]}>{t('departure')} · {t('arrival')}</Text>
                   <View style={s.frow}>
@@ -669,8 +681,11 @@ export default function FeedScreen({ navigation, route }) {
                     style={{ backgroundColor: submitting ? '#374151' : '#22c55e', borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 8, opacity: submitting ? 0.7 : 1 }}
                     disabled={submitting}
                     activeOpacity={0.8}
+                    testID="trip-submit-button"
+                    accessibilityRole="button"
+                    accessibilityLabel="Опубликовать маршрут"
                   >
-                    {submitting ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>Опубликовать маршрут</Text>}
+                    {submitting ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>{t('postTrip')}</Text>}
                   </TouchableOpacity>
                 </>
               ) : (
@@ -680,7 +695,7 @@ export default function FeedScreen({ navigation, route }) {
                     <CityInput
                       value={fromCity}
                       onChange={(v) => { setFromCity(v); if (formErrors.fromCity) setFormErrors(e => ({ ...e, fromCity: null })); }}
-                      placeholder={'📍 ' + t('fromCountry')}
+                      placeholder={'📍 ' + t('fromCountry')} testID="cargo-from-input"
                     />
                     {formErrors.fromCity && <Text style={s.fieldError}>⚠️ {formErrors.fromCity}</Text>}
                   </View>
@@ -688,7 +703,7 @@ export default function FeedScreen({ navigation, route }) {
                     <CityInput
                       value={toCity}
                       onChange={(v) => { setToCity(v); if (formErrors.toCity) setFormErrors(e => ({ ...e, toCity: null })); }}
-                      placeholder={'🏁 ' + t('toCountry')}
+                      placeholder={'🏁 ' + t('toCountry')} testID="cargo-to-input"
                     />
                     {formErrors.toCity && <Text style={s.fieldError}>⚠️ {formErrors.toCity}</Text>}
                   </View>
@@ -696,7 +711,7 @@ export default function FeedScreen({ navigation, route }) {
                     <CargoTypeInput
                       value={cargoDesc}
                       onChange={(v) => { setCargoDesc(v); if (formErrors.cargoDesc) setFormErrors(e => ({ ...e, cargoDesc: null })); }}
-                      placeholder={'📦 ' + t('cargoDesc') + ' *'}
+                      placeholder={'📦 ' + t('cargoDesc') + ' *'} testID="cargo-desc-input"
                     />
                     {formErrors.cargoDesc && <Text style={s.fieldError}>⚠️ {formErrors.cargoDesc}</Text>}
                   </View>
@@ -807,8 +822,11 @@ export default function FeedScreen({ navigation, route }) {
                     style={{ backgroundColor: submitting ? '#374151' : '#22c55e', borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 14, opacity: submitting ? 0.7 : 1 }}
                     disabled={submitting}
                     activeOpacity={0.8}
+                    testID="cargo-submit-button"
+                    accessibilityRole="button"
+                    accessibilityLabel="Разместить груз"
                   >
-                    {submitting ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>Опубликовать груз</Text>}
+                    {submitting ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>{t('postCargo')}</Text>}
                   </TouchableOpacity>
                 </>
               )}
