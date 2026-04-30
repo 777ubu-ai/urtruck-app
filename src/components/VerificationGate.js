@@ -10,34 +10,34 @@ import { accentColors } from '../utils/theme';
 
 const COPY = {
   default: {
-    title: 'Нужна регистрация',
-    body: 'Для полного доступа, просмотра контактов и размещения заявок, пожалуйста, пройдите регистрацию или авторизацию.',
+    title: 'Войдите, чтобы продолжить',
+    body: 'Регистрация нужна для сделок, ставок, чата и контактов.',
   },
   contact: {
     title: 'Контакты под защитой',
     body: 'Просмотр контактов доступен только зарегистрированным пользователям. Это защищает водителей от спама.',
   },
   publish_cargo: {
-    title: 'Публикация для своих',
-    body: 'Чтобы разместить груз на платформе, нужно подтвердить личность. Пройдите регистрацию — это займёт 1 минуту.',
+    title: 'Войдите, чтобы опубликовать',
+    body: 'Для публикации грузов и маршрутов нужна регистрация.',
   },
   driver: {
-    title: 'Стать перевозчиком',
-    body: 'Для доступа к базе грузов и подачи заявок необходимо авторизоваться и пройти проверку документов.',
+    title: 'Войдите как перевозчик',
+    body: 'Для доступа к грузам и ставкам необходимо войти.',
   },
   bid: {
-    title: 'Подтверди личность',
-    body: 'Чтобы предложить свою цену, нужна верификация. ИИН + селфи — 2 минуты, и ты в деле.',
+    title: 'Войдите, чтобы предложить цену',
+    body: 'Для отправки ставки необходима регистрация.',
   },
   open_detail: {
-    title: 'Полные данные — для своих',
-    body: 'Полная карточка груза с маршрутом, контактами и условиями доступна зарегистрированным пользователям.',
+    title: 'Войдите для полного доступа',
+    body: 'Детали груза, контакты и условия доступны после регистрации.',
   },
 };
 
 function pickTarget(currentLevel, requiredLevel) {
-  // Гость → сначала Auth (phone). Phone-юзер → Reg (identity/driver).
-  if (currentLevel < 1) return 'Auth';
+  // Гость → Role (выбор роли). Phone-юзер → Reg (identity/driver).
+  if (currentLevel < 1) return 'Role';
   return 'Reg';
 }
 
@@ -144,18 +144,17 @@ export function VerificationGateSheet({ visible, action, currentLevel, requiredL
 
           <TouchableOpacity
             onPress={onProceed}
-            style={[s.waBtn, Platform.OS === 'web' && {
-              boxShadow: '0 10px 26px rgba(37, 211, 102, 0.4)',
+            style={[s.waBtn, { backgroundColor: '#22C55E' }, Platform.OS === 'web' && {
+              boxShadow: '0 10px 26px rgba(34, 197, 94, 0.3)',
             }]}
             activeOpacity={0.9}
           >
-            <Text style={s.waEmoji}>💬</Text>
-            <Text style={s.waText}>Войти через WhatsApp</Text>
+            <Text style={s.waText}>Войти</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={onProceed} style={s.altBtn}>
-            <Text style={[s.altText, { color: accentColors.driver }]}>
-              Другой способ (Telegram / SMS)
+          <TouchableOpacity onPress={handleClose} style={s.altBtn}>
+            <Text style={[s.altText, { color: accentColors.browse || '#94A3B8' }]}>
+              Смотреть ленту
             </Text>
           </TouchableOpacity>
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, Modal, TextInput, Alert, Platform, ScrollView, Image, RefreshControl } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, Modal, TextInput, Alert, Platform, ScrollView, Image, RefreshControl, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { useI18n } from '../utils/useI18n';
@@ -38,14 +38,14 @@ const TRUCK_ICONS = {
 const FLAGS = { KZ: '🇰🇿', UZ: '🇺🇿', RU: '🇷🇺', KG: '🇰🇬', CN: '🇨🇳', TJ: '🇹🇯', TR: '🇹🇷', TM: '🇹🇲', MN: '🇲🇳', DE: '🇩🇪', FR: '🇫🇷' };
 
 // HOT-003: фильтр технического мусора из БД (остатки парсеров, init_db, стектрейсы)
-const TRASH_PATTERNS = /init_db|phone_formatter|SQL|sqlite|traceback|\bError:|File "[^"]+\.py"|line \d+|^```|stderr/gi;
+const TRASH_PATTERNS = /init_db|phone_formatter|json_merger|bin_iin|SQL|sqlite|traceback|\bError:|File "[^"]+\.py"|line \d+|^```|stderr|\.py\b|SELECT |INSERT |UPDATE |DELETE |CREATE TABLE/gi;
 const sanitizeDesc = (s) => {
-  if (!s) return '';
+  if (!s) return 'Описание не указано';
   const cleaned = String(s)
     .replace(TRASH_PATTERNS, ' ')
     .replace(/\s{2,}/g, ' ')
     .trim();
-  return cleaned.slice(0, 200);
+  return cleaned.length > 0 ? cleaned.slice(0, 200) : 'Описание не указано';
 };
 
 const DRIVERS = [
@@ -240,6 +240,7 @@ export default function FeedScreen({ navigation, route }) {
   const [pickupDate, setPickupDate] = useState('');
   const [cargoPhotos, setCargoPhotos] = useState([]);
   const [formErrors, setFormErrors] = useState({});
+  const [submitting, setSubmitting] = useState(false);
 
   // Trip form
   const [tripFrom, setTripFrom] = useState('');
@@ -253,21 +254,22 @@ export default function FeedScreen({ navigation, route }) {
   // HOT-008: inline-валидация с красной подсветкой
   const validateCargoForm = () => {
     const errors = {};
-    if (!fromCity) errors.fromCity = t('val_required');
-    if (!toCity) errors.toCity = t('val_required');
-    if (!cargoDesc) errors.cargoDesc = t('val_required');
-    if (!price) errors.price = t('val_required');
-    else if (parseFloat(price) <= 0) errors.price = t('val_price_positive');
-    if (weight && parseFloat(weight) <= 0) errors.weight = t('val_weight_positive');
+    if (!fromCity) errors.fromCity = 'Укажите город отправления';
+    if (!toCity) errors.toCity = 'Укажите город назначения';
+    if (!cargoDesc) errors.cargoDesc = 'Опишите груз';
+    if (price && parseFloat(price) <= 0) errors.price = 'Цена должна быть больше 0';
+    if (weight && parseFloat(weight) <= 0) errors.weight = 'Вес должен быть больше 0';
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
   const submitCargo = async () => {
+    if (submitting) return;
     if (!validateCargoForm()) {
-      showOk(t('fillRequired'), 'error', 4000);
+      showOk('Заполните обязательные поля', 'error', 4000);
       return;
     }
+    setSubmitting(true);
     try {
       const r = await marketAPI.createCargo({
         from_city: fromCity, to_city: toCity, cargo_desc: cargoDesc,
@@ -289,40 +291,58 @@ export default function FeedScreen({ navigation, route }) {
       }
     } catch (e) {
       console.error('[submitCargo] failed:', e);
-      showOk(t('network_error') + ': ' + (e.message || ''), 'error');
+      const msg = (e.message || '').includes('pattern') ? 'Проверьте заполненные поля' : t('network_error');
+      showOk(msg, 'error');
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const submitTrip = async () => {
-    if (!tripFrom || !tripTo) { showOk(t('fillRequired'), 'error'); return; }
+    if (submitting) return;
+    const tripErrors = [];
+    if (!tripFrom) tripErrors.push('Укажите город отправления');
+    if (!tripTo) tripErrors.push('Укажите город назначения');
+    if (!tripDateFrom) tripErrors.push('Укажите дату выезда');
+    if (tripErrors.length > 0) { showOk(tripErrors[0], 'error', 4000); return; }
+    setSubmitting(true);
     try {
       const r = await marketAPI.createTrip({
         from_city: tripFrom, to_city: tripTo, transit: tripTransit,
-        truck_type: 'tent', departure: tripDateFrom, arrival: tripDateTo,
+        truck_type: truckType || 'tent', departure: tripDateFrom, arrival: tripDateTo,
+        price: parseInt(price) || 0,
       });
       if (r.ok) {
-        showOk(t('publishTrip') || '✓ Рейс опубликован', 'success');
+        showOk('✓ Маршрут опубликован', 'success', 4000);
         setShowForm(false);
         setTripFrom(''); setTripTo(''); setTripTransit(''); setTripDateFrom(''); setTripDateTo('');
-        loadFromServer();
+        // Navigate to My Trips so driver sees their new route
+        setTimeout(() => navigation.navigate('MyTripsList', { role, initialTab: 'my' }), 1500);
       } else {
         showOk(r.detail || t('send_error'), 'error');
       }
     } catch (e) {
       showOk(t('network_error') + ': ' + (e.message || ''), 'error');
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const renderCargo = ({ item }) => {
     const stats = routeStats(item.from, item.to);
     const fav = isFavorite(item.id);
-    const photo = (item.photos && item.photos[0]) || item.photo;
+    const rawPhoto = (item.photos && item.photos[0]) || item.photo;
+    const photo = rawPhoto && typeof rawPhoto === 'string' && !rawPhoto.startsWith('data:') && rawPhoto.length < 1000 ? rawPhoto : null;
     return (
       <TouchableOpacity
         style={[s.card, { backgroundColor: theme.card, borderColor: item.isMine ? '#F59E0B60' : theme.border, borderWidth: item.isMine ? 2 : 1 }]}
         onPress={async () => {
           const ok = await requireLevel(LEVELS.PHONE, 'open_detail');
-          if (ok) navigation.navigate('CargoDetail', { cargo: item, role });
+          if (ok) {
+            // Strip heavy base64 photos from navigation params to avoid crash
+            const safePhotos = (item.photos || []).filter(p => typeof p === 'string' && p.length < 500);
+            navigation.navigate('CargoDetail', { cargo: { ...item, photos: safePhotos, photo: null }, cargoId: item.id, role });
+          }
         }}
       >
         {item.isMine && (
@@ -342,7 +362,7 @@ export default function FeedScreen({ navigation, route }) {
             </View>
           </View>
           <View style={{ alignItems: 'flex-end', justifyContent: 'space-between', flexShrink: 0, maxWidth: 100 }}>
-            <Text style={s.price}>${item.price || 0}</Text>
+            <Text style={s.price}>{item.price > 0 ? `$${item.price}` : 'Договорная'}</Text>
             <Text style={[s.bidsCount, { color: theme.textMuted }]}>{item.bids || 0} {t('bids')}</Text>
             <Text style={{ color: '#22C55E', fontSize: 11, fontWeight: '700', marginTop: 4 }}>{item.isMine ? t('details') + ' →' : isDriver ? t('respond') + ' →' : t('details') + ' →'}</Text>
           </View>
@@ -359,10 +379,15 @@ export default function FeedScreen({ navigation, route }) {
         const ok = await requireLevel(LEVELS.PHONE, 'open_detail');
         if (!ok) return;
         if (item.isTrip) {
-          const originalTrip = getTrips().find(t => t.id === item.id);
-          navigation.navigate('TripDetail', { trip: originalTrip || item, role });
+          navigation.navigate('TripDetail', {
+            trip: { ...item, from_city: item.from || item.from_city || '—', to_city: item.to || item.to_city || '—', truck_type: item.type || item.truck_type || 'tent', price: item.price || 0 },
+            role,
+          });
         } else {
-          navigation.navigate('DriverDetail', { driver: item, role });
+          navigation.navigate('DriverDetail', {
+            driver: { ...item, name: item.name || item.full_name || 'Водитель', type: item.type || item.vehicle_type || 'tent', m3: item.m3 || 0, tons: item.tons || 0, rating: item.rating || 0, reviews: item.reviews || 0 },
+            role,
+          });
         }
       }}
     >
@@ -409,17 +434,9 @@ export default function FeedScreen({ navigation, route }) {
           onPress={() => navigation.navigate('Notifications')}
         >
           <Text style={{ fontSize: 18 }}>🔔</Text>
-          {getUnreadNotifications() > 0 && (
-            <View style={s.bellBadge}>
-              <Text style={s.bellBadgeText}>{getUnreadNotifications()}</Text>
-            </View>
-          )}
+          {/* Badge disabled — only show when real server notifications integrated */}
         </TouchableOpacity>
-        <TouchableOpacity style={[s.actionBtn, { backgroundColor: accent }]} onPress={async () => {
-          // Gate: нужен хотя бы телефон для публикации
-          const ok = await requireLevel(LEVELS.PHONE, 'publish_cargo');
-          if (ok) setShowForm(true);
-        }}>
+        <TouchableOpacity style={[s.actionBtn, { backgroundColor: accent }]} onPress={() => setShowForm(true)}>
           <Text style={[s.actionBtnText, { color: isDriver ? '#fff' : '#0C0A09' }]}>{isDriver ? '🚛 ' + t('postTrip') : '＋ ' + t('postCargo')}</Text>
         </TouchableOpacity>
       </View>
@@ -647,9 +664,14 @@ export default function FeedScreen({ navigation, route }) {
                     </View>
                   </View>
                   <View style={s.hintBox}><Text style={[s.hintText, { color: theme.textMuted }]}>💡 {t('youPublish')}</Text></View>
-                  <ShimmerButton onPress={submitTrip} colors={[accent, '#22C55E']} style={{ marginTop: 8 }}>
-                    🚛 {t('publishTrip')}
-                  </ShimmerButton>
+                  <TouchableOpacity
+                    onPress={submitTrip}
+                    style={{ backgroundColor: submitting ? '#374151' : '#22c55e', borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 8, opacity: submitting ? 0.7 : 1 }}
+                    disabled={submitting}
+                    activeOpacity={0.8}
+                  >
+                    {submitting ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>Опубликовать маршрут</Text>}
+                  </TouchableOpacity>
                 </>
               ) : (
                 <>
@@ -780,9 +802,14 @@ export default function FeedScreen({ navigation, route }) {
                       </TouchableOpacity>
                     ))}
                   </ScrollView>
-                  <ShimmerButton onPress={submitCargo} colors={[accent, '#EF4444']} textStyle={{ color: '#0C0A09' }} style={{ marginTop: 14 }}>
-                    📦 {t('publishFree')}
-                  </ShimmerButton>
+                  <TouchableOpacity
+                    onPress={submitCargo}
+                    style={{ backgroundColor: submitting ? '#374151' : '#22c55e', borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 14, opacity: submitting ? 0.7 : 1 }}
+                    disabled={submitting}
+                    activeOpacity={0.8}
+                  >
+                    {submitting ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>Опубликовать груз</Text>}
+                  </TouchableOpacity>
                 </>
               )}
             </ScrollView>
@@ -829,13 +856,13 @@ const s = StyleSheet.create({
   filterActions: { flexDirection: 'row', gap: 10, marginTop: 24 },
   filterActionBtn: { flex: 1, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
   filterActionText: { fontSize: 15, fontWeight: '800' },
-  card: { borderRadius: 16, padding: 18, borderWidth: 1 },
+  card: { borderRadius: 14, padding: 16, borderWidth: 1, borderColor: '#263244', backgroundColor: '#111827' },
   cardRow: { flexDirection: 'row', alignItems: 'flex-start' },
-  route: { fontSize: 18, fontWeight: '800', marginBottom: 6, letterSpacing: -0.3 },
+  route: { fontSize: 17, fontWeight: '700', marginBottom: 5, letterSpacing: -0.2, color: '#F8FAFC' },
   cargoName: { fontSize: 12, marginBottom: 8 },
   badges: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
   badge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 16, fontSize: 10, fontWeight: '700', overflow: 'hidden' },
-  price: { color: '#22C55E', fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
+  price: { color: '#22C55E', fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
   bidsCount: { fontSize: 10, marginTop: 2 },
   driverName: { fontSize: 16, fontWeight: '700' },
   rating: { color: '#FBBF24', fontSize: 12, fontWeight: '700', marginVertical: 4 },

@@ -90,6 +90,7 @@ export default function ChatScreen({ navigation, route }) {
     }]);
     setInput('');
     setShowPhrases(false);
+    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
 
     // Сохраняем на сервере
     if (partner?.id) {
@@ -290,7 +291,7 @@ export default function ChatScreen({ navigation, route }) {
   };
 
   return (
-    <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]} edges={['top']}>
+    <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]} edges={['top', 'bottom']}>
       <View style={[s.header, { borderBottomColor: theme.border }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={[s.backBtn, { backgroundColor: theme.card, borderColor: theme.border }]}><Text style={[s.backText, { color: theme.text }]}>‹</Text></TouchableOpacity>
         <View style={{ flex: 1 }}><Text style={[s.partnerName, { color: theme.text }]}>{partner?.name || '—'}</Text><Text style={s.online}>● {t('online')}</Text></View>
@@ -322,7 +323,7 @@ const s = StyleSheet.create({
   online: { color: '#22C55E', fontSize: 10 },
   langBtn: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1 },
   langText: { fontSize: 11 },
-  msgList: { padding: 14, paddingBottom: 8 },
+  msgList: { padding: 14, paddingBottom: 20 },
   chatOpened: { alignSelf: 'center', marginBottom: 16 },
   chatOpenedText: { fontSize: 10, paddingHorizontal: 14, paddingVertical: 5, borderRadius: 16, overflow: 'hidden' },
   msgRow: { marginBottom: 10 },

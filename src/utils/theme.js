@@ -33,25 +33,25 @@ export const darkTheme = {
 };
 
 export const lightTheme = {
-  bg: '#f8fafc',
+  bg: '#f1f5f9',
   surface: '#ffffff',
-  surfaceAlt: '#f1f5f9',
+  surfaceAlt: '#e8ecf1',
   card: '#ffffff',
-  cardBorder: '#e2e8f0',
+  cardBorder: '#cbd5e1',
   cardHover: '#f1f5f9',
-  cardActive: 'rgba(34,197,94,0.06)',
-  cardActiveBorder: 'rgba(34,197,94,0.3)',
+  cardActive: 'rgba(34,197,94,0.08)',
+  cardActiveBorder: 'rgba(34,197,94,0.4)',
   text: '#0f172a',
-  textSecondary: '#475569',
-  textMuted: '#94a3b8',
-  textDisabled: '#cbd5e1',
-  border: '#e2e8f0',
+  textSecondary: '#334155',
+  textMuted: '#64748b',
+  textDisabled: '#94a3b8',
+  border: '#cbd5e1',
   overlay: 'rgba(0,0,0,0.4)',
   bgElevated: '#ffffff',
-  cardElevated: '#f8fafc',
-  textDim: '#94a3b8',
-  shadow: 'rgba(0,0,0,0.08)',
-  shadowLight: 'rgba(0,0,0,0.04)',
+  cardElevated: '#f1f5f9',
+  textDim: '#64748b',
+  shadow: 'rgba(0,0,0,0.12)',
+  shadowLight: 'rgba(0,0,0,0.06)',
 };
 
 // Design System accent colors

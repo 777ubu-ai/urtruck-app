@@ -15,9 +15,9 @@ const MONTHS = {
 
 const parseIso = (v) => {
   // "DD.MM.YYYY" -> "YYYY-MM-DD" for native input
-  if (!v) return '';
+  if (!v) return undefined; // undefined removes value attr, avoids pattern mismatch
   const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(v);
-  return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : undefined;
 };
 
 const formatFromIso = (iso) => {

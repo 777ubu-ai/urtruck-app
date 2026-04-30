@@ -17,11 +17,15 @@ import { reviewsAPI } from '../utils/reviews';
 const FLAGS = { KZ: '🇰🇿', UZ: '🇺🇿', RU: '🇷🇺', KG: '🇰🇬', CN: '🇨🇳', TJ: '🇹🇯', TR: '🇹🇷', TM: '🇹🇲', MN: '🇲🇳', DE: '🇩🇪', FR: '🇫🇷' };
 
 // HOT-003: скрываем техмусор из description (остатки init_db, стектрейсы и т.п.)
-const TRASH_RE = /init_db|phone_formatter|SQL|sqlite|traceback|\bError:|File "[^"]+\.py"|line \d+|^```|stderr/gi;
-const sanitizeDesc = (s) => String(s || '').replace(TRASH_RE, ' ').replace(/\s{2,}/g, ' ').trim();
+const TRASH_RE = /init_db|phone_formatter|json_merger|bin_iin|SQL|sqlite|traceback|\bError:|File "[^"]+\.py"|line \d+|^```|stderr|\.py\b|SELECT |INSERT |UPDATE |DELETE |CREATE TABLE/gi;
+const sanitizeDesc = (s) => {
+  const cleaned = String(s || '').replace(TRASH_RE, ' ').replace(/\s{2,}/g, ' ').trim();
+  return cleaned || 'Описание не указано';
+};
 
 export default function CargoDetail({ navigation, route }) {
-  const { cargo, role } = route.params || {};
+  const { cargo: paramCargo, cargoId, role } = route.params || {};
+  const cargo = paramCargo || {};
   const { t } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
@@ -42,11 +46,12 @@ export default function CargoDetail({ navigation, route }) {
   const [reviewSent, setReviewSent] = useState(false);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [acceptedDriverId, setAcceptedDriverId] = useState(null);
-  if (!cargo) return null;
+  const cid = cargoId || cargo.id;
+  if (!cid && !cargo.from) return null;
 
   const loadBids = () => {
-    if (!cargo.id) return;
-    marketAPI.listBids({ cargoId: cargo.id })
+    if (!cid) return;
+    marketAPI.listBids({ cargoId: cid })
       .then(d => {
         const mapped = (d.bids || []).map(b => ({
           id: b.id, bidderId: b.bidder_id,
@@ -66,8 +71,8 @@ export default function CargoDetail({ navigation, route }) {
   };
 
   useEffect(() => {
-    if (cargo.id && cargo._server) {
-      marketAPI.getCargo(cargo.id).then(d => {
+    if (cid) {
+      marketAPI.getCargo(cid).then(d => {
         if (d && d.id) setFullCargo(d);
       }).catch(() => {});
       loadBids();
@@ -114,17 +119,21 @@ export default function CargoDetail({ navigation, route }) {
     loadBids();
   };
 
+  // Use fullCargo from API if loaded, otherwise params
+  const c = fullCargo || cargo;
+  const safePhotos = (c.photos || []).filter(p => typeof p === 'string' && !p.startsWith('data:') && p.length < 1000);
+
   return (
     <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]} edges={['top']}>
       <View style={s.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={[s.backBtn, { backgroundColor: theme.card, borderColor: theme.border }]}><Text style={[s.backText, { color: theme.text }]}>‹</Text></TouchableOpacity>
-        <Text style={[s.headerTitle, { color: theme.text }]} numberOfLines={1}>{cargo.from} → {cargo.to}</Text>
+        <Text style={[s.headerTitle, { color: theme.text }]} numberOfLines={1}>{c.from_city || c.from || cargo.from || '—'} → {c.to_city || c.to || cargo.to || '—'}</Text>
         <TouchableOpacity onPress={() => setShareModal(true)}><Text style={{ fontSize: 20 }}>↗️</Text></TouchableOpacity>
       </View>
       <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 0 }}>
-        {cargo.photos && cargo.photos.length > 0 ? (
-          <PhotoGallery photos={cargo.photos} />
-        ) : cargo.photo ? (
+        {safePhotos.length > 0 ? (
+          <PhotoGallery photos={safePhotos} />
+        ) : cargo.photo && !cargo.photo.startsWith('data:') ? (
           <View style={[s.photoWrap, { borderColor: theme.border }]}>
             <Image source={{ uri: cargo.photo }} style={s.photo} />
             <View style={s.photoBadge}><Text style={s.photoBadgeText}>📸 {t('cargoPhoto')}</Text></View>
@@ -162,7 +171,7 @@ export default function CargoDetail({ navigation, route }) {
           </View>
         </View>
         <View style={s.priceBlock}>
-          <View><Text style={s.priceLabel}>{t('price')}</Text><Text style={s.priceValue}>${cargo.price || 0}</Text></View>
+          <View><Text style={s.priceLabel}>{t('price')}</Text><Text style={s.priceValue}>{cargo.price > 0 ? `$${cargo.price}` : 'Договорная'}</Text></View>
           {!cargo.isMine && (
             <TouchableOpacity style={s.bidBtn} onPress={async () => {
               const ok = await requireLevel(LEVELS.PHONE, 'bid');

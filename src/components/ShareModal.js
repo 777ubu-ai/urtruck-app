@@ -10,24 +10,23 @@ export default function ShareModal({ visible, onClose, shareText = 'UrTruck!', p
   const { theme } = useTheme();
   const { toast } = useToast();
 
-  const profileUrl = driverId ? `${WEB_URL}/driver/${driverId}` : WEB_URL;
+  const baseUrl = WEB_URL || 'https://urtruck.kz';
+  const profileUrl = driverId ? `${baseUrl}/driver/${driverId}` : baseUrl;
+  const fullShareText = `${shareText}\n${profileUrl}`;
 
   const handleWhatsApp = () => {
     const cleanPhone = (phone || '').replace(/[^0-9]/g, '');
-    const msg = encodeURIComponent(shareText);
+    const msg = encodeURIComponent(fullShareText);
     const url = cleanPhone
       ? `https://wa.me/${cleanPhone}?text=${msg}`
       : `https://wa.me/?text=${msg}`;
-    Linking.openURL(url).catch(() => toast('Не удалось открыть WhatsApp', 'error'));
+    Linking.openURL(url).catch(() => toast(t('generic_error'), 'error'));
     onClose();
   };
 
   const handleTelegram = () => {
-    const cleanPhone = (phone || '').replace(/[^0-9]/g, '');
-    const url = cleanPhone
-      ? `https://t.me/+${cleanPhone}`
-      : `https://t.me/share/url?url=${encodeURIComponent(profileUrl)}&text=${encodeURIComponent(shareText)}`;
-    Linking.openURL(url).catch(() => toast('Не удалось открыть Telegram', 'error'));
+    const url = `https://t.me/share/url?url=${encodeURIComponent(profileUrl)}&text=${encodeURIComponent(shareText)}`;
+    Linking.openURL(url).catch(() => toast(t('generic_error'), 'error'));
     onClose();
   };
 

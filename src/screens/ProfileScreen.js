@@ -116,7 +116,7 @@ export default function ProfileScreen({ navigation, route }) {
         {/* HOT2-007: Основная кнопка — Мои рейсы / Мои грузы */}
         <TouchableOpacity
           style={[s.primaryMenu, { borderColor: accent }]}
-          onPress={() => navigation.navigate(primary.screen, { role })}
+          onPress={() => navigation.navigate(primary.screen, { role, initialTab: 'my' })}
           activeOpacity={0.85}
         >
           <View style={[s.primaryMenuBg, { backgroundColor: accent }]} />

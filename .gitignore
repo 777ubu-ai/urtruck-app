@@ -49,3 +49,9 @@ deploy.sh
 TEST_RESULTS.md
 TOLIK_REPORT.md
 coverage/
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+tests/e2e/*.png

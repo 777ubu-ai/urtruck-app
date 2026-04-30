@@ -1,12 +1,25 @@
 import React, { useState } from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, TouchableOpacity, Image, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
 import { useI18n } from '../utils/useI18n';
 import { useAuth } from '../utils/AuthContext';
 import { regAPI } from '../utils/registration';
+import AppShell from '../components/ui/AppShell';
+import { colors, radius, spacing, typography } from '../theme/theme';
 
-const LOGO = require('../../assets/logo.jpg');
 const HERO = require('../../assets/hero.jpg');
+const LOGO = require('../../assets/logo.jpg');
+
+const ROLES = [
+  { key: 'driver', icon: 'D', color: colors.green, bg: colors.greenMuted, title: 'Я водитель', desc: 'Найти груз и не ехать порожняком' },
+  { key: 'client', icon: 'G', color: colors.orange, bg: colors.orangeMuted, title: 'Я грузовладелец', desc: 'Найти машину и получить ставки' },
+];
+
+const FEATURES = [
+  { label: 'Проверенные перевозчики' },
+  { label: 'Сделки и статусы' },
+  { label: 'Чат с переводом' },
+  { label: 'Международные маршруты' },
+];
 
 export default function RoleScreen({ navigation }) {
   const { t } = useI18n();
@@ -19,11 +32,7 @@ export default function RoleScreen({ navigation }) {
     setError('');
     try {
       const data = await regAPI.ensureGuest();
-      if (!data?.token) {
-        setError(t('server_unavailable'));
-        setLoading(null);
-        return;
-      }
+      if (!data?.token) { setError(t('server_unavailable')); setLoading(null); return; }
       await signIn('test-user', 1, data.token);
       setRole(role);
       navigation.reset({ index: 0, routes: [{ name: 'Main', params: { role } }] });
@@ -38,11 +47,7 @@ export default function RoleScreen({ navigation }) {
     setError('');
     try {
       const data = await regAPI.ensureGuest();
-      if (!data?.token) {
-        setError(t('server_unavailable'));
-        setLoading(null);
-        return;
-      }
+      if (!data?.token) { setError(t('server_unavailable')); setLoading(null); return; }
       navigation.reset({ index: 0, routes: [{ name: 'Main', params: { role: 'client' } }] });
     } catch (e) {
       setError(t('connection_failed'));
@@ -50,102 +55,121 @@ export default function RoleScreen({ navigation }) {
     }
   };
 
+  const onPress = (key) => key === 'browse' ? quickPreview() : enterAs(key);
+
   return (
-    <SafeAreaView style={s.safe}>
+    <AppShell>
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
-        {/* Hero */}
+
+        {/* Hero — compact background strip */}
         <View style={s.heroWrap}>
           <Image source={HERO} style={s.heroImg} resizeMode="cover" />
-          <View style={s.heroOverlay} />
+          <View style={s.heroGradient} />
         </View>
 
-        {/* Logo */}
-        <View style={s.logoRow}>
-          <Image source={LOGO} style={s.logoImg} />
+        {/* Brand */}
+        <View style={s.brand}>
+          <Image source={LOGO} style={s.logo} />
           <View>
-            <Text style={s.logoTitle}>UrTruck</Text>
-            <Text style={s.logoSub}>INTERNATIONAL LOGISTICS</Text>
+            <Text style={s.brandName}>UrTruck</Text>
+            <Text style={s.brandSub}>INTERNATIONAL LOGISTICS</Text>
           </View>
         </View>
+
+        {/* Headline */}
+        <Text style={s.headline}>Международная логистика без лишних посредников</Text>
+        <Text style={s.subline}>Грузы, машины, ставки, сделки и чат с переводом — в одном приложении.</Text>
 
         {error ? <Text style={s.error}>{error}</Text> : null}
 
-        {/* Roles */}
-        <TouchableOpacity style={s.roleBtn} onPress={() => enterAs('driver')} disabled={!!loading} activeOpacity={0.85}>
-          <View style={[s.roleIcon, { backgroundColor: '#2563EB' }]}>
-            {loading === 'driver' ? <ActivityIndicator color="#fff" /> : <Text style={s.roleEmoji}>🚛</Text>}
-          </View>
-          <View style={s.roleInfo}>
-            <Text style={s.roleName}>{t('driver')}</Text>
-            <Text style={s.roleDesc}>{t('driverDesc')}</Text>
-          </View>
-          <Text style={s.arrow}>→</Text>
-        </TouchableOpacity>
+        {/* Role cards */}
+        {ROLES.map((r) => (
+          <TouchableOpacity
+            key={r.key}
+            style={s.roleCard}
+            onPress={() => onPress(r.key)}
+            disabled={!!loading}
+            activeOpacity={0.8}
+          >
+            <View style={[s.roleIcon, { backgroundColor: r.bg }]}>
+              {loading === r.key ? (
+                <ActivityIndicator color={r.color} size="small" />
+              ) : (
+                <Text style={[s.roleIconText, { color: r.color }]}>{r.icon}</Text>
+              )}
+            </View>
+            <View style={s.roleInfo}>
+              <Text style={s.roleTitle}>{r.title}</Text>
+              <Text style={s.roleDesc}>{r.desc}</Text>
+            </View>
+            <Text style={s.arrow}>&#8250;</Text>
+          </TouchableOpacity>
+        ))}
 
-        <TouchableOpacity style={s.roleBtn} onPress={() => enterAs('client')} disabled={!!loading} activeOpacity={0.85}>
-          <View style={[s.roleIcon, { backgroundColor: '#F59E0B' }]}>
-            {loading === 'client' ? <ActivityIndicator color="#fff" /> : <Text style={s.roleEmoji}>📦</Text>}
-          </View>
-          <View style={s.roleInfo}>
-            <Text style={s.roleName}>{t('client')}</Text>
-            <Text style={s.roleDesc}>{t('clientDesc')}</Text>
-          </View>
-          <Text style={s.arrow}>→</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={[s.roleBtn, { borderColor: 'rgba(255,255,255,0.06)' }]} onPress={quickPreview} disabled={!!loading} activeOpacity={0.85}>
-          <View style={[s.roleIcon, { backgroundColor: '#22C55E' }]}>
-            {loading === 'browse' ? <ActivityIndicator color="#fff" /> : <Text style={s.roleEmoji}>👀</Text>}
-          </View>
-          <View style={s.roleInfo}>
-            <Text style={s.roleName}>{t('quick_preview')}</Text>
-            <Text style={s.roleDesc}>{t('quick_preview_sub')}</Text>
-          </View>
-          <Text style={s.arrow}>→</Text>
-        </TouchableOpacity>
-
-        {/* Trust */}
-        <View style={s.trust}>
-          <View style={s.flags}>
-            {['🇰🇿','🇷🇺','🇺🇿','🇨🇳','🇰🇬'].map((f, i) => <View key={i} style={s.flagCircle}><Text style={{ fontSize: 14 }}>{f}</Text></View>)}
-          </View>
-          <Text style={s.trustText}>500+ проверенных перевозчиков</Text>
+        {/* Features */}
+        <View style={s.features}>
+          {FEATURES.map((f, i) => (
+            <View key={i} style={s.featureItem}>
+              <View style={s.featureDot} />
+              <Text style={s.featureText}>{f.label}</Text>
+            </View>
+          ))}
         </View>
+
       </ScrollView>
-    </SafeAreaView>
+    </AppShell>
   );
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#0a0f1a' },
-  scroll: { paddingHorizontal: 16, paddingBottom: 30 },
+  scroll: { paddingBottom: 40 },
 
-  heroWrap: { width: '100%', height: 180, borderRadius: 20, overflow: 'hidden', marginTop: 8, marginBottom: 20 },
+  // Hero
+  heroWrap: { height: 120, overflow: 'hidden' },
   heroImg: { width: '100%', height: '100%' },
-  heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.2)' },
+  heroGradient: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(7,11,18,0.65)' },
 
-  logoRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 24 },
-  logoImg: { width: 48, height: 48, borderRadius: 12 },
-  logoTitle: { fontSize: 24, fontWeight: '800', color: '#fff', letterSpacing: -0.5 },
-  logoSub: { fontSize: 9, color: '#64748b', letterSpacing: 2, marginTop: 2 },
+  // Brand
+  brand: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: spacing.xl, marginTop: -20 },
+  logo: { width: 44, height: 44, borderRadius: 12, borderWidth: 2, borderColor: colors.border },
+  brandName: { ...typography.h1, color: colors.text },
+  brandSub: { ...typography.small, color: colors.textDim, letterSpacing: 2, marginTop: 1 },
 
-  error: { color: '#EF4444', fontSize: 13, textAlign: 'center', marginBottom: 12 },
+  // Headlines
+  headline: { ...typography.h2, color: colors.text, paddingHorizontal: spacing.xl, marginTop: spacing.xl },
+  subline: { ...typography.body, color: colors.textMuted, paddingHorizontal: spacing.xl, marginTop: spacing.xs, marginBottom: spacing.lg },
 
-  roleBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 14,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 16, padding: 16, marginBottom: 10,
+  error: { ...typography.caption, color: colors.red, paddingHorizontal: spacing.xl, marginBottom: spacing.sm },
+
+  // Role cards
+  roleCard: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.md,
+    marginHorizontal: spacing.xl, marginBottom: spacing.sm,
+    backgroundColor: colors.surface,
+    borderWidth: 1, borderColor: colors.border,
+    borderRadius: radius.md, padding: spacing.md,
   },
-  roleIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  roleEmoji: { fontSize: 22 },
+  roleIcon: {
+    width: 44, height: 44, borderRadius: radius.sm,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  roleIconText: { ...typography.h2, fontWeight: '800' },
   roleInfo: { flex: 1 },
-  roleName: { fontSize: 16, fontWeight: '700', color: '#fff' },
-  roleDesc: { fontSize: 12, color: 'rgba(255,255,255,0.5)', marginTop: 2 },
-  arrow: { color: 'rgba(255,255,255,0.3)', fontSize: 18, fontWeight: '700' },
+  roleTitle: { ...typography.title, color: colors.text },
+  roleDesc: { ...typography.caption, color: colors.textMuted, marginTop: 2 },
+  arrow: { color: colors.textDim, fontSize: 22, fontWeight: '300' },
 
-  trust: { alignItems: 'center', marginTop: 20 },
-  flags: { flexDirection: 'row', gap: 6, marginBottom: 8 },
-  flagCircle: { width: 26, height: 26, borderRadius: 13, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)', alignItems: 'center', justifyContent: 'center' },
-  trustText: { fontSize: 12, color: '#64748b' },
+  // Features
+  features: {
+    marginTop: spacing.xl, marginHorizontal: spacing.xl,
+    flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm,
+  },
+  featureItem: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
+    backgroundColor: colors.surface, borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm, paddingVertical: spacing.xs,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  featureDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.green },
+  featureText: { ...typography.caption, color: colors.textMuted },
 });

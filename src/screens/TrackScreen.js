@@ -237,7 +237,7 @@ export default function TrackScreen({ navigation, route }) {
               <Text style={s.updateBtnText}>{STATUSES[currentStatus + 1].icon} {t('update')}: {STATUSES[currentStatus + 1].label}</Text>
             </TouchableOpacity>
           )}
-          {currentStatus === STATUSES.length - 1 && (
+          {currentStatus === STATUSES.length - 1 && trip?.deal_id && trip?.status === 'delivered' && (
             <View style={s.doneBlock}>
               <Text style={{ fontSize: 28, marginBottom: 6 }}>🎉</Text>
               <Text style={s.doneTitle}>{t('tripDone')}</Text>

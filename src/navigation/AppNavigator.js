@@ -51,7 +51,7 @@ function MainTabs({ route }) {
     return unsub;
   }, []);
 
-  const unread = getUnreadNotifications();
+  // Badge disabled — mock store removed, server notifications not yet integrated into tabs
 
   return (
     <Tab.Navigator
@@ -77,7 +77,7 @@ function MainTabs({ route }) {
         }}
       />
       <Tab.Screen name="MyTripsList" component={MyTripsScreen} initialParams={{ role }}
-        options={{ tabBarLabel: 'Сделки', tabBarIcon: ({ color }) => <Text style={{ fontSize: 20, color }}>🤝</Text> }}
+        options={{ tabBarLabel: 'Моя работа', tabBarIcon: ({ color }) => <Text style={{ fontSize: 20, color }}>📋</Text> }}
       />
       <Tab.Screen name="Profile" component={ProfileScreen} initialParams={{ role }}
         options={{ tabBarLabel: 'Профиль', tabBarIcon: ({ color }) => <Text style={{ fontSize: 20, color }}>👤</Text> }}

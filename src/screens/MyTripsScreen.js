@@ -5,6 +5,8 @@ import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useToast } from '../components/Toast';
 import { marketAPI } from '../utils/marketAPI';
+import EmptyState from '../components/ui/EmptyState';
+import { colors, spacing, radius, typography } from '../theme/theme';
 
 export default function MyTripsScreen({ navigation, route }) {
   const { role } = route.params || {};
@@ -14,7 +16,8 @@ export default function MyTripsScreen({ navigation, route }) {
   const { theme } = useTheme();
   const { toast } = useToast();
 
-  const [tab, setTab] = useState('deals'); // deals | my | bids
+  const initialTab = route.params?.initialTab || 'my';
+  const [tab, setTab] = useState(initialTab); // my | bids | deals
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -138,31 +141,33 @@ export default function MyTripsScreen({ navigation, route }) {
         <TouchableOpacity onPress={() => navigation.goBack()} style={s.back}>
           <Text style={[s.backText, { color: theme.text }]}>‹</Text>
         </TouchableOpacity>
-        <Text style={[s.headerTitle, { color: theme.text }]}>🤝 Сделки и грузы</Text>
+        <Text style={[s.headerTitle, { color: theme.text }]}>Моя работа</Text>
         <View style={{ width: 44 }} />
       </View>
 
       {/* Tabs */}
       <View style={[s.tabs, { backgroundColor: theme.card }]}>
         <TouchableOpacity
-          style={[s.tab, tab === 'deals' && { backgroundColor: '#22C55E' }]}
-          onPress={() => setTab('deals')}
-        >
-          <Text style={[s.tabText, { color: tab === 'deals' ? '#FFF' : theme.textMuted }]}>Сделки ({myDeals.length})</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
           style={[s.tab, tab === 'my' && { backgroundColor: accent }]}
           onPress={() => setTab('my')}
         >
           <Text style={[s.tabText, { color: tab === 'my' ? '#FFF' : theme.textMuted }]}>
-            {isDriver ? 'Рейсы' : 'Грузы'} ({myItems.length})
+            {isDriver ? 'Мои рейсы' : 'Мои грузы'}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[s.tab, tab === 'bids' && { backgroundColor: accent }]}
           onPress={() => setTab('bids')}
         >
-          <Text style={[s.tabText, { color: tab === 'bids' ? '#FFF' : theme.textMuted }]}>Ставки ({myBids.length})</Text>
+          <Text style={[s.tabText, { color: tab === 'bids' ? '#FFF' : theme.textMuted }]}>
+            {isDriver ? 'Мои ставки' : 'Отклики'}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[s.tab, tab === 'deals' && { backgroundColor: '#22C55E' }]}
+          onPress={() => setTab('deals')}
+        >
+          <Text style={[s.tabText, { color: tab === 'deals' ? '#FFF' : theme.textMuted }]}>Заказы</Text>
         </TouchableOpacity>
       </View>
 
@@ -173,12 +178,33 @@ export default function MyTripsScreen({ navigation, route }) {
         contentContainerStyle={{ padding: 16 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
         ListEmptyComponent={
-          <Text style={{ color: theme.textMuted, textAlign: 'center', marginTop: 40, fontSize: 14 }}>
-            {data?.authRequired ? 'Войдите, чтобы видеть свои сделки и грузы'
-              : tab === 'deals' ? 'Пока нет сделок. Создайте груз или сделайте ставку!'
-              : tab === 'my' ? (isDriver ? 'У вас пока нет рейсов.' : 'У вас пока нет грузов.')
-              : (isDriver ? 'Вы пока не делали ставок.' : 'Пока нет входящих предложений.')}
-          </Text>
+          data?.authRequired ? (
+            <EmptyState
+              title="Войдите, чтобы продолжить"
+              description="Регистрация нужна для сделок, ставок, чата и контактов."
+              actionLabel="Войти"
+              onAction={() => navigation.navigate('Role')}
+            />
+          ) : tab === 'my' ? (
+            <EmptyState
+              title={isDriver ? 'Пока нет рейсов' : 'Пока нет грузов'}
+              description={isDriver ? 'Опубликуйте маршрут, чтобы грузоотправители предложили груз.' : 'Создайте груз, чтобы получить отклики от водителей.'}
+              actionLabel={isDriver ? 'Опубликовать маршрут' : 'Создать груз'}
+              onAction={() => navigation.navigate('Feed', { role })}
+            />
+          ) : tab === 'bids' ? (
+            <EmptyState
+              title={isDriver ? 'Пока нет ставок' : 'Пока нет откликов'}
+              description={isDriver ? 'Найдите подходящий груз и предложите цену.' : 'Отклики появятся после публикации груза.'}
+              actionLabel={isDriver ? 'Найти грузы' : 'Создать груз'}
+              onAction={() => navigation.navigate('Feed', { role })}
+            />
+          ) : (
+            <EmptyState
+              title="Пока нет заказов"
+              description="Заказы появятся после подтверждения ставки или перевозки."
+            />
+          )
         }
       />
     </SafeAreaView>
@@ -193,10 +219,10 @@ const s = StyleSheet.create({
   back: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   backText: { fontSize: 30, fontWeight: '300' },
   headerTitle: { fontSize: 17, fontWeight: '800' },
-  tabs: { flexDirection: 'row', marginHorizontal: 16, borderRadius: 12, padding: 4, marginBottom: 8 },
-  tab: { flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: 'center' },
-  tabText: { fontSize: 12, fontWeight: '700' },
-  card: { borderRadius: 14, padding: 14, borderWidth: 1, marginBottom: 10 },
+  tabs: { flexDirection: 'row', marginHorizontal: spacing.lg, borderRadius: radius.sm, padding: 3, marginBottom: spacing.sm, backgroundColor: colors.surface },
+  tab: { flex: 1, paddingVertical: spacing.sm, borderRadius: 8, alignItems: 'center' },
+  tabText: { ...typography.caption },
+  card: { borderRadius: radius.md, padding: spacing.md, borderWidth: 1, marginBottom: spacing.sm, borderColor: colors.border, backgroundColor: colors.surface },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
   route: { fontSize: 15, fontWeight: '800' },
   statusPill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },

@@ -47,10 +47,23 @@ export default function DriverDetail({ navigation, route }) {
     }
   }, [driver?.id]);
 
-  if (!driver) return null;
+  if (!driver) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={{ color: theme.textMuted, fontSize: 14 }}>Данные рейса неполные</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: 16 }}>
+          <Text style={{ color: '#22C55E', fontSize: 14, fontWeight: '600' }}>← Назад</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
 
-  const tt = driver.type || 'tent';
+  const tt = driver.type || driver.vehicle_type || 'tent';
   const accent = role === 'driver' ? '#2563EB' : '#F59E0B';
+  // Safe defaults
+  const driverName = driver.name || driver.full_name || 'Водитель';
+  const driverPhone = driver.phone || '';
+  const driverPlate = driver.plate_truck || driver.vehicle_plate || '';
 
   const openContact = async () => {
     // Контакты — самый строгий замок: требует identity (level 2)
@@ -72,11 +85,11 @@ export default function DriverDetail({ navigation, route }) {
           <View style={[s.avatar, { backgroundColor: (TCOLORS[tt] || '#666') + '20', borderColor: (TCOLORS[tt] || '#666') + '30' }]}>
             <Text style={{ fontSize: 32 }}>{FLAGS[driver.country] || '🏳️'}</Text>
           </View>
-          <Text style={[s.name, { color: theme.text }]}>{driver.name} {driver.verified && <Text style={{ color: '#2563EB' }}>✓</Text>}</Text>
+          <Text style={[s.name, { color: theme.text }]}>{driverName} {driver.verified && <Text style={{ color: '#2563EB' }}>✓</Text>}</Text>
           <View style={s.verifyBadge}>
             <Text style={[s.verifyText, { color: driver.verified ? '#22C55E' : '#F59E0B' }]}>{driver.verified ? '🟢 ' + t('verified') : '🟡 ' + t('pending')}</Text>
           </View>
-          <Text style={s.ratingText}>★ {driver.rating} <Text style={[s.reviewCount, { color: theme.textMuted }]}>({driver.reviews})</Text></Text>
+          <Text style={s.ratingText}>★ {driver.rating || '—'} <Text style={[s.reviewCount, { color: theme.textMuted }]}>({driver.reviews || 0})</Text></Text>
         </View>
 
         {/* Скоринг безопасности — публичный вид (только балл + цвет) */}
@@ -88,7 +101,7 @@ export default function DriverDetail({ navigation, route }) {
         <View style={[s.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <Text style={[s.sectionTitle, { color: theme.textMuted }]}>{t('transport')}</Text>
           <View style={s.grid}>
-            {[[t('truckType'), t(tt)], [t('volume'), driver.m3 + 'м³'], [t('tonnage'), driver.tons + 'т']].map(([l, v]) => (
+            {[[t('truckType'), t(tt)], [t('volume'), (driver.m3 || '—') + 'м³'], [t('tonnage'), (driver.tons || '—') + 'т']].map(([l, v]) => (
               <View key={l} style={s.gridItem}><Text style={[s.gridLabel, { color: theme.textMuted }]}>{l}</Text><Text style={[s.gridValue, { color: theme.text }]}>{v}</Text></View>
             ))}
           </View>
@@ -102,12 +115,7 @@ export default function DriverDetail({ navigation, route }) {
                 <Text style={{ color: '#FBBF24', fontWeight: '800' }}> · ★ {reviewsData.summary.average}</Text>
               )}
             </Text>
-            <TouchableOpacity onPress={async () => {
-              const ok = await requireLevel(LEVELS.PHONE, 'default');
-              if (ok) setRateModal(true);
-            }}>
-              <Text style={{ color: accent, fontSize: 12, fontWeight: '700' }}>+ ОТЗЫВ</Text>
-            </TouchableOpacity>
+            <Text style={{ color: theme.textDim, fontSize: 10 }}>Отзыв после завершения перевозки</Text>
           </View>
 
           {(reviewsData?.reviews?.length > 0 ? reviewsData.reviews : REVIEWS).map((r, i, arr) => {
