@@ -84,8 +84,8 @@ export default function OnboardingScreen({ navigation }) {
                 <>
                   <View style={s.ctaIcon}><Text style={{ fontSize: 20 }}>🔍</Text></View>
                   <View style={{ flex: 1 }}>
-                    <Text style={s.ctaTitle}>{t('onboarding_browse_title') || 'БЫСТРЫЙ ПРОСМОТР'}</Text>
-                    <Text style={s.ctaSub}>{t('onboarding_browse_sub') || 'Без регистрации'}</Text>
+                    <Text style={s.ctaTitle}>{t('onboarding_browse_title')}</Text>
+                    <Text style={s.ctaSub}>{t('onboarding_browse_sub')}</Text>
                   </View>
                   <Text style={s.ctaArrow}>→</Text>
                 </>
@@ -98,8 +98,8 @@ export default function OnboardingScreen({ navigation }) {
               {loading === 'driver' ? <ActivityIndicator color="#22c55e" /> : (
                 <>
                   <View style={[s.cardIconWrap, { backgroundColor: 'rgba(34,197,94,0.15)' }]}><Text style={{ fontSize: 24 }}>🚛</Text></View>
-                  <Text style={s.cardTitle}>{t('onboarding_role_driver') || 'Я перевозчик'}</Text>
-                  <Text style={s.cardSub}>{t('onboarding_role_driver_sub') || 'Брать рейсы'}</Text>
+                  <Text style={s.cardTitle}>{t('onboarding_role_driver')}</Text>
+                  <Text style={s.cardSub}>{t('onboarding_role_driver_sub')}</Text>
                 </>
               )}
             </TouchableOpacity>
@@ -107,8 +107,8 @@ export default function OnboardingScreen({ navigation }) {
               {loading === 'client' ? <ActivityIndicator color="#3b82f6" /> : (
                 <>
                   <View style={[s.cardIconWrap, { backgroundColor: 'rgba(59,130,246,0.15)' }]}><Text style={{ fontSize: 24 }}>📦</Text></View>
-                  <Text style={s.cardTitle}>{t('onboarding_role_client') || 'Я грузоотправитель'}</Text>
-                  <Text style={s.cardSub}>{t('onboarding_role_client_sub') || 'Отправить груз'}</Text>
+                  <Text style={s.cardTitle}>{t('onboarding_role_client')}</Text>
+                  <Text style={s.cardSub}>{t('onboarding_role_client_sub')}</Text>
                 </>
               )}
             </TouchableOpacity>
@@ -122,9 +122,9 @@ export default function OnboardingScreen({ navigation }) {
             </View>
             <View style={s.trustRow}>
               <Animated.View style={[s.onlineDot, { opacity: pulse }]} />
-              <Text style={s.trustText}><Text style={s.trustBold}>500+</Text> проверенных перевозчиков</Text>
+              <Text style={s.trustText}><Text style={s.trustBold}>500+</Text> {t('onboarding_trust_count')}</Text>
             </View>
-            <Text style={s.disclaimer}>{t('onboarding_legal') || 'Продолжая, вы принимаете условия'}</Text>
+            <Text style={s.disclaimer}>{t('onboarding_legal')}</Text>
           </Animated.View>
         </ScrollView>
       </SafeAreaView>
@@ -133,7 +133,7 @@ export default function OnboardingScreen({ navigation }) {
         <Pressable style={s.langBackdrop} onPress={() => setLangOpen(false)}>
           <Pressable style={s.langSheet}>
             <View style={s.langHandle} />
-            <Text style={s.langSheetTitle}>Язык</Text>
+            <Text style={s.langSheetTitle}>{t('language_label')}</Text>
             <ScrollView style={{ width: '100%' }}>
               {LANGS.map(l => (
                 <TouchableOpacity key={l.code} style={[s.langRow, l.code === currentLang.code && s.langRowActive]} onPress={() => pickLang(l.code)}>

@@ -75,7 +75,7 @@ export default function ProfileScreen({ navigation, route }) {
   const menuItems = [
     { icon: '💬', label: t('chatsSection'), value: '→', screen: 'ChatsList' },
     { icon: '⭐', label: t('myReviews'), value: '→', screen: 'Reviews' },
-    { icon: '✏️', label: t('editProfile') || 'Редактировать профиль', value: '→', screen: 'EditProfile' },
+    { icon: '✏️', label: t('editProfile'), value: '→', screen: 'EditProfile' },
   ];
 
   return (
@@ -142,19 +142,19 @@ export default function ProfileScreen({ navigation, route }) {
 
         <View style={[s.settingsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-            <Text style={[s.settingLabel, { color: theme.text }]}>Тема</Text>
+            <Text style={[s.settingLabel, { color: theme.text }]}>{t('theme_label')}</Text>
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <TouchableOpacity
                 style={{ paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8, backgroundColor: isDark ? 'transparent' : accent }}
                 onPress={() => toggleTheme()}
               >
-                <Text style={{ color: isDark ? theme.textMuted : '#fff', fontSize: 12, fontWeight: '700' }}>☀️ Светлая</Text>
+                <Text style={{ color: isDark ? theme.textMuted : '#fff', fontSize: 12, fontWeight: '700' }}>☀️ {t('theme_light')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={{ paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8, backgroundColor: isDark ? accent : 'transparent' }}
                 onPress={() => { if (!isDark) toggleTheme(); }}
               >
-                <Text style={{ color: isDark ? '#fff' : theme.textMuted, fontSize: 12, fontWeight: '700' }}>🌙 Тёмная</Text>
+                <Text style={{ color: isDark ? '#fff' : theme.textMuted, fontSize: 12, fontWeight: '700' }}>🌙 {t('theme_dark')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -199,7 +199,7 @@ export default function ProfileScreen({ navigation, route }) {
             } catch {}
           }}
         >
-          <Text style={s.updateBtnText}>🔄 Обновить приложение</Text>
+          <Text style={s.updateBtnText}>🔄 {t('profile_update_app')}</Text>
           <Text style={{ color: theme.textMuted, fontSize: 10, marginTop: 2 }}>v1.0.50 · 17.04.2026</Text>
         </TouchableOpacity>
 

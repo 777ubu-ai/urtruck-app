@@ -72,15 +72,15 @@ function MainTabs({ route }) {
     >
       <Tab.Screen name="Feed" component={FeedScreen} initialParams={{ role }}
         options={{
-          tabBarLabel: role === 'driver' ? 'Грузы' : 'Машины',
+          tabBarLabel: role === 'driver' ? t('tab_feed') : t('tab_feed_client'),
           tabBarIcon: ({ color }) => <Text style={{ fontSize: 20, color }}>{role === 'driver' ? '📦' : '🚛'}</Text>,
         }}
       />
       <Tab.Screen name="MyTripsList" component={MyTripsScreen} initialParams={{ role }}
-        options={{ tabBarLabel: 'Моя работа', tabBarIcon: ({ color }) => <Text style={{ fontSize: 20, color }}>📋</Text> }}
+        options={{ tabBarLabel: t('tab_my_work'), tabBarIcon: ({ color }) => <Text style={{ fontSize: 20, color }}>📋</Text> }}
       />
       <Tab.Screen name="Profile" component={ProfileScreen} initialParams={{ role }}
-        options={{ tabBarLabel: 'Профиль', tabBarIcon: ({ color }) => <Text style={{ fontSize: 20, color }}>👤</Text> }}
+        options={{ tabBarLabel: t('tab_profile'), tabBarIcon: ({ color }) => <Text style={{ fontSize: 20, color }}>👤</Text> }}
       />
     </Tab.Navigator>
   );

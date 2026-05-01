@@ -1,6 +1,8 @@
 const { test, expect } = require('@playwright/test');
 
-const BASE = 'https://urtruck.kz/?v=playwright-safe-smoke';
+// Safe tests: run locally or against live site.
+// Local: E2E_BASE_URL=http://127.0.0.1:4173 npx playwright test
+const BASE = (process.env.E2E_BASE_URL || 'https://urtruck.kz') + '/?v=playwright-safe-smoke';
 
 async function mockDriverBackend(page) {
   await page.route('**/api/v1/register/guest', async route => {
@@ -75,7 +77,7 @@ test('driver flow opens feed without live backend', async ({ page }) => {
   await mockDriverBackend(page);
 
   await page.goto(BASE, { waitUntil: 'networkidle' });
-  await page.getByText(/Я водитель|Driver|Водитель/).click();
+  await page.getByText(/Я водитель|I'm a driver|我是司机|Мен жүргізушімін|Я перевозчик|carrier/i).click();
   await page.waitForTimeout(2500);
 
   await expect(page.getByText(/Грузы|Cargos/).first()).toBeVisible({ timeout: 15000 });
@@ -86,7 +88,7 @@ test('click first cargo card does not crash without live backend', async ({ page
   await mockDriverBackend(page);
 
   await page.goto(BASE, { waitUntil: 'networkidle' });
-  await page.getByText(/Я водитель|Driver|Водитель/).click();
+  await page.getByText(/Я водитель|I'm a driver|我是司机|Мен жүргізушімін|Я перевозчик|carrier/i).click();
   await page.waitForTimeout(2500);
 
   await page.getByText('Playwright тестовый груз').click();

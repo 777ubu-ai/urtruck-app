@@ -4,13 +4,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 
-// В реальном приложении — загрузка из БД
+// Demo reviews — neutral content (stars/dates), shown until real reviews arrive from API
 const REVIEWS = [
-  { id: 'r1', user: 'Бахытжан', route: 'Иу → Алматы', rating: 5, text: 'Довёз быстро, аккуратный. Всё как договаривались.', ago: '2 нед', amount: 3200 },
-  { id: 'r2', user: 'Asia Import', route: 'Гуанчжоу → Ташкент', rating: 5, text: 'Всё чётко, рекомендую. Фото груза присылал регулярно.', ago: '1 мес', amount: 4500 },
-  { id: 'r3', user: 'CargoLine', route: 'Шэньчжэнь → Москва', rating: 4, text: 'Задержался на границе, но предупредил. В целом — нормально.', ago: '1 мес', amount: 5800 },
-  { id: 'r4', user: 'МегаТорг', route: 'Иу → Бишкек', rating: 5, text: 'Супер. Груз в целости, сроки выдержал.', ago: '2 мес', amount: 2800 },
-  { id: 'r5', user: 'ТОО Каспий', route: 'Ханчжоу → Алматы', rating: 5, text: 'Отличный водитель. Буду работать ещё.', ago: '3 мес', amount: 3500 },
+  { id: 'r1', user: 'B. K.',       route: 'Yiwu → Almaty',     rating: 5, text: '★★★★★', ago: '2w', amount: 3200 },
+  { id: 'r2', user: 'Asia Import', route: 'Guangzhou → Tashkent', rating: 5, text: '★★★★★', ago: '1m', amount: 4500 },
+  { id: 'r3', user: 'CargoLine',   route: 'Shenzhen → Moscow',  rating: 4, text: '★★★★',  ago: '1m', amount: 5800 },
+  { id: 'r4', user: 'MegaTorg',    route: 'Yiwu → Bishkek',     rating: 5, text: '★★★★★', ago: '2m', amount: 2800 },
+  { id: 'r5', user: 'Caspian Co.', route: 'Hangzhou → Almaty',  rating: 5, text: '★★★★★', ago: '3m', amount: 3500 },
 ];
 
 export default function ReviewsScreen({ navigation, route }) {

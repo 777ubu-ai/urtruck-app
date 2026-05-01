@@ -9,16 +9,16 @@ import { colors, radius, spacing, typography } from '../theme/theme';
 const HERO = require('../../assets/hero.jpg');
 const LOGO = require('../../assets/logo.jpg');
 
-const ROLES = [
-  { key: 'driver', icon: 'D', color: colors.green, bg: colors.greenMuted, title: 'Я водитель', desc: 'Найти груз и не ехать порожняком' },
-  { key: 'client', icon: 'G', color: colors.orange, bg: colors.orangeMuted, title: 'Я грузовладелец', desc: 'Найти машину и получить ставки' },
+const buildRoles = (t) => [
+  { key: 'driver', icon: 'D', color: colors.green,  bg: colors.greenMuted,  title: t('role_driver_title'), desc: t('role_driver_desc') },
+  { key: 'client', icon: 'G', color: colors.orange, bg: colors.orangeMuted, title: t('role_client_title'), desc: t('role_client_desc') },
 ];
 
-const FEATURES = [
-  { label: 'Проверенные перевозчики' },
-  { label: 'Сделки и статусы' },
-  { label: 'Чат с переводом' },
-  { label: 'Международные маршруты' },
+const buildFeatures = (t) => [
+  { label: t('role_feature_verified') },
+  { label: t('role_feature_deals') },
+  { label: t('role_feature_chat') },
+  { label: t('role_feature_routes') },
 ];
 
 export default function RoleScreen({ navigation }) {
@@ -26,6 +26,8 @@ export default function RoleScreen({ navigation }) {
   const { signIn, setRole, ensureGuest, hasToken } = useAuth();
   const [loading, setLoading] = useState(null);
   const [error, setError] = useState('');
+  const ROLES = buildRoles(t);
+  const FEATURES = buildFeatures(t);
 
   const enterAs = async (role) => {
     setLoading(role);
@@ -77,8 +79,8 @@ export default function RoleScreen({ navigation }) {
         </View>
 
         {/* Headline */}
-        <Text style={s.headline}>Международная логистика без лишних посредников</Text>
-        <Text style={s.subline}>Грузы, машины, ставки, сделки и чат с переводом — в одном приложении.</Text>
+        <Text style={s.headline}>{t('role_screen_headline')}</Text>
+        <Text style={s.subline}>{t('role_screen_subline')}</Text>
 
         {error ? <Text style={s.error}>{error}</Text> : null}
 

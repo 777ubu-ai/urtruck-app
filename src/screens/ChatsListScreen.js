@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, FlatList, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../utils/ThemeContext';
+import { useI18n } from '../utils/useI18n';
 import { chatAPI } from '../utils/chatAPI';
 import { API_BASE } from '../config/env';
 
 export default function ChatsListScreen({ navigation, route }) {
   const { role } = route.params || {};
   const { theme } = useTheme();
+  const { t } = useI18n();
   const [rooms, setRooms] = useState([]);
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -47,7 +49,7 @@ export default function ChatsListScreen({ navigation, route }) {
     <TouchableOpacity
       style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]}
       onPress={() => navigation.navigate('Chat', {
-        partner: { id: item.partner_id, name: item.partner_name || 'Собеседник' },
+        partner: { id: item.partner_id, name: item.partner_name || t('chat_partner_fallback') },
         role,
       })}
     >
@@ -73,15 +75,15 @@ export default function ChatsListScreen({ navigation, route }) {
         <TouchableOpacity onPress={() => navigation.goBack()} style={s.back}>
           <Text style={[s.backText, { color: theme.text }]}>‹</Text>
         </TouchableOpacity>
-        <Text style={[s.headerTitle, { color: theme.text }]}>💬 Чаты</Text>
+        <Text style={[s.headerTitle, { color: theme.text }]}>💬 {t('chats_title')}</Text>
         <View style={{ width: 44 }} />
       </View>
 
       <FlatList
         data={[
-          { type: 'header', key: 'h1', title: '🤖 Всегда онлайн' },
+          { type: 'header', key: 'h1', title: '🤖 ' + t('always_online') },
           ...contacts.map(c => ({ ...c, type: 'contact', key: c.id })),
-          { type: 'header', key: 'h2', title: '💬 Диалоги' },
+          { type: 'header', key: 'h2', title: '💬 ' + t('dialogs') },
           ...rooms.map(r => ({ ...r, type: 'room', key: r.id })),
         ]}
         keyExtractor={i => i.key || i.id}
@@ -96,7 +98,7 @@ export default function ChatsListScreen({ navigation, route }) {
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
         ListEmptyComponent={
           <Text style={{ color: theme.textMuted, textAlign: 'center', marginTop: 40 }}>
-            Напишите кому-нибудь — чат появится здесь
+            {t('chats_empty')}
           </Text>
         }
       />

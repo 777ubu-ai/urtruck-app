@@ -3,18 +3,21 @@ import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing } from 'reac
 import { regAPI } from '../utils/registration';
 import { useTheme } from '../utils/ThemeContext';
 import { useAuth } from '../utils/AuthContext';
+import { useI18n } from '../utils/useI18n';
 
-const CONFIG = {
-  pending:        { color: '#F59E0B', emoji: '⏳', title: 'Документы на проверке', body: 'Ответ в течение часа. Можно пока смотреть ленту.' },
-  under_review:   { color: '#F59E0B', emoji: '⏳', title: 'На автомодерации', body: 'Проверяем документы, это займёт до 2 минут.' },
-  manual_review:  { color: '#F59E0B', emoji: '👨‍💼', title: 'Ручная проверка модератором', body: 'Ответ в течение часа. Мы отправим push-уведомление.' },
-  approved:       { color: '#22C55E', emoji: '✅', title: 'Одобрено', body: 'Документы приняты. Можно работать!' },
-  rejected:       { color: '#EF4444', emoji: '⛔', title: 'Отклонено', body: 'Проверьте причину в профиле и попробуйте снова.' },
-};
+const buildConfig = (t) => ({
+  pending:        { color: '#F59E0B', emoji: '⏳',     title: t('vsb_pending_title'),       body: t('vsb_pending_body') },
+  under_review:   { color: '#F59E0B', emoji: '⏳',     title: t('vsb_under_review_title'),  body: t('vsb_under_review_body') },
+  manual_review:  { color: '#F59E0B', emoji: '👨‍💼', title: t('vsb_manual_review_title'), body: t('vsb_manual_review_body') },
+  approved:       { color: '#22C55E', emoji: '✅',     title: t('vsb_approved_title'),      body: t('vsb_approved_body') },
+  rejected:       { color: '#EF4444', emoji: '⛔',     title: t('vsb_rejected_title'),      body: t('vsb_rejected_body') },
+});
 
 export default function VerificationStatusBanner() {
   const { theme, isDark } = useTheme();
   const { verificationLevel, hasToken } = useAuth();
+  const { t } = useI18n();
+  const CONFIG = buildConfig(t);
   const [status, setStatus] = useState(null);
   const [hidden, setHidden] = useState(false);
   const slide = useRef(new Animated.Value(-60)).current;

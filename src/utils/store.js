@@ -22,11 +22,12 @@ let trips = [
 export const getTrips = () => trips;
 export const getTrip = (id) => trips.find(t => t.id === id);
 export const TRIP_STATES = ['planned', 'picked_up', 'in_transit', 'delivered'];
+// Labels use i18n keys — resolved at render time via t()
 export const TRIP_STATE_INFO = {
-  planned:    { icon: '📝', label: 'Запланирован', color: '#78716C' },
-  picked_up:  { icon: '📦', label: 'Груз принят',  color: '#F59E0B' },
-  in_transit: { icon: '🚛', label: 'В пути',       color: '#2563EB' },
-  delivered:  { icon: '✅', label: 'Доставлен',    color: '#22C55E' },
+  planned:    { icon: '📝', labelKey: 'trip_planned',        color: '#78716C' },
+  picked_up:  { icon: '📦', labelKey: 'trip_cargo_accepted', color: '#F59E0B' },
+  in_transit: { icon: '🚛', labelKey: 'trip_in_transit',     color: '#2563EB' },
+  delivered:  { icon: '✅', labelKey: 'trip_delivered',      color: '#22C55E' },
 };
 
 export const addTrip = (t) => {

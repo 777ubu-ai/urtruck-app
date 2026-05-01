@@ -13,22 +13,22 @@ import GradientText from '../components/GradientText';
 import { translit, hasCyrillic } from '../utils/translit';
 import { compressImage } from '../utils/imageCompress';
 
-const STEPS = [
-  { id: 1, name: 'WhatsApp', icon: '💬' },
-  { id: 2, name: 'Личность', icon: '🤳' },
-  { id: 3, name: 'Документы', icon: '📄' },
-  { id: 4, name: 'Транспорт', icon: '🚛' },
-  { id: 5, name: 'Готово', icon: '✅' },
+const buildSteps = (t) => [
+  { id: 1, name: t('reg_step_whatsapp'),  icon: '💬' },
+  { id: 2, name: t('reg_step_identity'),  icon: '🤳' },
+  { id: 3, name: t('reg_step_documents'), icon: '📄' },
+  { id: 4, name: t('reg_step_transport'), icon: '🚛' },
+  { id: 5, name: t('reg_step_done'),      icon: '✅' },
 ];
 
-const VEHICLE_TYPES = [
-  { key: 'tent', label: 'Тент', icon: '🚚' },
-  { key: 'ref', label: 'Рефрижератор', icon: '🧊' },
-  { key: 'platform', label: 'Площадка', icon: '🛻' },
-  { key: 'cont40', label: 'Контейнер', icon: '📦' },
-  { key: 'tanker', label: 'Цистерна', icon: '🛢️' },
-  { key: 'auto', label: 'Автовоз', icon: '🚗' },
-  { key: 'van', label: 'Фургон', icon: '🚐' },
+const buildVehicleTypes = (t) => [
+  { key: 'tent',     label: t('reg_vehicle_tent'),     icon: '🚚' },
+  { key: 'ref',      label: t('reg_vehicle_ref'),      icon: '🧊' },
+  { key: 'platform', label: t('reg_vehicle_platform'), icon: '🛻' },
+  { key: 'cont40',   label: t('reg_vehicle_cont40'),   icon: '📦' },
+  { key: 'tanker',   label: t('reg_vehicle_tanker'),   icon: '🛢️' },
+  { key: 'auto',     label: t('reg_vehicle_auto'),     icon: '🚗' },
+  { key: 'van',      label: t('reg_vehicle_van'),      icon: '🚐' },
 ];
 
 export default function RegScreen({ navigation, route }) {
@@ -39,6 +39,8 @@ export default function RegScreen({ navigation, route }) {
   const { theme } = useTheme();
   const { session, setRole, verificationLevel } = useAuth();
   const { toast } = useToast();
+  const STEPS = buildSteps(t);
+  const VEHICLE_TYPES = buildVehicleTypes(t);
 
   // Если юзер уже прошёл Auth через OTP (level >= 1), шаг WhatsApp пропускаем
   const initialStep = verificationLevel >= 1 ? 2 : 1;
@@ -128,28 +130,28 @@ export default function RegScreen({ navigation, route }) {
   };
 
   const onSendCode = async () => {
-    if (phone.length < 10) { toast('Введите номер', 'error'); return; }
+    if (phone.length < 10) { toast(t('reg_enter_phone'), 'error'); return; }
     setLoading(true);
     const r = await regAPI.sendCode(phone);
     setLoading(false);
     if (r.sent) {
       if (r.code) setMockCode(r.code);
-      toast(r.mock ? `💬 MOCK: код ${r.code}` : '💬 Код отправлен в WhatsApp', 'success', 5000);
+      toast(r.mock ? `💬 ${t('reg_mock_code_toast')} ${r.code}` : '💬 ' + t('reg_code_sent_wa'), 'success', 5000);
     } else {
       toast(t('send_error'), 'error');
     }
   };
 
   const onVerifyCode = async () => {
-    if (code.length < 4) { toast('Введите код', 'error'); return; }
+    if (code.length < 4) { toast(t('reg_enter_code'), 'error'); return; }
     setLoading(true);
     const r = await regAPI.verifyCode(phone, code);
     setLoading(false);
     if (r.token) {
-      toast('✓ WhatsApp подтверждён', 'success');
+      toast('✓ ' + t('reg_wa_confirmed'), 'success');
       setStep(2);
     } else {
-      toast(r.detail || 'Неверный код', 'error');
+      toast(r.detail || t('reg_wrong_code'), 'error');
     }
   };
 
@@ -160,7 +162,7 @@ export default function RegScreen({ navigation, route }) {
     setNameErr(nErr);
     setIinErr(iErr);
     if (nErr || iErr) {
-      toast('⚠ Проверьте ФИО и ИИН', 'error', 3500);
+      toast('⚠ ' + t('reg_check_name_iin'), 'error', 3500);
       return;
     }
     // Камера для селфи (фронтальная), галерея fallback
@@ -174,10 +176,10 @@ export default function RegScreen({ navigation, route }) {
       const r = await regAPI.uploadSelfie(iin, latinName, uri, setUploadStage);
       setFaceResult(r);
       if (r.face_verified) {
-        toast(`✓ Селфи подтверждено (${Math.round((r.liveness_confidence || 0) * 100)}%)`, 'success');
+        toast(`✓ ${t('reg_selfie_confirmed')} (${Math.round((r.liveness_confidence || 0) * 100)}%)`, 'success');
         setStep(3);
       } else {
-        toast(r.detail || '⚠ Плохое фото. Попробуйте при хорошем освещении', 'warn', 5000);
+        toast(r.detail || '⚠ ' + t('reg_selfie_bad_photo'), 'warn', 5000);
       }
     } catch (e) {
       toast(t('send_error') + ': ' + (e.message || e), 'error');
@@ -195,8 +197,8 @@ export default function RegScreen({ navigation, route }) {
     try {
       const r = await regAPI.uploadLicense(uri, setUploadStage);
       setLicenseData(r);
-      if (r.verified) toast(`✓ Права: ${(r.categories || []).join(', ') || 'OK'}`, 'success');
-      else toast('⚠ Распознавание неполное — можно продолжить', 'warn');
+      if (r.verified) toast(`✓ ${t('reg_license_ok')}: ${(r.categories || []).join(', ') || 'OK'}`, 'success');
+      else toast('⚠ ' + t('reg_license_partial'), 'warn');
     } catch (e) {
       toast(t('generic_error') + ': ' + (e.message || e), 'error');
     } finally {
@@ -217,7 +219,7 @@ export default function RegScreen({ navigation, route }) {
         toast(`✓ ${r.extracted?.plate_number || ''} · ${r.extracted?.year || ''}`, 'success');
         if (licenseUri) setStep(4);
       } else {
-        toast('⚠ Низкая уверенность OCR', 'warn');
+        toast('⚠ ' + t('reg_ocr_low_conf'), 'warn');
       }
     } catch (e) {
       toast(t('generic_error') + ': ' + (e.message || e), 'error');
@@ -267,11 +269,11 @@ export default function RegScreen({ navigation, route }) {
         security_score: r.security_score,
         security_color: r.security_color,
       });
-      setTimeout(() => { setRole('driver'); toast('🎉 Регистрация завершена', 'success'); }, 2500);
+      setTimeout(() => { setRole('driver'); toast('🎉 ' + t('reg_complete_toast'), 'success'); }, 2500);
     } else if (r.status === 'rejected') {
-      toast(`⛔ Отклонено: ${r.rejected_reason}`, 'error', 8000);
+      toast(`⛔ ${t('reg_rejected_toast')}: ${r.rejected_reason}`, 'error', 8000);
     } else {
-      toast('⏳ Ручная проверка модератором', 'info', 5000);
+      toast('⏳ ' + t('reg_manual_review_toast'), 'info', 5000);
     }
   };
 
@@ -293,7 +295,7 @@ export default function RegScreen({ navigation, route }) {
         </View>
 
         <GradientText style={s.heading} colors={[accent, '#22C55E']}>
-          {step === 1 ? '💬 Вход через WhatsApp' : step === 2 ? '🤳 Кто вы?' : step === 3 ? '📄 Документы' : step === 4 ? '🚛 Транспорт' : '✅ Проверка'}
+          {step === 1 ? '💬 ' + t('reg_heading_step1') : step === 2 ? '🤳 ' + t('reg_heading_step2') : step === 3 ? '📄 ' + t('reg_heading_step3') : step === 4 ? '🚛 ' + t('reg_heading_step4') : '✅ ' + t('reg_heading_step5')}
         </GradientText>
 
         {/* STEP 1: WhatsApp */}
@@ -302,7 +304,7 @@ export default function RegScreen({ navigation, route }) {
             {!mockCode ? (
               <>
                 <Text style={[s.hint, { color: theme.textMuted }]}>
-                  Введите номер телефона. Мы отправим код в WhatsApp.
+                  {t('reg_phone_hint')}
                 </Text>
                 <TextInput
                   style={[s.bigInput, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border }]}
@@ -313,16 +315,16 @@ export default function RegScreen({ navigation, route }) {
                   onChangeText={setPhone}
                 />
                 <ShimmerButton onPress={onSendCode} colors={[accent, '#22C55E']} disabled={loading}>
-                  {loading ? <ActivityIndicator color="#fff" /> : '💬 Получить код'}
+                  {loading ? <ActivityIndicator color="#fff" /> : '💬 ' + t('reg_get_code_btn')}
                 </ShimmerButton>
               </>
             ) : (
               <>
                 <Text style={[s.hint, { color: theme.textMuted }]}>
-                  Код отправлен на {phone}. Он действителен 5 минут.
+                  {t('reg_code_hint_part1')} {phone}. {t('reg_code_hint_part2')}
                 </Text>
                 <View style={[s.mockBox, { backgroundColor: '#F59E0B20', borderColor: '#F59E0B' }]}>
-                  <Text style={s.mockText}>🧪 MOCK режим · код: {mockCode}</Text>
+                  <Text style={s.mockText}>🧪 {t('reg_mock_label')}: {mockCode}</Text>
                 </View>
                 <TextInput
                   style={[s.codeInput, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border }]}
@@ -335,10 +337,10 @@ export default function RegScreen({ navigation, route }) {
                   autoFocus
                 />
                 <ShimmerButton onPress={onVerifyCode} colors={[accent, '#22C55E']} disabled={loading}>
-                  {loading ? <ActivityIndicator color="#fff" /> : '✓ Подтвердить'}
+                  {loading ? <ActivityIndicator color="#fff" /> : '✓ ' + t('reg_confirm_btn')}
                 </ShimmerButton>
                 <TouchableOpacity style={s.link} onPress={() => { setMockCode(null); setCode(''); }}>
-                  <Text style={{ color: theme.textMuted, fontSize: 13 }}>← Изменить номер</Text>
+                  <Text style={{ color: theme.textMuted, fontSize: 13 }}>← {t('reg_change_phone')}</Text>
                 </TouchableOpacity>
               </>
             )}
@@ -350,12 +352,12 @@ export default function RegScreen({ navigation, route }) {
           <View>
             {/* Блок 1: Личные данные */}
             <View style={[s.blockCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <Text style={[s.blockTitle, { color: theme.text }]}>① Ваши данные</Text>
+              <Text style={[s.blockTitle, { color: theme.text }]}>① {t('reg_block1_title')}</Text>
               <Text style={[s.blockHint, { color: theme.textMuted }]}>
-                Нужны для подтверждения личности и международных перевозок
+                {t('reg_block1_hint')}
               </Text>
 
-              <Text style={[s.label, { color: theme.textMuted }]}>ФИО (как в паспорте) *</Text>
+              <Text style={[s.label, { color: theme.textMuted }]}>{t('reg_field_fullname')} *</Text>
               <TextInput
                 style={[s.input, {
                   backgroundColor: theme.bg,
@@ -363,7 +365,7 @@ export default function RegScreen({ navigation, route }) {
                   borderColor: nameErr ? '#EF4444' : theme.border,
                   borderWidth: nameErr ? 2 : 1,
                 }]}
-                placeholder="Каримов Ержан Сабитұлы" placeholderTextColor={theme.textMuted}
+                placeholderTextColor={theme.textMuted}
                 value={fullName}
                 onChangeText={(v) => { setFullName(v); if (nameErr) setNameErr(validateName(v)); }}
                 onBlur={() => setNameErr(validateName(fullName))}
@@ -371,11 +373,11 @@ export default function RegScreen({ navigation, route }) {
               {nameErr && <Text style={s.fieldErr}>⚠️ {nameErr}</Text>}
               {!nameErr && hasCyrillic(fullName) && (
                 <Text style={[s.translitHint, { color: accent }]}>
-                  🌐 Латиница: <Text style={{ fontWeight: '700' }}>{translit(fullName)}</Text>
+                  🌐 {t('reg_field_latin')}: <Text style={{ fontWeight: '700' }}>{translit(fullName)}</Text>
                 </Text>
               )}
 
-              <Text style={[s.label, { color: theme.textMuted, marginTop: 10 }]}>ИИН (12 цифр) *</Text>
+              <Text style={[s.label, { color: theme.textMuted, marginTop: 10 }]}>{t('reg_field_iin')} *</Text>
               <TextInput
                 style={[s.input, {
                   backgroundColor: theme.bg,
@@ -398,14 +400,13 @@ export default function RegScreen({ navigation, route }) {
 
             {/* Блок 2: Селфи */}
             <View style={[s.blockCard, { backgroundColor: theme.card, borderColor: theme.border, marginTop: 14 }]}>
-              <Text style={[s.blockTitle, { color: theme.text }]}>② Селфи для Liveness</Text>
+              <Text style={[s.blockTitle, { color: theme.text }]}>② {t('reg_block2_title')}</Text>
               <Text style={[s.blockHint, { color: theme.textMuted }]}>
-                Фото вашего лица. Это не фото документа — это селфи для подтверждения что вы живой человек.
-                Смотрите прямо в камеру, без головного убора и очков.
+                {t('reg_block2_hint')}
               </Text>
               <View style={[s.tipRow, { backgroundColor: `${accent}12` }]}>
                 <Text style={[s.tipText, { color: accent }]}>
-                  💡 Хорошее освещение · лицо полностью в кадре · без других людей рядом
+                  💡 {t('reg_block2_tip')}
                 </Text>
               </View>
 
@@ -420,7 +421,7 @@ export default function RegScreen({ navigation, route }) {
                     <Image source={{ uri: selfieUri }} style={s.selfiePreview} />
                     <View style={{ flex: 1 }}>
                       <Text style={s.selfieBtnTitle}>
-                        {faceResult?.face_verified ? '✓ Селфи подтверждено' : 'Переснять селфи'}
+                        {faceResult?.face_verified ? '✓ ' + t('reg_selfie_done') : t('reg_selfie_retake')}
                       </Text>
                       {faceResult?.face_verified && (
                         <Text style={s.selfieBtnSub}>
@@ -433,7 +434,7 @@ export default function RegScreen({ navigation, route }) {
                   <>
                     <Text style={{ fontSize: 30 }}>🤳</Text>
                     <Text style={s.selfieBtnTitle}>
-                      {loading ? (uploadStage === 'compressing' ? 'Сжимаю фото...' : 'Загружаю...') : 'Сделать селфи'}
+                      {loading ? (uploadStage === 'compressing' ? t('reg_selfie_compressing') : t('reg_selfie_uploading')) : t('reg_selfie_take')}
                     </Text>
                   </>
                 )}
@@ -444,7 +445,7 @@ export default function RegScreen({ navigation, route }) {
             {uploadStage && (
               <View style={[s.progressBar, { backgroundColor: theme.card }]}>
                 <Text style={[s.progressText, { color: accent }]}>
-                  {uploadStage === 'compressing' ? '⚙️ Сжатие изображения для ускорения...' : '☁️ Отправка на сервер...'}
+                  {uploadStage === 'compressing' ? '⚙️ ' + t('reg_compressing_full') : '☁️ ' + t('reg_uploading_full')}
                 </Text>
               </View>
             )}
@@ -455,15 +456,14 @@ export default function RegScreen({ navigation, route }) {
         {step === 3 && (
           <View>
             <Text style={[s.blockHint, { color: theme.textMuted, textAlign: 'center', marginBottom: 12 }]}>
-              📸 Это фото <Text style={{ fontWeight: '700', color: theme.text }}>документов</Text>, не селфи.
-              Ложите документ на ровную поверхность при ярком свете.
+              📸 {t('reg_docs_intro_part1')} <Text style={{ fontWeight: '700', color: theme.text }}>{t('reg_docs_intro_doc_word')}</Text>{t('reg_docs_intro_part2')}
             </Text>
 
             {/* Права */}
             <View style={[s.blockCard, { backgroundColor: theme.card, borderColor: licenseData?.verified ? '#22C55E' : theme.border }]}>
-              <Text style={[s.blockTitle, { color: theme.text }]}>🪪 Водительские права</Text>
+              <Text style={[s.blockTitle, { color: theme.text }]}>🪪 {t('reg_doc_license_title')}</Text>
               <Text style={[s.blockHint, { color: theme.textMuted }]}>
-                Лицевая сторона с фото, категориями и датами. Мы автоматически распознаем стаж и категории.
+                {t('reg_doc_license_hint')}
               </Text>
               <TouchableOpacity
                 style={[s.docUploadBtn, { backgroundColor: theme.bg, borderColor: licenseData?.verified ? '#22C55E' : accent }]}
@@ -477,17 +477,17 @@ export default function RegScreen({ navigation, route }) {
                 )}
                 <View style={{ flex: 1 }}>
                   <Text style={[s.docTitle, { color: theme.text }]}>
-                    {licenseUri ? 'Переснять' : 'Загрузить фото прав'}
+                    {licenseUri ? t('reg_doc_retake') : t('reg_doc_upload_license')}
                   </Text>
                   {licenseData?.verified ? (
                     <Text style={[s.docDesc, { color: '#22C55E' }]}>
-                      ✓ Категории: {(licenseData.categories || []).join(', ')}
-                      {licenseData.experience_years ? ` · стаж ${licenseData.experience_years} лет` : ''}
+                      ✓ {t('reg_doc_categories')}: {(licenseData.categories || []).join(', ')}
+                      {licenseData.experience_years ? ` · ${t('reg_doc_experience_years')} ${licenseData.experience_years} ${t('reg_doc_years_short')}` : ''}
                     </Text>
                   ) : licenseData ? (
-                    <Text style={[s.docDesc, { color: '#F59E0B' }]}>⚠ OCR не полный — можно продолжить</Text>
+                    <Text style={[s.docDesc, { color: '#F59E0B' }]}>⚠ {t('reg_doc_ocr_partial')}</Text>
                   ) : (
-                    <Text style={[s.docDesc, { color: theme.textMuted }]}>JPG/PNG до 10 МБ</Text>
+                    <Text style={[s.docDesc, { color: theme.textMuted }]}>{t('reg_doc_format_hint')}</Text>
                   )}
                 </View>
               </TouchableOpacity>
@@ -495,9 +495,9 @@ export default function RegScreen({ navigation, route }) {
 
             {/* Техпаспорт */}
             <View style={[s.blockCard, { backgroundColor: theme.card, borderColor: passportData?.verified ? '#22C55E' : theme.border, marginTop: 14 }]}>
-              <Text style={[s.blockTitle, { color: theme.text }]}>📄 Техпаспорт (СТС)</Text>
+              <Text style={[s.blockTitle, { color: theme.text }]}>📄 {t('reg_doc_passport_title')}</Text>
               <Text style={[s.blockHint, { color: theme.textMuted }]}>
-                Лицевая сторона с номером, VIN, маркой и годом. Это документ на автомобиль, не ваше удостоверение.
+                {t('reg_doc_passport_hint')}
               </Text>
               <TouchableOpacity
                 style={[s.docUploadBtn, { backgroundColor: theme.bg, borderColor: passportData?.verified ? '#22C55E' : accent }]}
@@ -511,14 +511,14 @@ export default function RegScreen({ navigation, route }) {
                 )}
                 <View style={{ flex: 1 }}>
                   <Text style={[s.docTitle, { color: theme.text }]}>
-                    {passportUri ? 'Переснять' : 'Загрузить техпаспорт'}
+                    {passportUri ? t('reg_doc_retake') : t('reg_doc_upload_passport')}
                   </Text>
                   {passportData?.verified ? (
                     <Text style={[s.docDesc, { color: '#22C55E' }]}>
                       ✓ {passportData.extracted?.plate_number || ''} · {passportData.extracted?.brand || ''} {passportData.extracted?.year || ''}
                     </Text>
                   ) : (
-                    <Text style={[s.docDesc, { color: theme.textMuted }]}>Извлечём номер, марку, год</Text>
+                    <Text style={[s.docDesc, { color: theme.textMuted }]}>{t('reg_doc_passport_extract')}</Text>
                   )}
                 </View>
               </TouchableOpacity>
@@ -535,7 +535,7 @@ export default function RegScreen({ navigation, route }) {
 
             {licenseUri && passportUri && !loading && (
               <ShimmerButton onPress={() => setStep(4)} colors={[accent, '#22C55E']} style={{ marginTop: 14 }}>
-                Дальше → Транспорт
+                {t('reg_next_to_transport')}
               </ShimmerButton>
             )}
           </View>
@@ -544,7 +544,7 @@ export default function RegScreen({ navigation, route }) {
         {/* STEP 4: Vehicle */}
         {step === 4 && (
           <View>
-            <Text style={[s.label, { color: theme.textMuted }]}>Тип кузова</Text>
+            <Text style={[s.label, { color: theme.textMuted }]}>{t('reg_truck_body_label')}</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
               {VEHICLE_TYPES.map(v => (
                 <TouchableOpacity key={v.key}
@@ -556,7 +556,7 @@ export default function RegScreen({ navigation, route }) {
               ))}
             </ScrollView>
 
-            <Text style={[s.label, { color: theme.textMuted, marginTop: 16 }]}>Грузоподъёмность (кг)</Text>
+            <Text style={[s.label, { color: theme.textMuted, marginTop: 16 }]}>{t('reg_capacity_label')}</Text>
             <TextInput style={[s.input, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border }]}
               placeholder="22000" placeholderTextColor={theme.textMuted}
               keyboardType="number-pad" value={capacityKg} onChangeText={setCapacityKg} />
@@ -571,7 +571,7 @@ export default function RegScreen({ navigation, route }) {
                 try {
                   const compressed = await compressImage(uri, { maxSide: 1200, quality: 0.7 });
                   setVehiclePhoto(compressed);
-                  toast('✓ Фото готово', 'success', 1500);
+                  toast('✓ ' + t('reg_photo_ready'), 'success', 1500);
                 } catch (e) {
                   setVehiclePhoto(uri); // fallback — без сжатия
                 } finally {
@@ -582,10 +582,10 @@ export default function RegScreen({ navigation, route }) {
             >
               {vehiclePhoto ? <Image source={{ uri: vehiclePhoto }} style={s.docImg} /> : <Text style={{ fontSize: 40 }}>📸</Text>}
               <View style={{ flex: 1 }}>
-                <Text style={[s.docTitle, { color: theme.text }]}>Фото автомобиля</Text>
+                <Text style={[s.docTitle, { color: theme.text }]}>{t('reg_vehicle_photo_title')}</Text>
                 <Text style={[s.docDesc, { color: theme.textMuted }]}>
-                  {uploadStage === 'compressing' ? '⚙️ Сжатие...' :
-                   vehiclePhoto ? '✓ Готово' : 'Покажите ваш грузовик'}
+                  {uploadStage === 'compressing' ? '⚙️ ' + t('reg_vehicle_compressing') :
+                   vehiclePhoto ? '✓ ' + t('reg_vehicle_done') : t('reg_vehicle_show_truck')}
                 </Text>
               </View>
               {uploadStage === 'compressing' && <ActivityIndicator color={accent} />}
@@ -594,12 +594,12 @@ export default function RegScreen({ navigation, route }) {
             {uploadStage === 'uploading' && (
               <View style={[s.progressBar, { backgroundColor: theme.card, marginTop: 10 }]}>
                 <ActivityIndicator color={accent} style={{ marginRight: 8 }} />
-                <Text style={[s.progressText, { color: accent }]}>☁️ Отправляю на сервер...</Text>
+                <Text style={[s.progressText, { color: accent }]}>☁️ {t('reg_uploading_short')}</Text>
               </View>
             )}
 
             <ShimmerButton onPress={onVehicle} colors={[accent, '#22C55E']} style={{ marginTop: 14 }} disabled={loading || uploadStage !== null}>
-              {loading ? <ActivityIndicator color="#fff" /> : 'Дальше → Проверка'}
+              {loading ? <ActivityIndicator color="#fff" /> : t('reg_next_to_check')}
             </ShimmerButton>
           </View>
         )}
@@ -611,17 +611,13 @@ export default function RegScreen({ navigation, route }) {
               <>
                 <View style={[s.modBox, { backgroundColor: theme.card, borderColor: theme.border }]}>
                   <Text style={{ fontSize: 60 }}>🔍</Text>
-                  <Text style={[s.modTitle, { color: theme.text }]}>Готовы к проверке?</Text>
+                  <Text style={[s.modTitle, { color: theme.text }]}>{t('reg_ready_check_title')}</Text>
                   <Text style={[s.modDesc, { color: theme.textMuted }]}>
-                    Система автоматически проверит ваши данные:{'\n'}
-                    • OCR документов{'\n'}
-                    • Биометрия{'\n'}
-                    • Blacklist{'\n'}
-                    • Гос. базы (КЗ)
+                    {t('reg_ready_check_desc')}
                   </Text>
                 </View>
                 <ShimmerButton onPress={onModerate} colors={[accent, '#22C55E']} disabled={loading}>
-                  {loading ? <ActivityIndicator color="#fff" /> : '🚀 Начать проверку'}
+                  {loading ? <ActivityIndicator color="#fff" /> : '🚀 ' + t('reg_start_check')}
                 </ShimmerButton>
               </>
             ) : (
@@ -630,14 +626,14 @@ export default function RegScreen({ navigation, route }) {
                   {moderation.auto_approved ? '✅' : moderation.status === 'rejected' ? '⛔' : '⏳'}
                 </Text>
                 <Text style={[s.modTitle, { color: theme.text }]}>
-                  {moderation.auto_approved ? 'Регистрация завершена!' : moderation.status === 'rejected' ? 'Отказано' : 'Ручная проверка'}
+                  {moderation.auto_approved ? t('reg_complete_title') : moderation.status === 'rejected' ? t('reg_rejected_title') : t('reg_manual_title')}
                 </Text>
                 <View style={s.scoreBox}>
                   <Text style={[s.scoreBig, { color: moderation.security_color === 'green' ? '#22C55E' : moderation.security_color === 'black' ? '#DC2626' : '#F59E0B' }]}>
                     {moderation.security_score || 0}/100
                   </Text>
                   <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>
-                    {moderation.security_color === 'green' ? '🟢 Надёжный' : moderation.security_color === 'yellow' ? '🟡 Новичок' : moderation.security_color === 'black' ? '⛔ В чёрном списке' : '🔴 Есть проблемы'}
+                    {moderation.security_color === 'green' ? '🟢 ' + t('reg_color_green') : moderation.security_color === 'yellow' ? '🟡 ' + t('reg_color_yellow') : moderation.security_color === 'black' ? '⛔ ' + t('reg_color_black') : '🔴 ' + t('reg_color_red')}
                   </Text>
                 </View>
                 {moderation.rejected_reason && (
@@ -645,7 +641,7 @@ export default function RegScreen({ navigation, route }) {
                 )}
                 {moderation.auto_approved && (
                   <Text style={[s.modDesc, { color: theme.textMuted }]}>
-                    Переход в приложение через 2 секунды...
+                    {t('reg_redirect_hint')}
                   </Text>
                 )}
               </View>
@@ -665,29 +661,29 @@ function ClientReg({ navigation, setRole, session, theme, t, toast, accent }) {
   return (
     <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]}>
       <ScrollView contentContainerStyle={s.scroll}>
-        <GradientText style={s.heading} colors={[accent, '#EF4444']}>📦 Профиль компании</GradientText>
-        <Text style={[s.label, { color: theme.textMuted }]}>Название компании</Text>
+        <GradientText style={s.heading} colors={[accent, '#EF4444']}>📦 {t('reg_client_title')}</GradientText>
+        <Text style={[s.label, { color: theme.textMuted }]}>{t('reg_client_company_name')}</Text>
         <TextInput style={[s.input, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border }]}
-          placeholder="ТОО Карго-Трейд" placeholderTextColor={theme.textMuted} value={displayName} onChangeText={setDisplayName} />
-        <Text style={[s.label, { color: theme.textMuted }]}>Город</Text>
+          placeholderTextColor={theme.textMuted} value={displayName} onChangeText={setDisplayName} />
+        <Text style={[s.label, { color: theme.textMuted }]}>{t('reg_client_city')}</Text>
         <TextInput style={[s.input, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border }]}
-          placeholder="Алматы" placeholderTextColor={theme.textMuted} value={city} onChangeText={setCity} />
-        <Text style={[s.label, { color: theme.textMuted }]}>Тип бизнеса</Text>
+          placeholderTextColor={theme.textMuted} value={city} onChangeText={setCity} />
+        <Text style={[s.label, { color: theme.textMuted }]}>{t('reg_client_business_type')}</Text>
         <View style={s.typeRow}>
-          {[{k:'importer',n:'Импортёр'},{k:'forwarder',n:'Экспедитор'},{k:'shop',n:'Интернет-магазин'}].map(o => (
+          {[{k:'importer',n:t('reg_client_importer')},{k:'forwarder',n:t('reg_client_forwarder')},{k:'shop',n:t('reg_client_shop')}].map(o => (
             <TouchableOpacity key={o.k} style={[s.typeBtn, { backgroundColor: theme.card, borderColor: theme.border }, companyType === o.k && { backgroundColor: accent, borderColor: accent }]} onPress={() => setCompanyType(o.k)}>
               <Text style={[s.typeBtnText, { color: theme.textSecondary }, companyType === o.k && { color: '#0C0A09' }]}>{o.n}</Text>
             </TouchableOpacity>
           ))}
         </View>
         <ShimmerButton colors={[accent, '#EF4444']} onPress={() => {
-          if (!displayName) { toast('Введите название', 'error'); return; }
+          if (!displayName) { toast(t('reg_client_enter_name'), 'error'); return; }
           saveProfile(session?.user?.id || 'c_' + Date.now(), {
             role: 'client', display_name: displayName, city, company_type: companyType, is_verified: false,
           });
           setRole('client');
-          toast('🎉 Добро пожаловать', 'success');
-        }}>Завершить</ShimmerButton>
+          toast('🎉 ' + t('reg_client_welcome'), 'success');
+        }}>{t('reg_client_finish')}</ShimmerButton>
       </ScrollView>
     </SafeAreaView>
   );

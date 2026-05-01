@@ -13,8 +13,6 @@ import { useVerificationGate } from '../components/VerificationGate';
 import { LEVELS } from '../utils/AuthContext';
 import RatingModal from '../components/RatingModal';
 
-const TYPE_LABEL = { tent: 'Тент', ref: 'Рефрижератор', platform: 'Площадка', auto: 'Автовоз', izoterm: 'Изотерм' };
-
 export default function TripDetail({ navigation, route }) {
   const { trip, role } = route.params || {};
   const { t } = useI18n();
@@ -32,15 +30,15 @@ export default function TripDetail({ navigation, route }) {
   const onDelete = () => {
     const confirmDelete = () => {
       removeTrip(trip.id);
-      toast('🗑 Рейс удалён', 'info');
+      toast('🗑 ' + t('trip_deleted_toast'), 'info');
       navigation.goBack();
     };
     if (Platform.OS === 'web') {
-      if (window.confirm('Удалить рейс?')) confirmDelete();
+      if (window.confirm(t('trip_delete_q'))) confirmDelete();
     } else {
-      Alert.alert('Удалить рейс?', '', [
-        { text: 'Отмена' },
-        { text: 'Удалить', style: 'destructive', onPress: confirmDelete },
+      Alert.alert(t('trip_delete_q'), '', [
+        { text: t('cancel') },
+        { text: t('delete'), style: 'destructive', onPress: confirmDelete },
       ]);
     }
   };
@@ -53,7 +51,7 @@ export default function TripDetail({ navigation, route }) {
         <TouchableOpacity onPress={() => navigation.goBack()} style={[s.backBtn, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <Text style={[s.backText, { color: theme.text }]}>‹</Text>
         </TouchableOpacity>
-        <GradientText style={s.title} colors={['#22C55E', '#0891B2']}>🚛 Рейс</GradientText>
+        <GradientText style={s.title} colors={['#22C55E', '#0891B2']}>🚛 {t('trip_title')}</GradientText>
         <TouchableOpacity onPress={() => setShareModal(true)}>
           <Text style={{ fontSize: 20 }}>↗️</Text>
         </TouchableOpacity>
@@ -65,7 +63,7 @@ export default function TripDetail({ navigation, route }) {
 
         {/* Информация о рейсе */}
         <View style={[s.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[s.sectionTitle, { color: theme.textMuted }]}>МАРШРУТ</Text>
+          <Text style={[s.sectionTitle, { color: theme.textMuted }]}>{t('trip_route').toUpperCase()}</Text>
           <View style={s.routeRow}>
             <View style={[s.dot, { backgroundColor: '#EF4444' }]} />
             <Text style={[s.city, { color: theme.text }]}>{trip.from}</Text>
@@ -73,7 +71,7 @@ export default function TripDetail({ navigation, route }) {
           {trip.transit && (
             <View style={s.routeRow}>
               <View style={[s.dot, { backgroundColor: '#2563EB' }]} />
-              <Text style={[s.transitCity, { color: theme.textSecondary }]}>через {trip.transit}</Text>
+              <Text style={[s.transitCity, { color: theme.textSecondary }]}>{t('trip_via')} {trip.transit}</Text>
             </View>
           )}
           <View style={s.routeRow}>
@@ -84,10 +82,10 @@ export default function TripDetail({ navigation, route }) {
           {stats && (
             <View style={s.statsRow}>
               <View style={[s.statPill, { backgroundColor: theme.border }]}>
-                <Text style={[s.statText, { color: theme.text }]}>📏 {stats.km} км</Text>
+                <Text style={[s.statText, { color: theme.text }]}>📏 {stats.km} {t('km_short')}</Text>
               </View>
               <View style={[s.statPill, { backgroundColor: theme.border }]}>
-                <Text style={[s.statText, { color: theme.text }]}>⏱ ~{stats.days} дн.</Text>
+                <Text style={[s.statText, { color: theme.text }]}>⏱ ~{stats.days} {t('days_short')}</Text>
               </View>
             </View>
           )}
@@ -95,31 +93,31 @@ export default function TripDetail({ navigation, route }) {
 
         {/* Даты */}
         <View style={[s.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[s.sectionTitle, { color: theme.textMuted }]}>ДАТЫ</Text>
+          <Text style={[s.sectionTitle, { color: theme.textMuted }]}>{t('trip_dates').toUpperCase()}</Text>
           <View style={s.dateRow}>
-            <Text style={[s.dateLabel, { color: theme.textMuted }]}>🚀 Выезд</Text>
+            <Text style={[s.dateLabel, { color: theme.textMuted }]}>🚀 {t('trip_dep')}</Text>
             <Text style={[s.dateValue, { color: theme.text }]}>{trip.departure || '—'}</Text>
           </View>
           <View style={s.dateRow}>
-            <Text style={[s.dateLabel, { color: theme.textMuted }]}>🏁 Прибытие</Text>
+            <Text style={[s.dateLabel, { color: theme.textMuted }]}>🏁 {t('trip_arr')}</Text>
             <Text style={[s.dateValue, { color: theme.text }]}>{trip.arrival || '—'}</Text>
           </View>
         </View>
 
         {/* Транспорт */}
         <View style={[s.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[s.sectionTitle, { color: theme.textMuted }]}>ТРАНСПОРТ</Text>
+          <Text style={[s.sectionTitle, { color: theme.textMuted }]}>{t('trip_transport').toUpperCase()}</Text>
           <View style={s.dateRow}>
-            <Text style={[s.dateLabel, { color: theme.textMuted }]}>Кузов</Text>
-            <Text style={[s.dateValue, { color: theme.text }]}>{TYPE_LABEL[trip.truckType] || trip.truckType || '—'}</Text>
+            <Text style={[s.dateLabel, { color: theme.textMuted }]}>{t('trip_truck_body')}</Text>
+            <Text style={[s.dateValue, { color: theme.text }]}>{trip.truckType ? (t(trip.truckType) !== trip.truckType ? t(trip.truckType) : trip.truckType) : '—'}</Text>
           </View>
           <View style={s.dateRow}>
-            <Text style={[s.dateLabel, { color: theme.textMuted }]}>Водитель</Text>
+            <Text style={[s.dateLabel, { color: theme.textMuted }]}>{t('trip_driver')}</Text>
             <Text style={[s.dateValue, { color: theme.text }]}>{trip.driverName || '—'}</Text>
           </View>
           {trip.available_volume_m3 && (
             <View style={s.dateRow}>
-              <Text style={[s.dateLabel, { color: theme.textMuted }]}>Свободно</Text>
+              <Text style={[s.dateLabel, { color: theme.textMuted }]}>{t('trip_free')}</Text>
               <Text style={[s.dateValue, { color: theme.text }]}>{trip.available_volume_m3} м³</Text>
             </View>
           )}
@@ -127,7 +125,7 @@ export default function TripDetail({ navigation, route }) {
 
         {/* Timeline статусов */}
         <View style={[{ backgroundColor: theme.card, borderRadius: 14, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: theme.border }]}>
-          <Text style={[s.sectionTitle, { color: theme.text, marginBottom: 12 }]}>📍 Статус рейса</Text>
+          <Text style={[s.sectionTitle, { color: theme.text, marginBottom: 12 }]}>📍 {t('trip_status')}</Text>
           {TRIP_STATES.map((st, i) => {
             const info = TRIP_STATE_INFO[st];
             const currentIdx = TRIP_STATES.indexOf(trip.trip_state || 'planned');
@@ -147,9 +145,9 @@ export default function TripDetail({ navigation, route }) {
                   <Text style={{
                     color: passed ? theme.text : theme.textMuted,
                     fontSize: 14, fontWeight: active ? '800' : '600',
-                  }}>{info.label}</Text>
+                  }}>{t(info.labelKey)}</Text>
                   {active && (
-                    <Text style={{ color: info.color, fontSize: 11, marginTop: 2 }}>Текущий статус</Text>
+                    <Text style={{ color: info.color, fontSize: 11, marginTop: 2 }}>{t('trip_current_status')}</Text>
                   )}
                 </View>
                 {isOwner && !passed && i === currentIdx + 1 && (
@@ -157,7 +155,7 @@ export default function TripDetail({ navigation, route }) {
                     style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, backgroundColor: info.color }}
                     onPress={() => advanceTripState(trip.id, st)}
                   >
-                    <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '700' }}>Отметить</Text>
+                    <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '700' }}>{t('trip_mark')}</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -173,11 +171,11 @@ export default function TripDetail({ navigation, route }) {
               onPress={async () => {
                 const ok = await requireLevel(LEVELS.PHONE, 'contact');
                 if (!ok) return;
-                toast('💬 Чат открыт с водителем', 'success');
+                toast('💬 ' + t('chat_opened_toast'), 'success');
                 navigation.navigate('Chat', { partner: { name: trip.driverName, country: trip.country || 'KZ' }, role });
               }}
             >
-              <Text style={s.primaryBtnText}>💬 Написать водителю</Text>
+              <Text style={s.primaryBtnText}>💬 {t('write_driver')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[s.secondaryBtn, { borderColor: accent }]}
@@ -187,12 +185,12 @@ export default function TripDetail({ navigation, route }) {
                 setRateModal(true);
               }}
             >
-              <Text style={[s.secondaryBtnText, { color: accent }]}>⭐ Оставить отзыв</Text>
+              <Text style={[s.secondaryBtnText, { color: accent }]}>⭐ {t('leave_review')}</Text>
             </TouchableOpacity>
           </>
         ) : isOwner ? (
           <TouchableOpacity style={[s.dangerBtn, { borderColor: '#EF4444' }]} onPress={onDelete}>
-            <Text style={s.dangerBtnText}>🗑 Удалить рейс</Text>
+            <Text style={s.dangerBtnText}>🗑 {t('trip_delete')}</Text>
           </TouchableOpacity>
         ) : null}
       </ScrollView>

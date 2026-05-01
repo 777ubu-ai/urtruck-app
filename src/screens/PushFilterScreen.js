@@ -9,12 +9,12 @@ import { getPushSettings, setPushSettings } from '../utils/store';
 const TRUCK_KEYS = ['tent', 'ref', 'platform', 'auto', 'izoterm', 'cont20', 'cont40', 'jumbo', 'curtain', 'lowloader', 'tanker', 'dumptruck'];
 
 const NOTIF_CATEGORIES = [
-  { key: 'new_cargos', label: '📦 Новые грузы по маршруту', desc: 'Push когда появляется груз по сохранённому маршруту' },
-  { key: 'bids', label: '💬 Предложения цены', desc: 'Кто-то предложил цену по вашему грузу' },
-  { key: 'moderation', label: '🛡 Статус модерации', desc: 'Одобрение/отклонение документов' },
-  { key: 'reviews', label: '⭐ Новые отзывы', desc: 'Кто-то оставил вам отзыв' },
-  { key: 'trips', label: '🚛 Статус рейса', desc: 'Изменение статуса: принят, в пути, доставлен' },
-  { key: 'system', label: '🔔 Системные', desc: 'Обновления, техработы, акции' },
+  { key: 'new_cargos', icon: '📦' },
+  { key: 'bids',       icon: '💬' },
+  { key: 'moderation', icon: '🛡' },
+  { key: 'reviews',    icon: '⭐' },
+  { key: 'trips',      icon: '🚛' },
+  { key: 'system',     icon: '🔔' },
 ];
 
 export default function PushFilterScreen({ navigation, route }) {
@@ -36,7 +36,7 @@ export default function PushFilterScreen({ navigation, route }) {
 
   const save = () => {
     setPushSettings({ onlyMyRoutes, minTons, minPrice, truckTypes: types, categories });
-    toast('✓ Настройки сохранены', 'success');
+    toast('✓ ' + t('push_saved'), 'success');
     navigation.goBack();
   };
 
@@ -46,18 +46,18 @@ export default function PushFilterScreen({ navigation, route }) {
         <TouchableOpacity onPress={() => navigation.goBack()} style={[s.backBtn, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <Text style={[s.backText, { color: theme.text }]}>‹</Text>
         </TouchableOpacity>
-        <Text style={[s.title, { color: theme.text }]}>🔔 Уведомления</Text>
+        <Text style={[s.title, { color: theme.text }]}>🔔 {t('push_title')}</Text>
       </View>
 
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
         {/* Категории уведомлений */}
-        <Text style={[s.sectionTitle, { color: theme.text }]}>Категории</Text>
+        <Text style={[s.sectionTitle, { color: theme.text }]}>{t('push_categories')}</Text>
         {NOTIF_CATEGORIES.map(cat => (
           <View key={cat.key} style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <View style={s.row}>
               <View style={{ flex: 1 }}>
-                <Text style={[s.label, { color: theme.text }]}>{cat.label}</Text>
-                <Text style={[s.desc, { color: theme.textMuted }]}>{cat.desc}</Text>
+                <Text style={[s.label, { color: theme.text }]}>{cat.icon} {t('push_cat_' + cat.key)}</Text>
+                <Text style={[s.desc, { color: theme.textMuted }]}>{t('push_cat_' + cat.key + '_desc')}</Text>
               </View>
               <Switch
                 value={categories.includes(cat.key)}
@@ -70,32 +70,32 @@ export default function PushFilterScreen({ navigation, route }) {
         ))}
 
         {/* Фильтры грузов */}
-        <Text style={[s.sectionTitle, { color: theme.text, marginTop: 16 }]}>Фильтр грузов</Text>
+        <Text style={[s.sectionTitle, { color: theme.text, marginTop: 16 }]}>{t('push_filter_cargos')}</Text>
 
         <View style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <View style={s.row}>
-            <Text style={[s.label, { color: theme.text }]}>Только мои маршруты</Text>
+            <Text style={[s.label, { color: theme.text }]}>{t('push_only_my_routes')}</Text>
             <Switch value={onlyMyRoutes} onValueChange={setOnlyMyRoutes}
               trackColor={{ false: theme.border, true: accent }} thumbColor="#fff" />
           </View>
         </View>
 
         <View style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[s.label, { color: theme.text, marginBottom: 8 }]}>Минимум тонн</Text>
+          <Text style={[s.label, { color: theme.text, marginBottom: 8 }]}>{t('push_min_tons')}</Text>
           <TextInput style={[s.input, { backgroundColor: theme.bg, color: theme.text, borderColor: theme.border }]}
             placeholder="10" placeholderTextColor={theme.textMuted}
             keyboardType="numeric" value={minTons} onChangeText={setMinTons} />
         </View>
 
         <View style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[s.label, { color: theme.text, marginBottom: 8 }]}>Минимум цена ($)</Text>
+          <Text style={[s.label, { color: theme.text, marginBottom: 8 }]}>{t('push_min_price')}</Text>
           <TextInput style={[s.input, { backgroundColor: theme.bg, color: theme.text, borderColor: theme.border }]}
             placeholder="2000" placeholderTextColor={theme.textMuted}
             keyboardType="numeric" value={minPrice} onChangeText={setMinPrice} />
         </View>
 
         <View style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[s.label, { color: theme.text, marginBottom: 8 }]}>Типы кузова</Text>
+          <Text style={[s.label, { color: theme.text, marginBottom: 8 }]}>{t('push_truck_types')}</Text>
           <View style={s.typesWrap}>
             {TRUCK_KEYS.map(k => (
               <TouchableOpacity key={k}
@@ -110,7 +110,7 @@ export default function PushFilterScreen({ navigation, route }) {
         </View>
 
         <TouchableOpacity style={[s.saveBtn, { backgroundColor: accent }]} onPress={save}>
-          <Text style={s.saveBtnText}>Сохранить настройки</Text>
+          <Text style={s.saveBtnText}>{t('push_save_btn')}</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>

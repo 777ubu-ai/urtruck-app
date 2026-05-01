@@ -62,11 +62,11 @@ export default function PriceCalculator({ visible, onClose }) {
   );
 
   const trucks = [
-    { k: 'tent', l: 'Тент', icon: '🚚' },
-    { k: 'ref', l: 'Рефрижератор', icon: '🧊' },
-    { k: 'platform', l: 'Платформа', icon: '🛻' },
-    { k: 'tanker', l: 'Цистерна', icon: '🛢️' },
-    { k: 'auto', l: 'Автовоз', icon: '🚗' },
+    { k: 'tent',     l: t('reg_vehicle_tent'),     icon: '🚚' },
+    { k: 'ref',      l: t('reg_vehicle_ref'),      icon: '🧊' },
+    { k: 'platform', l: t('reg_vehicle_platform'), icon: '🛻' },
+    { k: 'tanker',   l: t('reg_vehicle_tanker'),   icon: '🛢️' },
+    { k: 'auto',     l: t('reg_vehicle_auto'),     icon: '🚗' },
   ];
 
   if (!visible) return null;
@@ -100,7 +100,7 @@ export default function PriceCalculator({ visible, onClose }) {
                 placeholderTextColor={theme.textMuted}
               />
 
-              <Text style={[s.label, { color: theme.textMuted }]}>Тип кузова</Text>
+              <Text style={[s.label, { color: theme.textMuted }]}>{t('filter_truck_type')}</Text>
               <View style={s.row}>
                 {trucks.map(tr => (
                   <TouchableOpacity

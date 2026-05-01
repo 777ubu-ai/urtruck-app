@@ -139,7 +139,7 @@ export default function AuthScreen({ navigation, route }) {
               <Text style={s.betaHint}>🧪 Beta: введите любой номер, код 0000</Text>
             )}
 
-            {!validPhone && <Text style={s.hint}>Введите номер — кнопки станут активными</Text>}
+            {!validPhone && <Text style={s.hint}>{t('reg_enter_phone')}</Text>}
           </>
         )}
 

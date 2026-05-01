@@ -35,7 +35,7 @@ export default function SecurityScreen({ navigation }) {
           <TouchableOpacity onPress={() => navigation.goBack()} style={[s.backBtn, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <Text style={[s.backText, { color: theme.text }]}>‹</Text>
           </TouchableOpacity>
-          <GradientText style={s.title} colors={['#DC2626', '#F59E0B']}>🛡 Мой статус</GradientText>
+          <GradientText style={s.title} colors={['#DC2626', '#F59E0B']}>🛡 {t('security_my_status')}</GradientText>
         </View>
 
         {loading ? (
@@ -49,20 +49,19 @@ export default function SecurityScreen({ navigation }) {
               </Text>
               <Text style={[s.heroLabel, { color: ui.text }]}>{ui.label}</Text>
               <Text style={[s.heroHint, { color: theme.textMuted }]}>
-                Повышайте скоринг — завершайте сделки,{'\n'}
-                получайте положительные отзывы
+                {t('security_hero_hint')}
               </Text>
             </View>
 
             {/* Что улучшит скоринг */}
             <View style={[s.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <Text style={[s.sectionTitle, { color: theme.textMuted }]}>📈 КАК ПОВЫСИТЬ</Text>
+              <Text style={[s.sectionTitle, { color: theme.textMuted }]}>📈 {t('security_how_to_raise')}</Text>
               {[
-                { icon: '✅', title: 'Завершайте рейсы', desc: '+2 балла за каждый успешный рейс' },
-                { icon: '⭐', title: 'Получайте отзывы 5★', desc: '+1 балл за положительный отзыв' },
-                { icon: '📄', title: 'Верифицируйте документы', desc: '+10 баллов за подтверждение' },
-                { icon: '🏦', title: 'Подтвердите счёт', desc: '+5 баллов за привязку банка' },
-                { icon: '🤳', title: 'Биометрия', desc: '+10 баллов за Face ID верификацию' },
+                { icon: '✅', title: t('security_tip_complete_trips'),  desc: t('security_tip_complete_trips_desc') },
+                { icon: '⭐', title: t('security_tip_get_reviews'),     desc: t('security_tip_get_reviews_desc') },
+                { icon: '📄', title: t('security_tip_verify_docs'),     desc: t('security_tip_verify_docs_desc') },
+                { icon: '🏦', title: t('security_tip_confirm_account'), desc: t('security_tip_confirm_account_desc') },
+                { icon: '🤳', title: t('biometry'),                     desc: t('security_tip_biometry_desc') },
               ].map(item => (
                 <View key={item.title} style={[s.tipRow, { borderBottomColor: theme.border }]}>
                   <Text style={{ fontSize: 20 }}>{item.icon}</Text>
@@ -76,11 +75,11 @@ export default function SecurityScreen({ navigation }) {
 
             {/* Чего избегать */}
             <View style={[s.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <Text style={[s.sectionTitle, { color: theme.textMuted }]}>⚠ ЧЕГО ИЗБЕГАТЬ</Text>
+              <Text style={[s.sectionTitle, { color: theme.textMuted }]}>⚠ {t('security_what_to_avoid')}</Text>
               {[
-                { icon: '❌', title: 'Отмены без причины', desc: '−5 баллов за отмену' },
-                { icon: '📞', title: 'Игнорирование связи', desc: '−10 баллов если не отвечаете' },
-                { icon: '⏰', title: 'Опоздания', desc: '−5 баллов за срыв срока' },
+                { icon: '❌', title: t('security_avoid_cancel'), desc: t('security_avoid_cancel_desc') },
+                { icon: '📞', title: t('security_avoid_ignore'), desc: t('security_avoid_ignore_desc') },
+                { icon: '⏰', title: t('security_avoid_late'),   desc: t('security_avoid_late_desc') },
               ].map(item => (
                 <View key={item.title} style={[s.tipRow, { borderBottomColor: theme.border }]}>
                   <Text style={{ fontSize: 20 }}>{item.icon}</Text>
@@ -95,10 +94,9 @@ export default function SecurityScreen({ navigation }) {
             {/* Политика конфиденциальности */}
             <View style={[s.privacyCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
               <Text style={{ fontSize: 24 }}>🔒</Text>
-              <Text style={[s.privacyTitle, { color: theme.text }]}>Ваши данные защищены</Text>
+              <Text style={[s.privacyTitle, { color: theme.text }]}>{t('security_privacy_title')}</Text>
               <Text style={[s.privacyDesc, { color: theme.textMuted }]}>
-                Все проверки выполняются автоматически. Мы не делимся вашими персональными данными
-                с третьими лицами. Скоринг обновляется раз в месяц.
+                {t('security_privacy_desc')}
               </Text>
             </View>
           </>

@@ -16,10 +16,11 @@ import { API_BASE } from '../config/env';
 
 const TCOLORS = { tent: '#2563EB', ref: '#0891B2', platform: '#D97706', auto: '#7C3AED', izoterm: '#059669' };
 const FLAGS = { KZ: '🇰🇿', UZ: '🇺🇿', RU: '🇷🇺', KG: '🇰🇬', CN: '🇨🇳' };
+// Demo reviews — static content, shown only when no real reviews from API
 const REVIEWS = [
-  { user: 'Бахытжан', rating: 5, text: 'Довёз быстро, аккуратный', ago: '2 нед' },
-  { user: 'Asia Import', rating: 5, text: 'Всё чётко, рекомендую', ago: '1 мес' },
-  { user: 'CargoLine', rating: 4, text: 'Задержался на границе, но предупредил', ago: '1 мес' },
+  { user: 'B. K.', rating: 5, text: '★★★★★', ago: '2w' },
+  { user: 'Asia Import', rating: 5, text: '★★★★★', ago: '1m' },
+  { user: 'CargoLine', rating: 4, text: '★★★★', ago: '1m' },
 ];
 
 export default function DriverDetail({ navigation, route }) {
@@ -50,9 +51,9 @@ export default function DriverDetail({ navigation, route }) {
   if (!driver) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ color: theme.textMuted, fontSize: 14 }}>Данные рейса неполные</Text>
+        <Text style={{ color: theme.textMuted, fontSize: 14 }}>{t('incomplete_data')}</Text>
         <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: 16 }}>
-          <Text style={{ color: '#22C55E', fontSize: 14, fontWeight: '600' }}>← Назад</Text>
+          <Text style={{ color: '#22C55E', fontSize: 14, fontWeight: '600' }}>← {t('back_short')}</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
@@ -61,7 +62,7 @@ export default function DriverDetail({ navigation, route }) {
   const tt = driver.type || driver.vehicle_type || 'tent';
   const accent = role === 'driver' ? '#2563EB' : '#F59E0B';
   // Safe defaults
-  const driverName = driver.name || driver.full_name || 'Водитель';
+  const driverName = driver.name || driver.full_name || t('driver_fallback');
   const driverPhone = driver.phone || '';
   const driverPlate = driver.plate_truck || driver.vehicle_plate || '';
 
@@ -94,7 +95,7 @@ export default function DriverDetail({ navigation, route }) {
 
         {/* Скоринг безопасности — публичный вид (только балл + цвет) */}
         <View style={[s.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[s.sectionTitle, { color: theme.textMuted }]}>🛡 НАДЁЖНОСТЬ</Text>
+          <Text style={[s.sectionTitle, { color: theme.textMuted }]}>🛡 {t('reliability_section')}</Text>
           <SecurityBadge userId={driver.id} phone={driver.phone} plate={driver.plate_truck} />
         </View>
 
@@ -115,12 +116,12 @@ export default function DriverDetail({ navigation, route }) {
                 <Text style={{ color: '#FBBF24', fontWeight: '800' }}> · ★ {reviewsData.summary.average}</Text>
               )}
             </Text>
-            <Text style={{ color: theme.textDim, fontSize: 10 }}>Отзыв после завершения перевозки</Text>
+            <Text style={{ color: theme.textDim, fontSize: 10 }}>{t('review_after_trip')}</Text>
           </View>
 
           {(reviewsData?.reviews?.length > 0 ? reviewsData.reviews : REVIEWS).map((r, i, arr) => {
             const isDemo = !reviewsData?.reviews?.length;
-            const user = r.user || r.author_id?.slice(0, 8) || 'Аноним';
+            const user = r.user || r.author_id?.slice(0, 8) || t('anonymous');
             const rating = r.rating;
             const text = r.text || '';
             const ago = r.ago || (r.created_at || '').slice(0, 10);
@@ -146,7 +147,7 @@ export default function DriverDetail({ navigation, route }) {
           style={s.reportBtn}
           onPress={() => {
             const ask = () => Platform.OS === 'web'
-              ? (window.prompt('Опишите проблему с водителем:', '') || '').trim()
+              ? (window.prompt(t('report_driver_prompt'), '') || '').trim()
               : '';
             const reason = ask();
             if (!reason) return;
@@ -161,11 +162,11 @@ export default function DriverDetail({ navigation, route }) {
                 severity: 'high',
               }),
             }).then(r => r.json()).then(() => {
-              toast('🚨 Жалоба отправлена модераторам', 'warn', 4000);
+              toast('🚨 ' + t('report_sent'), 'warn', 4000);
             }).catch(() => toast(t('send_error'), 'error'));
           }}
         >
-          <Text style={s.reportBtnText}>🚨 Пожаловаться на водителя</Text>
+          <Text style={s.reportBtnText}>🚨 {t('report_driver')}</Text>
         </TouchableOpacity>
       </ScrollView>
       <ShareModal visible={shareModal} onClose={() => setShareModal(false)} shareText={'UrTruck: ' + driver.name + ', ' + t(tt) + ' ' + driver.m3 + 'м³'} phone={driver.phone} driverId={driver.id} />

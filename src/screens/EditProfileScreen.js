@@ -71,7 +71,7 @@ export default function EditProfileScreen({ navigation, route }) {
     } catch (e) {
       console.warn('Server profile save failed:', e);
     }
-    toast(serverOk ? '✓ ' + t('saveSettings') : '✓ Сохранено локально', serverOk ? 'success' : 'warn');
+    toast(serverOk ? '✓ ' + t('saveSettings') : '✓ ' + t('saved_locally'), serverOk ? 'success' : 'warn');
     navigation.goBack();
   };
 
@@ -187,26 +187,26 @@ export default function EditProfileScreen({ navigation, route }) {
           <TouchableOpacity style={[s.verifyRow, { borderBottomColor: theme.border }]}>
             <Text style={{ fontSize: 20 }}>👤</Text>
             <View style={{ flex: 1 }}>
-              <Text style={[s.verifyName, { color: theme.text }]}>Биометрия (FaceID)</Text>
-              <Text style={[s.verifyDesc, { color: theme.textMuted }]}>Быстрая авторизация по лицу</Text>
+              <Text style={[s.verifyName, { color: theme.text }]}>{t('biometry')}</Text>
+              <Text style={[s.verifyDesc, { color: theme.textMuted }]}>{t('biometry_desc')}</Text>
             </View>
-            <Text style={s.soonBadge}>Скоро</Text>
+            <Text style={s.soonBadge}>{t('soon_badge')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[s.verifyRow, { borderBottomColor: theme.border }]}>
             <Text style={{ fontSize: 20 }}>📄</Text>
             <View style={{ flex: 1 }}>
-              <Text style={[s.verifyName, { color: theme.text }]}>ИИН / ИНН</Text>
-              <Text style={[s.verifyDesc, { color: theme.textMuted }]}>Проверка через госбазу</Text>
+              <Text style={[s.verifyName, { color: theme.text }]}>{t('iin_check')}</Text>
+              <Text style={[s.verifyDesc, { color: theme.textMuted }]}>{t('iin_check_desc')}</Text>
             </View>
-            <Text style={s.soonBadge}>Скоро</Text>
+            <Text style={s.soonBadge}>{t('soon_badge')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={s.verifyRow}>
             <Text style={{ fontSize: 20 }}>🏦</Text>
             <View style={{ flex: 1 }}>
-              <Text style={[s.verifyName, { color: theme.text }]}>Банковский счёт</Text>
-              <Text style={[s.verifyDesc, { color: theme.textMuted }]}>Приём платежей</Text>
+              <Text style={[s.verifyName, { color: theme.text }]}>{t('bank_account')}</Text>
+              <Text style={[s.verifyDesc, { color: theme.textMuted }]}>{t('bank_account_desc')}</Text>
             </View>
-            <Text style={s.soonBadge}>Скоро</Text>
+            <Text style={s.soonBadge}>{t('soon_badge')}</Text>
           </TouchableOpacity>
         </View>
 

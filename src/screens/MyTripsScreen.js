@@ -143,7 +143,7 @@ export default function MyTripsScreen({ navigation, route }) {
         {!isDriver && item.status === 'pending' && (
           <TouchableOpacity style={s.acceptBtn} onPress={async () => {
             const r = await marketAPI.acceptBid(item.id);
-            if (r.ok) { toast('Ставка принята', 'success'); load(); }
+            if (r.ok) { toast(t('bid_accepted_toast'), 'success'); load(); }
             else toast(r.detail || t('send_error'), 'error');
           }}>
             <Text style={s.acceptBtnText}>{t('accept_bid_btn')} ${item.amount}</Text>

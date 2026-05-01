@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { API_BASE } from '../config/env';
+import { t } from '../utils/i18n';
 
 const LOG_URL = `${API_BASE}/errors`;
 
@@ -37,9 +38,9 @@ export default class ErrorBoundary extends React.Component {
       return (
         <View style={s.container}>
           <Text style={s.emoji}>⚠️</Text>
-          <Text style={s.title}>Что-то пошло не так</Text>
+          <Text style={s.title}>{t('error_title')}</Text>
           <Text style={s.body}>
-            Произошла ошибка. Попробуйте перезагрузить приложение.
+            {t('error_desc')}
           </Text>
           {/* Технический текст скрыт от юзера — только в console.error */}
           <TouchableOpacity
@@ -49,7 +50,7 @@ export default class ErrorBoundary extends React.Component {
               if (Platform.OS === 'web') window.location.reload();
             }}
           >
-            <Text style={s.btnText}>Перезагрузить</Text>
+            <Text style={s.btnText}>{t('error_reload')}</Text>
           </TouchableOpacity>
         </View>
       );

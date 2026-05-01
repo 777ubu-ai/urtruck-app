@@ -115,7 +115,7 @@ export default function FeedScreen({ navigation, route }) {
           createdAt: c.created_at, _server: true,
         }));
         const tripsMapped = ((tripsRes || {}).trips || []).map(t => ({
-          id: t.id, name: t.driver_name || 'Водитель',
+          id: t.id, name: t.driver_name || tGlobal('driver_fallback'),
           country: 'KZ', type: t.truck_type || 'tent',
           m3: t.available_m3 || 82, tons: t.capacity_tons || 20,
           rating: 5.0, reviews: 0, verified: true,
@@ -127,7 +127,7 @@ export default function FeedScreen({ navigation, route }) {
           _server: true,
         }));
         const driversMapped = ((driversRes || {}).drivers || []).map(d => ({
-          id: d.id, name: d.full_name || 'Водитель',
+          id: d.id, name: d.full_name || tGlobal('driver_fallback'),
           country: 'KZ', type: d.vehicle_type || 'tent',
           m3: Math.round((d.vehicle_capacity_kg || 20000) / 250),
           tons: Math.round((d.vehicle_capacity_kg || 20000) / 1000),
@@ -175,7 +175,7 @@ export default function FeedScreen({ navigation, route }) {
                 setServerData(prev => {
                   const existing = prev.filter(p => !d.trips.find(t => t.id === p.id));
                   return [...d.trips.map(t => ({
-                    id: t.id, name: t.driver_name || 'Водитель',
+                    id: t.id, name: t.driver_name || tGlobal('driver_fallback'),
                     type: t.truck_type, from: t.from_city, to: t.to_city,
                     price: t.price, isTrip: true, _server: true,
                     tripRoute: `${t.from_city} → ${t.to_city}`,
@@ -258,7 +258,7 @@ export default function FeedScreen({ navigation, route }) {
     if (!fromCity) errors.fromCity = 'Укажите город отправления';
     if (!toCity) errors.toCity = 'Укажите город назначения';
     if (!cargoDesc) errors.cargoDesc = 'Опишите груз';
-    if (price && parseFloat(price) <= 0) errors.price = 'Цена должна быть больше 0';
+    if (price && parseFloat(price) <= 0) errors.price = t('val_price_positive');
     if (weight && parseFloat(weight) <= 0) errors.weight = 'Вес должен быть больше 0';
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
@@ -395,7 +395,7 @@ export default function FeedScreen({ navigation, route }) {
           });
         } else {
           navigation.navigate('DriverDetail', {
-            driver: { ...item, name: item.name || item.full_name || 'Водитель', type: item.type || item.vehicle_type || 'tent', m3: item.m3 || 0, tons: item.tons || 0, rating: item.rating || 0, reviews: item.reviews || 0 },
+            driver: { ...item, name: item.name || item.full_name || tGlobal('driver_fallback'), type: item.type || item.vehicle_type || 'tent', m3: item.m3 || 0, tons: item.tons || 0, rating: item.rating || 0, reviews: item.reviews || 0 },
             role,
           });
         }
@@ -514,7 +514,7 @@ export default function FeedScreen({ navigation, route }) {
           {sortBy !== 'newest' && (
             <View style={[s.activeChip, { backgroundColor: sortBy === 'rating' ? '#FBBF24' : '#22C55E' }]}>
               <Text style={[s.activeChipText, { color: sortBy === 'rating' ? '#0C0A09' : '#fff' }]}>
-                {sortBy === 'price-asc' ? '💰 Цена ↑' : sortBy === 'price-desc' ? '💰 Цена ↓' : '★ Рейтинг'}
+                {sortBy === 'price-asc' ? '💰 ' + t('filter_price_asc') : sortBy === 'price-desc' ? '💰 ' + t('filter_price_desc') : '★ ' + t('filter_rating_sort')}
               </Text>
               <TouchableOpacity onPress={() => setSortBy('newest')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                 <Text style={[s.activeChipClose, { color: sortBy === 'rating' ? '#0C0A09' : '#fff' }]}>✕</Text>
@@ -530,14 +530,14 @@ export default function FeedScreen({ navigation, route }) {
           <TouchableOpacity style={[s.filterSheet, { backgroundColor: theme.cardElevated || theme.card }]} activeOpacity={1} onPress={() => {}}>
             <ScrollView showsVerticalScrollIndicator={false}>
               <View style={s.handle} />
-              <Text style={[s.filterSheetTitle, { color: theme.text }]}>⚙️ Фильтры</Text>
+              <Text style={[s.filterSheetTitle, { color: theme.text }]}>⚙️ {t('filter_title')}</Text>
 
               {/* Секция Рейтинг */}
               {!isDriver && (
                 <>
-                  <Text style={[s.filterSectionLabel, { color: theme.textMuted }]}>РЕЙТИНГ</Text>
+                  <Text style={[s.filterSectionLabel, { color: theme.textMuted }]}>{t('filter_rating')}</Text>
                   <View style={s.filterPillRow}>
-                    {[{ k: 0, l: 'Все' }, { k: 3, l: '3+' }, { k: 4, l: '4+' }, { k: 5, l: '5' }].map(opt => (
+                    {[{ k: 0, l: t('filter_all') }, { k: 3, l: '3+' }, { k: 4, l: '4+' }, { k: 5, l: '5' }].map(opt => (
                       <TouchableOpacity
                         key={opt.k}
                         style={[s.filterPill, { backgroundColor: theme.card, borderColor: theme.border }, minRating === opt.k && { backgroundColor: '#FBBF24', borderColor: '#FBBF24' }]}
@@ -553,13 +553,13 @@ export default function FeedScreen({ navigation, route }) {
               )}
 
               {/* Секция Тип кузова */}
-              <Text style={[s.filterSectionLabel, { color: theme.textMuted }]}>ТИП КУЗОВА</Text>
+              <Text style={[s.filterSectionLabel, { color: theme.textMuted }]}>{t('filter_truck_type')}</Text>
               <View style={s.filterPillWrap}>
                 <TouchableOpacity
                   style={[s.filterPill, { backgroundColor: theme.card, borderColor: theme.border }, !filterType && { backgroundColor: accent, borderColor: accent }]}
                   onPress={() => setFilterType(null)}
                 >
-                  <Text style={[s.filterPillText, { color: theme.textSecondary }, !filterType && { color: isDriver ? '#fff' : '#0C0A09' }]}>Все</Text>
+                  <Text style={[s.filterPillText, { color: theme.textSecondary }, !filterType && { color: isDriver ? '#fff' : '#0C0A09' }]}>{t('filter_all')}</Text>
                 </TouchableOpacity>
                 {TRUCK_KEYS.map(k => (
                   <TouchableOpacity
@@ -575,13 +575,13 @@ export default function FeedScreen({ navigation, route }) {
               </View>
 
               {/* Секция Сортировка */}
-              <Text style={[s.filterSectionLabel, { color: theme.textMuted }]}>СОРТИРОВКА</Text>
+              <Text style={[s.filterSectionLabel, { color: theme.textMuted }]}>{t('filter_sort')}</Text>
               <View style={s.filterPillRow}>
                 {[
-                  { k: 'newest', l: '🆕 Новые' },
-                  { k: 'price-asc', l: '💰 Цена ↑' },
-                  { k: 'price-desc', l: '💰 Цена ↓' },
-                  { k: 'rating', l: '★ Рейтинг' },
+                  { k: 'newest', l: '🆕 ' + t('filter_newest') },
+                  { k: 'price-asc', l: '💰 ' + t('filter_price_asc') },
+                  { k: 'price-desc', l: '💰 ' + t('filter_price_desc') },
+                  { k: 'rating', l: '★ ' + t('filter_rating_sort') },
                 ].map(opt => (
                   <TouchableOpacity
                     key={opt.k}
@@ -599,13 +599,13 @@ export default function FeedScreen({ navigation, route }) {
                   style={[s.filterActionBtn, { backgroundColor: theme.card, borderColor: theme.border, borderWidth: 1 }]}
                   onPress={() => { setFilterType(null); setMinRating(0); setSortBy('newest'); }}
                 >
-                  <Text style={[s.filterActionText, { color: theme.textSecondary }]}>Сбросить</Text>
+                  <Text style={[s.filterActionText, { color: theme.textSecondary }]}>{t('filter_reset')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[s.filterActionBtn, { backgroundColor: accent }]}
                   onPress={() => setFilterOpen(false)}
                 >
-                  <Text style={[s.filterActionText, { color: isDriver ? '#fff' : '#0C0A09' }]}>Применить</Text>
+                  <Text style={[s.filterActionText, { color: isDriver ? '#fff' : '#0C0A09' }]}>{t('filter_apply')}</Text>
                 </TouchableOpacity>
               </View>
             </ScrollView>
