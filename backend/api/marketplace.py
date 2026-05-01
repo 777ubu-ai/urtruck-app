@@ -26,6 +26,15 @@ def _init():
             with get_conn() as c:
                 c.executescript(schema.read_text(encoding="utf-8"))
                 c.commit()
+    # Idempotent migration: ensure bids.updated_at exists on legacy DBs.
+    # SQLite doesn't support `ALTER TABLE ADD COLUMN IF NOT EXISTS`, so we
+    # check pragma_table_info and only add when missing.
+    with get_conn() as c:
+        cols = {r["name"] for r in c.execute("PRAGMA table_info(bids)").fetchall()}
+        if "updated_at" not in cols:
+            c.execute("ALTER TABLE bids ADD COLUMN updated_at TEXT")
+            c.execute("UPDATE bids SET updated_at = created_at WHERE updated_at IS NULL")
+            c.commit()
 
 _init()
 
@@ -69,6 +78,11 @@ class BidIn(BaseModel):
     cargo_id: Optional[str] = None
     trip_id: Optional[str] = None
     amount: int
+    message: Optional[str] = None
+
+
+class BidUpdateIn(BaseModel):
+    amount: Optional[int] = None
     message: Optional[str] = None
 
 
@@ -327,15 +341,16 @@ def my_dashboard(user=Depends(require_level(1))):
             "SELECT b.*, c.from_city as cargo_from, c.to_city as cargo_to, c.cargo_desc "
             "FROM bids b JOIN cargos c ON b.cargo_id = c.id "
             "WHERE c.owner_id = ? ORDER BY b.created_at DESC LIMIT 50", (uid,)).fetchall()]
-
-    for cargo in my_cargos:
-        try: cargo["photos"] = json.loads(cargo.get("photos") or "[]")
-        except: cargo["photos"] = []
-
-        # Мои сделки
+        # Мои сделки (не должны зависеть от наличия cargos)
         my_deals = [dict(r) for r in c.execute(
             "SELECT * FROM deals WHERE shipper_id = ? OR driver_id = ? ORDER BY created_at DESC LIMIT 50",
             (uid, uid)).fetchall()]
+
+    for cargo in my_cargos:
+        try:
+            cargo["photos"] = json.loads(cargo.get("photos") or "[]")
+        except Exception:
+            cargo["photos"] = []
 
     return {
         "my_cargos": my_cargos,
@@ -510,6 +525,132 @@ def accept_bid(bid_id: str, user=Depends(require_level(1))):
         pass
 
     return {"ok": True, "deal_id": deal_id, "chat_room_id": chat_room_id}
+
+
+# ═══ Bid actions: edit / cancel / reject ═══
+
+def _load_bid_or_404(c, bid_id: str) -> dict:
+    row = c.execute("SELECT * FROM bids WHERE id = ?", (bid_id,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Ставка не найдена")
+    return dict(row)
+
+
+def _cargo_or_trip_owner_id(c, bid: dict):
+    """Returns the user_id allowed to reject this bid (cargo owner or trip driver)."""
+    if bid.get("cargo_id"):
+        row = c.execute("SELECT owner_id FROM cargos WHERE id = ?", (bid["cargo_id"],)).fetchone()
+        if row:
+            return row["owner_id"]
+    if bid.get("trip_id"):
+        row = c.execute("SELECT driver_id FROM trips WHERE id = ?", (bid["trip_id"],)).fetchone()
+        if row:
+            return row["driver_id"]
+    return None
+
+
+@mp_router.patch("/bids/{bid_id}")
+def update_bid(bid_id: str, body: BidUpdateIn, user=Depends(require_level(1))):
+    """Bidder edits their own pending bid (amount and/or message)."""
+    if body.amount is None and body.message is None:
+        raise HTTPException(status_code=400, detail="Укажите amount или message для обновления")
+    if body.amount is not None and body.amount <= 0:
+        raise HTTPException(status_code=400, detail="amount должен быть > 0")
+
+    with get_conn() as c:
+        bid = _load_bid_or_404(c, bid_id)
+        if bid["bidder_id"] != user["id"]:
+            raise HTTPException(status_code=403, detail="Можно редактировать только свою ставку")
+        if bid["status"] != "pending":
+            raise HTTPException(status_code=409, detail=f"Ставку нельзя изменить в статусе {bid['status']}")
+
+        old_amount = bid["amount"]
+        new_amount = body.amount if body.amount is not None else old_amount
+        new_message = body.message if body.message is not None else bid.get("message")
+
+        c.execute(
+            "UPDATE bids SET amount = ?, message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (new_amount, new_message, bid_id),
+        )
+        updated = dict(c.execute("SELECT * FROM bids WHERE id = ?", (bid_id,)).fetchone())
+
+    # Discount notification: amount decreased → ping the cargo/trip owner.
+    if body.amount is not None and new_amount < old_amount:
+        try:
+            owner_id = None
+            with get_conn() as c2:
+                owner_id = _cargo_or_trip_owner_id(c2, updated)
+            if owner_id:
+                title = f"💰 Скидка: ${old_amount} → ${new_amount}"
+                text = updated.get("bidder_name") or "Водитель"
+                text = f"{text} снизил цену на ${old_amount - new_amount}"
+                try:
+                    send_to_user(owner_id, title, text, url="/")
+                except Exception:
+                    pass
+                try:
+                    from api.notifications import create_notification
+                    create_notification(owner_id, "bid", title, text, "💰")
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    return {"ok": True, "bid": updated}
+
+
+@mp_router.post("/bids/{bid_id}/cancel")
+def cancel_bid(bid_id: str, user=Depends(require_level(1))):
+    """Bidder cancels their own pending bid."""
+    with get_conn() as c:
+        bid = _load_bid_or_404(c, bid_id)
+        if bid["bidder_id"] != user["id"]:
+            raise HTTPException(status_code=403, detail="Можно отменить только свою ставку")
+        if bid["status"] != "pending":
+            raise HTTPException(status_code=409, detail=f"Ставку нельзя отменить в статусе {bid['status']}")
+
+        c.execute(
+            "UPDATE bids SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (bid_id,),
+        )
+        # Decrement bids_count safely (never below 0).
+        if bid.get("cargo_id"):
+            c.execute(
+                "UPDATE cargos SET bids_count = MAX(0, bids_count - 1) WHERE id = ?",
+                (bid["cargo_id"],),
+            )
+
+    return {"ok": True, "bid_id": bid_id, "status": "cancelled"}
+
+
+@mp_router.post("/bids/{bid_id}/reject")
+def reject_bid(bid_id: str, user=Depends(require_level(1))):
+    """Cargo owner or trip owner explicitly rejects a pending bid."""
+    with get_conn() as c:
+        bid = _load_bid_or_404(c, bid_id)
+        owner_id = _cargo_or_trip_owner_id(c, bid)
+        if not owner_id or owner_id != user["id"]:
+            raise HTTPException(status_code=403, detail="Только владелец груза/рейса может отклонить ставку")
+        if bid["status"] != "pending":
+            raise HTTPException(status_code=409, detail=f"Ставку нельзя отклонить в статусе {bid['status']}")
+
+        c.execute(
+            "UPDATE bids SET status = 'rejected', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (bid_id,),
+        )
+
+    # Notify the bidder.
+    try:
+        send_to_user(bid["bidder_id"], "❌ Ставка отклонена", f"Ваше предложение ${bid['amount']} отклонено", url="/")
+    except Exception:
+        pass
+    try:
+        from api.notifications import create_notification
+        create_notification(bid["bidder_id"], "bid", "❌ Ставка отклонена", f"${bid['amount']}", "❌")
+    except Exception:
+        pass
+
+    return {"ok": True, "bid_id": bid_id, "status": "rejected"}
 
 
 # ═══ Deals ═══
