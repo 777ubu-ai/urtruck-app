@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, TextInput, StyleSheet, ScrollView, Alert, Image, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
-import { formatBids } from '../utils/i18n';
+import { formatBids, t as tGlobal } from '../utils/i18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useToast } from '../components/Toast';
 import { PhotoGallery } from '../components/PhotoGallery';
@@ -21,7 +21,7 @@ const FLAGS = { KZ: '🇰🇿', UZ: '🇺🇿', RU: '🇷🇺', KG: '🇰🇬', 
 const TRASH_RE = /init_db|phone_formatter|json_merger|bin_iin|SQL|sqlite|traceback|\bError:|File "[^"]+\.py"|line \d+|^```|stderr|\.py\b|SELECT |INSERT |UPDATE |DELETE |CREATE TABLE/gi;
 const sanitizeDesc = (s) => {
   const cleaned = String(s || '').replace(TRASH_RE, ' ').replace(/\s{2,}/g, ' ').trim();
-  return cleaned || 'Описание не указано';
+  return cleaned || tGlobal('desc_not_specified');
 };
 
 export default function CargoDetail({ navigation, route }) {
@@ -172,7 +172,7 @@ export default function CargoDetail({ navigation, route }) {
           </View>
         </View>
         <View style={s.priceBlock}>
-          <View><Text style={s.priceLabel}>{t('price')}</Text><Text style={s.priceValue}>{cargo.price > 0 ? `$${cargo.price}` : 'Договорная'}</Text></View>
+          <View><Text style={s.priceLabel}>{t('price')}</Text><Text style={s.priceValue}>{cargo.price > 0 ? `$${cargo.price}` : t('negotiable')}</Text></View>
           {!cargo.isMine && (
             <TouchableOpacity style={s.bidBtn} onPress={async () => {
               const ok = await requireLevel(LEVELS.PHONE, 'bid');

@@ -7,33 +7,17 @@ import { useNavigation } from '@react-navigation/native';
 import { useAuth, LEVELS } from '../utils/AuthContext';
 import { useTheme } from '../utils/ThemeContext';
 import { accentColors } from '../utils/theme';
+import { t as tGlobal } from '../utils/i18n';
 
-const COPY = {
-  default: {
-    title: 'Войдите, чтобы продолжить',
-    body: 'Регистрация нужна для сделок, ставок, чата и контактов.',
-  },
-  contact: {
-    title: 'Контакты под защитой',
-    body: 'Просмотр контактов доступен только зарегистрированным пользователям. Это защищает водителей от спама.',
-  },
-  publish_cargo: {
-    title: 'Войдите, чтобы опубликовать',
-    body: 'Для публикации грузов и маршрутов нужна регистрация.',
-  },
-  driver: {
-    title: 'Войдите как перевозчик',
-    body: 'Для доступа к грузам и ставкам необходимо войти.',
-  },
-  bid: {
-    title: 'Войдите, чтобы предложить цену',
-    body: 'Для отправки ставки необходима регистрация.',
-  },
-  open_detail: {
-    title: 'Войдите для полного доступа',
-    body: 'Детали груза, контакты и условия доступны после регистрации.',
-  },
-};
+// Dynamic COPY using i18n — evaluated at render time
+const getCopy = () => ({
+  default: { title: tGlobal('gate_login'), body: tGlobal('gate_login_desc') },
+  contact: { title: tGlobal('gate_detail'), body: tGlobal('gate_detail_desc') },
+  publish_cargo: { title: tGlobal('gate_publish'), body: tGlobal('gate_publish_desc') },
+  driver: { title: tGlobal('gate_driver'), body: tGlobal('gate_driver_desc') },
+  bid: { title: tGlobal('gate_bid'), body: tGlobal('gate_bid_desc') },
+  open_detail: { title: tGlobal('gate_detail'), body: tGlobal('gate_detail_desc') },
+});
 
 function pickTarget(currentLevel, requiredLevel) {
   // Гость → Role (выбор роли). Phone-юзер → Reg (identity/driver).
@@ -95,6 +79,7 @@ export function VerificationGateSheet({ visible, action, currentLevel, requiredL
   const { theme, isDark } = useTheme();
   const slide = useRef(new Animated.Value(500)).current;
   const opacity = useRef(new Animated.Value(0)).current;
+  const COPY = getCopy();
   const copy = COPY[action] || COPY.default;
 
   useEffect(() => {
@@ -149,12 +134,12 @@ export function VerificationGateSheet({ visible, action, currentLevel, requiredL
             }]}
             activeOpacity={0.9}
           >
-            <Text style={s.waText}>Войти</Text>
+            <Text style={s.waText}>{tGlobal('gate_enter')}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity onPress={handleClose} style={s.altBtn}>
             <Text style={[s.altText, { color: accentColors.browse || '#94A3B8' }]}>
-              Смотреть ленту
+              {tGlobal('gate_browse')}
             </Text>
           </TouchableOpacity>
 

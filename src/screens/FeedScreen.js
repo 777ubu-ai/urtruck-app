@@ -3,7 +3,7 @@ import { View, Text, FlatList, TouchableOpacity, StyleSheet, Modal, TextInput, A
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { useI18n } from '../utils/useI18n';
-import { formatBids, formatStatus, formatTruckType } from '../utils/i18n';
+import { formatBids, formatStatus, formatTruckType, t as tGlobal } from '../utils/i18n';
 import { useTheme } from '../utils/ThemeContext';
 import { getCargos, addCargo, addTrip, getTrips, subscribe, getUnreadNotifications, isFavorite, toggleFavorite } from '../utils/store';
 import { marketAPI } from '../utils/marketAPI';
@@ -41,12 +41,12 @@ const FLAGS = { KZ: '🇰🇿', UZ: '🇺🇿', RU: '🇷🇺', KG: '🇰🇬', 
 // HOT-003: фильтр технического мусора из БД (остатки парсеров, init_db, стектрейсы)
 const TRASH_PATTERNS = /init_db|phone_formatter|json_merger|bin_iin|SQL|sqlite|traceback|\bError:|File "[^"]+\.py"|line \d+|^```|stderr|\.py\b|SELECT |INSERT |UPDATE |DELETE |CREATE TABLE/gi;
 const sanitizeDesc = (s) => {
-  if (!s) return 'Описание не указано';
+  if (!s) return tGlobal('desc_not_specified');
   const cleaned = String(s)
     .replace(TRASH_PATTERNS, ' ')
     .replace(/\s{2,}/g, ' ')
     .trim();
-  return cleaned.length > 0 ? cleaned.slice(0, 200) : 'Описание не указано';
+  return cleaned.length > 0 ? cleaned.slice(0, 200) : tGlobal('desc_not_specified');
 };
 
 const DRIVERS = [
@@ -372,7 +372,7 @@ export default function FeedScreen({ navigation, route }) {
             </View>
           </View>
           <View style={{ alignItems: 'flex-end', justifyContent: 'space-between', flexShrink: 0, maxWidth: 100 }}>
-            <Text style={s.price}>{item.price > 0 ? `$${item.price}` : 'Договорная'}</Text>
+            <Text style={s.price}>{item.price > 0 ? `$${item.price}` : t('negotiable')}</Text>
             <Text style={[s.bidsCount, { color: theme.textMuted }]}>{formatBids(item.bids)}</Text>
             <Text style={{ color: '#22C55E', fontSize: 11, fontWeight: '700', marginTop: 4 }}>{item.isMine ? t('details') + ' →' : isDriver ? t('respond') + ' →' : t('details') + ' →'}</Text>
           </View>

@@ -93,7 +93,7 @@ export default function MyTripsScreen({ navigation, route }) {
           <Text style={[s.metaItem, { color: theme.textDim }]}>{(item.created_at || '').slice(0, 10)}</Text>
         </View>
         <View style={s.cardBottom}>
-          <Text style={s.price}>{(item.price || 0) > 0 ? `$${item.price}` : 'Договорная'}</Text>
+          <Text style={s.price}>{(item.price || 0) > 0 ? `$${item.price}` : t('negotiable')}</Text>
           {item.bids_count > 0 && <Text style={[s.bidsLabel, { color: theme.textMuted }]}>{formatBids(item.bids_count)}</Text>}
         </View>
       </TouchableOpacity>
@@ -106,18 +106,18 @@ export default function MyTripsScreen({ navigation, route }) {
       <View testID="my-order-card" style={[s.card, { backgroundColor: theme.card, borderColor: sc[item.status] || theme.border, borderWidth: 2 }]}>
         <View style={s.cardTop}>
           <View style={[s.badge, { backgroundColor: '#22C55E20' }]}>
-            <Text style={[s.badgeText, { color: '#22C55E' }]}>ЗАКАЗ</Text>
+            <Text style={[s.badgeText, { color: '#22C55E' }]}>{t('order_label')}</Text>
           </View>
           <Text style={[s.statusLabel, { color: sc[item.status] || '#78716C' }]}>{formatStatus(item.status)}</Text>
         </View>
         <Text style={[s.route, { color: theme.text }]}>{item.from_city} → {item.to_city}</Text>
         <View style={s.cardBottom}>
-          <Text style={s.price}>{(item.amount || 0) > 0 ? `$${item.amount}` : 'Договорная'}</Text>
+          <Text style={s.price}>{(item.amount || 0) > 0 ? `$${item.amount}` : t('negotiable')}</Text>
           <Text style={[s.metaItem, { color: theme.textDim }]}>{(item.created_at || '').slice(0, 10)}</Text>
         </View>
         {item.chat_room_id && (
           <TouchableOpacity style={s.chatBtn} onPress={() => navigation.navigate('Chat', { roomId: item.chat_room_id, role })}>
-            <Text style={s.chatBtnText}>Открыть чат</Text>
+            <Text style={s.chatBtnText}>{t('open_chat')}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -128,7 +128,7 @@ export default function MyTripsScreen({ navigation, route }) {
     const from = item.cargo_from || '—';
     const to = item.cargo_to || '—';
     const sc = { pending: '#F59E0B', accepted: '#22C55E', rejected: '#EF4444' };
-    const sl = { pending: 'Ожидает', accepted: 'Принята', rejected: 'Отклонена' };
+    const sl = { pending: t('bid_pending'), accepted: t('bid_accepted'), rejected: t('bid_rejected') };
     return (
       <View testID="my-bid-card" style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
         <View style={s.cardTop}>
@@ -146,7 +146,7 @@ export default function MyTripsScreen({ navigation, route }) {
             if (r.ok) { toast('Ставка принята', 'success'); load(); }
             else toast(r.detail || t('send_error'), 'error');
           }}>
-            <Text style={s.acceptBtnText}>Принять ${item.amount}</Text>
+            <Text style={s.acceptBtnText}>{t('accept_bid_btn')} ${item.amount}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -156,9 +156,9 @@ export default function MyTripsScreen({ navigation, route }) {
   // ─── Layout ───
 
   const TABS = [
-    { key: 'my', label: isDriver ? 'Мои рейсы' : 'Мои грузы', testID: 'my-work-tab-my' },
-    { key: 'bids', label: isDriver ? 'Мои ставки' : 'Отклики', testID: 'my-work-tab-bids' },
-    { key: 'deals', label: 'Заказы', testID: 'my-work-tab-orders' },
+    { key: 'my', label: isDriver ? t('my_trips_tab') : t('my_cargos_tab'), testID: 'my-work-tab-my' },
+    { key: 'bids', label: isDriver ? t('my_bids_tab') : t('responses_tab'), testID: 'my-work-tab-bids' },
+    { key: 'deals', label: t('orders_tab'), testID: 'my-work-tab-orders' },
   ];
 
   return (
@@ -168,8 +168,8 @@ export default function MyTripsScreen({ navigation, route }) {
           <Text style={[s.backText, { color: theme.text }]}>‹</Text>
         </TouchableOpacity>
         <View>
-          <Text style={[s.headerTitle, { color: theme.text }]}>Моя работа</Text>
-          <Text style={[s.headerSub, { color: theme.textMuted }]}>{isDriver ? 'Рейсы, ставки и заказы' : 'Грузы, отклики и заказы'}</Text>
+          <Text style={[s.headerTitle, { color: theme.text }]}>{t('my_work')}</Text>
+          <Text style={[s.headerSub, { color: theme.textMuted }]}>{isDriver ? t('my_work_sub_driver') : t('my_work_sub_client')}</Text>
         </View>
         <View style={{ width: 44 }} />
       </View>
@@ -195,25 +195,25 @@ export default function MyTripsScreen({ navigation, route }) {
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
         ListEmptyComponent={
           data?.authRequired ? (
-            <EmptyState title="Войдите, чтобы продолжить" description="Регистрация нужна для сделок, ставок, чата и контактов." actionLabel="Войти" onAction={() => navigation.navigate('Role')} />
+            <EmptyState title={t('gate_login')} description={t('gate_login_desc')} actionLabel={t('gate_enter')} onAction={() => navigation.navigate('Role')} />
           ) : tab === 'my' ? (
             <EmptyState
-              title={isDriver ? 'Пока нет рейсов' : 'Пока нет грузов'}
-              description={isDriver ? 'Опубликуйте маршрут, чтобы грузовладельцы могли предложить груз.' : 'Разместите груз, чтобы получить отклики от перевозчиков.'}
-              actionLabel={isDriver ? 'Опубликовать маршрут' : 'Разместить груз'}
+              title={isDriver ? t('no_trips_yet') : t('no_cargos_yet')}
+              description={isDriver ? t('no_trips_desc') : t('no_cargos_desc')}
+              actionLabel={isDriver ? t('publish_route') : t('place_cargo')}
               onAction={() => navigation.navigate('Feed', { role })}
             />
           ) : tab === 'bids' ? (
             <EmptyState
-              title={isDriver ? 'Пока нет ставок' : 'Пока нет откликов'}
-              description={isDriver ? 'Найдите подходящий груз и предложите цену.' : 'Отклики появятся после публикации груза.'}
-              actionLabel={isDriver ? 'Найти грузы' : 'Разместить груз'}
+              title={isDriver ? t('no_bids_yet_driver') : t('no_responses_yet')}
+              description={isDriver ? t('no_bids_desc') : t('no_responses_desc')}
+              actionLabel={isDriver ? t('find_cargos') : t('place_cargo')}
               onAction={() => navigation.navigate('Feed', { role })}
             />
           ) : (
             <EmptyState
-              title="Пока нет заказов"
-              description={isDriver ? 'Заказы появятся после подтверждения перевозки.' : 'Заказы появятся после выбора перевозчика.'}
+              title={t('no_orders_yet')}
+              description={isDriver ? t('no_orders_desc_driver') : t('no_orders_desc_client')}
             />
           )
         }
