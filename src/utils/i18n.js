@@ -95,12 +95,30 @@ const translations = {
 
     // Feed
     cargos: 'Грузы',
-    trucks: 'Машины',
+    trucks: 'Рейсы',
     active: 'активных',
+    active_cargos: 'активных грузов',
+    available_trips: 'доступных рейсов',
     postTrip: 'Опубликовать маршрут',
     goingToChina: 'Опубликовать маршрут',
     postCargo: 'Разместить груз',
     bids: 'ставок',
+    badge_cargo: 'ГРУЗ',
+    badge_trip: 'РЕЙС',
+    // Statuses
+    status_active: 'Активен',
+    status_booked: 'Забронирован',
+    status_taken: 'В работе',
+    status_completed: 'Завершён',
+    status_cancelled: 'Отменён',
+    status_unknown: 'Не указан',
+    // Cargo types
+    general: 'Обычный груз',
+    fragile: 'Хрупкий груз',
+    food: 'Продукты',
+    electronics: 'Электроника',
+    cargo_type_unknown: 'Не указан',
+    suggest_cargo: 'Предложить груз',
 
     // Trip form
     tripRoute: 'Маршрут рейса',
@@ -1074,7 +1092,12 @@ const translations = {
     shareLink: 'Link', shareError: 'Share failed', fillRequired: 'Fill required fields',
     youPlaceholder: 'You', searchRoute: 'Search by route...', filters: 'Filters', clearFilters: 'Clear', all: 'All',
     addCargoPhoto: 'Add cargo photo', cargoPhoto: 'Cargo photo', mapRoute: 'Route on map', saveSettings: 'Saved',
-    cargos: 'Cargos', trucks: 'Trucks', active: 'active',
+    cargos: 'Cargos', trucks: 'Trips', active: 'active',
+    active_cargos: 'active cargos', available_trips: 'available trips',
+    badge_cargo: 'CARGO', badge_trip: 'TRIP',
+    status_active: 'Active', status_booked: 'Booked', status_taken: 'In progress', status_completed: 'Completed', status_cancelled: 'Cancelled', status_unknown: 'Unknown',
+    general: 'General cargo', fragile: 'Fragile', food: 'Food', electronics: 'Electronics', cargo_type_unknown: 'Not specified',
+    suggest_cargo: 'Offer cargo',
     postTrip: 'Publish trip', goingToChina: 'Publish trip', postCargo: 'Post', bids: 'bids',
     tripRoute: 'Trip route', fromCountry: 'From (country, city)', toCountry: 'To (country, city)',
     availableFrom: 'Available from', availableTo: 'Available to',
@@ -2729,6 +2752,24 @@ export const formatBids = (count) => {
     return `${n} ${pluralRu(n, 'ставка', 'ставки', 'ставок')}`;
   }
   return `${n} ${t('bids')}`;
+};
+
+export const formatStatus = (status) => {
+  const key = `status_${status}`;
+  const val = t(key);
+  return val !== key ? val : t('status_unknown');
+};
+
+export const formatTruckType = (type) => {
+  if (!type) return t('cargo_type_unknown');
+  const val = t(type);
+  return val !== type ? val : type;
+};
+
+export const formatCargoType = (type) => {
+  if (!type) return t('cargo_type_unknown');
+  const val = t(type);
+  return val !== type ? val : type;
 };
 
 export default translations;

@@ -3,7 +3,7 @@ import { View, Text, FlatList, TouchableOpacity, StyleSheet, Modal, TextInput, A
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { useI18n } from '../utils/useI18n';
-import { formatBids } from '../utils/i18n';
+import { formatBids, formatStatus, formatTruckType } from '../utils/i18n';
 import { useTheme } from '../utils/ThemeContext';
 import { getCargos, addCargo, addTrip, getTrips, subscribe, getUnreadNotifications, isFavorite, toggleFavorite } from '../utils/store';
 import { marketAPI } from '../utils/marketAPI';
@@ -352,17 +352,20 @@ export default function FeedScreen({ navigation, route }) {
           }
         }}
       >
-        {item.isMine && (
-          <View style={[s.mineBadge, { backgroundColor: '#F59E0B' }]}>
-            <Text style={s.mineBadgeText}>💼 МОЙ ГРУЗ</Text>
-          </View>
-        )}
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+          {item.isMine ? (
+            <View style={[s.mineBadge, { backgroundColor: '#F59E0B' }]}><Text style={s.mineBadgeText}>{t('badge_cargo')}</Text></View>
+          ) : (
+            <View style={[s.mineBadge, { backgroundColor: '#263244' }]}><Text style={[s.mineBadgeText, { color: '#94A3B8' }]}>{t('badge_cargo')}</Text></View>
+          )}
+          <Text style={{ color: '#22C55E', fontSize: 10, fontWeight: '600' }}>{formatStatus(item.status || 'active')}</Text>
+        </View>
         <View style={s.cardRow}>
           <View style={{ flex: 1 }}>
             <Text style={[s.route, { color: theme.text }]}>{item.from} → {item.to}</Text>
             <Text style={[s.cargoName, { color: theme.textSecondary }]} numberOfLines={2} ellipsizeMode="tail">{sanitizeDesc(item.cargo)}</Text>
             <View style={s.badges}>
-              <Text style={[s.badge, { color: TCOLORS[item.type] || '#666', backgroundColor: (TCOLORS[item.type] || '#666') + '15' }]}>{t(item.type) || item.type}</Text>
+              <Text style={[s.badge, { color: TCOLORS[item.type] || '#666', backgroundColor: (TCOLORS[item.type] || '#666') + '15' }]}>{formatTruckType(item.type)}</Text>
               {(item.tons > 0 || item.m3 > 0) && <Text style={[s.badge, { color: theme.textSecondary, backgroundColor: theme.border }]}>{item.tons > 0 ? item.tons + 'т' : ''}{item.tons > 0 && item.m3 > 0 ? ' · ' : ''}{item.m3 > 0 ? item.m3 + 'м³' : ''}</Text>}
               {stats && <Text style={[s.badge, { color: theme.text, backgroundColor: theme.border }]}>{stats.km}км · ~{stats.days}дн</Text>}
               {item.pickup && <Text style={[s.badge, { color: theme.textMuted, backgroundColor: theme.border }]}>📅 {item.pickup}</Text>}
@@ -398,11 +401,9 @@ export default function FeedScreen({ navigation, route }) {
         }
       }}
     >
-      {item.isTrip && (
-        <View style={s.tripBadge}>
-          <Text style={s.tripBadgeText}>🚛 АКТИВНЫЙ РЕЙС</Text>
-        </View>
-      )}
+      <View style={[s.tripBadge, { backgroundColor: item.isTrip ? '#172033' : '#263244' }]}>
+        <Text style={[s.tripBadgeText, { color: item.isTrip ? '#3B82F6' : '#94A3B8' }]}>{t('badge_trip')}</Text>
+      </View>
       <View style={s.cardRow}>
         <Text style={{ fontSize: 28, marginRight: 12 }}>{FLAGS[item.country] || '🏳️'}</Text>
         <View style={{ flex: 1 }}>
@@ -419,8 +420,8 @@ export default function FeedScreen({ navigation, route }) {
             <Text style={s.rating}>★ {item.rating} ({item.reviews})</Text>
           )}
           <View style={s.badges}>
-            <Text style={[s.badge, { color: TCOLORS[item.type] || '#666', backgroundColor: (TCOLORS[item.type] || '#666') + '15' }]}>{t(item.type) || item.type}</Text>
-            <Text style={[s.badge, { color: theme.textSecondary, backgroundColor: theme.border }]}>{item.m3}m³ · {item.tons}t</Text>
+            <Text style={[s.badge, { color: TCOLORS[item.type] || '#666', backgroundColor: (TCOLORS[item.type] || '#666') + '15' }]}>{formatTruckType(item.type)}</Text>
+            {(item.m3 > 0 || item.tons > 0) && <Text style={[s.badge, { color: theme.textSecondary, backgroundColor: theme.border }]}>{item.tons > 0 ? item.tons + ' т' : ''}{item.tons > 0 && item.m3 > 0 ? ' · ' : ''}{item.m3 > 0 ? item.m3 + ' м³' : ''}</Text>}
           </View>
         </View>
       </View>
@@ -434,7 +435,7 @@ export default function FeedScreen({ navigation, route }) {
           <GradientText style={s.title} colors={isDriver ? ['#2563EB', '#7C3AED'] : ['#F59E0B', '#EF4444']}>
             {isDriver ? t('cargos') : t('trucks')}
           </GradientText>
-          <Text style={[s.subtitle, { color: theme.textMuted }]}>{filteredData.length} {t('active')}</Text>
+          <Text style={[s.subtitle, { color: theme.textMuted }]}>{filteredData.length} {isDriver ? t('active_cargos') : t('available_trips')}</Text>
         </View>
         <TouchableOpacity
           style={[s.bellBtn, { backgroundColor: theme.card, borderColor: theme.border }]}

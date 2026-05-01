@@ -219,8 +219,8 @@ export default function MyTripsScreen({ navigation, route }) {
           ) : tab === 'my' ? (
             <EmptyState
               title={isDriver ? 'Пока нет рейсов' : 'Пока нет грузов'}
-              description={isDriver ? 'Опубликуйте маршрут, чтобы грузоотправители предложили груз.' : 'Создайте груз, чтобы получить отклики от водителей.'}
-              actionLabel={isDriver ? 'Опубликовать маршрут' : 'Создать груз'}
+              description={isDriver ? 'Опубликуйте маршрут, чтобы грузовладельцы могли предложить груз.' : 'Разместите груз, чтобы получить отклики от перевозчиков.'}
+              actionLabel={isDriver ? 'Опубликовать маршрут' : 'Разместить груз'}
               onAction={() => navigation.navigate('Feed', { role })}
             />
           ) : tab === 'bids' ? (
