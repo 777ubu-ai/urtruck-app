@@ -141,14 +141,35 @@ export default function MyTripsScreen({ navigation, route }) {
     );
   };
 
+  const openChatForBid = async (bid) => {
+    const r = await marketAPI.openBidChat(bid.id);
+    if (r.ok) {
+      const roomId = r.chat_room_id || r.chatRoomId;
+      if (roomId) navigation.navigate('Chat', { roomId, role });
+      else toast(t('chat_open_failed'), 'error');
+    } else {
+      toast(r.detail || t('chat_open_failed'), 'error');
+    }
+  };
+
   const renderBid = ({ item }) => {
     const from = item.cargo_from || '—';
     const to = item.cargo_to || '—';
-    const sc = { pending: '#F59E0B', accepted: '#22C55E', rejected: '#EF4444', cancelled: '#78716C' };
-    const sl = { pending: t('bid_pending'), accepted: t('bid_accepted'), rejected: t('bid_rejected'), cancelled: t('bid_cancelled') };
+    const sc = { pending: '#F59E0B', accepted: '#22C55E', rejected: '#EF4444', cancelled: '#78716C', countered: '#A855F7' };
+    const sl = {
+      pending: t('bid_pending'), accepted: t('bid_accepted'),
+      rejected: t('bid_rejected'), cancelled: t('bid_cancelled'),
+      countered: t('bid_countered'),
+    };
     const busy = busyBidId === item.id;
+    const isCountered = item.status === 'countered';
     return (
-      <View testID="my-bid-card" style={[s.card, { backgroundColor: theme.card, borderColor: theme.border, opacity: item.status === 'cancelled' ? 0.6 : 1 }]}>
+      <View testID="my-bid-card" style={[s.card, {
+        backgroundColor: theme.card,
+        borderColor: isCountered ? '#A855F7' : theme.border,
+        borderWidth: isCountered ? 2 : 1,
+        opacity: item.status === 'cancelled' ? 0.6 : 1,
+      }]}>
         <View style={s.cardTop}>
           <Text style={[s.route, { color: theme.text }]}>{from} → {to}</Text>
           <Text style={[s.statusLabel, { color: sc[item.status] || '#78716C' }]}>{sl[item.status] || item.status}</Text>
@@ -158,10 +179,16 @@ export default function MyTripsScreen({ navigation, route }) {
           <Text style={s.price}>${item.amount}</Text>
           {item.message && <Text style={[s.bidsLabel, { color: theme.textMuted }]} numberOfLines={1}>{item.message}</Text>}
         </View>
+        {isCountered && item.counter_amount ? (
+          <Text style={{ color: '#A855F7', fontSize: 12, fontWeight: '700', marginTop: 4 }}>
+            {t('counter_amount')}: ${item.counter_amount}
+            {item.counter_message ? ` · ${item.counter_message}` : ''}
+          </Text>
+        ) : null}
 
-        {/* Cargo owner: accept + reject pending bids */}
+        {/* Cargo owner — pending: Reject / Counter / Open chat / Accept */}
         {!isDriver && item.status === 'pending' && (
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: spacing.sm }}>
+          <View style={{ flexDirection: 'row', gap: 6, marginTop: spacing.sm, flexWrap: 'wrap' }}>
             <TouchableOpacity
               style={[s.rejectBtn, busy && { opacity: 0.5 }]}
               disabled={busy}
@@ -176,7 +203,19 @@ export default function MyTripsScreen({ navigation, route }) {
               <Text style={s.rejectBtnText}>{t('reject_btn')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[s.acceptBtn, { flex: 1 }, busy && { opacity: 0.5 }]}
+              style={[s.miniBtn, { borderColor: '#A855F7' }]}
+              onPress={() => { setEditingBid(item); setBidModalMode('counter'); setBidModal(true); }}
+            >
+              <Text style={[s.miniBtnText, { color: '#A855F7' }]}>🔁 {t('counter_offer')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.miniBtn, { borderColor: '#3B82F6' }]}
+              onPress={() => openChatForBid(item)}
+            >
+              <Text style={[s.miniBtnText, { color: '#3B82F6' }]}>💬 {t('open_bid_chat')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.acceptBtn, { flex: 1, minWidth: 110 }, busy && { opacity: 0.5 }]}
               disabled={busy}
               onPress={async () => {
                 setBusyBidId(item.id);
@@ -191,7 +230,70 @@ export default function MyTripsScreen({ navigation, route }) {
           </View>
         )}
 
-        {/* Driver: edit / discount / cancel own pending bid */}
+        {/* Cargo owner — countered: Reject + Open chat (no direct accept) */}
+        {!isDriver && isCountered && (
+          <View style={{ flexDirection: 'row', gap: 6, marginTop: spacing.sm, flexWrap: 'wrap' }}>
+            <TouchableOpacity
+              style={[s.rejectBtn, busy && { opacity: 0.5 }]}
+              disabled={busy}
+              onPress={async () => {
+                setBusyBidId(item.id);
+                const r = await marketAPI.rejectBid(item.id);
+                setBusyBidId(null);
+                if (r.ok) { toast('❌ ' + t('bid_rejected_toast'), 'success'); load(); }
+                else toast(r.detail || t('reject_failed'), 'error');
+              }}
+            >
+              <Text style={s.rejectBtnText}>{t('reject_btn')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.miniBtn, { borderColor: '#3B82F6' }]}
+              onPress={() => openChatForBid(item)}
+            >
+              <Text style={[s.miniBtnText, { color: '#3B82F6' }]}>💬 {t('open_bid_chat')}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Driver — countered: Accept counter / Decline counter / Open chat */}
+        {isDriver && isCountered && (
+          <View style={{ flexDirection: 'row', gap: 6, marginTop: spacing.sm, flexWrap: 'wrap' }}>
+            <TouchableOpacity
+              style={[s.miniBtn, { borderColor: '#EF4444' }, busy && { opacity: 0.5 }]}
+              disabled={busy}
+              onPress={async () => {
+                setBusyBidId(item.id);
+                const r = await marketAPI.declineCounterBid(item.id);
+                setBusyBidId(null);
+                if (r.ok) { toast('↩ ' + t('counter_declined'), 'success'); load(); }
+                else toast(r.detail || t('reject_failed'), 'error');
+              }}
+            >
+              <Text style={[s.miniBtnText, { color: '#EF4444' }]}>↩ {t('decline_counter')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.miniBtn, { borderColor: '#3B82F6' }]}
+              onPress={() => openChatForBid(item)}
+            >
+              <Text style={[s.miniBtnText, { color: '#3B82F6' }]}>💬 {t('open_bid_chat')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.acceptBtn, busy && { opacity: 0.5 }]}
+              disabled={busy}
+              onPress={async () => {
+                setBusyBidId(item.id);
+                const r = await marketAPI.acceptCounterBid(item.id);
+                setBusyBidId(null);
+                if (r.ok) { toast('✅ ' + t('counter_accepted'), 'success'); load(); }
+                else toast(r.detail || t('accept_failed'), 'error');
+              }}
+            >
+              <Text style={s.acceptBtnText}>{t('accept_counter')} ${item.counter_amount}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Driver — pending: Edit / Discount / Open chat / Cancel */}
         {isDriver && item.status === 'pending' && (
           <View style={{ flexDirection: 'row', gap: 6, marginTop: spacing.sm, flexWrap: 'wrap' }}>
             <TouchableOpacity
@@ -205,6 +307,12 @@ export default function MyTripsScreen({ navigation, route }) {
               onPress={() => { setEditingBid(item); setBidModalMode('discount'); setBidModal(true); }}
             >
               <Text style={[s.miniBtnText, { color: '#F59E0B' }]}>💸 {t('give_discount')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.miniBtn, { borderColor: '#3B82F6' }]}
+              onPress={() => openChatForBid(item)}
+            >
+              <Text style={[s.miniBtnText, { color: '#3B82F6' }]}>💬 {t('open_bid_chat')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[s.miniBtn, { borderColor: '#EF4444' }, busy && { opacity: 0.5 }]}

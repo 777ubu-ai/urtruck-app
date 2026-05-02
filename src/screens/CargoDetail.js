@@ -64,6 +64,9 @@ export default function CargoDetail({ navigation, route }) {
           co: 'KZ', rating: 0, amount: b.amount,
           time: b.created_at?.slice(11, 16) || '•', message: b.message,
           status: b.status, isMine: b.bidder_id === myUserId,
+          counterAmount: b.counter_amount,
+          counterMessage: b.counter_message,
+          counterBy: b.counter_by,
         }));
         setBids(mapped);
         const accepted = mapped.find(b => b.status === 'accepted');
@@ -73,6 +76,60 @@ export default function CargoDetail({ navigation, route }) {
         }
       })
       .catch(() => {});
+  };
+
+  const openChatForBid = async (bid) => {
+    try {
+      const r = await marketAPI.openBidChat(bid.id);
+      if (r.ok) {
+        const roomId = r.chat_room_id || r.chatRoomId;
+        if (roomId) {
+          navigation.navigate('Chat', { roomId, role });
+        } else {
+          toast(t('chat_open_failed'), 'error');
+        }
+      } else {
+        toast(r.detail || t('chat_open_failed'), 'error');
+      }
+    } catch {
+      toast(t('no_connection'), 'error');
+    }
+  };
+
+  const sendCounter = (bid) => {
+    setEditingBid(bid);
+    setBidModalMode('counter');
+    setBidModal(true);
+  };
+
+  const acceptCounter = async (bid) => {
+    try {
+      const r = await marketAPI.acceptCounterBid(bid.id);
+      if (r.ok) {
+        toast('✅ ' + t('counter_accepted'), 'success');
+        if (r.chat_room_id) setChatRoomId(r.chat_room_id);
+        if (r.deal_id) { setDealId(r.deal_id); setDealStatus('accepted'); }
+        loadBids();
+      } else {
+        toast(r.detail || t('accept_failed'), 'error');
+      }
+    } catch {
+      toast(t('no_connection'), 'error');
+    }
+  };
+
+  const declineCounter = async (bid) => {
+    try {
+      const r = await marketAPI.declineCounterBid(bid.id);
+      if (r.ok) {
+        toast('↩ ' + t('counter_declined'), 'success');
+        loadBids();
+      } else {
+        toast(r.detail || t('reject_failed'), 'error');
+      }
+    } catch {
+      toast(t('no_connection'), 'error');
+    }
   };
 
   useEffect(() => {
@@ -193,19 +250,22 @@ export default function CargoDetail({ navigation, route }) {
         {bids.map(b => {
           const hasAccepted = bids.some(x => x.status === 'accepted');
           const isCancelled = b.status === 'cancelled';
+          const isCountered = b.status === 'countered';
+          const isActive = b.status === 'pending' || isCountered;
           return (
             <View key={b.id} style={[s.bidCard, {
               backgroundColor: theme.card,
               borderColor: b.status === 'accepted' ? '#22C55E'
                 : b.status === 'rejected' ? '#EF444440'
                 : isCancelled ? '#78716C40'
+                : isCountered ? '#A855F7' /* purple — counter active */
                 : b.isMine ? '#22C55E60' : theme.border,
-              borderWidth: b.status === 'accepted' || b.isMine ? 2 : 1,
+              borderWidth: b.status === 'accepted' || isCountered || b.isMine ? 2 : 1,
               opacity: (b.status === 'rejected' || isCancelled) ? 0.55 : 1,
             }]}>
               <View style={s.bidLeft}>
                 <View style={[s.bidFlag, { backgroundColor: b.status === 'accepted' ? '#22C55E' : b.isMine ? '#22C55E' : theme.border }]}>
-                  <Text style={{ fontSize: 14 }}>{b.isMine ? '🫵' : b.status === 'accepted' ? '✅' : (FLAGS[b.co] || '🏳️')}</Text>
+                  <Text style={{ fontSize: 14 }}>{b.isMine ? '🫵' : b.status === 'accepted' ? '✅' : isCountered ? '🔁' : (FLAGS[b.co] || '🏳️')}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={[s.bidName, { color: theme.text }]}>{b.name}{b.isMine ? ' ' + t('you_marker') : ''}</Text>
@@ -214,19 +274,28 @@ export default function CargoDetail({ navigation, route }) {
                     color: b.status === 'accepted' ? '#22C55E'
                       : b.status === 'rejected' ? '#EF4444'
                       : isCancelled ? '#78716C'
+                      : isCountered ? '#A855F7'
                       : '#FBBF24',
                   }]}>
                     {b.status === 'accepted' ? '✅ ' + t('driver_chosen')
                       : b.status === 'rejected' ? '❌ ' + t('bid_rejected')
                       : isCancelled ? '⊘ ' + t('bid_cancelled')
+                      : isCountered ? '🔁 ' + (cargo.isMine ? t('counter_sent_status') : t('bid_countered'))
                       : b.time}
                   </Text>
+                  {isCountered && b.counterAmount ? (
+                    <Text style={{ color: '#A855F7', fontSize: 11, marginTop: 2, fontWeight: '700' }}>
+                      {t('counter_amount')}: ${b.counterAmount}{b.counterMessage ? ` · ${b.counterMessage}` : ''}
+                    </Text>
+                  ) : null}
                 </View>
               </View>
               <View style={{ alignItems: 'flex-end' }}>
                 <Text style={s.bidAmt}>${b.amount}</Text>
+
+                {/* Cargo owner — pending: Reject / Counter / Accept / Open chat */}
                 {cargo.isMine && b.status === 'pending' && !hasAccepted && (
-                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
+                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     <TouchableOpacity
                       style={[s.rejectBtn, rejecting === b.id && { opacity: 0.5 }]}
                       onPress={async () => {
@@ -247,6 +316,18 @@ export default function CargoDetail({ navigation, route }) {
                       disabled={!!rejecting || !!accepting}
                     >
                       <Text style={s.rejectBtnText}>{t('reject_btn')}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[s.miniBtn, { borderColor: '#A855F7' }]}
+                      onPress={() => sendCounter(b)}
+                    >
+                      <Text style={[s.miniBtnText, { color: '#A855F7' }]}>🔁 {t('counter_offer')}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[s.miniBtn, { borderColor: '#3B82F6' }]}
+                      onPress={() => openChatForBid(b)}
+                    >
+                      <Text style={[s.miniBtnText, { color: '#3B82F6' }]}>💬 {t('open_bid_chat')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[s.acceptBtn, accepting === b.id && { opacity: 0.5 }]}
@@ -273,6 +354,59 @@ export default function CargoDetail({ navigation, route }) {
                     </TouchableOpacity>
                   </View>
                 )}
+
+                {/* Cargo owner — countered: Reject / Open chat (no direct accept) */}
+                {cargo.isMine && isCountered && (
+                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    <TouchableOpacity
+                      style={[s.rejectBtn, rejecting === b.id && { opacity: 0.5 }]}
+                      onPress={async () => {
+                        setRejecting(b.id);
+                        try {
+                          const r = await marketAPI.rejectBid(b.id);
+                          if (r.ok) { toast('❌ ' + t('bid_rejected_toast'), 'success'); loadBids(); }
+                          else toast(r.detail || t('reject_failed'), 'error');
+                        } catch { toast(t('no_connection'), 'error'); }
+                        setRejecting(null);
+                      }}
+                      disabled={!!rejecting}
+                    >
+                      <Text style={s.rejectBtnText}>{t('reject_btn')}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[s.miniBtn, { borderColor: '#3B82F6' }]}
+                      onPress={() => openChatForBid(b)}
+                    >
+                      <Text style={[s.miniBtnText, { color: '#3B82F6' }]}>💬 {t('open_bid_chat')}</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {/* Driver — countered: Accept / Decline / Open chat */}
+                {b.isMine && isCountered && (
+                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    <TouchableOpacity
+                      style={[s.miniBtn, { borderColor: '#EF4444' }]}
+                      onPress={() => declineCounter(b)}
+                    >
+                      <Text style={[s.miniBtnText, { color: '#EF4444' }]}>↩ {t('decline_counter')}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[s.miniBtn, { borderColor: '#3B82F6' }]}
+                      onPress={() => openChatForBid(b)}
+                    >
+                      <Text style={[s.miniBtnText, { color: '#3B82F6' }]}>💬 {t('open_bid_chat')}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[s.acceptBtn]}
+                      onPress={() => acceptCounter(b)}
+                    >
+                      <Text style={s.acceptBtnText}>{t('accept_counter')} ${b.counterAmount}</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {/* Driver — pending: Edit / Discount / Cancel / Open chat */}
                 {b.isMine && b.status === 'pending' && !hasAccepted && (
                   <View style={{ flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     <TouchableOpacity
@@ -294,6 +428,12 @@ export default function CargoDetail({ navigation, route }) {
                       }}
                     >
                       <Text style={[s.miniBtnText, { color: '#F59E0B' }]}>💸 {t('give_discount')}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[s.miniBtn, { borderColor: '#3B82F6' }]}
+                      onPress={() => openChatForBid(b)}
+                    >
+                      <Text style={[s.miniBtnText, { color: '#3B82F6' }]}>💬 {t('open_bid_chat')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[s.miniBtn, { borderColor: '#EF4444' }, cancelling === b.id && { opacity: 0.5 }]}

@@ -6,10 +6,11 @@ import { useToast } from './Toast';
 import { marketAPI } from '../utils/marketAPI';
 
 /**
- * BidModal supports three modes:
+ * BidModal supports four modes:
  *   - 'create'   — POST /bids (default; existing behaviour)
  *   - 'edit'     — PATCH /bids/{id} with arbitrary new amount/message
  *   - 'discount' — same PATCH, but pre-fills initialAmount and shows -$50/-$100/-$200 chips
+ *   - 'counter'  — POST /bids/{id}/counter (cargo/trip owner sends counter-offer)
  *
  * Required for non-create modes: bidId, initialAmount.
  */
@@ -22,9 +23,11 @@ export default function BidModal({
   initialAmount,
   initialMessage,
 }) {
+  const isCounter = mode === 'counter';
   const isEdit = mode === 'edit' || mode === 'discount';
   const isDiscount = mode === 'discount';
-  const baseAmount = isEdit ? Number(initialAmount) || 0 : 0;
+  const isPrefill = isEdit || isCounter;
+  const baseAmount = isPrefill ? Number(initialAmount) || 0 : 0;
 
   const [bid, setBid] = useState('');
   const [message, setMessage] = useState('');
@@ -38,9 +41,11 @@ export default function BidModal({
   useEffect(() => {
     if (!visible) return;
     setError('');
-    if (isEdit) {
-      setBid(baseAmount ? String(baseAmount) : '');
-      setMessage(initialMessage || '');
+    if (isPrefill) {
+      // For counter we leave the amount empty so the owner has to type a new
+      // number — pre-filling with bidder's amount would be misleading.
+      setBid(isEdit && baseAmount ? String(baseAmount) : '');
+      setMessage(isEdit ? (initialMessage || '') : '');
     } else {
       setBid('');
       setMessage('');
@@ -61,7 +66,12 @@ export default function BidModal({
     setError('');
     try {
       let r;
-      if (isEdit) {
+      if (isCounter) {
+        r = await marketAPI.counterBid(bidId, {
+          amount: amountInt,
+          message: message.trim() || null,
+        });
+      } else if (isEdit) {
         const payload = { amount: amountInt };
         // Send message only if user changed it from the original — avoids overwriting.
         if (message !== (initialMessage || '')) payload.message = message.trim() || null;
@@ -77,7 +87,8 @@ export default function BidModal({
       if (r.ok) {
         onSubmit?.(amountInt);
         onClose();
-        const okMsg = isDiscount ? t('bid_discount_sent')
+        const okMsg = isCounter ? t('counter_sent')
+                    : isDiscount ? t('bid_discount_sent')
                     : isEdit     ? t('bid_updated')
                                  : t('bidSent');
         toast('✓ ' + okMsg, 'success');
@@ -95,7 +106,8 @@ export default function BidModal({
     }
   };
 
-  const title = isDiscount ? t('give_discount')
+  const title = isCounter ? t('counter_offer')
+              : isDiscount ? t('give_discount')
               : isEdit     ? t('edit_bid')
                            : t('suggestPrice');
 
@@ -105,15 +117,17 @@ export default function BidModal({
         <TouchableOpacity style={[s.sheet, { backgroundColor: theme.bg, borderColor: theme.border }]} activeOpacity={1} onPress={() => {}}>
           <View style={s.handle} />
           <Text style={[s.title, { color: theme.text }]}>{title}</Text>
-          {!isEdit && (
+          {!isPrefill && (
             <Text style={[s.subtitle, { color: theme.textMuted }]}>{t('avgPrice')}: ${currentPrice - 200}–${currentPrice + 400}</Text>
           )}
-          {isDiscount && baseAmount > 0 && (
-            <Text style={[s.subtitle, { color: theme.textMuted }]}>{t('current_price_label')}: ${baseAmount}</Text>
+          {(isDiscount || isCounter) && baseAmount > 0 && (
+            <Text style={[s.subtitle, { color: theme.textMuted }]}>
+              {isCounter ? t('driver_offered') : t('current_price_label')}: ${baseAmount}
+            </Text>
           )}
 
           <View style={s.quickRow}>
-            {!isEdit && createQuickPrices.map((p) => (
+            {!isPrefill && createQuickPrices.map((p) => (
               <TouchableOpacity
                 key={p}
                 style={[s.quickBtn, { backgroundColor: theme.card, borderColor: theme.border }, bid === String(p) && s.quickBtnActive]}
@@ -170,7 +184,10 @@ export default function BidModal({
           >
             {loading ? <ActivityIndicator color="#fff" /> : (
               <Text style={s.submitBtnText}>
-                {isDiscount ? t('send_discount') : isEdit ? t('save_changes') : t('sendBid')}
+                {isCounter ? t('send_counter_offer')
+                  : isDiscount ? t('send_discount')
+                  : isEdit ? t('save_changes')
+                  : t('sendBid')}
               </Text>
             )}
           </TouchableOpacity>

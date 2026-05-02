@@ -118,6 +118,43 @@ export const marketAPI = {
     return d;
   },
 
+  async counterBid(bidId, payload) {
+    const r = await fetch(`${BASE}/bids/${bidId}/counter`, {
+      method: 'POST', headers: await headers(),
+      body: JSON.stringify(payload),
+    });
+    const d = await r.json();
+    if (!r.ok) return { ok: false, detail: d.detail || `Ошибка ${r.status}`, status: r.status };
+    return d;
+  },
+
+  async acceptCounterBid(bidId) {
+    const r = await fetch(`${BASE}/bids/${bidId}/counter/accept`, {
+      method: 'POST', headers: await headers(),
+    });
+    const d = await r.json();
+    if (!r.ok) return { ok: false, detail: d.detail || `Ошибка ${r.status}`, status: r.status };
+    return d;
+  },
+
+  async declineCounterBid(bidId) {
+    const r = await fetch(`${BASE}/bids/${bidId}/counter/decline`, {
+      method: 'POST', headers: await headers(),
+    });
+    const d = await r.json();
+    if (!r.ok) return { ok: false, detail: d.detail || `Ошибка ${r.status}`, status: r.status };
+    return d;
+  },
+
+  async openBidChat(bidId) {
+    const r = await fetch(`${BASE}/bids/${bidId}/chat`, {
+      method: 'POST', headers: await headers(),
+    });
+    const d = await r.json();
+    if (!r.ok) return { ok: false, detail: d.detail || `Ошибка ${r.status}`, status: r.status };
+    return d;
+  },
+
   // ─── My Dashboard ───
   async myDashboard() {
     const empty = { my_trips: [], my_cargos: [], my_bids: [], incoming_bids: [], my_deals: [] };
