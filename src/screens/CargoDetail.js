@@ -54,8 +54,16 @@ export default function CargoDetail({ navigation, route }) {
   const [reviewLoading, setReviewLoading] = useState(false);
   const [acceptedDriverId, setAcceptedDriverId] = useState(null);
   const cid = cargoId || cargo.id;
-  const isShipper = !!cargo.isMine || (shipperId && shipperId === myUserId);
-  const isDriverSide = (driverId && driverId === myUserId) || (acceptedDriverId && acceptedDriverId === myUserId);
+  // route.params.role is the authoritative side hint when CargoDetail is opened
+  // from MyTripsScreen → Orders. The previous id-based comparison is unreliable
+  // because session.user.id is a synthetic `u_<timestamp>` until AuthContext
+  // refreshes it from /register/me, which races the deal-block render.
+  const isDriverSide = role === 'driver'
+    || (driverId && driverId === myUserId)
+    || (acceptedDriverId && acceptedDriverId === myUserId);
+  const isShipper = role === 'client' || role === 'shipper'
+    || !!cargo.isMine
+    || (shipperId && shipperId === myUserId);
   if (!cid && !cargo.from) return null;
 
   const loadBids = () => {
