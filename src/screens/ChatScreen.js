@@ -46,12 +46,23 @@ export default function ChatScreen({ navigation, route }) {
     if (!rid) return;
     try {
       const md = await chatAPI.messages(rid);
-      const mapped = (md.messages || []).map(m => ({
-        id: String(m.id), from: m.sender_id === myId ? 'me' : 'them',
-        text: m.text, isPhoto: !!m.photo_url, photoUri: m.photo_url,
-        isVoice: !!m.is_voice, time: (m.created_at || '').slice(11, 16),
-        is_read: !!m.is_read,
-      }));
+      const mapped = (md.messages || []).map(m => {
+        // Resolve "me vs them" robustly:
+        // 1) if sender_id matches our local user id — me
+        // 2) else if sender_id matches the partner's id — them
+        // 3) fall back to "me" so a temporary auth race (session.user.id is
+        //    a synthetic 'u_<ts>' until AuthContext.refreshLevel finishes)
+        //    does not flip every message to the wrong column.
+        const fromMe =
+          (myId && m.sender_id === myId) ||
+          (partner?.id && m.sender_id !== partner.id);
+        return {
+          id: String(m.id), from: fromMe ? 'me' : 'them',
+          text: m.text, isPhoto: !!m.photo_url, photoUri: m.photo_url,
+          isVoice: !!m.is_voice, time: (m.created_at || '').slice(11, 16),
+          is_read: !!m.is_read,
+        };
+      });
       // Обновляем только если количество изменилось (не мерцаем)
       setMessages(prev => mapped.length !== prev.length ? mapped : prev);
     } catch {}
