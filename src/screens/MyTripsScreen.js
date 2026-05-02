@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, FlatList, RefreshControl } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, FlatList, RefreshControl, Platform, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
@@ -7,6 +7,7 @@ import { useToast } from '../components/Toast';
 import { marketAPI } from '../utils/marketAPI';
 import { formatStatus, formatTruckType, formatBids } from '../utils/i18n';
 import EmptyState from '../components/ui/EmptyState';
+import BidModal from '../components/BidModal';
 import { colors, spacing, radius, typography } from '../theme/theme';
 
 export default function MyTripsScreen({ navigation, route }) {
@@ -22,6 +23,22 @@ export default function MyTripsScreen({ navigation, route }) {
   const [tab, setTab] = useState(initialTab);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(!justCreatedTrip);
+  const [bidModal, setBidModal] = useState(false);
+  const [bidModalMode, setBidModalMode] = useState('edit');
+  const [editingBid, setEditingBid] = useState(null);
+  const [busyBidId, setBusyBidId] = useState(null);
+
+  const confirmAction = async (msg) => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.confirm) {
+      return window.confirm(msg);
+    }
+    return new Promise(resolve => {
+      Alert.alert(msg, '', [
+        { text: t('cancel'), onPress: () => resolve(false) },
+        { text: 'OK', onPress: () => resolve(true) },
+      ]);
+    });
+  };
 
   const load = async () => {
     setLoading(true);
@@ -127,10 +144,11 @@ export default function MyTripsScreen({ navigation, route }) {
   const renderBid = ({ item }) => {
     const from = item.cargo_from || '—';
     const to = item.cargo_to || '—';
-    const sc = { pending: '#F59E0B', accepted: '#22C55E', rejected: '#EF4444' };
-    const sl = { pending: t('bid_pending'), accepted: t('bid_accepted'), rejected: t('bid_rejected') };
+    const sc = { pending: '#F59E0B', accepted: '#22C55E', rejected: '#EF4444', cancelled: '#78716C' };
+    const sl = { pending: t('bid_pending'), accepted: t('bid_accepted'), rejected: t('bid_rejected'), cancelled: t('bid_cancelled') };
+    const busy = busyBidId === item.id;
     return (
-      <View testID="my-bid-card" style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
+      <View testID="my-bid-card" style={[s.card, { backgroundColor: theme.card, borderColor: theme.border, opacity: item.status === 'cancelled' ? 0.6 : 1 }]}>
         <View style={s.cardTop}>
           <Text style={[s.route, { color: theme.text }]}>{from} → {to}</Text>
           <Text style={[s.statusLabel, { color: sc[item.status] || '#78716C' }]}>{sl[item.status] || item.status}</Text>
@@ -140,14 +158,69 @@ export default function MyTripsScreen({ navigation, route }) {
           <Text style={s.price}>${item.amount}</Text>
           {item.message && <Text style={[s.bidsLabel, { color: theme.textMuted }]} numberOfLines={1}>{item.message}</Text>}
         </View>
+
+        {/* Cargo owner: accept + reject pending bids */}
         {!isDriver && item.status === 'pending' && (
-          <TouchableOpacity style={s.acceptBtn} onPress={async () => {
-            const r = await marketAPI.acceptBid(item.id);
-            if (r.ok) { toast(t('bid_accepted_toast'), 'success'); load(); }
-            else toast(r.detail || t('send_error'), 'error');
-          }}>
-            <Text style={s.acceptBtnText}>{t('accept_bid_btn')} ${item.amount}</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: spacing.sm }}>
+            <TouchableOpacity
+              style={[s.rejectBtn, busy && { opacity: 0.5 }]}
+              disabled={busy}
+              onPress={async () => {
+                setBusyBidId(item.id);
+                const r = await marketAPI.rejectBid(item.id);
+                setBusyBidId(null);
+                if (r.ok) { toast('❌ ' + t('bid_rejected_toast'), 'success'); load(); }
+                else toast(r.detail || t('reject_failed'), 'error');
+              }}
+            >
+              <Text style={s.rejectBtnText}>{t('reject_btn')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.acceptBtn, { flex: 1 }, busy && { opacity: 0.5 }]}
+              disabled={busy}
+              onPress={async () => {
+                setBusyBidId(item.id);
+                const r = await marketAPI.acceptBid(item.id);
+                setBusyBidId(null);
+                if (r.ok) { toast(t('bid_accepted_toast'), 'success'); load(); }
+                else toast(r.detail || t('send_error'), 'error');
+              }}
+            >
+              <Text style={s.acceptBtnText}>{t('accept_bid_btn')} ${item.amount}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Driver: edit / discount / cancel own pending bid */}
+        {isDriver && item.status === 'pending' && (
+          <View style={{ flexDirection: 'row', gap: 6, marginTop: spacing.sm, flexWrap: 'wrap' }}>
+            <TouchableOpacity
+              style={[s.miniBtn, { borderColor: '#3B82F6' }]}
+              onPress={() => { setEditingBid(item); setBidModalMode('edit'); setBidModal(true); }}
+            >
+              <Text style={[s.miniBtnText, { color: '#3B82F6' }]}>✏️ {t('edit_bid')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.miniBtn, { borderColor: '#F59E0B' }]}
+              onPress={() => { setEditingBid(item); setBidModalMode('discount'); setBidModal(true); }}
+            >
+              <Text style={[s.miniBtnText, { color: '#F59E0B' }]}>💸 {t('give_discount')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.miniBtn, { borderColor: '#EF4444' }, busy && { opacity: 0.5 }]}
+              disabled={busy}
+              onPress={async () => {
+                if (!(await confirmAction(t('cancel_bid_confirm')))) return;
+                setBusyBidId(item.id);
+                const r = await marketAPI.cancelBid(item.id);
+                setBusyBidId(null);
+                if (r.ok) { toast('⊘ ' + t('bid_cancelled_toast'), 'success'); load(); }
+                else toast(r.detail || t('cancel_failed'), 'error');
+              }}
+            >
+              <Text style={[s.miniBtnText, { color: '#EF4444' }]}>⊘ {t('cancel_bid')}</Text>
+            </TouchableOpacity>
+          </View>
         )}
       </View>
     );
@@ -218,6 +291,16 @@ export default function MyTripsScreen({ navigation, route }) {
           )
         }
       />
+
+      <BidModal
+        visible={bidModal}
+        onClose={() => { setBidModal(false); setEditingBid(null); }}
+        onSubmit={() => load()}
+        mode={bidModalMode}
+        bidId={editingBid?.id}
+        initialAmount={editingBid?.amount}
+        initialMessage={editingBid?.message}
+      />
     </SafeAreaView>
   );
 }
@@ -249,6 +332,10 @@ const s = StyleSheet.create({
 
   chatBtn: { backgroundColor: '#3B82F6', borderRadius: radius.sm, paddingVertical: spacing.sm, alignItems: 'center', marginTop: spacing.sm },
   chatBtnText: { color: '#FFF', ...typography.title },
-  acceptBtn: { backgroundColor: '#22C55E', borderRadius: radius.sm, paddingVertical: spacing.sm, alignItems: 'center', marginTop: spacing.sm },
+  acceptBtn: { backgroundColor: '#22C55E', borderRadius: radius.sm, paddingVertical: spacing.sm, alignItems: 'center' },
   acceptBtnText: { color: '#FFF', ...typography.title },
+  rejectBtn: { borderWidth: 1, borderColor: '#EF4444', borderRadius: radius.sm, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, alignItems: 'center' },
+  rejectBtnText: { color: '#EF4444', ...typography.title },
+  miniBtn: { borderWidth: 1, borderRadius: radius.sm, paddingVertical: 6, paddingHorizontal: 10 },
+  miniBtnText: { fontSize: 11, fontWeight: '700' },
 });

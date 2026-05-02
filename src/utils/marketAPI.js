@@ -90,6 +90,34 @@ export const marketAPI = {
     return d;
   },
 
+  async updateBid(bidId, payload) {
+    const r = await fetch(`${BASE}/bids/${bidId}`, {
+      method: 'PATCH', headers: await headers(),
+      body: JSON.stringify(payload),
+    });
+    const d = await r.json();
+    if (!r.ok) return { ok: false, detail: d.detail || `Ошибка ${r.status}`, status: r.status };
+    return d;
+  },
+
+  async cancelBid(bidId) {
+    const r = await fetch(`${BASE}/bids/${bidId}/cancel`, {
+      method: 'POST', headers: await headers(),
+    });
+    const d = await r.json();
+    if (!r.ok) return { ok: false, detail: d.detail || `Ошибка ${r.status}`, status: r.status };
+    return d;
+  },
+
+  async rejectBid(bidId) {
+    const r = await fetch(`${BASE}/bids/${bidId}/reject`, {
+      method: 'POST', headers: await headers(),
+    });
+    const d = await r.json();
+    if (!r.ok) return { ok: false, detail: d.detail || `Ошибка ${r.status}`, status: r.status };
+    return d;
+  },
+
   // ─── My Dashboard ───
   async myDashboard() {
     const empty = { my_trips: [], my_cargos: [], my_bids: [], incoming_bids: [], my_deals: [] };

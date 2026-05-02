@@ -34,10 +34,14 @@ export default function CargoDetail({ navigation, route }) {
   const { session } = useAuth();
   const myUserId = session?.user?.id;
   const [bidModal, setBidModal] = useState(false);
+  const [bidModalMode, setBidModalMode] = useState('create');
+  const [editingBid, setEditingBid] = useState(null);
   const [shareModal, setShareModal] = useState(false);
   const [bids, setBids] = useState([]);
   const [fullCargo, setFullCargo] = useState(null);
   const [accepting, setAccepting] = useState(null);
+  const [rejecting, setRejecting] = useState(null);
+  const [cancelling, setCancelling] = useState(null);
   const [chatRoomId, setChatRoomId] = useState(null);
   const [dealId, setDealId] = useState(null);
   const [dealStatus, setDealStatus] = useState(null);
@@ -188,51 +192,135 @@ export default function CargoDetail({ navigation, route }) {
         )}
         {bids.map(b => {
           const hasAccepted = bids.some(x => x.status === 'accepted');
+          const isCancelled = b.status === 'cancelled';
           return (
             <View key={b.id} style={[s.bidCard, {
               backgroundColor: theme.card,
-              borderColor: b.status === 'accepted' ? '#22C55E' : b.status === 'rejected' ? '#EF444440' : b.isMine ? '#22C55E60' : theme.border,
+              borderColor: b.status === 'accepted' ? '#22C55E'
+                : b.status === 'rejected' ? '#EF444440'
+                : isCancelled ? '#78716C40'
+                : b.isMine ? '#22C55E60' : theme.border,
               borderWidth: b.status === 'accepted' || b.isMine ? 2 : 1,
-              opacity: b.status === 'rejected' ? 0.5 : 1,
+              opacity: (b.status === 'rejected' || isCancelled) ? 0.55 : 1,
             }]}>
               <View style={s.bidLeft}>
                 <View style={[s.bidFlag, { backgroundColor: b.status === 'accepted' ? '#22C55E' : b.isMine ? '#22C55E' : theme.border }]}>
                   <Text style={{ fontSize: 14 }}>{b.isMine ? '🫵' : b.status === 'accepted' ? '✅' : (FLAGS[b.co] || '🏳️')}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[s.bidName, { color: theme.text }]}>{b.name}{b.isMine && ' (вы)'}</Text>
+                  <Text style={[s.bidName, { color: theme.text }]}>{b.name}{b.isMine ? ' ' + t('you_marker') : ''}</Text>
                   {b.message ? <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 2 }}>{b.message}</Text> : null}
-                  <Text style={[s.bidInfo, { color: b.status === 'accepted' ? '#22C55E' : b.status === 'rejected' ? '#EF4444' : '#FBBF24' }]}>
-                    {b.status === 'accepted' ? '✅ Водитель выбран' : b.status === 'rejected' ? '❌ Отклонено' : b.time}
+                  <Text style={[s.bidInfo, {
+                    color: b.status === 'accepted' ? '#22C55E'
+                      : b.status === 'rejected' ? '#EF4444'
+                      : isCancelled ? '#78716C'
+                      : '#FBBF24',
+                  }]}>
+                    {b.status === 'accepted' ? '✅ ' + t('driver_chosen')
+                      : b.status === 'rejected' ? '❌ ' + t('bid_rejected')
+                      : isCancelled ? '⊘ ' + t('bid_cancelled')
+                      : b.time}
                   </Text>
                 </View>
               </View>
               <View style={{ alignItems: 'flex-end' }}>
                 <Text style={s.bidAmt}>${b.amount}</Text>
                 {cargo.isMine && b.status === 'pending' && !hasAccepted && (
-                  <TouchableOpacity
-                    style={[s.acceptBtn, accepting === b.id && { opacity: 0.5 }]}
-                    onPress={async () => {
-                      setAccepting(b.id);
-                      try {
-                        const r = await marketAPI.acceptBid(b.id);
-                        if (r.ok) {
-                          toast('✓ Водитель выбран!', 'success');
-                          if (r.chat_room_id) setChatRoomId(r.chat_room_id);
-                          if (r.deal_id) { setDealId(r.deal_id); setDealStatus('accepted'); }
-                          loadBids();
-                        } else {
-                          toast(r.detail || t('accept_failed'), 'error');
+                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
+                    <TouchableOpacity
+                      style={[s.rejectBtn, rejecting === b.id && { opacity: 0.5 }]}
+                      onPress={async () => {
+                        setRejecting(b.id);
+                        try {
+                          const r = await marketAPI.rejectBid(b.id);
+                          if (r.ok) {
+                            toast('❌ ' + t('bid_rejected_toast'), 'success');
+                            loadBids();
+                          } else {
+                            toast(r.detail || t('reject_failed'), 'error');
+                          }
+                        } catch {
+                          toast(t('no_connection'), 'error');
                         }
-                      } catch {
-                        toast('Нет связи с сервером', 'error');
-                      }
-                      setAccepting(null);
-                    }}
-                    disabled={!!accepting}
-                  >
-                    <Text style={s.acceptBtnText}>Принять</Text>
-                  </TouchableOpacity>
+                        setRejecting(null);
+                      }}
+                      disabled={!!rejecting || !!accepting}
+                    >
+                      <Text style={s.rejectBtnText}>{t('reject_btn')}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[s.acceptBtn, accepting === b.id && { opacity: 0.5 }]}
+                      onPress={async () => {
+                        setAccepting(b.id);
+                        try {
+                          const r = await marketAPI.acceptBid(b.id);
+                          if (r.ok) {
+                            toast('✓ ' + t('driver_chosen'), 'success');
+                            if (r.chat_room_id) setChatRoomId(r.chat_room_id);
+                            if (r.deal_id) { setDealId(r.deal_id); setDealStatus('accepted'); }
+                            loadBids();
+                          } else {
+                            toast(r.detail || t('accept_failed'), 'error');
+                          }
+                        } catch {
+                          toast(t('no_connection'), 'error');
+                        }
+                        setAccepting(null);
+                      }}
+                      disabled={!!accepting || !!rejecting}
+                    >
+                      <Text style={s.acceptBtnText}>{t('accept_bid_btn')}</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+                {b.isMine && b.status === 'pending' && !hasAccepted && (
+                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    <TouchableOpacity
+                      style={[s.miniBtn, { borderColor: '#3B82F6' }]}
+                      onPress={() => {
+                        setEditingBid(b);
+                        setBidModalMode('edit');
+                        setBidModal(true);
+                      }}
+                    >
+                      <Text style={[s.miniBtnText, { color: '#3B82F6' }]}>✏️ {t('edit_bid')}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[s.miniBtn, { borderColor: '#F59E0B' }]}
+                      onPress={() => {
+                        setEditingBid(b);
+                        setBidModalMode('discount');
+                        setBidModal(true);
+                      }}
+                    >
+                      <Text style={[s.miniBtnText, { color: '#F59E0B' }]}>💸 {t('give_discount')}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[s.miniBtn, { borderColor: '#EF4444' }, cancelling === b.id && { opacity: 0.5 }]}
+                      onPress={async () => {
+                        const ok = (typeof window !== 'undefined' && window.confirm)
+                          ? window.confirm(t('cancel_bid_confirm'))
+                          : true;
+                        if (!ok) return;
+                        setCancelling(b.id);
+                        try {
+                          const r = await marketAPI.cancelBid(b.id);
+                          if (r.ok) {
+                            toast('⊘ ' + t('bid_cancelled_toast'), 'success');
+                            loadBids();
+                          } else {
+                            toast(r.detail || t('cancel_failed'), 'error');
+                          }
+                        } catch {
+                          toast(t('no_connection'), 'error');
+                        }
+                        setCancelling(null);
+                      }}
+                      disabled={!!cancelling}
+                    >
+                      <Text style={[s.miniBtnText, { color: '#EF4444' }]}>⊘ {t('cancel_bid')}</Text>
+                    </TouchableOpacity>
+                  </View>
                 )}
               </View>
             </View>
@@ -339,7 +427,17 @@ export default function CargoDetail({ navigation, route }) {
           </TouchableOpacity>
         </View>
       )}
-      <BidModal visible={bidModal} onClose={() => setBidModal(false)} onSubmit={handleBid} currentPrice={cargo.price} cargoId={cargo.id} />
+      <BidModal
+        visible={bidModal}
+        onClose={() => { setBidModal(false); setBidModalMode('create'); setEditingBid(null); }}
+        onSubmit={handleBid}
+        mode={bidModalMode}
+        currentPrice={cargo.price}
+        cargoId={cargo.id}
+        bidId={editingBid?.id}
+        initialAmount={editingBid?.amount}
+        initialMessage={editingBid?.message}
+      />
       <ShareModal visible={shareModal} onClose={() => setShareModal(false)} shareText={'UrTruck: ' + cargo.cargo + ' ' + cargo.from + '→' + cargo.to + ' $' + cargo.price} driverId={cargo.id} />
       {Gate}
     </SafeAreaView>
@@ -380,8 +478,12 @@ const s = StyleSheet.create({
   photo: { width: '100%', height: 200 },
   photoBadge: { position: 'absolute', top: 10, left: 10, backgroundColor: 'rgba(0,0,0,0.7)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
   photoBadgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
-  acceptBtn: { backgroundColor: '#22C55E', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 6, marginTop: 6 },
+  acceptBtn: { backgroundColor: '#22C55E', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 6 },
   acceptBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  rejectBtn: { backgroundColor: 'transparent', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: '#EF4444' },
+  rejectBtnText: { color: '#EF4444', fontSize: 12, fontWeight: '700' },
+  miniBtn: { backgroundColor: 'transparent', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1 },
+  miniBtnText: { fontSize: 11, fontWeight: '700' },
   paymentBlock: { borderRadius: 12, borderWidth: 1, padding: 14 },
   reviewBlock: { borderRadius: 14, borderWidth: 1, padding: 16, alignItems: 'center', gap: 10 },
   reviewTitle: { fontSize: 15, fontWeight: '700' },

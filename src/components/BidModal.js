@@ -1,11 +1,31 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Modal, ActivityIndicator } from 'react-native';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useToast } from './Toast';
 import { marketAPI } from '../utils/marketAPI';
 
-export default function BidModal({ visible, onClose, onSubmit, currentPrice = 3000, cargoId, tripId }) {
+/**
+ * BidModal supports three modes:
+ *   - 'create'   — POST /bids (default; existing behaviour)
+ *   - 'edit'     — PATCH /bids/{id} with arbitrary new amount/message
+ *   - 'discount' — same PATCH, but pre-fills initialAmount and shows -$50/-$100/-$200 chips
+ *
+ * Required for non-create modes: bidId, initialAmount.
+ */
+export default function BidModal({
+  visible, onClose, onSubmit,
+  mode = 'create',
+  currentPrice = 3000,
+  cargoId, tripId,
+  bidId,
+  initialAmount,
+  initialMessage,
+}) {
+  const isEdit = mode === 'edit' || mode === 'discount';
+  const isDiscount = mode === 'discount';
+  const baseAmount = isEdit ? Number(initialAmount) || 0 : 0;
+
   const [bid, setBid] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
@@ -14,27 +34,57 @@ export default function BidModal({ visible, onClose, onSubmit, currentPrice = 30
   const { theme } = useTheme();
   const { toast } = useToast();
 
-  const quickPrices = [currentPrice, currentPrice + 200, currentPrice + 400];
+  // Re-seed inputs every time the modal becomes visible or the source bid changes.
+  useEffect(() => {
+    if (!visible) return;
+    setError('');
+    if (isEdit) {
+      setBid(baseAmount ? String(baseAmount) : '');
+      setMessage(initialMessage || '');
+    } else {
+      setBid('');
+      setMessage('');
+    }
+  }, [visible, mode, bidId, initialAmount, initialMessage]);
+
+  const createQuickPrices = [currentPrice, currentPrice + 200, currentPrice + 400];
+  const discountSteps = [50, 100, 200];
 
   const handleSubmit = async () => {
     if (!bid || loading) return;
+    const amountInt = parseInt(bid, 10);
+    if (!Number.isFinite(amountInt) || amountInt <= 0) {
+      setError(t('bid_amount_invalid'));
+      return;
+    }
     setLoading(true);
     setError('');
     try {
-      const r = await marketAPI.createBid({
-        cargo_id: cargoId || null,
-        trip_id: tripId || null,
-        amount: parseInt(bid),
-        message: message.trim() || null,
-      });
+      let r;
+      if (isEdit) {
+        const payload = { amount: amountInt };
+        // Send message only if user changed it from the original — avoids overwriting.
+        if (message !== (initialMessage || '')) payload.message = message.trim() || null;
+        r = await marketAPI.updateBid(bidId, payload);
+      } else {
+        r = await marketAPI.createBid({
+          cargo_id: cargoId || null,
+          trip_id: tripId || null,
+          amount: amountInt,
+          message: message.trim() || null,
+        });
+      }
       if (r.ok) {
-        setBid('');
-        setMessage('');
-        onSubmit?.(parseInt(bid));
+        onSubmit?.(amountInt);
         onClose();
-        toast('✓ Ставка отправлена', 'success');
+        const okMsg = isDiscount ? t('bid_discount_sent')
+                    : isEdit     ? t('bid_updated')
+                                 : t('bidSent');
+        toast('✓ ' + okMsg, 'success');
       } else if (r.status === 401) {
         setError(t('session_expired'));
+      } else if (r.status === 409) {
+        setError(r.detail || t('bid_not_pending'));
       } else {
         setError(r.detail || t('bid_failed'));
       }
@@ -45,16 +95,25 @@ export default function BidModal({ visible, onClose, onSubmit, currentPrice = 30
     }
   };
 
+  const title = isDiscount ? t('give_discount')
+              : isEdit     ? t('edit_bid')
+                           : t('suggestPrice');
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={onClose}>
         <TouchableOpacity style={[s.sheet, { backgroundColor: theme.bg, borderColor: theme.border }]} activeOpacity={1} onPress={() => {}}>
           <View style={s.handle} />
-          <Text style={[s.title, { color: theme.text }]}>{t('suggestPrice')}</Text>
-          <Text style={[s.subtitle, { color: theme.textMuted }]}>{t('avgPrice')}: ${currentPrice - 200}–${currentPrice + 400}</Text>
+          <Text style={[s.title, { color: theme.text }]}>{title}</Text>
+          {!isEdit && (
+            <Text style={[s.subtitle, { color: theme.textMuted }]}>{t('avgPrice')}: ${currentPrice - 200}–${currentPrice + 400}</Text>
+          )}
+          {isDiscount && baseAmount > 0 && (
+            <Text style={[s.subtitle, { color: theme.textMuted }]}>{t('current_price_label')}: ${baseAmount}</Text>
+          )}
 
           <View style={s.quickRow}>
-            {quickPrices.map((p) => (
+            {!isEdit && createQuickPrices.map((p) => (
               <TouchableOpacity
                 key={p}
                 style={[s.quickBtn, { backgroundColor: theme.card, borderColor: theme.border }, bid === String(p) && s.quickBtnActive]}
@@ -65,6 +124,20 @@ export default function BidModal({ visible, onClose, onSubmit, currentPrice = 30
                 </Text>
               </TouchableOpacity>
             ))}
+            {isDiscount && discountSteps.map((step) => {
+              const next = Math.max(1, baseAmount - step);
+              return (
+                <TouchableOpacity
+                  key={step}
+                  style={[s.quickBtn, { backgroundColor: theme.card, borderColor: theme.border }, bid === String(next) && s.quickBtnActive]}
+                  onPress={() => setBid(String(next))}
+                >
+                  <Text style={[s.quickBtnText, { color: theme.textSecondary }, bid === String(next) && s.quickBtnTextActive]}>
+                    -${step}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
 
           <View style={[s.inputWrap, { backgroundColor: theme.card, borderColor: theme.border }]}>
@@ -83,7 +156,7 @@ export default function BidModal({ visible, onClose, onSubmit, currentPrice = 30
             style={[s.messageInput, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border }]}
             value={message}
             onChangeText={setMessage}
-            placeholder="Комментарий (необязательно)"
+            placeholder={t('comment_optional')}
             placeholderTextColor={theme.textMuted}
             maxLength={200}
           />
@@ -96,7 +169,9 @@ export default function BidModal({ visible, onClose, onSubmit, currentPrice = 30
             disabled={!bid || loading}
           >
             {loading ? <ActivityIndicator color="#fff" /> : (
-              <Text style={s.submitBtnText}>{t('sendBid')}</Text>
+              <Text style={s.submitBtnText}>
+                {isDiscount ? t('send_discount') : isEdit ? t('save_changes') : t('sendBid')}
+              </Text>
             )}
           </TouchableOpacity>
         </TouchableOpacity>
@@ -110,8 +185,8 @@ const s = StyleSheet.create({
   sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 50, borderWidth: 1 },
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: '#44403C', alignSelf: 'center', marginBottom: 18 },
   title: { fontSize: 20, fontWeight: '800', marginBottom: 4 },
-  subtitle: { fontSize: 12, marginBottom: 18 },
-  quickRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
+  subtitle: { fontSize: 12, marginBottom: 6 },
+  quickRow: { flexDirection: 'row', gap: 8, marginBottom: 14, marginTop: 10 },
   quickBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center', borderWidth: 1 },
   quickBtnActive: { backgroundColor: '#22C55E18', borderColor: '#22C55E' },
   quickBtnText: { fontSize: 15, fontWeight: '700' },
