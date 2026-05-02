@@ -56,9 +56,13 @@ CREATE TABLE IF NOT EXISTS bids (
   bidder_phone TEXT,
   amount INTEGER NOT NULL,            -- предложенная цена $
   message TEXT,
-  status TEXT DEFAULT 'pending',      -- pending | accepted | rejected | cancelled
+  status TEXT DEFAULT 'pending',      -- pending | accepted | rejected | cancelled | countered
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  counter_amount INTEGER,             -- counter-offer от owner-а
+  counter_message TEXT,
+  counter_by TEXT,                    -- 'owner' (на будущее: 'driver' для встречного)
+  counter_at TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_cargos_status ON cargos(status, created_at);

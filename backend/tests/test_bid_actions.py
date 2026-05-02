@@ -46,6 +46,15 @@ ddb.init_db()
 
 from api.marketplace import mp_router  # _init() runs here and creates bids/cargos/deals tables
 
+# chat_rooms is created by api/chat._init(); we don't import that module here
+# (it pulls extra deps), so apply chat_schema.sql directly so accept/counter
+# logic can write into chat_rooms without 'no such table' errors.
+from database.db import get_conn as _get_conn_for_setup
+_chat_schema_path = ROOT / "database" / "chat_schema.sql"
+if _chat_schema_path.exists():
+    with _get_conn_for_setup() as _c_chat:
+        _c_chat.executescript(_chat_schema_path.read_text(encoding="utf-8"))
+
 app = FastAPI()
 app.include_router(mp_router, prefix="/api/v1/market")
 client = TestClient(app)
@@ -291,6 +300,174 @@ def test_my_dashboard_driver_with_bids():
     expect(statuses.get(bid_rejected)  == "rejected",  "my_bids has rejected")
 
 
+# ─── Counter-offer + chat-before-accept ─────────────────────────────────────
+
+def test_counter_schema_columns():
+    """Migration must have added counter_* fields."""
+    print("\n=== test_counter_schema_columns ===")
+    from database.db import get_conn
+    with get_conn() as c:
+        cols = {r["name"] for r in c.execute("PRAGMA table_info(bids)").fetchall()}
+    for col in ("counter_amount", "counter_message", "counter_by", "counter_at"):
+        expect(col in cols, f"bids.{col} present")
+
+
+def _new_pending_bid(owner: str, driver: str, amount: int = 1000):
+    cargo_id = seed_cargo(owner_id=owner)
+    as_user(driver)
+    bid_id = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": amount}).json()["id"]
+    return cargo_id, bid_id
+
+
+def test_counter_owner_sends_counter():
+    print("\n=== test_counter_owner_sends_counter ===")
+    cargo_id, bid_id = _new_pending_bid("co-owner-1", "co-driver-1", 1000)
+    as_user("co-owner-1")
+    r = client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": 800, "message": "lower"})
+    expect(r.status_code == 200, f"counter 200 (got {r.status_code} {r.text})")
+    bid = r.json()["bid"]
+    expect(bid["status"] == "countered", "status=countered")
+    expect(bid["counter_amount"] == 800, "counter_amount=800")
+    expect(bid["counter_by"] == "owner", "counter_by=owner")
+    expect(bid["counter_message"] == "lower", "counter_message stored")
+    expect(bid["counter_at"] is not None, "counter_at populated")
+
+
+def test_counter_non_owner_cannot():
+    print("\n=== test_counter_non_owner_cannot ===")
+    cargo_id, bid_id = _new_pending_bid("co-owner-2", "co-driver-2", 1000)
+    as_user("intruder")
+    r = client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": 700})
+    expect(r.status_code == 403, f"non-owner counter → 403 (got {r.status_code})")
+
+
+def test_counter_only_pending():
+    print("\n=== test_counter_only_pending ===")
+    cargo_id, bid_id = _new_pending_bid("co-owner-3", "co-driver-3", 1000)
+    as_user("co-driver-3")
+    client.post(f"/api/v1/market/bids/{bid_id}/cancel")
+    as_user("co-owner-3")
+    r = client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": 700})
+    expect(r.status_code == 409, f"counter on cancelled → 409 (got {r.status_code})")
+
+
+def test_counter_amount_must_be_positive():
+    print("\n=== test_counter_amount_must_be_positive ===")
+    cargo_id, bid_id = _new_pending_bid("co-owner-4", "co-driver-4", 1000)
+    as_user("co-owner-4")
+    r = client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": 0})
+    expect(r.status_code == 400, f"amount<=0 → 400 (got {r.status_code})")
+
+
+def test_counter_accept_creates_deal_and_chat():
+    print("\n=== test_counter_accept_creates_deal_and_chat ===")
+    cargo_id, bid_id = _new_pending_bid("co-owner-5", "co-driver-5", 1500)
+    as_user("co-owner-5")
+    client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": 1300})
+
+    as_user("co-driver-5")
+    r = client.post(f"/api/v1/market/bids/{bid_id}/counter/accept")
+    expect(r.status_code == 200, f"counter/accept 200 (got {r.status_code} {r.text})")
+    body = r.json()
+    expect(body["amount"] == 1300, "amount echoed = 1300")
+    expect(bool(body.get("deal_id")), "deal_id returned")
+    expect(bool(body.get("chat_room_id")), "chat_room_id returned")
+
+    final = get_bid(bid_id)
+    expect(final["status"] == "accepted", "bid is accepted")
+    expect(final["amount"] == 1300, "bid.amount overwritten with counter_amount")
+
+
+def test_counter_accept_403_for_non_bidder():
+    print("\n=== test_counter_accept_403_for_non_bidder ===")
+    cargo_id, bid_id = _new_pending_bid("co-owner-6", "co-driver-6", 1000)
+    as_user("co-owner-6")
+    client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": 800})
+    as_user("rando")
+    r = client.post(f"/api/v1/market/bids/{bid_id}/counter/accept")
+    expect(r.status_code == 403, f"non-bidder counter/accept → 403 (got {r.status_code})")
+
+
+def test_counter_decline_returns_to_pending():
+    print("\n=== test_counter_decline_returns_to_pending ===")
+    cargo_id, bid_id = _new_pending_bid("co-owner-7", "co-driver-7", 2000)
+    as_user("co-owner-7")
+    client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": 1700, "message": "lower pls"})
+    as_user("co-driver-7")
+    r = client.post(f"/api/v1/market/bids/{bid_id}/counter/decline")
+    expect(r.status_code == 200, f"counter/decline 200 (got {r.status_code} {r.text})")
+    final = get_bid(bid_id)
+    expect(final["status"] == "pending", "back to pending")
+    expect(final["counter_amount"] is None, "counter_amount cleared")
+    expect(final["counter_message"] is None, "counter_message cleared")
+    expect(final["counter_by"] is None, "counter_by cleared")
+    expect(final["counter_at"] is None, "counter_at cleared")
+    expect(final["amount"] == 2000, "original amount preserved")
+
+
+def test_cancel_works_for_countered():
+    print("\n=== test_cancel_works_for_countered ===")
+    cargo_id, bid_id = _new_pending_bid("co-owner-8", "co-driver-8", 1000)
+    as_user("co-owner-8")
+    client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": 800})
+    as_user("co-driver-8")
+    r = client.post(f"/api/v1/market/bids/{bid_id}/cancel")
+    expect(r.status_code == 200, f"cancel countered → 200 (got {r.status_code})")
+    expect(get_bid(bid_id)["status"] == "cancelled", "status=cancelled")
+
+
+def test_reject_works_for_countered():
+    print("\n=== test_reject_works_for_countered ===")
+    cargo_id, bid_id = _new_pending_bid("co-owner-9", "co-driver-9", 1000)
+    as_user("co-owner-9")
+    client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": 800})
+    r = client.post(f"/api/v1/market/bids/{bid_id}/reject")
+    expect(r.status_code == 200, f"reject countered → 200 (got {r.status_code})")
+    expect(get_bid(bid_id)["status"] == "rejected", "status=rejected")
+
+
+def test_owner_cannot_directly_accept_countered():
+    print("\n=== test_owner_cannot_directly_accept_countered ===")
+    cargo_id, bid_id = _new_pending_bid("co-owner-10", "co-driver-10", 1500)
+    as_user("co-owner-10")
+    client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": 1200})
+    r = client.post(f"/api/v1/market/bids/{bid_id}/accept")
+    expect(r.status_code == 409, f"owner accept countered → 409 (got {r.status_code})")
+
+
+def test_chat_from_pending_bid():
+    print("\n=== test_chat_from_pending_bid ===")
+    cargo_id, bid_id = _new_pending_bid("chat-owner", "chat-driver", 1000)
+    as_user("chat-driver")
+    r1 = client.post(f"/api/v1/market/bids/{bid_id}/chat")
+    expect(r1.status_code == 200, f"chat from pending 200 (got {r1.status_code} {r1.text})")
+    rid_a = r1.json()["chat_room_id"]
+    expect(bool(rid_a), "chat_room_id returned")
+
+    # Idempotent: same caller again → same room
+    r2 = client.post(f"/api/v1/market/bids/{bid_id}/chat")
+    expect(r2.json()["chat_room_id"] == rid_a, "idempotent for same user")
+
+    # Owner-side opens it → same room (UNIQUE pair)
+    as_user("chat-owner")
+    r3 = client.post(f"/api/v1/market/bids/{bid_id}/chat")
+    expect(r3.json()["chat_room_id"] == rid_a, "owner gets same room")
+
+    # Outsider blocked
+    as_user("outsider")
+    r4 = client.post(f"/api/v1/market/bids/{bid_id}/chat")
+    expect(r4.status_code == 403, f"outsider chat → 403 (got {r4.status_code})")
+
+
+def test_chat_blocked_when_bid_not_active():
+    print("\n=== test_chat_blocked_when_bid_not_active ===")
+    cargo_id, bid_id = _new_pending_bid("chat-owner-2", "chat-driver-2", 1000)
+    as_user("chat-driver-2")
+    client.post(f"/api/v1/market/bids/{bid_id}/cancel")
+    r = client.post(f"/api/v1/market/bids/{bid_id}/chat")
+    expect(r.status_code == 409, f"chat on cancelled → 409 (got {r.status_code})")
+
+
 def test_my_dashboard_owner_with_cargos_and_incoming():
     """Owner-side: my_cargos populated, photos parsed, incoming_bids visible."""
     print("\n=== test_my_dashboard_owner_with_cargos_and_incoming ===")
@@ -326,4 +503,18 @@ if __name__ == "__main__":
     test_my_dashboard_empty_user()
     test_my_dashboard_driver_with_bids()
     test_my_dashboard_owner_with_cargos_and_incoming()
+    # Counter-offer + chat-before-accept
+    test_counter_schema_columns()
+    test_counter_owner_sends_counter()
+    test_counter_non_owner_cannot()
+    test_counter_only_pending()
+    test_counter_amount_must_be_positive()
+    test_counter_accept_creates_deal_and_chat()
+    test_counter_accept_403_for_non_bidder()
+    test_counter_decline_returns_to_pending()
+    test_cancel_works_for_countered()
+    test_reject_works_for_countered()
+    test_owner_cannot_directly_accept_countered()
+    test_chat_from_pending_bid()
+    test_chat_blocked_when_bid_not_active()
     print("\nAll bid action tests passed.")
