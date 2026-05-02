@@ -25,7 +25,7 @@ const sanitizeDesc = (s) => {
 };
 
 export default function CargoDetail({ navigation, route }) {
-  const { cargo: paramCargo, cargoId, role } = route.params || {};
+  const { cargo: paramCargo, cargoId, role, dealId: routeDealId } = route.params || {};
   const cargo = paramCargo || {};
   const { t } = useI18n();
   const { theme } = useTheme();
@@ -43,8 +43,10 @@ export default function CargoDetail({ navigation, route }) {
   const [rejecting, setRejecting] = useState(null);
   const [cancelling, setCancelling] = useState(null);
   const [chatRoomId, setChatRoomId] = useState(null);
-  const [dealId, setDealId] = useState(null);
+  const [dealId, setDealId] = useState(routeDealId || null);
   const [dealStatus, setDealStatus] = useState(null);
+  const [shipperId, setShipperId] = useState(null);
+  const [driverId, setDriverId] = useState(null);
   const [statusLoading, setStatusLoading] = useState(false);
   const [reviewRating, setReviewRating] = useState(0);
   const [reviewText, setReviewText] = useState('');
@@ -52,6 +54,8 @@ export default function CargoDetail({ navigation, route }) {
   const [reviewLoading, setReviewLoading] = useState(false);
   const [acceptedDriverId, setAcceptedDriverId] = useState(null);
   const cid = cargoId || cargo.id;
+  const isShipper = !!cargo.isMine || (shipperId && shipperId === myUserId);
+  const isDriverSide = (driverId && driverId === myUserId) || (acceptedDriverId && acceptedDriverId === myUserId);
   if (!cid && !cargo.from) return null;
 
   const loadBids = () => {
@@ -132,14 +136,34 @@ export default function CargoDetail({ navigation, route }) {
     }
   };
 
-  useEffect(() => {
-    if (cid) {
-      marketAPI.getCargo(cid).then(d => {
-        if (d && d.id) setFullCargo(d);
-      }).catch(() => {});
-      loadBids();
+  const applyDeal = (d) => {
+    if (!d || !d.id) return;
+    setDealId(d.id);
+    setDealStatus(d.status || 'accepted');
+    if (d.chat_room_id) setChatRoomId(d.chat_room_id);
+    if (d.shipper_id) setShipperId(d.shipper_id);
+    if (d.driver_id) {
+      setDriverId(d.driver_id);
+      if (!acceptedDriverId) setAcceptedDriverId(d.driver_id);
     }
-  }, [cargo.id]);
+  };
+
+  // On mount: try to fetch the deal by id (if route provided one), otherwise
+  // look it up via /market/my and match by cargo_id. This lets a re-opened
+  // CargoDetail show the deal block with full state instead of staying empty.
+  useEffect(() => {
+    if (!cid) return;
+    marketAPI.getCargo(cid).then(d => { if (d && d.id) setFullCargo(d); }).catch(() => {});
+    loadBids();
+    if (routeDealId) {
+      marketAPI.getDeal(routeDealId).then(d => { if (d && d.ok !== false) applyDeal(d); }).catch(() => {});
+    } else {
+      marketAPI.myDashboard().then(d => {
+        const found = (d?.my_deals || []).find(x => x.cargo_id === cid);
+        if (found) applyDeal(found);
+      }).catch(() => {});
+    }
+  }, [cargo.id, cid, routeDealId]);
 
   const onDeleteCargo = () => {
     const doDel = async () => {
@@ -165,13 +189,13 @@ export default function CargoDetail({ navigation, route }) {
       const r = await marketAPI.updateDealStatus(dealId, newStatus);
       if (r.ok) {
         setDealStatus(newStatus);
-        const labels = { in_progress: '🚛 Перевозка начата', delivered: '✅ Доставлено!', cancelled: '❌ Отменено' };
-        toast(labels[newStatus] || 'Статус обновлён', 'success');
+        const msg = newStatus === 'cancelled' ? t('deal_cancelled_toast') : t('deal_updated_toast');
+        toast(msg, 'success');
       } else {
         toast(r.detail || t('update_failed'), 'error');
       }
     } catch {
-      toast('Нет связи с сервером', 'error');
+      toast(t('no_connection'), 'error');
     }
     setStatusLoading(false);
   };
@@ -470,26 +494,79 @@ export default function CargoDetail({ navigation, route }) {
       {dealStatus && (
         <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
           <View style={[s.dealBlock, {
-            borderColor: dealStatus === 'delivered' ? '#22C55E' : dealStatus === 'in_progress' ? '#3B82F6' : '#F59E0B',
+            borderColor: dealStatus === 'delivered' ? '#22C55E'
+              : dealStatus === 'in_progress' ? '#3B82F6'
+              : dealStatus === 'cancelled' ? '#EF4444'
+              : '#F59E0B',
           }]}>
             <Text style={[s.dealStatusLabel, {
-              color: dealStatus === 'delivered' ? '#22C55E' : dealStatus === 'in_progress' ? '#3B82F6' : '#F59E0B',
+              color: dealStatus === 'delivered' ? '#22C55E'
+                : dealStatus === 'in_progress' ? '#3B82F6'
+                : dealStatus === 'cancelled' ? '#EF4444'
+                : '#F59E0B',
             }]}>
-              {dealStatus === 'accepted' && '🤝 Ожидает начала перевозки'}
-              {dealStatus === 'in_progress' && '🚛 В пути'}
-              {dealStatus === 'delivered' && '✅ Доставлено'}
-              {dealStatus === 'cancelled' && '❌ Отменено'}
+              {dealStatus === 'accepted' && '🤝 ' + t('status_accepted')}
+              {dealStatus === 'in_progress' && '🚛 ' + t('status_in_progress')}
+              {dealStatus === 'delivered' && '✅ ' + t('status_delivered')}
+              {dealStatus === 'cancelled' && '❌ ' + t('status_cancelled')}
             </Text>
-            {cargo.isMine && dealStatus === 'accepted' && (
-              <TouchableOpacity style={s.dealActionBtn} onPress={() => changeDealStatus('in_progress')} disabled={statusLoading}>
-                <Text style={s.dealActionText}>{statusLoading ? '...' : 'Начать перевозку →'}</Text>
-              </TouchableOpacity>
+
+            {/* Next-step hint */}
+            {(dealStatus === 'accepted' || dealStatus === 'in_progress') && (
+              <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 4, textAlign: 'center' }}>
+                {t('order_next_step')}: {
+                  isDriverSide
+                    ? (dealStatus === 'accepted' ? t('driver_next_step_accepted') : t('driver_next_step_in_progress'))
+                    : (dealStatus === 'accepted' ? t('shipper_next_step_accepted') : t('shipper_next_step_in_progress'))
+                }
+              </Text>
             )}
-            {cargo.isMine && dealStatus === 'in_progress' && (
-              <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: '#22C55E' }]} onPress={() => changeDealStatus('delivered')} disabled={statusLoading}>
-                <Text style={s.dealActionText}>{statusLoading ? '...' : 'Подтвердить доставку ✓'}</Text>
-              </TouchableOpacity>
-            )}
+
+            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginTop: 4 }}>
+              {/* Driver — accepted: Start delivery */}
+              {isDriverSide && dealStatus === 'accepted' && (
+                <TouchableOpacity style={s.dealActionBtn} onPress={() => changeDealStatus('in_progress')} disabled={statusLoading}>
+                  <Text style={s.dealActionText}>{statusLoading ? '...' : '🚛 ' + t('start_delivery')}</Text>
+                </TouchableOpacity>
+              )}
+              {/* Driver — in_progress: I have arrived */}
+              {isDriverSide && dealStatus === 'in_progress' && (
+                <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: '#22C55E' }]} onPress={() => changeDealStatus('delivered')} disabled={statusLoading}>
+                  <Text style={s.dealActionText}>{statusLoading ? '...' : '✅ ' + t('mark_arrived')}</Text>
+                </TouchableOpacity>
+              )}
+              {/* Shipper — in_progress: Confirm delivery */}
+              {isShipper && dealStatus === 'in_progress' && (
+                <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: '#22C55E' }]} onPress={() => changeDealStatus('delivered')} disabled={statusLoading}>
+                  <Text style={s.dealActionText}>{statusLoading ? '...' : '✅ ' + t('confirm_delivery')}</Text>
+                </TouchableOpacity>
+              )}
+              {/* Both — chat */}
+              {chatRoomId && (
+                <TouchableOpacity
+                  style={[s.dealActionBtn, { backgroundColor: '#3B82F6' }]}
+                  onPress={() => navigation.navigate('Chat', { roomId: chatRoomId, role })}
+                >
+                  <Text style={s.dealActionText}>💬 {t('order_chat')}</Text>
+                </TouchableOpacity>
+              )}
+              {/* Both — cancel deal */}
+              {(dealStatus === 'accepted' || dealStatus === 'in_progress') && (
+                <TouchableOpacity
+                  style={[s.dealActionBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#EF4444' }]}
+                  disabled={statusLoading}
+                  onPress={async () => {
+                    const ok = (Platform.OS === 'web' && typeof window !== 'undefined' && window.confirm)
+                      ? window.confirm(t('cancel_deal_confirm'))
+                      : true;
+                    if (!ok) return;
+                    changeDealStatus('cancelled');
+                  }}
+                >
+                  <Text style={[s.dealActionText, { color: '#EF4444' }]}>⊘ {t('cancel_deal')}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
         </View>
       )}
@@ -501,10 +578,10 @@ export default function CargoDetail({ navigation, route }) {
           </View>
         </View>
       )}
-      {dealStatus === 'delivered' && cargo.isMine && !reviewSent && acceptedDriverId && (
+      {dealStatus === 'delivered' && !reviewSent && (isShipper ? acceptedDriverId : shipperId) && (
         <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
           <View style={[s.reviewBlock, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Text style={[s.reviewTitle, { color: theme.text }]}>{t('rate_driver')}</Text>
+            <Text style={[s.reviewTitle, { color: theme.text }]}>{isShipper ? t('rate_driver') : t('rate_shipper')}</Text>
             <View style={s.starsRow}>
               {[1,2,3,4,5].map(n => (
                 <TouchableOpacity key={n} onPress={() => setReviewRating(n)}>
@@ -516,7 +593,7 @@ export default function CargoDetail({ navigation, route }) {
               style={[s.reviewInput, { backgroundColor: theme.bg, color: theme.text, borderColor: theme.border }]}
               value={reviewText}
               onChangeText={setReviewText}
-              placeholder="Комментарий (необязательно)"
+              placeholder={t('comment_optional')}
               placeholderTextColor={theme.textMuted}
               maxLength={200}
             />
@@ -527,8 +604,8 @@ export default function CargoDetail({ navigation, route }) {
                 setReviewLoading(true);
                 try {
                   await reviewsAPI.create({
-                    targetId: acceptedDriverId,
-                    targetRole: 'driver',
+                    targetId: isShipper ? acceptedDriverId : shipperId,
+                    targetRole: isShipper ? 'driver' : 'shipper',
                     rating: reviewRating,
                     text: reviewText.trim() || null,
                   });

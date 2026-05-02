@@ -117,10 +117,48 @@ export default function MyTripsScreen({ navigation, route }) {
     );
   };
 
+  const setDealStatusOnServer = async (deal, newStatus) => {
+    setBusyBidId(deal.id);
+    try {
+      const r = await marketAPI.updateDealStatus(deal.id, newStatus);
+      if (r.ok) {
+        toast(newStatus === 'cancelled' ? t('deal_cancelled_toast') : t('deal_updated_toast'), 'success');
+        load();
+      } else {
+        toast(r.detail || t('send_error'), 'error');
+      }
+    } catch {
+      toast(t('no_connection'), 'error');
+    }
+    setBusyBidId(null);
+  };
+
+  const openDealCard = (deal) => {
+    if (deal.cargo_id) {
+      navigation.navigate('CargoDetail', { cargoId: deal.cargo_id, dealId: deal.id, role });
+    } else if (deal.trip_id) {
+      navigation.navigate('TripDetail', { tripId: deal.trip_id, dealId: deal.id, role });
+    }
+  };
+
   const renderDeal = ({ item }) => {
     const sc = { accepted: '#22C55E', in_progress: '#3B82F6', delivered: '#22C55E', cancelled: '#EF4444' };
+    const busy = busyBidId === item.id;
+    const nextStep = isDriver
+      ? (item.status === 'accepted' ? t('driver_next_step_accepted')
+          : item.status === 'in_progress' ? t('driver_next_step_in_progress')
+          : null)
+      : (item.status === 'accepted' ? t('shipper_next_step_accepted')
+          : item.status === 'in_progress' ? t('shipper_next_step_in_progress')
+          : null);
+
     return (
-      <View testID="my-order-card" style={[s.card, { backgroundColor: theme.card, borderColor: sc[item.status] || theme.border, borderWidth: 2 }]}>
+      <TouchableOpacity
+        testID="my-order-card"
+        activeOpacity={0.85}
+        onPress={() => openDealCard(item)}
+        style={[s.card, { backgroundColor: theme.card, borderColor: sc[item.status] || theme.border, borderWidth: 2 }]}
+      >
         <View style={s.cardTop}>
           <View style={[s.badge, { backgroundColor: '#22C55E20' }]}>
             <Text style={[s.badgeText, { color: '#22C55E' }]}>{t('order_label')}</Text>
@@ -132,12 +170,63 @@ export default function MyTripsScreen({ navigation, route }) {
           <Text style={s.price}>{(item.amount || 0) > 0 ? `$${item.amount}` : t('negotiable')}</Text>
           <Text style={[s.metaItem, { color: theme.textDim }]}>{(item.created_at || '').slice(0, 10)}</Text>
         </View>
-        {item.chat_room_id && (
-          <TouchableOpacity style={s.chatBtn} onPress={() => navigation.navigate('Chat', { roomId: item.chat_room_id, role })}>
-            <Text style={s.chatBtnText}>{t('open_chat')}</Text>
-          </TouchableOpacity>
-        )}
-      </View>
+        {nextStep ? (
+          <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 4 }}>
+            {t('order_next_step')}: {nextStep}
+          </Text>
+        ) : null}
+
+        {/* Status CTA */}
+        <View style={{ flexDirection: 'row', gap: 6, marginTop: spacing.sm, flexWrap: 'wrap' }}>
+          {isDriver && item.status === 'accepted' && (
+            <TouchableOpacity
+              style={[s.acceptBtn, busy && { opacity: 0.5 }]}
+              disabled={busy}
+              onPress={() => setDealStatusOnServer(item, 'in_progress')}
+            >
+              <Text style={s.acceptBtnText}>🚛 {t('start_delivery')}</Text>
+            </TouchableOpacity>
+          )}
+          {isDriver && item.status === 'in_progress' && (
+            <TouchableOpacity
+              style={[s.acceptBtn, busy && { opacity: 0.5 }]}
+              disabled={busy}
+              onPress={() => setDealStatusOnServer(item, 'delivered')}
+            >
+              <Text style={s.acceptBtnText}>✅ {t('mark_arrived')}</Text>
+            </TouchableOpacity>
+          )}
+          {!isDriver && item.status === 'in_progress' && (
+            <TouchableOpacity
+              style={[s.acceptBtn, busy && { opacity: 0.5 }]}
+              disabled={busy}
+              onPress={() => setDealStatusOnServer(item, 'delivered')}
+            >
+              <Text style={s.acceptBtnText}>✅ {t('confirm_delivery')}</Text>
+            </TouchableOpacity>
+          )}
+          {(item.status === 'accepted' || item.status === 'in_progress') && (
+            <TouchableOpacity
+              style={[s.miniBtn, { borderColor: '#EF4444' }, busy && { opacity: 0.5 }]}
+              disabled={busy}
+              onPress={async () => {
+                if (!(await confirmAction(t('cancel_deal_confirm')))) return;
+                setDealStatusOnServer(item, 'cancelled');
+              }}
+            >
+              <Text style={[s.miniBtnText, { color: '#EF4444' }]}>⊘ {t('cancel_deal')}</Text>
+            </TouchableOpacity>
+          )}
+          {item.chat_room_id && (
+            <TouchableOpacity
+              style={[s.miniBtn, { borderColor: '#3B82F6' }]}
+              onPress={() => navigation.navigate('Chat', { roomId: item.chat_room_id, role })}
+            >
+              <Text style={[s.miniBtnText, { color: '#3B82F6' }]}>💬 {t('order_chat')}</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </TouchableOpacity>
     );
   };
 
