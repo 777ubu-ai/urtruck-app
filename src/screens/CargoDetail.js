@@ -613,7 +613,9 @@ export default function CargoDetail({ navigation, route }) {
                 try {
                   await reviewsAPI.create({
                     targetId: isShipper ? acceptedDriverId : shipperId,
-                    targetRole: isShipper ? 'driver' : 'shipper',
+                    // Backend reviews API accepts only 'driver' | 'client' (Pydantic pattern).
+                    // Driver leaves review on the cargo owner — that's role 'client' on the server.
+                    targetRole: isShipper ? 'driver' : 'client',
                     rating: reviewRating,
                     text: reviewText.trim() || null,
                   });
@@ -635,16 +637,9 @@ export default function CargoDetail({ navigation, route }) {
           <Text style={{ color: '#22C55E', fontSize: 14, fontWeight: '600' }}>✓ Спасибо за оценку!</Text>
         </View>
       )}
-      {chatRoomId && (
-        <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
-          <TouchableOpacity
-            style={s.chatBtn}
-            onPress={() => navigation.navigate('Chat', { roomId: chatRoomId, role })}
-          >
-            <Text style={s.chatBtnText}>💬 {t('open_chat')}</Text>
-          </TouchableOpacity>
-        </View>
-      )}
+      {/* Legacy "Open chat with driver" button removed: deal-block above
+          already renders a single chat CTA ("Чат по заказу") for both sides
+          to avoid duplicate buttons. */}
       {cargo.isMine && !chatRoomId && (
         <View style={{ padding: 16, paddingTop: 0 }}>
           <TouchableOpacity style={s.deleteMyBtn} onPress={onDeleteCargo}>
