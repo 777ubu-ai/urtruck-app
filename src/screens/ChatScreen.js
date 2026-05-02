@@ -215,9 +215,12 @@ export default function ChatScreen({ navigation, route }) {
     if (item.isPhoto) {
       return (
         <View style={[s.msgRow, isMe && s.msgRowMe]}>
+          {!isMe && partner?.name ? (
+            <Text style={[s.senderLabel, { color: theme.textMuted }]}>{partner.name}</Text>
+          ) : null}
           <View style={[s.bubble, isMe ? s.bubbleMe : [s.bubbleThem, { backgroundColor: theme.card }], { padding: 4 }]}>
             <Image source={{ uri: item.photoUri }} style={s.photoMsg} />
-            <Text style={[s.msgTime, isMe && s.msgTimeMe, { marginTop: 4, marginRight: 4 }]}>{item.time}</Text>
+            <Text style={[s.msgTime, isMe ? s.msgTimeMe : { color: theme.textMuted }, { marginTop: 4, marginRight: 4 }]}>{item.time}</Text>
           </View>
         </View>
       );
@@ -225,6 +228,9 @@ export default function ChatScreen({ navigation, route }) {
     if (item.isVoice) {
       return (
         <View style={[s.msgRow, isMe && s.msgRowMe]}>
+          {!isMe && partner?.name ? (
+            <Text style={[s.senderLabel, { color: theme.textMuted }]}>{partner.name}</Text>
+          ) : null}
           <TouchableOpacity
             style={[s.bubble, s.voiceBubble, isMe ? s.bubbleMe : [s.bubbleThem, { backgroundColor: theme.card }]]}
             onPress={() => playVoice(item.id)}
@@ -249,6 +255,9 @@ export default function ChatScreen({ navigation, route }) {
 
     return (
       <View style={[s.msgRow, isMe && s.msgRowMe]}>
+        {!isMe && partner?.name ? (
+          <Text style={[s.senderLabel, { color: theme.textMuted }]}>{partner.name}</Text>
+        ) : null}
         <View style={[s.bubble, isMe ? s.bubbleMe : [s.bubbleThem, { backgroundColor: theme.card }]]}>
           <Text style={[s.msgText, isMe ? s.msgTextMe : { color: theme.text }]}>
             {showingTranslation ? tr.text : item.text}
@@ -282,7 +291,7 @@ export default function ChatScreen({ navigation, route }) {
             </TouchableOpacity>
           )}
           <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 4, marginTop: 3 }}>
-            <Text style={[s.msgTime, isMe && s.msgTimeMe]}>{item.time}</Text>
+            <Text style={[s.msgTime, isMe ? s.msgTimeMe : { color: theme.textMuted }]}>{item.time}</Text>
             {statusIcon ? <Text style={{ fontSize: 10, color: statusColor }}>{statusIcon}</Text> : null}
           </View>
         </View>
@@ -328,6 +337,7 @@ const s = StyleSheet.create({
   chatOpenedText: { fontSize: 10, paddingHorizontal: 14, paddingVertical: 5, borderRadius: 16, overflow: 'hidden' },
   msgRow: { marginBottom: 10 },
   msgRowMe: { alignItems: 'flex-end' },
+  senderLabel: { fontSize: 10, marginBottom: 3, marginLeft: 6 },
   bubble: { maxWidth: '78%', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18 },
   bubbleMe: { backgroundColor: '#2563EB', borderBottomRightRadius: 4 },
   bubbleThem: { borderBottomLeftRadius: 4 },
