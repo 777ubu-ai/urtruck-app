@@ -283,5 +283,13 @@ test.describe('Visual screen audit', () => {
     // ErrorBoundary assertion is per-screen via shoot(); fail aggregate if any.
     const eb = issues.filter(i => /ErrorBoundary/.test(i));
     expect(eb, 'ErrorBoundary detected: ' + eb.join(' | ')).toEqual([]);
+
+    // P1 regression guard: route publish form MUST expose price + truck-type
+    // selectors to drivers. Without these, every published trip lands on the
+    // client feed as "Договорная" with no body type, blocking pilot UX.
+    if (routeFormVisible) {
+      expect(routeFormFields.price, 'route form must expose a Price field').toBeTruthy();
+      expect(routeFormFields.truckType, 'route form must expose a Body type selector').toBeTruthy();
+    }
   });
 });
