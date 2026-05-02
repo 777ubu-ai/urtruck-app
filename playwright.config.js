@@ -5,7 +5,8 @@ const { defineConfig } = require('@playwright/test');
 const liveAllowed = !!(
   process.env.RUN_LIVE_TESTS ||
   process.env.RUN_LIVE_DEAL_QA ||
-  process.env.RUN_LIVE_DEAL_QA_DRY
+  process.env.RUN_LIVE_DEAL_QA_DRY ||
+  process.env.RUN_QA_CLEANUP
 );
 
 module.exports = defineConfig({

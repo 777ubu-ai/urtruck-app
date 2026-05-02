@@ -100,15 +100,10 @@ export const stopTrackingPermission = (tripId) => {
   notify();
 };
 
-// Грузы клиентов
-let cargos = [
-  { id: 'c1', from: 'Иу, CN', to: 'Алматы, KZ', cargo: 'Электросамокаты', tons: 18, m3: 75, price: 3200, type: 'tent', bids: 4, pickup: '15.04 ±2 дн.' },
-  { id: 'c2', from: 'Москва, RU', to: 'Ташкент, UZ', cargo: 'Стройматериалы', tons: 20, m3: 110, price: 2200, type: 'tent', bids: 7, pickup: '20.04' },
-  { id: 'c3', from: 'Шэньчжэнь, CN', to: 'Новосибирск, RU', cargo: 'LED-панели', tons: 15, m3: 60, price: 5800, type: 'ref', bids: 2, pickup: '18.04 ±3 дн.' },
-  { id: 'c4', from: 'Алматы, KZ', to: 'Иу, CN', cargo: 'Мёд экспорт', tons: 12, m3: 40, price: 2400, type: 'ref', bids: 5, pickup: '22.04' },
-  { id: 'c5', from: 'Бишкек, KG', to: 'Пекин, CN', cargo: 'Мясо говяжье', tons: 22, m3: 65, price: 3500, type: 'ref', bids: 1, pickup: '16.04 ±1 дн.' },
-  { id: 'c6', from: 'Гамбург, DE', to: 'Астана, KZ', cargo: 'Оборудование', tons: 18, m3: 85, price: 6200, type: 'tent', bids: 3, pickup: '25.04' },
-];
+// Pilot cleanup: removed hardcoded demo cargos fallback. Driver feed shows
+// only server-returned cargos; without records the FlatList renders the
+// existing empty state.
+let cargos = [];
 export const getCargos = () => cargos;
 export const addCargo = (c) => { cargos = [{ ...c, id: 'c' + Date.now(), bids: 0, isMine: true, createdAt: Date.now() }, ...cargos]; notify(); };
 

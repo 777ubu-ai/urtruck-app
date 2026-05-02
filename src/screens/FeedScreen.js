@@ -49,14 +49,9 @@ const sanitizeDesc = (s) => {
   return cleaned.length > 0 ? cleaned.slice(0, 200) : tGlobal('desc_not_specified');
 };
 
-const DRIVERS = [
-  { id: 'd1', name: 'Ержан К.', country: 'KZ', type: 'tent', m3: 120, tons: 22, rating: 4.8, reviews: 47, verified: true },
-  { id: 'd2', name: 'Бахтиёр У.', country: 'UZ', type: 'ref', m3: 82, tons: 20, rating: 4.9, reviews: 112, verified: true },
-  { id: 'd3', name: 'Алексей П.', country: 'RU', type: 'platform', m3: 160, tons: 25, rating: 4.5, reviews: 23, verified: false },
-  { id: 'd4', name: 'Азамат Т.', country: 'KZ', type: 'cont40', m3: 110, tons: 20, rating: 4.7, reviews: 31, verified: true },
-  { id: 'd5', name: 'Ван Лей', country: 'CN', type: 'izoterm', m3: 70, tons: 18, rating: 4.6, reviews: 8, verified: true },
-  { id: 'd6', name: 'Марат А.', country: 'KG', type: 'tanker', m3: 40, tons: 25, rating: 4.9, reviews: 65, verified: true },
-];
+// Pilot cleanup: removed hardcoded demo DRIVERS fallback. Public feed must
+// only show server-returned drivers/trips; without records show empty state.
+const DRIVERS = [];
 
 export default function FeedScreen({ navigation, route }) {
   const { role } = route.params || { role: 'client' };
@@ -677,6 +672,30 @@ export default function FeedScreen({ navigation, route }) {
                       <DatePicker value={tripDateTo} onChange={setTripDateTo} placeholder={t('arrival')} />
                     </View>
                   </View>
+                  <Text style={[s.formLabel, { color: theme.textMuted }]}>{t('truckType')} ← →</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
+                    {TRUCK_KEYS.map(k => (
+                      <TouchableOpacity
+                        key={k}
+                        testID={'trip-truck-' + k}
+                        style={[s.typeCard, { backgroundColor: theme.card, borderColor: theme.border }, truckType === k && { backgroundColor: TCOLORS[k], borderColor: TCOLORS[k] }]}
+                        onPress={() => setTruckType(k)}
+                      >
+                        <Text style={{ fontSize: 22 }}>{TRUCK_ICONS[k]}</Text>
+                        <Text style={[s.typeCardText, { color: theme.textSecondary }, truckType === k && { color: '#fff' }]}>{t(k)}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                  <Text style={[s.formLabel, { color: theme.textMuted }]}>{t('price')}</Text>
+                  <TextInput
+                    style={[s.input, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border, marginBottom: 10 }]}
+                    placeholder={t('price_optional_placeholder')}
+                    placeholderTextColor={theme.textMuted}
+                    keyboardType="numeric"
+                    value={price}
+                    onChangeText={setPrice}
+                    testID="trip-price-input"
+                  />
                   <View style={s.hintBox}><Text style={[s.hintText, { color: theme.textMuted }]}>💡 {t('youPublish')}</Text></View>
                   <TouchableOpacity
                     onPress={submitTrip}
