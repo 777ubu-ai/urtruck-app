@@ -18,6 +18,9 @@ import { normalizeCargo, cargoDisplay } from '../utils/normalizers';
 import { formatDateForDisplay } from '../utils/dateInput';
 import { buildCargoShareText } from '../utils/share';
 import { WEB_URL } from '../config/env';
+import { v1Colors, v1Radius, v1AccentFor } from '../theme/designV1';
+import GlassCard from '../components/ui/v1/GlassCard';
+import SectionTitle from '../components/ui/v1/SectionTitle';
 
 const FLAGS = { KZ: '🇰🇿', UZ: '🇺🇿', RU: '🇷🇺', KG: '🇰🇬', CN: '🇨🇳', TJ: '🇹🇯', TR: '🇹🇷', TM: '🇹🇲', MN: '🇲🇳', DE: '🇩🇪', FR: '🇫🇷' };
 
@@ -229,22 +232,44 @@ export default function CargoDetail({ navigation, route }) {
   const safePhotos = (c.photos || []).filter(p => typeof p === 'string' && !p.startsWith('data:') && p.length < 1000);
   const dash = t('not_specified');
 
+  // v1 brand accent: orange when cargo is shown to the driver (cargo target),
+  // emerald otherwise (owner viewing own listing or shipper-on-shipper). The
+  // accent only drives the brand-bar back-arrow + price card border; existing
+  // CTA colors (BidModal etc.) remain governed by their own components.
+  const isDriverViewing = role === 'driver' || (driverId && driverId === myUserId);
+  const v1Accent = v1AccentFor(isDriverViewing ? 'client' : 'driver');
+
   return (
-    <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]} edges={['top']}>
-      <View style={s.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={[s.backBtn, { backgroundColor: theme.card, borderColor: theme.border }]}><Text style={[s.backText, { color: theme.text }]}>‹</Text></TouchableOpacity>
-        <Text style={[s.headerTitle, { color: theme.text }]} numberOfLines={1}>{view.from} → {view.to}</Text>
-        <TouchableOpacity onPress={() => setShareModal(true)}><Text style={{ fontSize: 20 }}>↗️</Text></TouchableOpacity>
+    <SafeAreaView style={[s.container, { backgroundColor: v1Colors.bg }]} edges={['top']}>
+      <View style={s.brandBar}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backHit} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Text style={[s.backIcon, { color: v1Accent.main }]}>‹</Text>
+        </TouchableOpacity>
+        <View style={s.brandRow}>
+          <Text style={s.brandText}>UrTruck</Text>
+          <View style={[s.ftlPill, { backgroundColor: v1Accent.soft, borderColor: v1Accent.main }]}>
+            <Text style={[s.ftlText, { color: v1Accent.main }]}>FTL</Text>
+          </View>
+        </View>
+        <TouchableOpacity onPress={() => setShareModal(true)} style={s.shareBtn} testID="cargo-share-btn">
+          <Text style={s.shareIcon}>↗</Text>
+        </TouchableOpacity>
       </View>
-      <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 0 }}>
+      <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 0, paddingBottom: 60 }}>
+        <Text style={s.pageTitle} numberOfLines={1}>📦 {view.from} → {view.to}</Text>
+
         {safePhotos.length > 0 ? (
-          <PhotoGallery photos={safePhotos} />
+          <View style={{ marginBottom: 10, borderRadius: v1Radius.card, overflow: 'hidden' }}>
+            <PhotoGallery photos={safePhotos} />
+          </View>
         ) : null}
-        <View style={[s.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
+
+        <GlassCard>
+          <SectionTitle icon="🛣" label={t('trip_route')} />
           <View style={s.routeRow}>
-            <View style={[s.dot, { backgroundColor: '#EF4444' }]} /><Text style={[s.city, { color: theme.text }]}>{view.from}</Text>
-            <View style={[s.line, { backgroundColor: theme.border }]} /><Text>🚛</Text><View style={[s.line, { backgroundColor: theme.border }]} />
-            <Text style={[s.city, { color: theme.text }]}>{view.to}</Text><View style={[s.dot, { backgroundColor: '#22C55E' }]} />
+            <View style={[s.dot, { backgroundColor: '#EF4444' }]} /><Text style={[s.city, { color: v1Colors.text }]}>{view.from}</Text>
+            <View style={[s.line, { backgroundColor: v1Colors.border }]} /><Text>🚛</Text><View style={[s.line, { backgroundColor: v1Colors.border }]} />
+            <Text style={[s.city, { color: v1Colors.text }]}>{view.to}</Text><View style={[s.dot, { backgroundColor: '#22C55E' }]} />
           </View>
           <View style={s.grid}>
             {(() => {
@@ -259,22 +284,27 @@ export default function CargoDetail({ navigation, route }) {
                 items.push([t('distance'), stats.km + ' км']);
                 items.push([t('delivery_time'), '~' + stats.days + ' дн.']);
               }
-              items.push([t('payment_label'), t('payment_tbd')]);
               return items.map(([l, v]) => (
-                <View key={l} style={s.gridItem}><Text style={[s.gridLabel, { color: theme.textMuted }]}>{l}</Text><Text style={[s.gridValue, { color: theme.text }]}>{v}</Text></View>
+                <View key={l} style={s.gridItem}><Text style={[s.gridLabel, { color: v1Colors.textMuted }]}>{l}</Text><Text style={[s.gridValue, { color: v1Colors.text }]}>{v}</Text></View>
               ));
             })()}
           </View>
-        </View>
-        <View style={s.priceBlock}>
-          <View><Text style={s.priceLabel}>{t('price')}</Text><Text style={s.priceValue}>{view.price}</Text></View>
-          {!c.isMine && (
-            <TouchableOpacity style={s.bidBtn} onPress={async () => {
-              const ok = await requireLevel(LEVELS.PHONE, 'bid');
-              if (ok) setBidModal(true);
-            }}><Text style={s.bidBtnText}>{t('suggestPrice')}</Text></TouchableOpacity>
-          )}
-        </View>
+        </GlassCard>
+
+        <GlassCard accent={v1Accent.main}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <View>
+              <Text style={[s.priceLabelV1, { color: v1Accent.main }]}>💰 {t('price')}</Text>
+              <Text style={[s.priceValueV1, { color: v1Accent.main }]} numberOfLines={1}>{view.price}</Text>
+            </View>
+            {!c.isMine && (
+              <TouchableOpacity style={[s.bidBtn, { backgroundColor: v1Accent.main }]} onPress={async () => {
+                const ok = await requireLevel(LEVELS.PHONE, 'bid');
+                if (ok) setBidModal(true);
+              }}><Text style={[s.bidBtnText, { color: '#0A0A0A' }]}>{t('suggestPrice')}</Text></TouchableOpacity>
+            )}
+          </View>
+        </GlassCard>
         <Text style={[s.bidsTitle, { color: theme.text }]}>{formatBids(bids.length)}</Text>
         {bids.length === 0 && (
           <Text style={{ color: theme.textMuted, textAlign: 'center', padding: 20, fontSize: 13 }}>
@@ -673,6 +703,20 @@ export default function CargoDetail({ navigation, route }) {
 
 const s = StyleSheet.create({
   container: { flex: 1 },
+  // v1 brand header (mirrors FeedScreen / TripDetail)
+  brandBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 6, paddingBottom: 6 },
+  backHit: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  backIcon: { fontSize: 30, fontWeight: '300' },
+  brandRow: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  brandText: { color: v1Colors.text, fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
+  ftlPill: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 2 },
+  ftlText: { fontSize: 11, fontWeight: '900', letterSpacing: 1 },
+  shareBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: v1Colors.border, backgroundColor: v1Colors.surface },
+  shareIcon: { fontSize: 18, color: v1Colors.text },
+  pageTitle: { color: v1Colors.text, fontSize: 22, fontWeight: '900', letterSpacing: -0.5, marginVertical: 12 },
+  priceLabelV1: { fontSize: 11, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 },
+  priceValueV1: { fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
+  // Legacy local styles still used by deal-block / bid cards / reviews
   header: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 },
   backBtn: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   backText: { fontSize: 22 },

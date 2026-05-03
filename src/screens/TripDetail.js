@@ -16,6 +16,9 @@ import { marketAPI } from '../utils/marketAPI';
 import { normalizeTrip, tripDisplay } from '../utils/normalizers';
 import { buildTripShareText } from '../utils/share';
 import { WEB_URL } from '../config/env';
+import { v1Colors, v1Radius, v1AccentFor } from '../theme/designV1';
+import GlassCard from '../components/ui/v1/GlassCard';
+import SectionTitle from '../components/ui/v1/SectionTitle';
 
 export default function TripDetail({ navigation, route }) {
   const { trip: rawTrip, tripId, role, dealId: routeDealId } = route.params || {};
@@ -222,25 +225,38 @@ export default function TripDetail({ navigation, route }) {
 
   const isOwner = trip.isMine || trip.driverId === myUserId || trip.driverName === 'Вы' || trip.driverName === 'You';
 
+  // v1 visual: emerald accent for trip-detail (driver supply); orange when
+  // shipper opens it (client-side flow).
+  const v1Accent = v1AccentFor(role === 'client' || role === 'shipper' ? 'client' : 'driver');
+
   return (
-    <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]} edges={['top']}>
-      <View style={s.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={[s.backBtn, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[s.backText, { color: theme.text }]}>‹</Text>
+    <SafeAreaView style={[s.container, { backgroundColor: v1Colors.bg }]} edges={['top']}>
+      <View style={s.brandBar}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backHit} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Text style={[s.backIcon, { color: v1Accent.main }]}>‹</Text>
         </TouchableOpacity>
-        <GradientText style={s.title} colors={['#22C55E', '#16A34A']}>🚛 {t('trip_title')}</GradientText>
-        <TouchableOpacity onPress={() => setShareModal(true)}>
-          <Text style={{ fontSize: 20 }}>↗️</Text>
+        <View style={s.brandRow}>
+          <Text style={s.brandText}>UrTruck</Text>
+          <View style={[s.ftlPill, { backgroundColor: v1Accent.soft, borderColor: v1Accent.main }]}>
+            <Text style={[s.ftlText, { color: v1Accent.main }]}>FTL</Text>
+          </View>
+        </View>
+        <TouchableOpacity onPress={() => setShareModal(true)} style={s.shareBtn} testID="trip-share-btn">
+          <Text style={s.shareIcon}>↗</Text>
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 0, paddingBottom: 40 }}>
+      <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 0, paddingBottom: 60 }}>
+        <Text style={s.pageTitle}>🚛 {t('trip_title')}</Text>
+
         {/* Маршрут на карте */}
-        <RouteMap from={trip.from} to={trip.to} transit={trip.transit} height={180} />
+        <View style={{ marginBottom: 10, borderRadius: v1Radius.card, overflow: 'hidden' }}>
+          <RouteMap from={trip.from} to={trip.to} transit={trip.transit} height={180} />
+        </View>
 
         {/* Информация о рейсе */}
-        <View style={[s.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[s.sectionTitle, { color: theme.textMuted }]}>{t('trip_route').toUpperCase()}</Text>
+        <GlassCard>
+          <SectionTitle icon="🛣" label={t('trip_route')} />
           <View style={s.routeRow}>
             <View style={[s.dot, { backgroundColor: '#EF4444' }]} />
             <Text style={[s.city, { color: theme.text }]}>{view.from}</Text>
@@ -266,53 +282,55 @@ export default function TripDetail({ navigation, route }) {
               </View>
             </View>
           )}
-        </View>
+        </GlassCard>
 
         {/* Даты */}
-        <View style={[s.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[s.sectionTitle, { color: theme.textMuted }]}>{t('trip_dates').toUpperCase()}</Text>
+        <GlassCard>
+          <SectionTitle icon="📅" label={t('trip_dates')} />
           <View style={s.dateRow}>
-            <Text style={[s.dateLabel, { color: theme.textMuted }]}>🚀 {t('trip_dep')}</Text>
-            <Text style={[s.dateValue, { color: theme.text }]} testID="trip-detail-departure">{view.departure}</Text>
+            <Text style={[s.dateLabel, { color: v1Colors.textMuted }]}>🚀 {t('trip_dep')}</Text>
+            <Text style={[s.dateValue, { color: v1Colors.text }]} testID="trip-detail-departure">{view.departure}</Text>
           </View>
           <View style={s.dateRow}>
-            <Text style={[s.dateLabel, { color: theme.textMuted }]}>🏁 {t('trip_arr')}</Text>
-            <Text style={[s.dateValue, { color: theme.text }]} testID="trip-detail-arrival">{view.arrival}</Text>
+            <Text style={[s.dateLabel, { color: v1Colors.textMuted }]}>🏁 {t('trip_arr')}</Text>
+            <Text style={[s.dateValue, { color: v1Colors.text }]} testID="trip-detail-arrival">{view.arrival}</Text>
           </View>
-        </View>
+        </GlassCard>
 
         {/* Транспорт */}
-        <View style={[s.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[s.sectionTitle, { color: theme.textMuted }]}>{t('trip_transport').toUpperCase()}</Text>
+        <GlassCard>
+          <SectionTitle icon="🚚" label={t('trip_transport')} />
           <View style={s.dateRow}>
-            <Text style={[s.dateLabel, { color: theme.textMuted }]}>{t('trip_truck_body')}</Text>
-            <Text style={[s.dateValue, { color: theme.text }]} testID="trip-detail-truck">{view.truckType}</Text>
+            <Text style={[s.dateLabel, { color: v1Colors.textMuted }]}>{t('trip_truck_body')}</Text>
+            <Text style={[s.dateValue, { color: v1Colors.text }]} testID="trip-detail-truck">{view.truckType}</Text>
           </View>
           <View style={s.dateRow}>
-            <Text style={[s.dateLabel, { color: theme.textMuted }]}>{t('trip_driver')}</Text>
-            <Text style={[s.dateValue, { color: theme.text }]}>{view.driverName}</Text>
+            <Text style={[s.dateLabel, { color: v1Colors.textMuted }]}>{t('trip_driver')}</Text>
+            <Text style={[s.dateValue, { color: v1Colors.text }]}>{view.driverName}</Text>
           </View>
           {trip.availableM3 != null && (
             <View style={s.dateRow}>
-              <Text style={[s.dateLabel, { color: theme.textMuted }]}>{t('trip_free')}</Text>
-              <Text style={[s.dateValue, { color: theme.text }]}>{view.availableM3}</Text>
+              <Text style={[s.dateLabel, { color: v1Colors.textMuted }]}>{t('trip_free')}</Text>
+              <Text style={[s.dateValue, { color: v1Colors.text }]}>{view.availableM3}</Text>
             </View>
           )}
           {trip.capacityTons != null && (
             <View style={s.dateRow}>
-              <Text style={[s.dateLabel, { color: theme.textMuted }]}>{t('weight')}</Text>
-              <Text style={[s.dateValue, { color: theme.text }]}>{view.capacityTons}</Text>
+              <Text style={[s.dateLabel, { color: v1Colors.textMuted }]}>{t('weight')}</Text>
+              <Text style={[s.dateValue, { color: v1Colors.text }]}>{view.capacityTons}</Text>
             </View>
           )}
-          <View style={s.dateRow}>
-            <Text style={[s.dateLabel, { color: theme.textMuted }]}>{t('price')}</Text>
-            <Text style={[s.dateValue, { color: theme.text }]}>{view.price}</Text>
-          </View>
-        </View>
+        </GlassCard>
+
+        {/* Цена — выделенный блок с brand-accent */}
+        <GlassCard accent={v1Accent.main}>
+          <SectionTitle icon="💰" label={t('price')} />
+          <Text style={[s.priceBig, { color: v1Accent.main }]} numberOfLines={1}>{view.price}</Text>
+        </GlassCard>
 
         {/* Timeline статусов */}
-        <View style={[{ backgroundColor: theme.card, borderRadius: 14, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: theme.border }]}>
-          <Text style={[s.sectionTitle, { color: theme.text, marginBottom: 12 }]}>📍 {t('trip_status')}</Text>
+        <GlassCard>
+          <SectionTitle icon="📍" label={t('trip_status')} />
           {TRIP_STATES.map((st, i) => {
             const info = TRIP_STATE_INFO[st];
             const currentIdx = TRIP_STATES.indexOf(trip.tripState || 'planned');
@@ -348,13 +366,13 @@ export default function TripDetail({ navigation, route }) {
               </View>
             );
           })}
-        </View>
+        </GlassCard>
 
         {/* Кнопки */}
         {role === 'client' ? (
           <>
             <TouchableOpacity
-              style={[s.primaryBtn, { backgroundColor: accent }]}
+              style={[s.primaryBtn, { backgroundColor: v1Accent.main }]}
               onPress={async () => {
                 const ok = await requireLevel(LEVELS.PHONE, 'contact');
                 if (!ok) return;
@@ -362,28 +380,28 @@ export default function TripDetail({ navigation, route }) {
                 navigation.navigate('Chat', { partner: { name: view.driverName, country: trip.country || 'KZ' }, role });
               }}
             >
-              <Text style={s.primaryBtnText}>💬 {t('write_driver')}</Text>
+              <Text style={[s.primaryBtnText, { color: '#0A0A0A' }]}>💬 {t('write_driver')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[s.secondaryBtn, { borderColor: accent }]}
+              style={[s.secondaryBtn, { borderColor: v1Accent.main }]}
               onPress={async () => {
                 const ok = await requireLevel(LEVELS.PHONE, 'bid');
                 if (!ok) return;
                 setRateModal(true);
               }}
             >
-              <Text style={[s.secondaryBtnText, { color: accent }]}>⭐ {t('leave_review')}</Text>
+              <Text style={[s.secondaryBtnText, { color: v1Accent.main }]}>⭐ {t('leave_review')}</Text>
             </TouchableOpacity>
           </>
         ) : isOwner ? (
           <>
             {(trip.status || 'active') === 'active' && !dealStatus && (
               <TouchableOpacity
-                style={[s.primaryBtn, { backgroundColor: '#22C55E' }]}
+                style={[s.primaryBtn, { backgroundColor: v1Accent.main }]}
                 onPress={() => navigation.navigate('EditTrip', { tripId: trip.id, trip })}
                 testID="trip-detail-edit-btn"
               >
-                <Text style={s.primaryBtnText}>✏️ {t('edit_btn')}</Text>
+                <Text style={[s.primaryBtnText, { color: '#0A0A0A' }]}>✏️ {t('edit_btn')}</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity style={[s.dangerBtn, { borderColor: '#EF4444' }]} onPress={onDelete}>
@@ -416,6 +434,19 @@ export default function TripDetail({ navigation, route }) {
 
 const s = StyleSheet.create({
   container: { flex: 1 },
+  // v1 brand header (mirrors FeedScreen / MyTripsScreen)
+  brandBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 6, paddingBottom: 6 },
+  backHit: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  backIcon: { fontSize: 30, fontWeight: '300' },
+  brandRow: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  brandText: { color: v1Colors.text, fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
+  ftlPill: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 2 },
+  ftlText: { fontSize: 11, fontWeight: '900', letterSpacing: 1 },
+  shareBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: v1Colors.border, backgroundColor: v1Colors.surface },
+  shareIcon: { fontSize: 18, color: v1Colors.text },
+  pageTitle: { color: v1Colors.text, fontSize: 24, fontWeight: '900', letterSpacing: -0.5, marginVertical: 12 },
+  priceBig: { fontSize: 28, fontWeight: '900', letterSpacing: -0.5 },
+  // Legacy local styles still used by deal-block / timeline
   header: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 },
   backBtn: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   backText: { fontSize: 22 },
