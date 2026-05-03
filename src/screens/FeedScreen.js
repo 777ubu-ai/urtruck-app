@@ -16,6 +16,7 @@ import { matchTruckTypes } from '../utils/truckSynonyms';
 import FeedCard from '../components/ui/v1/FeedCard';
 import SearchBar from '../components/ui/v1/SearchBar';
 import FilterChips from '../components/ui/v1/FilterChips';
+import BellBadge from '../components/ui/v1/BellBadge';
 import { v1Colors, v1AccentFor } from '../theme/designV1';
 
 const TCOLORS = {
@@ -356,12 +357,10 @@ export default function FeedScreen({ navigation, route }) {
             <Text style={[s.ftlText, { color: v1Accent.main }]}>FTL</Text>
           </View>
         </View>
-        <TouchableOpacity
-          style={[s.bellBtn, { borderColor: v1Colors.border }]}
+        <BellBadge
+          count={getUnreadNotifications()}
           onPress={() => navigation.navigate('Notifications')}
-        >
-          <Text style={s.bellIcon}>🔔</Text>
-        </TouchableOpacity>
+        />
       </View>
 
       {/* Title row + outline CTA "Разместить ..." */}

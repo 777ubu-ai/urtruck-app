@@ -11,11 +11,17 @@
 // or falls back to the AuthContext. The middle button NEVER toggles the tab
 // — it intercepts the press and navigates to the create flow instead.
 
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Platform, AppState } from 'react-native';
 import { v1Colors, v1AccentFor } from '../../../theme/designV1';
 import { useAuth } from '../../../utils/AuthContext';
 import { useI18n } from '../../../utils/useI18n';
+import { chatAPI } from '../../../utils/chatAPI';
+
+// Poll cadence: gentle by design — most apps refresh chat unread on navigate-
+// in anyway; the periodic poll is a safety net for users who stay parked on
+// Feed for a while. 30s strikes a balance between responsiveness and battery.
+const UNREAD_POLL_MS = 30000;
 
 // Icon glyphs deliberately stay simple emoji; we tint the label by color
 // so even on monochrome OS renderers the active state reads cleanly.
@@ -27,13 +33,46 @@ const ICONS = {
 };
 
 export default function BottomNav({ state, navigation, descriptors }) {
-  const { session } = useAuth();
+  const { session, hasToken } = useAuth();
   const { t } = useI18n();
   const role = session?.user?.role
     || state.routes[0]?.params?.role
     || 'client';
   const isDriver = role === 'driver';
   const accent = v1AccentFor(isDriver ? 'driver' : 'client');
+
+  // Unread chat badge — polled at UNREAD_POLL_MS, also re-fetched whenever
+  // the app comes back to the foreground. Fail-silent: any network error
+  // just leaves the badge at its last known value.
+  const [chatUnread, setChatUnread] = useState(0);
+  const pollTimer = useRef(null);
+
+  useEffect(() => {
+    let mounted = true;
+    if (!hasToken) {
+      setChatUnread(0);
+      return;
+    }
+    const fetchUnread = async () => {
+      try {
+        const r = await chatAPI.unread();
+        const n = (r && (r.unread ?? r.count ?? r.total)) || 0;
+        if (mounted) setChatUnread(Number(n) || 0);
+      } catch {
+        // intentionally silent — UI stays on previous value
+      }
+    };
+    fetchUnread();
+    pollTimer.current = setInterval(fetchUnread, UNREAD_POLL_MS);
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') fetchUnread();
+    });
+    return () => {
+      mounted = false;
+      clearInterval(pollTimer.current);
+      sub?.remove?.();
+    };
+  }, [hasToken]);
 
   const labelOf = (name) => {
     if (name === 'Feed')    return isDriver ? t('tab_feed') : t('tab_feed_client');
@@ -83,6 +122,8 @@ export default function BottomNav({ state, navigation, descriptors }) {
         const iconKey = ICONS[route.name];
         const icon = iconKey ? (isDriver ? iconKey.driver : iconKey.client) : '·';
         const label = labelOf(route.name);
+        const showChatBadge = route.name === 'Chats' && chatUnread > 0;
+        const badgeLabel = chatUnread > 9 ? '9+' : String(chatUnread);
 
         return (
           <TouchableOpacity
@@ -94,14 +135,21 @@ export default function BottomNav({ state, navigation, descriptors }) {
             testID={`bottom-nav-${route.name.toLowerCase()}`}
             style={s.cell}
           >
-            <Text
-              style={[
-                s.icon,
-                isFocused ? { transform: [{ scale: 1.1 }] } : null,
-              ]}
-            >
-              {icon}
-            </Text>
+            <View style={{ position: 'relative' }}>
+              <Text
+                style={[
+                  s.icon,
+                  isFocused ? { transform: [{ scale: 1.1 }] } : null,
+                ]}
+              >
+                {icon}
+              </Text>
+              {showChatBadge ? (
+                <View style={s.iconBadge} testID="bottom-nav-chats-badge">
+                  <Text style={s.iconBadgeText}>{badgeLabel}</Text>
+                </View>
+              ) : null}
+            </View>
             <Text
               style={[
                 s.label,
@@ -158,4 +206,14 @@ const s = StyleSheet.create({
   },
   publishPlus: { color: '#0A0A0A', fontSize: 30, fontWeight: '900', lineHeight: 32 },
   publishLabel: { fontSize: 10, fontWeight: '800' },
+  iconBadge: {
+    position: 'absolute',
+    top: -4, right: -10,
+    minWidth: 18, height: 18, borderRadius: 9,
+    paddingHorizontal: 4,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: v1Colors.error,
+    borderWidth: 2, borderColor: '#000',
+  },
+  iconBadgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '900' },
 });

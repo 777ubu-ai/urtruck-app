@@ -14,6 +14,8 @@ import { colors, spacing, radius, typography } from '../theme/theme';
 import { v1Colors, v1AccentFor } from '../theme/designV1';
 import SegmentTabs from '../components/ui/v1/SegmentTabs';
 import StatsRow from '../components/ui/v1/StatsRow';
+import BellBadge from '../components/ui/v1/BellBadge';
+import { getUnreadNotifications } from '../utils/store';
 
 export default function MyTripsScreen({ navigation, route }) {
   const { role } = route.params || {};
@@ -481,9 +483,10 @@ export default function MyTripsScreen({ navigation, route }) {
             <Text style={[s.ftlText, { color: v1Accent.main }]}>FTL</Text>
           </View>
         </View>
-        <TouchableOpacity style={[s.bellBtn, { borderColor: v1Colors.border }]} onPress={() => navigation.navigate('Notifications')}>
-          <Text style={s.bellIcon}>🔔</Text>
-        </TouchableOpacity>
+        <BellBadge
+          count={getUnreadNotifications()}
+          onPress={() => navigation.navigate('Notifications')}
+        />
       </View>
 
       <View style={s.titleBlock}>
