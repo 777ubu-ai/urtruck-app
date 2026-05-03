@@ -11,6 +11,9 @@ import { formatPrice, normalizeTrip } from '../utils/normalizers';
 import EmptyState from '../components/ui/EmptyState';
 import BidModal from '../components/BidModal';
 import { colors, spacing, radius, typography } from '../theme/theme';
+import { v1Colors, v1AccentFor } from '../theme/designV1';
+import SegmentTabs from '../components/ui/v1/SegmentTabs';
+import StatsRow from '../components/ui/v1/StatsRow';
 
 export default function MyTripsScreen({ navigation, route }) {
   const { role } = route.params || {};
@@ -448,43 +451,56 @@ export default function MyTripsScreen({ navigation, route }) {
 
   // ─── Layout ───
 
+  // Map the original `my / bids / deals` tab keys to the macro-11/12
+  // labels (Active / Completed / Archive). The keys are kept for testID
+  // backward compat — existing E2E rely on them.
+  const v1Accent = v1AccentFor(isDriver ? 'driver' : 'client');
   const TABS = [
-    { key: 'my', label: isDriver ? t('my_trips_tab') : t('my_cargos_tab'), testID: 'my-work-tab-my' },
-    { key: 'bids', label: isDriver ? t('my_bids_tab') : t('responses_tab'), testID: 'my-work-tab-bids' },
-    { key: 'deals', label: t('orders_tab'), testID: 'my-work-tab-orders' },
+    { key: 'my',    label: t('tab_active'),    testID: 'my-work-tab-my' },
+    { key: 'bids',  label: isDriver ? t('tab_completed') : t('tab_in_progress'), testID: 'my-work-tab-bids' },
+    { key: 'deals', label: t('tab_archive'),   testID: 'my-work-tab-orders' },
+  ];
+
+  // Stats row pulls from the same data sources the tabs already use.
+  const stats = [
+    { icon: '📦', value: myItems.length,  label: t('stats_active') },
+    { icon: '👥', value: myBids.length,   label: isDriver ? t('stats_responses') : t('stats_bids') },
+    { icon: '🚚', value: myDeals.length,  label: t('stats_in_progress') },
   ];
 
   return (
-    <SafeAreaView testID="my-work-screen" style={[{ flex: 1, backgroundColor: theme.bg }]} edges={['top']}>
-      <View style={s.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={s.back}>
-          <Text style={[s.backText, { color: theme.text }]}>‹</Text>
+    <SafeAreaView testID="my-work-screen" style={[{ flex: 1, backgroundColor: v1Colors.bg }]} edges={['top']}>
+      {/* Brand bar (UrTruck + FTL pill + bell) */}
+      <View style={s.brandBar}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Text style={[s.backIcon, { color: v1Accent.main }]}>‹</Text>
         </TouchableOpacity>
-        <View>
-          <Text style={[s.headerTitle, { color: theme.text }]}>{t('my_work')}</Text>
-          <Text style={[s.headerSub, { color: theme.textMuted }]}>{isDriver ? t('my_work_sub_driver') : t('my_work_sub_client')}</Text>
+        <View style={s.brandRow}>
+          <Text style={s.brandText}>UrTruck</Text>
+          <View style={[s.ftlPill, { backgroundColor: v1Accent.soft, borderColor: v1Accent.main }]}>
+            <Text style={[s.ftlText, { color: v1Accent.main }]}>FTL</Text>
+          </View>
         </View>
-        <View style={{ width: 44 }} />
+        <TouchableOpacity style={[s.bellBtn, { borderColor: v1Colors.border }]} onPress={() => navigation.navigate('Notifications')}>
+          <Text style={s.bellIcon}>🔔</Text>
+        </TouchableOpacity>
       </View>
 
-      <View style={[s.tabs, { backgroundColor: theme.card, borderColor: theme.border }]}>
-        {TABS.map(tb => (
-          <TouchableOpacity
-            key={tb.key}
-            testID={tb.testID}
-            style={[s.tab, { borderColor: theme.border }, tab === tb.key && { backgroundColor: tb.key === 'deals' ? '#22C55E' : accent, borderColor: 'transparent' }]}
-            onPress={() => setTab(tb.key)}
-          >
-            <Text style={[s.tabText, { color: tab === tb.key ? '#FFF' : theme.textMuted }]}>{tb.label}</Text>
-          </TouchableOpacity>
-        ))}
+      <View style={s.titleBlock}>
+        <Text style={s.titleHero}>{isDriver ? t('my_trips_title') : t('my_cargos_title')}</Text>
+        <Text style={s.titleSub}>{isDriver ? t('my_trips_subtitle') : t('my_cargos_subtitle')}</Text>
+      </View>
+
+      <View style={{ paddingHorizontal: 16 }}>
+        <SegmentTabs items={TABS} value={tab} onChange={setTab} accent={v1Accent.main} />
+        <StatsRow items={stats} accent={v1Accent.main} />
       </View>
 
       <FlatList
         data={tab === 'deals' ? myDeals : tab === 'my' ? myItems : myBids}
         keyExtractor={i => i.id}
         renderItem={tab === 'deals' ? renderDeal : tab === 'my' ? renderMyItem : renderBid}
-        contentContainerStyle={{ padding: spacing.lg }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
         ListEmptyComponent={
           data?.authRequired ? (
@@ -526,6 +542,21 @@ export default function MyTripsScreen({ navigation, route }) {
 }
 
 const s = StyleSheet.create({
+  // v1 brand bar (mirrors FeedScreen)
+  brandBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 6, paddingBottom: 6 },
+  backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  backIcon: { fontSize: 30, fontWeight: '300' },
+  brandRow: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  brandText: { color: v1Colors.text, fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
+  ftlPill: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 2 },
+  ftlText: { fontSize: 11, fontWeight: '900', letterSpacing: 1 },
+  bellBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, backgroundColor: v1Colors.surface },
+  bellIcon: { fontSize: 18 },
+  titleBlock: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12 },
+  titleHero: { color: v1Colors.text, fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
+  titleSub: { color: v1Colors.textMuted, fontSize: 12, marginTop: 2 },
+  // Legacy local styles still used by existing renderBid / renderDeal /
+  // renderMyItem; kept untouched to preserve their layout.
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
   back: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   backText: { fontSize: 28, fontWeight: '300' },

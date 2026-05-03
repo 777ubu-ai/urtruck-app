@@ -24,6 +24,10 @@ import { IS_BETA } from '../config/supabase';
 import { normalizeDateInput } from '../utils/dateInput';
 import { normalizeTrip, formatPrice } from '../utils/normalizers';
 import { matchTruckTypes } from '../utils/truckSynonyms';
+import FeedCard from '../components/ui/v1/FeedCard';
+import SearchBar from '../components/ui/v1/SearchBar';
+import FilterChips from '../components/ui/v1/FilterChips';
+import { v1Colors, v1Radius, v1Spacing, v1Typography, v1AccentFor } from '../theme/designV1';
 
 const TCOLORS = {
   // Brand v3: tent (default truck) maps to brand emerald. ref/izoterm keep
@@ -402,181 +406,143 @@ export default function FeedScreen({ navigation, route }) {
     }
   };
 
+  // Render cargo card under the v1 FeedCard component (macro 07).
   const renderCargo = ({ item }) => {
-    const stats = routeStats(item.from, item.to);
-    const fav = isFavorite(item.id);
-    const rawPhoto = (item.photos && item.photos[0]) || item.photo;
-    const photo = rawPhoto && typeof rawPhoto === 'string' && !rawPhoto.startsWith('data:') && rawPhoto.length < 1000 ? rawPhoto : null;
+    const openCargo = async () => {
+      const ok = await requireLevel(LEVELS.PHONE, 'open_detail');
+      if (!ok) return;
+      const safePhotos = (item.photos || []).filter(p => typeof p === 'string' && p.length < 500);
+      navigation.navigate('CargoDetail', { cargo: { ...item, photos: safePhotos, photo: null }, cargoId: item.id, role });
+    };
+    const meta = [
+      item.pickup ? { icon: '📅', label: t('departure'), value: item.pickup } : null,
+      item.tons > 0 ? { icon: '⚖️', label: t('weight'), value: `${item.tons} т` } : null,
+      item.m3 > 0 ? { icon: '📐', label: t('volume'), value: `${item.m3} м³` } : null,
+    ].filter(Boolean);
     return (
-      <TouchableOpacity
-        style={[s.card, { backgroundColor: theme.card, borderColor: item.isMine ? '#F59E0B60' : theme.border, borderWidth: item.isMine ? 2 : 1 }]}
-        onPress={async () => {
-          const ok = await requireLevel(LEVELS.PHONE, 'open_detail');
-          if (ok) {
-            // Strip heavy base64 photos from navigation params to avoid crash
-            const safePhotos = (item.photos || []).filter(p => typeof p === 'string' && p.length < 500);
-            navigation.navigate('CargoDetail', { cargo: { ...item, photos: safePhotos, photo: null }, cargoId: item.id, role });
-          }
-        }}
-      >
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-          {item.isMine ? (
-            <View style={[s.mineBadge, { backgroundColor: '#F59E0B' }]}><Text style={s.mineBadgeText}>{t('badge_cargo')}</Text></View>
-          ) : (
-            <View style={[s.mineBadge, { backgroundColor: '#263244' }]}><Text style={[s.mineBadgeText, { color: '#94A3B8' }]}>{t('badge_cargo')}</Text></View>
-          )}
-          <Text style={{ color: '#22C55E', fontSize: 10, fontWeight: '600' }}>{formatStatus(item.status || 'active')}</Text>
-        </View>
-        <View style={s.cardRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={[s.route, { color: theme.text }]}>{item.from} → {item.to}</Text>
-            <Text style={[s.cargoName, { color: theme.textSecondary }]} numberOfLines={2} ellipsizeMode="tail">{sanitizeDesc(item.cargo)}</Text>
-            <View style={s.badges}>
-              <Text style={[s.badge, { color: TCOLORS[item.type] || '#666', backgroundColor: (TCOLORS[item.type] || '#666') + '15' }]}>{formatTruckType(item.type)}</Text>
-              {(item.tons > 0 || item.m3 > 0) && <Text style={[s.badge, { color: theme.textSecondary, backgroundColor: theme.border }]}>{item.tons > 0 ? item.tons + 'т' : ''}{item.tons > 0 && item.m3 > 0 ? ' · ' : ''}{item.m3 > 0 ? item.m3 + 'м³' : ''}</Text>}
-              {stats && <Text style={[s.badge, { color: theme.text, backgroundColor: theme.border }]}>{stats.km}км · ~{stats.days}дн</Text>}
-              {item.pickup && <Text style={[s.badge, { color: theme.textMuted, backgroundColor: theme.border }]}>📅 {item.pickup}</Text>}
-            </View>
-          </View>
-          <View style={{ alignItems: 'flex-end', justifyContent: 'space-between', flexShrink: 0, maxWidth: 110 }}>
-            <Text style={s.price}>{formatPrice(item.price, item.currency, t)}</Text>
-            <Text style={[s.bidsCount, { color: theme.textMuted }]}>{formatBids(item.bids)}</Text>
-            <Text style={{ color: '#22C55E', fontSize: 11, fontWeight: '700', marginTop: 4 }}>{item.isMine ? t('details') + ' →' : isDriver ? t('respond') + ' →' : t('details') + ' →'}</Text>
-          </View>
-        </View>
-        {photo && <Image source={{ uri: photo }} style={s.cargoPreview} />}
-      </TouchableOpacity>
+      <FeedCard
+        variant="cargo"
+        accent={isDriver ? 'driver' : 'cargo'}
+        route={{ from: item.from, to: item.to }}
+        subtitle={sanitizeDesc(item.cargo)}
+        meta={meta}
+        priceText={formatPrice(item.price, item.currency, t)}
+        priceCaption={t('per_trip')}
+        responses={item.bids || 0}
+        onPress={openCargo}
+        bottomLeft={{ label: t('details'), onPress: openCargo }}
+        bottomRight={{ label: isDriver ? t('respond') : t('details'), onPress: openCargo, filled: true }}
+        testID="cargo-card"
+      />
     );
   };
 
-  const renderDriver = ({ item }) => (
-    <TouchableOpacity
-      style={[s.card, { backgroundColor: theme.card, borderColor: item.isTrip ? '#22C55E60' : theme.border, borderWidth: item.isTrip ? 2 : 1 }]}
-      onPress={async () => {
-        const ok = await requireLevel(LEVELS.PHONE, 'open_detail');
-        if (!ok) return;
-        if (item.isTrip) {
-          // Pass the already-normalized trip object straight through; TripDetail
-          // re-runs normalizeTrip() so older shapes still work, but we want the
-          // canonical fields (departure/arrival/transit/truckType) preserved.
-          navigation.navigate('TripDetail', { trip: normalizeTrip(item), tripId: item.id, role });
+  // Render trip / driver card under FeedCard (macro 08).
+  const renderDriver = ({ item }) => {
+    const onPress = async () => {
+      const ok = await requireLevel(LEVELS.PHONE, 'open_detail');
+      if (!ok) return;
+      if (item.isTrip) {
+        navigation.navigate('TripDetail', { trip: normalizeTrip(item), tripId: item.id, role });
+      } else {
+        const hasFullProfile = !!(item.full_name || (item.name && item.name !== tGlobal('driver_fallback'))) && !!(item.plate_truck || item.vehicle_plate);
+        if (hasFullProfile) {
+          navigation.navigate('DriverDetail', {
+            driver: { ...item, name: item.name || item.full_name, type: item.type || item.vehicle_type || 'tent', m3: item.m3 || 0, tons: item.tons || 0, rating: item.rating || 0, reviews: item.reviews || 0 },
+            role,
+          });
         } else {
-          // Driver card → only open the full driver profile when we actually
-          // have profile data (full_name OR plate). Otherwise the previous
-          // approved-driver list rendered an empty profile and ErrorBoundary
-          // tripped on null fields. Cards without profile fall through to
-          // a TripDetail-equivalent fallback so the user still sees route
-          // info instead of a crash screen.
-          const hasFullProfile = !!(item.full_name || item.name && item.name !== tGlobal('driver_fallback')) && !!(item.plate_truck || item.vehicle_plate);
-          if (hasFullProfile) {
-            navigation.navigate('DriverDetail', {
-              driver: { ...item, name: item.name || item.full_name, type: item.type || item.vehicle_type || 'tent', m3: item.m3 || 0, tons: item.tons || 0, rating: item.rating || 0, reviews: item.reviews || 0 },
-              role,
-            });
-          } else {
-            navigation.navigate('DriverDetail', {
-              driver: { id: item.id, name: item.name, type: item.type || 'tent', _profileMissing: true },
-              role,
-            });
-          }
+          navigation.navigate('DriverDetail', {
+            driver: { id: item.id, name: item.name, type: item.type || 'tent', _profileMissing: true },
+            role,
+          });
         }
-      }}
-    >
-      <View style={[s.tripBadge, { backgroundColor: item.isTrip ? '#172033' : '#263244' }]}>
-        <Text style={[s.tripBadgeText, { color: item.isTrip ? '#22C55E' : '#94A3B8' }]}>{t('badge_trip')}</Text>
-      </View>
-      <View style={s.cardRow}>
-        <Text style={{ fontSize: 28, marginRight: 12 }}>{FLAGS[item.country] || '🏳️'}</Text>
-        <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Text style={[s.driverName, { color: theme.text }]}>{item.name} {item.verified && '✓'}</Text>
-            <SecurityBadge userId={item.id} compact />
-          </View>
-          {item.isTrip && item.tripRoute ? (
-            <>
-              <Text style={[s.tripRoute, { color: '#22C55E' }]}>📍 {item.tripRoute}</Text>
-              {item.tripDates ? <Text style={[s.tripDates, { color: theme.textMuted }]}>📅 {item.tripDates}</Text> : null}
-            </>
-          ) : (
-            <Text style={s.rating}>★ {item.rating} ({item.reviews})</Text>
-          )}
-          <View style={s.badges}>
-            <Text style={[s.badge, { color: TCOLORS[item.type] || '#666', backgroundColor: (TCOLORS[item.type] || '#666') + '15' }]}>{formatTruckType(item.type)}</Text>
-            {(item.m3 > 0 || item.tons > 0) && <Text style={[s.badge, { color: theme.textSecondary, backgroundColor: theme.border }]}>{item.tons > 0 ? item.tons + ' т' : ''}{item.tons > 0 && item.m3 > 0 ? ' · ' : ''}{item.m3 > 0 ? item.m3 + ' м³' : ''}</Text>}
-          </View>
-        </View>
-        {item.isTrip ? (
-          <View style={{ alignItems: 'flex-end', justifyContent: 'space-between', flexShrink: 0, maxWidth: 130 }}>
-            <Text style={s.price} numberOfLines={1}>{formatPrice(item.price, item.currency, t)}</Text>
-            <Text style={{ color: '#22C55E', fontSize: 11, fontWeight: '700', marginTop: 4 }}>{t('details')} →</Text>
-          </View>
-        ) : null}
-      </View>
-    </TouchableOpacity>
-  );
+      }
+    };
+    const meta = [
+      item.tripDates ? { icon: '📅', label: t('departure'), value: item.tripDates.split(' - ')[0] || item.tripDates } : null,
+      item.tons > 0 ? { icon: '⚖️', label: t('weight'), value: `${item.tons} т` } : null,
+      item.m3 > 0 ? { icon: '📐', label: t('volume'), value: `${item.m3} м³` } : null,
+    ].filter(Boolean);
+    return (
+      <FeedCard
+        variant="trip"
+        accent={isDriver ? 'driver' : 'cargo'}
+        route={item.isTrip && item.tripRoute
+          ? { from: item.from, to: item.to }
+          : { from: item.name, to: '' }}
+        subtitle={item.verified ? `${formatTruckType(item.type)} · ${t('verified')}` : formatTruckType(item.type)}
+        meta={meta}
+        priceText={item.isTrip ? formatPrice(item.price, item.currency, t) : `★ ${item.rating || '—'}`}
+        priceCaption={item.isTrip ? t('per_trip') : `${item.reviews || 0} ${t('reviews')}`}
+        onPress={onPress}
+        bottomLeft={{ label: t('details'), onPress }}
+        bottomRight={{ label: isDriver ? t('details') : t('respond'), onPress, filled: true }}
+        testID={item.isTrip ? 'trip-card' : 'driver-card'}
+      />
+    );
+  };
+
+  // Filter chips (macros 07/08): Direction / Date / Body / Price.
+  // Tapping any of them currently opens the unified filter sheet — until
+  // each gets its own dedicated picker, this preserves the existing UX
+  // while matching the new visual.
+  const accentColor = isDriver ? v1Colors.driver : v1Colors.cargoOwner;
+  const v1Accent = v1AccentFor(isDriver ? 'driver' : 'client');
+  const chips = [
+    { key: 'dir',   icon: '🧭', label: t('filter_direction'), active: !!search.includes('→'), onPress: () => setFilterOpen(true) },
+    { key: 'date',  icon: '📅', label: t('filter_date'),      active: false,                    onPress: () => setFilterOpen(true) },
+    { key: 'body',  icon: '🚛', label: t('filter_body'),      active: !!filterType,             onPress: () => setFilterOpen(true) },
+    { key: 'price', icon: '💰', label: t('filter_price'),     active: sortBy !== 'newest',      onPress: () => setFilterOpen(true) },
+  ];
 
   return (
-    <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]} edges={['top']}>
-      <View style={s.header}>
-        <View style={{ flex: 1 }}>
-          <GradientText style={s.title} colors={isDriver ? ['#22C55E', '#16A34A'] : ['#F59E0B', '#D97706']}>
-            {isDriver ? t('cargos') : t('trucks')}
-          </GradientText>
-          <Text style={[s.subtitle, { color: theme.textMuted }]}>{filteredData.length} {isDriver ? t('active_cargos') : t('available_trips')}</Text>
+    <SafeAreaView style={[s.container, { backgroundColor: v1Colors.bg }]} edges={['top']}>
+      {/* Brand bar — emerald FTL pill + bell */}
+      <View style={s.brandBar}>
+        <View style={{ width: 40 }} />
+        <View style={s.brandRow}>
+          <Text style={s.brandText}>UrTruck</Text>
+          <View style={[s.ftlPill, { backgroundColor: v1Accent.soft, borderColor: v1Accent.main }]}>
+            <Text style={[s.ftlText, { color: v1Accent.main }]}>FTL</Text>
+          </View>
         </View>
         <TouchableOpacity
-          style={[s.bellBtn, { backgroundColor: theme.card, borderColor: theme.border }]}
+          style={[s.bellBtn, { borderColor: v1Colors.border }]}
           onPress={() => navigation.navigate('Notifications')}
         >
-          <Text style={{ fontSize: 18 }}>🔔</Text>
-          {/* Badge disabled — only show when real server notifications integrated */}
+          <Text style={s.bellIcon}>🔔</Text>
         </TouchableOpacity>
+      </View>
+
+      {/* Title row + outline CTA "Разместить ..." */}
+      <View style={s.titleRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={s.titleHero}>{isDriver ? t('cargos') : t('trucks')}</Text>
+          <Text style={s.titleHeroSub}>{isDriver ? t('feed_driver_subtitle') : t('feed_client_subtitle')}</Text>
+        </View>
         <TouchableOpacity
-          style={[s.actionBtn, { backgroundColor: accent }]}
+          style={[s.titleCta, { borderColor: accentColor }]}
           onPress={() => setShowForm(true)}
           testID={isDriver ? 'publish-trip-button' : 'publish-cargo-button'}
           accessibilityRole="button"
           accessibilityLabel={isDriver ? 'Опубликовать маршрут' : 'Разместить груз'}
         >
-          <Text style={[s.actionBtnText, { color: isDriver ? '#fff' : '#0C0A09' }]}>{isDriver ? t('postTrip') : t('postCargo')}</Text>
+          <Text style={[s.titleCtaText, { color: accentColor }]}>+ {isDriver ? t('postTrip') : t('postCargo')}</Text>
         </TouchableOpacity>
       </View>
 
-      <View style={s.searchWrap}>
-        <TextInput
-          style={[s.searchInput, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border }]}
-          placeholder={'🔍 ' + t('searchRoute')}
-          placeholderTextColor={theme.textMuted}
+      <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
+        <SearchBar
           value={search}
           onChangeText={setSearch}
+          placeholder={'🔍 ' + t('searchRoute')}
+          onClear={() => { setFilterType(null); setSearch(''); setSortBy('newest'); setMinRating(0); }}
         />
-        {(filterType || search || sortBy !== 'newest' || minRating > 0) && (
-          <TouchableOpacity style={s.clearBtn} onPress={() => { setFilterType(null); setSearch(''); setSortBy('newest'); setMinRating(0); }}>
-            <Text style={{ color: accent, fontSize: 12, fontWeight: '700' }}>✕</Text>
-          </TouchableOpacity>
-        )}
-        <TouchableOpacity
-          style={[s.filterBtn, { backgroundColor: (filterType || minRating > 0 || sortBy !== 'newest') ? accent : theme.card, borderColor: theme.border }]}
-          onPress={() => setFilterOpen(true)}
-        >
-          <Text style={{ fontSize: 18 }}>⚙️</Text>
-        </TouchableOpacity>
-        {search.includes('→') && (
-          <TouchableOpacity
-            style={[s.saveRouteBtn, { borderColor: accent }]}
-            onPress={async () => {
-              const parts = search.split('→').map(s => s.trim());
-              if (parts.length === 2 && parts[0] && parts[1]) {
-                const ok = await requireLevel(LEVELS.PHONE, 'default');
-                if (ok) {
-                  toast(`🔖 Маршрут ${parts[0]}→${parts[1]} сохранён`, 'success');
-                }
-              }
-            }}
-          >
-            <Text style={{ color: accent, fontSize: 11, fontWeight: '700' }}>🔖 Сохранить</Text>
-          </TouchableOpacity>
-        )}
+      </View>
+
+      <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
+        <FilterChips items={chips} accent={accentColor} />
       </View>
 
       {/* Чипы выбранных фильтров */}
@@ -710,24 +676,33 @@ export default function FeedScreen({ navigation, route }) {
           data={filteredData}
           keyExtractor={i => i.id}
           renderItem={isDriver ? renderCargo : renderDriver}
-          contentContainerStyle={{ padding: 16, gap: 10 }}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 20, gap: 0 }}
           showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accent} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accentColor} />}
+          ListFooterComponent={
+            filteredData.length > 0 ? (
+              <View style={[s.footerNote, { borderColor: v1Colors.border }]}>
+                <Text style={s.footerNoteText} numberOfLines={2}>
+                  🛡  {isDriver ? t('feed_driver_disclaimer') : t('feed_client_disclaimer')}
+                </Text>
+              </View>
+            ) : null
+          }
           ListEmptyComponent={
             <View style={{ padding: 40, alignItems: 'center' }}>
               <Text style={{ fontSize: 48, marginBottom: 10 }}>{loadError ? '⚠️' : '🔍'}</Text>
-              <Text style={{ color: theme.textMuted, fontSize: 14, textAlign: 'center' }}>
-                {loadError ? 'Не удалось загрузить. Проверьте интернет.' :
-                 minRating > 0 ? `Нет ${minRating}★+ результатов.` :
-                 filterType ? 'По фильтру ничего не найдено.' :
+              <Text style={{ color: v1Colors.textMuted, fontSize: 14, textAlign: 'center' }}>
+                {loadError ? t('feed_load_failed') :
+                 minRating > 0 ? `${minRating}★+: ${t('no_active_cargos')}` :
+                 filterType ? t('feed_filter_empty') :
                  isDriver ? t('no_active_cargos') : t('no_active_trips')}
               </Text>
               {loadError && (
                 <TouchableOpacity
-                  style={{ marginTop: 16, backgroundColor: '#22C55E', borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12 }}
+                  style={[s.refreshBtn, { backgroundColor: accentColor }]}
                   onPress={() => { setRefreshing(true); loadFromServer().finally(() => setRefreshing(false)); }}
                 >
-                  <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Обновить</Text>
+                  <Text style={{ color: '#0A0A0A', fontWeight: '800', fontSize: 14 }}>{t('refresh')}</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -1011,16 +986,37 @@ export default function FeedScreen({ navigation, route }) {
 
 const s = StyleSheet.create({
   container: { flex: 1 },
-  betaBar: {
-    backgroundColor: '#F59E0B',
-    paddingVertical: 6, paddingHorizontal: 14,
-    alignItems: 'center',
+  // v1 brand bar (UrTruck + FTL pill + bell). Replaces the old `header`
+  // gradient title, which combined too many call-sites and mixed brand
+  // hierarchy with action CTA.
+  brandBar: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 16, paddingTop: 6, paddingBottom: 6,
   },
+  brandRow: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  brandText: { color: v1Colors.text, fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
+  ftlPill: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 2 },
+  ftlText: { fontSize: 11, fontWeight: '900', letterSpacing: 1 },
+  bellBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, backgroundColor: v1Colors.surface },
+  bellIcon: { fontSize: 18 },
+  // Title row with outline CTA on the right (macros 07/08).
+  titleRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12, gap: 12 },
+  titleHero: { color: v1Colors.text, fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
+  titleHeroSub: { color: v1Colors.textMuted, fontSize: 12, marginTop: 2 },
+  titleCta: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 },
+  titleCtaText: { fontSize: 12, fontWeight: '800' },
+  footerNote: {
+    marginTop: 16, marginBottom: 8,
+    borderWidth: 1, borderRadius: 14,
+    padding: 12,
+    backgroundColor: v1Colors.surface,
+  },
+  footerNoteText: { color: v1Colors.textMuted, fontSize: 12, lineHeight: 17 },
+  refreshBtn: { marginTop: 16, borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12 },
+  // Old layout helpers kept for the still-existing publish modal below.
+  betaBar: { backgroundColor: '#F59E0B', paddingVertical: 6, paddingHorizontal: 14, alignItems: 'center' },
   betaBarText: { color: '#0C0A09', fontSize: 11, fontWeight: '700', letterSpacing: 0.4 },
   header: { flexDirection: 'row', alignItems: 'center', padding: 16, paddingBottom: 8, gap: 8 },
-  bellBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, position: 'relative' },
-  bellBadge: { position: 'absolute', top: 2, right: 2, backgroundColor: '#EF4444', minWidth: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
-  bellBadgeText: { color: '#fff', fontSize: 9, fontWeight: '900' },
   title: { fontSize: 22, fontWeight: '900' },
   subtitle: { fontSize: 12 },
   actionBtn: { borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12 },
