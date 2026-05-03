@@ -9,6 +9,8 @@ import { normalizeTrip, formatPrice, CURRENCY_SYMBOLS } from '../utils/normalize
 import { normalizeDateInput, formatDateForDisplay } from '../utils/dateInput';
 import CityInput from '../components/CityInput';
 import DatePicker from '../components/DatePicker';
+import { v1Colors, v1AccentFor } from '../theme/designV1';
+import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
 
 const TRUCK_KEYS = ['tent', 'ref', 'platform', 'auto', 'izoterm', 'cont20', 'cont40', 'jumbo', 'mega', 'curtain', 'lowloader', 'tanker', 'dumptruck', 'grain', 'livestock', 'logger', 'hazmat', 'open_truck', 'closed', 'longliner', 'microvan'];
 const TRUCK_ICONS = {
@@ -118,11 +120,16 @@ export default function EditTripScreen({ navigation, route }) {
     }
   };
 
+  // EditTrip is reachable only by the trip owner (driver) — accent stays
+  // emerald regardless of viewer role.
+  const v1Accent = v1AccentFor('driver');
+
   if (loading) {
     return (
-      <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]} edges={['top']}>
+      <SafeAreaView style={[s.container, { backgroundColor: v1Colors.bg }]} edges={['top']}>
+        <BrandBarWithShare onBack={() => navigation.goBack()} accent={v1Accent.main} />
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator size="large" color="#22C55E" />
+          <ActivityIndicator size="large" color={v1Accent.main} />
         </View>
       </SafeAreaView>
     );
@@ -130,27 +137,21 @@ export default function EditTripScreen({ navigation, route }) {
 
   if (!trip || !trip.id) {
     return (
-      <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]} edges={['top']}>
-        <View style={s.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={[s.backBtn, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Text style={[s.backText, { color: theme.text }]}>‹</Text>
-          </TouchableOpacity>
-          <Text style={[s.title, { color: theme.text }]}>{t('edit_btn')}</Text>
-        </View>
+      <SafeAreaView style={[s.container, { backgroundColor: v1Colors.bg }]} edges={['top']}>
+        <BrandBarWithShare onBack={() => navigation.goBack()} accent={v1Accent.main} />
         <View style={{ padding: 24 }}>
-          <Text style={{ color: theme.textMuted }}>{t('incomplete_data')}</Text>
+          <Text style={[s.title, { color: v1Colors.text, marginBottom: 12 }]}>{t('edit_btn')}</Text>
+          <Text style={{ color: v1Colors.textMuted }}>{t('incomplete_data')}</Text>
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]} edges={['top']}>
-      <View style={s.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={[s.backBtn, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[s.backText, { color: theme.text }]}>‹</Text>
-        </TouchableOpacity>
-        <Text style={[s.title, { color: theme.text }]}>{t('edit_btn')}</Text>
+    <SafeAreaView style={[s.container, { backgroundColor: v1Colors.bg }]} edges={['top']}>
+      <BrandBarWithShare onBack={() => navigation.goBack()} accent={v1Accent.main} />
+      <View style={{ paddingHorizontal: 16, paddingTop: 4 }}>
+        <Text style={[s.title, { color: v1Colors.text }]}>✏️ {t('edit_btn')}</Text>
       </View>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
         <Text style={[s.label, { color: theme.textMuted }]}>{t('fromCountry')}</Text>

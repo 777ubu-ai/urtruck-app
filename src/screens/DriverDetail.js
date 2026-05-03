@@ -13,6 +13,10 @@ import { reviewsAPI } from '../utils/reviews';
 import RatingModal from '../components/RatingModal';
 import { marketAPI } from '../utils/marketAPI';
 import { API_BASE } from '../config/env';
+import { v1Colors, v1Radius, v1AccentFor } from '../theme/designV1';
+import GlassCard from '../components/ui/v1/GlassCard';
+import SectionTitle from '../components/ui/v1/SectionTitle';
+import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
 
 const TCOLORS = { tent: '#22C55E', ref: '#16A34A', platform: '#D97706', auto: '#7C3AED', izoterm: '#059669' };
 const FLAGS = { KZ: '🇰🇿', UZ: '🇺🇿', RU: '🇷🇺', KG: '🇰🇬', CN: '🇨🇳' };
@@ -63,26 +67,25 @@ export default function DriverDetail({ navigation, route }) {
   // server-side yet (driver_id has a session but the user never finished
   // registration). Showing the full profile UI with empty fields used to
   // crash on null props — now we render a friendly placeholder instead.
+  // v1 brand accent: emerald when the viewer is a shipper looking at a
+  // driver, orange when the driver is viewing another driver's card (rare,
+  // mostly happens via deep link).
+  const v1Accent = v1AccentFor(role === 'driver' ? 'client' : 'driver');
+
   if (driver._profileMissing) {
     return (
-      <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]} edges={['top']}>
-        <View style={s.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={[s.backBtn, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Text style={[s.backText, { color: theme.text }]}>‹</Text>
-          </TouchableOpacity>
-          <Text style={[s.headerTitle, { color: theme.text }]}>{t('driverProfile')}</Text>
-          <View style={{ width: 34 }} />
-        </View>
+      <SafeAreaView style={[s.container, { backgroundColor: v1Colors.bg }]} edges={['top']}>
+        <BrandBarWithShare onBack={() => navigation.goBack()} accent={v1Accent.main} />
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 10 }}>
           <Text style={{ fontSize: 56 }}>🪪</Text>
-          <Text style={{ color: theme.text, fontSize: 16, fontWeight: '700', textAlign: 'center' }}>
+          <Text style={{ color: v1Colors.text, fontSize: 16, fontWeight: '700', textAlign: 'center' }}>
             {t('driver_profile_missing_title')}
           </Text>
-          <Text style={{ color: theme.textMuted, fontSize: 13, textAlign: 'center', maxWidth: 320, lineHeight: 19 }}>
+          <Text style={{ color: v1Colors.textMuted, fontSize: 13, textAlign: 'center', maxWidth: 320, lineHeight: 19 }}>
             {t('driver_profile_missing_body')}
           </Text>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: 14, borderWidth: 1, borderColor: '#22C55E', borderRadius: 12, paddingHorizontal: 22, paddingVertical: 12 }}>
-            <Text style={{ color: '#22C55E', fontSize: 13, fontWeight: '700' }}>← {t('back_short')}</Text>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: 14, borderWidth: 1, borderColor: v1Accent.main, borderRadius: 12, paddingHorizontal: 22, paddingVertical: 12 }}>
+            <Text style={{ color: v1Accent.main, fontSize: 13, fontWeight: '700' }}>← {t('back_short')}</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -105,49 +108,57 @@ export default function DriverDetail({ navigation, route }) {
   };
 
   return (
-    <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]} edges={['top']}>
-      <View style={s.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={[s.backBtn, { backgroundColor: theme.card, borderColor: theme.border }]}><Text style={[s.backText, { color: theme.text }]}>‹</Text></TouchableOpacity>
-        <Text style={[s.headerTitle, { color: theme.text }]}>{t('driverProfile')}</Text>
-        <TouchableOpacity onPress={() => setShareModal(true)}><Text style={{ fontSize: 20 }}>↗️</Text></TouchableOpacity>
-      </View>
-      <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 0, paddingBottom: 40 }}>
-        <View style={[s.section, { backgroundColor: theme.card, borderColor: theme.border, alignItems: 'center', paddingVertical: 24 }]}>
-          <View style={[s.avatar, { backgroundColor: (TCOLORS[tt] || '#666') + '20', borderColor: (TCOLORS[tt] || '#666') + '30' }]}>
+    <SafeAreaView style={[s.container, { backgroundColor: v1Colors.bg }]} edges={['top']}>
+      <BrandBarWithShare
+        onBack={() => navigation.goBack()}
+        onShare={() => setShareModal(true)}
+        accent={v1Accent.main}
+        rightTestID="driver-share-btn"
+      />
+      <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 0, paddingBottom: 60 }}>
+        {/* Identity card — branded with the role accent */}
+        <GlassCard accent={v1Accent.main} style={{ alignItems: 'center', paddingVertical: 22 }}>
+          <View style={[s.avatar, { backgroundColor: (TCOLORS[tt] || '#666') + '22', borderColor: v1Accent.main }]}>
             <Text style={{ fontSize: 32 }}>{FLAGS[driver.country] || '🏳️'}</Text>
           </View>
-          <Text style={[s.name, { color: theme.text }]}>{driverName} {driver.verified && <Text style={{ color: '#22C55E' }}>✓</Text>}</Text>
-          <View style={s.verifyBadge}>
-            <Text style={[s.verifyText, { color: driver.verified ? '#22C55E' : '#F59E0B' }]}>{driver.verified ? '🟢 ' + t('verified') : '🟡 ' + t('pending')}</Text>
+          <Text style={[s.name, { color: v1Colors.text }]}>
+            {driverName} {driver.verified && <Text style={{ color: v1Accent.main }}>✓</Text>}
+          </Text>
+          <View style={[s.verifyBadge, { backgroundColor: driver.verified ? v1Colors.driverSoft : v1Colors.cargoOwnerSoft, borderColor: driver.verified ? v1Colors.driver : v1Colors.cargoOwner }]}>
+            <Text style={[s.verifyText, { color: driver.verified ? v1Colors.driver : v1Colors.cargoOwner }]}>
+              {driver.verified ? '🟢 ' + t('verified') : '🟡 ' + t('pending')}
+            </Text>
           </View>
-          <Text style={s.ratingText}>★ {driver.rating || '—'} <Text style={[s.reviewCount, { color: theme.textMuted }]}>({driver.reviews || 0})</Text></Text>
-        </View>
+          <Text style={s.ratingText}>★ {driver.rating || '—'} <Text style={[s.reviewCount, { color: v1Colors.textMuted }]}>({driver.reviews || 0})</Text></Text>
+        </GlassCard>
 
-        {/* Скоринг безопасности — публичный вид (только балл + цвет) */}
-        <View style={[s.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[s.sectionTitle, { color: theme.textMuted }]}>🛡 {t('reliability_section')}</Text>
+        <GlassCard>
+          <SectionTitle icon="🛡" label={t('reliability_section')} />
           <SecurityBadge userId={driver.id} phone={driver.phone} plate={driver.plate_truck} />
-        </View>
+        </GlassCard>
 
-        <View style={[s.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[s.sectionTitle, { color: theme.textMuted }]}>{t('transport')}</Text>
+        <GlassCard>
+          <SectionTitle icon="🚚" label={t('transport')} />
           <View style={s.grid}>
             {[[t('truckType'), t(tt)], [t('volume'), (driver.m3 || '—') + 'м³'], [t('tonnage'), (driver.tons || '—') + 'т']].map(([l, v]) => (
-              <View key={l} style={s.gridItem}><Text style={[s.gridLabel, { color: theme.textMuted }]}>{l}</Text><Text style={[s.gridValue, { color: theme.text }]}>{v}</Text></View>
+              <View key={l} style={s.gridItem}>
+                <Text style={[s.gridLabel, { color: v1Colors.textMuted }]}>{l}</Text>
+                <Text style={[s.gridValue, { color: v1Colors.text }]}>{v}</Text>
+              </View>
             ))}
           </View>
-        </View>
+        </GlassCard>
 
-        <View style={[s.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <Text style={[s.sectionTitle, { color: theme.textMuted, marginBottom: 0 }]}>
-              {t('reviews')} ({reviewsData?.summary?.count ?? 0})
-              {reviewsData?.summary?.count > 0 && (
-                <Text style={{ color: '#FBBF24', fontWeight: '800' }}> · ★ {reviewsData.summary.average}</Text>
-              )}
-            </Text>
-            <Text style={{ color: theme.textDim, fontSize: 10 }}>{t('review_after_trip')}</Text>
-          </View>
+        <GlassCard>
+          <SectionTitle
+            icon="⭐"
+            label={`${t('reviews')} (${reviewsData?.summary?.count ?? 0})`}
+            right={reviewsData?.summary?.count > 0 ? (
+              <Text style={{ color: '#FBBF24', fontSize: 12, fontWeight: '800' }}>★ {reviewsData.summary.average}</Text>
+            ) : (
+              <Text style={{ color: v1Colors.textDim, fontSize: 10 }}>{t('review_after_trip')}</Text>
+            )}
+          />
 
           {(reviewsData?.reviews?.length > 0 ? reviewsData.reviews : REVIEWS).map((r, i, arr) => {
             const isDemo = !reviewsData?.reviews?.length;
@@ -156,22 +167,22 @@ export default function DriverDetail({ navigation, route }) {
             const text = r.text || '';
             const ago = r.ago || (r.created_at || '').slice(0, 10);
             return (
-              <View key={i} style={[s.review, i < arr.length - 1 && { borderBottomWidth: 1, borderBottomColor: theme.border }]}>
+              <View key={i} style={[s.review, i < arr.length - 1 && { borderBottomWidth: 1, borderBottomColor: v1Colors.border }]}>
                 <View style={s.reviewHeader}>
-                  <Text style={[s.reviewUser, { color: theme.text }]}>{user}</Text>
+                  <Text style={[s.reviewUser, { color: v1Colors.text }]}>{user}</Text>
                   <Text style={s.reviewStars}>{'★'.repeat(Math.max(0, Math.min(5, parseInt(rating) || 0)))}</Text>
                 </View>
-                {text ? <Text style={[s.reviewText, { color: theme.textSecondary }]}>{text}</Text> : null}
-                <Text style={[s.reviewAgo, { color: theme.textMuted }]}>{ago}{isDemo ? ' · демо' : ''}</Text>
+                {text ? <Text style={[s.reviewText, { color: v1Colors.textMuted }]}>{text}</Text> : null}
+                <Text style={[s.reviewAgo, { color: v1Colors.textMuted }]}>{ago}{isDemo ? ' · демо' : ''}</Text>
               </View>
             );
           })}
-        </View>
+        </GlassCard>
 
-        <TouchableOpacity style={[s.contactBtn, { backgroundColor: contactOpened ? '#22C55E' : accent }]} onPress={openContact} disabled={contactOpened}>
-          <Text style={[s.contactBtnText, { color: role === 'driver' ? '#fff' : '#0C0A09' }]}>{contactOpened ? '✓ ' + t('contactOpened') : t('openContact') + ' · $0'}</Text>
+        <TouchableOpacity style={[s.contactBtn, { backgroundColor: contactOpened ? v1Colors.driver : v1Accent.main }]} onPress={openContact} disabled={contactOpened}>
+          <Text style={[s.contactBtnText, { color: '#0A0A0A' }]}>{contactOpened ? '✓ ' + t('contactOpened') : t('openContact') + ' · $0'}</Text>
         </TouchableOpacity>
-        <Text style={[s.betaNote, { color: theme.textMuted }]}>{t('freeForEarly')}</Text>
+        <Text style={[s.betaNote, { color: v1Colors.textMuted }]}>{t('freeForEarly')}</Text>
 
         <TouchableOpacity
           style={s.reportBtn}

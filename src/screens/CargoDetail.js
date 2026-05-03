@@ -21,6 +21,7 @@ import { WEB_URL } from '../config/env';
 import { v1Colors, v1Radius, v1AccentFor } from '../theme/designV1';
 import GlassCard from '../components/ui/v1/GlassCard';
 import SectionTitle from '../components/ui/v1/SectionTitle';
+import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
 
 const FLAGS = { KZ: '🇰🇿', UZ: '🇺🇿', RU: '🇷🇺', KG: '🇰🇬', CN: '🇨🇳', TJ: '🇹🇯', TR: '🇹🇷', TM: '🇹🇲', MN: '🇲🇳', DE: '🇩🇪', FR: '🇫🇷' };
 
@@ -241,20 +242,12 @@ export default function CargoDetail({ navigation, route }) {
 
   return (
     <SafeAreaView style={[s.container, { backgroundColor: v1Colors.bg }]} edges={['top']}>
-      <View style={s.brandBar}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backHit} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Text style={[s.backIcon, { color: v1Accent.main }]}>‹</Text>
-        </TouchableOpacity>
-        <View style={s.brandRow}>
-          <Text style={s.brandText}>UrTruck</Text>
-          <View style={[s.ftlPill, { backgroundColor: v1Accent.soft, borderColor: v1Accent.main }]}>
-            <Text style={[s.ftlText, { color: v1Accent.main }]}>FTL</Text>
-          </View>
-        </View>
-        <TouchableOpacity onPress={() => setShareModal(true)} style={s.shareBtn} testID="cargo-share-btn">
-          <Text style={s.shareIcon}>↗</Text>
-        </TouchableOpacity>
-      </View>
+      <BrandBarWithShare
+        onBack={() => navigation.goBack()}
+        onShare={() => setShareModal(true)}
+        accent={v1Accent.main}
+        rightTestID="cargo-share-btn"
+      />
       <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 0, paddingBottom: 60 }}>
         <Text style={s.pageTitle} numberOfLines={1}>📦 {view.from} → {view.to}</Text>
 
