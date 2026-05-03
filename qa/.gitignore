@@ -7,3 +7,7 @@ screenshots/
 
 reports/_active-run-id.txt
 reports/_tokens-*.json
+reports/_cleanup-token
+reports/_agent-token
+reports/_tokens-stable.json
+reports/_tokens-*.json
