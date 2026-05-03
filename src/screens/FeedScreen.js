@@ -118,10 +118,16 @@ export default function FeedScreen({ navigation, route }) {
         }));
         const tripsMapped = ((tripsRes || {}).trips || []).map(rawT => {
           const n = normalizeTrip({ ...rawT, _server: true });
+          // Card title fallback ladder. Most trips on the live feed have
+          // driver_name=null because driver profiles aren't fully populated
+          // yet — showing a generic "Водитель" repeatedly looks broken, so
+          // we synthesise a stable handle from the driver_id.
+          const idTail = (n.driverId || n.id || '').replace(/[^a-z0-9]/gi, '').slice(-4).toUpperCase() || '0000';
+          const cardName = n.driverName || `${tGlobal('carrier_handle_prefix')} #${idTail}`;
           return {
             ...n,
             // Card-only fields kept alongside the canonical shape:
-            name: n.driverName || tGlobal('driver_fallback'),
+            name: cardName,
             type: n.truckType || 'tent',
             m3: n.availableM3 || 0,
             tons: n.capacityTons || 0,
@@ -455,10 +461,24 @@ export default function FeedScreen({ navigation, route }) {
           // canonical fields (departure/arrival/transit/truckType) preserved.
           navigation.navigate('TripDetail', { trip: normalizeTrip(item), tripId: item.id, role });
         } else {
-          navigation.navigate('DriverDetail', {
-            driver: { ...item, name: item.name || item.full_name || tGlobal('driver_fallback'), type: item.type || item.vehicle_type || 'tent', m3: item.m3 || 0, tons: item.tons || 0, rating: item.rating || 0, reviews: item.reviews || 0 },
-            role,
-          });
+          // Driver card → only open the full driver profile when we actually
+          // have profile data (full_name OR plate). Otherwise the previous
+          // approved-driver list rendered an empty profile and ErrorBoundary
+          // tripped on null fields. Cards without profile fall through to
+          // a TripDetail-equivalent fallback so the user still sees route
+          // info instead of a crash screen.
+          const hasFullProfile = !!(item.full_name || item.name && item.name !== tGlobal('driver_fallback')) && !!(item.plate_truck || item.vehicle_plate);
+          if (hasFullProfile) {
+            navigation.navigate('DriverDetail', {
+              driver: { ...item, name: item.name || item.full_name, type: item.type || item.vehicle_type || 'tent', m3: item.m3 || 0, tons: item.tons || 0, rating: item.rating || 0, reviews: item.reviews || 0 },
+              role,
+            });
+          } else {
+            navigation.navigate('DriverDetail', {
+              driver: { id: item.id, name: item.name, type: item.type || 'tent', _profileMissing: true },
+              role,
+            });
+          }
         }
       }}
     >

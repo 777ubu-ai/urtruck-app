@@ -59,6 +59,36 @@ export default function DriverDetail({ navigation, route }) {
     );
   }
 
+  // Soft-empty state: card was for a driver whose profile isn't completed
+  // server-side yet (driver_id has a session but the user never finished
+  // registration). Showing the full profile UI with empty fields used to
+  // crash on null props — now we render a friendly placeholder instead.
+  if (driver._profileMissing) {
+    return (
+      <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]} edges={['top']}>
+        <View style={s.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={[s.backBtn, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Text style={[s.backText, { color: theme.text }]}>‹</Text>
+          </TouchableOpacity>
+          <Text style={[s.headerTitle, { color: theme.text }]}>{t('driverProfile')}</Text>
+          <View style={{ width: 34 }} />
+        </View>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 10 }}>
+          <Text style={{ fontSize: 56 }}>🪪</Text>
+          <Text style={{ color: theme.text, fontSize: 16, fontWeight: '700', textAlign: 'center' }}>
+            {t('driver_profile_missing_title')}
+          </Text>
+          <Text style={{ color: theme.textMuted, fontSize: 13, textAlign: 'center', maxWidth: 320, lineHeight: 19 }}>
+            {t('driver_profile_missing_body')}
+          </Text>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: 14, borderWidth: 1, borderColor: '#22C55E', borderRadius: 12, paddingHorizontal: 22, paddingVertical: 12 }}>
+            <Text style={{ color: '#22C55E', fontSize: 13, fontWeight: '700' }}>← {t('back_short')}</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   const tt = driver.type || driver.vehicle_type || 'tent';
   const accent = role === 'driver' ? '#22C55E' : '#F59E0B';
   // Safe defaults
@@ -129,7 +159,7 @@ export default function DriverDetail({ navigation, route }) {
               <View key={i} style={[s.review, i < arr.length - 1 && { borderBottomWidth: 1, borderBottomColor: theme.border }]}>
                 <View style={s.reviewHeader}>
                   <Text style={[s.reviewUser, { color: theme.text }]}>{user}</Text>
-                  <Text style={s.reviewStars}>{'★'.repeat(rating)}</Text>
+                  <Text style={s.reviewStars}>{'★'.repeat(Math.max(0, Math.min(5, parseInt(rating) || 0)))}</Text>
                 </View>
                 {text ? <Text style={[s.reviewText, { color: theme.textSecondary }]}>{text}</Text> : null}
                 <Text style={[s.reviewAgo, { color: theme.textMuted }]}>{ago}{isDemo ? ' · демо' : ''}</Text>

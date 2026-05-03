@@ -29,9 +29,13 @@ module.exports = defineConfig({
     timezoneId: 'Asia/Almaty',
   },
   // Order matters: serik publishes a route → boris responds → auditor audits.
+  // trip-clicks runs standalone: it doesn't depend on QA state and is the
+  // first thing the operator typically wants to see when a "white screen"
+  // bug is reported in the field.
   projects: [
-    { name: 'serik',   testMatch: /serik\.driver\.spec\.js$/ },
-    { name: 'boris',   testMatch: /boris\.shipper\.spec\.js$/, dependencies: ['serik'] },
-    { name: 'auditor', testMatch: /auditor\.full\.spec\.js$/,  dependencies: ['serik', 'boris'] },
+    { name: 'serik',       testMatch: /serik\.driver\.spec\.js$/ },
+    { name: 'boris',       testMatch: /boris\.shipper\.spec\.js$/, dependencies: ['serik'] },
+    { name: 'trip-clicks', testMatch: /trip\.detail\.clicks\.spec\.js$/ },
+    { name: 'auditor',     testMatch: /auditor\.full\.spec\.js$/,  dependencies: ['serik', 'boris', 'trip-clicks'] },
   ],
 });
