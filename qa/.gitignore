@@ -1,0 +1,6 @@
+# QA run artefacts — every run is unique; the framework itself is checked in.
+reports/qa-report-*.md
+reports/qa-report-*.json
+reports/_state-*.json
+reports/_tokens-*.json
+screenshots/
