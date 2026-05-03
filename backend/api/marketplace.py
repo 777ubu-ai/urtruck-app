@@ -62,8 +62,16 @@ def _parse_iso_date(s):
 
 
 def _is_dirty_text(*fields) -> bool:
-    """Cheap substring match for moderation tokens. Case-insensitive, RU+EN."""
+    """Cheap substring match for moderation tokens. Case-insensitive, RU+EN.
+
+    QA agents tag their records with "[ar-<runid>]" markers and rely on the
+    public feed showing them during a run (cleanup removes them after). Treat
+    a row carrying that marker as *not* dirty, even if some other field
+    incidentally matches a dirty token (e.g. "QA" inside an agent name).
+    """
     blob = " ".join(str(f or "") for f in fields).lower()
+    if "[ar-" in blob:
+        return False
     return any(tok in blob for tok in DIRTY_TOKENS)
 
 

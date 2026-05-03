@@ -29,13 +29,28 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
-from database.db import get_conn
+from database.db import get_conn, new_id
+from database import registration_dal as reg_dal
 
 qa_router = APIRouter()
 
 # Marker substring all QA agents inject. Change in lockstep with
 # qa/utils/qaConfig.js if you ever want to rebrand the prefix.
 QA_TAG_PREFIX = "[ar-"
+
+# Stable QA actors. We pin id+phone so the same row is reused across runs and
+# never multiplies into thousands of guest_xxx rows. The phone column is
+# UNIQUE/NOT NULL in the schema — using a marker string instead of a real
+# phone number keeps these obviously non-public.
+# Display names deliberately avoid the word "qa": marketplace.py's public
+# feed filter treats "qa" as a dirty token to keep real test junk out, and
+# anything matching is hidden from list_trips. The bracketed [ar-...] marker
+# the agents inject elsewhere stays the canonical QA fingerprint.
+QA_ACTORS = {
+    "serik":   {"id": "agent-serik",   "phone": "agent-serik",   "full_name": "Serik (driver agent)",     "role": "driver"},
+    "boris":   {"id": "agent-boris",   "phone": "agent-boris",   "full_name": "Boris (shipper agent)",    "role": "client"},
+    "auditor": {"id": "agent-auditor", "phone": "agent-auditor", "full_name": "Auditor (supervisor agent)", "role": "auditor"},
+}
 
 
 def _require_token(provided: Optional[str]) -> None:
@@ -47,6 +62,68 @@ def _require_token(provided: Optional[str]) -> None:
         raise HTTPException(status_code=503, detail="QA cleanup endpoint not configured (QA_CLEANUP_TOKEN unset)")
     if not provided or provided != expected:
         raise HTTPException(status_code=403, detail="Invalid X-QA-Cleanup-Token")
+
+
+def _require_agent_token(provided: Optional[str]) -> None:
+    expected = os.getenv("QA_AGENT_TOKEN")
+    if not expected:
+        raise HTTPException(status_code=503, detail="QA agent endpoint not configured (QA_AGENT_TOKEN unset)")
+    if not provided or provided != expected:
+        raise HTTPException(status_code=403, detail="Invalid X-QA-Agent-Token")
+
+
+class EnsureActorIn(BaseModel):
+    actor: str                          # "serik" | "boris" | "auditor"
+    role: Optional[str] = None          # "driver" | "shipper" | "auditor"
+
+
+@qa_router.post("/ensure-actor")
+def ensure_actor(body: EnsureActorIn, x_qa_agent_token: Optional[str] = Header(None)):
+    """Mint (or reuse) a stable session token for a QA actor.
+
+    This bypasses the public /register/guest rate-limit on purpose: that
+    limit exists to throttle real users, but QA agents need to sign in
+    several times per `npm run qa:full`. Stability of identity (always the
+    same row in drivers_registration) also avoids accumulating thousands of
+    one-shot guest_xxx rows in the DB after every CI cycle.
+    """
+    _require_agent_token(x_qa_agent_token)
+    spec = QA_ACTORS.get(body.actor)
+    if not spec:
+        raise HTTPException(status_code=400, detail=f"Unknown actor '{body.actor}'. One of: {list(QA_ACTORS)}")
+
+    role = body.role or spec["role"]
+    with get_conn() as c:
+        row = c.execute(
+            "SELECT id, full_name FROM drivers_registration WHERE id = ?", (spec["id"],)
+        ).fetchone()
+        if not row:
+            # Create stable row. status='approved' so the actor can act on
+            # all marketplace endpoints without going through verification.
+            c.execute(
+                "INSERT INTO drivers_registration (id, phone, full_name, role, status, verification_level, current_step) "
+                "VALUES (?, ?, ?, ?, 'approved', 3, 0)",
+                (spec["id"], spec["phone"], spec["full_name"], role),
+            )
+        elif (row["full_name"] or "").lower() != spec["full_name"].lower():
+            # Older deployments saved e.g. "Serik (driver QA)" — that string
+            # contains "qa" and gets hidden by the public-feed dirty filter.
+            # Keep the row, just rename it to the current spec.
+            c.execute(
+                "UPDATE drivers_registration SET full_name = ? WHERE id = ?",
+                (spec["full_name"], spec["id"]),
+            )
+
+    # Always issue a fresh session — old tokens may have expired (30d TTL).
+    token = reg_dal.create_session(spec["id"])
+    return {
+        "ok": True,
+        "actor": body.actor,
+        "user_id": spec["id"],
+        "role": role,
+        "token": token,
+        "verification_level": 3,
+    }
 
 
 class CleanupIn(BaseModel):

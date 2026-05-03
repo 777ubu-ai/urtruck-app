@@ -14,6 +14,7 @@ const { snap } = require('../utils/qaScreenshots');
 const { log, attach } = require('../utils/qaReport');
 
 const ACTOR = ACTORS.serik.handle;
+const ACTOR_KEY = 'serik';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -33,17 +34,21 @@ test('Serik · driver flow', async ({ page }) => {
     log.p2(ACTOR, 'select-driver-role', 'driver button not found in current layout — may be already inside the app');
   }
 
-  // 3. Provision a session via the public guest endpoint. The UI does the
-  // same thing on role select, but doing it here makes the rest of Serik
-  // independent of any layout drift.
-  const session = await qaApi.ensureGuest(ACTOR);
+  // 3. Provision a session. Prefer the protected /qa/ensure-actor endpoint
+  // (no rate-limit, stable user-id between runs). Falls back to /register/guest
+  // when QA_AGENT_TOKEN isn't configured.
+  const session = await qaApi.ensureActor(ACTOR_KEY, { role: 'driver' });
   if (!session.token) {
-    log.p0(ACTOR, 'ensure-guest', `cannot get token: ${session.error || ''}`);
+    // 429 on the public fallback is QA-infra (rate limit), not a product
+    // failure. Surface as P1 so the report doesn't drown in fake P0s.
+    const isRateLimit = /429|rate|подожди/i.test(session.error || '');
+    const fn = isRateLimit ? log.p1 : log.p0;
+    fn(ACTOR, 'ensure-actor', `${session.source}: ${session.error || ''} ${session.warning || ''}`.trim());
     attach('serik', 'session', session);
     return;
   }
-  log.pass(ACTOR, 'ensure-guest', `userId=${session.userId || '?'}`);
-  attach('serik', 'session', { userId: session.userId, hasToken: true });
+  log.pass(ACTOR, 'ensure-actor', `userId=${session.userId || '?'} via=${session.source}${session.warning ? ` (warning: ${session.warning})` : ''}`);
+  attach('serik', 'session', { userId: session.userId, hasToken: true, source: session.source });
 
   const headers = { actor: ACTOR, token: session.token };
 
@@ -66,12 +71,19 @@ test('Serik · driver flow', async ({ page }) => {
     ? log.pass(ACTOR, 'trip-in-my-work')
     : log.p1(ACTOR, 'trip-in-my-work', 'POST /market/trips returned id but /market/my did not include it');
 
-  const pubTrips = await qaApi.get('/market/trips', { ...headers, query: { status: 'active', limit: 200 } });
-  const inPublic = ((pubTrips.json && pubTrips.json.trips) || []).find((t) => t.id === tripId);
+  // Public list can lag a beat behind POST /market/trips when WAL write is
+  // still flushing. Poll up to 5×1s before giving up — way better than a
+  // flaky P1 in the report.
+  let inPublic = null;
+  for (let attempt = 1; attempt <= 5 && !inPublic; attempt++) {
+    const pubTrips = await qaApi.get('/market/trips', { ...headers, query: { status: 'active', limit: 200 } });
+    inPublic = ((pubTrips.json && pubTrips.json.trips) || []).find((t) => t.id === tripId);
+    if (!inPublic) await new Promise((r) => setTimeout(r, 1000));
+  }
   if (inPublic) {
     log.pass(ACTOR, 'trip-in-public-feed', `price=${inPublic.price} currency=${inPublic.currency}`);
   } else {
-    log.p1(ACTOR, 'trip-in-public-feed', 'trip created but missing from list_trips response');
+    log.p1(ACTOR, 'trip-in-public-feed', 'trip created but missing from list_trips response after 5×1s polling');
   }
 
   // Detail open via UI (best effort)

@@ -70,4 +70,110 @@ async function ensureGuest(actor) {
   };
 }
 
-module.exports = { call, get, post, patch, del, ensureGuest, QA_RUN_ID, QA_TAG };
+// ─── Stable QA-actor session ────────────────────────────────────────────────
+// Persisted between runs so qa:full doesn't burn a guest slot every time.
+// Token cache is keyed by actor; a fresh token is minted whenever the cached
+// one stops working (e.g. after a session-table wipe on the server).
+
+const fs = require('fs');
+const path = require('path');
+const { REPORTS_DIR } = require('./qaConfig');
+
+const STABLE_FILE = path.join(REPORTS_DIR, '_tokens-stable.json');
+
+function readAgentToken() {
+  if (process.env.QA_AGENT_TOKEN) return process.env.QA_AGENT_TOKEN;
+  const f = path.join(REPORTS_DIR, '_agent-token');
+  if (fs.existsSync(f)) {
+    try { return fs.readFileSync(f, 'utf8').trim() || null; } catch {}
+  }
+  return null;
+}
+
+function loadStableTokens() {
+  try { if (fs.existsSync(STABLE_FILE)) return JSON.parse(fs.readFileSync(STABLE_FILE, 'utf8')); }
+  catch {}
+  return {};
+}
+
+function saveStableTokens(obj) {
+  fs.writeFileSync(STABLE_FILE, JSON.stringify(obj, null, 2));
+}
+
+// Probe a cached token by hitting /register/me. If 200, the token is good.
+async function probeToken(token) {
+  if (!token) return false;
+  const r = await get('/register/me', { token });
+  return r.ok;
+}
+
+// Result shape mirrors ensureGuest so call sites stay the same. Adds:
+//   source: 'cache' | 'qa-endpoint' | 'guest-fallback'
+//   warning: string|null
+async function ensureActor(actorName, opts = {}) {
+  const role = opts.role || null;
+  const cache = loadStableTokens();
+  const cached = cache[actorName];
+
+  // 1. Reuse cached stable token if it still authenticates.
+  if (cached && cached.token) {
+    if (await probeToken(cached.token)) {
+      return { token: cached.token, userId: cached.userId, source: 'cache', warning: null };
+    }
+  }
+
+  // 2. Try the protected /qa/ensure-actor endpoint.
+  const agentToken = readAgentToken();
+  if (agentToken) {
+    // Direct fetch (the generic call() wrapper doesn't expose extra headers).
+    let res;
+    try {
+      const opts2 = {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-QA-Agent-Token': agentToken,
+          'X-QA-Run': QA_RUN_ID,
+          'X-QA-Actor': actorName,
+        },
+        body: JSON.stringify({ actor: actorName, role }),
+      };
+      const disp = getDispatcher();
+      if (disp) opts2.dispatcher = disp;
+      res = await fetch(`${API_BASE}/qa/ensure-actor`, opts2);
+    } catch (e) {
+      return { token: null, error: `network error contacting /qa/ensure-actor: ${e && e.message}`, source: 'qa-endpoint', warning: 'falling back to guest' };
+    }
+    const text = await res.text();
+    let json = null; try { json = text ? JSON.parse(text) : null; } catch {}
+    if (res.ok && json && json.token) {
+      const out = { token: json.token, userId: json.user_id, source: 'qa-endpoint', warning: null };
+      cache[actorName] = { token: out.token, userId: out.userId, savedAt: new Date().toISOString() };
+      saveStableTokens(cache);
+      return out;
+    }
+    if (res.status !== 503 && res.status !== 404) {
+      // Endpoint exists but rejected us — surface so the caller can decide.
+      return { token: null, error: `qa/ensure-actor → ${res.status} ${text.slice(0, 200)}`, source: 'qa-endpoint', warning: null };
+    }
+    // 503/404 → endpoint not configured / not deployed yet → silently fall back
+  }
+
+  // 3. Fallback to public /register/guest with a clear warning so the
+  // Auditor can downgrade any 429 here from P0 product to P1 infra.
+  const g = await ensureGuest(actorName);
+  if (g.token) {
+    cache[actorName] = { token: g.token, userId: g.userId, savedAt: new Date().toISOString(), source: 'guest-fallback' };
+    saveStableTokens(cache);
+  }
+  return {
+    ...g,
+    source: 'guest-fallback',
+    warning: agentToken
+      ? 'QA endpoint did not respond — fell back to public /register/guest'
+      : 'QA_AGENT_TOKEN not set — using public /register/guest (subject to rate-limit)',
+  };
+}
+
+module.exports = { call, get, post, patch, del, ensureGuest, ensureActor, QA_RUN_ID, QA_TAG };

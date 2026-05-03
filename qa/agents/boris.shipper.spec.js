@@ -14,6 +14,7 @@ const fs = require('fs');
 const path = require('path');
 
 const ACTOR = ACTORS.boris.handle;
+const ACTOR_KEY = 'boris';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -33,14 +34,15 @@ test('Boris · cargo owner flow', async ({ page }) => {
     log.p2(ACTOR, 'select-shipper-role', 'shipper button not found in current layout');
   }
 
-  // 3. Provision session
-  const session = await qaApi.ensureGuest(ACTOR);
+  // 3. Provision session via stable QA actor (rate-limit safe)
+  const session = await qaApi.ensureActor(ACTOR_KEY, { role: 'client' });
   if (!session.token) {
-    log.p0(ACTOR, 'ensure-guest', `cannot get token: ${session.error || ''}`);
+    const isRateLimit = /429|rate|подожди/i.test(session.error || '');
+    (isRateLimit ? log.p1 : log.p0)(ACTOR, 'ensure-actor', `${session.source}: ${session.error || ''} ${session.warning || ''}`.trim());
     return;
   }
-  log.pass(ACTOR, 'ensure-guest', `userId=${session.userId || '?'}`);
-  attach('boris', 'session', { userId: session.userId, hasToken: true });
+  log.pass(ACTOR, 'ensure-actor', `userId=${session.userId || '?'} via=${session.source}${session.warning ? ` (warning: ${session.warning})` : ''}`);
+  attach('boris', 'session', { userId: session.userId, hasToken: true, source: session.source });
   const headers = { actor: ACTOR, token: session.token };
 
   // 4. Publish cargo
@@ -81,14 +83,14 @@ test('Boris · cargo owner flow', async ({ page }) => {
   const bids = (bidsResp.json && bidsResp.json.bids) || [];
   attach('boris', 'incomingBids', bids.length);
 
-  // Serik bids on a *clean* cargo, not on Boris's QA cargo (since Serik runs
-  // before Boris). To exercise accept-flow, place a synthetic bid as Boris's
-  // own cargo via a separate guest session and accept it.
-  const otherSession = await qaApi.ensureGuest(`${ACTOR}-bidder`);
-  if (otherSession.token) {
+  // To exercise accept-flow, Serik (stable QA driver) places a bid on Boris's
+  // cargo. Reusing Serik's stable identity keeps the row count down and
+  // exercises the same auth path through /qa/ensure-actor.
+  const bidderSession = await qaApi.ensureActor('serik', { role: 'driver' });
+  if (bidderSession.token) {
     const bid = await qaApi.post('/market/bids',
-      { cargo_id: cargoId, amount: 4900, message: `QA-bid sim ${QA_TAG}` },
-      { actor: `${ACTOR}-bidder`, token: otherSession.token });
+      { cargo_id: cargoId, amount: 4900, message: `Bid sim ${QA_TAG}` },
+      { actor: 'agent-serik', token: bidderSession.token });
     if (bid.ok && bid.json && bid.json.id) {
       const accept = await qaApi.post(`/market/bids/${bid.json.id}/accept`, null, headers);
       if (accept.ok && accept.json && (accept.json.deal_id || accept.json.ok)) {
