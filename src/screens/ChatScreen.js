@@ -11,6 +11,8 @@ import { chatAPI } from '../utils/chatAPI';
 import { useAuth } from '../utils/AuthContext';
 import { voice } from '../utils/voiceRecorder';
 import QuickPhrases from '../components/QuickPhrases';
+import { v1Colors, v1Radius, v1AccentFor } from '../theme/designV1';
+import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
 
 // HOT-006: реальная запись/воспроизведение для web (PWA deploy).
 // На нативе (Expo Go) expo-av не установлен — тост "скоро".
@@ -229,9 +231,9 @@ export default function ChatScreen({ navigation, route }) {
           {!isMe && partner?.name ? (
             <Text style={[s.senderLabel, { color: theme.textMuted }]}>{partner.name}</Text>
           ) : null}
-          <View style={[s.bubble, isMe ? s.bubbleMe : [s.bubbleThem, { backgroundColor: theme.card }], { padding: 4 }]}>
+          <View style={[s.bubble, isMe ? s.bubbleMe : s.bubbleThem, { padding: 4 }]}>
             <Image source={{ uri: item.photoUri }} style={s.photoMsg} />
-            <Text style={[s.msgTime, isMe ? s.msgTimeMe : { color: theme.textMuted }, { marginTop: 4, marginRight: 4 }]}>{item.time}</Text>
+            <Text style={[s.msgTime, isMe ? s.msgTimeMe : { color: v1Colors.textMuted }, { marginTop: 4, marginRight: 4 }]}>{item.time}</Text>
           </View>
         </View>
       );
@@ -243,7 +245,7 @@ export default function ChatScreen({ navigation, route }) {
             <Text style={[s.senderLabel, { color: theme.textMuted }]}>{partner.name}</Text>
           ) : null}
           <TouchableOpacity
-            style={[s.bubble, s.voiceBubble, isMe ? s.bubbleMe : [s.bubbleThem, { backgroundColor: theme.card }]]}
+            style={[s.bubble, s.voiceBubble, isMe ? s.bubbleMe : s.bubbleThem]}
             onPress={() => playVoice(item.id)}
           >
             <Text style={{ fontSize: 20 }}>{item.playing ? '⏸' : '▶️'}</Text>
@@ -269,8 +271,8 @@ export default function ChatScreen({ navigation, route }) {
         {!isMe && partner?.name ? (
           <Text style={[s.senderLabel, { color: theme.textMuted }]}>{partner.name}</Text>
         ) : null}
-        <View style={[s.bubble, isMe ? s.bubbleMe : [s.bubbleThem, { backgroundColor: theme.card }]]}>
-          <Text style={[s.msgText, isMe ? s.msgTextMe : { color: theme.text }]}>
+        <View style={[s.bubble, isMe ? s.bubbleMe : s.bubbleThem]}>
+          <Text style={[s.msgText, isMe ? s.msgTextMe : { color: v1Colors.text }]}>
             {showingTranslation ? tr.text : item.text}
           </Text>
           {!isMe && item.id && (
@@ -302,7 +304,7 @@ export default function ChatScreen({ navigation, route }) {
             </TouchableOpacity>
           )}
           <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 4, marginTop: 3 }}>
-            <Text style={[s.msgTime, isMe ? s.msgTimeMe : { color: theme.textMuted }]}>{item.time}</Text>
+            <Text style={[s.msgTime, isMe ? s.msgTimeMe : { color: v1Colors.textMuted }]}>{item.time}</Text>
             {statusIcon ? <Text style={{ fontSize: 10, color: statusColor }}>{statusIcon}</Text> : null}
           </View>
         </View>
@@ -310,24 +312,76 @@ export default function ChatScreen({ navigation, route }) {
     );
   };
 
+  // v1: emerald accent regardless of role for the chat header (it's a
+  // 1:1 conversation, no role-driven asymmetry to encode visually).
+  const v1Accent = v1AccentFor(role === 'client' || role === 'shipper' ? 'client' : 'driver');
+
   return (
-    <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]} edges={['top', 'bottom']}>
-      <View style={[s.header, { borderBottomColor: theme.border }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={[s.backBtn, { backgroundColor: theme.card, borderColor: theme.border }]}><Text style={[s.backText, { color: theme.text }]}>‹</Text></TouchableOpacity>
-        <View style={{ flex: 1 }}><Text style={[s.partnerName, { color: theme.text }]}>{partner?.name || '—'}</Text><Text style={s.online}>● {t('online')}</Text></View>
-        <TouchableOpacity onPress={cycleLang} style={[s.langBtn, { backgroundColor: theme.card, borderColor: theme.border }]}><Text style={[s.langText, { color: theme.textMuted }]}>🌐 {lang}</Text></TouchableOpacity>
+    <SafeAreaView style={[s.container, { backgroundColor: v1Colors.bg }]} edges={['top', 'bottom']}>
+      <BrandBarWithShare
+        onBack={() => navigation.goBack()}
+        onShare={cycleLang}
+        accent={v1Accent.main}
+        rightTestID="chat-lang-btn"
+        rightIcon={`🌐 ${lang}`}
+      />
+      <View style={s.partnerStrip}>
+        <View style={[s.partnerAvatar, { backgroundColor: v1Accent.soft, borderColor: v1Accent.main }]}>
+          <Text style={s.partnerAvatarIcon}>{(partner?.name || '?').charAt(0).toUpperCase()}</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={s.partnerName} numberOfLines={1}>{partner?.name || '—'}</Text>
+          <Text style={[s.online, { color: v1Accent.main }]}>● {t('online')}</Text>
+        </View>
       </View>
-      <FlatList ref={flatListRef} data={messages} keyExtractor={i => i.id} renderItem={renderMessage} contentContainerStyle={s.msgList}
-        ListHeaderComponent={<View style={s.chatOpened}><Text style={[s.chatOpenedText, { backgroundColor: theme.card, color: theme.textMuted }]}>{t('chatOpened')} · {t('translation')}: {LANGS[lang]}</Text></View>}
-        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })} />
+
+      <FlatList
+        ref={flatListRef}
+        data={messages}
+        keyExtractor={i => i.id}
+        renderItem={renderMessage}
+        contentContainerStyle={s.msgList}
+        ListHeaderComponent={
+          <View style={s.chatOpened}>
+            <Text style={s.chatOpenedText}>
+              {t('chatOpened')} · {t('translation')}: {LANGS[lang]}
+            </Text>
+          </View>
+        }
+        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+      />
       {showPhrases && <QuickPhrases onSelect={sendMessage} />}
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={[s.inputRow, { borderTopColor: theme.border }]}>
-          <TouchableOpacity onPress={() => setShowPhrases(!showPhrases)} style={[s.iconBtn, { backgroundColor: theme.card, borderColor: theme.border }]}><Text style={{ fontSize: 16 }}>⚡</Text></TouchableOpacity>
-          <TouchableOpacity onPress={sendPhoto} style={[s.iconBtn, { backgroundColor: theme.card, borderColor: theme.border }]}><Text style={{ fontSize: 16 }}>📷</Text></TouchableOpacity>
-          <TextInput style={[s.input, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border }]} value={input} onChangeText={setInput} placeholder={t('message')} placeholderTextColor={theme.textMuted} onSubmitEditing={() => sendMessage()} returnKeyType="send" />
-          <TouchableOpacity onPress={toggleVoice} style={[s.iconBtn, { backgroundColor: theme.card, borderColor: theme.border }, recording && { backgroundColor: '#EF4444', borderColor: '#EF4444' }]}><Text style={{ fontSize: 16 }}>{recording ? '⏹' : '🎤'}</Text></TouchableOpacity>
-          <TouchableOpacity onPress={() => sendMessage()} style={s.sendBtn}><Text style={{ fontSize: 16, color: '#fff' }}>➤</Text></TouchableOpacity>
+        <View style={s.inputRow}>
+          <TouchableOpacity onPress={() => setShowPhrases(!showPhrases)} style={s.iconBtn}>
+            <Text style={s.iconBtnText}>⚡</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={sendPhoto} style={s.iconBtn}>
+            <Text style={s.iconBtnText}>📷</Text>
+          </TouchableOpacity>
+          <TextInput
+            style={s.input}
+            value={input}
+            onChangeText={setInput}
+            placeholder={t('message')}
+            placeholderTextColor={v1Colors.placeholder}
+            onSubmitEditing={() => sendMessage()}
+            returnKeyType="send"
+            testID="chat-input"
+          />
+          <TouchableOpacity
+            onPress={toggleVoice}
+            style={[s.iconBtn, recording && { backgroundColor: v1Colors.error, borderColor: v1Colors.error }]}
+          >
+            <Text style={s.iconBtnText}>{recording ? '⏹' : '🎤'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => sendMessage()}
+            style={[s.sendBtn, { backgroundColor: v1Accent.main }]}
+            testID="chat-send-btn"
+          >
+            <Text style={s.sendIcon}>➤</Text>
+          </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -336,32 +390,63 @@ export default function ChatScreen({ navigation, route }) {
 
 const s = StyleSheet.create({
   container: { flex: 1 },
-  header: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 10, borderBottomWidth: 1 },
-  backBtn: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
-  backText: { fontSize: 22 },
-  partnerName: { fontSize: 15, fontWeight: '700' },
-  online: { color: '#22C55E', fontSize: 10 },
-  langBtn: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1 },
-  langText: { fontSize: 11 },
+  // Partner strip below the brand bar (avatar + name + online dot)
+  partnerStrip: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingHorizontal: 16, paddingVertical: 10,
+    borderBottomWidth: 1, borderBottomColor: v1Colors.border,
+    backgroundColor: v1Colors.bgDeep,
+  },
+  partnerAvatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  partnerAvatarIcon: { color: v1Colors.text, fontSize: 16, fontWeight: '900' },
+  partnerName: { color: v1Colors.text, fontSize: 15, fontWeight: '800' },
+  online: { fontSize: 10, fontWeight: '700' },
+  // System banner above the first message
   msgList: { padding: 14, paddingBottom: 20 },
   chatOpened: { alignSelf: 'center', marginBottom: 16 },
-  chatOpenedText: { fontSize: 10, paddingHorizontal: 14, paddingVertical: 5, borderRadius: 16, overflow: 'hidden' },
+  chatOpenedText: {
+    fontSize: 10, paddingHorizontal: 14, paddingVertical: 5,
+    borderRadius: 16, overflow: 'hidden',
+    backgroundColor: v1Colors.surface, color: v1Colors.textMuted,
+    borderWidth: 1, borderColor: v1Colors.border,
+  },
   msgRow: { marginBottom: 10 },
   msgRowMe: { alignItems: 'flex-end' },
-  senderLabel: { fontSize: 10, marginBottom: 3, marginLeft: 6 },
+  senderLabel: { fontSize: 10, marginBottom: 3, marginLeft: 6, color: v1Colors.textMuted },
   bubble: { maxWidth: '78%', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18 },
-  bubbleMe: { backgroundColor: '#22C55E', borderBottomRightRadius: 4 },
-  bubbleThem: { borderBottomLeftRadius: 4 },
+  bubbleMe: { backgroundColor: v1Colors.driver, borderBottomRightRadius: 6 },
+  bubbleThem: {
+    borderBottomLeftRadius: 6,
+    backgroundColor: v1Colors.surface,
+    borderWidth: 1, borderColor: v1Colors.border,
+  },
   msgText: { fontSize: 15, lineHeight: 21 },
-  msgTextMe: { color: '#fff' },
+  msgTextMe: { color: '#0A0A0A' },
   translated: { marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)' },
-  translatedText: { color: 'rgba(255,255,255,0.5)', fontSize: 11, fontStyle: 'italic' },
-  msgTime: { color: 'rgba(255,255,255,0.3)', fontSize: 9, textAlign: 'right', marginTop: 3 },
-  msgTimeMe: { color: 'rgba(255,255,255,0.4)' },
-  inputRow: { flexDirection: 'row', alignItems: 'center', padding: 10, gap: 6, borderTopWidth: 1 },
-  iconBtn: { width: 40, height: 40, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  input: { flex: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, borderWidth: 1 },
-  sendBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#22C55E', alignItems: 'center', justifyContent: 'center' },
+  translatedText: { color: 'rgba(255,255,255,0.55)', fontSize: 11, fontStyle: 'italic' },
+  msgTime: { color: v1Colors.textMuted, fontSize: 9, textAlign: 'right', marginTop: 3 },
+  msgTimeMe: { color: 'rgba(10,10,10,0.55)' },
+  // Input bar
+  inputRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 10, paddingVertical: 10, gap: 6,
+    borderTopWidth: 1, borderTopColor: v1Colors.border,
+    backgroundColor: v1Colors.bgDeep,
+  },
+  iconBtn: {
+    width: 40, height: 40, borderRadius: 12,
+    borderWidth: 1, borderColor: v1Colors.border,
+    backgroundColor: v1Colors.surface,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  iconBtnText: { fontSize: 16, color: v1Colors.text },
+  input: {
+    flex: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12,
+    fontSize: 14, borderWidth: 1, borderColor: v1Colors.border,
+    backgroundColor: v1Colors.surface, color: v1Colors.text,
+  },
+  sendBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  sendIcon: { fontSize: 16, color: '#0A0A0A', fontWeight: '900' },
   photoMsg: { width: 200, height: 150, borderRadius: 12 },
   voiceBubble: { flexDirection: 'row', alignItems: 'center', gap: 8, minWidth: 180 },
   waveform: { flexDirection: 'row', alignItems: 'center', gap: 2, flex: 1 },

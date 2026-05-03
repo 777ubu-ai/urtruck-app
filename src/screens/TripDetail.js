@@ -427,16 +427,9 @@ export default function TripDetail({ navigation, route }) {
 
 const s = StyleSheet.create({
   container: { flex: 1 },
-  // v1 brand header (mirrors FeedScreen / MyTripsScreen)
-  brandBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 6, paddingBottom: 6 },
-  backHit: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  backIcon: { fontSize: 30, fontWeight: '300' },
-  brandRow: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  brandText: { color: v1Colors.text, fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
-  ftlPill: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 2 },
-  ftlText: { fontSize: 11, fontWeight: '900', letterSpacing: 1 },
-  shareBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: v1Colors.border, backgroundColor: v1Colors.surface },
-  shareIcon: { fontSize: 18, color: v1Colors.text },
+  // Brand bar moved to <BrandBarWithShare/> in stage 3D — local
+  // brandBar/backHit/backIcon/brandRow/brandText/ftlPill/ftlText/shareBtn/
+  // shareIcon styles were removed as part of stage 3E cleanup.
   pageTitle: { color: v1Colors.text, fontSize: 24, fontWeight: '900', letterSpacing: -0.5, marginVertical: 12 },
   priceBig: { fontSize: 28, fontWeight: '900', letterSpacing: -0.5 },
   // Legacy local styles still used by deal-block / timeline
