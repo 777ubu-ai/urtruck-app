@@ -1,33 +1,22 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, Modal, TextInput, Alert, Platform, ScrollView, Image, RefreshControl, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, Modal, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import * as ImagePicker from 'expo-image-picker';
 import { useI18n } from '../utils/useI18n';
 import { formatBids, formatStatus, formatTruckType, t as tGlobal } from '../utils/i18n';
 import { useTheme } from '../utils/ThemeContext';
-import { getCargos, addCargo, addTrip, getTrips, subscribe, getUnreadNotifications, isFavorite, toggleFavorite } from '../utils/store';
+import { getCargos, getUnreadNotifications, subscribe } from '../utils/store';
 import { marketAPI } from '../utils/marketAPI';
-import DatePicker from '../components/DatePicker';
-import CityInput from '../components/CityInput';
-import CargoTypeInput from '../components/CargoTypeInput';
-import { PhotoPicker } from '../components/PhotoGallery';
-import GradientText from '../components/GradientText';
-import ShimmerButton from '../components/ShimmerButton';
 import { useToast } from '../components/Toast';
-import { routeStats } from '../utils/geo';
-import SecurityBadge from '../components/SecurityBadge';
 import { useVerificationGate } from '../components/VerificationGate';
 import { LEVELS, useAuth } from '../utils/AuthContext';
 import { SkeletonCard } from '../components/Skeleton';
-import { IS_BETA } from '../config/supabase';
-import { normalizeDateInput } from '../utils/dateInput';
 import { normalizeTrip, formatPrice } from '../utils/normalizers';
 import { matchTruckTypes } from '../utils/truckSynonyms';
 import FeedCard from '../components/ui/v1/FeedCard';
 import SearchBar from '../components/ui/v1/SearchBar';
 import FilterChips from '../components/ui/v1/FilterChips';
-import { v1Colors, v1Radius, v1Spacing, v1Typography, v1AccentFor } from '../theme/designV1';
+import { v1Colors, v1AccentFor } from '../theme/designV1';
 
 const TCOLORS = {
   // Brand v3: tent (default truck) maps to brand emerald. ref/izoterm keep
@@ -76,7 +65,7 @@ export default function FeedScreen({ navigation, route }) {
   const myUserId = session?.user?.id;
   const listRef = React.useRef(null);
   const [, setTick] = useState(0);
-  const [showForm, setShowForm] = useState(false);
+  // showForm removed — publish flow now lives in CreateTripScreen / CreateCargoScreen.
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState(null);
   const [minRating, setMinRating] = useState(0); // 0 = все, 4 = 4★+, 5 = только 5★
@@ -261,150 +250,10 @@ export default function FeedScreen({ navigation, route }) {
     return data;
   }, [currentData, filterType, search, sortBy, minRating]);
 
-  // Cargo form
-  const [fromCity, setFromCity] = useState('');
-  const [toCity, setToCity] = useState('');
-  const [cargoDesc, setCargoDesc] = useState('');
-  const [weight, setWeight] = useState('');
-  const [vol, setVol] = useState('');
-  const [price, setPrice] = useState('');
-  const [currency, setCurrency] = useState('USD');
-  const [truckType, setTruckType] = useState('tent');
-  const [pickupDate, setPickupDate] = useState('');
-  const [cargoPhotos, setCargoPhotos] = useState([]);
-  const [formErrors, setFormErrors] = useState({});
-  const [submitting, setSubmitting] = useState(false);
-
-  // Trip form
-  const [tripFrom, setTripFrom] = useState('');
-  const [tripTo, setTripTo] = useState('');
-  const [tripTransit, setTripTransit] = useState('');
-  const [tripDateFrom, setTripDateFrom] = useState('');
-  const [tripDateTo, setTripDateTo] = useState('');
-  // Trip body type starts unset on purpose: publish must be blocked until the
-  // user explicitly picks one. The cargo form reuses `truckType` (default
-  // 'tent') and is unaffected.
-  const [tripTruckType, setTripTruckType] = useState(null);
-  // Payment block (route publish): negotiable by default — most drivers want
-  // to discuss price in chat. Switching to 'fixed' reveals amount + currency.
-  const [tripPriceMode, setTripPriceMode] = useState('negotiable');
-  const [tripCurrency, setTripCurrency] = useState('USD');
-
-  const showOk = (msg, type = 'success', dur = 3000) => toast(msg, type, dur);
-
-  // Required-fields validation. Each field carries its own message so the
-  // user sees what's missing inline; submitCargo also surfaces the first
-  // missing field as a toast so it's visible even when the field is below
-  // the fold. Order of checks defines the toast priority.
-  const validateCargoForm = () => {
-    const errors = {};
-    const order = [];
-    const push = (key, msg) => { errors[key] = msg; order.push(key); };
-    if (!fromCity || !fromCity.trim()) push('fromCity', t('val_from_required'));
-    if (!toCity || !toCity.trim()) push('toCity', t('val_to_required'));
-    if (!cargoDesc || !cargoDesc.trim()) push('cargoDesc', t('val_cargo_desc_required'));
-    if (!truckType) push('truckType', t('val_truck_type_required'));
-    if (!pickupDate) push('pickupDate', t('val_pickup_date_required'));
-    // Either weight OR volume must be set — otherwise driver can't size the load.
-    const wNum = parseFloat(weight) || 0;
-    const vNum = parseFloat(vol) || 0;
-    if (wNum <= 0 && vNum <= 0) push('weight', t('val_weight_or_volume_required'));
-    if (price && parseFloat(price) <= 0) push('price', t('val_price_positive'));
-    if (weight && wNum <= 0) push('weight', t('val_weight_positive'));
-    setFormErrors(errors);
-    return { ok: Object.keys(errors).length === 0, firstError: order[0] ? errors[order[0]] : null };
-  };
-
-  const submitCargo = async () => {
-    if (submitting) return;
-    const v = validateCargoForm();
-    if (!v.ok) {
-      // Surface the first missing-field message; inline highlights handle the rest.
-      showOk(v.firstError || t('fill_required_fields'), 'error', 4000);
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const r = await marketAPI.createCargo({
-        from_city: fromCity, to_city: toCity, cargo_desc: cargoDesc,
-        cargo_type: truckType,
-        weight_tons: parseInt(weight) || 0, volume_m3: parseInt(vol) || 0,
-        price: parseInt(price) || 0, currency,
-        pickup_date: pickupDate || null,
-        photos: cargoPhotos,
-      });
-      if (r.ok) {
-        showOk('✓ Груз опубликован и виден всем водителям', 'success', 4000);
-        setShowForm(false);
-        setFromCity(''); setToCity(''); setCargoDesc(''); setWeight(''); setVol('');
-        setPrice(''); setPickupDate(''); setCargoPhotos([]); setFormErrors({});
-        await loadFromServer();
-        setTimeout(() => listRef.current?.scrollToOffset?.({ offset: 0, animated: true }), 300);
-      } else {
-        showOk(r.status === 401 ? 'Сессия истекла. Войдите заново.' : (r.detail || t('generic_error')), 'error');
-      }
-    } catch (e) {
-      console.error('[submitCargo] failed:', e);
-      const msg = (e.message || '').includes('pattern') ? 'Проверьте заполненные поля' : t('network_error');
-      showOk(msg, 'error');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const submitTrip = async () => {
-    if (submitting) return;
-    const tripErrors = [];
-    const fromTrim = (tripFrom || '').trim();
-    const toTrim = (tripTo || '').trim();
-    const transitTrim = (tripTransit || '').trim();
-    if (!fromTrim) tripErrors.push(t('val_from_required'));
-    if (!toTrim) tripErrors.push(t('val_to_required'));
-    if (!tripDateFrom) tripErrors.push(t('val_departure_required'));
-    if (!tripTruckType) tripErrors.push(t('val_truck_type_required'));
-    // Normalize dates without timezone shift; reject malformed input.
-    const departureNorm = normalizeDateInput(tripDateFrom);
-    const arrivalNorm = tripDateTo ? normalizeDateInput(tripDateTo) : null;
-    if (tripDateFrom && !departureNorm) tripErrors.push(t('val_date_invalid'));
-    if (tripDateTo && !arrivalNorm) tripErrors.push(t('val_date_invalid'));
-    if (departureNorm && arrivalNorm && arrivalNorm < departureNorm) {
-      tripErrors.push(t('val_arrival_before_departure'));
-    }
-    if (tripErrors.length > 0) { showOk(tripErrors[0], 'error', 4000); return; }
-    setSubmitting(true);
-    try {
-      // Negotiable mode wipes price → 0; backend renders that as "По договорённости".
-      const priceNum = tripPriceMode === 'fixed'
-        ? Math.max(0, parseInt(String(price || '').trim().replace(/\s/g, ''), 10) || 0)
-        : 0;
-      const tripPayload = {
-        from_city: fromTrim, to_city: toTrim, transit: transitTrim || null,
-        truck_type: tripTruckType,
-        capacity_tons: Number(weight) || 20,
-        available_m3: Number(vol) || 82,
-        price: priceNum,
-        currency: tripPriceMode === 'fixed' ? tripCurrency : 'USD',
-        departure: departureNorm,
-        arrival: arrivalNorm,
-      };
-      const r = await marketAPI.createTrip(tripPayload);
-      if (r.ok) {
-        showOk('✓ Маршрут опубликован', 'success', 4000);
-        setShowForm(false);
-        setTripFrom(''); setTripTo(''); setTripTransit(''); setTripDateFrom(''); setTripDateTo('');
-        setPrice(''); setTripTruckType(null); setTripPriceMode('negotiable'); setTripCurrency('USD');
-        // Navigate with justCreated so MyTrips shows it even if /my fails
-        const justCreated = { id: r.id, ...tripPayload, status: 'active', created_at: new Date().toISOString() };
-        setTimeout(() => navigation.navigate('MyTripsList', { role, initialTab: 'my', justCreatedTrip: justCreated }), 1000);
-      } else {
-        showOk(r.detail || t('send_error'), 'error');
-      }
-    } catch (e) {
-      showOk(t('network_error') + ': ' + (e.message || ''), 'error');
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  // Form state and submit handlers for trip / cargo creation moved to
+  // dedicated screens (CreateTripScreen / CreateCargoScreen). FeedScreen
+  // now only navigates to them via the title-row CTA. The publish modal
+  // and its 100+ lines of mixed state were removed alongside.
 
   // Render cargo card under the v1 FeedCard component (macro 07).
   const renderCargo = ({ item }) => {
@@ -523,7 +372,7 @@ export default function FeedScreen({ navigation, route }) {
         </View>
         <TouchableOpacity
           style={[s.titleCta, { borderColor: accentColor }]}
-          onPress={() => setShowForm(true)}
+          onPress={() => navigation.navigate(isDriver ? 'CreateTrip' : 'CreateCargo', { role })}
           testID={isDriver ? 'publish-trip-button' : 'publish-cargo-button'}
           accessibilityRole="button"
           accessibilityLabel={isDriver ? 'Опубликовать маршрут' : 'Разместить груз'}
@@ -710,275 +559,6 @@ export default function FeedScreen({ navigation, route }) {
         />
       )}
 
-      <Modal visible={showForm} transparent animationType="slide" onRequestClose={() => setShowForm(false)}>
-        <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={() => setShowForm(false)}>
-          <TouchableOpacity style={[s.sheet, { backgroundColor: theme.bg, borderColor: theme.border, maxHeight: '92%' }]} activeOpacity={1} onPress={() => {}}>
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <View style={s.handle} />
-              <Text style={[s.formTitle, { color: theme.text }]}>{isDriver ? '🚛 ' + t('postTrip') : '📦 ' + t('postCargo')}</Text>
-
-              {isDriver ? (
-                <>
-                  <Text style={[s.formLabel, { color: theme.textMuted }]}>{t('tripRoute')}</Text>
-                  <View style={{ zIndex: 200, marginBottom: 4 }}>
-                    <CityInput value={tripFrom} onChange={setTripFrom} placeholder={'📍 ' + t('fromCountry')} testID="trip-from-input" />
-                  </View>
-                  <View style={{ zIndex: 100, marginBottom: 4, borderWidth: tripTo ? 0 : 1, borderColor: tripTo ? 'transparent' : '#EF444466', borderRadius: 12 }}>
-                    <CityInput value={tripTo} onChange={setTripTo} placeholder={'🏁 ' + t('to_required_hint')} testID="trip-to-input" />
-                  </View>
-                  <Text style={[s.formLabel, { color: theme.textMuted, fontSize: 12 }]}>{t('transit_secondary_hint')}</Text>
-                  <View style={{ zIndex: 150, marginBottom: 4 }}>
-                    <CityInput value={tripTransit} onChange={setTripTransit} placeholder={'🔄 ' + t('transitOptional')} testID="trip-transit-input" />
-                  </View>
-                  <Text style={[s.formLabel, { color: theme.textMuted }]}>{t('departure')} · {t('arrival')}</Text>
-                  <View style={s.frow}>
-                    <View style={{ flex: 1 }}>
-                      <DatePicker value={tripDateFrom} onChange={setTripDateFrom} placeholder={t('departure')} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <DatePicker value={tripDateTo} onChange={setTripDateTo} placeholder={t('arrival')} />
-                    </View>
-                  </View>
-                  {/* Payment block — promoted above truck type so route price
-                      becomes the primary commercial signal of the listing. */}
-                  <Text style={[s.formLabel, { color: theme.textMuted, marginTop: 6 }]}>💰 {t('payment_label_full')}</Text>
-                  <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
-                    <TouchableOpacity
-                      testID="trip-payment-negotiable"
-                      style={[s.payModeBtn, { backgroundColor: theme.card, borderColor: theme.border }, tripPriceMode === 'negotiable' && { backgroundColor: '#22C55E', borderColor: '#22C55E' }]}
-                      onPress={() => { setTripPriceMode('negotiable'); setPrice(''); }}
-                    >
-                      <Text style={[s.payModeText, { color: theme.textSecondary }, tripPriceMode === 'negotiable' && { color: '#fff' }]}>{t('payment_negotiable')}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      testID="trip-payment-fixed"
-                      style={[s.payModeBtn, { backgroundColor: theme.card, borderColor: theme.border }, tripPriceMode === 'fixed' && { backgroundColor: '#22C55E', borderColor: '#22C55E' }]}
-                      onPress={() => setTripPriceMode('fixed')}
-                    >
-                      <Text style={[s.payModeText, { color: theme.textSecondary }, tripPriceMode === 'fixed' && { color: '#fff' }]}>{t('payment_fixed')}</Text>
-                    </TouchableOpacity>
-                  </View>
-                  {tripPriceMode === 'fixed' && (
-                    <View style={s.frow}>
-                      <TextInput
-                        style={[s.fi, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border, flex: 2 }]}
-                        placeholder={t('price_example_placeholder')}
-                        placeholderTextColor={theme.textMuted}
-                        keyboardType="numeric"
-                        inputMode="numeric"
-                        value={price}
-                        onChangeText={(v) => setPrice(String(v || '').replace(/[^\d]/g, ''))}
-                        testID="trip-price-input"
-                      />
-                      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingVertical: 0 }} style={{ flex: 3 }}>
-                        {[
-                          { k: 'USD', l: '$' },
-                          { k: 'KZT', l: '₸' },
-                          { k: 'RUB', l: '₽' },
-                          { k: 'CNY', l: '¥' },
-                          { k: 'UZS', l: 'сўм' },
-                        ].map(c => (
-                          <TouchableOpacity
-                            key={c.k}
-                            testID={'trip-currency-' + c.k}
-                            style={[s.currChip, { backgroundColor: theme.card, borderColor: theme.border }, tripCurrency === c.k && { backgroundColor: accent, borderColor: accent }]}
-                            onPress={() => setTripCurrency(c.k)}
-                          >
-                            <Text style={[s.currChipText, { color: theme.textSecondary }, tripCurrency === c.k && { color: '#fff' }]}>{c.l} {c.k}</Text>
-                          </TouchableOpacity>
-                        ))}
-                      </ScrollView>
-                    </View>
-                  )}
-                  <Text style={[s.formLabel, { color: tripTruckType ? theme.textMuted : '#EF4444', marginTop: 6 }]}>
-                    {t('truckType')}{!tripTruckType ? ' *' : ''} ← →
-                  </Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
-                    {TRUCK_KEYS.map(k => (
-                      <TouchableOpacity
-                        key={k}
-                        testID={'trip-truck-' + k}
-                        style={[s.typeCard, { backgroundColor: theme.card, borderColor: theme.border }, tripTruckType === k && { backgroundColor: TCOLORS[k], borderColor: TCOLORS[k] }]}
-                        onPress={() => setTripTruckType(k)}
-                      >
-                        <Text style={{ fontSize: 22 }}>{TRUCK_ICONS[k]}</Text>
-                        <Text style={[s.typeCardText, { color: theme.textSecondary }, tripTruckType === k && { color: '#fff' }]}>{t(k)}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                  <View style={s.hintBox}><Text style={[s.hintText, { color: theme.textMuted }]}>💡 {t('youPublish')}</Text></View>
-                  <TouchableOpacity
-                    onPress={submitTrip}
-                    style={{ backgroundColor: submitting ? '#374151' : '#22c55e', borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 8, opacity: submitting ? 0.7 : 1 }}
-                    disabled={submitting}
-                    activeOpacity={0.8}
-                    testID="trip-submit-button"
-                    accessibilityRole="button"
-                    accessibilityLabel="Опубликовать маршрут"
-                  >
-                    {submitting ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>{t('postTrip')}</Text>}
-                  </TouchableOpacity>
-                </>
-              ) : (
-                <>
-                  <Text style={[s.formLabel, { color: theme.textMuted }]}>{t('tripRoute')} *</Text>
-                  <View style={{ zIndex: 200, marginBottom: 4 }}>
-                    <CityInput
-                      value={fromCity}
-                      onChange={(v) => { setFromCity(v); if (formErrors.fromCity) setFormErrors(e => ({ ...e, fromCity: null })); }}
-                      placeholder={'📍 ' + t('fromCountry')} testID="cargo-from-input"
-                    />
-                    {formErrors.fromCity && <Text style={s.fieldError}>⚠️ {formErrors.fromCity}</Text>}
-                  </View>
-                  <View style={{ zIndex: 100, marginBottom: 4 }}>
-                    <CityInput
-                      value={toCity}
-                      onChange={(v) => { setToCity(v); if (formErrors.toCity) setFormErrors(e => ({ ...e, toCity: null })); }}
-                      placeholder={'🏁 ' + t('toCountry')} testID="cargo-to-input"
-                    />
-                    {formErrors.toCity && <Text style={s.fieldError}>⚠️ {formErrors.toCity}</Text>}
-                  </View>
-                  <View style={{ zIndex: 80 }}>
-                    <CargoTypeInput
-                      value={cargoDesc}
-                      onChange={(v) => { setCargoDesc(v); if (formErrors.cargoDesc) setFormErrors(e => ({ ...e, cargoDesc: null })); }}
-                      placeholder={'📦 ' + t('cargoDesc') + ' *'} testID="cargo-desc-input"
-                    />
-                    {formErrors.cargoDesc && <Text style={s.fieldError}>⚠️ {formErrors.cargoDesc}</Text>}
-                  </View>
-                  {/* Быстрые чипы топ-категорий */}
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, marginBottom: 10 }}>
-                    {[
-                      { n: 'Одежда и текстиль', i: '👕' },
-                      { n: 'Электроника', i: '📱' },
-                      { n: 'Стройматериалы', i: '🧱' },
-                      { n: 'Автозапчасти', i: '🔧' },
-                      { n: 'Продукты питания', i: '🍱' },
-                      { n: 'Мебель', i: '🛋️' },
-                      { n: 'Оптовые товары из Китая', i: '📦' },
-                    ].map(c => (
-                      <TouchableOpacity
-                        key={c.n}
-                        style={[s.quickChip, { backgroundColor: theme.card, borderColor: theme.border }, cargoDesc === c.n && { backgroundColor: accent, borderColor: accent }]}
-                        onPress={() => setCargoDesc(c.n)}
-                      >
-                        <Text style={{ fontSize: 14, marginRight: 5 }}>{c.i}</Text>
-                        <Text style={[s.quickChipText, { color: theme.textSecondary }, cargoDesc === c.n && { color: isDriver ? '#fff' : '#0C0A09' }]}>{c.n}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                  {/* HOT-004/HOT2-003: цена + валюта — выделенный блок */}
-                  <Text style={[s.formLabel, { color: theme.textMuted }]}>💰 {t('price_label')} *</Text>
-                  <View style={s.frow}>
-                    <TextInput
-                      style={[s.fi, {
-                        backgroundColor: theme.card,
-                        color: theme.text,
-                        borderColor: formErrors.price ? '#EF4444' : theme.border,
-                        borderWidth: formErrors.price ? 2 : 1,
-                        flex: 2,
-                      }]}
-                      placeholder="2500"
-                      placeholderTextColor={theme.textMuted}
-                      keyboardType="numeric"
-                      value={price}
-                      onChangeText={(v) => { setPrice(v); if (formErrors.price) setFormErrors(e => ({ ...e, price: null })); }}
-                    />
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingVertical: 0, flexGrow: 1 }} style={{ flex: 3, marginBottom: 10 }}>
-                      {[
-                        { k: 'USD', l: '$' },
-                        { k: 'KZT', l: '₸' },
-                        { k: 'CNY', l: '¥' },
-                        { k: 'RUB', l: '₽' },
-                        { k: 'UZS', l: 'сўм' },
-                      ].map(c => (
-                        <TouchableOpacity
-                          key={c.k}
-                          style={[s.currChip, { backgroundColor: theme.card, borderColor: theme.border }, currency === c.k && { backgroundColor: accent, borderColor: accent }]}
-                          onPress={() => setCurrency(c.k)}
-                        >
-                          <Text style={[s.currChipText, { color: theme.textSecondary }, currency === c.k && { color: isDriver ? '#fff' : '#0C0A09' }]}>
-                            {c.l} {c.k}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </View>
-                  {formErrors.price && <Text style={s.fieldError}>⚠️ {formErrors.price}</Text>}
-
-                  <View style={s.frow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[s.formLabel, { color: theme.textMuted }]}>⚖️ {t('weight_label')}</Text>
-                      <TextInput
-                        style={[s.fi, {
-                          backgroundColor: theme.card, color: theme.text,
-                          borderColor: formErrors.weight ? '#EF4444' : theme.border,
-                          borderWidth: formErrors.weight ? 2 : 1,
-                        }]}
-                        placeholder="20"
-                        placeholderTextColor={theme.textMuted}
-                        keyboardType="numeric"
-                        value={weight}
-                        onChangeText={(v) => { setWeight(v); if (formErrors.weight) setFormErrors(e => ({ ...e, weight: null })); }}
-                      />
-                      {formErrors.weight && <Text style={s.fieldError}>⚠️ {formErrors.weight}</Text>}
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[s.formLabel, { color: theme.textMuted }]}>📐 {t('volume_label')}</Text>
-                      <TextInput
-                        style={[s.fi, {
-                          backgroundColor: theme.card, color: theme.text,
-                          borderColor: formErrors.weight ? '#EF4444' : theme.border,
-                          borderWidth: formErrors.weight ? 2 : 1,
-                        }]}
-                        placeholder="82"
-                        placeholderTextColor={theme.textMuted}
-                        keyboardType="numeric"
-                        value={vol}
-                        onChangeText={(v) => { setVol(v); if (formErrors.weight) setFormErrors(e => ({ ...e, weight: null })); }}
-                      />
-                    </View>
-                  </View>
-                  <Text style={[s.formLabel, { color: formErrors.pickupDate ? '#EF4444' : theme.textMuted }]}>
-                    {t('pickupDate')}{formErrors.pickupDate ? ' *' : ''}
-                  </Text>
-                  <DatePicker
-                    value={pickupDate}
-                    onChange={(v) => { setPickupDate(v); if (formErrors.pickupDate) setFormErrors(e => ({ ...e, pickupDate: null })); }}
-                    placeholder={t('pickupDate')}
-                  />
-                  {formErrors.pickupDate && <Text style={s.fieldError}>⚠️ {formErrors.pickupDate}</Text>}
-                  <Text style={[s.formLabel, { color: theme.textMuted }]}>📸 {t('cargoPhoto')} (до 5)</Text>
-                  <PhotoPicker photos={cargoPhotos} onChange={setCargoPhotos} />
-                  <Text style={[s.formLabel, { color: formErrors.truckType ? '#EF4444' : theme.textMuted }]}>
-                    {t('truckType')}{formErrors.truckType ? ' *' : ''} ← →
-                  </Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
-                    {TRUCK_KEYS.map(k => (
-                      <TouchableOpacity key={k} style={[s.typeCard, { backgroundColor: theme.card, borderColor: theme.border }, truckType === k && { backgroundColor: TCOLORS[k], borderColor: TCOLORS[k] }]} onPress={() => { setTruckType(k); if (formErrors.truckType) setFormErrors(e => ({ ...e, truckType: null })); }}>
-                        <Text style={{ fontSize: 22 }}>{TRUCK_ICONS[k]}</Text>
-                        <Text style={[s.typeCardText, { color: theme.textSecondary }, truckType === k && { color: '#fff' }]}>{t(k)}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                  {formErrors.truckType && <Text style={s.fieldError}>⚠️ {formErrors.truckType}</Text>}
-                  <TouchableOpacity
-                    onPress={submitCargo}
-                    style={{ backgroundColor: submitting ? '#374151' : '#22c55e', borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 14, opacity: submitting ? 0.7 : 1 }}
-                    disabled={submitting}
-                    activeOpacity={0.8}
-                    testID="cargo-submit-button"
-                    accessibilityRole="button"
-                    accessibilityLabel="Разместить груз"
-                  >
-                    {submitting ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>{t('postCargo')}</Text>}
-                  </TouchableOpacity>
-                </>
-              )}
-            </ScrollView>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
       {Gate}
     </SafeAreaView>
   );

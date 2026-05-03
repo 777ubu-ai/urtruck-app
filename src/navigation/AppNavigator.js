@@ -7,6 +7,7 @@ import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useAuth } from '../utils/AuthContext';
 import { getChats, subscribe, getUnreadNotifications } from '../utils/store';
+import BottomNav from '../components/ui/v1/BottomNav';
 
 import SplashScreen from '../screens/SplashScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
@@ -37,15 +38,23 @@ import EditProfileScreen from '../screens/EditProfileScreen';
 import SecurityScreen from '../screens/SecurityScreen';
 import TripDetail from '../screens/TripDetail';
 import EditTripScreen from '../screens/EditTripScreen';
+import CreateTripScreen from '../screens/CreateTripScreen';
+import CreateCargoScreen from '../screens/CreateCargoScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
+// Placeholder for the central "+" tab. The custom BottomNav intercepts the
+// press and navigates to CreateTrip / CreateCargo before this component ever
+// mounts, but react-navigation requires every Tab.Screen to have a real
+// component reference, so we keep this stub.
+function PublishStub() {
+  return <View style={{ flex: 1, backgroundColor: '#000' }} />;
+}
+
 function MainTabs({ route }) {
   const { session } = useAuth();
   const role = session?.user?.role || route?.params?.role || 'client';
-  const { t } = useI18n();
-  const { theme } = useTheme();
   const [, setTick] = useState(0);
 
   useEffect(() => {
@@ -53,37 +62,19 @@ function MainTabs({ route }) {
     return unsub;
   }, []);
 
-  // Badge disabled — mock store removed, server notifications not yet integrated into tabs
-
+  // 5-tab layout (macros 07/08): Feed / MyWork / Publish (centre) / Chats / Profile.
+  // BottomNav is the custom tab-bar; it reads role from AuthContext to swap
+  // emerald (driver) and orange (cargo owner) accents at runtime.
   return (
     <Tab.Navigator
-      screenOptions={{
-        headerShown: false,
-        tabBarStyle: {
-          backgroundColor: 'rgba(10,15,26,0.95)',
-          borderTopWidth: 1,
-          borderTopColor: 'rgba(255,255,255,0.08)',
-          height: 80,
-          paddingBottom: 20,
-          paddingTop: 12,
-        },
-        tabBarActiveTintColor: '#22c55e',
-        tabBarInactiveTintColor: '#475569',
-        tabBarLabelStyle: { fontSize: 10, fontWeight: '600' },
-      }}
+      screenOptions={{ headerShown: false }}
+      tabBar={(props) => <BottomNav {...props} />}
     >
-      <Tab.Screen name="Feed" component={FeedScreen} initialParams={{ role }}
-        options={{
-          tabBarLabel: role === 'driver' ? t('tab_feed') : t('tab_feed_client'),
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 20, color }}>{role === 'driver' ? '📦' : '🚛'}</Text>,
-        }}
-      />
-      <Tab.Screen name="MyTripsList" component={MyTripsScreen} initialParams={{ role }}
-        options={{ tabBarLabel: t('tab_my_work'), tabBarIcon: ({ color }) => <Text style={{ fontSize: 20, color }}>📋</Text> }}
-      />
-      <Tab.Screen name="Profile" component={ProfileScreen} initialParams={{ role }}
-        options={{ tabBarLabel: t('tab_profile'), tabBarIcon: ({ color }) => <Text style={{ fontSize: 20, color }}>👤</Text> }}
-      />
+      <Tab.Screen name="Feed" component={FeedScreen} initialParams={{ role }} />
+      <Tab.Screen name="MyWork" component={MyTripsScreen} initialParams={{ role }} />
+      <Tab.Screen name="Publish" component={PublishStub} initialParams={{ role }} />
+      <Tab.Screen name="Chats" component={ChatsListScreen} initialParams={{ role }} />
+      <Tab.Screen name="Profile" component={ProfileScreen} initialParams={{ role }} />
     </Tab.Navigator>
   );
 }
@@ -134,6 +125,14 @@ export default function AppNavigator() {
           <Stack.Screen name="Security" component={SecurityScreen} />
           <Stack.Screen name="TripDetail" component={TripDetail} />
           <Stack.Screen name="EditTrip" component={EditTripScreen} />
+          <Stack.Screen name="CreateTrip" component={CreateTripScreen} />
+          <Stack.Screen name="CreateCargo" component={CreateCargoScreen} />
+          {/* Legacy routes — Track / Wallet were tabs in v0/v1.0 but the
+              v1 design doesn't surface them in the bottom navigation.
+              They stay reachable by navigation.navigate('Track' | 'Wallet')
+              so any in-app deep link or future feature can still open them. */}
+          <Stack.Screen name="Track" component={TrackScreen} />
+          <Stack.Screen name="Wallet" component={WalletScreen} />
           <Stack.Screen name="HowItWorks" component={HowItWorksScreen} />
           <Stack.Screen name="About" component={AboutScreen} />
         </>
