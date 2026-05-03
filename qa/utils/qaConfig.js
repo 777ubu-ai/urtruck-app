@@ -26,7 +26,7 @@ const BASE_URL = (process.env.QA_BASE_URL || process.env.E2E_BASE_URL || 'https:
 // API base. Production nginx proxies /security/api/ → :8001; bare API_BASE
 // also works against the direct port for non-prod environments.
 const API_BASE = (process.env.QA_API_BASE
-  || (BASE_URL.includes('urtruck.kz') ? `${BASE_URL}/security/api/v1` : `${BASE_URL}/api/v1`)).replace(/\/$/, '');
+  || `${BASE_URL}/api/v1`).replace(/\/$/, '');
 
 // Stable per-run id. globalSetup writes the active id to a pointer file so
 // every project (serik / boris / auditor) picks up the same one even though
