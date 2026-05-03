@@ -15,6 +15,7 @@ import AboutScreen from '../screens/AboutScreen';
 import AuthScreen from '../screens/AuthScreen';
 import RoleScreen from '../screens/RoleScreen';
 import RegScreen from '../screens/RegScreen';
+import SignUpScreen from '../screens/SignUpScreen';
 import FeedScreen from '../screens/FeedScreen';
 import CargoDetail from '../screens/CargoDetail';
 import DriverDetail from '../screens/DriverDetail';
@@ -104,6 +105,9 @@ export default function AppNavigator() {
         // Нет токена / нет сессии / нет роли → выбор роли
         <>
           <Stack.Screen name="Role" component={RoleScreen} />
+          <Stack.Screen name="SignUp" component={SignUpScreen} />
+          <Stack.Screen name="Auth" component={AuthScreen} />
+          <Stack.Screen name="Reg" component={RegScreen} />
           <Stack.Screen name="Main" component={MainTabs} />
           <Stack.Screen name="CargoDetail" component={CargoDetail} />
           <Stack.Screen name="DriverDetail" component={DriverDetail} />

@@ -1,23 +1,35 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, TextInput, Image, Platform } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useI18n } from '../utils/useI18n';
-import { useTheme } from '../utils/ThemeContext';
 import { useAuth } from '../utils/AuthContext';
 import { useToast } from '../components/Toast';
 import { getProfile, saveProfile } from '../utils/store';
-import ShimmerButton from '../components/ShimmerButton';
-import GradientText from '../components/GradientText';
-import CityInput from '../components/CityInput';
+import { storage } from '../utils/storage';
 import { API_BASE } from '../config/env';
+import Screen from '../components/ui/v1/Screen';
+import BrandHeader from '../components/ui/v1/BrandHeader';
+import HeroTruck from '../components/ui/v1/HeroTruck';
+import Field from '../components/ui/v1/Field';
+import PrimaryButton from '../components/ui/v1/PrimaryButton';
+import { v1Colors, v1Spacing, v1Typography, v1AccentFor, v1Radius } from '../theme/designV1';
+
+// EditProfileScreen — design v1, screens 05 (driver) & 06 (cargo owner).
+//
+// Backend logic preserved:
+//   - PATCH /api/v1/users/me with {name, city, about}
+//   - local saveProfile() mirror so ProfileScreen sees the new values immediately
+// Vehicle / plate / capacity edit fields existed in the previous version of
+// this screen — they're temporarily out of stage 1 (no macro covers them).
+// Existing values are kept untouched in the local profile cache; a future
+// stage-2 "Transport" screen will edit them. Nothing is lost.
 
 export default function EditProfileScreen({ navigation, route }) {
   const { role } = route.params || {};
   const isDriver = role === 'driver';
-  const accent = isDriver ? '#22C55E' : '#F59E0B';
+  const accent = v1AccentFor(role);
+  const accentKey = isDriver ? 'driver' : 'cargo';
   const { t } = useI18n();
-  const { theme } = useTheme();
   const { session } = useAuth();
   const { toast } = useToast();
 
@@ -25,218 +37,167 @@ export default function EditProfileScreen({ navigation, route }) {
   const profile = getProfile(userId) || {};
 
   const [avatar, setAvatar] = useState(profile.avatar_url || null);
-  const [displayName, setDisplayName] = useState(profile.display_name || '');
+  const [firstName, setFirstName] = useState(profile.first_name || (profile.display_name || '').split(' ')[0] || '');
+  const [lastName, setLastName] = useState(profile.last_name || (profile.display_name || '').split(' ').slice(1).join(' ') || '');
+  const [phone] = useState(session?.user?.phone || '+7 (***) ***-**-**');
   const [city, setCity] = useState(profile.city || '');
-  const [volume, setVolume] = useState(String(profile.volume_m3 || ''));
-  const [tonnage, setTonnage] = useState(String(profile.capacity_tons || ''));
-  const [plateTruck, setPlateTruck] = useState(profile.plate_truck || '');
-  const [plateTrailer, setPlateTrailer] = useState(profile.plate_trailer || '');
-  const [bio, setBio] = useState(profile.bio || '');
+  const [email, setEmail] = useState(profile.email || '');
+  const [company, setCompany] = useState(profile.company || '');
+  const [saving, setSaving] = useState(false);
 
   const pickAvatar = async () => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') return;
-      const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.6, allowsEditing: true, aspect: [1, 1] });
+      const r = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.6,
+        allowsEditing: true,
+        aspect: [1, 1],
+      });
       if (!r.canceled && r.assets?.[0]) setAvatar(r.assets[0].uri);
     } catch {}
   };
 
   const save = async () => {
-    // Локально (сразу видно в ProfileScreen)
+    if (saving) return;
+    setSaving(true);
+    const fullName = [firstName, lastName].map((s) => (s || '').trim()).filter(Boolean).join(' ');
     saveProfile(userId, {
       avatar_url: avatar,
-      display_name: displayName,
-      full_name: displayName,
+      first_name: firstName.trim(),
+      last_name: lastName.trim(),
+      display_name: fullName,
+      full_name: fullName,
       city,
-      volume_m3: parseInt(volume) || profile.volume_m3 || 0,
-      capacity_tons: parseInt(tonnage) || profile.capacity_tons || 0,
-      plate_truck: plateTruck,
-      plate_trailer: plateTrailer,
-      bio,
+      email: email.trim(),
+      company: company.trim(),
     });
-    // Серверно — с проверкой что реально сохранилось
     let serverOk = false;
     try {
-      const { storage } = require('../utils/storage');
       const token = await storage.get('ur_reg_token');
       if (token) {
         const r = await fetch(`${API_BASE}/users/me`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ name: displayName, city, about: bio }),
+          body: JSON.stringify({ name: fullName, city, about: profile.bio || '' }),
         });
         serverOk = r.ok;
       }
-    } catch (e) {
-      console.warn('Server profile save failed:', e);
-    }
+    } catch {}
+    setSaving(false);
     toast(serverOk ? '✓ ' + t('saveSettings') : '✓ ' + t('saved_locally'), serverOk ? 'success' : 'warn');
     navigation.goBack();
   };
 
   return (
-    <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]} edges={['top']}>
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
-        <View style={s.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={[s.backBtn, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Text style={[s.backText, { color: theme.text }]}>‹</Text>
-          </TouchableOpacity>
-          <GradientText style={s.title} colors={[accent, '#22C55E']}>✏️ {t('editProfileTitle')}</GradientText>
-        </View>
+    <Screen>
+      <BrandHeader onBack={() => navigation.goBack()} accent={accent.main} compact />
+      <HeroTruck size="sm" />
 
-        {/* Аватар */}
-        <View style={s.avatarWrap}>
-          <TouchableOpacity onPress={pickAvatar}>
-            {avatar ? (
-              <Image source={{ uri: avatar }} style={[s.avatar, { borderColor: accent }]} />
-            ) : (
-              <View style={[s.avatarEmpty, { backgroundColor: theme.card, borderColor: accent }]}>
-                <Text style={{ fontSize: 48 }}>{isDriver ? '🚛' : '📦'}</Text>
-              </View>
-            )}
-            <View style={[s.cameraBtn, { backgroundColor: accent }]}>
-              <Text style={{ fontSize: 14 }}>📷</Text>
+      <Text style={s.title}>
+        {isDriver ? t('profile_setup_driver_title') : t('profile_setup_client_title')}
+      </Text>
+      <Text style={s.subtitle}>
+        {isDriver ? t('profile_setup_driver_subtitle') : t('profile_setup_client_subtitle')}
+      </Text>
+
+      <View style={s.avatarWrap}>
+        <TouchableOpacity onPress={pickAvatar} activeOpacity={0.85}>
+          {avatar ? (
+            <Image source={{ uri: avatar }} style={[s.avatar, { borderColor: accent.main }]} />
+          ) : (
+            <View style={[s.avatar, { borderColor: accent.main, backgroundColor: accent.soft }]}>
+              <Text style={s.avatarPlaceholder}>👤</Text>
             </View>
-          </TouchableOpacity>
-          <Text style={[s.avatarHint, { color: theme.textMuted }]}>{t('avatar_change_hint')}</Text>
-        </View>
-
-        {/* Основные поля */}
-        <View style={[s.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[s.sectionLabel, { color: theme.textMuted }]}>{t('section_main')}</Text>
-
-          <Text style={[s.label, { color: theme.textMuted }]}>{isDriver ? t('field_name') : t('companyName')}</Text>
-          <TextInput
-            style={[s.input, { backgroundColor: theme.bg, color: theme.text, borderColor: theme.border }]}
-            value={displayName}
-            onChangeText={setDisplayName}
-            placeholder={isDriver ? 'Ержан К.' : 'ТОО Карго-Трейд'}
-            placeholderTextColor={theme.textMuted}
-          />
-
-          <Text style={[s.label, { color: theme.textMuted }]}>{t('city')}</Text>
-          <View style={{ zIndex: 80 }}>
-            <CityInput value={city} onChange={setCity} placeholder="📍 Алматы" />
+          )}
+          <View style={[s.cameraBadge, { backgroundColor: accent.main }]}>
+            <Text style={s.cameraIcon}>📷</Text>
           </View>
+        </TouchableOpacity>
+        <Text style={[s.avatarHint, { color: accent.main }]}>{t('profile_setup_add_photo')}</Text>
+      </View>
 
-          <Text style={[s.label, { color: theme.textMuted }]}>{t('field_about')}</Text>
-          <TextInput
-            style={[s.input, s.textarea, { backgroundColor: theme.bg, color: theme.text, borderColor: theme.border }]}
-            value={bio}
-            onChangeText={setBio}
-            placeholder="Опытный водитель, 10 лет международных рейсов..."
-            placeholderTextColor={theme.textMuted}
-            multiline
-          />
-        </View>
+      <Field icon="👤" label={t('signup_field_first_name')} value={firstName} onChangeText={setFirstName} />
+      <Field icon="👤" label={t('signup_field_last_name')} value={lastName} onChangeText={setLastName} />
+      <Field icon="📞" label={t('signup_field_phone')} value={phone} onChangeText={() => {}} />
+      <Field
+        variant="dropdown"
+        icon="🌐"
+        label={t('signup_field_country')}
+        value={t('country_kazakhstan')}
+        onPress={() => {}}
+      />
+      <Field
+        variant="dropdown"
+        icon="📍"
+        label={t('signup_field_city')}
+        value={city}
+        placeholder={t('signup_city_pick')}
+        onPress={() => {}}
+      />
+      {!isDriver ? (
+        <Field
+          icon="🏢"
+          label={t('signup_field_company')}
+          placeholder={t('signup_field_company_optional')}
+          value={company}
+          onChangeText={setCompany}
+        />
+      ) : null}
+      <Field
+        icon="✉️"
+        label={t('signup_field_email_optional')}
+        value={email}
+        onChangeText={setEmail}
+        keyboardType="email-address"
+        autoCapitalize="none"
+      />
 
-        {/* Для водителя — техника */}
-        {isDriver && (
-          <View style={[s.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Text style={[s.sectionLabel, { color: theme.textMuted }]}>{t('section_transport')}</Text>
+      <View style={[s.infoBox, { backgroundColor: accent.soft, borderColor: accent.main }]}>
+        <Text style={[s.infoText, { color: accent.main }]} numberOfLines={2}>
+          {isDriver ? `🛡  ${t('profile_setup_info_driver')}` : `🛡  ${t('profile_setup_info_client')}`}
+        </Text>
+      </View>
 
-            <View style={s.row}>
-              <View style={{ flex: 1 }}>
-                <Text style={[s.label, { color: theme.textMuted }]}>{t('volume')}</Text>
-                <TextInput
-                  style={[s.input, { backgroundColor: theme.bg, color: theme.text, borderColor: theme.border }]}
-                  value={volume}
-                  onChangeText={setVolume}
-                  placeholder="120"
-                  placeholderTextColor={theme.textMuted}
-                  keyboardType="numeric"
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[s.label, { color: theme.textMuted }]}>{t('tonnage')}</Text>
-                <TextInput
-                  style={[s.input, { backgroundColor: theme.bg, color: theme.text, borderColor: theme.border }]}
-                  value={tonnage}
-                  onChangeText={setTonnage}
-                  placeholder="22"
-                  placeholderTextColor={theme.textMuted}
-                  keyboardType="numeric"
-                />
-              </View>
-            </View>
+      <PrimaryButton
+        label={t('profile_setup_save')}
+        onPress={save}
+        loading={saving}
+        accent={accentKey}
+        testID="profile-save"
+        style={{ marginTop: v1Spacing.sm }}
+      />
 
-            <Text style={[s.label, { color: theme.textMuted }]}>{t('truckPlate')}</Text>
-            <TextInput
-              style={[s.input, { backgroundColor: theme.bg, color: theme.text, borderColor: theme.border }]}
-              value={plateTruck}
-              onChangeText={setPlateTruck}
-              placeholder="A 123 BC"
-              placeholderTextColor={theme.textMuted}
-            />
-
-            <Text style={[s.label, { color: theme.textMuted }]}>{t('trailerPlate')}</Text>
-            <TextInput
-              style={[s.input, { backgroundColor: theme.bg, color: theme.text, borderColor: theme.border }]}
-              value={plateTrailer}
-              onChangeText={setPlateTrailer}
-              placeholder="01 AB 456"
-              placeholderTextColor={theme.textMuted}
-            />
-          </View>
-        )}
-
-        {/* Биометрия / верификация */}
-        <View style={[s.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[s.sectionLabel, { color: theme.textMuted }]}>{t('section_verification')}</Text>
-          <TouchableOpacity style={[s.verifyRow, { borderBottomColor: theme.border }]}>
-            <Text style={{ fontSize: 20 }}>👤</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={[s.verifyName, { color: theme.text }]}>{t('biometry')}</Text>
-              <Text style={[s.verifyDesc, { color: theme.textMuted }]}>{t('biometry_desc')}</Text>
-            </View>
-            <Text style={s.soonBadge}>{t('soon_badge')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[s.verifyRow, { borderBottomColor: theme.border }]}>
-            <Text style={{ fontSize: 20 }}>📄</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={[s.verifyName, { color: theme.text }]}>{t('iin_check')}</Text>
-              <Text style={[s.verifyDesc, { color: theme.textMuted }]}>{t('iin_check_desc')}</Text>
-            </View>
-            <Text style={s.soonBadge}>{t('soon_badge')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={s.verifyRow}>
-            <Text style={{ fontSize: 20 }}>🏦</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={[s.verifyName, { color: theme.text }]}>{t('bank_account')}</Text>
-              <Text style={[s.verifyDesc, { color: theme.textMuted }]}>{t('bank_account_desc')}</Text>
-            </View>
-            <Text style={s.soonBadge}>{t('soon_badge')}</Text>
-          </TouchableOpacity>
-        </View>
-
-        <ShimmerButton onPress={save} colors={[accent, '#22C55E']} style={{ marginTop: 10 }}>
-          💾 {t('saveBtn')}
-        </ShimmerButton>
-      </ScrollView>
-    </SafeAreaView>
+      <TouchableOpacity onPress={() => navigation.goBack()} style={s.skipRow} activeOpacity={0.7}>
+        <Text style={[s.skipText, { color: accent.main }]}>{t('profile_setup_skip')}</Text>
+      </TouchableOpacity>
+    </Screen>
   );
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1 },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20 },
-  backBtn: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
-  backText: { fontSize: 22 },
-  title: { fontSize: 22, fontWeight: '900' },
-  avatarWrap: { alignItems: 'center', marginBottom: 20, gap: 8 },
-  avatar: { width: 120, height: 120, borderRadius: 60, borderWidth: 3 },
-  avatarEmpty: { width: 120, height: 120, borderRadius: 60, borderWidth: 3, alignItems: 'center', justifyContent: 'center' },
-  cameraBtn: { position: 'absolute', bottom: 0, right: 0, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: '#0C0A09' },
-  avatarHint: { fontSize: 11 },
-  section: { padding: 16, borderRadius: 16, borderWidth: 1, marginBottom: 10 },
-  sectionLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: 12, textTransform: 'uppercase' },
-  label: { fontSize: 10, fontWeight: '700', marginBottom: 6, marginTop: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
-  input: { padding: 14, borderRadius: 10, fontSize: 14, borderWidth: 1, marginBottom: 4 },
-  textarea: { minHeight: 80, textAlignVertical: 'top' },
-  row: { flexDirection: 'row', gap: 10 },
-  verifyRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1 },
-  verifyName: { fontSize: 13, fontWeight: '700' },
-  verifyDesc: { fontSize: 11, marginTop: 2 },
-  soonBadge: { color: '#F59E0B', fontSize: 10, fontWeight: '700', backgroundColor: '#F59E0B20', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, overflow: 'hidden' },
+  title: { ...v1Typography.h1, textAlign: 'center', marginTop: v1Spacing.md },
+  subtitle: { ...v1Typography.bodyMd, textAlign: 'center', marginTop: 6, marginBottom: v1Spacing.md },
+  avatarWrap: { alignItems: 'center', marginVertical: v1Spacing.md, gap: 6 },
+  avatar: {
+    width: 86, height: 86, borderRadius: 43, borderWidth: 2,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  avatarPlaceholder: { fontSize: 36 },
+  cameraBadge: {
+    position: 'absolute', bottom: 4, right: -4,
+    width: 26, height: 26, borderRadius: 13,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: v1Colors.bg,
+  },
+  cameraIcon: { fontSize: 12 },
+  avatarHint: { fontSize: 12, fontWeight: '700' },
+  infoBox: {
+    borderWidth: 1, borderRadius: v1Radius.field,
+    padding: 12, marginTop: v1Spacing.sm, marginBottom: v1Spacing.md,
+  },
+  infoText: { fontSize: 12, fontWeight: '600', lineHeight: 17 },
+  skipRow: { alignItems: 'center', marginTop: v1Spacing.md, paddingVertical: 8 },
+  skipText: { fontSize: 13, fontWeight: '700' },
 });
