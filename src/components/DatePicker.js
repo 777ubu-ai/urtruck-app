@@ -137,7 +137,7 @@ export default function DatePicker({ value, onChange, placeholder = 'DD.MM.YYYY'
                 return (
                   <TouchableOpacity
                     key={day}
-                    style={[s.dayCell, isSelected && { backgroundColor: '#2563EB' }]}
+                    style={[s.dayCell, isSelected && { backgroundColor: '#22C55E' }]}
                     onPress={() => pick(day)}
                   >
                     <Text style={[s.dayText, { color: isSelected ? '#fff' : theme.text }]}>{day}</Text>

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  UrTruck OG default — 1200×630, brand v3 (graphite + emerald + orange).
+  Used as fallback social preview for any page without route/cargo specific
+  metadata. Convert to PNG once (e.g. `rsvg-convert -w 1200`) and ship at
+  https://urtruck.kz/share/og-default.png to satisfy Telegram/WhatsApp/Twitter.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0A1628"/>
+      <stop offset="1" stop-color="#070B12"/>
+    </linearGradient>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#22C55E"/>
+      <stop offset="1" stop-color="#16A34A"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <!-- emerald top stripe -->
+  <rect x="0" y="0" width="1200" height="6" fill="url(#brand)"/>
+  <!-- brand block -->
+  <g transform="translate(80,120)">
+    <text font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-weight="900" font-size="120"
+          letter-spacing="-3" fill="#22C55E">UrTruck</text>
+    <text y="46" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-weight="700" font-size="22"
+          letter-spacing="6" fill="#FFFFFF">INTERNATIONAL LOGISTICS</text>
+  </g>
+  <!-- headline -->
+  <g transform="translate(80,310)">
+    <text font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-weight="800" font-size="48"
+          fill="#F8FAFC">Международные перевозки</text>
+    <text y="62" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-weight="800" font-size="48"
+          fill="#F8FAFC">без посредников</text>
+    <text y="120" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-weight="500" font-size="22"
+          fill="#94A3B8">Грузы · Машины · Ставки · Сделки · Чат с переводом</text>
+  </g>
+  <!-- orange CTA chip -->
+  <g transform="translate(80,520)">
+    <rect rx="14" ry="14" width="320" height="56" fill="#F59E0B"/>
+    <text x="160" y="36" text-anchor="middle"
+          font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-weight="800" font-size="20"
+          fill="#0A1628">Открыть в UrTruck →</text>
+  </g>
+  <!-- truck mark -->
+  <g transform="translate(870,260)" font-size="240">
+    <text>🚛</text>
+  </g>
+</svg>

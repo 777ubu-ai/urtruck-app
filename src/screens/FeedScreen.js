@@ -26,11 +26,13 @@ import { normalizeTrip, formatPrice } from '../utils/normalizers';
 import { matchTruckTypes } from '../utils/truckSynonyms';
 
 const TCOLORS = {
-  tent: '#2563EB', ref: '#0891B2', platform: '#D97706', auto: '#7C3AED', izoterm: '#059669',
+  // Brand v3: tent (default truck) maps to brand emerald. ref/izoterm keep
+  // teal/cyan because those are *semantic* refrigeration cues, not UI blue.
+  tent: '#22C55E', ref: '#0891B2', platform: '#D97706', auto: '#7C3AED', izoterm: '#059669',
   cont20: '#6366F1', cont40: '#4338CA', jumbo: '#EC4899', mega: '#DB2777',
   curtain: '#8B5CF6', lowloader: '#F97316', tanker: '#10B981', dumptruck: '#EAB308',
   grain: '#CA8A04', livestock: '#84CC16', logger: '#65A30D', hazmat: '#DC2626',
-  open_truck: '#0EA5E9', closed: '#0284C7', longliner: '#7C3AED', microvan: '#64748B',
+  open_truck: '#334155', closed: '#475569', longliner: '#7C3AED', microvan: '#64748B',
 };
 const TRUCK_KEYS = ['tent', 'ref', 'platform', 'auto', 'izoterm', 'cont20', 'cont40', 'jumbo', 'mega', 'curtain', 'lowloader', 'tanker', 'dumptruck', 'grain', 'livestock', 'logger', 'hazmat', 'open_truck', 'closed', 'longliner', 'microvan'];
 const TRUCK_ICONS = {
@@ -60,7 +62,8 @@ const DRIVERS = [];
 export default function FeedScreen({ navigation, route }) {
   const { role } = route.params || { role: 'client' };
   const isDriver = role === 'driver';
-  const accent = isDriver ? '#2563EB' : '#F59E0B';
+  // Brand v3: driver = emerald, client = orange. No blue.
+  const accent = isDriver ? '#22C55E' : '#F59E0B';
   const { t } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
@@ -460,7 +463,7 @@ export default function FeedScreen({ navigation, route }) {
       }}
     >
       <View style={[s.tripBadge, { backgroundColor: item.isTrip ? '#172033' : '#263244' }]}>
-        <Text style={[s.tripBadgeText, { color: item.isTrip ? '#3B82F6' : '#94A3B8' }]}>{t('badge_trip')}</Text>
+        <Text style={[s.tripBadgeText, { color: item.isTrip ? '#22C55E' : '#94A3B8' }]}>{t('badge_trip')}</Text>
       </View>
       <View style={s.cardRow}>
         <Text style={{ fontSize: 28, marginRight: 12 }}>{FLAGS[item.country] || '🏳️'}</Text>
@@ -496,7 +499,7 @@ export default function FeedScreen({ navigation, route }) {
     <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]} edges={['top']}>
       <View style={s.header}>
         <View style={{ flex: 1 }}>
-          <GradientText style={s.title} colors={isDriver ? ['#2563EB', '#7C3AED'] : ['#F59E0B', '#EF4444']}>
+          <GradientText style={s.title} colors={isDriver ? ['#22C55E', '#16A34A'] : ['#F59E0B', '#D97706']}>
             {isDriver ? t('cargos') : t('trucks')}
           </GradientText>
           <Text style={[s.subtitle, { color: theme.textMuted }]}>{filteredData.length} {isDriver ? t('active_cargos') : t('available_trips')}</Text>

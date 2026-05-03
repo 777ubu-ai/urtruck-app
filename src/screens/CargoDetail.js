@@ -16,6 +16,8 @@ import { marketAPI } from '../utils/marketAPI';
 import { reviewsAPI } from '../utils/reviews';
 import { normalizeCargo, cargoDisplay } from '../utils/normalizers';
 import { formatDateForDisplay } from '../utils/dateInput';
+import { buildCargoShareText } from '../utils/share';
+import { WEB_URL } from '../config/env';
 
 const FLAGS = { KZ: '🇰🇿', UZ: '🇺🇿', RU: '🇷🇺', KG: '🇰🇬', CN: '🇨🇳', TJ: '🇹🇯', TR: '🇹🇷', TM: '🇹🇲', MN: '🇲🇳', DE: '🇩🇪', FR: '🇫🇷' };
 
@@ -356,10 +358,10 @@ export default function CargoDetail({ navigation, route }) {
                       <Text style={[s.miniBtnText, { color: '#A855F7' }]}>🔁 {t('counter_offer')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[s.miniBtn, { borderColor: '#3B82F6' }]}
+                      style={[s.miniBtn, { borderColor: '#22C55E' }]}
                       onPress={() => openChatForBid(b)}
                     >
-                      <Text style={[s.miniBtnText, { color: '#3B82F6' }]}>💬 {t('open_bid_chat')}</Text>
+                      <Text style={[s.miniBtnText, { color: '#22C55E' }]}>💬 {t('open_bid_chat')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[s.acceptBtn, accepting === b.id && { opacity: 0.5 }]}
@@ -406,10 +408,10 @@ export default function CargoDetail({ navigation, route }) {
                       <Text style={s.rejectBtnText}>{t('reject_btn')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[s.miniBtn, { borderColor: '#3B82F6' }]}
+                      style={[s.miniBtn, { borderColor: '#22C55E' }]}
                       onPress={() => openChatForBid(b)}
                     >
-                      <Text style={[s.miniBtnText, { color: '#3B82F6' }]}>💬 {t('open_bid_chat')}</Text>
+                      <Text style={[s.miniBtnText, { color: '#22C55E' }]}>💬 {t('open_bid_chat')}</Text>
                     </TouchableOpacity>
                   </View>
                 )}
@@ -424,10 +426,10 @@ export default function CargoDetail({ navigation, route }) {
                       <Text style={[s.miniBtnText, { color: '#EF4444' }]}>↩ {t('decline_counter')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[s.miniBtn, { borderColor: '#3B82F6' }]}
+                      style={[s.miniBtn, { borderColor: '#22C55E' }]}
                       onPress={() => openChatForBid(b)}
                     >
-                      <Text style={[s.miniBtnText, { color: '#3B82F6' }]}>💬 {t('open_bid_chat')}</Text>
+                      <Text style={[s.miniBtnText, { color: '#22C55E' }]}>💬 {t('open_bid_chat')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[s.acceptBtn]}
@@ -442,14 +444,14 @@ export default function CargoDetail({ navigation, route }) {
                 {b.isMine && b.status === 'pending' && !hasAccepted && (
                   <View style={{ flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     <TouchableOpacity
-                      style={[s.miniBtn, { borderColor: '#3B82F6' }]}
+                      style={[s.miniBtn, { borderColor: '#22C55E' }]}
                       onPress={() => {
                         setEditingBid(b);
                         setBidModalMode('edit');
                         setBidModal(true);
                       }}
                     >
-                      <Text style={[s.miniBtnText, { color: '#3B82F6' }]}>✏️ {t('edit_bid')}</Text>
+                      <Text style={[s.miniBtnText, { color: '#22C55E' }]}>✏️ {t('edit_bid')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[s.miniBtn, { borderColor: '#F59E0B' }]}
@@ -462,10 +464,10 @@ export default function CargoDetail({ navigation, route }) {
                       <Text style={[s.miniBtnText, { color: '#F59E0B' }]}>💸 {t('give_discount')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[s.miniBtn, { borderColor: '#3B82F6' }]}
+                      style={[s.miniBtn, { borderColor: '#22C55E' }]}
                       onPress={() => openChatForBid(b)}
                     >
-                      <Text style={[s.miniBtnText, { color: '#3B82F6' }]}>💬 {t('open_bid_chat')}</Text>
+                      <Text style={[s.miniBtnText, { color: '#22C55E' }]}>💬 {t('open_bid_chat')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[s.miniBtn, { borderColor: '#EF4444' }, cancelling === b.id && { opacity: 0.5 }]}
@@ -503,13 +505,13 @@ export default function CargoDetail({ navigation, route }) {
         <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
           <View style={[s.dealBlock, {
             borderColor: dealStatus === 'delivered' ? '#22C55E'
-              : dealStatus === 'in_progress' ? '#3B82F6'
+              : dealStatus === 'in_progress' ? '#F59E0B'
               : dealStatus === 'cancelled' ? '#EF4444'
               : '#F59E0B',
           }]}>
             <Text style={[s.dealStatusLabel, {
               color: dealStatus === 'delivered' ? '#22C55E'
-                : dealStatus === 'in_progress' ? '#3B82F6'
+                : dealStatus === 'in_progress' ? '#F59E0B'
                 : dealStatus === 'cancelled' ? '#EF4444'
                 : '#F59E0B',
             }]}>
@@ -552,7 +554,7 @@ export default function CargoDetail({ navigation, route }) {
               {/* Both — chat */}
               {chatRoomId && (
                 <TouchableOpacity
-                  style={[s.dealActionBtn, { backgroundColor: '#3B82F6' }]}
+                  style={[s.dealActionBtn, { backgroundColor: '#22C55E' }]}
                   onPress={() => navigation.navigate('Chat', { roomId: chatRoomId, role })}
                 >
                   <Text style={s.dealActionText}>💬 {t('order_chat')}</Text>
@@ -658,7 +660,12 @@ export default function CargoDetail({ navigation, route }) {
         initialAmount={editingBid?.amount}
         initialMessage={editingBid?.message}
       />
-      <ShareModal visible={shareModal} onClose={() => setShareModal(false)} shareText={`UrTruck: ${c.cargoDesc || ''} ${view.from}→${view.to} ${view.price}`} driverId={c.id} />
+      <ShareModal
+        visible={shareModal}
+        onClose={() => setShareModal(false)}
+        shareText={buildCargoShareText(c, `${WEB_URL || 'https://urtruck.kz'}/cargo/${c.id}`)}
+        url={`${WEB_URL || 'https://urtruck.kz'}/cargo/${c.id}`}
+      />
       {Gate}
     </SafeAreaView>
   );
@@ -713,9 +720,9 @@ const s = StyleSheet.create({
   reviewSubmitText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   dealBlock: { borderWidth: 2, borderRadius: 14, padding: 16, alignItems: 'center', gap: 10 },
   dealStatusLabel: { fontSize: 15, fontWeight: '700' },
-  dealActionBtn: { backgroundColor: '#3B82F6', borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10 },
+  dealActionBtn: { backgroundColor: '#22C55E', borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10 },
   dealActionText: { color: '#fff', fontSize: 13, fontWeight: '700' },
-  chatBtn: { backgroundColor: '#3B82F6', borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
+  chatBtn: { backgroundColor: '#22C55E', borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
   chatBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   deleteMyBtn: { borderWidth: 1, borderColor: '#EF4444', borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
   deleteMyBtnText: { color: '#EF4444', fontSize: 13, fontWeight: '800' },

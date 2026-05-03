@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  UrTruck trip OG template — 1200×630.
+  Variables marked {{LIKE_THIS}} are replaced server-side by the share-image
+  rendering job (TODO: a small FastAPI route under /share/trip/{id}.png that
+  loads canvas/Pillow, fills these slots from the trip row, and returns PNG).
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0A1628"/>
+      <stop offset="1" stop-color="#070B12"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect x="0" y="0" width="1200" height="6" fill="#22C55E"/>
+
+  <!-- header -->
+  <g transform="translate(60,80)">
+    <text font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-weight="900" font-size="40"
+          letter-spacing="-1" fill="#22C55E">UrTruck рейс</text>
+  </g>
+
+  <!-- route -->
+  <g transform="translate(60,180)">
+    <text font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-weight="800" font-size="64"
+          fill="#F8FAFC">{{FROM}} → {{TO}}</text>
+  </g>
+
+  <!-- specs row -->
+  <g transform="translate(60,290)" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-weight="600" font-size="24" fill="#94A3B8">
+    <text>{{TRUCK_TYPE}} · {{TONS}} т · {{M3}} м³</text>
+  </g>
+
+  <g transform="translate(60,340)" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-weight="600" font-size="24" fill="#94A3B8">
+    <text>Выезд: {{DEPARTURE}}</text>
+  </g>
+
+  <!-- price card (orange) -->
+  <g transform="translate(60,420)">
+    <rect rx="16" ry="16" width="520" height="100" fill="#F59E0B"/>
+    <text x="32" y="44" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-weight="700" font-size="18"
+          letter-spacing="2" fill="#0A1628">ЦЕНА</text>
+    <text x="32" y="84" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-weight="900" font-size="42"
+          fill="#0A1628">{{PRICE_TEXT}}</text>
+  </g>
+
+  <!-- CTA -->
+  <g transform="translate(60,560)">
+    <text font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-weight="800" font-size="22"
+          fill="#22C55E">Открыть в UrTruck →</text>
+  </g>
+
+  <!-- truck mark -->
+  <g transform="translate(880,180)" font-size="280">
+    <text>🚛</text>
+  </g>
+</svg>

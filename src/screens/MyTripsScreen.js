@@ -15,7 +15,7 @@ import { colors, spacing, radius, typography } from '../theme/theme';
 export default function MyTripsScreen({ navigation, route }) {
   const { role } = route.params || {};
   const isDriver = role === 'driver';
-  const accent = isDriver ? '#3B82F6' : '#F59E0B';
+  const accent = isDriver ? '#22C55E' : '#F59E0B';
   const { t } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
@@ -88,7 +88,7 @@ export default function MyTripsScreen({ navigation, route }) {
     const desc = item.cargo_desc || '';
     const isCargo = !!item.cargo_desc;
     const badge = isCargo ? t('badge_cargo') : t('badge_trip');
-    const badgeColor = isCargo ? '#F59E0B' : '#3B82F6';
+    const badgeColor = isCargo ? '#F59E0B' : '#22C55E';
     // Edit is allowed only for own ACTIVE trips. Backend will also block any
     // attempt with an accepted deal — but hiding the button is a much better
     // UX than letting the user tap → wait → see "edit denied".
@@ -165,7 +165,7 @@ export default function MyTripsScreen({ navigation, route }) {
   };
 
   const renderDeal = ({ item }) => {
-    const sc = { accepted: '#22C55E', in_progress: '#3B82F6', delivered: '#22C55E', cancelled: '#EF4444' };
+    const sc = { accepted: '#22C55E', in_progress: '#F59E0B', delivered: '#22C55E', cancelled: '#EF4444' };
     const busy = busyBidId === item.id;
     const nextStep = isDriver
       ? (item.status === 'accepted' ? t('driver_next_step_accepted')
@@ -242,10 +242,10 @@ export default function MyTripsScreen({ navigation, route }) {
           )}
           {item.chat_room_id && (
             <TouchableOpacity
-              style={[s.miniBtn, { borderColor: '#3B82F6' }]}
+              style={[s.miniBtn, { borderColor: '#22C55E' }]}
               onPress={() => navigation.navigate('Chat', { roomId: item.chat_room_id, role })}
             >
-              <Text style={[s.miniBtnText, { color: '#3B82F6' }]}>💬 {t('order_chat')}</Text>
+              <Text style={[s.miniBtnText, { color: '#22C55E' }]}>💬 {t('order_chat')}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -321,10 +321,10 @@ export default function MyTripsScreen({ navigation, route }) {
               <Text style={[s.miniBtnText, { color: '#A855F7' }]}>🔁 {t('counter_offer')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[s.miniBtn, { borderColor: '#3B82F6' }]}
+              style={[s.miniBtn, { borderColor: '#22C55E' }]}
               onPress={() => openChatForBid(item)}
             >
-              <Text style={[s.miniBtnText, { color: '#3B82F6' }]}>💬 {t('open_bid_chat')}</Text>
+              <Text style={[s.miniBtnText, { color: '#22C55E' }]}>💬 {t('open_bid_chat')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[s.acceptBtn, { flex: 1, minWidth: 110 }, busy && { opacity: 0.5 }]}
@@ -359,10 +359,10 @@ export default function MyTripsScreen({ navigation, route }) {
               <Text style={s.rejectBtnText}>{t('reject_btn')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[s.miniBtn, { borderColor: '#3B82F6' }]}
+              style={[s.miniBtn, { borderColor: '#22C55E' }]}
               onPress={() => openChatForBid(item)}
             >
-              <Text style={[s.miniBtnText, { color: '#3B82F6' }]}>💬 {t('open_bid_chat')}</Text>
+              <Text style={[s.miniBtnText, { color: '#22C55E' }]}>💬 {t('open_bid_chat')}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -384,10 +384,10 @@ export default function MyTripsScreen({ navigation, route }) {
               <Text style={[s.miniBtnText, { color: '#EF4444' }]}>↩ {t('decline_counter')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[s.miniBtn, { borderColor: '#3B82F6' }]}
+              style={[s.miniBtn, { borderColor: '#22C55E' }]}
               onPress={() => openChatForBid(item)}
             >
-              <Text style={[s.miniBtnText, { color: '#3B82F6' }]}>💬 {t('open_bid_chat')}</Text>
+              <Text style={[s.miniBtnText, { color: '#22C55E' }]}>💬 {t('open_bid_chat')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[s.acceptBtn, busy && { opacity: 0.5 }]}
@@ -409,10 +409,10 @@ export default function MyTripsScreen({ navigation, route }) {
         {isDriver && item.status === 'pending' && (
           <View style={{ flexDirection: 'row', gap: 6, marginTop: spacing.sm, flexWrap: 'wrap' }}>
             <TouchableOpacity
-              style={[s.miniBtn, { borderColor: '#3B82F6' }]}
+              style={[s.miniBtn, { borderColor: '#22C55E' }]}
               onPress={() => { setEditingBid(item); setBidModalMode('edit'); setBidModal(true); }}
             >
-              <Text style={[s.miniBtnText, { color: '#3B82F6' }]}>✏️ {t('edit_bid')}</Text>
+              <Text style={[s.miniBtnText, { color: '#22C55E' }]}>✏️ {t('edit_bid')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[s.miniBtn, { borderColor: '#F59E0B' }]}
@@ -421,10 +421,10 @@ export default function MyTripsScreen({ navigation, route }) {
               <Text style={[s.miniBtnText, { color: '#F59E0B' }]}>💸 {t('give_discount')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[s.miniBtn, { borderColor: '#3B82F6' }]}
+              style={[s.miniBtn, { borderColor: '#22C55E' }]}
               onPress={() => openChatForBid(item)}
             >
-              <Text style={[s.miniBtnText, { color: '#3B82F6' }]}>💬 {t('open_bid_chat')}</Text>
+              <Text style={[s.miniBtnText, { color: '#22C55E' }]}>💬 {t('open_bid_chat')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[s.miniBtn, { borderColor: '#EF4444' }, busy && { opacity: 0.5 }]}
@@ -550,7 +550,7 @@ const s = StyleSheet.create({
   price: { ...typography.h2, color: '#22C55E' },
   bidsLabel: { ...typography.caption, flex: 1 },
 
-  chatBtn: { backgroundColor: '#3B82F6', borderRadius: radius.sm, paddingVertical: spacing.sm, alignItems: 'center', marginTop: spacing.sm },
+  chatBtn: { backgroundColor: '#22C55E', borderRadius: radius.sm, paddingVertical: spacing.sm, alignItems: 'center', marginTop: spacing.sm },
   chatBtnText: { color: '#FFF', ...typography.title },
   acceptBtn: { backgroundColor: '#22C55E', borderRadius: radius.sm, paddingVertical: spacing.sm, alignItems: 'center' },
   acceptBtnText: { color: '#FFF', ...typography.title },
@@ -558,6 +558,6 @@ const s = StyleSheet.create({
   rejectBtnText: { color: '#EF4444', ...typography.title },
   miniBtn: { borderWidth: 1, borderRadius: radius.sm, paddingVertical: 6, paddingHorizontal: 10 },
   miniBtnText: { fontSize: 11, fontWeight: '700' },
-  editBtn: { borderWidth: 1, borderColor: '#3B82F6', borderRadius: 10, paddingVertical: 8, alignItems: 'center', marginTop: spacing.sm },
-  editBtnText: { color: '#3B82F6', fontSize: 12, fontWeight: '700' },
+  editBtn: { borderWidth: 1, borderColor: '#22C55E', borderRadius: 10, paddingVertical: 8, alignItems: 'center', marginTop: spacing.sm },
+  editBtnText: { color: '#22C55E', fontSize: 12, fontWeight: '700' },
 });

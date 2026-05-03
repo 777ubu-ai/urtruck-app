@@ -25,7 +25,7 @@ const FX_FLAGS = { KZT: '🇰🇿', CNY: '🇨🇳', UZS: '🇺🇿', RUB: '🇷
 
 export default function WalletScreen({ route }) {
   const { role } = route.params || {};
-  const accent = role === 'driver' ? '#2563EB' : '#F59E0B';
+  const accent = role === 'driver' ? '#22C55E' : '#F59E0B';
   const { t } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
@@ -72,7 +72,7 @@ export default function WalletScreen({ route }) {
   return (
     <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]} edges={['top']}>
       <ScrollView contentContainerStyle={{ padding: 16 }}>
-        <GradientText style={s.title} colors={['#22C55E', '#0891B2']}>{t('wallet')}</GradientText>
+        <GradientText style={s.title} colors={['#22C55E', '#16A34A']}>{t('wallet')}</GradientText>
 
         {/* Главная карточка баланса */}
         <View style={[s.balanceCard, { backgroundColor: theme.card, borderColor: accent + '30' }]}>

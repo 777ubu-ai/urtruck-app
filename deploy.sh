@@ -23,6 +23,14 @@ echo "================================="
 echo "1. Сборка веб-версии..."
 npx expo export --platform web
 
+echo "1a. Перенос brand-share превью (og:image) в dist/share/..."
+mkdir -p dist/share
+# og-default.png is the fallback social preview. Telegram/WhatsApp/Twitter
+# scrapers pull it via og:image meta. Keep og-trip-template.svg too — backend
+# can fetch it later for per-trip rendering.
+cp web/share/og-default.png dist/share/og-default.png
+cp web/share/og-trip-template.svg dist/share/og-trip-template.svg
+
 echo "2. Пост-обработка index.html + PWA + SW..."
 cp sw-template.js dist/sw.js
 
@@ -44,8 +52,18 @@ new_head = '''<meta charset="utf-8" />
     <meta name="apple-mobile-web-app-title" content="UrTruck" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta property="og:title" content="UrTruck · FTL Market" />
-    <meta property="og:description" content="Грузоперевозки без посредников" />
+    <meta property="og:description" content="Международные перевозки без посредников. Грузы, машины, ставки и сделки в одном приложении." />
     <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://urtruck.kz/" />
+    <meta property="og:image" content="https://urtruck.kz/share/og-default.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:locale" content="ru_RU" />
+    <meta property="og:site_name" content="UrTruck" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="UrTruck · FTL Market" />
+    <meta name="twitter:description" content="Международные перевозки без посредников." />
+    <meta name="twitter:image" content="https://urtruck.kz/share/og-default.png" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

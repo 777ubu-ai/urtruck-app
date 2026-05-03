@@ -14,7 +14,7 @@ import RatingModal from '../components/RatingModal';
 import { marketAPI } from '../utils/marketAPI';
 import { API_BASE } from '../config/env';
 
-const TCOLORS = { tent: '#2563EB', ref: '#0891B2', platform: '#D97706', auto: '#7C3AED', izoterm: '#059669' };
+const TCOLORS = { tent: '#22C55E', ref: '#16A34A', platform: '#D97706', auto: '#7C3AED', izoterm: '#059669' };
 const FLAGS = { KZ: '🇰🇿', UZ: '🇺🇿', RU: '🇷🇺', KG: '🇰🇬', CN: '🇨🇳' };
 // Demo reviews — static content, shown only when no real reviews from API
 const REVIEWS = [
@@ -60,7 +60,7 @@ export default function DriverDetail({ navigation, route }) {
   }
 
   const tt = driver.type || driver.vehicle_type || 'tent';
-  const accent = role === 'driver' ? '#2563EB' : '#F59E0B';
+  const accent = role === 'driver' ? '#22C55E' : '#F59E0B';
   // Safe defaults
   const driverName = driver.name || driver.full_name || t('driver_fallback');
   const driverPhone = driver.phone || '';
@@ -86,7 +86,7 @@ export default function DriverDetail({ navigation, route }) {
           <View style={[s.avatar, { backgroundColor: (TCOLORS[tt] || '#666') + '20', borderColor: (TCOLORS[tt] || '#666') + '30' }]}>
             <Text style={{ fontSize: 32 }}>{FLAGS[driver.country] || '🏳️'}</Text>
           </View>
-          <Text style={[s.name, { color: theme.text }]}>{driverName} {driver.verified && <Text style={{ color: '#2563EB' }}>✓</Text>}</Text>
+          <Text style={[s.name, { color: theme.text }]}>{driverName} {driver.verified && <Text style={{ color: '#22C55E' }}>✓</Text>}</Text>
           <View style={s.verifyBadge}>
             <Text style={[s.verifyText, { color: driver.verified ? '#22C55E' : '#F59E0B' }]}>{driver.verified ? '🟢 ' + t('verified') : '🟡 ' + t('pending')}</Text>
           </View>

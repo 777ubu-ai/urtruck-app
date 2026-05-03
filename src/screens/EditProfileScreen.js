@@ -15,7 +15,7 @@ import { API_BASE } from '../config/env';
 export default function EditProfileScreen({ navigation, route }) {
   const { role } = route.params || {};
   const isDriver = role === 'driver';
-  const accent = isDriver ? '#2563EB' : '#F59E0B';
+  const accent = isDriver ? '#22C55E' : '#F59E0B';
   const { t } = useI18n();
   const { theme } = useTheme();
   const { session } = useAuth();

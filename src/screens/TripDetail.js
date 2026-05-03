@@ -14,6 +14,8 @@ import { LEVELS, useAuth } from '../utils/AuthContext';
 import RatingModal from '../components/RatingModal';
 import { marketAPI } from '../utils/marketAPI';
 import { normalizeTrip, tripDisplay } from '../utils/normalizers';
+import { buildTripShareText } from '../utils/share';
+import { WEB_URL } from '../config/env';
 
 export default function TripDetail({ navigation, route }) {
   const { trip: rawTrip, tripId, role, dealId: routeDealId } = route.params || {};
@@ -109,7 +111,7 @@ export default function TripDetail({ navigation, route }) {
           <TouchableOpacity onPress={() => navigation.goBack()} style={[s.backBtn, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <Text style={[s.backText, { color: theme.text }]}>‹</Text>
           </TouchableOpacity>
-          <GradientText style={s.title} colors={['#22C55E', '#0891B2']}>🚛 {t('trip_title')}</GradientText>
+          <GradientText style={s.title} colors={['#22C55E', '#16A34A']}>🚛 {t('trip_title')}</GradientText>
         </View>
         {dealStatus ? renderDealBlock() : (
           <View style={{ padding: 24, alignItems: 'center' }}>
@@ -126,14 +128,14 @@ export default function TripDetail({ navigation, route }) {
         <View style={[s.section, {
           backgroundColor: theme.card,
           borderColor: dealStatus === 'delivered' ? '#22C55E'
-            : dealStatus === 'in_progress' ? '#3B82F6'
+            : dealStatus === 'in_progress' ? '#F59E0B'
             : dealStatus === 'cancelled' ? '#EF4444'
             : '#F59E0B',
           borderWidth: 2,
         }]}>
           <Text style={[s.sectionTitle, {
             color: dealStatus === 'delivered' ? '#22C55E'
-              : dealStatus === 'in_progress' ? '#3B82F6'
+              : dealStatus === 'in_progress' ? '#F59E0B'
               : dealStatus === 'cancelled' ? '#EF4444'
               : '#F59E0B',
             textAlign: 'center',
@@ -154,7 +156,7 @@ export default function TripDetail({ navigation, route }) {
           )}
           <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginTop: 10 }}>
             {isDriverSide && dealStatus === 'accepted' && (
-              <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: '#3B82F6' }]} onPress={() => changeDealStatus('in_progress')} disabled={statusLoading}>
+              <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: '#22C55E' }]} onPress={() => changeDealStatus('in_progress')} disabled={statusLoading}>
                 <Text style={s.dealActionText}>{statusLoading ? '...' : '🚛 ' + t('start_delivery')}</Text>
               </TouchableOpacity>
             )}
@@ -170,7 +172,7 @@ export default function TripDetail({ navigation, route }) {
             )}
             {chatRoomId && (
               <TouchableOpacity
-                style={[s.dealActionBtn, { backgroundColor: '#3B82F6' }]}
+                style={[s.dealActionBtn, { backgroundColor: '#22C55E' }]}
                 onPress={() => navigation.navigate('Chat', { roomId: chatRoomId, role })}
               >
                 <Text style={s.dealActionText}>💬 {t('order_chat')}</Text>
@@ -197,7 +199,8 @@ export default function TripDetail({ navigation, route }) {
     );
   }
 
-  const accent = role === 'driver' ? '#2563EB' : '#F59E0B';
+  // Brand v3: driver = emerald, client = orange. Blue is no longer a brand color.
+  const accent = role === 'driver' ? '#22C55E' : '#F59E0B';
   const stats = routeStats(trip.from, trip.to, trip.transit);
   const view = tripDisplay(trip, t);
 
@@ -225,7 +228,7 @@ export default function TripDetail({ navigation, route }) {
         <TouchableOpacity onPress={() => navigation.goBack()} style={[s.backBtn, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <Text style={[s.backText, { color: theme.text }]}>‹</Text>
         </TouchableOpacity>
-        <GradientText style={s.title} colors={['#22C55E', '#0891B2']}>🚛 {t('trip_title')}</GradientText>
+        <GradientText style={s.title} colors={['#22C55E', '#16A34A']}>🚛 {t('trip_title')}</GradientText>
         <TouchableOpacity onPress={() => setShareModal(true)}>
           <Text style={{ fontSize: 20 }}>↗️</Text>
         </TouchableOpacity>
@@ -244,7 +247,7 @@ export default function TripDetail({ navigation, route }) {
           </View>
           {view.transit ? (
             <View style={s.routeRow}>
-              <View style={[s.dot, { backgroundColor: '#2563EB' }]} />
+              <View style={[s.dot, { backgroundColor: '#334155' }]} />
               <Text style={[s.transitCity, { color: theme.textSecondary }]}>{t('trip_via')} {view.transit}</Text>
             </View>
           ) : null}
@@ -376,7 +379,7 @@ export default function TripDetail({ navigation, route }) {
           <>
             {(trip.status || 'active') === 'active' && !dealStatus && (
               <TouchableOpacity
-                style={[s.primaryBtn, { backgroundColor: '#3B82F6' }]}
+                style={[s.primaryBtn, { backgroundColor: '#22C55E' }]}
                 onPress={() => navigation.navigate('EditTrip', { tripId: trip.id, trip })}
                 testID="trip-detail-edit-btn"
               >
@@ -392,7 +395,12 @@ export default function TripDetail({ navigation, route }) {
 
       {dealStatus ? renderDealBlock() : null}
 
-      <ShareModal visible={shareModal} onClose={() => setShareModal(false)} shareText={`UrTruck рейс: ${view.from} → ${view.to}`} driverId={trip.id} />
+      <ShareModal
+        visible={shareModal}
+        onClose={() => setShareModal(false)}
+        shareText={buildTripShareText({ ...trip, truckTypeLabel: view.truckType }, `${WEB_URL || 'https://urtruck.kz'}/trip/${trip.id}`)}
+        url={`${WEB_URL || 'https://urtruck.kz'}/trip/${trip.id}`}
+      />
       <RatingModal
         visible={rateModal}
         onClose={() => setRateModal(false)}

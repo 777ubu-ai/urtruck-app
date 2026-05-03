@@ -11,7 +11,7 @@ import { parseCity, routeStats, isNearBorder } from '../utils/geo';
 export default function TrackScreen({ navigation, route }) {
   const { role } = route.params || {};
   const isDriver = role === 'driver';
-  const accent = isDriver ? '#2563EB' : '#F59E0B';
+  const accent = isDriver ? '#22C55E' : '#F59E0B';
   const { t } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
@@ -296,7 +296,7 @@ const s = StyleSheet.create({
   transitCity: { fontSize: 12, fontStyle: 'italic', marginVertical: 2 },
   dateRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderTopWidth: 1, marginBottom: 10 },
   dateLabel: { fontSize: 11, fontWeight: '500' },
-  infoBox: { backgroundColor: '#2563EB15', borderRadius: 10, padding: 10, marginBottom: 12, borderWidth: 1, borderColor: '#2563EB30' },
+  infoBox: { backgroundColor: '#22C55E15', borderRadius: 10, padding: 10, marginBottom: 12, borderWidth: 1, borderColor: '#22C55E30' },
   infoText: { fontSize: 11, lineHeight: 16 },
   arrow: {},
   statusBadge: { marginLeft: 'auto', backgroundColor: '#22C55E15', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 12 },

@@ -29,7 +29,7 @@ const confirm = (title, msg, onOk) => {
 export default function ProfileScreen({ navigation, route }) {
   const { role } = route.params || {};
   const isDriver = role === 'driver';
-  const accent = isDriver ? '#2563EB' : '#F59E0B';
+  const accent = isDriver ? '#22C55E' : '#F59E0B';
   const { isDark, toggleTheme, theme } = useTheme();
   const { t } = useI18n();
   const { session, signOut, setRole } = useAuth();
@@ -81,7 +81,7 @@ export default function ProfileScreen({ navigation, route }) {
   return (
     <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]} edges={['top']}>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
-        <GradientText style={s.title} colors={isDriver ? ['#2563EB', '#22C55E'] : ['#F59E0B', '#EF4444']}>{t('profile')}</GradientText>
+        <GradientText style={s.title} colors={isDriver ? ['#22C55E', '#22C55E'] : ['#F59E0B', '#EF4444']}>{t('profile')}</GradientText>
 
         <View style={[s.profileCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <TouchableOpacity style={s.editBtn} onPress={() => navigation.navigate('EditProfile', { role })}>
