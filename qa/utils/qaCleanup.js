@@ -1,106 +1,177 @@
 #!/usr/bin/env node
-// Standalone cleanup script. Walks the public marketplace endpoints, finds
-// rows tagged with QA_TAG (or any [ar-XXXX] pattern when --all is passed),
-// and cancels them via the owner's token if available — otherwise prints the
-// list so an operator can run the DB cleanup script.
+// QA cleanup driver.
 //
-// Safety:
-//   - never touches rows without an [ar-...] marker
-//   - never deletes; only cancel/archive
-//   - --all requires --confirm to actually mutate
+// Strategy (in order of preference):
+//   1. Hit POST /api/v1/qa/cleanup if QA_CLEANUP_TOKEN is set (or read from
+//      ./reports/_cleanup-token). Server-side soft-cancel is the only
+//      reliable path because it does not require each owner's bearer token.
+//   2. Fall back to public DELETE/PATCH calls using cached agent tokens
+//      when the admin endpoint is missing (e.g. backend not yet deployed).
 //
-// Usage:
-//   QA_RUN_ID=rabcd node qa/utils/qaCleanup.js
-//   node qa/utils/qaCleanup.js --all --confirm
+// Always lists matches first; --dry-run never mutates. By default, scope
+// is "this run" — pass --all to target every [ar-...] record server-wide.
 
-const path = require('path');
 const fs = require('fs');
+const path = require('path');
 const { API_BASE, QA_TAG, QA_RUN_ID, REPORTS_DIR } = require('./qaConfig');
 
-const ALL = process.argv.includes('--all');
-const CONFIRM = process.argv.includes('--confirm');
-const TAG_RE = ALL ? /\[ar-[a-z0-9]+\]/i : new RegExp(QA_TAG.replace(/[[\]]/g, (c) => `\\${c}`), 'i');
+const argv = process.argv.slice(2);
+const DRY = argv.includes('--dry-run');
+const ALL = argv.includes('--all');
+const CONFIRM = argv.includes('--confirm') || !ALL; // single-run cleanup auto-confirms; --all needs explicit --confirm
 
-async function fetchJson(url) {
-  const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
-  const t = await r.text();
-  try { return { ok: r.ok, status: r.status, json: t ? JSON.parse(t) : null }; }
-  catch { return { ok: r.ok, status: r.status, json: null, text: t }; }
+// TLS for self-signed / not-fully-trusted production certs (same as qaApi.js).
+let _dispatcher;
+function getDispatcher() {
+  if (_dispatcher !== undefined) return _dispatcher;
+  try {
+    const { Agent } = require('undici');
+    _dispatcher = new Agent({ connect: { rejectUnauthorized: false } });
+  } catch {
+    _dispatcher = null;
+  }
+  return _dispatcher;
 }
 
-function looksLikeQa(row) {
-  const blob = [row.cargo_desc, row.from_city, row.to_city, row.transit, row.driver_name, row.cargo_type, row.message]
-    .filter(Boolean).join(' ');
-  return TAG_RE.test(blob);
+async function jsonFetch(url, opts = {}) {
+  const disp = getDispatcher();
+  const headers = { 'Accept': 'application/json', ...(opts.headers || {}) };
+  const init = { method: opts.method || 'GET', headers, body: opts.body };
+  if (disp) init.dispatcher = disp;
+  let res;
+  try {
+    res = await fetch(url, init);
+  } catch (e) {
+    return { ok: false, status: 0, error: (e && e.message) || String(e) };
+  }
+  const text = await res.text();
+  let json = null;
+  try { json = text ? JSON.parse(text) : null; } catch {}
+  return { ok: res.ok, status: res.status, json, text };
 }
 
-async function loadActorTokens() {
-  // Cleanup uses tokens persisted by individual agents during their run so
-  // it can call DELETE/PATCH as the original owner. Falls back to anonymous
-  // listing only when no token cache exists.
+function readToken() {
+  if (process.env.QA_CLEANUP_TOKEN) return process.env.QA_CLEANUP_TOKEN;
+  const f = path.join(REPORTS_DIR, '_cleanup-token');
+  if (fs.existsSync(f)) {
+    try { return fs.readFileSync(f, 'utf8').trim() || null; } catch {}
+  }
+  return null;
+}
+
+async function tryAdminCleanup() {
+  const token = readToken();
+  if (!token) {
+    console.log('[qa-cleanup] no QA_CLEANUP_TOKEN — skipping admin endpoint');
+    return null;
+  }
+  const ping = await jsonFetch(`${API_BASE}/qa/cleanup/info`, {
+    headers: { 'X-QA-Cleanup-Token': token },
+  });
+  if (!ping.ok) {
+    console.log(`[qa-cleanup] admin endpoint not available (${ping.status} ${ping.text || ping.error || ''})`);
+    return null;
+  }
+  console.log(`[qa-cleanup] admin endpoint OK; tag_prefix=${ping.json && ping.json.tag_prefix}`);
+
+  const body = JSON.stringify({
+    run_id: ALL ? null : QA_RUN_ID,
+    all: !!ALL,
+    dry_run: !!DRY,
+    confirm: !DRY && (ALL ? CONFIRM : true),
+  });
+  const r = await jsonFetch(`${API_BASE}/qa/cleanup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-QA-Cleanup-Token': token },
+    body,
+  });
+  if (!r.ok) {
+    console.log(`[qa-cleanup] admin call failed: ${r.status} ${r.text || ''}`);
+    return null;
+  }
+  return r.json;
+}
+
+// ─── Fallback: public DELETE/PATCH using cached agent tokens ─────────────
+async function loadCachedTokens() {
   const tokenFile = path.join(REPORTS_DIR, `_tokens-${QA_RUN_ID}.json`);
   if (!fs.existsSync(tokenFile)) return {};
   try { return JSON.parse(fs.readFileSync(tokenFile, 'utf8')); }
   catch { return {}; }
 }
 
+function looksLikeQa(row) {
+  const blob = [row.cargo_desc, row.from_city, row.to_city, row.transit, row.driver_name, row.cargo_type, row.message]
+    .filter(Boolean).join(' ');
+  return /\[ar-/.test(blob);
+}
+
+async function publicFallbackCleanup() {
+  const tokens = await loadCachedTokens();
+  const trips = await jsonFetch(`${API_BASE}/market/trips?show_demo=true&status=active&limit=300`);
+  const cargos = await jsonFetch(`${API_BASE}/market/cargos?show_demo=true&status=active&limit=300`);
+  const tripsList = ((trips.json && trips.json.trips) || []).filter(looksLikeQa);
+  const cargosList = ((cargos.json && cargos.json.cargos) || []).filter(looksLikeQa);
+
+  console.log(`[fallback] trips matching: ${tripsList.length}; cargos matching: ${cargosList.length}`);
+
+  if (DRY) return { trips_found: tripsList.length, cargos_found: cargosList.length, applied: false, dry_run: true };
+
+  let cancelled_trips = 0, cancelled_cargos = 0, skipped = 0;
+  for (const c of cargosList) {
+    const tk = tokens[c.owner_id];
+    if (!tk) { skipped++; continue; }
+    const r = await jsonFetch(`${API_BASE}/market/cargos/${c.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${tk}` } });
+    if (r.ok) cancelled_cargos++;
+  }
+  for (const t of tripsList) {
+    // No public DELETE for trips — best-effort PATCH that re-saves price as
+    // a no-op cannot cancel; report and let admin SQL do the rest.
+    skipped++;
+  }
+  return { cancelled_trips, cancelled_cargos, skipped_no_token: skipped, applied: cancelled_trips + cancelled_cargos > 0 };
+}
+
+// ─── Verification: re-list public feed and grep for [ar-...] ─────────────
+async function verify() {
+  const trips = await jsonFetch(`${API_BASE}/market/trips?status=active&limit=300`);
+  const cargos = await jsonFetch(`${API_BASE}/market/cargos?status=active&limit=300`);
+  const t = ((trips.json && trips.json.trips) || []).filter(looksLikeQa);
+  const c = ((cargos.json && cargos.json.cargos) || []).filter(looksLikeQa);
+  return {
+    total_active_trips: (trips.json && trips.json.total) || (trips.json && trips.json.trips || []).length,
+    total_active_cargos: (cargos.json && cargos.json.total) || (cargos.json && cargos.json.cargos || []).length,
+    qa_trips_visible: t.length,
+    qa_cargos_visible: c.length,
+  };
+}
+
 async function main() {
-  console.log(`[qa-cleanup] api=${API_BASE}  scope=${ALL ? 'ALL [ar-...]' : QA_TAG}  mutate=${(!ALL || CONFIRM) ? 'yes' : 'NO (need --confirm)'}`);
+  console.log(`[qa-cleanup] api=${API_BASE}  scope=${ALL ? 'ALL [ar-...]' : QA_RUN_ID}  mode=${DRY ? 'dry-run' : 'apply'}`);
 
-  const tokens = await loadActorTokens();
-  const dryOnly = ALL && !CONFIRM;
+  const before = await verify();
+  console.log(`[qa-cleanup] BEFORE — qa_trips_visible=${before.qa_trips_visible} qa_cargos_visible=${before.qa_cargos_visible}`);
 
-  // Trips
-  const t = await fetchJson(`${API_BASE}/market/trips?show_demo=true&limit=200&status=active`);
-  const tripsRaw = (t.json && t.json.trips) || [];
-  const trips = tripsRaw.filter(looksLikeQa);
-  console.log(`Trips matching: ${trips.length}/${tripsRaw.length}`);
-  for (const row of trips) {
-    console.log(`  trip ${row.id}  ${row.from_city}→${row.to_city}  driver=${row.driver_name || '-'}`);
-    if (dryOnly) continue;
-    // No public DELETE endpoint for trips owned by another user — use PATCH
-    // status=cancelled if backend supports it; otherwise log.
-    const owner = row.driver_id;
-    const token = owner && tokens[owner];
-    if (!token) {
-      console.log('    [skipped] no cached token; run cleanup_dirty_cargos.py on the server');
-      continue;
-    }
-    const r = await fetch(`${API_BASE}/market/trips/${row.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ price: row.price || 0 }), // no-op patch keeps PATCH valid; status change needs separate endpoint
-    });
-    console.log(`    PATCH → ${r.status}`);
+  let result = await tryAdminCleanup();
+  if (!result) {
+    console.log('[qa-cleanup] falling back to public PATCH/DELETE with cached tokens');
+    result = await publicFallbackCleanup();
   }
+  console.log('[qa-cleanup] result:', JSON.stringify(result, null, 2));
 
-  // Cargos
-  const c = await fetchJson(`${API_BASE}/market/cargos?show_demo=true&limit=200&status=active`);
-  const cargosRaw = (c.json && c.json.cargos) || [];
-  const cargos = cargosRaw.filter(looksLikeQa);
-  console.log(`Cargos matching: ${cargos.length}/${cargosRaw.length}`);
-  for (const row of cargos) {
-    console.log(`  cargo ${row.id}  ${row.from_city}→${row.to_city}  desc="${(row.cargo_desc || '').slice(0, 60)}"`);
-    if (dryOnly) continue;
-    const owner = row.owner_id;
-    const token = owner && tokens[owner];
-    if (!token) {
-      console.log('    [skipped] no cached token');
-      continue;
-    }
-    const r = await fetch(`${API_BASE}/market/cargos/${row.id}`, {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${token}` },
-    });
-    console.log(`    DELETE → ${r.status}`);
+  if (!DRY) {
+    // Some servers need a tick to flush WAL — re-verify after a short pause.
+    await new Promise((r) => setTimeout(r, 500));
   }
+  const after = await verify();
+  console.log(`[qa-cleanup] AFTER  — qa_trips_visible=${after.qa_trips_visible} qa_cargos_visible=${after.qa_cargos_visible}`);
 
-  if (!trips.length && !cargos.length) {
-    console.log('Nothing to clean for this run.');
+  if (after.qa_trips_visible === 0 && after.qa_cargos_visible === 0) {
+    console.log('[qa-cleanup] ✅ public feed is QA-clean');
+    process.exit(0);
   } else {
-    console.log('\nIf nothing was actually cancelled (no cached tokens), run:');
-    console.log('  python3 backend/scripts/cleanup_dirty_cargos.py --apply');
-    console.log('on the server to soft-cancel by token match.');
+    console.log('[qa-cleanup] ⚠️ residual QA records remain — re-run with --all --confirm or apply backend script');
+    process.exit(DRY ? 0 : 2);
   }
 }
 
