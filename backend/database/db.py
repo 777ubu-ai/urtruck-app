@@ -18,10 +18,37 @@ def init_db():
         conn.commit()
 
 
+_WAL_INITIALIZED = False
+
+
+def _apply_pragmas(conn: sqlite3.Connection) -> None:
+    """Set safe concurrency pragmas on every connection.
+
+    journal_mode=WAL is database-wide and persists, so we only run it once per
+    process; busy_timeout is per-connection and must be set every time. This
+    fixes the `database is locked` errors that fired from push_log inserts
+    when a write hit the DB during a long-running read.
+    """
+    global _WAL_INITIALIZED
+    try:
+        if not _WAL_INITIALIZED:
+            conn.execute("PRAGMA journal_mode=WAL")
+            _WAL_INITIALIZED = True
+        conn.execute("PRAGMA busy_timeout=5000")
+        conn.execute("PRAGMA synchronous=NORMAL")
+    except Exception:
+        # Pragmas are advisory — never let DB stability tweaks break a request.
+        pass
+
+
 @contextmanager
 def get_conn():
-    conn = sqlite3.connect(config.DB_PATH)
+    # timeout=10s gives SQLite room to wait on a writer instead of immediately
+    # raising OperationalError; combined with WAL+busy_timeout this kills the
+    # "database is locked" path for normal API traffic.
+    conn = sqlite3.connect(config.DB_PATH, timeout=10.0)
     conn.row_factory = sqlite3.Row
+    _apply_pragmas(conn)
     try:
         yield conn
         conn.commit()

@@ -74,6 +74,16 @@ export const marketAPI = {
     return r.json();
   },
 
+  async updateTrip(id, payload) {
+    const r = await fetch(`${BASE}/trips/${id}`, {
+      method: 'PATCH', headers: await headers(),
+      body: JSON.stringify(payload),
+    });
+    const d = await r.json();
+    if (!r.ok) return { ok: false, detail: d.detail || `Ошибка ${r.status}`, status: r.status };
+    return d;
+  },
+
   // ─── Bids ───
   async createBid(data) {
     const r = await fetch(`${BASE}/bids`, {

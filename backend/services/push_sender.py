@@ -74,8 +74,10 @@ def _log(user_id: Optional[str], kind: str, title: str, body: str,
                 (user_id, kind, title, body, json.dumps(data, ensure_ascii=False),
                  web_sent, native_sent, error),
             )
-    except Exception:
-        log.exception("push_log insert failed")
+    except Exception as e:
+        # Never raise — push logging is observability, not part of the request
+        # contract. Stay on debug to avoid flooding logs when SQLite is busy.
+        log.debug("push_log insert skipped: %s", e)
 
 
 # ───────────────────────── Web Push ─────────────────────────

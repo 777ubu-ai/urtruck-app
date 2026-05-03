@@ -22,6 +22,8 @@ import { LEVELS, useAuth } from '../utils/AuthContext';
 import { SkeletonCard } from '../components/Skeleton';
 import { IS_BETA } from '../config/supabase';
 import { normalizeDateInput } from '../utils/dateInput';
+import { normalizeTrip, formatPrice } from '../utils/normalizers';
+import { matchTruckTypes } from '../utils/truckSynonyms';
 
 const TCOLORS = {
   tent: '#2563EB', ref: '#0891B2', platform: '#D97706', auto: '#7C3AED', izoterm: '#059669',
@@ -111,18 +113,20 @@ export default function FeedScreen({ navigation, route }) {
           photo: (c.photos || [])[0], isMine: true,
           createdAt: c.created_at, _server: true,
         }));
-        const tripsMapped = ((tripsRes || {}).trips || []).map(t => ({
-          id: t.id, name: t.driver_name || tGlobal('driver_fallback'),
-          country: 'KZ', type: t.truck_type || 'tent',
-          m3: t.available_m3 || 82, tons: t.capacity_tons || 20,
-          rating: 5.0, reviews: 0, verified: true,
-          from: t.from_city, to: t.to_city,
-          price: t.price,
-          isTrip: true,
-          tripRoute: `${t.from_city} → ${t.to_city}`,
-          tripDates: t.departure && t.arrival ? `${t.departure} - ${t.arrival}` : '',
-          _server: true,
-        }));
+        const tripsMapped = ((tripsRes || {}).trips || []).map(rawT => {
+          const n = normalizeTrip({ ...rawT, _server: true });
+          return {
+            ...n,
+            // Card-only fields kept alongside the canonical shape:
+            name: n.driverName || tGlobal('driver_fallback'),
+            type: n.truckType || 'tent',
+            m3: n.availableM3 || 0,
+            tons: n.capacityTons || 0,
+            rating: 5.0, reviews: 0, verified: true,
+            tripRoute: `${n.from || '—'} → ${n.to || '—'}`,
+            tripDates: n.departure && n.arrival ? `${n.departure} - ${n.arrival}` : (n.departure || ''),
+          };
+        });
         const driversMapped = ((driversRes || {}).drivers || []).map(d => ({
           id: d.id, name: d.full_name || tGlobal('driver_fallback'),
           country: 'KZ', type: d.vehicle_type || 'tent',
@@ -218,13 +222,23 @@ export default function FeedScreen({ navigation, route }) {
       data = data.filter(d => (d.rating || 0) >= minRating);
     }
     if (search.trim()) {
-      const q = search.toLowerCase();
-      data = data.filter(d => (
-        (d.from && d.from.toLowerCase().includes(q)) ||
-        (d.to && d.to.toLowerCase().includes(q)) ||
-        (d.cargo && d.cargo.toLowerCase().includes(q)) ||
-        (d.name && d.name.toLowerCase().includes(q))
-      ));
+      const q = search.toLowerCase().trim();
+      // Body-type synonyms: "тнт" → tent, "реф" → ref, "конт" → cont20/cont40.
+      // If the query maps to one or more truck keys, match cards whose `type`
+      // is in that set; otherwise fall back to text match across route/cargo/
+      // driver name + the localized truck label.
+      const truckMatches = matchTruckTypes(q);
+      data = data.filter(d => {
+        if (truckMatches.length > 0 && d.type && truckMatches.includes(d.type)) return true;
+        const truckLabel = d.type ? String(t(d.type) || '').toLowerCase() : '';
+        return (
+          (d.from && d.from.toLowerCase().includes(q)) ||
+          (d.to && d.to.toLowerCase().includes(q)) ||
+          (d.cargo && d.cargo.toLowerCase().includes(q)) ||
+          (d.name && d.name.toLowerCase().includes(q)) ||
+          (truckLabel && truckLabel.includes(q))
+        );
+      });
     }
     // Сортировка
     if (sortBy === 'price-asc') data.sort((a, b) => (a.price || 0) - (b.price || 0));
@@ -254,25 +268,46 @@ export default function FeedScreen({ navigation, route }) {
   const [tripTransit, setTripTransit] = useState('');
   const [tripDateFrom, setTripDateFrom] = useState('');
   const [tripDateTo, setTripDateTo] = useState('');
+  // Trip body type starts unset on purpose: publish must be blocked until the
+  // user explicitly picks one. The cargo form reuses `truckType` (default
+  // 'tent') and is unaffected.
+  const [tripTruckType, setTripTruckType] = useState(null);
+  // Payment block (route publish): negotiable by default — most drivers want
+  // to discuss price in chat. Switching to 'fixed' reveals amount + currency.
+  const [tripPriceMode, setTripPriceMode] = useState('negotiable');
+  const [tripCurrency, setTripCurrency] = useState('USD');
 
   const showOk = (msg, type = 'success', dur = 3000) => toast(msg, type, dur);
 
-  // HOT-008: inline-валидация с красной подсветкой
+  // Required-fields validation. Each field carries its own message so the
+  // user sees what's missing inline; submitCargo also surfaces the first
+  // missing field as a toast so it's visible even when the field is below
+  // the fold. Order of checks defines the toast priority.
   const validateCargoForm = () => {
     const errors = {};
-    if (!fromCity) errors.fromCity = 'Укажите город отправления';
-    if (!toCity) errors.toCity = 'Укажите город назначения';
-    if (!cargoDesc) errors.cargoDesc = 'Опишите груз';
-    if (price && parseFloat(price) <= 0) errors.price = t('val_price_positive');
-    if (weight && parseFloat(weight) <= 0) errors.weight = 'Вес должен быть больше 0';
+    const order = [];
+    const push = (key, msg) => { errors[key] = msg; order.push(key); };
+    if (!fromCity || !fromCity.trim()) push('fromCity', t('val_from_required'));
+    if (!toCity || !toCity.trim()) push('toCity', t('val_to_required'));
+    if (!cargoDesc || !cargoDesc.trim()) push('cargoDesc', t('val_cargo_desc_required'));
+    if (!truckType) push('truckType', t('val_truck_type_required'));
+    if (!pickupDate) push('pickupDate', t('val_pickup_date_required'));
+    // Either weight OR volume must be set — otherwise driver can't size the load.
+    const wNum = parseFloat(weight) || 0;
+    const vNum = parseFloat(vol) || 0;
+    if (wNum <= 0 && vNum <= 0) push('weight', t('val_weight_or_volume_required'));
+    if (price && parseFloat(price) <= 0) push('price', t('val_price_positive'));
+    if (weight && wNum <= 0) push('weight', t('val_weight_positive'));
     setFormErrors(errors);
-    return Object.keys(errors).length === 0;
+    return { ok: Object.keys(errors).length === 0, firstError: order[0] ? errors[order[0]] : null };
   };
 
   const submitCargo = async () => {
     if (submitting) return;
-    if (!validateCargoForm()) {
-      showOk('Заполните обязательные поля', 'error', 4000);
+    const v = validateCargoForm();
+    if (!v.ok) {
+      // Surface the first missing-field message; inline highlights handle the rest.
+      showOk(v.firstError || t('fill_required_fields'), 'error', 4000);
       return;
     }
     setSubmitting(true);
@@ -313,6 +348,7 @@ export default function FeedScreen({ navigation, route }) {
     if (!fromTrim) tripErrors.push(t('val_from_required'));
     if (!toTrim) tripErrors.push(t('val_to_required'));
     if (!tripDateFrom) tripErrors.push(t('val_departure_required'));
+    if (!tripTruckType) tripErrors.push(t('val_truck_type_required'));
     // Normalize dates without timezone shift; reject malformed input.
     const departureNorm = normalizeDateInput(tripDateFrom);
     const arrivalNorm = tripDateTo ? normalizeDateInput(tripDateTo) : null;
@@ -324,14 +360,17 @@ export default function FeedScreen({ navigation, route }) {
     if (tripErrors.length > 0) { showOk(tripErrors[0], 'error', 4000); return; }
     setSubmitting(true);
     try {
-      // Price: trim, parse, allow 0 → "Договорная" on the card.
-      const priceNum = Math.max(0, parseInt(String(price || '').trim().replace(/\s/g, ''), 10) || 0);
+      // Negotiable mode wipes price → 0; backend renders that as "По договорённости".
+      const priceNum = tripPriceMode === 'fixed'
+        ? Math.max(0, parseInt(String(price || '').trim().replace(/\s/g, ''), 10) || 0)
+        : 0;
       const tripPayload = {
         from_city: fromTrim, to_city: toTrim, transit: transitTrim || null,
-        truck_type: truckType || 'tent',
+        truck_type: tripTruckType,
         capacity_tons: Number(weight) || 20,
         available_m3: Number(vol) || 82,
         price: priceNum,
+        currency: tripPriceMode === 'fixed' ? tripCurrency : 'USD',
         departure: departureNorm,
         arrival: arrivalNorm,
       };
@@ -339,7 +378,8 @@ export default function FeedScreen({ navigation, route }) {
       if (r.ok) {
         showOk('✓ Маршрут опубликован', 'success', 4000);
         setShowForm(false);
-        setTripFrom(''); setTripTo(''); setTripTransit(''); setTripDateFrom(''); setTripDateTo(''); setPrice('');
+        setTripFrom(''); setTripTo(''); setTripTransit(''); setTripDateFrom(''); setTripDateTo('');
+        setPrice(''); setTripTruckType(null); setTripPriceMode('negotiable'); setTripCurrency('USD');
         // Navigate with justCreated so MyTrips shows it even if /my fails
         const justCreated = { id: r.id, ...tripPayload, status: 'active', created_at: new Date().toISOString() };
         setTimeout(() => navigation.navigate('MyTripsList', { role, initialTab: 'my', justCreatedTrip: justCreated }), 1000);
@@ -389,8 +429,8 @@ export default function FeedScreen({ navigation, route }) {
               {item.pickup && <Text style={[s.badge, { color: theme.textMuted, backgroundColor: theme.border }]}>📅 {item.pickup}</Text>}
             </View>
           </View>
-          <View style={{ alignItems: 'flex-end', justifyContent: 'space-between', flexShrink: 0, maxWidth: 100 }}>
-            <Text style={s.price}>{item.price > 0 ? `$${item.price}` : t('negotiable')}</Text>
+          <View style={{ alignItems: 'flex-end', justifyContent: 'space-between', flexShrink: 0, maxWidth: 110 }}>
+            <Text style={s.price}>{formatPrice(item.price, item.currency, t)}</Text>
             <Text style={[s.bidsCount, { color: theme.textMuted }]}>{formatBids(item.bids)}</Text>
             <Text style={{ color: '#22C55E', fontSize: 11, fontWeight: '700', marginTop: 4 }}>{item.isMine ? t('details') + ' →' : isDriver ? t('respond') + ' →' : t('details') + ' →'}</Text>
           </View>
@@ -407,10 +447,10 @@ export default function FeedScreen({ navigation, route }) {
         const ok = await requireLevel(LEVELS.PHONE, 'open_detail');
         if (!ok) return;
         if (item.isTrip) {
-          navigation.navigate('TripDetail', {
-            trip: { ...item, from_city: item.from || item.from_city || '—', to_city: item.to || item.to_city || '—', truck_type: item.type || item.truck_type || 'tent', price: item.price || 0 },
-            role,
-          });
+          // Pass the already-normalized trip object straight through; TripDetail
+          // re-runs normalizeTrip() so older shapes still work, but we want the
+          // canonical fields (departure/arrival/transit/truckType) preserved.
+          navigation.navigate('TripDetail', { trip: normalizeTrip(item), tripId: item.id, role });
         } else {
           navigation.navigate('DriverDetail', {
             driver: { ...item, name: item.name || item.full_name || tGlobal('driver_fallback'), type: item.type || item.vehicle_type || 'tent', m3: item.m3 || 0, tons: item.tons || 0, rating: item.rating || 0, reviews: item.reviews || 0 },
@@ -442,6 +482,12 @@ export default function FeedScreen({ navigation, route }) {
             {(item.m3 > 0 || item.tons > 0) && <Text style={[s.badge, { color: theme.textSecondary, backgroundColor: theme.border }]}>{item.tons > 0 ? item.tons + ' т' : ''}{item.tons > 0 && item.m3 > 0 ? ' · ' : ''}{item.m3 > 0 ? item.m3 + ' м³' : ''}</Text>}
           </View>
         </View>
+        {item.isTrip ? (
+          <View style={{ alignItems: 'flex-end', justifyContent: 'space-between', flexShrink: 0, maxWidth: 130 }}>
+            <Text style={s.price} numberOfLines={1}>{formatPrice(item.price, item.currency, t)}</Text>
+            <Text style={{ color: '#22C55E', fontSize: 11, fontWeight: '700', marginTop: 4 }}>{t('details')} →</Text>
+          </View>
+        ) : null}
       </View>
     </TouchableOpacity>
   );
@@ -515,7 +561,7 @@ export default function FeedScreen({ navigation, route }) {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.activeChipsRow}>
           {filterType && (
             <View style={[s.activeChip, { backgroundColor: TCOLORS[filterType] || accent }]}>
-              <Text style={s.activeChipText}>{TRUCK_ICONS[filterType]} {t(filterType)}</Text>
+              <Text style={s.activeChipText} numberOfLines={1}>{TRUCK_ICONS[filterType]} {t(filterType)}</Text>
               <TouchableOpacity onPress={() => setFilterType(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                 <Text style={s.activeChipClose}>✕</Text>
               </TouchableOpacity>
@@ -679,7 +725,7 @@ export default function FeedScreen({ navigation, route }) {
                   <View style={{ zIndex: 200, marginBottom: 4 }}>
                     <CityInput value={tripFrom} onChange={setTripFrom} placeholder={'📍 ' + t('fromCountry')} testID="trip-from-input" />
                   </View>
-                  <View style={{ zIndex: 100, marginBottom: 4 }}>
+                  <View style={{ zIndex: 100, marginBottom: 4, borderWidth: tripTo ? 0 : 1, borderColor: tripTo ? 'transparent' : '#EF444466', borderRadius: 12 }}>
                     <CityInput value={tripTo} onChange={setTripTo} placeholder={'🏁 ' + t('to_required_hint')} testID="trip-to-input" />
                   </View>
                   <Text style={[s.formLabel, { color: theme.textMuted, fontSize: 12 }]}>{t('transit_secondary_hint')}</Text>
@@ -695,31 +741,73 @@ export default function FeedScreen({ navigation, route }) {
                       <DatePicker value={tripDateTo} onChange={setTripDateTo} placeholder={t('arrival')} />
                     </View>
                   </View>
-                  <Text style={[s.formLabel, { color: theme.textMuted }]}>{t('truckType')} ← →</Text>
+                  {/* Payment block — promoted above truck type so route price
+                      becomes the primary commercial signal of the listing. */}
+                  <Text style={[s.formLabel, { color: theme.textMuted, marginTop: 6 }]}>💰 {t('payment_label_full')}</Text>
+                  <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
+                    <TouchableOpacity
+                      testID="trip-payment-negotiable"
+                      style={[s.payModeBtn, { backgroundColor: theme.card, borderColor: theme.border }, tripPriceMode === 'negotiable' && { backgroundColor: '#22C55E', borderColor: '#22C55E' }]}
+                      onPress={() => { setTripPriceMode('negotiable'); setPrice(''); }}
+                    >
+                      <Text style={[s.payModeText, { color: theme.textSecondary }, tripPriceMode === 'negotiable' && { color: '#fff' }]}>{t('payment_negotiable')}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      testID="trip-payment-fixed"
+                      style={[s.payModeBtn, { backgroundColor: theme.card, borderColor: theme.border }, tripPriceMode === 'fixed' && { backgroundColor: '#22C55E', borderColor: '#22C55E' }]}
+                      onPress={() => setTripPriceMode('fixed')}
+                    >
+                      <Text style={[s.payModeText, { color: theme.textSecondary }, tripPriceMode === 'fixed' && { color: '#fff' }]}>{t('payment_fixed')}</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {tripPriceMode === 'fixed' && (
+                    <View style={s.frow}>
+                      <TextInput
+                        style={[s.fi, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border, flex: 2 }]}
+                        placeholder={t('price_example_placeholder')}
+                        placeholderTextColor={theme.textMuted}
+                        keyboardType="numeric"
+                        inputMode="numeric"
+                        value={price}
+                        onChangeText={(v) => setPrice(String(v || '').replace(/[^\d]/g, ''))}
+                        testID="trip-price-input"
+                      />
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingVertical: 0 }} style={{ flex: 3 }}>
+                        {[
+                          { k: 'USD', l: '$' },
+                          { k: 'KZT', l: '₸' },
+                          { k: 'RUB', l: '₽' },
+                          { k: 'CNY', l: '¥' },
+                          { k: 'UZS', l: 'сўм' },
+                        ].map(c => (
+                          <TouchableOpacity
+                            key={c.k}
+                            testID={'trip-currency-' + c.k}
+                            style={[s.currChip, { backgroundColor: theme.card, borderColor: theme.border }, tripCurrency === c.k && { backgroundColor: accent, borderColor: accent }]}
+                            onPress={() => setTripCurrency(c.k)}
+                          >
+                            <Text style={[s.currChipText, { color: theme.textSecondary }, tripCurrency === c.k && { color: '#fff' }]}>{c.l} {c.k}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </View>
+                  )}
+                  <Text style={[s.formLabel, { color: tripTruckType ? theme.textMuted : '#EF4444', marginTop: 6 }]}>
+                    {t('truckType')}{!tripTruckType ? ' *' : ''} ← →
+                  </Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
                     {TRUCK_KEYS.map(k => (
                       <TouchableOpacity
                         key={k}
                         testID={'trip-truck-' + k}
-                        style={[s.typeCard, { backgroundColor: theme.card, borderColor: theme.border }, truckType === k && { backgroundColor: TCOLORS[k], borderColor: TCOLORS[k] }]}
-                        onPress={() => setTruckType(k)}
+                        style={[s.typeCard, { backgroundColor: theme.card, borderColor: theme.border }, tripTruckType === k && { backgroundColor: TCOLORS[k], borderColor: TCOLORS[k] }]}
+                        onPress={() => setTripTruckType(k)}
                       >
                         <Text style={{ fontSize: 22 }}>{TRUCK_ICONS[k]}</Text>
-                        <Text style={[s.typeCardText, { color: theme.textSecondary }, truckType === k && { color: '#fff' }]}>{t(k)}</Text>
+                        <Text style={[s.typeCardText, { color: theme.textSecondary }, tripTruckType === k && { color: '#fff' }]}>{t(k)}</Text>
                       </TouchableOpacity>
                     ))}
                   </ScrollView>
-                  <Text style={[s.formLabel, { color: theme.textMuted }]}>{t('price')}</Text>
-                  <TextInput
-                    style={[s.input, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border, marginBottom: 10 }]}
-                    placeholder={t('price_example_placeholder')}
-                    placeholderTextColor={theme.textMuted}
-                    keyboardType="numeric"
-                    inputMode="numeric"
-                    value={price}
-                    onChangeText={(v) => setPrice(String(v || '').replace(/[^\d]/g, ''))}
-                    testID="trip-price-input"
-                  />
                   <View style={s.hintBox}><Text style={[s.hintText, { color: theme.textMuted }]}>💡 {t('youPublish')}</Text></View>
                   <TouchableOpacity
                     onPress={submitTrip}
@@ -840,28 +928,42 @@ export default function FeedScreen({ navigation, route }) {
                     <View style={{ flex: 1 }}>
                       <Text style={[s.formLabel, { color: theme.textMuted }]}>📐 {t('volume_label')}</Text>
                       <TextInput
-                        style={[s.fi, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border }]}
+                        style={[s.fi, {
+                          backgroundColor: theme.card, color: theme.text,
+                          borderColor: formErrors.weight ? '#EF4444' : theme.border,
+                          borderWidth: formErrors.weight ? 2 : 1,
+                        }]}
                         placeholder="82"
                         placeholderTextColor={theme.textMuted}
                         keyboardType="numeric"
                         value={vol}
-                        onChangeText={setVol}
+                        onChangeText={(v) => { setVol(v); if (formErrors.weight) setFormErrors(e => ({ ...e, weight: null })); }}
                       />
                     </View>
                   </View>
-                  <Text style={[s.formLabel, { color: theme.textMuted }]}>{t('pickupDate')}</Text>
-                  <DatePicker value={pickupDate} onChange={setPickupDate} placeholder={t('pickupDate')} />
+                  <Text style={[s.formLabel, { color: formErrors.pickupDate ? '#EF4444' : theme.textMuted }]}>
+                    {t('pickupDate')}{formErrors.pickupDate ? ' *' : ''}
+                  </Text>
+                  <DatePicker
+                    value={pickupDate}
+                    onChange={(v) => { setPickupDate(v); if (formErrors.pickupDate) setFormErrors(e => ({ ...e, pickupDate: null })); }}
+                    placeholder={t('pickupDate')}
+                  />
+                  {formErrors.pickupDate && <Text style={s.fieldError}>⚠️ {formErrors.pickupDate}</Text>}
                   <Text style={[s.formLabel, { color: theme.textMuted }]}>📸 {t('cargoPhoto')} (до 5)</Text>
                   <PhotoPicker photos={cargoPhotos} onChange={setCargoPhotos} />
-                  <Text style={[s.formLabel, { color: theme.textMuted }]}>{t('truckType')} ← →</Text>
+                  <Text style={[s.formLabel, { color: formErrors.truckType ? '#EF4444' : theme.textMuted }]}>
+                    {t('truckType')}{formErrors.truckType ? ' *' : ''} ← →
+                  </Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
                     {TRUCK_KEYS.map(k => (
-                      <TouchableOpacity key={k} style={[s.typeCard, { backgroundColor: theme.card, borderColor: theme.border }, truckType === k && { backgroundColor: TCOLORS[k], borderColor: TCOLORS[k] }]} onPress={() => setTruckType(k)}>
+                      <TouchableOpacity key={k} style={[s.typeCard, { backgroundColor: theme.card, borderColor: theme.border }, truckType === k && { backgroundColor: TCOLORS[k], borderColor: TCOLORS[k] }]} onPress={() => { setTruckType(k); if (formErrors.truckType) setFormErrors(e => ({ ...e, truckType: null })); }}>
                         <Text style={{ fontSize: 22 }}>{TRUCK_ICONS[k]}</Text>
                         <Text style={[s.typeCardText, { color: theme.textSecondary }, truckType === k && { color: '#fff' }]}>{t(k)}</Text>
                       </TouchableOpacity>
                     ))}
                   </ScrollView>
+                  {formErrors.truckType && <Text style={s.fieldError}>⚠️ {formErrors.truckType}</Text>}
                   <TouchableOpacity
                     onPress={submitCargo}
                     style={{ backgroundColor: submitting ? '#374151' : '#22c55e', borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 14, opacity: submitting ? 0.7 : 1 }}
@@ -905,16 +1007,16 @@ const s = StyleSheet.create({
   clearBtn: { paddingHorizontal: 8 },
   saveRouteBtn: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, marginLeft: 4 },
   filterBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
-  activeChipsRow: { paddingHorizontal: 16, paddingBottom: 8, gap: 6 },
-  activeChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
-  activeChipText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  activeChipsRow: { paddingHorizontal: 16, paddingBottom: 8, gap: 6, alignItems: 'center' },
+  activeChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, maxWidth: 220 },
+  activeChipText: { color: '#fff', fontSize: 12, fontWeight: '700', flexShrink: 1 },
   activeChipClose: { color: '#fff', fontSize: 13, fontWeight: '800', marginLeft: 2 },
   filterSheet: { borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, paddingBottom: 40, maxHeight: '80%' },
   filterSheetTitle: { fontSize: 20, fontWeight: '800', marginBottom: 16 },
   filterSectionLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 1, marginTop: 14, marginBottom: 8 },
-  filterPillRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  filterPillWrap: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  filterPill: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5 },
+  filterPillRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', rowGap: 8 },
+  filterPillWrap: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', rowGap: 8 },
+  filterPill: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, alignSelf: 'flex-start' },
   filterPillText: { fontSize: 12, fontWeight: '600' },
   filterActions: { flexDirection: 'row', gap: 10, marginTop: 24 },
   filterActionBtn: { flex: 1, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
@@ -951,6 +1053,8 @@ const s = StyleSheet.create({
   typeCardText: { fontSize: 10, fontWeight: '600', textAlign: 'center' },
   currChip: { paddingHorizontal: 10, paddingVertical: 10, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   currChipText: { fontSize: 12, fontWeight: '700' },
+  payModeBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1.5, alignItems: 'center' },
+  payModeText: { fontSize: 13, fontWeight: '700' },
   fieldError: { color: '#EF4444', fontSize: 11, marginTop: -6, marginBottom: 8, fontWeight: '600' },
   photoPicker: { borderRadius: 14, padding: 20, borderWidth: 1, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12, minHeight: 120 },
   photoImg: { width: '100%', height: 140, borderRadius: 10 },

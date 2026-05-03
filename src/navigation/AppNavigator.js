@@ -35,6 +35,7 @@ import StatsScreen from '../screens/StatsScreen';
 import EditProfileScreen from '../screens/EditProfileScreen';
 import SecurityScreen from '../screens/SecurityScreen';
 import TripDetail from '../screens/TripDetail';
+import EditTripScreen from '../screens/EditTripScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -128,6 +129,7 @@ export default function AppNavigator() {
           <Stack.Screen name="EditProfile" component={EditProfileScreen} />
           <Stack.Screen name="Security" component={SecurityScreen} />
           <Stack.Screen name="TripDetail" component={TripDetail} />
+          <Stack.Screen name="EditTrip" component={EditTripScreen} />
           <Stack.Screen name="HowItWorks" component={HowItWorksScreen} />
           <Stack.Screen name="About" component={AboutScreen} />
         </>

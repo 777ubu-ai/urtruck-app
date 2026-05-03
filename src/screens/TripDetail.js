@@ -13,9 +13,19 @@ import { useVerificationGate } from '../components/VerificationGate';
 import { LEVELS, useAuth } from '../utils/AuthContext';
 import RatingModal from '../components/RatingModal';
 import { marketAPI } from '../utils/marketAPI';
+import { normalizeTrip, tripDisplay } from '../utils/normalizers';
 
 export default function TripDetail({ navigation, route }) {
-  const { trip, tripId, role, dealId: routeDealId } = route.params || {};
+  const { trip: rawTrip, tripId, role, dealId: routeDealId } = route.params || {};
+  const [serverTrip, setServerTrip] = React.useState(null);
+  // Canonical shape: TripDetail never reads raw fields directly. If we got
+  // a trip object via navigation, use it; otherwise fall back to whatever the
+  // server returned via getTrip(tripId). All field branching lives in
+  // tripDisplay() so this body is just rendering.
+  const trip = React.useMemo(
+    () => normalizeTrip(serverTrip || rawTrip),
+    [serverTrip, rawTrip]
+  );
   const { t } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
@@ -61,6 +71,15 @@ export default function TripDetail({ navigation, route }) {
     }
   }, [trip && trip.id, tripId, routeDealId]);
 
+  // When entering by tripId only (Orders → trip) — load full trip from API
+  // so departure/arrival/truckType render instead of empty placeholders.
+  React.useEffect(() => {
+    if (rawTrip || !tripId) return;
+    marketAPI.getTrip(tripId).then(d => {
+      if (d && !d.detail) setServerTrip(d);
+    }).catch(() => {});
+  }, [tripId, rawTrip]);
+
   const changeDealStatus = async (newStatus) => {
     if (!dealId || statusLoading) return;
     setStatusLoading(true);
@@ -79,7 +98,7 @@ export default function TripDetail({ navigation, route }) {
   };
 
   if (!trip && !tripId) return null;
-  if (!trip) {
+  if (!trip || !trip.id) {
     // No trip object passed — common when navigating from Orders by tripId.
     // Render minimal screen with the deal-block so the user is not stuck on
     // a blank page. Full TripDetail UI requires the trip object and is left
@@ -180,6 +199,7 @@ export default function TripDetail({ navigation, route }) {
 
   const accent = role === 'driver' ? '#2563EB' : '#F59E0B';
   const stats = routeStats(trip.from, trip.to, trip.transit);
+  const view = tripDisplay(trip, t);
 
   const onDelete = () => {
     const confirmDelete = () => {
@@ -197,7 +217,7 @@ export default function TripDetail({ navigation, route }) {
     }
   };
 
-  const isOwner = trip.driverName === 'Вы' || trip.driverName === 'You';
+  const isOwner = trip.isMine || trip.driverId === myUserId || trip.driverName === 'Вы' || trip.driverName === 'You';
 
   return (
     <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]} edges={['top']}>
@@ -220,17 +240,17 @@ export default function TripDetail({ navigation, route }) {
           <Text style={[s.sectionTitle, { color: theme.textMuted }]}>{t('trip_route').toUpperCase()}</Text>
           <View style={s.routeRow}>
             <View style={[s.dot, { backgroundColor: '#EF4444' }]} />
-            <Text style={[s.city, { color: theme.text }]}>{trip.from}</Text>
+            <Text style={[s.city, { color: theme.text }]}>{view.from}</Text>
           </View>
-          {trip.transit && (
+          {view.transit ? (
             <View style={s.routeRow}>
               <View style={[s.dot, { backgroundColor: '#2563EB' }]} />
-              <Text style={[s.transitCity, { color: theme.textSecondary }]}>{t('trip_via')} {trip.transit}</Text>
+              <Text style={[s.transitCity, { color: theme.textSecondary }]}>{t('trip_via')} {view.transit}</Text>
             </View>
-          )}
+          ) : null}
           <View style={s.routeRow}>
             <View style={[s.dot, { backgroundColor: '#22C55E' }]} />
-            <Text style={[s.city, { color: theme.text }]}>{trip.to}</Text>
+            <Text style={[s.city, { color: theme.text }]}>{view.to}</Text>
           </View>
 
           {stats && (
@@ -250,11 +270,11 @@ export default function TripDetail({ navigation, route }) {
           <Text style={[s.sectionTitle, { color: theme.textMuted }]}>{t('trip_dates').toUpperCase()}</Text>
           <View style={s.dateRow}>
             <Text style={[s.dateLabel, { color: theme.textMuted }]}>🚀 {t('trip_dep')}</Text>
-            <Text style={[s.dateValue, { color: theme.text }]}>{trip.departure || '—'}</Text>
+            <Text style={[s.dateValue, { color: theme.text }]} testID="trip-detail-departure">{view.departure}</Text>
           </View>
           <View style={s.dateRow}>
             <Text style={[s.dateLabel, { color: theme.textMuted }]}>🏁 {t('trip_arr')}</Text>
-            <Text style={[s.dateValue, { color: theme.text }]}>{trip.arrival || '—'}</Text>
+            <Text style={[s.dateValue, { color: theme.text }]} testID="trip-detail-arrival">{view.arrival}</Text>
           </View>
         </View>
 
@@ -263,18 +283,28 @@ export default function TripDetail({ navigation, route }) {
           <Text style={[s.sectionTitle, { color: theme.textMuted }]}>{t('trip_transport').toUpperCase()}</Text>
           <View style={s.dateRow}>
             <Text style={[s.dateLabel, { color: theme.textMuted }]}>{t('trip_truck_body')}</Text>
-            <Text style={[s.dateValue, { color: theme.text }]}>{trip.truckType ? (t(trip.truckType) !== trip.truckType ? t(trip.truckType) : trip.truckType) : '—'}</Text>
+            <Text style={[s.dateValue, { color: theme.text }]} testID="trip-detail-truck">{view.truckType}</Text>
           </View>
           <View style={s.dateRow}>
             <Text style={[s.dateLabel, { color: theme.textMuted }]}>{t('trip_driver')}</Text>
-            <Text style={[s.dateValue, { color: theme.text }]}>{trip.driverName || '—'}</Text>
+            <Text style={[s.dateValue, { color: theme.text }]}>{view.driverName}</Text>
           </View>
-          {trip.available_volume_m3 && (
+          {trip.availableM3 != null && (
             <View style={s.dateRow}>
               <Text style={[s.dateLabel, { color: theme.textMuted }]}>{t('trip_free')}</Text>
-              <Text style={[s.dateValue, { color: theme.text }]}>{trip.available_volume_m3} м³</Text>
+              <Text style={[s.dateValue, { color: theme.text }]}>{view.availableM3}</Text>
             </View>
           )}
+          {trip.capacityTons != null && (
+            <View style={s.dateRow}>
+              <Text style={[s.dateLabel, { color: theme.textMuted }]}>{t('weight')}</Text>
+              <Text style={[s.dateValue, { color: theme.text }]}>{view.capacityTons}</Text>
+            </View>
+          )}
+          <View style={s.dateRow}>
+            <Text style={[s.dateLabel, { color: theme.textMuted }]}>{t('price')}</Text>
+            <Text style={[s.dateValue, { color: theme.text }]}>{view.price}</Text>
+          </View>
         </View>
 
         {/* Timeline статусов */}
@@ -282,7 +312,7 @@ export default function TripDetail({ navigation, route }) {
           <Text style={[s.sectionTitle, { color: theme.text, marginBottom: 12 }]}>📍 {t('trip_status')}</Text>
           {TRIP_STATES.map((st, i) => {
             const info = TRIP_STATE_INFO[st];
-            const currentIdx = TRIP_STATES.indexOf(trip.trip_state || 'planned');
+            const currentIdx = TRIP_STATES.indexOf(trip.tripState || 'planned');
             const passed = i <= currentIdx;
             const active = i === currentIdx;
             return (
@@ -326,7 +356,7 @@ export default function TripDetail({ navigation, route }) {
                 const ok = await requireLevel(LEVELS.PHONE, 'contact');
                 if (!ok) return;
                 toast('💬 ' + t('chat_opened_toast'), 'success');
-                navigation.navigate('Chat', { partner: { name: trip.driverName, country: trip.country || 'KZ' }, role });
+                navigation.navigate('Chat', { partner: { name: view.driverName, country: trip.country || 'KZ' }, role });
               }}
             >
               <Text style={s.primaryBtnText}>💬 {t('write_driver')}</Text>
@@ -343,21 +373,32 @@ export default function TripDetail({ navigation, route }) {
             </TouchableOpacity>
           </>
         ) : isOwner ? (
-          <TouchableOpacity style={[s.dangerBtn, { borderColor: '#EF4444' }]} onPress={onDelete}>
-            <Text style={s.dangerBtnText}>🗑 {t('trip_delete')}</Text>
-          </TouchableOpacity>
+          <>
+            {(trip.status || 'active') === 'active' && !dealStatus && (
+              <TouchableOpacity
+                style={[s.primaryBtn, { backgroundColor: '#3B82F6' }]}
+                onPress={() => navigation.navigate('EditTrip', { tripId: trip.id, trip })}
+                testID="trip-detail-edit-btn"
+              >
+                <Text style={s.primaryBtnText}>✏️ {t('edit_btn')}</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={[s.dangerBtn, { borderColor: '#EF4444' }]} onPress={onDelete}>
+              <Text style={s.dangerBtnText}>🗑 {t('trip_delete')}</Text>
+            </TouchableOpacity>
+          </>
         ) : null}
       </ScrollView>
 
       {dealStatus ? renderDealBlock() : null}
 
-      <ShareModal visible={shareModal} onClose={() => setShareModal(false)} shareText={`UrTruck рейс: ${trip.from} → ${trip.to}`} driverId={trip.id} />
+      <ShareModal visible={shareModal} onClose={() => setShareModal(false)} shareText={`UrTruck рейс: ${view.from} → ${view.to}`} driverId={trip.id} />
       <RatingModal
         visible={rateModal}
         onClose={() => setRateModal(false)}
         targetId={trip.driverId || trip.id}
         targetRole="driver"
-        targetName={trip.driverName}
+        targetName={view.driverName}
         tripId={trip.id}
       />
       {Gate}

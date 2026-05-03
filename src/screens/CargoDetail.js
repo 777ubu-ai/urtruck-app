@@ -14,6 +14,8 @@ import { useVerificationGate } from '../components/VerificationGate';
 import { LEVELS, useAuth } from '../utils/AuthContext';
 import { marketAPI } from '../utils/marketAPI';
 import { reviewsAPI } from '../utils/reviews';
+import { normalizeCargo, cargoDisplay } from '../utils/normalizers';
+import { formatDateForDisplay } from '../utils/dateInput';
 
 const FLAGS = { KZ: '🇰🇿', UZ: '🇺🇿', RU: '🇷🇺', KG: '🇰🇬', CN: '🇨🇳', TJ: '🇹🇯', TR: '🇹🇷', TM: '🇹🇲', MN: '🇲🇳', DE: '🇩🇪', FR: '🇫🇷' };
 
@@ -26,7 +28,10 @@ const sanitizeDesc = (s) => {
 
 export default function CargoDetail({ navigation, route }) {
   const { cargo: paramCargo, cargoId, role, dealId: routeDealId } = route.params || {};
-  const cargo = paramCargo || {};
+  // Canonical cargo: never reach into raw fields directly. The pre-pilot
+  // mixed shapes (server snake_case, FeedScreen camelCase, store.js demo)
+  // all flow through normalizeCargo so renders never blow up on null.
+  const cargo = normalizeCargo(paramCargo) || {};
   const { t } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
@@ -39,6 +44,9 @@ export default function CargoDetail({ navigation, route }) {
   const [shareModal, setShareModal] = useState(false);
   const [bids, setBids] = useState([]);
   const [fullCargo, setFullCargo] = useState(null);
+  // `c` collapses (server fetch || nav params) to one canonical shape so all
+  // JSX paths read defensively. Closures (handlers, useEffect) reference `c`
+  // freshly via the latest render, like any other derived value.
   const [accepting, setAccepting] = useState(null);
   const [rejecting, setRejecting] = useState(null);
   const [cancelling, setCancelling] = useState(null);
@@ -53,7 +61,9 @@ export default function CargoDetail({ navigation, route }) {
   const [reviewSent, setReviewSent] = useState(false);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [acceptedDriverId, setAcceptedDriverId] = useState(null);
-  const cid = cargoId || cargo.id;
+  // Live canonical cargo (server overrides params when available)
+  const c = (fullCargo && normalizeCargo(fullCargo)) || cargo;
+  const cid = cargoId || c.id;
   // route.params.role is the authoritative side hint when CargoDetail is opened
   // from MyTripsScreen → Orders. The previous id-based comparison is unreliable
   // because session.user.id is a synthetic `u_<timestamp>` until AuthContext
@@ -62,9 +72,9 @@ export default function CargoDetail({ navigation, route }) {
     || (driverId && driverId === myUserId)
     || (acceptedDriverId && acceptedDriverId === myUserId);
   const isShipper = role === 'client' || role === 'shipper'
-    || !!cargo.isMine
+    || !!c.isMine
     || (shipperId && shipperId === myUserId);
-  if (!cid && !cargo.from) return null;
+  if (!cid && !c.from) return null;
 
   const loadBids = () => {
     if (!cid) return;
@@ -171,14 +181,14 @@ export default function CargoDetail({ navigation, route }) {
         if (found) applyDeal(found);
       }).catch(() => {});
     }
-  }, [cargo.id, cid, routeDealId]);
+  }, [c.id, cid, routeDealId]);
 
   const onDeleteCargo = () => {
     const doDel = async () => {
-      if (cargo._server) {
-        await marketAPI.deleteCargo(cargo.id).catch(() => {});
-      } else {
-        removeCargo(cargo.id);
+      if (c._server) {
+        await marketAPI.deleteCargo(c.id).catch(() => {});
+      } else if (c.id) {
+        removeCargo(c.id);
       }
       toast('🗑 Груз удалён', 'info');
       navigation.goBack();
@@ -213,46 +223,36 @@ export default function CargoDetail({ navigation, route }) {
     loadBids();
   };
 
-  // Use fullCargo from API if loaded, otherwise params
-  const c = fullCargo || cargo;
+  const view = cargoDisplay(c, t);
   const safePhotos = (c.photos || []).filter(p => typeof p === 'string' && !p.startsWith('data:') && p.length < 1000);
+  const dash = t('not_specified');
 
   return (
     <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]} edges={['top']}>
       <View style={s.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={[s.backBtn, { backgroundColor: theme.card, borderColor: theme.border }]}><Text style={[s.backText, { color: theme.text }]}>‹</Text></TouchableOpacity>
-        <Text style={[s.headerTitle, { color: theme.text }]} numberOfLines={1}>{c.from_city || c.from || cargo.from || '—'} → {c.to_city || c.to || cargo.to || '—'}</Text>
+        <Text style={[s.headerTitle, { color: theme.text }]} numberOfLines={1}>{view.from} → {view.to}</Text>
         <TouchableOpacity onPress={() => setShareModal(true)}><Text style={{ fontSize: 20 }}>↗️</Text></TouchableOpacity>
       </View>
       <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 0 }}>
         {safePhotos.length > 0 ? (
           <PhotoGallery photos={safePhotos} />
-        ) : cargo.photo && !cargo.photo.startsWith('data:') ? (
-          <View style={[s.photoWrap, { borderColor: theme.border }]}>
-            <Image source={{ uri: cargo.photo }} style={s.photo} />
-            <View style={s.photoBadge}><Text style={s.photoBadgeText}>📸 {t('cargoPhoto')}</Text></View>
-          </View>
         ) : null}
         <View style={[s.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <View style={s.routeRow}>
-            <View style={[s.dot, { backgroundColor: '#EF4444' }]} /><Text style={[s.city, { color: theme.text }]}>{cargo.from}</Text>
+            <View style={[s.dot, { backgroundColor: '#EF4444' }]} /><Text style={[s.city, { color: theme.text }]}>{view.from}</Text>
             <View style={[s.line, { backgroundColor: theme.border }]} /><Text>🚛</Text><View style={[s.line, { backgroundColor: theme.border }]} />
-            <Text style={[s.city, { color: theme.text }]}>{cargo.to}</Text><View style={[s.dot, { backgroundColor: '#22C55E' }]} />
+            <Text style={[s.city, { color: theme.text }]}>{view.to}</Text><View style={[s.dot, { backgroundColor: '#22C55E' }]} />
           </View>
           <View style={s.grid}>
             {(() => {
-              const stats = routeStats(cargo.from, cargo.to);
-              const desc = sanitizeDesc(cargo.cargo);
+              const stats = routeStats(c.from, c.to);
+              const desc = sanitizeDesc(c.cargoDesc);
               const items = [];
-              if (desc) items.push([t('cargoDesc'), desc]);
-              if (cargo.tons > 0 || cargo.m3 > 0) {
-                const parts = [];
-                if (cargo.tons > 0) parts.push(cargo.tons + 'т');
-                if (cargo.m3 > 0) parts.push(cargo.m3 + 'м³');
-                items.push([t('weight') + '/' + t('volume'), parts.join(' · ')]);
-              }
-              items.push([t('truckType'), t(cargo.type) || cargo.type || '—']);
-              if (cargo.pickup) items.push([t('pickupDate'), cargo.pickup]);
+              items.push([t('cargoDesc'), desc || dash]);
+              items.push([t('weight') + '/' + t('volume'), view.weightVol]);
+              items.push([t('truckType'), view.cargoType]);
+              items.push([t('pickupDate'), c.pickupDate ? formatDateForDisplay(c.pickupDate) : dash]);
               if (stats) {
                 items.push([t('distance'), stats.km + ' км']);
                 items.push([t('delivery_time'), '~' + stats.days + ' дн.']);
@@ -265,8 +265,8 @@ export default function CargoDetail({ navigation, route }) {
           </View>
         </View>
         <View style={s.priceBlock}>
-          <View><Text style={s.priceLabel}>{t('price')}</Text><Text style={s.priceValue}>{cargo.price > 0 ? `$${cargo.price}` : t('negotiable')}</Text></View>
-          {!cargo.isMine && (
+          <View><Text style={s.priceLabel}>{t('price')}</Text><Text style={s.priceValue}>{view.price}</Text></View>
+          {!c.isMine && (
             <TouchableOpacity style={s.bidBtn} onPress={async () => {
               const ok = await requireLevel(LEVELS.PHONE, 'bid');
               if (ok) setBidModal(true);
@@ -312,7 +312,7 @@ export default function CargoDetail({ navigation, route }) {
                     {b.status === 'accepted' ? '✅ ' + t('driver_chosen')
                       : b.status === 'rejected' ? '❌ ' + t('bid_rejected')
                       : isCancelled ? '⊘ ' + t('bid_cancelled')
-                      : isCountered ? '🔁 ' + (cargo.isMine ? t('counter_sent_status') : t('bid_countered'))
+                      : isCountered ? '🔁 ' + (c.isMine ? t('counter_sent_status') : t('bid_countered'))
                       : b.time}
                   </Text>
                   {isCountered && b.counterAmount ? (
@@ -326,7 +326,7 @@ export default function CargoDetail({ navigation, route }) {
                 <Text style={s.bidAmt}>${b.amount}</Text>
 
                 {/* Cargo owner — pending: Reject / Counter / Accept / Open chat */}
-                {cargo.isMine && b.status === 'pending' && !hasAccepted && (
+                {c.isMine && b.status === 'pending' && !hasAccepted && (
                   <View style={{ flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     <TouchableOpacity
                       style={[s.rejectBtn, rejecting === b.id && { opacity: 0.5 }]}
@@ -388,7 +388,7 @@ export default function CargoDetail({ navigation, route }) {
                 )}
 
                 {/* Cargo owner — countered: Reject / Open chat (no direct accept) */}
-                {cargo.isMine && isCountered && (
+                {c.isMine && isCountered && (
                   <View style={{ flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     <TouchableOpacity
                       style={[s.rejectBtn, rejecting === b.id && { opacity: 0.5 }]}
@@ -640,7 +640,7 @@ export default function CargoDetail({ navigation, route }) {
       {/* Legacy "Open chat with driver" button removed: deal-block above
           already renders a single chat CTA ("Чат по заказу") for both sides
           to avoid duplicate buttons. */}
-      {cargo.isMine && !chatRoomId && (
+      {c.isMine && !chatRoomId && (
         <View style={{ padding: 16, paddingTop: 0 }}>
           <TouchableOpacity style={s.deleteMyBtn} onPress={onDeleteCargo}>
             <Text style={s.deleteMyBtnText}>🗑 {t('delete_cargo')}</Text>
@@ -652,13 +652,13 @@ export default function CargoDetail({ navigation, route }) {
         onClose={() => { setBidModal(false); setBidModalMode('create'); setEditingBid(null); }}
         onSubmit={handleBid}
         mode={bidModalMode}
-        currentPrice={cargo.price}
-        cargoId={cargo.id}
+        currentPrice={c.price}
+        cargoId={c.id}
         bidId={editingBid?.id}
         initialAmount={editingBid?.amount}
         initialMessage={editingBid?.message}
       />
-      <ShareModal visible={shareModal} onClose={() => setShareModal(false)} shareText={'UrTruck: ' + cargo.cargo + ' ' + cargo.from + '→' + cargo.to + ' $' + cargo.price} driverId={cargo.id} />
+      <ShareModal visible={shareModal} onClose={() => setShareModal(false)} shareText={`UrTruck: ${c.cargoDesc || ''} ${view.from}→${view.to} ${view.price}`} driverId={c.id} />
       {Gate}
     </SafeAreaView>
   );

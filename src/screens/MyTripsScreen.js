@@ -7,6 +7,7 @@ import { useToast } from '../components/Toast';
 import { marketAPI } from '../utils/marketAPI';
 import { formatStatus, formatTruckType, formatBids } from '../utils/i18n';
 import { formatDateForDisplay } from '../utils/dateInput';
+import { formatPrice, normalizeTrip } from '../utils/normalizers';
 import EmptyState from '../components/ui/EmptyState';
 import BidModal from '../components/BidModal';
 import { colors, spacing, radius, typography } from '../theme/theme';
@@ -88,13 +89,22 @@ export default function MyTripsScreen({ navigation, route }) {
     const isCargo = !!item.cargo_desc;
     const badge = isCargo ? t('badge_cargo') : t('badge_trip');
     const badgeColor = isCargo ? '#F59E0B' : '#3B82F6';
+    // Edit is allowed only for own ACTIVE trips. Backend will also block any
+    // attempt with an accepted deal — but hiding the button is a much better
+    // UX than letting the user tap → wait → see "edit denied".
+    const canEditTrip = !isCargo && (item.status || 'active') === 'active';
 
     return (
       <TouchableOpacity
         testID={isCargo ? 'my-cargo-card' : 'my-trip-card'}
         style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]}
         onPress={() => {
-          if (isCargo) navigation.navigate('CargoDetail', { cargo: { ...item, from, to, cargo: desc, _server: true }, cargoId: item.id, role });
+          if (isCargo) {
+            navigation.navigate('CargoDetail', { cargo: { ...item, from, to, cargo: desc, _server: true }, cargoId: item.id, role });
+          } else {
+            // Tap on own trip card → open canonical TripDetail
+            navigation.navigate('TripDetail', { trip: normalizeTrip({ ...item, isMine: true, _server: true }), tripId: item.id, role });
+          }
         }}
       >
         <View style={s.cardTop}>
@@ -111,9 +121,21 @@ export default function MyTripsScreen({ navigation, route }) {
           <Text style={[s.metaItem, { color: theme.textDim }]}>{formatDateForDisplay(item.departure || item.created_at)}</Text>
         </View>
         <View style={s.cardBottom}>
-          <Text style={s.price}>{(item.price || 0) > 0 ? `$${item.price}` : t('negotiable')}</Text>
+          <Text style={s.price}>{formatPrice(item.price, item.currency, t)}</Text>
           {item.bids_count > 0 && <Text style={[s.bidsLabel, { color: theme.textMuted }]}>{formatBids(item.bids_count)}</Text>}
         </View>
+        {canEditTrip && (
+          <TouchableOpacity
+            testID="my-trip-edit-btn"
+            style={s.editBtn}
+            onPress={(e) => {
+              e.stopPropagation && e.stopPropagation();
+              navigation.navigate('EditTrip', { tripId: item.id, trip: normalizeTrip({ ...item, isMine: true, _server: true }) });
+            }}
+          >
+            <Text style={s.editBtnText}>✏️ {t('edit_btn')}</Text>
+          </TouchableOpacity>
+        )}
       </TouchableOpacity>
     );
   };
@@ -536,4 +558,6 @@ const s = StyleSheet.create({
   rejectBtnText: { color: '#EF4444', ...typography.title },
   miniBtn: { borderWidth: 1, borderRadius: radius.sm, paddingVertical: 6, paddingHorizontal: 10 },
   miniBtnText: { fontSize: 11, fontWeight: '700' },
+  editBtn: { borderWidth: 1, borderColor: '#3B82F6', borderRadius: 10, paddingVertical: 8, alignItems: 'center', marginTop: spacing.sm },
+  editBtnText: { color: '#3B82F6', fontSize: 12, fontWeight: '700' },
 });

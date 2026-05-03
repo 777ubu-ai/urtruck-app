@@ -1,4 +1,5 @@
 """Server-side Chat API. Сообщения сохраняются в БД."""
+import os
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -15,18 +16,23 @@ chat_router = APIRouter()
 
 # Специальные юзеры
 SUPPORT_ID = "urtruck-support-bot"
-SUPPORT_NAME = "UrTruck Support"
+SUPPORT_NAME = "Поддержка UrTruck"
 VOLODYA_ID = "ai-volodya-test"
 VOLODYA_NAME = "ИИ Володя (Тест)"
 
+# Demo bots (Володя and friends) leak into production unless explicitly
+# enabled. Required by the chat hygiene step: real users must not see test
+# personas, but devs can flip the flag to keep the chat plumbing test-friendly.
+ENABLE_DEMO_CHAT = os.getenv("ENABLE_DEMO_CHAT", "false").lower() in ("1", "true", "yes")
+
 
 def _ensure_special_users():
-    """Создаёт Support и Володю в БД если нет."""
+    """Создаёт Support (always) и Володю (только если ENABLE_DEMO_CHAT)."""
+    specials = [(SUPPORT_ID, SUPPORT_NAME, "support", None)]
+    if ENABLE_DEMO_CHAT:
+        specials.append((VOLODYA_ID, VOLODYA_NAME, "driver", "tent"))
     with get_conn() as c:
-        for uid, name, role, vtype in [
-            (SUPPORT_ID, SUPPORT_NAME, "support", None),
-            (VOLODYA_ID, VOLODYA_NAME, "driver", "tent"),
-        ]:
+        for uid, name, role, vtype in specials:
             exists = c.execute("SELECT 1 FROM drivers_registration WHERE id = ?", (uid,)).fetchone()
             if not exists:
                 c.execute(
@@ -34,6 +40,16 @@ def _ensure_special_users():
                     "VALUES (?, ?, ?, ?, 'approved', 3, ?)",
                     (uid, f"bot_{uid[:8]}", name, role, vtype),
                 )
+        # If the flag is off but Володя already exists from earlier runs,
+        # rename his row to a non-public placeholder so /contacts and chat
+        # listings don't show the demo persona. We deliberately do not delete
+        # the row — old chat_messages.sender_id refs would orphan.
+        if not ENABLE_DEMO_CHAT:
+            c.execute(
+                "UPDATE drivers_registration SET full_name = ?, status = 'archived' "
+                "WHERE id = ?",
+                ("(скрытый тестовый бот)", VOLODYA_ID),
+            )
 
 
 def _count_bot_messages_in_room(room_id: str, bot_id: str) -> int:
@@ -154,8 +170,8 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
     if body.to_user_id == SUPPORT_ID:
         _maybe_support_reply(room_id, user)
 
-    # ИИ Володя (тестовый водитель): контекстный ответ
-    if body.to_user_id == VOLODYA_ID:
+    # ИИ Володя (тестовый водитель): только если ENABLE_DEMO_CHAT.
+    if body.to_user_id == VOLODYA_ID and ENABLE_DEMO_CHAT:
         _volodya_reply(room_id, body.text or "", user)
 
     return {"ok": True, "room_id": room_id}
@@ -189,6 +205,10 @@ def my_rooms(user=Depends(require_level(1))):
             p = c.execute("SELECT full_name, phone FROM drivers_registration WHERE id = ?", (room["partner_id"],)).fetchone()
             if p:
                 room["partner_name"] = p["full_name"] or p["phone"]
+    # Hide demo bot rooms in production. Old chat history is preserved on disk
+    # — we just don't surface it through /rooms unless ENABLE_DEMO_CHAT=true.
+    if not ENABLE_DEMO_CHAT:
+        rooms = [r for r in rooms if r.get("partner_id") != VOLODYA_ID]
     return {"rooms": rooms}
 
 
@@ -219,13 +239,18 @@ def get_messages(room_id: str, limit: int = 100, offset: int = 0, user=Depends(r
 
 @chat_router.get("/contacts")
 def special_contacts():
-    """Список постоянных контактов: Support + ИИ Володя."""
-    return {"contacts": [
+    """Список постоянных контактов. По умолчанию — только Support.
+    Володя возвращается только при ENABLE_DEMO_CHAT=true."""
+    contacts = [
         {"id": SUPPORT_ID, "name": SUPPORT_NAME, "role": "support", "icon": "🛡", "online": True,
          "desc": "Поддержка — ответим на любой вопрос"},
-        {"id": VOLODYA_ID, "name": VOLODYA_NAME, "role": "driver", "icon": "🚛", "online": True,
-         "desc": "Тестовый водитель — проверьте как работает чат"},
-    ]}
+    ]
+    if ENABLE_DEMO_CHAT:
+        contacts.append(
+            {"id": VOLODYA_ID, "name": VOLODYA_NAME, "role": "driver", "icon": "🚛", "online": True,
+             "desc": "Тестовый водитель — проверьте как работает чат"},
+        )
+    return {"contacts": contacts}
 
 
 @chat_router.get("/unread")

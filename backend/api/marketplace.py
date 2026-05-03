@@ -4,6 +4,8 @@
 """
 import sys
 import json
+import re
+from datetime import datetime, timedelta
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -16,6 +18,89 @@ from api.verification_gate import require_level, get_user
 from api.push import send_to_user
 
 mp_router = APIRouter()
+
+
+# ═══ Public-feed hygiene ═══
+#
+# Tokens we never want surfacing in the public cargos/trips list. Pre-pilot
+# data accumulated test artefacts (Тестер, Баке, "трусы", QA, demo, mock).
+# Filter is applied AFTER the SQL fetch so the admin endpoints / DB queries
+# can still see everything for moderation. Owner ALWAYS sees own listings via
+# /market/my regardless of these filters.
+DIRTY_TOKENS = (
+    "test", "demo", "seed", "mock", "qa", "playwright",
+    "тест", "тестер", "баке", "володя", "автотест", "трусы",
+    "белик", "серик",
+)
+# Date threshold below which an item must justify itself with a future
+# pickup_date — anything older than this with no pickup is treated as stale
+# pre-pilot leftover.
+PUBLIC_CUTOFF_DATE = "2026-05-01"
+
+
+def _parse_iso_date(s):
+    """Try several common shapes ('YYYY-MM-DD', 'DD.MM.YYYY', ISO timestamp)."""
+    if not s:
+        return None
+    s = str(s).strip()
+    if not s:
+        return None
+    fmts = ("%Y-%m-%d", "%d.%m.%Y", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S")
+    for fmt in fmts:
+        try:
+            return datetime.strptime(s[:len(fmt.replace('%', '')) + 4], fmt).date()
+        except Exception:
+            continue
+    # Last resort: regex YYYY-MM-DD prefix
+    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", s)
+    if m:
+        try:
+            return datetime(int(m.group(1)), int(m.group(2)), int(m.group(3))).date()
+        except Exception:
+            return None
+    return None
+
+
+def _is_dirty_text(*fields) -> bool:
+    """Cheap substring match for moderation tokens. Case-insensitive, RU+EN."""
+    blob = " ".join(str(f or "") for f in fields).lower()
+    return any(tok in blob for tok in DIRTY_TOKENS)
+
+
+def _public_cargo_ok(row: dict, today=None) -> bool:
+    """Decide whether a row should appear in the *public* cargo feed.
+
+    Hides:
+      - dirty tokens in cargo_desc/from_city/to_city/cargo_type
+      - active cargos created before PUBLIC_CUTOFF_DATE without a future pickup
+      - items whose pickup_date is more than 24h in the past
+      - items with no pickup_date AND created more than 2 days ago
+    Never deletes. Owner-side queries (/market/my) bypass this filter.
+    """
+    today = today or datetime.utcnow().date()
+
+    if _is_dirty_text(row.get("cargo_desc"), row.get("from_city"),
+                      row.get("to_city"), row.get("cargo_type")):
+        return False
+
+    pickup = _parse_iso_date(row.get("pickup_date"))
+    created = _parse_iso_date(row.get("created_at"))
+    cutoff = _parse_iso_date(PUBLIC_CUTOFF_DATE)
+
+    # Stale pickup_date: more than 24h in the past → hide
+    if pickup and pickup < (today - timedelta(days=1)):
+        return False
+
+    # Created before cutoff → must have a still-valid future pickup, otherwise hide
+    if created and cutoff and created < cutoff:
+        if not pickup or pickup < today:
+            return False
+
+    # No pickup_date AND older than 2 days → hide
+    if not pickup and created and created < (today - timedelta(days=2)):
+        return False
+
+    return True
 
 
 def _init():
@@ -42,6 +127,12 @@ def _init():
         ]:
             if col not in cols:
                 c.execute(ddl)
+        # Currency on trips/cargos: USD by default, never NULL.
+        for table in ("trips", "cargos"):
+            tcols = {r["name"] for r in c.execute(f"PRAGMA table_info({table})").fetchall()}
+            if "currency" not in tcols:
+                c.execute(f"ALTER TABLE {table} ADD COLUMN currency TEXT DEFAULT 'USD'")
+                c.execute(f"UPDATE {table} SET currency = 'USD' WHERE currency IS NULL")
         c.commit()
 
 _init()
@@ -78,6 +169,22 @@ class TripIn(BaseModel):
     capacity_tons: Optional[float] = 20
     available_m3: Optional[float] = 82
     price: Optional[int] = 0
+    currency: Optional[str] = "USD"
+    departure: Optional[str] = None
+    arrival: Optional[str] = None
+
+
+class TripPatchIn(BaseModel):
+    """Partial update of an own active trip — every field is optional;
+    null/None means 'do not touch'. Currency defaults stay USD."""
+    from_city: Optional[str] = None
+    to_city: Optional[str] = None
+    transit: Optional[str] = None
+    truck_type: Optional[str] = None
+    capacity_tons: Optional[float] = None
+    available_m3: Optional[float] = None
+    price: Optional[int] = None
+    currency: Optional[str] = None
     departure: Optional[str] = None
     arrival: Optional[str] = None
 
@@ -164,6 +271,7 @@ def list_cargos(
         total = c.execute(f"SELECT COUNT(*) FROM cargos WHERE {where_sql}", params).fetchone()[0]
 
     result = []
+    today = datetime.utcnow().date()
     for r in rows:
         d = dict(r)
         try:
@@ -172,8 +280,13 @@ def list_cargos(
             d["photos"] = []
         # НЕ отдаём owner_phone — контакт закрыт гейтом
         d.pop("owner_phone", None)
+        # Public-feed hygiene (skipped only when caller explicitly asks for it,
+        # e.g. an admin tool passing show_demo=true)
+        if not show_demo and not _public_cargo_ok(d, today=today):
+            continue
         result.append(d)
-    return {"cargos": result, "total": total}
+    # Recompute total to match what the caller actually sees
+    return {"cargos": result, "total": len(result)}
 
 
 @mp_router.get("/cargos/{cargo_id}")
@@ -208,18 +321,85 @@ def delete_cargo(cargo_id: str, user=Depends(require_level(1))):
 def create_trip(body: TripIn, user=Depends(require_level(1))):
     if not body.from_city or not body.to_city:
         raise HTTPException(status_code=400, detail="Укажите маршрут: откуда и куда")
+    currency = (body.currency or "USD").upper()
+    if currency not in ("USD", "KZT", "RUB", "CNY", "UZS"):
+        currency = "USD"
     tid = new_id()
     with get_conn() as c:
         c.execute("""
             INSERT INTO trips (id, driver_id, driver_phone, driver_name,
               from_city, to_city, transit, truck_type,
-              capacity_tons, available_m3, price, departure, arrival)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+              capacity_tons, available_m3, price, currency, departure, arrival)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (tid, user["id"], user.get("phone"), user.get("full_name"),
               body.from_city, body.to_city, body.transit, body.truck_type,
-              body.capacity_tons, body.available_m3, body.price,
+              body.capacity_tons, body.available_m3, body.price, currency,
               body.departure, body.arrival))
     return {"id": tid, "ok": True}
+
+
+@mp_router.patch("/trips/{trip_id}")
+def update_trip(trip_id: str, body: TripPatchIn, user=Depends(require_level(1))):
+    """Partial update of own active trip. Locked once a deal exists.
+
+    - 403 if not owner; 404 if trip missing
+    - 409 if status != 'active' or there's a non-cancelled deal on this trip
+    - Validates fields the same way create_trip does (route required if
+      provided, currency in whitelist, price >= 0)
+    - Returns the updated row
+    """
+    with get_conn() as c:
+        row = c.execute("SELECT * FROM trips WHERE id = ?", (trip_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Рейс не найден")
+        trip = dict(row)
+        if trip["driver_id"] != user["id"]:
+            raise HTTPException(status_code=403, detail="Можно редактировать только свой рейс")
+        if trip["status"] != "active":
+            raise HTTPException(status_code=409, detail=f"Рейс нельзя редактировать в статусе {trip['status']}")
+        deal = c.execute(
+            "SELECT id FROM deals WHERE trip_id = ? AND status NOT IN ('cancelled') LIMIT 1",
+            (trip_id,),
+        ).fetchone()
+        if deal:
+            raise HTTPException(status_code=409, detail="Нельзя редактировать — есть принятая сделка")
+
+        updates = []
+        params = []
+        for field in ("from_city", "to_city", "transit", "truck_type", "departure", "arrival"):
+            v = getattr(body, field)
+            if v is not None:
+                if field in ("from_city", "to_city") and isinstance(v, str) and not v.strip():
+                    raise HTTPException(status_code=400, detail=f"{field} не может быть пустым")
+                updates.append(f"{field} = ?")
+                params.append(v.strip() if isinstance(v, str) else v)
+        if body.capacity_tons is not None:
+            if body.capacity_tons < 0:
+                raise HTTPException(status_code=400, detail="capacity_tons должен быть >= 0")
+            updates.append("capacity_tons = ?"); params.append(body.capacity_tons)
+        if body.available_m3 is not None:
+            if body.available_m3 < 0:
+                raise HTTPException(status_code=400, detail="available_m3 должен быть >= 0")
+            updates.append("available_m3 = ?"); params.append(body.available_m3)
+        if body.price is not None:
+            if body.price < 0:
+                raise HTTPException(status_code=400, detail="price должен быть >= 0")
+            updates.append("price = ?"); params.append(body.price)
+        if body.currency is not None:
+            cur = (body.currency or "USD").upper()
+            if cur not in ("USD", "KZT", "RUB", "CNY", "UZS"):
+                raise HTTPException(status_code=400, detail="currency: USD/KZT/RUB/CNY/UZS")
+            updates.append("currency = ?"); params.append(cur)
+
+        if not updates:
+            raise HTTPException(status_code=400, detail="Нечего обновлять")
+
+        updates.append("updated_at = CURRENT_TIMESTAMP")
+        params.append(trip_id)
+        c.execute(f"UPDATE trips SET {', '.join(updates)} WHERE id = ?", params)
+        updated = dict(c.execute("SELECT * FROM trips WHERE id = ?", (trip_id,)).fetchone())
+
+    return {"ok": True, "trip": updated}
 
 
 @mp_router.get("/trips")
@@ -228,6 +408,7 @@ def list_trips(
     from_city: str = "",
     to_city: str = "",
     truck_type: str = "",
+    show_demo: bool = False,
     limit: int = 50,
     offset: int = 0,
 ):
@@ -247,14 +428,20 @@ def list_trips(
     with get_conn() as c:
         rows = c.execute(f"""
             SELECT id, driver_id, driver_name, from_city, to_city, transit,
-                   truck_type, capacity_tons, available_m3, price,
+                   truck_type, capacity_tons, available_m3, price, currency,
                    departure, arrival, status, created_at
             FROM trips WHERE {where_sql}
             ORDER BY created_at DESC LIMIT ? OFFSET ?
         """, (*params, limit, offset)).fetchall()
-        total = c.execute(f"SELECT COUNT(*) FROM trips WHERE {where_sql}", params).fetchone()[0]
 
-    return {"trips": [dict(r) for r in rows], "total": total}
+    trips = [dict(r) for r in rows]
+    if not show_demo:
+        trips = [
+            t for t in trips
+            if not _is_dirty_text(t.get("driver_name"), t.get("from_city"),
+                                  t.get("to_city"), t.get("truck_type"))
+        ]
+    return {"trips": trips, "total": len(trips)}
 
 
 @mp_router.get("/trips/{trip_id}")
@@ -310,7 +497,7 @@ def create_bid(body: BidIn, user=Depends(require_level(1))):
 
 
 @mp_router.get("/bids")
-def list_bids(cargo_id: str = "", trip_id: str = "", user_id: str = ""):
+def list_bids(cargo_id: str = "", trip_id: str = "", user_id: str = "", show_demo: bool = False):
     where = []
     params = []
     if cargo_id:
@@ -330,7 +517,17 @@ def list_bids(cargo_id: str = "", trip_id: str = "", user_id: str = ""):
             SELECT * FROM bids WHERE {' AND '.join(where)}
             ORDER BY created_at DESC LIMIT 100
         """, params).fetchall()
-    return {"bids": [dict(r) for r in rows]}
+    bids = [dict(r) for r in rows]
+    # Hide dirty/test bidders from public bid listings (Тестер, Баке, etc.).
+    # Also drop cancelled/rejected bids from public counters so a clean cargo's
+    # detail screen doesn't carry stale rejected proposals from pre-pilot data.
+    if not show_demo:
+        bids = [
+            b for b in bids
+            if not _is_dirty_text(b.get("bidder_name"), b.get("bidder_phone"))
+            and b.get("status") not in ("cancelled",)
+        ]
+    return {"bids": bids}
 
 
 # ═══ My Dashboard ═══
