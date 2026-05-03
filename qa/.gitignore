@@ -4,3 +4,6 @@ reports/qa-report-*.json
 reports/_state-*.json
 reports/_tokens-*.json
 screenshots/
+
+reports/_active-run-id.txt
+reports/_tokens-*.json
