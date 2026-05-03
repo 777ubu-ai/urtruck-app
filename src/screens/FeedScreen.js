@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, Modal, TextInput, Alert, Platform, ScrollView, Image, RefreshControl, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { useI18n } from '../utils/useI18n';
 import { formatBids, formatStatus, formatTruckType, t as tGlobal } from '../utils/i18n';
@@ -20,6 +21,7 @@ import { useVerificationGate } from '../components/VerificationGate';
 import { LEVELS, useAuth } from '../utils/AuthContext';
 import { SkeletonCard } from '../components/Skeleton';
 import { IS_BETA } from '../config/supabase';
+import { normalizeDateInput } from '../utils/dateInput';
 
 const TCOLORS = {
   tent: '#2563EB', ref: '#0891B2', platform: '#D97706', auto: '#7C3AED', izoterm: '#059669',
@@ -143,6 +145,14 @@ export default function FeedScreen({ navigation, route }) {
   };
 
   useEffect(() => { loadFromServer(); }, [isDriver, filterType]);
+
+  // Refetch when user comes back to feed (e.g. after publishing a trip/cargo)
+  // so the new card appears immediately without manual pull-to-refresh.
+  useFocusEffect(
+    React.useCallback(() => {
+      loadFromServer();
+    }, [isDriver, filterType])
+  );
 
   // Серверный поиск при вводе маршрута "Алматы→Москва"
   useEffect(() => {
@@ -297,26 +307,39 @@ export default function FeedScreen({ navigation, route }) {
   const submitTrip = async () => {
     if (submitting) return;
     const tripErrors = [];
-    if (!tripFrom) tripErrors.push('Укажите город отправления');
-    if (!tripTo) tripErrors.push('Укажите город назначения');
-    if (!tripDateFrom) tripErrors.push('Укажите дату выезда');
+    const fromTrim = (tripFrom || '').trim();
+    const toTrim = (tripTo || '').trim();
+    const transitTrim = (tripTransit || '').trim();
+    if (!fromTrim) tripErrors.push(t('val_from_required'));
+    if (!toTrim) tripErrors.push(t('val_to_required'));
+    if (!tripDateFrom) tripErrors.push(t('val_departure_required'));
+    // Normalize dates without timezone shift; reject malformed input.
+    const departureNorm = normalizeDateInput(tripDateFrom);
+    const arrivalNorm = tripDateTo ? normalizeDateInput(tripDateTo) : null;
+    if (tripDateFrom && !departureNorm) tripErrors.push(t('val_date_invalid'));
+    if (tripDateTo && !arrivalNorm) tripErrors.push(t('val_date_invalid'));
+    if (departureNorm && arrivalNorm && arrivalNorm < departureNorm) {
+      tripErrors.push(t('val_arrival_before_departure'));
+    }
     if (tripErrors.length > 0) { showOk(tripErrors[0], 'error', 4000); return; }
     setSubmitting(true);
     try {
+      // Price: trim, parse, allow 0 → "Договорная" on the card.
+      const priceNum = Math.max(0, parseInt(String(price || '').trim().replace(/\s/g, ''), 10) || 0);
       const tripPayload = {
-        from_city: tripFrom, to_city: tripTo, transit: tripTransit,
+        from_city: fromTrim, to_city: toTrim, transit: transitTrim || null,
         truck_type: truckType || 'tent',
         capacity_tons: Number(weight) || 20,
         available_m3: Number(vol) || 82,
-        price: Number(price) || 0,
-        departure: tripDateFrom || null,
-        arrival: tripDateTo || null,
+        price: priceNum,
+        departure: departureNorm,
+        arrival: arrivalNorm,
       };
       const r = await marketAPI.createTrip(tripPayload);
       if (r.ok) {
         showOk('✓ Маршрут опубликован', 'success', 4000);
         setShowForm(false);
-        setTripFrom(''); setTripTo(''); setTripTransit(''); setTripDateFrom(''); setTripDateTo('');
+        setTripFrom(''); setTripTo(''); setTripTransit(''); setTripDateFrom(''); setTripDateTo(''); setPrice('');
         // Navigate with justCreated so MyTrips shows it even if /my fails
         const justCreated = { id: r.id, ...tripPayload, status: 'active', created_at: new Date().toISOString() };
         setTimeout(() => navigation.navigate('MyTripsList', { role, initialTab: 'my', justCreatedTrip: justCreated }), 1000);
@@ -657,9 +680,9 @@ export default function FeedScreen({ navigation, route }) {
                     <CityInput value={tripFrom} onChange={setTripFrom} placeholder={'📍 ' + t('fromCountry')} testID="trip-from-input" />
                   </View>
                   <View style={{ zIndex: 100, marginBottom: 4 }}>
-                    <CityInput value={tripTo} onChange={setTripTo} placeholder={'🏁 ' + t('toCountry')} testID="trip-to-input" />
+                    <CityInput value={tripTo} onChange={setTripTo} placeholder={'🏁 ' + t('to_required_hint')} testID="trip-to-input" />
                   </View>
-                  <Text style={[s.formLabel, { color: theme.textMuted }]}>{t('transit')}</Text>
+                  <Text style={[s.formLabel, { color: theme.textMuted, fontSize: 12 }]}>{t('transit_secondary_hint')}</Text>
                   <View style={{ zIndex: 150, marginBottom: 4 }}>
                     <CityInput value={tripTransit} onChange={setTripTransit} placeholder={'🔄 ' + t('transitOptional')} testID="trip-transit-input" />
                   </View>
@@ -689,11 +712,12 @@ export default function FeedScreen({ navigation, route }) {
                   <Text style={[s.formLabel, { color: theme.textMuted }]}>{t('price')}</Text>
                   <TextInput
                     style={[s.input, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border, marginBottom: 10 }]}
-                    placeholder={t('price_optional_placeholder')}
+                    placeholder={t('price_example_placeholder')}
                     placeholderTextColor={theme.textMuted}
                     keyboardType="numeric"
+                    inputMode="numeric"
                     value={price}
-                    onChangeText={setPrice}
+                    onChangeText={(v) => setPrice(String(v || '').replace(/[^\d]/g, ''))}
                     testID="trip-price-input"
                   />
                   <View style={s.hintBox}><Text style={[s.hintText, { color: theme.textMuted }]}>💡 {t('youPublish')}</Text></View>

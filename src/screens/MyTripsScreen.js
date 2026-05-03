@@ -6,6 +6,7 @@ import { useTheme } from '../utils/ThemeContext';
 import { useToast } from '../components/Toast';
 import { marketAPI } from '../utils/marketAPI';
 import { formatStatus, formatTruckType, formatBids } from '../utils/i18n';
+import { formatDateForDisplay } from '../utils/dateInput';
 import EmptyState from '../components/ui/EmptyState';
 import BidModal from '../components/BidModal';
 import { colors, spacing, radius, typography } from '../theme/theme';
@@ -107,7 +108,7 @@ export default function MyTripsScreen({ navigation, route }) {
         <View style={s.cardMeta}>
           <Text style={[s.metaItem, { color: theme.textDim }]}>{formatTruckType(item.truck_type || item.cargo_type)}</Text>
           <Text style={s.metaDot}>·</Text>
-          <Text style={[s.metaItem, { color: theme.textDim }]}>{(item.created_at || '').slice(0, 10)}</Text>
+          <Text style={[s.metaItem, { color: theme.textDim }]}>{formatDateForDisplay(item.departure || item.created_at)}</Text>
         </View>
         <View style={s.cardBottom}>
           <Text style={s.price}>{(item.price || 0) > 0 ? `$${item.price}` : t('negotiable')}</Text>
@@ -168,7 +169,7 @@ export default function MyTripsScreen({ navigation, route }) {
         <Text style={[s.route, { color: theme.text }]}>{item.from_city} → {item.to_city}</Text>
         <View style={s.cardBottom}>
           <Text style={s.price}>{(item.amount || 0) > 0 ? `$${item.amount}` : t('negotiable')}</Text>
-          <Text style={[s.metaItem, { color: theme.textDim }]}>{(item.created_at || '').slice(0, 10)}</Text>
+          <Text style={[s.metaItem, { color: theme.textDim }]}>{formatDateForDisplay(item.departure || item.created_at)}</Text>
         </View>
         {nextStep ? (
           <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 4 }}>

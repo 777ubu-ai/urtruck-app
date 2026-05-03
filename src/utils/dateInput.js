@@ -13,3 +13,32 @@ export const isValidDate = (s) => {
   const d = +m[1], mo = +m[2], y = +m[3];
   return d >= 1 && d <= 31 && mo >= 1 && mo <= 12 && y >= 2026 && y <= 2030;
 };
+
+// Нормализация ввода даты в стабильный YYYY-MM-DD без timezone shift.
+// Принимает "DD.MM.YYYY" или "YYYY-MM-DD" и возвращает "YYYY-MM-DD".
+// Никогда не вызывает new Date() — иначе локаль/UTC сдвинут число на ±1.
+export const normalizeDateInput = (s) => {
+  if (!s) return null;
+  const v = String(s).trim();
+  let m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(v);
+  if (m) {
+    const d = m[1].padStart(2, '0');
+    const mo = m[2].padStart(2, '0');
+    return `${m[3]}-${mo}-${d}`;
+  }
+  return null;
+};
+
+// Форматирование даты для UI: "YYYY-MM-DD" → "DD.MM.YYYY".
+// Принимает также "DD.MM.YYYY" — возвращает как есть.
+export const formatDateForDisplay = (s) => {
+  if (!s) return '';
+  const v = String(s).trim();
+  let m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v);  // тоже срезает T... если ISO-time
+  if (m) return `${m[3]}.${m[2]}.${m[1]}`;
+  m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(v);
+  if (m) return `${m[1].padStart(2, '0')}.${m[2].padStart(2, '0')}.${m[3]}`;
+  return v;
+};
