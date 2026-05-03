@@ -1,6 +1,7 @@
-// UrTruck Service Worker · v4 — network-first для HTML/JS, cache-first для остального
-const CACHE = 'urtruck-v5-market';
-const STATIC_CACHE = 'urtruck-static-v5';
+// UrTruck Service Worker · v6 — network-first для HTML/JS, cache-first для статики,
+// API never cached (otherwise stale demo cards survive deploys).
+const CACHE = 'urtruck-v6-market';
+const STATIC_CACHE = 'urtruck-static-v6';
 
 self.addEventListener('install', (e) => {
   // Сразу активируем новый SW без ожидания закрытия вкладок
@@ -26,8 +27,11 @@ self.addEventListener('fetch', (e) => {
 
   const url = new URL(request.url);
 
-  // Security API — всегда сеть, не кешируем
-  if (url.pathname.startsWith('/security/api/')) return;
+  // Any backend API call — always network, never cached. Without this,
+  // /api/v1/market/trips and similar JSON responses fall into the cache-first
+  // branch below and stale entries (e.g. removed test drivers) keep being
+  // served from disk after backend cleanup.
+  if (url.pathname.startsWith('/security/api/') || url.pathname.startsWith('/api/')) return;
 
   // HTML и JS — network-first (чтобы обновлялся bundle без залипания)
   if (isHTMLorJS(url)) {

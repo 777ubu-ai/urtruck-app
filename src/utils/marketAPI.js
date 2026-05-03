@@ -27,9 +27,16 @@ export const marketAPI = {
   },
 
   async listCargos({ status = 'active', fromCity = '', toCity = '', cargoType = '', limit = 50, offset = 0 } = {}) {
-    const params = new URLSearchParams({ status, from_city: fromCity, to_city: toCity, cargo_type: cargoType, limit, offset });
-    const r = await fetch(`${BASE}/cargos?${params}`);
-    return r.json();
+    // Never inject demo data on failure — empty list + serverError flag so
+    // FeedScreen renders the proper empty state instead of stale fallback.
+    try {
+      const params = new URLSearchParams({ status, from_city: fromCity, to_city: toCity, cargo_type: cargoType, limit, offset });
+      const r = await fetch(`${BASE}/cargos?${params}`);
+      if (!r.ok) return { cargos: [], total: 0, serverError: true, status: r.status };
+      return r.json();
+    } catch (e) {
+      return { cargos: [], total: 0, serverError: true };
+    }
   },
 
   async getCargo(id) {
@@ -52,9 +59,14 @@ export const marketAPI = {
   },
 
   async listTrips({ status = 'active', fromCity = '', toCity = '', truckType = '', limit = 50 } = {}) {
-    const params = new URLSearchParams({ status, from_city: fromCity, to_city: toCity, truck_type: truckType, limit });
-    const r = await fetch(`${BASE}/trips?${params}`);
-    return r.json();
+    try {
+      const params = new URLSearchParams({ status, from_city: fromCity, to_city: toCity, truck_type: truckType, limit });
+      const r = await fetch(`${BASE}/trips?${params}`);
+      if (!r.ok) return { trips: [], total: 0, serverError: true, status: r.status };
+      return r.json();
+    } catch (e) {
+      return { trips: [], total: 0, serverError: true };
+    }
   },
 
   async getTrip(id) {
@@ -182,9 +194,14 @@ export const marketAPI = {
 
   // ─── Drivers (approved, для клиентов) ───
   async listDrivers({ truckType = '' } = {}) {
-    const params = new URLSearchParams({ truck_type: truckType });
-    const r = await fetch(`${BASE}/drivers?${params}`);
-    return r.json();
+    try {
+      const params = new URLSearchParams({ truck_type: truckType });
+      const r = await fetch(`${BASE}/drivers?${params}`);
+      if (!r.ok) return { drivers: [], total: 0, serverError: true, status: r.status };
+      return r.json();
+    } catch (e) {
+      return { drivers: [], total: 0, serverError: true };
+    }
   },
 
   // ─── Deals ───

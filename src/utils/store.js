@@ -1,6 +1,9 @@
-// Простое in-memory хранилище для опубликованных рейсов/грузов/чатов
-// (для демо-режима без БД)
-
+// In-memory client-side cache for trips/cargos/chats actually published in
+// the current session. Production runtime starts fully empty: real data
+// always comes from /api/v1/market/* via marketAPI.js. Demo seed lists were
+// removed from default state to stop polluting the public feed; if a future
+// dev flow needs sample data, gate it behind a build-time `__DEV__` check
+// AND an explicit env flag — never import demo data in production bundles.
 const listeners = new Set();
 const notify = () => listeners.forEach(cb => cb());
 
@@ -9,16 +12,8 @@ export const subscribe = (cb) => {
   return () => listeners.delete(cb);
 };
 
-// Рейсы водителей с системой согласия на трекинг
-let trips = [
-  { id: 't1', from: 'Москва, RU', to: 'Иу, CN', transit: 'Казахстан',
-    departure: '15.04.2026', arrival: '25.04.2026', truckType: 'tent',
-    status: 'loading', driverName: 'Ержан К.',
-    tracking_allowed: false,        // согласие водителя
-    tracking_request: null,          // 'pending' | 'approved' | 'denied'
-    tracking_requested_by: null,     // user_id клиента
-  },
-];
+// Production default: no fake trips. addTrip() pushes user-published items.
+let trips = [];
 export const getTrips = () => trips;
 export const getTrip = (id) => trips.find(t => t.id === id);
 export const TRIP_STATES = ['planned', 'picked_up', 'in_transit', 'delivered'];
@@ -107,23 +102,15 @@ let cargos = [];
 export const getCargos = () => cargos;
 export const addCargo = (c) => { cargos = [{ ...c, id: 'c' + Date.now(), bids: 0, isMine: true, createdAt: Date.now() }, ...cargos]; notify(); };
 
-// Чаты
-let chats = [
-  { id: 'ch1', partnerName: 'Бахтиёр У.', partnerCountry: 'UZ', lastMessage: 'Выезжаю сегодня', time: '15м', unread: 2, online: true, status: 'sent' },
-  { id: 'ch2', partnerName: 'Ержан К.', partnerCountry: 'KZ', lastMessage: 'OK, договорились', time: '2ч', unread: 0, online: false, status: 'read' },
-  { id: 'ch3', partnerName: 'Asia Import', partnerCountry: 'KZ', lastMessage: 'Фото груза пришлите', time: '1д', unread: 5, online: true, status: 'sent' },
-  { id: 'ch4', partnerName: 'Wang Lei', partnerCountry: 'CN', lastMessage: '货物已到达', time: '3д', unread: 0, online: false, status: 'read' },
-  { id: 'ch5', partnerName: 'Marat T.', partnerCountry: 'KG', lastMessage: '🎤 0:15', time: '5д', unread: 1, online: false, status: 'sent' },
-];
+// Production default: no fake chats. ChatsListScreen pulls real rooms from
+// /api/v1/chat/rooms; this local cache is only for transient UI state.
+let chats = [];
 export const getChats = () => chats;
 export const markChatRead = (id) => { chats = chats.map(c => c.id === id ? { ...c, unread: 0, status: 'read' } : c); notify(); };
 
-// Архив сделок
-let archive = [
-  { id: 'a1', from: 'Иу, CN', to: 'Алматы, KZ', cargo: 'Одежда', price: 2800, rating: 5, date: '15.03.2026', status: 'completed' },
-  { id: 'a2', from: 'Москва, RU', to: 'Ташкент, UZ', cargo: 'Металл', price: 3200, rating: 5, date: '02.03.2026', status: 'completed' },
-  { id: 'a3', from: 'Шэньчжэнь, CN', to: 'Новосибирск, RU', cargo: 'Электроника', price: 5500, rating: 4, date: '18.02.2026', status: 'completed' },
-];
+// Production default: no fake archived deals. Real history comes from
+// /api/v1/market/deals (delivered status filter).
+let archive = [];
 export const getArchive = () => archive;
 
 // Чёрный список
@@ -192,14 +179,9 @@ export const stopTracking = () => {
 
 export const getTracking = () => liveTracking;
 
-// Уведомления
-let notifications = [
-  { id: 'n1', type: 'bid', icon: '💰', title: 'Новая ставка', text: 'Бахтиёр У. предложил $3400 за груз Иу→Алматы', time: '5м', read: false },
-  { id: 'n2', type: 'message', icon: '💬', title: 'Новое сообщение', text: 'Ержан К.: Выезжаю сегодня', time: '15м', read: false },
-  { id: 'n3', type: 'status', icon: '🚚', title: 'Статус рейса', text: 'Москва→Иу: пересёк границу Казахстана', time: '2ч', read: false },
-  { id: 'n4', type: 'bid_accepted', icon: '✓', title: 'Ставка принята', text: 'Клиент принял вашу ставку $3500', time: '4ч', read: true },
-  { id: 'n5', type: 'review', icon: '⭐', title: 'Новый отзыв', text: 'Asia Import: 5★ "Всё чётко, рекомендую"', time: '1д', read: true },
-];
+// Production default: no fake notifications. Real notifications arrive via
+// /api/v1/notifications and addNotification() runtime calls.
+let notifications = [];
 export const getNotifications = () => notifications;
 export const addNotification = (n) => {
   const entry = { ...n, id: 'n' + Date.now(), time: 'сейчас', read: false };
@@ -220,14 +202,9 @@ export const markNotificationRead = (id) => { notifications = notifications.map(
 export const markAllNotificationsRead = () => { notifications = notifications.map(n => ({ ...n, read: true })); notify(); };
 export const getUnreadNotifications = () => notifications.filter(n => !n.read).length;
 
-// Транзакции (история кошелька)
-let transactions = [
-  { id: 'tx1', type: 'deal_income', amount: 3200, currency: 'USD', desc: 'Иу → Алматы · Электросамокаты', date: '14.03.2026', status: 'completed' },
-  { id: 'tx2', type: 'contact_purchase', amount: -2, currency: 'USD', desc: 'Контакт: Бахтиёр У.', date: '12.03.2026', status: 'completed' },
-  { id: 'tx3', type: 'deal_income', amount: 4500, currency: 'USD', desc: 'Гуанчжоу → Ташкент · Текстиль', date: '02.03.2026', status: 'completed' },
-  { id: 'tx4', type: 'topup', amount: 100, currency: 'USD', desc: 'Пополнение Visa', date: '01.03.2026', status: 'completed' },
-  { id: 'tx5', type: 'contact_purchase', amount: -2, currency: 'USD', desc: 'Контакт: Ержан К.', date: '28.02.2026', status: 'completed' },
-];
+// Production default: no fake wallet transactions. Real history is loaded
+// per-user from server when wallet API is wired.
+let transactions = [];
 export const getTransactions = () => transactions;
 export const addTransaction = (t) => { transactions = [{ ...t, id: 'tx' + Date.now() }, ...transactions]; notify(); };
 

@@ -112,15 +112,15 @@ PY
 
 echo "3. Загрузка на сервер (current + v$NEW_VERSION)..."
 # Используем rsync (или scp с ssh-ключом)
-rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" dist/ "${SERVER}:${REMOTE_DIR}/" 2>/dev/null || \
-  scp -o StrictHostKeyChecking=no -r dist/* "${SERVER}:${REMOTE_DIR}/"
+rsync -avz --delete -e "ssh -i ~/.ssh/urtruck -o IdentitiesOnly=yes -o StrictHostKeyChecking=no" dist/ "${SERVER}:${REMOTE_DIR}/" 2>/dev/null || \
+  scp -i ~/.ssh/urtruck -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -r dist/* "${SERVER}:${REMOTE_DIR}/"
 # Версионированная копия
-ssh -o StrictHostKeyChecking=no "$SERVER" "mkdir -p $VERSIONS_DIR/v$NEW_VERSION" 2>/dev/null || true
-rsync -avz -e "ssh -o StrictHostKeyChecking=no" dist/ "${SERVER}:${VERSIONS_DIR}/v$NEW_VERSION/" 2>/dev/null || \
-  scp -o StrictHostKeyChecking=no -r dist/* "${SERVER}:${VERSIONS_DIR}/v$NEW_VERSION/"
+ssh -i ~/.ssh/urtruck -o IdentitiesOnly=yes -o StrictHostKeyChecking=no "$SERVER" "mkdir -p $VERSIONS_DIR/v$NEW_VERSION" 2>/dev/null || true
+rsync -avz -e "ssh -i ~/.ssh/urtruck -o IdentitiesOnly=yes -o StrictHostKeyChecking=no" dist/ "${SERVER}:${VERSIONS_DIR}/v$NEW_VERSION/" 2>/dev/null || \
+  scp -i ~/.ssh/urtruck -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -r dist/* "${SERVER}:${VERSIONS_DIR}/v$NEW_VERSION/"
 
 echo "4. Установка прав + очистка старых версий..."
-ssh -o StrictHostKeyChecking=no "$SERVER" "chmod -R 755 $REMOTE_DIR $VERSIONS_DIR && cd $VERSIONS_DIR && ls -dt v* | tail -n +11 | xargs rm -rf 2>/dev/null; echo 'Versions:' && ls -d v* | sort -V | tail -5" 2>/dev/null || true
+ssh -i ~/.ssh/urtruck -o IdentitiesOnly=yes -o StrictHostKeyChecking=no "$SERVER" "chmod -R 755 $REMOTE_DIR $VERSIONS_DIR && cd $VERSIONS_DIR && ls -dt v* | tail -n +11 | xargs rm -rf 2>/dev/null; echo 'Versions:' && ls -d v* | sort -V | tail -5" 2>/dev/null || true
 
 echo "5. Проверка..."
 SITE=$(curl -s -o /dev/null -w "%{http_code}" "http://${SERVER_HOST}:8080/")

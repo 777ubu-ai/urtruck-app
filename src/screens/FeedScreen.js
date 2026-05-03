@@ -628,7 +628,7 @@ export default function FeedScreen({ navigation, route }) {
                 {loadError ? 'Не удалось загрузить. Проверьте интернет.' :
                  minRating > 0 ? `Нет ${minRating}★+ результатов.` :
                  filterType ? 'По фильтру ничего не найдено.' :
-                 t('no_active_cargos')}
+                 isDriver ? t('no_active_cargos') : t('no_active_trips')}
               </Text>
               {loadError && (
                 <TouchableOpacity
