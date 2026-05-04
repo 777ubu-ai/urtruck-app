@@ -73,7 +73,53 @@ jobs:
           sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" "source ~/.nvm/nvm.sh && pm2 restart urtruck-security-api"
 
       - name: Health check
+        env:
+          # Public domain served by nginx, which proxies / → :8080 (web)
+          # and /security/* → :8001 (backend). The runner can't reach the
+          # private :8001 port directly (firewall), so we go through the
+          # public domain. Override with secret PUBLIC_BASE_URL if needed.
+          PUBLIC_BASE_URL: ${{ secrets.PUBLIC_BASE_URL || 'https://urtruck.kz' }}
         run: |
-          sleep 5
-          curl -sf http://${{ secrets.SERVER_HOST }}:8080/ > /dev/null && echo "✅ Frontend OK"
-          curl -sf http://${{ secrets.SERVER_HOST }}:8001/health > /dev/null && echo "✅ Backend OK"
+          set -e
+          # Wait for restarts to settle (PM2 + nginx pickup)
+          sleep 8
+
+          # --- Frontend: public bundle must serve a non-empty HTML ---
+          ok=0
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            body=$(curl -sS --max-time 10 "$PUBLIC_BASE_URL/" || true)
+            case "$body" in
+              *"<html"*|*"<!DOCTYPE"*|*"<!doctype"*) ok=1; break;;
+            esac
+            echo "frontend probe $i — empty/error, retrying"
+            sleep 4
+          done
+          if [ "$ok" != "1" ]; then
+            echo "::error::Frontend did not serve HTML at $PUBLIC_BASE_URL/"
+            exit 1
+          fi
+          echo "✅ Frontend OK"
+
+          # --- Backend: /security/api/v1/system/info must return JSON with otp field ---
+          ok=0
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            body=$(curl -fsS --max-time 10 "$PUBLIC_BASE_URL/security/api/v1/system/info" || true)
+            if echo "$body" | grep -q '"otp"'; then ok=1; break; fi
+            echo "backend probe $i — no otp field, retrying"
+            sleep 4
+          done
+          if [ "$ok" != "1" ]; then
+            echo "::error::Backend system/info did not return expected JSON at $PUBLIC_BASE_URL/security/api/v1/system/info"
+            exit 1
+          fi
+          echo "✅ Backend system/info OK"
+
+          # --- Marketplace cargos must return JSON with cargos field ---
+          body=$(curl -fsS --max-time 10 "$PUBLIC_BASE_URL/security/api/v1/market/cargos?status=active&limit=1" || true)
+          echo "$body" | grep -q '"cargos"' || { echo "::error::cargos endpoint missing 'cargos' field"; exit 1; }
+          echo "✅ Cargos list OK"
+
+          # --- Marketplace trips must return JSON with trips field ---
+          body=$(curl -fsS --max-time 10 "$PUBLIC_BASE_URL/security/api/v1/market/trips?status=active&limit=1" || true)
+          echo "$body" | grep -q '"trips"' || { echo "::error::trips endpoint missing 'trips' field"; exit 1; }
+          echo "✅ Trips list OK"

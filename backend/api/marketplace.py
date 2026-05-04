@@ -39,19 +39,27 @@ PUBLIC_CUTOFF_DATE = "2026-05-01"
 
 
 def _parse_iso_date(s):
-    """Try several common shapes ('YYYY-MM-DD', 'DD.MM.YYYY', ISO timestamp)."""
+    """Try several common shapes ('YYYY-MM-DD', 'DD.MM.YYYY', ISO timestamp).
+
+    Earlier this function sliced the input via `s[:len(fmt.replace('%','')) + 4]`,
+    which silently truncated 'YYYY-MM-DD' to 9 chars and dropped the second
+    digit of the day. A cargo with pickup '2026-05-25' parsed as date(2026,5,2)
+    and was hidden from the public feed as "stale". The fix below feeds each
+    format the full string; the trailing regex fallback still handles ISO
+    timestamps that carry extra characters past the date.
+    """
     if not s:
         return None
     s = str(s).strip()
     if not s:
         return None
-    fmts = ("%Y-%m-%d", "%d.%m.%Y", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S")
+    fmts = ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d", "%d.%m.%Y")
     for fmt in fmts:
         try:
-            return datetime.strptime(s[:len(fmt.replace('%', '')) + 4], fmt).date()
+            return datetime.strptime(s, fmt).date()
         except Exception:
             continue
-    # Last resort: regex YYYY-MM-DD prefix
+    # Fallback: extract a YYYY-MM-DD prefix from longer ISO timestamps
     m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", s)
     if m:
         try:
