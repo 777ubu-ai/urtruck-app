@@ -156,6 +156,7 @@ class CargoIn(BaseModel):
     weight_tons: Optional[float] = 0
     volume_m3: Optional[float] = 0
     price: Optional[int] = 0
+    currency: Optional[str] = "USD"
     pickup_date: Optional[str] = None
     photos: Optional[List[str]] = None
 
@@ -222,16 +223,22 @@ def create_cargo(body: CargoIn, user=Depends(require_level(1))):
         raise HTTPException(status_code=400, detail="Укажите откуда и куда")
     if not body.cargo_desc:
         raise HTTPException(status_code=400, detail="Укажите что везти")
+    # Same currency whitelist as create_trip — anything else falls back to USD
+    # so a typo never produces NULL/empty in the cargos.currency column.
+    currency = (body.currency or "USD").upper()
+    if currency not in ("USD", "KZT", "RUB", "CNY", "UZS"):
+        currency = "USD"
     cid = new_id()
     with get_conn() as c:
         c.execute("""
             INSERT INTO cargos (id, owner_id, owner_phone, owner_name,
               from_city, to_city, cargo_desc, cargo_type,
-              weight_tons, volume_m3, price, pickup_date, photos)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+              weight_tons, volume_m3, price, currency, pickup_date, photos)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (cid, user["id"], user.get("phone"), user.get("full_name"),
               body.from_city, body.to_city, body.cargo_desc, body.cargo_type,
-              body.weight_tons, body.volume_m3, body.price, body.pickup_date,
+              body.weight_tons, body.volume_m3, body.price, currency,
+              body.pickup_date,
               json.dumps(body.photos or [], ensure_ascii=False)))
 
     # Push подписчикам маршрута
@@ -271,8 +278,8 @@ def list_cargos(
     with get_conn() as c:
         rows = c.execute(f"""
             SELECT id, owner_id, from_city, to_city, cargo_desc, cargo_type,
-                   weight_tons, volume_m3, price, pickup_date, photos, bids_count,
-                   status, created_at
+                   weight_tons, volume_m3, price, currency, pickup_date, photos,
+                   bids_count, status, created_at
             FROM cargos WHERE {where_sql}
             ORDER BY created_at DESC LIMIT ? OFFSET ?
         """, (*params, limit, offset)).fetchall()
