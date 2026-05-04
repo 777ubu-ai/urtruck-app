@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, Modal, RefreshControl, ScrollView } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, Modal, RefreshControl, ScrollView, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { useI18n } from '../utils/useI18n';
@@ -19,7 +19,17 @@ import FilterChips from '../components/ui/v1/FilterChips';
 import BellBadge from '../components/ui/v1/BellBadge';
 import { useUnreadNotifications } from '../utils/useUnreadNotifications';
 import BottomSheet from '../components/ui/v1/BottomSheet';
+import DatePicker from '../components/DatePicker';
 import { v1Colors, v1AccentFor } from '../theme/designV1';
+
+// DD.MM.YYYY ↔ YYYY-MM-DD bridges. DatePicker stores DD.MM.YYYY
+// (matches CreateCargo / CreateTrip and the rest of the app); the
+// public-feed filter compares against ISO strings on items.pickup or
+// items.departure, so we convert at the boundary.
+const ddmmToIso = (s) => {
+  const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(String(s || '').trim());
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
+};
 
 const TCOLORS = {
   // Brand v3: tent (default truck) maps to brand emerald. ref/izoterm keep
@@ -78,7 +88,14 @@ export default function FeedScreen({ navigation, route }) {
   const [sortBy, setSortBy] = useState('newest');
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState(false);
-  const [filterOpen, setFilterOpen] = useState(false);
+  // activeFilter is the chip that's currently expanded into a bottom-sheet.
+  // null → no sheet open. One sheet at a time, scoped to its own state slice.
+  const [activeFilter, setActiveFilter] = useState(null); // 'dir' | 'date' | 'body' | 'price' | null
+  const [dirFrom, setDirFrom] = useState('');
+  const [dirTo, setDirTo] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const closeFilter = () => setActiveFilter(null);
 
   // Загрузка данных С СЕРВЕРА (главное изменение!)
   const loadFromServer = async () => {
@@ -227,6 +244,29 @@ export default function FeedScreen({ navigation, route }) {
     if (minRating > 0) {
       data = data.filter(d => (d.rating || 0) >= minRating);
     }
+    // Direction filter (city contains, case-insensitive)
+    if (dirFrom.trim()) {
+      const q = dirFrom.toLowerCase().trim();
+      data = data.filter(d => (d.from || '').toLowerCase().includes(q));
+    }
+    if (dirTo.trim()) {
+      const q = dirTo.toLowerCase().trim();
+      data = data.filter(d => (d.to || '').toLowerCase().includes(q));
+    }
+    // Date window — driver feed sees cargos.pickup_date, client feed
+    // sees trips.departure (mapped earlier into d.pickup or d.departure
+    // if available). DatePicker stores DD.MM.YYYY; convert both sides
+    // to ISO so a string compare works as a date compare.
+    const dateField = (d) => d.pickup || d.departure || '';
+    const ymd = (s) => /^\d{4}-\d{2}-\d{2}/.test(String(s || '')) ? String(s).slice(0, 10) : '';
+    const fromIso = ddmmToIso(dateFrom);
+    const toIso = ddmmToIso(dateTo);
+    if (fromIso) {
+      data = data.filter(d => { const v = ymd(dateField(d)); return v && v >= fromIso; });
+    }
+    if (toIso) {
+      data = data.filter(d => { const v = ymd(dateField(d)); return v && v <= toIso; });
+    }
     if (search.trim()) {
       const q = search.toLowerCase().trim();
       // Body-type synonyms: "тнт" → tent, "реф" → ref, "конт" → cont20/cont40.
@@ -252,7 +292,7 @@ export default function FeedScreen({ navigation, route }) {
     else if (sortBy === 'rating') data.sort((a, b) => (b.rating || 0) - (a.rating || 0));
     // 'newest' — по умолчанию (как в массиве)
     return data;
-  }, [currentData, filterType, search, sortBy, minRating]);
+  }, [currentData, filterType, search, sortBy, minRating, dirFrom, dirTo, dateFrom, dateTo]);
 
   // Form state and submit handlers for trip / cargo creation moved to
   // dedicated screens (CreateTripScreen / CreateCargoScreen). FeedScreen
@@ -337,16 +377,16 @@ export default function FeedScreen({ navigation, route }) {
   };
 
   // Filter chips (macros 07/08): Direction / Date / Body / Price.
-  // Tapping any of them currently opens the unified filter sheet — until
-  // each gets its own dedicated picker, this preserves the existing UX
-  // while matching the new visual.
+  // Each chip opens its OWN bottom sheet — never the unified "all filters"
+  // sheet. Direction edits dirFrom/dirTo, Date edits dateFrom/dateTo, Body
+  // edits filterType, Price edits sortBy.
   const accentColor = isDriver ? v1Colors.driver : v1Colors.cargoOwner;
   const v1Accent = v1AccentFor(isDriver ? 'driver' : 'client');
   const chips = [
-    { key: 'dir',   icon: '🧭', label: t('filter_direction'), active: !!search.includes('→'), onPress: () => setFilterOpen(true) },
-    { key: 'date',  icon: '📅', label: t('filter_date'),      active: false,                    onPress: () => setFilterOpen(true) },
-    { key: 'body',  icon: '🚛', label: t('filter_body'),      active: !!filterType,             onPress: () => setFilterOpen(true) },
-    { key: 'price', icon: '💰', label: t('filter_price'),     active: sortBy !== 'newest',      onPress: () => setFilterOpen(true) },
+    { key: 'dir',   icon: '🧭', label: t('filter_direction'), active: !!(dirFrom || dirTo),       onPress: () => setActiveFilter('dir') },
+    { key: 'date',  icon: '📅', label: t('filter_date'),      active: !!(dateFrom || dateTo),     onPress: () => setActiveFilter('date') },
+    { key: 'body',  icon: '🚛', label: t('filter_body'),      active: !!filterType,               onPress: () => setActiveFilter('body') },
+    { key: 'price', icon: '💰', label: t('filter_price'),     active: sortBy !== 'newest',        onPress: () => setActiveFilter('price') },
   ];
 
   return (
@@ -428,89 +468,149 @@ export default function FeedScreen({ navigation, route }) {
         </ScrollView>
       )}
 
-      {/* v1 BottomSheet фильтров (single-sheet UX): clicking any of the 4
-          chips Направление / Дата / Кузов / Цена opens this same sheet.
-          Splitting into 4 dedicated sheets is a follow-up — current sheet
-          covers all four sections in one scroll, which is fine on mobile. */}
-      <BottomSheet visible={filterOpen} onClose={() => setFilterOpen(false)} title={`⚙️ ${t('filter_title')}`}>
-        <>
-              {/* Секция Рейтинг */}
-              {!isDriver && (
-                <>
-                  <Text style={[s.filterSectionLabel, { color: theme.textMuted }]}>{t('filter_rating')}</Text>
-                  <View style={s.filterPillRow}>
-                    {[{ k: 0, l: t('filter_all') }, { k: 3, l: '3+' }, { k: 4, l: '4+' }, { k: 5, l: '5' }].map(opt => (
-                      <TouchableOpacity
-                        key={opt.k}
-                        style={[s.filterPill, { backgroundColor: theme.card, borderColor: theme.border }, minRating === opt.k && { backgroundColor: '#FBBF24', borderColor: '#FBBF24' }]}
-                        onPress={() => setMinRating(opt.k)}
-                      >
-                        <Text style={[s.filterPillText, { color: theme.textSecondary }, minRating === opt.k && { color: '#0C0A09' }]}>
-                          {opt.k > 0 ? `⭐ ${opt.l}` : opt.l}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </>
-              )}
+      {/* Direction sheet — only city-from / city-to inputs. */}
+      <BottomSheet visible={activeFilter === 'dir'} onClose={closeFilter} title={`🧭 ${t('filter_direction')}`}>
+        <Text style={[s.filterSectionLabel, { color: theme.textMuted }]}>{t('from')}</Text>
+        <TextInput
+          value={dirFrom}
+          onChangeText={setDirFrom}
+          placeholder={t('create_field_from_placeholder')}
+          placeholderTextColor={v1Colors.textMuted}
+          style={[s.filterInput, { backgroundColor: theme.card, borderColor: theme.border, color: theme.text }]}
+        />
+        <Text style={[s.filterSectionLabel, { color: theme.textMuted, marginTop: 12 }]}>{t('to')}</Text>
+        <TextInput
+          value={dirTo}
+          onChangeText={setDirTo}
+          placeholder={t('create_field_to_placeholder')}
+          placeholderTextColor={v1Colors.textMuted}
+          style={[s.filterInput, { backgroundColor: theme.card, borderColor: theme.border, color: theme.text }]}
+        />
+        <View style={s.filterActions}>
+          <TouchableOpacity
+            style={[s.filterActionBtn, { backgroundColor: v1Colors.surface, borderColor: v1Colors.border, borderWidth: 1 }]}
+            onPress={() => { setDirFrom(''); setDirTo(''); }}
+          >
+            <Text style={[s.filterActionText, { color: v1Colors.textMuted }]}>{t('filter_reset')}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[s.filterActionBtn, { backgroundColor: accentColor }]} onPress={closeFilter}>
+            <Text style={[s.filterActionText, { color: '#0A0A0A' }]}>{t('filter_apply')}</Text>
+          </TouchableOpacity>
+        </View>
+      </BottomSheet>
 
-              {/* Секция Тип кузова */}
-              <Text style={[s.filterSectionLabel, { color: theme.textMuted }]}>{t('filter_truck_type')}</Text>
-              <View style={s.filterPillWrap}>
-                <TouchableOpacity
-                  style={[s.filterPill, { backgroundColor: theme.card, borderColor: theme.border }, !filterType && { backgroundColor: accent, borderColor: accent }]}
-                  onPress={() => setFilterType(null)}
-                >
-                  <Text style={[s.filterPillText, { color: theme.textSecondary }, !filterType && { color: isDriver ? '#fff' : '#0C0A09' }]}>{t('filter_all')}</Text>
-                </TouchableOpacity>
-                {TRUCK_KEYS.map(k => (
-                  <TouchableOpacity
-                    key={k}
-                    style={[s.filterPill, { backgroundColor: theme.card, borderColor: theme.border }, filterType === k && { backgroundColor: TCOLORS[k], borderColor: TCOLORS[k] }]}
-                    onPress={() => setFilterType(filterType === k ? null : k)}
-                  >
-                    <Text style={[s.filterPillText, { color: theme.textSecondary }, filterType === k && { color: '#fff' }]}>
-                      {TRUCK_ICONS[k]} {t(k)}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+      {/* Date sheet — real calendar/date-picker for both ends of the
+          window. DatePicker uses native <input type="date"> on web and
+          a custom Modal calendar on native, so the chip never falls
+          back to a plain TextInput. testID lets QA target it. */}
+      <BottomSheet visible={activeFilter === 'date'} onClose={closeFilter} title={`📅 ${t('filter_date')}`}>
+        <View testID="filter-date-sheet">
+          <Text style={[s.filterSectionLabel, { color: theme.textMuted }]}>{t('filter_date_from')}</Text>
+          <DatePicker value={dateFrom} onChange={setDateFrom} placeholder="ДД.ММ.ГГГГ" />
+          <Text style={[s.filterSectionLabel, { color: theme.textMuted, marginTop: 12 }]}>{t('filter_date_to')}</Text>
+          <DatePicker value={dateTo} onChange={setDateTo} placeholder="ДД.ММ.ГГГГ" />
+          <View style={s.filterActions}>
+            <TouchableOpacity
+              style={[s.filterActionBtn, { backgroundColor: v1Colors.surface, borderColor: v1Colors.border, borderWidth: 1 }]}
+              onPress={() => { setDateFrom(''); setDateTo(''); }}
+              testID="filter-date-reset"
+            >
+              <Text style={[s.filterActionText, { color: v1Colors.textMuted }]}>{t('filter_reset')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.filterActionBtn, { backgroundColor: accentColor }]}
+              onPress={closeFilter}
+              testID="filter-date-apply"
+            >
+              <Text style={[s.filterActionText, { color: '#0A0A0A' }]}>{t('filter_apply')}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </BottomSheet>
 
-              {/* Секция Сортировка */}
-              <Text style={[s.filterSectionLabel, { color: theme.textMuted }]}>{t('filter_sort')}</Text>
-              <View style={s.filterPillRow}>
-                {[
-                  { k: 'newest', l: '🆕 ' + t('filter_newest') },
-                  { k: 'price-asc', l: '💰 ' + t('filter_price_asc') },
-                  { k: 'price-desc', l: '💰 ' + t('filter_price_desc') },
-                  { k: 'rating', l: '★ ' + t('filter_rating_sort') },
-                ].map(opt => (
-                  <TouchableOpacity
-                    key={opt.k}
-                    style={[s.filterPill, { backgroundColor: theme.card, borderColor: theme.border }, sortBy === opt.k && { backgroundColor: accent, borderColor: accent }]}
-                    onPress={() => setSortBy(opt.k)}
-                  >
-                    <Text style={[s.filterPillText, { color: theme.textSecondary }, sortBy === opt.k && { color: isDriver ? '#fff' : '#0C0A09' }]}>{opt.l}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+      {/* Body sheet — only truck-type pills. */}
+      <BottomSheet visible={activeFilter === 'body'} onClose={closeFilter} title={`🚛 ${t('filter_body')}`}>
+        <Text style={[s.filterSectionLabel, { color: theme.textMuted }]}>{t('filter_truck_type')}</Text>
+        <View style={s.filterPillWrap}>
+          <TouchableOpacity
+            style={[s.filterPill, { backgroundColor: theme.card, borderColor: theme.border }, !filterType && { backgroundColor: accent, borderColor: accent }]}
+            onPress={() => setFilterType(null)}
+          >
+            <Text style={[s.filterPillText, { color: theme.textSecondary }, !filterType && { color: isDriver ? '#fff' : '#0C0A09' }]}>{t('filter_all')}</Text>
+          </TouchableOpacity>
+          {TRUCK_KEYS.map(k => (
+            <TouchableOpacity
+              key={k}
+              style={[s.filterPill, { backgroundColor: theme.card, borderColor: theme.border }, filterType === k && { backgroundColor: TCOLORS[k], borderColor: TCOLORS[k] }]}
+              onPress={() => setFilterType(filterType === k ? null : k)}
+            >
+              <Text style={[s.filterPillText, { color: theme.textSecondary }, filterType === k && { color: '#fff' }]}>
+                {TRUCK_ICONS[k]} {t(k)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <View style={s.filterActions}>
+          <TouchableOpacity
+            style={[s.filterActionBtn, { backgroundColor: v1Colors.surface, borderColor: v1Colors.border, borderWidth: 1 }]}
+            onPress={() => setFilterType(null)}
+          >
+            <Text style={[s.filterActionText, { color: v1Colors.textMuted }]}>{t('filter_reset')}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[s.filterActionBtn, { backgroundColor: accentColor }]} onPress={closeFilter}>
+            <Text style={[s.filterActionText, { color: '#0A0A0A' }]}>{t('filter_apply')}</Text>
+          </TouchableOpacity>
+        </View>
+      </BottomSheet>
 
-              {/* Кнопки Сбросить / Применить */}
-              <View style={s.filterActions}>
+      {/* Price sheet — only sort + rating filter (clients only). */}
+      <BottomSheet visible={activeFilter === 'price'} onClose={closeFilter} title={`💰 ${t('filter_price')}`}>
+        {!isDriver && (
+          <>
+            <Text style={[s.filterSectionLabel, { color: theme.textMuted }]}>{t('filter_rating')}</Text>
+            <View style={s.filterPillRow}>
+              {[{ k: 0, l: t('filter_all') }, { k: 3, l: '3+' }, { k: 4, l: '4+' }, { k: 5, l: '5' }].map(opt => (
                 <TouchableOpacity
-                  style={[s.filterActionBtn, { backgroundColor: v1Colors.surface, borderColor: v1Colors.border, borderWidth: 1 }]}
-                  onPress={() => { setFilterType(null); setMinRating(0); setSortBy('newest'); }}
+                  key={opt.k}
+                  style={[s.filterPill, { backgroundColor: theme.card, borderColor: theme.border }, minRating === opt.k && { backgroundColor: '#FBBF24', borderColor: '#FBBF24' }]}
+                  onPress={() => setMinRating(opt.k)}
                 >
-                  <Text style={[s.filterActionText, { color: v1Colors.textMuted }]}>{t('filter_reset')}</Text>
+                  <Text style={[s.filterPillText, { color: theme.textSecondary }, minRating === opt.k && { color: '#0C0A09' }]}>
+                    {opt.k > 0 ? `⭐ ${opt.l}` : opt.l}
+                  </Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={[s.filterActionBtn, { backgroundColor: accentColor }]}
-                  onPress={() => setFilterOpen(false)}
-                >
-                  <Text style={[s.filterActionText, { color: '#0A0A0A' }]}>{t('filter_apply')}</Text>
-                </TouchableOpacity>
-              </View>
-        </>
+              ))}
+            </View>
+          </>
+        )}
+        <Text style={[s.filterSectionLabel, { color: theme.textMuted, marginTop: !isDriver ? 12 : 0 }]}>{t('filter_sort')}</Text>
+        <View style={s.filterPillRow}>
+          {[
+            { k: 'newest', l: '🆕 ' + t('filter_newest') },
+            { k: 'price-asc', l: '💰 ' + t('filter_price_asc') },
+            { k: 'price-desc', l: '💰 ' + t('filter_price_desc') },
+            { k: 'rating', l: '★ ' + t('filter_rating_sort') },
+          ].map(opt => (
+            <TouchableOpacity
+              key={opt.k}
+              style={[s.filterPill, { backgroundColor: theme.card, borderColor: theme.border }, sortBy === opt.k && { backgroundColor: accent, borderColor: accent }]}
+              onPress={() => setSortBy(opt.k)}
+            >
+              <Text style={[s.filterPillText, { color: theme.textSecondary }, sortBy === opt.k && { color: isDriver ? '#fff' : '#0C0A09' }]}>{opt.l}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <View style={s.filterActions}>
+          <TouchableOpacity
+            style={[s.filterActionBtn, { backgroundColor: v1Colors.surface, borderColor: v1Colors.border, borderWidth: 1 }]}
+            onPress={() => { setSortBy('newest'); setMinRating(0); }}
+          >
+            <Text style={[s.filterActionText, { color: v1Colors.textMuted }]}>{t('filter_reset')}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[s.filterActionBtn, { backgroundColor: accentColor }]} onPress={closeFilter}>
+            <Text style={[s.filterActionText, { color: '#0A0A0A' }]}>{t('filter_apply')}</Text>
+          </TouchableOpacity>
+        </View>
       </BottomSheet>
 
       {initialLoading ? (
@@ -615,6 +715,7 @@ const s = StyleSheet.create({
   filterPillWrap: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', rowGap: 8 },
   filterPill: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, alignSelf: 'flex-start' },
   filterPillText: { fontSize: 12, fontWeight: '600' },
+  filterInput: { paddingHorizontal: 14, paddingVertical: 12, borderRadius: 12, borderWidth: 1, fontSize: 14 },
   filterActions: { flexDirection: 'row', gap: 10, marginTop: 24 },
   filterActionBtn: { flex: 1, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
   filterActionText: { fontSize: 15, fontWeight: '800' },

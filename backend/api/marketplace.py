@@ -39,19 +39,27 @@ PUBLIC_CUTOFF_DATE = "2026-05-01"
 
 
 def _parse_iso_date(s):
-    """Try several common shapes ('YYYY-MM-DD', 'DD.MM.YYYY', ISO timestamp)."""
+    """Try several common shapes ('YYYY-MM-DD', 'DD.MM.YYYY', ISO timestamp).
+
+    Earlier this function sliced the input via `s[:len(fmt.replace('%','')) + 4]`,
+    which silently truncated 'YYYY-MM-DD' to 9 chars and dropped the second
+    digit of the day. A cargo with pickup '2026-05-25' parsed as date(2026,5,2)
+    and was hidden from the public feed as "stale". The fix below feeds each
+    format the full string; the trailing regex fallback still handles ISO
+    timestamps that carry extra characters past the date.
+    """
     if not s:
         return None
     s = str(s).strip()
     if not s:
         return None
-    fmts = ("%Y-%m-%d", "%d.%m.%Y", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S")
+    fmts = ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d", "%d.%m.%Y")
     for fmt in fmts:
         try:
-            return datetime.strptime(s[:len(fmt.replace('%', '')) + 4], fmt).date()
+            return datetime.strptime(s, fmt).date()
         except Exception:
             continue
-    # Last resort: regex YYYY-MM-DD prefix
+    # Fallback: extract a YYYY-MM-DD prefix from longer ISO timestamps
     m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", s)
     if m:
         try:
@@ -223,10 +231,13 @@ def create_cargo(body: CargoIn, user=Depends(require_level(1))):
         raise HTTPException(status_code=400, detail="Укажите откуда и куда")
     if not body.cargo_desc:
         raise HTTPException(status_code=400, detail="Укажите что везти")
-    # Same currency whitelist as create_trip — anything else falls back to USD
-    # so a typo never produces NULL/empty in the cargos.currency column.
+    # Pilot currency whitelist (Stage 5 / rev. 3): RUB / USD / KZT / CNY.
+    # UZS / KGS / EUR / AED removed from publish flows. A typo or removed
+    # currency code falls back to USD so the cargos.currency column never
+    # ends up NULL/empty. Old rows already in DB with a removed code keep
+    # their value (read paths stay permissive).
     currency = (body.currency or "USD").upper()
-    if currency not in ("USD", "KZT", "RUB", "CNY", "UZS"):
+    if currency not in ("USD", "KZT", "RUB", "CNY"):
         currency = "USD"
     cid = new_id()
     with get_conn() as c:
@@ -336,8 +347,9 @@ def delete_cargo(cargo_id: str, user=Depends(require_level(1))):
 def create_trip(body: TripIn, user=Depends(require_level(1))):
     if not body.from_city or not body.to_city:
         raise HTTPException(status_code=400, detail="Укажите маршрут: откуда и куда")
+    # Same pilot whitelist as create_cargo — see note there.
     currency = (body.currency or "USD").upper()
-    if currency not in ("USD", "KZT", "RUB", "CNY", "UZS"):
+    if currency not in ("USD", "KZT", "RUB", "CNY"):
         currency = "USD"
     tid = new_id()
     with get_conn() as c:
@@ -402,8 +414,8 @@ def update_trip(trip_id: str, body: TripPatchIn, user=Depends(require_level(1)))
             updates.append("price = ?"); params.append(body.price)
         if body.currency is not None:
             cur = (body.currency or "USD").upper()
-            if cur not in ("USD", "KZT", "RUB", "CNY", "UZS"):
-                raise HTTPException(status_code=400, detail="currency: USD/KZT/RUB/CNY/UZS")
+            if cur not in ("USD", "KZT", "RUB", "CNY"):
+                raise HTTPException(status_code=400, detail="currency: USD/KZT/RUB/CNY")
             updates.append("currency = ?"); params.append(cur)
 
         if not updates:

@@ -33,9 +33,13 @@ module.exports = defineConfig({
   // first thing the operator typically wants to see when a "white screen"
   // bug is reported in the field.
   projects: [
-    { name: 'serik',       testMatch: /serik\.driver\.spec\.js$/ },
-    { name: 'boris',       testMatch: /boris\.shipper\.spec\.js$/, dependencies: ['serik'] },
-    { name: 'trip-clicks', testMatch: /trip\.detail\.clicks\.spec\.js$/ },
-    { name: 'auditor',     testMatch: /auditor\.full\.spec\.js$/,  dependencies: ['serik', 'boris', 'trip-clicks'] },
+    { name: 'serik',           testMatch: /serik\.driver\.spec\.js$/ },
+    { name: 'boris',           testMatch: /boris\.shipper\.spec\.js$/, dependencies: ['serik'] },
+    { name: 'cargo-currency',  testMatch: /cargo\.currency\.spec\.js$/ },
+    { name: 'preview-gate',    testMatch: /preview\.gate\.spec\.js$/ },
+    { name: 'ui-smoke',        testMatch: /ui\.smoke\.spec\.js$/ },
+    { name: 'trip-clicks',     testMatch: /trip\.detail\.clicks\.spec\.js$/ },
+    { name: 'auditor',         testMatch: /auditor\.full\.spec\.js$/,
+      dependencies: ['serik', 'boris', 'cargo-currency', 'preview-gate', 'ui-smoke', 'trip-clicks'] },
   ],
 });

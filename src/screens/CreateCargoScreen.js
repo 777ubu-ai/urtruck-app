@@ -24,12 +24,15 @@ import { TRUCK_KEYS, TRUCK_ICONS } from '../utils/truckConstants';
 //   - photo picker (collapsible "Фото груза (необязательно)")
 //   - orange brand accent
 
+// Pilot currencies (Stage 5 / rev. 3): RUB / USD / KZT / CNY only.
+// Removed: UZS / KGS / EUR / AED. Old persisted cargo with a removed
+// currency still reads safely — the backend marketplace.py keeps a
+// permissive read path; only NEW publish actions are constrained.
 const CURRENCY_OPTIONS = [
   { k: 'KZT', l: '₸' },
   { k: 'USD', l: '$' },
   { k: 'RUB', l: '₽' },
   { k: 'CNY', l: '¥' },
-  { k: 'UZS', l: 'сўм' },
 ];
 
 export default function CreateCargoScreen({ navigation, route }) {

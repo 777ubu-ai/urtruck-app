@@ -18,7 +18,9 @@
     "qa:full": "playwright test --config qa/playwright.config.js",
     "qa:cleanup": "node qa/utils/qaCleanup.js",
     "qa:auth-check": "node qa/utils/qaAuthCheck.js",
-    "qa:trip-details": "playwright test --config qa/playwright.config.js qa/agents/trip.detail.clicks.spec.js"
+    "qa:trip-details": "playwright test --config qa/playwright.config.js qa/agents/trip.detail.clicks.spec.js",
+    "qa:i18n": "node qa/utils/i18nSmoke.js",
+    "qa:currency": "node qa/utils/currencySmoke.js"
   },
   "dependencies": {
     "@expo/metro-runtime": "~4.0.1",
