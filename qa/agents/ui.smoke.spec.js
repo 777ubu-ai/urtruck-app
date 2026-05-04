@@ -142,6 +142,46 @@ test('UI · Date chip opens real calendar/date picker', async ({ page }) => {
   else log.p2(ACTOR, 'date-sheet-testid-rendered', 'data-testid filter-date-sheet not visible (older bundle?)');
 });
 
+test('UI · bottom-nav has plus button + balanced cells', async ({ page }) => {
+  await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
+  await page.waitForTimeout(1500);
+
+  // Make sure we're past role-pick
+  const driverBtn = page.getByText(/Я водитель|driver/i).first();
+  if (await driverBtn.isVisible().catch(() => false)) {
+    await driverBtn.click().catch(() => {});
+    await page.waitForTimeout(1500);
+  }
+
+  const nav = page.locator('[data-testid="bottom-nav"]');
+  const navVisible = await nav.isVisible({ timeout: 4000 }).catch(() => false);
+  if (!navVisible) {
+    log.p2(ACTOR, 'bottom-nav-mounted', 'guest may not see MainTabs without auth');
+    return;
+  }
+  const plusBtn = page.locator('[data-testid="bottom-nav-publish"]');
+  const plusVisible = await plusBtn.isVisible({ timeout: 2000 }).catch(() => false);
+  if (plusVisible) log.pass(ACTOR, 'bottom-nav-plus-button-visible');
+  else log.p1(ACTOR, 'bottom-nav-plus-button-visible', 'central + button missing');
+
+  // Cells should sit on a shared horizontal baseline. Compare bounding
+  // boxes of two non-publish cells — Y delta of more than 6 px means
+  // the publish overlay is dragging neighbours up again.
+  const feed = page.locator('[data-testid="bottom-nav-feed"]');
+  const profile = page.locator('[data-testid="bottom-nav-profile"]');
+  if (await feed.isVisible().catch(() => false) && await profile.isVisible().catch(() => false)) {
+    const a = await feed.boundingBox();
+    const b = await profile.boundingBox();
+    if (a && b && Math.abs(a.y - b.y) <= 6) {
+      log.pass(ACTOR, 'bottom-nav-cells-aligned', `Δy=${Math.abs(a.y - b.y).toFixed(1)}px`);
+    } else {
+      log.p1(ACTOR, 'bottom-nav-cells-aligned', `Δy=${a && b ? Math.abs(a.y - b.y).toFixed(1) : '?'}px`);
+    }
+  } else {
+    log.p2(ACTOR, 'bottom-nav-cells-aligned', 'not enough visible cells to measure');
+  }
+});
+
 test('UI · bottom navigation tabs reachable', async ({ page }) => {
   await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
   await page.waitForTimeout(1200);
