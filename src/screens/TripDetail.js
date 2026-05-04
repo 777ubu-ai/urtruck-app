@@ -250,7 +250,7 @@ export default function TripDetail({ navigation, route }) {
 
         {/* Информация о рейсе */}
         <GlassCard>
-          <SectionTitle icon="🛣" label={t('trip_route')} />
+          <SectionTitle icon="🛣️" label={t('trip_route')} />
           <View style={s.routeRow}>
             <View style={[s.dot, { backgroundColor: '#EF4444' }]} />
             <Text style={[s.city, { color: theme.text }]}>{view.from}</Text>

@@ -20,7 +20,7 @@ import BellBadge from '../components/ui/v1/BellBadge';
 import { useUnreadNotifications } from '../utils/useUnreadNotifications';
 import BottomSheet from '../components/ui/v1/BottomSheet';
 import DatePicker from '../components/DatePicker';
-import { v1Colors, v1AccentFor } from '../theme/designV1';
+import { v1Colors, v1AccentFor, useV1Colors } from '../theme/designV1';
 
 // DD.MM.YYYY ↔ YYYY-MM-DD bridges. DatePicker stores DD.MM.YYYY
 // (matches CreateCargo / CreateTrip and the rest of the app); the
@@ -88,6 +88,11 @@ export default function FeedScreen({ navigation, route }) {
   const [sortBy, setSortBy] = useState('newest');
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  // Stage 6: pull v1 tokens via the theme-aware hook so the screen
+  // background, filter-sheet chrome and footer note all flip on
+  // light/dark toggle. The static `v1Colors` import remains for tokens
+  // that don't change between themes (driver/cargoOwner accent shades).
+  const v1 = useV1Colors();
   // activeFilter is the chip that's currently expanded into a bottom-sheet.
   // null → no sheet open. One sheet at a time, scoped to its own state slice.
   const [activeFilter, setActiveFilter] = useState(null); // 'dir' | 'date' | 'body' | 'price' | null
@@ -390,12 +395,12 @@ export default function FeedScreen({ navigation, route }) {
   ];
 
   return (
-    <SafeAreaView style={[s.container, { backgroundColor: v1Colors.bg }]} edges={['top']}>
+    <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
       {/* Brand bar — emerald FTL pill + bell */}
       <View style={s.brandBar}>
         <View style={{ width: 40 }} />
         <View style={s.brandRow}>
-          <Text style={s.brandText}>UrTruck</Text>
+          <Text style={[s.brandText, { color: v1.text }]}>UrTruck</Text>
           <View style={[s.ftlPill, { backgroundColor: v1Accent.soft, borderColor: v1Accent.main }]}>
             <Text style={[s.ftlText, { color: v1Accent.main }]}>FTL</Text>
           </View>
@@ -409,8 +414,8 @@ export default function FeedScreen({ navigation, route }) {
       {/* Title row + outline CTA "Разместить ..." */}
       <View style={s.titleRow}>
         <View style={{ flex: 1 }}>
-          <Text style={s.titleHero}>{isDriver ? t('cargos') : t('trucks')}</Text>
-          <Text style={s.titleHeroSub}>{isDriver ? t('feed_driver_subtitle') : t('feed_client_subtitle')}</Text>
+          <Text style={[s.titleHero, { color: v1.text }]}>{isDriver ? t('cargos') : t('trucks')}</Text>
+          <Text style={[s.titleHeroSub, { color: v1.textMuted }]}>{isDriver ? t('feed_driver_subtitle') : t('feed_client_subtitle')}</Text>
         </View>
         <TouchableOpacity
           style={[s.titleCta, { borderColor: accentColor }]}
@@ -475,7 +480,7 @@ export default function FeedScreen({ navigation, route }) {
           value={dirFrom}
           onChangeText={setDirFrom}
           placeholder={t('create_field_from_placeholder')}
-          placeholderTextColor={v1Colors.textMuted}
+          placeholderTextColor={v1.textMuted}
           style={[s.filterInput, { backgroundColor: theme.card, borderColor: theme.border, color: theme.text }]}
         />
         <Text style={[s.filterSectionLabel, { color: theme.textMuted, marginTop: 12 }]}>{t('to')}</Text>
@@ -483,15 +488,15 @@ export default function FeedScreen({ navigation, route }) {
           value={dirTo}
           onChangeText={setDirTo}
           placeholder={t('create_field_to_placeholder')}
-          placeholderTextColor={v1Colors.textMuted}
+          placeholderTextColor={v1.textMuted}
           style={[s.filterInput, { backgroundColor: theme.card, borderColor: theme.border, color: theme.text }]}
         />
         <View style={s.filterActions}>
           <TouchableOpacity
-            style={[s.filterActionBtn, { backgroundColor: v1Colors.surface, borderColor: v1Colors.border, borderWidth: 1 }]}
+            style={[s.filterActionBtn, { backgroundColor: v1.surface, borderColor: v1.border, borderWidth: 1 }]}
             onPress={() => { setDirFrom(''); setDirTo(''); }}
           >
-            <Text style={[s.filterActionText, { color: v1Colors.textMuted }]}>{t('filter_reset')}</Text>
+            <Text style={[s.filterActionText, { color: v1.textMuted }]}>{t('filter_reset')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[s.filterActionBtn, { backgroundColor: accentColor }]} onPress={closeFilter}>
             <Text style={[s.filterActionText, { color: '#0A0A0A' }]}>{t('filter_apply')}</Text>
@@ -511,11 +516,11 @@ export default function FeedScreen({ navigation, route }) {
           <DatePicker value={dateTo} onChange={setDateTo} placeholder="ДД.ММ.ГГГГ" />
           <View style={s.filterActions}>
             <TouchableOpacity
-              style={[s.filterActionBtn, { backgroundColor: v1Colors.surface, borderColor: v1Colors.border, borderWidth: 1 }]}
+              style={[s.filterActionBtn, { backgroundColor: v1.surface, borderColor: v1.border, borderWidth: 1 }]}
               onPress={() => { setDateFrom(''); setDateTo(''); }}
               testID="filter-date-reset"
             >
-              <Text style={[s.filterActionText, { color: v1Colors.textMuted }]}>{t('filter_reset')}</Text>
+              <Text style={[s.filterActionText, { color: v1.textMuted }]}>{t('filter_reset')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[s.filterActionBtn, { backgroundColor: accentColor }]}
@@ -552,10 +557,10 @@ export default function FeedScreen({ navigation, route }) {
         </View>
         <View style={s.filterActions}>
           <TouchableOpacity
-            style={[s.filterActionBtn, { backgroundColor: v1Colors.surface, borderColor: v1Colors.border, borderWidth: 1 }]}
+            style={[s.filterActionBtn, { backgroundColor: v1.surface, borderColor: v1.border, borderWidth: 1 }]}
             onPress={() => setFilterType(null)}
           >
-            <Text style={[s.filterActionText, { color: v1Colors.textMuted }]}>{t('filter_reset')}</Text>
+            <Text style={[s.filterActionText, { color: v1.textMuted }]}>{t('filter_reset')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[s.filterActionBtn, { backgroundColor: accentColor }]} onPress={closeFilter}>
             <Text style={[s.filterActionText, { color: '#0A0A0A' }]}>{t('filter_apply')}</Text>
@@ -602,10 +607,10 @@ export default function FeedScreen({ navigation, route }) {
         </View>
         <View style={s.filterActions}>
           <TouchableOpacity
-            style={[s.filterActionBtn, { backgroundColor: v1Colors.surface, borderColor: v1Colors.border, borderWidth: 1 }]}
+            style={[s.filterActionBtn, { backgroundColor: v1.surface, borderColor: v1.border, borderWidth: 1 }]}
             onPress={() => { setSortBy('newest'); setMinRating(0); }}
           >
-            <Text style={[s.filterActionText, { color: v1Colors.textMuted }]}>{t('filter_reset')}</Text>
+            <Text style={[s.filterActionText, { color: v1.textMuted }]}>{t('filter_reset')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[s.filterActionBtn, { backgroundColor: accentColor }]} onPress={closeFilter}>
             <Text style={[s.filterActionText, { color: '#0A0A0A' }]}>{t('filter_apply')}</Text>
@@ -628,8 +633,8 @@ export default function FeedScreen({ navigation, route }) {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accentColor} />}
           ListFooterComponent={
             filteredData.length > 0 ? (
-              <View style={[s.footerNote, { borderColor: v1Colors.border }]}>
-                <Text style={s.footerNoteText} numberOfLines={2}>
+              <View style={[s.footerNote, { borderColor: v1.border, backgroundColor: v1.surface }]}>
+                <Text style={[s.footerNoteText, { color: v1.textMuted }]} numberOfLines={2}>
                   🛡  {isDriver ? t('feed_driver_disclaimer') : t('feed_client_disclaimer')}
                 </Text>
               </View>
@@ -638,7 +643,7 @@ export default function FeedScreen({ navigation, route }) {
           ListEmptyComponent={
             <View style={{ padding: 40, alignItems: 'center' }}>
               <Text style={{ fontSize: 48, marginBottom: 10 }}>{loadError ? '⚠️' : '🔍'}</Text>
-              <Text style={{ color: v1Colors.textMuted, fontSize: 14, textAlign: 'center' }}>
+              <Text style={{ color: v1.textMuted, fontSize: 14, textAlign: 'center' }}>
                 {loadError ? t('feed_load_failed') :
                  minRating > 0 ? `${minRating}★+: ${t('no_active_cargos')}` :
                  filterType ? t('feed_filter_empty') :

@@ -259,7 +259,7 @@ export default function CargoDetail({ navigation, route }) {
         ) : null}
 
         <GlassCard>
-          <SectionTitle icon="🛣" label={t('trip_route')} />
+          <SectionTitle icon="🛣️" label={t('trip_route')} />
           <View style={s.routeRow}>
             <View style={[s.dot, { backgroundColor: '#EF4444' }]} /><Text style={[s.city, { color: v1Colors.text }]}>{view.from}</Text>
             <View style={[s.line, { backgroundColor: v1Colors.border }]} /><Text>🚛</Text><View style={[s.line, { backgroundColor: v1Colors.border }]} />
