@@ -40,6 +40,7 @@ import TripDetail from '../screens/TripDetail';
 import EditTripScreen from '../screens/EditTripScreen';
 import CreateTripScreen from '../screens/CreateTripScreen';
 import CreateCargoScreen from '../screens/CreateCargoScreen';
+import DesignPreviewScreen, { qaDesignMode } from '../screens/DesignPreviewScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -89,6 +90,34 @@ export default function AppNavigator() {
   }
 
   const hasRole = !!session?.user?.role;
+
+  // QA Design Preview: ?qa=design in the URL routes straight into a
+  // visual gallery before any auth/session check. Every other route is
+  // still mounted so navigate() from the preview works without round-trips.
+  // Detection is web-only and falls back to false on mobile / SSR.
+  const qaPreview = qaDesignMode();
+  if (qaPreview) {
+    return (
+      <Stack.Navigator initialRouteName="DesignPreview" screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="DesignPreview" component={DesignPreviewScreen} />
+        <Stack.Screen name="Role" component={RoleScreen} />
+        <Stack.Screen name="SignUp" component={SignUpScreen} />
+        <Stack.Screen name="Auth" component={AuthScreen} />
+        <Stack.Screen name="Reg" component={RegScreen} />
+        <Stack.Screen name="Main" component={MainTabs} />
+        <Stack.Screen name="CargoDetail" component={CargoDetail} />
+        <Stack.Screen name="DriverDetail" component={DriverDetail} />
+        <Stack.Screen name="Chat" component={ChatScreen} />
+        <Stack.Screen name="ChatsList" component={ChatsListScreen} />
+        <Stack.Screen name="MyTripsList" component={MyTripsScreen} />
+        <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+        <Stack.Screen name="TripDetail" component={TripDetail} />
+        <Stack.Screen name="EditTrip" component={EditTripScreen} />
+        <Stack.Screen name="CreateTrip" component={CreateTripScreen} />
+        <Stack.Screen name="CreateCargo" component={CreateCargoScreen} />
+      </Stack.Navigator>
+    );
+  }
 
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
