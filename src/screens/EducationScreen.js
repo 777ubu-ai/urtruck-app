@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, FlatList, Linking } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
+import { v1Colors } from '../theme/designV1';
 
 const VIDEOS = [
   { id: 'v1', key: 'edu1', icon: '👤', url: 'https://youtube.com/results?search_query=urtruck', duration: '3:20' },
@@ -20,7 +21,7 @@ export default function EducationScreen({ navigation }) {
   const { theme } = useTheme();
 
   return (
-    <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]} edges={['top']}>
+    <SafeAreaView style={[s.container, { backgroundColor: v1Colors.bg }]} edges={['top']}>
       <View style={s.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={[s.backBtn, { backgroundColor: theme.card, borderColor: theme.border }]}><Text style={[s.backText, { color: theme.text }]}>‹</Text></TouchableOpacity>
         <Text style={[s.title, { color: theme.text }]}>📚 {t('eduSection')}</Text>

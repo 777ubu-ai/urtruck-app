@@ -17,6 +17,8 @@ import FeedCard from '../components/ui/v1/FeedCard';
 import SearchBar from '../components/ui/v1/SearchBar';
 import FilterChips from '../components/ui/v1/FilterChips';
 import BellBadge from '../components/ui/v1/BellBadge';
+import { useUnreadNotifications } from '../utils/useUnreadNotifications';
+import BottomSheet from '../components/ui/v1/BottomSheet';
 import { v1Colors, v1AccentFor } from '../theme/designV1';
 
 const TCOLORS = {
@@ -60,6 +62,7 @@ export default function FeedScreen({ navigation, route }) {
   const accent = isDriver ? '#22C55E' : '#F59E0B';
   const { t } = useI18n();
   const { theme } = useTheme();
+  const notifUnread = useUnreadNotifications();
   const { toast } = useToast();
   const { requireLevel, Gate } = useVerificationGate();
   const { session } = useAuth();
@@ -358,7 +361,7 @@ export default function FeedScreen({ navigation, route }) {
           </View>
         </View>
         <BellBadge
-          count={getUnreadNotifications()}
+          count={notifUnread}
           onPress={() => navigation.navigate('Notifications')}
         />
       </View>
@@ -425,14 +428,12 @@ export default function FeedScreen({ navigation, route }) {
         </ScrollView>
       )}
 
-      {/* Modal фильтров — bottom sheet */}
-      <Modal visible={filterOpen} transparent animationType="slide" onRequestClose={() => setFilterOpen(false)}>
-        <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={() => setFilterOpen(false)}>
-          <TouchableOpacity style={[s.filterSheet, { backgroundColor: theme.cardElevated || theme.card }]} activeOpacity={1} onPress={() => {}}>
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <View style={s.handle} />
-              <Text style={[s.filterSheetTitle, { color: theme.text }]}>⚙️ {t('filter_title')}</Text>
-
+      {/* v1 BottomSheet фильтров (single-sheet UX): clicking any of the 4
+          chips Направление / Дата / Кузов / Цена opens this same sheet.
+          Splitting into 4 dedicated sheets is a follow-up — current sheet
+          covers all four sections in one scroll, which is fine on mobile. */}
+      <BottomSheet visible={filterOpen} onClose={() => setFilterOpen(false)} title={`⚙️ ${t('filter_title')}`}>
+        <>
               {/* Секция Рейтинг */}
               {!isDriver && (
                 <>
@@ -497,22 +498,20 @@ export default function FeedScreen({ navigation, route }) {
               {/* Кнопки Сбросить / Применить */}
               <View style={s.filterActions}>
                 <TouchableOpacity
-                  style={[s.filterActionBtn, { backgroundColor: theme.card, borderColor: theme.border, borderWidth: 1 }]}
+                  style={[s.filterActionBtn, { backgroundColor: v1Colors.surface, borderColor: v1Colors.border, borderWidth: 1 }]}
                   onPress={() => { setFilterType(null); setMinRating(0); setSortBy('newest'); }}
                 >
-                  <Text style={[s.filterActionText, { color: theme.textSecondary }]}>{t('filter_reset')}</Text>
+                  <Text style={[s.filterActionText, { color: v1Colors.textMuted }]}>{t('filter_reset')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[s.filterActionBtn, { backgroundColor: accent }]}
+                  style={[s.filterActionBtn, { backgroundColor: accentColor }]}
                   onPress={() => setFilterOpen(false)}
                 >
-                  <Text style={[s.filterActionText, { color: isDriver ? '#fff' : '#0C0A09' }]}>{t('filter_apply')}</Text>
+                  <Text style={[s.filterActionText, { color: '#0A0A0A' }]}>{t('filter_apply')}</Text>
                 </TouchableOpacity>
               </View>
-            </ScrollView>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
+        </>
+      </BottomSheet>
 
       {initialLoading ? (
         <View style={{ padding: 16 }}>

@@ -8,6 +8,7 @@ import { useAuth } from '../utils/AuthContext';
 import { DS } from '../utils/theme';
 import { setLanguage, getLanguage } from '../utils/i18n';
 import { useI18n } from '../utils/useI18n';
+import { v1Colors } from '../theme/designV1';
 
 const LOGO = require('../../assets/logo.jpg');
 const LANGS = [
@@ -151,7 +152,7 @@ export default function OnboardingScreen({ navigation }) {
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#0a0f1a' },
+  root: { flex: 1, backgroundColor: v1Colors.bg },
   scroll: { paddingHorizontal: 16, paddingBottom: 30 },
   topBar: { flexDirection: 'row', justifyContent: 'space-between', paddingTop: 8, marginBottom: 12 },
   langPill: { borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6 },

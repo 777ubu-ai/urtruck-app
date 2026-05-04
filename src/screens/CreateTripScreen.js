@@ -10,6 +10,7 @@ import BrandHeader from '../components/ui/v1/BrandHeader';
 import Field from '../components/ui/v1/Field';
 import Textarea from '../components/ui/v1/Textarea';
 import PrimaryButton from '../components/ui/v1/PrimaryButton';
+import BottomSheet from '../components/ui/v1/BottomSheet';
 import CityInput from '../components/CityInput';
 import DatePicker from '../components/DatePicker';
 import { v1Colors, v1Radius, v1Spacing, v1Typography, v1AccentFor } from '../theme/designV1';
@@ -189,8 +190,8 @@ export default function CreateTripScreen({ navigation, route }) {
           />
         </View>
       ) : null}
-      {showTruckPicker ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.truckScroll}>
+      <BottomSheet visible={showTruckPicker} onClose={() => setShowTruckPicker(false)} title={t('truckType')}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {TRUCK_KEYS.map((k) => {
             const active = truckType === k;
             return (
@@ -205,8 +206,8 @@ export default function CreateTripScreen({ navigation, route }) {
               </TouchableOpacity>
             );
           })}
-        </ScrollView>
-      ) : null}
+        </View>
+      </BottomSheet>
       {errors.departure ? <Text style={s.err}>⚠️ {errors.departure}</Text> : null}
       {errors.truckType ? <Text style={s.err}>⚠️ {errors.truckType}</Text> : null}
 
@@ -277,21 +278,21 @@ export default function CreateTripScreen({ navigation, route }) {
             </View>
           </View>
         ) : null}
-        {showCurrencyPicker ? (
-          <View style={s.currencyRow}>
-            {CURRENCY_OPTIONS.map((c) => (
-              <TouchableOpacity
-                key={c.k}
-                testID={`trip-currency-${c.k}`}
-                onPress={() => { setCurrency(c.k); setShowCurrencyPicker(false); }}
-                style={[s.currencyChip, currency === c.k ? { backgroundColor: accent.main, borderColor: accent.main } : { borderColor: v1Colors.border }]}
-              >
-                <Text style={[s.currencyText, { color: currency === c.k ? '#0A0A0A' : v1Colors.textMuted }]}>{c.l} {c.k}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        ) : null}
       </View>
+      <BottomSheet visible={showCurrencyPicker} onClose={() => setShowCurrencyPicker(false)} title={t('currency_label')}>
+        <View style={s.currencyRow}>
+          {CURRENCY_OPTIONS.map((c) => (
+            <TouchableOpacity
+              key={c.k}
+              testID={`trip-currency-${c.k}`}
+              onPress={() => { setCurrency(c.k); setShowCurrencyPicker(false); }}
+              style={[s.currencyChip, currency === c.k ? { backgroundColor: accent.main, borderColor: accent.main } : { borderColor: v1Colors.border }]}
+            >
+              <Text style={[s.currencyText, { color: currency === c.k ? '#0A0A0A' : v1Colors.textMuted }]}>{c.l} {c.k}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </BottomSheet>
 
       <Textarea
         icon="💬"

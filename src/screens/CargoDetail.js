@@ -22,6 +22,7 @@ import { v1Colors, v1Radius, v1AccentFor } from '../theme/designV1';
 import GlassCard from '../components/ui/v1/GlassCard';
 import SectionTitle from '../components/ui/v1/SectionTitle';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
+import StickyCTABar from '../components/ui/v1/StickyCTABar';
 
 const FLAGS = { KZ: '🇰🇿', UZ: '🇺🇿', RU: '🇷🇺', KG: '🇰🇬', CN: '🇨🇳', TJ: '🇹🇯', TR: '🇹🇷', TM: '🇹🇲', MN: '🇲🇳', DE: '🇩🇪', FR: '🇫🇷' };
 
@@ -315,7 +316,7 @@ export default function CargoDetail({ navigation, route }) {
               borderColor: b.status === 'accepted' ? '#22C55E'
                 : b.status === 'rejected' ? '#EF444440'
                 : isCancelled ? '#78716C40'
-                : isCountered ? '#A855F7' /* purple — counter active */
+                : isCountered ? '#D97706' /* purple — counter active */
                 : b.isMine ? '#22C55E60' : theme.border,
               borderWidth: b.status === 'accepted' || isCountered || b.isMine ? 2 : 1,
               opacity: (b.status === 'rejected' || isCancelled) ? 0.55 : 1,
@@ -331,7 +332,7 @@ export default function CargoDetail({ navigation, route }) {
                     color: b.status === 'accepted' ? '#22C55E'
                       : b.status === 'rejected' ? '#EF4444'
                       : isCancelled ? '#78716C'
-                      : isCountered ? '#A855F7'
+                      : isCountered ? '#D97706'
                       : '#FBBF24',
                   }]}>
                     {b.status === 'accepted' ? '✅ ' + t('driver_chosen')
@@ -341,7 +342,7 @@ export default function CargoDetail({ navigation, route }) {
                       : b.time}
                   </Text>
                   {isCountered && b.counterAmount ? (
-                    <Text style={{ color: '#A855F7', fontSize: 11, marginTop: 2, fontWeight: '700' }}>
+                    <Text style={{ color: '#D97706', fontSize: 11, marginTop: 2, fontWeight: '700' }}>
                       {t('counter_amount')}: ${b.counterAmount}{b.counterMessage ? ` · ${b.counterMessage}` : ''}
                     </Text>
                   ) : null}
@@ -375,10 +376,10 @@ export default function CargoDetail({ navigation, route }) {
                       <Text style={s.rejectBtnText}>{t('reject_btn')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[s.miniBtn, { borderColor: '#A855F7' }]}
+                      style={[s.miniBtn, { borderColor: '#D97706' }]}
                       onPress={() => sendCounter(b)}
                     >
-                      <Text style={[s.miniBtnText, { color: '#A855F7' }]}>🔁 {t('counter_offer')}</Text>
+                      <Text style={[s.miniBtnText, { color: '#D97706' }]}>🔁 {t('counter_offer')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[s.miniBtn, { borderColor: '#22C55E' }]}
@@ -672,6 +673,27 @@ export default function CargoDetail({ navigation, route }) {
           </TouchableOpacity>
         </View>
       )}
+      {/* Sticky CTA — pinned bottom row.
+          - non-owner with no accepted bid yet: «Откликнуться» + «Чат» (если room уже создан).
+          - owner / accepted: bar скрывается, обычные блоки detail дают нужные действия. */}
+      {!c.isMine && !dealStatus ? (
+        <StickyCTABar
+          accent={v1Accent.main}
+          primary={{
+            label: t('suggestPrice'),
+            onPress: async () => {
+              const ok = await requireLevel(LEVELS.PHONE, 'bid');
+              if (ok) setBidModal(true);
+            },
+            testID: 'cargo-sticky-bid',
+          }}
+          secondary={chatRoomId ? {
+            label: '💬 ' + t('order_chat'),
+            onPress: () => navigation.navigate('Chat', { roomId: chatRoomId, role }),
+            testID: 'cargo-sticky-chat',
+          } : null}
+        />
+      ) : null}
       <BidModal
         visible={bidModal}
         onClose={() => { setBidModal(false); setBidModalMode('create'); setEditingBid(null); }}

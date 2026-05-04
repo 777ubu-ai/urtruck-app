@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
+import { v1Colors } from '../theme/designV1';
 import { useAuth } from '../utils/AuthContext';
 import { securityAPI, COLOR_UI } from '../utils/security';
 import GradientText from '../components/GradientText';
@@ -29,7 +30,7 @@ export default function SecurityScreen({ navigation }) {
   const ui = score?.color_code ? (COLOR_UI[score.color_code] || COLOR_UI.yellow) : COLOR_UI.yellow;
 
   return (
-    <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]} edges={['top']}>
+    <SafeAreaView style={[s.container, { backgroundColor: v1Colors.bg }]} edges={['top']}>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
         <View style={s.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={[s.backBtn, { backgroundColor: theme.card, borderColor: theme.border }]}>

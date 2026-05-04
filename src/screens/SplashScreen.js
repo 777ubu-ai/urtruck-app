@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
+import { v1Colors } from '../theme/designV1';
 
 export default function SplashScreen({ navigation }) {
   const truckX = useRef(new Animated.Value(300)).current;
@@ -25,9 +26,9 @@ export default function SplashScreen({ navigation }) {
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0a0f1a', alignItems: 'center', justifyContent: 'center' },
+  container: { flex: 1, backgroundColor: v1Colors.bg, alignItems: 'center', justifyContent: 'center' },
   truck: { fontSize: 60, marginBottom: 20 },
   titleWrap: { alignItems: 'center' },
-  title: { color: '#FAFAF9', fontSize: 36, fontWeight: '900', letterSpacing: -1 },
-  subtitle: { color: '#78716C', fontSize: 14, marginTop: 6 },
+  title: { color: v1Colors.text, fontSize: 36, fontWeight: '900', letterSpacing: -1 },
+  subtitle: { color: v1Colors.driver, fontSize: 14, marginTop: 6, fontWeight: '700', letterSpacing: 1 },
 });

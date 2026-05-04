@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
+import { v1Colors } from '../theme/designV1';
 import { useToast } from '../components/Toast';
 import { getTransactions, subscribe } from '../utils/store';
 import { fetchRates } from '../utils/exchangeRates';
@@ -70,7 +71,7 @@ export default function WalletScreen({ route }) {
     : '—';
 
   return (
-    <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]} edges={['top']}>
+    <SafeAreaView style={[s.container, { backgroundColor: v1Colors.bg }]} edges={['top']}>
       <ScrollView contentContainerStyle={{ padding: 16 }}>
         <GradientText style={s.title} colors={['#22C55E', '#16A34A']}>{t('wallet')}</GradientText>
 

@@ -1,15 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, FlatList, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useTheme } from '../utils/ThemeContext';
 import { useToast } from '../components/Toast';
 import { notificationsAPI } from '../utils/notificationsAPI';
+import { v1Colors, v1Radius, v1AccentFor } from '../theme/designV1';
+import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
+
+// Notifications — design v1 reskin. Logic preserved: notificationsAPI.list,
+// markAllRead, per-item read. Only the visual layer follows v1 tokens.
 
 export default function NotificationsScreen({ navigation }) {
-  const { theme } = useTheme();
   const { toast } = useToast();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const accent = v1AccentFor('driver');
 
   const load = async () => {
     setLoading(true);
@@ -32,7 +36,7 @@ export default function NotificationsScreen({ navigation }) {
     const isUnread = !item.is_read;
     return (
       <TouchableOpacity
-        style={[s.card, { backgroundColor: isUnread ? `${theme.card}` : theme.bg, borderColor: theme.border }]}
+        style={[s.card, isUnread && { borderColor: accent.main }]}
         onPress={async () => {
           if (isUnread) await notificationsAPI.read(item.id);
           setItems(prev => prev.map(i => i.id === item.id ? { ...i, is_read: 1 } : i));
@@ -40,35 +44,40 @@ export default function NotificationsScreen({ navigation }) {
       >
         <Text style={s.icon}>{item.icon || '🔔'}</Text>
         <View style={{ flex: 1 }}>
-          <Text style={[s.title, { color: theme.text, fontWeight: isUnread ? '800' : '500' }]}>{item.title}</Text>
-          {item.body ? <Text style={[s.body, { color: theme.textMuted }]}>{item.body}</Text> : null}
-          <Text style={[s.time, { color: theme.textDim }]}>{(item.created_at || '').slice(0, 16)}</Text>
+          <Text style={[s.title, { fontWeight: isUnread ? '800' : '500' }]}>{item.title}</Text>
+          {item.body ? <Text style={s.body}>{item.body}</Text> : null}
+          <Text style={s.time}>{(item.created_at || '').slice(0, 16)}</Text>
         </View>
-        {isUnread && <View style={s.dot} />}
+        {isUnread && <View style={[s.dot, { backgroundColor: accent.main }]} />}
       </TouchableOpacity>
     );
   };
 
   return (
-    <SafeAreaView style={[{ flex: 1, backgroundColor: theme.bg }]} edges={['top']}>
-      <View style={s.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={s.back}>
-          <Text style={[s.backText, { color: theme.text }]}>‹</Text>
-        </TouchableOpacity>
-        <Text style={[s.headerTitle, { color: theme.text }]}>🔔 Уведомления</Text>
-        <TouchableOpacity onPress={markAllRead}>
-          <Text style={{ color: '#4F46E5', fontSize: 12, fontWeight: '700' }}>Прочитать все</Text>
-        </TouchableOpacity>
+    <SafeAreaView style={[{ flex: 1, backgroundColor: v1Colors.bg }]} edges={['top']}>
+      <BrandBarWithShare onBack={() => navigation.goBack()} accent={accent.main} />
+      <View style={s.titleRow}>
+        <Text style={s.titleHero}>🔔 Уведомления</Text>
+        {items.some(i => !i.is_read) ? (
+          <TouchableOpacity onPress={markAllRead}>
+            <Text style={[s.markAll, { color: accent.main }]}>Прочитать все</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       <FlatList
         data={items}
         keyExtractor={i => String(i.id)}
         renderItem={renderItem}
-        contentContainerStyle={{ padding: 16 }}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
+        contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={accent.main} />}
         ListEmptyComponent={
-          <Text style={{ color: theme.textMuted, textAlign: 'center', marginTop: 40 }}>Нет уведомлений</Text>
+          !loading ? (
+            <View style={{ alignItems: 'center', paddingVertical: 60 }}>
+              <Text style={{ fontSize: 48, marginBottom: 10 }}>🔔</Text>
+              <Text style={{ color: v1Colors.textMuted }}>Нет уведомлений</Text>
+            </View>
+          ) : null
         }
       />
     </SafeAreaView>
@@ -76,20 +85,18 @@ export default function NotificationsScreen({ navigation }) {
 }
 
 const s = StyleSheet.create({
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingVertical: 8,
-  },
-  back: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  backText: { fontSize: 30, fontWeight: '300' },
-  headerTitle: { fontSize: 17, fontWeight: '800' },
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12 },
+  titleHero: { color: v1Colors.text, fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
+  markAll: { fontSize: 12, fontWeight: '800' },
   card: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 12,
-    padding: 14, borderRadius: 14, borderWidth: 1, marginBottom: 8,
+    backgroundColor: v1Colors.surface,
+    borderColor: v1Colors.border, borderWidth: 1,
+    padding: 14, borderRadius: v1Radius.field, marginBottom: 8,
   },
   icon: { fontSize: 22, marginTop: 2 },
-  title: { fontSize: 14, marginBottom: 2 },
-  body: { fontSize: 12, lineHeight: 17 },
-  time: { fontSize: 10, marginTop: 4 },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#4F46E5', marginTop: 6 },
+  title: { color: v1Colors.text, fontSize: 14, marginBottom: 2 },
+  body: { color: v1Colors.textMuted, fontSize: 12, lineHeight: 17 },
+  time: { color: v1Colors.textDim, fontSize: 10, marginTop: 4 },
+  dot: { width: 8, height: 8, borderRadius: 4, marginTop: 6 },
 });

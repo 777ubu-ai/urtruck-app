@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Linking, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../utils/ThemeContext';
+import { v1Colors } from '../theme/designV1';
 
 const CONTACTS = [
   { icon: '💬', label: 'Telegram', value: '@UrTruckSupport', url: 'https://t.me/UrTruckSupport' },
@@ -21,7 +22,7 @@ export default function AboutScreen({ navigation }) {
   const accent = '#1A5C3C';
 
   return (
-    <SafeAreaView style={[{ flex: 1, backgroundColor: theme.bg }]} edges={['top']}>
+    <SafeAreaView style={[{ flex: 1, backgroundColor: v1Colors.bg }]} edges={['top']}>
       <View style={s.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={s.back}>
           <Text style={[s.backText, { color: theme.text }]}>‹</Text>

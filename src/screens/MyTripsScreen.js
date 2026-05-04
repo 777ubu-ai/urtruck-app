@@ -15,7 +15,7 @@ import { v1Colors, v1AccentFor } from '../theme/designV1';
 import SegmentTabs from '../components/ui/v1/SegmentTabs';
 import StatsRow from '../components/ui/v1/StatsRow';
 import BellBadge from '../components/ui/v1/BellBadge';
-import { getUnreadNotifications } from '../utils/store';
+import { useUnreadNotifications } from '../utils/useUnreadNotifications';
 
 export default function MyTripsScreen({ navigation, route }) {
   const { role } = route.params || {};
@@ -24,6 +24,7 @@ export default function MyTripsScreen({ navigation, route }) {
   const { t } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
+  const notifUnread = useUnreadNotifications();
 
   const initialTab = route.params?.initialTab || 'my';
   const justCreatedTrip = route.params?.justCreatedTrip || null;
@@ -484,7 +485,7 @@ export default function MyTripsScreen({ navigation, route }) {
           </View>
         </View>
         <BellBadge
-          count={getUnreadNotifications()}
+          count={notifUnread}
           onPress={() => navigation.navigate('Notifications')}
         />
       </View>

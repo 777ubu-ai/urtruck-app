@@ -3,6 +3,8 @@ import { View, Text, TouchableOpacity, StyleSheet, FlatList } from 'react-native
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
+import { v1Colors, v1AccentFor } from '../theme/designV1';
+import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
 
 // Demo reviews — neutral content (stars/dates), shown until real reviews arrive from API
 const REVIEWS = [
@@ -38,16 +40,14 @@ export default function ReviewsScreen({ navigation, route }) {
     </View>
   );
 
-  return (
-    <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]} edges={['top']}>
-      <View style={s.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={[s.backBtn, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[s.backText, { color: theme.text }]}>‹</Text>
-        </TouchableOpacity>
-        <Text style={[s.headerTitle, { color: theme.text }]}>{t('allReviews')}</Text>
-      </View>
+  const v1Accent = v1AccentFor(role === 'driver' ? 'driver' : 'client');
 
-      <View style={[s.summary, { backgroundColor: theme.card, borderColor: theme.border }]}>
+  return (
+    <SafeAreaView style={[s.container, { backgroundColor: v1Colors.bg }]} edges={['top']}>
+      <BrandBarWithShare onBack={() => navigation.goBack()} accent={v1Accent.main} />
+      <Text style={s.titleHero}>⭐ {t('allReviews')}</Text>
+
+      <View style={[s.summary, { backgroundColor: v1Colors.surface, borderColor: v1Colors.border }]}>
         <View style={s.summaryLeft}>
           <Text style={[s.avgRating, { color: theme.text }]}>{avgRating}</Text>
           <Text style={s.avgStars}>{'★'.repeat(Math.round(parseFloat(avgRating)))}</Text>
@@ -78,6 +78,7 @@ export default function ReviewsScreen({ navigation, route }) {
 
 const s = StyleSheet.create({
   container: { flex: 1 },
+  titleHero: { color: v1Colors.text, fontSize: 22, fontWeight: '900', letterSpacing: -0.5, paddingHorizontal: 16, paddingTop: 4, paddingBottom: 8 },
   header: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 },
   backBtn: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   backText: { fontSize: 22 },

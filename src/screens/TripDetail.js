@@ -20,6 +20,7 @@ import { v1Colors, v1Radius, v1AccentFor } from '../theme/designV1';
 import GlassCard from '../components/ui/v1/GlassCard';
 import SectionTitle from '../components/ui/v1/SectionTitle';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
+import StickyCTABar from '../components/ui/v1/StickyCTABar';
 
 export default function TripDetail({ navigation, route }) {
   const { trip: rawTrip, tripId, role, dealId: routeDealId } = route.params || {};
@@ -405,6 +406,32 @@ export default function TripDetail({ navigation, route }) {
       </ScrollView>
 
       {dealStatus ? renderDealBlock() : null}
+
+      {/* Sticky CTA: viewer-side gets contact + leave-review; owner sees no
+          sticky bar (their actions live in deal block / edit / delete). */}
+      {!isOwner && !dealStatus && role === 'client' ? (
+        <StickyCTABar
+          accent={v1Accent.main}
+          primary={{
+            label: '💬 ' + t('write_driver'),
+            onPress: async () => {
+              const ok = await requireLevel(LEVELS.PHONE, 'contact');
+              if (!ok) return;
+              toast('💬 ' + t('chat_opened_toast'), 'success');
+              navigation.navigate('Chat', { partner: { name: view.driverName, country: trip.country || 'KZ' }, role });
+            },
+            testID: 'trip-sticky-chat',
+          }}
+          secondary={{
+            label: '⭐ ' + t('leave_review'),
+            onPress: async () => {
+              const ok = await requireLevel(LEVELS.PHONE, 'bid');
+              if (ok) setRateModal(true);
+            },
+            testID: 'trip-sticky-review',
+          }}
+        />
+      ) : null}
 
       <ShareModal
         visible={shareModal}
