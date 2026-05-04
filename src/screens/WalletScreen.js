@@ -9,8 +9,11 @@ import { getTransactions, subscribe } from '../utils/store';
 import { fetchRates } from '../utils/exchangeRates';
 import GradientText from '../components/GradientText';
 
-const CURRENCIES = ['USD', 'CNY', 'KZT', 'UZS', 'RUB', 'EUR', 'KGS', 'AED'];
-const SYMBOLS = { USD: '$', CNY: '¥', KZT: '₸', UZS: 'сум', RUB: '₽', EUR: '€', KGS: 'с', AED: 'AED' };
+// Pilot currencies (Stage 5 / rev. 3): RUB / USD / KZT / CNY.
+// Wallet display + FX widget reduced to the same set so the picker
+// can't surface a currency that the publish flow no longer accepts.
+const CURRENCIES = ['USD', 'CNY', 'KZT', 'RUB'];
+const SYMBOLS = { USD: '$', CNY: '¥', KZT: '₸', RUB: '₽' };
 
 const PAYMENT_METHODS = [
   { icon: '💳', name: 'Visa / MasterCard' },
@@ -20,9 +23,9 @@ const PAYMENT_METHODS = [
 
 const TYPE_ICONS = { deal_income: '💰', topup: '↑', contact_purchase: '👤', post_payment: '📦', unlimited_plan: '⭐' };
 
-// Валюты для widget курсов (от USD)
-const FX_PAIRS = ['KZT', 'CNY', 'UZS', 'RUB'];
-const FX_FLAGS = { KZT: '🇰🇿', CNY: '🇨🇳', UZS: '🇺🇿', RUB: '🇷🇺' };
+// FX widget shows USD → {KZT, CNY, RUB}. UZS removed in Stage 5.
+const FX_PAIRS = ['KZT', 'CNY', 'RUB'];
+const FX_FLAGS = { KZT: '🇰🇿', CNY: '🇨🇳', RUB: '🇷🇺' };
 
 export default function WalletScreen({ route }) {
   const { role } = route.params || {};
@@ -60,7 +63,7 @@ export default function WalletScreen({ route }) {
     if (currency === 'USD') return usd;
     const rate = fx.rates[currency] || 1;
     const v = usd * rate;
-    if (currency === 'UZS' || currency === 'KZT' || currency === 'RUB') return Math.round(v).toLocaleString();
+    if (currency === 'KZT' || currency === 'RUB') return Math.round(v).toLocaleString();
     if (Math.abs(v) >= 100) return v.toFixed(0);
     return v.toFixed(2);
   };
@@ -113,7 +116,7 @@ export default function WalletScreen({ route }) {
             <View style={s.fxGrid}>
               {FX_PAIRS.map(code => {
                 const rate = fx?.rates[code] || 0;
-                const formatted = code === 'UZS' || code === 'KZT' || code === 'RUB'
+                const formatted = code === 'KZT' || code === 'RUB'
                   ? Math.round(rate).toLocaleString()
                   : rate.toFixed(2);
                 return (

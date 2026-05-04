@@ -27,12 +27,13 @@ import { TRUCK_KEYS, TRUCK_ICONS } from '../utils/truckConstants';
 // "Сохранить как черновик" is a visual stub for now: backend has no
 // status='draft', so the link is disabled with a hint to keep filling.
 
+// Pilot currencies (Stage 5 / rev. 3): RUB / USD / KZT / CNY only.
+// Removed: UZS / KGS / EUR / AED. Mirrors CreateCargoScreen.
 const CURRENCY_OPTIONS = [
   { k: 'KZT', l: '₸' },
   { k: 'USD', l: '$' },
   { k: 'RUB', l: '₽' },
   { k: 'CNY', l: '¥' },
-  { k: 'UZS', l: 'сўм' },
 ];
 
 export default function CreateTripScreen({ navigation, route }) {
