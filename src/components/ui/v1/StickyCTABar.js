@@ -2,24 +2,32 @@
 // screens. Use for action pairs that should stay reachable while the
 // user is scrolling through long bid lists / reviews. Defaults to two
 // buttons (filled + outline) but `children` can be anything.
+// Stage 6: theme-aware bar fill / border / outline label.
 
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { v1Colors, v1Radius } from '../../../theme/designV1';
+import { useV1Colors, v1Radius } from '../../../theme/designV1';
 
-export default function StickyCTABar({ accent = v1Colors.driver, primary, secondary, children }) {
+export default function StickyCTABar({ accent, primary, secondary, children }) {
+  const colors = useV1Colors();
+  const filled = accent || colors.driver;
   return (
-    <View style={s.bar}>
+    <View
+      style={[
+        s.bar,
+        { backgroundColor: colors.bgDeep, borderTopColor: colors.border },
+      ]}
+    >
       {children ? children : (
         <View style={{ flexDirection: 'row', gap: 8 }}>
           {secondary ? (
             <TouchableOpacity
               onPress={secondary.onPress}
               activeOpacity={0.85}
-              style={[s.btn, { borderColor: v1Colors.borderStrong, backgroundColor: 'transparent' }]}
+              style={[s.btn, { borderColor: colors.borderStrong, backgroundColor: 'transparent' }]}
               testID={secondary.testID}
             >
-              <Text style={[s.btnText, { color: v1Colors.text }]}>{secondary.label}</Text>
+              <Text style={[s.btnText, { color: colors.text }]}>{secondary.label}</Text>
             </TouchableOpacity>
           ) : null}
           {primary ? (
@@ -29,7 +37,7 @@ export default function StickyCTABar({ accent = v1Colors.driver, primary, second
               disabled={primary.disabled}
               style={[
                 s.btn,
-                { backgroundColor: accent, borderColor: accent, flex: 2 },
+                { backgroundColor: filled, borderColor: filled, flex: 2 },
                 primary.disabled && { opacity: 0.5 },
               ]}
               testID={primary.testID}
@@ -46,8 +54,7 @@ export default function StickyCTABar({ accent = v1Colors.driver, primary, second
 const s = StyleSheet.create({
   bar: {
     paddingHorizontal: 16, paddingTop: 10, paddingBottom: 18,
-    backgroundColor: v1Colors.bgDeep,
-    borderTopWidth: 1, borderTopColor: v1Colors.border,
+    borderTopWidth: 1,
   },
   btn: {
     flex: 1, paddingVertical: 14, alignItems: 'center',

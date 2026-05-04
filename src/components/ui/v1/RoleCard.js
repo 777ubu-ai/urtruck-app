@@ -3,9 +3,10 @@
 
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
-import { v1Colors, v1Radius, v1Spacing, v1Typography, v1AccentFor } from '../../../theme/designV1';
+import { useV1Colors, v1Radius, v1Spacing, v1Typography, v1AccentFor } from '../../../theme/designV1';
 
 export default function RoleCard({ role, emoji, title, subtitle, onPress, loading, testID }) {
+  const colors = useV1Colors();
   const accent = v1AccentFor(role);
   return (
     <TouchableOpacity
@@ -17,7 +18,7 @@ export default function RoleCard({ role, emoji, title, subtitle, onPress, loadin
         s.card,
         {
           borderColor: accent.main,
-          backgroundColor: v1Colors.surface,
+          backgroundColor: colors.surface,
           shadowColor: accent.main,
         },
       ]}
@@ -30,8 +31,8 @@ export default function RoleCard({ role, emoji, title, subtitle, onPress, loadin
         )}
       </View>
       <View style={s.body}>
-        <Text style={[s.title, { color: accent.main }]}>{title}</Text>
-        <Text style={s.subtitle} numberOfLines={2}>{subtitle}</Text>
+        <Text style={[v1Typography.h2, { color: accent.main }]}>{title}</Text>
+        <Text style={[v1Typography.bodyMd, { color: colors.textMuted, marginTop: 2 }]} numberOfLines={2}>{subtitle}</Text>
       </View>
       <Text style={[s.arrow, { color: accent.main }]}>›</Text>
     </TouchableOpacity>
