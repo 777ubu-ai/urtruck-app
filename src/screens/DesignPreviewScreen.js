@@ -110,14 +110,19 @@ const SECTIONS = [
   ]},
 ];
 
-// Detect ?qa=design at the URL level. Mobile builds (no window) always
-// return false — the QA preview is web-only by design.
+// Detect ?qa=design&key=<shared> at the URL level. Two-factor URL gate so
+// a casual visitor stumbling on `?qa=design` does NOT see the gallery.
+// The key is intentionally low-secrecy — it just stops accidental
+// discovery, it's not authn. Rotate `QA_PREVIEW_KEY` whenever the URL
+// gets shared too widely. Mobile builds (no window) always return false.
+const QA_PREVIEW_KEY = 'urtruck_preview_2026';
+
 export function qaDesignMode() {
   if (Platform.OS !== 'web') return false;
   if (typeof window === 'undefined' || !window.location) return false;
   try {
     const params = new URLSearchParams(window.location.search || '');
-    return params.get('qa') === 'design';
+    return params.get('qa') === 'design' && params.get('key') === QA_PREVIEW_KEY;
   } catch {
     return false;
   }
@@ -163,9 +168,11 @@ export default function DesignPreviewScreen({ navigation }) {
         ))}
 
         <Text style={s.footer}>
-          Чтобы выйти из preview-режима, удалите{' '}
-          <Text style={{ color: accent.main, fontWeight: '900' }}>?qa=design</Text>
-          {' '}из URL и перезагрузите страницу.
+          QA preview mode · remove{' '}
+          <Text style={{ color: accent.main, fontWeight: '900' }}>qa</Text>
+          {' / '}
+          <Text style={{ color: accent.main, fontWeight: '900' }}>key</Text>
+          {' '}params to exit
         </Text>
       </ScrollView>
     </SafeAreaView>
