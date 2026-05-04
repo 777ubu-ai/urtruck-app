@@ -81,18 +81,22 @@ jobs:
           PUBLIC_BASE_URL: ${{ secrets.PUBLIC_BASE_URL || 'https://urtruck.kz' }}
         run: |
           set -e
-          # Wait for restarts to settle (PM2 + nginx pickup)
-          sleep 8
+          # PM2 restart on a 0.7s shell + uvicorn warmup with face_recognition
+          # / dlib / opencv imports takes a while on the pilot box. Give the
+          # backend an unconditional warm-up window before probing, then up
+          # to ~2 minutes of retries (24 × 5s) for the JSON to come up.
+          echo "Waiting 25s for PM2 + nginx + python imports to settle…"
+          sleep 25
 
           # --- Frontend: public bundle must serve a non-empty HTML ---
           ok=0
-          for i in 1 2 3 4 5 6 7 8 9 10; do
+          for i in $(seq 1 12); do
             body=$(curl -sS --max-time 10 "$PUBLIC_BASE_URL/" || true)
             case "$body" in
               *"<html"*|*"<!DOCTYPE"*|*"<!doctype"*) ok=1; break;;
             esac
             echo "frontend probe $i — empty/error, retrying"
-            sleep 4
+            sleep 5
           done
           if [ "$ok" != "1" ]; then
             echo "::error::Frontend did not serve HTML at $PUBLIC_BASE_URL/"
@@ -102,11 +106,11 @@ jobs:
 
           # --- Backend: /security/api/v1/system/info must return JSON with otp field ---
           ok=0
-          for i in 1 2 3 4 5 6 7 8 9 10; do
+          for i in $(seq 1 24); do
             body=$(curl -fsS --max-time 10 "$PUBLIC_BASE_URL/security/api/v1/system/info" || true)
             if echo "$body" | grep -q '"otp"'; then ok=1; break; fi
             echo "backend probe $i — no otp field, retrying"
-            sleep 4
+            sleep 5
           done
           if [ "$ok" != "1" ]; then
             echo "::error::Backend system/info did not return expected JSON at $PUBLIC_BASE_URL/security/api/v1/system/info"
@@ -115,11 +119,27 @@ jobs:
           echo "✅ Backend system/info OK"
 
           # --- Marketplace cargos must return JSON with cargos field ---
-          body=$(curl -fsS --max-time 10 "$PUBLIC_BASE_URL/security/api/v1/market/cargos?status=active&limit=1" || true)
-          echo "$body" | grep -q '"cargos"' || { echo "::error::cargos endpoint missing 'cargos' field"; exit 1; }
+          ok=0
+          for i in $(seq 1 6); do
+            body=$(curl -fsS --max-time 10 "$PUBLIC_BASE_URL/security/api/v1/market/cargos?status=active&limit=1" || true)
+            if echo "$body" | grep -q '"cargos"'; then ok=1; break; fi
+            echo "cargos probe $i — missing 'cargos' field, retrying"
+            sleep 5
+          done
+          if [ "$ok" != "1" ]; then
+            echo "::error::cargos endpoint missing 'cargos' field"; exit 1
+          fi
           echo "✅ Cargos list OK"
 
           # --- Marketplace trips must return JSON with trips field ---
-          body=$(curl -fsS --max-time 10 "$PUBLIC_BASE_URL/security/api/v1/market/trips?status=active&limit=1" || true)
-          echo "$body" | grep -q '"trips"' || { echo "::error::trips endpoint missing 'trips' field"; exit 1; }
+          ok=0
+          for i in $(seq 1 6); do
+            body=$(curl -fsS --max-time 10 "$PUBLIC_BASE_URL/security/api/v1/market/trips?status=active&limit=1" || true)
+            if echo "$body" | grep -q '"trips"'; then ok=1; break; fi
+            echo "trips probe $i — missing 'trips' field, retrying"
+            sleep 5
+          done
+          if [ "$ok" != "1" ]; then
+            echo "::error::trips endpoint missing 'trips' field"; exit 1
+          fi
           echo "✅ Trips list OK"
