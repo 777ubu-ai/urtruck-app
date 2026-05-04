@@ -5,7 +5,7 @@ import { useI18n } from '../utils/useI18n';
 import { useAuth } from '../utils/AuthContext';
 import { chatAPI } from '../utils/chatAPI';
 import { API_BASE } from '../config/env';
-import { v1Colors, v1Radius, v1AccentFor } from '../theme/designV1';
+import {v1Colors, useV1Colors, v1Radius, v1AccentFor} from '../theme/designV1';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
 
 // ChatsListScreen — design v1.
@@ -17,6 +17,46 @@ import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
 // We just rebuild the visual layer with brand-aligned tokens.
 
 export default function ChatsListScreen({ navigation, route }) {
+  const v1 = useV1Colors();
+  const s = React.useMemo(() => StyleSheet.create({
+
+  container: { flex: 1 },
+  titleBlock: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 8 },
+  titleHero: { color: v1.text, fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
+  sectionTitle: {
+    color: v1.textMuted,
+    fontSize: 10, fontWeight: '800', letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginTop: 12, marginBottom: 8,
+  },
+  row: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: v1.surface,
+    borderColor: v1.border, borderWidth: 1,
+    borderRadius: v1Radius.card,
+    paddingHorizontal: 12, paddingVertical: 12,
+    marginBottom: 8,
+  },
+  avatar: {
+    width: 44, height: 44, borderRadius: 22,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1,
+  },
+  avatarIcon: { fontSize: 20 },
+  name: { color: v1.text, fontSize: 14, fontWeight: '700', marginBottom: 2 },
+  desc: { color: v1.textMuted, fontSize: 12 },
+  time: { color: v1.textDim, fontSize: 10, fontWeight: '600' },
+  badge: {
+    backgroundColor: v1Colors.error,
+    minWidth: 20, height: 20, borderRadius: 10,
+    paddingHorizontal: 6,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  badgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '900' },
+  onlineDot: { width: 10, height: 10, borderRadius: 5 },
+  empty: { color: v1.textMuted, fontSize: 14, textAlign: 'center' },
+
+  }), [v1]);
   const { role } = route.params || {};
   const { t } = useI18n();
   const { session } = useAuth();
@@ -70,7 +110,7 @@ export default function ChatsListScreen({ navigation, route }) {
         role,
       })}
     >
-      <View style={[s.avatar, { backgroundColor: v1Colors.surfaceLift, borderColor: v1Colors.border }]}>
+      <View style={[s.avatar, { backgroundColor: v1.surfaceLift, borderColor: v1.border }]}>
         <Text style={s.avatarIcon}>💬</Text>
       </View>
       <View style={{ flex: 1 }}>
@@ -87,7 +127,7 @@ export default function ChatsListScreen({ navigation, route }) {
   );
 
   return (
-    <SafeAreaView style={[s.container, { backgroundColor: v1Colors.bg }]} edges={['top']}>
+    <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
       <BrandBarWithShare onBack={() => navigation.goBack()} accent={accent.main} />
       <View style={s.titleBlock}>
         <Text style={s.titleHero}>💬 {t('chats_title')}</Text>
@@ -121,40 +161,3 @@ export default function ChatsListScreen({ navigation, route }) {
   );
 }
 
-const s = StyleSheet.create({
-  container: { flex: 1 },
-  titleBlock: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 8 },
-  titleHero: { color: v1Colors.text, fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
-  sectionTitle: {
-    color: v1Colors.textMuted,
-    fontSize: 10, fontWeight: '800', letterSpacing: 1,
-    textTransform: 'uppercase',
-    marginTop: 12, marginBottom: 8,
-  },
-  row: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: v1Colors.surface,
-    borderColor: v1Colors.border, borderWidth: 1,
-    borderRadius: v1Radius.card,
-    paddingHorizontal: 12, paddingVertical: 12,
-    marginBottom: 8,
-  },
-  avatar: {
-    width: 44, height: 44, borderRadius: 22,
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1,
-  },
-  avatarIcon: { fontSize: 20 },
-  name: { color: v1Colors.text, fontSize: 14, fontWeight: '700', marginBottom: 2 },
-  desc: { color: v1Colors.textMuted, fontSize: 12 },
-  time: { color: v1Colors.textDim, fontSize: 10, fontWeight: '600' },
-  badge: {
-    backgroundColor: v1Colors.error,
-    minWidth: 20, height: 20, borderRadius: 10,
-    paddingHorizontal: 6,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  badgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '900' },
-  onlineDot: { width: 10, height: 10, borderRadius: 5 },
-  empty: { color: v1Colors.textMuted, fontSize: 14, textAlign: 'center' },
-});

@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
-import { v1Colors } from '../theme/designV1';
+import {v1Colors, useV1Colors} from '../theme/designV1';
 import { useToast } from '../components/Toast';
 import { getTransactions, subscribe } from '../utils/store';
 import { fetchRates } from '../utils/exchangeRates';
@@ -28,6 +28,7 @@ const FX_PAIRS = ['KZT', 'CNY', 'RUB'];
 const FX_FLAGS = { KZT: '🇰🇿', CNY: '🇨🇳', RUB: '🇷🇺' };
 
 export default function WalletScreen({ route }) {
+  const v1 = useV1Colors();
   const { role } = route.params || {};
   const accent = role === 'driver' ? '#22C55E' : '#F59E0B';
   const { t } = useI18n();
@@ -74,7 +75,7 @@ export default function WalletScreen({ route }) {
     : '—';
 
   return (
-    <SafeAreaView style={[s.container, { backgroundColor: v1Colors.bg }]} edges={['top']}>
+    <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
       <ScrollView contentContainerStyle={{ padding: 16 }}>
         <GradientText style={s.title} colors={['#22C55E', '#16A34A']}>{t('wallet')}</GradientText>
 

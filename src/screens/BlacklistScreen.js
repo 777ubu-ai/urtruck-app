@@ -3,11 +3,12 @@ import { View, Text, TouchableOpacity, StyleSheet, FlatList, TextInput } from 'r
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
-import { v1Colors } from '../theme/designV1';
+import {v1Colors, useV1Colors} from '../theme/designV1';
 import { useToast } from '../components/Toast';
 import { getBlacklist, addBlacklist, removeBlacklistItem, subscribe } from '../utils/store';
 
 export default function BlacklistScreen({ navigation }) {
+  const v1 = useV1Colors();
   const { t } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
@@ -27,7 +28,7 @@ export default function BlacklistScreen({ navigation }) {
   };
 
   return (
-    <SafeAreaView style={[s.container, { backgroundColor: v1Colors.bg }]} edges={['top']}>
+    <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
       <View style={s.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={[s.backBtn, { backgroundColor: theme.card, borderColor: theme.border }]}><Text style={[s.backText, { color: theme.text }]}>‹</Text></TouchableOpacity>
         <Text style={[s.title, { color: theme.text }]}>{t('blacklistSection')}</Text>

@@ -3,13 +3,14 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert,
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
-import { v1Colors } from '../theme/designV1';
+import {v1Colors, useV1Colors} from '../theme/designV1';
 import { useToast } from '../components/Toast';
 import RouteMap from '../components/RouteMap';
 import { startTracking, stopTracking, getTracking, subscribe, addNotification, getTrips, requestTracking, respondTracking, stopTrackingPermission } from '../utils/store';
 import { parseCity, routeStats, isNearBorder } from '../utils/geo';
 
 export default function TrackScreen({ navigation, route }) {
+  const v1 = useV1Colors();
   const { role } = route.params || {};
   const isDriver = role === 'driver';
   const accent = isDriver ? '#22C55E' : '#F59E0B';
@@ -81,7 +82,7 @@ export default function TrackScreen({ navigation, route }) {
   };
 
   return (
-    <SafeAreaView style={[s.container, { backgroundColor: v1Colors.bg }]} edges={['top']}>
+    <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
       <ScrollView contentContainerStyle={{ padding: 16 }}>
         <Text style={[s.title, { color: theme.text }]}>{t('myTrips')}</Text>
         <View style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]}>

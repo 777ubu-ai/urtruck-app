@@ -8,7 +8,7 @@ import { useAuth } from '../utils/AuthContext';
 import { DS } from '../utils/theme';
 import { setLanguage, getLanguage } from '../utils/i18n';
 import { useI18n } from '../utils/useI18n';
-import { v1Colors } from '../theme/designV1';
+import {v1Colors, useV1Colors} from '../theme/designV1';
 
 const LOGO = require('../../assets/logo.jpg');
 const LANGS = [
@@ -21,6 +21,48 @@ const LANGS = [
 ];
 
 export default function OnboardingScreen({ navigation }) {
+  const v1 = useV1Colors();
+  const s = React.useMemo(() => StyleSheet.create({
+
+  root: { flex: 1, backgroundColor: v1.bg },
+  scroll: { paddingHorizontal: 16, paddingBottom: 30 },
+  topBar: { flexDirection: 'row', justifyContent: 'space-between', paddingTop: 8, marginBottom: 12 },
+  langPill: { borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6 },
+  langText: { color: '#94a3b8', fontSize: 12, fontFamily: DS.font.body },
+  heroWrap: { width: '100%', height: 160, borderRadius: 20, marginBottom: 20, overflow: 'hidden' },
+  heroOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.25)' },
+  logoBlock: { alignItems: 'center', marginBottom: 28 },
+  logoImg: { width: 56, height: 56, borderRadius: 14 },
+  logoTitle: { fontSize: 32, fontWeight: '800', color: '#fff', letterSpacing: -1, marginTop: 12, fontFamily: DS.font.heading },
+  logoSub: { fontSize: 11, letterSpacing: 3, color: '#64748b', marginTop: 6, textTransform: 'uppercase', fontFamily: DS.font.body },
+  cta: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#22c55e', borderRadius: 12, padding: 18, marginBottom: 16 },
+  ctaIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
+  ctaTitle: { color: '#fff', fontSize: 15, fontWeight: '700', textTransform: 'uppercase', fontFamily: DS.font.heading },
+  ctaSub: { color: 'rgba(255,255,255,0.8)', fontSize: 12, marginTop: 2, fontFamily: DS.font.body },
+  ctaArrow: { color: 'rgba(255,255,255,0.6)', fontSize: 20, fontWeight: '700' },
+  cardsRow: { flexDirection: 'row', gap: 12, marginBottom: 20 },
+  cardDriver: { flex: 1, borderRadius: 16, padding: 18, alignItems: 'center', minHeight: 130, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'rgba(34,197,94,0.2)' },
+  cardClient: { flex: 1, borderRadius: 16, padding: 18, alignItems: 'center', minHeight: 130, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
+  cardIconWrap: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  cardTitle: { color: '#fff', fontSize: 13, fontWeight: '700', textAlign: 'center', fontFamily: DS.font.heading },
+  cardSub: { color: '#64748b', fontSize: 11, marginTop: 3, textAlign: 'center', fontFamily: DS.font.body },
+  trust: { alignItems: 'center' },
+  flags: { flexDirection: 'row', gap: 6, marginBottom: 10 },
+  flagCircle: { width: 28, height: 28, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)', alignItems: 'center', justifyContent: 'center' },
+  trustRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+  onlineDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#22c55e' },
+  trustText: { fontSize: 12, color: '#64748b', fontFamily: DS.font.body },
+  trustBold: { fontWeight: '700', color: '#94a3b8' },
+  disclaimer: { fontSize: 10, color: '#475569', textAlign: 'center', marginTop: 8, fontFamily: DS.font.body },
+  langBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(10,15,26,0.85)' },
+  langSheet: { backgroundColor: '#111827', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 32, maxHeight: '70%', alignItems: 'center' },
+  langHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.15)', marginBottom: 14 },
+  langSheetTitle: { fontSize: 16, fontWeight: '700', color: '#fff', marginBottom: 14, fontFamily: DS.font.heading },
+  langRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 14, paddingHorizontal: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(255,255,255,0.06)', borderRadius: 12 },
+  langRowActive: { backgroundColor: 'rgba(34,197,94,0.1)' },
+  langRowText: { flex: 1, fontSize: 15, fontWeight: '600', color: '#fff', fontFamily: DS.font.body },
+
+  }), [v1]);
   const { ensureGuest } = useAuth();
   const { t } = useI18n();
   const [loading, setLoading] = useState(null);
@@ -151,42 +193,3 @@ export default function OnboardingScreen({ navigation }) {
   );
 }
 
-const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: v1Colors.bg },
-  scroll: { paddingHorizontal: 16, paddingBottom: 30 },
-  topBar: { flexDirection: 'row', justifyContent: 'space-between', paddingTop: 8, marginBottom: 12 },
-  langPill: { borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6 },
-  langText: { color: '#94a3b8', fontSize: 12, fontFamily: DS.font.body },
-  heroWrap: { width: '100%', height: 160, borderRadius: 20, marginBottom: 20, overflow: 'hidden' },
-  heroOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.25)' },
-  logoBlock: { alignItems: 'center', marginBottom: 28 },
-  logoImg: { width: 56, height: 56, borderRadius: 14 },
-  logoTitle: { fontSize: 32, fontWeight: '800', color: '#fff', letterSpacing: -1, marginTop: 12, fontFamily: DS.font.heading },
-  logoSub: { fontSize: 11, letterSpacing: 3, color: '#64748b', marginTop: 6, textTransform: 'uppercase', fontFamily: DS.font.body },
-  cta: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#22c55e', borderRadius: 12, padding: 18, marginBottom: 16 },
-  ctaIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
-  ctaTitle: { color: '#fff', fontSize: 15, fontWeight: '700', textTransform: 'uppercase', fontFamily: DS.font.heading },
-  ctaSub: { color: 'rgba(255,255,255,0.8)', fontSize: 12, marginTop: 2, fontFamily: DS.font.body },
-  ctaArrow: { color: 'rgba(255,255,255,0.6)', fontSize: 20, fontWeight: '700' },
-  cardsRow: { flexDirection: 'row', gap: 12, marginBottom: 20 },
-  cardDriver: { flex: 1, borderRadius: 16, padding: 18, alignItems: 'center', minHeight: 130, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'rgba(34,197,94,0.2)' },
-  cardClient: { flex: 1, borderRadius: 16, padding: 18, alignItems: 'center', minHeight: 130, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
-  cardIconWrap: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-  cardTitle: { color: '#fff', fontSize: 13, fontWeight: '700', textAlign: 'center', fontFamily: DS.font.heading },
-  cardSub: { color: '#64748b', fontSize: 11, marginTop: 3, textAlign: 'center', fontFamily: DS.font.body },
-  trust: { alignItems: 'center' },
-  flags: { flexDirection: 'row', gap: 6, marginBottom: 10 },
-  flagCircle: { width: 28, height: 28, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)', alignItems: 'center', justifyContent: 'center' },
-  trustRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
-  onlineDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#22c55e' },
-  trustText: { fontSize: 12, color: '#64748b', fontFamily: DS.font.body },
-  trustBold: { fontWeight: '700', color: '#94a3b8' },
-  disclaimer: { fontSize: 10, color: '#475569', textAlign: 'center', marginTop: 8, fontFamily: DS.font.body },
-  langBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(10,15,26,0.85)' },
-  langSheet: { backgroundColor: '#111827', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 32, maxHeight: '70%', alignItems: 'center' },
-  langHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.15)', marginBottom: 14 },
-  langSheetTitle: { fontSize: 16, fontWeight: '700', color: '#fff', marginBottom: 14, fontFamily: DS.font.heading },
-  langRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 14, paddingHorizontal: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(255,255,255,0.06)', borderRadius: 12 },
-  langRowActive: { backgroundColor: 'rgba(34,197,94,0.1)' },
-  langRowText: { flex: 1, fontSize: 15, fontWeight: '600', color: '#fff', fontFamily: DS.font.body },
-});

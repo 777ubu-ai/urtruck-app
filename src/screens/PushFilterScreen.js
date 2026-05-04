@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Switch, TextInput
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
-import { v1Colors } from '../theme/designV1';
+import {v1Colors, useV1Colors} from '../theme/designV1';
 import { useToast } from '../components/Toast';
 import { getPushSettings, setPushSettings } from '../utils/store';
 
@@ -19,6 +19,7 @@ const NOTIF_CATEGORIES = [
 ];
 
 export default function PushFilterScreen({ navigation, route }) {
+  const v1 = useV1Colors();
   const { role } = route.params || {};
   const accent = role === 'driver' ? '#4F46E5' : '#F59E0B';
   const { t } = useI18n();
@@ -42,7 +43,7 @@ export default function PushFilterScreen({ navigation, route }) {
   };
 
   return (
-    <SafeAreaView style={[s.container, { backgroundColor: v1Colors.bg }]} edges={['top']}>
+    <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
       <View style={s.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={[s.backBtn, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <Text style={[s.backText, { color: theme.text }]}>‹</Text>

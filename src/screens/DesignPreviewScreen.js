@@ -16,7 +16,7 @@
 import React from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { v1Colors, v1Radius, v1AccentFor } from '../theme/designV1';
+import {v1Colors, useV1Colors, v1Radius, v1AccentFor} from '../theme/designV1';
 
 // Mock objects mirror the canonical shape produced by normalizeTrip /
 // normalizeCargo so the destination screens render exactly the same way
@@ -129,6 +129,34 @@ export function qaDesignMode() {
 }
 
 export default function DesignPreviewScreen({ navigation }) {
+  const v1 = useV1Colors();
+  const s = React.useMemo(() => StyleSheet.create({
+
+  safe: { flex: 1, backgroundColor: v1.bg },
+  scroll: { paddingHorizontal: 16, paddingBottom: 60 },
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 },
+  brand: { color: v1.text, fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
+  qaPill: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 },
+  qaPillText: { fontSize: 11, fontWeight: '900', letterSpacing: 1 },
+  title: { color: v1.text, fontSize: 22, fontWeight: '900', marginTop: 8 },
+  subtitle: { color: v1.textMuted, fontSize: 13, marginTop: 4, lineHeight: 18 },
+  sectionTitle: {
+    color: v1.textMuted, fontSize: 10, fontWeight: '800',
+    letterSpacing: 1, marginBottom: 8,
+  },
+  row: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: v1.surface,
+    borderColor: v1.border, borderWidth: 1,
+    borderRadius: v1Radius.field,
+    paddingHorizontal: 14, paddingVertical: 14,
+    marginBottom: 6,
+  },
+  rowLabel: { color: v1.text, fontSize: 14, fontWeight: '600' },
+  rowArrow: { fontSize: 22, fontWeight: '300' },
+  footer: { color: v1.textDim, fontSize: 11, textAlign: 'center', marginTop: 28, lineHeight: 16 },
+
+  }), [v1]);
   const accent = v1AccentFor('driver');
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
@@ -179,28 +207,3 @@ export default function DesignPreviewScreen({ navigation }) {
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: v1Colors.bg },
-  scroll: { paddingHorizontal: 16, paddingBottom: 60 },
-  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 },
-  brand: { color: v1Colors.text, fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
-  qaPill: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 },
-  qaPillText: { fontSize: 11, fontWeight: '900', letterSpacing: 1 },
-  title: { color: v1Colors.text, fontSize: 22, fontWeight: '900', marginTop: 8 },
-  subtitle: { color: v1Colors.textMuted, fontSize: 13, marginTop: 4, lineHeight: 18 },
-  sectionTitle: {
-    color: v1Colors.textMuted, fontSize: 10, fontWeight: '800',
-    letterSpacing: 1, marginBottom: 8,
-  },
-  row: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: v1Colors.surface,
-    borderColor: v1Colors.border, borderWidth: 1,
-    borderRadius: v1Radius.field,
-    paddingHorizontal: 14, paddingVertical: 14,
-    marginBottom: 6,
-  },
-  rowLabel: { color: v1Colors.text, fontSize: 14, fontWeight: '600' },
-  rowArrow: { fontSize: 22, fontWeight: '300' },
-  footer: { color: v1Colors.textDim, fontSize: 11, textAlign: 'center', marginTop: 28, lineHeight: 16 },
-});

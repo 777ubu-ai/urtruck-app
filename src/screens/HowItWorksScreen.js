@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../utils/ThemeContext';
-import { v1Colors } from '../theme/designV1';
+import {v1Colors, useV1Colors} from '../theme/designV1';
 import { accentColors } from '../utils/theme';
 
 const STEPS_CLIENT = [
@@ -60,13 +60,14 @@ const FEATURES = [
 
 
 export default function HowItWorksScreen({ navigation, route }) {
+  const v1 = useV1Colors();
   const { theme, isDark } = useTheme();
   const role = route?.params?.role || 'client';
   const steps = role === 'driver' ? STEPS_DRIVER : STEPS_CLIENT;
   const accent = role === 'driver' ? accentColors.driver : accentColors.client;
 
   return (
-    <SafeAreaView style={[{ flex: 1, backgroundColor: v1Colors.bg }]} edges={['top']}>
+    <SafeAreaView style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']}>
       <View style={s.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={s.back}>
           <Text style={[s.backText, { color: theme.text }]}>‹</Text>

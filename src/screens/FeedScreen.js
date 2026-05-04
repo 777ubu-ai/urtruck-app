@@ -66,6 +66,110 @@ const sanitizeDesc = (s) => {
 const DRIVERS = [];
 
 export default function FeedScreen({ navigation, route }) {
+  // Theme-aware tokens — used both inside the memoised stylesheet below
+  // and at JSX inline overrides further down. Must be declared before
+  // the stylesheet so React.useMemo's dependency [v1] resolves.
+  const v1 = useV1Colors();
+  const s = React.useMemo(() => StyleSheet.create({
+
+  container: { flex: 1 },
+  // v1 brand bar (UrTruck + FTL pill + bell). Replaces the old `header`
+  // gradient title, which combined too many call-sites and mixed brand
+  // hierarchy with action CTA.
+  brandBar: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 16, paddingTop: 6, paddingBottom: 6,
+  },
+  brandRow: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  brandText: { color: v1.text, fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
+  ftlPill: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 2 },
+  ftlText: { fontSize: 11, fontWeight: '900', letterSpacing: 1 },
+  bellBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, backgroundColor: v1.surface },
+  bellIcon: { fontSize: 18 },
+  // Title row with outline CTA on the right (macros 07/08).
+  titleRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12, gap: 12 },
+  titleHero: { color: v1.text, fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
+  titleHeroSub: { color: v1.textMuted, fontSize: 12, marginTop: 2 },
+  titleCta: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 },
+  titleCtaText: { fontSize: 12, fontWeight: '800' },
+  footerNote: {
+    marginTop: 16, marginBottom: 8,
+    borderWidth: 1, borderRadius: 14,
+    padding: 12,
+    backgroundColor: v1.surface,
+  },
+  footerNoteText: { color: v1.textMuted, fontSize: 12, lineHeight: 17 },
+  refreshBtn: { marginTop: 16, borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12 },
+  // Old layout helpers kept for the still-existing publish modal below.
+  betaBar: { backgroundColor: '#F59E0B', paddingVertical: 6, paddingHorizontal: 14, alignItems: 'center' },
+  betaBarText: { color: '#0C0A09', fontSize: 11, fontWeight: '700', letterSpacing: 0.4 },
+  header: { flexDirection: 'row', alignItems: 'center', padding: 16, paddingBottom: 8, gap: 8 },
+  title: { fontSize: 22, fontWeight: '900' },
+  subtitle: { fontSize: 12 },
+  actionBtn: { borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12 },
+  actionBtnText: { fontSize: 12, fontWeight: '800' },
+  searchWrap: { paddingHorizontal: 16, paddingBottom: 6, flexDirection: 'row', alignItems: 'center', gap: 6, zIndex: 10 },
+  searchInput: { flex: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, borderWidth: 1 },
+  clearBtn: { paddingHorizontal: 8 },
+  saveRouteBtn: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, marginLeft: 4 },
+  filterBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  activeChipsRow: { paddingHorizontal: 16, paddingBottom: 8, gap: 6, alignItems: 'center' },
+  activeChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, maxWidth: 220 },
+  activeChipText: { color: '#fff', fontSize: 12, fontWeight: '700', flexShrink: 1 },
+  activeChipClose: { color: '#fff', fontSize: 13, fontWeight: '800', marginLeft: 2 },
+  filterSheet: { borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, paddingBottom: 40, maxHeight: '80%' },
+  filterSheetTitle: { fontSize: 20, fontWeight: '800', marginBottom: 16 },
+  filterSectionLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 1, marginTop: 14, marginBottom: 8 },
+  filterPillRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', rowGap: 8 },
+  filterPillWrap: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', rowGap: 8 },
+  filterPill: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, alignSelf: 'flex-start' },
+  filterPillText: { fontSize: 12, fontWeight: '600' },
+  filterInput: { paddingHorizontal: 14, paddingVertical: 12, borderRadius: 12, borderWidth: 1, fontSize: 14 },
+  filterActions: { flexDirection: 'row', gap: 10, marginTop: 24 },
+  filterActionBtn: { flex: 1, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
+  filterActionText: { fontSize: 15, fontWeight: '800' },
+  card: { borderRadius: 14, padding: 16, borderWidth: 1, borderColor: '#263244', backgroundColor: '#111827' },
+  cardRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  route: { fontSize: 17, fontWeight: '700', marginBottom: 5, letterSpacing: -0.2, color: '#F8FAFC' },
+  cargoName: { fontSize: 12, marginBottom: 8 },
+  badges: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
+  badge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 16, fontSize: 10, fontWeight: '700', overflow: 'hidden' },
+  price: { color: '#22C55E', fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
+  bidsCount: { fontSize: 10, marginTop: 2 },
+  driverName: { fontSize: 16, fontWeight: '700' },
+  rating: { color: '#FBBF24', fontSize: 12, fontWeight: '700', marginVertical: 4 },
+  tripBadge: { position: 'absolute', top: -1, right: 12, backgroundColor: '#22C55E', paddingHorizontal: 10, paddingVertical: 3, borderBottomLeftRadius: 8, borderBottomRightRadius: 8 },
+  tripBadgeText: { color: '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 0.5 },
+  mineBadge: { position: 'absolute', top: -1, right: 12, paddingHorizontal: 10, paddingVertical: 3, borderBottomLeftRadius: 8, borderBottomRightRadius: 8 },
+  mineBadgeText: { color: '#0C0A09', fontSize: 9, fontWeight: '900', letterSpacing: 0.5 },
+  quickChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 18, borderWidth: 1 },
+  quickChipText: { fontSize: 11, fontWeight: '700' },
+  tripRoute: { fontSize: 13, fontWeight: '800', marginTop: 4 },
+  tripDates: { fontSize: 11, marginTop: 2 },
+  cargoPreview: { width: '100%', height: 140, borderRadius: 10, marginTop: 10 },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
+  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 40, borderWidth: 1 },
+  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: '#44403C', alignSelf: 'center', marginBottom: 18 },
+  formTitle: { fontSize: 20, fontWeight: '800', marginBottom: 16 },
+  fi: { borderRadius: 12, padding: 14, fontSize: 14, borderWidth: 1, marginBottom: 10 },
+  frow: { flexDirection: 'row', gap: 8 },
+  formLabel: { fontSize: 10, fontWeight: '600', letterSpacing: 0.5, marginBottom: 6, marginTop: 4, textTransform: 'uppercase' },
+  hintBox: { backgroundColor: '#22C55E15', borderRadius: 10, padding: 10, marginBottom: 12, borderWidth: 1, borderColor: '#22C55E30' },
+  hintText: { fontSize: 11, lineHeight: 16 },
+  typeCard: { width: 88, paddingVertical: 12, paddingHorizontal: 8, borderRadius: 12, borderWidth: 1, alignItems: 'center', gap: 4 },
+  typeCardText: { fontSize: 10, fontWeight: '600', textAlign: 'center' },
+  currChip: { paddingHorizontal: 10, paddingVertical: 10, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  currChipText: { fontSize: 12, fontWeight: '700' },
+  payModeBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1.5, alignItems: 'center' },
+  payModeText: { fontSize: 13, fontWeight: '700' },
+  fieldError: { color: '#EF4444', fontSize: 11, marginTop: -6, marginBottom: 8, fontWeight: '600' },
+  photoPicker: { borderRadius: 14, padding: 20, borderWidth: 1, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12, minHeight: 120 },
+  photoImg: { width: '100%', height: 140, borderRadius: 10 },
+  photoText: { fontSize: 13, fontWeight: '600' },
+  submitBtn: { borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 6 },
+  submitText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+
+  }), [v1]);
   const { role } = route.params || { role: 'client' };
   const isDriver = role === 'driver';
   // Brand v3: driver = emerald, client = orange. No blue.
@@ -88,11 +192,6 @@ export default function FeedScreen({ navigation, route }) {
   const [sortBy, setSortBy] = useState('newest');
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState(false);
-  // Stage 6: pull v1 tokens via the theme-aware hook so the screen
-  // background, filter-sheet chrome and footer note all flip on
-  // light/dark toggle. The static `v1Colors` import remains for tokens
-  // that don't change between themes (driver/cargoOwner accent shades).
-  const v1 = useV1Colors();
   // activeFilter is the chip that's currently expanded into a bottom-sheet.
   // null → no sheet open. One sheet at a time, scoped to its own state slice.
   const [activeFilter, setActiveFilter] = useState(null); // 'dir' | 'date' | 'body' | 'price' | null
@@ -667,101 +766,3 @@ export default function FeedScreen({ navigation, route }) {
   );
 }
 
-const s = StyleSheet.create({
-  container: { flex: 1 },
-  // v1 brand bar (UrTruck + FTL pill + bell). Replaces the old `header`
-  // gradient title, which combined too many call-sites and mixed brand
-  // hierarchy with action CTA.
-  brandBar: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 16, paddingTop: 6, paddingBottom: 6,
-  },
-  brandRow: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  brandText: { color: v1Colors.text, fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
-  ftlPill: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 2 },
-  ftlText: { fontSize: 11, fontWeight: '900', letterSpacing: 1 },
-  bellBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, backgroundColor: v1Colors.surface },
-  bellIcon: { fontSize: 18 },
-  // Title row with outline CTA on the right (macros 07/08).
-  titleRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12, gap: 12 },
-  titleHero: { color: v1Colors.text, fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
-  titleHeroSub: { color: v1Colors.textMuted, fontSize: 12, marginTop: 2 },
-  titleCta: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 },
-  titleCtaText: { fontSize: 12, fontWeight: '800' },
-  footerNote: {
-    marginTop: 16, marginBottom: 8,
-    borderWidth: 1, borderRadius: 14,
-    padding: 12,
-    backgroundColor: v1Colors.surface,
-  },
-  footerNoteText: { color: v1Colors.textMuted, fontSize: 12, lineHeight: 17 },
-  refreshBtn: { marginTop: 16, borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12 },
-  // Old layout helpers kept for the still-existing publish modal below.
-  betaBar: { backgroundColor: '#F59E0B', paddingVertical: 6, paddingHorizontal: 14, alignItems: 'center' },
-  betaBarText: { color: '#0C0A09', fontSize: 11, fontWeight: '700', letterSpacing: 0.4 },
-  header: { flexDirection: 'row', alignItems: 'center', padding: 16, paddingBottom: 8, gap: 8 },
-  title: { fontSize: 22, fontWeight: '900' },
-  subtitle: { fontSize: 12 },
-  actionBtn: { borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12 },
-  actionBtnText: { fontSize: 12, fontWeight: '800' },
-  searchWrap: { paddingHorizontal: 16, paddingBottom: 6, flexDirection: 'row', alignItems: 'center', gap: 6, zIndex: 10 },
-  searchInput: { flex: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, borderWidth: 1 },
-  clearBtn: { paddingHorizontal: 8 },
-  saveRouteBtn: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, marginLeft: 4 },
-  filterBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
-  activeChipsRow: { paddingHorizontal: 16, paddingBottom: 8, gap: 6, alignItems: 'center' },
-  activeChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, maxWidth: 220 },
-  activeChipText: { color: '#fff', fontSize: 12, fontWeight: '700', flexShrink: 1 },
-  activeChipClose: { color: '#fff', fontSize: 13, fontWeight: '800', marginLeft: 2 },
-  filterSheet: { borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, paddingBottom: 40, maxHeight: '80%' },
-  filterSheetTitle: { fontSize: 20, fontWeight: '800', marginBottom: 16 },
-  filterSectionLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 1, marginTop: 14, marginBottom: 8 },
-  filterPillRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', rowGap: 8 },
-  filterPillWrap: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', rowGap: 8 },
-  filterPill: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, alignSelf: 'flex-start' },
-  filterPillText: { fontSize: 12, fontWeight: '600' },
-  filterInput: { paddingHorizontal: 14, paddingVertical: 12, borderRadius: 12, borderWidth: 1, fontSize: 14 },
-  filterActions: { flexDirection: 'row', gap: 10, marginTop: 24 },
-  filterActionBtn: { flex: 1, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
-  filterActionText: { fontSize: 15, fontWeight: '800' },
-  card: { borderRadius: 14, padding: 16, borderWidth: 1, borderColor: '#263244', backgroundColor: '#111827' },
-  cardRow: { flexDirection: 'row', alignItems: 'flex-start' },
-  route: { fontSize: 17, fontWeight: '700', marginBottom: 5, letterSpacing: -0.2, color: '#F8FAFC' },
-  cargoName: { fontSize: 12, marginBottom: 8 },
-  badges: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
-  badge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 16, fontSize: 10, fontWeight: '700', overflow: 'hidden' },
-  price: { color: '#22C55E', fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
-  bidsCount: { fontSize: 10, marginTop: 2 },
-  driverName: { fontSize: 16, fontWeight: '700' },
-  rating: { color: '#FBBF24', fontSize: 12, fontWeight: '700', marginVertical: 4 },
-  tripBadge: { position: 'absolute', top: -1, right: 12, backgroundColor: '#22C55E', paddingHorizontal: 10, paddingVertical: 3, borderBottomLeftRadius: 8, borderBottomRightRadius: 8 },
-  tripBadgeText: { color: '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 0.5 },
-  mineBadge: { position: 'absolute', top: -1, right: 12, paddingHorizontal: 10, paddingVertical: 3, borderBottomLeftRadius: 8, borderBottomRightRadius: 8 },
-  mineBadgeText: { color: '#0C0A09', fontSize: 9, fontWeight: '900', letterSpacing: 0.5 },
-  quickChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 18, borderWidth: 1 },
-  quickChipText: { fontSize: 11, fontWeight: '700' },
-  tripRoute: { fontSize: 13, fontWeight: '800', marginTop: 4 },
-  tripDates: { fontSize: 11, marginTop: 2 },
-  cargoPreview: { width: '100%', height: 140, borderRadius: 10, marginTop: 10 },
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
-  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 40, borderWidth: 1 },
-  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: '#44403C', alignSelf: 'center', marginBottom: 18 },
-  formTitle: { fontSize: 20, fontWeight: '800', marginBottom: 16 },
-  fi: { borderRadius: 12, padding: 14, fontSize: 14, borderWidth: 1, marginBottom: 10 },
-  frow: { flexDirection: 'row', gap: 8 },
-  formLabel: { fontSize: 10, fontWeight: '600', letterSpacing: 0.5, marginBottom: 6, marginTop: 4, textTransform: 'uppercase' },
-  hintBox: { backgroundColor: '#22C55E15', borderRadius: 10, padding: 10, marginBottom: 12, borderWidth: 1, borderColor: '#22C55E30' },
-  hintText: { fontSize: 11, lineHeight: 16 },
-  typeCard: { width: 88, paddingVertical: 12, paddingHorizontal: 8, borderRadius: 12, borderWidth: 1, alignItems: 'center', gap: 4 },
-  typeCardText: { fontSize: 10, fontWeight: '600', textAlign: 'center' },
-  currChip: { paddingHorizontal: 10, paddingVertical: 10, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  currChipText: { fontSize: 12, fontWeight: '700' },
-  payModeBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1.5, alignItems: 'center' },
-  payModeText: { fontSize: 13, fontWeight: '700' },
-  fieldError: { color: '#EF4444', fontSize: 11, marginTop: -6, marginBottom: 8, fontWeight: '600' },
-  photoPicker: { borderRadius: 14, padding: 20, borderWidth: 1, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12, minHeight: 120 },
-  photoImg: { width: '100%', height: 140, borderRadius: 10 },
-  photoText: { fontSize: 13, fontWeight: '600' },
-  submitBtn: { borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 6 },
-  submitText: { color: '#fff', fontSize: 16, fontWeight: '800' },
-});

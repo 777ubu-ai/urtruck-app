@@ -16,13 +16,49 @@ import { marketAPI } from '../utils/marketAPI';
 import { normalizeTrip, tripDisplay } from '../utils/normalizers';
 import { buildTripShareText } from '../utils/share';
 import { WEB_URL } from '../config/env';
-import { v1Colors, v1Radius, v1AccentFor } from '../theme/designV1';
+import {v1Colors, useV1Colors, v1Radius, v1AccentFor} from '../theme/designV1';
 import GlassCard from '../components/ui/v1/GlassCard';
 import SectionTitle from '../components/ui/v1/SectionTitle';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
 import StickyCTABar from '../components/ui/v1/StickyCTABar';
 
 export default function TripDetail({ navigation, route }) {
+  const v1 = useV1Colors();
+  const s = React.useMemo(() => StyleSheet.create({
+
+  container: { flex: 1 },
+  // Brand bar moved to <BrandBarWithShare/> in stage 3D — local
+  // brandBar/backHit/backIcon/brandRow/brandText/ftlPill/ftlText/shareBtn/
+  // shareIcon styles were removed as part of stage 3E cleanup.
+  pageTitle: { color: v1.text, fontSize: 24, fontWeight: '900', letterSpacing: -0.5, marginVertical: 12 },
+  priceBig: { fontSize: 28, fontWeight: '900', letterSpacing: -0.5 },
+  // Legacy local styles still used by deal-block / timeline
+  header: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 },
+  backBtn: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  backText: { fontSize: 22 },
+  title: { flex: 1, fontSize: 20, fontWeight: '900' },
+  section: { padding: 16, borderRadius: 16, borderWidth: 1, marginBottom: 10 },
+  sectionTitle: { fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: 12, textTransform: 'uppercase' },
+  routeRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 },
+  dot: { width: 10, height: 10, borderRadius: 5 },
+  city: { fontSize: 16, fontWeight: '800' },
+  transitCity: { fontSize: 13, fontStyle: 'italic' },
+  statsRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  statPill: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
+  statText: { fontSize: 12, fontWeight: '700' },
+  dateRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8 },
+  dateLabel: { fontSize: 13, fontWeight: '500' },
+  dateValue: { fontSize: 14, fontWeight: '700' },
+  primaryBtn: { borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
+  secondaryBtn: { borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 8, borderWidth: 1.5 },
+  secondaryBtnText: { fontSize: 14, fontWeight: '700' },
+  primaryBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  dangerBtn: { borderWidth: 1, borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 8 },
+  dangerBtnText: { color: '#EF4444', fontSize: 13, fontWeight: '800' },
+  dealActionBtn: { borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10 },
+  dealActionText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+
+  }), [v1]);
   const { trip: rawTrip, tripId, role, dealId: routeDealId } = route.params || {};
   const [serverTrip, setServerTrip] = React.useState(null);
   // Canonical shape: TripDetail never reads raw fields directly. If we got
@@ -232,7 +268,7 @@ export default function TripDetail({ navigation, route }) {
   const v1Accent = v1AccentFor(role === 'client' || role === 'shipper' ? 'client' : 'driver');
 
   return (
-    <SafeAreaView style={[s.container, { backgroundColor: v1Colors.bg }]} edges={['top']}>
+    <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
       <BrandBarWithShare
         onBack={() => navigation.goBack()}
         onShare={() => setShareModal(true)}
@@ -282,12 +318,12 @@ export default function TripDetail({ navigation, route }) {
         <GlassCard>
           <SectionTitle icon="📅" label={t('trip_dates')} />
           <View style={s.dateRow}>
-            <Text style={[s.dateLabel, { color: v1Colors.textMuted }]}>🚀 {t('trip_dep')}</Text>
-            <Text style={[s.dateValue, { color: v1Colors.text }]} testID="trip-detail-departure">{view.departure}</Text>
+            <Text style={[s.dateLabel, { color: v1.textMuted }]}>🚀 {t('trip_dep')}</Text>
+            <Text style={[s.dateValue, { color: v1.text }]} testID="trip-detail-departure">{view.departure}</Text>
           </View>
           <View style={s.dateRow}>
-            <Text style={[s.dateLabel, { color: v1Colors.textMuted }]}>🏁 {t('trip_arr')}</Text>
-            <Text style={[s.dateValue, { color: v1Colors.text }]} testID="trip-detail-arrival">{view.arrival}</Text>
+            <Text style={[s.dateLabel, { color: v1.textMuted }]}>🏁 {t('trip_arr')}</Text>
+            <Text style={[s.dateValue, { color: v1.text }]} testID="trip-detail-arrival">{view.arrival}</Text>
           </View>
         </GlassCard>
 
@@ -295,23 +331,23 @@ export default function TripDetail({ navigation, route }) {
         <GlassCard>
           <SectionTitle icon="🚚" label={t('trip_transport')} />
           <View style={s.dateRow}>
-            <Text style={[s.dateLabel, { color: v1Colors.textMuted }]}>{t('trip_truck_body')}</Text>
-            <Text style={[s.dateValue, { color: v1Colors.text }]} testID="trip-detail-truck">{view.truckType}</Text>
+            <Text style={[s.dateLabel, { color: v1.textMuted }]}>{t('trip_truck_body')}</Text>
+            <Text style={[s.dateValue, { color: v1.text }]} testID="trip-detail-truck">{view.truckType}</Text>
           </View>
           <View style={s.dateRow}>
-            <Text style={[s.dateLabel, { color: v1Colors.textMuted }]}>{t('trip_driver')}</Text>
-            <Text style={[s.dateValue, { color: v1Colors.text }]}>{view.driverName}</Text>
+            <Text style={[s.dateLabel, { color: v1.textMuted }]}>{t('trip_driver')}</Text>
+            <Text style={[s.dateValue, { color: v1.text }]}>{view.driverName}</Text>
           </View>
           {trip.availableM3 != null && (
             <View style={s.dateRow}>
-              <Text style={[s.dateLabel, { color: v1Colors.textMuted }]}>{t('trip_free')}</Text>
-              <Text style={[s.dateValue, { color: v1Colors.text }]}>{view.availableM3}</Text>
+              <Text style={[s.dateLabel, { color: v1.textMuted }]}>{t('trip_free')}</Text>
+              <Text style={[s.dateValue, { color: v1.text }]}>{view.availableM3}</Text>
             </View>
           )}
           {trip.capacityTons != null && (
             <View style={s.dateRow}>
-              <Text style={[s.dateLabel, { color: v1Colors.textMuted }]}>{t('weight')}</Text>
-              <Text style={[s.dateValue, { color: v1Colors.text }]}>{view.capacityTons}</Text>
+              <Text style={[s.dateLabel, { color: v1.textMuted }]}>{t('weight')}</Text>
+              <Text style={[s.dateValue, { color: v1.text }]}>{view.capacityTons}</Text>
             </View>
           )}
         </GlassCard>
@@ -452,36 +488,3 @@ export default function TripDetail({ navigation, route }) {
   );
 }
 
-const s = StyleSheet.create({
-  container: { flex: 1 },
-  // Brand bar moved to <BrandBarWithShare/> in stage 3D — local
-  // brandBar/backHit/backIcon/brandRow/brandText/ftlPill/ftlText/shareBtn/
-  // shareIcon styles were removed as part of stage 3E cleanup.
-  pageTitle: { color: v1Colors.text, fontSize: 24, fontWeight: '900', letterSpacing: -0.5, marginVertical: 12 },
-  priceBig: { fontSize: 28, fontWeight: '900', letterSpacing: -0.5 },
-  // Legacy local styles still used by deal-block / timeline
-  header: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 },
-  backBtn: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
-  backText: { fontSize: 22 },
-  title: { flex: 1, fontSize: 20, fontWeight: '900' },
-  section: { padding: 16, borderRadius: 16, borderWidth: 1, marginBottom: 10 },
-  sectionTitle: { fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: 12, textTransform: 'uppercase' },
-  routeRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 },
-  dot: { width: 10, height: 10, borderRadius: 5 },
-  city: { fontSize: 16, fontWeight: '800' },
-  transitCity: { fontSize: 13, fontStyle: 'italic' },
-  statsRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
-  statPill: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
-  statText: { fontSize: 12, fontWeight: '700' },
-  dateRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8 },
-  dateLabel: { fontSize: 13, fontWeight: '500' },
-  dateValue: { fontSize: 14, fontWeight: '700' },
-  primaryBtn: { borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
-  secondaryBtn: { borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 8, borderWidth: 1.5 },
-  secondaryBtnText: { fontSize: 14, fontWeight: '700' },
-  primaryBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
-  dangerBtn: { borderWidth: 1, borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 8 },
-  dangerBtnText: { color: '#EF4444', fontSize: 13, fontWeight: '800' },
-  dealActionBtn: { borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10 },
-  dealActionText: { color: '#fff', fontSize: 13, fontWeight: '700' },
-});

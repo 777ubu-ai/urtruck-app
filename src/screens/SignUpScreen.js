@@ -11,7 +11,7 @@ import Field from '../components/ui/v1/Field';
 import PrimaryButton from '../components/ui/v1/PrimaryButton';
 import OutlineButton from '../components/ui/v1/OutlineButton';
 import Checkbox from '../components/ui/v1/Checkbox';
-import { v1Colors, v1Spacing, v1Typography, v1AccentFor } from '../theme/designV1';
+import {v1Colors, useV1Colors, v1Spacing, v1Typography, v1AccentFor} from '../theme/designV1';
 
 // SignUp — design v1, screens 02 & 03 (driver / cargo-owner registration).
 //
@@ -25,6 +25,19 @@ import { v1Colors, v1Spacing, v1Typography, v1AccentFor } from '../theme/designV
 //   designer-approved visuals ship.
 
 export default function SignUpScreen({ navigation, route }) {
+  const v1 = useV1Colors();
+  const s = React.useMemo(() => StyleSheet.create({
+
+  title: { ...v1Typography.h1, textAlign: 'center', marginTop: v1Spacing.sm },
+  subtitle: { ...v1Typography.bodyMd, textAlign: 'center', marginTop: 4, marginBottom: v1Spacing.md },
+  alreadyRow: { alignItems: 'center', marginTop: v1Spacing.md, paddingVertical: 6 },
+  alreadyText: { color: v1.textMuted, fontSize: 13 },
+  alreadyLink: { fontWeight: '700' },
+  altRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: v1Spacing.md },
+  divider: { flex: 1, height: 1, backgroundColor: v1.border },
+  altText: { color: v1.textDim, fontSize: 12 },
+
+  }), [v1]);
   const { t } = useI18n();
   const { session } = useAuth();
   const [roleTab, setRoleTab] = useState(route?.params?.role || 'driver');
@@ -147,13 +160,3 @@ export default function SignUpScreen({ navigation, route }) {
   );
 }
 
-const s = StyleSheet.create({
-  title: { ...v1Typography.h1, textAlign: 'center', marginTop: v1Spacing.sm },
-  subtitle: { ...v1Typography.bodyMd, textAlign: 'center', marginTop: 4, marginBottom: v1Spacing.md },
-  alreadyRow: { alignItems: 'center', marginTop: v1Spacing.md, paddingVertical: 6 },
-  alreadyText: { color: v1Colors.textMuted, fontSize: 13 },
-  alreadyLink: { fontWeight: '700' },
-  altRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: v1Spacing.md },
-  divider: { flex: 1, height: 1, backgroundColor: v1Colors.border },
-  altText: { color: v1Colors.textDim, fontSize: 12 },
-});
