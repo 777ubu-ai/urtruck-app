@@ -19,7 +19,17 @@ import FilterChips from '../components/ui/v1/FilterChips';
 import BellBadge from '../components/ui/v1/BellBadge';
 import { useUnreadNotifications } from '../utils/useUnreadNotifications';
 import BottomSheet from '../components/ui/v1/BottomSheet';
+import DatePicker from '../components/DatePicker';
 import { v1Colors, v1AccentFor } from '../theme/designV1';
+
+// DD.MM.YYYY ↔ YYYY-MM-DD bridges. DatePicker stores DD.MM.YYYY
+// (matches CreateCargo / CreateTrip and the rest of the app); the
+// public-feed filter compares against ISO strings on items.pickup or
+// items.departure, so we convert at the boundary.
+const ddmmToIso = (s) => {
+  const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(String(s || '').trim());
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
+};
 
 const TCOLORS = {
   // Brand v3: tent (default truck) maps to brand emerald. ref/izoterm keep
@@ -243,15 +253,19 @@ export default function FeedScreen({ navigation, route }) {
       const q = dirTo.toLowerCase().trim();
       data = data.filter(d => (d.to || '').toLowerCase().includes(q));
     }
-    // Date window — driver feed sees cargos.pickup_date, client feed sees
-    // trips.departure (mapped earlier into d.pickup or d.departure if available).
+    // Date window — driver feed sees cargos.pickup_date, client feed
+    // sees trips.departure (mapped earlier into d.pickup or d.departure
+    // if available). DatePicker stores DD.MM.YYYY; convert both sides
+    // to ISO so a string compare works as a date compare.
     const dateField = (d) => d.pickup || d.departure || '';
     const ymd = (s) => /^\d{4}-\d{2}-\d{2}/.test(String(s || '')) ? String(s).slice(0, 10) : '';
-    if (dateFrom.trim()) {
-      data = data.filter(d => { const v = ymd(dateField(d)); return v && v >= dateFrom.trim(); });
+    const fromIso = ddmmToIso(dateFrom);
+    const toIso = ddmmToIso(dateTo);
+    if (fromIso) {
+      data = data.filter(d => { const v = ymd(dateField(d)); return v && v >= fromIso; });
     }
-    if (dateTo.trim()) {
-      data = data.filter(d => { const v = ymd(dateField(d)); return v && v <= dateTo.trim(); });
+    if (toIso) {
+      data = data.filter(d => { const v = ymd(dateField(d)); return v && v <= toIso; });
     }
     if (search.trim()) {
       const q = search.toLowerCase().trim();
@@ -485,38 +499,32 @@ export default function FeedScreen({ navigation, route }) {
         </View>
       </BottomSheet>
 
-      {/* Date sheet — only pickup_date / departure window. */}
+      {/* Date sheet — real calendar/date-picker for both ends of the
+          window. DatePicker uses native <input type="date"> on web and
+          a custom Modal calendar on native, so the chip never falls
+          back to a plain TextInput. testID lets QA target it. */}
       <BottomSheet visible={activeFilter === 'date'} onClose={closeFilter} title={`📅 ${t('filter_date')}`}>
-        <Text style={[s.filterSectionLabel, { color: theme.textMuted }]}>{t('filter_date_from')}</Text>
-        <TextInput
-          value={dateFrom}
-          onChangeText={setDateFrom}
-          placeholder="YYYY-MM-DD"
-          placeholderTextColor={v1Colors.textMuted}
-          autoCapitalize="none"
-          autoCorrect={false}
-          style={[s.filterInput, { backgroundColor: theme.card, borderColor: theme.border, color: theme.text }]}
-        />
-        <Text style={[s.filterSectionLabel, { color: theme.textMuted, marginTop: 12 }]}>{t('filter_date_to')}</Text>
-        <TextInput
-          value={dateTo}
-          onChangeText={setDateTo}
-          placeholder="YYYY-MM-DD"
-          placeholderTextColor={v1Colors.textMuted}
-          autoCapitalize="none"
-          autoCorrect={false}
-          style={[s.filterInput, { backgroundColor: theme.card, borderColor: theme.border, color: theme.text }]}
-        />
-        <View style={s.filterActions}>
-          <TouchableOpacity
-            style={[s.filterActionBtn, { backgroundColor: v1Colors.surface, borderColor: v1Colors.border, borderWidth: 1 }]}
-            onPress={() => { setDateFrom(''); setDateTo(''); }}
-          >
-            <Text style={[s.filterActionText, { color: v1Colors.textMuted }]}>{t('filter_reset')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[s.filterActionBtn, { backgroundColor: accentColor }]} onPress={closeFilter}>
-            <Text style={[s.filterActionText, { color: '#0A0A0A' }]}>{t('filter_apply')}</Text>
-          </TouchableOpacity>
+        <View testID="filter-date-sheet">
+          <Text style={[s.filterSectionLabel, { color: theme.textMuted }]}>{t('filter_date_from')}</Text>
+          <DatePicker value={dateFrom} onChange={setDateFrom} placeholder="ДД.ММ.ГГГГ" />
+          <Text style={[s.filterSectionLabel, { color: theme.textMuted, marginTop: 12 }]}>{t('filter_date_to')}</Text>
+          <DatePicker value={dateTo} onChange={setDateTo} placeholder="ДД.ММ.ГГГГ" />
+          <View style={s.filterActions}>
+            <TouchableOpacity
+              style={[s.filterActionBtn, { backgroundColor: v1Colors.surface, borderColor: v1Colors.border, borderWidth: 1 }]}
+              onPress={() => { setDateFrom(''); setDateTo(''); }}
+              testID="filter-date-reset"
+            >
+              <Text style={[s.filterActionText, { color: v1Colors.textMuted }]}>{t('filter_reset')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.filterActionBtn, { backgroundColor: accentColor }]}
+              onPress={closeFilter}
+              testID="filter-date-apply"
+            >
+              <Text style={[s.filterActionText, { color: '#0A0A0A' }]}>{t('filter_apply')}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </BottomSheet>
 

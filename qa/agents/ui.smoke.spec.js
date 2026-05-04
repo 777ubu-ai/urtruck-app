@@ -77,7 +77,7 @@ test('UI · filter chips open distinct sheets', async ({ page }) => {
   // section header at the same time.
   const chipCases = [
     { chip: /🧭|Направление|Direction/i, expect: /Направление|Direction|Откуда|From/i, forbid: [/Тип кузова|Truck type/i, /Сортировка|Sort/i] },
-    { chip: /📅|Дата|Date/i,             expect: /Дата|Date|Бастап|Von|Du|YYYY-MM-DD/i, forbid: [/Тип кузова|Truck type/i, /Сортировка|Sort/i, /Направление\b|Direction\b/i] },
+    { chip: /📅|Дата|Date/i,             expect: /Дата|Date|Бастап|ДД\.ММ\.ГГГГ|ДД|Apply|Применить/i, forbid: [/Тип кузова|Truck type/i, /Сортировка|Sort/i, /Направление\b|Direction\b/i] },
     { chip: /🚛|Кузов|Body/i,            expect: /Тип кузова|Truck type|Кузов түрі|LKW-Typ/i, forbid: [/Сортировка|Sort/i, /Направление\b|Direction\b/i] },
     { chip: /💰|Цена|Price/i,            expect: /Сортировка|Sort|Tri|Sortierung/i, forbid: [/Тип кузова|Truck type/i, /Направление\b|Direction\b/i] },
   ];
@@ -104,6 +104,42 @@ test('UI · filter chips open distinct sheets', async ({ page }) => {
     await page.keyboard.press('Escape').catch(() => {});
     await page.waitForTimeout(400);
   }
+});
+
+test('UI · Date chip opens real calendar/date picker', async ({ page }) => {
+  await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
+  await page.waitForTimeout(1200);
+
+  const driverBtn = page.getByText(/Я водитель|driver/i).first();
+  if (await driverBtn.isVisible().catch(() => false)) {
+    await driverBtn.click().catch(() => {});
+    await page.waitForTimeout(1500);
+  }
+
+  const dateChip = page.getByText(/📅|Дата|Date/i).first();
+  if (!(await dateChip.isVisible().catch(() => false))) {
+    log.p2(ACTOR, 'date-chip-found', 'Date chip not visible');
+    return;
+  }
+  await dateChip.click().catch(() => {});
+  await page.waitForTimeout(700);
+
+  // Web: DatePicker renders a real <input type="date">. On native the
+  // component opens a custom Modal calendar, but Playwright runs the
+  // web bundle — so we assert the native HTML date input is reachable.
+  const dateInput = page.locator('input[type="date"]');
+  const cnt = await dateInput.count().catch(() => 0);
+  if (cnt >= 1) {
+    log.pass(ACTOR, 'date-chip-opens-real-calendar', `${cnt} <input type=date> elements`);
+  } else {
+    log.p0(ACTOR, 'date-chip-opens-real-calendar', 'no <input type=date> rendered — chip falls back to TextInput');
+  }
+
+  // Belt-and-braces: confirm the dedicated testID exists.
+  const sheet = page.locator('[data-testid="filter-date-sheet"]');
+  const sheetVisible = await sheet.isVisible({ timeout: 2000 }).catch(() => false);
+  if (sheetVisible) log.pass(ACTOR, 'date-sheet-testid-rendered');
+  else log.p2(ACTOR, 'date-sheet-testid-rendered', 'data-testid filter-date-sheet not visible (older bundle?)');
 });
 
 test('UI · bottom navigation tabs reachable', async ({ page }) => {
@@ -139,7 +175,7 @@ test('UI · bottom navigation tabs reachable', async ({ page }) => {
   }
 });
 
-test('UI · language selector lists 7 languages and no Uzbek', async ({ page }) => {
+test('UI · language selector lists only 4 enabled languages', async ({ page }) => {
   await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
   await page.waitForTimeout(1500);
 
@@ -154,15 +190,18 @@ test('UI · language selector lists 7 languages and no Uzbek', async ({ page }) 
     await page.waitForTimeout(1500);
   }
   const txt = await bodyText(page);
-  const seen = ['Русский', 'Қазақша', '中文', 'English', 'Кыргызча', 'Deutsch', 'Français']
-    .filter((n) => txt.includes(n));
-  const uzbek = /O'zbek|Узбек|Uzbek/i.test(txt);
-  if (uzbek) {
-    log.p0(ACTOR, 'no-uzbek-in-selector', 'Uzbek label leaked into language picker');
-  }
-  if (seen.length >= 4) {
-    log.pass(ACTOR, 'language-selector-lists-enabled', `seen: ${seen.join(', ')}`);
+  const enabled = { 'Русский': 'RU', 'English': 'EN', 'Қазақша': 'KZ', '中文': 'CN' };
+  const removed = { "O'zbek": 'UZ', 'Узбек': 'UZ', 'Uzbek': 'UZ', 'Кыргызча': 'KG', 'Deutsch': 'DE', 'Français': 'FR' };
+  const seenEnabled = Object.entries(enabled).filter(([n]) => txt.includes(n)).map(([, c]) => c);
+  const leakedRemoved = Object.entries(removed).filter(([n]) => txt.includes(n)).map(([, c]) => c);
+  if (leakedRemoved.length) {
+    log.p0(ACTOR, 'no-removed-langs-in-selector', `leaked codes: ${[...new Set(leakedRemoved)].join(',')}`);
   } else {
-    log.p2(ACTOR, 'language-selector-lists-enabled', `only ${seen.length}/7 names visible (profile may not be reached without auth)`);
+    log.pass(ACTOR, 'no-removed-langs-in-selector');
+  }
+  if (seenEnabled.length >= 2) {
+    log.pass(ACTOR, 'language-selector-lists-enabled', `seen: ${seenEnabled.join(',')}`);
+  } else {
+    log.p2(ACTOR, 'language-selector-lists-enabled', `only ${seenEnabled.length}/4 names visible (profile may not be reached without auth)`);
   }
 });
