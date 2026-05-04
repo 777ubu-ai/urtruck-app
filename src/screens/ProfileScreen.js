@@ -13,12 +13,9 @@ import { API_BASE } from '../config/env';
 
 const LANGS = [
   { code: 'RU', flag: '🇷🇺', name: 'Русский' },
+  { code: 'EN', flag: '🇬🇧', name: 'English' },
   { code: 'KZ', flag: '🇰🇿', name: 'Қазақша' },
   { code: 'CN', flag: '🇨🇳', name: '中文' },
-  { code: 'EN', flag: '🇬🇧', name: 'English' },
-  { code: 'KG', flag: '🇰🇬', name: 'Кыргызча' },
-  { code: 'DE', flag: '🇩🇪', name: 'Deutsch' },
-  { code: 'FR', flag: '🇫🇷', name: 'Français' },
 ];
 
 const confirm = (title, msg, onOk) => {

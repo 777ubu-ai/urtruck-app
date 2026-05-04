@@ -19,8 +19,13 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..', '..');
 const I18N = path.join(ROOT, 'src', 'utils', 'i18n.js');
 const SRC = path.join(ROOT, 'src');
-const ENABLED = ['RU', 'KZ', 'CN', 'EN', 'KG', 'DE', 'FR'];
-const FORBIDDEN = ['UZ'];
+// Enabled set was reduced to 4 in Stage 5 / revision 3:
+// RU / EN / KZ / CN. Everything else is FORBIDDEN — the smoke check
+// fails the run if any of these reappear in translations. KG/DE/FR
+// were previously partially populated and have been dropped along
+// with TJ/GE/TM/UZ.
+const ENABLED = ['RU', 'EN', 'KZ', 'CN'];
+const FORBIDDEN = ['UZ', 'KG', 'DE', 'FR', 'TJ', 'GE', 'TM'];
 
 function loadTranslations() {
   const src = fs.readFileSync(I18N, 'utf8');
@@ -84,16 +89,19 @@ function main() {
     failures.push(`RU is missing ${missingInRu.length} keys referenced in src/: ${missingInRu.slice(0, 10).join(', ')}${missingInRu.length > 10 ? '…' : ''}`);
   }
 
-  // 4. Per-language coverage report (informational, never fatal)
-  const enabledKeys = new Set();
-  ENABLED.forEach((l) => Object.keys(t[l] || {}).forEach((k) => enabledKeys.add(k)));
+  // 4. Per-language coverage. With only four enabled languages we
+  // require ZERO missing keys at every call site — there is no
+  // fall-back excuse left.
   console.log(`[i18n] enabled langs: ${ENABLED.join(', ')}`);
   console.log(`[i18n] forbidden absent: ${FORBIDDEN.join(', ')}`);
   console.log(`[i18n] t() call sites in src/: ${allKeys.size} unique keys`);
   for (const l of ENABLED) {
     const have = Object.keys(t[l] || {}).length;
-    const usedHave = [...allKeys].filter((k) => t[l] && t[l][k]).length;
-    console.log(`[i18n] ${l}: ${have} keys (covers ${usedHave}/${allKeys.size} call-site keys; missing keys fall back to RU)`);
+    const usedMissing = [...allKeys].filter((k) => !t[l] || !t[l][k]);
+    console.log(`[i18n] ${l}: ${have} keys; missing at call sites: ${usedMissing.length}`);
+    if (usedMissing.length > 0) {
+      failures.push(`${l} is missing ${usedMissing.length} call-site keys: ${usedMissing.slice(0, 10).join(', ')}${usedMissing.length > 10 ? '…' : ''}`);
+    }
   }
 
   if (failures.length) {
