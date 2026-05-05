@@ -66,10 +66,31 @@ export default function TripDetail({ navigation, route }) {
   // a trip object via navigation, use it; otherwise fall back to whatever the
   // server returned via getTrip(tripId). All field branching lives in
   // tripDisplay() so this body is just rendering.
-  const trip = React.useMemo(
-    () => normalizeTrip(serverTrip || rawTrip),
-    [serverTrip, rawTrip]
-  );
+  //
+  // Stage 12: production reproducer — shipper opens TripDetail by `tripId`
+  // (push notification, deep link, MyTripsScreen → Orders). Until the
+  // server fetch resolves, both rawTrip and serverTrip are null,
+  // `normalizeTrip(null)` returns null, and the very next line that
+  // touches `trip.id` / `trip.isMine` / `trip.from` throws a
+  // TypeError → ErrorBoundary → "Что-то пошло не так". The fallback
+  // empty trip object below keeps the screen on a loading state
+  // until the network response replaces it.
+  const trip = React.useMemo(() => {
+    const normalised = normalizeTrip(serverTrip || rawTrip);
+    return normalised || {
+      id: tripId || null,
+      from: '', to: '', transit: '',
+      departure: '', arrival: '',
+      truckType: null,
+      capacityTons: null, availableM3: null,
+      price: 0, currency: 'USD',
+      driverId: null, driverName: null, driverPhone: null,
+      country: null,
+      status: 'active', createdAt: null,
+      tripState: 'planned', stateHistory: null,
+      isTrip: true, _server: false, isMine: false,
+    };
+  }, [serverTrip, rawTrip, tripId]);
   const { t } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();

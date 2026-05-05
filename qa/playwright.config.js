@@ -38,8 +38,9 @@ module.exports = defineConfig({
     { name: 'cargo-currency',  testMatch: /cargo\.currency\.spec\.js$/ },
     { name: 'preview-gate',    testMatch: /preview\.gate\.spec\.js$/ },
     { name: 'ui-smoke',        testMatch: /ui\.smoke\.spec\.js$/ },
-    { name: 'trip-clicks',     testMatch: /trip\.detail\.clicks\.spec\.js$/ },
-    { name: 'auditor',         testMatch: /auditor\.full\.spec\.js$/,
-      dependencies: ['serik', 'boris', 'cargo-currency', 'preview-gate', 'ui-smoke', 'trip-clicks'] },
+    { name: 'trip-clicks',         testMatch: /trip\.detail\.clicks\.spec\.js$/ },
+    { name: 'shipper-trip-crash',  testMatch: /shipper\.trip\.crash\.spec\.js$/ },
+    { name: 'auditor',             testMatch: /auditor\.full\.spec\.js$/,
+      dependencies: ['serik', 'boris', 'cargo-currency', 'preview-gate', 'ui-smoke', 'trip-clicks', 'shipper-trip-crash'] },
   ],
 });

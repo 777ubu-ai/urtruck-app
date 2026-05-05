@@ -63,6 +63,14 @@ if (!/testID:\s*'trip-sticky-bid'/.test(tripDetail)) {
 if (!/tripId=\{trip\.id\}/.test(tripDetail)) {
   failures.push('TripDetail BidModal not bound to tripId');
 }
+// Stage 12: production reproducer — shipper opens TripDetail by
+// tripId only (push / deep link / MyTrips → Orders). Without the
+// fallback object below, `normalizeTrip(null)` returns null and the
+// next line that reads `trip.id` blows up into ErrorBoundary
+// ("Что-то пошло не так"). The guard must stay.
+if (!/normalised\s*\|\|\s*\{[\s\S]*?id:\s*tripId/.test(tripDetail)) {
+  failures.push('TripDetail no longer falls back to a stub trip when normalizeTrip returns null (Stage 12 crash regression)');
+}
 
 // Stage 10: legacy `respond` key must be gone from i18n.
 const i18nSrc = read('src/utils/i18n.js');
@@ -119,6 +127,7 @@ console.log('[ux] FeedScreen single-CTA contract  ✓');
 console.log('[ux] CargoDetail no duplicate price-block button  ✓');
 console.log('[ux] TripDetail BidModal + trip-sticky-bid CTA  ✓');
 console.log('[ux] legacy `respond` key gone from i18n  ✓');
+console.log('[ux] TripDetail null-safe fallback (Stage 12 crash guard)  ✓');
 console.log('[ux] EditTripScreen on RoutePointPicker / 4-currency / no fake defaults  ✓');
 console.log('[ux] Create flows — no orphan CityInput import  ✓');
 console.log('[ux] Create forms — no fake defaults / wrong icons  ✓');
