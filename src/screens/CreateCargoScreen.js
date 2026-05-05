@@ -10,7 +10,6 @@ import Field from '../components/ui/v1/Field';
 import Textarea from '../components/ui/v1/Textarea';
 import PrimaryButton from '../components/ui/v1/PrimaryButton';
 import BottomSheet from '../components/ui/v1/BottomSheet';
-import CityInput from '../components/CityInput';
 import RoutePointPicker from '../components/RoutePointPicker';
 import CargoTypeInput from '../components/CargoTypeInput';
 import DatePicker from '../components/DatePicker';

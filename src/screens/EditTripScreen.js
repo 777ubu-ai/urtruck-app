@@ -7,7 +7,7 @@ import { useToast } from '../components/Toast';
 import { marketAPI } from '../utils/marketAPI';
 import { normalizeTrip, formatPrice, CURRENCY_SYMBOLS } from '../utils/normalizers';
 import { normalizeDateInput, formatDateForDisplay } from '../utils/dateInput';
-import CityInput from '../components/CityInput';
+import RoutePointPicker from '../components/RoutePointPicker';
 import DatePicker from '../components/DatePicker';
 import {v1Colors, useV1Colors, v1AccentFor} from '../theme/designV1';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
@@ -155,14 +155,26 @@ export default function EditTripScreen({ navigation, route }) {
         <Text style={[s.title, { color: v1.text }]}>✏️ {t('edit_btn')}</Text>
       </View>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+        {/* Stage 11: bring EditTrip onto the same RoutePointPicker
+            that Create-flows already use. Same country → type → point
+            stages, same auto-close, same theme. Transit stays a free
+            TextInput because the registry doesn't model multi-leg
+            transits. */}
         <Text style={[s.label, { color: theme.textMuted }]}>{t('fromCountry')}</Text>
-        <CityInput value={from} onChange={setFrom} placeholder={'📍 ' + t('fromCountry')} />
+        <RoutePointPicker value={from} onChange={(v) => setFrom(v)} placeholder={'📍 ' + t('fromCountry')} />
 
         <Text style={[s.label, { color: theme.textMuted }]}>{t('toCountry')}</Text>
-        <CityInput value={to} onChange={setTo} placeholder={'🏁 ' + t('toCountry')} />
+        <RoutePointPicker value={to} onChange={(v) => setTo(v)} placeholder={'🏁 ' + t('toCountry')} />
 
         <Text style={[s.label, { color: theme.textMuted }]}>{t('transit')}</Text>
-        <CityInput value={transit} onChange={setTransit} placeholder={'🔄 ' + t('transitOptional')} />
+        <TextInput
+          style={[s.input, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border, marginBottom: 10 }]}
+          value={transit}
+          onChangeText={setTransit}
+          placeholder={'🔄 ' + t('transitOptional')}
+          placeholderTextColor={theme.textMuted}
+          autoCapitalize="none"
+        />
 
         <Text style={[s.label, { color: theme.textMuted }]}>{t('departure')} · {t('arrival')}</Text>
         <View style={s.row}>
@@ -201,7 +213,11 @@ export default function EditTripScreen({ navigation, route }) {
               onChangeText={(v) => setPrice(String(v || '').replace(/[^\d]/g, ''))}
             />
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }} style={{ flex: 3 }}>
-              {Object.keys(CURRENCY_SYMBOLS).map(k => (
+              {/* Stage 11: pilot whitelist matches Create flows
+                  (RUB / USD / KZT / CNY). The legacy
+                  Object.keys(CURRENCY_SYMBOLS) iteration also surfaced
+                  UZS, which is no longer offered. */}
+              {['KZT', 'USD', 'RUB', 'CNY'].map(k => (
                 <TouchableOpacity
                   key={k}
                   style={[s.currChip, { backgroundColor: theme.card, borderColor: theme.border }, currency === k && { backgroundColor: '#22C55E', borderColor: '#22C55E' }]}
@@ -235,7 +251,7 @@ export default function EditTripScreen({ navigation, route }) {
             <Text style={[s.label, { color: theme.textMuted }]}>⚖️ {t('weight_label')}</Text>
             <TextInput
               style={[s.input, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border }]}
-              placeholder="20"
+              placeholder="—"
               placeholderTextColor={theme.textMuted}
               keyboardType="numeric"
               value={capacityTons}
@@ -246,7 +262,7 @@ export default function EditTripScreen({ navigation, route }) {
             <Text style={[s.label, { color: theme.textMuted }]}>📐 {t('volume_label')}</Text>
             <TextInput
               style={[s.input, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border }]}
-              placeholder="82"
+              placeholder="—"
               placeholderTextColor={theme.textMuted}
               keyboardType="numeric"
               value={availableM3}
