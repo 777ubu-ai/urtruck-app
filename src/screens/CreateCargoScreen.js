@@ -80,7 +80,9 @@ export default function CreateCargoScreen({ navigation, route }) {
   const { session } = useAuth();
 
   const [from, setFrom] = useState('');
+  const [fromPoint, setFromPoint] = useState(null);   // structured point from RoutePointPicker
   const [to, setTo] = useState('');
+  const [toPoint, setToPoint] = useState(null);
   const [cargoDesc, setCargoDesc] = useState('');
   const [truckType, setTruckType] = useState('tent');
   const [pickupDate, setPickupDate] = useState('');
@@ -125,6 +127,10 @@ export default function CreateCargoScreen({ navigation, route }) {
     const priceNum = priceMode === 'fixed'
       ? Math.max(0, parseInt(String(price || '').replace(/\s/g, ''), 10) || 0)
       : 0;
+    // Stage 8: forward the structured route triple alongside the
+    // legacy from_city / to_city strings. Backend tolerates missing
+    // fields (free-text fallback supplies country='XX' for orphans),
+    // so the picker output can land directly without further shaping.
     const payload = {
       from_city: from.trim(),
       to_city: to.trim(),
@@ -136,6 +142,12 @@ export default function CreateCargoScreen({ navigation, route }) {
       currency: priceMode === 'fixed' ? currency : 'KZT',
       pickup_date: pickupDate || null,
       photos: photos || [],
+      from_country:    fromPoint?.country || null,
+      from_point_type: fromPoint?.type    || null,
+      from_point_name: fromPoint?.name    || null,
+      to_country:      toPoint?.country   || null,
+      to_point_type:   toPoint?.type      || null,
+      to_point_name:   toPoint?.name      || null,
     };
     try {
       const r = await marketAPI.createCargo(payload);
@@ -171,8 +183,9 @@ export default function CreateCargoScreen({ navigation, route }) {
         <View style={s.pickerWrap}>
           <RoutePointPicker
             value={from}
-            onChange={(v) => {
+            onChange={(v, point) => {
               setFrom(v);
+              setFromPoint(point || null);
               if (errors.from) setErrors((e) => ({ ...e, from: null }));
               if (v && v.trim()) setShowFromPicker(false);
             }}
@@ -195,8 +208,9 @@ export default function CreateCargoScreen({ navigation, route }) {
         <View style={s.pickerWrap}>
           <RoutePointPicker
             value={to}
-            onChange={(v) => {
+            onChange={(v, point) => {
               setTo(v);
+              setToPoint(point || null);
               if (errors.to) setErrors((e) => ({ ...e, to: null }));
               if (v && v.trim()) setShowToPicker(false);
             }}

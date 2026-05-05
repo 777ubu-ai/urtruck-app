@@ -79,7 +79,9 @@ export default function CreateTripScreen({ navigation, route }) {
   const { session } = useAuth();
 
   const [from, setFrom] = useState('');
+  const [fromPoint, setFromPoint] = useState(null);
   const [to, setTo] = useState('');
+  const [toPoint, setToPoint] = useState(null);
   const [transit, setTransit] = useState('');
   const [departure, setDeparture] = useState('');
   const [arrival, setArrival] = useState('');
@@ -143,6 +145,13 @@ export default function CreateTripScreen({ navigation, route }) {
       currency: priceMode === 'fixed' ? currency : 'KZT',
       departure: departureNorm,
       arrival: arrivalNorm,
+      // Stage 8: structured route triple from RoutePointPicker.
+      from_country:    fromPoint?.country || null,
+      from_point_type: fromPoint?.type    || null,
+      from_point_name: fromPoint?.name    || null,
+      to_country:      toPoint?.country   || null,
+      to_point_type:   toPoint?.type      || null,
+      to_point_name:   toPoint?.name      || null,
     };
     try {
       const r = await marketAPI.createTrip(payload);
@@ -180,8 +189,9 @@ export default function CreateTripScreen({ navigation, route }) {
         <View style={s.pickerWrap}>
           <RoutePointPicker
             value={from}
-            onChange={(v) => {
+            onChange={(v, point) => {
               setFrom(v);
+              setFromPoint(point || null);
               if (errors.from) setErrors((e) => ({ ...e, from: null }));
               if (v && v.trim()) setShowFromPicker(false);
             }}
@@ -204,8 +214,9 @@ export default function CreateTripScreen({ navigation, route }) {
         <View style={s.pickerWrap}>
           <RoutePointPicker
             value={to}
-            onChange={(v) => {
+            onChange={(v, point) => {
               setTo(v);
+              setToPoint(point || null);
               if (errors.to) setErrors((e) => ({ ...e, to: null }));
               if (v && v.trim()) setShowToPicker(false);
             }}
