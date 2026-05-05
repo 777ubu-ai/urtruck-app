@@ -8,7 +8,13 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Stage 10: bumped from 15 → 30. The two earlier 25379847358
+    # runs were cancelled by the workflow timer at the 15-minute mark
+    # while scp was still uploading. Health-check window itself can
+    # consume up to ~150s on a cold uvicorn restart, which only
+    # leaves ~12 minutes for the two scp uploads — too tight on slow
+    # GitHub-runner ↔ server links.
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -59,7 +65,7 @@ jobs:
           REMOTE_DIR: ${{ secrets.REMOTE_DIR || '/home/ubuntu/urtruck-app' }}
         run: |
           sudo apt-get install -y sshpass
-          sshpass -p "$SERVER_PASS" scp -o StrictHostKeyChecking=no -r dist/* "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/"
+          sshpass -p "$SERVER_PASS" scp -C -o StrictHostKeyChecking=no -r dist/* "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/"
           sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" "chmod -R 755 $REMOTE_DIR"
 
       - name: Deploy backend
@@ -69,7 +75,7 @@ jobs:
           SERVER_PASS: ${{ secrets.SERVER_PASS }}
           BACKEND_DIR: ${{ secrets.BACKEND_DIR || '/home/ubuntu/urtruck-security' }}
         run: |
-          sshpass -p "$SERVER_PASS" scp -o StrictHostKeyChecking=no -r backend/* "$SERVER_USER@$SERVER_HOST:$BACKEND_DIR/"
+          sshpass -p "$SERVER_PASS" scp -C -o StrictHostKeyChecking=no -r backend/* "$SERVER_USER@$SERVER_HOST:$BACKEND_DIR/"
           sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" "source ~/.nvm/nvm.sh && pm2 restart urtruck-security-api"
 
       - name: Health check
