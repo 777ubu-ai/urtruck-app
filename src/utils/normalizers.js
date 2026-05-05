@@ -15,6 +15,32 @@ const pick = (...vals) => {
   return null;
 };
 
+// Stage 9: scrub QA / debug / development markers from any user-visible
+// string before it lands on a card or detail screen. The QA agents
+// tag every record they create with a run-id token like `[ar-rmoxxxx]`
+// and sometimes prefix descriptions with the test name itself
+// (`currency-regression …`, `Direct probe …`, `agent-boris …`). These
+// strings are useful for QA correlation but should never reach a
+// real user.
+//
+// Backend keeps the tags in cargo_desc / from_city / to_city so the
+// QA cleanup script can find and delete the records. Frontend strips
+// them for display only.
+//
+// The regex is conservative — it only deletes the markers themselves
+// and collapses the resulting double spaces. Adjacent meaningful text
+// stays intact.
+const PUBLIC_TRASH = /\s*\[ar-[a-z0-9]+\]\s*|\bcurrency-regression\b\s*|\bagent-[a-z0-9-]+\b\s*|\bDirect probe\b\s*/gi;
+export const sanitizeForDisplay = (s) => {
+  if (s === null || s === undefined) return s;
+  const str = String(s);
+  if (!str) return str;
+  return str
+    .replace(PUBLIC_TRASH, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+};
+
 // Currency utilities. The server stores `currency` as ISO code; UI shows
 // a symbol next to the price. Default to USD when missing — matches DB
 // migration (ALTER TABLE … ADD COLUMN currency TEXT DEFAULT 'USD').
@@ -108,15 +134,18 @@ export const cargoDisplay = (cargo, t) => {
     if (cargo?.volumeM3 > 0) parts.push(`${cargo.volumeM3} м³`);
     return parts.length ? parts.join(' · ') : dash;
   })();
+  // Stage 9: scrub QA markers / agent ids / currency-regression
+  // labels from any text we surface to the user. The source row may
+  // still carry them so the QA cleanup script can find the record.
   return {
-    from: cargo?.from || dash,
-    to: cargo?.to || dash,
-    cargoDesc: cargo?.cargoDesc || dash,
+    from: sanitizeForDisplay(cargo?.from) || dash,
+    to: sanitizeForDisplay(cargo?.to) || dash,
+    cargoDesc: sanitizeForDisplay(cargo?.cargoDesc) || dash,
     cargoType: typeLabel && typeLabel !== cargo?.cargoType ? typeLabel : (cargo?.cargoType || dash),
     weightVol,
     price: formatPrice(cargo?.price, cargo?.currency, t),
     pickupDate: cargo?.pickupDate ? cargo.pickupDate : dash,
-    ownerName: cargo?.ownerName || dash,
+    ownerName: sanitizeForDisplay(cargo?.ownerName) || dash,
   };
 };
 
@@ -126,16 +155,17 @@ export const cargoDisplay = (cargo, t) => {
 export const tripDisplay = (trip, t) => {
   const dash = (t && t('not_specified')) || 'Не указано';
   const truck = trip?.truckType ? (t ? t(trip.truckType) : trip.truckType) : dash;
+  // Stage 9: same sanitiser pass for trip detail display.
   return {
-    from: trip?.from || dash,
-    to: trip?.to || dash,
-    transit: trip?.transit || '',
+    from: sanitizeForDisplay(trip?.from) || dash,
+    to: sanitizeForDisplay(trip?.to) || dash,
+    transit: sanitizeForDisplay(trip?.transit) || '',
     departure: trip?.departure ? formatDateForDisplay(trip.departure) : dash,
     arrival: trip?.arrival ? formatDateForDisplay(trip.arrival) : dash,
     truckType: truck && truck !== trip?.truckType ? truck : (trip?.truckType || dash),
     capacityTons: trip?.capacityTons != null ? `${trip.capacityTons} т` : dash,
     availableM3: trip?.availableM3 != null ? `${trip.availableM3} м³` : dash,
     price: formatPrice(trip?.price, trip?.currency, t),
-    driverName: trip?.driverName || dash,
+    driverName: sanitizeForDisplay(trip?.driverName) || dash,
   };
 };

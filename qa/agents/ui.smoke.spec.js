@@ -106,6 +106,36 @@ test('UI · filter chips open distinct sheets', async ({ page }) => {
   }
 });
 
+test('UI · Public feed shows no QA / debug markers', async ({ page }) => {
+  // Stage 9: every public-facing card / detail string is routed
+  // through `sanitizeForDisplay`, so QA-tagged records (which still
+  // exist in the DB so the cleanup script can find them) shouldn't
+  // surface their `[ar-…]` / `agent-…` / `currency-regression` markers
+  // to a real user. We check the rendered body text after navigating
+  // through landing → role → driver feed.
+  await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
+  await page.waitForTimeout(1500);
+  const driverBtn = page.getByText(/Я водитель|driver/i).first();
+  if (await driverBtn.isVisible().catch(() => false)) {
+    await driverBtn.click().catch(() => {});
+    await page.waitForTimeout(2000);
+  }
+  const body = await page.locator('body').innerText({ timeout: 4000 }).catch(() => '');
+  // Markers that must not appear in any visible card / detail.
+  const offenders = [];
+  if (/\[ar-[a-z0-9]+\]/.test(body)) offenders.push('[ar-…] tag');
+  if (/\bcurrency-regression\b/i.test(body)) offenders.push('currency-regression label');
+  if (/\bagent-(serik|boris|currency|preview-gate|trip-clicks|ui-smoke)\b/i.test(body)) {
+    offenders.push('agent-* identifier');
+  }
+  if (/\bDirect probe\b/.test(body)) offenders.push('Direct probe debug string');
+  if (offenders.length) {
+    log.p1(ACTOR, 'public-feed-no-qa-markers', `visible markers: ${offenders.join(', ')}`);
+  } else {
+    log.pass(ACTOR, 'public-feed-no-qa-markers');
+  }
+});
+
 test('UI · Create form has no fake numeric defaults', async ({ page }) => {
   // Static-source check via the in-page bundle: visit landing, then
   // reach the Create flow if it's reachable as guest. If not, the

@@ -11,7 +11,7 @@ import { useToast } from '../components/Toast';
 import { useVerificationGate } from '../components/VerificationGate';
 import { LEVELS, useAuth } from '../utils/AuthContext';
 import { SkeletonCard } from '../components/Skeleton';
-import { normalizeTrip, formatPrice } from '../utils/normalizers';
+import { normalizeTrip, formatPrice, sanitizeForDisplay } from '../utils/normalizers';
 import { matchTruckTypes } from '../utils/truckSynonyms';
 import FeedCard from '../components/ui/v1/FeedCard';
 import SearchBar from '../components/ui/v1/SearchBar';
@@ -52,13 +52,16 @@ const FLAGS = { KZ: '🇰🇿', UZ: '🇺🇿', RU: '🇷🇺', KG: '🇰🇬', 
 
 // HOT-003: фильтр технического мусора из БД (остатки парсеров, init_db, стектрейсы)
 const TRASH_PATTERNS = /init_db|phone_formatter|json_merger|bin_iin|SQL|sqlite|traceback|\bError:|File "[^"]+\.py"|line \d+|^```|stderr|\.py\b|SELECT |INSERT |UPDATE |DELETE |CREATE TABLE/gi;
+// Stage 9: combine the legacy "tech-stack leak" filter with the new
+// QA-marker scrub from normalizers, so a single helper hides both
+// classes of garbage from public cards.
 const sanitizeDesc = (s) => {
   if (!s) return tGlobal('desc_not_specified');
-  const cleaned = String(s)
-    .replace(TRASH_PATTERNS, ' ')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
-  return cleaned.length > 0 ? cleaned.slice(0, 200) : tGlobal('desc_not_specified');
+  const stage1 = String(s).replace(TRASH_PATTERNS, ' ');
+  const stage2 = sanitizeForDisplay(stage1);
+  return stage2 && stage2.length > 0
+    ? stage2.slice(0, 200)
+    : tGlobal('desc_not_specified');
 };
 
 // Pilot cleanup: removed hardcoded demo DRIVERS fallback. Public feed must
@@ -208,7 +211,7 @@ export default function FeedScreen({ navigation, route }) {
       if (isDriver) {
         const { cargos } = await marketAPI.listCargos({ cargoType: filterType || '' });
         const mapped = (cargos || []).map(c => ({
-          id: c.id, from: c.from_city, to: c.to_city,
+          id: c.id, from: sanitizeForDisplay(c.from_city), to: sanitizeForDisplay(c.to_city),
           cargo: c.cargo_desc, type: c.cargo_type,
           tons: c.weight_tons, m3: c.volume_m3,
           price: c.price, pickup: c.pickup_date,
@@ -226,7 +229,7 @@ export default function FeedScreen({ navigation, route }) {
         ]);
         // Мои грузы — в начале ленты
         const myCargos = ((myRes || {}).my_cargos || []).map(c => ({
-          id: c.id, from: c.from_city, to: c.to_city,
+          id: c.id, from: sanitizeForDisplay(c.from_city), to: sanitizeForDisplay(c.to_city),
           cargo: c.cargo_desc, type: c.cargo_type,
           tons: c.weight_tons, m3: c.volume_m3,
           price: c.price, pickup: c.pickup_date,
@@ -296,7 +299,7 @@ export default function FeedScreen({ navigation, route }) {
             marketAPI.listCargos({ fromCity: from, toCity: to }).then(d => {
               if (d.cargos?.length) {
                 setServerData(d.cargos.map(c => ({
-                  id: c.id, from: c.from_city, to: c.to_city,
+                  id: c.id, from: sanitizeForDisplay(c.from_city), to: sanitizeForDisplay(c.to_city),
                   cargo: c.cargo_desc, type: c.cargo_type,
                   tons: c.weight_tons, m3: c.volume_m3,
                   price: c.price, bids: c.bids_count,
@@ -312,7 +315,7 @@ export default function FeedScreen({ navigation, route }) {
                   const existing = prev.filter(p => !d.trips.find(t => t.id === p.id));
                   return [...d.trips.map(t => ({
                     id: t.id, name: t.driver_name || tGlobal('driver_fallback'),
-                    type: t.truck_type, from: t.from_city, to: t.to_city,
+                    type: t.truck_type, from: sanitizeForDisplay(t.from_city), to: sanitizeForDisplay(t.to_city),
                     price: t.price, isTrip: true, _server: true,
                     tripRoute: `${t.from_city} → ${t.to_city}`,
                   })), ...existing];
@@ -416,6 +419,12 @@ export default function FeedScreen({ navigation, route }) {
       item.tons > 0 ? { icon: '⚖️', label: t('weight'), value: `${item.tons} т` } : null,
       item.m3 > 0 ? { icon: '📐', label: t('volume'), value: `${item.m3} м³` } : null,
     ].filter(Boolean);
+    // Stage 9: feed cards used to show two buttons that both ran the
+    // same `openCargo`. The pair gave the user two different verbs
+    // for the same action and made it look like there were two flows.
+    // Now the card has one primary button — "Подробнее" — and the
+    // bid CTA lives on CargoDetail's sticky bar where it actually
+    // opens the bid form.
     return (
       <FeedCard
         variant="cargo"
@@ -427,8 +436,7 @@ export default function FeedScreen({ navigation, route }) {
         priceCaption={t('per_trip')}
         responses={item.bids || 0}
         onPress={openCargo}
-        bottomLeft={{ label: t('details'), onPress: openCargo }}
-        bottomRight={{ label: isDriver ? t('respond') : t('details'), onPress: openCargo, filled: true }}
+        bottomRight={{ label: t('details'), onPress: openCargo, filled: true }}
         testID="cargo-card"
       />
     );
@@ -461,20 +469,22 @@ export default function FeedScreen({ navigation, route }) {
       item.tons > 0 ? { icon: '⚖️', label: t('weight'), value: `${item.tons} т` } : null,
       item.m3 > 0 ? { icon: '📐', label: t('volume'), value: `${item.m3} м³` } : null,
     ].filter(Boolean);
+    // Same single-button logic as cargo cards — the card itself is
+    // tappable and opens the detail; the secondary verb is gone so
+    // the user doesn't see two roughly-equivalent CTAs.
     return (
       <FeedCard
         variant="trip"
         accent={isDriver ? 'driver' : 'cargo'}
         route={item.isTrip && item.tripRoute
           ? { from: item.from, to: item.to }
-          : { from: item.name, to: '' }}
+          : { from: sanitizeForDisplay(item.name), to: '' }}
         subtitle={item.verified ? `${formatTruckType(item.type)} · ${t('verified')}` : formatTruckType(item.type)}
         meta={meta}
         priceText={item.isTrip ? formatPrice(item.price, item.currency, t) : `★ ${item.rating || '—'}`}
         priceCaption={item.isTrip ? t('per_trip') : `${item.reviews || 0} ${t('reviews')}`}
         onPress={onPress}
-        bottomLeft={{ label: t('details'), onPress }}
-        bottomRight={{ label: isDriver ? t('details') : t('respond'), onPress, filled: true }}
+        bottomRight={{ label: t('details'), onPress, filled: true }}
         testID={item.isTrip ? 'trip-card' : 'driver-card'}
       />
     );
