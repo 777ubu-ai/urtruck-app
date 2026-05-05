@@ -12,6 +12,7 @@ import { removeTrip, advanceTripState, TRIP_STATES, TRIP_STATE_INFO } from '../u
 import { useVerificationGate } from '../components/VerificationGate';
 import { LEVELS, useAuth } from '../utils/AuthContext';
 import RatingModal from '../components/RatingModal';
+import BidModal from '../components/BidModal';
 import { marketAPI } from '../utils/marketAPI';
 import { normalizeTrip, tripDisplay } from '../utils/normalizers';
 import { buildTripShareText } from '../utils/share';
@@ -77,6 +78,11 @@ export default function TripDetail({ navigation, route }) {
   const myUserId = session?.user?.id;
   const [shareModal, setShareModal] = React.useState(false);
   const [rateModal, setRateModal] = React.useState(false);
+  // Stage 10: shipper-side bid flow on a driver's trip. The cargo
+  // owner opens the trip and can propose a price (RUB/USD/KZT/CNY)
+  // — same BidModal already used on CargoDetail, just bound to
+  // tripId instead of cargoId.
+  const [bidModal, setBidModal] = React.useState(false);
   // Deal-block state (mirrors CargoDetail)
   const [dealId, setDealId] = React.useState(routeDealId || null);
   const [dealStatus, setDealStatus] = React.useState(null);
@@ -443,12 +449,25 @@ export default function TripDetail({ navigation, route }) {
 
       {dealStatus ? renderDealBlock() : null}
 
-      {/* Sticky CTA: viewer-side gets contact + leave-review; owner sees no
-          sticky bar (their actions live in deal block / edit / delete). */}
+      {/* Sticky CTA — shipper viewing someone else's trip:
+          primary "Предложить цену" (opens BidModal with tripId),
+          secondary "Написать водителю". Stage 9 the secondary used to
+          be "Оставить отзыв" — but a shipper hasn't worked with the
+          driver yet at that point, leaving a review made no sense.
+          Owner of the trip and any role with an active deal continue
+          to see no sticky bar — their actions live in the deal block. */}
       {!isOwner && !dealStatus && role === 'client' ? (
         <StickyCTABar
           accent={v1Accent.main}
           primary={{
+            label: t('suggestPrice'),
+            onPress: async () => {
+              const ok = await requireLevel(LEVELS.PHONE, 'bid');
+              if (ok) setBidModal(true);
+            },
+            testID: 'trip-sticky-bid',
+          }}
+          secondary={{
             label: '💬 ' + t('write_driver'),
             onPress: async () => {
               const ok = await requireLevel(LEVELS.PHONE, 'contact');
@@ -458,16 +477,23 @@ export default function TripDetail({ navigation, route }) {
             },
             testID: 'trip-sticky-chat',
           }}
-          secondary={{
-            label: '⭐ ' + t('leave_review'),
-            onPress: async () => {
-              const ok = await requireLevel(LEVELS.PHONE, 'bid');
-              if (ok) setRateModal(true);
-            },
-            testID: 'trip-sticky-review',
-          }}
         />
       ) : null}
+
+      {/* Stage 10: BidModal bound to tripId. Re-used component from
+          CargoDetail; mode='create' POSTs /market/bids with trip_id
+          and the backend pushes a notification to the trip owner. */}
+      <BidModal
+        visible={bidModal}
+        onClose={() => setBidModal(false)}
+        onSubmit={() => {
+          toast('✓ ' + t('bidSent'), 'success');
+        }}
+        mode="create"
+        currentPrice={trip.price || 0}
+        tripId={trip.id}
+      />
+
 
       <ShareModal
         visible={shareModal}
