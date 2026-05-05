@@ -78,6 +78,28 @@ if (/\brespond:\s*'/.test(i18nSrc)) {
   failures.push('i18n.js still defines the legacy `respond` key');
 }
 
+// Stage 13: EditTripScreen must forward the structured route triple
+// (Stage 8 backend columns from_country / from_point_type /
+// from_point_name + to_*) when the picker supplied one. If it
+// doesn't, the user can change the route through the new picker
+// but the structured columns in the DB stay frozen on the previous
+// value — silent split between visible text and structured shape.
+{
+  const editTrip = read('src/screens/EditTripScreen.js');
+  if (!/setFromPoint/.test(editTrip) || !/setToPoint/.test(editTrip)) {
+    failures.push('EditTripScreen no longer captures structured point objects from RoutePointPicker');
+  }
+  if (!/from_country:\s*fromPoint\.country/.test(editTrip)) {
+    failures.push('EditTripScreen no longer forwards from_country from picker');
+  }
+  if (!/to_country:\s*toPoint\.country/.test(editTrip)) {
+    failures.push('EditTripScreen no longer forwards to_country from picker');
+  }
+  if (/capacity_tons:\s*Number\(capacityTons\)\s*\|\|\s*0/.test(editTrip)) {
+    failures.push('EditTripScreen still falls back to 0 for capacity_tons (Stage 7 forbids fake numeric defaults)');
+  }
+}
+
 // Stage 11: Edit flows on the same cleanup contract as Create flows.
 // Earlier EditTripScreen still imported the legacy flat CityInput and
 // kept the literal "20" / "82" placeholders that Stage 7 removed from
@@ -128,6 +150,7 @@ console.log('[ux] CargoDetail no duplicate price-block button  ✓');
 console.log('[ux] TripDetail BidModal + trip-sticky-bid CTA  ✓');
 console.log('[ux] legacy `respond` key gone from i18n  ✓');
 console.log('[ux] TripDetail null-safe fallback (Stage 12 crash guard)  ✓');
+console.log('[ux] EditTripScreen forwards structured route + null defaults  ✓');
 console.log('[ux] EditTripScreen on RoutePointPicker / 4-currency / no fake defaults  ✓');
 console.log('[ux] Create flows — no orphan CityInput import  ✓');
 console.log('[ux] Create forms — no fake defaults / wrong icons  ✓');

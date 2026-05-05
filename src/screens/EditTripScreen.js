@@ -32,7 +32,9 @@ export default function EditTripScreen({ navigation, route }) {
   const [saving, setSaving] = useState(false);
   const [trip, setTrip] = useState(() => normalizeTrip(paramTrip));
   const [from, setFrom] = useState('');
+  const [fromPoint, setFromPoint] = useState(null);
   const [to, setTo] = useState('');
+  const [toPoint, setToPoint] = useState(null);
   const [transit, setTransit] = useState('');
   const [departure, setDeparture] = useState('');
   const [arrival, setArrival] = useState('');
@@ -106,10 +108,28 @@ export default function EditTripScreen({ navigation, route }) {
       departure: departureNorm,
       arrival: arrivalNorm,
       truck_type: truckType,
-      capacity_tons: Number(capacityTons) || 0,
-      available_m3: Number(availableM3) || 0,
+      // Stage 7 / Stage 13: send empty fields as null, not as 0,
+      // so the column default kicks in instead of silently writing
+      // 0 t / 0 m³.
+      capacity_tons: capacityTons ? Number(capacityTons) : null,
+      available_m3: availableM3 ? Number(availableM3) : null,
       price: priceNum,
       currency: priceMode === 'fixed' ? currency : (currency || 'USD'),
+      // Stage 8 / Stage 13: forward the structured route triple
+      // when the picker provided one. If `fromPoint` / `toPoint`
+      // is null the user didn't change the route, so we omit the
+      // fields entirely; backend's update_trip leaves the existing
+      // structured columns untouched in that case.
+      ...(fromPoint && {
+        from_country: fromPoint.country || null,
+        from_point_type: fromPoint.type || null,
+        from_point_name: fromPoint.name || null,
+      }),
+      ...(toPoint && {
+        to_country: toPoint.country || null,
+        to_point_type: toPoint.type || null,
+        to_point_name: toPoint.name || null,
+      }),
     };
     const r = await marketAPI.updateTrip(trip.id, payload);
     setSaving(false);
@@ -161,10 +181,18 @@ export default function EditTripScreen({ navigation, route }) {
             TextInput because the registry doesn't model multi-leg
             transits. */}
         <Text style={[s.label, { color: theme.textMuted }]}>{t('fromCountry')}</Text>
-        <RoutePointPicker value={from} onChange={(v) => setFrom(v)} placeholder={'📍 ' + t('fromCountry')} />
+        <RoutePointPicker
+          value={from}
+          onChange={(v, point) => { setFrom(v); setFromPoint(point || null); }}
+          placeholder={'📍 ' + t('fromCountry')}
+        />
 
         <Text style={[s.label, { color: theme.textMuted }]}>{t('toCountry')}</Text>
-        <RoutePointPicker value={to} onChange={(v) => setTo(v)} placeholder={'🏁 ' + t('toCountry')} />
+        <RoutePointPicker
+          value={to}
+          onChange={(v, point) => { setTo(v); setToPoint(point || null); }}
+          placeholder={'🏁 ' + t('toCountry')}
+        />
 
         <Text style={[s.label, { color: theme.textMuted }]}>{t('transit')}</Text>
         <TextInput
