@@ -247,15 +247,15 @@ export default function TrackScreen({ navigation, route }) {
                 <>
                   <View style={s.starsRow}>
                     {[1,2,3,4,5].map(n => (
-                      <TouchableOpacity key={n} style={[s.starBtn, n <= rated && s.starBtnActive]} onPress={() => setRated(n)}>
+                      <TouchableOpacity key={n} style={[s.starBtn, { backgroundColor: v1.surface }, n <= rated && s.starBtnActive]} onPress={() => setRated(n)}>
                         <Text style={{ fontSize: 20 }}>{n <= rated ? '★' : '☆'}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
                   <TextInput
-                    style={s.reviewInput}
+                    style={[s.reviewInput, { backgroundColor: v1.surface, color: v1.text, borderColor: v1.border }]}
                     placeholder={t('leaveReview')}
-                    placeholderTextColor="#57534E"
+                    placeholderTextColor={v1.textMuted}
                     value={reviewText}
                     onChangeText={setReviewText}
                     multiline
