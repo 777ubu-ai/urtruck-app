@@ -1,18 +1,33 @@
 // BottomSheet — generic v1 sheet for filter pickers, currency dropdowns,
 // any contextual menu. Slide-up modal, drag-handle, transparent overlay,
-// graphite surface with rounded top corners. Children render the body.
+// graphite/white surface with rounded top corners. Children render the body.
+//
+// Stage 6 polish: colours pulled from useV1Colors() so the sheet tracks
+// the active theme. Overlay scrim is a single 50/65 % black for both
+// modes — tints below the sheet read fine on white and on near-black.
 
 import React from 'react';
 import { Modal, View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
-import { v1Colors, v1Radius } from '../../../theme/designV1';
+import { useV1Colors } from '../../../theme/designV1';
+import { useTheme } from '../../../utils/ThemeContext';
 
 export default function BottomSheet({ visible, onClose, title, children, scroll = true }) {
+  const colors = useV1Colors();
+  const { isDark } = useTheme();
+  const overlayBg = isDark ? 'rgba(0,0,0,0.7)' : 'rgba(15,23,42,0.45)';
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={onClose}>
-        <TouchableOpacity style={s.sheet} activeOpacity={1} onPress={() => {}}>
-          <View style={s.handle} />
-          {title ? <Text style={s.title}>{title}</Text> : null}
+      <TouchableOpacity style={[s.overlay, { backgroundColor: overlayBg }]} activeOpacity={1} onPress={onClose}>
+        <TouchableOpacity
+          style={[
+            s.sheet,
+            { backgroundColor: colors.bgDeep, borderTopColor: colors.border },
+          ]}
+          activeOpacity={1}
+          onPress={() => {}}
+        >
+          <View style={[s.handle, { backgroundColor: colors.borderStrong }]} />
+          {title ? <Text style={[s.title, { color: colors.text }]}>{title}</Text> : null}
           {scroll
             ? <ScrollView style={{ maxHeight: 480 }} showsVerticalScrollIndicator={false}>{children}</ScrollView>
             : children}
@@ -23,18 +38,16 @@ export default function BottomSheet({ visible, onClose, title, children, scroll 
 }
 
 const s = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
+  overlay: { flex: 1, justifyContent: 'flex-end' },
   sheet: {
-    backgroundColor: v1Colors.bgDeep,
     borderTopLeftRadius: 28, borderTopRightRadius: 28,
     paddingHorizontal: 16, paddingTop: 8, paddingBottom: 32,
-    borderTopWidth: 1, borderColor: v1Colors.border,
+    borderTopWidth: 1,
     maxHeight: '85%',
   },
   handle: {
     width: 36, height: 4, borderRadius: 2,
-    backgroundColor: v1Colors.borderStrong,
     alignSelf: 'center', marginVertical: 10,
   },
-  title: { color: v1Colors.text, fontSize: 18, fontWeight: '800', marginBottom: 14 },
+  title: { fontSize: 18, fontWeight: '800', marginBottom: 14 },
 });

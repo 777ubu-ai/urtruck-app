@@ -3,9 +3,11 @@
 
 import React from 'react';
 import { View, TouchableOpacity, Text, StyleSheet } from 'react-native';
-import { v1Colors, v1Radius } from '../../../theme/designV1';
+import { useV1Colors, v1Radius } from '../../../theme/designV1';
 
-export default function SegmentTabs({ items = [], value, onChange, accent = v1Colors.driver }) {
+export default function SegmentTabs({ items = [], value, onChange, accent }) {
+  const colors = useV1Colors();
+  const activeAccent = accent || colors.driver;
   return (
     <View style={s.row}>
       {items.map((it) => {
@@ -18,11 +20,11 @@ export default function SegmentTabs({ items = [], value, onChange, accent = v1Co
             style={[
               s.tab,
               active
-                ? { backgroundColor: accent, borderColor: accent }
-                : { backgroundColor: 'transparent', borderColor: v1Colors.border },
+                ? { backgroundColor: activeAccent, borderColor: activeAccent }
+                : { backgroundColor: 'transparent', borderColor: colors.border },
             ]}
           >
-            <Text style={[s.label, { color: active ? '#0A0A0A' : v1Colors.textMuted }]} numberOfLines={1}>
+            <Text style={[s.label, { color: active ? '#0A0A0A' : colors.textMuted }]} numberOfLines={1}>
               {it.label}{it.count != null ? ` · ${it.count}` : ''}
             </Text>
           </TouchableOpacity>

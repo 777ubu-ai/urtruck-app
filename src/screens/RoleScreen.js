@@ -7,7 +7,7 @@ import Screen from '../components/ui/v1/Screen';
 import BrandHeader from '../components/ui/v1/BrandHeader';
 import HeroTruck from '../components/ui/v1/HeroTruck';
 import RoleCard from '../components/ui/v1/RoleCard';
-import { v1Colors, v1Typography, v1Spacing } from '../theme/designV1';
+import {v1Colors, useV1Colors, v1Typography, v1Spacing} from '../theme/designV1';
 
 // Welcome / role select — design v1, screen 01.
 //
@@ -18,6 +18,30 @@ import { v1Colors, v1Typography, v1Spacing } from '../theme/designV1';
 // Only the visual layer is rebuilt.
 
 export default function RoleScreen({ navigation }) {
+  const v1 = useV1Colors();
+  const s = React.useMemo(() => StyleSheet.create({
+
+  headline: {
+    ...v1Typography.h1,
+    textAlign: 'center',
+    marginTop: v1Spacing.lg,
+  },
+  subline: {
+    ...v1Typography.bodyMd,
+    textAlign: 'center',
+    marginTop: v1Spacing.xs,
+  },
+  error: {
+    color: v1Colors.error,
+    fontSize: 13,
+    textAlign: 'center',
+    marginTop: v1Spacing.sm,
+  },
+  alreadyRow: { alignItems: 'center', marginTop: v1Spacing.lg, paddingVertical: 6 },
+  alreadyText: { color: v1.textMuted, fontSize: 13 },
+  alreadyLink: { color: v1Colors.driver, fontWeight: '700' },
+
+  }), [v1]);
   const { t } = useI18n();
   const { signIn, setRole } = useAuth();
   const [loading, setLoading] = useState(null);
@@ -83,24 +107,3 @@ export default function RoleScreen({ navigation }) {
   );
 }
 
-const s = StyleSheet.create({
-  headline: {
-    ...v1Typography.h1,
-    textAlign: 'center',
-    marginTop: v1Spacing.lg,
-  },
-  subline: {
-    ...v1Typography.bodyMd,
-    textAlign: 'center',
-    marginTop: v1Spacing.xs,
-  },
-  error: {
-    color: v1Colors.error,
-    fontSize: 13,
-    textAlign: 'center',
-    marginTop: v1Spacing.sm,
-  },
-  alreadyRow: { alignItems: 'center', marginTop: v1Spacing.lg, paddingVertical: 6 },
-  alreadyText: { color: v1Colors.textMuted, fontSize: 13 },
-  alreadyLink: { color: v1Colors.driver, fontWeight: '700' },
-});

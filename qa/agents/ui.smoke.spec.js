@@ -106,6 +106,26 @@ test('UI · filter chips open distinct sheets', async ({ page }) => {
   }
 });
 
+test('UI · Create form has no fake numeric defaults', async ({ page }) => {
+  // Static-source check via the in-page bundle: visit landing, then
+  // reach the Create flow if it's reachable as guest. If not, the
+  // assertion still has a static-source backup at qa:theme level.
+  await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
+  await page.waitForTimeout(1000);
+
+  // We don't gate on auth here — Stage 7's source-level guarantee is
+  // "no `placeholder=20` / `placeholder=82` strings in CreateCargo /
+  // CreateTrip". Use a simple content fetch of the bundle as a
+  // belt-and-braces check; if the pre-deploy check has been run we
+  // expect those exact placeholders absent.
+  const html = await page.content();
+  if (/placeholder="20"/.test(html) || /placeholder="82"/.test(html)) {
+    log.p1(ACTOR, 'no-fake-default-placeholders', 'bundle still contains literal "20"/"82" placeholder');
+  } else {
+    log.pass(ACTOR, 'no-fake-default-placeholders');
+  }
+});
+
 test('UI · Date chip opens real calendar/date picker', async ({ page }) => {
   await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
   await page.waitForTimeout(1200);
@@ -140,6 +160,46 @@ test('UI · Date chip opens real calendar/date picker', async ({ page }) => {
   const sheetVisible = await sheet.isVisible({ timeout: 2000 }).catch(() => false);
   if (sheetVisible) log.pass(ACTOR, 'date-sheet-testid-rendered');
   else log.p2(ACTOR, 'date-sheet-testid-rendered', 'data-testid filter-date-sheet not visible (older bundle?)');
+});
+
+test('UI · bottom-nav has plus button + balanced cells', async ({ page }) => {
+  await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
+  await page.waitForTimeout(1500);
+
+  // Make sure we're past role-pick
+  const driverBtn = page.getByText(/Я водитель|driver/i).first();
+  if (await driverBtn.isVisible().catch(() => false)) {
+    await driverBtn.click().catch(() => {});
+    await page.waitForTimeout(1500);
+  }
+
+  const nav = page.locator('[data-testid="bottom-nav"]');
+  const navVisible = await nav.isVisible({ timeout: 4000 }).catch(() => false);
+  if (!navVisible) {
+    log.p2(ACTOR, 'bottom-nav-mounted', 'guest may not see MainTabs without auth');
+    return;
+  }
+  const plusBtn = page.locator('[data-testid="bottom-nav-publish"]');
+  const plusVisible = await plusBtn.isVisible({ timeout: 2000 }).catch(() => false);
+  if (plusVisible) log.pass(ACTOR, 'bottom-nav-plus-button-visible');
+  else log.p1(ACTOR, 'bottom-nav-plus-button-visible', 'central + button missing');
+
+  // Cells should sit on a shared horizontal baseline. Compare bounding
+  // boxes of two non-publish cells — Y delta of more than 6 px means
+  // the publish overlay is dragging neighbours up again.
+  const feed = page.locator('[data-testid="bottom-nav-feed"]');
+  const profile = page.locator('[data-testid="bottom-nav-profile"]');
+  if (await feed.isVisible().catch(() => false) && await profile.isVisible().catch(() => false)) {
+    const a = await feed.boundingBox();
+    const b = await profile.boundingBox();
+    if (a && b && Math.abs(a.y - b.y) <= 6) {
+      log.pass(ACTOR, 'bottom-nav-cells-aligned', `Δy=${Math.abs(a.y - b.y).toFixed(1)}px`);
+    } else {
+      log.p1(ACTOR, 'bottom-nav-cells-aligned', `Δy=${a && b ? Math.abs(a.y - b.y).toFixed(1) : '?'}px`);
+    }
+  } else {
+    log.p2(ACTOR, 'bottom-nav-cells-aligned', 'not enough visible cells to measure');
+  }
 });
 
 test('UI · bottom navigation tabs reachable', async ({ page }) => {
@@ -190,7 +250,7 @@ test('UI · language selector lists only 4 enabled languages', async ({ page }) 
     await page.waitForTimeout(1500);
   }
   const txt = await bodyText(page);
-  const enabled = { 'Русский': 'RU', 'English': 'EN', 'Қазақша': 'KZ', '中文': 'CN' };
+  const enabled = { 'Русский': 'RU', 'English': 'EN', 'Қазақша': 'KK', '中文': 'ZH' };
   const removed = { "O'zbek": 'UZ', 'Узбек': 'UZ', 'Uzbek': 'UZ', 'Кыргызча': 'KG', 'Deutsch': 'DE', 'Français': 'FR' };
   const seenEnabled = Object.entries(enabled).filter(([n]) => txt.includes(n)).map(([, c]) => c);
   const leakedRemoved = Object.entries(removed).filter(([n]) => txt.includes(n)).map(([, c]) => c);

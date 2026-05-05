@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../utils/ThemeContext';
-import { v1Colors } from '../theme/designV1';
+import {v1Colors, useV1Colors} from '../theme/designV1';
 import { API_BASE } from '../config/env';
 
 const BASE = API_BASE;
@@ -12,6 +12,7 @@ const TRUCK_ICONS = { tent: '🚚', ref: '🧊', platform: '🛻', tanker: '🛢
 const COLOR_BADGE = { green: '#22C55E', yellow: '#F59E0B', red: '#EF4444' };
 
 export default function StatsScreen({ navigation }) {
+  const v1 = useV1Colors();
   const { theme } = useTheme();
   const [leaders, setLeaders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -29,7 +30,7 @@ export default function StatsScreen({ navigation }) {
   useEffect(() => { fetchLeaders(); }, []);
 
   return (
-    <SafeAreaView style={[{ flex: 1, backgroundColor: v1Colors.bg }]} edges={['top']}>
+    <SafeAreaView style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']}>
       <View style={s.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={s.back}>
           <Text style={[s.backText, { color: theme.text }]}>‹</Text>

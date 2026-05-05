@@ -13,7 +13,7 @@ import { reviewsAPI } from '../utils/reviews';
 import RatingModal from '../components/RatingModal';
 import { marketAPI } from '../utils/marketAPI';
 import { API_BASE } from '../config/env';
-import { v1Colors, v1Radius, v1AccentFor } from '../theme/designV1';
+import {v1Colors, useV1Colors, v1Radius, v1AccentFor} from '../theme/designV1';
 import GlassCard from '../components/ui/v1/GlassCard';
 import SectionTitle from '../components/ui/v1/SectionTitle';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
@@ -28,6 +28,7 @@ const REVIEWS = [
 ];
 
 export default function DriverDetail({ navigation, route }) {
+  const v1 = useV1Colors();
   const { driver, role } = route.params || {};
   const { t } = useI18n();
   const { theme } = useTheme();
@@ -74,14 +75,14 @@ export default function DriverDetail({ navigation, route }) {
 
   if (driver._profileMissing) {
     return (
-      <SafeAreaView style={[s.container, { backgroundColor: v1Colors.bg }]} edges={['top']}>
+      <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
         <BrandBarWithShare onBack={() => navigation.goBack()} accent={v1Accent.main} />
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 10 }}>
           <Text style={{ fontSize: 56 }}>🪪</Text>
-          <Text style={{ color: v1Colors.text, fontSize: 16, fontWeight: '700', textAlign: 'center' }}>
+          <Text style={{ color: v1.text, fontSize: 16, fontWeight: '700', textAlign: 'center' }}>
             {t('driver_profile_missing_title')}
           </Text>
-          <Text style={{ color: v1Colors.textMuted, fontSize: 13, textAlign: 'center', maxWidth: 320, lineHeight: 19 }}>
+          <Text style={{ color: v1.textMuted, fontSize: 13, textAlign: 'center', maxWidth: 320, lineHeight: 19 }}>
             {t('driver_profile_missing_body')}
           </Text>
           <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: 14, borderWidth: 1, borderColor: v1Accent.main, borderRadius: 12, paddingHorizontal: 22, paddingVertical: 12 }}>
@@ -108,7 +109,7 @@ export default function DriverDetail({ navigation, route }) {
   };
 
   return (
-    <SafeAreaView style={[s.container, { backgroundColor: v1Colors.bg }]} edges={['top']}>
+    <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
       <BrandBarWithShare
         onBack={() => navigation.goBack()}
         onShare={() => setShareModal(true)}
@@ -121,7 +122,7 @@ export default function DriverDetail({ navigation, route }) {
           <View style={[s.avatar, { backgroundColor: (TCOLORS[tt] || '#666') + '22', borderColor: v1Accent.main }]}>
             <Text style={{ fontSize: 32 }}>{FLAGS[driver.country] || '🏳️'}</Text>
           </View>
-          <Text style={[s.name, { color: v1Colors.text }]}>
+          <Text style={[s.name, { color: v1.text }]}>
             {driverName} {driver.verified && <Text style={{ color: v1Accent.main }}>✓</Text>}
           </Text>
           <View style={[s.verifyBadge, { backgroundColor: driver.verified ? v1Colors.driverSoft : v1Colors.cargoOwnerSoft, borderColor: driver.verified ? v1Colors.driver : v1Colors.cargoOwner }]}>
@@ -129,7 +130,7 @@ export default function DriverDetail({ navigation, route }) {
               {driver.verified ? '🟢 ' + t('verified') : '🟡 ' + t('pending')}
             </Text>
           </View>
-          <Text style={s.ratingText}>★ {driver.rating || '—'} <Text style={[s.reviewCount, { color: v1Colors.textMuted }]}>({driver.reviews || 0})</Text></Text>
+          <Text style={s.ratingText}>★ {driver.rating || '—'} <Text style={[s.reviewCount, { color: v1.textMuted }]}>({driver.reviews || 0})</Text></Text>
         </GlassCard>
 
         <GlassCard>
@@ -142,8 +143,8 @@ export default function DriverDetail({ navigation, route }) {
           <View style={s.grid}>
             {[[t('truckType'), t(tt)], [t('volume'), (driver.m3 || '—') + 'м³'], [t('tonnage'), (driver.tons || '—') + 'т']].map(([l, v]) => (
               <View key={l} style={s.gridItem}>
-                <Text style={[s.gridLabel, { color: v1Colors.textMuted }]}>{l}</Text>
-                <Text style={[s.gridValue, { color: v1Colors.text }]}>{v}</Text>
+                <Text style={[s.gridLabel, { color: v1.textMuted }]}>{l}</Text>
+                <Text style={[s.gridValue, { color: v1.text }]}>{v}</Text>
               </View>
             ))}
           </View>
@@ -156,7 +157,7 @@ export default function DriverDetail({ navigation, route }) {
             right={reviewsData?.summary?.count > 0 ? (
               <Text style={{ color: '#FBBF24', fontSize: 12, fontWeight: '800' }}>★ {reviewsData.summary.average}</Text>
             ) : (
-              <Text style={{ color: v1Colors.textDim, fontSize: 10 }}>{t('review_after_trip')}</Text>
+              <Text style={{ color: v1.textDim, fontSize: 10 }}>{t('review_after_trip')}</Text>
             )}
           />
 
@@ -167,13 +168,13 @@ export default function DriverDetail({ navigation, route }) {
             const text = r.text || '';
             const ago = r.ago || (r.created_at || '').slice(0, 10);
             return (
-              <View key={i} style={[s.review, i < arr.length - 1 && { borderBottomWidth: 1, borderBottomColor: v1Colors.border }]}>
+              <View key={i} style={[s.review, i < arr.length - 1 && { borderBottomWidth: 1, borderBottomColor: v1.border }]}>
                 <View style={s.reviewHeader}>
-                  <Text style={[s.reviewUser, { color: v1Colors.text }]}>{user}</Text>
+                  <Text style={[s.reviewUser, { color: v1.text }]}>{user}</Text>
                   <Text style={s.reviewStars}>{'★'.repeat(Math.max(0, Math.min(5, parseInt(rating) || 0)))}</Text>
                 </View>
-                {text ? <Text style={[s.reviewText, { color: v1Colors.textMuted }]}>{text}</Text> : null}
-                <Text style={[s.reviewAgo, { color: v1Colors.textMuted }]}>{ago}{isDemo ? ' · демо' : ''}</Text>
+                {text ? <Text style={[s.reviewText, { color: v1.textMuted }]}>{text}</Text> : null}
+                <Text style={[s.reviewAgo, { color: v1.textMuted }]}>{ago}{isDemo ? ' · демо' : ''}</Text>
               </View>
             );
           })}
@@ -182,7 +183,7 @@ export default function DriverDetail({ navigation, route }) {
         <TouchableOpacity style={[s.contactBtn, { backgroundColor: contactOpened ? v1Colors.driver : v1Accent.main }]} onPress={openContact} disabled={contactOpened}>
           <Text style={[s.contactBtnText, { color: '#0A0A0A' }]}>{contactOpened ? '✓ ' + t('contactOpened') : t('openContact') + ' · $0'}</Text>
         </TouchableOpacity>
-        <Text style={[s.betaNote, { color: v1Colors.textMuted }]}>{t('freeForEarly')}</Text>
+        <Text style={[s.betaNote, { color: v1.textMuted }]}>{t('freeForEarly')}</Text>
 
         <TouchableOpacity
           style={s.reportBtn}

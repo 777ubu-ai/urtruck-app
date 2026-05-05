@@ -3,13 +3,32 @@ import { View, Text, TouchableOpacity, StyleSheet, FlatList, RefreshControl } fr
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useToast } from '../components/Toast';
 import { notificationsAPI } from '../utils/notificationsAPI';
-import { v1Colors, v1Radius, v1AccentFor } from '../theme/designV1';
+import {v1Colors, useV1Colors, v1Radius, v1AccentFor} from '../theme/designV1';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
 
 // Notifications — design v1 reskin. Logic preserved: notificationsAPI.list,
 // markAllRead, per-item read. Only the visual layer follows v1 tokens.
 
 export default function NotificationsScreen({ navigation }) {
+  const v1 = useV1Colors();
+  const s = React.useMemo(() => StyleSheet.create({
+
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12 },
+  titleHero: { color: v1.text, fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
+  markAll: { fontSize: 12, fontWeight: '800' },
+  card: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 12,
+    backgroundColor: v1.surface,
+    borderColor: v1.border, borderWidth: 1,
+    padding: 14, borderRadius: v1Radius.field, marginBottom: 8,
+  },
+  icon: { fontSize: 22, marginTop: 2 },
+  title: { color: v1.text, fontSize: 14, marginBottom: 2 },
+  body: { color: v1.textMuted, fontSize: 12, lineHeight: 17 },
+  time: { color: v1.textDim, fontSize: 10, marginTop: 4 },
+  dot: { width: 8, height: 8, borderRadius: 4, marginTop: 6 },
+
+  }), [v1]);
   const { toast } = useToast();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -54,7 +73,7 @@ export default function NotificationsScreen({ navigation }) {
   };
 
   return (
-    <SafeAreaView style={[{ flex: 1, backgroundColor: v1Colors.bg }]} edges={['top']}>
+    <SafeAreaView style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']}>
       <BrandBarWithShare onBack={() => navigation.goBack()} accent={accent.main} />
       <View style={s.titleRow}>
         <Text style={s.titleHero}>🔔 Уведомления</Text>
@@ -75,7 +94,7 @@ export default function NotificationsScreen({ navigation }) {
           !loading ? (
             <View style={{ alignItems: 'center', paddingVertical: 60 }}>
               <Text style={{ fontSize: 48, marginBottom: 10 }}>🔔</Text>
-              <Text style={{ color: v1Colors.textMuted }}>Нет уведомлений</Text>
+              <Text style={{ color: v1.textMuted }}>Нет уведомлений</Text>
             </View>
           ) : null
         }
@@ -84,19 +103,3 @@ export default function NotificationsScreen({ navigation }) {
   );
 }
 
-const s = StyleSheet.create({
-  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12 },
-  titleHero: { color: v1Colors.text, fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
-  markAll: { fontSize: 12, fontWeight: '800' },
-  card: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: 12,
-    backgroundColor: v1Colors.surface,
-    borderColor: v1Colors.border, borderWidth: 1,
-    padding: 14, borderRadius: v1Radius.field, marginBottom: 8,
-  },
-  icon: { fontSize: 22, marginTop: 2 },
-  title: { color: v1Colors.text, fontSize: 14, marginBottom: 2 },
-  body: { color: v1Colors.textMuted, fontSize: 12, lineHeight: 17 },
-  time: { color: v1Colors.textDim, fontSize: 10, marginTop: 4 },
-  dot: { width: 8, height: 8, borderRadius: 4, marginTop: 6 },
-});

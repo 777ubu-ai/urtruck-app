@@ -12,7 +12,7 @@ import BrandHeader from '../components/ui/v1/BrandHeader';
 import HeroTruck from '../components/ui/v1/HeroTruck';
 import Field from '../components/ui/v1/Field';
 import PrimaryButton from '../components/ui/v1/PrimaryButton';
-import { v1Colors, v1Spacing, v1Typography, v1AccentFor, v1Radius } from '../theme/designV1';
+import {v1Colors, useV1Colors, v1Spacing, v1Typography, v1AccentFor, v1Radius} from '../theme/designV1';
 
 // EditProfileScreen — design v1, screens 05 (driver) & 06 (cargo owner).
 //
@@ -25,6 +25,34 @@ import { v1Colors, v1Spacing, v1Typography, v1AccentFor, v1Radius } from '../the
 // stage-2 "Transport" screen will edit them. Nothing is lost.
 
 export default function EditProfileScreen({ navigation, route }) {
+  const v1 = useV1Colors();
+  const s = React.useMemo(() => StyleSheet.create({
+
+  title: { ...v1Typography.h1, textAlign: 'center', marginTop: v1Spacing.md },
+  subtitle: { ...v1Typography.bodyMd, textAlign: 'center', marginTop: 6, marginBottom: v1Spacing.md },
+  avatarWrap: { alignItems: 'center', marginVertical: v1Spacing.md, gap: 6 },
+  avatar: {
+    width: 86, height: 86, borderRadius: 43, borderWidth: 2,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  avatarPlaceholder: { fontSize: 36 },
+  cameraBadge: {
+    position: 'absolute', bottom: 4, right: -4,
+    width: 26, height: 26, borderRadius: 13,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: v1.bg,
+  },
+  cameraIcon: { fontSize: 12 },
+  avatarHint: { fontSize: 12, fontWeight: '700' },
+  infoBox: {
+    borderWidth: 1, borderRadius: v1Radius.field,
+    padding: 12, marginTop: v1Spacing.sm, marginBottom: v1Spacing.md,
+  },
+  infoText: { fontSize: 12, fontWeight: '600', lineHeight: 17 },
+  skipRow: { alignItems: 'center', marginTop: v1Spacing.md, paddingVertical: 8 },
+  skipText: { fontSize: 13, fontWeight: '700' },
+
+  }), [v1]);
   const { role } = route.params || {};
   const isDriver = role === 'driver';
   const accent = v1AccentFor(role);
@@ -176,28 +204,3 @@ export default function EditProfileScreen({ navigation, route }) {
   );
 }
 
-const s = StyleSheet.create({
-  title: { ...v1Typography.h1, textAlign: 'center', marginTop: v1Spacing.md },
-  subtitle: { ...v1Typography.bodyMd, textAlign: 'center', marginTop: 6, marginBottom: v1Spacing.md },
-  avatarWrap: { alignItems: 'center', marginVertical: v1Spacing.md, gap: 6 },
-  avatar: {
-    width: 86, height: 86, borderRadius: 43, borderWidth: 2,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  avatarPlaceholder: { fontSize: 36 },
-  cameraBadge: {
-    position: 'absolute', bottom: 4, right: -4,
-    width: 26, height: 26, borderRadius: 13,
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 2, borderColor: v1Colors.bg,
-  },
-  cameraIcon: { fontSize: 12 },
-  avatarHint: { fontSize: 12, fontWeight: '700' },
-  infoBox: {
-    borderWidth: 1, borderRadius: v1Radius.field,
-    padding: 12, marginTop: v1Spacing.sm, marginBottom: v1Spacing.md,
-  },
-  infoText: { fontSize: 12, fontWeight: '600', lineHeight: 17 },
-  skipRow: { alignItems: 'center', marginTop: v1Spacing.md, paddingVertical: 8 },
-  skipText: { fontSize: 13, fontWeight: '700' },
-});

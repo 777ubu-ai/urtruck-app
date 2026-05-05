@@ -18,7 +18,7 @@ import { normalizeCargo, cargoDisplay } from '../utils/normalizers';
 import { formatDateForDisplay } from '../utils/dateInput';
 import { buildCargoShareText } from '../utils/share';
 import { WEB_URL } from '../config/env';
-import { v1Colors, v1Radius, v1AccentFor } from '../theme/designV1';
+import {v1Colors, useV1Colors, v1Radius, v1AccentFor} from '../theme/designV1';
 import GlassCard from '../components/ui/v1/GlassCard';
 import SectionTitle from '../components/ui/v1/SectionTitle';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
@@ -34,6 +34,72 @@ const sanitizeDesc = (s) => {
 };
 
 export default function CargoDetail({ navigation, route }) {
+  const v1 = useV1Colors();
+  const s = React.useMemo(() => StyleSheet.create({
+
+  container: { flex: 1 },
+  // Brand bar moved to <BrandBarWithShare/> in stage 3D — local
+  // brandBar/backHit/backIcon/brandRow/brandText/ftlPill/ftlText/shareBtn/
+  // shareIcon styles were removed as part of stage 3E cleanup.
+  pageTitle: { color: v1.text, fontSize: 22, fontWeight: '900', letterSpacing: -0.5, marginVertical: 12 },
+  priceLabelV1: { fontSize: 11, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 },
+  priceValueV1: { fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
+  // Legacy local styles still used by deal-block / bid cards / reviews
+  header: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 },
+  backBtn: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  backText: { fontSize: 22 },
+  headerTitle: { flex: 1, fontSize: 18, fontWeight: '700' },
+  section: { borderRadius: 16, padding: 18, borderWidth: 1, marginBottom: 10 },
+  routeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 14 },
+  dot: { width: 10, height: 10, borderRadius: 5 },
+  city: { fontSize: 17, fontWeight: '800' },
+  line: { flex: 1, height: 1 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap' },
+  gridItem: { width: '50%', marginBottom: 10 },
+  gridLabel: { fontSize: 10 },
+  gridValue: { fontSize: 13, fontWeight: '600', marginTop: 2 },
+  priceBlock: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#052E16', borderRadius: 16, padding: 18, borderWidth: 1, borderColor: '#14532D', marginBottom: 16 },
+  priceLabel: { color: '#4ADE80', fontSize: 11 },
+  priceValue: { color: '#22C55E', fontSize: 28, fontWeight: '900' },
+  beta: { color: '#57534E', fontSize: 10 },
+  bidBtn: { backgroundColor: '#22C55E', borderRadius: 14, paddingHorizontal: 22, paddingVertical: 14 },
+  bidBtnText: { color: '#fff', fontSize: 14, fontWeight: '800' },
+  bidsTitle: { fontSize: 14, fontWeight: '700', marginBottom: 8 },
+  bidCard: { borderRadius: 12, padding: 12, borderWidth: 1, marginBottom: 6, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  bidLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, marginRight: 8 },
+  bidFlag: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  bidName: { fontSize: 13, fontWeight: '600' },
+  bidInfo: { color: '#FBBF24', fontSize: 11 },
+  bidAmt: { color: '#22C55E', fontSize: 16, fontWeight: '900', flexShrink: 0 },
+  confirmBanner: { backgroundColor: '#22C55E20', borderWidth: 1, borderColor: '#22C55E', borderRadius: 12, padding: 14, marginBottom: 12, alignItems: 'center' },
+  confirmText: { color: '#22C55E', fontSize: 14, fontWeight: '800' },
+  photoWrap: { borderRadius: 16, overflow: 'hidden', borderWidth: 1, marginBottom: 12, position: 'relative' },
+  photo: { width: '100%', height: 200 },
+  photoBadge: { position: 'absolute', top: 10, left: 10, backgroundColor: 'rgba(0,0,0,0.7)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  photoBadgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  acceptBtn: { backgroundColor: '#22C55E', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 6 },
+  acceptBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  rejectBtn: { backgroundColor: 'transparent', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: '#EF4444' },
+  rejectBtnText: { color: '#EF4444', fontSize: 12, fontWeight: '700' },
+  miniBtn: { backgroundColor: 'transparent', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1 },
+  miniBtnText: { fontSize: 11, fontWeight: '700' },
+  paymentBlock: { borderRadius: 12, borderWidth: 1, padding: 14 },
+  reviewBlock: { borderRadius: 14, borderWidth: 1, padding: 16, alignItems: 'center', gap: 10 },
+  reviewTitle: { fontSize: 15, fontWeight: '700' },
+  starsRow: { flexDirection: 'row', gap: 8 },
+  reviewInput: { width: '100%', borderWidth: 1, borderRadius: 10, padding: 10, fontSize: 13 },
+  reviewSubmitBtn: { backgroundColor: '#22C55E', borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10 },
+  reviewSubmitText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  dealBlock: { borderWidth: 2, borderRadius: 14, padding: 16, alignItems: 'center', gap: 10 },
+  dealStatusLabel: { fontSize: 15, fontWeight: '700' },
+  dealActionBtn: { backgroundColor: '#22C55E', borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10 },
+  dealActionText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  chatBtn: { backgroundColor: '#22C55E', borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
+  chatBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  deleteMyBtn: { borderWidth: 1, borderColor: '#EF4444', borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
+  deleteMyBtnText: { color: '#EF4444', fontSize: 13, fontWeight: '800' },
+
+  }), [v1]);
   const { cargo: paramCargo, cargoId, role, dealId: routeDealId } = route.params || {};
   // Canonical cargo: never reach into raw fields directly. The pre-pilot
   // mixed shapes (server snake_case, FeedScreen camelCase, store.js demo)
@@ -242,7 +308,7 @@ export default function CargoDetail({ navigation, route }) {
   const v1Accent = v1AccentFor(isDriverViewing ? 'client' : 'driver');
 
   return (
-    <SafeAreaView style={[s.container, { backgroundColor: v1Colors.bg }]} edges={['top']}>
+    <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
       <BrandBarWithShare
         onBack={() => navigation.goBack()}
         onShare={() => setShareModal(true)}
@@ -259,11 +325,11 @@ export default function CargoDetail({ navigation, route }) {
         ) : null}
 
         <GlassCard>
-          <SectionTitle icon="🛣" label={t('trip_route')} />
+          <SectionTitle icon="🛣️" label={t('trip_route')} />
           <View style={s.routeRow}>
-            <View style={[s.dot, { backgroundColor: '#EF4444' }]} /><Text style={[s.city, { color: v1Colors.text }]}>{view.from}</Text>
-            <View style={[s.line, { backgroundColor: v1Colors.border }]} /><Text>🚛</Text><View style={[s.line, { backgroundColor: v1Colors.border }]} />
-            <Text style={[s.city, { color: v1Colors.text }]}>{view.to}</Text><View style={[s.dot, { backgroundColor: '#22C55E' }]} />
+            <View style={[s.dot, { backgroundColor: '#EF4444' }]} /><Text style={[s.city, { color: v1.text }]}>{view.from}</Text>
+            <View style={[s.line, { backgroundColor: v1.border }]} /><Text>🚛</Text><View style={[s.line, { backgroundColor: v1.border }]} />
+            <Text style={[s.city, { color: v1.text }]}>{view.to}</Text><View style={[s.dot, { backgroundColor: '#22C55E' }]} />
           </View>
           <View style={s.grid}>
             {(() => {
@@ -279,7 +345,7 @@ export default function CargoDetail({ navigation, route }) {
                 items.push([t('delivery_time'), '~' + stats.days + ' дн.']);
               }
               return items.map(([l, v]) => (
-                <View key={l} style={s.gridItem}><Text style={[s.gridLabel, { color: v1Colors.textMuted }]}>{l}</Text><Text style={[s.gridValue, { color: v1Colors.text }]}>{v}</Text></View>
+                <View key={l} style={s.gridItem}><Text style={[s.gridLabel, { color: v1.textMuted }]}>{l}</Text><Text style={[s.gridValue, { color: v1.text }]}>{v}</Text></View>
               ));
             })()}
           </View>
@@ -716,66 +782,3 @@ export default function CargoDetail({ navigation, route }) {
   );
 }
 
-const s = StyleSheet.create({
-  container: { flex: 1 },
-  // Brand bar moved to <BrandBarWithShare/> in stage 3D — local
-  // brandBar/backHit/backIcon/brandRow/brandText/ftlPill/ftlText/shareBtn/
-  // shareIcon styles were removed as part of stage 3E cleanup.
-  pageTitle: { color: v1Colors.text, fontSize: 22, fontWeight: '900', letterSpacing: -0.5, marginVertical: 12 },
-  priceLabelV1: { fontSize: 11, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 },
-  priceValueV1: { fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
-  // Legacy local styles still used by deal-block / bid cards / reviews
-  header: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 },
-  backBtn: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
-  backText: { fontSize: 22 },
-  headerTitle: { flex: 1, fontSize: 18, fontWeight: '700' },
-  section: { borderRadius: 16, padding: 18, borderWidth: 1, marginBottom: 10 },
-  routeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 14 },
-  dot: { width: 10, height: 10, borderRadius: 5 },
-  city: { fontSize: 17, fontWeight: '800' },
-  line: { flex: 1, height: 1 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap' },
-  gridItem: { width: '50%', marginBottom: 10 },
-  gridLabel: { fontSize: 10 },
-  gridValue: { fontSize: 13, fontWeight: '600', marginTop: 2 },
-  priceBlock: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#052E16', borderRadius: 16, padding: 18, borderWidth: 1, borderColor: '#14532D', marginBottom: 16 },
-  priceLabel: { color: '#4ADE80', fontSize: 11 },
-  priceValue: { color: '#22C55E', fontSize: 28, fontWeight: '900' },
-  beta: { color: '#57534E', fontSize: 10 },
-  bidBtn: { backgroundColor: '#22C55E', borderRadius: 14, paddingHorizontal: 22, paddingVertical: 14 },
-  bidBtnText: { color: '#fff', fontSize: 14, fontWeight: '800' },
-  bidsTitle: { fontSize: 14, fontWeight: '700', marginBottom: 8 },
-  bidCard: { borderRadius: 12, padding: 12, borderWidth: 1, marginBottom: 6, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  bidLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, marginRight: 8 },
-  bidFlag: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  bidName: { fontSize: 13, fontWeight: '600' },
-  bidInfo: { color: '#FBBF24', fontSize: 11 },
-  bidAmt: { color: '#22C55E', fontSize: 16, fontWeight: '900', flexShrink: 0 },
-  confirmBanner: { backgroundColor: '#22C55E20', borderWidth: 1, borderColor: '#22C55E', borderRadius: 12, padding: 14, marginBottom: 12, alignItems: 'center' },
-  confirmText: { color: '#22C55E', fontSize: 14, fontWeight: '800' },
-  photoWrap: { borderRadius: 16, overflow: 'hidden', borderWidth: 1, marginBottom: 12, position: 'relative' },
-  photo: { width: '100%', height: 200 },
-  photoBadge: { position: 'absolute', top: 10, left: 10, backgroundColor: 'rgba(0,0,0,0.7)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
-  photoBadgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
-  acceptBtn: { backgroundColor: '#22C55E', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 6 },
-  acceptBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
-  rejectBtn: { backgroundColor: 'transparent', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: '#EF4444' },
-  rejectBtnText: { color: '#EF4444', fontSize: 12, fontWeight: '700' },
-  miniBtn: { backgroundColor: 'transparent', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1 },
-  miniBtnText: { fontSize: 11, fontWeight: '700' },
-  paymentBlock: { borderRadius: 12, borderWidth: 1, padding: 14 },
-  reviewBlock: { borderRadius: 14, borderWidth: 1, padding: 16, alignItems: 'center', gap: 10 },
-  reviewTitle: { fontSize: 15, fontWeight: '700' },
-  starsRow: { flexDirection: 'row', gap: 8 },
-  reviewInput: { width: '100%', borderWidth: 1, borderRadius: 10, padding: 10, fontSize: 13 },
-  reviewSubmitBtn: { backgroundColor: '#22C55E', borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10 },
-  reviewSubmitText: { color: '#fff', fontSize: 13, fontWeight: '700' },
-  dealBlock: { borderWidth: 2, borderRadius: 14, padding: 16, alignItems: 'center', gap: 10 },
-  dealStatusLabel: { fontSize: 15, fontWeight: '700' },
-  dealActionBtn: { backgroundColor: '#22C55E', borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10 },
-  dealActionText: { color: '#fff', fontSize: 13, fontWeight: '700' },
-  chatBtn: { backgroundColor: '#22C55E', borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
-  chatBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  deleteMyBtn: { borderWidth: 1, borderColor: '#EF4444', borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
-  deleteMyBtnText: { color: '#EF4444', fontSize: 13, fontWeight: '800' },
-});

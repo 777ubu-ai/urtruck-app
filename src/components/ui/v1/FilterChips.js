@@ -4,9 +4,12 @@
 
 import React from 'react';
 import { ScrollView, TouchableOpacity, View, Text, StyleSheet } from 'react-native';
-import { v1Colors, v1Radius } from '../../../theme/designV1';
+import { useV1Colors, v1Radius } from '../../../theme/designV1';
 
-export default function FilterChips({ items = [], accent = v1Colors.driver }) {
+export default function FilterChips({ items = [], accent }) {
+  const colors = useV1Colors();
+  const activeAccent = accent || colors.driver;
+  const inactiveText = colors.textMuted;
   return (
     <ScrollView
       horizontal
@@ -21,15 +24,15 @@ export default function FilterChips({ items = [], accent = v1Colors.driver }) {
           style={[
             s.chip,
             it.active
-              ? { borderColor: accent, backgroundColor: `${accent}1A` }
-              : { borderColor: v1Colors.border, backgroundColor: 'transparent' },
+              ? { borderColor: activeAccent, backgroundColor: `${activeAccent}1A` }
+              : { borderColor: colors.border, backgroundColor: 'transparent' },
           ]}
         >
-          {it.icon ? <Text style={[s.icon, { color: it.active ? accent : v1Colors.textMuted }]}>{it.icon}</Text> : null}
-          <Text style={[s.label, { color: it.active ? accent : v1Colors.textMuted }]} numberOfLines={1}>
+          {it.icon ? <Text style={[s.icon, { color: it.active ? activeAccent : inactiveText }]}>{it.icon}</Text> : null}
+          <Text style={[s.label, { color: it.active ? activeAccent : inactiveText }]} numberOfLines={1}>
             {it.label}
           </Text>
-          <Text style={[s.caret, { color: it.active ? accent : v1Colors.textMuted }]}>⌄</Text>
+          <Text style={[s.caret, { color: it.active ? activeAccent : inactiveText }]}>⌄</Text>
         </TouchableOpacity>
       ))}
     </ScrollView>

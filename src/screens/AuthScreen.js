@@ -9,7 +9,7 @@ import Screen from '../components/ui/v1/Screen';
 import BrandHeader from '../components/ui/v1/BrandHeader';
 import HeroTruck from '../components/ui/v1/HeroTruck';
 import PrimaryButton from '../components/ui/v1/PrimaryButton';
-import { v1Colors, v1Spacing, v1Typography, v1Radius } from '../theme/designV1';
+import {v1Colors, useV1Colors, v1Spacing, v1Typography, v1Radius} from '../theme/designV1';
 
 // AuthScreen — design v1, screen 04 (OTP). Two visual states:
 //   step="phone"  — enter phone & pick channel (Telegram / SMS)
@@ -24,6 +24,69 @@ const CODE_LEN = 4;
 const RESEND_SECS = 32;
 
 export default function AuthScreen({ navigation, route }) {
+  const v1 = useV1Colors();
+  const s = React.useMemo(() => StyleSheet.create({
+
+  title: { ...v1Typography.h1, textAlign: 'center', marginTop: v1Spacing.md },
+  subtitle: { ...v1Typography.bodyMd, textAlign: 'center', marginTop: 6, marginBottom: v1Spacing.md },
+
+  phoneRow: { marginBottom: v1Spacing.sm },
+  phoneInput: {
+    backgroundColor: v1.surface,
+    borderColor: v1.border,
+    borderWidth: 1,
+    borderRadius: v1Radius.field,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    color: v1.text,
+    fontSize: 18,
+    fontWeight: '700',
+    textAlign: 'center',
+    letterSpacing: 2,
+  },
+  altLabel: { color: v1.textMuted, fontSize: 12, textAlign: 'center', marginVertical: v1Spacing.md },
+
+  channelBtn: {
+    height: 54, borderRadius: v1Radius.button,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 10,
+  },
+  channelText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+
+  otpRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 8, marginBottom: v1Spacing.md },
+  otpCell: {
+    flex: 1, aspectRatio: 1, maxWidth: 50,
+    backgroundColor: v1.surface,
+    borderColor: v1.border, borderWidth: 1,
+    borderRadius: v1Radius.field,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  otpCellFilled: { borderColor: v1Colors.driver },
+  otpCellActive: { borderColor: v1Colors.driver, shadowColor: v1Colors.driver, shadowOpacity: 0.6, shadowRadius: 8 },
+  otpDigit: { color: v1.text, fontSize: 22, fontWeight: '900' },
+  hiddenInput: { position: 'absolute', opacity: 0, width: 1, height: 1 },
+
+  timer: { color: v1.textMuted, fontSize: 13, textAlign: 'center', marginTop: 4 },
+  changeRow: { alignItems: 'center', marginTop: 8, paddingVertical: 6 },
+  changeText: { color: v1Colors.driver, fontSize: 13, fontWeight: '700' },
+
+  mockBanner: {
+    borderColor: v1Colors.driver, borderWidth: 1, borderRadius: v1Radius.field,
+    padding: 10, alignItems: 'center', marginVertical: 8,
+    backgroundColor: v1Colors.driverSoft,
+  },
+  mockText: { color: v1Colors.driver, fontSize: 14, fontWeight: '800' },
+
+  tgRow: { alignItems: 'center', marginVertical: 6 },
+  tgText: { color: '#0088CC', fontSize: 13, fontWeight: '700' },
+
+  err: { color: v1Colors.error, fontSize: 12, textAlign: 'center', marginTop: 6 },
+
+  resendRow: { alignItems: 'center', marginTop: 14, paddingVertical: 6 },
+  resendText: { color: v1Colors.driver, fontSize: 13, fontWeight: '700' },
+  securityNote: { color: v1.textMuted, fontSize: 12, textAlign: 'center', marginTop: v1Spacing.lg },
+
+  }), [v1]);
   const { t } = useI18n();
   const { signIn, setRole } = useAuth();
   const { toast } = useToast();
@@ -124,7 +187,7 @@ export default function AuthScreen({ navigation, route }) {
               keyboardType="phone-pad"
               autoFocus
               placeholder="+7 777 123 45 67"
-              placeholderTextColor={v1Colors.placeholder}
+              placeholderTextColor={v1.placeholder}
             />
           </View>
           {error ? <Text style={s.err}>{error}</Text> : null}
@@ -234,63 +297,3 @@ export default function AuthScreen({ navigation, route }) {
   );
 }
 
-const s = StyleSheet.create({
-  title: { ...v1Typography.h1, textAlign: 'center', marginTop: v1Spacing.md },
-  subtitle: { ...v1Typography.bodyMd, textAlign: 'center', marginTop: 6, marginBottom: v1Spacing.md },
-
-  phoneRow: { marginBottom: v1Spacing.sm },
-  phoneInput: {
-    backgroundColor: v1Colors.surface,
-    borderColor: v1Colors.border,
-    borderWidth: 1,
-    borderRadius: v1Radius.field,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    color: v1Colors.text,
-    fontSize: 18,
-    fontWeight: '700',
-    textAlign: 'center',
-    letterSpacing: 2,
-  },
-  altLabel: { color: v1Colors.textMuted, fontSize: 12, textAlign: 'center', marginVertical: v1Spacing.md },
-
-  channelBtn: {
-    height: 54, borderRadius: v1Radius.button,
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: 10,
-  },
-  channelText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-
-  otpRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 8, marginBottom: v1Spacing.md },
-  otpCell: {
-    flex: 1, aspectRatio: 1, maxWidth: 50,
-    backgroundColor: v1Colors.surface,
-    borderColor: v1Colors.border, borderWidth: 1,
-    borderRadius: v1Radius.field,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  otpCellFilled: { borderColor: v1Colors.driver },
-  otpCellActive: { borderColor: v1Colors.driver, shadowColor: v1Colors.driver, shadowOpacity: 0.6, shadowRadius: 8 },
-  otpDigit: { color: v1Colors.text, fontSize: 22, fontWeight: '900' },
-  hiddenInput: { position: 'absolute', opacity: 0, width: 1, height: 1 },
-
-  timer: { color: v1Colors.textMuted, fontSize: 13, textAlign: 'center', marginTop: 4 },
-  changeRow: { alignItems: 'center', marginTop: 8, paddingVertical: 6 },
-  changeText: { color: v1Colors.driver, fontSize: 13, fontWeight: '700' },
-
-  mockBanner: {
-    borderColor: v1Colors.driver, borderWidth: 1, borderRadius: v1Radius.field,
-    padding: 10, alignItems: 'center', marginVertical: 8,
-    backgroundColor: v1Colors.driverSoft,
-  },
-  mockText: { color: v1Colors.driver, fontSize: 14, fontWeight: '800' },
-
-  tgRow: { alignItems: 'center', marginVertical: 6 },
-  tgText: { color: '#0088CC', fontSize: 13, fontWeight: '700' },
-
-  err: { color: v1Colors.error, fontSize: 12, textAlign: 'center', marginTop: 6 },
-
-  resendRow: { alignItems: 'center', marginTop: 14, paddingVertical: 6 },
-  resendText: { color: v1Colors.driver, fontSize: 13, fontWeight: '700' },
-  securityNote: { color: v1Colors.textMuted, fontSize: 12, textAlign: 'center', marginTop: v1Spacing.lg },
-});

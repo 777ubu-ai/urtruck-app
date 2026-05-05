@@ -3,14 +3,16 @@
 
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { v1Colors, v1Radius, v1Typography, v1AccentFor } from '../../../theme/designV1';
+import { useV1Colors, v1Radius, v1Typography, v1AccentFor } from '../../../theme/designV1';
 
 export default function RoleTabs({ value, onChange, t }) {
+  const colors = useV1Colors();
   return (
     <View style={s.row}>
       <Tab
         active={value === 'driver'}
         accent={v1AccentFor('driver')}
+        idle={colors}
         emoji="🚚"
         label={t('role_driver_title')}
         onPress={() => onChange('driver')}
@@ -18,6 +20,7 @@ export default function RoleTabs({ value, onChange, t }) {
       <Tab
         active={value === 'client'}
         accent={v1AccentFor('client')}
+        idle={colors}
         emoji="📦"
         label={t('role_client_title')}
         onPress={() => onChange('client')}
@@ -26,7 +29,7 @@ export default function RoleTabs({ value, onChange, t }) {
   );
 }
 
-function Tab({ active, accent, emoji, label, onPress }) {
+function Tab({ active, accent, idle, emoji, label, onPress }) {
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -35,11 +38,11 @@ function Tab({ active, accent, emoji, label, onPress }) {
         s.tab,
         active
           ? { backgroundColor: accent.soft, borderColor: accent.main }
-          : { backgroundColor: 'transparent', borderColor: v1Colors.border },
+          : { backgroundColor: 'transparent', borderColor: idle.border },
       ]}
     >
       <Text style={s.emoji}>{emoji}</Text>
-      <Text style={[s.label, { color: active ? accent.main : v1Colors.textMuted }]} numberOfLines={1}>
+      <Text style={[s.label, { color: active ? accent.main : idle.textMuted }]} numberOfLines={1}>
         {label}
       </Text>
     </TouchableOpacity>

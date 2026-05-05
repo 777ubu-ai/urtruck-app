@@ -11,13 +11,67 @@ import { formatPrice, normalizeTrip } from '../utils/normalizers';
 import EmptyState from '../components/ui/EmptyState';
 import BidModal from '../components/BidModal';
 import { colors, spacing, radius, typography } from '../theme/theme';
-import { v1Colors, v1AccentFor } from '../theme/designV1';
+import {v1Colors, useV1Colors, v1AccentFor} from '../theme/designV1';
 import SegmentTabs from '../components/ui/v1/SegmentTabs';
 import StatsRow from '../components/ui/v1/StatsRow';
 import BellBadge from '../components/ui/v1/BellBadge';
 import { useUnreadNotifications } from '../utils/useUnreadNotifications';
 
 export default function MyTripsScreen({ navigation, route }) {
+  const v1 = useV1Colors();
+  const s = React.useMemo(() => StyleSheet.create({
+
+  // v1 brand bar (mirrors FeedScreen)
+  brandBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 6, paddingBottom: 6 },
+  backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  backIcon: { fontSize: 30, fontWeight: '300' },
+  brandRow: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  brandText: { color: v1.text, fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
+  ftlPill: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 2 },
+  ftlText: { fontSize: 11, fontWeight: '900', letterSpacing: 1 },
+  bellBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, backgroundColor: v1.surface },
+  bellIcon: { fontSize: 18 },
+  titleBlock: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12 },
+  titleHero: { color: v1.text, fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
+  titleSub: { color: v1.textMuted, fontSize: 12, marginTop: 2 },
+  // Legacy local styles still used by existing renderBid / renderDeal /
+  // renderMyItem; kept untouched to preserve their layout.
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
+  back: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  backText: { fontSize: 28, fontWeight: '300' },
+  headerTitle: { ...typography.h2, textAlign: 'center' },
+  headerSub: { ...typography.caption, textAlign: 'center', marginTop: 2 },
+
+  tabs: { flexDirection: 'row', marginHorizontal: spacing.lg, borderRadius: radius.sm, padding: 3, marginBottom: spacing.md, borderWidth: 1 },
+  tab: { flex: 1, paddingVertical: spacing.sm, borderRadius: 7, alignItems: 'center', borderWidth: 1 },
+  tabText: { ...typography.caption, fontWeight: '700' },
+
+  card: { borderRadius: radius.md, padding: spacing.md, borderWidth: 1, marginBottom: spacing.sm },
+  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xs },
+  badge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
+  badgeText: { fontSize: 9, fontWeight: '800', letterSpacing: 1 },
+  statusLabel: { ...typography.small },
+  route: { ...typography.title, marginBottom: 4 },
+  desc: { ...typography.body, marginBottom: spacing.xs },
+  cardMeta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: spacing.xs },
+  metaItem: { ...typography.caption },
+  metaDot: { color: '#475569', fontSize: 10 },
+  cardBottom: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  price: { ...typography.h2, color: '#22C55E' },
+  bidsLabel: { ...typography.caption, flex: 1 },
+
+  chatBtn: { backgroundColor: '#22C55E', borderRadius: radius.sm, paddingVertical: spacing.sm, alignItems: 'center', marginTop: spacing.sm },
+  chatBtnText: { color: '#FFF', ...typography.title },
+  acceptBtn: { backgroundColor: '#22C55E', borderRadius: radius.sm, paddingVertical: spacing.sm, alignItems: 'center' },
+  acceptBtnText: { color: '#FFF', ...typography.title },
+  rejectBtn: { borderWidth: 1, borderColor: '#EF4444', borderRadius: radius.sm, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, alignItems: 'center' },
+  rejectBtnText: { color: '#EF4444', ...typography.title },
+  miniBtn: { borderWidth: 1, borderRadius: radius.sm, paddingVertical: 6, paddingHorizontal: 10 },
+  miniBtnText: { fontSize: 11, fontWeight: '700' },
+  editBtn: { borderWidth: 1, borderColor: '#22C55E', borderRadius: 10, paddingVertical: 8, alignItems: 'center', marginTop: spacing.sm },
+  editBtnText: { color: '#22C55E', fontSize: 12, fontWeight: '700' },
+
+  }), [v1]);
   const { role } = route.params || {};
   const isDriver = role === 'driver';
   const accent = isDriver ? '#22C55E' : '#F59E0B';
@@ -472,7 +526,7 @@ export default function MyTripsScreen({ navigation, route }) {
   ];
 
   return (
-    <SafeAreaView testID="my-work-screen" style={[{ flex: 1, backgroundColor: v1Colors.bg }]} edges={['top']}>
+    <SafeAreaView testID="my-work-screen" style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']}>
       {/* Brand bar (UrTruck + FTL pill + bell) */}
       <View style={s.brandBar}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -545,54 +599,3 @@ export default function MyTripsScreen({ navigation, route }) {
   );
 }
 
-const s = StyleSheet.create({
-  // v1 brand bar (mirrors FeedScreen)
-  brandBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 6, paddingBottom: 6 },
-  backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  backIcon: { fontSize: 30, fontWeight: '300' },
-  brandRow: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  brandText: { color: v1Colors.text, fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
-  ftlPill: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 2 },
-  ftlText: { fontSize: 11, fontWeight: '900', letterSpacing: 1 },
-  bellBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, backgroundColor: v1Colors.surface },
-  bellIcon: { fontSize: 18 },
-  titleBlock: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12 },
-  titleHero: { color: v1Colors.text, fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
-  titleSub: { color: v1Colors.textMuted, fontSize: 12, marginTop: 2 },
-  // Legacy local styles still used by existing renderBid / renderDeal /
-  // renderMyItem; kept untouched to preserve their layout.
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
-  back: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  backText: { fontSize: 28, fontWeight: '300' },
-  headerTitle: { ...typography.h2, textAlign: 'center' },
-  headerSub: { ...typography.caption, textAlign: 'center', marginTop: 2 },
-
-  tabs: { flexDirection: 'row', marginHorizontal: spacing.lg, borderRadius: radius.sm, padding: 3, marginBottom: spacing.md, borderWidth: 1 },
-  tab: { flex: 1, paddingVertical: spacing.sm, borderRadius: 7, alignItems: 'center', borderWidth: 1 },
-  tabText: { ...typography.caption, fontWeight: '700' },
-
-  card: { borderRadius: radius.md, padding: spacing.md, borderWidth: 1, marginBottom: spacing.sm },
-  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xs },
-  badge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
-  badgeText: { fontSize: 9, fontWeight: '800', letterSpacing: 1 },
-  statusLabel: { ...typography.small },
-  route: { ...typography.title, marginBottom: 4 },
-  desc: { ...typography.body, marginBottom: spacing.xs },
-  cardMeta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: spacing.xs },
-  metaItem: { ...typography.caption },
-  metaDot: { color: '#475569', fontSize: 10 },
-  cardBottom: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  price: { ...typography.h2, color: '#22C55E' },
-  bidsLabel: { ...typography.caption, flex: 1 },
-
-  chatBtn: { backgroundColor: '#22C55E', borderRadius: radius.sm, paddingVertical: spacing.sm, alignItems: 'center', marginTop: spacing.sm },
-  chatBtnText: { color: '#FFF', ...typography.title },
-  acceptBtn: { backgroundColor: '#22C55E', borderRadius: radius.sm, paddingVertical: spacing.sm, alignItems: 'center' },
-  acceptBtnText: { color: '#FFF', ...typography.title },
-  rejectBtn: { borderWidth: 1, borderColor: '#EF4444', borderRadius: radius.sm, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, alignItems: 'center' },
-  rejectBtnText: { color: '#EF4444', ...typography.title },
-  miniBtn: { borderWidth: 1, borderRadius: radius.sm, paddingVertical: 6, paddingHorizontal: 10 },
-  miniBtnText: { fontSize: 11, fontWeight: '700' },
-  editBtn: { borderWidth: 1, borderColor: '#22C55E', borderRadius: 10, paddingVertical: 8, alignItems: 'center', marginTop: spacing.sm },
-  editBtnText: { color: '#22C55E', fontSize: 12, fontWeight: '700' },
-});

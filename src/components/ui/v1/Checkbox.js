@@ -1,17 +1,26 @@
 // Checkbox — emerald/orange tick aligned to the left of a label.
+// Stage 6: theme-aware label colour, theme-aware empty-box border.
 
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { v1Colors, v1Typography } from '../../../theme/designV1';
+import { useV1Colors, v1Typography } from '../../../theme/designV1';
 
 export default function Checkbox({ value, onToggle, label, accent = 'driver', testID }) {
-  const color = accent === 'cargo' ? v1Colors.cargoOwner : v1Colors.driver;
+  const colors = useV1Colors();
+  const color = accent === 'cargo' ? colors.cargoOwner : colors.driver;
   return (
     <TouchableOpacity onPress={onToggle} activeOpacity={0.8} style={s.row} testID={testID}>
-      <View style={[s.box, value ? { backgroundColor: color, borderColor: color } : { borderColor: v1Colors.borderStrong }]}>
+      <View
+        style={[
+          s.box,
+          value
+            ? { backgroundColor: color, borderColor: color }
+            : { borderColor: colors.borderStrong },
+        ]}
+      >
         {value ? <Text style={s.tick}>✓</Text> : null}
       </View>
-      <Text style={s.label}>{label}</Text>
+      <Text style={[s.label, { color: colors.textMuted }]}>{label}</Text>
     </TouchableOpacity>
   );
 }

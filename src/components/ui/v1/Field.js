@@ -5,10 +5,12 @@
 // Two display modes:
 //   variant="input"    — single-line text input
 //   variant="dropdown" — read-only label + value, opens a sheet on tap
+//
+// Stage 6: theme-aware via useV1Colors().
 
 import React from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
-import { v1Colors, v1Radius, v1Spacing, v1Typography } from '../../../theme/designV1';
+import { useV1Colors, v1Radius, v1Spacing, v1Typography } from '../../../theme/designV1';
 
 export default function Field(props) {
   if (props.variant === 'dropdown') return <DropdownRow {...props} />;
@@ -21,18 +23,24 @@ function InputRow({
   keyboardType, autoCapitalize = 'sentences', maxLength, error, helper,
   testID,
 }) {
+  const colors = useV1Colors();
   return (
     <View style={{ marginBottom: v1Spacing.sm }}>
-      <View style={[s.row, error && s.rowError]}>
-        {icon ? <Text style={s.icon}>{icon}</Text> : null}
+      <View
+        style={[
+          s.row,
+          { backgroundColor: colors.surface, borderColor: error ? colors.error : colors.border },
+        ]}
+      >
+        {icon ? <Text style={[s.icon, { color: colors.textMuted }]}>{icon}</Text> : null}
         <View style={{ flex: 1 }}>
-          {value && label ? <Text style={s.label}>{label}</Text> : null}
+          {value && label ? <Text style={[v1Typography.small, { color: colors.textDim, marginBottom: 2 }]}>{label}</Text> : null}
           <TextInput
-            style={s.input}
+            style={[s.input, { color: colors.text }]}
             value={value}
             onChangeText={onChangeText}
             placeholder={placeholder || label}
-            placeholderTextColor={v1Colors.placeholder}
+            placeholderTextColor={colors.placeholder}
             secureTextEntry={!!secureTextEntry && !isPasswordVisible}
             keyboardType={keyboardType}
             autoCapitalize={autoCapitalize}
@@ -42,26 +50,37 @@ function InputRow({
         </View>
         {onTogglePassword ? (
           <TouchableOpacity onPress={onTogglePassword} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-            <Text style={s.eye}>{isPasswordVisible ? '🙈' : '👁'}</Text>
+            <Text style={[s.eye, { color: colors.textMuted }]}>{isPasswordVisible ? '🙈' : '👁'}</Text>
           </TouchableOpacity>
         ) : null}
       </View>
-      {error ? <Text style={s.errText}>{error}</Text> : helper ? <Text style={s.helperText}>{helper}</Text> : null}
+      {error
+        ? <Text style={[s.errText, { color: colors.error }]}>{error}</Text>
+        : helper ? <Text style={[s.helperText, { color: colors.textDim }]}>{helper}</Text> : null}
     </View>
   );
 }
 
 function DropdownRow({ icon, label, value, onPress, placeholder, testID }) {
+  const colors = useV1Colors();
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.8} style={[s.row, { marginBottom: v1Spacing.sm }]} testID={testID}>
-      {icon ? <Text style={s.icon}>{icon}</Text> : null}
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.8}
+      style={[
+        s.row,
+        { backgroundColor: colors.surface, borderColor: colors.border, marginBottom: v1Spacing.sm },
+      ]}
+      testID={testID}
+    >
+      {icon ? <Text style={[s.icon, { color: colors.textMuted }]}>{icon}</Text> : null}
       <View style={{ flex: 1 }}>
-        <Text style={s.label}>{label}</Text>
-        <Text style={[s.input, !value && { color: v1Colors.placeholder }]} numberOfLines={1}>
+        <Text style={[v1Typography.small, { color: colors.textDim, marginBottom: 2 }]}>{label}</Text>
+        <Text style={[s.input, { color: value ? colors.text : colors.placeholder }]} numberOfLines={1}>
           {value || placeholder || '—'}
         </Text>
       </View>
-      <Text style={s.caret}>⌄</Text>
+      <Text style={[s.caret, { color: colors.textMuted }]}>⌄</Text>
     </TouchableOpacity>
   );
 }
@@ -74,23 +93,13 @@ const s = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     minHeight: 56,
-    backgroundColor: v1Colors.surface,
-    borderColor: v1Colors.border,
     borderWidth: 1,
     borderRadius: v1Radius.field,
   },
-  rowError: { borderColor: v1Colors.error },
-  icon: { fontSize: 16, color: v1Colors.textMuted, width: 20, textAlign: 'center' },
-  label: { ...v1Typography.small, marginBottom: 2 },
-  input: {
-    color: v1Colors.text,
-    fontSize: 14,
-    fontWeight: '500',
-    paddingVertical: 0,
-    margin: 0,
-  },
-  eye: { fontSize: 16, color: v1Colors.textMuted, paddingHorizontal: 4 },
-  caret: { fontSize: 16, color: v1Colors.textMuted, paddingHorizontal: 4 },
-  errText: { color: v1Colors.error, fontSize: 11, marginTop: 4, marginLeft: 6 },
-  helperText: { color: v1Colors.textDim, fontSize: 11, marginTop: 4, marginLeft: 6 },
+  icon: { fontSize: 16, width: 20, textAlign: 'center' },
+  input: { fontSize: 14, fontWeight: '500', paddingVertical: 0, margin: 0 },
+  eye: { fontSize: 16, paddingHorizontal: 4 },
+  caret: { fontSize: 16, paddingHorizontal: 4 },
+  errText: { fontSize: 11, marginTop: 4, marginLeft: 6 },
+  helperText: { fontSize: 11, marginTop: 4, marginLeft: 6 },
 });
