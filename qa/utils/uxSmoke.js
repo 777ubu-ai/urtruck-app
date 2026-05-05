@@ -52,6 +52,24 @@ if (/<TouchableOpacity[^>]*bidBtn[\s\S]*?suggestPrice/.test(cargoDetail)) {
   failures.push('CargoDetail still has the inline `Предложить цену` button next to the price block (duplicate of sticky CTA)');
 }
 
+// Stage 10: TripDetail (shipper viewer) must expose the bid CTA.
+const tripDetail = read('src/screens/TripDetail.js');
+if (!/import BidModal/.test(tripDetail)) {
+  failures.push('TripDetail no longer imports BidModal');
+}
+if (!/testID:\s*'trip-sticky-bid'/.test(tripDetail)) {
+  failures.push('TripDetail sticky CTA no longer has trip-sticky-bid testID');
+}
+if (!/tripId=\{trip\.id\}/.test(tripDetail)) {
+  failures.push('TripDetail BidModal not bound to tripId');
+}
+
+// Stage 10: legacy `respond` key must be gone from i18n.
+const i18nSrc = read('src/utils/i18n.js');
+if (/\brespond:\s*'/.test(i18nSrc)) {
+  failures.push('i18n.js still defines the legacy `respond` key');
+}
+
 // 5. Cards have not regressed to the fake numeric defaults.
 for (const file of ['src/screens/CreateCargoScreen.js', 'src/screens/CreateTripScreen.js']) {
   const src = read(file);
@@ -68,6 +86,8 @@ console.log('[ux] sanitizeForDisplay exported  ✓');
 console.log('[ux] cargoDisplay / tripDisplay sanitise text  ✓');
 console.log('[ux] FeedScreen single-CTA contract  ✓');
 console.log('[ux] CargoDetail no duplicate price-block button  ✓');
+console.log('[ux] TripDetail BidModal + trip-sticky-bid CTA  ✓');
+console.log('[ux] legacy `respond` key gone from i18n  ✓');
 console.log('[ux] Create forms — no fake defaults / wrong icons  ✓');
 
 if (failures.length) {

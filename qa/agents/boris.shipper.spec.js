@@ -103,6 +103,39 @@ test('Boris · cargo owner flow', async ({ page }) => {
     }
   }
 
+  // 6b. Stage 10: shipper → trip bid round-trip.
+  // Boris (cargo owner) places a bid directly on Serik's most
+  // recent trip. Same /market/bids endpoint, just with trip_id
+  // instead of cargo_id. Backend pushes a notification to the
+  // trip owner; we just check the create succeeded.
+  const tripsResp = await qaApi.get('/market/trips', {
+    ...headers,
+    query: { status: 'active', limit: 50 },
+  });
+  const serikTrip = ((tripsResp.json && tripsResp.json.trips) || [])
+    .find((tr) => tr && tr.driver_name && /serik|серик/i.test(String(tr.driver_name || '')))
+    || ((tripsResp.json && tripsResp.json.trips) || [])[0];
+  if (serikTrip && serikTrip.id) {
+    const tripBid = await qaApi.post('/market/bids',
+      { trip_id: serikTrip.id, amount: 4500, message: `Shipper offer ${QA_TAG}` },
+      headers);
+    if (tripBid.ok && tripBid.json && tripBid.json.id) {
+      log.pass(ACTOR, 'shipper-bid-on-trip', `bidId=${tripBid.json.id} tripId=${serikTrip.id}`);
+      // Read it back via /market/bids?trip_id= to confirm persistence.
+      const verify = await qaApi.get('/market/bids', { ...headers, query: { trip_id: serikTrip.id } });
+      const found = ((verify.json && verify.json.bids) || []).find((b) => b.id === tripBid.json.id);
+      if (found) {
+        log.pass(ACTOR, 'shipper-bid-on-trip-listed', `amount=${found.amount}`);
+      } else {
+        log.p1(ACTOR, 'shipper-bid-on-trip-listed', 'bid not visible in list_bids');
+      }
+    } else {
+      log.p1(ACTOR, 'shipper-bid-on-trip', `${tripBid.status} ${(tripBid.text || '').slice(0, 200)}`);
+    }
+  } else {
+    log.p2(ACTOR, 'shipper-bid-on-trip', 'no Serik trip on the public feed to bid against');
+  }
+
   // 7. Chat: send a message via /chat/send to support, verify it persists.
   // Production must NOT include ai-volodya-test in /chat/contacts.
   const contacts = await qaApi.get('/chat/contacts');
