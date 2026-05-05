@@ -19,13 +19,14 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..', '..');
 const I18N = path.join(ROOT, 'src', 'utils', 'i18n.js');
 const SRC = path.join(ROOT, 'src');
-// Enabled set was reduced to 4 in Stage 5 / revision 3:
-// RU / EN / KZ / CN. Everything else is FORBIDDEN — the smoke check
-// fails the run if any of these reappear in translations. KG/DE/FR
-// were previously partially populated and have been dropped along
-// with TJ/GE/TM/UZ.
-const ENABLED = ['RU', 'EN', 'KZ', 'CN'];
-const FORBIDDEN = ['UZ', 'KG', 'DE', 'FR', 'TJ', 'GE', 'TM'];
+// Enabled set: RU / EN / KK (Kazakh, ISO 639-1) / ZH (Chinese, ISO
+// 639-1). Stage 5 narrowed the set to four; Stage 7 standardised
+// the codes from the country abbreviations KZ/CN to the proper
+// language codes KK/ZH so they stop colliding with country codes
+// elsewhere (cities.js, FX widget). Everything else is FORBIDDEN —
+// the smoke fails if any of these reappear in translations.
+const ENABLED = ['RU', 'EN', 'KK', 'ZH'];
+const FORBIDDEN = ['UZ', 'KG', 'DE', 'FR', 'TJ', 'GE', 'TM', 'KZ', 'CN'];
 
 function loadTranslations() {
   const src = fs.readFileSync(I18N, 'utf8');

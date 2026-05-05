@@ -874,7 +874,7 @@ const translations = {
 
 },
 
-  KZ: {
+  KK: {
     welcome: 'Кіру немесе тіркелу',
     enterPhone: 'Телефон нөміріңізді енгізіңіз',
     getSMS: 'SMS-код алу',
@@ -1440,7 +1440,7 @@ const translations = {
 
 },
 
-  CN: {
+  ZH: {
     welcome: '登录或创建账户',
     enterPhone: '输入手机号码',
     getSMS: '获取验证码',
@@ -2499,16 +2499,27 @@ import { Platform, NativeModules } from 'react-native';
 const listeners = new Set();
 const KEY = 'ur_lang';
 
-// Алиасы: системный код → наш код. Поддерживаем только 4 языка
-// (RU / EN / KZ / CN). Остальные коды — UZ/KG/DE/FR/TJ/GE/TM/etc. —
-// больше не отображаются в UI; старые сохранённые `currentLang` для
-// удалённых языков отбрасываются loader-ом ниже (через
-// `translations[saved]` guard) и приложение откатывается на RU.
+// Алиасы: системный код → наш код. Поддерживаем только 4 языка:
+// RU / EN / KK (Kazakh, ISO 639-1) / ZH (Chinese, ISO 639-1).
+//
+// Stage 7 standardised the codes to ISO. Earlier the storage might
+// have written `'KZ'` (country code, not language) or `'CN'` (also
+// country code) into `ur_lang`; the loader below now redirects those
+// legacy values to the proper language code so users don't lose
+// their choice on upgrade.
 const LANG_ALIAS = {
   ru: 'RU', rus: 'RU',
   en: 'EN', eng: 'EN',
-  kk: 'KZ', kaz: 'KZ', 'kk-kz': 'KZ',
-  zh: 'CN', 'zh-cn': 'CN', 'zh-hans': 'CN', 'zh-hant': 'CN', 'zh-tw': 'CN',
+  kk: 'KK', kaz: 'KK', 'kk-kz': 'KK',
+  zh: 'ZH', 'zh-cn': 'ZH', 'zh-hans': 'ZH', 'zh-hant': 'ZH', 'zh-tw': 'ZH',
+};
+
+// Legacy persisted-value fixups. Stage 5 narrowed the set to four
+// languages and renamed two of them in Stage 7 (KZ→KK, CN→ZH).
+// Anything else falls through to system detect / RU.
+const LEGACY_LANG_FIX = {
+  KZ: 'KK',
+  CN: 'ZH',
 };
 
 // Sync detect at module load — best effort before async storage
@@ -2552,7 +2563,13 @@ function detectSystemLang() {
 
 // Load saved language on start; если не выбран — авто из системы
 (async () => {
-  const saved = await storage.get(KEY);
+  let saved = await storage.get(KEY);
+  // Legacy fix-up: rewrite `KZ` → `KK`, `CN` → `ZH` for users
+  // upgrading from a Stage 5 build.
+  if (saved && LEGACY_LANG_FIX[saved]) {
+    saved = LEGACY_LANG_FIX[saved];
+    storage.set(KEY, saved);
+  }
   if (saved && translations[saved]) {
     currentLang = saved;
   } else {
@@ -2596,7 +2613,7 @@ function pluralRu(n, one, few, many) {
 
 export const formatBids = (count) => {
   const n = count || 0;
-  if (currentLang === 'RU' || currentLang === 'KZ' || currentLang === 'KG') {
+  if (currentLang === 'RU' || currentLang === 'KK' || currentLang === 'KG') {
     return `${n} ${pluralRu(n, 'ставка', 'ставки', 'ставок')}`;
   }
   return `${n} ${t('bids')}`;
