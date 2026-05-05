@@ -1,8 +1,11 @@
 // BrandBarWithShare — top-of-screen bar with back arrow on the left,
-// "UrTruck" wordmark + "FTL" pill in the centre, optional share/right action
-// on the right. Used by detail screens (CargoDetail / TripDetail /
+// "UrTruck" wordmark in the centre, optional share/right action on
+// the right. Used by detail screens (CargoDetail / TripDetail /
 // DriverDetail / EditTripScreen) so the brand strip stays identical
-// across them. Stage 6 polish: theme-aware via useV1Colors().
+// across them. Theme-aware via useV1Colors().
+//
+// Stage 16: removed the green "FTL" pill — same reason as
+// BrandHeader, header was carrying too many bright accents at once.
 
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
@@ -23,9 +26,6 @@ export default function BrandBarWithShare({ onBack, onShare, accent, rightTestID
       </TouchableOpacity>
       <View style={s.brandRow}>
         <Text style={[s.brandText, { color: colors.text }]}>UrTruck</Text>
-        <View style={[s.ftlPill, { backgroundColor: arrowColor + '22', borderColor: arrowColor }]}>
-          <Text style={[s.ftlText, { color: arrowColor }]}>FTL</Text>
-        </View>
       </View>
       {onShare ? (
         <TouchableOpacity
@@ -55,10 +55,8 @@ const s = StyleSheet.create({
   },
   backHit: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   backIcon: { fontSize: 30, fontWeight: '300' },
-  brandRow: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  brandRow: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
   brandText: { fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
-  ftlPill: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 2 },
-  ftlText: { fontSize: 11, fontWeight: '900', letterSpacing: 1 },
   rightBtn: {
     width: 40, height: 40, borderRadius: 12,
     alignItems: 'center', justifyContent: 'center',

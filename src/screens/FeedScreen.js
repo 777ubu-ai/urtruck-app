@@ -436,7 +436,7 @@ export default function FeedScreen({ navigation, route }) {
         priceCaption={t('per_trip')}
         responses={item.bids || 0}
         onPress={openCargo}
-        bottomRight={{ label: t('details'), onPress: openCargo, filled: true }}
+        bottomRight={{ label: t('details'), onPress: openCargo, filled: false }}
         testID="cargo-card"
       />
     );
@@ -484,7 +484,7 @@ export default function FeedScreen({ navigation, route }) {
         priceText={item.isTrip ? formatPrice(item.price, item.currency, t) : `★ ${item.rating || '—'}`}
         priceCaption={item.isTrip ? t('per_trip') : `${item.reviews || 0} ${t('reviews')}`}
         onPress={onPress}
-        bottomRight={{ label: t('details'), onPress, filled: true }}
+        bottomRight={{ label: t('details'), onPress, filled: false }}
         testID={item.isTrip ? 'trip-card' : 'driver-card'}
       />
     );
@@ -497,22 +497,26 @@ export default function FeedScreen({ navigation, route }) {
   const accentColor = isDriver ? v1Colors.driver : v1Colors.cargoOwner;
   const v1Accent = v1AccentFor(isDriver ? 'driver' : 'client');
   const chips = [
-    { key: 'dir',   icon: '🧭', label: t('filter_direction'), active: !!(dirFrom || dirTo),       onPress: () => setActiveFilter('dir') },
-    { key: 'date',  icon: '📅', label: t('filter_date'),      active: !!(dateFrom || dateTo),     onPress: () => setActiveFilter('date') },
-    { key: 'body',  icon: '🚛', label: t('filter_body'),      active: !!filterType,               onPress: () => setActiveFilter('body') },
-    { key: 'price', icon: '💰', label: t('filter_price'),     active: sortBy !== 'newest',        onPress: () => setActiveFilter('price') },
+    // Stage 16: dropped per-chip emojis (🧭/📅/🚛/💰). Filter pills
+    // now read as plain text + chevron — calmer strip, no four
+    // colour spots competing with the price/CTA accent.
+    { key: 'dir',   label: t('filter_direction'), active: !!(dirFrom || dirTo),       onPress: () => setActiveFilter('dir') },
+    { key: 'date',  label: t('filter_date'),      active: !!(dateFrom || dateTo),     onPress: () => setActiveFilter('date') },
+    { key: 'body',  label: t('filter_body'),      active: !!filterType,               onPress: () => setActiveFilter('body') },
+    { key: 'price', label: t('filter_price'),     active: sortBy !== 'newest',        onPress: () => setActiveFilter('price') },
   ];
 
   return (
     <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
-      {/* Brand bar — emerald FTL pill + bell */}
+      {/* Stage 16: brand bar simplified — UrTruck wordmark + bell only.
+          The green "FTL" pill that used to sit next to the wordmark
+          was the third bright emerald spot on a header that already
+          carries the bell badge ring; cutting it removes one of the
+          competing accents from the screen. */}
       <View style={s.brandBar}>
         <View style={{ width: 40 }} />
         <View style={s.brandRow}>
           <Text style={[s.brandText, { color: v1.text }]}>UrTruck</Text>
-          <View style={[s.ftlPill, { backgroundColor: v1Accent.soft, borderColor: v1Accent.main }]}>
-            <Text style={[s.ftlText, { color: v1Accent.main }]}>FTL</Text>
-          </View>
         </View>
         <BellBadge
           count={notifUnread}
@@ -526,14 +530,19 @@ export default function FeedScreen({ navigation, route }) {
           <Text style={[s.titleHero, { color: v1.text }]}>{isDriver ? t('cargos') : t('trucks')}</Text>
           <Text style={[s.titleHeroSub, { color: v1.textMuted }]}>{isDriver ? t('feed_driver_subtitle') : t('feed_client_subtitle')}</Text>
         </View>
+        {/* Stage 16: title-row publish CTA promoted to the screen-level
+            primary — solid accent fill, dark label. The "Подробнее"
+            button on each card moved to outline so this is the only
+            full-saturation green block on the surface besides the
+            floating + in the bottom nav. */}
         <TouchableOpacity
-          style={[s.titleCta, { borderColor: accentColor }]}
+          style={[s.titleCta, { borderColor: accentColor, backgroundColor: accentColor }]}
           onPress={() => navigation.navigate(isDriver ? 'CreateTrip' : 'CreateCargo', { role })}
           testID={isDriver ? 'publish-trip-button' : 'publish-cargo-button'}
           accessibilityRole="button"
           accessibilityLabel={isDriver ? 'Опубликовать маршрут' : 'Разместить груз'}
         >
-          <Text style={[s.titleCtaText, { color: accentColor }]}>+ {isDriver ? t('postTrip') : t('postCargo')}</Text>
+          <Text style={[s.titleCtaText, { color: '#0A0A0A' }]}>+ {isDriver ? t('postTrip') : t('postCargo')}</Text>
         </TouchableOpacity>
       </View>
 
@@ -541,7 +550,7 @@ export default function FeedScreen({ navigation, route }) {
         <SearchBar
           value={search}
           onChangeText={setSearch}
-          placeholder={'🔍 ' + t('searchRoute')}
+          placeholder={t('searchRoute')}
           onClear={() => { setFilterType(null); setSearch(''); setSortBy('newest'); setMinRating(0); }}
         />
       </View>
