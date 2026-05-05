@@ -5,6 +5,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { setLanguage, getLanguage } from '../utils/i18n';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
+import { useV1Colors } from '../theme/designV1';
 import { useAuth } from '../utils/AuthContext';
 import { getProfile, saveProfile } from '../utils/store';
 import { storage } from '../utils/storage';
@@ -30,7 +31,19 @@ export default function ProfileScreen({ navigation, route }) {
   const { role } = route.params || {};
   const isDriver = role === 'driver';
   const accent = isDriver ? '#22C55E' : '#F59E0B';
-  const { isDark, toggleTheme, theme } = useTheme();
+  const { isDark, toggleTheme } = useTheme();
+  // Stage 8: read tokens from the v1 hook so the screen lines up
+  // with the rest of the app. The v1 palette doesn't expose a
+  // separate secondary tier, so we map `textSecondary` onto
+  // `textMuted` and `card` onto `surface` for the existing inline
+  // styles below. Cloned so we don't mutate the shared frozen-style
+  // object the hook returns.
+  const v1 = useV1Colors();
+  const theme = {
+    ...v1,
+    card: v1.surface,
+    textSecondary: v1.textMuted,
+  };
   const { t } = useI18n();
   const { session, signOut, setRole } = useAuth();
   const [profile, setProfile] = useState(getProfile(session?.user?.id) || {});
