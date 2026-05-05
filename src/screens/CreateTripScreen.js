@@ -12,6 +12,7 @@ import Textarea from '../components/ui/v1/Textarea';
 import PrimaryButton from '../components/ui/v1/PrimaryButton';
 import BottomSheet from '../components/ui/v1/BottomSheet';
 import CityInput from '../components/CityInput';
+import RoutePointPicker from '../components/RoutePointPicker';
 import DatePicker from '../components/DatePicker';
 import {v1Colors, useV1Colors, v1Radius, v1Spacing, v1Typography, v1AccentFor} from '../theme/designV1';
 import { TRUCK_KEYS, TRUCK_ICONS } from '../utils/truckConstants';
@@ -132,8 +133,12 @@ export default function CreateTripScreen({ navigation, route }) {
       to_city: to.trim(),
       transit: transit.trim() || null,
       truck_type: truckType,
-      capacity_tons: Number(tons) || 20,
-      available_m3: Number(m3) || 82,
+      // Stage 7: stop silently injecting fake defaults (20t / 82m³).
+      // The user explicitly leaves the field blank — the backend's
+      // own column default is enough; we only send the number when
+      // the user types one.
+      capacity_tons: tons ? Number(tons) : null,
+      available_m3: m3 ? Number(m3) : null,
       price: priceNum,
       currency: priceMode === 'fixed' ? currency : 'KZT',
       departure: departureNorm,
@@ -173,7 +178,16 @@ export default function CreateTripScreen({ navigation, route }) {
       />
       {showFromPicker ? (
         <View style={s.pickerWrap}>
-          <CityInput value={from} onChange={(v) => { setFrom(v); if (errors.from) setErrors((e) => ({ ...e, from: null })); }} placeholder={'📍 ' + t('fromCountry')} testID="trip-from-input" />
+          <RoutePointPicker
+            value={from}
+            onChange={(v) => {
+              setFrom(v);
+              if (errors.from) setErrors((e) => ({ ...e, from: null }));
+              if (v && v.trim()) setShowFromPicker(false);
+            }}
+            placeholder={'📍 ' + t('fromCountry')}
+            testID="trip-from-input"
+          />
         </View>
       ) : null}
       {errors.from ? <Text style={s.err}>⚠️ {errors.from}</Text> : null}
@@ -188,7 +202,16 @@ export default function CreateTripScreen({ navigation, route }) {
       />
       {showToPicker ? (
         <View style={s.pickerWrap}>
-          <CityInput value={to} onChange={(v) => { setTo(v); if (errors.to) setErrors((e) => ({ ...e, to: null })); }} placeholder={'🏁 ' + t('toCountry')} testID="trip-to-input" />
+          <RoutePointPicker
+            value={to}
+            onChange={(v) => {
+              setTo(v);
+              if (errors.to) setErrors((e) => ({ ...e, to: null }));
+              if (v && v.trim()) setShowToPicker(false);
+            }}
+            placeholder={'🏁 ' + t('toCountry')}
+            testID="trip-to-input"
+          />
         </View>
       ) : null}
       {errors.to ? <Text style={s.err}>⚠️ {errors.to}</Text> : null}
@@ -220,7 +243,11 @@ export default function CreateTripScreen({ navigation, route }) {
         <View style={s.pickerWrap}>
           <DatePicker
             value={departure}
-            onChange={(v) => { setDeparture(v); if (errors.departure) setErrors((e) => ({ ...e, departure: null })); }}
+            onChange={(v) => {
+              setDeparture(v);
+              if (errors.departure) setErrors((e) => ({ ...e, departure: null }));
+              if (v && v.trim()) setShowDeparturePicker(false);
+            }}
             placeholder={t('departure')}
           />
         </View>
@@ -250,22 +277,22 @@ export default function CreateTripScreen({ navigation, route }) {
       <View style={s.row2}>
         <View style={{ flex: 1 }}>
           <Field
-            icon="🔒"
+            icon="⚖️"
             label={t('weight_label')}
             value={tons}
             onChangeText={(v) => setTons(String(v || '').replace(/[^\d]/g, ''))}
             keyboardType="numeric"
-            placeholder="20"
+            placeholder="—"
           />
         </View>
         <View style={{ flex: 1 }}>
           <Field
-            icon="📦"
+            icon="📐"
             label={t('volume_label')}
             value={m3}
             onChangeText={(v) => setM3(String(v || '').replace(/[^\d]/g, ''))}
             keyboardType="numeric"
-            placeholder="82"
+            placeholder="—"
           />
         </View>
       </View>

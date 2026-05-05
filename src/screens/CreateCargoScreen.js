@@ -11,6 +11,7 @@ import Textarea from '../components/ui/v1/Textarea';
 import PrimaryButton from '../components/ui/v1/PrimaryButton';
 import BottomSheet from '../components/ui/v1/BottomSheet';
 import CityInput from '../components/CityInput';
+import RoutePointPicker from '../components/RoutePointPicker';
 import CargoTypeInput from '../components/CargoTypeInput';
 import DatePicker from '../components/DatePicker';
 import { PhotoPicker } from '../components/PhotoGallery';
@@ -168,7 +169,16 @@ export default function CreateCargoScreen({ navigation, route }) {
       />
       {showFromPicker ? (
         <View style={s.pickerWrap}>
-          <CityInput value={from} onChange={(v) => { setFrom(v); if (errors.from) setErrors((e) => ({ ...e, from: null })); }} placeholder={'📍 ' + t('fromCountry')} testID="cargo-from-input" />
+          <RoutePointPicker
+            value={from}
+            onChange={(v) => {
+              setFrom(v);
+              if (errors.from) setErrors((e) => ({ ...e, from: null }));
+              if (v && v.trim()) setShowFromPicker(false);
+            }}
+            placeholder={'📍 ' + t('fromCountry')}
+            testID="cargo-from-input"
+          />
         </View>
       ) : null}
       {errors.from ? <Text style={s.err}>⚠️ {errors.from}</Text> : null}
@@ -183,7 +193,16 @@ export default function CreateCargoScreen({ navigation, route }) {
       />
       {showToPicker ? (
         <View style={s.pickerWrap}>
-          <CityInput value={to} onChange={(v) => { setTo(v); if (errors.to) setErrors((e) => ({ ...e, to: null })); }} placeholder={'🏁 ' + t('toCountry')} testID="cargo-to-input" />
+          <RoutePointPicker
+            value={to}
+            onChange={(v) => {
+              setTo(v);
+              if (errors.to) setErrors((e) => ({ ...e, to: null }));
+              if (v && v.trim()) setShowToPicker(false);
+            }}
+            placeholder={'🏁 ' + t('toCountry')}
+            testID="cargo-to-input"
+          />
         </View>
       ) : null}
       {errors.to ? <Text style={s.err}>⚠️ {errors.to}</Text> : null}
@@ -198,7 +217,16 @@ export default function CreateCargoScreen({ navigation, route }) {
       />
       {showDescPicker ? (
         <View style={s.pickerWrap}>
-          <CargoTypeInput value={cargoDesc} onChange={(v) => { setCargoDesc(v); if (errors.cargoDesc) setErrors((e) => ({ ...e, cargoDesc: null })); }} placeholder={'📦 ' + t('cargoDesc')} testID="cargo-desc-input" />
+          <CargoTypeInput
+            value={cargoDesc}
+            onChange={(v) => {
+              setCargoDesc(v);
+              if (errors.cargoDesc) setErrors((e) => ({ ...e, cargoDesc: null }));
+              if (v && v.trim()) setShowDescPicker(false);
+            }}
+            placeholder={'📦 ' + t('cargoDesc')}
+            testID="cargo-desc-input"
+          />
         </View>
       ) : null}
       {errors.cargoDesc ? <Text style={s.err}>⚠️ {errors.cargoDesc}</Text> : null}
@@ -244,7 +272,11 @@ export default function CreateCargoScreen({ navigation, route }) {
         <View style={s.pickerWrap}>
           <DatePicker
             value={pickupDate}
-            onChange={(v) => { setPickupDate(v); if (errors.pickupDate) setErrors((e) => ({ ...e, pickupDate: null })); }}
+            onChange={(v) => {
+              setPickupDate(v);
+              if (errors.pickupDate) setErrors((e) => ({ ...e, pickupDate: null }));
+              if (v && v.trim()) setShowDatePicker(false);
+            }}
             placeholder={t('pickupDate')}
           />
         </View>
@@ -255,22 +287,22 @@ export default function CreateCargoScreen({ navigation, route }) {
       <View style={s.row2}>
         <View style={{ flex: 1 }}>
           <Field
-            icon="🔒"
+            icon="⚖️"
             label={t('weight_label')}
             value={tons}
             onChangeText={(v) => { setTons(String(v || '').replace(/[^\d]/g, '')); if (errors.weight) setErrors((e) => ({ ...e, weight: null })); }}
             keyboardType="numeric"
-            placeholder="20"
+            placeholder="—"
           />
         </View>
         <View style={{ flex: 1 }}>
           <Field
-            icon="📦"
+            icon="📐"
             label={t('volume_label')}
             value={m3}
             onChangeText={(v) => { setM3(String(v || '').replace(/[^\d]/g, '')); if (errors.weight) setErrors((e) => ({ ...e, weight: null })); }}
             keyboardType="numeric"
-            placeholder="82"
+            placeholder="—"
           />
         </View>
       </View>
