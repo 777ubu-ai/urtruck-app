@@ -14,7 +14,7 @@ import { useVerificationGate } from '../components/VerificationGate';
 import { LEVELS, useAuth } from '../utils/AuthContext';
 import { marketAPI } from '../utils/marketAPI';
 import { reviewsAPI } from '../utils/reviews';
-import { normalizeCargo, cargoDisplay } from '../utils/normalizers';
+import { normalizeCargo, cargoDisplay, sanitizeForDisplay } from '../utils/normalizers';
 import { formatDateForDisplay } from '../utils/dateInput';
 import { buildCargoShareText } from '../utils/share';
 import { WEB_URL } from '../config/env';
@@ -28,9 +28,13 @@ const FLAGS = { KZ: '🇰🇿', UZ: '🇺🇿', RU: '🇷🇺', KG: '🇰🇬', 
 
 // HOT-003: скрываем техмусор из description (остатки init_db, стектрейсы и т.п.)
 const TRASH_RE = /init_db|phone_formatter|json_merger|bin_iin|SQL|sqlite|traceback|\bError:|File "[^"]+\.py"|line \d+|^```|stderr|\.py\b|SELECT |INSERT |UPDATE |DELETE |CREATE TABLE/gi;
+// Stage 9: combine the legacy tech-stack scrub with the new
+// `sanitizeForDisplay` (QA markers / agent ids / currency-regression
+// labels) so detail screens never surface developer strings.
 const sanitizeDesc = (s) => {
-  const cleaned = String(s || '').replace(TRASH_RE, ' ').replace(/\s{2,}/g, ' ').trim();
-  return cleaned || tGlobal('desc_not_specified');
+  const stage1 = String(s || '').replace(TRASH_RE, ' ');
+  const stage2 = sanitizeForDisplay(stage1);
+  return stage2 || tGlobal('desc_not_specified');
 };
 
 export default function CargoDetail({ navigation, route }) {
@@ -357,12 +361,11 @@ export default function CargoDetail({ navigation, route }) {
               <Text style={[s.priceLabelV1, { color: v1Accent.main }]}>💰 {t('price')}</Text>
               <Text style={[s.priceValueV1, { color: v1Accent.main }]} numberOfLines={1}>{view.price}</Text>
             </View>
-            {!c.isMine && (
-              <TouchableOpacity style={[s.bidBtn, { backgroundColor: v1Accent.main }]} onPress={async () => {
-                const ok = await requireLevel(LEVELS.PHONE, 'bid');
-                if (ok) setBidModal(true);
-              }}><Text style={[s.bidBtnText, { color: '#0A0A0A' }]}>{t('suggestPrice')}</Text></TouchableOpacity>
-            )}
+            {/* Stage 9: previously a "Предложить цену" button sat right
+                here next to the price block AND on the sticky bar at
+                the bottom — clicking either ran the same setBidModal(true).
+                The sticky bar is the canonical primary CTA, so this
+                inline duplicate is removed. */}
           </View>
         </GlassCard>
         <Text style={[s.bidsTitle, { color: theme.text }]}>{formatBids(bids.length)}</Text>
