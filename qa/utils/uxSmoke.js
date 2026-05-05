@@ -70,6 +70,37 @@ if (/\brespond:\s*'/.test(i18nSrc)) {
   failures.push('i18n.js still defines the legacy `respond` key');
 }
 
+// Stage 11: Edit flows on the same cleanup contract as Create flows.
+// Earlier EditTripScreen still imported the legacy flat CityInput and
+// kept the literal "20" / "82" placeholders that Stage 7 removed from
+// the Create flows; that mismatch is what users hit when they
+// re-opened an existing trip. We now require the same shape.
+{
+  const editTrip = read('src/screens/EditTripScreen.js');
+  if (/import CityInput/.test(editTrip)) {
+    failures.push('EditTripScreen still imports legacy CityInput (should use RoutePointPicker)');
+  }
+  if (!/import RoutePointPicker/.test(editTrip)) {
+    failures.push('EditTripScreen does not import RoutePointPicker');
+  }
+  if (/placeholder="20"/.test(editTrip) || /placeholder="82"/.test(editTrip)) {
+    failures.push('EditTripScreen kept literal "20"/"82" placeholders');
+  }
+  if (/Object\.keys\(CURRENCY_SYMBOLS\)\.map/.test(editTrip)) {
+    failures.push('EditTripScreen still iterates CURRENCY_SYMBOLS keys (would surface UZS)');
+  }
+}
+
+// Stage 11: Create flows must NOT carry the orphan CityInput import.
+// CityInput stays in the file tree for any external callers but the
+// active form code uses RoutePointPicker exclusively now.
+for (const file of ['src/screens/CreateCargoScreen.js', 'src/screens/CreateTripScreen.js']) {
+  const src = read(file);
+  if (/^import CityInput from/m.test(src)) {
+    failures.push(`${file}: orphan CityInput import remains (replaced by RoutePointPicker in Stage 7)`);
+  }
+}
+
 // 5. Cards have not regressed to the fake numeric defaults.
 for (const file of ['src/screens/CreateCargoScreen.js', 'src/screens/CreateTripScreen.js']) {
   const src = read(file);
@@ -88,6 +119,8 @@ console.log('[ux] FeedScreen single-CTA contract  ✓');
 console.log('[ux] CargoDetail no duplicate price-block button  ✓');
 console.log('[ux] TripDetail BidModal + trip-sticky-bid CTA  ✓');
 console.log('[ux] legacy `respond` key gone from i18n  ✓');
+console.log('[ux] EditTripScreen on RoutePointPicker / 4-currency / no fake defaults  ✓');
+console.log('[ux] Create flows — no orphan CityInput import  ✓');
 console.log('[ux] Create forms — no fake defaults / wrong icons  ✓');
 
 if (failures.length) {

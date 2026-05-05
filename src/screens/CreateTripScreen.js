@@ -11,7 +11,6 @@ import Field from '../components/ui/v1/Field';
 import Textarea from '../components/ui/v1/Textarea';
 import PrimaryButton from '../components/ui/v1/PrimaryButton';
 import BottomSheet from '../components/ui/v1/BottomSheet';
-import CityInput from '../components/CityInput';
 import RoutePointPicker from '../components/RoutePointPicker';
 import DatePicker from '../components/DatePicker';
 import {v1Colors, useV1Colors, v1Radius, v1Spacing, v1Typography, v1AccentFor} from '../theme/designV1';
@@ -176,7 +175,8 @@ export default function CreateTripScreen({ navigation, route }) {
       <Text style={s.title}>{t('postTrip')}</Text>
       <Text style={s.subtitle}>{t('create_trip_subtitle')}</Text>
 
-      {/* Откуда / Куда: tap-through to the existing CityInput overlay */}
+      {/* Откуда / Куда: tap-through to the RoutePointPicker (country
+          → type → point), Stage 7 / Stage 8 / Stage 11. */}
       <Field
         variant="dropdown"
         icon="📍"
