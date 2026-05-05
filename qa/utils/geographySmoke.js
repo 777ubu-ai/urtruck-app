@@ -86,6 +86,33 @@ if (/onChange\?\.\(trimmed,\s*\{\s*name:\s*trimmed,\s*country:\s*'XX'/.test(pick
   failures.push('RoutePointPicker still hard-codes country=XX in free-text fallback');
 }
 
+// 8. Stage 8: every required country has a localised name in all
+// four enabled languages. The picker reads `country_<CODE>` so a
+// missing entry would fall back to the Russian-only `COUNTRIES`
+// table — visible regression for EN/KK/ZH users.
+const I18N_PATH = path.join(ROOT, 'src', 'utils', 'i18n.js');
+const i18nSrc = fs.readFileSync(I18N_PATH, 'utf8');
+for (const code of REQUIRED_COUNTRIES) {
+  for (const lang of ['RU', 'EN', 'KK', 'ZH']) {
+    // Scope check to the language block to avoid cross-block matches
+    const blockMatch = new RegExp(`\\n  ${lang}: \\{[\\s\\S]*?\\n\\},`, 'm').exec(i18nSrc);
+    if (!blockMatch) {
+      failures.push(`i18n block ${lang} not found`);
+      break;
+    }
+    const block = blockMatch[0];
+    if (!new RegExp(`country_${code}\\s*:\\s*'`).test(block)) {
+      failures.push(`i18n: country_${code} missing in ${lang}`);
+    }
+  }
+}
+
+// 9. Picker uses localisedCountryName (Stage 8) rather than the bare
+// COUNTRIES[code].name in the JSX it renders.
+if (!/localisedCountryName/.test(pickerSrc)) {
+  failures.push('RoutePointPicker no longer uses localisedCountryName helper');
+}
+
 console.log(`[geo] required countries: ${REQUIRED_COUNTRIES.length}`);
 console.log(`[geo] required CN↔KZ border crossings: ${REQUIRED_BORDERS.length}`);
 console.log(`[geo] picker symbol checks: 5`);

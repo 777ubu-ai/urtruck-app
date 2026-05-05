@@ -38,6 +38,14 @@ const i18nLabel = (t, key, fallback) => {
   return v && v !== key ? v : fallback;
 };
 
+// Stage 8: localised country name. Try the i18n key first
+// (`country_KZ`, `country_CN`, …). Fall back to the Russian name
+// in COUNTRIES so a regression doesn't surface bare `country_KZ`
+// text on the picker.
+const localisedCountryName = (t, code, fallback) => {
+  return i18nLabel(t, `country_${code}`, fallback);
+};
+
 export default function RoutePointPicker({
   value,
   onChange,
@@ -166,7 +174,7 @@ export default function RoutePointPicker({
       {!searchHits ? (
         <View style={s.stepRow}>
           {[
-            { key: 'country', label: i18nLabel(t, 'route_step_country', 'Страна'), value: country ? COUNTRIES[country].name : null },
+            { key: 'country', label: i18nLabel(t, 'route_step_country', 'Страна'), value: country ? localisedCountryName(t, country, COUNTRIES[country].name) : null },
             { key: 'type',    label: i18nLabel(t, 'route_step_type', 'Тип'),       value: pointType ? POINT_TYPES.find((p) => p.key === pointType)?.label : null },
             { key: 'point',   label: i18nLabel(t, 'route_step_point', 'Точка'),    value: null },
           ].map((it) => (
@@ -201,6 +209,7 @@ export default function RoutePointPicker({
         ) : step === 'country' ? (
           visibleCountries.map((code) => {
             const country = COUNTRIES[code];
+            const localName = localisedCountryName(t, code, country.name);
             return (
               <TouchableOpacity
                 key={code}
@@ -209,7 +218,7 @@ export default function RoutePointPicker({
                 testID={`route-country-${code}`}
               >
                 <Text style={s.icon}>{country.flag}</Text>
-                <Text style={[s.rowName, { color: v1.text, flex: 1 }]}>{country.name}</Text>
+                <Text style={[s.rowName, { color: v1.text, flex: 1 }]}>{localName}</Text>
                 <Text style={{ color: v1.textMuted, fontSize: 16 }}>›</Text>
               </TouchableOpacity>
             );
@@ -266,6 +275,7 @@ export default function RoutePointPicker({
         (() => {
           const inferred = country || inferCountryFromQuery(query.trim());
           const c = inferred ? COUNTRIES[inferred] : null;
+          const cName = inferred ? localisedCountryName(t, inferred, c?.name) : null;
           return (
             <TouchableOpacity onPress={useFreeText} style={s.fallback} testID="route-use-free-text">
               <Text style={{ fontSize: 14 }}>✏️</Text>
@@ -273,7 +283,7 @@ export default function RoutePointPicker({
                 {i18nLabel(t, 'route_use_free_text', 'Использовать как есть')}
                 {' · '}
                 {query.trim()}
-                {c ? ` · ${c.flag} ${c.name}` : ` · ${i18nLabel(t, 'route_pick_country_first', 'Сначала выберите страну')}`}
+                {c ? ` · ${c.flag} ${cName}` : ` · ${i18nLabel(t, 'route_pick_country_first', 'Сначала выберите страну')}`}
               </Text>
             </TouchableOpacity>
           );
@@ -284,8 +294,11 @@ export default function RoutePointPicker({
 }
 
 function PointRow({ p, v1, s, onPick }) {
+  const { t } = useI18n();
   const country = COUNTRIES[p.country] || {};
   const partnerCountry = p.partnerCountry ? COUNTRIES[p.partnerCountry] : null;
+  const cName = p.country ? localisedCountryName(t, p.country, country.name || p.country) : '';
+  const partnerName = p.partnerCountry ? localisedCountryName(t, p.partnerCountry, partnerCountry?.name || p.partnerCountry) : '';
   return (
     <TouchableOpacity onPress={onPick} style={s.row} testID={`route-point-${p.name}`}>
       <Text style={s.icon}>
@@ -296,9 +309,9 @@ function PointRow({ p, v1, s, onPick }) {
           {p.name}
         </Text>
         <Text style={[s.rowMeta, { color: v1.textMuted }]} numberOfLines={1}>
-          {country.name || p.country}
-          {p.type === 'border' && partnerCountry ? ` ↔ ${partnerCountry.name}` : ''}
-          {p.type === 'terminal' ? ' · терминал' : ''}
+          {cName}
+          {p.type === 'border' && partnerName ? ` ↔ ${partnerName}` : ''}
+          {p.type === 'terminal' ? ` · ${i18nLabel(t, 'point_type_terminal', 'терминал').toLowerCase()}` : ''}
         </Text>
       </View>
     </TouchableOpacity>
