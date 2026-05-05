@@ -872,6 +872,21 @@ const translations = {
     filter_date_from: 'Дата с',
     filter_date_to: 'Дата по',
 
+    point_type_city: 'Город',
+    point_type_city_hint: 'Любой крупный город или населённый пункт',
+    point_type_border: 'Погранпереход',
+    point_type_border_hint: 'Пункт пропуска на границе двух стран',
+    point_type_terminal: 'Терминал / хаб',
+    point_type_terminal_hint: 'Логистический терминал или интермодальный хаб',
+    route_step_country: 'Страна',
+    route_step_type: 'Тип',
+    route_step_point: 'Точка',
+    route_search_placeholder: 'Поиск города или погранперехода',
+    route_no_results: 'Ничего не найдено',
+    route_no_points_for_type: 'Для выбранной страны пока нет точек этого типа. Введите вручную ниже.',
+    route_use_free_text: 'Использовать как есть',
+    route_pick_country_first: 'Сначала выберите страну',
+
 },
 
   KK: {
@@ -1438,6 +1453,21 @@ const translations = {
     translate: 'Аудару',
     translation_unavailable: 'Аударма қолжетімсіз',
 
+    point_type_city: 'Қала',
+    point_type_city_hint: 'Кез келген ірі қала немесе елді мекен',
+    point_type_border: 'Шекара бекеті',
+    point_type_border_hint: 'Екі ел шекарасындағы өткізу пункті',
+    point_type_terminal: 'Терминал / хаб',
+    point_type_terminal_hint: 'Логистикалық терминал немесе интермодальді хаб',
+    route_step_country: 'Ел',
+    route_step_type: 'Түрі',
+    route_step_point: 'Нүкте',
+    route_search_placeholder: 'Қаланы немесе шекара бекетін іздеу',
+    route_no_results: 'Ештеңе табылмады',
+    route_no_points_for_type: 'Таңдалған елде бұл түрдегі нүктелер әлі жоқ. Төменде қолмен енгізіңіз.',
+    route_use_free_text: 'Енгізілген күйінде пайдалану',
+    route_pick_country_first: 'Алдымен елді таңдаңыз',
+
 },
 
   ZH: {
@@ -1978,6 +2008,21 @@ const translations = {
     translate: '翻译',
     translation_unavailable: '翻译不可用',
 
+    point_type_city: '城市',
+    point_type_city_hint: '任何主要城市或居民点',
+    point_type_border: '边境口岸',
+    point_type_border_hint: '两国边境上的过境检查点',
+    point_type_terminal: '物流枢纽',
+    point_type_terminal_hint: '物流中心或多式联运枢纽',
+    route_step_country: '国家',
+    route_step_type: '类型',
+    route_step_point: '地点',
+    route_search_placeholder: '搜索城市或边境口岸',
+    route_no_results: '没有结果',
+    route_no_points_for_type: '所选国家暂无此类型地点。请在下方手动输入。',
+    route_use_free_text: '按输入使用',
+    route_pick_country_first: '请先选择国家',
+
 },
 
   EN: {
@@ -2489,6 +2534,21 @@ const translations = {
     filter_reset: 'Reset',
     filter_date_from: 'From date',
     filter_date_to: 'To date',
+
+    point_type_city: 'City',
+    point_type_city_hint: 'Any city or large settlement',
+    point_type_border: 'Border crossing',
+    point_type_border_hint: 'Checkpoint on the border between two countries',
+    point_type_terminal: 'Terminal / hub',
+    point_type_terminal_hint: 'Logistics terminal or intermodal hub',
+    route_step_country: 'Country',
+    route_step_type: 'Type',
+    route_step_point: 'Point',
+    route_search_placeholder: 'Search city or border crossing',
+    route_no_results: 'No results',
+    route_no_points_for_type: 'No points of this type for the selected country yet. Enter manually below.',
+    route_use_free_text: 'Use as typed',
+    route_pick_country_first: 'Select a country first',
 
 },
 };

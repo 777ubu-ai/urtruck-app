@@ -25,10 +25,14 @@ import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 
 import { useV1Colors, v1Radius } from '../theme/designV1';
 import { useI18n } from '../utils/useI18n';
 import {
-  COUNTRIES, COUNTRY_ORDER, POINT_TYPES,
+  COUNTRIES, COUNTRY_ORDER, POINT_TYPES, POINTS,
   searchPoints, formatPoint, pointsForCountry,
 } from '../utils/geography';
 
+// Stage 7 finalisation: every visible label goes through `t(key)`.
+// We keep a tiny safety helper so a regression that misspells a key
+// still surfaces a Russian fallback (least worst across our four
+// active languages) instead of bare `point_type_city` text.
 const i18nLabel = (t, key, fallback) => {
   const v = t(key);
   return v && v !== key ? v : fallback;
@@ -103,10 +107,40 @@ export default function RoutePointPicker({
     onChange?.(formatted, point);
   };
 
+  // Free-text fallback. Behaviour by what the user has narrowed down:
+  //   * country picked → inherit it (so the point lands in the right
+  //     country bucket, no orphan 'XX' in the registry).
+  //   * country not picked → try to infer from the typed prefix
+  //     against country names + aliases; otherwise fall back to a
+  //     marked manual point with country='XX'. The picker also
+  //     surfaces a hint that asks the user to pick a country first
+  //     when the manual entry would otherwise be ambiguous.
+  const inferCountryFromQuery = (q) => {
+    const lower = q.toLowerCase().trim();
+    if (!lower) return null;
+    // Prefer an exact registry hit (city or alias) — that already
+    // tells us the country.
+    for (const p of POINTS) {
+      if (p.name.toLowerCase() === lower) return p.country;
+      if ((p.aliases || []).some((a) => a.toLowerCase() === lower)) return p.country;
+    }
+    // Soft match against country names ("Москва" → RU, "Beijing" → CN…)
+    for (const p of POINTS) {
+      if (p.name.toLowerCase().startsWith(lower) && lower.length >= 3) return p.country;
+    }
+    return null;
+  };
   const useFreeText = () => {
     const trimmed = query.trim();
     if (!trimmed) return;
-    onChange?.(trimmed, { name: trimmed, country: 'XX', type: 'city', custom: true });
+    const inheritedCountry = country || inferCountryFromQuery(trimmed) || 'XX';
+    const inheritedType = pointType || 'city';
+    onChange?.(trimmed, {
+      name: trimmed,
+      country: inheritedCountry,
+      type: inheritedType,
+      custom: true,
+    });
   };
 
   return (
@@ -120,7 +154,7 @@ export default function RoutePointPicker({
           style={[s.searchInput, { color: v1.text }]}
           value={query}
           onChangeText={setQuery}
-          placeholder={placeholder || i18nLabel(t, 'route_point_placeholder', 'Поиск города или погранперехода')}
+          placeholder={placeholder || i18nLabel(t, 'route_search_placeholder', 'Поиск города или погранперехода')}
           placeholderTextColor={v1.placeholder}
           autoCapitalize="none"
           autoCorrect={false}
@@ -183,6 +217,7 @@ export default function RoutePointPicker({
         ) : step === 'type' ? (
           POINT_TYPES.map((it) => {
             const count = pointsForCountry(country, it.key).length;
+            const hintKey = `${it.labelKey}_hint`;
             return (
               <TouchableOpacity
                 key={it.key}
@@ -198,7 +233,7 @@ export default function RoutePointPicker({
                     {count > 0 ? ` · ${count}` : ''}
                   </Text>
                   <Text style={[s.rowMeta, { color: v1.textMuted }]} numberOfLines={1}>
-                    {it.description}
+                    {i18nLabel(t, hintKey, it.description)}
                   </Text>
                 </View>
                 <Text style={{ color: v1.textMuted, fontSize: 16 }}>›</Text>
@@ -224,14 +259,25 @@ export default function RoutePointPicker({
       </ScrollView>
 
       {/* Free-text fallback for when the user typed something and the
-          registry doesn't carry it yet. */}
+          registry doesn't carry it yet. The label tells the user
+          which country the entry will be filed under, so the
+          inheritance from the picker step is visible. */}
       {query.trim().length >= 2 ? (
-        <TouchableOpacity onPress={useFreeText} style={s.fallback} testID="route-use-free-text">
-          <Text style={{ fontSize: 14 }}>✏️</Text>
-          <Text style={[s.fallbackText, { color: v1.text }]} numberOfLines={1}>
-            {i18nLabel(t, 'route_use_free_text', 'Использовать как есть')} · {query.trim()}
-          </Text>
-        </TouchableOpacity>
+        (() => {
+          const inferred = country || inferCountryFromQuery(query.trim());
+          const c = inferred ? COUNTRIES[inferred] : null;
+          return (
+            <TouchableOpacity onPress={useFreeText} style={s.fallback} testID="route-use-free-text">
+              <Text style={{ fontSize: 14 }}>✏️</Text>
+              <Text style={[s.fallbackText, { color: v1.text }]} numberOfLines={1}>
+                {i18nLabel(t, 'route_use_free_text', 'Использовать как есть')}
+                {' · '}
+                {query.trim()}
+                {c ? ` · ${c.flag} ${c.name}` : ` · ${i18nLabel(t, 'route_pick_country_first', 'Сначала выберите страну')}`}
+              </Text>
+            </TouchableOpacity>
+          );
+        })()
       ) : null}
     </View>
   );

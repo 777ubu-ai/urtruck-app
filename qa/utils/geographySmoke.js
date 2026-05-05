@@ -59,6 +59,33 @@ for (const sym of ['COUNTRIES', 'POINT_TYPES', 'searchPoints', 'formatPoint', 'p
   if (!new RegExp(`\\b${sym}\\b`).test(pickerSrc)) failures.push(`RoutePointPicker doesn't reference ${sym}`);
 }
 
+// 6. EN aliases for the most-used logistics nodes — the picker
+// supports search across aliases, so the absence of an English
+// alias means a foreign user can't find the entry by typing
+// "Khorgos" / "Malaszewicze" / "Alashankou".
+const REQUIRED_ALIASES = {
+  Хоргос: 'Khorgos',
+  Алашанькоу: 'Alashankou',
+  Достык: 'Dostyk',
+  Малашевичи: 'Malaszewicze',
+};
+for (const [name, alias] of Object.entries(REQUIRED_ALIASES)) {
+  // Find the line containing the name and verify the alias appears
+  // on the same line (each entry is one line).
+  const linePattern = new RegExp(`'${name}'[^\\n]*?'${alias}'`);
+  if (!linePattern.test(src)) {
+    failures.push(`'${name}' missing English alias '${alias}'`);
+  }
+}
+
+// 7. Picker free-text fallback inherits country (Stage 7 finalisation).
+if (!/inferCountryFromQuery/.test(pickerSrc)) {
+  failures.push('RoutePointPicker free-text fallback no longer infers country');
+}
+if (/onChange\?\.\(trimmed,\s*\{\s*name:\s*trimmed,\s*country:\s*'XX'/.test(pickerSrc)) {
+  failures.push('RoutePointPicker still hard-codes country=XX in free-text fallback');
+}
+
 console.log(`[geo] required countries: ${REQUIRED_COUNTRIES.length}`);
 console.log(`[geo] required CN↔KZ border crossings: ${REQUIRED_BORDERS.length}`);
 console.log(`[geo] picker symbol checks: 5`);
