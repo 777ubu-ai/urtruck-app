@@ -69,6 +69,28 @@ def _parse_iso_date(s):
     return None
 
 
+_ALLOWED_POINT_TYPES = ("city", "border", "terminal", "hub")
+
+
+def _norm_route_triple(country, point_type, point_name):
+    """Normalise the structured route triple. Country is an ISO-2 code
+    (upper-case); type is one of the allowed shapes, otherwise dropped;
+    name is trimmed. Any field may be None — we never invent values
+    that the picker did not provide. The result is what gets stored
+    in `from_country / from_point_type / from_point_name` (or the `to_*`
+    counterpart) so old serialisers that don't know about these
+    columns simply see NULL.
+    """
+    c = (country or "").strip().upper() or None
+    if c is not None and (len(c) > 4 or not c.isalpha()):
+        c = None
+    pt = (point_type or "").strip().lower() or None
+    if pt is not None and pt not in _ALLOWED_POINT_TYPES:
+        pt = None
+    pn = (point_name or "").strip()[:200] or None
+    return c, pt, pn
+
+
 def _is_dirty_text(*fields) -> bool:
     """Cheap substring match for moderation tokens. Case-insensitive, RU+EN.
 
@@ -144,11 +166,27 @@ def _init():
             if col not in cols:
                 c.execute(ddl)
         # Currency on trips/cargos: USD by default, never NULL.
+        # Stage 8: add structured route columns on top of the legacy
+        # from_city/to_city strings so the registry-aware picker can
+        # store country / type / name without losing backward
+        # compatibility (the old columns stay populated for any client
+        # that hasn't been updated yet).
+        ROUTE_COLS = [
+            ("from_country",     "TEXT"),
+            ("from_point_type",  "TEXT"),
+            ("from_point_name",  "TEXT"),
+            ("to_country",       "TEXT"),
+            ("to_point_type",    "TEXT"),
+            ("to_point_name",    "TEXT"),
+        ]
         for table in ("trips", "cargos"):
             tcols = {r["name"] for r in c.execute(f"PRAGMA table_info({table})").fetchall()}
             if "currency" not in tcols:
                 c.execute(f"ALTER TABLE {table} ADD COLUMN currency TEXT DEFAULT 'USD'")
                 c.execute(f"UPDATE {table} SET currency = 'USD' WHERE currency IS NULL")
+            for col, ddl_type in ROUTE_COLS:
+                if col not in tcols:
+                    c.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl_type}")
         c.commit()
 
 _init()
@@ -167,6 +205,16 @@ class CargoIn(BaseModel):
     currency: Optional[str] = "USD"
     pickup_date: Optional[str] = None
     photos: Optional[List[str]] = None
+    # Stage 8: structured route fields. The legacy `from_city` /
+    # `to_city` strings stay populated for back-compat; the picker
+    # additionally forwards the country/type/name triple so we can
+    # filter feed by country or by point type later.
+    from_country: Optional[str] = None       # ISO-2 code: 'KZ', 'CN', …
+    from_point_type: Optional[str] = None    # 'city' | 'border' | 'terminal'
+    from_point_name: Optional[str] = None
+    to_country: Optional[str] = None
+    to_point_type: Optional[str] = None
+    to_point_name: Optional[str] = None
 
     def __init__(self, **data):
         if 'cargo_desc' in data and data['cargo_desc']:
@@ -183,12 +231,21 @@ class TripIn(BaseModel):
     to_city: str
     transit: Optional[str] = None
     truck_type: Optional[str] = "tent"
-    capacity_tons: Optional[float] = 20
-    available_m3: Optional[float] = 82
+    # Stage 7: stop sending fake 20/82 defaults from the publish flow —
+    # accept None and let the column default kick in if the user left
+    # the field blank.
+    capacity_tons: Optional[float] = None
+    available_m3: Optional[float] = None
     price: Optional[int] = 0
     currency: Optional[str] = "USD"
     departure: Optional[str] = None
     arrival: Optional[str] = None
+    from_country: Optional[str] = None
+    from_point_type: Optional[str] = None
+    from_point_name: Optional[str] = None
+    to_country: Optional[str] = None
+    to_point_type: Optional[str] = None
+    to_point_name: Optional[str] = None
 
 
 class TripPatchIn(BaseModel):
@@ -204,6 +261,12 @@ class TripPatchIn(BaseModel):
     currency: Optional[str] = None
     departure: Optional[str] = None
     arrival: Optional[str] = None
+    from_country: Optional[str] = None
+    from_point_type: Optional[str] = None
+    from_point_name: Optional[str] = None
+    to_country: Optional[str] = None
+    to_point_type: Optional[str] = None
+    to_point_name: Optional[str] = None
 
 
 class BidIn(BaseModel):
@@ -240,17 +303,26 @@ def create_cargo(body: CargoIn, user=Depends(require_level(1))):
     if currency not in ("USD", "KZT", "RUB", "CNY"):
         currency = "USD"
     cid = new_id()
+    # Stage 8: persist structured route alongside the legacy free-text
+    # columns. Country code normalised to upper-case; missing fields
+    # stay NULL — `_route_for_row` reads both legacy and structured
+    # fields when serialising the row back to clients.
+    fc, fpt, fpn = _norm_route_triple(body.from_country, body.from_point_type, body.from_point_name)
+    tc, tpt, tpn = _norm_route_triple(body.to_country, body.to_point_type, body.to_point_name)
     with get_conn() as c:
         c.execute("""
             INSERT INTO cargos (id, owner_id, owner_phone, owner_name,
               from_city, to_city, cargo_desc, cargo_type,
-              weight_tons, volume_m3, price, currency, pickup_date, photos)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+              weight_tons, volume_m3, price, currency, pickup_date, photos,
+              from_country, from_point_type, from_point_name,
+              to_country, to_point_type, to_point_name)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (cid, user["id"], user.get("phone"), user.get("full_name"),
               body.from_city, body.to_city, body.cargo_desc, body.cargo_type,
               body.weight_tons, body.volume_m3, body.price, currency,
               body.pickup_date,
-              json.dumps(body.photos or [], ensure_ascii=False)))
+              json.dumps(body.photos or [], ensure_ascii=False),
+              fc, fpt, fpn, tc, tpt, tpn))
 
     # Push подписчикам маршрута
     try:
@@ -268,6 +340,13 @@ def list_cargos(
     from_city: str = "",
     to_city: str = "",
     cargo_type: str = "",
+    # Stage 8: optional structured filters. Direction filter on the
+    # client stays simple; these run alongside it for callers that
+    # know about the registry shape (admin tools, advanced UI).
+    from_country: str = "",
+    to_country: str = "",
+    from_point_type: str = "",
+    to_point_type: str = "",
     show_demo: bool = False,
     limit: int = 50,
     offset: int = 0,
@@ -284,13 +363,27 @@ def list_cargos(
     if cargo_type:
         where.append("cargo_type = ?")
         params.append(cargo_type)
+    if from_country:
+        where.append("UPPER(from_country) = ?")
+        params.append(from_country.upper())
+    if to_country:
+        where.append("UPPER(to_country) = ?")
+        params.append(to_country.upper())
+    if from_point_type:
+        where.append("from_point_type = ?")
+        params.append(from_point_type.lower())
+    if to_point_type:
+        where.append("to_point_type = ?")
+        params.append(to_point_type.lower())
 
     where_sql = " AND ".join(where)
     with get_conn() as c:
         rows = c.execute(f"""
             SELECT id, owner_id, from_city, to_city, cargo_desc, cargo_type,
                    weight_tons, volume_m3, price, currency, pickup_date, photos,
-                   bids_count, status, created_at
+                   bids_count, status, created_at,
+                   from_country, from_point_type, from_point_name,
+                   to_country, to_point_type, to_point_name
             FROM cargos WHERE {where_sql}
             ORDER BY created_at DESC LIMIT ? OFFSET ?
         """, (*params, limit, offset)).fetchall()
@@ -352,16 +445,21 @@ def create_trip(body: TripIn, user=Depends(require_level(1))):
     if currency not in ("USD", "KZT", "RUB", "CNY"):
         currency = "USD"
     tid = new_id()
+    fc, fpt, fpn = _norm_route_triple(body.from_country, body.from_point_type, body.from_point_name)
+    tc, tpt, tpn = _norm_route_triple(body.to_country, body.to_point_type, body.to_point_name)
     with get_conn() as c:
         c.execute("""
             INSERT INTO trips (id, driver_id, driver_phone, driver_name,
               from_city, to_city, transit, truck_type,
-              capacity_tons, available_m3, price, currency, departure, arrival)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+              capacity_tons, available_m3, price, currency, departure, arrival,
+              from_country, from_point_type, from_point_name,
+              to_country, to_point_type, to_point_name)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (tid, user["id"], user.get("phone"), user.get("full_name"),
               body.from_city, body.to_city, body.transit, body.truck_type,
               body.capacity_tons, body.available_m3, body.price, currency,
-              body.departure, body.arrival))
+              body.departure, body.arrival,
+              fc, fpt, fpn, tc, tpt, tpn))
     return {"id": tid, "ok": True}
 
 
@@ -417,6 +515,22 @@ def update_trip(trip_id: str, body: TripPatchIn, user=Depends(require_level(1)))
             if cur not in ("USD", "KZT", "RUB", "CNY"):
                 raise HTTPException(status_code=400, detail="currency: USD/KZT/RUB/CNY")
             updates.append("currency = ?"); params.append(cur)
+        # Stage 8: update structured route fields when the patch
+        # includes them. We normalise via the same helper used on
+        # POST so an invalid type/country drops to NULL instead of
+        # corrupting the row.
+        if any(getattr(body, f) is not None for f in (
+            "from_country", "from_point_type", "from_point_name")):
+            fc, fpt, fpn = _norm_route_triple(body.from_country, body.from_point_type, body.from_point_name)
+            updates.append("from_country = ?"); params.append(fc)
+            updates.append("from_point_type = ?"); params.append(fpt)
+            updates.append("from_point_name = ?"); params.append(fpn)
+        if any(getattr(body, f) is not None for f in (
+            "to_country", "to_point_type", "to_point_name")):
+            tc, tpt, tpn = _norm_route_triple(body.to_country, body.to_point_type, body.to_point_name)
+            updates.append("to_country = ?"); params.append(tc)
+            updates.append("to_point_type = ?"); params.append(tpt)
+            updates.append("to_point_name = ?"); params.append(tpn)
 
         if not updates:
             raise HTTPException(status_code=400, detail="Нечего обновлять")
@@ -435,6 +549,10 @@ def list_trips(
     from_city: str = "",
     to_city: str = "",
     truck_type: str = "",
+    from_country: str = "",
+    to_country: str = "",
+    from_point_type: str = "",
+    to_point_type: str = "",
     show_demo: bool = False,
     limit: int = 50,
     offset: int = 0,
@@ -450,13 +568,27 @@ def list_trips(
     if truck_type:
         where.append("truck_type = ?")
         params.append(truck_type)
+    if from_country:
+        where.append("UPPER(from_country) = ?")
+        params.append(from_country.upper())
+    if to_country:
+        where.append("UPPER(to_country) = ?")
+        params.append(to_country.upper())
+    if from_point_type:
+        where.append("from_point_type = ?")
+        params.append(from_point_type.lower())
+    if to_point_type:
+        where.append("to_point_type = ?")
+        params.append(to_point_type.lower())
 
     where_sql = " AND ".join(where)
     with get_conn() as c:
         rows = c.execute(f"""
             SELECT id, driver_id, driver_name, from_city, to_city, transit,
                    truck_type, capacity_tons, available_m3, price, currency,
-                   departure, arrival, status, created_at
+                   departure, arrival, status, created_at,
+                   from_country, from_point_type, from_point_name,
+                   to_country, to_point_type, to_point_name
             FROM trips WHERE {where_sql}
             ORDER BY created_at DESC LIMIT ? OFFSET ?
         """, (*params, limit, offset)).fetchall()
