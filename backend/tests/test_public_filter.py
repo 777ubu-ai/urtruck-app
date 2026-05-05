@@ -26,6 +26,7 @@ from api.marketplace import (
     _parse_iso_date,
     _is_dirty_text,
     _public_cargo_ok,
+    _norm_route_triple,
     PUBLIC_CUTOFF_DATE,
 )
 
@@ -127,6 +128,28 @@ def public_cargo_ok_respects_cutoff_for_undated_legacy_rows():
            "pre-cutoff but valid future pickup → visible")
 
 
+def norm_route_triple_normalises_safely():
+    """Stage 8 helper that converts free-form picker output into the
+    canonical SQL-stored shape. The function must drop nonsense
+    (long codes, unknown types) and trim names without crashing."""
+    print("norm_route_triple")
+    _check(_norm_route_triple('kz', 'city', 'Алматы') == ('KZ', 'city', 'Алматы'),
+           "lower-case country → upper")
+    _check(_norm_route_triple('CN', 'BORDER', '  Хоргос  ') == ('CN', 'border', 'Хоргос'),
+           "type lowercased, name trimmed")
+    _check(_norm_route_triple(None, None, None) == (None, None, None),
+           "all-None passes through")
+    _check(_norm_route_triple('', '', '') == (None, None, None),
+           "empty strings → None")
+    _check(_norm_route_triple('XYZ123', 'city', 'X') == (None, 'city', 'X'),
+           "garbage country dropped to None")
+    _check(_norm_route_triple('PL', 'spaceport', 'X') == ('PL', None, 'X'),
+           "unknown point_type dropped to None")
+    _check(_norm_route_triple('KZ', 'terminal', 'a' * 300)[2].endswith('a' * 1) and
+           len(_norm_route_triple('KZ', 'terminal', 'a' * 300)[2]) == 200,
+           "name trimmed to 200 chars")
+
+
 if __name__ == "__main__":
     print(f"PUBLIC_CUTOFF_DATE={PUBLIC_CUTOFF_DATE}")
     parse_iso_date_keeps_full_day_digit()
@@ -134,6 +157,7 @@ if __name__ == "__main__":
     is_dirty_text_blocks_known_tokens_but_lets_qa_through()
     public_cargo_ok_uses_correct_pickup_date()
     public_cargo_ok_respects_cutoff_for_undated_legacy_rows()
+    norm_route_triple_normalises_safely()
 
     if _failures:
         print(f"\nFAILED ({len(_failures)}):")
