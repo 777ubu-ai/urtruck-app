@@ -519,24 +519,26 @@ export default function MyTripsScreen({ navigation, route }) {
   ];
 
   // Stats row pulls from the same data sources the tabs already use.
+  // Stage 16: dropped the per-tile emoji (📦/👥/🚚) — the redesigned
+  // StatsRow now reads as a compact stat block, no icon halo, no
+  // affordance that suggests it's tappable.
   const stats = [
-    { icon: '📦', value: myItems.length,  label: t('stats_active') },
-    { icon: '👥', value: myBids.length,   label: isDriver ? t('stats_responses') : t('stats_bids') },
-    { icon: '🚚', value: myDeals.length,  label: t('stats_in_progress') },
+    { value: myItems.length,  label: t('stats_active') },
+    { value: myBids.length,   label: isDriver ? t('stats_responses') : t('stats_bids') },
+    { value: myDeals.length,  label: t('stats_in_progress') },
   ];
 
   return (
     <SafeAreaView testID="my-work-screen" style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']}>
-      {/* Brand bar (UrTruck + FTL pill + bell) */}
+      {/* Stage 16: brand bar — UrTruck wordmark + bell only.
+          Stripped the green FTL pill (same change in BrandHeader /
+          BrandBarWithShare / FeedScreen). */}
       <View style={s.brandBar}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <Text style={[s.backIcon, { color: v1Accent.main }]}>‹</Text>
         </TouchableOpacity>
         <View style={s.brandRow}>
           <Text style={s.brandText}>UrTruck</Text>
-          <View style={[s.ftlPill, { backgroundColor: v1Accent.soft, borderColor: v1Accent.main }]}>
-            <Text style={[s.ftlText, { color: v1Accent.main }]}>FTL</Text>
-          </View>
         </View>
         <BellBadge
           count={notifUnread}

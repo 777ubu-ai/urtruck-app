@@ -45,7 +45,10 @@ export default function FeedCard({
       testID={testID}
     >
       <View style={s.topRow}>
-        <View style={[s.iconBox, { backgroundColor: a.soft, borderColor: a.main }]}>
+        {/* Stage 16: cargo/trip glyph tile loses the accent halo —
+            neutral surface with the same hairline border the rest
+            of the card uses. */}
+        <View style={[s.iconBox, { backgroundColor: colors.surfaceLift, borderColor: colors.border }]}>
           <Text style={s.icon}>{icon}</Text>
         </View>
         <View style={{ flex: 1 }}>
@@ -55,9 +58,13 @@ export default function FeedCard({
           {subtitle ? <Text style={[s.subtitle, { color: colors.textMuted }]} numberOfLines={1}>{subtitle}</Text> : null}
         </View>
         <View style={{ alignItems: 'flex-end' }}>
+          {/* Stage 16: status pill is now neutral (muted text + hairline
+              border on the card surface). The accent-tinted pill on
+              every card competed with the price chip and made every
+              row feel like a CTA. */}
           {status ? (
-            <View style={[s.statusPill, { backgroundColor: a.soft, borderColor: a.main }]}>
-              <Text style={[s.statusText, { color: a.main }]}>{status}</Text>
+            <View style={[s.statusPill, { backgroundColor: 'transparent', borderColor: colors.border }]}>
+              <Text style={[s.statusText, { color: colors.textMuted }]}>{status}</Text>
             </View>
           ) : null}
           {priceText ? (
@@ -73,7 +80,9 @@ export default function FeedCard({
         <View style={[s.metaRow, { borderTopColor: colors.border }]}>
           {meta.map((m, i) => (
             <View key={i} style={s.metaPill}>
-              {m.icon ? <Text style={[s.metaIcon, { color: a.main }]}>{m.icon}</Text> : null}
+              {/* Stage 16: meta-row glyphs (📅/⚖️/📐) muted to textDim
+                  so only the price stays accented. */}
+              {m.icon ? <Text style={[s.metaIcon, { color: colors.textDim }]}>{m.icon}</Text> : null}
               <View>
                 {m.label ? <Text style={[s.metaLabel, { color: colors.textDim }]}>{m.label}</Text> : null}
                 <Text style={[s.metaValue, { color: colors.text }]} numberOfLines={1}>{m.value}</Text>
@@ -84,7 +93,7 @@ export default function FeedCard({
       ) : null}
 
       {responses != null ? (
-        <Text style={[s.responses, { color: colors.textMuted }]}>👥 {responses} {responses === 1 ? 'отклик' : 'откликов'}</Text>
+        <Text style={[s.responses, { color: colors.textMuted }]}>{responses} {responses === 1 ? 'отклик' : 'откликов'}</Text>
       ) : null}
 
       {(bottomLeft || bottomRight) ? (
@@ -110,13 +119,18 @@ export default function FeedCard({
               activeOpacity={0.85}
               style={[
                 s.btn,
+                // Stage 16: outline variant uses the role accent on a
+                // transparent fill (thin green border + green label)
+                // instead of the previous neutral grey border. Solid
+                // green is reserved for the screen-level primary CTA
+                // (publish-route / publish-cargo / floating +).
                 bottomRight.filled !== false
                   ? { backgroundColor: a.main, borderColor: a.main }
-                  : { backgroundColor: 'transparent', borderColor: colors.borderStrong },
+                  : { backgroundColor: 'transparent', borderColor: a.main },
               ]}
               testID={bottomRight.testID}
             >
-              <Text style={[s.btnText, { color: (bottomRight.filled !== false) ? '#0A0A0A' : colors.text }]}>{bottomRight.label}</Text>
+              <Text style={[s.btnText, { color: (bottomRight.filled !== false) ? '#0A0A0A' : a.main }]}>{bottomRight.label}</Text>
             </TouchableOpacity>
           ) : null}
         </View>
