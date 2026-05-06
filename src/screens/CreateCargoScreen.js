@@ -297,7 +297,10 @@ export default function CreateCargoScreen({ navigation, route }) {
       {errors.truckType ? <Text style={s.err}>⚠️ {errors.truckType}</Text> : null}
       {errors.pickupDate ? <Text style={s.err}>⚠️ {errors.pickupDate}</Text> : null}
 
-      {/* Stage 17: same emoji-strip as CreateTrip — quiet labels. */}
+      {/* Stage 27: placeholder "—" заменён на пример числа,
+          label несёт единицу измерения ("Вес, т" / "Объём, м³").
+          Раньше пользователь видел два пустых поля без подсказки —
+          непонятно, где вес, где кубатура. */}
       <View style={s.row2}>
         <View style={{ flex: 1 }}>
           <Field
@@ -305,7 +308,8 @@ export default function CreateCargoScreen({ navigation, route }) {
             value={tons}
             onChangeText={(v) => { setTons(String(v || '').replace(/[^\d]/g, '')); if (errors.weight) setErrors((e) => ({ ...e, weight: null })); }}
             keyboardType="numeric"
-            placeholder="—"
+            placeholder={t('weight_placeholder') || 'Например: 22'}
+            testID="cargo-weight-field"
           />
         </View>
         <View style={{ flex: 1 }}>
@@ -314,7 +318,8 @@ export default function CreateCargoScreen({ navigation, route }) {
             value={m3}
             onChangeText={(v) => { setM3(String(v || '').replace(/[^\d]/g, '')); if (errors.weight) setErrors((e) => ({ ...e, weight: null })); }}
             keyboardType="numeric"
-            placeholder="—"
+            placeholder={t('volume_placeholder') || 'Например: 110'}
+            testID="cargo-volume-field"
           />
         </View>
       </View>
