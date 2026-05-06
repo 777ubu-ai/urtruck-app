@@ -128,20 +128,14 @@ export const normalizeCargo = (raw) => {
 export const cargoDisplay = (cargo, t) => {
   const dash = (t && t('not_specified')) || 'Не указано';
   const typeLabel = cargo?.cargoType ? (t ? t(cargo.cargoType) : cargo.cargoType) : null;
-  // Stage 17: weight and volume now ship as two separate display
-  // fields. The legacy combined `weightVol` ("X т · Y м³") is kept
-  // only because share-text builders read it elsewhere, but detail
-  // screens render `weight` and `volume` as two distinct rows so
-  // a missing volume doesn't shadow the present weight (and vice
-  // versa) inside one mushy "Вес/Объём" cell.
+  // Stage 17/20: weight and volume ship as two separate display
+  // fields. Detail screens render them as two distinct rows so a
+  // missing volume doesn't shadow the present weight (and vice
+  // versa). The legacy combined `weightVol` field was kept around
+  // for backward-compat but no caller reads it any more, so it's
+  // gone from the display object too.
   const weight = cargo?.weightTons > 0 ? `${cargo.weightTons} т` : dash;
   const volume = cargo?.volumeM3 > 0 ? `${cargo.volumeM3} м³` : dash;
-  const weightVol = (() => {
-    const parts = [];
-    if (cargo?.weightTons > 0) parts.push(`${cargo.weightTons} т`);
-    if (cargo?.volumeM3 > 0) parts.push(`${cargo.volumeM3} м³`);
-    return parts.length ? parts.join(' · ') : dash;
-  })();
   // Stage 9: scrub QA markers / agent ids / currency-regression
   // labels from any text we surface to the user. The source row may
   // still carry them so the QA cleanup script can find the record.
@@ -152,7 +146,6 @@ export const cargoDisplay = (cargo, t) => {
     cargoType: typeLabel && typeLabel !== cargo?.cargoType ? typeLabel : (cargo?.cargoType || dash),
     weight,
     volume,
-    weightVol,
     price: formatPrice(cargo?.price, cargo?.currency, t),
     pickupDate: cargo?.pickupDate ? cargo.pickupDate : dash,
     ownerName: sanitizeForDisplay(cargo?.ownerName) || dash,

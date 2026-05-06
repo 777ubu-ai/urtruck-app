@@ -30,7 +30,8 @@ const FRAME_COMPONENTS = [
   'FeedCard.js', 'GlassCard.js',
   'Field.js', 'Textarea.js',
   'OutlineButton.js', 'Checkbox.js',
-  'RoleCard.js', 'RoleTabs.js', 'SegmentTabs.js',
+  // Stage 20: RoleCard.js dropped — RoleScreen is now full-image hotspots.
+  'RoleTabs.js', 'SegmentTabs.js',
   'SectionTitle.js', 'StatsRow.js',
   'StickyCTABar.js', 'BellBadge.js',
 ];

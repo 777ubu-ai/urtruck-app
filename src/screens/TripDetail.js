@@ -461,13 +461,21 @@ export default function TripDetail({ navigation, route }) {
 
       {dealStatus ? renderDealBlock() : null}
 
-      {/* Sticky CTA — shipper viewing someone else's trip:
-          primary "Предложить цену" (opens BidModal with tripId),
-          secondary "Написать водителю". Stage 9 the secondary used to
-          be "Оставить отзыв" — but a shipper hasn't worked with the
-          driver yet at that point, leaving a review made no sense.
-          Owner of the trip and any role with an active deal continue
-          to see no sticky bar — their actions live in the deal block. */}
+      {/* Sticky CTA — shipper viewing someone else's trip.
+          Stage 20: collapsed to a single primary action
+          ("Предложить цену"). Earlier the bar carried a secondary
+          "💬 Написать водителю" too, which created a split-attention
+          surface: the user could chat without ever committing to a
+          bid, and the same chat link reappeared inside the deal
+          block after the bid was accepted. The pre-bid chat path
+          mostly produced empty rooms ("сколько повезёшь?"), the
+          deal-block chat is the canonical place to talk once the
+          driver is actually selected. Stripping the secondary keeps
+          one clear next step on this surface.
+
+          Owner of the trip and any role with an active deal
+          continue to see no sticky bar — their actions live in
+          the deal block. */}
       {!isOwner && !dealStatus && role === 'client' ? (
         <StickyCTABar
           accent={v1Accent.main}
@@ -478,16 +486,6 @@ export default function TripDetail({ navigation, route }) {
               if (ok) setBidModal(true);
             },
             testID: 'trip-sticky-bid',
-          }}
-          secondary={{
-            label: '💬 ' + t('write_driver'),
-            onPress: async () => {
-              const ok = await requireLevel(LEVELS.PHONE, 'contact');
-              if (!ok) return;
-              toast('💬 ' + t('chat_opened_toast'), 'success');
-              navigation.navigate('Chat', { partner: { name: view.driverName, country: trip.country || 'KZ' }, role });
-            },
-            testID: 'trip-sticky-chat',
           }}
         />
       ) : null}
