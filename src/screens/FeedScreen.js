@@ -409,7 +409,11 @@ export default function FeedScreen({ navigation, route }) {
   // Render cargo card under the v1 FeedCard component (macro 07).
   const renderCargo = ({ item }) => {
     const openCargo = async () => {
-      const ok = await requireLevel(LEVELS.PHONE, 'open_detail');
+      // Stage 32: cargo feed = driver view (водитель смотрит грузы).
+      // Передаём roleHint='driver' в gate — если пользователь не
+      // авторизован, регистрация откроется сразу как «Регистрация
+      // водителя» без промежуточного экрана выбора роли.
+      const ok = await requireLevel(LEVELS.PHONE, 'open_detail', 'driver');
       if (!ok) return;
       const safePhotos = (item.photos || []).filter(p => typeof p === 'string' && p.length < 500);
       navigation.navigate('CargoDetail', { cargo: { ...item, photos: safePhotos, photo: null }, cargoId: item.id, role });
@@ -448,7 +452,10 @@ export default function FeedScreen({ navigation, route }) {
   // Render trip / driver card under FeedCard (macro 08).
   const renderDriver = ({ item }) => {
     const onPress = async () => {
-      const ok = await requireLevel(LEVELS.PHONE, 'open_detail');
+      // Stage 32: trips/drivers feed = client view (грузовладелец
+      // ищет машину). Передаём roleHint='client' — gate откроет
+      // сразу «Регистрация грузовладельца».
+      const ok = await requireLevel(LEVELS.PHONE, 'open_detail', 'client');
       if (!ok) return;
       if (item.isTrip) {
         navigation.navigate('TripDetail', { trip: normalizeTrip(item), tripId: item.id, role });

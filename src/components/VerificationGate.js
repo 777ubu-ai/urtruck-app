@@ -30,10 +30,15 @@ export function useVerificationGate() {
   const navigation = useNavigation();
   const [pending, setPending] = useState(null);
 
-  const requireLevel = useCallback((required, action = 'default') => {
+  // Stage 32: requireLevel принимает roleHint (driver|client) —
+  // FeedScreen передаёт текущий раздел (Грузы→driver, Рейсы→client),
+  // и Gate ведёт пользователя СРАЗУ в Reg для нужной роли,
+  // минуя Role-выбор. Если hint не передан — старое поведение
+  // (Role screen, потом пользователь выбирает сам).
+  const requireLevel = useCallback((required, action = 'default', roleHint = null) => {
     return new Promise((resolve) => {
       if (verificationLevel >= required) resolve(true);
-      else setPending({ required, action, resolve });
+      else setPending({ required, action, roleHint, resolve });
     });
   }, [verificationLevel]);
 
@@ -45,15 +50,18 @@ export function useVerificationGate() {
 
   const handleProceed = useCallback(() => {
     if (!pending) return;
-    const { required, action, resolve } = pending;
-    const target = pickTarget(verificationLevel, required);
-    const isDriver = action === 'driver';
+    const { required, action, roleHint, resolve } = pending;
+    // Stage 32: если контекст знает роль (грузы→driver, рейсы→
+    // client) — идём СРАЗУ в Reg с этой ролью. Иначе — Role
+    // экран для выбора. Action='driver' оставляет совместимость
+    // со старыми callsite.
+    const inferredRole = roleHint || (action === 'driver' ? 'driver' : null);
+    const target = inferredRole ? 'Reg' : pickTarget(verificationLevel, required);
     setPending(null);
     resolve(false);
-    // Защита — откладываем на следующий тик чтобы Modal успел закрыться
     setTimeout(() => {
       try {
-        navigation.navigate(target, isDriver ? { role: 'driver' } : undefined);
+        navigation.navigate(target, inferredRole ? { role: inferredRole } : undefined);
       } catch (e) {
         console.warn('[Gate] navigate failed:', e);
       }

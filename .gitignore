@@ -58,3 +58,4 @@ tests/e2e/*.png
 
 # Design references (large PNG mockups — kept locally, not in git)
 design/UrTruck_New_Design_v1/*.png
+qa/debug/dumps/
