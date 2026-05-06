@@ -52,6 +52,7 @@ from api.qa import qa_router
 from database import db
 from database import registration_dal
 from database import reviews_dal
+from database import consent_dal
 from blacklist import manager as blacklist_mgr
 from services import storage_service
 
@@ -133,6 +134,7 @@ def startup():
     db.init_db()
     registration_dal.init_registration_schema()
     reviews_dal.init_reviews_schema()
+    consent_dal.init_consent_schema()
     blacklist_mgr.seed_demo_blacklist()
     # DB optimization indexes
     try:

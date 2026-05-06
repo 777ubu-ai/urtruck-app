@@ -7,7 +7,7 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "build:web": "npx expo export --platform web && mkdir -p dist/share && cp -R web/share/og-default.png web/share/og-trip-template.svg dist/share/ 2>/dev/null || true",
+    "build:web": "npx expo export --platform web && mkdir -p dist/share dist/legal && cp -R web/share/og-default.png web/share/og-trip-template.svg dist/share/ 2>/dev/null || true && cp web/legal/terms.html dist/legal/terms.html 2>/dev/null && cp web/legal/privacy.html dist/legal/privacy.html 2>/dev/null && cp web/legal/terms.html dist/terms 2>/dev/null && cp web/legal/privacy.html dist/privacy 2>/dev/null && cp web/legal/terms.html dist/terms.html 2>/dev/null && cp web/legal/privacy.html dist/privacy.html 2>/dev/null || true",
     "serve": "npx serve dist",
     "test:e2e": "playwright test",
     "test:e2e:local": "E2E_BASE_URL=http://127.0.0.1:4173 playwright test",

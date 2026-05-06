@@ -9,6 +9,7 @@ import Screen from '../components/ui/v1/Screen';
 import BrandHeader from '../components/ui/v1/BrandHeader';
 import HeroTruck from '../components/ui/v1/HeroTruck';
 import PrimaryButton from '../components/ui/v1/PrimaryButton';
+import ConsentRow from '../components/ConsentRow';
 import {v1Colors, useV1Colors, v1Spacing, v1Typography, v1Radius} from '../theme/designV1';
 
 // AuthScreen — design v1, screen 04 (OTP). Two visual states:
@@ -101,6 +102,10 @@ export default function AuthScreen({ navigation, route }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [secondsLeft, setSecondsLeft] = useState(0);
+  // Stage 24: legal consent gate. SMS не отправляется без галочки;
+  // backend это тоже валидирует, но UI не даёт даже нажать кнопку
+  // — иначе пользователь видит 400 без объяснения.
+  const [consent, setConsent] = useState(false);
   const codeInputRef = useRef(null);
 
   const digits = phone.replace(/\D/g, '');
@@ -114,13 +119,14 @@ export default function AuthScreen({ navigation, route }) {
 
   const sendOTP = async (ch) => {
     if (!validPhone) { setError(t('reg_enter_phone')); return; }
+    if (!consent) { setError(t('registration_consent_required')); return; }
     setChannel(ch);
     setLoading(true);
     setError('');
     setMockCode(null);
     setDeeplink(null);
     try {
-      const r = await regAPI.sendCode(phone, ch);
+      const r = await regAPI.sendCode(phone, ch, { consent: true, role });
       if ((r.mock || r.beta) && r.code) setMockCode(r.code);
       if (r.deeplink) setDeeplink(r.deeplink);
       if (r.fallback) {
@@ -193,9 +199,12 @@ export default function AuthScreen({ navigation, route }) {
           {error ? <Text style={s.err}>{error}</Text> : null}
 
           <Text style={s.altLabel}>{t('signup_alt')}</Text>
+          {/* Stage 24: compact legal-consent block. CTA buttons
+              ниже остаются disabled, пока галочка не отмечена. */}
+          <ConsentRow checked={consent} onChange={setConsent} accent={v1Colors.driver} />
           <TouchableOpacity
-            style={[s.channelBtn, { backgroundColor: '#0088CC' }]}
-            disabled={!validPhone || loading}
+            style={[s.channelBtn, { backgroundColor: '#0088CC' }, (!consent || !validPhone || loading) && { opacity: 0.45 }]}
+            disabled={!validPhone || loading || !consent}
             onPress={() => sendOTP('telegram')}
             activeOpacity={0.85}
           >
@@ -204,8 +213,8 @@ export default function AuthScreen({ navigation, route }) {
               : <Text style={s.channelText}>✈️  Telegram</Text>}
           </TouchableOpacity>
           <TouchableOpacity
-            style={[s.channelBtn, { backgroundColor: v1Colors.driver }]}
-            disabled={!validPhone || loading}
+            style={[s.channelBtn, { backgroundColor: v1Colors.driver }, (!consent || !validPhone || loading) && { opacity: 0.45 }]}
+            disabled={!validPhone || loading || !consent}
             onPress={() => sendOTP('sms')}
             activeOpacity={0.85}
           >

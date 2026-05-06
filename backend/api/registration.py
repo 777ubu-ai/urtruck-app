@@ -30,6 +30,13 @@ _beta_log = logging.getLogger("beta_auth")
 class SendCodeRequest(BaseModel):
     phone: str
     channel: Optional[str] = "whatsapp"  # whatsapp | sms | telegram
+    # Stage 24: legal consent — пользователь обязан принять
+    # Публичную оферту и Политику конфиденциальности перед
+    # отправкой OTP. Frontend выставляет consent=True только
+    # если чекбокс отмечен. Backend без явного True блокирует
+    # отправку и возвращает 400.
+    consent: Optional[bool] = False
+    role: Optional[str] = None  # для аудита: driver | client
 
 
 class VerifyCodeRequest(BaseModel):
@@ -99,19 +106,48 @@ def get_me(driver_id: str = Depends(get_current_driver)):
 
 # ---------- ЭТАП 1: WhatsApp авторизация ----------
 @reg_router.post("/whatsapp/send")
-def wa_send(req: SendCodeRequest):
+def wa_send(req: SendCodeRequest, request: Request = None):
     """Отправка OTP через выбранный канал (whatsapp/sms/telegram).
-    Endpoint сохраняет имя для обратной совместимости."""
+    Endpoint сохраняет имя для обратной совместимости.
+
+    Stage 24: gate'ит на consent=True и фиксирует audit-запись.
+    Без явного согласия SMS не отправляется. Audit сохраняется
+    ДО отправки кода — даже если verify не пройдёт, факт принятия
+    оферты остаётся.
+    """
     phone = req.phone.strip()
     phone_clean = "".join(ch for ch in phone if ch.isdigit() or ch == "+")
     if len(phone_clean.replace("+", "")) < 10:
         raise HTTPException(status_code=400, detail="Неверный формат номера")
+
+    # Stage 24: consent gate — ровно тот же текст, что показывает UI.
+    if not bool(req.consent):
+        raise HTTPException(
+            status_code=400,
+            detail="Для регистрации необходимо принять условия сервиса.",
+        )
 
     # Rate limit — не чаще 1/мин на phone, 5/час
     limit_otp_send(phone_clean)
 
     code = generate_code()
     reg_dal.save_code(phone_clean, code)
+
+    # Stage 24: фиксируем согласие до фактической отправки SMS.
+    ip = (request.client.host if request and request.client else None) if request else None
+    ua = (request.headers.get("user-agent") if request else None) or None
+    try:
+        from database import consent_dal
+        consent_dal.record_consent(
+            phone=phone_clean,
+            role=req.role,
+            ip_address=ip,
+            user_agent=ua,
+            sms_provider=req.channel,
+        )
+    except Exception as e:
+        # Не блокируем регистрацию из-за audit-сбоя, но логируем.
+        print(f"[consent] failed to record audit phone={phone_clean[:5]}***: {e}", flush=True)
 
     result = otp_service.send_otp(phone_clean, code, channel=req.channel)
     return {
@@ -125,9 +161,9 @@ def wa_send(req: SendCodeRequest):
 
 
 @reg_router.post("/otp/send")
-def otp_send(req: SendCodeRequest):
+def otp_send(req: SendCodeRequest, request: Request = None):
     """Универсальный OTP endpoint — псевдоним /whatsapp/send."""
-    return wa_send(req)
+    return wa_send(req, request=request)
 
 
 @reg_router.post("/whatsapp/verify")
@@ -183,6 +219,13 @@ def wa_verify(req: VerifyCodeRequest, request: Request = None):
         _beta_log.warning(f"[BETA] login phone={phone_clean} device={ua[:120]} ip={ip}")
 
     token = reg_dal.create_session(driver["id"])
+
+    # Stage 24: подвязать user_id к consent-аудиту после успешного verify.
+    try:
+        from database import consent_dal
+        consent_dal.attach_user_after_verify(phone=phone_clean, user_id=driver["id"])
+    except Exception as e:
+        print(f"[consent] attach_user failed: {e}", flush=True)
 
     # Welcome push (только при первом успешном логине — нет записей в push_log)
     try:

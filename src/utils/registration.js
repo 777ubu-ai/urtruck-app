@@ -48,11 +48,19 @@ export const regAPI = {
     return v ? parseInt(v, 10) : 0;
   },
 
-  async sendCode(phone, channel = 'whatsapp') {
+  async sendCode(phone, channel = 'whatsapp', extra = {}) {
+    // Stage 24: backend требует consent=true перед отправкой OTP.
+    // Передаём явный consent (UI выставляет true только если
+    // чекбокс отмечен) + опционально role для audit.
     const r = await fetch(`${BASE}/whatsapp/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone, channel }),
+      body: JSON.stringify({
+        phone,
+        channel,
+        consent: extra.consent === true,
+        role: extra.role || null,
+      }),
     });
     return r.json();
   },
