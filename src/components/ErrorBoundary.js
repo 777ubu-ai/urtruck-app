@@ -34,6 +34,14 @@ function isDevSurface() {
   return false;
 }
 
+// Stage 29: even in production, ВСЕГДА показывать stack на
+// crash-экране — пользователь / владелец сможет переслать
+// нам конкретный stack вместо «Что-то пошло не так». В dev /
+// ?debug=1 stack виден ВЕЗДЕ (включая режим before-crash);
+// в production stack виден только когда ErrorBoundary
+// действительно сработал.
+const ALWAYS_SHOW_STACK_ON_CRASH = true;
+
 export default class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -52,6 +60,19 @@ export default class ErrorBoundary extends React.Component {
     console.error('[ErrorBoundary] stack:', error?.stack);
     // eslint-disable-next-line no-console
     console.error('[ErrorBoundary] componentStack:', errorInfo?.componentStack);
+    // Stage 29: write last-known frontend state into window so
+    // the operator can copy it from the production browser.
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      try {
+        window.__URTRUCK_LAST_CRASH__ = {
+          message: error?.message,
+          stack: error?.stack,
+          componentStack: errorInfo?.componentStack,
+          url: window.location.href,
+          timestamp: new Date().toISOString(),
+        };
+      } catch {}
+    }
 
     this.setState({ info: errorInfo });
 
@@ -84,7 +105,7 @@ export default class ErrorBoundary extends React.Component {
   render() {
     if (!this.state.hasError) return this.props.children;
 
-    const dev = isDevSurface();
+    const dev = isDevSurface() || ALWAYS_SHOW_STACK_ON_CRASH;
     const msg = this.state.error?.message || String(this.state.error || 'unknown');
     const stack = (this.state.error?.stack || '').split('\n').slice(0, 8).join('\n');
     const comp = (this.state.info?.componentStack || '').split('\n').slice(0, 8).join('\n');
