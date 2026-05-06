@@ -31,6 +31,9 @@ auth_otp_router = APIRouter()
 class SendOtpRequest(BaseModel):
     phone: str
     channel: Optional[str] = "whatsapp"  # whatsapp | telegram | sms
+    # Stage 24: legal consent — без явного согласия OTP не отправляется.
+    consent: Optional[bool] = False
+    role: Optional[str] = None
 
 
 def _clean_phone(phone: str) -> str:
@@ -46,10 +49,30 @@ def send_otp(req: SendOtpRequest, request: Request):
     if len(phone.replace("+", "")) < 10:
         return {"sent": False, "error": "phone_invalid", "detail": "Неверный формат номера"}
 
+    # Stage 24: consent gate.
+    if not bool(req.consent):
+        return {
+            "sent": False,
+            "error": "consent_required",
+            "detail": "Для регистрации необходимо принять условия сервиса.",
+        }
+
     limit_otp_send(phone)
 
     code = generate_code()
     reg_dal.save_code(phone, code)
+
+    # Stage 24: audit consent ДО отправки.
+    try:
+        from database import consent_dal
+        ip = (request.client.host if request and request.client else None) if request else None
+        ua = (request.headers.get("user-agent") if request else None) or None
+        consent_dal.record_consent(
+            phone=phone, role=req.role, ip_address=ip, user_agent=ua,
+            sms_provider=req.channel,
+        )
+    except Exception as e:
+        print(f"[consent] audit failed: {e}", flush=True)
 
     result = otp_service.send_otp(phone, code, channel=req.channel or "whatsapp")
 

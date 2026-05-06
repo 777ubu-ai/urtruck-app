@@ -8,6 +8,7 @@ import { useAuth } from '../utils/AuthContext';
 import { useToast } from '../components/Toast';
 import { saveProfile } from '../utils/store';
 import { regAPI } from '../utils/registration';
+import ConsentRow from '../components/ConsentRow';
 import ShimmerButton from '../components/ShimmerButton';
 import GradientText from '../components/GradientText';
 import { translit, hasCyrillic } from '../utils/translit';
@@ -56,6 +57,8 @@ export default function RegScreen({ navigation, route }) {
   const [phone, setPhone] = useState('+77001234567');
   const [code, setCode] = useState('');
   const [mockCode, setMockCode] = useState(null);
+  // Stage 24: legal consent gate.
+  const [consent, setConsent] = useState(false);
 
   // Step 2: Digital ID
   const [iin, setIin] = useState('');
@@ -131,14 +134,15 @@ export default function RegScreen({ navigation, route }) {
 
   const onSendCode = async () => {
     if (phone.length < 10) { toast(t('reg_enter_phone'), 'error'); return; }
+    if (!consent) { toast(t('registration_consent_required'), 'warn'); return; }
     setLoading(true);
-    const r = await regAPI.sendCode(phone);
+    const r = await regAPI.sendCode(phone, 'whatsapp', { consent: true, role });
     setLoading(false);
     if (r.sent) {
       if (r.code) setMockCode(r.code);
       toast(r.mock ? `💬 ${t('reg_mock_code_toast')} ${r.code}` : '💬 ' + t('reg_code_sent_wa'), 'success', 5000);
     } else {
-      toast(t('send_error'), 'error');
+      toast(r.detail || t('send_error'), 'error');
     }
   };
 
@@ -314,7 +318,15 @@ export default function RegScreen({ navigation, route }) {
                   value={phone}
                   onChangeText={setPhone}
                 />
-                <ShimmerButton onPress={onSendCode} colors={[accent, '#22C55E']} disabled={loading}>
+                {/* Stage 24: legal consent gate. Кнопка disabled
+                    пока галочка не отмечена. */}
+                <ConsentRow checked={consent} onChange={setConsent} accent={accent} />
+                <ShimmerButton
+                  onPress={onSendCode}
+                  colors={[accent, '#22C55E']}
+                  disabled={loading || !consent}
+                  style={!consent && { opacity: 0.45 }}
+                >
                   {loading ? <ActivityIndicator color="#fff" /> : '💬 ' + t('reg_get_code_btn')}
                 </ShimmerButton>
               </>
