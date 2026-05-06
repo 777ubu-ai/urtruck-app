@@ -50,21 +50,27 @@ const SRC_W = 941;
 const SRC_H = 1672;
 const ASPECT = SRC_W / SRC_H;
 
-// Hotspot rectangles as fractions of the rendered image. These are
-// tuned for the Stage 18 composition: two large CTAs in the lower
-// half and a thin "Войти" link near the bottom. Touch areas are
-// slightly oversized so small phones still register cleanly. If a
-// future render shifts the buttons, re-measure on the source PNG
-// and update these numbers — no other code change needed.
+// Hotspot rectangles as fractions of the rendered image. Tuned to
+// the v64.1 hero render (941×1672) where:
+//   * UrTruck wordmark + tagline occupy the top ~18%
+//   * the truck illustration takes the middle ~40%
+//   * the green "Я водитель" pill sits at y≈0.62-0.72
+//   * the orange "Я грузовладелец" pill sits at y≈0.74-0.84
+//   * the small "Войти" link sits at y≈0.93-0.97
+// Touch areas are slightly bigger than the visible buttons so small
+// phones with thick fingers still register cleanly. If a future
+// hero render moves the CTAs, re-measure on the source PNG and
+// update these numbers — no other code change needed.
 const HOTSPOTS = {
-  driver: { left: 0.08, top: 0.55, width: 0.84, height: 0.09 },
-  client: { left: 0.08, top: 0.66, width: 0.84, height: 0.09 },
-  login:  { left: 0.20, top: 0.92, width: 0.60, height: 0.06 },
+  driver: { left: 0.06, top: 0.61, width: 0.88, height: 0.11 },
+  client: { left: 0.06, top: 0.73, width: 0.88, height: 0.11 },
+  login:  { left: 0.28, top: 0.93, width: 0.44, height: 0.05 },
 };
 
-// Headlight glow rectangle — placed roughly where the truck's
-// headlights sit on the source render. Pulsed three times on mount.
-const HEADLIGHT = { left: 0.16, top: 0.36, width: 0.68, height: 0.06 };
+// Headlight glow rectangle — anchored over the truck's front grille
+// where the LED headlamps sit on the source render. Pulsed three
+// times on mount as the "ден-ден-ден" greeting.
+const HEADLIGHT = { left: 0.20, top: 0.33, width: 0.60, height: 0.05 };
 
 export default function RoleScreen({ navigation }) {
   const { t } = useI18n();
