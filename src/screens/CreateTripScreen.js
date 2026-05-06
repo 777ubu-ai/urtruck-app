@@ -284,8 +284,8 @@ export default function CreateTripScreen({ navigation, route }) {
       {errors.departure ? <Text style={s.err}>⚠️ {errors.departure}</Text> : null}
       {errors.truckType ? <Text style={s.err}>⚠️ {errors.truckType}</Text> : null}
 
-      {/* Stage 17: dropped per-field icon glyphs (⚖️ / 📐) — quiet
-          form labels match Stage 16's no-emoji rule for static UI. */}
+      {/* Stage 27: placeholder "—" → пример числа; label с
+          единицей. Те же изменения, что в CreateCargoScreen. */}
       <View style={s.row2}>
         <View style={{ flex: 1 }}>
           <Field
@@ -293,7 +293,8 @@ export default function CreateTripScreen({ navigation, route }) {
             value={tons}
             onChangeText={(v) => setTons(String(v || '').replace(/[^\d]/g, ''))}
             keyboardType="numeric"
-            placeholder="—"
+            placeholder={t('weight_placeholder') || 'Например: 22'}
+            testID="trip-weight-field"
           />
         </View>
         <View style={{ flex: 1 }}>
@@ -302,7 +303,8 @@ export default function CreateTripScreen({ navigation, route }) {
             value={m3}
             onChangeText={(v) => setM3(String(v || '').replace(/[^\d]/g, ''))}
             keyboardType="numeric"
-            placeholder="—"
+            placeholder={t('volume_placeholder') || 'Например: 110'}
+            testID="trip-volume-field"
           />
         </View>
       </View>

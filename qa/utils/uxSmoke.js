@@ -280,6 +280,48 @@ for (const file of ['src/screens/CreateCargoScreen.js', 'src/screens/CreateTripS
   }
 }
 
+// Stage 27: forms must not use "—" as a placeholder for numeric
+// inputs (weight / volume). Real users couldn't tell which field
+// was tons and which was m³. Now we require a non-dash placeholder
+// that contains an example number AND a testID for QA.
+{
+  for (const file of ['src/screens/CreateCargoScreen.js', 'src/screens/CreateTripScreen.js']) {
+    const src = read(file);
+    // Within the row containing weight_label/volume_label, each
+    // Field must have a real placeholder (not "—") and a testID.
+    if (/label=\{t\(['"](?:weight_label|volume_label)['"]\)\}[\s\S]{0,200}?placeholder="—"/.test(src)) {
+      failures.push(`${file}: weight/volume Field still uses placeholder="—" — Stage 27 expects an example number`);
+    }
+    if (!/(weight|volume)_placeholder/.test(src)) {
+      failures.push(`${file}: weight/volume Field no longer reads t('weight_placeholder')/t('volume_placeholder')`);
+    }
+  }
+  // i18n must define the new keys in RU.
+  if (!/weight_placeholder:\s*['"]/.test(i18nSrc) || !/volume_placeholder:\s*['"]/.test(i18nSrc)) {
+    failures.push('i18n.js missing weight_placeholder / volume_placeholder keys (Stage 27)');
+  }
+  if (!/weight_label:\s*['"]Вес,/.test(i18nSrc)) {
+    failures.push('i18n.js RU weight_label not in canonical "Вес, т" shape');
+  }
+  if (!/volume_label:\s*['"]Объём,/.test(i18nSrc)) {
+    failures.push('i18n.js RU volume_label not in canonical "Объём, м³" shape');
+  }
+}
+
+// Stage 27: RoleScreen must constrain its column on wide viewports.
+// Without it, hero+buttons grow to fill a 1200px desktop and read
+// like an oversized banner. testID `role-screen-column` is the
+// hook for the layout regression spec.
+{
+  const role = read('src/screens/RoleScreen.js');
+  if (!/testID=["']role-screen-column["']/.test(role)) {
+    failures.push('RoleScreen lost the role-screen-column max-width wrapper (Stage 27)');
+  }
+  if (!/maxWidth\s*:\s*4(8|9)\d/.test(role)) {
+    failures.push('RoleScreen no longer caps its column with a maxWidth (Stage 27)');
+  }
+}
+
 // Stage 26: change-role / logout dialogs must not pass literal "?"
 // as the message — that string was rendered to the user verbatim
 // inside Alert.alert + window.confirm. Now we require localised
@@ -339,6 +381,8 @@ console.log('[ux] Stage 20 · RoleScreen carries no Animated/blink/SRC_HEADLIGHT
 console.log('[ux] Stage 18 · enterAs / navigation.navigate(Auth) flow preserved  ✓');
 console.log('[ux] Stage 26 · RoleScreen uses real Pressable buttons with role_*_title text (no invisible hotspots)  ✓');
 console.log('[ux] Stage 26 · ProfileScreen change-role dialog uses real i18n message (no literal "?")  ✓');
+console.log('[ux] Stage 27 · weight/volume forms use real placeholders + testIDs (no "—")  ✓');
+console.log('[ux] Stage 27 · RoleScreen has role-screen-column max-width wrapper  ✓');
 console.log('[ux] Stage 20 · TripDetail sticky collapsed to single trip-sticky-bid CTA (no chat dupe)  ✓');
 console.log('[ux] Stage 20 · dead RoleCard.js dropped, weightVol field removed from cargoDisplay  ✓');
 

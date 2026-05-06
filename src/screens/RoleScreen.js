@@ -33,16 +33,28 @@ import { useI18n } from '../utils/useI18n';
 import { useAuth } from '../utils/AuthContext';
 import { regAPI } from '../utils/registration';
 
-const ROLE_IMAGE = require('../../assets/role-screen-full.png');
+// Stage 27 v2: hero PNG обрезан физически (сборка `sips --cropOffset 0
+// 0 -c 1003 941`) — теперь это `role-screen-hero.png` 941×1003,
+// которая содержит только верхнюю часть оригинала: UrTruck +
+// тэглайн + грузовик с подсветкой. Раньше пытались crop'ить тот
+// же `role-screen-full.png` через overflow:hidden + aspectRatio
+// в RN-Web, но WebKit неустойчиво обрабатывал position:absolute
+// width:100% aspectRatio внутри flex-контейнера и картинка
+// растягивалась шире viewport (заголовок UrTruck обрезался по
+// краям на скриншотах). Физический crop устраняет все хаки
+// рендера: используем `resizeMode="contain"`, картинка вписывается
+// в свой контейнер без overflow.
+const ROLE_IMAGE = require('../../assets/role-screen-hero.png');
 
-// Source aspect (941:1672 portrait).
-const IMAGE_ASPECT = 941 / 1672;
-
-// How much of the image's height we let into the hero crop. The
-// bitmap places its decorative buttons starting around y=60% — we
-// stop just above that so the rendered hero shows wordmark + truck
-// + grille glow but the bitmap buttons fall off the bottom edge.
-const HERO_VISIBLE = 0.6; // 60% of the bitmap's height visible
+// Hero aspect after crop (top ~28% of original 941×1672 = 941×470).
+// Stage 27 v5: даже crop до y=700 показывал ghost-пилюлю —
+// bitmap визуально имеет дублированную "Я водитель" пилюлю в
+// районе y=540+. Окончательный crop до y=470 — только грузовик
+// с фарами + green glow подсветка, никаких CTA на bitmap.
+// UrTruck wordmark на оригинале расположен НЕ сверху, а ниже
+// грузовика, поэтому в hero его нет — это OK, для пилотного
+// welcome surface достаточно.
+const HERO_ASPECT = 941 / 470;
 
 export default function RoleScreen({ navigation }) {
   const { t } = useI18n();
@@ -99,28 +111,26 @@ export default function RoleScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      {/*
-        Top hero. Container has a fixed flex share + `overflow: hidden`.
-        The image inside is rendered with `aspectRatio: IMAGE_ASPECT`
-        and absolutely positioned so it can be wider than the
-        container and crop naturally. We ALSO scale down to
-        HERO_VISIBLE so only the upper portion shows.
-      */}
-      <View style={styles.heroWrap}>
-        <View style={styles.heroInner} pointerEvents="none">
-          <Image
-            source={ROLE_IMAGE}
-            style={styles.heroImage}
-            resizeMode="cover"
-            accessibilityLabel="UrTruck"
-          />
-        </View>
-      </View>
+      {/* Stage 27: max-width 480px column, centered. На desktop/web
+          ширина viewport бывает 1200+, и hero+buttons раздувались до
+          кричащих пропорций. Mobile-first шейп остаётся на телефоне
+          (480px > почти любого мобильного viewport), а desktop
+          получает аккуратную колонку с letterbox по бокам. */}
+      <View style={styles.outer}>
+        <View style={styles.column} testID="role-screen-column">
+          <View style={styles.heroWrap} pointerEvents="none">
+            <Image
+              source={ROLE_IMAGE}
+              style={styles.heroImage}
+              resizeMode="contain"
+              accessibilityLabel="UrTruck"
+            />
+          </View>
 
-      {/* Real CTA buttons. Each one is a Pressable with real text,
-          real height, real colours. testIDs stay the same so QA
-          can locate them. */}
-      <View style={styles.buttons}>
+          {/* Real CTA buttons. Each one is a Pressable with real text,
+              real height, real colours. testIDs stay the same so QA
+              can locate them. */}
+          <View style={styles.buttons}>
         <Pressable
           onPress={() => enterAs('driver')}
           disabled={!!busy}
@@ -168,11 +178,13 @@ export default function RoleScreen({ navigation }) {
           </Text>
         </Pressable>
 
-        {error ? (
-          <View pointerEvents="none" style={styles.errorBox}>
-            <Text style={styles.errorText}>{error}</Text>
+            {error ? (
+              <View pointerEvents="none" style={styles.errorBox}>
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
+            ) : null}
           </View>
-        ) : null}
+        </View>
       </View>
     </SafeAreaView>
   );
@@ -181,30 +193,37 @@ export default function RoleScreen({ navigation }) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#0C0A09' },
 
-  // ── Hero (top) ───────────────────────────────────────────────
-  heroWrap: {
-    flex: 1, // takes available top space
+  // Stage 27: outer flex container centring a max-480px column.
+  // Wide desktop screens get black letterboxing on the sides
+  // instead of a stretched hero.
+  outer: {
+    flex: 1,
     width: '100%',
-    overflow: 'hidden',
-    backgroundColor: '#0C0A09',
     alignItems: 'center',
-    justifyContent: 'flex-start',
+    backgroundColor: '#0C0A09',
   },
-  heroInner: {
+  column: {
+    flex: 1,
     width: '100%',
-    // The bitmap's full height = width / aspect. We show only the
-    // top HERO_VISIBLE share of it via heroImage's negative margin.
-    aspectRatio: IMAGE_ASPECT * (1 / HERO_VISIBLE),
-    // Container itself shows full width × this scaled height.
-    overflow: 'hidden',
+    maxWidth: 480,
+    alignSelf: 'center',
+  },
+
+  // ── Hero (top) ───────────────────────────────────────────────
+  // Stage 27 v2: simplest possible. Container fills the available
+  // top space (`flex: 1`) and the image inside is `contain`-fit
+  // — никаких absolute / aspectRatio / overflow хаков. PNG уже
+  // обрезан до нужной высоты (941×1003), поэтому `contain` сразу
+  // даёт корректную композицию.
+  heroWrap: {
+    flex: 1,
+    width: '100%',
+    backgroundColor: '#0C0A09',
   },
   heroImage: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
+    flex: 1,
     width: '100%',
-    aspectRatio: IMAGE_ASPECT, // full image dims
+    height: '100%',
   },
 
   // ── CTA buttons (bottom) ─────────────────────────────────────
