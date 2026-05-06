@@ -61,9 +61,20 @@ const SRC_HOTSPOTS = {
   login:  { x: 280, y: 1560, w: 380, h: 80  },
 };
 
-// Headlight glow rectangle — anchored over the truck's grille on
-// the source render. Pulsed three times on mount.
-const SRC_HEADLIGHT = { x: 200, y: 575, w: 540, h: 65 };
+// Headlight glow rectangle — anchored over the *actual* LED
+// headlamps at the bottom of the truck's nose, not the windshield.
+//
+// Stage 19 fix: v66 had y=575 which on the 941×1672 hero render
+// lands roughly across the windshield / upper cab. The greeting
+// pulse therefore lit up the glass — as if the truck blinked its
+// roof, not its headlights. Cropping the source to a narrow
+// y=800-900 band shows the LED strips spanning roughly x=140-610
+// at y=810-855. Moving the glow there snaps the "ден-ден-ден"
+// animation to the lights the user actually expects.
+//
+// Also narrower (470 vs 540) and shorter (45 vs 65) than v66 so
+// the bloom doesn't bleed into the bumper or the grille area.
+const SRC_HEADLIGHT = { x: 140, y: 810, w: 470, h: 45 };
 
 export default function RoleScreen({ navigation }) {
   const { t } = useI18n();
