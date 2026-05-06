@@ -20,12 +20,13 @@ export const notificationsAPI = {
   },
 
   async unread() {
-    // Stage 28: тот же short-circuit, что и в chatAPI.unread —
-    // гость без token локально получает {unread:0} вместо 403
-    // от сервера, иначе production-консоль шумит "Failed to load
-    // resource" каждый poll.
+    // Stage 28/29: тот же short-circuit что в chatAPI.unread —
+    // не вызываем endpoint если у пользователя нет phone-level
+    // верификации (guest token недостаточно).
     const h = await headers();
     if (!h.Authorization) return { unread: 0 };
+    const lvl = parseInt((await storage.get('ur_verification_level')) || '0', 10);
+    if (!lvl || lvl < 1) return { unread: 0 };
     const r = await fetch(`${BASE}/unread`, { headers: h });
     if (!r.ok) return { unread: 0 };
     return r.json();

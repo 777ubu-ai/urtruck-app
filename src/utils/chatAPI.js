@@ -37,13 +37,17 @@ export const chatAPI = {
   },
 
   async unread() {
-    // Stage 28: гостевая сессия (без token) не должна стучаться в
-    // защищённый endpoint — backend вернёт 403, фронт получит spam
-    // в browser console и `Failed to load resource` в production.
-    // Раньше владелец видел эти сообщения и думал что приложение
-    // упало. Теперь возвращаем безопасный default локально.
+    // Stage 28/29: short-circuit ДО fetch'а для guest-сессий.
+    // Раньше проверяли только наличие Authorization header'а, но
+    // гость тоже имеет token (из ensureGuest()), просто без
+    // verification_level. Теперь дополнительно проверяем
+    // ur_verification_level в storage — если < 1 (гость), не
+    // обращаемся к защищённому endpoint'у, чтобы browser console
+    // не спамил `Failed to load resource: 403`.
     const h = await headers();
     if (!h.Authorization) return { unread: 0 };
+    const lvl = parseInt((await storage.get('ur_verification_level')) || '0', 10);
+    if (!lvl || lvl < 1) return { unread: 0 };
     const r = await fetch(`${BASE}/unread`, { headers: h });
     if (!r.ok) return { unread: 0 };
     return r.json();
