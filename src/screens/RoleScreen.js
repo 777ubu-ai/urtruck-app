@@ -1,94 +1,103 @@
-// Stage 18: full-image RoleScreen.
+// Stage 18 (v66 fit): full-image RoleScreen, pixel-accurate hotspots.
 //
-// The whole screen is one approved hero illustration
-// (`assets/role-screen-full.png`) carrying the wordmark, headline,
-// truck render and the three CTA stripes ("Я водитель",
-// "Я грузовладелец", small "Войти" link). On top of the image we
-// position three invisible TouchableOpacity hotspots that fire the
-// real auth flow (`enterAs(driver)`, `enterAs(client)`,
-// `navigation.navigate('Auth')`).
+// What changed vs v65:
+//   * v65 sized the image with ImageBackground + cover and placed
+//     hotspots as fractions of `winW × winW/ASPECT`. On screens
+//     where the image was wider OR taller than that math (cover
+//     crops, ScrollView reflows the y-origin, safe-area insets
+//     eat the bottom) the visible button and the touch zone
+//     drifted apart — taps fell on the empty pixels next to the
+//     pill instead of the pill itself.
+//   * v66 uses contain-fit — we compute the real rendered rect
+//     ourselves (scale = min(winW/IMAGE_W, availH/IMAGE_H)) and
+//     position both the <Image/> and every hotspot relative to
+//     that rectangle's `offsetX / offsetY`. Hotspot coordinates
+//     live in *source pixels* (measured against the 941×1672 PNG)
+//     and get scaled inline. That way: visible button and tap
+//     zone always agree, regardless of viewport.
+//   * ScrollView removed. On any reasonable phone the contain
+//     scale fits the source comfortably; if the available height
+//     ever falls below ~470px the image just letterboxes a little
+//     more — the bottom "Войти" stays inside the rendered rect
+//     because it's positioned in image-space, not viewport-space.
 //
-// Why an image-driven layout: the design team wants pixel-exact
-// control of the truck composition, glow, and typography. Stage 17
-// finished detail polish but the welcome screen stayed on the old
-// BrandHeader + HeroTruck + RoleCard combo, which can't reproduce
-// the marketing render.
-//
-// Headlight blink: a small Animated.Value pulses opacity 0→1→0
-// three times after a short delay — "ден-ден-ден" greeting. The
-// blink overlay sits above the image but is `pointerEvents="none"`
-// so it never steals taps from the hotspots beneath.
-//
-// Asset note: until the real PNG lands, `assets/role-screen-full.png`
-// is a 1×1 placeholder so the bundler doesn't fail. The hotspots
-// still render at the correct fractional coordinates, so once the
-// real asset replaces the placeholder the layout snaps into place
-// without code changes.
+// Headlight blink and the auth flow (enterAs / setRole / navigation)
+// are unchanged.
 
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
-  ImageBackground,
+  Image,
   TouchableOpacity,
   StyleSheet,
   Animated,
-  ScrollView,
   useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
 import { useAuth } from '../utils/AuthContext';
 import { regAPI } from '../utils/registration';
 
 const ROLE_IMAGE = require('../../assets/role-screen-full.png');
 
-// Source aspect ratio per the brief (941 / 1672 portrait). Hotspot
-// fractions are measured against this ratio so they stay correct
-// when the screen is wider or narrower than the source.
-const SRC_W = 941;
-const SRC_H = 1672;
-const ASPECT = SRC_W / SRC_H;
+// Source canvas (the approved hero render is 941×1672 portrait).
+const IMAGE_W = 941;
+const IMAGE_H = 1672;
 
-// Hotspot rectangles as fractions of the rendered image. Tuned to
-// the v64.1 hero render (941×1672) where:
-//   * UrTruck wordmark + tagline occupy the top ~18%
-//   * the truck illustration takes the middle ~40%
-//   * the green "Я водитель" pill sits at y≈0.62-0.72
-//   * the orange "Я грузовладелец" pill sits at y≈0.74-0.84
-//   * the small "Войти" link sits at y≈0.93-0.97
-// Touch areas are slightly bigger than the visible buttons so small
-// phones with thick fingers still register cleanly. If a future
-// hero render moves the CTAs, re-measure on the source PNG and
-// update these numbers — no other code change needed.
-const HOTSPOTS = {
-  driver: { left: 0.06, top: 0.61, width: 0.88, height: 0.11 },
-  client: { left: 0.06, top: 0.73, width: 0.88, height: 0.11 },
-  login:  { left: 0.28, top: 0.93, width: 0.44, height: 0.05 },
+// Hotspot rectangles in *source pixels*. Measured against the
+// reference PNG so the same numbers describe each visible pill /
+// link no matter how the screen is sized at runtime. Touch areas
+// are slightly bigger than the visible button so small phones with
+// thick fingers still register cleanly. If a future hero render
+// moves the CTAs, re-measure on the source PNG and update these
+// numbers — no other code change needed.
+const SRC_HOTSPOTS = {
+  // Green pill — "Я водитель"
+  driver: { x: 50,  y: 1010, w: 841, h: 165 },
+  // Orange pill — "Я грузовладелец"
+  client: { x: 50,  y: 1190, w: 841, h: 165 },
+  // Bottom "Войти" link
+  login:  { x: 280, y: 1560, w: 380, h: 80  },
 };
 
-// Headlight glow rectangle — anchored over the truck's front grille
-// where the LED headlamps sit on the source render. Pulsed three
-// times on mount as the "ден-ден-ден" greeting.
-const HEADLIGHT = { left: 0.20, top: 0.33, width: 0.60, height: 0.05 };
+// Headlight glow rectangle — anchored over the truck's grille on
+// the source render. Pulsed three times on mount.
+const SRC_HEADLIGHT = { x: 200, y: 575, w: 540, h: 65 };
 
 export default function RoleScreen({ navigation }) {
   const { t } = useI18n();
   const { signIn, setRole } = useAuth();
+  const insets = useSafeAreaInsets();
   const { width: winW, height: winH } = useWindowDimensions();
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState('');
 
-  // Fit the image to viewport width; if the resulting height is
-  // taller than the visible area, wrap in a ScrollView so the
-  // bottom "Войти" hotspot is always reachable on small phones.
-  const imgW = winW;
-  const imgH = winW / ASPECT;
-  const useScroll = imgH > winH;
+  // Available rectangle inside safe area. Floor at 120 so
+  // weird boot states (insets > height) can't divide by zero.
+  const availH = Math.max(120, winH - insets.top - insets.bottom);
 
-  // Headlight blink — three short opacity pulses with a brief delay
-  // between them. useNativeDriver=true so the animation runs off
-  // the JS thread and never blocks tap handlers above it.
+  // Contain-fit: pick the smaller axis ratio so the entire image
+  // is visible and never cropped. The other axis letterboxes.
+  const scale = Math.min(winW / IMAGE_W, availH / IMAGE_H);
+  const renderedW = IMAGE_W * scale;
+  const renderedH = IMAGE_H * scale;
+  const offsetX = (winW - renderedW) / 2;
+  const offsetY = (availH - renderedH) / 2;
+
+  // Translate a source-pixel rectangle into screen-space coords
+  // for the current viewport. All hotspots and the headlight glow
+  // share this conversion so they always line up with the image.
+  const place = (rect) => ({
+    left: offsetX + rect.x * scale,
+    top: offsetY + rect.y * scale,
+    width: rect.w * scale,
+    height: rect.h * scale,
+  });
+
+  // Headlight blink — three short opacity pulses with a brief pause
+  // between them. useNativeDriver=true keeps the animation off the
+  // JS thread so it can never block the hotspots above it.
   const blink = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     const pulse = () => Animated.sequence([
@@ -125,18 +134,10 @@ export default function RoleScreen({ navigation }) {
     }
   };
 
-  const renderHotspot = (id, area, onPress, label) => (
+  const renderHotspot = (id, srcRect, onPress, label) => (
     <TouchableOpacity
       key={id}
-      style={[
-        styles.hotspot,
-        {
-          left: imgW * area.left,
-          top: imgH * area.top,
-          width: imgW * area.width,
-          height: imgH * area.height,
-        },
-      ]}
+      style={[styles.hotspot, place(srcRect)]}
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={label}
@@ -145,69 +146,70 @@ export default function RoleScreen({ navigation }) {
     />
   );
 
-  const sheet = (
-    <View style={{ width: imgW, height: imgH, backgroundColor: '#000' }}>
-      <ImageBackground
-        source={ROLE_IMAGE}
-        style={{ width: imgW, height: imgH }}
-        resizeMode="cover"
-      >
-        {/* Headlight blink overlay — pointerEvents none so it never
-            blocks the hotspots beneath even while animating. */}
+  return (
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <View style={styles.stage} testID="role-screen-stage">
+        {/* Image is positioned manually so its rect matches the
+            offsetX/offsetY math above. resizeMode="contain" keeps
+            it crisp inside that rect. pointerEvents="none" so the
+            image never swallows taps meant for the hotspots. */}
+        <Image
+          source={ROLE_IMAGE}
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            left: offsetX,
+            top: offsetY,
+            width: renderedW,
+            height: renderedH,
+          }}
+          resizeMode="contain"
+        />
+
+        {/* Headlight blink overlay — pointerEvents none so the
+            hotspots beneath stay tappable while it's animating. */}
         <Animated.View
           pointerEvents="none"
           style={[
             styles.headlight,
-            {
-              left: imgW * HEADLIGHT.left,
-              top: imgH * HEADLIGHT.top,
-              width: imgW * HEADLIGHT.width,
-              height: imgH * HEADLIGHT.height,
-              opacity: blink,
-            },
+            place(SRC_HEADLIGHT),
+            { opacity: blink },
           ]}
         />
 
-        {renderHotspot('driver', HOTSPOTS.driver, () => enterAs('driver'), 'Я водитель')}
-        {renderHotspot('client', HOTSPOTS.client, () => enterAs('client'), 'Я грузовладелец')}
-        {renderHotspot('login',  HOTSPOTS.login,  () => navigation.navigate('Auth'), 'Войти')}
+        {renderHotspot('driver', SRC_HOTSPOTS.driver, () => enterAs('driver'), 'Я водитель')}
+        {renderHotspot('client', SRC_HOTSPOTS.client, () => enterAs('client'), 'Я грузовладелец')}
+        {renderHotspot('login',  SRC_HOTSPOTS.login,  () => navigation.navigate('Auth'), 'Войти')}
 
-        {/* Server-error toast pinned above the bottom edge so it
-            stays inside the image even when the screen scrolls. */}
         {error ? (
           <View pointerEvents="none" style={styles.errorBox}>
             <Text style={styles.errorText}>{error}</Text>
           </View>
         ) : null}
-      </ImageBackground>
-    </View>
-  );
-
-  return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
-      {useScroll ? (
-        <ScrollView
-          contentContainerStyle={{ flexGrow: 1 }}
-          bounces={false}
-          showsVerticalScrollIndicator={false}
-        >
-          {sheet}
-        </ScrollView>
-      ) : sheet}
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#000' },
-  hotspot: { position: 'absolute', backgroundColor: 'transparent' },
+  stage: { flex: 1, position: 'relative', backgroundColor: '#000' },
+  hotspot: {
+    position: 'absolute',
+    backgroundColor: 'transparent',
+    // Hotspots sit above the Image in DOM order so taps land on
+    // them first. No explicit zIndex needed — RN respects child
+    // order — but we add one defensively for web/Safari quirks.
+    zIndex: 2,
+  },
   headlight: {
     position: 'absolute',
-    backgroundColor: 'rgba(255, 252, 220, 0.7)',
+    backgroundColor: 'rgba(255, 252, 220, 0.55)',
     borderRadius: 24,
     shadowColor: '#FFF8C8',
     shadowOpacity: 1,
     shadowRadius: 30,
+    zIndex: 1,
   },
   errorBox: {
     position: 'absolute',
@@ -220,6 +222,12 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#7F1D1D',
+    zIndex: 3,
   },
-  errorText: { color: '#FCA5A5', fontSize: 12, fontWeight: '700', textAlign: 'center' },
+  errorText: {
+    color: '#FCA5A5',
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
 });

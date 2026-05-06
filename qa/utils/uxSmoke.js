@@ -239,6 +239,27 @@ for (const file of ['src/screens/CreateCargoScreen.js', 'src/screens/CreateTripS
   if (!/navigation\.navigate\(['"]Auth['"]\)/.test(role)) {
     failures.push('RoleScreen no longer routes Войти hotspot to Auth screen');
   }
+
+  // v66: contain-fit layout. Hotspots must be expressed in source
+  // pixels (SRC_HOTSPOTS) and translated to screen space via the
+  // computed scale + offset, NOT as fractions of the viewport.
+  // ImageBackground/ScrollView were the v65 cover-crop sources of
+  // hotspot drift — they must stay out.
+  if (!/SRC_HOTSPOTS\s*=/.test(role) || !/SRC_HEADLIGHT\s*=/.test(role)) {
+    failures.push('RoleScreen no longer defines SRC_HOTSPOTS / SRC_HEADLIGHT in source pixels (v66 fit regression)');
+  }
+  if (!/Math\.min\(\s*winW\s*\/\s*IMAGE_W\s*,\s*availH\s*\/\s*IMAGE_H\s*\)/.test(role)) {
+    failures.push('RoleScreen no longer computes the contain-fit scale = min(winW/IMAGE_W, availH/IMAGE_H)');
+  }
+  if (!/resizeMode=["']contain["']/.test(role)) {
+    failures.push('RoleScreen no longer renders the hero with resizeMode="contain"');
+  }
+  if (/import\s*\{[^}]*ImageBackground[^}]*\}\s*from\s*['"]react-native['"]/.test(role)) {
+    failures.push('RoleScreen still imports ImageBackground (v66 uses bare <Image> with manual rect)');
+  }
+  if (/import\s*\{[^}]*ScrollView[^}]*\}\s*from\s*['"]react-native['"]/.test(role)) {
+    failures.push('RoleScreen still imports ScrollView (v66 fit relies on contain letterboxing instead)');
+  }
 }
 
 // 5. Cards have not regressed to the fake numeric defaults.
@@ -272,6 +293,7 @@ console.log('[ux] Stage 17 · weight/volume form labels are emoji-free  ✓');
 console.log('[ux] Stage 18 · RoleScreen full-image with role-driver / role-client / role-login hotspots  ✓');
 console.log('[ux] Stage 18 · RoleScreen Animated headlight blink wired (pointerEvents none)  ✓');
 console.log('[ux] Stage 18 · enterAs / navigation.navigate(Auth) flow preserved  ✓');
+console.log('[ux] Stage 18 v66 · contain-fit scale + SRC_HOTSPOTS pixel coords (no ImageBackground/ScrollView)  ✓');
 
 if (failures.length) {
   console.log('\n[ux] FAIL:');
