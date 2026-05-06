@@ -284,11 +284,11 @@ export default function CreateTripScreen({ navigation, route }) {
       {errors.departure ? <Text style={s.err}>⚠️ {errors.departure}</Text> : null}
       {errors.truckType ? <Text style={s.err}>⚠️ {errors.truckType}</Text> : null}
 
-      {/* Грузоподъёмность + Объём */}
+      {/* Stage 17: dropped per-field icon glyphs (⚖️ / 📐) — quiet
+          form labels match Stage 16's no-emoji rule for static UI. */}
       <View style={s.row2}>
         <View style={{ flex: 1 }}>
           <Field
-            icon="⚖️"
             label={t('weight_label')}
             value={tons}
             onChangeText={(v) => setTons(String(v || '').replace(/[^\d]/g, ''))}
@@ -298,7 +298,6 @@ export default function CreateTripScreen({ navigation, route }) {
         </View>
         <View style={{ flex: 1 }}>
           <Field
-            icon="📐"
             label={t('volume_label')}
             value={m3}
             onChangeText={(v) => setM3(String(v || '').replace(/[^\d]/g, ''))}

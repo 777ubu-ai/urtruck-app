@@ -131,6 +131,62 @@ for (const file of ['src/screens/CreateCargoScreen.js', 'src/screens/CreateTripS
   }
 }
 
+// Stage 17: client-side TripDetail must NOT render a duplicate
+// "Написать водителю" button inline above the sticky CTA, and must
+// NOT render the premature "Оставить отзыв" CTA — there is no
+// completed trip to review at that point. The sticky bar is the
+// only client surface from now on, and reviews live on the cargo
+// flow's `dealStatus === 'delivered'` branch.
+{
+  if (/style=\[s\.primaryBtn[\s\S]*?write_driver/.test(tripDetail)) {
+    failures.push('TripDetail still renders an inline "💬 Написать водителю" primary button (duplicates the sticky CTA)');
+  }
+  if (/secondaryBtnText[\s\S]*?leave_review/.test(tripDetail) || /setRateModal\(true\)/.test(tripDetail)) {
+    failures.push('TripDetail still renders the inline "⭐ Оставить отзыв" CTA — premature for a not-yet-booked trip');
+  }
+  if (/import RatingModal/.test(tripDetail)) {
+    failures.push('TripDetail still imports RatingModal — dead code after the inline review CTA was removed');
+  }
+  if (/\bt\('trip_free'\)/.test(tripDetail)) {
+    failures.push('TripDetail still labels the available volume row as t(\'trip_free\') — should read t(\'volume\')');
+  }
+}
+
+// Stage 17: cargoDisplay must expose `weight` and `volume` as
+// separate fields. Detail screens render them in two grid cells
+// instead of the previous combined "Вес/Объём → X т · Y м³" mush.
+{
+  if (!/\bweight,\s*\n\s*volume,/.test(norm)) {
+    failures.push('normalizers.cargoDisplay no longer exposes split `weight` + `volume` fields');
+  }
+  if (/t\('weight'\)\s*\+\s*'\/'\s*\+\s*t\('volume'\)/.test(cargoDetail)) {
+    failures.push('CargoDetail still concatenates `weight + "/" + volume` into one cell — should be two grid items');
+  }
+  if (!/items\.push\(\[t\('weight'\),\s*view\.weight\]\)/.test(cargoDetail)) {
+    failures.push('CargoDetail no longer renders `[t(\'weight\'), view.weight]` row');
+  }
+  if (!/items\.push\(\[t\('volume'\),\s*view\.volume\]\)/.test(cargoDetail)) {
+    failures.push('CargoDetail no longer renders `[t(\'volume\'), view.volume]` row');
+  }
+}
+
+// Stage 17: feed-card meta pills lose their per-row emoji glyphs.
+// Only the price stays accent; meta pills are quiet label/value.
+{
+  if (/icon:\s*'⚖️'/.test(feed) || /icon:\s*'📐'/.test(feed)) {
+    failures.push('FeedScreen meta pills still carry ⚖️ / 📐 emoji icons — Stage 16 quiet language requires neutral pills');
+  }
+}
+
+// Stage 17: Create / Edit form labels for weight + volume must not
+// re-introduce the ⚖️ / 📐 icons that Stage 17 stripped.
+for (const file of ['src/screens/CreateCargoScreen.js', 'src/screens/CreateTripScreen.js', 'src/screens/EditTripScreen.js']) {
+  const src = read(file);
+  if (/icon="⚖️"|⚖️\s*\{t\('weight_label'\)/.test(src) || /icon="📐"|📐\s*\{t\('volume_label'\)/.test(src)) {
+    failures.push(`${file}: weight/volume label still carries ⚖️ / 📐 emoji`);
+  }
+}
+
 // 5. Cards have not regressed to the fake numeric defaults.
 for (const file of ['src/screens/CreateCargoScreen.js', 'src/screens/CreateTripScreen.js']) {
   const src = read(file);
@@ -154,6 +210,11 @@ console.log('[ux] EditTripScreen forwards structured route + null defaults  ✓'
 console.log('[ux] EditTripScreen on RoutePointPicker / 4-currency / no fake defaults  ✓');
 console.log('[ux] Create flows — no orphan CityInput import  ✓');
 console.log('[ux] Create forms — no fake defaults / wrong icons  ✓');
+console.log('[ux] Stage 17 · TripDetail single-CTA (no inline write/review duplicates)  ✓');
+console.log('[ux] Stage 17 · cargoDisplay exposes split weight + volume  ✓');
+console.log('[ux] Stage 17 · CargoDetail renders weight + volume as separate rows  ✓');
+console.log('[ux] Stage 17 · feed meta pills carry no ⚖️ / 📐 emoji  ✓');
+console.log('[ux] Stage 17 · weight/volume form labels are emoji-free  ✓');
 
 if (failures.length) {
   console.log('\n[ux] FAIL:');

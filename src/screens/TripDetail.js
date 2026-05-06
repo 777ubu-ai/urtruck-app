@@ -11,7 +11,6 @@ import { routeStats } from '../utils/geo';
 import { removeTrip, advanceTripState, TRIP_STATES, TRIP_STATE_INFO } from '../utils/store';
 import { useVerificationGate } from '../components/VerificationGate';
 import { LEVELS, useAuth } from '../utils/AuthContext';
-import RatingModal from '../components/RatingModal';
 import BidModal from '../components/BidModal';
 import { marketAPI } from '../utils/marketAPI';
 import { normalizeTrip, tripDisplay } from '../utils/normalizers';
@@ -98,7 +97,6 @@ export default function TripDetail({ navigation, route }) {
   const { session } = useAuth();
   const myUserId = session?.user?.id;
   const [shareModal, setShareModal] = React.useState(false);
-  const [rateModal, setRateModal] = React.useState(false);
   // Stage 10: shipper-side bid flow on a driver's trip. The cargo
   // owner opens the trip and can propose a price (RUB/USD/KZT/CNY)
   // — same BidModal already used on CargoDetail, just bound to
@@ -304,7 +302,9 @@ export default function TripDetail({ navigation, route }) {
       />
 
       <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 0, paddingBottom: 60 }}>
-        <Text style={s.pageTitle}>🚛 {t('trip_title')}</Text>
+        {/* Stage 17: leading 🚛 dropped to match Stage 16's quiet
+            language across detail titles. */}
+        <Text style={s.pageTitle}>{t('trip_title')}</Text>
 
         {/* Маршрут на карте */}
         <View style={{ marginBottom: 10, borderRadius: v1Radius.card, overflow: 'hidden' }}>
@@ -365,9 +365,14 @@ export default function TripDetail({ navigation, route }) {
             <Text style={[s.dateLabel, { color: v1.textMuted }]}>{t('trip_driver')}</Text>
             <Text style={[s.dateValue, { color: v1.text }]}>{view.driverName}</Text>
           </View>
+          {/* Stage 17: label was the legacy `Свободно` key above an
+              `X м³` value — confusing because that word reads like a
+              border-queue status, not a volume metric. Replaced with
+              the canonical Объём label so weight and volume render
+              with a consistent shape across all detail screens. */}
           {trip.availableM3 != null && (
             <View style={s.dateRow}>
-              <Text style={[s.dateLabel, { color: v1.textMuted }]}>{t('trip_free')}</Text>
+              <Text style={[s.dateLabel, { color: v1.textMuted }]}>{t('volume')}</Text>
               <Text style={[s.dateValue, { color: v1.text }]}>{view.availableM3}</Text>
             </View>
           )}
@@ -425,32 +430,18 @@ export default function TripDetail({ navigation, route }) {
           })}
         </GlassCard>
 
-        {/* Кнопки */}
-        {role === 'client' ? (
-          <>
-            <TouchableOpacity
-              style={[s.primaryBtn, { backgroundColor: v1Accent.main }]}
-              onPress={async () => {
-                const ok = await requireLevel(LEVELS.PHONE, 'contact');
-                if (!ok) return;
-                toast('💬 ' + t('chat_opened_toast'), 'success');
-                navigation.navigate('Chat', { partner: { name: view.driverName, country: trip.country || 'KZ' }, role });
-              }}
-            >
-              <Text style={[s.primaryBtnText, { color: '#0A0A0A' }]}>💬 {t('write_driver')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[s.secondaryBtn, { borderColor: v1Accent.main }]}
-              onPress={async () => {
-                const ok = await requireLevel(LEVELS.PHONE, 'bid');
-                if (!ok) return;
-                setRateModal(true);
-              }}
-            >
-              <Text style={[s.secondaryBtnText, { color: v1Accent.main }]}>⭐ {t('leave_review')}</Text>
-            </TouchableOpacity>
-          </>
-        ) : isOwner ? (
+        {/* Кнопки.
+            Stage 17: client-side block was rendering an inline
+            "💬 Написать водителю" + "⭐ Оставить отзыв" pair *and* a
+            StickyCTABar at the bottom that exposes the same chat
+            action plus "Предложить цену". That left two identical
+            "write to driver" CTAs on one screen, and the inline
+            "Leave review" was premature — a shipper looking at a
+            trip they haven't booked yet has no driver to review.
+            Both inline buttons are removed; sticky bar is the only
+            client CTA surface from now on. The owner branch is
+            unchanged — owner still sees Edit / Delete inline. */}
+        {role === 'client' ? null : isOwner ? (
           <>
             {(trip.status || 'active') === 'active' && !dealStatus && (
               <TouchableOpacity
@@ -522,14 +513,10 @@ export default function TripDetail({ navigation, route }) {
         shareText={buildTripShareText({ ...trip, truckTypeLabel: view.truckType }, `${WEB_URL || 'https://urtruck.kz'}/trip/${trip.id}`)}
         url={`${WEB_URL || 'https://urtruck.kz'}/trip/${trip.id}`}
       />
-      <RatingModal
-        visible={rateModal}
-        onClose={() => setRateModal(false)}
-        targetId={trip.driverId || trip.id}
-        targetRole="driver"
-        targetName={view.driverName}
-        tripId={trip.id}
-      />
+      {/* Stage 17: RatingModal removed alongside the inline
+          "Оставить отзыв" CTA. Reviews live on CargoDetail's
+          delivery flow (`dealStatus === 'delivered'`) where there
+          is an actual completed transaction to rate. */}
       {Gate}
     </SafeAreaView>
   );

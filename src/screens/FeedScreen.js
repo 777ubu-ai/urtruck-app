@@ -414,10 +414,13 @@ export default function FeedScreen({ navigation, route }) {
       const safePhotos = (item.photos || []).filter(p => typeof p === 'string' && p.length < 500);
       navigation.navigate('CargoDetail', { cargo: { ...item, photos: safePhotos, photo: null }, cargoId: item.id, role });
     };
+    // Stage 17: meta pills lose their per-row emoji glyphs to match
+    // Stage 16's quiet visual language — only one accent (the price)
+    // per card, label/value pair carries the meaning on its own.
     const meta = [
-      item.pickup ? { icon: '📅', label: t('departure'), value: item.pickup } : null,
-      item.tons > 0 ? { icon: '⚖️', label: t('weight'), value: `${item.tons} т` } : null,
-      item.m3 > 0 ? { icon: '📐', label: t('volume'), value: `${item.m3} м³` } : null,
+      item.pickup ? { label: t('departure'), value: item.pickup } : null,
+      item.tons > 0 ? { label: t('weight'), value: `${item.tons} т` } : null,
+      item.m3 > 0 ? { label: t('volume'), value: `${item.m3} м³` } : null,
     ].filter(Boolean);
     // Stage 9: feed cards used to show two buttons that both ran the
     // same `openCargo`. The pair gave the user two different verbs
@@ -464,10 +467,11 @@ export default function FeedScreen({ navigation, route }) {
         }
       }
     };
+    // Stage 17: same emoji-strip as cargo cards above.
     const meta = [
-      item.tripDates ? { icon: '📅', label: t('departure'), value: item.tripDates.split(' - ')[0] || item.tripDates } : null,
-      item.tons > 0 ? { icon: '⚖️', label: t('weight'), value: `${item.tons} т` } : null,
-      item.m3 > 0 ? { icon: '📐', label: t('volume'), value: `${item.m3} м³` } : null,
+      item.tripDates ? { label: t('departure'), value: item.tripDates.split(' - ')[0] || item.tripDates } : null,
+      item.tons > 0 ? { label: t('weight'), value: `${item.tons} т` } : null,
+      item.m3 > 0 ? { label: t('volume'), value: `${item.m3} м³` } : null,
     ].filter(Boolean);
     // Same single-button logic as cargo cards — the card itself is
     // tappable and opens the detail; the secondary verb is gone so

@@ -276,7 +276,7 @@ export default function EditTripScreen({ navigation, route }) {
 
         <View style={[s.row, { marginTop: 8 }]}>
           <View style={{ flex: 1 }}>
-            <Text style={[s.label, { color: theme.textMuted }]}>⚖️ {t('weight_label')}</Text>
+            <Text style={[s.label, { color: theme.textMuted }]}>{t('weight_label')}</Text>
             <TextInput
               style={[s.input, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border }]}
               placeholder="—"
@@ -287,7 +287,7 @@ export default function EditTripScreen({ navigation, route }) {
             />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[s.label, { color: theme.textMuted }]}>📐 {t('volume_label')}</Text>
+            <Text style={[s.label, { color: theme.textMuted }]}>{t('volume_label')}</Text>
             <TextInput
               style={[s.input, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border }]}
               placeholder="—"

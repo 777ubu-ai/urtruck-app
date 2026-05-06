@@ -320,7 +320,10 @@ export default function CargoDetail({ navigation, route }) {
         rightTestID="cargo-share-btn"
       />
       <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 0, paddingBottom: 60 }}>
-        <Text style={s.pageTitle} numberOfLines={1}>📦 {view.from} → {view.to}</Text>
+        {/* Stage 17: dropped the leading 📦 — Stage 16 quiet visual
+            language already removed the bright route emoji from
+            feed cards; the detail title should match. */}
+        <Text style={s.pageTitle} numberOfLines={1}>{view.from} → {view.to}</Text>
 
         {safePhotos.length > 0 ? (
           <View style={{ marginBottom: 10, borderRadius: v1Radius.card, overflow: 'hidden' }}>
@@ -341,7 +344,13 @@ export default function CargoDetail({ navigation, route }) {
               const desc = sanitizeDesc(c.cargoDesc);
               const items = [];
               items.push([t('cargoDesc'), desc || dash]);
-              items.push([t('weight') + '/' + t('volume'), view.weightVol]);
+              // Stage 17: previously a single mushy cell labelled
+              // "Вес/Объём" with a "X т · Y м³" string. Split into
+              // two grid items so weight and volume each get their
+              // own slot and a missing one doesn't read as missing
+              // both. Matches TripDetail's transport block.
+              items.push([t('weight'), view.weight]);
+              items.push([t('volume'), view.volume]);
               items.push([t('truckType'), view.cargoType]);
               items.push([t('pickupDate'), c.pickupDate ? formatDateForDisplay(c.pickupDate) : dash]);
               if (stats) {
