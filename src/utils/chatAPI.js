@@ -37,7 +37,15 @@ export const chatAPI = {
   },
 
   async unread() {
-    const r = await fetch(`${BASE}/unread`, { headers: await headers() });
+    // Stage 28: гостевая сессия (без token) не должна стучаться в
+    // защищённый endpoint — backend вернёт 403, фронт получит spam
+    // в browser console и `Failed to load resource` в production.
+    // Раньше владелец видел эти сообщения и думал что приложение
+    // упало. Теперь возвращаем безопасный default локально.
+    const h = await headers();
+    if (!h.Authorization) return { unread: 0 };
+    const r = await fetch(`${BASE}/unread`, { headers: h });
+    if (!r.ok) return { unread: 0 };
     return r.json();
   },
 
