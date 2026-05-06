@@ -283,6 +283,20 @@ for (const file of ['src/screens/CreateCargoScreen.js', 'src/screens/CreateTripS
   }
 }
 
+// Stage 30: VerificationGateSheet (a separate exported component)
+// must NOT reference `handleClose` directly — that name only
+// exists inside `useVerificationGate()` hook scope. Production
+// crash "Can't find variable: handleClose" was caused by line 140
+// using `handleClose` instead of the prop `onClose`. The literal
+// pattern below would re-introduce the same crash; reject it.
+{
+  const gate = read('src/components/VerificationGate.js');
+  const sheetSection = gate.split(/export function VerificationGateSheet/)[1] || '';
+  if (/onPress=\{handleClose\}/.test(sheetSection)) {
+    failures.push('VerificationGateSheet still calls onPress={handleClose} — ReferenceError on web');
+  }
+}
+
 // Stage 27: forms must not use "—" as a placeholder for numeric
 // inputs (weight / volume). Real users couldn't tell which field
 // was tons and which was m³. Now we require a non-dash placeholder
@@ -385,6 +399,7 @@ console.log('[ux] Stage 18 · enterAs / navigation.navigate(Auth) flow preserved
 console.log('[ux] Stage 26 · RoleScreen uses real Pressable buttons with role_*_title text (no invisible hotspots)  ✓');
 console.log('[ux] Stage 26 · ProfileScreen change-role dialog uses real i18n message (no literal "?")  ✓');
 console.log('[ux] Stage 27 · weight/volume forms use real placeholders + testIDs (no "—")  ✓');
+console.log('[ux] Stage 30 · VerificationGateSheet uses props.onClose (no undefined handleClose)  ✓');
 console.log('[ux] Stage 27 · RoleScreen has role-screen-column max-width wrapper  ✓');
 console.log('[ux] Stage 20 · TripDetail sticky collapsed to single trip-sticky-bid CTA (no chat dupe)  ✓');
 console.log('[ux] Stage 20 · dead RoleCard.js dropped, weightVol field removed from cargoDisplay  ✓');

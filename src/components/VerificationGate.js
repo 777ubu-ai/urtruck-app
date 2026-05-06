@@ -137,7 +137,17 @@ export function VerificationGateSheet({ visible, action, currentLevel, requiredL
             <Text style={s.waText}>{tGlobal('gate_enter')}</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={handleClose} style={s.altBtn}>
+          {/* Stage 30 fix: эта строка падала с
+              `Can't find variable: handleClose` на проде —
+              `handleClose` объявлен только в useVerificationGate
+              hook'е (строка 40), а VerificationGateSheet — это
+              отдельный экспортируемый компонент со своим scope.
+              Через props сюда приходит `onClose` (он и есть
+              handleClose из hook'а), который и нужно вызывать.
+              При первом нажатии "Просмотреть как гость" из
+              detail-экрана пользователь видел
+              ErrorBoundary. */}
+          <TouchableOpacity onPress={onClose} style={s.altBtn}>
             <Text style={[s.altText, { color: accentColors.browse || '#94A3B8' }]}>
               {tGlobal('gate_browse')}
             </Text>
