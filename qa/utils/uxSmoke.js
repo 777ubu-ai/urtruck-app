@@ -260,6 +260,19 @@ for (const file of ['src/screens/CreateCargoScreen.js', 'src/screens/CreateTripS
   if (/import\s*\{[^}]*ScrollView[^}]*\}\s*from\s*['"]react-native['"]/.test(role)) {
     failures.push('RoleScreen still imports ScrollView (v66 fit relies on contain letterboxing instead)');
   }
+
+  // Stage 19: SRC_HEADLIGHT must point at the truck's headlamps,
+  // not the windshield. On the 941×1672 source the LED strips sit
+  // around y=810-855, so y must be in the lower half of the image
+  // (y >= 700). Earlier values (~575) lit up the glass.
+  {
+    const m = /SRC_HEADLIGHT\s*=\s*\{[^}]*y:\s*(\d+)/m.exec(role);
+    if (!m) {
+      failures.push('SRC_HEADLIGHT missing or unreadable in RoleScreen');
+    } else if (parseInt(m[1], 10) < 700) {
+      failures.push(`SRC_HEADLIGHT.y=${m[1]} is too high — that lands on the windshield, not the headlamps. Stage 19 requires y >= 700 on the 941×1672 source.`);
+    }
+  }
 }
 
 // 5. Cards have not regressed to the fake numeric defaults.
@@ -294,6 +307,7 @@ console.log('[ux] Stage 18 · RoleScreen full-image with role-driver / role-clie
 console.log('[ux] Stage 18 · RoleScreen Animated headlight blink wired (pointerEvents none)  ✓');
 console.log('[ux] Stage 18 · enterAs / navigation.navigate(Auth) flow preserved  ✓');
 console.log('[ux] Stage 18 v66 · contain-fit scale + SRC_HOTSPOTS pixel coords (no ImageBackground/ScrollView)  ✓');
+console.log('[ux] Stage 19 · SRC_HEADLIGHT anchored on headlamps (y >= 700, not on windshield)  ✓');
 
 if (failures.length) {
   console.log('\n[ux] FAIL:');
