@@ -31,7 +31,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
 import { useAuth } from '../utils/AuthContext';
-import { regAPI } from '../utils/registration';
+// Stage 34: regAPI больше не нужен — RoleScreen не делает
+// guest-shortcut signIn, всё ушло в RegScreen flow.
 
 // Stage 27 v2: hero PNG обрезан физически (сборка `sips --cropOffset 0
 // 0 -c 1003 941`) — теперь это `role-screen-hero.png` 941×1003,
@@ -61,32 +62,32 @@ export default function RoleScreen({ navigation }) {
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState('');
 
+  // Stage 34: «Я водитель» / «Я грузовладелец» теперь ведут в
+  // настоящий registration flow (RegScreen со step=1: телефон +
+  // SMS-код), а не в guest-shortcut signIn(level=1)+ reset(Main).
+  // Раньше пользователь после tap'а попадал в Main (Cargos/Trips
+  // feed) с фейковой level=1 сессией и НИ РАЗУ не вводил телефон —
+  // владелец видел это как "регистрация не работает".
+  //
+  // Если user уже имеет session+role (нажал "Сменить роль") —
+  // короткий путь сохранён: setRole + reset to Main без повторной
+  // регистрации.
   const enterAs = async (role) => {
     if (busy) return;
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
       // eslint-disable-next-line no-console
       console.warn(`[RoleScreen] role-${role} pressed`);
     }
-    setBusy(role);
-    setError('');
     try {
-      // Если у пользователя уже есть session+token (например он
-      // нажал "Сменить роль" в профиле), не создаём нового гостя —
-      // просто перезаписываем role и идём дальше.
-      if (session && session.user) {
+      if (session && session.user && session.user.id) {
+        setBusy(role);
         setRole(role);
         navigation.reset({ index: 0, routes: [{ name: 'Main', params: { role } }] });
         return;
       }
-      const data = await regAPI.ensureGuest();
-      if (!data?.token) {
-        setError(t('server_unavailable'));
-        setBusy(null);
-        return;
-      }
-      await signIn('test-user', 1, data.token);
-      setRole(role);
-      navigation.reset({ index: 0, routes: [{ name: 'Main', params: { role } }] });
+      // Real registration: phone → SMS → ProfileSetup. RegScreen
+      // сам управляет всеми шагами; роль передаётся через params.
+      navigation.navigate('Reg', { role });
     } catch (e) {
       // eslint-disable-next-line no-console
       console.warn('[RoleScreen] enterAs failed:', e?.message || e);

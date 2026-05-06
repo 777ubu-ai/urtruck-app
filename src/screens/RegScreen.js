@@ -284,6 +284,23 @@ export default function RegScreen({ navigation, route }) {
   return (
     <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]}>
       <ScrollView contentContainerStyle={s.scroll}>
+        {/* Stage 34: role-aware заголовок и подзаголовок поверх
+            прогресс-бара — пользователь сразу видит, в какой
+            именно flow он попал ("Регистрация водителя" /
+            "Регистрация грузовладельца"). Раньше показывался
+            только короткий "💬 Подтверждение телефона", без
+            контекста роли — владелец говорил "непонятный экран". */}
+        {step === 1 ? (
+          <View style={{ marginBottom: 16 }}>
+            <Text style={[s.heading, { color: theme.text, marginBottom: 6 }]}>
+              {role === 'driver' ? t('reg_screen_title_driver') : t('reg_screen_title_client')}
+            </Text>
+            <Text style={[s.hint, { color: theme.textMuted }]}>
+              {role === 'driver' ? t('reg_subtitle_driver') : t('reg_subtitle_client')}
+            </Text>
+          </View>
+        ) : null}
+
         {/* Прогресс */}
         <View style={s.progress}>
           {STEPS.map(st => (
@@ -299,7 +316,7 @@ export default function RegScreen({ navigation, route }) {
         </View>
 
         <GradientText style={s.heading} colors={[accent, '#22C55E']}>
-          {step === 1 ? '💬 ' + t('reg_heading_step1') : step === 2 ? '🤳 ' + t('reg_heading_step2') : step === 3 ? '📄 ' + t('reg_heading_step3') : step === 4 ? '🚛 ' + t('reg_heading_step4') : '✅ ' + t('reg_heading_step5')}
+          {step === 1 ? '📱 ' + t('reg_heading_step1') : step === 2 ? '🤳 ' + t('reg_heading_step2') : step === 3 ? '📄 ' + t('reg_heading_step3') : step === 4 ? '🚛 ' + t('reg_heading_step4') : '✅ ' + t('reg_heading_step5')}
         </GradientText>
 
         {/* STEP 1: WhatsApp */}
