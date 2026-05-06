@@ -24,7 +24,8 @@ test('Boris · cargo owner flow', async ({ page }) => {
   await snap(page, 'boris', 'home-loaded');
 
   // 2. Select cargo owner role
-  const shipperBtn = page.getByText(/Я грузовладелец|I'm a shipper|cargo owner|client/i).first();
+  // Stage 18: full-image RoleScreen — prefer testID hotspot.
+  const shipperBtn = page.getByTestId('role-client').or(page.getByText(/Я грузовладелец|I'm a shipper|cargo owner|client/i)).first();
   if (await shipperBtn.isVisible().catch(() => false)) {
     await shipperBtn.click().catch(() => {});
     await page.waitForTimeout(2000);

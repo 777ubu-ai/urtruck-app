@@ -43,7 +43,9 @@ test('UI · landing + role select', async ({ page }) => {
   }
 
   // Role pick: Driver branch
-  const driverBtn = page.getByText(/Я водитель|driver/i).first();
+  // Stage 18: full-image RoleScreen — labels live inside the bitmap.
+  // Prefer the stable testID hotspot, fall back to legacy text matcher.
+  const driverBtn = page.getByTestId('role-driver').or(page.getByText(/Я водитель|driver/i)).first();
   if (await driverBtn.isVisible().catch(() => false)) {
     await driverBtn.click().catch(() => {});
     await page.waitForTimeout(1500);
@@ -66,7 +68,9 @@ test('UI · filter chips open distinct sheets', async ({ page }) => {
   await page.waitForTimeout(1200);
 
   // Make sure we're past role-pick if it gates the feed
-  const driverBtn = page.getByText(/Я водитель|driver/i).first();
+  // Stage 18: full-image RoleScreen — labels live inside the bitmap.
+  // Prefer the stable testID hotspot, fall back to legacy text matcher.
+  const driverBtn = page.getByTestId('role-driver').or(page.getByText(/Я водитель|driver/i)).first();
   if (await driverBtn.isVisible().catch(() => false)) {
     await driverBtn.click().catch(() => {});
     await page.waitForTimeout(1500);
@@ -115,7 +119,9 @@ test('UI · Public feed shows no QA / debug markers', async ({ page }) => {
   // through landing → role → driver feed.
   await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
   await page.waitForTimeout(1500);
-  const driverBtn = page.getByText(/Я водитель|driver/i).first();
+  // Stage 18: full-image RoleScreen — labels live inside the bitmap.
+  // Prefer the stable testID hotspot, fall back to legacy text matcher.
+  const driverBtn = page.getByTestId('role-driver').or(page.getByText(/Я водитель|driver/i)).first();
   if (await driverBtn.isVisible().catch(() => false)) {
     await driverBtn.click().catch(() => {});
     await page.waitForTimeout(2000);
@@ -160,7 +166,9 @@ test('UI · Date chip opens real calendar/date picker', async ({ page }) => {
   await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
   await page.waitForTimeout(1200);
 
-  const driverBtn = page.getByText(/Я водитель|driver/i).first();
+  // Stage 18: full-image RoleScreen — labels live inside the bitmap.
+  // Prefer the stable testID hotspot, fall back to legacy text matcher.
+  const driverBtn = page.getByTestId('role-driver').or(page.getByText(/Я водитель|driver/i)).first();
   if (await driverBtn.isVisible().catch(() => false)) {
     await driverBtn.click().catch(() => {});
     await page.waitForTimeout(1500);
@@ -197,7 +205,9 @@ test('UI · bottom-nav has plus button + balanced cells', async ({ page }) => {
   await page.waitForTimeout(1500);
 
   // Make sure we're past role-pick
-  const driverBtn = page.getByText(/Я водитель|driver/i).first();
+  // Stage 18: full-image RoleScreen — labels live inside the bitmap.
+  // Prefer the stable testID hotspot, fall back to legacy text matcher.
+  const driverBtn = page.getByTestId('role-driver').or(page.getByText(/Я водитель|driver/i)).first();
   if (await driverBtn.isVisible().catch(() => false)) {
     await driverBtn.click().catch(() => {});
     await page.waitForTimeout(1500);
@@ -236,7 +246,9 @@ test('UI · bottom navigation tabs reachable', async ({ page }) => {
   await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
   await page.waitForTimeout(1200);
 
-  const driverBtn = page.getByText(/Я водитель|driver/i).first();
+  // Stage 18: full-image RoleScreen — labels live inside the bitmap.
+  // Prefer the stable testID hotspot, fall back to legacy text matcher.
+  const driverBtn = page.getByTestId('role-driver').or(page.getByText(/Я водитель|driver/i)).first();
   if (await driverBtn.isVisible().catch(() => false)) {
     await driverBtn.click().catch(() => {});
     await page.waitForTimeout(1500);
@@ -269,7 +281,9 @@ test('UI · language selector lists only 4 enabled languages', async ({ page }) 
   await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
   await page.waitForTimeout(1500);
 
-  const driverBtn = page.getByText(/Я водитель|driver/i).first();
+  // Stage 18: full-image RoleScreen — labels live inside the bitmap.
+  // Prefer the stable testID hotspot, fall back to legacy text matcher.
+  const driverBtn = page.getByTestId('role-driver').or(page.getByText(/Я водитель|driver/i)).first();
   if (await driverBtn.isVisible().catch(() => false)) {
     await driverBtn.click().catch(() => {});
     await page.waitForTimeout(1500);

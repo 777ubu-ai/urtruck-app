@@ -17,6 +17,23 @@ async function gotoLanding(page) {
 }
 
 async function pickRole(page, role /* 'driver' | 'shipper' */) {
+  // Stage 18: RoleScreen is a full-image hero — the button labels
+  // live inside the bitmap and are not searchable as DOM text any
+  // more. Hotspots remain TouchableOpacity with stable testIDs
+  // (`role-driver` / `role-client`), so we look those up first and
+  // only fall back to the legacy text matcher for older builds /
+  // unrelated landings.
+  const testId = role === 'driver' ? 'role-driver' : 'role-client';
+  const byId = page.getByTestId(testId).first();
+  if (await byId.count().catch(() => 0)) {
+    const visible = await byId.isVisible().catch(() => false);
+    const box = visible ? await byId.boundingBox().catch(() => null) : null;
+    if (box && box.width > 0 && box.height > 0) {
+      await byId.click({ force: true }).catch(() => {});
+      await page.waitForTimeout(1500);
+      return true;
+    }
+  }
   const re = role === 'driver'
     ? /Я водитель|driver/i
     : /Я грузовладелец|I'm a shipper|cargo owner|client/i;

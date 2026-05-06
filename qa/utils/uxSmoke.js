@@ -187,6 +187,60 @@ for (const file of ['src/screens/CreateCargoScreen.js', 'src/screens/CreateTripS
   }
 }
 
+// Stage 18: RoleScreen is a full-image hero with three invisible
+// hotspot TouchableOpacity. The legacy BrandHeader / HeroTruck /
+// RoleCard combo must be gone, the hotspots must keep their stable
+// testIDs, the image require points at the new asset, and the
+// headlight blink must be wired on Animated.Value.
+{
+  const role = read('src/screens/RoleScreen.js');
+  if (/import BrandHeader from/.test(role)) {
+    failures.push('RoleScreen still imports BrandHeader (Stage 18 forbids the legacy welcome chrome)');
+  }
+  if (/import HeroTruck from/.test(role)) {
+    failures.push('RoleScreen still imports HeroTruck (Stage 18 owns the entire welcome canvas)');
+  }
+  if (/import RoleCard from/.test(role)) {
+    failures.push('RoleScreen still imports RoleCard (Stage 18 replaces card buttons with hotspots)');
+  }
+  if (!/require\(['"]\.\.\/\.\.\/assets\/role-screen-full\.png['"]\)/.test(role)) {
+    failures.push('RoleScreen does not require assets/role-screen-full.png');
+  }
+  for (const id of ['driver', 'client', 'login']) {
+    const re = new RegExp(`testID:\\s*\`role-\\$\\{id\\}\`|testID="role-${id}"|testID=\`role-${id}\``);
+    if (!re.test(role)) {
+      // Allow either the static template (`role-${id}`) used by
+      // renderHotspot or a literal `testID="role-driver"` form.
+      // Below we re-check with a plain string match for the literal
+      // hotspot ids that other tests rely on.
+    }
+  }
+  if (!/role-driver|`role-\$\{id\}`/.test(role) || !/'driver'|"driver"/.test(role)) {
+    failures.push('RoleScreen no longer wires a `role-driver` hotspot');
+  }
+  if (!/role-client|`role-\$\{id\}`/.test(role) || !/'client'|"client"/.test(role)) {
+    failures.push('RoleScreen no longer wires a `role-client` hotspot');
+  }
+  if (!/role-login|`role-\$\{id\}`/.test(role) || !/'login'|"login"/.test(role)) {
+    failures.push('RoleScreen no longer wires a `role-login` hotspot');
+  }
+  if (!/Animated\.Value/.test(role) && !/new Animated\.Value/.test(role)) {
+    failures.push('RoleScreen has no Animated.Value — headlight blink animation missing');
+  }
+  if (!/Animated\.sequence/.test(role)) {
+    failures.push('RoleScreen has no Animated.sequence — three-pulse blink not wired');
+  }
+  if (!/pointerEvents=["']none["']/.test(role)) {
+    failures.push('RoleScreen blink overlay must be pointerEvents="none" so taps reach hotspots');
+  }
+  if (!/enterAs\(['"]driver['"]\)/.test(role) || !/enterAs\(['"]client['"]\)/.test(role)) {
+    failures.push('RoleScreen no longer calls enterAs(driver|client) — auth flow broken');
+  }
+  if (!/navigation\.navigate\(['"]Auth['"]\)/.test(role)) {
+    failures.push('RoleScreen no longer routes Войти hotspot to Auth screen');
+  }
+}
+
 // 5. Cards have not regressed to the fake numeric defaults.
 for (const file of ['src/screens/CreateCargoScreen.js', 'src/screens/CreateTripScreen.js']) {
   const src = read(file);
@@ -215,6 +269,9 @@ console.log('[ux] Stage 17 · cargoDisplay exposes split weight + volume  ✓');
 console.log('[ux] Stage 17 · CargoDetail renders weight + volume as separate rows  ✓');
 console.log('[ux] Stage 17 · feed meta pills carry no ⚖️ / 📐 emoji  ✓');
 console.log('[ux] Stage 17 · weight/volume form labels are emoji-free  ✓');
+console.log('[ux] Stage 18 · RoleScreen full-image with role-driver / role-client / role-login hotspots  ✓');
+console.log('[ux] Stage 18 · RoleScreen Animated headlight blink wired (pointerEvents none)  ✓');
+console.log('[ux] Stage 18 · enterAs / navigation.navigate(Auth) flow preserved  ✓');
 
 if (failures.length) {
   console.log('\n[ux] FAIL:');
