@@ -120,6 +120,16 @@ if storage_service.PROVIDER == "local":
 
 @app.on_event("startup")
 def startup():
+    # Stage 21 prod hardening: log a clear list of mock/missing
+    # values when running with URTRUCK_ENV=production. Refuses to
+    # boot when URTRUCK_FAIL_ON_BAD_ENV=1 is also set.
+    try:
+        from services.env_check import enforce_production_env
+        enforce_production_env()
+    except RuntimeError:
+        raise
+    except Exception as e:
+        print(f"[env-check] guard failed: {e}", flush=True)
     db.init_db()
     registration_dal.init_registration_schema()
     reviews_dal.init_reviews_schema()

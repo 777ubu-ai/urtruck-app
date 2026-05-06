@@ -21,6 +21,10 @@ function InputRow({
   icon, label, value, onChangeText, placeholder,
   secureTextEntry, onTogglePassword, isPasswordVisible,
   keyboardType, autoCapitalize = 'sentences', maxLength, error, helper,
+  // Stage 21: pass-through editable so callers can render a
+  // read-only row (country during the KZ-only pilot) without
+  // resorting to the dropdown variant.
+  editable = true,
   testID,
 }) {
   const colors = useV1Colors();
@@ -36,7 +40,7 @@ function InputRow({
         <View style={{ flex: 1 }}>
           {value && label ? <Text style={[v1Typography.small, { color: colors.textDim, marginBottom: 2 }]}>{label}</Text> : null}
           <TextInput
-            style={[s.input, { color: colors.text }]}
+            style={[s.input, { color: colors.text }, !editable && { opacity: 0.7 }]}
             value={value}
             onChangeText={onChangeText}
             placeholder={placeholder || label}
@@ -45,6 +49,7 @@ function InputRow({
             keyboardType={keyboardType}
             autoCapitalize={autoCapitalize}
             maxLength={maxLength}
+            editable={editable}
             testID={testID}
           />
         </View>
