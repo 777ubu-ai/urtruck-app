@@ -29,7 +29,8 @@ test('Mobile · Driver landing renders without horizontal clipping', async ({ pa
     log.pass(ACTOR, 'no-horizontal-scroll');
   }
 
-  const driverBtn = page.getByText(/Я водитель|driver/i).first();
+  // Stage 18: full-image RoleScreen — prefer testID hotspot.
+  const driverBtn = page.getByTestId('role-driver').or(page.getByText(/Я водитель|driver/i)).first();
   if (await isLaidOut(driverBtn) && await isInViewport(page, driverBtn)) {
     log.pass(ACTOR, 'driver-tile-on-screen');
   } else {

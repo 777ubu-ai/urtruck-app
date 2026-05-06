@@ -24,7 +24,8 @@ test('Serik · driver flow', async ({ page }) => {
   await snap(page, 'serik', 'home-loaded');
 
   // 2. Select driver role (UI; falls back gracefully if Welcome layout shifts)
-  const driverBtn = page.getByText(/Я водитель|I'm a driver|carrier|driver/i).first();
+  // Stage 18: full-image RoleScreen — prefer testID hotspot.
+  const driverBtn = page.getByTestId('role-driver').or(page.getByText(/Я водитель|I'm a driver|carrier|driver/i)).first();
   if (await driverBtn.isVisible().catch(() => false)) {
     await driverBtn.click().catch(() => {});
     await page.waitForTimeout(2000);

@@ -44,7 +44,8 @@ test('Shipper · TripDetail does not crash on Подробнее', async ({ page
   await snap(page, 'shipper-trip-crash', 'home');
 
   // Role select — shipper button (translated four ways).
-  const shipper = page.getByText(/Я грузовладелец|I'm a shipper|cargo owner|client/i).first();
+  // Stage 18: full-image RoleScreen — prefer testID hotspot.
+  const shipper = page.getByTestId('role-client').or(page.getByText(/Я грузовладелец|I'm a shipper|cargo owner|client/i)).first();
   if (await shipper.isVisible().catch(() => false)) {
     await shipper.click().catch(() => {});
     await page.waitForTimeout(1500);

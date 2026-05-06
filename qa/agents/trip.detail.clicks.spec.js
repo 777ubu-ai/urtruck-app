@@ -30,7 +30,8 @@ async function bodyText(page) {
 async function enterAsClient(page) {
   await page.evaluate(() => { try { localStorage.clear(); sessionStorage.clear(); } catch {} });
   await page.reload({ waitUntil: 'networkidle' }).catch(() => {});
-  const btn = page.getByText(/Я грузовладелец|I'm a shipper|client|cargo owner/i).first();
+  // Stage 18: full-image RoleScreen — prefer testID hotspot.
+  const btn = page.getByTestId('role-client').or(page.getByText(/Я грузовладелец|I'm a shipper|client|cargo owner/i)).first();
   if (await btn.isVisible().catch(() => false)) {
     await btn.click().catch(() => {});
     await page.waitForTimeout(2000);
