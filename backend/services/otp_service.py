@@ -15,6 +15,9 @@ import httpx
 
 # Новый WhatsApp модуль (Meta Cloud API)
 from services import whatsapp as wa
+# Stage 22: dedicated Mobizon SMS service (production-ready, parses
+# response codes, masks phones in logs, retries transient errors).
+from services import sms_mobizon
 
 # BETA bypass
 try:
@@ -28,13 +31,26 @@ WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN", "") or os.getenv("WHA
 WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "") or os.getenv("WHATSAPP_PHONE_ID", "")
 WA_MOCK = not wa.is_configured()
 
-# SMS (Mobizon KZ / Twilio)
-SMS_PROVIDER = os.getenv("SMS_PROVIDER", "mock")  # mobizon | twilio | mock
-MOBIZON_API_KEY = os.getenv("MOBIZON_API_KEY", "")
+# SMS (Mobizon KZ / Twilio).
+# Stage 22 swapped the inline Mobizon call for `sms_mobizon` and made
+# the MOCK gate explicit: `SMS_PROVIDER` decides which provider gets
+# called, but a missing API key force-falls-through to MOCK so the
+# server never silently 500s on /send-otp.
+SMS_PROVIDER = os.getenv("SMS_PROVIDER", "mock").lower()  # mobizon | twilio | mock
 TWILIO_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
 TWILIO_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
 TWILIO_FROM = os.getenv("TWILIO_FROM", "")
-SMS_MOCK = SMS_PROVIDER == "mock" or not any([MOBIZON_API_KEY, TWILIO_SID])
+
+
+def _sms_real_configured() -> bool:
+    if SMS_PROVIDER == "mobizon":
+        return sms_mobizon.is_configured()
+    if SMS_PROVIDER == "twilio":
+        return bool(TWILIO_SID and TWILIO_TOKEN and TWILIO_FROM)
+    return False
+
+
+SMS_MOCK = SMS_PROVIDER == "mock" or not _sms_real_configured()
 
 # Telegram
 TG_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
@@ -54,20 +70,29 @@ def send_whatsapp(phone: str, code: str) -> dict:
 
 # ---------- SMS ----------
 def send_sms(phone: str, code: str) -> dict:
-    msg = f"UrTruck: {code}"
+    """Route OTP to the configured SMS provider.
+
+    Stage 22: Mobizon path delegated to `services.sms_mobizon` which
+    parses the JSON envelope and surfaces structured errors. Twilio
+    kept inline (rarely used; can be lifted into its own module if
+    we ever scale it up). MOCK path logs the code with a masked
+    phone — never the real number — so prod logs aren't a privacy
+    leak.
+    """
+    msg = f"UrTruck: {code}. Не сообщайте код никому."
     if SMS_MOCK:
-        print(f"[OTP·SMS MOCK] {phone}: {code}")
+        # Mask middle digits: a real phone in a server log is a PII
+        # leak even in dev, and confuses on-call when reading logs
+        # quickly.
+        masked = phone if len(phone) < 8 else f"{phone[:4]}***{phone[-3:]}"
+        print(f"[OTP·SMS MOCK] {masked}: {code}")
         return {"sent": True, "mock": True, "channel": "sms", "code": code}
-    try:
-        if SMS_PROVIDER == "mobizon":
-            # https://mobizon.kz API
-            r = httpx.post("https://api.mobizon.kz/service/message/sendsmsmessage",
-                data={"apiKey": MOBIZON_API_KEY, "recipient": phone.replace("+", ""), "text": msg},
-                timeout=10.0,
-            )
-            r.raise_for_status()
-            return {"sent": True, "mock": False, "channel": "sms", "provider": "mobizon"}
-        elif SMS_PROVIDER == "twilio":
+
+    if SMS_PROVIDER == "mobizon":
+        return sms_mobizon.send_sms(phone, msg)
+
+    if SMS_PROVIDER == "twilio":
+        try:
             r = httpx.post(
                 f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_SID}/Messages.json",
                 auth=(TWILIO_SID, TWILIO_TOKEN),
@@ -76,10 +101,11 @@ def send_sms(phone: str, code: str) -> dict:
             )
             r.raise_for_status()
             return {"sent": True, "mock": False, "channel": "sms", "provider": "twilio"}
-    except Exception as e:
-        print(f"[OTP·SMS ERROR] {e}")
-        return {"sent": False, "error": str(e), "channel": "sms"}
-    return {"sent": False, "error": "unknown provider", "channel": "sms"}
+        except Exception as e:
+            print(f"[OTP·SMS·TWILIO ERROR] {e}")
+            return {"sent": False, "error": str(e), "channel": "sms", "provider": "twilio"}
+
+    return {"sent": False, "error": "unknown_provider", "channel": "sms"}
 
 
 # ---------- Telegram ----------
@@ -168,11 +194,14 @@ def send_otp(phone: str, code: str, channel: str = "whatsapp") -> dict:
 
 
 def info() -> dict:
+    sms_block: dict = {"mode": "MOCK" if SMS_MOCK else SMS_PROVIDER.upper()}
+    if SMS_PROVIDER == "mobizon":
+        sms_block.update(sms_mobizon.info())
     return {
         "beta_mode": BETA_MODE,
         "priority_chain": ["whatsapp", "telegram", "sms"],
         "whatsapp": wa.info(),
-        "sms": {"mode": "MOCK" if SMS_MOCK else SMS_PROVIDER.upper()},
+        "sms": sms_block,
         "telegram": {
             "mode": "MOCK" if TG_MOCK else "REAL",
             "bot": TG_BOT_USERNAME,
