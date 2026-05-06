@@ -246,25 +246,35 @@ for (const file of ['src/screens/CreateCargoScreen.js', 'src/screens/CreateTripS
     failures.push('RoleScreen no longer routes Войти hotspot to Auth screen');
   }
 
-  // v66: contain-fit layout. Hotspots must be expressed in source
-  // pixels (SRC_HOTSPOTS) and translated to screen space via the
-  // computed scale + offset, NOT as fractions of the viewport.
-  // ImageBackground/ScrollView were the v65 cover-crop sources of
-  // hotspot drift — they must stay out.
-  if (!/SRC_HOTSPOTS\s*=/.test(role)) {
-    failures.push('RoleScreen no longer defines SRC_HOTSPOTS in source pixels (v66 fit regression)');
+  // Stage 25: hotspot positioning rewritten to percent-based
+  // positions inside an aspect-ratio container. Pixel math + safe-
+  // area inset reads were unstable on real devices (the lower
+  // pill landed off-screen on first paint). Now we require a
+  // HOTSPOTS object with `%` strings and an aspectRatio container.
+  if (!/HOTSPOTS\s*=\s*\{[\s\S]*?driver:\s*\{[\s\S]*?%'/.test(role)) {
+    failures.push('RoleScreen no longer defines HOTSPOTS as percent positions (Stage 25 fit regression)');
   }
-  if (!/Math\.min\(\s*winW\s*\/\s*IMAGE_W\s*,\s*availH\s*\/\s*IMAGE_H\s*\)/.test(role)) {
-    failures.push('RoleScreen no longer computes the contain-fit scale = min(winW/IMAGE_W, availH/IMAGE_H)');
+  if (!/aspectRatio\s*:\s*ASPECT|aspectRatio\s*:\s*IMAGE_W/.test(role)) {
+    failures.push('RoleScreen no longer locks the inner stage to the source aspect-ratio');
   }
   if (!/resizeMode=["']contain["']/.test(role)) {
     failures.push('RoleScreen no longer renders the hero with resizeMode="contain"');
   }
   if (/import\s*\{[^}]*ImageBackground[^}]*\}\s*from\s*['"]react-native['"]/.test(role)) {
-    failures.push('RoleScreen still imports ImageBackground (v66 uses bare <Image> with manual rect)');
+    failures.push('RoleScreen still imports ImageBackground (use bare <Image>)');
   }
   if (/import\s*\{[^}]*ScrollView[^}]*\}\s*from\s*['"]react-native['"]/.test(role)) {
-    failures.push('RoleScreen still imports ScrollView (v66 fit relies on contain letterboxing instead)');
+    failures.push('RoleScreen still imports ScrollView (Stage 25 layout uses contain letterboxing)');
+  }
+  // Stage 25: each role hotspot must be a Pressable (or
+  // TouchableOpacity) with the stable testID literal, not a
+  // template string — that way Playwright getByTestId works with
+  // `'role-client'` directly.
+  for (const id of ['driver', 'client', 'login']) {
+    const literal = new RegExp(`testID=\\{?["\`']role-${id}["\`']\\}?|testID=\\{\`role-\\$\\{id\\}\``);
+    if (!literal.test(role)) {
+      failures.push(`RoleScreen lost testID="role-${id}" hotspot (Stage 25)`);
+    }
   }
 
   // Stage 19: SRC_HEADLIGHT-y constraint deprecated in Stage 20 —
@@ -329,7 +339,7 @@ console.log('[ux] Stage 17 · weight/volume form labels are emoji-free  ✓');
 console.log('[ux] Stage 18 · RoleScreen full-image with role-driver / role-client / role-login hotspots  ✓');
 console.log('[ux] Stage 20 · RoleScreen carries no Animated/blink/SRC_HEADLIGHT (welcome is purely static)  ✓');
 console.log('[ux] Stage 18 · enterAs / navigation.navigate(Auth) flow preserved  ✓');
-console.log('[ux] Stage 18 v66 · contain-fit scale + SRC_HOTSPOTS pixel coords (no ImageBackground/ScrollView)  ✓');
+console.log('[ux] Stage 25 · RoleScreen percent-based HOTSPOTS inside aspectRatio container (no pixel math)  ✓');
 console.log('[ux] Stage 20 · TripDetail sticky collapsed to single trip-sticky-bid CTA (no chat dupe)  ✓');
 console.log('[ux] Stage 20 · dead RoleCard.js dropped, weightVol field removed from cargoDisplay  ✓');
 
