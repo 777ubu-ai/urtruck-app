@@ -165,6 +165,27 @@ for (const vp of VIEWPORTS) {
           await page.goto(`https://urtruck.kz${route}?debug=1`, { waitUntil: 'networkidle' }).catch(() => {});
         });
       }
+
+      // Stage 30 hard regression: trigger VerificationGate as a
+      // guest. Before the fix, tapping "Подробнее" on a feed card
+      // opened the gate sheet and the secondary "Просмотреть как
+      // гость" button referenced `handleClose` which did not exist
+      // in scope — production ErrorBoundary on first user action.
+      await step(page, collectors, vp.name, '10-guest-tap-podrobnee', async () => {
+        await page.goto(`${BASE}`, { waitUntil: 'networkidle' }).catch(() => {});
+        // тап role-driver, чтобы оказаться в Cargos feed как гость
+        const driver = page.getByTestId('role-driver').first();
+        if (await driver.count()) await driver.click().catch(() => {});
+        await page.waitForTimeout(1500);
+        // Кнопка "Подробнее" на cargo-card → VerificationGate sheet
+        const podr = page.getByText(/Подробнее|Details|подробнее/i).first();
+        if (await podr.count()) await podr.click().catch(() => {});
+        await page.waitForTimeout(1500);
+        // Кнопка-нарушитель "Просмотреть как гость" / gate_browse
+        const browse = page.getByText(/гость|guest|browse/i).first();
+        if (await browse.count()) await browse.click().catch(() => {});
+        await page.waitForTimeout(800);
+      });
       // Final ok dump (so we have a baseline screenshot too)
       await dump(page, collectors, vp.name, 'zz-final-ok');
     } catch (e) {
