@@ -74,17 +74,28 @@ export default function EditProfileScreen({ navigation, route }) {
   const [saving, setSaving] = useState(false);
 
   const pickAvatar = async () => {
+    // Stage 21: previously this swallowed permission denials and
+    // any picker errors silently — the user tapped 📷 and nothing
+    // happened. Now permission status is surfaced as a toast so
+    // the user knows to grant access in system settings.
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') return;
+      if (status !== 'granted') {
+        toast(t('photo_permission_required') || 'Разрешите доступ к фото в настройках', 'warn');
+        return;
+      }
       const r = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         quality: 0.6,
         allowsEditing: true,
         aspect: [1, 1],
       });
-      if (!r.canceled && r.assets?.[0]) setAvatar(r.assets[0].uri);
-    } catch {}
+      if (!r.canceled && r.assets?.[0]) {
+        setAvatar(r.assets[0].uri);
+      }
+    } catch (e) {
+      toast(t('photo_pick_failed') || 'Не удалось выбрать фото', 'error');
+    }
   };
 
   const save = async () => {
@@ -149,20 +160,26 @@ export default function EditProfileScreen({ navigation, route }) {
       <Field icon="👤" label={t('signup_field_first_name')} value={firstName} onChangeText={setFirstName} />
       <Field icon="👤" label={t('signup_field_last_name')} value={lastName} onChangeText={setLastName} />
       <Field icon="📞" label={t('signup_field_phone')} value={phone} onChangeText={() => {}} />
+      {/* Stage 21: previously these were `Field variant="dropdown"`
+          with `onPress={() => {}}` — taps did nothing, so users
+          reported "страна не выбирается" and "город не выбирается".
+          For the pilot we only ship in KZ, so country is read-only
+          (with the right flag/copy), and city becomes a free-text
+          field — same shape as RegScreen for the client flow.
+          Picker UI for multi-country onboarding is tracked
+          separately. */}
       <Field
-        variant="dropdown"
         icon="🌐"
         label={t('signup_field_country')}
         value={t('country_kazakhstan')}
-        onPress={() => {}}
+        editable={false}
       />
       <Field
-        variant="dropdown"
         icon="📍"
         label={t('signup_field_city')}
         value={city}
+        onChangeText={setCity}
         placeholder={t('signup_city_pick')}
-        onPress={() => {}}
       />
       {!isDriver ? (
         <Field

@@ -53,6 +53,21 @@
         {
           "microphonePermission": "UrTruck использует микрофон для записи голосовых сообщений"
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "UrTruck использует фото для аватара, груза и документов",
+          "cameraPermission": "UrTruck использует камеру для селфи и фото документов"
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#22C55E",
+          "sounds": []
+        }
       ]
     ],
     "extra": {
