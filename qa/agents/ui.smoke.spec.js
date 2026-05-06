@@ -67,14 +67,12 @@ test('UI · filter chips open distinct sheets', async ({ page }) => {
   await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
   await page.waitForTimeout(1200);
 
-  // Make sure we're past role-pick if it gates the feed
-  // Stage 18: full-image RoleScreen — labels live inside the bitmap.
-  // Prefer the stable testID hotspot, fall back to legacy text matcher.
-  const driverBtn = page.getByTestId('role-driver').or(page.getByText(/Я водитель|driver/i)).first();
-  if (await driverBtn.isVisible().catch(() => false)) {
-    await driverBtn.click().catch(() => {});
-    await page.waitForTimeout(1500);
-  }
+  // Stage 34: role-driver больше не делает guest-shortcut в
+  // Main-feed; теперь ведёт в Reg (телефон + SMS). Чтобы тест
+  // фильтр-чипов работал, попадаем в Cargos feed через прямой
+  // /cargos URL — feed публичный для гостя.
+  await page.goto(`${BASE_URL.replace(/\/$/, '')}/cargos`, { waitUntil: 'networkidle' }).catch(() => {});
+  await page.waitForTimeout(1500);
 
   // Each chip → its own sheet. We assert the OPPOSITE sheets do NOT
   // appear; for instance, clicking Date should not reveal a "Направление"

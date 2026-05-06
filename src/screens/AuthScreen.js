@@ -182,8 +182,11 @@ export default function AuthScreen({ navigation, route }) {
 
       {step === 'phone' ? (
         <>
-          <Text style={s.title}>{t('signup_field_phone')}</Text>
-          <Text style={s.subtitle}>+7 (***) ***-**-**</Text>
+          {/* Stage 34: реальный заголовок "Вход в аккаунт" вместо
+              генерического "Телефон". Пользователь после tap'а
+              "Войти" на RoleScreen сразу видит контекст. */}
+          <Text style={s.title}>{t('auth_screen_title_login')}</Text>
+          <Text style={s.subtitle}>{t('signup_field_phone')} +7 (***) ***-**-**</Text>
 
           <View style={s.phoneRow}>
             <TextInput
