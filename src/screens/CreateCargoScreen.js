@@ -297,10 +297,10 @@ export default function CreateCargoScreen({ navigation, route }) {
       {errors.truckType ? <Text style={s.err}>⚠️ {errors.truckType}</Text> : null}
       {errors.pickupDate ? <Text style={s.err}>⚠️ {errors.pickupDate}</Text> : null}
 
+      {/* Stage 17: same emoji-strip as CreateTrip — quiet labels. */}
       <View style={s.row2}>
         <View style={{ flex: 1 }}>
           <Field
-            icon="⚖️"
             label={t('weight_label')}
             value={tons}
             onChangeText={(v) => { setTons(String(v || '').replace(/[^\d]/g, '')); if (errors.weight) setErrors((e) => ({ ...e, weight: null })); }}
@@ -310,7 +310,6 @@ export default function CreateCargoScreen({ navigation, route }) {
         </View>
         <View style={{ flex: 1 }}>
           <Field
-            icon="📐"
             label={t('volume_label')}
             value={m3}
             onChangeText={(v) => { setM3(String(v || '').replace(/[^\d]/g, '')); if (errors.weight) setErrors((e) => ({ ...e, weight: null })); }}

@@ -128,6 +128,14 @@ export const normalizeCargo = (raw) => {
 export const cargoDisplay = (cargo, t) => {
   const dash = (t && t('not_specified')) || 'Не указано';
   const typeLabel = cargo?.cargoType ? (t ? t(cargo.cargoType) : cargo.cargoType) : null;
+  // Stage 17: weight and volume now ship as two separate display
+  // fields. The legacy combined `weightVol` ("X т · Y м³") is kept
+  // only because share-text builders read it elsewhere, but detail
+  // screens render `weight` and `volume` as two distinct rows so
+  // a missing volume doesn't shadow the present weight (and vice
+  // versa) inside one mushy "Вес/Объём" cell.
+  const weight = cargo?.weightTons > 0 ? `${cargo.weightTons} т` : dash;
+  const volume = cargo?.volumeM3 > 0 ? `${cargo.volumeM3} м³` : dash;
   const weightVol = (() => {
     const parts = [];
     if (cargo?.weightTons > 0) parts.push(`${cargo.weightTons} т`);
@@ -142,6 +150,8 @@ export const cargoDisplay = (cargo, t) => {
     to: sanitizeForDisplay(cargo?.to) || dash,
     cargoDesc: sanitizeForDisplay(cargo?.cargoDesc) || dash,
     cargoType: typeLabel && typeLabel !== cargo?.cargoType ? typeLabel : (cargo?.cargoType || dash),
+    weight,
+    volume,
     weightVol,
     price: formatPrice(cargo?.price, cargo?.currency, t),
     pickupDate: cargo?.pickupDate ? cargo.pickupDate : dash,

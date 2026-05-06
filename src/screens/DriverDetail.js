@@ -141,7 +141,16 @@ export default function DriverDetail({ navigation, route }) {
         <GlassCard>
           <SectionTitle icon="🚚" label={t('transport')} />
           <View style={s.grid}>
-            {[[t('truckType'), t(tt)], [t('volume'), (driver.m3 || '—') + 'м³'], [t('tonnage'), (driver.tons || '—') + 'т']].map(([l, v]) => (
+            {/* Stage 17: insert a single space between number and
+                unit so values render as "20 т" / "82 м³" instead of
+                the squashed "20т" / "82м³" the previous concat
+                produced. Matches the canonical formatter used in
+                cargoDisplay / tripDisplay. */}
+            {[
+              [t('truckType'), t(tt)],
+              [t('volume'),    driver.m3   ? `${driver.m3} м³` : '—'],
+              [t('tonnage'),   driver.tons ? `${driver.tons} т` : '—'],
+            ].map(([l, v]) => (
               <View key={l} style={s.gridItem}>
                 <Text style={[s.gridLabel, { color: v1.textMuted }]}>{l}</Text>
                 <Text style={[s.gridValue, { color: v1.text }]}>{v}</Text>
@@ -211,7 +220,7 @@ export default function DriverDetail({ navigation, route }) {
           <Text style={s.reportBtnText}>🚨 {t('report_driver')}</Text>
         </TouchableOpacity>
       </ScrollView>
-      <ShareModal visible={shareModal} onClose={() => setShareModal(false)} shareText={'UrTruck: ' + driver.name + ', ' + t(tt) + ' ' + driver.m3 + 'м³'} phone={driver.phone} driverId={driver.id} />
+      <ShareModal visible={shareModal} onClose={() => setShareModal(false)} shareText={'UrTruck: ' + driver.name + ', ' + t(tt) + (driver.m3 ? ` ${driver.m3} м³` : '')} phone={driver.phone} driverId={driver.id} />
       <RatingModal
         visible={rateModal}
         onClose={() => setRateModal(false)}
