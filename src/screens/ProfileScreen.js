@@ -19,11 +19,19 @@ const LANGS = [
   { code: 'ZH', flag: '🇨🇳', name: '中文' },
 ];
 
-const confirm = (title, msg, onOk) => {
+// Stage 26: confirm() теперь принимает локализованные кнопки и
+// нормальный message (раньше message был жёстко "?", а cancel был
+// "✕"). Все три параметра title/msg/labels должны проходить через
+// i18n, помойте, без литералов.
+const confirm = (title, msg, onOk, cancelLabel = 'Отмена', confirmLabel = 'OK') => {
   if (Platform.OS === 'web') {
+    if (typeof window === 'undefined' || !window.confirm) { onOk(); return; }
     if (window.confirm(title + (msg ? '\n\n' + msg : ''))) onOk();
   } else {
-    Alert.alert(title, msg, [{ text: '✕', style: 'cancel' }, { text: 'OK', onPress: onOk }]);
+    Alert.alert(title, msg || '', [
+      { text: cancelLabel, style: 'cancel' },
+      { text: confirmLabel, onPress: onOk },
+    ]);
   }
 };
 
@@ -218,14 +226,28 @@ export default function ProfileScreen({ navigation, route }) {
 
         <TouchableOpacity
           style={s.changeRoleBtn}
-          onPress={() => confirm(t('changeRole'), '?', () => setRole(null))}
+          onPress={() => confirm(
+            t('change_role_title'),
+            t('change_role_message'),
+            () => setRole(null),
+            t('cancel') || 'Отмена',
+            t('change_role_confirm'),
+          )}
+          testID="profile-change-role"
         >
           <Text style={s.changeRoleText}>{t('changeRole')}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={s.logoutBtn}
-          onPress={() => confirm(t('logout'), '?', () => signOut())}
+          onPress={() => confirm(
+            t('logout_title') || t('logout'),
+            t('logout_message'),
+            () => signOut(),
+            t('cancel') || 'Отмена',
+            t('logout_confirm') || t('logout'),
+          )}
+          testID="profile-logout"
         >
           <Text style={s.logoutText}>{t('logout')}</Text>
         </TouchableOpacity>
