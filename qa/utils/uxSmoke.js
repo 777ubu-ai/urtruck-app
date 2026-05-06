@@ -224,14 +224,20 @@ for (const file of ['src/screens/CreateCargoScreen.js', 'src/screens/CreateTripS
   if (!/role-login|`role-\$\{id\}`/.test(role) || !/'login'|"login"/.test(role)) {
     failures.push('RoleScreen no longer wires a `role-login` hotspot');
   }
-  if (!/Animated\.Value/.test(role) && !/new Animated\.Value/.test(role)) {
-    failures.push('RoleScreen has no Animated.Value — headlight blink animation missing');
+  // Stage 20: headlight blink animation removed entirely. Strip
+  // comments first so the prose explaining "we removed Animated"
+  // doesn't trip the literal-match below.
+  const roleCode = role.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+  if (/\bAnimated\.(Value|sequence|timing|delay)\s*\(/.test(roleCode)) {
+    failures.push('RoleScreen reintroduced Animated wiring — Stage 20 forbids blink/glow effects on the welcome surface');
   }
-  if (!/Animated\.sequence/.test(role)) {
-    failures.push('RoleScreen has no Animated.sequence — three-pulse blink not wired');
+  if (/\bSRC_HEADLIGHT\b/.test(roleCode)) {
+    failures.push('RoleScreen still defines SRC_HEADLIGHT — Stage 20 dropped the headlight overlay entirely');
   }
+  // Image must keep pointerEvents="none" so taps fall through to
+  // the hotspots beneath.
   if (!/pointerEvents=["']none["']/.test(role)) {
-    failures.push('RoleScreen blink overlay must be pointerEvents="none" so taps reach hotspots');
+    failures.push('RoleScreen image lost pointerEvents="none" — hotspots will not receive taps');
   }
   if (!/enterAs\(['"]driver['"]\)/.test(role) || !/enterAs\(['"]client['"]\)/.test(role)) {
     failures.push('RoleScreen no longer calls enterAs(driver|client) — auth flow broken');
@@ -245,8 +251,8 @@ for (const file of ['src/screens/CreateCargoScreen.js', 'src/screens/CreateTripS
   // computed scale + offset, NOT as fractions of the viewport.
   // ImageBackground/ScrollView were the v65 cover-crop sources of
   // hotspot drift — they must stay out.
-  if (!/SRC_HOTSPOTS\s*=/.test(role) || !/SRC_HEADLIGHT\s*=/.test(role)) {
-    failures.push('RoleScreen no longer defines SRC_HOTSPOTS / SRC_HEADLIGHT in source pixels (v66 fit regression)');
+  if (!/SRC_HOTSPOTS\s*=/.test(role)) {
+    failures.push('RoleScreen no longer defines SRC_HOTSPOTS in source pixels (v66 fit regression)');
   }
   if (!/Math\.min\(\s*winW\s*\/\s*IMAGE_W\s*,\s*availH\s*\/\s*IMAGE_H\s*\)/.test(role)) {
     failures.push('RoleScreen no longer computes the contain-fit scale = min(winW/IMAGE_W, availH/IMAGE_H)');
@@ -261,17 +267,34 @@ for (const file of ['src/screens/CreateCargoScreen.js', 'src/screens/CreateTripS
     failures.push('RoleScreen still imports ScrollView (v66 fit relies on contain letterboxing instead)');
   }
 
-  // Stage 19: SRC_HEADLIGHT must point at the truck's headlamps,
-  // not the windshield. On the 941×1672 source the LED strips sit
-  // around y=810-855, so y must be in the lower half of the image
-  // (y >= 700). Earlier values (~575) lit up the glass.
-  {
-    const m = /SRC_HEADLIGHT\s*=\s*\{[^}]*y:\s*(\d+)/m.exec(role);
-    if (!m) {
-      failures.push('SRC_HEADLIGHT missing or unreadable in RoleScreen');
-    } else if (parseInt(m[1], 10) < 700) {
-      failures.push(`SRC_HEADLIGHT.y=${m[1]} is too high — that lands on the windshield, not the headlamps. Stage 19 requires y >= 700 on the 941×1672 source.`);
-    }
+  // Stage 19: SRC_HEADLIGHT-y constraint deprecated in Stage 20 —
+  // the headlight overlay is gone entirely (see check above).
+}
+
+// Stage 20: TripDetail's sticky CTA collapses to a single
+// "Предложить цену" button. The earlier secondary "Написать
+// водителю" lived right next to it and reappeared inside the
+// deal block once the bid was accepted, so the bar surfaced two
+// chat-shaped paths and split user attention. The single primary
+// is the canonical pre-bid action.
+{
+  if (/testID:\s*['"]trip-sticky-chat['"]/.test(tripDetail)) {
+    failures.push('TripDetail still renders a `trip-sticky-chat` secondary action — Stage 20 collapses sticky to one primary');
+  }
+  if (!/testID:\s*['"]trip-sticky-bid['"]/.test(tripDetail)) {
+    failures.push('TripDetail no longer renders the `trip-sticky-bid` primary CTA');
+  }
+}
+
+// Stage 20: dead components / fields swept.
+{
+  const fs2 = require('fs');
+  const roleCardPath = path.join(ROOT, 'src/components/ui/v1/RoleCard.js');
+  if (fs2.existsSync(roleCardPath)) {
+    failures.push('src/components/ui/v1/RoleCard.js still exists — Stage 18 replaced it with full-image hotspots; drop the orphan component');
+  }
+  if (/weightVol\s*[,:}]/.test(norm)) {
+    failures.push('normalizers.cargoDisplay still exposes the legacy `weightVol` field (Stage 17 split + Stage 20 cleanup)');
   }
 }
 
@@ -304,10 +327,11 @@ console.log('[ux] Stage 17 · CargoDetail renders weight + volume as separate ro
 console.log('[ux] Stage 17 · feed meta pills carry no ⚖️ / 📐 emoji  ✓');
 console.log('[ux] Stage 17 · weight/volume form labels are emoji-free  ✓');
 console.log('[ux] Stage 18 · RoleScreen full-image with role-driver / role-client / role-login hotspots  ✓');
-console.log('[ux] Stage 18 · RoleScreen Animated headlight blink wired (pointerEvents none)  ✓');
+console.log('[ux] Stage 20 · RoleScreen carries no Animated/blink/SRC_HEADLIGHT (welcome is purely static)  ✓');
 console.log('[ux] Stage 18 · enterAs / navigation.navigate(Auth) flow preserved  ✓');
 console.log('[ux] Stage 18 v66 · contain-fit scale + SRC_HOTSPOTS pixel coords (no ImageBackground/ScrollView)  ✓');
-console.log('[ux] Stage 19 · SRC_HEADLIGHT anchored on headlamps (y >= 700, not on windshield)  ✓');
+console.log('[ux] Stage 20 · TripDetail sticky collapsed to single trip-sticky-bid CTA (no chat dupe)  ✓');
+console.log('[ux] Stage 20 · dead RoleCard.js dropped, weightVol field removed from cargoDisplay  ✓');
 
 if (failures.length) {
   console.log('\n[ux] FAIL:');
