@@ -215,15 +215,10 @@ for (const file of ['src/screens/CreateCargoScreen.js', 'src/screens/CreateTripS
       // hotspot ids that other tests rely on.
     }
   }
-  if (!/role-driver|`role-\$\{id\}`/.test(role) || !/'driver'|"driver"/.test(role)) {
-    failures.push('RoleScreen no longer wires a `role-driver` hotspot');
-  }
-  if (!/role-client|`role-\$\{id\}`/.test(role) || !/'client'|"client"/.test(role)) {
-    failures.push('RoleScreen no longer wires a `role-client` hotspot');
-  }
-  if (!/role-login|`role-\$\{id\}`/.test(role) || !/'login'|"login"/.test(role)) {
-    failures.push('RoleScreen no longer wires a `role-login` hotspot');
-  }
+  // Stage 26 свернул эти три проверки в один loop ниже (literal
+  // `testID="role-${id}"` regex), потому что новые real-Pressable
+  // кнопки больше не используют `role: 'driver'` строки в коде —
+  // они используют `enterAs('driver')` напрямую.
   // Stage 20: headlight blink animation removed entirely. Strip
   // comments first so the prose explaining "we removed Animated"
   // doesn't trip the literal-match below.
@@ -246,35 +241,24 @@ for (const file of ['src/screens/CreateCargoScreen.js', 'src/screens/CreateTripS
     failures.push('RoleScreen no longer routes Войти hotspot to Auth screen');
   }
 
-  // Stage 25: hotspot positioning rewritten to percent-based
-  // positions inside an aspect-ratio container. Pixel math + safe-
-  // area inset reads were unstable on real devices (the lower
-  // pill landed off-screen on first paint). Now we require a
-  // HOTSPOTS object with `%` strings and an aspectRatio container.
-  if (!/HOTSPOTS\s*=\s*\{[\s\S]*?driver:\s*\{[\s\S]*?%'/.test(role)) {
-    failures.push('RoleScreen no longer defines HOTSPOTS as percent positions (Stage 25 fit regression)');
-  }
-  if (!/aspectRatio\s*:\s*ASPECT|aspectRatio\s*:\s*IMAGE_W/.test(role)) {
-    failures.push('RoleScreen no longer locks the inner stage to the source aspect-ratio');
-  }
-  if (!/resizeMode=["']contain["']/.test(role)) {
-    failures.push('RoleScreen no longer renders the hero with resizeMode="contain"');
-  }
-  if (/import\s*\{[^}]*ImageBackground[^}]*\}\s*from\s*['"]react-native['"]/.test(role)) {
-    failures.push('RoleScreen still imports ImageBackground (use bare <Image>)');
-  }
-  if (/import\s*\{[^}]*ScrollView[^}]*\}\s*from\s*['"]react-native['"]/.test(role)) {
-    failures.push('RoleScreen still imports ScrollView (Stage 25 layout uses contain letterboxing)');
-  }
-  // Stage 25: each role hotspot must be a Pressable (or
-  // TouchableOpacity) with the stable testID literal, not a
-  // template string — that way Playwright getByTestId works with
-  // `'role-client'` directly.
+  // Stage 26: invisible bitmap hotspots are gone. We now require
+  // real `<Pressable>` elements with visible text (role_*_title
+  // i18n keys) — invisible 0%-opacity overlays on top of a bitmap
+  // proved untappable on iPhone Safari twice (v66, v72).
   for (const id of ['driver', 'client', 'login']) {
-    const literal = new RegExp(`testID=\\{?["\`']role-${id}["\`']\\}?|testID=\\{\`role-\\$\\{id\\}\``);
+    const literal = new RegExp(`testID=["\`']role-${id}["\`']`);
     if (!literal.test(role)) {
-      failures.push(`RoleScreen lost testID="role-${id}" hotspot (Stage 25)`);
+      failures.push(`RoleScreen lost testID="role-${id}" (Stage 26 real-button regression)`);
     }
+  }
+  // Heuristic: the buttons must contain real localised text, not
+  // be empty Pressables. role_driver_title / role_client_title
+  // are the canonical strings used inside the welcome buttons.
+  if (!/t\(['"]role_driver_title['"]/.test(role) || !/t\(['"]role_client_title['"]/.test(role)) {
+    failures.push('RoleScreen buttons no longer render role_driver_title / role_client_title text — Stage 26 forbids empty hotspots');
+  }
+  if (!/Pressable/.test(role)) {
+    failures.push('RoleScreen no longer uses Pressable for the role buttons (Stage 26)');
   }
 
   // Stage 19: SRC_HEADLIGHT-y constraint deprecated in Stage 20 —
@@ -293,6 +277,20 @@ for (const file of ['src/screens/CreateCargoScreen.js', 'src/screens/CreateTripS
   }
   if (!/testID:\s*['"]trip-sticky-bid['"]/.test(tripDetail)) {
     failures.push('TripDetail no longer renders the `trip-sticky-bid` primary CTA');
+  }
+}
+
+// Stage 26: change-role / logout dialogs must not pass literal "?"
+// as the message — that string was rendered to the user verbatim
+// inside Alert.alert + window.confirm. Now we require localised
+// `change_role_message` / `logout_message` keys.
+{
+  const profile = read('src/screens/ProfileScreen.js');
+  if (/confirm\([^,]+,\s*['"]\?['"],/.test(profile)) {
+    failures.push("ProfileScreen still calls confirm(...) with literal '?' as the message (Stage 26 regression)");
+  }
+  if (!/t\(['"]change_role_message['"]\)/.test(profile)) {
+    failures.push('ProfileScreen no longer uses t("change_role_message") for the change-role dialog');
   }
 }
 
@@ -339,7 +337,8 @@ console.log('[ux] Stage 17 · weight/volume form labels are emoji-free  ✓');
 console.log('[ux] Stage 18 · RoleScreen full-image with role-driver / role-client / role-login hotspots  ✓');
 console.log('[ux] Stage 20 · RoleScreen carries no Animated/blink/SRC_HEADLIGHT (welcome is purely static)  ✓');
 console.log('[ux] Stage 18 · enterAs / navigation.navigate(Auth) flow preserved  ✓');
-console.log('[ux] Stage 25 · RoleScreen percent-based HOTSPOTS inside aspectRatio container (no pixel math)  ✓');
+console.log('[ux] Stage 26 · RoleScreen uses real Pressable buttons with role_*_title text (no invisible hotspots)  ✓');
+console.log('[ux] Stage 26 · ProfileScreen change-role dialog uses real i18n message (no literal "?")  ✓');
 console.log('[ux] Stage 20 · TripDetail sticky collapsed to single trip-sticky-bid CTA (no chat dupe)  ✓');
 console.log('[ux] Stage 20 · dead RoleCard.js dropped, weightVol field removed from cargoDisplay  ✓');
 
