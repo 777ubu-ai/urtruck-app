@@ -46,15 +46,14 @@ import { regAPI } from '../utils/registration';
 // в свой контейнер без overflow.
 const ROLE_IMAGE = require('../../assets/role-screen-hero.png');
 
-// Hero aspect after crop (top ~28% of original 941×1672 = 941×470).
-// Stage 27 v5: даже crop до y=700 показывал ghost-пилюлю —
-// bitmap визуально имеет дублированную "Я водитель" пилюлю в
-// районе y=540+. Окончательный crop до y=470 — только грузовик
-// с фарами + green glow подсветка, никаких CTA на bitmap.
-// UrTruck wordmark на оригинале расположен НЕ сверху, а ниже
-// грузовика, поэтому в hero его нет — это OK, для пилотного
-// welcome surface достаточно.
-const HERO_ASPECT = 941 / 470;
+// Hero aspect after crop (top ~60% of original 941×1672 = 941×1000).
+// Stage 28: возвращаем красивый дизайн — UrTruck wordmark + тэглайн
+// "Международные перевозки" + "Грузы и машины без посредников" +
+// полный грузовик. Bitmap-CTA пилюли (на оригинале начинаются с
+// y≈1067) обрезаны вне crop. Stage 27 ошибочно cropала до 470/700,
+// что роняло заголовок и оставляло только грузовик — дизайн стал
+// дешёвым.
+const HERO_ASPECT = 941 / 1000;
 
 export default function RoleScreen({ navigation }) {
   const { t } = useI18n();

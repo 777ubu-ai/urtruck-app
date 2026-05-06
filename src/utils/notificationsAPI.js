@@ -20,7 +20,14 @@ export const notificationsAPI = {
   },
 
   async unread() {
-    const r = await fetch(`${BASE}/unread`, { headers: await headers() });
+    // Stage 28: тот же short-circuit, что и в chatAPI.unread —
+    // гость без token локально получает {unread:0} вместо 403
+    // от сервера, иначе production-консоль шумит "Failed to load
+    // resource" каждый poll.
+    const h = await headers();
+    if (!h.Authorization) return { unread: 0 };
+    const r = await fetch(`${BASE}/unread`, { headers: h });
+    if (!r.ok) return { unread: 0 };
     return r.json();
   },
 

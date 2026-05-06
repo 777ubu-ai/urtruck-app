@@ -30,6 +30,17 @@ function InputRow({
   const colors = useV1Colors();
   return (
     <View style={{ marginBottom: v1Spacing.sm }}>
+      {/* Stage 28: label теперь рендерится ВСЕГДА сверху row,
+          а не только когда value заполнен. Раньше label исчезал
+          в пустом поле и пользователь видел только placeholder
+          "Например: 22" — непонятно, где вес, где объём. Теперь
+          label «Вес, т» / «Объём, м³» всегда видим, placeholder
+          служит подсказкой формата. */}
+      {label ? (
+        <Text style={[v1Typography.small, { color: colors.textDim, marginBottom: 6, marginLeft: 4 }]}>
+          {label}
+        </Text>
+      ) : null}
       <View
         style={[
           s.row,
@@ -38,12 +49,11 @@ function InputRow({
       >
         {icon ? <Text style={[s.icon, { color: colors.textMuted }]}>{icon}</Text> : null}
         <View style={{ flex: 1 }}>
-          {value && label ? <Text style={[v1Typography.small, { color: colors.textDim, marginBottom: 2 }]}>{label}</Text> : null}
           <TextInput
             style={[s.input, { color: colors.text }, !editable && { opacity: 0.7 }]}
             value={value}
             onChangeText={onChangeText}
-            placeholder={placeholder || label}
+            placeholder={placeholder || ''}
             placeholderTextColor={colors.placeholder}
             secureTextEntry={!!secureTextEntry && !isPasswordVisible}
             keyboardType={keyboardType}
@@ -69,24 +79,33 @@ function InputRow({
 function DropdownRow({ icon, label, value, onPress, placeholder, testID }) {
   const colors = useV1Colors();
   return (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.8}
-      style={[
-        s.row,
-        { backgroundColor: colors.surface, borderColor: colors.border, marginBottom: v1Spacing.sm },
-      ]}
-      testID={testID}
-    >
-      {icon ? <Text style={[s.icon, { color: colors.textMuted }]}>{icon}</Text> : null}
-      <View style={{ flex: 1 }}>
-        <Text style={[v1Typography.small, { color: colors.textDim, marginBottom: 2 }]}>{label}</Text>
-        <Text style={[s.input, { color: value ? colors.text : colors.placeholder }]} numberOfLines={1}>
-          {value || placeholder || '—'}
+    <View style={{ marginBottom: v1Spacing.sm }}>
+      {/* Stage 28: dropdown тоже выносит label наружу — единый
+          паттерн форм. Раньше label был внутри row, сжимался,
+          и при пустом value читался как placeholder. */}
+      {label ? (
+        <Text style={[v1Typography.small, { color: colors.textDim, marginBottom: 6, marginLeft: 4 }]}>
+          {label}
         </Text>
-      </View>
-      <Text style={[s.caret, { color: colors.textMuted }]}>⌄</Text>
-    </TouchableOpacity>
+      ) : null}
+      <TouchableOpacity
+        onPress={onPress}
+        activeOpacity={0.8}
+        style={[
+          s.row,
+          { backgroundColor: colors.surface, borderColor: colors.border },
+        ]}
+        testID={testID}
+      >
+        {icon ? <Text style={[s.icon, { color: colors.textMuted }]}>{icon}</Text> : null}
+        <View style={{ flex: 1 }}>
+          <Text style={[s.input, { color: value ? colors.text : colors.placeholder }]} numberOfLines={1}>
+            {value || placeholder || '—'}
+          </Text>
+        </View>
+        <Text style={[s.caret, { color: colors.textMuted }]}>⌄</Text>
+      </TouchableOpacity>
+    </View>
   );
 }
 

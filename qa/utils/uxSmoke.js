@@ -203,8 +203,11 @@ for (const file of ['src/screens/CreateCargoScreen.js', 'src/screens/CreateTripS
   if (/import RoleCard from/.test(role)) {
     failures.push('RoleScreen still imports RoleCard (Stage 18 replaces card buttons with hotspots)');
   }
-  if (!/require\(['"]\.\.\/\.\.\/assets\/role-screen-full\.png['"]\)/.test(role)) {
-    failures.push('RoleScreen does not require assets/role-screen-full.png');
+  // Stage 28: hero PNG переименован в role-screen-hero.png (cropped
+  // top portion, без bitmap-CTA пилюль). Допускаем оба варианта
+  // для backward-compat, но требуем как минимум один из них.
+  if (!/require\(['"]\.\.\/\.\.\/assets\/role-screen-(full|hero)\.png['"]\)/.test(role)) {
+    failures.push('RoleScreen does not require any role-screen-*.png asset');
   }
   for (const id of ['driver', 'client', 'login']) {
     const re = new RegExp(`testID:\\s*\`role-\\$\\{id\\}\`|testID="role-${id}"|testID=\`role-${id}\``);
