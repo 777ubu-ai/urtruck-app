@@ -48,6 +48,25 @@ def collect_issues() -> List[str]:
             "or SMS_PROVIDER=mobizon|twilio with credentials, or TELEGRAM_BOT_TOKEN."
         )
 
+    # Stage 22: BETA_MODE in production is a security hole — anyone
+    # could log in with the universal `0000` code. config.py defaults
+    # it to false in production, but if someone explicitly flips it
+    # back on we still want the operator to see a loud warning.
+    if (os.getenv("BETA_MODE") or "").lower() in ("1", "true", "yes"):
+        issues.append(
+            "BETA_MODE: enabled in production env — universal OTP code (BETA_OTP_CODE) "
+            "would let anyone log in with any phone. Unset BETA_MODE or set BETA_MODE=false."
+        )
+
+    # Stage 22: Mobizon-specific config sanity. If SMS_PROVIDER says
+    # mobizon, the key must be there; otherwise sms calls would
+    # silently 500 in prod the moment WhatsApp throttles.
+    if sms_provider == "mobizon" and not os.getenv("MOBIZON_API_KEY"):
+        issues.append(
+            "Mobizon: SMS_PROVIDER=mobizon but MOBIZON_API_KEY is empty. "
+            "Set the API key from https://mobizon.kz → API."
+        )
+
     # Storage — local FS in production loses uploads on redeploy.
     provider = (os.getenv("STORAGE_PROVIDER") or "local").lower()
     if provider == "local":
