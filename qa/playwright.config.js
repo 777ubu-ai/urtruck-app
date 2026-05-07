@@ -42,6 +42,8 @@ module.exports = defineConfig({
     { name: 'premium-reg',     testMatch: /premium\.registration\.spec\.js$/ },
     // Stage 37: гард на premium login + session persistence.
     { name: 'premium-login',   testMatch: /premium\.login\.spec\.js$/ },
+    // Stage 38: full E2E regression auth + registration.
+    { name: 'full-auth',       testMatch: /full\.auth\.regression\.spec\.js$/ },
     { name: 'trip-clicks',         testMatch: /trip\.detail\.clicks\.spec\.js$/ },
     { name: 'shipper-trip-crash',  testMatch: /shipper\.trip\.crash\.spec\.js$/ },
     { name: 'auditor',             testMatch: /auditor\.full\.spec\.js$/,

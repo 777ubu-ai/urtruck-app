@@ -171,23 +171,26 @@ export default function PremiumRegisterScreen({ navigation, route }) {
 
           <View style={s.fieldBlock}>
             <Text style={s.label}>{t('prem_reg_phone_label')}</Text>
-            <Pressable onPress={() => inputRef.current?.focus?.()}>
-              <TextInput
-                ref={inputRef}
-                value={phone}
-                onChangeText={onChangePhone}
-                style={[
-                  s.input,
-                  { borderColor: error ? '#EF4444' : (validPhone ? accent.main : '#292524') },
-                ]}
-                placeholder={t('prem_reg_phone_placeholder')}
-                placeholderTextColor="#5A6068"
-                keyboardType="phone-pad"
-                autoFocus
-                maxLength={18}
-                testID="prem-reg-phone-input"
-              />
-            </Pressable>
+            {/* Stage 38: убрана Pressable обёртка вокруг TextInput.
+                На rn-web iOS Safari Pressable перехватывает pointerdown
+                и иногда блокирует первый focus у TextInput — это и
+                могло быть причиной "клавиатура не открывается с первого
+                тапа", которое владелец видел на iPhone. */}
+            <TextInput
+              ref={inputRef}
+              value={phone}
+              onChangeText={onChangePhone}
+              style={[
+                s.input,
+                { borderColor: error ? '#EF4444' : (validPhone ? accent.main : '#292524') },
+              ]}
+              placeholder={t('prem_reg_phone_placeholder')}
+              placeholderTextColor="#5A6068"
+              keyboardType="phone-pad"
+              autoFocus
+              maxLength={18}
+              testID="prem-reg-phone-input"
+            />
             {error ? <Text style={s.err}>{error}</Text> : null}
           </View>
 
