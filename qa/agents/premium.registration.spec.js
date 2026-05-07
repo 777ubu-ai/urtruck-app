@@ -46,6 +46,14 @@ async function isCrash(page) {
 // Перехватчик window.open: ставится до клика, любой URL накапливается
 // в массиве `__premOpens`. После клика по ссылке мы проверяем что
 // нужный URL там оказался.
+//
+// Stage 38: РАНЬШЕ дополнительно подменялся getter window.location.href
+// на пустую строку, чтобы перехватывать Linking.openURL → href = url.
+// Это ломало react-navigation web (он читает location при navigate)
+// и приводило к тому, что после клика «Получить код» переход на OTP
+// screen зависал. Убрано — хватает spy на window.open, чтобы
+// проверить terms/privacy clicks (наш ConsentRow на web использует
+// именно window.open).
 async function installOpenSpy(page) {
   await page.addInitScript(() => {
     window.__premOpens = [];
@@ -56,15 +64,6 @@ async function installOpenSpy(page) {
       // не открываем — иначе test runner зависнет на новой странице.
       return { closed: false, focus: () => {}, location: { href: url } };
     };
-    // Linking.openURL → location.href = url. Перехватим setter, чтобы
-    // случайно не уйти со страницы.
-    try {
-      Object.defineProperty(window.location, 'href', {
-        configurable: true,
-        set: (v) => { try { window.__premOpens.push(String(v || '')); } catch {} },
-        get: () => '',
-      });
-    } catch {}
   });
 }
 
@@ -74,12 +73,29 @@ async function getOpens(page) {
 
 test.describe.configure({ mode: 'serial' });
 
+// Stage 38: по умолчанию backend-вызовы мокаются, иначе быстрый
+// прогон upgrades нагнетает 429 от Mobizon rate-limit. Чтобы реально
+// дёрнуть Mobizon — поставить env QA_LIVE_SMS=1.
+const LIVE_SMS = process.env.QA_LIVE_SMS === '1';
+
+async function installRegMock(page) {
+  if (LIVE_SMS) return;
+  await page.route('**/api/v1/register/whatsapp/send', (route) => {
+    route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ sent: true, mock: true, beta: true, code: '0000', channel: 'sms' }),
+    });
+  });
+  // unread/me не нужны для этого спека (не доходим до Main).
+}
+
 async function runRoleFlow(page, roleTestId, scenarioLabel) {
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 
   await installOpenSpy(page);
+  await installRegMock(page);
 
   await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
   await page.waitForTimeout(1500);
@@ -203,16 +219,24 @@ async function runRoleFlow(page, roleTestId, scenarioLabel) {
 
   // 9. клик «Получить код» → переход на OTP
   await sendBtn.click({ force: true }).catch(() => {});
-  // ждём перехода на OTP screen — backend Mobizon может ответить за 1-3с,
-  // даём щедрый таймаут, но не блокируем тест на ошибке сети.
+  // Playwright isVisible({timeout}) — это instant snapshot, timeout
+  // там игнорируется. Чтобы реально ждать появления OTP screen
+  // используем waitFor({state:'visible'}). Mobizon обычно отвечает
+  // за 1-2с, react-navigation переход еще ~200-400мс.
   const otpScreen = page.getByTestId('prem-reg-otp-screen');
-  const reached = await otpScreen.isVisible({ timeout: 8000 }).catch(() => false);
+  let reached = false;
+  try {
+    await otpScreen.waitFor({ state: 'visible', timeout: 15000 });
+    reached = true;
+  } catch {
+    reached = false;
+  }
   if (reached) {
     log.pass(ACTOR, `${scenarioLabel}-otp-screen-opened`);
     await snap(page, 'premium-reg', `${scenarioLabel}-otp`);
   } else {
     log.p1(ACTOR, `${scenarioLabel}-otp-screen-opened`,
-      'OTP screen not reached in 8s — может быть network/backend, не обязательно P0');
+      'OTP screen not reached in 15s — проверить backend Mobizon и navigate');
   }
 
   // 10. console errors
