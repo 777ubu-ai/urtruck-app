@@ -55,16 +55,30 @@ export const AuthProvider = ({ children }) => {
         setHasToken(false);
         setVerificationLevel(0);
         setLoading(false);
+        if (typeof __DEV__ !== 'undefined' && __DEV__) {
+          // eslint-disable-next-line no-console
+          console.warn('[Auth] no token — clean state');
+        }
         return;
       }
       setHasToken(true);
       const raw = await storage.get(KEY);
+      let restored = null;
       if (raw) {
-        try { setSession(JSON.parse(raw)); } catch {}
+        try { restored = JSON.parse(raw); setSession(restored); } catch {}
       }
       const savedLevel = await regAPI.getLevel();
       setVerificationLevel(savedLevel);
       setLoading(false);
+      if (typeof __DEV__ !== 'undefined' && __DEV__) {
+        // eslint-disable-next-line no-console
+        console.warn('[Auth] session restored', {
+          hasToken: true,
+          hasSession: !!restored,
+          role: restored?.user?.role || null,
+          level: savedLevel,
+        });
+      }
       refreshLevel().catch(() => {});
     })();
   }, [refreshLevel]);
@@ -87,11 +101,19 @@ export const AuthProvider = ({ children }) => {
     if (!existing) {
       throw new Error('NO_TOKEN');
     }
-    const s = { user: { phone, role: null, id: 'u_' + Date.now() } };
+    // Сохраняем prev role если уже была — иначе logout-after-login
+    // прошёл без потери выбора role и пользователь возвращается на тот
+    // же раздел.
+    const prevRole = session?.user?.role || null;
+    const s = { user: { phone, role: prevRole, id: session?.user?.id || ('u_' + Date.now()) } };
     setSession(s);
     setVerificationLevel(level);
     setHasToken(true);
     await storage.set(KEY, JSON.stringify(s));
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      // eslint-disable-next-line no-console
+      console.warn('[Auth] login success', { phone, level, role: prevRole });
+    }
     return true;
   };
 
@@ -108,7 +130,12 @@ export const AuthProvider = ({ children }) => {
     setVerificationLevel(0);
     setHasToken(false);
     storage.remove(KEY);
+    storage.remove('ur_verification_level');
     regAPI.clearToken();
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      // eslint-disable-next-line no-console
+      console.warn('[Auth] logout cleared session');
+    }
   };
 
   return (

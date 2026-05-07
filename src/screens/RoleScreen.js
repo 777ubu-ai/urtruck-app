@@ -102,7 +102,7 @@ export default function RoleScreen({ navigation }) {
       console.warn('[RoleScreen] role-login pressed');
     }
     try {
-      navigation.navigate('Auth');
+      navigation.navigate('Login');
     } catch (e) {
       // eslint-disable-next-line no-console
       console.warn('[RoleScreen] navigate Auth failed:', e?.message || e);
