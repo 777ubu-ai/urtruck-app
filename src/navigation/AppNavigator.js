@@ -15,8 +15,14 @@ import HowItWorksScreen from '../screens/HowItWorksScreen';
 import AboutScreen from '../screens/AboutScreen';
 import AuthScreen from '../screens/AuthScreen';
 import RoleScreen from '../screens/RoleScreen';
+// Stage 35: старый RegScreen и SignUpScreen больше не показываются
+// пользователю в основном flow. Импорты сохранены только для qaPreview
+// (?qa=design), где галерея макетов всё ещё на них ссылается.
 import RegScreen from '../screens/RegScreen';
 import SignUpScreen from '../screens/SignUpScreen';
+import PremiumRegisterScreen from '../screens/registration/PremiumRegisterScreen';
+import PremiumOtpScreen from '../screens/registration/PremiumOtpScreen';
+import PremiumProfileScreen from '../screens/registration/PremiumProfileScreen';
 import FeedScreen from '../screens/FeedScreen';
 import CargoDetail from '../screens/CargoDetail';
 import DriverDetail from '../screens/DriverDetail';
@@ -101,9 +107,14 @@ export default function AppNavigator() {
       <Stack.Navigator initialRouteName="DesignPreview" screenOptions={{ headerShown: false }}>
         <Stack.Screen name="DesignPreview" component={DesignPreviewScreen} />
         <Stack.Screen name="Role" component={RoleScreen} />
+        {/* Legacy SignUp/Reg остаются только в qaPreview, чтобы галерея макетов
+            могла их открыть. В реальном flow ниже они не зарегистрированы. */}
         <Stack.Screen name="SignUp" component={SignUpScreen} />
+        <Stack.Screen name="LegacyReg" component={RegScreen} />
         <Stack.Screen name="Auth" component={AuthScreen} />
-        <Stack.Screen name="Reg" component={RegScreen} />
+        <Stack.Screen name="Reg" component={PremiumRegisterScreen} />
+        <Stack.Screen name="RegOtp" component={PremiumOtpScreen} />
+        <Stack.Screen name="RegProfile" component={PremiumProfileScreen} />
         <Stack.Screen name="Main" component={MainTabs} />
         <Stack.Screen name="CargoDetail" component={CargoDetail} />
         <Stack.Screen name="DriverDetail" component={DriverDetail} />
@@ -122,12 +133,16 @@ export default function AppNavigator() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {!hasToken || !session || !hasRole ? (
-        // Нет токена / нет сессии / нет роли → выбор роли
+        // Нет токена / нет сессии / нет роли → выбор роли + premium-регистрация.
+        // Stage 35: 'Reg' теперь PremiumRegisterScreen (телефон), 'RegOtp' и
+        // 'RegProfile' — новые экраны. 'SignUp' (старый duplicate) больше не
+        // подключён, чтобы пользователь не мог случайно попасть в legacy UI.
         <>
           <Stack.Screen name="Role" component={RoleScreen} />
-          <Stack.Screen name="SignUp" component={SignUpScreen} />
           <Stack.Screen name="Auth" component={AuthScreen} />
-          <Stack.Screen name="Reg" component={RegScreen} />
+          <Stack.Screen name="Reg" component={PremiumRegisterScreen} />
+          <Stack.Screen name="RegOtp" component={PremiumOtpScreen} />
+          <Stack.Screen name="RegProfile" component={PremiumProfileScreen} />
           <Stack.Screen name="Main" component={MainTabs} />
           <Stack.Screen name="CargoDetail" component={CargoDetail} />
           <Stack.Screen name="DriverDetail" component={DriverDetail} />

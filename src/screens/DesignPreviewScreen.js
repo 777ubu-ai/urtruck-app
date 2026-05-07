@@ -79,9 +79,18 @@ const mockPartner = { id: 'qa-preview-partner', name: 'Демо-собеседн
 const SECTIONS = [
   { title: 'Onboarding', items: [
     { label: 'Welcome / Role', screen: 'Role' },
-    { label: 'SignUp driver',  screen: 'SignUp', params: { role: 'driver' } },
-    { label: 'SignUp cargo owner', screen: 'SignUp', params: { role: 'client' } },
-    { label: 'OTP',            screen: 'Auth',   params: { role: 'driver' } },
+    // Stage 35: новые premium-экраны регистрации.
+    { label: 'Premium Reg phone (driver)', screen: 'Reg',        params: { role: 'driver' } },
+    { label: 'Premium Reg phone (client)', screen: 'Reg',        params: { role: 'client' } },
+    { label: 'Premium OTP (driver)',       screen: 'RegOtp',     params: { role: 'driver', phone: '+77479171118' } },
+    { label: 'Premium Profile (driver)',   screen: 'RegProfile', params: { role: 'driver' } },
+    { label: 'Premium Profile (client)',   screen: 'RegProfile', params: { role: 'client' } },
+    // Legacy дизайны — оставлены в галерее для исторического сравнения,
+    // в реальном flow пользователь их больше не увидит.
+    { label: 'Legacy SignUp driver',  screen: 'SignUp',    params: { role: 'driver' } },
+    { label: 'Legacy SignUp client',  screen: 'SignUp',    params: { role: 'client' } },
+    { label: 'Legacy multi-step Reg', screen: 'LegacyReg', params: { role: 'driver' } },
+    { label: 'OTP (Auth)',            screen: 'Auth',      params: { role: 'driver' } },
     { label: 'Profile setup driver',  screen: 'EditProfile', params: { role: 'driver' } },
     { label: 'Profile setup cargo owner', screen: 'EditProfile', params: { role: 'client' } },
   ]},

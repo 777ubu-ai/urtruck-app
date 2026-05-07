@@ -38,6 +38,8 @@ module.exports = defineConfig({
     { name: 'cargo-currency',  testMatch: /cargo\.currency\.spec\.js$/ },
     { name: 'preview-gate',    testMatch: /preview\.gate\.spec\.js$/ },
     { name: 'ui-smoke',        testMatch: /ui\.smoke\.spec\.js$/ },
+    // Stage 35: гард на удаление старой регистрации.
+    { name: 'premium-reg',     testMatch: /premium\.registration\.spec\.js$/ },
     { name: 'trip-clicks',         testMatch: /trip\.detail\.clicks\.spec\.js$/ },
     { name: 'shipper-trip-crash',  testMatch: /shipper\.trip\.crash\.spec\.js$/ },
     { name: 'auditor',             testMatch: /auditor\.full\.spec\.js$/,
