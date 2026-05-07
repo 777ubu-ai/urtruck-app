@@ -52,6 +52,11 @@ export const regAPI = {
     // Stage 24: backend требует consent=true перед отправкой OTP.
     // Передаём явный consent (UI выставляет true только если
     // чекбокс отмечен) + опционально role для audit.
+    //
+    // Stage 39: backend rate-limit (429) надо отдавать UI как
+    // {cooldown_sec, cooldown: true} чтобы PremiumRegister/Login
+    // показал «Код уже отправлен — повторно через NN мин» и кнопку
+    // «Ввести код», вместо сырого «Подожди 1513 сек».
     const r = await fetch(`${BASE}/whatsapp/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -62,7 +67,26 @@ export const regAPI = {
         role: extra.role || null,
       }),
     });
-    return r.json();
+    let data = {};
+    try { data = await r.json(); } catch {}
+    if (r.status === 429) {
+      // backend кладёт detail = "Слишком много запросов. Подожди NNN сек."
+      // и Retry-After header. Извлекаем число секунд.
+      const retryHeader = r.headers.get('Retry-After');
+      let cooldown = retryHeader ? parseInt(retryHeader, 10) : 0;
+      if (!cooldown) {
+        const m = /(\d+)\s*сек/.exec(data.detail || '');
+        if (m) cooldown = parseInt(m[1], 10);
+      }
+      return {
+        sent: false,
+        ok: false,
+        cooldown: true,
+        cooldown_sec: cooldown || 60,
+        detail: data.detail || 'rate_limited',
+      };
+    }
+    return data;
   },
 
   async verifyCode(phone, code) {

@@ -62,6 +62,8 @@ export default function PremiumLoginScreen({ navigation }) {
   const [phone, setPhone] = useState('+7');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // Stage 39: cooldown handling — см. PremiumRegisterScreen.
+  const [cooldownSec, setCooldownSec] = useState(0);
   const inputRef = useRef(null);
 
   const digits = phone.replace(/\D/g, '');
@@ -99,20 +101,31 @@ export default function PremiumLoginScreen({ navigation }) {
       // тот же channel и не создаст дубликат.
       const r = await regAPI.sendCode(normalized, 'sms', { consent: true, role: null });
       if (r.sent || r.ok) {
+        setCooldownSec(0);
         navigation.navigate('RegOtp', {
           mode: 'login',
           phone: normalized,
           mockCode: r.mock || r.beta ? r.code : null,
         });
+      } else if (r.cooldown) {
+        setCooldownSec(r.cooldown_sec || 60);
+        setError('');
       } else {
-        setError(r.detail || t('prem_reg_send_failed'));
-        try { toast(r.detail || t('prem_reg_send_failed'), 'error'); } catch {}
+        setError(t('prem_reg_send_failed_friendly'));
+        try { toast(t('prem_reg_send_failed_friendly'), 'error'); } catch {}
       }
     } catch (e) {
-      setError(t('prem_reg_send_failed'));
-      try { toast(t('prem_reg_send_failed'), 'error'); } catch {}
+      setError(t('prem_reg_send_failed_friendly'));
+      try { toast(t('prem_reg_send_failed_friendly'), 'error'); } catch {}
     } finally {
       setLoading(false);
+    }
+  };
+
+  const goEnterCode = () => {
+    const normalized = '+' + digits;
+    if (digits.length === 11 && digits[0] === '7') {
+      navigation.navigate('RegOtp', { mode: 'login', phone: normalized });
     }
   };
 
@@ -168,6 +181,26 @@ export default function PremiumLoginScreen({ navigation }) {
             {error ? <Text style={s.err}>{error}</Text> : null}
           </View>
 
+          {cooldownSec > 0 ? (
+            <View style={s.cooldownBox} testID="prem-login-cooldown">
+              <Text style={s.cooldownTitle}>{t('prem_reg_cooldown_title')}</Text>
+              <Text style={s.cooldownBody}>
+                {cooldownSec >= 60
+                  ? (t('prem_reg_cooldown_body') || '').replace('{min}', String(Math.ceil(cooldownSec / 60)))
+                  : (t('prem_reg_cooldown_body_sec') || '').replace('{sec}', String(cooldownSec))}
+              </Text>
+              <Pressable
+                onPress={goEnterCode}
+                testID="prem-login-cooldown-enter-code"
+                style={({ pressed }) => [s.cooldownBtn, { borderColor: accent.main }, pressed && { opacity: 0.7 }]}
+              >
+                <Text style={[s.cooldownBtnText, { color: accent.main }]}>
+                  {t('prem_reg_cooldown_enter_code')}
+                </Text>
+              </Pressable>
+            </View>
+          ) : null}
+
           <Pressable
             onPress={onSubmit}
             disabled={loading}
@@ -183,7 +216,10 @@ export default function PremiumLoginScreen({ navigation }) {
             ]}
           >
             {loading ? (
-              <ActivityIndicator color="#fff" />
+              <View style={s.ctaLoadingRow}>
+                <ActivityIndicator color="#fff" />
+                <Text style={[s.ctaText, { marginLeft: 10 }]}>{t('prem_reg_sending')}</Text>
+              </View>
             ) : (
               <Text style={s.ctaText}>{t('prem_login_send_code')}</Text>
             )}
@@ -271,4 +307,17 @@ const s = StyleSheet.create({
   linkRow: { alignItems: 'center', marginTop: 20, paddingVertical: 8 },
   linkMuted: { color: '#9CA3AF', fontSize: 13, fontWeight: '500' },
   linkText: { fontWeight: '800' },
+  ctaLoadingRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+  },
+  cooldownBox: {
+    marginTop: 16, padding: 14, borderRadius: 14,
+    backgroundColor: 'rgba(245,158,11,0.08)',
+    borderWidth: 1, borderColor: 'rgba(245,158,11,0.35)',
+    alignItems: 'center',
+  },
+  cooldownTitle: { color: '#F5F5F5', fontSize: 14, fontWeight: '800', marginBottom: 4, textAlign: 'center' },
+  cooldownBody: { color: '#9CA3AF', fontSize: 13, fontWeight: '500', textAlign: 'center', marginBottom: 12 },
+  cooldownBtn: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 12, borderWidth: 1.5 },
+  cooldownBtnText: { fontSize: 14, fontWeight: '800' },
 });

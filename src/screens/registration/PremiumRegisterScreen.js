@@ -61,6 +61,10 @@ export default function PremiumRegisterScreen({ navigation, route }) {
   const [consent, setConsent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // Stage 39: cooldown state. Если backend вернул 429, показываем
+  // понятный banner вместо сырого «Подожди 1513 сек» и кнопку
+  // «Ввести код» — переход на OTP без повторной отправки.
+  const [cooldownSec, setCooldownSec] = useState(0);
   const inputRef = useRef(null);
 
   const digits = phone.replace(/\D/g, '');
@@ -116,20 +120,34 @@ export default function PremiumRegisterScreen({ navigation, route }) {
       // — пробелы из UI-маски уйдут в backend и сломают Mobizon validation.
       const r = await regAPI.sendCode(normalized, 'sms', { consent: true, role });
       if (r.sent || r.ok) {
+        setCooldownSec(0);
         navigation.navigate('RegOtp', {
           role,
           phone: normalized,
           mockCode: r.mock || r.beta ? r.code : null,
         });
+      } else if (r.cooldown) {
+        // 429 от backend — SMS уже отправлялась недавно, пользователь
+        // должен либо подождать, либо ввести код, который, возможно,
+        // уже пришёл на тот же номер.
+        setCooldownSec(r.cooldown_sec || 60);
+        setError('');
       } else {
-        setError(r.detail || t('prem_reg_send_failed'));
-        try { toast(r.detail || t('prem_reg_send_failed'), 'error'); } catch {}
+        setError(t('prem_reg_send_failed_friendly'));
+        try { toast(t('prem_reg_send_failed_friendly'), 'error'); } catch {}
       }
     } catch (e) {
-      setError(t('prem_reg_send_failed'));
-      try { toast(t('prem_reg_send_failed'), 'error'); } catch {}
+      setError(t('prem_reg_send_failed_friendly'));
+      try { toast(t('prem_reg_send_failed_friendly'), 'error'); } catch {}
     } finally {
       setLoading(false);
+    }
+  };
+
+  const goEnterCode = () => {
+    const normalized = '+' + digits;
+    if (digits.length === 11 && digits[0] === '7') {
+      navigation.navigate('RegOtp', { role, phone: normalized });
     }
   };
 
@@ -201,10 +219,33 @@ export default function PremiumRegisterScreen({ navigation, route }) {
             testID="prem-reg-consent"
           />
 
+          {/* Stage 39: cooldown banner. Backend (429 rate-limit) сообщает,
+              что SMS уже отправлен и нужно подождать. Показываем понятный
+              текст + кнопку «Ввести код», чтобы пользователь, который
+              получил SMS ранее, мог сразу пойти на OTP. */}
+          {cooldownSec > 0 ? (
+            <View style={s.cooldownBox} testID="prem-reg-cooldown">
+              <Text style={s.cooldownTitle}>{t('prem_reg_cooldown_title')}</Text>
+              <Text style={s.cooldownBody}>
+                {cooldownSec >= 60
+                  ? (t('prem_reg_cooldown_body') || '').replace('{min}', String(Math.ceil(cooldownSec / 60)))
+                  : (t('prem_reg_cooldown_body_sec') || '').replace('{sec}', String(cooldownSec))}
+              </Text>
+              <Pressable
+                onPress={goEnterCode}
+                testID="prem-reg-cooldown-enter-code"
+                style={({ pressed }) => [s.cooldownBtn, { borderColor: accent.main }, pressed && { opacity: 0.7 }]}
+              >
+                <Text style={[s.cooldownBtnText, { color: accent.main }]}>
+                  {t('prem_reg_cooldown_enter_code')}
+                </Text>
+              </Pressable>
+            </View>
+          ) : null}
+
           {/* Stage 36: disabled-prop оставлен только на loading.
-              Валидация телефона и consent ушла в onSubmit с явными
-              toast/inline ошибками — это и фиксит "кнопка серая,
-              но непонятно почему", которая словилась на v85. */}
+              Stage 39: при loading показываем «Отправляем SMS...» текст
+              рядом с спиннером — пользователь не остаётся в неведении. */}
           <Pressable
             onPress={onSubmit}
             disabled={loading}
@@ -220,7 +261,10 @@ export default function PremiumRegisterScreen({ navigation, route }) {
             ]}
           >
             {loading ? (
-              <ActivityIndicator color="#fff" />
+              <View style={s.ctaLoadingRow}>
+                <ActivityIndicator color="#fff" />
+                <Text style={[s.ctaText, { marginLeft: 10 }]}>{t('prem_reg_sending')}</Text>
+              </View>
             ) : (
               <Text style={s.ctaText}>{t('prem_reg_send_code')}</Text>
             )}
@@ -327,6 +371,44 @@ const s = StyleSheet.create({
   },
   ctaText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
 
+  ctaLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cooldownBox: {
+    marginTop: 16,
+    padding: 14,
+    borderRadius: 14,
+    backgroundColor: 'rgba(245,158,11,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(245,158,11,0.35)',
+    alignItems: 'center',
+  },
+  cooldownTitle: {
+    color: '#F5F5F5',
+    fontSize: 14,
+    fontWeight: '800',
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  cooldownBody: {
+    color: '#9CA3AF',
+    fontSize: 13,
+    fontWeight: '500',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  cooldownBtn: {
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1.5,
+  },
+  cooldownBtnText: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
   loginRow: {
     alignItems: 'center',
     marginTop: 20,

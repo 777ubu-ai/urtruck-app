@@ -515,6 +515,76 @@ test('client · full registration + reload + logout + login', async ({ page }) =
 
 // ─── Auth gate: гостевой клик «Подробнее» ведёт на Premium screens ──────
 
+// ─── Stage 39: cooldown UX ──────────────────────────────────────────────
+
+test('cooldown · 429 from backend shows friendly banner + Ввести код', async ({ page }) => {
+  await clearStorage(page);
+  // Перехватываем send-endpoint и отвечаем 429 c retry_after.
+  await page.route('**/api/v1/register/whatsapp/send', (route) => {
+    route.fulfill({
+      status: 429,
+      contentType: 'application/json',
+      headers: { 'Retry-After': '1500' },
+      body: JSON.stringify({ detail: 'Слишком много запросов. Подожди 1500 сек.' }),
+    });
+  });
+
+  await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
+  await clearLocalStorage(page);
+  await page.reload({ waitUntil: 'networkidle' }).catch(() => {});
+  await page.waitForTimeout(1500);
+
+  await page.getByTestId('role-driver').click({ force: true }).catch(() => {});
+  await page.waitForTimeout(1000);
+
+  await page.getByTestId('prem-reg-phone-input').type('+77479171118', { delay: 25 }).catch(() => {});
+  await page.waitForTimeout(150);
+  await page.getByTestId('prem-reg-consent-toggle').click({ force: true }).catch(() => {});
+  await page.waitForTimeout(150);
+  await page.getByTestId('prem-reg-send-code').click({ force: true }).catch(() => {});
+  await page.waitForTimeout(800);
+
+  // 1. Должен появиться cooldown-блок (не сырой текст «Подожди 1500 сек»)
+  const cooldownBox = page.getByTestId('prem-reg-cooldown');
+  if (await cooldownBox.isVisible().catch(() => false)) {
+    log.pass(ACTOR, 'cooldown-banner-visible');
+  } else {
+    log.p0(ACTOR, 'cooldown-banner-visible', 'cooldown box not shown after 429');
+  }
+
+  // 2. Должна быть кнопка «Ввести код»
+  const enterCodeBtn = page.getByTestId('prem-reg-cooldown-enter-code');
+  if (await enterCodeBtn.isVisible().catch(() => false)) {
+    log.pass(ACTOR, 'cooldown-enter-code-visible');
+  } else {
+    log.p0(ACTOR, 'cooldown-enter-code-visible', 'enter-code button not shown');
+  }
+
+  // 3. Понятный текст вместо raw "Подожди 1500 сек" — проверяем что
+  //    в DOM нет сырого "1500 сек", только "25 мин" (1500/60 = 25).
+  const txt = await bodyText(page);
+  if (!/Подожди\s+\d+\s+сек/.test(txt)) {
+    log.pass(ACTOR, 'cooldown-no-raw-text');
+  } else {
+    log.p1(ACTOR, 'cooldown-no-raw-text', 'raw "Подожди NN сек" still in DOM');
+  }
+  if (/25\s+мин|25\s*min/.test(txt)) {
+    log.pass(ACTOR, 'cooldown-friendly-minutes');
+  } else {
+    log.p1(ACTOR, 'cooldown-friendly-minutes', 'expected "25 мин" not found');
+  }
+
+  // 4. Клик «Ввести код» → переход на OTP screen без повторной отправки
+  await enterCodeBtn.click({ force: true }).catch(() => {});
+  await page.waitForTimeout(800);
+  if (await page.getByTestId('prem-reg-otp-screen').isVisible().catch(() => false)) {
+    log.pass(ACTOR, 'cooldown-enter-code-opens-otp');
+  } else {
+    log.p0(ACTOR, 'cooldown-enter-code-opens-otp', 'OTP screen did not open via enter-code button');
+  }
+  await snap(page, 'cooldown', 'after-enter-code');
+});
+
 test('auth gate · guest cargo Подробнее opens premium register (driver)', async ({ page }) => {
   const errors = await captureNet(page);
   await clearStorage(page);
