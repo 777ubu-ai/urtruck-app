@@ -154,11 +154,15 @@ export default function AuthScreen({ navigation, route }) {
         signIn(phone, r.verification_level || 1);
         toast(r.beta ? '✅ Beta' : '✅ ' + t('login_action'), 'success');
         push.autoRegister?.().catch(() => {});
-        if (r.beta && r.role && r.role !== 'guest') {
+        // Stage 35: после успешного OTP телефон уже подтверждён —
+        // больше не надо отправлять пользователя на PremiumRegisterScreen
+        // (где он бы повторно вводил тот же телефон). Переходим сразу в
+        // RegProfile (если роль выбрана) или на Role (если нет).
+        if ((r.beta || r.role) && r.role && r.role !== 'guest') {
           setRole(r.role);
           navigation.reset({ index: 0, routes: [{ name: 'Main', params: { role: r.role } }] });
         } else if (role) {
-          navigation.replace('Reg', { role });
+          navigation.replace('RegProfile', { role, phone });
         } else {
           navigation.replace('Role');
         }

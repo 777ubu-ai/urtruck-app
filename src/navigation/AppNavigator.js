@@ -15,8 +15,16 @@ import HowItWorksScreen from '../screens/HowItWorksScreen';
 import AboutScreen from '../screens/AboutScreen';
 import AuthScreen from '../screens/AuthScreen';
 import RoleScreen from '../screens/RoleScreen';
+// Stage 35-37: старые RegScreen / SignUpScreen / AuthScreen больше не
+// показываются пользователю в основном flow. Импорты сохранены только
+// для qaPreview (?qa=design), где галерея макетов всё ещё на них
+// ссылается, и как fallback в случае deeplink.
 import RegScreen from '../screens/RegScreen';
 import SignUpScreen from '../screens/SignUpScreen';
+import PremiumRegisterScreen from '../screens/registration/PremiumRegisterScreen';
+import PremiumOtpScreen from '../screens/registration/PremiumOtpScreen';
+import PremiumProfileScreen from '../screens/registration/PremiumProfileScreen';
+import PremiumLoginScreen from '../screens/registration/PremiumLoginScreen';
 import FeedScreen from '../screens/FeedScreen';
 import CargoDetail from '../screens/CargoDetail';
 import DriverDetail from '../screens/DriverDetail';
@@ -101,9 +109,16 @@ export default function AppNavigator() {
       <Stack.Navigator initialRouteName="DesignPreview" screenOptions={{ headerShown: false }}>
         <Stack.Screen name="DesignPreview" component={DesignPreviewScreen} />
         <Stack.Screen name="Role" component={RoleScreen} />
+        {/* Legacy экраны — оставлены только для qaPreview-галереи. */}
         <Stack.Screen name="SignUp" component={SignUpScreen} />
-        <Stack.Screen name="Auth" component={AuthScreen} />
-        <Stack.Screen name="Reg" component={RegScreen} />
+        <Stack.Screen name="LegacyReg" component={RegScreen} />
+        <Stack.Screen name="LegacyAuth" component={AuthScreen} />
+        {/* Premium flow */}
+        <Stack.Screen name="Auth" component={PremiumLoginScreen} />
+        <Stack.Screen name="Login" component={PremiumLoginScreen} />
+        <Stack.Screen name="Reg" component={PremiumRegisterScreen} />
+        <Stack.Screen name="RegOtp" component={PremiumOtpScreen} />
+        <Stack.Screen name="RegProfile" component={PremiumProfileScreen} />
         <Stack.Screen name="Main" component={MainTabs} />
         <Stack.Screen name="CargoDetail" component={CargoDetail} />
         <Stack.Screen name="DriverDetail" component={DriverDetail} />
@@ -122,12 +137,17 @@ export default function AppNavigator() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {!hasToken || !session || !hasRole ? (
-        // Нет токена / нет сессии / нет роли → выбор роли
+        // Нет токена / нет сессии / нет роли → выбор роли + premium-регистрация.
+        // Stage 37: 'Auth' и 'Login' оба указывают на PremiumLoginScreen,
+        // старый AuthScreen больше не показывается пользователю в основном
+        // flow (только в qaPreview как 'LegacyAuth').
         <>
           <Stack.Screen name="Role" component={RoleScreen} />
-          <Stack.Screen name="SignUp" component={SignUpScreen} />
-          <Stack.Screen name="Auth" component={AuthScreen} />
-          <Stack.Screen name="Reg" component={RegScreen} />
+          <Stack.Screen name="Auth" component={PremiumLoginScreen} />
+          <Stack.Screen name="Login" component={PremiumLoginScreen} />
+          <Stack.Screen name="Reg" component={PremiumRegisterScreen} />
+          <Stack.Screen name="RegOtp" component={PremiumOtpScreen} />
+          <Stack.Screen name="RegProfile" component={PremiumProfileScreen} />
           <Stack.Screen name="Main" component={MainTabs} />
           <Stack.Screen name="CargoDetail" component={CargoDetail} />
           <Stack.Screen name="DriverDetail" component={DriverDetail} />
