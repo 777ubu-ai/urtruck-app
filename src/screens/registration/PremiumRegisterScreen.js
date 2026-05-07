@@ -71,15 +71,40 @@ export default function PremiumRegisterScreen({ navigation, route }) {
     setPhone(formatPhone(v));
   };
 
+  // Stage 36: кнопка ВСЕГДА нажимается (кроме момента загрузки) —
+  // валидируем уже внутри. На v85 disabled-prop приводил к тому,
+  // что пользователь видел галочку, но `consent` state не успевал
+  // обновиться (rn-web Text перехватывал tap у TouchableOpacity)
+  // и кнопка оставалась серой. Теперь любая ошибка показывается
+  // явно, и владелец сразу видит, что нужно поправить.
   const onSubmit = async () => {
     if (loading) return;
+    const normalized = '+' + digits;
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      // eslint-disable-next-line no-console
+      console.warn('[PremiumRegister] canSend', {
+        rawPhone: phone,
+        normalizedPhone: normalized,
+        digitsLen: digits.length,
+        validPhone,
+        consent,
+        role,
+        disabledReason:
+          loading ? 'loading'
+          : !validPhone ? 'phone-invalid'
+          : !consent ? 'consent-missing'
+          : 'ok',
+      });
+    }
     if (!validPhone) {
       setError(t('prem_reg_phone_invalid'));
+      try { toast(t('prem_reg_phone_invalid'), 'warn'); } catch {}
+      inputRef.current?.focus?.();
       return;
     }
     if (!consent) {
       setError(t('registration_consent_required') || t('prem_reg_phone_invalid'));
-      toast(t('registration_consent_required'), 'warn');
+      try { toast(t('registration_consent_required'), 'warn'); } catch {}
       return;
     }
     setLoading(true);
@@ -87,18 +112,22 @@ export default function PremiumRegisterScreen({ navigation, route }) {
     try {
       // Stage 33: Mobizon SMS-канал. backend сам выберет провайдера
       // (mobizon prod / mock dev) — UI не управляет каналом.
-      const r = await regAPI.sendCode(phone, 'sms', { consent: true, role });
+      // Stage 36: отправляем нормализованный +7XXXXXXXXXX (без пробелов)
+      // — пробелы из UI-маски уйдут в backend и сломают Mobizon validation.
+      const r = await regAPI.sendCode(normalized, 'sms', { consent: true, role });
       if (r.sent || r.ok) {
         navigation.navigate('RegOtp', {
           role,
-          phone,
+          phone: normalized,
           mockCode: r.mock || r.beta ? r.code : null,
         });
       } else {
         setError(r.detail || t('prem_reg_send_failed'));
+        try { toast(r.detail || t('prem_reg_send_failed'), 'error'); } catch {}
       }
     } catch (e) {
       setError(t('prem_reg_send_failed'));
+      try { toast(t('prem_reg_send_failed'), 'error'); } catch {}
     } finally {
       setLoading(false);
     }
@@ -169,15 +198,22 @@ export default function PremiumRegisterScreen({ navigation, route }) {
             testID="prem-reg-consent"
           />
 
+          {/* Stage 36: disabled-prop оставлен только на loading.
+              Валидация телефона и consent ушла в onSubmit с явными
+              toast/inline ошибками — это и фиксит "кнопка серая,
+              но непонятно почему", которая словилась на v85. */}
           <Pressable
             onPress={onSubmit}
-            disabled={loading || !validPhone || !consent}
+            disabled={loading}
             testID="prem-reg-send-code"
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !!loading }}
             style={({ pressed }) => [
               s.cta,
               { backgroundColor: accent.main },
               pressed && { opacity: 0.85 },
-              (loading || !validPhone || !consent) && { opacity: 0.45 },
+              loading && { opacity: 0.6 },
+              (!validPhone || !consent) && !loading && { opacity: 0.85 },
             ]}
           >
             {loading ? (

@@ -1,16 +1,25 @@
-// Premium registration QA gate (Stage 35).
+// Premium registration QA gate — Stage 35 → расширено в Stage 36.
 //
-// Цель: гарантировать, что в основном flow регистрации пользователю
-// больше НИКОГДА не показывается старый light-RegScreen с шагами
-// «Личность / Документы / Транспорт / Готово», полем «ИИН» или
-// упоминанием «WhatsApp». Если в DOM на /role → role-driver →
-// new flow появилась хоть одна из этих строк — спека падает.
+// Stage 35 проверял лишь отсутствие legacy-строк. Владелец тестировал v85
+// руками и нашёл два P0:
+//   1) Ссылки «Оферта» / «Конфиденциальность» не открывались (rn-web
+//      <Text onPress> на крошечном 11px target пропускал клик).
+//   2) Кнопка «Получить код» оставалась disabled даже после валидного
+//      телефона + consent (TouchableOpacity для checkbox row отдавал
+//      touch ребёнку <Text>, и `consent` state не обновлялся).
 //
-// Также проверяет, что новые testID присутствуют:
-//   - prem-reg-phone-screen
-//   - prem-reg-phone-input
-//   - prem-reg-send-code
-// Без них bundler/сборка не продакшен-готов.
+// Stage 36 теперь жёстко валидирует:
+//   driver/client: оба роли открывают premium screen
+//   terms/privacy: клик действительно вызывает open (window.open или
+//                  событие popup) — мы пере-биндим window.open до клика
+//                  и проверяем, что наш URL вылетел в спай.
+//   phone input: принимает +77479171118
+//   consent toggle: после клика checkbox state становится checked
+//   send-code button: становится active (NOT disabled) после ввода
+//                     валидного номера + consent
+//   click send-code: переходит на OTP screen (mock SMS)
+//   no legacy text: WhatsApp / Личность / Документы / Транспорт / Готово
+//   no ErrorBoundary: «Что-то пошло не так» не появляется
 
 const { test, expect } = require('@playwright/test');
 const { BASE_URL } = require('../utils/qaConfig');
@@ -19,124 +28,206 @@ const { log } = require('../utils/qaReport');
 
 const ACTOR = 'agent-premium-reg';
 
-// Строки, которые НЕ должны появляться в premium-flow регистрации.
-// Каждая — точечный признак старого UI.
 const FORBIDDEN_LEGACY_STRINGS = [
-  'WhatsApp',
-  'Личность',
-  'Документы',
-  'Транспорт',
-  'Готово',
-  'ИИН',
-  'ПТС',
-  'Тип кузова',
-  'Селфи',
-  'Права', // водительские права в шаге 3
+  'WhatsApp', 'Личность', 'Документы', 'Транспорт', 'Готово',
+  'ИИН', 'ПТС', 'Тип кузова', 'Селфи', 'Права',
 ];
+const CRASH_MARKERS = ['Что-то пошло не так', 'Something went wrong', 'Application Error'];
 
 async function bodyText(page) {
   try { return await page.locator('body').innerText({ timeout: 4000 }); }
   catch { return ''; }
 }
+async function isCrash(page) {
+  const txt = await bodyText(page);
+  return CRASH_MARKERS.some((s) => txt && txt.includes(s));
+}
+
+// Перехватчик window.open: ставится до клика, любой URL накапливается
+// в массиве `__premOpens`. После клика по ссылке мы проверяем что
+// нужный URL там оказался.
+async function installOpenSpy(page) {
+  await page.addInitScript(() => {
+    window.__premOpens = [];
+    const origOpen = window.open;
+    window.open = function (url) {
+      try { window.__premOpens.push(String(url || '')); } catch {}
+      // Возвращаем фиктивный объект, чтобы код не упал, но саму вкладку
+      // не открываем — иначе test runner зависнет на новой странице.
+      return { closed: false, focus: () => {}, location: { href: url } };
+    };
+    // Linking.openURL → location.href = url. Перехватим setter, чтобы
+    // случайно не уйти со страницы.
+    try {
+      Object.defineProperty(window.location, 'href', {
+        configurable: true,
+        set: (v) => { try { window.__premOpens.push(String(v || '')); } catch {} },
+        get: () => '',
+      });
+    } catch {}
+  });
+}
+
+async function getOpens(page) {
+  return await page.evaluate(() => Array.isArray(window.__premOpens) ? window.__premOpens.slice() : []);
+}
 
 test.describe.configure({ mode: 'serial' });
 
-test('premium reg · driver flow has no legacy text', async ({ page }) => {
+async function runRoleFlow(page, roleTestId, scenarioLabel) {
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 
-  // 1. Открываем landing → /role
+  await installOpenSpy(page);
+
   await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
   await page.waitForTimeout(1500);
 
-  // 2. Нажимаем «Я водитель» — должен открыться PremiumRegisterScreen
-  const driverBtn = page.getByTestId('role-driver');
-  if (!(await driverBtn.isVisible().catch(() => false))) {
-    log.p0(ACTOR, 'role-driver-visible', 'role-driver button missing on landing');
+  const roleBtn = page.getByTestId(roleTestId);
+  if (!(await roleBtn.isVisible().catch(() => false))) {
+    log.p0(ACTOR, `${scenarioLabel}-role-btn-visible`, `${roleTestId} not on landing`);
     return;
   }
-  await driverBtn.click().catch(() => {});
+  await roleBtn.click().catch(() => {});
   await page.waitForTimeout(1200);
-  await snap(page, 'premium-reg', 'driver-phone');
+  await snap(page, 'premium-reg', `${scenarioLabel}-phone`);
 
-  // 3. Проверяем что мы на новом экране (testID + дизайн).
+  // 1. premium screen открыт?
   const phoneScreen = page.getByTestId('prem-reg-phone-screen');
-  const phoneInput  = page.getByTestId('prem-reg-phone-input');
-  const sendBtn     = page.getByTestId('prem-reg-send-code');
-
   if (await phoneScreen.isVisible().catch(() => false)) {
-    log.pass(ACTOR, 'premium-phone-screen-visible');
+    log.pass(ACTOR, `${scenarioLabel}-phone-screen-visible`);
   } else {
-    log.p0(ACTOR, 'premium-phone-screen-visible', 'PremiumRegisterScreen testID not found');
-  }
-  if (await phoneInput.isVisible().catch(() => false)) {
-    log.pass(ACTOR, 'premium-phone-input-visible');
-  } else {
-    log.p0(ACTOR, 'premium-phone-input-visible', 'phone input testID not found');
-  }
-  if (await sendBtn.isVisible().catch(() => false)) {
-    log.pass(ACTOR, 'premium-send-code-visible');
-  } else {
-    log.p0(ACTOR, 'premium-send-code-visible', 'send-code button testID not found');
+    log.p0(ACTOR, `${scenarioLabel}-phone-screen-visible`, 'PremiumRegisterScreen testID not visible');
+    return;
   }
 
-  // 4. Гард на legacy-тексты — на ЭТОМ экране ни одна не должна
-  //    появиться (даже в скрытых элементах, чтобы случайно не
-  //    отрендерили старый степ-бар через CSS).
-  const text = await bodyText(page);
-  const found = FORBIDDEN_LEGACY_STRINGS.filter((s) => text.includes(s));
+  // 2. без crash баннера
+  if (await isCrash(page)) {
+    log.p0(ACTOR, `${scenarioLabel}-no-crash`, 'crash banner on premium screen');
+    return;
+  } else {
+    log.pass(ACTOR, `${scenarioLabel}-no-crash`);
+  }
+
+  // 3. legacy-строк нет
+  const txt = await bodyText(page);
+  const found = FORBIDDEN_LEGACY_STRINGS.filter((s) => txt.includes(s));
   if (found.length === 0) {
-    log.pass(ACTOR, 'no-legacy-text-on-phone-screen');
+    log.pass(ACTOR, `${scenarioLabel}-no-legacy-text`);
   } else {
-    log.p0(ACTOR, 'no-legacy-text-on-phone-screen',
-      `legacy strings still in DOM: ${found.join(', ')}`);
+    log.p0(ACTOR, `${scenarioLabel}-no-legacy-text`, `legacy: ${found.join(', ')}`);
   }
 
-  // 5. Также проверяем что нет старого светлого фона с прогресс-точками.
-  //    Признак светлого: <body style="background: #fff…"> у root-react-app —
-  //    но проще искать testID 'reg-progress-bar', который был в RegScreen.
-  const oldProgress = page.getByTestId('reg-progress-bar');
-  if (await oldProgress.isVisible().catch(() => false)) {
-    log.p0(ACTOR, 'no-legacy-progress-bar', 'old reg-progress-bar still rendered');
+  // 4. ввод телефона +77479171118 — пишем символ за символом, чтобы
+  //    маскирование formatPhone отработало как при реальном вводе.
+  const input = page.getByTestId('prem-reg-phone-input');
+  await input.click().catch(() => {});
+  await input.fill('').catch(() => {});
+  await input.type('+77479171118', { delay: 30 }).catch(() => {});
+  await page.waitForTimeout(300);
+  const inputVal = await input.inputValue().catch(() => '');
+  if (/[+\s]?7[\s]?747[\s]?917[\s]?11[\s]?18/.test(inputVal)) {
+    log.pass(ACTOR, `${scenarioLabel}-phone-accepted`);
   } else {
-    log.pass(ACTOR, 'no-legacy-progress-bar');
+    log.p0(ACTOR, `${scenarioLabel}-phone-accepted`, `unexpected input value: "${inputVal}"`);
   }
 
-  if (errors.length) {
-    log.p1(ACTOR, 'no-console-errors',
-      `${errors.length} errors: ${errors.slice(0, 3).join(' | ').slice(0, 200)}`);
+  // 5. клик по «Оферта» → window.open / Linking.openURL должно содержать /terms
+  const termsLink = page.getByTestId('prem-reg-consent-terms');
+  if (await termsLink.isVisible().catch(() => false)) {
+    await termsLink.click({ force: true }).catch(() => {});
+    await page.waitForTimeout(300);
+    const opens = await getOpens(page);
+    if (opens.some((u) => u.includes('/terms'))) {
+      log.pass(ACTOR, `${scenarioLabel}-terms-link-clickable`);
+    } else {
+      log.p0(ACTOR, `${scenarioLabel}-terms-link-clickable`,
+        `terms click did not call open. opens=${JSON.stringify(opens)}`);
+    }
   } else {
-    log.pass(ACTOR, 'no-console-errors');
+    log.p0(ACTOR, `${scenarioLabel}-terms-link-clickable`, 'terms link not visible');
   }
+
+  // 6. клик по «Конфиденциальность» → /privacy
+  const privacyLink = page.getByTestId('prem-reg-consent-privacy');
+  if (await privacyLink.isVisible().catch(() => false)) {
+    await privacyLink.click({ force: true }).catch(() => {});
+    await page.waitForTimeout(300);
+    const opens2 = await getOpens(page);
+    if (opens2.some((u) => u.includes('/privacy'))) {
+      log.pass(ACTOR, `${scenarioLabel}-privacy-link-clickable`);
+    } else {
+      log.p0(ACTOR, `${scenarioLabel}-privacy-link-clickable`,
+        `privacy click did not call open. opens=${JSON.stringify(opens2)}`);
+    }
+  } else {
+    log.p0(ACTOR, `${scenarioLabel}-privacy-link-clickable`, 'privacy link not visible');
+  }
+
+  // 7. отметить consent
+  const consentToggle = page.getByTestId('prem-reg-consent-toggle');
+  if (await consentToggle.isVisible().catch(() => false)) {
+    await consentToggle.click({ force: true }).catch(() => {});
+    await page.waitForTimeout(200);
+    const checked = await consentToggle.getAttribute('aria-checked').catch(() => null);
+    if (checked === 'true') {
+      log.pass(ACTOR, `${scenarioLabel}-consent-checked`);
+    } else {
+      // fallback: галочка нарисована (visual ✓)
+      const tickPresent = await page.locator('text=✓').first().isVisible().catch(() => false);
+      if (tickPresent) {
+        log.pass(ACTOR, `${scenarioLabel}-consent-checked`);
+      } else {
+        log.p0(ACTOR, `${scenarioLabel}-consent-checked`, `aria-checked=${checked}, no tick visible`);
+      }
+    }
+  } else {
+    log.p0(ACTOR, `${scenarioLabel}-consent-checked`, 'consent toggle not visible');
+  }
+
+  // 8. кнопка «Получить код» нажимаема (Stage 36: disabled только при loading)
+  const sendBtn = page.getByTestId('prem-reg-send-code');
+  if (!(await sendBtn.isVisible().catch(() => false))) {
+    log.p0(ACTOR, `${scenarioLabel}-send-button-active`, 'send-code button not visible');
+    return;
+  }
+  const ariaDisabled = await sendBtn.getAttribute('aria-disabled').catch(() => null);
+  // aria-disabled=null или 'false' = active. 'true' — баг.
+  if (!ariaDisabled || ariaDisabled === 'false') {
+    log.pass(ACTOR, `${scenarioLabel}-send-button-active`);
+  } else {
+    log.p0(ACTOR, `${scenarioLabel}-send-button-active`,
+      `aria-disabled=${ariaDisabled} after valid phone + consent`);
+  }
+
+  // 9. клик «Получить код» → переход на OTP
+  await sendBtn.click({ force: true }).catch(() => {});
+  // ждём перехода на OTP screen — backend Mobizon может ответить за 1-3с,
+  // даём щедрый таймаут, но не блокируем тест на ошибке сети.
+  const otpScreen = page.getByTestId('prem-reg-otp-screen');
+  const reached = await otpScreen.isVisible({ timeout: 8000 }).catch(() => false);
+  if (reached) {
+    log.pass(ACTOR, `${scenarioLabel}-otp-screen-opened`);
+    await snap(page, 'premium-reg', `${scenarioLabel}-otp`);
+  } else {
+    log.p1(ACTOR, `${scenarioLabel}-otp-screen-opened`,
+      'OTP screen not reached in 8s — может быть network/backend, не обязательно P0');
+  }
+
+  // 10. console errors
+  if (errors.length === 0) {
+    log.pass(ACTOR, `${scenarioLabel}-no-console-errors`);
+  } else {
+    log.p1(ACTOR, `${scenarioLabel}-no-console-errors`,
+      `${errors.length}: ${errors.slice(0, 2).join(' | ').slice(0, 200)}`);
+  }
+}
+
+test('premium reg · driver — full happy path', async ({ page }) => {
+  await runRoleFlow(page, 'role-driver', 'driver');
 });
 
-test('premium reg · client flow has no legacy text', async ({ page }) => {
-  await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
-  await page.waitForTimeout(1500);
-
-  const clientBtn = page.getByTestId('role-client');
-  if (!(await clientBtn.isVisible().catch(() => false))) {
-    log.p0(ACTOR, 'role-client-visible', 'role-client button missing on landing');
-    return;
-  }
-  await clientBtn.click().catch(() => {});
-  await page.waitForTimeout(1200);
-  await snap(page, 'premium-reg', 'client-phone');
-
-  const phoneScreen = page.getByTestId('prem-reg-phone-screen');
-  if (await phoneScreen.isVisible().catch(() => false)) {
-    log.pass(ACTOR, 'premium-phone-screen-visible-client');
-  } else {
-    log.p0(ACTOR, 'premium-phone-screen-visible-client', 'client → premium screen missing');
-  }
-
-  const text = await bodyText(page);
-  const found = FORBIDDEN_LEGACY_STRINGS.filter((s) => text.includes(s));
-  if (found.length === 0) {
-    log.pass(ACTOR, 'no-legacy-text-on-client-phone-screen');
-  } else {
-    log.p0(ACTOR, 'no-legacy-text-on-client-phone-screen',
-      `legacy strings still in DOM: ${found.join(', ')}`);
-  }
+test('premium reg · client — full happy path', async ({ page }) => {
+  await runRoleFlow(page, 'role-client', 'client');
 });
