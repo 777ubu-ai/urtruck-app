@@ -46,11 +46,17 @@ const maskPhone = (raw) => {
 export default function PremiumOtpScreen({ navigation, route }) {
   const { t } = useI18n();
   const { toast } = useToast();
-  const { signIn, setRole } = useAuth();
+  const { signIn, setRole, refreshLevel } = useAuth();
+  // Stage 37: mode='register' (default) | 'login'.
+  // В login-режиме не требуется role и после verify мы вызываем
+  // regAPI.me() — если backend помнит роль, сразу в Main; иначе в Role.
+  const mode = route?.params?.mode === 'login' ? 'login' : 'register';
   const role = route?.params?.role === 'client' ? 'client' : 'driver';
   const phone = route?.params?.phone || '+7';
   const initialMockCode = route?.params?.mockCode || null;
-  const accent = ACCENT[role];
+  // Login screen — нейтральный зелёный (driver-glow), он же accent для
+  // авторизации без выбора роли. В register-режиме — role-based.
+  const accent = mode === 'login' ? ACCENT.driver : ACCENT[role];
 
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
@@ -91,19 +97,49 @@ export default function PremiumOtpScreen({ navigation, route }) {
     setError('');
     try {
       const r = await regAPI.verifyCode(phone, c);
-      if (r.token) {
-        await signIn(phone, r.verification_level || 1);
-        push.autoRegister?.().catch(() => {});
-        // Если backend уже знает роль (повторный логин), сразу в Main.
-        if (r.role && r.role !== 'guest') {
-          setRole(r.role);
-          navigation.reset({ index: 0, routes: [{ name: 'Main', params: { role: r.role } }] });
-        } else {
-          navigation.replace('RegProfile', { role, phone });
-        }
-      } else {
+      if (!r.token) {
         setError(r.detail || t('prem_reg_otp_wrong'));
         setCode('');
+        return;
+      }
+      await signIn(phone, r.verification_level || 1);
+      push.autoRegister?.().catch(() => {});
+      if (typeof __DEV__ !== 'undefined' && __DEV__) {
+        // eslint-disable-next-line no-console
+        console.warn('[PremiumOtp] verify ok', { mode, hasRole: !!r.role, role: r.role, level: r.verification_level });
+      }
+
+      if (mode === 'login') {
+        // Login: backend может вернуть role сразу, либо потребовать /me.
+        let detectedRole = r.role && r.role !== 'guest' ? r.role : null;
+        if (!detectedRole) {
+          try {
+            const me = await regAPI.me();
+            if (me?.role && me.role !== 'guest') detectedRole = me.role;
+          } catch {}
+        }
+        if (detectedRole) {
+          setRole(detectedRole);
+          await refreshLevel?.().catch(() => {});
+          navigation.reset({ index: 0, routes: [{ name: 'Main', params: { role: detectedRole } }] });
+        } else {
+          // Существующий phone, но роли нет — отправим в Role,
+          // оттуда пользователь выберет driver/client и попадёт в
+          // PremiumProfile (без повторного SMS — token уже есть).
+          if (typeof console !== 'undefined') {
+            console.warn('[PremiumOtp] login: no role on backend, redirecting to Role');
+          }
+          navigation.reset({ index: 0, routes: [{ name: 'Role' }] });
+        }
+        return;
+      }
+
+      // mode === 'register'
+      if (r.role && r.role !== 'guest') {
+        setRole(r.role);
+        navigation.reset({ index: 0, routes: [{ name: 'Main', params: { role: r.role } }] });
+      } else {
+        navigation.replace('RegProfile', { role, phone });
       }
     } catch (e) {
       setError(t('prem_reg_otp_wrong'));
@@ -162,7 +198,9 @@ export default function PremiumOtpScreen({ navigation, route }) {
             </Pressable>
             <View style={[s.roleBadge, { backgroundColor: accent.soft, borderColor: accent.main }]}>
               <Text style={[s.roleBadgeText, { color: accent.main }]}>
-                {role === 'driver' ? '🚛' : '📦'} {role === 'driver' ? t('role_driver') : t('role_shipper')}
+                {mode === 'login'
+                  ? `🔐 ${t('login_action')}`
+                  : (role === 'driver' ? `🚛 ${t('role_driver')}` : `📦 ${t('role_shipper')}`)}
               </Text>
             </View>
           </View>

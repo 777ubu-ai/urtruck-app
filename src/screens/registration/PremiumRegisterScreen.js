@@ -224,7 +224,7 @@ export default function PremiumRegisterScreen({ navigation, route }) {
           </Pressable>
 
           <Pressable
-            onPress={() => navigation.navigate('Auth', { role })}
+            onPress={() => navigation.navigate('Login')}
             testID="prem-reg-have-account"
             style={s.loginRow}
           >

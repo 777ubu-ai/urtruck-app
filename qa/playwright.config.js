@@ -40,6 +40,8 @@ module.exports = defineConfig({
     { name: 'ui-smoke',        testMatch: /ui\.smoke\.spec\.js$/ },
     // Stage 35: гард на удаление старой регистрации.
     { name: 'premium-reg',     testMatch: /premium\.registration\.spec\.js$/ },
+    // Stage 37: гард на premium login + session persistence.
+    { name: 'premium-login',   testMatch: /premium\.login\.spec\.js$/ },
     { name: 'trip-clicks',         testMatch: /trip\.detail\.clicks\.spec\.js$/ },
     { name: 'shipper-trip-crash',  testMatch: /shipper\.trip\.crash\.spec\.js$/ },
     { name: 'auditor',             testMatch: /auditor\.full\.spec\.js$/,

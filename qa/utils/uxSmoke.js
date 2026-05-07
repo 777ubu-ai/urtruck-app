@@ -240,8 +240,10 @@ for (const file of ['src/screens/CreateCargoScreen.js', 'src/screens/CreateTripS
   if (!/enterAs\(['"]driver['"]\)/.test(role) || !/enterAs\(['"]client['"]\)/.test(role)) {
     failures.push('RoleScreen no longer calls enterAs(driver|client) — auth flow broken');
   }
-  if (!/navigation\.navigate\(['"]Auth['"]\)/.test(role)) {
-    failures.push('RoleScreen no longer routes Войти hotspot to Auth screen');
+  // Stage 37: «Войти» теперь идёт в Login (PremiumLoginScreen).
+  // 'Auth' route — alias на тот же premium-screen для обратной совместимости.
+  if (!/navigation\.navigate\(['"](Login|Auth)['"]\)/.test(role)) {
+    failures.push('RoleScreen no longer routes Войти hotspot to Login/Auth screen');
   }
 
   // Stage 26: invisible bitmap hotspots are gone. We now require
