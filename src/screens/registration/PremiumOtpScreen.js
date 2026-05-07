@@ -144,7 +144,15 @@ export default function PremiumOtpScreen({ navigation, route }) {
       }
 
       // mode === 'register'
+      // Stage 41: phone — это identity. Если backend отдал role !== guest,
+      // значит этот phone уже зарегистрирован. Открываем СУЩЕСТВУЮЩИЙ
+      // аккаунт (с его сохранённой ролью), а не создаём дубликат.
+      // Если выбранная пользователем role на RoleScreen отличается от
+      // существующей — мягко поясняем toast'ом.
       if (r.role && r.role !== 'guest') {
+        if (r.role !== role) {
+          try { toast(t('prem_reg_existing_account'), 'info', 3500); } catch {}
+        }
         setRole(r.role);
         navigation.reset({ index: 0, routes: [{ name: 'Main', params: { role: r.role } }] });
       } else {

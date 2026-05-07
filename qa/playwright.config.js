@@ -44,6 +44,8 @@ module.exports = defineConfig({
     { name: 'premium-login',   testMatch: /premium\.login\.spec\.js$/ },
     // Stage 38: full E2E regression auth + registration.
     { name: 'full-auth',       testMatch: /full\.auth\.regression\.spec\.js$/ },
+    // Stage 41: classic auth logic lock — register vs login разделены.
+    { name: 'auth-lock',       testMatch: /auth\.logic\.lock\.spec\.js$/ },
     { name: 'trip-clicks',         testMatch: /trip\.detail\.clicks\.spec\.js$/ },
     { name: 'shipper-trip-crash',  testMatch: /shipper\.trip\.crash\.spec\.js$/ },
     { name: 'auditor',             testMatch: /auditor\.full\.spec\.js$/,
