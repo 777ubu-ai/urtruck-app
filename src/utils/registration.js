@@ -97,7 +97,24 @@ export const regAPI = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ phone, code, guest_token: guestToken }),
     });
-    const data = await r.json();
+    let data = {};
+    try { data = await r.json(); } catch {}
+    // Stage 40: 429 rate-limit verify тоже отдаём в structured form,
+    // чтобы UI не показывал raw 'Подожди NNN сек'.
+    if (r.status === 429) {
+      const retryHeader = r.headers.get('Retry-After');
+      let cooldown = retryHeader ? parseInt(retryHeader, 10) : 0;
+      if (!cooldown) {
+        const m = /(\d+)\s*сек/.exec(data.detail || '');
+        if (m) cooldown = parseInt(m[1], 10);
+      }
+      return {
+        token: null,
+        cooldown: true,
+        cooldown_sec: cooldown || 60,
+        detail: data.detail || 'rate_limited',
+      };
+    }
     if (data.token) {
       await storage.set(TOKEN_KEY, data.token);
       await storage.set(LEVEL_KEY, String(data.verification_level || 1));

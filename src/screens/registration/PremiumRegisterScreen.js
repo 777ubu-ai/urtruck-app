@@ -8,7 +8,7 @@
 // ConsentRow, single CTA «Получить код». НЕТ Apple/Google, НЕТ
 // "WhatsApp", НЕТ степ-баров «Личность/Документы/Транспорт/Готово».
 
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -25,6 +25,7 @@ import { useI18n } from '../../utils/useI18n';
 import { useToast } from '../../components/Toast';
 import { regAPI } from '../../utils/registration';
 import ConsentRow from '../../components/ConsentRow';
+import { formatCooldown } from '../../utils/formatCooldown';
 
 const ACCENT = {
   driver: { main: '#22C55E', deep: '#16A34A', soft: 'rgba(34,197,94,0.12)' },
@@ -69,6 +70,13 @@ export default function PremiumRegisterScreen({ navigation, route }) {
 
   const digits = phone.replace(/\D/g, '');
   const validPhone = digits.length === 11 && digits[0] === '7';
+
+  // Stage 40: тикаем cooldown каждую секунду, чтобы MM:SS обновлялся.
+  useEffect(() => {
+    if (cooldownSec <= 0) return;
+    const id = setInterval(() => setCooldownSec((v) => Math.max(0, v - 1)), 1000);
+    return () => clearInterval(id);
+  }, [cooldownSec]);
 
   const onChangePhone = (v) => {
     setError('');
@@ -227,9 +235,7 @@ export default function PremiumRegisterScreen({ navigation, route }) {
             <View style={s.cooldownBox} testID="prem-reg-cooldown">
               <Text style={s.cooldownTitle}>{t('prem_reg_cooldown_title')}</Text>
               <Text style={s.cooldownBody}>
-                {cooldownSec >= 60
-                  ? (t('prem_reg_cooldown_body') || '').replace('{min}', String(Math.ceil(cooldownSec / 60)))
-                  : (t('prem_reg_cooldown_body_sec') || '').replace('{sec}', String(cooldownSec))}
+                {(t('prem_reg_cooldown_body') || '').replace('{time}', formatCooldown(cooldownSec))}
               </Text>
               <Pressable
                 onPress={goEnterCode}

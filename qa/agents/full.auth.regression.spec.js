@@ -560,18 +560,28 @@ test('cooldown · 429 from backend shows friendly banner + Ввести код',
     log.p0(ACTOR, 'cooldown-enter-code-visible', 'enter-code button not shown');
   }
 
-  // 3. Понятный текст вместо raw "Подожди 1500 сек" — проверяем что
-  //    в DOM нет сырого "1500 сек", только "25 мин" (1500/60 = 25).
+  // Stage 40: понятный текст MM:SS вместо raw "Подожди NNN сек".
+  //   - "Подожди \d+ сек" не должно встречаться нигде
+  //   - в banner должен быть формат MM:SS (для 1500 → 25:00)
+  //   - не должно быть сырого "сек." после числа в banner
   const txt = await bodyText(page);
   if (!/Подожди\s+\d+\s+сек/.test(txt)) {
     log.pass(ACTOR, 'cooldown-no-raw-text');
   } else {
-    log.p1(ACTOR, 'cooldown-no-raw-text', 'raw "Подожди NN сек" still in DOM');
+    log.p0(ACTOR, 'cooldown-no-raw-text', 'raw "Подожди NN сек" still in DOM');
   }
-  if (/25\s+мин|25\s*min/.test(txt)) {
-    log.pass(ACTOR, 'cooldown-friendly-minutes');
+  // banner должен содержать "25:00" (MM:SS), потому что 1500/60 = 25
+  if (/\b25:00\b/.test(txt) || /\b\d{2}:\d{2}\b/.test(txt)) {
+    log.pass(ACTOR, 'cooldown-mm-ss-format');
   } else {
-    log.p1(ACTOR, 'cooldown-friendly-minutes', 'expected "25 мин" not found');
+    log.p0(ACTOR, 'cooldown-mm-ss-format', 'no MM:SS pattern found in banner');
+  }
+  // banner не должен содержать "NN сек." или "NN мин." — только MM:SS
+  const cooldownTxt = await page.getByTestId('prem-reg-cooldown').innerText().catch(() => '');
+  if (cooldownTxt && !/\b\d+\s*(сек|мин)/i.test(cooldownTxt)) {
+    log.pass(ACTOR, 'cooldown-banner-clean-format');
+  } else {
+    log.p1(ACTOR, 'cooldown-banner-clean-format', `banner still has сек/мин: "${cooldownTxt.slice(0, 80)}"`);
   }
 
   // 4. Клик «Ввести код» → переход на OTP screen без повторной отправки

@@ -16,7 +16,7 @@
 // login-режиме после verify вызывает regAPI.me() и решает: если у
 // юзера в backend уже есть role — идём в Main; если нет — на Role.
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -32,6 +32,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../../utils/useI18n';
 import { useToast } from '../../components/Toast';
 import { regAPI } from '../../utils/registration';
+import { formatCooldown } from '../../utils/formatCooldown';
 
 const ACCENT = { main: '#22C55E', deep: '#16A34A', soft: 'rgba(34,197,94,0.12)' };
 
@@ -68,6 +69,13 @@ export default function PremiumLoginScreen({ navigation }) {
 
   const digits = phone.replace(/\D/g, '');
   const validPhone = digits.length === 11 && digits[0] === '7';
+
+  // Stage 40: тикаем cooldown каждую секунду.
+  useEffect(() => {
+    if (cooldownSec <= 0) return;
+    const id = setInterval(() => setCooldownSec((v) => Math.max(0, v - 1)), 1000);
+    return () => clearInterval(id);
+  }, [cooldownSec]);
 
   const onChangePhone = (v) => {
     setError('');
@@ -185,9 +193,7 @@ export default function PremiumLoginScreen({ navigation }) {
             <View style={s.cooldownBox} testID="prem-login-cooldown">
               <Text style={s.cooldownTitle}>{t('prem_reg_cooldown_title')}</Text>
               <Text style={s.cooldownBody}>
-                {cooldownSec >= 60
-                  ? (t('prem_reg_cooldown_body') || '').replace('{min}', String(Math.ceil(cooldownSec / 60)))
-                  : (t('prem_reg_cooldown_body_sec') || '').replace('{sec}', String(cooldownSec))}
+                {(t('prem_reg_cooldown_body') || '').replace('{time}', formatCooldown(cooldownSec))}
               </Text>
               <Pressable
                 onPress={goEnterCode}

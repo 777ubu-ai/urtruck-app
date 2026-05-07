@@ -26,6 +26,7 @@ import { useToast } from '../../components/Toast';
 import { useAuth } from '../../utils/AuthContext';
 import { regAPI } from '../../utils/registration';
 import { push } from '../../utils/push';
+import { formatCooldown } from '../../utils/formatCooldown';
 
 const ACCENT = {
   driver: { main: '#22C55E', deep: '#16A34A', soft: 'rgba(34,197,94,0.12)', glow: 'rgba(34,197,94,0.35)' },
@@ -97,8 +98,16 @@ export default function PremiumOtpScreen({ navigation, route }) {
     setError('');
     try {
       const r = await regAPI.verifyCode(phone, c);
+      if (r.cooldown) {
+        // Stage 40: слишком много verify-попыток. Не показываем raw
+        // detail; просто блокируем ввод на оставшийся cooldown.
+        setSecondsLeft(r.cooldown_sec || 60);
+        setError(t('prem_reg_otp_wrong'));
+        setCode('');
+        return;
+      }
       if (!r.token) {
-        setError(r.detail || t('prem_reg_otp_wrong'));
+        setError(t('prem_reg_otp_wrong'));
         setCode('');
         return;
       }
@@ -159,11 +168,17 @@ export default function PremiumOtpScreen({ navigation, route }) {
         setSecondsLeft(RESEND_SECS);
         if ((r.mock || r.beta) && r.code) setMockCode(r.code);
         toast('💬 ' + t('prem_reg_send_code'), 'success', 2500);
+      } else if (r.cooldown) {
+        // Stage 40: backend rate-limit. Не показываем raw "Подожди NNN сек";
+        // вместо этого ставим resend-таймер на оставшийся cooldown и
+        // пользователь видит обратный отсчёт MM:SS как обычный resend.
+        setSecondsLeft(r.cooldown_sec || RESEND_SECS);
+        setError('');
       } else {
-        setError(r.detail || t('prem_reg_send_failed'));
+        setError(t('prem_reg_send_failed_friendly'));
       }
     } catch (e) {
-      setError(t('prem_reg_send_failed'));
+      setError(t('prem_reg_send_failed_friendly'));
     } finally {
       setResending(false);
     }
@@ -278,8 +293,8 @@ export default function PremiumOtpScreen({ navigation, route }) {
 
           <View style={s.bottomRow}>
             {secondsLeft > 0 ? (
-              <Text style={s.timer}>
-                {t('prem_reg_otp_resend_in')} {secondsLeft}s
+              <Text style={s.timer} testID="prem-reg-otp-resend-timer">
+                {(t('prem_otp_resend_locked') || '').replace('{time}', formatCooldown(secondsLeft))}
               </Text>
             ) : (
               <Pressable
@@ -303,6 +318,12 @@ export default function PremiumOtpScreen({ navigation, route }) {
             >
               <Text style={s.changeText}>{t('prem_reg_otp_change')}</Text>
             </Pressable>
+
+            {secondsLeft > 0 ? (
+              <Text style={s.noCodeHint} testID="prem-reg-otp-no-code-hint">
+                {t('prem_otp_no_code_hint')}
+              </Text>
+            ) : null}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -416,4 +437,13 @@ const s = StyleSheet.create({
   resendText: { fontSize: 14, fontWeight: '800' },
   changeBtn: { paddingVertical: 6, paddingHorizontal: 12 },
   changeText: { color: '#5A6068', fontSize: 13, fontWeight: '600' },
+  noCodeHint: {
+    color: '#5A6068',
+    fontSize: 12,
+    fontWeight: '500',
+    textAlign: 'center',
+    marginTop: 8,
+    paddingHorizontal: 12,
+    lineHeight: 16,
+  },
 });
