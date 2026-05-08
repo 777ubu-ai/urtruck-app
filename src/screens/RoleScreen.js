@@ -31,8 +31,15 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
 import { useAuth } from '../utils/AuthContext';
+import LanguageSwitcher from '../components/LanguageSwitcher';
 // Stage 34: regAPI больше не нужен — RoleScreen не делает
 // guest-shortcut signIn, всё ушло в RegScreen flow.
+// Stage 45: добавили language switch в верхней правой части и
+// четвёртую кнопку «Смотреть ленту» (гостевой режим). Гость
+// получает guest-token через ensureGuest() и попадает в Main с
+// role='driver' (showing cargos by default — самая активная
+// категория). Внутри Feed гость переключается между Грузы/Рейсы
+// через guest-tab toggle.
 
 // Stage 27 v2: hero PNG обрезан физически (сборка `sips --cropOffset 0
 // 0 -c 1003 941`) — теперь это `role-screen-hero.png` 941×1003,
@@ -58,9 +65,26 @@ const HERO_ASPECT = 941 / 1000;
 
 export default function RoleScreen({ navigation }) {
   const { t } = useI18n();
-  const { signIn, setRole, session } = useAuth();
+  const { signIn, setRole, session, ensureGuest } = useAuth();
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState('');
+
+  const browseAsGuest = async () => {
+    if (busy) return;
+    try {
+      setBusy('guest');
+      // ensureGuest provisions a level-0 token so AppNavigator's
+      // first stack stays mounted (hasToken=true, session=null,
+      // hasRole=false → still in the auth stack which already
+      // has Main+CargoDetail+TripDetail registered).
+      await ensureGuest();
+      navigation.navigate('Main', { role: 'driver', guest: true });
+    } catch (e) {
+      setError(t('connection_failed'));
+    } finally {
+      setBusy(null);
+    }
+  };
 
   // Stage 34: «Я водитель» / «Я грузовладелец» теперь ведут в
   // настоящий registration flow (RegScreen со step=1: телефон +
@@ -118,6 +142,14 @@ export default function RoleScreen({ navigation }) {
           получает аккуратную колонку с letterbox по бокам. */}
       <View style={styles.outer}>
         <View style={styles.column} testID="role-screen-column">
+          {/* Stage 45: top bar — language pill справа. Pre-auth и
+              видим всем посетителям, потому что владелец просил,
+              чтобы переключение языка не пряталось за регистрацией. */}
+          <View style={styles.topBar} pointerEvents="box-none">
+            <View style={{ width: 1 }} />
+            <LanguageSwitcher testID="role-lang-switch" />
+          </View>
+
           <View style={styles.heroWrap} pointerEvents="none">
             <Image
               source={ROLE_IMAGE}
@@ -175,6 +207,30 @@ export default function RoleScreen({ navigation }) {
           <Text style={styles.loginText}>
             {t('already_have_account') || 'Уже есть аккаунт?'}{' '}
             <Text style={styles.loginLinkText}>{t('login_action') || 'Войти'}</Text>
+          </Text>
+        </Pressable>
+
+        {/* Stage 45: «Смотреть ленту» — secondary CTA для гостей.
+            Открывает Main без role/session, gate'ы внутри Feed/
+            CargoDetail/TripDetail обработают попытки чата/ставки/
+            публикации. */}
+        <Pressable
+          onPress={browseAsGuest}
+          disabled={!!busy}
+          testID="role-browse-guest"
+          accessibilityRole="button"
+          accessibilityLabel={t('browse_as_guest') || 'Смотреть ленту'}
+          style={({ pressed }) => [
+            styles.guestBtn,
+            pressed && { opacity: 0.7 },
+            busy && busy !== 'guest' && styles.ctaDisabled,
+          ]}
+        >
+          <Text style={styles.guestBtnText}>
+            {t('browse_as_guest') || 'Смотреть ленту'}
+          </Text>
+          <Text style={styles.guestBtnSub}>
+            · {t('browse_as_guest_sub') || 'Без регистрации'}
           </Text>
         </Pressable>
 
@@ -279,6 +335,40 @@ const styles = StyleSheet.create({
   loginLinkText: {
     color: '#22C55E',
     fontWeight: '800',
+  },
+  // Stage 45 top bar with language pill (right-aligned).
+  topBar: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingTop: 8,
+    zIndex: 5,
+  },
+  // Stage 45 «Смотреть ленту» — outlined secondary CTA.
+  guestBtn: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#44403C',
+    marginTop: 4,
+    gap: 6,
+  },
+  guestBtnText: {
+    color: '#FAFAF9',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  guestBtnSub: {
+    color: '#A8A29E',
+    fontSize: 12,
+    fontWeight: '500',
   },
   errorBox: {
     marginTop: 8,
