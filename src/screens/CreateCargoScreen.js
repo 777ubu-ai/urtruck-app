@@ -12,6 +12,7 @@ import PrimaryButton from '../components/ui/v1/PrimaryButton';
 import BottomSheet from '../components/ui/v1/BottomSheet';
 import RoutePointPicker from '../components/RoutePointPicker';
 import CargoTypeInput from '../components/CargoTypeInput';
+import { addCustomCargoType } from '../utils/cargoTypes';
 import DatePicker from '../components/DatePicker';
 import { PhotoPicker } from '../components/PhotoGallery';
 import {v1Colors, useV1Colors, v1Radius, v1Spacing, v1Typography, v1AccentFor} from '../theme/designV1';
@@ -46,6 +47,9 @@ export default function CreateCargoScreen({ navigation, route }) {
   truckChip: { width: 80, paddingVertical: 10, alignItems: 'center', gap: 4, borderWidth: 1, borderRadius: v1Radius.field },
   truckChipText: { fontSize: 11, fontWeight: '700' },
   pickerWrap: { marginBottom: v1Spacing.sm, zIndex: 50 },
+  // Stage 42: блок поля «Описание груза» — теперь inline TextInput.
+  fieldBlock: { marginBottom: v1Spacing.sm, zIndex: 100 },
+  label: { color: v1.textMuted, fontSize: 12, fontWeight: '700', letterSpacing: 0.5, marginBottom: 6, marginLeft: 4 },
   err: { color: v1Colors.error, fontSize: 11, marginTop: 4, marginLeft: 6, marginBottom: 6 },
   priceCard: { borderWidth: 1, borderRadius: v1Radius.card, padding: 12, marginBottom: v1Spacing.sm },
   priceLabel: { color: v1.text, fontSize: 13, fontWeight: '700', marginBottom: 10 },
@@ -98,7 +102,7 @@ export default function CreateCargoScreen({ navigation, route }) {
   // Picker overlays
   const [showFromPicker, setShowFromPicker] = useState(false);
   const [showToPicker, setShowToPicker] = useState(false);
-  const [showDescPicker, setShowDescPicker] = useState(false);
+  // Stage 42: showDescPicker удалён — Описание груза теперь inline-input.
   const [showTruckPicker, setShowTruckPicker] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
@@ -123,6 +127,10 @@ export default function CreateCargoScreen({ navigation, route }) {
     }
     setErrors({});
     setSubmitting(true);
+    // Stage 42: если пользователь ввёл custom описание (не из base
+    // списка) — сохраняем его в локальный custom-список, чтобы в
+    // следующий раз появилось в подсказках.
+    try { addCustomCargoType(cargoDesc.trim()); } catch {}
     const priceNum = priceMode === 'fixed'
       ? Math.max(0, parseInt(String(price || '').replace(/\s/g, ''), 10) || 0)
       : 0;
@@ -220,28 +228,23 @@ export default function CreateCargoScreen({ navigation, route }) {
       ) : null}
       {errors.to ? <Text style={s.err}>⚠️ {errors.to}</Text> : null}
 
-      <Field
-        variant="dropdown"
-        icon="📦"
-        label={t('cargoDesc')}
-        value={cargoDesc}
-        placeholder={t('create_field_desc_placeholder')}
-        onPress={() => setShowDescPicker((v) => !v)}
-      />
-      {showDescPicker ? (
-        <View style={s.pickerWrap}>
-          <CargoTypeInput
-            value={cargoDesc}
-            onChange={(v) => {
-              setCargoDesc(v);
-              if (errors.cargoDesc) setErrors((e) => ({ ...e, cargoDesc: null }));
-              if (v && v.trim()) setShowDescPicker(false);
-            }}
-            placeholder={'📦 ' + t('cargoDesc')}
-            testID="cargo-desc-input"
-          />
-        </View>
-      ) : null}
+      {/* Stage 42: Описание груза — inline TextInput всегда видимый.
+          Раньше было через Field+overlay+picker, и пользователю
+          казалось, что нужно обязательно выбрать вариант из списка.
+          Теперь любой custom text сохраняется (сумки/гвозди/мешки/
+          стройматериалы/etc), а suggestions — лишь подсказка. */}
+      <View style={s.fieldBlock}>
+        <Text style={s.label}>📦 {t('cargoDesc')}</Text>
+        <CargoTypeInput
+          value={cargoDesc}
+          onChange={(v) => {
+            setCargoDesc(v);
+            if (errors.cargoDesc) setErrors((e) => ({ ...e, cargoDesc: null }));
+          }}
+          placeholder={t('create_field_desc_placeholder')}
+          testID="cargo-desc-input"
+        />
+      </View>
       {errors.cargoDesc ? <Text style={s.err}>⚠️ {errors.cargoDesc}</Text> : null}
 
       <View style={s.row2}>

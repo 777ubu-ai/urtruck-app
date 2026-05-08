@@ -46,6 +46,10 @@ module.exports = defineConfig({
     { name: 'full-auth',       testMatch: /full\.auth\.regression\.spec\.js$/ },
     // Stage 41: classic auth logic lock — register vs login разделены.
     { name: 'auth-lock',       testMatch: /auth\.logic\.lock\.spec\.js$/ },
+    // Stage 42: cargo description ручной ввод.
+    { name: 'cargo-desc',      testMatch: /cargo\.description\.spec\.js$/ },
+    // Stage 42: visual screenshots всех экранов на 3 viewport'ах.
+    { name: 'visual',          testMatch: /visual\.screenshots\.spec\.js$/ },
     { name: 'trip-clicks',         testMatch: /trip\.detail\.clicks\.spec\.js$/ },
     { name: 'shipper-trip-crash',  testMatch: /shipper\.trip\.crash\.spec\.js$/ },
     { name: 'auditor',             testMatch: /auditor\.full\.spec\.js$/,
