@@ -17,6 +17,7 @@ import FeedCard from '../components/ui/v1/FeedCard';
 import SearchBar from '../components/ui/v1/SearchBar';
 import FilterChips from '../components/ui/v1/FilterChips';
 import BellBadge from '../components/ui/v1/BellBadge';
+import LanguageSwitcher from '../components/LanguageSwitcher';
 import { useUnreadNotifications } from '../utils/useUnreadNotifications';
 import BottomSheet from '../components/ui/v1/BottomSheet';
 import DatePicker from '../components/DatePicker';
@@ -89,6 +90,10 @@ export default function FeedScreen({ navigation, route }) {
   ftlText: { fontSize: 11, fontWeight: '900', letterSpacing: 1 },
   bellBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, backgroundColor: v1.surface },
   bellIcon: { fontSize: 18 },
+  // Stage 45 guest toggle bar
+  guestTabs: { flexDirection: 'row', paddingHorizontal: 16, paddingTop: 4, paddingBottom: 8, gap: 8 },
+  guestTab: { flex: 1, paddingVertical: 10, borderRadius: 12, borderWidth: 1, alignItems: 'center' },
+  guestTabText: { fontSize: 13, fontWeight: '700' },
   // Title row with outline CTA on the right (macros 07/08).
   titleRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12, gap: 12 },
   titleHero: { color: v1.text, fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
@@ -173,7 +178,14 @@ export default function FeedScreen({ navigation, route }) {
   submitText: { color: '#fff', fontSize: 16, fontWeight: '800' },
 
   }), [v1]);
-  const { role } = route.params || { role: 'client' };
+  // Stage 45: гостям разрешён просмотр feed без session. Сохраняем
+  // route.params.role как дефолт, но если гость — позволяем
+  // переключаться Грузы/Рейсы прямо в шапке через guestRole.
+  const { session } = useAuth();
+  const sessionRole = session?.user?.role || null;
+  const isGuest = !sessionRole;
+  const [guestRole, setGuestRole] = useState(route.params?.role || 'driver');
+  const role = isGuest ? guestRole : (sessionRole || route.params?.role || 'client');
   const isDriver = role === 'driver';
   // Brand v3: driver = emerald, client = orange. No blue.
   const accent = isDriver ? '#22C55E' : '#F59E0B';
@@ -182,7 +194,6 @@ export default function FeedScreen({ navigation, route }) {
   const notifUnread = useUnreadNotifications();
   const { toast } = useToast();
   const { requireLevel, Gate } = useVerificationGate();
-  const { session } = useAuth();
   const myUserId = session?.user?.id;
   const listRef = React.useRef(null);
   const [, setTick] = useState(0);
@@ -525,15 +536,66 @@ export default function FeedScreen({ navigation, route }) {
           carries the bell badge ring; cutting it removes one of the
           competing accents from the screen. */}
       <View style={s.brandBar}>
-        <View style={{ width: 40 }} />
+        {/* Stage 45: language switcher слева — видим всем (гость +
+            зарегистрированный). Гость переключает RU/KZ/EN/CN до
+            регистрации без открытия Profile. */}
+        <LanguageSwitcher testID="feed-lang-switch" compact />
         <View style={s.brandRow}>
           <Text style={[s.brandText, { color: v1.text }]}>UrTruck</Text>
         </View>
-        <BellBadge
-          count={notifUnread}
-          onPress={() => navigation.navigate('Notifications')}
-        />
+        {isGuest ? (
+          // Гость не имеет уведомлений; вместо колокольчика — width
+          // placeholder чтобы заголовок остался по центру.
+          <View style={{ width: 40 }} />
+        ) : (
+          <BellBadge
+            count={notifUnread}
+            onPress={() => navigation.navigate('Notifications')}
+          />
+        )}
       </View>
+
+      {/* Stage 45: гостевой toggle Грузы / Рейсы. Зарегистрированному
+          пользователю не показывается — у него role зашита в session
+          и переключение делается через регистрацию второй роли. */}
+      {isGuest && (
+        <View style={s.guestTabs}>
+          <TouchableOpacity
+            onPress={() => setGuestRole('driver')}
+            style={[
+              s.guestTab,
+              { borderColor: v1.border },
+              guestRole === 'driver' && { backgroundColor: '#22C55E', borderColor: '#22C55E' },
+            ]}
+            testID="guest-tab-cargos"
+            accessibilityRole="button"
+          >
+            <Text style={[
+              s.guestTabText,
+              { color: guestRole === 'driver' ? '#0A0A0A' : v1.text },
+            ]}>
+              {t('guest_tab_cargos')}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setGuestRole('client')}
+            style={[
+              s.guestTab,
+              { borderColor: v1.border },
+              guestRole === 'client' && { backgroundColor: '#F59E0B', borderColor: '#F59E0B' },
+            ]}
+            testID="guest-tab-trips"
+            accessibilityRole="button"
+          >
+            <Text style={[
+              s.guestTabText,
+              { color: guestRole === 'client' ? '#0A0A0A' : v1.text },
+            ]}>
+              {t('guest_tab_trips')}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Title row + outline CTA "Разместить ..." */}
       <View style={s.titleRow}>
