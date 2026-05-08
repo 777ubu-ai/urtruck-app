@@ -9,9 +9,13 @@
 
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 import { useV1Colors } from '../../../theme/designV1';
 
-export default function BrandBarWithShare({ onBack, onShare, accent, rightTestID, rightIcon = '↗' }) {
+// Stage 44: rightIcon switched from `↗` glyph to a real share icon
+// (Feather `share-2`). Callers can still override `rightIcon` to a
+// string for back-compat, but the default is now the icon component.
+export default function BrandBarWithShare({ onBack, onShare, accent, rightTestID, rightIcon }) {
   const colors = useV1Colors();
   const arrowColor = accent || colors.driver;
   return (
@@ -35,8 +39,13 @@ export default function BrandBarWithShare({ onBack, onShare, accent, rightTestID
             { borderColor: colors.border, backgroundColor: colors.surface },
           ]}
           testID={rightTestID}
+          accessibilityLabel="Share"
         >
-          <Text style={[s.rightIcon, { color: colors.text }]}>{rightIcon}</Text>
+          {rightIcon ? (
+            <Text style={[s.rightIcon, { color: colors.text }]}>{rightIcon}</Text>
+          ) : (
+            <Feather name="share-2" size={18} color={colors.text} />
+          )}
         </TouchableOpacity>
       ) : (
         <View style={{ width: 40 }} />
