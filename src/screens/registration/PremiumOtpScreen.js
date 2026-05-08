@@ -266,6 +266,12 @@ export default function PremiumOtpScreen({ navigation, route }) {
               value={code}
               onChangeText={onChangeCode}
               keyboardType="number-pad"
+              // Stage 46: numeric keypad на web независимо от
+              // системной раскладки. autoComplete="one-time-code" —
+              // iOS/Safari автоподставит SMS-OTP когда код придёт.
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              textContentType="oneTimeCode"
               maxLength={CODE_LEN}
               style={s.hiddenInput}
               autoFocus
