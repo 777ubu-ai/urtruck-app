@@ -50,6 +50,8 @@ module.exports = defineConfig({
     { name: 'cargo-desc',      testMatch: /cargo\.description\.spec\.js$/ },
     // Stage 42: visual screenshots всех экранов на 3 viewport'ах.
     { name: 'visual',          testMatch: /visual\.screenshots\.spec\.js$/ },
+    // Stage 45: гостевой режим (filters + language switch).
+    { name: 'guest-mode',      testMatch: /guest\.mode\.spec\.js$/ },
     { name: 'trip-clicks',         testMatch: /trip\.detail\.clicks\.spec\.js$/ },
     { name: 'shipper-trip-crash',  testMatch: /shipper\.trip\.crash\.spec\.js$/ },
     { name: 'auditor',             testMatch: /auditor\.full\.spec\.js$/,
