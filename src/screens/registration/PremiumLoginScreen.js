@@ -33,27 +33,9 @@ import { useI18n } from '../../utils/useI18n';
 import { useToast } from '../../components/Toast';
 import { regAPI } from '../../utils/registration';
 import { formatCooldown } from '../../utils/formatCooldown';
+import { formatPhoneForDisplay, toAsciiDigits } from '../../utils/phone';
 
 const ACCENT = { main: '#22C55E', deep: '#16A34A', soft: 'rgba(34,197,94,0.12)' };
-
-const formatPhone = (raw) => {
-  const digits = (raw || '').replace(/\D/g, '').slice(0, 11);
-  if (!digits) return '';
-  let body = digits;
-  if (body[0] === '8') body = '7' + body.slice(1);
-  if (body[0] !== '7') body = '7' + body;
-  body = body.slice(0, 11);
-  const a = body.slice(1, 4);
-  const b = body.slice(4, 7);
-  const c = body.slice(7, 9);
-  const d = body.slice(9, 11);
-  let out = '+7';
-  if (a) out += ' ' + a;
-  if (b) out += ' ' + b;
-  if (c) out += ' ' + c;
-  if (d) out += ' ' + d;
-  return out;
-};
 
 export default function PremiumLoginScreen({ navigation }) {
   const { t } = useI18n();
@@ -67,7 +49,8 @@ export default function PremiumLoginScreen({ navigation }) {
   const [cooldownSec, setCooldownSec] = useState(0);
   const inputRef = useRef(null);
 
-  const digits = phone.replace(/\D/g, '');
+  // Stage 46: общий helper c NFKC-нормализацией.
+  const digits = toAsciiDigits(phone);
   const validPhone = digits.length === 11 && digits[0] === '7';
 
   // Stage 40: тикаем cooldown каждую секунду.
@@ -79,7 +62,7 @@ export default function PremiumLoginScreen({ navigation }) {
 
   const onChangePhone = (v) => {
     setError('');
-    setPhone(formatPhone(v));
+    setPhone(formatPhoneForDisplay(v));
   };
 
   const onSubmit = async () => {
@@ -182,6 +165,12 @@ export default function PremiumLoginScreen({ navigation }) {
               placeholder={t('prem_reg_phone_placeholder')}
               placeholderTextColor="#5A6068"
               keyboardType="phone-pad"
+              // Stage 46 P0 fix — см. PremiumRegisterScreen для контекста.
+              // inputMode="tel" даёт numeric keypad на web независимо от
+              // текущей системной раскладки (RU/EN/KK/CN).
+              inputMode="tel"
+              autoComplete="tel"
+              textContentType="telephoneNumber"
               autoFocus
               maxLength={18}
               testID="prem-login-phone-input"

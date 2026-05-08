@@ -198,6 +198,9 @@ export default function AuthScreen({ navigation, route }) {
               value={phone}
               onChangeText={(v) => { setPhone(v); setError(''); }}
               keyboardType="phone-pad"
+              inputMode="tel"
+              autoComplete="tel"
+              textContentType="telephoneNumber"
               autoFocus
               placeholder="+7 777 123 45 67"
               placeholderTextColor={v1.placeholder}
