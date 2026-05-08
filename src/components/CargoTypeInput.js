@@ -3,12 +3,15 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-nativ
 import { useTheme } from '../utils/ThemeContext';
 import { searchCargoTypes, addCustomCargoType, subscribeToCargoTypes } from '../utils/cargoTypes';
 
-export default function CargoTypeInput({ value, onChange, placeholder, style }) {
+export default function CargoTypeInput({ value, onChange, placeholder, style, testID }) {
   const { theme } = useTheme();
   const [focused, setFocused] = useState(false);
   const [query, setQuery] = useState(value || '');
   const [, setTick] = useState(0);
 
+  // Stage 42: синхронизируем local query со внешним value, если родитель
+  // его меняет (например после addCustomCargoType.pick).
+  useEffect(() => { setQuery(value || ''); }, [value]);
   useEffect(() => subscribeToCargoTypes(() => setTick(x => x + 1)), []);
 
   const suggestions = focused ? searchCargoTypes(query) : [];
@@ -26,8 +29,9 @@ export default function CargoTypeInput({ value, onChange, placeholder, style }) 
   };
 
   return (
-    <View style={[s.wrap, style]}>
+    <View style={[s.wrap, style]} testID={testID ? `${testID}-wrap` : undefined}>
       <TextInput
+        testID={testID}
         style={[s.input, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border }]}
         value={query}
         onChangeText={handleChange}
