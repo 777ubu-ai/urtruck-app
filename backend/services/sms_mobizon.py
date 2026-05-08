@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from typing import Any, Dict
 
 import httpx
@@ -100,7 +101,7 @@ def _parse_response(r: httpx.Response) -> Dict[str, Any]:
     }
 
 
-def send_sms(phone: str, text: str, *, retries: int = 1) -> Dict[str, Any]:
+def send_sms(phone: str, text: str, *, retries: int = 2, backoff_base: float = 0.5) -> Dict[str, Any]:
     """Send an SMS via Mobizon.
 
     Returns a dict the OTP router treats as:
@@ -110,6 +111,13 @@ def send_sms(phone: str, text: str, *, retries: int = 1) -> Dict[str, Any]:
     Never raises. All exceptions/timeouts are caught and surfaced as
     `sent: False` with an `error` key — the caller decides whether
     to fall back to another channel.
+
+    Stage 43B: retries default 2 (3 attempts total), exponential
+    backoff (0.5s, 1.0s) between attempts. Network/DNS errors
+    (httpx.ConnectError) get retried — they're transient on this VPS
+    when systemd-resolved upstream flaps. Mobizon-side errors
+    (bad apiKey, no balance, blocked recipient) are returned
+    immediately and never retried.
     """
     cfg = _settings()
     if not cfg["key"]:
@@ -129,43 +137,83 @@ def send_sms(phone: str, text: str, *, retries: int = 1) -> Dict[str, Any]:
 
     url = f"{cfg['url']}/service/message/sendsmsmessage"
     last_error: Dict[str, Any] = {}
+    masked = _mask_phone(msisdn)
+    total_attempts = retries + 1
 
-    # `retries=1` means one retry after a transient network error
-    # (timeout / connection reset). Mobizon-side errors (auth, balance)
-    # are NOT retried — the response gets returned immediately.
-    for attempt in range(retries + 1):
+    def _sleep_before_next(attempt_idx: int) -> None:
+        # Backoff before next attempt only — not after the last one.
+        if attempt_idx + 1 < total_attempts:
+            delay = backoff_base * (2 ** attempt_idx)
+            time.sleep(delay)
+
+    for attempt in range(total_attempts):
         try:
             r = httpx.post(url, data=payload, timeout=cfg["timeout"])
+        except httpx.ConnectError as e:
+            # Includes DNS failures: [Errno -3], [Errno -5]. Worth a retry.
+            last_error = {
+                "sent": False, "channel": "sms", "provider": "mobizon",
+                "error": "connect_error", "detail": str(e)[:200], "attempt": attempt + 1,
+            }
+            log.warning(
+                "mobizon connect/dns phone=%s attempt=%s/%s err=%s",
+                masked, attempt + 1, total_attempts, str(e)[:120],
+            )
+            _sleep_before_next(attempt)
+            continue
         except httpx.TimeoutException:
-            last_error = {"sent": False, "channel": "sms", "provider": "mobizon", "error": "timeout", "attempt": attempt + 1}
-            log.warning("mobizon timeout phone=%s attempt=%s", _mask_phone(msisdn), attempt + 1)
+            last_error = {
+                "sent": False, "channel": "sms", "provider": "mobizon",
+                "error": "timeout", "attempt": attempt + 1,
+            }
+            log.warning(
+                "mobizon timeout phone=%s attempt=%s/%s",
+                masked, attempt + 1, total_attempts,
+            )
+            _sleep_before_next(attempt)
             continue
         except httpx.HTTPError as e:
-            last_error = {"sent": False, "channel": "sms", "provider": "mobizon", "error": "http_error", "detail": str(e)[:200]}
-            log.warning("mobizon http error phone=%s err=%s", _mask_phone(msisdn), str(e)[:120])
+            last_error = {
+                "sent": False, "channel": "sms", "provider": "mobizon",
+                "error": "http_error", "detail": str(e)[:200], "attempt": attempt + 1,
+            }
+            log.warning(
+                "mobizon http error phone=%s attempt=%s/%s err=%s",
+                masked, attempt + 1, total_attempts, str(e)[:120],
+            )
+            _sleep_before_next(attempt)
             continue
 
         if r.status_code >= 500:
-            last_error = {"sent": False, "channel": "sms", "provider": "mobizon", "error": "upstream_5xx", "status_code": r.status_code}
-            log.warning("mobizon 5xx phone=%s status=%s", _mask_phone(msisdn), r.status_code)
+            last_error = {
+                "sent": False, "channel": "sms", "provider": "mobizon",
+                "error": "upstream_5xx", "status_code": r.status_code, "attempt": attempt + 1,
+            }
+            log.warning(
+                "mobizon 5xx phone=%s attempt=%s/%s status=%s",
+                masked, attempt + 1, total_attempts, r.status_code,
+            )
+            _sleep_before_next(attempt)
             continue
 
         parsed = _parse_response(r)
         if parsed.get("ok"):
-            log.info("mobizon ok phone=%s message_id=%s", _mask_phone(msisdn), parsed.get("message_id"))
+            log.info(
+                "mobizon ok phone=%s attempt=%s/%s message_id=%s",
+                masked, attempt + 1, total_attempts, parsed.get("message_id"),
+            )
             return {
                 "sent": True,
                 "channel": "sms",
                 "provider": "mobizon",
                 "message_id": parsed.get("message_id"),
+                "attempt": attempt + 1,
             }
 
         # Non-OK Mobizon — return immediately, do not retry auth/balance errors.
         log.warning(
-            "mobizon rejected phone=%s code=%s msg=%s",
-            _mask_phone(msisdn),
-            parsed.get("code"),
-            parsed.get("message"),
+            "mobizon rejected phone=%s attempt=%s/%s code=%s msg=%s",
+            masked, attempt + 1, total_attempts, parsed.get("code"), parsed.get("message"),
         )
         return {
             "sent": False,
@@ -174,9 +222,16 @@ def send_sms(phone: str, text: str, *, retries: int = 1) -> Dict[str, Any]:
             "error": parsed.get("error", "mobizon_error"),
             "code": parsed.get("code"),
             "detail": parsed.get("message"),
+            "attempt": attempt + 1,
         }
 
-    return last_error or {"sent": False, "channel": "sms", "provider": "mobizon", "error": "exhausted"}
+    log.error(
+        "mobizon exhausted phone=%s attempts=%s last_error=%s",
+        masked, total_attempts, last_error.get("error", "unknown"),
+    )
+    return last_error or {
+        "sent": False, "channel": "sms", "provider": "mobizon", "error": "exhausted",
+    }
 
 
 def _mask_phone(msisdn: str) -> str:
