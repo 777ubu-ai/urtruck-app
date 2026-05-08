@@ -26,30 +26,11 @@ import { useToast } from '../../components/Toast';
 import { regAPI } from '../../utils/registration';
 import ConsentRow from '../../components/ConsentRow';
 import { formatCooldown } from '../../utils/formatCooldown';
+import { formatPhoneForDisplay, normalizePhoneInput, toAsciiDigits } from '../../utils/phone';
 
 const ACCENT = {
   driver: { main: '#22C55E', deep: '#16A34A', soft: 'rgba(34,197,94,0.12)' },
   client: { main: '#F59E0B', deep: '#D97706', soft: 'rgba(245,158,11,0.12)' },
-};
-
-const formatPhone = (raw) => {
-  const digits = raw.replace(/\D/g, '').slice(0, 11);
-  if (!digits) return '';
-  // KZ default: всегда показываем +7 даже если пользователь стёр
-  let body = digits;
-  if (body[0] === '8') body = '7' + body.slice(1);
-  if (body[0] !== '7') body = '7' + body;
-  body = body.slice(0, 11);
-  const a = body.slice(1, 4);
-  const b = body.slice(4, 7);
-  const c = body.slice(7, 9);
-  const d = body.slice(9, 11);
-  let out = '+7';
-  if (a) out += ' ' + a;
-  if (b) out += ' ' + b;
-  if (c) out += ' ' + c;
-  if (d) out += ' ' + d;
-  return out;
 };
 
 export default function PremiumRegisterScreen({ navigation, route }) {
@@ -68,7 +49,9 @@ export default function PremiumRegisterScreen({ navigation, route }) {
   const [cooldownSec, setCooldownSec] = useState(0);
   const inputRef = useRef(null);
 
-  const digits = phone.replace(/\D/g, '');
+  // Stage 46: используем общий helper c NFKC-нормализацией —
+  // ASCII digit'ы из любых Unicode-вариантов попадут сюда правильно.
+  const digits = toAsciiDigits(phone);
   const validPhone = digits.length === 11 && digits[0] === '7';
 
   // Stage 40: тикаем cooldown каждую секунду, чтобы MM:SS обновлялся.
@@ -80,7 +63,7 @@ export default function PremiumRegisterScreen({ navigation, route }) {
 
   const onChangePhone = (v) => {
     setError('');
-    setPhone(formatPhone(v));
+    setPhone(formatPhoneForDisplay(v));
   };
 
   // Stage 36: кнопка ВСЕГДА нажимается (кроме момента загрузки) —
@@ -213,6 +196,16 @@ export default function PremiumRegisterScreen({ navigation, route }) {
               placeholder={t('prem_reg_phone_placeholder')}
               placeholderTextColor="#5A6068"
               keyboardType="phone-pad"
+              // Stage 46 P0 fix: на web rn-web НЕ всегда транслирует
+              // keyboardType="phone-pad" в HTML inputMode. Без явного
+              // inputMode="tel" мобильный браузер на iPhone/Android
+              // открывает текстовую клавиатуру с активной раскладкой.
+              // На казахской раскладке верхний ряд — буквы (ӘІҢҒҮҰҚӨҺ),
+              // и пользователь физически не мог ввести цифру. tel-режим
+              // даёт numeric keypad независимо от языка системы.
+              inputMode="tel"
+              autoComplete="tel"
+              textContentType="telephoneNumber"
               autoFocus
               maxLength={18}
               testID="prem-reg-phone-input"

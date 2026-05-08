@@ -52,6 +52,8 @@ module.exports = defineConfig({
     { name: 'visual',          testMatch: /visual\.screenshots\.spec\.js$/ },
     // Stage 45: гостевой режим (filters + language switch).
     { name: 'guest-mode',      testMatch: /guest\.mode\.spec\.js$/ },
+    // Stage 46: phone input работает с любой клавиатурой (KZ/RU/EN/CN).
+    { name: 'phone-keyboard',  testMatch: /phone\.input\.keyboard\.spec\.js$/ },
     { name: 'trip-clicks',         testMatch: /trip\.detail\.clicks\.spec\.js$/ },
     { name: 'shipper-trip-crash',  testMatch: /shipper\.trip\.crash\.spec\.js$/ },
     { name: 'auditor',             testMatch: /auditor\.full\.spec\.js$/,
