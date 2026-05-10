@@ -130,6 +130,29 @@ export const regAPI = {
     return await storage.remove(TOKEN_KEY);
   },
 
+  // Stage 50: PATCH /api/v1/users/me — сохраняем name/city из
+  // PremiumProfileScreen в БД, чтобы ProfileScreen после регистрации
+  // не показывал «Добавить имя».
+  async updateProfile({ name, city, about } = {}) {
+    const token = await this.getToken();
+    if (!token) return { ok: false, detail: 'no_token' };
+    const r = await fetch(`${API_BASE}/users/me`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        ...(name !== undefined ? { name } : {}),
+        ...(city !== undefined ? { city } : {}),
+        ...(about !== undefined ? { about } : {}),
+      }),
+    });
+    let data = {};
+    try { data = await r.json(); } catch {}
+    return { ok: r.ok, ...data };
+  },
+
   async uploadSelfie(iin, fullName, uri, onProgress) {
     const token = await this.getToken();
     onProgress?.('compressing');

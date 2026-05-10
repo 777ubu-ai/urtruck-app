@@ -67,8 +67,11 @@ export const normalizeTrip = (raw) => {
   if (!raw) return null;
   return {
     id: raw.id || raw.trip_id || null,
-    from: pick(raw.from_city, raw.from, raw.fromCity),
-    to: pick(raw.to_city, raw.to, raw.toCity),
+    // Stage 50 (Bug 10): добавлен fallback на структурированный
+    // from_point_name/to_point_name — если backend вернул пустые
+    // from_city/to_city, карточка не показывает "—".
+    from: pick(raw.from_city, raw.from, raw.fromCity, raw.from_point_name),
+    to: pick(raw.to_city, raw.to, raw.toCity, raw.to_point_name),
     transit: pick(raw.transit, raw.transitCity, raw.transit_city),
     departure: pick(raw.departure, raw.departure_date, raw.departureDate),
     arrival: pick(raw.arrival, raw.arrival_date, raw.arrivalDate),

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, FlatList, KeyboardAvoidingView, Platform, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import * as ImagePicker from 'expo-image-picker';
 import { useI18n } from '../utils/useI18n';
 import { getLanguage } from '../utils/i18n';
@@ -82,7 +83,6 @@ export default function ChatScreen({ navigation, route }) {
     backgroundColor: v1.surface, color: v1.text,
   },
   sendBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  sendIcon: { fontSize: 16, color: '#0A0A0A', fontWeight: '900' },
   photoMsg: { width: 200, height: 150, borderRadius: 12 },
   voiceBubble: { flexDirection: 'row', alignItems: 'center', gap: 8, minWidth: 180 },
   waveform: { flexDirection: 'row', alignItems: 'center', gap: 2, flex: 1 },
@@ -447,8 +447,9 @@ export default function ChatScreen({ navigation, route }) {
             onPress={() => sendMessage()}
             style={[s.sendBtn, { backgroundColor: v1Accent.main }]}
             testID="chat-send-btn"
+            accessibilityLabel="Send"
           >
-            <Text style={s.sendIcon}>➤</Text>
+            <FontAwesome5 name="paper-plane" size={16} color="#FFFFFF" solid />
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
