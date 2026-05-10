@@ -20,11 +20,19 @@ import { useTheme } from '../utils/ThemeContext';
 // Список совпадает с translations в utils/i18n.js — добавляя сюда
 // новый код, не забудь и там. UZ/KG/DE/… отброшены в i18n (см. шапку
 // файла), поэтому в pickerе их тоже нет.
+//
+// Stage 49 P0 fix: code = ISO 639-1 (RU/KK/EN/ZH) для совпадения с
+// translations[…] ключами. display — это то что показывается в pill
+// (KZ/CN привычнее видеть пользователю чем KK/ZH). До фикса LANGS
+// использовал code='KZ'/'CN' и setLanguage('KZ') клал
+// translations['KZ'] = undefined → t() fallback на RU → пользователь
+// видел рус-текст после выбора казахского/китайского, хотя pill
+// менялся. Reload спасал благодаря LEGACY_LANG_FIX в i18n.js.
 const LANGS = [
-  { code: 'RU', label: 'Русский', flag: '🇷🇺' },
-  { code: 'KZ', label: 'Қазақша', flag: '🇰🇿' },
-  { code: 'EN', label: 'English', flag: '🇬🇧' },
-  { code: 'CN', label: '中文',      flag: '🇨🇳' },
+  { code: 'RU', display: 'RU', label: 'Русский', flag: '🇷🇺' },
+  { code: 'KK', display: 'KZ', label: 'Қазақша', flag: '🇰🇿' },
+  { code: 'EN', display: 'EN', label: 'English', flag: '🇬🇧' },
+  { code: 'ZH', display: 'CN', label: '中文',      flag: '🇨🇳' },
 ];
 
 export default function LanguageSwitcher({ style, testID = 'language-switcher', compact = false }) {
@@ -55,7 +63,7 @@ export default function LanguageSwitcher({ style, testID = 'language-switcher', 
       >
         <Text style={{ fontSize: 14 }}>{current.flag}</Text>
         {!compact && (
-          <Text style={[s.code, { color: theme.text }]}>{current.code}</Text>
+          <Text style={[s.code, { color: theme.text }]}>{current.display}</Text>
         )}
       </TouchableOpacity>
 
@@ -90,7 +98,9 @@ export default function LanguageSwitcher({ style, testID = 'language-switcher', 
                       active && { backgroundColor: 'rgba(34,197,94,0.10)' },
                     ]}
                     onPress={() => pick(l.code)}
-                    testID={`lang-${l.code.toLowerCase()}`}
+                    // testID использует display (kz/cn), чтобы не
+                    // ломать существующие Stage 45 Playwright spec'и.
+                    testID={`lang-${l.display.toLowerCase()}`}
                   >
                     <Text style={{ fontSize: 22 }}>{l.flag}</Text>
                     <Text style={[s.rowText, { color: theme.text }]}>{l.label}</Text>

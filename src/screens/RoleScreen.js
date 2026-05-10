@@ -163,12 +163,16 @@ export default function RoleScreen({ navigation }) {
               real height, real colours. testIDs stay the same so QA
               can locate them. */}
           <View style={styles.buttons}>
+        {/* Stage 49: убраны russian fallback'ы вида `t(key) || 'Я водитель'`
+            — t() для существующих ключей всегда возвращает либо перевод
+            на текущий язык, либо RU-fallback из самого i18n. Внешний
+            fallback маскировал баг с language code mismatch (KZ vs KK). */}
         <Pressable
           onPress={() => enterAs('driver')}
           disabled={!!busy}
           testID="role-driver"
           accessibilityRole="button"
-          accessibilityLabel={t('role_driver_title') || 'Я водитель'}
+          accessibilityLabel={t('role_driver_title')}
           style={({ pressed }) => [
             styles.cta,
             styles.driverBtn,
@@ -176,8 +180,8 @@ export default function RoleScreen({ navigation }) {
             busy && busy !== 'driver' && styles.ctaDisabled,
           ]}
         >
-          <Text style={styles.ctaTitle}>{t('role_driver_title') || 'Я водитель'}</Text>
-          <Text style={styles.ctaSub}>{t('role_driver_desc') || 'Найти груз и не ехать порожняком'}</Text>
+          <Text style={styles.ctaTitle}>{t('role_driver_title')}</Text>
+          <Text style={styles.ctaSub}>{t('role_driver_desc')}</Text>
         </Pressable>
 
         <Pressable
@@ -185,7 +189,7 @@ export default function RoleScreen({ navigation }) {
           disabled={!!busy}
           testID="role-client"
           accessibilityRole="button"
-          accessibilityLabel={t('role_client_title') || 'Я грузовладелец'}
+          accessibilityLabel={t('role_client_title')}
           style={({ pressed }) => [
             styles.cta,
             styles.clientBtn,
@@ -193,20 +197,20 @@ export default function RoleScreen({ navigation }) {
             busy && busy !== 'client' && styles.ctaDisabled,
           ]}
         >
-          <Text style={styles.ctaTitle}>{t('role_client_title') || 'Я грузовладелец'}</Text>
-          <Text style={styles.ctaSub}>{t('role_client_desc') || 'Найти машину и получить ставки'}</Text>
+          <Text style={styles.ctaTitle}>{t('role_client_title')}</Text>
+          <Text style={styles.ctaSub}>{t('role_client_desc')}</Text>
         </Pressable>
 
         <Pressable
           onPress={goAuth}
           testID="role-login"
           accessibilityRole="button"
-          accessibilityLabel={t('login_action') || 'Войти'}
+          accessibilityLabel={t('login_action')}
           style={({ pressed }) => [styles.loginLink, pressed && { opacity: 0.6 }]}
         >
           <Text style={styles.loginText}>
-            {t('already_have_account') || 'Уже есть аккаунт?'}{' '}
-            <Text style={styles.loginLinkText}>{t('login_action') || 'Войти'}</Text>
+            {t('already_have_account')}{' '}
+            <Text style={styles.loginLinkText}>{t('login_action')}</Text>
           </Text>
         </Pressable>
 
@@ -219,7 +223,7 @@ export default function RoleScreen({ navigation }) {
           disabled={!!busy}
           testID="role-browse-guest"
           accessibilityRole="button"
-          accessibilityLabel={t('browse_as_guest') || 'Смотреть ленту'}
+          accessibilityLabel={t('browse_as_guest')}
           style={({ pressed }) => [
             styles.guestBtn,
             pressed && { opacity: 0.7 },
@@ -227,10 +231,10 @@ export default function RoleScreen({ navigation }) {
           ]}
         >
           <Text style={styles.guestBtnText}>
-            {t('browse_as_guest') || 'Смотреть ленту'}
+            {t('browse_as_guest')}
           </Text>
           <Text style={styles.guestBtnSub}>
-            · {t('browse_as_guest_sub') || 'Без регистрации'}
+            · {t('browse_as_guest_sub')}
           </Text>
         </Pressable>
 
@@ -348,26 +352,28 @@ const styles = StyleSheet.create({
     zIndex: 5,
   },
   // Stage 45 «Смотреть ленту» — outlined secondary CTA.
+  // Stage 49: уменьшен размер и приглушены цвета — гость-режим
+  // не должен конкурировать с главными CTA «Зарегистрироваться …».
   guestBtn: {
     flexDirection: 'row',
     alignItems: 'baseline',
     justifyContent: 'center',
-    paddingVertical: 12,
+    paddingVertical: 10,
     paddingHorizontal: 14,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#44403C',
-    marginTop: 4,
+    borderColor: '#292524',
+    marginTop: 8,
     gap: 6,
   },
   guestBtnText: {
-    color: '#FAFAF9',
-    fontSize: 14,
-    fontWeight: '700',
+    color: '#A8A29E',
+    fontSize: 13,
+    fontWeight: '600',
   },
   guestBtnSub: {
-    color: '#A8A29E',
-    fontSize: 12,
+    color: '#78716C',
+    fontSize: 11,
     fontWeight: '500',
   },
   errorBox: {
