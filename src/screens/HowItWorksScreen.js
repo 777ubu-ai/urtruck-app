@@ -75,7 +75,7 @@ export default function HowItWorksScreen({ navigation, route }) {
 
   const openSupport = (url) => {
     Linking.openURL(url).catch(() => {
-      toast(t('share_open_failed') || t('generic_error') || 'Не удалось открыть', 'error');
+      toast(t('share_open_failed'), 'error');
     });
   };
 
@@ -85,7 +85,7 @@ export default function HowItWorksScreen({ navigation, route }) {
         <TouchableOpacity onPress={() => navigation.goBack()} style={s.back}>
           <Text style={[s.backText, { color: theme.text }]}>‹</Text>
         </TouchableOpacity>
-        <Text style={[s.headerTitle, { color: theme.text }]}>Как это работает</Text>
+        <Text style={[s.headerTitle, { color: theme.text }]}>{t('howit_header')}</Text>
         <View style={{ width: 44 }} />
       </View>
 
@@ -96,17 +96,17 @@ export default function HowItWorksScreen({ navigation, route }) {
             style={[s.roleTab, role === 'client' && { backgroundColor: accentColors.client }]}
             onPress={() => navigation.setParams({ role: 'client' })}
           >
-            <Text style={[s.roleTabText, { color: role === 'client' ? '#FFF' : theme.textMuted }]}>📦 Для клиента</Text>
+            <Text style={[s.roleTabText, { color: role === 'client' ? '#FFF' : theme.textMuted }]}>{t('howit_role_client')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[s.roleTab, role === 'driver' && { backgroundColor: accentColors.driver }]}
             onPress={() => navigation.setParams({ role: 'driver' })}
           >
-            <Text style={[s.roleTabText, { color: role === 'driver' ? '#FFF' : theme.textMuted }]}>🚛 Для водителя</Text>
+            <Text style={[s.roleTabText, { color: role === 'driver' ? '#FFF' : theme.textMuted }]}>{t('howit_role_driver')}</Text>
           </TouchableOpacity>
         </View>
 
-        <Text style={[s.sectionTitle, { color: theme.text }]}>4 простых шага</Text>
+        <Text style={[s.sectionTitle, { color: theme.text }]}>{t('howit_4_steps')}</Text>
 
         {steps.map((st, i) => (
           <View key={st.n} style={s.step}>
@@ -124,7 +124,7 @@ export default function HowItWorksScreen({ navigation, route }) {
           </View>
         ))}
 
-        <Text style={[s.sectionTitle, { color: theme.text, marginTop: 24 }]}>Почему UrTruck</Text>
+        <Text style={[s.sectionTitle, { color: theme.text, marginTop: 24 }]}>{t('howit_why_title')}</Text>
         {FEATURES.map((f, i) => (
           <View key={i} style={[s.feature, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <Text style={s.featureIcon}>{f.icon}</Text>
@@ -136,9 +136,9 @@ export default function HowItWorksScreen({ navigation, route }) {
         ))}
 
         <View style={[s.faq, { backgroundColor: `${accent}10`, borderColor: accent }]}>
-          <Text style={[s.faqTitle, { color: accent }]}>❓ {t('support_questions_title') || 'Остались вопросы?'}</Text>
+          <Text style={[s.faqTitle, { color: accent }]}>❓ {t('support_questions_title')}</Text>
           <Text style={[s.faqBody, { color: theme.text }]}>
-            {t('support_questions_body') || 'Напиши в поддержку — отвечаем в рабочее время.'}
+            {t('support_questions_body')}
           </Text>
           <View style={s.supportRow}>
             <TouchableOpacity
