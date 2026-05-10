@@ -132,7 +132,9 @@ export default function EditProfileScreen({ navigation, route }) {
   return (
     <Screen>
       <BrandHeader onBack={() => navigation.goBack()} accent={accent.main} compact />
-      <HeroTruck size="sm" />
+      {/* Bug #5: фура для грузовладельца лишняя — это его профиль, а
+          не водительский. Показываем только в driver-flow. */}
+      {isDriver ? <HeroTruck size="sm" /> : null}
 
       <Text style={s.title}>
         {isDriver ? t('profile_setup_driver_title') : t('profile_setup_client_title')}
@@ -157,8 +159,20 @@ export default function EditProfileScreen({ navigation, route }) {
         <Text style={[s.avatarHint, { color: accent.main }]}>{t('profile_setup_add_photo')}</Text>
       </View>
 
-      <Field icon="👤" label={t('signup_field_first_name')} value={firstName} onChangeText={setFirstName} />
-      <Field icon="👤" label={t('signup_field_last_name')} value={lastName} onChangeText={setLastName} />
+      <Field
+        icon="👤"
+        label={t('signup_field_first_name')}
+        value={firstName}
+        onChangeText={setFirstName}
+        placeholder={t('signup_first_name_placeholder')}
+      />
+      <Field
+        icon="👤"
+        label={t('signup_field_last_name')}
+        value={lastName}
+        onChangeText={setLastName}
+        placeholder={t('signup_last_name_placeholder')}
+      />
       <Field icon="📞" label={t('signup_field_phone')} value={phone} onChangeText={() => {}} />
       {/* Stage 21: previously these were `Field variant="dropdown"`
           with `onPress={() => {}}` — taps did nothing, so users
@@ -185,7 +199,7 @@ export default function EditProfileScreen({ navigation, route }) {
         <Field
           icon="🏢"
           label={t('signup_field_company')}
-          placeholder={t('signup_field_company_optional')}
+          placeholder={t('signup_company_placeholder')}
           value={company}
           onChangeText={setCompany}
         />
@@ -197,6 +211,7 @@ export default function EditProfileScreen({ navigation, route }) {
         onChangeText={setEmail}
         keyboardType="email-address"
         autoCapitalize="none"
+        placeholder={t('signup_email_placeholder')}
       />
 
       <View style={[s.infoBox, { backgroundColor: accent.soft, borderColor: accent.main }]}>

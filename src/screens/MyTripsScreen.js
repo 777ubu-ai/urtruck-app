@@ -570,14 +570,17 @@ export default function MyTripsScreen({ navigation, route }) {
               title={isDriver ? t('no_trips_yet') : t('no_cargos_yet')}
               description={isDriver ? t('no_trips_desc') : t('no_cargos_desc')}
               actionLabel={isDriver ? t('publish_route') : t('place_cargo')}
-              onAction={() => navigation.navigate('Feed', { role })}
+              // Bug #8: раньше CTA вёл на ленту и пользователю
+              // приходилось искать "+" сверху. Теперь сразу в форму.
+              onAction={() => navigation.navigate(isDriver ? 'CreateTrip' : 'CreateCargo', { role })}
             />
           ) : tab === 'bids' ? (
             <EmptyState
               title={isDriver ? t('no_bids_yet_driver') : t('no_responses_yet')}
               description={isDriver ? t('no_bids_desc') : t('no_responses_desc')}
               actionLabel={isDriver ? t('find_cargos') : t('place_cargo')}
-              onAction={() => navigation.navigate('Feed', { role })}
+              // Driver ищет грузы → лента; shipper хочет разместить → форма.
+              onAction={() => navigation.navigate(isDriver ? 'Feed' : 'CreateCargo', { role })}
             />
           ) : (
             <EmptyState

@@ -432,11 +432,15 @@ export default function FeedScreen({ navigation, route }) {
     // Stage 17: meta pills lose their per-row emoji glyphs to match
     // Stage 16's quiet visual language — only one accent (the price)
     // per card, label/value pair carries the meaning on its own.
+    // Bug #10: даже если у только что созданного груза не указаны
+    // pickup_date / weight / volume — карточка не должна быть пустой.
+    // Показываем "—" чтобы поля резервировали место и юзер видел,
+    // что данные просто не заполнены.
     const meta = [
-      item.pickup ? { label: t('departure'), value: item.pickup } : null,
-      item.tons > 0 ? { label: t('weight'), value: `${item.tons} т` } : null,
-      item.m3 > 0 ? { label: t('volume'), value: `${item.m3} м³` } : null,
-    ].filter(Boolean);
+      { label: t('departure'), value: item.pickup || '—' },
+      { label: t('weight'), value: item.tons > 0 ? `${item.tons} т` : '—' },
+      { label: t('volume'), value: item.m3 > 0 ? `${item.m3} м³` : '—' },
+    ];
     // Stage 9: feed cards used to show two buttons that both ran the
     // same `openCargo`. The pair gave the user two different verbs
     // for the same action and made it look like there were two flows.
@@ -667,7 +671,10 @@ export default function FeedScreen({ navigation, route }) {
         </ScrollView>
       )}
 
-      {/* Direction sheet — only city-from / city-to inputs. */}
+      {/* Direction sheet — city-from / city-to + chip-suggestions из
+          текущих карточек ленты. Bug #1: раньше юзер видел пустой
+          input и не понимал, что вводить — теперь под полем сразу
+          доступны топ-города из открытой ленты, тап подставляет. */}
       <BottomSheet visible={activeFilter === 'dir'} onClose={closeFilter} title={`🧭 ${t('filter_direction')}`}>
         <Text style={[s.filterSectionLabel, { color: theme.textMuted }]}>{t('from')}</Text>
         <TextInput
@@ -677,6 +684,23 @@ export default function FeedScreen({ navigation, route }) {
           placeholderTextColor={v1.textMuted}
           style={[s.filterInput, { backgroundColor: theme.card, borderColor: theme.border, color: theme.text }]}
         />
+        {(() => {
+          const cities = Array.from(new Set(currentData.map(d => (d.from || '').trim()).filter(Boolean))).slice(0, 10);
+          if (!cities.length) return null;
+          return (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }} contentContainerStyle={{ gap: 6 }}>
+              {cities.map(c => (
+                <TouchableOpacity
+                  key={`from-${c}`}
+                  style={[s.quickChip, { borderColor: v1.border, backgroundColor: dirFrom === c ? accentColor : v1.surface }]}
+                  onPress={() => setDirFrom(c)}
+                >
+                  <Text style={[s.quickChipText, { color: dirFrom === c ? '#0A0A0A' : v1.text }]}>{c}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          );
+        })()}
         <Text style={[s.filterSectionLabel, { color: theme.textMuted, marginTop: 12 }]}>{t('to')}</Text>
         <TextInput
           value={dirTo}
@@ -685,6 +709,23 @@ export default function FeedScreen({ navigation, route }) {
           placeholderTextColor={v1.textMuted}
           style={[s.filterInput, { backgroundColor: theme.card, borderColor: theme.border, color: theme.text }]}
         />
+        {(() => {
+          const cities = Array.from(new Set(currentData.map(d => (d.to || '').trim()).filter(Boolean))).slice(0, 10);
+          if (!cities.length) return null;
+          return (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }} contentContainerStyle={{ gap: 6 }}>
+              {cities.map(c => (
+                <TouchableOpacity
+                  key={`to-${c}`}
+                  style={[s.quickChip, { borderColor: v1.border, backgroundColor: dirTo === c ? accentColor : v1.surface }]}
+                  onPress={() => setDirTo(c)}
+                >
+                  <Text style={[s.quickChipText, { color: dirTo === c ? '#0A0A0A' : v1.text }]}>{c}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          );
+        })()}
         <View style={s.filterActions}>
           <TouchableOpacity
             style={[s.filterActionBtn, { backgroundColor: v1.surface, borderColor: v1.border, borderWidth: 1 }]}
