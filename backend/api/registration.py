@@ -150,14 +150,46 @@ def wa_send(req: SendCodeRequest, request: Request = None):
         print(f"[consent] failed to record audit phone={phone_clean[:5]}***: {e}", flush=True)
 
     result = otp_service.send_otp(phone_clean, code, channel=req.channel)
-    return {
-        "sent": True,
+
+    # Stage 48: возвращаем РЕАЛЬНЫЙ статус доставки. Раньше тут стояло
+    # `"sent": True` хардкодом — frontend всегда показывал "SMS отправлен",
+    # даже если Mobizon отверг отправку (например code=8 при невалидном
+    # apiKey или unauthorized sender). Owner на Android не получал SMS,
+    # но видел экран ввода кода — отлаживать было невозможно.
+    #
+    # Теперь sent отражает фактический результат канала (delivered=True
+    # ИЛИ mock=True для dev-режимов). Если все каналы упали и реально
+    # ничего не ушло — sent=False + error с понятной причиной (не raw
+    # backend-detail, а "delivery_failed" чтобы UI показал toast).
+    delivered = bool(result.get("sent")) and not result.get("error")
+    is_mock = bool(result.get("mock"))
+    is_beta = bool(result.get("beta"))
+    really_sent = delivered or is_mock or is_beta
+
+    response = {
+        "sent": really_sent,
         "phone": phone_clean,
         "channel": result.get("channel", req.channel),
-        "mock": result.get("mock", False),
-        "code": result.get("code") if result.get("mock") else None,
+        "mock": is_mock,
+        "beta": is_beta,
+        "code": result.get("code") if (is_mock or is_beta) else None,
         "deeplink": result.get("deeplink"),
     }
+    if not really_sent:
+        # Внешняя причина (бренд-нейтральная). Подробности — только в логах
+        # сервера, не отдаём пользователю чтобы не светить структуру
+        # провайдера. Frontend покажет понятный toast по error="delivery_failed".
+        response["error"] = result.get("error") or "delivery_failed"
+        try:
+            attempts = result.get("attempts") or []
+            print(
+                f"[OTP] delivery failed phone={phone_clean[:5]}*** "
+                f"channel={req.channel} attempts={attempts}",
+                flush=True,
+            )
+        except Exception:
+            pass
+    return response
 
 
 @reg_router.post("/otp/send")
