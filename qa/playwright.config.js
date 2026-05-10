@@ -54,6 +54,8 @@ module.exports = defineConfig({
     { name: 'guest-mode',      testMatch: /guest\.mode\.spec\.js$/ },
     // Stage 46: phone input работает с любой клавиатурой (KZ/RU/EN/CN).
     { name: 'phone-keyboard',  testMatch: /phone\.input\.keyboard\.spec\.js$/ },
+    // Stage 49: RoleScreen перерисовка при смене языка + новые CTA.
+    { name: 'role-i18n',       testMatch: /role\.i18n\.spec\.js$/ },
     { name: 'trip-clicks',         testMatch: /trip\.detail\.clicks\.spec\.js$/ },
     { name: 'shipper-trip-crash',  testMatch: /shipper\.trip\.crash\.spec\.js$/ },
     { name: 'auditor',             testMatch: /auditor\.full\.spec\.js$/,
