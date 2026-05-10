@@ -67,12 +67,15 @@ export default function ProfileScreen({ navigation, route }) {
       if (r.ok) {
         const d = await r.json();
         setProfile(prev => {
+          // N2: используем `||` вместо `??`, чтобы пустая строка с
+          // сервера НЕ перезатирала локальное значение. У `??` пустая
+          // строка считается валидным значением и затирает поле.
           const updated = {
             ...(prev || {}),
             display_name: d.name || prev?.display_name,
             full_name: d.name || prev?.full_name,
-            city: d.city ?? prev?.city,
-            bio: d.about ?? prev?.bio,
+            city: d.city || prev?.city,
+            bio: d.about || prev?.bio,
           };
           if (session?.user?.id) saveProfile(session.user.id, updated);
           return updated;
