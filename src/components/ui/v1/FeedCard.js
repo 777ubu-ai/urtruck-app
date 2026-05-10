@@ -16,6 +16,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useV1Colors, v1Radius, v1AccentFor } from '../../../theme/designV1';
+import { t as tGlobal } from '../../../utils/i18n';
 
 export default function FeedCard({
   variant = 'cargo',
@@ -63,7 +64,7 @@ export default function FeedCard({
               if (from && to) return `${from} → ${to}`;
               if (from) return from;
               if (to) return to;
-              return 'Маршрут не указан';
+              return tGlobal('route_not_specified');
             })()}
           </Text>
           {subtitle ? <Text style={[s.subtitle, { color: colors.textMuted }]} numberOfLines={1}>{subtitle}</Text> : null}

@@ -10,57 +10,29 @@ import { accentColors } from '../utils/theme';
 const SUPPORT_TG = 'https://t.me/UrTruckSupport';
 const SUPPORT_EMAIL = 'hello@urtruck.kz';
 
+// STEPS / FEATURES хранят только icon + ключи i18n; реальный текст
+// тянется через t() в момент рендера (см. buildSteps/buildFeatures
+// внутри компонента), чтобы смена языка обновляла экран без
+// reload приложения.
 const STEPS_CLIENT = [
-  {
-    n: 1, icon: '📝',
-    title: 'Опубликуй груз',
-    body: 'Откуда, куда, что везти, желаемая цена. Публикация бесплатна. Займёт минуту.',
-  },
-  {
-    n: 2, icon: '💬',
-    title: 'Получи предложения',
-    body: 'Проверенные водители откликнутся с ценами. Выбирай лучшего — смотри рейтинг, отзывы, безопасность.',
-  },
-  {
-    n: 3, icon: '🚛',
-    title: 'Отслеживай рейс',
-    body: 'Водитель везёт твой груз. Видишь статус на карте: принят, в пути, доставлен.',
-  },
-  {
-    n: 4, icon: '⭐',
-    title: 'Оцени и плати',
-    body: 'После доставки поставь звёзды и расплатись удобным способом. Всё прозрачно.',
-  },
+  { n: 1, icon: '📝', titleKey: 'howit_client_step1_title', bodyKey: 'howit_client_step1_body' },
+  { n: 2, icon: '💬', titleKey: 'howit_client_step2_title', bodyKey: 'howit_client_step2_body' },
+  { n: 3, icon: '🚛', titleKey: 'howit_client_step3_title', bodyKey: 'howit_client_step3_body' },
+  { n: 4, icon: '⭐', titleKey: 'howit_client_step4_title', bodyKey: 'howit_client_step4_body' },
 ];
 
 const STEPS_DRIVER = [
-  {
-    n: 1, icon: '📱',
-    title: 'Зарегистрируйся за 2 минуты',
-    body: 'WhatsApp-код → селфи → фото прав и техпаспорта. Модерация до 1 часа.',
-  },
-  {
-    n: 2, icon: '📦',
-    title: 'Смотри грузы по маршруту',
-    body: 'Ты видишь актуальные заявки. Фильтр по типу кузова, цене, городам.',
-  },
-  {
-    n: 3, icon: '🤝',
-    title: 'Откликнись и договаривайся',
-    body: 'Предложи свою цену. Клиент видит твой рейтинг и сам примет решение.',
-  },
-  {
-    n: 4, icon: '💰',
-    title: 'Вези и получай',
-    body: 'После подтверждения доставки — получаешь оплату. Репутация растёт.',
-  },
+  { n: 1, icon: '📱', titleKey: 'howit_driver_step1_title', bodyKey: 'howit_driver_step1_body' },
+  { n: 2, icon: '📦', titleKey: 'howit_driver_step2_title', bodyKey: 'howit_driver_step2_body' },
+  { n: 3, icon: '🤝', titleKey: 'howit_driver_step3_title', bodyKey: 'howit_driver_step3_body' },
+  { n: 4, icon: '💰', titleKey: 'howit_driver_step4_title', bodyKey: 'howit_driver_step4_body' },
 ];
 
 const FEATURES = [
-  { icon: '🛡️', t: 'Безопасность', d: 'Каждый водитель проходит проверку: ИИН, документы, Liveness, blacklist, OCR.' },
-  { icon: '💯', t: 'Без посредников', d: 'Связь напрямую между клиентом и водителем. Мы не берём процент за каждый рейс.' },
-  { icon: '⚡', t: 'Быстрый просмотр', d: 'Смотри ленту без регистрации. Регистрируйся только когда готов действовать.' },
-  { icon: '🌍', t: 'Китай ↔ СНГ', d: 'Специализация на FTL-перевозках от Урумчи до Москвы. 11 языков, 6 стран.' },
+  { icon: '🛡️', titleKey: 'howit_feature_security_t',  bodyKey: 'howit_feature_security_d' },
+  { icon: '💯', titleKey: 'howit_feature_no_middle_t', bodyKey: 'howit_feature_no_middle_d' },
+  { icon: '⚡', titleKey: 'howit_feature_browse_t',   bodyKey: 'howit_feature_browse_d' },
+  { icon: '🌍', titleKey: 'howit_feature_geo_t',      bodyKey: 'howit_feature_geo_d' },
 ];
 
 
@@ -117,9 +89,9 @@ export default function HowItWorksScreen({ navigation, route }) {
             <View style={[s.stepCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
               <View style={s.stepHead}>
                 <Text style={s.stepIcon}>{st.icon}</Text>
-                <Text style={[s.stepTitle, { color: theme.text }]}>{st.title}</Text>
+                <Text style={[s.stepTitle, { color: theme.text }]}>{t(st.titleKey)}</Text>
               </View>
-              <Text style={[s.stepBody, { color: theme.textSecondary }]}>{st.body}</Text>
+              <Text style={[s.stepBody, { color: theme.textSecondary }]}>{t(st.bodyKey)}</Text>
             </View>
           </View>
         ))}
@@ -129,8 +101,8 @@ export default function HowItWorksScreen({ navigation, route }) {
           <View key={i} style={[s.feature, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <Text style={s.featureIcon}>{f.icon}</Text>
             <View style={{ flex: 1 }}>
-              <Text style={[s.featureTitle, { color: theme.text }]}>{f.t}</Text>
-              <Text style={[s.featureBody, { color: theme.textMuted }]}>{f.d}</Text>
+              <Text style={[s.featureTitle, { color: theme.text }]}>{t(f.titleKey)}</Text>
+              <Text style={[s.featureBody, { color: theme.textMuted }]}>{t(f.bodyKey)}</Text>
             </View>
           </View>
         ))}
