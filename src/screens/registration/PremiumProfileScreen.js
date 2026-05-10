@@ -24,6 +24,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../../utils/useI18n';
 import { useAuth } from '../../utils/AuthContext';
 import { saveProfile } from '../../utils/store';
+import { storage } from '../../utils/storage';
+import { API_BASE } from '../../config/env';
 
 const ACCENT = {
   driver: { main: '#22C55E', deep: '#16A34A', soft: 'rgba(34,197,94,0.12)' },
@@ -44,7 +46,7 @@ export default function PremiumProfileScreen({ navigation, route }) {
 
   const validName = name.trim().length >= 2;
 
-  const enterApp = (withProfile) => {
+  const enterApp = async (withProfile) => {
     if (loading) return;
     if (withProfile) {
       if (!validName) {
@@ -52,12 +54,28 @@ export default function PremiumProfileScreen({ navigation, route }) {
         return;
       }
       const userId = session?.user?.id || ('u_' + Date.now());
+      const cleanName = name.trim();
+      const cleanCity = city.trim();
       saveProfile(userId, {
-        name: name.trim(),
-        city: city.trim(),
+        name: cleanName,
+        display_name: cleanName,
+        full_name: cleanName,
+        city: cleanCity,
         role,
         phone,
       });
+      // Bug #4: PATCH /users/me — иначе ProfileScreen на focus получит
+      // 200 с пустыми name/city и юзер увидит "Добавить имя" вместо своего.
+      try {
+        const token = await storage.get('ur_reg_token');
+        if (token) {
+          await fetch(`${API_BASE}/users/me`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ name: cleanName, city: cleanCity, about: '' }),
+          });
+        }
+      } catch {}
     }
     setLoading(true);
     setRole(role);

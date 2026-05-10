@@ -60,19 +60,15 @@ export default function ShareModal({
     return false;
   };
 
+  // Bug #9: одна WeChat-кнопка вместо двух. Сначала копируем полный
+  // текст в буфер, затем пытаемся открыть приложение через weixin://.
+  // На desktop / без установленного WeChat schema rejects — всё равно
+  // показываем "скопировано", чтобы пользователь смог вставить вручную.
   const handleWeChat = async () => {
-    // WeChat does not accept arbitrary HTTPS deep-links from a browser, so
-    // the most honest path is "copy + tell user". We copy the FULL share
-    // text (not just the link) so the user can paste it as one message.
     const ok = await copyToClipboard(fullShareText);
     if (ok) toast('✅ ' + t('share_copied_open_wechat'), 'success', 4000);
     else toast(fullShareText, 'info', 6000);
-  };
-
-  const handleOpenWeChat = () => {
-    // Best-effort: if WeChat is installed, this scheme opens the app on
-    // mobile. On desktop browsers it'll throw — we fall back to a toast.
-    Linking.openURL('weixin://').catch(() => toast(t('share_wechat_not_installed'), 'info', 4000));
+    Linking.openURL('weixin://').catch(() => {});
   };
 
   const copyLink = async () => {
@@ -122,12 +118,6 @@ export default function ShareModal({
               </TouchableOpacity>
             ))}
           </View>
-
-          {/* WeChat secondary action — opens app on mobile if installed */}
-          <TouchableOpacity style={[s.secondaryBtn, { borderColor: '#22C55E' }]} onPress={handleOpenWeChat}>
-            <FontAwesome5 name="external-link-alt" size={13} color="#22C55E" style={{ marginRight: 8 }} />
-            <Text style={[s.secondaryBtnText, { color: '#22C55E' }]}>{t('share_open_wechat_app')}</Text>
-          </TouchableOpacity>
         </TouchableOpacity>
       </TouchableOpacity>
     </Modal>
@@ -146,6 +136,4 @@ const s = StyleSheet.create({
   channelBtn: { flex: 1, alignItems: 'center', gap: 6, padding: 10, borderRadius: 14, borderWidth: 1 },
   iconWrap: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   channelName: { fontSize: 11, fontWeight: '700' },
-  secondaryBtn: { borderWidth: 1, borderRadius: 12, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', marginTop: 6 },
-  secondaryBtnText: { fontSize: 13, fontWeight: '700' },
 });

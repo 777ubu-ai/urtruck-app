@@ -52,8 +52,19 @@ export default function FeedCard({
           <Text style={s.icon}>{icon}</Text>
         </View>
         <View style={{ flex: 1 }}>
+          {/* Bug #11: вместо двух прочерков "— → —" показываем
+              честный fallback. Если есть только один город — рендерим
+              именно его без стрелки; если ни одного — единый плейсхолдер
+              "Маршрут не указан", чтобы карточка не выглядела сломанной. */}
           <Text style={[s.route, { color: colors.text }]} numberOfLines={1}>
-            {(route && route.from) || '—'} → {(route && route.to) || '—'}
+            {(() => {
+              const from = (route && route.from) ? String(route.from).trim() : '';
+              const to = (route && route.to) ? String(route.to).trim() : '';
+              if (from && to) return `${from} → ${to}`;
+              if (from) return from;
+              if (to) return to;
+              return 'Маршрут не указан';
+            })()}
           </Text>
           {subtitle ? <Text style={[s.subtitle, { color: colors.textMuted }]} numberOfLines={1}>{subtitle}</Text> : null}
         </View>

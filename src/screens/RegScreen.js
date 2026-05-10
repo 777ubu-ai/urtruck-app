@@ -8,6 +8,26 @@ import { useAuth } from '../utils/AuthContext';
 import { useToast } from '../components/Toast';
 import { saveProfile } from '../utils/store';
 import { regAPI } from '../utils/registration';
+import { storage } from '../utils/storage';
+import { API_BASE } from '../config/env';
+
+// PATCH /users/me — сервер должен знать имя/город сразу после регистрации,
+// иначе ProfileScreen на focus получит 200 с пустыми полями и юзер увидит
+// "Добавить имя" вместо своего имени (Bug #4).
+const syncProfileToServer = async ({ name, city }) => {
+  try {
+    const token = await storage.get('ur_reg_token');
+    if (!token) return false;
+    const r = await fetch(`${API_BASE}/users/me`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ name: name || '', city: city || '', about: '' }),
+    });
+    return r.ok;
+  } catch {
+    return false;
+  }
+};
 import ConsentRow from '../components/ConsentRow';
 import ShimmerButton from '../components/ShimmerButton';
 import GradientText from '../components/GradientText';
@@ -268,11 +288,15 @@ export default function RegScreen({ navigation, route }) {
         capacity_tons: Math.round((parseInt(capacityKg) || 0) / 1000),
         plate_truck: passportData?.extracted?.plate_number,
         full_name: fullName,
+        display_name: fullName,
         iin,
         is_verified: true,
         security_score: r.security_score,
         security_color: r.security_color,
       });
+      // Синхронизируем имя на сервер до setRole — иначе ProfileScreen на
+      // focus затрёт локальное full_name пустым ответом /users/me.
+      await syncProfileToServer({ name: fullName, city: '' });
       setTimeout(() => { setRole('driver'); toast('🎉 ' + t('reg_complete_toast'), 'success'); }, 2500);
     } else if (r.status === 'rejected') {
       toast(`⛔ ${t('reg_rejected_toast')}: ${r.rejected_reason}`, 'error', 8000);
@@ -705,11 +729,22 @@ function ClientReg({ navigation, setRole, session, theme, t, toast, accent }) {
             </TouchableOpacity>
           ))}
         </View>
-        <ShimmerButton colors={[accent, '#EF4444']} onPress={() => {
+        <ShimmerButton colors={[accent, '#EF4444']} onPress={async () => {
           if (!displayName) { toast(t('reg_client_enter_name'), 'error'); return; }
-          saveProfile(session?.user?.id || 'c_' + Date.now(), {
-            role: 'client', display_name: displayName, city, company_type: companyType, is_verified: false,
+          // N3: без session.user.id профиль уйдёт под рандомным id и
+          // ProfileScreen его не найдёт — лучше явно остановиться, чем
+          // сохранять данные, которые потом потеряются.
+          const userId = session?.user?.id;
+          if (!userId) { toast(t('generic_error'), 'error'); return; }
+          saveProfile(userId, {
+            role: 'client',
+            display_name: displayName,
+            full_name: displayName,
+            city,
+            company_type: companyType,
+            is_verified: false,
           });
+          await syncProfileToServer({ name: displayName, city });
           setRole('client');
           toast('🎉 ' + t('reg_client_welcome'), 'success');
         }}>{t('reg_client_finish')}</ShimmerButton>

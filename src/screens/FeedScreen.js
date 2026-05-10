@@ -498,9 +498,12 @@ export default function FeedScreen({ navigation, route }) {
       <FeedCard
         variant="trip"
         accent={isDriver ? 'driver' : 'cargo'}
+        // Bug #11: карточка водителя без рейса не должна показывать
+        // "Иван → —". Передаём только from (имя), to остаётся пустым,
+        // и FeedCard рендерит одну строку без стрелки.
         route={item.isTrip && item.tripRoute
           ? { from: item.from, to: item.to }
-          : { from: sanitizeForDisplay(item.name), to: '' }}
+          : { from: sanitizeForDisplay(item.name), to: null }}
         subtitle={item.verified ? `${formatTruckType(item.type)} · ${t('verified')}` : formatTruckType(item.type)}
         meta={meta}
         priceText={item.isTrip ? formatPrice(item.price, item.currency, t) : `★ ${item.rating || '—'}`}

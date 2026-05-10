@@ -1,9 +1,14 @@
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../utils/ThemeContext';
+import { useI18n } from '../utils/useI18n';
+import { useToast } from '../components/Toast';
 import {v1Colors, useV1Colors} from '../theme/designV1';
 import { accentColors } from '../utils/theme';
+
+const SUPPORT_TG = 'https://t.me/UrTruckSupport';
+const SUPPORT_EMAIL = 'hello@urtruck.kz';
 
 const STEPS_CLIENT = [
   {
@@ -62,9 +67,17 @@ const FEATURES = [
 export default function HowItWorksScreen({ navigation, route }) {
   const v1 = useV1Colors();
   const { theme, isDark } = useTheme();
+  const { t } = useI18n();
+  const { toast } = useToast();
   const role = route?.params?.role || 'client';
   const steps = role === 'driver' ? STEPS_DRIVER : STEPS_CLIENT;
   const accent = role === 'driver' ? accentColors.driver : accentColors.client;
+
+  const openSupport = (url) => {
+    Linking.openURL(url).catch(() => {
+      toast(t('share_open_failed') || t('generic_error') || 'Не удалось открыть', 'error');
+    });
+  };
 
   return (
     <SafeAreaView style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']}>
@@ -123,11 +136,30 @@ export default function HowItWorksScreen({ navigation, route }) {
         ))}
 
         <View style={[s.faq, { backgroundColor: `${accent}10`, borderColor: accent }]}>
-          <Text style={[s.faqTitle, { color: accent }]}>❓ Остались вопросы?</Text>
+          <Text style={[s.faqTitle, { color: accent }]}>❓ {t('support_questions_title') || 'Остались вопросы?'}</Text>
           <Text style={[s.faqBody, { color: theme.text }]}>
-            Напиши в поддержку — отвечаем в рабочее время.
-            Telegram: @UrTruckSupport · Email: hello@urtruck.kz
+            {t('support_questions_body') || 'Напиши в поддержку — отвечаем в рабочее время.'}
           </Text>
+          <View style={s.supportRow}>
+            <TouchableOpacity
+              style={[s.supportBtn, { backgroundColor: accent }]}
+              onPress={() => openSupport(SUPPORT_TG)}
+              testID="support-telegram"
+              accessibilityRole="button"
+              accessibilityLabel="Telegram"
+            >
+              <Text style={s.supportBtnText}>💬 Telegram</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.supportBtn, { borderWidth: 1, borderColor: accent, backgroundColor: 'transparent' }]}
+              onPress={() => openSupport(`mailto:${SUPPORT_EMAIL}`)}
+              testID="support-email"
+              accessibilityRole="button"
+              accessibilityLabel="Email"
+            >
+              <Text style={[s.supportBtnText, { color: accent }]}>✉ Email</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -178,4 +210,7 @@ const s = StyleSheet.create({
   },
   faqTitle: { fontSize: 15, fontWeight: '800', marginBottom: 6 },
   faqBody: { fontSize: 13, lineHeight: 19 },
+  supportRow: { flexDirection: 'row', gap: 10, marginTop: 12 },
+  supportBtn: { flex: 1, borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
+  supportBtnText: { color: '#0A0A0A', fontSize: 14, fontWeight: '800' },
 });
