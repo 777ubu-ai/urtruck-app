@@ -17,16 +17,14 @@
       "ios": { "simulator": false },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://urtruck.kz"
-      },
-      "extra": { "eas": { "profile": "preview" } }
+      }
     },
     "production": {
       "ios": { "autoIncrement": true },
       "android": { "autoIncrement": true },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://urtruck.kz"
-      },
-      "extra": { "eas": { "profile": "production" } }
+      }
     }
   },
   "submit": {
