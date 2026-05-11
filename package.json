@@ -24,7 +24,8 @@
     "qa:theme": "node qa/utils/themeSmoke.js",
     "qa:geo": "node qa/utils/geographySmoke.js",
     "qa:ux": "node qa/utils/uxSmoke.js",
-    "qa:mobile": "playwright test --config qa/playwright.mobile.config.js"
+    "qa:mobile": "playwright test --config qa/playwright.mobile.config.js",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@expo/metro-runtime": "~4.0.1",
@@ -57,6 +58,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.25.0",
-    "@playwright/test": "^1.59.1"
+    "@playwright/test": "^1.59.1",
+    "patch-package": "^8.0.1"
   }
 }
