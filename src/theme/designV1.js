@@ -34,7 +34,10 @@ const DARK = {
   text: '#F5F5F5',
   textMuted: '#9CA3AF',
   textDim: '#5A6068',
-  placeholder: '#5A6068',
+  // Stage 50: placeholder бампнут с #5A6068 → #8B92A0, чтобы хинты
+  // полей читались на тёмном surface (#0F1418). Старое значение давало
+  // ~3:1 контраст, ниже WCAG AA для нормального текста.
+  placeholder: '#8B92A0',
 
   error: '#EF4444',
   success: '#22C55E',

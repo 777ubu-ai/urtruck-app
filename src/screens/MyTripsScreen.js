@@ -570,14 +570,14 @@ export default function MyTripsScreen({ navigation, route }) {
               title={isDriver ? t('no_trips_yet') : t('no_cargos_yet')}
               description={isDriver ? t('no_trips_desc') : t('no_cargos_desc')}
               actionLabel={isDriver ? t('publish_route') : t('place_cargo')}
-              onAction={() => navigation.navigate('Feed', { role })}
+              onAction={() => navigation.navigate(isDriver ? 'CreateTrip' : 'CreateCargo')}
             />
           ) : tab === 'bids' ? (
             <EmptyState
               title={isDriver ? t('no_bids_yet_driver') : t('no_responses_yet')}
               description={isDriver ? t('no_bids_desc') : t('no_responses_desc')}
               actionLabel={isDriver ? t('find_cargos') : t('place_cargo')}
-              onAction={() => navigation.navigate('Feed', { role })}
+              onAction={() => isDriver ? navigation.navigate('Feed', { role }) : navigation.navigate('CreateCargo')}
             />
           ) : (
             <EmptyState

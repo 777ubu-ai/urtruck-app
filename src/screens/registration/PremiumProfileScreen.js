@@ -24,6 +24,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../../utils/useI18n';
 import { useAuth } from '../../utils/AuthContext';
 import { saveProfile } from '../../utils/store';
+import { regAPI } from '../../utils/registration';
 
 const ACCENT = {
   driver: { main: '#22C55E', deep: '#16A34A', soft: 'rgba(34,197,94,0.12)' },
@@ -44,7 +45,7 @@ export default function PremiumProfileScreen({ navigation, route }) {
 
   const validName = name.trim().length >= 2;
 
-  const enterApp = (withProfile) => {
+  const enterApp = async (withProfile) => {
     if (loading) return;
     if (withProfile) {
       if (!validName) {
@@ -52,14 +53,23 @@ export default function PremiumProfileScreen({ navigation, route }) {
         return;
       }
       const userId = session?.user?.id || ('u_' + Date.now());
+      const trimmedName = name.trim();
+      const trimmedCity = city.trim();
       saveProfile(userId, {
-        name: name.trim(),
-        city: city.trim(),
+        name: trimmedName,
+        display_name: trimmedName,
+        full_name: trimmedName,
+        city: trimmedCity,
         role,
         phone,
       });
+      setLoading(true);
+      // Stage 50: пишем в БД через PATCH /api/v1/users/me, иначе ProfileScreen
+      // после регистрации показывает «Добавить имя» — фронт читает из /users/me.
+      regAPI.updateProfile({ name: trimmedName, city: trimmedCity }).catch(() => {});
+    } else {
+      setLoading(true);
     }
-    setLoading(true);
     setRole(role);
     navigation.reset({ index: 0, routes: [{ name: 'Main', params: { role } }] });
   };
