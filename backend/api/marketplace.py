@@ -69,6 +69,29 @@ def _parse_iso_date(s):
     return None
 
 
+def _validate_future_date(value, field_name: str):
+    """Stage 52 / P1-8: запрещаем создавать грузы/рейсы с датой в прошлом.
+
+    Принимаем те же форматы что _parse_iso_date (ISO, DD.MM.YYYY).
+    - None / пустая строка → разрешено (поле опциональное на схеме).
+    - невалидный формат → 400.
+    - дата строго раньше сегодняшнего дня → 400.
+
+    Возвращаем распарсенную date или None — это не используется вызывающим
+    кодом сейчас (поле сохраняется as-is, чтобы старые клиенты могли
+    обратно прочитать тот же формат), но пригодится если будем
+    нормализовать в ISO позже.
+    """
+    if value is None or str(value).strip() == "":
+        return None
+    parsed = _parse_iso_date(value)
+    if parsed is None:
+        raise HTTPException(status_code=400, detail=f"Неверный формат даты ({field_name})")
+    if parsed < datetime.now().date():
+        raise HTTPException(status_code=400, detail=f"{field_name}: дата в прошлом недопустима")
+    return parsed
+
+
 _ALLOWED_POINT_TYPES = ("city", "border", "terminal", "hub")
 
 
@@ -294,6 +317,8 @@ def create_cargo(body: CargoIn, user=Depends(require_level(1))):
         raise HTTPException(status_code=400, detail="Укажите откуда и куда")
     if not body.cargo_desc:
         raise HTTPException(status_code=400, detail="Укажите что везти")
+    # Stage 52 / P1-8: дата погрузки не может быть в прошлом.
+    _validate_future_date(body.pickup_date, "pickup_date")
     # Pilot currency whitelist (Stage 5 / rev. 3): RUB / USD / KZT / CNY.
     # UZS / KGS / EUR / AED removed from publish flows. A typo or removed
     # currency code falls back to USD so the cargos.currency column never
@@ -440,6 +465,8 @@ def delete_cargo(cargo_id: str, user=Depends(require_level(1))):
 def create_trip(body: TripIn, user=Depends(require_level(1))):
     if not body.from_city or not body.to_city:
         raise HTTPException(status_code=400, detail="Укажите маршрут: откуда и куда")
+    # Stage 52 / P1-8: дата выезда не может быть в прошлом.
+    _validate_future_date(body.departure, "departure")
     # Same pilot whitelist as create_cargo — see note there.
     currency = (body.currency or "USD").upper()
     if currency not in ("USD", "KZT", "RUB", "CNY"):

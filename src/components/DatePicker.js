@@ -83,7 +83,15 @@ export default function DatePicker({ value, onChange, placeholder = 'DD.MM.YYYY'
   const firstDay = new Date(viewYear, viewMonth, 1).getDay();
   const offset = firstDay === 0 ? 6 : firstDay - 1;
 
+  // Stage 52 / P1-8: запрещаем выбор прошлых дат на native.
+  // Полночь сегодняшнего дня — границу применяем и к pick(), и к рендеру
+  // (disabled-стиль), чтобы пользователь не мог тапнуть прошлый день и не
+  // видел его доступным.
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
   const pick = (day) => {
+    const picked = new Date(viewYear, viewMonth, day);
+    if (picked < todayStart) return; // P1-8
     const d = String(day).padStart(2, '0');
     const m = String(viewMonth + 1).padStart(2, '0');
     onChange(`${d}.${m}.${viewYear}`);
@@ -103,7 +111,9 @@ export default function DatePicker({ value, onChange, placeholder = 'DD.MM.YYYY'
 
   return (
     <View style={[s.wrapper, style]}>
-      {renderDisplay()}
+      {/* P1-7: пока календарь открыт, не показываем preview-полоску — иначе
+          на iOS под полупрозрачным overlay'ем видна вторая дата сверху. */}
+      {!showPicker && renderDisplay()}
       <Modal visible={showPicker} transparent animationType="fade" onRequestClose={() => setShowPicker(false)}>
         <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={() => setShowPicker(false)}>
           <TouchableOpacity style={[s.cal, { backgroundColor: theme.card, borderColor: theme.border }]} activeOpacity={1}>
@@ -134,10 +144,17 @@ export default function DatePicker({ value, onChange, placeholder = 'DD.MM.YYYY'
               {[...Array(daysInMonth)].map((_, i) => {
                 const day = i + 1;
                 const isSelected = selected && selected.d === day && selected.m === viewMonth + 1 && selected.y === viewYear;
+                const dayDate = new Date(viewYear, viewMonth, day);
+                const isPast = dayDate < todayStart;
                 return (
                   <TouchableOpacity
                     key={day}
-                    style={[s.dayCell, isSelected && { backgroundColor: '#22C55E' }]}
+                    style={[
+                      s.dayCell,
+                      isSelected && { backgroundColor: '#22C55E' },
+                      isPast && { opacity: 0.25 },
+                    ]}
+                    disabled={isPast}
                     onPress={() => pick(day)}
                   >
                     <Text style={[s.dayText, { color: isSelected ? '#fff' : theme.text }]}>{day}</Text>
