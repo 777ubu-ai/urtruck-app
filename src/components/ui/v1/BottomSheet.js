@@ -7,7 +7,7 @@
 // modes — tints below the sheet read fine on white and on near-black.
 
 import React from 'react';
-import { Modal, View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import { Modal, View, Text, TouchableOpacity, StyleSheet, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { useV1Colors } from '../../../theme/designV1';
 import { useTheme } from '../../../utils/ThemeContext';
 
@@ -15,24 +15,34 @@ export default function BottomSheet({ visible, onClose, title, children, scroll 
   const colors = useV1Colors();
   const { isDark } = useTheme();
   const overlayBg = isDark ? 'rgba(0,0,0,0.7)' : 'rgba(15,23,42,0.45)';
+  // Stage 52 / P1-9: на iOS клавиатура перекрывала input «Откуда»/«Куда»
+  // в Direction sheet — Modal сам по себе не поднимается при появлении
+  // клавиатуры. Оборачиваем содержимое в KeyboardAvoidingView с behavior
+  // 'padding', чтобы sheet+overlay сдвигались наверх ровно на высоту
+  // клавиатуры. На Android Modal handle keyboard сам через windowSoftInput.
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <TouchableOpacity style={[s.overlay, { backgroundColor: overlayBg }]} activeOpacity={1} onPress={onClose}>
-        <TouchableOpacity
-          style={[
-            s.sheet,
-            { backgroundColor: colors.bgDeep, borderTopColor: colors.border },
-          ]}
-          activeOpacity={1}
-          onPress={() => {}}
-        >
-          <View style={[s.handle, { backgroundColor: colors.borderStrong }]} />
-          {title ? <Text style={[s.title, { color: colors.text }]}>{title}</Text> : null}
-          {scroll
-            ? <ScrollView style={{ maxHeight: 480 }} showsVerticalScrollIndicator={false}>{children}</ScrollView>
-            : children}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
+      >
+        <TouchableOpacity style={[s.overlay, { backgroundColor: overlayBg }]} activeOpacity={1} onPress={onClose}>
+          <TouchableOpacity
+            style={[
+              s.sheet,
+              { backgroundColor: colors.bgDeep, borderTopColor: colors.border },
+            ]}
+            activeOpacity={1}
+            onPress={() => {}}
+          >
+            <View style={[s.handle, { backgroundColor: colors.borderStrong }]} />
+            {title ? <Text style={[s.title, { color: colors.text }]}>{title}</Text> : null}
+            {scroll
+              ? <ScrollView style={{ maxHeight: 480 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">{children}</ScrollView>
+              : children}
+          </TouchableOpacity>
         </TouchableOpacity>
-      </TouchableOpacity>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
