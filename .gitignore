@@ -18,6 +18,15 @@ build/
 web-build/
 *.egg-info/
 
+# Native folders — Expo CNG generates these via `expo prebuild`.
+# Should NOT be committed: EAS Build creates them fresh in the cloud
+# and uses app.json for native config. Local ios/ android/ folders
+# would override app.json (orientation, scheme, icon, splash, and
+# infoPlist entries like ITSAppUsesNonExemptEncryption).
+# See: https://docs.expo.dev/workflow/prebuild/#usage-with-eas-build
+/ios
+/android
+
 # OS
 .DS_Store
 Thumbs.db
