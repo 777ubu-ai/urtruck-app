@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Modal, Linking, Platform } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
@@ -50,20 +51,37 @@ export default function ShareModal({
     onClose();
   };
 
+  // Stage 52 / P1-9 + P1-10: на iOS native ветка `navigator.clipboard` не
+  // работала и буфер обмена не наполнялся — пользователь видел toast с
+  // самим URL, но «вставить» в Notes/Telegram было нечего. Переписали через
+  // expo-clipboard.Clipboard.setStringAsync — работает на iOS / Android / web.
   const copyToClipboard = async (text) => {
     try {
-      if (Platform.OS === 'web' && navigator.clipboard) {
-        await navigator.clipboard.writeText(text);
-        return true;
-      }
-    } catch {}
-    return false;
+      await Clipboard.setStringAsync(String(text || ''));
+      return true;
+    } catch (e) {
+      // Самый редкий путь: web без navigator.clipboard (старые браузеры).
+      try {
+        if (Platform.OS === 'web' && navigator.clipboard) {
+          await navigator.clipboard.writeText(text);
+          return true;
+        }
+      } catch {}
+      return false;
+    }
   };
 
   const handleWeChat = async () => {
-    // WeChat does not accept arbitrary HTTPS deep-links from a browser, so
-    // the most honest path is "copy + tell user". We copy the FULL share
-    // text (not just the link) so the user can paste it as one message.
+    // WeChat не принимает произвольные HTTPS deep-link'и из браузера, но
+    // если установлено нативное приложение — пробуем открыть `weixin://`.
+    // Иначе honest path: копируем полный share text и подсказываем
+    // вставить в WeChat вручную.
+    try {
+      const canOpen = await Linking.canOpenURL('weixin://');
+      if (canOpen) {
+        await Linking.openURL('weixin://');
+      }
+    } catch {}
     const ok = await copyToClipboard(fullShareText);
     if (ok) toast('✅ ' + t('share_copied_open_wechat'), 'success', 4000);
     else toast(fullShareText, 'info', 6000);

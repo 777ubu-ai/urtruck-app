@@ -31,6 +31,8 @@ DIRTY_TOKENS = (
     "test", "demo", "seed", "mock", "qa", "playwright",
     "тест", "тестер", "баке", "володя", "автотест", "трусы",
     "белик", "серик",
+    # Stage 52 / P0-6: латинские варианты, попадавшиеся в TestFlight build 1.
+    "serik", "boris",
 )
 # Date threshold below which an item must justify itself with a future
 # pickup_date — anything older than this with no pickup is treated as stale
@@ -67,6 +69,29 @@ def _parse_iso_date(s):
         except Exception:
             return None
     return None
+
+
+def _validate_future_date(value, field_name: str):
+    """Stage 52 / P1-8: запрещаем создавать грузы/рейсы с датой в прошлом.
+
+    Принимаем те же форматы что _parse_iso_date (ISO, DD.MM.YYYY).
+    - None / пустая строка → разрешено (поле опциональное на схеме).
+    - невалидный формат → 400.
+    - дата строго раньше сегодняшнего дня → 400.
+
+    Возвращаем распарсенную date или None — это не используется вызывающим
+    кодом сейчас (поле сохраняется as-is, чтобы старые клиенты могли
+    обратно прочитать тот же формат), но пригодится если будем
+    нормализовать в ISO позже.
+    """
+    if value is None or str(value).strip() == "":
+        return None
+    parsed = _parse_iso_date(value)
+    if parsed is None:
+        raise HTTPException(status_code=400, detail=f"Неверный формат даты ({field_name})")
+    if parsed < datetime.now().date():
+        raise HTTPException(status_code=400, detail=f"{field_name}: дата в прошлом недопустима")
+    return parsed
 
 
 _ALLOWED_POINT_TYPES = ("city", "border", "terminal", "hub")
@@ -294,6 +319,8 @@ def create_cargo(body: CargoIn, user=Depends(require_level(1))):
         raise HTTPException(status_code=400, detail="Укажите откуда и куда")
     if not body.cargo_desc:
         raise HTTPException(status_code=400, detail="Укажите что везти")
+    # Stage 52 / P1-8: дата погрузки не может быть в прошлом.
+    _validate_future_date(body.pickup_date, "pickup_date")
     # Pilot currency whitelist (Stage 5 / rev. 3): RUB / USD / KZT / CNY.
     # UZS / KGS / EUR / AED removed from publish flows. A typo or removed
     # currency code falls back to USD so the cargos.currency column never
@@ -440,6 +467,8 @@ def delete_cargo(cargo_id: str, user=Depends(require_level(1))):
 def create_trip(body: TripIn, user=Depends(require_level(1))):
     if not body.from_city or not body.to_city:
         raise HTTPException(status_code=400, detail="Укажите маршрут: откуда и куда")
+    # Stage 52 / P1-8: дата выезда не может быть в прошлом.
+    _validate_future_date(body.departure, "departure")
     # Same pilot whitelist as create_cargo — see note there.
     currency = (body.currency or "USD").upper()
     if currency not in ("USD", "KZT", "RUB", "CNY"):
@@ -680,11 +709,20 @@ def list_bids(cargo_id: str = "", trip_id: str = "", user_id: str = "", show_dem
     # Hide dirty/test bidders from public bid listings (Тестер, Баке, etc.).
     # Also drop cancelled/rejected bids from public counters so a clean cargo's
     # detail screen doesn't carry stale rejected proposals from pre-pilot data.
+    #
+    # Stage 52 / P0-6: TestFlight build 1 показывал в cargo detail ставки от
+    # `guest_<uuid>` и `agent-<id>`/`Bid Serik [ar-...]`. Текущий _is_dirty_text
+    # смотрел только bidder_name + bidder_phone, поэтому guest-/agent-id
+    # проходил, если name был пустой или без триггерных токенов. Добавляем
+    # явный prefix-фильтр на bidder_id и расширяем скрытые статусы до
+    # ('cancelled', 'rejected') — rejected bids не должны забивать public list.
+    DIRTY_BIDDER_PREFIXES = ("guest_", "agent-", "test_", "qa_")
     if not show_demo:
         bids = [
             b for b in bids
-            if not _is_dirty_text(b.get("bidder_name"), b.get("bidder_phone"))
-            and b.get("status") not in ("cancelled",)
+            if not (b.get("bidder_id") or "").lower().startswith(DIRTY_BIDDER_PREFIXES)
+            and not _is_dirty_text(b.get("bidder_name"), b.get("bidder_phone"))
+            and b.get("status") not in ("cancelled", "rejected")
         ]
     return {"bids": bids}
 
@@ -998,15 +1036,22 @@ def update_bid(bid_id: str, body: BidUpdateIn, user=Depends(require_level(1))):
         updated = dict(c.execute("SELECT * FROM bids WHERE id = ?", (bid_id,)).fetchone())
 
     # Discount notification: amount decreased → ping the cargo/trip owner.
+    # Stage 52 / P1-11: текст уведомления зависит от роли получателя.
+    # - bid на cargo  → owner это client → bidder это водитель.
+    # - bid на trip   → owner это driver → bidder это грузовладелец.
+    # Иначе на TestFlight build 1 владелец рейса получал «Водитель снизил
+    # цену», хотя bidder был грузовладельцем (и наоборот).
     if body.amount is not None and new_amount < old_amount:
         try:
             owner_id = None
             with get_conn() as c2:
                 owner_id = _cargo_or_trip_owner_id(c2, updated)
             if owner_id:
+                recipient_role = "client" if updated.get("cargo_id") else "driver"
+                bidder_role_word = "Водитель" if recipient_role == "client" else "Грузовладелец"
+                bidder_label = updated.get("bidder_name") or bidder_role_word
                 title = f"💰 Скидка: ${old_amount} → ${new_amount}"
-                text = updated.get("bidder_name") or "Водитель"
-                text = f"{text} снизил цену на ${old_amount - new_amount}"
+                text = f"{bidder_label} снизил цену на ${old_amount - new_amount}"
                 try:
                     send_to_user(owner_id, title, text, url="/")
                 except Exception:

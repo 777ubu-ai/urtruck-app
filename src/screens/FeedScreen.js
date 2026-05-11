@@ -395,8 +395,19 @@ export default function FeedScreen({ navigation, route }) {
     // sees trips.departure (mapped earlier into d.pickup or d.departure
     // if available). DatePicker stores DD.MM.YYYY; convert both sides
     // to ISO so a string compare works as a date compare.
+    //
+    // Stage 52 / P0-3: backend хранит pickup_date as-is. CreateCargoScreen
+    // шлёт значение из DatePicker (DD.MM.YYYY), а раньше ymd() принимала
+    // только YYYY-MM-DD, поэтому все mobile-cargos выпадали из фильтра.
+    // Теперь принимаем оба формата на стороне фильтра.
     const dateField = (d) => d.pickup || d.departure || '';
-    const ymd = (s) => /^\d{4}-\d{2}-\d{2}/.test(String(s || '')) ? String(s).slice(0, 10) : '';
+    const ymd = (s) => {
+      const str = String(s || '').trim();
+      if (/^\d{4}-\d{2}-\d{2}/.test(str)) return str.slice(0, 10);
+      const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(str);
+      if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+      return '';
+    };
     const fromIso = ddmmToIso(dateFrom);
     const toIso = ddmmToIso(dateTo);
     if (fromIso) {
