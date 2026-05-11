@@ -36,6 +36,23 @@ const ALLOWED_SUBSTRINGS = [
   '🇺🇿',                  // emoji
 ];
 
+// PR #20 — отдельный strict-режим: ловит UZ в language picker массивах,
+// даже если строка содержит ISO 'UZ' (которое разрешено для country
+// references). Срабатывает только если строка одновременно содержит
+// `code:` / `lang:` ключ И один из локально-узбекских токенов или
+// явную метку label/labelKey с словом Uzbek/Oʻzbek/Ўзбек/Узбек.
+//
+// История: до PR #20 баseline-тест пропускал
+//   { code: 'UZ', label: 'Oʻzbekcha', flag: '🇺🇿' }
+// потому что 'UZ' содержалось в ALLOWED_SUBSTRINGS. Это правильно для
+// strings типа `'UZ'` (ISO), но ошибочно для language-picker массивов.
+const LANGUAGE_PICKER_PATTERNS = [
+  // `code: 'UZ'` или `lang: 'UZ'` или `key: 'UZ'` в одной строке
+  /(code|lang|key|locale)\s*:\s*['"]uz['"]/i,
+  // `label: 'Oʻzbekcha'` / `label: 'Узбекча'` (язык как label)
+  /label\s*:\s*['"][^'"]*(O['‘]zbekcha|Ўзбекча|Узбекча|Uzbek)/i,
+];
+
 function listJsFiles(dir, out = []) {
   const abs = path.join(REPO_ROOT, dir);
   if (!fs.existsSync(abs)) return out;
@@ -55,9 +72,18 @@ function scan() {
     const text = fs.readFileSync(abs, 'utf8');
     const lines = text.split('\n');
     lines.forEach((line, i) => {
+      // Слой 1: forbidden patterns + business-geography allowlist.
       for (const pat of FORBIDDEN_PATTERNS) {
         if (pat.test(line) && !ALLOWED_SUBSTRINGS.some((a) => line.includes(a))) {
-          violations.push({ file: rel, lineNo: i + 1, line: line.trim() });
+          violations.push({ file: rel, lineNo: i + 1, line: line.trim(), kind: 'forbidden' });
+          break;
+        }
+      }
+      // Слой 2: language-picker strict — ловит `code: 'UZ'` / Oʻzbekcha
+      // даже если строка попадает в business-geography allowlist.
+      for (const pat of LANGUAGE_PICKER_PATTERNS) {
+        if (pat.test(line)) {
+          violations.push({ file: rel, lineNo: i + 1, line: line.trim(), kind: 'language-picker' });
           break;
         }
       }
