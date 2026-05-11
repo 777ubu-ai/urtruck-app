@@ -1025,15 +1025,22 @@ def update_bid(bid_id: str, body: BidUpdateIn, user=Depends(require_level(1))):
         updated = dict(c.execute("SELECT * FROM bids WHERE id = ?", (bid_id,)).fetchone())
 
     # Discount notification: amount decreased → ping the cargo/trip owner.
+    # Stage 52 / P1-11: текст уведомления зависит от роли получателя.
+    # - bid на cargo  → owner это client → bidder это водитель.
+    # - bid на trip   → owner это driver → bidder это грузовладелец.
+    # Иначе на TestFlight build 1 владелец рейса получал «Водитель снизил
+    # цену», хотя bidder был грузовладельцем (и наоборот).
     if body.amount is not None and new_amount < old_amount:
         try:
             owner_id = None
             with get_conn() as c2:
                 owner_id = _cargo_or_trip_owner_id(c2, updated)
             if owner_id:
+                recipient_role = "client" if updated.get("cargo_id") else "driver"
+                bidder_role_word = "Водитель" if recipient_role == "client" else "Грузовладелец"
+                bidder_label = updated.get("bidder_name") or bidder_role_word
                 title = f"💰 Скидка: ${old_amount} → ${new_amount}"
-                text = updated.get("bidder_name") or "Водитель"
-                text = f"{text} снизил цену на ${old_amount - new_amount}"
+                text = f"{bidder_label} снизил цену на ${old_amount - new_amount}"
                 try:
                     send_to_user(owner_id, title, text, url="/")
                 except Exception:
