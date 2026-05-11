@@ -31,6 +31,8 @@ DIRTY_TOKENS = (
     "test", "demo", "seed", "mock", "qa", "playwright",
     "тест", "тестер", "баке", "володя", "автотест", "трусы",
     "белик", "серик",
+    # Stage 52 / P0-6: латинские варианты, попадавшиеся в TestFlight build 1.
+    "serik", "boris",
 )
 # Date threshold below which an item must justify itself with a future
 # pickup_date — anything older than this with no pickup is treated as stale
@@ -707,11 +709,20 @@ def list_bids(cargo_id: str = "", trip_id: str = "", user_id: str = "", show_dem
     # Hide dirty/test bidders from public bid listings (Тестер, Баке, etc.).
     # Also drop cancelled/rejected bids from public counters so a clean cargo's
     # detail screen doesn't carry stale rejected proposals from pre-pilot data.
+    #
+    # Stage 52 / P0-6: TestFlight build 1 показывал в cargo detail ставки от
+    # `guest_<uuid>` и `agent-<id>`/`Bid Serik [ar-...]`. Текущий _is_dirty_text
+    # смотрел только bidder_name + bidder_phone, поэтому guest-/agent-id
+    # проходил, если name был пустой или без триггерных токенов. Добавляем
+    # явный prefix-фильтр на bidder_id и расширяем скрытые статусы до
+    # ('cancelled', 'rejected') — rejected bids не должны забивать public list.
+    DIRTY_BIDDER_PREFIXES = ("guest_", "agent-", "test_", "qa_")
     if not show_demo:
         bids = [
             b for b in bids
-            if not _is_dirty_text(b.get("bidder_name"), b.get("bidder_phone"))
-            and b.get("status") not in ("cancelled",)
+            if not (b.get("bidder_id") or "").lower().startswith(DIRTY_BIDDER_PREFIXES)
+            and not _is_dirty_text(b.get("bidder_name"), b.get("bidder_phone"))
+            and b.get("status") not in ("cancelled", "rejected")
         ]
     return {"bids": bids}
 
