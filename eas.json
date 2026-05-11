@@ -1,6 +1,7 @@
 {
   "cli": {
-    "version": ">= 18.0.0"
+    "version": ">= 18.0.0",
+    "appVersionSource": "remote"
   },
   "build": {
     "development": {
@@ -20,7 +21,7 @@
       }
     },
     "production": {
-      "ios": { "autoIncrement": true },
+      "ios": { "autoIncrement": true, "image": "latest" },
       "android": { "autoIncrement": true },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://urtruck.kz"
