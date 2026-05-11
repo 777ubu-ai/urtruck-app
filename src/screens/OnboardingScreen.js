@@ -11,10 +11,15 @@ import { useI18n } from '../utils/useI18n';
 import {v1Colors, useV1Colors} from '../theme/designV1';
 
 const LOGO = require('../../assets/logo.jpg');
+// Stage 52 / PR #20: язык UZ убран из onboarding picker — он не поддерживается
+// в `src/utils/i18n.js` (там только RU / KK / EN / ZH), и оставлять его в селекторе
+// значило бы дать гостю кнопку, после нажатия которой UI всё равно остаётся
+// на RU-фолбэке. Узбекистан остаётся в `COUNTRIES`/`POINTS` как страна
+// перевозки — см. cities.js + geography.js. KG в LANGS пока оставлен —
+// это аналогичная проблема (отсутствует в i18n), но вне scope PR #20.
 const LANGS = [
   { code: 'RU', label: 'Русский', flag: '🇷🇺' },
   { code: 'KZ', label: 'Қазақша', flag: '🇰🇿' },
-  { code: 'UZ', label: 'Oʻzbekcha', flag: '🇺🇿' },
   { code: 'EN', label: 'English', flag: '🇬🇧' },
   { code: 'CN', label: '中文', flag: '🇨🇳' },
   { code: 'KG', label: 'Кыргызча', flag: '🇰🇬' },
