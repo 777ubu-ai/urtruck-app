@@ -5,6 +5,7 @@ import { useI18n } from '../utils/useI18n';
 import { useAuth } from '../utils/AuthContext';
 import { chatAPI } from '../utils/chatAPI';
 import { API_BASE } from '../config/env';
+import { prettifyPartnerName } from '../utils/displayName';
 import {v1Colors, useV1Colors, v1Radius, v1AccentFor} from '../theme/designV1';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
 
@@ -101,12 +102,19 @@ export default function ChatsListScreen({ navigation, route }) {
     </TouchableOpacity>
   );
 
-  const renderRoom = ({ item }) => (
+  const renderRoom = ({ item }) => {
+    // Stage DS-1: prettify технических partner_name / id.
+    // Раньше при пустом partner_name UI показывал первые 8 символов
+    // partner_id — это и давало «guest_5a», «agent-bo», «d3». Теперь
+    // через displayName.prettifyPartnerName всё технические имена
+    // подменяются на переводимый fallback "Собеседник".
+    const displayName = prettifyPartnerName(item.partner_name, item.partner_id, t);
+    return (
     <TouchableOpacity
       style={s.row}
       activeOpacity={0.85}
       onPress={() => navigation.navigate('Chat', {
-        partner: { id: item.partner_id, name: item.partner_name || t('chat_partner_fallback') },
+        partner: { id: item.partner_id, name: displayName },
         role,
       })}
     >
@@ -114,7 +122,7 @@ export default function ChatsListScreen({ navigation, route }) {
         <Text style={s.avatarIcon}>💬</Text>
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={s.name} numberOfLines={1}>{item.partner_name || (item.partner_id || '').slice(0, 8)}</Text>
+        <Text style={s.name} numberOfLines={1}>{displayName}</Text>
         <Text style={s.desc} numberOfLines={1}>{item.last_message || '…'}</Text>
       </View>
       <View style={{ alignItems: 'flex-end', gap: 4 }}>
@@ -124,7 +132,8 @@ export default function ChatsListScreen({ navigation, route }) {
         ) : null}
       </View>
     </TouchableOpacity>
-  );
+    );
+  };
 
   return (
     <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>

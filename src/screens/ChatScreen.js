@@ -8,6 +8,7 @@ import { getLanguage } from '../utils/i18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useToast } from '../components/Toast';
 import { compressImage } from '../utils/imageCompress';
+import { prettifyPartnerName, partnerInitial } from '../utils/displayName';
 import { chatAPI } from '../utils/chatAPI';
 import { useAuth } from '../utils/AuthContext';
 import { voice } from '../utils/voiceRecorder';
@@ -405,10 +406,12 @@ export default function ChatScreen({ navigation, route }) {
       />
       <View style={s.partnerStrip}>
         <View style={[s.partnerAvatar, { backgroundColor: v1Accent.soft, borderColor: v1Accent.main }]}>
-          <Text style={s.partnerAvatarIcon}>{(partner?.name || '?').charAt(0).toUpperCase()}</Text>
+          {/* Stage DS-1: первая буква от prettified имени, "?" для tech-leak. */}
+          <Text style={s.partnerAvatarIcon}>{partnerInitial(prettifyPartnerName(partner?.name, partner?.id, t))}</Text>
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={s.partnerName} numberOfLines={1}>{partner?.name || '—'}</Text>
+          {/* Stage DS-1: prettifyPartnerName подменяет guest_/d3/d4 на "Собеседник". */}
+          <Text style={s.partnerName} numberOfLines={1}>{prettifyPartnerName(partner?.name, partner?.id, t)}</Text>
           <Text style={[s.online, { color: v1Accent.main }]}>● {t('online')}</Text>
         </View>
       </View>
