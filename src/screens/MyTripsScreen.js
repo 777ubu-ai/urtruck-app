@@ -171,7 +171,18 @@ export default function MyTripsScreen({ navigation, route }) {
           <View style={[s.badge, { backgroundColor: badgeColor + '20' }]}>
             <Text style={[s.badgeText, { color: badgeColor }]}>{badge}</Text>
           </View>
-          <Text style={[s.statusLabel, { color: '#22C55E' }]}>{formatStatus(item.status || 'active')}</Text>
+          {/* Stage DS-1: статус не должен быть плоско-зелёным для всех состояний.
+              Раньше cancelled / draft / pending тоже рендерились #22C55E,
+              что визуально врало пользователю (зелёное = "успешно"). Теперь
+              цвет подбирается по item.status. */}
+          <Text style={[s.statusLabel, { color: (() => {
+            const st = item.status || 'active';
+            if (st === 'cancelled') return '#94A3B8';        // серый
+            if (st === 'draft' || st === 'pending') return '#F59E0B'; // янтарный
+            if (st === 'rejected' || st === 'expired') return '#EF4444'; // красный
+            if (st === 'completed' || st === 'delivered') return '#22C55E'; // зелёный
+            return '#22C55E'; // active по умолчанию — зелёный
+          })() }]}>{formatStatus(item.status || 'active')}</Text>
         </View>
         <Text style={[s.route, { color: theme.text }]}>{from} → {to}</Text>
         {desc ? <Text style={[s.desc, { color: theme.textMuted }]} numberOfLines={1}>{desc}</Text> : null}
