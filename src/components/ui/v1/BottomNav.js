@@ -31,6 +31,10 @@ import { useTheme } from '../../../utils/ThemeContext';
 import { useAuth } from '../../../utils/AuthContext';
 import { useI18n } from '../../../utils/useI18n';
 import { chatAPI } from '../../../utils/chatAPI';
+// Phase 2A: единая палитра — оранжевый акцент и серый inactive,
+// независимо от роли. Раньше driver получал blue, client — yellow;
+// для B2B-логистики единый orange выглядит как взрослая платформа.
+import { colors as v2 } from '../../../theme/designSystemV2';
 
 const UNREAD_POLL_MS = 30000;
 
@@ -62,7 +66,11 @@ export default function BottomNav({ state, navigation }) {
     || state.routes[0]?.params?.role
     || 'client';
   const isDriver = role === 'driver';
-  const accent = v1AccentFor(isDriver ? 'driver' : 'client');
+  // Phase 2A: единый orange-accent ради взрослой B2B-палитры. role
+  // влияет только на то, какие иконки/тексты табов мы показываем
+  // (через ICONS / labelOf), но цвет акцента уже не зависит от роли.
+  const accent = { main: v2.accent, soft: v2.accentSoft };
+  const inactiveColor = v2.textSecondary;
 
   const [chatUnread, setChatUnread] = useState(0);
   const pollTimer = useRef(null);
@@ -174,7 +182,9 @@ export default function BottomNav({ state, navigation }) {
         // Stage DS-1: цвет иконки = active accent / muted, нет «масштабирования»
         // эмодзи (раньше использовали transform scale 1.1). С Feather достаточно
         // менять colour и иконка остаётся ровной.
-        const iconColor = isFocused ? accent.main : colors.textMuted;
+        // Phase 2A: inactive — slate #64748B (v2.textSecondary), не tema-зависимый
+        // colors.textMuted, чтобы дать ровный B2B-look на всех экранах.
+        const iconColor = isFocused ? accent.main : inactiveColor;
 
         return (
           <TouchableOpacity
@@ -203,7 +213,7 @@ export default function BottomNav({ state, navigation }) {
             <Text
               style={[
                 s.label,
-                { color: isFocused ? accent.main : colors.textMuted },
+                { color: isFocused ? accent.main : inactiveColor },
               ]}
               numberOfLines={1}
             >
