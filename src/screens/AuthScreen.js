@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Linking, ActivityIndicator } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../utils/useI18n';
 import { useAuth } from '../utils/AuthContext';
 import { useToast } from '../components/Toast';
@@ -213,24 +214,36 @@ export default function AuthScreen({ navigation, route }) {
               ниже остаются disabled, пока галочка не отмечена. */}
           <ConsentRow checked={consent} onChange={setConsent} accent={v1Colors.driver} />
           <TouchableOpacity
-            style={[s.channelBtn, { backgroundColor: '#0088CC' }, (!consent || !validPhone || loading) && { opacity: 0.45 }]}
+            style={[s.channelBtn, { backgroundColor: '#0088CC', flexDirection: 'row', gap: 10 }, (!consent || !validPhone || loading) && { opacity: 0.45 }]}
             disabled={!validPhone || loading || !consent}
             onPress={() => sendOTP('telegram')}
             activeOpacity={0.85}
           >
             {loading && channel === 'telegram'
               ? <ActivityIndicator color="#fff" />
-              : <Text style={s.channelText}>✈️  Telegram</Text>}
+              : (
+                <>
+                  {/* Phase 2A: ✈️ → Feather `send` (outline 2px stroke), B2B look. */}
+                  <Feather name="send" size={18} color="#fff" />
+                  <Text style={s.channelText}>Telegram</Text>
+                </>
+              )}
           </TouchableOpacity>
           <TouchableOpacity
-            style={[s.channelBtn, { backgroundColor: v1Colors.driver }, (!consent || !validPhone || loading) && { opacity: 0.45 }]}
+            style={[s.channelBtn, { backgroundColor: v1Colors.driver, flexDirection: 'row', gap: 10 }, (!consent || !validPhone || loading) && { opacity: 0.45 }]}
             disabled={!validPhone || loading || !consent}
             onPress={() => sendOTP('sms')}
             activeOpacity={0.85}
           >
             {loading && channel === 'sms'
               ? <ActivityIndicator color="#fff" />
-              : <Text style={s.channelText}>📱  SMS</Text>}
+              : (
+                <>
+                  {/* Phase 2A: 📱 → Feather `message-square` (outline 2px stroke). */}
+                  <Feather name="message-square" size={18} color="#fff" />
+                  <Text style={s.channelText}>SMS</Text>
+                </>
+              )}
           </TouchableOpacity>
         </>
       ) : (
@@ -279,14 +292,21 @@ export default function AuthScreen({ navigation, route }) {
           </TouchableOpacity>
 
           {mockCode ? (
-            <View style={s.mockBanner}>
-              <Text style={s.mockText}>🧪 {mockCode}</Text>
+            <View style={[s.mockBanner, { flexDirection: 'row', gap: 8 }]}>
+              {/* Phase 2A: 🧪 → Feather `code` (моноспейс/маркер тестового кода). */}
+              <Feather name="code" size={14} color={v1Colors.driver} />
+              <Text style={s.mockText}>{mockCode}</Text>
             </View>
           ) : null}
 
           {channel === 'telegram' && deeplink ? (
-            <TouchableOpacity onPress={() => Linking.openURL(deeplink).catch(() => {})} style={s.tgRow}>
-              <Text style={s.tgText}>✈️ Telegram →</Text>
+            <TouchableOpacity
+              onPress={() => Linking.openURL(deeplink).catch(() => {})}
+              style={[s.tgRow, { flexDirection: 'row', alignItems: 'center', gap: 6 }]}
+            >
+              <Feather name="send" size={14} color="#0088CC" />
+              <Text style={s.tgText}>Telegram</Text>
+              <Feather name="arrow-right" size={14} color="#0088CC" />
             </TouchableOpacity>
           ) : null}
 
@@ -309,7 +329,11 @@ export default function AuthScreen({ navigation, route }) {
             <Text style={[s.resendText, secondsLeft > 0 && { opacity: 0.4 }]}>{t('otp_resend')}</Text>
           </TouchableOpacity>
 
-          <Text style={s.securityNote}>🛡  {t('otp_security_note')}</Text>
+          {/* Phase 2A: 🛡 emoji → Feather `shield` (outline). */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: v1Spacing.lg }}>
+            <Feather name="shield" size={14} color={v1.textMuted} />
+            <Text style={[s.securityNote, { marginTop: 0 }]}>{t('otp_security_note')}</Text>
+          </View>
         </>
       )}
     </Screen>
