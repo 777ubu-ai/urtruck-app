@@ -76,9 +76,12 @@ export default function PhoneV2Screen({ navigation }) {
         // Backend может вернуть cooldown/error — игнорим cooldown для UX,
         // OTP-экран сам прочитает и покажет.
       }
-      // Передаём phone в существующий OTP-экран. role не передаём —
-      // он становится опциональным после batch 2/PR #A.
-      navigation.navigate('RegOtp', { phone: fullPhone });
+      // RC2 batch 2: после Phone — OtpV2 (новый экран). Role не передаём.
+      // backend cooldown/error отдаёт сам OtpV2 через regAPI.verifyCode.
+      navigation.navigate('OtpV2', {
+        phone: fullPhone,
+        mockCode: (r && (r.mock || r.beta)) ? r.code : null,
+      });
     } catch (e) {
       setError(t('phone_v2_send_failed'));
     } finally {

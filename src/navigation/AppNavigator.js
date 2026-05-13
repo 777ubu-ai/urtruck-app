@@ -57,6 +57,13 @@ import DesignPreviewScreen, { qaDesignMode } from '../screens/DesignPreviewScree
 import OnboardingV2Screen from '../screens/onboarding/OnboardingV2Screen';
 import PhoneV2Screen from '../screens/onboarding/PhoneV2Screen';
 import CountryPickerSheet from '../screens/onboarding/CountryPickerSheet';
+// RC2 batch 2: post-OTP flow — выбор роли + расширенный профиль
+// по роли (driver/client) + заглушка для гостя на защищённых табах.
+import OtpV2Screen from '../screens/onboarding/OtpV2Screen';
+import RoleScreenV2 from '../screens/onboarding/RoleScreenV2';
+import ProfileDriverV2Screen from '../screens/onboarding/ProfileDriverV2Screen';
+import ProfileClientV2Screen from '../screens/onboarding/ProfileClientV2Screen';
+import GuestStubScreen from '../screens/onboarding/GuestStubScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -125,6 +132,12 @@ export default function AppNavigator() {
           component={CountryPickerSheet}
           options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
         />
+        {/* RC2 batch 2: post-OTP flow */}
+        <Stack.Screen name="OtpV2" component={OtpV2Screen} />
+        <Stack.Screen name="RoleV2" component={RoleScreenV2} />
+        <Stack.Screen name="ProfileDriverV2" component={ProfileDriverV2Screen} />
+        <Stack.Screen name="ProfileClientV2" component={ProfileClientV2Screen} />
+        <Stack.Screen name="GuestStub" component={GuestStubScreen} />
         {/* Legacy экраны — оставлены только для qaPreview-галереи. */}
         <Stack.Screen name="SignUp" component={SignUpScreen} />
         <Stack.Screen name="LegacyReg" component={RegScreen} />
@@ -165,6 +178,12 @@ export default function AppNavigator() {
             component={CountryPickerSheet}
             options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
           />
+          {/* RC2 batch 2: post-OTP flow */}
+          <Stack.Screen name="OtpV2" component={OtpV2Screen} />
+          <Stack.Screen name="RoleV2" component={RoleScreenV2} />
+          <Stack.Screen name="ProfileDriverV2" component={ProfileDriverV2Screen} />
+          <Stack.Screen name="ProfileClientV2" component={ProfileClientV2Screen} />
+          <Stack.Screen name="GuestStub" component={GuestStubScreen} />
           <Stack.Screen name="Role" component={RoleScreen} />
           <Stack.Screen name="Auth" component={PremiumLoginScreen} />
           <Stack.Screen name="Login" component={PremiumLoginScreen} />
@@ -180,6 +199,20 @@ export default function AppNavigator() {
         // Полностью в приложении
         <>
           <Stack.Screen name="Main" component={MainTabs} />
+          {/* RC2 batch 2: GuestStub доступен и в auth-стеке —
+              на случай редиректа для guest-сессии. PhoneV2 — для
+              re-auth сценария (смена номера в настройках в будущем). */}
+          <Stack.Screen name="GuestStub" component={GuestStubScreen} />
+          <Stack.Screen name="PhoneV2" component={PhoneV2Screen} />
+          <Stack.Screen name="OtpV2" component={OtpV2Screen} />
+          <Stack.Screen name="RoleV2" component={RoleScreenV2} />
+          <Stack.Screen name="ProfileDriverV2" component={ProfileDriverV2Screen} />
+          <Stack.Screen name="ProfileClientV2" component={ProfileClientV2Screen} />
+          <Stack.Screen
+            name="CountryPicker"
+            component={CountryPickerSheet}
+            options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
+          />
           <Stack.Screen name="CargoDetail" component={CargoDetail} />
           <Stack.Screen name="DriverDetail" component={DriverDetail} />
           <Stack.Screen name="Chat" component={ChatScreen} />
