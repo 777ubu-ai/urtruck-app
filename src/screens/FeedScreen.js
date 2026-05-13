@@ -222,7 +222,12 @@ export default function FeedScreen({ navigation, route }) {
       if (isDriver) {
         const { cargos } = await marketAPI.listCargos({ cargoType: filterType || '' });
         const mapped = (cargos || []).map(c => ({
-          id: c.id, from: sanitizeForDisplay(c.from_city), to: sanitizeForDisplay(c.to_city),
+          id: c.id,
+          // Stage 50 (Bug 10): fallback на структурированный point_name,
+          // если backend вернул from_city/to_city пустыми — иначе карточка
+          // показывает "— → —" сразу после публикации.
+          from: sanitizeForDisplay(c.from_city || c.from_point_name || ''),
+          to:   sanitizeForDisplay(c.to_city   || c.to_point_name   || ''),
           cargo: c.cargo_desc, type: c.cargo_type,
           tons: c.weight_tons, m3: c.volume_m3,
           price: c.price, pickup: c.pickup_date,
@@ -240,7 +245,9 @@ export default function FeedScreen({ navigation, route }) {
         ]);
         // Мои грузы — в начале ленты
         const myCargos = ((myRes || {}).my_cargos || []).map(c => ({
-          id: c.id, from: sanitizeForDisplay(c.from_city), to: sanitizeForDisplay(c.to_city),
+          id: c.id,
+          from: sanitizeForDisplay(c.from_city || c.from_point_name || ''),
+          to:   sanitizeForDisplay(c.to_city   || c.to_point_name   || ''),
           cargo: c.cargo_desc, type: c.cargo_type,
           tons: c.weight_tons, m3: c.volume_m3,
           price: c.price, pickup: c.pickup_date,
@@ -358,6 +365,19 @@ export default function FeedScreen({ navigation, route }) {
   const currentData = [...serverData, ...localData.filter(l => !serverData.find(s => s.id === l.id))];
   const filteredData = useMemo(() => {
     let data = [...currentData];
+    // Stage 50 (Bug 11): отфильтровываем явно битые карточки —
+    // без route (from/to) или с заглушками "—". В прод-ленте такие
+    // не должны появляться, но если из БД прилетает мусор (старые
+    // QA-записи / incomplete drafts) — не показываем "— → —" и
+    // "0 отзывов" пользователю.
+    data = data.filter(d => {
+      if (d.isTrip || d.cargo !== undefined) {
+        const f = (d.from || '').trim();
+        const tt = (d.to || '').trim();
+        if (!f || !tt || f === '—' || tt === '—') return false;
+      }
+      return true;
+    });
     if (filterType) data = data.filter(d => d.type === filterType);
     if (minRating > 0) {
       data = data.filter(d => (d.rating || 0) >= minRating);
@@ -375,8 +395,19 @@ export default function FeedScreen({ navigation, route }) {
     // sees trips.departure (mapped earlier into d.pickup or d.departure
     // if available). DatePicker stores DD.MM.YYYY; convert both sides
     // to ISO so a string compare works as a date compare.
+    //
+    // Stage 52 / P0-3: backend хранит pickup_date as-is. CreateCargoScreen
+    // шлёт значение из DatePicker (DD.MM.YYYY), а раньше ymd() принимала
+    // только YYYY-MM-DD, поэтому все mobile-cargos выпадали из фильтра.
+    // Теперь принимаем оба формата на стороне фильтра.
     const dateField = (d) => d.pickup || d.departure || '';
-    const ymd = (s) => /^\d{4}-\d{2}-\d{2}/.test(String(s || '')) ? String(s).slice(0, 10) : '';
+    const ymd = (s) => {
+      const str = String(s || '').trim();
+      if (/^\d{4}-\d{2}-\d{2}/.test(str)) return str.slice(0, 10);
+      const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(str);
+      if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+      return '';
+    };
     const fromIso = ddmmToIso(dateFrom);
     const toIso = ddmmToIso(dateTo);
     if (fromIso) {
@@ -536,16 +567,21 @@ export default function FeedScreen({ navigation, route }) {
           carries the bell badge ring; cutting it removes one of the
           competing accents from the screen. */}
       <View style={s.brandBar}>
-        {/* Stage 45: language switcher слева — видим всем (гость +
-            зарегистрированный). Гость переключает RU/KZ/EN/CN до
-            регистрации без открытия Profile. */}
-        <LanguageSwitcher testID="feed-lang-switch" compact />
+        {/* Stage 50: language switcher показывается ТОЛЬКО гостю —
+            зарегистрированный пользователь меняет язык в Profile.
+            Раньше pill был в шапке всегда и путал на рабочих экранах
+            (мешал бизнес-действиям с грузом). */}
+        {isGuest ? (
+          <LanguageSwitcher testID="feed-lang-switch" compact />
+        ) : (
+          <View style={{ width: 40 }} />
+        )}
         <View style={s.brandRow}>
           <Text style={[s.brandText, { color: v1.text }]}>UrTruck</Text>
         </View>
         {isGuest ? (
-          // Гость не имеет уведомлений; вместо колокольчика — width
-          // placeholder чтобы заголовок остался по центру.
+          // Гость не имеет уведомлений; placeholder чтобы заголовок
+          // остался по центру.
           <View style={{ width: 40 }} />
         ) : (
           <BellBadge
@@ -613,7 +649,7 @@ export default function FeedScreen({ navigation, route }) {
           onPress={() => navigation.navigate(isDriver ? 'CreateTrip' : 'CreateCargo', { role })}
           testID={isDriver ? 'publish-trip-button' : 'publish-cargo-button'}
           accessibilityRole="button"
-          accessibilityLabel={isDriver ? 'Опубликовать маршрут' : 'Разместить груз'}
+          accessibilityLabel={isDriver ? t('postTrip') : t('postCargo')}
         >
           <Text style={[s.titleCtaText, { color: '#0A0A0A' }]}>+ {isDriver ? t('postTrip') : t('postCargo')}</Text>
         </TouchableOpacity>
@@ -664,7 +700,11 @@ export default function FeedScreen({ navigation, route }) {
         </ScrollView>
       )}
 
-      {/* Direction sheet — only city-from / city-to inputs. */}
+      {/* Direction sheet — only city-from / city-to inputs.
+          Stage 50 (Bug 1): добавлены suggestion-чипы из городов в
+          текущей ленте — пользователь видит реальные направления
+          (Алматы, Астана, Урумчи и т.д.), а не пустой sheet с двумя
+          текстовыми полями. Тап чипа подставляет город в input. */}
       <BottomSheet visible={activeFilter === 'dir'} onClose={closeFilter} title={`🧭 ${t('filter_direction')}`}>
         <Text style={[s.filterSectionLabel, { color: theme.textMuted }]}>{t('from')}</Text>
         <TextInput
@@ -674,6 +714,24 @@ export default function FeedScreen({ navigation, route }) {
           placeholderTextColor={v1.textMuted}
           style={[s.filterInput, { backgroundColor: theme.card, borderColor: theme.border, color: theme.text }]}
         />
+        {(() => {
+          const cities = Array.from(new Set(currentData.map(d => (d.from || '').trim()).filter(Boolean))).slice(0, 8);
+          if (cities.length === 0) return null;
+          return (
+            <View style={[s.filterPillRow, { marginTop: 8 }]}>
+              {cities.map((c) => (
+                <TouchableOpacity
+                  key={`from-${c}`}
+                  onPress={() => setDirFrom(c)}
+                  style={[s.filterPill, { borderColor: v1.border, backgroundColor: dirFrom === c ? accentColor : v1.surface }]}
+                >
+                  <Text style={[s.filterPillText, { color: dirFrom === c ? '#0A0A0A' : v1.text }]} numberOfLines={1}>{c}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          );
+        })()}
+
         <Text style={[s.filterSectionLabel, { color: theme.textMuted, marginTop: 12 }]}>{t('to')}</Text>
         <TextInput
           value={dirTo}
@@ -682,6 +740,24 @@ export default function FeedScreen({ navigation, route }) {
           placeholderTextColor={v1.textMuted}
           style={[s.filterInput, { backgroundColor: theme.card, borderColor: theme.border, color: theme.text }]}
         />
+        {(() => {
+          const cities = Array.from(new Set(currentData.map(d => (d.to || '').trim()).filter(Boolean))).slice(0, 8);
+          if (cities.length === 0) return null;
+          return (
+            <View style={[s.filterPillRow, { marginTop: 8 }]}>
+              {cities.map((c) => (
+                <TouchableOpacity
+                  key={`to-${c}`}
+                  onPress={() => setDirTo(c)}
+                  style={[s.filterPill, { borderColor: v1.border, backgroundColor: dirTo === c ? accentColor : v1.surface }]}
+                >
+                  <Text style={[s.filterPillText, { color: dirTo === c ? '#0A0A0A' : v1.text }]} numberOfLines={1}>{c}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          );
+        })()}
+
         <View style={s.filterActions}>
           <TouchableOpacity
             style={[s.filterActionBtn, { backgroundColor: v1.surface, borderColor: v1.border, borderWidth: 1 }]}

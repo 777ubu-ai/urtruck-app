@@ -1,12 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, FlatList, KeyboardAvoidingView, Platform, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import * as ImagePicker from 'expo-image-picker';
 import { useI18n } from '../utils/useI18n';
 import { getLanguage } from '../utils/i18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useToast } from '../components/Toast';
 import { compressImage } from '../utils/imageCompress';
+import { prettifyPartnerName, partnerInitial } from '../utils/displayName';
 import { chatAPI } from '../utils/chatAPI';
 import { useAuth } from '../utils/AuthContext';
 import { voice } from '../utils/voiceRecorder';
@@ -18,7 +20,15 @@ import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
 // На нативе (Expo Go) expo-av не установлен — тост "скоро".
 const IS_WEB = Platform.OS === 'web';
 
-const LANGS = { RU: 'Русский', UZ: 'Ўзбекча', KZ: 'Қазақша', CN: '中文' };
+// Stage 52: photo и voice upload в Support Chat не реализованы end-to-end (P0-1, Bug-B).
+// Скрываем кнопки до отдельного PR с multipart upload endpoint.
+const CHAT_PHOTO_ENABLED = false;
+const CHAT_VOICE_ENABLED = false;
+
+// Stage 52: локальный chat language pill не переводил содержимое чата (P0-3, P0-5),
+// и среди опций оставался UZ (P0-4). Pill скрыт до реальной интеграции с chatAPI.translate.
+const CHAT_LANG_PILL_ENABLED = false;
+const LANGS = { RU: 'Русский', KK: 'Қазақша', EN: 'English', ZH: '中文' };
 const LANG_KEYS = Object.keys(LANGS);
 
 export default function ChatScreen({ navigation, route }) {
@@ -82,7 +92,6 @@ export default function ChatScreen({ navigation, route }) {
     backgroundColor: v1.surface, color: v1.text,
   },
   sendBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  sendIcon: { fontSize: 16, color: '#0A0A0A', fontWeight: '900' },
   photoMsg: { width: 200, height: 150, borderRadius: 12 },
   voiceBubble: { flexDirection: 'row', alignItems: 'center', gap: 8, minWidth: 180 },
   waveform: { flexDirection: 'row', alignItems: 'center', gap: 2, flex: 1 },
@@ -327,9 +336,11 @@ export default function ChatScreen({ navigation, route }) {
         </View>
       );
     }
-    // Статус: ✓ отправлено, ✓✓ доставлено/прочитано
+    // P1-12: одна галочка = sent на сервер, две = прочитано партнёром.
+    // Без push-receipt у нас нет промежуточного «delivered», поэтому
+    // не имитируем WhatsApp. Read — emerald (бренд), sent — приглушённый.
     const statusIcon = isMe ? (item.is_read ? '✓✓' : '✓') : '';
-    const statusColor = isMe ? (item.is_read ? '#60A5FA' : 'rgba(255,255,255,0.4)') : '';
+    const statusColor = isMe ? (item.is_read ? '#22C55E' : 'rgba(255,255,255,0.4)') : '';
 
     const tr = translations[item.id];
     const showingTranslation = tr && !tr.showOriginal;
@@ -388,17 +399,19 @@ export default function ChatScreen({ navigation, route }) {
     <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top', 'bottom']}>
       <BrandBarWithShare
         onBack={() => navigation.goBack()}
-        onShare={cycleLang}
         accent={v1Accent.main}
-        rightTestID="chat-lang-btn"
-        rightIcon={`🌐 ${lang}`}
+        {...(CHAT_LANG_PILL_ENABLED
+          ? { onShare: cycleLang, rightTestID: 'chat-lang-btn', rightIcon: `🌐 ${lang}` }
+          : {})}
       />
       <View style={s.partnerStrip}>
         <View style={[s.partnerAvatar, { backgroundColor: v1Accent.soft, borderColor: v1Accent.main }]}>
-          <Text style={s.partnerAvatarIcon}>{(partner?.name || '?').charAt(0).toUpperCase()}</Text>
+          {/* Stage DS-1: первая буква от prettified имени, "?" для tech-leak. */}
+          <Text style={s.partnerAvatarIcon}>{partnerInitial(prettifyPartnerName(partner?.name, partner?.id, t))}</Text>
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={s.partnerName} numberOfLines={1}>{partner?.name || '—'}</Text>
+          {/* Stage DS-1: prettifyPartnerName подменяет guest_/d3/d4 на "Собеседник". */}
+          <Text style={s.partnerName} numberOfLines={1}>{prettifyPartnerName(partner?.name, partner?.id, t)}</Text>
           <Text style={[s.online, { color: v1Accent.main }]}>● {t('online')}</Text>
         </View>
       </View>
@@ -412,7 +425,8 @@ export default function ChatScreen({ navigation, route }) {
         ListHeaderComponent={
           <View style={s.chatOpened}>
             <Text style={s.chatOpenedText}>
-              {t('chatOpened')} · {t('translation')}: {LANGS[lang]}
+              {t('chatOpened')}
+              {CHAT_LANG_PILL_ENABLED ? ` · ${t('translation')}: ${LANGS[lang]}` : ''}
             </Text>
           </View>
         }
@@ -424,9 +438,11 @@ export default function ChatScreen({ navigation, route }) {
           <TouchableOpacity onPress={() => setShowPhrases(!showPhrases)} style={s.iconBtn}>
             <Text style={s.iconBtnText}>⚡</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={sendPhoto} style={s.iconBtn}>
-            <Text style={s.iconBtnText}>📷</Text>
-          </TouchableOpacity>
+          {CHAT_PHOTO_ENABLED && (
+            <TouchableOpacity onPress={sendPhoto} style={s.iconBtn}>
+              <Text style={s.iconBtnText}>📷</Text>
+            </TouchableOpacity>
+          )}
           <TextInput
             style={s.input}
             value={input}
@@ -437,18 +453,21 @@ export default function ChatScreen({ navigation, route }) {
             returnKeyType="send"
             testID="chat-input"
           />
-          <TouchableOpacity
-            onPress={toggleVoice}
-            style={[s.iconBtn, recording && { backgroundColor: v1Colors.error, borderColor: v1Colors.error }]}
-          >
-            <Text style={s.iconBtnText}>{recording ? '⏹' : '🎤'}</Text>
-          </TouchableOpacity>
+          {CHAT_VOICE_ENABLED && (
+            <TouchableOpacity
+              onPress={toggleVoice}
+              style={[s.iconBtn, recording && { backgroundColor: v1Colors.error, borderColor: v1Colors.error }]}
+            >
+              <Text style={s.iconBtnText}>{recording ? '⏹' : '🎤'}</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             onPress={() => sendMessage()}
             style={[s.sendBtn, { backgroundColor: v1Accent.main }]}
             testID="chat-send-btn"
+            accessibilityLabel="Send"
           >
-            <Text style={s.sendIcon}>➤</Text>
+            <FontAwesome5 name="paper-plane" size={16} color="#FFFFFF" solid />
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>

@@ -9,7 +9,6 @@ import { storage } from '../utils/storage';
 import { API_BASE } from '../config/env';
 import Screen from '../components/ui/v1/Screen';
 import BrandHeader from '../components/ui/v1/BrandHeader';
-import HeroTruck from '../components/ui/v1/HeroTruck';
 import Field from '../components/ui/v1/Field';
 import PrimaryButton from '../components/ui/v1/PrimaryButton';
 import {v1Colors, useV1Colors, v1Spacing, v1Typography, v1AccentFor, v1Radius} from '../theme/designV1';
@@ -132,7 +131,6 @@ export default function EditProfileScreen({ navigation, route }) {
   return (
     <Screen>
       <BrandHeader onBack={() => navigation.goBack()} accent={accent.main} compact />
-      <HeroTruck size="sm" />
 
       <Text style={s.title}>
         {isDriver ? t('profile_setup_driver_title') : t('profile_setup_client_title')}
@@ -157,9 +155,9 @@ export default function EditProfileScreen({ navigation, route }) {
         <Text style={[s.avatarHint, { color: accent.main }]}>{t('profile_setup_add_photo')}</Text>
       </View>
 
-      <Field icon="👤" label={t('signup_field_first_name')} value={firstName} onChangeText={setFirstName} />
-      <Field icon="👤" label={t('signup_field_last_name')} value={lastName} onChangeText={setLastName} />
-      <Field icon="📞" label={t('signup_field_phone')} value={phone} onChangeText={() => {}} />
+      <Field icon="👤" label={t('signup_field_first_name')} value={firstName} onChangeText={setFirstName} placeholder={t('signup_field_first_name')} />
+      <Field icon="👤" label={t('signup_field_last_name')} value={lastName} onChangeText={setLastName} placeholder={t('signup_field_last_name')} />
+      <Field icon="📞" label={t('signup_field_phone')} value={phone} onChangeText={() => {}} editable={false} />
       {/* Stage 21: previously these were `Field variant="dropdown"`
           with `onPress={() => {}}` — taps did nothing, so users
           reported "страна не выбирается" and "город не выбирается".
@@ -195,6 +193,7 @@ export default function EditProfileScreen({ navigation, route }) {
         label={t('signup_field_email_optional')}
         value={email}
         onChangeText={setEmail}
+        placeholder="email@example.com"
         keyboardType="email-address"
         autoCapitalize="none"
       />

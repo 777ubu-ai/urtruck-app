@@ -24,7 +24,8 @@
     "qa:theme": "node qa/utils/themeSmoke.js",
     "qa:geo": "node qa/utils/geographySmoke.js",
     "qa:ux": "node qa/utils/uxSmoke.js",
-    "qa:mobile": "playwright test --config qa/playwright.mobile.config.js"
+    "qa:mobile": "playwright test --config qa/playwright.mobile.config.js",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@expo/metro-runtime": "~4.0.1",
@@ -37,6 +38,7 @@
     "expo": "~52.0.46",
     "expo-asset": "~11.0.5",
     "expo-av": "~15.0.2",
+    "expo-clipboard": "~7.0.1",
     "expo-constants": "~17.0.8",
     "expo-device": "~7.0.2",
     "expo-file-system": "~18.0.11",
@@ -56,6 +58,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.25.0",
-    "@playwright/test": "^1.59.1"
+    "@playwright/test": "^1.59.1",
+    "patch-package": "^8.0.1"
   }
 }

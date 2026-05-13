@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Modal, Linking, Platform } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
@@ -50,29 +51,40 @@ export default function ShareModal({
     onClose();
   };
 
+  // Stage 52 / P1-9 + P1-10: на iOS native ветка `navigator.clipboard` не
+  // работала и буфер обмена не наполнялся — пользователь видел toast с
+  // самим URL, но «вставить» в Notes/Telegram было нечего. Переписали через
+  // expo-clipboard.Clipboard.setStringAsync — работает на iOS / Android / web.
   const copyToClipboard = async (text) => {
     try {
-      if (Platform.OS === 'web' && navigator.clipboard) {
-        await navigator.clipboard.writeText(text);
-        return true;
-      }
-    } catch {}
-    return false;
+      await Clipboard.setStringAsync(String(text || ''));
+      return true;
+    } catch (e) {
+      // Самый редкий путь: web без navigator.clipboard (старые браузеры).
+      try {
+        if (Platform.OS === 'web' && navigator.clipboard) {
+          await navigator.clipboard.writeText(text);
+          return true;
+        }
+      } catch {}
+      return false;
+    }
   };
 
   const handleWeChat = async () => {
-    // WeChat does not accept arbitrary HTTPS deep-links from a browser, so
-    // the most honest path is "copy + tell user". We copy the FULL share
-    // text (not just the link) so the user can paste it as one message.
+    // WeChat не принимает произвольные HTTPS deep-link'и из браузера, но
+    // если установлено нативное приложение — пробуем открыть `weixin://`.
+    // Иначе honest path: копируем полный share text и подсказываем
+    // вставить в WeChat вручную.
+    try {
+      const canOpen = await Linking.canOpenURL('weixin://');
+      if (canOpen) {
+        await Linking.openURL('weixin://');
+      }
+    } catch {}
     const ok = await copyToClipboard(fullShareText);
     if (ok) toast('✅ ' + t('share_copied_open_wechat'), 'success', 4000);
     else toast(fullShareText, 'info', 6000);
-  };
-
-  const handleOpenWeChat = () => {
-    // Best-effort: if WeChat is installed, this scheme opens the app on
-    // mobile. On desktop browsers it'll throw — we fall back to a toast.
-    Linking.openURL('weixin://').catch(() => toast(t('share_wechat_not_installed'), 'info', 4000));
   };
 
   const copyLink = async () => {
@@ -122,12 +134,6 @@ export default function ShareModal({
               </TouchableOpacity>
             ))}
           </View>
-
-          {/* WeChat secondary action — opens app on mobile if installed */}
-          <TouchableOpacity style={[s.secondaryBtn, { borderColor: '#22C55E' }]} onPress={handleOpenWeChat}>
-            <FontAwesome5 name="external-link-alt" size={13} color="#22C55E" style={{ marginRight: 8 }} />
-            <Text style={[s.secondaryBtnText, { color: '#22C55E' }]}>{t('share_open_wechat_app')}</Text>
-          </TouchableOpacity>
         </TouchableOpacity>
       </TouchableOpacity>
     </Modal>
@@ -146,6 +152,4 @@ const s = StyleSheet.create({
   channelBtn: { flex: 1, alignItems: 'center', gap: 6, padding: 10, borderRadius: 14, borderWidth: 1 },
   iconWrap: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   channelName: { fontSize: 11, fontWeight: '700' },
-  secondaryBtn: { borderWidth: 1, borderRadius: 12, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', marginTop: 6 },
-  secondaryBtnText: { fontSize: 13, fontWeight: '700' },
 });

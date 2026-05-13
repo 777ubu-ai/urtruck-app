@@ -15,7 +15,9 @@
 
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 import { useV1Colors, v1Radius, v1AccentFor } from '../../../theme/designV1';
+import { colors as v2 } from '../../../theme/designSystemV2';
 
 export default function FeedCard({
   variant = 'cargo',
@@ -34,7 +36,20 @@ export default function FeedCard({
 }) {
   const colors = useV1Colors();
   const a = v1AccentFor(accent === 'cargo' ? 'client' : 'driver');
-  const icon = variant === 'trip' ? '🚛' : '📦';
+  // Phase 2A: вместо emoji 📦/🚛 — Feather outline icon (2px stroke).
+  // Цветом идёт textSecondary (slate), а не accent — иконка-шильдик
+  // не должна конкурировать с ценой за внимание.
+  const iconName = variant === 'trip' ? 'truck' : 'package';
+
+  // Phase 2A: empty-route fallback. На TestFlight build 1 пользователь
+  // видел карточки "— → —"; backend иногда возвращает from=null, to=null
+  // (битый импорт / старая строка). Покажем человеческий текст вместо
+  // двух дефисов. Карточку всё равно отрисовываем — если её скрыть,
+  // пагинация съест слот и пользователь не поймёт, что пропало.
+  const hasRoute = !!((route && route.from) || (route && route.to));
+  const routeText = hasRoute
+    ? `${(route && route.from) || '—'} → ${(route && route.to) || '—'}`
+    : 'Маршрут не указан';
 
   const Card = onPress ? TouchableOpacity : View;
   return (
@@ -49,11 +64,14 @@ export default function FeedCard({
             neutral surface with the same hairline border the rest
             of the card uses. */}
         <View style={[s.iconBox, { backgroundColor: colors.surfaceLift, borderColor: colors.border }]}>
-          <Text style={s.icon}>{icon}</Text>
+          <Feather name={iconName} size={20} color={v2.textSecondary} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={[s.route, { color: colors.text }]} numberOfLines={1}>
-            {(route && route.from) || '—'} → {(route && route.to) || '—'}
+          <Text
+            style={[s.route, { color: hasRoute ? colors.text : v2.textTertiary }]}
+            numberOfLines={1}
+          >
+            {routeText}
           </Text>
           {subtitle ? <Text style={[s.subtitle, { color: colors.textMuted }]} numberOfLines={1}>{subtitle}</Text> : null}
         </View>
@@ -92,7 +110,9 @@ export default function FeedCard({
         </View>
       ) : null}
 
-      {responses != null ? (
+      {/* Phase 2A: "0 откликов" не выпячиваем — если данных нет, строки нет.
+          B2B-карточка должна показывать число только когда оно несёт смысл. */}
+      {responses != null && responses > 0 ? (
         <Text style={[s.responses, { color: colors.textMuted }]}>{responses} {responses === 1 ? 'отклик' : 'откликов'}</Text>
       ) : null}
 

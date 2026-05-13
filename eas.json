@@ -1,6 +1,7 @@
 {
   "cli": {
-    "version": ">= 18.0.0"
+    "version": ">= 18.0.0",
+    "appVersionSource": "remote"
   },
   "build": {
     "development": {
@@ -17,22 +18,20 @@
       "ios": { "simulator": false },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://urtruck.kz"
-      },
-      "extra": { "eas": { "profile": "preview" } }
+      }
     },
     "production": {
-      "ios": { "autoIncrement": true },
+      "ios": { "autoIncrement": true, "image": "macos-sequoia-15.6-xcode-26.2" },
       "android": { "autoIncrement": true },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://urtruck.kz"
-      },
-      "extra": { "eas": { "profile": "production" } }
+      }
     }
   },
   "submit": {
     "production": {
       "ios": {
-        "ascAppId": "REPLACE_WITH_APP_STORE_CONNECT_APP_ID"
+        "ascAppId": "6764504167"
       }
     }
   }

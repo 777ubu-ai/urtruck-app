@@ -25,22 +25,35 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, AppState } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Feather from '@expo/vector-icons/Feather';
 import { useV1Colors, v1AccentFor } from '../../../theme/designV1';
 import { useTheme } from '../../../utils/ThemeContext';
 import { useAuth } from '../../../utils/AuthContext';
 import { useI18n } from '../../../utils/useI18n';
 import { chatAPI } from '../../../utils/chatAPI';
+// Phase 2A: единая палитра — оранжевый акцент и серый inactive,
+// независимо от роли. Раньше driver получал blue, client — yellow;
+// для B2B-логистики единый orange выглядит как взрослая платформа.
+import { colors as v2 } from '../../../theme/designSystemV2';
 
 const UNREAD_POLL_MS = 30000;
 
-// Trailing U+FE0F forces the emoji presentation on platforms that would
-// otherwise render the bare codepoint as a monochrome glyph (notably 🛣
-// and ⚙). Keeps icons consistent in light + dark.
+// Stage DS-1: эмодзи навигации заменены на Feather outline icons
+// (2px stroke, monochrome). Это убирает «детский» вид для серьёзного
+// логистического B2B-продукта.
+//
+// Driver / client используют одинаковые иконки для одинаковых функций —
+// семантика табов одна и та же, только текст label меняется по роли.
+//
+// truck — Feed (driver видит грузы, client видит транспорт)
+// clipboard — MyWork (мои рейсы / мои грузы)
+// message-circle — чат
+// user — профиль
 const ICONS = {
-  Feed:    { driver: '📦', client: '🚚' },
-  MyWork:  { driver: '🛣️', client: '📋' },
-  Chats:   { driver: '💬', client: '💬' },
-  Profile: { driver: '👤', client: '👤' },
+  Feed:    { driver: 'package',  client: 'truck' },
+  MyWork:  { driver: 'clipboard', client: 'clipboard' },
+  Chats:   { driver: 'message-circle', client: 'message-circle' },
+  Profile: { driver: 'user', client: 'user' },
 };
 
 export default function BottomNav({ state, navigation }) {
@@ -53,7 +66,11 @@ export default function BottomNav({ state, navigation }) {
     || state.routes[0]?.params?.role
     || 'client';
   const isDriver = role === 'driver';
-  const accent = v1AccentFor(isDriver ? 'driver' : 'client');
+  // Phase 2A: единый orange-accent ради взрослой B2B-палитры. role
+  // влияет только на то, какие иконки/тексты табов мы показываем
+  // (через ICONS / labelOf), но цвет акцента уже не зависит от роли.
+  const accent = { main: v2.accent, soft: v2.accentSoft };
+  const inactiveColor = v2.textSecondary;
 
   const [chatUnread, setChatUnread] = useState(0);
   const pollTimer = useRef(null);
@@ -158,10 +175,16 @@ export default function BottomNav({ state, navigation }) {
         }
 
         const iconKey = ICONS[route.name];
-        const icon = iconKey ? (isDriver ? iconKey.driver : iconKey.client) : '·';
+        const iconName = iconKey ? (isDriver ? iconKey.driver : iconKey.client) : 'circle';
         const label = labelOf(route.name);
         const showChatBadge = route.name === 'Chats' && chatUnread > 0;
         const badgeLabel = chatUnread > 9 ? '9+' : String(chatUnread);
+        // Stage DS-1: цвет иконки = active accent / muted, нет «масштабирования»
+        // эмодзи (раньше использовали transform scale 1.1). С Feather достаточно
+        // менять colour и иконка остаётся ровной.
+        // Phase 2A: inactive — slate #64748B (v2.textSecondary), не tema-зависимый
+        // colors.textMuted, чтобы дать ровный B2B-look на всех экранах.
+        const iconColor = isFocused ? accent.main : inactiveColor;
 
         return (
           <TouchableOpacity
@@ -174,14 +197,7 @@ export default function BottomNav({ state, navigation }) {
             style={s.cell}
           >
             <View style={s.iconRow}>
-              <Text
-                style={[
-                  s.icon,
-                  isFocused ? { transform: [{ scale: 1.1 }] } : null,
-                ]}
-              >
-                {icon}
-              </Text>
+              <Feather name={iconName} size={22} color={iconColor} />
               {showChatBadge ? (
                 <View
                   style={[
@@ -197,7 +213,7 @@ export default function BottomNav({ state, navigation }) {
             <Text
               style={[
                 s.label,
-                { color: isFocused ? accent.main : colors.textMuted },
+                { color: isFocused ? accent.main : inactiveColor },
               ]}
               numberOfLines={1}
             >
