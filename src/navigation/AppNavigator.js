@@ -49,6 +49,14 @@ import EditTripScreen from '../screens/EditTripScreen';
 import CreateTripScreen from '../screens/CreateTripScreen';
 import CreateCargoScreen from '../screens/CreateCargoScreen';
 import DesignPreviewScreen, { qaDesignMode } from '../screens/DesignPreviewScreen';
+// RC2 onboarding v2 (inDrive-style) — первый batch экранов нового flow.
+// OnboardingV2 — welcome с 3 слайдами и кнопкой "Продолжить по номеру",
+// CountryPicker — модал-bottom-sheet для выбора страны, PhoneV2 — ввод
+// телефона. После PhoneV2 пока продолжается старый OTP-стек (RegOtp →
+// RegProfile → Main); переедет в batch 2.
+import OnboardingV2Screen from '../screens/onboarding/OnboardingV2Screen';
+import PhoneV2Screen from '../screens/onboarding/PhoneV2Screen';
+import CountryPickerSheet from '../screens/onboarding/CountryPickerSheet';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -109,6 +117,14 @@ export default function AppNavigator() {
       <Stack.Navigator initialRouteName="DesignPreview" screenOptions={{ headerShown: false }}>
         <Stack.Screen name="DesignPreview" component={DesignPreviewScreen} />
         <Stack.Screen name="Role" component={RoleScreen} />
+        {/* RC2 onboarding v2 (inDrive-style) — превью в qaPreview */}
+        <Stack.Screen name="OnboardingV2" component={OnboardingV2Screen} />
+        <Stack.Screen name="PhoneV2" component={PhoneV2Screen} />
+        <Stack.Screen
+          name="CountryPicker"
+          component={CountryPickerSheet}
+          options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
+        />
         {/* Legacy экраны — оставлены только для qaPreview-галереи. */}
         <Stack.Screen name="SignUp" component={SignUpScreen} />
         <Stack.Screen name="LegacyReg" component={RegScreen} />
@@ -137,11 +153,18 @@ export default function AppNavigator() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {!hasToken || !session || !hasRole ? (
-        // Нет токена / нет сессии / нет роли → выбор роли + premium-регистрация.
-        // Stage 37: 'Auth' и 'Login' оба указывают на PremiumLoginScreen,
-        // старый AuthScreen больше не показывается пользователю в основном
-        // flow (только в qaPreview как 'LegacyAuth').
+        // Нет токена / нет сессии / нет роли → inDrive-style onboarding.
+        // RC2 batch 1: первый экран = OnboardingV2 (3-слайдовая карусель +
+        // CTA "Продолжить по номеру"). Старый RoleScreen остаётся в стеке
+        // как fallback для legacy deeplink и переключения роли изнутри.
         <>
+          <Stack.Screen name="OnboardingV2" component={OnboardingV2Screen} />
+          <Stack.Screen name="PhoneV2" component={PhoneV2Screen} />
+          <Stack.Screen
+            name="CountryPicker"
+            component={CountryPickerSheet}
+            options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
+          />
           <Stack.Screen name="Role" component={RoleScreen} />
           <Stack.Screen name="Auth" component={PremiumLoginScreen} />
           <Stack.Screen name="Login" component={PremiumLoginScreen} />
