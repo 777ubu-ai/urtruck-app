@@ -86,7 +86,7 @@ const Slide2 = ({ t }) => (
             <Feather name="user" size={20} color={brand.textPrimary} />
           </View>
           <Text style={s.bidName}>{t('onb_v2_bid_driver1')}</Text>
-          <Text style={s.bidPrice}>$4 800</Text>
+          <Text style={s.bidPrice}>{t('onb_v2_bid_price1')}</Text>
           <Text style={s.bidLabel}>{t('onb_v2_bid_offer')}</Text>
         </View>
         <View style={s.cargoCard}>
@@ -117,12 +117,12 @@ const Slide2 = ({ t }) => (
             <Feather name="user" size={20} color="#FFF" />
           </View>
           <Text style={s.bidName}>{t('onb_v2_bid_driver2')}</Text>
-          <Text style={[s.bidPrice, { color: brand.routeGreen }]}>$4 200</Text>
+          <Text style={[s.bidPrice, { color: brand.routeGreen }]}>{t('onb_v2_bid_price2')}</Text>
           <Text style={s.bidLabel}>{t('onb_v2_bid_offer')}</Text>
         </View>
       </View>
       <View style={s.dollarBadge}>
-        <Text style={s.dollarBadgeText}>$</Text>
+        <Text style={s.dollarBadgeText}>₸</Text>
       </View>
     </View>
     <Text style={s.title}>{t('onb_v2_slide2_title')}</Text>
