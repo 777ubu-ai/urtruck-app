@@ -1,26 +1,28 @@
 // OnboardingV2Screen — inDrive-style welcome с 3 слайдами карусели.
 //
-// Stage RC2-no-duplicate-cta (15 May):
-//   PNG-ассеты от owner'а — full-screen screenshots с уже отрисованным
-//   UI (logo + title + subtitle + paginator + кнопки + оферта). Если
-//   показывать PNG целиком + рендерить свои native CTAs — получается
-//   ДУБЛЯЖ кнопок на экране.
+// Stage RC2-window-crop (15 May):
+//   Owner-проверка PR #35: PNG-логотип UrTruck в crop'е был гигантским
+//   (~30% экрана), а сама иллюстрация (фура/cargo cards/driver+shield)
+//   была обрезана снизу. Корень — top-anchored crop показывал верхние
+//   X% PNG, включая логотип и status-bar, но НЕ всю illustration.
 //
-//   Временное решение (до финальных hero-only PNG от дизайнера):
-//     - PNG **кропается** до верхней hero-части через top-anchored
-//       overflow:hidden + image position:absolute top:0. Per-slide
-//       coordinated crop ratio: slide 1 — 50%, slide 2 — 62%, slide 3
-//       — 55% от высоты PNG. Это убирает встроенные кнопки/dots/
-//       оферту из видимой части.
-//     - Native UI restored: title/subtitle через i18n, paginator dots
-//       (dynamic active state), 2 CTAs (real tap), consent. Это
-//       единственные интерактивные элементы на экране.
-//     - UrTruck logo внутри hero-части PNG остаётся видимым как часть
-//       brand-illustration — он не дублирует ничего на этом экране.
+//   Window-crop (по обеим сторонам):
+//     - Каждый слайд показывает **окно** из PNG: [fromPct, toPct] от
+//       высоты файла. Сверху отрезаны status-bar + PNG-логотип
+//       (fromPct ≈ 0.08-0.12). Снизу отрезаны PNG title/subtitle/dots/
+//       CTAs/оферта (toPct ≈ 0.48-0.55).
+//     - Внутри окна остаётся ТОЛЬКО illustration (карта+водитель+фура+
+//       склад для slide 1, cargo card + bid cards + $-badge для slide
+//       2, driver+shield+driver-card+route bar для slide 3).
 //
-//   Финальное решение (TODO): owner пришлёт hero-only PNG (только
-//   illustration, без logo/title/CTAs внутри). Тогда уберём crop и
-//   восстановим native UrTruck-logo сверху.
+//   Native UrTruck logo рисуется отдельно, **небольшого** размера
+//   (fontSize 28 vs ~80 в PNG), брэнд остаётся консистентным, без
+//   доминирования. Title/subtitle/paginator/CTAs/consent — native
+//   через i18n.
+//
+//   Технически: container высота = (toPct - fromPct) * imgHeight,
+//   image position:absolute top:(-fromPct * imgHeight). overflow:hidden
+//   на container'е скрывает что вышло за границы.
 
 import React, { useRef, useState } from 'react';
 import {
@@ -40,44 +42,71 @@ import { brand, radius, typography } from '../../theme/brandV2';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
-// Source PNGs (с встроенным UI — кропаются ниже).
 const HERO_SLIDE_1 = require('../../../assets/onboarding/slide-1-hero.png');
 const HERO_SLIDE_2 = require('../../../assets/onboarding/slide-2-driver-1.png');
 const HERO_SLIDE_3 = require('../../../assets/onboarding/slide-2-driver-2.png');
 
-// Native PNG aspect ratios (width/height из файла).
-const ASPECT_S1 = 853 / 1844;   // ≈ 0.463
-const ASPECT_S2 = 941 / 1672;   // ≈ 0.563
-const ASPECT_S3 = 853 / 1844;   // ≈ 0.463
+// PNG native aspects.
+const ASPECT_S1 = 853 / 1844;
+const ASPECT_S2 = 941 / 1672;
+const ASPECT_S3 = 853 / 1844;
 
-// Crop ratio (доля PNG-высоты, которую показываем сверху).
-// Подобрано визуально, чтобы НЕ попасть на встроенные title/subtitle/
-// dots/CTAs/оферту screenshot'а. Если PNG обновятся (hero-only) —
-// поставить 1.0 и убрать crop.
-const CROP_S1 = 0.50;
-const CROP_S2 = 0.62;
-const CROP_S3 = 0.55;
+// Окно отображения: [from, to] от высоты PNG. Подобрано чтобы:
+//   - убрать сверху: status-bar + PNG-логотип «UrTruck» (рендерится
+//     отдельно native, меньшим размером)
+//   - убрать снизу: PNG-внутренние title/subtitle/dots/CTAs/оферта
+//     (рендерятся native через i18n)
+// Когда дизайнер пришлёт hero-only PNG (без UI): from=0, to=1.0.
+const WINDOW_S1 = { from: 0.12, to: 0.50 };  // карта + водитель + фура + склад
+const WINDOW_S2 = { from: 0.08, to: 0.55 };  // cargo card + bid cards + $-badge
+const WINDOW_S3 = { from: 0.08, to: 0.50 };  // driver + щит + driver-card + route bar
 
-// containerAspect = imageAspect / cropPct. Если cropPct < 1.0, container
-// уже PNG → image overflow по высоте, нижняя часть скрыта overflow:hidden.
-const HeroCrop = ({ source, imageAspect, cropPct }) => {
-  const containerAspect = imageAspect / cropPct;
+const HeroWindow = ({ source, imageAspect, win }) => {
+  // SCREEN_W — фактическая ширина слайда (carousel pagingEnabled).
+  // imgHeight = SCREEN_W / imageAspect — полная высота PNG при
+  // отображении на всю ширину экрана.
+  const imgHeight = SCREEN_W / imageAspect;
+  const visiblePct = win.to - win.from;
+  const containerHeight = imgHeight * visiblePct;
+  const topOffset = -win.from * imgHeight;
   return (
-    <View style={[s.heroBox, { aspectRatio: containerAspect }]}>
+    <View
+      style={{
+        width: '100%',
+        height: containerHeight,
+        overflow: 'hidden',
+      }}
+    >
       <Image
         source={source}
-        style={[s.heroImg, { aspectRatio: imageAspect }]}
+        style={{
+          width: SCREEN_W,
+          height: imgHeight,
+          position: 'absolute',
+          top: topOffset,
+          left: 0,
+        }}
       />
     </View>
   );
 };
 
-const Slide = ({ source, imageAspect, cropPct, title, subtitle }) => (
+const SlideLogo = () => (
+  <Text style={s.slideLogo}>
+    <Text style={{ color: brand.logoDark }}>Ur</Text>
+    <Text style={{ color: brand.logoAccent }}>Truck</Text>
+  </Text>
+);
+
+const Slide = ({ source, imageAspect, win, title, subtitle }) => (
   <View style={s.slide}>
-    <HeroCrop source={source} imageAspect={imageAspect} cropPct={cropPct} />
+    <SlideLogo />
+    <HeroWindow source={source} imageAspect={imageAspect} win={win} />
     <View style={s.captionBlock}>
       <Text style={s.title}>{title}</Text>
-      <Text style={s.subtitle}>{subtitle}</Text>
+      <Text style={s.subtitle} numberOfLines={3}>
+        {subtitle}
+      </Text>
     </View>
   </View>
 );
@@ -118,13 +147,12 @@ export default function OnboardingV2Screen({ navigation }) {
         onScroll={onScroll}
         scrollEventThrottle={32}
         style={{ flex: 1 }}
-        contentContainerStyle={{ alignItems: 'stretch' }}
       >
         <View style={{ width: SCREEN_W }}>
           <Slide
             source={HERO_SLIDE_1}
             imageAspect={ASPECT_S1}
-            cropPct={CROP_S1}
+            win={WINDOW_S1}
             title={t('onb_v2_slide1_title')}
             subtitle={t('onb_v2_slide1_subtitle')}
           />
@@ -133,7 +161,7 @@ export default function OnboardingV2Screen({ navigation }) {
           <Slide
             source={HERO_SLIDE_2}
             imageAspect={ASPECT_S2}
-            cropPct={CROP_S2}
+            win={WINDOW_S2}
             title={t('onb_v2_slide2_title')}
             subtitle={t('onb_v2_slide2_subtitle')}
           />
@@ -142,14 +170,14 @@ export default function OnboardingV2Screen({ navigation }) {
           <Slide
             source={HERO_SLIDE_3}
             imageAspect={ASPECT_S3}
-            cropPct={CROP_S3}
+            win={WINDOW_S3}
             title={t('onb_v2_slide3_title')}
             subtitle={t('onb_v2_slide3_subtitle')}
           />
         </View>
       </ScrollView>
 
-      {/* Paginator — dynamic active dot */}
+      {/* Paginator dots — dynamic */}
       <View style={s.dotsRow}>
         {[0, 1, 2].map((i) => (
           <View
@@ -164,7 +192,7 @@ export default function OnboardingV2Screen({ navigation }) {
         ))}
       </View>
 
-      {/* CTAs — native, реальные tap-target. Единственные на экране. */}
+      {/* CTAs — native, единственная пара на экране */}
       <View style={s.ctaWrap}>
         <TouchableOpacity
           onPress={goPhone}
@@ -211,26 +239,18 @@ const s = StyleSheet.create({
     paddingHorizontal: 0,
     alignItems: 'stretch',
   },
-  // Crop box — width:100%, aspectRatio задаёт высоту (меньше native
-  // PNG-aspect = nижняя часть PNG за пределами box, overflow:hidden
-  // её скрывает).
-  heroBox: {
-    width: '100%',
-    overflow: 'hidden',
-    backgroundColor: brand.bg,
-  },
-  // Image — top-anchored, width:100%, aspectRatio задаёт высоту image
-  // равной полной высоте PNG (которая больше высоты heroBox).
-  heroImg: {
-    width: '100%',
-    position: 'absolute',
-    top: 0,
-    left: 0,
+  slideLogo: {
+    fontSize: 28,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+    textAlign: 'center',
+    paddingTop: 8,
+    paddingBottom: 6,
   },
   captionBlock: {
     paddingHorizontal: 24,
-    paddingTop: 14,
-    paddingBottom: 6,
+    paddingTop: 12,
+    paddingBottom: 4,
     alignItems: 'center',
   },
   title: {
@@ -243,24 +263,22 @@ const s = StyleSheet.create({
     ...typography.body,
     color: brand.textSecondary,
     textAlign: 'center',
-    paddingHorizontal: 8,
+    paddingHorizontal: 4,
   },
-  // Paginator
   dotsRow: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 12,
+    marginBottom: 10,
   },
   dot: {
     width: 6, height: 6, borderRadius: 3,
   },
-  // CTAs (одна пара на экране!)
   ctaWrap: {
     paddingHorizontal: 20,
-    paddingTop: 4,
-    paddingBottom: 12,
+    paddingTop: 2,
+    paddingBottom: 10,
     backgroundColor: brand.bg,
   },
   ctaPrimary: {
@@ -284,7 +302,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 24,
-    marginTop: 10,
+    marginTop: 8,
     borderWidth: 1,
     borderColor: brand.borderStrong,
     backgroundColor: brand.surface,
@@ -300,7 +318,7 @@ const s = StyleSheet.create({
     fontSize: 12,
     color: brand.textSecondary,
     textAlign: 'center',
-    marginTop: 12,
+    marginTop: 8,
   },
   consentLink: {
     color: brand.textPrimary,
