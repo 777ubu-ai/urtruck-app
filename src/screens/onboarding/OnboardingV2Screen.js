@@ -30,7 +30,7 @@ import {
   Text,
   Image,
   ScrollView,
-  TouchableOpacity,
+  Pressable,
   StyleSheet,
   Dimensions,
 } from 'react-native';
@@ -69,8 +69,13 @@ const HeroWindow = ({ source, imageAspect, win }) => {
   const visiblePct = win.to - win.from;
   const containerHeight = imgHeight * visiblePct;
   const topOffset = -win.from * imgHeight;
+  // pointerEvents="none" — иллюстрация декоративная, ни один её
+  // подэлемент не должен intercept'ить tap'ы. Это страхует CTA-
+  // кнопки снизу от любых RN-Web глюков с absolute-image над
+  // overflow:hidden parent'ом (issue PR #35 → #36).
   return (
     <View
+      pointerEvents="none"
       style={{
         width: '100%',
         height: containerHeight,
@@ -79,6 +84,7 @@ const HeroWindow = ({ source, imageAspect, win }) => {
     >
       <Image
         source={source}
+        pointerEvents="none"
         style={{
           width: SCREEN_W,
           height: imgHeight,
@@ -192,31 +198,40 @@ export default function OnboardingV2Screen({ navigation }) {
         ))}
       </View>
 
-      {/* CTAs — native, единственная пара на экране */}
-      <View style={s.ctaWrap}>
-        <TouchableOpacity
+      {/* CTAs — native, единственная пара на экране.
+          Pressable (вместо TouchableOpacity) даёт более надёжный
+          tap handling на RN-Web. pressed-callback в style возвращает
+          opacity 0.85 как visual feedback. zIndex/elevation на
+          ctaWrap страхует от чего-либо absolutely-positioned поверх. */}
+      <View style={s.ctaWrap} pointerEvents="box-none">
+        <Pressable
           onPress={goPhone}
-          activeOpacity={0.9}
           accessibilityRole="button"
           accessibilityLabel={t('onb_v2_cta_phone')}
           testID="onb-v2-cta-phone"
-          style={[s.ctaPrimary, { backgroundColor: brand.primary }]}
+          style={({ pressed }) => [
+            s.ctaPrimary,
+            { backgroundColor: brand.primary },
+            pressed && { opacity: 0.85 },
+          ]}
         >
           <Text style={s.ctaPrimaryText}>{t('onb_v2_cta_phone')}</Text>
           <Feather name="arrow-right" size={20} color="#FFF" />
-        </TouchableOpacity>
-        <TouchableOpacity
+        </Pressable>
+        <Pressable
           onPress={goGuest}
-          activeOpacity={0.85}
           accessibilityRole="button"
           accessibilityLabel={t('onb_v2_cta_guest')}
           testID="onb-v2-cta-guest"
-          style={s.ctaOutline}
+          style={({ pressed }) => [
+            s.ctaOutline,
+            pressed && { opacity: 0.85 },
+          ]}
         >
           <Feather name="package" size={18} color={brand.textPrimary} />
           <Text style={s.ctaOutlineText}>{t('onb_v2_cta_guest')}</Text>
           <Feather name="arrow-right" size={18} color={brand.textPrimary} />
-        </TouchableOpacity>
+        </Pressable>
 
         <Text style={s.consent}>
           {t('onb_v2_consent_prefix')}{' '}
@@ -271,15 +286,23 @@ const s = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     marginBottom: 10,
+    zIndex: 5,
+    elevation: 5,
   },
   dot: {
     width: 6, height: 6, borderRadius: 3,
   },
+  // ctaWrap явно поднят над всем остальным: zIndex/elevation страхуют
+  // от любых absolute-overlay'ев слева от карусели. backgroundColor
+  // = brand.bg делает блок «непрозрачным» — если что-то под ним
+  // утечёт, оно не будет видно и не сможет получить tap.
   ctaWrap: {
     paddingHorizontal: 20,
     paddingTop: 2,
     paddingBottom: 10,
     backgroundColor: brand.bg,
+    zIndex: 10,
+    elevation: 10,
   },
   ctaPrimary: {
     height: 56,
