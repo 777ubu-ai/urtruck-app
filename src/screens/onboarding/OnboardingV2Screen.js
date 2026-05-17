@@ -57,9 +57,13 @@ const ASPECT_S3 = 853 / 1844;
 //   - убрать снизу: PNG-внутренние title/subtitle/dots/CTAs/оферта
 //     (рендерятся native через i18n)
 // Когда дизайнер пришлёт hero-only PNG (без UI): from=0, to=1.0.
-const WINDOW_S1 = { from: 0.12, to: 0.50 };  // карта + водитель + фура + склад
-const WINDOW_S2 = { from: 0.08, to: 0.55 };  // cargo card + bid cards + $-badge
-const WINDOW_S3 = { from: 0.08, to: 0.50 };  // driver + щит + driver-card + route bar
+// RC2 hero spacing fix (17 May): from-coords опущены, чтобы PNG-внутренний
+// UrTruck-logo попадал в visible window целиком (раньше from=0.08-0.12
+// обрезали верх логотипа). Status bar внутри PNG (~0-3%) всё ещё за
+// крайней верхней границей окна.
+const WINDOW_S1 = { from: 0.04, to: 0.50 };  // logo + карта + водитель + фура + склад
+const WINDOW_S2 = { from: 0.03, to: 0.55 };  // logo + cargo card + bid cards + $-badge
+const WINDOW_S3 = { from: 0.03, to: 0.50 };  // logo + driver + щит + driver-card + route bar
 
 const HeroWindow = ({ source, imageAspect, win }) => {
   // SCREEN_W — фактическая ширина слайда (carousel pagingEnabled).
@@ -250,6 +254,13 @@ const s = StyleSheet.create({
   slide: {
     flex: 1,
     paddingHorizontal: 0,
+    // RC2 hero spacing fix (17 May): paddingTop сдвигает hero block
+    // вниз от реального iOS status bar — даёт breathing room сверху.
+    // PNG-внутренний логотип (теперь в visible window) не прилипает
+    // к notch'у. justifyContent='flex-start' оставляем дефолтным,
+    // чтобы illustration шла сразу после padding'а, а captionBlock
+    // снизу натурально следует за высотой HeroWindow.
+    paddingTop: 16,
     alignItems: 'stretch',
   },
   // slideLogo style удалён вместе с SlideLogo компонентом (см. JSX выше).
