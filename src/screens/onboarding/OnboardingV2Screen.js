@@ -57,13 +57,15 @@ const ASPECT_S3 = 853 / 1844;
 //   - убрать снизу: PNG-внутренние title/subtitle/dots/CTAs/оферта
 //     (рендерятся native через i18n)
 // Когда дизайнер пришлёт hero-only PNG (без UI): from=0, to=1.0.
-// RC2 hero spacing fix (17 May): from-coords опущены, чтобы PNG-внутренний
-// UrTruck-logo попадал в visible window целиком (раньше from=0.08-0.12
-// обрезали верх логотипа). Status bar внутри PNG (~0-3%) всё ещё за
-// крайней верхней границей окна.
-const WINDOW_S1 = { from: 0.04, to: 0.50 };  // logo + карта + водитель + фура + склад
-const WINDOW_S2 = { from: 0.03, to: 0.55 };  // logo + cargo card + bid cards + $-badge
-const WINDOW_S3 = { from: 0.03, to: 0.50 };  // logo + driver + щит + driver-card + route bar
+// RC2 top-artifacts fix (17 May): from-coords подняты ещё на 2%,
+// чтобы PNG-внутренний status bar (signal bars + battery + time
+// "05:00 4G 35%" на 0-4% высоты PNG) полностью ушёл за пределы
+// visible window. Раньше при from=0.03-0.04 нижний край status bar
+// "просачивался" мелкими чёрными точками/штрихами сверху экрана.
+// UrTruck logo (6-8% в PNG) остаётся целиком виден.
+const WINDOW_S1 = { from: 0.06, to: 0.50 };  // logo + карта + водитель + фура + склад
+const WINDOW_S2 = { from: 0.05, to: 0.55 };  // logo + cargo card + bid cards + $-badge
+const WINDOW_S3 = { from: 0.05, to: 0.50 };  // logo + driver + щит + driver-card + route bar
 
 const HeroWindow = ({ source, imageAspect, win }) => {
   // SCREEN_W — фактическая ширина слайда (carousel pagingEnabled).
