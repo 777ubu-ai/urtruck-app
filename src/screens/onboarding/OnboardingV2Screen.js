@@ -260,7 +260,10 @@ const s = StyleSheet.create({
     // к notch'у. justifyContent='flex-start' оставляем дефолтным,
     // чтобы illustration шла сразу после padding'а, а captionBlock
     // снизу натурально следует за высотой HeroWindow.
-    paddingTop: 16,
+    // RC2 nudge-up (17 May): 16 → 6 по owner-фидбеку (hero был чуть
+    // слишком низко, оставалась пустая дырка сверху). 6pt — минимум
+    // breathing room от safe-area без визуального gap.
+    paddingTop: 6,
     alignItems: 'stretch',
   },
   // slideLogo style удалён вместе с SlideLogo компонентом (см. JSX выше).
