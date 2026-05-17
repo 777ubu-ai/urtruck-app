@@ -97,16 +97,14 @@ const HeroWindow = ({ source, imageAspect, win }) => {
   );
 };
 
-const SlideLogo = () => (
-  <Text style={s.slideLogo}>
-    <Text style={{ color: brand.logoDark }}>Ur</Text>
-    <Text style={{ color: brand.logoAccent }}>Truck</Text>
-  </Text>
-);
+// SlideLogo (native compact) убран — текущие PNG уже содержат
+// собственный UrTruck logo внутри hero illustration (после window-crop
+// он остаётся видимым в верхней части). Native compact logo создавал
+// duplicate. Когда дизайнер пришлёт hero-only PNG (без logo внутри),
+// SlideLogo восстановится здесь.
 
 const Slide = ({ source, imageAspect, win, title, subtitle }) => (
   <View style={s.slide}>
-    <SlideLogo />
     <HeroWindow source={source} imageAspect={imageAspect} win={win} />
     <View style={s.captionBlock}>
       <Text style={s.title}>{title}</Text>
@@ -254,14 +252,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 0,
     alignItems: 'stretch',
   },
-  slideLogo: {
-    fontSize: 28,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-    textAlign: 'center',
-    paddingTop: 8,
-    paddingBottom: 6,
-  },
+  // slideLogo style удалён вместе с SlideLogo компонентом (см. JSX выше).
   captionBlock: {
     paddingHorizontal: 24,
     paddingTop: 12,
