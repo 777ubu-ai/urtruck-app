@@ -133,12 +133,54 @@ export default function MyTripsScreen({ navigation, route }) {
     }
   }, []);
 
-  let myItems = isDriver ? (data?.my_trips || []) : (data?.my_cargos || []);
-  if (justCreatedTrip && isDriver && !myItems.find(i => i.id === justCreatedTrip.id)) {
-    myItems = [justCreatedTrip, ...myItems];
+  let myItemsRaw = isDriver ? (data?.my_trips || []) : (data?.my_cargos || []);
+  if (justCreatedTrip && isDriver && !myItemsRaw.find(i => i.id === justCreatedTrip.id)) {
+    myItemsRaw = [justCreatedTrip, ...myItemsRaw];
   }
+
+  // RC2 hotfix (P0-4): expired (pickup_date < сегодня) больше не
+  // попадают в Active. Перемещаем их в Archive виртуально (без
+  // изменения backend status). Tab='deals' (Архив) теперь покажет
+  // server-side completed/cancelled + локально expired.
+  const parseDate = (s) => {
+    if (!s) return null;
+    const str = String(s).trim();
+    for (const fmt of [
+      /^(\d{4})-(\d{2})-(\d{2})/,           // YYYY-MM-DD (+ timestamp)
+      /^(\d{2})\.(\d{2})\.(\d{4})$/,        // DD.MM.YYYY
+    ]) {
+      const m = fmt.exec(str);
+      if (m) {
+        const [, p1, p2, p3] = m;
+        // ISO branch: p1=YYYY, p2=MM, p3=DD; DD.MM.YYYY branch swap
+        const yyyy = p1.length === 4 ? +p1 : +p3;
+        const mm = +p2;
+        const dd = p1.length === 4 ? +p3 : +p1;
+        return new Date(yyyy, mm - 1, dd);
+      }
+    }
+    return null;
+  };
+  const isExpiredItem = (it) => {
+    const d = parseDate(it.pickup_date || it.departure);
+    if (!d) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    // expired = pickup_date < today (strictly). today itself remains
+    // active.
+    return d < today;
+  };
+  const myItemsActive = myItemsRaw.filter((it) => !isExpiredItem(it));
+  const myItemsExpired = myItemsRaw.filter((it) => isExpiredItem(it));
+  const myItems = myItemsActive;
+
   const myBids = isDriver ? (data?.my_bids || []) : (data?.incoming_bids || []);
-  const myDeals = data?.my_deals || [];
+  // Архив: server-deals + локально-вычисленные expired (без изменения
+  // backend данных). justCreated не дублируется т.к. он active.
+  const myDeals = [
+    ...((data?.my_deals) || []),
+    ...myItemsExpired.map((it) => ({ ...it, _expired: true })),
+  ];
 
   // ─── Cards ───
 
@@ -189,7 +231,13 @@ export default function MyTripsScreen({ navigation, route }) {
         <View style={s.cardMeta}>
           <Text style={[s.metaItem, { color: theme.textDim }]}>{formatTruckType(item.truck_type || item.cargo_type)}</Text>
           <Text style={s.metaDot}>·</Text>
-          <Text style={[s.metaItem, { color: theme.textDim }]}>{formatDateForDisplay(item.departure || item.created_at)}</Text>
+          {/* RC2 hotfix (P0-3): для cargos показываем pickup_date, не
+              created_at. Для trips остаётся departure || created_at. */}
+          <Text style={[s.metaItem, { color: theme.textDim }]}>
+            {isCargo
+              ? formatDateForDisplay(item.pickup_date || item.departure || item.created_at)
+              : formatDateForDisplay(item.departure || item.created_at)}
+          </Text>
         </View>
         <View style={s.cardBottom}>
           <Text style={s.price}>{formatPrice(item.price, item.currency, t)}</Text>

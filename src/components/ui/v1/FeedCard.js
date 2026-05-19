@@ -46,10 +46,20 @@ export default function FeedCard({
   // (битый импорт / старая строка). Покажем человеческий текст вместо
   // двух дефисов. Карточку всё равно отрисовываем — если её скрыть,
   // пагинация съест слот и пользователь не поймёт, что пропало.
-  const hasRoute = !!((route && route.from) || (route && route.to));
+  // RC2 hotfix (P0-2): user видел "Маршрут не указан" на just-created
+  // cargos даже когда from/to реально были выбраны. Источники могут
+  // отдать строку с пробелами/пустой строкой/whitespace-only — добавляем
+  // строгий trim-check + явный fallback на second-string (если from
+  // пуст а to нет — показываем "— → To"; если оба пусто — "Маршрут
+  // уточняется"). Не плодим "Маршрут не указан" — оно звучит как ошибка
+  // публикации.
+  const trimSafe = (v) => (typeof v === 'string' ? v.trim() : '');
+  const fromText = trimSafe(route && route.from);
+  const toText = trimSafe(route && route.to);
+  const hasRoute = !!(fromText || toText);
   const routeText = hasRoute
-    ? `${(route && route.from) || '—'} → ${(route && route.to) || '—'}`
-    : 'Маршрут не указан';
+    ? `${fromText || '—'} → ${toText || '—'}`
+    : 'Маршрут уточняется';
 
   const Card = onPress ? TouchableOpacity : View;
   return (

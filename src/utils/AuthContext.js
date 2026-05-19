@@ -125,16 +125,32 @@ export const AuthProvider = ({ children }) => {
     });
   };
 
-  const signOut = () => {
+  const signOut = async () => {
+    // RC2 hotfix (P1-2): пользователи жаловались что после OK на
+    // "Выйти из аккаунта" они оставались залогинены. Корень — некоторые
+    // ключи (ur_driver_vehicle, ur_client_company, лангуаге-state)
+    // оставались в storage, а AuthContext только сбрасывал session+token,
+    // что иногда приводило к гонкам в AppNavigator.
+    // Fix: 1) очищаем ВСЕ известные ur_* ключи; 2) сбрасываем in-memory
+    // state ПОСЛЕ storage cleanup; 3) делаем async чтобы вызывающий
+    // мог await перед reset навигации.
+    try {
+      await Promise.all([
+        storage.remove(KEY),                    // ur_session
+        storage.remove('ur_verification_level'),
+        storage.remove('ur_driver_vehicle'),    // batch-2 локальный профиль
+        storage.remove('ur_client_company'),    // batch-2 локальный профиль
+      ]);
+    } catch {}
+    try {
+      await regAPI.clearToken();                // ur_reg_token
+    } catch {}
     setSession(null);
     setVerificationLevel(0);
     setHasToken(false);
-    storage.remove(KEY);
-    storage.remove('ur_verification_level');
-    regAPI.clearToken();
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
       // eslint-disable-next-line no-console
-      console.warn('[Auth] logout cleared session');
+      console.warn('[Auth] logout cleared session + storage');
     }
   };
 

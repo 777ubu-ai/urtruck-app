@@ -227,26 +227,47 @@ export default function ProfileScreen({ navigation, route }) {
           <Text style={{ color: theme.textMuted, fontSize: 10, marginTop: 2 }}>v1.0.50 · 17.04.2026</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={s.changeRoleBtn}
-          onPress={() => confirm(
-            t('change_role_title'),
-            t('change_role_message'),
-            () => setRole(null),
-            t('cancel') || 'Отмена',
-            t('change_role_confirm'),
-          )}
-          testID="profile-change-role"
-        >
-          <Text style={s.changeRoleText}>{t('changeRole')}</Text>
-        </TouchableOpacity>
+        {/* RC2 hotfix (P1-1): "Сменить роль" скрыт из production UX —
+            фича смены роли налету ещё не покрыта профилем (см. PLAN
+            RC2-D: смена роли требует переустановки role-specific полей
+            типа труков для драйвера). В debug-режиме оставлено для QA.
+            Когда фича доделается — снимем условие. */}
+        {typeof __DEV__ !== 'undefined' && __DEV__ ? (
+          <TouchableOpacity
+            style={s.changeRoleBtn}
+            onPress={() => confirm(
+              t('change_role_title'),
+              t('change_role_message'),
+              () => setRole(null),
+              t('cancel') || 'Отмена',
+              t('change_role_confirm'),
+            )}
+            testID="profile-change-role"
+          >
+            <Text style={s.changeRoleText}>{t('changeRole')}</Text>
+          </TouchableOpacity>
+        ) : null}
 
         <TouchableOpacity
           style={s.logoutBtn}
           onPress={() => confirm(
             t('logout_title') || t('logout'),
             t('logout_message'),
-            () => signOut(),
+            async () => {
+              // RC2 hotfix (P1-2): await signOut (теперь async) →
+              // навигация reset как safety net. AppNavigator должен
+              // реактивно перерисоваться от hasToken=false, но
+              // explicit reset гарантирует переход на onboarding
+              // даже если listener'ы гонятся.
+              try { await signOut(); } catch {}
+              try {
+                navigation.reset({ index: 0, routes: [{ name: 'OnboardingV2' }] });
+              } catch (e) {
+                // OnboardingV2 может быть не в стеке (qaPreview / legacy);
+                // fallback на корневой Stack — пусть AppNavigator решит.
+                try { navigation.popToTop(); } catch {}
+              }
+            },
             t('cancel') || 'Отмена',
             t('logout_confirm') || t('logout'),
           )}
