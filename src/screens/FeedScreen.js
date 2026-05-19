@@ -91,9 +91,8 @@ export default function FeedScreen({ navigation, route }) {
   bellBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, backgroundColor: v1.surface },
   bellIcon: { fontSize: 18 },
   // Stage 45 guest toggle bar
-  guestTabs: { flexDirection: 'row', paddingHorizontal: 16, paddingTop: 4, paddingBottom: 8, gap: 8 },
-  guestTab: { flex: 1, paddingVertical: 10, borderRadius: 12, borderWidth: 1, alignItems: 'center' },
-  guestTabText: { fontSize: 13, fontWeight: '700' },
+  // RC2 fix: guestTabs/guestTab/guestTabText удалены вместе с
+  // guestRole-toggle (см. JSX выше).
   // Title row with outline CTA on the right (macros 07/08).
   titleRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12, gap: 12 },
   titleHero: { color: v1.text, fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
@@ -178,14 +177,15 @@ export default function FeedScreen({ navigation, route }) {
   submitText: { color: '#fff', fontSize: 16, fontWeight: '800' },
 
   }), [v1]);
-  // Stage 45: гостям разрешён просмотр feed без session. Сохраняем
-  // route.params.role как дефолт, но если гость — позволяем
-  // переключаться Грузы/Рейсы прямо в шапке через guestRole.
+  // RC2 fix (14 May): убран guestRole-toggle «Грузы/Рейсы» в шапке.
+  // Гость и авторизованный юзер видят ленту по своей роли — без
+  // segmented control в header. Если гость зашёл через "Смотреть
+  // грузы без регистрации" — role='driver' (lookup-cargos view).
+  // Авторизованный — session.user.role.
   const { session } = useAuth();
   const sessionRole = session?.user?.role || null;
   const isGuest = !sessionRole;
-  const [guestRole, setGuestRole] = useState(route.params?.role || 'driver');
-  const role = isGuest ? guestRole : (sessionRole || route.params?.role || 'client');
+  const role = sessionRole || route.params?.role || 'driver';
   const isDriver = role === 'driver';
   // Brand v3: driver = emerald, client = orange. No blue.
   const accent = isDriver ? '#22C55E' : '#F59E0B';
@@ -591,47 +591,10 @@ export default function FeedScreen({ navigation, route }) {
         )}
       </View>
 
-      {/* Stage 45: гостевой toggle Грузы / Рейсы. Зарегистрированному
-          пользователю не показывается — у него role зашита в session
-          и переключение делается через регистрацию второй роли. */}
-      {isGuest && (
-        <View style={s.guestTabs}>
-          <TouchableOpacity
-            onPress={() => setGuestRole('driver')}
-            style={[
-              s.guestTab,
-              { borderColor: v1.border },
-              guestRole === 'driver' && { backgroundColor: '#22C55E', borderColor: '#22C55E' },
-            ]}
-            testID="guest-tab-cargos"
-            accessibilityRole="button"
-          >
-            <Text style={[
-              s.guestTabText,
-              { color: guestRole === 'driver' ? '#0A0A0A' : v1.text },
-            ]}>
-              {t('guest_tab_cargos')}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setGuestRole('client')}
-            style={[
-              s.guestTab,
-              { borderColor: v1.border },
-              guestRole === 'client' && { backgroundColor: '#F59E0B', borderColor: '#F59E0B' },
-            ]}
-            testID="guest-tab-trips"
-            accessibilityRole="button"
-          >
-            <Text style={[
-              s.guestTabText,
-              { color: guestRole === 'client' ? '#0A0A0A' : v1.text },
-            ]}>
-              {t('guest_tab_trips')}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      )}
+      {/* RC2 fix (14 May): гостевой toggle Грузы/Рейсы убран. Гость
+          видит ленту по дефолтной роли (driver = lookup cargos), без
+          segmented control. Переключение роли — через регистрацию
+          из RoleScreen. */}
 
       {/* Title row + outline CTA "Разместить ..." */}
       <View style={s.titleRow}>

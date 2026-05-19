@@ -203,11 +203,16 @@ for (const file of ['src/screens/CreateCargoScreen.js', 'src/screens/CreateTripS
   if (/import RoleCard from/.test(role)) {
     failures.push('RoleScreen still imports RoleCard (Stage 18 replaces card buttons with hotspots)');
   }
-  // Stage 28: hero PNG переименован в role-screen-hero.png (cropped
-  // top portion, без bitmap-CTA пилюль). Допускаем оба варианта
-  // для backward-compat, но требуем как минимум один из них.
-  if (!/require\(['"]\.\.\/\.\.\/assets\/role-screen-(full|hero)\.png['"]\)/.test(role)) {
-    failures.push('RoleScreen does not require any role-screen-*.png asset');
+  // RC2 fix (May 14, 2026): Stage 18/26/28 hero-PNG layout заменён на
+  // light B2B layout по brandV2. PNG-asset больше не require'ится.
+  // Вместо PNG — текстовый логотип "UrTruck" (Ur navy + Truck orange)
+  // + tagline + cards. Проверяем что dark welcome (backgroundColor
+  // '#0C0A09') не вернётся и что используется brandV2.
+  if (/backgroundColor:\s*['"]#0C0A09['"]/.test(role)) {
+    failures.push('RoleScreen reverted to dark welcome (RC2 forbids #0C0A09 bg)');
+  }
+  if (!/from\s+['"]\.\.\/theme\/brandV2['"]/.test(role)) {
+    failures.push('RoleScreen must use brandV2 design tokens (RC2 light layout)');
   }
   for (const id of ['driver', 'client', 'login']) {
     const re = new RegExp(`testID:\\s*\`role-\\$\\{id\\}\`|testID="role-${id}"|testID=\`role-${id}\``);
@@ -395,7 +400,7 @@ console.log('[ux] Stage 17 · cargoDisplay exposes split weight + volume  ✓');
 console.log('[ux] Stage 17 · CargoDetail renders weight + volume as separate rows  ✓');
 console.log('[ux] Stage 17 · feed meta pills carry no ⚖️ / 📐 emoji  ✓');
 console.log('[ux] Stage 17 · weight/volume form labels are emoji-free  ✓');
-console.log('[ux] Stage 18 · RoleScreen full-image with role-driver / role-client / role-login hotspots  ✓');
+console.log('[ux] RC2 · RoleScreen light B2B layout, brandV2 tokens, no dark bg  ✓');
 console.log('[ux] Stage 20 · RoleScreen carries no Animated/blink/SRC_HEADLIGHT (welcome is purely static)  ✓');
 console.log('[ux] Stage 18 · enterAs / navigation.navigate(Auth) flow preserved  ✓');
 console.log('[ux] Stage 26 · RoleScreen uses real Pressable buttons with role_*_title text (no invisible hotspots)  ✓');

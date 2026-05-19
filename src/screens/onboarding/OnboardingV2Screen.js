@@ -1,194 +1,123 @@
 // OnboardingV2Screen — inDrive-style welcome с 3 слайдами карусели.
 //
-// Owner ТЗ от 2026-05-13:
-//   Слайд 1 — "Прямые рейсы / Китай ↔ СНГ без посредников" + иллюстрация
-//             фуры на карте.
-//   Слайд 2 — "Честные ставки / Водители предлагают цену, вы выбираете
-//             лучшее предложение" + карточка-груз с двумя офферами.
-//   Слайд 3 — "Проверенные участники / Все водители и грузоотправители
-//             проходят проверку документов и транспорта" + driver-card
-//             с verified-чекмарками.
+// Stage RC2-window-crop (15 May):
+//   Owner-проверка PR #35: PNG-логотип UrTruck в crop'е был гигантским
+//   (~30% экрана), а сама иллюстрация (фура/cargo cards/driver+shield)
+//   была обрезана снизу. Корень — top-anchored crop показывал верхние
+//   X% PNG, включая логотип и status-bar, но НЕ всю illustration.
 //
-// CTA фиксирован под всеми слайдами:
-//   1) "Продолжить по номеру" — основная зелёная кнопка → PhoneV2
-//   2) "Смотреть грузы" — outline secondary → guest-вход в Main
+//   Window-crop (по обеим сторонам):
+//     - Каждый слайд показывает **окно** из PNG: [fromPct, toPct] от
+//       высоты файла. Сверху отрезаны status-bar + PNG-логотип
+//       (fromPct ≈ 0.08-0.12). Снизу отрезаны PNG title/subtitle/dots/
+//       CTAs/оферта (toPct ≈ 0.48-0.55).
+//     - Внутри окна остаётся ТОЛЬКО illustration (карта+водитель+фура+
+//       склад для slide 1, cargo card + bid cards + $-badge для slide
+//       2, driver+shield+driver-card+route bar для slide 3).
 //
-// Иллюстрации — простые композиции на Feather outline icons и
-// геометрических примитивах. Сложные PNG из макета (рисованный водитель)
-// требуют ассетов от дизайнера; на данном этапе делаем семантически
-// эквивалентные блоки в фирменных цветах (brandV2.routeOrange/routeGreen).
+//   Native UrTruck logo рисуется отдельно, **небольшого** размера
+//   (fontSize 28 vs ~80 в PNG), брэнд остаётся консистентным, без
+//   доминирования. Title/subtitle/paginator/CTAs/consent — native
+//   через i18n.
+//
+//   Технически: container высота = (toPct - fromPct) * imgHeight,
+//   image position:absolute top:(-fromPct * imgHeight). overflow:hidden
+//   на container'е скрывает что вышло за границы.
 
 import React, { useRef, useState } from 'react';
 import {
   View,
   Text,
+  Image,
   ScrollView,
-  TouchableOpacity,
+  Pressable,
   StyleSheet,
   Dimensions,
-  NativeModules,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
 import { useAuth } from '../../utils/AuthContext';
-import { brand, radius, space, typography } from '../../theme/brandV2';
+import { brand, radius, typography } from '../../theme/brandV2';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
-// Логотип "Ur" navy + "Truck" orange — повторяется на всех 3 слайдах.
-const Logo = () => (
-  <Text style={s.logo}>
-    <Text style={{ color: brand.logoDark }}>Ur</Text>
-    <Text style={{ color: brand.logoAccent }}>Truck</Text>
-  </Text>
-);
+const HERO_SLIDE_1 = require('../../../assets/onboarding/slide-1-hero.png');
+const HERO_SLIDE_2 = require('../../../assets/onboarding/slide-2-driver-1.png');
+const HERO_SLIDE_3 = require('../../../assets/onboarding/slide-2-driver-2.png');
 
-// ─── Slide 1: прямые рейсы ─────────────────────────────────────────
-const Slide1 = ({ t }) => (
-  <View style={s.slide}>
-    <Logo />
-    <View style={s.illoBox}>
-      {/* Карта-фон: серая зона + два point-маркера + route-линия */}
-      <View style={s.mapWrap}>
-        <View style={s.routeRow}>
-          <View style={s.pointDark} />
-          <Text style={s.pointLabelLeft}>Китай</Text>
-          <View style={[s.routeLine, { backgroundColor: brand.routeOrange }]} />
-          <View style={[s.pointMarker, { backgroundColor: brand.routeGreen }]}>
-            <Feather name="map-pin" size={12} color="#FFF" />
-          </View>
-          <Text style={s.pointLabelMid}>Казахстан</Text>
-          <View style={[s.routeLine, { backgroundColor: brand.routeOrange }]} />
-          <View style={[s.pointMarker, { backgroundColor: brand.textPrimary }]}>
-            <Feather name="map-pin" size={12} color="#FFF" />
-          </View>
-          <Text style={s.pointLabelRight}>СНГ</Text>
-        </View>
-      </View>
-      <View style={s.heroIconCircle}>
-        <Feather name="truck" size={56} color={brand.textPrimary} />
-      </View>
-    </View>
-    <Text style={s.title}>{t('onb_v2_slide1_title')}</Text>
-    <Text style={s.subtitle}>{t('onb_v2_slide1_subtitle')}</Text>
-  </View>
-);
+// PNG native aspects.
+const ASPECT_S1 = 853 / 1844;
+const ASPECT_S2 = 941 / 1672;
+const ASPECT_S3 = 853 / 1844;
 
-// ─── Slide 2: честные ставки ────────────────────────────────────────
-const Slide2 = ({ t }) => (
-  <View style={s.slide}>
-    <Logo />
-    <View style={s.illoBox}>
-      <View style={s.bidsRow}>
-        <View style={s.bidCardLeft}>
-          <View style={s.avatarCircleMuted}>
-            <Feather name="user" size={20} color={brand.textPrimary} />
-          </View>
-          <Text style={s.bidName}>{t('onb_v2_bid_driver1')}</Text>
-          <Text style={s.bidPrice}>{t('onb_v2_bid_price1')}</Text>
-          <Text style={s.bidLabel}>{t('onb_v2_bid_offer')}</Text>
-        </View>
-        <View style={s.cargoCard}>
-          <View style={s.cargoIconCircle}>
-            <Feather name="package" size={22} color={brand.routeGreen} />
-          </View>
-          <Text style={s.cargoSize}>20 т, 82 м³</Text>
-          <Text style={s.cargoCaption}>{t('onb_v2_cargo_label')}</Text>
-          <View style={s.cargoRouteRow}>
-            <Feather name="map-pin" size={12} color={brand.textPrimary} />
-            <Text style={s.cargoRouteCity}>Китай</Text>
-            <View style={s.cargoDash} />
-            <Feather name="map-pin" size={12} color={brand.accent} />
-            <Text style={s.cargoRouteCity}>Хоргос</Text>
-            <View style={s.cargoDash} />
-            <Feather name="map-pin" size={12} color={brand.routeGreen} />
-            <Text style={s.cargoRouteCity}>Москва</Text>
-          </View>
-          <View style={s.cargoMetaRow}>
-            <Feather name="calendar" size={12} color={brand.textSecondary} />
-            <Text style={s.cargoMetaText}>18 мая</Text>
-            <Feather name="truck" size={12} color={brand.textSecondary} style={{ marginLeft: 8 }} />
-            <Text style={s.cargoMetaText}>FTL</Text>
-          </View>
-        </View>
-        <View style={s.bidCardRight}>
-          <View style={[s.avatarCircleAccent, { backgroundColor: brand.routeGreen }]}>
-            <Feather name="user" size={20} color="#FFF" />
-          </View>
-          <Text style={s.bidName}>{t('onb_v2_bid_driver2')}</Text>
-          <Text style={[s.bidPrice, { color: brand.routeGreen }]}>{t('onb_v2_bid_price2')}</Text>
-          <Text style={s.bidLabel}>{t('onb_v2_bid_offer')}</Text>
-        </View>
-      </View>
-      <View style={s.dollarBadge}>
-        <Text style={s.dollarBadgeText}>₸</Text>
-      </View>
-    </View>
-    <Text style={s.title}>{t('onb_v2_slide2_title')}</Text>
-    <Text style={s.subtitle}>{t('onb_v2_slide2_subtitle')}</Text>
-  </View>
-);
+// Окно отображения: [from, to] от высоты PNG. Подобрано чтобы:
+//   - убрать сверху: status-bar + PNG-логотип «UrTruck» (рендерится
+//     отдельно native, меньшим размером)
+//   - убрать снизу: PNG-внутренние title/subtitle/dots/CTAs/оферта
+//     (рендерятся native через i18n)
+// Когда дизайнер пришлёт hero-only PNG (без UI): from=0, to=1.0.
+// RC2 top-artifacts fix (17 May): from-coords подняты ещё на 2%,
+// чтобы PNG-внутренний status bar (signal bars + battery + time
+// "05:00 4G 35%" на 0-4% высоты PNG) полностью ушёл за пределы
+// visible window. Раньше при from=0.03-0.04 нижний край status bar
+// "просачивался" мелкими чёрными точками/штрихами сверху экрана.
+// UrTruck logo (6-8% в PNG) остаётся целиком виден.
+const WINDOW_S1 = { from: 0.06, to: 0.50 };  // logo + карта + водитель + фура + склад
+const WINDOW_S2 = { from: 0.05, to: 0.55 };  // logo + cargo card + bid cards + $-badge
+const WINDOW_S3 = { from: 0.05, to: 0.50 };  // logo + driver + щит + driver-card + route bar
 
-// ─── Slide 3: проверенные участники ────────────────────────────────
-const Slide3 = ({ t }) => (
-  <View style={s.slide}>
-    <Logo />
-    <View style={s.illoBox}>
-      <View style={s.verifyCard}>
-        <View style={s.verifyHeader}>
-          <View style={[s.avatarCircleAccent, { backgroundColor: brand.routeGreen }]}>
-            <Feather name="user" size={22} color="#FFF" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <View style={s.verifyNameRow}>
-              <Text style={s.verifyName}>{t('onb_v2_verified_driver')}</Text>
-              <Feather name="check-circle" size={14} color={brand.routeGreen} style={{ marginLeft: 4 }} />
-            </View>
-            <Text style={s.verifySubtitle}>{t('onb_v2_verified_label')}</Text>
-            <View style={s.starsRow}>
-              {[1, 2, 3, 4, 5].map((i) => (
-                <Feather key={i} name="star" size={11} color={brand.accent} />
-              ))}
-              <Text style={s.starsValue}>  4.8</Text>
-            </View>
-          </View>
-          <Feather name="check-circle" size={20} color={brand.routeGreen} />
-        </View>
-        <View style={s.verifyDivider} />
-        {[
-          { icon: 'file-text', label: t('onb_v2_check_docs'), state: t('onb_v2_check_done') },
-          { icon: 'truck', label: t('onb_v2_check_vehicle'), state: t('onb_v2_check_done') },
-          { icon: 'shield', label: t('onb_v2_check_insurance'), state: t('onb_v2_check_active') },
-          { icon: 'clock', label: t('onb_v2_check_history'), state: t('onb_v2_check_excellent') },
-        ].map((row) => (
-          <View key={row.icon} style={s.verifyRow}>
-            <Feather name={row.icon} size={14} color={brand.textSecondary} />
-            <View style={{ flex: 1, marginLeft: 8 }}>
-              <Text style={s.verifyRowLabel}>{row.label}</Text>
-              <Text style={s.verifyRowState}>{row.state}</Text>
-            </View>
-            <Feather name="check-circle" size={14} color={brand.routeGreen} />
-          </View>
-        ))}
-      </View>
-      <View style={s.featureChipsRow}>
-        {[
-          { icon: 'shield', label: t('onb_v2_feature_docs') },
-          { icon: 'star', label: t('onb_v2_feature_rating') },
-          { icon: 'briefcase', label: t('onb_v2_feature_deals') },
-        ].map((c) => (
-          <View key={c.icon} style={s.featureChip}>
-            <View style={s.featureIconCircle}>
-              <Feather name={c.icon} size={18} color={brand.routeGreen} />
-            </View>
-            <Text style={s.featureChipLabel}>{c.label}</Text>
-          </View>
-        ))}
-      </View>
+const HeroWindow = ({ source, imageAspect, win }) => {
+  // SCREEN_W — фактическая ширина слайда (carousel pagingEnabled).
+  // imgHeight = SCREEN_W / imageAspect — полная высота PNG при
+  // отображении на всю ширину экрана.
+  const imgHeight = SCREEN_W / imageAspect;
+  const visiblePct = win.to - win.from;
+  const containerHeight = imgHeight * visiblePct;
+  const topOffset = -win.from * imgHeight;
+  // pointerEvents="none" — иллюстрация декоративная, ни один её
+  // подэлемент не должен intercept'ить tap'ы. Это страхует CTA-
+  // кнопки снизу от любых RN-Web глюков с absolute-image над
+  // overflow:hidden parent'ом (issue PR #35 → #36).
+  return (
+    <View
+      pointerEvents="none"
+      style={{
+        width: '100%',
+        height: containerHeight,
+        overflow: 'hidden',
+      }}
+    >
+      <Image
+        source={source}
+        pointerEvents="none"
+        style={{
+          width: SCREEN_W,
+          height: imgHeight,
+          position: 'absolute',
+          top: topOffset,
+          left: 0,
+        }}
+      />
     </View>
-    <Text style={s.title}>{t('onb_v2_slide3_title')}</Text>
-    <Text style={s.subtitle}>{t('onb_v2_slide3_subtitle')}</Text>
+  );
+};
+
+// SlideLogo (native compact) убран — текущие PNG уже содержат
+// собственный UrTruck logo внутри hero illustration (после window-crop
+// он остаётся видимым в верхней части). Native compact logo создавал
+// duplicate. Когда дизайнер пришлёт hero-only PNG (без logo внутри),
+// SlideLogo восстановится здесь.
+
+const Slide = ({ source, imageAspect, win, title, subtitle }) => (
+  <View style={s.slide}>
+    <HeroWindow source={source} imageAspect={imageAspect} win={win} />
+    <View style={s.captionBlock}>
+      <Text style={s.title}>{title}</Text>
+      <Text style={s.subtitle} numberOfLines={3}>
+        {subtitle}
+      </Text>
+    </View>
   </View>
 );
 
@@ -228,14 +157,37 @@ export default function OnboardingV2Screen({ navigation }) {
         onScroll={onScroll}
         scrollEventThrottle={32}
         style={{ flex: 1 }}
-        contentContainerStyle={{ alignItems: 'stretch' }}
       >
-        <View style={{ width: SCREEN_W }}><Slide1 t={t} /></View>
-        <View style={{ width: SCREEN_W }}><Slide2 t={t} /></View>
-        <View style={{ width: SCREEN_W }}><Slide3 t={t} /></View>
+        <View style={{ width: SCREEN_W }}>
+          <Slide
+            source={HERO_SLIDE_1}
+            imageAspect={ASPECT_S1}
+            win={WINDOW_S1}
+            title={t('onb_v2_slide1_title')}
+            subtitle={t('onb_v2_slide1_subtitle')}
+          />
+        </View>
+        <View style={{ width: SCREEN_W }}>
+          <Slide
+            source={HERO_SLIDE_2}
+            imageAspect={ASPECT_S2}
+            win={WINDOW_S2}
+            title={t('onb_v2_slide2_title')}
+            subtitle={t('onb_v2_slide2_subtitle')}
+          />
+        </View>
+        <View style={{ width: SCREEN_W }}>
+          <Slide
+            source={HERO_SLIDE_3}
+            imageAspect={ASPECT_S3}
+            win={WINDOW_S3}
+            title={t('onb_v2_slide3_title')}
+            subtitle={t('onb_v2_slide3_subtitle')}
+          />
+        </View>
       </ScrollView>
 
-      {/* Paginator dots — фиксированы под слайдом, до CTA */}
+      {/* Paginator dots — dynamic */}
       <View style={s.dotsRow}>
         {[0, 1, 2].map((i) => (
           <View
@@ -243,36 +195,48 @@ export default function OnboardingV2Screen({ navigation }) {
             style={[
               s.dot,
               i === idx
-                ? { backgroundColor: brand.routeGreen, width: 22, height: 6, borderRadius: 3 }
+                ? { backgroundColor: brand.primary, width: 22, height: 6, borderRadius: 3 }
                 : { backgroundColor: brand.borderStrong },
             ]}
           />
         ))}
       </View>
 
-      {/* CTAs */}
-      <View style={s.ctaWrap}>
-        <TouchableOpacity
+      {/* CTAs — native, единственная пара на экране.
+          Pressable (вместо TouchableOpacity) даёт более надёжный
+          tap handling на RN-Web. pressed-callback в style возвращает
+          opacity 0.85 как visual feedback. zIndex/elevation на
+          ctaWrap страхует от чего-либо absolutely-positioned поверх. */}
+      <View style={s.ctaWrap} pointerEvents="box-none">
+        <Pressable
           onPress={goPhone}
-          activeOpacity={0.9}
           accessibilityRole="button"
+          accessibilityLabel={t('onb_v2_cta_phone')}
           testID="onb-v2-cta-phone"
-          style={[s.ctaPrimary, { backgroundColor: brand.primary }]}
+          style={({ pressed }) => [
+            s.ctaPrimary,
+            { backgroundColor: brand.primary },
+            pressed && { opacity: 0.85 },
+          ]}
         >
           <Text style={s.ctaPrimaryText}>{t('onb_v2_cta_phone')}</Text>
           <Feather name="arrow-right" size={20} color="#FFF" />
-        </TouchableOpacity>
-        <TouchableOpacity
+        </Pressable>
+        <Pressable
           onPress={goGuest}
-          activeOpacity={0.85}
           accessibilityRole="button"
+          accessibilityLabel={t('onb_v2_cta_guest')}
           testID="onb-v2-cta-guest"
-          style={s.ctaOutline}
+          style={({ pressed }) => [
+            s.ctaOutline,
+            pressed && { opacity: 0.85 },
+          ]}
         >
           <Feather name="package" size={18} color={brand.textPrimary} />
           <Text style={s.ctaOutlineText}>{t('onb_v2_cta_guest')}</Text>
           <Feather name="arrow-right" size={18} color={brand.textPrimary} />
-        </TouchableOpacity>
+        </Pressable>
+
         <Text style={s.consent}>
           {t('onb_v2_consent_prefix')}{' '}
           <Text style={s.consentLink}>{t('onb_v2_consent_offer')}</Text>
@@ -291,231 +255,26 @@ const s = StyleSheet.create({
   },
   slide: {
     flex: 1,
-    paddingHorizontal: 20,
-    paddingTop: 8,
+    paddingHorizontal: 0,
+    // RC2 hero spacing fix (17 May): paddingTop сдвигает hero block
+    // вниз от реального iOS status bar — даёт breathing room сверху.
+    // PNG-внутренний логотип (теперь в visible window) не прилипает
+    // к notch'у. justifyContent='flex-start' оставляем дефолтным,
+    // чтобы illustration шла сразу после padding'а, а captionBlock
+    // снизу натурально следует за высотой HeroWindow.
+    // RC2 nudge-up (17 May): 16 → 6 по owner-фидбеку (hero был чуть
+    // слишком низко, оставалась пустая дырка сверху). 6pt — минимум
+    // breathing room от safe-area без визуального gap.
+    paddingTop: 6,
+    alignItems: 'stretch',
+  },
+  // slideLogo style удалён вместе с SlideLogo компонентом (см. JSX выше).
+  captionBlock: {
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 4,
     alignItems: 'center',
   },
-  logo: {
-    fontSize: 36,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-    marginTop: 8,
-    marginBottom: 8,
-  },
-  illoBox: {
-    width: '100%',
-    aspectRatio: 1,
-    backgroundColor: brand.surfaceSoft,
-    borderRadius: radius.xl,
-    marginTop: 12,
-    marginBottom: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  // Slide 1 illustration bits
-  mapWrap: {
-    position: 'absolute',
-    top: '28%',
-    left: 12,
-    right: 12,
-  },
-  routeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    width: '100%',
-  },
-  pointDark: {
-    width: 10, height: 10, borderRadius: 5,
-    backgroundColor: brand.textPrimary,
-  },
-  pointMarker: {
-    width: 22, height: 22, borderRadius: 11,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  routeLine: {
-    flex: 1, height: 2, marginHorizontal: 4, opacity: 0.5,
-  },
-  pointLabelLeft: {
-    position: 'absolute', left: 10, top: 14,
-    color: brand.textPrimary, fontSize: 12, fontWeight: '700',
-  },
-  pointLabelMid: {
-    position: 'absolute', left: '38%', top: -16,
-    color: brand.textPrimary, fontSize: 12, fontWeight: '700',
-  },
-  pointLabelRight: {
-    position: 'absolute', right: 8, top: 14,
-    color: brand.textPrimary, fontSize: 12, fontWeight: '700',
-  },
-  heroIconCircle: {
-    width: 110, height: 110, borderRadius: 55,
-    backgroundColor: brand.bg,
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: brand.border,
-    marginTop: 24,
-  },
-  // Slide 2 illustration bits
-  bidsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    width: '100%',
-    gap: 6,
-  },
-  bidCardLeft: {
-    flex: 0.9,
-    backgroundColor: brand.surface,
-    borderRadius: radius.lg,
-    padding: 10,
-    alignItems: 'center',
-    borderWidth: 1, borderColor: brand.border,
-  },
-  bidCardRight: {
-    flex: 0.9,
-    backgroundColor: brand.surface,
-    borderRadius: radius.lg,
-    padding: 10,
-    alignItems: 'center',
-    borderWidth: 2, borderColor: brand.routeGreen,
-  },
-  cargoCard: {
-    flex: 1.4,
-    backgroundColor: brand.surface,
-    borderRadius: radius.lg,
-    padding: 12,
-    alignItems: 'center',
-    borderWidth: 1, borderColor: brand.border,
-  },
-  avatarCircleMuted: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: brand.surfaceMuted,
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: 6,
-  },
-  avatarCircleAccent: {
-    width: 36, height: 36, borderRadius: 18,
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: 6,
-  },
-  bidName: {
-    fontSize: 11, fontWeight: '700', color: brand.textPrimary,
-  },
-  bidPrice: {
-    fontSize: 14, fontWeight: '900', color: brand.textPrimary,
-    marginTop: 4,
-  },
-  bidLabel: {
-    fontSize: 9, color: brand.textSecondary, marginTop: 2,
-  },
-  cargoIconCircle: {
-    width: 42, height: 42, borderRadius: 21,
-    backgroundColor: brand.primarySoft,
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: 6,
-  },
-  cargoSize: {
-    fontSize: 14, fontWeight: '900', color: brand.textPrimary,
-  },
-  cargoCaption: {
-    fontSize: 10, color: brand.textSecondary, marginBottom: 6,
-  },
-  cargoRouteRow: {
-    flexDirection: 'row', alignItems: 'center',
-    marginVertical: 4,
-  },
-  cargoRouteCity: {
-    fontSize: 8, color: brand.textPrimary, marginHorizontal: 1,
-    fontWeight: '600',
-  },
-  cargoDash: {
-    width: 6, height: 1, backgroundColor: brand.borderStrong,
-    marginHorizontal: 2,
-  },
-  cargoMetaRow: {
-    flexDirection: 'row', alignItems: 'center',
-    marginTop: 4,
-  },
-  cargoMetaText: {
-    fontSize: 9, color: brand.textSecondary, marginLeft: 2,
-  },
-  dollarBadge: {
-    position: 'absolute',
-    bottom: 18,
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: brand.bg,
-    borderWidth: 2, borderColor: brand.accent,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  dollarBadgeText: {
-    fontSize: 18, fontWeight: '900', color: brand.accent,
-  },
-  // Slide 3 illustration bits
-  verifyCard: {
-    width: '92%',
-    backgroundColor: brand.surface,
-    borderRadius: radius.lg,
-    padding: 12,
-    borderWidth: 1, borderColor: brand.border,
-  },
-  verifyHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  verifyNameRow: {
-    flexDirection: 'row', alignItems: 'center',
-  },
-  verifyName: {
-    fontSize: 13, fontWeight: '800', color: brand.textPrimary,
-  },
-  verifySubtitle: {
-    fontSize: 10, color: brand.textSecondary, marginTop: 1,
-  },
-  starsRow: {
-    flexDirection: 'row', alignItems: 'center', marginTop: 4,
-  },
-  starsValue: {
-    fontSize: 11, fontWeight: '800', color: brand.textPrimary,
-  },
-  verifyDivider: {
-    height: 1, backgroundColor: brand.divider,
-    marginVertical: 10,
-  },
-  verifyRow: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 4,
-  },
-  verifyRowLabel: {
-    fontSize: 11, fontWeight: '700', color: brand.textPrimary,
-  },
-  verifyRowState: {
-    fontSize: 9, color: brand.textSecondary,
-  },
-  featureChipsRow: {
-    flexDirection: 'row',
-    width: '92%',
-    justifyContent: 'space-between',
-    marginTop: 14,
-  },
-  featureChip: {
-    flex: 1, alignItems: 'center',
-    paddingHorizontal: 4,
-  },
-  featureIconCircle: {
-    width: 38, height: 38, borderRadius: 19,
-    backgroundColor: brand.primarySoft,
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: 4,
-  },
-  featureChipLabel: {
-    fontSize: 10, color: brand.textSecondary,
-    textAlign: 'center', fontWeight: '600',
-  },
-  // Shared text
   title: {
     ...typography.h1,
     color: brand.textPrimary,
@@ -526,24 +285,31 @@ const s = StyleSheet.create({
     ...typography.body,
     color: brand.textSecondary,
     textAlign: 'center',
-    paddingHorizontal: 8,
+    paddingHorizontal: 4,
   },
-  // Paginator
   dotsRow: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 8,
+    marginBottom: 10,
+    zIndex: 5,
+    elevation: 5,
   },
   dot: {
     width: 6, height: 6, borderRadius: 3,
   },
-  // CTA
+  // ctaWrap явно поднят над всем остальным: zIndex/elevation страхуют
+  // от любых absolute-overlay'ев слева от карусели. backgroundColor
+  // = brand.bg делает блок «непрозрачным» — если что-то под ним
+  // утечёт, оно не будет видно и не сможет получить tap.
   ctaWrap: {
     paddingHorizontal: 20,
-    paddingTop: 4,
-    paddingBottom: 4,
+    paddingTop: 2,
+    paddingBottom: 10,
+    backgroundColor: brand.bg,
+    zIndex: 10,
+    elevation: 10,
   },
   ctaPrimary: {
     height: 56,
@@ -566,7 +332,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 24,
-    marginTop: 10,
+    marginTop: 8,
     borderWidth: 1,
     borderColor: brand.borderStrong,
     backgroundColor: brand.surface,
@@ -582,7 +348,7 @@ const s = StyleSheet.create({
     fontSize: 12,
     color: brand.textSecondary,
     textAlign: 'center',
-    marginTop: 12,
+    marginTop: 8,
   },
   consentLink: {
     color: brand.textPrimary,
