@@ -41,7 +41,16 @@ export default function DatePicker({ value, onChange, placeholder = 'DD.MM.YYYY'
   const [showPicker, setShowPicker] = useState(false);
   const mm = getMinMaxIso();
 
-  // Web: нативный input type=date
+  // Web: нативный input type=date.
+  // RC2 hotfix (P0-1): на iPhone Safari mobile web input был визуально
+  // обрезан/мелкий ("Jul 17 —" fragment). Причины:
+  //   - padding: 14 + fontSize: 14 → итоговая высота ~42pt < Apple HIG
+  //     минимум 44pt для tap targets;
+  //   - native value-display на iOS Safari использует системную
+  //     типографику с своим padding'ом поверх нашего → может clip'аться.
+  // Fix: fontSize → 17, padding → 16, явный minHeight: 48,
+  //      lineHeight, WebkitAppearance:none — чтобы Safari не оборачивал
+  //      input в свой mini-button style.
   if (Platform.OS === 'web') {
     return (
       <View style={[s.wrapper, style]}>
@@ -54,12 +63,17 @@ export default function DatePicker({ value, onChange, placeholder = 'DD.MM.YYYY'
             color: theme.text,
             border: `1px solid ${theme.border}`,
             borderRadius: 12,
-            padding: 14,
-            fontSize: 14,
+            padding: 16,
+            fontSize: 17,
+            lineHeight: '1.4',
+            minHeight: 48,
             width: '100%',
+            display: 'block',
             boxSizing: 'border-box',
             fontFamily: 'inherit',
             colorScheme: theme.bg === '#0C0A09' ? 'dark' : 'light',
+            WebkitAppearance: 'none',
+            appearance: 'none',
           }}
           min={min || mm.min}
           max={max || mm.max}

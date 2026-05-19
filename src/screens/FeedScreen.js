@@ -463,8 +463,12 @@ export default function FeedScreen({ navigation, route }) {
     // Stage 17: meta pills lose their per-row emoji glyphs to match
     // Stage 16's quiet visual language — only one accent (the price)
     // per card, label/value pair carries the meaning on its own.
+    // RC2 hotfix (P0-3): pickup_date должна быть видна на КАЖДОЙ карточке
+    // груза. Если backend не вернул pickup — показываем "Дата уточняется",
+    // а не скрываем пилюлю целиком. Иначе пользователь не понимает,
+    // когда груз надо забирать.
     const meta = [
-      item.pickup ? { label: t('departure'), value: item.pickup } : null,
+      { label: t('departure'), value: item.pickup || t('pickup_date_tbd') },
       item.tons > 0 ? { label: t('weight'), value: `${item.tons} т` } : null,
       item.m3 > 0 ? { label: t('volume'), value: `${item.m3} м³` } : null,
     ].filter(Boolean);
