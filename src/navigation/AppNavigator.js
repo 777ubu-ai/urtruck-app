@@ -49,14 +49,16 @@ import EditTripScreen from '../screens/EditTripScreen';
 import CreateTripScreen from '../screens/CreateTripScreen';
 import CreateCargoScreen from '../screens/CreateCargoScreen';
 import DesignPreviewScreen, { qaDesignMode } from '../screens/DesignPreviewScreen';
-// RC2 onboarding v2 (inDrive-style) — первый batch экранов нового flow.
-// OnboardingV2 — welcome с 3 слайдами и кнопкой "Продолжить по номеру",
-// CountryPicker — модал-bottom-sheet для выбора страны, PhoneV2 — ввод
-// телефона. После PhoneV2 пока продолжается старый OTP-стек (RegOtp →
-// RegProfile → Main); переедет в batch 2.
+// RC2 onboarding v2 — light-style flow:
+//   OnboardingV2 → PhoneV2 → OtpV2 → (если новый/без role) RoleV2 →
+//   ProfileV2 → Main. (Если existing user + role — после OtpV2 сразу Main.)
+//   CountryPicker — модал-bottom-sheet для выбора страны на PhoneV2.
 import OnboardingV2Screen from '../screens/onboarding/OnboardingV2Screen';
 import PhoneV2Screen from '../screens/onboarding/PhoneV2Screen';
 import CountryPickerSheet from '../screens/onboarding/CountryPickerSheet';
+import OtpV2Screen from '../screens/onboarding/OtpV2Screen';
+import RoleScreenV2 from '../screens/onboarding/RoleScreenV2';
+import ProfileV2Screen from '../screens/onboarding/ProfileV2Screen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -125,6 +127,9 @@ export default function AppNavigator() {
           component={CountryPickerSheet}
           options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
         />
+        <Stack.Screen name="OtpV2" component={OtpV2Screen} />
+        <Stack.Screen name="RoleV2" component={RoleScreenV2} />
+        <Stack.Screen name="ProfileV2" component={ProfileV2Screen} />
         {/* Legacy экраны — оставлены только для qaPreview-галереи. */}
         <Stack.Screen name="SignUp" component={SignUpScreen} />
         <Stack.Screen name="LegacyReg" component={RegScreen} />
@@ -165,6 +170,9 @@ export default function AppNavigator() {
             component={CountryPickerSheet}
             options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
           />
+          <Stack.Screen name="OtpV2" component={OtpV2Screen} />
+          <Stack.Screen name="RoleV2" component={RoleScreenV2} />
+          <Stack.Screen name="ProfileV2" component={ProfileV2Screen} />
           <Stack.Screen name="Role" component={RoleScreen} />
           <Stack.Screen name="Auth" component={PremiumLoginScreen} />
           <Stack.Screen name="Login" component={PremiumLoginScreen} />
