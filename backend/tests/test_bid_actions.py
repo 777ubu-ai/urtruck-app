@@ -55,6 +55,13 @@ if _chat_schema_path.exists():
     with _get_conn_for_setup() as _c_chat:
         _c_chat.executescript(_chat_schema_path.read_text(encoding="utf-8"))
 
+# PR-B: notifications table тоже нужна для проверки что create_notification
+# реально пишет с url, а не молча проглатывается через try/except.
+_notif_schema_path = ROOT / "database" / "notifications_schema.sql"
+if _notif_schema_path.exists():
+    with _get_conn_for_setup() as _c_notif:
+        _c_notif.executescript(_notif_schema_path.read_text(encoding="utf-8"))
+
 app = FastAPI()
 app.include_router(mp_router, prefix="/api/v1/market")
 client = TestClient(app)
@@ -76,6 +83,41 @@ def seed_cargo(owner_id: str, price: int = 3000) -> str:
              "Test cargo", "tent", price, 0, "active"),
         )
     return cargo_id
+
+
+def seed_trip(driver_id: str, price: int = 5000) -> str:
+    """PR-B: helper для тестов trip-bid пути (клиент → водитель)."""
+    from database.db import get_conn, new_id
+    trip_id = new_id()
+    with get_conn() as c:
+        c.execute(
+            "INSERT INTO trips (id, driver_id, driver_phone, driver_name, from_city, to_city, "
+            "truck_type, price, status) VALUES (?,?,?,?,?,?,?,?,?)",
+            (trip_id, driver_id, "+701", "Driver", "Almaty", "Moscow",
+             "tent", price, "active"),
+        )
+    return trip_id
+
+
+def query_notifications(user_id: str) -> list:
+    """PR-B: helper для проверки записей в notifications таблице."""
+    from database.db import get_conn
+    with get_conn() as c:
+        rows = c.execute(
+            "SELECT * FROM notifications WHERE user_id = ? ORDER BY id DESC", (user_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def query_chat_room(p1: str, p2: str) -> dict:
+    """PR-B: helper для проверки записей в chat_rooms (UNIQUE по sorted pair)."""
+    from database.db import get_conn
+    a, b = sorted([p1, p2])
+    with get_conn() as c:
+        row = c.execute(
+            "SELECT * FROM chat_rooms WHERE participant_1 = ? AND participant_2 = ?", (a, b),
+        ).fetchone()
+        return dict(row) if row else None
 
 
 def get_bid(bid_id: str) -> dict:
@@ -517,4 +559,130 @@ if __name__ == "__main__":
     test_owner_cannot_directly_accept_countered()
     test_chat_from_pending_bid()
     test_chat_blocked_when_bid_not_active()
+    # PR-B: notification url + InApp для trip + eager chat + amount validate
+    test_pr_b_create_bid_rejects_zero_amount()
+    test_pr_b_create_bid_rejects_negative_amount()
+    test_pr_b_cargo_bid_creates_notif_with_url_and_chat_room()
+    test_pr_b_trip_bid_creates_notif_with_url_and_chat_room()
+    test_pr_b_accept_bid_creates_accepted_notif_with_deal_url()
+    test_pr_b_reject_bid_notif_has_back_url()
     print("\nAll bid action tests passed.")
+
+
+# ─── PR-B tests ──────────────────────────────────────────────────────────────
+# PR-B (P0-B, P0-D, P0-E, P0-F): backend now —
+#   - rejects amount<=0 with 400
+#   - creates InApp notification with meaningful url for cargo AND trip bids
+#   - eagerly creates chat_room so cargo owner / trip driver doesn't need to
+#     wait for first message to have a thread
+#   - bid_accepted notification carries /deals/{id} url
+#   - bid_rejected notification carries /cargos|/trips/{id} back-url
+
+def test_pr_b_create_bid_rejects_zero_amount():
+    print("\n=== PR-B test_create_bid_rejects_zero_amount ===")
+    cargo_id = seed_cargo(owner_id="owner-pr-b1")
+    as_user("driver-pr-b1")
+    r = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 0})
+    expect(r.status_code == 400, f"amount=0 → 400 (got {r.status_code} {r.text})")
+    r = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1})
+    expect(r.status_code == 200, f"amount=1 → 200 OK (got {r.status_code} {r.text})")
+
+
+def test_pr_b_create_bid_rejects_negative_amount():
+    print("\n=== PR-B test_create_bid_rejects_negative_amount ===")
+    cargo_id = seed_cargo(owner_id="owner-pr-b2")
+    as_user("driver-pr-b2")
+    r = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": -100})
+    expect(r.status_code == 400, f"amount<0 → 400 (got {r.status_code} {r.text})")
+
+
+def test_pr_b_cargo_bid_creates_notif_with_url_and_chat_room():
+    print("\n=== PR-B test_cargo_bid_creates_notif_with_url_and_chat_room ===")
+    owner = "owner-pr-b3"
+    driver = "driver-pr-b3"
+    cargo_id = seed_cargo(owner_id=owner)
+    as_user(driver)
+    r = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 2500})
+    expect(r.status_code == 200, f"create bid 200 (got {r.status_code})")
+    bid_id = r.json()["id"]
+
+    # Notification for owner
+    notifs = query_notifications(owner)
+    expect(len(notifs) >= 1, f"owner has >= 1 notification (got {len(notifs)})")
+    n = notifs[0]  # latest
+    expect(n["type"] == "bid_created", f"notif type=bid_created (got {n['type']})")
+    expect(n["url"] == f"/cargos/{cargo_id}?bid={bid_id}",
+           f"notif url=/cargos/X?bid=Y (got {n['url']})")
+    expect("Новое предложение" in n["title"] or "$2500" in n["title"],
+           f"notif title meaningful (got {n['title']!r})")
+
+    # Eager chat_room
+    room = query_chat_room(driver, owner)
+    expect(room is not None, "chat_room created eagerly (cargo bid)")
+    expect(room["cargo_id"] == cargo_id, f"chat_room.cargo_id={cargo_id} (got {room['cargo_id']})")
+
+
+def test_pr_b_trip_bid_creates_notif_with_url_and_chat_room():
+    print("\n=== PR-B test_trip_bid_creates_notif_with_url_and_chat_room ===")
+    driver = "driver-pr-b4"
+    client_id = "client-pr-b4"
+    trip_id = seed_trip(driver_id=driver)
+    as_user(client_id)
+    r = client.post("/api/v1/market/bids", json={"trip_id": trip_id, "amount": 4500})
+    expect(r.status_code == 200, f"create bid 200 (got {r.status_code})")
+    bid_id = r.json()["id"]
+
+    # Trip-bid previously had no InApp notification — only push.
+    notifs = query_notifications(driver)
+    expect(len(notifs) >= 1, f"driver has >= 1 notification (got {len(notifs)}) — fix for P0-F")
+    n = notifs[0]
+    expect(n["type"] == "bid_created", f"notif type=bid_created (got {n['type']})")
+    expect(n["url"] == f"/trips/{trip_id}?bid={bid_id}",
+           f"notif url=/trips/X?bid=Y (got {n['url']})")
+
+    # Eager chat_room
+    room = query_chat_room(client_id, driver)
+    expect(room is not None, "chat_room created eagerly (trip bid)")
+    expect(room["trip_id"] == trip_id, f"chat_room.trip_id={trip_id} (got {room['trip_id']})")
+
+
+def test_pr_b_accept_bid_creates_accepted_notif_with_deal_url():
+    print("\n=== PR-B test_accept_bid_creates_accepted_notif_with_deal_url ===")
+    owner = "owner-pr-b5"
+    driver = "driver-pr-b5"
+    cargo_id = seed_cargo(owner_id=owner, price=5000)
+    as_user(driver)
+    bid_id = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 4800}).json()["id"]
+
+    as_user(owner)
+    r = client.post(f"/api/v1/market/bids/{bid_id}/accept")
+    expect(r.status_code == 200, f"accept 200 (got {r.status_code} {r.text})")
+    deal_id = r.json()["deal_id"]
+    expect(deal_id, "deal_id returned")
+
+    notifs = query_notifications(driver)
+    accepted = [n for n in notifs if n["type"] == "bid_accepted"]
+    expect(len(accepted) >= 1, f"driver got bid_accepted notif (count={len(accepted)})")
+    n = accepted[0]
+    expect(n["url"] == f"/deals/{deal_id}",
+           f"accepted notif url=/deals/{{id}} (got {n['url']})")
+
+
+def test_pr_b_reject_bid_notif_has_back_url():
+    print("\n=== PR-B test_reject_bid_notif_has_back_url ===")
+    owner = "owner-pr-b6"
+    driver = "driver-pr-b6"
+    cargo_id = seed_cargo(owner_id=owner)
+    as_user(driver)
+    bid_id = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 2000}).json()["id"]
+
+    as_user(owner)
+    r = client.post(f"/api/v1/market/bids/{bid_id}/reject")
+    expect(r.status_code == 200, f"reject 200 (got {r.status_code})")
+
+    notifs = query_notifications(driver)
+    rejected = [n for n in notifs if n["type"] == "bid_rejected"]
+    expect(len(rejected) >= 1, f"driver got bid_rejected notif (count={len(rejected)})")
+    n = rejected[0]
+    expect(n["url"] == f"/cargos/{cargo_id}",
+           f"rejected notif url=/cargos/{{id}} (got {n['url']})")
