@@ -294,6 +294,11 @@ export default function CreateCargoScreen({ navigation, route }) {
               if (v && v.trim()) setShowDatePicker(false);
             }}
             placeholder={t('pickupDate')}
+            // PR-A (P0-1): выше уже есть Field-row «Дата загрузки» как trigger.
+            // defaultOpen=true говорит DatePicker'у: сразу открыть Modal с
+            // календарём и не рендерить второй preview-row «📅 ДД.ММ.ГГГГ»
+            // под Field'ом — иначе пользователь видит две строки даты.
+            defaultOpen
           />
         </View>
       ) : null}

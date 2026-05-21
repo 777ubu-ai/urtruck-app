@@ -53,12 +53,18 @@ export default function FeedCard({
   // пуст а to нет — показываем "— → To"; если оба пусто — "Маршрут
   // уточняется"). Не плодим "Маршрут не указан" — оно звучит как ошибка
   // публикации.
+  // PR-A (P0-2 route mapping): backend / normalizers иногда подсовывают
+  // строку '—' как fallback для пустого поля (см. normalizeTrip dash-сахар).
+  // Раньше hasRoute=true для '— → —' давало карточку с двумя дефисами,
+  // которая выглядела как полноценная запись. Теперь явно считаем '—' (и
+  // унификс-варианты длинного тире) пустой строкой.
   const trimSafe = (v) => (typeof v === 'string' ? v.trim() : '');
+  const isEmptyOrDash = (s) => !s || s === '—' || s === '-' || s === '–';
   const fromText = trimSafe(route && route.from);
   const toText = trimSafe(route && route.to);
-  const hasRoute = !!(fromText || toText);
+  const hasRoute = !(isEmptyOrDash(fromText) && isEmptyOrDash(toText));
   const routeText = hasRoute
-    ? `${fromText || '—'} → ${toText || '—'}`
+    ? `${isEmptyOrDash(fromText) ? '—' : fromText} → ${isEmptyOrDash(toText) ? '—' : toText}`
     : 'Маршрут уточняется';
 
   const Card = onPress ? TouchableOpacity : View;
