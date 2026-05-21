@@ -44,6 +44,11 @@ import httpx
 
 log = logging.getLogger("urtruck.sms.mobizon")
 
+# Stage 53 (diagnostics): короткий action-tag для логов. Используется
+# в строках формата `mobizon rejected action=send_sms ...`, чтобы
+# grep'ать в PM2 stdout без необходимости знать полный URL Mobizon.
+_SMS_ACTION = "sendsmsmessage"
+
 
 def _settings() -> Dict[str, str]:
     """Read the env on every call so PM2 reload picks up changes."""
@@ -75,7 +80,12 @@ def _parse_response(r: httpx.Response) -> Dict[str, Any]:
     try:
         body = r.json()
     except ValueError:
-        return {"ok": False, "error": "invalid_json", "status_code": r.status_code, "raw": r.text[:500]}
+        return {
+            "ok": False,
+            "error": "invalid_json",
+            "status_code": r.status_code,
+            "raw": r.text[:500],
+        }
 
     code = body.get("code")
     if code == 0:
@@ -92,12 +102,20 @@ def _parse_response(r: httpx.Response) -> Dict[str, Any]:
     #   202   not enough balance
     #   406   recipient blocked
     #   503   provider rate limit
+    #
+    # Mobizon ALSO returns code=1 ("Неправильно введены данные…") как
+    # обобщённый validation reject — без `messages`/`data` его невозможно
+    # диагностировать по PM2-логу. Расширенный лог в send_sms() ниже
+    # печатает обе подсказки целиком, поэтому здесь мы только переносим
+    # их в dict без преобразований.
     return {
         "ok": False,
         "error": "mobizon_error",
         "code": code,
         "message": body.get("message") or "unknown",
         "messages": body.get("messages") or [],
+        "data": body.get("data") or {},
+        "status_code": r.status_code,
     }
 
 
@@ -189,9 +207,15 @@ def send_sms(phone: str, text: str, *, retries: int = 2, backoff_base: float = 0
                 "sent": False, "channel": "sms", "provider": "mobizon",
                 "error": "upstream_5xx", "status_code": r.status_code, "attempt": attempt + 1,
             }
+            # Stage 53 (diag): печатаем хвост body на 5xx — Mobizon иногда
+            # отдаёт HTML-страницу maintenance / cloudflare-блок, и текст
+            # помогает оператору быстро понять причину. apiKey в payload,
+            # ответ его не содержит.
             log.warning(
-                "mobizon 5xx phone=%s attempt=%s/%s status=%s",
-                masked, attempt + 1, total_attempts, r.status_code,
+                "mobizon 5xx action=send_sms phone=%s sender=%r endpoint=%s "
+                "attempt=%s/%s status=%s body=%r",
+                masked, cfg["sender"] or "<default>", _SMS_ACTION,
+                attempt + 1, total_attempts, r.status_code, r.text[:300],
             )
             _sleep_before_next(attempt)
             continue
@@ -211,9 +235,44 @@ def send_sms(phone: str, text: str, *, retries: int = 2, backoff_base: float = 0
             }
 
         # Non-OK Mobizon — return immediately, do not retry auth/balance errors.
+        #
+        # Stage 53 (diagnostics-only PR): расширенный warning со всеми
+        # полезными полями, чтобы оператор по PM2-логу видел корневую
+        # причину отказа без дополнительных запросов к Mobizon UI.
+        #
+        # Что попадает в лог:
+        #   action        — какой эндпоинт дёргали (sendsmsmessage)
+        #   phone         — маскированный MSISDN (4 первых ··· 3 последних)
+        #   sender        — то, что реально ушло в payload['from']
+        #                   (или '<default>' когда MOBIZON_SENDER пустой)
+        #   endpoint      — короткий вид URL без apiKey
+        #   http_status   — HTTP-код от Mobizon (обычно 200 даже при ошибке
+        #                   уровня приложения; полезно отличить от 5xx)
+        #   code          — внутренний Mobizon-код (0 = OK, 1 = generic
+        #                   validation, 100/101/202/406/503 — известные)
+        #   msg           — body.message, краткое описание
+        #   messages      — body.messages, per-field validation errors —
+        #                   главная новая ценность, тут будут конкретные
+        #                   "sender_id is not approved", "recipient is foreign"
+        #                   и т.п., которые объясняют code=1
+        #   data          — body.data (часть с messageId / campaignId / extras)
+        #
+        # Что НЕ попадает в лог:
+        #   apiKey        — payload в лог не выводим, никогда
+        #   полный номер  — только masked (см. _mask_phone)
         log.warning(
-            "mobizon rejected phone=%s attempt=%s/%s code=%s msg=%s",
-            masked, attempt + 1, total_attempts, parsed.get("code"), parsed.get("message"),
+            "mobizon rejected action=send_sms phone=%s sender=%r endpoint=%s "
+            "attempt=%s/%s http_status=%s code=%s msg=%r messages=%r data=%r",
+            masked,
+            cfg["sender"] or "<default>",
+            _SMS_ACTION,
+            attempt + 1,
+            total_attempts,
+            parsed.get("status_code", r.status_code),
+            parsed.get("code"),
+            parsed.get("message"),
+            parsed.get("messages"),
+            parsed.get("data"),
         )
         return {
             "sent": False,
