@@ -8,7 +8,8 @@ import { normalizeDateInput } from '../utils/dateInput';
 import Screen from '../components/ui/v1/Screen';
 import BrandHeader from '../components/ui/v1/BrandHeader';
 import Field from '../components/ui/v1/Field';
-import Textarea from '../components/ui/v1/Textarea';
+// PR-C2: Textarea import удалён — comment field больше не используется
+// (backend TripIn не имеет comment, симметрия с CreateCargoScreen PR-C1).
 import PrimaryButton from '../components/ui/v1/PrimaryButton';
 import BottomSheet from '../components/ui/v1/BottomSheet';
 import RoutePointPicker from '../components/RoutePointPicker';
@@ -90,7 +91,9 @@ export default function CreateTripScreen({ navigation, route }) {
   const [priceMode, setPriceMode] = useState('negotiable');
   const [price, setPrice] = useState('');
   const [currency, setCurrency] = useState('KZT');
-  const [comment, setComment] = useState('');
+  // PR-C2: comment state удалён вместе с Textarea ниже — backend TripIn
+  // не имеет поля comment, значение молча терялось. Симметрично с
+  // CreateCargoScreen (PR-C1 fix).
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
 
@@ -376,13 +379,9 @@ export default function CreateTripScreen({ navigation, route }) {
         </View>
       </BottomSheet>
 
-      <Textarea
-        icon="💬"
-        label={t('comment_label')}
-        value={comment}
-        onChangeText={setComment}
-        placeholder={t('create_trip_comment_placeholder')}
-      />
+      {/* PR-C2: Textarea «Комментарий» удалён — backend TripIn модель
+          (backend/api/marketplace.py) не имеет поля comment, значение
+          молча терялось. Симметрично с CreateCargoScreen (PR-C1). */}
 
       <View style={[s.infoBox, { backgroundColor: accent.soft, borderColor: accent.main }]}>
         <Text style={[s.infoText, { color: accent.main }]} numberOfLines={3}>
