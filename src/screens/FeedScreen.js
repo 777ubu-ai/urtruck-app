@@ -637,17 +637,20 @@ export default function FeedScreen({ navigation, route }) {
           segmented control. Переключение роли — через регистрацию
           из RoleScreen. */}
 
-      {/* Title row + outline CTA "Разместить ..." */}
+      {/* Title row — заголовок и подзаголовок. */}
       <View style={s.titleRow}>
         <View style={{ flex: 1 }}>
           <Text style={[s.titleHero, { color: v1.text }]}>{isDriver ? t('cargos') : t('trucks')}</Text>
           <Text style={[s.titleHeroSub, { color: v1.textMuted }]}>{isDriver ? t('feed_driver_subtitle') : t('feed_client_subtitle')}</Text>
         </View>
-        {/* Stage 16: title-row publish CTA promoted to the screen-level
-            primary — solid accent fill, dark label. The "Подробнее"
-            button on each card moved to outline so this is the only
-            full-saturation green block on the surface besides the
-            floating + in the bottom nav. */}
+        {/* PR-C2: title-row publish CTA закомментирован — он дублировал
+            большой floating "+" в BottomNav (tab Publish), который виден
+            на всех экранах, не только Feed. Stage 16 раньше делал эту
+            кнопку primary CTA, но дублирование функционала путало
+            пользователя и забирало место рядом с заголовком.
+            TODO: redesign — если решим вернуть, перенести как secondary
+            (outline) или удалить celebrate animation на BottomNav плюсе. */}
+        {/*
         <TouchableOpacity
           style={[s.titleCta, { borderColor: accentColor, backgroundColor: accentColor }]}
           onPress={() => navigation.navigate(isDriver ? 'CreateTrip' : 'CreateCargo', { role })}
@@ -657,6 +660,7 @@ export default function FeedScreen({ navigation, route }) {
         >
           <Text style={[s.titleCtaText, { color: '#0A0A0A' }]}>+ {isDriver ? t('postTrip') : t('postCargo')}</Text>
         </TouchableOpacity>
+        */}
       </View>
 
       <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
