@@ -244,27 +244,16 @@ export default function FeedScreen({ navigation, route }) {
         }));
         setServerData(mapped);
       } else {
-        // Клиент видит: свои грузы + рейсы + водители
-        const [tripsRes, driversRes, myRes] = await Promise.all([
+        // Клиент (shipper) feed: ТОЛЬКО рейсы водителей + доступные водители.
+        // my_cargos сюда НЕ примешиваем — свои грузы живут в отдельном
+        // экране «Мои грузы» (MyTripsScreen, tab "MyWork"). Раньше
+        // shipper видел свои же грузы вперемешку с trips чужих
+        // водителей — что и приводило к "Маршрут уточняется" и
+        // навигации в DriverDetail с _profileMissing.
+        const [tripsRes, driversRes] = await Promise.all([
           marketAPI.listTrips({ truckType: filterType || '' }),
           marketAPI.listDrivers({ truckType: filterType || '' }),
-          marketAPI.myDashboard().catch(() => ({ my_cargos: [] })),
         ]);
-        // Мои грузы — в начале ленты
-        const myCargos = ((myRes || {}).my_cargos || []).map(c => ({
-          id: c.id,
-          from: sanitizeForDisplay(c.from_city || c.from_point_name || ''),
-          to:   sanitizeForDisplay(c.to_city   || c.to_point_name   || ''),
-          cargo: c.cargo_desc, type: c.cargo_type,
-          tons: c.weight_tons, m3: c.volume_m3,
-          price: c.price,
-          // PR-C1: см. comment в mapped выше.
-          currency: c.currency,
-          pickup: c.pickup_date,
-          bids: c.bids_count, photos: c.photos,
-          photo: (c.photos || [])[0], isMine: true,
-          createdAt: c.created_at, _server: true,
-        }));
         const tripsMapped = ((tripsRes || {}).trips || []).map(rawT => {
           const n = normalizeTrip({ ...rawT, _server: true });
           // Card title fallback ladder. Most trips on the live feed have
@@ -296,7 +285,7 @@ export default function FeedScreen({ navigation, route }) {
           phone: '***',
           _server: true, _isDriver: true,
         }));
-        setServerData([...myCargos, ...tripsMapped, ...driversMapped]);
+        setServerData([...tripsMapped, ...driversMapped]);
       }
     } catch (e) {
       console.warn('[Feed] Server load failed:', e);
