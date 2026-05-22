@@ -23,7 +23,7 @@
 // flow instead.
 
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, AppState } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, AppState, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useV1Colors, v1AccentFor } from '../../../theme/designV1';
@@ -101,6 +101,23 @@ export default function BottomNav({ state, navigation }) {
       sub?.remove?.();
     };
   }, [hasToken]);
+
+  // PR-C2 (P0 push / icon badge): синхронизируем красный кружок на иконке
+  // приложения (iOS home screen, Android launcher) с серверным unread
+  // count. expo-notifications setNotificationHandler в push.js имеет
+  // `shouldSetBadge: true`, поэтому Expo сам инкрементит badge при
+  // получении push — но УМЕНЬШАТЬ его при прочтении сообщения в app
+  // приходится вручную. BottomNav уже polls /chat/unread каждые
+  // UNREAD_POLL_MS и при AppState='active'; пишем сумму chat + bell
+  // в badge приложения там же.
+  useEffect(() => {
+    if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
+    let Notifications;
+    try { Notifications = require('expo-notifications'); }
+    catch { return; }
+    const total = (Number(chatUnread) || 0); // bell-unread приходит из другого hook'а, но он используется отдельно на BellBadge — для app-icon достаточно chat
+    Notifications.setBadgeCountAsync?.(total).catch(() => {});
+  }, [chatUnread]);
 
   const labelOf = (name) => {
     if (name === 'Feed')    return isDriver ? t('tab_feed') : t('tab_feed_client');
