@@ -138,8 +138,23 @@ export default function CargoDetail({ navigation, route }) {
   const [reviewSent, setReviewSent] = useState(false);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [acceptedDriverId, setAcceptedDriverId] = useState(null);
-  // Live canonical cargo (server overrides params when available)
-  const c = (fullCargo && normalizeCargo(fullCargo)) || cargo;
+  // Live canonical cargo (server overrides params when available).
+  // PR-C2 (P0-5 bid actions invisible): backend's GET /cargos/{id}
+  // returns owner_id but no isMine flag (it doesn't know the caller).
+  // normalizeCargo only forwards raw.isMine, which is `undefined` for
+  // server-returned rows. The previous code therefore lost the owner-
+  // side detection after the server fetch landed and the accept/reject/
+  // counter/chat buttons (which gate on c.isMine) disappeared.
+  // Recompute isMine from raw owner_id whenever it's available; fall
+  // back to the navigation-param value so we don't regress the path
+  // where the screen was opened with explicit isMine.
+  const c = (() => {
+    if (!fullCargo) return cargo;
+    const normalized = normalizeCargo(fullCargo);
+    const fromParam = cargo && cargo.isMine;
+    const fromServer = myUserId && fullCargo.owner_id === myUserId;
+    return { ...normalized, isMine: fromParam || fromServer || normalized.isMine };
+  })();
   const cid = cargoId || c.id;
   // route.params.role is the authoritative side hint when CargoDetail is opened
   // from MyTripsScreen → Orders. The previous id-based comparison is unreliable
