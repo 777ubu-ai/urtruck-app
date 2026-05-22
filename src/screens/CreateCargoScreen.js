@@ -309,6 +309,11 @@ export default function CreateCargoScreen({ navigation, route }) {
             // «📅 ДД.ММ.ГГГГ» под Field'ом — иначе пользователь видит
             // две строки даты.
             defaultOpen
+            // PR-C2: если пользователь закрыл модалку без выбора (tap по
+            // overlay), снимаем trigger-флаг родителя — иначе обёртка
+            // `<View style={s.pickerWrap}>` остаётся в layout и
+            // пользователь видит пустой подсвеченный блок.
+            onClose={() => setShowDatePicker(false)}
           />
         </View>
       ) : null}

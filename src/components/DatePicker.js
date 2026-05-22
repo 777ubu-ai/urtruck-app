@@ -35,7 +35,7 @@ const getMinMaxIso = () => {
   return { min, max: max.toISOString().split('T')[0] };
 };
 
-export default function DatePicker({ value, onChange, placeholder = 'DD.MM.YYYY', style, min, max, defaultOpen = false }) {
+export default function DatePicker({ value, onChange, onClose, placeholder = 'DD.MM.YYYY', style, min, max, defaultOpen = false }) {
   const { theme } = useTheme();
   const { t } = useI18n();
   // PR-A re-apply (P0-1 DatePicker дубль): когда DatePicker встраивается
@@ -44,6 +44,13 @@ export default function DatePicker({ value, onChange, placeholder = 'DD.MM.YYYY'
   // 📅 ДД.ММ.ГГГГ снизу», новый prop `defaultOpen` инициализирует
   // календарь сразу открытым И отключает собственный preview-row.
   const [showPicker, setShowPicker] = useState(defaultOpen === true);
+  // PR-C2: когда родитель открыл DatePicker в режиме `defaultOpen=true`,
+  // а пользователь закрыл модалку tap'ом по overlay (без выбора даты),
+  // родителю надо узнать об этом и снять свой trigger-флаг, иначе
+  // обёртка `<View style={s.pickerWrap}>` остаётся в DOM и пользователь
+  // видит пустой подсвеченный блок. `onClose` зовётся в обоих путях
+  // закрытия Modal — onRequestClose (Android back) и overlay tap.
+  const dismiss = () => { setShowPicker(false); onClose && onClose(); };
   const mm = getMinMaxIso();
 
   // Web: нативный input type=date.
@@ -136,8 +143,8 @@ export default function DatePicker({ value, onChange, placeholder = 'DD.MM.YYYY'
           Field-row триггера сверху), preview мы вообще не рендерим, иначе
           получается двойной date row. */}
       {!defaultOpen && !showPicker && renderDisplay()}
-      <Modal visible={showPicker} transparent animationType="fade" onRequestClose={() => setShowPicker(false)}>
-        <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={() => setShowPicker(false)}>
+      <Modal visible={showPicker} transparent animationType="fade" onRequestClose={dismiss}>
+        <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={dismiss}>
           <TouchableOpacity style={[s.cal, { backgroundColor: theme.card, borderColor: theme.border }]} activeOpacity={1}>
             <View style={s.calHeader}>
               <TouchableOpacity onPress={() => {

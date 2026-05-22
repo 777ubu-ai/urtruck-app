@@ -260,6 +260,14 @@ export default function CreateTripScreen({ navigation, route }) {
               if (v && v.trim()) setShowDeparturePicker(false);
             }}
             placeholder={t('departure')}
+            // PR-C2: симметрично с CreateCargoScreen — над DatePicker уже
+            // есть Field-row trigger «Дата отправления», поэтому открываем
+            // календарь сразу (defaultOpen) и не рендерим встроенный
+            // preview-row. Без этого пользователь видит две строки даты.
+            defaultOpen
+            // Снимаем trigger-флаг при закрытии без выбора, иначе остаётся
+            // пустой подсвеченный блок (см. CreateCargoScreen).
+            onClose={() => setShowDeparturePicker(false)}
           />
         </View>
       ) : null}
