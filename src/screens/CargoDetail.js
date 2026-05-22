@@ -778,6 +778,7 @@ export default function CargoDetail({ navigation, route }) {
         onSubmit={handleBid}
         mode={bidModalMode}
         currentPrice={c.price}
+        currency={c.currency}
         cargoId={c.id}
         bidId={editingBid?.id}
         initialAmount={editingBid?.amount}
