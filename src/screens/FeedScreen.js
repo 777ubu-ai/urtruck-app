@@ -221,7 +221,14 @@ export default function FeedScreen({ navigation, route }) {
     try {
       if (isDriver) {
         const { cargos } = await marketAPI.listCargos({ cargoType: filterType || '' });
-        const mapped = (cargos || []).map(c => ({
+        // Driver feed: ТОЛЬКО чужие грузы (counterparty supply). Если
+        // backend вернул груз с owner_id равным текущему user_id,
+        // водитель не должен видеть свой же груз — для управления
+        // своими грузами есть отдельный экран "Мои грузы" (MyTripsList).
+        // Зеркально с shipper-веткой ниже, где my_cargos исключены.
+        const mapped = (cargos || [])
+          .filter(c => !myUserId || c.owner_id !== myUserId)
+          .map(c => ({
           id: c.id,
           // Stage 50 (Bug 10): fallback на структурированный point_name,
           // если backend вернул from_city/to_city пустыми — иначе карточка
@@ -254,7 +261,12 @@ export default function FeedScreen({ navigation, route }) {
           marketAPI.listTrips({ truckType: filterType || '' }),
           marketAPI.listDrivers({ truckType: filterType || '' }),
         ]);
-        const tripsMapped = ((tripsRes || {}).trips || []).map(rawT => {
+        // Симметрично с driver-веткой: shipper не должен видеть
+        // собственные рейсы в feed (если у пользователя двойная роль
+        // driver+client). Свои рейсы видны через "Мои рейсы".
+        const tripsMapped = ((tripsRes || {}).trips || [])
+          .filter(rawT => !myUserId || rawT.driver_id !== myUserId)
+          .map(rawT => {
           const n = normalizeTrip({ ...rawT, _server: true });
           // Card title fallback ladder. Most trips on the live feed have
           // driver_name=null because driver profiles aren't fully populated
@@ -315,7 +327,10 @@ export default function FeedScreen({ navigation, route }) {
           if (isDriver) {
             marketAPI.listCargos({ fromCity: from, toCity: to }).then(d => {
               if (d.cargos?.length) {
-                setServerData(d.cargos.map(c => ({
+                // Симметрично с главным loader: driver search-handler
+                // тоже не должен показывать свои собственные грузы.
+                const filtered = d.cargos.filter(c => !myUserId || c.owner_id !== myUserId);
+                setServerData(filtered.map(c => ({
                   id: c.id,
                   // PR-A (P0-2 route mapping): search-handler раньше брал ТОЛЬКО
                   // from_city/to_city без fallback на structured point_name.
@@ -338,9 +353,12 @@ export default function FeedScreen({ navigation, route }) {
           } else {
             marketAPI.listTrips({ fromCity: from, toCity: to }).then(d => {
               if (d.trips?.length) {
+                // Симметрично: shipper search-handler не должен показывать
+                // собственные рейсы (если у пользователя двойная роль).
+                const filteredTrips = d.trips.filter(t => !myUserId || t.driver_id !== myUserId);
                 setServerData(prev => {
-                  const existing = prev.filter(p => !d.trips.find(t => t.id === p.id));
-                  return [...d.trips.map(t => {
+                  const existing = prev.filter(p => !filteredTrips.find(t => t.id === p.id));
+                  return [...filteredTrips.map(t => {
                     // PR-A (P0-2): тот же fallback на point_name, что в главном
                     // loader. Trip без from_city, но с from_point_name больше
                     // не показывает "Маршрут уточняется" / "— → —".
