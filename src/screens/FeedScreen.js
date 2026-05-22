@@ -230,7 +230,14 @@ export default function FeedScreen({ navigation, route }) {
           to:   sanitizeForDisplay(c.to_city   || c.to_point_name   || ''),
           cargo: c.cargo_desc, type: c.cargo_type,
           tons: c.weight_tons, m3: c.volume_m3,
-          price: c.price, pickup: c.pickup_date,
+          price: c.price,
+          // PR-C1 (currency mapping): backend хранит cargos.currency
+          // ('KZT'/'USD'/'RUB'/'CNY') и возвращает в GET /market/cargos.
+          // Раньше mapping игнорировал поле → formatPrice падал на USD
+          // fallback и пользователь видел «$700 000» там, где было
+          // «700 000 ₸». Прокидываем явно.
+          currency: c.currency,
+          pickup: c.pickup_date,
           bids: c.bids_count, photos: c.photos,
           photo: c.photos?.[0], isMine: c.owner_id === myUserId,
           createdAt: c.created_at, _server: true,
@@ -250,7 +257,10 @@ export default function FeedScreen({ navigation, route }) {
           to:   sanitizeForDisplay(c.to_city   || c.to_point_name   || ''),
           cargo: c.cargo_desc, type: c.cargo_type,
           tons: c.weight_tons, m3: c.volume_m3,
-          price: c.price, pickup: c.pickup_date,
+          price: c.price,
+          // PR-C1: см. comment в mapped выше.
+          currency: c.currency,
+          pickup: c.pickup_date,
           bids: c.bids_count, photos: c.photos,
           photo: (c.photos || [])[0], isMine: true,
           createdAt: c.created_at, _server: true,
@@ -317,10 +327,20 @@ export default function FeedScreen({ navigation, route }) {
             marketAPI.listCargos({ fromCity: from, toCity: to }).then(d => {
               if (d.cargos?.length) {
                 setServerData(d.cargos.map(c => ({
-                  id: c.id, from: sanitizeForDisplay(c.from_city), to: sanitizeForDisplay(c.to_city),
+                  id: c.id,
+                  // PR-A (P0-2 route mapping): search-handler раньше брал ТОЛЬКО
+                  // from_city/to_city без fallback на structured point_name.
+                  // Cargo, опубликованный через RoutePointPicker, мог иметь
+                  // from_city='' и from_point_name='Чжэнчжоу' → search-результат
+                  // показывал «Маршрут уточняется». Симметрия с главным loader.
+                  from: sanitizeForDisplay(c.from_city || c.from_point_name || ''),
+                  to:   sanitizeForDisplay(c.to_city   || c.to_point_name   || ''),
                   cargo: c.cargo_desc, type: c.cargo_type,
                   tons: c.weight_tons, m3: c.volume_m3,
-                  price: c.price, bids: c.bids_count,
+                  price: c.price,
+                  // PR-C1: currency mapping — см. главный loader выше.
+                  currency: c.currency,
+                  bids: c.bids_count,
                   photos: c.photos, photo: c.photos?.[0],
                   _server: true, createdAt: c.created_at,
                 })));
@@ -331,12 +351,22 @@ export default function FeedScreen({ navigation, route }) {
               if (d.trips?.length) {
                 setServerData(prev => {
                   const existing = prev.filter(p => !d.trips.find(t => t.id === p.id));
-                  return [...d.trips.map(t => ({
-                    id: t.id, name: t.driver_name || tGlobal('driver_fallback'),
-                    type: t.truck_type, from: sanitizeForDisplay(t.from_city), to: sanitizeForDisplay(t.to_city),
-                    price: t.price, isTrip: true, _server: true,
-                    tripRoute: `${t.from_city} → ${t.to_city}`,
-                  })), ...existing];
+                  return [...d.trips.map(t => {
+                    // PR-A (P0-2): тот же fallback на point_name, что в главном
+                    // loader. Trip без from_city, но с from_point_name больше
+                    // не показывает "Маршрут уточняется" / "— → —".
+                    const fromStr = sanitizeForDisplay(t.from_city || t.from_point_name || '');
+                    const toStr = sanitizeForDisplay(t.to_city || t.to_point_name || '');
+                    return {
+                      id: t.id, name: t.driver_name || tGlobal('driver_fallback'),
+                      type: t.truck_type, from: fromStr, to: toStr,
+                      price: t.price,
+                      // PR-C1: currency mapping (trips тоже хранят currency).
+                      currency: t.currency,
+                      isTrip: true, _server: true,
+                      tripRoute: `${fromStr || '—'} → ${toStr || '—'}`,
+                    };
+                  }), ...existing];
                 });
               }
             }).catch(() => {});

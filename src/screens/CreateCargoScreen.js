@@ -7,7 +7,6 @@ import { marketAPI } from '../utils/marketAPI';
 import Screen from '../components/ui/v1/Screen';
 import BrandHeader from '../components/ui/v1/BrandHeader';
 import Field from '../components/ui/v1/Field';
-import Textarea from '../components/ui/v1/Textarea';
 import PrimaryButton from '../components/ui/v1/PrimaryButton';
 import BottomSheet from '../components/ui/v1/BottomSheet';
 import RoutePointPicker from '../components/RoutePointPicker';
@@ -17,6 +16,15 @@ import DatePicker from '../components/DatePicker';
 import { PhotoPicker } from '../components/PhotoGallery';
 import {v1Colors, useV1Colors, v1Radius, v1Spacing, v1Typography, v1AccentFor} from '../theme/designV1';
 import { TRUCK_KEYS, TRUCK_ICONS } from '../utils/truckConstants';
+
+// PR-C1: backend cargos schema (marketplace_schema.sql) и CargoIn
+// pydantic-модель (api/marketplace.py:222) НЕ имеют поля comment/note.
+// Раньше форма показывала Textarea «Комментарий», пользователь думал
+// что вводит важную инфу, при отправке поле молча отрезалось — груз
+// уходил без комментария, на CargoDetail его никто никогда не видел.
+// Скрываем поле в PR-C1; backend-схему не трогаем (см. scope: no
+// backend migration). Если бизнесу понадобится — отдельным PR-D добавим
+// колонку cargos.comment + поле в CargoIn + рендер на CargoDetail.
 
 // CreateCargoScreen — design v1, screen 10. Cargo owner publishes a load.
 //
@@ -95,7 +103,8 @@ export default function CreateCargoScreen({ navigation, route }) {
   const [price, setPrice] = useState('');
   const [currency, setCurrency] = useState('KZT');
   const [photos, setPhotos] = useState([]);
-  const [comment, setComment] = useState('');
+  // PR-C1: comment state удалён вместе с Textarea ниже — поле молча
+  // терялось, backend не имеет колонки.
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
 
@@ -294,6 +303,12 @@ export default function CreateCargoScreen({ navigation, route }) {
               if (v && v.trim()) setShowDatePicker(false);
             }}
             placeholder={t('pickupDate')}
+            // PR-A re-apply (P0-1): выше уже есть Field-row «Дата загрузки»
+            // как trigger. defaultOpen=true говорит DatePicker'у: сразу
+            // открыть Modal с календарём и не рендерить второй preview-row
+            // «📅 ДД.ММ.ГГГГ» под Field'ом — иначе пользователь видит
+            // две строки даты.
+            defaultOpen
           />
         </View>
       ) : null}
@@ -398,13 +413,9 @@ export default function CreateCargoScreen({ navigation, route }) {
         </View>
       ) : null}
 
-      <Textarea
-        icon="💬"
-        label={t('comment_label')}
-        value={comment}
-        onChangeText={setComment}
-        placeholder={t('create_cargo_comment_placeholder')}
-      />
+      {/* PR-C1: Textarea «Комментарий» удалён — backend cargos schema
+          не имеет поля comment, значение молча терялось. См. comment
+          вверху файла. */}
 
       <View style={[s.infoBox, { backgroundColor: accent.soft, borderColor: accent.main }]}>
         <Text style={[s.infoText, { color: accent.main }]} numberOfLines={3}>

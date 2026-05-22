@@ -52,7 +52,16 @@ export default function BidModal({
     }
   }, [visible, mode, bidId, initialAmount, initialMessage]);
 
-  const createQuickPrices = [currentPrice, currentPrice + 200, currentPrice + 400];
+  // PR-A re-apply (P0-3 BidModal $0 / negotiable): когда у груза нет
+  // цены (price=null/0 → currentPrice=0), кнопки [$0, $200, $400]
+  // визуально предлагали отправить $0. Frontend validate amountInt > 0
+  // (см. handleSubmit) уже блокирует submit, но $0 кнопка вводила в
+  // заблуждение. При currentPrice<=0 — quick-prices не рендерим, юзер
+  // вводит сумму вручную.
+  const hasBasePrice = Number(currentPrice) > 0;
+  const createQuickPrices = hasBasePrice
+    ? [currentPrice, currentPrice + 200, currentPrice + 400]
+    : [];
   const discountSteps = [50, 100, 200];
 
   const handleSubmit = async () => {
@@ -118,7 +127,14 @@ export default function BidModal({
           <View style={s.handle} />
           <Text style={[s.title, { color: theme.text }]}>{title}</Text>
           {!isPrefill && (
-            <Text style={[s.subtitle, { color: theme.textMuted }]}>{t('avgPrice')}: ${currentPrice - 200}–${currentPrice + 400}</Text>
+            // PR-A re-apply (P0-3): когда у груза нет цены, бессмысленно
+            // показывать диапазон "$-200–$400" — даём honest текст
+            // «По договорённости».
+            hasBasePrice ? (
+              <Text style={[s.subtitle, { color: theme.textMuted }]}>{t('avgPrice')}: ${currentPrice - 200}–${currentPrice + 400}</Text>
+            ) : (
+              <Text style={[s.subtitle, { color: theme.textMuted }]}>{t('payment_negotiable')}</Text>
+            )
           )}
           {(isDiscount || isCounter) && baseAmount > 0 && (
             <Text style={[s.subtitle, { color: theme.textMuted }]}>
