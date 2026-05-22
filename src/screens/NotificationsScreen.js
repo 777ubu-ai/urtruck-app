@@ -130,8 +130,27 @@ export default function NotificationsScreen({ navigation }) {
     }
   };
 
+  // PR-C2 (P0 None bug): backend строит notification text как
+  //   f"{user.get('full_name', 'Водитель')} предлагает ${amount} за ..."
+  // `dict.get(key, default)` в Python возвращает default ТОЛЬКО когда
+  // ключ отсутствует, не когда значение явно None. Для пользователей
+  // которые ещё не дозаполнили full_name (большинство pre-pilot) поле
+  // приходит как None → итоговый text = "None предлагает $X за ...".
+  // Backend fix требует `user.get('full_name') or 'Водитель'`, но мы
+  // не трогаем backend; здесь делаем display-time замену.
+  const cleanNotifText = (s) => {
+    if (!s || typeof s !== 'string') return s;
+    return s
+      .replace(/^None предлагает/, 'Водитель предлагает')
+      .replace(/^None /, '')
+      .replace(/^null предлагает/, 'Водитель предлагает')
+      .replace(/^null /, '');
+  };
+
   const renderItem = ({ item }) => {
     const isUnread = !item.is_read;
+    const cleanTitle = cleanNotifText(item.title);
+    const cleanBody = cleanNotifText(item.body);
     return (
       <TouchableOpacity
         style={[s.card, isUnread && { borderColor: accent.main }]}
@@ -139,8 +158,8 @@ export default function NotificationsScreen({ navigation }) {
       >
         <Text style={s.icon}>{item.icon || '🔔'}</Text>
         <View style={{ flex: 1 }}>
-          <Text style={[s.title, { fontWeight: isUnread ? '800' : '500' }]}>{item.title}</Text>
-          {item.body ? <Text style={s.body}>{item.body}</Text> : null}
+          <Text style={[s.title, { fontWeight: isUnread ? '800' : '500' }]}>{cleanTitle}</Text>
+          {cleanBody ? <Text style={s.body}>{cleanBody}</Text> : null}
           <Text style={s.time}>{(item.created_at || '').slice(0, 16)}</Text>
         </View>
         {isUnread && <View style={[s.dot, { backgroundColor: accent.main }]} />}
