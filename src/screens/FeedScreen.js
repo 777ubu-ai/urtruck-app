@@ -891,7 +891,7 @@ export default function FeedScreen({ navigation, route }) {
           ref={listRef}
           data={filteredData}
           keyExtractor={i => i.id}
-          renderItem={isDriver ? renderCargo : renderDriver}
+          renderItem={(args) => (isDriver || args.item.isMine) ? renderCargo(args) : renderDriver(args)}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 20, gap: 0 }}
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accentColor} />}
