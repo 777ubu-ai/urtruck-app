@@ -3397,6 +3397,16 @@ const translations = {
 
 import { storage } from './storage';
 import { Platform, NativeModules } from 'react-native';
+// PR-C2 (Task C auto-detect): expo-localization выдаёт надёжный locale
+// на iOS/Android — лучше чем NativeModules.SettingsManager.AppleLocale
+// (deprecated в новых RN). Лоадим лениво чтобы web-bundle не тащил
+// нативный модуль.
+let _Localization;
+function getLocalization() {
+  if (_Localization !== undefined) return _Localization;
+  try { _Localization = require('expo-localization'); } catch { _Localization = null; }
+  return _Localization;
+}
 
 const listeners = new Set();
 const KEY = 'ur_lang';
@@ -3425,32 +3435,55 @@ const LEGACY_LANG_FIX = {
 };
 
 // Sync detect at module load — best effort before async storage
+// PR-C2: default fallback на 'EN' вместо 'RU' — для пользователей с
+// неподдерживаемым языком устройства это даёт более универсальный first-run
+// experience. RU/KK/ZH юзеры всё равно попадают в свою локаль через alias.
 let currentLang = (() => {
   try {
     let code = '';
     if (typeof navigator !== 'undefined' && navigator.language) {
       code = navigator.language.toLowerCase();
     }
-    if (!code) return 'RU';
+    if (!code) return 'EN';
     const base = code.split('-')[0];
     if (LANG_ALIAS[code]) return LANG_ALIAS[code];
     if (LANG_ALIAS[base]) return LANG_ALIAS[base];
-    return 'RU'; // unsupported → RU
-  } catch { return 'RU'; }
+    return 'EN'; // unsupported → EN
+  } catch { return 'EN'; }
 })();
 
 function detectSystemLang() {
   let code;
   try {
-    if (Platform.OS === 'web' && typeof navigator !== 'undefined') {
-      code = (navigator.language || navigator.userLanguage || '').toLowerCase();
-    } else {
-      const locale =
-        NativeModules.SettingsManager?.settings?.AppleLocale ||
-        NativeModules.SettingsManager?.settings?.AppleLanguages?.[0] ||
-        NativeModules.I18nManager?.localeIdentifier ||
-        '';
-      code = locale.toLowerCase().replace('_', '-');
+    // PR-C2: предпочитаем expo-localization (Localization.getLocales() в
+    // SDK 52, или Localization.locale в legacy). Это работает на новых
+    // iOS / Android без NativeModules deprecation warnings.
+    if (Platform.OS !== 'web') {
+      const Loc = getLocalization();
+      if (Loc) {
+        try {
+          // SDK 52 API: getLocales() возвращает array of { languageTag, … }
+          const locales = Loc.getLocales?.();
+          if (Array.isArray(locales) && locales.length && locales[0].languageTag) {
+            code = String(locales[0].languageTag).toLowerCase();
+          }
+        } catch {}
+        if (!code && Loc.locale) {
+          code = String(Loc.locale).toLowerCase().replace('_', '-');
+        }
+      }
+    }
+    if (!code) {
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined') {
+        code = (navigator.language || navigator.userLanguage || '').toLowerCase();
+      } else {
+        const locale =
+          NativeModules.SettingsManager?.settings?.AppleLocale ||
+          NativeModules.SettingsManager?.settings?.AppleLanguages?.[0] ||
+          NativeModules.I18nManager?.localeIdentifier ||
+          '';
+        code = locale.toLowerCase().replace('_', '-');
+      }
     }
   } catch {
     code = '';
@@ -3463,7 +3496,9 @@ function detectSystemLang() {
   return null;
 }
 
-// Load saved language on start; если не выбран — авто из системы
+// Load saved language on start; если не выбран — авто из системы.
+// PR-C2: если detect ничего не нашёл — устанавливаем EN (универсальный
+// fallback для приграничных пользователей с экзотическими locale).
 (async () => {
   let saved = await storage.get(KEY);
   // Legacy fix-up: rewrite `KZ` → `KK`, `CN` → `ZH` for users
@@ -3479,6 +3514,9 @@ function detectSystemLang() {
     if (sys && translations[sys]) {
       currentLang = sys;
       storage.set(KEY, sys); // сохраняем выбор авто
+    } else if (!translations[currentLang]) {
+      currentLang = 'EN';
+      storage.set(KEY, 'EN');
     }
   }
   listeners.forEach(cb => cb(currentLang));
