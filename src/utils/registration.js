@@ -9,6 +9,21 @@ const BASE = `${API_BASE}/register`;
 const TOKEN_KEY = 'ur_reg_token';
 const LEVEL_KEY = 'ur_verification_level';
 
+// PR-C2: см. marketAPI.normalizeDetail — те же причины. Backend
+// иногда возвращает detail как object (verification_required),
+// фронт пытается отрендерить его как <Text> → React error #31.
+function normalizeDetail(d, fallback) {
+  if (d == null) return fallback;
+  if (typeof d === 'string') return d;
+  if (typeof d === 'object') {
+    if (d.hint && typeof d.hint === 'string' && d.hint.length) return d.hint;
+    if (d.error && typeof d.error === 'string' && d.error.length) return d.error;
+    if (d.message && typeof d.message === 'string') return d.message;
+    try { return JSON.stringify(d); } catch { return fallback; }
+  }
+  return String(d);
+}
+
 export const regAPI = {
   // ─── Lazy registration ───
   async ensureGuest() {
@@ -83,7 +98,7 @@ export const regAPI = {
         ok: false,
         cooldown: true,
         cooldown_sec: cooldown || 60,
-        detail: data.detail || 'rate_limited',
+        detail: normalizeDetail(data.detail, 'rate_limited'),
       };
     }
     return data;
@@ -112,7 +127,7 @@ export const regAPI = {
         token: null,
         cooldown: true,
         cooldown_sec: cooldown || 60,
-        detail: data.detail || 'rate_limited',
+        detail: normalizeDetail(data.detail, 'rate_limited'),
       };
     }
     if (data.token) {
