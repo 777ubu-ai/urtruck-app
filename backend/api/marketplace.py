@@ -648,7 +648,24 @@ def create_bid(body: BidIn, user=Depends(require_level(1))):
     # cargo_id или trip_id — хотя бы один (для серверных грузов)
     # Если оба null — разрешаем (для demo/local грузов), ставка просто без привязки
 
+    # PR-B (P0-E): hard 400 на невалидный amount. Раньше backend принимал
+    # 0 / отрицательные значения, защищён был только frontend (BidModal:61-64).
+    # Через REST API напрямую (или скомпрометированный клиент) можно было
+    # засорить таблицу bids нулевыми ставками. Тип int в pydantic ловит
+    # non-numeric, но не <= 0.
+    if body.amount is None or body.amount <= 0:
+        raise HTTPException(status_code=400, detail="amount должен быть > 0")
+
     bid_id = new_id()
+    # PR-B: собираем «post-commit» нотификации в локальные переменные.
+    # Раньше create_notification вызывался ВНУТРИ `with get_conn() as c:` —
+    # это второе SQLite connection в момент когда первое держит транзакцию.
+    # На прод-БД с WAL это могло проходить случайно, на тестах падало в
+    # silent try/except → пользователи жалуются "уведомлений нет".
+    # accept_bid / reject_bid / update_bid этот баг не имели потому что
+    # create_notification у них уже ВНЕ with-блока. Делаем то же тут.
+    post_notifs: list = []  # каждый элемент: (recipient_id, title, body, icon, url, push)
+
     with get_conn() as c:
         c.execute("""
             INSERT INTO bids (id, cargo_id, trip_id, bidder_id, bidder_name, bidder_phone, amount, message)
@@ -661,25 +678,67 @@ def create_bid(body: BidIn, user=Depends(require_level(1))):
             c.execute("UPDATE cargos SET bids_count = bids_count + 1 WHERE id = ?", (body.cargo_id,))
             row = c.execute("SELECT owner_id, from_city, to_city FROM cargos WHERE id = ?", (body.cargo_id,)).fetchone()
             if row:
+                # PR-B (P0-B): meaningful url в notification вместо дефолтного "/".
+                # NotificationsScreen (или будущая мобильная навигация) сможет
+                # распарсить query и открыть cargo detail с подсвеченной ставкой.
+                cargo_url = f"/cargos/{body.cargo_id}?bid={bid_id}"
                 title = f"💰 Новое предложение ${body.amount}"
                 text = f"{user.get('full_name', 'Водитель')} предлагает ${body.amount} за {row['from_city']}→{row['to_city']}"
+                post_notifs.append((row["owner_id"], title, text, "💰", cargo_url, True))
+
+                # PR-B (P0-D): eager chat-room create. Раньше chat_rooms
+                # появлялся только при первом POST /chat/send → cargo owner
+                # после получения push не имел thread'а с водителем и нигде
+                # в UI не мог инициировать чат. Endpoint POST /bids/{id}/chat
+                # уже умеет это явно, но фронт его не вызывает; вызывая
+                # _ensure_chat_room_inline тут, мы гарантируем что thread
+                # существует с момента создания ставки. Хелпер идемпотентен
+                # (UNIQUE (participant_1, participant_2)), повторный вызов
+                # из POST /bids/{id}/chat вернёт тот же room_id.
+                # Этот вызов идёт ВНУТРИ with потому что принимает open conn.
                 try:
-                    send_to_user(row["owner_id"], title, text, url="/")
-                    from api.notifications import create_notification
-                    create_notification(row["owner_id"], "bid", title, text, "💰")
+                    _ensure_chat_room_inline(
+                        c, user["id"], row["owner_id"],
+                        body.cargo_id, None,
+                    )
                 except Exception:
                     pass
 
         if body.trip_id:
             row = c.execute("SELECT driver_id, from_city, to_city FROM trips WHERE id = ?", (body.trip_id,)).fetchone()
             if row:
+                # PR-B (P0-B + P0-F): trip-ветка раньше отправляла ТОЛЬКО push
+                # (send_to_user), без create_notification — у водителя ничего
+                # не появлялось в bell-list. Теперь симметрично с cargo-веткой:
+                # push + InApp + eager chat room.
+                trip_url = f"/trips/{body.trip_id}?bid={bid_id}"
+                title = f"📦 Новый заказ ${body.amount}"
+                text = f"{user.get('full_name', 'Клиент')} предлагает ${body.amount} за {row['from_city']}→{row['to_city']}"
+                post_notifs.append((row["driver_id"], title, text, "📦", trip_url, True))
+
                 try:
-                    send_to_user(row["driver_id"],
-                        f"📦 Новый заказ ${body.amount}",
-                        f"Клиент предлагает ${body.amount} за {row['from_city']}→{row['to_city']}",
-                        url="/")
+                    _ensure_chat_room_inline(
+                        c, user["id"], row["driver_id"],
+                        None, body.trip_id,
+                    )
                 except Exception:
                     pass
+
+    # PR-B: post-commit notifications — connection с bid INSERT уже закрыт,
+    # create_notification открывает свой conn без conflict'а с транзакцией.
+    # Раздельные try/except: push и InApp независимы — failure одного не
+    # должен подавлять другое.
+    for recipient, title, text, icon, url, want_push in post_notifs:
+        if want_push:
+            try:
+                send_to_user(recipient, title, text, url=url)
+            except Exception:
+                pass
+        try:
+            from api.notifications import create_notification
+            create_notification(recipient, "bid_created", title, text, icon, url=url)
+        except Exception:
+            pass
 
     return {"id": bid_id, "ok": True}
 
@@ -980,8 +1039,19 @@ def accept_bid(bid_id: str, user=Depends(require_level(1))):
             )
         result = _finalize_accept_inline(c, user, bid, bid["amount"])
 
+    # PR-B (P0-B): notification bidder'у со ссылкой на сделку, а не root "/".
+    # _finalize_accept_inline уже создал deal + chat_room — даём прямую
+    # ссылку на /deals/{id} чтобы фронт открыл сделку с активным чатом.
+    deal_url = f"/deals/{result['deal_id']}"
+    title = "✅ Ставка принята!"
+    text = f"Ваше предложение ${bid['amount']} принято! Сделка создана."
     try:
-        send_to_user(bid["bidder_id"], "✅ Ставка принята!", f"Ваше предложение ${bid['amount']} принято!", url="/")
+        send_to_user(bid["bidder_id"], title, text, url=deal_url)
+    except Exception:
+        pass
+    try:
+        from api.notifications import create_notification
+        create_notification(bid["bidder_id"], "bid_accepted", title, text, "✅", url=deal_url)
     except Exception:
         pass
 
@@ -1108,13 +1178,24 @@ def reject_bid(bid_id: str, user=Depends(require_level(1))):
         )
 
     # Notify the bidder.
+    # PR-B (P0-B): URL ведёт обратно на родительский cargo / trip, чтобы
+    # bidder мог посмотреть, сразу же опубликовать новую ставку или открыть
+    # уже созданный чат (eager chat-room остаётся видимым в /chat/rooms).
+    if bid.get("cargo_id"):
+        back_url = f"/cargos/{bid['cargo_id']}"
+    elif bid.get("trip_id"):
+        back_url = f"/trips/{bid['trip_id']}"
+    else:
+        back_url = "/"
+    title = "❌ Ставка отклонена"
+    body_text = f"Ваше предложение ${bid['amount']} отклонено"
     try:
-        send_to_user(bid["bidder_id"], "❌ Ставка отклонена", f"Ваше предложение ${bid['amount']} отклонено", url="/")
+        send_to_user(bid["bidder_id"], title, body_text, url=back_url)
     except Exception:
         pass
     try:
         from api.notifications import create_notification
-        create_notification(bid["bidder_id"], "bid", "❌ Ставка отклонена", f"${bid['amount']}", "❌")
+        create_notification(bid["bidder_id"], "bid_rejected", title, body_text, "❌", url=back_url)
     except Exception:
         pass
 
@@ -1144,15 +1225,23 @@ def counter_bid(bid_id: str, body: BidCounterIn, user=Depends(require_level(1)))
         )
         updated = dict(c.execute("SELECT * FROM bids WHERE id = ?", (bid_id,)).fetchone())
 
+    # PR-B (P0-B): URL ведёт на родительский cargo / trip с подсветкой
+    # bid_id, чтобы bidder мог ответить — accept counter или decline.
+    if bid.get("cargo_id"):
+        counter_url = f"/cargos/{bid['cargo_id']}?bid={bid_id}"
+    elif bid.get("trip_id"):
+        counter_url = f"/trips/{bid['trip_id']}?bid={bid_id}"
+    else:
+        counter_url = "/"
+    title = f"🔁 Контр-оффер: ${body.amount}"
+    text = f"Владелец груза предложил ${body.amount} вместо ${bid['amount']}"
     try:
-        title = f"🔁 Контр-оффер: ${body.amount}"
-        text = f"Владелец груза предложил ${body.amount} вместо ${bid['amount']}"
-        send_to_user(bid["bidder_id"], title, text, url="/")
+        send_to_user(bid["bidder_id"], title, text, url=counter_url)
     except Exception:
         pass
     try:
         from api.notifications import create_notification
-        create_notification(bid["bidder_id"], "bid", title, text, "🔁")
+        create_notification(bid["bidder_id"], "bid_countered", title, text, "🔁", url=counter_url)
     except Exception:
         pass
 
