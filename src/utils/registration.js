@@ -130,6 +130,25 @@ export const regAPI = {
     return await storage.remove(TOKEN_KEY);
   },
 
+  // PR-C1: GET /api/v1/users/me — расширенный профиль (name + city + about
+  // + vehicle). /register/me возвращает только full_name без city, поэтому
+  // AuthContext.refreshLevel читает оба endpoint'a и объединяет данные.
+  // Fail-tolerant: при 401/сети/таймауте возвращает null, чтобы провал
+  // не ронял auth-flow.
+  async profile() {
+    const token = await this.getToken();
+    if (!token) return null;
+    try {
+      const r = await fetch(`${API_BASE}/users/me`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (!r.ok) return null;
+      return await r.json();
+    } catch {
+      return null;
+    }
+  },
+
   // Stage 50: PATCH /api/v1/users/me — сохраняем name/city из
   // PremiumProfileScreen в БД, чтобы ProfileScreen после регистрации
   // не показывал «Добавить имя».
