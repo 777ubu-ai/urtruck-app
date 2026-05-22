@@ -16,14 +16,26 @@ export const ToastProvider = ({ children }) => {
   }, []);
 
   const toast = useCallback((text, type = 'info', duration = 3000) => {
+    // PR-C2 defence-in-depth: если кто-то случайно передал object вместо
+    // string (например `error.detail` от FastAPI 403 verification_required),
+    // не падаем с React error #31. Делаем JSON.stringify fallback.
+    let safeText;
+    if (text == null) safeText = '';
+    else if (typeof text === 'string') safeText = text;
+    else if (typeof text === 'object') {
+      safeText = text.hint || text.error || text.message
+        || (() => { try { return JSON.stringify(text); } catch { return ''; } })();
+    } else {
+      safeText = String(text);
+    }
     setToasts(prev => {
       // Дедупликация: не показывать одинаковый текст если уже есть
-      if (prev.some(t => t.text === text)) return prev;
+      if (prev.some(t => t.text === safeText)) return prev;
       // Лимит: максимум 3 тоста одновременно
       const limited = prev.length >= 3 ? prev.slice(1) : prev;
       const id = ++toastIdCounter;
       setTimeout(() => remove(id), duration);
-      return [...limited, { id, text, type }];
+      return [...limited, { id, text: safeText, type }];
     });
   }, [remove]);
 

@@ -14,6 +14,28 @@ async function headers() {
   };
 }
 
+// PR-C2 critical fix (React error #31 / "Objects are not valid as a React
+// child"): backend кидает HTTPException(403) с detail в форме ОБЪЕКТА
+// для verification_required:
+//   { error, current_level, required_level, required_name, hint }
+// (см. backend/api/verification_gate.py). FastAPI сериализует это как
+// JSON {detail: {...}}. Старый код возвращал `detail: d.detail` как
+// есть → консьюмер делал `toast(r.detail || '...')` → Toast пытался
+// отрендерить object в <Text> → краш всего приложения с белым экраном.
+// Этот хелпер всегда возвращает string — для object с `hint` или
+// `error` поле, для других — JSON.stringify fallback.
+function normalizeDetail(d, status) {
+  if (d == null) return `Ошибка ${status}`;
+  if (typeof d === 'string') return d;
+  if (typeof d === 'object') {
+    if (d.hint && typeof d.hint === 'string' && d.hint.length) return d.hint;
+    if (d.error && typeof d.error === 'string' && d.error.length) return d.error;
+    if (d.message && typeof d.message === 'string') return d.message;
+    try { return JSON.stringify(d); } catch { return `Ошибка ${status}`; }
+  }
+  return String(d);
+}
+
 export const marketAPI = {
   // ─── Cargos ───
   async createCargo(data) {
@@ -22,7 +44,7 @@ export const marketAPI = {
       body: JSON.stringify(data),
     });
     const d = await r.json();
-    if (!r.ok) return { ok: false, detail: d.detail || `Ошибка ${r.status}`, status: r.status };
+    if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
     return d;
   },
 
@@ -80,7 +102,7 @@ export const marketAPI = {
       body: JSON.stringify(payload),
     });
     const d = await r.json();
-    if (!r.ok) return { ok: false, detail: d.detail || `Ошибка ${r.status}`, status: r.status };
+    if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
     return d;
   },
 
@@ -91,7 +113,7 @@ export const marketAPI = {
       body: JSON.stringify(data),
     });
     const d = await r.json();
-    if (!r.ok) return { ok: false, detail: d.detail || `Ошибка ${r.status}`, status: r.status };
+    if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
     return d;
   },
 
@@ -108,7 +130,7 @@ export const marketAPI = {
       method: 'POST', headers: await headers(),
     });
     const d = await r.json();
-    if (!r.ok) return { ok: false, detail: d.detail || `Ошибка ${r.status}`, status: r.status };
+    if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
     return d;
   },
 
@@ -118,7 +140,7 @@ export const marketAPI = {
       body: JSON.stringify(payload),
     });
     const d = await r.json();
-    if (!r.ok) return { ok: false, detail: d.detail || `Ошибка ${r.status}`, status: r.status };
+    if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
     return d;
   },
 
@@ -127,7 +149,7 @@ export const marketAPI = {
       method: 'POST', headers: await headers(),
     });
     const d = await r.json();
-    if (!r.ok) return { ok: false, detail: d.detail || `Ошибка ${r.status}`, status: r.status };
+    if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
     return d;
   },
 
@@ -136,7 +158,7 @@ export const marketAPI = {
       method: 'POST', headers: await headers(),
     });
     const d = await r.json();
-    if (!r.ok) return { ok: false, detail: d.detail || `Ошибка ${r.status}`, status: r.status };
+    if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
     return d;
   },
 
@@ -146,7 +168,7 @@ export const marketAPI = {
       body: JSON.stringify(payload),
     });
     const d = await r.json();
-    if (!r.ok) return { ok: false, detail: d.detail || `Ошибка ${r.status}`, status: r.status };
+    if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
     return d;
   },
 
@@ -155,7 +177,7 @@ export const marketAPI = {
       method: 'POST', headers: await headers(),
     });
     const d = await r.json();
-    if (!r.ok) return { ok: false, detail: d.detail || `Ошибка ${r.status}`, status: r.status };
+    if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
     return d;
   },
 
@@ -164,7 +186,7 @@ export const marketAPI = {
       method: 'POST', headers: await headers(),
     });
     const d = await r.json();
-    if (!r.ok) return { ok: false, detail: d.detail || `Ошибка ${r.status}`, status: r.status };
+    if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
     return d;
   },
 
@@ -173,7 +195,7 @@ export const marketAPI = {
       method: 'POST', headers: await headers(),
     });
     const d = await r.json();
-    if (!r.ok) return { ok: false, detail: d.detail || `Ошибка ${r.status}`, status: r.status };
+    if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
     return d;
   },
 
@@ -218,7 +240,7 @@ export const marketAPI = {
   async getDeal(dealId) {
     const r = await fetch(`${BASE}/deals/${dealId}`, { headers: await headers() });
     const d = await r.json();
-    if (!r.ok) return { ok: false, detail: d.detail || `Ошибка ${r.status}`, status: r.status };
+    if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
     return d;
   },
 
@@ -227,7 +249,7 @@ export const marketAPI = {
       method: 'PATCH', headers: await headers(),
     });
     const d = await r.json();
-    if (!r.ok) return { ok: false, detail: d.detail || `Ошибка ${r.status}`, status: r.status };
+    if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
     return d;
   },
 };
