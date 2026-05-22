@@ -747,6 +747,7 @@ const translations = {
 
     // Chat
     online: 'Онлайн',
+    yesterday: 'Вчера',
     chatOpened: 'Чат открыт',
     translation: 'Перевод',
     message: 'Сообщение...',
@@ -1197,6 +1198,7 @@ const translations = {
     pending: 'Тексерілуде',
     rejected: 'Қабылданбаған',
     online: 'Желіде',
+    yesterday: 'Кеше',
     chatOpened: 'Чат ашық',
     translation: 'Аударма',
     message: 'Хабар...',
@@ -1988,6 +1990,7 @@ const translations = {
     pending: '审核中',
     rejected: '已拒绝',
     online: '在线',
+    yesterday: '昨天',
     chatOpened: '聊天已开启',
     translation: '翻译',
     message: '消息...',
@@ -3083,7 +3086,7 @@ const translations = {
     openContact: 'Open contact', contactOpened: 'Contact opened',
     freeForEarly: 'Free for early users',
     verified: 'Verified', pending: 'Pending', rejected: 'Rejected',
-    online: 'Online', chatOpened: 'Chat opened', translation: 'Translation', message: 'Message...',
+    online: 'Online', yesterday: 'Yesterday', chatOpened: 'Chat opened', translation: 'Translation', message: 'Message...',
     myTrips: 'My trips', inTransit: 'In transit', completed: 'Completed',
     current: 'Current', update: 'Update', tripDone: 'Trip completed!', leaveReview: 'Leave review...',
     st1: 'Departed', st2: 'Loading', st3: 'Border crossing', st4: 'Customs · Inspection', st5: 'Border passed', st6: 'Arrived · Unloading',

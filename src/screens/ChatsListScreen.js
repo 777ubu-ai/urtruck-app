@@ -109,6 +109,25 @@ export default function ChatsListScreen({ navigation, route }) {
     // через displayName.prettifyPartnerName всё технические имена
     // подменяются на переводимый fallback "Собеседник".
     const displayName = prettifyPartnerName(item.partner_name, item.partner_id, t);
+    // PR-C2 (chat list UX): когда в комнате есть непрочитанные сообщения,
+    // имя и preview должны быть жирным шрифтом — как в WhatsApp/Telegram.
+    // Раньше визуально все room rows смотрелись одинаково и пользователь
+    // не понимал где новое.
+    const hasUnread = (item.unread || 0) > 0;
+    // PR-C2: время. Backend пишет last_at как 'YYYY-MM-DD HH:MM:SS'.
+    // Если сегодня — показываем "HH:MM", иначе "DD.MM" или "Вчера".
+    const formatLastAt = (s) => {
+      if (!s || typeof s !== 'string' || s.length < 10) return '';
+      const [datePart, timePart = ''] = s.split(/[ T]/);
+      const today = new Date();
+      const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      const ydate = new Date(today); ydate.setDate(ydate.getDate() - 1);
+      const yesterdayIso = `${ydate.getFullYear()}-${String(ydate.getMonth() + 1).padStart(2, '0')}-${String(ydate.getDate()).padStart(2, '0')}`;
+      if (datePart === todayIso) return timePart.slice(0, 5);
+      if (datePart === yesterdayIso) return t('yesterday') || 'Вчера';
+      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(datePart);
+      return m ? `${m[3]}.${m[2]}` : datePart;
+    };
     return (
     <TouchableOpacity
       style={s.row}
@@ -122,12 +141,12 @@ export default function ChatsListScreen({ navigation, route }) {
         <Text style={s.avatarIcon}>💬</Text>
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={s.name} numberOfLines={1}>{displayName}</Text>
-        <Text style={s.desc} numberOfLines={1}>{item.last_message || '…'}</Text>
+        <Text style={[s.name, hasUnread && { fontWeight: '900' }]} numberOfLines={1}>{displayName}</Text>
+        <Text style={[s.desc, hasUnread && { color: v1.text, fontWeight: '700' }]} numberOfLines={1}>{item.last_message || '…'}</Text>
       </View>
       <View style={{ alignItems: 'flex-end', gap: 4 }}>
-        <Text style={s.time}>{(item.last_at || '').slice(11, 16)}</Text>
-        {item.unread > 0 ? (
+        <Text style={s.time}>{formatLastAt(item.last_at)}</Text>
+        {hasUnread ? (
           <View style={s.badge}><Text style={s.badgeText}>{item.unread > 9 ? '9+' : item.unread}</Text></View>
         ) : null}
       </View>
