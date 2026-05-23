@@ -10,6 +10,7 @@ import { useToast } from '../components/Toast';
 import { compressImage } from '../utils/imageCompress';
 import { prettifyPartnerName, partnerInitial } from '../utils/displayName';
 import { chatAPI } from '../utils/chatAPI';
+import { notifyChatRead } from '../utils/unreadEvents';
 import { useAuth } from '../utils/AuthContext';
 import { voice } from '../utils/voiceRecorder';
 import QuickPhrases from '../components/QuickPhrases';
@@ -169,6 +170,16 @@ export default function ChatScreen({ navigation, route }) {
     if (!roomId) return;
     const iv = setInterval(() => loadMessages(roomId), 3000);
     return () => clearInterval(iv);
+  }, [roomId]);
+
+  // PR-C2 (Task 2 unified badge): notify BottomNav когда чат открылся
+  // (backend GET /messages автоматически делает is_read=1; нам нужно
+  // только сказать BottomNav поллить unread заново) и когда экран
+  // закрывается. Без этого badge висит до следующего 30-сек poll.
+  useEffect(() => {
+    if (!roomId) return;
+    notifyChatRead();
+    return () => notifyChatRead();
   }, [roomId]);
 
   const sendMessage = async (text) => {

@@ -31,6 +31,7 @@ import { useTheme } from '../../../utils/ThemeContext';
 import { useAuth } from '../../../utils/AuthContext';
 import { useI18n } from '../../../utils/useI18n';
 import { chatAPI } from '../../../utils/chatAPI';
+import { subscribeChatRead } from '../../../utils/unreadEvents';
 // Phase 2A: единая палитра — оранжевый акцент и серый inactive,
 // независимо от роли. Раньше driver получал blue, client — yellow;
 // для B2B-логистики единый orange выглядит как взрослая платформа.
@@ -95,10 +96,15 @@ export default function BottomNav({ state, navigation }) {
     const sub = AppState.addEventListener('change', (next) => {
       if (next === 'active') fetchUnread();
     });
+    // PR-C2 (Task 2 unified badge): mgновенный re-fetch когда юзер
+    // прочитал чат — без него badge висит до следующего 30-сек poll.
+    // ChatScreen вызывает notifyChatRead() на mount и unmount.
+    const unsub = subscribeChatRead(fetchUnread);
     return () => {
       mounted = false;
       clearInterval(pollTimer.current);
       sub?.remove?.();
+      unsub?.();
     };
   }, [hasToken]);
 
