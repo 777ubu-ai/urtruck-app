@@ -88,15 +88,24 @@ export default function ProfileScreen({ navigation, route }) {
     fetchProfile();
   }, [fetchProfile]));
 
-  // HOT2-007: "Мои рейсы/грузы" — первый выделенный пункт
-  const primary = {
-    icon: isDriver ? '🚛' : '📦',
-    label: isDriver ? t('menu_my_trips') : t('menu_my_cargos'),
-    sub: isDriver ? t('menu_my_trips_sub') : t('menu_my_cargos_sub'),
-    screen: 'MyTripsList',
-    featured: true,
-  };
+  // PR-C2 (Task 4): primary card «Мои рейсы/Мои грузы» убрана —
+  // дублирует MyWork tab в BottomNav. Освободившееся место занимает
+  // CargoRuqsat info-страница (см. ниже в menuItems).
+  // HOT2-007 fallback: если кому-то понадобится вернуть кнопку быстрого
+  // доступа из Profile — uncomment блок ниже + JSX между HOT2-007 и
+  // menuItems map.
+  // const primary = {
+  //   icon: isDriver ? '🚛' : '📦',
+  //   label: isDriver ? t('menu_my_trips') : t('menu_my_cargos'),
+  //   sub: isDriver ? t('menu_my_trips_sub') : t('menu_my_cargos_sub'),
+  //   screen: 'MyTripsList',
+  //   featured: true,
+  // };
   const menuItems = [
+    // PR-C2 (Task 4): CargoRuqsat info-page — электронная очередь на
+    // границе. Featured вверху списка чтобы привлечь внимание к
+    // ключевой будущей фиче.
+    { icon: '🚧', label: t('profile_cargoruqsat_title'), sub: t('profile_cargoruqsat_subtitle'), screen: 'CargoRuqsatInfo' },
     { icon: '💬', label: t('chatsSection'), value: '→', screen: 'ChatsList' },
     { icon: '⭐', label: t('myReviews'), value: '→', screen: 'Reviews' },
     { icon: '✏️', label: t('editProfile'), value: '→', screen: 'EditProfile' },
@@ -137,20 +146,8 @@ export default function ProfileScreen({ navigation, route }) {
           {isDriver && <Text style={s.ratingText}>★ {profile.rating || 5.0} · {profile.reviews_count || 0}</Text>}
         </View>
 
-        {/* HOT2-007: Основная кнопка — Мои рейсы / Мои грузы */}
-        <TouchableOpacity
-          style={[s.primaryMenu, { borderColor: accent }]}
-          onPress={() => navigation.navigate(primary.screen, { role, initialTab: 'my' })}
-          activeOpacity={0.85}
-        >
-          <View style={[s.primaryMenuBg, { backgroundColor: accent }]} />
-          <Text style={s.primaryMenuIcon}>{primary.icon}</Text>
-          <View style={{ flex: 1 }}>
-            <Text style={s.primaryMenuLabel}>{primary.label}</Text>
-            <Text style={s.primaryMenuSub}>{primary.sub}</Text>
-          </View>
-          <Text style={s.primaryMenuArrow}>→</Text>
-        </TouchableOpacity>
+        {/* PR-C2 (Task 4): primary «Мои грузы/Мои рейсы» card удалена —
+            дублировала MyWork tab в BottomNav. */}
 
         {menuItems.map(item => (
           <TouchableOpacity
@@ -159,8 +156,11 @@ export default function ProfileScreen({ navigation, route }) {
             onPress={() => item.screen && navigation.navigate(item.screen, { role })}
           >
             <Text style={s.menuIcon}>{item.icon}</Text>
-            <Text style={[s.menuLabel, { color: theme.text }]}>{item.label}</Text>
-            <Text style={[s.menuValue, { color: theme.textSecondary }]}>{item.value}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[s.menuLabel, { color: theme.text }]}>{item.label}</Text>
+              {item.sub ? <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 2 }}>{item.sub}</Text> : null}
+            </View>
+            <Text style={[s.menuValue, { color: theme.textSecondary }]}>{item.value || '→'}</Text>
           </TouchableOpacity>
         ))}
 

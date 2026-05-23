@@ -43,6 +43,7 @@ import QueueScreen from '../screens/QueueScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
 import StatsScreen from '../screens/StatsScreen';
 import EditProfileScreen from '../screens/EditProfileScreen';
+import CargoRuqsatInfoScreen from '../screens/CargoRuqsatInfoScreen';
 import SecurityScreen from '../screens/SecurityScreen';
 import TripDetail from '../screens/TripDetail';
 import EditTripScreen from '../screens/EditTripScreen';
@@ -147,6 +148,7 @@ export default function AppNavigator() {
         <Stack.Screen name="ChatsList" component={ChatsListScreen} />
         <Stack.Screen name="MyTripsList" component={MyTripsScreen} />
         <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+        <Stack.Screen name="CargoRuqsatInfo" component={CargoRuqsatInfoScreen} />
         <Stack.Screen name="TripDetail" component={TripDetail} />
         <Stack.Screen name="EditTrip" component={EditTripScreen} />
         <Stack.Screen name="CreateTrip" component={CreateTripScreen} />
@@ -202,6 +204,7 @@ export default function AppNavigator() {
           <Stack.Screen name="Notifications" component={NotificationsScreen} />
           <Stack.Screen name="Stats" component={StatsScreen} />
           <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+          <Stack.Screen name="CargoRuqsatInfo" component={CargoRuqsatInfoScreen} />
           <Stack.Screen name="Security" component={SecurityScreen} />
           <Stack.Screen name="TripDetail" component={TripDetail} />
           <Stack.Screen name="EditTrip" component={EditTripScreen} />
