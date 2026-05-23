@@ -122,21 +122,30 @@ def _send_web(user_id: str, title: str, body: str, data: dict, url: str) -> int:
 
 
 # ───────────────────────── Native Push (Expo / FCM) ─────────────────────────
-def _send_expo(tokens: list[str], title: str, body: str, data: dict) -> int:
+def _send_expo(tokens: list[str], title: str, body: str, data: dict, badge: Optional[int] = None) -> int:
     """Отправка через Expo Push Service — работает для Android(FCM) и iOS(APNs).
     Токены должны начинаться с 'ExponentPushToken[...]' или 'ExpoPushToken[...]'.
+
+    PR-C2 (P0-2 app icon badge): добавлен optional `badge` параметр.
+    Когда iOS получает push payload с `badge: N`, APNs автоматически
+    устанавливает красный кружок с цифрой на иконке UrTruck на home
+    screen. Без этого поля badge не появляется даже если notification
+    permissions включены. Expo Push Service пробрасывает badge в APNs
+    aps payload как-is.
     """
     if not tokens:
         return 0
-    messages = [{
-        "to": t,
+    msg_base = {
         "title": title,
         "body": body,
         "data": data,
         "sound": "default",
         "priority": "high",
         "channelId": "default",
-    } for t in tokens]
+    }
+    if badge is not None:
+        msg_base["badge"] = int(badge)
+    messages = [{**msg_base, "to": t} for t in tokens]
 
     headers = {"Content-Type": "application/json", "Accept": "application/json"}
     if EXPO_TOKEN:
@@ -189,7 +198,7 @@ def _send_fcm(tokens: list[str], title: str, body: str, data: dict) -> int:
     return sent
 
 
-def _send_native(user_id: str, title: str, body: str, data: dict) -> int:
+def _send_native(user_id: str, title: str, body: str, data: dict, badge: Optional[int] = None) -> int:
     tokens = _native_tokens(user_id)
     if not tokens:
         return 0
@@ -199,7 +208,7 @@ def _send_native(user_id: str, title: str, body: str, data: dict) -> int:
 
     sent = 0
     if expo_tokens:
-        sent += _send_expo(expo_tokens, title, body, data)
+        sent += _send_expo(expo_tokens, title, body, data, badge=badge)
     if fcm_tokens:
         sent += _send_fcm(fcm_tokens, title, body, data)
 
@@ -208,15 +217,48 @@ def _send_native(user_id: str, title: str, body: str, data: dict) -> int:
     return sent
 
 
+def _compute_recipient_badge(user_id: str) -> int:
+    """PR-C2 (P0-2): unread count для получателя — на момент отправки.
+    iOS APNs использует это число для красного кружка на иконке app.
+    Считаем сумму непрочитанных chat-сообщений (включая только что
+    отправленное — но оно будет +1 как раз). Если запрос упадёт — 0,
+    badge не будет (приемлемо).
+    """
+    try:
+        with get_conn() as c:
+            row = c.execute(
+                "SELECT COUNT(*) FROM chat_messages m "
+                "JOIN chat_rooms r ON r.id = m.room_id "
+                "WHERE (r.participant_1 = ? OR r.participant_2 = ?) "
+                "AND m.sender_id != ? AND m.is_read = 0",
+                (user_id, user_id, user_id),
+            ).fetchone()
+            return int(row[0]) if row else 0
+    except Exception:
+        return 0
+
+
 # ───────────────────────── Public API ─────────────────────────
 def send(user_id: str, title: str, body: str,
          kind: str = "info", data: Optional[dict] = None, url: str = "/") -> dict:
-    """Единый sender. Возвращает {'web': N, 'native': N, 'total': N}."""
+    """Единый sender. Возвращает {'web': N, 'native': N, 'total': N}.
+
+    PR-C2 (P0-2 app icon badge): для chat-kind отправок (kind='chat'
+    или kind='info' с data.type='chat_message') вычисляем badge =
+    unread count получателя. На iOS APNs автоматически рисует
+    красный кружок на иконке. Для остальных kind (например 'bid',
+    'system') badge не ставим — они не должны накручивать счётчик
+    на иконке как chat.
+    """
     if not user_id:
         return {"web": 0, "native": 0, "total": 0}
 
     data = data or {}
     data = {**data, "kind": kind, "url": url}
+
+    badge = None
+    if kind == "chat" or data.get("type") == "chat_message":
+        badge = _compute_recipient_badge(user_id)
 
     try:
         web = _send_web(user_id, title, body, data, url)
@@ -224,7 +266,7 @@ def send(user_id: str, title: str, body: str,
         log.exception("web push fatal")
         web = 0
     try:
-        native = _send_native(user_id, title, body, data)
+        native = _send_native(user_id, title, body, data, badge=badge)
     except Exception as e:
         log.exception("native push fatal")
         native = 0

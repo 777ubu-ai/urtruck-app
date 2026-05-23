@@ -160,9 +160,21 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
         c.execute("UPDATE chat_rooms SET last_message = ?, last_at = CURRENT_TIMESTAMP WHERE id = ?", (preview, room_id))
 
     # Push получателю
+    # PR-C2 (P0-2): kind='chat' — push_sender вычислит unread badge
+    # для iOS APNs (красный кружок на иконке UrTruck на home screen).
+    # data.type='chat_message' позволит фронту в onNotificationReceived
+    # отличить chat push от bid push и не дублировать banner если
+    # пользователь сейчас открыл эту же комнату.
     try:
         sender_name = user.get("full_name") or user.get("phone") or "Пользователь"
-        send_to_user(body.to_user_id, f"💬 {sender_name}", preview, url="/chat")
+        send_to_user(
+            body.to_user_id,
+            f"💬 {sender_name}",
+            preview,
+            url=f"/chats/{room_id}",
+            kind="chat",
+            data={"type": "chat_message", "room_id": room_id},
+        )
     except Exception:
         pass
 
