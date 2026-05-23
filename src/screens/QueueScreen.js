@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../utils/ThemeContext';
+import { useI18n } from '../utils/useI18n';
 import {v1Colors, useV1Colors} from '../theme/designV1';
 import { API_BASE } from '../config/env';
 
@@ -13,6 +14,7 @@ const STATUS_LABELS = { green: 'Свободно', yellow: 'Умеренно', r
 export default function QueueScreen({ navigation }) {
   const v1 = useV1Colors();
   const { theme } = useTheme();
+  const { t } = useI18n();
   const [borders, setBorders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
@@ -46,7 +48,7 @@ export default function QueueScreen({ navigation }) {
         <TouchableOpacity onPress={() => navigation.goBack()} style={s.back}>
           <Text style={[s.backText, { color: theme.text }]}>‹</Text>
         </TouchableOpacity>
-        <Text style={[s.headerTitle, { color: theme.text }]}>🛃 Очереди на границах</Text>
+        <Text style={[s.headerTitle, { color: theme.text }]}>{t('border_queues_title')}</Text>
         <View style={{ width: 44 }} />
       </View>
 
@@ -86,11 +88,11 @@ export default function QueueScreen({ navigation }) {
               <View style={s.stats}>
                 <View style={s.stat}>
                   <Text style={[s.statNum, { color: theme.text }]}>{b.trucks_in_queue}</Text>
-                  <Text style={[s.statLabel, { color: theme.textMuted }]}>машин</Text>
+                  <Text style={[s.statLabel, { color: theme.textMuted }]}>{t('vehicles_label')}</Text>
                 </View>
                 <View style={s.stat}>
                   <Text style={[s.statNum, { color: col }]}>{b.estimated_wait_hours}ч</Text>
-                  <Text style={[s.statLabel, { color: theme.textMuted }]}>ожидание</Text>
+                  <Text style={[s.statLabel, { color: theme.textMuted }]}>{t('waiting_label')}</Text>
                 </View>
                 <View style={s.stat}>
                   <Text style={[s.statNum, { color: theme.textMuted, fontSize: 13 }]}>{b.name_en}</Text>
@@ -106,7 +108,7 @@ export default function QueueScreen({ navigation }) {
         })}
 
         {!loading && borders.length === 0 && (
-          <Text style={{ color: theme.textMuted, textAlign: 'center', marginTop: 40 }}>Нет данных</Text>
+          <Text style={{ color: theme.textMuted, textAlign: 'center', marginTop: 40 }}>{t('no_data')}</Text>
         )}
       </ScrollView>
     </SafeAreaView>

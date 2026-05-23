@@ -131,7 +131,7 @@ export default function RouteMap({ from, to, transit, liveCoord, height = 200 })
           allowFullScreen
         />
         <TouchableOpacity style={[s.openBtn, { backgroundColor: 'rgba(255,204,0,0.95)' }]} onPress={openYandex}>
-          <Text style={s.openBtnText}>📍 Открыть в Яндекс</Text>
+          <Text style={s.openBtnText}>{t('yandex_maps_open')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -143,7 +143,7 @@ export default function RouteMap({ from, to, transit, liveCoord, height = 200 })
       <Text style={{ fontSize: 32 }}>🗺️</Text>
       <Text style={[s.placeholderText, { color: theme.textSecondary }]}>{from} → {to}</Text>
       <View style={s.placeholderBtn}>
-        <Text style={s.placeholderBtnText}>📍 Яндекс.Карты</Text>
+        <Text style={s.placeholderBtnText}>{t('yandex_maps')}</Text>
       </View>
     </TouchableOpacity>
   );

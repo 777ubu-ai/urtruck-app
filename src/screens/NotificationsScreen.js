@@ -6,6 +6,7 @@ import { notificationsAPI } from '../utils/notificationsAPI';
 import {v1Colors, useV1Colors, v1Radius, v1AccentFor} from '../theme/designV1';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
 import { useAuth } from '../utils/AuthContext';
+import { useI18n } from '../utils/useI18n';
 
 // Notifications — design v1 reskin. Logic preserved: notificationsAPI.list,
 // markAllRead, per-item read. Only the visual layer follows v1 tokens.
@@ -47,6 +48,7 @@ function parseNotifUrl(url) {
 export default function NotificationsScreen({ navigation }) {
   const { session } = useAuth();
   const role = session?.user?.role || 'driver';
+  const { t } = useI18n();
   const v1 = useV1Colors();
   const s = React.useMemo(() => StyleSheet.create({
 
@@ -171,10 +173,10 @@ export default function NotificationsScreen({ navigation }) {
     <SafeAreaView style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']}>
       <BrandBarWithShare onBack={() => navigation.goBack()} accent={accent.main} />
       <View style={s.titleRow}>
-        <Text style={s.titleHero}>🔔 Уведомления</Text>
+        <Text style={s.titleHero}>{t('notifications_title')}</Text>
         {items.some(i => !i.is_read) ? (
           <TouchableOpacity onPress={markAllRead}>
-            <Text style={[s.markAll, { color: accent.main }]}>Прочитать все</Text>
+            <Text style={[s.markAll, { color: accent.main }]}>{t('notifications_mark_all_read')}</Text>
           </TouchableOpacity>
         ) : null}
       </View>
@@ -189,7 +191,7 @@ export default function NotificationsScreen({ navigation }) {
           !loading ? (
             <View style={{ alignItems: 'center', paddingVertical: 60 }}>
               <Text style={{ fontSize: 48, marginBottom: 10 }}>🔔</Text>
-              <Text style={{ color: v1.textMuted }}>Нет уведомлений</Text>
+              <Text style={{ color: v1.textMuted }}>{t('notifications_empty')}</Text>
             </View>
           ) : null
         }

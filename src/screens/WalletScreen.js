@@ -106,7 +106,7 @@ export default function WalletScreen({ route }) {
         {/* 💱 Курсы валют (NEW — ниже Premium, выше способов оплаты) */}
         <View style={[s.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <View style={s.fxHeader}>
-            <Text style={[s.sectionTitle, { color: theme.textMuted }]}>💱 Курсы валют</Text>
+            <Text style={[s.sectionTitle, { color: theme.textMuted }]}>{t('fx_rates_title')}</Text>
             <Text style={[s.fxUpdate, { color: theme.textMuted }]}>
               {fxLoading ? '...' : `Обновлено ${updateStr}`}
             </Text>
@@ -131,7 +131,7 @@ export default function WalletScreen({ route }) {
             </View>
           )}
           {fx?.source === 'fallback' && (
-            <Text style={[s.fxFallback, { color: theme.textMuted }]}>⚠ Офлайн · кэшированные курсы</Text>
+            <Text style={[s.fxFallback, { color: theme.textMuted }]}>{t('fx_offline_cached')}</Text>
           )}
         </View>
 

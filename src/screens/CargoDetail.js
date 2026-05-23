@@ -286,9 +286,9 @@ export default function CargoDetail({ navigation, route }) {
       navigation.goBack();
     };
     if (Platform.OS === 'web') {
-      if (window.confirm('Удалить груз?')) doDel();
+      if (window.confirm(t('delete_cargo_q'))) doDel();
     } else {
-      Alert.alert('Удалить груз?', '', [{ text: 'Отмена' }, { text: 'Удалить', style: 'destructive', onPress: doDel }]);
+      Alert.alert(t('delete_cargo_q'), '', [{ text: t('cancel') }, { text: t('delete'), style: 'destructive', onPress: doDel }]);
     }
   };
 
@@ -700,8 +700,8 @@ export default function CargoDetail({ navigation, route }) {
       {dealStatus === 'delivered' && (
         <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
           <View style={[s.paymentBlock, { backgroundColor: theme.card, borderColor: '#F59E0B' }]}>
-            <Text style={{ color: '#F59E0B', fontSize: 13, fontWeight: '700' }}>💰 Ожидается оплата</Text>
-            <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 4 }}>Договоритесь об оплате в чате. Наличные, перевод или по договору.</Text>
+            <Text style={{ color: '#F59E0B', fontSize: 13, fontWeight: '700' }}>{t('payment_pending_title')}</Text>
+            <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 4 }}>{t('payment_pending_desc')}</Text>
           </View>
         </View>
       )}
@@ -753,7 +753,7 @@ export default function CargoDetail({ navigation, route }) {
       )}
       {dealStatus === 'delivered' && reviewSent && (
         <View style={{ paddingHorizontal: 16, paddingBottom: 8, alignItems: 'center' }}>
-          <Text style={{ color: '#22C55E', fontSize: 14, fontWeight: '600' }}>✓ Спасибо за оценку!</Text>
+          <Text style={{ color: '#22C55E', fontSize: 14, fontWeight: '600' }}>{t('thanks_for_review')}</Text>
         </View>
       )}
       {/* Legacy "Open chat with driver" button removed: deal-block above

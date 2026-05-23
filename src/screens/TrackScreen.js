@@ -129,7 +129,7 @@ export default function TrackScreen({ navigation, route }) {
             // Без согласия — закрытый блок
             <View style={[s.lockedMap, { backgroundColor: theme.card, borderColor: theme.border }]}>
               <Text style={{ fontSize: 36 }}>🔒</Text>
-              <Text style={[s.lockedTitle, { color: theme.text }]}>Карта недоступна</Text>
+              <Text style={[s.lockedTitle, { color: theme.text }]}>{t('map_unavailable')}</Text>
               <Text style={[s.lockedDesc, { color: theme.textMuted }]}>
                 {isDriver
                   ? 'Карта станет доступной после вашего согласия на трекинг'
@@ -158,19 +158,19 @@ export default function TrackScreen({ navigation, route }) {
               style={[s.gpsBtn, { backgroundColor: accent }]}
               onPress={() => { requestTracking(trip.id, 'client'); toast('📍 Запрос отправлен водителю', 'info'); }}
             >
-              <Text style={s.gpsBtnText}>📍 Запросить отслеживание</Text>
+              <Text style={s.gpsBtnText}>{t('track_request')}</Text>
             </TouchableOpacity>
           )}
           {!isDriver && trip?.tracking_request === 'pending' && (
             <View style={[s.pendingBox, { backgroundColor: '#F59E0B20', borderColor: '#F59E0B' }]}>
-              <Text style={s.pendingText}>⏳ Ждём ответа от водителя...</Text>
+              <Text style={s.pendingText}>{t('track_pending')}</Text>
             </View>
           )}
 
           {/* Кнопки согласия — для водителя */}
           {isDriver && trip?.tracking_request === 'pending' && (
             <View style={[s.permissionBox, { backgroundColor: '#F59E0B20', borderColor: '#F59E0B' }]}>
-              <Text style={[s.permissionTitle, { color: '#F59E0B' }]}>📍 Запрос на трекинг</Text>
+              <Text style={[s.permissionTitle, { color: '#F59E0B' }]}>{t('track_request_title')}</Text>
               <Text style={[s.permissionDesc, { color: theme.textSecondary }]}>
                 Клиент просит включить GPS-трекинг. Разрешить отслеживание вашего местоположения?
               </Text>
@@ -179,13 +179,13 @@ export default function TrackScreen({ navigation, route }) {
                   style={[s.permBtn, { backgroundColor: '#EF4444' }]}
                   onPress={() => { respondTracking(trip.id, false); toast('❌ Трекинг отклонён', 'info'); }}
                 >
-                  <Text style={s.permBtnText}>❌ Отклонить</Text>
+                  <Text style={s.permBtnText}>{t('decline_btn')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[s.permBtn, { backgroundColor: '#22C55E' }]}
                   onPress={() => { respondTracking(trip.id, true); toast('✅ Трекинг разрешён', 'success'); }}
                 >
-                  <Text style={s.permBtnText}>✅ Разрешить</Text>
+                  <Text style={s.permBtnText}>{t('allow_btn')}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -196,18 +196,18 @@ export default function TrackScreen({ navigation, route }) {
             <>
               {tracking?.isActive ? (
                 <TouchableOpacity style={[s.gpsBtn, { backgroundColor: '#EF4444' }]} onPress={onStopTracking}>
-                  <Text style={s.gpsBtnText}>🛑 Остановить GPS-трекинг</Text>
+                  <Text style={s.gpsBtnText}>{t('track_stop_gps')}</Text>
                 </TouchableOpacity>
               ) : (
                 <TouchableOpacity style={[s.gpsBtn, { backgroundColor: '#22C55E' }]} onPress={onStartTracking}>
-                  <Text style={s.gpsBtnText}>📍 Включить GPS</Text>
+                  <Text style={s.gpsBtnText}>{t('track_enable_gps')}</Text>
                 </TouchableOpacity>
               )}
               <TouchableOpacity
                 style={[s.gpsBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#EF4444', marginTop: 6 }]}
                 onPress={() => { stopTracking(); stopTrackingPermission(trip.id); toast('🔒 Отслеживание выключено', 'info'); }}
               >
-                <Text style={[s.gpsBtnText, { color: '#EF4444' }]}>🔒 Полностью выключить отслеживание</Text>
+                <Text style={[s.gpsBtnText, { color: '#EF4444' }]}>{t('track_disable_all')}</Text>
               </TouchableOpacity>
             </>
           )}

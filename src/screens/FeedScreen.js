@@ -786,9 +786,9 @@ export default function FeedScreen({ navigation, route }) {
       <BottomSheet visible={activeFilter === 'date'} onClose={closeFilter} title={`📅 ${t('filter_date')}`}>
         <View testID="filter-date-sheet">
           <Text style={[s.filterSectionLabel, { color: theme.textMuted }]}>{t('filter_date_from')}</Text>
-          <DatePicker value={dateFrom} onChange={setDateFrom} placeholder="ДД.ММ.ГГГГ" />
+          <DatePicker value={dateFrom} onChange={setDateFrom} placeholder={t('date_placeholder')} />
           <Text style={[s.filterSectionLabel, { color: theme.textMuted, marginTop: 12 }]}>{t('filter_date_to')}</Text>
-          <DatePicker value={dateTo} onChange={setDateTo} placeholder="ДД.ММ.ГГГГ" />
+          <DatePicker value={dateTo} onChange={setDateTo} placeholder={t('date_placeholder')} />
           <View style={s.filterActions}>
             <TouchableOpacity
               style={[s.filterActionBtn, { backgroundColor: v1.surface, borderColor: v1.border, borderWidth: 1 }]}

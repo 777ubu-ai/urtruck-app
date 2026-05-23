@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../utils/ThemeContext';
+import { useI18n } from '../utils/useI18n';
 import {v1Colors, useV1Colors} from '../theme/designV1';
 import { API_BASE } from '../config/env';
 
@@ -13,6 +14,7 @@ const COLOR_BADGE = { green: '#22C55E', yellow: '#F59E0B', red: '#EF4444' };
 
 export default function StatsScreen({ navigation }) {
   const v1 = useV1Colors();
+  const { t } = useI18n();
   const { theme } = useTheme();
   const [leaders, setLeaders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -35,7 +37,7 @@ export default function StatsScreen({ navigation }) {
         <TouchableOpacity onPress={() => navigation.goBack()} style={s.back}>
           <Text style={[s.backText, { color: theme.text }]}>‹</Text>
         </TouchableOpacity>
-        <Text style={[s.headerTitle, { color: theme.text }]}>🏆 Лучшие перевозчики</Text>
+        <Text style={[s.headerTitle, { color: theme.text }]}>{t('leaderboard_title')}</Text>
         <View style={{ width: 44 }} />
       </View>
 
@@ -78,7 +80,7 @@ export default function StatsScreen({ navigation }) {
               </View>
               <View style={s.score}>
                 <Text style={[s.scoreNum, { color: col }]}>{d.combined_score}</Text>
-                <Text style={[s.scoreLabel, { color: theme.textMuted }]}>балл</Text>
+                <Text style={[s.scoreLabel, { color: theme.textMuted }]}>{t('score_label')}</Text>
               </View>
             </View>
           );
