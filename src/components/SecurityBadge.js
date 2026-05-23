@@ -2,10 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { useTheme } from '../utils/ThemeContext';
 import { securityAPI, COLOR_UI } from '../utils/security';
+import { useI18n } from '../utils/useI18n';
 
 // Бейдж скоринга 0-100 с цветовым кодом
 export default function SecurityBadge({ userId, phone, plate, compact = false }) {
   const { theme } = useTheme();
+  const { t } = useI18n();
   const [score, setScore] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -33,7 +35,7 @@ export default function SecurityBadge({ userId, phone, plate, compact = false })
     return (
       <View style={[s.wrap, { backgroundColor: theme.border, borderColor: theme.border }]}>
         <ActivityIndicator size="small" color={theme.textMuted} />
-        <Text style={[s.label, { color: theme.textMuted }]}>Проверка...</Text>
+        <Text style={[s.label, { color: theme.textMuted }]}>{t('security_checking')}</Text>
       </View>
     );
   }
@@ -42,7 +44,7 @@ export default function SecurityBadge({ userId, phone, plate, compact = false })
     return (
       <View style={[s.wrap, { backgroundColor: '#78716C20', borderColor: '#78716C' }]}>
         <Text style={s.score}>—</Text>
-        <Text style={[s.label, { color: theme.textMuted }]}>Не проверен</Text>
+        <Text style={[s.label, { color: theme.textMuted }]}>{t('security_unverified')}</Text>
       </View>
     );
   }

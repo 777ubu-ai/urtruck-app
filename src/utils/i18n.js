@@ -747,6 +747,7 @@ const translations = {
 
     // Chat
     online: 'Онлайн',
+    yesterday: 'Вчера',
     chatOpened: 'Чат открыт',
     translation: 'Перевод',
     message: 'Сообщение...',
@@ -1100,6 +1101,72 @@ const translations = {
     profile_v2_err_city: 'Укажите город',
     profile_v2_save_failed: 'Не удалось сохранить. Попробуйте ещё раз.',
 
+    // PR-C2 (i18n cleanup): ключи добавлены после автономного audit-а
+    // hardcoded строк по экранам (см. qa/I18N_AUDIT). RU остаётся
+    // источником истины; EN/KK/ZH добавлены в свои блоки.
+    offline_banner_text: 'Нет интернета · работаем из кэша',
+    notifications_title: '🔔 Уведомления',
+    notifications_mark_all_read: 'Прочитать все',
+    notifications_empty: 'Нет уведомлений',
+    leaderboard_title: '🏆 Лучшие перевозчики',
+    score_label: 'балл',
+    about_title: 'О проекте',
+    about_what_we_do: 'Что мы делаем',
+    about_numbers: 'Цифры',
+    about_contact: 'Связаться с нами',
+    payment_pending_title: '💰 Ожидается оплата',
+    payment_pending_desc: 'Договоритесь об оплате в чате. Наличные, перевод или по договору.',
+    thanks_for_review: '✓ Спасибо за оценку!',
+    fx_rates_title: '💱 Курсы валют',
+    fx_offline_cached: '⚠ Офлайн · кэшированные курсы',
+    map_unavailable: 'Карта недоступна',
+    track_request: '📍 Запросить отслеживание',
+    track_pending: '⏳ Ждём ответа от водителя...',
+    track_request_title: '📍 Запрос на трекинг',
+    decline_btn: '❌ Отклонить',
+    allow_btn: '✅ Разрешить',
+    track_stop_gps: '🛑 Остановить GPS-трекинг',
+    track_enable_gps: '📍 Включить GPS',
+    track_disable_all: '🔒 Полностью выключить отслеживание',
+    border_queues_title: '🛃 Очереди на границах',
+    vehicles_label: 'машин',
+    waiting_label: 'ожидание',
+    no_data: 'Нет данных',
+    rating_required: 'Выбери количество звёзд',
+    rating_comment_optional: 'Комментарий (необязательно)',
+    delete_cargo_q: 'Удалить груз?',
+    delete: 'Удалить',
+    date_placeholder: 'ДД.ММ.ГГГГ',
+
+    // PR-C2 (i18n hardcoded sweep): новые ключи для RouteMap,
+    // VerificationGate skip, RatingModal submit, SecurityBadge,
+    // PriceCalculator, и др.
+    not_now: 'Не сейчас',
+    yandex_maps_open: '📍 Открыть в Яндекс',
+    yandex_maps: '📍 Яндекс.Карты',
+    submit_review: 'Отправить отзыв',
+    security_checking: 'Проверка...',
+    security_unverified: 'Не проверен',
+    price_calc_title: '💰 Узнать цену',
+    price_calc_subtitle: 'Оцени стоимость перевозки до регистрации',
+    from_label: 'Откуда',
+    to_label: 'Куда',
+    weight_tons_label: 'Вес (тонн)',
+    popular_routes: 'Популярные маршруты',
+    register_cta: 'Зарегистрироваться и опубликовать',
+    // CargoRuqsat (Task 4)
+    profile_cargoruqsat_title: 'Электронная очередь',
+    profile_cargoruqsat_subtitle: 'CarGoRuqsat · скоро',
+    cargoruqsat_page_title: 'Электронная очередь на границе',
+    cargoruqsat_page_status: 'В разработке · ожидается в 2026',
+    cargoruqsat_page_what_title: 'Что это?',
+    cargoruqsat_page_what_body: 'CarGoRuqsat — государственная автоматизированная система электронной очереди для грузового транспорта при пересечении границы Казахстана. Поддерживает 50+ пунктов пропуска включая Достык-Алашанькоу, Нур Жолы-Хоргос, Калжат-Дулаты, Майкапчагай-Зимунай.',
+    cargoruqsat_page_benefits_title: 'Зачем это водителю?',
+    cargoruqsat_page_benefits_body: '• Бронирование слота в очереди прямо из UrTruck\n• Меньше простоев на границе\n• Автоматическая проверка документов\n• Прозрачная очередь без коррупции\n• Push-уведомление за час до подхода',
+    cargoruqsat_page_when_title: 'Когда появится?',
+    cargoruqsat_page_when_body: 'UrTruck получил официальное одобрение от АО «Информационно-учётный центр» на интеграцию через платформу Smart Bridge (сервис CargoRuqsatAppsServiceSync). Процесс сертификации информационной безопасности занимает 3-6 месяцев. Ожидаемый запуск — IV квартал 2026.',
+    cargoruqsat_page_open_official: 'Открыть официальный портал',
+
 },
 
   KK: {
@@ -1197,6 +1264,7 @@ const translations = {
     pending: 'Тексерілуде',
     rejected: 'Қабылданбаған',
     online: 'Желіде',
+    yesterday: 'Кеше',
     chatOpened: 'Чат ашық',
     translation: 'Аударма',
     message: 'Хабар...',
@@ -1890,6 +1958,67 @@ const translations = {
     profile_v2_err_city: 'Қаланы көрсетіңіз',
     profile_v2_save_failed: 'Сақтау сәтсіз. Қайта көріңіз.',
 
+    // PR-C2 (i18n cleanup) — казахские переводы
+    offline_banner_text: 'Интернет жоқ · кэштен жұмыс істеп жатырмыз',
+    notifications_title: '🔔 Хабарламалар',
+    notifications_mark_all_read: 'Барлығын оқу',
+    notifications_empty: 'Хабарламалар жоқ',
+    leaderboard_title: '🏆 Үздік тасымалдаушылар',
+    score_label: 'ұпай',
+    about_title: 'Жоба туралы',
+    about_what_we_do: 'Не істейміз',
+    about_numbers: 'Сандар',
+    about_contact: 'Бізбен байланысу',
+    payment_pending_title: '💰 Төлем күтілуде',
+    payment_pending_desc: 'Чатта төлем туралы келісіңіз. Қолма-қол ақша, аударым немесе шарт бойынша.',
+    thanks_for_review: '✓ Бағаңызға рахмет!',
+    fx_rates_title: '💱 Валюта бағамдары',
+    fx_offline_cached: '⚠ Офлайн · кэштелген бағамдар',
+    map_unavailable: 'Карта қолжетімсіз',
+    track_request: '📍 Бақылауды сұрау',
+    track_pending: '⏳ Жүргізушіден жауап күтудеміз...',
+    track_request_title: '📍 Бақылау сұранысы',
+    decline_btn: '❌ Бас тарту',
+    allow_btn: '✅ Рұқсат ету',
+    track_stop_gps: '🛑 GPS-бақылауды тоқтату',
+    track_enable_gps: '📍 GPS қосу',
+    track_disable_all: '🔒 Бақылауды толық өшіру',
+    border_queues_title: '🛃 Шекарадағы кезектер',
+    vehicles_label: 'машина',
+    waiting_label: 'күту',
+    no_data: 'Дерек жоқ',
+    rating_required: 'Жұлдыздар санын таңдаңыз',
+    rating_comment_optional: 'Пікір (міндетті емес)',
+    delete_cargo_q: 'Жүкті жою керек пе?',
+    delete: 'Жою',
+    date_placeholder: 'КК.АА.ЖЖЖЖ',
+
+    // PR-C2 — қазақша
+    not_now: 'Қазір емес',
+    yandex_maps_open: '📍 Яндексте ашу',
+    yandex_maps: '📍 Яндекс.Карталар',
+    submit_review: 'Пікір жіберу',
+    security_checking: 'Тексеру...',
+    security_unverified: 'Тексерілмеген',
+    price_calc_title: '💰 Бағаны білу',
+    price_calc_subtitle: 'Тіркеуге дейін тасымалдау құнын бағалаңыз',
+    from_label: 'Қайдан',
+    to_label: 'Қайда',
+    weight_tons_label: 'Салмақ (тонна)',
+    popular_routes: 'Танымал бағыттар',
+    register_cta: 'Тіркеліп жариялау',
+    profile_cargoruqsat_title: 'Электрондық кезек',
+    profile_cargoruqsat_subtitle: 'CarGoRuqsat · жақында',
+    cargoruqsat_page_title: 'Шекарадағы электрондық кезек',
+    cargoruqsat_page_status: 'Әзірленуде · 2026 жылы күтілуде',
+    cargoruqsat_page_what_title: 'Бұл не?',
+    cargoruqsat_page_what_body: 'CarGoRuqsat — Қазақстан шекарасынан өту кезінде жүк көлігі үшін мемлекеттік автоматтандырылған электрондық кезек жүйесі. Достық-Алашанькоу, Нұр Жолы-Хоргос, Қалжат-Дулаты, Майқапшағай-Зимунай қоса 50+ өткізу пункттерін қолдайды.',
+    cargoruqsat_page_benefits_title: 'Жүргізушіге не береді?',
+    cargoruqsat_page_benefits_body: '• UrTruck-тен тікелей кезек слотын брондау\n• Шекарадағы тұрып қалуы азаяды\n• Құжаттарды автоматты тексеру\n• Сыбайлас жемқорлықсыз ашық кезек\n• Бір сағат бұрын push-хабарлама',
+    cargoruqsat_page_when_title: 'Қашан пайда болады?',
+    cargoruqsat_page_when_body: 'UrTruck «Ақпараттық-есеп орталығы» АҚ-нан Smart Bridge платформасы (CargoRuqsatAppsServiceSync қызметі) арқылы интеграцияға ресми мақұлдау алды. Ақпараттық қауіпсіздік сертификаттау процесі 3-6 ай алады. Күтілетін іске қосылу — 2026 жылдың IV тоқсаны.',
+    cargoruqsat_page_open_official: 'Ресми порталды ашу',
+
 },
 
   ZH: {
@@ -1988,6 +2117,7 @@ const translations = {
     pending: '审核中',
     rejected: '已拒绝',
     online: '在线',
+    yesterday: '昨天',
     chatOpened: '聊天已开启',
     translation: '翻译',
     message: '消息...',
@@ -2654,6 +2784,66 @@ const translations = {
     profile_v2_err_city: '请输入城市',
     profile_v2_save_failed: '保存失败,请重试。',
 
+    // PR-C2 (i18n cleanup) — 简体中文翻译.
+    // Логистическая терминология для приграничных водителей КНР↔КЗ.
+    offline_banner_text: '无网络 · 使用缓存运行',
+    notifications_title: '🔔 通知',
+    notifications_mark_all_read: '全部标记已读',
+    notifications_empty: '暂无通知',
+    leaderboard_title: '🏆 优秀承运人',
+    score_label: '分',
+    about_title: '关于项目',
+    about_what_we_do: '我们的服务',
+    about_numbers: '数据',
+    about_contact: '联系我们',
+    payment_pending_title: '💰 等待付款',
+    payment_pending_desc: '请在聊天中商定付款方式：现金、转账或按合同结算。',
+    fx_rates_title: '💱 汇率',
+    fx_offline_cached: '⚠ 离线 · 使用缓存汇率',
+    map_unavailable: '地图不可用',
+    track_request: '📍 申请追踪',
+    track_pending: '⏳ 等待司机回复...',
+    track_request_title: '📍 追踪请求',
+    decline_btn: '❌ 拒绝',
+    allow_btn: '✅ 允许',
+    track_stop_gps: '🛑 停止 GPS 追踪',
+    track_enable_gps: '📍 开启 GPS',
+    track_disable_all: '🔒 完全关闭追踪',
+    border_queues_title: '🛃 边境口岸排队',
+    vehicles_label: '辆车',
+    waiting_label: '等待',
+    no_data: '暂无数据',
+    rating_required: '请选择星级',
+    rating_comment_optional: '评论(可选)',
+    delete_cargo_q: '删除货物?',
+    date_placeholder: '日.月.年',
+
+    // PR-C2 — 简体中文
+    not_now: '稍后',
+    yandex_maps_open: '📍 在 Yandex 地图打开',
+    yandex_maps: '📍 Yandex 地图',
+    submit_review: '提交评价',
+    security_checking: '检查中...',
+    security_unverified: '未验证',
+    price_calc_title: '💰 查询价格',
+    price_calc_subtitle: '注册前估算运输价格',
+    from_label: '起点',
+    to_label: '终点',
+    weight_tons_label: '重量(吨)',
+    popular_routes: '热门路线',
+    register_cta: '注册并发布',
+    profile_cargoruqsat_title: '边境电子排队',
+    profile_cargoruqsat_subtitle: 'CarGoRuqsat · 即将推出',
+    cargoruqsat_page_title: '边境电子排队系统',
+    cargoruqsat_page_status: '开发中 · 预计 2026 年推出',
+    cargoruqsat_page_what_title: '这是什么?',
+    cargoruqsat_page_what_body: 'CarGoRuqsat 是哈萨克斯坦国家自动化电子排队系统,用于货车跨境通关。支持 50 多个边境口岸,包括 Достык-Алашанькоу、Нур Жолы-Хоргос、Калжат-Дулаты、Майкапчагай-Зимунай。',
+    cargoruqsat_page_benefits_title: '司机的优势?',
+    cargoruqsat_page_benefits_body: '• 从 UrTruck 直接预约排队时段\n• 减少边境等待时间\n• 自动单据核验\n• 透明无腐败排队\n• 提前一小时推送通知',
+    cargoruqsat_page_when_title: '何时上线?',
+    cargoruqsat_page_when_body: 'UrTruck 已获得「信息计算中心」股份公司通过 Smart Bridge 平台(CargoRuqsatAppsServiceSync 服务)集成的官方批准。信息安全认证过程需要 3-6 个月。预计 2026 年第四季度上线。',
+    cargoruqsat_page_open_official: '打开官方门户',
+
 },
 
   EN: {
@@ -3083,7 +3273,7 @@ const translations = {
     openContact: 'Open contact', contactOpened: 'Contact opened',
     freeForEarly: 'Free for early users',
     verified: 'Verified', pending: 'Pending', rejected: 'Rejected',
-    online: 'Online', chatOpened: 'Chat opened', translation: 'Translation', message: 'Message...',
+    online: 'Online', yesterday: 'Yesterday', chatOpened: 'Chat opened', translation: 'Translation', message: 'Message...',
     myTrips: 'My trips', inTransit: 'In transit', completed: 'Completed',
     current: 'Current', update: 'Update', tripDone: 'Trip completed!', leaveReview: 'Leave review...',
     st1: 'Departed', st2: 'Loading', st3: 'Border crossing', st4: 'Customs · Inspection', st5: 'Border passed', st6: 'Arrived · Unloading',
@@ -3389,11 +3579,80 @@ const translations = {
     profile_v2_err_city: 'Specify the city',
     profile_v2_save_failed: 'Save failed. Please try again.',
 
+    // PR-C2 (i18n cleanup) — English translations.
+    offline_banner_text: 'No internet · running from cache',
+    notifications_title: '🔔 Notifications',
+    notifications_mark_all_read: 'Mark all as read',
+    notifications_empty: 'No notifications',
+    leaderboard_title: '🏆 Top carriers',
+    score_label: 'pts',
+    about_title: 'About',
+    about_what_we_do: 'What we do',
+    about_numbers: 'Numbers',
+    about_contact: 'Contact us',
+    payment_pending_title: '💰 Payment pending',
+    payment_pending_desc: 'Agree on payment in chat — cash, transfer, or by contract.',
+    fx_rates_title: '💱 Exchange rates',
+    fx_offline_cached: '⚠ Offline · cached rates',
+    map_unavailable: 'Map unavailable',
+    track_request: '📍 Request tracking',
+    track_pending: '⏳ Waiting for driver response...',
+    track_request_title: '📍 Tracking request',
+    decline_btn: '❌ Decline',
+    allow_btn: '✅ Allow',
+    track_stop_gps: '🛑 Stop GPS tracking',
+    track_enable_gps: '📍 Enable GPS',
+    track_disable_all: '🔒 Disable tracking completely',
+    border_queues_title: '🛃 Border queues',
+    vehicles_label: 'vehicles',
+    waiting_label: 'wait',
+    no_data: 'No data',
+    rating_required: 'Please select a star rating',
+    rating_comment_optional: 'Comment (optional)',
+    delete_cargo_q: 'Delete cargo?',
+    date_placeholder: 'DD.MM.YYYY',
+
+    // PR-C2 — English
+    not_now: 'Not now',
+    yandex_maps_open: '📍 Open in Yandex',
+    yandex_maps: '📍 Yandex Maps',
+    submit_review: 'Submit review',
+    security_checking: 'Checking...',
+    security_unverified: 'Unverified',
+    price_calc_title: '💰 Check price',
+    price_calc_subtitle: 'Estimate transport cost before signing up',
+    from_label: 'From',
+    to_label: 'To',
+    weight_tons_label: 'Weight (tons)',
+    popular_routes: 'Popular routes',
+    register_cta: 'Register and post',
+    profile_cargoruqsat_title: 'E-Queue at Border',
+    profile_cargoruqsat_subtitle: 'CarGoRuqsat · coming soon',
+    cargoruqsat_page_title: 'E-Queue at Border',
+    cargoruqsat_page_status: 'In development · expected in 2026',
+    cargoruqsat_page_what_title: 'What is it?',
+    cargoruqsat_page_what_body: 'CarGoRuqsat is the Kazakhstan state automated e-queue system for trucks crossing the border. Supports 50+ checkpoints including Dostyk-Alashankou, Nur Zholy-Khorgos, Kalzhat-Dulaty, Maikapchagay-Zimunai.',
+    cargoruqsat_page_benefits_title: 'Why drivers want this',
+    cargoruqsat_page_benefits_body: '• Book a queue slot directly from UrTruck\n• Less idle time at the border\n• Automatic document verification\n• Transparent queue, no bribes\n• Push notification one hour before your slot',
+    cargoruqsat_page_when_title: 'When?',
+    cargoruqsat_page_when_body: 'UrTruck has received official approval from the JSC "Information & Accounting Center" for integration via the Smart Bridge platform (CargoRuqsatAppsServiceSync). Information security certification takes 3-6 months. Expected launch — Q4 2026.',
+    cargoruqsat_page_open_official: 'Open official portal',
+
 },
 };
 
 import { storage } from './storage';
 import { Platform, NativeModules } from 'react-native';
+// PR-C2 (Task C auto-detect): expo-localization выдаёт надёжный locale
+// на iOS/Android — лучше чем NativeModules.SettingsManager.AppleLocale
+// (deprecated в новых RN). Лоадим лениво чтобы web-bundle не тащил
+// нативный модуль.
+let _Localization;
+function getLocalization() {
+  if (_Localization !== undefined) return _Localization;
+  try { _Localization = require('expo-localization'); } catch { _Localization = null; }
+  return _Localization;
+}
 
 const listeners = new Set();
 const KEY = 'ur_lang';
@@ -3422,32 +3681,55 @@ const LEGACY_LANG_FIX = {
 };
 
 // Sync detect at module load — best effort before async storage
+// PR-C2: default fallback на 'EN' вместо 'RU' — для пользователей с
+// неподдерживаемым языком устройства это даёт более универсальный first-run
+// experience. RU/KK/ZH юзеры всё равно попадают в свою локаль через alias.
 let currentLang = (() => {
   try {
     let code = '';
     if (typeof navigator !== 'undefined' && navigator.language) {
       code = navigator.language.toLowerCase();
     }
-    if (!code) return 'RU';
+    if (!code) return 'EN';
     const base = code.split('-')[0];
     if (LANG_ALIAS[code]) return LANG_ALIAS[code];
     if (LANG_ALIAS[base]) return LANG_ALIAS[base];
-    return 'RU'; // unsupported → RU
-  } catch { return 'RU'; }
+    return 'EN'; // unsupported → EN
+  } catch { return 'EN'; }
 })();
 
 function detectSystemLang() {
   let code;
   try {
-    if (Platform.OS === 'web' && typeof navigator !== 'undefined') {
-      code = (navigator.language || navigator.userLanguage || '').toLowerCase();
-    } else {
-      const locale =
-        NativeModules.SettingsManager?.settings?.AppleLocale ||
-        NativeModules.SettingsManager?.settings?.AppleLanguages?.[0] ||
-        NativeModules.I18nManager?.localeIdentifier ||
-        '';
-      code = locale.toLowerCase().replace('_', '-');
+    // PR-C2: предпочитаем expo-localization (Localization.getLocales() в
+    // SDK 52, или Localization.locale в legacy). Это работает на новых
+    // iOS / Android без NativeModules deprecation warnings.
+    if (Platform.OS !== 'web') {
+      const Loc = getLocalization();
+      if (Loc) {
+        try {
+          // SDK 52 API: getLocales() возвращает array of { languageTag, … }
+          const locales = Loc.getLocales?.();
+          if (Array.isArray(locales) && locales.length && locales[0].languageTag) {
+            code = String(locales[0].languageTag).toLowerCase();
+          }
+        } catch {}
+        if (!code && Loc.locale) {
+          code = String(Loc.locale).toLowerCase().replace('_', '-');
+        }
+      }
+    }
+    if (!code) {
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined') {
+        code = (navigator.language || navigator.userLanguage || '').toLowerCase();
+      } else {
+        const locale =
+          NativeModules.SettingsManager?.settings?.AppleLocale ||
+          NativeModules.SettingsManager?.settings?.AppleLanguages?.[0] ||
+          NativeModules.I18nManager?.localeIdentifier ||
+          '';
+        code = locale.toLowerCase().replace('_', '-');
+      }
     }
   } catch {
     code = '';
@@ -3460,7 +3742,9 @@ function detectSystemLang() {
   return null;
 }
 
-// Load saved language on start; если не выбран — авто из системы
+// Load saved language on start; если не выбран — авто из системы.
+// PR-C2: если detect ничего не нашёл — устанавливаем EN (универсальный
+// fallback для приграничных пользователей с экзотическими locale).
 (async () => {
   let saved = await storage.get(KEY);
   // Legacy fix-up: rewrite `KZ` → `KK`, `CN` → `ZH` for users
@@ -3476,6 +3760,9 @@ function detectSystemLang() {
     if (sys && translations[sys]) {
       currentLang = sys;
       storage.set(KEY, sys); // сохраняем выбор авто
+    } else if (!translations[currentLang]) {
+      currentLang = 'EN';
+      storage.set(KEY, 'EN');
     }
   }
   listeners.forEach(cb => cb(currentLang));

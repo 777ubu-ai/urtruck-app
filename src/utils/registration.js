@@ -9,6 +9,21 @@ const BASE = `${API_BASE}/register`;
 const TOKEN_KEY = 'ur_reg_token';
 const LEVEL_KEY = 'ur_verification_level';
 
+// PR-C2: см. marketAPI.normalizeDetail — те же причины. Backend
+// иногда возвращает detail как object (verification_required),
+// фронт пытается отрендерить его как <Text> → React error #31.
+function normalizeDetail(d, fallback) {
+  if (d == null) return fallback;
+  if (typeof d === 'string') return d;
+  if (typeof d === 'object') {
+    if (d.hint && typeof d.hint === 'string' && d.hint.length) return d.hint;
+    if (d.error && typeof d.error === 'string' && d.error.length) return d.error;
+    if (d.message && typeof d.message === 'string') return d.message;
+    try { return JSON.stringify(d); } catch { return fallback; }
+  }
+  return String(d);
+}
+
 export const regAPI = {
   // ─── Lazy registration ───
   async ensureGuest() {
@@ -83,7 +98,7 @@ export const regAPI = {
         ok: false,
         cooldown: true,
         cooldown_sec: cooldown || 60,
-        detail: data.detail || 'rate_limited',
+        detail: normalizeDetail(data.detail, 'rate_limited'),
       };
     }
     return data;
@@ -112,7 +127,7 @@ export const regAPI = {
         token: null,
         cooldown: true,
         cooldown_sec: cooldown || 60,
-        detail: data.detail || 'rate_limited',
+        detail: normalizeDetail(data.detail, 'rate_limited'),
       };
     }
     if (data.token) {
@@ -128,6 +143,25 @@ export const regAPI = {
 
   async clearToken() {
     return await storage.remove(TOKEN_KEY);
+  },
+
+  // PR-C1: GET /api/v1/users/me — расширенный профиль (name + city + about
+  // + vehicle). /register/me возвращает только full_name без city, поэтому
+  // AuthContext.refreshLevel читает оба endpoint'a и объединяет данные.
+  // Fail-tolerant: при 401/сети/таймауте возвращает null, чтобы провал
+  // не ронял auth-flow.
+  async profile() {
+    const token = await this.getToken();
+    if (!token) return null;
+    try {
+      const r = await fetch(`${API_BASE}/users/me`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (!r.ok) return null;
+      return await r.json();
+    } catch {
+      return null;
+    }
   },
 
   // Stage 50: PATCH /api/v1/users/me — сохраняем name/city из

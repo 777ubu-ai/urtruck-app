@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Linking, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../utils/ThemeContext';
+import { useI18n } from '../utils/useI18n';
 import {v1Colors, useV1Colors} from '../theme/designV1';
 
 const CONTACTS = [
@@ -20,6 +21,7 @@ const STATS = [
 export default function AboutScreen({ navigation }) {
   const v1 = useV1Colors();
   const { theme, isDark } = useTheme();
+  const { t } = useI18n();
   const accent = '#1A5C3C';
 
   return (
@@ -28,7 +30,7 @@ export default function AboutScreen({ navigation }) {
         <TouchableOpacity onPress={() => navigation.goBack()} style={s.back}>
           <Text style={[s.backText, { color: theme.text }]}>‹</Text>
         </TouchableOpacity>
-        <Text style={[s.headerTitle, { color: theme.text }]}>О проекте</Text>
+        <Text style={[s.headerTitle, { color: theme.text }]}>{t('about_title')}</Text>
         <View style={{ width: 44 }} />
       </View>
 
@@ -42,14 +44,14 @@ export default function AboutScreen({ navigation }) {
           </Text>
         </View>
 
-        <Text style={[s.section, { color: theme.text }]}>Что мы делаем</Text>
+        <Text style={[s.section, { color: theme.text }]}>{t('about_what_we_do')}</Text>
         <Text style={[s.body, { color: theme.textSecondary }]}>
           UrTruck — маркетплейс грузоперевозок для международных маршрутов.
           Соединяем грузоотправителей и перевозчиков напрямую, без посредников.
           Каждый водитель проходит проверку: ИИН, документы, liveness, blacklist-screening.
         </Text>
 
-        <Text style={[s.section, { color: theme.text }]}>Цифры</Text>
+        <Text style={[s.section, { color: theme.text }]}>{t('about_numbers')}</Text>
         <View style={s.statsGrid}>
           {STATS.map((st, i) => (
             <View key={i} style={[s.statCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
@@ -59,7 +61,7 @@ export default function AboutScreen({ navigation }) {
           ))}
         </View>
 
-        <Text style={[s.section, { color: theme.text }]}>Связаться с нами</Text>
+        <Text style={[s.section, { color: theme.text }]}>{t('about_contact')}</Text>
         {CONTACTS.map((c, i) => (
           <TouchableOpacity
             key={i}

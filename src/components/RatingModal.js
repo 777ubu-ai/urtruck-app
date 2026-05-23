@@ -58,7 +58,7 @@ export default function RatingModal({ visible, onClose, onSubmitted, targetId, t
   };
 
   const submit = async () => {
-    if (rating === 0) { toast('Выбери количество звёзд', 'error'); return; }
+    if (rating === 0) { toast(t('rating_required'), 'error'); return; }
     setLoading(true);
     try {
       const r = await reviewsAPI.create({
@@ -149,7 +149,7 @@ export default function RatingModal({ visible, onClose, onSubmitted, targetId, t
           {rating > 0 && (
             <TextInput
               style={[s.textarea, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border }]}
-              placeholder="Комментарий (необязательно)"
+              placeholder={t('rating_comment_optional')}
               placeholderTextColor={theme.textMuted}
               multiline
               value={text}
@@ -164,12 +164,12 @@ export default function RatingModal({ visible, onClose, onSubmitted, targetId, t
             disabled={rating === 0 || loading}
           >
             {loading ? <ActivityIndicator color="#FFF" /> : (
-              <Text style={s.submitText}>Отправить отзыв</Text>
+              <Text style={s.submitText}>{t('submit_review')}</Text>
             )}
           </TouchableOpacity>
 
           <TouchableOpacity onPress={onClose} style={s.skip}>
-            <Text style={[s.skipText, { color: theme.textMuted }]}>Не сейчас</Text>
+            <Text style={[s.skipText, { color: theme.textMuted }]}>{t('not_now')}</Text>
           </TouchableOpacity>
         </Animated.View>
       </Animated.View>

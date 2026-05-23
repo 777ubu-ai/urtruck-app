@@ -80,20 +80,20 @@ export default function PriceCalculator({ visible, onClose }) {
         ]}>
           <Pressable style={{ padding: 4 }}>
             <View style={[s.handle, { backgroundColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(15,23,42,0.15)' }]} />
-            <Text style={[s.title, { color: theme.text }]}>💰 Узнать цену</Text>
+            <Text style={[s.title, { color: theme.text }]}>{t('price_calc_title')}</Text>
             <Text style={[s.subtitle, { color: theme.textMuted }]}>
-              Оцени стоимость перевозки до регистрации
+              {t('price_calc_subtitle')}
             </Text>
 
             <ScrollView style={{ maxHeight: 520 }} showsVerticalScrollIndicator={false}>
-              <Text style={[s.label, { color: theme.textMuted }]}>Откуда</Text>
+              <Text style={[s.label, { color: theme.textMuted }]}>{t('from_label')}</Text>
               <TextInput
                 style={[s.input, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border }]}
                 value={from} onChangeText={setFrom} placeholder="Алматы"
                 placeholderTextColor={theme.textMuted}
               />
 
-              <Text style={[s.label, { color: theme.textMuted }]}>Куда</Text>
+              <Text style={[s.label, { color: theme.textMuted }]}>{t('to_label')}</Text>
               <TextInput
                 style={[s.input, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border }]}
                 value={to} onChangeText={setTo} placeholder="Урумчи"
@@ -121,7 +121,7 @@ export default function PriceCalculator({ visible, onClose }) {
                 ))}
               </View>
 
-              <Text style={[s.label, { color: theme.textMuted }]}>Вес (тонн)</Text>
+              <Text style={[s.label, { color: theme.textMuted }]}>{t('weight_tons_label')}</Text>
               <TextInput
                 style={[s.input, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border }]}
                 value={weight} onChangeText={setWeight}
@@ -130,7 +130,7 @@ export default function PriceCalculator({ visible, onClose }) {
               />
 
               {/* Популярные маршруты */}
-              <Text style={[s.label, { color: theme.textMuted, marginTop: 12 }]}>Популярные маршруты</Text>
+              <Text style={[s.label, { color: theme.textMuted, marginTop: 12 }]}>{t('popular_routes')}</Text>
               <View style={s.row}>
                 {POPULAR_ROUTES.map((r, i) => (
                   <TouchableOpacity
@@ -170,7 +170,7 @@ export default function PriceCalculator({ visible, onClose }) {
                 onPress={onClose}
                 style={[s.cta, { backgroundColor: accentColors.driver }]}
               >
-                <Text style={s.ctaText}>Зарегистрироваться и опубликовать</Text>
+                <Text style={s.ctaText}>{t('register_cta')}</Text>
               </TouchableOpacity>
             </ScrollView>
           </Pressable>

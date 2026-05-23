@@ -33,10 +33,39 @@ export const AuthProvider = ({ children }) => {
     if (me && typeof me.verification_level === 'number') {
       setVerificationLevel(me.verification_level);
       if (me.role && me.role !== 'guest') {
+        // PR-C1: /register/me не возвращает city, поэтому дёргаем ещё и
+        // /users/me — там есть name/city/about. Делаем параллельно с
+        // setSession, чтобы при ошибке хотя бы level+role+phone обновились.
+        // profile() fail-tolerant — вернёт null если /users/me недоступен.
+        const profile = await regAPI.profile();
+        const fullName = profile?.name || me.full_name || null;
+        const city = profile?.city || null;
         setSession(prev => {
           const next = prev
-            ? { ...prev, user: { ...prev.user, role: me.role, phone: me.phone, id: me.id } }
-            : { user: { role: me.role, phone: me.phone, id: me.id } };
+            ? {
+                ...prev,
+                user: {
+                  ...prev.user,
+                  role: me.role,
+                  phone: me.phone,
+                  id: me.id,
+                  // Не затираем существующие значения, если backend не
+                  // вернул новых (offline / 4xx на /users/me).
+                  name: fullName || prev.user?.name || null,
+                  full_name: fullName || prev.user?.full_name || null,
+                  city: city || prev.user?.city || null,
+                },
+              }
+            : {
+                user: {
+                  role: me.role,
+                  phone: me.phone,
+                  id: me.id,
+                  name: fullName,
+                  full_name: fullName,
+                  city,
+                },
+              };
           storage.set(KEY, JSON.stringify(next));
           return next;
         });

@@ -221,7 +221,14 @@ export default function FeedScreen({ navigation, route }) {
     try {
       if (isDriver) {
         const { cargos } = await marketAPI.listCargos({ cargoType: filterType || '' });
-        const mapped = (cargos || []).map(c => ({
+        // Driver feed: ТОЛЬКО чужие грузы (counterparty supply). Если
+        // backend вернул груз с owner_id равным текущему user_id,
+        // водитель не должен видеть свой же груз — для управления
+        // своими грузами есть отдельный экран "Мои грузы" (MyTripsList).
+        // Зеркально с shipper-веткой ниже, где my_cargos исключены.
+        const mapped = (cargos || [])
+          .filter(c => !myUserId || c.owner_id !== myUserId)
+          .map(c => ({
           id: c.id,
           // Stage 50 (Bug 10): fallback на структурированный point_name,
           // если backend вернул from_city/to_city пустыми — иначе карточка
@@ -230,32 +237,36 @@ export default function FeedScreen({ navigation, route }) {
           to:   sanitizeForDisplay(c.to_city   || c.to_point_name   || ''),
           cargo: c.cargo_desc, type: c.cargo_type,
           tons: c.weight_tons, m3: c.volume_m3,
-          price: c.price, pickup: c.pickup_date,
+          price: c.price,
+          // PR-C1 (currency mapping): backend хранит cargos.currency
+          // ('KZT'/'USD'/'RUB'/'CNY') и возвращает в GET /market/cargos.
+          // Раньше mapping игнорировал поле → formatPrice падал на USD
+          // fallback и пользователь видел «$700 000» там, где было
+          // «700 000 ₸». Прокидываем явно.
+          currency: c.currency,
+          pickup: c.pickup_date,
           bids: c.bids_count, photos: c.photos,
           photo: c.photos?.[0], isMine: c.owner_id === myUserId,
           createdAt: c.created_at, _server: true,
         }));
         setServerData(mapped);
       } else {
-        // Клиент видит: свои грузы + рейсы + водители
-        const [tripsRes, driversRes, myRes] = await Promise.all([
+        // Клиент (shipper) feed: ТОЛЬКО рейсы водителей + доступные водители.
+        // my_cargos сюда НЕ примешиваем — свои грузы живут в отдельном
+        // экране «Мои грузы» (MyTripsScreen, tab "MyWork"). Раньше
+        // shipper видел свои же грузы вперемешку с trips чужих
+        // водителей — что и приводило к "Маршрут уточняется" и
+        // навигации в DriverDetail с _profileMissing.
+        const [tripsRes, driversRes] = await Promise.all([
           marketAPI.listTrips({ truckType: filterType || '' }),
           marketAPI.listDrivers({ truckType: filterType || '' }),
-          marketAPI.myDashboard().catch(() => ({ my_cargos: [] })),
         ]);
-        // Мои грузы — в начале ленты
-        const myCargos = ((myRes || {}).my_cargos || []).map(c => ({
-          id: c.id,
-          from: sanitizeForDisplay(c.from_city || c.from_point_name || ''),
-          to:   sanitizeForDisplay(c.to_city   || c.to_point_name   || ''),
-          cargo: c.cargo_desc, type: c.cargo_type,
-          tons: c.weight_tons, m3: c.volume_m3,
-          price: c.price, pickup: c.pickup_date,
-          bids: c.bids_count, photos: c.photos,
-          photo: (c.photos || [])[0], isMine: true,
-          createdAt: c.created_at, _server: true,
-        }));
-        const tripsMapped = ((tripsRes || {}).trips || []).map(rawT => {
+        // Симметрично с driver-веткой: shipper не должен видеть
+        // собственные рейсы в feed (если у пользователя двойная роль
+        // driver+client). Свои рейсы видны через "Мои рейсы".
+        const tripsMapped = ((tripsRes || {}).trips || [])
+          .filter(rawT => !myUserId || rawT.driver_id !== myUserId)
+          .map(rawT => {
           const n = normalizeTrip({ ...rawT, _server: true });
           // Card title fallback ladder. Most trips on the live feed have
           // driver_name=null because driver profiles aren't fully populated
@@ -286,7 +297,7 @@ export default function FeedScreen({ navigation, route }) {
           phone: '***',
           _server: true, _isDriver: true,
         }));
-        setServerData([...myCargos, ...tripsMapped, ...driversMapped]);
+        setServerData([...tripsMapped, ...driversMapped]);
       }
     } catch (e) {
       console.warn('[Feed] Server load failed:', e);
@@ -316,11 +327,24 @@ export default function FeedScreen({ navigation, route }) {
           if (isDriver) {
             marketAPI.listCargos({ fromCity: from, toCity: to }).then(d => {
               if (d.cargos?.length) {
-                setServerData(d.cargos.map(c => ({
-                  id: c.id, from: sanitizeForDisplay(c.from_city), to: sanitizeForDisplay(c.to_city),
+                // Симметрично с главным loader: driver search-handler
+                // тоже не должен показывать свои собственные грузы.
+                const filtered = d.cargos.filter(c => !myUserId || c.owner_id !== myUserId);
+                setServerData(filtered.map(c => ({
+                  id: c.id,
+                  // PR-A (P0-2 route mapping): search-handler раньше брал ТОЛЬКО
+                  // from_city/to_city без fallback на structured point_name.
+                  // Cargo, опубликованный через RoutePointPicker, мог иметь
+                  // from_city='' и from_point_name='Чжэнчжоу' → search-результат
+                  // показывал «Маршрут уточняется». Симметрия с главным loader.
+                  from: sanitizeForDisplay(c.from_city || c.from_point_name || ''),
+                  to:   sanitizeForDisplay(c.to_city   || c.to_point_name   || ''),
                   cargo: c.cargo_desc, type: c.cargo_type,
                   tons: c.weight_tons, m3: c.volume_m3,
-                  price: c.price, bids: c.bids_count,
+                  price: c.price,
+                  // PR-C1: currency mapping — см. главный loader выше.
+                  currency: c.currency,
+                  bids: c.bids_count,
                   photos: c.photos, photo: c.photos?.[0],
                   _server: true, createdAt: c.created_at,
                 })));
@@ -329,14 +353,27 @@ export default function FeedScreen({ navigation, route }) {
           } else {
             marketAPI.listTrips({ fromCity: from, toCity: to }).then(d => {
               if (d.trips?.length) {
+                // Симметрично: shipper search-handler не должен показывать
+                // собственные рейсы (если у пользователя двойная роль).
+                const filteredTrips = d.trips.filter(t => !myUserId || t.driver_id !== myUserId);
                 setServerData(prev => {
-                  const existing = prev.filter(p => !d.trips.find(t => t.id === p.id));
-                  return [...d.trips.map(t => ({
-                    id: t.id, name: t.driver_name || tGlobal('driver_fallback'),
-                    type: t.truck_type, from: sanitizeForDisplay(t.from_city), to: sanitizeForDisplay(t.to_city),
-                    price: t.price, isTrip: true, _server: true,
-                    tripRoute: `${t.from_city} → ${t.to_city}`,
-                  })), ...existing];
+                  const existing = prev.filter(p => !filteredTrips.find(t => t.id === p.id));
+                  return [...filteredTrips.map(t => {
+                    // PR-A (P0-2): тот же fallback на point_name, что в главном
+                    // loader. Trip без from_city, но с from_point_name больше
+                    // не показывает "Маршрут уточняется" / "— → —".
+                    const fromStr = sanitizeForDisplay(t.from_city || t.from_point_name || '');
+                    const toStr = sanitizeForDisplay(t.to_city || t.to_point_name || '');
+                    return {
+                      id: t.id, name: t.driver_name || tGlobal('driver_fallback'),
+                      type: t.truck_type, from: fromStr, to: toStr,
+                      price: t.price,
+                      // PR-C1: currency mapping (trips тоже хранят currency).
+                      currency: t.currency,
+                      isTrip: true, _server: true,
+                      tripRoute: `${fromStr || '—'} → ${toStr || '—'}`,
+                    };
+                  }), ...existing];
                 });
               }
             }).catch(() => {});
@@ -600,17 +637,20 @@ export default function FeedScreen({ navigation, route }) {
           segmented control. Переключение роли — через регистрацию
           из RoleScreen. */}
 
-      {/* Title row + outline CTA "Разместить ..." */}
+      {/* Title row — заголовок и подзаголовок. */}
       <View style={s.titleRow}>
         <View style={{ flex: 1 }}>
           <Text style={[s.titleHero, { color: v1.text }]}>{isDriver ? t('cargos') : t('trucks')}</Text>
           <Text style={[s.titleHeroSub, { color: v1.textMuted }]}>{isDriver ? t('feed_driver_subtitle') : t('feed_client_subtitle')}</Text>
         </View>
-        {/* Stage 16: title-row publish CTA promoted to the screen-level
-            primary — solid accent fill, dark label. The "Подробнее"
-            button on each card moved to outline so this is the only
-            full-saturation green block on the surface besides the
-            floating + in the bottom nav. */}
+        {/* PR-C2: title-row publish CTA закомментирован — он дублировал
+            большой floating "+" в BottomNav (tab Publish), который виден
+            на всех экранах, не только Feed. Stage 16 раньше делал эту
+            кнопку primary CTA, но дублирование функционала путало
+            пользователя и забирало место рядом с заголовком.
+            TODO: redesign — если решим вернуть, перенести как secondary
+            (outline) или удалить celebrate animation на BottomNav плюсе. */}
+        {/*
         <TouchableOpacity
           style={[s.titleCta, { borderColor: accentColor, backgroundColor: accentColor }]}
           onPress={() => navigation.navigate(isDriver ? 'CreateTrip' : 'CreateCargo', { role })}
@@ -620,6 +660,7 @@ export default function FeedScreen({ navigation, route }) {
         >
           <Text style={[s.titleCtaText, { color: '#0A0A0A' }]}>+ {isDriver ? t('postTrip') : t('postCargo')}</Text>
         </TouchableOpacity>
+        */}
       </View>
 
       <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
@@ -745,9 +786,9 @@ export default function FeedScreen({ navigation, route }) {
       <BottomSheet visible={activeFilter === 'date'} onClose={closeFilter} title={`📅 ${t('filter_date')}`}>
         <View testID="filter-date-sheet">
           <Text style={[s.filterSectionLabel, { color: theme.textMuted }]}>{t('filter_date_from')}</Text>
-          <DatePicker value={dateFrom} onChange={setDateFrom} placeholder="ДД.ММ.ГГГГ" />
+          <DatePicker value={dateFrom} onChange={setDateFrom} placeholder={t('date_placeholder')} />
           <Text style={[s.filterSectionLabel, { color: theme.textMuted, marginTop: 12 }]}>{t('filter_date_to')}</Text>
-          <DatePicker value={dateTo} onChange={setDateTo} placeholder="ДД.ММ.ГГГГ" />
+          <DatePicker value={dateTo} onChange={setDateTo} placeholder={t('date_placeholder')} />
           <View style={s.filterActions}>
             <TouchableOpacity
               style={[s.filterActionBtn, { backgroundColor: v1.surface, borderColor: v1.border, borderWidth: 1 }]}
@@ -861,7 +902,7 @@ export default function FeedScreen({ navigation, route }) {
           ref={listRef}
           data={filteredData}
           keyExtractor={i => i.id}
-          renderItem={isDriver ? renderCargo : renderDriver}
+          renderItem={(args) => (isDriver || args.item.isMine) ? renderCargo(args) : renderDriver(args)}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 20, gap: 0 }}
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accentColor} />}

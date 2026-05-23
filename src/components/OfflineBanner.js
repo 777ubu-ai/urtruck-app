@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Animated, Platform } from 'react-native';
+import { t } from '../utils/i18n';
 
 export default function OfflineBanner() {
   const [online, setOnline] = useState(true);
@@ -26,7 +27,7 @@ export default function OfflineBanner() {
   return (
     <Animated.View style={[s.wrap, { opacity }]} pointerEvents={online ? 'none' : 'auto'}>
       <Text style={s.icon}>📡</Text>
-      <Text style={s.text}>Нет интернета · работаем из кэша</Text>
+      <Text style={s.text}>{t('offline_banner_text')}</Text>
     </Animated.View>
   );
 }

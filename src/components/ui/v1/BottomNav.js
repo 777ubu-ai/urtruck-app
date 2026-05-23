@@ -23,7 +23,7 @@
 // flow instead.
 
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, AppState } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, AppState, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useV1Colors, v1AccentFor } from '../../../theme/designV1';
@@ -31,6 +31,7 @@ import { useTheme } from '../../../utils/ThemeContext';
 import { useAuth } from '../../../utils/AuthContext';
 import { useI18n } from '../../../utils/useI18n';
 import { chatAPI } from '../../../utils/chatAPI';
+import { subscribeChatRead } from '../../../utils/unreadEvents';
 // Phase 2A: единая палитра — оранжевый акцент и серый inactive,
 // независимо от роли. Раньше driver получал blue, client — yellow;
 // для B2B-логистики единый orange выглядит как взрослая платформа.
@@ -95,12 +96,34 @@ export default function BottomNav({ state, navigation }) {
     const sub = AppState.addEventListener('change', (next) => {
       if (next === 'active') fetchUnread();
     });
+    // PR-C2 (Task 2 unified badge): mgновенный re-fetch когда юзер
+    // прочитал чат — без него badge висит до следующего 30-сек poll.
+    // ChatScreen вызывает notifyChatRead() на mount и unmount.
+    const unsub = subscribeChatRead(fetchUnread);
     return () => {
       mounted = false;
       clearInterval(pollTimer.current);
       sub?.remove?.();
+      unsub?.();
     };
   }, [hasToken]);
+
+  // PR-C2 (P0 push / icon badge): синхронизируем красный кружок на иконке
+  // приложения (iOS home screen, Android launcher) с серверным unread
+  // count. expo-notifications setNotificationHandler в push.js имеет
+  // `shouldSetBadge: true`, поэтому Expo сам инкрементит badge при
+  // получении push — но УМЕНЬШАТЬ его при прочтении сообщения в app
+  // приходится вручную. BottomNav уже polls /chat/unread каждые
+  // UNREAD_POLL_MS и при AppState='active'; пишем сумму chat + bell
+  // в badge приложения там же.
+  useEffect(() => {
+    if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
+    let Notifications;
+    try { Notifications = require('expo-notifications'); }
+    catch { return; }
+    const total = (Number(chatUnread) || 0); // bell-unread приходит из другого hook'а, но он используется отдельно на BellBadge — для app-icon достаточно chat
+    Notifications.setBadgeCountAsync?.(total).catch(() => {});
+  }, [chatUnread]);
 
   const labelOf = (name) => {
     if (name === 'Feed')    return isDriver ? t('tab_feed') : t('tab_feed_client');

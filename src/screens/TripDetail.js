@@ -501,6 +501,7 @@ export default function TripDetail({ navigation, route }) {
         }}
         mode="create"
         currentPrice={trip.price || 0}
+        currency={trip.currency}
         tripId={trip.id}
       />
 

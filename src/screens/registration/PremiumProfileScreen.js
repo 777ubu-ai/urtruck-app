@@ -23,6 +23,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../../utils/useI18n';
 import { useAuth } from '../../utils/AuthContext';
+import { useToast } from '../../components/Toast';
 import { saveProfile } from '../../utils/store';
 import { regAPI } from '../../utils/registration';
 
@@ -33,7 +34,8 @@ const ACCENT = {
 
 export default function PremiumProfileScreen({ navigation, route }) {
   const { t } = useI18n();
-  const { session, setRole } = useAuth();
+  const { session, setRole, refreshLevel } = useAuth();
+  const { toast } = useToast();
   const role = route?.params?.role === 'client' ? 'client' : 'driver';
   const accent = ACCENT[role];
   const phone = route?.params?.phone || session?.user?.phone || '';
@@ -64,9 +66,27 @@ export default function PremiumProfileScreen({ navigation, route }) {
         phone,
       });
       setLoading(true);
-      // Stage 50: пишем в БД через PATCH /api/v1/users/me, иначе ProfileScreen
-      // после регистрации показывает «Добавить имя» — фронт читает из /users/me.
-      regAPI.updateProfile({ name: trimmedName, city: trimmedCity }).catch(() => {});
+      // PR-C1 (Stage 50 fix): раньше PATCH /users/me делался fire-and-forget
+      // (`.catch(() => {})` без await), поэтому если backend отдавал 4xx/5xx,
+      // пользователь молча проваливался в Main с пустым профилем — Profile
+      // потом тянул /me, получал name=null, и показывал «Добавить имя».
+      // Теперь await + явная проверка ok, при ошибке показываем toast и НЕ
+      // делаем reset навигации.
+      let ok = false;
+      try {
+        const r = await regAPI.updateProfile({ name: trimmedName, city: trimmedCity });
+        ok = !!(r && r.ok !== false);
+      } catch {
+        ok = false;
+      }
+      if (!ok) {
+        setLoading(false);
+        toast(t('save_error'), 'error', 4000);
+        return;
+      }
+      // Подтянуть свежие name/full_name/city в AuthContext.session.user,
+      // чтобы Main/Profile показал имя без перезахода.
+      try { await refreshLevel(); } catch {}
     } else {
       setLoading(true);
     }

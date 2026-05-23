@@ -162,7 +162,7 @@ export function VerificationGateSheet({ visible, action, currentLevel, requiredL
           </TouchableOpacity>
 
           <TouchableOpacity onPress={onClose} style={s.laterBtn} activeOpacity={0.7}>
-            <Text style={[s.laterText, { color: theme.textMuted }]}>Не сейчас</Text>
+            <Text style={[s.laterText, { color: theme.textMuted }]}>{tGlobal('not_now')}</Text>
           </TouchableOpacity>
 
           <View style={[s.trust, { backgroundColor: `${accentColors.browse}10` }]}>

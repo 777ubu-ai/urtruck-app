@@ -10,6 +10,7 @@ import { useToast } from '../components/Toast';
 import { compressImage } from '../utils/imageCompress';
 import { prettifyPartnerName, partnerInitial } from '../utils/displayName';
 import { chatAPI } from '../utils/chatAPI';
+import { notifyChatRead } from '../utils/unreadEvents';
 import { useAuth } from '../utils/AuthContext';
 import { voice } from '../utils/voiceRecorder';
 import QuickPhrases from '../components/QuickPhrases';
@@ -169,6 +170,16 @@ export default function ChatScreen({ navigation, route }) {
     if (!roomId) return;
     const iv = setInterval(() => loadMessages(roomId), 3000);
     return () => clearInterval(iv);
+  }, [roomId]);
+
+  // PR-C2 (Task 2 unified badge): notify BottomNav когда чат открылся
+  // (backend GET /messages автоматически делает is_read=1; нам нужно
+  // только сказать BottomNav поллить unread заново) и когда экран
+  // закрывается. Без этого badge висит до следующего 30-сек poll.
+  useEffect(() => {
+    if (!roomId) return;
+    notifyChatRead();
+    return () => notifyChatRead();
   }, [roomId]);
 
   const sendMessage = async (text) => {
@@ -397,6 +408,17 @@ export default function ChatScreen({ navigation, route }) {
 
   return (
     <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top', 'bottom']}>
+      {/* PR-C2 (chat keyboard P0): раньше KeyboardAvoidingView оборачивал
+          ТОЛЬКО inputRow → на iOS клавиатура поднималась поверх FlatList
+          и закрывала последние сообщения вместе с input'ом. Юзер не видел
+          что вводит. Теперь весь экран (header + messages + input) живёт
+          внутри KeyboardAvoidingView; behavior='padding' на iOS, 'height'
+          на Android. flex:1 на корневом контейнере обязательно — иначе
+          padding не считается. */}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
       <BrandBarWithShare
         onBack={() => navigation.goBack()}
         accent={v1Accent.main}
@@ -422,6 +444,7 @@ export default function ChatScreen({ navigation, route }) {
         keyExtractor={i => i.id}
         renderItem={renderMessage}
         contentContainerStyle={s.msgList}
+        keyboardShouldPersistTaps="handled"
         ListHeaderComponent={
           <View style={s.chatOpened}>
             <Text style={s.chatOpenedText}>
@@ -433,43 +456,42 @@ export default function ChatScreen({ navigation, route }) {
         onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
       />
       {showPhrases && <QuickPhrases onSelect={sendMessage} />}
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={s.inputRow}>
-          <TouchableOpacity onPress={() => setShowPhrases(!showPhrases)} style={s.iconBtn}>
-            <Text style={s.iconBtnText}>⚡</Text>
+      <View style={s.inputRow}>
+        <TouchableOpacity onPress={() => setShowPhrases(!showPhrases)} style={s.iconBtn}>
+          <Text style={s.iconBtnText}>⚡</Text>
+        </TouchableOpacity>
+        {CHAT_PHOTO_ENABLED && (
+          <TouchableOpacity onPress={sendPhoto} style={s.iconBtn}>
+            <Text style={s.iconBtnText}>📷</Text>
           </TouchableOpacity>
-          {CHAT_PHOTO_ENABLED && (
-            <TouchableOpacity onPress={sendPhoto} style={s.iconBtn}>
-              <Text style={s.iconBtnText}>📷</Text>
-            </TouchableOpacity>
-          )}
-          <TextInput
-            style={s.input}
-            value={input}
-            onChangeText={setInput}
-            placeholder={t('message')}
-            placeholderTextColor={v1.placeholder}
-            onSubmitEditing={() => sendMessage()}
-            returnKeyType="send"
-            testID="chat-input"
-          />
-          {CHAT_VOICE_ENABLED && (
-            <TouchableOpacity
-              onPress={toggleVoice}
-              style={[s.iconBtn, recording && { backgroundColor: v1Colors.error, borderColor: v1Colors.error }]}
-            >
-              <Text style={s.iconBtnText}>{recording ? '⏹' : '🎤'}</Text>
-            </TouchableOpacity>
-          )}
+        )}
+        <TextInput
+          style={s.input}
+          value={input}
+          onChangeText={setInput}
+          placeholder={t('message')}
+          placeholderTextColor={v1.placeholder}
+          onSubmitEditing={() => sendMessage()}
+          returnKeyType="send"
+          testID="chat-input"
+        />
+        {CHAT_VOICE_ENABLED && (
           <TouchableOpacity
-            onPress={() => sendMessage()}
-            style={[s.sendBtn, { backgroundColor: v1Accent.main }]}
-            testID="chat-send-btn"
-            accessibilityLabel="Send"
+            onPress={toggleVoice}
+            style={[s.iconBtn, recording && { backgroundColor: v1Colors.error, borderColor: v1Colors.error }]}
           >
-            <FontAwesome5 name="paper-plane" size={16} color="#FFFFFF" solid />
+            <Text style={s.iconBtnText}>{recording ? '⏹' : '🎤'}</Text>
           </TouchableOpacity>
-        </View>
+        )}
+        <TouchableOpacity
+          onPress={() => sendMessage()}
+          style={[s.sendBtn, { backgroundColor: v1Accent.main }]}
+          testID="chat-send-btn"
+          accessibilityLabel="Send"
+        >
+          <FontAwesome5 name="paper-plane" size={16} color="#FFFFFF" solid />
+        </TouchableOpacity>
+      </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
