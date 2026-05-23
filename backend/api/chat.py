@@ -212,11 +212,27 @@ def my_rooms(user=Depends(require_level(1))):
         rooms.append(d)
 
     # Дотягиваем имена
+    # PR-C2 (P0-3 "Собеседник" → real name): backend fallback chain.
+    # До этого partner_name мог приходить null если у user'a full_name
+    # пустой в drivers_registration. Фронт показывал «Собеседник», что
+    # пользователю не понятно («кто это?»).
+    # Теперь: full_name → phone-tail (последние 4 цифры) → "Пользователь
+    # UrTruck". Frontend prettifyPartnerName ничего не подменяет если
+    # backend дал осмысленное значение.
+    def _phone_tail(phone):
+        if not phone or not isinstance(phone, str):
+            return None
+        digits = "".join(ch for ch in phone if ch.isdigit())
+        return f"+{digits[-4:]}" if len(digits) >= 4 else None
     with get_conn() as c:
         for room in rooms:
             p = c.execute("SELECT full_name, phone FROM drivers_registration WHERE id = ?", (room["partner_id"],)).fetchone()
             if p:
-                room["partner_name"] = p["full_name"] or p["phone"]
+                full = (p["full_name"] or "").strip() if p["full_name"] else ""
+                tail = _phone_tail(p["phone"])
+                room["partner_name"] = full or tail or "Пользователь UrTruck"
+            else:
+                room["partner_name"] = "Пользователь UrTruck"
     # Hide demo bot rooms in production. Old chat history is preserved on disk
     # — we just don't surface it through /rooms unless ENABLE_DEMO_CHAT=true.
     if not ENABLE_DEMO_CHAT:
