@@ -133,9 +133,17 @@ def unregister_native(body: dict):
 
 
 # Backward-compatible обёртка — использовалась в старом коде.
-def send_to_user(user_id: str, title: str, body: str, url: str = "/") -> int:
-    """Legacy: отправить push юзеру. Возвращает суммарное число отправленных."""
-    r = push_sender.send(user_id, title, body, url=url, kind="info")
+def send_to_user(user_id: str, title: str, body: str, url: str = "/", kind: str = "info", data: dict = None) -> int:
+    """Legacy: отправить push юзеру. Возвращает суммарное число отправленных.
+
+    PR-C2 (P0-2 app icon badge): добавлены опциональные `kind` и `data`
+    параметры. Существующие вызовы (`send_to_user(uid, title, body)`)
+    не ломаются. Новые callsites (chat.py) передают kind='chat' чтобы
+    push_sender автоматически вычислил unread badge и положил его в
+    APNs payload — без этого красный кружок на иконке UrTruck не
+    появляется на iPhone home screen даже при включённых notifications.
+    """
+    r = push_sender.send(user_id, title, body, url=url, kind=kind, data=data)
     return r["total"]
 
 

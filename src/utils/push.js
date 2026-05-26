@@ -152,9 +152,25 @@ export const push = {
     }
 
     // Expo Push Token
+    // PR-C2 (P0-1 push permissions): на Expo SDK 49+ getExpoPushTokenAsync
+    // требует `projectId` иначе на iOS возвращает пустой токен / падает.
+    // projectId живёт в app.json:expo.extra.eas.projectId; читаем через
+    // expo-constants. Если константы нет — fallback на старый zero-arg
+    // вызов (web/legacy).
+    let projectId;
+    try {
+      const Constants = require('expo-constants').default;
+      projectId =
+        Constants?.expoConfig?.extra?.eas?.projectId ||
+        Constants?.easConfig?.projectId ||
+        Constants?.manifest?.extra?.eas?.projectId ||
+        null;
+    } catch { projectId = null; }
     let tokenData;
     try {
-      tokenData = await Notifications.getExpoPushTokenAsync();
+      tokenData = projectId
+        ? await Notifications.getExpoPushTokenAsync({ projectId })
+        : await Notifications.getExpoPushTokenAsync();
     } catch (e) {
       return { ok: false, reason: 'token_failed', error: String(e) };
     }

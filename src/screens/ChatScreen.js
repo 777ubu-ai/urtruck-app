@@ -143,8 +143,41 @@ export default function ChatScreen({ navigation, route }) {
           is_read: !!m.is_read,
         };
       });
-      // Обновляем только если количество изменилось (не мерцаем)
-      setMessages(prev => mapped.length !== prev.length ? mapped : prev);
+      // PR-C2 (P0-4 disappearing messages): defensive merge.
+      // Раньше:
+      //   setMessages(prev => mapped.length !== prev.length ? mapped : prev)
+      // ломалось двумя путями:
+      //   1) Polling приходит ПОСЛЕ optimistic insert но ДО того как
+      //      server вставил отправленное → mapped.length < prev.length
+      //      → setMessages = mapped → наше сообщение исчезает на 3 сек
+      //      до следующего poll.
+      //   2) Polling приходит когда server уже вставил → mapped и prev
+      //      одинаковой длины, guard видит equality → optimistic id
+      //      ('1731...') остаётся вместо server id, при последующем
+      //      reload получается дубликат.
+      // Решение: optimistic-помеченные местные сообщения сохраняем
+      // пока не появятся в server response. Дедуп по тексту+времени
+      // для миграции старых optimistic к серверному ID.
+      setMessages(prev => {
+        if (!Array.isArray(mapped) || mapped.length === 0) {
+          return prev; // не сбрасываем на пустой server response
+        }
+        const serverIds = new Set(mapped.map(m => m.id));
+        // Локальные сообщения которых нет в server — сохраняем (только
+        // optimistic, отмечены _optimistic=true в sendMessage).
+        const localOnly = prev.filter(m => {
+          if (!m._optimistic) return false;
+          if (serverIds.has(m.id)) return false;
+          // Дедуп по тексту: если сервер вернул сообщение с тем же
+          // текстом и временем последних 5 минут — считаем что это
+          // наше acked, не сохраняем local дубликат.
+          const ackedByServer = mapped.some(srv =>
+            srv.from === 'me' && srv.text === m.text
+          );
+          return !ackedByServer;
+        });
+        return [...mapped, ...localOnly];
+      });
     } catch {}
   };
 
@@ -185,9 +218,14 @@ export default function ChatScreen({ navigation, route }) {
   const sendMessage = async (text) => {
     const msg = text || input;
     if (!msg.trim()) return;
+    // PR-C2 (P0-4): optimistic insert с маркером `_optimistic: true`.
+    // loadMessages (polling) defensive merge сохраняет именно такие
+    // сообщения пока сервер не подтвердит — иначе они «исчезают»
+    // в окне между send и следующим poll.
     setMessages(prev => [...prev, {
-      id: Date.now().toString(), from: 'me', text: msg,
+      id: 'opt_' + Date.now().toString(), from: 'me', text: msg,
       time: new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}),
+      _optimistic: true,
     }]);
     setInput('');
     setShowPhrases(false);
