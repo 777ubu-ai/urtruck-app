@@ -2,14 +2,12 @@ name: Build Android APK
 
 # Триггеры:
 #   - workflow_dispatch — ручной запуск из GitHub UI ("Run workflow") → создаёт GitHub Release с APK
-#   - push в .github/workflows/build-android-apk.yml — для проверки самого workflow
+#   - push в main или claude/** — автоматическая сборка на любое изменение веток разработки
 
 on:
   workflow_dispatch:
   push:
     branches: [main, "claude/**"]
-    paths:
-      - '.github/workflows/build-android-apk.yml'
 
 permissions:
   contents: write
