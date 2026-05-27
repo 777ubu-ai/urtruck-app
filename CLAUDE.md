@@ -72,7 +72,8 @@ curl http://185.22.65.11:8001/api/v1/system/info   # статус OTP/face/stora
 - Только React Native, **никаких web-only API** (`document`, `window`, `localStorage`). Для веба используется `react-native-web`.
 - Стили — через `StyleSheet.create()`, не inline.
 - Каждый экран оборачивается в `SafeAreaView`.
-- Цвета: bg `#0C0A09`, card `#1C1917`, border `#292524`, text `#FAFAF9`; акценты driver `#2563EB`, client `#F59E0B`; успех `#22C55E`, рейтинг `#FBBF24`.
+- Цвета: bg `#0C0A09`, card `#1C1917`, border `#292524`, text `#FAFAF9`; акценты driver `#00E676` (изумрудный неон, build 18 — ранее был `#2563EB`/`#22C55E`/`#4F46E5`), client `#F59E0B`; успех `#22C55E` (оставлен как semantic-success — галочки верификации, загруженные документы), рейтинг `#FBBF24`.
+- Текст поверх driver-кнопок (`backgroundColor: #00E676`) — `#0C0A09` (чёрный), НЕ `#fff`. Контраст белого на изумруде — 2.07:1 (WCAG fail), чёрного — 11.4:1 (AAA). Источник истины: `v1AccentFor('driver').onAccent` в `theme/designV1.js`.
 - Типы кузовов: `tent`, `ref`, `platform`, `auto`, `izoterm` + свободное поле «другое».
 - Emoji вместо SVG-иконок (быстрее, меньше бандл).
 
