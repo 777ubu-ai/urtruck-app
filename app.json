@@ -30,7 +30,11 @@
         "NSCameraUsageDescription": "UrTruck использует камеру для селфи и фото документов",
         "NSPhotoLibraryUsageDescription": "UrTruck использует фото для аватара, груза и документов",
         "NSLocationWhenInUseUsageDescription": "UrTruck использует геолокацию для отслеживания рейсов",
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": ["remote-notification"]
+      },
+      "entitlements": {
+        "aps-environment": "production"
       }
     },
     "android": {
