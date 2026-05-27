@@ -42,9 +42,9 @@ import { brand, radius, typography } from '../../theme/brandV2';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
-const HERO_SLIDE_1 = require('../../../assets/onboarding/slide-1-hero.png');
-const HERO_SLIDE_2 = require('../../../assets/onboarding/slide-2-driver-1.png');
-const HERO_SLIDE_3 = require('../../../assets/onboarding/slide-2-driver-2.png');
+const HERO_SLIDE_1 = require('../../../assets/onboarding/slide-1-hero.jpg');
+const HERO_SLIDE_2 = require('../../../assets/onboarding/slide-2-driver-1.jpg');
+const HERO_SLIDE_3 = require('../../../assets/onboarding/slide-2-driver-2.jpg');
 
 // PNG native aspects.
 const ASPECT_S1 = 853 / 1844;
