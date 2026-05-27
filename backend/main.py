@@ -136,6 +136,17 @@ def startup():
     reviews_dal.init_reviews_schema()
     consent_dal.init_consent_schema()
     blacklist_mgr.seed_demo_blacklist()
+    # PR-D1 (build 18): идемпотентная миграция PRO-колонок водителя.
+    # _ensure_columns делает ALTER TABLE add-if-missing для 9 колонок
+    # (city, about, legal_form, china_experience_years, favorite_borders,
+    # emergency_contact, passport_intl_url, tir_book_url, cmr_insurance_url).
+    # Запускается на каждом старте — безопасно благодаря PRAGMA-проверке.
+    try:
+        from api.profile import _ensure_columns as _ensure_pro_columns
+        _ensure_pro_columns()
+        print("PRO columns ensured")
+    except Exception as e:
+        print(f"PRO columns migration failed: {e}", flush=True)
     # DB optimization indexes
     try:
         from database.db import get_conn

@@ -41,7 +41,13 @@ const confirm = (title, msg, onOk, cancelLabel = 'Отмена', confirmLabel = 
 export default function ProfileScreen({ navigation, route }) {
   const { role } = route.params || {};
   const isDriver = role === 'driver';
-  const accent = isDriver ? '#22C55E' : '#F59E0B';
+  // PR-D1 (build 18): driver-акцент мигрировал на изумрудный неон #00E676.
+  // См. theme/designV1.js — этот цвет тяжёл для светлого фона, поэтому
+  // на белых кнопках текст рендерится чёрным (driverOnAccent). #22C55E
+  // ниже сохранён для семантических success-индикаторов (verified-tick,
+  // загруженный документ) — там это «успех», а не бренд водителя.
+  const accent = isDriver ? '#00E676' : '#F59E0B';
+  const onAccent = isDriver ? '#0C0A09' : '#0C0A09';
   const { isDark, toggleTheme } = useTheme();
   // Stage 8: read tokens from the v1 hook so the screen lines up
   // with the rest of the app. The v1 palette doesn't expose a
@@ -165,7 +171,7 @@ export default function ProfileScreen({ navigation, route }) {
     <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]} edges={['top']}>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
         <View style={s.headerRow}>
-          <GradientText style={s.title} colors={isDriver ? ['#22C55E', '#22C55E'] : ['#F59E0B', '#EF4444']}>{t('profile')}</GradientText>
+          <GradientText style={s.title} colors={isDriver ? ['#00E676', '#00C766'] : ['#F59E0B', '#EF4444']}>{t('profile')}</GradientText>
           <HelpButton accent={accent} />
         </View>
 
@@ -218,7 +224,7 @@ export default function ProfileScreen({ navigation, route }) {
             профиля и CTA «Получить статус PRO». При 4/4 — бейдж «PRO активен»
             и note про бета-период (бесплатно). Для client скрыт. */}
         {isDriver ? (
-          <View style={[s.proCard, { backgroundColor: theme.card, borderColor: proActive ? '#22C55E' : theme.border }]}>
+          <View style={[s.proCard, { backgroundColor: theme.card, borderColor: proActive ? accent : theme.border }]}>
             <View style={s.proHeader}>
               <View style={{ flex: 1 }}>
                 <Text style={[s.proTitle, { color: theme.text }]}>
@@ -234,10 +240,10 @@ export default function ProfileScreen({ navigation, route }) {
                   </Text>
                 )}
               </View>
-              <Text style={[s.proPercent, { color: proActive ? '#22C55E' : accent }]}>{proPercent}%</Text>
+              <Text style={[s.proPercent, { color: accent }]}>{proPercent}%</Text>
             </View>
             <View style={[s.proTrack, { backgroundColor: theme.bg }]}>
-              <View style={[s.proFill, { width: `${proPercent}%`, backgroundColor: proActive ? '#22C55E' : accent }]} />
+              <View style={[s.proFill, { width: `${proPercent}%`, backgroundColor: accent }]} />
             </View>
             {!proActive ? (
               <TouchableOpacity
@@ -245,8 +251,8 @@ export default function ProfileScreen({ navigation, route }) {
                 onPress={() => navigation.navigate('EditProfile', { role, focusPRO: true })}
                 activeOpacity={0.85}
               >
-                <Text style={s.proCtaText}>{t('pro_become_btn')}</Text>
-                <Feather name="chevron-right" size={18} color="#fff" />
+                <Text style={[s.proCtaText, { color: onAccent }]}>{t('pro_become_btn')}</Text>
+                <Feather name="chevron-right" size={18} color={onAccent} />
               </TouchableOpacity>
             ) : null}
           </View>
@@ -287,13 +293,13 @@ export default function ProfileScreen({ navigation, route }) {
                 style={[s.themeBtn, { backgroundColor: isDark ? 'transparent' : accent, borderColor: isDark ? theme.border : accent }]}
                 onPress={() => { if (isDark) toggleTheme(); }}
               >
-                <Text style={[s.themeBtnText, { color: isDark ? theme.textMuted : '#fff' }]}>☀️ {t('theme_light')}</Text>
+                <Text style={[s.themeBtnText, { color: isDark ? theme.textMuted : onAccent }]}>☀️ {t('theme_light')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[s.themeBtn, { backgroundColor: isDark ? accent : 'transparent', borderColor: isDark ? accent : theme.border }]}
                 onPress={() => { if (!isDark) toggleTheme(); }}
               >
-                <Text style={[s.themeBtnText, { color: isDark ? '#fff' : theme.textMuted }]}>🌙 {t('theme_dark')}</Text>
+                <Text style={[s.themeBtnText, { color: isDark ? onAccent : theme.textMuted }]}>🌙 {t('theme_dark')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -308,7 +314,7 @@ export default function ProfileScreen({ navigation, route }) {
                   onPress={() => { setLang(l.code); setLanguage(l.code); }}
                 >
                   <Text style={{ fontSize: 22 }}>{l.flag}</Text>
-                  <Text style={[s.langCardText, { color: theme.textSecondary }, lang === l.code && { color: isDriver ? '#fff' : '#0C0A09' }]} numberOfLines={1}>
+                  <Text style={[s.langCardText, { color: theme.textSecondary }, lang === l.code && { color: onAccent }]} numberOfLines={1}>
                     {l.name}
                   </Text>
                 </TouchableOpacity>
@@ -415,7 +421,7 @@ const s = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     paddingVertical: 11, borderRadius: 10, marginTop: 12,
   },
-  proCtaText: { color: '#fff', fontSize: 13, fontWeight: '800' },
+  proCtaText: { fontSize: 13, fontWeight: '800' },
 
   // PR-C2 (WeChat horizontal card)
   profileCard: {

@@ -38,7 +38,12 @@ const buildVehicleTypes = (t) => [
 export default function RegScreen({ navigation, route }) {
   const { role } = route.params || { role: 'driver' };
   const isDriver = role === 'driver';
-  const accent = isDriver ? '#4F46E5' : '#F59E0B';
+  // PR-D1 (build 18): driver-аккцент мигрировал с indigo #4F46E5 на
+  // фирменный изумрудный неон #00E676. Текст поверх кнопок — чёрный
+  // (#0C0A09, контраст 11.4:1 на изумруде, AAA). #22C55E ниже остаётся
+  // как семантический success-маркер (проверенный документ/шаг).
+  const accent = isDriver ? '#00E676' : '#F59E0B';
+  const onAccent = '#0C0A09';
   const { t } = useI18n();
   const { theme } = useTheme();
   const { session, setRole, verificationLevel } = useAuth();
@@ -348,7 +353,7 @@ export default function RegScreen({ navigation, route }) {
               onPress={() => setExitVisible(false)}
               activeOpacity={0.85}
             >
-              <Text style={s.exitPrimaryText}>{t('reg_exit_continue')}</Text>
+              <Text style={[s.exitPrimaryText, { color: onAccent }]}>{t('reg_exit_continue')}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={s.exitSecondary} onPress={onConfirmExit} activeOpacity={0.7}>
               <Text style={[s.exitSecondaryText, { color: theme.textMuted }]}>{t('reg_exit_leave')}</Text>
@@ -389,7 +394,7 @@ export default function RegScreen({ navigation, route }) {
           ))}
         </View>
 
-        <GradientText style={s.heading} colors={[accent, '#22C55E']}>
+        <GradientText style={s.heading} colors={[accent, "#22C55E"]} textStyle={{ color: "#0C0A09" }}>
           {step === 1 ? '📱 ' + t('reg_heading_step1') : step === 2 ? '🤳 ' + t('reg_heading_step2') : step === 3 ? '📄 ' + t('reg_heading_step3') : step === 4 ? '🚛 ' + t('reg_heading_step4') : '✅ ' + t('reg_heading_step5')}
         </GradientText>
 
@@ -414,7 +419,7 @@ export default function RegScreen({ navigation, route }) {
                 <ConsentRow checked={consent} onChange={setConsent} accent={accent} />
                 <ShimmerButton
                   onPress={onSendCode}
-                  colors={[accent, '#22C55E']}
+                  colors={[accent, "#22C55E"]} textStyle={{ color: "#0C0A09" }}
                   disabled={loading || !consent}
                   style={!consent && { opacity: 0.45 }}
                 >
@@ -439,7 +444,7 @@ export default function RegScreen({ navigation, route }) {
                   onChangeText={setCode}
                   autoFocus
                 />
-                <ShimmerButton onPress={onVerifyCode} colors={[accent, '#22C55E']} disabled={loading}>
+                <ShimmerButton onPress={onVerifyCode} colors={[accent, "#22C55E"]} textStyle={{ color: "#0C0A09" }} disabled={loading}>
                   {loading ? <ActivityIndicator color="#fff" /> : '✓ ' + t('reg_confirm_btn')}
                 </ShimmerButton>
                 <TouchableOpacity style={s.link} onPress={() => { setMockCode(null); setCode(''); }}>
@@ -637,7 +642,7 @@ export default function RegScreen({ navigation, route }) {
             )}
 
             {licenseUri && passportUri && !loading && (
-              <ShimmerButton onPress={() => setStep(4)} colors={[accent, '#22C55E']} style={{ marginTop: 14 }}>
+              <ShimmerButton onPress={() => setStep(4)} colors={[accent, "#22C55E"]} textStyle={{ color: "#0C0A09" }} style={{ marginTop: 14 }}>
                 {t('reg_next_to_transport')}
               </ShimmerButton>
             )}
@@ -654,7 +659,7 @@ export default function RegScreen({ navigation, route }) {
                   style={[s.vehicleCard, { backgroundColor: theme.card, borderColor: theme.border }, vehicleType === v.key && { backgroundColor: accent, borderColor: accent }]}
                   onPress={() => setVehicleType(v.key)}>
                   <Text style={{ fontSize: 28 }}>{v.icon}</Text>
-                  <Text style={[s.vehicleText, { color: theme.textSecondary }, vehicleType === v.key && { color: '#fff' }]}>{v.label}</Text>
+                  <Text style={[s.vehicleText, { color: theme.textSecondary }, vehicleType === v.key && { color: onAccent }]}>{v.label}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -701,7 +706,7 @@ export default function RegScreen({ navigation, route }) {
               </View>
             )}
 
-            <ShimmerButton onPress={onVehicle} colors={[accent, '#22C55E']} style={{ marginTop: 14 }} disabled={loading || uploadStage !== null}>
+            <ShimmerButton onPress={onVehicle} colors={[accent, "#22C55E"]} textStyle={{ color: "#0C0A09" }} style={{ marginTop: 14 }} disabled={loading || uploadStage !== null}>
               {loading ? <ActivityIndicator color="#fff" /> : t('reg_next_to_check')}
             </ShimmerButton>
           </View>
@@ -719,7 +724,7 @@ export default function RegScreen({ navigation, route }) {
                     {t('reg_ready_check_desc')}
                   </Text>
                 </View>
-                <ShimmerButton onPress={onModerate} colors={[accent, '#22C55E']} disabled={loading}>
+                <ShimmerButton onPress={onModerate} colors={[accent, "#22C55E"]} textStyle={{ color: "#0C0A09" }} disabled={loading}>
                   {loading ? <ActivityIndicator color="#fff" /> : '🚀 ' + t('reg_start_check')}
                 </ShimmerButton>
               </>
@@ -837,8 +842,11 @@ const s = StyleSheet.create({
     padding: 14, borderRadius: 14, minHeight: 70,
   },
   selfiePreview: { width: 56, height: 56, borderRadius: 28 },
-  selfieBtnTitle: { color: '#fff', fontSize: 14, fontWeight: '800' },
-  selfieBtnSub: { color: 'rgba(255,255,255,0.85)', fontSize: 11, marginTop: 2 },
+  // PR-D1 (build 18): кнопка-фон может быть либо #00E676 (driver-аккцент),
+  // либо #22C55E (selfie уже загружено = success). На обоих чёрный текст
+  // даёт больший контраст, чем белый. Без role-aware условия — единый цвет.
+  selfieBtnTitle: { color: '#0C0A09', fontSize: 14, fontWeight: '800' },
+  selfieBtnSub: { color: 'rgba(12,10,9,0.75)', fontSize: 11, marginTop: 2 },
   docUploadBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     padding: 14, borderRadius: 12, borderWidth: 1.5, borderStyle: 'dashed',
@@ -865,7 +873,7 @@ const s = StyleSheet.create({
   exitTitle: { fontSize: 18, fontWeight: '800', marginBottom: 8 },
   exitBody: { fontSize: 13, lineHeight: 19, marginBottom: 16 },
   exitPrimary: { paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
-  exitPrimaryText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  exitPrimaryText: { fontSize: 15, fontWeight: '800' },
   exitSecondary: { alignItems: 'center', marginTop: 10, paddingVertical: 10 },
   exitSecondaryText: { fontSize: 14, fontWeight: '600' },
 });

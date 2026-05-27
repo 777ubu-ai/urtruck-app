@@ -6,7 +6,13 @@ import { TouchableOpacity, Text, ActivityIndicator, StyleSheet } from 'react-nat
 import { v1Colors, v1Radius, v1Typography } from '../../../theme/designV1';
 
 export default function PrimaryButton({ label, onPress, loading, disabled, accent = 'driver', style, testID }) {
-  const color = accent === 'cargo' ? v1Colors.cargoOwner : v1Colors.driver;
+  // PR-D1 (build 18): driver-кнопка теперь #00E676 — белый текст на нём
+  // нечитаем (контраст 2.07:1). Берём чёрный текст (driverOnAccent),
+  // даёт 11.4:1 — WCAG AAA. Для cargo (#F59E0B) контраст с белым
+  // тоже слабый, переводим на чёрный — 8.6:1.
+  const isDriver = accent !== 'cargo';
+  const color = isDriver ? v1Colors.driver : v1Colors.cargoOwner;
+  const textColor = isDriver ? v1Colors.driverOnAccent : '#0C0A09';
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -15,7 +21,7 @@ export default function PrimaryButton({ label, onPress, loading, disabled, accen
       testID={testID}
       style={[s.btn, { backgroundColor: color, shadowColor: color, opacity: disabled ? 0.5 : 1 }, style]}
     >
-      {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={s.text}>{label}</Text>}
+      {loading ? <ActivityIndicator color={textColor} /> : <Text style={[s.text, { color: textColor }]}>{label}</Text>}
     </TouchableOpacity>
   );
 }
@@ -30,5 +36,6 @@ const s = StyleSheet.create({
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 0 },
   },
-  text: { ...v1Typography.button },
+  // color теперь устанавливается inline (зависит от accent)
+  text: { ...v1Typography.button, color: undefined },
 });

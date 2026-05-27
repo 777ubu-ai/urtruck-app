@@ -21,10 +21,15 @@ const DARK = {
   border: 'rgba(255,255,255,0.08)',
   borderStrong: 'rgba(255,255,255,0.16)',
 
-  driver: '#22C55E',
-  driverDeep: '#16A34A',
-  driverGlow: 'rgba(34,197,94,0.35)',
-  driverSoft: 'rgba(34,197,94,0.12)',
+  // PR-D1 (build 18): фирменный изумрудный неон вместо #22C55E.
+  // Контраст #00E676 на белом — 1.34:1 (текст НЕ читается), поэтому
+  // primary-кнопки рендерят текст в driverOnAccent = #0C0A09 — это
+  // даёт 11.4:1 (WCAG AAA). На тёмном фоне акцент сияет.
+  driver: '#00E676',
+  driverDeep: '#00C766',
+  driverGlow: 'rgba(0,230,118,0.45)',
+  driverSoft: 'rgba(0,230,118,0.14)',
+  driverOnAccent: '#0C0A09',
 
   cargoOwner: '#F59E0B',
   cargoOwnerDeep: '#D97706',
@@ -56,12 +61,15 @@ const LIGHT = {
   border: '#CBD5E1',
   borderStrong: '#94A3B8',
 
-  // Brand accents stay identical — they read on both backgrounds and the
-  // soft/glow halos already include enough alpha to work on white.
-  driver: '#22C55E',
-  driverDeep: '#16A34A',
-  driverGlow: 'rgba(34,197,94,0.35)',
-  driverSoft: 'rgba(34,197,94,0.12)',
+  // PR-D1 (build 18): на светлом фоне сам неон #00E676 нечитаем,
+  // но мы используем его как fill кнопок/иконок, а текст поверх — чёрный
+  // (driverOnAccent). Soft/glow подкручены, чтобы и на белой подложке
+  // халогенный шлейф выглядел как зелёная подсветка, а не серая муть.
+  driver: '#00E676',
+  driverDeep: '#00C766',
+  driverGlow: 'rgba(0,230,118,0.35)',
+  driverSoft: 'rgba(0,230,118,0.16)',
+  driverOnAccent: '#0C0A09',
 
   cargoOwner: '#F59E0B',
   cargoOwnerDeep: '#D97706',
@@ -127,5 +135,5 @@ export const v1Shadow = {
 // components so they don't each re-implement the ternary.
 export const v1AccentFor = (role) =>
   role === 'driver'
-    ? { main: v1Colors.driver, deep: v1Colors.driverDeep, glow: v1Colors.driverGlow, soft: v1Colors.driverSoft }
-    : { main: v1Colors.cargoOwner, deep: v1Colors.cargoOwnerDeep, glow: v1Colors.cargoOwnerGlow, soft: v1Colors.cargoOwnerSoft };
+    ? { main: v1Colors.driver, deep: v1Colors.driverDeep, glow: v1Colors.driverGlow, soft: v1Colors.driverSoft, onAccent: v1Colors.driverOnAccent }
+    : { main: v1Colors.cargoOwner, deep: v1Colors.cargoOwnerDeep, glow: v1Colors.cargoOwnerGlow, soft: v1Colors.cargoOwnerSoft, onAccent: '#FFFFFF' };
