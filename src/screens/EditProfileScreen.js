@@ -184,7 +184,15 @@ export default function EditProfileScreen({ navigation, route }) {
     if (kind === 'cmr')           setCmrUrl(res.url);
     // Зеркалим в локальный store сразу — Profile сразу подхватит при focus
     saveProfile(userId, { [res.field]: res.url });
-    toast('✓ ' + t('saveSettings'), 'success', 1500);
+    if (res.syncWarn) {
+      // Файл улетел в Supabase, но PATCH в SQLite не дошёл (сеть на
+      // трассе). URL и так публичен — следующий save профиля
+      // дотолкает поле до бэка автоматом. Показываем мягкое
+      // предупреждение, не пугаем пользователя ошибкой.
+      toast('✓ ' + (t('saved_locally') || 'Сохранено локально'), 'warn', 2500);
+    } else {
+      toast('✓ ' + t('saveSettings'), 'success', 1500);
+    }
   };
 
   const pickAvatar = async () => {

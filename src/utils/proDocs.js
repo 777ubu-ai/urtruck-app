@@ -73,10 +73,22 @@ export async function uploadProDoc({ userId, kind, uri, onProgress }) {
     // Записываем URL в профиль через тот же PATCH /users/me.
     // Если backend ещё не знает поле — он молча игнорирует, URL всё
     // равно есть в локальном store (вызывающий код подхватит).
+    //
+    // Edge case (трасса, плохая связь): файл УЖЕ улетел в Supabase,
+    // но PATCH упал по сети. Не откатываем успех — URL и так публичен,
+    // следующий save профиля дотолкает его до сервера. Возвращаем
+    // syncWarn чтобы UI мог показать «фото загружено, синхр позже»
+    // вместо полного «ошибка».
     const field = KIND_TO_FIELD[kind];
-    await regAPI.updateProfile({ [field]: url });
+    let syncWarn = null;
+    try {
+      const patchRes = await regAPI.updateProfile({ [field]: url });
+      if (!patchRes?.ok) syncWarn = patchRes?.detail || 'sync_pending';
+    } catch (syncErr) {
+      syncWarn = syncErr?.message || 'sync_failed';
+    }
 
-    return { ok: true, url, field };
+    return { ok: true, url, field, syncWarn };
   } catch (e) {
     return { ok: false, detail: e?.message || String(e) };
   }
