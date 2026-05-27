@@ -13,6 +13,26 @@ if _env.exists():
             k, v = line.split("=", 1)
             os.environ[k.strip()] = v.strip()
 
+# Sentry init — как можно раньше, до создания FastAPI app, чтобы ловить
+# ошибки startup. Если SENTRY_DSN пуст — graceful no-op.
+# См. docs/cgr/DECISIONS.md §2.
+_sentry_dsn = os.getenv("SENTRY_DSN", "").strip()
+if _sentry_dsn:
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.fastapi import FastApiIntegration
+
+        sentry_sdk.init(
+            dsn=_sentry_dsn,
+            environment=os.getenv("SENTRY_ENVIRONMENT", "production"),
+            traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
+            integrations=[FastApiIntegration()],
+            send_default_pii=False,  # ИИН/ФИО водителей в Sentry не уходят
+        )
+        print("[sentry] initialized", flush=True)
+    except Exception as e:
+        print(f"[sentry] init failed (continuing without): {e}", flush=True)
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -136,6 +156,16 @@ def startup():
     reviews_dal.init_reviews_schema()
     consent_dal.init_consent_schema()
     blacklist_mgr.seed_demo_blacklist()
+
+    # CGR schema + seed border_checkpoints из хардкода BORDERS (идемпотентно).
+    # Безопасно при выключенном CGR_FEATURE_ENABLED — это только подготовка БД.
+    try:
+        from database import cgr_dal
+        cgr_dal.init_cgr_schema()
+        n = cgr_dal.seed_border_checkpoints_from_legacy()
+        print(f"[startup] CGR schema applied, border_checkpoints seeded: +{n}", flush=True)
+    except Exception as e:
+        print(f"[startup] CGR schema init failed (continuing): {e}", flush=True)
     # PR-D1 (build 18): идемпотентная миграция PRO-колонок водителя.
     # _ensure_columns делает ALTER TABLE add-if-missing для 9 колонок
     # (city, about, legal_form, china_experience_years, favorite_borders,
@@ -175,12 +205,39 @@ def startup():
         della_parse()
     except Exception as e:
         print(f"Della parse failed: {e}")
+    # CGR scheduler (AsyncIOScheduler, separate from existing BackgroundScheduler).
+    # Стартует только если CGR_FEATURE_ENABLED=true И CGR_IIN_SALT задан.
+    try:
+        from scheduler import cgr_jobs
+        sched = cgr_jobs.start()
+        if sched is not None:
+            print("[startup] CGR scheduler started", flush=True)
+        else:
+            print("[startup] CGR scheduler skipped (feature disabled or settings missing)", flush=True)
+    except Exception as e:
+        print(f"[startup] CGR scheduler FAILED (continuing): {e}", flush=True)
+
     print("=" * 50)
     print("UrTruck Security API started on port 8001")
     print("  API:        http://localhost:8001/api/v1")
     print("  Docs:       http://localhost:8001/docs")
     print("  Admin:      http://localhost:8001/admin")
     print("=" * 50)
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    """Корректная остановка CGR-scheduler и httpx-клиента."""
+    try:
+        from scheduler import cgr_jobs
+        cgr_jobs.stop()
+    except Exception as e:
+        print(f"[shutdown] cgr_jobs.stop failed: {e}", flush=True)
+    try:
+        from cgr.client import cgr_client
+        await cgr_client.close()
+    except Exception as e:
+        print(f"[shutdown] cgr_client.close failed: {e}", flush=True)
 
 
 @app.get("/")
