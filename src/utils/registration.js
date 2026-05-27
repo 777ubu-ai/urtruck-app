@@ -167,20 +167,34 @@ export const regAPI = {
   // Stage 50: PATCH /api/v1/users/me — сохраняем name/city из
   // PremiumProfileScreen в БД, чтобы ProfileScreen после регистрации
   // не показывал «Добавить имя».
-  async updateProfile({ name, city, about } = {}) {
+  //
+  // PR-D1: тот же endpoint расширен PRO-полями (legal_form,
+  // china_experience_years, favorite_borders[], emergency_contact,
+  // passport_intl_url, tir_book_url, cmr_insurance_url). Если backend
+  // ещё не задеплоен с этими полями — он молча игнорирует extras
+  // (Pydantic по умолчанию ignores), ничего не ломается.
+  async updateProfile(payload = {}) {
     const token = await this.getToken();
     if (!token) return { ok: false, detail: 'no_token' };
+
+    const allowed = [
+      'name', 'city', 'about',
+      'legal_form', 'china_experience_years', 'favorite_borders',
+      'emergency_contact',
+      'passport_intl_url', 'tir_book_url', 'cmr_insurance_url',
+    ];
+    const body = {};
+    for (const k of allowed) {
+      if (payload[k] !== undefined) body[k] = payload[k];
+    }
+
     const r = await fetch(`${API_BASE}/users/me`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
-      body: JSON.stringify({
-        ...(name !== undefined ? { name } : {}),
-        ...(city !== undefined ? { city } : {}),
-        ...(about !== undefined ? { about } : {}),
-      }),
+      body: JSON.stringify(body),
     });
     let data = {};
     try { data = await r.json(); } catch {}

@@ -1,18 +1,18 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Image, ActivityIndicator } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useI18n } from '../utils/useI18n';
 import { useAuth } from '../utils/AuthContext';
 import { useToast } from '../components/Toast';
 import { getProfile, saveProfile } from '../utils/store';
-import { storage } from '../utils/storage';
-import { API_BASE } from '../config/env';
 import Screen from '../components/ui/v1/Screen';
 import BrandHeader from '../components/ui/v1/BrandHeader';
 import Field from '../components/ui/v1/Field';
 import PrimaryButton from '../components/ui/v1/PrimaryButton';
 import HelpButton from '../components/HelpButton';
 import { useDraft, clearDraft } from '../utils/useDraft';
+import { regAPI } from '../utils/registration';
+import { uploadProDoc } from '../utils/proDocs';
 import {v1Colors, useV1Colors, v1Spacing, v1Typography, v1AccentFor, v1Radius} from '../theme/designV1';
 
 const BORDERS = ['Нур Жолы', 'Калжат', 'Достык', 'Бахты', 'Майкапчагай', 'Хоргос'];
@@ -75,6 +75,19 @@ export default function EditProfileScreen({ navigation, route }) {
   },
   borderChipText: { fontSize: 12, fontWeight: '600' },
   helpRow: { position: 'absolute', top: 8, right: 8, zIndex: 10 },
+  docRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    padding: 10, borderRadius: 12, borderWidth: 1,
+    marginBottom: 8,
+  },
+  docThumb: { width: 48, height: 48, borderRadius: 8 },
+  docPlaceholder: {
+    width: 48, height: 48, borderRadius: 8,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+  },
+  docRowLabel: { fontSize: 13, fontWeight: '700' },
+  docRowStatus: { fontSize: 11, marginTop: 2 },
 
   }), [v1]);
   const { role } = route.params || {};
@@ -98,17 +111,40 @@ export default function EditProfileScreen({ navigation, route }) {
   const [saving, setSaving] = useState(false);
 
   // PR-D1: PRO-секция (только водитель). Минимальный набор по спеке
-  // driver_onboarding §2/Экран 3. Документы (passport_intl/tir/cmr) пока
-  // не выносим в редактор — для них есть отдельный flow в RegScreen step 3
-  // (OCR + загрузка фото). Здесь — то, что водитель может заполнить
-  // быстро текстом / селектом.
+  // driver_onboarding §2/Экран 3 + загрузка документов в Supabase Storage
+  // (через src/utils/proDocs.js).
   const [legalForm, setLegalForm] = useState(profile.legal_form || 'individual');
   const [chinaExp, setChinaExp] = useState(profile.china_experience_years != null ? String(profile.china_experience_years) : '');
   const [favBorders, setFavBorders] = useState(Array.isArray(profile.favorite_borders) ? profile.favorite_borders : []);
   const [emergency, setEmergency] = useState(profile.emergency_contact || '');
+  // PRO-документы: URL'ы из Supabase Storage. Загрузка отдельная (не дожидаемся save).
+  const [passportIntlUrl, setPassportIntlUrl] = useState(profile.passport_intl_url || null);
+  const [tirUrl, setTirUrl] = useState(profile.tir_book_url || null);
+  const [cmrUrl, setCmrUrl] = useState(profile.cmr_insurance_url || null);
+  const [docUploading, setDocUploading] = useState(null); // 'passport_intl' | 'tir' | 'cmr' | null
+
+  // PR-D1: на mount подтянуть PRO-поля с сервера. Если бэкенд ещё не
+  // задеплоен с PRO-расширением — поля просто отсутствуют в ответе,
+  // ничего не падает (UI остаётся с локальными значениями из store).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const data = await regAPI.profile();
+      if (cancelled || !data) return;
+      if (data.legal_form) setLegalForm(data.legal_form);
+      if (data.china_experience_years != null) setChinaExp(String(data.china_experience_years));
+      if (Array.isArray(data.favorite_borders) && data.favorite_borders.length) setFavBorders(data.favorite_borders);
+      if (data.emergency_contact) setEmergency(data.emergency_contact);
+      if (data.passport_intl_url) setPassportIntlUrl(data.passport_intl_url);
+      if (data.tir_book_url) setTirUrl(data.tir_book_url);
+      if (data.cmr_insurance_url) setCmrUrl(data.cmr_insurance_url);
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // Draft mode: автосохранение полей на каждом onChange. Восстанавливается
-  // при mount, очищается после успешного save.
+  // при mount, очищается после успешного save. URL'ы документов в драфт не
+  // пишем — они хранятся уже в Supabase Storage и в локальном профиле.
   const draftKey = `edit_profile_${userId || 'guest'}_${role || 'na'}`;
   useDraft(
     draftKey,
@@ -118,6 +154,37 @@ export default function EditProfileScreen({ navigation, route }) {
 
   const toggleBorder = (b) => {
     setFavBorders((prev) => prev.includes(b) ? prev.filter((x) => x !== b) : [...prev, b]);
+  };
+
+  const pickAndUploadDoc = async (kind) => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      toast(t('photo_permission_required') || 'Разрешите доступ к фото', 'warn');
+      return;
+    }
+    const pick = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.85,
+      allowsEditing: false,
+    });
+    if (pick.canceled || !pick.assets?.[0]) return;
+    setDocUploading(kind);
+    const res = await uploadProDoc({
+      userId,
+      kind,
+      uri: pick.assets[0].uri,
+    });
+    setDocUploading(null);
+    if (!res.ok) {
+      toast(`⚠ ${res.detail || t('save_error')}`, 'error', 5000);
+      return;
+    }
+    if (kind === 'passport_intl') setPassportIntlUrl(res.url);
+    if (kind === 'tir')           setTirUrl(res.url);
+    if (kind === 'cmr')           setCmrUrl(res.url);
+    // Зеркалим в локальный store сразу — Profile сразу подхватит при focus
+    saveProfile(userId, { [res.field]: res.url });
+    toast('✓ ' + t('saveSettings'), 'success', 1500);
   };
 
   const pickAvatar = async () => {
@@ -172,15 +239,26 @@ export default function EditProfileScreen({ navigation, route }) {
     });
     let serverOk = false;
     try {
-      const token = await storage.get('ur_reg_token');
-      if (token) {
-        const r = await fetch(`${API_BASE}/users/me`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ name: fullName, city, about: profile.bio || '' }),
-        });
-        serverOk = r.ok;
+      // PR-D1: один регулируемый PATCH /users/me — включает и базовые
+      // поля, и PRO. Backend игнорирует поля, которых не знает.
+      const payload = {
+        name: fullName,
+        city,
+        about: profile.bio || '',
+      };
+      if (isDriver) {
+        payload.legal_form = legalForm;
+        payload.china_experience_years = Number.isFinite(chinaExpNum) ? chinaExpNum : null;
+        payload.favorite_borders = favBorders;
+        payload.emergency_contact = emergency.trim();
+        // URL'ы уже улетели в момент uploadProDoc, но шлём повторно
+        // чтобы сервер был in sync даже если до save был edge-case.
+        if (passportIntlUrl) payload.passport_intl_url = passportIntlUrl;
+        if (tirUrl)           payload.tir_book_url       = tirUrl;
+        if (cmrUrl)           payload.cmr_insurance_url  = cmrUrl;
       }
+      const r = await regAPI.updateProfile(payload);
+      serverOk = !!r.ok;
     } catch {}
     setSaving(false);
     await clearDraft(draftKey);
@@ -329,6 +407,50 @@ export default function EditProfileScreen({ navigation, route }) {
             keyboardType="phone-pad"
             helper={t('pro_field_emergency_hint')}
           />
+
+          {/* PR-D1: PRO-документы. Заливаются напрямую в Supabase Storage
+              (bucket pro-documents), URL пишется в профиль через PATCH /users/me.
+              Файлы видны сразу после загрузки — отдельный save не нужен. */}
+          <Text style={s.proSectionTitle}>{t('pro_section_international')}</Text>
+          {[
+            { kind: 'passport_intl', icon: '🌍', label: t('pro_field_passport_intl'), url: passportIntlUrl },
+            { kind: 'tir',           icon: '🚦', label: t('pro_field_tir'),           url: tirUrl },
+            { kind: 'cmr',           icon: '📑', label: t('pro_field_cmr'),           url: cmrUrl },
+          ].map((doc) => {
+            const uploading = docUploading === doc.kind;
+            const done = !!doc.url;
+            return (
+              <TouchableOpacity
+                key={doc.kind}
+                style={[s.docRow, {
+                  backgroundColor: v1.bg,
+                  borderColor: done ? '#22C55E' : v1.border,
+                }]}
+                onPress={() => !uploading && pickAndUploadDoc(doc.kind)}
+                activeOpacity={0.85}
+                disabled={uploading}
+              >
+                {done ? (
+                  <Image source={{ uri: doc.url }} style={s.docThumb} />
+                ) : (
+                  <View style={s.docPlaceholder}>
+                    <Text style={{ fontSize: 22 }}>{doc.icon}</Text>
+                  </View>
+                )}
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.docRowLabel, { color: v1.text }]}>{doc.label}</Text>
+                  <Text style={[s.docRowStatus, { color: done ? '#22C55E' : v1.textMuted }]}>
+                    {uploading
+                      ? '☁️ ' + (t('reg_uploading_short') || 'Загрузка...')
+                      : done
+                        ? '✓ ' + (t('reg_selfie_done') || 'Загружено')
+                        : (t('reg_doc_format_hint') || 'JPG / PNG, до 5 МБ')}
+                  </Text>
+                </View>
+                {uploading ? <ActivityIndicator color={accent.main} /> : null}
+              </TouchableOpacity>
+            );
+          })}
         </View>
       ) : null}
 

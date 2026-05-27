@@ -79,6 +79,16 @@ export default function ProfileScreen({ navigation, route }) {
             full_name: d.name || prev?.full_name,
             city: d.city || prev?.city,
             bio: d.about || prev?.bio,
+            // PR-D1: PRO-поля. Подтягиваем при focus — прогресс-бар PRO
+            // и бейдж активного PRO обновятся сразу. Если backend ещё
+            // не задеплоен с PRO — поля undefined и не затирают локал.
+            ...(d.legal_form ? { legal_form: d.legal_form } : {}),
+            ...(d.china_experience_years != null ? { china_experience_years: d.china_experience_years } : {}),
+            ...(Array.isArray(d.favorite_borders) && d.favorite_borders.length ? { favorite_borders: d.favorite_borders } : {}),
+            ...(d.emergency_contact ? { emergency_contact: d.emergency_contact } : {}),
+            ...(d.passport_intl_url ? { passport_intl_url: d.passport_intl_url } : {}),
+            ...(d.tir_book_url ? { tir_book_url: d.tir_book_url } : {}),
+            ...(d.cmr_insurance_url ? { cmr_insurance_url: d.cmr_insurance_url } : {}),
           };
           if (session?.user?.id) saveProfile(session.user.id, updated);
           return updated;
