@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Image, ActivityIndicator, Platform } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Image, ActivityIndicator, Platform, Modal, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
+import { useFocusEffect } from '@react-navigation/native';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useAuth } from '../utils/AuthContext';
@@ -11,6 +12,8 @@ import { regAPI } from '../utils/registration';
 import ConsentRow from '../components/ConsentRow';
 import ShimmerButton from '../components/ShimmerButton';
 import GradientText from '../components/GradientText';
+import HelpButton from '../components/HelpButton';
+import { useDraft, clearDraft } from '../utils/useDraft';
 import { translit, hasCyrillic } from '../utils/translit';
 import { compressImage } from '../utils/imageCompress';
 
@@ -93,6 +96,49 @@ export default function RegScreen({ navigation, route }) {
 
   // Step 5: Moderation
   const [moderation, setModeration] = useState(null);
+
+  // PR-D1: Draft mode — автосохраняем поля step 1 (телефон) и step 2
+  // (ИИН, имя) на каждом onChange. Если водитель потерял сеть, ушёл
+  // в фон или OS убила процесс — данные восстановятся при возврате.
+  // Селфи/документы/фото машины — uri'ы локальных файлов, в драфт
+  // не пишем (могут протухнуть).
+  const draftKey = `reg_driver_${session?.user?.id || 'guest'}`;
+  useDraft(
+    draftKey,
+    { phone, iin, fullName },
+    { phone: setPhone, iin: setIin, fullName: setFullName },
+    { enabled: isDriver },
+  );
+
+  // PR-D1: Bottom Sheet «Прервать регистрацию?» при попытке выйти.
+  // Перехватываем navigation.beforeRemove только пока step ≤ 4 (на
+  // step 5 модерация запущена — пусть уходит спокойно).
+  const [exitVisible, setExitVisible] = useState(false);
+  const [pendingNavAction, setPendingNavAction] = useState(null);
+  useFocusEffect(useCallback(() => {
+    const unsub = navigation.addListener('beforeRemove', (e) => {
+      if (!isDriver || step >= 5 || moderation?.auto_approved) return;
+      // Если уже подтвердили — не блокируем
+      if (e.data?.action?.payload?._urConfirmedExit) return;
+      e.preventDefault();
+      setPendingNavAction(e.data.action);
+      setExitVisible(true);
+    });
+    return unsub;
+  }, [navigation, isDriver, step, moderation]));
+
+  const onConfirmExit = () => {
+    setExitVisible(false);
+    const action = pendingNavAction;
+    setPendingNavAction(null);
+    if (action) {
+      // Помечаем action чтобы beforeRemove пропустил
+      const marked = { ...action, payload: { ...(action.payload || {}), _urConfirmedExit: true } };
+      navigation.dispatch(marked);
+    } else {
+      navigation.goBack();
+    }
+  };
 
   // Для клиента — упрощённая форма
   if (!isDriver) return <ClientReg navigation={navigation} setRole={setRole} session={session} theme={theme} t={t} toast={toast} accent={accent} />;
@@ -273,6 +319,8 @@ export default function RegScreen({ navigation, route }) {
         security_score: r.security_score,
         security_color: r.security_color,
       });
+      // PR-D1: успешная регистрация — драфт можно стереть
+      clearDraft(draftKey);
       setTimeout(() => { setRole('driver'); toast('🎉 ' + t('reg_complete_toast'), 'success'); }, 2500);
     } else if (r.status === 'rejected') {
       toast(`⛔ ${t('reg_rejected_toast')}: ${r.rejected_reason}`, 'error', 8000);
@@ -283,6 +331,32 @@ export default function RegScreen({ navigation, route }) {
 
   return (
     <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]}>
+      {/* PR-D1: [?] помощь в правом верхнем углу */}
+      <View style={s.helpAnchor}>
+        <HelpButton accent={accent} />
+      </View>
+
+      {/* PR-D1: Bottom Sheet «Прервать регистрацию?» */}
+      <Modal visible={exitVisible} transparent animationType="slide" onRequestClose={() => setExitVisible(false)}>
+        <Pressable style={s.exitBackdrop} onPress={() => setExitVisible(false)}>
+          <Pressable style={[s.exitSheet, { backgroundColor: theme.card }]} onPress={(e) => e.stopPropagation()}>
+            <View style={s.exitHandle} />
+            <Text style={[s.exitTitle, { color: theme.text }]}>{t('reg_exit_title')}</Text>
+            <Text style={[s.exitBody, { color: theme.textMuted }]}>{t('reg_exit_body')}</Text>
+            <TouchableOpacity
+              style={[s.exitPrimary, { backgroundColor: accent }]}
+              onPress={() => setExitVisible(false)}
+              activeOpacity={0.85}
+            >
+              <Text style={s.exitPrimaryText}>{t('reg_exit_continue')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={s.exitSecondary} onPress={onConfirmExit} activeOpacity={0.7}>
+              <Text style={[s.exitSecondaryText, { color: theme.textMuted }]}>{t('reg_exit_leave')}</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       <ScrollView contentContainerStyle={s.scroll}>
         {/* Stage 34: role-aware заголовок и подзаголовок поверх
             прогресс-бара — пользователь сразу видит, в какой
@@ -776,4 +850,22 @@ const s = StyleSheet.create({
   },
   progressText: { fontSize: 13, fontWeight: '700' },
   fieldErr: { color: '#EF4444', fontSize: 11, marginTop: 4, fontWeight: '600' },
+
+  // PR-D1: HelpButton anchor + Exit bottom sheet
+  helpAnchor: { position: 'absolute', top: 12, right: 14, zIndex: 50 },
+  exitBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  exitSheet: {
+    borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    padding: 20, paddingBottom: Platform.OS === 'ios' ? 32 : 20,
+  },
+  exitHandle: {
+    alignSelf: 'center', width: 36, height: 4, borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.2)', marginBottom: 14,
+  },
+  exitTitle: { fontSize: 18, fontWeight: '800', marginBottom: 8 },
+  exitBody: { fontSize: 13, lineHeight: 19, marginBottom: 16 },
+  exitPrimary: { paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
+  exitPrimaryText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  exitSecondary: { alignItems: 'center', marginTop: 10, paddingVertical: 10 },
+  exitSecondaryText: { fontSize: 14, fontWeight: '600' },
 });

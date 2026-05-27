@@ -11,7 +11,9 @@ import { useAuth } from '../utils/AuthContext';
 import { getProfile, saveProfile } from '../utils/store';
 import { storage } from '../utils/storage';
 import GradientText from '../components/GradientText';
+import HelpButton from '../components/HelpButton';
 import { API_BASE } from '../config/env';
+import { IS_BETA } from '../config/supabase';
 
 const LANGS = [
   { code: 'RU', flag: '🇷🇺', name: 'Русский' },
@@ -117,10 +119,45 @@ export default function ProfileScreen({ navigation, route }) {
 
   const phoneRoleLine = `${session?.user?.phone || ''} · ${isDriver ? t('role_driver') : t('role_shipper')}`;
 
+  // PR-D1: PRO-прогресс. Считаем 4 ключевых поля расширенного профиля
+  // (legal_form, china_experience_years, favorite_borders, emergency_contact).
+  // В бета-периоде PRO активируется автоматически при заполнении 4/4 —
+  // см. CLAUDE.md «IS_BETA = true: всё платное бесплатно».
+  // Показывается только для driver — клиенту PRO-статус не релевантен.
+  const PRO_FIELDS = ['legal_form', 'china_experience_years', 'favorite_borders', 'emergency_contact'];
+  const proFilled = isDriver
+    ? PRO_FIELDS.filter(k => {
+        const v = profile[k];
+        if (v == null || v === '') return false;
+        if (Array.isArray(v)) return v.length > 0;
+        return true;
+      }).length
+    : 0;
+  const proTotal = PRO_FIELDS.length;
+  const proPercent = Math.round((proFilled / proTotal) * 100);
+  const proActive = isDriver && proFilled === proTotal;
+  const proRemaining = proTotal - proFilled;
+
+  // Русский плюрализатор для «N пункт/пункта/пунктов». Для остальных локалей
+  // используем общий ключ items_many.
+  const itemsWord = (n) => {
+    const lang = getLanguage();
+    if (lang !== 'RU') return t('pro_progress_items_many');
+    const abs = Math.abs(n) % 100;
+    const last = abs % 10;
+    if (abs >= 11 && abs <= 14) return t('pro_progress_items_many');
+    if (last === 1) return t('pro_progress_items_one');
+    if (last >= 2 && last <= 4) return t('pro_progress_items_few');
+    return t('pro_progress_items_many');
+  };
+
   return (
     <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]} edges={['top']}>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
-        <GradientText style={s.title} colors={isDriver ? ['#22C55E', '#22C55E'] : ['#F59E0B', '#EF4444']}>{t('profile')}</GradientText>
+        <View style={s.headerRow}>
+          <GradientText style={s.title} colors={isDriver ? ['#22C55E', '#22C55E'] : ['#F59E0B', '#EF4444']}>{t('profile')}</GradientText>
+          <HelpButton accent={accent} />
+        </View>
 
         {/* PR-C2 (WeChat horizontal card): avatar слева, текст справа стеком.
             Compact 80px высоты вместо 200px вертикальной. */}
@@ -166,6 +203,44 @@ export default function ProfileScreen({ navigation, route }) {
             <Feather name="edit-2" size={16} color={theme.textMuted} />
           </TouchableOpacity>
         </View>
+
+        {/* PR-D1: PRO-блок. Для driver — прогресс заполнения расширенного
+            профиля и CTA «Получить статус PRO». При 4/4 — бейдж «PRO активен»
+            и note про бета-период (бесплатно). Для client скрыт. */}
+        {isDriver ? (
+          <View style={[s.proCard, { backgroundColor: theme.card, borderColor: proActive ? '#22C55E' : theme.border }]}>
+            <View style={s.proHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.proTitle, { color: theme.text }]}>
+                  {proActive ? `⭐ ${t('pro_active_badge')}` : `⭐ ${t('pro_progress_title')}`}
+                </Text>
+                {proActive ? (
+                  IS_BETA ? (
+                    <Text style={[s.proSub, { color: theme.textMuted }]}>{t('pro_beta_note')}</Text>
+                  ) : null
+                ) : (
+                  <Text style={[s.proSub, { color: theme.textMuted }]}>
+                    {t('pro_progress_remaining')} {proRemaining} {itemsWord(proRemaining)}
+                  </Text>
+                )}
+              </View>
+              <Text style={[s.proPercent, { color: proActive ? '#22C55E' : accent }]}>{proPercent}%</Text>
+            </View>
+            <View style={[s.proTrack, { backgroundColor: theme.bg }]}>
+              <View style={[s.proFill, { width: `${proPercent}%`, backgroundColor: proActive ? '#22C55E' : accent }]} />
+            </View>
+            {!proActive ? (
+              <TouchableOpacity
+                style={[s.proCta, { backgroundColor: accent }]}
+                onPress={() => navigation.navigate('EditProfile', { role, focusPRO: true })}
+                activeOpacity={0.85}
+              >
+                <Text style={s.proCtaText}>{t('pro_become_btn')}</Text>
+                <Feather name="chevron-right" size={18} color="#fff" />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ) : null}
 
         {/* PR-C2 (WeChat grouped list): 4 menu items в одной карточке
             с тонкими separators. Без emoji — Feather outline icons. */}
@@ -315,7 +390,22 @@ export default function ProfileScreen({ navigation, route }) {
 
 const s = StyleSheet.create({
   container: { flex: 1 },
-  title: { fontSize: 22, fontWeight: '900', marginBottom: 14 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  title: { fontSize: 22, fontWeight: '900' },
+
+  // PR-D1: PRO progress card
+  proCard: { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 14 },
+  proHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
+  proTitle: { fontSize: 14, fontWeight: '800' },
+  proSub: { fontSize: 11, marginTop: 2 },
+  proPercent: { fontSize: 18, fontWeight: '900' },
+  proTrack: { height: 6, borderRadius: 3, overflow: 'hidden' },
+  proFill: { height: '100%', borderRadius: 3 },
+  proCta: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    paddingVertical: 11, borderRadius: 10, marginTop: 12,
+  },
+  proCtaText: { color: '#fff', fontSize: 13, fontWeight: '800' },
 
   // PR-C2 (WeChat horizontal card)
   profileCard: {

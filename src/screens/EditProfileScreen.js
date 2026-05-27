@@ -11,7 +11,11 @@ import Screen from '../components/ui/v1/Screen';
 import BrandHeader from '../components/ui/v1/BrandHeader';
 import Field from '../components/ui/v1/Field';
 import PrimaryButton from '../components/ui/v1/PrimaryButton';
+import HelpButton from '../components/HelpButton';
+import { useDraft, clearDraft } from '../utils/useDraft';
 import {v1Colors, useV1Colors, v1Spacing, v1Typography, v1AccentFor, v1Radius} from '../theme/designV1';
+
+const BORDERS = ['Нур Жолы', 'Калжат', 'Достык', 'Бахты', 'Майкапчагай', 'Хоргос'];
 
 // EditProfileScreen — design v1, screens 05 (driver) & 06 (cargo owner).
 //
@@ -51,6 +55,27 @@ export default function EditProfileScreen({ navigation, route }) {
   skipRow: { alignItems: 'center', marginTop: v1Spacing.md, paddingVertical: 8 },
   skipText: { fontSize: 13, fontWeight: '700' },
 
+  // PR-D1: PRO-секция (driver only)
+  proSection: { marginTop: v1Spacing.md },
+  proSectionTitle: {
+    fontSize: 11, fontWeight: '800', color: v1.textMuted,
+    letterSpacing: 0.6, textTransform: 'uppercase',
+    marginTop: v1Spacing.md, marginBottom: 6, marginLeft: 4,
+  },
+  radioRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
+  radioDot: {
+    width: 18, height: 18, borderRadius: 9, borderWidth: 2,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  radioInner: { width: 8, height: 8, borderRadius: 4 },
+  radioLabel: { fontSize: 14, color: v1.text },
+  bordersWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 },
+  borderChip: {
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14, borderWidth: 1,
+  },
+  borderChipText: { fontSize: 12, fontWeight: '600' },
+  helpRow: { position: 'absolute', top: 8, right: 8, zIndex: 10 },
+
   }), [v1]);
   const { role } = route.params || {};
   const isDriver = role === 'driver';
@@ -71,6 +96,29 @@ export default function EditProfileScreen({ navigation, route }) {
   const [email, setEmail] = useState(profile.email || '');
   const [company, setCompany] = useState(profile.company || '');
   const [saving, setSaving] = useState(false);
+
+  // PR-D1: PRO-секция (только водитель). Минимальный набор по спеке
+  // driver_onboarding §2/Экран 3. Документы (passport_intl/tir/cmr) пока
+  // не выносим в редактор — для них есть отдельный flow в RegScreen step 3
+  // (OCR + загрузка фото). Здесь — то, что водитель может заполнить
+  // быстро текстом / селектом.
+  const [legalForm, setLegalForm] = useState(profile.legal_form || 'individual');
+  const [chinaExp, setChinaExp] = useState(profile.china_experience_years != null ? String(profile.china_experience_years) : '');
+  const [favBorders, setFavBorders] = useState(Array.isArray(profile.favorite_borders) ? profile.favorite_borders : []);
+  const [emergency, setEmergency] = useState(profile.emergency_contact || '');
+
+  // Draft mode: автосохранение полей на каждом onChange. Восстанавливается
+  // при mount, очищается после успешного save.
+  const draftKey = `edit_profile_${userId || 'guest'}_${role || 'na'}`;
+  useDraft(
+    draftKey,
+    { firstName, lastName, city, email, company, legalForm, chinaExp, favBorders, emergency },
+    { setFirstName, setLastName, setCity, setEmail, setCompany, setLegalForm, setChinaExp, setFavBorders, setEmergency },
+  );
+
+  const toggleBorder = (b) => {
+    setFavBorders((prev) => prev.includes(b) ? prev.filter((x) => x !== b) : [...prev, b]);
+  };
 
   const pickAvatar = async () => {
     // Stage 21: previously this swallowed permission denials and
@@ -101,6 +149,7 @@ export default function EditProfileScreen({ navigation, route }) {
     if (saving) return;
     setSaving(true);
     const fullName = [firstName, lastName].map((s) => (s || '').trim()).filter(Boolean).join(' ');
+    const chinaExpNum = parseInt(chinaExp, 10);
     saveProfile(userId, {
       avatar_url: avatar,
       first_name: firstName.trim(),
@@ -110,6 +159,16 @@ export default function EditProfileScreen({ navigation, route }) {
       city,
       email: email.trim(),
       company: company.trim(),
+      // PR-D1: PRO-поля. Сохраняются локально (store) — серверный sync
+      // /users/me пока принимает только {name, city, about}, расширенные
+      // PRO-поля live на фронте до тех пор, пока backend не получит
+      // отдельный endpoint /api/v1/drivers/pro (вне scope этого PR).
+      ...(isDriver ? {
+        legal_form: legalForm,
+        china_experience_years: Number.isFinite(chinaExpNum) ? chinaExpNum : null,
+        favorite_borders: favBorders,
+        emergency_contact: emergency.trim(),
+      } : {}),
     });
     let serverOk = false;
     try {
@@ -124,6 +183,7 @@ export default function EditProfileScreen({ navigation, route }) {
       }
     } catch {}
     setSaving(false);
+    await clearDraft(draftKey);
     toast(serverOk ? '✓ ' + t('saveSettings') : '✓ ' + t('saved_locally'), serverOk ? 'success' : 'warn');
     navigation.goBack();
   };
@@ -131,6 +191,9 @@ export default function EditProfileScreen({ navigation, route }) {
   return (
     <Screen>
       <BrandHeader onBack={() => navigation.goBack()} accent={accent.main} compact />
+      <View style={s.helpRow}>
+        <HelpButton accent={accent.main} />
+      </View>
 
       <Text style={s.title}>
         {isDriver ? t('profile_setup_driver_title') : t('profile_setup_client_title')}
@@ -197,6 +260,77 @@ export default function EditProfileScreen({ navigation, route }) {
         keyboardType="email-address"
         autoCapitalize="none"
       />
+
+      {/* PR-D1: PRO-секция — расширенный профиль водителя. Скрыта для клиента.
+          Категории по спеке driver_onboarding.md §2 Экран 3:
+          ① Юр. статус (Radio), ② Опыт с Китаем (число), ③ Любимые
+          погранпереходы (chips multi-select), ④ Экстренный контакт.
+          Документы PRO (TIR/CMR/загранпаспорт) обрабатываются в RegScreen
+          step 3 через OCR — не дублируем здесь. */}
+      {isDriver ? (
+        <View style={s.proSection}>
+          <Text style={s.proSectionTitle}>{t('pro_section_legal')}</Text>
+          {[
+            { k: 'individual', label: t('pro_legal_individual') },
+            { k: 'ip',         label: t('pro_legal_ip') },
+            { k: 'too',        label: t('pro_legal_too') },
+          ].map((opt) => {
+            const checked = legalForm === opt.k;
+            return (
+              <TouchableOpacity key={opt.k} style={s.radioRow} onPress={() => setLegalForm(opt.k)} activeOpacity={0.7}>
+                <View style={[s.radioDot, { borderColor: checked ? accent.main : v1.border }]}>
+                  {checked ? <View style={[s.radioInner, { backgroundColor: accent.main }]} /> : null}
+                </View>
+                <Text style={s.radioLabel}>{opt.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+
+          <Text style={s.proSectionTitle}>{t('pro_section_routes')}</Text>
+          <Field
+            icon="🛣"
+            label={t('pro_field_china_experience')}
+            value={chinaExp}
+            onChangeText={(v) => setChinaExp(v.replace(/\D/g, '').slice(0, 2))}
+            placeholder="5"
+            keyboardType="number-pad"
+          />
+          <View style={{ marginBottom: v1Spacing.sm }}>
+            <Text style={[v1Typography.small, { color: v1.textMuted, marginBottom: 6, marginLeft: 4 }]}>
+              {t('pro_field_favorite_borders')}
+            </Text>
+            <View style={s.bordersWrap}>
+              {BORDERS.map((b) => {
+                const active = favBorders.includes(b);
+                return (
+                  <TouchableOpacity
+                    key={b}
+                    style={[s.borderChip, {
+                      backgroundColor: active ? accent.soft : v1.bg,
+                      borderColor: active ? accent.main : v1.border,
+                    }]}
+                    onPress={() => toggleBorder(b)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[s.borderChipText, { color: active ? accent.main : v1.textMuted }]}>{b}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
+          <Text style={s.proSectionTitle}>{t('pro_section_emergency')}</Text>
+          <Field
+            icon="🆘"
+            label={t('pro_field_emergency_contact')}
+            value={emergency}
+            onChangeText={setEmergency}
+            placeholder="+7 777 ___ __ __"
+            keyboardType="phone-pad"
+            helper={t('pro_field_emergency_hint')}
+          />
+        </View>
+      ) : null}
 
       <View style={[s.infoBox, { backgroundColor: accent.soft, borderColor: accent.main }]}>
         <Text style={[s.infoText, { color: accent.main }]} numberOfLines={2}>
