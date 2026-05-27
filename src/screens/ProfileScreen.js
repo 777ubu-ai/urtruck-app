@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Switch, Alert, Platform, Image, Linking } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Platform, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
+import Feather from '@expo/vector-icons/Feather';
 import { setLanguage, getLanguage } from '../utils/i18n';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
@@ -88,102 +89,132 @@ export default function ProfileScreen({ navigation, route }) {
     fetchProfile();
   }, [fetchProfile]));
 
-  // PR-C2 (Task 4): primary card «Мои рейсы/Мои грузы» убрана —
-  // дублирует MyWork tab в BottomNav. Освободившееся место занимает
-  // CargoRuqsat info-страница (см. ниже в menuItems).
-  // HOT2-007 fallback: если кому-то понадобится вернуть кнопку быстрого
-  // доступа из Profile — uncomment блок ниже + JSX между HOT2-007 и
-  // menuItems map.
-  // const primary = {
-  //   icon: isDriver ? '🚛' : '📦',
-  //   label: isDriver ? t('menu_my_trips') : t('menu_my_cargos'),
-  //   sub: isDriver ? t('menu_my_trips_sub') : t('menu_my_cargos_sub'),
-  //   screen: 'MyTripsList',
-  //   featured: true,
-  // };
+  // PR-C2 (WeChat redesign): grouped list — 4 items в одной карточке
+  // с тонкими separators между ними. Иконки — Feather outline (унифицированный
+  // muted gray), вместо разноцветных emoji. Это premium WeChat-style вид.
   const menuItems = [
-    // PR-C2 (Task 4): CargoRuqsat info-page — электронная очередь на
-    // границе. Featured вверху списка чтобы привлечь внимание к
-    // ключевой будущей фиче.
-    { icon: '🚧', label: t('profile_cargoruqsat_title'), sub: t('profile_cargoruqsat_subtitle'), screen: 'CargoRuqsatInfo' },
-    { icon: '💬', label: t('chatsSection'), value: '→', screen: 'ChatsList' },
-    { icon: '⭐', label: t('myReviews'), value: '→', screen: 'Reviews' },
-    { icon: '✏️', label: t('editProfile'), value: '→', screen: 'EditProfile' },
+    { icon: 'truck',         label: t('profile_cargoruqsat_title'), sub: t('profile_cargoruqsat_subtitle'), screen: 'CargoRuqsatInfo' },
+    { icon: 'message-circle',label: t('chatsSection'),  screen: 'ChatsList' },
+    { icon: 'star',          label: t('myReviews'),     screen: 'Reviews' },
+    { icon: 'edit-2',        label: t('editProfile'),   screen: 'EditProfile' },
   ];
+
+  // PR-C2 (driver card): canonical specs line «Тент · 20 т · 86 м³».
+  // Раньше строка собиралась как `${truckType} · ${plate_truck} · ${capacity}t`
+  // — это (1) показывало номер тягача в публичном виде, (2) использовало
+  // латинскую `t` без пробела, (3) пропускало volume_m3 полностью.
+  // Spec from image_31.png: «Тент · 20 т · 86 м³».
+  const specsLine = isDriver
+    ? [
+        t(profile.truckType || 'tent'),
+        profile.capacity_tons != null && profile.capacity_tons !== '' ? `${profile.capacity_tons} т` : null,
+        profile.available_m3 != null && profile.available_m3 !== '' ? `${profile.available_m3} м³` : null,
+      ].filter(Boolean).join(' · ')
+    : [
+        t(profile.company_type || 'importer'),
+        profile.city,
+      ].filter(Boolean).join(' · ');
+
+  const phoneRoleLine = `${session?.user?.phone || ''} · ${isDriver ? t('role_driver') : t('role_shipper')}`;
 
   return (
     <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]} edges={['top']}>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
         <GradientText style={s.title} colors={isDriver ? ['#22C55E', '#22C55E'] : ['#F59E0B', '#EF4444']}>{t('profile')}</GradientText>
 
+        {/* PR-C2 (WeChat horizontal card): avatar слева, текст справа стеком.
+            Compact 80px высоты вместо 200px вертикальной. */}
         <View style={[s.profileCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <TouchableOpacity style={s.editBtn} onPress={() => navigation.navigate('EditProfile', { role })}>
-            <Text style={{ fontSize: 14 }}>✏️</Text>
-          </TouchableOpacity>
           {profile.avatar_url ? (
             <Image source={{ uri: profile.avatar_url }} style={[s.avatar, { borderColor: accent + '40' }]} />
           ) : (
             <View style={[s.avatar, { backgroundColor: accent + '20', borderColor: accent + '30' }]}>
-              <Text style={{ fontSize: 30 }}>{isDriver ? '🚛' : '📦'}</Text>
+              <Text style={{ fontSize: 24 }}>{isDriver ? '🚛' : '📦'}</Text>
             </View>
           )}
-          <Text style={[s.name, { color: theme.text }]}>
-            {profile.display_name || profile.full_name || t('add_name')}
-          </Text>
-          <Text style={[s.phone, { color: theme.textMuted }]}>
-            {session?.user?.phone || ''} · {isDriver ? t('role_driver') : t('role_shipper')}
-          </Text>
-          <Text style={[s.subtitle, { color: theme.textSecondary }]}>
-            {isDriver
-              ? `${t(profile.truckType || 'tent')} · ${profile.plate_truck || ''} · ${profile.capacity_tons || '—'}t`
-              : `${t(profile.company_type || 'importer')}${profile.city ? ' · ' + profile.city : ''}`}
-          </Text>
-          <View style={[s.verifiedBadge, { backgroundColor: profile.is_verified ? '#22C55E15' : '#F59E0B15' }]}>
-            <Text style={[s.verifiedText, { color: profile.is_verified ? '#22C55E' : '#F59E0B' }]}>
-              {profile.is_verified ? '🟢 ' + t('verified') : '🟡 ' + t('pending')}
-            </Text>
+          <View style={s.profileInfo}>
+            {/* Row 1: имя + subtle verified checkmark если verified */}
+            <View style={s.profileNameRow}>
+              <Text style={[s.name, { color: theme.text }]} numberOfLines={1}>
+                {profile.display_name || profile.full_name || t('add_name')}
+              </Text>
+              {profile.is_verified ? (
+                <View style={[s.verifiedDot, { backgroundColor: '#22C55E' }]}>
+                  <Feather name="check" size={10} color="#fff" />
+                </View>
+              ) : null}
+            </View>
+            {/* Row 2: phone + role + rating справа */}
+            <View style={s.profileMetaRow}>
+              <Text style={[s.phone, { color: theme.textMuted }]} numberOfLines={1}>
+                {phoneRoleLine}
+              </Text>
+              {isDriver && (profile.rating || profile.rating === 0) ? (
+                <Text style={[s.ratingInline, { color: '#FBBF24' }]}>
+                  {'  '}★ {profile.rating || 5.0}
+                </Text>
+              ) : null}
+            </View>
+            {/* Row 3: specs — Тент · 20 т · 86 м³ */}
+            {specsLine ? (
+              <Text style={[s.subtitle, { color: theme.textSecondary }]} numberOfLines={1}>
+                {specsLine}
+              </Text>
+            ) : null}
           </View>
-          {isDriver && <Text style={s.ratingText}>★ {profile.rating || 5.0} · {profile.reviews_count || 0}</Text>}
+          <TouchableOpacity style={s.editBtnInline} onPress={() => navigation.navigate('EditProfile', { role })} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Feather name="edit-2" size={16} color={theme.textMuted} />
+          </TouchableOpacity>
         </View>
 
-        {/* PR-C2 (Task 4): primary «Мои грузы/Мои рейсы» card удалена —
-            дублировала MyWork tab в BottomNav. */}
-
-        {menuItems.map(item => (
-          <TouchableOpacity
-            key={item.label}
-            style={[s.menuItem, { backgroundColor: theme.card, borderColor: theme.border }]}
-            onPress={() => item.screen && navigation.navigate(item.screen, { role })}
-          >
-            <Text style={s.menuIcon}>{item.icon}</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={[s.menuLabel, { color: theme.text }]}>{item.label}</Text>
-              {item.sub ? <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 2 }}>{item.sub}</Text> : null}
-            </View>
-            <Text style={[s.menuValue, { color: theme.textSecondary }]}>{item.value || '→'}</Text>
-          </TouchableOpacity>
-        ))}
-
-        <View style={[s.settingsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-            <Text style={[s.settingLabel, { color: theme.text }]}>{t('theme_label')}</Text>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
+        {/* PR-C2 (WeChat grouped list): 4 menu items в одной карточке
+            с тонкими separators. Без emoji — Feather outline icons. */}
+        <View style={[s.menuGroup, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          {menuItems.map((item, idx) => (
+            <React.Fragment key={item.label}>
+              {idx > 0 ? <View style={[s.menuSeparator, { backgroundColor: theme.border }]} /> : null}
               <TouchableOpacity
-                style={{ paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8, backgroundColor: isDark ? 'transparent' : accent }}
-                onPress={() => toggleTheme()}
+                style={s.menuRow}
+                onPress={() => item.screen && navigation.navigate(item.screen, { role })}
+                activeOpacity={0.6}
               >
-                <Text style={{ color: isDark ? theme.textMuted : '#fff', fontSize: 12, fontWeight: '700' }}>☀️ {t('theme_light')}</Text>
+                <View style={[s.menuIconWrap, { backgroundColor: theme.bg }]}>
+                  <Feather name={item.icon} size={18} color={theme.textMuted} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.menuLabel, { color: theme.text }]}>{item.label}</Text>
+                  {item.sub ? <Text style={[s.menuSub, { color: theme.textMuted }]}>{item.sub}</Text> : null}
+                </View>
+                <Feather name="chevron-right" size={18} color={theme.textMuted} />
+              </TouchableOpacity>
+            </React.Fragment>
+          ))}
+        </View>
+
+        {/* PR-C2 (compact settings): уменьшен padding 16→12, gap между
+            theme и language секциями — 12 вместо 14, gap между flags — 6.
+            Логика Light/Dark + 4 языка сохранена полностью. */}
+        <View style={[s.settingsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <View style={s.settingsRow}>
+            <Text style={[s.settingLabel, { color: theme.text }]}>{t('theme_label')}</Text>
+            <View style={{ flexDirection: 'row', gap: 6 }}>
+              <TouchableOpacity
+                style={[s.themeBtn, { backgroundColor: isDark ? 'transparent' : accent, borderColor: isDark ? theme.border : accent }]}
+                onPress={() => { if (isDark) toggleTheme(); }}
+              >
+                <Text style={[s.themeBtnText, { color: isDark ? theme.textMuted : '#fff' }]}>☀️ {t('theme_light')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={{ paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8, backgroundColor: isDark ? accent : 'transparent' }}
+                style={[s.themeBtn, { backgroundColor: isDark ? accent : 'transparent', borderColor: isDark ? accent : theme.border }]}
                 onPress={() => { if (!isDark) toggleTheme(); }}
               >
-                <Text style={{ color: isDark ? '#fff' : theme.textMuted, fontSize: 12, fontWeight: '700' }}>🌙 {t('theme_dark')}</Text>
+                <Text style={[s.themeBtnText, { color: isDark ? '#fff' : theme.textMuted }]}>🌙 {t('theme_dark')}</Text>
               </TouchableOpacity>
             </View>
           </View>
-          <View style={{ marginTop: 0 }}>
-            <Text style={[s.settingLabel, { color: theme.text, marginBottom: 10 }]}>🌐 {t('language')}</Text>
+
+          <View style={[s.settingsRow, { marginTop: 12, flexDirection: 'column', alignItems: 'stretch' }]}>
+            <Text style={[s.settingLabel, { color: theme.text, marginBottom: 8 }]}>🌐 {t('language')}</Text>
             <View style={s.langGrid}>
               {LANGS.map(l => (
                 <TouchableOpacity
@@ -191,8 +222,10 @@ export default function ProfileScreen({ navigation, route }) {
                   style={[s.langCard, { backgroundColor: theme.bg, borderColor: theme.border }, lang === l.code && { backgroundColor: accent, borderColor: accent }]}
                   onPress={() => { setLang(l.code); setLanguage(l.code); }}
                 >
-                  <Text style={{ fontSize: 24 }}>{l.flag}</Text>
-                  <Text style={[s.langCardText, { color: theme.textSecondary }, lang === l.code && { color: isDriver ? '#fff' : '#0C0A09' }]}>{l.name}</Text>
+                  <Text style={{ fontSize: 22 }}>{l.flag}</Text>
+                  <Text style={[s.langCardText, { color: theme.textSecondary }, lang === l.code && { color: isDriver ? '#fff' : '#0C0A09' }]} numberOfLines={1}>
+                    {l.name}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -283,45 +316,73 @@ export default function ProfileScreen({ navigation, route }) {
 const s = StyleSheet.create({
   container: { flex: 1 },
   title: { fontSize: 22, fontWeight: '900', marginBottom: 14 },
-  profileCard: { borderRadius: 18, padding: 24, borderWidth: 1, alignItems: 'center', marginBottom: 12 },
-  avatar: { width: 80, height: 80, borderRadius: 40, alignItems: 'center', justifyContent: 'center', borderWidth: 3, marginBottom: 10 },
-  editBtn: { position: 'absolute', top: 12, right: 12, width: 32, height: 32, borderRadius: 16, backgroundColor: '#F59E0B20', borderWidth: 1, borderColor: '#F59E0B40', alignItems: 'center', justifyContent: 'center', zIndex: 10 },
-  name: { fontSize: 18, fontWeight: '800', marginBottom: 2 },
-  phone: { fontSize: 12, marginBottom: 3 },
+
+  // PR-C2 (WeChat horizontal card)
+  profileCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderWidth: 1,
+    marginBottom: 14,
+    position: 'relative',
+  },
+  avatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+  },
+  profileInfo: { flex: 1, gap: 3 },
+  profileNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  name: { fontSize: 17, fontWeight: '800', flexShrink: 1 },
+  verifiedDot: { width: 16, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  profileMetaRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'nowrap' },
+  phone: { fontSize: 12, flexShrink: 1 },
+  ratingInline: { fontSize: 12, fontWeight: '700', flexShrink: 0 },
   subtitle: { fontSize: 12 },
-  verifiedBadge: { marginTop: 8, backgroundColor: '#22C55E15', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12 },
-  verifiedText: { color: '#22C55E', fontSize: 12, fontWeight: '600' },
-  ratingText: { color: '#FBBF24', fontSize: 13, fontWeight: '700', marginTop: 6 },
-  menuItem: { borderRadius: 14, padding: 14, borderWidth: 1, marginBottom: 6, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  menuIcon: { fontSize: 18 },
-  menuLabel: { flex: 1, fontSize: 13, fontWeight: '500' },
-  menuValue: { fontSize: 12 },
-  // HOT2-007: Featured primary menu row
-  primaryMenu: {
-    flexDirection: 'row', alignItems: 'center', gap: 14,
-    borderRadius: 18, padding: 18, borderWidth: 2, marginBottom: 14,
-    overflow: 'hidden', position: 'relative',
+  editBtnInline: { position: 'absolute', top: 10, right: 10, padding: 4 },
+
+  // PR-C2 (WeChat grouped list)
+  menuGroup: {
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: 14,
+    overflow: 'hidden',
   },
-  primaryMenuBg: {
-    ...StyleSheet.absoluteFillObject, opacity: 0.16,
+  menuRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
   },
-  primaryMenuIcon: { fontSize: 28 },
-  primaryMenuLabel: { color: '#fff', fontSize: 16, fontWeight: '800' },
-  primaryMenuSub: { color: 'rgba(255,255,255,0.7)', fontSize: 11, marginTop: 2 },
-  primaryMenuArrow: { color: '#fff', fontSize: 20, fontWeight: '800' },
-  settingsCard: { borderRadius: 16, padding: 16, borderWidth: 1, marginTop: 8, marginBottom: 12 },
-  settingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  menuSeparator: { height: StyleSheet.hairlineWidth, marginLeft: 50 },
+  menuIconWrap: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  menuLabel: { fontSize: 14, fontWeight: '600' },
+  menuSub: { fontSize: 11, marginTop: 1 },
+
+  // PR-C2 (compact settings)
+  settingsCard: { borderRadius: 14, padding: 12, borderWidth: 1, marginBottom: 12 },
+  settingsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   settingLabel: { fontSize: 13, fontWeight: '600' },
-  langGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  themeBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1 },
+  themeBtnText: { fontSize: 12, fontWeight: '700' },
+  langGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   langCard: {
-    width: '22.5%', minWidth: 70,
-    paddingVertical: 10, paddingHorizontal: 6,
-    borderRadius: 12, borderWidth: 1,
-    alignItems: 'center', gap: 4,
+    width: '23.5%', minWidth: 68,
+    paddingVertical: 8, paddingHorizontal: 4,
+    borderRadius: 10, borderWidth: 1,
+    alignItems: 'center', gap: 3,
   },
   langCardText: { fontSize: 10, fontWeight: '600', textAlign: 'center' },
-  pushBtn: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 14, borderRadius: 12, borderWidth: 1, marginTop: 14 },
+  pushBtn: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, borderRadius: 10, borderWidth: 1, marginTop: 12 },
   configureBtn: { fontSize: 12, fontWeight: '700' },
+
   updateBtn: { borderRadius: 14, paddingVertical: 14, alignItems: 'center', borderWidth: 1.5, marginBottom: 10 },
   updateBtnText: { color: '#4F46E5', fontSize: 14, fontWeight: '700' },
   changeRoleBtn: { backgroundColor: '#EF444415', borderRadius: 14, paddingVertical: 16, alignItems: 'center', borderWidth: 1, borderColor: '#EF444425' },
