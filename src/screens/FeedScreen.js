@@ -196,6 +196,19 @@ export default function FeedScreen({ navigation, route }) {
   const { requireLevel, Gate } = useVerificationGate();
   const myUserId = session?.user?.id;
   const listRef = React.useRef(null);
+  // PR-C2 (loader race fix): mountedRef защищает от setState после unmount —
+  // если юзер свайпает обратно во время fetch, не вызовем setRefreshing(false)
+  // на dead component (React warns + утечка memory). refreshTimeoutRef хранит
+  // safety-timeout который форсит выключение спиннера если fetch висит >30 сек.
+  const mountedRef = React.useRef(true);
+  const refreshTimeoutRef = React.useRef(null);
+  React.useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current);
+    };
+  }, []);
   const [, setTick] = useState(0);
   // showForm removed — publish flow now lives in CreateTripScreen / CreateCargoScreen.
   const [search, setSearch] = useState('');
@@ -384,13 +397,64 @@ export default function FeedScreen({ navigation, route }) {
     return () => clearTimeout(timer);
   }, [search, isDriver]);
 
-  const onRefresh = React.useCallback(() => {
+  const onRefresh = React.useCallback(async () => {
+    // PR-C2 (loader race fix, P0):
+    //
+    // Bug на iPhone (см. image_30.png): RefreshControl spinner (тот круглый
+    // зелёный с tintColor=accentColor) застревал visible одновременно с
+    // toast 'Обновлено', даже когда carga-карточки уже отрисованы. Две
+    // причины:
+    //   1. setRefreshing(false) и toast() вызывались в одном tick.
+    //      React schedule успевал sched re-render, но iOS native
+    //      RefreshControl ещё не закончил exit-анимацию (~200ms), а toast
+    //      slide-down уже стартовал — глазу казалось «оба висят вместе».
+    //   2. Если loadFromServer() throws unhandled rejection, .finally()
+    //      в Hermes в редких случаях не вызывалась (см. RN issue #37711).
+    //      Тогда refreshing залипал на true навсегда → spinner крутится
+    //      бесконечно.
+    //
+    // Fix:
+    //  - try/catch/finally вместо .finally() (надёжнее в Hermes)
+    //  - mountedRef guard от setState на unmounted component
+    //  - safety timeout 30s принудительно гасит refreshing если fetch висит
+    //  - requestAnimationFrame + 250ms задержка перед toast → spinner
+    //    успевает закончить exit-анимацию
+    //  - toast показываем ТОЛЬКО при успехе; при ошибке uses existing
+    //    setLoadError → ListEmptyComponent даёт human-readable retry
+    if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current);
     setRefreshing(true);
-    loadFromServer().finally(() => {
-      setRefreshing(false);
-      toast('🔄 Обновлено', 'info', 1500);
-    });
-  }, [isDriver]);
+    // Safety: даже если loadFromServer виснет — через 30 сек спиннер
+    // гарантированно скрывается.
+    refreshTimeoutRef.current = setTimeout(() => {
+      if (mountedRef.current) setRefreshing(false);
+    }, 30000);
+
+    let succeeded = false;
+    try {
+      await loadFromServer();
+      succeeded = true;
+    } catch (e) {
+      console.warn('[Feed] refresh failed:', e?.message || e);
+    } finally {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+        refreshTimeoutRef.current = null;
+      }
+      if (mountedRef.current) setRefreshing(false);
+    }
+
+    // Toast ПОСЛЕ того как spinner успел уйти.
+    // requestAnimationFrame даёт React закоммитить refreshing=false
+    // (RefreshControl получает новый prop), потом setTimeout 250ms
+    // покрывает iOS native exit-анимацию RefreshControl.
+    if (succeeded && mountedRef.current) {
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          if (mountedRef.current) toast('🔄 ' + t('refreshed'), 'info', 2500);
+        }, 250);
+      });
+    }
+  }, [isDriver, t]);
 
   useEffect(() => {
     const unsub = subscribe(() => setTick(x => x + 1));
@@ -927,7 +991,11 @@ export default function FeedScreen({ navigation, route }) {
               {loadError && (
                 <TouchableOpacity
                   style={[s.refreshBtn, { backgroundColor: accentColor }]}
-                  onPress={() => { setRefreshing(true); loadFromServer().finally(() => setRefreshing(false)); }}
+                  // PR-C2 (loader race fix): используем тот же onRefresh
+                  // (try/catch/finally + mountedRef + safety timeout) вместо
+                  // короткой версии — иначе при retry из empty-state снова
+                  // ловим bug со «застрявшим» спиннером.
+                  onPress={onRefresh}
                 >
                   <Text style={{ color: '#0A0A0A', fontWeight: '800', fontSize: 14 }}>{t('refresh')}</Text>
                 </TouchableOpacity>

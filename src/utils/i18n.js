@@ -1105,6 +1105,7 @@ const translations = {
     // hardcoded строк по экранам (см. qa/I18N_AUDIT). RU остаётся
     // источником истины; EN/KK/ZH добавлены в свои блоки.
     offline_banner_text: 'Нет интернета · работаем из кэша',
+    refreshed: 'Обновлено',
     notifications_title: '🔔 Уведомления',
     notifications_mark_all_read: 'Прочитать все',
     notifications_empty: 'Нет уведомлений',
@@ -1960,6 +1961,7 @@ const translations = {
 
     // PR-C2 (i18n cleanup) — казахские переводы
     offline_banner_text: 'Интернет жоқ · кэштен жұмыс істеп жатырмыз',
+    refreshed: 'Жаңартылды',
     notifications_title: '🔔 Хабарламалар',
     notifications_mark_all_read: 'Барлығын оқу',
     notifications_empty: 'Хабарламалар жоқ',
@@ -2787,6 +2789,7 @@ const translations = {
     // PR-C2 (i18n cleanup) — 简体中文翻译.
     // Логистическая терминология для приграничных водителей КНР↔КЗ.
     offline_banner_text: '无网络 · 使用缓存运行',
+    refreshed: '已更新',
     notifications_title: '🔔 通知',
     notifications_mark_all_read: '全部标记已读',
     notifications_empty: '暂无通知',
@@ -3581,6 +3584,7 @@ const translations = {
 
     // PR-C2 (i18n cleanup) — English translations.
     offline_banner_text: 'No internet · running from cache',
+    refreshed: 'Refreshed',
     notifications_title: '🔔 Notifications',
     notifications_mark_all_read: 'Mark all as read',
     notifications_empty: 'No notifications',
