@@ -1167,6 +1167,55 @@ const translations = {
     cargoruqsat_page_when_body: 'UrTruck получил официальное одобрение от АО «Информационно-учётный центр» на интеграцию через платформу Smart Bridge (сервис CargoRuqsatAppsServiceSync). Процесс сертификации информационной безопасности занимает 3-6 месяцев. Ожидаемый запуск — IV квартал 2026.',
     cargoruqsat_page_open_official: 'Открыть официальный портал',
 
+    // PR-D1: HelpButton ([?]) — FAQ-шторка на экранах регистрации/профиля.
+    help_title: 'Помощь',
+    help_contact_support: 'Написать в техподдержку UrTruck',
+    help_q_photo_passport: 'Как правильно сфотографировать техпаспорт?',
+    help_a_photo_passport: 'Положите документ на ровную поверхность при хорошем дневном свете. Убедитесь, что все 4 угла попадают в кадр и текст читается без бликов.',
+    help_q_how_long: 'Сколько проверяются документы?',
+    help_a_how_long: 'Автоматическая проверка занимает до 2 минут, ручная модерация — до 2 часов. После одобрения вы сразу увидите грузы СНГ в ленте.',
+    help_q_data_safe: 'Безопасны ли мои данные?',
+    help_a_data_safe: 'Документы и ИИН шифруются и используются только для верификации Службой безопасности UrTruck. Третьим лицам мы их не передаём.',
+    close: 'Закрыть',
+
+    // PR-D1: PRO-профиль водителя — расширенные поля и прогресс.
+    pro_progress_title: 'До статуса PRO',
+    pro_progress_remaining: 'Осталось заполнить',
+    pro_progress_items_few: 'пункта',
+    pro_progress_items_one: 'пункт',
+    pro_progress_items_many: 'пунктов',
+    pro_become_btn: 'Получить статус PRO',
+    pro_active_badge: 'PRO активен',
+    pro_beta_note: 'В бета-периоде PRO бесплатен',
+
+    pro_section_legal: 'Юридический статус',
+    pro_legal_individual: 'Физическое лицо',
+    pro_legal_ip: 'Индивидуальный предприниматель (ИП)',
+    pro_legal_too: 'ТОО / ООО',
+
+    pro_section_international: 'Международные документы',
+    pro_field_passport_intl: 'Загранпаспорт',
+    pro_field_tir: 'Книжка TIR / международный допуск',
+    pro_field_cmr: 'Страховка CMR',
+    pro_field_visas: 'Действующие визы',
+    pro_visa_china: 'Китайская',
+    pro_visa_schengen: 'Шенген',
+    pro_visa_other: 'Другие',
+
+    pro_section_routes: 'Маршруты и опыт',
+    pro_field_china_experience: 'Опыт работы с Китаем (лет)',
+    pro_field_favorite_borders: 'Любимые погранпереходы',
+
+    pro_section_emergency: 'Экстренный контакт',
+    pro_field_emergency_contact: 'Телефон близкого человека',
+    pro_field_emergency_hint: 'Кому позвонить при ЧП на трассе',
+
+    // Bottom Sheet «Прервать регистрацию?»
+    reg_exit_title: 'Прервать регистрацию?',
+    reg_exit_body: 'Все введённые данные сохранены в черновик. Вы сможете продолжить заполнение в любое время.',
+    reg_exit_continue: 'Продолжить заполнение',
+    reg_exit_leave: 'Выйти',
+
 },
 
   KK: {
@@ -2019,6 +2068,52 @@ const translations = {
     cargoruqsat_page_when_body: 'UrTruck «Ақпараттық-есеп орталығы» АҚ-нан Smart Bridge платформасы (CargoRuqsatAppsServiceSync қызметі) арқылы интеграцияға ресми мақұлдау алды. Ақпараттық қауіпсіздік сертификаттау процесі 3-6 ай алады. Күтілетін іске қосылу — 2026 жылдың IV тоқсаны.',
     cargoruqsat_page_open_official: 'Ресми порталды ашу',
 
+    help_title: 'Көмек',
+    help_contact_support: 'UrTruck қолдау қызметіне жазу',
+    help_q_photo_passport: 'Техпаспортты қалай дұрыс суретке түсіру керек?',
+    help_a_photo_passport: 'Құжатты тегіс жерге қойып, күндіз жақсы жарықта түсіріңіз. 4 бұрышы кадрға кірсін, мәтін айқын болсын.',
+    help_q_how_long: 'Құжаттар қанша уақытта тексеріледі?',
+    help_a_how_long: 'Автоматты тексеру — 2 минутқа дейін, қолмен модерация — 2 сағатқа дейін. Бекітуден кейін сіз ТМД жүктерін бірден көресіз.',
+    help_q_data_safe: 'Менің деректерім қауіпсіз бе?',
+    help_a_data_safe: 'Құжаттар мен ЖСН шифрланады және тек UrTruck қауіпсіздік қызметі тексеруі үшін пайдаланылады. Үшінші тұлғаларға бермейміз.',
+    close: 'Жабу',
+
+    pro_progress_title: 'PRO мәртебесіне дейін',
+    pro_progress_remaining: 'Толтыру қалды',
+    pro_progress_items_few: 'тармақ',
+    pro_progress_items_one: 'тармақ',
+    pro_progress_items_many: 'тармақ',
+    pro_become_btn: 'PRO мәртебесін алу',
+    pro_active_badge: 'PRO белсенді',
+    pro_beta_note: 'Бета кезеңінде PRO тегін',
+
+    pro_section_legal: 'Заңды мәртебе',
+    pro_legal_individual: 'Жеке тұлға',
+    pro_legal_ip: 'Жеке кәсіпкер (ЖК)',
+    pro_legal_too: 'ЖШС / ЖШҚ',
+
+    pro_section_international: 'Халықаралық құжаттар',
+    pro_field_passport_intl: 'Шетел паспорты',
+    pro_field_tir: 'TIR кітапшасы / халықаралық рұқсат',
+    pro_field_cmr: 'CMR сақтандыруы',
+    pro_field_visas: 'Қолданыстағы визалар',
+    pro_visa_china: 'Қытай',
+    pro_visa_schengen: 'Шенген',
+    pro_visa_other: 'Басқа',
+
+    pro_section_routes: 'Бағыттар мен тәжірибе',
+    pro_field_china_experience: 'Қытаймен жұмыс тәжірибесі (жыл)',
+    pro_field_favorite_borders: 'Ұнайтын шекаралар',
+
+    pro_section_emergency: 'Шұғыл байланыс',
+    pro_field_emergency_contact: 'Жақын адамның телефоны',
+    pro_field_emergency_hint: 'Жолда ТЖ кезінде кімге қоңырау шалу керек',
+
+    reg_exit_title: 'Тіркеуді тоқтату керек пе?',
+    reg_exit_body: 'Барлық енгізілген деректер жобада сақталған. Сіз кез келген уақытта толтыруды жалғастыра аласыз.',
+    reg_exit_continue: 'Толтыруды жалғастыру',
+    reg_exit_leave: 'Шығу',
+
 },
 
   ZH: {
@@ -2844,6 +2939,52 @@ const translations = {
     cargoruqsat_page_when_body: 'UrTruck 已获得「信息计算中心」股份公司通过 Smart Bridge 平台(CargoRuqsatAppsServiceSync 服务)集成的官方批准。信息安全认证过程需要 3-6 个月。预计 2026 年第四季度上线。',
     cargoruqsat_page_open_official: '打开官方门户',
 
+    help_title: '帮助',
+    help_contact_support: '联系 UrTruck 客服',
+    help_q_photo_passport: '如何正确拍摄行驶证?',
+    help_a_photo_passport: '把证件平放在桌面上,在日光下拍摄。确保 4 个角都在画面内,文字清晰无反光。',
+    help_q_how_long: '审核需要多久?',
+    help_a_how_long: '自动审核 2 分钟内完成,人工审核最多 2 小时。通过后即可看到独联体货源。',
+    help_q_data_safe: '我的资料安全吗?',
+    help_a_data_safe: '证件和身份证号经过加密,仅用于 UrTruck 安全部门审核,不会提供给第三方。',
+    close: '关闭',
+
+    pro_progress_title: '距离 PRO',
+    pro_progress_remaining: '还需完成',
+    pro_progress_items_few: '项',
+    pro_progress_items_one: '项',
+    pro_progress_items_many: '项',
+    pro_become_btn: '获取 PRO 状态',
+    pro_active_badge: 'PRO 已激活',
+    pro_beta_note: '内测期 PRO 免费',
+
+    pro_section_legal: '法律身份',
+    pro_legal_individual: '个人',
+    pro_legal_ip: '个体工商户 (IP)',
+    pro_legal_too: '有限责任公司',
+
+    pro_section_international: '国际证件',
+    pro_field_passport_intl: '国际护照',
+    pro_field_tir: 'TIR 手册 / 国际运输许可',
+    pro_field_cmr: 'CMR 保险',
+    pro_field_visas: '有效签证',
+    pro_visa_china: '中国',
+    pro_visa_schengen: '申根',
+    pro_visa_other: '其他',
+
+    pro_section_routes: '路线与经验',
+    pro_field_china_experience: '中国运输年限',
+    pro_field_favorite_borders: '常用口岸',
+
+    pro_section_emergency: '紧急联系人',
+    pro_field_emergency_contact: '亲属电话',
+    pro_field_emergency_hint: '路上发生意外时联系谁',
+
+    reg_exit_title: '中断注册?',
+    reg_exit_body: '所有已输入数据已保存为草稿,您可以随时继续填写。',
+    reg_exit_continue: '继续填写',
+    reg_exit_leave: '退出',
+
 },
 
   EN: {
@@ -3637,6 +3778,52 @@ const translations = {
     cargoruqsat_page_when_title: 'When?',
     cargoruqsat_page_when_body: 'UrTruck has received official approval from the JSC "Information & Accounting Center" for integration via the Smart Bridge platform (CargoRuqsatAppsServiceSync). Information security certification takes 3-6 months. Expected launch — Q4 2026.',
     cargoruqsat_page_open_official: 'Open official portal',
+
+    help_title: 'Help',
+    help_contact_support: 'Contact UrTruck support',
+    help_q_photo_passport: 'How do I photograph the vehicle registration correctly?',
+    help_a_photo_passport: 'Place the document on a flat surface in good daylight. Make sure all 4 corners are in frame and text is readable without glare.',
+    help_q_how_long: 'How long does verification take?',
+    help_a_how_long: 'Automatic check takes up to 2 minutes, manual moderation up to 2 hours. Once approved you immediately see CIS loads in the feed.',
+    help_q_data_safe: 'Is my data safe?',
+    help_a_data_safe: 'Documents and IIN are encrypted and used only for UrTruck Security verification. We do not share them with third parties.',
+    close: 'Close',
+
+    pro_progress_title: 'To PRO status',
+    pro_progress_remaining: 'Items left to fill',
+    pro_progress_items_few: 'items',
+    pro_progress_items_one: 'item',
+    pro_progress_items_many: 'items',
+    pro_become_btn: 'Get PRO status',
+    pro_active_badge: 'PRO active',
+    pro_beta_note: 'During beta PRO is free',
+
+    pro_section_legal: 'Legal status',
+    pro_legal_individual: 'Individual',
+    pro_legal_ip: 'Sole proprietor (IP)',
+    pro_legal_too: 'LLP / LLC',
+
+    pro_section_international: 'International documents',
+    pro_field_passport_intl: 'International passport',
+    pro_field_tir: 'TIR carnet / international permit',
+    pro_field_cmr: 'CMR insurance',
+    pro_field_visas: 'Active visas',
+    pro_visa_china: 'China',
+    pro_visa_schengen: 'Schengen',
+    pro_visa_other: 'Other',
+
+    pro_section_routes: 'Routes and experience',
+    pro_field_china_experience: 'Years working with China',
+    pro_field_favorite_borders: 'Favourite border crossings',
+
+    pro_section_emergency: 'Emergency contact',
+    pro_field_emergency_contact: 'Family member phone',
+    pro_field_emergency_hint: 'Who to call in case of incident on the road',
+
+    reg_exit_title: 'Cancel registration?',
+    reg_exit_body: 'All entered data is saved as a draft. You can continue filling it in at any time.',
+    reg_exit_continue: 'Continue filling',
+    reg_exit_leave: 'Exit',
 
 },
 };
