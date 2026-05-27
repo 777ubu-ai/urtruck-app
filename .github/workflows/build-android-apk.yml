@@ -44,19 +44,40 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk || true
           df -h
 
-      - name: Install npm dependencies
-        run: npm ci --legacy-peer-deps
+      - name: Install npm dependencies (skip postinstall scripts)
+        run: |
+          # --ignore-scripts отключает patch-package postinstall (он падает если patches/ нет)
+          # --legacy-peer-deps для конфликтов expo SDK 52 / RN 0.76 / react 18.3
+          # Fallback на npm install если ci падает (lock-несинхронизация)
+          npm ci --legacy-peer-deps --ignore-scripts \
+            || npm install --legacy-peer-deps --ignore-scripts --no-audit --no-fund
 
-      - name: Expo prebuild (Android)
-        run: npx expo prebuild --platform android --clean --no-install
+      - name: Apply patches (if patches/ exists)
+        run: |
+          if [ -d patches ] && [ "$(ls -A patches 2>/dev/null)" ]; then
+            echo "Applying patches from patches/ ..."
+            npx patch-package
+          else
+            echo "No patches to apply — skipping patch-package."
+          fi
+
+      - name: Expo prebuild (Android, non-interactive)
+        run: npx expo prebuild --platform android --clean --no-install --non-interactive
         env:
           EXPO_NO_TELEMETRY: 1
+          CI: 1
+
+      - name: Show generated android/ structure (debug)
+        run: |
+          ls -la android/ android/app/ 2>/dev/null || echo "no android/"
+          echo "---gradle wrapper---"
+          ls -la android/gradle/wrapper/ 2>/dev/null || true
 
       - name: Build Release APK with Gradle
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon --stacktrace
+          ./gradlew assembleRelease --no-daemon --stacktrace --warning-mode=summary
 
       - name: Rename APK to UrTruck.apk
         run: |
