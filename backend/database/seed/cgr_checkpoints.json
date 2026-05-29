@@ -1,0 +1,394 @@
+[
+  {
+    "code": "port_kuryk",
+    "cgr_external_id": "314889163298000000",
+    "name_ru": "Порт Курык",
+    "country_to": "CASPIAN",
+    "region": "Мангистауская область, Каракиянский район",
+    "border_status": "open"
+  },
+  {
+    "code": "bakhty",
+    "cgr_external_id": "224749863825000000",
+    "name_ru": "Бахты - Покиту",
+    "country_to": "CN",
+    "region": "область Абай, Маканчинский район",
+    "border_status": "open"
+  },
+  {
+    "code": "dostyk",
+    "cgr_external_id": "215778822067000000",
+    "name_ru": "Достык - Алашанькоу",
+    "country_to": "CN",
+    "region": "область Жетісу, Алакольский район",
+    "border_status": "open"
+  },
+  {
+    "code": "kalzhat",
+    "cgr_external_id": "222979531669000000",
+    "name_ru": "Калжат - Дулаты",
+    "country_to": "CN",
+    "region": "Алматинская область, Уйгурский район",
+    "border_status": "open"
+  },
+  {
+    "code": "maykapchagay",
+    "cgr_external_id": "224751327844000000",
+    "name_ru": "Майкапчагай - Зимунай",
+    "country_to": "CN",
+    "region": "Восточно-Казахстанская область, Зайсанский район",
+    "border_status": "open"
+  },
+  {
+    "code": "nur_zholy",
+    "cgr_external_id": "222978891854000000",
+    "name_ru": "Нур Жолы - Хоргос",
+    "country_to": "CN",
+    "region": "область Жетісу, Панфиловский район",
+    "border_status": "open"
+  },
+  {
+    "code": "aukhatty",
+    "cgr_external_id": "291818150184000000",
+    "name_ru": "Аухатты - Кенбулын",
+    "country_to": "KG",
+    "region": "Жамбылская область, Кордайский район",
+    "border_status": "open"
+  },
+  {
+    "code": "aysha_bibi",
+    "cgr_external_id": "291817455346000000",
+    "name_ru": "Айша-Биби - Чон-Какпа",
+    "country_to": "KG",
+    "region": "Жамбылская область, Жамбылский район",
+    "border_status": "open"
+  },
+  {
+    "code": "karasu",
+    "cgr_external_id": "291820017267000000",
+    "name_ru": "Карасу - Ак-Тилек",
+    "country_to": "KG",
+    "region": "Жамбылская область, Кордайский район",
+    "border_status": "open"
+  },
+  {
+    "code": "kegen",
+    "cgr_external_id": "291820603631000000",
+    "name_ru": "Кеген - Каркыра",
+    "country_to": "KG",
+    "region": "Алматинская область, Кегенский район",
+    "border_status": "open"
+  },
+  {
+    "code": "korday",
+    "cgr_external_id": "291819404994000000",
+    "name_ru": "Кордай - Ак-Жол",
+    "country_to": "KG",
+    "region": "Жамбылская область, Кордайский район",
+    "border_status": "open"
+  },
+  {
+    "code": "sartobe",
+    "cgr_external_id": "291821145135000000",
+    "name_ru": "Сартобе - Токмок",
+    "country_to": "KG",
+    "region": "Жамбылская область, Кордайский район",
+    "border_status": "open"
+  },
+  {
+    "code": "sypatay_batyr",
+    "cgr_external_id": "291818866418000000",
+    "name_ru": "Сыпатай Батыр - Чалдыбар",
+    "country_to": "KG",
+    "region": "Жамбылская область, Меркенский район",
+    "border_status": "open"
+  },
+  {
+    "code": "akbalshyk",
+    "cgr_external_id": "238304120665000000",
+    "name_ru": "Акбалшык - Воскресенское",
+    "country_to": "RU",
+    "region": "Костанайская область, Узункольский район",
+    "border_status": "open"
+  },
+  {
+    "code": "aksay",
+    "cgr_external_id": "238245356822000000",
+    "name_ru": "Аксай - Илек",
+    "country_to": "RU",
+    "region": "Западно-Казахстанская область, Бурлинский район",
+    "border_status": "open"
+  },
+  {
+    "code": "alimbet",
+    "cgr_external_id": "238238650340000000",
+    "name_ru": "Алимбет - Орск",
+    "country_to": "RU",
+    "region": "Актюбинская область, Каргалинский район",
+    "border_status": "open"
+  },
+  {
+    "code": "amangeldy",
+    "cgr_external_id": "238309634433000000",
+    "name_ru": "Амангельды - Невольное",
+    "country_to": "RU",
+    "region": "Павлодарская область, Иртышский район",
+    "border_status": "open"
+  },
+  {
+    "code": "auyl",
+    "cgr_external_id": "238306291664000000",
+    "name_ru": "Ауыл - Веселоярск",
+    "country_to": "RU",
+    "region": "область Абай, Бородулихинский район",
+    "border_status": "open"
+  },
+  {
+    "code": "ayat",
+    "cgr_external_id": "238304557899000000",
+    "name_ru": "Аят - Николаевка",
+    "country_to": "RU",
+    "region": "Костанайская область, Беимбета Майлина район",
+    "border_status": "open"
+  },
+  {
+    "code": "baytanat",
+    "cgr_external_id": "238306953112000000",
+    "name_ru": "Байтанат - Топольное",
+    "country_to": "RU",
+    "region": "область Абай, Бородулихинский район",
+    "border_status": "open"
+  },
+  {
+    "code": "bidaik",
+    "cgr_external_id": "238316180166000000",
+    "name_ru": "Бидаик - Одесское",
+    "country_to": "RU",
+    "region": "Северо-Казахстанская область, Уалихановский район",
+    "border_status": "open"
+  },
+  {
+    "code": "karakoga",
+    "cgr_external_id": "238316732771000000",
+    "name_ru": "Каракога - Исилькуль",
+    "country_to": "RU",
+    "region": "Северо-Казахстанская область, Магжана Жумабаева район",
+    "border_status": "open"
+  },
+  {
+    "code": "karashatau",
+    "cgr_external_id": "238239515479000000",
+    "name_ru": "Карашатау - Светлый",
+    "country_to": "RU",
+    "region": "Актюбинская область, Айтекебийский район",
+    "border_status": "open"
+  },
+  {
+    "code": "kayrak",
+    "cgr_external_id": "238305215351000000",
+    "name_ru": "Кайрак - Бугристое",
+    "country_to": "RU",
+    "region": "Костанайская область, Карабалыкский район",
+    "border_status": "open"
+  },
+  {
+    "code": "kondybay",
+    "cgr_external_id": "238305435419000000",
+    "name_ru": "Кондыбай - Комсомольский",
+    "country_to": "RU",
+    "region": "Костанайская область, Житикаринский район",
+    "border_status": "open"
+  },
+  {
+    "code": "kosak",
+    "cgr_external_id": "238311401124000000",
+    "name_ru": "Косак - Павловка",
+    "country_to": "RU",
+    "region": "Павлодарская область, Успенский район",
+    "border_status": "open"
+  },
+  {
+    "code": "koyanbay",
+    "cgr_external_id": "238308566679000000",
+    "name_ru": "Коянбай - Малиновое Озеро",
+    "country_to": "RU",
+    "region": "область Абай, Бескарагайский район",
+    "border_status": "open"
+  },
+  {
+    "code": "kurmangazy",
+    "cgr_external_id": "238243101359000000",
+    "name_ru": "Курмангазы - Караузек",
+    "country_to": "RU",
+    "region": "Атырауская область, Курмангазинский район",
+    "border_status": "open"
+  },
+  {
+    "code": "kyzyl_zhar",
+    "cgr_external_id": "238316951727000000",
+    "name_ru": "Кызыл Жар - Казанское",
+    "country_to": "RU",
+    "region": "Северо-Казахстанская область, Кызылжарский район",
+    "border_status": "open"
+  },
+  {
+    "code": "nayza",
+    "cgr_external_id": "238315911519000000",
+    "name_ru": "Найза - Павловка (Славгород)",
+    "country_to": "RU",
+    "region": "Павлодарская область, Успенский район",
+    "border_status": "open"
+  },
+  {
+    "code": "orda",
+    "cgr_external_id": "238246712805000000",
+    "name_ru": "Орда - Полынный",
+    "country_to": "RU",
+    "region": "Западно-Казахстанская область, Бокейординский район",
+    "border_status": "open"
+  },
+  {
+    "code": "shagan",
+    "cgr_external_id": "238303383491000000",
+    "name_ru": "Шаган - Теплое",
+    "country_to": "RU",
+    "region": "Западно-Казахстанская область, Бәйтерек район",
+    "border_status": "open"
+  },
+  {
+    "code": "sharbakty",
+    "cgr_external_id": "238309028892000000",
+    "name_ru": "Шарбакты - Кулунда",
+    "country_to": "RU",
+    "region": "Павлодарская область, Щербактинский район",
+    "border_status": "open"
+  },
+  {
+    "code": "syrym",
+    "cgr_external_id": "238247045484000000",
+    "name_ru": "Сырым - Маштаково",
+    "country_to": "RU",
+    "region": "Западно-Казахстанская область, Бәйтерек район",
+    "border_status": "open"
+  },
+  {
+    "code": "taskala",
+    "cgr_external_id": "238303161413000000",
+    "name_ru": "Таскала - Озинки",
+    "country_to": "RU",
+    "region": "Западно-Казахстанская область, Таскалинский район",
+    "border_status": "open"
+  },
+  {
+    "code": "ubagan",
+    "cgr_external_id": "238305660457000000",
+    "name_ru": "Убаган - Звериноголовское",
+    "country_to": "RU",
+    "region": "Костанайская область, Узункольский район",
+    "border_status": "open"
+  },
+  {
+    "code": "ube",
+    "cgr_external_id": "238244498776000000",
+    "name_ru": "Убе - Михайловка",
+    "country_to": "RU",
+    "region": "Восточно-Казахстанская область, Шемонаихинский район",
+    "border_status": "open"
+  },
+  {
+    "code": "urlyutobe",
+    "cgr_external_id": "238315711818000000",
+    "name_ru": "Урлютобе - Ольховка",
+    "country_to": "RU",
+    "region": "Павлодарская область, Железинский район",
+    "border_status": "open"
+  },
+  {
+    "code": "zhana_zhol",
+    "cgr_external_id": "238316459162000000",
+    "name_ru": "Жана Жол - Петухово",
+    "country_to": "RU",
+    "region": "Северо-Казахстанская область, Мамлютский район",
+    "border_status": "open"
+  },
+  {
+    "code": "zhanybek",
+    "cgr_external_id": "238246015768000000",
+    "name_ru": "Жаныбек - Вишневка",
+    "country_to": "RU",
+    "region": "Западно-Казахстанская область, Жанибекский район",
+    "border_status": "open"
+  },
+  {
+    "code": "zhaysan",
+    "cgr_external_id": "238239148521000000",
+    "name_ru": "Жайсан - Сагарчин",
+    "country_to": "RU",
+    "region": "Актюбинская область, Мартукский район",
+    "border_status": "open"
+  },
+  {
+    "code": "zhelkuar",
+    "cgr_external_id": "238304850217000000",
+    "name_ru": "Желкуар - Мариинский",
+    "country_to": "RU",
+    "region": "Костанайская область, Житикаринский район",
+    "border_status": "open"
+  },
+  {
+    "code": "zhezkent",
+    "cgr_external_id": "238307181634000000",
+    "name_ru": "Жезкент - Горняк",
+    "country_to": "RU",
+    "region": "область Абай, Бородулихинский район",
+    "border_status": "open"
+  },
+  {
+    "code": "temir_baba",
+    "cgr_external_id": "224752450232000000",
+    "name_ru": "Темир-Баба - Карабугаз",
+    "country_to": "TM",
+    "region": "Мангистауская область, Каракиянский район",
+    "border_status": "open"
+  },
+  {
+    "code": "atameken",
+    "cgr_external_id": "234422898551000000",
+    "name_ru": "Атамекен - Гулистан",
+    "country_to": "UZ",
+    "region": "Туркестанская область, Мактааральский район",
+    "border_status": "open"
+  },
+  {
+    "code": "b_konysbaeva",
+    "cgr_external_id": "231576795648000000",
+    "name_ru": "Б. Конысбаева - Яллама",
+    "country_to": "UZ",
+    "region": "Туркестанская область, Келесский район",
+    "border_status": "open"
+  },
+  {
+    "code": "kaplanbek",
+    "cgr_external_id": "238236183776000000",
+    "name_ru": "Капланбек - Навои",
+    "country_to": "UZ",
+    "region": "Туркестанская область, Сарыагашский район",
+    "border_status": "open"
+  },
+  {
+    "code": "kazygurt",
+    "cgr_external_id": "234531528148000000",
+    "name_ru": "Казыгурт - Майский",
+    "country_to": "UZ",
+    "region": "Туркестанская область, Сарыагашский район",
+    "border_status": "open"
+  },
+  {
+    "code": "tazhen",
+    "cgr_external_id": "224752846845000000",
+    "name_ru": "Тажен - Каракалпакстан",
+    "country_to": "UZ",
+    "region": "Мангистауская область, Бейнеуский район",
+    "border_status": "open"
+  }
+]

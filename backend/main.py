@@ -165,7 +165,10 @@ def startup():
         from database import cgr_dal
         cgr_dal.init_cgr_schema()
         n = cgr_dal.seed_border_checkpoints_from_legacy()
-        print(f"[startup] CGR schema applied, border_checkpoints seeded: +{n}", flush=True)
+        # §4.1 — наполнение справочника из публичного реестра CarGoRuqsat
+        # (49 КПП, источник истины; legacy без cgr_external_id деактивируются).
+        m = cgr_dal.seed_border_checkpoints_from_cgr_registry()
+        print(f"[startup] CGR schema applied, border_checkpoints: legacy +{n}, registry {m}", flush=True)
     except Exception as e:
         print(f"[startup] CGR schema init failed (continuing): {e}", flush=True)
     # PR-D1 (build 18): идемпотентная миграция PRO-колонок водителя.

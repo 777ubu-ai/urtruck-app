@@ -23,6 +23,7 @@ import config
 
 
 _SCHEMA_PATH = Path(__file__).resolve().parent / "schemas" / "cgr_schema.sql"
+_CGR_SEED_PATH = Path(__file__).resolve().parent / "seed" / "cgr_checkpoints.json"
 
 
 # ----------------------------------------------------------------
@@ -113,6 +114,59 @@ def seed_border_checkpoints_from_legacy() -> int:
             inserted += cur.rowcount
         conn.commit()
     return inserted
+
+
+def seed_border_checkpoints_from_cgr_registry() -> int:
+    """Наполнение справочника КПП из публичного реестра CarGoRuqsat.
+
+    Источник: https://cgr.qoldau.kz/ru/registry/checkpoint/list — публичный,
+    открытый реестр пунктов пропуска (снимок в seed/cgr_checkpoints.json,
+    49 КПП). Берём ТОЛЬКО справочные поля: название, страна-сосед, регион,
+    статус (реестр: «Активен/Доступен» → 'open') и cgr_external_id (qoldau ID).
+    Живые числа очереди отсюда НЕ берём — §4.3/§7 (это делает официальный API
+    при интеграции). lat/lon/work_hours/type не выдумываем — оставляем NULL.
+
+    Реестр — источник истины (исправляет ошибки legacy-сида: напр. «Тажен» —
+    это Узбекистан/Каракалпакстан, а не Туркменистан). Реализация:
+      - UPSERT по code (ON CONFLICT DO UPDATE) — переиспользует/обновляет
+        совпавшие legacy-строки, корректируя страну/регион/название;
+      - legacy-строки без cgr_external_id (отсутствующие в реестре) →
+        is_active=0, чтобы в активном справочнике остались только 49 из CGR.
+    Идемпотентно: повторный запуск обновляет те же строки.
+
+    Returns: количество КПП из реестра (49).
+    """
+    if not _CGR_SEED_PATH.exists():
+        return 0
+    data = json.loads(_CGR_SEED_PATH.read_text(encoding="utf-8"))
+    with sqlite3.connect(config.DB_PATH) as conn:
+        # гарантируем наличие колонок (на случай вызова до миграции)
+        existing = {row[1] for row in conn.execute("PRAGMA table_info(border_checkpoints)")}
+        if "region" not in existing or "border_status" not in existing:
+            migrate_border_checkpoints_columns()
+        for r in data:
+            conn.execute(
+                """
+                INSERT INTO border_checkpoints
+                    (code, name_ru, country_from, country_to, region,
+                     border_status, cgr_external_id, is_active, type)
+                VALUES (?, ?, 'KZ', ?, ?, ?, ?, 1, NULL)
+                ON CONFLICT(code) DO UPDATE SET
+                    name_ru         = excluded.name_ru,
+                    country_to      = excluded.country_to,
+                    region          = excluded.region,
+                    border_status   = excluded.border_status,
+                    cgr_external_id = excluded.cgr_external_id,
+                    is_active       = 1,
+                    updated_at      = CURRENT_TIMESTAMP
+                """,
+                (r["code"], r["name_ru"], r["country_to"], r.get("region"),
+                 r.get("border_status", "unknown"), r["cgr_external_id"]),
+            )
+        # legacy-строки, которых нет в реестре CGR, прячем из активного справочника
+        conn.execute("UPDATE border_checkpoints SET is_active = 0 WHERE cgr_external_id IS NULL")
+        conn.commit()
+    return len(data)
 
 
 # ----------------------------------------------------------------
