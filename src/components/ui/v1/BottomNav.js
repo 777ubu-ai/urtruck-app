@@ -194,6 +194,9 @@ export default function BottomNav({ state, navigation }) {
           const iconName = iconKey ? (isDriver ? iconKey.driver : iconKey.client) : 'circle';
           const label = labelOf(route.name);
           const iconColor = isFocused ? accent.main : inactiveColor;
+          // Бейдж непрочитанного на табе «Чат» (§2.2.4 — критичный индикатор биржи).
+          const showChatBadge = route.name === 'Chats' && chatUnread > 0;
+          const badgeLabel = chatUnread > 9 ? '9+' : String(chatUnread);
 
           return (
             <TouchableOpacity
@@ -218,6 +221,14 @@ export default function BottomNav({ state, navigation }) {
                 ]}
               >
                 <Feather name={iconName} size={22} color={iconColor} />
+                {showChatBadge ? (
+                  <View
+                    style={[s.iconBadge, { backgroundColor: colors.error, borderColor: barBg }]}
+                    testID="bottom-nav-chats-badge"
+                  >
+                    <Text style={s.iconBadgeText}>{badgeLabel}</Text>
+                  </View>
+                ) : null}
               </View>
               <Text
                 style={[s.label, { color: isFocused ? accent.main : inactiveColor }]}
@@ -305,4 +316,13 @@ const s = StyleSheet.create({
     textAlign: 'center',
     includeFontPadding: false,
   },
+  iconBadge: {
+    position: 'absolute',
+    top: -4, right: 4,
+    minWidth: 18, height: 18, borderRadius: 9,
+    paddingHorizontal: 4,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2,
+  },
+  iconBadgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '900' },
 });

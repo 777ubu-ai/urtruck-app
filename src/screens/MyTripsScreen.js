@@ -34,6 +34,10 @@ export default function MyTripsScreen({ navigation, route }) {
   titleBlock: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12 },
   titleHero: { color: v1.text, fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
   titleSub: { color: v1.textMuted, fontSize: 12, marginTop: 2 },
+  // Кнопка «Разместить рейс» (driver, §2.2.2). Текст чёрный — на изумруде
+  // #00E676 даёт AAA-контраст (источник истины — CLAUDE.md).
+  publishRouteBtn: { height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  publishRouteText: { color: '#0C0A09', fontSize: 15, fontWeight: '800' },
   // Legacy local styles still used by existing renderBid / renderDeal /
   // renderMyItem; kept untouched to preserve their layout.
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
@@ -609,6 +613,22 @@ export default function MyTripsScreen({ navigation, route }) {
         <Text style={s.titleHero}>{isDriver ? t('my_trips_title') : t('my_cargos_title')}</Text>
         <Text style={s.titleSub}>{isDriver ? t('my_trips_subtitle') : t('my_cargos_subtitle')}</Text>
       </View>
+
+      {/* §2.2.2: кнопка размещения у водителя живёт ВНУТРИ «Рейсы», а не
+          отдельной вкладкой (центр бара занят «Очередью»). У клиента
+          размещение — это «+» в баре, поэтому кнопка здесь только driver. */}
+      {isDriver ? (
+        <View style={{ paddingHorizontal: 16, marginBottom: 10 }}>
+          <TouchableOpacity
+            testID="mytrips-publish-route"
+            onPress={() => navigation.navigate('CreateTrip', { role })}
+            activeOpacity={0.85}
+            style={[s.publishRouteBtn, { backgroundColor: v1Accent.main }]}
+          >
+            <Text style={s.publishRouteText}>＋ {t('publish_route')}</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
       <View style={{ paddingHorizontal: 16 }}>
         <SegmentTabs items={TABS} value={tab} onChange={setTab} accent={v1Accent.main} />

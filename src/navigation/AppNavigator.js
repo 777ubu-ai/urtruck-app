@@ -83,16 +83,14 @@ function MainTabs({ route }) {
     return unsub;
   }, []);
 
-  // Жёсткий порядок табов по ролям (приказ 05-2026, Industrial Luxury):
-  //   Водитель: Поиск грузов (Feed) · Мои рейсы (MyWork) · Электронная
-  //             очередь (Queue) · Профиль. Без «+» (водитель не публикует,
-  //             а откликается) и без Chats-таба.
-  //   Клиент:   Мои грузы (MyWork) · Поиск машин (Feed) · Создать заказ
-  //             (Publish «+») · Профиль.
-  // Chats убран из бара — доступ к чатам остаётся через Profile → «Чаты»
-  // и карточки грузов/рейсов (stack-route ChatsList/Chat сохранены).
-  // BottomNav читает роль из AuthContext и красит неоновый акцент:
-  // driver — изумруд #00E676, client — янтарь #F59E0B.
+  // Канон таб-баров (мастер-ТЗ §2.2–2.3).
+  //   Водитель (5): Грузы (Feed) · Рейсы (MyWork) · Очередь (Queue, центр) ·
+  //     Чат (Chats, с бейджем непрочитанного) · Профиль. Кнопка «Разместить»
+  //     живёт ВНУТРИ «Рейсы», а не отдельной вкладкой (§2.2.2). Чат всегда
+  //     на панели — критичный инструмент биржи (§2.4).
+  //   Клиент (4): Грузы (MyWork) · Машины (Feed) · «+» Создать (Publish) ·
+  //     Профиль. НЕ трогать без отдельного приказа (§2.3).
+  // BottomNav красит неон по роли: driver #00E676, client #F59E0B.
   return (
     <Tab.Navigator
       screenOptions={{ headerShown: false }}
@@ -103,6 +101,7 @@ function MainTabs({ route }) {
           <Tab.Screen name="Feed" component={FeedScreen} initialParams={{ role }} />
           <Tab.Screen name="MyWork" component={MyTripsScreen} initialParams={{ role }} />
           <Tab.Screen name="Queue" component={QueueScreen} initialParams={{ role }} />
+          <Tab.Screen name="Chats" component={ChatsListScreen} initialParams={{ role }} />
           <Tab.Screen name="Profile" component={ProfileScreen} initialParams={{ role }} />
         </>
       ) : (
