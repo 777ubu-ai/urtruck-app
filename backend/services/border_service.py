@@ -12,13 +12,11 @@
   KZ-KG: Кордай, Карасу
 """
 import sys
-import time
-import random
-from datetime import datetime
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import httpx
+# Источник истины — таблица border_checkpoints через DAL (НЕ хардкод BORDERS).
+from database import cgr_dal
 
 # ТЗ онбординг §0.2 — справочник погранпереходов РК, сгруппированный по
 # стране-соседу (CN/RU/UZ/KG/TM). Источник перечня — Постановление
@@ -64,90 +62,91 @@ COUNTRY_NAMES = {
 }
 
 
-def _estimate_queue(border_id: str) -> dict:
-    """Оценка очереди на основе времени суток + детерминированного seed.
-    В REAL — scraping tamozhnya.gov.kz или Telegram каналов."""
-    hour = datetime.utcnow().hour + 6  # KZ = UTC+6
-    if hour >= 24: hour -= 24
-
-    # Час-пик: 8-12 и 14-18. Ночью — пусто.
-    if 8 <= hour <= 12:
-        base_trucks = random.randint(40, 120)
-        base_wait_h = round(random.uniform(2, 8), 1)
-    elif 14 <= hour <= 18:
-        base_trucks = random.randint(30, 80)
-        base_wait_h = round(random.uniform(1.5, 6), 1)
-    elif 22 <= hour or hour <= 5:
-        base_trucks = random.randint(0, 15)
-        base_wait_h = round(random.uniform(0.2, 1), 1)
-    else:
-        base_trucks = random.randint(15, 50)
-        base_wait_h = round(random.uniform(1, 4), 1)
-
-    # Хоргос самый загруженный
-    multiplier = 1.5 if border_id == "khorgos" else 1.0
-    if border_id == "dostyk":
-        multiplier = 1.3
-
-    trucks = int(base_trucks * multiplier)
-    wait = round(base_wait_h * multiplier, 1)
-    status = "red" if wait > 5 else "yellow" if wait > 2 else "green"
-
+# ТЗ §4.3: пока нет официальной интеграции CarGoRuqsat/qoldau — данных о
+# реальной очереди НЕ существует. Возвращаем честные null + pending-integration,
+# а НЕ выдуманные числа. Никакого random. Legacy-поля (trucks_in_queue /
+# estimated_wait_hours / status) сохранены для обратной совместимости фронта,
+# но тоже не врут: null / 'pending-integration'.
+def _pending_queue() -> dict:
     return {
-        "trucks_in_queue": trucks,
-        "estimated_wait_hours": wait,
-        "status": status,
-        "updated_at": datetime.utcnow().isoformat() + "Z",
+        "queue_status": "pending-integration",
+        "queue_count": None,
+        "wait_time": None,
+        "last_updated": None,
+        # legacy-алиасы (старый фронт ждёт эти ключи) — тоже честные:
+        "trucks_in_queue": None,
+        "estimated_wait_hours": None,
+        "status": "pending-integration",
     }
 
 
+def _row_to_api(row: dict) -> dict:
+    """Маппинг строки border_checkpoints (БД) → объект API одного КПП."""
+    country = row.get("country_to")
+    country_from = row.get("country_from") or "KZ"
+    return {
+        "id": row.get("code"),
+        "code": row.get("code"),
+        "name": row.get("name_ru"),
+        "name_en": row.get("name_en"),
+        "country": country,                                   # для accordion-группировки
+        "countries": f"{country_from}↔{country}" if country else country_from,
+        "lat": row.get("lat"),
+        "lon": row.get("lon"),
+        "type": row.get("type"),
+        "region": row.get("region"),                          # null пока не наполнено по №697
+        "border_status": row.get("border_status") or "unknown",
+        "work_hours": row.get("work_hours"),                  # null пока не наполнено
+        **_pending_queue(),
+    }
+
+
+def _all_rows() -> list:
+    """Единый источник истины — таблица border_checkpoints (НЕ хардкод BORDERS)."""
+    return cgr_dal.get_all_checkpoints(active_only=True)
+
+
 def get_all_borders() -> list:
-    result = []
-    for b in BORDERS:
-        q = _estimate_queue(b["id"])
-        result.append({**b, **q})
-    return result
+    return [_row_to_api(r) for r in _all_rows()]
 
 
 def get_border(border_id: str) -> dict:
-    for b in BORDERS:
-        if b["id"] == border_id:
-            q = _estimate_queue(b["id"])
-            return {**b, **q}
-    return None
+    row = cgr_dal.get_checkpoint(border_id)
+    return _row_to_api(row) if row else None
 
 
 def search_borders(countries: str = None) -> list:
-    """Фильтр по стране: 'CN', 'RU', 'UZ', 'KG', 'TM'."""
+    """Фильтр по стране-соседу: 'CN', 'RU', 'UZ', 'KG', 'TM'."""
+    items = get_all_borders()
     if not countries:
-        return get_all_borders()
+        return items
     code = countries.upper()
-    return [
-        {**b, **_estimate_queue(b["id"])}
-        for b in BORDERS
-        if code == b.get("country") or code in b["countries"]
-    ]
+    return [b for b in items if b.get("country") == code]
 
 
 def get_borders_grouped(query: str = None) -> list:
-    """ТЗ §0.2 — переходы, сгруппированные по стране-соседу (accordion).
+    """ТЗ §4.2 — переходы из БД, сгруппированные по стране-соседу (accordion).
 
     Возвращает список групп в порядке COUNTRY_ORDER:
-      [{ country, name, flag, crossings: [ {…border, …queue} ] }]
-    query — необязательный поиск по названию перехода (по подстроке).
+      [{ country, name, flag, crossings: [ {…border, …pending-queue} ] }]
+    query — необязательный поиск по названию перехода (подстрока, ru/en).
+    Очередь по каждому КПП — pending-integration (реальных данных нет, §4.3).
     """
     q = (query or "").strip().lower()
+    by_country: dict[str, list] = {code: [] for code in COUNTRY_ORDER}
+    for b in get_all_borders():
+        code = b.get("country")
+        if code not in by_country:
+            continue
+        if q and q not in (b.get("name") or "").lower() and q not in (b.get("name_en") or "").lower():
+            continue
+        by_country[code].append(b)
+
     groups = []
     for code in COUNTRY_ORDER:
-        meta = COUNTRY_NAMES[code]
-        items = []
-        for b in BORDERS:
-            if b.get("country") != code:
-                continue
-            if q and q not in b["name"].lower() and q not in b.get("name_en", "").lower():
-                continue
-            items.append({**b, **_estimate_queue(b["id"])})
+        items = by_country[code]
         if items:
+            meta = COUNTRY_NAMES[code]
             groups.append({
                 "country": code,
                 "name": meta["name"],

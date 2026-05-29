@@ -22,6 +22,9 @@ CREATE TABLE IF NOT EXISTS border_checkpoints (
     lat REAL,
     lon REAL,
     type TEXT,                              -- 'auto+cargo' | 'rail+cargo' | 'auto'
+    region TEXT,                            -- область/регион РК (null если не заполнено по №697)
+    border_status TEXT DEFAULT 'unknown',   -- 'open' | 'closed' | 'limited' | 'unknown'
+    work_hours TEXT,                        -- часы работы строкой (null если не заполнено)
     cgr_external_id TEXT,                   -- ID как его знает CGR (после разведки 1.1)
     is_active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,

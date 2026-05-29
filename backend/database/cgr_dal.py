@@ -34,6 +34,33 @@ def init_cgr_schema() -> None:
     with sqlite3.connect(config.DB_PATH) as conn:
         conn.executescript(_SCHEMA_PATH.read_text(encoding="utf-8"))
         conn.commit()
+    migrate_border_checkpoints_columns()
+
+
+def migrate_border_checkpoints_columns() -> list[str]:
+    """Guarded-миграция: добавить region / border_status / work_hours в
+    border_checkpoints, если их ещё нет (для БД, созданных до правки схемы).
+
+    Идемпотентно: проверяем PRAGMA table_info и ALTER TABLE только для
+    отсутствующих колонок. Повторный запуск ничего не делает и не падает.
+    Существующие строки не трогаются (новые поля = NULL / 'unknown').
+
+    Returns: список реально добавленных колонок.
+    """
+    wanted = {
+        "region": "ALTER TABLE border_checkpoints ADD COLUMN region TEXT",
+        "border_status": "ALTER TABLE border_checkpoints ADD COLUMN border_status TEXT DEFAULT 'unknown'",
+        "work_hours": "ALTER TABLE border_checkpoints ADD COLUMN work_hours TEXT",
+    }
+    added: list[str] = []
+    with sqlite3.connect(config.DB_PATH) as conn:
+        existing = {row[1] for row in conn.execute("PRAGMA table_info(border_checkpoints)")}
+        for col, ddl in wanted.items():
+            if col not in existing:
+                conn.execute(ddl)
+                added.append(col)
+        conn.commit()
+    return added
 
 
 def _parse_legacy_countries(s: str) -> tuple[str, str]:
