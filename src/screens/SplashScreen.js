@@ -54,7 +54,7 @@ export default function SplashScreen({ navigation }) {
         duration: 280,
         easing: Easing.out(Easing.quad),
         useNativeDriver: true,
-      }).start(() => navigation.replace('Onboarding'));
+      }).start(() => navigation.replace('OnboardingV2'));
     }, 2500);
 
     return () => {
