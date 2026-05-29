@@ -35,6 +35,19 @@ class CGRSettings(BaseSettings):
 
     push_throttle_minutes: int = 60
 
+    # --- Smart Bridge СЭО (официальный канал, письмо № А-СТЛ/26-956 от 04.05.2026) ---
+    # Боевая интеграция выключена по умолчанию → очередь остаётся
+    # pending-integration. Включается только когда выданы креды Smart Bridge
+    # (после протоколов ИБ + договора с ОЦИБ) и реализован клиент по WSDL/паспорту.
+    # См. backend/CGR_SEO_INTEGRATION.md.
+    sb_enabled: bool = False
+    sb_base_url: str = ""                                   # endpoint Smart Bridge / СШЭП (из паспорта)
+    sb_service_key: str = "CargoRuqsatAppsServiceSync"      # ключ сервиса (известен из письма)
+    sb_passport: str = "ORGAM-S-9317"                       # паспорт сервиса (известен из письма)
+    sb_consumer_key: str = ""                               # выдаётся при подключении ИС
+    sb_cert_path: str = ""                                  # путь к mTLS-сертификату ИС
+    sb_cert_password: str = ""                              # пароль сертификата (из env/secret)
+
     if _HAVE_PYDANTIC_SETTINGS:
         model_config = SettingsConfigDict(
             env_prefix="CGR_",
@@ -49,6 +62,8 @@ class CGRSettings(BaseSettings):
                 "scoreboard_interval_min", "booking_poll_interval_min",
                 "blocklist_cron", "iin_salt", "rate_limit_requests_per_min",
                 "feature_enabled", "push_throttle_minutes",
+                "sb_enabled", "sb_base_url", "sb_service_key", "sb_passport",
+                "sb_consumer_key", "sb_cert_path", "sb_cert_password",
             ):
                 env_key = "CGR_" + f.upper()
                 if env_key in os.environ:
@@ -57,7 +72,7 @@ class CGRSettings(BaseSettings):
                              "booking_poll_interval_min",
                              "rate_limit_requests_per_min", "push_throttle_minutes"):
                         val = int(val)
-                    elif f == "feature_enabled":
+                    elif f in ("feature_enabled", "sb_enabled"):
                         val = val.lower() in ("true", "1", "yes")
                     setattr(self, f, val)
 
