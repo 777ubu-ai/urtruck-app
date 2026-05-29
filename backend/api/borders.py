@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, Field
 
-from services.border_service import get_all_borders, get_border, search_borders
+from services.border_service import get_all_borders, get_border, search_borders, get_borders_grouped
 
 logger = logging.getLogger("api.borders")
 
@@ -81,6 +81,18 @@ def get_scoreboard():
 
     from cgr import scoreboard_service
     return scoreboard_service.build_scoreboard_response()
+
+
+# ----------------------------------------------------------------
+# Электронная очередь — переходы, сгруппированные по стране (ТЗ §0.2).
+# Конкретный путь ДО /{border_id}.
+# ----------------------------------------------------------------
+@borders_router.get("/grouped")
+def list_borders_grouped(q: str | None = None):
+    """Список погранпереходов РК, сгруппированный по стране-соседу
+    (CN/RU/UZ/KG/TM) для accordion-экрана «Электронная очередь».
+    q — необязательный поиск по названию перехода."""
+    return {"groups": get_borders_grouped(q)}
 
 
 # ----------------------------------------------------------------
