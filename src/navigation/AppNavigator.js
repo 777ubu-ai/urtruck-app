@@ -75,6 +75,7 @@ function PublishStub() {
 function MainTabs({ route }) {
   const { session } = useAuth();
   const role = session?.user?.role || route?.params?.role || 'client';
+  const isDriver = role === 'driver';
   const [, setTick] = useState(0);
 
   useEffect(() => {
@@ -82,19 +83,36 @@ function MainTabs({ route }) {
     return unsub;
   }, []);
 
-  // 5-tab layout (macros 07/08): Feed / MyWork / Publish (centre) / Chats / Profile.
-  // BottomNav is the custom tab-bar; it reads role from AuthContext to swap
-  // emerald (driver) and orange (cargo owner) accents at runtime.
+  // Жёсткий порядок табов по ролям (приказ 05-2026, Industrial Luxury):
+  //   Водитель: Поиск грузов (Feed) · Мои рейсы (MyWork) · Электронная
+  //             очередь (Queue) · Профиль. Без «+» (водитель не публикует,
+  //             а откликается) и без Chats-таба.
+  //   Клиент:   Мои грузы (MyWork) · Поиск машин (Feed) · Создать заказ
+  //             (Publish «+») · Профиль.
+  // Chats убран из бара — доступ к чатам остаётся через Profile → «Чаты»
+  // и карточки грузов/рейсов (stack-route ChatsList/Chat сохранены).
+  // BottomNav читает роль из AuthContext и красит неоновый акцент:
+  // driver — изумруд #00E676, client — янтарь #F59E0B.
   return (
     <Tab.Navigator
       screenOptions={{ headerShown: false }}
       tabBar={(props) => <BottomNav {...props} />}
     >
-      <Tab.Screen name="Feed" component={FeedScreen} initialParams={{ role }} />
-      <Tab.Screen name="MyWork" component={MyTripsScreen} initialParams={{ role }} />
-      <Tab.Screen name="Publish" component={PublishStub} initialParams={{ role }} />
-      <Tab.Screen name="Chats" component={ChatsListScreen} initialParams={{ role }} />
-      <Tab.Screen name="Profile" component={ProfileScreen} initialParams={{ role }} />
+      {isDriver ? (
+        <>
+          <Tab.Screen name="Feed" component={FeedScreen} initialParams={{ role }} />
+          <Tab.Screen name="MyWork" component={MyTripsScreen} initialParams={{ role }} />
+          <Tab.Screen name="Queue" component={QueueScreen} initialParams={{ role }} />
+          <Tab.Screen name="Profile" component={ProfileScreen} initialParams={{ role }} />
+        </>
+      ) : (
+        <>
+          <Tab.Screen name="MyWork" component={MyTripsScreen} initialParams={{ role }} />
+          <Tab.Screen name="Feed" component={FeedScreen} initialParams={{ role }} />
+          <Tab.Screen name="Publish" component={PublishStub} initialParams={{ role }} />
+          <Tab.Screen name="Profile" component={ProfileScreen} initialParams={{ role }} />
+        </>
+      )}
     </Tab.Navigator>
   );
 }
