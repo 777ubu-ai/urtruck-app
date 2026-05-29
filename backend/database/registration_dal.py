@@ -26,6 +26,43 @@ def _migrate(c):
             c.execute(f"ALTER TABLE drivers_registration ADD COLUMN {name} {ddl}")
 
 
+def _migrate_unique_iin(c):
+    """DB-level защита от дубликата ИИН среди approved-водителей.
+
+    App-level проверка уже есть (find_approved_by_iin → HTTP 409 на /selfie),
+    но при гонке двух параллельных запросов до коммита дубль теоретически
+    проскочит. Partial UNIQUE index закрывает гонку на уровне БД.
+
+    Создаём ИДЕМПОТЕНТНО и БЕЗОПАСНО: если в живой БД уже есть approved-дубли
+    (исторические данные), CREATE UNIQUE INDEX упал бы и уронил старт сервиса —
+    поэтому сперва проверяем дубли. Если они есть, индекс НЕ создаём, а пишем
+    предупреждение в лог (модератор разрулит вручную). Если дублей нет —
+    ставим индекс, и дальше гонка невозможна.
+    """
+    try:
+        dups = c.execute(
+            "SELECT iin, COUNT(*) AS n FROM drivers_registration "
+            "WHERE iin IS NOT NULL AND iin != '' AND status = 'approved' "
+            "GROUP BY iin HAVING n > 1"
+        ).fetchall()
+        if dups:
+            sample = ", ".join(f"{r['iin'][:6]}***({r['n']})" for r in dups[:5])
+            print(
+                f"[migrate] UNIQUE(iin) пропущен: найдено {len(dups)} дублей "
+                f"среди approved — {sample}. Разрулите вручную, затем перезапустите.",
+                flush=True,
+            )
+            return
+        c.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_reg_iin_approved "
+            "ON drivers_registration(iin) "
+            "WHERE iin IS NOT NULL AND iin != '' AND status = 'approved'"
+        )
+    except Exception as e:
+        # Миграция не должна валить старт сервиса ни при каких условиях.
+        print(f"[migrate] UNIQUE(iin) skipped: {e}", flush=True)
+
+
 # ---------- Lazy registration ----------
 def create_guest() -> dict:
     """Создать гостя (verification_level=0).
@@ -56,6 +93,7 @@ def init_registration_schema():
     with get_conn() as c:
         c.executescript(schema.read_text(encoding="utf-8"))
         _migrate(c)
+        _migrate_unique_iin(c)
         c.commit()
 
 

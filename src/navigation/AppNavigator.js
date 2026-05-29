@@ -9,8 +9,6 @@ import { useAuth } from '../utils/AuthContext';
 import { getChats, subscribe, getUnreadNotifications } from '../utils/store';
 import BottomNav from '../components/ui/v1/BottomNav';
 
-import SplashScreen from '../screens/SplashScreen';
-import OnboardingScreen from '../screens/OnboardingScreen';
 import HowItWorksScreen from '../screens/HowItWorksScreen';
 import AboutScreen from '../screens/AboutScreen';
 import AuthScreen from '../screens/AuthScreen';
