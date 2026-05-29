@@ -51,7 +51,7 @@ export async function uploadProDoc({ userId, kind, uri, onProgress }) {
   }
   try {
     onProgress?.('compressing');
-    const compressedUri = await compressImage(uri, { maxSide: 1400, quality: 0.75 });
+    const compressedUri = await compressImage(uri, { preset: 'document' });
     const blob = await fetch(compressedUri).then((r) => r.blob());
 
     onProgress?.('uploading');

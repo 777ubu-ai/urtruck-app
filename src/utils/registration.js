@@ -204,7 +204,7 @@ export const regAPI = {
   async uploadSelfie(iin, fullName, uri, onProgress) {
     const token = await this.getToken();
     onProgress?.('compressing');
-    const compressedUri = await compressImage(uri, { maxSide: 1200, quality: 0.72 });
+    const compressedUri = await compressImage(uri, { preset: 'selfie' });
     const blob = await fetch(compressedUri).then(r => r.blob());
     onProgress?.('uploading');
     const form = new FormData();
@@ -222,7 +222,7 @@ export const regAPI = {
   async uploadLicense(uri, onProgress) {
     const token = await this.getToken();
     onProgress?.('compressing');
-    const compressedUri = await compressImage(uri, { maxSide: 1400, quality: 0.75 });
+    const compressedUri = await compressImage(uri, { preset: 'document' });
     const blob = await fetch(compressedUri).then(r => r.blob());
     onProgress?.('uploading');
     const form = new FormData();
@@ -239,7 +239,7 @@ export const regAPI = {
   async uploadPassport(uri, onProgress) {
     const token = await this.getToken();
     onProgress?.('compressing');
-    const compressedUri = await compressImage(uri, { maxSide: 1400, quality: 0.75 });
+    const compressedUri = await compressImage(uri, { preset: 'document' });
     const blob = await fetch(compressedUri).then(r => r.blob());
     onProgress?.('uploading');
     const form = new FormData();
@@ -263,8 +263,8 @@ export const regAPI = {
     form.append('year', String(year || 0));
     if (photoUri) {
       onProgress?.('compressing');
-      // Фото машины — без мелких деталей, 1200px хватит. quality 0.7 даёт ~200-400 KB
-      const compressedUri = await compressImage(photoUri, { maxSide: 1200, quality: 0.7 });
+      // Фото грузовика — пресет 'truck' (1280px / q0.75 / ≤600KB, ТЗ §1).
+      const compressedUri = await compressImage(photoUri, { preset: 'truck' });
       const blob = await fetch(compressedUri).then(r => r.blob());
       form.append('photo', blob, 'vehicle.jpg');
     }

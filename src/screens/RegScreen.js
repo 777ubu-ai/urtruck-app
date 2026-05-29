@@ -683,7 +683,7 @@ export default function RegScreen({ navigation, route }) {
                 // Пред-сжатие сразу при выборе — быстрее финальная отправка
                 setUploadStage('compressing');
                 try {
-                  const compressed = await compressImage(uri, { maxSide: 1200, quality: 0.7 });
+                  const compressed = await compressImage(uri, { preset: 'truck' });
                   setVehiclePhoto(compressed);
                   toast('✓ ' + t('reg_photo_ready'), 'success', 1500);
                 } catch (e) {
