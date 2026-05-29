@@ -22,6 +22,7 @@ import SignUpScreen from '../screens/SignUpScreen';
 import PremiumRegisterScreen from '../screens/registration/PremiumRegisterScreen';
 import PremiumOtpScreen from '../screens/registration/PremiumOtpScreen';
 import PremiumProfileScreen from '../screens/registration/PremiumProfileScreen';
+import TruckParamsScreen from '../screens/registration/TruckParamsScreen';
 import PremiumLoginScreen from '../screens/registration/PremiumLoginScreen';
 import FeedScreen from '../screens/FeedScreen';
 import CargoDetail from '../screens/CargoDetail';
@@ -151,6 +152,7 @@ export default function AppNavigator() {
         <Stack.Screen name="EditTrip" component={EditTripScreen} />
         <Stack.Screen name="CreateTrip" component={CreateTripScreen} />
         <Stack.Screen name="CreateCargo" component={CreateCargoScreen} />
+        <Stack.Screen name="TruckParams" component={TruckParamsScreen} />
       </Stack.Navigator>
     );
   }
@@ -208,6 +210,7 @@ export default function AppNavigator() {
           <Stack.Screen name="EditTrip" component={EditTripScreen} />
           <Stack.Screen name="CreateTrip" component={CreateTripScreen} />
           <Stack.Screen name="CreateCargo" component={CreateCargoScreen} />
+        <Stack.Screen name="TruckParams" component={TruckParamsScreen} />
           {/* Индрайв-флоу верификации водителя, доступный изнутри приложения:
               карандаш профиля и CTA «Получить статус PRO» открывают 'Reg'.
               Раньше эти экраны жили только в pre-auth стеке, поэтому навигация

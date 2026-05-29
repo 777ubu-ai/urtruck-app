@@ -5,6 +5,8 @@ import { getLanguage } from './i18n';
 import { API_BASE } from '../config/env';
 
 const BASE = `${API_BASE}/register`;
+// ТЗ онбординг §0.1 — мастер водителя (draft auto-save + submit).
+const DRIVER_REG_BASE = `${API_BASE}/driver/registration`;
 
 const TOKEN_KEY = 'ur_reg_token';
 const LEVEL_KEY = 'ur_verification_level';
@@ -293,5 +295,40 @@ export const regAPI = {
       headers: { 'Authorization': `Bearer ${token}` },
     });
     return r.json();
+  },
+
+  // ТЗ §0.1 — авто-сохранение шага мастера. payload — любое подмножество
+  // полей (бэкенд берёт только whitelisted). Fail-tolerant: возвращает
+  // { ok:false } при сетевой ошибке, чтобы UI не вис.
+  async saveDriverDraft(payload = {}) {
+    const token = await this.getToken();
+    if (!token) return { ok: false, detail: 'no_token' };
+    try {
+      const r = await fetch(`${DRIVER_REG_BASE}/draft`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(payload),
+      });
+      const data = await r.json().catch(() => ({}));
+      return { ok: r.ok, ...data };
+    } catch (e) {
+      return { ok: false, detail: e?.message || 'network_error' };
+    }
+  },
+
+  // ТЗ §9 — отправка заявки на проверку (стартовый скоринг на бэке).
+  async submitDriverRegistration() {
+    const token = await this.getToken();
+    if (!token) return { ok: false, detail: 'no_token' };
+    try {
+      const r = await fetch(`${DRIVER_REG_BASE}/submit`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const data = await r.json().catch(() => ({}));
+      return { ok: r.ok, ...data };
+    } catch (e) {
+      return { ok: false, detail: e?.message || 'network_error' };
+    }
   },
 };

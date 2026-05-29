@@ -375,6 +375,7 @@ async def upload_license(
     license_data = {
         "license_number": lic.get("license_number"),
         "categories": lic.get("categories", []),
+        "has_c_ce": lic.get("has_c_ce", False),
         "issue_date": lic.get("issue_date"),
         "expiry_date": lic.get("expiry_date"),
         "birth_date": lic.get("birth_date"),
@@ -417,6 +418,7 @@ async def upload_license(
     return {
         "verified": len(categories) > 0,
         "categories": license_data["categories"],
+        "has_c_ce": license_data["has_c_ce"],
         "experience_years": license_data["experience_years"],
         "face_match": face_match_result,
         "manual_review": manual_review,
@@ -440,6 +442,7 @@ async def upload_passport(
         "vin": data.get("vin"),
         "year": data.get("year"),
         "brand": data.get("brand"),
+        "model": data.get("model"),
         "confidence": data.get("confidence", 0),
     }
 

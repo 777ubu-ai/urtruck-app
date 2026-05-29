@@ -80,7 +80,11 @@ export const VEHICLE_TYPES = [
   'container_carrier',   // Контейнеровоз
 ];
 
-// ТЗ §6 — Тип кузова/прицепа (если тягач/прицеп). Ключи через i18n t('bt_*').
+// Тип кузова/прицепа (приказ §1: Тент, Рефрижератор, Термос, Бортовой,
+// Самосвал, Шаланда). Ключи через i18n t('bt_*').
 export const BODY_TYPES = [
-  'tent', 'ref', 'izoterm', 'board', 'container', 'tanker', 'platform',
+  'tent', 'ref', 'izoterm', 'board', 'tipper', 'lowboy',
 ];
+
+// Типы ТС, при которых открывается доп. блок прицепа (госномер + техпаспорт).
+export const TYPES_WITH_TRAILER = ['tractor_semitrailer', 'container_carrier'];
