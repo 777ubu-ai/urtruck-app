@@ -51,7 +51,7 @@ export default function TruckParamsScreen({ navigation, route }) {
   const [dimH, setDimH] = useState('');
   const [adr, setAdr] = useState(false);
   const [straps, setStraps] = useState(false);
-  const [trailerPlate, setTrailerPlate] = useState('');
+  const [trailerPlate, setTrailerPlate] = useState(route?.params?.plate || '');
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
 
@@ -91,13 +91,23 @@ export default function TruckParamsScreen({ navigation, route }) {
     }
     setSaving(true);
     const res = await regAPI.saveDriverDraft(buildPayload());
-    setSaving(false);
-    if (res.ok) {
-      toast(t('truck_params_saved'), 'success');
-      if (navigation.canGoBack()) navigation.goBack();
-    } else {
+    if (!res.ok) {
+      setSaving(false);
       toast(t('save_error'), 'error');
+      return;
     }
+    // Финальный шаг сквозной верификации: отправляем заявку на проверку и
+    // возвращаемся в приложение. Иначе (standalone/редактирование) — назад.
+    if (route?.params?.fromVerification) {
+      await regAPI.submitDriverRegistration();
+      setSaving(false);
+      toast(t('truck_params_submitted'), 'success');
+      navigation.navigate('Main');
+      return;
+    }
+    setSaving(false);
+    toast(t('truck_params_saved'), 'success');
+    if (navigation.canGoBack()) navigation.goBack();
   };
 
   const Selector = ({ items, value, onSelect, prefix }) => (
