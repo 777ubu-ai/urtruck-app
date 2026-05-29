@@ -53,6 +53,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 from api.routes import router
 from api.admin import admin_router
 from api.registration import reg_router
+from api.driver_registration import driver_reg_router
 from api.reviews import reviews_router
 from api.push import push_router
 from api.qr import qr_router
@@ -115,6 +116,7 @@ def get_version():
 
 app.include_router(router, prefix="/api/v1")
 app.include_router(reg_router, prefix="/api/v1/register")
+app.include_router(driver_reg_router, prefix="/api/v1/driver/registration")
 app.include_router(reviews_router, prefix="/api/v1/reviews")
 app.include_router(push_router, prefix="/api/v1/push")
 app.include_router(qr_router, prefix="/api/v1/qr")

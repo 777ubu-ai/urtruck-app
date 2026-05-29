@@ -20,6 +20,23 @@ def _migrate(c):
         ("is_demo", "INTEGER DEFAULT 0"),
         ("city", "TEXT"),
         ("about", "TEXT"),
+        # ТЗ онбординг — поля 6-шагового мастера водителя фуры.
+        ("birth_date", "TEXT"),                 # шаг 1 (ДД.ММ.ГГГГ)
+        ("residence_status", "TEXT"),           # шаг 2: citizen|kandas|foreigner
+        ("license_category", "TEXT"),           # шаг 3: напр. 'B, C, CE'
+        ("license_issue_date", "TEXT"),         # шаг 3: для стажа
+        ("license_expiry", "TEXT"),             # шаг 3: срок действия
+        ("vehicle_model", "TEXT"),              # шаг 4 (brand уже есть)
+        ("body_type", "TEXT"),                  # шаг 5: tent|ref|izoterm|board|container|tanker|platform
+        ("truck_kind", "TEXT"),                 # шаг 5: тип ТС (tractor_semitrailer и т.д.)
+        ("capacity_tons", "REAL"),              # шаг 5
+        ("volume_m3", "REAL"),                  # шаг 5
+        ("dims_l_m", "REAL"), ("dims_w_m", "REAL"), ("dims_h_m", "REAL"),  # шаг 5 (необяз.)
+        ("adr", "INTEGER DEFAULT 0"),           # шаг 5: опасный груз
+        ("adr_cert_url", "TEXT"),               # шаг 5 (опц.)
+        ("has_straps", "INTEGER DEFAULT 0"),    # шаг 5 (опц.)
+        ("draft_json", "TEXT"),                 # auto-save состояния мастера
+        ("submitted_at", "TEXT"),               # POST submit
     ]
     for name, ddl in additions:
         if name not in cols:
