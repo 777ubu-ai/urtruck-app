@@ -1084,8 +1084,8 @@ const translations = {
 
     role_v2_title: 'Кто вы?',
     role_v2_subtitle: 'Выберите роль, чтобы продолжить регистрацию',
-    role_v2_driver: 'Водитель',
-    role_v2_driver_desc: 'Ищу грузы и маршруты',
+    role_v2_driver: 'Водитель фуры',
+    role_v2_driver_desc: 'Грузовое авто (кат. C/CE) — ищу грузы',
     role_v2_client: 'Грузовладелец',
     role_v2_client_desc: 'Ищу перевозчика для груза',
     role_v2_continue: 'Продолжить',
@@ -2009,8 +2009,8 @@ const translations = {
 
     role_v2_title: 'Сіз кімсіз?',
     role_v2_subtitle: 'Тіркелуді жалғастыру үшін рөлді таңдаңыз',
-    role_v2_driver: 'Жүргізуші',
-    role_v2_driver_desc: 'Жүк пен бағыт іздеймін',
+    role_v2_driver: 'Фура жүргізушісі',
+    role_v2_driver_desc: 'Жүк көлігі (C/CE санаты) — жүк іздеймін',
     role_v2_client: 'Жүк иесі',
     role_v2_client_desc: 'Жүкке тасымалдаушы іздеймін',
     role_v2_continue: 'Жалғастыру',
@@ -2900,8 +2900,8 @@ const translations = {
 
     role_v2_title: '您是谁?',
     role_v2_subtitle: '选择角色以继续注册',
-    role_v2_driver: '司机',
-    role_v2_driver_desc: '寻找货物和路线',
+    role_v2_driver: '卡车司机',
+    role_v2_driver_desc: '货车（C/CE 类）— 寻找货物',
     role_v2_client: '货主',
     role_v2_client_desc: '寻找承运人',
     role_v2_continue: '继续',
@@ -3760,8 +3760,8 @@ const translations = {
 
     role_v2_title: 'Who are you?',
     role_v2_subtitle: 'Pick a role to continue sign-up',
-    role_v2_driver: 'Driver',
-    role_v2_driver_desc: 'Looking for cargo and routes',
+    role_v2_driver: 'Truck driver',
+    role_v2_driver_desc: 'Heavy truck (cat. C/CE) — looking for cargo',
     role_v2_client: 'Shipper',
     role_v2_client_desc: 'Looking for a carrier',
     role_v2_continue: 'Continue',
