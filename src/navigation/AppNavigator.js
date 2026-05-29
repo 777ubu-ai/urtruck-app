@@ -210,6 +210,13 @@ export default function AppNavigator() {
           <Stack.Screen name="EditTrip" component={EditTripScreen} />
           <Stack.Screen name="CreateTrip" component={CreateTripScreen} />
           <Stack.Screen name="CreateCargo" component={CreateCargoScreen} />
+          {/* Индрайв-флоу верификации водителя, доступный изнутри приложения:
+              карандаш профиля и CTA «Получить статус PRO» открывают 'Reg'.
+              Раньше эти экраны жили только в pre-auth стеке, поэтому навигация
+              из ProfileScreen падала (route not handled). */}
+          <Stack.Screen name="Reg" component={PremiumRegisterScreen} />
+          <Stack.Screen name="RegOtp" component={PremiumOtpScreen} />
+          <Stack.Screen name="RegProfile" component={PremiumProfileScreen} />
           {/* Legacy routes — Track / Wallet were tabs in v0/v1.0 but the
               v1 design doesn't surface them in the bottom navigation.
               They stay reachable by navigation.navigate('Track' | 'Wallet')
