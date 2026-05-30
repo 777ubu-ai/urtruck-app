@@ -16,6 +16,7 @@ import { voice } from '../utils/voiceRecorder';
 import QuickPhrases from '../components/QuickPhrases';
 import {v1Colors, useV1Colors, v1Radius, v1AccentFor} from '../theme/designV1';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
+import { DealRoomCard, SystemEventRow, DealQuickActions, DealDocumentsPlaceholder } from '../components/deal/DealRoom';
 
 // HOT-006: реальная запись/воспроизведение для web (PWA deploy).
 // На нативе (Expo Go) expo-av не установлен — тост "скоро".
@@ -100,7 +101,7 @@ export default function ChatScreen({ navigation, route }) {
   voiceTime: { fontSize: 11, minWidth: 30 },
 
   }), [v1]);
-  const { partner, role, cargoId, tripId, roomId: initialRoomId } = route.params || {};
+  const { partner, role, cargoId, tripId, roomId: initialRoomId, dealId } = route.params || {};
   const { t } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
@@ -114,6 +115,10 @@ export default function ChatScreen({ navigation, route }) {
   const [lang, setLang] = useState('RU');
   const [translations, setTranslations] = useState({});
   const [translating, setTranslating] = useState(null);
+  // Deal Room (PR2): карточка сделки + immutable timeline. Показываются только
+  // при dealId — иначе старый чат выглядит как раньше.
+  const [deal, setDeal] = useState(null);
+  const [dealEvents, setDealEvents] = useState([]);
   const flatListRef = useRef(null);
   // HOT-006: refs для MediaRecorder (web)
   const mediaRecorderRef = useRef(null);
@@ -214,6 +219,26 @@ export default function ChatScreen({ navigation, route }) {
     notifyChatRead();
     return () => notifyChatRead();
   }, [roomId]);
+
+  // Deal Room: загрузка карточки сделки + immutable timeline по dealId.
+  useEffect(() => {
+    if (!dealId) return;
+    const p = route.params || {};
+    setDeal({
+      status: p.dealStatus, from_city: p.fromCity, to_city: p.toCity,
+      cargo_desc: p.cargoDesc, cargo_id: p.cargoId, amount: p.amount, plate: p.plate,
+    });
+    chatAPI.dealTimeline(dealId)
+      .then(r => setDealEvents(Array.isArray(r?.events) ? r.events : []))
+      .catch(() => {});
+  }, [dealId]);
+
+  const onCallSupport = async () => {
+    try {
+      await chatAPI.supportEscalate({ conversationId: roomId || null, reason: 'chat_cta' });
+      toast(t('chat_support_pending'), 'success');
+    } catch { /* без фейков — просто не падаем */ }
+  };
 
   const sendMessage = async (text) => {
     const msg = text || input;
@@ -484,11 +509,27 @@ export default function ChatScreen({ navigation, route }) {
         contentContainerStyle={s.msgList}
         keyboardShouldPersistTaps="handled"
         ListHeaderComponent={
-          <View style={s.chatOpened}>
-            <Text style={s.chatOpenedText}>
-              {t('chatOpened')}
-              {CHAT_LANG_PILL_ENABLED ? ` · ${t('translation')}: ${LANGS[lang]}` : ''}
-            </Text>
+          <View>
+            {dealId ? (
+              <View style={{ marginBottom: 10 }}>
+                <DealRoomCard deal={deal} role={role} />
+                {dealEvents.length > 0 ? (
+                  <View testID="deal-timeline">
+                    {dealEvents.slice(-4).map((ev) => (
+                      <SystemEventRow key={ev.id || ev.event_type} ev={ev} />
+                    ))}
+                  </View>
+                ) : null}
+                <DealDocumentsPlaceholder />
+                <DealQuickActions role={role} onCallSupport={onCallSupport} />
+              </View>
+            ) : null}
+            <View style={s.chatOpened}>
+              <Text style={s.chatOpenedText}>
+                {t('chatOpened')}
+                {CHAT_LANG_PILL_ENABLED ? ` · ${t('translation')}: ${LANGS[lang]}` : ''}
+              </Text>
+            </View>
           </View>
         }
         onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}

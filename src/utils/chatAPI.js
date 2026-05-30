@@ -60,4 +60,24 @@ export const chatAPI = {
     });
     return r.json();
   },
+
+  // --- Deal Room (PR #60 backend foundation) ---
+  // Новые эндпоинты. Старые send/rooms/messages/unread/translate не трогаются.
+  async conversations() {
+    const r = await fetch(`${BASE}/conversations`, { headers: await headers() });
+    return r.json();
+  },
+
+  async dealTimeline(dealId) {
+    const r = await fetch(`${API_BASE}/deals/${dealId}/timeline`, { headers: await headers() });
+    return r.json();
+  },
+
+  async supportEscalate({ conversationId = null, reason = null } = {}) {
+    const r = await fetch(`${API_BASE}/support/escalate`, {
+      method: 'POST', headers: await headers(),
+      body: JSON.stringify({ conversation_id: conversationId, reason }),
+    });
+    return r.json();
+  },
 };
