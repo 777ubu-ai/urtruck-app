@@ -93,7 +93,13 @@ export default function SelfieStepScreen({ navigation, route }) {
 
   const verified = selfie.status === 'done';
   const onNext = () => {
-    if (verified) navigation.navigate('VehicleDocs');
+    if (!verified) return;
+    // Безопасный форвард: только ключ личного фото из #73 (он уже сохранён
+    // server-side). Raw selfie-uri/base64 дальше НЕ передаём — само селфи уже
+    // ушло на /register/selfie.
+    navigation.navigate('VehicleDocs', {
+      personalPhotoKey: route?.params?.personalPhotoKey || null,
+    });
   };
 
   const progress = STEP / TOTAL_STEPS;
@@ -141,6 +147,14 @@ export default function SelfieStepScreen({ navigation, route }) {
         {selfie.status === 'error' ? (
           <Text style={s.err}>{t('reg_selfie_bad_photo')}</Text>
         ) : null}
+
+        {/* Явный retry: пересняться можно в любой момент (done/error). */}
+        {selfie.uri && selfie.status !== 'busy' ? (
+          <Pressable onPress={takeSelfie} style={s.retakeBtn} testID="selfie-retake">
+            <Feather name="refresh-ccw" size={16} color={brand.primary} />
+            <Text style={s.retakeText}>{t('reg_selfie_retake')}</Text>
+          </Pressable>
+        ) : null}
       </ScrollView>
 
       <View style={s.ctaWrap}>
@@ -174,6 +188,8 @@ const s = StyleSheet.create({
   busyText: { ...typography.bodySmall, color: '#fff' },
   okBox: { marginTop: 14, padding: 12, borderRadius: radius.md, backgroundColor: brand.primarySoft },
   okText: { ...typography.bodySmall, fontWeight: '800', color: brand.primary },
+  retakeBtn: { marginTop: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 10 },
+  retakeText: { ...typography.bodySmall, fontWeight: '700', color: brand.primary },
   err: { ...typography.caption, color: brand.error, marginTop: 12 },
   ctaWrap: { paddingHorizontal: 20, paddingBottom: 16, paddingTop: 8 },
   cta: { height: 56, borderRadius: radius.lg, backgroundColor: brand.primary, alignItems: 'center', justifyContent: 'center' },
