@@ -192,26 +192,33 @@ def create_deal_event(
     trip_id: str | None = None,
     bid_id: str | None = None,
     payload: dict | None = None,
+    conn=None,
 ) -> str:
     """Серверная запись immutable-события. Единственная точка создания.
     i18n_key выводится из EVENT_TYPES — фронт переводит по ключу.
-    actor_id/created_at задаёт сервер (created_at = CURRENT_TIMESTAMP)."""
+    actor_id/created_at задаёт сервер (created_at = CURRENT_TIMESTAMP).
+
+    conn: опциональный открытый коннект. Нужен, когда вызов идёт ВНУТРИ уже
+    открытой транзакции (напр. marketplace accept_bid) — иначе второй
+    get_conn() упирается в SQLite write-lock ('database is locked')."""
     i18n_key = EVENT_TYPES.get(event_type)
     if not i18n_key:
         raise ValueError(f"unknown event_type: {event_type}")
     eid = new_id()
-    with get_conn() as c:
-        c.execute(
-            """
-            INSERT INTO deal_events
-                (id, conversation_id, event_type, i18n_key, payload_json,
-                 actor_id, actor_role, load_id, trip_id, bid_id, deal_id, is_system)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-            """,
-            (eid, conversation_id, event_type, i18n_key,
-             json.dumps(payload or {}, ensure_ascii=False),
-             actor_id, actor_role, load_id, trip_id, bid_id, deal_id),
-        )
+    sql = (
+        "INSERT INTO deal_events "
+        "(id, conversation_id, event_type, i18n_key, payload_json, "
+        " actor_id, actor_role, load_id, trip_id, bid_id, deal_id, is_system) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)"
+    )
+    params = (eid, conversation_id, event_type, i18n_key,
+              json.dumps(payload or {}, ensure_ascii=False),
+              actor_id, actor_role, load_id, trip_id, bid_id, deal_id)
+    if conn is not None:
+        conn.execute(sql, params)
+    else:
+        with get_conn() as c:
+            c.execute(sql, params)
     return eid
 
 
