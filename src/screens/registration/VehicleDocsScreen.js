@@ -35,6 +35,23 @@ export default function VehicleDocsScreen({ navigation }) {
   const [techpass, setTechpass] = useState({ uri: null, status: 'idle', ocr: null });
   const [license, setLicense] = useState({ uri: null, status: 'idle', ocr: null });
 
+  // PR-V4: сохраняем распознанные OCR-поля в черновик сразу после успешного
+  // распознавания. Иначе submit/scoring получает пустые license_issue_date /
+  // vehicle_year и валидный водитель уходит в red/manual_review. Пишем только
+  // непустые значения; raw OCR / номера документов в лог НЕ выводим.
+  const persistDraft = async (fields) => {
+    const payload = {};
+    for (const [k, v] of Object.entries(fields)) {
+      if (v !== null && v !== undefined && v !== '') payload[k] = v;
+    }
+    if (Object.keys(payload).length === 0) return;
+    try {
+      await regAPI.saveDriverDraft(payload);
+    } catch (e) {
+      // Fail-tolerant: потеря авто-сейва не должна ломать шаг верификации.
+    }
+  };
+
   const pick = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (perm.status !== 'granted') {
@@ -55,7 +72,16 @@ export default function VehicleDocsScreen({ navigation }) {
     setTechpass({ uri, status: 'busy', ocr: null });
     try {
       const res = await regAPI.uploadPassport(uri);
-      setTechpass({ uri, status: 'done', ocr: res?.extracted || null });
+      const ex = res?.extracted || {};
+      setTechpass({ uri, status: 'done', ocr: ex });
+      // OCR техпаспорта → draft (vehicle_* — для submit-скоринга машины).
+      await persistDraft({
+        vehicle_brand: ex.brand,
+        vehicle_model: ex.model,
+        vehicle_plate: ex.plate_number,
+        vehicle_year: ex.year,
+        vehicle_vin: ex.vin,
+      });
     } catch (e) {
       setTechpass({ uri, status: 'error', ocr: null });
       toast(t('vdocs_ocr_error'), 'error');
@@ -69,6 +95,13 @@ export default function VehicleDocsScreen({ navigation }) {
     try {
       const res = await regAPI.uploadLicense(uri);
       setLicense({ uri, status: 'done', ocr: res || null });
+      // OCR прав → draft (license_issue_date — стаж, ключевой фактор скоринга).
+      const cats = res?.categories || [];
+      await persistDraft({
+        license_category: cats.length ? cats.join(',') : null,
+        license_issue_date: res?.issue_date,
+        license_expiry: res?.expiry_date,
+      });
     } catch (e) {
       setLicense({ uri, status: 'error', ocr: null });
       toast(t('vdocs_ocr_error'), 'error');

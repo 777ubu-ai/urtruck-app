@@ -420,6 +420,12 @@ async def upload_license(
         "categories": license_data["categories"],
         "has_c_ce": license_data["has_c_ce"],
         "experience_years": license_data["experience_years"],
+        # PR-V4: отдаём распознанные даты/номер, чтобы клиент сохранил их в
+        # draft (license_issue_date / license_expiry участвуют в submit-скоринге;
+        # без них водитель уходит в red/manual_review). raw_text НЕ отдаём.
+        "issue_date": license_data["issue_date"],
+        "expiry_date": license_data["expiry_date"],
+        "license_number": license_data["license_number"],
         "face_match": face_match_result,
         "manual_review": manual_review,
     }
