@@ -59,7 +59,7 @@ export default function SecurityScreen({ navigation }) {
             {(session?.user?.role !== 'client') ? (
               <TouchableOpacity
                 style={[s.verifyBtn, { backgroundColor: '#00E676' }]}
-                onPress={() => navigation.navigate('VehicleDocs')}
+                onPress={() => navigation.navigate('Identity')}
                 testID="security-verify-docs"
               >
                 <Text style={s.verifyBtnText}>📄 {t('security_verify_cta')}</Text>
