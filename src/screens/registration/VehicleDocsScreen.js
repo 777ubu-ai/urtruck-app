@@ -24,8 +24,10 @@ import { useToast } from '../../components/Toast';
 import { regAPI } from '../../utils/registration';
 import { brand, radius, typography } from '../../theme/brandV2';
 
-const TOTAL_STEPS = 6;
-const STEP = 4;
+// PR-V1: канонический PRO-flow верификации = 2 экрана (документы → параметры
+// фуры → submit). Раньше показывал «4/6», хотя шагов 1–3/6 в этом потоке нет.
+const TOTAL_STEPS = 2;
+const STEP = 1;
 
 export default function VehicleDocsScreen({ navigation }) {
   const { t } = useI18n();
