@@ -158,7 +158,7 @@ export default function ChatsListScreen({ navigation, route }) {
         {query ? <TouchableOpacity onPress={() => setQuery('')}><Feather name="x" size={16} color={theme.textMuted} /></TouchableOpacity> : null}
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filters}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filtersScroll} contentContainerStyle={s.filters}>
         {FILTERS.map((f) => {
           const on = filter === f.key;
           return (
@@ -194,8 +194,12 @@ const s = StyleSheet.create({
   title: { fontSize: 22, fontWeight: '900', paddingHorizontal: 16, paddingTop: 6, paddingBottom: 8 },
   search: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 12, paddingHorizontal: 12, height: 44, borderRadius: 12, borderWidth: 1 },
   searchInput: { flex: 1, fontSize: 14, paddingVertical: 0 },
-  filters: { flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingVertical: 10 },
-  chip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10, borderWidth: 1 },
+  // filtersScroll фиксирует высоту горизонтального ScrollView — иначе на
+  // react-native-web он растягивается по вертикали и chips (alignItems:stretch)
+  // превращаются в вертикальные «колонны». flexGrow:0 + height = compact-панель.
+  filtersScroll: { flexGrow: 0, height: 48 },
+  filters: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12 },
+  chip: { height: 34, paddingHorizontal: 14, borderRadius: 17, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   chipTxt: { fontSize: 12, fontWeight: '800' },
   card: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 14, borderWidth: 1, marginBottom: 8 },
   avatar: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },

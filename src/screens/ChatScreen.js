@@ -61,19 +61,21 @@ export default function ChatScreen({ navigation, route }) {
   msgRow: { marginBottom: 10 },
   msgRowMe: { alignItems: 'flex-end' },
   senderLabel: { fontSize: 10, marginBottom: 3, marginLeft: 6, color: v1.textMuted },
-  bubble: { maxWidth: '78%', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18 },
-  bubbleMe: { backgroundColor: v1Colors.driver, borderBottomRightRadius: 6 },
+  // B2B deal chat: компактнее и спокойнее (не consumer/WhatsApp). Меньше
+  // padding/radius/maxWidth; outgoing — спокойный изумруд (не ядовитый #00E676).
+  bubble: { maxWidth: '72%', paddingHorizontal: 11, paddingVertical: 7, borderRadius: 12 },
+  bubbleMe: { backgroundColor: '#15512F', borderBottomRightRadius: 4 },
   bubbleThem: {
-    borderBottomLeftRadius: 6,
+    borderBottomLeftRadius: 4,
     backgroundColor: v1.surface,
     borderWidth: 1, borderColor: v1.border,
   },
-  msgText: { fontSize: 15, lineHeight: 21 },
-  msgTextMe: { color: '#0A0A0A' },
+  msgText: { fontSize: 14, lineHeight: 19 },
+  msgTextMe: { color: '#EAFBF1' },
   translated: { marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)' },
   translatedText: { color: 'rgba(255,255,255,0.55)', fontSize: 11, fontStyle: 'italic' },
   msgTime: { color: v1.textMuted, fontSize: 9, textAlign: 'right', marginTop: 3 },
-  msgTimeMe: { color: 'rgba(10,10,10,0.55)' },
+  msgTimeMe: { color: 'rgba(234,251,241,0.55)' },
   // Input bar
   inputRow: {
     flexDirection: 'row', alignItems: 'center',
