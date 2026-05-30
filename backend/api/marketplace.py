@@ -1011,6 +1011,30 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount: int):
          shipper_id, driver_id, from_city, to_city, final_amount,
          "accepted", chat_room_id),
     )
+
+    # PR4 — immutable юридическое событие сделки. actor = текущий пользователь
+    # (из auth), created_at ставит сервер. Роль actor'а: тот, кто принял ставку,
+    # — владелец cargo (client) или driver рейса (driver). Локальный импорт —
+    # избегаем циклов (deal_room_dal не тянет marketplace). Не критично для
+    # accept, если запись события упадёт — оборачиваем в try.
+    try:
+        from database import deal_room_dal
+        actor_role = "driver" if bid.get("trip_id") else "client"
+        deal_room_dal.create_deal_event(
+            "deal.bid_accepted",
+            actor_id=user["id"],
+            actor_role=actor_role,
+            conversation_id=chat_room_id,
+            deal_id=deal_id,
+            bid_id=bid_id,
+            load_id=bid.get("cargo_id"),
+            trip_id=bid.get("trip_id"),
+            payload={"amount": final_amount, "from_city": from_city, "to_city": to_city},
+            conn=c,   # та же открытая транзакция — иначе SQLite write-lock
+        )
+    except Exception as e:
+        print(f"[accept_bid] deal_event write failed (continuing): {e}", flush=True)
+
     return {
         "deal_id": deal_id,
         "chat_room_id": chat_room_id,

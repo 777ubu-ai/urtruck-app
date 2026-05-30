@@ -263,7 +263,7 @@ def _enrich_rooms_with_deal_context(rooms: list, uid: str) -> None:
             # значения по умолчанию (контракт стабилен даже без сделки)
             room.setdefault("room_id", room_id)
             room.update({
-                "deal_id": None, "partner_company": None, "partner_role": None,
+                "deal_id": None, "bid_id": None, "partner_company": None, "partner_role": None,
                 "route_from": None, "route_to": None, "route_label": None,
                 "cargo_title": None, "cargo_type": None, "cargo_weight": None,
                 "deal_status": None, "bid_amount": None, "bid_currency": None,
@@ -284,6 +284,7 @@ def _enrich_rooms_with_deal_context(rooms: list, uid: str) -> None:
             if deal:
                 deal = dict(deal)
                 room["deal_id"] = deal["id"]
+                room["bid_id"] = deal.get("bid_id")
                 room["deal_status"] = deal.get("status")
                 room["bid_amount"] = deal.get("amount")
                 room["route_from"] = deal.get("from_city")

@@ -81,6 +81,18 @@ export const chatAPI = {
     return r.json();
   },
 
+  // --- Smart actions (PR4) ---
+  // Принять ставку. Использует существующий marketplace-эндпоинт
+  // /market/bids/{bidId}/accept (он же пишет immutable deal.bid_accepted).
+  async acceptBid(bidId) {
+    const r = await fetch(`${API_BASE}/market/bids/${bidId}/accept`, {
+      method: 'POST', headers: await headers(),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data?.detail || `accept failed ${r.status}`);
+    return data;
+  },
+
   // --- Attachments (PR3 media foundation) ---
   async listAttachments(conversationId) {
     const r = await fetch(`${API_BASE}/chat/conversations/${conversationId}/attachments`, {

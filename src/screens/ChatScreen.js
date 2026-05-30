@@ -52,6 +52,15 @@ export default function ChatScreen({ navigation, route }) {
   online: { fontSize: 10, fontWeight: '700' },
   // System banner above the first message
   msgList: { padding: 14, paddingBottom: 20 },
+  // PR4 Accept bid confirm-бар (inline, без модалки — работает и на web)
+  acceptConfirm: { backgroundColor: v1.surface, borderWidth: 1, borderColor: v1Colors.driver, borderRadius: 12, padding: 12, marginBottom: 8, gap: 6 },
+  acceptConfirmTitle: { color: v1.text, fontSize: 14, fontWeight: '900' },
+  acceptConfirmText: { color: v1.textMuted, fontSize: 12 },
+  acceptConfirmRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
+  acceptCancelBtn: { flex: 1, paddingVertical: 9, borderRadius: 10, borderWidth: 1, borderColor: v1.border, alignItems: 'center' },
+  acceptCancelTxt: { color: v1.textMuted, fontSize: 12, fontWeight: '800' },
+  acceptOkBtn: { flex: 1, paddingVertical: 9, borderRadius: 10, backgroundColor: v1Colors.driver, alignItems: 'center' },
+  acceptOkTxt: { color: '#0C0A09', fontSize: 12, fontWeight: '900' },
   chatOpened: { alignSelf: 'center', marginBottom: 16 },
   chatOpenedText: {
     fontSize: 10, paddingHorizontal: 14, paddingVertical: 5,
@@ -104,7 +113,7 @@ export default function ChatScreen({ navigation, route }) {
   voiceTime: { fontSize: 11, minWidth: 30 },
 
   }), [v1]);
-  const { partner, role, cargoId, tripId, roomId: initialRoomId, dealId } = route.params || {};
+  const { partner, role, cargoId, tripId, roomId: initialRoomId, dealId, bidId } = route.params || {};
   const { t } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
@@ -241,6 +250,31 @@ export default function ChatScreen({ navigation, route }) {
       await chatAPI.supportEscalate({ conversationId: roomId || null, reason: 'chat_cta' });
       toast(t('chat_support_pending'), 'success');
     } catch { /* без фейков — просто не падаем */ }
+  };
+
+  // PR4 — Accept bid. Кнопка активна только если есть bidId и сделка ещё не
+  // принята. Confirm → реальный вызов /market/bids/{id}/accept (пишет immutable
+  // deal.bid_accepted). После успеха — обновляем deal-статус и timeline.
+  const [acceptConfirm, setAcceptConfirm] = useState(false);
+  const [accepting, setAccepting] = useState(false);
+  const canAcceptBid = !!bidId && deal && deal.status !== 'accepted' && deal.status !== 'confirmed';
+  const doAcceptBid = async () => {
+    setAccepting(true);
+    try {
+      await chatAPI.acceptBid(bidId);
+      toast(t('accept_bid_success'), 'success');
+      setDeal((d) => (d ? { ...d, status: 'accepted' } : d));
+      setAcceptConfirm(false);
+      if (dealId) {
+        chatAPI.dealTimeline(dealId)
+          .then((r) => setDealEvents(Array.isArray(r?.events) ? r.events : []))
+          .catch(() => {});
+      }
+    } catch (e) {
+      toast(t('accept_bid_failed'), 'error');
+    } finally {
+      setAccepting(false);
+    }
   };
 
   const sendMessage = async (text) => {
@@ -524,7 +558,27 @@ export default function ChatScreen({ navigation, route }) {
                   </View>
                 ) : null}
                 <DealAttachments conversationId={roomId} role={role} />
-                <DealQuickActions role={role} onCallSupport={onCallSupport} />
+                {acceptConfirm ? (
+                  <View style={s.acceptConfirm} testID="accept-bid-confirm">
+                    <Text style={s.acceptConfirmTitle}>{t('accept_bid_confirm_title')}</Text>
+                    <Text style={s.acceptConfirmText}>
+                      {t('accept_bid_confirm_text')} {deal?.amount != null ? `${deal.amount}` : ''}
+                    </Text>
+                    <View style={s.acceptConfirmRow}>
+                      <TouchableOpacity onPress={() => setAcceptConfirm(false)} style={s.acceptCancelBtn} disabled={accepting}>
+                        <Text style={s.acceptCancelTxt}>{t('cancel')}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={doAcceptBid} style={s.acceptOkBtn} disabled={accepting} testID="accept-bid-ok">
+                        <Text style={s.acceptOkTxt}>{accepting ? '…' : t('action_accept_bid')}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : null}
+                <DealQuickActions
+                  role={role}
+                  onCallSupport={onCallSupport}
+                  onAcceptBid={canAcceptBid ? () => setAcceptConfirm(true) : undefined}
+                />
               </View>
             ) : null}
             <View style={s.chatOpened}>
