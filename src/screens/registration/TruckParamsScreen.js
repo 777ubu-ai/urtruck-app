@@ -28,10 +28,10 @@ import {
 } from '../../utils/truckConstants';
 import { brand, radius, typography } from '../../theme/brandV2';
 
-// PR-V1: канонический PRO-flow = 2 экрана (VehicleDocs → этот экран → submit).
-// Раньше показывал «5/6» без реальных шагов 1–4/6 и шага 6.
-const TOTAL_STEPS = 2;
-const STEP = 2;
+// Канонический PRO-flow = 4 экрана: Identity → Selfie → VehicleDocs →
+// этот экран → submit. Финальный шаг 4/4 (PR-V3 добавил Identity+Selfie).
+const TOTAL_STEPS = 4;
+const STEP = 4;
 
 // Числовой ввод: оставляем только цифры и одну точку/запятую → число.
 const parseNum = (s) => {
