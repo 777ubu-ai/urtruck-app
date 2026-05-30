@@ -22,7 +22,7 @@ driver_reg_router = APIRouter()
 # пускать в БД (SQL-инъекция через имя столбца). Принимаем только эти.
 DRAFT_FIELDS = {
     # шаг 1
-    "full_name", "birth_date", "iin",
+    "full_name", "birth_date", "iin", "personal_photo_url",
     # шаг 2
     "residence_status",
     # шаг 3

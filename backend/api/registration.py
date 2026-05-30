@@ -358,6 +358,25 @@ async def upload_selfie(
     }
 
 
+# ---------- Личное фото (Personal Info, шаг 1) ----------
+@reg_router.post("/photo")
+async def upload_personal_photo(
+    file: UploadFile = File(...),
+    driver_id: str = Depends(get_current_driver),
+):
+    """Личное фото водителя из IdentityStep. Сохраняем файл в storage
+    (local/supabase/s3), в БД пишем ТОЛЬКО ключ/URL (не raw base64). Это
+    портрет профиля — liveness/face здесь НЕ проверяем (биометрия — отдельный
+    шаг /selfie). raw-картинку и ИИН не логируем; возвращаем только публичный
+    ключ файла (не приватный signed URL)."""
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Пустой файл")
+    photo_url = storage.save_image(data, "personal_photos")
+    reg_dal.update_driver(driver_id, {"personal_photo_url": photo_url})
+    return {"personal_photo_key": photo_url}
+
+
 # ---------- ЭТАП 3: Документы (права + техпаспорт) ----------
 @reg_router.post("/documents/license")
 async def upload_license(

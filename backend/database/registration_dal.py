@@ -22,6 +22,7 @@ def _migrate(c):
         ("about", "TEXT"),
         # ТЗ онбординг — поля 6-шагового мастера водителя фуры.
         ("birth_date", "TEXT"),                 # шаг 1 (ДД.ММ.ГГГГ)
+        ("personal_photo_url", "TEXT"),         # шаг 1: ключ/URL личного фото в storage
         ("residence_status", "TEXT"),           # шаг 2: citizen|kandas|foreigner
         ("license_category", "TEXT"),           # шаг 3: напр. 'B, C, CE'
         ("license_issue_date", "TEXT"),         # шаг 3: для стажа
