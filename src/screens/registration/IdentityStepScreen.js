@@ -19,6 +19,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Image,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
@@ -51,6 +52,7 @@ export default function IdentityStepScreen({ navigation }) {
   const [birthDate, setBirthDate] = useState('');
   const [iin, setIin] = useState('');
   const [errors, setErrors] = useState({});
+  const [saving, setSaving] = useState(false);
 
   const validateName = (v) => (!v || v.trim().length < 2 ? t('val_name_short') : null);
 
@@ -113,13 +115,35 @@ export default function IdentityStepScreen({ navigation }) {
     }
     // Фамилия Имя — порядок как в документах.
     const fullName = `${lastName.trim()} ${firstName.trim()}`.trim();
-    // Сохраняем в draft то, что в backend-whitelist (full_name, birth_date).
-    // Fail-tolerant: потеря авто-сейва не блокирует шаг.
+
+    setSaving(true);
+    // 1) Реальный server-side upload личного фото. Без успешного upload дальше
+    //    НЕ идём (никакого fake-success) — показываем понятный toast.
+    let photoKey = null;
     try {
-      await regAPI.saveDriverDraft({ full_name: fullName, birth_date: birthDate.trim() });
+      const up = await regAPI.uploadPersonalPhoto(photoUri);
+      photoKey = up?.personal_photo_key || null;
+      if (!photoKey) throw new Error('no_key');
+    } catch (err) {
+      setSaving(false);
+      toast(t('identity_err_photo_upload'), 'error', 5000);
+      return;
+    }
+
+    // 2) В draft пишем только whitelisted: full_name, birth_date и безопасный
+    //    ключ фото (personal_photo_url). Fail-tolerant: фото уже сохранено
+    //    server-side endpoint'ом, потеря авто-сейва прочих полей не критична.
+    try {
+      await regAPI.saveDriverDraft({
+        full_name: fullName,
+        birth_date: birthDate.trim(),
+        personal_photo_url: photoKey,
+      });
     } catch (err) {
       // ignore
     }
+    setSaving(false);
+
     navigation.navigate('Selfie', {
       iin: iin.trim(),
       fullName,
@@ -127,6 +151,7 @@ export default function IdentityStepScreen({ navigation }) {
       lastName: lastName.trim(),
       birth_date: birthDate.trim(),
       photoUri,
+      personalPhotoKey: photoKey,
     });
   };
 
@@ -226,8 +251,12 @@ export default function IdentityStepScreen({ navigation }) {
         </ScrollView>
 
         <View style={s.ctaWrap}>
-          <Pressable onPress={onNext} style={s.cta} testID="identity-next">
-            <Text style={s.ctaText}>{t('identity_next')}</Text>
+          <Pressable onPress={onNext} disabled={saving} style={[s.cta, saving && { opacity: 0.6 }]} testID="identity-next">
+            {saving ? (
+              <ActivityIndicator color={brand.textOnPrimary} />
+            ) : (
+              <Text style={s.ctaText}>{t('identity_next')}</Text>
+            )}
           </Pressable>
         </View>
       </KeyboardAvoidingView>

@@ -221,6 +221,26 @@ export const regAPI = {
     return r.json();
   },
 
+  // Личное фото (Personal Info, шаг 1). Реальный server-side upload в storage;
+  // backend возвращает { personal_photo_key } — безопасный ключ файла (не raw).
+  async uploadPersonalPhoto(uri, onProgress) {
+    const token = await this.getToken();
+    onProgress?.('compressing');
+    const compressedUri = await compressImage(uri, { preset: 'selfie' });
+    const blob = await fetch(compressedUri).then(r => r.blob());
+    onProgress?.('uploading');
+    const form = new FormData();
+    form.append('file', blob, 'personal.jpg');
+    const r = await fetch(`${BASE}/photo`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: form,
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(normalizeDetail(data?.detail, `photo upload failed ${r.status}`));
+    return data;
+  },
+
   async uploadLicense(uri, onProgress) {
     const token = await this.getToken();
     onProgress?.('compressing');
