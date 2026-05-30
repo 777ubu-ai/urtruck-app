@@ -16,7 +16,8 @@ import { voice } from '../utils/voiceRecorder';
 import QuickPhrases from '../components/QuickPhrases';
 import {v1Colors, useV1Colors, v1Radius, v1AccentFor} from '../theme/designV1';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
-import { DealRoomCard, SystemEventRow, DealQuickActions, DealDocumentsPlaceholder } from '../components/deal/DealRoom';
+import { DealRoomCard, SystemEventRow, DealQuickActions } from '../components/deal/DealRoom';
+import DealAttachments from '../components/deal/DealAttachments';
 
 // HOT-006: реальная запись/воспроизведение для web (PWA deploy).
 // На нативе (Expo Go) expo-av не установлен — тост "скоро".
@@ -522,7 +523,7 @@ export default function ChatScreen({ navigation, route }) {
                     ))}
                   </View>
                 ) : null}
-                <DealDocumentsPlaceholder />
+                <DealAttachments conversationId={roomId} role={role} />
                 <DealQuickActions role={role} onCallSupport={onCallSupport} />
               </View>
             ) : null}

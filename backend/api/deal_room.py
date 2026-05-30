@@ -15,12 +15,19 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 from typing import Optional
 
 from api.verification_gate import require_level
 from database import deal_room_dal as dr
+from services import storage_service
+
+# Лимит размера вложения (защита от больших оригиналов; клиент сжимает по
+# §5 мастер-ТЗ — document 1600/0.8, photo 1280/0.75). 12 МБ — запас.
+_MAX_ATTACH_BYTES = 12 * 1024 * 1024
+_KIND_BY_MIME = {"image/jpeg": "photo", "image/png": "photo", "image/webp": "photo",
+                 "application/pdf": "document"}
 
 deal_room_router = APIRouter()
 
@@ -82,3 +89,54 @@ def support_escalate(body: EscalateBody, user=Depends(require_level(1))):
     )
     # future-ready: реального support-агента ещё нет → статус 'open', без фейков.
     return {"escalation": esc}
+
+
+# ---------- Attachments (PR3 — media foundation) ----------
+@deal_room_router.post("/chat/conversations/{conversation_id}/attachments")
+async def upload_attachment(
+    conversation_id: str,
+    file: UploadFile = File(...),
+    kind: Optional[str] = Form(None),
+    message_id: Optional[str] = Form(None),
+    user=Depends(require_level(1)),
+):
+    """Загрузка вложения в беседу. Только участник (403/404). Файл сохраняется
+    через storage_service (local в dev), создаётся запись message_attachments.
+    uploader_id = user[id] (с auth, НЕ с фронта). Без fake-success: запись в БД
+    создаётся только после реального сохранения файла."""
+    if not dr.room_exists(conversation_id):
+        raise HTTPException(status_code=404, detail="Беседа не найдена")
+    if not dr.is_participant(conversation_id, user["id"]):
+        raise HTTPException(status_code=403, detail="Вы не участник этой беседы")
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Пустой файл")
+    if len(raw) > _MAX_ATTACH_BYTES:
+        raise HTTPException(status_code=413, detail="Файл слишком большой")
+
+    mime = file.content_type or "application/octet-stream"
+    resolved_kind = kind if kind in dr.ATTACH_KINDS else _KIND_BY_MIME.get(mime, "other")
+    ext = "pdf" if mime == "application/pdf" else "jpg"
+    url = storage_service.save_image(raw, "chat_attachments", ext=ext)
+
+    att = dr.create_attachment(
+        conversation_id=conversation_id,
+        uploader_id=user["id"],
+        kind=resolved_kind,
+        url=url,
+        mime_type=mime,
+        size_bytes=len(raw),
+        upload_status="uploaded",
+        message_id=message_id,
+    )
+    return {"attachment": att}
+
+
+@deal_room_router.get("/chat/conversations/{conversation_id}/attachments")
+def list_conversation_attachments(conversation_id: str, user=Depends(require_level(1))):
+    if not dr.room_exists(conversation_id):
+        raise HTTPException(status_code=404, detail="Беседа не найдена")
+    if not dr.is_participant(conversation_id, user["id"]):
+        raise HTTPException(status_code=403, detail="Вы не участник этой беседы")
+    return {"attachments": dr.list_attachments(conversation_id)}

@@ -269,3 +269,57 @@ def create_support_escalation(
         )
         row = c.execute("SELECT * FROM support_escalations WHERE id = ?", (eid,)).fetchone()
         return dict(row)
+
+
+# ----------------------------------------------------------------
+# Message attachments (PR3 — media foundation)
+# ----------------------------------------------------------------
+# Тип вложения по mime/расширению. Документы и фото груза — основные кейсы.
+ATTACH_KINDS = ("photo", "document", "voice", "other")
+
+
+def create_attachment(
+    conversation_id: str,
+    uploader_id: str,
+    *,
+    kind: str = "other",
+    url: str | None = None,
+    mime_type: str | None = None,
+    size_bytes: int | None = None,
+    upload_status: str = "uploaded",
+    message_id: str | None = None,
+) -> dict:
+    """Создать запись вложения. uploader_id берётся из auth (не с фронта).
+    upload_status по умолчанию 'uploaded' (файл уже сохранён в storage до
+    вызова); foundation для queued/uploading/failed/retrying на клиенте."""
+    if kind not in ATTACH_KINDS:
+        kind = "other"
+    aid = new_id()
+    with get_conn() as c:
+        c.execute(
+            """
+            INSERT INTO message_attachments
+                (id, message_id, conversation_id, uploader_id, kind, url,
+                 mime_type, size_bytes, upload_status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (aid, message_id, conversation_id, uploader_id, kind, url,
+             mime_type, size_bytes, upload_status),
+        )
+        row = c.execute("SELECT * FROM message_attachments WHERE id = ?", (aid,)).fetchone()
+        return dict(row)
+
+
+def list_attachments(conversation_id: str) -> list[dict]:
+    with get_conn() as c:
+        rows = c.execute(
+            "SELECT * FROM message_attachments WHERE conversation_id = ? ORDER BY created_at ASC",
+            (conversation_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_attachment(attachment_id: str) -> dict | None:
+    with get_conn() as c:
+        r = c.execute("SELECT * FROM message_attachments WHERE id = ?", (attachment_id,)).fetchone()
+        return dict(r) if r else None
