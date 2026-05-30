@@ -27,6 +27,8 @@ def _migrate(c):
         ("license_category", "TEXT"),           # шаг 3: напр. 'B, C, CE'
         ("license_issue_date", "TEXT"),         # шаг 3: для стажа
         ("license_expiry", "TEXT"),             # шаг 3: срок действия
+        ("license_number", "TEXT"),             # шаг 3: номер прав (OCR)
+        ("license_selfie_url", "TEXT"),         # шаг 3: ключ/URL селфи с правами
         ("vehicle_model", "TEXT"),              # шаг 4 (brand уже есть)
         ("body_type", "TEXT"),                  # шаг 5: tent|ref|izoterm|board|container|tanker|platform
         ("truck_kind", "TEXT"),                 # шаг 5: тип ТС (tractor_semitrailer и т.д.)
