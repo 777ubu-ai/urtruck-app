@@ -66,6 +66,7 @@ from api.leaderboard import leader_router
 from api.saved_searches import ss_router
 from api.marketplace import mp_router
 from api.chat import chat_router
+from api.deal_room import deal_room_router
 from api.notifications import notif_router
 from api.profile import profile_router
 from api.auth_otp import auth_otp_router
@@ -127,6 +128,9 @@ app.include_router(borders_router, prefix="/api/v1/borders")
 app.include_router(leader_router, prefix="/api/v1/leaderboard")
 app.include_router(mp_router, prefix="/api/v1/market")
 app.include_router(chat_router, prefix="/api/v1/chat")
+# Deal Room foundation — новые endpoints (/chat/conversations, /deals/{id}/timeline,
+# /support/escalate) под /api/v1. Старые /chat/rooms, /chat/messages не трогаются.
+app.include_router(deal_room_router, prefix="/api/v1")
 app.include_router(notif_router, prefix="/api/v1/notifications")
 app.include_router(profile_router, prefix="/api/v1/users")
 app.include_router(auth_otp_router, prefix="/api/auth")
@@ -168,6 +172,16 @@ def startup():
         print(f"[startup] CGR schema applied, border_checkpoints seeded: +{n}", flush=True)
     except Exception as e:
         print(f"[startup] CGR schema init failed (continuing): {e}", flush=True)
+
+    # Deal Room foundation — схема + backfill участников из chat_rooms.
+    # Идемпотентно, безопасно при повторе; старый чат не затрагивается.
+    try:
+        from database import deal_room_dal
+        deal_room_dal.init_deal_room_schema()
+        bf = deal_room_dal.backfill_participants()
+        print(f"[startup] Deal Room schema applied, participants backfilled: +{bf}", flush=True)
+    except Exception as e:
+        print(f"[startup] Deal Room schema init failed (continuing): {e}", flush=True)
     # PR-D1 (build 18): идемпотентная миграция PRO-колонок водителя.
     # _ensure_columns делает ALTER TABLE add-if-missing для 9 колонок
     # (city, about, legal_form, china_experience_years, favorite_borders,
