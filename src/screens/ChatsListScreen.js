@@ -62,28 +62,36 @@ export default function ChatsListScreen({ navigation, route }) {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return rooms.filter((r) => {
-      // фильтры
-      if (filter === 'unread' && !(r.unread > 0)) return false;
+      // фильтры (enriched /chat/rooms, PR #62)
+      const unread = r.unread_count ?? r.unread ?? 0;
+      if (filter === 'unread' && !(unread > 0)) return false;
       if (filter === 'active' && !['active', 'confirmed', 'in_progress', 'pending'].includes(r.deal_status)) return false;
       if (filter === 'archive' && !['completed', 'delivered', 'cancelled', 'rejected'].includes(r.deal_status)) return false;
-      if (filter === 'support' && r.partner_role !== 'support' && r.partner_id !== 'urtruck-support-bot') return false;
+      if (filter === 'support' && !r.is_support && r.partner_role !== 'support' && r.partner_id !== 'urtruck-support-bot') return false;
       // поиск
       if (!q) return true;
       const hay = [
-        prettifyPartnerName(r), r.company, r.from_city, r.to_city,
-        r.cargo_desc, r.cargo_id, r.plate, r.last_message,
+        prettifyPartnerName(r.partner_name, r.partner_id, t), r.partner_company,
+        r.route_label, r.route_from, r.route_to,
+        r.cargo_title, r.cargo_type, r.vehicle_plate, r.last_message,
       ].filter(Boolean).join(' ').toLowerCase();
       return hay.includes(q);
     });
   }, [rooms, query, filter]);
 
   const renderItem = ({ item }) => {
-    const partnerName = prettifyPartnerName(item);
-    const isSupport = item.partner_role === 'support' || item.partner_id === 'urtruck-support-bot';
+    // Enriched /chat/rooms (PR #62): реальные данные сделки. Партнёр — через
+    // корректную сигнатуру prettifyPartnerName(name, id, t).
+    const partnerName = prettifyPartnerName(item.partner_name, item.partner_id, t);
+    const isSupport = item.is_support || item.partner_role === 'support' || item.partner_id === 'urtruck-support-bot';
     const roleKey = ROLE_LABEL[item.partner_role] || (isSupport ? 'role_support' : null);
-    const routeStr = [item.from_city, item.to_city].filter(Boolean).join(' → ');
-    const urgent = item.flag === 'urgent' || item.flag === 'dispute';
-    const time = (item.last_at || '').slice(11, 16);
+    const routeStr = item.route_label || [item.route_from, item.route_to].filter(Boolean).join(' → ');
+    const cargoStr = [item.cargo_title, item.cargo_weight ? `${item.cargo_weight}т` : null].filter(Boolean).join(' · ');
+    const bidStr = item.bid_amount != null ? `${item.bid_amount}${item.bid_currency ? ' ' + item.bid_currency : ''}` : null;
+    const dealStatus = item.deal_status || null;
+    const urgent = item.is_dispute || item.priority === 'urgent' || item.priority === 'support';
+    const unread = item.unread_count ?? item.unread ?? 0;
+    const time = (item.last_message_at || item.last_at || '').slice(11, 16);
     return (
       <TouchableOpacity
         testID="deal-room-list-card"
@@ -104,6 +112,15 @@ export default function ChatsListScreen({ navigation, route }) {
               {routeStr ? <Text style={[s.meta, { color: theme.textMuted }]} numberOfLines={1}>{routeStr}</Text> : null}
             </View>
           ) : null}
+          {(cargoStr || bidStr || dealStatus) ? (
+            <View style={s.row}>
+              {cargoStr ? <Text style={[s.cargo, { color: theme.textMuted }]} numberOfLines={1}>📦 {cargoStr}</Text> : null}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                {bidStr ? <Text style={[s.bid, { color: theme.text }]}>{bidStr}</Text> : null}
+                {dealStatus ? <Text style={[s.dealStatus, { color: accent }]}>{dealStatus}</Text> : null}
+              </View>
+            </View>
+          ) : null}
           <Text style={[s.preview, { color: theme.textMuted }]} numberOfLines={1}>
             {item.last_message || t('chat_no_messages')}
           </Text>
@@ -111,12 +128,12 @@ export default function ChatsListScreen({ navigation, route }) {
         <View style={s.right}>
           {urgent ? (
             <View style={[s.flag, { backgroundColor: '#EF444422' }]}>
-              <Text style={s.flagTxt}>{t(item.flag === 'dispute' ? 'chat_flag_dispute' : 'chat_flag_urgent')}</Text>
+              <Text style={s.flagTxt}>{t(item.is_dispute ? 'chat_flag_dispute' : 'chat_flag_urgent')}</Text>
             </View>
           ) : null}
-          {item.unread > 0 ? (
+          {unread > 0 ? (
             <View style={[s.badge, { backgroundColor: accent }]} testID="deal-room-list-unread">
-              <Text style={s.badgeTxt}>{item.unread > 9 ? '9+' : item.unread}</Text>
+              <Text style={s.badgeTxt}>{unread > 9 ? '9+' : unread}</Text>
             </View>
           ) : null}
         </View>
@@ -188,6 +205,9 @@ const s = StyleSheet.create({
   metaTag: { fontSize: 11, fontWeight: '800' },
   meta: { fontSize: 12, flex: 1, textAlign: 'right' },
   preview: { fontSize: 13, marginTop: 2 },
+  cargo: { fontSize: 12, flex: 1 },
+  bid: { fontSize: 12, fontWeight: '800' },
+  dealStatus: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
   right: { alignItems: 'flex-end', gap: 6 },
   flag: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8 },
   flagTxt: { fontSize: 9, fontWeight: '900', color: '#EF4444' },
