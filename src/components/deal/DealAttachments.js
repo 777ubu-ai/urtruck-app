@@ -32,6 +32,14 @@ const STATUS_META = {
 
 let _localSeq = 0;
 
+// Человекочитаемый label вложения (PR3.1): не показываем технический hash.
+// PDF/document → «Документ»; image/photo → «Фото». Полный url/hash остаётся
+// в данных (a.url), просто не выводится в UI.
+function attachmentLabel(t, a) {
+  const isDoc = a.kind === 'document' || a.mime_type === 'application/pdf';
+  return isDoc ? t('attachment_document') : t('attachment_photo');
+}
+
 export default function DealAttachments({ conversationId, role = 'driver' }) {
   const { t } = useI18n();
   const { theme } = useTheme();
@@ -140,7 +148,7 @@ export default function DealAttachments({ conversationId, role = 'driver' }) {
             return (
               <Row key={a.id}
                 icon={a.kind === 'document' ? 'file-text' : 'image'}
-                label={(a.url || '').split('/').pop() || t('chat_documents_title')}
+                label={attachmentLabel(t, a)}
                 statusKey={meta.key} statusColor={meta.color} />
             );
           })}
@@ -149,7 +157,7 @@ export default function DealAttachments({ conversationId, role = 'driver' }) {
             return (
               <Row key={l.localId}
                 icon="file-text"
-                label={l.name}
+                label={t('attachment_document')}
                 statusKey={meta.key} statusColor={meta.color}
                 onRetryPress={l.status === 'failed' ? () => onRetry(l) : null} />
             );

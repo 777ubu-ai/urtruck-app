@@ -26,8 +26,25 @@ from services import storage_service
 # Лимит размера вложения (защита от больших оригиналов; клиент сжимает по
 # §5 мастер-ТЗ — document 1600/0.8, photo 1280/0.75). 12 МБ — запас.
 _MAX_ATTACH_BYTES = 12 * 1024 * 1024
-_KIND_BY_MIME = {"image/jpeg": "photo", "image/png": "photo", "image/webp": "photo",
-                 "application/pdf": "document"}
+
+# Whitelist разрешённых типов: mime → (kind, ext). Всё остальное → 400.
+_ALLOWED = {
+    "image/jpeg": ("photo", "jpg"),
+    "image/png":  ("photo", "png"),
+    "application/pdf": ("document", "pdf"),
+}
+
+
+def _sniff_mime(raw: bytes) -> str | None:
+    """Определить реальный тип файла по magic-bytes (stdlib, без зависимостей).
+    Возвращает mime или None, если не распознан/не из whitelist."""
+    if raw[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if raw[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if raw[:5] == b"%PDF-":
+        return "application/pdf"
+    return None
 
 deal_room_router = APIRouter()
 
@@ -115,9 +132,20 @@ async def upload_attachment(
     if len(raw) > _MAX_ATTACH_BYTES:
         raise HTTPException(status_code=413, detail="Файл слишком большой")
 
-    mime = file.content_type or "application/octet-stream"
-    resolved_kind = kind if kind in dr.ATTACH_KINDS else _KIND_BY_MIME.get(mime, "other")
-    ext = "pdf" if mime == "application/pdf" else "jpg"
+    # PR3.1 hardening: реальный тип по magic-bytes (не доверяем content-type).
+    sniffed = _sniff_mime(raw)
+    if sniffed is None or sniffed not in _ALLOWED:
+        raise HTTPException(status_code=400, detail="Неподдерживаемый тип файла (только JPEG/PNG/PDF)")
+    declared = (file.content_type or "").lower()
+    # Если клиент заявил content-type — он должен совпадать с реальным.
+    if declared and declared != sniffed:
+        raise HTTPException(status_code=400, detail="Тип файла не совпадает с содержимым")
+
+    mime = sniffed
+    detected_kind, ext = _ALLOWED[mime]
+    # kind может прийти с фронта (document/photo), но только из ATTACH_KINDS;
+    # иначе — определённый по содержимому. filename с фронта НЕ используется.
+    resolved_kind = kind if kind in dr.ATTACH_KINDS else detected_kind
     url = storage_service.save_image(raw, "chat_attachments", ext=ext)
 
     att = dr.create_attachment(
