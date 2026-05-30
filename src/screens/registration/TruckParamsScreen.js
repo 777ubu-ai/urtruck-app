@@ -1,10 +1,12 @@
-// TruckParamsScreen — Экран 5 «Параметры фуры» (ТЗ онбординг §6, приказ §1).
+// TruckParamsScreen — Экран «Параметры фуры» (шаг 4/4 PRO-flow, ТЗ §6).
 //
 // Динамические поля (НЕ хардкод): тоннаж и объём вводятся вручную (Number),
 // 25 т / 86 м³ — только примеры в placeholder. Валидация: тоннаж 1..60 т,
-// объём > 0 м³. Тип ТС + тип кузова — селекторы из truckConstants. Если тип
-// ТС — тягач/контейнеровоз, открывается блок прицепа (госномер + фото
-// техпаспорта прицепа). Данные уходят в PATCH /api/v1/driver/registration/draft.
+// объём > 0 м³. Тип ТС + тип кузова — селекторы из truckConstants. Марка/
+// модель — picker'ы из справочника TRUCK_BRANDS (searchTruckBrands /
+// modelsForBrand), цвет — picker из VEHICLE_COLORS. Если тип ТС —
+// тягач/контейнеровоз, открывается блок прицепа (госномер + фото техпаспорта
+// прицепа). Данные уходят в PATCH /api/v1/driver/registration/draft.
 
 import React, { useState, useMemo } from 'react';
 import {
@@ -15,6 +17,7 @@ import {
   ScrollView,
   StyleSheet,
   Switch,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
@@ -25,6 +28,8 @@ import {
   VEHICLE_TYPES,
   BODY_TYPES,
   TYPES_WITH_TRAILER,
+  searchTruckBrands,
+  modelsForBrand,
 } from '../../utils/truckConstants';
 import { brand, radius, typography } from '../../theme/brandV2';
 
@@ -32,6 +37,21 @@ import { brand, radius, typography } from '../../theme/brandV2';
 // этот экран → submit. Финальный шаг 4/4 (PR-V3 добавил Identity+Selfie).
 const TOTAL_STEPS = 4;
 const STEP = 4;
+
+// Цвета кузова/кабины. key → i18n t('truck_color_<key>'); hex — образец
+// (swatch). 'other' без образца (свободный выбор «другой»).
+const VEHICLE_COLORS = [
+  { key: 'white', hex: '#FFFFFF' },
+  { key: 'black', hex: '#111827' },
+  { key: 'gray', hex: '#6B7280' },
+  { key: 'silver', hex: '#C0C5CE' },
+  { key: 'red', hex: '#DC2626' },
+  { key: 'blue', hex: '#2563EB' },
+  { key: 'green', hex: '#16A34A' },
+  { key: 'yellow', hex: '#EAB308' },
+  { key: 'other', hex: null },
+];
+const colorHex = (k) => (VEHICLE_COLORS.find((c) => c.key === k) || {}).hex;
 
 // Числовой ввод: оставляем только цифры и одну точку/запятую → число.
 const parseNum = (s) => {
@@ -46,6 +66,13 @@ export default function TruckParamsScreen({ navigation, route }) {
 
   const [vehicleType, setVehicleType] = useState(route?.params?.vehicleType || null);
   const [bodyType, setBodyType] = useState(null);
+  // Марка/модель/цвет — справочник TRUCK_BRANDS (PR-V5). brandName может быть
+  // предзаполнен распознанным значением, если шаг документов его прокинул.
+  const [brandName, setBrandName] = useState(route?.params?.brand || null);
+  const [modelName, setModelName] = useState(route?.params?.model || null);
+  const [colorKey, setColorKey] = useState(null);
+  const [sheet, setSheet] = useState(null); // null | 'brand' | 'model' | 'color'
+  const [brandQuery, setBrandQuery] = useState('');
   const [tonnage, setTonnage] = useState('');
   const [volume, setVolume] = useState('');
   const [dimL, setDimL] = useState('');
@@ -61,6 +88,9 @@ export default function TruckParamsScreen({ navigation, route }) {
     () => TYPES_WITH_TRAILER.includes(vehicleType),
     [vehicleType],
   );
+
+  const brandList = useMemo(() => searchTruckBrands(brandQuery), [brandQuery]);
+  const brandModels = useMemo(() => (brandName ? modelsForBrand(brandName) : []), [brandName]);
 
   const validate = () => {
     const e = {};
@@ -83,6 +113,13 @@ export default function TruckParamsScreen({ navigation, route }) {
     dims_h_m: parseNum(dimH),
     adr,
     has_straps: straps,
+    // Марка/модель/цвет — пишем только при выборе, чтобы не затирать
+    // распознанные OCR-значения (vehicle_brand/model уже в draft из шага
+    // документов). vehicle_color пока не в backend-whitelist — отправляем,
+    // backend безопасно игнорирует до добавления колонки.
+    ...(brandName ? { vehicle_brand: brandName } : {}),
+    ...(modelName ? { vehicle_model: modelName } : {}),
+    ...(colorKey ? { vehicle_color: colorKey } : {}),
     ...(showTrailer && trailerPlate ? { vehicle_plate: trailerPlate.trim() } : {}),
   });
 
@@ -130,6 +167,25 @@ export default function TruckParamsScreen({ navigation, route }) {
     </View>
   );
 
+  // Поле-picker (марка/модель/цвет): показывает выбор или placeholder.
+  const PickerField = ({ value, placeholder, onPress, disabled, swatch, testID }) => (
+    <Pressable
+      onPress={disabled ? undefined : onPress}
+      style={[s.picker, disabled && s.pickerDisabled]}
+      testID={testID}
+    >
+      <View style={s.pickerLeft}>
+        {swatch !== undefined && swatch !== null ? (
+          <View style={[s.swatch, { backgroundColor: swatch }]} />
+        ) : null}
+        <Text style={[s.pickerText, !value && s.pickerPlaceholder]}>
+          {value || placeholder}
+        </Text>
+      </View>
+      <Feather name="chevron-down" size={18} color={brand.textSecondary} />
+    </Pressable>
+  );
+
   const progress = STEP / TOTAL_STEPS;
 
   return (
@@ -155,6 +211,35 @@ export default function TruckParamsScreen({ navigation, route }) {
         {/* Тип кузова */}
         <Text style={s.label}>{t('truck_params_body_type')}</Text>
         <Selector items={BODY_TYPES} value={bodyType} onSelect={setBodyType} prefix="bt" />
+
+        {/* Марка (picker + поиск) */}
+        <Text style={s.label}>{t('truck_params_brand')}</Text>
+        <PickerField
+          value={brandName}
+          placeholder={t('truck_params_brand_select')}
+          onPress={() => { setBrandQuery(''); setSheet('brand'); }}
+          testID="tp-brand"
+        />
+
+        {/* Модель (зависит от марки) */}
+        <Text style={s.label}>{t('truck_params_model')}</Text>
+        <PickerField
+          value={modelName}
+          placeholder={brandName ? t('truck_params_model_select') : t('truck_params_model_first_brand')}
+          onPress={() => setSheet('model')}
+          disabled={!brandName}
+          testID="tp-model"
+        />
+
+        {/* Цвет */}
+        <Text style={s.label}>{t('truck_params_color')}</Text>
+        <PickerField
+          value={colorKey ? t(`truck_color_${colorKey}`) : null}
+          placeholder={t('truck_params_color_select')}
+          onPress={() => setSheet('color')}
+          swatch={colorKey ? colorHex(colorKey) : null}
+          testID="tp-color"
+        />
 
         {/* Грузоподъёмность (динамический ввод) */}
         <Text style={s.label}>{t('truck_params_tonnage')}</Text>
@@ -232,6 +317,77 @@ export default function TruckParamsScreen({ navigation, route }) {
           <Text style={s.ctaText}>{t('truck_params_save')}</Text>
         </Pressable>
       </View>
+
+      {/* Bottom-sheet выбора марки / модели / цвета */}
+      <Modal visible={!!sheet} transparent animationType="slide" onRequestClose={() => setSheet(null)}>
+        <Pressable style={s.sheetBackdrop} onPress={() => setSheet(null)}>
+          <Pressable style={s.sheet} onPress={() => {}}>
+            <View style={s.sheetHandle} />
+
+            {sheet === 'brand' ? (
+              <>
+                <TextInput
+                  value={brandQuery}
+                  onChangeText={setBrandQuery}
+                  placeholder={t('truck_params_brand_search')}
+                  placeholderTextColor={brand.textTertiary}
+                  style={s.sheetSearch}
+                  autoFocus
+                  testID="tp-brand-search"
+                />
+                <ScrollView keyboardShouldPersistTaps="handled" style={s.sheetList}>
+                  {brandList.map((b) => (
+                    <Pressable
+                      key={b.name}
+                      style={s.sheetRow}
+                      onPress={() => { setBrandName(b.name); setModelName(null); setSheet(null); }}
+                      testID={`tp-brand-opt-${b.name}`}
+                    >
+                      <Text style={s.sheetRowText}>{b.name}</Text>
+                      {brandName === b.name ? <Feather name="check" size={18} color={brand.primary} /> : null}
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </>
+            ) : null}
+
+            {sheet === 'model' ? (
+              <ScrollView keyboardShouldPersistTaps="handled" style={s.sheetList}>
+                {brandModels.map((m) => (
+                  <Pressable
+                    key={m}
+                    style={s.sheetRow}
+                    onPress={() => { setModelName(m); setSheet(null); }}
+                    testID={`tp-model-opt-${m}`}
+                  >
+                    <Text style={s.sheetRowText}>{m}</Text>
+                    {modelName === m ? <Feather name="check" size={18} color={brand.primary} /> : null}
+                  </Pressable>
+                ))}
+              </ScrollView>
+            ) : null}
+
+            {sheet === 'color' ? (
+              <ScrollView style={s.sheetList}>
+                {VEHICLE_COLORS.map((c) => (
+                  <Pressable
+                    key={c.key}
+                    style={s.sheetRow}
+                    onPress={() => { setColorKey(c.key); setSheet(null); }}
+                    testID={`tp-color-opt-${c.key}`}
+                  >
+                    <View style={s.pickerLeft}>
+                      <View style={[s.swatch, c.hex ? { backgroundColor: c.hex } : s.swatchOther]} />
+                      <Text style={s.sheetRowText}>{t(`truck_color_${c.key}`)}</Text>
+                    </View>
+                    {colorKey === c.key ? <Feather name="check" size={18} color={brand.primary} /> : null}
+                  </Pressable>
+                ))}
+              </ScrollView>
+            ) : null}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -253,6 +409,14 @@ const s = StyleSheet.create({
   chipTextActive: { color: brand.primary, fontWeight: '700' },
   input: { height: 52, borderRadius: radius.md, borderWidth: 1, borderColor: brand.border, backgroundColor: brand.surface, paddingHorizontal: 16, color: brand.textPrimary, ...typography.body },
   inputErr: { borderColor: brand.danger || '#EF4444' },
+  // picker-поле (марка/модель/цвет)
+  picker: { minHeight: 52, borderRadius: radius.md, borderWidth: 1, borderColor: brand.border, backgroundColor: brand.surface, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  pickerDisabled: { opacity: 0.5 },
+  pickerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+  pickerText: { ...typography.body, color: brand.textPrimary, flexShrink: 1 },
+  pickerPlaceholder: { color: brand.textTertiary },
+  swatch: { width: 20, height: 20, borderRadius: 6, borderWidth: 1, borderColor: brand.border },
+  swatchOther: { backgroundColor: brand.surfaceMuted },
   dimsRow: { flexDirection: 'row', gap: 10 },
   dimInput: { flex: 1, textAlign: 'center' },
   trailerBox: { marginTop: 18, padding: 14, borderRadius: radius.lg, borderWidth: 1, borderColor: brand.border, backgroundColor: brand.surfaceMuted },
@@ -265,4 +429,12 @@ const s = StyleSheet.create({
   ctaWrap: { paddingHorizontal: 20, paddingBottom: 16, paddingTop: 8 },
   cta: { height: 56, borderRadius: radius.lg, backgroundColor: brand.primary, alignItems: 'center', justifyContent: 'center' },
   ctaText: { ...typography.button, color: brand.textOnPrimary },
+  // bottom-sheet
+  sheetBackdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.4)', justifyContent: 'flex-end' },
+  sheet: { maxHeight: '70%', backgroundColor: brand.bg, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 24 },
+  sheetHandle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: brand.border, marginBottom: 12 },
+  sheetSearch: { height: 48, borderRadius: radius.md, borderWidth: 1, borderColor: brand.border, backgroundColor: brand.surface, paddingHorizontal: 14, color: brand.textPrimary, ...typography.body, marginBottom: 8 },
+  sheetList: { flexGrow: 0 },
+  sheetRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: brand.surfaceMuted },
+  sheetRowText: { ...typography.body, color: brand.textPrimary },
 });
