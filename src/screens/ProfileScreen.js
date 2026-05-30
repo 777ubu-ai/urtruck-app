@@ -214,10 +214,13 @@ export default function ProfileScreen({ navigation, route }) {
               </Text>
             ) : null}
           </View>
-          {/* Верхний карандаш запускает пошаговый индрайв-флоу верификации
-              водителя (PremiumRegisterScreen, маршрут 'Reg'), а не старый
-              EditProfile — единая точка входа в верификацию. */}
-          <TouchableOpacity style={s.editBtnInline} onPress={() => navigation.navigate('Reg', { role })} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          {/* ЭТАП 1 (canonical): карандаш = редактирование профиля (EditProfile).
+              Документная PRO-верификация запускается кнопкой «Получить статус
+              PRO» ниже и из SecurityScreen — обе ведут в единый канонический
+              flow ('Identity' → Selfie → VehicleDocs → TruckParams → submit).
+              Раньше карандаш открывал Premium 'Reg' (имя+город), что путало
+              редактирование профиля с документной верификацией. */}
+          <TouchableOpacity style={s.editBtnInline} onPress={() => navigation.navigate('EditProfile', { role })} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Feather name="edit-2" size={16} color={theme.textMuted} />
           </TouchableOpacity>
         </View>
@@ -250,7 +253,7 @@ export default function ProfileScreen({ navigation, route }) {
             {!proActive ? (
               <TouchableOpacity
                 style={[s.proCta, { backgroundColor: accent }]}
-                onPress={() => navigation.navigate('Reg', { role })}
+                onPress={() => navigation.navigate('Identity')}
                 activeOpacity={0.85}
               >
                 <Text style={[s.proCtaText, { color: onAccent }]}>{t('pro_become_btn')}</Text>
