@@ -80,4 +80,29 @@ export const chatAPI = {
     });
     return r.json();
   },
+
+  // --- Attachments (PR3 media foundation) ---
+  async listAttachments(conversationId) {
+    const r = await fetch(`${API_BASE}/chat/conversations/${conversationId}/attachments`, {
+      headers: await headers(),
+    });
+    return r.json();
+  },
+
+  // Загрузка вложения. uri — локальный путь после сжатия (compressImage).
+  // multipart/form-data: НЕ ставим Content-Type вручную (boundary задаёт fetch).
+  async uploadAttachment(conversationId, { uri, kind = 'document', name = 'file.jpg', type = 'image/jpeg' } = {}) {
+    const token = await storage.get(TOKEN_KEY);
+    const blob = await fetch(uri).then((res) => res.blob());
+    const form = new FormData();
+    form.append('file', blob, name);
+    form.append('kind', kind);
+    const r = await fetch(`${API_BASE}/chat/conversations/${conversationId}/attachments`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    });
+    if (!r.ok) throw new Error(`upload failed ${r.status}`);
+    return r.json();
+  },
 };
