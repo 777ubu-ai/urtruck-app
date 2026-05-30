@@ -28,8 +28,10 @@ import {
 } from '../../utils/truckConstants';
 import { brand, radius, typography } from '../../theme/brandV2';
 
-const TOTAL_STEPS = 6;
-const STEP = 5;
+// PR-V1: канонический PRO-flow = 2 экрана (VehicleDocs → этот экран → submit).
+// Раньше показывал «5/6» без реальных шагов 1–4/6 и шага 6.
+const TOTAL_STEPS = 2;
+const STEP = 2;
 
 // Числовой ввод: оставляем только цифры и одну точку/запятую → число.
 const parseNum = (s) => {

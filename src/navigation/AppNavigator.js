@@ -231,10 +231,17 @@ export default function AppNavigator() {
           <Stack.Screen name="CreateCargo" component={CreateCargoScreen} />
         <Stack.Screen name="TruckParams" component={TruckParamsScreen} />
         <Stack.Screen name="VehicleDocs" component={VehicleDocsScreen} />
-          {/* Индрайв-флоу верификации водителя, доступный изнутри приложения:
-              карандаш профиля и CTA «Получить статус PRO» открывают 'Reg'.
-              Раньше эти экраны жили только в pre-auth стеке, поэтому навигация
-              из ProfileScreen падала (route not handled). */}
+          {/* PR-V1 — КАНОНИЧЕСКИЙ PRO-flow верификации водителя (документы):
+              Security → VehicleDocs → TruckParams → submit. Это 2 честных шага
+              (см. TOTAL_STEPS=2 в обоих экранах).
+
+              Reg/RegOtp/RegProfile (Premium) ниже — это ОБЩИЙ профиль
+              (имя + город), а НЕ документная верификация. Оставлены как legacy
+              вход из ProfileScreen/RoleScreen (карандаш профиля, «Получить
+              статус PRO»); физически не удаляем. Раньше эти экраны жили только в
+              pre-auth стеке, поэтому навигация из ProfileScreen падала
+              (route not handled). LegacyReg/LegacyAuth/SignUp смонтированы
+              только в qaPreview-галерее и в проде недостижимы. */}
           <Stack.Screen name="Reg" component={PremiumRegisterScreen} />
           <Stack.Screen name="RegOtp" component={PremiumOtpScreen} />
           <Stack.Screen name="RegProfile" component={PremiumProfileScreen} />
