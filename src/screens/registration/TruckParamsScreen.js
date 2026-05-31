@@ -53,6 +53,10 @@ const VEHICLE_COLORS = [
 ];
 const colorHex = (k) => (VEHICLE_COLORS.find((c) => c.key === k) || {}).hex;
 
+// ЭТАП 7 — статус пребывания в Казахстане (required). Стабильный enum;
+// i18n t('residence_<key>'). Backend уже принимает residence_status.
+const RESIDENCE_OPTIONS = ['citizen', 'kandas', 'foreigner'];
+
 // Числовой ввод: оставляем только цифры и одну точку/запятую → число.
 const parseNum = (s) => {
   const cleaned = String(s).replace(',', '.').replace(/[^\d.]/g, '');
@@ -66,6 +70,7 @@ export default function TruckParamsScreen({ navigation, route }) {
 
   const [vehicleType, setVehicleType] = useState(route?.params?.vehicleType || null);
   const [bodyType, setBodyType] = useState(null);
+  const [residence, setResidence] = useState(null); // citizen|kandas|foreigner (required)
   // Марка/модель/цвет — справочник TRUCK_BRANDS (PR-V5). brandName может быть
   // предзаполнен распознанным значением, если шаг документов его прокинул.
   const [brandName, setBrandName] = useState(route?.params?.brand || null);
@@ -94,6 +99,7 @@ export default function TruckParamsScreen({ navigation, route }) {
 
   const validate = () => {
     const e = {};
+    if (!residence) e.residence = t('truck_params_err_residence');
     if (!vehicleType) e.vehicleType = t('truck_params_err_type');
     const tons = parseNum(tonnage);
     if (tons == null || tons < 1 || tons > 60) e.tonnage = t('truck_params_err_tonnage');
@@ -113,6 +119,7 @@ export default function TruckParamsScreen({ navigation, route }) {
     dims_h_m: parseNum(dimH),
     adr,
     has_straps: straps,
+    ...(residence ? { residence_status: residence } : {}),
     // Марка/модель/цвет — пишем только при выборе, чтобы не затирать
     // распознанные OCR-значения (vehicle_brand/model уже в draft из шага
     // документов). vehicle_color пока не в backend-whitelist — отправляем,
@@ -202,6 +209,11 @@ export default function TruckParamsScreen({ navigation, route }) {
 
       <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
         <Text style={s.title}>{t('truck_params_title')}</Text>
+
+        {/* ЭТАП 7 — статус пребывания в Казахстане (required) */}
+        <Text style={s.label}>{t('residence_title')}</Text>
+        <Selector items={RESIDENCE_OPTIONS} value={residence} onSelect={setResidence} prefix="residence" />
+        {errors.residence ? <Text style={s.err}>{errors.residence}</Text> : null}
 
         {/* Тип ТС */}
         <Text style={s.label}>{t('truck_params_vehicle_type')}</Text>
