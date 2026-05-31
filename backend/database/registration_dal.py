@@ -38,6 +38,8 @@ def _migrate(c):
         ("dims_l_m", "REAL"), ("dims_w_m", "REAL"), ("dims_h_m", "REAL"),  # шаг 5 (необяз.)
         ("adr", "INTEGER DEFAULT 0"),           # шаг 5: опасный груз
         ("adr_cert_url", "TEXT"),               # шаг 5 (опц.)
+        ("vehicle_photo_url", "TEXT"),          # ЭТАП 6: фото авто снаружи (для старых БД)
+        ("cabin_photo_url", "TEXT"),            # ЭТАП 6: фото салона/кабины
         ("has_straps", "INTEGER DEFAULT 0"),    # шаг 5 (опц.)
         ("draft_json", "TEXT"),                 # auto-save состояния мастера
         ("submitted_at", "TEXT"),               # POST submit
