@@ -395,6 +395,40 @@ async def upload_license_selfie(
     return {"license_selfie_key": url}
 
 
+# ---------- ЭТАП 6: Фото авто (снаружи) + салона/кабины ----------
+@reg_router.post("/vehicle-photo")
+async def upload_vehicle_photo(
+    file: UploadFile = File(...),
+    driver_id: str = Depends(get_current_driver),
+):
+    """Фото авто снаружи. Store-only: файл в storage, в БД ТОЛЬКО ключ
+    vehicle_photo_url (не raw base64). Отдельно от legacy /vehicle (там
+    plate-dedup 409). raw/ИИН не логируем; возвращаем публичный ключ файла
+    (не приватный signed URL)."""
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Пустой файл")
+    url = storage.save_image(data, "vehicle_photos")
+    reg_dal.update_driver(driver_id, {"vehicle_photo_url": url})
+    return {"vehicle_photo_key": url}
+
+
+@reg_router.post("/cabin-photo")
+async def upload_cabin_photo(
+    file: UploadFile = File(...),
+    driver_id: str = Depends(get_current_driver),
+):
+    """Фото салона/кабины. Store-only: файл в storage, в БД ТОЛЬКО ключ
+    cabin_photo_url (не raw base64). raw/ИИН не логируем; возвращаем публичный
+    ключ файла."""
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Пустой файл")
+    url = storage.save_image(data, "cabin_photos")
+    reg_dal.update_driver(driver_id, {"cabin_photo_url": url})
+    return {"cabin_photo_key": url}
+
+
 @reg_router.post("/documents/license")
 async def upload_license(
     file: UploadFile = File(...),
