@@ -135,3 +135,24 @@ curl http://185.22.65.11:8001/api/v1/system/info   # статус OTP/face/stora
 - Не использовать `--amend` для опубликованных коммитов и `--force` в `main`.
 - Не включать `IS_BETA = false` без согласования — ломает UX для ранних пользователей.
 - Перед любым `./deploy.sh` убедиться, что `dist/` соберётся (`npm run build:web` не упадёт).
+
+## Graphify-gated changes (рабочее правило)
+
+Перед **любым** изменением в: навигации, таб-барах, `FeedScreen`, `MyTripsScreen`, i18n/localization, backend registration, chat/deal room, attachments, database logic — действовать строго по процессу:
+
+1. **Сначала анализ** связей проекта через структуру + Graphify (`graphify update .` локально, AST-only, без LLM). Не менять бизнес-код на основе догадок.
+2. **Перечислить файлы**, которые планируется трогать.
+3. **Объяснить риск** — что может сломаться (god-nodes по связности: `get_conn()`, `useI18n()`/`t()`, `useV1Colors()`/`useTheme()`, `useAuth()`, `AppNavigator.js`).
+4. **Только после подтверждения владельца** — вносить изменения.
+5. `graphify-out/` **не коммитить** и не добавлять в git (это сгенерированный артефакт; в `.gitignore` тоже не добавлять без согласования).
+6. Граф пересобирать локально (`graphify update .`); появившийся untracked `graphify-out/` после анализа удалять.
+
+Инструмент: пакет `graphifyy` (PyPI, MIT), команда `graphify`, ставится изолированно (`uv tool install graphifyy`, без extras → без LLM/egress).
+
+### Канон UrTruck (нерушимо — проверять перед каждым касанием навигации)
+- Driver tab-bar = **5 вкладок**: `Feed` / `MyWork` / `Queue` / `Chats` / `Profile`.
+- `Chat` нельзя прятать в `Profile` — отдельная вкладка.
+- `Queue` — отдельная обычная центральная вкладка.
+- Client tab-bar не трогать без отдельного разрешения.
+- Кнопка `Publish`/«Разместить» не должна становиться driver-вкладкой.
+- Не возвращать seed/demo/test data в production UI.
