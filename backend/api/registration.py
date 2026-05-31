@@ -378,6 +378,23 @@ async def upload_personal_photo(
 
 
 # ---------- ЭТАП 3: Документы (права + техпаспорт) ----------
+@reg_router.post("/license-selfie")
+async def upload_license_selfie(
+    file: UploadFile = File(...),
+    driver_id: str = Depends(get_current_driver),
+):
+    """Селфи с водительскими правами в руках — антифрод-артефакт для модерации.
+    Сохраняем файл в storage, в БД пишем ТОЛЬКО ключ/URL (не raw base64).
+    Liveness/face здесь НЕ проверяем (это не биометрия-гейт). raw/ИИН не
+    логируем; возвращаем публичный ключ файла (не приватный signed URL)."""
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Пустой файл")
+    url = storage.save_image(data, "license_selfies")
+    reg_dal.update_driver(driver_id, {"license_selfie_url": url})
+    return {"license_selfie_key": url}
+
+
 @reg_router.post("/documents/license")
 async def upload_license(
     file: UploadFile = File(...),

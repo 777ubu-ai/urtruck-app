@@ -241,6 +241,26 @@ export const regAPI = {
     return data;
   },
 
+  // Селфи с правами в руках (антифрод). Реальный server-side upload в storage;
+  // backend возвращает { license_selfie_key } — безопасный ключ файла (не raw).
+  async uploadLicenseSelfie(uri, onProgress) {
+    const token = await this.getToken();
+    onProgress?.('compressing');
+    const compressedUri = await compressImage(uri, { preset: 'document' });
+    const blob = await fetch(compressedUri).then(r => r.blob());
+    onProgress?.('uploading');
+    const form = new FormData();
+    form.append('file', blob, 'license_selfie.jpg');
+    const r = await fetch(`${BASE}/license-selfie`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: form,
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(normalizeDetail(data?.detail, `license selfie upload failed ${r.status}`));
+    return data;
+  },
+
   async uploadLicense(uri, onProgress) {
     const token = await this.getToken();
     onProgress?.('compressing');
