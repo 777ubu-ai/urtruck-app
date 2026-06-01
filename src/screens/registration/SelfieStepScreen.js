@@ -22,6 +22,7 @@ import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
 import { useToast } from '../../components/Toast';
 import { regAPI } from '../../utils/registration';
+import RegistrationCloseModal from '../../components/RegistrationCloseModal';
 import { translit, hasCyrillic } from '../../utils/translit';
 import { brand, radius, typography } from '../../theme/brandV2';
 
@@ -38,6 +39,7 @@ export default function SelfieStepScreen({ navigation, route }) {
   // status: idle | busy | done | error
   const [selfie, setSelfie] = useState({ uri: null, status: 'idle' });
   const [confidence, setConfidence] = useState(0);
+  const [closeVisible, setCloseVisible] = useState(false);
 
   // Фронтальная камера для селфи; галерея — fallback (web / нет камеры).
   const pickSelfie = async () => {
@@ -114,6 +116,9 @@ export default function SelfieStepScreen({ navigation, route }) {
           <View style={[s.progressFill, { width: `${progress * 100}%` }]} />
         </View>
         <Text style={s.stepLabel}>{t('selfie_step')}</Text>
+        <Pressable onPress={() => setCloseVisible(true)} style={s.backBtn} testID="selfie-close">
+          <Feather name="x" size={22} color={brand.textPrimary} />
+        </Pressable>
       </View>
 
       <ScrollView contentContainerStyle={s.content}>
@@ -167,6 +172,11 @@ export default function SelfieStepScreen({ navigation, route }) {
           <Text style={s.ctaText}>{t('selfie_next')}</Text>
         </Pressable>
       </View>
+      <RegistrationCloseModal
+        visible={closeVisible}
+        onCancel={() => setCloseVisible(false)}
+        onExit={() => { setCloseVisible(false); navigation.navigate('Main'); }}
+      />
     </SafeAreaView>
   );
 }
