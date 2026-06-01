@@ -58,6 +58,8 @@ export default function VehicleDocsScreen({ navigation }) {
   const [techpass, setTechpass] = useState({ uri: null, status: 'idle', ocr: null });
   const [license, setLicense] = useState({ uri: null, status: 'idle', ocr: null });
   const [licenseSelfie, setLicenseSelfie] = useState({ uri: null, status: 'idle', key: null });
+  const [vehiclePhoto, setVehiclePhoto] = useState({ uri: null, status: 'idle', key: null }); // ЭТАП 6 (required)
+  const [cabinPhoto, setCabinPhoto] = useState({ uri: null, status: 'idle', key: null });     // ЭТАП 6 (required)
   const [licenseIssue, setLicenseIssue] = useState('');   // дата выдачи (required)
   const [licenseExpiry, setLicenseExpiry] = useState(''); // срок действия (required)
   const [errors, setErrors] = useState({});
@@ -155,9 +157,64 @@ export default function VehicleDocsScreen({ navigation }) {
     }
   };
 
+  // Камера + галерея для фото авто/салона. Камера приоритетна (снимок ТС);
+  // если доступ к камере не выдан — fallback на галерею (существующий pick).
+  // Существующий pick() (только галерея) для других карточек не трогаем.
+  const pickCameraOrGallery = async () => {
+    const cam = await ImagePicker.requestCameraPermissionsAsync();
+    if (cam.status === 'granted') {
+      const r = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.9,
+      });
+      if (!r.canceled && r.assets?.[0]?.uri) return r.assets[0].uri;
+      return null;
+    }
+    return pick();
+  };
+
+  // Фото авто снаружи — реальный server-side upload (ЭТАП 6). status 'done'
+  // только при ключе vehicle_photo_key (no fake-success). Replace = повторный
+  // тап. Ключ персистится server-side самим endpoint'ом (/register/vehicle-photo
+  // пишет vehicle_photo_url в БД), поэтому отдельный draft-вызов не нужен.
+  const handleVehiclePhoto = async () => {
+    const uri = await pickCameraOrGallery();
+    if (!uri) return;
+    setVehiclePhoto({ uri, status: 'busy', key: null });
+    try {
+      const up = await regAPI.uploadVehiclePhoto(uri);
+      const key = up?.vehicle_photo_key || null;
+      if (!key) throw new Error('no_key');
+      setVehiclePhoto({ uri, status: 'done', key });
+      if (errors.vehiclePhoto) setErrors({ ...errors, vehiclePhoto: null });
+    } catch (e) {
+      setVehiclePhoto({ uri, status: 'error', key: null });
+      toast(t('vdocs_vehicle_photo_upload_err'), 'error', 5000);
+    }
+  };
+
+  // Фото салона/кабины — аналогично (POST /register/cabin-photo).
+  const handleCabinPhoto = async () => {
+    const uri = await pickCameraOrGallery();
+    if (!uri) return;
+    setCabinPhoto({ uri, status: 'busy', key: null });
+    try {
+      const up = await regAPI.uploadCabinPhoto(uri);
+      const key = up?.cabin_photo_key || null;
+      if (!key) throw new Error('no_key');
+      setCabinPhoto({ uri, status: 'done', key });
+      if (errors.cabinPhoto) setErrors({ ...errors, cabinPhoto: null });
+    } catch (e) {
+      setCabinPhoto({ uri, status: 'error', key: null });
+      toast(t('vdocs_cabin_photo_upload_err'), 'error', 5000);
+    }
+  };
+
   const techpassDone = techpass.status === 'done';
   const licenseDone = license.status === 'done';
   const licenseSelfieDone = licenseSelfie.status === 'done';
+  const vehiclePhotoDone = vehiclePhoto.status === 'done';
+  const cabinPhotoDone = cabinPhoto.status === 'done';
   const hasCCe = license.ocr?.has_c_ce === true;
 
   const validateIssue = (v) => {
@@ -180,6 +237,8 @@ export default function VehicleDocsScreen({ navigation }) {
       techpass: techpassDone ? null : t('vdocs_need_techpass'),
       license: licenseDone ? null : t('vdocs_err_license'),
       licenseSelfie: licenseSelfieDone ? null : t('vdocs_err_license_selfie'),
+      vehiclePhoto: vehiclePhotoDone ? null : t('vdocs_err_vehicle_photo'),
+      cabinPhoto: cabinPhotoDone ? null : t('vdocs_err_cabin_photo'),
       issue: validateIssue(licenseIssue),
       expiry: validateExpiry(licenseExpiry),
     };
@@ -312,6 +371,32 @@ export default function VehicleDocsScreen({ navigation }) {
         </DocCard>
         {errors.licenseSelfie ? <Text style={s.errText}>{errors.licenseSelfie}</Text> : null}
         {errors.license ? <Text style={s.errText}>{errors.license}</Text> : null}
+
+        {/* Фото авто снаружи (ЭТАП 6, обязательно) */}
+        <DocCard
+          title={`🚚 ${t('vdocs_vehicle_photo')}`}
+          doc={vehiclePhoto}
+          onPick={handleVehiclePhoto}
+          errorText={t('vdocs_vehicle_photo_upload_err')}
+        >
+          <View style={s.okBox}>
+            <Text style={s.okText}>✅ {t('vdocs_uploaded')}</Text>
+          </View>
+        </DocCard>
+        {errors.vehiclePhoto ? <Text style={s.errText}>{errors.vehiclePhoto}</Text> : null}
+
+        {/* Фото салона/кабины (ЭТАП 6, обязательно) */}
+        <DocCard
+          title={`🛋️ ${t('vdocs_cabin_photo')}`}
+          doc={cabinPhoto}
+          onPick={handleCabinPhoto}
+          errorText={t('vdocs_cabin_photo_upload_err')}
+        >
+          <View style={s.okBox}>
+            <Text style={s.okText}>✅ {t('vdocs_uploaded')}</Text>
+          </View>
+        </DocCard>
+        {errors.cabinPhoto ? <Text style={s.errText}>{errors.cabinPhoto}</Text> : null}
       </ScrollView>
 
       <View style={s.ctaWrap}>

@@ -261,6 +261,46 @@ export const regAPI = {
     return data;
   },
 
+  // Фото авто снаружи (ЭТАП 6). Реальный server-side upload в storage;
+  // backend (POST /register/vehicle-photo) возвращает { vehicle_photo_key } —
+  // безопасный ключ файла (не raw) и сам пишет vehicle_photo_url в БД.
+  async uploadVehiclePhoto(uri, onProgress) {
+    const token = await this.getToken();
+    onProgress?.('compressing');
+    const compressedUri = await compressImage(uri, { preset: 'truck' });
+    const blob = await fetch(compressedUri).then(r => r.blob());
+    onProgress?.('uploading');
+    const form = new FormData();
+    form.append('file', blob, 'vehicle_photo.jpg');
+    const r = await fetch(`${BASE}/vehicle-photo`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: form,
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(normalizeDetail(data?.detail, `vehicle photo upload failed ${r.status}`));
+    return data;
+  },
+
+  // Фото салона/кабины (ЭТАП 6). POST /register/cabin-photo → { cabin_photo_key }.
+  async uploadCabinPhoto(uri, onProgress) {
+    const token = await this.getToken();
+    onProgress?.('compressing');
+    const compressedUri = await compressImage(uri, { preset: 'truck' });
+    const blob = await fetch(compressedUri).then(r => r.blob());
+    onProgress?.('uploading');
+    const form = new FormData();
+    form.append('file', blob, 'cabin_photo.jpg');
+    const r = await fetch(`${BASE}/cabin-photo`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: form,
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(normalizeDetail(data?.detail, `cabin photo upload failed ${r.status}`));
+    return data;
+  },
+
   async uploadLicense(uri, onProgress) {
     const token = await this.getToken();
     onProgress?.('compressing');
