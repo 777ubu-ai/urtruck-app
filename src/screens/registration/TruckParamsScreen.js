@@ -25,6 +25,7 @@ import { useI18n } from '../../utils/useI18n';
 import { useToast } from '../../components/Toast';
 import { regAPI } from '../../utils/registration';
 import RegistrationCloseModal from '../../components/RegistrationCloseModal';
+import RegistrationSubmittedScreen from '../../components/RegistrationSubmittedScreen';
 import {
   VEHICLE_TYPES,
   BODY_TYPES,
@@ -90,6 +91,7 @@ export default function TruckParamsScreen({ navigation, route }) {
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [closeVisible, setCloseVisible] = useState(false);
+  const [submittedVisible, setSubmittedVisible] = useState(false); // ТЗ блок 12/13
 
   const showTrailer = useMemo(
     () => TYPES_WITH_TRAILER.includes(vehicleType),
@@ -147,10 +149,14 @@ export default function TruckParamsScreen({ navigation, route }) {
     // Финальный шаг сквозной верификации: отправляем заявку на проверку и
     // возвращаемся в приложение. Иначе (standalone/редактирование) — назад.
     if (route?.params?.fromVerification) {
-      await regAPI.submitDriverRegistration();
+      const sub = await regAPI.submitDriverRegistration();
       setSaving(false);
-      toast(t('truck_params_submitted'), 'success');
-      navigation.navigate('Main');
+      if (!sub.ok) {
+        // Без fake-status: submitted-экран показываем только при реальном ok.
+        toast(t('save_error'), 'error');
+        return;
+      }
+      setSubmittedVisible(true);
       return;
     }
     setSaving(false);
@@ -413,6 +419,11 @@ export default function TruckParamsScreen({ navigation, route }) {
           const res = await regAPI.saveDriverDraft(buildPayload());
           if (!res.ok) throw new Error('save_failed');
         }}
+      />
+      <RegistrationSubmittedScreen
+        visible={submittedVisible}
+        onPrimary={() => { setSubmittedVisible(false); navigation.navigate('Main'); }}
+        onStatus={() => { setSubmittedVisible(false); navigation.navigate('Security'); }}
       />
     </SafeAreaView>
   );
