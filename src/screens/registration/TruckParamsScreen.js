@@ -24,6 +24,7 @@ import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
 import { useToast } from '../../components/Toast';
 import { regAPI } from '../../utils/registration';
+import RegistrationCloseModal from '../../components/RegistrationCloseModal';
 import {
   VEHICLE_TYPES,
   BODY_TYPES,
@@ -88,6 +89,7 @@ export default function TruckParamsScreen({ navigation, route }) {
   const [trailerPlate, setTrailerPlate] = useState(route?.params?.plate || '');
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
+  const [closeVisible, setCloseVisible] = useState(false);
 
   const showTrailer = useMemo(
     () => TYPES_WITH_TRAILER.includes(vehicleType),
@@ -205,6 +207,9 @@ export default function TruckParamsScreen({ navigation, route }) {
           <View style={[s.progressFill, { width: `${progress * 100}%` }]} />
         </View>
         <Text style={s.stepLabel}>{t('truck_params_step')}</Text>
+        <Pressable onPress={() => setCloseVisible(true)} style={s.backBtn} testID="tp-close">
+          <Feather name="x" size={22} color={brand.textPrimary} />
+        </Pressable>
       </View>
 
       <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
@@ -400,6 +405,15 @@ export default function TruckParamsScreen({ navigation, route }) {
           </Pressable>
         </Pressable>
       </Modal>
+      <RegistrationCloseModal
+        visible={closeVisible}
+        onCancel={() => setCloseVisible(false)}
+        onExit={() => { setCloseVisible(false); navigation.navigate('Main'); }}
+        saveDraft={async () => {
+          const res = await regAPI.saveDriverDraft(buildPayload());
+          if (!res.ok) throw new Error('save_failed');
+        }}
+      />
     </SafeAreaView>
   );
 }

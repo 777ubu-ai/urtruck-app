@@ -24,6 +24,7 @@ import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
 import { useToast } from '../../components/Toast';
 import { regAPI } from '../../utils/registration';
+import RegistrationCloseModal from '../../components/RegistrationCloseModal';
 import { brand, radius, typography } from '../../theme/brandV2';
 
 const TOTAL_STEPS = 4;
@@ -63,6 +64,18 @@ export default function VehicleDocsScreen({ navigation }) {
   const [licenseIssue, setLicenseIssue] = useState('');   // дата выдачи (required)
   const [licenseExpiry, setLicenseExpiry] = useState(''); // срок действия (required)
   const [errors, setErrors] = useState({});
+  const [closeVisible, setCloseVisible] = useState(false);
+
+  // ТЗ блок 10: при закрытии — дописать несохранённые даты прав в draft (фото
+  // уже persist server-side). Бросаем при !ok, чтобы модал не вышел молча.
+  const saveDraftOnClose = async () => {
+    const payload = {};
+    if (licenseIssue.trim()) payload.license_issue_date = licenseIssue.trim();
+    if (licenseExpiry.trim()) payload.license_expiry = licenseExpiry.trim();
+    if (!Object.keys(payload).length) return;
+    const res = await regAPI.saveDriverDraft(payload);
+    if (!res.ok) throw new Error('save_failed');
+  };
 
   // PR-V4: сохраняем распознанные/введённые поля в черновик. Иначе submit/
   // scoring получает пустые license_issue_date / vehicle_year и валидный
@@ -303,6 +316,9 @@ export default function VehicleDocsScreen({ navigation }) {
           <View style={[s.progressFill, { width: `${progress * 100}%` }]} />
         </View>
         <Text style={s.stepLabel}>{t('vdocs_step')}</Text>
+        <Pressable onPress={() => setCloseVisible(true)} style={s.backBtn} testID="vd-close">
+          <Feather name="x" size={22} color={brand.textPrimary} />
+        </Pressable>
       </View>
 
       <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
@@ -404,6 +420,12 @@ export default function VehicleDocsScreen({ navigation }) {
           <Text style={s.ctaText}>{t('vdocs_next')}</Text>
         </Pressable>
       </View>
+      <RegistrationCloseModal
+        visible={closeVisible}
+        onCancel={() => setCloseVisible(false)}
+        onExit={() => { setCloseVisible(false); navigation.navigate('Main'); }}
+        saveDraft={saveDraftOnClose}
+      />
     </SafeAreaView>
   );
 }

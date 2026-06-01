@@ -27,6 +27,7 @@ import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
 import { useToast } from '../../components/Toast';
 import { regAPI } from '../../utils/registration';
+import RegistrationCloseModal from '../../components/RegistrationCloseModal';
 import { brand, radius, typography } from '../../theme/brandV2';
 
 const TOTAL_STEPS = 4;
@@ -53,6 +54,19 @@ export default function IdentityStepScreen({ navigation }) {
   const [iin, setIin] = useState('');
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
+  const [closeVisible, setCloseVisible] = useState(false);
+
+  // ТЗ блок 10: при закрытии — сохранить несохранённые поля экрана в draft.
+  // Бросаем при !ok, чтобы модал не вышел молча. Фото уже persist server-side.
+  const saveDraftOnClose = async () => {
+    const fullName = `${lastName.trim()} ${firstName.trim()}`.trim();
+    const payload = {};
+    if (fullName) payload.full_name = fullName;
+    if (birthDate.trim()) payload.birth_date = birthDate.trim();
+    if (!Object.keys(payload).length) return;
+    const res = await regAPI.saveDriverDraft(payload);
+    if (!res.ok) throw new Error('save_failed');
+  };
 
   const validateName = (v) => (!v || v.trim().length < 2 ? t('val_name_short') : null);
 
@@ -171,6 +185,9 @@ export default function IdentityStepScreen({ navigation }) {
             <View style={[s.progressFill, { width: `${progress * 100}%` }]} />
           </View>
           <Text style={s.stepLabel}>{t('identity_step')}</Text>
+          <Pressable onPress={() => setCloseVisible(true)} style={s.backBtn} testID="identity-close">
+            <Feather name="x" size={22} color={brand.textPrimary} />
+          </Pressable>
         </View>
 
         <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
@@ -260,6 +277,12 @@ export default function IdentityStepScreen({ navigation }) {
           </Pressable>
         </View>
       </KeyboardAvoidingView>
+      <RegistrationCloseModal
+        visible={closeVisible}
+        onCancel={() => setCloseVisible(false)}
+        onExit={() => { setCloseVisible(false); navigation.navigate('Main'); }}
+        saveDraft={saveDraftOnClose}
+      />
     </SafeAreaView>
   );
 }
