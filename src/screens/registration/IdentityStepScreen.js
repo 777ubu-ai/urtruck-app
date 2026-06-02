@@ -28,6 +28,7 @@ import { useI18n } from '../../utils/useI18n';
 import { useToast } from '../../components/Toast';
 import { regAPI } from '../../utils/registration';
 import RegistrationCloseModal from '../../components/RegistrationCloseModal';
+import RegistrationHelpSheet from '../../components/RegistrationHelpSheet';
 import { brand, radius, typography } from '../../theme/brandV2';
 
 const TOTAL_STEPS = 5;
@@ -55,6 +56,7 @@ export default function IdentityStepScreen({ navigation }) {
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [closeVisible, setCloseVisible] = useState(false);
+  const [helpVisible, setHelpVisible] = useState(false);
 
   // ТЗ блок 10: при закрытии — сохранить несохранённые поля экрана в draft.
   // Бросаем при !ok, чтобы модал не вышел молча. Фото уже persist server-side.
@@ -185,6 +187,9 @@ export default function IdentityStepScreen({ navigation }) {
             <View style={[s.progressFill, { width: `${progress * 100}%` }]} />
           </View>
           <Text style={s.stepLabel}>{t('identity_step')}</Text>
+          <Pressable onPress={() => setHelpVisible(true)} style={s.backBtn} testID="identity-help" accessibilityLabel={t('reg_help_open')}>
+            <Feather name="help-circle" size={22} color={brand.textSecondary} />
+          </Pressable>
           <Pressable onPress={() => setCloseVisible(true)} style={s.backBtn} testID="identity-close">
             <Feather name="x" size={22} color={brand.textPrimary} />
           </Pressable>
@@ -283,6 +288,7 @@ export default function IdentityStepScreen({ navigation }) {
         onExit={() => { setCloseVisible(false); navigation.navigate('Main'); }}
         saveDraft={saveDraftOnClose}
       />
+      <RegistrationHelpSheet visible={helpVisible} onClose={() => setHelpVisible(false)} />
     </SafeAreaView>
   );
 }
