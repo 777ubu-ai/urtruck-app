@@ -26,7 +26,7 @@ import RegistrationCloseModal from '../../components/RegistrationCloseModal';
 import { translit, hasCyrillic } from '../../utils/translit';
 import { brand, radius, typography } from '../../theme/brandV2';
 
-const TOTAL_STEPS = 4;
+const TOTAL_STEPS = 5;
 const STEP = 2;
 
 export default function SelfieStepScreen({ navigation, route }) {

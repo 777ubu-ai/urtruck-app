@@ -37,8 +37,8 @@ import { brand, radius, typography } from '../../theme/brandV2';
 
 // Канонический PRO-flow = 4 экрана: Identity → Selfie → VehicleDocs →
 // этот экран → submit. Финальный шаг 4/4 (PR-V3 добавил Identity+Selfie).
-const TOTAL_STEPS = 4;
-const STEP = 4;
+const TOTAL_STEPS = 5;
+const STEP = 5;
 
 // Цвета кузова/кабины. key → i18n t('truck_color_<key>'); hex — образец
 // (swatch). 'other' без образца (свободный выбор «другой»).

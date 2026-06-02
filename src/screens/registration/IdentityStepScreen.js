@@ -30,7 +30,7 @@ import { regAPI } from '../../utils/registration';
 import RegistrationCloseModal from '../../components/RegistrationCloseModal';
 import { brand, radius, typography } from '../../theme/brandV2';
 
-const TOTAL_STEPS = 4;
+const TOTAL_STEPS = 5;
 const STEP = 1;
 
 // Маска ДД.ММ.ГГГГ: только цифры (до 8), точки расставляются сами.
