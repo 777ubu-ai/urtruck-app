@@ -24,6 +24,7 @@ import PremiumOtpScreen from '../screens/registration/PremiumOtpScreen';
 import PremiumProfileScreen from '../screens/registration/PremiumProfileScreen';
 import TruckParamsScreen from '../screens/registration/TruckParamsScreen';
 import VehicleDocsScreen from '../screens/registration/VehicleDocsScreen';
+import VehiclePhotosScreen from '../screens/registration/VehiclePhotosScreen';
 import IdentityStepScreen from '../screens/registration/IdentityStepScreen';
 import SelfieStepScreen from '../screens/registration/SelfieStepScreen';
 import PremiumLoginScreen from '../screens/registration/PremiumLoginScreen';
@@ -235,10 +236,12 @@ export default function AppNavigator() {
         <Stack.Screen name="Selfie" component={SelfieStepScreen} />
         <Stack.Screen name="TruckParams" component={TruckParamsScreen} />
         <Stack.Screen name="VehicleDocs" component={VehicleDocsScreen} />
+        <Stack.Screen name="VehiclePhotos" component={VehiclePhotosScreen} />
           {/* КАНОНИЧЕСКИЙ PRO-flow верификации водителя:
-              Security → Identity → Selfie → VehicleDocs → TruckParams → submit.
-              Это 4 честных шага (PR-V3 добавил Identity+Selfie перед документами;
-              см. TOTAL_STEPS=4 во всех четырёх экранах).
+              Security → Identity → Selfie → VehicleDocs → VehiclePhotos →
+              TruckParams → submit.
+              Это 5 честных шагов (PR-V9 вынес фото авто+кабины в отдельный
+              шаг VehiclePhotos; см. TOTAL_STEPS=5 во всех пяти экранах).
 
               Reg/RegOtp/RegProfile (Premium) ниже — это ОБЩИЙ профиль
               (имя + город), а НЕ документная верификация. Оставлены как legacy
