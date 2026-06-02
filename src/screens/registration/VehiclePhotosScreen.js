@@ -118,9 +118,10 @@ export default function VehiclePhotosScreen({ navigation, route }) {
 
   const progress = STEP / TOTAL_STEPS;
 
-  const DocCard = ({ title, doc, onPick, errorText }) => (
+  const DocCard = ({ title, hint, doc, onPick, errorText }) => (
     <View style={s.card}>
       <Text style={s.cardTitle}>{title}</Text>
+      {hint ? <Text style={s.cardHint}>{hint}</Text> : null}
       <Pressable onPress={onPick} style={s.slot} disabled={doc.status === 'busy'}>
         {doc.uri ? (
           <Image source={{ uri: doc.uri }} style={s.thumb} resizeMode="cover" />
@@ -165,6 +166,7 @@ export default function VehiclePhotosScreen({ navigation, route }) {
 
         <DocCard
           title={`🚚 ${t('vehicle_photo_exterior')}`}
+          hint={t('vphotos_hint_exterior')}
           doc={vehiclePhoto}
           onPick={handleVehiclePhoto}
           errorText={t('vdocs_vehicle_photo_upload_err')}
@@ -173,6 +175,7 @@ export default function VehiclePhotosScreen({ navigation, route }) {
 
         <DocCard
           title={`🛋️ ${t('cabin_interior_photo')}`}
+          hint={t('vphotos_hint_cabin')}
           doc={cabinPhoto}
           onPick={handleCabinPhoto}
           errorText={t('vdocs_cabin_photo_upload_err')}
@@ -205,7 +208,8 @@ const s = StyleSheet.create({
   title: { ...typography.h1, color: brand.textPrimary, marginBottom: 4 },
   subtitle: { ...typography.bodySmall, color: brand.textSecondary, marginBottom: 16 },
   card: { marginTop: 16, padding: 14, borderRadius: radius.lg, borderWidth: 1, borderColor: brand.border, backgroundColor: brand.surface },
-  cardTitle: { ...typography.bodyLarge, fontWeight: '800', color: brand.textPrimary, marginBottom: 10 },
+  cardTitle: { ...typography.bodyLarge, fontWeight: '800', color: brand.textPrimary, marginBottom: 4 },
+  cardHint: { ...typography.caption, color: brand.textSecondary, marginBottom: 10, lineHeight: 16 },
   slot: { height: 160, borderRadius: radius.md, borderWidth: 1, borderStyle: 'dashed', borderColor: brand.border, alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: brand.surfaceMuted, overflow: 'hidden' },
   slotText: { ...typography.bodySmall, color: brand.textSecondary },
   thumb: { width: '100%', height: '100%' },

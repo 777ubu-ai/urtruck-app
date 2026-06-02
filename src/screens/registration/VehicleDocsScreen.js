@@ -214,9 +214,10 @@ export default function VehicleDocsScreen({ navigation }) {
 
   const progress = STEP / TOTAL_STEPS;
 
-  const DocCard = ({ title, doc, onPick, errorText, children }) => (
+  const DocCard = ({ title, hint, doc, onPick, errorText, children }) => (
     <View style={s.card}>
       <Text style={s.cardTitle}>{title}</Text>
+      {hint ? <Text style={s.cardHint}>{hint}</Text> : null}
       <Pressable onPress={onPick} style={s.slot} disabled={doc.status === 'busy'}>
         {doc.uri ? (
           <Image source={{ uri: doc.uri }} style={s.thumb} resizeMode="cover" />
@@ -265,7 +266,7 @@ export default function VehicleDocsScreen({ navigation }) {
         <Text style={s.title}>{t('vdocs_title')}</Text>
         <Text style={s.subtitle}>{t('vdocs_subtitle')}</Text>
 
-        <DocCard title={`📄 ${t('vdocs_techpass')}`} doc={techpass} onPick={handleTechpass}>
+        <DocCard title={`📄 ${t('vdocs_techpass')}`} hint={t('vdocs_hint_techpass')} doc={techpass} onPick={handleTechpass}>
           <View style={s.ocrBox}>
             <Text style={s.ocrTitle}>✅ {t('vdocs_recognized')}</Text>
             <Field label={t('vdocs_field_brand')} value={[techpass.ocr?.brand, techpass.ocr?.model].filter(Boolean).join(' ')} />
@@ -275,7 +276,7 @@ export default function VehicleDocsScreen({ navigation }) {
           </View>
         </DocCard>
 
-        <DocCard title={`🪪 ${t('vdocs_license')}`} doc={license} onPick={handleLicense}>
+        <DocCard title={`🪪 ${t('vdocs_license')}`} hint={t('vdocs_hint_license')} doc={license} onPick={handleLicense}>
           <View style={s.ocrBox}>
             <Text style={s.ocrTitle}>✅ {t('vdocs_recognized')}</Text>
             <Field label={t('vdocs_field_categories')} value={(license.ocr?.categories || []).join(', ')} />
@@ -317,6 +318,7 @@ export default function VehicleDocsScreen({ navigation }) {
         {/* Селфи с правами в руках (антифрод, обязательно) */}
         <DocCard
           title={`🤳 ${t('vdocs_license_selfie')}`}
+          hint={t('vdocs_hint_license_selfie')}
           doc={licenseSelfie}
           onPick={handleLicenseSelfie}
           errorText={t('vdocs_license_selfie_upload_err')}
@@ -358,7 +360,8 @@ const s = StyleSheet.create({
   input: { height: 52, borderRadius: radius.md, borderWidth: 1, borderColor: brand.border, backgroundColor: brand.surface, paddingHorizontal: 16, color: brand.textPrimary, ...typography.body },
   inputErr: { borderColor: brand.error || '#EF4444' },
   card: { marginTop: 16, padding: 14, borderRadius: radius.lg, borderWidth: 1, borderColor: brand.border, backgroundColor: brand.surface },
-  cardTitle: { ...typography.bodyLarge, fontWeight: '800', color: brand.textPrimary, marginBottom: 10 },
+  cardTitle: { ...typography.bodyLarge, fontWeight: '800', color: brand.textPrimary, marginBottom: 4 },
+  cardHint: { ...typography.caption, color: brand.textSecondary, marginBottom: 10, lineHeight: 16 },
   slot: { height: 160, borderRadius: radius.md, borderWidth: 1, borderStyle: 'dashed', borderColor: brand.border, alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: brand.surfaceMuted, overflow: 'hidden' },
   slotText: { ...typography.bodySmall, color: brand.textSecondary },
   thumb: { width: '100%', height: '100%' },
