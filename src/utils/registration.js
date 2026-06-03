@@ -315,7 +315,11 @@ export const regAPI = {
       headers: { 'Authorization': `Bearer ${token}` },
       body: form,
     });
-    return r.json();
+    // No fake-success: при HTTP-ошибке бросаем, чтобы экран показал error,
+    // а не помечал карточку done (как остальные upload-методы).
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(normalizeDetail(data?.detail, `license upload failed ${r.status}`));
+    return data;
   },
 
   async uploadPassport(uri, onProgress) {
@@ -332,7 +336,11 @@ export const regAPI = {
       headers: { 'Authorization': `Bearer ${token}` },
       body: form,
     });
-    return r.json();
+    // No fake-success: при HTTP-ошибке бросаем, чтобы экран показал error,
+    // а не помечал карточку done (как остальные upload-методы).
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(normalizeDetail(data?.detail, `passport upload failed ${r.status}`));
+    return data;
   },
 
   async saveVehicle({ vehicleType, capacityKg, plate, brand, year, photoUri, onProgress }) {
