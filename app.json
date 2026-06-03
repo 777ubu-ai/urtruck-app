@@ -29,7 +29,6 @@
         "NSMicrophoneUsageDescription": "UrTruck использует микрофон для записи голосовых сообщений в чате",
         "NSCameraUsageDescription": "UrTruck использует камеру для селфи и фото документов",
         "NSPhotoLibraryUsageDescription": "UrTruck использует фото для аватара, груза и документов",
-        "NSLocationWhenInUseUsageDescription": "UrTruck использует геолокацию для отслеживания рейсов",
         "ITSAppUsesNonExemptEncryption": false,
         "UIBackgroundModes": ["remote-notification"]
       },
