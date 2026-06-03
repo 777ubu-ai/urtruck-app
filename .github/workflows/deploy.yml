@@ -149,3 +149,30 @@ jobs:
             echo "::error::trips endpoint missing 'trips' field"; exit 1
           fi
           echo "✅ Trips list OK"
+
+          # --- Registration endpoints must EXIST after backend deploy ---
+          # Известный blind spot: фронт может уехать, а backend остаться
+          # старым → нужные роуты регистрации вернут 404. Проверяем, что
+          # они присутствуют (401/403/405/422 = роут есть; 404 = старый
+          # backend). Запросы пустые, без auth/секретов/PII.
+          REG_BASE="$PUBLIC_BASE_URL/security/api/v1"
+          reg_check() {
+            # $1 = method, $2 = path
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 -X "$1" "$REG_BASE$2" || true)
+            if [ "$code" = "404" ] || [ "$code" = "000" ]; then
+              echo "::error::registration route $2 returned $code (missing — backend not deployed?)"
+              return 1
+            fi
+            echo "✅ $2 ($code)"
+          }
+          reg_ok=1
+          reg_check POST  "/register/photo"             || reg_ok=0
+          reg_check POST  "/register/license-selfie"    || reg_ok=0
+          reg_check POST  "/register/vehicle-photo"     || reg_ok=0
+          reg_check POST  "/register/cabin-photo"       || reg_ok=0
+          reg_check POST  "/driver/registration/submit" || reg_ok=0
+          if [ "$reg_ok" != "1" ]; then
+            echo "::error::Registration endpoints missing after deploy — backend deploy incomplete"
+            exit 1
+          fi
+          echo "✅ Registration endpoints OK"
