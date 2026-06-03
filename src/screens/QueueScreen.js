@@ -5,6 +5,7 @@ import { useTheme } from '../utils/ThemeContext';
 import { useI18n } from '../utils/useI18n';
 import {v1Colors, useV1Colors} from '../theme/designV1';
 import { API_BASE } from '../config/env';
+import { regAPI } from '../utils/registration';
 
 const BASE = `${API_BASE}/borders`;
 
@@ -18,6 +19,29 @@ export default function QueueScreen({ navigation }) {
   const [borders, setBorders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
+
+  // Progressive verification gate: электронная очередь — trust-функция,
+  // доступна только одобренному водителю. Источник статуса — regAPI.me()
+  // (как VerificationStatusBanner): { status, verification_level }.
+  // verState: 'loading' | 'approved' | 'review' | 'rejected' | 'unverified'.
+  const [verState, setVerState] = useState('loading');
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const me = await regAPI.me();
+        if (!alive) return;
+        if (me && (me.status === 'approved' || me.verification_level >= 3)) setVerState('approved');
+        else if (me && (me.status === 'pending' || me.status === 'under_review' || me.status === 'manual_review')) setVerState('review');
+        else if (me && me.status === 'rejected') setVerState('rejected');
+        else setVerState('unverified');
+      } catch {
+        if (alive) setVerState('unverified'); // не подтвердили approved → гейтим (без fake-approved)
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
 
   const fetchBorders = async () => {
     setLoading(true);
@@ -41,6 +65,47 @@ export default function QueueScreen({ navigation }) {
     { k: 'UZ', l: '🇺🇿 Узбекистан' },
     { k: 'KG', l: '🇰🇬 Кыргызстан' },
   ];
+
+  // Не одобрен → locked/promo состояние очереди (вместо полного функционала).
+  if (verState !== 'approved') {
+    const gate = verState === 'review'
+      ? { title: t('queue_gate_pending_title'), text: t('queue_gate_pending_text'), btn: t('queue_gate_pending_btn'), go: 'Security' }
+      : verState === 'rejected'
+        ? { title: t('queue_gate_rejected_title'), text: t('queue_gate_rejected_text'), btn: t('queue_gate_rejected_btn'), go: 'Identity' }
+        : { title: t('queue_gate_locked_title'), text: t('queue_gate_locked_text'), btn: t('queue_gate_locked_btn'), go: 'Identity' };
+    return (
+      <SafeAreaView style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']} testID="queue-gate">
+        <View style={s.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={s.back}>
+            <Text style={[s.backText, { color: theme.text }]}>‹</Text>
+          </TouchableOpacity>
+          <Text style={[s.headerTitle, { color: theme.text }]}>{t('border_queues_title')}</Text>
+          <View style={{ width: 44 }} />
+        </View>
+        {verState === 'loading' ? (
+          <ActivityIndicator color="#1A5C3C" style={{ marginTop: 60 }} />
+        ) : (
+          <View style={s.gateWrap}>
+            <Text style={s.gateIcon}>🔒</Text>
+            <Text style={[s.gateTitle, { color: theme.text }]}>{gate.title}</Text>
+            <Text style={[s.gateText, { color: theme.textMuted }]}>{gate.text}</Text>
+            <TouchableOpacity
+              style={s.gateBtn}
+              onPress={() => navigation.navigate(gate.go)}
+              testID="queue-gate-cta"
+            >
+              <Text style={s.gateBtnText}>{gate.btn}</Text>
+            </TouchableOpacity>
+            {verState === 'unverified' ? (
+              <TouchableOpacity style={s.gateSecondary} onPress={() => navigation.navigate('Security')}>
+                <Text style={[s.gateSecondaryText, { color: theme.textMuted }]}>{t('queue_gate_more')}</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        )}
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']}>
@@ -138,4 +203,12 @@ const s = StyleSheet.create({
   statNum: { fontSize: 20, fontWeight: '900' },
   statLabel: { fontSize: 10, marginTop: 2 },
   updated: { fontSize: 10, marginTop: 8, textAlign: 'right' },
+  gateWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
+  gateIcon: { fontSize: 48, marginBottom: 16 },
+  gateTitle: { fontSize: 20, fontWeight: '800', textAlign: 'center', marginBottom: 10 },
+  gateText: { fontSize: 14, lineHeight: 21, textAlign: 'center', marginBottom: 24 },
+  gateBtn: { height: 52, borderRadius: 14, backgroundColor: '#1A5C3C', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, minWidth: 220 },
+  gateBtnText: { color: '#FFF', fontSize: 16, fontWeight: '800' },
+  gateSecondary: { marginTop: 12, paddingVertical: 8 },
+  gateSecondaryText: { fontSize: 13, fontWeight: '600' },
 });

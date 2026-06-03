@@ -237,7 +237,115 @@ def my_rooms(user=Depends(require_level(1))):
     # — we just don't surface it through /rooms unless ENABLE_DEMO_CHAT=true.
     if not ENABLE_DEMO_CHAT:
         rooms = [r for r in rooms if r.get("partner_id") != VOLODYA_ID]
+
+    # PR2.1 — обогащение deal-context для Deal Room UI. Старые поля выше НЕ
+    # трогаем (обратная совместимость). Новые поля добавляются дополнительно;
+    # если данных в БД нет — null, без выдумок. Доступ уже ограничен выше
+    # (WHERE participant_1/2 = uid), поэтому JOIN'ы не раскрывают чужие комнаты.
+    _enrich_rooms_with_deal_context(rooms, uid)
     return {"rooms": rooms}
+
+
+def _enrich_rooms_with_deal_context(rooms: list, uid: str) -> None:
+    """Дотягивает deal/cargo/partner/support контекст в каждую комнату in-place.
+
+    Источники: deals (по chat_room_id), cargos (маршрут/груз), drivers_registration
+    (роль/госномер партнёра), support_escalations (статус поддержки). Все новые
+    поля nullable — отсутствие данных => None, не fake.
+    """
+    if not rooms:
+        return
+    with get_conn() as c:
+        for room in rooms:
+            room_id = room.get("id")
+            partner_id = room.get("partner_id")
+
+            # значения по умолчанию (контракт стабилен даже без сделки)
+            room.setdefault("room_id", room_id)
+            room.update({
+                "deal_id": None, "bid_id": None, "partner_company": None, "partner_role": None,
+                "route_from": None, "route_to": None, "route_label": None,
+                "cargo_title": None, "cargo_type": None, "cargo_weight": None,
+                "deal_status": None, "bid_amount": None, "bid_currency": None,
+                "vehicle_plate": None,
+                "unread_count": room.get("unread", 0),
+                "last_message_at": room.get("last_at"),
+                "support_status": None, "is_support": False,
+                "is_dispute": False, "priority": None,
+            })
+
+            # --- сделка по комнате ---
+            deal = c.execute(
+                "SELECT id, cargo_id, trip_id, bid_id, shipper_id, driver_id, "
+                "from_city, to_city, amount, status FROM deals WHERE chat_room_id = ? "
+                "ORDER BY created_at DESC LIMIT 1",
+                (room_id,),
+            ).fetchone()
+            if deal:
+                deal = dict(deal)
+                room["deal_id"] = deal["id"]
+                room["bid_id"] = deal.get("bid_id")
+                room["deal_status"] = deal.get("status")
+                room["bid_amount"] = deal.get("amount")
+                room["route_from"] = deal.get("from_city")
+                room["route_to"] = deal.get("to_city")
+                if deal.get("from_city") and deal.get("to_city"):
+                    room["route_label"] = f"{deal['from_city']} → {deal['to_city']}"
+                # роль партнёра из сделки
+                if partner_id == deal.get("driver_id"):
+                    room["partner_role"] = "driver"
+                elif partner_id == deal.get("shipper_id"):
+                    room["partner_role"] = "client"
+                # груз + валюта из cargos
+                if deal.get("cargo_id"):
+                    cargo = c.execute(
+                        "SELECT cargo_desc, cargo_type, weight_tons, currency, "
+                        "from_city, to_city FROM cargos WHERE id = ?",
+                        (deal["cargo_id"],),
+                    ).fetchone()
+                    if cargo:
+                        cargo = dict(cargo)
+                        room["cargo_title"] = cargo.get("cargo_desc")
+                        room["cargo_type"] = cargo.get("cargo_type")
+                        room["cargo_weight"] = cargo.get("weight_tons")
+                        room["bid_currency"] = cargo.get("currency")
+                        if not room["route_label"] and cargo.get("from_city") and cargo.get("to_city"):
+                            room["route_from"] = cargo["from_city"]
+                            room["route_to"] = cargo["to_city"]
+                            room["route_label"] = f"{cargo['from_city']} → {cargo['to_city']}"
+
+            # --- support / роль партнёра-бота ---
+            if partner_id == SUPPORT_ID:
+                room["is_support"] = True
+                room["partner_role"] = "support"
+
+            # --- партнёр: компания/госномер/роль (если не из сделки) ---
+            if partner_id:
+                p = c.execute(
+                    "SELECT role, vehicle_plate, legal_form FROM drivers_registration WHERE id = ?",
+                    (partner_id,),
+                ).fetchone()
+                if p:
+                    p = dict(p)
+                    room["vehicle_plate"] = p.get("vehicle_plate")
+                    room["partner_company"] = p.get("legal_form")
+                    if not room["partner_role"] and p.get("role") in ("driver", "client", "support"):
+                        room["partner_role"] = p.get("role")
+
+            # --- эскалация в поддержку (таблица из PR #60, если есть) ---
+            try:
+                esc = c.execute(
+                    "SELECT status FROM support_escalations WHERE conversation_id = ? "
+                    "ORDER BY created_at DESC LIMIT 1",
+                    (room_id,),
+                ).fetchone()
+                if esc:
+                    room["support_status"] = esc["status"]
+                    if esc["status"] in ("open", "assigned"):
+                        room["priority"] = "support"
+            except Exception:
+                # таблицы может не быть на старых БД — не критично
+                pass
 
 
 @chat_router.get("/messages/{room_id}")

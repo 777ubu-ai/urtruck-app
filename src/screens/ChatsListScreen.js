@@ -1,191 +1,221 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, FlatList, RefreshControl } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useI18n } from '../utils/useI18n';
-import { useAuth } from '../utils/AuthContext';
-import { chatAPI } from '../utils/chatAPI';
-import { API_BASE } from '../config/env';
-import { prettifyPartnerName } from '../utils/displayName';
-import {v1Colors, useV1Colors, v1Radius, v1AccentFor} from '../theme/designV1';
-import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
-
-// ChatsListScreen — design v1.
+// ChatsListScreen — Deal Room список (PR2).
 //
-// Business logic preserved verbatim from the previous implementation:
-//   - chatAPI.rooms() loads dialogs
-//   - GET /chat/contacts returns the always-online support contacts
-//   - card press → navigation.navigate('Chat', { partner, role })
-// We just rebuild the visual layer with brand-aligned tokens.
+// Серьёзный B2B-список сделок поверх backend foundation. Источник данных —
+// chatAPI.rooms() (старый эндпоинт, не сломан); навигация в 'Chat' сохранена.
+//
+// PR2 добавляет: заголовок, поиск (имя/компания/маршрут/груз/госномер),
+// фильтры (Все/Непрочитанные/Активные/Архив/Поддержка), обогащённые карточки
+// (роль, маршрут, груз, статус, последнее сообщение, время, unread, индикатор
+// поддержка/спор/срочно). Industrial Luxury, dark premium.
+//
+// Не трогает driver tab-bar и client nav — это таб-route 'Chats'.
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, TextInput, RefreshControl, ActivityIndicator, ScrollView } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
+import Feather from '@expo/vector-icons/Feather';
+import { useI18n } from '../utils/useI18n';
+import { useTheme } from '../utils/ThemeContext';
+import { useV1Colors } from '../theme/designV1';
+import { chatAPI } from '../utils/chatAPI';
+import { prettifyPartnerName } from '../utils/displayName';
+import { accentFor } from '../components/deal/DealRoom';
+
+const FILTERS = [
+  { key: 'all',     label: 'chat_filter_all' },
+  { key: 'unread',  label: 'chat_filter_unread' },
+  { key: 'active',  label: 'chat_filter_active_deals' },
+  { key: 'archive', label: 'chat_filter_archive' },
+  { key: 'support', label: 'chat_filter_support' },
+];
+
+const ROLE_LABEL = { driver: 'role_driver', client: 'role_client', support: 'role_support' };
 
 export default function ChatsListScreen({ navigation, route }) {
   const v1 = useV1Colors();
-  const s = React.useMemo(() => StyleSheet.create({
-
-  container: { flex: 1 },
-  titleBlock: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 8 },
-  titleHero: { color: v1.text, fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
-  sectionTitle: {
-    color: v1.textMuted,
-    fontSize: 10, fontWeight: '800', letterSpacing: 1,
-    textTransform: 'uppercase',
-    marginTop: 12, marginBottom: 8,
-  },
-  row: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: v1.surface,
-    borderColor: v1.border, borderWidth: 1,
-    borderRadius: v1Radius.card,
-    paddingHorizontal: 12, paddingVertical: 12,
-    marginBottom: 8,
-  },
-  avatar: {
-    width: 44, height: 44, borderRadius: 22,
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1,
-  },
-  avatarIcon: { fontSize: 20 },
-  name: { color: v1.text, fontSize: 14, fontWeight: '700', marginBottom: 2 },
-  desc: { color: v1.textMuted, fontSize: 12 },
-  time: { color: v1.textDim, fontSize: 10, fontWeight: '600' },
-  badge: {
-    backgroundColor: v1Colors.error,
-    minWidth: 20, height: 20, borderRadius: 10,
-    paddingHorizontal: 6,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  badgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '900' },
-  onlineDot: { width: 10, height: 10, borderRadius: 5 },
-  empty: { color: v1.textMuted, fontSize: 14, textAlign: 'center' },
-
-  }), [v1]);
-  const { role } = route.params || {};
   const { t } = useI18n();
-  const { session } = useAuth();
-  const userRole = session?.user?.role || role || 'client';
-  const accent = v1AccentFor(userRole === 'driver' ? 'driver' : 'client');
+  const { theme } = useTheme();
+  const role = route?.params?.role || 'client';
+  const accent = accentFor(role);
 
   const [rooms, setRooms] = useState([]);
-  const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState('all');
 
-  const load = async () => {
-    setLoading(true);
+  const load = useCallback(async () => {
     try {
-      const [roomsRes, contactsRes] = await Promise.all([
-        chatAPI.rooms(),
-        fetch(`${API_BASE}/chat/contacts`).then(r => r.json()),
-      ]);
-      setRooms(roomsRes.rooms || []);
-      setContacts(contactsRes.contacts || []);
-    } catch {
-      // network failure leaves empty lists; user sees the empty-state below.
+      const data = await chatAPI.rooms();
+      setRooms(data.rooms || []);
+    } catch (e) {
+      console.warn('chats load failed', e);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-    setLoading(false);
-  };
+  }, []);
 
-  useEffect(() => { load(); }, []);
+  useFocusEffect(useCallback(() => { load(); }, [load]));
+  const onRefresh = () => { setRefreshing(true); load(); };
 
-  const renderContact = ({ item }) => (
-    <TouchableOpacity
-      style={s.row}
-      activeOpacity={0.85}
-      onPress={() => navigation.navigate('Chat', { partner: { id: item.id, name: item.name }, role })}
-    >
-      <View style={[s.avatar, { backgroundColor: accent.soft, borderColor: accent.main }]}>
-        <Text style={s.avatarIcon}>{item.icon || '🛡'}</Text>
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={s.name} numberOfLines={1}>{item.name}</Text>
-        <Text style={s.desc} numberOfLines={1}>{item.desc}</Text>
-      </View>
-      <View style={[s.onlineDot, { backgroundColor: v1Colors.driver }]} />
-    </TouchableOpacity>
-  );
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return rooms.filter((r) => {
+      // фильтры (enriched /chat/rooms, PR #62)
+      const unread = r.unread_count ?? r.unread ?? 0;
+      if (filter === 'unread' && !(unread > 0)) return false;
+      if (filter === 'active' && !['active', 'confirmed', 'in_progress', 'pending'].includes(r.deal_status)) return false;
+      if (filter === 'archive' && !['completed', 'delivered', 'cancelled', 'rejected'].includes(r.deal_status)) return false;
+      if (filter === 'support' && !r.is_support && r.partner_role !== 'support' && r.partner_id !== 'urtruck-support-bot') return false;
+      // поиск
+      if (!q) return true;
+      const hay = [
+        prettifyPartnerName(r.partner_name, r.partner_id, t), r.partner_company,
+        r.route_label, r.route_from, r.route_to,
+        r.cargo_title, r.cargo_type, r.vehicle_plate, r.last_message,
+      ].filter(Boolean).join(' ').toLowerCase();
+      return hay.includes(q);
+    });
+  }, [rooms, query, filter]);
 
-  const renderRoom = ({ item }) => {
-    // Stage DS-1: prettify технических partner_name / id.
-    // Раньше при пустом partner_name UI показывал первые 8 символов
-    // partner_id — это и давало «guest_5a», «agent-bo», «d3». Теперь
-    // через displayName.prettifyPartnerName всё технические имена
-    // подменяются на переводимый fallback "Собеседник".
-    const displayName = prettifyPartnerName(item.partner_name, item.partner_id, t);
-    // PR-C2 (chat list UX): когда в комнате есть непрочитанные сообщения,
-    // имя и preview должны быть жирным шрифтом — как в WhatsApp/Telegram.
-    // Раньше визуально все room rows смотрелись одинаково и пользователь
-    // не понимал где новое.
-    const hasUnread = (item.unread || 0) > 0;
-    // PR-C2: время. Backend пишет last_at как 'YYYY-MM-DD HH:MM:SS'.
-    // Если сегодня — показываем "HH:MM", иначе "DD.MM" или "Вчера".
-    const formatLastAt = (s) => {
-      if (!s || typeof s !== 'string' || s.length < 10) return '';
-      const [datePart, timePart = ''] = s.split(/[ T]/);
-      const today = new Date();
-      const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-      const ydate = new Date(today); ydate.setDate(ydate.getDate() - 1);
-      const yesterdayIso = `${ydate.getFullYear()}-${String(ydate.getMonth() + 1).padStart(2, '0')}-${String(ydate.getDate()).padStart(2, '0')}`;
-      if (datePart === todayIso) return timePart.slice(0, 5);
-      if (datePart === yesterdayIso) return t('yesterday') || 'Вчера';
-      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(datePart);
-      return m ? `${m[3]}.${m[2]}` : datePart;
-    };
+  const renderItem = ({ item }) => {
+    // Enriched /chat/rooms (PR #62): реальные данные сделки. Партнёр — через
+    // корректную сигнатуру prettifyPartnerName(name, id, t).
+    const partnerName = prettifyPartnerName(item.partner_name, item.partner_id, t);
+    const isSupport = item.is_support || item.partner_role === 'support' || item.partner_id === 'urtruck-support-bot';
+    const roleKey = ROLE_LABEL[item.partner_role] || (isSupport ? 'role_support' : null);
+    const routeStr = item.route_label || [item.route_from, item.route_to].filter(Boolean).join(' → ');
+    const cargoStr = [item.cargo_title, item.cargo_weight ? `${item.cargo_weight}т` : null].filter(Boolean).join(' · ');
+    const bidStr = item.bid_amount != null ? `${item.bid_amount}${item.bid_currency ? ' ' + item.bid_currency : ''}` : null;
+    const dealStatus = item.deal_status || null;
+    const urgent = item.is_dispute || item.priority === 'urgent' || item.priority === 'support';
+    const unread = item.unread_count ?? item.unread ?? 0;
+    const time = (item.last_message_at || item.last_at || '').slice(11, 16);
     return (
-    <TouchableOpacity
-      style={s.row}
-      activeOpacity={0.85}
-      onPress={() => navigation.navigate('Chat', {
-        partner: { id: item.partner_id, name: displayName },
-        role,
-      })}
-    >
-      <View style={[s.avatar, { backgroundColor: v1.surfaceLift, borderColor: v1.border }]}>
-        <Text style={s.avatarIcon}>💬</Text>
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={[s.name, hasUnread && { fontWeight: '900' }]} numberOfLines={1}>{displayName}</Text>
-        <Text style={[s.desc, hasUnread && { color: v1.text, fontWeight: '700' }]} numberOfLines={1}>{item.last_message || '…'}</Text>
-      </View>
-      <View style={{ alignItems: 'flex-end', gap: 4 }}>
-        <Text style={s.time}>{formatLastAt(item.last_at)}</Text>
-        {hasUnread ? (
-          <View style={s.badge}><Text style={s.badgeText}>{item.unread > 9 ? '9+' : item.unread}</Text></View>
-        ) : null}
-      </View>
-    </TouchableOpacity>
+      <TouchableOpacity
+        testID="deal-room-list-card"
+        style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]}
+        onPress={() => navigation.navigate('Chat', { partner: { id: item.partner_id || item.id, name: partnerName }, roomId: item.id, dealId: item.deal_id, role })}
+      >
+        <View style={[s.avatar, { backgroundColor: accent + '22' }]}>
+          <Feather name={isSupport ? 'shield' : 'user'} size={18} color={accent} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <View style={s.row}>
+            <Text style={[s.name, { color: theme.text }]} numberOfLines={1}>{partnerName}</Text>
+            {time ? <Text style={[s.time, { color: theme.textDim }]}>{time}</Text> : null}
+          </View>
+          {(roleKey || routeStr) ? (
+            <View style={s.row}>
+              {roleKey ? <Text style={[s.metaTag, { color: accent }]}>{t(roleKey)}</Text> : null}
+              {routeStr ? <Text style={[s.meta, { color: theme.textMuted }]} numberOfLines={1}>{routeStr}</Text> : null}
+            </View>
+          ) : null}
+          {(cargoStr || bidStr || dealStatus) ? (
+            <View style={s.row}>
+              {cargoStr ? <Text style={[s.cargo, { color: theme.textMuted }]} numberOfLines={1}>📦 {cargoStr}</Text> : null}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                {bidStr ? <Text style={[s.bid, { color: theme.text }]}>{bidStr}</Text> : null}
+                {dealStatus ? <Text style={[s.dealStatus, { color: accent }]}>{dealStatus}</Text> : null}
+              </View>
+            </View>
+          ) : null}
+          <Text style={[s.preview, { color: theme.textMuted }]} numberOfLines={1}>
+            {item.last_message || t('chat_no_messages')}
+          </Text>
+        </View>
+        <View style={s.right}>
+          {urgent ? (
+            <View style={[s.flag, { backgroundColor: '#EF444422' }]}>
+              <Text style={s.flagTxt}>{t(item.is_dispute ? 'chat_flag_dispute' : 'chat_flag_urgent')}</Text>
+            </View>
+          ) : null}
+          {unread > 0 ? (
+            <View style={[s.badge, { backgroundColor: accent }]} testID="deal-room-list-unread">
+              <Text style={s.badgeTxt}>{unread > 9 ? '9+' : unread}</Text>
+            </View>
+          ) : null}
+        </View>
+      </TouchableOpacity>
     );
   };
 
   return (
-    <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
-      <BrandBarWithShare onBack={() => navigation.goBack()} accent={accent.main} />
-      <View style={s.titleBlock}>
-        <Text style={s.titleHero}>💬 {t('chats_title')}</Text>
+    <SafeAreaView style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']} testID="deal-room-list">
+      <Text style={[s.title, { color: theme.text }]}>💬 {t('chat_title')}</Text>
+
+      <View style={[s.search, { backgroundColor: theme.card, borderColor: theme.border }]}>
+        <Feather name="search" size={17} color={theme.textMuted} />
+        <TextInput
+          style={[s.searchInput, { color: theme.text }]}
+          placeholder={t('chat_search_placeholder')}
+          placeholderTextColor={theme.textMuted}
+          value={query}
+          onChangeText={setQuery}
+          testID="deal-room-search"
+        />
+        {query ? <TouchableOpacity onPress={() => setQuery('')}><Feather name="x" size={16} color={theme.textMuted} /></TouchableOpacity> : null}
       </View>
 
-      <FlatList
-        data={[
-          ...(contacts.length ? [{ type: 'header', key: 'h1', title: t('always_online') }] : []),
-          ...contacts.map(c => ({ ...c, type: 'contact', key: c.id })),
-          { type: 'header', key: 'h2', title: t('dialogs') },
-          ...rooms.map(r => ({ ...r, type: 'room', key: r.id })),
-        ]}
-        keyExtractor={i => i.key || i.id}
-        renderItem={({ item }) => {
-          if (item.type === 'header') return <Text style={s.sectionTitle}>{item.title}</Text>;
-          if (item.type === 'contact') return renderContact({ item });
-          return renderRoom({ item });
-        }}
-        contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={accent.main} />}
-        ListEmptyComponent={
-          !loading ? (
-            <View style={{ alignItems: 'center', paddingVertical: 60 }}>
-              <Text style={{ fontSize: 48, marginBottom: 10 }}>💬</Text>
-              <Text style={s.empty}>{t('chats_empty')}</Text>
-            </View>
-          ) : null
-        }
-      />
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filtersScroll} contentContainerStyle={s.filters}>
+        {FILTERS.map((f) => {
+          const on = filter === f.key;
+          return (
+            <TouchableOpacity
+              key={f.key}
+              onPress={() => setFilter(f.key)}
+              style={[s.chip, { backgroundColor: on ? accent : theme.card, borderColor: on ? accent : theme.border }]}
+              testID={`deal-room-filter-${f.key}`}
+            >
+              <Text style={[s.chipTxt, { color: on ? '#0C0A09' : theme.textMuted }]}>{t(f.label)}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      {loading ? (
+        <ActivityIndicator color={accent} style={{ marginTop: 40 }} />
+      ) : (
+        <FlatList
+          data={filtered}
+          keyExtractor={(i) => String(i.id)}
+          renderItem={renderItem}
+          contentContainerStyle={{ padding: 12, paddingBottom: 24 }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accent} />}
+          ListEmptyComponent={<Text style={[s.empty, { color: theme.textMuted }]}>{query || filter !== 'all' ? t('chat_no_results') : t('chats_empty')}</Text>}
+        />
+      )}
     </SafeAreaView>
   );
 }
 
+const s = StyleSheet.create({
+  title: { fontSize: 22, fontWeight: '900', paddingHorizontal: 16, paddingTop: 6, paddingBottom: 8 },
+  search: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 12, paddingHorizontal: 12, height: 44, borderRadius: 12, borderWidth: 1 },
+  searchInput: { flex: 1, fontSize: 14, paddingVertical: 0 },
+  // filtersScroll фиксирует высоту горизонтального ScrollView — иначе на
+  // react-native-web он растягивается по вертикали и chips (alignItems:stretch)
+  // превращаются в вертикальные «колонны». flexGrow:0 + height = compact-панель.
+  filtersScroll: { flexGrow: 0, height: 48 },
+  filters: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12 },
+  chip: { height: 34, paddingHorizontal: 14, borderRadius: 17, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  chipTxt: { fontSize: 12, fontWeight: '800' },
+  card: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 14, borderWidth: 1, marginBottom: 8 },
+  avatar: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  name: { fontSize: 15, fontWeight: '800', flex: 1 },
+  time: { fontSize: 11 },
+  metaTag: { fontSize: 11, fontWeight: '800' },
+  meta: { fontSize: 12, flex: 1, textAlign: 'right' },
+  preview: { fontSize: 13, marginTop: 2 },
+  cargo: { fontSize: 12, flex: 1 },
+  bid: { fontSize: 12, fontWeight: '800' },
+  dealStatus: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
+  right: { alignItems: 'flex-end', gap: 6 },
+  flag: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8 },
+  flagTxt: { fontSize: 9, fontWeight: '900', color: '#EF4444' },
+  badge: { minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center' },
+  badgeTxt: { color: '#0C0A09', fontSize: 12, fontWeight: '900' },
+  empty: { textAlign: 'center', marginTop: 40, fontSize: 14 },
+});

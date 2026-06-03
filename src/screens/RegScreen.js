@@ -324,6 +324,12 @@ export default function RegScreen({ navigation, route }) {
         security_score: r.security_score,
         security_color: r.security_color,
       });
+      // Bug #4: серверный профиль (/users/me) не знал имя водителя — после
+      // перезагрузки ProfileScreen показывал «Добавить имя». Пушим name в БД
+      // тем же PATCH, что использует PRO-профиль. Fail-tolerant: PATCH идёт
+      // под bearer-токеном, поэтому не зависит от локального userId (N3).
+      try { await regAPI.updateProfile({ name: fullName }); }
+      catch (e) { console.warn('[Reg] driver name sync failed:', e); }
       // PR-D1: успешная регистрация — драфт можно стереть
       clearDraft(draftKey);
       setTimeout(() => { setRole('driver'); toast('🎉 ' + t('reg_complete_toast'), 'success'); }, 2500);
@@ -677,7 +683,7 @@ export default function RegScreen({ navigation, route }) {
                 // Пред-сжатие сразу при выборе — быстрее финальная отправка
                 setUploadStage('compressing');
                 try {
-                  const compressed = await compressImage(uri, { maxSide: 1200, quality: 0.7 });
+                  const compressed = await compressImage(uri, { preset: 'truck' });
                   setVehiclePhoto(compressed);
                   toast('✓ ' + t('reg_photo_ready'), 'success', 1500);
                 } catch (e) {
@@ -784,11 +790,17 @@ function ClientReg({ navigation, setRole, session, theme, t, toast, accent }) {
             </TouchableOpacity>
           ))}
         </View>
-        <ShimmerButton colors={[accent, '#EF4444']} onPress={() => {
+        <ShimmerButton colors={[accent, '#EF4444']} onPress={async () => {
           if (!displayName) { toast(t('reg_client_enter_name'), 'error'); return; }
           saveProfile(session?.user?.id || 'c_' + Date.now(), {
             role: 'client', display_name: displayName, city, company_type: companyType, is_verified: false,
           });
+          // Bug #4 / N3: имя и город грузовладельца раньше жили только в
+          // локальном store под рандомным fallback-id ('c_' + Date.now()) и
+          // терялись после перезагрузки — ProfileScreen грузит /users/me и не
+          // находил их. PATCH /users/me пишет name/city в БД под bearer-токеном.
+          try { await regAPI.updateProfile({ name: displayName, city }); }
+          catch (e) { console.warn('[Reg] client profile sync failed:', e); }
           setRole('client');
           toast('🎉 ' + t('reg_client_welcome'), 'success');
         }}>{t('reg_client_finish')}</ShimmerButton>

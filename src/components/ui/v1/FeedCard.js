@@ -23,6 +23,7 @@ export default function FeedCard({
   variant = 'cargo',
   accent = 'driver',
   route,
+  title,
   subtitle,
   meta = [],
   priceText,
@@ -67,6 +68,15 @@ export default function FeedCard({
     ? `${isEmptyOrDash(fromText) ? '—' : fromText} → ${isEmptyOrDash(toText) ? '—' : toText}`
     : 'Маршрут уточняется';
 
+  // QA #11 leftover: driver-карточка (профиль водителя, а не рейс) маршрута
+  // не имеет — раньше FeedScreen слал route={{ from: имя, to: '' }} и заголовок
+  // рендерился как "Иван → —". Теперь вызывающий код может передать `title`
+  // (имя водителя) — оно перекрывает route-строку без стрелки. cargo/trip
+  // `title` не передают, поэтому их поведение не меняется.
+  const titleOverride = typeof title === 'string' ? title.trim() : '';
+  const titleText = titleOverride || routeText;
+  const titleStrong = !!titleOverride || hasRoute;
+
   const Card = onPress ? TouchableOpacity : View;
   return (
     <Card
@@ -84,10 +94,10 @@ export default function FeedCard({
         </View>
         <View style={{ flex: 1 }}>
           <Text
-            style={[s.route, { color: hasRoute ? colors.text : v2.textTertiary }]}
+            style={[s.route, { color: titleStrong ? colors.text : v2.textTertiary }]}
             numberOfLines={1}
           >
-            {routeText}
+            {titleText}
           </Text>
           {subtitle ? <Text style={[s.subtitle, { color: colors.textMuted }]} numberOfLines={1}>{subtitle}</Text> : null}
         </View>

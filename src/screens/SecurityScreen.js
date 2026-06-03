@@ -55,6 +55,17 @@ export default function SecurityScreen({ navigation }) {
               </Text>
             </View>
 
+            {/* Driver PRO-верификация: сквозной поток документы → параметры фуры */}
+            {(session?.user?.role !== 'client') ? (
+              <TouchableOpacity
+                style={[s.verifyBtn, { backgroundColor: '#00E676' }]}
+                onPress={() => navigation.navigate('Identity')}
+                testID="security-verify-docs"
+              >
+                <Text style={s.verifyBtnText}>📄 {t('security_verify_cta')}</Text>
+              </TouchableOpacity>
+            ) : null}
+
             {/* Что улучшит скоринг */}
             <View style={[s.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
               <Text style={[s.sectionTitle, { color: theme.textMuted }]}>📈 {t('security_how_to_raise')}</Text>
@@ -119,6 +130,8 @@ const s = StyleSheet.create({
   heroMax: { fontSize: 22, opacity: 0.5, fontWeight: '700' },
   heroLabel: { fontSize: 16, fontWeight: '800' },
   heroHint: { fontSize: 12, textAlign: 'center', lineHeight: 18, marginTop: 10 },
+  verifyBtn: { height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
+  verifyBtnText: { fontSize: 15, fontWeight: '800', color: '#0C0A09' },
   section: { borderRadius: 16, padding: 16, borderWidth: 1, marginBottom: 12 },
   sectionTitle: { fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: 12, textTransform: 'uppercase' },
   tipRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1 },

@@ -570,9 +570,8 @@ export default function FeedScreen({ navigation, route }) {
       <FeedCard
         variant="trip"
         accent={isDriver ? 'driver' : 'cargo'}
-        route={item.isTrip && item.tripRoute
-          ? { from: item.from, to: item.to }
-          : { from: sanitizeForDisplay(item.name), to: '' }}
+        route={item.isTrip && item.tripRoute ? { from: item.from, to: item.to } : undefined}
+        title={item.isTrip && item.tripRoute ? undefined : sanitizeForDisplay(item.name)}
         subtitle={item.verified ? `${formatTruckType(item.type)} · ${t('verified')}` : formatTruckType(item.type)}
         meta={meta}
         priceText={item.isTrip ? formatPrice(item.price, item.currency, t) : `★ ${item.rating || '—'}`}

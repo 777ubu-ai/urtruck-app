@@ -20,10 +20,70 @@ def _migrate(c):
         ("is_demo", "INTEGER DEFAULT 0"),
         ("city", "TEXT"),
         ("about", "TEXT"),
+        # ТЗ онбординг — поля 6-шагового мастера водителя фуры.
+        ("birth_date", "TEXT"),                 # шаг 1 (ДД.ММ.ГГГГ)
+        ("personal_photo_url", "TEXT"),         # шаг 1: ключ/URL личного фото в storage
+        ("residence_status", "TEXT"),           # шаг 2: citizen|kandas|foreigner
+        ("license_category", "TEXT"),           # шаг 3: напр. 'B, C, CE'
+        ("license_issue_date", "TEXT"),         # шаг 3: для стажа
+        ("license_expiry", "TEXT"),             # шаг 3: срок действия
+        ("license_number", "TEXT"),             # шаг 3: номер прав (OCR)
+        ("license_selfie_url", "TEXT"),         # шаг 3: ключ/URL селфи с правами
+        ("vehicle_model", "TEXT"),              # шаг 4 (brand уже есть)
+        ("vehicle_color", "TEXT"),              # шаг 4: цвет кузова/кабины (PR #70 UI)
+        ("body_type", "TEXT"),                  # шаг 5: tent|ref|izoterm|board|container|tanker|platform
+        ("truck_kind", "TEXT"),                 # шаг 5: тип ТС (tractor_semitrailer и т.д.)
+        ("capacity_tons", "REAL"),              # шаг 5
+        ("volume_m3", "REAL"),                  # шаг 5
+        ("dims_l_m", "REAL"), ("dims_w_m", "REAL"), ("dims_h_m", "REAL"),  # шаг 5 (необяз.)
+        ("adr", "INTEGER DEFAULT 0"),           # шаг 5: опасный груз
+        ("adr_cert_url", "TEXT"),               # шаг 5 (опц.)
+        ("vehicle_photo_url", "TEXT"),          # ЭТАП 6: фото авто снаружи (для старых БД)
+        ("cabin_photo_url", "TEXT"),            # ЭТАП 6: фото салона/кабины
+        ("has_straps", "INTEGER DEFAULT 0"),    # шаг 5 (опц.)
+        ("draft_json", "TEXT"),                 # auto-save состояния мастера
+        ("submitted_at", "TEXT"),               # POST submit
     ]
     for name, ddl in additions:
         if name not in cols:
             c.execute(f"ALTER TABLE drivers_registration ADD COLUMN {name} {ddl}")
+
+
+def _migrate_unique_iin(c):
+    """DB-level защита от дубликата ИИН среди approved-водителей.
+
+    App-level проверка уже есть (find_approved_by_iin → HTTP 409 на /selfie),
+    но при гонке двух параллельных запросов до коммита дубль теоретически
+    проскочит. Partial UNIQUE index закрывает гонку на уровне БД.
+
+    Создаём ИДЕМПОТЕНТНО и БЕЗОПАСНО: если в живой БД уже есть approved-дубли
+    (исторические данные), CREATE UNIQUE INDEX упал бы и уронил старт сервиса —
+    поэтому сперва проверяем дубли. Если они есть, индекс НЕ создаём, а пишем
+    предупреждение в лог (модератор разрулит вручную). Если дублей нет —
+    ставим индекс, и дальше гонка невозможна.
+    """
+    try:
+        dups = c.execute(
+            "SELECT iin, COUNT(*) AS n FROM drivers_registration "
+            "WHERE iin IS NOT NULL AND iin != '' AND status = 'approved' "
+            "GROUP BY iin HAVING n > 1"
+        ).fetchall()
+        if dups:
+            sample = ", ".join(f"{r['iin'][:6]}***({r['n']})" for r in dups[:5])
+            print(
+                f"[migrate] UNIQUE(iin) пропущен: найдено {len(dups)} дублей "
+                f"среди approved — {sample}. Разрулите вручную, затем перезапустите.",
+                flush=True,
+            )
+            return
+        c.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_reg_iin_approved "
+            "ON drivers_registration(iin) "
+            "WHERE iin IS NOT NULL AND iin != '' AND status = 'approved'"
+        )
+    except Exception as e:
+        # Миграция не должна валить старт сервиса ни при каких условиях.
+        print(f"[migrate] UNIQUE(iin) skipped: {e}", flush=True)
 
 
 # ---------- Lazy registration ----------
@@ -56,6 +116,7 @@ def init_registration_schema():
     with get_conn() as c:
         c.executescript(schema.read_text(encoding="utf-8"))
         _migrate(c)
+        _migrate_unique_iin(c)
         c.commit()
 
 

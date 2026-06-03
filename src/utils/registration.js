@@ -5,6 +5,8 @@ import { getLanguage } from './i18n';
 import { API_BASE } from '../config/env';
 
 const BASE = `${API_BASE}/register`;
+// ТЗ онбординг §0.1 — мастер водителя (draft auto-save + submit).
+const DRIVER_REG_BASE = `${API_BASE}/driver/registration`;
 
 const TOKEN_KEY = 'ur_reg_token';
 const LEVEL_KEY = 'ur_verification_level';
@@ -204,7 +206,7 @@ export const regAPI = {
   async uploadSelfie(iin, fullName, uri, onProgress) {
     const token = await this.getToken();
     onProgress?.('compressing');
-    const compressedUri = await compressImage(uri, { maxSide: 1200, quality: 0.72 });
+    const compressedUri = await compressImage(uri, { preset: 'selfie' });
     const blob = await fetch(compressedUri).then(r => r.blob());
     onProgress?.('uploading');
     const form = new FormData();
@@ -219,10 +221,90 @@ export const regAPI = {
     return r.json();
   },
 
+  // Личное фото (Personal Info, шаг 1). Реальный server-side upload в storage;
+  // backend возвращает { personal_photo_key } — безопасный ключ файла (не raw).
+  async uploadPersonalPhoto(uri, onProgress) {
+    const token = await this.getToken();
+    onProgress?.('compressing');
+    const compressedUri = await compressImage(uri, { preset: 'selfie' });
+    const blob = await fetch(compressedUri).then(r => r.blob());
+    onProgress?.('uploading');
+    const form = new FormData();
+    form.append('file', blob, 'personal.jpg');
+    const r = await fetch(`${BASE}/photo`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: form,
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(normalizeDetail(data?.detail, `photo upload failed ${r.status}`));
+    return data;
+  },
+
+  // Селфи с правами в руках (антифрод). Реальный server-side upload в storage;
+  // backend возвращает { license_selfie_key } — безопасный ключ файла (не raw).
+  async uploadLicenseSelfie(uri, onProgress) {
+    const token = await this.getToken();
+    onProgress?.('compressing');
+    const compressedUri = await compressImage(uri, { preset: 'document' });
+    const blob = await fetch(compressedUri).then(r => r.blob());
+    onProgress?.('uploading');
+    const form = new FormData();
+    form.append('file', blob, 'license_selfie.jpg');
+    const r = await fetch(`${BASE}/license-selfie`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: form,
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(normalizeDetail(data?.detail, `license selfie upload failed ${r.status}`));
+    return data;
+  },
+
+  // Фото авто снаружи (ЭТАП 6). Реальный server-side upload в storage;
+  // backend (POST /register/vehicle-photo) возвращает { vehicle_photo_key } —
+  // безопасный ключ файла (не raw) и сам пишет vehicle_photo_url в БД.
+  async uploadVehiclePhoto(uri, onProgress) {
+    const token = await this.getToken();
+    onProgress?.('compressing');
+    const compressedUri = await compressImage(uri, { preset: 'truck' });
+    const blob = await fetch(compressedUri).then(r => r.blob());
+    onProgress?.('uploading');
+    const form = new FormData();
+    form.append('file', blob, 'vehicle_photo.jpg');
+    const r = await fetch(`${BASE}/vehicle-photo`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: form,
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(normalizeDetail(data?.detail, `vehicle photo upload failed ${r.status}`));
+    return data;
+  },
+
+  // Фото салона/кабины (ЭТАП 6). POST /register/cabin-photo → { cabin_photo_key }.
+  async uploadCabinPhoto(uri, onProgress) {
+    const token = await this.getToken();
+    onProgress?.('compressing');
+    const compressedUri = await compressImage(uri, { preset: 'truck' });
+    const blob = await fetch(compressedUri).then(r => r.blob());
+    onProgress?.('uploading');
+    const form = new FormData();
+    form.append('file', blob, 'cabin_photo.jpg');
+    const r = await fetch(`${BASE}/cabin-photo`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: form,
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(normalizeDetail(data?.detail, `cabin photo upload failed ${r.status}`));
+    return data;
+  },
+
   async uploadLicense(uri, onProgress) {
     const token = await this.getToken();
     onProgress?.('compressing');
-    const compressedUri = await compressImage(uri, { maxSide: 1400, quality: 0.75 });
+    const compressedUri = await compressImage(uri, { preset: 'document' });
     const blob = await fetch(compressedUri).then(r => r.blob());
     onProgress?.('uploading');
     const form = new FormData();
@@ -233,13 +315,17 @@ export const regAPI = {
       headers: { 'Authorization': `Bearer ${token}` },
       body: form,
     });
-    return r.json();
+    // No fake-success: при HTTP-ошибке бросаем, чтобы экран показал error,
+    // а не помечал карточку done (как остальные upload-методы).
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(normalizeDetail(data?.detail, `license upload failed ${r.status}`));
+    return data;
   },
 
   async uploadPassport(uri, onProgress) {
     const token = await this.getToken();
     onProgress?.('compressing');
-    const compressedUri = await compressImage(uri, { maxSide: 1400, quality: 0.75 });
+    const compressedUri = await compressImage(uri, { preset: 'document' });
     const blob = await fetch(compressedUri).then(r => r.blob());
     onProgress?.('uploading');
     const form = new FormData();
@@ -250,7 +336,11 @@ export const regAPI = {
       headers: { 'Authorization': `Bearer ${token}` },
       body: form,
     });
-    return r.json();
+    // No fake-success: при HTTP-ошибке бросаем, чтобы экран показал error,
+    // а не помечал карточку done (как остальные upload-методы).
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(normalizeDetail(data?.detail, `passport upload failed ${r.status}`));
+    return data;
   },
 
   async saveVehicle({ vehicleType, capacityKg, plate, brand, year, photoUri, onProgress }) {
@@ -263,8 +353,8 @@ export const regAPI = {
     form.append('year', String(year || 0));
     if (photoUri) {
       onProgress?.('compressing');
-      // Фото машины — без мелких деталей, 1200px хватит. quality 0.7 даёт ~200-400 KB
-      const compressedUri = await compressImage(photoUri, { maxSide: 1200, quality: 0.7 });
+      // Фото грузовика — пресет 'truck' (1280px / q0.75 / ≤600KB, ТЗ §1).
+      const compressedUri = await compressImage(photoUri, { preset: 'truck' });
       const blob = await fetch(compressedUri).then(r => r.blob());
       form.append('photo', blob, 'vehicle.jpg');
     }
@@ -293,5 +383,40 @@ export const regAPI = {
       headers: { 'Authorization': `Bearer ${token}` },
     });
     return r.json();
+  },
+
+  // ТЗ §0.1 — авто-сохранение шага мастера. payload — любое подмножество
+  // полей (бэкенд берёт только whitelisted). Fail-tolerant: возвращает
+  // { ok:false } при сетевой ошибке, чтобы UI не вис.
+  async saveDriverDraft(payload = {}) {
+    const token = await this.getToken();
+    if (!token) return { ok: false, detail: 'no_token' };
+    try {
+      const r = await fetch(`${DRIVER_REG_BASE}/draft`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(payload),
+      });
+      const data = await r.json().catch(() => ({}));
+      return { ok: r.ok, ...data };
+    } catch (e) {
+      return { ok: false, detail: e?.message || 'network_error' };
+    }
+  },
+
+  // ТЗ §9 — отправка заявки на проверку (стартовый скоринг на бэке).
+  async submitDriverRegistration() {
+    const token = await this.getToken();
+    if (!token) return { ok: false, detail: 'no_token' };
+    try {
+      const r = await fetch(`${DRIVER_REG_BASE}/submit`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const data = await r.json().catch(() => ({}));
+      return { ok: r.ok, ...data };
+    } catch (e) {
+      return { ok: false, detail: e?.message || 'network_error' };
+    }
   },
 };

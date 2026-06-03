@@ -114,7 +114,6 @@ export default function ProfileScreen({ navigation, route }) {
     { icon: 'truck',         label: t('profile_cargoruqsat_title'), sub: t('profile_cargoruqsat_subtitle'), screen: 'CargoRuqsatInfo' },
     { icon: 'message-circle',label: t('chatsSection'),  screen: 'ChatsList' },
     { icon: 'star',          label: t('myReviews'),     screen: 'Reviews' },
-    { icon: 'edit-2',        label: t('editProfile'),   screen: 'EditProfile' },
   ];
 
   // PR-C2 (driver card): canonical specs line «Тент · 20 т · 86 м³».
@@ -215,6 +214,12 @@ export default function ProfileScreen({ navigation, route }) {
               </Text>
             ) : null}
           </View>
+          {/* ЭТАП 1 (canonical): карандаш = редактирование профиля (EditProfile).
+              Документная PRO-верификация запускается кнопкой «Получить статус
+              PRO» ниже и из SecurityScreen — обе ведут в единый канонический
+              flow ('Identity' → Selfie → VehicleDocs → TruckParams → submit).
+              Раньше карандаш открывал Premium 'Reg' (имя+город), что путало
+              редактирование профиля с документной верификацией. */}
           <TouchableOpacity style={s.editBtnInline} onPress={() => navigation.navigate('EditProfile', { role })} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Feather name="edit-2" size={16} color={theme.textMuted} />
           </TouchableOpacity>
@@ -248,7 +253,7 @@ export default function ProfileScreen({ navigation, route }) {
             {!proActive ? (
               <TouchableOpacity
                 style={[s.proCta, { backgroundColor: accent }]}
-                onPress={() => navigation.navigate('EditProfile', { role, focusPRO: true })}
+                onPress={() => navigation.navigate('Identity')}
                 activeOpacity={0.85}
               >
                 <Text style={[s.proCtaText, { color: onAccent }]}>{t('pro_become_btn')}</Text>

@@ -9,8 +9,6 @@ import { useAuth } from '../utils/AuthContext';
 import { getChats, subscribe, getUnreadNotifications } from '../utils/store';
 import BottomNav from '../components/ui/v1/BottomNav';
 
-import SplashScreen from '../screens/SplashScreen';
-import OnboardingScreen from '../screens/OnboardingScreen';
 import HowItWorksScreen from '../screens/HowItWorksScreen';
 import AboutScreen from '../screens/AboutScreen';
 import AuthScreen from '../screens/AuthScreen';
@@ -24,6 +22,11 @@ import SignUpScreen from '../screens/SignUpScreen';
 import PremiumRegisterScreen from '../screens/registration/PremiumRegisterScreen';
 import PremiumOtpScreen from '../screens/registration/PremiumOtpScreen';
 import PremiumProfileScreen from '../screens/registration/PremiumProfileScreen';
+import TruckParamsScreen from '../screens/registration/TruckParamsScreen';
+import VehicleDocsScreen from '../screens/registration/VehicleDocsScreen';
+import VehiclePhotosScreen from '../screens/registration/VehiclePhotosScreen';
+import IdentityStepScreen from '../screens/registration/IdentityStepScreen';
+import SelfieStepScreen from '../screens/registration/SelfieStepScreen';
 import PremiumLoginScreen from '../screens/registration/PremiumLoginScreen';
 import FeedScreen from '../screens/FeedScreen';
 import CargoDetail from '../screens/CargoDetail';
@@ -75,6 +78,7 @@ function PublishStub() {
 function MainTabs({ route }) {
   const { session } = useAuth();
   const role = session?.user?.role || route?.params?.role || 'client';
+  const isDriver = role === 'driver';
   const [, setTick] = useState(0);
 
   useEffect(() => {
@@ -82,19 +86,35 @@ function MainTabs({ route }) {
     return unsub;
   }, []);
 
-  // 5-tab layout (macros 07/08): Feed / MyWork / Publish (centre) / Chats / Profile.
-  // BottomNav is the custom tab-bar; it reads role from AuthContext to swap
-  // emerald (driver) and orange (cargo owner) accents at runtime.
+  // Канон таб-баров (мастер-ТЗ §2.2–2.3).
+  //   Водитель (5): Грузы (Feed) · Рейсы (MyWork) · Очередь (Queue, центр) ·
+  //     Чат (Chats, с бейджем непрочитанного) · Профиль. Кнопка «Разместить»
+  //     живёт ВНУТРИ «Рейсы», а не отдельной вкладкой (§2.2.2). Чат всегда
+  //     на панели — критичный инструмент биржи (§2.4).
+  //   Клиент (4): Грузы (MyWork) · Машины (Feed) · «+» Создать (Publish) ·
+  //     Профиль. НЕ трогать без отдельного приказа (§2.3).
+  // BottomNav красит неон по роли: driver #00E676, client #F59E0B.
   return (
     <Tab.Navigator
       screenOptions={{ headerShown: false }}
       tabBar={(props) => <BottomNav {...props} />}
     >
-      <Tab.Screen name="Feed" component={FeedScreen} initialParams={{ role }} />
-      <Tab.Screen name="MyWork" component={MyTripsScreen} initialParams={{ role }} />
-      <Tab.Screen name="Publish" component={PublishStub} initialParams={{ role }} />
-      <Tab.Screen name="Chats" component={ChatsListScreen} initialParams={{ role }} />
-      <Tab.Screen name="Profile" component={ProfileScreen} initialParams={{ role }} />
+      {isDriver ? (
+        <>
+          <Tab.Screen name="Feed" component={FeedScreen} initialParams={{ role }} />
+          <Tab.Screen name="MyWork" component={MyTripsScreen} initialParams={{ role }} />
+          <Tab.Screen name="Queue" component={QueueScreen} initialParams={{ role }} />
+          <Tab.Screen name="Chats" component={ChatsListScreen} initialParams={{ role }} />
+          <Tab.Screen name="Profile" component={ProfileScreen} initialParams={{ role }} />
+        </>
+      ) : (
+        <>
+          <Tab.Screen name="MyWork" component={MyTripsScreen} initialParams={{ role }} />
+          <Tab.Screen name="Feed" component={FeedScreen} initialParams={{ role }} />
+          <Tab.Screen name="Publish" component={PublishStub} initialParams={{ role }} />
+          <Tab.Screen name="Profile" component={ProfileScreen} initialParams={{ role }} />
+        </>
+      )}
     </Tab.Navigator>
   );
 }
@@ -153,6 +173,8 @@ export default function AppNavigator() {
         <Stack.Screen name="EditTrip" component={EditTripScreen} />
         <Stack.Screen name="CreateTrip" component={CreateTripScreen} />
         <Stack.Screen name="CreateCargo" component={CreateCargoScreen} />
+        <Stack.Screen name="TruckParams" component={TruckParamsScreen} />
+        <Stack.Screen name="VehicleDocs" component={VehicleDocsScreen} />
       </Stack.Navigator>
     );
   }
@@ -210,6 +232,27 @@ export default function AppNavigator() {
           <Stack.Screen name="EditTrip" component={EditTripScreen} />
           <Stack.Screen name="CreateTrip" component={CreateTripScreen} />
           <Stack.Screen name="CreateCargo" component={CreateCargoScreen} />
+        <Stack.Screen name="Identity" component={IdentityStepScreen} />
+        <Stack.Screen name="Selfie" component={SelfieStepScreen} />
+        <Stack.Screen name="TruckParams" component={TruckParamsScreen} />
+        <Stack.Screen name="VehicleDocs" component={VehicleDocsScreen} />
+        <Stack.Screen name="VehiclePhotos" component={VehiclePhotosScreen} />
+          {/* КАНОНИЧЕСКИЙ PRO-flow верификации водителя:
+              Security → Identity → Selfie → VehicleDocs → VehiclePhotos →
+              TruckParams → submit.
+              Это 5 честных шагов (PR-V9 вынес фото авто+кабины в отдельный
+              шаг VehiclePhotos; см. TOTAL_STEPS=5 во всех пяти экранах).
+
+              Reg/RegOtp/RegProfile (Premium) ниже — это ОБЩИЙ профиль
+              (имя + город), а НЕ документная верификация. Оставлены как legacy
+              вход из ProfileScreen/RoleScreen (карандаш профиля, «Получить
+              статус PRO»); физически не удаляем. Раньше эти экраны жили только в
+              pre-auth стеке, поэтому навигация из ProfileScreen падала
+              (route not handled). LegacyReg/LegacyAuth/SignUp смонтированы
+              только в qaPreview-галерее и в проде недостижимы. */}
+          <Stack.Screen name="Reg" component={PremiumRegisterScreen} />
+          <Stack.Screen name="RegOtp" component={PremiumOtpScreen} />
+          <Stack.Screen name="RegProfile" component={PremiumProfileScreen} />
           {/* Legacy routes — Track / Wallet were tabs in v0/v1.0 but the
               v1 design doesn't surface them in the bottom navigation.
               They stay reachable by navigation.navigate('Track' | 'Wallet')

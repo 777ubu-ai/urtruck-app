@@ -50,9 +50,18 @@ def _preprocess(img: "Image.Image") -> "Image.Image":
     return img
 
 
+# OCR с rus-моделью часто читает ЛАТИНСКИЕ категории (B, C, CE) как
+# КИРИЛЛИЧЕСКИЕ омоглифы (В, С, СЕ). Нормализуем их к латинице, иначе
+# латинские паттерны категорий не сработают.
+_CYR2LAT = str.maketrans({
+    "А": "A", "В": "B", "С": "C", "Е": "E", "К": "K", "М": "M",
+    "Н": "H", "О": "O", "Р": "P", "Т": "T", "Х": "X",
+})
+
+
 def _find_categories(text: str) -> list:
     """Извлекает категории прав, сортируя длинные → короткие чтобы CE не перекрывал C."""
-    upper = text.upper().replace("\n", " ")
+    upper = text.upper().replace("\n", " ").translate(_CYR2LAT)
     found = []
     # Сначала ищем составные (CE, DE, BE, C1E, D1E) — они должны matchиться раньше C/D/B
     for cat in ALL_CATEGORIES:
@@ -115,8 +124,9 @@ def extract_license_data(image_path: str) -> dict:
             if m:
                 result["license_number"] = m.group(1)
 
-        # Категории
+        # Категории + флаг допуска к фуре (ТЗ §4: нужна C или CE)
         result["categories"] = _find_categories(text)
+        result["has_c_ce"] = any(c in ("C", "CE") for c in result["categories"])
 
         # Даты: обычно на правах 3 даты — выдача, истечение, рождение
         dates_raw = DATE_REGEX.findall(text)

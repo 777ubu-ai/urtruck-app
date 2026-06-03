@@ -16,6 +16,8 @@ import { voice } from '../utils/voiceRecorder';
 import QuickPhrases from '../components/QuickPhrases';
 import {v1Colors, useV1Colors, v1Radius, v1AccentFor} from '../theme/designV1';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
+import { DealRoomCard, SystemEventRow, DealQuickActions } from '../components/deal/DealRoom';
+import DealAttachments from '../components/deal/DealAttachments';
 
 // HOT-006: реальная запись/воспроизведение для web (PWA deploy).
 // На нативе (Expo Go) expo-av не установлен — тост "скоро".
@@ -50,6 +52,15 @@ export default function ChatScreen({ navigation, route }) {
   online: { fontSize: 10, fontWeight: '700' },
   // System banner above the first message
   msgList: { padding: 14, paddingBottom: 20 },
+  // PR4 Accept bid confirm-бар (inline, без модалки — работает и на web)
+  acceptConfirm: { backgroundColor: v1.surface, borderWidth: 1, borderColor: v1Colors.driver, borderRadius: 12, padding: 12, marginBottom: 8, gap: 6 },
+  acceptConfirmTitle: { color: v1.text, fontSize: 14, fontWeight: '900' },
+  acceptConfirmText: { color: v1.textMuted, fontSize: 12 },
+  acceptConfirmRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
+  acceptCancelBtn: { flex: 1, paddingVertical: 9, borderRadius: 10, borderWidth: 1, borderColor: v1.border, alignItems: 'center' },
+  acceptCancelTxt: { color: v1.textMuted, fontSize: 12, fontWeight: '800' },
+  acceptOkBtn: { flex: 1, paddingVertical: 9, borderRadius: 10, backgroundColor: v1Colors.driver, alignItems: 'center' },
+  acceptOkTxt: { color: '#0C0A09', fontSize: 12, fontWeight: '900' },
   chatOpened: { alignSelf: 'center', marginBottom: 16 },
   chatOpenedText: {
     fontSize: 10, paddingHorizontal: 14, paddingVertical: 5,
@@ -60,19 +71,21 @@ export default function ChatScreen({ navigation, route }) {
   msgRow: { marginBottom: 10 },
   msgRowMe: { alignItems: 'flex-end' },
   senderLabel: { fontSize: 10, marginBottom: 3, marginLeft: 6, color: v1.textMuted },
-  bubble: { maxWidth: '78%', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18 },
-  bubbleMe: { backgroundColor: v1Colors.driver, borderBottomRightRadius: 6 },
+  // B2B deal chat: компактнее и спокойнее (не consumer/WhatsApp). Меньше
+  // padding/radius/maxWidth; outgoing — спокойный изумруд (не ядовитый #00E676).
+  bubble: { maxWidth: '72%', paddingHorizontal: 11, paddingVertical: 7, borderRadius: 12 },
+  bubbleMe: { backgroundColor: '#15512F', borderBottomRightRadius: 4 },
   bubbleThem: {
-    borderBottomLeftRadius: 6,
+    borderBottomLeftRadius: 4,
     backgroundColor: v1.surface,
     borderWidth: 1, borderColor: v1.border,
   },
-  msgText: { fontSize: 15, lineHeight: 21 },
-  msgTextMe: { color: '#0A0A0A' },
+  msgText: { fontSize: 14, lineHeight: 19 },
+  msgTextMe: { color: '#EAFBF1' },
   translated: { marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)' },
   translatedText: { color: 'rgba(255,255,255,0.55)', fontSize: 11, fontStyle: 'italic' },
   msgTime: { color: v1.textMuted, fontSize: 9, textAlign: 'right', marginTop: 3 },
-  msgTimeMe: { color: 'rgba(10,10,10,0.55)' },
+  msgTimeMe: { color: 'rgba(234,251,241,0.55)' },
   // Input bar
   inputRow: {
     flexDirection: 'row', alignItems: 'center',
@@ -100,7 +113,7 @@ export default function ChatScreen({ navigation, route }) {
   voiceTime: { fontSize: 11, minWidth: 30 },
 
   }), [v1]);
-  const { partner, role, cargoId, tripId, roomId: initialRoomId } = route.params || {};
+  const { partner, role, cargoId, tripId, roomId: initialRoomId, dealId, bidId } = route.params || {};
   const { t } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
@@ -114,6 +127,10 @@ export default function ChatScreen({ navigation, route }) {
   const [lang, setLang] = useState('RU');
   const [translations, setTranslations] = useState({});
   const [translating, setTranslating] = useState(null);
+  // Deal Room (PR2): карточка сделки + immutable timeline. Показываются только
+  // при dealId — иначе старый чат выглядит как раньше.
+  const [deal, setDeal] = useState(null);
+  const [dealEvents, setDealEvents] = useState([]);
   const flatListRef = useRef(null);
   // HOT-006: refs для MediaRecorder (web)
   const mediaRecorderRef = useRef(null);
@@ -214,6 +231,51 @@ export default function ChatScreen({ navigation, route }) {
     notifyChatRead();
     return () => notifyChatRead();
   }, [roomId]);
+
+  // Deal Room: загрузка карточки сделки + immutable timeline по dealId.
+  useEffect(() => {
+    if (!dealId) return;
+    const p = route.params || {};
+    setDeal({
+      status: p.dealStatus, from_city: p.fromCity, to_city: p.toCity,
+      cargo_desc: p.cargoDesc, cargo_id: p.cargoId, amount: p.amount, plate: p.plate,
+    });
+    chatAPI.dealTimeline(dealId)
+      .then(r => setDealEvents(Array.isArray(r?.events) ? r.events : []))
+      .catch(() => {});
+  }, [dealId]);
+
+  const onCallSupport = async () => {
+    try {
+      await chatAPI.supportEscalate({ conversationId: roomId || null, reason: 'chat_cta' });
+      toast(t('chat_support_pending'), 'success');
+    } catch { /* без фейков — просто не падаем */ }
+  };
+
+  // PR4 — Accept bid. Кнопка активна только если есть bidId и сделка ещё не
+  // принята. Confirm → реальный вызов /market/bids/{id}/accept (пишет immutable
+  // deal.bid_accepted). После успеха — обновляем deal-статус и timeline.
+  const [acceptConfirm, setAcceptConfirm] = useState(false);
+  const [accepting, setAccepting] = useState(false);
+  const canAcceptBid = !!bidId && deal && deal.status !== 'accepted' && deal.status !== 'confirmed';
+  const doAcceptBid = async () => {
+    setAccepting(true);
+    try {
+      await chatAPI.acceptBid(bidId);
+      toast(t('accept_bid_success'), 'success');
+      setDeal((d) => (d ? { ...d, status: 'accepted' } : d));
+      setAcceptConfirm(false);
+      if (dealId) {
+        chatAPI.dealTimeline(dealId)
+          .then((r) => setDealEvents(Array.isArray(r?.events) ? r.events : []))
+          .catch(() => {});
+      }
+    } catch (e) {
+      toast(t('accept_bid_failed'), 'error');
+    } finally {
+      setAccepting(false);
+    }
+  };
 
   const sendMessage = async (text) => {
     const msg = text || input;
@@ -484,11 +546,47 @@ export default function ChatScreen({ navigation, route }) {
         contentContainerStyle={s.msgList}
         keyboardShouldPersistTaps="handled"
         ListHeaderComponent={
-          <View style={s.chatOpened}>
-            <Text style={s.chatOpenedText}>
-              {t('chatOpened')}
-              {CHAT_LANG_PILL_ENABLED ? ` · ${t('translation')}: ${LANGS[lang]}` : ''}
-            </Text>
+          <View>
+            {dealId ? (
+              <View style={{ marginBottom: 10 }}>
+                <DealRoomCard deal={deal} role={role} />
+                {dealEvents.length > 0 ? (
+                  <View testID="deal-timeline">
+                    {dealEvents.slice(-4).map((ev) => (
+                      <SystemEventRow key={ev.id || ev.event_type} ev={ev} />
+                    ))}
+                  </View>
+                ) : null}
+                <DealAttachments conversationId={roomId} role={role} />
+                {acceptConfirm ? (
+                  <View style={s.acceptConfirm} testID="accept-bid-confirm">
+                    <Text style={s.acceptConfirmTitle}>{t('accept_bid_confirm_title')}</Text>
+                    <Text style={s.acceptConfirmText}>
+                      {t('accept_bid_confirm_text')} {deal?.amount != null ? `${deal.amount}` : ''}
+                    </Text>
+                    <View style={s.acceptConfirmRow}>
+                      <TouchableOpacity onPress={() => setAcceptConfirm(false)} style={s.acceptCancelBtn} disabled={accepting}>
+                        <Text style={s.acceptCancelTxt}>{t('cancel')}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={doAcceptBid} style={s.acceptOkBtn} disabled={accepting} testID="accept-bid-ok">
+                        <Text style={s.acceptOkTxt}>{accepting ? '…' : t('action_accept_bid')}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : null}
+                <DealQuickActions
+                  role={role}
+                  onCallSupport={onCallSupport}
+                  onAcceptBid={canAcceptBid ? () => setAcceptConfirm(true) : undefined}
+                />
+              </View>
+            ) : null}
+            <View style={s.chatOpened}>
+              <Text style={s.chatOpenedText}>
+                {t('chatOpened')}
+                {CHAT_LANG_PILL_ENABLED ? ` · ${t('translation')}: ${LANGS[lang]}` : ''}
+              </Text>
+            </View>
           </View>
         }
         onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}

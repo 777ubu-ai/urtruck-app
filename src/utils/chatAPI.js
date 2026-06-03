@@ -60,4 +60,61 @@ export const chatAPI = {
     });
     return r.json();
   },
+
+  // --- Deal Room (PR #60 backend foundation) ---
+  // Новые эндпоинты. Старые send/rooms/messages/unread/translate не трогаются.
+  async conversations() {
+    const r = await fetch(`${BASE}/conversations`, { headers: await headers() });
+    return r.json();
+  },
+
+  async dealTimeline(dealId) {
+    const r = await fetch(`${API_BASE}/deals/${dealId}/timeline`, { headers: await headers() });
+    return r.json();
+  },
+
+  async supportEscalate({ conversationId = null, reason = null } = {}) {
+    const r = await fetch(`${API_BASE}/support/escalate`, {
+      method: 'POST', headers: await headers(),
+      body: JSON.stringify({ conversation_id: conversationId, reason }),
+    });
+    return r.json();
+  },
+
+  // --- Smart actions (PR4) ---
+  // Принять ставку. Использует существующий marketplace-эндпоинт
+  // /market/bids/{bidId}/accept (он же пишет immutable deal.bid_accepted).
+  async acceptBid(bidId) {
+    const r = await fetch(`${API_BASE}/market/bids/${bidId}/accept`, {
+      method: 'POST', headers: await headers(),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data?.detail || `accept failed ${r.status}`);
+    return data;
+  },
+
+  // --- Attachments (PR3 media foundation) ---
+  async listAttachments(conversationId) {
+    const r = await fetch(`${API_BASE}/chat/conversations/${conversationId}/attachments`, {
+      headers: await headers(),
+    });
+    return r.json();
+  },
+
+  // Загрузка вложения. uri — локальный путь после сжатия (compressImage).
+  // multipart/form-data: НЕ ставим Content-Type вручную (boundary задаёт fetch).
+  async uploadAttachment(conversationId, { uri, kind = 'document', name = 'file.jpg', type = 'image/jpeg' } = {}) {
+    const token = await storage.get(TOKEN_KEY);
+    const blob = await fetch(uri).then((res) => res.blob());
+    const form = new FormData();
+    form.append('file', blob, name);
+    form.append('kind', kind);
+    const r = await fetch(`${API_BASE}/chat/conversations/${conversationId}/attachments`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    });
+    if (!r.ok) throw new Error(`upload failed ${r.status}`);
+    return r.json();
+  },
 };

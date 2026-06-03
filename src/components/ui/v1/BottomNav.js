@@ -53,8 +53,17 @@ const UNREAD_POLL_MS = 30000;
 const ICONS = {
   Feed:    { driver: 'package',  client: 'truck' },
   MyWork:  { driver: 'clipboard', client: 'clipboard' },
+  Queue:   { driver: 'map-pin', client: 'map-pin' },
   Chats:   { driver: 'message-circle', client: 'message-circle' },
   Profile: { driver: 'user', client: 'user' },
+};
+
+// Industrial Luxury: неоновый акцент зависит от роли (источник истины —
+// CLAUDE.md: driver #00E676 изумруд, client #F59E0B янтарь). Текст поверх
+// «+»-кнопки — чёрный (#0C0A09): на изумруде/янтаре даёт AAA-контраст.
+const ROLE_ACCENT = {
+  driver: { main: '#00E676', soft: 'rgba(0,230,118,0.14)' },
+  client: { main: '#F59E0B', soft: 'rgba(245,158,11,0.16)' },
 };
 
 export default function BottomNav({ state, navigation }) {
@@ -67,10 +76,8 @@ export default function BottomNav({ state, navigation }) {
     || state.routes[0]?.params?.role
     || 'client';
   const isDriver = role === 'driver';
-  // Phase 2A: единый orange-accent ради взрослой B2B-палитры. role
-  // влияет только на то, какие иконки/тексты табов мы показываем
-  // (через ICONS / labelOf), но цвет акцента уже не зависит от роли.
-  const accent = { main: v2.accent, soft: v2.accentSoft };
+  // Industrial Luxury: неоновый акцент по роли (см. ROLE_ACCENT).
+  const accent = ROLE_ACCENT[role] || ROLE_ACCENT.client;
   const inactiveColor = v2.textSecondary;
 
   const [chatUnread, setChatUnread] = useState(0);
@@ -128,6 +135,7 @@ export default function BottomNav({ state, navigation }) {
   const labelOf = (name) => {
     if (name === 'Feed')    return isDriver ? t('tab_feed') : t('tab_feed_client');
     if (name === 'MyWork')  return isDriver ? t('tab_my_work_driver') : t('tab_my_work_client');
+    if (name === 'Queue')   return t('tab_queue');
     if (name === 'Chats')   return t('tab_chats');
     if (name === 'Profile') return t('tab_profile');
     return name;
@@ -149,32 +157,22 @@ export default function BottomNav({ state, navigation }) {
   // overlaps the bar).
   const bottomPad = Math.max(insets.bottom, 8);
 
-  // Tinted background: pure black is too harsh on light theme; soft surface
-  // with a small alpha gives a subtle layer above content without breaking
-  // contrast on either side.
-  const barBg = isDark ? 'rgba(0,0,0,0.92)' : 'rgba(255,255,255,0.96)';
+  // Industrial Luxury: глубокая графитовая подложка (почти чёрная на тёмной
+  // теме), скруглённый плавающий бар с тонкой границей и неоновой тенью под
+  // активным табом.
+  const barBg = isDark ? '#14110F' : '#FFFFFF';
+  const barBorder = isDark ? 'rgba(255,255,255,0.06)' : colors.border;
 
   return (
-    <View
-      style={[
-        s.bar,
-        {
-          backgroundColor: barBg,
-          borderTopColor: colors.border,
-          paddingBottom: bottomPad,
-        },
-      ]}
-      testID="bottom-nav"
-    >
-      {state.routes.map((route, index) => {
-        const isFocused = state.index === index;
+    <View style={[s.wrap, { paddingBottom: bottomPad }]} pointerEvents="box-none" testID="bottom-nav">
+      <View style={[s.bar, { backgroundColor: barBg, borderColor: barBorder }]}>
+        {state.routes.map((route, index) => {
+          const isFocused = state.index === index;
 
-        if (route.name === 'Publish') {
-          return (
-            <View key={route.key} style={s.cell}>
-              {/* Plus button overlay — positioned absolute so it doesn't
-                  push the publish-label off the shared label baseline. */}
-              <View style={s.publishOverlay} pointerEvents="box-none">
+          // Клиентский «+»: приподнятая круглая кнопка-акцент с неоновым свечением.
+          if (route.name === 'Publish') {
+            return (
+              <View key={route.key} style={s.cell} pointerEvents="box-none">
                 <TouchableOpacity
                   onPress={() => onPressTab(route, false)}
                   activeOpacity={0.85}
@@ -183,137 +181,144 @@ export default function BottomNav({ state, navigation }) {
                   testID="bottom-nav-publish"
                   style={[s.publishBtn, { backgroundColor: accent.main, shadowColor: accent.main }]}
                 >
-                  <Text style={s.publishPlus}>+</Text>
+                  <Feather name="plus" size={26} color="#0C0A09" />
                 </TouchableOpacity>
+                <Text style={[s.publishLabel, { color: accent.main }]} numberOfLines={1}>
+                  {t('bottom_nav_publish')}
+                </Text>
               </View>
-              {/* Spacer — keeps the cell the same height as siblings so the
-                  label below stays on the shared baseline. */}
-              <View style={s.iconRow} />
-              <Text style={[s.label, { color: accent.main }]} numberOfLines={1}>
-                {t('bottom_nav_publish')}
-              </Text>
-              <View style={s.dotSlot} />
-            </View>
-          );
-        }
+            );
+          }
 
-        const iconKey = ICONS[route.name];
-        const iconName = iconKey ? (isDriver ? iconKey.driver : iconKey.client) : 'circle';
-        const label = labelOf(route.name);
-        const showChatBadge = route.name === 'Chats' && chatUnread > 0;
-        const badgeLabel = chatUnread > 9 ? '9+' : String(chatUnread);
-        // Stage DS-1: цвет иконки = active accent / muted, нет «масштабирования»
-        // эмодзи (раньше использовали transform scale 1.1). С Feather достаточно
-        // менять colour и иконка остаётся ровной.
-        // Phase 2A: inactive — slate #64748B (v2.textSecondary), не tema-зависимый
-        // colors.textMuted, чтобы дать ровный B2B-look на всех экранах.
-        const iconColor = isFocused ? accent.main : inactiveColor;
+          const iconKey = ICONS[route.name];
+          const iconName = iconKey ? (isDriver ? iconKey.driver : iconKey.client) : 'circle';
+          const label = labelOf(route.name);
+          const iconColor = isFocused ? accent.main : inactiveColor;
+          // Бейдж непрочитанного на табе «Чат» (§2.2.4 — критичный индикатор биржи).
+          const showChatBadge = route.name === 'Chats' && chatUnread > 0;
+          const badgeLabel = chatUnread > 9 ? '9+' : String(chatUnread);
 
-        return (
-          <TouchableOpacity
-            key={route.key}
-            onPress={() => onPressTab(route, isFocused)}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel={label}
-            testID={`bottom-nav-${route.name.toLowerCase()}`}
-            style={s.cell}
-          >
-            <View style={s.iconRow}>
-              <Feather name={iconName} size={22} color={iconColor} />
-              {showChatBadge ? (
-                <View
-                  style={[
-                    s.iconBadge,
-                    { backgroundColor: colors.error, borderColor: barBg.startsWith('rgba(0') ? '#000' : '#FFF' },
-                  ]}
-                  testID="bottom-nav-chats-badge"
-                >
-                  <Text style={s.iconBadgeText}>{badgeLabel}</Text>
-                </View>
-              ) : null}
-            </View>
-            <Text
-              style={[
-                s.label,
-                { color: isFocused ? accent.main : inactiveColor },
-              ]}
-              numberOfLines={1}
+          return (
+            <TouchableOpacity
+              key={route.key}
+              onPress={() => onPressTab(route, isFocused)}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityState={{ selected: isFocused }}
+              accessibilityLabel={label}
+              testID={`bottom-nav-${route.name.toLowerCase()}`}
+              style={s.cell}
             >
-              {label}
-            </Text>
-            <View style={s.dotSlot}>
-              {isFocused ? <View style={[s.activeDot, { backgroundColor: accent.main }]} /> : null}
-            </View>
-          </TouchableOpacity>
-        );
-      })}
+              {/* Активный таб подсвечивается неоновой «таблеткой»: мягкая
+                  заливка accent.soft + цветная тень accent.main = свечение. */}
+              <View
+                style={[
+                  s.pill,
+                  isFocused && {
+                    backgroundColor: accent.soft,
+                    shadowColor: accent.main,
+                  },
+                ]}
+              >
+                <Feather name={iconName} size={22} color={iconColor} />
+                {showChatBadge ? (
+                  <View
+                    style={[s.iconBadge, { backgroundColor: colors.error, borderColor: barBg }]}
+                    testID="bottom-nav-chats-badge"
+                  >
+                    <Text style={s.iconBadgeText}>{badgeLabel}</Text>
+                  </View>
+                ) : null}
+              </View>
+              <Text
+                style={[s.label, { color: isFocused ? accent.main : inactiveColor }]}
+                numberOfLines={1}
+              >
+                {label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
     </View>
   );
 }
 
-const ICON_ROW_H = 28;
+const PILL_H = 34;
 const LABEL_H = 14;
-const DOT_H = 6;
 
 const s = StyleSheet.create({
+  // Прозрачная обёртка несёт safe-area отступ снизу и боковые поля,
+  // чтобы бар «парил» над контентом.
+  wrap: {
+    paddingHorizontal: 12,
+    paddingTop: 6,
+    backgroundColor: 'transparent',
+  },
   bar: {
     flexDirection: 'row',
-    alignItems: 'flex-start',     // grid is computed top-down inside each cell
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
     paddingTop: 8,
-    borderTopWidth: 1,
-    // Background, border colour, paddingBottom set inline (theme + insets).
+    paddingBottom: 6,
+    borderRadius: 26,
+    borderWidth: 1,
+    // Тень-подъём всего бара (graphite premium).
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 12,
   },
   cell: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'flex-start',
     paddingHorizontal: 2,
-    minHeight: ICON_ROW_H + LABEL_H + DOT_H + 4, // shared baseline
+    minHeight: PILL_H + LABEL_H + 4,
   },
-  iconRow: {
-    height: ICON_ROW_H,
+  // «Таблетка» под иконкой — фон+неоновая тень появляются только у активного.
+  pill: {
+    height: PILL_H,
+    minWidth: 52,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: 'row',
+    paddingHorizontal: 14,
+    shadowOpacity: 0.55,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 6,
   },
-  icon: { fontSize: 22, lineHeight: 26 },
   label: {
     height: LABEL_H,
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 0.2,
-    marginTop: 2,
+    marginTop: 3,
     textAlign: 'center',
     includeFontPadding: false,
   },
-  dotSlot: {
-    height: DOT_H,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 2,
-  },
-  activeDot: { width: 4, height: 4, borderRadius: 2 },
-  publishOverlay: {
-    position: 'absolute',
-    top: -22,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    zIndex: 2,
-  },
+  // «+» клиента — приподнят над баром, круглый, с неоновым свечением акцента.
   publishBtn: {
-    width: 52, height: 52, borderRadius: 26,
+    width: 50, height: 50, borderRadius: 25,
+    marginTop: -16,
     alignItems: 'center', justifyContent: 'center',
-    shadowOpacity: 0.4, shadowRadius: 14, shadowOffset: { width: 0, height: 4 },
-    elevation: 8,
+    shadowOpacity: 0.55, shadowRadius: 16, shadowOffset: { width: 0, height: 4 },
+    elevation: 10,
   },
-  publishPlus: { color: '#0A0A0A', fontSize: 28, fontWeight: '900', lineHeight: 30 },
+  publishLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+    marginTop: 4,
+    textAlign: 'center',
+    includeFontPadding: false,
+  },
   iconBadge: {
     position: 'absolute',
-    top: -2, right: -12,
+    top: -4, right: 4,
     minWidth: 18, height: 18, borderRadius: 9,
     paddingHorizontal: 4,
     alignItems: 'center', justifyContent: 'center',

@@ -35,6 +35,10 @@ class MetricsMiddleware(BaseHTTPMiddleware):
             key = "reviews"
         elif path.startswith("/api/v1/push"):
             key = "push"
+        elif path.startswith("/api/v1/borders/scoreboard"):
+            key = "borders_scoreboard"
+        elif path.startswith("/api/v1/borders/bookings"):
+            key = "borders_bookings"
         elif path.startswith("/api/v1/borders"):
             key = "borders"
         elif path.startswith("/api/v1/favorites"):
@@ -98,6 +102,37 @@ def prometheus_metrics():
         lines.append(f'urtruck_reviews_total {reviews}')
         lines.append(f'urtruck_blacklist_active {blacklist}')
     except Exception:
+        pass
+
+    # CGR metrics (раздел 8.1 чеклиста). Все 3 счётчика + 1 gauge.
+    try:
+        from cgr import scoreboard_service as cgr_sb
+        from cgr import booking_service as cgr_bs
+        from cgr import blocklist_service as cgr_bl
+        from database import cgr_dal
+
+        sb_m = cgr_sb.metrics()
+        bs_m = cgr_bs.metrics()
+        bl_m = cgr_bl.metrics()
+
+        lines.append("# HELP cgr_scoreboard_fetch_total CGR scoreboard fetches by outcome")
+        lines.append("# TYPE cgr_scoreboard_fetch_total counter")
+        lines.append(f'cgr_scoreboard_fetch_total{{status="success"}} {sb_m["success"]}')
+        lines.append(f'cgr_scoreboard_fetch_total{{status="error"}} {sb_m["error"]}')
+
+        lines.append("# HELP cgr_booking_poll_total Total CGR booking polls")
+        lines.append("# TYPE cgr_booking_poll_total counter")
+        lines.append(f'cgr_booking_poll_total {bs_m["polls"]}')
+
+        lines.append("# HELP cgr_blocklist_matches_total Pending-review matches in CGR blocklist")
+        lines.append("# TYPE cgr_blocklist_matches_total counter")
+        lines.append(f'cgr_blocklist_matches_total {bl_m["matches"]}')
+
+        lines.append("# HELP cgr_blocklist_size Number of entries cached in cgr_blocklist")
+        lines.append("# TYPE cgr_blocklist_size gauge")
+        lines.append(f"cgr_blocklist_size {cgr_dal.get_blocklist_count()}")
+    except Exception:
+        # CGR ещё не подключён или БД не готова — не валим /metrics
         pass
 
     return Response(content="\n".join(lines) + "\n", media_type="text/plain; charset=utf-8")

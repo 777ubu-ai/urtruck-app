@@ -358,7 +358,77 @@ async def upload_selfie(
     }
 
 
+# ---------- Личное фото (Personal Info, шаг 1) ----------
+@reg_router.post("/photo")
+async def upload_personal_photo(
+    file: UploadFile = File(...),
+    driver_id: str = Depends(get_current_driver),
+):
+    """Личное фото водителя из IdentityStep. Сохраняем файл в storage
+    (local/supabase/s3), в БД пишем ТОЛЬКО ключ/URL (не raw base64). Это
+    портрет профиля — liveness/face здесь НЕ проверяем (биометрия — отдельный
+    шаг /selfie). raw-картинку и ИИН не логируем; возвращаем только публичный
+    ключ файла (не приватный signed URL)."""
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Пустой файл")
+    photo_url = storage.save_image(data, "personal_photos")
+    reg_dal.update_driver(driver_id, {"personal_photo_url": photo_url})
+    return {"personal_photo_key": photo_url}
+
+
 # ---------- ЭТАП 3: Документы (права + техпаспорт) ----------
+@reg_router.post("/license-selfie")
+async def upload_license_selfie(
+    file: UploadFile = File(...),
+    driver_id: str = Depends(get_current_driver),
+):
+    """Селфи с водительскими правами в руках — антифрод-артефакт для модерации.
+    Сохраняем файл в storage, в БД пишем ТОЛЬКО ключ/URL (не raw base64).
+    Liveness/face здесь НЕ проверяем (это не биометрия-гейт). raw/ИИН не
+    логируем; возвращаем публичный ключ файла (не приватный signed URL)."""
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Пустой файл")
+    url = storage.save_image(data, "license_selfies")
+    reg_dal.update_driver(driver_id, {"license_selfie_url": url})
+    return {"license_selfie_key": url}
+
+
+# ---------- ЭТАП 6: Фото авто (снаружи) + салона/кабины ----------
+@reg_router.post("/vehicle-photo")
+async def upload_vehicle_photo(
+    file: UploadFile = File(...),
+    driver_id: str = Depends(get_current_driver),
+):
+    """Фото авто снаружи. Store-only: файл в storage, в БД ТОЛЬКО ключ
+    vehicle_photo_url (не raw base64). Отдельно от legacy /vehicle (там
+    plate-dedup 409). raw/ИИН не логируем; возвращаем публичный ключ файла
+    (не приватный signed URL)."""
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Пустой файл")
+    url = storage.save_image(data, "vehicle_photos")
+    reg_dal.update_driver(driver_id, {"vehicle_photo_url": url})
+    return {"vehicle_photo_key": url}
+
+
+@reg_router.post("/cabin-photo")
+async def upload_cabin_photo(
+    file: UploadFile = File(...),
+    driver_id: str = Depends(get_current_driver),
+):
+    """Фото салона/кабины. Store-only: файл в storage, в БД ТОЛЬКО ключ
+    cabin_photo_url (не raw base64). raw/ИИН не логируем; возвращаем публичный
+    ключ файла."""
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Пустой файл")
+    url = storage.save_image(data, "cabin_photos")
+    reg_dal.update_driver(driver_id, {"cabin_photo_url": url})
+    return {"cabin_photo_key": url}
+
+
 @reg_router.post("/documents/license")
 async def upload_license(
     file: UploadFile = File(...),
@@ -375,6 +445,7 @@ async def upload_license(
     license_data = {
         "license_number": lic.get("license_number"),
         "categories": lic.get("categories", []),
+        "has_c_ce": lic.get("has_c_ce", False),
         "issue_date": lic.get("issue_date"),
         "expiry_date": lic.get("expiry_date"),
         "birth_date": lic.get("birth_date"),
@@ -417,7 +488,14 @@ async def upload_license(
     return {
         "verified": len(categories) > 0,
         "categories": license_data["categories"],
+        "has_c_ce": license_data["has_c_ce"],
         "experience_years": license_data["experience_years"],
+        # PR-V4: отдаём распознанные даты/номер, чтобы клиент сохранил их в
+        # draft (license_issue_date / license_expiry участвуют в submit-скоринге;
+        # без них водитель уходит в red/manual_review). raw_text НЕ отдаём.
+        "issue_date": license_data["issue_date"],
+        "expiry_date": license_data["expiry_date"],
+        "license_number": license_data["license_number"],
         "face_match": face_match_result,
         "manual_review": manual_review,
     }
@@ -440,6 +518,7 @@ async def upload_passport(
         "vin": data.get("vin"),
         "year": data.get("year"),
         "brand": data.get("brand"),
+        "model": data.get("model"),
         "confidence": data.get("confidence", 0),
     }
 
