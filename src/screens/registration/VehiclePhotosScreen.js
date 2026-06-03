@@ -24,6 +24,7 @@ import { useI18n } from '../../utils/useI18n';
 import { useToast } from '../../components/Toast';
 import { regAPI } from '../../utils/registration';
 import RegistrationCloseModal from '../../components/RegistrationCloseModal';
+import RegistrationHelpSheet from '../../components/RegistrationHelpSheet';
 import { brand, radius, typography } from '../../theme/brandV2';
 
 const TOTAL_STEPS = 5;
@@ -37,6 +38,7 @@ export default function VehiclePhotosScreen({ navigation, route }) {
   const [cabinPhoto, setCabinPhoto] = useState({ uri: null, status: 'idle', key: null });
   const [errors, setErrors] = useState({});
   const [closeVisible, setCloseVisible] = useState(false);
+  const [helpVisible, setHelpVisible] = useState(false);
 
   // Камера приоритетна (снимок ТС); если доступ к камере не выдан — галерея.
   const pickCameraOrGallery = async () => {
@@ -155,6 +157,9 @@ export default function VehiclePhotosScreen({ navigation, route }) {
           <View style={[s.progressFill, { width: `${progress * 100}%` }]} />
         </View>
         <Text style={s.stepLabel}>{t('vphotos_step')}</Text>
+        <Pressable onPress={() => setHelpVisible(true)} style={s.backBtn} testID="vp-help" accessibilityLabel={t('reg_help_open')}>
+          <Feather name="help-circle" size={22} color={brand.textSecondary} />
+        </Pressable>
         <Pressable onPress={() => setCloseVisible(true)} style={s.backBtn} testID="vp-close">
           <Feather name="x" size={22} color={brand.textPrimary} />
         </Pressable>
@@ -193,6 +198,7 @@ export default function VehiclePhotosScreen({ navigation, route }) {
         onCancel={() => setCloseVisible(false)}
         onExit={() => { setCloseVisible(false); navigation.navigate('Main'); }}
       />
+      <RegistrationHelpSheet visible={helpVisible} onClose={() => setHelpVisible(false)} />
     </SafeAreaView>
   );
 }

@@ -24,6 +24,7 @@ import { useI18n } from '../../utils/useI18n';
 import { useToast } from '../../components/Toast';
 import { regAPI } from '../../utils/registration';
 import RegistrationCloseModal from '../../components/RegistrationCloseModal';
+import RegistrationHelpSheet from '../../components/RegistrationHelpSheet';
 import { brand, radius, typography } from '../../theme/brandV2';
 
 const TOTAL_STEPS = 5;
@@ -62,6 +63,7 @@ export default function VehicleDocsScreen({ navigation }) {
   const [licenseExpiry, setLicenseExpiry] = useState(''); // срок действия (required)
   const [errors, setErrors] = useState({});
   const [closeVisible, setCloseVisible] = useState(false);
+  const [helpVisible, setHelpVisible] = useState(false);
 
   // ТЗ блок 10: при закрытии — дописать несохранённые даты прав в draft (фото
   // уже persist server-side). Бросаем при !ok, чтобы модал не вышел молча.
@@ -257,6 +259,9 @@ export default function VehicleDocsScreen({ navigation }) {
           <View style={[s.progressFill, { width: `${progress * 100}%` }]} />
         </View>
         <Text style={s.stepLabel}>{t('vdocs_step')}</Text>
+        <Pressable onPress={() => setHelpVisible(true)} style={s.backBtn} testID="vd-help" accessibilityLabel={t('reg_help_open')}>
+          <Feather name="help-circle" size={22} color={brand.textSecondary} />
+        </Pressable>
         <Pressable onPress={() => setCloseVisible(true)} style={s.backBtn} testID="vd-close">
           <Feather name="x" size={22} color={brand.textPrimary} />
         </Pressable>
@@ -342,6 +347,7 @@ export default function VehicleDocsScreen({ navigation }) {
         onExit={() => { setCloseVisible(false); navigation.navigate('Main'); }}
         saveDraft={saveDraftOnClose}
       />
+      <RegistrationHelpSheet visible={helpVisible} onClose={() => setHelpVisible(false)} />
     </SafeAreaView>
   );
 }

@@ -26,6 +26,7 @@ import { useToast } from '../../components/Toast';
 import { regAPI } from '../../utils/registration';
 import RegistrationCloseModal from '../../components/RegistrationCloseModal';
 import RegistrationSubmittedScreen from '../../components/RegistrationSubmittedScreen';
+import RegistrationHelpSheet from '../../components/RegistrationHelpSheet';
 import {
   VEHICLE_TYPES,
   BODY_TYPES,
@@ -92,6 +93,7 @@ export default function TruckParamsScreen({ navigation, route }) {
   const [saving, setSaving] = useState(false);
   const [closeVisible, setCloseVisible] = useState(false);
   const [submittedVisible, setSubmittedVisible] = useState(false); // ТЗ блок 12/13
+  const [helpVisible, setHelpVisible] = useState(false);
 
   const showTrailer = useMemo(
     () => TYPES_WITH_TRAILER.includes(vehicleType),
@@ -213,6 +215,9 @@ export default function TruckParamsScreen({ navigation, route }) {
           <View style={[s.progressFill, { width: `${progress * 100}%` }]} />
         </View>
         <Text style={s.stepLabel}>{t('truck_params_step')}</Text>
+        <Pressable onPress={() => setHelpVisible(true)} style={s.backBtn} testID="tp-help" accessibilityLabel={t('reg_help_open')}>
+          <Feather name="help-circle" size={22} color={brand.textSecondary} />
+        </Pressable>
         <Pressable onPress={() => setCloseVisible(true)} style={s.backBtn} testID="tp-close">
           <Feather name="x" size={22} color={brand.textPrimary} />
         </Pressable>
@@ -425,6 +430,7 @@ export default function TruckParamsScreen({ navigation, route }) {
         onPrimary={() => { setSubmittedVisible(false); navigation.navigate('Main'); }}
         onStatus={() => { setSubmittedVisible(false); navigation.navigate('Security'); }}
       />
+      <RegistrationHelpSheet visible={helpVisible} onClose={() => setHelpVisible(false)} />
     </SafeAreaView>
   );
 }
