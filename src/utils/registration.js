@@ -1,4 +1,5 @@
 // Client for /api/v1/register/*
+import { Platform } from 'react-native';
 import { storage } from './storage';
 import { compressImage } from './imageCompress';
 import { getLanguage } from './i18n';
@@ -24,6 +25,21 @@ function normalizeDetail(d, fallback) {
     try { return JSON.stringify(d); } catch { return fallback; }
   }
   return String(d);
+}
+
+// P0 fix (TestFlight): на нативном iOS/Android НЕЛЬЗЯ слать Blob,
+// полученный через fetch(file://uri).blob() — RN отдаёт пустой/битый
+// файл и backend отвечает 4xx («Не удалось загрузить фото»). Правильный
+// RN-контракт multipart — объект { uri, name, type }. На web (PWA) Blob
+// работает корректно, поэтому ветвимся по Platform. Это и было причиной
+// падения загрузки на устройстве при рабочем web-смоке.
+async function appendImageFile(form, uri, name) {
+  if (Platform.OS === 'web') {
+    const blob = await fetch(uri).then((r) => r.blob());
+    form.append('file', blob, name);
+  } else {
+    form.append('file', { uri, name, type: 'image/jpeg' });
+  }
 }
 
 export const regAPI = {
@@ -207,10 +223,9 @@ export const regAPI = {
     const token = await this.getToken();
     onProgress?.('compressing');
     const compressedUri = await compressImage(uri, { preset: 'selfie' });
-    const blob = await fetch(compressedUri).then(r => r.blob());
     onProgress?.('uploading');
     const form = new FormData();
-    form.append('file', blob, 'selfie.jpg');
+    await appendImageFile(form, compressedUri, 'selfie.jpg');
     form.append('iin', iin);
     form.append('full_name', fullName);
     const r = await fetch(`${BASE}/selfie`, {
@@ -227,10 +242,9 @@ export const regAPI = {
     const token = await this.getToken();
     onProgress?.('compressing');
     const compressedUri = await compressImage(uri, { preset: 'selfie' });
-    const blob = await fetch(compressedUri).then(r => r.blob());
     onProgress?.('uploading');
     const form = new FormData();
-    form.append('file', blob, 'personal.jpg');
+    await appendImageFile(form, compressedUri, 'personal.jpg');
     const r = await fetch(`${BASE}/photo`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}` },
@@ -247,10 +261,9 @@ export const regAPI = {
     const token = await this.getToken();
     onProgress?.('compressing');
     const compressedUri = await compressImage(uri, { preset: 'document' });
-    const blob = await fetch(compressedUri).then(r => r.blob());
     onProgress?.('uploading');
     const form = new FormData();
-    form.append('file', blob, 'license_selfie.jpg');
+    await appendImageFile(form, compressedUri, 'license_selfie.jpg');
     const r = await fetch(`${BASE}/license-selfie`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}` },
@@ -268,10 +281,9 @@ export const regAPI = {
     const token = await this.getToken();
     onProgress?.('compressing');
     const compressedUri = await compressImage(uri, { preset: 'truck' });
-    const blob = await fetch(compressedUri).then(r => r.blob());
     onProgress?.('uploading');
     const form = new FormData();
-    form.append('file', blob, 'vehicle_photo.jpg');
+    await appendImageFile(form, compressedUri, 'vehicle_photo.jpg');
     const r = await fetch(`${BASE}/vehicle-photo`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}` },
@@ -287,10 +299,9 @@ export const regAPI = {
     const token = await this.getToken();
     onProgress?.('compressing');
     const compressedUri = await compressImage(uri, { preset: 'truck' });
-    const blob = await fetch(compressedUri).then(r => r.blob());
     onProgress?.('uploading');
     const form = new FormData();
-    form.append('file', blob, 'cabin_photo.jpg');
+    await appendImageFile(form, compressedUri, 'cabin_photo.jpg');
     const r = await fetch(`${BASE}/cabin-photo`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}` },
@@ -305,10 +316,9 @@ export const regAPI = {
     const token = await this.getToken();
     onProgress?.('compressing');
     const compressedUri = await compressImage(uri, { preset: 'document' });
-    const blob = await fetch(compressedUri).then(r => r.blob());
     onProgress?.('uploading');
     const form = new FormData();
-    form.append('file', blob, 'license.jpg');
+    await appendImageFile(form, compressedUri, 'license.jpg');
     form.append('lang', getLanguage());
     const r = await fetch(`${BASE}/documents/license`, {
       method: 'POST',
@@ -326,10 +336,9 @@ export const regAPI = {
     const token = await this.getToken();
     onProgress?.('compressing');
     const compressedUri = await compressImage(uri, { preset: 'document' });
-    const blob = await fetch(compressedUri).then(r => r.blob());
     onProgress?.('uploading');
     const form = new FormData();
-    form.append('file', blob, 'passport.jpg');
+    await appendImageFile(form, compressedUri, 'passport.jpg');
     form.append('lang', getLanguage());
     const r = await fetch(`${BASE}/documents/passport`, {
       method: 'POST',
@@ -355,8 +364,7 @@ export const regAPI = {
       onProgress?.('compressing');
       // Фото грузовика — пресет 'truck' (1280px / q0.75 / ≤600KB, ТЗ §1).
       const compressedUri = await compressImage(photoUri, { preset: 'truck' });
-      const blob = await fetch(compressedUri).then(r => r.blob());
-      form.append('photo', blob, 'vehicle.jpg');
+        form.append('photo', blob, 'vehicle.jpg');
     }
     onProgress?.('uploading');
     const r = await fetch(`${BASE}/vehicle`, {

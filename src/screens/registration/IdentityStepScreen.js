@@ -29,6 +29,7 @@ import { useToast } from '../../components/Toast';
 import { regAPI } from '../../utils/registration';
 import RegistrationCloseModal from '../../components/RegistrationCloseModal';
 import RegistrationHelpSheet from '../../components/RegistrationHelpSheet';
+import DateOfBirthSheet from '../../components/DateOfBirthSheet';
 import { brand, radius, typography } from '../../theme/brandV2';
 
 const TOTAL_STEPS = 5;
@@ -57,6 +58,7 @@ export default function IdentityStepScreen({ navigation }) {
   const [saving, setSaving] = useState(false);
   const [closeVisible, setCloseVisible] = useState(false);
   const [helpVisible, setHelpVisible] = useState(false);
+  const [dobSheetVisible, setDobSheetVisible] = useState(false);
 
   // ТЗ блок 10: при закрытии — сохранить несохранённые поля экрана в draft.
   // Бросаем при !ok, чтобы модал не вышел молча. Фото уже persist server-side.
@@ -201,6 +203,7 @@ export default function IdentityStepScreen({ navigation }) {
 
           {/* Личная фотография (обязательно) */}
           <Text style={s.label}>{t('identity_photo_label')}</Text>
+          <Text style={s.photoHint}>{t('identity_photo_hint')}</Text>
           <Pressable onPress={pickPhoto} style={s.photoSlot} testID="identity-photo">
             {photoUri ? (
               <Image source={{ uri: photoUri }} style={s.photoThumb} resizeMode="cover" />
@@ -239,18 +242,18 @@ export default function IdentityStepScreen({ navigation }) {
           />
           {errors.lastName ? <Text style={s.err}>{errors.lastName}</Text> : null}
 
-          {/* Дата рождения */}
+          {/* Дата рождения — bottom-sheet picker (День/Месяц/Год), не голый ввод */}
           <Text style={s.label}>{t('identity_birth_label')}</Text>
-          <TextInput
-            value={birthDate}
-            onChangeText={(v) => { setBirthDate(maskBirth(v)); if (errors.birth) setErrors({ ...errors, birth: null }); }}
-            keyboardType="numeric"
-            placeholder={t('identity_birth_ph')}
-            placeholderTextColor={brand.textTertiary}
-            maxLength={10}
-            style={[s.input, errors.birth && s.inputErr]}
+          <Pressable
+            onPress={() => setDobSheetVisible(true)}
+            style={[s.input, s.dobField, errors.birth && s.inputErr]}
             testID="identity-birth"
-          />
+          >
+            <Text style={birthDate ? s.dobValue : s.dobPlaceholder}>
+              {birthDate || t('identity_birth_ph')}
+            </Text>
+            <Feather name="calendar" size={18} color={brand.textSecondary} />
+          </Pressable>
           {errors.birth ? <Text style={s.err}>{errors.birth}</Text> : null}
 
           {/* ИИН */}
@@ -289,6 +292,12 @@ export default function IdentityStepScreen({ navigation }) {
         saveDraft={saveDraftOnClose}
       />
       <RegistrationHelpSheet visible={helpVisible} onClose={() => setHelpVisible(false)} />
+      <DateOfBirthSheet
+        visible={dobSheetVisible}
+        initial={birthDate}
+        onCancel={() => setDobSheetVisible(false)}
+        onConfirm={(v) => { setBirthDate(v); setDobSheetVisible(false); if (errors.birth) setErrors({ ...errors, birth: null }); }}
+      />
     </SafeAreaView>
   );
 }
@@ -304,11 +313,15 @@ const s = StyleSheet.create({
   title: { ...typography.h1, color: brand.textPrimary, marginBottom: 4 },
   subtitle: { ...typography.bodySmall, color: brand.textSecondary, marginBottom: 16 },
   label: { ...typography.bodySmall, fontWeight: '700', color: brand.textPrimary, marginTop: 18, marginBottom: 8 },
-  photoSlot: { height: 160, borderRadius: radius.md, borderWidth: 1, borderStyle: 'dashed', borderColor: brand.border, alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: brand.surfaceMuted, overflow: 'hidden' },
+  photoHint: { ...typography.caption, color: brand.textSecondary, marginBottom: 8, lineHeight: 16 },
+  photoSlot: { alignSelf: 'flex-start', width: 120, height: 120, borderRadius: radius.md, borderWidth: 1, borderStyle: 'dashed', borderColor: brand.border, alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: brand.surfaceMuted, overflow: 'hidden' },
   photoThumb: { width: '100%', height: '100%' },
-  photoText: { ...typography.bodySmall, color: brand.textSecondary },
+  photoText: { ...typography.caption, color: brand.textSecondary },
   input: { height: 52, borderRadius: radius.md, borderWidth: 1, borderColor: brand.border, backgroundColor: brand.surface, paddingHorizontal: 16, color: brand.textPrimary, ...typography.body },
   inputErr: { borderColor: brand.error },
+  dobField: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  dobValue: { ...typography.body, color: brand.textPrimary },
+  dobPlaceholder: { ...typography.body, color: brand.textTertiary },
   err: { ...typography.caption, color: brand.error, marginTop: 6 },
   ctaWrap: { paddingHorizontal: 20, paddingBottom: 16, paddingTop: 8 },
   cta: { height: 56, borderRadius: radius.lg, backgroundColor: brand.primary, alignItems: 'center', justifyContent: 'center' },
