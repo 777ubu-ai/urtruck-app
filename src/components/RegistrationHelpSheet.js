@@ -82,7 +82,10 @@ const s = StyleSheet.create({
   },
   handle: { alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: brand.border, marginBottom: 14 },
   title: { ...typography.h1, fontSize: 20, lineHeight: 26, color: brand.textPrimary, marginBottom: 12 },
-  scroll: { maxHeight: 380 },
+  // P0 fix: ScrollView ужимается (flexShrink), а кнопки поддержки/закрытия
+  // остаются ниже и не перекрывают текст (раньше fixed maxHeight 380 на
+  // маленьком экране выталкивал «Заявка не прошла проверку» под кнопку).
+  scroll: { flexGrow: 0, flexShrink: 1 },
   scrollContent: { paddingBottom: 12 },
   qa: { paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: brand.border },
   q: { ...typography.bodyLarge, fontWeight: '800', color: brand.textPrimary, marginBottom: 4 },
