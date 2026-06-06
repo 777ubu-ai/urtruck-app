@@ -110,8 +110,12 @@ export default function ProfileScreen({ navigation, route }) {
   // PR-C2 (WeChat redesign): grouped list — 4 items в одной карточке
   // с тонкими separators между ними. Иконки — Feather outline (унифицированный
   // muted gray), вместо разноцветных emoji. Это premium WeChat-style вид.
+  // IA cleanup: «Мой статус» (рейтинг/документы/доверие) принадлежит Профилю,
+  // а не вкладке «Очередь». Driver-only — у клиента нет driver-score.
+  // Электронная очередь / CarGoRuqsat убраны из Профиля: они принадлежат
+  // вкладке «Очередь» (единый Queue hub).
   const menuItems = [
-    { icon: 'truck',         label: t('profile_cargoruqsat_title'), sub: t('profile_cargoruqsat_subtitle'), screen: 'CargoRuqsatInfo' },
+    ...(isDriver ? [{ icon: 'shield', label: t('security_my_status'), sub: t('my_status_subtitle'), screen: 'Security' }] : []),
     { icon: 'message-circle',label: t('chatsSection'),  screen: 'ChatsList' },
     { icon: 'star',          label: t('myReviews'),     screen: 'Reviews' },
   ];
