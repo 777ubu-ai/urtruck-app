@@ -68,8 +68,12 @@ export default function QueueScreen({ navigation }) {
 
   // Не одобрен → locked/promo состояние очереди (вместо полного функционала).
   if (verState !== 'approved') {
+    // IA cleanup: Queue-гейт больше НЕ ведёт в driver-score (Security).
+    // pending — статус документов показывается на месте (без кнопки в score);
+    // unverified/rejected → документная проверка (Identity). Везде вторичная
+    // ссылка ведёт в CarGoRuqsat hub (CargoRuqsatInfo), а не в «Мой статус».
     const gate = verState === 'review'
-      ? { title: t('queue_gate_pending_title'), text: t('queue_gate_pending_text'), btn: t('queue_gate_pending_btn'), go: 'Security' }
+      ? { title: t('queue_gate_pending_title'), text: t('queue_gate_pending_text'), btn: null, go: null }
       : verState === 'rejected'
         ? { title: t('queue_gate_rejected_title'), text: t('queue_gate_rejected_text'), btn: t('queue_gate_rejected_btn'), go: 'Identity' }
         : { title: t('queue_gate_locked_title'), text: t('queue_gate_locked_text'), btn: t('queue_gate_locked_btn'), go: 'Identity' };
@@ -89,18 +93,18 @@ export default function QueueScreen({ navigation }) {
             <Text style={s.gateIcon}>🔒</Text>
             <Text style={[s.gateTitle, { color: theme.text }]}>{gate.title}</Text>
             <Text style={[s.gateText, { color: theme.textMuted }]}>{gate.text}</Text>
-            <TouchableOpacity
-              style={s.gateBtn}
-              onPress={() => navigation.navigate(gate.go)}
-              testID="queue-gate-cta"
-            >
-              <Text style={s.gateBtnText}>{gate.btn}</Text>
-            </TouchableOpacity>
-            {verState === 'unverified' ? (
-              <TouchableOpacity style={s.gateSecondary} onPress={() => navigation.navigate('Security')}>
-                <Text style={[s.gateSecondaryText, { color: theme.textMuted }]}>{t('queue_gate_more')}</Text>
+            {gate.btn && gate.go ? (
+              <TouchableOpacity
+                style={s.gateBtn}
+                onPress={() => navigation.navigate(gate.go)}
+                testID="queue-gate-cta"
+              >
+                <Text style={s.gateBtnText}>{gate.btn}</Text>
               </TouchableOpacity>
             ) : null}
+            <TouchableOpacity style={s.gateSecondary} onPress={() => navigation.navigate('CargoRuqsatInfo')} testID="queue-cgr-link">
+              <Text style={[s.gateSecondaryText, { color: theme.textMuted }]}>{t('queue_cgr_cta')}</Text>
+            </TouchableOpacity>
           </View>
         )}
       </SafeAreaView>
@@ -116,6 +120,13 @@ export default function QueueScreen({ navigation }) {
         <Text style={[s.headerTitle, { color: theme.text }]}>{t('border_queues_title')}</Text>
         <View style={{ width: 44 }} />
       </View>
+
+      {/* IA: Queue — единый hub электронной очереди. CarGoRuqsat (портал,
+          привязка брони, мои брони) живёт в CargoRuqsatInfo; здесь — вход. */}
+      <TouchableOpacity style={s.cgrLink} onPress={() => navigation.navigate('CargoRuqsatInfo')} testID="queue-cgr-link-approved">
+        <Text style={s.cgrLinkText}>🅿️ {t('queue_cgr_cta')}</Text>
+        <Text style={[s.cgrLinkChevron, { color: theme.textMuted }]}>›</Text>
+      </TouchableOpacity>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filters}>
         {FILTERS.map(f => (
@@ -211,4 +222,7 @@ const s = StyleSheet.create({
   gateBtnText: { color: '#FFF', fontSize: 16, fontWeight: '800' },
   gateSecondary: { marginTop: 12, paddingVertical: 8 },
   gateSecondaryText: { fontSize: 13, fontWeight: '600' },
+  cgrLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginHorizontal: 16, marginBottom: 8, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: '#1A5C3C', backgroundColor: 'rgba(26,92,60,0.08)' },
+  cgrLinkText: { fontSize: 14, fontWeight: '800', color: '#1A5C3C' },
+  cgrLinkChevron: { fontSize: 20, fontWeight: '300' },
 });
