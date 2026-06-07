@@ -114,9 +114,10 @@ export default function ProfileScreen({ navigation, route }) {
   // а не вкладке «Очередь». Driver-only — у клиента нет driver-score.
   // Электронная очередь / CarGoRuqsat убраны из Профиля: они принадлежат
   // вкладке «Очередь» (единый Queue hub).
+  // IA Phase 2: Chats — отдельная вкладка/путь (через сделку), НЕ дублируется
+  // generic-рядом в Профиле. «Update app» убран из Профиля (см. ниже).
   const menuItems = [
     ...(isDriver ? [{ icon: 'shield', label: t('security_my_status'), sub: t('my_status_subtitle'), screen: 'Security' }] : []),
-    { icon: 'message-circle',label: t('chatsSection'),  screen: 'ChatsList' },
     { icon: 'star',          label: t('myReviews'),     screen: 'Reviews' },
   ];
 
@@ -340,25 +341,32 @@ export default function ProfileScreen({ navigation, route }) {
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity
-          style={[s.updateBtn, { borderColor: '#4F46E5' }]}
-          onPress={async () => {
-            try {
-              if (typeof caches !== 'undefined') {
-                const ks = await caches.keys();
-                await Promise.all(ks.map(k => caches.delete(k)));
-              }
-              if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
-                const regs = await navigator.serviceWorker.getRegistrations();
-                await Promise.all(regs.map(r => r.unregister()));
-              }
-              if (typeof window !== 'undefined') window.location.reload(true);
-            } catch {}
-          }}
-        >
-          <Text style={s.updateBtnText}>🔄 {t('profile_update_app')}</Text>
-          <Text style={{ color: theme.textMuted, fontSize: 10, marginTop: 2 }}>v1.0.50 · 17.04.2026</Text>
-        </TouchableOpacity>
+        {/* IA Phase 2: убрана большая CTA «Обновить приложение» — на native
+            это был no-op (нет Expo Updates / updateAvailable). Оставлена
+            пассивная версия. На web версия-текст остаётся тап-таргетом для
+            сброса PWA-кеша (реальная функция web), без громкой кнопки. */}
+        {Platform.OS === 'web' ? (
+          <TouchableOpacity
+            style={s.versionRow}
+            onPress={async () => {
+              try {
+                if (typeof caches !== 'undefined') {
+                  const ks = await caches.keys();
+                  await Promise.all(ks.map(k => caches.delete(k)));
+                }
+                if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
+                  const regs = await navigator.serviceWorker.getRegistrations();
+                  await Promise.all(regs.map(r => r.unregister()));
+                }
+                if (typeof window !== 'undefined') window.location.reload(true);
+              } catch {}
+            }}
+          >
+            <Text style={[s.versionText, { color: theme.textMuted }]}>v1.0.50 · 17.04.2026</Text>
+          </TouchableOpacity>
+        ) : (
+          <Text style={[s.versionRow, s.versionText, { color: theme.textMuted }]}>v1.0.50 · 17.04.2026</Text>
+        )}
 
         {/* RC2 hotfix (P1-1): "Сменить роль" скрыт из production UX —
             фича смены роли налету ещё не покрыта профилем (см. PLAN
@@ -498,8 +506,8 @@ const s = StyleSheet.create({
   pushBtn: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, borderRadius: 10, borderWidth: 1, marginTop: 12 },
   configureBtn: { fontSize: 12, fontWeight: '700' },
 
-  updateBtn: { borderRadius: 14, paddingVertical: 14, alignItems: 'center', borderWidth: 1.5, marginBottom: 10 },
-  updateBtnText: { color: '#4F46E5', fontSize: 14, fontWeight: '700' },
+  versionRow: { alignItems: 'center', paddingVertical: 10, marginBottom: 6 },
+  versionText: { fontSize: 11, fontWeight: '500' },
   changeRoleBtn: { backgroundColor: '#EF444415', borderRadius: 14, paddingVertical: 16, alignItems: 'center', borderWidth: 1, borderColor: '#EF444425' },
   changeRoleText: { color: '#EF4444', fontSize: 15, fontWeight: '700' },
   logoutBtn: { paddingVertical: 16, alignItems: 'center', marginTop: 8 },

@@ -10,7 +10,9 @@ import { regAPI } from '../utils/registration';
 const BASE = `${API_BASE}/borders`;
 
 const STATUS_COLORS = { green: '#22C55E', yellow: '#F59E0B', red: '#EF4444' };
-const STATUS_LABELS = { green: 'Свободно', yellow: 'Умеренно', red: 'Загружено' };
+// Метки статуса локализованы через t() в рендере (statusLabel) — раньше были
+// хардкод-RU и протекали в ZH/EN/KZ.
+const STATUS_KEY = { green: 'queue_status_free', yellow: 'queue_status_moderate', red: 'queue_status_busy' };
 
 export default function QueueScreen({ navigation }) {
   const v1 = useV1Colors();
@@ -59,11 +61,11 @@ export default function QueueScreen({ navigation }) {
   useEffect(() => { fetchBorders(); }, [filter]);
 
   const FILTERS = [
-    { k: '', l: 'Все' },
-    { k: 'CN', l: '🇨🇳 Китай' },
-    { k: 'RU', l: '🇷🇺 Россия' },
-    { k: 'UZ', l: '🇺🇿 Узбекистан' },
-    { k: 'KG', l: '🇰🇬 Кыргызстан' },
+    { k: '', l: t('filter_all') },
+    { k: 'CN', l: `🇨🇳 ${t('queue_country_cn')}` },
+    { k: 'RU', l: `🇷🇺 ${t('queue_country_ru')}` },
+    { k: 'UZ', l: `🇺🇿 ${t('queue_country_uz')}` },
+    { k: 'KG', l: `🇰🇬 ${t('queue_country_kg')}` },
   ];
 
   // Не одобрен → locked/promo состояние очереди (вместо полного функционала).
@@ -157,7 +159,7 @@ export default function QueueScreen({ navigation }) {
                 </View>
                 <View style={[s.statusBadge, { backgroundColor: col + '20' }]}>
                   <View style={[s.statusDot, { backgroundColor: col }]} />
-                  <Text style={[s.statusText, { color: col }]}>{STATUS_LABELS[b.status]}</Text>
+                  <Text style={[s.statusText, { color: col }]}>{t(STATUS_KEY[b.status] || 'queue_status_moderate')}</Text>
                 </View>
               </View>
 
@@ -167,7 +169,7 @@ export default function QueueScreen({ navigation }) {
                   <Text style={[s.statLabel, { color: theme.textMuted }]}>{t('vehicles_label')}</Text>
                 </View>
                 <View style={s.stat}>
-                  <Text style={[s.statNum, { color: col }]}>{b.estimated_wait_hours}ч</Text>
+                  <Text style={[s.statNum, { color: col }]}>{b.estimated_wait_hours}{t('cargoruqsat_live_hours_short')}</Text>
                   <Text style={[s.statLabel, { color: theme.textMuted }]}>{t('waiting_label')}</Text>
                 </View>
                 <View style={s.stat}>
@@ -177,7 +179,7 @@ export default function QueueScreen({ navigation }) {
               </View>
 
               <Text style={[s.updated, { color: theme.textDim }]}>
-                Обновлено: {(b.updated_at || '').slice(11, 16)} UTC
+                {t('queue_updated')}: {(b.updated_at || '').slice(11, 16)} UTC
               </Text>
             </View>
           );
