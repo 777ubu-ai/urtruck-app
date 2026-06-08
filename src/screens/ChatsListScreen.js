@@ -143,7 +143,7 @@ export default function ChatsListScreen({ navigation, route }) {
 
   return (
     <SafeAreaView style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']} testID="deal-room-list">
-      <Text style={[s.title, { color: theme.text }]}>💬 {t('chat_title')}</Text>
+      <Text style={[s.title, { color: theme.text }]} testID="chats-header">💬 {t('chat_title')}</Text>
 
       <View style={[s.search, { backgroundColor: theme.card, borderColor: theme.border }]}>
         <Feather name="search" size={17} color={theme.textMuted} />

@@ -117,8 +117,8 @@ export default function ProfileScreen({ navigation, route }) {
   // IA Phase 2: Chats — отдельная вкладка/путь (через сделку), НЕ дублируется
   // generic-рядом в Профиле. «Update app» убран из Профиля (см. ниже).
   const menuItems = [
-    ...(isDriver ? [{ icon: 'shield', label: t('security_my_status'), sub: t('my_status_subtitle'), screen: 'Security' }] : []),
-    { icon: 'star',          label: t('myReviews'),     screen: 'Reviews' },
+    ...(isDriver ? [{ icon: 'shield', label: t('security_my_status'), sub: t('my_status_subtitle'), screen: 'Security', testID: 'profile-my-status' }] : []),
+    { icon: 'star',          label: t('myReviews'),     screen: 'Reviews', testID: 'profile-my-reviews' },
   ];
 
   // PR-C2 (driver card): canonical specs line «Тент · 20 т · 86 м³».
@@ -260,6 +260,8 @@ export default function ProfileScreen({ navigation, route }) {
                 style={[s.proCta, { backgroundColor: accent }]}
                 onPress={() => navigation.navigate('Identity')}
                 activeOpacity={0.85}
+                testID="profile-pro-cta"
+                accessibilityLabel={t('pro_become_btn')}
               >
                 <Text style={[s.proCtaText, { color: onAccent }]}>{t('pro_become_btn')}</Text>
                 <Feather name="chevron-right" size={18} color={onAccent} />
@@ -278,6 +280,8 @@ export default function ProfileScreen({ navigation, route }) {
                 style={s.menuRow}
                 onPress={() => item.screen && navigation.navigate(item.screen, { role })}
                 activeOpacity={0.6}
+                testID={item.testID}
+                accessibilityLabel={item.label}
               >
                 <View style={[s.menuIconWrap, { backgroundColor: theme.bg }]}>
                   <Feather name={item.icon} size={18} color={theme.textMuted} />
@@ -335,6 +339,8 @@ export default function ProfileScreen({ navigation, route }) {
           <TouchableOpacity
             style={[s.pushBtn, { backgroundColor: theme.bg, borderColor: theme.border }]}
             onPress={() => navigation.navigate('PushFilter', { role })}
+            testID="profile-push-filter"
+            accessibilityLabel={t('pushFilter')}
           >
             <Text style={[s.settingLabel, { color: theme.text }]}>🔔 {t('pushFilter')}</Text>
             <Text style={[s.configureBtn, { color: accent }]}>{t('configure')} →</Text>

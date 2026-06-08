@@ -1,0 +1,76 @@
+appId: host.exp.Exponent
+name: driver-tabs
+tags:
+  - smoke
+  - driver
+---
+# В Expo Go без OTP доступен только guest-режим («Смотреть грузы»).
+# По факту guest рендерит driver-табы: Грузы / Рейсы / Очередь / Чаты / Профиль.
+# Используем стабильные testID/accessibilityLabel из BottomNav + OnboardingV2.
+- launchApp
+- extendedWaitUntil:
+    visible: "UrTruck"
+    timeout: 15000
+- tapOn:
+    text: "UrTruck"
+    index: 0
+- extendedWaitUntil:
+    visible:
+      text: "Смотреть грузы|Continue"
+    timeout: 60000
+- runFlow:
+    when:
+      visible: "Continue"
+    commands:
+      - tapOn:
+          point: "50%,10%"
+      - waitForAnimationToEnd
+- runFlow:
+    when:
+      visible: "Reload"
+    commands:
+      - tapOn:
+          point: "50%,10%"
+      - waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "onb-v2-cta-guest"
+    timeout: 10000
+- takeScreenshot: 01_onboarding
+- tapOn:
+    id: "onb-v2-cta-guest"
+- extendedWaitUntil:
+    visible:
+      id: "bottom-nav-profile"
+    timeout: 30000
+- takeScreenshot: 02_after_guest
+- assertVisible:
+    id: "bottom-nav-feed"
+- assertVisible:
+    id: "bottom-nav-mywork"
+- assertVisible:
+    id: "bottom-nav-queue"
+- assertVisible:
+    id: "bottom-nav-chats"
+- assertVisible:
+    id: "bottom-nav-profile"
+- tapOn:
+    id: "bottom-nav-feed"
+- waitForAnimationToEnd
+- takeScreenshot: 03_tab_feed
+- tapOn:
+    id: "bottom-nav-mywork"
+- waitForAnimationToEnd
+- takeScreenshot: 04_tab_mywork
+- tapOn:
+    id: "bottom-nav-queue"
+- waitForAnimationToEnd
+- takeScreenshot: 05_tab_queue
+- tapOn:
+    id: "bottom-nav-chats"
+- waitForAnimationToEnd
+- takeScreenshot: 06_tab_chats
+- tapOn:
+    id: "bottom-nav-profile"
+- waitForAnimationToEnd
+- takeScreenshot: 07_tab_profile
