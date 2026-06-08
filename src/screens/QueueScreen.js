@@ -85,7 +85,7 @@ export default function QueueScreen({ navigation }) {
           <TouchableOpacity onPress={() => navigation.goBack()} style={s.back}>
             <Text style={[s.backText, { color: theme.text }]}>‹</Text>
           </TouchableOpacity>
-          <Text style={[s.headerTitle, { color: theme.text }]}>{t('border_queues_title')}</Text>
+          <Text style={[s.headerTitle, { color: theme.text }]} testID="queue-title">{t('border_queues_title')}</Text>
           <View style={{ width: 44 }} />
         </View>
         {verState === 'loading' ? (

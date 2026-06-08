@@ -1,0 +1,56 @@
+appId: host.exp.Exponent
+name: client-tabs
+tags:
+  - smoke
+  - client
+  - guest
+---
+# В Expo Go без OTP «Смотреть грузы» (guest) даёт driver-набор табов,
+# а реальный client tab-bar (Машины / Грузы / Разместить / Профиль)
+# доступен только после OTP + явного выбора роли клиент в Profile.
+# Здесь фиксируем то, что реально проверяемо стабильными селекторами.
+- launchApp
+- extendedWaitUntil:
+    visible: "UrTruck"
+    timeout: 15000
+- tapOn:
+    text: "UrTruck"
+    index: 0
+- extendedWaitUntil:
+    visible:
+      text: "Смотреть грузы|Continue"
+    timeout: 60000
+- runFlow:
+    when:
+      visible: "Continue"
+    commands:
+      - tapOn:
+          point: "50%,10%"
+      - waitForAnimationToEnd
+- runFlow:
+    when:
+      visible: "Reload"
+    commands:
+      - tapOn:
+          point: "50%,10%"
+      - waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "onb-v2-cta-guest"
+    timeout: 10000
+- takeScreenshot: 01_onboarding
+- assertVisible:
+    id: "onb-v2-cta-phone"
+- assertVisible:
+    id: "onb-v2-cta-guest"
+- tapOn:
+    id: "onb-v2-cta-guest"
+- extendedWaitUntil:
+    visible:
+      id: "bottom-nav-profile"
+    timeout: 30000
+- takeScreenshot: 02_after_guest_main
+- assertVisible:
+    id: "bottom-nav-feed"
+- assertVisible:
+    id: "bottom-nav-profile"

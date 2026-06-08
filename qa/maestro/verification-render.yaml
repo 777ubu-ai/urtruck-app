@@ -1,0 +1,71 @@
+appId: host.exp.Exponent
+name: verification-render
+tags:
+  - smoke
+  - registration
+---
+# Identity/DOB/Help — за OTP-барьером. Без реальных SMS доходим только до
+# PhoneV2Screen (phone-v2-input). Если в этой сессии Identity уже достижим
+# (например, кто-то прошёл OTP вручную), флоу попробует проверить поля.
+- launchApp
+- extendedWaitUntil:
+    visible: "UrTruck"
+    timeout: 15000
+- tapOn:
+    text: "UrTruck"
+    index: 0
+- extendedWaitUntil:
+    visible:
+      text: "Продолжить по номеру|Continue"
+    timeout: 60000
+- runFlow:
+    when:
+      visible: "Continue"
+    commands:
+      - tapOn:
+          point: "50%,10%"
+      - waitForAnimationToEnd
+- runFlow:
+    when:
+      visible: "Reload"
+    commands:
+      - tapOn:
+          point: "50%,10%"
+      - waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "onb-v2-cta-phone"
+    timeout: 10000
+- tapOn:
+    id: "onb-v2-cta-phone"
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: 01_auth_phone_screen
+- assertVisible:
+    id: "phone-v2-input"
+- assertVisible:
+    id: "phone-v2-cta"
+
+# Опциональная ветка: если в текущей сессии Identity-step уже виден
+# (например, после ручного OTP), проверяем форму. Иначе тихо пропускаем —
+# это ожидаемо в Expo Go без реальных SMS.
+- runFlow:
+    when:
+      visible:
+        id: "identity-step-screen"
+    commands:
+      - takeScreenshot: 02_identity_screen
+      - assertVisible:
+          id: "identity-first-name"
+      - assertVisible:
+          id: "identity-last-name"
+      - assertVisible:
+          id: "identity-birth"
+      - assertVisible:
+          id: "identity-iin"
+      - assertVisible:
+          id: "identity-help"
+      - tapOn:
+          id: "identity-help"
+      - waitForAnimationToEnd
+      - takeScreenshot: 03_help_panel
