@@ -1,0 +1,68 @@
+appId: host.exp.Exponent
+name: driver-auth
+tags:
+  - smoke
+  - driver
+  - auth
+env:
+  MAESTRO_ACTOR: serik
+---
+- runFlow: _lib/qa-login.yaml
+- takeScreenshot: 01_after_qa_login_driver
+- assertVisible:
+    id: "bottom-nav-feed"
+- assertVisible:
+    id: "bottom-nav-mywork"
+- assertVisible:
+    id: "bottom-nav-queue"
+- assertVisible:
+    id: "bottom-nav-chats"
+- assertVisible:
+    id: "bottom-nav-profile"
+- tapOn:
+    id: "bottom-nav-feed"
+- waitForAnimationToEnd
+- takeScreenshot: 02_driver_feed
+- tapOn:
+    id: "bottom-nav-mywork"
+- waitForAnimationToEnd
+- takeScreenshot: 03_driver_mywork
+- tapOn:
+    id: "bottom-nav-queue"
+- waitForAnimationToEnd
+- takeScreenshot: 04_driver_queue
+- assertVisible:
+    id: "queue-title"
+# Гость показывает gate; авторизованный водитель (verification_level=3, status=approved
+# у actor-serik) либо проходит дальше, либо всё ещё видит CarGoRuqSat ссылку.
+- runFlow:
+    when:
+      visible:
+        id: "queue-cgr-link"
+    commands:
+      - assertVisible:
+          id: "queue-cgr-link"
+- runFlow:
+    when:
+      visible:
+        id: "queue-cgr-link-approved"
+    commands:
+      - assertVisible:
+          id: "queue-cgr-link-approved"
+- tapOn:
+    id: "bottom-nav-chats"
+- waitForAnimationToEnd
+- takeScreenshot: 05_driver_chats
+- assertVisible:
+    id: "deal-room-list"
+- assertVisible:
+    id: "chats-header"
+- tapOn:
+    id: "bottom-nav-profile"
+- waitForAnimationToEnd
+- takeScreenshot: 06_driver_profile
+- assertVisible:
+    id: "profile-my-status"
+- assertVisible:
+    id: "profile-push-filter"
+- assertNotVisible: "Обновить приложение"

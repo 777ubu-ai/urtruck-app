@@ -3,6 +3,9 @@
 Smoke-флоу для проверки UrTruck в iOS Simulator под Expo Go,
 на стабильных `testID` / `accessibilityLabel`.
 
+Подробная стратегия безопасной QA-аутентификации — см.
+[`docs/QA_AUTH_STRATEGY.md`](../../docs/QA_AUTH_STRATEGY.md).
+
 ## Требования
 
 - Maestro >= 2.6.0 (`maestro --version`)
@@ -27,10 +30,59 @@ xcrun simctl terminate booted host.exp.Exponent && maestro test ../profile-queue
 xcrun simctl terminate booted host.exp.Exponent && maestro test ../verification-render.yaml
 ```
 
+## QA Auth Path (authenticated flows)
+
+Глубокие flows (`driver-auth.yaml`, `client-auth.yaml`,
+`verification-authenticated.yaml`, `createcargo-authenticated.yaml`)
+требуют залогиненной сессии. OTP/SMS обходим через **существующий**
+backend-endpoint `POST /api/v1/qa/ensure-actor` + крошечный
+dev-only хук в `OnboardingV2Screen` (виден только при `__DEV__` и
+не в `standalone`-сборке). Шаги:
+
+```bash
+# 1. Поднять локальный backend
+cd backend
+export URTRUCK_ENV=development
+export QA_AGENT_TOKEN="$(openssl rand -hex 32)"
+export WHATSAPP_ACCESS_TOKEN=""                  # MOCK провайдер
+DB_PATH="$PWD/database/security.db" \
+  STORAGE_LOCAL_ROOT="$PWD/storage" \
+  STORAGE_LOCAL_PUBLIC_BASE="/storage" \
+  python -m uvicorn main:app --host 0.0.0.0 --port 8001 &
+cd ..
+
+# 2. Прокинуть env в Maestro (префикс MAESTRO_*, всё остальное игнорируется)
+export MAESTRO_QA_AGENT_TOKEN="$QA_AGENT_TOKEN"
+export MAESTRO_BACKEND_BASE="http://127.0.0.1:8001/api/v1"
+
+# 3. Старт Expo (если ещё не)
+npx expo start --ios
+
+# 4. Прогон authenticated flows
+cd qa/maestro/screenshots
+xcrun simctl terminate booted host.exp.Exponent && maestro test ../driver-auth.yaml
+xcrun simctl terminate booted host.exp.Exponent && maestro test ../client-auth.yaml
+xcrun simctl terminate booted host.exp.Exponent && maestro test ../verification-authenticated.yaml
+xcrun simctl terminate booted host.exp.Exponent && maestro test ../createcargo-authenticated.yaml
+```
+
+`MAESTRO_BACKEND_BASE` указывающий на `urtruck.kz` / `185.22.65.11` /
+`prod*` — отклоняется без `MAESTRO_ALLOW_REMOTE=1`. Для shell-обёртки
+`_lib/ensure-actor.sh` — `QA_ALLOW_REMOTE_BACKEND=1` соответственно.
+
+В **production-сборке** (`__DEV__ === false` или
+`Constants.appOwnership === 'standalone'`) хук `qa-debug-submit` не
+рендерится — то есть даже если кто-то знает `QA_AGENT_TOKEN`, через
+живое приложение залогиниться по этому пути нельзя.
+
 ## Состав
 
 | Файл | Селекторы | Статус |
 | --- | --- | --- |
+| `driver-auth.yaml` | runScript `_lib/ensure-actor.js` (actor=serik) → `qa-debug-token`/`qa-debug-submit` → driver Main + 5 табов, Profile→`profile-my-status`, Queue→`queue-title`, Chats→`deal-room-list` | требует локального backend |
+| `client-auth.yaml` | actor=boris → клиентский tab-bar (Publish видим, Queue/Chats скрыты), `cargo-from-input` после `bottom-nav-publish` | требует локального backend |
+| `verification-authenticated.yaml` | actor=serik → Profile → My status → опционально `profile-pro-cta` → Identity (`identity-first-name`, `identity-iin`, `identity-help`) | требует локального backend |
+| `createcargo-authenticated.yaml` | actor=boris → `bottom-nav-publish` → форма CreateCargo (`cargo-from/to/desc/weight/volume/submit`). Submit НЕ нажимается, чтобы не плодить QA-записи. | требует локального backend |
 | `driver-tabs.yaml` | `onb-v2-cta-guest`, `bottom-nav-{feed,mywork,queue,chats,profile}` | ✅ PASS |
 | `client-tabs.yaml` | `onb-v2-cta-{phone,guest}`, `bottom-nav-{feed,profile}` | ✅ PASS (полный client-tab-bar — NOT PROVEN без OTP) |
 | `profile-queue-chats.yaml` | `profile-push-filter`, `profile-my-status`, `profile-pro-cta`, `queue-title`, `queue-cgr-link`, `deal-room-list`, `chats-header`, `deal-room-search` + `assertNotVisible "Обновить приложение"` | ✅ PASS |

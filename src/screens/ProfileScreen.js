@@ -22,6 +22,18 @@ const LANGS = [
   { code: 'ZH', flag: '🇨🇳', name: '中文' },
 ];
 
+// Same gate as OnboardingV2Screen — Maestro QA harness uses this to switch
+// between actors without driving the iOS Alert dialog.
+const QA_HOOK_ALLOWED = (() => {
+  if (typeof __DEV__ === 'undefined' || !__DEV__) return false;
+  try {
+    const Constants = require('expo-constants').default;
+    return Constants?.appOwnership !== 'standalone';
+  } catch {
+    return false;
+  }
+})();
+
 // Stage 26: confirm() теперь принимает локализованные кнопки и
 // нормальный message (раньше message был жёстко "?", а cancel был
 // "✕"). Все три параметра title/msg/labels должны проходить через
@@ -392,6 +404,24 @@ export default function ProfileScreen({ navigation, route }) {
             testID="profile-change-role"
           >
             <Text style={s.changeRoleText}>{t('changeRole')}</Text>
+          </TouchableOpacity>
+        ) : null}
+
+        {QA_HOOK_ALLOWED ? (
+          <TouchableOpacity
+            style={s.logoutBtn}
+            onPress={async () => {
+              try { await signOut(); } catch {}
+              try {
+                navigation.reset({ index: 0, routes: [{ name: 'OnboardingV2' }] });
+              } catch {
+                try { navigation.popToTop(); } catch {}
+              }
+            }}
+            testID="qa-debug-logout"
+            accessibilityLabel="QA debug logout"
+          >
+            <Text style={s.logoutText}>QA logout (dev only)</Text>
           </TouchableOpacity>
         ) : null}
 

@@ -1,0 +1,42 @@
+appId: host.exp.Exponent
+name: createcargo-authenticated
+tags:
+  - smoke
+  - client
+  - auth
+  - publish
+env:
+  MAESTRO_ACTOR: boris
+---
+# CreateCargo guarded by client role + token. Под актером boris
+# (role=client, status=approved) форма должна рендериться полностью.
+- runFlow: _lib/qa-login.yaml
+- takeScreenshot: 01_after_qa_login_publish
+- tapOn:
+    id: "bottom-nav-publish"
+- waitForAnimationToEnd
+# cargo-from-input / cargo-to-input рендерятся внутри RoutePointPicker и
+# появляются только после раскрытия. Базовая форма всегда даёт
+# cargo-desc-input (видим сразу), cargo-weight-field, cargo-volume-field,
+# и cargo-submit-button (приходится прокрутить вниз).
+- extendedWaitUntil:
+    visible:
+      id: "cargo-desc-input"
+    timeout: 10000
+- takeScreenshot: 02_create_cargo_form
+- assertVisible:
+    id: "cargo-desc-input"
+- assertVisible:
+    id: "cargo-weight-field"
+- assertVisible:
+    id: "cargo-volume-field"
+- scrollUntilVisible:
+    element:
+      id: "cargo-submit-button"
+    direction: DOWN
+    timeout: 10000
+- assertVisible:
+    id: "cargo-submit-button"
+# Submit без заполнения должен оставаться gated (валидация) —
+# не отправляем форму, чтобы не плодить QA-записи в БД.
+- takeScreenshot: 03_create_cargo_pre_submit
