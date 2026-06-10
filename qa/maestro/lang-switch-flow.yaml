@@ -1,0 +1,86 @@
+appId: host.exp.Exponent
+name: lang-switch-flow
+tags:
+  - smoke
+  - driver
+  - auth
+  - i18n
+  - regression
+env:
+  MAESTRO_ACTOR: serik
+---
+# Quick lang switch — RU → EN → KK → ZH, screenshot Profile/Queue/Chats для
+# визуальной проверки переводов и переполнения.
+- runFlow: _lib/qa-login.yaml
+- tapOn:
+    id: "bottom-nav-profile"
+- waitForAnimationToEnd
+- takeScreenshot: 01_profile_RU
+
+# Switch EN
+- tapOn:
+    text: "English"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: 02_profile_EN
+- tapOn:
+    id: "bottom-nav-queue"
+- waitForAnimationToEnd
+- takeScreenshot: 03_queue_EN
+- tapOn:
+    id: "bottom-nav-chats"
+- waitForAnimationToEnd
+- takeScreenshot: 04_chats_EN
+- tapOn:
+    id: "bottom-nav-profile"
+- waitForAnimationToEnd
+
+# Switch KK
+- tapOn:
+    text: "Қазақша"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: 05_profile_KK
+- tapOn:
+    id: "bottom-nav-queue"
+- waitForAnimationToEnd
+- takeScreenshot: 06_queue_KK
+- tapOn:
+    id: "bottom-nav-profile"
+- waitForAnimationToEnd
+
+# Switch ZH
+- tapOn:
+    text: "中文"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: 07_profile_ZH
+- tapOn:
+    id: "bottom-nav-queue"
+- waitForAnimationToEnd
+- takeScreenshot: 08_queue_ZH
+- tapOn:
+    id: "bottom-nav-profile"
+- waitForAnimationToEnd
+
+# Back to RU
+- tapOn:
+    text: "Русский"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: 09_back_to_RU
+
+# Dark theme
+- tapOn:
+    text: "Тёмная"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: 10_profile_dark
+- tapOn:
+    id: "bottom-nav-queue"
+- waitForAnimationToEnd
+- takeScreenshot: 11_queue_dark
+- tapOn:
+    id: "bottom-nav-chats"
+- waitForAnimationToEnd
+- takeScreenshot: 12_chats_dark
