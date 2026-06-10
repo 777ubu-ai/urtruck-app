@@ -74,7 +74,7 @@ export default function ProfileScreen({ navigation, route }) {
     textSecondary: v1.textMuted,
   };
   const { t } = useI18n();
-  const { session, signOut, setRole } = useAuth();
+  const { session, signOut, setRole, verificationLevel } = useAuth();
   const [profile, setProfile] = useState(getProfile(session?.user?.id) || {});
   const [lang, setLang] = useState(getLanguage());
 
@@ -270,7 +270,27 @@ export default function ProfileScreen({ navigation, route }) {
             {!proActive ? (
               <TouchableOpacity
                 style={[s.proCta, { backgroundColor: accent }]}
-                onPress={() => navigation.navigate('Identity')}
+                onPress={() => {
+                  // D1 (Maestro P1): «Получить статус PRO» raньше всегда
+                  // звал navigation.navigate('Identity') — а для уже
+                  // подтверждённого водителя (verificationLevel >= IDENTITY=2)
+                  // это перепрохождение полной 5-шаговой регистрации
+                  // вместо заполнения 4 PRO-полей (legal_form,
+                  // china_experience_years, favorite_borders,
+                  // emergency_contact), которые живут в EditProfile.
+                  // Теперь:
+                  //   level < 2 → Identity (нужна сначала идентификация)
+                  //   level ≥ 2 → EditProfile c focus:'pro' — там уже
+                  //                есть нужные поля; флаг 'pro' позволит
+                  //                EditProfile-у в будущем скроллить к
+                  //                PRO-секции (сейчас он его игнорирует
+                  //                — без вреда).
+                  if ((verificationLevel || 0) >= 2) {
+                    navigation.navigate('EditProfile', { role, focus: 'pro' });
+                  } else {
+                    navigation.navigate('Identity');
+                  }
+                }}
                 activeOpacity={0.85}
                 testID="profile-pro-cta"
                 accessibilityLabel={t('pro_become_btn')}

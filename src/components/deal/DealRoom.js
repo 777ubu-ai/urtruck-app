@@ -73,7 +73,11 @@ export function DealRoomCard({ deal, role }) {
         </View>
       </View>
       <Field icon="package" label={t('chat_deal_card_cargo')} value={deal.cargo_desc || deal.cargo_id || '—'} />
-      <Field icon="dollar-sign" label={t('chat_deal_card_price')} value={deal.amount != null ? `${deal.amount}` : '—'} />
+      <Field icon="dollar-sign" label={t('chat_deal_card_price')} value={
+        deal.amount != null
+          ? (deal.currency ? `${deal.amount} ${deal.currency}` : `${deal.amount}`)
+          : '—'
+      } />
       {deal.plate ? <Field icon="truck" label={t('chat_deal_card_plate')} value={deal.plate} /> : null}
     </View>
   );
