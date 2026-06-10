@@ -1,0 +1,80 @@
+appId: host.exp.Exponent
+name: driver-deep
+tags:
+  - smoke
+  - driver
+  - auth
+  - deep
+env:
+  MAESTRO_ACTOR: serik
+---
+# Глубокий проход по driver-флоу: открыть CreateTrip, Security, Feed-фильтры,
+# проверить help-открытия. Цель — поймать P0/P1/P2 в реальных переходах,
+# а не только на верхнем уровне табов.
+- runFlow: _lib/qa-login.yaml
+- takeScreenshot: 01_main_loaded
+
+# === Driver MyWork → CreateTrip ===
+- tapOn:
+    id: "bottom-nav-mywork"
+- waitForAnimationToEnd
+- takeScreenshot: 02_mywork
+# CTA "Опубликовать маршрут" — давим, попадаем в CreateTrip или в gate
+- tapOn:
+    text: "Опубликовать маршрут"
+    index: 0
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: 03_after_publish_trip_tap
+
+# === Назад в driver Profile → Security ===
+- tapOn:
+    id: "bottom-nav-profile"
+- waitForAnimationToEnd
+- takeScreenshot: 04_profile_top
+- tapOn:
+    id: "profile-my-status"
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: 05_security_screen
+
+# === Profile → PRO CTA если активна ===
+- tapOn:
+    id: "bottom-nav-profile"
+- waitForAnimationToEnd
+- runFlow:
+    when:
+      visible:
+        id: "profile-pro-cta"
+    commands:
+      - tapOn:
+          id: "profile-pro-cta"
+      - waitForAnimationToEnd:
+          timeout: 4000
+      - takeScreenshot: 06_pro_cta_lands
+
+# === Driver Feed → раскрыть фильтр Направление ===
+- tapOn:
+    id: "bottom-nav-feed"
+- waitForAnimationToEnd
+- tapOn:
+    text: "Направление"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: 07_feed_direction_filter
+
+# === Driver Queue → раскрыть "Подробнее про CargoRuqSat" ===
+- tapOn:
+    id: "bottom-nav-queue"
+- waitForAnimationToEnd
+- takeScreenshot: 08_queue_top
+- runFlow:
+    when:
+      visible:
+        id: "queue-cgr-link-approved"
+    commands:
+      - tapOn:
+          id: "queue-cgr-link-approved"
+      - waitForAnimationToEnd:
+          timeout: 4000
+      - takeScreenshot: 09_cargoruqsat_info

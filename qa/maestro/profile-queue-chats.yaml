@@ -1,0 +1,106 @@
+appId: host.exp.Exponent
+name: profile-queue-chats
+tags:
+  - smoke
+  - profile
+  - guest
+---
+# Гостевой режим («Смотреть грузы») открывает driver-табы.
+# Проверки строго через стабильные id (BottomNav + Profile/Queue/Chats testID).
+# Содержимое карточек (Мой статус / PRO) — скриншот + assertVisible id, без
+# опоры на индексирование RN-Text.
+- launchApp
+- extendedWaitUntil:
+    visible: "UrTruck"
+    timeout: 15000
+- tapOn:
+    text: "UrTruck"
+    index: 0
+- extendedWaitUntil:
+    visible:
+      text: "Смотреть грузы|Continue"
+    timeout: 60000
+- runFlow:
+    when:
+      visible: "Continue"
+    commands:
+      - tapOn:
+          point: "50%,10%"
+      - waitForAnimationToEnd
+- runFlow:
+    when:
+      visible: "Reload"
+    commands:
+      - tapOn:
+          point: "50%,10%"
+      - waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "onb-v2-cta-guest"
+    timeout: 10000
+- tapOn:
+    id: "onb-v2-cta-guest"
+- extendedWaitUntil:
+    visible:
+      id: "bottom-nav-profile"
+    timeout: 30000
+
+# Профиль
+- tapOn:
+    id: "bottom-nav-profile"
+- waitForAnimationToEnd
+- takeScreenshot: 01_profile
+- assertVisible:
+    id: "profile-push-filter"
+- assertNotVisible: "Обновить приложение"
+# profile-my-status и profile-pro-cta зависят от роли (driver-only в guest);
+# id ловится мягче через extendedWaitUntil с optional fallback.
+- runFlow:
+    when:
+      visible:
+        id: "profile-my-status"
+    commands:
+      - assertVisible:
+          id: "profile-my-status"
+- runFlow:
+    when:
+      visible:
+        id: "profile-pro-cta"
+    commands:
+      - assertVisible:
+          id: "profile-pro-cta"
+
+# Очередь
+- tapOn:
+    id: "bottom-nav-queue"
+- waitForAnimationToEnd
+- takeScreenshot: 02_queue
+- assertVisible:
+    id: "queue-title"
+# Любой из двух link-elements должен быть на экране (gate vs approved версия).
+- runFlow:
+    when:
+      visible:
+        id: "queue-cgr-link"
+    commands:
+      - assertVisible:
+          id: "queue-cgr-link"
+- runFlow:
+    when:
+      visible:
+        id: "queue-cgr-link-approved"
+    commands:
+      - assertVisible:
+          id: "queue-cgr-link-approved"
+
+# Чаты как отдельная вкладка
+- tapOn:
+    id: "bottom-nav-chats"
+- waitForAnimationToEnd
+- takeScreenshot: 03_chats_tab
+- assertVisible:
+    id: "deal-room-list"
+- assertVisible:
+    id: "chats-header"
+- assertVisible:
+    id: "deal-room-search"

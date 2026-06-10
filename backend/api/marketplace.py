@@ -9,15 +9,29 @@ from datetime import datetime, timedelta
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, Header
 from pydantic import BaseModel
 from typing import Optional, List
 
 from database.db import get_conn, new_id
-from api.verification_gate import require_level, get_user
+from api.verification_gate import require_level, get_user, _extract_driver
 from api.push import send_to_user
 
 mp_router = APIRouter()
+
+
+def _maybe_user(authorization: Optional[str]) -> Optional[dict]:
+    """Optional auth: return user dict if the caller passed a valid bearer
+    token, otherwise None. Never raises. Used by endpoints that have both
+    a public/anonymous read path AND an owner-only enriched path — e.g.
+    `/market/bids` (D12: owner of cargo must see all bids, including
+    QA/agent bidders that the public dirty-filter hides)."""
+    if not authorization:
+        return None
+    try:
+        return _extract_driver(authorization)
+    except HTTPException:
+        return None
 
 
 # ═══ Public-feed hygiene ═══
@@ -744,7 +758,13 @@ def create_bid(body: BidIn, user=Depends(require_level(1))):
 
 
 @mp_router.get("/bids")
-def list_bids(cargo_id: str = "", trip_id: str = "", user_id: str = "", show_demo: bool = False):
+def list_bids(
+    cargo_id: str = "",
+    trip_id: str = "",
+    user_id: str = "",
+    show_demo: bool = False,
+    authorization: Optional[str] = Header(None),
+):
     where = []
     params = []
     if cargo_id:
@@ -765,6 +785,29 @@ def list_bids(cargo_id: str = "", trip_id: str = "", user_id: str = "", show_dem
             ORDER BY created_at DESC LIMIT 100
         """, params).fetchall()
     bids = [dict(r) for r in rows]
+
+    # D12 (Maestro P1): owner of the cargo/trip must see every active bid on
+    # their own listing, including bids from QA/agent accounts that the
+    # dirty-bidder filter hides from public callers. Without this branch,
+    # the marketplace loop is broken end-to-end: a real shipper looking at
+    # their own cargo's bid list would never see bids submitted by accounts
+    # whose id happens to start with one of the `DIRTY_BIDDER_PREFIXES`
+    # tokens — that includes the entire QA actor set (`agent-serik`, etc.),
+    # and also any future namespaced internal accounts. Public anonymous and
+    # non-owner callers still get the filtered list — no QA data leaks out.
+    caller = _maybe_user(authorization)
+    is_owner = False
+    if caller:
+        with get_conn() as c:
+            if cargo_id:
+                row = c.execute("SELECT owner_id FROM cargos WHERE id = ?", (cargo_id,)).fetchone()
+                if row and row["owner_id"] == caller["id"]:
+                    is_owner = True
+            elif trip_id:
+                row = c.execute("SELECT driver_id FROM trips WHERE id = ?", (trip_id,)).fetchone()
+                if row and row["driver_id"] == caller["id"]:
+                    is_owner = True
+
     # Hide dirty/test bidders from public bid listings (Тестер, Баке, etc.).
     # Also drop cancelled/rejected bids from public counters so a clean cargo's
     # detail screen doesn't carry stale rejected proposals from pre-pilot data.
@@ -776,13 +819,19 @@ def list_bids(cargo_id: str = "", trip_id: str = "", user_id: str = "", show_dem
     # явный prefix-фильтр на bidder_id и расширяем скрытые статусы до
     # ('cancelled', 'rejected') — rejected bids не должны забивать public list.
     DIRTY_BIDDER_PREFIXES = ("guest_", "agent-", "test_", "qa_")
-    if not show_demo:
+    if not show_demo and not is_owner:
         bids = [
             b for b in bids
             if not (b.get("bidder_id") or "").lower().startswith(DIRTY_BIDDER_PREFIXES)
             and not _is_dirty_text(b.get("bidder_name"), b.get("bidder_phone"))
             and b.get("status") not in ("cancelled", "rejected")
         ]
+    elif is_owner and not show_demo:
+        # Owner gets the full active-bid set, including dirty/QA bidders.
+        # Cancelled / rejected bids stay hidden — they're stale UI noise on
+        # the active-bids list. Owner can still inspect those through the
+        # /market/my dashboard if needed.
+        bids = [b for b in bids if b.get("status") not in ("cancelled", "rejected")]
     return {"bids": bids}
 
 
@@ -1383,14 +1432,37 @@ def list_deals(user=Depends(require_level(1))):
 
 @mp_router.get("/deals/{deal_id}")
 def get_deal(deal_id: str, user=Depends(require_level(1))):
+    """Return a deal + the cargo/trip context the chat-room UI needs.
+
+    D2 (Maestro P1): historically this returned only the deals row
+    (from_city/to_city/amount). The chat-room DealRoomCard also asks for
+    `cargo_desc` (for the «Груз» line) and `currency` (for the «Ставка»
+    line) and `plate`. Those live on cargos / trips respectively. Joining
+    them in once here is cheaper than making the frontend hit two endpoints
+    on every Deal Room open."""
     uid = user["id"]
     with get_conn() as c:
         row = c.execute("SELECT * FROM deals WHERE id = ?", (deal_id,)).fetchone()
-    if not row:
-        raise HTTPException(status_code=404, detail="Сделка не найдена")
-    d = dict(row)
-    if uid not in (d["shipper_id"], d["driver_id"]):
-        raise HTTPException(status_code=403)
+        if not row:
+            raise HTTPException(status_code=404, detail="Сделка не найдена")
+        d = dict(row)
+        if uid not in (d["shipper_id"], d["driver_id"]):
+            raise HTTPException(status_code=403)
+        # Cargo enrichment — cargo_desc + currency for the "Ставка" line.
+        if d.get("cargo_id"):
+            cr = c.execute(
+                "SELECT cargo_desc, currency FROM cargos WHERE id = ?", (d["cargo_id"],)
+            ).fetchone()
+            if cr:
+                d.setdefault("cargo_desc", cr["cargo_desc"])
+                d.setdefault("currency", cr["currency"])
+        # Trip enrichment — plate (госномер тягача) for the optional row.
+        if d.get("trip_id"):
+            tr = c.execute(
+                "SELECT plate_truck FROM trips WHERE id = ?", (d["trip_id"],)
+            ).fetchone()
+            if tr and tr["plate_truck"]:
+                d.setdefault("plate", tr["plate_truck"])
     return d
 
 

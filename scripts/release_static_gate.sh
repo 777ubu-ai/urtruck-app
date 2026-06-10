@@ -93,6 +93,58 @@ LEAK=$(grep -rnE 'console\.(log|warn|error|debug)' \
 if [ -n "$LEAK" ]; then fail "console log may leak PII in registration flow:"; echo "$LEAK" | sed 's/^/        /'
 else pass "no PII-leaking console logs in registration flow"; fi
 
+# 11) QA_AGENT_TOKEN must not be hardcoded as a literal in src/ or in
+#     qa/maestro YAML/JS/sh helpers. Positive heuristic: flag only when
+#     we see `QA_AGENT_TOKEN` followed by `=`/`:`, optional whitespace,
+#     a quote, and then 16+ contiguous hex / base64-url chars (looks
+#     like a real secret). Env substitutions, command substitutions,
+#     empty strings and JS/Python env-lookups pass through.
+QA_TOKEN_LEAK=$(grep -rnE 'QA_AGENT_TOKEN[[:space:]]*[:=][[:space:]]*"?[A-Za-z0-9+/=_-]{16,}"?' \
+  src/ qa/maestro/ docs/QA_AUTH_STRATEGY.md 2>/dev/null || true)
+if [ -n "$QA_TOKEN_LEAK" ]; then
+  fail "QA_AGENT_TOKEN looks hardcoded somewhere:"; echo "$QA_TOKEN_LEAK" | sed 's/^/        /'
+else pass "QA_AGENT_TOKEN not hardcoded in src/ or qa/maestro"; fi
+
+# 12) qa-debug-submit may only exist in OnboardingV2Screen.js, gated
+#     behind QA_HOOK_ALLOWED. Anywhere else → fail. In the same file,
+#     if found, require either QA_HOOK_ALLOWED or the QaLoginHook
+#     container to be present.
+QA_HOOK_OTHER=$(grep -rln 'qa-debug-submit' src/ 2>/dev/null \
+  | grep -v 'src/screens/onboarding/OnboardingV2Screen.js' || true)
+if [ -n "$QA_HOOK_OTHER" ]; then
+  fail "qa-debug-submit found outside OnboardingV2Screen.js:"; echo "$QA_HOOK_OTHER" | sed 's/^/        /'
+else
+  if [ -f src/screens/onboarding/OnboardingV2Screen.js ] \
+     && grep -q 'qa-debug-submit' src/screens/onboarding/OnboardingV2Screen.js; then
+    if grep -q 'QA_HOOK_ALLOWED' src/screens/onboarding/OnboardingV2Screen.js \
+       && grep -q 'QaLoginHook' src/screens/onboarding/OnboardingV2Screen.js; then
+      pass "qa-debug-submit gated by QA_HOOK_ALLOWED + QaLoginHook"
+    else
+      fail "qa-debug-submit present in OnboardingV2Screen.js without QA_HOOK_ALLOWED guard"
+    fi
+  else
+    pass "qa-debug-submit absent from frontend (acceptable)"
+  fi
+fi
+
+# 13) Authenticated Maestro flows must not point at production backend
+#     by default. We scan YAML files for production hostnames inside
+#     their env: blocks or anywhere in commands.
+AUTH_FLOWS="qa/maestro/driver-auth.yaml \
+qa/maestro/client-auth.yaml \
+qa/maestro/verification-authenticated.yaml \
+qa/maestro/createcargo-authenticated.yaml \
+qa/maestro/_lib/qa-login.yaml"
+PROD_REF=""
+for f in $AUTH_FLOWS; do
+  [ -f "$f" ] || continue
+  hit=$(grep -nE 'urtruck\.kz|185\.22\.65\.11|https?://prod' "$f" || true)
+  [ -n "$hit" ] && PROD_REF="$PROD_REF\n$f:\n$hit"
+done
+if [ -n "$PROD_REF" ]; then
+  fail "authenticated Maestro flows reference production backend:"; printf '%b\n' "$PROD_REF" | sed 's/^/        /'
+else pass "authenticated Maestro flows have no production backend defaults"; fi
+
 echo
 if [ "$FAIL" -gt 0 ]; then
   echo "== Static gate: $FAIL FAILED — not ready for merge→main =="

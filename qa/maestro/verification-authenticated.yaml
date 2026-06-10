@@ -1,0 +1,57 @@
+appId: host.exp.Exponent
+name: verification-authenticated
+tags:
+  - smoke
+  - driver
+  - auth
+  - registration
+env:
+  MAESTRO_ACTOR: serik
+---
+# Под актером serik уровень верификации 3 (approved) — реальный
+# Identity-шаг как новичок-водитель ему уже не показывается. Проверяем
+# то, что доступно после login: профиль с My status, переход в Security,
+# Identity-флоу можно открыть только если конкретный PRO-CTA ещё активен.
+- runFlow: _lib/qa-login.yaml
+- takeScreenshot: 01_after_qa_login_verif
+- tapOn:
+    id: "bottom-nav-profile"
+- waitForAnimationToEnd
+- takeScreenshot: 02_profile_for_verif
+- assertVisible:
+    id: "profile-my-status"
+- tapOn:
+    id: "profile-my-status"
+- waitForAnimationToEnd
+- takeScreenshot: 03_security_screen
+# Тап «Получить статус PRO» уведёт в Identity если actor не заполнил
+# 4 расширенных поля (legal_form / china_experience_years / favorite_borders /
+# emergency_contact). Свежий agent-serik их не заполняет, поэтому CTA
+# обычно видна.
+- runFlow:
+    when:
+      visible:
+        id: "profile-pro-cta"
+    commands:
+      - tapOn:
+          id: "profile-pro-cta"
+      - waitForAnimationToEnd
+      - takeScreenshot: 04_identity_screen
+      - extendedWaitUntil:
+          visible:
+            id: "identity-step-screen"
+          timeout: 10000
+      - assertVisible:
+          id: "identity-first-name"
+      - assertVisible:
+          id: "identity-last-name"
+      - assertVisible:
+          id: "identity-iin"
+      - assertVisible:
+          id: "identity-birth"
+      - assertVisible:
+          id: "identity-help"
+      - tapOn:
+          id: "identity-help"
+      - waitForAnimationToEnd
+      - takeScreenshot: 05_identity_help_panel

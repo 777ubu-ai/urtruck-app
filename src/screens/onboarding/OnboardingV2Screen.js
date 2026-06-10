@@ -33,12 +33,27 @@ import {
   Pressable,
   StyleSheet,
   Dimensions,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
 import { useAuth } from '../../utils/AuthContext';
 import { brand, radius, typography } from '../../theme/brandV2';
+
+// QA-only safety gate. The block below renders ONLY in dev bundles
+// inside Expo Go / Metro — `__DEV__` flips to false in EAS production /
+// TestFlight bundles, and `Constants.appOwnership === 'standalone'`
+// covers ad-hoc/prod IPAs that somehow ship with __DEV__=true.
+const QA_HOOK_ALLOWED = (() => {
+  if (typeof __DEV__ === 'undefined' || !__DEV__) return false;
+  try {
+    const Constants = require('expo-constants').default;
+    return Constants?.appOwnership !== 'standalone';
+  } catch {
+    return false;
+  }
+})();
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -120,6 +135,71 @@ const Slide = ({ source, imageAspect, win, title, subtitle }) => (
     </View>
   </View>
 );
+
+// QaLoginHook — крошечный dev-only хук для Maestro: вставить актор-токен,
+// полученный через POST /api/v1/qa/ensure-actor (см. qa/maestro/_lib/
+// ensure-actor.sh). Зовём существующий `signIn` + `refreshLevel`;
+// никаких новых auth-методов, никакого автоматического verified-статуса —
+// всё, что мы получаем, берётся из ответа backend'а. Не показывается в
+// production (см. QA_HOOK_ALLOWED выше).
+const QaLoginHook = () => {
+  const { signIn, setRole, refreshLevel } = useAuth();
+  const [token, setToken] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  const onSubmit = async () => {
+    const value = (token || '').trim();
+    if (!value) {
+      setErr('token required');
+      return;
+    }
+    setErr('');
+    setBusy(true);
+    try {
+      // signIn сохраняет token в storage и выставляет hasToken=true.
+      // Phone-маркер "qa-actor" — это не E.164, в реальном UI отображаться
+      // не будет; реальная role/phone подгрузятся из /register/me ниже.
+      await signIn('qa-actor', 3, value);
+      const me = await refreshLevel().catch(() => null);
+      const role = me?.role && me.role !== 'guest' ? me.role : 'driver';
+      setRole(role);
+    } catch (e) {
+      setErr('login failed');
+    } finally {
+      setBusy(false);
+      setToken('');
+    }
+  };
+
+  return (
+    <View style={s.qaBlock} testID="qa-debug-block">
+      <Text style={s.qaLabel}>QA login (dev only)</Text>
+      <TextInput
+        style={s.qaInput}
+        value={token}
+        onChangeText={setToken}
+        placeholder="paste actor token"
+        placeholderTextColor={brand.textSecondary}
+        autoCapitalize="none"
+        autoCorrect={false}
+        secureTextEntry={false}
+        testID="qa-debug-token"
+        accessibilityLabel="QA debug token"
+      />
+      <Pressable
+        onPress={onSubmit}
+        disabled={busy}
+        style={[s.qaSubmit, busy && { opacity: 0.5 }]}
+        testID="qa-debug-submit"
+        accessibilityLabel="QA debug submit"
+      >
+        <Text style={s.qaSubmitText}>{busy ? '…' : 'QA login'}</Text>
+      </Pressable>
+      {err ? <Text style={s.qaErr} testID="qa-debug-error">{err}</Text> : null}
+    </View>
+  );
+};
 
 export default function OnboardingV2Screen({ navigation }) {
   const { t } = useI18n();
@@ -243,6 +323,8 @@ export default function OnboardingV2Screen({ navigation }) {
           {' '}{t('onb_v2_consent_and')}{' '}
           <Text style={s.consentLink}>{t('onb_v2_consent_privacy')}</Text>
         </Text>
+
+        {QA_HOOK_ALLOWED ? <QaLoginHook /> : null}
       </View>
     </SafeAreaView>
   );
@@ -354,5 +436,45 @@ const s = StyleSheet.create({
     color: brand.textPrimary,
     textDecorationLine: 'underline',
     fontWeight: '600',
+  },
+  qaBlock: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: brand.borderStrong,
+    gap: 6,
+  },
+  qaLabel: {
+    fontSize: 11,
+    color: brand.textSecondary,
+    textAlign: 'center',
+    fontWeight: '600',
+  },
+  qaInput: {
+    height: 36,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: brand.borderStrong,
+    backgroundColor: brand.surface,
+    paddingHorizontal: 10,
+    color: brand.textPrimary,
+    fontSize: 12,
+  },
+  qaSubmit: {
+    height: 36,
+    borderRadius: radius.md,
+    backgroundColor: brand.borderStrong,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qaSubmitText: {
+    color: brand.textPrimary,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  qaErr: {
+    fontSize: 11,
+    color: '#EF4444',
+    textAlign: 'center',
   },
 });

@@ -22,6 +22,18 @@ const LANGS = [
   { code: 'ZH', flag: '🇨🇳', name: '中文' },
 ];
 
+// Same gate as OnboardingV2Screen — Maestro QA harness uses this to switch
+// between actors without driving the iOS Alert dialog.
+const QA_HOOK_ALLOWED = (() => {
+  if (typeof __DEV__ === 'undefined' || !__DEV__) return false;
+  try {
+    const Constants = require('expo-constants').default;
+    return Constants?.appOwnership !== 'standalone';
+  } catch {
+    return false;
+  }
+})();
+
 // Stage 26: confirm() теперь принимает локализованные кнопки и
 // нормальный message (раньше message был жёстко "?", а cancel был
 // "✕"). Все три параметра title/msg/labels должны проходить через
@@ -62,7 +74,7 @@ export default function ProfileScreen({ navigation, route }) {
     textSecondary: v1.textMuted,
   };
   const { t } = useI18n();
-  const { session, signOut, setRole } = useAuth();
+  const { session, signOut, setRole, verificationLevel } = useAuth();
   const [profile, setProfile] = useState(getProfile(session?.user?.id) || {});
   const [lang, setLang] = useState(getLanguage());
 
@@ -117,8 +129,8 @@ export default function ProfileScreen({ navigation, route }) {
   // IA Phase 2: Chats — отдельная вкладка/путь (через сделку), НЕ дублируется
   // generic-рядом в Профиле. «Update app» убран из Профиля (см. ниже).
   const menuItems = [
-    ...(isDriver ? [{ icon: 'shield', label: t('security_my_status'), sub: t('my_status_subtitle'), screen: 'Security' }] : []),
-    { icon: 'star',          label: t('myReviews'),     screen: 'Reviews' },
+    ...(isDriver ? [{ icon: 'shield', label: t('security_my_status'), sub: t('my_status_subtitle'), screen: 'Security', testID: 'profile-my-status' }] : []),
+    { icon: 'star',          label: t('myReviews'),     screen: 'Reviews', testID: 'profile-my-reviews' },
   ];
 
   // PR-C2 (driver card): canonical specs line «Тент · 20 т · 86 м³».
@@ -258,8 +270,30 @@ export default function ProfileScreen({ navigation, route }) {
             {!proActive ? (
               <TouchableOpacity
                 style={[s.proCta, { backgroundColor: accent }]}
-                onPress={() => navigation.navigate('Identity')}
+                onPress={() => {
+                  // D1 (Maestro P1): «Получить статус PRO» raньше всегда
+                  // звал navigation.navigate('Identity') — а для уже
+                  // подтверждённого водителя (verificationLevel >= IDENTITY=2)
+                  // это перепрохождение полной 5-шаговой регистрации
+                  // вместо заполнения 4 PRO-полей (legal_form,
+                  // china_experience_years, favorite_borders,
+                  // emergency_contact), которые живут в EditProfile.
+                  // Теперь:
+                  //   level < 2 → Identity (нужна сначала идентификация)
+                  //   level ≥ 2 → EditProfile c focus:'pro' — там уже
+                  //                есть нужные поля; флаг 'pro' позволит
+                  //                EditProfile-у в будущем скроллить к
+                  //                PRO-секции (сейчас он его игнорирует
+                  //                — без вреда).
+                  if ((verificationLevel || 0) >= 2) {
+                    navigation.navigate('EditProfile', { role, focus: 'pro' });
+                  } else {
+                    navigation.navigate('Identity');
+                  }
+                }}
                 activeOpacity={0.85}
+                testID="profile-pro-cta"
+                accessibilityLabel={t('pro_become_btn')}
               >
                 <Text style={[s.proCtaText, { color: onAccent }]}>{t('pro_become_btn')}</Text>
                 <Feather name="chevron-right" size={18} color={onAccent} />
@@ -278,6 +312,8 @@ export default function ProfileScreen({ navigation, route }) {
                 style={s.menuRow}
                 onPress={() => item.screen && navigation.navigate(item.screen, { role })}
                 activeOpacity={0.6}
+                testID={item.testID}
+                accessibilityLabel={item.label}
               >
                 <View style={[s.menuIconWrap, { backgroundColor: theme.bg }]}>
                   <Feather name={item.icon} size={18} color={theme.textMuted} />
@@ -335,6 +371,8 @@ export default function ProfileScreen({ navigation, route }) {
           <TouchableOpacity
             style={[s.pushBtn, { backgroundColor: theme.bg, borderColor: theme.border }]}
             onPress={() => navigation.navigate('PushFilter', { role })}
+            testID="profile-push-filter"
+            accessibilityLabel={t('pushFilter')}
           >
             <Text style={[s.settingLabel, { color: theme.text }]}>🔔 {t('pushFilter')}</Text>
             <Text style={[s.configureBtn, { color: accent }]}>{t('configure')} →</Text>
@@ -386,6 +424,24 @@ export default function ProfileScreen({ navigation, route }) {
             testID="profile-change-role"
           >
             <Text style={s.changeRoleText}>{t('changeRole')}</Text>
+          </TouchableOpacity>
+        ) : null}
+
+        {QA_HOOK_ALLOWED ? (
+          <TouchableOpacity
+            style={s.logoutBtn}
+            onPress={async () => {
+              try { await signOut(); } catch {}
+              try {
+                navigation.reset({ index: 0, routes: [{ name: 'OnboardingV2' }] });
+              } catch {
+                try { navigation.popToTop(); } catch {}
+              }
+            }}
+            testID="qa-debug-logout"
+            accessibilityLabel="QA debug logout"
+          >
+            <Text style={s.logoutText}>QA logout (dev only)</Text>
           </TouchableOpacity>
         ) : null}
 

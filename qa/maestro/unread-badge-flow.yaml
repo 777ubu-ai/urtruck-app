@@ -1,0 +1,38 @@
+appId: host.exp.Exponent
+name: unread-badge-flow
+tags:
+  - smoke
+  - driver
+  - auth
+  - chat
+  - regression
+env:
+  MAESTRO_ACTOR: serik
+---
+# UI-proof: после того, как boris (через backend) шлёт сообщение serik'у —
+# в bottom-nav-chats должен появиться unread badge (testID
+# `bottom-nav-chats-badge`). После открытия чата — badge исчезает.
+- runFlow: _lib/qa-login.yaml
+- takeScreenshot: 01_main_with_unread
+- assertVisible:
+    id: "bottom-nav-chats-badge"
+- tapOn:
+    id: "bottom-nav-chats"
+- waitForAnimationToEnd
+- takeScreenshot: 02_chats_list_with_unread_card
+- assertVisible:
+    id: "deal-room-list-card"
+- assertVisible:
+    id: "deal-room-list-unread"
+- tapOn:
+    id: "deal-room-list-card"
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: 03_chat_room_open_d2_proof
+# Возвращаемся назад — теперь unread badge должен исчезнуть.
+- back
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: 04_chats_list_no_unread
+- assertNotVisible:
+    id: "bottom-nav-chats-badge"
