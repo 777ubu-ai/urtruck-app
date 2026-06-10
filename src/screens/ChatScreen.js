@@ -10,6 +10,7 @@ import { useToast } from '../components/Toast';
 import { compressImage } from '../utils/imageCompress';
 import { prettifyPartnerName, partnerInitial } from '../utils/displayName';
 import { chatAPI } from '../utils/chatAPI';
+import { marketAPI } from '../utils/marketAPI';
 import { notifyChatRead } from '../utils/unreadEvents';
 import { useAuth } from '../utils/AuthContext';
 import { voice } from '../utils/voiceRecorder';
@@ -233,6 +234,15 @@ export default function ChatScreen({ navigation, route }) {
   }, [roomId]);
 
   // Deal Room: загрузка карточки сделки + immutable timeline по dealId.
+  // D2 (Maestro P1): раньше карточка сделки наполнялась ТОЛЬКО из
+  // route.params. Когда юзер открывал сделку с экрана «Чаты» / «Сделки»
+  // (`ChatsListScreen.navigate('Chat', { partner, roomId, dealId, role })`)
+  // — params содержали roomId/dealId, но не fromCity/toCity/cargoDesc/
+  // amount/plate. В итоге `DealRoomCard` рендерил «Груз —» / «Ставка —».
+  // Fix: дополнительно тянем deal с backend (`GET /market/deals/{id}` уже
+  // существует и проверяет, что caller — участник сделки) и сливаем
+  // пустые поля с серверным ответом. Никаких подделок: если backend
+  // вернул `null`, остаётся текущая «—» в UI.
   useEffect(() => {
     if (!dealId) return;
     const p = route.params || {};
@@ -240,6 +250,21 @@ export default function ChatScreen({ navigation, route }) {
       status: p.dealStatus, from_city: p.fromCity, to_city: p.toCity,
       cargo_desc: p.cargoDesc, cargo_id: p.cargoId, amount: p.amount, plate: p.plate,
     });
+    marketAPI.getDeal(dealId)
+      .then((srv) => {
+        if (!srv || typeof srv !== 'object') return;
+        setDeal((prev) => ({
+          status: prev?.status || srv.status,
+          from_city: prev?.from_city || srv.from_city,
+          to_city: prev?.to_city || srv.to_city,
+          cargo_desc: prev?.cargo_desc || srv.cargo_desc,
+          cargo_id: prev?.cargo_id || srv.cargo_id,
+          amount: prev?.amount != null ? prev.amount : srv.amount,
+          currency: prev?.currency || srv.currency,
+          plate: prev?.plate || srv.plate,
+        }));
+      })
+      .catch(() => {});
     chatAPI.dealTimeline(dealId)
       .then(r => setDealEvents(Array.isArray(r?.events) ? r.events : []))
       .catch(() => {});

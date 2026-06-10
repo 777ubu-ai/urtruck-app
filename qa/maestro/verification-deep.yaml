@@ -1,0 +1,66 @@
+appId: host.exp.Exponent
+name: verification-deep
+tags:
+  - smoke
+  - driver
+  - auth
+  - verification
+  - deep
+env:
+  MAESTRO_ACTOR: serik
+---
+# Глубокая проверка verification-флоу. serik (level=3, approved) — реальный
+# шаг идентичности для него выводит PRO-страницу, а не первичную регистрацию.
+# Чтобы добраться до самой Identity-формы, дёргаем PRO-CTA "Получить статус PRO"
+# из Profile — она навигирует в стек регистрации (Identity → Selfie → ...).
+- runFlow: _lib/qa-login.yaml
+- waitForAnimationToEnd:
+    timeout: 4000
+- tapOn:
+    id: "bottom-nav-profile"
+- waitForAnimationToEnd:
+    timeout: 4000
+- extendedWaitUntil:
+    visible:
+      id: "profile-push-filter"
+    timeout: 10000
+- takeScreenshot: 01_profile_top
+- scrollUntilVisible:
+    element:
+      id: "profile-pro-cta"
+    direction: UP
+    timeout: 6000
+# PRO CTA приводит в Identity → дальше можем проверить, что поля и Help
+# рендерятся, что continue-кнопка визуально активна/неактивна, как себя
+# ведёт скриншот в Expo Go.
+- runFlow:
+    when:
+      visible:
+        id: "profile-pro-cta"
+    commands:
+      - tapOn:
+          id: "profile-pro-cta"
+      - waitForAnimationToEnd:
+          timeout: 5000
+      - takeScreenshot: 02_after_pro_cta
+      - runFlow:
+          when:
+            visible:
+              id: "identity-step-screen"
+          commands:
+            - assertVisible:
+                id: "identity-first-name"
+            - assertVisible:
+                id: "identity-last-name"
+            - assertVisible:
+                id: "identity-iin"
+            - assertVisible:
+                id: "identity-birth"
+            - assertVisible:
+                id: "identity-help"
+            - takeScreenshot: 03_identity_top
+            - tapOn:
+                id: "identity-help"
+            - waitForAnimationToEnd:
+                timeout: 3000
+            - takeScreenshot: 04_help_panel

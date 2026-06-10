@@ -1,0 +1,26 @@
+appId: host.exp.Exponent
+name: marketplace-driver-chat
+tags:
+  - smoke
+  - driver
+  - auth
+  - marketplace
+env:
+  MAESTRO_ACTOR: serik
+---
+# После того, как backend-loop проигран (boris publish → serik bid →
+# boris accept → boris message), serik должен увидеть chat-room в табе
+# «Чаты» с непрочитанным сообщением и открыть его.
+- runFlow: _lib/qa-login.yaml
+- takeScreenshot: 01_serik_main
+- tapOn:
+    id: "bottom-nav-chats"
+- waitForAnimationToEnd
+- takeScreenshot: 02_chats_with_deal
+- assertVisible:
+    id: "deal-room-list-card"
+- tapOn:
+    id: "deal-room-list-card"
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: 03_chat_room_open
