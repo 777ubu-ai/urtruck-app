@@ -175,6 +175,17 @@ export default function CargoDetail({ navigation, route }) {
         const mapped = (d.bids || []).map(b => ({
           id: b.id, bidderId: b.bidder_id,
           name: b.bidder_name || b.bidder_phone || t('anonymous'),
+          // B4 (audit 2026-06-10): bid card теперь несёт телефон,
+          // verification_level и canonical role marker, чтобы shipper
+          // понимал — это РЕАЛЬНЫЙ водитель-кандидат, а не абстрактная
+          // ставка. `bidder_phone` уже отдаётся backend'ом, просто не
+          // рендерился; verification_level подтянем за один extra hop
+          // если backend будет его отдавать (заранее nullable, без crash).
+          phone: b.bidder_phone || null,
+          verificationLevel: typeof b.bidder_verification_level === 'number'
+            ? b.bidder_verification_level
+            : null,
+          partnerRole: b.bidder_role || 'driver',
           co: 'KZ', rating: 0, amount: b.amount,
           time: b.created_at?.slice(11, 16) || '•', message: b.message,
           status: b.status, isMine: b.bidder_id === myUserId,
@@ -198,7 +209,18 @@ export default function CargoDetail({ navigation, route }) {
       if (r.ok) {
         const roomId = r.chat_room_id || r.chatRoomId;
         if (roomId) {
-          navigation.navigate('Chat', { roomId, role });
+          // B2/B5 (audit 2026-06-10): передаём partner_id + partner_name
+          // в navigation params чтобы ChatScreen header сразу показал
+          // имя водителя, а не «Собеседник». Backend `accept_bid` /
+          // `open_chat_for_bid` ответ обогащён теми же полями (см.
+          // marketplace.py). Fallback: данные с самой ставки (`bid.name`,
+          // `bid.bidderId`) — они тоже корректны.
+          const partner = {
+            id: r.partner_id || bid.bidderId,
+            name: r.partner_name || bid.name,
+            role: r.partner_role || bid.partnerRole || 'driver',
+          };
+          navigation.navigate('Chat', { roomId, role, partner });
         } else {
           toast(t('chat_open_failed'), 'error');
         }
@@ -419,7 +441,41 @@ export default function CargoDetail({ navigation, route }) {
                   <Text style={{ fontSize: 14 }}>{b.isMine ? '🫵' : b.status === 'accepted' ? '✅' : isCountered ? '🔁' : (FLAGS[b.co] || '🏳️')}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[s.bidName, { color: theme.text }]}>{b.name}{b.isMine ? ' ' + t('you_marker') : ''}</Text>
+                  {/* B4 (audit 2026-06-10): bid card теперь явно выделяет
+                      «реального водителя-кандидата» — имя + role-pill
+                      «Водитель» + verification badge (если backend отдаёт
+                      verification_level >= 2). Телефон рендерим только если
+                      это не agent-маркер / не E.164-фейк. */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <Text style={[s.bidName, { color: theme.text }]}>
+                      {b.name}{b.isMine ? ' ' + t('you_marker') : ''}
+                    </Text>
+                    <View style={{
+                      backgroundColor: '#2563EB20',
+                      paddingHorizontal: 6, paddingVertical: 1,
+                      borderRadius: 4,
+                    }}>
+                      <Text style={{ color: '#2563EB', fontSize: 10, fontWeight: '700' }}>
+                        {t('role_driver')}
+                      </Text>
+                    </View>
+                    {b.verificationLevel != null && b.verificationLevel >= 2 ? (
+                      <View style={{
+                        backgroundColor: '#22C55E20',
+                        paddingHorizontal: 6, paddingVertical: 1,
+                        borderRadius: 4,
+                      }}>
+                        <Text style={{ color: '#22C55E', fontSize: 10, fontWeight: '700' }}>
+                          ✓ {t('verified_short') || 'Проверен'}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  {b.phone && /^\+?\d{10,}$/.test(b.phone) ? (
+                    <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 2 }}>
+                      📞 {b.phone}
+                    </Text>
+                  ) : null}
                   {b.message ? <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 2 }}>{b.message}</Text> : null}
                   <Text style={[s.bidInfo, {
                     color: b.status === 'accepted' ? '#22C55E'
@@ -491,6 +547,24 @@ export default function CargoDetail({ navigation, route }) {
                             if (r.chat_room_id) setChatRoomId(r.chat_room_id);
                             if (r.deal_id) { setDealId(r.deal_id); setDealStatus('accepted'); }
                             loadBids();
+                            // B2 (audit 2026-06-10): сразу переходим в чат
+                            // с этим водителем — главное product expectation
+                            // shipper'а после Accept. Partner enriched из
+                            // backend response (см. accept_bid в marketplace.py)
+                            // или из самой ставки если backend не отдал.
+                            if (r.chat_room_id) {
+                              const partner = {
+                                id: r.partner_id || b.bidderId,
+                                name: r.partner_name || b.name,
+                                role: r.partner_role || b.partnerRole || 'driver',
+                              };
+                              navigation.navigate('Chat', {
+                                roomId: r.chat_room_id,
+                                dealId: r.deal_id || null,
+                                role,
+                                partner,
+                              });
+                            }
                           } else {
                             toast(r.detail || t('accept_failed'), 'error');
                           }

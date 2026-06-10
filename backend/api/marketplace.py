@@ -780,9 +780,21 @@ def list_bids(
         raise HTTPException(status_code=400, detail="Укажите cargo_id, trip_id или user_id")
 
     with get_conn() as c:
+        # B4 (audit 2026-06-10): bid card в CargoDetail должна показывать
+        # bid'дера как «реального водителя-кандидата» — имя, роль,
+        # уровень верификации. Эти поля живут в drivers_registration и
+        # дёшево достаются LEFT JOIN'ом без новых API endpoints. Если
+        # bidder удалён или это guest без записи — JOIN вернёт NULL,
+        # frontend остаётся defensive (b.bidder_verification_level == null).
         rows = c.execute(f"""
-            SELECT * FROM bids WHERE {' AND '.join(where)}
-            ORDER BY created_at DESC LIMIT 100
+            SELECT b.*,
+                   d.role AS bidder_role,
+                   d.verification_level AS bidder_verification_level,
+                   d.status AS bidder_status
+            FROM bids b
+            LEFT JOIN drivers_registration d ON d.id = b.bidder_id
+            WHERE {' AND '.join('b.' + w if w.split()[0] in ('cargo_id','trip_id','bidder_id') else w for w in where)}
+            ORDER BY b.created_at DESC LIMIT 100
         """, params).fetchall()
     bids = [dict(r) for r in rows]
 
@@ -1128,7 +1140,31 @@ def accept_bid(bid_id: str, user=Depends(require_level(1))):
     except Exception:
         pass
 
-    return {"ok": True, "deal_id": result["deal_id"], "chat_room_id": result["chat_room_id"]}
+    # B2 (audit 2026-06-10): обогащаем ответ partner-инфой, чтобы frontend
+    # сразу мог открыть Chat с правильным заголовком (имя водителя, роль),
+    # а не «Собеседник». Партнёр для shipper'а — это bidder (driver).
+    # Минимальный snapshot: id, name, role; phone не возвращаем — он
+    # уже доступен через /chat/rooms и попадёт в headers при следующем
+    # запросе. Никаких новых таблиц / индексов / схемы.
+    partner_info = {"partner_id": bid["bidder_id"]}
+    try:
+        with get_conn() as c2:
+            row = c2.execute(
+                "SELECT full_name, role FROM drivers_registration WHERE id = ?",
+                (bid["bidder_id"],),
+            ).fetchone()
+            if row:
+                partner_info["partner_name"] = row["full_name"]
+                partner_info["partner_role"] = row["role"] or "driver"
+    except Exception:
+        pass
+
+    return {
+        "ok": True,
+        "deal_id": result["deal_id"],
+        "chat_room_id": result["chat_room_id"],
+        **partner_info,
+    }
 
 
 # ═══ Bid actions: edit / cancel / reject ═══
@@ -1412,8 +1448,19 @@ def open_chat_for_bid(bid_id: str, user=Depends(require_level(1))):
         chat_room_id = _ensure_chat_room_inline(
             c, bid["bidder_id"], owner_id, bid.get("cargo_id"), bid.get("trip_id")
         )
+        # B3 (audit 2026-06-10): отдаём partner-инфо (того, кто НЕ caller).
+        # Это нужно frontend'у чтобы ChatScreen header сразу показал имя
+        # партнёра. Тот же подход как в accept_bid — небольшой LEFT JOIN.
+        other_id = bid["bidder_id"] if user["id"] == owner_id else owner_id
+        partner_row = c.execute(
+            "SELECT full_name, role FROM drivers_registration WHERE id = ?", (other_id,)
+        ).fetchone()
 
-    return {"ok": True, "chat_room_id": chat_room_id}
+    resp = {"ok": True, "chat_room_id": chat_room_id, "partner_id": other_id}
+    if partner_row:
+        resp["partner_name"] = partner_row["full_name"]
+        resp["partner_role"] = partner_row["role"] or ("driver" if other_id == bid["bidder_id"] else "client")
+    return resp
 
 
 # ═══ Deals ═══

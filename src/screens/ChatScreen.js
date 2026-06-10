@@ -114,7 +114,7 @@ export default function ChatScreen({ navigation, route }) {
   voiceTime: { fontSize: 11, minWidth: 30 },
 
   }), [v1]);
-  const { partner, role, cargoId, tripId, roomId: initialRoomId, dealId, bidId } = route.params || {};
+  const { partner: partnerParam, role, cargoId, tripId, roomId: initialRoomId, dealId, bidId } = route.params || {};
   const { t } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
@@ -122,6 +122,15 @@ export default function ChatScreen({ navigation, route }) {
   const myId = session?.user?.id;
   const [messages, setMessages] = useState([]);
   const [roomId, setRoomId] = useState(initialRoomId || null);
+  // B5 (audit 2026-06-10): если caller перешёл в Chat без полного
+  // partner-объекта (только roomId), дотягиваем room из /chat/rooms по
+  // initialRoomId — там уже enriched payload (partner_id/name/role,
+  // route_label, cargo_title, bid_amount). Никаких новых endpoints не
+  // создаём; ChatsListScreen и так это потребляет.
+  const [partnerFallback, setPartnerFallback] = useState(null);
+  const partner = (partnerParam && partnerParam.name)
+    ? partnerParam
+    : (partnerFallback || partnerParam);
   const [input, setInput] = useState('');
   const [showPhrases, setShowPhrases] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -202,6 +211,39 @@ export default function ChatScreen({ navigation, route }) {
   useEffect(() => {
     if (initialRoomId) {
       loadMessages(initialRoomId);
+      // B5 (audit 2026-06-10): если caller дал нам roomId, но НЕ дал
+      // partner-объект (или дал только id без name), дотягиваем room
+      // payload из /chat/rooms — backend там уже отдаёт partner_name,
+      // partner_role, route_label, cargo_title. Это убирает «Собеседник»
+      // в шапке и заполняет deal-card.
+      const needFallback =
+        !partnerParam || !partnerParam.name || !partnerParam.id;
+      if (needFallback) {
+        chatAPI.rooms().then(d => {
+          const room = (d.rooms || []).find(r => r.id === initialRoomId);
+          if (room && (room.partner_id || room.partner_name)) {
+            setPartnerFallback({
+              id: room.partner_id || partnerParam?.id || null,
+              name: room.partner_name || partnerParam?.name || null,
+              role: room.partner_role || partnerParam?.role || null,
+            });
+            // Backfill deal info from room if we don't have it yet —
+            // gives DealRoomCard headers when caller arrived from a
+            // cargo flow without dealId in params.
+            if (!deal && (room.route_from || room.cargo_title || room.amount)) {
+              setDeal({
+                status: room.deal_status || 'active',
+                from_city: room.route_from,
+                to_city: room.route_to,
+                cargo_desc: room.cargo_title,
+                cargo_id: room.cargo_id,
+                amount: room.amount,
+                currency: room.currency,
+              });
+            }
+          }
+        }).catch(() => {});
+      }
       return;
     }
     if (!partner?.id) return;

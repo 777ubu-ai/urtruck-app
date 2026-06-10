@@ -64,12 +64,40 @@ const CITIES = {
   'Дубай': [25.2048, 55.2708],
 };
 
+// B6 (audit 2026-06-10): жёстче чистим city string перед lookup'ом.
+// Owner жалуется: «Yandex маршрут часто не находит». Корень — в input'е
+// бывают эмодзи флагов («Хоргос 🇨🇳»), названия стран («Алматы, KZ»),
+// разделители («→»), скобки и хвостовая пунктуация. Старый
+// `str.split(',')[0].trim()` отдавал например "Хоргос 🇨🇳" — в
+// CITIES такого ключа нет → fallback на text-search (часто промах).
+//
+// Теперь снимаем: всё после первой запятой/слэша/двойного
+// дефиса/стрелки, все Unicode-symbol categories (эмодзи + флаги
+// — region indicator pairs), скобки и кавычки. Возвращаем clean
+// человеческое name + предлагаем coordinates для Yandex rtext.
+const stripDecorations = (s) => {
+  if (!s || typeof s !== 'string') return '';
+  return s
+    .split(/[,/|→]/)[0]
+    // Удаляем эмодзи (broad symbol range) и flag-pair'ы (RIS U+1F1E6-U+1F1FF).
+    .replace(/[\u{1F1E6}-\u{1F1FF}]/gu, '')
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '')
+    // Скобки, кавычки, хвостовая пунктуация.
+    .replace(/[()\[\]"«»]/g, '')
+    .replace(/[.;:!?]+$/g, '')
+    .trim();
+};
+
 const parseCity = (str) => {
   if (!str) return null;
-  // Разбиваем "Москва, RU" или "Москва, 🇷🇺"
-  const name = str.split(',')[0].trim();
-  return CITIES[name] || null;
+  const clean = stripDecorations(str);
+  if (!clean) return null;
+  return CITIES[clean] || null;
 };
+
+// Public helper — фронт может прокидывать чистое имя в URL вместо
+// сырой строки с эмодзи.
+export const cleanCityName = stripDecorations;
 
 export default function RouteMap({ from, to, transit, liveCoord, height = 200 }) {
   const { theme } = useTheme();
@@ -80,7 +108,18 @@ export default function RouteMap({ from, to, transit, liveCoord, height = 200 })
   // Открыть в Яндекс.Картах с маршрутом для грузовика
   const openYandex = () => {
     if (!fromCoord || !toCoord) {
-      const q = encodeURIComponent((from || '') + ' → ' + (to || ''));
+      // B6 (audit 2026-06-10): в text-search fallback тоже отдаём
+      // ОЧИЩЕННЫЕ имена городов, без эмодзи/флагов/стран. Иначе
+      // запрос «Хоргос 🇨🇳 → Алматы 🇰🇿» в Яндексе не парсится.
+      const fromClean = cleanCityName(from);
+      const toClean = cleanCityName(to);
+      if (!fromClean || !toClean) {
+        // Если одно из мест нечитаемо — не дергаем Яндекс с мусором.
+        // Просто ничего не открываем (button обработчик не должен
+        // отдавать UX «открыл и пусто»).
+        return;
+      }
+      const q = encodeURIComponent(fromClean + ' → ' + toClean);
       Linking.openURL(`https://yandex.com/maps/?text=${q}`);
       return;
     }

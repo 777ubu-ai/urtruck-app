@@ -218,13 +218,56 @@ export default function MyTripsScreen({ navigation, route }) {
   };
   const myItemsActive = myItemsRaw.filter((it) => !isExpiredItem(it));
   const myItemsExpired = myItemsRaw.filter((it) => isExpiredItem(it));
-  const myItems = myItemsActive;
 
-  const myBids = isDriver ? (data?.my_bids || []) : (data?.incoming_bids || []);
-  // Архив: server-deals + локально-вычисленные expired (без изменения
-  // backend данных). justCreated не дублируется т.к. он active.
+  // B1 (audit 2026-06-10): owner жалуется — accepted deals оказывались в
+  // «Архиве», а cargos со status='taken' дублировались в «Активные».
+  // Корень: фильтрация шла только по expired/created. Теперь явно
+  // разделяем по `status`:
+  //   client:
+  //     Активные   = my_cargos.status === 'active'        (ещё ищут перевозчика)
+  //     В работе   = my_cargos.status === 'taken'         (ставка принята, идёт сделка)
+  //                  + my_deals.status === 'accepted/in_progress'
+  //     Архив      = my_cargos.status ∈ {completed, cancelled, rejected}
+  //                  + my_deals.status ∈ {completed, cancelled}
+  //                  + expired (локально)
+  //   driver: оставляем как было (my_trips / my_bids / my_deals).
+  const isActiveStatus = (s) => !s || s === 'active' || s === 'open';
+  const isInProgressStatus = (s) => s === 'taken' || s === 'accepted' || s === 'in_progress';
+  const isArchivedStatus = (s) => s === 'completed' || s === 'cancelled' || s === 'rejected' || s === 'expired';
+
+  const myItems = isDriver
+    ? myItemsActive
+    : myItemsActive.filter((it) => isActiveStatus(it.status));
+
+  // Client «В работе»: cargos со status='taken' (т.е. кто-то выиграл ставку)
+  // + accepted/in_progress deals, которые backend кладёт в my_deals.
+  const inProgressCargos = !isDriver
+    ? myItemsActive.filter((it) => isInProgressStatus(it.status))
+    : [];
+  const inProgressDeals = (!isDriver ? (data?.my_deals || []) : [])
+    .filter((d) => isInProgressStatus(d.status));
+
+  const myBids = isDriver
+    ? (data?.my_bids || [])
+    : (
+        // Для client'а вторая вкладка — РЕАЛЬНО «в работе» (активные сделки),
+        // а не входящие pending bids (те живут в CargoDetail per cargo).
+        // Передаём как unified список с маркером _inWork для рендерера.
+        [
+          ...inProgressCargos.map((it) => ({ ...it, _inWork: 'cargo' })),
+          ...inProgressDeals.map((d) => ({ ...d, _inWork: 'deal' })),
+        ]
+      );
+
+  // Архив: server-deals (только completed/cancelled) + локально-вычисленные
+  // expired + cargos со status в {completed, cancelled, rejected}.
+  const archivedDeals = (data?.my_deals || []).filter((d) => isArchivedStatus(d.status));
+  const archivedCargos = !isDriver
+    ? myItemsActive.filter((it) => isArchivedStatus(it.status))
+    : [];
   const myDeals = [
-    ...((data?.my_deals) || []),
+    ...archivedDeals,
+    ...archivedCargos,
     ...myItemsExpired.map((it) => ({ ...it, _expired: true })),
   ];
 
@@ -680,7 +723,17 @@ export default function MyTripsScreen({ navigation, route }) {
       <FlatList
         data={tab === 'deals' ? myDeals : tab === 'my' ? myItems : myBids}
         keyExtractor={i => i.id}
-        renderItem={tab === 'deals' ? renderDeal : tab === 'my' ? renderMyItem : renderBid}
+        renderItem={tab === 'deals'
+          ? renderDeal
+          : tab === 'my'
+            ? renderMyItem
+            // B1 (audit 2026-06-10): для client вкладка «В работе» теперь
+            // unified список cargo (status='taken') + deal (in_progress).
+            // Cargo рендерим тем же renderMyItem; deal — renderDeal.
+            // Маркер _inWork выставляется выше при формировании myBids.
+            : (!isDriver ? (({ item }) => (
+                item._inWork === 'deal' ? renderDeal({ item }) : renderMyItem({ item })
+              )) : renderBid)}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
         ListEmptyComponent={
