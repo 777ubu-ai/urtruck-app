@@ -1,0 +1,53 @@
+appId: host.exp.Exponent
+name: client-auth
+tags:
+  - smoke
+  - client
+  - auth
+env:
+  MAESTRO_ACTOR: boris
+---
+- runFlow: _lib/qa-login.yaml
+- takeScreenshot: 01_after_qa_login_client
+- assertVisible:
+    id: "bottom-nav-profile"
+# Клиентский tab-bar: MyWork / Feed / Publish / Profile (canonical из AppNavigator.js
+# Tab.Screen client-ветка). Queue/Chats — водительские, не должны рендериться.
+- assertVisible:
+    id: "bottom-nav-publish"
+- assertNotVisible:
+    id: "bottom-nav-queue"
+- tapOn:
+    id: "bottom-nav-feed"
+- waitForAnimationToEnd
+- takeScreenshot: 02_client_feed
+- tapOn:
+    id: "bottom-nav-mywork"
+- waitForAnimationToEnd
+- takeScreenshot: 03_client_mywork
+- tapOn:
+    id: "bottom-nav-publish"
+- waitForAnimationToEnd
+- takeScreenshot: 04_client_publish_opens
+# CreateCargo testID'ы из #98 каталога. cargo-from-input/cargo-to-input
+# рендерятся только после раскрытия RoutePointPicker; для smoke
+# достаточно `cargo-desc-input` (видим сразу) и submit-кнопки
+# (приходится прокрутить вниз).
+- extendedWaitUntil:
+    visible:
+      id: "cargo-desc-input"
+    timeout: 10000
+- assertVisible:
+    id: "cargo-desc-input"
+- scrollUntilVisible:
+    element:
+      id: "cargo-submit-button"
+    direction: DOWN
+    timeout: 10000
+- assertVisible:
+    id: "cargo-submit-button"
+- takeScreenshot: 05_client_publish_form_bottom
+# Profile-проверки для client-actor — отдельный smoke flow
+# (`createcargo-authenticated.yaml`). Здесь главная цель — доказать,
+# что client tab-bar содержит Publish, не содержит Queue/Chats,
+# и Publish открывает CreateCargo.

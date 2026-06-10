@@ -1,0 +1,74 @@
+# Shared sub-flow: bring Expo Go to UrTruck → onboarding → QA login.
+#
+# Caller exports MAESTRO_ACTOR (serik|boris|auditor) and MAESTRO_QA_AGENT_TOKEN
+# in env before `maestro test ...`. After this sub-flow returns, the app is
+# on Main with the actor's role from /qa/ensure-actor (driver/client).
+#
+# Idempotent: if a previous flow already logged in the same actor and Expo Go
+# came back to Main, we skip the QA login and let the caller proceed with the
+# already-loaded session. The caller's per-flow assertions (driver-only tabs,
+# client-only Publish, etc.) will surface actor mismatches if any.
+appId: host.exp.Exponent
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "UrTruck"
+    timeout: 15000
+- tapOn:
+    text: "UrTruck"
+    index: 0
+- extendedWaitUntil:
+    visible:
+      text: "Смотреть грузы|Continue|Профиль|Грузы"
+    timeout: 60000
+- runFlow:
+    when:
+      visible: "Continue"
+    commands:
+      - tapOn:
+          point: "50%,10%"
+      - waitForAnimationToEnd
+- runFlow:
+    when:
+      visible: "Reload"
+    commands:
+      - tapOn:
+          point: "50%,10%"
+      - waitForAnimationToEnd
+# If a previous flow left an active session on Main, force-logout through the
+# dev-only QA logout button (skips the iOS Alert dialog). This guarantees
+# qa-debug-submit is reachable for the actor we are about to log in as.
+- runFlow:
+    when:
+      visible:
+        id: "bottom-nav-profile"
+    commands:
+      - tapOn:
+          id: "bottom-nav-profile"
+      - waitForAnimationToEnd
+      - scrollUntilVisible:
+          element:
+            id: "qa-debug-logout"
+          direction: DOWN
+          timeout: 8000
+      - tapOn:
+          id: "qa-debug-logout"
+      - extendedWaitUntil:
+          visible:
+            id: "qa-debug-submit"
+          timeout: 15000
+- extendedWaitUntil:
+    visible:
+      id: "qa-debug-submit"
+    timeout: 10000
+- runScript: ensure-actor.js
+- tapOn:
+    id: "qa-debug-token"
+- inputText: ${output.token}
+- hideKeyboard
+- tapOn:
+    id: "qa-debug-submit"
+- extendedWaitUntil:
+    visible:
+      id: "bottom-nav-profile"
+    timeout: 30000
