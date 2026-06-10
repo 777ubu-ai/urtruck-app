@@ -13,10 +13,28 @@ Environment:
 
 Screenshots: `qa/maestro/screenshots/run-1131/`
 
-## Status update (2026-06-10 PR `fix/p1-maestro-qa-findings`)
+## Status update (2026-06-10 PR `fix/p1-maestro-qa-findings` MERGED + full regression)
 
-P1 фиксы D1, D2, D12 — все три **FIXED** и проверены локально.
-Подробные root cause + fix summary см. в строках таблицы ниже + в PR description.
+P1 фиксы D1, D2, D12 — все три **FIXED via PR #100 (merged into integration `f56c4c8`)** и проверены вживую в full regression 2026-06-10:
+- D1 → Maestro `verification-deep.yaml`, screenshot `02_after_pro_cta.png` — landed на EditProfile, не Identity.
+- D2 → Maestro `marketplace-driver-chat.yaml` + `unread-badge-flow.yaml`, screenshot `03_chat_room_open_d2_proof.png` — все поля `Шымкент → Бишкек / Груз / 700000 KZT` отрисованы.
+- D12 → 4-state curl matrix + UI side (boris видит свой bid в DealRoom после tap).
+
+Full regression report: `qa/maestro/FULL_REGRESSION_REPORT_2026-06-10.md`.
+
+### New findings from 2026-06-10 full regression:
+
+- **D19 (P2 — new)**: `EditProfileScreen.js:284` использует `s.title` со стилем `v1Typography.h1` (color = hardcoded `v1Colors.text` ≈ white). В light theme заголовок «Профиль водителя» / «Профиль клиента» практически невидим — fade-эффект выглядит как баг. Fix: импортировать `useTheme()` и заменить `s.title` на dynamic `[s.title, { color: theme.text }]`. Малый и изолированный.
+
+- **D20 (P3 — new)**: `route.params.focus === 'pro'` (передаётся из ProfileScreen PRO CTA после D1 fix) **игнорируется** EditProfile-ом. Сейчас exit — landing вверху профиля; пользователь должен сам скроллить до PRO-полей (legal_form, china_experience_years, favorite_borders, emergency_contact). Будущее улучшение: `useEffect` с `scrollViewRef.scrollTo` на pro-секцию, если `focus==='pro'`.
+
+- **POSITIVE — chat unread loop works end-to-end** (`bottom-nav-chats-badge` + `deal-room-list-unread` + auto-mark-read on GET /messages). Документировано в FULL_REGRESSION_REPORT.
+
+### NOT touched (стало приоритет P2-batch PR):
+- D3, D4, D5, D6, D7, D8, D9, D10, D11 — все P2 из исходного backlog. Recommendation: batched UX-PR из i18n + style fixes.
+- D13, D14, D15, D16, D17, D18 — все P3 из исходного backlog. Тривиальные cleanup'ы.
+
+
 
 ## Defect table
 

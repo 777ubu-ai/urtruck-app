@@ -1,0 +1,32 @@
+appId: host.exp.Exponent
+name: push-filter-flow
+tags:
+  - smoke
+  - driver
+  - auth
+  - notifications
+  - regression
+env:
+  MAESTRO_ACTOR: serik
+---
+# UI-проверка PushFilter — открытие, скриншот, отсутствие crash.
+- runFlow: _lib/qa-login.yaml
+- tapOn:
+    id: "bottom-nav-profile"
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element:
+      id: "profile-push-filter"
+    direction: DOWN
+    timeout: 6000
+- assertVisible:
+    id: "profile-push-filter"
+- tapOn:
+    id: "profile-push-filter"
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: 01_push_filter_screen
+# Возвращаемся через системный жест (PushFilter — Stack push поверх Main).
+- back
+- waitForAnimationToEnd
+- takeScreenshot: 02_back_to_profile
