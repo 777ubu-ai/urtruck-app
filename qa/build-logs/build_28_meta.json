@@ -1,0 +1,12 @@
+{
+  "buildVersion": "28",
+  "status": "FINISHED",
+  "completedAt": "2026-06-10T17:27:56.744Z",
+  "buildProfile": "production",
+  "appVersion": "1.0.0",
+  "sdkVersion": "52.0.0",
+  "gitCommitHash": "510bdc394265b2520d989ca7ab566e8d0157df0a",
+  "gitCommitMessage": "Merge pull request #102 from 777ubu-ai/claude/youthful-cerf-barf3\n\nMerge integration → main — build 26 cut",
+  "buildArtifactUrl": "https://expo.dev/artifacts/eas/hYczEkeLGooBWsD8vErfF3qf17k25XhjpLQIZANgkvA.ipa",
+  "distribution": "STORE"
+}

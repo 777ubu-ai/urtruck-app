@@ -1,0 +1,10 @@
+{
+  "buildVersion": "27",
+  "status": "FINISHED",
+  "completedAt": "2026-06-10T17:17:46.245Z",
+  "buildProfile": "production",
+  "appVersion": "1.0.0",
+  "sdkVersion": "52.0.0",
+  "gitCommitHash": "510bdc394265b2520d989ca7ab566e8d0157df0a",
+  "distribution": "STORE"
+}
