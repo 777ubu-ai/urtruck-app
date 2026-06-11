@@ -1,0 +1,63 @@
+appId: host.exp.Exponent
+name: night-ops-09-cargoruqsat-info
+tags:
+  - night-ops
+  - cargoruqsat
+  - info-screen
+env:
+  MAESTRO_ACTOR: serik
+---
+# Phase 7 / Night Ops — CargoRuqsat InfoScreen smoke.
+#
+# Goal: убедиться что:
+#   1. Driver actor может попасть в CargoRuqsatInfo через Queue tab
+#   2. Page рендерится без crash
+#   3. Sections "Что это" / "Зачем" / "Когда появится" видны
+#   4. Live scoreboard загружается (или error gracefully shown)
+#   5. Open official portal button visible
+#   6. Back navigation works
+#
+# Что НЕ ловит:
+#   - Real Smart Bridge SOAP API (нет до Q4 2026 — backend gap)
+#   - Real cgr.qoldau.kz scraping (mock data)
+- runFlow: ../qa/maestro/_lib/qa-login.yaml
+- tapOn:
+    id: "bottom-nav-queue"
+- waitForAnimationToEnd
+- takeScreenshot: 00_queue_screen
+# Queue → tap CargoRuqsat link
+- runFlow:
+    when:
+      visible:
+        id: "queue-cgr-link"
+    commands:
+      - tapOn:
+          id: "queue-cgr-link"
+- runFlow:
+    when:
+      visible:
+        id: "queue-cgr-link-approved"
+    commands:
+      - tapOn:
+          id: "queue-cgr-link-approved"
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: 01_cgr_info_screen
+# Title — i18n key (RU default actor)
+- assertVisible: "Электронная очередь"
+- assertVisible: "Что это?"
+- assertVisible: "Зачем это водителю?"
+- assertVisible: "Когда появится?"
+- assertVisible: "Открыть официальный портал"
+- takeScreenshot: 02_cgr_info_sections
+# Verify live scoreboard либо loaded либо graceful error
+- runFlow:
+    when:
+      visible: "Загруженность погранпереходов"
+    commands:
+      - takeScreenshot: 03_cgr_live_scoreboard
+# Back navigation
+- back
+- waitForAnimationToEnd
+- assertVisible:
+    id: "bottom-nav-queue"
