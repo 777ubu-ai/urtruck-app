@@ -60,6 +60,8 @@ export default function MyTripsScreen({ navigation, route }) {
   tabs: { flexDirection: 'row', marginHorizontal: spacing.lg, borderRadius: radius.sm, padding: 3, marginBottom: spacing.md, borderWidth: 1 },
   tab: { flex: 1, paddingVertical: spacing.sm, borderRadius: 7, alignItems: 'center', borderWidth: 1 },
   tabText: { ...typography.caption, fontWeight: '700' },
+  archiveToggle: { alignSelf: 'flex-end', paddingVertical: 6, paddingHorizontal: 4, marginTop: 2 },
+  archiveToggleText: { fontSize: 12, fontWeight: '700' },
 
   card: { borderRadius: radius.md, padding: spacing.md, borderWidth: 1, marginBottom: spacing.sm },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xs },
@@ -95,9 +97,18 @@ export default function MyTripsScreen({ navigation, route }) {
   const { toast } = useToast();
   const notifUnread = useUnreadNotifications();
 
-  const initialTab = route.params?.initialTab || 'my';
+  // Driver tabs (issue #2): routes / offers / inwork / done (+ secondary
+  // archive). Client keeps legacy my / bids / deals. Legacy initialTab
+  // values are remapped so deep-links / CreateTrip nav still land sanely.
+  const DRIVER_TABS_KEYS = ['routes', 'offers', 'inwork', 'done', 'archive'];
+  const rawInitialTab = route.params?.initialTab || (isDriver ? 'routes' : 'my');
+  const normInitialTab = isDriver
+    ? (DRIVER_TABS_KEYS.includes(rawInitialTab)
+        ? rawInitialTab
+        : (rawInitialTab === 'bids' ? 'offers' : rawInitialTab === 'deals' ? 'inwork' : 'routes'))
+    : rawInitialTab;
   const justCreatedTrip = route.params?.justCreatedTrip || null;
-  const [tab, setTab] = useState(initialTab);
+  const [tab, setTab] = useState(normInitialTab);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(!justCreatedTrip);
   const [bidModal, setBidModal] = useState(false);
@@ -228,6 +239,27 @@ export default function MyTripsScreen({ navigation, route }) {
     ...myItemsExpired.map((it) => ({ ...it, _expired: true })),
   ];
 
+  // ─── Driver tab buckets (issue #2/#3) ───
+  // Жёсткий маппинг статусов сделок/ставок на 4 driver-вкладки + вторичный
+  // Архив. Карточка с «Начать перевозку» (accepted/in_progress) НИКОГДА не
+  // попадает в Архив — она живёт только в «В работе».
+  //   pending | countered                 → Предложения (offers)
+  //   accepted | in_progress | picked_up  → В работе (inwork)
+  //   completed | delivered               → Завершённые (done)
+  //   cancelled | rejected | expired      → Архив (вторичный фильтр)
+  const IN_WORK_STATUSES = ['accepted', 'in_progress', 'picked_up'];
+  const DONE_STATUSES = ['completed', 'delivered'];
+  const ARCHIVE_STATUSES = ['cancelled', 'rejected', 'expired'];
+  const serverDeals = (data?.my_deals) || [];
+  const driverOffers = myBids.filter((b) => ['pending', 'countered'].includes(b.status));
+  const driverInWork = serverDeals.filter((d) => IN_WORK_STATUSES.includes(d.status));
+  const driverDone = serverDeals.filter((d) => DONE_STATUSES.includes(d.status));
+  const driverArchive = [
+    ...serverDeals.filter((d) => ARCHIVE_STATUSES.includes(d.status)).map((d) => ({ ...d, _kind: 'deal' })),
+    ...myBids.filter((b) => ['rejected', 'cancelled', 'expired'].includes(b.status)).map((b) => ({ ...b, _kind: 'bid' })),
+    ...myItemsExpired.map((it) => ({ ...it, _kind: 'route', _expired: true })),
+  ];
+
   // ─── Cards ───
 
   const renderMyItem = ({ item }) => {
@@ -353,7 +385,21 @@ export default function MyTripsScreen({ navigation, route }) {
           </View>
           <Text style={[s.statusLabel, { color: sc[item.status] || '#78716C' }]}>{formatStatus(item.status)}</Text>
         </View>
-        <Text style={[s.route, { color: theme.text }]}>{item.from_city} → {item.to_city}</Text>
+        <Text style={[s.route, { color: theme.text }]}>{item.from_city || '—'} → {item.to_city || '—'}</Text>
+        {/* issue #3: груз/тип кузова на карточке заказа */}
+        {(item.cargo_title || item.cargo_desc || item.cargo_type || item.truck_type) ? (
+          <View style={s.cardMeta}>
+            {(item.cargo_title || item.cargo_desc) ? (
+              <Text style={[s.metaItem, { color: theme.textMuted }]} numberOfLines={1}>📦 {item.cargo_title || item.cargo_desc}</Text>
+            ) : null}
+            {(item.cargo_type || item.truck_type) ? (
+              <>
+                <Text style={s.metaDot}>·</Text>
+                <Text style={[s.metaItem, { color: theme.textDim }]}>{formatTruckType(item.truck_type || item.cargo_type)}</Text>
+              </>
+            ) : null}
+          </View>
+        ) : null}
         <View style={s.cardBottom}>
           <Text style={s.price}>{(item.amount || 0) > 0 ? `$${item.amount}` : t('negotiable')}</Text>
           <Text style={[s.metaItem, { color: theme.textDim }]}>{formatDateForDisplay(item.departure || item.created_at)}</Text>
@@ -617,21 +663,61 @@ export default function MyTripsScreen({ navigation, route }) {
   // labels (Active / Completed / Archive). The keys are kept for testID
   // backward compat — existing E2E rely on them.
   const v1Accent = v1AccentFor(isDriver ? 'driver' : 'client');
-  const TABS = [
-    { key: 'my',    label: t('tab_active'),    testID: 'my-work-tab-my' },
-    { key: 'bids',  label: isDriver ? t('tab_completed') : t('tab_in_progress'), testID: 'my-work-tab-bids' },
-    { key: 'deals', label: t('tab_archive'),   testID: 'my-work-tab-orders' },
-  ];
+  // Driver (issue #2): Мои рейсы / Предложения / В работе / Завершённые.
+  // Client keeps the legacy 3-tab layout untouched.
+  const TABS = isDriver
+    ? [
+        { key: 'routes', label: t('tab_my_routes'), testID: 'my-work-tab-routes' },
+        { key: 'offers', label: t('tab_offers'),    testID: 'my-work-tab-offers' },
+        { key: 'inwork', label: t('tab_in_work'),   testID: 'my-work-tab-inwork' },
+        { key: 'done',   label: t('tab_done'),      testID: 'my-work-tab-done' },
+      ]
+    : [
+        { key: 'my',    label: t('tab_active'),       testID: 'my-work-tab-my' },
+        { key: 'bids',  label: t('tab_in_progress'),  testID: 'my-work-tab-bids' },
+        { key: 'deals', label: t('tab_archive'),      testID: 'my-work-tab-orders' },
+      ];
 
-  // Stats row pulls from the same data sources the tabs already use.
-  // Stage 16: dropped the per-tile emoji (📦/👥/🚚) — the redesigned
-  // StatsRow now reads as a compact stat block, no icon halo, no
-  // affordance that suggests it's tappable.
-  const stats = [
-    { value: myItems.length,  label: t('stats_active') },
-    { value: myBids.length,   label: isDriver ? t('stats_responses') : t('stats_bids') },
-    { value: myDeals.length,  label: t('stats_in_progress') },
-  ];
+  const stats = isDriver
+    ? [
+        { value: driverOffers.length, label: t('tab_offers') },
+        { value: driverInWork.length, label: t('tab_in_work') },
+        { value: driverDone.length,   label: t('tab_done') },
+      ]
+    : [
+        { value: myItems.length,  label: t('stats_active') },
+        { value: myBids.length,   label: t('stats_bids') },
+        { value: myDeals.length,  label: t('stats_in_progress') },
+      ];
+
+  // Archive renderer dispatches by item kind (deal / bid / expired route).
+  const renderArchiveItem = ({ item }) =>
+    item._kind === 'deal' ? renderDeal({ item })
+      : item._kind === 'bid' ? renderBid({ item })
+      : renderMyItem({ item });
+
+  const DRIVER_DATA = { routes: myItems, offers: driverOffers, inwork: driverInWork, done: driverDone, archive: driverArchive };
+  const DRIVER_RENDER = { routes: renderMyItem, offers: renderBid, inwork: renderDeal, done: renderDeal, archive: renderArchiveItem };
+  const CLIENT_DATA = { my: myItems, bids: myBids, deals: myDeals };
+  const CLIENT_RENDER = { my: renderMyItem, bids: renderBid, deals: renderDeal };
+  const listData = isDriver ? (DRIVER_DATA[tab] || []) : (CLIENT_DATA[tab] || []);
+  const listRender = isDriver ? (DRIVER_RENDER[tab] || renderMyItem) : (CLIENT_RENDER[tab] || renderMyItem);
+
+  const renderEmpty = () => {
+    if (data?.authRequired) {
+      return <EmptyState title={t('gate_login')} description={t('gate_login_desc')} actionLabel={t('gate_enter')} onAction={() => navigation.navigate('Role')} />;
+    }
+    if (isDriver) {
+      if (tab === 'routes') return <EmptyState title={t('no_trips_yet')} description={t('no_trips_desc')} actionLabel={t('publish_route')} onAction={onPublishRoute} />;
+      if (tab === 'offers') return <EmptyState title={t('no_bids_yet_driver')} description={t('no_bids_desc')} actionLabel={t('find_cargos')} onAction={() => navigation.navigate('Feed', { role })} />;
+      if (tab === 'inwork') return <EmptyState title={t('no_inwork_yet')} description={t('no_inwork_desc')} actionLabel={t('find_cargos')} onAction={() => navigation.navigate('Feed', { role })} />;
+      if (tab === 'done') return <EmptyState title={t('no_done_yet')} description={t('no_done_desc')} />;
+      return <EmptyState title={t('no_archive_yet')} description={t('no_archive_desc')} />;
+    }
+    if (tab === 'my') return <EmptyState title={t('no_cargos_yet')} description={t('no_cargos_desc')} actionLabel={t('place_cargo')} onAction={() => navigation.navigate('CreateCargo')} />;
+    if (tab === 'bids') return <EmptyState title={t('no_responses_yet')} description={t('no_responses_desc')} actionLabel={t('place_cargo')} onAction={() => navigation.navigate('CreateCargo')} />;
+    return <EmptyState title={t('no_orders_yet')} description={t('no_orders_desc_client')} />;
+  };
 
   return (
     <SafeAreaView testID="my-work-screen" style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']}>
@@ -673,40 +759,31 @@ export default function MyTripsScreen({ navigation, route }) {
       ) : null}
 
       <View style={{ paddingHorizontal: 16 }}>
-        <SegmentTabs items={TABS} value={tab} onChange={setTab} accent={v1Accent.main} />
+        <SegmentTabs items={TABS} value={tab === 'archive' ? null : tab} onChange={setTab} accent={v1Accent.main} />
         <StatsRow items={stats} accent={v1Accent.main} />
+        {/* Архив — вторичный фильтр (issue #2): отменённые/отклонённые/
+            истёкшие, НЕ основная вкладка. Карточек «Начать перевозку» тут нет. */}
+        {isDriver ? (
+          <TouchableOpacity
+            testID="my-work-archive-toggle"
+            onPress={() => setTab(tab === 'archive' ? 'routes' : 'archive')}
+            style={s.archiveToggle}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={[s.archiveToggleText, { color: tab === 'archive' ? v1Accent.main : v1.textMuted }]}>
+              {tab === 'archive' ? `‹ ${t('back_to_active')}` : `${t('tab_archive')} (${driverArchive.length}) ›`}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       <FlatList
-        data={tab === 'deals' ? myDeals : tab === 'my' ? myItems : myBids}
-        keyExtractor={i => i.id}
-        renderItem={tab === 'deals' ? renderDeal : tab === 'my' ? renderMyItem : renderBid}
+        data={listData}
+        keyExtractor={(i) => (i._kind ? i._kind + ':' : '') + i.id}
+        renderItem={listRender}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
-        ListEmptyComponent={
-          data?.authRequired ? (
-            <EmptyState title={t('gate_login')} description={t('gate_login_desc')} actionLabel={t('gate_enter')} onAction={() => navigation.navigate('Role')} />
-          ) : tab === 'my' ? (
-            <EmptyState
-              title={isDriver ? t('no_trips_yet') : t('no_cargos_yet')}
-              description={isDriver ? t('no_trips_desc') : t('no_cargos_desc')}
-              actionLabel={isDriver ? t('publish_route') : t('place_cargo')}
-              onAction={() => navigation.navigate(isDriver ? 'CreateTrip' : 'CreateCargo')}
-            />
-          ) : tab === 'bids' ? (
-            <EmptyState
-              title={isDriver ? t('no_bids_yet_driver') : t('no_responses_yet')}
-              description={isDriver ? t('no_bids_desc') : t('no_responses_desc')}
-              actionLabel={isDriver ? t('find_cargos') : t('place_cargo')}
-              onAction={() => isDriver ? navigation.navigate('Feed', { role }) : navigation.navigate('CreateCargo')}
-            />
-          ) : (
-            <EmptyState
-              title={t('no_orders_yet')}
-              description={isDriver ? t('no_orders_desc_driver') : t('no_orders_desc_client')}
-            />
-          )
-        }
+        ListEmptyComponent={renderEmpty()}
       />
 
       <BidModal

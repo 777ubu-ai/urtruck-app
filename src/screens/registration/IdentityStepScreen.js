@@ -102,19 +102,49 @@ export default function IdentityStepScreen({ navigation }) {
     return null;
   };
 
-  const pickPhoto = async () => {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (perm.status !== 'granted') {
-      toast(t('photo_permission_required'), 'error');
-      return;
-    }
-    const r = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.9,
-    });
+  // issue #1: личное фото — это фото лица для верификации, поэтому
+  // ОСНОВНОЕ действие открывает камеру сразу (а не галерею со случайными
+  // скриншотами). Галерея — вторичная опция по явному выбору. Чистый
+  // preview показываем только после успешного локального выбора.
+  const applyPicked = (r) => {
     if (!r.canceled && r.assets?.[0]?.uri) {
       setPhotoUri(r.assets[0].uri);
       if (errors.photo) setErrors({ ...errors, photo: null });
+    }
+  };
+
+  const takePhoto = async () => {
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (perm.status !== 'granted') {
+      toast(t('camera_permission_required'), 'error', 5000);
+      return;
+    }
+    try {
+      const r = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        cameraType: ImagePicker.CameraType.front,
+        quality: 0.9,
+      });
+      applyPicked(r);
+    } catch {
+      toast(t('camera_error'), 'error', 4000);
+    }
+  };
+
+  const pickFromGallery = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (perm.status !== 'granted') {
+      toast(t('photo_permission_required'), 'error', 5000);
+      return;
+    }
+    try {
+      const r = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.9,
+      });
+      applyPicked(r);
+    } catch {
+      toast(t('camera_error'), 'error', 4000);
     }
   };
 
@@ -144,7 +174,13 @@ export default function IdentityStepScreen({ navigation }) {
       if (!photoKey) throw new Error('no_key');
     } catch (err) {
       setSaving(false);
-      toast(t('identity_err_photo_upload'), 'error', 5000);
+      // issue #1: более конкретная ошибка где возможно (нет интернета /
+      // файл слишком большой / иначе общий upload-fail).
+      const msg = String(err?.message || err || '');
+      let key = 'identity_err_photo_upload';
+      if (/network|fetch|timeout|соединени|connection|интернет/i.test(msg)) key = 'upload_err_network';
+      else if (/413|too large|payload|size|больш/i.test(msg)) key = 'upload_err_too_large';
+      toast(t(key), 'error', 5000);
       return;
     }
 
@@ -204,15 +240,20 @@ export default function IdentityStepScreen({ navigation }) {
           {/* Личная фотография (обязательно) */}
           <Text style={s.label}>{t('identity_photo_label')}</Text>
           <Text style={s.photoHint}>{t('identity_photo_hint')}</Text>
-          <Pressable onPress={pickPhoto} style={s.photoSlot} testID="identity-photo">
+          <Pressable onPress={takePhoto} style={s.photoSlot} testID="identity-photo">
             {photoUri ? (
               <Image source={{ uri: photoUri }} style={s.photoThumb} resizeMode="cover" />
             ) : (
               <>
                 <Feather name="camera" size={24} color={brand.textSecondary} />
-                <Text style={s.photoText}>{t('identity_photo_add')}</Text>
+                <Text style={s.photoText}>{t('identity_photo_take')}</Text>
               </>
             )}
+          </Pressable>
+          {/* Вторичное действие — галерея, только по явному выбору (issue #1) */}
+          <Pressable onPress={pickFromGallery} style={s.photoGalleryLink} testID="identity-photo-gallery" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Feather name="image" size={14} color={brand.textTertiary} />
+            <Text style={s.photoGalleryText}>{photoUri ? t('identity_photo_retake_gallery') : t('identity_photo_gallery')}</Text>
           </Pressable>
           {errors.photo ? <Text style={s.err}>{errors.photo}</Text> : null}
 
@@ -317,6 +358,8 @@ const s = StyleSheet.create({
   photoSlot: { alignSelf: 'flex-start', width: 120, height: 120, borderRadius: radius.md, borderWidth: 1, borderStyle: 'dashed', borderColor: brand.border, alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: brand.surfaceMuted, overflow: 'hidden' },
   photoThumb: { width: '100%', height: '100%' },
   photoText: { ...typography.caption, color: brand.textSecondary },
+  photoGalleryLink: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, paddingVertical: 4 },
+  photoGalleryText: { ...typography.caption, color: brand.textTertiary, textDecorationLine: 'underline' },
   input: { height: 52, borderRadius: radius.md, borderWidth: 1, borderColor: brand.border, backgroundColor: brand.surface, paddingHorizontal: 16, color: brand.textPrimary, ...typography.body },
   inputErr: { borderColor: brand.error },
   dobField: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

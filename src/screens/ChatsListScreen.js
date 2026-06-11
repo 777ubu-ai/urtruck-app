@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../utils/useI18n';
+import { formatStatus } from '../utils/i18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useV1Colors } from '../theme/designV1';
 import { chatAPI } from '../utils/chatAPI';
@@ -117,7 +118,7 @@ export default function ChatsListScreen({ navigation, route }) {
               {cargoStr ? <Text style={[s.cargo, { color: theme.textMuted }]} numberOfLines={1}>📦 {cargoStr}</Text> : null}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 {bidStr ? <Text style={[s.bid, { color: theme.text }]}>{bidStr}</Text> : null}
-                {dealStatus ? <Text style={[s.dealStatus, { color: accent }]}>{dealStatus}</Text> : null}
+                {dealStatus ? <Text style={[s.dealStatus, { color: accent }]}>{formatStatus(dealStatus)}</Text> : null}
               </View>
             </View>
           ) : null}
