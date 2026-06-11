@@ -17,6 +17,8 @@ export default function SegmentTabs({ items = [], value, onChange, accent }) {
             key={it.key}
             onPress={() => onChange(it.key)}
             activeOpacity={0.85}
+            testID={it.testID}
+            accessibilityLabel={typeof it.label === 'string' ? it.label : undefined}
             style={[
               s.tab,
               active
