@@ -28,6 +28,14 @@ import VehiclePhotosScreen from '../screens/registration/VehiclePhotosScreen';
 import IdentityStepScreen from '../screens/registration/IdentityStepScreen';
 import SelfieStepScreen from '../screens/registration/SelfieStepScreen';
 import PremiumLoginScreen from '../screens/registration/PremiumLoginScreen';
+// Driver-verification onboarding hub (2026-06-11). Точка входа из
+// Profile «Стать водителем / перевозчиком». Прежний flow начинался
+// прямо с `Identity` без сводки — этот dashboard собирает 10 пунктов и
+// показывает их статусы.
+import VerificationDashboardScreen from '../screens/verification/VerificationDashboardScreen';
+import VerificationPendingScreen from '../screens/verification/VerificationPendingScreen';
+import VerificationSubmittedScreen from '../screens/verification/VerificationSubmittedScreen';
+import VerificationApprovedScreen from '../screens/verification/VerificationApprovedScreen';
 import FeedScreen from '../screens/FeedScreen';
 import CargoDetail from '../screens/CargoDetail';
 import DriverDetail from '../screens/DriverDetail';
@@ -237,6 +245,13 @@ export default function AppNavigator() {
         <Stack.Screen name="TruckParams" component={TruckParamsScreen} />
         <Stack.Screen name="VehicleDocs" component={VehicleDocsScreen} />
         <Stack.Screen name="VehiclePhotos" component={VehiclePhotosScreen} />
+        {/* Driver-verification hub (2026-06-11). Точка входа — кнопка
+            «Стать водителем / перевозчиком» в Profile. Dashboard сам
+            редиректит на pending/approved при необходимости. */}
+        <Stack.Screen name="VerificationDashboard" component={VerificationDashboardScreen} />
+        <Stack.Screen name="VerificationPending" component={VerificationPendingScreen} />
+        <Stack.Screen name="VerificationSubmitted" component={VerificationSubmittedScreen} />
+        <Stack.Screen name="VerificationApproved" component={VerificationApprovedScreen} />
           {/* КАНОНИЧЕСКИЙ PRO-flow верификации водителя:
               Security → Identity → Selfie → VehicleDocs → VehiclePhotos →
               TruckParams → submit.

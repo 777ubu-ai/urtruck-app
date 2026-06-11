@@ -302,6 +302,24 @@ export default function ProfileScreen({ navigation, route }) {
           </View>
         ) : null}
 
+        {/* Driver-verification entry CTA (2026-06-11). Для client'а
+            (роль = client) показываем кнопку «Стать водителем /
+            перевозчиком» — она ведёт в VerificationDashboard. Для уже
+            driver'а кнопки нет — у них верификация запускается через
+            PRO/Security flow. */}
+        {!isDriver ? (
+          <TouchableOpacity
+            style={[s.becomeDriverBtn, { backgroundColor: '#00A86B', marginBottom: 12 }]}
+            onPress={() => navigation.navigate('VerificationDashboard')}
+            activeOpacity={0.85}
+            testID="profile-become-driver-cta"
+            accessibilityLabel={t('verification_entry_cta')}
+          >
+            <Text style={[s.becomeDriverText]}>🚛 {t('verification_entry_cta')}</Text>
+            <Feather name="chevron-right" size={18} color="#FFF" />
+          </TouchableOpacity>
+        ) : null}
+
         {/* PR-C2 (WeChat grouped list): 4 menu items в одной карточке
             с тонкими separators. Без emoji — Feather outline icons. */}
         <View style={[s.menuGroup, { backgroundColor: theme.card, borderColor: theme.border }]}>
@@ -495,6 +513,15 @@ const s = StyleSheet.create({
     paddingVertical: 11, borderRadius: 10, marginTop: 12,
   },
   proCtaText: { fontSize: 13, fontWeight: '800' },
+
+  // Driver-verification entry CTA (2026-06-11) — компактная зелёная
+  // строка под profile card. На client'а наглядно говорит, что приложение
+  // двустороннее.
+  becomeDriverBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 14, paddingHorizontal: 16, borderRadius: 14,
+  },
+  becomeDriverText: { color: '#FFF', fontSize: 14, fontWeight: '800', flex: 1 },
 
   // PR-C2 (WeChat horizontal card)
   profileCard: {
