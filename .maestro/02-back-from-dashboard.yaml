@@ -1,0 +1,42 @@
+appId: host.exp.Exponent
+name: pr104-02-back-navigation
+tags:
+  - smoke
+  - pr104
+  - foundation
+env:
+  MAESTRO_ACTOR: boris
+---
+# PR #104 L1 — back navigation preserves Profile state.
+- runFlow: ../qa/maestro/_lib/qa-login.yaml
+- tapOn:
+    id: "bottom-nav-profile"
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element:
+      id: "profile-become-driver-cta"
+    direction: DOWN
+    timeout: 6000
+- tapOn:
+    id: "profile-become-driver-cta"
+- waitForAnimationToEnd:
+    timeout: 4000
+# Tap done/back и убеждаемся что вернулись в Profile (bottom-nav-profile видна)
+- runFlow:
+    when:
+      visible:
+        id: "verification-approved-done-btn"
+    commands:
+      - tapOn:
+          id: "verification-approved-done-btn"
+- runFlow:
+    when:
+      visible:
+        id: "verification-dashboard-back"
+    commands:
+      - tapOn:
+          id: "verification-dashboard-back"
+- waitForAnimationToEnd
+- takeScreenshot: 00_after_back
+- assertVisible:
+    id: "bottom-nav-profile"

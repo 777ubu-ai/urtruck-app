@@ -1,0 +1,37 @@
+appId: host.exp.Exponent
+name: pr104-03-driver-tabs-regression
+tags:
+  - regression
+  - pr104
+  - driver-flow-cleanup
+env:
+  MAESTRO_ACTOR: serik
+---
+# PR #104 L2 — driver-flow-cleanup PRESERVED check.
+# serik (driver) → bottom nav должна показывать 5 driver табов
+# (Грузы/Рейсы/Очередь/Чаты/Профиль).  PR #104 не должен это сломать.
+- runFlow: ../qa/maestro/_lib/qa-login.yaml
+- assertVisible:
+    id: "bottom-nav-feed"
+- assertVisible:
+    id: "bottom-nav-mywork"
+- assertVisible:
+    id: "bottom-nav-queue"
+- assertVisible:
+    id: "bottom-nav-chats"
+- assertVisible:
+    id: "bottom-nav-profile"
+- takeScreenshot: 00_driver_tabs
+- tapOn:
+    id: "bottom-nav-mywork"
+- waitForAnimationToEnd
+- takeScreenshot: 01_mywork
+# MyTrips tabs «Активные / Предложения / В работе / Завершённые»
+# тестируются через текстовые селекторы (driver-flow-cleanup pattern)
+- assertVisible: "Опубликовать маршрут|Активные|Предложения|В работе|Завершённые"
+- tapOn:
+    id: "bottom-nav-chats"
+- waitForAnimationToEnd
+- takeScreenshot: 02_chats
+- assertVisible:
+    id: "deal-room-list"
