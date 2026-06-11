@@ -1,0 +1,63 @@
+appId: host.exp.Exponent
+name: night-ops-07-chat-shipper
+tags:
+  - night-ops
+  - chat
+  - shipper
+env:
+  MAESTRO_ACTOR: boris
+---
+# Phase 6 / Night Ops — chat E2E shipper side.
+#
+# Goal: убедиться что shipper (boris) может:
+#   1. Войти в Chat tab без crash
+#   2. Видеть deal-room список с правильным partner_name (не «null», не technical)
+#   3. Если есть deal-room — открыть его, увидеть KeyboardAvoidingView header
+#   4. Ввести сообщение и отправить (optimistic UI должно показать сразу)
+#
+# Что НЕ ловит:
+#   - Real partner получит push (нужен real device — см. PUSH_MANUAL_TEST_PLAN)
+#   - Polling 3s sync между двумя клиентами
+- runFlow: ../qa/maestro/_lib/qa-login.yaml
+- tapOn:
+    id: "bottom-nav-chats"
+- waitForAnimationToEnd
+- takeScreenshot: 00_chats_list
+- assertVisible:
+    id: "deal-room-list"
+- assertVisible:
+    id: "chats-header"
+# Если есть active deal-room — открываем
+- runFlow:
+    when:
+      visible:
+        id: "deal-room-list-card"
+    commands:
+      - tapOn:
+          id: "deal-room-list-card"
+      - waitForAnimationToEnd:
+          timeout: 4000
+      - takeScreenshot: 01_chat_room_opened
+      - assertVisible:
+          id: "chat-partner-name"
+      # Verify partner_name не «null» / «undefined» / «guest_»
+      - assertNotVisible: "null"
+      - assertNotVisible: "undefined"
+      - assertNotVisible: "guest_"
+      # Translate button visible (Build 15 feature)
+      - assertVisible:
+          id: "chat-lang-btn"
+      # Input field
+      - assertVisible:
+          id: "chat-input"
+      - tapOn:
+          id: "chat-input"
+      - inputText: "Ночной тест от QA"
+      - hideKeyboard
+      - tapOn:
+          id: "chat-send-btn"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot: 02_message_sent
+      # Optimistic UI должно показать сообщение
+      - assertVisible: "Ночной тест от QA"

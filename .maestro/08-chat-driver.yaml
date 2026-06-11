@@ -1,0 +1,71 @@
+appId: host.exp.Exponent
+name: night-ops-08-chat-driver
+tags:
+  - night-ops
+  - chat
+  - driver
+env:
+  MAESTRO_ACTOR: serik
+---
+# Phase 6 / Night Ops — chat E2E driver side.
+#
+# Goal: убедиться что driver (serik):
+#   1. Может открыть Chats tab (Build 15 — Chat НЕ спрятан в Profile)
+#   2. Видит deal-room list — partner_name это shipper'a real name
+#   3. Открывает chat → видит header с shipper name
+#   4. Может прокрутить историю (FlatList) и отправить ответ
+#
+# Этот flow в паре с 07-chat-shipper подтверждает что cross-role chat
+# работает: driver видит shipper, shipper видит driver.
+- runFlow: ../qa/maestro/_lib/qa-login.yaml
+- tapOn:
+    id: "bottom-nav-chats"
+- waitForAnimationToEnd
+- takeScreenshot: 00_driver_chats_list
+- assertVisible:
+    id: "deal-room-list"
+- assertVisible:
+    id: "chats-header"
+# Verify driver tabs preserved (driver-flow-cleanup) — Chats — отдельная вкладка
+- assertVisible:
+    id: "bottom-nav-feed"
+- assertVisible:
+    id: "bottom-nav-mywork"
+- assertVisible:
+    id: "bottom-nav-queue"
+- assertVisible:
+    id: "bottom-nav-chats"
+- assertVisible:
+    id: "bottom-nav-profile"
+# Если есть active deal-room — открываем
+- runFlow:
+    when:
+      visible:
+        id: "deal-room-list-card"
+    commands:
+      - tapOn:
+          id: "deal-room-list-card"
+      - waitForAnimationToEnd:
+          timeout: 4000
+      - takeScreenshot: 01_driver_chat_opened
+      - assertVisible:
+          id: "chat-partner-name"
+      # Verify partner_name не technical (Build 16 fix resolvedPartner)
+      - assertNotVisible: "null"
+      - assertNotVisible: "guest_"
+      # Cargo/route/deal info header (D2 fix из PR #100)
+      - assertVisible:
+          id: "chat-deal-meta"
+      # Driver может ответить
+      - assertVisible:
+          id: "chat-input"
+      - tapOn:
+          id: "chat-input"
+      - inputText: "Принял груз"
+      - hideKeyboard
+      - tapOn:
+          id: "chat-send-btn"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot: 02_driver_reply_sent
+      - assertVisible: "Принял груз"
