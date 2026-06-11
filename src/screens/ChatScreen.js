@@ -132,6 +132,10 @@ export default function ChatScreen({ navigation, route }) {
   // при dealId — иначе старый чат выглядит как раньше.
   const [deal, setDeal] = useState(null);
   const [dealEvents, setDealEvents] = useState([]);
+  // issue #4: когда в Chat пришёл только roomId (из карточки заказа/ставки),
+  // partner в route может быть пустым → заголовок показывал «Собеседник».
+  // Подтягиваем реального собеседника из enriched /chat/rooms по roomId.
+  const [resolvedPartner, setResolvedPartner] = useState(partner || null);
   const flatListRef = useRef(null);
   // HOT-006: refs для MediaRecorder (web)
   const mediaRecorderRef = useRef(null);
@@ -221,6 +225,21 @@ export default function ChatScreen({ navigation, route }) {
     if (!roomId) return;
     const iv = setInterval(() => loadMessages(roomId), 3000);
     return () => clearInterval(iv);
+  }, [roomId]);
+
+  // issue #4: разрешаем реального собеседника для заголовка из enriched
+  // rooms по roomId, если из route пришёл пустой/технический partner.
+  useEffect(() => {
+    if (!roomId) return;
+    chatAPI.rooms().then((d) => {
+      const room = (d.rooms || []).find((r) => r.id === roomId);
+      if (!room) return;
+      setResolvedPartner((prev) => ({
+        id: prev?.id || room.partner_id || room.participant_2 || room.participant_1,
+        name: (prev?.name && String(prev.name).trim()) ? prev.name : room.partner_name,
+        role: prev?.role || room.partner_role,
+      }));
+    }).catch(() => {});
   }, [roomId]);
 
   // PR-C2 (Task 2 unified badge): notify BottomNav когда чат открылся
@@ -554,11 +573,11 @@ export default function ChatScreen({ navigation, route }) {
       <View style={s.partnerStrip}>
         <View style={[s.partnerAvatar, { backgroundColor: v1Accent.soft, borderColor: v1Accent.main }]}>
           {/* Stage DS-1: первая буква от prettified имени, "?" для tech-leak. */}
-          <Text style={s.partnerAvatarIcon}>{partnerInitial(prettifyPartnerName(partner?.name, partner?.id, t))}</Text>
+          <Text style={s.partnerAvatarIcon}>{partnerInitial(prettifyPartnerName(resolvedPartner?.name, resolvedPartner?.id, t))}</Text>
         </View>
         <View style={{ flex: 1 }}>
           {/* Stage DS-1: prettifyPartnerName подменяет guest_/d3/d4 на "Собеседник". */}
-          <Text style={s.partnerName} numberOfLines={1}>{prettifyPartnerName(partner?.name, partner?.id, t)}</Text>
+          <Text style={s.partnerName} numberOfLines={1}>{prettifyPartnerName(resolvedPartner?.name, resolvedPartner?.id, t)}</Text>
           <Text style={[s.online, { color: v1Accent.main }]}>● {t('online')}</Text>
         </View>
       </View>

@@ -7,6 +7,27 @@ import {v1Colors, useV1Colors, v1Radius, v1AccentFor} from '../theme/designV1';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
 import { useAuth } from '../utils/AuthContext';
 import { useI18n } from '../utils/useI18n';
+import { getLanguage } from '../utils/i18n';
+
+// issue #7: localized time вместо сырого UTC-слайса "2026-06-11T08:30".
+// Backend хранит UTC; добавляем Z (если нет TZ), чтобы toLocaleString
+// показал локальное время устройства в формате локали пользователя.
+const NOTIF_LOCALE = { RU: 'ru-RU', KK: 'kk-KZ', ZH: 'zh-CN', EN: 'en-US' };
+function formatNotifTime(raw) {
+  if (!raw) return '';
+  let str = String(raw).trim();
+  if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(str) && !/[zZ]|[+\-]\d{2}:?\d{2}$/.test(str)) {
+    str = str.replace(' ', 'T') + 'Z';
+  }
+  const d = new Date(str);
+  if (isNaN(d.getTime())) return String(raw).slice(0, 16).replace('T', ' ');
+  const locale = NOTIF_LOCALE[getLanguage && getLanguage()] || 'ru-RU';
+  try {
+    return d.toLocaleString(locale, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return String(raw).slice(0, 16).replace('T', ' ');
+  }
+}
 
 // Notifications — design v1 reskin. Logic preserved: notificationsAPI.list,
 // markAllRead, per-item read. Only the visual layer follows v1 tokens.
@@ -162,7 +183,7 @@ export default function NotificationsScreen({ navigation }) {
         <View style={{ flex: 1 }}>
           <Text style={[s.title, { fontWeight: isUnread ? '800' : '500' }]}>{cleanTitle}</Text>
           {cleanBody ? <Text style={s.body}>{cleanBody}</Text> : null}
-          <Text style={s.time}>{(item.created_at || '').slice(0, 16)}</Text>
+          <Text style={s.time}>{formatNotifTime(item.created_at)}</Text>
         </View>
         {isUnread && <View style={[s.dot, { backgroundColor: accent.main }]} />}
       </TouchableOpacity>

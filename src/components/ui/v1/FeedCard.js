@@ -63,7 +63,13 @@ export default function FeedCard({
   const isEmptyOrDash = (s) => !s || s === '—' || s === '-' || s === '–';
   const fromText = trimSafe(route && route.from);
   const toText = trimSafe(route && route.to);
+  const fromCountry = trimSafe(route && route.fromCountry);
+  const toCountry = trimSafe(route && route.toCountry);
   const hasRoute = !(isEmptyOrDash(fromText) && isEmptyOrDash(toText));
+  // issue #6: полный маршрут без обрезки пункта назначения. «город, страна»
+  // в 2 строки (from / → to) — destination никогда не прячется за «...».
+  const fromFull = isEmptyOrDash(fromText) ? '—' : (fromCountry ? `${fromText}, ${fromCountry}` : fromText);
+  const toFull = isEmptyOrDash(toText) ? '—' : (toCountry ? `${toText}, ${toCountry}` : toText);
   const routeText = hasRoute
     ? `${isEmptyOrDash(fromText) ? '—' : fromText} → ${isEmptyOrDash(toText) ? '—' : toText}`
     : 'Маршрут уточняется';
@@ -93,12 +99,20 @@ export default function FeedCard({
           <Feather name={iconName} size={20} color={v2.textSecondary} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text
-            style={[s.route, { color: titleStrong ? colors.text : v2.textTertiary }]}
-            numberOfLines={1}
-          >
-            {titleText}
-          </Text>
+          {hasRoute && !titleOverride ? (
+            // 2-строчный маршрут — пункт назначения всегда виден (issue #6)
+            <View>
+              <Text style={[s.route, { color: colors.text }]} numberOfLines={2}>{fromFull}</Text>
+              <Text style={[s.route, { color: colors.text }]} numberOfLines={2}>→ {toFull}</Text>
+            </View>
+          ) : (
+            <Text
+              style={[s.route, { color: titleStrong ? colors.text : v2.textTertiary }]}
+              numberOfLines={1}
+            >
+              {titleText}
+            </Text>
+          )}
           {subtitle ? <Text style={[s.subtitle, { color: colors.textMuted }]} numberOfLines={1}>{subtitle}</Text> : null}
         </View>
         <View style={{ alignItems: 'flex-end' }}>

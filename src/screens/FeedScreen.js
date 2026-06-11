@@ -235,6 +235,9 @@ export default function FeedScreen({ navigation, route }) {
           // показывает "— → —" сразу после публикации.
           from: sanitizeForDisplay(c.from_city || c.from_point_name || ''),
           to:   sanitizeForDisplay(c.to_city   || c.to_point_name   || ''),
+          // issue #6: страна для полного 2-строчного маршрута на карточке
+          fromCountry: sanitizeForDisplay(c.from_country || ''),
+          toCountry: sanitizeForDisplay(c.to_country || ''),
           cargo: c.cargo_desc, type: c.cargo_type,
           tons: c.weight_tons, m3: c.volume_m3,
           price: c.price,
@@ -519,7 +522,7 @@ export default function FeedScreen({ navigation, route }) {
       <FeedCard
         variant="cargo"
         accent={isDriver ? 'driver' : 'cargo'}
-        route={{ from: item.from, to: item.to }}
+        route={{ from: item.from, to: item.to, fromCountry: item.fromCountry, toCountry: item.toCountry }}
         subtitle={sanitizeDesc(item.cargo)}
         meta={meta}
         priceText={formatPrice(item.price, item.currency, t)}
