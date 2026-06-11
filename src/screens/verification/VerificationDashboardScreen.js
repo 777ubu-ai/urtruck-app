@@ -39,19 +39,39 @@ import {
 } from '../../utils/verificationState';
 import { missingVerificationAssets } from '../../assets/onboarding/verification';
 
-// На какой существующий экран ведёт карточка. null = пока не реализовано
-// (показываем info-toast «Скоро» — следующий PR добавит экран).
+// На какой экран ведёт каждая card. PR #105 wired через generic
+// VerificationUploadStepScreen + 5 новых dedicated screens:
+//
+//   personalData       → Identity        (existing, ФИО+ИИН+DOB+фото)
+//   personalPhoto      → VerifyPersonalPhoto    (NEW, camera-only)
+//   selfieWithLicense  → VerifySelfieWithLicense (NEW, camera-only)
+//   licenseFront       → VerifyLicenseFront     (NEW, camera+gallery)
+//   licenseBack        → VerifyLicenseBack      (NEW, camera+gallery)
+//   vehicleRegistration→ VerifySrts             (NEW, camera+gallery)
+//   truckExterior      → VerifyTruckExterior    (NEW, camera+gallery)
+//   truckInterior      → VerifyTruckInterior    (NEW, camera+gallery)
+//   vehicleInfo        → TruckParams     (existing)
+//   referralCode       → VerifyReferralCode     (NEW, optional)
+//
+// Note: existing IdentityStepScreen, SelfieStepScreen, VehicleDocsScreen,
+// VehiclePhotosScreen остаются в проекте (нужны pre-auth `Reg/RegOtp`
+// flow и QA preview), но dashboard их не использует для upload-шагов —
+// они «толстые», объединяют несколько action'ов в одном экране, а
+// dashboard хочет 1 card → 1 экран. NEW screens — тонкие config-обёртки
+// над generic VerificationUploadStepScreen + регистрационным API
+// (regAPI.uploadSelfie/uploadLicense/uploadVehiclePhoto/uploadCabinPhoto/
+// uploadLicenseSelfie/uploadPassport).
 const ROUTE_FOR_ITEM = {
   personalData:        'Identity',
-  personalPhoto:       'Identity', // фото снимается в Identity (есть `identity-photo`)
-  licenseFront:        'VehicleDocs',
-  licenseBack:         null,
-  selfieWithLicense:   'Selfie',
-  vehicleRegistration: 'VehicleDocs',
-  truckExterior:       'VehiclePhotos',
-  truckInterior:       'VehiclePhotos',
+  personalPhoto:       'VerifyPersonalPhoto',
+  selfieWithLicense:   'VerifySelfieWithLicense',
+  licenseFront:        'VerifyLicenseFront',
+  licenseBack:         'VerifyLicenseBack',
+  vehicleRegistration: 'VerifySrts',
+  truckExterior:       'VerifyTruckExterior',
+  truckInterior:       'VerifyTruckInterior',
   vehicleInfo:         'TruckParams',
-  referralCode:        null,
+  referralCode:        'VerifyReferralCode',
 };
 
 export default function VerificationDashboardScreen({ navigation, route }) {
@@ -94,9 +114,12 @@ export default function VerificationDashboardScreen({ navigation, route }) {
       navigation.replace('VerificationPending');
     } else if (status === 'approved') {
       navigation.replace('VerificationApproved');
+    } else if (status === 'rejected') {
+      // PR #105: на rejected → отдельный correction экран. Approved
+      // карточки остаются approved, rejected — с причиной.
+      navigation.replace('VerificationRejected');
     }
-    // 'rejected' остаётся на dashboard'е — там карточки с rejection-причинами.
-    // 'collecting' — тоже на dashboard'е.
+    // 'collecting' — остаётся на dashboard.
   }, [status, loading, navigation]);
 
   const openItem = (key) => {
@@ -108,22 +131,13 @@ export default function VerificationDashboardScreen({ navigation, route }) {
     navigation.navigate(target);
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     if (!canSubmitForReview(model) || submitting) return;
-    setSubmitting(true);
-    try {
-      const r = await regAPI.moderate?.();
-      if (r && r.ok !== false) {
-        toast('✓ ' + t('verification_submitted_toast'), 'success');
-        navigation.replace('VerificationSubmitted');
-      } else {
-        toast((r && r.detail) || t('verification_submit_failed'), 'error');
-      }
-    } catch {
-      toast(t('no_connection'), 'error');
-    } finally {
-      setSubmitting(false);
-    }
+    // PR #105: вместо прямого `regAPI.moderate()` сначала открываем
+    // Review-экран — там пользователь видит сводку и финально жмёт
+    // «Отправить на проверку». Это соответствует PR-spec'у §23 (Review
+    // & Submit screen).
+    navigation.navigate('VerificationReview');
   };
 
   const showSubmit = canSubmitForReview(model);

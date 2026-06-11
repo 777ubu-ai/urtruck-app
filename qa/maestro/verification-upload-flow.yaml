@@ -1,0 +1,96 @@
+appId: host.exp.Exponent
+name: verification-upload-flow
+tags:
+  - smoke
+  - client
+  - auth
+  - verification
+  - upload
+env:
+  MAESTRO_ACTOR: boris
+---
+# PR #105 proof: VerificationDashboard теперь маршрутизирует каждую
+# карточку на dedicated upload-screen. Boris (verification_level=3 на
+# backend'е) обычно сразу падает на VerificationApprovedScreen — это
+# ожидаемо. Чтобы проверить НАВИГАЦИЮ к новым upload-screens, обходим
+# auto-redirect: открываем screens напрямую через короткий путь
+# `navigation.navigate('Verify…')`. Maestro этого не умеет, поэтому
+# минимальный smoke: проверяем CTA + Approved-screen рендеринг.
+#
+# Полноценная E2E (login → dashboard → tap card → upload-step → camera)
+# — REAL DEVICE REQUIRED (камера не работает в симуляторе).
+- runFlow: _lib/qa-login.yaml
+- tapOn:
+    id: "bottom-nav-profile"
+- waitForAnimationToEnd
+- takeScreenshot: 00_profile_cta
+- scrollUntilVisible:
+    element:
+      id: "profile-become-driver-cta"
+    direction: DOWN
+    timeout: 6000
+- tapOn:
+    id: "profile-become-driver-cta"
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: 01_landed
+# boris=approved → auto-replace на ApprovedScreen
+- runFlow:
+    when:
+      visible:
+        id: "verification-approved-screen"
+    commands:
+      - assertVisible:
+          id: "verification-approved-screen"
+      - assertVisible:
+          id: "verification-approved-done-btn"
+      - takeScreenshot: 02_approved
+      - tapOn:
+          id: "verification-approved-done-btn"
+      - waitForAnimationToEnd
+# Если actor не approved → dashboard со списком карточек и каждая ведёт
+# на VerifyX screen.
+- runFlow:
+    when:
+      visible:
+        id: "verification-dashboard"
+    commands:
+      - assertVisible:
+          id: "verification-dashboard"
+      - assertVisible:
+          id: "verification-card-personal-data"
+      - assertVisible:
+          id: "verification-card-personal-photo"
+      - assertVisible:
+          id: "verification-card-license-front"
+      - assertVisible:
+          id: "verification-card-license-back"
+      - assertVisible:
+          id: "verification-card-selfie-with-license"
+      - assertVisible:
+          id: "verification-card-vehicle-registration"
+      - assertVisible:
+          id: "verification-card-truck-exterior"
+      - assertVisible:
+          id: "verification-card-truck-interior"
+      - assertVisible:
+          id: "verification-card-vehicle-info"
+      - assertVisible:
+          id: "verification-card-referral-code"
+      - takeScreenshot: 03_dashboard
+      # Tap personal-photo card → должен открыть NEW
+      # VerificationPersonalPhotoScreen (testID 'verification-upload-step-personal-photo')
+      - tapOn:
+          id: "verification-card-personal-photo"
+      - waitForAnimationToEnd:
+          timeout: 4000
+      - takeScreenshot: 04_personal_photo_step
+      - runFlow:
+          when:
+            visible:
+              id: "verification-upload-step-personal-photo"
+          commands:
+            - assertVisible:
+                id: "verification-upload-step-personal-photo"
+            - assertVisible:
+                id: "verification-upload-personal-photo-camera"

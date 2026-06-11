@@ -36,6 +36,17 @@ import VerificationDashboardScreen from '../screens/verification/VerificationDas
 import VerificationPendingScreen from '../screens/verification/VerificationPendingScreen';
 import VerificationSubmittedScreen from '../screens/verification/VerificationSubmittedScreen';
 import VerificationApprovedScreen from '../screens/verification/VerificationApprovedScreen';
+// PR #105: 7 dedicated upload screens + review + rejected.
+import VerificationPersonalPhotoScreen from '../screens/verification/VerificationPersonalPhotoScreen';
+import VerificationSelfieWithLicenseScreen from '../screens/verification/VerificationSelfieWithLicenseScreen';
+import VerificationLicenseFrontScreen from '../screens/verification/VerificationLicenseFrontScreen';
+import VerificationLicenseBackScreen from '../screens/verification/VerificationLicenseBackScreen';
+import VerificationSrtsScreen from '../screens/verification/VerificationSrtsScreen';
+import VerificationTruckExteriorScreen from '../screens/verification/VerificationTruckExteriorScreen';
+import VerificationTruckInteriorScreen from '../screens/verification/VerificationTruckInteriorScreen';
+import VerificationReferralCodeScreen from '../screens/verification/VerificationReferralCodeScreen';
+import VerificationReviewSubmitScreen from '../screens/verification/VerificationReviewSubmitScreen';
+import VerificationRejectedScreen from '../screens/verification/VerificationRejectedScreen';
 import FeedScreen from '../screens/FeedScreen';
 import CargoDetail from '../screens/CargoDetail';
 import DriverDetail from '../screens/DriverDetail';
@@ -247,11 +258,22 @@ export default function AppNavigator() {
         <Stack.Screen name="VehiclePhotos" component={VehiclePhotosScreen} />
         {/* Driver-verification hub (2026-06-11). Точка входа — кнопка
             «Стать водителем / перевозчиком» в Profile. Dashboard сам
-            редиректит на pending/approved при необходимости. */}
+            редиректит на pending/approved/rejected при необходимости. */}
         <Stack.Screen name="VerificationDashboard" component={VerificationDashboardScreen} />
         <Stack.Screen name="VerificationPending" component={VerificationPendingScreen} />
         <Stack.Screen name="VerificationSubmitted" component={VerificationSubmittedScreen} />
         <Stack.Screen name="VerificationApproved" component={VerificationApprovedScreen} />
+        {/* PR #105: 7 dedicated upload steps + review + rejected. */}
+        <Stack.Screen name="VerifyPersonalPhoto" component={VerificationPersonalPhotoScreen} />
+        <Stack.Screen name="VerifySelfieWithLicense" component={VerificationSelfieWithLicenseScreen} />
+        <Stack.Screen name="VerifyLicenseFront" component={VerificationLicenseFrontScreen} />
+        <Stack.Screen name="VerifyLicenseBack" component={VerificationLicenseBackScreen} />
+        <Stack.Screen name="VerifySrts" component={VerificationSrtsScreen} />
+        <Stack.Screen name="VerifyTruckExterior" component={VerificationTruckExteriorScreen} />
+        <Stack.Screen name="VerifyTruckInterior" component={VerificationTruckInteriorScreen} />
+        <Stack.Screen name="VerifyReferralCode" component={VerificationReferralCodeScreen} />
+        <Stack.Screen name="VerificationReview" component={VerificationReviewSubmitScreen} />
+        <Stack.Screen name="VerificationRejected" component={VerificationRejectedScreen} />
           {/* КАНОНИЧЕСКИЙ PRO-flow верификации водителя:
               Security → Identity → Selfie → VehicleDocs → VehiclePhotos →
               TruckParams → submit.
