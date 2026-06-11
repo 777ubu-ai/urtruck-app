@@ -1,106 +1,138 @@
-# QA-отчёт UrTruck — ветка `claude/qa-testing-urtruck-EiRlA`
+# QA_REPORT — аудит готовности к TestFlight (Build 25)
 
-База: `release/appstore-rc1`. Прошёл по коду; ниже — статус всех 12 известных багов + 3 новых.
-
----
-
-## 🔴 BLOCKER — релиз держим
-
-### Bug #4 — Profile после регистрации пустой
-- **Файл:** `src/screens/RegScreen.js:708-715` (ClientReg) и `src/screens/RegScreen.js:265` (DriverReg)
-- **Статус:** ВОСПРОИЗВОДИТСЯ
-- **Что происходит:** После OTP оба flow вызывают только локальный `saveProfile(...)`. Никто не PATCH'ит `/users/me` с `name/city`. ProfileScreen на focus делает GET `/users/me` (`ProfileScreen.js:62-86`) — сервер не знает имя/город → после перезагрузки приложения профиль пуст.
-- **Дополнительно:** в ProfileScreen `city: d.city ?? prev?.city` — если бэк вернёт пустую строку `""`, она перезатрёт локальный город (nullish-coalescing не ловит пустую строку).
-
-### Bug #7 — Support chat: нет кнопки отправки
-- **Файл:** `src/screens/HowItWorksScreen.js:125-131`
-- **Статус:** ВОСПРОИЗВОДИТСЯ
-- **Что происходит:** "Поддержка" — это `<Text>` с hardcoded строкой `Telegram: @UrTruckSupport · Email: hello@urtruck.kz`. Ни `<TouchableOpacity>`, ни `Linking.openURL`, ни `t(...)` локализации. Пользователь читает текст — в поддержку попасть некуда.
-
-### Bug #9 — Share/WeChat дублируется, большая кнопка не работает
-- **Файл:** `src/components/ShareModal.js:91, 127-130`
-- **Статус:** ВОСПРОИЗВОДИТСЯ
-- **Что происходит:** В CHANNELS-гриде уже есть WeChat (`handleWeChat` копирует текст). Ниже — secondary `handleOpenWeChat` на `Linking.openURL('weixin://')` без `Linking.canOpenURL` → на Android без WeChat падает в catch и шлёт toast. Это и есть "большая кнопка не работает" + дубль.
-
-### Bug #11 — "— → —" пустые маршруты в ленте
-- **Файл:** `src/components/ui/v1/FeedCard.js:56`
-- **Статус:** ВОСПРОИЗВОДИТСЯ
-- **Что происходит:** `{(route && route.from) || '—'} → {(route && route.to) || '—'}`. Никакой защиты от пустых `from_city/to_city` на бэке.
-- **Дополнительно:** в `FeedScreen.js:503` водитель-карточка передаёт `{ from: item.name, to: '' }` — для driver-карточек всегда `"Иван → —"`.
+**Дата:** 2026-06-11 · **Ветка аудита:** `claude/youthful-cerf-barf3` (HEAD включает driver-flow фиксы)
+**Предыдущий отчёт** (ветка `claude/qa-testing-urtruck-EiRlA`, база rc1) — в git-истории этого файла; его P0 (Bug #4 профиль, #11 «— → —», N2 `??`-затирание) в текущем коде уже закрыты — перепроверено.
+**Методика:** статический аудит (3 параллельных прохода: фронт / бэкенд / трассировка флоу) → **ручная верификация каждой находки по коду** (часть кандидатов первичного прохода опровергнута — см. §6) → P0 исправлены сразу → Maestro-сценарии для топ-5 флоу.
+**Гейты:** `release_static_gate.sh` 14/14 PASS · `qa:i18n` RU/EN/KK/ZH по 1415 ключей, 0 missing · `qa:ux`/`qa:currency`/`qa:theme` OK · babel/ast-парс всех тронутых файлов OK.
 
 ---
 
-## 🟡 ВОСПРОИЗВОДИТСЯ ЧАСТИЧНО
+## ВЕРДИКТ: ⚠️ GO для TestFlight — УСЛОВНЫЙ
 
-### Bug #1 — Direction filter "пустой" хотя рейсы из Китая есть
-- **Файл:** `src/screens/FeedScreen.js:667-696`
-- **Что происходит:** UI это два TextInput (substring contains), а не dropdown с готовыми городами/странами. Если ожидался dropdown с автонабором по `from_city` существующих cargo/trips — функционал отсутствует, пустое поле выглядит мёртвым.
+**GO при выполнении трёх условий:**
+1. Смержена эта ветка (P0-фиксы §2 — без них **NO-GO**: гарантированный краш загрузки фото грузовика ломает регистрацию водителя).
+2. **Деплой-чеклист бэкенда выполнен** (§7): `URTRUCK_ENV=production`, `URTRUCK_ADMIN_PASS`, проверка `GET /api/v1/system/info`.
+3. Ручной device-чеклист на реальном iPhone до раздачи тестерам: регистрация с фото грузовика, доставка push, тап по пушу в killed state.
 
-### Bug #5 — Banner image на профиле грузовладельца лишний
-- **Файл:** `src/screens/EditProfileScreen.js:135`
-- **Что происходит:** `<HeroTruck size="sm" />` рендерится без условия по роли — фура у грузовладельца действительно лишняя. В `ProfileScreen.js` баннера нет, баг живёт только в EditProfile.
-
-### Bug #6 — Inputs в профиле выглядят пустыми
-- **Файл:** `src/screens/EditProfileScreen.js:160-200`
-- **Что происходит:** `Field` Stage 28 уже всегда рендерит label сверху (хорошо), но placeholder не передаётся в `<Field icon="👤" label={t('signup_field_first_name')} value={firstName} ... />`. Поле без значения = label сверху + пусто внизу → визуальный gap, юзеру неясно что вводить.
-
-### Bug #8 — "Мои грузы" → "Разместить груз" не нажимается
-- **Файл:** `src/screens/MyTripsScreen.js:572-573`
-- **Что происходит:** Кнопка нажимается, но `onAction = navigation.navigate('Feed', { role })` — ведёт на ленту, а не сразу в `CreateCargo`. Два клика вместо одного. UX-баг.
-
-### Bug #10 — Created cargo card неполная (только вес/объём)
-- **Файл:** `src/screens/FeedScreen.js:435-439`
-- **Что происходит:** `meta = [pickup, tons, m3].filter(Boolean)`. Если у созданного cargo не задан `pickup_date` (необязателен на форме) и отсутствует `price` — карточка показывает только две строки. Нужно либо обязать поля на CreateCargo, либо показывать "—".
+**NO-GO для широкого релиза** (вне TestFlight) до закрытия P1 из §3.
 
 ---
 
-## ✅ УЖЕ ПОЧИНЕНО (в коде уже корректно)
+## 1. Что проверено
 
-### Bug #2 — Language/flag mismatch
-- **Файл:** `src/components/LanguageSwitcher.js:31-48`
-- **Что починено:** Stage 49 P0 fix: `code` (RU/KK/EN/ZH) совпадает с `translations[]` ключами, `current = LANGS.find(l => l.code === getLanguage())` — флаг гарантированно соответствует выбранному языку.
-
-### Bug #3 — Language кнопка мешает
-- **Файл:** `src/screens/FeedScreen.js:542`
-- **Статус:** По дизайну Stage 45 LanguageSwitcher осознанно слева в brand bar. Не баг, а решение — с владельцем уточнить.
-
-### Bug #12 — "+ Разместить груз" не role-aware
-- **Файлы:** `BottomNav.js:97-98`, `FeedScreen.js:613`
-- **Что починено:** Везде `isDriver ? 'CreateTrip' : 'CreateCargo'` и `isDriver ? t('postTrip') : t('postCargo')`. Возможно на момент Android smoke было сломано, сейчас в коде корректно.
+| Этап | Объём |
+|---|---|
+| Статика | src/ (~60 экранов/утилит), backend/ (18 роутеров), App.js, конфиги |
+| i18n | парность 4 языков (1415×4), missing-at-call-sites = 0 |
+| Флоу | регистрация→профиль, push lifecycle, чат (персистентность/имена/офлайн), фильтры, смена языка |
+| Матрица | язык×чат, push×открытый чат, сеть×отправка, токен×сессия, двойной accept |
+| Maestro | 5 новых сценариев `qa/maestro/audit-*.yaml` |
 
 ---
 
-## 🆕 Новые баги, которые я нашёл вне списка
+## 2. P0 — НАЙДЕНЫ И ИСПРАВЛЕНЫ (коммит `f25f879`)
 
-### N1 — Hardcoded русские строки на экране HowItWorks
-- **Файл:** `src/screens/HowItWorksScreen.js:114, 126, 128`
-- **Что происходит:** "Почему UrTruck", "Остались вопросы?", "Напиши в поддержку" — не идут через `t(...)`. Нарушает CURSOR_INSTRUCTIONS ("все пользовательские тексты обязаны идти через `t(...)`"). На CN/EN/KZ — пользователь увидит русский.
+### P0-1. ReferenceError `blob` — краш загрузки фото грузовика
+- **Файл:** `src/utils/registration.js:367` (`saveVehicle`)
+- **Причина:** `form.append('photo', blob, 'vehicle.jpg')` — переменной `blob` не существует (есть только `compressedUri`). ReferenceError на **всех** платформах при любом фото ТС → шаг Vehicle регистрации водителя падает.
+- **Фикс:** `await appendImageFile(form, compressedUri, 'vehicle.jpg')` — паттерн из `uploadPersonalPhoto` (строка 247 того же файла).
 
-### N2 — Пустая строка с сервера затирает локальный город
-- **Файл:** `src/screens/ProfileScreen.js:74`
-- **Что происходит:** `city: d.city ?? prev?.city` — `??` пропускает только null/undefined, но не пустую строку. Если бэк вернёт `city=""`, локальный город перезатрётся пустым. Должно быть `d.city || prev?.city`.
+### P0-2. Молчаливая потеря сообщений чата (текст/фото/войс)
+- **Файл:** `src/screens/ChatScreen.js:341, 363, 383`
+- **Причина:** все три send-пути под `if (partner?.id)` с `route.params.partner`. При входе в чат **только по roomId** (карточка заказа, уведомление, список чатов) partner пуст → optimistic-пузырь рисуется, на сервер ничего не уходит, после рестарта сообщение исчезает. Плюс `.catch(() => {})` глотал сетевые ошибки и при валидном partner.
+- **Фикс:** получатель = `resolvedPartner?.id || partner?.id` (resolvedPartner дотягивается из `/chat/rooms`); при отсутствии получателя или ошибке сети — toast `chat_send_failed` (новый ключ в RU/KK/ZH/EN), без фальшивого optimistic.
 
-### N3 — Race condition в ClientReg при отсутствии session.user.id
-- **Файл:** `src/screens/RegScreen.js:710`
-- **Что происходит:** `saveProfile(session?.user?.id || 'c_' + Date.now(), ...)` — fallback id-генерация: если сессии нет (а до `setRole('client')` действительно может не быть user.id), профиль сохранится под рандомным id, ProfileScreen потом не найдёт его в `getProfile(session.user.id)`.
+### P0-3. Double-accept race — две сделки на один груз
+- **Файл:** `backend/api/marketplace.py` (`_finalize_accept_inline`)
+- **Причина:** read-check-write без guard: `accept_bid` читает `status == 'pending'`, потом `UPDATE bids ... WHERE id = ?`. Два одновременных запроса (двойной тап «Принять» или параллельный accept двух ставок) оба проходят проверку → 2 deal'а, груз «взят» дважды.
+- **Фикс:** условный UPDATE `WHERE id = ? AND status IN ('pending','countered')` + `rowcount == 0 → 409 «Ставка уже обработана»`. Проигравшая транзакция не коммитится (`get_conn` коммитит только при успехе, `close()` откатывает) → откатываются и UPDATE cargos/trips выше по функции. Покрывает оба call-site (accept :1113 и counter-accept :1343).
+
+### P0-4. Дефолтный админ-пароль в репозитории
+- **Файл:** `backend/api/admin.py:22`
+- **Причина:** `ADMIN_PASS = os.getenv("URTRUCK_ADMIN_PASS", "urtruck-admin-2026")` — пароль в git-истории; прод-деплой без env-переменной = открытая админка (модерация, blacklist, PII водителей).
+- **Фикс:** при `URTRUCK_ENV=production` и дефолтном пароле админка отвечает 503 с инструкцией. Dev/preview не затронуты. **Дополнительно: задать `URTRUCK_ADMIN_PASS` на сервере** (§7).
+
+### P1-5 (исправлен вместе с P0). Блокирующий push в обработчиках запросов
+- **Файлы:** `backend/services/push_sender.py:155` (`httpx.post`, timeout=10s) ← `backend/api/push.py:send_to_user` ← accept_bid / chat send / admin approve.
+- **Причина:** синхронный HTTP к Expo внутри хендлера: при тормозах Expo каждый accept/сообщение висит до 10 с; threadpool FastAPI выедается каскадно.
+- **Фикс:** `send_to_user` уносит отправку в daemon-поток. Возвращаемое значение не использовалось ни одним call-site (проверено все); диагностический `/push/test` зовёт `push_sender.send` напрямую — не изменён.
 
 ---
 
-## Что делать (приоритет)
+## 3. P1 — открыты (фиксить до широкого релиза; для TestFlight допустимо)
 
-1. **Блокировать релиз** до фиксов 4 / 7 / 9 / 11 — это P0.
+| # | Где | Проблема | Рекомендуемый фикс |
+|---|---|---|---|
+| P1-1 | `backend/config.py:21` + `otp_service.py:153` | `BETA_MODE` default=true вне `URTRUCK_ENV=production` → код `0000` обходит OTP. Код защищён правильно; риск — **деплой без env** | Чеклист §7 + алерт в `/system/info`, если BETA_MODE=true на проде |
+| P1-2 | `App.js:92-113` ↔ устройство | Тап по пушу (background/killed) **в коде подключён** (`getLastNotificationResponseAsync` + `addNotificationResponseReceivedListener` → `navigateFromUrl`), но доставка APNS и lock-screen-поведение **не доказаны на устройстве** | Ручной чек на iPhone (TestFlight-чеклист) |
+| P1-3 | `src/screens/ChatScreen.js` | Офлайн-очереди нет: при потере сети теперь есть toast об ошибке (P0-2), но сообщение **не ретраится** | Очередь в storage + ретрай при восстановлении сети |
+| P1-4 | `backend/api/chat.py:123-134` | `_get_or_create_room`: SELECT-затем-INSERT без UNIQUE(participant_1,participant_2) → гонка создаёт дубль-комнаты | UNIQUE-индекс + `INSERT ... ON CONFLICT` |
+| P1-5 | `backend/api/marketplace.py:106` | `_validate_future_date` использует локальный `datetime.now()`, БД — UTC. Сервер UTC+0 при клиенте UTC+6 может отбить валидную «сегодняшнюю» дату | Единообразно `datetime.utcnow()` |
+| P1-6 | `src/utils/marketAPI.js:213` | Глобальной обработки 401 нет (только myDashboard → authRequired-гейт). Истёкший токен (~30 дней) в остальных эндпоинтах выглядит как generic error | Общий fetch-врапер: 401 → login-гейт |
+| P1-7 | backend | Logout не инвалидирует токен на сервере (нет revoke-эндпоинта) — украденное устройство держит сессию до истечения | `POST /register/logout` → DELETE сессии |
+| P1-8 | `MyTripsScreen.js:162`, `ChatScreen` polling, `AuthContext.js:111` | Семейство «setState после unmount»: async-загрузки без mounted-флага (warning + лишняя работа, не краш) | Общий `useMountedRef`, чинить пакетно |
 
-2. Патч-список:
-   - `RegScreen.js` ClientReg + DriverReg: добавить `fetch('/users/me', { method: 'PATCH' })` с name/city перед `setRole(...)`.
-   - `HowItWorksScreen.js`: завернуть текст поддержки в `<TouchableOpacity onPress={() => Linking.openURL('https://t.me/UrTruckSupport')}>` + локализация через `t()`.
-   - `ShareModal.js`: убрать secondary `handleOpenWeChat` или обернуть `Linking.canOpenURL` и скрывать кнопку, если `weixin://` недоступен.
-   - `FeedCard.js:56`: вместо `'—'` показывать осмысленный fallback типа `t('route_unknown')`. Для driver-карточек в `FeedScreen.js:503` не передавать пустой `to: ''` — заменить на `null` и обработать в FeedCard.
-   - `ProfileScreen.js:74`: заменить `d.city ?? prev?.city` на `d.city || prev?.city`.
-   - `EditProfileScreen.js:135`: завернуть `<HeroTruck>` в `{isDriver && ...}`.
-   - `EditProfileScreen.js:160-200`: добавить `placeholder` в `<Field>` (примеры: "Иван", "Петров", "Алматы").
-   - `MyTripsScreen.js:573`: заменить `navigate('Feed')` на `navigate(isDriver ? 'CreateTrip' : 'CreateCargo', { role })`.
+## 4. P2 — заметки (не блокируют)
 
-3. Запустить целевые e2e после фиксов:
-   - `tests/e2e/urtruck-smoke.spec.js` (driver flow)
-   - `qa/agents/full.auth.regression.spec.js` (профиль после регистрации)
-   - `qa/mobile/shipper.mobile.spec.js`
+| # | Где | Проблема |
+|---|---|---|
+| P2-1 | `backend/api/chat.py:209` | Мёртвый код `... if False else None` (реальное обогащение имени — строки 228+, работает). Удалить при следующем касании |
+| P2-2 | App.js / push | Foreground-пуш не подавляется для **открытой** комнаты: `addNotificationReceivedListener` отсутствует, `data.room_id` (бэкенд шлёт специально для этого) не используется → баннер поверх открытого чата |
+| P2-3 | `src/components/OfflineBanner.js:3` | Статический импорт `t` без useI18n — текст баннера не среагирует на смену языка, пока баннер виден |
+| P2-4 | `src/config/supabase.js:7-8` | Anon-key Supabase в репо. Это **публичный** ключ по дизайну (не секрет); CLAUDE.md запрещает трогать без согласования. Действие: убедиться, что RLS включён, если репо публичный |
+| P2-5 | SegmentTabs RU/KK | Лейблы вкладок усечены («Завершён…», «Предложе…») на 390px. Косметика |
+| P2-6 | `backend/api/marketplace.py:437` | `json.loads(photos)` молча падает в `[]` при битом JSON — фото груза «исчезают» без следа |
+| P2-7 | `/market/cargos` | Нет rate-limit — скрейпинг ленты возможен. Для пилота некритично |
+| P2-8 | `backend/api/chat.py:31-109` | Бот-ответы поддержки — хардкод RU: пользователь на ZH/KK получает русские сообщения |
+
+---
+
+## 5. Трассировка флоу (Этап 2) — итог
+
+1. **Регистрация → профиль.** Цепочка цела: identity-шаг сохраняет `full_name` (`backend/api/registration.py:340`) → `/users/me` возвращает `name` (`profile.py:83`) → `ProfileScreen.fetchProfile` дотягивает на каждый focus (HOT-001) и не затирает локальное пустым (`||`, не `??` — старый N2 закрыт). Обе роли получают `ur_reg_token` через `signIn` (`AuthContext.js:127`). Остаточный кейс: **клиент** без имени видит «Добавить имя» — by-design (в OTP-флоу имени нет), но воспринимается как «пустой профиль». Покрыто Maestro `audit-profile-after-registration`.
+2. **Push.** Foreground-handler (`push.js:128` ✓), background/killed-тап (`App.js:105-113` ✓), deep-link (`parseNotifUrl` → `navigateFromUrl` ✓), регистрация токена с проверкой ответа сервера ✓. **Не доказана только физическая доставка APNS** — P1-2, device-чеклист. Lock screen — туда же.
+3. **Чат.** Персистентность server-side (история грузится из `/chat/messages/{room}` при каждом входе ✓), optimistic-merge защищает от «исчезновения» между poll'ами ✓. Имена: backend fallback full_name → хвост телефона → «Пользователь UrTruck» (`chat.py:228+`) + `resolvedPartner` в шапке ✓. Офлайн-очереди **нет** (P1-3); молчаливая потеря при roomId-входе — **была, P0-2, исправлена**.
+4. **Фильтры.** Парсер «A→B» поддерживает `→` и `->` (`FeedScreen.js:323`); без сепаратора — обычный текстовый фильтр, не ломается. Карточки-заглушки «— → —» отсекаются до рендера (`FeedScreen.js:406`). Empty-state есть. Покрыто Maestro `audit-feed-filter-empty`.
+5. **Смена языка на лету.** Механизм реактивен: `useI18n` подписан на `subscribeToLanguage` → re-render; `t()` читает словарь в момент вызова ✓. Нереактивные островки: OfflineBanner (P2-3), бот-сообщения бэкенда (P2-8). Module-scope TCOLORS/TRUCK_ICONS в FeedScreen — цвета/эмодзи, не тексты, ок. Матричный кейс покрыт Maestro `audit-lang-switch-during-chat`.
+
+## 6. Опровергнутые находки первичного прохода (в баги не включены)
+
+- «Нет обработчика тапа по пушу» — **неверно**: `App.js:105-113` имеет оба листенера + navigateFromUrl.
+- «partner_name всегда null (лукап отключён)» — **неверно**: отключена только первая (мёртвая) ветка; рабочее обогащение ниже (`chat.py:228+`).
+- «OfflineBanner крашится на native» — **неверно**: guard `Platform.OS !== 'web'` + корректный cleanup.
+- «BottomNav/AppState утечка» — cleanup на месте.
+
+## 7. Деплой-чеклист бэкенда (ОБЯЗАТЕЛЕН до раздачи TestFlight)
+
+```bash
+# в backend/.env на 185.22.65.11:
+URTRUCK_ENV=production          # выключает BETA_MODE (OTP 0000) по дефолту
+URTRUCK_ADMIN_PASS=<сильный>    # иначе админка теперь отвечает 503 (P0-4)
+URTRUCK_ADMIN_USER=<не admin>
+# проверка после рестарта PM2:
+curl http://185.22.65.11:8001/api/v1/system/info   # otp НЕ mock-режим, face/storage по плану
+```
+
+## 8. Maestro (Этап 4)
+
+Новые сценарии в `qa/maestro/` (конвенции репо: `_lib/qa-login.yaml`, актёр serik, testID-селекторы):
+
+| Файл | Флоу | Ключевая проверка |
+|---|---|---|
+| `audit-profile-after-registration.yaml` | 1 | Профиль после логина без «Добавить имя»/None/undefined |
+| `audit-chat-persistence-restart.yaml` | 3 | Сообщение переживает stopApp + relaunch; шапка ≠ «Собеседник» |
+| `audit-notification-deeplink.yaml` | 2 | Тап по уведомлению не крашит; url-парсер жив (in-app прокси push-тапа; реальный APNS — руками) |
+| `audit-feed-filter-empty.yaml` | 4 | Несуществующий маршрут → empty-state без «— → —»; сброс возвращает ленту |
+| `audit-lang-switch-during-chat.yaml` | 5 + матрица | RU→EN при смонтированном чате: UI на EN без рестарта, отправка работает |
+
+Запуск: `MAESTRO_QA_AGENT_TOKEN=... maestro test qa/maestro/audit-*.yaml` (Expo Go, см. `qa/maestro/README.md`).
+
+## 9. Матрица пересечений (Этап 3) — выводы
+
+| Комбинация | Статус |
+|---|---|
+| Смена языка при открытом чате | ✅ безопасно (реактивный useI18n) + Maestro-сценарий |
+| Push при активном чате с тем же юзером | ⚠️ P2-2: баннер покажется поверх открытой комнаты (нет received-listener) |
+| Потеря сети посреди отправки | ✅ после P0-2: toast об ошибке; ⚠️ P1-3: без авторетрая |
+| Токен истёк во время сессии | ⚠️ P1-6: корректный гейт только в myDashboard, остальное — generic error |
+| Двойной тап «Принять ставку» | ✅ после P0-3: второй запрос получает 409 |
