@@ -166,32 +166,51 @@ export const push = {
         Constants?.manifest?.extra?.eas?.projectId ||
         null;
     } catch { projectId = null; }
+    // issue #5: dev-only debug logging для проверки регистрации токена на
+    // реальном устройстве/dev-билде (в проде молчим).
+    const dbg = (...a) => { if (typeof __DEV__ !== 'undefined' && __DEV__) console.log('[push]', ...a); };
+    dbg('projectId', projectId || '(none)');
     let tokenData;
     try {
       tokenData = projectId
         ? await Notifications.getExpoPushTokenAsync({ projectId })
         : await Notifications.getExpoPushTokenAsync();
     } catch (e) {
+      dbg('getExpoPushTokenAsync failed', String(e));
       return { ok: false, reason: 'token_failed', error: String(e) };
     }
     const token = tokenData?.data;
-    if (!token) return { ok: false, reason: 'no_token' };
+    if (!token) { dbg('no token returned'); return { ok: false, reason: 'no_token' }; }
+    dbg('expo token', token);
 
-    // Отправляем на бэк
+    // Отправляем на бэк. issue #5: проверяем ответ — раньше статус
+    // игнорировался и при 401/500 функция всё равно возвращала ok:true,
+    // хотя токен на сервере не сохранялся (push не доходил).
     const authToken = await storage.get(TOKEN_KEY);
-    await fetch(`${BASE}/register-native`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': authToken ? `Bearer ${authToken}` : '',
-      },
-      body: JSON.stringify({
-        token,
-        provider: 'expo',
-        platform: Platform.OS,
-        device_name: Device.modelName || Device.deviceName || null,
-      }),
-    });
+    let regStatus = 0;
+    try {
+      const resp = await fetch(`${BASE}/register-native`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': authToken ? `Bearer ${authToken}` : '',
+        },
+        body: JSON.stringify({
+          token,
+          provider: 'expo',
+          platform: Platform.OS,
+          device_name: Device.modelName || Device.deviceName || null,
+        }),
+      });
+      regStatus = resp.status;
+      dbg('register-native →', regStatus);
+    } catch (e) {
+      dbg('register-native network error', String(e));
+      return { ok: false, reason: 'register_failed', token, error: String(e) };
+    }
+    if (regStatus < 200 || regStatus >= 300) {
+      return { ok: false, reason: 'register_rejected', token, status: regStatus };
+    }
     await storage.set(NATIVE_TOKEN_KEY, token);
     return { ok: true, token };
   },
