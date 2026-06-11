@@ -28,6 +28,7 @@ import { useToast } from '../../components/Toast';
 import { regAPI } from '../../utils/registration';
 import VerificationProgress from '../../components/verification/VerificationProgress';
 import VerificationCard from '../../components/verification/VerificationCard';
+import { SkeletonCard } from '../../components/Skeleton';
 import {
   VERIFICATION_ITEMS,
   REQUIRED_ITEMS,
@@ -62,6 +63,7 @@ export default function VerificationDashboardScreen({ navigation, route }) {
 
   const [raw, setRaw] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [firstLoad, setFirstLoad] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -75,6 +77,7 @@ export default function VerificationDashboardScreen({ navigation, route }) {
       // удалась». Бэкенд может быть оффлайн / no token.
     } finally {
       setLoading(false);
+      setFirstLoad(false);
       setRefreshing(false);
     }
   }, []);
@@ -162,22 +165,30 @@ export default function VerificationDashboardScreen({ navigation, route }) {
 
         <VerificationProgress done={done} total={total} accent="#00A86B" />
 
-        {VERIFICATION_ITEMS.map((key) => {
-          const required = REQUIRED_ITEMS.includes(key);
-          return (
-            <VerificationCard
-              key={key}
-              icon={ITEM_ICON[key]}
-              title={t(`verification_item_${key}_title`)}
-              subtitle={t(`verification_item_${key}_subtitle`)}
-              status={model[key].status}
-              rejectionReason={model[key].rejectionReason}
-              required={required}
-              onPress={() => openItem(key)}
-              testID={`verification-card-${key.replace(/([A-Z])/g, '-$1').toLowerCase()}`}
-            />
-          );
-        })}
+        {firstLoad && loading ? (
+          <View testID="verification-dashboard-skeleton">
+            {VERIFICATION_ITEMS.map((key) => (
+              <SkeletonCard key={key} />
+            ))}
+          </View>
+        ) : (
+          VERIFICATION_ITEMS.map((key) => {
+            const required = REQUIRED_ITEMS.includes(key);
+            return (
+              <VerificationCard
+                key={key}
+                icon={ITEM_ICON[key]}
+                title={t(`verification_item_${key}_title`)}
+                subtitle={t(`verification_item_${key}_subtitle`)}
+                status={model[key].status}
+                rejectionReason={model[key].rejectionReason}
+                required={required}
+                onPress={() => openItem(key)}
+                testID={`verification-card-${key.replace(/([A-Z])/g, '-$1').toLowerCase()}`}
+              />
+            );
+          })
+        )}
 
         {/* Dev-only диагностика «сколько примеров ещё не дошли от дизайна» */}
         {__DEV__ && missing.length > 0 ? (

@@ -70,7 +70,11 @@ export default function VerificationCard({
         </View>
         {status === 'rejected' && rejectionReason ? (
           <View style={[s.reasonBox, { borderColor: STATUS_COLORS.rejected.border, backgroundColor: STATUS_COLORS.rejected.bg }]}>
-            <Text style={[s.reasonText, { color: STATUS_COLORS.rejected.fg }]}>
+            <Text
+              style={[s.reasonText, { color: STATUS_COLORS.rejected.fg }]}
+              numberOfLines={3}
+              ellipsizeMode="tail"
+            >
               {rejectionReason}
             </Text>
           </View>
