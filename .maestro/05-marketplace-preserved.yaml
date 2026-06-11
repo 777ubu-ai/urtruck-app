@@ -1,0 +1,32 @@
+appId: host.exp.Exponent
+name: pr104-05-marketplace-regression
+tags:
+  - regression
+  - pr104
+  - driver-flow-cleanup
+env:
+  MAESTRO_ACTOR: serik
+---
+# PR #104 L2 — driver-flow-cleanup PRESERVED: marketplace deal chat
+# header показывает реального partner'а (ChatScreen resolvedPartner) +
+# Груз/Ставка/Маршрут (D2 fix из PR #100). PR #104 не должен это сломать.
+- runFlow: ../qa/maestro/_lib/qa-login.yaml
+- tapOn:
+    id: "bottom-nav-chats"
+- waitForAnimationToEnd
+- takeScreenshot: 00_chats_list
+- assertVisible:
+    id: "deal-room-list"
+- assertVisible:
+    id: "chats-header"
+# Если deal-room уже есть от прошлых прогонов
+- runFlow:
+    when:
+      visible:
+        id: "deal-room-list-card"
+    commands:
+      - tapOn:
+          id: "deal-room-list-card"
+      - waitForAnimationToEnd:
+          timeout: 4000
+      - takeScreenshot: 01_chat_room

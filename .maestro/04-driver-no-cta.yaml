@@ -1,0 +1,18 @@
+appId: host.exp.Exponent
+name: pr104-04-driver-no-become-cta
+tags:
+  - regression
+  - pr104
+  - business-logic
+env:
+  MAESTRO_ACTOR: serik
+---
+# PR #104 L2 — business logic check: driver НЕ видит CTA «Стать
+# водителем». В ProfileScreen.js логика {!isDriver ? <CTA/> : null}.
+- runFlow: ../qa/maestro/_lib/qa-login.yaml
+- tapOn:
+    id: "bottom-nav-profile"
+- waitForAnimationToEnd
+- takeScreenshot: 00_driver_profile
+- assertNotVisible:
+    id: "profile-become-driver-cta"
