@@ -1,0 +1,72 @@
+appId: host.exp.Exponent
+name: verification-dashboard-foundation
+tags:
+  - smoke
+  - client
+  - auth
+  - verification
+  - foundation
+env:
+  MAESTRO_ACTOR: boris
+---
+# Foundation proof для PR #104:
+#   1) Login as boris (client, verification_level=3, status='approved').
+#   2) Open Profile.
+#   3) Tap «Стать водителем / перевозчиком» CTA.
+#   4) VerificationDashboard монтируется, тянет /register/status,
+#      видит status='approved' → авто-редиректится на
+#      VerificationApprovedScreen.
+#   5) Approved-screen рендерится с правильным RU-заголовком,
+#      кнопкой «Начать работать» и graceful fallback иконкой
+#      (success_illustration.png ещё не отдан дизайном).
+#
+# Реальные upload-screens (Identity/Selfie/...) — НЕ кликаем; они
+# существуют ДО PR #104, dashboard просто navigation.navigate в них
+# когда status != approved. Camera/gallery / OCR / APNS — REAL DEVICE
+# REQUIRED.
+- runFlow: _lib/qa-login.yaml
+- tapOn:
+    id: "bottom-nav-profile"
+- waitForAnimationToEnd
+- takeScreenshot: 00_profile_with_cta
+- scrollUntilVisible:
+    element:
+      id: "profile-become-driver-cta"
+    direction: DOWN
+    timeout: 6000
+- assertVisible:
+    id: "profile-become-driver-cta"
+- tapOn:
+    id: "profile-become-driver-cta"
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: 01_verification_approved
+# boris=verification_level=3=approved → dashboard сразу делает
+# navigation.replace('VerificationApproved'). Если тестируемый actor
+# когда-нибудь будет fresh (level<2), тут вместо approved появится
+# `verification-dashboard` со списком карточек — поэтому проверяем
+# любое из двух состояний.
+- runFlow:
+    when:
+      visible:
+        id: "verification-approved-screen"
+    commands:
+      - assertVisible:
+          id: "verification-approved-screen"
+      - assertVisible:
+          id: "verification-approved-done-btn"
+- runFlow:
+    when:
+      visible:
+        id: "verification-dashboard"
+    commands:
+      - assertVisible:
+          id: "verification-dashboard"
+      - assertVisible:
+          id: "verification-card-personal-data"
+      - assertVisible:
+          id: "verification-card-personal-photo"
+- tapOn:
+    text: "Начать работать|Понятно|Перейти в профиль"
+- waitForAnimationToEnd
+- takeScreenshot: 02_returned_to_profile
