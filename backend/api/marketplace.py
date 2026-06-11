@@ -1034,10 +1034,19 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount: int):
                 (bid["bidder_id"], bid["trip_id"]),
             )
 
-    c.execute(
-        "UPDATE bids SET amount = ?, status = 'accepted', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+    # QA-аудит P0 (double-accept race): раньше WHERE id=? без guard —
+    # два одновременных accept (двойной тап «Принять» или параллельный
+    # accept двух ставок) оба проходили read-check выше и создавали ДВЕ
+    # сделки на один груз. Conditional UPDATE + rowcount закрывает гонку:
+    # проигравшая транзакция получает rowcount=0 → 409 → полный rollback
+    # (включая UPDATE cargos/trips выше по функции).
+    cur = c.execute(
+        "UPDATE bids SET amount = ?, status = 'accepted', updated_at = CURRENT_TIMESTAMP "
+        "WHERE id = ? AND status IN ('pending', 'countered')",
         (final_amount, bid_id),
     )
+    if cur.rowcount == 0:
+        raise HTTPException(status_code=409, detail="Ставка уже обработана")
     # Auto-decline siblings: anything still pending OR countered on the same parent.
     c.execute(
         "UPDATE bids SET status = 'rejected', updated_at = CURRENT_TIMESTAMP "

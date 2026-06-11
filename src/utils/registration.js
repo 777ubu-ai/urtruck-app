@@ -364,7 +364,10 @@ export const regAPI = {
       onProgress?.('compressing');
       // Фото грузовика — пресет 'truck' (1280px / q0.75 / ≤600KB, ТЗ §1).
       const compressedUri = await compressImage(photoUri, { preset: 'truck' });
-        form.append('photo', blob, 'vehicle.jpg');
+      // QA-аудит P0: здесь была несуществующая переменная `blob`
+      // (ReferenceError → загрузка фото грузовика падала на всех
+      // платформах). Используем appendImageFile как в uploadPersonalPhoto.
+      await appendImageFile(form, compressedUri, 'vehicle.jpg');
     }
     onProgress?.('uploading');
     const r = await fetch(`${BASE}/vehicle`, {

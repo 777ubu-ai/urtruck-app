@@ -321,9 +321,19 @@ export default function ChatScreen({ navigation, route }) {
     }
   };
 
+  // QA-аудит P0 (silent message loss): раньше все три send-пути были под
+  // `if (partner?.id)` с route.params.partner — при входе в чат только по
+  // roomId (карточка заказа/уведомление) partner пуст → optimistic-пузырь
+  // рисовался, но на сервер НЕ уходил и исчезал после рестарта. Теперь
+  // получатель берётся из resolvedPartner (дотянут из /chat/rooms), а
+  // ошибки отправки показываются тостом, а не глотаются.
+  const recipientId = () => resolvedPartner?.id || partner?.id || null;
+
   const sendMessage = async (text) => {
     const msg = text || input;
     if (!msg.trim()) return;
+    const toId = recipientId();
+    if (!toId) { toast(t('chat_send_failed'), 'error'); return; }
     // PR-C2 (P0-4): optimistic insert с маркером `_optimistic: true`.
     // loadMessages (polling) defensive merge сохраняет именно такие
     // сообщения пока сервер не подтвердит — иначе они «исчезают»
@@ -338,11 +348,11 @@ export default function ChatScreen({ navigation, route }) {
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
 
     // Сохраняем на сервере
-    if (partner?.id) {
-      try {
-        const r = await chatAPI.send({ toUserId: partner.id, text: msg, cargoId, tripId });
-        if (r.room_id) setRoomId(r.room_id);
-      } catch {}
+    try {
+      const r = await chatAPI.send({ toUserId: toId, text: msg, cargoId, tripId });
+      if (r.room_id) setRoomId(r.room_id);
+    } catch {
+      toast(t('chat_send_failed'), 'error');
     }
   };
 
@@ -360,8 +370,13 @@ export default function ChatScreen({ navigation, route }) {
         text: '', isPhoto: true, photoUri,
         time: new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}),
       }]);
-      if (partner?.id) {
-        chatAPI.send({ toUserId: partner.id, photoUrl: photoUri, cargoId, tripId }).catch(() => {});
+      const toId = recipientId();
+      if (toId) {
+        chatAPI.send({ toUserId: toId, photoUrl: photoUri, cargoId, tripId })
+          .catch(() => toast(t('chat_send_failed'), 'error'));
+      } else {
+        toast(t('chat_send_failed'), 'error');
+        return;
       }
       toast('📷 ' + t('photo_sent'), 'success', 1500);
     } catch (e) {
@@ -380,13 +395,16 @@ export default function ChatScreen({ navigation, route }) {
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       isVoice: true, playing: false, voiceUrl: uri, duration,
     }]);
-    if (partner?.id) {
+    const toId = recipientId();
+    if (toId) {
       chatAPI.send({
-        toUserId: partner.id,
+        toUserId: toId,
         text: `🎤 Голосовое сообщение (${duration}с)`,
         isVoice: true, voiceDuration: duration,
         cargoId, tripId,
-      }).catch(() => {});
+      }).catch(() => toast(t('chat_send_failed'), 'error'));
+    } else {
+      toast(t('chat_send_failed'), 'error');
     }
   };
 

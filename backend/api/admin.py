@@ -19,10 +19,20 @@ admin_router = APIRouter()
 security = HTTPBasic()
 
 ADMIN_USER = os.getenv("URTRUCK_ADMIN_USER", "admin")
-ADMIN_PASS = os.getenv("URTRUCK_ADMIN_PASS", "urtruck-admin-2026")
+_ADMIN_PASS_DEFAULT = "urtruck-admin-2026"
+ADMIN_PASS = os.getenv("URTRUCK_ADMIN_PASS", _ADMIN_PASS_DEFAULT)
+# QA-аудит P0: дефолтный пароль закоммичен в репо. В production-окружении
+# (URTRUCK_ENV=production) админка с дефолтным паролем закрыта наглухо —
+# нужно явно задать URTRUCK_ADMIN_PASS. Dev/preview работают как раньше.
+_IS_PROD = os.getenv("URTRUCK_ENV", "").strip().lower() == "production"
 
 
 def check_admin(credentials: HTTPBasicCredentials = Depends(security)):
+    if _IS_PROD and ADMIN_PASS == _ADMIN_PASS_DEFAULT:
+        raise HTTPException(
+            status_code=503,
+            detail="Админ-панель отключена: задайте URTRUCK_ADMIN_PASS в .env",
+        )
     u_ok = secrets.compare_digest(credentials.username.encode(), ADMIN_USER.encode())
     p_ok = secrets.compare_digest(credentials.password.encode(), ADMIN_PASS.encode())
     if not (u_ok and p_ok):

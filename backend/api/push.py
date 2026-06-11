@@ -13,6 +13,7 @@
 import os
 import sys
 import json
+import threading
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -142,9 +143,22 @@ def send_to_user(user_id: str, title: str, body: str, url: str = "/", kind: str 
     push_sender автоматически вычислил unread badge и положил его в
     APNs payload — без этого красный кружок на иконке UrTruck не
     появляется на iPhone home screen даже при включённых notifications.
+
+    QA-аудит P1 (blocking push): push_sender.send делает синхронный
+    httpx.post к Expo с timeout=10s. Все callsites (accept_bid, chat send,
+    admin approve) вызывали его ВНУТРИ обработчика запроса → при тормозах
+    Expo каждый accept/сообщение висели до 10 секунд и выедали threadpool.
+    Теперь отправка уходит в daemon-поток; возвращаемое значение нигде не
+    использовалось (проверено по всем callsites), /push/test зовёт
+    push_sender.send напрямую и сохраняет диагностику.
     """
-    r = push_sender.send(user_id, title, body, url=url, kind=kind, data=data)
-    return r["total"]
+    def _bg():
+        try:
+            push_sender.send(user_id, title, body, url=url, kind=kind, data=data)
+        except Exception as e:
+            print(f"[push] background send failed for {user_id}: {e}", flush=True)
+    threading.Thread(target=_bg, daemon=True).start()
+    return 0
 
 
 @push_router.post("/test")
