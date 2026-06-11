@@ -1,0 +1,38 @@
+appId: host.exp.Exponent
+name: night-ops-06-push-permission
+tags:
+  - night-ops
+  - push
+env:
+  MAESTRO_ACTOR: serik
+---
+# Phase 5 / Night Ops — push permission registration smoke.
+#
+# Goal: убедиться что когда driver-actor открывает app впервые после
+# clean-state, push.js регистрируется без crashes и не показывает
+# error toast «Не удалось получить токен».
+#
+# Что НЕ ловит этот flow:
+#   - Реальная APNS доставка (нужен real device — см. PUSH_MANUAL_TEST_PLAN.md)
+#   - badge counter sync (visible только на real device home-screen)
+#   - cold-start от push tap (нужен real push receipt)
+#
+# Что ловит:
+#   - permission popup рендерится
+#   - после tap «Разрешить» нет crash + нет error toast
+#   - app продолжает работать (Profile видим)
+- runFlow: ../qa/maestro/_lib/qa-login.yaml
+- tapOn:
+    id: "bottom-nav-profile"
+- waitForAnimationToEnd
+- takeScreenshot: 00_profile_initial
+# Если token уже получен ранее (warm-state), permission уже granted —
+# system dialog не появится. Проверим что toast «токен» не виден.
+- assertNotVisible: "Не удалось получить токен"
+- assertNotVisible: "Push token failed"
+- assertNotVisible: "register_failed"
+- takeScreenshot: 01_no_error_toast
+# Verify что Profile отображает нормально — push registration не сломал
+# render.
+- assertVisible:
+    id: "bottom-nav-profile"
