@@ -7,6 +7,7 @@ import {v1Colors, useV1Colors} from '../theme/designV1';
 import { useToast } from '../components/Toast';
 import { getTransactions, subscribe } from '../utils/store';
 import { fetchRates } from '../utils/exchangeRates';
+import { useMountedRef } from '../hooks/useMountedRef';
 import GradientText from '../components/GradientText';
 
 // Pilot currencies (Stage 5 / rev. 3): RUB / USD / KZT / CNY.
@@ -39,6 +40,7 @@ export default function WalletScreen({ route }) {
   const [transactions, setTransactions] = useState(getTransactions());
   const [fx, setFx] = useState(null);
   const [fxLoading, setFxLoading] = useState(true);
+  const mounted = useMountedRef();  // QA-аудит P1-8
 
   useEffect(() => {
     const unsub = subscribe(() => setTransactions(getTransactions()));
@@ -48,12 +50,14 @@ export default function WalletScreen({ route }) {
   useEffect(() => {
     (async () => {
       const r = await fetchRates();
+      if (!mounted.current) return;  // QA-аудит P1-8
       setFx(r);
       setFxLoading(false);
     })();
     // Обновление курсов раз в час
     const id = setInterval(async () => {
       const r = await fetchRates();
+      if (!mounted.current) return;
       setFx(r);
     }, 60 * 60 * 1000);
     return () => clearInterval(id);

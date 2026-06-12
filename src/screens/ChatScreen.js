@@ -12,6 +12,7 @@ import { prettifyPartnerName, partnerInitial } from '../utils/displayName';
 import { chatAPI } from '../utils/chatAPI';
 import { marketAPI } from '../utils/marketAPI';
 import { notifyChatRead } from '../utils/unreadEvents';
+import { useMountedRef } from '../hooks/useMountedRef';
 import { useAuth } from '../utils/AuthContext';
 import { voice } from '../utils/voiceRecorder';
 import QuickPhrases from '../components/QuickPhrases';
@@ -120,6 +121,7 @@ export default function ChatScreen({ navigation, route }) {
   const { toast } = useToast();
   const { session } = useAuth();
   const myId = session?.user?.id;
+  const mounted = useMountedRef();  // QA-аудит P1-8
   const [messages, setMessages] = useState([]);
   const [roomId, setRoomId] = useState(initialRoomId || null);
   const [input, setInput] = useState('');
@@ -148,6 +150,7 @@ export default function ChatScreen({ navigation, route }) {
     if (!rid) return;
     try {
       const md = await chatAPI.messages(rid);
+      if (!mounted.current) return;  // QA-аудит P1-8: чат закрыт во время poll
       const mapped = (md.messages || []).map(m => {
         // Resolve "me vs them" robustly:
         // 1) if sender_id matches our local user id — me
