@@ -690,6 +690,26 @@ def create_bid(body: BidIn, user=Depends(require_level(1))):
     post_notifs: list = []  # каждый элемент: (recipient_id, title, body, icon, url, push)
 
     with get_conn() as c:
+        # M1: нельзя ставить на уже занятый/истёкший груз или рейс. Пустой/
+        # None status (legacy-строки) не блокируем — только явный не-active.
+        if body.cargo_id:
+            cg = c.execute("SELECT status FROM cargos WHERE id = ?", (body.cargo_id,)).fetchone()
+            if cg and cg["status"] and cg["status"] != "active":
+                raise HTTPException(status_code=409, detail="Груз больше не доступен для ставок")
+        if body.trip_id:
+            tr = c.execute("SELECT status FROM trips WHERE id = ?", (body.trip_id,)).fetchone()
+            if tr and tr["status"] and tr["status"] != "active":
+                raise HTTPException(status_code=409, detail="Рейс больше не доступен для ставок")
+        # M1: дедуп — у одного автора не должно быть двух активных ставок на
+        # тот же груз/рейс (для изменения цены есть PATCH /bids/{id}).
+        dup = c.execute(
+            "SELECT id FROM bids WHERE bidder_id = ? AND status IN ('pending','countered') "
+            "AND ((cargo_id IS NOT NULL AND cargo_id = ?) OR (trip_id IS NOT NULL AND trip_id = ?))",
+            (user["id"], body.cargo_id, body.trip_id),
+        ).fetchone()
+        if dup:
+            raise HTTPException(status_code=409, detail="У вас уже есть активная ставка — измените её")
+
         c.execute("""
             INSERT INTO bids (id, cargo_id, trip_id, bidder_id, bidder_name, bidder_phone, amount, message)
             VALUES (?,?,?,?,?,?,?,?)
@@ -1274,6 +1294,14 @@ def reject_bid(bid_id: str, user=Depends(require_level(1))):
             "UPDATE bids SET status = 'rejected', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (bid_id,),
         )
+        # M2: «отклики» (bids_count) = активные ставки. cancel уже уменьшал
+        # счётчик, а reject — нет, из-за чего в ленте число откликов
+        # завышалось после отклонений. Симметрично уменьшаем здесь.
+        if bid.get("cargo_id"):
+            c.execute(
+                "UPDATE cargos SET bids_count = MAX(0, bids_count - 1) WHERE id = ?",
+                (bid["cargo_id"],),
+            )
 
     # Notify the bidder.
     # PR-B (P0-B): URL ведёт обратно на родительский cargo / trip, чтобы
@@ -1368,8 +1396,12 @@ def accept_counter(bid_id: str, user=Depends(require_level(1))):
         result = _finalize_accept_inline(c, owner_user, bid, counter)
 
     # Push to both sides.
+    # M3: роль того, кто согласился, зависит от типа ставки. cargo-bid →
+    # bidder это водитель; trip-bid → bidder это грузовладелец. Иначе
+    # владельцу рейса приходило неверное «Водитель согласился».
+    agreed_word = "Водитель" if bid.get("cargo_id") else "Грузовладелец"
     try:
-        send_to_user(owner_id, "✅ Контр-оффер принят", f"Водитель согласился на ${counter}", url="/")
+        send_to_user(owner_id, "✅ Контр-оффер принят", f"{agreed_word} согласился на ${counter}", url="/")
     except Exception:
         pass
     try:
