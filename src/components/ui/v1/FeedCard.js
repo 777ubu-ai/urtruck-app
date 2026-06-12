@@ -68,8 +68,12 @@ export default function FeedCard({
   const hasRoute = !(isEmptyOrDash(fromText) && isEmptyOrDash(toText));
   // issue #6: полный маршрут без обрезки пункта назначения. «город, страна»
   // в 2 строки (from / → to) — destination никогда не прячется за «...».
-  const fromFull = isEmptyOrDash(fromText) ? '—' : (fromCountry ? `${fromText}, ${fromCountry}` : fromText);
-  const toFull = isEmptyOrDash(toText) ? '—' : (toCountry ? `${toText}, ${toCountry}` : toText);
+  // BUG-fix: backend часто уже кладёт флаг страны прямо в city
+  // («Алматы, 🇰🇿»). Тогда НЕ добавляем код страны второй раз, иначе выходит
+  // дубль «Алматы, 🇰🇿, KZ». Код добавляем только если флага в строке нет.
+  const hasFlag = (s) => /[\u{1F1E6}-\u{1F1FF}]/u.test(s);
+  const fromFull = isEmptyOrDash(fromText) ? '—' : (fromCountry && !hasFlag(fromText) ? `${fromText}, ${fromCountry}` : fromText);
+  const toFull = isEmptyOrDash(toText) ? '—' : (toCountry && !hasFlag(toText) ? `${toText}, ${toCountry}` : toText);
   const routeText = hasRoute
     ? `${isEmptyOrDash(fromText) ? '—' : fromText} → ${isEmptyOrDash(toText) ? '—' : toText}`
     : 'Маршрут уточняется';
