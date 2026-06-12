@@ -1,0 +1,43 @@
+appId: host.exp.Exponent
+name: audit-feed-filter-empty
+tags:
+  - audit
+  - feed
+  - filters
+  - p1
+env:
+  MAESTRO_ACTOR: serik
+---
+# QA-аудит, флоу 4: фильтры направлений — пустые состояния и сброс.
+# 1) Поиск заведомо несуществующего маршрута «Нигде→Никуда» → лента
+#    обязана показать понятный empty-state, а не вечный спиннер и не
+#    карточки «— → —».
+# 2) Очистка поиска → карточки возвращаются.
+- runFlow: _lib/qa-login.yaml
+- tapOn:
+    id: "bottom-nav-feed"
+- waitForAnimationToEnd
+- takeScreenshot: audit_filter_01_feed
+- tapOn:
+    text: "Найти груз или маршрут..."
+- inputText: "Нигде→Никуда"
+- hideKeyboard
+# Debounce 500ms + сетевой запрос.
+- extendedWaitUntil:
+    notVisible:
+      text: "Подробнее"
+    timeout: 10000
+- takeScreenshot: audit_filter_02_empty
+# Карточек с маршрутом-заглушкой быть не должно.
+- assertNotVisible:
+    text: "— → —"
+# ── Сброс поиска: лента возвращается ──
+- tapOn:
+    text: "Нигде→Никуда"
+- eraseText
+- hideKeyboard
+- extendedWaitUntil:
+    visible:
+      text: "Подробнее"
+    timeout: 15000
+- takeScreenshot: audit_filter_03_restored

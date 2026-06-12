@@ -1,0 +1,34 @@
+appId: host.exp.Exponent
+name: audit-profile-after-registration
+tags:
+  - audit
+  - registration
+  - profile
+  - p1
+env:
+  MAESTRO_ACTOR: serik
+---
+# QA-аудит, флоу 1: «профиль заполнен после регистрации».
+# Актёр serik проходит qa-login (= зарегистрированный водитель с full_name
+# через /qa/ensure-actor). Профиль обязан показать имя с сервера
+# (/users/me → full_name), а НЕ плейсхолдер «Добавить имя».
+# Регресс: fetchProfile молча выходит при отсутствии ur_reg_token —
+# если плейсхолдер виден, серверное имя не дотянулось.
+- runFlow: _lib/qa-login.yaml
+- tapOn:
+    id: "bottom-nav-profile"
+- waitForAnimationToEnd
+- takeScreenshot: audit_p1_01_profile
+# Имя дотягивается по focus асинхронно — даём до 10с.
+- extendedWaitUntil:
+    notVisible:
+      text: "Добавить имя"
+    timeout: 10000
+- assertNotVisible:
+    text: "Добавить имя"
+# Заодно: статус верификации не должен быть сырым ключом/None.
+- assertNotVisible:
+    text: "None.*"
+- assertNotVisible:
+    text: "undefined"
+- takeScreenshot: audit_p1_02_profile_named

@@ -153,7 +153,8 @@ export default function CargoDetail({ navigation, route }) {
     const normalized = normalizeCargo(fullCargo);
     const fromParam = cargo && cargo.isMine;
     const fromServer = myUserId && fullCargo.owner_id === myUserId;
-    return { ...normalized, isMine: fromParam || fromServer || normalized.isMine };
+    // owner_id нужен для прямого чата с грузовладельцем (кнопка внизу).
+    return { ...normalized, owner_id: fullCargo.owner_id, isMine: fromParam || fromServer || normalized.isMine };
   })();
   const cid = cargoId || c.id;
   // route.params.role is the authoritative side hint when CargoDetail is opened
@@ -780,11 +781,23 @@ export default function CargoDetail({ navigation, route }) {
             },
             testID: 'cargo-sticky-bid',
           }}
-          secondary={chatRoomId ? {
+          secondary={{
+            // Чат с грузовладельцем доступен ВСЕГДА (до ставки тоже) —
+            // как в InDrive/WhatsApp. Если комната уже есть — открываем её;
+            // иначе открываем чат по owner_id, комната создастся на первом
+            // сообщении (ChatScreen.resolvedPartner подтянет реальное имя).
             label: '💬 ' + t('order_chat'),
-            onPress: () => navigation.navigate('Chat', { roomId: chatRoomId, role }),
+            onPress: () => {
+              if (chatRoomId) {
+                navigation.navigate('Chat', { roomId: chatRoomId, role, cargoId: cid });
+              } else if (c.owner_id) {
+                navigation.navigate('Chat', { partner: { id: c.owner_id }, cargoId: cid, role });
+              } else {
+                toast(t('chat_open_failed'), 'error');
+              }
+            },
             testID: 'cargo-sticky-chat',
-          } : null}
+          }}
         />
       ) : null}
       <BidModal

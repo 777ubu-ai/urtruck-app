@@ -1,8 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Animated, Platform } from 'react-native';
-import { t } from '../utils/i18n';
+import { useI18n } from '../utils/useI18n';
 
 export default function OfflineBanner() {
+  // QA-аудит P2-3: было статическое `import { t }` — текст баннера не
+  // обновлялся при смене языка, пока баннер виден. useI18n делает компонент
+  // реактивным к смене языка.
+  const { t } = useI18n();
   const [online, setOnline] = useState(true);
   const opacity = React.useRef(new Animated.Value(0)).current;
 

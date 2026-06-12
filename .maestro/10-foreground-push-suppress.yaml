@@ -1,0 +1,70 @@
+# P2-2 — foreground push НЕ дублирует баннером открытую чат-комнату.
+#
+# ┌─ ГРАНИЦЫ АВТОМАТИЗАЦИИ (читать перед запуском) ─────────────────────┐
+# │ 1. appId = com.urtruck.app → нужен dev-client / standalone-билд на   │
+# │    booted-симуляторе. В Expo Go (host.exp.Exponent) `xcrun simctl    │
+# │    push com.urtruck.app` не дойдёт до приложения.                    │
+# │ 2. Maestro НЕ видит системный iOS-баннер (он вне view-иерархии app). │
+# │    Поэтому факт «баннер показан / подавлен» — РУЧНОЕ наблюдение на    │
+# │    шагах, помеченных `# 👁 MANUAL`. Maestro проверяет лишь состояние  │
+# │    приложения (в какой комнате мы) и что push не увёл с экрана.      │
+# │ 3. `xcrun simctl push` запускается из шелла МЕЖДУ шагами — Maestro    │
+# │    bash не исполняет. Запускай через обёртку scripts (см. низ файла) │
+# │    или вручную в соседнем терминале по приглашению takeScreenshot.   │
+# └─────────────────────────────────────────────────────────────────────┘
+#
+# Источник истины фикса: src/utils/push.js → setNotificationHandler.
+# Подавление при data.type==='chat_message' && data.room_id===getActiveRoom().
+# ChatScreen помечает комнату активной на focus (src/utils/activeRoom.js).
+#
+# Перед прогоном:
+#   DEVICE=$(xcrun simctl list devices booted | grep -oE '[0-9A-F-]{36}' | head -1)
+#   # подставь реальный roomId (из БД/логов) в payload.json вместо ROOM_ID_PLACEHOLDER
+appId: com.urtruck.app
+---
+- launchApp:
+    clearState: false
+
+# ── ЧАСТЬ A: комната ОТКРЫТА → push этой же комнаты должен быть подавлен ──
+- tapOn:
+    id: "bottom-nav-chats"
+- waitForAnimationToEnd
+- tapOn:
+    id: "deal-room-list-card"
+    index: 0
+- waitForAnimationToEnd
+- assertVisible:
+    id: "chat-input"            # мы внутри ChatScreen → активная комната выставлена
+- takeScreenshot: p22_A1_room_open
+# 👁 MANUAL: сейчас инъекция push'а ТОЙ ЖЕ комнаты (room_id из payload.json):
+#   xcrun simctl push "$DEVICE" com.urtruck.app .maestro/payload.json
+# Ожидание: баннер НЕ появляется (handler вернул shouldShowBanner:false).
+#   Сообщение придёт в ленту комнаты обычным поллингом.
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: p22_A2_after_push_same_room
+- assertVisible:
+    id: "chat-input"            # остались в комнате, push не увёл и не крашнул
+- assertNotVisible:
+    text: "Тестовое сообщение P2-2"   # баннер-overlay не отрисован поверх (system UI вне app — проверяем хотя бы что нет дубля внутри)
+
+# ── ЧАСТЬ B: юзер на ДРУГОМ экране → push должен ПОКАЗАТЬ баннер ──
+- tapOn:
+    id: "bottom-nav-feed"
+- waitForAnimationToEnd
+- assertVisible:
+    id: "bottom-nav-feed"
+- takeScreenshot: p22_B1_on_feed
+# 👁 MANUAL: повторная инъекция того же push'а:
+#   xcrun simctl push "$DEVICE" com.urtruck.app .maestro/payload.json
+# Ожидание: баннер ПОЯВЛЯЕТСЯ (комната не активна → handler вернул show=true).
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: p22_B2_after_push_other_screen
+- assertVisible:
+    id: "bottom-nav"            # приложение живо, без краша
+
+# ── Критерий прохождения (ручной): ─────────────────────────────────────
+#   A2 — баннера НЕТ (подавлен), B2 — баннер ЕСТЬ. Скриншоты p22_A2 / p22_B2
+#   прикладываются к отчёту. Автоматическая часть гарантирует лишь, что
+#   приложение не падает и не теряет контекст комнаты при обоих push'ах.

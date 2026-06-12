@@ -1,0 +1,66 @@
+appId: host.exp.Exponent
+name: audit-lang-switch-during-chat
+tags:
+  - audit
+  - i18n
+  - chat
+  - matrix
+  - p1
+env:
+  MAESTRO_ACTOR: serik
+---
+# QA-аудит, Этап 3 (матрица): смена языка ВО ВРЕМЯ открытого чата.
+# Базовый lang-switch покрыт lang-switch-flow.yaml; здесь — пересечение:
+# 1) открыть комнату чата, 2) уйти в Профиль и переключить RU→EN,
+# 3) вернуться в ТУ ЖЕ комнату (она оставалась смонтированной в стеке),
+# 4) UI чата обязан быть на EN без перезапуска, отправка — работать.
+- runFlow: _lib/qa-login.yaml
+- tapOn:
+    id: "bottom-nav-chats"
+- waitForAnimationToEnd
+- tapOn:
+    id: "deal-room-list-card"
+    index: 0
+- waitForAnimationToEnd
+- takeScreenshot: audit_langchat_01_chat_RU
+# ── Переключение языка при «живом» чате в стеке ──
+- tapOn:
+    id: "bottom-nav-profile"
+- waitForAnimationToEnd
+- tapOn:
+    text: "English"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: audit_langchat_02_profile_EN
+# ── Возврат в чат: смонтированный экран обязан перерисоваться на EN ──
+- tapOn:
+    id: "bottom-nav-chats"
+- waitForAnimationToEnd
+- tapOn:
+    id: "deal-room-list-card"
+    index: 0
+- waitForAnimationToEnd
+- takeScreenshot: audit_langchat_03_chat_EN
+# Русский UI-хром чата исчез (тексты сообщений могут остаться RU — это данные).
+- assertNotVisible:
+    text: "Сообщение..."
+# Отправка после смены языка работает.
+- tapOn:
+    id: "chat-input"
+- inputText: "lang-switch smoke EN"
+- hideKeyboard
+- tapOn:
+    id: "chat-send-btn"
+- waitForAnimationToEnd
+- assertVisible:
+    text: "lang-switch smoke EN"
+- takeScreenshot: audit_langchat_04_sent_EN
+# ── Возврат RU для следующих флоу ──
+- tapOn:
+    id: "bottom-nav-profile"
+- waitForAnimationToEnd
+- tapOn:
+    text: "Русский"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: audit_langchat_05_back_RU

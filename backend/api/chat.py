@@ -1,6 +1,7 @@
 """Server-side Chat API. Сообщения сохраняются в БД."""
 import os
 import sys
+import sqlite3
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -68,20 +69,30 @@ def _bot_send(room_id: str, sender_id: str, text: str):
                    (text[:50], room_id))
 
 
-def _maybe_support_reply(room_id: str, user: dict):
+# QA-аудит P2-8: авто-ответ поддержки на языке пользователя (lang из
+# клиента). Fallback — RU. Демо-бот «Володя» оставлен на RU (off в проде).
+_SUPPORT_GREETING = {
+    "RU": ("👋 Здравствуйте, {name}!\n\nЯ — UrTruck Support. Менеджер ответит в рабочее время "
+           "(09:00-18:00 KZ).\n\nА пока могу помочь:\n• Как опубликовать груз?\n• Как найти водителя?\n"
+           "• Проблема с регистрацией?\n\nНапишите ваш вопрос — передам менеджеру."),
+    "KK": ("👋 Сәлеметсіз бе, {name}!\n\nМен — UrTruck Support. Менеджер жұмыс уақытында жауап береді "
+           "(09:00-18:00 KZ).\n\nӘзірше көмектесе аламын:\n• Жүкті қалай жариялау керек?\n"
+           "• Жүргізушіні қалай табуға болады?\n• Тіркелуде қиындық бар ма?\n\nСұрағыңызды жазыңыз — менеджерге жеткіземін."),
+    "ZH": ("👋 您好，{name}！\n\n我是 UrTruck 客服。客服经理将在工作时间（09:00-18:00 KZ）回复您。\n\n"
+           "在此期间我可以帮您：\n• 如何发布货物？\n• 如何寻找司机？\n• 注册遇到问题？\n\n请留言，我会转交给客服经理。"),
+    "EN": ("👋 Hello, {name}!\n\nI'm UrTruck Support. A manager will reply during business hours "
+           "(09:00-18:00 KZ).\n\nMeanwhile I can help with:\n• How to post a cargo?\n• How to find a driver?\n"
+           "• Registration issue?\n\nType your question — I'll pass it to a manager."),
+}
+
+
+def _maybe_support_reply(room_id: str, user: dict, lang: str = "RU"):
     """Support отвечает ОДИН РАЗ — приветствие. Не перебивает живых."""
     if _count_bot_messages_in_room(room_id, SUPPORT_ID) > 0:
         return  # уже ответил — молчит
     name = user.get("full_name") or user.get("phone") or "друг"
-    _bot_send(room_id, SUPPORT_ID,
-        f"👋 Здравствуйте, {name}!\n\n"
-        f"Я — UrTruck Support. Менеджер ответит в рабочее время (09:00-18:00 KZ).\n\n"
-        f"А пока могу помочь:\n"
-        f"• Как опубликовать груз?\n"
-        f"• Как найти водителя?\n"
-        f"• Проблема с регистрацией?\n\n"
-        f"Напишите ваш вопрос — передам менеджеру."
-    )
+    template = _SUPPORT_GREETING.get((lang or "RU").upper(), _SUPPORT_GREETING["RU"])
+    _bot_send(room_id, SUPPORT_ID, template.format(name=name))
 
 
 def _volodya_reply(room_id: str, user_text: str, user: dict):
@@ -109,11 +120,27 @@ def _volodya_reply(room_id: str, user_text: str, user: dict):
     _bot_send(room_id, VOLODYA_ID, reply)
 
 
+def _ensure_columns(c):
+    # QA-аудит P1-3: client_msg_id для идемпотентной отправки (защита от
+    # задвоения при ретрае из офлайн-очереди). Миграция идемпотентна —
+    # ADD COLUMN только если столбца ещё нет (старые БД не пересоздаются).
+    cols = {r["name"] for r in c.execute("PRAGMA table_info(chat_messages)").fetchall()}
+    if "client_msg_id" not in cols:
+        c.execute("ALTER TABLE chat_messages ADD COLUMN client_msg_id TEXT")
+    # Уникальность в рамках отправителя (client id генерируется на устройстве).
+    # Partial index — NULL-значения (старые сообщения) не конфликтуют.
+    c.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_msg_client "
+        "ON chat_messages(sender_id, client_msg_id) WHERE client_msg_id IS NOT NULL"
+    )
+
+
 def _init():
     schema = Path(__file__).resolve().parent.parent / "database" / "chat_schema.sql"
     if schema.exists():
         with get_conn() as c:
             c.executescript(schema.read_text(encoding="utf-8"))
+            _ensure_columns(c)
             c.commit()
     _ensure_special_users()
 
@@ -127,11 +154,17 @@ def _get_or_create_room(user1: str, user2: str, cargo_id: str = None, trip_id: s
         if row:
             return row["id"]
         rid = new_id()
+        # QA-аудит P1-4: schema уже имеет UNIQUE(participant_1, participant_2)
+        # (дубль-комнат не будет), но при гонке двух одновременных INSERT
+        # проигравший раньше падал IntegrityError → 500. ON CONFLICT DO
+        # NOTHING + повторный SELECT делает создание идемпотентным.
         c.execute(
-            "INSERT INTO chat_rooms (id, participant_1, participant_2, cargo_id, trip_id) VALUES (?,?,?,?,?)",
+            "INSERT INTO chat_rooms (id, participant_1, participant_2, cargo_id, trip_id) "
+            "VALUES (?,?,?,?,?) ON CONFLICT(participant_1, participant_2) DO NOTHING",
             (rid, p1, p2, cargo_id, trip_id),
         )
-        return rid
+        row = c.execute("SELECT id FROM chat_rooms WHERE participant_1 = ? AND participant_2 = ?", (p1, p2)).fetchone()
+        return row["id"] if row else rid
 
 
 class SendMessageIn(BaseModel):
@@ -142,6 +175,8 @@ class SendMessageIn(BaseModel):
     voice_duration: Optional[int] = None
     cargo_id: Optional[str] = None
     trip_id: Optional[str] = None
+    client_msg_id: Optional[str] = None  # QA-аудит P1-3: ключ идемпотентности
+    lang: Optional[str] = None           # QA-аудит P2-8: язык для авто-ответа поддержки
 
 
 @chat_router.post("/send")
@@ -152,10 +187,25 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
     room_id = _get_or_create_room(user["id"], body.to_user_id, body.cargo_id, body.trip_id)
 
     with get_conn() as c:
-        c.execute(
-            "INSERT INTO chat_messages (room_id, sender_id, text, photo_url, is_voice, voice_duration) VALUES (?,?,?,?,?,?)",
-            (room_id, user["id"], body.text, body.photo_url, 1 if body.is_voice else 0, body.voice_duration),
-        )
+        # QA-аудит P1-3: дедуп ретраев из офлайн-очереди. Если сообщение с
+        # этим client_msg_id уже записано (предыдущая попытка дошла, но ответ
+        # не вернулся) — не вставляем второй раз и не шлём повторный push.
+        if body.client_msg_id:
+            ex = c.execute(
+                "SELECT id FROM chat_messages WHERE sender_id = ? AND client_msg_id = ?",
+                (user["id"], body.client_msg_id),
+            ).fetchone()
+            if ex:
+                return {"ok": True, "room_id": room_id, "deduped": True}
+        try:
+            c.execute(
+                "INSERT INTO chat_messages (room_id, sender_id, text, photo_url, is_voice, voice_duration, client_msg_id) VALUES (?,?,?,?,?,?,?)",
+                (room_id, user["id"], body.text, body.photo_url, 1 if body.is_voice else 0, body.voice_duration, body.client_msg_id),
+            )
+        except sqlite3.IntegrityError:
+            # Гонка двух одновременных ретраев с одним client_msg_id —
+            # уникальный индекс отсёк дубль. Это успех (идемпотентность).
+            return {"ok": True, "room_id": room_id, "deduped": True}
         preview = (body.text or "📷 Фото")[:50]
         c.execute("UPDATE chat_rooms SET last_message = ?, last_at = CURRENT_TIMESTAMP WHERE id = ?", (preview, room_id))
 
@@ -180,7 +230,7 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
 
     # ИИ Support: если получатель = SUPPORT_ID и менеджер офлайн → один ответ
     if body.to_user_id == SUPPORT_ID:
-        _maybe_support_reply(room_id, user)
+        _maybe_support_reply(room_id, user, body.lang or "RU")
 
     # ИИ Володя (тестовый водитель): только если ENABLE_DEMO_CHAT.
     if body.to_user_id == VOLODYA_ID and ENABLE_DEMO_CHAT:
@@ -205,8 +255,9 @@ def my_rooms(user=Depends(require_level(1))):
     for r in rows:
         d = dict(r)
         other_id = d["participant_2"] if d["participant_1"] == uid else d["participant_1"]
-        # Имя собеседника
-        partner = c.execute("SELECT full_name, phone FROM drivers_registration WHERE id = ?", (other_id,)).fetchone() if False else None
+        # Имя собеседника дотягивается ниже (отдельный проход с fallback
+        # full_name → хвост телефона → «Пользователь UrTruck»).
+        # QA-аудит P2-1: убрана мёртвая строка `... if False else None`.
         d["partner_id"] = other_id
         d["partner_name"] = None
         rooms.append(d)

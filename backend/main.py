@@ -275,9 +275,19 @@ def health():
 @app.get("/api/v1/system/info")
 def system_info():
     """Режимы работы подсистем MVP."""
+    import os
     from services import otp_service
     from biometrics.liveness import info as face_info
+    from config import BETA_MODE
+    env = os.getenv("URTRUCK_ENV", "").strip().lower() or "unset"
+    # QA-аудит P1-1: явный флаг опасной конфигурации — BETA_MODE=true на
+    # проде означает, что универсальный OTP-код принимает любой номер.
+    # Деплой-чеклист и мониторинг ловят это одним GET.
+    beta_bypass_on_prod = bool(BETA_MODE and env == "production")
     return {
+        "env": env,
+        "beta_mode": BETA_MODE,
+        "beta_bypass_on_prod": beta_bypass_on_prod,
         "otp": otp_service.info(),
         "face": face_info(),
         "storage": storage_service.info(),

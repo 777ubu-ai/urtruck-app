@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { storage } from './storage';
 import { regAPI } from './registration';
+import { subscribeAuthExpired, setAuthExpirySuppressed } from './authEvents';
 
 // Уровни доверия (lazy registration)
 // 0 = guest — только смотрит ленту
@@ -155,6 +156,10 @@ export const AuthProvider = ({ children }) => {
   };
 
   const signOut = async () => {
+    // QA-аудит P1-6: заглушаем auth:expired на время выхода + короткий
+    // хвост после — чтобы 401 от logout/guest re-init не ретриггерил
+    // повторный signOut (защита от цикла разлогина).
+    setAuthExpirySuppressed(true);
     // RC2 hotfix (P1-2): пользователи жаловались что после OK на
     // "Выйти из аккаунта" они оставались залогинены. Корень — некоторые
     // ключи (ur_driver_vehicle, ur_client_company, лангуаге-state)
@@ -172,6 +177,11 @@ export const AuthProvider = ({ children }) => {
       ]);
     } catch {}
     try {
+      // QA-аудит P1-7: серверный revoke токена ДО локальной очистки
+      // (нужен сам токен; best-effort — офлайн не блокирует logout).
+      await regAPI.logout();
+    } catch {}
+    try {
       await regAPI.clearToken();                // ur_reg_token
     } catch {}
     setSession(null);
@@ -181,7 +191,27 @@ export const AuthProvider = ({ children }) => {
       // eslint-disable-next-line no-console
       console.warn('[Auth] logout cleared session + storage');
     }
+    // Снимаем suppression с задержкой — перекрываем окно guest re-init.
+    setTimeout(() => setAuthExpirySuppressed(false), 1500);
   };
+
+  // QA-аудит P1-6: истёкший/отозванный токен (401 на фичевом трафике
+  // marketAPI/chatAPI) → один автоматический signOut, после которого
+  // AppNavigator реактивно показывает auth-гейт. hasToken читаем через
+  // ref, чтобы подписка не пересоздавалась и не было гонок.
+  const hasTokenRef = useRef(false);
+  useEffect(() => { hasTokenRef.current = hasToken; }, [hasToken]);
+  useEffect(() => {
+    const unsub = subscribeAuthExpired(() => {
+      if (!hasTokenRef.current) return;  // нечего разлогинивать
+      if (typeof __DEV__ !== 'undefined' && __DEV__) {
+        // eslint-disable-next-line no-console
+        console.warn('[Auth] session expired (401) → auto signOut');
+      }
+      signOut();
+    });
+    return unsub;
+  }, []);
 
   return (
     <AuthContext.Provider value={{

@@ -19,6 +19,7 @@ import FilterChips from '../components/ui/v1/FilterChips';
 import BellBadge from '../components/ui/v1/BellBadge';
 import LanguageSwitcher from '../components/LanguageSwitcher';
 import { useUnreadNotifications } from '../utils/useUnreadNotifications';
+import { useMountedRef } from '../hooks/useMountedRef';
 import BottomSheet from '../components/ui/v1/BottomSheet';
 import DatePicker from '../components/DatePicker';
 import { v1Colors, v1AccentFor, useV1Colors } from '../theme/designV1';
@@ -202,6 +203,7 @@ export default function FeedScreen({ navigation, route }) {
   const [filterType, setFilterType] = useState(null);
   const [minRating, setMinRating] = useState(0); // 0 = все, 4 = 4★+, 5 = только 5★
   const [initialLoading, setInitialLoading] = useState(true);
+  const mounted = useMountedRef();  // QA-аудит P1-8
   const [serverData, setServerData] = useState([]);
   const [sortBy, setSortBy] = useState('newest');
   const [refreshing, setRefreshing] = useState(false);
@@ -252,6 +254,7 @@ export default function FeedScreen({ navigation, route }) {
           photo: c.photos?.[0], isMine: c.owner_id === myUserId,
           createdAt: c.created_at, _server: true,
         }));
+        if (!mounted.current) return;  // QA-аудит P1-8
         setServerData(mapped);
       } else {
         // Клиент (shipper) feed: ТОЛЬКО рейсы водителей + доступные водители.
@@ -300,13 +303,14 @@ export default function FeedScreen({ navigation, route }) {
           phone: '***',
           _server: true, _isDriver: true,
         }));
+        if (!mounted.current) return;  // QA-аудит P1-8
         setServerData([...tripsMapped, ...driversMapped]);
       }
     } catch (e) {
       console.warn('[Feed] Server load failed:', e);
-      setLoadError(true);
+      if (mounted.current) setLoadError(true);
     } finally {
-      setInitialLoading(false);
+      if (mounted.current) setInitialLoading(false);
     }
   };
 
@@ -329,6 +333,7 @@ export default function FeedScreen({ navigation, route }) {
         if (from && to) {
           if (isDriver) {
             marketAPI.listCargos({ fromCity: from, toCity: to }).then(d => {
+              if (!mounted.current) return;  // QA-аудит P1-8
               if (d.cargos?.length) {
                 // Симметрично с главным loader: driver search-handler
                 // тоже не должен показывать свои собственные грузы.
@@ -355,6 +360,7 @@ export default function FeedScreen({ navigation, route }) {
             }).catch(() => {});
           } else {
             marketAPI.listTrips({ fromCity: from, toCity: to }).then(d => {
+              if (!mounted.current) return;  // QA-аудит P1-8
               if (d.trips?.length) {
                 // Симметрично: shipper search-handler не должен показывать
                 // собственные рейсы (если у пользователя двойная роль).

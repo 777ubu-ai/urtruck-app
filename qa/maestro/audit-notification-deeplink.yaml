@@ -1,0 +1,41 @@
+appId: host.exp.Exponent
+name: audit-notification-deeplink
+tags:
+  - audit
+  - push
+  - deeplink
+  - p1
+env:
+  MAESTRO_ACTOR: serik
+---
+# QA-аудит, флоу 2 (in-app проксирование push deep-link).
+# Реальный APNS-пуш Maestro в Expo Go не доставит — проверяем тот же
+# url-парсер (parseNotifUrl → navigate), который используют и пуш-тап
+# (App.js addNotificationResponseReceivedListener), и экран уведомлений:
+# тап по уведомлению обязан НЕ крашить и увести с экрана уведомлений
+# (или как минимум пометить прочитанным с battery url=unknown).
+# Killed-state тап по реальному пушу — ручная проверка на iPhone.
+- runFlow: _lib/qa-login.yaml
+- tapOn:
+    id: "bottom-nav-profile"
+- waitForAnimationToEnd
+# Колокольчик в брендбаре профиля → Notifications.
+- tapOn:
+    text: "🔔"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: audit_push_01_notifications
+# Если уведомлений нет — экран пуст, флоу завершается без падения.
+- runFlow:
+    when:
+      visible:
+        text: "Прочитать все"
+    commands:
+      - tapOn:
+          point: "50%,30%"
+      - waitForAnimationToEnd
+      - takeScreenshot: audit_push_02_after_tap
+# Приложение живо (нет красного экрана/крэша) — корневой инвариант.
+- assertVisible:
+    id: "bottom-nav"
+- takeScreenshot: audit_push_03_alive

@@ -17,6 +17,7 @@ import SegmentTabs from '../components/ui/v1/SegmentTabs';
 import StatsRow from '../components/ui/v1/StatsRow';
 import BellBadge from '../components/ui/v1/BellBadge';
 import { useUnreadNotifications } from '../utils/useUnreadNotifications';
+import { useMountedRef } from '../hooks/useMountedRef';
 
 export default function MyTripsScreen({ navigation, route }) {
   const v1 = useV1Colors();
@@ -109,6 +110,7 @@ export default function MyTripsScreen({ navigation, route }) {
     : rawInitialTab;
   const justCreatedTrip = route.params?.justCreatedTrip || null;
   const [tab, setTab] = useState(normInitialTab);
+  const mounted = useMountedRef();  // QA-аудит P1-8
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(!justCreatedTrip);
   const [bidModal, setBidModal] = useState(false);
@@ -166,8 +168,10 @@ export default function MyTripsScreen({ navigation, route }) {
       if (!token) {
         if (isDriver) {
           const trips = await marketAPI.listTrips({});
+          if (!mounted.current) return;  // QA-аудит P1-8: экран размонтирован
           setData({ my_trips: trips.trips || [], my_cargos: [], my_bids: [], incoming_bids: [], my_deals: [], authRequired: true });
         } else {
+          if (!mounted.current) return;
           setData({ my_trips: [], my_cargos: [], my_bids: [], incoming_bids: [], my_deals: [], authRequired: true });
         }
       } else {
@@ -175,10 +179,11 @@ export default function MyTripsScreen({ navigation, route }) {
         if (d.serverError && isDriver) {
           try { const trips = await marketAPI.listTrips({}); d = { ...d, my_trips: (trips.trips || []) }; } catch {}
         }
+        if (!mounted.current) return;
         setData(d);
       }
     } catch (e) { console.warn('[MyTrips] load error:', e.message); }
-    setLoading(false);
+    if (mounted.current) setLoading(false);
   };
 
   useEffect(() => {

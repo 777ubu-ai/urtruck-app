@@ -2,6 +2,7 @@
 import { Platform } from 'react-native';
 import { storage } from './storage';
 import { API_BASE } from '../config/env';
+import { getActiveRoom } from './activeRoom';  // QA-аудит P2-2
 
 const BASE = `${API_BASE}/push`;
 
@@ -124,11 +125,29 @@ export const push = {
     // Emulator/simulator — чаще всего не даёт токен
     if (!Device.isDevice) return { ok: false, reason: 'emulator' };
 
-    // Handler: показываем notification даже когда app в foreground
+    // Handler: показываем notification в foreground, КРОМЕ chat-push о той
+    // комнате, которую пользователь сейчас читает (QA-аудит P2-2: иначе
+    // баннер дублирует уже видимое сообщение). Тип/room_id приходят в
+    // data из backend (kind='chat', data.type='chat_message', room_id).
     Notifications.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldShowAlert: true, shouldPlaySound: true, shouldSetBadge: true,
-      }),
+      handleNotification: async (notification) => {
+        try {
+          const data = notification?.request?.content?.data || {};
+          if (data.type === 'chat_message' && data.room_id && data.room_id === getActiveRoom()) {
+            // SDK 52: shouldShowAlert устарел → дублируем shouldShowBanner/
+            // shouldShowList, иначе баннер не подавляется. shouldSetBadge
+            // false — сообщение читается прямо сейчас.
+            return {
+              shouldShowAlert: false, shouldShowBanner: false, shouldShowList: false,
+              shouldPlaySound: false, shouldSetBadge: false,
+            };
+          }
+        } catch {}
+        return {
+          shouldShowAlert: true, shouldShowBanner: true, shouldShowList: true,
+          shouldPlaySound: true, shouldSetBadge: true,
+        };
+      },
     });
 
     // Permissions
