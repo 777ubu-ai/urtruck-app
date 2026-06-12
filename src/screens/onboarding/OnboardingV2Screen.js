@@ -38,6 +38,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
+import { useToast } from '../../components/Toast';
 import { useAuth } from '../../utils/AuthContext';
 import { brand, radius, typography } from '../../theme/brandV2';
 
@@ -203,6 +204,7 @@ const QaLoginHook = () => {
 
 export default function OnboardingV2Screen({ navigation }) {
   const { t } = useI18n();
+  const { toast } = useToast();
   const { ensureGuest } = useAuth();
   const scrollRef = useRef(null);
   const [idx, setIdx] = useState(0);
@@ -218,9 +220,19 @@ export default function OnboardingV2Screen({ navigation }) {
   };
 
   const goGuest = async () => {
+    // A2: переходим в Main ТОЛЬКО если гостевая сессия реально создана.
+    // Раньше reset выполнялся даже при сбое ensureGuest → пользователь
+    // попадал в Main без токена и его выкидывало обратно на онбординг
+    // (выглядело как «кнопка не работает»). Теперь при сбое — toast.
+    let ok = false;
     try {
-      await ensureGuest();
+      const data = await ensureGuest();
+      ok = !!(data && data.token);
     } catch {}
+    if (!ok) {
+      toast(t('no_connection'), 'error');
+      return;
+    }
     navigation.reset({
       index: 0,
       routes: [{ name: 'Main', params: { role: 'driver', guest: true } }],
