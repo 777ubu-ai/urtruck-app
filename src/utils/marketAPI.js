@@ -1,6 +1,7 @@
 // Marketplace API — грузы, рейсы, ставки через сервер
 import { storage } from './storage';
 import { API_BASE } from '../config/env';
+import { authedFetch } from './authEvents';  // QA-аудит P1-6: 401 → auth:expired
 
 const BASE = `${API_BASE}/market`;
 
@@ -39,7 +40,7 @@ function normalizeDetail(d, status) {
 export const marketAPI = {
   // ─── Cargos ───
   async createCargo(data) {
-    const r = await fetch(`${BASE}/cargos`, {
+    const r = await authedFetch(`${BASE}/cargos`, {
       method: 'POST', headers: await headers(),
       body: JSON.stringify(data),
     });
@@ -53,7 +54,7 @@ export const marketAPI = {
     // FeedScreen renders the proper empty state instead of stale fallback.
     try {
       const params = new URLSearchParams({ status, from_city: fromCity, to_city: toCity, cargo_type: cargoType, limit, offset });
-      const r = await fetch(`${BASE}/cargos?${params}`);
+      const r = await authedFetch(`${BASE}/cargos?${params}`);
       if (!r.ok) return { cargos: [], total: 0, serverError: true, status: r.status };
       return r.json();
     } catch (e) {
@@ -62,18 +63,18 @@ export const marketAPI = {
   },
 
   async getCargo(id) {
-    const r = await fetch(`${BASE}/cargos/${id}`);
+    const r = await authedFetch(`${BASE}/cargos/${id}`);
     return r.json();
   },
 
   async deleteCargo(id) {
-    const r = await fetch(`${BASE}/cargos/${id}`, { method: 'DELETE', headers: await headers() });
+    const r = await authedFetch(`${BASE}/cargos/${id}`, { method: 'DELETE', headers: await headers() });
     return r.json();
   },
 
   // ─── Trips ───
   async createTrip(data) {
-    const r = await fetch(`${BASE}/trips`, {
+    const r = await authedFetch(`${BASE}/trips`, {
       method: 'POST', headers: await headers(),
       body: JSON.stringify(data),
     });
@@ -83,7 +84,7 @@ export const marketAPI = {
   async listTrips({ status = 'active', fromCity = '', toCity = '', truckType = '', limit = 50 } = {}) {
     try {
       const params = new URLSearchParams({ status, from_city: fromCity, to_city: toCity, truck_type: truckType, limit });
-      const r = await fetch(`${BASE}/trips?${params}`);
+      const r = await authedFetch(`${BASE}/trips?${params}`);
       if (!r.ok) return { trips: [], total: 0, serverError: true, status: r.status };
       return r.json();
     } catch (e) {
@@ -92,12 +93,12 @@ export const marketAPI = {
   },
 
   async getTrip(id) {
-    const r = await fetch(`${BASE}/trips/${id}`);
+    const r = await authedFetch(`${BASE}/trips/${id}`);
     return r.json();
   },
 
   async updateTrip(id, payload) {
-    const r = await fetch(`${BASE}/trips/${id}`, {
+    const r = await authedFetch(`${BASE}/trips/${id}`, {
       method: 'PATCH', headers: await headers(),
       body: JSON.stringify(payload),
     });
@@ -108,7 +109,7 @@ export const marketAPI = {
 
   // ─── Bids ───
   async createBid(data) {
-    const r = await fetch(`${BASE}/bids`, {
+    const r = await authedFetch(`${BASE}/bids`, {
       method: 'POST', headers: await headers(),
       body: JSON.stringify(data),
     });
@@ -121,12 +122,12 @@ export const marketAPI = {
     const params = new URLSearchParams();
     if (cargoId) params.set('cargo_id', cargoId);
     if (tripId) params.set('trip_id', tripId);
-    const r = await fetch(`${BASE}/bids?${params}`, { headers: await headers() });
+    const r = await authedFetch(`${BASE}/bids?${params}`, { headers: await headers() });
     return r.json();
   },
 
   async acceptBid(bidId) {
-    const r = await fetch(`${BASE}/bids/${bidId}/accept`, {
+    const r = await authedFetch(`${BASE}/bids/${bidId}/accept`, {
       method: 'POST', headers: await headers(),
     });
     const d = await r.json();
@@ -135,7 +136,7 @@ export const marketAPI = {
   },
 
   async updateBid(bidId, payload) {
-    const r = await fetch(`${BASE}/bids/${bidId}`, {
+    const r = await authedFetch(`${BASE}/bids/${bidId}`, {
       method: 'PATCH', headers: await headers(),
       body: JSON.stringify(payload),
     });
@@ -145,7 +146,7 @@ export const marketAPI = {
   },
 
   async cancelBid(bidId) {
-    const r = await fetch(`${BASE}/bids/${bidId}/cancel`, {
+    const r = await authedFetch(`${BASE}/bids/${bidId}/cancel`, {
       method: 'POST', headers: await headers(),
     });
     const d = await r.json();
@@ -154,7 +155,7 @@ export const marketAPI = {
   },
 
   async rejectBid(bidId) {
-    const r = await fetch(`${BASE}/bids/${bidId}/reject`, {
+    const r = await authedFetch(`${BASE}/bids/${bidId}/reject`, {
       method: 'POST', headers: await headers(),
     });
     const d = await r.json();
@@ -163,7 +164,7 @@ export const marketAPI = {
   },
 
   async counterBid(bidId, payload) {
-    const r = await fetch(`${BASE}/bids/${bidId}/counter`, {
+    const r = await authedFetch(`${BASE}/bids/${bidId}/counter`, {
       method: 'POST', headers: await headers(),
       body: JSON.stringify(payload),
     });
@@ -173,7 +174,7 @@ export const marketAPI = {
   },
 
   async acceptCounterBid(bidId) {
-    const r = await fetch(`${BASE}/bids/${bidId}/counter/accept`, {
+    const r = await authedFetch(`${BASE}/bids/${bidId}/counter/accept`, {
       method: 'POST', headers: await headers(),
     });
     const d = await r.json();
@@ -182,7 +183,7 @@ export const marketAPI = {
   },
 
   async declineCounterBid(bidId) {
-    const r = await fetch(`${BASE}/bids/${bidId}/counter/decline`, {
+    const r = await authedFetch(`${BASE}/bids/${bidId}/counter/decline`, {
       method: 'POST', headers: await headers(),
     });
     const d = await r.json();
@@ -191,7 +192,7 @@ export const marketAPI = {
   },
 
   async openBidChat(bidId) {
-    const r = await fetch(`${BASE}/bids/${bidId}/chat`, {
+    const r = await authedFetch(`${BASE}/bids/${bidId}/chat`, {
       method: 'POST', headers: await headers(),
     });
     const d = await r.json();
@@ -208,7 +209,7 @@ export const marketAPI = {
       if (!h.Authorization) {
         return { ...empty, authRequired: true, skipped: true };
       }
-      const r = await fetch(`${BASE}/my`, { headers: h });
+      const r = await authedFetch(`${BASE}/my`, { headers: h });
       const d = await r.json().catch(() => ({}));
       if (r.status === 401 || r.status === 403) {
         return { ...empty, authRequired: true };
@@ -228,7 +229,7 @@ export const marketAPI = {
   async listDrivers({ truckType = '' } = {}) {
     try {
       const params = new URLSearchParams({ truck_type: truckType });
-      const r = await fetch(`${BASE}/drivers?${params}`);
+      const r = await authedFetch(`${BASE}/drivers?${params}`);
       if (!r.ok) return { drivers: [], total: 0, serverError: true, status: r.status };
       return r.json();
     } catch (e) {
@@ -238,14 +239,14 @@ export const marketAPI = {
 
   // ─── Deals ───
   async getDeal(dealId) {
-    const r = await fetch(`${BASE}/deals/${dealId}`, { headers: await headers() });
+    const r = await authedFetch(`${BASE}/deals/${dealId}`, { headers: await headers() });
     const d = await r.json();
     if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
     return d;
   },
 
   async updateDealStatus(dealId, newStatus) {
-    const r = await fetch(`${BASE}/deals/${dealId}/status?new_status=${newStatus}`, {
+    const r = await authedFetch(`${BASE}/deals/${dealId}/status?new_status=${newStatus}`, {
       method: 'PATCH', headers: await headers(),
     });
     const d = await r.json();
