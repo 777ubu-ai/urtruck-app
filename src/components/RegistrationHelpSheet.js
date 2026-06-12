@@ -19,6 +19,7 @@ import {
   StyleSheet,
   Linking,
   Platform,
+  Alert,
 } from 'react-native';
 import { useI18n } from '../utils/useI18n';
 import { brand, radius, typography } from '../theme/brandV2';
@@ -38,8 +39,14 @@ export default function RegistrationHelpSheet({ visible, onClose }) {
     { q: t('reg_help_support_q'), a: t('reg_help_support_a') },
   ];
 
-  const openSupport = () => {
-    Linking.openURL(SUPPORT_URL).catch(() => {});
+  const openSupport = async () => {
+    // Не «мёртвая» кнопка: если WhatsApp/браузер не открылся — показываем
+    // контакт, чтобы пользователь всё равно мог написать.
+    try {
+      await Linking.openURL(SUPPORT_URL);
+    } catch {
+      Alert.alert(t('reg_help_support_q'), 'WhatsApp: +7 747 917 11 18');
+    }
   };
 
   return (

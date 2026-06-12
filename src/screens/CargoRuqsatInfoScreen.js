@@ -2,7 +2,9 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Linking,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -103,8 +105,14 @@ export default function CargoRuqsatInfoScreen({ navigation, route }) {
   return (
     <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]} edges={['top']}>
       <BrandBarWithShare onBack={() => navigation.goBack()} accent="#F59E0B" />
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
+      >
       <ScrollView
         contentContainerStyle={s.content}
+        keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.text} />}
       >
         <Text style={[s.title, { color: theme.text }]}>🚧 {t('cargoruqsat_page_title')}</Text>
@@ -196,6 +204,7 @@ export default function CargoRuqsatInfoScreen({ navigation, route }) {
           )}
         </TouchableOpacity>
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
