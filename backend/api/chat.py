@@ -69,20 +69,30 @@ def _bot_send(room_id: str, sender_id: str, text: str):
                    (text[:50], room_id))
 
 
-def _maybe_support_reply(room_id: str, user: dict):
+# QA-аудит P2-8: авто-ответ поддержки на языке пользователя (lang из
+# клиента). Fallback — RU. Демо-бот «Володя» оставлен на RU (off в проде).
+_SUPPORT_GREETING = {
+    "RU": ("👋 Здравствуйте, {name}!\n\nЯ — UrTruck Support. Менеджер ответит в рабочее время "
+           "(09:00-18:00 KZ).\n\nА пока могу помочь:\n• Как опубликовать груз?\n• Как найти водителя?\n"
+           "• Проблема с регистрацией?\n\nНапишите ваш вопрос — передам менеджеру."),
+    "KK": ("👋 Сәлеметсіз бе, {name}!\n\nМен — UrTruck Support. Менеджер жұмыс уақытында жауап береді "
+           "(09:00-18:00 KZ).\n\nӘзірше көмектесе аламын:\n• Жүкті қалай жариялау керек?\n"
+           "• Жүргізушіні қалай табуға болады?\n• Тіркелуде қиындық бар ма?\n\nСұрағыңызды жазыңыз — менеджерге жеткіземін."),
+    "ZH": ("👋 您好，{name}！\n\n我是 UrTruck 客服。客服经理将在工作时间（09:00-18:00 KZ）回复您。\n\n"
+           "在此期间我可以帮您：\n• 如何发布货物？\n• 如何寻找司机？\n• 注册遇到问题？\n\n请留言，我会转交给客服经理。"),
+    "EN": ("👋 Hello, {name}!\n\nI'm UrTruck Support. A manager will reply during business hours "
+           "(09:00-18:00 KZ).\n\nMeanwhile I can help with:\n• How to post a cargo?\n• How to find a driver?\n"
+           "• Registration issue?\n\nType your question — I'll pass it to a manager."),
+}
+
+
+def _maybe_support_reply(room_id: str, user: dict, lang: str = "RU"):
     """Support отвечает ОДИН РАЗ — приветствие. Не перебивает живых."""
     if _count_bot_messages_in_room(room_id, SUPPORT_ID) > 0:
         return  # уже ответил — молчит
     name = user.get("full_name") or user.get("phone") or "друг"
-    _bot_send(room_id, SUPPORT_ID,
-        f"👋 Здравствуйте, {name}!\n\n"
-        f"Я — UrTruck Support. Менеджер ответит в рабочее время (09:00-18:00 KZ).\n\n"
-        f"А пока могу помочь:\n"
-        f"• Как опубликовать груз?\n"
-        f"• Как найти водителя?\n"
-        f"• Проблема с регистрацией?\n\n"
-        f"Напишите ваш вопрос — передам менеджеру."
-    )
+    template = _SUPPORT_GREETING.get((lang or "RU").upper(), _SUPPORT_GREETING["RU"])
+    _bot_send(room_id, SUPPORT_ID, template.format(name=name))
 
 
 def _volodya_reply(room_id: str, user_text: str, user: dict):
@@ -166,6 +176,7 @@ class SendMessageIn(BaseModel):
     cargo_id: Optional[str] = None
     trip_id: Optional[str] = None
     client_msg_id: Optional[str] = None  # QA-аудит P1-3: ключ идемпотентности
+    lang: Optional[str] = None           # QA-аудит P2-8: язык для авто-ответа поддержки
 
 
 @chat_router.post("/send")
@@ -219,7 +230,7 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
 
     # ИИ Support: если получатель = SUPPORT_ID и менеджер офлайн → один ответ
     if body.to_user_id == SUPPORT_ID:
-        _maybe_support_reply(room_id, user)
+        _maybe_support_reply(room_id, user, body.lang or "RU")
 
     # ИИ Володя (тестовый водитель): только если ENABLE_DEMO_CHAT.
     if body.to_user_id == VOLODYA_ID and ENABLE_DEMO_CHAT:

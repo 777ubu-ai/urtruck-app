@@ -8,6 +8,12 @@ import { useV1Colors, v1Radius } from '../../../theme/designV1';
 export default function SegmentTabs({ items = [], value, onChange, accent }) {
   const colors = useV1Colors();
   const activeAccent = accent || colors.driver;
+  // QA-аудит P2-5: на 390px длинные RU/KK-лейблы (4 driver-вкладки —
+  // «Предложения»/«Завершённые») усекались в «Предложе…». Масштабируем
+  // шрифт по числу вкладок + плотный трекинг, чтобы помещались целиком.
+  const n = items.length;
+  const fontSize = n >= 5 ? 11 : n === 4 ? 12 : 13;
+  const letterSpacing = n >= 4 ? -0.3 : 0;
   return (
     <View style={s.row}>
       {items.map((it) => {
@@ -26,7 +32,12 @@ export default function SegmentTabs({ items = [], value, onChange, accent }) {
                 : { backgroundColor: 'transparent', borderColor: colors.border },
             ]}
           >
-            <Text style={[s.label, { color: active ? '#0A0A0A' : colors.textMuted }]} numberOfLines={1}>
+            <Text
+              style={[s.label, { color: active ? '#0A0A0A' : colors.textMuted, fontSize, letterSpacing }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.85}
+            >
               {it.label}{it.count != null ? ` · ${it.count}` : ''}
             </Text>
           </TouchableOpacity>

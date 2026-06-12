@@ -1,6 +1,7 @@
 import { storage } from './storage';
 import { API_BASE } from '../config/env';
 import { authedFetch } from './authEvents';  // QA-аудит P1-6: 401 → auth:expired
+import { getLanguage } from './i18n';        // QA-аудит P2-8: язык для авто-ответа поддержки
 
 const BASE = `${API_BASE}/chat`;
 
@@ -23,6 +24,7 @@ export const chatAPI = {
         is_voice: isVoice || false, voice_duration: voiceDuration,
         cargo_id: cargoId, trip_id: tripId,
         client_msg_id: clientMsgId,  // QA-аудит P1-3: идемпотентность
+        lang: getLanguage(),         // QA-аудит P2-8: локализация авто-ответа поддержки
       }),
     });
     if (!r.ok) throw new Error(`send failed ${r.status}`);  // outbox ловит и ретраит
