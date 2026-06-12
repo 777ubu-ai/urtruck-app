@@ -96,3 +96,31 @@ ORDER BY cmd;
 --      SELECT count(*) FROM public.<table>;   -- ожидаем 0 или ошибку RLS
 --      RESET ROLE;
 -- ─────────────────────────────────────────────────────────────────────────
+
+-- ════════════════════════════════════════════════════════════════════════
+-- ФИКС для бага «new row violates row-level security policy» при загрузке
+-- PRO-документов (загранпаспорт/TIR/CMR) — экран PRO-профиля.
+-- ════════════════════════════════════════════════════════════════════════
+-- Причина: src/utils/proDocs.js грузит файлы в Supabase Storage bucket
+-- 'pro-documents' под ролью ANON (водители авторизованы через backend
+-- UrTruck, а не через Supabase Auth → сессии нет, роль = anon). На бакете
+-- есть public-read, но НЕТ политики INSERT для anon → upload режется RLS.
+--
+-- ВАРИАНТ 1 (быстрый, в Supabase SQL Editor) — разрешить anon загрузку
+-- именно в этот бакет:
+--
+--   create policy "anon upload pro-documents"
+--     on storage.objects for insert to anon
+--     with check (bucket_id = 'pro-documents');
+--   -- public read (если ещё не включён флагом бакета):
+--   create policy "anon read pro-documents"
+--     on storage.objects for select to anon
+--     using (bucket_id = 'pro-documents');
+--
+--   ⚠️ Безопасность: anon-ключ зашит в приложении → любой с ключом сможет
+--   лить файлы в этот бакет. Для пилота приемлемо; ограничить размер/типы
+--   на уровне бакета. НЕ давать anon delete/update.
+--
+-- ВАРИАНТ 2 (чище, на потом): грузить PRO-доки через backend
+-- (services/storage_service, service-role/local FS) как остальные фото —
+-- тогда RLS вообще ни при чём. Требует нового backend-эндпоинта.
