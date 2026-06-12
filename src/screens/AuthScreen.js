@@ -301,7 +301,15 @@ export default function AuthScreen({ navigation, route }) {
 
           {channel === 'telegram' && deeplink ? (
             <TouchableOpacity
-              onPress={() => Linking.openURL(deeplink).catch(() => {})}
+              onPress={async () => {
+                // P1: не «мёртвая» кнопка — если Telegram не открылся
+                // (не установлен), показываем тост вместо тихого провала.
+                try {
+                  await Linking.openURL(deeplink);
+                } catch {
+                  toast(t('tg_open_failed'), 'error');
+                }
+              }}
               style={[s.tgRow, { flexDirection: 'row', alignItems: 'center', gap: 6 }]}
             >
               <Feather name="send" size={14} color="#0088CC" />

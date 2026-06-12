@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  Modal, Pressable, ScrollView, Animated, Easing, Platform,
+  Modal, Pressable, ScrollView, Animated, Easing, Platform, KeyboardAvoidingView,
 } from 'react-native';
 import { useTheme } from '../utils/ThemeContext';
 import { useI18n } from '../utils/useI18n';
@@ -73,6 +73,8 @@ export default function PriceCalculator({ visible, onClose }) {
 
   return (
     <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
+      {/* P1: инпуты (откуда/куда/вес) внизу sheet пряталось под клавиатурой */}
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Pressable style={[s.backdrop, { backgroundColor: theme.overlay }]} onPress={onClose}>
         <Animated.View style={[
           s.sheet,
@@ -176,6 +178,7 @@ export default function PriceCalculator({ visible, onClose }) {
           </Pressable>
         </Animated.View>
       </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, Modal, Pressable, TouchableOpacity, StyleSheet,
-  TextInput, Animated, Easing, ActivityIndicator, Platform,
+  TextInput, Animated, Easing, ActivityIndicator, Platform, KeyboardAvoidingView,
 } from 'react-native';
 import { useTheme } from '../utils/ThemeContext';
 import { useToast } from './Toast';
@@ -85,6 +85,8 @@ export default function RatingModal({ visible, onClose, onSubmitted, targetId, t
 
   return (
     <Modal transparent visible={visible} animationType="none" onRequestClose={onClose}>
+      {/* P1: поле отзыва внизу bottom-sheet пряталось под клавиатурой — KAV поднимает */}
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Animated.View style={[s.backdrop, { opacity, backgroundColor: theme.overlay }]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <Animated.View style={[
@@ -173,6 +175,7 @@ export default function RatingModal({ visible, onClose, onSubmitted, targetId, t
           </TouchableOpacity>
         </Animated.View>
       </Animated.View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

@@ -18,7 +18,7 @@
 // rendered inside a ScrollView with `keyboardShouldPersistTaps='handled'`
 // so taps on text-input siblings don't bounce.
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useV1Colors } from '../../theme/designV1';
 import { useTheme } from '../../utils/ThemeContext';
@@ -65,22 +65,29 @@ export default function VerificationStepLayout({
         )}
       </View>
 
-      <ScrollView
+      {/* P2: поля ввода (реф-код и др.) не должны прятаться под клавиатурой */}
+      <KeyboardAvoidingView
         style={{ flex: 1 }}
-        contentContainerStyle={s.scrollBody}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
       >
-        {title ? <Text style={[s.title, { color: theme.text }]}>{title}</Text> : null}
-        {subtitle ? <Text style={[s.subtitle, { color: v1.textMuted }]}>{subtitle}</Text> : null}
-        <View style={{ marginTop: 8 }}>{children}</View>
-      </ScrollView>
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={s.scrollBody}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {title ? <Text style={[s.title, { color: theme.text }]}>{title}</Text> : null}
+          {subtitle ? <Text style={[s.subtitle, { color: v1.textMuted }]}>{subtitle}</Text> : null}
+          <View style={{ marginTop: 8 }}>{children}</View>
+        </ScrollView>
 
-      {footer ? (
-        <View style={[s.footer, { backgroundColor: theme.bg, borderTopColor: v1.border }]}>
-          {footer}
-        </View>
-      ) : null}
+        {footer ? (
+          <View style={[s.footer, { backgroundColor: theme.bg, borderTopColor: v1.border }]}>
+            {footer}
+          </View>
+        ) : null}
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
