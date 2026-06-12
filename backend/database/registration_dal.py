@@ -244,6 +244,17 @@ def create_session(driver_id: str, ttl_days: int = 30) -> str:
     return token
 
 
+def delete_session(token: str) -> bool:
+    """QA-аудит P1-7: явный revoke токена при logout. Раньше серверной
+    инвалидации не было — токен жил до истечения TTL (30 дней), украденное
+    устройство держало сессию. Возвращает True если строка удалена."""
+    if not token:
+        return False
+    with get_conn() as c:
+        cur = c.execute("DELETE FROM reg_sessions WHERE token = ?", (token,))
+        return cur.rowcount > 0
+
+
 def get_driver_by_token(token: str) -> str | None:
     with get_conn() as c:
         row = c.execute(

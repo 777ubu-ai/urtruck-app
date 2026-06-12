@@ -172,6 +172,11 @@ export const AuthProvider = ({ children }) => {
       ]);
     } catch {}
     try {
+      // QA-аудит P1-7: серверный revoke токена ДО локальной очистки
+      // (нужен сам токен; best-effort — офлайн не блокирует logout).
+      await regAPI.logout();
+    } catch {}
+    try {
       await regAPI.clearToken();                // ur_reg_token
     } catch {}
     setSession(null);

@@ -87,6 +87,20 @@ def create_guest_session(request: Request):
     }
 
 
+# ---------- Logout ----------
+@reg_router.post("/logout")
+def logout(authorization: str = Header(None)):
+    """QA-аудит P1-7: серверный revoke токена. Идемпотентен — отсутствие/
+    невалидность токена не ошибка (logout всегда «успешен» для клиента)."""
+    revoked = False
+    if authorization and authorization.startswith("Bearer "):
+        try:
+            revoked = reg_dal.delete_session(authorization.split(" ", 1)[1])
+        except Exception:
+            revoked = False
+    return {"ok": True, "revoked": revoked}
+
+
 # ---------- Me endpoint ----------
 @reg_router.get("/me")
 def get_me(driver_id: str = Depends(get_current_driver)):

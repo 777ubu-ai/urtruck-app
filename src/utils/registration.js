@@ -163,6 +163,23 @@ export const regAPI = {
     return await storage.remove(TOKEN_KEY);
   },
 
+  // QA-аудит P1-7: серверный revoke токена при logout. Best-effort —
+  // вызывать ДО clearToken (нужен сам токен). Сетевые/любые ошибки
+  // глушим: logout на клиенте всё равно должен пройти.
+  async logout() {
+    try {
+      const token = await this.getToken();
+      if (!token) return { ok: true, revoked: false };
+      const r = await fetch(`${BASE}/logout`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      return await r.json().catch(() => ({ ok: true }));
+    } catch {
+      return { ok: false };
+    }
+  },
+
   // PR-C1: GET /api/v1/users/me — расширенный профиль (name + city + about
   // + vehicle). /register/me возвращает только full_name без city, поэтому
   // AuthContext.refreshLevel читает оба endpoint'a и объединяет данные.
