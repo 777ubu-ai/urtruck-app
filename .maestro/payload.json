@@ -1,0 +1,10 @@
+{
+  "Simulator Target Bundle": "com.urtruck.app",
+  "aps": {
+    "alert": { "title": "💬 Алексей Перевозчик", "body": "Тестовое сообщение P2-2" },
+    "sound": "default",
+    "badge": 1
+  },
+  "type": "chat_message",
+  "room_id": "ROOM_ID_PLACEHOLDER"
+}

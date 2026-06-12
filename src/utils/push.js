@@ -134,10 +134,19 @@ export const push = {
         try {
           const data = notification?.request?.content?.data || {};
           if (data.type === 'chat_message' && data.room_id && data.room_id === getActiveRoom()) {
-            return { shouldShowAlert: false, shouldPlaySound: false, shouldSetBadge: false };
+            // SDK 52: shouldShowAlert устарел → дублируем shouldShowBanner/
+            // shouldShowList, иначе баннер не подавляется. shouldSetBadge
+            // false — сообщение читается прямо сейчас.
+            return {
+              shouldShowAlert: false, shouldShowBanner: false, shouldShowList: false,
+              shouldPlaySound: false, shouldSetBadge: false,
+            };
           }
         } catch {}
-        return { shouldShowAlert: true, shouldPlaySound: true, shouldSetBadge: true };
+        return {
+          shouldShowAlert: true, shouldShowBanner: true, shouldShowList: true,
+          shouldPlaySound: true, shouldSetBadge: true,
+        };
       },
     });
 
