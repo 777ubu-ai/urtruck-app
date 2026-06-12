@@ -54,7 +54,7 @@ const assetMap = {
   'vehicle/truck_interior_bad':  null /* require('./vehicle/truck_interior_bad.png') */,
 
   // ─── Success ── (illustration, NOT a screen)
-  'success/success_illustration': null /* require('./success/success_illustration.png') */,
+  'success/success_illustration': require('./success/success_illustration.png'),
 };
 
 export const getVerificationAsset = (key) => assetMap[key] || null;
