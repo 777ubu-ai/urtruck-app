@@ -103,7 +103,12 @@ def _validate_future_date(value, field_name: str):
     parsed = _parse_iso_date(value)
     if parsed is None:
         raise HTTPException(status_code=400, detail=f"Неверный формат даты ({field_name})")
-    if parsed < datetime.now().date():
+    # QA-аудит P1-5: было datetime.now() (локальное время сервера), а БД и
+    # остальные проверки в этом файле — UTC. На сервере в UTC при клиенте
+    # из UTC+5..+8 валидная «сегодняшняя» дата отбивалась. Сравниваем с
+    # UTC-датой минус сутки запаса — покрывает любой клиентский пояс,
+    # при этом реально прошедшие даты всё равно отсекаются.
+    if parsed < (datetime.utcnow().date() - timedelta(days=1)):
         raise HTTPException(status_code=400, detail=f"{field_name}: дата в прошлом недопустима")
     return parsed
 
@@ -437,6 +442,10 @@ def list_cargos(
         try:
             d["photos"] = json.loads(d.get("photos") or "[]")
         except Exception:
+            # QA-аудит P2-6: раньше битый JSON в photos молча превращался в
+            # [] — фото груза «исчезали» без следа. Логируем, чтобы порча
+            # данных была видна в логах (поведение для клиента не меняем).
+            print(f"[market] bad photos JSON for cargo {d.get('id')}: {d.get('photos')!r}", flush=True)
             d["photos"] = []
         # НЕ отдаём owner_phone — контакт закрыт гейтом
         d.pop("owner_phone", None)
@@ -986,11 +995,18 @@ def _ensure_chat_room_inline(c, user_a: str, user_b: str, cargo_id, trip_id) -> 
     if row:
         return row["id"]
     rid = new_id()
+    # QA-аудит P1-4 (паритет с chat._get_or_create_room): идемпотентный
+    # INSERT — если комнату успел создать параллельный открытый чат на ту
+    # же пару, не падаем UNIQUE-конфликтом, а переиспользуем существующую.
     c.execute(
-        "INSERT INTO chat_rooms (id, participant_1, participant_2, cargo_id, trip_id) VALUES (?,?,?,?,?)",
+        "INSERT INTO chat_rooms (id, participant_1, participant_2, cargo_id, trip_id) "
+        "VALUES (?,?,?,?,?) ON CONFLICT(participant_1, participant_2) DO NOTHING",
         (rid, p1, p2, cargo_id, trip_id),
     )
-    return rid
+    row = c.execute(
+        "SELECT id FROM chat_rooms WHERE participant_1 = ? AND participant_2 = ?", (p1, p2)
+    ).fetchone()
+    return row["id"] if row else rid
 
 
 def _finalize_accept_inline(c, user, bid: dict, final_amount: int):

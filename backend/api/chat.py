@@ -127,11 +127,17 @@ def _get_or_create_room(user1: str, user2: str, cargo_id: str = None, trip_id: s
         if row:
             return row["id"]
         rid = new_id()
+        # QA-аудит P1-4: schema уже имеет UNIQUE(participant_1, participant_2)
+        # (дубль-комнат не будет), но при гонке двух одновременных INSERT
+        # проигравший раньше падал IntegrityError → 500. ON CONFLICT DO
+        # NOTHING + повторный SELECT делает создание идемпотентным.
         c.execute(
-            "INSERT INTO chat_rooms (id, participant_1, participant_2, cargo_id, trip_id) VALUES (?,?,?,?,?)",
+            "INSERT INTO chat_rooms (id, participant_1, participant_2, cargo_id, trip_id) "
+            "VALUES (?,?,?,?,?) ON CONFLICT(participant_1, participant_2) DO NOTHING",
             (rid, p1, p2, cargo_id, trip_id),
         )
-        return rid
+        row = c.execute("SELECT id FROM chat_rooms WHERE participant_1 = ? AND participant_2 = ?", (p1, p2)).fetchone()
+        return row["id"] if row else rid
 
 
 class SendMessageIn(BaseModel):
@@ -205,8 +211,9 @@ def my_rooms(user=Depends(require_level(1))):
     for r in rows:
         d = dict(r)
         other_id = d["participant_2"] if d["participant_1"] == uid else d["participant_1"]
-        # Имя собеседника
-        partner = c.execute("SELECT full_name, phone FROM drivers_registration WHERE id = ?", (other_id,)).fetchone() if False else None
+        # Имя собеседника дотягивается ниже (отдельный проход с fallback
+        # full_name → хвост телефона → «Пользователь UrTruck»).
+        # QA-аудит P2-1: убрана мёртвая строка `... if False else None`.
         d["partner_id"] = other_id
         d["partner_name"] = None
         rooms.append(d)
