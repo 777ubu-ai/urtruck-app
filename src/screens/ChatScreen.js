@@ -14,6 +14,7 @@ import { marketAPI } from '../utils/marketAPI';
 import { notifyChatRead } from '../utils/unreadEvents';
 import { useMountedRef } from '../hooks/useMountedRef';
 import { enqueueOutbox, flushOutbox } from '../utils/outbox';
+import { setActiveRoom } from '../utils/activeRoom';  // QA-аудит P2-2
 import { useAuth } from '../utils/AuthContext';
 import { voice } from '../utils/voiceRecorder';
 import QuickPhrases from '../components/QuickPhrases';
@@ -230,6 +231,16 @@ export default function ChatScreen({ navigation, route }) {
     const iv = setInterval(() => loadMessages(roomId), 3000);
     return () => clearInterval(iv);
   }, [roomId]);
+
+  // QA-аудит P2-2: помечаем комнату активной, пока экран в фокусе — чтобы
+  // foreground-push о новом сообщении этой комнаты не дублировал баннер.
+  // Снимаем на blur и unmount (другие комнаты/типы push не затрагиваются).
+  useEffect(() => {
+    setActiveRoom(roomId);
+    const unsubF = navigation.addListener('focus', () => setActiveRoom(roomId));
+    const unsubB = navigation.addListener('blur', () => setActiveRoom(null));
+    return () => { unsubF(); unsubB(); setActiveRoom(null); };
+  }, [navigation, roomId]);
 
   // QA-аудит P1-3: прогон офлайн-очереди — при входе в чат и при возврате
   // приложения в active (сеть могла восстановиться). Backend идемпотентен
