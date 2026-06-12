@@ -24,6 +24,7 @@ export default function VerificationSelfieWithLicenseScreen({ navigation, route 
           'verification_selfieWithLicense_bullet_3',
         ],
         assetGroup: ASSET_GROUPS.selfieWithLicense,
+        guideImage: require('../../assets/onboarding/verification/guides/selfie_license_guide.png'),
         uploader,
         mode: 'camera-only',
       }}

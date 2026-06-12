@@ -24,6 +24,7 @@ export default function VerificationTruckExteriorScreen({ navigation, route }) {
           'verification_truckExterior_bullet_3',
         ],
         assetGroup: ASSET_GROUPS.truckExterior,
+        guideImage: require('../../assets/onboarding/verification/guides/truck_exterior_guide.png'),
         uploader,
         mode: 'camera+gallery',
       }}

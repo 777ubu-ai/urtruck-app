@@ -29,6 +29,7 @@ export default function VerificationLicenseFrontScreen({ navigation, route }) {
           'verification_licenseFront_bullet_3',
         ],
         assetGroup: ASSET_GROUPS.licenseFront,
+        guideImage: require('../../assets/onboarding/verification/guides/license_front_guide.png'),
         uploader,
         mode: 'camera+gallery',
       }}

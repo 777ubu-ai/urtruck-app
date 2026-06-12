@@ -28,6 +28,7 @@ export default function VerificationTruckInteriorScreen({ navigation, route }) {
           'verification_truckInterior_bullet_3',
         ],
         assetGroup: ASSET_GROUPS.truckInterior,
+        guideImage: require('../../assets/onboarding/verification/guides/truck_interior_guide.png'),
         uploader,
         mode: 'camera+gallery',
       }}

@@ -27,6 +27,7 @@ export default function VerificationPersonalPhotoScreen({ navigation, route }) {
           'verification_personalPhoto_bullet_2',
         ],
         assetGroup: ASSET_GROUPS.personalPhoto,
+        guideImage: require('../../assets/onboarding/verification/guides/personal_photo_guide.png'),
         uploader,
         mode: 'camera-only',
       }}

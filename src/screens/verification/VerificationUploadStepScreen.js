@@ -65,6 +65,10 @@ export default function VerificationUploadStepScreen({ navigation, route, config
     mode = 'camera+gallery',
     step,
     totalSteps,
+    // Готовая картинка-гайд (заголовок+пункты+примеры из дизайна одним
+    // изображением). Когда задана — экран НЕ дублирует свой заголовок/
+    // пункты, а показывает картинку + реальные кнопки съёмки.
+    guideImage,
   } = config;
 
   const { busy, localUri, openCamera, openGallery, error } = useVerificationUpload(uploader, { mode });
@@ -86,8 +90,8 @@ export default function VerificationUploadStepScreen({ navigation, route, config
     <VerificationStepLayout
       step={step}
       total={totalSteps}
-      title={t(titleKey)}
-      subtitle={subtitleKey ? t(subtitleKey) : null}
+      title={guideImage ? null : t(titleKey)}
+      subtitle={guideImage ? null : (subtitleKey ? t(subtitleKey) : null)}
       onBack={() => navigation.goBack()}
       onClose={() => navigation.popToTop()}
       footer={
@@ -101,7 +105,7 @@ export default function VerificationUploadStepScreen({ navigation, route, config
       }
       testID={`verification-upload-step-${key}`}
     >
-      <InstructionBulletList items={bulletKeys.map((k) => t(k))} />
+      {guideImage ? null : <InstructionBulletList items={bulletKeys.map((k) => t(k))} />}
       {localUri ? (
         <View style={[s.previewWrap, { borderColor: v1.border, backgroundColor: theme.card }]}>
           <Image source={{ uri: localUri }} style={s.preview} resizeMode="cover" />
@@ -110,7 +114,11 @@ export default function VerificationUploadStepScreen({ navigation, route, config
           </Text>
         </View>
       ) : null}
-      <GoodBadExampleSection group={assetGroup} />
+      {guideImage ? (
+        <Image source={guideImage} style={s.guide} resizeMode="contain" />
+      ) : (
+        <GoodBadExampleSection group={assetGroup} />
+      )}
     </VerificationStepLayout>
   );
 }
@@ -124,4 +132,6 @@ const s = StyleSheet.create({
   },
   preview: { width: '100%', aspectRatio: 4 / 3 },
   previewCaption: { fontSize: 11, padding: 8, textAlign: 'center' },
+  // Картинка-гайд (заголовок+пункты+примеры из дизайна). AR = 941/1287.
+  guide: { width: '100%', aspectRatio: 941 / 1287, marginTop: 4 },
 });
