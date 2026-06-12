@@ -53,6 +53,10 @@ export function DealRoomCard({ deal, role }) {
   if (!deal) return null;
   const status = deal.status || 'active';
   const stColor = DEAL_STATUS_COLOR[status] || '#94A3B8';
+  // H-1: статус сделки русским словом через i18n; фолбэк на сырой статус для
+  // немаппленных значений (confirmed/draft/dispute — нет ключа status_*).
+  const stKey = 'status_' + status;
+  const stLabel = t(stKey) !== stKey ? t(stKey) : status;
   const route = [deal.from_city, deal.to_city].filter(Boolean).join(' → ') || '—';
 
   const Field = ({ icon, label, value }) => (
@@ -69,7 +73,7 @@ export function DealRoomCard({ deal, role }) {
         <Text style={[s.route, { color: theme.text }]} numberOfLines={1}>{route}</Text>
         <View style={[s.statusBadge, { backgroundColor: stColor + '22' }]}>
           <View style={[s.dot, { backgroundColor: stColor }]} />
-          <Text style={[s.statusText, { color: stColor }]}>{t('chat_deal_card_status')}: {status}</Text>
+          <Text style={[s.statusText, { color: stColor }]}>{t('chat_deal_card_status')}: {stLabel}</Text>
         </View>
       </View>
       <Field icon="package" label={t('chat_deal_card_cargo')} value={deal.cargo_desc || deal.cargo_id || '—'} />

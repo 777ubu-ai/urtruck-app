@@ -147,6 +147,21 @@ export default function ChatScreen({ navigation, route }) {
   const mediaChunksRef = useRef([]);
   const recordStartRef = useRef(0);
 
+  // G-1: время серверных сообщений приходит как naive-UTC (SQLite/FastAPI без
+  // таймзоны). Раньше пузырь показывал сырой UTC-срез без сдвига → не совпадало
+  // с локальным временем. Помечаем как UTC и форматируем в локальное HH:MM,
+  // фолбэк на старый срез при невалидной дате.
+  const fmtMsgTime = (raw) => {
+    if (!raw) return '';
+    let s = String(raw);
+    if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(s) && !/[zZ]|[+\-]\d{2}:?\d{2}$/.test(s)) {
+      s = s.replace(' ', 'T') + 'Z';
+    }
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return String(raw).slice(11, 16);
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
   // Загрузка истории чата
   const loadMessages = async (rid) => {
     if (!rid) return;
@@ -166,7 +181,7 @@ export default function ChatScreen({ navigation, route }) {
         return {
           id: String(m.id), from: fromMe ? 'me' : 'them',
           text: m.text, isPhoto: !!m.photo_url, photoUri: m.photo_url,
-          isVoice: !!m.is_voice, time: (m.created_at || '').slice(11, 16),
+          isVoice: !!m.is_voice, time: fmtMsgTime(m.created_at),
           is_read: !!m.is_read,
         };
       });
