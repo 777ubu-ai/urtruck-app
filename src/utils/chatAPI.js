@@ -15,15 +15,17 @@ async function headers() {
 }
 
 export const chatAPI = {
-  async send({ toUserId, text, photoUrl, isVoice, voiceDuration, cargoId, tripId }) {
+  async send({ toUserId, text, photoUrl, isVoice, voiceDuration, cargoId, tripId, clientMsgId }) {
     const r = await authedFetch(`${BASE}/send`, {
       method: 'POST', headers: await headers(),
       body: JSON.stringify({
         to_user_id: toUserId, text, photo_url: photoUrl,
         is_voice: isVoice || false, voice_duration: voiceDuration,
         cargo_id: cargoId, trip_id: tripId,
+        client_msg_id: clientMsgId,  // QA-аудит P1-3: идемпотентность
       }),
     });
+    if (!r.ok) throw new Error(`send failed ${r.status}`);  // outbox ловит и ретраит
     return r.json();
   },
 

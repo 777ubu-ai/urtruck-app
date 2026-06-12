@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, FlatList, KeyboardAvoidingView, Platform, Image } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, FlatList, KeyboardAvoidingView, Platform, Image, AppState } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import * as ImagePicker from 'expo-image-picker';
@@ -13,6 +13,7 @@ import { chatAPI } from '../utils/chatAPI';
 import { marketAPI } from '../utils/marketAPI';
 import { notifyChatRead } from '../utils/unreadEvents';
 import { useMountedRef } from '../hooks/useMountedRef';
+import { enqueueOutbox, flushOutbox } from '../utils/outbox';
 import { useAuth } from '../utils/AuthContext';
 import { voice } from '../utils/voiceRecorder';
 import QuickPhrases from '../components/QuickPhrases';
@@ -230,6 +231,21 @@ export default function ChatScreen({ navigation, route }) {
     return () => clearInterval(iv);
   }, [roomId]);
 
+  // QA-аудит P1-3: прогон офлайн-очереди — при входе в чат и при возврате
+  // приложения в active (сеть могла восстановиться). Backend идемпотентен
+  // по client_msg_id, поэтому повторная доставка не плодит дубли.
+  useEffect(() => {
+    const doFlush = async () => {
+      try {
+        const sent = await flushOutbox((p) => chatAPI.send(p));
+        if (sent > 0 && mounted.current && roomId) loadMessages(roomId);
+      } catch {}
+    };
+    doFlush();
+    const sub = AppState.addEventListener('change', (s) => { if (s === 'active') doFlush(); });
+    return () => sub?.remove?.();
+  }, [roomId]);
+
   // issue #4: разрешаем реального собеседника для заголовка из enriched
   // rooms по roomId, если из route пришёл пустой/технический partner.
   useEffect(() => {
@@ -337,12 +353,14 @@ export default function ChatScreen({ navigation, route }) {
     if (!msg.trim()) return;
     const toId = recipientId();
     if (!toId) { toast(t('chat_send_failed'), 'error'); return; }
-    // PR-C2 (P0-4): optimistic insert с маркером `_optimistic: true`.
-    // loadMessages (polling) defensive merge сохраняет именно такие
-    // сообщения пока сервер не подтвердит — иначе они «исчезают»
-    // в окне между send и следующим poll.
+    // QA-аудит P1-3: clientId = идемпотентный ключ (backend дедупит по
+    // client_msg_id) и id optimistic-пузыря. PR-C2 (P0-4): optimistic
+    // insert с `_optimistic: true` — defensive merge в loadMessages
+    // сохраняет его пока сервер не подтвердит.
+    const clientId = 'c_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+    const payload = { toUserId: toId, text: msg, cargoId, tripId, clientMsgId: clientId };
     setMessages(prev => [...prev, {
-      id: 'opt_' + Date.now().toString(), from: 'me', text: msg,
+      id: clientId, from: 'me', text: msg,
       time: new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}),
       _optimistic: true,
     }]);
@@ -350,12 +368,13 @@ export default function ChatScreen({ navigation, route }) {
     setShowPhrases(false);
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
 
-    // Сохраняем на сервере
+    // Сохраняем на сервере; при сбое — в офлайн-очередь (ретрай позже).
     try {
-      const r = await chatAPI.send({ toUserId: toId, text: msg, cargoId, tripId });
+      const r = await chatAPI.send(payload);
       if (r.room_id) setRoomId(r.room_id);
     } catch {
-      toast(t('chat_send_failed'), 'error');
+      await enqueueOutbox({ clientId, payload });
+      toast(t('chat_queued'), 'info', 2500);
     }
   };
 

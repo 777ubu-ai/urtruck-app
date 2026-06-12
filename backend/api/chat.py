@@ -1,6 +1,7 @@
 """Server-side Chat API. Сообщения сохраняются в БД."""
 import os
 import sys
+import sqlite3
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -109,11 +110,27 @@ def _volodya_reply(room_id: str, user_text: str, user: dict):
     _bot_send(room_id, VOLODYA_ID, reply)
 
 
+def _ensure_columns(c):
+    # QA-аудит P1-3: client_msg_id для идемпотентной отправки (защита от
+    # задвоения при ретрае из офлайн-очереди). Миграция идемпотентна —
+    # ADD COLUMN только если столбца ещё нет (старые БД не пересоздаются).
+    cols = {r["name"] for r in c.execute("PRAGMA table_info(chat_messages)").fetchall()}
+    if "client_msg_id" not in cols:
+        c.execute("ALTER TABLE chat_messages ADD COLUMN client_msg_id TEXT")
+    # Уникальность в рамках отправителя (client id генерируется на устройстве).
+    # Partial index — NULL-значения (старые сообщения) не конфликтуют.
+    c.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_msg_client "
+        "ON chat_messages(sender_id, client_msg_id) WHERE client_msg_id IS NOT NULL"
+    )
+
+
 def _init():
     schema = Path(__file__).resolve().parent.parent / "database" / "chat_schema.sql"
     if schema.exists():
         with get_conn() as c:
             c.executescript(schema.read_text(encoding="utf-8"))
+            _ensure_columns(c)
             c.commit()
     _ensure_special_users()
 
@@ -148,6 +165,7 @@ class SendMessageIn(BaseModel):
     voice_duration: Optional[int] = None
     cargo_id: Optional[str] = None
     trip_id: Optional[str] = None
+    client_msg_id: Optional[str] = None  # QA-аудит P1-3: ключ идемпотентности
 
 
 @chat_router.post("/send")
@@ -158,10 +176,25 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
     room_id = _get_or_create_room(user["id"], body.to_user_id, body.cargo_id, body.trip_id)
 
     with get_conn() as c:
-        c.execute(
-            "INSERT INTO chat_messages (room_id, sender_id, text, photo_url, is_voice, voice_duration) VALUES (?,?,?,?,?,?)",
-            (room_id, user["id"], body.text, body.photo_url, 1 if body.is_voice else 0, body.voice_duration),
-        )
+        # QA-аудит P1-3: дедуп ретраев из офлайн-очереди. Если сообщение с
+        # этим client_msg_id уже записано (предыдущая попытка дошла, но ответ
+        # не вернулся) — не вставляем второй раз и не шлём повторный push.
+        if body.client_msg_id:
+            ex = c.execute(
+                "SELECT id FROM chat_messages WHERE sender_id = ? AND client_msg_id = ?",
+                (user["id"], body.client_msg_id),
+            ).fetchone()
+            if ex:
+                return {"ok": True, "room_id": room_id, "deduped": True}
+        try:
+            c.execute(
+                "INSERT INTO chat_messages (room_id, sender_id, text, photo_url, is_voice, voice_duration, client_msg_id) VALUES (?,?,?,?,?,?,?)",
+                (room_id, user["id"], body.text, body.photo_url, 1 if body.is_voice else 0, body.voice_duration, body.client_msg_id),
+            )
+        except sqlite3.IntegrityError:
+            # Гонка двух одновременных ретраев с одним client_msg_id —
+            # уникальный индекс отсёк дубль. Это успех (идемпотентность).
+            return {"ok": True, "room_id": room_id, "deduped": True}
         preview = (body.text or "📷 Фото")[:50]
         c.execute("UPDATE chat_rooms SET last_message = ?, last_at = CURRENT_TIMESTAMP WHERE id = ?", (preview, room_id))
 
