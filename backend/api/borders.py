@@ -84,6 +84,45 @@ def get_scoreboard():
 
 
 # ----------------------------------------------------------------
+# Личный статус водителя по госномеру (Поток А, публичные данные CGR).
+# Конкретный путь ДО /{border_id}.
+# ----------------------------------------------------------------
+def _load_color(q: int | None) -> str:
+    """Цвет загрузки по реальной длине очереди (времени ожидания CGR не даёт)."""
+    if q is None:
+        return "gray"
+    if q <= 15:
+        return "green"
+    if q <= 60:
+        return "yellow"
+    return "red"
+
+
+@borders_router.get("/lookup")
+async def lookup_by_plate(plate: str = ""):
+    """Статус машины в электронной очереди по госномеру (ГРНЗ).
+
+    Публичные данные CGR (без авторизации, без чужих ПДн). Водитель вводит
+    свой номер — видит свой реальный статус. В реестре нет «номера брони»,
+    поэтому ищем по ГРНЗ.
+    """
+    plate = (plate or "").strip()
+    if len(plate) < 3:
+        raise HTTPException(status_code=422, detail="Укажите госномер (ГРНЗ)")
+    try:
+        from cgr.settings import cgr_settings
+        if not cgr_settings.feature_enabled:
+            raise HTTPException(status_code=503, detail="CGR feature disabled")
+        from cgr import booking_service
+        return await booking_service.lookup_by_plate(plate)
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001 — наружу не светим CGR-детали
+        logger.exception("lookup_by_plate failed: %s", e)
+        raise HTTPException(status_code=502, detail="CGR недоступен, попробуйте позже")
+
+
+# ----------------------------------------------------------------
 # Электронная очередь — переходы, сгруппированные по стране (ТЗ §0.2).
 # Конкретный путь ДО /{border_id}.
 # ----------------------------------------------------------------
@@ -164,8 +203,44 @@ def get_booking(booking_id: int, user_id: str = Depends(_current_user_id)):
 # ----------------------------------------------------------------
 @borders_router.get("")
 def list_borders(country: str = ""):
-    """Все погранпереходы с текущими очередями (legacy mock)."""
-    return {"borders": search_borders(country or None)}
+    """Все погранпереходы с текущими очередями.
+
+    CGR включён → реальные данные из cgr_scoreboard (длина очереди по постам,
+    цвет загрузки по числу машин). Иначе → legacy fallback.
+    """
+    try:
+        from cgr.settings import cgr_settings
+        enabled = cgr_settings.feature_enabled
+    except Exception:
+        enabled = False
+
+    if not enabled:
+        return {"borders": search_borders(country or None)}
+
+    from cgr import scoreboard_service
+    board = scoreboard_service.build_scoreboard_response()
+    code = (country or "").upper()
+    out = []
+    for c in board["checkpoints"]:
+        if code and code not in ("ALL",) and c.get("country_to") != code:
+            continue
+        q = c["directions"]["in"]["queue_length"]
+        out.append({
+            "id": c["code"],
+            "name": c["name_ru"],
+            "name_en": c.get("name_en"),
+            "country": c.get("country_to"),
+            "countries": f"KZ↔{c.get('country_to')}" if c.get("country_to") not in (None, "", "XX") else "KZ",
+            "type": None,
+            "trucks_in_queue": q,
+            "estimated_wait_hours": None,  # публичные данные CGR не дают времени
+            "status": _load_color(q),
+            "updated_at": c.get("last_updated"),
+            "source": "cgr",
+        })
+    # самые загруженные сверху — водителю это важнее всего
+    out.sort(key=lambda b: -(b["trucks_in_queue"] or 0))
+    return {"borders": out}
 
 
 @borders_router.get("/{border_id}")

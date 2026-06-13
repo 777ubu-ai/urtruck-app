@@ -20,6 +20,22 @@ logger = logging.getLogger("cgr.scoreboard")
 # небольшое подмножество реестра, обычно укладывается с запасом.
 _MAX_PAGES = 80
 
+# Страна-сосед по имени перехода CGR. Точно заданы китайские переходы (ядро
+# бизнеса Китай↔СНГ) и явные соседи; неизвестным ставим 'XX' (группа «Другие»).
+# Достоверный country_to для всех 32 — задача отдельной разведки колонки страны.
+_CHECKPOINT_COUNTRY = {
+    "Нур Жолы - Хоргос": "CN",
+    "Достык - Алашанькоу": "CN",
+    "Бахты - Покиту": "CN",
+    "Калжат - Дулаты": "CN",
+    "Майкапшагай - Жеминай": "CN",
+    "Майкапчагай - Жеминай": "CN",
+}
+
+
+def _country_for(name: str) -> str:
+    return _CHECKPOINT_COUNTRY.get(name, "XX")
+
 # Метрики (см. backend/api/metrics.py для подключения)
 _metrics_success = 0
 _metrics_error = 0
@@ -36,7 +52,7 @@ async def seed_checkpoints_from_cgr() -> int:
         return 0
     n = 0
     for cp in cps:
-        cgr_dal.upsert_checkpoint(name_ru=cp["name"])
+        cgr_dal.upsert_checkpoint(name_ru=cp["name"], country_to=_country_for(cp["name"]))
         n += 1
     logger.info("cgr.scoreboard: seeded %d checkpoints from CGR", n)
     return n
@@ -87,7 +103,7 @@ async def fetch_and_store() -> dict:
     names = set(totals) | set(known)
     for name in names:
         count = totals.get(name, 0)
-        code = known.get(name) or cgr_dal.upsert_checkpoint(name_ru=name)
+        code = known.get(name) or cgr_dal.upsert_checkpoint(name_ru=name, country_to=_country_for(name))
         try:
             cgr_dal.insert_scoreboard_entry(
                 checkpoint_code=code,
