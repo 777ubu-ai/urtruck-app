@@ -163,13 +163,19 @@ def startup():
     consent_dal.init_consent_schema()
     blacklist_mgr.seed_demo_blacklist()
 
-    # CGR schema + seed border_checkpoints из хардкода BORDERS (идемпотентно).
-    # Безопасно при выключенном CGR_FEATURE_ENABLED — это только подготовка БД.
+    # CGR schema всегда; легаси-сид border_checkpoints (короткие имена) —
+    # ТОЛЬКО при выключенном CGR. При включённом CGR авторитетный список с
+    # парными именами даёт seed_checkpoints_from_cgr() (scheduler), а легаси
+    # дал бы дубли («Нуржолы» + «Нур Жолы - Хоргос»).
     try:
         from database import cgr_dal
+        from cgr.settings import cgr_settings
         cgr_dal.init_cgr_schema()
-        n = cgr_dal.seed_border_checkpoints_from_legacy()
-        print(f"[startup] CGR schema applied, border_checkpoints seeded: +{n}", flush=True)
+        if cgr_settings.feature_enabled:
+            print("[startup] CGR enabled — legacy checkpoint seed skipped (CGR is source)", flush=True)
+        else:
+            n = cgr_dal.seed_border_checkpoints_from_legacy()
+            print(f"[startup] CGR schema applied, border_checkpoints seeded: +{n}", flush=True)
     except Exception as e:
         print(f"[startup] CGR schema init failed (continuing): {e}", flush=True)
 

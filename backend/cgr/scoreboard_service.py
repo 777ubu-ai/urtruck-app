@@ -45,8 +45,13 @@ _metrics_error = 0
 
 async def seed_checkpoints_from_cgr() -> int:
     """Подтянуть официальный справочник переходов из CGR с авторитетной
-    страной-соседом (фильтр flBorderCountry). Идемпотентно."""
+    страной-соседом (фильтр flBorderCountry). Идемпотентно.
+
+    CGR-сид — единственный источник переходов: после успешного сида гасим все
+    остальные (легаси-строки с короткими именами «Нуржолы (Хоргос)»), иначе в
+    ленте дубли (парное «Нур Жолы - Хоргос» + короткое «Нуржолы»)."""
     n = 0
+    seeded_codes: list[str] = []
     for country, code in _COUNTRY_FILTER.items():
         try:
             html = await cgr_client.fetch_checkpoint_list(country_code=code)
@@ -55,8 +60,14 @@ async def seed_checkpoints_from_cgr() -> int:
             logger.warning("cgr.scoreboard: seed %s failed: %s", country, e)
             continue
         for cp in cps:
-            cgr_dal.upsert_checkpoint(name_ru=cp["name"], country_to=country)
+            seeded_codes.append(cgr_dal.upsert_checkpoint(name_ru=cp["name"], country_to=country))
             n += 1
+    # Дедупликация: гасим легаси-переходы только если CGR реально отдал список
+    # (иначе при сбое фетча не обнулим всё).
+    if seeded_codes:
+        killed = cgr_dal.deactivate_checkpoints_except(seeded_codes)
+        if killed:
+            logger.info("cgr.scoreboard: deactivated %d legacy (non-CGR) checkpoints", killed)
     logger.info("cgr.scoreboard: seeded %d checkpoints from CGR (by country)", n)
     return n
 

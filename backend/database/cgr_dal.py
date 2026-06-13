@@ -177,6 +177,26 @@ def get_checkpoint_code_by_name(name_ru: str) -> str | None:
         return r["code"] if r else None
 
 
+def deactivate_checkpoints_except(active_codes: list[str]) -> int:
+    """Деактивирует (is_active=0) все переходы, КРОМЕ переданных кодов.
+
+    Нужно для дедупликации: когда CGR-сид (парные имена «Нур Жолы - Хоргос»)
+    становится единственным источником, легаси-строки с короткими именами
+    («Нуржолы (Хоргос)») гасятся, чтобы не было дублей в ленте. Идемпотентно;
+    list_borders читает только is_active=1. Возвращает число погашенных.
+    """
+    if not active_codes:
+        return 0
+    placeholders = ",".join("?" * len(active_codes))
+    with _conn() as c:
+        cur = c.execute(
+            f"UPDATE border_checkpoints SET is_active = 0 "
+            f"WHERE is_active = 1 AND code NOT IN ({placeholders})",
+            tuple(active_codes),
+        )
+        return cur.rowcount
+
+
 # ----------------------------------------------------------------
 # cgr_scoreboard
 # ----------------------------------------------------------------
