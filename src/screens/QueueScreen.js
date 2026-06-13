@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator, TextInput } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator, TextInput, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../utils/ThemeContext';
 import { useI18n } from '../utils/useI18n';
@@ -20,7 +20,8 @@ export default function QueueScreen({ navigation }) {
   const { t } = useI18n();
   const [borders, setBorders] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('');
+  // Хаб-навигация: 'hub' (страны) → 'country' (переходы выбранной страны).
+  const [selectedCountry, setSelectedCountry] = useState(null);
 
   // Личный поиск по госномеру (Поток А): водитель вводит ГРНЗ → видит свой
   // реальный статус в очереди CGR (без авторизации, публичные данные).
@@ -75,7 +76,7 @@ export default function QueueScreen({ navigation }) {
   const fetchBorders = async () => {
     setLoading(true);
     try {
-      const r = await fetch(`${BASE}?country=${filter}`);
+      const r = await fetch(`${BASE}?country=`);  // все переходы разом, группируем клиентом
       const data = await r.json();
       setBorders(data.borders || []);
     } catch (e) {
@@ -85,15 +86,21 @@ export default function QueueScreen({ navigation }) {
     }
   };
 
-  useEffect(() => { fetchBorders(); }, [filter]);
+  useEffect(() => { fetchBorders(); }, []);
 
-  const FILTERS = [
-    { k: '', l: t('filter_all') },
-    { k: 'CN', l: `🇨🇳 ${t('queue_country_cn')}` },
-    { k: 'RU', l: `🇷🇺 ${t('queue_country_ru')}` },
-    { k: 'UZ', l: `🇺🇿 ${t('queue_country_uz')}` },
-    { k: 'KG', l: `🇰🇬 ${t('queue_country_kg')}` },
+  // Метаданные стран для хаба (порядок: ядро Китай → СНГ).
+  const COUNTRIES = [
+    { k: 'CN', flag: '🇨🇳', l: t('queue_country_cn') },
+    { k: 'RU', flag: '🇷🇺', l: t('queue_country_ru') },
+    { k: 'UZ', flag: '🇺🇿', l: t('queue_country_uz') },
+    { k: 'KG', flag: '🇰🇬', l: t('queue_country_kg') },
+    { k: 'TM', flag: '🇹🇲', l: t('queue_country_tm') },
   ];
+  const byCountry = (cc) => borders.filter(b => b.country === cc);
+  // Свободнее всего в Китай (ядро бизнеса): переход с минимальной очередью.
+  const cnList = byCountry('CN').filter(b => b.trucks_in_queue != null);
+  const freest = cnList.length ? cnList.reduce((a, b) => (b.trucks_in_queue < a.trucks_in_queue ? b : a)) : null;
+
 
   // Не одобрен → locked/promo состояние очереди (вместо полного функционала).
   if (verState !== 'approved') {
@@ -140,129 +147,163 @@ export default function QueueScreen({ navigation }) {
     );
   }
 
+  const openCgrPortal = () => Linking.openURL(
+    'https://cgr.qoldau.kz/ru/start?utm_source=urtruck&utm_medium=app&utm_campaign=booking_redirect'
+  ).catch(() => {});
+
+  // Детальная карточка перехода (видна в списке выбранной страны).
+  const renderCheckpoint = (b) => {
+    const col = STATUS_COLORS[b.status] || '#78716C';
+    return (
+      <View key={b.id} style={[s.card, { backgroundColor: theme.card, borderColor: theme.border, borderLeftColor: col, borderLeftWidth: 4 }]} testID="queue-checkpoint-card">
+        <View style={s.cardTop}>
+          <View style={{ flex: 1 }}>
+            <Text style={[s.name, { color: theme.text }]}>{b.name}</Text>
+            {b.name_en ? <Text style={[s.countries, { color: theme.textMuted }]}>{b.name_en}</Text> : null}
+          </View>
+          <View style={[s.statusBadge, { backgroundColor: col + '20' }]}>
+            <View style={[s.statusDot, { backgroundColor: col }]} />
+            <Text style={[s.statusText, { color: col }]}>{t(STATUS_KEY[b.status] || 'queue_status_moderate')}</Text>
+          </View>
+        </View>
+        <View style={s.detailRow}>
+          <Text style={[s.detailNum, { color: col }]}>{b.trucks_in_queue ?? '—'}</Text>
+          <Text style={[s.detailLabel, { color: theme.textMuted }]}>{t('vehicles_label')}</Text>
+          {b.estimated_wait_hours != null ? (
+            <Text style={[s.detailWait, { color: theme.textMuted }]}>· {b.estimated_wait_hours}{t('cargoruqsat_live_hours_short')} {t('waiting_label').toLowerCase()}</Text>
+          ) : null}
+        </View>
+        {b.updated_at ? (
+          <Text style={[s.updated, { color: theme.textDim }]}>{t('queue_updated')}: {String(b.updated_at).slice(11, 16)} UTC</Text>
+        ) : null}
+        <TouchableOpacity style={s.bookBtn} onPress={openCgrPortal} testID="queue-book-cgr">
+          <Text style={s.bookBtnText}>{t('queue_book_cgr')} ↗</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  const selMeta = COUNTRIES.find(c => c.k === selectedCountry);
+
   return (
     <SafeAreaView style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']}>
       <View style={s.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={s.back}>
+        <TouchableOpacity
+          onPress={() => (selectedCountry ? setSelectedCountry(null) : navigation.goBack())}
+          style={s.back}
+          testID="queue-back"
+        >
           <Text style={[s.backText, { color: theme.text }]}>‹</Text>
         </TouchableOpacity>
-        <Text style={[s.headerTitle, { color: theme.text }]} testID="queue-title">{t('border_queues_title')}</Text>
+        <Text style={[s.headerTitle, { color: theme.text }]} testID="queue-title">
+          {selMeta ? `${selMeta.flag} ${selMeta.l}` : t('border_queues_title')}
+        </Text>
         <View style={{ width: 44 }} />
       </View>
 
-      {/* IA: Queue — единый hub электронной очереди. CarGoRuqsat (портал,
-          привязка брони, мои брони) живёт в CargoRuqsatInfo; здесь — вход. */}
-      <TouchableOpacity style={s.cgrLink} onPress={() => navigation.navigate('CargoRuqsatInfo')} testID="queue-cgr-link-approved">
-        <Text style={s.cgrLinkText}>🅿️ {t('queue_cgr_cta')}</Text>
-        <Text style={[s.cgrLinkChevron, { color: theme.textMuted }]}>›</Text>
-      </TouchableOpacity>
-
-      {/* Личный статус по госномеру (Поток А — реальные публичные данные CGR) */}
-      <View style={[s.lookupBox, { backgroundColor: theme.card, borderColor: theme.border }]}>
-        <Text style={[s.lookupLabel, { color: theme.textMuted }]}>{t('queue_my_plate_label')}</Text>
-        <View style={s.lookupRow}>
-          <TextInput
-            style={[s.lookupInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]}
-            value={plate}
-            onChangeText={setPlate}
-            placeholder={t('queue_my_plate_placeholder')}
-            placeholderTextColor={theme.textDim}
-            autoCapitalize="characters"
-            autoCorrect={false}
-            onSubmitEditing={doLookup}
-            returnKeyType="search"
-            testID="queue-plate-input"
-          />
-          <TouchableOpacity style={s.lookupBtn} onPress={doLookup} disabled={lookupLoading} testID="queue-plate-search">
-            {lookupLoading ? <ActivityIndicator color="#FFF" /> : <Text style={s.lookupBtnText}>{t('queue_lookup_btn')}</Text>}
-          </TouchableOpacity>
-        </View>
-        {lookup && (
-          lookup.error ? (
-            <Text style={[s.lookupResult, { color: '#EF4444' }]}>{t('cgr_unavailable')}</Text>
-          ) : lookup.found ? (
-            <View style={s.lookupFound}>
-              <Text style={[s.lookupResult, { color: theme.text }]}>
-                {t(LOOKUP_STATUS_KEY[lookup.status] || 'queue_lk_unknown')}
-                {lookup.is_late ? ` · ${t('queue_lk_late')}` : ''}
-              </Text>
-              <Text style={[s.lookupSub, { color: theme.textMuted }]}>
-                {lookup.checkpoint}{lookup.queue_datetime ? ` · ${lookup.queue_datetime}` : ''}
-              </Text>
+      {/* ─────── Уровень 2: переходы выбранной страны ─────── */}
+      {selectedCountry ? (
+        <ScrollView
+          contentContainerStyle={{ padding: 16 }}
+          refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchBorders} />}
+        >
+          {byCountry(selectedCountry)
+            .slice()
+            .sort((a, b) => (b.trucks_in_queue || 0) - (a.trucks_in_queue || 0))
+            .map(renderCheckpoint)}
+          {byCountry(selectedCountry).length === 0 && (
+            <Text style={{ color: theme.textMuted, textAlign: 'center', marginTop: 40 }}>{t('no_data')}</Text>
+          )}
+        </ScrollView>
+      ) : (
+        /* ─────── Уровень 1: хаб ─────── */
+        <ScrollView
+          contentContainerStyle={{ padding: 16, paddingTop: 4 }}
+          refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchBorders} />}
+        >
+          {/* Моя машина в очереди */}
+          <View style={[s.lookupBox, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Text style={[s.lookupLabel, { color: theme.text }]}>🚛 {t('queue_my_plate_label')}</Text>
+            <View style={s.lookupRow}>
+              <TextInput
+                style={[s.lookupInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]}
+                value={plate}
+                onChangeText={setPlate}
+                placeholder={t('queue_my_plate_placeholder')}
+                placeholderTextColor={theme.textDim}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                onSubmitEditing={doLookup}
+                returnKeyType="search"
+                testID="queue-plate-input"
+              />
+              <TouchableOpacity style={s.lookupBtn} onPress={doLookup} disabled={lookupLoading} testID="queue-plate-search">
+                {lookupLoading ? <ActivityIndicator color="#FFF" /> : <Text style={s.lookupBtnText}>{t('queue_lookup_btn')}</Text>}
+              </TouchableOpacity>
             </View>
-          ) : (
-            <Text style={[s.lookupResult, { color: theme.textMuted }]}>{t('queue_lookup_not_found')}</Text>
-          )
-        )}
-      </View>
-
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filters}>
-        {FILTERS.map(f => (
-          <TouchableOpacity
-            key={f.k}
-            style={[s.chip, { backgroundColor: filter === f.k ? '#1A5C3C' : theme.card, borderColor: theme.border }]}
-            onPress={() => setFilter(f.k)}
-          >
-            <Text style={[s.chipText, { color: filter === f.k ? '#FFF' : theme.textMuted }]}>{f.l}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-
-      <ScrollView
-        contentContainerStyle={{ padding: 16 }}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchBorders} />}
-      >
-        {loading && borders.length === 0 && <ActivityIndicator color="#1A5C3C" style={{ marginTop: 40 }} />}
-
-        {borders.map(b => {
-          const col = STATUS_COLORS[b.status] || '#78716C';
-          return (
-            <View key={b.id} style={[s.card, { backgroundColor: theme.card, borderColor: theme.border, borderLeftColor: col, borderLeftWidth: 4 }]}>
-              <View style={s.cardTop}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[s.name, { color: theme.text }]}>{b.name}</Text>
-                  <Text style={[s.countries, { color: theme.textMuted }]}>{[b.countries, b.type].filter(Boolean).join(' · ')}</Text>
+            {lookup && (
+              lookup.error ? (
+                <Text style={[s.lookupResult, { color: '#EF4444' }]}>{t('cgr_unavailable')}</Text>
+              ) : lookup.found ? (
+                <View style={s.lookupFound}>
+                  <Text style={[s.lookupResult, { color: theme.text }]}>
+                    {t(LOOKUP_STATUS_KEY[lookup.status] || 'queue_lk_unknown')}
+                    {lookup.is_late ? ` · ${t('queue_lk_late')}` : ''}
+                  </Text>
+                  <Text style={[s.lookupSub, { color: theme.textMuted }]}>
+                    {lookup.checkpoint}{lookup.queue_datetime ? ` · ${lookup.queue_datetime}` : ''}
+                  </Text>
                 </View>
-                <View style={[s.statusBadge, { backgroundColor: col + '20' }]}>
-                  <View style={[s.statusDot, { backgroundColor: col }]} />
-                  <Text style={[s.statusText, { color: col }]}>{t(STATUS_KEY[b.status] || 'queue_status_moderate')}</Text>
-                </View>
-              </View>
+              ) : (
+                <Text style={[s.lookupResult, { color: theme.textMuted }]}>{t('queue_lookup_not_found')}</Text>
+              )
+            )}
+          </View>
 
-              <View style={s.stats}>
-                <View style={s.stat}>
-                  <Text style={[s.statNum, { color: theme.text }]}>{b.trucks_in_queue ?? '—'}</Text>
-                  <Text style={[s.statLabel, { color: theme.textMuted }]}>{t('vehicles_label')}</Text>
-                </View>
-                {/* Время ожидания публичные данные CGR не дают — показываем
-                    только когда оно реально есть (Поток Б / оператор). */}
-                {b.estimated_wait_hours != null ? (
-                  <View style={s.stat}>
-                    <Text style={[s.statNum, { color: col }]}>{b.estimated_wait_hours}{t('cargoruqsat_live_hours_short')}</Text>
-                    <Text style={[s.statLabel, { color: theme.textMuted }]}>{t('waiting_label')}</Text>
-                  </View>
-                ) : null}
-                {b.name_en ? (
-                  <View style={s.stat}>
-                    <Text style={[s.statNum, { color: theme.textMuted, fontSize: 13 }]}>{b.name_en}</Text>
-                    <Text style={[s.statLabel, { color: theme.textMuted }]}>EN</Text>
-                  </View>
-                ) : null}
-              </View>
+          {/* Свободнее всего в Китай (ядро бизнеса) */}
+          {freest ? (
+            <TouchableOpacity
+              style={[s.freestCard, { borderColor: '#22C55E' }]}
+              onPress={() => setSelectedCountry('CN')}
+              testID="queue-freest"
+            >
+              <Text style={s.freestLabel}>✨ {t('queue_hub_freest')} 🇨🇳</Text>
+              <Text style={[s.freestName, { color: theme.text }]}>
+                {freest.name} — {freest.trucks_in_queue} {t('vehicles_label').toLowerCase()} 🟢
+              </Text>
+            </TouchableOpacity>
+          ) : null}
 
-              {b.updated_at ? (
-                <Text style={[s.updated, { color: theme.textDim }]}>
-                  {t('queue_updated')}: {String(b.updated_at).slice(11, 16)} UTC
+          {/* Выбор страны */}
+          <Text style={[s.sectionTitle, { color: theme.textMuted }]}>{t('queue_select_country')}</Text>
+          {loading && borders.length === 0 && <ActivityIndicator color="#1A5C3C" style={{ marginTop: 20 }} />}
+          {COUNTRIES.map(c => {
+            const list = byCountry(c.k);
+            if (list.length === 0) return null;
+            return (
+              <TouchableOpacity
+                key={c.k}
+                style={[s.countryCard, { backgroundColor: theme.card, borderColor: theme.border }]}
+                onPress={() => setSelectedCountry(c.k)}
+                testID={`queue-country-${c.k}`}
+              >
+                <Text style={s.countryFlag}>{c.flag}</Text>
+                <Text style={[s.countryName, { color: theme.text }]}>{c.l}</Text>
+                <Text style={[s.countryCount, { color: theme.textMuted }]}>
+                  {list.length} {t('queue_crossings_n')}
                 </Text>
-              ) : null}
-            </View>
-          );
-        })}
+                <Text style={[s.cgrLinkChevron, { color: theme.textMuted }]}>›</Text>
+              </TouchableOpacity>
+            );
+          })}
 
-        {!loading && borders.length === 0 && (
-          <Text style={{ color: theme.textMuted, textAlign: 'center', marginTop: 40 }}>{t('no_data')}</Text>
-        )}
-      </ScrollView>
+          {/* CarGoRuqsat портал */}
+          <TouchableOpacity style={[s.cgrLink, { marginTop: 16, marginHorizontal: 0 }]} onPress={() => navigation.navigate('CargoRuqsatInfo')} testID="queue-cgr-link-approved">
+            <Text style={s.cgrLinkText}>🅿️ {t('queue_cgr_cta')}</Text>
+            <Text style={[s.cgrLinkChevron, { color: theme.textMuted }]}>›</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 }
@@ -310,4 +351,18 @@ const s = StyleSheet.create({
   lookupFound: { marginTop: 10 },
   lookupResult: { fontSize: 14, fontWeight: '700', marginTop: 10 },
   lookupSub: { fontSize: 12, marginTop: 3 },
+  freestCard: { borderWidth: 1, borderRadius: 14, padding: 14, marginBottom: 16, backgroundColor: 'rgba(34,197,94,0.08)' },
+  freestLabel: { fontSize: 12, fontWeight: '800', color: '#22C55E', marginBottom: 4 },
+  freestName: { fontSize: 16, fontWeight: '800' },
+  sectionTitle: { fontSize: 12, fontWeight: '700', letterSpacing: 0.5, marginBottom: 10, textTransform: 'uppercase' },
+  countryCard: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 16, marginBottom: 10 },
+  countryFlag: { fontSize: 26, marginRight: 14 },
+  countryName: { flex: 1, fontSize: 17, fontWeight: '800' },
+  countryCount: { fontSize: 13, marginRight: 8 },
+  detailRow: { flexDirection: 'row', alignItems: 'baseline', gap: 6, marginBottom: 4 },
+  detailNum: { fontSize: 28, fontWeight: '900' },
+  detailLabel: { fontSize: 13 },
+  detailWait: { fontSize: 12 },
+  bookBtn: { marginTop: 12, height: 44, borderRadius: 10, backgroundColor: '#1A5C3C', alignItems: 'center', justifyContent: 'center' },
+  bookBtnText: { color: '#FFF', fontSize: 14, fontWeight: '800' },
 });
