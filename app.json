@@ -14,7 +14,7 @@
     "splash": {
       "image": "./assets/splash/urtruck-splash.png",
       "backgroundColor": "#070B14",
-      "resizeMode": "cover"
+      "resizeMode": "contain"
     },
     "web": {
       "bundler": "metro",

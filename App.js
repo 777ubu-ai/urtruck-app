@@ -88,7 +88,10 @@ function BrandSplash({ onDone }) {
   }, [opacity, onDone]);
   return (
     <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, splashStyles.root, { opacity }]}>
-      <Image source={SPLASH_IMG} style={StyleSheet.absoluteFill} resizeMode="cover" />
+      {/* contain, НЕ cover: urtruck-splash.png — готовая композиция (лого +
+          фура + «Welcome/...»). cover её зумит и режет края → «размазано».
+          contain показывает целиком; фон #070B14 совпадает с картинкой. */}
+      <Image source={SPLASH_IMG} style={StyleSheet.absoluteFill} resizeMode="contain" />
     </Animated.View>
   );
 }
