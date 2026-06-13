@@ -84,9 +84,15 @@ class CGRClient:
         return r
 
     # --- High-level helpers (Поток А, публичные реестры) ---
-    async def fetch_checkpoint_list(self) -> str:
-        """Справочник погранпереходов /ru/registry/checkpoint/list (HTML)."""
-        r = await self.get("/ru/registry/checkpoint/list")
+    async def fetch_checkpoint_list(self, country_code: str | None = None) -> str:
+        """Справочник погранпереходов /ru/registry/checkpoint/list (HTML).
+
+        country_code — значение фильтра flBorderCountry (x045=Китай, x181=Россия,
+        x225=Узбекистан, x109=Кыргызстан, x210=Туркменистан) для авторитетной
+        привязки страны-соседа.
+        """
+        params = {"flBorderCountry": country_code} if country_code else None
+        r = await self.get("/ru/registry/checkpoint/list", params=params)
         return r.text
 
     async def fetch_public_list(self, status: str | None = None, page: int = 1) -> str:

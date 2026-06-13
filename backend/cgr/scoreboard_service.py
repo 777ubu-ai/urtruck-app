@@ -20,17 +20,19 @@ logger = logging.getLogger("cgr.scoreboard")
 # небольшое подмножество реестра, обычно укладывается с запасом.
 _MAX_PAGES = 80
 
-# Страна-сосед по имени перехода CGR. Точно заданы китайские переходы (ядро
-# бизнеса Китай↔СНГ) и явные соседи; неизвестным ставим 'XX' (группа «Другие»).
-# Достоверный country_to для всех 32 — задача отдельной разведки колонки страны.
+# Страна-сосед по имени перехода CGR — fallback для агрегации, если имя из
+# реестра ещё не засеяно из справочника. Авторитетная привязка теперь идёт
+# через фильтр flBorderCountry в seed_checkpoints_from_cgr (ниже).
 _CHECKPOINT_COUNTRY = {
     "Нур Жолы - Хоргос": "CN",
     "Достык - Алашанькоу": "CN",
     "Бахты - Покиту": "CN",
     "Калжат - Дулаты": "CN",
-    "Майкапшагай - Жеминай": "CN",
-    "Майкапчагай - Жеминай": "CN",
+    "Майкапчагай - Зимунай": "CN",
 }
+
+# Коды стран в фильтре справочника CGR flBorderCountry.
+_COUNTRY_FILTER = {"CN": "x045", "RU": "x181", "UZ": "x225", "KG": "x109", "TM": "x210"}
 
 
 def _country_for(name: str) -> str:
@@ -42,19 +44,20 @@ _metrics_error = 0
 
 
 async def seed_checkpoints_from_cgr() -> int:
-    """Один раз подтянуть официальный справочник переходов из CGR
-    (/ru/registry/checkpoint/list) в border_checkpoints. Идемпотентно."""
-    try:
-        html = await cgr_client.fetch_checkpoint_list()
-        cps = parse_checkpoint_list(html)
-    except (CGRException, Exception) as e:  # noqa: BLE001 — мягкий старт
-        logger.warning("cgr.scoreboard: seed checkpoints failed: %s", e)
-        return 0
+    """Подтянуть официальный справочник переходов из CGR с авторитетной
+    страной-соседом (фильтр flBorderCountry). Идемпотентно."""
     n = 0
-    for cp in cps:
-        cgr_dal.upsert_checkpoint(name_ru=cp["name"], country_to=_country_for(cp["name"]))
-        n += 1
-    logger.info("cgr.scoreboard: seeded %d checkpoints from CGR", n)
+    for country, code in _COUNTRY_FILTER.items():
+        try:
+            html = await cgr_client.fetch_checkpoint_list(country_code=code)
+            cps = parse_checkpoint_list(html)
+        except (CGRException, Exception) as e:  # noqa: BLE001 — мягкий старт
+            logger.warning("cgr.scoreboard: seed %s failed: %s", country, e)
+            continue
+        for cp in cps:
+            cgr_dal.upsert_checkpoint(name_ru=cp["name"], country_to=country)
+            n += 1
+    logger.info("cgr.scoreboard: seeded %d checkpoints from CGR (by country)", n)
     return n
 
 
