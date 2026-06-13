@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../utils/ThemeContext';
 import { useI18n } from '../utils/useI18n';
@@ -21,6 +21,33 @@ export default function QueueScreen({ navigation }) {
   const [borders, setBorders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
+
+  // Личный поиск по госномеру (Поток А): водитель вводит ГРНЗ → видит свой
+  // реальный статус в очереди CGR (без авторизации, публичные данные).
+  const [plate, setPlate] = useState('');
+  const [lookup, setLookup] = useState(null);     // null | {found,...}
+  const [lookupLoading, setLookupLoading] = useState(false);
+
+  const doLookup = async () => {
+    const p = plate.trim();
+    if (p.length < 3 || lookupLoading) return;
+    setLookupLoading(true);
+    setLookup(null);
+    try {
+      const r = await fetch(`${BASE}/lookup?plate=${encodeURIComponent(p)}`);
+      setLookup(await r.json());
+    } catch (e) {
+      setLookup({ error: true });
+    } finally {
+      setLookupLoading(false);
+    }
+  };
+
+  // Текст статуса для результата личного поиска.
+  const LOOKUP_STATUS_KEY = {
+    in_queue: 'queue_lk_in_queue', crossed: 'queue_lk_crossed',
+    revoked: 'queue_lk_revoked', called: 'queue_lk_called',
+  };
 
   // Progressive verification gate: электронная очередь — trust-функция,
   // доступна только одобренному водителю. Источник статуса — regAPI.me()
@@ -130,6 +157,45 @@ export default function QueueScreen({ navigation }) {
         <Text style={[s.cgrLinkChevron, { color: theme.textMuted }]}>›</Text>
       </TouchableOpacity>
 
+      {/* Личный статус по госномеру (Поток А — реальные публичные данные CGR) */}
+      <View style={[s.lookupBox, { backgroundColor: theme.card, borderColor: theme.border }]}>
+        <Text style={[s.lookupLabel, { color: theme.textMuted }]}>{t('queue_my_plate_label')}</Text>
+        <View style={s.lookupRow}>
+          <TextInput
+            style={[s.lookupInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]}
+            value={plate}
+            onChangeText={setPlate}
+            placeholder={t('queue_my_plate_placeholder')}
+            placeholderTextColor={theme.textDim}
+            autoCapitalize="characters"
+            autoCorrect={false}
+            onSubmitEditing={doLookup}
+            returnKeyType="search"
+            testID="queue-plate-input"
+          />
+          <TouchableOpacity style={s.lookupBtn} onPress={doLookup} disabled={lookupLoading} testID="queue-plate-search">
+            {lookupLoading ? <ActivityIndicator color="#FFF" /> : <Text style={s.lookupBtnText}>{t('queue_lookup_btn')}</Text>}
+          </TouchableOpacity>
+        </View>
+        {lookup && (
+          lookup.error ? (
+            <Text style={[s.lookupResult, { color: '#EF4444' }]}>{t('cgr_unavailable')}</Text>
+          ) : lookup.found ? (
+            <View style={s.lookupFound}>
+              <Text style={[s.lookupResult, { color: theme.text }]}>
+                {t(LOOKUP_STATUS_KEY[lookup.status] || 'queue_lk_unknown')}
+                {lookup.is_late ? ` · ${t('queue_lk_late')}` : ''}
+              </Text>
+              <Text style={[s.lookupSub, { color: theme.textMuted }]}>
+                {lookup.checkpoint}{lookup.queue_datetime ? ` · ${lookup.queue_datetime}` : ''}
+              </Text>
+            </View>
+          ) : (
+            <Text style={[s.lookupResult, { color: theme.textMuted }]}>{t('queue_lookup_not_found')}</Text>
+          )
+        )}
+      </View>
+
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filters}>
         {FILTERS.map(f => (
           <TouchableOpacity
@@ -155,7 +221,7 @@ export default function QueueScreen({ navigation }) {
               <View style={s.cardTop}>
                 <View style={{ flex: 1 }}>
                   <Text style={[s.name, { color: theme.text }]}>{b.name}</Text>
-                  <Text style={[s.countries, { color: theme.textMuted }]}>{b.countries} · {b.type}</Text>
+                  <Text style={[s.countries, { color: theme.textMuted }]}>{[b.countries, b.type].filter(Boolean).join(' · ')}</Text>
                 </View>
                 <View style={[s.statusBadge, { backgroundColor: col + '20' }]}>
                   <View style={[s.statusDot, { backgroundColor: col }]} />
@@ -165,22 +231,30 @@ export default function QueueScreen({ navigation }) {
 
               <View style={s.stats}>
                 <View style={s.stat}>
-                  <Text style={[s.statNum, { color: theme.text }]}>{b.trucks_in_queue}</Text>
+                  <Text style={[s.statNum, { color: theme.text }]}>{b.trucks_in_queue ?? '—'}</Text>
                   <Text style={[s.statLabel, { color: theme.textMuted }]}>{t('vehicles_label')}</Text>
                 </View>
-                <View style={s.stat}>
-                  <Text style={[s.statNum, { color: col }]}>{b.estimated_wait_hours}{t('cargoruqsat_live_hours_short')}</Text>
-                  <Text style={[s.statLabel, { color: theme.textMuted }]}>{t('waiting_label')}</Text>
-                </View>
-                <View style={s.stat}>
-                  <Text style={[s.statNum, { color: theme.textMuted, fontSize: 13 }]}>{b.name_en}</Text>
-                  <Text style={[s.statLabel, { color: theme.textMuted }]}>EN</Text>
-                </View>
+                {/* Время ожидания публичные данные CGR не дают — показываем
+                    только когда оно реально есть (Поток Б / оператор). */}
+                {b.estimated_wait_hours != null ? (
+                  <View style={s.stat}>
+                    <Text style={[s.statNum, { color: col }]}>{b.estimated_wait_hours}{t('cargoruqsat_live_hours_short')}</Text>
+                    <Text style={[s.statLabel, { color: theme.textMuted }]}>{t('waiting_label')}</Text>
+                  </View>
+                ) : null}
+                {b.name_en ? (
+                  <View style={s.stat}>
+                    <Text style={[s.statNum, { color: theme.textMuted, fontSize: 13 }]}>{b.name_en}</Text>
+                    <Text style={[s.statLabel, { color: theme.textMuted }]}>EN</Text>
+                  </View>
+                ) : null}
               </View>
 
-              <Text style={[s.updated, { color: theme.textDim }]}>
-                {t('queue_updated')}: {(b.updated_at || '').slice(11, 16)} UTC
-              </Text>
+              {b.updated_at ? (
+                <Text style={[s.updated, { color: theme.textDim }]}>
+                  {t('queue_updated')}: {String(b.updated_at).slice(11, 16)} UTC
+                </Text>
+              ) : null}
             </View>
           );
         })}
@@ -227,4 +301,13 @@ const s = StyleSheet.create({
   cgrLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginHorizontal: 16, marginBottom: 8, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: '#1A5C3C', backgroundColor: 'rgba(26,92,60,0.08)' },
   cgrLinkText: { fontSize: 14, fontWeight: '800', color: '#1A5C3C' },
   cgrLinkChevron: { fontSize: 20, fontWeight: '300' },
+  lookupBox: { marginHorizontal: 16, marginBottom: 8, padding: 12, borderRadius: 12, borderWidth: 1 },
+  lookupLabel: { fontSize: 12, fontWeight: '600', marginBottom: 8 },
+  lookupRow: { flexDirection: 'row', gap: 8 },
+  lookupInput: { flex: 1, height: 44, borderRadius: 10, borderWidth: 1, paddingHorizontal: 12, fontSize: 15, fontWeight: '700' },
+  lookupBtn: { height: 44, paddingHorizontal: 18, borderRadius: 10, backgroundColor: '#1A5C3C', alignItems: 'center', justifyContent: 'center' },
+  lookupBtnText: { color: '#FFF', fontSize: 14, fontWeight: '800' },
+  lookupFound: { marginTop: 10 },
+  lookupResult: { fontSize: 14, fontWeight: '700', marginTop: 10 },
+  lookupSub: { fontSize: 12, marginTop: 3 },
 });
