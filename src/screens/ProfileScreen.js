@@ -74,7 +74,7 @@ export default function ProfileScreen({ navigation, route }) {
     textSecondary: v1.textMuted,
   };
   const { t } = useI18n();
-  const { session, signOut, setRole, verificationLevel } = useAuth();
+  const { session, signOut, verificationLevel } = useAuth();
   const [profile, setProfile] = useState(getProfile(session?.user?.id) || {});
   const [lang, setLang] = useState(getLanguage());
 
@@ -413,26 +413,9 @@ export default function ProfileScreen({ navigation, route }) {
           <Text style={[s.versionRow, s.versionText, { color: theme.textMuted }]}>v1.0.50 · 17.04.2026</Text>
         )}
 
-        {/* RC2 hotfix (P1-1): "Сменить роль" скрыт из production UX —
-            фича смены роли налету ещё не покрыта профилем (см. PLAN
-            RC2-D: смена роли требует переустановки role-specific полей
-            типа труков для драйвера). В debug-режиме оставлено для QA.
-            Когда фича доделается — снимем условие. */}
-        {typeof __DEV__ !== 'undefined' && __DEV__ ? (
-          <TouchableOpacity
-            style={s.changeRoleBtn}
-            onPress={() => confirm(
-              t('change_role_title'),
-              t('change_role_message'),
-              () => setRole(null),
-              t('cancel') || 'Отмена',
-              t('change_role_confirm'),
-            )}
-            testID="profile-change-role"
-          >
-            <Text style={s.changeRoleText}>{t('changeRole')}</Text>
-          </TouchableOpacity>
-        ) : null}
+        {/* «Сменить роль» убрана по решению владельца (13.06): смена роли
+            требует переустановки role-specific данных (труки водителя и т.п.).
+            Кому нужна другая роль — полностью выходит и заходит заново. */}
 
         {QA_HOOK_ALLOWED ? (
           <TouchableOpacity
@@ -570,8 +553,6 @@ const s = StyleSheet.create({
 
   versionRow: { alignItems: 'center', paddingVertical: 10, marginBottom: 6 },
   versionText: { fontSize: 11, fontWeight: '500' },
-  changeRoleBtn: { backgroundColor: '#EF444415', borderRadius: 14, paddingVertical: 16, alignItems: 'center', borderWidth: 1, borderColor: '#EF444425' },
-  changeRoleText: { color: '#EF4444', fontSize: 15, fontWeight: '700' },
   logoutBtn: { paddingVertical: 16, alignItems: 'center', marginTop: 8 },
   logoutText: { color: '#57534E', fontSize: 13 },
 });
