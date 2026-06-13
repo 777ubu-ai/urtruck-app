@@ -19,6 +19,7 @@ import StatsRow from '../components/ui/v1/StatsRow';
 import BellBadge from '../components/ui/v1/BellBadge';
 import { useUnreadNotifications } from '../utils/useUnreadNotifications';
 import { useMountedRef } from '../hooks/useMountedRef';
+import { useDealLocationBroadcast } from '../hooks/useDealLocationBroadcast';
 
 export default function MyTripsScreen({ navigation, route }) {
   const v1 = useV1Colors();
@@ -265,6 +266,9 @@ export default function MyTripsScreen({ navigation, route }) {
   const driverOffers = myBids.filter((b) => ['pending', 'countered'].includes(b.status));
   const driverInWork = serverDeals.filter((d) => IN_WORK_STATUSES.includes(d.status));
   const driverDone = serverDeals.filter((d) => DONE_STATUSES.includes(d.status));
+  // Задача B: водитель транслирует свою гео-позицию по сделкам «в работе»
+  // (foreground). Для клиента — пустой массив (ничего не шлёт).
+  useDealLocationBroadcast(isDriver ? driverInWork.map((d) => d.id) : []);
   const driverArchive = [
     ...serverDeals.filter((d) => ARCHIVE_STATUSES.includes(d.status)).map((d) => ({ ...d, _kind: 'deal' })),
     ...myBids.filter((b) => ['rejected', 'cancelled', 'expired'].includes(b.status)).map((b) => ({ ...b, _kind: 'bid' })),
@@ -513,6 +517,18 @@ export default function MyTripsScreen({ navigation, route }) {
               onPress={() => navigation.navigate('Chat', { roomId: item.chat_room_id, role })}
             >
               <Text style={[s.miniBtnText, { color: '#22C55E' }]}>💬 {t('order_chat')}</Text>
+            </TouchableOpacity>
+          )}
+          {/* Задача B: грузоотправитель видит, где машина (на стадии «Везут»). */}
+          {!isDriver && ['accepted', 'in_progress', 'picked_up'].includes(item.status) && (
+            <TouchableOpacity
+              testID="deal-track-truck"
+              style={[s.miniBtn, { borderColor: '#F59E0B' }]}
+              onPress={() => navigation.navigate('TrackTruck', {
+                dealId: item.id, from: item.from_city, to: item.to_city, driverName: item.driver_name,
+              })}
+            >
+              <Text style={[s.miniBtnText, { color: '#F59E0B' }]}>📍 {t('track_truck_btn')}</Text>
             </TouchableOpacity>
           )}
         </View>

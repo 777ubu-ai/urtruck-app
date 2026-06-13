@@ -29,6 +29,7 @@
         "NSMicrophoneUsageDescription": "UrTruck использует микрофон для записи голосовых сообщений в чате",
         "NSCameraUsageDescription": "UrTruck использует камеру для селфи и фото документов",
         "NSPhotoLibraryUsageDescription": "UrTruck использует фото для аватара, груза и документов",
+        "NSLocationWhenInUseUsageDescription": "UrTruck показывает грузоотправителю, где сейчас находится его груз во время перевозки",
         "ITSAppUsesNonExemptEncryption": false,
         "UIBackgroundModes": ["remote-notification"]
       },
@@ -71,6 +72,12 @@
           "icon": "./assets/icon.png",
           "color": "#22C55E",
           "sounds": []
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "UrTruck показывает грузоотправителю, где сейчас находится его груз во время перевозки"
         }
       ]
     ],

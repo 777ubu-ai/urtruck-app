@@ -49,6 +49,7 @@ import VerificationReviewSubmitScreen from '../screens/verification/Verification
 import VerificationRejectedScreen from '../screens/verification/VerificationRejectedScreen';
 import FeedScreen from '../screens/FeedScreen';
 import CargoDetail from '../screens/CargoDetail';
+import TrackTruckScreen from '../screens/TrackTruckScreen';
 import DriverDetail from '../screens/DriverDetail';
 import ChatScreen from '../screens/ChatScreen';
 import TrackScreen from '../screens/TrackScreen';
@@ -192,6 +193,7 @@ export default function AppNavigator() {
         <Stack.Screen name="EditTrip" component={EditTripScreen} />
         <Stack.Screen name="CreateTrip" component={CreateTripScreen} />
         <Stack.Screen name="CreateCargo" component={CreateCargoScreen} />
+        <Stack.Screen name="TrackTruck" component={TrackTruckScreen} />
         <Stack.Screen name="TruckParams" component={TruckParamsScreen} />
         <Stack.Screen name="VehicleDocs" component={VehicleDocsScreen} />
       </Stack.Navigator>
@@ -251,6 +253,7 @@ export default function AppNavigator() {
           <Stack.Screen name="EditTrip" component={EditTripScreen} />
           <Stack.Screen name="CreateTrip" component={CreateTripScreen} />
           <Stack.Screen name="CreateCargo" component={CreateCargoScreen} />
+          <Stack.Screen name="TrackTruck" component={TrackTruckScreen} />
         <Stack.Screen name="Identity" component={IdentityStepScreen} />
         <Stack.Screen name="Selfie" component={SelfieStepScreen} />
         <Stack.Screen name="TruckParams" component={TruckParamsScreen} />

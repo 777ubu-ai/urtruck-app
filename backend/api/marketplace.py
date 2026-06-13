@@ -231,6 +231,17 @@ def _init():
             for col, ddl_type in ROUTE_COLS:
                 if col not in tcols:
                     c.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl_type}")
+        # Задача B: живая гео-позиция машины по сделке (последняя точка).
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS deal_locations (
+                deal_id    TEXT PRIMARY KEY,
+                lat        REAL NOT NULL,
+                lng        REAL NOT NULL,
+                heading    REAL,
+                speed      REAL,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
         c.commit()
 
 _init()
@@ -1618,3 +1629,53 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
     except Exception:
         pass
     return {"ok": True, "status": new_status}
+
+
+# ═══ Задача B: живое отслеживание машины ═══
+
+class DealLocationIn(BaseModel):
+    lat: float
+    lng: float
+    heading: Optional[float] = None
+    speed: Optional[float] = None
+
+
+@mp_router.post("/deals/{deal_id}/location")
+def update_deal_location(deal_id: str, body: DealLocationIn, user=Depends(require_level(1))):
+    """Водитель сделки шлёт свою гео-позицию. Только driver сделки и только
+    пока сделка в работе (accepted/in_progress/picked_up)."""
+    with get_conn() as c:
+        d = c.execute("SELECT driver_id, status FROM deals WHERE id = ?", (deal_id,)).fetchone()
+        if not d:
+            raise HTTPException(status_code=404, detail="Сделка не найдена")
+        if d["driver_id"] != user["id"]:
+            raise HTTPException(status_code=403, detail="Геопозицию отправляет только водитель сделки")
+        if d["status"] not in ("accepted", "in_progress", "picked_up"):
+            raise HTTPException(status_code=409, detail="Сделка не в работе")
+        c.execute(
+            "INSERT INTO deal_locations (deal_id, lat, lng, heading, speed, updated_at) "
+            "VALUES (?,?,?,?,?,CURRENT_TIMESTAMP) "
+            "ON CONFLICT(deal_id) DO UPDATE SET lat=excluded.lat, lng=excluded.lng, "
+            "heading=excluded.heading, speed=excluded.speed, updated_at=CURRENT_TIMESTAMP",
+            (deal_id, body.lat, body.lng, body.heading, body.speed),
+        )
+    return {"ok": True}
+
+
+@mp_router.get("/deals/{deal_id}/location")
+def get_deal_location(deal_id: str, user=Depends(require_level(1))):
+    """Участник сделки (грузоотправитель или водитель) читает последнюю
+    позицию машины. has_location=false, если водитель ещё не слал гео."""
+    with get_conn() as c:
+        d = c.execute("SELECT shipper_id, driver_id FROM deals WHERE id = ?", (deal_id,)).fetchone()
+        if not d:
+            raise HTTPException(status_code=404, detail="Сделка не найдена")
+        if user["id"] not in (d["shipper_id"], d["driver_id"]):
+            raise HTTPException(status_code=403, detail="Нет доступа к сделке")
+        loc = c.execute(
+            "SELECT lat, lng, heading, speed, updated_at FROM deal_locations WHERE deal_id = ?",
+            (deal_id,),
+        ).fetchone()
+    if not loc:
+        return {"ok": True, "has_location": False}
+    return {"ok": True, "has_location": True, "location": dict(loc)}

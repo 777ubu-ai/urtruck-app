@@ -72,6 +72,24 @@ export const marketAPI = {
     return r.json();
   },
 
+  // Задача B: гео-позиция машины по сделке.
+  async sendDealLocation(dealId, coords) {
+    try {
+      const r = await authedFetch(`${BASE}/deals/${dealId}/location`, {
+        method: 'POST', headers: await headers(),
+        body: JSON.stringify(coords),
+      });
+      return r.ok ? r.json() : { ok: false, status: r.status };
+    } catch { return { ok: false }; }
+  },
+  async getDealLocation(dealId) {
+    try {
+      const r = await authedFetch(`${BASE}/deals/${dealId}/location`, { headers: await headers() });
+      if (!r.ok) return { ok: false, has_location: false, status: r.status };
+      return r.json();
+    } catch { return { ok: false, has_location: false }; }
+  },
+
   // Задача A: правка своего активного груза (цена/описание/вес/объём).
   async updateCargo(id, payload) {
     const r = await authedFetch(`${BASE}/cargos/${id}`, {
