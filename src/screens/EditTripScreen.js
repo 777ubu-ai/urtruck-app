@@ -269,7 +269,7 @@ export default function EditTripScreen({ navigation, route }) {
               style={[s.typeCard, { backgroundColor: theme.card, borderColor: theme.border }, truckType === k && { backgroundColor: '#22C55E', borderColor: '#22C55E' }]}
               onPress={() => setTruckType(k)}
             >
-              <TruckTypeIcon type={k} size={24} color={truckType === k ? '#fff' : theme.textSecondary} />
+              <TruckTypeIcon type={k} size={40} color={truckType === k ? '#fff' : theme.textSecondary} />
               <Text style={[s.typeCardText, { color: theme.textSecondary }, truckType === k && { color: '#fff' }]}>{t(k)}</Text>
             </TouchableOpacity>
           ))}

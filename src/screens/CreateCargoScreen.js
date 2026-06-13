@@ -290,7 +290,7 @@ export default function CreateCargoScreen({ navigation, route }) {
                 onPress={() => { setTruckType(k); if (errors.truckType) setErrors((e) => ({ ...e, truckType: null })); setShowTruckPicker(false); }}
                 style={[s.truckChip, active ? { backgroundColor: accent.main, borderColor: accent.main } : { borderColor: v1.border }]}
               >
-                <TruckTypeIcon type={k} size={24} color={active ? '#0A0A0A' : v1.textMuted} />
+                <TruckTypeIcon type={k} size={40} color={active ? '#0A0A0A' : v1.textMuted} />
                 <Text style={[s.truckChipText, { color: active ? '#0A0A0A' : v1.textMuted }]}>{t(k)}</Text>
               </TouchableOpacity>
             );
