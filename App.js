@@ -11,7 +11,6 @@ import OfflineBanner from './src/components/OfflineBanner';
 // VerificationStatusBanner removed — after OTP users get full access
 // import VerificationStatusBanner from './src/components/VerificationStatusBanner';
 import ErrorBoundary from './src/components/ErrorBoundary';
-import UpdateBanner from './src/components/UpdateBanner';
 import AppNavigator from './src/navigation/AppNavigator';
 
 // PR-C2 (chat / push P0): парсер url для notification tap navigation.
@@ -157,7 +156,6 @@ export default function App() {
         <SafeAreaProvider>
           <ToastProvider>
             <OfflineBanner />
-            <UpdateBanner />
             <NavigationContainer ref={navRef}>
               <StatusBar style="light" />
               <AppNavigator />

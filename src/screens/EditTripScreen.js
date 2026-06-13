@@ -11,6 +11,7 @@ import RoutePointPicker from '../components/RoutePointPicker';
 import DatePicker from '../components/DatePicker';
 import {v1Colors, useV1Colors, v1AccentFor} from '../theme/designV1';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
+import TruckTypeIcon from '../components/TruckTypeIcon';
 
 const TRUCK_KEYS = ['tent', 'ref', 'platform', 'auto', 'izoterm', 'cont20', 'cont40', 'jumbo', 'mega', 'curtain', 'lowloader', 'tanker', 'dumptruck', 'grain', 'livestock', 'logger', 'hazmat', 'open_truck', 'closed', 'longliner', 'microvan'];
 const TRUCK_ICONS = {
@@ -268,7 +269,7 @@ export default function EditTripScreen({ navigation, route }) {
               style={[s.typeCard, { backgroundColor: theme.card, borderColor: theme.border }, truckType === k && { backgroundColor: '#22C55E', borderColor: '#22C55E' }]}
               onPress={() => setTruckType(k)}
             >
-              <Text style={{ fontSize: 22 }}>{TRUCK_ICONS[k]}</Text>
+              <TruckTypeIcon type={k} size={24} color={truckType === k ? '#fff' : theme.textSecondary} />
               <Text style={[s.typeCardText, { color: theme.textSecondary }, truckType === k && { color: '#fff' }]}>{t(k)}</Text>
             </TouchableOpacity>
           ))}

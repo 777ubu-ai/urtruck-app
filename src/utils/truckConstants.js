@@ -18,6 +18,21 @@ export const TRUCK_ICONS = {
   open_truck: '🚚', closed: '🚐', longliner: '🚛', microvan: '🚐',
 };
 
+// Современные line-иконки (MaterialCommunityIcons) вместо мультяшных эмодзи —
+// единый стиль, один акцентный цвет. Имена сверены с глифмапом установленной
+// версии @expo/vector-icons (все существуют). Рендерится через
+// components/TruckTypeIcon (замечание владельца 13.06: эмодзи выглядят
+// «сказочно/мультяшно»).
+export const TRUCK_MCI = {
+  tent: 'truck', ref: 'snowflake', platform: 'truck-flatbed', auto: 'car-multiple',
+  izoterm: 'fridge-outline', cont20: 'truck-cargo-container', cont40: 'truck-cargo-container',
+  jumbo: 'truck-trailer', mega: 'truck-trailer', curtain: 'truck-trailer',
+  lowloader: 'truck-flatbed', tanker: 'tanker-truck', dumptruck: 'dump-truck',
+  grain: 'truck', livestock: 'cow', logger: 'pine-tree', hazmat: 'radioactive',
+  open_truck: 'truck-flatbed', closed: 'van-utility', longliner: 'truck-trailer',
+  microvan: 'van-passenger',
+};
+
 // Brand v3: tent (default) → emerald; sky/blue swapped to graphite slate.
 // `ref` keeps its semantic cyan because it's a refrigeration cue, not a UI accent.
 export const TRUCK_COLORS = {

@@ -15,7 +15,8 @@ import { addCustomCargoType } from '../utils/cargoTypes';
 import DatePicker from '../components/DatePicker';
 import { PhotoPicker } from '../components/PhotoGallery';
 import {v1Colors, useV1Colors, v1Radius, v1Spacing, v1Typography, v1AccentFor} from '../theme/designV1';
-import { TRUCK_KEYS, TRUCK_ICONS } from '../utils/truckConstants';
+import { TRUCK_KEYS } from '../utils/truckConstants';
+import TruckTypeIcon from '../components/TruckTypeIcon';
 
 // PR-C1: backend cargos schema (marketplace_schema.sql) и CargoIn
 // pydantic-модель (api/marketplace.py:222) НЕ имеют поля comment/note.
@@ -99,7 +100,8 @@ export default function CreateCargoScreen({ navigation, route }) {
   const [pickupDate, setPickupDate] = useState('');
   const [tons, setTons] = useState('');
   const [m3, setM3] = useState('');
-  const [priceMode, setPriceMode] = useState('negotiable');
+  // «По договорённости» убрана — цена указывается всегда (priceMode фиксирован).
+  const [priceMode] = useState('fixed');
   const [price, setPrice] = useState('');
   const [currency, setCurrency] = useState('KZT');
   const [photos, setPhotos] = useState([]);
@@ -128,9 +130,11 @@ export default function CreateCargoScreen({ navigation, route }) {
     const wNum = parseFloat(tons) || 0;
     const vNum = parseFloat(m3) || 0;
     if (wNum <= 0 && vNum <= 0) errs.weight = t('val_weight_or_volume_required');
+    const pNum = parseInt(String(price || '').replace(/\s/g, ''), 10) || 0;
+    if (pNum <= 0) errs.price = t('val_price_required');
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
-      const firstKey = ['from', 'to', 'cargoDesc', 'truckType', 'pickupDate', 'weight'].find((k) => errs[k]);
+      const firstKey = ['from', 'to', 'cargoDesc', 'truckType', 'pickupDate', 'weight', 'price'].find((k) => errs[k]);
       toast(errs[firstKey] || t('fill_required_fields'), 'error', 4000);
       return;
     }
@@ -286,7 +290,7 @@ export default function CreateCargoScreen({ navigation, route }) {
                 onPress={() => { setTruckType(k); if (errors.truckType) setErrors((e) => ({ ...e, truckType: null })); setShowTruckPicker(false); }}
                 style={[s.truckChip, active ? { backgroundColor: accent.main, borderColor: accent.main } : { borderColor: v1.border }]}
               >
-                <Text style={{ fontSize: 22 }}>{TRUCK_ICONS[k]}</Text>
+                <TruckTypeIcon type={k} size={24} color={active ? '#0A0A0A' : v1.textMuted} />
                 <Text style={[s.truckChipText, { color: active ? '#0A0A0A' : v1.textMuted }]}>{t(k)}</Text>
               </TouchableOpacity>
             );
@@ -348,46 +352,33 @@ export default function CreateCargoScreen({ navigation, route }) {
       </View>
       {errors.weight ? <Text style={s.err}>⚠️ {errors.weight}</Text> : null}
 
-      {/* Цена block */}
+      {/* Цена block — «По договорённости» убрана (решение владельца 13.06):
+          цену указывают всегда, ввод суммы + валюта. */}
       <View style={[s.priceCard, { borderColor: v1.border }]}>
         <Text style={s.priceLabel}>💰 {t('payment_label_full')}</Text>
-        <View style={s.priceModeRow}>
-          <TouchableOpacity
-            onPress={() => { setPriceMode('negotiable'); setPrice(''); }}
-            style={[s.priceMode, priceMode === 'negotiable' ? { backgroundColor: accent.main, borderColor: accent.main } : { borderColor: v1.border }]}
-          >
-            <Text style={[s.priceModeText, { color: priceMode === 'negotiable' ? '#0A0A0A' : v1.textMuted }]}>{t('payment_negotiable')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setPriceMode('fixed')}
-            style={[s.priceMode, priceMode === 'fixed' ? { backgroundColor: accent.main, borderColor: accent.main } : { borderColor: v1.border }]}
-          >
-            <Text style={[s.priceModeText, { color: priceMode === 'fixed' ? '#0A0A0A' : v1.textMuted }]}>{t('payment_fixed')}</Text>
-          </TouchableOpacity>
-        </View>
-        {priceMode === 'fixed' ? (
-          <View style={s.row2}>
-            <View style={{ flex: 1 }}>
-              <Field
-                icon="💳"
-                label={t('amount_label')}
-                value={price}
-                onChangeText={(v) => setPrice(String(v || '').replace(/[^\d]/g, ''))}
-                keyboardType="numeric"
-                placeholder={t('price_example_placeholder')}
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Field
-                variant="dropdown"
-                icon="¤"
-                label={t('currency_label')}
-                value={`${(CURRENCY_OPTIONS.find((c) => c.k === currency) || {}).l || ''} ${currency}`}
-                onPress={() => setShowCurrencyPicker((v) => !v)}
-              />
-            </View>
+        <View style={s.row2}>
+          <View style={{ flex: 1 }}>
+            <Field
+              icon="💳"
+              label={t('amount_label')}
+              value={price}
+              onChangeText={(v) => { setPrice(String(v || '').replace(/[^\d]/g, '')); if (errors.price) setErrors((e) => ({ ...e, price: null })); }}
+              keyboardType="numeric"
+              placeholder={t('price_example_placeholder')}
+              testID="cargo-price-field"
+            />
           </View>
-        ) : null}
+          <View style={{ flex: 1 }}>
+            <Field
+              variant="dropdown"
+              icon="¤"
+              label={t('currency_label')}
+              value={`${(CURRENCY_OPTIONS.find((c) => c.k === currency) || {}).l || ''} ${currency}`}
+              onPress={() => setShowCurrencyPicker((v) => !v)}
+            />
+          </View>
+        </View>
+        {errors.price ? <Text style={s.err}>⚠️ {errors.price}</Text> : null}
       </View>
       <BottomSheet visible={showCurrencyPicker} onClose={() => setShowCurrencyPicker(false)} title={t('currency_label')}>
         <View style={s.currencyRow}>

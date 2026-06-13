@@ -15,7 +15,8 @@ import BottomSheet from '../components/ui/v1/BottomSheet';
 import RoutePointPicker from '../components/RoutePointPicker';
 import DatePicker from '../components/DatePicker';
 import {v1Colors, useV1Colors, v1Radius, v1Spacing, v1Typography, v1AccentFor} from '../theme/designV1';
-import { TRUCK_KEYS, TRUCK_ICONS } from '../utils/truckConstants';
+import { TRUCK_KEYS } from '../utils/truckConstants';
+import TruckTypeIcon from '../components/TruckTypeIcon';
 
 // CreateTripScreen — design v1, screen 09. Driver publishes a route.
 //
@@ -285,7 +286,7 @@ export default function CreateTripScreen({ navigation, route }) {
                 onPress={() => { setTruckType(k); if (errors.truckType) setErrors((e) => ({ ...e, truckType: null })); setShowTruckPicker(false); }}
                 style={[s.truckChip, active ? { backgroundColor: accent.main, borderColor: accent.main } : { borderColor: v1.border }]}
               >
-                <Text style={{ fontSize: 22 }}>{TRUCK_ICONS[k]}</Text>
+                <TruckTypeIcon type={k} size={24} color={active ? '#0A0A0A' : v1.textMuted} />
                 <Text style={[s.truckChipText, { color: active ? '#0A0A0A' : v1.textMuted }]}>{t(k)}</Text>
               </TouchableOpacity>
             );
