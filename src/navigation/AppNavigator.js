@@ -111,8 +111,9 @@ function MainTabs({ route }) {
   //     Чат (Chats, с бейджем непрочитанного) · Профиль. Кнопка «Разместить»
   //     живёт ВНУТРИ «Рейсы», а не отдельной вкладкой (§2.2.2). Чат всегда
   //     на панели — критичный инструмент биржи (§2.4).
-  //   Клиент (4): Грузы (MyWork) · Машины (Feed) · «+» Создать (Publish) ·
-  //     Профиль. НЕ трогать без отдельного приказа (§2.3).
+  //   Клиент (5, приказ 2026-06-13): Грузы (MyWork) · Машины (Feed) ·
+  //     «+» Создать (Publish, центр) · Чат (Chats, с бейджем) · Профиль.
+  //     Чат добавлен — без переписки нет доверия грузоотправителя к бирже.
   // BottomNav красит неон по роли: driver #00E676, client #F59E0B.
   return (
     <Tab.Navigator
@@ -132,6 +133,7 @@ function MainTabs({ route }) {
           <Tab.Screen name="MyWork" component={MyTripsScreen} initialParams={{ role }} />
           <Tab.Screen name="Feed" component={FeedScreen} initialParams={{ role }} />
           <Tab.Screen name="Publish" component={PublishStub} initialParams={{ role }} />
+          <Tab.Screen name="Chats" component={ChatsListScreen} initialParams={{ role }} />
           <Tab.Screen name="Profile" component={ProfileScreen} initialParams={{ role }} />
         </>
       )}

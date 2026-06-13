@@ -136,4 +136,7 @@ export const v1Shadow = {
 export const v1AccentFor = (role) =>
   role === 'driver'
     ? { main: v1Colors.driver, deep: v1Colors.driverDeep, glow: v1Colors.driverGlow, soft: v1Colors.driverSoft, onAccent: v1Colors.driverOnAccent }
-    : { main: v1Colors.cargoOwner, deep: v1Colors.cargoOwnerDeep, glow: v1Colors.cargoOwnerGlow, soft: v1Colors.cargoOwnerSoft, onAccent: '#FFFFFF' };
+    // client onAccent = тёмный (#0C0A09): белый на янтарном #F59E0B давал
+    // контраст ~2:1 (WCAG fail). Чёрный — ~11:1 (AAA), премиальнее. Симметрично
+    // водительскому black-on-green.
+    : { main: v1Colors.cargoOwner, deep: v1Colors.cargoOwnerDeep, glow: v1Colors.cargoOwnerGlow, soft: v1Colors.cargoOwnerSoft, onAccent: '#0C0A09' };
