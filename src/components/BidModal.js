@@ -44,6 +44,11 @@ export default function BidModal({
   bidId,
   initialAmount,
   initialMessage,
+  // Брендовый акцент модалки. По умолчанию — driver-зелёный (не ломаем
+  // водителя). Клиентские экраны (TripDetail/CargoDetail для грузоотправителя)
+  // прокидывают v1AccentFor('client').main = оранжевый + onAccent = #0C0A09.
+  accent = '#22C55E',
+  onAccent = '#fff',
 }) {
   const isCounter = mode === 'counter';
   const isEdit = mode === 'edit' || mode === 'discount';
@@ -195,10 +200,10 @@ export default function BidModal({
             {!isPrefill && createQuickPrices.map((p) => (
               <TouchableOpacity
                 key={p}
-                style={[s.quickBtn, { backgroundColor: theme.card, borderColor: theme.border }, bid === String(p) && s.quickBtnActive]}
+                style={[s.quickBtn, { backgroundColor: theme.card, borderColor: theme.border }, bid === String(p) && { backgroundColor: accent + '18', borderColor: accent }]}
                 onPress={() => setBid(String(p))}
               >
-                <Text style={[s.quickBtnText, { color: theme.textSecondary }, bid === String(p) && s.quickBtnTextActive]}>
+                <Text style={[s.quickBtnText, { color: theme.textSecondary }, bid === String(p) && { color: accent }]}>
                   {fmtMoney(p)}
                 </Text>
               </TouchableOpacity>
@@ -208,10 +213,10 @@ export default function BidModal({
               return (
                 <TouchableOpacity
                   key={step}
-                  style={[s.quickBtn, { backgroundColor: theme.card, borderColor: theme.border }, bid === String(next) && s.quickBtnActive]}
+                  style={[s.quickBtn, { backgroundColor: theme.card, borderColor: theme.border }, bid === String(next) && { backgroundColor: accent + '18', borderColor: accent }]}
                   onPress={() => setBid(String(next))}
                 >
-                  <Text style={[s.quickBtnText, { color: theme.textSecondary }, bid === String(next) && s.quickBtnTextActive]}>
+                  <Text style={[s.quickBtnText, { color: theme.textSecondary }, bid === String(next) && { color: accent }]}>
                     -{fmtMoney(step)}
                   </Text>
                 </TouchableOpacity>
@@ -243,12 +248,12 @@ export default function BidModal({
           {error ? <Text style={s.errorText}>{error}</Text> : null}
 
           <TouchableOpacity
-            style={[s.submitBtn, (!bid || loading) && s.submitBtnDisabled]}
+            style={[s.submitBtn, { backgroundColor: accent }, (!bid || loading) && s.submitBtnDisabled]}
             onPress={handleSubmit}
             disabled={!bid || loading}
           >
-            {loading ? <ActivityIndicator color="#fff" /> : (
-              <Text style={s.submitBtnText}>
+            {loading ? <ActivityIndicator color={onAccent} /> : (
+              <Text style={[s.submitBtnText, { color: onAccent }]}>
                 {isCounter ? t('send_counter_offer')
                   : isDiscount ? t('send_discount')
                   : isEdit ? t('save_changes')

@@ -283,7 +283,7 @@ export default function CargoDetail({ navigation, route }) {
       } else if (c.id) {
         removeCargo(c.id);
       }
-      toast('🗑 Груз удалён', 'info');
+      toast('🗑 ' + t('cargo_deleted'), 'info');
       navigation.goBack();
     };
     if (Platform.OS === 'web') {
@@ -320,12 +320,12 @@ export default function CargoDetail({ navigation, route }) {
   const safePhotos = (c.photos || []).filter(p => typeof p === 'string' && !p.startsWith('data:') && p.length < 1000);
   const dash = t('not_specified');
 
-  // v1 brand accent: orange when cargo is shown to the driver (cargo target),
-  // emerald otherwise (owner viewing own listing or shipper-on-shipper). The
-  // accent only drives the brand-bar back-arrow + price card border; existing
-  // CTA colors (BidModal etc.) remain governed by their own components.
+  // v1 brand accent: карточка груза — объект грузоотправителя, поэтому акцент
+  // всегда клиентский (оранжевый) для всех зрителей. Раньше владелец-клиент,
+  // открывая свой груз, видел зелёный driver-акцент (решение владельца
+  // 2026-06-13: клиент везде оранжевый).
   const isDriverViewing = role === 'driver' || (driverId && driverId === myUserId);
-  const v1Accent = v1AccentFor(isDriverViewing ? 'client' : 'driver');
+  const v1Accent = v1AccentFor('client');
 
   return (
     <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
@@ -396,7 +396,7 @@ export default function CargoDetail({ navigation, route }) {
         <Text style={[s.bidsTitle, { color: theme.text }]}>{formatBids(bids.length)}</Text>
         {bids.length === 0 && (
           <Text style={{ color: theme.textMuted, textAlign: 'center', padding: 20, fontSize: 13 }}>
-            Пока нет предложений. Будьте первым!
+            {t('no_bids_be_first')}
           </Text>
         )}
         {bids.map(b => {
@@ -811,6 +811,10 @@ export default function CargoDetail({ navigation, route }) {
         bidId={editingBid?.id}
         initialAmount={editingBid?.amount}
         initialMessage={editingBid?.message}
+        // counter-режим открывает владелец-клиент → оранжевый акцент;
+        // create/edit (водитель ставит) — зелёный по умолчанию.
+        accent={bidModalMode === 'counter' ? v1Accent.main : '#22C55E'}
+        onAccent={bidModalMode === 'counter' ? v1Accent.onAccent : '#fff'}
       />
       <ShareModal
         visible={shareModal}

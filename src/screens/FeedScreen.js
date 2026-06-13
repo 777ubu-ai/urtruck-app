@@ -397,7 +397,7 @@ export default function FeedScreen({ navigation, route }) {
     setRefreshing(true);
     loadFromServer().finally(() => {
       setRefreshing(false);
-      toast('🔄 Обновлено', 'info', 1500);
+      toast('🔄 ' + t('refreshed'), 'info', 1500);
     });
   }, [isDriver]);
 

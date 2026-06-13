@@ -222,26 +222,26 @@ export default function TripDetail({ navigation, route }) {
           )}
           <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginTop: 10 }}>
             {isDriverSide && dealStatus === 'accepted' && (
-              <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: '#22C55E' }]} onPress={() => changeDealStatus('in_progress')} disabled={statusLoading}>
+              <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: v1Accent.main }]} onPress={() => changeDealStatus('in_progress')} disabled={statusLoading}>
                 <Text style={s.dealActionText}>{statusLoading ? '...' : '🚛 ' + t('start_delivery')}</Text>
               </TouchableOpacity>
             )}
             {isDriverSide && dealStatus === 'in_progress' && (
-              <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: '#22C55E' }]} onPress={() => changeDealStatus('delivered')} disabled={statusLoading}>
+              <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: v1Accent.main }]} onPress={() => changeDealStatus('delivered')} disabled={statusLoading}>
                 <Text style={s.dealActionText}>{statusLoading ? '...' : '✅ ' + t('mark_arrived')}</Text>
               </TouchableOpacity>
             )}
             {isShipper && dealStatus === 'in_progress' && (
-              <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: '#22C55E' }]} onPress={() => changeDealStatus('delivered')} disabled={statusLoading}>
-                <Text style={s.dealActionText}>{statusLoading ? '...' : '✅ ' + t('confirm_delivery')}</Text>
+              <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: v1Accent.main }]} onPress={() => changeDealStatus('delivered')} disabled={statusLoading}>
+                <Text style={[s.dealActionText, { color: v1Accent.onAccent }]}>{statusLoading ? '...' : '✅ ' + t('confirm_delivery')}</Text>
               </TouchableOpacity>
             )}
             {chatRoomId && (
               <TouchableOpacity
-                style={[s.dealActionBtn, { backgroundColor: '#22C55E' }]}
+                style={[s.dealActionBtn, { backgroundColor: v1Accent.main }]}
                 onPress={() => navigation.navigate('Chat', { roomId: chatRoomId, role })}
               >
-                <Text style={s.dealActionText}>💬 {t('order_chat')}</Text>
+                <Text style={[s.dealActionText, { color: v1Accent.onAccent }]}>💬 {t('order_chat')}</Text>
               </TouchableOpacity>
             )}
             {(dealStatus === 'accepted' || dealStatus === 'in_progress') && (
@@ -265,8 +265,6 @@ export default function TripDetail({ navigation, route }) {
     );
   }
 
-  // Brand v3: driver = emerald, client = orange. Blue is no longer a brand color.
-  const accent = role === 'driver' ? '#22C55E' : '#F59E0B';
   const stats = routeStats(trip.from, trip.to, trip.transit);
   const view = tripDisplay(trip, t);
 
@@ -503,6 +501,8 @@ export default function TripDetail({ navigation, route }) {
         currentPrice={trip.price || 0}
         currency={trip.currency}
         tripId={trip.id}
+        accent={v1Accent.main}
+        onAccent={v1Accent.onAccent}
       />
 
 
