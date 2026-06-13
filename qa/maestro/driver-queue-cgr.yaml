@@ -1,0 +1,41 @@
+# driver-queue-cgr — Поток А: экран «Очередь» (хаб CGR) approved-водителем (serik).
+# Гейт: только driver + approved (verification_level>=3). Хаб: страны →
+# переходы → бронь на CarGoRuqsat. Плюс поиск своей фуры по госномеру.
+appId: host.exp.Exponent
+name: driver-queue-cgr
+tags: [driver, cgr, queue]
+env:
+  MAESTRO_ACTOR: serik
+---
+- runFlow: _lib/qa-login.yaml
+# Водитель: вкладка Queue (bottom-nav-queue есть только у driver)
+- assertVisible: { id: "bottom-nav-queue" }
+- tapOn: { id: "bottom-nav-queue" }
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: { id: "queue-title" }
+    timeout: 12000
+- takeScreenshot: D0_queue_hub
+# Approved-водитель видит хаб (не гейт): карточки стран
+- assertVisible: { id: "queue-country-CN" }
+- assertNotVisible: { id: "queue-gate" }
+# Поиск своей фуры по госномеру
+- tapOn: { id: "queue-plate-input" }
+- inputText: "777ABC01"
+- hideKeyboard
+- tapOn: { id: "queue-plate-search" }
+- waitForAnimationToEnd
+- takeScreenshot: D1_plate_lookup_result
+# Переход в страну CN → список погранпереходов
+- tapOn: { id: "queue-country-CN" }
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: { id: "queue-checkpoint-card" }
+    timeout: 8000
+- takeScreenshot: D2_checkpoints_CN
+- assertVisible: { id: "queue-checkpoint-card" }
+- assertVisible: { id: "queue-back" }
+# Бронь на CarGoRuqsat (внешний портал)
+- tapOn: { id: "queue-book-cgr" }
+- waitForAnimationToEnd
+- takeScreenshot: D3_book_cgr_tapped
