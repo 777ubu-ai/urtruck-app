@@ -99,15 +99,19 @@ export default function MyTripsScreen({ navigation, route }) {
   const notifUnread = useUnreadNotifications();
 
   // Driver tabs (issue #2): routes / offers / inwork / done (+ secondary
-  // archive). Client keeps legacy my / bids / deals. Legacy initialTab
-  // values are remapped so deep-links / CreateTrip nav still land sanely.
+  // archive). Client (грузоотправитель) — зеркало в его терминах:
+  // searching / enroute / delivered (+ archive). Legacy initialTab
+  // (my/bids/deals) ремапим, чтобы deep-links/nav приземлялись корректно.
   const DRIVER_TABS_KEYS = ['routes', 'offers', 'inwork', 'done', 'archive'];
-  const rawInitialTab = route.params?.initialTab || (isDriver ? 'routes' : 'my');
+  const CLIENT_TABS_KEYS = ['searching', 'enroute', 'delivered', 'archive'];
+  const rawInitialTab = route.params?.initialTab || (isDriver ? 'routes' : 'searching');
   const normInitialTab = isDriver
     ? (DRIVER_TABS_KEYS.includes(rawInitialTab)
         ? rawInitialTab
         : (rawInitialTab === 'bids' ? 'offers' : rawInitialTab === 'deals' ? 'inwork' : 'routes'))
-    : rawInitialTab;
+    : (CLIENT_TABS_KEYS.includes(rawInitialTab)
+        ? rawInitialTab
+        : (rawInitialTab === 'deals' ? 'enroute' : 'searching'));
   const justCreatedTrip = route.params?.justCreatedTrip || null;
   const [tab, setTab] = useState(normInitialTab);
   const mounted = useMountedRef();  // QA-аудит P1-8
@@ -263,6 +267,22 @@ export default function MyTripsScreen({ navigation, route }) {
     ...serverDeals.filter((d) => ARCHIVE_STATUSES.includes(d.status)).map((d) => ({ ...d, _kind: 'deal' })),
     ...myBids.filter((b) => ['rejected', 'cancelled', 'expired'].includes(b.status)).map((b) => ({ ...b, _kind: 'bid' })),
     ...myItemsExpired.map((it) => ({ ...it, _kind: 'route', _expired: true })),
+  ];
+
+  // ─── Client (грузоотправитель) buckets — зеркало водителя в его терминах ───
+  //   Ищу машину (searching) = активные мои грузы (идут ставки; принять/
+  //                            отклонить ставку — В КАРТОЧКЕ груза, не вкладкой)
+  //   Везут (enroute)        = сделки accepted/in_progress/picked_up
+  //   Доставлено (delivered) = сделки completed/delivered
+  //   Архив                  = отменённые/отклонённые/истёкшие сделки + истёкшие грузы
+  // Сделки общие с driver-ветвью (driverInWork/driverDone = «мои сделки по
+  // статусу», роль не важна) — переиспользуем их для клиента.
+  // «Ищу машину» = только активные грузы (без already taken — у принятого
+  // груза есть сделка, она показывается в «Везут», иначе был бы дубль).
+  const clientSearching = myItems.filter((c) => !c.status || c.status === 'active');
+  const clientArchive = [
+    ...serverDeals.filter((d) => ARCHIVE_STATUSES.includes(d.status)).map((d) => ({ ...d, _kind: 'deal' })),
+    ...myItemsExpired.map((it) => ({ ...it, _kind: 'cargo', _expired: true })),
   ];
 
   // ─── Cards ───
@@ -678,9 +698,9 @@ export default function MyTripsScreen({ navigation, route }) {
         { key: 'done',   label: t('tab_done'),      testID: 'my-work-tab-done' },
       ]
     : [
-        { key: 'my',    label: t('tab_active'),       testID: 'my-work-tab-my' },
-        { key: 'bids',  label: t('tab_in_progress'),  testID: 'my-work-tab-bids' },
-        { key: 'deals', label: t('tab_archive'),      testID: 'my-work-tab-orders' },
+        { key: 'searching', label: t('client_tab_searching'), testID: 'my-work-tab-searching' },
+        { key: 'enroute',   label: t('client_tab_enroute'),   testID: 'my-work-tab-enroute' },
+        { key: 'delivered', label: t('client_tab_delivered'), testID: 'my-work-tab-delivered' },
       ];
 
   const stats = isDriver
@@ -690,9 +710,9 @@ export default function MyTripsScreen({ navigation, route }) {
         { value: driverDone.length,   label: t('tab_done') },
       ]
     : [
-        { value: myItems.length,  label: t('stats_active') },
-        { value: myBids.length,   label: t('stats_bids') },
-        { value: myDeals.length,  label: t('stats_in_progress') },
+        { value: clientSearching.length, label: t('client_tab_searching') },
+        { value: driverInWork.length,    label: t('client_tab_enroute') },
+        { value: driverDone.length,      label: t('client_tab_delivered') },
       ];
 
   // Archive renderer dispatches by item kind (deal / bid / expired route).
@@ -703,8 +723,11 @@ export default function MyTripsScreen({ navigation, route }) {
 
   const DRIVER_DATA = { routes: myItems, offers: driverOffers, inwork: driverInWork, done: driverDone, archive: driverArchive };
   const DRIVER_RENDER = { routes: renderMyItem, offers: renderBid, inwork: renderDeal, done: renderDeal, archive: renderArchiveItem };
-  const CLIENT_DATA = { my: myItems, bids: myBids, deals: myDeals };
-  const CLIENT_RENDER = { my: renderMyItem, bids: renderBid, deals: renderDeal };
+  // Client (грузоотправитель): входящие ставки больше НЕ вкладка — они в
+  // карточке груза (CargoDetail). Вкладки — стадии: ищу машину / везут /
+  // доставлено + архив.
+  const CLIENT_DATA = { searching: clientSearching, enroute: driverInWork, delivered: driverDone, archive: clientArchive };
+  const CLIENT_RENDER = { searching: renderMyItem, enroute: renderDeal, delivered: renderDeal, archive: renderArchiveItem };
   const listData = isDriver ? (DRIVER_DATA[tab] || []) : (CLIENT_DATA[tab] || []);
   const listRender = isDriver ? (DRIVER_RENDER[tab] || renderMyItem) : (CLIENT_RENDER[tab] || renderMyItem);
 
@@ -719,9 +742,10 @@ export default function MyTripsScreen({ navigation, route }) {
       if (tab === 'done') return <EmptyState title={t('no_done_yet')} description={t('no_done_desc')} />;
       return <EmptyState title={t('no_archive_yet')} description={t('no_archive_desc')} />;
     }
-    if (tab === 'my') return <EmptyState title={t('no_cargos_yet')} description={t('no_cargos_desc')} actionLabel={t('place_cargo')} onAction={() => navigation.navigate('CreateCargo')} />;
-    if (tab === 'bids') return <EmptyState title={t('no_responses_yet')} description={t('no_responses_desc')} actionLabel={t('place_cargo')} onAction={() => navigation.navigate('CreateCargo')} />;
-    return <EmptyState title={t('no_orders_yet')} description={t('no_orders_desc_client')} />;
+    if (tab === 'searching') return <EmptyState title={t('no_cargos_yet')} description={t('client_searching_desc')} actionLabel={t('place_cargo')} onAction={() => navigation.navigate('CreateCargo')} />;
+    if (tab === 'enroute') return <EmptyState title={t('client_no_enroute_yet')} description={t('client_no_enroute_desc')} />;
+    if (tab === 'delivered') return <EmptyState title={t('client_no_delivered_yet')} description={t('client_no_delivered_desc')} />;
+    return <EmptyState title={t('no_archive_yet')} description={t('no_archive_desc')} />;
   };
 
   return (
@@ -767,19 +791,20 @@ export default function MyTripsScreen({ navigation, route }) {
         <SegmentTabs items={TABS} value={tab === 'archive' ? null : tab} onChange={setTab} accent={v1Accent.main} />
         <StatsRow items={stats} accent={v1Accent.main} />
         {/* Архив — вторичный фильтр (issue #2): отменённые/отклонённые/
-            истёкшие, НЕ основная вкладка. Карточек «Начать перевозку» тут нет. */}
-        {isDriver ? (
+            истёкшие, НЕ основная вкладка. Активных заказов тут нет.
+            Доступен обеим ролям (driver и грузоотправитель). */}
+        {(
           <TouchableOpacity
             testID="my-work-archive-toggle"
-            onPress={() => setTab(tab === 'archive' ? 'routes' : 'archive')}
+            onPress={() => setTab(tab === 'archive' ? (isDriver ? 'routes' : 'searching') : 'archive')}
             style={s.archiveToggle}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <Text style={[s.archiveToggleText, { color: tab === 'archive' ? v1Accent.main : v1.textMuted }]}>
-              {tab === 'archive' ? `‹ ${t('back_to_active')}` : `${t('tab_archive')} (${driverArchive.length}) ›`}
+              {tab === 'archive' ? `‹ ${t('back_to_active')}` : `${t('tab_archive')} (${(isDriver ? driverArchive : clientArchive).length}) ›`}
             </Text>
           </TouchableOpacity>
-        ) : null}
+        )}
       </View>
 
       <FlatList
