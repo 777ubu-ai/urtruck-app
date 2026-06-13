@@ -438,12 +438,10 @@ export default function ProfileScreen({ navigation, route }) {
           <TouchableOpacity
             style={s.logoutBtn}
             onPress={async () => {
+              // signOut() чистит session+hasToken → AppNavigator реактивно
+              // переключает на неавторизованный стек. Доп. reset не нужен
+              // (бил в OnboardingV2, которого нет в authenticated-стеке → тост-ошибка).
               try { await signOut(); } catch {}
-              try {
-                navigation.reset({ index: 0, routes: [{ name: 'OnboardingV2' }] });
-              } catch {
-                try { navigation.popToTop(); } catch {}
-              }
             }}
             testID="qa-debug-logout"
             accessibilityLabel="QA debug logout"
@@ -458,19 +456,11 @@ export default function ProfileScreen({ navigation, route }) {
             t('logout_title') || t('logout'),
             t('logout_message'),
             async () => {
-              // RC2 hotfix (P1-2): await signOut (теперь async) →
-              // навигация reset как safety net. AppNavigator должен
-              // реактивно перерисоваться от hasToken=false, но
-              // explicit reset гарантирует переход на onboarding
-              // даже если listener'ы гонятся.
+              // signOut() (async) чистит session+hasToken → AppNavigator
+              // реактивно переключает на неавторизованный стек. Прежний
+              // navigation.reset({OnboardingV2}) бил в маршрут, которого нет в
+              // authenticated-стеке → красный тост «RESET not handled». Убран.
               try { await signOut(); } catch {}
-              try {
-                navigation.reset({ index: 0, routes: [{ name: 'OnboardingV2' }] });
-              } catch (e) {
-                // OnboardingV2 может быть не в стеке (qaPreview / legacy);
-                // fallback на корневой Stack — пусть AppNavigator решит.
-                try { navigation.popToTop(); } catch {}
-              }
             },
             t('cancel') || 'Отмена',
             t('logout_confirm') || t('logout'),

@@ -1,0 +1,33 @@
+# client-logout-verify — P1: реальный логаут уходит на онбординг без тост-ошибки
+appId: host.exp.Exponent
+name: client-logout-verify
+tags: [client, regression, logout]
+env:
+  MAESTRO_ACTOR: boris
+---
+- runFlow: _lib/qa-login.yaml
+- tapOn: { id: "bottom-nav-profile" }
+- waitForAnimationToEnd
+- takeScreenshot: C0_profile_before_logout
+- scrollUntilVisible:
+    element: { id: "profile-logout" }
+    direction: DOWN
+    timeout: 6000
+- tapOn: { id: "profile-logout" }
+- waitForAnimationToEnd
+- takeScreenshot: C1_logout_confirm_dialog
+# Подтверждаем выход в диалоге (точный матч, чтобы не попасть в «Выйти из аккаунта»)
+- tapOn:
+    text: "^Выйти$"
+- waitForAnimationToEnd
+- waitForAnimationToEnd
+- takeScreenshot: C2_after_logout
+# Должны оказаться на онбординге/авторизации, НЕ в Profile, БЕЗ ошибки RESET
+- extendedWaitUntil:
+    visible: { id: "onb-v2-cta-guest" }
+    timeout: 12000
+- assertVisible: { id: "onb-v2-cta-guest" }
+- assertNotVisible: { id: "bottom-nav-profile" }
+- assertNotVisible: "RESET"
+- assertNotVisible: "not handled by any navigator"
+- takeScreenshot: C3_onboarding_clean_no_error
