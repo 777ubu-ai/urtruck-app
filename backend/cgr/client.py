@@ -83,18 +83,45 @@ class CGRClient:
         r.raise_for_status()
         return r
 
-    # --- High-level helpers ---
-    async def fetch_scoreboard(self) -> str | dict:
-        """Возвращает сырой контент (HTML или JSON). Парсинг в parsers.py."""
-        r = await self.get("/ru/registry/scoreboard")
-        ct = r.headers.get("content-type", "")
-        return r.json() if "json" in ct else r.text
+    # --- High-level helpers (Поток А, публичные реестры) ---
+    async def fetch_checkpoint_list(self, country_code: str | None = None) -> str:
+        """Справочник погранпереходов /ru/registry/checkpoint/list (HTML).
 
-    async def fetch_booking_lookup(self, booking_number: str) -> str | dict:
-        # TODO: после разведки 1.2 — заменить params на реальный формат
-        r = await self.get("/ru/registry/public-list", params={"q": booking_number})
-        ct = r.headers.get("content-type", "")
-        return r.json() if "json" in ct else r.text
+        country_code — значение фильтра flBorderCountry (x045=Китай, x181=Россия,
+        x225=Узбекистан, x109=Кыргызстан, x210=Туркменистан) для авторитетной
+        привязки страны-соседа.
+        """
+        params = {"flBorderCountry": country_code} if country_code else None
+        r = await self.get("/ru/registry/checkpoint/list", params=params)
+        return r.text
+
+    async def fetch_public_list(self, status: str | None = None, page: int = 1) -> str:
+        """Страница реестра очереди /ru/registry/public-list (HTML).
+
+        status — значение фильтра flStatus (напр. 'Pending' = «В очереди»).
+        """
+        params: dict = {"p": page}
+        if status:
+            params["flStatus"] = status
+        r = await self.get("/ru/registry/public-list", params=params)
+        return r.text
+
+    async def fetch_scoreboard(self) -> str:
+        """Сырьё для табло = страница реестра, отфильтрованная по «В очереди».
+
+        Раньше дёргали /ru/registry/scoreboard (там — список броней одного
+        маршрута, не агрегат). Реальную загруженность собираем агрегацией
+        public-list?flStatus=Pending (см. scoreboard_service).
+        """
+        return await self.fetch_public_list(status="Pending", page=1)
+
+    async def fetch_booking_lookup(self, plate: str) -> str:
+        """Реестр, отфильтрованный по ГРНЗ водителя (?flTruckNumber=...).
+
+        В публичном реестре нет «номера брони» — ищем по госномеру ТС.
+        """
+        r = await self.get("/ru/registry/public-list", params={"flTruckNumber": plate})
+        return r.text
 
     async def fetch_blocklist_page(self, page: int = 1) -> str | dict:
         # TODO: после разведки 1.4 — заменить на реальную пагинацию

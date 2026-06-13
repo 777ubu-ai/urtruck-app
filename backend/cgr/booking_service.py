@@ -15,6 +15,47 @@ logger = logging.getLogger("cgr.booking")
 _metrics_polls = 0
 
 
+# Статусы парсера (in_queue/crossed/...) → жизненный цикл cgr_booking_status
+# (CHECK: pending|verified|active|completed|cancelled|not_found).
+_STATUS_TO_LIFECYCLE = {
+    "in_queue": "active",
+    "called": "active",
+    "crossed": "completed",
+    "revoked": "cancelled",
+    "payment": "pending",
+    "not_paid": "pending",
+    "validating": "pending",
+    "review_failed": "pending",
+}
+
+
+def _to_lifecycle(code: str | None) -> str:
+    return _STATUS_TO_LIFECYCLE.get(code or "", "pending")
+
+
+async def lookup_by_plate(plate: str) -> dict:
+    """Живой публичный поиск статуса по ГРНЗ (без БД, без авторизации).
+
+    Возвращает driver-facing dict для эндпоинта /api/v1/borders/lookup.
+    Это Поток А: данные из публичного реестра CGR.
+    """
+    if not cgr_settings.feature_enabled:
+        return {"enabled": False}
+    payload = await cgr_client.fetch_booking_lookup(plate)
+    parsed = parse_booking_lookup(payload, plate)
+    if parsed is None:
+        return {"found": False, "plate": plate}
+    return {
+        "found": True,
+        "plate": plate,
+        "status": parsed["status"],            # in_queue / crossed / revoked / ...
+        "is_late": parsed.get("is_late", False),
+        "status_raw": parsed.get("status_raw"),
+        "checkpoint": parsed.get("checkpoint"),
+        "queue_datetime": parsed.get("queue_datetime"),
+    }
+
+
 def create_booking(
     urtruck_user_id: str,
     urtruck_trip_id: str | None,
@@ -72,7 +113,9 @@ async def poll_active() -> dict:
             new_status = "not_found"
             new_position = None
         else:
-            new_status = parsed.get("status", b["status"])
+            # parsed["status"] — код парсера (in_queue/crossed/...), маппим в
+            # lifecycle, иначе нарушим CHECK-констрейнт cgr_booking_status.
+            new_status = _to_lifecycle(parsed.get("status"))
             new_position = parsed.get("queue_position")
 
         was_changed = (new_status != b["status"]) or (new_position != b.get("queue_position"))

@@ -40,6 +40,18 @@ async def _booking_poll_job():
         logger.exception("cgr.scheduler: booking_poll_job crashed")
 
 
+async def _bootstrap_job():
+    """Разовый старт: засеять справочник переходов из CGR и сразу собрать
+    первое табло, чтобы данные были доступны не дожидаясь первого интервала."""
+    from cgr import scoreboard_service
+    try:
+        seeded = await scoreboard_service.seed_checkpoints_from_cgr()
+        result = await scoreboard_service.fetch_and_store()
+        logger.info("cgr.scheduler: bootstrap seeded=%s fetch=%s", seeded, result)
+    except Exception:
+        logger.exception("cgr.scheduler: bootstrap crashed")
+
+
 async def _blocklist_job():
     from cgr import blocklist_service
     try:
@@ -86,23 +98,27 @@ def start() -> AsyncIOScheduler | None:
         coalesce=True,
         misfire_grace_time=300,
     )
+    # Blocklist-job НЕ регистрируем: parse_blocklist_page ещё не реализован
+    # (этап разведки 1.4, PII). Иначе cron в 03:00 падал бы каждый день.
+    # Вернуть после реализации парсера блок-листа.
+
+    # Разовый bootstrap почти сразу после старта (сид справочника + первое табло).
+    from datetime import datetime, timedelta, timezone
     s.add_job(
-        _blocklist_job,
-        CronTrigger.from_crontab(cgr_settings.blocklist_cron, timezone="UTC"),
-        id="cgr_blocklist",
-        name="CGR blocklist daily refresh",
+        _bootstrap_job,
+        "date",
+        run_date=datetime.now(timezone.utc) + timedelta(seconds=5),
+        id="cgr_bootstrap",
+        name="CGR bootstrap seed+fetch",
         max_instances=1,
-        coalesce=True,
-        misfire_grace_time=3600,
     )
 
     s.start()
     _scheduler = s
     logger.info(
-        "cgr.scheduler: started — scoreboard every %dm, bookings every %dm, blocklist '%s'",
+        "cgr.scheduler: started — scoreboard every %dm, bookings every %dm (blocklist disabled until parser ready)",
         cgr_settings.scoreboard_interval_min,
         cgr_settings.booking_poll_interval_min,
-        cgr_settings.blocklist_cron,
     )
     return s
 

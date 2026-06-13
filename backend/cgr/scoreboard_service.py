@@ -1,28 +1,91 @@
-"""Сервис онлайн-табло — fetch → parse → save в cgr_scoreboard."""
+"""Сервис онлайн-табло — fetch → parse → save в cgr_scoreboard.
+
+Поток А: реальную загруженность собираем агрегацией публичного реестра
+/ru/registry/public-list?flStatus=Pending — считаем машины «В очереди» по
+каждому пункту пропуска. Времени ожидания в публичных данных нет, поэтому
+estimated_wait_minutes = None (показываем длину очереди, а не выдуманные часы).
+"""
 import logging
 
 from database import cgr_dal
 
 from .client import cgr_client
 from .exceptions import CGRException
-from .parsers import parse_scoreboard
+from .parsers import parse_public_list, parse_checkpoint_list
 from .settings import cgr_settings
 
 logger = logging.getLogger("cgr.scoreboard")
 
+# Безопасный потолок страниц за один цикл (15 строк/стр). «В очереди» —
+# небольшое подмножество реестра, обычно укладывается с запасом.
+_MAX_PAGES = 80
+
+# Страна-сосед по имени перехода CGR — fallback для агрегации, если имя из
+# реестра ещё не засеяно из справочника. Авторитетная привязка теперь идёт
+# через фильтр flBorderCountry в seed_checkpoints_from_cgr (ниже).
+_CHECKPOINT_COUNTRY = {
+    "Нур Жолы - Хоргос": "CN",
+    "Достык - Алашанькоу": "CN",
+    "Бахты - Покиту": "CN",
+    "Калжат - Дулаты": "CN",
+    "Майкапчагай - Зимунай": "CN",
+}
+
+# Коды стран в фильтре справочника CGR flBorderCountry.
+_COUNTRY_FILTER = {"CN": "x045", "RU": "x181", "UZ": "x225", "KG": "x109", "TM": "x210"}
+
+
+def _country_for(name: str) -> str:
+    return _CHECKPOINT_COUNTRY.get(name, "XX")
 
 # Метрики (см. backend/api/metrics.py для подключения)
 _metrics_success = 0
 _metrics_error = 0
 
 
-async def fetch_and_store() -> dict:
-    """Цикл fetch → parse → store. Вызывается APScheduler'ом каждые
-    CGR_SCOREBOARD_INTERVAL_MIN минут.
+async def seed_checkpoints_from_cgr() -> int:
+    """Подтянуть официальный справочник переходов из CGR с авторитетной
+    страной-соседом (фильтр flBorderCountry). Идемпотентно."""
+    n = 0
+    for country, code in _COUNTRY_FILTER.items():
+        try:
+            html = await cgr_client.fetch_checkpoint_list(country_code=code)
+            cps = parse_checkpoint_list(html)
+        except (CGRException, Exception) as e:  # noqa: BLE001 — мягкий старт
+            logger.warning("cgr.scoreboard: seed %s failed: %s", country, e)
+            continue
+        for cp in cps:
+            cgr_dal.upsert_checkpoint(name_ru=cp["name"], country_to=country)
+            n += 1
+    logger.info("cgr.scoreboard: seeded %d checkpoints from CGR (by country)", n)
+    return n
 
-    Returns:
-        Сводка для логов: {'fetched_at': str, 'entries': int, 'errors': int}
-    """
+
+async def _aggregate_queue() -> dict[str, int]:
+    """Проходит страницы public-list?flStatus=Pending, считает «В очереди»
+    по каждому пункту. Останавливается на неполной/повторной странице."""
+    totals: dict[str, int] = {}
+    prev_sig = None
+    for page in range(1, _MAX_PAGES + 1):
+        html = await cgr_client.fetch_public_list(status="Pending", page=page)
+        rows = parse_public_list(html)
+        if not rows:
+            break
+        sig = (rows[0]["plate"], rows[0]["checkpoint"], len(rows))
+        if sig == prev_sig:  # пагинация исчерпана — CGR вернул ту же страницу
+            break
+        prev_sig = sig
+        for r in rows:
+            if r["status"]["code"] == "in_queue" and r["checkpoint"]:
+                totals[r["checkpoint"]] = totals.get(r["checkpoint"], 0) + 1
+        if len(rows) < 15:  # последняя страница
+            break
+    return totals
+
+
+async def fetch_and_store() -> dict:
+    """Цикл fetch → aggregate → store. Вызывается APScheduler'ом каждые
+    CGR_SCOREBOARD_INTERVAL_MIN минут."""
     global _metrics_success, _metrics_error
 
     if not cgr_settings.feature_enabled:
@@ -30,37 +93,35 @@ async def fetch_and_store() -> dict:
         return {"skipped": True}
 
     try:
-        payload = await cgr_client.fetch_scoreboard()
-        entries = parse_scoreboard(payload)
-    except NotImplementedError:
-        logger.warning(
-            "cgr.scoreboard: parser not implemented yet — "
-            "see docs/cgr/CGR_DISCOVERY.md before enabling"
-        )
-        return {"skipped": True, "reason": "parser_pending_discovery"}
+        totals = await _aggregate_queue()
     except CGRException as e:
         _metrics_error += 1
         logger.error("cgr.scoreboard: fetch failed: %s", e)
-        # TODO: Sentry capture после подключения sentry-sdk
         return {"error": str(e)}
 
+    # Записываем реальную длину очереди по каждому пункту. Для известных
+    # переходов, которых нет в очереди прямо сейчас, пишем 0 (а не stale).
     stored = 0
-    for entry in entries:
+    known = {cp["name_ru"]: cp["code"] for cp in cgr_dal.get_all_checkpoints(active_only=True)}
+    names = set(totals) | set(known)
+    for name in names:
+        count = totals.get(name, 0)
+        code = known.get(name) or cgr_dal.upsert_checkpoint(name_ru=name, country_to=_country_for(name))
         try:
             cgr_dal.insert_scoreboard_entry(
-                checkpoint_code=entry.checkpoint_code,
-                direction=entry.direction,
-                queue_length=entry.queue_length,
-                estimated_wait_minutes=entry.estimated_wait_minutes,
+                checkpoint_code=code,
+                direction="IN",
+                queue_length=count,
+                estimated_wait_minutes=None,  # публичные данные не дают времени
                 raw_payload=None,
             )
             stored += 1
         except Exception as e:
-            logger.exception("cgr.scoreboard: insert failed for %s: %s", entry.checkpoint_code, e)
+            logger.exception("cgr.scoreboard: insert failed for %s: %s", code, e)
 
     _metrics_success += 1
-    logger.info("cgr.scoreboard: stored %d entries", stored)
-    return {"entries": stored}
+    logger.info("cgr.scoreboard: stored %d checkpoints (in_queue totals)", stored)
+    return {"checkpoints": stored, "total_in_queue": sum(totals.values())}
 
 
 def metrics() -> dict[str, int]:
