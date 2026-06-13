@@ -72,6 +72,17 @@ export const marketAPI = {
     return r.json();
   },
 
+  // Задача A: правка своего активного груза (цена/описание/вес/объём).
+  async updateCargo(id, payload) {
+    const r = await authedFetch(`${BASE}/cargos/${id}`, {
+      method: 'PATCH', headers: await headers(),
+      body: JSON.stringify(payload),
+    });
+    const d = await r.json();
+    if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
+    return d;
+  },
+
   // ─── Trips ───
   async createTrip(data) {
     const r = await authedFetch(`${BASE}/trips`, {

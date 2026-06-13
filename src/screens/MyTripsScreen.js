@@ -11,6 +11,7 @@ import { formatDateForDisplay } from '../utils/dateInput';
 import { formatPrice, normalizeTrip } from '../utils/normalizers';
 import EmptyState from '../components/ui/EmptyState';
 import BidModal from '../components/BidModal';
+import EditCargoModal from '../components/EditCargoModal';
 import { colors, spacing, radius, typography } from '../theme/theme';
 import {v1Colors, useV1Colors, v1AccentFor} from '../theme/designV1';
 import SegmentTabs from '../components/ui/v1/SegmentTabs';
@@ -120,6 +121,7 @@ export default function MyTripsScreen({ navigation, route }) {
   const [bidModal, setBidModal] = useState(false);
   const [bidModalMode, setBidModalMode] = useState('edit');
   const [editingBid, setEditingBid] = useState(null);
+  const [editCargo, setEditCargo] = useState(null);  // задача A: правка своего груза
   const [busyBidId, setBusyBidId] = useState(null);
 
   // Progressive verification: размещение рейса — trust-действие, доступно
@@ -357,6 +359,32 @@ export default function MyTripsScreen({ navigation, route }) {
           >
             <Text style={s.editBtnText}>✏️ {t('edit_btn')}</Text>
           </TouchableOpacity>
+        )}
+        {/* Задача A: управление СВОИМ грузом — Изменить (цена/описание) + Удалить.
+            Только для активного груза (taken/принятый редактировать нельзя). */}
+        {isCargo && !isDriver && (item.status || 'active') === 'active' && (
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+            <TouchableOpacity
+              testID="my-cargo-edit-btn"
+              style={[s.miniBtn, { borderColor: '#F59E0B', flex: 1 }]}
+              onPress={(e) => { e.stopPropagation && e.stopPropagation(); setEditCargo(item); }}
+            >
+              <Text style={[s.miniBtnText, { color: '#F59E0B' }]}>✏️ {t('edit_btn')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              testID="my-cargo-delete-btn"
+              style={[s.miniBtn, { borderColor: '#EF4444', flex: 1 }]}
+              onPress={async (e) => {
+                e.stopPropagation && e.stopPropagation();
+                if (!(await confirmAction(t('delete_cargo_confirm')))) return;
+                const r = await marketAPI.deleteCargo(item.id);
+                if (r && (r.ok || r.ok === undefined)) { toast(t('cargo_deleted'), 'success'); load(); }
+                else toast((r && r.detail) || t('delete_failed'), 'error');
+              }}
+            >
+              <Text style={[s.miniBtnText, { color: '#EF4444' }]}>🗑 {t('delete_btn')}</Text>
+            </TouchableOpacity>
+          </View>
         )}
       </TouchableOpacity>
     );
@@ -827,6 +855,13 @@ export default function MyTripsScreen({ navigation, route }) {
         bidId={editingBid?.id}
         initialAmount={editingBid?.amount}
         initialMessage={editingBid?.message}
+      />
+
+      <EditCargoModal
+        visible={!!editCargo}
+        cargo={editCargo}
+        onClose={() => setEditCargo(null)}
+        onSaved={() => load()}
       />
 
       {/* Progressive verification gate для размещения рейса (driver). */}

@@ -484,6 +484,73 @@ def delete_cargo(cargo_id: str, user=Depends(require_level(1))):
     return {"ok": True}
 
 
+class CargoPatchIn(BaseModel):
+    cargo_desc: Optional[str] = None
+    cargo_type: Optional[str] = None
+    weight_tons: Optional[float] = None
+    volume_m3: Optional[float] = None
+    price: Optional[int] = None
+    currency: Optional[str] = None
+    pickup_date: Optional[str] = None
+
+
+@mp_router.patch("/cargos/{cargo_id}")
+def update_cargo(cargo_id: str, body: CargoPatchIn, user=Depends(require_level(1))):
+    """Частичное обновление СВОЕГО активного груза (задача A): цена/описание/
+    вес/объём/тип/дата. 403 — не владелец; 404 — нет груза; 409 — груз уже
+    не active или есть принятая (не отменённая) сделка."""
+    with get_conn() as c:
+        row = c.execute("SELECT * FROM cargos WHERE id = ?", (cargo_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Груз не найден")
+        cargo = dict(row)
+        if cargo["owner_id"] != user["id"]:
+            raise HTTPException(status_code=403, detail="Можно редактировать только свой груз")
+        if (cargo.get("status") or "active") != "active":
+            raise HTTPException(status_code=409, detail=f"Груз нельзя редактировать в статусе {cargo.get('status')}")
+        deal = c.execute(
+            "SELECT id FROM deals WHERE cargo_id = ? AND status NOT IN ('cancelled') LIMIT 1",
+            (cargo_id,),
+        ).fetchone()
+        if deal:
+            raise HTTPException(status_code=409, detail="Нельзя редактировать — есть принятая сделка")
+
+        updates, params = [], []
+        if body.cargo_desc is not None:
+            d = body.cargo_desc.strip()[:500]
+            if not d:
+                raise HTTPException(status_code=400, detail="Описание не может быть пустым")
+            updates.append("cargo_desc = ?"); params.append(d)
+        if body.cargo_type is not None:
+            updates.append("cargo_type = ?"); params.append(body.cargo_type)
+        if body.weight_tons is not None:
+            if body.weight_tons < 0:
+                raise HTTPException(status_code=400, detail="weight_tons должен быть >= 0")
+            updates.append("weight_tons = ?"); params.append(body.weight_tons)
+        if body.volume_m3 is not None:
+            if body.volume_m3 < 0:
+                raise HTTPException(status_code=400, detail="volume_m3 должен быть >= 0")
+            updates.append("volume_m3 = ?"); params.append(body.volume_m3)
+        if body.price is not None:
+            if body.price < 0:
+                raise HTTPException(status_code=400, detail="price должен быть >= 0")
+            updates.append("price = ?"); params.append(body.price)
+        if body.currency is not None:
+            cur = (body.currency or "USD").upper()
+            if cur not in ("USD", "KZT", "RUB", "CNY"):
+                raise HTTPException(status_code=400, detail="currency: USD/KZT/RUB/CNY")
+            updates.append("currency = ?"); params.append(cur)
+        if body.pickup_date is not None:
+            updates.append("pickup_date = ?"); params.append(body.pickup_date)
+
+        if not updates:
+            raise HTTPException(status_code=400, detail="Нечего обновлять")
+        params.append(cargo_id)
+        c.execute(f"UPDATE cargos SET {', '.join(updates)} WHERE id = ?", params)
+        updated = dict(c.execute("SELECT * FROM cargos WHERE id = ?", (cargo_id,)).fetchone())
+    return {"ok": True, "cargo": updated}
+
+
 # ═══ Trips ═══
 
 @mp_router.post("/trips")
