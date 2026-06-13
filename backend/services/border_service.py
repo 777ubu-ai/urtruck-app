@@ -12,9 +12,6 @@
   KZ-KG: Кордай, Карасу
 """
 import sys
-import time
-import random
-from datetime import datetime
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -65,39 +62,16 @@ COUNTRY_NAMES = {
 
 
 def _estimate_queue(border_id: str) -> dict:
-    """Оценка очереди на основе времени суток + детерминированного seed.
-    В REAL — scraping tamozhnya.gov.kz или Telegram каналов."""
-    hour = datetime.utcnow().hour + 6  # KZ = UTC+6
-    if hour >= 24: hour -= 24
-
-    # Час-пик: 8-12 и 14-18. Ночью — пусто.
-    if 8 <= hour <= 12:
-        base_trucks = random.randint(40, 120)
-        base_wait_h = round(random.uniform(2, 8), 1)
-    elif 14 <= hour <= 18:
-        base_trucks = random.randint(30, 80)
-        base_wait_h = round(random.uniform(1.5, 6), 1)
-    elif 22 <= hour or hour <= 5:
-        base_trucks = random.randint(0, 15)
-        base_wait_h = round(random.uniform(0.2, 1), 1)
-    else:
-        base_trucks = random.randint(15, 50)
-        base_wait_h = round(random.uniform(1, 4), 1)
-
-    # Хоргос самый загруженный
-    multiplier = 1.5 if border_id == "khorgos" else 1.0
-    if border_id == "dostyk":
-        multiplier = 1.3
-
-    trucks = int(base_trucks * multiplier)
-    wait = round(base_wait_h * multiplier, 1)
-    status = "red" if wait > 5 else "yellow" if wait > 2 else "green"
-
+    """Fallback-«очередь», когда CGR-интеграция выключена (CGR_FEATURE_ENABLED=
+    false). РАНЬШЕ здесь генерировались СЛУЧАЙНЫЕ числа по времени суток — это
+    вводило водителей в заблуждение (выглядело как живые данные). Удалено
+    2026-06-13. Реальная загруженность теперь идёт из публичного реестра CGR
+    (см. backend/cgr/scoreboard_service.py). Здесь — честный «нет данных»."""
     return {
-        "trucks_in_queue": trucks,
-        "estimated_wait_hours": wait,
-        "status": status,
-        "updated_at": datetime.utcnow().isoformat() + "Z",
+        "trucks_in_queue": None,
+        "estimated_wait_hours": None,
+        "status": "unknown",
+        "updated_at": None,
     }
 
 
