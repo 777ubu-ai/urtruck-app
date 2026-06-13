@@ -326,6 +326,10 @@ export default function CargoDetail({ navigation, route }) {
   // 2026-06-13: клиент везде оранжевый).
   const isDriverViewing = role === 'driver' || (driverId && driverId === myUserId);
   const v1Accent = v1AccentFor('client');
+  // Кнопки сделки (чат/подтвердить/старт) — действия текущего зрителя, поэтому
+  // акцент роль-семантический: client → жёлтый #F59E0B, driver → неон #00E676.
+  // Раньше был хардкод #22C55E (зелёный) на всех поверхностях, в т.ч. клиентских.
+  const dealAccent = v1AccentFor(isDriverSide ? 'driver' : 'client');
 
   return (
     <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
@@ -449,6 +453,7 @@ export default function CargoDetail({ navigation, route }) {
                 {c.isMine && b.status === 'pending' && !hasAccepted && (
                   <View style={{ flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     <TouchableOpacity
+                      testID="bid-reject"
                       style={[s.rejectBtn, rejecting === b.id && { opacity: 0.5 }]}
                       onPress={async () => {
                         setRejecting(b.id);
@@ -470,19 +475,22 @@ export default function CargoDetail({ navigation, route }) {
                       <Text style={s.rejectBtnText}>{t('reject_btn')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
+                      testID="bid-counter"
                       style={[s.miniBtn, { borderColor: '#D97706' }]}
                       onPress={() => sendCounter(b)}
                     >
                       <Text style={[s.miniBtnText, { color: '#D97706' }]}>🔁 {t('counter_offer')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[s.miniBtn, { borderColor: '#22C55E' }]}
+                      testID="bid-chat"
+                      style={[s.miniBtn, { borderColor: v1Accent.main }]}
                       onPress={() => openChatForBid(b)}
                     >
-                      <Text style={[s.miniBtnText, { color: '#22C55E' }]}>💬 {t('open_bid_chat')}</Text>
+                      <Text style={[s.miniBtnText, { color: v1Accent.main }]}>💬 {t('open_bid_chat')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[s.acceptBtn, accepting === b.id && { opacity: 0.5 }]}
+                      testID="bid-accept"
+                      style={[s.acceptBtn, { backgroundColor: v1Accent.main }, accepting === b.id && { opacity: 0.5 }]}
                       onPress={async () => {
                         setAccepting(b.id);
                         try {
@@ -502,7 +510,7 @@ export default function CargoDetail({ navigation, route }) {
                       }}
                       disabled={!!accepting || !!rejecting}
                     >
-                      <Text style={s.acceptBtnText}>{t('accept_bid_btn')}</Text>
+                      <Text style={[s.acceptBtnText, { color: v1Accent.onAccent }]}>{t('accept_bid_btn')}</Text>
                     </TouchableOpacity>
                   </View>
                 )}
@@ -653,29 +661,30 @@ export default function CargoDetail({ navigation, route }) {
             <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginTop: 4 }}>
               {/* Driver — accepted: Start delivery */}
               {isDriverSide && dealStatus === 'accepted' && (
-                <TouchableOpacity style={s.dealActionBtn} onPress={() => changeDealStatus('in_progress')} disabled={statusLoading}>
-                  <Text style={s.dealActionText}>{statusLoading ? '...' : '🚛 ' + t('start_delivery')}</Text>
+                <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: dealAccent.main }]} onPress={() => changeDealStatus('in_progress')} disabled={statusLoading}>
+                  <Text style={[s.dealActionText, { color: dealAccent.onAccent }]}>{statusLoading ? '...' : '🚛 ' + t('start_delivery')}</Text>
                 </TouchableOpacity>
               )}
               {/* Driver — in_progress: I have arrived */}
               {isDriverSide && dealStatus === 'in_progress' && (
-                <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: '#22C55E' }]} onPress={() => changeDealStatus('delivered')} disabled={statusLoading}>
-                  <Text style={s.dealActionText}>{statusLoading ? '...' : '✅ ' + t('mark_arrived')}</Text>
+                <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: dealAccent.main }]} onPress={() => changeDealStatus('delivered')} disabled={statusLoading}>
+                  <Text style={[s.dealActionText, { color: dealAccent.onAccent }]}>{statusLoading ? '...' : '✅ ' + t('mark_arrived')}</Text>
                 </TouchableOpacity>
               )}
               {/* Shipper — in_progress: Confirm delivery */}
               {isShipper && dealStatus === 'in_progress' && (
-                <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: '#22C55E' }]} onPress={() => changeDealStatus('delivered')} disabled={statusLoading}>
-                  <Text style={s.dealActionText}>{statusLoading ? '...' : '✅ ' + t('confirm_delivery')}</Text>
+                <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: dealAccent.main }]} onPress={() => changeDealStatus('delivered')} disabled={statusLoading}>
+                  <Text style={[s.dealActionText, { color: dealAccent.onAccent }]}>{statusLoading ? '...' : '✅ ' + t('confirm_delivery')}</Text>
                 </TouchableOpacity>
               )}
               {/* Both — chat */}
               {chatRoomId && (
                 <TouchableOpacity
-                  style={[s.dealActionBtn, { backgroundColor: '#22C55E' }]}
+                  testID="deal-order-chat"
+                  style={[s.dealActionBtn, { backgroundColor: dealAccent.main }]}
                   onPress={() => navigation.navigate('Chat', { roomId: chatRoomId, role })}
                 >
-                  <Text style={s.dealActionText}>💬 {t('order_chat')}</Text>
+                  <Text style={[s.dealActionText, { color: dealAccent.onAccent }]}>💬 {t('order_chat')}</Text>
                 </TouchableOpacity>
               )}
               {/* Both — cancel deal */}

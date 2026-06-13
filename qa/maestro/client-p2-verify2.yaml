@@ -1,0 +1,29 @@
+# client-p2-verify2 — добор P2: 2.3 валюта в лейбле цены, 2.1 чат сделки оранжевый
+appId: host.exp.Exponent
+name: client-p2-verify2
+tags: [client, p2, regression]
+env:
+  MAESTRO_ACTOR: boris
+---
+- runFlow: _lib/qa-login.yaml
+# 2.3: правка цены — лейбл «Цена ($)» (символ из currency=USD груза)
+- tapOn: { id: "bottom-nav-mywork" }
+- waitForAnimationToEnd
+- tapOn: { id: "my-work-tab-searching" }
+- waitForAnimationToEnd
+- tapOn: { id: "my-cargo-edit-btn", index: 0 }
+- waitForAnimationToEnd
+- takeScreenshot: P74_edit_price_currency
+- back
+- waitForAnimationToEnd
+# 2.1: деталь сделки — «Чат по заказу» оранжевый
+- tapOn: { id: "bottom-nav-mywork" }
+- waitForAnimationToEnd
+- tapOn: { id: "my-work-tab-enroute" }
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: { id: "my-order-card" }
+    timeout: 8000
+- tapOn: { id: "my-order-card", index: 0 }
+- waitForAnimationToEnd
+- takeScreenshot: P73_deal_detail_chat_orange

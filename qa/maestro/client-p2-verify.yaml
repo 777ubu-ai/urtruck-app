@@ -1,0 +1,59 @@
+# client-p2-verify — P2-полировка + 1.3: профиль без «Сменить роль»,
+# оранжевый акцент карточки ставки (+testID), деталь сделки чат оранжевый,
+# валюта в лейбле цены.
+appId: host.exp.Exponent
+name: client-p2-verify
+tags: [client, p2, regression]
+env:
+  MAESTRO_ACTOR: boris
+---
+- runFlow: _lib/qa-login.yaml
+# 1.3: профиль — нет «Сменить роль»
+- tapOn: { id: "bottom-nav-profile" }
+- waitForAnimationToEnd
+- takeScreenshot: P70_profile_no_change_role
+- assertNotVisible: { id: "profile-change-role" }
+- assertNotVisible: "Сменить роль"
+# 2.2/2.4: карточка ставки — testID + оранжевый акцент
+- tapOn: { id: "bottom-nav-mywork" }
+- waitForAnimationToEnd
+- tapOn: { id: "my-work-tab-searching" }
+- waitForAnimationToEnd
+- tapOn: { id: "my-cargo-card", index: 0 }
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: { id: "bid-accept" }
+    timeout: 8000
+- takeScreenshot: P71_bid_card_orange
+- assertVisible: { id: "bid-reject" }
+- assertVisible: { id: "bid-counter" }
+- assertVisible: { id: "bid-chat" }
+- assertVisible: { id: "bid-accept" }
+# counter-модалка теперь тапается по testID (раньше text-tap в New Arch не находил)
+- tapOn: { id: "bid-counter" }
+- waitForAnimationToEnd
+- takeScreenshot: P72_counter_modal
+- tapOn: { point: "50%,8%" }
+- waitForAnimationToEnd
+- back
+- waitForAnimationToEnd
+# 2.1: деталь сделки — «Чат по заказу» оранжевый
+- tapOn: { id: "bottom-nav-mywork" }
+- waitForAnimationToEnd
+- tapOn: { id: "my-work-tab-enroute" }
+- waitForAnimationToEnd
+- runFlow:
+    when:
+      visible: { id: "my-order-card" }
+    commands:
+      - tapOn: { id: "my-order-card", index: 0 }
+      - waitForAnimationToEnd
+      - takeScreenshot: P73_deal_detail_chat_orange
+# 2.3: правка цены — лейбл с символом валюты груза
+- tapOn: { id: "bottom-nav-mywork" }
+- waitForAnimationToEnd
+- tapOn: { id: "my-work-tab-searching" }
+- waitForAnimationToEnd
+- tapOn: { id: "my-cargo-edit-btn", index: 0 }
+- waitForAnimationToEnd
+- takeScreenshot: P74_edit_price_currency

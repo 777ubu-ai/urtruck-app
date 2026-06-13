@@ -1,0 +1,22 @@
+# client-deal-chat — 2.1: деталь сделки, «Чат по заказу» оранжевый (client)
+appId: host.exp.Exponent
+name: client-deal-chat
+tags: [client, p2]
+env:
+  MAESTRO_ACTOR: boris
+---
+- runFlow: _lib/qa-login.yaml
+- tapOn: { id: "bottom-nav-mywork" }
+- waitForAnimationToEnd
+- tapOn: { id: "my-work-tab-enroute" }
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: { id: "my-order-card" }
+    timeout: 8000
+- tapOn: { id: "my-order-card", index: 0 }
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: { id: "deal-order-chat" }
+    timeout: 8000
+- takeScreenshot: P73_deal_detail_chat_orange
+- assertVisible: { id: "deal-order-chat" }

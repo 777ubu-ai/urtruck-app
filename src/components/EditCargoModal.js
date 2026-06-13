@@ -10,11 +10,14 @@ import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useToast } from './Toast';
 import { marketAPI } from '../utils/marketAPI';
+import { CURRENCY_SYMBOLS } from '../utils/normalizers';
 
 export default function EditCargoModal({ visible, cargo, onClose, onSaved }) {
   const { t } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
+  // Символ валюты — из самого груза (USD→$, KZT→₸…), не хардкод ₸.
+  const curSym = CURRENCY_SYMBOLS[String(cargo?.currency || 'USD').toUpperCase()] || '$';
   const [price, setPrice] = useState(String(cargo?.price ?? ''));
   const [desc, setDesc] = useState(String(cargo?.cargo_desc ?? ''));
   const [weight, setWeight] = useState(cargo?.weight_tons != null ? String(cargo.weight_tons) : '');
@@ -68,7 +71,7 @@ export default function EditCargoModal({ visible, cargo, onClose, onSaved }) {
             <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
               <Text style={[s.title, { color: theme.text }]}>{t('edit_cargo_title')}</Text>
 
-              <Text style={[s.label, { color: theme.textMuted }]}>{t('edit_cargo_price')}</Text>
+              <Text style={[s.label, { color: theme.textMuted }]}>{t('edit_cargo_price')} ({curSym})</Text>
               <TextInput
                 value={price} onChangeText={setPrice} keyboardType="numeric"
                 placeholder="0" placeholderTextColor={theme.textMuted}
