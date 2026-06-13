@@ -963,9 +963,23 @@ def my_dashboard(user=Depends(require_level(1))):
             "SELECT b.*, c.from_city as cargo_from, c.to_city as cargo_to, c.cargo_desc "
             "FROM bids b JOIN cargos c ON b.cargo_id = c.id "
             "WHERE c.owner_id = ? ORDER BY b.created_at DESC LIMIT 50", (uid,)).fetchall()]
-        # Мои сделки (не должны зависеть от наличия cargos)
+        # Мои сделки. LEFT JOIN на cargos (описание/тип кузова/дата подачи) и на
+        # drivers_registration (имя водителя/грузоотправителя) — без JOIN карточка
+        # сделки на клиенте «Везут»/«Доставлено» рендерилась без груза, без типа
+        # кузова и без имени водителя (трекинг показывал машину без подписи).
+        # LEFT JOIN, чтобы сделка не пропадала, если cargo удалён.
         my_deals = [dict(r) for r in c.execute(
-            "SELECT * FROM deals WHERE shipper_id = ? OR driver_id = ? ORDER BY created_at DESC LIMIT 50",
+            "SELECT d.*, "
+            "c.cargo_desc AS cargo_desc, c.cargo_type AS cargo_type, "
+            "c.weight_tons AS weight_tons, c.volume_m3 AS volume_m3, "
+            "c.pickup_date AS departure, "
+            "dr.full_name AS driver_name, sh.full_name AS shipper_name "
+            "FROM deals d "
+            "LEFT JOIN cargos c ON d.cargo_id = c.id "
+            "LEFT JOIN drivers_registration dr ON dr.id = d.driver_id "
+            "LEFT JOIN drivers_registration sh ON sh.id = d.shipper_id "
+            "WHERE d.shipper_id = ? OR d.driver_id = ? "
+            "ORDER BY d.created_at DESC LIMIT 50",
             (uid, uid)).fetchall()]
 
     for cargo in my_cargos:
