@@ -1,0 +1,54 @@
+# client-cargodetail — карточка своего груза: ставки accept/reject/counter + F12
+# Данные: boris cargo «Тент 20т стройматериалы» = 1 pending bid (от serik);
+#         «Рефконтейнер с рыбой» = 0 ставок (для F12).
+# ВНИМАНИЕ: кнопки ставок БЕЗ testID — жмём по RU-тексту. В Expo Go New Arch
+# текст внутри карточек индексируется ненадёжно → если тап по тексту не
+# найдёт элемент, это фиксируется как дефект «нет testID на критич. кнопках».
+appId: host.exp.Exponent
+name: client-cargodetail
+tags: [client, buttonhunt]
+env:
+  MAESTRO_ACTOR: boris
+---
+- runFlow: _lib/qa-login.yaml
+- tapOn: { id: "bottom-nav-mywork" }
+- waitForAnimationToEnd
+# Вкладка «Мои грузы» (searching). Карточки = my-cargo-card.
+- tapOn: { id: "my-work-tab-searching" }
+- waitForAnimationToEnd
+- takeScreenshot: 30_mycargos_list
+# Первая карточка (index 0) = «Тент 20т» с входящей ставкой
+- tapOn:
+    id: "my-cargo-card"
+    index: 0
+- waitForAnimationToEnd
+- takeScreenshot: 31_cargo_detail_with_bid
+# Акцент карточки/цены — оранжевый (F5). Блок ставок виден.
+# Кнопки по ставке (owner pending): Отклонить / 🔁 Предложить свою цену /
+# Открыть чат / Принять. Жмём counter (неразрушающе) → модалка.
+- runFlow:
+    when:
+      visible: "Предложить свою цену"
+    commands:
+      - tapOn: "Предложить свою цену"
+      - waitForAnimationToEnd
+      - takeScreenshot: 32_counter_modal
+      # Акцент модалки counter — оранжевый (F6). Закрываем тапом по фону.
+      - tapOn:
+          point: "50%,8%"
+      - waitForAnimationToEnd
+      - takeScreenshot: 33_counter_modal_closed
+# Скрин кнопок «Принять/Отклонить» как доказательство наличия (или отсутствия)
+- takeScreenshot: 34_bid_actions
+# F12: груз без ставок → «Пока нет предложений. Будьте первым!»
+- back
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element: { text: "Рефконтейнер с рыбой" }
+    direction: DOWN
+    timeout: 8000
+- tapOn: "Рефконтейнер с рыбой"
+- waitForAnimationToEnd
+- takeScreenshot: 35_cargo_no_bids
+- assertVisible: "Пока нет предложений. Будьте первым!"
+- takeScreenshot: 36_f12_empty_bids_ok

@@ -1,0 +1,57 @@
+# client-deals-verify — дожатие F7/F8/F9/F10 устойчиво (фикс изъянов сюиты):
+# навигация через bottom-nav-*, явные extendedWaitUntil вместо when, без back-в-CargoDetail.
+appId: host.exp.Exponent
+name: client-deals-verify
+tags: [client, buttonhunt, deals]
+env:
+  MAESTRO_ACTOR: boris
+---
+- runFlow: _lib/qa-login.yaml
+# ── Везут: F7 (кнопки сделки), F8 (заполненность), F9 (трекинг водителя) ──
+- tapOn: { id: "bottom-nav-mywork" }
+- waitForAnimationToEnd
+- tapOn: { id: "my-work-tab-enroute" }
+- waitForAnimationToEnd
+- takeScreenshot: 90_enroute_list
+- extendedWaitUntil:
+    visible: { id: "my-order-card" }
+    timeout: 8000
+- takeScreenshot: 91_deal_card_F8
+- tapOn:
+    id: "my-order-card"
+    index: 0
+- waitForAnimationToEnd
+- takeScreenshot: 92_deal_detail_F7_F8
+- scrollUntilVisible:
+    element: { id: "deal-track-truck" }
+    direction: DOWN
+    timeout: 8000
+- tapOn: { id: "deal-track-truck" }
+- waitForAnimationToEnd
+- takeScreenshot: 93_tracking_F9
+- back
+- waitForAnimationToEnd
+# ── F10: правка груза не обнуляет цену ──
+- tapOn: { id: "bottom-nav-mywork" }
+- waitForAnimationToEnd
+- tapOn: { id: "my-work-tab-searching" }
+- waitForAnimationToEnd
+- tapOn:
+    id: "my-cargo-edit-btn"
+    index: 0
+- extendedWaitUntil:
+    visible: { id: "edit-cargo-price" }
+    timeout: 8000
+- takeScreenshot: 94_edit_modal
+- tapOn: { id: "edit-cargo-price" }
+- eraseText
+- takeScreenshot: 95_price_cleared
+- tapOn: { id: "edit-cargo-save" }
+- waitForAnimationToEnd
+- takeScreenshot: 96_after_save
+# Переоткрываем тот же груз — цена должна остаться прежней ($2500), не $0
+- tapOn:
+    id: "my-cargo-card"
+    index: 0
+- waitForAnimationToEnd
+- takeScreenshot: 97_price_preserved_F10

@@ -1,0 +1,46 @@
+# client-createcargo — Publish/CreateCargo: поля, F4 (нет «черновика»),
+# негатив (submit пустой → валидация, не краш)
+appId: host.exp.Exponent
+name: client-createcargo
+tags: [client, buttonhunt]
+env:
+  MAESTRO_ACTOR: boris
+---
+- runFlow: _lib/qa-login.yaml
+- tapOn: { id: "bottom-nav-publish" }
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: { id: "cargo-desc-input" }
+    timeout: 10000
+- takeScreenshot: 60_createcargo_form
+- assertVisible: { id: "cargo-desc-input" }
+- assertVisible: { id: "cargo-weight-field" }
+- assertVisible: { id: "cargo-volume-field" }
+# Заполняем описание
+- tapOn: { id: "cargo-desc-input" }
+- inputText: "QA тест — тент 15т"
+- hideKeyboard
+- takeScreenshot: 61_desc_filled
+# Скролл к submit. F4: НЕ должно быть кнопки «Сохранить черновик»
+- scrollUntilVisible:
+    element: { id: "cargo-submit-button" }
+    direction: DOWN
+    timeout: 10000
+- assertVisible: { id: "cargo-submit-button" }
+- assertNotVisible: "Сохранить черновик"
+- takeScreenshot: 62_submit_no_draft_F4
+# Негатив: очистим описание и попробуем submit пустой → валидация/тост, не краш
+- scrollUntilVisible:
+    element: { id: "cargo-desc-input" }
+    direction: UP
+    timeout: 6000
+- tapOn: { id: "cargo-desc-input" }
+- eraseText
+- hideKeyboard
+- scrollUntilVisible:
+    element: { id: "cargo-submit-button" }
+    direction: DOWN
+    timeout: 8000
+- tapOn: { id: "cargo-submit-button" }
+- waitForAnimationToEnd
+- takeScreenshot: 63_submit_empty_validation

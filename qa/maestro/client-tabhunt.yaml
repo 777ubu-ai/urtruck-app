@@ -1,0 +1,40 @@
+# client-tabhunt — таб-бар грузоотправителя (boris/client)
+# РЕВИЗИЯ: в текущем коде у клиента 5 вкладок ВКЛЮЧАЯ Chats
+# (коммит 94aa39a). Канон промта «нет Chats у клиента» УСТАРЕЛ.
+# Queue у клиента по-прежнему НЕ должно быть.
+appId: host.exp.Exponent
+name: client-tabhunt
+tags: [client, buttonhunt]
+env:
+  MAESTRO_ACTOR: boris
+---
+- runFlow: _lib/qa-login.yaml
+- takeScreenshot: 10_tabhunt_after_login
+# Канон клиента: 5 вкладок MyWork/Feed/Publish/Chats/Profile, без Queue
+- assertVisible: { id: "bottom-nav-feed" }
+- assertVisible: { id: "bottom-nav-mywork" }
+- assertVisible: { id: "bottom-nav-publish" }
+- assertVisible: { id: "bottom-nav-chats" }
+- assertVisible: { id: "bottom-nav-profile" }
+- assertNotVisible: { id: "bottom-nav-queue" }
+- tapOn: { id: "bottom-nav-feed" }
+- waitForAnimationToEnd
+- takeScreenshot: 11_tab_feed
+- tapOn: { id: "bottom-nav-mywork" }
+- waitForAnimationToEnd
+- takeScreenshot: 12_tab_mywork
+- tapOn: { id: "bottom-nav-chats" }
+- waitForAnimationToEnd
+- takeScreenshot: 13_tab_chats
+- tapOn: { id: "bottom-nav-profile" }
+- waitForAnimationToEnd
+- takeScreenshot: 14_tab_profile
+# Publish — это PublishStub, открывающий CreateCargo (не обычная вкладка):
+# таб-бар при этом скрывается. Проверяем, что тап открывает форму без краша.
+- tapOn: { id: "bottom-nav-publish" }
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: { id: "cargo-desc-input" }
+    timeout: 10000
+- assertVisible: { id: "cargo-desc-input" }
+- takeScreenshot: 15_publish_opens_createcargo

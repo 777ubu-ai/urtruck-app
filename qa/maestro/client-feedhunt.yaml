@@ -1,0 +1,56 @@
+# client-feedhunt — лента грузоотправителя: скролл, язык, фильтры, карточки
+appId: host.exp.Exponent
+name: client-feedhunt
+tags: [client, buttonhunt]
+env:
+  MAESTRO_ACTOR: boris
+---
+- runFlow: _lib/qa-login.yaml
+- tapOn: { id: "bottom-nav-feed" }
+- waitForAnimationToEnd
+- takeScreenshot: 20_feed_top
+# Скролл ленты — карточки рендерятся, без краша
+- scroll
+- scroll
+- takeScreenshot: 21_feed_scrolled
+- scrollUntilVisible:
+    element: { id: "feed-lang-switch" }
+    direction: UP
+    timeout: 8000
+# Переключение языка — лента не ломается
+- tapOn: { id: "feed-lang-switch" }
+- waitForAnimationToEnd
+- takeScreenshot: 22_feed_lang_switched
+- tapOn: { id: "feed-lang-switch" }
+- waitForAnimationToEnd
+- takeScreenshot: 23_feed_lang_back
+# Фильтры: применить/сбросить дату (F11-смежная зона — скрин активного состояния)
+- runFlow:
+    when:
+      visible: { id: "filter-date-apply" }
+    commands:
+      - tapOn: { id: "filter-date-apply" }
+      - waitForAnimationToEnd
+      - takeScreenshot: 24_filter_applied
+      - tapOn: { id: "filter-date-reset" }
+      - waitForAnimationToEnd
+      - takeScreenshot: 25_filter_reset
+# Тап по карточке груза → CargoDetail
+- runFlow:
+    when:
+      visible: { id: "cargo-card" }
+    commands:
+      - tapOn: { id: "cargo-card" }
+      - waitForAnimationToEnd
+      - takeScreenshot: 26_feed_cargo_detail
+      - back
+- waitForAnimationToEnd
+# Тап по карточке рейса водителя → TripDetail (если есть в ленте)
+- runFlow:
+    when:
+      visible: { id: "trip-card" }
+    commands:
+      - tapOn: { id: "trip-card" }
+      - waitForAnimationToEnd
+      - takeScreenshot: 27_feed_trip_detail
+      - back

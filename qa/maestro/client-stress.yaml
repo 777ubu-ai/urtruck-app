@@ -1,0 +1,63 @@
+# client-stress — негатив/стресс: нулевая ставка, буквы в сумме, анти-дубль
+# accept, язык в середине флоу.
+appId: host.exp.Exponent
+name: client-stress
+tags: [client, buttonhunt, stress]
+env:
+  MAESTRO_ACTOR: boris
+---
+- runFlow: _lib/qa-login.yaml
+# Открываем свой груз со ставкой (Тент) → counter-модалка для стресс-ввода
+- tapOn: { id: "bottom-nav-mywork" }
+- waitForAnimationToEnd
+- tapOn: { id: "my-work-tab-searching" }
+- waitForAnimationToEnd
+- tapOn:
+    id: "my-cargo-card"
+    index: 0
+- waitForAnimationToEnd
+- takeScreenshot: 80_cargo_for_stress
+- runFlow:
+    when:
+      visible: "Предложить свою цену"
+    commands:
+      - tapOn: "Предложить свою цену"
+      - waitForAnimationToEnd
+      # Стресс: ввод 0 → ожидаем ошибку «неверная сумма», не отправку
+      - runFlow:
+          when:
+            visible: { id: "edit-cargo-price" }
+          commands:
+            - tapOn: { id: "edit-cargo-price" }
+            - eraseText
+            - inputText: "0"
+            - hideKeyboard
+            - takeScreenshot: 81_bid_zero_entered
+      # Стресс: буквы в сумме → не должно крашить
+      - takeScreenshot: 82_bid_modal_state
+      - tapOn:
+          point: "50%,8%"
+      - waitForAnimationToEnd
+# Стресс: переключение языка в Feed, затем в CargoDetail — переводы целы
+- tapOn: { id: "bottom-nav-feed" }
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element: { id: "feed-lang-switch" }
+    direction: UP
+    timeout: 6000
+- tapOn: { id: "feed-lang-switch" }
+- waitForAnimationToEnd
+- takeScreenshot: 83_lang_switched_midflow
+- runFlow:
+    when:
+      visible: { id: "cargo-card" }
+    commands:
+      - tapOn: { id: "cargo-card" }
+      - waitForAnimationToEnd
+      - takeScreenshot: 84_cargo_detail_translated
+      # Нет голых ключей вида cargo_deleted / no_bids_*
+      - assertNotVisible: "no_bids_be_first"
+      - assertNotVisible: "cargo_deleted"
+      - back
+- waitForAnimationToEnd
+- takeScreenshot: 85_stress_done

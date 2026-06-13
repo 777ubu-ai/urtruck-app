@@ -1,0 +1,35 @@
+# client-f10 — защита цены от обнуления (фикс 84c95ac): очистка поля цены
+# при сохранении НЕ обнуляет цену.
+appId: host.exp.Exponent
+name: client-f10
+tags: [client, buttonhunt]
+env:
+  MAESTRO_ACTOR: boris
+---
+- runFlow: _lib/qa-login.yaml
+- tapOn: { id: "bottom-nav-mywork" }
+- waitForAnimationToEnd
+- tapOn: { id: "my-work-tab-searching" }
+- waitForAnimationToEnd
+- takeScreenshot: B0_searching
+- tapOn:
+    id: "my-cargo-edit-btn"
+    index: 0
+- extendedWaitUntil:
+    visible: { id: "edit-cargo-price" }
+    timeout: 8000
+- takeScreenshot: B1_edit_price_2500
+- tapOn: { id: "edit-cargo-price" }
+- eraseText
+- takeScreenshot: B2_price_cleared
+- tapOn: { id: "edit-cargo-save" }
+- waitForAnimationToEnd
+- takeScreenshot: B3_saved
+- extendedWaitUntil:
+    visible: { id: "my-cargo-card" }
+    timeout: 8000
+- tapOn:
+    id: "my-cargo-card"
+    index: 0
+- waitForAnimationToEnd
+- takeScreenshot: B4_price_preserved_F10

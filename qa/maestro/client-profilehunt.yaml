@@ -1,0 +1,77 @@
+# client-profilehunt — Profile: F1 (отзывы не фейк), F2 (нет «Прямой импортёр»),
+# F3 (нет «Стать водителем»), смена роли, push-фильтр, PRO. Логаут — ПОСЛЕДНИМ
+# (известный дефект reset → ловим тост-ошибку как доказательство).
+appId: host.exp.Exponent
+name: client-profilehunt
+tags: [client, buttonhunt]
+env:
+  MAESTRO_ACTOR: boris
+---
+- runFlow: _lib/qa-login.yaml
+- tapOn: { id: "bottom-nav-profile" }
+- waitForAnimationToEnd
+- takeScreenshot: 70_profile_top
+# F2: нет «Прямой импортёр» под именем
+- assertNotVisible: "Прямой импортёр"
+# F3: нет кнопки «Стать водителем»
+- assertNotVisible: { id: "profile-become-driver-cta" }
+- assertNotVisible: "Стать водителем"
+- takeScreenshot: 71_profile_F2_F3
+# F1: «Мои отзывы» — нет фейковых отзывов
+- tapOn: { id: "profile-my-reviews" }
+- waitForAnimationToEnd
+- takeScreenshot: 72_my_reviews_F1
+- assertNotVisible: "Asia Import"
+- assertNotVisible: "CargoLine"
+- back
+- waitForAnimationToEnd
+# Push-фильтр — открывается без краша
+- runFlow:
+    when:
+      visible: { id: "profile-push-filter" }
+    commands:
+      - tapOn: { id: "profile-push-filter" }
+      - waitForAnimationToEnd
+      - takeScreenshot: 73_push_filter
+      - back
+- waitForAnimationToEnd
+# PRO-CTA — открывается без краша
+- runFlow:
+    when:
+      visible: { id: "profile-pro-cta" }
+    commands:
+      - tapOn: { id: "profile-pro-cta" }
+      - waitForAnimationToEnd
+      - takeScreenshot: 74_pro_cta
+      - back
+- waitForAnimationToEnd
+# Смена роли — диалог осмысленный, отменяем
+- scrollUntilVisible:
+    element: { id: "profile-change-role" }
+    direction: DOWN
+    timeout: 6000
+- tapOn: { id: "profile-change-role" }
+- waitForAnimationToEnd
+- takeScreenshot: 75_change_role_dialog
+- runFlow:
+    when:
+      visible: "Отмена"
+    commands:
+      - tapOn: "Отмена"
+- waitForAnimationToEnd
+# Логаут ПОСЛЕДНИМ: жмём настоящую кнопку «Выйти», ловим поведение.
+- scrollUntilVisible:
+    element: { id: "profile-logout" }
+    direction: DOWN
+    timeout: 6000
+- tapOn: { id: "profile-logout" }
+- waitForAnimationToEnd
+- runFlow:
+    when:
+      visible: "Выйти"
+    commands:
+      - tapOn:
+          text: "Выйти"
+          index: 1
+- waitForAnimationToEnd
+- takeScreenshot: 76_after_logout_reset_check

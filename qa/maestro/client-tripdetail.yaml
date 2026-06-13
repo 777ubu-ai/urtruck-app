@@ -1,0 +1,38 @@
+# client-tripdetail — рейс водителя глазами клиента: акцент + BidModal create
+appId: host.exp.Exponent
+name: client-tripdetail
+tags: [client, buttonhunt]
+env:
+  MAESTRO_ACTOR: boris
+---
+- runFlow: _lib/qa-login.yaml
+- tapOn: { id: "bottom-nav-feed" }
+- waitForAnimationToEnd
+- takeScreenshot: 40_feed_for_trips
+# Ищем карточку рейса водителя
+- runFlow:
+    when:
+      visible: { id: "trip-card" }
+    commands:
+      - tapOn: { id: "trip-card" }
+      - waitForAnimationToEnd
+      - takeScreenshot: 41_trip_detail
+      # Поля рейса видны
+      - assertVisible: { id: "trip-detail-departure" }
+      - assertVisible: { id: "trip-detail-arrival" }
+      - takeScreenshot: 42_trip_fields
+      # «Предложить цену» → BidModal create-режим
+      - runFlow:
+          when:
+            visible: "Предложить цену"
+          commands:
+            - tapOn: "Предложить цену"
+            - waitForAnimationToEnd
+            - takeScreenshot: 43_bid_modal_create
+            # Поле «Своя цена» (placeholder) — модалка открылась
+            - takeScreenshot: 44_bid_modal_accent
+            # Закрыть тапом по фону
+            - tapOn:
+                point: "50%,8%"
+            - waitForAnimationToEnd
+- takeScreenshot: 45_trip_done

@@ -1,0 +1,86 @@
+# client-myworkhunt — MyWork: 3 вкладки, архив, правка груза (F10),
+# сделка «Везут» (F7/F8/F9: заполненность карточки + трекинг водителя)
+appId: host.exp.Exponent
+name: client-myworkhunt
+tags: [client, buttonhunt]
+env:
+  MAESTRO_ACTOR: boris
+---
+- runFlow: _lib/qa-login.yaml
+- tapOn: { id: "bottom-nav-mywork" }
+- waitForAnimationToEnd
+- takeScreenshot: 50_mywork_open
+# 3 вкладки клиента
+- assertVisible: { id: "my-work-tab-searching" }
+- assertVisible: { id: "my-work-tab-enroute" }
+- assertVisible: { id: "my-work-tab-delivered" }
+- tapOn: { id: "my-work-tab-searching" }
+- waitForAnimationToEnd
+- takeScreenshot: 51_tab_searching
+# Тогл архива
+- runFlow:
+    when:
+      visible: { id: "my-work-archive-toggle" }
+    commands:
+      - tapOn: { id: "my-work-archive-toggle" }
+      - waitForAnimationToEnd
+      - takeScreenshot: 52_archive_toggled
+      - tapOn: { id: "my-work-archive-toggle" }
+      - waitForAnimationToEnd
+# F10: правка груза не обнуляет цену
+- tapOn: { id: "my-work-tab-searching" }
+- waitForAnimationToEnd
+- runFlow:
+    when:
+      visible: { id: "my-cargo-edit-btn" }
+    commands:
+      - tapOn:
+          id: "my-cargo-edit-btn"
+          index: 0
+      - waitForAnimationToEnd
+      - takeScreenshot: 53_edit_cargo
+      # Очистить поле цены и сохранить — цена НЕ должна обнулиться
+      - runFlow:
+          when:
+            visible: { id: "edit-cargo-price" }
+          commands:
+            - tapOn: { id: "edit-cargo-price" }
+            - eraseText
+            - hideKeyboard
+            - scrollUntilVisible:
+                element: { id: "edit-cargo-save" }
+                direction: DOWN
+                timeout: 6000
+            - tapOn: { id: "edit-cargo-save" }
+            - waitForAnimationToEnd
+            - takeScreenshot: 54_after_price_clear_save
+      - back
+- waitForAnimationToEnd
+# Вкладка «Везут» — сделка (F8 заполненность, F9 трекинг, F7 кнопки)
+- tapOn: { id: "my-work-tab-enroute" }
+- waitForAnimationToEnd
+- takeScreenshot: 55_tab_enroute
+- runFlow:
+    when:
+      visible: { id: "my-order-card" }
+    commands:
+      - takeScreenshot: 56_deal_card_filled
+      - tapOn:
+          id: "my-order-card"
+          index: 0
+      - waitForAnimationToEnd
+      - takeScreenshot: 57_deal_detail
+      # F9: трекинг водителя
+      - runFlow:
+          when:
+            visible: { id: "deal-track-truck" }
+          commands:
+            - tapOn: { id: "deal-track-truck" }
+            - waitForAnimationToEnd
+            - takeScreenshot: 58_deal_tracking
+            - back
+- waitForAnimationToEnd
+# «Доставлено»
+- tapOn: { id: "my-work-tab-delivered" }
+- waitForAnimationToEnd
+- takeScreenshot: 59_tab_delivered
