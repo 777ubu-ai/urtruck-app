@@ -1,6 +1,7 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { Platform, AppState } from 'react-native';
+import { Platform, AppState, Image, Animated, StyleSheet } from 'react-native';
+import * as ExpoSplashScreen from 'expo-splash-screen';
 import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ThemeProvider } from './src/utils/ThemeContext';
@@ -68,10 +69,35 @@ function navigateFromUrl(navRef, url) {
   }
 }
 
-// Welcome-splash показывает НАТИВНЫЙ splash (app.json → urtruck-splash.png,
-// resizeMode contain) — он сам уходит, когда отрисован первый кадр JS. JS-оверлей
-// убран (14.06): он накладывался на первый слайд онбординга (там своя такая же
-// картинка) → при затухании двоилось «UrTruck». Нативного splash достаточно.
+// Welcome-splash: держим нативный splash до маунта JS, затем показываем ту же
+// картинку из кода — так приветствие видно ВЕЗДЕ (включая Expo Go, где нативный
+// splash приложения не отображается) и одинаково во всех сборках.
+ExpoSplashScreen.preventAutoHideAsync().catch(() => {});
+const SPLASH_IMG = require('./assets/splash/urtruck-splash.png');
+
+function BrandSplash({ onDone }) {
+  const opacity = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    let cancelled = false;
+    // Прячем нативный splash сразу — JS-сплэш (та же картинка) уже под ним,
+    // переход бесшовный, без белой вспышки.
+    ExpoSplashScreen.hideAsync().catch(() => {});
+    const timer = setTimeout(() => {
+      Animated.timing(opacity, { toValue: 0, duration: 350, useNativeDriver: true })
+        .start(() => { if (!cancelled) onDone(); });
+    }, 1300);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [opacity, onDone]);
+  return (
+    <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, splashStyles.root, { opacity }]}>
+      <Image source={SPLASH_IMG} style={StyleSheet.absoluteFill} resizeMode="cover" />
+    </Animated.View>
+  );
+}
+
+const splashStyles = StyleSheet.create({
+  root: { backgroundColor: '#070B14', zIndex: 9999, elevation: 9999 },
+});
 
 // AppInner живёт ПОД AuthProvider — поэтому знает состояние сессии и может
 // (а) откладывать deep-link до готовности навигатора и авторизованного стека,
@@ -176,13 +202,17 @@ function AppInner() {
 }
 
 export default function App() {
+  const [splashDone, setSplashDone] = useState(false);
   return (
     <ErrorBoundary>
+    <>
     <ThemeProvider>
       <AuthProvider>
         <AppInner />
       </AuthProvider>
     </ThemeProvider>
+    {!splashDone ? <BrandSplash onDone={() => setSplashDone(true)} /> : null}
+    </>
     </ErrorBoundary>
   );
 }
