@@ -436,10 +436,9 @@ export default function CreateCargoScreen({ navigation, route }) {
         testID="cargo-submit-button"
         style={{ marginTop: v1Spacing.sm }}
       />
-
-      <TouchableOpacity onPress={() => toast(t('feature_coming_soon'), 'info', 2500)} style={s.draftRow} activeOpacity={0.7}>
-        <Text style={[s.draftText, { color: accent.main }]}>{t('create_route_save_draft')}</Text>
-      </TouchableOpacity>
+      {/* «Сохранить черновик» убран (2026-06-13): кнопка только тостила
+          feature_coming_soon — мёртвое действие на экране публикации. Вернём,
+          когда черновики будут реально сохраняться. */}
     </Screen>
   );
 }

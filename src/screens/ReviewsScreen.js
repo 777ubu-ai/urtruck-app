@@ -1,19 +1,11 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, FlatList } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, FlatList, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import {v1Colors, useV1Colors, v1AccentFor} from '../theme/designV1';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
-
-// Demo reviews — neutral content (stars/dates), shown until real reviews arrive from API
-const REVIEWS = [
-  { id: 'r1', user: 'B. K.',       route: 'Yiwu → Almaty',     rating: 5, text: '★★★★★', ago: '2w', amount: 3200 },
-  { id: 'r2', user: 'Asia Import', route: 'Guangzhou → Tashkent', rating: 5, text: '★★★★★', ago: '1m', amount: 4500 },
-  { id: 'r3', user: 'CargoLine',   route: 'Shenzhen → Moscow',  rating: 4, text: '★★★★',  ago: '1m', amount: 5800 },
-  { id: 'r4', user: 'MegaTorg',    route: 'Yiwu → Bishkek',     rating: 5, text: '★★★★★', ago: '2m', amount: 2800 },
-  { id: 'r5', user: 'Caspian Co.', route: 'Hangzhou → Almaty',  rating: 5, text: '★★★★★', ago: '3m', amount: 3500 },
-];
+import { reviewsAPI } from '../utils/reviews';
 
 export default function ReviewsScreen({ navigation, route }) {
   const v1 = useV1Colors();
@@ -47,29 +39,50 @@ export default function ReviewsScreen({ navigation, route }) {
   reviewAgo: { fontSize: 10 },
 
   }), [v1]);
-  const { role } = route.params || {};
+  const { role, targetId } = route.params || {};
   const { t } = useI18n();
   const { theme } = useTheme();
 
-  const avgRating = (REVIEWS.reduce((sum, r) => sum + r.rating, 0) / REVIEWS.length).toFixed(1);
-  const counts = [5, 4, 3, 2, 1].map(n => REVIEWS.filter(r => r.rating === n).length);
+  const [data, setData] = useState(null);   // { summary, reviews }
+  const [loading, setLoading] = useState(true);
+  const mounted = useRef(true);
 
-  const renderItem = ({ item }) => (
-    <View style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
-      <View style={s.cardHeader}>
-        <View>
-          <Text style={[s.reviewUser, { color: theme.text }]}>{item.user}</Text>
-          <Text style={[s.reviewRoute, { color: theme.textSecondary }]}>{item.route}</Text>
+  useEffect(() => {
+    mounted.current = true;
+    if (!targetId) { setLoading(false); return; }
+    reviewsAPI.forTarget(targetId)
+      .then((r) => { if (mounted.current) setData(r || null); })
+      .catch(() => {})
+      .finally(() => { if (mounted.current) setLoading(false); });
+    return () => { mounted.current = false; };
+  }, [targetId]);
+
+  const reviews = Array.isArray(data?.reviews) ? data.reviews : [];
+  const total = data?.summary?.count ?? reviews.length;
+  const avgRating = data?.summary?.average != null
+    ? Number(data.summary.average).toFixed(1)
+    : (reviews.length ? (reviews.reduce((sum, r) => sum + (Number(r.rating) || 0), 0) / reviews.length).toFixed(1) : '0.0');
+  const counts = [5, 4, 3, 2, 1].map(n => reviews.filter(r => (Number(r.rating) || 0) === n).length);
+
+  const clamp = (n) => Math.max(0, Math.min(5, parseInt(n) || 0));
+  const renderItem = ({ item }) => {
+    const rating = clamp(item.rating);
+    const user = item.user || item.author || (item.author_id ? String(item.author_id).slice(0, 8) : t('anonymous'));
+    const when = item.ago || (item.created_at || '').slice(0, 10);
+    return (
+      <View style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
+        <View style={s.cardHeader}>
+          <View style={{ flex: 1 }}>
+            <Text style={[s.reviewUser, { color: theme.text }]} numberOfLines={1}>{user}</Text>
+            {item.route ? <Text style={[s.reviewRoute, { color: theme.textSecondary }]} numberOfLines={1}>{item.route}</Text> : null}
+          </View>
+          <Text style={s.stars}>{'★'.repeat(rating)}<Text style={[s.starsEmpty, { color: theme.border }]}>{'★'.repeat(5 - rating)}</Text></Text>
         </View>
-        <View style={{ alignItems: 'flex-end' }}>
-          <Text style={s.stars}>{'★'.repeat(item.rating)}<Text style={[s.starsEmpty, { color: theme.border }]}>{'★'.repeat(5 - item.rating)}</Text></Text>
-          <Text style={[s.reviewAmount, { color: theme.textMuted }]}>${item.amount}</Text>
-        </View>
+        {item.text ? <Text style={[s.reviewText, { color: theme.textSecondary }]}>{item.text}</Text> : null}
+        {when ? <Text style={[s.reviewAgo, { color: theme.textMuted }]}>{when}</Text> : null}
       </View>
-      <Text style={[s.reviewText, { color: theme.textSecondary }]}>{item.text}</Text>
-      <Text style={[s.reviewAgo, { color: theme.textMuted }]}>{item.ago}</Text>
-    </View>
-  );
+    );
+  };
 
   const v1Accent = v1AccentFor(role === 'driver' ? 'driver' : 'client');
 
@@ -78,31 +91,42 @@ export default function ReviewsScreen({ navigation, route }) {
       <BrandBarWithShare onBack={() => navigation.goBack()} accent={v1Accent.main} />
       <Text style={s.titleHero}>⭐ {t('allReviews')}</Text>
 
-      <View style={[s.summary, { backgroundColor: v1.surface, borderColor: v1.border }]}>
-        <View style={s.summaryLeft}>
-          <Text style={[s.avgRating, { color: theme.text }]}>{avgRating}</Text>
-          <Text style={s.avgStars}>{'★'.repeat(Math.round(parseFloat(avgRating)))}</Text>
-          <Text style={[s.totalCount, { color: theme.textSecondary }]}>{REVIEWS.length} {t('reviews').toLowerCase()}</Text>
+      {loading ? (
+        <ActivityIndicator style={{ marginTop: 48 }} color={v1Accent.main} />
+      ) : total === 0 ? (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 10 }}>
+          <Text style={{ fontSize: 56 }}>⭐</Text>
+          <Text style={{ color: v1.textMuted, fontSize: 14, textAlign: 'center', lineHeight: 20 }}>{t('review_after_trip')}</Text>
         </View>
-        <View style={s.summaryRight}>
-          {[5, 4, 3, 2, 1].map((n, i) => (
-            <View key={n} style={s.barRow}>
-              <Text style={[s.barLabel, { color: theme.textSecondary }]}>{n}★</Text>
-              <View style={[s.barBg, { backgroundColor: theme.border }]}>
-                <View style={[s.barFill, { width: ((counts[i] / REVIEWS.length) * 100) + '%' }]} />
-              </View>
-              <Text style={[s.barCount, { color: theme.textMuted }]}>{counts[i]}</Text>
+      ) : (
+        <>
+          <View style={[s.summary, { backgroundColor: v1.surface, borderColor: v1.border }]}>
+            <View style={s.summaryLeft}>
+              <Text style={[s.avgRating, { color: theme.text }]}>{avgRating}</Text>
+              <Text style={s.avgStars}>{'★'.repeat(Math.round(parseFloat(avgRating)))}</Text>
+              <Text style={[s.totalCount, { color: theme.textSecondary }]}>{total} {String(t('reviews')).toLowerCase()}</Text>
             </View>
-          ))}
-        </View>
-      </View>
+            <View style={s.summaryRight}>
+              {[5, 4, 3, 2, 1].map((n, i) => (
+                <View key={n} style={s.barRow}>
+                  <Text style={[s.barLabel, { color: theme.textSecondary }]}>{n}★</Text>
+                  <View style={[s.barBg, { backgroundColor: theme.border }]}>
+                    <View style={[s.barFill, { width: ((total ? counts[i] / total : 0) * 100) + '%' }]} />
+                  </View>
+                  <Text style={[s.barCount, { color: theme.textMuted }]}>{counts[i]}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
 
-      <FlatList
-        data={REVIEWS}
-        keyExtractor={i => i.id}
-        renderItem={renderItem}
-        contentContainerStyle={{ padding: 16, gap: 10 }}
-      />
+          <FlatList
+            data={reviews}
+            keyExtractor={(i, idx) => String(i.id ?? i.created_at ?? idx)}
+            renderItem={renderItem}
+            contentContainerStyle={{ padding: 16, gap: 10 }}
+          />
+        </>
+      )}
     </SafeAreaView>
   );
 }

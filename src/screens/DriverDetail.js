@@ -20,12 +20,6 @@ import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
 
 const TCOLORS = { tent: '#22C55E', ref: '#16A34A', platform: '#D97706', auto: '#7C3AED', izoterm: '#059669' };
 const FLAGS = { KZ: '🇰🇿', UZ: '🇺🇿', RU: '🇷🇺', KG: '🇰🇬', CN: '🇨🇳' };
-// Demo reviews — static content, shown only when no real reviews from API
-const REVIEWS = [
-  { user: 'B. K.', rating: 5, text: '★★★★★', ago: '2w' },
-  { user: 'Asia Import', rating: 5, text: '★★★★★', ago: '1m' },
-  { user: 'CargoLine', rating: 4, text: '★★★★', ago: '1m' },
-];
 
 export default function DriverDetail({ navigation, route }) {
   const v1 = useV1Colors();
@@ -68,10 +62,11 @@ export default function DriverDetail({ navigation, route }) {
   // server-side yet (driver_id has a session but the user never finished
   // registration). Showing the full profile UI with empty fields used to
   // crash on null props — now we render a friendly placeholder instead.
-  // v1 brand accent: emerald when the viewer is a shipper looking at a
-  // driver, orange when the driver is viewing another driver's card (rare,
-  // mostly happens via deep link).
-  const v1Accent = v1AccentFor(role === 'driver' ? 'client' : 'driver');
+  // v1 brand accent: роль смотрящего. Клиент (грузоотправитель), открывая
+  // карточку водителя, видит СВОЙ оранжевый акцент — единый клиентский вид
+  // (решение владельца 2026-06-13). Водитель, открывая чужую карточку (редко,
+  // deep link), видит зелёный.
+  const v1Accent = v1AccentFor(role === 'client' || role === 'shipper' ? 'client' : 'driver');
 
   if (driver._profileMissing) {
     return (
@@ -94,7 +89,6 @@ export default function DriverDetail({ navigation, route }) {
   }
 
   const tt = driver.type || driver.vehicle_type || 'tent';
-  const accent = role === 'driver' ? '#22C55E' : '#F59E0B';
   // Safe defaults
   const driverName = driver.name || driver.full_name || t('driver_fallback');
   const driverPhone = driver.phone || '';
@@ -170,8 +164,7 @@ export default function DriverDetail({ navigation, route }) {
             )}
           />
 
-          {(reviewsData?.reviews?.length > 0 ? reviewsData.reviews : REVIEWS).map((r, i, arr) => {
-            const isDemo = !reviewsData?.reviews?.length;
+          {(reviewsData?.reviews?.length > 0) ? reviewsData.reviews.map((r, i, arr) => {
             const user = r.user || r.author_id?.slice(0, 8) || t('anonymous');
             const rating = r.rating;
             const text = r.text || '';
@@ -183,14 +176,16 @@ export default function DriverDetail({ navigation, route }) {
                   <Text style={s.reviewStars}>{'★'.repeat(Math.max(0, Math.min(5, parseInt(rating) || 0)))}</Text>
                 </View>
                 {text ? <Text style={[s.reviewText, { color: v1.textMuted }]}>{text}</Text> : null}
-                <Text style={[s.reviewAgo, { color: v1.textMuted }]}>{ago}{isDemo ? ' · демо' : ''}</Text>
+                <Text style={[s.reviewAgo, { color: v1.textMuted }]}>{ago}</Text>
               </View>
             );
-          })}
+          }) : (
+            <Text style={[s.reviewText, { color: v1.textMuted, paddingVertical: 6 }]}>{t('review_after_trip')}</Text>
+          )}
         </GlassCard>
 
         <TouchableOpacity style={[s.contactBtn, { backgroundColor: contactOpened ? v1Colors.driver : v1Accent.main }]} onPress={openContact} disabled={contactOpened}>
-          <Text style={[s.contactBtnText, { color: '#0A0A0A' }]}>{contactOpened ? '✓ ' + t('contactOpened') : t('openContact') + ' · $0'}</Text>
+          <Text style={[s.contactBtnText, { color: '#0A0A0A' }]}>{contactOpened ? '✓ ' + t('contactOpened') : t('openContact')}</Text>
         </TouchableOpacity>
         <Text style={[s.betaNote, { color: v1.textMuted }]}>{t('freeForEarly')}</Text>
 
@@ -206,6 +201,7 @@ export default function DriverDetail({ navigation, route }) {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
+                driver_id: driver.id,
                 phone: driver.phone,
                 plate: driver.plate_truck,
                 name: driver.name,

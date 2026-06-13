@@ -145,7 +145,10 @@ export default function ProfileScreen({ navigation, route }) {
         profile.available_m3 != null && profile.available_m3 !== '' ? `${profile.available_m3} м³` : null,
       ].filter(Boolean).join(' · ')
     : [
-        t(profile.company_type || 'importer'),
+        // company_type показываем ТОЛЬКО если реально заполнен. Раньше стоял
+        // дефолт 'importer' → у каждого клиента висел ложный «Прямой импортёр»,
+        // хотя поле нигде не сохраняется (решение владельца 2026-06-13: убрать).
+        profile.company_type ? t(profile.company_type) : null,
         profile.city,
       ].filter(Boolean).join(' · ');
 
@@ -302,23 +305,9 @@ export default function ProfileScreen({ navigation, route }) {
           </View>
         ) : null}
 
-        {/* Driver-verification entry CTA (2026-06-11). Для client'а
-            (роль = client) показываем кнопку «Стать водителем /
-            перевозчиком» — она ведёт в VerificationDashboard. Для уже
-            driver'а кнопки нет — у них верификация запускается через
-            PRO/Security flow. */}
-        {!isDriver ? (
-          <TouchableOpacity
-            style={[s.becomeDriverBtn, { backgroundColor: '#00A86B', marginBottom: 12 }]}
-            onPress={() => navigation.navigate('VerificationDashboard')}
-            activeOpacity={0.85}
-            testID="profile-become-driver-cta"
-            accessibilityLabel={t('verification_entry_cta')}
-          >
-            <Text style={[s.becomeDriverText]}>🚛 {t('verification_entry_cta')}</Text>
-            <Feather name="chevron-right" size={18} color="#FFF" />
-          </TouchableOpacity>
-        ) : null}
+        {/* Кнопка «Стать водителем» убрана из профиля грузоотправителя
+            (решение владельца 2026-06-13): зелёный driver-CTA, ведущий в
+            driver-верификацию, был чужеродным в оранжевом клиентском профиле. */}
 
         {/* PR-C2 (WeChat grouped list): 4 menu items в одной карточке
             с тонкими separators. Без emoji — Feather outline icons. */}
@@ -328,7 +317,7 @@ export default function ProfileScreen({ navigation, route }) {
               {idx > 0 ? <View style={[s.menuSeparator, { backgroundColor: theme.border }]} /> : null}
               <TouchableOpacity
                 style={s.menuRow}
-                onPress={() => item.screen && navigation.navigate(item.screen, { role })}
+                onPress={() => item.screen && navigation.navigate(item.screen, { role, targetId: session?.user?.id })}
                 activeOpacity={0.6}
                 testID={item.testID}
                 accessibilityLabel={item.label}

@@ -33,7 +33,7 @@ export default function ArchiveScreen({ navigation }) {
               </View>
               <Text style={[s.cargo, { color: theme.textSecondary }]}>{item.cargo}</Text>
               <View style={s.footer}>
-                <Text style={s.rating}>{'★'.repeat(item.rating)}<Text style={[s.emptyStars, { color: theme.border }]}>{'★'.repeat(5 - item.rating)}</Text></Text>
+                <Text style={s.rating}>{'★'.repeat(Math.max(0, Math.min(5, parseInt(item.rating) || 0)))}<Text style={[s.emptyStars, { color: theme.border }]}>{'★'.repeat(5 - Math.max(0, Math.min(5, parseInt(item.rating) || 0)))}</Text></Text>
                 <Text style={[s.date, { color: theme.textMuted }]}>{item.date}</Text>
               </View>
             </View>
