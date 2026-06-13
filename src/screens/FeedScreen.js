@@ -909,7 +909,12 @@ export default function FeedScreen({ navigation, route }) {
         <FlatList
           ref={listRef}
           data={filteredData}
-          keyExtractor={i => i.id}
+          keyExtractor={(i, idx) => {
+            // Клиентская лента склеивает trips + drivers — у них могут совпасть
+            // числовые id из разных таблиц. Неймспейсим, чтобы не было дубль-ключей.
+            const ns = i.isTrip ? 't' : (i.isMine ? 'c' : 'd');
+            return `${ns}:${i.id ?? idx}`;
+          }}
           renderItem={(args) => (isDriver || args.item.isMine) ? renderCargo(args) : renderDriver(args)}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 20, gap: 0 }}
           showsVerticalScrollIndicator={false}

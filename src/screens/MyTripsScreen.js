@@ -437,8 +437,8 @@ export default function MyTripsScreen({ navigation, route }) {
         style={[s.card, { backgroundColor: theme.card, borderColor: sc[item.status] || theme.border, borderWidth: 2 }]}
       >
         <View style={s.cardTop}>
-          <View style={[s.badge, { backgroundColor: '#22C55E20' }]}>
-            <Text style={[s.badgeText, { color: '#22C55E' }]}>{t('order_label')}</Text>
+          <View style={[s.badge, { backgroundColor: accent + '20' }]}>
+            <Text style={[s.badgeText, { color: accent }]}>{t('order_label')}</Text>
           </View>
           <Text style={[s.statusLabel, { color: sc[item.status] || '#78716C' }]}>{formatStatus(item.status)}</Text>
         </View>
@@ -489,11 +489,11 @@ export default function MyTripsScreen({ navigation, route }) {
           )}
           {!isDriver && item.status === 'in_progress' && (
             <TouchableOpacity
-              style={[s.acceptBtn, busy && { opacity: 0.5 }]}
+              style={[s.acceptBtn, { backgroundColor: accent }, busy && { opacity: 0.5 }]}
               disabled={busy}
               onPress={() => setDealStatusOnServer(item, 'delivered')}
             >
-              <Text style={s.acceptBtnText}>✅ {t('confirm_delivery')}</Text>
+              <Text style={[s.acceptBtnText, { color: '#0C0A09' }]}>✅ {t('confirm_delivery')}</Text>
             </TouchableOpacity>
           )}
           {/* Задача 2: отмена сделки доступна ТОЛЬКО до выезда (accepted).
@@ -513,10 +513,10 @@ export default function MyTripsScreen({ navigation, route }) {
           )}
           {item.chat_room_id && (
             <TouchableOpacity
-              style={[s.miniBtn, { borderColor: '#22C55E' }]}
+              style={[s.miniBtn, { borderColor: accent }]}
               onPress={() => navigation.navigate('Chat', { roomId: item.chat_room_id, role })}
             >
-              <Text style={[s.miniBtnText, { color: '#22C55E' }]}>💬 {t('order_chat')}</Text>
+              <Text style={[s.miniBtnText, { color: accent }]}>💬 {t('order_chat')}</Text>
             </TouchableOpacity>
           )}
           {/* Задача B: грузоотправитель видит, где машина (на стадии «Везут»). */}
