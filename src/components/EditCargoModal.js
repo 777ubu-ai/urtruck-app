@@ -40,12 +40,13 @@ export default function EditCargoModal({ visible, cargo, onClose, onSaved }) {
     if (!cargo?.id) return;
     const d = desc.trim();
     if (!d) { toast(t('edit_cargo_desc_required'), 'error'); return; }
-    const payload = {
-      cargo_desc: d,
-      price: num(price) != null ? Math.round(num(price)) : 0,
-      weight_tons: num(weight) ?? 0,
-      volume_m3: num(volume) ?? 0,
-    };
+    // Числовые поля включаем в payload только если они реально заполнены.
+    // Раньше пустое price/weight/volume уходило как 0 → можно было случайно
+    // обнулить цену груза, просто очистив поле.
+    const payload = { cargo_desc: d };
+    if (price.trim() !== '' && num(price) != null) payload.price = Math.round(num(price));
+    if (weight.trim() !== '' && num(weight) != null) payload.weight_tons = num(weight);
+    if (volume.trim() !== '' && num(volume) != null) payload.volume_m3 = num(volume);
     setSaving(true);
     const r = await marketAPI.updateCargo(cargo.id, payload);
     setSaving(false);

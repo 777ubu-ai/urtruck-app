@@ -704,12 +704,12 @@ export default function FeedScreen({ navigation, route }) {
             </View>
           )}
           {sortBy !== 'newest' && (
-            <View style={[s.activeChip, { backgroundColor: sortBy === 'rating' ? '#FBBF24' : '#22C55E' }]}>
-              <Text style={[s.activeChipText, { color: sortBy === 'rating' ? '#0C0A09' : '#fff' }]}>
+            <View style={[s.activeChip, { backgroundColor: sortBy === 'rating' ? '#FBBF24' : accent }]}>
+              <Text style={[s.activeChipText, { color: '#0C0A09' }]}>
                 {sortBy === 'price-asc' ? '💰 ' + t('filter_price_asc') : sortBy === 'price-desc' ? '💰 ' + t('filter_price_desc') : '★ ' + t('filter_rating_sort')}
               </Text>
               <TouchableOpacity onPress={() => setSortBy('newest')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Text style={[s.activeChipClose, { color: sortBy === 'rating' ? '#0C0A09' : '#fff' }]}>✕</Text>
+                <Text style={[s.activeChipClose, { color: '#0C0A09' }]}>✕</Text>
               </TouchableOpacity>
             </View>
           )}

@@ -856,7 +856,7 @@ export default function MyTripsScreen({ navigation, route }) {
 
       <FlatList
         data={listData}
-        keyExtractor={(i) => (i._kind ? i._kind + ':' : '') + i.id}
+        keyExtractor={(i, idx) => (i._kind ? i._kind + ':' : '') + (i.id ?? idx)}
         renderItem={listRender}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}

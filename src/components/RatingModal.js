@@ -7,7 +7,7 @@ import { useTheme } from '../utils/ThemeContext';
 import { useToast } from './Toast';
 import { useI18n } from '../utils/useI18n';
 import { reviewsAPI } from '../utils/reviews';
-import { accentColors } from '../utils/theme';
+import { v1AccentFor } from '../theme/designV1';
 
 const TAGS_BY_ROLE = {
   driver: [
@@ -36,6 +36,10 @@ export default function RatingModal({ visible, onClose, onSubmitted, targetId, t
   const [text, setText] = useState('');
   const [tags, setTags] = useState([]);
   const [loading, setLoading] = useState(false);
+
+  // Акцент по роли того, КТО ставит оценку: клиент оценивает водителя
+  // (targetRole='driver') → оранжевый; водитель оценивает клиента → зелёный.
+  const raterAccent = v1AccentFor(targetRole === 'driver' ? 'client' : 'driver');
 
   const slide = useRef(new Animated.Value(500)).current;
   const opacity = useRef(new Animated.Value(0)).current;
@@ -134,13 +138,13 @@ export default function RatingModal({ visible, onClose, onSubmitted, targetId, t
                     style={[
                       s.tag,
                       {
-                        backgroundColor: active ? accentColors.driver : theme.card,
-                        borderColor: active ? accentColors.driver : theme.border,
+                        backgroundColor: active ? raterAccent.main : theme.card,
+                        borderColor: active ? raterAccent.main : theme.border,
                       },
                     ]}
                     onPress={() => toggleTag(t.k)}
                   >
-                    <Text style={[s.tagText, { color: active ? '#FFF' : theme.text }]}>{t.l}</Text>
+                    <Text style={[s.tagText, { color: active ? raterAccent.onAccent : theme.text }]}>{t.l}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -161,12 +165,12 @@ export default function RatingModal({ visible, onClose, onSubmitted, targetId, t
           )}
 
           <TouchableOpacity
-            style={[s.submit, { backgroundColor: rating > 0 ? accentColors.browse : theme.border }]}
+            style={[s.submit, { backgroundColor: rating > 0 ? raterAccent.main : theme.border }]}
             onPress={submit}
             disabled={rating === 0 || loading}
           >
-            {loading ? <ActivityIndicator color="#FFF" /> : (
-              <Text style={s.submitText}>{t('submit_review')}</Text>
+            {loading ? <ActivityIndicator color={raterAccent.onAccent} /> : (
+              <Text style={[s.submitText, rating > 0 && { color: raterAccent.onAccent }]}>{t('submit_review')}</Text>
             )}
           </TouchableOpacity>
 

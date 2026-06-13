@@ -29,7 +29,7 @@ import { push } from '../../utils/push';
 import { formatCooldown } from '../../utils/formatCooldown';
 
 const ACCENT = {
-  driver: { main: '#22C55E', deep: '#16A34A', soft: 'rgba(34,197,94,0.12)', glow: 'rgba(34,197,94,0.35)' },
+  driver: { main: '#00E676', deep: '#00C766', soft: 'rgba(0,230,118,0.12)', glow: 'rgba(0,230,118,0.35)' },
   client: { main: '#F59E0B', deep: '#D97706', soft: 'rgba(245,158,11,0.12)', glow: 'rgba(245,158,11,0.35)' },
 };
 
