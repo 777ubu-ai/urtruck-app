@@ -464,7 +464,10 @@ export default function MyTripsScreen({ navigation, route }) {
               <Text style={s.acceptBtnText}>✅ {t('confirm_delivery')}</Text>
             </TouchableOpacity>
           )}
-          {(item.status === 'accepted' || item.status === 'in_progress') && (
+          {/* Задача 2: отмена сделки доступна ТОЛЬКО до выезда (accepted).
+              Когда груз уже «Везут» (in_progress) — договорённость в силе,
+              самостоятельной отмены нет (вопросы — через чат/поддержку). */}
+          {item.status === 'accepted' && (
             <TouchableOpacity
               style={[s.miniBtn, { borderColor: '#EF4444' }, busy && { opacity: 0.5 }]}
               disabled={busy}
