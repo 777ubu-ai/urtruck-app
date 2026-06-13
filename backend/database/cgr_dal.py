@@ -118,6 +118,65 @@ def get_checkpoint(code: str) -> dict | None:
         return dict(r) if r else None
 
 
+# Транслитерация кириллицы для генерации стабильного латинского кода-слага.
+_TRANSLIT = {
+    "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "e",
+    "ж": "zh", "з": "z", "и": "i", "й": "i", "к": "k", "л": "l", "м": "m",
+    "н": "n", "о": "o", "п": "p", "р": "r", "с": "s", "т": "t", "у": "u",
+    "ф": "f", "х": "h", "ц": "c", "ч": "ch", "ш": "sh", "щ": "sch",
+    "ъ": "", "ы": "y", "ь": "", "э": "e", "ю": "yu", "я": "ya", "і": "i",
+    "ғ": "g", "қ": "k", "ң": "n", "ө": "o", "ұ": "u", "ү": "u", "һ": "h", "ә": "a",
+}
+
+
+def slugify_checkpoint(name: str) -> str:
+    """«Нур Жолы - Хоргос» → 'nur_zholy_horgos'. Стабильный код из имени CGR."""
+    out = []
+    for ch in (name or "").lower():
+        if ch in _TRANSLIT:
+            out.append(_TRANSLIT[ch])
+        elif ch.isalnum():
+            out.append(ch)
+        else:
+            out.append("_")
+    slug = "".join(out)
+    while "__" in slug:
+        slug = slug.replace("__", "_")
+    return slug.strip("_")[:64] or "cp"
+
+
+def upsert_checkpoint(
+    name_ru: str,
+    country_to: str = "XX",
+    country_from: str = "KZ",
+    code: str | None = None,
+) -> str:
+    """Гарантирует наличие перехода в border_checkpoints по имени CGR.
+
+    Имя CGR (как в реестре) — естественный ключ; code генерим слагом.
+    Идемпотентно. Возвращает code.
+    """
+    code = code or slugify_checkpoint(name_ru)
+    with _conn() as c:
+        c.execute(
+            """
+            INSERT INTO border_checkpoints (code, name_ru, country_from, country_to, is_active)
+            VALUES (?, ?, ?, ?, 1)
+            ON CONFLICT(code) DO UPDATE SET name_ru = excluded.name_ru, updated_at = CURRENT_TIMESTAMP
+            """,
+            (code, name_ru, country_from, country_to),
+        )
+    return code
+
+
+def get_checkpoint_code_by_name(name_ru: str) -> str | None:
+    with _conn() as c:
+        r = c.execute(
+            "SELECT code FROM border_checkpoints WHERE name_ru = ? LIMIT 1", (name_ru,)
+        ).fetchone()
+        return r["code"] if r else None
+
+
 # ----------------------------------------------------------------
 # cgr_scoreboard
 # ----------------------------------------------------------------
