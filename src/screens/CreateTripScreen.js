@@ -15,8 +15,7 @@ import BottomSheet from '../components/ui/v1/BottomSheet';
 import RoutePointPicker from '../components/RoutePointPicker';
 import DatePicker from '../components/DatePicker';
 import {v1Colors, useV1Colors, v1Radius, v1Spacing, v1Typography, v1AccentFor} from '../theme/designV1';
-import { TRUCK_KEYS } from '../utils/truckConstants';
-import TruckTypeIcon from '../components/TruckTypeIcon';
+import TruckTypeGrid from '../components/TruckTypeGrid';
 
 // CreateTripScreen — design v1, screen 09. Driver publishes a route.
 //
@@ -276,22 +275,11 @@ export default function CreateTripScreen({ navigation, route }) {
         </View>
       ) : null}
       <BottomSheet visible={showTruckPicker} onClose={() => setShowTruckPicker(false)} title={t('truckType')}>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {TRUCK_KEYS.map((k) => {
-            const active = truckType === k;
-            return (
-              <TouchableOpacity
-                key={k}
-                testID={`trip-truck-${k}`}
-                onPress={() => { setTruckType(k); if (errors.truckType) setErrors((e) => ({ ...e, truckType: null })); setShowTruckPicker(false); }}
-                style={[s.truckChip, active ? { backgroundColor: accent.main, borderColor: accent.main } : { borderColor: v1.border }]}
-              >
-                <TruckTypeIcon type={k} size={40} color={active ? '#0A0A0A' : v1.textMuted} />
-                <Text style={[s.truckChipText, { color: active ? '#0A0A0A' : v1.textMuted }]}>{t(k)}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        <TruckTypeGrid
+          value={truckType}
+          accent={accent.main}
+          onSelect={(k) => { setTruckType(k); if (errors.truckType) setErrors((e) => ({ ...e, truckType: null })); setShowTruckPicker(false); }}
+        />
       </BottomSheet>
       {errors.departure ? <Text style={s.err}>⚠️ {errors.departure}</Text> : null}
       {errors.truckType ? <Text style={s.err}>⚠️ {errors.truckType}</Text> : null}

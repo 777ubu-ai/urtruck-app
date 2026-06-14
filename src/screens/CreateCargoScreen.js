@@ -16,7 +16,7 @@ import DatePicker from '../components/DatePicker';
 import { PhotoPicker } from '../components/PhotoGallery';
 import {v1Colors, useV1Colors, v1Radius, v1Spacing, v1Typography, v1AccentFor} from '../theme/designV1';
 import { TRUCK_KEYS } from '../utils/truckConstants';
-import TruckTypeIcon from '../components/TruckTypeIcon';
+import TruckTypeGrid from '../components/TruckTypeGrid';
 
 // PR-C1: backend cargos schema (marketplace_schema.sql) и CargoIn
 // pydantic-модель (api/marketplace.py:222) НЕ имеют поля comment/note.
@@ -281,21 +281,11 @@ export default function CreateCargoScreen({ navigation, route }) {
         </View>
       </View>
       <BottomSheet visible={showTruckPicker} onClose={() => setShowTruckPicker(false)} title={t('truckType')}>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {TRUCK_KEYS.map((k) => {
-            const active = truckType === k;
-            return (
-              <TouchableOpacity
-                key={k}
-                onPress={() => { setTruckType(k); if (errors.truckType) setErrors((e) => ({ ...e, truckType: null })); setShowTruckPicker(false); }}
-                style={[s.truckChip, active ? { backgroundColor: accent.main, borderColor: accent.main } : { borderColor: v1.border }]}
-              >
-                <TruckTypeIcon type={k} size={40} color={active ? '#0A0A0A' : v1.textMuted} />
-                <Text style={[s.truckChipText, { color: active ? '#0A0A0A' : v1.textMuted }]}>{t(k)}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        <TruckTypeGrid
+          value={truckType}
+          accent={accent.main}
+          onSelect={(k) => { setTruckType(k); if (errors.truckType) setErrors((e) => ({ ...e, truckType: null })); setShowTruckPicker(false); }}
+        />
       </BottomSheet>
       {showDatePicker ? (
         <View style={s.pickerWrap}>

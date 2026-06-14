@@ -11,7 +11,7 @@ import RoutePointPicker from '../components/RoutePointPicker';
 import DatePicker from '../components/DatePicker';
 import {v1Colors, useV1Colors, v1AccentFor} from '../theme/designV1';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
-import TruckTypeIcon from '../components/TruckTypeIcon';
+import TruckTypeGrid from '../components/TruckTypeGrid';
 
 const TRUCK_KEYS = ['tent', 'ref', 'platform', 'auto', 'izoterm', 'cont20', 'cont40', 'jumbo', 'mega', 'curtain', 'lowloader', 'tanker', 'dumptruck', 'grain', 'livestock', 'logger', 'hazmat', 'open_truck', 'closed', 'longliner', 'microvan'];
 const TRUCK_ICONS = {
@@ -262,18 +262,7 @@ export default function EditTripScreen({ navigation, route }) {
         <Text style={[s.label, { color: truckType ? theme.textMuted : '#EF4444' }]}>
           {t('truckType')}{!truckType ? ' *' : ''}
         </Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
-          {TRUCK_KEYS.map(k => (
-            <TouchableOpacity
-              key={k}
-              style={[s.typeCard, { backgroundColor: theme.card, borderColor: theme.border }, truckType === k && { backgroundColor: '#22C55E', borderColor: '#22C55E' }]}
-              onPress={() => setTruckType(k)}
-            >
-              <TruckTypeIcon type={k} size={40} color={truckType === k ? '#fff' : theme.textSecondary} />
-              <Text style={[s.typeCardText, { color: theme.textSecondary }, truckType === k && { color: '#fff' }]}>{t(k)}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+        <TruckTypeGrid value={truckType} accent={v1Accent.main} onSelect={(k) => setTruckType(k)} />
 
         <View style={[s.row, { marginTop: 8 }]}>
           <View style={{ flex: 1 }}>
