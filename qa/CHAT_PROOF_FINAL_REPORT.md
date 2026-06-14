@@ -99,3 +99,66 @@ Bell `bid_created` создаётся владельцу (проверено ч�
 
 ## Соблюдено
 ❌ EAS · ❌ TestFlight · ❌ buildNumber · ❌ app.json/package release · ❌ прод · ❌ merge.
+
+---
+
+# Expo Go UI proof (добавлено 14.06, 09:50)
+
+## ⚠️ Главное, честно
+**UI-скриншоты в этой среде получить НЕЛЬЗЯ.** Облачный контейнер: нет симулятора
+iOS/Android, нет реального телефона, нет Expo Go, нет рендера экрана. Я **не могу**
+сам снять `qa/screenshots/chat-proof-ui/*.png` и прогнать два телефона. Фейковые
+«визуальные» доказательства не делаю. UI-визуал — это часть, которую выполняет
+**человек** по пакету `qa/manual/CHAT_TWO_PHONE_*` (Путь A, Expo Go).
+
+## 1. Тестируется правильный код
+- path `/home/user/urtruck-app`, branch `integration/build-30`, commit `2cf80f6`, дерево чистое.
+- Variant B чат-фикс `318789a` — в истории ✅.
+- Миграция применяется на свежем backend DB: `chat_rooms` содержит `deal_key/owner_id/bidder_id/bid_id` ✅.
+- EXPO_PUBLIC_API_URL / phones-Wi-Fi / Expo-ветка: **задаются при ручном запуске** (см.
+  `CHAT_TWO_PHONE_LAUNCH_STEPS.md`); здесь телефоны не запускались.
+
+## 2-4. Бейдж / колокольчик / deep-link — визуально НЕ сняты
+- Данные и проводка кода доказаны (L1+L2-data, BottomNav testID `bottom-nav-chats-badge`,
+  `/chat/unread` 0→1→0). **Пиксельный UI-рендер и тап — NOT CAPTURED здесь.**
+- → **UI badge/bell/tap proof missing in this env — закрывается человеком в Путь A.**
+
+## 5. Жёсткие состояния (API) — все PASS
+| Кейс | Результат |
+|---|---|
+| S9 длинное сообщение (2400 симв.) целиком | ✅ PASS |
+| S10 эмодзи/юникод (🚚🔥👍 中文 ©) | ✅ PASS |
+| S4 ретрай (тот же client_msg_id) → 1 сообщение (дедуп) | ✅ PASS |
+| S4 два разных быстрых → 2 сообщения | ✅ PASS |
+| S7 битый room_id → 404 без краша | ✅ PASS |
+| S8 удалён груз → /messages не падает | ✅ PASS |
+| S1 owner вне чата → unread>0 | ✅ PASS |
+| S2 owner внутри чата → сообщение сразу видно | ✅ PASS |
+
+## 6. Source of truth (для ясности, НЕ запрос на сборку)
+| Фича | Ветка | Commit/PR | В текущем Expo-тесте (build-30)? | Для будущего билда? |
+|---|---|---|---|---|
+| driver-flow cleanup | fix/driver-flow-critical-ux-cleanup | — | НЕТ | решение владельца |
+| Variant B chat room | integration/build-30 | `318789a` | ДА | да |
+| chat proof docs | integration/build-30 | — | ДА (доки) | n/a |
+| PR #104 verification foundation | fix/driver-verification-onboarding | #104 (open) | НЕТ | решение владельца |
+| PR #105 upload flow | fix/verification-upload-flow | #105 (open,dirty) | НЕТ | решение владельца |
+| CGR real queue (флаг) | integration/build-30 | `79cfe92` | ДА | да |
+| splash/иконки | integration/build-30 | `c97b10b…6ed1873` | ДА | да |
+| P1/P2 фиксы | integration/build-30 | `8ceb42e`/`26d24ef` | ДА | да |
+
+## Вердикт (Expo Go UI proof)
+**READY FOR HUMAN EXPO TEST.** Код/API/жёсткие состояния — зелёные; фиксов не требуется.
+UI-визуал (бейдж/колокольчик/тап/скриншоты обеих ролей) **обязан снять человек** в
+Путь A (Expo Go + локальный backend) — в этой среде это технически невозможно.
+APNS lock-screen / иконка-бейдж / тап с локскрина — остаются REAL DEVICE (Путь B, билд).
+**НЕ пишу READY FOR BUILD.**
+
+## Прямые ответы (UI-визуал)
+1. Визуально доказал, что owner видит сообщение водителя в UI? — **НЕТ** (нет симулятора/устройства здесь; делает человек)
+2. Визуально доказал, что driver видит ответ в UI? — **НЕТ** (та же причина)
+3. Визуально доказал нижний бейдж «Чаты»? — **НЕТ** (данные+проводка ✅, пиксель — человек)
+4. Визуально доказал колокольчик? — **НЕТ** (данные ✅, пиксель — человек)
+5. Визуально доказал тап уведомления → нужный чат? — **НЕТ** (payload+парсер ✅, тап — человек)
+6. APNS lock-screen? — **НЕТ** (REAL DEVICE / TestFlight)
+7. Достаточно ли для сборки? — **не утверждаю**; решение о сборке — за владельцем после human-теста.
