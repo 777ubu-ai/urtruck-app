@@ -1,0 +1,46 @@
+# chat_bid_notifications_e2e — Variant B канонические комнаты: owner in-app
+# Предусловие (засев через API): boris-груз + serik-ставка + serik-сообщение
+# "QA driver msg MAESTRO" в канонической комнате. Этот флоу доказывает, что
+# OWNER (boris) ВНУТРИ приложения видит: Chats-бейдж, комнату с водителем,
+# сообщение водителя, корректного партнёра (не «Собеседник»), и может ответить.
+appId: host.exp.Exponent
+name: chat_bid_notifications_e2e
+tags: [chat, notifications, e2e]
+env:
+  MAESTRO_ACTOR: boris
+---
+- runFlow: _lib/qa-login.yaml
+# Шаг 4/7: индикатор непрочитанного на вкладке «Чаты»
+- takeScreenshot: CH0_after_login
+- assertVisible: { id: "bottom-nav-chats" }
+- tapOn: { id: "bottom-nav-chats" }
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: { id: "chats-header" }
+    timeout: 12000
+- takeScreenshot: CH1_chats_list_with_unread
+- assertVisible: { id: "deal-room-list" }
+- assertVisible: { id: "deal-room-list-unread" }
+# Шаг 8: открыть комнату с водителем (верхняя — самая свежая активность)
+- tapOn: { id: "deal-room-list-card", index: 0 }
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: { id: "chat-partner-name" }
+    timeout: 10000
+- takeScreenshot: CH2_chat_open_driver_msg
+# Партнёр корректный, НЕ «Собеседник»
+- assertVisible: { id: "chat-partner-name" }
+- assertNotVisible: "Собеседник"
+# Сообщение водителя видно
+- assertVisible: "QA driver msg MAESTRO"
+# Шаг 9: owner отвечает через UI
+- tapOn: { id: "chat-input" }
+- inputText: "QA owner reply MAESTRO"
+- hideKeyboard
+- tapOn: { id: "chat-send-btn" }
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: "QA owner reply MAESTRO"
+    timeout: 10000
+- assertVisible: "QA owner reply MAESTRO"
+- takeScreenshot: CH3_owner_reply_sent

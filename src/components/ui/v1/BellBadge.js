@@ -20,6 +20,7 @@ export default function BellBadge({ count = 0, onPress, testID }) {
       <Text style={s.icon}>🔔</Text>
       {visible ? (
         <View
+          testID="bell-unread-badge"
           style={[
             s.badge,
             { backgroundColor: colors.error, borderColor: colors.bg },

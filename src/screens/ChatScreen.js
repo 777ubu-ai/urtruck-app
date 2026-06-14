@@ -649,7 +649,7 @@ export default function ChatScreen({ navigation, route }) {
         </View>
         <View style={{ flex: 1 }}>
           {/* Stage DS-1: prettifyPartnerName подменяет guest_/d3/d4 на "Собеседник". */}
-          <Text style={s.partnerName} numberOfLines={1}>{prettifyPartnerName(resolvedPartner?.name, resolvedPartner?.id, t)}</Text>
+          <Text style={s.partnerName} numberOfLines={1} testID="chat-partner-name">{prettifyPartnerName(resolvedPartner?.name, resolvedPartner?.id, t)}</Text>
           <Text style={[s.online, { color: v1Accent.main }]}>● {t('online')}</Text>
         </View>
       </View>

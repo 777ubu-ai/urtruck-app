@@ -1,0 +1,26 @@
+# chat_driver_view — driver видит ответ owner + историю в той же канон-комнате
+appId: host.exp.Exponent
+name: chat_driver_view
+tags: [chat, notifications, e2e]
+env:
+  MAESTRO_ACTOR: serik
+---
+- runFlow: _lib/qa-login.yaml
+- assertVisible: { id: "bottom-nav-chats" }
+- tapOn: { id: "bottom-nav-chats" }
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: { id: "chats-header" }
+    timeout: 12000
+- assertVisible: { id: "deal-room-list" }
+- takeScreenshot: CD1_driver_chats_list
+- tapOn: { id: "deal-room-list-card", index: 0 }
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: { id: "chat-partner-name" }
+    timeout: 10000
+- assertNotVisible: "Собеседник"
+# История обеих реплик в одной комнате
+- assertVisible: "QA driver msg MAESTRO"
+- assertVisible: "QA owner reply MAESTRO"
+- takeScreenshot: CD2_driver_sees_owner_reply
