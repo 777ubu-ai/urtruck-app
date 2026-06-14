@@ -239,7 +239,7 @@ export default function TripDetail({ navigation, route }) {
             {chatRoomId && (
               <TouchableOpacity
                 style={[s.dealActionBtn, { backgroundColor: v1Accent.main }]}
-                onPress={() => navigation.navigate('Chat', { roomId: chatRoomId, role })}
+                onPress={() => navigation.navigate('Chat', { roomId: chatRoomId, role, tripId: (trip && trip.id) || tripId, partner: driverId ? { id: driverId } : undefined })}
               >
                 <Text style={[s.dealActionText, { color: v1Accent.onAccent }]}>💬 {t('order_chat')}</Text>
               </TouchableOpacity>

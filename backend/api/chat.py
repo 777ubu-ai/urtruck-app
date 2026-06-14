@@ -141,34 +141,116 @@ def _init():
         with get_conn() as c:
             c.executescript(schema.read_text(encoding="utf-8"))
             _ensure_columns(c)
+            _migrate_canonical_rooms(c)  # Variant B: канонические комнаты сделок
             c.commit()
     _ensure_special_users()
 
-_init()
+
+def _deal_key(cargo_id, trip_id, p1: str, p2: str) -> str:
+    """Variant B: канонический ключ комнаты. cargo важнее trip; без сделки —
+    пара (поддержка/общий чат). p1,p2 — ОТСОРТИРОВАННАЯ пара участников."""
+    if cargo_id:
+        return f"c:{cargo_id}:{p1}:{p2}"
+    if trip_id:
+        return f"t:{trip_id}:{p1}:{p2}"
+    return f"p:{p1}:{p2}"
+
+
+def _migrate_canonical_rooms(c):
+    """Variant B (14.06): перевод chat_rooms на канонический deal_key + роли.
+    Идемпотентно — выполняется один раз, пока нет колонки deal_key. Безопасно:
+    в транзакции вызывающего, ID/сообщения сохраняются, старая
+    UNIQUE(participant_1, participant_2) снимается (мешала комнатам на разные
+    грузы той же пары)."""
+    cols = {r["name"] for r in c.execute("PRAGMA table_info(chat_rooms)").fetchall()}
+    if "deal_key" in cols:
+        return  # уже мигрировано
+    c.executescript(
+        """
+        CREATE TABLE chat_rooms_new (
+          id TEXT PRIMARY KEY,
+          participant_1 TEXT NOT NULL, participant_2 TEXT NOT NULL,
+          owner_id TEXT, bidder_id TEXT, bid_id TEXT,
+          cargo_id TEXT, trip_id TEXT, deal_key TEXT,
+          last_message TEXT, last_at TEXT,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(deal_key)
+        );
+        INSERT INTO chat_rooms_new
+          (id, participant_1, participant_2, cargo_id, trip_id, last_message, last_at, created_at)
+          SELECT id, participant_1, participant_2, cargo_id, trip_id, last_message, last_at, created_at
+          FROM chat_rooms;
+        DROP TABLE chat_rooms;
+        ALTER TABLE chat_rooms_new RENAME TO chat_rooms;
+        CREATE INDEX IF NOT EXISTS idx_chat_rooms_p1 ON chat_rooms(participant_1);
+        CREATE INDEX IF NOT EXISTS idx_chat_rooms_p2 ON chat_rooms(participant_2);
+        CREATE INDEX IF NOT EXISTS idx_chat_rooms_cargo ON chat_rooms(cargo_id);
+        """
+    )
+    has_deals = bool(c.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='deals'"
+    ).fetchone())
+    for r in c.execute("SELECT id, participant_1, participant_2, cargo_id, trip_id FROM chat_rooms").fetchall():
+        dk = _deal_key(r["cargo_id"], r["trip_id"], r["participant_1"], r["participant_2"])
+        owner = bidder = None
+        if has_deals:
+            d = c.execute(
+                "SELECT shipper_id, driver_id FROM deals WHERE chat_room_id = ? LIMIT 1", (r["id"],)
+            ).fetchone()
+            if d:
+                owner, bidder = d["shipper_id"], d["driver_id"]
+        c.execute(
+            "UPDATE chat_rooms SET deal_key = ?, owner_id = ?, bidder_id = ? WHERE id = ?",
+            (dk, owner, bidder, r["id"]),
+        )
+
+
+def _upsert_room(c, p1, p2, deal_key, owner_id, bidder_id, bid_id, cargo_id, trip_id) -> str:
+    """Идемпотентный upsert комнаты по каноническому deal_key (на открытом conn)."""
+    row = c.execute("SELECT id FROM chat_rooms WHERE deal_key = ?", (deal_key,)).fetchone()
+    if row:
+        if bid_id:
+            c.execute("UPDATE chat_rooms SET bid_id = COALESCE(bid_id, ?) WHERE id = ?", (bid_id, row["id"]))
+        return row["id"]
+    rid = new_id()
+    c.execute(
+        "INSERT INTO chat_rooms (id, participant_1, participant_2, owner_id, bidder_id, bid_id, cargo_id, trip_id, deal_key) "
+        "VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(deal_key) DO NOTHING",
+        (rid, p1, p2, owner_id, bidder_id, bid_id, cargo_id, trip_id, deal_key),
+    )
+    row = c.execute("SELECT id FROM chat_rooms WHERE deal_key = ?", (deal_key,)).fetchone()
+    return row["id"] if row else rid
+
+
+def get_or_create_deal_room(cargo_id, owner_id: str, bidder_id: str, bid_id=None, trip_id=None) -> str:
+    """КАНОНИЧЕСКАЯ комната сделки (Variant B). Идемпотентно: один и тот же
+    (cargo+owner+bidder) → один room_id; разные cargo той же пары → разные.
+    Обе роли получают один room_id (ключ = контекст + отсортированная пара)."""
+    p1, p2 = sorted([owner_id, bidder_id])
+    dk = _deal_key(cargo_id, trip_id, p1, p2)
+    with get_conn() as c:
+        return _upsert_room(c, p1, p2, dk, owner_id, bidder_id, bid_id, cargo_id, trip_id)
 
 
 def _get_or_create_room(user1: str, user2: str, cargo_id: str = None, trip_id: str = None) -> str:
+    """Совместимость: поддержка/общий чат и легаси-вызовы по паре пользователей.
+    Роли не заданы — комната ключуется по deal_key (cargo/trip/пара)."""
     p1, p2 = sorted([user1, user2])
+    dk = _deal_key(cargo_id, trip_id, p1, p2)
     with get_conn() as c:
-        row = c.execute("SELECT id FROM chat_rooms WHERE participant_1 = ? AND participant_2 = ?", (p1, p2)).fetchone()
-        if row:
-            return row["id"]
-        rid = new_id()
-        # QA-аудит P1-4: schema уже имеет UNIQUE(participant_1, participant_2)
-        # (дубль-комнат не будет), но при гонке двух одновременных INSERT
-        # проигравший раньше падал IntegrityError → 500. ON CONFLICT DO
-        # NOTHING + повторный SELECT делает создание идемпотентным.
-        c.execute(
-            "INSERT INTO chat_rooms (id, participant_1, participant_2, cargo_id, trip_id) "
-            "VALUES (?,?,?,?,?) ON CONFLICT(participant_1, participant_2) DO NOTHING",
-            (rid, p1, p2, cargo_id, trip_id),
-        )
-        row = c.execute("SELECT id FROM chat_rooms WHERE participant_1 = ? AND participant_2 = ?", (p1, p2)).fetchone()
-        return row["id"] if row else rid
+        return _upsert_room(c, p1, p2, dk, None, None, None, cargo_id, trip_id)
+
+
+# Инициализация схемы/миграции — после определения всех helpers (выше),
+# т.к. _init() вызывает _migrate_canonical_rooms.
+_init()
 
 
 class SendMessageIn(BaseModel):
-    to_user_id: str
+    # Variant B: предпочтительно слать room_id (каноническая комната). to_user_id
+    # оставлен опциональным для поддержки/легаси (получатель = собеседник).
+    room_id: Optional[str] = None
+    to_user_id: Optional[str] = None
     text: Optional[str] = None
     photo_url: Optional[str] = None
     is_voice: bool = False
@@ -184,7 +266,27 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
     if not body.text and not body.photo_url:
         raise HTTPException(status_code=400, detail="text или photo_url обязателен")
 
-    room_id = _get_or_create_room(user["id"], body.to_user_id, body.cargo_id, body.trip_id)
+    # Variant B: комната и получатель. Предпочтительно room_id (каноническая
+    # комната) — получателя берём из участников, а НЕ из присланного to_user_id
+    # (фронт мог не успеть его дорезолвить → раньше уходило в чужую комнату).
+    room_bid = None
+    room_cargo = body.cargo_id
+    if body.room_id:
+        with get_conn() as c:
+            room = c.execute("SELECT * FROM chat_rooms WHERE id = ?", (body.room_id,)).fetchone()
+        if not room:
+            raise HTTPException(status_code=404, detail="Комната не найдена")
+        if user["id"] not in (room["participant_1"], room["participant_2"]):
+            raise HTTPException(status_code=403, detail="Вы не участник этого чата")
+        room_id = room["id"]
+        recipient_id = room["participant_2"] if room["participant_1"] == user["id"] else room["participant_1"]
+        room_cargo = room["cargo_id"]
+        room_bid = room["bid_id"]
+    elif body.to_user_id:
+        room_id = _get_or_create_room(user["id"], body.to_user_id, body.cargo_id, body.trip_id)
+        recipient_id = body.to_user_id
+    else:
+        raise HTTPException(status_code=400, detail="room_id или to_user_id обязателен")
 
     with get_conn() as c:
         # QA-аудит P1-3: дедуп ретраев из офлайн-очереди. Если сообщение с
@@ -218,22 +320,30 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
     try:
         sender_name = user.get("full_name") or user.get("phone") or "Пользователь"
         send_to_user(
-            body.to_user_id,
+            recipient_id,
             f"💬 {sender_name}",
             preview,
             url=f"/chats/{room_id}",
             kind="chat",
-            data={"type": "chat_message", "room_id": room_id},
+            # Variant B: payload с полным контекстом для deep-link и фильтрации.
+            data={
+                "type": "chat_message",
+                "room_id": room_id,
+                "cargo_id": room_cargo,
+                "bid_id": room_bid,
+                "sender_id": user["id"],
+                "recipient_id": recipient_id,
+            },
         )
     except Exception:
         pass
 
     # ИИ Support: если получатель = SUPPORT_ID и менеджер офлайн → один ответ
-    if body.to_user_id == SUPPORT_ID:
+    if recipient_id == SUPPORT_ID:
         _maybe_support_reply(room_id, user, body.lang or "RU")
 
     # ИИ Володя (тестовый водитель): только если ENABLE_DEMO_CHAT.
-    if body.to_user_id == VOLODYA_ID and ENABLE_DEMO_CHAT:
+    if recipient_id == VOLODYA_ID and ENABLE_DEMO_CHAT:
         _volodya_reply(room_id, body.text or "", user)
 
     return {"ok": True, "room_id": room_id}

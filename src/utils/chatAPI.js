@@ -16,10 +16,13 @@ async function headers() {
 }
 
 export const chatAPI = {
-  async send({ toUserId, text, photoUrl, isVoice, voiceDuration, cargoId, tripId, clientMsgId }) {
+  async send({ roomId, toUserId, text, photoUrl, isVoice, voiceDuration, cargoId, tripId, clientMsgId }) {
     const r = await authedFetch(`${BASE}/send`, {
       method: 'POST', headers: await headers(),
       body: JSON.stringify({
+        // Variant B: room_id — приоритетный путь (бэк берёт получателя из
+        // участников комнаты, исключая гонку резолва собеседника на фронте).
+        room_id: roomId || null,
         to_user_id: toUserId, text, photo_url: photoUrl,
         is_voice: isVoice || false, voice_duration: voiceDuration,
         cargo_id: cargoId, trip_id: tripId,

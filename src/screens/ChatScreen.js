@@ -252,7 +252,9 @@ export default function ChatScreen({ navigation, route }) {
   // Снимаем на blur и unmount (другие комнаты/типы push не затрагиваются).
   useEffect(() => {
     setActiveRoom(roomId);
-    const unsubF = navigation.addListener('focus', () => setActiveRoom(roomId));
+    // Variant B: при возврате на экран — перезагружаем историю (свежие
+    // сообщения собеседника видны сразу, не дожидаясь 3-сек поллинга).
+    const unsubF = navigation.addListener('focus', () => { setActiveRoom(roomId); if (roomId) loadMessages(roomId); });
     const unsubB = navigation.addListener('blur', () => setActiveRoom(null));
     return () => { unsubF(); unsubB(); setActiveRoom(null); };
   }, [navigation, roomId]);
@@ -279,8 +281,10 @@ export default function ChatScreen({ navigation, route }) {
     chatAPI.rooms().then((d) => {
       const room = (d.rooms || []).find((r) => r.id === roomId);
       if (!room) return;
+      // Variant B: берём ТОЛЬКО partner_id (другой участник из бэка). Не
+      // падаем на participant_1/2 вслепую — это мог быть сам пользователь.
       setResolvedPartner((prev) => ({
-        id: prev?.id || room.partner_id || room.participant_2 || room.participant_1,
+        id: prev?.id || room.partner_id || null,
         name: (prev?.name && String(prev.name).trim()) ? prev.name : room.partner_name,
         role: prev?.role || room.partner_role,
       }));
@@ -378,13 +382,15 @@ export default function ChatScreen({ navigation, route }) {
     const msg = text || input;
     if (!msg.trim()) return;
     const toId = recipientId();
-    if (!toId) { toast(t('chat_send_failed'), 'error'); return; }
+    // Variant B: достаточно roomId (бэк возьмёт получателя из участников).
+    // Без roomId нужен хотя бы собеседник (поддержка/общий чат).
+    if (!roomId && !toId) { toast(t('chat_send_failed'), 'error'); return; }
     // QA-аудит P1-3: clientId = идемпотентный ключ (backend дедупит по
     // client_msg_id) и id optimistic-пузыря. PR-C2 (P0-4): optimistic
     // insert с `_optimistic: true` — defensive merge в loadMessages
     // сохраняет его пока сервер не подтвердит.
     const clientId = 'c_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
-    const payload = { toUserId: toId, text: msg, cargoId, tripId, clientMsgId: clientId };
+    const payload = { roomId, toUserId: toId, text: msg, cargoId, tripId, clientMsgId: clientId };
     setMessages(prev => [...prev, {
       id: clientId, from: 'me', text: msg,
       time: new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}),

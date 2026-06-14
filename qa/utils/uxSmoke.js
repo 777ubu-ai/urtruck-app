@@ -355,8 +355,11 @@ for (const file of ['src/screens/CreateCargoScreen.js', 'src/screens/CreateTripS
   if (/confirm\([^,]+,\s*['"]\?['"],/.test(profile)) {
     failures.push("ProfileScreen still calls confirm(...) with literal '?' as the message (Stage 26 regression)");
   }
-  if (!/t\(['"]change_role_message['"]\)/.test(profile)) {
-    failures.push('ProfileScreen no longer uses t("change_role_message") for the change-role dialog');
+  // «Сменить роль» убрана по решению владельца (13.06) — диалог удалён,
+  // change_role_message больше не требуется. Проверяем оставшийся диалог
+  // логаута: он обязан использовать локализованный logout_message.
+  if (!/t\(['"]logout_message['"]\)/.test(profile)) {
+    failures.push('ProfileScreen no longer uses t("logout_message") for the logout dialog');
   }
 }
 
@@ -404,7 +407,7 @@ console.log('[ux] RC2 · RoleScreen light B2B layout, brandV2 tokens, no dark bg
 console.log('[ux] Stage 20 · RoleScreen carries no Animated/blink/SRC_HEADLIGHT (welcome is purely static)  ✓');
 console.log('[ux] Stage 18 · enterAs / navigation.navigate(Auth) flow preserved  ✓');
 console.log('[ux] Stage 26 · RoleScreen uses real Pressable buttons with role_*_title text (no invisible hotspots)  ✓');
-console.log('[ux] Stage 26 · ProfileScreen change-role dialog uses real i18n message (no literal "?")  ✓');
+console.log('[ux] Stage 26 · ProfileScreen logout dialog uses real i18n message (no literal "?")  ✓');
 console.log('[ux] Stage 27 · weight/volume forms use real placeholders + testIDs (no "—")  ✓');
 console.log('[ux] Stage 30 · VerificationGateSheet uses props.onClose (no undefined handleClose)  ✓');
 console.log('[ux] Stage 27 · RoleScreen has role-screen-column max-width wrapper  ✓');

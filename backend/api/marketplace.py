@@ -766,6 +766,7 @@ def create_bid(body: BidIn, user=Depends(require_level(1))):
     # accept_bid / reject_bid / update_bid этот баг не имели потому что
     # create_notification у них уже ВНЕ with-блока. Делаем то же тут.
     post_notifs: list = []  # каждый элемент: (recipient_id, title, body, icon, url, push)
+    created_room_id = None  # Variant B: канонический room_id, вернём фронту
 
     with get_conn() as c:
         # M1: нельзя ставить на уже занятый/истёкший груз или рейс. Пустой/
@@ -818,9 +819,9 @@ def create_bid(body: BidIn, user=Depends(require_level(1))):
                 # из POST /bids/{id}/chat вернёт тот же room_id.
                 # Этот вызов идёт ВНУТРИ with потому что принимает open conn.
                 try:
-                    _ensure_chat_room_inline(
+                    created_room_id = _ensure_chat_room_inline(
                         c, user["id"], row["owner_id"],
-                        body.cargo_id, None,
+                        body.cargo_id, None, bid_id,
                     )
                 except Exception:
                     pass
@@ -838,9 +839,9 @@ def create_bid(body: BidIn, user=Depends(require_level(1))):
                 post_notifs.append((row["driver_id"], title, text, "📦", trip_url, True))
 
                 try:
-                    _ensure_chat_room_inline(
+                    created_room_id = _ensure_chat_room_inline(
                         c, user["id"], row["driver_id"],
-                        None, body.trip_id,
+                        None, body.trip_id, bid_id,
                     )
                 except Exception:
                     pass
@@ -861,7 +862,9 @@ def create_bid(body: BidIn, user=Depends(require_level(1))):
         except Exception:
             pass
 
-    return {"id": bid_id, "ok": True}
+    # Variant B: возвращаем канонический room_id — фронт открывает чат сразу
+    # по нему, без догадок о собеседнике.
+    return {"id": bid_id, "ok": True, "room_id": created_room_id}
 
 
 @mp_router.get("/bids")
@@ -1094,30 +1097,30 @@ def driver_profile(driver_id: str):
     return d
 
 
-def _ensure_chat_room_inline(c, user_a: str, user_b: str, cargo_id, trip_id) -> str:
-    """Idempotent room lookup/insert on the *current* SQLite connection.
-
-    Mirrors api.chat._get_or_create_room but stays inside the caller's
-    transaction to avoid SQLite write locks.
-    """
+def _ensure_chat_room_inline(c, user_a: str, user_b: str, cargo_id, trip_id, bid_id=None) -> str:
+    """Variant B: КАНОНИЧЕСКАЯ комната сделки на открытом conn (в транзакции
+    вызывающего, без отдельного write-lock). Ключ = deal_key (cargo/trip +
+    отсортированная пара) — паритет с api.chat. user_b трактуется как владелец
+    (cargo owner / driver рейса), user_a — откликнувшийся (bidder)."""
     p1, p2 = sorted([user_a, user_b])
-    row = c.execute(
-        "SELECT id FROM chat_rooms WHERE participant_1 = ? AND participant_2 = ?", (p1, p2)
-    ).fetchone()
+    if cargo_id:
+        dk = f"c:{cargo_id}:{p1}:{p2}"
+    elif trip_id:
+        dk = f"t:{trip_id}:{p1}:{p2}"
+    else:
+        dk = f"p:{p1}:{p2}"
+    row = c.execute("SELECT id FROM chat_rooms WHERE deal_key = ?", (dk,)).fetchone()
     if row:
+        if bid_id:
+            c.execute("UPDATE chat_rooms SET bid_id = COALESCE(bid_id, ?) WHERE id = ?", (bid_id, row["id"]))
         return row["id"]
     rid = new_id()
-    # QA-аудит P1-4 (паритет с chat._get_or_create_room): идемпотентный
-    # INSERT — если комнату успел создать параллельный открытый чат на ту
-    # же пару, не падаем UNIQUE-конфликтом, а переиспользуем существующую.
     c.execute(
-        "INSERT INTO chat_rooms (id, participant_1, participant_2, cargo_id, trip_id) "
-        "VALUES (?,?,?,?,?) ON CONFLICT(participant_1, participant_2) DO NOTHING",
-        (rid, p1, p2, cargo_id, trip_id),
+        "INSERT INTO chat_rooms (id, participant_1, participant_2, owner_id, bidder_id, bid_id, cargo_id, trip_id, deal_key) "
+        "VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(deal_key) DO NOTHING",
+        (rid, p1, p2, user_b, user_a, bid_id, cargo_id, trip_id, dk),
     )
-    row = c.execute(
-        "SELECT id FROM chat_rooms WHERE participant_1 = ? AND participant_2 = ?", (p1, p2)
-    ).fetchone()
+    row = c.execute("SELECT id FROM chat_rooms WHERE deal_key = ?", (dk,)).fetchone()
     return row["id"] if row else rid
 
 
