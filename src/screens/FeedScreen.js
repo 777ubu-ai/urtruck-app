@@ -395,9 +395,10 @@ export default function FeedScreen({ navigation, route }) {
 
   const onRefresh = React.useCallback(() => {
     setRefreshing(true);
+    // Тост «🔄 Обновлено» убран (решение владельца 14.06) — RefreshControl и так
+    // показывает спиннер; всплывающий баннер выглядел как ошибка/лишний шум.
     loadFromServer().finally(() => {
       setRefreshing(false);
-      toast('🔄 ' + t('refreshed'), 'info', 1500);
     });
   }, [isDriver]);
 
