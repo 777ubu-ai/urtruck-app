@@ -144,6 +144,10 @@ export const AuthProvider = ({ children }) => {
       // eslint-disable-next-line no-console
       console.warn('[Auth] login success', { phone, level, role: prevRole });
     }
+    // Синхронизируем реальный backend-id (me.id) поверх синтетического
+    // 'u_<ts>'. Без этого session.user.id оставался фейковым до перезапуска
+    // приложения → определение «моё/чужое» в чате могло сбоить.
+    refreshLevel().catch(() => {});
     return true;
   };
 

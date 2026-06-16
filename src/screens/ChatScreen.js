@@ -169,15 +169,16 @@ export default function ChatScreen({ navigation, route }) {
       const md = await chatAPI.messages(rid);
       if (!mounted.current) return;  // QA-аудит P1-8: чат закрыт во время poll
       const mapped = (md.messages || []).map(m => {
-        // Resolve "me vs them" robustly:
-        // 1) if sender_id matches our local user id — me
-        // 2) else if sender_id matches the partner's id — them
-        // 3) fall back to "me" so a temporary auth race (session.user.id is
-        //    a synthetic 'u_<ts>' until AuthContext.refreshLevel finishes)
-        //    does not flip every message to the wrong column.
+        // Источник истины — серверный признак m.mine (сравнение sender_id с uid
+        // на бэке). Локальный myId может быть фейковым ('u_<ts>') до синка
+        // AuthContext → раньше своё сообщение показывалось как чужое
+        // («отправляю — копируется мне»). Серверный mine этот баг убирает.
+        // Фолбэк на старую эвристику — только если mine не пришёл (старый бэк).
         const fromMe =
-          (myId && m.sender_id === myId) ||
-          (partner?.id && m.sender_id !== partner.id);
+          (typeof m.mine === 'boolean')
+            ? m.mine
+            : ((myId && m.sender_id === myId) ||
+               (partner?.id && m.sender_id !== partner.id));
         return {
           id: String(m.id), from: fromMe ? 'me' : 'them',
           text: m.text, isPhoto: !!m.photo_url, photoUri: m.photo_url,

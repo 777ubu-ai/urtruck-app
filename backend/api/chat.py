@@ -531,7 +531,16 @@ def get_messages(room_id: str, limit: int = 100, offset: int = 0, user=Depends(r
             (room_id, uid),
         )
 
-    return {"messages": [dict(r) for r in reversed(rows)], "room": dict(room)}
+    # mine — серверный признак «это моё сообщение». Клиент НЕ должен
+    # определять авторство по локальному id (он может быть фейковым после
+    # signIn до синка с бэком) — иначе своё сообщение выглядит как чужое
+    # и наоборот (баг «отправляю — копируется себе»). Источник истины — uid.
+    messages = []
+    for r in reversed(rows):
+        m = dict(r)
+        m["mine"] = (m.get("sender_id") == uid)
+        messages.append(m)
+    return {"messages": messages, "room": dict(room)}
 
 
 @chat_router.get("/contacts")

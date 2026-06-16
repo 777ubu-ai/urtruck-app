@@ -40,10 +40,34 @@ export function notifyAuthExpired() {
   }
 }
 
-// Drop-in замена fetch: идентичное поведение + сайд-эффект на 401.
+// Таймаут по умолчанию для внутрисессионного трафика. Без него «висящее»
+// соединение (медленная сеть / сервер не отвечает) приводило к тому, что
+// fetch не резолвился НИКОГДА → экран («Мои грузы» и т.п.) застревал на
+// спиннере навсегда, т.к. setLoading(false) в finally не выполнялся.
+// AbortController прерывает запрос → fetch реджектится → вызывающий код
+// (везде обёрнут в try/catch) показывает empty/serverError, а не висит.
+const DEFAULT_TIMEOUT_MS = 20000;
+
+// Drop-in замена fetch: идентичное поведение + сайд-эффект на 401 + таймаут.
 // Возвращает тот же Response, чтобы вызывающий код не менялся.
 export async function authedFetch(input, init) {
-  const r = await fetch(input, init);
-  if (r && r.status === 401) notifyAuthExpired();
-  return r;
+  // Если вызывающий уже передал свой signal — не перетираем его.
+  if (init && init.signal) {
+    const r = await fetch(input, init);
+    if (r && r.status === 401) notifyAuthExpired();
+    return r;
+  }
+  let controller;
+  let timer;
+  try { controller = new AbortController(); } catch { controller = null; }
+  if (controller) {
+    timer = setTimeout(() => { try { controller.abort(); } catch {} }, DEFAULT_TIMEOUT_MS);
+  }
+  try {
+    const r = await fetch(input, controller ? { ...(init || {}), signal: controller.signal } : init);
+    if (r && r.status === 401) notifyAuthExpired();
+    return r;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }

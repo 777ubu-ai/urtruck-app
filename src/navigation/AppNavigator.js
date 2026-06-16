@@ -97,6 +97,7 @@ function PublishStub() {
 
 function MainTabs({ route }) {
   const { session } = useAuth();
+  const { theme } = useTheme();
   const role = session?.user?.role || route?.params?.role || 'client';
   const isDriver = role === 'driver';
   const [, setTick] = useState(0);
@@ -118,6 +119,11 @@ function MainTabs({ route }) {
   return (
     <Tab.Navigator
       screenOptions={{ headerShown: false }}
+      // Без sceneContainerStyle React Navigation красит фон сцены белым
+      // (DefaultTheme), и в тёмной теме он просвечивал снизу через
+      // прозрачную обёртку плавающего таб-бара → «белая полоса внизу».
+      // Привязываем фон сцены к теме.
+      sceneContainerStyle={{ backgroundColor: theme.bg }}
       tabBar={(props) => <BottomNav {...props} />}
     >
       {isDriver ? (
