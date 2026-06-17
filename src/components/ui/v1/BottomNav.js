@@ -66,6 +66,21 @@ const ROLE_ACCENT = {
   client: { main: '#F59E0B', soft: 'rgba(245,158,11,0.16)' },
 };
 
+// H1-фикс: безусловная сверка бейджа на иконке приложения с серверным
+// unread. Раньше иконку писал useEffect([chatUnread]) — он срабатывал
+// ТОЛЬКО при изменении значения, поэтому при cold-start (старт с 0) или
+// прочтении через тап по push переход 0→0 не наступал, setBadgeCountAsync(0)
+// не вызывался, и кружок на иконке «зависал» (главный симптом владельца).
+// Теперь зовётся на КАЖДОМ fetchUnread (mount / поллинг / AppState=active /
+// прочтение) → иконка всегда равна серверной правде. На web — noop (Platform).
+function syncAppIconBadge(total) {
+  if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
+  let Notifications;
+  try { Notifications = require('expo-notifications'); }
+  catch { return; }
+  Notifications.setBadgeCountAsync?.(Number(total) || 0).catch(() => {});
+}
+
 export default function BottomNav({ state, navigation }) {
   const colors = useV1Colors();
   const { isDark } = useTheme();
@@ -94,6 +109,9 @@ export default function BottomNav({ state, navigation }) {
         const r = await chatAPI.unread();
         const n = (r && (r.unread ?? r.count ?? r.total)) || 0;
         if (mounted) setChatUnread(Number(n) || 0);
+        // H1: на каждом fetch безусловно сверяем иконку с серверным unread —
+        // в т.ч. при прочтении (n=0) и cold-start, где раньше иконка зависала.
+        syncAppIconBadge(Number(n) || 0);
       } catch {
         // intentionally silent — UI stays on previous value
       }
@@ -115,22 +133,11 @@ export default function BottomNav({ state, navigation }) {
     };
   }, [hasToken]);
 
-  // PR-C2 (P0 push / icon badge): синхронизируем красный кружок на иконке
-  // приложения (iOS home screen, Android launcher) с серверным unread
-  // count. expo-notifications setNotificationHandler в push.js имеет
-  // `shouldSetBadge: true`, поэтому Expo сам инкрементит badge при
-  // получении push — но УМЕНЬШАТЬ его при прочтении сообщения в app
-  // приходится вручную. BottomNav уже polls /chat/unread каждые
-  // UNREAD_POLL_MS и при AppState='active'; пишем сумму chat + bell
-  // в badge приложения там же.
-  useEffect(() => {
-    if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
-    let Notifications;
-    try { Notifications = require('expo-notifications'); }
-    catch { return; }
-    const total = (Number(chatUnread) || 0); // bell-unread приходит из другого hook'а, но он используется отдельно на BellBadge — для app-icon достаточно chat
-    Notifications.setBadgeCountAsync?.(total).catch(() => {});
-  }, [chatUnread]);
+  // Иконка приложения (C1) теперь синхронизируется внутри fetchUnread через
+  // syncAppIconBadge() — безусловно на каждом fetch (mount/poll/AppState/
+  // прочтение). Прежний useEffect([chatUnread]) удалён: он писал иконку лишь
+  // при ИЗМЕНЕНИИ chatUnread, из-за чего переход 0→0 (cold-start / тап-push)
+  // не сбрасывал кружок (H1).
 
   const labelOf = (name) => {
     if (name === 'Feed')    return isDriver ? t('tab_feed') : t('tab_feed_client');
