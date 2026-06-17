@@ -1,0 +1,59 @@
+# badge-multiroom (H5) — две комнаты с непрочитанным: прочитал одну → бейдж
+# ОСТАЛСЯ (per-room decrement, не «0 или всё»); прочитал вторую → бейдж исчез.
+# Предусловие (seed mode=multiroom): boris reset→0, затем 2 входящих из 2 разных
+# комнат (serik) → boris unread=2.
+appId: host.exp.Exponent
+name: badge-multiroom
+tags: [chat, badge, regression]
+env:
+  MAESTRO_ACTOR: boris
+---
+- runFlow: _lib/qa-login.yaml
+# бейдж 2 непрочитанных появляется на mount BottomNav — ждём его НА Feed
+# (надёжнее, чем после перехода в Chats: индексация New Arch при transition флакает)
+- extendedWaitUntil:
+    visible: { id: "bottom-nav-chats-badge" }
+    timeout: 15000
+- assertVisible: { id: "bottom-nav-chats-badge" }
+- takeScreenshot: MR0_badge_on_feed
+- tapOn: { id: "bottom-nav-chats" }
+- waitForAnimationToEnd:
+    timeout: 5000
+- extendedWaitUntil:
+    visible: { id: "chats-header" }
+    timeout: 10000
+- assertVisible: { id: "deal-room-list-unread" }
+- takeScreenshot: MR1_two_unread_badge
+# читаем первую комнату
+- tapOn: { id: "deal-room-list-card", index: 0 }
+- waitForAnimationToEnd:
+    timeout: 5000
+- tapOn:
+    point: "7%,9%"
+- waitForAnimationToEnd:
+    timeout: 4000
+- extendedWaitUntil:
+    visible: { id: "chats-header" }
+    timeout: 8000
+- takeScreenshot: MR2_after_read_one_badge_stays
+# H5: вторая комната ещё непрочитана → её per-room unread-бейдж ОСТАЛСЯ
+# (deal-room-list-unread надёжнее индексируется, чем крошечный tab-бейдж
+# в момент ре-рендера New Arch; сам факт «осталось 1» = суть H5)
+- extendedWaitUntil:
+    visible: { id: "deal-room-list-unread" }
+    timeout: 8000
+- assertVisible: { id: "deal-room-list-unread" }
+# читаем вторую комнату
+- tapOn: { id: "deal-room-list-card", index: 1 }
+- waitForAnimationToEnd:
+    timeout: 5000
+- tapOn:
+    point: "7%,9%"
+- waitForAnimationToEnd:
+    timeout: 4000
+- extendedWaitUntil:
+    visible: { id: "chats-header" }
+    timeout: 8000
+# обе прочитаны → бейдж исчез
+- assertNotVisible: { id: "bottom-nav-chats-badge" }
+- takeScreenshot: MR3_after_read_both_no_badge

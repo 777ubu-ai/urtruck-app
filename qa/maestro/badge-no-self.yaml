@@ -1,0 +1,35 @@
+# badge-no-self (H6) — отправитель НЕ получает unread-бейдж за своё сообщение.
+# Предусловие (seed mode=noself): boris reset→0 unread, есть комната (bid от serik,
+# без чат-сообщений). boris сам отправляет сообщение → bottom-nav-chats-badge
+# НЕ должен появиться.
+appId: host.exp.Exponent
+name: badge-no-self
+tags: [chat, badge, regression]
+env:
+  MAESTRO_ACTOR: boris
+---
+- runFlow: _lib/qa-login.yaml
+# старт: 0 непрочитанных → бейджа нет
+- assertNotVisible: { id: "bottom-nav-chats-badge" }
+- tapOn: { id: "bottom-nav-chats" }
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: { id: "chats-header" }
+    timeout: 10000
+- takeScreenshot: NS1_chats_no_badge
+- tapOn: { id: "deal-room-list-card", index: 0 }
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: { id: "chat-input" }
+    timeout: 8000
+- tapOn: { id: "chat-input" }
+- inputText: "QA self msg badge-no-self"
+- hideKeyboard
+- tapOn: { id: "chat-send-btn" }
+- waitForAnimationToEnd
+- assertVisible: "QA self msg badge-no-self"
+- back
+- waitForAnimationToEnd
+# H6: своё сообщение НЕ создаёт unread-бейдж отправителю
+- assertNotVisible: { id: "bottom-nav-chats-badge" }
+- takeScreenshot: NS2_no_self_badge

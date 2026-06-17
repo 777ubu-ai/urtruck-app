@@ -1,0 +1,39 @@
+# badge-persist-restart — C2 (точка «Чаты») переживает рестарт приложения
+# (до прочтения). Предусловие (seed mode=persist): boris unread=1.
+# Бейдж есть → stopApp + launchApp + повторный вход в проект → бейдж ЕЩЁ есть.
+appId: host.exp.Exponent
+name: badge-persist-restart
+tags: [chat, badge, regression]
+env:
+  MAESTRO_ACTOR: boris
+---
+- runFlow: _lib/qa-login.yaml
+# 1 непрочитанное → бейдж есть
+- extendedWaitUntil:
+    visible: { id: "bottom-nav-chats-badge" }
+    timeout: 12000
+- assertVisible: { id: "bottom-nav-chats-badge" }
+- takeScreenshot: PR1_badge_before_restart
+# рестарт приложения
+- stopApp
+- launchApp
+# Expo Go снова на доме → открыть проект из recents
+- extendedWaitUntil:
+    visible: "UrTruck"
+    timeout: 20000
+- tapOn:
+    text: "UrTruck"
+    index: 0
+# дождаться загрузки бандла и восстановления сессии boris
+- runFlow:
+    when:
+      visible: "Continue"
+    commands:
+      - tapOn: { point: "50%,10%" }
+- extendedWaitUntil:
+    visible: { id: "bottom-nav-chats" }
+    timeout: 60000
+- takeScreenshot: PR2_after_restart
+# C2 не теряется на рестарте (до прочтения)
+- assertVisible: { id: "bottom-nav-chats-badge" }
+- takeScreenshot: PR3_badge_persists
