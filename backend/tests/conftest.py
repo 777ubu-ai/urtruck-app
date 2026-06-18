@@ -32,4 +32,8 @@ def _ensure_full_schema():
     registration_dal.init_registration_schema()
     import api.chat as chat
     chat._init()  # идемпотентно: chat_schema.sql + миграция + спец-юзеры → chat_rooms
+    # send_message шлёт пуш получателю → push_sender читает push_subscriptions /
+    # push_tokens_native. Без их схемы совместный прогон падал "no such table".
+    import api.push as push_api
+    push_api._init_schema()
     yield
