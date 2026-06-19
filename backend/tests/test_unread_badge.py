@@ -137,17 +137,18 @@ def test_inv6_only_chat_kind_sets_badge():
     orig_web, orig_native = push_sender._send_web, push_sender._send_native
     push_sender._send_web, push_sender._send_native = fake_web, fake_native
     try:
-        # chat-kind → badge вычисляется (= unread получателя)
+        # Вариант 2: badge = чат + уведомления для ЛЮБОГО kind.
         push_sender.send(o, "t", "b", kind="chat", data={"type": "chat_message"})
         chat_badge = captured.get("badge")
-        # bid-kind → badge не ставим
         push_sender.send(o, "t", "b", kind="bid", data={"type": "new_bid"})
         bid_badge = captured.get("badge")
     finally:
         push_sender._send_web, push_sender._send_native = orig_web, orig_native
 
-    assert chat_badge == 1      # chat → реальный unread
-    assert bid_badge is None    # bid → иконку не трогаем
+    # У получателя o: 1 непрочитанный чат + 0 уведомлений (в тесте notifications
+    # не создаются) → badge = 1 для обоих пушей (единый сигнал «всё новое»).
+    assert chat_badge == 1
+    assert bid_badge == 1
 
 
 def test_inv7_idempotent_client_msg_id():

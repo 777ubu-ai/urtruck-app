@@ -32,6 +32,7 @@ import { useAuth } from '../../../utils/AuthContext';
 import { useI18n } from '../../../utils/useI18n';
 import { chatAPI } from '../../../utils/chatAPI';
 import { subscribeChatRead } from '../../../utils/unreadEvents';
+import { useUnreadNotifications } from '../../../utils/useUnreadNotifications';
 // Phase 2A: единая палитра — оранжевый акцент и серый inactive,
 // независимо от роли. Раньше driver получал blue, client — yellow;
 // для B2B-логистики единый orange выглядит как взрослая платформа.
@@ -97,21 +98,31 @@ export default function BottomNav({ state, navigation }) {
 
   const [chatUnread, setChatUnread] = useState(0);
   const pollTimer = useRef(null);
+  // Бейдж на иконке (вариант 2): единый сигнал «всё новое» = непрочитанный чат
+  // + непрочитанные уведомления (колокол). Внутри приложения чат-точка и колокол
+  // остаются раздельными, но на home-иконке — суммарный счётчик, чтобы ничего не
+  // пропустить. Refs, чтобы любой апдейт (чат ИЛИ уведомления) сразу пересчитал.
+  const notifUnread = useUnreadNotifications(hasToken);
+  const chatUnreadRef = useRef(0);
+  const notifUnreadRef = useRef(0);
+  const syncIcon = () => syncAppIconBadge((chatUnreadRef.current || 0) + (notifUnreadRef.current || 0));
 
   useEffect(() => {
     let mounted = true;
     if (!hasToken) {
       setChatUnread(0);
+      chatUnreadRef.current = 0;
+      syncIcon();
       return;
     }
     const fetchUnread = async () => {
       try {
         const r = await chatAPI.unread();
         const n = (r && (r.unread ?? r.count ?? r.total)) || 0;
-        if (mounted) setChatUnread(Number(n) || 0);
-        // H1: на каждом fetch безусловно сверяем иконку с серверным unread —
-        // в т.ч. при прочтении (n=0) и cold-start, где раньше иконка зависала.
-        syncAppIconBadge(Number(n) || 0);
+        chatUnreadRef.current = Number(n) || 0;
+        if (mounted) setChatUnread(chatUnreadRef.current);
+        // H1 + вариант 2: на каждом fetch сверяем иконку = чат + уведомления.
+        syncIcon();
       } catch {
         // intentionally silent — UI stays on previous value
       }
@@ -132,6 +143,13 @@ export default function BottomNav({ state, navigation }) {
       unsub?.();
     };
   }, [hasToken]);
+
+  // Вариант 2: при изменении счётчика колокола пересинхронизируем иконку
+  // (сумма чат + уведомления). Колокол внутри приложения остаётся отдельным.
+  useEffect(() => {
+    notifUnreadRef.current = Number(notifUnread) || 0;
+    syncIcon();
+  }, [notifUnread]);
 
   // Иконка приложения (C1) теперь синхронизируется внутри fetchUnread через
   // syncAppIconBadge() — безусловно на каждом fetch (mount/poll/AppState/

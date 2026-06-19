@@ -218,24 +218,38 @@ def _send_native(user_id: str, title: str, body: str, data: dict, badge: Optiona
 
 
 def _compute_recipient_badge(user_id: str) -> int:
-    """PR-C2 (P0-2): unread count для получателя — на момент отправки.
-    iOS APNs использует это число для красного кружка на иконке app.
-    Считаем сумму непрочитанных chat-сообщений (включая только что
-    отправленное — но оно будет +1 как раз). Если запрос упадёт — 0,
-    badge не будет (приемлемо).
+    """Бейдж на иконке (вариант 2): единый сигнал «всё новое» = непрочитанные
+    chat-сообщения + непрочитанные уведомления (колокол). iOS APNs рисует это
+    число на иконке. Чат-точка и колокол внутри приложения остаются раздельными;
+    суммарный счётчик — только на home-иконке, чтобы получатель ничего не
+    пропустил. Каждый источник считаем независимо (одна таблица может
+    отсутствовать на старой/тестовой БД — не теряем второй счётчик).
     """
+    total = 0
     try:
         with get_conn() as c:
-            row = c.execute(
-                "SELECT COUNT(*) FROM chat_messages m "
-                "JOIN chat_rooms r ON r.id = m.room_id "
-                "WHERE (r.participant_1 = ? OR r.participant_2 = ?) "
-                "AND m.sender_id != ? AND m.is_read = 0",
-                (user_id, user_id, user_id),
-            ).fetchone()
-            return int(row[0]) if row else 0
+            try:
+                row = c.execute(
+                    "SELECT COUNT(*) FROM chat_messages m "
+                    "JOIN chat_rooms r ON r.id = m.room_id "
+                    "WHERE (r.participant_1 = ? OR r.participant_2 = ?) "
+                    "AND m.sender_id != ? AND m.is_read = 0",
+                    (user_id, user_id, user_id),
+                ).fetchone()
+                total += int(row[0]) if row else 0
+            except Exception:
+                pass
+            try:
+                row = c.execute(
+                    "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0",
+                    (user_id,),
+                ).fetchone()
+                total += int(row[0]) if row else 0
+            except Exception:
+                pass
     except Exception:
         return 0
+    return total
 
 
 # ───────────────────────── Public API ─────────────────────────
@@ -243,12 +257,10 @@ def send(user_id: str, title: str, body: str,
          kind: str = "info", data: Optional[dict] = None, url: str = "/") -> dict:
     """Единый sender. Возвращает {'web': N, 'native': N, 'total': N}.
 
-    PR-C2 (P0-2 app icon badge): для chat-kind отправок (kind='chat'
-    или kind='info' с data.type='chat_message') вычисляем badge =
-    unread count получателя. На iOS APNs автоматически рисует
-    красный кружок на иконке. Для остальных kind (например 'bid',
-    'system') badge не ставим — они не должны накручивать счётчик
-    на иконке как chat.
+    Бейдж на иконке (вариант 2): для ЛЮБОГО пуша (chat и bid/system) ставим
+    badge = чат + уведомления получателя. iOS APNs рисует это число на иконке —
+    единый сигнal «всё новое», чтобы фоновый пуш всегда приводил иконку к
+    суммарному счётчику. Внутри приложения чат-точка и колокол раздельны.
     """
     if not user_id:
         return {"web": 0, "native": 0, "total": 0}
@@ -256,9 +268,7 @@ def send(user_id: str, title: str, body: str,
     data = data or {}
     data = {**data, "kind": kind, "url": url}
 
-    badge = None
-    if kind == "chat" or data.get("type") == "chat_message":
-        badge = _compute_recipient_badge(user_id)
+    badge = _compute_recipient_badge(user_id)
 
     try:
         web = _send_web(user_id, title, body, data, url)
