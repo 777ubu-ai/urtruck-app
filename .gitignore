@@ -17,6 +17,8 @@ dist/
 build/
 web-build/
 *.egg-info/
+*.apk
+*.aab
 
 # OS
 .DS_Store
@@ -42,8 +44,12 @@ npm-debug.log*
 *.key
 *.cert
 *.p12
+*.jks
+*.keystore
 backend/certs/
 deploy.sh
+keystore/
+android/пароль/
 
 # Tests
 TEST_RESULTS.md
