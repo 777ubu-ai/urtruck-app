@@ -79,6 +79,9 @@ export default function MyTripsScreen({ navigation, route }) {
   cardBottom: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   price: { ...typography.h2, color: '#22C55E' },
   bidsLabel: { ...typography.caption, flex: 1 },
+  offersCta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.sm, paddingVertical: 10, paddingHorizontal: 12, borderRadius: radius.sm, backgroundColor: 'rgba(245,158,11,0.14)', borderWidth: 1, borderColor: 'rgba(245,158,11,0.45)' },
+  offersCtaText: { color: '#F59E0B', fontSize: 14, fontWeight: '800', flex: 1 },
+  offersCtaArrow: { color: '#F59E0B', fontSize: 18, fontWeight: '800' },
 
   chatBtn: { backgroundColor: '#22C55E', borderRadius: radius.sm, paddingVertical: spacing.sm, alignItems: 'center', marginTop: spacing.sm },
   chatBtnText: { color: '#FFF', ...typography.title },
@@ -105,7 +108,7 @@ export default function MyTripsScreen({ navigation, route }) {
   // searching / enroute / delivered (+ archive). Legacy initialTab
   // (my/bids/deals) ремапим, чтобы deep-links/nav приземлялись корректно.
   const DRIVER_TABS_KEYS = ['routes', 'offers', 'inwork', 'done', 'archive'];
-  const CLIENT_TABS_KEYS = ['searching', 'enroute', 'delivered', 'archive'];
+  const CLIENT_TABS_KEYS = ['searching', 'offers', 'enroute', 'delivered', 'archive'];
   const rawInitialTab = route.params?.initialTab || (isDriver ? 'routes' : 'searching');
   const normInitialTab = isDriver
     ? (DRIVER_TABS_KEYS.includes(rawInitialTab)
@@ -113,7 +116,7 @@ export default function MyTripsScreen({ navigation, route }) {
         : (rawInitialTab === 'bids' ? 'offers' : rawInitialTab === 'deals' ? 'inwork' : 'routes'))
     : (CLIENT_TABS_KEYS.includes(rawInitialTab)
         ? rawInitialTab
-        : (rawInitialTab === 'deals' ? 'enroute' : 'searching'));
+        : (rawInitialTab === 'bids' ? 'offers' : rawInitialTab === 'deals' ? 'enroute' : 'searching'));
   const justCreatedTrip = route.params?.justCreatedTrip || null;
   const [tab, setTab] = useState(normInitialTab);
   const mounted = useMountedRef();  // QA-аудит P1-8
@@ -286,6 +289,11 @@ export default function MyTripsScreen({ navigation, route }) {
   // «Ищу машину» = только активные грузы (без already taken — у принятого
   // груза есть сделка, она показывается в «Везут», иначе был бы дубль).
   const clientSearching = myItems.filter((c) => !c.status || c.status === 'active');
+  // Входящие предложения водителей по моим грузам — ядро сделки. Раньше были
+  // видны только в колокольчике; теперь это отдельная вкладка у клиента
+  // (myBids у клиента = incoming_bids). renderBid уже умеет принять/отклонить/
+  // контр-оффер/чат для !isDriver.
+  const clientOffers = myBids.filter((b) => ['pending', 'countered'].includes(b.status));
   const clientArchive = [
     ...serverDeals.filter((d) => ARCHIVE_STATUSES.includes(d.status)).map((d) => ({ ...d, _kind: 'deal' })),
     ...myItemsExpired.map((it) => ({ ...it, _kind: 'cargo', _expired: true })),
@@ -350,8 +358,17 @@ export default function MyTripsScreen({ navigation, route }) {
         </View>
         <View style={s.cardBottom}>
           <Text style={s.price}>{formatPrice(item.price, item.currency, t)}</Text>
-          {item.bids_count > 0 && <Text style={[s.bidsLabel, { color: theme.textMuted }]}>{formatBids(item.bids_count)}</Text>}
+          {item.bids_count > 0 && !(isCargo && !isDriver) && <Text style={[s.bidsLabel, { color: theme.textMuted }]}>{formatBids(item.bids_count)}</Text>}
         </View>
+        {/* B (предложения не прятать в колокол): у клиента входящие ставки —
+            заметный янтарный CTA прямо на карточке груза. Тап по карточке уже
+            ведёт в CargoDetail, где ставку можно принять/отклонить/написать. */}
+        {isCargo && !isDriver && item.bids_count > 0 && (item.status || 'active') === 'active' && (
+          <View style={s.offersCta} testID="cargo-offers-cta">
+            <Text style={s.offersCtaText} numberOfLines={1}>💬 {formatBids(item.bids_count)}</Text>
+            <Text style={s.offersCtaArrow}>›</Text>
+          </View>
+        )}
         {canEditTrip && (
           <TouchableOpacity
             testID="my-trip-edit-btn"
@@ -746,6 +763,7 @@ export default function MyTripsScreen({ navigation, route }) {
       ]
     : [
         { key: 'searching', label: t('client_tab_searching'), testID: 'my-work-tab-searching' },
+        { key: 'offers',    label: clientOffers.length ? `${t('tab_offers')} (${clientOffers.length})` : t('tab_offers'), testID: 'my-work-tab-offers-client' },
         { key: 'enroute',   label: t('client_tab_enroute'),   testID: 'my-work-tab-enroute' },
         { key: 'delivered', label: t('client_tab_delivered'), testID: 'my-work-tab-delivered' },
       ];
@@ -770,11 +788,11 @@ export default function MyTripsScreen({ navigation, route }) {
 
   const DRIVER_DATA = { routes: myItems, offers: driverOffers, inwork: driverInWork, done: driverDone, archive: driverArchive };
   const DRIVER_RENDER = { routes: renderMyItem, offers: renderBid, inwork: renderDeal, done: renderDeal, archive: renderArchiveItem };
-  // Client (грузоотправитель): входящие ставки больше НЕ вкладка — они в
-  // карточке груза (CargoDetail). Вкладки — стадии: ищу машину / везут /
-  // доставлено + архив.
-  const CLIENT_DATA = { searching: clientSearching, enroute: driverInWork, delivered: driverDone, archive: clientArchive };
-  const CLIENT_RENDER = { searching: renderMyItem, enroute: renderDeal, delivered: renderDeal, archive: renderArchiveItem };
+  // Client (грузоотправитель): входящие ставки — отдельная вкладка «Предложения»
+  // (ядро сделки, раньше прятались в колокольчике) + дубль-CTA на карточке груза.
+  // Остальные вкладки — стадии: ищу машину / везут / доставлено + архив.
+  const CLIENT_DATA = { searching: clientSearching, offers: clientOffers, enroute: driverInWork, delivered: driverDone, archive: clientArchive };
+  const CLIENT_RENDER = { searching: renderMyItem, offers: renderBid, enroute: renderDeal, delivered: renderDeal, archive: renderArchiveItem };
   const listData = isDriver ? (DRIVER_DATA[tab] || []) : (CLIENT_DATA[tab] || []);
   const listRender = isDriver ? (DRIVER_RENDER[tab] || renderMyItem) : (CLIENT_RENDER[tab] || renderMyItem);
 
@@ -790,6 +808,7 @@ export default function MyTripsScreen({ navigation, route }) {
       return <EmptyState title={t('no_archive_yet')} description={t('no_archive_desc')} />;
     }
     if (tab === 'searching') return <EmptyState title={t('no_cargos_yet')} description={t('client_searching_desc')} actionLabel={t('place_cargo')} onAction={() => navigation.navigate('CreateCargo')} />;
+    if (tab === 'offers') return <EmptyState title={t('no_responses_yet')} description={t('no_responses_desc')} actionLabel={t('place_cargo')} onAction={() => navigation.navigate('CreateCargo')} />;
     if (tab === 'enroute') return <EmptyState title={t('client_no_enroute_yet')} description={t('client_no_enroute_desc')} />;
     if (tab === 'delivered') return <EmptyState title={t('client_no_delivered_yet')} description={t('client_no_delivered_desc')} />;
     return <EmptyState title={t('no_archive_yet')} description={t('no_archive_desc')} />;
