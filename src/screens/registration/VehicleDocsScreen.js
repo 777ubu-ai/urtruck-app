@@ -25,6 +25,7 @@ import { useToast } from '../../components/Toast';
 import { regAPI } from '../../utils/registration';
 import RegistrationCloseModal from '../../components/RegistrationCloseModal';
 import RegistrationHelpSheet from '../../components/RegistrationHelpSheet';
+import PhotoGuide from '../../components/PhotoGuide';
 import { brand, radius, typography } from '../../theme/brandV2';
 
 const TOTAL_STEPS = 5;
@@ -281,6 +282,10 @@ export default function VehicleDocsScreen({ navigation }) {
           </View>
         </DocCard>
 
+        <PhotoGuide
+          source={require('../../assets/onboarding/verification/guides/license_front_guide.png')}
+          testID="vd-license-guide"
+        />
         <DocCard title={`🪪 ${t('vdocs_license')}`} hint={t('vdocs_hint_license')} doc={license} onPick={handleLicense}>
           <View style={s.ocrBox}>
             <Text style={s.ocrTitle}>✅ {t('vdocs_recognized')}</Text>
@@ -321,6 +326,10 @@ export default function VehicleDocsScreen({ navigation }) {
         {errors.expiry ? <Text style={s.errText}>{errors.expiry}</Text> : null}
 
         {/* Селфи с правами в руках (антифрод, обязательно) */}
+        <PhotoGuide
+          source={require('../../assets/onboarding/verification/guides/selfie_license_guide.png')}
+          testID="vd-license-selfie-guide"
+        />
         <DocCard
           title={`🤳 ${t('vdocs_license_selfie')}`}
           hint={t('vdocs_hint_license_selfie')}

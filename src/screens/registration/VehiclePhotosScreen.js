@@ -25,6 +25,7 @@ import { useToast } from '../../components/Toast';
 import { regAPI } from '../../utils/registration';
 import RegistrationCloseModal from '../../components/RegistrationCloseModal';
 import RegistrationHelpSheet from '../../components/RegistrationHelpSheet';
+import PhotoGuide from '../../components/PhotoGuide';
 import { brand, radius, typography } from '../../theme/brandV2';
 
 const TOTAL_STEPS = 5;
@@ -169,6 +170,10 @@ export default function VehiclePhotosScreen({ navigation, route }) {
         <Text style={s.title}>{t('vehicle_photos_title')}</Text>
         <Text style={s.subtitle}>{t('vehicle_photos_subtitle')}</Text>
 
+        <PhotoGuide
+          source={require('../../assets/onboarding/verification/guides/truck_exterior_guide.png')}
+          testID="vp-exterior-guide"
+        />
         <DocCard
           title={`🚚 ${t('vehicle_photo_exterior')}`}
           hint={t('vphotos_hint_exterior')}
@@ -178,6 +183,10 @@ export default function VehiclePhotosScreen({ navigation, route }) {
         />
         {errors.vehiclePhoto ? <Text style={s.errText}>{errors.vehiclePhoto}</Text> : null}
 
+        <PhotoGuide
+          source={require('../../assets/onboarding/verification/guides/truck_interior_guide.png')}
+          testID="vp-interior-guide"
+        />
         <DocCard
           title={`🛋️ ${t('cabin_interior_photo')}`}
           hint={t('vphotos_hint_cabin')}

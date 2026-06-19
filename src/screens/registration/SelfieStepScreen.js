@@ -24,6 +24,7 @@ import { useToast } from '../../components/Toast';
 import { regAPI } from '../../utils/registration';
 import RegistrationCloseModal from '../../components/RegistrationCloseModal';
 import RegistrationHelpSheet from '../../components/RegistrationHelpSheet';
+import PhotoGuide from '../../components/PhotoGuide';
 import { translit, hasCyrillic } from '../../utils/translit';
 import { brand, radius, typography } from '../../theme/brandV2';
 
@@ -130,6 +131,10 @@ export default function SelfieStepScreen({ navigation, route }) {
         <Text style={s.title}>{t('selfie_title')}</Text>
         <Text style={s.subtitle}>{t('selfie_subtitle')}</Text>
 
+        <PhotoGuide
+          source={require('../../assets/onboarding/verification/guides/personal_photo_guide.png')}
+          testID="selfie-guide"
+        />
         <Pressable onPress={takeSelfie} style={s.slot} disabled={selfie.status === 'busy'} testID="selfie-slot">
           {selfie.uri ? (
             <Image source={{ uri: selfie.uri }} style={s.thumb} resizeMode="cover" />

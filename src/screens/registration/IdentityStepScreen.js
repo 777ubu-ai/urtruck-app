@@ -29,6 +29,7 @@ import { useToast } from '../../components/Toast';
 import { regAPI } from '../../utils/registration';
 import RegistrationCloseModal from '../../components/RegistrationCloseModal';
 import RegistrationHelpSheet from '../../components/RegistrationHelpSheet';
+import PhotoGuide from '../../components/PhotoGuide';
 import DateOfBirthSheet from '../../components/DateOfBirthSheet';
 import { brand, radius, typography } from '../../theme/brandV2';
 
@@ -240,6 +241,12 @@ export default function IdentityStepScreen({ navigation }) {
           {/* Личная фотография (обязательно) */}
           <Text style={s.label}>{t('identity_photo_label')}</Text>
           <Text style={s.photoHint}>{t('identity_photo_hint')}</Text>
+          {/* Образец «как сфотографироваться» (✅/❌) — раньше показывался только
+              в verification-флоу; теперь и в рабочей регистрации. Тап = крупно. */}
+          <PhotoGuide
+            source={require('../../assets/onboarding/verification/guides/personal_photo_guide.png')}
+            testID="identity-photo-guide"
+          />
           <Pressable onPress={takePhoto} style={s.photoSlot} testID="identity-photo">
             {photoUri ? (
               <Image source={{ uri: photoUri }} style={s.photoThumb} resizeMode="cover" />
