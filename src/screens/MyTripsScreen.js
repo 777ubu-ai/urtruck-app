@@ -911,6 +911,7 @@ export default function MyTripsScreen({ navigation, route }) {
         bidId={editingBid?.id}
         initialAmount={editingBid?.amount}
         initialMessage={editingBid?.message}
+        currency={currencyFor(editingBid)}
       />
 
       <EditCargoModal
