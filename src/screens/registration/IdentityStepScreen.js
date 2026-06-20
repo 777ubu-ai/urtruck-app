@@ -30,6 +30,7 @@ import { regAPI } from '../../utils/registration';
 import RegistrationCloseModal from '../../components/RegistrationCloseModal';
 import RegistrationHelpSheet from '../../components/RegistrationHelpSheet';
 import PhotoGuide from '../../components/PhotoGuide';
+import QaStepSkip from '../../components/dev/QaStepSkip';
 import DateOfBirthSheet from '../../components/DateOfBirthSheet';
 import { brand, radius, typography } from '../../theme/brandV2';
 
@@ -321,6 +322,18 @@ export default function IdentityStepScreen({ navigation }) {
             testID="identity-iin"
           />
           {errors.iin ? <Text style={s.err}>{errors.iin}</Text> : null}
+
+          {/* DEV/QA-only: прыжок на Selfie в обход нативного пикера (см. QaStepSkip). */}
+          <QaStepSkip
+            onPress={() => navigation.navigate('Selfie', {
+              iin: '000000000000',
+              fullName: 'QA Tester',
+              firstName: 'QA',
+              lastName: 'Tester',
+              birth_date: '01.01.1990',
+              personalPhotoKey: 'qa-skip',
+            })}
+          />
         </ScrollView>
 
         <View style={s.ctaWrap}>

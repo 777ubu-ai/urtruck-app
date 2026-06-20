@@ -26,6 +26,7 @@ import { regAPI } from '../../utils/registration';
 import RegistrationCloseModal from '../../components/RegistrationCloseModal';
 import RegistrationHelpSheet from '../../components/RegistrationHelpSheet';
 import PhotoGuide from '../../components/PhotoGuide';
+import QaStepSkip from '../../components/dev/QaStepSkip';
 import { brand, radius, typography } from '../../theme/brandV2';
 
 const TOTAL_STEPS = 5;
@@ -195,6 +196,12 @@ export default function VehiclePhotosScreen({ navigation, route }) {
           errorText={t('vdocs_cabin_photo_upload_err')}
         />
         {errors.cabinPhoto ? <Text style={s.errText}>{errors.cabinPhoto}</Text> : null}
+
+        {/* DEV/QA-only: якорь-прыжок на TruckParams (используется как нижний
+            scroll-anchor в Maestro, чтобы образцы вставали над футером). */}
+        <QaStepSkip
+          onPress={() => navigation.navigate('TruckParams', { fromVerification: true })}
+        />
       </ScrollView>
 
       <View style={s.ctaWrap}>

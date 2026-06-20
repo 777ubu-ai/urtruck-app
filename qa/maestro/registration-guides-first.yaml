@@ -7,18 +7,21 @@ tags:
 env:
   MAESTRO_ACTOR: serik
 ---
-# «Образец-вперёд» (guide-first) в потоке регистрации водителя.
+# «Образец-вперёд» (guide-first) во ВСЕХ 6 шагах регистрации водителя.
 #
-# Главное правило: НА КАЖДОМ шаге, где грузится фото, ОБРАЗЕЦ (✅/❌) виден ДО
-# контрола загрузки, и по тапу открывается крупно (Modal photo-guide-zoom).
+# Правило: на каждом шаге, где грузится фото, ОБРАЗЕЦ (✅/❌) виден ДО контрола
+# загрузки и по тапу открывается крупно (Modal photo-guide-zoom).
 #
-# Доступ: serik засеян в локальной QA-БД на verification_level=1 (status pending),
-# поэтому Profile → «profile-pro-cta» ведёт в стек регистрации Identity → Selfie →
-# … (для level>=2 CTA уходит в EditProfile и шаги недоступны).
+# Доступ к шагам:
+#  - serik засеян в локальной QA-БД на verification_level=1 → Profile →
+#    «profile-pro-cta» ведёт в стек регистрации (level>=2 уводит в EditProfile).
+#  - переходы между шагами — через DEV/QA-only кнопку «qa-skip-step»
+#    (см. src/components/dev/QaStepSkip.js): она обходит нативный iOS фото-пикер
+#    и серверные гейты (face_verified / OCR / ИИН-госреестр), недоступные на
+#    симуляторе. Сами экраны и образцы рендерятся НАСТОЯЩИЕ.
 #
-# Глубина: Identity и Selfie проверяются вживую. VehicleDocs/VehiclePhotos требуют
-# реальной загрузки фото + серверной валидации ИИН (камера в симуляторе недоступна)
-# — это STATE-SEED REQUIRED, см. отчёт + статическая проверка require() в коде.
+# 6 образцов: identity-photo-guide · selfie-guide · vd-license-guide ·
+# vd-license-selfie-guide · vp-exterior-guide · vp-interior-guide.
 
 - runFlow: _lib/qa-login.yaml
 - waitForAnimationToEnd:
@@ -41,94 +44,155 @@ env:
       id: "identity-step-screen"
     timeout: 12000
 
-# ── ШАГ 1: Личное фото (IdentityStep) — образец-вперёд ──
+# ── ШАГ 1/6: Личное фото (IdentityStep) → identity-photo-guide ──
 - assertVisible:
     id: "identity-photo-guide"     # образец виден
 - assertVisible:
-    id: "identity-photo"           # контрол загрузки фото тоже на экране (образец выше него)
+    id: "identity-photo"           # контрол загрузки фото ниже образца
 - tapOn:
-    id: "identity-photo-guide"     # открыть крупно
+    id: "identity-photo-guide"
 - assertVisible:
     id: "photo-guide-zoom"         # зум открылся
-- takeScreenshot: ../screenshots/maestro-guides/01-identity-guide-zoom
+- takeScreenshot: ../screenshots/maestro-guides/step1-identity-photo-guide
 - tapOn:
-    id: "photo-guide-zoom"         # закрыть (тап по фону)
+    id: "photo-guide-zoom"         # закрыть
 - waitForAnimationToEnd:
-    timeout: 2000
-- assertVisible:
-    id: "identity-step-screen"     # вернулись на шаг
-- takeScreenshot: ../screenshots/maestro-guides/01-identity-guide-first
+    timeout: 1500
 
-# ── Попытка дойти до ШАГА 2 (Selfie): заполнить Identity + фото из галереи ──
-# Best-effort (все шаги optional: true) — если галерея/permission/picker/ИИН не
-# проходят в симуляторе, ветка Selfie тихо пропускается и помечается
-# STATE-SEED REQUIRED в отчёте. Сам флоу при этом остаётся PASS.
-- tapOn:
-    id: "identity-photo-gallery"
-    optional: true
-- waitForAnimationToEnd:
-    timeout: 3000
-# Expo Go спрашивает разрешение на медиатеку — подтверждаем.
-- tapOn:
-    text: "Allow|Разрешить"
-    optional: true
-- waitForAnimationToEnd:
-    timeout: 3000
-# Системный iOS photo picker — выбрать первое фото, затем подтвердить.
-- tapOn:
-    point: "25%,35%"
-    optional: true
-- waitForAnimationToEnd:
-    timeout: 2000
-- tapOn:
-    text: "Add|Choose|Готово|Done|Добавить|Выбрать"
-    optional: true
-- waitForAnimationToEnd:
-    timeout: 3000
-- tapOn:
-    id: "identity-first-name"
-    optional: true
-- inputText: "Серик"
-- hideKeyboard
-- tapOn:
-    id: "identity-last-name"
-    optional: true
-- inputText: "Тестов"
-- hideKeyboard
-- tapOn:
-    id: "identity-iin"
-    optional: true
-- inputText: "900101300123"
-- hideKeyboard
+# → Selfie
 - scrollUntilVisible:
     element:
-      text: "Продолжить|Continue"
+      id: "qa-skip-step"
     direction: DOWN
-    timeout: 5000
+    timeout: 12000
     optional: true
 - tapOn:
-    text: "Продолжить|Continue"
-    optional: true
-- waitForAnimationToEnd:
-    timeout: 6000
+    id: "qa-skip-step"
+- extendedWaitUntil:
+    visible:
+      id: "selfie-step-screen"
+    timeout: 10000
 
-# ── ШАГ 2: Селфи (SelfieStep) — образец-вперёд (если дошли) ──
-- runFlow:
-    when:
-      visible:
-        id: "selfie-step-screen"
-    commands:
-      - assertVisible:
-          id: "selfie-guide"        # образец виден
-      - assertVisible:
-          id: "selfie-slot"         # контрол съёмки тоже на экране (образец выше)
-      - tapOn:
-          id: "selfie-guide"        # открыть крупно
-      - assertVisible:
-          id: "photo-guide-zoom"    # зум открылся
-      - takeScreenshot: ../screenshots/maestro-guides/02-selfie-guide-zoom
-      - tapOn:
-          id: "photo-guide-zoom"    # закрыть
-      - waitForAnimationToEnd:
-          timeout: 2000
-      - takeScreenshot: ../screenshots/maestro-guides/02-selfie-guide-first
+# ── ШАГ 2/6: Селфи (SelfieStep) → selfie-guide ──
+- assertVisible:
+    id: "selfie-guide"
+- assertVisible:
+    id: "selfie-slot"              # контрол съёмки ниже образца
+- tapOn:
+    id: "selfie-guide"
+- assertVisible:
+    id: "photo-guide-zoom"
+- takeScreenshot: ../screenshots/maestro-guides/step2-selfie-guide
+- tapOn:
+    id: "photo-guide-zoom"
+- waitForAnimationToEnd:
+    timeout: 1500
+
+# → VehicleDocs
+- scrollUntilVisible:
+    element:
+      id: "qa-skip-step"
+    direction: DOWN
+    timeout: 12000
+    optional: true
+- tapOn:
+    id: "qa-skip-step"
+- extendedWaitUntil:
+    visible:
+      id: "vehicle-docs-screen"
+    timeout: 10000
+
+# ── ШАГ 3/6: Права лицевая (VehicleDocs) → vd-license-guide ──
+- scrollUntilVisible:
+    element:
+      id: "vd-license-guide"
+    direction: DOWN
+    timeout: 6000
+    visibilityPercentage: 20
+    centerElement: true
+- assertVisible:
+    id: "vd-license-guide"
+- tapOn:
+    id: "vd-license-guide"
+- assertVisible:
+    id: "photo-guide-zoom"
+- takeScreenshot: ../screenshots/maestro-guides/step3-vd-license-guide
+- tapOn:
+    id: "photo-guide-zoom"
+- waitForAnimationToEnd:
+    timeout: 1500
+
+# ── ШАГ 4/6: Селфи с правами (VehicleDocs) → vd-license-selfie-guide ──
+# Скроллим к нижнему якорю qa-skip-step: образец встаёт в середину экрана,
+# ВЫШЕ фиксированного футера «Далее» (иначе тап уходит в кнопку под образцом).
+- scrollUntilVisible:
+    element:
+      id: "qa-skip-step"
+    direction: DOWN
+    timeout: 12000
+    optional: true
+- assertVisible:
+    id: "vd-license-selfie-guide"
+- tapOn:
+    id: "vd-license-selfie-guide"
+- assertVisible:
+    id: "photo-guide-zoom"
+- takeScreenshot: ../screenshots/maestro-guides/step4-vd-license-selfie-guide
+- tapOn:
+    id: "photo-guide-zoom"
+- waitForAnimationToEnd:
+    timeout: 1500
+
+# → VehiclePhotos
+- scrollUntilVisible:
+    element:
+      id: "qa-skip-step"
+    direction: DOWN
+    timeout: 12000
+    optional: true
+- tapOn:
+    id: "qa-skip-step"
+- extendedWaitUntil:
+    visible:
+      id: "vehicle-photos-screen"
+    timeout: 10000
+
+# ── ШАГ 5/6: Авто снаружи (VehiclePhotos) → vp-exterior-guide ──
+- scrollUntilVisible:
+    element:
+      id: "vp-exterior-guide"
+    direction: DOWN
+    timeout: 6000
+    visibilityPercentage: 20
+    centerElement: true
+- assertVisible:
+    id: "vp-exterior-guide"
+- tapOn:
+    id: "vp-exterior-guide"
+- assertVisible:
+    id: "photo-guide-zoom"
+- takeScreenshot: ../screenshots/maestro-guides/step5-vp-exterior-guide
+- tapOn:
+    id: "photo-guide-zoom"
+- waitForAnimationToEnd:
+    timeout: 1500
+
+# ── ШАГ 6/6: Авто салон (VehiclePhotos) → vp-interior-guide ──
+# Скроллим к нижнему якорю qa-skip-step (образец встаёт над футером «Далее»).
+- scrollUntilVisible:
+    element:
+      id: "qa-skip-step"
+    direction: DOWN
+    timeout: 12000
+    optional: true
+- assertVisible:
+    id: "vp-interior-guide"
+- tapOn:
+    id: "vp-interior-guide"
+- assertVisible:
+    id: "photo-guide-zoom"
+- takeScreenshot: ../screenshots/maestro-guides/step6-vp-interior-guide
+- tapOn:
+    id: "photo-guide-zoom"
+- waitForAnimationToEnd:
+    timeout: 1500

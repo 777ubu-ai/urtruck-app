@@ -99,33 +99,30 @@
 
 - **Среда:** Maestro 2.x · iPhone 17 (iOS 26.4) симулятор · Expo Go 2.32.18 (`appId host.exp.Exponent`) · Metro `:8081` (`EXPO_PUBLIC_API_URL=http://127.0.0.1:8001`) · backend `:8001` MOCK · логин serik через `_lib/qa-login.yaml` → `runScript ensure-actor.js` (`/qa/ensure-actor`).
 - **Флоу:** `qa/maestro/registration-guides-first.yaml` (новый). Существующие `verification-render/-deep/-authenticated/-upload-flow.yaml` проверяют поля Identity / dashboard, но **ни один не покрывает guide-first** (testID образцов `*-guide` + `photo-guide-zoom`) — поэтому добавлен минимальный целевой флоу.
-- **Доступ к шагам:** `/qa/ensure-actor` всегда выдаёт level 3 (approved) → `profile-pro-cta` уходит в `EditProfile`, а не в регистрацию. Чтобы CTA вёл в стек `Identity → Selfie → …`, serik засеян в **локальной QA-БД** на `verification_level=1` (это сид состояния актёра, не подмена UI — экраны рендерятся реально).
-- **Связка для каждого шага:** `assertVisible <guide-testID>` → `tapOn <guide-testID>` → `assertVisible photo-guide-zoom` → `tapOn photo-guide-zoom` (закрыть) → `takeScreenshot`. Дополнительно `assertVisible <photo-control-testID>` — образец выше контрола (порядок подтверждён и в коде).
+- **Доступ к шагам:** `/qa/ensure-actor` всегда выдаёт level 3 (approved) → `profile-pro-cta` уходит в `EditProfile`, а не в регистрацию. Чтобы CTA вёл в стек `Identity → Selfie → …`, serik засеян в **локальной QA-БД** на `verification_level=1` (сид состояния актёра, не подмена UI — экраны рендерятся реально). После прогона возвращён в level=3/approved.
+- **Обход нативного пикера (DEV/QA-хук):** переходы между шагами идут через `qa-skip-step` — DEV-only кнопку (`src/components/dev/QaStepSkip.js`, строго `__DEV__`, в прод-бандл не попадает). Она навигирует на следующий экран регистрации в обход НАТИВНОГО iOS фото-пикера и серверных гейтов (`uploadSelfie → face_verified`, OCR техпаспорта/прав, ИИН-госреестр), которых нет в симуляторе. Сам `PhotoGuide` и экраны рендерятся **настоящие** — обходится только пикер/серверная проверка, не образец.
+- **Связка для каждого образца:** `assertVisible <guide-testID>` → `tapOn <guide-testID>` → `assertVisible photo-guide-zoom` → `takeScreenshot` → `tapOn photo-guide-zoom` (закрыть). Где образец у низа списка — скролл к нижнему якорю `qa-skip-step`, чтобы образец встал над фиксированным футером и тап попал по нему.
 
-## Таблица по 6 шагам
+## Таблица по 6 шагам — все LIVE PASS
 
-| # | Шаг | guide testID | контрол загрузки | Вердикт |
-|---|---|---|---|---|
-| 1 | Личное фото (IdentityStep) | `identity-photo-guide` | `identity-photo` | ✅ **LIVE PASS** (образец виден, зум открылся/закрылся) |
-| 2 | Селфи (SelfieStep) | `selfie-guide` | `selfie-slot` | ⚠️ **STATE-SEED REQUIRED** |
-| 3 | Права лицевая (VehicleDocs) | `vd-license-guide` | (camera/gallery) | ⚠️ **STATE-SEED REQUIRED** |
-| 4 | Селфи с правами (VehicleDocs) | `vd-license-selfie-guide` | (camera/gallery) | ⚠️ **STATE-SEED REQUIRED** |
-| 5 | Авто снаружи (VehiclePhotos) | `vp-exterior-guide` | (camera/gallery) | ⚠️ **STATE-SEED REQUIRED** |
-| 6 | Авто салон (VehiclePhotos) | `vp-interior-guide` | (camera/gallery) | ⚠️ **STATE-SEED REQUIRED** |
+| # | Шаг (экран) | guide testID | контрол загрузки (ниже образца) | Вердикт | Скриншот зума |
+|---|---|---|---|---|---|
+| 1 | Личное фото (IdentityStep) | `identity-photo-guide` | `identity-photo` | ✅ **LIVE PASS** | `step1-identity-photo-guide.png` |
+| 2 | Селфи (SelfieStep) | `selfie-guide` | `selfie-slot` | ✅ **LIVE PASS** | `step2-selfie-guide.png` |
+| 3 | Права лицевая (VehicleDocs) | `vd-license-guide` | DocCard «Водительское удостоверение» | ✅ **LIVE PASS** | `step3-vd-license-guide.png` |
+| 4 | Селфи с правами (VehicleDocs) | `vd-license-selfie-guide` | DocCard «Селфи с правами в руках» | ✅ **LIVE PASS** | `step4-vd-license-selfie-guide.png` |
+| 5 | Авто снаружи (VehiclePhotos) | `vp-exterior-guide` | DocCard «Фото кузова» | ✅ **LIVE PASS** | `step5-vp-exterior-guide.png` |
+| 6 | Авто салон (VehiclePhotos) | `vp-interior-guide` | DocCard «Фото салона» | ✅ **LIVE PASS** | `step6-vp-interior-guide.png` |
 
-### Почему 2–6 = STATE-SEED REQUIRED (честно, без имитации)
-Чтобы дойти до Selfie и дальше, нужно **завершить** Identity: загрузить личное фото (upload на сервер) + валидный ИИН. В Expo Go на симуляторе тап «Выбрать из галереи» поднимает диалог Expo «Experience needs permissions» и системный iOS PHPicker — выбор фото в нём не доходит до возврата на форму надёжно (камера в симуляторе недоступна вовсе). Я сделал две реальные попытки (галерея + подтверждение разрешения), `selfie-step-screen` не достигнут — поэтому ветка Selfie во флоу `optional`/conditional и помечена как STATE-SEED REQUIRED, а не подделана. Флоу при этом остаётся **PASS** (Identity-ассерты жёсткие).
+Прогон зелёный целиком (0 FAILED): на КАЖДОМ из 6 шагов образец `*-guide` виден ДО контрола загрузки, тап открывает `photo-guide-zoom` (крупно), закрытие возвращает на шаг. Порядок «образец выше контрола» подтверждён и в коде (`<PhotoGuide>` в JSX выше слота съёмки/`DocCard` на каждом экране).
 
-### Статическое подтверждение образцов на шагах 2–6
-Образцы там точно подключены — `require()` к реально присутствующим PNG (проверено в коде):
-- `SelfieStepScreen.js:135` → `personal_photo_guide.png` (testID `selfie-guide`, строка 136; контрол `selfie-slot` ниже, строка 138);
-- `VehicleDocsScreen.js:286` → `license_front_guide.png` (`vd-license-guide`); `:330` → `selfie_license_guide.png` (`vd-license-selfie-guide`);
-- `VehiclePhotosScreen.js:174` → `truck_exterior_guide.png` (`vp-exterior-guide`); `:187` → `truck_interior_guide.png` (`vp-interior-guide`).
-
-Во всех случаях `<PhotoGuide source=… testID=…/>` расположен в JSX **выше** контрола съёмки/загрузки — порядок guide-first соблюдён.
+## Что добавлено для прохождения
+- `src/components/dev/QaStepSkip.js` — DEV-only хук перехода (см. выше). `if (!__DEV__) return null` — в прод не течёт.
+- Подключён в `IdentityStepScreen` (→ Selfie), `SelfieStepScreen` (→ VehicleDocs), `VehicleDocsScreen` (→ VehiclePhotos), `VehiclePhotosScreen` (→ TruckParams, как нижний scroll-anchor).
+- Почему хук, а не «qa-fill-photo»/seed прогресса: navigation всегда стартует с Identity (нет resume-логики, seed не открывает VehicleDocs напрямую), а pure-fill-photo упирается в серверные гейты Selfie (`face_verified`) и VehicleDocs (OCR). Хук навигации монтирует РЕАЛЬНЫЕ экраны с РЕАЛЬНЫМИ образцами и надёжнее.
 
 ## Скриншоты Maestro (локально, gitignored)
-`qa/screenshots/maestro-guides/`: `01-identity-guide-zoom.png` (образец «Личная фотография» крупно, ✅/❌), `01-identity-guide-first.png` (образец на шаге выше контрола фото).
+`qa/screenshots/maestro-guides/`: `step1-identity-photo-guide.png` … `step6-vp-interior-guide.png` — зум каждого из 6 образцов (✅/❌) крупно.
 
 ## Граница честности
 Бейдж на ИКОНКЕ телефона и реальные фоновые пуши Maestro не проверяет — **REAL DEVICE REQUIRED**.

@@ -25,6 +25,7 @@ import { regAPI } from '../../utils/registration';
 import RegistrationCloseModal from '../../components/RegistrationCloseModal';
 import RegistrationHelpSheet from '../../components/RegistrationHelpSheet';
 import PhotoGuide from '../../components/PhotoGuide';
+import QaStepSkip from '../../components/dev/QaStepSkip';
 import { translit, hasCyrillic } from '../../utils/translit';
 import { brand, radius, typography } from '../../theme/brandV2';
 
@@ -170,6 +171,13 @@ export default function SelfieStepScreen({ navigation, route }) {
             <Text style={s.retakeText}>{t('reg_selfie_retake')}</Text>
           </Pressable>
         ) : null}
+
+        {/* DEV/QA-only: прыжок на VehicleDocs в обход face_verified-гейта. */}
+        <QaStepSkip
+          onPress={() => navigation.navigate('VehicleDocs', {
+            personalPhotoKey: route?.params?.personalPhotoKey || 'qa-skip',
+          })}
+        />
       </ScrollView>
 
       <View style={s.ctaWrap}>

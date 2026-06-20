@@ -26,6 +26,7 @@ import { regAPI } from '../../utils/registration';
 import RegistrationCloseModal from '../../components/RegistrationCloseModal';
 import RegistrationHelpSheet from '../../components/RegistrationHelpSheet';
 import PhotoGuide from '../../components/PhotoGuide';
+import QaStepSkip from '../../components/dev/QaStepSkip';
 import { brand, radius, typography } from '../../theme/brandV2';
 
 const TOTAL_STEPS = 5;
@@ -343,6 +344,11 @@ export default function VehicleDocsScreen({ navigation }) {
         </DocCard>
         {errors.licenseSelfie ? <Text style={s.errText}>{errors.licenseSelfie}</Text> : null}
         {errors.license ? <Text style={s.errText}>{errors.license}</Text> : null}
+
+        {/* DEV/QA-only: прыжок на VehiclePhotos в обход OCR/upload-гейтов. */}
+        <QaStepSkip
+          onPress={() => navigation.navigate('VehiclePhotos', { fromVerification: true, plate: null })}
+        />
       </ScrollView>
 
       <View style={s.ctaWrap}>
