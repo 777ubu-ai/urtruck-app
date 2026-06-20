@@ -7,7 +7,7 @@ import { useEffect, useState, useRef } from 'react';
 import { AppState } from 'react-native';
 import { notificationsAPI } from './notificationsAPI';
 
-const POLL_MS = 30000;
+const POLL_MS = 12000;
 
 export function useUnreadNotifications(enabled = true) {
   const [count, setCount] = useState(0);

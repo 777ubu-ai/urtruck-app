@@ -38,7 +38,7 @@ import { useUnreadNotifications } from '../../../utils/useUnreadNotifications';
 // для B2B-логистики единый orange выглядит как взрослая платформа.
 import { colors as v2 } from '../../../theme/designSystemV2';
 
-const UNREAD_POLL_MS = 30000;
+const UNREAD_POLL_MS = 12000;
 
 // Stage DS-1: эмодзи навигации заменены на Feather outline icons
 // (2px stroke, monochrome). Это убирает «детский» вид для серьёзного

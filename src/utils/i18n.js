@@ -246,7 +246,7 @@ const translations = {
     chat_deal_card_status: 'Статус',
     chat_deal_card_plate: 'Госномер',
     chat_quick_action_offer_price: 'Предложить цену',
-    chat_quick_action_accept_bid: 'Принять ставку',
+    chat_quick_action_accept_bid: 'Принять предложение',
     chat_quick_action_send_document: 'Документ',
     chat_quick_action_call_support: 'Поддержка',
     chat_documents_title: 'Документы',
@@ -269,13 +269,13 @@ const translations = {
     role_driver: 'Водитель',
     role_client: 'Клиент',
     role_support: 'Поддержка',
-    deal_event_bid_created: 'Создана ставка',
-    deal_event_bid_accepted: 'Ставка принята',
-    action_accept_bid: 'Принять ставку',
-    accept_bid_confirm_title: 'Принять ставку?',
-    accept_bid_confirm_text: 'Вы принимаете ставку на сумму',
-    accept_bid_success: 'Ставка принята',
-    accept_bid_failed: 'Не удалось принять ставку',
+    deal_event_bid_created: 'Создано предложение',
+    deal_event_bid_accepted: 'Предложение принято',
+    action_accept_bid: 'Принять предложение',
+    accept_bid_confirm_title: 'Принять предложение?',
+    accept_bid_confirm_text: 'Вы принимаете предложение на сумму',
+    accept_bid_success: 'Предложение принято',
+    accept_bid_failed: 'Не удалось принять предложение',
     deal_event_trip_confirmed: 'Рейс подтверждён',
     deal_event_documents_uploaded: 'Загружены документы',
     deal_event_support_joined: 'Подключилась поддержка',
@@ -436,7 +436,7 @@ const translations = {
     client_tab_searching: 'Мои грузы',
     client_tab_enroute: 'Везут',
     client_tab_delivered: 'Доставлено',
-    client_searching_desc: 'Разместите груз — водители предложат цену. Ставки смотрите в карточке груза.',
+    client_searching_desc: 'Разместите груз — водители предложат цену. Предложения смотрите на вкладке «Предложения» или в карточке груза.',
     client_no_enroute_yet: 'Пока никто не везёт',
     client_no_enroute_desc: 'Выберите водителя из ставок по грузу — заказ появится здесь.',
     client_no_delivered_yet: 'Нет доставленных',
@@ -606,7 +606,7 @@ const translations = {
     language_label: 'Язык',
     onboarding_trust_count: 'проверенных перевозчиков',
     // MyTrips
-    bid_accepted_toast: 'Ставка принята',
+    bid_accepted_toast: 'Предложение принято',
     // Registration wizard
     reg_step_whatsapp: 'WhatsApp',
     reg_step_identity: 'Личность',
@@ -750,15 +750,15 @@ const translations = {
     edit_bid: 'Изменить',
     give_discount: 'Дать скидку',
     cancel_bid: 'Отменить',
-    cancel_bid_confirm: 'Отозвать свою ставку?',
+    cancel_bid_confirm: 'Отозвать своё предложение?',
     reject_btn: 'Отклонить',
-    bid_updated: 'Ставка обновлена',
+    bid_updated: 'Предложение обновлено',
     bid_discount_sent: 'Скидка отправлена',
-    bid_cancelled_toast: 'Ставка отменена',
-    bid_rejected_toast: 'Ставка отклонена',
-    cancel_failed: 'Не удалось отменить ставку',
-    reject_failed: 'Не удалось отклонить ставку',
-    bid_not_pending: 'Действие недоступно: статус ставки изменился',
+    bid_cancelled_toast: 'Предложение отменено',
+    bid_rejected_toast: 'Предложение отклонено',
+    cancel_failed: 'Не удалось отменить предложение',
+    reject_failed: 'Не удалось отклонить предложение',
+    bid_not_pending: 'Действие недоступно: статус предложения изменился',
     bid_amount_invalid: 'Цена должна быть больше 0',
     save_changes: 'Сохранить',
     send_discount: 'Отправить скидку',
@@ -826,8 +826,8 @@ const translations = {
     suggestPrice: 'Предложить цену',
     avgPrice: 'Средняя',
     ownPrice: 'Своя цена',
-    sendBid: 'Отправить ставку',
-    bidSent: 'Ставка отправлена!',
+    sendBid: 'Отправить предложение',
+    bidSent: 'Предложение отправлено!',
     contactFree: 'Контакт $0 (бета)',
 
     // Driver detail
@@ -1008,11 +1008,11 @@ const translations = {
     no_active_trips: 'Актуальных рейсов пока нет',
     load_failed_check_internet: 'Не удалось загрузить. Проверьте интернет.',
     cargo_published: 'Груз опубликован и виден всем водителям',
-    bid_sent: 'Ставка отправлена',
-    bid_failed: 'Не удалось отправить ставку',
+    bid_sent: 'Предложение отправлено',
+    bid_failed: 'Не удалось отправить предложение',
     driver_selected: 'Водитель выбран!',
     deal_created: 'Сделка создана',
-    accept_failed: 'Не удалось принять ставку',
+    accept_failed: 'Не удалось принять предложение',
     status_updated: 'Статус обновлён',
     update_failed: 'Не удалось обновить',
     no_connection: 'Нет связи с сервером',
@@ -1070,8 +1070,8 @@ const translations = {
     chat_queued: 'Нет сети — отправим, когда появится соединение',
     my_trips: 'Мои рейсы',
     my_cargos_tab: 'Мои грузы',
-    my_bids_tab: 'Мои ставки',
-    incoming_bids: 'Входящие ставки',
+    my_bids_tab: 'Мои предложения',
+    incoming_bids: 'Входящие предложения',
     add_name: 'Добавьте имя',
     role_driver: 'Водитель',
     role_shipper: 'Грузоотправитель',
@@ -5854,8 +5854,10 @@ function pluralRu(n, one, few, many) {
 
 export const formatBids = (count) => {
   const n = count || 0;
+  // Единая терминология: «предложение» (как в колоколе «Новое предложение» и
+  // вкладке «Предложения»), а не «ставка» — одно слово во всём флоу сделки.
   if (currentLang === 'RU' || currentLang === 'KK' || currentLang === 'KG') {
-    return `${n} ${pluralRu(n, 'ставка', 'ставки', 'ставок')}`;
+    return `${n} ${pluralRu(n, 'предложение', 'предложения', 'предложений')}`;
   }
   return `${n} ${t('bids')}`;
 };
