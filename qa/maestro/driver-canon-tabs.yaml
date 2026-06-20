@@ -1,0 +1,76 @@
+appId: host.exp.Exponent
+name: driver-canon-tabs
+tags:
+  - driver
+  - tabs
+  - deep
+env:
+  MAESTRO_ACTOR: serik
+---
+# A3 — КАНОН таб-бара водителя: 5 вкладок Feed / MyWork / Queue / Chats / Profile.
+# Каждая открывается без краша; Chats = ОТДЕЛЬНАЯ вкладка (не внутри Profile).
+# serik approved (level 3) → полный стек MainTabs.
+
+- runFlow: _lib/qa-login.yaml
+- waitForAnimationToEnd:
+    timeout: 4000
+
+# Все 5 канонических вкладок присутствуют в баре одновременно.
+- assertVisible:
+    id: "bottom-nav-feed"
+- assertVisible:
+    id: "bottom-nav-mywork"
+- assertVisible:
+    id: "bottom-nav-queue"
+- assertVisible:
+    id: "bottom-nav-chats"
+- assertVisible:
+    id: "bottom-nav-profile"
+- takeScreenshot: ../screenshots/deep-reg/A3-00-tabbar
+
+# Feed (водитель видит ленту грузов — карточки + фильтры)
+- tapOn:
+    id: "bottom-nav-feed"
+- extendedWaitUntil:
+    visible:
+      id: "cargo-card"
+    timeout: 8000
+- assertVisible:
+    id: "bottom-nav"
+- takeScreenshot: ../screenshots/deep-reg/A3-01-feed
+
+# MyWork
+- tapOn:
+    id: "bottom-nav-mywork"
+- waitForAnimationToEnd:
+    timeout: 4000
+- assertVisible:
+    id: "bottom-nav"
+- takeScreenshot: ../screenshots/deep-reg/A3-02-mywork
+
+# Queue (отдельная центральная вкладка)
+- tapOn:
+    id: "bottom-nav-queue"
+- extendedWaitUntil:
+    visible:
+      id: "queue-title"
+    timeout: 8000
+- takeScreenshot: ../screenshots/deep-reg/A3-03-queue
+
+# Chats (ОТДЕЛЬНАЯ вкладка)
+- tapOn:
+    id: "bottom-nav-chats"
+- extendedWaitUntil:
+    visible:
+      id: "chats-header"
+    timeout: 8000
+- takeScreenshot: ../screenshots/deep-reg/A3-04-chats
+
+# Profile
+- tapOn:
+    id: "bottom-nav-profile"
+- waitForAnimationToEnd:
+    timeout: 4000
+- assertVisible:
+    id: "profile-push-filter"
+- takeScreenshot: ../screenshots/deep-reg/A3-05-profile
