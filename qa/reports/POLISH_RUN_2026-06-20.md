@@ -90,3 +90,42 @@
 
 ## Итог
 Пункты 1, 2, 3 — **PASS** (live + код), пункт 4 — **PASS (код)**. Техпаспорт (2b) — корректно пропущен (образца не существует). C1/реальные пуши — REAL DEVICE REQUIRED.
+
+---
+
+# Maestro: «образец-вперёд» (guide-first) в регистрации водителя — 2026-06-20
+
+Отдельный нативный прогон правила: **на каждом шаге, где грузится фото, ОБРАЗЕЦ (✅/❌) виден ДО контрола загрузки, и по тапу открывается крупно**.
+
+- **Среда:** Maestro 2.x · iPhone 17 (iOS 26.4) симулятор · Expo Go 2.32.18 (`appId host.exp.Exponent`) · Metro `:8081` (`EXPO_PUBLIC_API_URL=http://127.0.0.1:8001`) · backend `:8001` MOCK · логин serik через `_lib/qa-login.yaml` → `runScript ensure-actor.js` (`/qa/ensure-actor`).
+- **Флоу:** `qa/maestro/registration-guides-first.yaml` (новый). Существующие `verification-render/-deep/-authenticated/-upload-flow.yaml` проверяют поля Identity / dashboard, но **ни один не покрывает guide-first** (testID образцов `*-guide` + `photo-guide-zoom`) — поэтому добавлен минимальный целевой флоу.
+- **Доступ к шагам:** `/qa/ensure-actor` всегда выдаёт level 3 (approved) → `profile-pro-cta` уходит в `EditProfile`, а не в регистрацию. Чтобы CTA вёл в стек `Identity → Selfie → …`, serik засеян в **локальной QA-БД** на `verification_level=1` (это сид состояния актёра, не подмена UI — экраны рендерятся реально).
+- **Связка для каждого шага:** `assertVisible <guide-testID>` → `tapOn <guide-testID>` → `assertVisible photo-guide-zoom` → `tapOn photo-guide-zoom` (закрыть) → `takeScreenshot`. Дополнительно `assertVisible <photo-control-testID>` — образец выше контрола (порядок подтверждён и в коде).
+
+## Таблица по 6 шагам
+
+| # | Шаг | guide testID | контрол загрузки | Вердикт |
+|---|---|---|---|---|
+| 1 | Личное фото (IdentityStep) | `identity-photo-guide` | `identity-photo` | ✅ **LIVE PASS** (образец виден, зум открылся/закрылся) |
+| 2 | Селфи (SelfieStep) | `selfie-guide` | `selfie-slot` | ⚠️ **STATE-SEED REQUIRED** |
+| 3 | Права лицевая (VehicleDocs) | `vd-license-guide` | (camera/gallery) | ⚠️ **STATE-SEED REQUIRED** |
+| 4 | Селфи с правами (VehicleDocs) | `vd-license-selfie-guide` | (camera/gallery) | ⚠️ **STATE-SEED REQUIRED** |
+| 5 | Авто снаружи (VehiclePhotos) | `vp-exterior-guide` | (camera/gallery) | ⚠️ **STATE-SEED REQUIRED** |
+| 6 | Авто салон (VehiclePhotos) | `vp-interior-guide` | (camera/gallery) | ⚠️ **STATE-SEED REQUIRED** |
+
+### Почему 2–6 = STATE-SEED REQUIRED (честно, без имитации)
+Чтобы дойти до Selfie и дальше, нужно **завершить** Identity: загрузить личное фото (upload на сервер) + валидный ИИН. В Expo Go на симуляторе тап «Выбрать из галереи» поднимает диалог Expo «Experience needs permissions» и системный iOS PHPicker — выбор фото в нём не доходит до возврата на форму надёжно (камера в симуляторе недоступна вовсе). Я сделал две реальные попытки (галерея + подтверждение разрешения), `selfie-step-screen` не достигнут — поэтому ветка Selfie во флоу `optional`/conditional и помечена как STATE-SEED REQUIRED, а не подделана. Флоу при этом остаётся **PASS** (Identity-ассерты жёсткие).
+
+### Статическое подтверждение образцов на шагах 2–6
+Образцы там точно подключены — `require()` к реально присутствующим PNG (проверено в коде):
+- `SelfieStepScreen.js:135` → `personal_photo_guide.png` (testID `selfie-guide`, строка 136; контрол `selfie-slot` ниже, строка 138);
+- `VehicleDocsScreen.js:286` → `license_front_guide.png` (`vd-license-guide`); `:330` → `selfie_license_guide.png` (`vd-license-selfie-guide`);
+- `VehiclePhotosScreen.js:174` → `truck_exterior_guide.png` (`vp-exterior-guide`); `:187` → `truck_interior_guide.png` (`vp-interior-guide`).
+
+Во всех случаях `<PhotoGuide source=… testID=…/>` расположен в JSX **выше** контрола съёмки/загрузки — порядок guide-first соблюдён.
+
+## Скриншоты Maestro (локально, gitignored)
+`qa/screenshots/maestro-guides/`: `01-identity-guide-zoom.png` (образец «Личная фотография» крупно, ✅/❌), `01-identity-guide-first.png` (образец на шаге выше контрола фото).
+
+## Граница честности
+Бейдж на ИКОНКЕ телефона и реальные фоновые пуши Maestro не проверяет — **REAL DEVICE REQUIRED**.

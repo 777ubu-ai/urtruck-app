@@ -1,0 +1,134 @@
+appId: host.exp.Exponent
+name: registration-guides-first
+tags:
+  - registration
+  - driver
+  - guides
+env:
+  MAESTRO_ACTOR: serik
+---
+# «Образец-вперёд» (guide-first) в потоке регистрации водителя.
+#
+# Главное правило: НА КАЖДОМ шаге, где грузится фото, ОБРАЗЕЦ (✅/❌) виден ДО
+# контрола загрузки, и по тапу открывается крупно (Modal photo-guide-zoom).
+#
+# Доступ: serik засеян в локальной QA-БД на verification_level=1 (status pending),
+# поэтому Profile → «profile-pro-cta» ведёт в стек регистрации Identity → Selfie →
+# … (для level>=2 CTA уходит в EditProfile и шаги недоступны).
+#
+# Глубина: Identity и Selfie проверяются вживую. VehicleDocs/VehiclePhotos требуют
+# реальной загрузки фото + серверной валидации ИИН (камера в симуляторе недоступна)
+# — это STATE-SEED REQUIRED, см. отчёт + статическая проверка require() в коде.
+
+- runFlow: _lib/qa-login.yaml
+- waitForAnimationToEnd:
+    timeout: 4000
+
+# → Profile → PRO-CTA → Identity
+- tapOn:
+    id: "bottom-nav-profile"
+- waitForAnimationToEnd:
+    timeout: 4000
+- scrollUntilVisible:
+    element:
+      id: "profile-pro-cta"
+    direction: UP
+    timeout: 6000
+- tapOn:
+    id: "profile-pro-cta"
+- extendedWaitUntil:
+    visible:
+      id: "identity-step-screen"
+    timeout: 12000
+
+# ── ШАГ 1: Личное фото (IdentityStep) — образец-вперёд ──
+- assertVisible:
+    id: "identity-photo-guide"     # образец виден
+- assertVisible:
+    id: "identity-photo"           # контрол загрузки фото тоже на экране (образец выше него)
+- tapOn:
+    id: "identity-photo-guide"     # открыть крупно
+- assertVisible:
+    id: "photo-guide-zoom"         # зум открылся
+- takeScreenshot: ../screenshots/maestro-guides/01-identity-guide-zoom
+- tapOn:
+    id: "photo-guide-zoom"         # закрыть (тап по фону)
+- waitForAnimationToEnd:
+    timeout: 2000
+- assertVisible:
+    id: "identity-step-screen"     # вернулись на шаг
+- takeScreenshot: ../screenshots/maestro-guides/01-identity-guide-first
+
+# ── Попытка дойти до ШАГА 2 (Selfie): заполнить Identity + фото из галереи ──
+# Best-effort (все шаги optional: true) — если галерея/permission/picker/ИИН не
+# проходят в симуляторе, ветка Selfie тихо пропускается и помечается
+# STATE-SEED REQUIRED в отчёте. Сам флоу при этом остаётся PASS.
+- tapOn:
+    id: "identity-photo-gallery"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+# Expo Go спрашивает разрешение на медиатеку — подтверждаем.
+- tapOn:
+    text: "Allow|Разрешить"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+# Системный iOS photo picker — выбрать первое фото, затем подтвердить.
+- tapOn:
+    point: "25%,35%"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+- tapOn:
+    text: "Add|Choose|Готово|Done|Добавить|Выбрать"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- tapOn:
+    id: "identity-first-name"
+    optional: true
+- inputText: "Серик"
+- hideKeyboard
+- tapOn:
+    id: "identity-last-name"
+    optional: true
+- inputText: "Тестов"
+- hideKeyboard
+- tapOn:
+    id: "identity-iin"
+    optional: true
+- inputText: "900101300123"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Продолжить|Continue"
+    direction: DOWN
+    timeout: 5000
+    optional: true
+- tapOn:
+    text: "Продолжить|Continue"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 6000
+
+# ── ШАГ 2: Селфи (SelfieStep) — образец-вперёд (если дошли) ──
+- runFlow:
+    when:
+      visible:
+        id: "selfie-step-screen"
+    commands:
+      - assertVisible:
+          id: "selfie-guide"        # образец виден
+      - assertVisible:
+          id: "selfie-slot"         # контрол съёмки тоже на экране (образец выше)
+      - tapOn:
+          id: "selfie-guide"        # открыть крупно
+      - assertVisible:
+          id: "photo-guide-zoom"    # зум открылся
+      - takeScreenshot: ../screenshots/maestro-guides/02-selfie-guide-zoom
+      - tapOn:
+          id: "photo-guide-zoom"    # закрыть
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - takeScreenshot: ../screenshots/maestro-guides/02-selfie-guide-first
