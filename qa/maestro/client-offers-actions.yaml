@@ -7,16 +7,16 @@ tags:
 env:
   MAESTRO_ACTOR: boris
 ---
-# B3 — у клиента вкладка «Предложения (N)»: входящие офферы, кнопки и валюта.
-# Предусловие (засев через API): boris-груз в KZT + serik-ставка 420000.
-# Проверяем: ₸-валюта (НЕ «$420000»), кнопки Отклонить/Контр/Чат/Принять,
-# тост «Предложение отклонено» при reject.
+# B3 (LIVE) — действия клиента по входящим предложениям через testID.
+# Предусловие (API-сид): boris-грузы в KZT + serik-ставки (pending).
+# Порядок: модалка/reject/accept ДО чата (чат последним — нет стабильного
+# testID «назад» из стека чата). Проверяем: валюта ₸; bid-counter (BidModal),
+# bid-reject (тост «Предложение отклонено»), bid-accept (тост «Предложение
+# принято»), bid-chat (комната).
 
 - runFlow: _lib/qa-login.yaml
 - waitForAnimationToEnd:
     timeout: 4000
-
-# MyWork → вкладка «Предложения»
 - tapOn:
     id: "bottom-nav-mywork"
 - waitForAnimationToEnd:
@@ -26,31 +26,55 @@ env:
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: ../screenshots/deep-reg/B3-01-offers-tab
-
-# КРИТЕРИЙ PASS: валюта груза (KZT → ₸) на сумме ставки — НЕ хардкод «$420000».
+# Валюта груза (KZT → ₸), НЕ хардкод $.
 - assertVisible:
     text: ".*₸.*"
-# Кнопка «Отклонить» присутствует (надёжно индексируется).
-- assertVisible:
-    text: "Отклонить"
 
-# Best-effort: остальные кнопки оффера и тост reject. В Expo Go (New Arch)
-# текст кнопок без testID внутри карточек индексируется НЕНАДЁЖНО — поэтому
-# optional, чтобы флоу не падал на харнесс-ограничении. Кнопки реально
-# присутствуют (скрин B3-01), а reject→тост доказан на web (currency-сессия).
+# КОНТР → BidModal «Отправить встречную цену»
+- tapOn:
+    id: "bid-counter"
+    index: 0
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: ../screenshots/deep-reg/B3-02-counter-modal
 - assertVisible:
-    text: "Предложить свою цену"
-    optional: true
-- assertVisible:
-    text: "Открыть чат"
+    text: "Отправить встречную цену"
     optional: true
 - tapOn:
-    text: "Отклонить"
+    point: "50%,25%"
+- waitForAnimationToEnd:
+    timeout: 2000
+
+# ОТКЛОНИТЬ → скрин сразу (тост) + optional assert (см. ниже про тосты)
+- tapOn:
+    id: "bid-reject"
     index: 0
+- takeScreenshot: ../screenshots/deep-reg/B3-03-reject-toast
+- assertVisible:
+    text: "Предложение отклонено"
     optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+
+# ПРИНЯТЬ → скрин сразу (тост) + optional assert
+- tapOn:
+    id: "bid-accept"
+    index: 0
+- takeScreenshot: ../screenshots/deep-reg/B3-04-accept-toast
+# Тост-текст в New Arch индексируется ненадёжно → optional. Факт принятия/
+# отклонения подтверждается сменой статуса через API (см. отчёт) + тап COMPLETED.
+- assertVisible:
+    text: "Предложение принято"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+
+# ЧАТ (последним) → открывается комната
+- tapOn:
+    id: "bid-chat"
+    index: 0
 - extendedWaitUntil:
     visible:
-      text: "Предложение отклонено"
-    timeout: 6000
-    optional: true
-- takeScreenshot: ../screenshots/deep-reg/B3-02-after-reject
+      id: "chat-input"
+    timeout: 8000
+- takeScreenshot: ../screenshots/deep-reg/B3-05-bid-chat-open

@@ -610,6 +610,7 @@ export default function MyTripsScreen({ navigation, route }) {
         {!isDriver && item.status === 'pending' && (
           <View style={{ flexDirection: 'row', gap: 6, marginTop: spacing.sm, flexWrap: 'wrap' }}>
             <TouchableOpacity
+              testID="bid-reject"
               style={[s.rejectBtn, busy && { opacity: 0.5 }]}
               disabled={busy}
               onPress={async () => {
@@ -623,18 +624,21 @@ export default function MyTripsScreen({ navigation, route }) {
               <Text style={s.rejectBtnText}>{t('reject_btn')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
+              testID="bid-counter"
               style={[s.miniBtn, { borderColor: '#A855F7' }]}
               onPress={() => { setEditingBid(item); setBidModalMode('counter'); setBidModal(true); }}
             >
               <Text style={[s.miniBtnText, { color: '#A855F7' }]}>🔁 {t('counter_offer')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
+              testID="bid-chat"
               style={[s.miniBtn, { borderColor: '#22C55E' }]}
               onPress={() => openChatForBid(item)}
             >
               <Text style={[s.miniBtnText, { color: '#22C55E' }]}>💬 {t('open_bid_chat')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
+              testID="bid-accept"
               style={[s.acceptBtn, { flex: 1, minWidth: 110 }, busy && { opacity: 0.5 }]}
               disabled={busy}
               onPress={async () => {
@@ -654,6 +658,7 @@ export default function MyTripsScreen({ navigation, route }) {
         {!isDriver && isCountered && (
           <View style={{ flexDirection: 'row', gap: 6, marginTop: spacing.sm, flexWrap: 'wrap' }}>
             <TouchableOpacity
+              testID="bid-reject"
               style={[s.rejectBtn, busy && { opacity: 0.5 }]}
               disabled={busy}
               onPress={async () => {
@@ -667,6 +672,7 @@ export default function MyTripsScreen({ navigation, route }) {
               <Text style={s.rejectBtnText}>{t('reject_btn')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
+              testID="bid-chat"
               style={[s.miniBtn, { borderColor: '#22C55E' }]}
               onPress={() => openChatForBid(item)}
             >
@@ -679,6 +685,7 @@ export default function MyTripsScreen({ navigation, route }) {
         {isDriver && isCountered && (
           <View style={{ flexDirection: 'row', gap: 6, marginTop: spacing.sm, flexWrap: 'wrap' }}>
             <TouchableOpacity
+              testID="bid-decline-counter"
               style={[s.miniBtn, { borderColor: '#EF4444' }, busy && { opacity: 0.5 }]}
               disabled={busy}
               onPress={async () => {
@@ -692,12 +699,14 @@ export default function MyTripsScreen({ navigation, route }) {
               <Text style={[s.miniBtnText, { color: '#EF4444' }]}>↩ {t('decline_counter')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
+              testID="bid-chat"
               style={[s.miniBtn, { borderColor: '#22C55E' }]}
               onPress={() => openChatForBid(item)}
             >
               <Text style={[s.miniBtnText, { color: '#22C55E' }]}>💬 {t('open_bid_chat')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
+              testID="bid-accept-counter"
               style={[s.acceptBtn, busy && { opacity: 0.5 }]}
               disabled={busy}
               onPress={async () => {
@@ -717,24 +726,28 @@ export default function MyTripsScreen({ navigation, route }) {
         {isDriver && item.status === 'pending' && (
           <View style={{ flexDirection: 'row', gap: 6, marginTop: spacing.sm, flexWrap: 'wrap' }}>
             <TouchableOpacity
+              testID="bid-edit"
               style={[s.miniBtn, { borderColor: '#22C55E' }]}
               onPress={() => { setEditingBid(item); setBidModalMode('edit'); setBidModal(true); }}
             >
               <Text style={[s.miniBtnText, { color: '#22C55E' }]}>✏️ {t('edit_bid')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
+              testID="bid-discount"
               style={[s.miniBtn, { borderColor: '#F59E0B' }]}
               onPress={() => { setEditingBid(item); setBidModalMode('discount'); setBidModal(true); }}
             >
               <Text style={[s.miniBtnText, { color: '#F59E0B' }]}>💸 {t('give_discount')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
+              testID="bid-chat"
               style={[s.miniBtn, { borderColor: '#22C55E' }]}
               onPress={() => openChatForBid(item)}
             >
               <Text style={[s.miniBtnText, { color: '#22C55E' }]}>💬 {t('open_bid_chat')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
+              testID="bid-cancel"
               style={[s.miniBtn, { borderColor: '#EF4444' }, busy && { opacity: 0.5 }]}
               disabled={busy}
               onPress={async () => {

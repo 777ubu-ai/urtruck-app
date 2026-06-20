@@ -519,6 +519,7 @@ export default function CargoDetail({ navigation, route }) {
                 {c.isMine && isCountered && (
                   <View style={{ flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     <TouchableOpacity
+                      testID="bid-reject"
                       style={[s.rejectBtn, rejecting === b.id && { opacity: 0.5 }]}
                       onPress={async () => {
                         setRejecting(b.id);
@@ -534,6 +535,7 @@ export default function CargoDetail({ navigation, route }) {
                       <Text style={s.rejectBtnText}>{t('reject_btn')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
+                      testID="bid-chat"
                       style={[s.miniBtn, { borderColor: '#22C55E' }]}
                       onPress={() => openChatForBid(b)}
                     >
@@ -546,18 +548,21 @@ export default function CargoDetail({ navigation, route }) {
                 {b.isMine && isCountered && (
                   <View style={{ flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     <TouchableOpacity
+                      testID="bid-decline-counter"
                       style={[s.miniBtn, { borderColor: '#EF4444' }]}
                       onPress={() => declineCounter(b)}
                     >
                       <Text style={[s.miniBtnText, { color: '#EF4444' }]}>↩ {t('decline_counter')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
+                      testID="bid-chat"
                       style={[s.miniBtn, { borderColor: '#22C55E' }]}
                       onPress={() => openChatForBid(b)}
                     >
                       <Text style={[s.miniBtnText, { color: '#22C55E' }]}>💬 {t('open_bid_chat')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
+                      testID="bid-accept-counter"
                       style={[s.acceptBtn]}
                       onPress={() => acceptCounter(b)}
                     >
@@ -570,6 +575,7 @@ export default function CargoDetail({ navigation, route }) {
                 {b.isMine && b.status === 'pending' && !hasAccepted && (
                   <View style={{ flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     <TouchableOpacity
+                      testID="bid-edit"
                       style={[s.miniBtn, { borderColor: '#22C55E' }]}
                       onPress={() => {
                         setEditingBid(b);
@@ -580,6 +586,7 @@ export default function CargoDetail({ navigation, route }) {
                       <Text style={[s.miniBtnText, { color: '#22C55E' }]}>✏️ {t('edit_bid')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
+                      testID="bid-discount"
                       style={[s.miniBtn, { borderColor: '#F59E0B' }]}
                       onPress={() => {
                         setEditingBid(b);
@@ -590,12 +597,14 @@ export default function CargoDetail({ navigation, route }) {
                       <Text style={[s.miniBtnText, { color: '#F59E0B' }]}>💸 {t('give_discount')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
+                      testID="bid-chat"
                       style={[s.miniBtn, { borderColor: '#22C55E' }]}
                       onPress={() => openChatForBid(b)}
                     >
                       <Text style={[s.miniBtnText, { color: '#22C55E' }]}>💬 {t('open_bid_chat')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
+                      testID="bid-cancel"
                       style={[s.miniBtn, { borderColor: '#EF4444' }, cancelling === b.id && { opacity: 0.5 }]}
                       onPress={async () => {
                         const ok = (typeof window !== 'undefined' && window.confirm)

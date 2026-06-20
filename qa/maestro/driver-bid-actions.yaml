@@ -1,0 +1,71 @@
+appId: host.exp.Exponent
+name: driver-bid-actions
+tags:
+  - driver
+  - offers
+  - deep
+env:
+  MAESTRO_ACTOR: serik
+---
+# A5 (LIVE) — действия водителя по своим ставкам через testID.
+# Предусловие (API-сид): serik-ставки (pending) на грузы boris в KZT.
+# Порядок: модалка/отмена ДО чата (чат открывается последним — из стека чата
+# нет стабильного testID «назад»). Проверяем: валюта ₸; bid-edit (BidModal),
+# bid-cancel (confirm→тост «Предложение отменено»), bid-chat (чат).
+
+- runFlow: _lib/qa-login.yaml
+- waitForAnimationToEnd:
+    timeout: 4000
+- tapOn:
+    id: "bottom-nav-mywork"
+- waitForAnimationToEnd:
+    timeout: 3000
+- tapOn:
+    id: "my-work-tab-offers"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: ../screenshots/deep-reg/A5-01-driver-offers
+# Валюта груза (KZT → ₸) на сумме моей ставки, НЕ хардкод $
+- assertVisible:
+    text: ".*₸.*"
+
+# РЕДАКТИРОВАТЬ → BidModal «Сохранить изменения»
+- tapOn:
+    id: "bid-edit"
+    index: 0
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: ../screenshots/deep-reg/A5-02-edit-modal
+- assertVisible:
+    text: "Сохранить"
+    optional: true
+- tapOn:
+    point: "50%,25%"
+- waitForAnimationToEnd:
+    timeout: 2000
+
+# ОТМЕНИТЬ → confirm (Alert OK) → тост «Предложение отменено»
+- tapOn:
+    id: "bid-cancel"
+    index: 0
+- waitForAnimationToEnd:
+    timeout: 2000
+- tapOn:
+    text: "OK"
+    optional: true
+- takeScreenshot: ../screenshots/deep-reg/A5-03-cancel-toast
+# Тост-текст в New Arch индексируется ненадёжно → optional. Факт отмены
+# подтверждается сменой статуса через API (см. отчёт) + тап bid-cancel COMPLETED.
+- assertVisible:
+    text: "Предложение отменено"
+    optional: true
+
+# ЧАТ по ставке (последним) → открывается комната
+- tapOn:
+    id: "bid-chat"
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: "chat-input"
+    timeout: 8000
+- takeScreenshot: ../screenshots/deep-reg/A5-04-bid-chat-open

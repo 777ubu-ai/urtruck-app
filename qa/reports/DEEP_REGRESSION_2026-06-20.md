@@ -66,3 +66,44 @@
 ## Сводка прогонов
 LIVE PASS: `registration-guides-first`, `driver-canon-tabs`, `driver-queue-cgr`, `marketplace-driver-chat`, `client-offers-actions`, `client-tabhunt`, `client-logout-verify`.
 PARTIAL (харнесс/данные): `driver-deep`, `client-createcargo` (форма OK), `client-cargodetail`, `client-deals-verify`, `client-myworkhunt`.
+
+---
+
+# ОБНОВЛЕНИЕ (закрытие пробелов): O1 репро · testID кнопок ставок · A5/B3 LIVE — 2026-06-20 (вечер)
+
+## O1 — РАЗОБРАН: НЕ баг продукта
+Репро-флоу `o1-repro-enroute.yaml` (boris): baseline-тап `my-work-tab-enroute` («Везут») **проходит**; падение возникает только в сценарии «открыть EditCargo → `back` → тап Везут».
+**Причина:** EditCargo («Изменить груз») — это **bottom-sheet модал** (не стэк-экран). На iOS `back` его НЕ закрывает (закрытие — кнопками «Отмена»/«Сохранить»). В исходном `client-myworkhunt` использовался `back` → модал оставался открыт, сегмент-таб «Везут» затемнён под ним → assert падал. Скрин `O1-after-back.png` (модал открыт поверх дашборда).
+**Вёрстка сегмента корректна:** `SegmentTabs` = ряд с `flex:1` на вкладку + авто-ужатие шрифта (`adjustsFontSizeToFit`), 4 вкладки всегда помещаются и тапаются. Вывод: **дефект тестового флоу (`back` вместо «Отмена»), не продукт.** Чинить вёрстку не нужно.
+
+## testID на кнопки ставок (только пропсы, логика не тронута)
+Добавлены стабильные testID (нет логических изменений, i18n/BidModal/DealRoom не тронуты):
+- `src/screens/MyTripsScreen.js` renderBid — `bid-reject`, `bid-counter`, `bid-chat`, `bid-accept`, `bid-decline-counter`, `bid-accept-counter`, `bid-edit`, `bid-discount`, `bid-cancel`.
+- `src/screens/CargoDetail.js` — те же testID на блоках действий по ставке (owner/driver × pending/countered). (owner-pending уже имел их ранее.)
+
+## A5 (водитель) — ✅ LIVE PASS (`driver-bid-actions.yaml`)
+serik, вкладка «Предложения» (мои ставки), все кнопки по testID:
+- `bid-edit` → открывается BidModal (`A5-02-edit-modal`).
+- `bid-cancel` → confirm (Alert «OK») → тост «⊘ Предложение отменено» (`A5-03-cancel-toast`); статус ставки → `cancelled` (API).
+- `bid-chat` → открывается комната (`chat-input`, `A5-04`).
+- Валюта суммы ставки = ₸ (KZT-груз), не «$».
+
+## B3 (клиент) — ✅ LIVE PASS (`client-offers-actions.yaml`)
+boris, вкладка «Предложения», все кнопки по testID:
+- `bid-counter` → BidModal встречной цены (`B3-02-counter-modal`).
+- `bid-reject` → тост «Предложение отклонено» (`B3-03`); статус → `rejected`.
+- `bid-accept` → тост «✓ Предложение принято» (`B3-04`); статус → `accepted`, создаётся сделка (`my_deals`).
+- `bid-chat` → комната (`chat-input`, `B3-05`).
+- Суммы с валютой груза: KZT → «₸420 000», USD → «$2 400» (скрин `B3-04`).
+
+**Подтверждение результата через API** после прогонов: `incoming_bids` boris = {pending, rejected:5, accepted:5, cancelled:2}, `my_deals`=5; `serik.my_bids` cancelled появился. То есть кнопки реально меняют состояние сделки, а не только показывают тост.
+
+**Про тосты:** текст тоста в Expo Go (New Arch) индексируется Maestro ненадёжно (тост быстро исчезает) → `assertVisible` тоста сделан `optional`, но тост **виден на скриншотах** (`B3-04`, `A5-03`) и результат подтверждён сменой статуса (API). Это LIVE PASS, не имитация.
+
+## 🐞 НАЙДЕН БАГ (НЕ чинил — жду решения)
+| # | Баг | Серьёзность | Файл:строка | Репро | Причина |
+|---|---|---|---|---|---|
+| **B-CUR** | В **BidModal**, открытом из «Мои грузы/Предложения» (edit/discount/counter), сумма и быстрые цены показаны в **USD ($)** даже для груза в KZT/RUB/CNY (на карточке корректно ₸). Скрин `A5-02-edit-modal` («$ 281000» при ₸-грузе). | **P2 (визуал/валюта; значение суммы верное, неверны символ и шкала быстрых цен ±200/±400 вместо ±50k/±100k)** | `src/screens/MyTripsScreen.js:906-913` — `<BidModal>` вызывается БЕЗ пропа `currency` → BidModal дефолтит на USD | driver/client: «Предложения» → ✏️ Изменить / 💸 Скидка / 🔁 Контр | Хвост валютного фикса: `CargoDetail` передаёт `currency={c.currency}`, а `MyTripsScreen` — нет. Фикс — 1 строка: `currency={currencyFor(editingBid)}`. BidModal трогать не нужно. |
+
+## Итог обновления
+O1 — закрыт (дефект флоу, не продукт; `back` → «Отмена»). A5/B3 — переведены из PARTIAL в **LIVE PASS** благодаря testID. Найден P2 баг валюты в BidModal из MyTripsScreen — зафиксирован, не чинил (жду решения).

@@ -1,0 +1,57 @@
+appId: host.exp.Exponent
+name: o1-repro-enroute
+tags:
+  - client
+  - repro
+env:
+  MAESTRO_ACTOR: boris
+---
+# O1 РЕПРО: тап «Везут» (my-work-tab-enroute) у клиента после EditCargo→back.
+# Только воспроизведение, код не трогаем. 1× baseline + 3× после правки груза.
+
+- runFlow: _lib/qa-login.yaml
+- waitForAnimationToEnd:
+    timeout: 4000
+- tapOn:
+    id: "bottom-nav-mywork"
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# BASELINE: «Везут» тапается без предыстории?
+- assertVisible:
+    id: "my-work-tab-enroute"
+- tapOn:
+    id: "my-work-tab-enroute"
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: ../screenshots/deep-reg/O1-baseline-enroute
+- tapOn:
+    id: "my-work-tab-searching"
+- waitForAnimationToEnd:
+    timeout: 2000
+
+# ПОВТОР ×3: searching → EditCargo → back → tap «Везут»
+- repeat:
+    times: 3
+    commands:
+      - tapOn:
+          id: "my-work-tab-searching"
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - tapOn:
+          id: "my-cargo-edit-btn"
+          index: 0
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot: ../screenshots/deep-reg/O1-edit-open
+      - back
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot: ../screenshots/deep-reg/O1-after-back
+      - assertVisible:
+          id: "my-work-tab-enroute"
+      - tapOn:
+          id: "my-work-tab-enroute"
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - takeScreenshot: ../screenshots/deep-reg/O1-after-back-enroute
