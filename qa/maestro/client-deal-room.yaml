@@ -1,0 +1,42 @@
+appId: host.exp.Exponent
+name: client-deal-room
+tags:
+  - client
+  - deal
+  - deep
+env:
+  MAESTRO_ACTOR: boris
+---
+# B4 (LIVE) — клиент открывает deal room по сделке «в пути».
+# Предусловие (API-сид): принятая ставка → сделка in_progress (STATE-SEED).
+# Проверяем: Chats → пункт комнаты сделки → открывается ChatScreen с
+# карточкой сделки (deal-room-card) + поле ввода (chat-input).
+
+- runFlow: _lib/qa-login.yaml
+- waitForAnimationToEnd:
+    timeout: 4000
+- tapOn:
+    id: "bottom-nav-chats"
+- extendedWaitUntil:
+    visible:
+      id: "deal-room-list"
+    timeout: 8000
+- takeScreenshot: ../screenshots/deep-reg/B4-01-chats-list
+# Фильтр «активные сделки» → в списке остаются комнаты со сделкой
+- tapOn:
+    id: "deal-room-filter-active"
+- waitForAnimationToEnd:
+    timeout: 2000
+- assertVisible:
+    id: "deal-room-list-card"
+- tapOn:
+    id: "deal-room-list-card"
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: "chat-input"
+    timeout: 8000
+# Карточка сделки в комнате (DealRoom) — «Ставка»/валюта/груз
+- assertVisible:
+    id: "deal-room-card"
+- takeScreenshot: ../screenshots/deep-reg/B4-02-deal-room
