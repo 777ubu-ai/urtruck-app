@@ -126,3 +126,28 @@
 
 ## Граница честности
 Бейдж на ИКОНКЕ телефона и реальные фоновые пуши Maestro не проверяет — **REAL DEVICE REQUIRED**.
+
+---
+
+# Валютный фикс сумм ставок: ✅ PASS — 2026-06-20
+
+Баг: суммы ставок рисовались хардкодным `$` (груз в KZT → ставка «$420000» вместо «₸420 000»). Причина — ставки (`bids`) не несли `currency` с бэка (нет колонки + нет JOIN), а фронт хардкодил `$`. Порядок фикса: бэкенд (currency на ставках) → фронт (`formatPrice`). Схему БД не меняли — только JOIN на чтении. Deal room / `DealRoom.js` / `BidModal.js` / `ChatsListScreen.js` не трогали (уже корректны).
+
+## Бэкенд (`backend/api/marketplace.py`) — currency на объектах ставки/сделки
+- `my_dashboard`: `my_bids` → `COALESCE(c.currency, t.currency)` (LEFT JOIN cargos+trips — груз чужой, иначе валюту не взять); `incoming_bids` → `c.currency`. Также `my_deals` → `c.currency` (карточка «Везут/Доставлено» у водителя; read-only JOIN, как `get_deal`).
+- `list_bids`: `SELECT *` → `b.* + COALESCE(c.currency, t.currency)` (LEFT JOIN); where-колонки квалифицированы `b.`.
+- `create_bid`: пуш-тексты cargo/trip-веток — сумма через `_money(amount, currency)` (валюта груза/рейса) вместо `${amount}`. Добавлен хелпер `_money` + `_CURRENCY_SYMBOLS` (зеркало фронтового).
+- Фолбэк: старые ставки без currency → приходят как `USD` (фронт сфолбэчит на `$`). Проверено: `incoming_bids` нового KZT-груза → `currency: "KZT"`, старые → `USD`.
+
+## Фронт — хардкод `$` → `formatPrice(amount, currency, t)`
+- `src/screens/MyTripsScreen.js`: добавлен хелпер `currencyFor(item)` (`item.currency` → фолбэк по `cargo_id` из `my_cargos` → `'USD'`); заменены 5 мест — цена сделки (renderDeal), сумма ставки, `counter_amount`, `accept_bid_btn`, `accept_counter`.
+- `src/screens/CargoDetail.js`: 3 места (`b.amount`, 2× `counterAmount`) — валюта из `c.currency` (на экране есть, используется и в `BidModal`).
+- `src/screens/ChatScreen.js`: `accept_bid_confirm_text` — сумма через `formatPrice(deal.amount, deal.currency||'USD', t)` (одна строка + импорт `formatPrice`).
+
+## Проверка (web-харнесс: backend :8001 MOCK, dist, прокси :8090; boris/serik)
+Груз «Алматы → Шымкент» в **KZT**, serik ставит **420000**.
+- **ДО** (`qa/screenshots/polish-run/03-offers-tab.png`): у клиента во «Предложениях» — «**$420000**», «Принять $420000».
+- **ПОСЛЕ** (`qa/screenshots/curfix/after-02-offers-tab.png`): «**₸420 000**», «Принять ₸420 000»; ставки в USD по-прежнему «$2 300» (валюта теперь пер-ставка). Playwright-ассерт: `₸` есть, `$420000` отсутствует.
+- `npm run build:web` — прод-бандл собирается (`Exported: dist`) с изменениями.
+
+Скриншоты — локально в `qa/screenshots/curfix/` и `qa/screenshots/polish-run/` (gitignored).

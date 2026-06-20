@@ -247,6 +247,14 @@ export default function MyTripsScreen({ navigation, route }) {
   const myItems = myItemsActive;
 
   const myBids = isDriver ? (data?.my_bids || []) : (data?.incoming_bids || []);
+  // Валюта суммы ставки/сделки. Бэкенд теперь отдаёт currency на ставках
+  // (my_bids/incoming_bids) и сделках (JOIN на cargos.currency); фолбэк — по
+  // cargo_id из моих грузов; иначе 'USD' (formatPrice → '$'). Это убирает
+  // хардкод «$» на грузах в KZT/RUB/CNY, старые ставки без currency не ломаются.
+  const currencyFor = (item) =>
+    (item && item.currency)
+    || (item && (data?.my_cargos || []).find((cc) => cc.id === item.cargo_id)?.currency)
+    || 'USD';
   // Архив: server-deals + локально-вычисленные expired (без изменения
   // backend данных). justCreated не дублируется т.к. он active.
   const myDeals = [
@@ -475,7 +483,7 @@ export default function MyTripsScreen({ navigation, route }) {
           </View>
         ) : null}
         <View style={s.cardBottom}>
-          <Text style={s.price}>{(item.amount || 0) > 0 ? `$${item.amount}` : t('negotiable')}</Text>
+          <Text style={s.price}>{(item.amount || 0) > 0 ? formatPrice(item.amount, currencyFor(item), t) : t('negotiable')}</Text>
           <Text style={[s.metaItem, { color: theme.textDim }]}>{formatDateForDisplay(item.departure || item.created_at)}</Text>
         </View>
         {nextStep ? (
@@ -588,12 +596,12 @@ export default function MyTripsScreen({ navigation, route }) {
         </View>
         {item.cargo_desc ? <Text style={[s.desc, { color: theme.textMuted }]} numberOfLines={1}>{item.cargo_desc}</Text> : null}
         <View style={s.cardBottom}>
-          <Text style={s.price}>${item.amount}</Text>
+          <Text style={s.price}>{formatPrice(item.amount, currencyFor(item), t)}</Text>
           {item.message && <Text style={[s.bidsLabel, { color: theme.textMuted }]} numberOfLines={1}>{item.message}</Text>}
         </View>
         {isCountered && item.counter_amount ? (
           <Text style={{ color: '#A855F7', fontSize: 12, fontWeight: '700', marginTop: 4 }}>
-            {t('counter_amount')}: ${item.counter_amount}
+            {t('counter_amount')}: {formatPrice(item.counter_amount, currencyFor(item), t)}
             {item.counter_message ? ` · ${item.counter_message}` : ''}
           </Text>
         ) : null}
@@ -637,7 +645,7 @@ export default function MyTripsScreen({ navigation, route }) {
                 else toast(r.detail || t('send_error'), 'error');
               }}
             >
-              <Text style={s.acceptBtnText}>{t('accept_bid_btn')} ${item.amount}</Text>
+              <Text style={s.acceptBtnText}>{t('accept_bid_btn')} {formatPrice(item.amount, currencyFor(item), t)}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -700,7 +708,7 @@ export default function MyTripsScreen({ navigation, route }) {
                 else toast(r.detail || t('accept_failed'), 'error');
               }}
             >
-              <Text style={s.acceptBtnText}>{t('accept_counter')} ${item.counter_amount}</Text>
+              <Text style={s.acceptBtnText}>{t('accept_counter')} {formatPrice(item.counter_amount, currencyFor(item), t)}</Text>
             </TouchableOpacity>
           </View>
         )}

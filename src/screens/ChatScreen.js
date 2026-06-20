@@ -11,6 +11,7 @@ import { compressImage } from '../utils/imageCompress';
 import { prettifyPartnerName, partnerInitial } from '../utils/displayName';
 import { chatAPI } from '../utils/chatAPI';
 import { marketAPI } from '../utils/marketAPI';
+import { formatPrice } from '../utils/normalizers';
 import { notifyChatRead } from '../utils/unreadEvents';
 import { useMountedRef } from '../hooks/useMountedRef';
 import { enqueueOutbox, flushOutbox } from '../utils/outbox';
@@ -679,7 +680,7 @@ export default function ChatScreen({ navigation, route }) {
                   <View style={s.acceptConfirm} testID="accept-bid-confirm">
                     <Text style={s.acceptConfirmTitle}>{t('accept_bid_confirm_title')}</Text>
                     <Text style={s.acceptConfirmText}>
-                      {t('accept_bid_confirm_text')} {deal?.amount != null ? `${deal.amount}` : ''}
+                      {t('accept_bid_confirm_text')} {deal?.amount != null ? formatPrice(deal.amount, deal.currency || 'USD', t) : ''}
                     </Text>
                     <View style={s.acceptConfirmRow}>
                       <TouchableOpacity onPress={() => setAcceptConfirm(false)} style={s.acceptCancelBtn} disabled={accepting}>

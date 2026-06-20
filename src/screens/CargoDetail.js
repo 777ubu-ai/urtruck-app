@@ -14,7 +14,7 @@ import { useVerificationGate } from '../components/VerificationGate';
 import { LEVELS, useAuth } from '../utils/AuthContext';
 import { marketAPI } from '../utils/marketAPI';
 import { reviewsAPI } from '../utils/reviews';
-import { normalizeCargo, cargoDisplay, sanitizeForDisplay } from '../utils/normalizers';
+import { normalizeCargo, cargoDisplay, sanitizeForDisplay, formatPrice } from '../utils/normalizers';
 import { formatDateForDisplay } from '../utils/dateInput';
 import { buildCargoShareText } from '../utils/share';
 import { WEB_URL } from '../config/env';
@@ -441,13 +441,13 @@ export default function CargoDetail({ navigation, route }) {
                   </Text>
                   {isCountered && b.counterAmount ? (
                     <Text style={{ color: '#D97706', fontSize: 11, marginTop: 2, fontWeight: '700' }}>
-                      {t('counter_amount')}: ${b.counterAmount}{b.counterMessage ? ` · ${b.counterMessage}` : ''}
+                      {t('counter_amount')}: {formatPrice(b.counterAmount, c.currency || 'USD', t)}{b.counterMessage ? ` · ${b.counterMessage}` : ''}
                     </Text>
                   ) : null}
                 </View>
               </View>
               <View style={{ alignItems: 'flex-end' }}>
-                <Text style={s.bidAmt}>${b.amount}</Text>
+                <Text style={s.bidAmt}>{formatPrice(b.amount, c.currency || 'USD', t)}</Text>
 
                 {/* Cargo owner — pending: Reject / Counter / Accept / Open chat */}
                 {c.isMine && b.status === 'pending' && !hasAccepted && (
@@ -561,7 +561,7 @@ export default function CargoDetail({ navigation, route }) {
                       style={[s.acceptBtn]}
                       onPress={() => acceptCounter(b)}
                     >
-                      <Text style={s.acceptBtnText}>{t('accept_counter')} ${b.counterAmount}</Text>
+                      <Text style={s.acceptBtnText}>{t('accept_counter')} {formatPrice(b.counterAmount, c.currency || 'USD', t)}</Text>
                     </TouchableOpacity>
                   </View>
                 )}

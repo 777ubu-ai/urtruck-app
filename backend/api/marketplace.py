@@ -744,6 +744,18 @@ def get_trip(trip_id: str):
 
 # ═══ Bids ═══
 
+# Символы валют для человеко-читаемых строк (push/уведомления). Зеркало
+# фронтового CURRENCY_SYMBOLS (src/utils/normalizers.js) — чтобы пуш про ставку
+# показывал «420000 ₸», а не хардкод «$420000». Сумма ставки = валюта груза/рейса.
+_CURRENCY_SYMBOLS = {"USD": "$", "KZT": "₸", "RUB": "₽", "CNY": "¥", "UZS": "сўм"}
+
+
+def _money(amount, currency):
+    cur = (currency or "USD").upper()
+    sym = _CURRENCY_SYMBOLS.get(cur, "$")
+    return f"{amount} {sym}" if cur == "UZS" else f"{sym}{amount}"
+
+
 @mp_router.post("/bids")
 def create_bid(body: BidIn, user=Depends(require_level(1))):
     # cargo_id или trip_id — хотя бы один (для серверных грузов)
@@ -798,14 +810,16 @@ def create_bid(body: BidIn, user=Depends(require_level(1))):
         # Обновляем счётчик
         if body.cargo_id:
             c.execute("UPDATE cargos SET bids_count = bids_count + 1 WHERE id = ?", (body.cargo_id,))
-            row = c.execute("SELECT owner_id, from_city, to_city FROM cargos WHERE id = ?", (body.cargo_id,)).fetchone()
+            row = c.execute("SELECT owner_id, from_city, to_city, currency FROM cargos WHERE id = ?", (body.cargo_id,)).fetchone()
             if row:
                 # PR-B (P0-B): meaningful url в notification вместо дефолтного "/".
                 # NotificationsScreen (или будущая мобильная навигация) сможет
                 # распарсить query и открыть cargo detail с подсвеченной ставкой.
                 cargo_url = f"/cargos/{body.cargo_id}?bid={bid_id}"
-                title = f"💰 Новое предложение ${body.amount}"
-                text = f"{user.get('full_name', 'Водитель')} предлагает ${body.amount} за {row['from_city']}→{row['to_city']}"
+                # Валюта ставки = валюта груза (фолбэк USD), не хардкод «$».
+                money = _money(body.amount, row["currency"])
+                title = f"💰 Новое предложение {money}"
+                text = f"{user.get('full_name', 'Водитель')} предлагает {money} за {row['from_city']}→{row['to_city']}"
                 post_notifs.append((row["owner_id"], title, text, "💰", cargo_url, True))
 
                 # PR-B (P0-D): eager chat-room create. Раньше chat_rooms
@@ -827,15 +841,17 @@ def create_bid(body: BidIn, user=Depends(require_level(1))):
                     pass
 
         if body.trip_id:
-            row = c.execute("SELECT driver_id, from_city, to_city FROM trips WHERE id = ?", (body.trip_id,)).fetchone()
+            row = c.execute("SELECT driver_id, from_city, to_city, currency FROM trips WHERE id = ?", (body.trip_id,)).fetchone()
             if row:
                 # PR-B (P0-B + P0-F): trip-ветка раньше отправляла ТОЛЬКО push
                 # (send_to_user), без create_notification — у водителя ничего
                 # не появлялось в bell-list. Теперь симметрично с cargo-веткой:
                 # push + InApp + eager chat room.
                 trip_url = f"/trips/{body.trip_id}?bid={bid_id}"
-                title = f"📦 Новый заказ ${body.amount}"
-                text = f"{user.get('full_name', 'Клиент')} предлагает ${body.amount} за {row['from_city']}→{row['to_city']}"
+                # Валюта ставки = валюта рейса (фолбэк USD), не хардкод «$».
+                money = _money(body.amount, row["currency"])
+                title = f"📦 Новый заказ {money}"
+                text = f"{user.get('full_name', 'Клиент')} предлагает {money} за {row['from_city']}→{row['to_city']}"
                 post_notifs.append((row["driver_id"], title, text, "📦", trip_url, True))
 
                 try:
@@ -878,21 +894,28 @@ def list_bids(
     where = []
     params = []
     if cargo_id:
-        where.append("cargo_id = ?")
+        where.append("b.cargo_id = ?")
         params.append(cargo_id)
     if trip_id:
-        where.append("trip_id = ?")
+        where.append("b.trip_id = ?")
         params.append(trip_id)
     if user_id:
-        where.append("bidder_id = ?")
+        where.append("b.bidder_id = ?")
         params.append(user_id)
     if not where:
         raise HTTPException(status_code=400, detail="Укажите cargo_id, trip_id или user_id")
 
     with get_conn() as c:
+        # currency родителя (груз ИЛИ рейс) на каждой ставке, чтобы фронт рисовал
+        # сумму в валюте листинга, а не хардкодным «$». COALESCE: ставка может
+        # быть на cargo или на trip. bids.currency колонки нет → имя свободно.
         rows = c.execute(f"""
-            SELECT * FROM bids WHERE {' AND '.join(where)}
-            ORDER BY created_at DESC LIMIT 100
+            SELECT b.*, COALESCE(c.currency, t.currency) AS currency
+            FROM bids b
+            LEFT JOIN cargos c ON b.cargo_id = c.id
+            LEFT JOIN trips t ON b.trip_id = t.id
+            WHERE {' AND '.join(where)}
+            ORDER BY b.created_at DESC LIMIT 100
         """, params).fetchall()
     bids = [dict(r) for r in rows]
 
@@ -956,14 +979,20 @@ def my_dashboard(user=Depends(require_level(1))):
             "SELECT * FROM cargos WHERE owner_id = ? ORDER BY created_at DESC LIMIT 50", (uid,)).fetchall()]
         my_trips = [dict(r) for r in c.execute(
             "SELECT * FROM trips WHERE driver_id = ? ORDER BY created_at DESC LIMIT 50", (uid,)).fetchall()]
-        # Ставки которые Я сделал
+        # Ставки которые Я сделал. currency берём у родителя (груз ИЛИ рейс) —
+        # для my_bids это единственный источник: груз/рейс чужой, в payload его
+        # нет, без JOIN фронт рисовал сумму хардкодным «$». COALESCE: ставка
+        # может быть на cargo или на trip.
         my_bids = [dict(r) for r in c.execute(
-            "SELECT b.*, c.from_city as cargo_from, c.to_city as cargo_to, c.cargo_desc "
+            "SELECT b.*, c.from_city as cargo_from, c.to_city as cargo_to, c.cargo_desc, "
+            "COALESCE(c.currency, t.currency) AS currency "
             "FROM bids b LEFT JOIN cargos c ON b.cargo_id = c.id "
+            "LEFT JOIN trips t ON b.trip_id = t.id "
             "WHERE b.bidder_id = ? ORDER BY b.created_at DESC LIMIT 50", (uid,)).fetchall()]
-        # Ставки на МОИ грузы (входящие)
+        # Ставки на МОИ грузы (входящие) — валюта груза.
         incoming_bids = [dict(r) for r in c.execute(
-            "SELECT b.*, c.from_city as cargo_from, c.to_city as cargo_to, c.cargo_desc "
+            "SELECT b.*, c.from_city as cargo_from, c.to_city as cargo_to, c.cargo_desc, "
+            "c.currency AS currency "
             "FROM bids b JOIN cargos c ON b.cargo_id = c.id "
             "WHERE c.owner_id = ? ORDER BY b.created_at DESC LIMIT 50", (uid,)).fetchall()]
         # Мои сделки. LEFT JOIN на cargos (описание/тип кузова/дата подачи) и на
@@ -974,6 +1003,7 @@ def my_dashboard(user=Depends(require_level(1))):
         my_deals = [dict(r) for r in c.execute(
             "SELECT d.*, "
             "c.cargo_desc AS cargo_desc, c.cargo_type AS cargo_type, "
+            "c.currency AS currency, "
             "c.weight_tons AS weight_tons, c.volume_m3 AS volume_m3, "
             "c.pickup_date AS departure, "
             "dr.full_name AS driver_name, sh.full_name AS shipper_name "
