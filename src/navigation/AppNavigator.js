@@ -52,7 +52,6 @@ import CargoDetail from '../screens/CargoDetail';
 import TrackTruckScreen from '../screens/TrackTruckScreen';
 import DriverDetail from '../screens/DriverDetail';
 import ChatScreen from '../screens/ChatScreen';
-import TrackScreen from '../screens/TrackScreen';
 import WalletScreen from '../screens/WalletScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import ReviewsScreen from '../screens/ReviewsScreen';
@@ -301,11 +300,10 @@ export default function AppNavigator() {
           <Stack.Screen name="Reg" component={PremiumRegisterScreen} />
           <Stack.Screen name="RegOtp" component={PremiumOtpScreen} />
           <Stack.Screen name="RegProfile" component={PremiumProfileScreen} />
-          {/* Legacy routes — Track / Wallet were tabs in v0/v1.0 but the
-              v1 design doesn't surface them in the bottom navigation.
-              They stay reachable by navigation.navigate('Track' | 'Wallet')
-              so any in-app deep link or future feature can still open them. */}
-          <Stack.Screen name="Track" component={TrackScreen} />
+          {/* Legacy route — Wallet was a tab in v0/v1.0 but the v1 design
+              doesn't surface it in the bottom navigation. It stays reachable
+              by navigation.navigate('Wallet') so any in-app deep link or
+              future monetization feature can still open it. */}
           <Stack.Screen name="Wallet" component={WalletScreen} />
           <Stack.Screen name="HowItWorks" component={HowItWorksScreen} />
           <Stack.Screen name="About" component={AboutScreen} />
