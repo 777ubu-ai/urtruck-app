@@ -65,7 +65,7 @@ curl http://185.22.65.11:8001/api/v1/system/info   # статус OTP/face/stora
 ### UI-слои
 - `src/utils/ThemeContext.js` — тёмная/светлая тема (по умолчанию тёмная — ночные рейсы).
 - `src/utils/AuthContext.js` — источник истины для `session`, `hasToken`, `hasRole`, `loading`.
-- `src/utils/i18n.js` + `useI18n.js` — 11 языков (RU/UZ/KZ/CN/EN и др.), ~2145 ключей. Все пользовательские тексты обязаны идти через `t(...)`.
+- `src/utils/i18n.js` + `useI18n.js` — 4 языка (RU/KK/ZH/EN), ~1575 ключей (симметрично по всем языкам). Все пользовательские тексты обязаны идти через `t(...)`.
 - `src/components/` — переиспользуемые компоненты (Toast, ShimmerButton, PressableScale, BidModal, RatingModal, ShareModal, VerificationGate, SecurityBadge, RouteMap и т.д.).
 
 ### Правила UI (из CURSOR_INSTRUCTIONS.md — соблюдать строго)

@@ -44,7 +44,7 @@ export const sanitizeForDisplay = (s) => {
 // Currency utilities. The server stores `currency` as ISO code; UI shows
 // a symbol next to the price. Default to USD when missing — matches DB
 // migration (ALTER TABLE … ADD COLUMN currency TEXT DEFAULT 'USD').
-export const CURRENCY_SYMBOLS = { USD: '$', KZT: '₸', RUB: '₽', CNY: '¥', UZS: 'сўм' };
+export const CURRENCY_SYMBOLS = { USD: '$', KZT: '₸', RUB: '₽', CNY: '¥', UZS: 'сўм', KGS: 'сом' };
 
 export const formatPrice = (amount, currency, t) => {
   const cur = (currency || 'USD').toUpperCase();
@@ -54,8 +54,8 @@ export const formatPrice = (amount, currency, t) => {
   }
   // Group thousands without using Intl (web safari quirks).
   const n = String(Math.round(Number(amount))).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-  // Symbol prefix for $/₸/₽/¥; suffix for сўм.
-  return cur === 'UZS' ? `${n} ${sym}` : `${sym}${n}`;
+  // Symbol prefix for $/₸/₽/¥; suffix for сўм/сом (UZS/KGS).
+  return cur === 'UZS' || cur === 'KGS' ? `${n} ${sym}` : `${sym}${n}`;
 };
 
 // Canonical Trip:
