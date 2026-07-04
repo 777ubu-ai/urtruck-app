@@ -1,0 +1,65 @@
+name: Server Inspect (read-only)
+
+# Диагностический workflow: заходит на сервер по SSH (теми же секретами,
+# что и деплой) и печатает read-only срез состояния: процессы PM2, nginx,
+# содержимое директорий, поиск следов "bizchat". Ничего не меняет и не
+# выводит секреты (.env не читается).
+on:
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Inspect server state over SSH
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PASS: ${{ secrets.SERVER_PASS }}
+          REMOTE_DIR: ${{ secrets.REMOTE_DIR || '/home/ubuntu/urtruck-app' }}
+          BACKEND_DIR: ${{ secrets.BACKEND_DIR || '/home/ubuntu/urtruck-security' }}
+        run: |
+          sudo apt-get install -y sshpass >/dev/null 2>&1
+          sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" REMOTE_DIR="$REMOTE_DIR" BACKEND_DIR="$BACKEND_DIR" 'bash -s' <<'EOS'
+          set +e
+          echo "===== HOST ====="
+          whoami; hostname; uptime; df -h / | tail -1
+
+          echo; echo "===== /home/ubuntu (верхний уровень) ====="
+          ls -la /home/ubuntu
+
+          echo; echo "===== ПОИСК bizchat / biz chat ====="
+          find /home/ubuntu -maxdepth 3 -iname "*biz*" -not -path "*/node_modules/*" 2>/dev/null | head -30
+          grep -ril "bizchat" /home/ubuntu \
+            --include="*.py" --include="*.js" --include="*.json" --include="*.html" --include="*.conf" \
+            2>/dev/null | grep -v node_modules | head -30
+          grep -ril "bizchat" /etc/nginx /var/www 2>/dev/null | head -10
+
+          echo; echo "===== PM2 процессы ====="
+          export NVM_DIR="$HOME/.nvm"; [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+          pm2 list 2>/dev/null || echo "pm2 недоступен"
+
+          echo; echo "===== nginx: сайты и проксирование ====="
+          ls /etc/nginx/sites-enabled/ 2>/dev/null
+          grep -rh "server_name\|proxy_pass\|listen\|root " /etc/nginx/sites-enabled/ 2>/dev/null | sed 's/^ *//' | head -40
+
+          echo; echo "===== Фронтенд: $REMOTE_DIR ====="
+          ls -la "$REMOTE_DIR" 2>/dev/null | head -20
+          echo "-- версии --"
+          ls /home/ubuntu/urtruck-versions 2>/dev/null | tail -5
+          ls /home/ubuntu/urtruck/versions 2>/dev/null | tail -5
+
+          echo; echo "===== Бэкенд: $BACKEND_DIR ====="
+          ls -la "$BACKEND_DIR" 2>/dev/null | head -30
+          echo "-- наличие .env (без содержимого) --"
+          [ -f "$BACKEND_DIR/.env" ] && echo ".env есть" || echo ".env НЕТ"
+          echo "-- база данных --"
+          ls -la "$BACKEND_DIR/database/" 2>/dev/null | head -10
+          ls -la /home/ubuntu/urtruck-security/database/security.db /home/ubuntu/urtruck/backend/database/security.db 2>/dev/null
+
+          echo; echo "===== Открытые порты (слушающие) ====="
+          ss -tlnp 2>/dev/null | head -20 || netstat -tlnp 2>/dev/null | head -20
+
+          echo; echo "===== ГОТОВО ====="
+          EOS
