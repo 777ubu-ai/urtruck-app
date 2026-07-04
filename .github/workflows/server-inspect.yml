@@ -1,9 +1,8 @@
 name: Server Inspect (read-only)
 
 # Диагностический workflow: заходит на сервер по SSH (теми же секретами,
-# что и деплой) и печатает read-only срез состояния: процессы PM2, nginx,
-# содержимое директорий, поиск следов "bizchat". Ничего не меняет и не
-# выводит секреты (.env не читается).
+# что и деплой) и печатает read-only срез состояния проекта bizchat.
+# Ничего не меняет и не выводит секреты (.env не читается).
 on:
   workflow_dispatch:
   push:
@@ -13,56 +12,57 @@ on:
 jobs:
   inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 8
     steps:
-      - name: Inspect server state over SSH
+      - name: Inspect bizchat project over SSH
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SERVER_PASS: ${{ secrets.SERVER_PASS }}
-          REMOTE_DIR: ${{ secrets.REMOTE_DIR || '/home/ubuntu/urtruck-app' }}
-          BACKEND_DIR: ${{ secrets.BACKEND_DIR || '/home/ubuntu/urtruck-security' }}
         run: |
           sudo apt-get install -y sshpass >/dev/null 2>&1
-          sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" REMOTE_DIR="$REMOTE_DIR" BACKEND_DIR="$BACKEND_DIR" 'bash -s' <<'EOS'
+          sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'EOS'
           set +e
-          echo "===== HOST ====="
-          whoami; hostname; uptime; df -h / | tail -1
+          B=/home/ubuntu/bizchat
 
-          echo; echo "===== /home/ubuntu (верхний уровень) ====="
-          ls -la /home/ubuntu
+          echo "===== СТРУКТУРА $B ====="
+          ls -la "$B"
+          for d in "$B"/*/; do echo "-- $d"; ls "$d" 2>/dev/null | head -15; done
 
-          echo; echo "===== ПОИСК bizchat / biz chat ====="
-          find /home/ubuntu -maxdepth 3 -iname "*biz*" -not -path "*/node_modules/*" 2>/dev/null | head -30
-          grep -ril "bizchat" /home/ubuntu \
-            --include="*.py" --include="*.js" --include="*.json" --include="*.html" --include="*.conf" \
-            2>/dev/null | grep -v node_modules | head -30
-          grep -ril "bizchat" /etc/nginx /var/www 2>/dev/null | head -10
+          echo; echo "===== GIT-СОСТОЯНИЕ ====="
+          git -C "$B" log --oneline -15 2>/dev/null || echo "не git-репозиторий"
+          git -C "$B" status --short 2>/dev/null | head -15
+          git -C "$B" branch -a 2>/dev/null
+          git -C "$B" remote -v 2>/dev/null
 
-          echo; echo "===== PM2 процессы ====="
-          export NVM_DIR="$HOME/.nvm"; [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-          pm2 list 2>/dev/null || echo "pm2 недоступен"
+          echo; echo "===== pubspec.yaml (имя/версия) ====="
+          head -25 "$B/mobile/pubspec.yaml" 2>/dev/null || find "$B" -maxdepth 2 -name pubspec.yaml -exec head -25 {} \;
 
-          echo; echo "===== nginx: сайты и проксирование ====="
-          ls /etc/nginx/sites-enabled/ 2>/dev/null
-          grep -rh "server_name\|proxy_pass\|listen\|root " /etc/nginx/sites-enabled/ 2>/dev/null | sed 's/^ *//' | head -40
+          echo; echo "===== README (если есть) ====="
+          head -60 "$B"/README* "$B"/mobile/README* 2>/dev/null | head -60
 
-          echo; echo "===== Фронтенд: $REMOTE_DIR ====="
-          ls -la "$REMOTE_DIR" 2>/dev/null | head -20
-          echo "-- версии --"
-          ls /home/ubuntu/urtruck-versions 2>/dev/null | tail -5
-          ls /home/ubuntu/urtruck/versions 2>/dev/null | tail -5
+          echo; echo "===== NGINX-конфиг bizchat ====="
+          cat /etc/nginx/sites-available/bizchat 2>/dev/null
+          echo "-- pult.biz-chat.net --"
+          cat /etc/nginx/sites-available/pult.biz-chat.net 2>/dev/null | head -40
 
-          echo; echo "===== Бэкенд: $BACKEND_DIR ====="
-          ls -la "$BACKEND_DIR" 2>/dev/null | head -30
-          echo "-- наличие .env (без содержимого) --"
-          [ -f "$BACKEND_DIR/.env" ] && echo ".env есть" || echo ".env НЕТ"
-          echo "-- база данных --"
-          ls -la "$BACKEND_DIR/database/" 2>/dev/null | head -10
-          ls -la /home/ubuntu/urtruck-security/database/security.db /home/ubuntu/urtruck/backend/database/security.db 2>/dev/null
+          echo; echo "===== WEB-сборка ====="
+          cat /var/www/bizchat-web/version.json 2>/dev/null; echo
+          ls -la /var/www/bizchat-web/ | head -15
+          ls -la /var/www/bizchat-static/ | head -10
 
-          echo; echo "===== Открытые порты (слушающие) ====="
-          ss -tlnp 2>/dev/null | head -20 || netstat -tlnp 2>/dev/null | head -20
+          echo; echo "===== ПРОЦЕССЫ bizchat (systemd/docker/ps) ====="
+          systemctl list-units --type=service --all 2>/dev/null | grep -i "biz\|chat" | head -10
+          docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null | head -15
+          ps aux | grep -i bizchat | grep -v grep | head -10
+
+          echo; echo "===== CRON (бэкапы и пр.) ====="
+          crontab -l 2>/dev/null | grep -v "^#" | head -15
+
+          echo; echo "===== СХЕМА БД (из последнего дампа, только CREATE TABLE) ====="
+          latest=$(ls -t /home/ubuntu/bizchat-backups/*.sql.gz 2>/dev/null | head -1)
+          echo "дамп: $latest ($(du -h "$latest" 2>/dev/null | cut -f1))"
+          zcat "$latest" 2>/dev/null | grep -i "CREATE TABLE" | head -40
 
           echo; echo "===== ГОТОВО ====="
           EOS
