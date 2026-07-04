@@ -2,10 +2,20 @@ import 'package:flutter/material.dart';
 
 /// Темы Biz Chat. Обе обязательны с первого дня
 /// (Blueprint §22 — байеры СНГ работают ночью).
+///
+/// Направление дизайна — Material 3 Expressive (тренд 2025–2026):
+/// выразительная типографика, мягкие крупные скругления, спокойные
+/// tonal-поверхности, единый плавный motion на всех платформах.
 class BizChatTheme {
   BizChatTheme._();
 
-  static const _brandSeed = Color(0xFF0B66FF); // синий Biz Chat
+  static const _brandSeed = Color(0xFF0B66FF); // фирменный синий Biz Chat
+
+  // Единая шкала скруглений — крупнее, чем дефолт M3 (тренд «soft UI»).
+  static const double rSm = 14;
+  static const double rMd = 18;
+  static const double rLg = 24;
+  static const double rXl = 28;
 
   static ThemeData light() {
     final scheme = ColorScheme.fromSeed(
@@ -24,14 +34,16 @@ class BizChatTheme {
   }
 
   static ThemeData _base(ColorScheme scheme) {
+    final isDark = scheme.brightness == Brightness.dark;
     return ThemeData(
       colorScheme: scheme,
       useMaterial3: true,
-      fontFamily: null, // используем системный, поддержит кириллицу/иероглифы
+      fontFamily: null, // системный шрифт — поддержит кириллицу/иероглифы
       scaffoldBackgroundColor: scheme.surface,
-      // Глобальные кастомные page transitions: fade-through вместо
-      // дефолтных платформенных. Даёт одинаковый UX на iOS/Android/web
-      // и более «современный» feel. См. core/navigation/page_transitions.dart
+      splashFactory: InkSparkle.splashFactory, // «искристый» M3-ripple
+      // Выразительная типографика: крупнее и жирнее заголовки, плотный трекинг.
+      textTheme: _expressiveText(scheme),
+      // Единый плавный fade+slide на всех платформах вместо платформенных.
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: {
           TargetPlatform.android: _FadeThroughTransitionBuilder(),
@@ -44,28 +56,30 @@ class BizChatTheme {
       appBarTheme: AppBarTheme(
         centerTitle: true,
         elevation: 0,
-        // surfaceTintColor=transparent убирает M3 tint при scroll —
-        // даёт чистый flat-look как у топовых приложений 2024+
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         backgroundColor: scheme.surface,
         foregroundColor: scheme.onSurface,
         titleTextStyle: TextStyle(
           color: scheme.onSurface,
-          fontSize: 18,
-          fontWeight: FontWeight.w600,
-          letterSpacing: -0.2,
+          fontSize: 19,
+          fontWeight: FontWeight.w700,
+          letterSpacing: -0.3,
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: scheme.surfaceContainerHighest,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(rSm),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(rSm),
           borderSide: BorderSide.none,
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(rSm),
           borderSide: BorderSide(color: scheme.primary, width: 1.5),
         ),
         contentPadding:
@@ -73,21 +87,31 @@ class BizChatTheme {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          minimumSize: const Size(double.infinity, 52),
+          minimumSize: const Size(double.infinity, 54),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(rMd),
           ),
           textStyle: const TextStyle(
             fontSize: 16,
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.w700,
             letterSpacing: 0.1,
           ),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size(double.infinity, 52),
+          side: BorderSide(color: scheme.outlineVariant),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(rMd),
+          ),
+          textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           minimumSize: const Size(double.infinity, 44),
-          textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+          textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
         ),
       ),
       cardTheme: CardThemeData(
@@ -95,15 +119,55 @@ class BizChatTheme {
         color: scheme.surfaceContainerLow,
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(rLg),
         ),
         margin: EdgeInsets.zero,
       ),
       chipTheme: ChipThemeData(
         backgroundColor: scheme.surfaceContainerHighest,
         selectedColor: scheme.primary,
+        side: BorderSide.none,
+        labelStyle: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: scheme.onSurface,
+        ),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(rXl),
+        ),
+      ),
+      // SnackBar в трендовом floating-стиле с крупным скруглением.
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: scheme.inverseSurface,
+        contentTextStyle: TextStyle(
+          color: scheme.onInverseSurface,
+          fontWeight: FontWeight.w500,
+        ),
+        actionTextColor: scheme.inversePrimary,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(rSm),
+        ),
+        insetPadding: const EdgeInsets.all(16),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: scheme.surfaceContainerHigh,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(rLg),
+        ),
+        titleTextStyle: TextStyle(
+          fontSize: 19,
+          fontWeight: FontWeight.w700,
+          color: scheme.onSurface,
+        ),
+      ),
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: scheme.surfaceContainerLow,
+        surfaceTintColor: Colors.transparent,
+        showDragHandle: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(rXl)),
         ),
       ),
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
@@ -115,22 +179,69 @@ class BizChatTheme {
         showSelectedLabels: true,
         showUnselectedLabels: true,
         selectedLabelStyle:
-            const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+            const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: scheme.surface,
         surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        height: 64,
         indicatorColor: scheme.primaryContainer,
         labelTextStyle: WidgetStateProperty.all(
-          const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+          const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+        ),
+      ),
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        elevation: 1,
+        highlightElevation: 2,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(rMd),
         ),
       ),
       dividerTheme: DividerThemeData(
-        color: scheme.outlineVariant.withValues(alpha: 0.5),
+        color: scheme.outlineVariant.withValues(alpha: isDark ? 0.4 : 0.6),
         thickness: 0.5,
         space: 0.5,
       ),
     );
+  }
+
+  /// Выразительная типографика в духе M3 Expressive: крупные bold-заголовки
+  /// с плотным трекингом, читаемый body. Строится поверх дефолтной шкалы,
+  /// чтобы наследовать корректные цвета под тему.
+  static TextTheme _expressiveText(ColorScheme scheme) {
+    const tight = -0.5;
+    return Typography.material2021(colorScheme: scheme)
+        .black
+        .apply(
+          bodyColor: scheme.onSurface,
+          displayColor: scheme.onSurface,
+        )
+        .copyWith(
+          headlineLarge: TextStyle(
+            fontSize: 30,
+            fontWeight: FontWeight.w800,
+            letterSpacing: tight,
+            color: scheme.onSurface,
+          ),
+          headlineMedium: TextStyle(
+            fontSize: 25,
+            fontWeight: FontWeight.w700,
+            letterSpacing: tight,
+            color: scheme.onSurface,
+          ),
+          titleLarge: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.3,
+            color: scheme.onSurface,
+          ),
+          titleMedium: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: scheme.onSurface,
+          ),
+        );
   }
 }
 

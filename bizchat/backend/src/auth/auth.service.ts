@@ -61,6 +61,13 @@ export class AuthService {
   async sendSmsCode(phone: string): Promise<{ sent: true; cooldownSeconds: number }> {
     const smsCfg = this.config.get('sms', { infer: true });
 
+    // Мастер-вход: для доверенного номера SMS не шлём вообще — код фиксирован
+    // в DEV_LOGIN_CODE. Клиент сразу переходит на экран ввода кода.
+    if (this.isDevLoginPhone(phone)) {
+      this.logger.warn(`[DEV LOGIN] SMS для ${phone} не отправлен — мастер-код активен`);
+      return { sent: true, cooldownSeconds: 0 };
+    }
+
     // Проверяем cooldown — не чаще раза в N секунд на один номер
     const existing = await this.smsCodes.findOne({ where: { phone } });
     if (existing) {
@@ -122,28 +129,39 @@ export class AuthService {
   async verifySmsCode(dto: VerifySmsDto): Promise<AuthResult> {
     const smsCfg = this.config.get('sms', { infer: true });
 
-    const record = await this.smsCodes.findOne({ where: { phone: dto.phone } });
-    if (!record) {
-      throw new NotFoundException('Код не запрашивался или истёк');
-    }
+    // Мастер-вход: доверенный номер + фиксированный код обходят проверку по БД.
+    // Проверка кода — строгое сравнение с DEV_LOGIN_CODE (без хеша/попыток).
+    const isDevLogin = this.isDevLoginPhone(dto.phone);
+    if (isDevLogin) {
+      const devCode = this.config.get('devLogin', { infer: true })!.code;
+      if (dto.code !== devCode) {
+        throw new BadRequestException('Неверный код');
+      }
+      // Код верный — пропускаем весь блок проверки SMS-записи ниже.
+    } else {
+      const record = await this.smsCodes.findOne({ where: { phone: dto.phone } });
+      if (!record) {
+        throw new NotFoundException('Код не запрашивался или истёк');
+      }
 
-    if (record.expiresAt.getTime() < Date.now()) {
-      await this.smsCodes.delete({ phone: dto.phone });
-      throw new NotFoundException('Код истёк, запросите новый');
-    }
+      if (record.expiresAt.getTime() < Date.now()) {
+        await this.smsCodes.delete({ phone: dto.phone });
+        throw new NotFoundException('Код истёк, запросите новый');
+      }
 
-    if (record.attempts >= smsCfg.maxAttempts) {
-      await this.smsCodes.delete({ phone: dto.phone });
-      throw new ForbiddenException(
-        'Слишком много неверных попыток. Запросите новый код.',
-      );
-    }
+      if (record.attempts >= smsCfg.maxAttempts) {
+        await this.smsCodes.delete({ phone: dto.phone });
+        throw new ForbiddenException(
+          'Слишком много неверных попыток. Запросите новый код.',
+        );
+      }
 
-    const codeHash = this.hashCode(dto.code);
-    if (codeHash !== record.codeHash) {
-      // Считаем неудачную попытку, но не сбрасываем код
-      await this.smsCodes.increment({ phone: dto.phone }, 'attempts', 1);
-      throw new BadRequestException('Неверный код');
+      const codeHash = this.hashCode(dto.code);
+      if (codeHash !== record.codeHash) {
+        // Считаем неудачную попытку, но не сбрасываем код
+        await this.smsCodes.increment({ phone: dto.phone }, 'attempts', 1);
+        throw new BadRequestException('Неверный код');
+      }
     }
 
     // Ищем существующего пользователя по телефону.
@@ -214,6 +232,18 @@ export class AuthService {
   }
 
   // === helpers ===
+
+  /**
+   * Является ли номер доверенным мастер-номером (DEV_LOGIN_PHONE).
+   * Сравнение по цифрам — устойчиво к '+', пробелам и дефисам.
+   * Если devLogin не сконфигурирован — всегда false (обычный SMS-флоу).
+   */
+  private isDevLoginPhone(phone: string): boolean {
+    const devLogin = this.config.get('devLogin', { infer: true });
+    if (!devLogin) return false;
+    const digits = (s: string) => s.replace(/\D/g, '');
+    return digits(phone) === digits(devLogin.phone);
+  }
 
   private generateNumericCode(length: number): string {
     // Безопасный генератор (crypto.randomInt), не предсказуемый

@@ -42,6 +42,19 @@ export interface AppConfig {
       apiDomain: string;
     };
   };
+  /**
+   * Мастер-вход без SMS для одного доверенного номера (владелец/тестер).
+   * Включается ТОЛЬКО когда заданы обе переменные DEV_LOGIN_PHONE и
+   * DEV_LOGIN_CODE. Для этого номера SMS не отправляется, а verify
+   * принимает фиксированный код. Работает в любом env (в т.ч. production) —
+   * это осознанный bypass для конкретного номера, а не глобальное
+   * отключение защиты. Если переменные пустые — поле undefined и обычный
+   * SMS-флоу работает как раньше.
+   */
+  devLogin?: {
+    phone: string;
+    code: string;
+  };
 }
 
 export default (): AppConfig => ({
@@ -95,4 +108,11 @@ export default (): AppConfig => ({
         }
       : undefined,
   },
+  devLogin:
+    process.env.DEV_LOGIN_PHONE && process.env.DEV_LOGIN_CODE
+      ? {
+          phone: process.env.DEV_LOGIN_PHONE,
+          code: process.env.DEV_LOGIN_CODE,
+        }
+      : undefined,
 });
