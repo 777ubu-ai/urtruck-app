@@ -6,6 +6,9 @@ name: Server Inspect (read-only)
 # выводит секреты (.env не читается).
 on:
   workflow_dispatch:
+  push:
+    branches: [claude/biz-chat-inquiry-6v7qi2]
+    paths: ['.github/workflows/server-inspect.yml']
 
 jobs:
   inspect:
