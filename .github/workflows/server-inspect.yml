@@ -1,7 +1,8 @@
 name: Server Inspect (read-only)
 
-# v3: выгрузка исходников bizchat с сервера в артефакт CI.
-# Секреты НЕ пакуются: infra/secrets, .env*, keystore исключены.
+# v4: discovery деплоя bizchat — как именно поднят docker-стек, какой env-файл,
+# какие DEV_LOGIN уже заданы. Ничего не меняет. Значения секретов не печатает,
+# только ИМЕНА переменных и структуру.
 on:
   workflow_dispatch:
   push:
@@ -11,9 +12,9 @@ on:
 jobs:
   inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 8
     steps:
-      - name: Pack bizchat sources on server
+      - name: Discover bizchat deploy topology
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
@@ -21,50 +22,36 @@ jobs:
         run: |
           sudo apt-get install -y sshpass >/dev/null 2>&1
           sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'EOS'
-          set -e
-          cd /home/ubuntu
-          tar czf /tmp/bizchat-src.tar.gz \
-            --exclude='bizchat/mobile/build' \
-            --exclude='bizchat/mobile/.dart_tool' \
-            --exclude='bizchat/mobile/.gradle' \
-            --exclude='bizchat/mobile/android/.gradle' \
-            --exclude='bizchat/mobile/android/.cxx' \
-            --exclude='bizchat/mobile/android/app/.cxx' \
-            --exclude='bizchat/mobile/ios/Pods' \
-            --exclude='bizchat/mobile/ios/.symlinks' \
-            --exclude='bizchat/backend/node_modules' \
-            --exclude='bizchat/backend/dist' \
-            --exclude='bizchat/infra/secrets' \
-            --exclude='*.env' \
-            --exclude='*.env.*' \
-            --exclude='.env*' \
-            --exclude='*.jks' \
-            --exclude='*.keystore' \
-            --exclude='key.properties' \
-            --exclude='*.apk' \
-            --exclude='*.aab' \
-            bizchat
-          ls -lh /tmp/bizchat-src.tar.gz
-          echo "== имена env-переменных backend (только ключи, без значений) =="
-          docker exec bizchat-backend-prod printenv 2>/dev/null | cut -d= -f1 | sort | head -40 || true
-          echo "== файлы в infra/secrets (только имена) =="
-          ls /home/ubuntu/bizchat/infra/secrets/ 2>/dev/null || true
+          set +e
+          C=bizchat-backend-prod
+
+          echo "===== COMPOSE labels контейнера backend ====="
+          docker inspect "$C" --format '{{ index .Config.Labels "com.docker.compose.project" }}' 2>/dev/null
+          docker inspect "$C" --format 'config_files={{ index .Config.Labels "com.docker.compose.project.config_files" }}' 2>/dev/null
+          docker inspect "$C" --format 'workdir={{ index .Config.Labels "com.docker.compose.project.working_dir" }}' 2>/dev/null
+
+          echo; echo "===== NODE_ENV и наличие DEV_LOGIN в контейнере (только имена) ====="
+          docker exec "$C" printenv 2>/dev/null | grep -E "^NODE_ENV="
+          docker exec "$C" printenv 2>/dev/null | grep -qE "^DEV_LOGIN_PHONE=" && echo "DEV_LOGIN_PHONE: УЖЕ задан" || echo "DEV_LOGIN_PHONE: нет"
+          docker exec "$C" printenv 2>/dev/null | grep -qE "^SMS_PROVIDER=" && echo -n "SMS_PROVIDER=" && docker exec "$C" printenv 2>/dev/null | grep -E "^SMS_PROVIDER=" | cut -d= -f2
+
+          echo; echo "===== env-файлы в infra/ (имена, размеры; без содержимого) ====="
+          ls -la /home/ubuntu/bizchat/infra/.env* 2>/dev/null
+
+          echo; echo "===== ключи в .env.production (только имена переменных слева от =) ====="
+          if [ -f /home/ubuntu/bizchat/infra/.env.production ]; then
+            grep -oE '^[A-Z_]+=' /home/ubuntu/bizchat/infra/.env.production | sed 's/=//' | sort
+          else
+            echo ".env.production не найден в infra/"
+            echo "-- поиск любых .env вокруг bizchat --"
+            find /home/ubuntu/bizchat -maxdepth 2 -name ".env*" 2>/dev/null
+          fi
+
+          echo; echo "===== актуальная команда старта (из истории, если есть) ====="
+          grep -h "docker compose" /home/ubuntu/.bash_history 2>/dev/null | grep -i bizchat | tail -5
+
+          echo; echo "===== образ backend: когда собран ====="
+          docker images bizchat-backend:latest --format '{{.CreatedSince}} ({{.Size}})' 2>/dev/null
+
+          echo; echo "===== ГОТОВО ====="
           EOS
-
-      - name: Download archive from server
-        env:
-          SERVER_HOST: ${{ secrets.SERVER_HOST }}
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-          SERVER_PASS: ${{ secrets.SERVER_PASS }}
-        run: |
-          sshpass -p "$SERVER_PASS" scp -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST:/tmp/bizchat-src.tar.gz" ./bizchat-src.tar.gz
-          ls -lh bizchat-src.tar.gz
-          # Контрольная проверка: в архиве не должно быть секретов
-          tar tzf bizchat-src.tar.gz | grep -i -E "\.env|secret|\.jks|\.keystore|key\.properties" || echo "OK: секретов в архиве нет"
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: bizchat-src
-          path: bizchat-src.tar.gz
-          retention-days: 3
