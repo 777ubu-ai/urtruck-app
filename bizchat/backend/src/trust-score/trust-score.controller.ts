@@ -7,15 +7,16 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { AdminGuard } from '../auth/admin.guard';
 import { TrustScoreService } from './trust-score.service';
 
 /**
  * Эндпоинты управления Trust Score. Пока ручной триггер — в prod будет
  * cron каждые 24 часа (Blueprint §16).
  *
- * **Безопасность**: сейчас под обычным JwtAuthGuard, любой авторизованный
- * юзер может запустить recalc. В prod нужен админский guard или вынос
- * в отдельный admin-namespace с API key.
+ * **Безопасность**: закрыто AdminGuard — recalc может запустить только
+ * номер из белого списка ADMIN_PHONES. Плюс автоматический ежедневный
+ * пересчёт в TrustScoreService (cron 3:00).
  */
 @Controller('trust-score')
 export class TrustScoreController {
@@ -26,7 +27,7 @@ export class TrustScoreController {
    * Возвращает количество обновлённых и среднее значение.
    */
   @Post('recalc')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AdminGuard)
   @HttpCode(200)
   async recalcAll() {
     return this.service.recalcAll();
@@ -36,7 +37,7 @@ export class TrustScoreController {
    * POST /api/v1/trust-score/recalc/:userId — пересчитать для одного завода.
    */
   @Post('recalc/:userId')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AdminGuard)
   @HttpCode(200)
   async recalcOne(@Param('userId', new ParseUUIDPipe()) userId: string) {
     const score = await this.service.recalcOne(userId);

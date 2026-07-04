@@ -3,15 +3,17 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppConfig } from '../config/configuration';
+import { User } from '../entities/user.entity';
 import { Factory } from '../entities/factory.entity';
+import { Report } from '../entities/report.entity';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminGuard } from '../auth/admin.guard';
-import { TrustScoreController } from './trust-score.controller';
-import { TrustScoreService } from './trust-score.service';
+import { AdminController } from './admin.controller';
+import { AdminService } from './admin.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Factory]),
+    TypeOrmModule.forFeature([User, Factory, Report]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -20,8 +22,7 @@ import { TrustScoreService } from './trust-score.service';
       }),
     }),
   ],
-  controllers: [TrustScoreController],
-  providers: [TrustScoreService, JwtAuthGuard, AdminGuard],
-  exports: [TrustScoreService],
+  controllers: [AdminController],
+  providers: [AdminService, JwtAuthGuard, AdminGuard],
 })
-export class TrustScoreModule {}
+export class AdminModule {}

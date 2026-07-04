@@ -43,6 +43,12 @@ export interface AppConfig {
     };
   };
   /**
+   * Телефоны администраторов (белый список для admin-эндпоинтов).
+   * Задаётся в .env: ADMIN_PHONES=+77001234567,+77009998877.
+   * Пустой список => admin-эндпоинты закрыты для всех (fail-closed).
+   */
+  adminPhones: string[];
+  /**
    * Мастер-вход без SMS для одного доверенного номера (владелец/тестер).
    * Включается ТОЛЬКО когда заданы обе переменные DEV_LOGIN_PHONE и
    * DEV_LOGIN_CODE. Для этого номера SMS не отправляется, а verify
@@ -108,6 +114,10 @@ export default (): AppConfig => ({
         }
       : undefined,
   },
+  adminPhones: (process.env.ADMIN_PHONES || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
   devLogin:
     process.env.DEV_LOGIN_PHONE && process.env.DEV_LOGIN_CODE
       ? {

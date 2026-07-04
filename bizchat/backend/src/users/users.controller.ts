@@ -155,13 +155,18 @@ export class UsersController {
         await manager.update(User, { id: userId }, userPatch);
       }
 
-      // companyName — отдельно в factories
+      // companyName и businessLicense — отдельно в factories
+      const factoryPatch: Partial<Factory> = {};
       if (dto.companyName !== undefined) {
-        await manager.update(
-          Factory,
-          { userId },
-          { companyName: dto.companyName },
-        );
+        factoryPatch.companyName = dto.companyName;
+      }
+      if (dto.businessLicense !== undefined) {
+        // Загрузка лицензии = заявка на верификацию. Разбирает админ
+        // (GET /admin/factories/pending → POST .../verify).
+        factoryPatch.businessLicense = dto.businessLicense;
+      }
+      if (Object.keys(factoryPatch).length > 0) {
+        await manager.update(Factory, { userId }, factoryPatch);
       }
     });
 

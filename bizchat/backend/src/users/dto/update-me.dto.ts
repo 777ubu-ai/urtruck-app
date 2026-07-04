@@ -71,6 +71,17 @@ export class UpdateMeDto {
   companyName?: string;
 
   /**
+   * Только для заводов — бизнес-лицензия (URL загруженного документа или
+   * текст с реквизитами). Заполнение = заявка на верификацию, которую
+   * подтверждает админ (см. AdminController). До подтверждения verifiedAt
+   * остаётся null.
+   */
+  @IsOptional()
+  @IsString()
+  @Length(0, 4096)
+  businessLicense?: string;
+
+  /**
    * Глобальный toggle push-уведомлений. Если false — сервер не шлёт пуши,
    * но in-app notifications всё равно создаются и видны в колокольчике.
    */
