@@ -1,0 +1,7 @@
+# Конфиг для flutter gen-l10n. Собирает строки из lib/l10n/*.arb в
+# lib/l10n/app_localizations.dart с типизированными accessor'ами.
+arb-dir: lib/l10n
+template-arb-file: app_en.arb
+output-localization-file: app_localizations.dart
+output-class: AppLocalizations
+output-dir: lib/l10n

@@ -1,0 +1,32 @@
+[Unit]
+Description=Biz Chat staging stack (postgres + redis + backend)
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/home/ubuntu/bizchat/infra
+EnvironmentFile=/home/ubuntu/bizchat/infra/.env.production
+User=ubuntu
+Group=ubuntu
+
+# Запуск стека (idempotent — если уже работает, ничего не сломает)
+ExecStart=/usr/bin/docker compose \
+  -f /home/ubuntu/bizchat/infra/docker-compose.production.yml \
+  -f /home/ubuntu/bizchat/infra/docker-compose.staging.yml \
+  --env-file /home/ubuntu/bizchat/infra/.env.production \
+  up -d postgres redis backend
+
+# Остановка стека
+ExecStop=/usr/bin/docker compose \
+  -f /home/ubuntu/bizchat/infra/docker-compose.production.yml \
+  -f /home/ubuntu/bizchat/infra/docker-compose.staging.yml \
+  --env-file /home/ubuntu/bizchat/infra/.env.production \
+  stop postgres redis backend
+
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

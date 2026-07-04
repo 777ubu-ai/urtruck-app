@@ -1,0 +1,1133 @@
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:share_plus/share_plus.dart';
+import '../../../core/widgets/double_tap_like.dart';
+import '../../../core/api/api_client.dart';
+import '../../../core/currency/converted_price_text.dart';
+import '../../../core/realtime/realtime_service.dart';
+import '../../../core/widgets/loading_skeleton.dart';
+import '../../../l10n/app_localizations.dart';
+import '../../../core/widgets/video_media_player.dart';
+import '../../chat/data/chat_repository.dart';
+import '../../chat/presentation/conversation_screen.dart';
+import '../../notifications/data/notifications_repository.dart';
+import '../../notifications/presentation/notifications_screen.dart';
+import '../../stories/presentation/stories_ring.dart';
+import '../data/feed_repository.dart';
+import 'comments_sheet.dart';
+import 'hashtag_screen.dart';
+import 'post_detail_screen.dart';
+import 'reels_screen.dart';
+
+/// Главная лента — экран после регистрации.
+/// Blueprint §1.1 вкладка «Главная», §2 анатомия поста.
+/// На первом спринте — только базовая вертикальная лента с карточками товаров.
+/// Stories, Reels, переключатель «Для тебя/Подписки» — Фаза 2.
+class FeedScreen extends StatefulWidget {
+  const FeedScreen({super.key, this.initialFilter = 'all', this.hideFilterTabs = false});
+
+  /// Стартовый фильтр: 'all' | 'following' | 'hot_deal'.
+  final String initialFilter;
+
+  /// Скрыть табы фильтров в AppBar (для Hot Deals вкладки — там сверху только иконка огня).
+  final bool hideFilterTabs;
+
+  @override
+  State<FeedScreen> createState() => _FeedScreenState();
+}
+
+class _FeedScreenState extends State<FeedScreen> {
+  final _repo = FeedRepository();
+  final _scroll = ScrollController();
+  final List<FeedPost> _items = [];
+  String? _nextCursor;
+  bool _loading = false;
+  bool _hasMore = true;
+  String? _error;
+  late String _filter;
+
+  @override
+  void initState() {
+    super.initState();
+    _filter = widget.initialFilter;
+    _loadMore();
+    _scroll.addListener(() {
+      if (_scroll.position.pixels >=
+          _scroll.position.maxScrollExtent - 300) {
+        if (!_loading && _hasMore) _loadMore();
+      }
+    });
+    // Убеждаемся что WS подключён — индикатор и колокольчик подписываются
+    // на realtime stream'ы локально (см. _RealtimeStatusDot, _NotificationBell).
+    RealtimeService.instance.connect();
+  }
+
+  Future<void> _loadMore({bool forceRefresh = false}) async {
+    if (_loading) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final page = await _repo.loadFeed(
+        cursor: _nextCursor,
+        filter: _filter,
+        // forceRefresh передаётся только при pull-to-refresh, чтобы обойти
+        // 30-секундный in-memory кэш первой страницы.
+        forceRefresh: forceRefresh && _nextCursor == null,
+      );
+      setState(() {
+        _items.addAll(page.items);
+        _nextCursor = page.nextCursor;
+        _hasMore = page.hasMore;
+      });
+    } catch (e) {
+      // Чистим префикс `Exception: ` чтобы юзер видел нормальный текст
+      // (особенно для 401/429/таймаутов polling'а ленты).
+      setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _refresh() async {
+    setState(() {
+      _items.clear();
+      _nextCursor = null;
+      _hasMore = true;
+    });
+    await _loadMore(forceRefresh: true);
+  }
+
+  Future<void> _switchFilter(String filter) async {
+    if (_filter == filter) return;
+    setState(() {
+      _filter = filter;
+      _items.clear();
+      _nextCursor = null;
+      _hasMore = true;
+    });
+    await _loadMore();
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        leading: const _RealtimeStatusDot(),
+        title: widget.hideFilterTabs
+            ? Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.local_fire_department, color: Colors.red),
+                  const SizedBox(width: 8),
+                  Text(AppLocalizations.of(context)!.feedHotDeals),
+                ],
+              )
+            : _FeedFilterTabs(
+                current: _filter,
+                onChanged: _switchFilter,
+              ),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.video_library_outlined),
+            tooltip: AppLocalizations.of(context)!.feedReelsTooltip,
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const ReelsScreen(),
+                ),
+              );
+            },
+          ),
+          const Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: _NotificationBell(),
+          ),
+        ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: _refresh,
+        child: _buildBody(),
+      ),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_items.isEmpty && _loading) {
+      return const FeedSkeletonList();
+    }
+    if (_items.isEmpty && _error != null) {
+      return _ErrorView(error: _error!, onRetry: _refresh);
+    }
+    if (_items.isEmpty) {
+      return _EmptyFeedView(filter: _filter);
+    }
+    // Index 0 → StoriesRing (горизонтальный скролл сверху)
+    // Index 1..N → posts cards
+    // Index N+1 (если hasMore) → loader
+    final extraTopItems = 1; // StoriesRing
+    return ListView.builder(
+      controller: _scroll,
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      itemCount: extraTopItems + _items.length + (_hasMore ? 1 : 0),
+      itemBuilder: (context, index) {
+        if (index == 0) {
+          return const StoriesRing();
+        }
+        final postIndex = index - extraTopItems;
+        if (postIndex >= _items.length) {
+          return const Padding(
+            padding: EdgeInsets.all(16),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+        return _PostCard(post: _items[postIndex]);
+      },
+    );
+  }
+}
+
+class _PostCard extends StatefulWidget {
+  const _PostCard({required this.post});
+  final FeedPost post;
+
+  @override
+  State<_PostCard> createState() => _PostCardState();
+}
+
+class _PostCardState extends State<_PostCard> {
+  late FeedPost post;
+  final FeedRepository _repo = FeedRepository();
+  bool _likeInFlight = false;
+  bool _saveInFlight = false;
+
+  @override
+  void initState() {
+    super.initState();
+    post = widget.post;
+  }
+
+  /// Тап по bookmark — оптимистично переключаем UI, потом await API.
+  /// При ошибке откатываем и показываем snackbar.
+  Future<void> _onSaveTap() async {
+    if (_saveInFlight) return;
+    HapticFeedback.lightImpact(); // WOW-2
+    final wasSaved = post.isSavedByMe;
+    setState(() {
+      _saveInFlight = true;
+      post = post.copyWith(isSavedByMe: !wasSaved);
+    });
+    try {
+      final result = wasSaved
+          ? await _repo.unsavePost(post.id)
+          : await _repo.savePost(post.id);
+      if (!mounted) return;
+      setState(() => post = post.copyWith(isSavedByMe: result.saved));
+      final l = AppLocalizations.of(context)!;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result.saved ? l.postSavedSnack : l.postUnsavedSnack),
+          duration: const Duration(seconds: 1),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => post = post.copyWith(isSavedByMe: wasSaved));
+      final l = AppLocalizations.of(context)!;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(l.feedSaveError(e.toString())),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _saveInFlight = false);
+    }
+  }
+
+  /// Открыть чат с заводом этого поста. Логика идентична
+  /// `PostDetailScreen._openChatWithFactory` — реальный chat flow вместо
+  /// заглушки «Чат с заводом — в Фазе 2».
+  Future<void> _openChatWithFactory() async {
+    final factoryId = post.factoryUserId;
+    if (factoryId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              AppLocalizations.of(context)!.feedCannotDetermineFactory),
+        ),
+      );
+      return;
+    }
+    try {
+      final repo = ChatRepository();
+      final conv = await repo.findOrCreate(factoryId);
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ConversationScreen(
+            conversationId: conv.id,
+            partnerName: conv.other.name == 'Без имени'
+                ? post.factoryName
+                : conv.other.name,
+            partnerType: conv.other.type,
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  /// Share: native share dialog (WhatsApp/Telegram/копировать) + счётчик.
+  Future<void> _onShareTap() async {
+    HapticFeedback.lightImpact(); // WOW-2
+    final shareUrl = 'https://biz-chat.net/post/${post.id}';
+    final shareText = '${post.title}\n\n${post.priceAmount} ${post.priceCurrency}\n\n$shareUrl';
+    // WOW-8: системный share sheet (Android/iOS native)
+    await SharePlus.instance.share(ShareParams(
+      text: shareText,
+      subject: post.title,
+    ));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+            AppLocalizations.of(context)!.feedShareLinkCopied(shareUrl)),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+    try {
+      final result = await _repo.sharePost(post.id);
+      if (!mounted) return;
+      setState(() => post = post.copyWith(sharesCount: result.sharesCount));
+    } catch (_) {/* share-счётчик не критичен */}
+  }
+
+  /// Открыть bottom sheet с комментариями. Счётчик синхронизируется в
+  /// реальном времени через onCountChanged.
+  void _onCommentTap() {
+    showCommentsSheet(
+      context,
+      postId: post.id,
+      initialCount: post.commentsCount,
+      onCountChanged: (newCount) {
+        if (!mounted) return;
+        setState(() => post = post.copyWith(commentsCount: newCount));
+      },
+    );
+  }
+
+  /// Тап по сердечку — оптимистично переключаем UI и счётчик,
+  /// потом await API; если упало — откатываем к прежнему состоянию.
+  Future<void> _onLikeTap() async {
+    if (_likeInFlight) return; // защита от двойного тапа
+    HapticFeedback.lightImpact(); // WOW-2
+    final wasLiked = post.isLikedByMe;
+    final wasCount = post.likesCount;
+    // BUG-009: invalidate feed cache чтобы при возврате лайк отобразился
+    FeedRepository.invalidateFeedCache();
+    setState(() {
+      _likeInFlight = true;
+      post = post.copyWith(
+        isLikedByMe: !wasLiked,
+        likesCount: wasLiked ? wasCount - 1 : wasCount + 1,
+      );
+    });
+    try {
+      final result = wasLiked
+          ? await _repo.unlikePost(post.id)
+          : await _repo.likePost(post.id);
+      if (!mounted) return;
+      // Синхронизируемся с реальным значением от бэка — на случай если на сервере
+      // счётчик уже отличался (другие юзеры лайкали в это же время).
+      setState(() {
+        post = post.copyWith(
+          isLikedByMe: result.liked,
+          likesCount: result.likesCount,
+        );
+      });
+    } catch (e) {
+      if (!mounted) return;
+      // Откатываем оптимистичный апдейт
+      setState(() {
+        post = post.copyWith(isLikedByMe: wasLiked, likesCount: wasCount);
+      });
+      final l = AppLocalizations.of(context)!;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(wasLiked
+              ? l.feedLikeErrorUnlike(e.toString())
+              : l.feedLikeErrorLike(e.toString())),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _likeInFlight = false);
+    }
+  }
+
+  Future<void> _openDetail() async {
+    final updated = await Navigator.of(context).push<FeedPost>(
+      MaterialPageRoute(
+        builder: (_) => PostDetailScreen(postId: post.id, initial: post),
+      ),
+    );
+    // Если деталка вернула обновлённый пост (например после лайка) — синхронизируем карточку.
+    if (updated != null && mounted) {
+      setState(() => post = updated);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final l = AppLocalizations.of(context)!;
+    final firstMedia = post.media.isNotEmpty ? post.media.first : null;
+    // Defensive: бэк теоретически может прислать `url`/`type` не строкой —
+    // используем `is String` чтобы не падать в `as String?` cast при rendering.
+    final rawUrlValue = firstMedia?['url'];
+    final rawMediaUrl = rawUrlValue is String ? rawUrlValue : null;
+    final firstMediaUrl =
+        rawMediaUrl != null ? ApiClient.resolveMediaUrl(rawMediaUrl) : null;
+    final rawTypeValue = firstMedia?['type'];
+    final firstMediaIsVideo =
+        (rawTypeValue is String && rawTypeValue == 'video') &&
+            rawMediaUrl != null;
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: _openDetail,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+          // Шапка: аватар + название завода + Trust Score
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: scheme.primaryContainer,
+                  child: Text(
+                    post.factoryName.isNotEmpty
+                        ? post.factoryName[0].toUpperCase()
+                        : '?',
+                    style: TextStyle(
+                      color: scheme.onPrimaryContainer,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        post.factoryName,
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Row(
+                        children: [
+                          Icon(
+                            post.trustScore >= 70
+                                ? Icons.verified
+                                : Icons.info_outline,
+                            size: 14,
+                            color: post.trustScore >= 90
+                                ? Colors.green
+                                : (post.trustScore >= 70
+                                    ? Colors.orange
+                                    : Colors.grey),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            l.profileFactoryTrustScore(post.trustScore),
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Медиа (первое фото или заглушка) + Hot Deal badge поверх
+          Stack(
+            children: [
+              // WOW-1: double-tap to like (Instagram-style)
+              DoubleTapLike(
+                onLike: () {
+                  if (!post.isLikedByMe) _onLikeTap();
+                },
+                child: AspectRatio(
+                aspectRatio: 1,
+                child: firstMediaUrl == null
+                    ? Container(
+                        color: scheme.surfaceContainerHighest,
+                        child: Icon(Icons.image,
+                            size: 48, color: scheme.onSurfaceVariant),
+                      )
+                    : firstMediaIsVideo
+                        ? VideoMediaPlayer(
+                            mediaUrl: rawMediaUrl,
+                            autoplay: false, // в ленте — preview, не auto-play
+                            fit: BoxFit.cover,
+                          )
+                        : CachedNetworkImage(
+                            imageUrl: firstMediaUrl,
+                            fit: BoxFit.cover,
+                            placeholder: (_, __) => Container(
+                              color: scheme.surfaceContainerHighest,
+                              child: const Center(
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2),
+                              ),
+                            ),
+                            errorWidget: (_, __, ___) => Container(
+                              color: scheme.surfaceContainerHighest,
+                              child: Icon(Icons.broken_image,
+                                  color: scheme.onSurfaceVariant),
+                            ),
+                          ),
+                ),
+              ),
+              if (post.isHotDeal && post.discountPercent > 0)
+                Positioned(
+                  top: 12,
+                  left: 12,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.red,
+                      borderRadius: BorderRadius.circular(6),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.2),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Text(
+                      '🔥 -${post.discountPercent}%',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ),
+              // Group Buy badge с прогрессом
+              if (post.groupBuy != null)
+                Positioned(
+                  top: 12,
+                  right: 12,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.deepPurple,
+                      borderRadius: BorderRadius.circular(6),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.2),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Text(
+                      '👥 ${(post.groupBuy!.progress * 100).toStringAsFixed(0)}%',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          // Кнопки действий
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            child: Row(
+              children: [
+                IconButton(
+                  // AnimatedSwitcher с ScaleTransition даёт «pop» эффект
+                  // при тапе на сердце — UX как в Instagram. Key обязателен,
+                  // чтобы Switcher распознал смену child'a.
+                  icon: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 220),
+                    transitionBuilder: (child, anim) => ScaleTransition(
+                      scale: Tween<double>(begin: 0.6, end: 1.0).animate(
+                        CurvedAnimation(
+                            parent: anim, curve: Curves.elasticOut),
+                      ),
+                      child: child,
+                    ),
+                    child: Icon(
+                      post.isLikedByMe
+                          ? Icons.favorite
+                          : Icons.favorite_border,
+                      key: ValueKey<bool>(post.isLikedByMe),
+                      color: post.isLikedByMe ? Colors.red : null,
+                    ),
+                  ),
+                  onPressed: _onLikeTap,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.mode_comment_outlined),
+                  onPressed: _onCommentTap,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.send_outlined),
+                  onPressed: _onShareTap,
+                ),
+                const Spacer(),
+                IconButton(
+                  icon: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 220),
+                    transitionBuilder: (child, anim) => ScaleTransition(
+                      scale: Tween<double>(begin: 0.6, end: 1.0).animate(
+                        CurvedAnimation(
+                            parent: anim, curve: Curves.elasticOut),
+                      ),
+                      child: child,
+                    ),
+                    child: Icon(
+                      post.isSavedByMe
+                          ? Icons.bookmark
+                          : Icons.bookmark_border,
+                      key: ValueKey<bool>(post.isSavedByMe),
+                    ),
+                  ),
+                  onPressed: _saveInFlight ? null : _onSaveTap,
+                ),
+              ],
+            ),
+          ),
+          // Заголовок + описание
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (post.likesCount > 0)
+                  Text(
+                    l.feedLikesCount(post.likesCount),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                  ),
+                const SizedBox(height: 4),
+                Text(
+                  post.title,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Icon(Icons.inventory_2_outlined,
+                        size: 16, color: scheme.onSurfaceVariant),
+                    const SizedBox(width: 4),
+                    Text(
+                      l.feedMoqShort(post.moq),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    const SizedBox(width: 16),
+                    Icon(Icons.local_shipping_outlined,
+                        size: 16, color: scheme.onSurfaceVariant),
+                    const SizedBox(width: 4),
+                    Text(
+                      l.feedShippingDaysShort(post.shippingDays),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+                if (post.description != null &&
+                    post.description!.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    post.description!,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ],
+                const SizedBox(height: 8),
+                // Кнопка цены — главная фича Blueprint §2.2.
+                // ВАЖНО: НЕ оборачивать FilledButton + ConvertedPriceText в Row
+                // внутри этой Column (loose width) — будет BoxConstraints forces
+                // infinite width. ConvertedPriceText кладём отдельной строкой.
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: FilledButton.tonalIcon(
+                    onPressed: () {
+                      _showPriceSheet(context);
+                    },
+                    icon: const Icon(Icons.attach_money),
+                    label: Text(
+                      // ЗАДАЧА 12: если цена > 100000 — показать «Цена по запросу»
+                      (double.tryParse(post.priceAmount) ?? 0) > 100000
+                          ? AppLocalizations.of(context)!.feedPriceOnRequest
+                          : '${post.priceAmount} ${post.priceCurrency}',
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                  ),
+                ),
+                ConvertedPriceText(
+                  amount: post.priceAmount,
+                  fromCurrency: post.priceCurrency,
+                  prefix: '',
+                ),
+                if (post.hashtags.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    children: post.hashtags
+                        .take(5)
+                        .map((tag) => ActionChip(
+                              label: Text('#$tag'),
+                              visualDensity: VisualDensity.compact,
+                              padding: EdgeInsets.zero,
+                              onPressed: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => HashtagScreen(tag: tag),
+                                  ),
+                                );
+                              },
+                            ))
+                        .toList(),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+        ),
+      ),
+    );
+  }
+
+  void _showPriceSheet(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      builder: (_) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              l.postPriceSheetTitle,
+              style: Theme.of(context).textTheme.titleLarge,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '${post.priceAmount} ${post.priceCurrency}',
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+              textAlign: TextAlign.center,
+            ),
+            ConvertedPriceText(
+              amount: post.priceAmount,
+              fromCurrency: post.priceCurrency,
+              prefix: '',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              l.feedPriceSheetLine(post.moq, post.shippingDays),
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 24),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _openChatWithFactory();
+              },
+              child: Text(l.postWriteToFactory),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(l.commonClose),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyFeedView extends StatelessWidget {
+  const _EmptyFeedView({required this.filter});
+  final String filter;
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
+    late final IconData icon;
+    late final String title;
+    late final String message;
+    switch (filter) {
+      case 'following':
+        icon = Icons.person_add_outlined;
+        title = l.feedEmptyFollowingTitle;
+        message = l.feedEmptyFollowingBody;
+        break;
+      case 'hot_deal':
+        icon = Icons.local_fire_department_outlined;
+        title = l.feedEmptyHotDealTitle;
+        message = l.feedEmptyHotDealBody;
+        break;
+      default:
+        icon = Icons.inbox_outlined;
+        title = l.feedEmptyGenericTitle;
+        message = l.feedEmptyGenericBody;
+    }
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: [
+        const SizedBox(height: 120),
+        Icon(icon,
+            size: 80, color: Theme.of(context).colorScheme.onSurfaceVariant),
+        const SizedBox(height: 16),
+        Text(
+          title,
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.titleLarge,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          message,
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ErrorView extends StatelessWidget {
+  const _ErrorView({required this.error, required this.onRetry});
+  final String error;
+  final VoidCallback onRetry;
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: [
+        const SizedBox(height: 120),
+        Icon(
+          Icons.error_outline,
+          size: 80,
+          color: Theme.of(context).colorScheme.error,
+        ),
+        const SizedBox(height: 16),
+        Text(
+          l.feedLoadError,
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.titleLarge,
+        ),
+        const SizedBox(height: 8),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Text(
+            error,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Center(
+          child: FilledButton.tonal(
+            onPressed: onRetry,
+            child: Text(l.commonRetry),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Переключатель «Все / Подписки / 🔥» в AppBar ленты. Segment control.
+class _FeedFilterTabs extends StatelessWidget {
+  const _FeedFilterTabs({required this.current, required this.onChanged});
+  final String current; // 'all' | 'following' | 'hot_deal'
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _FilterTab(
+          label: l.feedAll,
+          active: current == 'all',
+          onTap: () => onChanged('all'),
+        ),
+        const SizedBox(width: 16),
+        _FilterTab(
+          label: l.feedFollowing,
+          active: current == 'following',
+          onTap: () => onChanged('following'),
+        ),
+        const SizedBox(width: 16),
+        _FilterTab(
+          label: '🔥 ${l.feedHotDeals}',
+          active: current == 'hot_deal',
+          onTap: () => onChanged('hot_deal'),
+        ),
+      ],
+    );
+  }
+}
+
+class _FilterTab extends StatelessWidget {
+  const _FilterTab({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: active ? 18 : 16,
+            fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+            color: active ? scheme.onSurface : scheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Цветная точка-индикатор состояния WebSocket-соединения.
+/// Подписывается на `RealtimeService.statusStream` локально, чтобы
+/// обновляться **независимо** от parent ленты — без rebuild всего ListView
+/// при каждом изменении статуса.
+class _RealtimeStatusDot extends StatefulWidget {
+  const _RealtimeStatusDot();
+
+  @override
+  State<_RealtimeStatusDot> createState() => _RealtimeStatusDotState();
+}
+
+class _RealtimeStatusDotState extends State<_RealtimeStatusDot> {
+  late RealtimeStatus _status;
+  StreamSubscription<RealtimeStatus>? _sub;
+
+  @override
+  void initState() {
+    super.initState();
+    _status = RealtimeService.instance.status;
+    _sub = RealtimeService.instance.statusStream.listen((s) {
+      if (mounted) setState(() => _status = s);
+    });
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  Color get _color {
+    switch (_status) {
+      case RealtimeStatus.connected:
+        return Colors.green;
+      case RealtimeStatus.connecting:
+        return Colors.orange;
+      case RealtimeStatus.error:
+        return Colors.red;
+      case RealtimeStatus.disconnected:
+        return Colors.grey;
+    }
+  }
+
+  String _tooltipFor(AppLocalizations l) {
+    switch (_status) {
+      case RealtimeStatus.connected:
+        return l.feedRealtimeConnected;
+      case RealtimeStatus.connecting:
+        return l.feedRealtimeConnecting;
+      case RealtimeStatus.error:
+        return l.feedRealtimeError;
+      case RealtimeStatus.disconnected:
+        return l.feedRealtimeDisconnected;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
+    return Tooltip(
+      message: _tooltipFor(l),
+      child: Center(
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(
+            color: _color,
+            shape: BoxShape.circle,
+            boxShadow: _status == RealtimeStatus.connected
+                ? [
+                    BoxShadow(
+                      color: _color.withValues(alpha: 0.6),
+                      blurRadius: 6,
+                    ),
+                  ]
+                : null,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Колокольчик уведомлений с бейджем непрочитанных. Самостоятельный
+/// stateful widget — подписывается на `notificationStream` и polling
+/// `/unread-count` каждые 10 сек **локально**. Это означает что обновление
+/// бейджа не триггерит rebuild всей ленты (раньше это был setState
+/// в `_FeedScreenState`, который пересоздавал весь Scaffold).
+class _NotificationBell extends StatefulWidget {
+  const _NotificationBell();
+
+  @override
+  State<_NotificationBell> createState() => _NotificationBellState();
+}
+
+class _NotificationBellState extends State<_NotificationBell> {
+  final _repo = NotificationsRepository();
+  int _unread = 0;
+  Timer? _pollTimer;
+  StreamSubscription<Map<String, dynamic>>? _wsSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+    _pollTimer =
+        Timer.periodic(const Duration(seconds: 10), (_) => _refresh());
+    _wsSub = RealtimeService.instance.notificationStream.listen((_) {
+      if (mounted) setState(() => _unread += 1);
+    });
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    _wsSub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refresh() async {
+    if (!mounted) return;
+    try {
+      final c = await _repo.getUnreadCount();
+      if (!mounted) return;
+      if (c != _unread) setState(() => _unread = c);
+    } catch (_) {/* polling — игнорируем */}
+  }
+
+  Future<void> _open() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+    );
+    // На возврате обновляем (юзер мог пометить read-all)
+    await _refresh();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        IconButton(
+          icon: const Icon(Icons.notifications_none),
+          tooltip: AppLocalizations.of(context)!.feedNotificationsTooltip,
+          onPressed: _open,
+        ),
+        if (_unread > 0)
+          Positioned(
+            top: 8,
+            right: 6,
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+              constraints: const BoxConstraints(minWidth: 16),
+              decoration: BoxDecoration(
+                color: Colors.red,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                _unread > 99 ? '99+' : '$_unread',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}

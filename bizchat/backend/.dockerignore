@@ -1,0 +1,41 @@
+# Не копируем в build context — быстрее сборка и меньше размер слоёв
+
+# Зависимости и билд — поставим заново внутри контейнера
+node_modules
+dist
+coverage
+.nyc_output
+
+# Env — секреты никогда не попадают в образ (монтируем через env_file)
+.env
+.env.*
+!.env.example
+
+# Загрузки — это volume, не часть образа
+uploads
+
+# Git, IDE, ОС
+.git
+.gitignore
+.gitattributes
+.idea
+.vscode
+.DS_Store
+Thumbs.db
+
+# Доки и тесты (опционально — в рантайме не нужны)
+*.md
+README*
+test
+tests
+**/*.spec.ts
+**/*.test.ts
+
+# Docker-файлы сами
+Dockerfile
+.dockerignore
+
+# Логи
+*.log
+npm-debug.log*
+logs

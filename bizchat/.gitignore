@@ -1,0 +1,23 @@
+# Секреты — никогда не коммитить
+.env
+.env.*
+!.env.example
+infra/secrets/
+*.jks
+*.keystore
+key.properties
+certs/
+
+# Сборки и зависимости
+backend/node_modules/
+backend/dist/
+mobile/build/
+mobile/.dart_tool/
+mobile/.gradle/
+mobile/android/.gradle/
+mobile/android/.cxx/
+mobile/android/app/.cxx/
+mobile/ios/Pods/
+mobile/ios/.symlinks/
+*.apk
+*.aab

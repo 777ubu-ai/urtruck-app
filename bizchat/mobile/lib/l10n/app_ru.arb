@@ -1,0 +1,702 @@
+{
+  "@@locale": "ru",
+
+  "appTitle": "Biz Chat",
+
+  "navHome": "Главная",
+  "navSearch": "Поиск",
+  "navCreate": "Создать",
+  "navChats": "Чаты",
+  "navProfile": "Профиль",
+
+  "commonOk": "ОК",
+  "commonCancel": "Отмена",
+  "commonSave": "Сохранить",
+  "commonDelete": "Удалить",
+  "commonRetry": "Повторить",
+  "commonClose": "Закрыть",
+  "commonContinue": "Продолжить",
+  "commonLoading": "Загрузка…",
+  "commonError": "Ошибка",
+  "commonBack": "Назад",
+  "commonOpen": "Открыть",
+  "commonShare": "Поделиться",
+  "commonCopy": "Копировать",
+  "commonCopied": "Скопировано",
+  "commonNo": "Нет",
+
+  "authPhoneTitle": "Вход",
+  "authPhoneHint": "Номер телефона",
+  "authPhoneSubtitle": "Отправим код подтверждения по SMS",
+  "authPhoneSendCode": "Отправить код",
+  "authCodeTitle": "Введите код",
+  "authCodeHint": "6-значный код",
+  "authCodeSubtitle": "Введите код, отправленный на {phone}",
+  "@authCodeSubtitle": {
+    "placeholders": {"phone": {"type": "String"}}
+  },
+  "authCodeResend": "Отправить ещё раз",
+  "authCodeResendIn": "Повторно через {seconds} сек",
+  "@authCodeResendIn": {
+    "placeholders": {"seconds": {"type": "int"}}
+  },
+  "authRoleTitle": "Кто вы?",
+  "authRoleBuyer": "Байер",
+  "authRoleBuyerDesc": "Хочу покупать у заводов",
+  "authRoleFactory": "Завод",
+  "authRoleFactoryDesc": "Произвожу и хочу продавать",
+  "authRolePickToContinue": "Выбери тип аккаунта чтобы продолжить",
+  "authRolePickRole": "Выбери тип аккаунта",
+  "authRoleNewCodeHint": "Введите код из новой SMS",
+  "authRoleCodeRequired": "Введите код из SMS (мы отправили новый)",
+  "authRoleFinishButton": "Завершить регистрацию",
+  "authCodeTooShort": "Введите код из SMS",
+
+  "feedAll": "Все",
+  "feedFollowing": "Подписки",
+  "feedHotDeals": "Акции",
+  "feedEmptyTitle": "Постов пока нет",
+  "feedEmptySubtitle": "Потяните вниз, чтобы обновить",
+  "feedLoadError": "Не удалось загрузить ленту",
+  "feedTrustScore": "Trust Score: {score}",
+  "@feedTrustScore": {
+    "placeholders": {"score": {"type": "int"}}
+  },
+  "feedMoq": "MOQ {moq} шт",
+  "@feedMoq": {
+    "placeholders": {"moq": {"type": "int"}}
+  },
+  "feedShippingDays": "Доставка {days} дней",
+  "@feedShippingDays": {
+    "placeholders": {"days": {"type": "int"}}
+  },
+
+  "postWriteToFactory": "Написать заводу",
+  "postPriceSheetTitle": "Цена",
+  "postDescription": "Описание",
+  "postTranslate": "Перевести",
+  "postShowOriginal": "Показать оригинал",
+  "postLikedSnack": "Понравилось",
+  "postUnlikedSnack": "Лайк снят",
+  "postSavedSnack": "Сохранено в закладки",
+  "postUnsavedSnack": "Убрано из закладок",
+  "postShareLinkCopied": "Ссылка скопирована",
+  "postOwnPostMsg": "Это твой собственный пост",
+  "postFactoryNotFound": "Завод не найден",
+  "postReviewsLink": "{count, plural, =0{Нет отзывов} =1{1 отзыв} few{{count} отзыва} many{{count} отзывов} other{{count} отзыва}}",
+  "@postReviewsLink": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+
+  "searchHint": "Поиск по хэштегам, заводам, товарам…",
+  "searchIdleHint": "Начните вводить запрос для поиска",
+  "searchTooShort": "Введите минимум 2 символа",
+  "searchNoResults": "Ничего не найдено",
+  "searchFilters": "Фильтры",
+  "searchFiltersPriceUsd": "Цена (USD)",
+  "searchFiltersFrom": "От",
+  "searchFiltersTo": "До",
+  "searchFiltersMoqMax": "Минимальная партия",
+  "searchFiltersCountry": "Страна",
+  "searchFiltersCountryAll": "Все",
+  "searchFiltersHotDeal": "Только акции",
+  "searchFiltersReset": "Сбросить",
+  "searchFiltersApply": "Применить",
+
+  "chatTitle": "Сообщения",
+  "chatNoMessages": "Нет сообщений",
+  "chatStartHint": "Напишите первым — обсудите цены, MOQ, отгрузку",
+  "chatInputHint": "Сообщение…",
+  "chatNoChats": "Нет чатов",
+  "chatNoChatsHint": "Откройте пост и нажмите «Написать заводу», чтобы начать",
+  "chatPartnerBuyer": "Байер",
+  "chatPartnerFactory": "Завод",
+
+  "profileTitle": "Профиль",
+  "profileLogout": "Выйти из аккаунта",
+  "profileEdit": "Редактировать профиль",
+  "profileFollowers": "Подписчики",
+  "profileFollowing": "Подписки",
+  "profileMySaves": "Мои сохранения",
+  "profileSettings": "Настройки",
+  "profileReferralCode": "Реферальный код",
+  "profileLanguage": "Язык",
+  "profileCurrency": "Валюта",
+
+  "settingsTitle": "Настройки",
+  "settingsAccount": "Аккаунт",
+  "settingsPhone": "Телефон",
+  "settingsLanguageRu": "Русский",
+  "settingsLanguageEn": "English",
+  "settingsLanguageZh": "中文",
+  "settingsNotifications": "Уведомления",
+  "settingsPushNotifications": "Push-уведомления",
+  "settingsPushMaster": "Все push-уведомления",
+  "settingsNotifLikes": "Лайки",
+  "settingsNotifComments": "Комментарии",
+  "settingsNotifMessages": "Сообщения",
+  "settingsNotifReviews": "Отзывы",
+  "settingsNotifGroupBuy": "Групповые закупки",
+  "settingsPushUpdateError": "Не удалось обновить",
+  "settingsQuietHours": "Тихие часы",
+  "settingsPrivacy": "Приватность",
+  "settingsBlocked": "Заблокированные",
+  "settingsAbout": "О приложении",
+  "settingsVersion": "Версия",
+  "settingsContactSupport": "Связаться с поддержкой",
+  "settingsTermsOfService": "Условия использования",
+  "settingsPrivacyPolicy": "Политика конфиденциальности",
+
+  "notificationsTitle": "Уведомления",
+  "notificationsMarkAllRead": "Прочитать все",
+  "notificationsEmpty": "Уведомлений нет",
+
+  "reviewsTitle": "Отзывы о {factoryName}",
+  "@reviewsTitle": {
+    "placeholders": {"factoryName": {"type": "String"}}
+  },
+  "reviewsWrite": "Написать отзыв",
+  "reviewsEmpty": "Отзывов пока нет",
+  "reviewsRating": "Оценка",
+  "reviewsComment": "Комментарий",
+  "reviewsBeFirst": "Будьте первым кто оставит отзыв об этом заводе",
+  "reviewsNewTitle": "Новый отзыв",
+  "reviewsEditTitle": "Изменить отзыв",
+  "reviewsCommentHint": "Расскажите о своём опыте — качество, сроки, упаковка, общение",
+  "reviewsPublish": "Опубликовать отзыв",
+  "reviewsSaveChanges": "Сохранить изменения",
+  "reviewsPublished": "Отзыв опубликован",
+  "reviewsUpdated": "Отзыв обновлён",
+
+  "postDetailTitle": "Товар",
+  "postPriceLabel": "Цена",
+  "postSpecsMoq": "Минимальная партия: {moq} шт",
+  "@postSpecsMoq": {
+    "placeholders": {"moq": {"type": "int"}}
+  },
+  "postSpecsShipping": "Доставка: {days} дней",
+  "@postSpecsShipping": {
+    "placeholders": {"days": {"type": "int"}}
+  },
+  "postSpecsStockInStock": "В наличии",
+  "postSpecsStockOutOfStock": "Нет в наличии",
+  "postSpecsStockOnDemand": "Под заказ",
+  "postPriceTiers": "Цены по объёмам",
+  "postPriceTierFromQty": "от {qty} шт",
+  "@postPriceTierFromQty": {
+    "placeholders": {"qty": {"type": "int"}}
+  },
+  "postCommentsTitle": "Комментарии",
+  "postCommentInputHint": "Напишите комментарий…",
+  "postCommentSend": "Отправить",
+  "postNoComments": "Комментариев пока нет",
+  "postFirstComment": "Будьте первым",
+  "postFollowed": "Подписался на {factory}",
+  "@postFollowed": {
+    "placeholders": {"factory": {"type": "String"}}
+  },
+  "postUnfollowed": "Отписался от {factory}",
+  "@postUnfollowed": {
+    "placeholders": {"factory": {"type": "String"}}
+  },
+  "postFollow": "Подписаться",
+  "postUnfollow": "Отписаться",
+  "postDelete": "Удалить пост",
+  "postDeleteConfirm": "Удалить этот пост?",
+  "postDeleteConfirmBody": "Это действие нельзя отменить.",
+  "postDeleted": "Пост удалён",
+  "postDeletedWithTitle": "Пост «{title}» удалён",
+  "@postDeletedWithTitle": {
+    "placeholders": {"title": {"type": "String"}}
+  },
+  "postLikeError": "Не удалось лайкнуть: {error}",
+  "@postLikeError": {
+    "placeholders": {"error": {"type": "String"}}
+  },
+  "postUnlikeError": "Не удалось снять лайк: {error}",
+  "@postUnlikeError": {
+    "placeholders": {"error": {"type": "String"}}
+  },
+  "postSaveError": "Не удалось сохранить: {error}",
+  "@postSaveError": {
+    "placeholders": {"error": {"type": "String"}}
+  },
+
+  "groupBuyTitle": "Групповая закупка",
+  "groupBuyProgress": "{current} / {target} шт",
+  "@groupBuyProgress": {
+    "placeholders": {
+      "current": {"type": "int"},
+      "target": {"type": "int"}
+    }
+  },
+  "groupBuyParticipants": "{count, plural, =0{Нет участников} =1{1 участник} few{{count} участника} many{{count} участников} other{{count} участника}}",
+  "@groupBuyParticipants": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "groupBuyDeadline": "До {date}",
+  "@groupBuyDeadline": {
+    "placeholders": {"date": {"type": "String"}}
+  },
+  "groupBuyJoin": "Присоединиться",
+  "groupBuyLeave": "Отменить заявку",
+  "groupBuyEdit": "Изменить заявку",
+  "groupBuyGoalReached": "Цель достигнута! 🎉",
+  "groupBuyExpired": "Срок истёк",
+  "groupBuyJoinSheetTitle": "Присоединиться к закупке",
+  "groupBuyQuantity": "Количество",
+  "groupBuyEstimatedTotal": "Сумма",
+  "groupBuyOwnPost": "Это ваша собственная закупка",
+  "groupBuyJoinedSnack": "Вы в закупке: {qty} шт. Набрано: {total}",
+  "@groupBuyJoinedSnack": {
+    "placeholders": {
+      "qty": {"type": "int"},
+      "total": {"type": "int"}
+    }
+  },
+  "groupBuyLeaveConfirmTitle": "Отменить участие?",
+  "groupBuyLeaveConfirmBody": "Ваша заявка будет удалена. Сможете присоединиться снова позже.",
+  "groupBuyLeaveConfirmAction": "Отменить",
+
+  "createPostTitle": "Новый пост",
+  "createPostType": "Тип поста",
+  "createPostTypeProduct": "Товар",
+  "createPostTypeReel": "Reel",
+  "createPostTypeHotDeal": "Акция",
+  "createPostTypeGroupBuy": "Групповая закупка",
+  "createPostMedia": "Медиа",
+  "createPostAddPhoto": "Фото",
+  "createPostAddVideo": "Видео",
+  "createPostName": "Название",
+  "createPostNameHint": "Короткое и понятное название товара",
+  "createPostDescription": "Описание",
+  "createPostDescriptionHint": "Материалы, особенности, упаковка, варианты кастомизации",
+  "createPostPrice": "Цена",
+  "createPostPriceCurrency": "Валюта",
+  "createPostMoq": "Минимальная партия",
+  "createPostShippingDays": "Срок доставки (дней)",
+  "createPostStockStatus": "Наличие",
+  "createPostHashtagsLabel": "Хэштеги",
+  "createPostHashtagHint": "тег (без #)",
+  "createPostAddHashtag": "Добавить",
+  "createPostHashtagMaxLimit": "Максимум 20 хэштегов",
+  "createPostHashtagDuplicate": "Уже добавлен",
+  "createPostPublish": "Опубликовать",
+  "createPostPublished": "Пост опубликован!",
+  "createPostError": "Не удалось опубликовать",
+  "createPostNoMedia": "Добавьте хотя бы одно фото или видео",
+  "createPostFactoryOnly": "Только заводы могут публиковать посты",
+
+  "editProfileTitle": "Редактировать профиль",
+  "editProfileAvatar": "Аватар",
+  "editProfilePickAvatar": "Выбрать фото",
+  "editProfileName": "Ваше имя",
+  "editProfileCompanyName": "Название компании",
+  "editProfileCountry": "Страна",
+  "editProfileCity": "Город",
+  "editProfileSaved": "Профиль обновлён",
+
+  "hashtagScreenTitle": "Посты с #{tag}",
+  "@hashtagScreenTitle": {
+    "placeholders": {"tag": {"type": "String"}}
+  },
+  "hashtagEmpty": "Нет постов с этим хэштегом",
+  "hashtagBeFirst": "Будьте первым — добавьте этот хэштег к своему посту",
+
+  "savesTitle": "Мои сохранения",
+  "savesEmpty": "Сохранений пока нет",
+  "savesEmptyHint": "Нажмите на иконку закладки на любом посте, чтобы сохранить его здесь",
+  "savesLoadError": "Не удалось загрузить сохранения: {error}",
+  "@savesLoadError": {
+    "placeholders": {"error": {"type": "String"}}
+  },
+  "savesLoadErrorHttp": "Не удалось загрузить сохранения (HTTP {code})",
+  "@savesLoadErrorHttp": {
+    "placeholders": {"code": {"type": "int"}}
+  },
+  "countryNameKZ": "🇰🇿 Казахстан",
+  "countryNameRU": "🇷🇺 Россия",
+  "countryNameCN": "🇨🇳 Китай",
+  "countryNameUZ": "🇺🇿 Узбекистан",
+  "countryNameKG": "🇰🇬 Кыргызстан",
+  "countryNameBY": "🇧🇾 Беларусь",
+  "countryNameTR": "🇹🇷 Турция",
+
+  "followersTitle": "Подписчики",
+  "followingTitle": "Подписки",
+  "followNoFollowers": "Подписчиков пока нет",
+  "followNoFollowing": "Подписок пока нет",
+
+  "publicProfileFollowers": "{count, plural, =0{0 подписчиков} =1{1 подписчик} few{{count} подписчика} many{{count} подписчиков} other{{count} подписчика}}",
+  "@publicProfileFollowers": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "publicProfilePosts": "Посты",
+  "publicProfileNoPosts": "Постов пока нет",
+  "publicProfileAboutFactory": "О заводе",
+  "publicProfileTrustScore": "Trust Score",
+  "publicProfileTotalProducts": "Товаров: {count}",
+  "@publicProfileTotalProducts": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "publicProfileTotalDeals": "Сделок: {count}",
+  "@publicProfileTotalDeals": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+
+  "notifLikeText": "{actor} лайкнул ваш пост",
+  "@notifLikeText": {
+    "placeholders": {"actor": {"type": "String"}}
+  },
+  "notifCommentText": "{actor} оставил комментарий",
+  "@notifCommentText": {
+    "placeholders": {"actor": {"type": "String"}}
+  },
+  "notifMessageText": "{actor} прислал сообщение",
+  "@notifMessageText": {
+    "placeholders": {"actor": {"type": "String"}}
+  },
+  "notifReviewText": "{actor} оставил отзыв",
+  "@notifReviewText": {
+    "placeholders": {"actor": {"type": "String"}}
+  },
+  "notifGroupBuyCompletedText": "Закупка успешно собрана!",
+
+  "commonJustNow": "только что",
+  "commonMinutesShort": "{count} мин",
+  "@commonMinutesShort": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "commonHoursShort": "{count} ч",
+  "@commonHoursShort": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "commonDaysShort": "{count} дн",
+  "@commonDaysShort": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "commonExpired": "истёк",
+  "commonLessThanMinute": "<1 мин",
+
+  "commentsSheetEmptyTitle": "Пока нет комментариев",
+  "commentsSheetEmptySubtitle": "Будь первым — задай вопрос заводу.",
+
+  "groupBuyStatusCollecting": "Группа собирается",
+  "groupBuyDealText": "При {target} шт цена упадёт до {price} {currency}/шт",
+  "@groupBuyDealText": {
+    "placeholders": {
+      "target": {"type": "int"},
+      "price": {"type": "String"},
+      "currency": {"type": "String"}
+    }
+  },
+  "groupBuyCollected": "Набрано",
+  "groupBuyParticipantsLabel": "Участников",
+  "groupBuyRemaining": "Осталось",
+  "groupBuyParticipating": "Вы участвуете: {qty} шт",
+  "@groupBuyParticipating": {
+    "placeholders": {"qty": {"type": "int"}}
+  },
+  "groupBuyEditMyOrder": "Изменить",
+  "groupBuyLeaveShort": "Отменить",
+  "groupBuyJoinWithRemaining": "Присоединиться · осталось {count} шт",
+  "@groupBuyJoinWithRemaining": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "groupBuyJoinSheetTitleLong": "Ваше участие в закупке",
+  "groupBuyJoinSheetSubtitle": "Укажите сколько штук готовы заказать",
+  "groupBuyJoinSheetEstimated": "Ориентировочно:",
+  "groupBuyJoinSheetConfirm": "Подтвердить",
+
+  "reelsTitle": "Reels",
+  "reelsEmptyTitle": "Пока нет reels",
+  "reelsEmptySubtitle": "Заводы ещё не публиковали видео.\nЗагляни позже.",
+  "reelsMore": "Подробнее",
+
+  "publicProfileReviewsCountPlural": "{count, plural, =0{нет отзывов} =1{1 отзыв} few{{count} отзыва} many{{count} отзывов} other{{count} отзыва}}",
+  "@publicProfileReviewsCountPlural": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "publicProfileReviewsSeeAll": "{count} — посмотреть все",
+  "@publicProfileReviewsSeeAll": {
+    "placeholders": {"count": {"type": "String"}}
+  },
+  "publicProfileNoReviewsTitle": "Нет отзывов",
+  "publicProfileGetFirstReview": "Получите первый отзыв",
+  "publicProfileBeFirstReviewer": "Будьте первым кто оставит отзыв",
+  "publicProfileFollowersLabel": "Подписчики",
+  "publicProfileFollowingLabel": "Подписки",
+
+  "createPostMediaTitle": "Медиа товара (до 10)",
+  "createPostMediaCount": "{count}/10 медиа",
+  "@createPostMediaCount": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "createPostMediaMaxReached": "Максимум 10 медиа",
+  "createPostVideoTooLarge": "Видео должно быть не более 50 МБ",
+  "createPostPickPhotosError": "Не удалось выбрать фото: {error}",
+  "@createPostPickPhotosError": {
+    "placeholders": {"error": {"type": "String"}}
+  },
+  "createPostPickVideoError": "Не удалось выбрать видео: {error}",
+  "@createPostPickVideoError": {
+    "placeholders": {"error": {"type": "String"}}
+  },
+  "createPostPublishedWithTitle": "Пост «{title}» опубликован",
+  "@createPostPublishedWithTitle": {
+    "placeholders": {"title": {"type": "String"}}
+  },
+  "createPostNoMediaSnack": "Добавь хотя бы одно фото",
+  "createPostTitleRequired": "Название *",
+  "createPostTitleHintExample": "Например, Хлопковые футболки оверсайз",
+  "createPostTitleTooShort": "Минимум 3 символа",
+  "createPostDescriptionHintExample": "Материал, характеристики, сертификаты…",
+  "createPostPriceRequired": "Цена *",
+  "createPostPriceHintExample": "4.50",
+  "createPostFieldRequired": "Обязательно",
+  "createPostFieldInvalid": "Неверно",
+  "createPostMoqLabel": "MOQ (мин. партия)",
+  "createPostMoqMin": "≥ 1",
+  "createPostShippingLabel": "Отгрузка (дн)",
+  "createPostShippingMin": "≥ 0",
+  "createPostStockInStock": "В наличии",
+  "createPostStockPreOrder": "Предзаказ",
+  "createPostStockOutOfStock": "Нет в наличии",
+  "createPostCurrencyRequired": "Валюта *",
+  "createPostHashtagInvalidChars": "Хэштег может содержать только буквы, цифры, _ и -",
+  "createPostHashtagHintExample": "tshirt, wholesale, cotton…",
+
+  "editProfileNameLabel": "Имя",
+  "editProfileNameHint": "Как тебя зовут?",
+  "editProfileCompanyRequiredLabel": "Название компании *",
+  "editProfileCompanyHint": "Guangzhou Apparel Co.",
+  "editProfileCompanyRequiredError": "Обязательно для заводов",
+  "editProfileLanguageLabel": "Язык",
+  "editProfileCurrencyLabel": "Валюта",
+  "editProfileCountryLabel": "Страна",
+  "editProfileCityLabel": "Город",
+  "editProfileCityHint": "Алматы",
+  "editProfileAvatarUploadError": "Не удалось загрузить аватар: {error}",
+  "@editProfileAvatarUploadError": {
+    "placeholders": {"error": {"type": "String"}}
+  },
+
+  "reviewsListTitle": "Отзывы о {factoryName}",
+  "@reviewsListTitle": {
+    "placeholders": {"factoryName": {"type": "String"}}
+  },
+  "reviewsListFabWrite": "Написать отзыв",
+  "reviewsListEmptyTitle": "Отзывов пока нет",
+  "reviewsListBeFirstLong": "Будь первым, кто оставит отзыв об этом заводе.",
+
+  "profileLogoutConfirmTitle": "Выйти из аккаунта?",
+  "profileLogoutConfirmBody": "Сессия будет завершена, придётся снова войти по SMS.",
+  "profileLogoutConfirmAction": "Выйти",
+  "profileEditTooltip": "Редактировать",
+  "profileRefreshTooltip": "Обновить",
+  "profileReferralCopyTooltip": "Скопировать",
+  "profileReferralCopied": "Реферальный код {code} скопирован",
+  "@profileReferralCopied": {
+    "placeholders": {"code": {"type": "String"}}
+  },
+  "profileLoadError": "Не удалось загрузить профиль",
+  "profileUpdatedSnack": "Профиль обновлён",
+  "profileNoName": "Без имени",
+  "profileAboutFactory": "О заводе",
+  "profileFactoryTotalProducts": "Товаров: {count}",
+  "@profileFactoryTotalProducts": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "profileFactoryTotalDeals": "Сделок: {count}",
+  "@profileFactoryTotalDeals": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "profileFactoryTrustScore": "Trust Score: {score}",
+  "@profileFactoryTrustScore": {
+    "placeholders": {"score": {"type": "int"}}
+  },
+  "profileLanguageLabel": "Язык",
+  "profileCurrencyLabel": "Валюта",
+  "profileCountryLabel": "Страна",
+  "profileCityLabel": "Город",
+  "profileReferralCodeLabel": "Реферальный код",
+  "profileMyPosts": "Мои товары",
+  "profileNoPostsYet": "Пока нет постов",
+
+  "feedLikesCount": "{count, plural, =0{0 лайков} =1{1 лайк} few{{count} лайка} many{{count} лайков} other{{count} лайка}}",
+  "@feedLikesCount": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "feedMoqShort": "MOQ: {moq} шт",
+  "@feedMoqShort": {
+    "placeholders": {"moq": {"type": "int"}}
+  },
+  "feedShippingDaysShort": "{days} дней",
+  "@feedShippingDaysShort": {
+    "placeholders": {"days": {"type": "int"}}
+  },
+  "feedPriceSheetLine": "MOQ: {moq} шт • Отгрузка: {days} дней",
+  "@feedPriceSheetLine": {
+    "placeholders": {
+      "moq": {"type": "int"},
+      "days": {"type": "int"}
+    }
+  },
+  "feedSaveError": "Не удалось сохранить: {error}",
+  "@feedSaveError": {
+    "placeholders": {"error": {"type": "String"}}
+  },
+  "feedLikeErrorLike": "Не удалось лайкнуть: {error}",
+  "@feedLikeErrorLike": {
+    "placeholders": {"error": {"type": "String"}}
+  },
+  "feedLikeErrorUnlike": "Не удалось снять лайк: {error}",
+  "@feedLikeErrorUnlike": {
+    "placeholders": {"error": {"type": "String"}}
+  },
+  "feedCannotDetermineFactory": "Не удалось определить завод",
+  "feedShareLinkCopied": "Ссылка скопирована: {url}",
+  "@feedShareLinkCopied": {
+    "placeholders": {"url": {"type": "String"}}
+  },
+  "feedEmptyFollowingTitle": "Нет постов от подписок",
+  "feedEmptyFollowingBody": "Подпишись на заводы в ленте «Все», и их посты появятся здесь.",
+  "feedEmptyHotDealTitle": "Акций пока нет",
+  "feedEmptyHotDealBody": "Заводы ещё не объявили Hot Deal. Загляни позже — или попробуй вкладку «Все».",
+  "feedEmptyGenericTitle": "Лента пустая",
+  "feedEmptyGenericBody": "Пока нет постов от заводов.\nПотяни вниз чтобы обновить.",
+  "feedRealtimeConnected": "Real-time подключён",
+  "feedRealtimeConnecting": "Подключаемся…",
+  "feedRealtimeError": "Ошибка соединения, пробую снова",
+  "feedRealtimeDisconnected": "Нет real-time соединения",
+  "feedReelsTooltip": "Reels",
+  "feedNotificationsTooltip": "Уведомления",
+
+  "searchHintTooltipClear": "Очистить",
+  "searchResetFiltersTooltip": "Сбросить фильтры",
+  "searchIdleTitle": "Поиск товаров",
+  "searchIdleBody": "Введите название, хэштег (#tshirt) или бренд завода — минимум 2 символа.",
+  "searchNoResultsBody": "По запросу «{query}» нет результатов. Попробуй другие слова или хэштеги.",
+  "@searchNoResultsBody": {
+    "placeholders": {"query": {"type": "String"}}
+  },
+  "searchFiltersHotShort": "🔥 Акции",
+
+  "chatErrorRetry": "Повторить",
+  "chatNoMessagesShort": "Нет сообщений",
+  "chatYouPrefix": "Вы:",
+  "chatTimeNow": "сейчас",
+  "chatTimeMinutesShort": "{count} мин",
+  "@chatTimeMinutesShort": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "chatTimeDaysShort": "{count} дн",
+  "@chatTimeDaysShort": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+
+  "notifActorLiked": "{actor} лайкнул{ref}",
+  "@notifActorLiked": {
+    "placeholders": {
+      "actor": {"type": "String"},
+      "ref": {"type": "String"}
+    }
+  },
+  "notifActorCommented": "{actor} прокомментировал{ref}",
+  "@notifActorCommented": {
+    "placeholders": {
+      "actor": {"type": "String"},
+      "ref": {"type": "String"}
+    }
+  },
+  "notifActorMessage": "{actor} прислал сообщение",
+  "@notifActorMessage": {
+    "placeholders": {"actor": {"type": "String"}}
+  },
+  "notifActorReview": "{actor} оставил отзыв",
+  "@notifActorReview": {
+    "placeholders": {"actor": {"type": "String"}}
+  },
+  "notifGroupBuyCompletedWithRef": "Закупка успешно собрана!{ref}",
+  "@notifGroupBuyCompletedWithRef": {
+    "placeholders": {"ref": {"type": "String"}}
+  },
+  "notifYourPostRef": " твой пост",
+  "notifPostRef": " «{title}»",
+  "@notifPostRef": {
+    "placeholders": {"title": {"type": "String"}}
+  },
+  "notifTimeJustNow": "только что",
+  "notifTimeMinutesAgo": "{count} мин назад",
+  "@notifTimeMinutesAgo": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "notifTimeHoursAgo": "{count} ч назад",
+  "@notifTimeHoursAgo": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "notifTimeDaysAgo": "{count} дн назад",
+  "@notifTimeDaysAgo": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+
+  "storyAddLabel": "Добавить",
+  "storyPublishedSnack": "История опубликована",
+  "storyPhotoUploadError": "Не удалось загрузить фото",
+  "storyTimeJustNow": "только что",
+  "storyTimeMinutesShort": "{count} мин",
+  "@storyTimeMinutesShort": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "storyTimeHoursShort": "{count} ч",
+  "@storyTimeHoursShort": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "storyTimeDaysShort": "{count} дн",
+  "@storyTimeDaysShort": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+
+  "authPhoneInvalidFormat": "Введите телефон в формате +79991234567",
+
+  "postDetailSavedTooltip": "В закладках",
+  "postDetailSaveTooltip": "Сохранить",
+
+  "onboardingSkip": "Пропустить",
+  "onboardingNext": "Дальше",
+  "onboardingGetStarted": "Начать",
+  "feedPriceOnRequest": "Цена по запросу",
+  "settingsQuietHoursOff": "Выключено",
+  "postMenuReport": "Пожаловаться",
+  "postMenuBlock": "Заблокировать",
+  "blockUserConfirmTitle": "Заблокировать?",
+  "blockUserConfirmBody": "Его посты и сообщения больше не будут видны вам. Можно разблокировать позже в Настройках.",
+  "blockUserAction": "Заблокировать",
+  "blockUserDone": "Пользователь заблокирован",
+  "reportTitle": "Пожаловаться",
+  "reportSubtitle": "Выберите причину. Наша команда рассмотрит жалобу.",
+  "reportDescriptionLabel": "Подробности (необязательно)",
+  "reportDescriptionHint": "Опишите что не так",
+  "reportSubmit": "Отправить",
+  "reportSent": "Жалоба отправлена. Спасибо!",
+  "searchHistoryTitle": "Недавние запросы",
+  "searchHistoryClear": "Очистить",
+  "settingsTheme": "Тема",
+  "settingsThemeLight": "Светлая",
+  "settingsThemeDark": "Тёмная",
+  "settingsThemeSystem": "Системная",
+  "createPostCamera": "Камера",
+  "createPostVideoWrongFormat": "Формат видео не поддерживается. Выберите MP4 файл.",
+  "createPostVideoTooBig": "Видео слишком большое ({size} МБ). Максимум — 30 МБ. Выберите более короткое видео.",
+  "@createPostVideoTooBig": {"placeholders": {"size": {"type": "String"}}},
+  "settingsComingSoon": "Скоро будет",
+
+  "onboardingTitle1": "Напрямую от заводов Китая",
+  "onboardingSubtitle1": "Без посредников — электроника, одежда и товары прямо от проверенных производителей",
+  "onboardingTitle2": "Безопасные сделки и групповые закупки",
+  "onboardingSubtitle2": "Объединяйтесь с другими покупателями ради лучшей цены и доставки",
+  "onboardingTitle3": "Общайся с заводами мгновенно",
+  "onboardingSubtitle3": "Договаривайся о цене, проси образцы и отслеживай отгрузки — всё в одном месте",
+  "onboardingTitle4": "Готовы начать?",
+  "onboardingSubtitle4": "Регистрация за 30 секунд по номеру телефона — без email и документов"
+}

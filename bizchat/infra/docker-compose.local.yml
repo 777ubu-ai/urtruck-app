@@ -1,0 +1,85 @@
+# Локальное окружение для разработки Biz Chat
+#
+# Поднимается одной командой:
+#   cd infra && docker compose -f docker-compose.local.yml up -d
+#
+# Останавливается:
+#   docker compose -f docker-compose.local.yml down
+#
+# С полной очисткой (ОПАСНО — сносит данные БД):
+#   docker compose -f docker-compose.local.yml down -v
+#
+# Сервисы:
+#   postgres  — основная БД (localhost:5432)
+#   redis     — кеш, счётчики, очереди (localhost:6379)
+#   pgadmin   — веб-UI для PostgreSQL (http://localhost:5050, логин admin@bizchat.local / admin)
+#
+# Backend (NestJS) в этом compose НЕ запускается — его запускают разработчики
+# напрямую из папки backend/ через `npm run start:dev`, чтобы был hot-reload и
+# понятные ошибки. Backend подключается к postgres и redis через localhost.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: bizchat-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bizchat
+      POSTGRES_PASSWORD: bizchat_local_dev
+      POSTGRES_DB: bizchat
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - bizchat_postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bizchat -d bizchat"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    container_name: bizchat-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - bizchat_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: bizchat-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@bizchat.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    ports:
+      - "5050:80"
+    volumes:
+      - bizchat_pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  bizchat_postgres_data:
+    name: bizchat_postgres_data
+  bizchat_redis_data:
+    name: bizchat_redis_data
+  bizchat_pgadmin_data:
+    name: bizchat_pgadmin_data

@@ -1,0 +1,702 @@
+{
+  "@@locale": "en",
+
+  "appTitle": "Biz Chat",
+
+  "navHome": "Home",
+  "navSearch": "Search",
+  "navCreate": "Create",
+  "navChats": "Chats",
+  "navProfile": "Profile",
+
+  "commonOk": "OK",
+  "commonCancel": "Cancel",
+  "commonSave": "Save",
+  "commonDelete": "Delete",
+  "commonRetry": "Retry",
+  "commonClose": "Close",
+  "commonContinue": "Continue",
+  "commonLoading": "Loading…",
+  "commonError": "Error",
+  "commonBack": "Back",
+  "commonOpen": "Open",
+  "commonShare": "Share",
+  "commonCopy": "Copy",
+  "commonCopied": "Copied",
+  "commonNo": "No",
+
+  "authPhoneTitle": "Sign in",
+  "authPhoneHint": "Phone number",
+  "authPhoneSubtitle": "We'll send a confirmation code via SMS",
+  "authPhoneSendCode": "Send code",
+  "authCodeTitle": "Enter code",
+  "authCodeHint": "6-digit code",
+  "authCodeSubtitle": "Enter the code we sent to {phone}",
+  "@authCodeSubtitle": {
+    "placeholders": {"phone": {"type": "String"}}
+  },
+  "authCodeResend": "Resend",
+  "authCodeResendIn": "Resend in {seconds}s",
+  "@authCodeResendIn": {
+    "placeholders": {"seconds": {"type": "int"}}
+  },
+  "authRoleTitle": "Who are you?",
+  "authRoleBuyer": "Buyer",
+  "authRoleBuyerDesc": "I want to buy from factories",
+  "authRoleFactory": "Factory",
+  "authRoleFactoryDesc": "I produce and want to sell",
+  "authRolePickToContinue": "Pick an account type to continue",
+  "authRolePickRole": "Pick an account type",
+  "authRoleNewCodeHint": "Enter the new SMS code",
+  "authRoleCodeRequired": "Enter the SMS code (we sent a new one)",
+  "authRoleFinishButton": "Finish sign-up",
+  "authCodeTooShort": "Enter the SMS code",
+
+  "feedAll": "All",
+  "feedFollowing": "Following",
+  "feedHotDeals": "Hot deals",
+  "feedEmptyTitle": "No posts yet",
+  "feedEmptySubtitle": "Pull down to refresh",
+  "feedLoadError": "Failed to load feed",
+  "feedTrustScore": "Trust Score: {score}",
+  "@feedTrustScore": {
+    "placeholders": {"score": {"type": "int"}}
+  },
+  "feedMoq": "MOQ {moq} pcs",
+  "@feedMoq": {
+    "placeholders": {"moq": {"type": "int"}}
+  },
+  "feedShippingDays": "Shipping {days} days",
+  "@feedShippingDays": {
+    "placeholders": {"days": {"type": "int"}}
+  },
+
+  "postWriteToFactory": "Message factory",
+  "postPriceSheetTitle": "Price",
+  "postDescription": "Description",
+  "postTranslate": "Translate",
+  "postShowOriginal": "Show original",
+  "postLikedSnack": "Liked",
+  "postUnlikedSnack": "Unliked",
+  "postSavedSnack": "Saved to bookmarks",
+  "postUnsavedSnack": "Removed from bookmarks",
+  "postShareLinkCopied": "Link copied",
+  "postOwnPostMsg": "This is your own post",
+  "postFactoryNotFound": "Factory not found",
+  "postReviewsLink": "{count, plural, =0{No reviews} =1{1 review} other{{count} reviews}}",
+  "@postReviewsLink": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+
+  "searchHint": "Search by hashtags, factories, items…",
+  "searchIdleHint": "Start typing to search posts",
+  "searchTooShort": "Type at least 2 characters",
+  "searchNoResults": "Nothing found",
+  "searchFilters": "Filters",
+  "searchFiltersPriceUsd": "Price (USD)",
+  "searchFiltersFrom": "From",
+  "searchFiltersTo": "To",
+  "searchFiltersMoqMax": "Max MOQ",
+  "searchFiltersCountry": "Country",
+  "searchFiltersCountryAll": "All",
+  "searchFiltersHotDeal": "Hot deals only",
+  "searchFiltersReset": "Reset",
+  "searchFiltersApply": "Apply",
+
+  "chatTitle": "Messages",
+  "chatNoMessages": "No messages",
+  "chatStartHint": "Send the first message — discuss prices, MOQ, shipping",
+  "chatInputHint": "Message…",
+  "chatNoChats": "No chats yet",
+  "chatNoChatsHint": "Open a post and tap «Message factory» to start",
+  "chatPartnerBuyer": "Buyer",
+  "chatPartnerFactory": "Factory",
+
+  "profileTitle": "Profile",
+  "profileLogout": "Log out",
+  "profileEdit": "Edit profile",
+  "profileFollowers": "Followers",
+  "profileFollowing": "Following",
+  "profileMySaves": "My bookmarks",
+  "profileSettings": "Settings",
+  "profileReferralCode": "Referral code",
+  "profileLanguage": "Language",
+  "profileCurrency": "Currency",
+
+  "settingsTitle": "Settings",
+  "settingsAccount": "Account",
+  "settingsPhone": "Phone",
+  "settingsLanguageRu": "Russian",
+  "settingsLanguageEn": "English",
+  "settingsLanguageZh": "中文",
+  "settingsNotifications": "Notifications",
+  "settingsPushNotifications": "Push notifications",
+  "settingsPushMaster": "All push notifications",
+  "settingsNotifLikes": "Likes",
+  "settingsNotifComments": "Comments",
+  "settingsNotifMessages": "Messages",
+  "settingsNotifReviews": "Reviews",
+  "settingsNotifGroupBuy": "Group buys",
+  "settingsPushUpdateError": "Failed to update",
+  "settingsQuietHours": "Quiet hours",
+  "settingsPrivacy": "Privacy",
+  "settingsBlocked": "Blocked users",
+  "settingsAbout": "About",
+  "settingsVersion": "Version",
+  "settingsContactSupport": "Contact support",
+  "settingsTermsOfService": "Terms of service",
+  "settingsPrivacyPolicy": "Privacy policy",
+
+  "notificationsTitle": "Notifications",
+  "notificationsMarkAllRead": "Mark all read",
+  "notificationsEmpty": "No notifications",
+
+  "reviewsTitle": "Reviews about {factoryName}",
+  "@reviewsTitle": {
+    "placeholders": {"factoryName": {"type": "String"}}
+  },
+  "reviewsWrite": "Write a review",
+  "reviewsEmpty": "No reviews yet",
+  "reviewsRating": "Rating",
+  "reviewsComment": "Comment",
+  "reviewsBeFirst": "Be the first to review this factory",
+  "reviewsNewTitle": "New review",
+  "reviewsEditTitle": "Edit review",
+  "reviewsCommentHint": "Tell about your experience — quality, shipping, packaging, communication",
+  "reviewsPublish": "Publish review",
+  "reviewsSaveChanges": "Save changes",
+  "reviewsPublished": "Review published",
+  "reviewsUpdated": "Review updated",
+
+  "postDetailTitle": "Product",
+  "postPriceLabel": "Price",
+  "postSpecsMoq": "Min order: {moq} pcs",
+  "@postSpecsMoq": {
+    "placeholders": {"moq": {"type": "int"}}
+  },
+  "postSpecsShipping": "Shipping: {days} days",
+  "@postSpecsShipping": {
+    "placeholders": {"days": {"type": "int"}}
+  },
+  "postSpecsStockInStock": "In stock",
+  "postSpecsStockOutOfStock": "Out of stock",
+  "postSpecsStockOnDemand": "On demand",
+  "postPriceTiers": "Volume pricing",
+  "postPriceTierFromQty": "from {qty} pcs",
+  "@postPriceTierFromQty": {
+    "placeholders": {"qty": {"type": "int"}}
+  },
+  "postCommentsTitle": "Comments",
+  "postCommentInputHint": "Write a comment…",
+  "postCommentSend": "Send",
+  "postNoComments": "No comments yet",
+  "postFirstComment": "Be the first to comment",
+  "postFollowed": "Following {factory}",
+  "@postFollowed": {
+    "placeholders": {"factory": {"type": "String"}}
+  },
+  "postUnfollowed": "Unfollowed {factory}",
+  "@postUnfollowed": {
+    "placeholders": {"factory": {"type": "String"}}
+  },
+  "postFollow": "Follow",
+  "postUnfollow": "Unfollow",
+  "postDelete": "Delete post",
+  "postDeleteConfirm": "Delete this post?",
+  "postDeleteConfirmBody": "This action cannot be undone.",
+  "postDeleted": "Post deleted",
+  "postDeletedWithTitle": "Post «{title}» deleted",
+  "@postDeletedWithTitle": {
+    "placeholders": {"title": {"type": "String"}}
+  },
+  "postLikeError": "Failed to like: {error}",
+  "@postLikeError": {
+    "placeholders": {"error": {"type": "String"}}
+  },
+  "postUnlikeError": "Failed to unlike: {error}",
+  "@postUnlikeError": {
+    "placeholders": {"error": {"type": "String"}}
+  },
+  "postSaveError": "Failed to save: {error}",
+  "@postSaveError": {
+    "placeholders": {"error": {"type": "String"}}
+  },
+
+  "groupBuyTitle": "Group buy",
+  "groupBuyProgress": "{current} / {target} pcs",
+  "@groupBuyProgress": {
+    "placeholders": {
+      "current": {"type": "int"},
+      "target": {"type": "int"}
+    }
+  },
+  "groupBuyParticipants": "{count, plural, =0{No participants} =1{1 participant} other{{count} participants}}",
+  "@groupBuyParticipants": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "groupBuyDeadline": "Deadline: {date}",
+  "@groupBuyDeadline": {
+    "placeholders": {"date": {"type": "String"}}
+  },
+  "groupBuyJoin": "Join",
+  "groupBuyLeave": "Leave",
+  "groupBuyEdit": "Edit my order",
+  "groupBuyGoalReached": "Goal reached! 🎉",
+  "groupBuyExpired": "Deadline passed",
+  "groupBuyJoinSheetTitle": "Join group buy",
+  "groupBuyQuantity": "Quantity",
+  "groupBuyEstimatedTotal": "Estimated total",
+  "groupBuyOwnPost": "This is your own group buy",
+  "groupBuyJoinedSnack": "You're in: {qty} pcs. Collected: {total}",
+  "@groupBuyJoinedSnack": {
+    "placeholders": {
+      "qty": {"type": "int"},
+      "total": {"type": "int"}
+    }
+  },
+  "groupBuyLeaveConfirmTitle": "Cancel participation?",
+  "groupBuyLeaveConfirmBody": "Your order will be removed. You can join again later.",
+  "groupBuyLeaveConfirmAction": "Cancel",
+
+  "createPostTitle": "New post",
+  "createPostType": "Post type",
+  "createPostTypeProduct": "Product",
+  "createPostTypeReel": "Reel",
+  "createPostTypeHotDeal": "Hot deal",
+  "createPostTypeGroupBuy": "Group buy",
+  "createPostMedia": "Media",
+  "createPostAddPhoto": "Photo",
+  "createPostAddVideo": "Video",
+  "createPostName": "Title",
+  "createPostNameHint": "Short and clear product name",
+  "createPostDescription": "Description",
+  "createPostDescriptionHint": "Materials, features, packaging, customization options",
+  "createPostPrice": "Price",
+  "createPostPriceCurrency": "Currency",
+  "createPostMoq": "Minimum order quantity",
+  "createPostShippingDays": "Shipping days",
+  "createPostStockStatus": "Stock status",
+  "createPostHashtagsLabel": "Hashtags",
+  "createPostHashtagHint": "tag (without #)",
+  "createPostAddHashtag": "Add",
+  "createPostHashtagMaxLimit": "Maximum 20 hashtags",
+  "createPostHashtagDuplicate": "Already added",
+  "createPostPublish": "Publish",
+  "createPostPublished": "Post published!",
+  "createPostError": "Failed to publish",
+  "createPostNoMedia": "Add at least one photo or video",
+  "createPostFactoryOnly": "Only factories can publish posts",
+
+  "editProfileTitle": "Edit profile",
+  "editProfileAvatar": "Avatar",
+  "editProfilePickAvatar": "Choose photo",
+  "editProfileName": "Your name",
+  "editProfileCompanyName": "Company name",
+  "editProfileCountry": "Country",
+  "editProfileCity": "City",
+  "editProfileSaved": "Profile updated",
+
+  "hashtagScreenTitle": "Posts with #{tag}",
+  "@hashtagScreenTitle": {
+    "placeholders": {"tag": {"type": "String"}}
+  },
+  "hashtagEmpty": "No posts with this hashtag",
+  "hashtagBeFirst": "Be the first to post with this hashtag",
+
+  "savesTitle": "My bookmarks",
+  "savesEmpty": "No bookmarks yet",
+  "savesEmptyHint": "Tap the bookmark icon on any post to save it here",
+  "savesLoadError": "Failed to load bookmarks: {error}",
+  "@savesLoadError": {
+    "placeholders": {"error": {"type": "String"}}
+  },
+  "savesLoadErrorHttp": "Failed to load bookmarks (HTTP {code})",
+  "@savesLoadErrorHttp": {
+    "placeholders": {"code": {"type": "int"}}
+  },
+  "countryNameKZ": "🇰🇿 Kazakhstan",
+  "countryNameRU": "🇷🇺 Russia",
+  "countryNameCN": "🇨🇳 China",
+  "countryNameUZ": "🇺🇿 Uzbekistan",
+  "countryNameKG": "🇰🇬 Kyrgyzstan",
+  "countryNameBY": "🇧🇾 Belarus",
+  "countryNameTR": "🇹🇷 Turkey",
+
+  "followersTitle": "Followers",
+  "followingTitle": "Following",
+  "followNoFollowers": "No followers yet",
+  "followNoFollowing": "Not following anyone yet",
+
+  "publicProfileFollowers": "{count, plural, =0{0 followers} =1{1 follower} other{{count} followers}}",
+  "@publicProfileFollowers": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "publicProfilePosts": "Posts",
+  "publicProfileNoPosts": "No posts yet",
+  "publicProfileAboutFactory": "About factory",
+  "publicProfileTrustScore": "Trust Score",
+  "publicProfileTotalProducts": "Products: {count}",
+  "@publicProfileTotalProducts": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "publicProfileTotalDeals": "Deals: {count}",
+  "@publicProfileTotalDeals": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+
+  "notifLikeText": "{actor} liked your post",
+  "@notifLikeText": {
+    "placeholders": {"actor": {"type": "String"}}
+  },
+  "notifCommentText": "{actor} commented on your post",
+  "@notifCommentText": {
+    "placeholders": {"actor": {"type": "String"}}
+  },
+  "notifMessageText": "{actor} sent you a message",
+  "@notifMessageText": {
+    "placeholders": {"actor": {"type": "String"}}
+  },
+  "notifReviewText": "{actor} left a review",
+  "@notifReviewText": {
+    "placeholders": {"actor": {"type": "String"}}
+  },
+  "notifGroupBuyCompletedText": "Group buy successfully collected!",
+
+  "commonJustNow": "just now",
+  "commonMinutesShort": "{count}m",
+  "@commonMinutesShort": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "commonHoursShort": "{count}h",
+  "@commonHoursShort": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "commonDaysShort": "{count}d",
+  "@commonDaysShort": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "commonExpired": "expired",
+  "commonLessThanMinute": "<1m",
+
+  "commentsSheetEmptyTitle": "No comments yet",
+  "commentsSheetEmptySubtitle": "Be the first — ask the factory a question.",
+
+  "groupBuyStatusCollecting": "Group forming",
+  "groupBuyDealText": "At {target} pcs price drops to {price} {currency}/pc",
+  "@groupBuyDealText": {
+    "placeholders": {
+      "target": {"type": "int"},
+      "price": {"type": "String"},
+      "currency": {"type": "String"}
+    }
+  },
+  "groupBuyCollected": "Collected",
+  "groupBuyParticipantsLabel": "Participants",
+  "groupBuyRemaining": "Left",
+  "groupBuyParticipating": "You're in: {qty} pcs",
+  "@groupBuyParticipating": {
+    "placeholders": {"qty": {"type": "int"}}
+  },
+  "groupBuyEditMyOrder": "Edit",
+  "groupBuyLeaveShort": "Cancel",
+  "groupBuyJoinWithRemaining": "Join · {count} pcs left",
+  "@groupBuyJoinWithRemaining": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "groupBuyJoinSheetTitleLong": "Your group order",
+  "groupBuyJoinSheetSubtitle": "How many pieces do you want to order",
+  "groupBuyJoinSheetEstimated": "Estimated:",
+  "groupBuyJoinSheetConfirm": "Confirm",
+
+  "reelsTitle": "Reels",
+  "reelsEmptyTitle": "No reels yet",
+  "reelsEmptySubtitle": "Factories haven't posted any videos.\nCheck back later.",
+  "reelsMore": "More",
+
+  "publicProfileReviewsCountPlural": "{count, plural, =0{no reviews} =1{1 review} other{{count} reviews}}",
+  "@publicProfileReviewsCountPlural": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "publicProfileReviewsSeeAll": "{count} — see all",
+  "@publicProfileReviewsSeeAll": {
+    "placeholders": {"count": {"type": "String"}}
+  },
+  "publicProfileNoReviewsTitle": "No reviews",
+  "publicProfileGetFirstReview": "Get your first review",
+  "publicProfileBeFirstReviewer": "Be the first to leave a review",
+  "publicProfileFollowersLabel": "Followers",
+  "publicProfileFollowingLabel": "Following",
+
+  "createPostMediaTitle": "Product media (up to 10)",
+  "createPostMediaCount": "{count}/10 media",
+  "@createPostMediaCount": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "createPostMediaMaxReached": "Up to 10 media",
+  "createPostVideoTooLarge": "Video must be under 50 MB",
+  "createPostPickPhotosError": "Failed to pick photo: {error}",
+  "@createPostPickPhotosError": {
+    "placeholders": {"error": {"type": "String"}}
+  },
+  "createPostPickVideoError": "Failed to pick video: {error}",
+  "@createPostPickVideoError": {
+    "placeholders": {"error": {"type": "String"}}
+  },
+  "createPostPublishedWithTitle": "Post «{title}» published",
+  "@createPostPublishedWithTitle": {
+    "placeholders": {"title": {"type": "String"}}
+  },
+  "createPostNoMediaSnack": "Add at least one photo",
+  "createPostTitleRequired": "Title *",
+  "createPostTitleHintExample": "e.g. Oversize cotton t-shirts",
+  "createPostTitleTooShort": "At least 3 characters",
+  "createPostDescriptionHintExample": "Materials, specs, certifications…",
+  "createPostPriceRequired": "Price *",
+  "createPostPriceHintExample": "4.50",
+  "createPostFieldRequired": "Required",
+  "createPostFieldInvalid": "Invalid",
+  "createPostMoqLabel": "MOQ (min. batch)",
+  "createPostMoqMin": "≥ 1",
+  "createPostShippingLabel": "Shipping (days)",
+  "createPostShippingMin": "≥ 0",
+  "createPostStockInStock": "In stock",
+  "createPostStockPreOrder": "Pre-order",
+  "createPostStockOutOfStock": "Out of stock",
+  "createPostCurrencyRequired": "Currency *",
+  "createPostHashtagInvalidChars": "Hashtag can only contain letters, digits, _ and -",
+  "createPostHashtagHintExample": "tshirt, wholesale, cotton…",
+
+  "editProfileNameLabel": "Name",
+  "editProfileNameHint": "What's your name?",
+  "editProfileCompanyRequiredLabel": "Company name *",
+  "editProfileCompanyHint": "Guangzhou Apparel Co.",
+  "editProfileCompanyRequiredError": "Required for factories",
+  "editProfileLanguageLabel": "Language",
+  "editProfileCurrencyLabel": "Currency",
+  "editProfileCountryLabel": "Country",
+  "editProfileCityLabel": "City",
+  "editProfileCityHint": "Almaty",
+  "editProfileAvatarUploadError": "Failed to upload avatar: {error}",
+  "@editProfileAvatarUploadError": {
+    "placeholders": {"error": {"type": "String"}}
+  },
+
+  "reviewsListTitle": "Reviews of {factoryName}",
+  "@reviewsListTitle": {
+    "placeholders": {"factoryName": {"type": "String"}}
+  },
+  "reviewsListFabWrite": "Write review",
+  "reviewsListEmptyTitle": "No reviews yet",
+  "reviewsListBeFirstLong": "Be the first to leave a review of this factory.",
+
+  "profileLogoutConfirmTitle": "Log out?",
+  "profileLogoutConfirmBody": "Your session will end and you will need to sign in via SMS again.",
+  "profileLogoutConfirmAction": "Log out",
+  "profileEditTooltip": "Edit",
+  "profileRefreshTooltip": "Refresh",
+  "profileReferralCopyTooltip": "Copy",
+  "profileReferralCopied": "Referral code {code} copied",
+  "@profileReferralCopied": {
+    "placeholders": {"code": {"type": "String"}}
+  },
+  "profileLoadError": "Failed to load profile",
+  "profileUpdatedSnack": "Profile updated",
+  "profileNoName": "No name",
+  "profileAboutFactory": "About factory",
+  "profileFactoryTotalProducts": "Products: {count}",
+  "@profileFactoryTotalProducts": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "profileFactoryTotalDeals": "Deals: {count}",
+  "@profileFactoryTotalDeals": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "profileFactoryTrustScore": "Trust Score: {score}",
+  "@profileFactoryTrustScore": {
+    "placeholders": {"score": {"type": "int"}}
+  },
+  "profileLanguageLabel": "Language",
+  "profileCurrencyLabel": "Currency",
+  "profileCountryLabel": "Country",
+  "profileCityLabel": "City",
+  "profileReferralCodeLabel": "Referral code",
+  "profileMyPosts": "My posts",
+  "profileNoPostsYet": "No posts yet",
+
+  "feedLikesCount": "{count, plural, =0{0 likes} =1{1 like} other{{count} likes}}",
+  "@feedLikesCount": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "feedMoqShort": "MOQ: {moq} pcs",
+  "@feedMoqShort": {
+    "placeholders": {"moq": {"type": "int"}}
+  },
+  "feedShippingDaysShort": "{days} days",
+  "@feedShippingDaysShort": {
+    "placeholders": {"days": {"type": "int"}}
+  },
+  "feedPriceSheetLine": "MOQ: {moq} pcs • Shipping: {days} days",
+  "@feedPriceSheetLine": {
+    "placeholders": {
+      "moq": {"type": "int"},
+      "days": {"type": "int"}
+    }
+  },
+  "feedSaveError": "Failed to save: {error}",
+  "@feedSaveError": {
+    "placeholders": {"error": {"type": "String"}}
+  },
+  "feedLikeErrorLike": "Failed to like: {error}",
+  "@feedLikeErrorLike": {
+    "placeholders": {"error": {"type": "String"}}
+  },
+  "feedLikeErrorUnlike": "Failed to unlike: {error}",
+  "@feedLikeErrorUnlike": {
+    "placeholders": {"error": {"type": "String"}}
+  },
+  "feedCannotDetermineFactory": "Failed to detect factory",
+  "feedShareLinkCopied": "Link copied: {url}",
+  "@feedShareLinkCopied": {
+    "placeholders": {"url": {"type": "String"}}
+  },
+  "feedEmptyFollowingTitle": "No posts from follows",
+  "feedEmptyFollowingBody": "Follow some factories in the «All» tab and their posts will appear here.",
+  "feedEmptyHotDealTitle": "No deals yet",
+  "feedEmptyHotDealBody": "Factories haven't announced any Hot Deals. Check back later — or try the «All» tab.",
+  "feedEmptyGenericTitle": "Feed is empty",
+  "feedEmptyGenericBody": "No posts from factories yet.\nPull down to refresh.",
+  "feedRealtimeConnected": "Real-time connected",
+  "feedRealtimeConnecting": "Connecting…",
+  "feedRealtimeError": "Connection error, retrying",
+  "feedRealtimeDisconnected": "No real-time connection",
+  "feedReelsTooltip": "Reels",
+  "feedNotificationsTooltip": "Notifications",
+
+  "searchHintTooltipClear": "Clear",
+  "searchResetFiltersTooltip": "Reset filters",
+  "searchIdleTitle": "Search products",
+  "searchIdleBody": "Enter a name, hashtag (#tshirt) or factory brand — at least 2 characters.",
+  "searchNoResultsBody": "No results for «{query}». Try different words or hashtags.",
+  "@searchNoResultsBody": {
+    "placeholders": {"query": {"type": "String"}}
+  },
+  "searchFiltersHotShort": "🔥 Hot deals",
+
+  "chatErrorRetry": "Retry",
+  "chatNoMessagesShort": "No messages",
+  "chatYouPrefix": "You:",
+  "chatTimeNow": "now",
+  "chatTimeMinutesShort": "{count}m",
+  "@chatTimeMinutesShort": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "chatTimeDaysShort": "{count}d",
+  "@chatTimeDaysShort": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+
+  "notifActorLiked": "{actor} liked{ref}",
+  "@notifActorLiked": {
+    "placeholders": {
+      "actor": {"type": "String"},
+      "ref": {"type": "String"}
+    }
+  },
+  "notifActorCommented": "{actor} commented on{ref}",
+  "@notifActorCommented": {
+    "placeholders": {
+      "actor": {"type": "String"},
+      "ref": {"type": "String"}
+    }
+  },
+  "notifActorMessage": "{actor} sent you a message",
+  "@notifActorMessage": {
+    "placeholders": {"actor": {"type": "String"}}
+  },
+  "notifActorReview": "{actor} left a review",
+  "@notifActorReview": {
+    "placeholders": {"actor": {"type": "String"}}
+  },
+  "notifGroupBuyCompletedWithRef": "Group buy successfully collected!{ref}",
+  "@notifGroupBuyCompletedWithRef": {
+    "placeholders": {"ref": {"type": "String"}}
+  },
+  "notifYourPostRef": " your post",
+  "notifPostRef": " «{title}»",
+  "@notifPostRef": {
+    "placeholders": {"title": {"type": "String"}}
+  },
+  "notifTimeJustNow": "just now",
+  "notifTimeMinutesAgo": "{count}m ago",
+  "@notifTimeMinutesAgo": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "notifTimeHoursAgo": "{count}h ago",
+  "@notifTimeHoursAgo": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "notifTimeDaysAgo": "{count}d ago",
+  "@notifTimeDaysAgo": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+
+  "storyAddLabel": "Add",
+  "storyPublishedSnack": "Story published",
+  "storyPhotoUploadError": "Failed to upload photo",
+  "storyTimeJustNow": "just now",
+  "storyTimeMinutesShort": "{count}m",
+  "@storyTimeMinutesShort": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "storyTimeHoursShort": "{count}h",
+  "@storyTimeHoursShort": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "storyTimeDaysShort": "{count}d",
+  "@storyTimeDaysShort": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+
+  "authPhoneInvalidFormat": "Enter phone in format +79991234567",
+
+  "postDetailSavedTooltip": "Saved",
+  "postDetailSaveTooltip": "Save",
+
+  "onboardingSkip": "Skip",
+  "onboardingNext": "Next",
+  "onboardingGetStarted": "Get started",
+  "feedPriceOnRequest": "Price on request",
+  "settingsQuietHoursOff": "Off",
+  "postMenuReport": "Report",
+  "postMenuBlock": "Block user",
+  "blockUserConfirmTitle": "Block user?",
+  "blockUserConfirmBody": "Their posts and messages will no longer be visible to you. You can unblock later in Settings.",
+  "blockUserAction": "Block",
+  "blockUserDone": "User blocked",
+  "reportTitle": "Report content",
+  "reportSubtitle": "Choose a reason. Our team will review the report.",
+  "reportDescriptionLabel": "Additional details (optional)",
+  "reportDescriptionHint": "Describe what's wrong",
+  "reportSubmit": "Send report",
+  "reportSent": "Report sent. Thank you!",
+  "searchHistoryTitle": "Recent searches",
+  "searchHistoryClear": "Clear",
+  "settingsTheme": "Theme",
+  "settingsThemeLight": "Light",
+  "settingsThemeDark": "Dark",
+  "settingsThemeSystem": "System",
+  "createPostCamera": "Camera",
+  "createPostVideoWrongFormat": "Video format not supported. Please select an MP4 file.",
+  "createPostVideoTooBig": "Video is too large ({size} MB). Maximum is 30 MB. Try a shorter video or lower quality.",
+  "@createPostVideoTooBig": {"placeholders": {"size": {"type": "String"}}},
+  "settingsComingSoon": "Coming soon",
+
+  "onboardingTitle1": "Direct from Chinese factories",
+  "onboardingSubtitle1": "Skip middlemen — buy electronics, fashion and goods straight from verified manufacturers",
+  "onboardingTitle2": "Safe deals & group buys",
+  "onboardingSubtitle2": "Combine orders with other buyers to unlock factory pricing and better shipping rates",
+  "onboardingTitle3": "Chat with factories instantly",
+  "onboardingSubtitle3": "Negotiate prices, ask for samples and track shipments — all in one place",
+  "onboardingTitle4": "Ready to start?",
+  "onboardingSubtitle4": "Sign up in 30 seconds with your phone number — no email, no paperwork"
+}

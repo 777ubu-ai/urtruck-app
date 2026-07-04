@@ -1,0 +1,702 @@
+{
+  "@@locale": "zh",
+
+  "appTitle": "Biz Chat",
+
+  "navHome": "首页",
+  "navSearch": "搜索",
+  "navCreate": "发布",
+  "navChats": "消息",
+  "navProfile": "我的",
+
+  "commonOk": "确定",
+  "commonCancel": "取消",
+  "commonSave": "保存",
+  "commonDelete": "删除",
+  "commonRetry": "重试",
+  "commonClose": "关闭",
+  "commonContinue": "继续",
+  "commonLoading": "加载中…",
+  "commonError": "错误",
+  "commonBack": "返回",
+  "commonOpen": "打开",
+  "commonShare": "分享",
+  "commonCopy": "复制",
+  "commonCopied": "已复制",
+  "commonNo": "否",
+
+  "authPhoneTitle": "登录",
+  "authPhoneHint": "手机号",
+  "authPhoneSubtitle": "我们将通过短信发送验证码",
+  "authPhoneSendCode": "发送验证码",
+  "authCodeTitle": "输入验证码",
+  "authCodeHint": "6位验证码",
+  "authCodeSubtitle": "请输入发送至 {phone} 的验证码",
+  "@authCodeSubtitle": {
+    "placeholders": {"phone": {"type": "String"}}
+  },
+  "authCodeResend": "重新发送",
+  "authCodeResendIn": "{seconds} 秒后可重发",
+  "@authCodeResendIn": {
+    "placeholders": {"seconds": {"type": "int"}}
+  },
+  "authRoleTitle": "您是?",
+  "authRoleBuyer": "买家",
+  "authRoleBuyerDesc": "我想从工厂采购",
+  "authRoleFactory": "工厂",
+  "authRoleFactoryDesc": "我生产并希望销售",
+  "authRolePickToContinue": "请选择账户类型以继续",
+  "authRolePickRole": "请选择账户类型",
+  "authRoleNewCodeHint": "请输入新的短信验证码",
+  "authRoleCodeRequired": "请输入短信验证码(我们已发送新的)",
+  "authRoleFinishButton": "完成注册",
+  "authCodeTooShort": "请输入短信验证码",
+
+  "feedAll": "全部",
+  "feedFollowing": "关注",
+  "feedHotDeals": "促销",
+  "feedEmptyTitle": "暂无帖子",
+  "feedEmptySubtitle": "下拉刷新",
+  "feedLoadError": "加载失败",
+  "feedTrustScore": "信誉分: {score}",
+  "@feedTrustScore": {
+    "placeholders": {"score": {"type": "int"}}
+  },
+  "feedMoq": "起订量 {moq} 件",
+  "@feedMoq": {
+    "placeholders": {"moq": {"type": "int"}}
+  },
+  "feedShippingDays": "发货 {days} 天",
+  "@feedShippingDays": {
+    "placeholders": {"days": {"type": "int"}}
+  },
+
+  "postWriteToFactory": "联系工厂",
+  "postPriceSheetTitle": "价格",
+  "postDescription": "描述",
+  "postTranslate": "翻译",
+  "postShowOriginal": "显示原文",
+  "postLikedSnack": "已点赞",
+  "postUnlikedSnack": "已取消点赞",
+  "postSavedSnack": "已收藏",
+  "postUnsavedSnack": "已取消收藏",
+  "postShareLinkCopied": "链接已复制",
+  "postOwnPostMsg": "这是您自己的帖子",
+  "postFactoryNotFound": "未找到工厂",
+  "postReviewsLink": "{count, plural, =0{暂无评价} other{{count} 条评价}}",
+  "@postReviewsLink": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+
+  "searchHint": "搜索标签、工厂、商品…",
+  "searchIdleHint": "开始输入以搜索",
+  "searchTooShort": "请至少输入 2 个字符",
+  "searchNoResults": "未找到结果",
+  "searchFilters": "筛选",
+  "searchFiltersPriceUsd": "价格 (USD)",
+  "searchFiltersFrom": "从",
+  "searchFiltersTo": "至",
+  "searchFiltersMoqMax": "最大起订量",
+  "searchFiltersCountry": "国家",
+  "searchFiltersCountryAll": "全部",
+  "searchFiltersHotDeal": "仅促销",
+  "searchFiltersReset": "重置",
+  "searchFiltersApply": "应用",
+
+  "chatTitle": "消息",
+  "chatNoMessages": "暂无消息",
+  "chatStartHint": "发送第一条消息 — 讨论价格、起订量、发货",
+  "chatInputHint": "消息…",
+  "chatNoChats": "暂无聊天",
+  "chatNoChatsHint": "打开帖子并点击「联系工厂」开始聊天",
+  "chatPartnerBuyer": "买家",
+  "chatPartnerFactory": "工厂",
+
+  "profileTitle": "我的",
+  "profileLogout": "退出登录",
+  "profileEdit": "编辑资料",
+  "profileFollowers": "粉丝",
+  "profileFollowing": "关注",
+  "profileMySaves": "我的收藏",
+  "profileSettings": "设置",
+  "profileReferralCode": "推荐码",
+  "profileLanguage": "语言",
+  "profileCurrency": "货币",
+
+  "settingsTitle": "设置",
+  "settingsAccount": "账户",
+  "settingsPhone": "手机号",
+  "settingsLanguageRu": "Русский",
+  "settingsLanguageEn": "English",
+  "settingsLanguageZh": "中文",
+  "settingsNotifications": "通知",
+  "settingsPushNotifications": "推送通知",
+  "settingsPushMaster": "所有推送通知",
+  "settingsNotifLikes": "点赞",
+  "settingsNotifComments": "评论",
+  "settingsNotifMessages": "消息",
+  "settingsNotifReviews": "评价",
+  "settingsNotifGroupBuy": "团购",
+  "settingsPushUpdateError": "更新失败",
+  "settingsQuietHours": "免打扰时段",
+  "settingsPrivacy": "隐私",
+  "settingsBlocked": "已屏蔽用户",
+  "settingsAbout": "关于",
+  "settingsVersion": "版本",
+  "settingsContactSupport": "联系客服",
+  "settingsTermsOfService": "服务条款",
+  "settingsPrivacyPolicy": "隐私政策",
+
+  "notificationsTitle": "通知",
+  "notificationsMarkAllRead": "全部标为已读",
+  "notificationsEmpty": "暂无通知",
+
+  "reviewsTitle": "{factoryName} 的评价",
+  "@reviewsTitle": {
+    "placeholders": {"factoryName": {"type": "String"}}
+  },
+  "reviewsWrite": "写评价",
+  "reviewsEmpty": "暂无评价",
+  "reviewsRating": "评分",
+  "reviewsComment": "评论",
+  "reviewsBeFirst": "成为第一个评价此工厂的人",
+  "reviewsNewTitle": "新评价",
+  "reviewsEditTitle": "编辑评价",
+  "reviewsCommentHint": "分享您的体验 — 质量、发货、包装、沟通",
+  "reviewsPublish": "发布评价",
+  "reviewsSaveChanges": "保存更改",
+  "reviewsPublished": "评价已发布",
+  "reviewsUpdated": "评价已更新",
+
+  "postDetailTitle": "商品",
+  "postPriceLabel": "价格",
+  "postSpecsMoq": "起订量: {moq} 件",
+  "@postSpecsMoq": {
+    "placeholders": {"moq": {"type": "int"}}
+  },
+  "postSpecsShipping": "发货: {days} 天",
+  "@postSpecsShipping": {
+    "placeholders": {"days": {"type": "int"}}
+  },
+  "postSpecsStockInStock": "现货",
+  "postSpecsStockOutOfStock": "无货",
+  "postSpecsStockOnDemand": "按订单生产",
+  "postPriceTiers": "批量价格",
+  "postPriceTierFromQty": "{qty} 件起",
+  "@postPriceTierFromQty": {
+    "placeholders": {"qty": {"type": "int"}}
+  },
+  "postCommentsTitle": "评论",
+  "postCommentInputHint": "写评论…",
+  "postCommentSend": "发送",
+  "postNoComments": "暂无评论",
+  "postFirstComment": "成为第一个评论的人",
+  "postFollowed": "已关注 {factory}",
+  "@postFollowed": {
+    "placeholders": {"factory": {"type": "String"}}
+  },
+  "postUnfollowed": "已取消关注 {factory}",
+  "@postUnfollowed": {
+    "placeholders": {"factory": {"type": "String"}}
+  },
+  "postFollow": "关注",
+  "postUnfollow": "取消关注",
+  "postDelete": "删除帖子",
+  "postDeleteConfirm": "删除此帖子?",
+  "postDeleteConfirmBody": "此操作无法撤销。",
+  "postDeleted": "帖子已删除",
+  "postDeletedWithTitle": "帖子「{title}」已删除",
+  "@postDeletedWithTitle": {
+    "placeholders": {"title": {"type": "String"}}
+  },
+  "postLikeError": "点赞失败: {error}",
+  "@postLikeError": {
+    "placeholders": {"error": {"type": "String"}}
+  },
+  "postUnlikeError": "取消点赞失败: {error}",
+  "@postUnlikeError": {
+    "placeholders": {"error": {"type": "String"}}
+  },
+  "postSaveError": "保存失败: {error}",
+  "@postSaveError": {
+    "placeholders": {"error": {"type": "String"}}
+  },
+
+  "groupBuyTitle": "团购",
+  "groupBuyProgress": "{current} / {target} 件",
+  "@groupBuyProgress": {
+    "placeholders": {
+      "current": {"type": "int"},
+      "target": {"type": "int"}
+    }
+  },
+  "groupBuyParticipants": "{count, plural, =0{暂无参与者} other{{count} 位参与者}}",
+  "@groupBuyParticipants": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "groupBuyDeadline": "截止: {date}",
+  "@groupBuyDeadline": {
+    "placeholders": {"date": {"type": "String"}}
+  },
+  "groupBuyJoin": "参与",
+  "groupBuyLeave": "退出",
+  "groupBuyEdit": "修改订单",
+  "groupBuyGoalReached": "已达标! 🎉",
+  "groupBuyExpired": "已过期",
+  "groupBuyJoinSheetTitle": "参与团购",
+  "groupBuyQuantity": "数量",
+  "groupBuyEstimatedTotal": "预计总价",
+  "groupBuyOwnPost": "这是您自己的团购",
+  "groupBuyJoinedSnack": "您已参与: {qty} 件。已集: {total}",
+  "@groupBuyJoinedSnack": {
+    "placeholders": {
+      "qty": {"type": "int"},
+      "total": {"type": "int"}
+    }
+  },
+  "groupBuyLeaveConfirmTitle": "取消参与?",
+  "groupBuyLeaveConfirmBody": "您的订单将被删除。您可以稍后再次加入。",
+  "groupBuyLeaveConfirmAction": "取消",
+
+  "createPostTitle": "新帖子",
+  "createPostType": "帖子类型",
+  "createPostTypeProduct": "商品",
+  "createPostTypeReel": "短视频",
+  "createPostTypeHotDeal": "促销",
+  "createPostTypeGroupBuy": "团购",
+  "createPostMedia": "媒体",
+  "createPostAddPhoto": "图片",
+  "createPostAddVideo": "视频",
+  "createPostName": "标题",
+  "createPostNameHint": "简短清晰的商品名称",
+  "createPostDescription": "描述",
+  "createPostDescriptionHint": "材料、特点、包装、定制选项",
+  "createPostPrice": "价格",
+  "createPostPriceCurrency": "货币",
+  "createPostMoq": "最小起订量",
+  "createPostShippingDays": "发货天数",
+  "createPostStockStatus": "库存状态",
+  "createPostHashtagsLabel": "标签",
+  "createPostHashtagHint": "标签 (不带 #)",
+  "createPostAddHashtag": "添加",
+  "createPostHashtagMaxLimit": "最多 20 个标签",
+  "createPostHashtagDuplicate": "已添加",
+  "createPostPublish": "发布",
+  "createPostPublished": "帖子已发布!",
+  "createPostError": "发布失败",
+  "createPostNoMedia": "请至少添加一张图片或视频",
+  "createPostFactoryOnly": "只有工厂可以发布帖子",
+
+  "editProfileTitle": "编辑资料",
+  "editProfileAvatar": "头像",
+  "editProfilePickAvatar": "选择照片",
+  "editProfileName": "您的姓名",
+  "editProfileCompanyName": "公司名称",
+  "editProfileCountry": "国家",
+  "editProfileCity": "城市",
+  "editProfileSaved": "资料已更新",
+
+  "hashtagScreenTitle": "#{tag} 的帖子",
+  "@hashtagScreenTitle": {
+    "placeholders": {"tag": {"type": "String"}}
+  },
+  "hashtagEmpty": "暂无此标签的帖子",
+  "hashtagBeFirst": "成为第一个使用此标签的人",
+
+  "savesTitle": "我的收藏",
+  "savesEmpty": "暂无收藏",
+  "savesEmptyHint": "点击任意帖子上的收藏图标即可保存到此",
+  "savesLoadError": "加载收藏失败: {error}",
+  "@savesLoadError": {
+    "placeholders": {"error": {"type": "String"}}
+  },
+  "savesLoadErrorHttp": "加载收藏失败 (HTTP {code})",
+  "@savesLoadErrorHttp": {
+    "placeholders": {"code": {"type": "int"}}
+  },
+  "countryNameKZ": "🇰🇿 哈萨克斯坦",
+  "countryNameRU": "🇷🇺 俄罗斯",
+  "countryNameCN": "🇨🇳 中国",
+  "countryNameUZ": "🇺🇿 乌兹别克斯坦",
+  "countryNameKG": "🇰🇬 吉尔吉斯斯坦",
+  "countryNameBY": "🇧🇾 白俄罗斯",
+  "countryNameTR": "🇹🇷 土耳其",
+
+  "followersTitle": "粉丝",
+  "followingTitle": "关注",
+  "followNoFollowers": "暂无粉丝",
+  "followNoFollowing": "暂无关注",
+
+  "publicProfileFollowers": "{count, plural, =0{0 位粉丝} other{{count} 位粉丝}}",
+  "@publicProfileFollowers": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "publicProfilePosts": "帖子",
+  "publicProfileNoPosts": "暂无帖子",
+  "publicProfileAboutFactory": "工厂介绍",
+  "publicProfileTrustScore": "信誉分",
+  "publicProfileTotalProducts": "商品: {count}",
+  "@publicProfileTotalProducts": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "publicProfileTotalDeals": "成交: {count}",
+  "@publicProfileTotalDeals": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+
+  "notifLikeText": "{actor} 点赞了您的帖子",
+  "@notifLikeText": {
+    "placeholders": {"actor": {"type": "String"}}
+  },
+  "notifCommentText": "{actor} 评论了您的帖子",
+  "@notifCommentText": {
+    "placeholders": {"actor": {"type": "String"}}
+  },
+  "notifMessageText": "{actor} 发送了消息",
+  "@notifMessageText": {
+    "placeholders": {"actor": {"type": "String"}}
+  },
+  "notifReviewText": "{actor} 留下了评价",
+  "@notifReviewText": {
+    "placeholders": {"actor": {"type": "String"}}
+  },
+  "notifGroupBuyCompletedText": "团购成功完成!",
+
+  "commonJustNow": "刚刚",
+  "commonMinutesShort": "{count} 分钟",
+  "@commonMinutesShort": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "commonHoursShort": "{count} 小时",
+  "@commonHoursShort": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "commonDaysShort": "{count} 天",
+  "@commonDaysShort": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "commonExpired": "已过期",
+  "commonLessThanMinute": "<1 分钟",
+
+  "commentsSheetEmptyTitle": "暂无评论",
+  "commentsSheetEmptySubtitle": "成为第一个提问工厂的人。",
+
+  "groupBuyStatusCollecting": "正在拼团",
+  "groupBuyDealText": "达到 {target} 件时价格降至 {price} {currency}/件",
+  "@groupBuyDealText": {
+    "placeholders": {
+      "target": {"type": "int"},
+      "price": {"type": "String"},
+      "currency": {"type": "String"}
+    }
+  },
+  "groupBuyCollected": "已集",
+  "groupBuyParticipantsLabel": "参与者",
+  "groupBuyRemaining": "剩余",
+  "groupBuyParticipating": "您已参与: {qty} 件",
+  "@groupBuyParticipating": {
+    "placeholders": {"qty": {"type": "int"}}
+  },
+  "groupBuyEditMyOrder": "修改",
+  "groupBuyLeaveShort": "取消",
+  "groupBuyJoinWithRemaining": "参与 · 剩余 {count} 件",
+  "@groupBuyJoinWithRemaining": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "groupBuyJoinSheetTitleLong": "您的团购订单",
+  "groupBuyJoinSheetSubtitle": "请输入您希望订购的数量",
+  "groupBuyJoinSheetEstimated": "预计:",
+  "groupBuyJoinSheetConfirm": "确认",
+
+  "reelsTitle": "Reels",
+  "reelsEmptyTitle": "暂无视频",
+  "reelsEmptySubtitle": "工厂尚未发布视频。\n请稍后再来。",
+  "reelsMore": "详情",
+
+  "publicProfileReviewsCountPlural": "{count, plural, =0{暂无评价} other{{count} 条评价}}",
+  "@publicProfileReviewsCountPlural": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "publicProfileReviewsSeeAll": "{count} — 查看全部",
+  "@publicProfileReviewsSeeAll": {
+    "placeholders": {"count": {"type": "String"}}
+  },
+  "publicProfileNoReviewsTitle": "暂无评价",
+  "publicProfileGetFirstReview": "获取第一条评价",
+  "publicProfileBeFirstReviewer": "成为第一个留评价的人",
+  "publicProfileFollowersLabel": "粉丝",
+  "publicProfileFollowingLabel": "关注",
+
+  "createPostMediaTitle": "商品媒体(最多10)",
+  "createPostMediaCount": "{count}/10 媒体",
+  "@createPostMediaCount": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "createPostMediaMaxReached": "最多 10 个媒体",
+  "createPostVideoTooLarge": "视频不得超过 50 MB",
+  "createPostPickPhotosError": "选择照片失败: {error}",
+  "@createPostPickPhotosError": {
+    "placeholders": {"error": {"type": "String"}}
+  },
+  "createPostPickVideoError": "选择视频失败: {error}",
+  "@createPostPickVideoError": {
+    "placeholders": {"error": {"type": "String"}}
+  },
+  "createPostPublishedWithTitle": "帖子「{title}」已发布",
+  "@createPostPublishedWithTitle": {
+    "placeholders": {"title": {"type": "String"}}
+  },
+  "createPostNoMediaSnack": "请至少添加一张照片",
+  "createPostTitleRequired": "标题 *",
+  "createPostTitleHintExample": "例如:纯棉宽松 T 恤",
+  "createPostTitleTooShort": "至少 3 个字符",
+  "createPostDescriptionHintExample": "材料、规格、认证…",
+  "createPostPriceRequired": "价格 *",
+  "createPostPriceHintExample": "4.50",
+  "createPostFieldRequired": "必填",
+  "createPostFieldInvalid": "无效",
+  "createPostMoqLabel": "起订量(最小批量)",
+  "createPostMoqMin": "≥ 1",
+  "createPostShippingLabel": "发货(天)",
+  "createPostShippingMin": "≥ 0",
+  "createPostStockInStock": "现货",
+  "createPostStockPreOrder": "预订",
+  "createPostStockOutOfStock": "无货",
+  "createPostCurrencyRequired": "货币 *",
+  "createPostHashtagInvalidChars": "标签只能包含字母、数字、_ 和 -",
+  "createPostHashtagHintExample": "tshirt, wholesale, cotton…",
+
+  "editProfileNameLabel": "姓名",
+  "editProfileNameHint": "您的姓名?",
+  "editProfileCompanyRequiredLabel": "公司名称 *",
+  "editProfileCompanyHint": "Guangzhou Apparel Co.",
+  "editProfileCompanyRequiredError": "工厂必填",
+  "editProfileLanguageLabel": "语言",
+  "editProfileCurrencyLabel": "货币",
+  "editProfileCountryLabel": "国家",
+  "editProfileCityLabel": "城市",
+  "editProfileCityHint": "阿拉木图",
+  "editProfileAvatarUploadError": "上传头像失败: {error}",
+  "@editProfileAvatarUploadError": {
+    "placeholders": {"error": {"type": "String"}}
+  },
+
+  "reviewsListTitle": "{factoryName} 的评价",
+  "@reviewsListTitle": {
+    "placeholders": {"factoryName": {"type": "String"}}
+  },
+  "reviewsListFabWrite": "写评价",
+  "reviewsListEmptyTitle": "暂无评价",
+  "reviewsListBeFirstLong": "成为第一个为此工厂留评价的人。",
+
+  "profileLogoutConfirmTitle": "退出登录?",
+  "profileLogoutConfirmBody": "会话将结束,您需要通过短信重新登录。",
+  "profileLogoutConfirmAction": "退出",
+  "profileEditTooltip": "编辑",
+  "profileRefreshTooltip": "刷新",
+  "profileReferralCopyTooltip": "复制",
+  "profileReferralCopied": "推荐码 {code} 已复制",
+  "@profileReferralCopied": {
+    "placeholders": {"code": {"type": "String"}}
+  },
+  "profileLoadError": "加载资料失败",
+  "profileUpdatedSnack": "资料已更新",
+  "profileNoName": "未命名",
+  "profileAboutFactory": "工厂介绍",
+  "profileFactoryTotalProducts": "商品: {count}",
+  "@profileFactoryTotalProducts": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "profileFactoryTotalDeals": "成交: {count}",
+  "@profileFactoryTotalDeals": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "profileFactoryTrustScore": "信誉分: {score}",
+  "@profileFactoryTrustScore": {
+    "placeholders": {"score": {"type": "int"}}
+  },
+  "profileLanguageLabel": "语言",
+  "profileCurrencyLabel": "货币",
+  "profileCountryLabel": "国家",
+  "profileCityLabel": "城市",
+  "profileReferralCodeLabel": "推荐码",
+  "profileMyPosts": "我的商品",
+  "profileNoPostsYet": "暂无帖子",
+
+  "feedLikesCount": "{count, plural, =0{0 个赞} other{{count} 个赞}}",
+  "@feedLikesCount": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "feedMoqShort": "起订量: {moq} 件",
+  "@feedMoqShort": {
+    "placeholders": {"moq": {"type": "int"}}
+  },
+  "feedShippingDaysShort": "{days} 天",
+  "@feedShippingDaysShort": {
+    "placeholders": {"days": {"type": "int"}}
+  },
+  "feedPriceSheetLine": "起订量: {moq} 件 • 发货: {days} 天",
+  "@feedPriceSheetLine": {
+    "placeholders": {
+      "moq": {"type": "int"},
+      "days": {"type": "int"}
+    }
+  },
+  "feedSaveError": "保存失败: {error}",
+  "@feedSaveError": {
+    "placeholders": {"error": {"type": "String"}}
+  },
+  "feedLikeErrorLike": "点赞失败: {error}",
+  "@feedLikeErrorLike": {
+    "placeholders": {"error": {"type": "String"}}
+  },
+  "feedLikeErrorUnlike": "取消点赞失败: {error}",
+  "@feedLikeErrorUnlike": {
+    "placeholders": {"error": {"type": "String"}}
+  },
+  "feedCannotDetermineFactory": "无法确定工厂",
+  "feedShareLinkCopied": "链接已复制: {url}",
+  "@feedShareLinkCopied": {
+    "placeholders": {"url": {"type": "String"}}
+  },
+  "feedEmptyFollowingTitle": "暂无关注的帖子",
+  "feedEmptyFollowingBody": "请在「全部」标签中关注工厂,他们的帖子将显示在此处。",
+  "feedEmptyHotDealTitle": "暂无促销",
+  "feedEmptyHotDealBody": "工厂尚未发布促销活动。请稍后再试 — 或尝试「全部」标签。",
+  "feedEmptyGenericTitle": "动态为空",
+  "feedEmptyGenericBody": "尚无工厂发布的帖子。\n下拉刷新。",
+  "feedRealtimeConnected": "实时连接已建立",
+  "feedRealtimeConnecting": "连接中…",
+  "feedRealtimeError": "连接错误,正在重试",
+  "feedRealtimeDisconnected": "无实时连接",
+  "feedReelsTooltip": "Reels",
+  "feedNotificationsTooltip": "通知",
+
+  "searchHintTooltipClear": "清除",
+  "searchResetFiltersTooltip": "重置筛选",
+  "searchIdleTitle": "搜索商品",
+  "searchIdleBody": "输入名称、标签(#tshirt)或工厂品牌 — 至少 2 个字符。",
+  "searchNoResultsBody": "「{query}」没有结果。请尝试其他关键词或标签。",
+  "@searchNoResultsBody": {
+    "placeholders": {"query": {"type": "String"}}
+  },
+  "searchFiltersHotShort": "🔥 促销",
+
+  "chatErrorRetry": "重试",
+  "chatNoMessagesShort": "暂无消息",
+  "chatYouPrefix": "您:",
+  "chatTimeNow": "刚刚",
+  "chatTimeMinutesShort": "{count} 分",
+  "@chatTimeMinutesShort": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "chatTimeDaysShort": "{count} 天",
+  "@chatTimeDaysShort": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+
+  "notifActorLiked": "{actor} 点赞了{ref}",
+  "@notifActorLiked": {
+    "placeholders": {
+      "actor": {"type": "String"},
+      "ref": {"type": "String"}
+    }
+  },
+  "notifActorCommented": "{actor} 评论了{ref}",
+  "@notifActorCommented": {
+    "placeholders": {
+      "actor": {"type": "String"},
+      "ref": {"type": "String"}
+    }
+  },
+  "notifActorMessage": "{actor} 发来了消息",
+  "@notifActorMessage": {
+    "placeholders": {"actor": {"type": "String"}}
+  },
+  "notifActorReview": "{actor} 留下了评价",
+  "@notifActorReview": {
+    "placeholders": {"actor": {"type": "String"}}
+  },
+  "notifGroupBuyCompletedWithRef": "团购成功完成!{ref}",
+  "@notifGroupBuyCompletedWithRef": {
+    "placeholders": {"ref": {"type": "String"}}
+  },
+  "notifYourPostRef": "您的帖子",
+  "notifPostRef": "「{title}」",
+  "@notifPostRef": {
+    "placeholders": {"title": {"type": "String"}}
+  },
+  "notifTimeJustNow": "刚刚",
+  "notifTimeMinutesAgo": "{count} 分钟前",
+  "@notifTimeMinutesAgo": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "notifTimeHoursAgo": "{count} 小时前",
+  "@notifTimeHoursAgo": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "notifTimeDaysAgo": "{count} 天前",
+  "@notifTimeDaysAgo": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+
+  "storyAddLabel": "添加",
+  "storyPublishedSnack": "故事已发布",
+  "storyPhotoUploadError": "上传照片失败",
+  "storyTimeJustNow": "刚刚",
+  "storyTimeMinutesShort": "{count} 分钟",
+  "@storyTimeMinutesShort": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "storyTimeHoursShort": "{count} 小时",
+  "@storyTimeHoursShort": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "storyTimeDaysShort": "{count} 天",
+  "@storyTimeDaysShort": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+
+  "authPhoneInvalidFormat": "请输入 +79991234567 格式的电话号码",
+
+  "postDetailSavedTooltip": "已收藏",
+  "postDetailSaveTooltip": "收藏",
+
+  "onboardingSkip": "跳过",
+  "onboardingNext": "下一步",
+  "onboardingGetStarted": "立即开始",
+  "feedPriceOnRequest": "价格面议",
+  "settingsQuietHoursOff": "关闭",
+  "postMenuReport": "举报",
+  "postMenuBlock": "屏蔽用户",
+  "blockUserConfirmTitle": "屏蔽用户？",
+  "blockUserConfirmBody": "他的帖子和消息将不再对您可见。您可以稍后在设置中取消屏蔽。",
+  "blockUserAction": "屏蔽",
+  "blockUserDone": "用户已屏蔽",
+  "reportTitle": "举报内容",
+  "reportSubtitle": "选择原因。我们的团队将审核举报。",
+  "reportDescriptionLabel": "附加详情（可选）",
+  "reportDescriptionHint": "描述问题所在",
+  "reportSubmit": "发送举报",
+  "reportSent": "举报已发送，谢谢！",
+  "searchHistoryTitle": "最近搜索",
+  "searchHistoryClear": "清除",
+  "settingsTheme": "主题",
+  "settingsThemeLight": "浅色",
+  "settingsThemeDark": "深色",
+  "settingsThemeSystem": "跟随系统",
+  "createPostCamera": "拍照",
+  "createPostVideoWrongFormat": "不支持此视频格式，请选择MP4文件。",
+  "createPostVideoTooBig": "视频太大（{size} MB）。最大30 MB，请选择更短的视频。",
+  "@createPostVideoTooBig": {"placeholders": {"size": {"type": "String"}}},
+  "settingsComingSoon": "即将推出",
+
+  "onboardingTitle1": "直连中国工厂",
+  "onboardingSubtitle1": "去除中间商 — 直接从认证制造商采购电子产品、服装和商品",
+  "onboardingTitle2": "安全交易与团购",
+  "onboardingSubtitle2": "与其他买家联合下单 — 享受工厂价和更优运费",
+  "onboardingTitle3": "即时联系工厂",
+  "onboardingSubtitle3": "议价、索要样品、追踪发货 — 全部一站完成",
+  "onboardingTitle4": "准备好了吗？",
+  "onboardingSubtitle4": "30秒手机号注册 — 无需邮箱、无需文件"
+}
