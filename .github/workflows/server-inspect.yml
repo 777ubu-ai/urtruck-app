@@ -1,8 +1,7 @@
 name: Server Inspect (read-only)
 
-# Диагностический workflow: заходит на сервер по SSH (теми же секретами,
-# что и деплой) и печатает read-only срез состояния проекта bizchat.
-# Ничего не меняет и не выводит секреты (.env не читается).
+# v3: выгрузка исходников bizchat с сервера в артефакт CI.
+# Секреты НЕ пакуются: infra/secrets, .env*, keystore исключены.
 on:
   workflow_dispatch:
   push:
@@ -12,9 +11,9 @@ on:
 jobs:
   inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 10
     steps:
-      - name: Inspect bizchat project over SSH
+      - name: Pack bizchat sources on server
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
@@ -22,47 +21,50 @@ jobs:
         run: |
           sudo apt-get install -y sshpass >/dev/null 2>&1
           sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'EOS'
-          set +e
-          B=/home/ubuntu/bizchat
-
-          echo "===== СТРУКТУРА $B ====="
-          ls -la "$B"
-          for d in "$B"/*/; do echo "-- $d"; ls "$d" 2>/dev/null | head -15; done
-
-          echo; echo "===== GIT-СОСТОЯНИЕ ====="
-          git -C "$B" log --oneline -15 2>/dev/null || echo "не git-репозиторий"
-          git -C "$B" status --short 2>/dev/null | head -15
-          git -C "$B" branch -a 2>/dev/null
-          git -C "$B" remote -v 2>/dev/null
-
-          echo; echo "===== pubspec.yaml (имя/версия) ====="
-          head -25 "$B/mobile/pubspec.yaml" 2>/dev/null || find "$B" -maxdepth 2 -name pubspec.yaml -exec head -25 {} \;
-
-          echo; echo "===== README (если есть) ====="
-          head -60 "$B"/README* "$B"/mobile/README* 2>/dev/null | head -60
-
-          echo; echo "===== NGINX-конфиг bizchat ====="
-          cat /etc/nginx/sites-available/bizchat 2>/dev/null
-          echo "-- pult.biz-chat.net --"
-          cat /etc/nginx/sites-available/pult.biz-chat.net 2>/dev/null | head -40
-
-          echo; echo "===== WEB-сборка ====="
-          cat /var/www/bizchat-web/version.json 2>/dev/null; echo
-          ls -la /var/www/bizchat-web/ | head -15
-          ls -la /var/www/bizchat-static/ | head -10
-
-          echo; echo "===== ПРОЦЕССЫ bizchat (systemd/docker/ps) ====="
-          systemctl list-units --type=service --all 2>/dev/null | grep -i "biz\|chat" | head -10
-          docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null | head -15
-          ps aux | grep -i bizchat | grep -v grep | head -10
-
-          echo; echo "===== CRON (бэкапы и пр.) ====="
-          crontab -l 2>/dev/null | grep -v "^#" | head -15
-
-          echo; echo "===== СХЕМА БД (из последнего дампа, только CREATE TABLE) ====="
-          latest=$(ls -t /home/ubuntu/bizchat-backups/*.sql.gz 2>/dev/null | head -1)
-          echo "дамп: $latest ($(du -h "$latest" 2>/dev/null | cut -f1))"
-          zcat "$latest" 2>/dev/null | grep -i "CREATE TABLE" | head -40
-
-          echo; echo "===== ГОТОВО ====="
+          set -e
+          cd /home/ubuntu
+          tar czf /tmp/bizchat-src.tar.gz \
+            --exclude='bizchat/mobile/build' \
+            --exclude='bizchat/mobile/.dart_tool' \
+            --exclude='bizchat/mobile/.gradle' \
+            --exclude='bizchat/mobile/android/.gradle' \
+            --exclude='bizchat/mobile/android/.cxx' \
+            --exclude='bizchat/mobile/android/app/.cxx' \
+            --exclude='bizchat/mobile/ios/Pods' \
+            --exclude='bizchat/mobile/ios/.symlinks' \
+            --exclude='bizchat/backend/node_modules' \
+            --exclude='bizchat/backend/dist' \
+            --exclude='bizchat/infra/secrets' \
+            --exclude='*.env' \
+            --exclude='*.env.*' \
+            --exclude='.env*' \
+            --exclude='*.jks' \
+            --exclude='*.keystore' \
+            --exclude='key.properties' \
+            --exclude='*.apk' \
+            --exclude='*.aab' \
+            bizchat
+          ls -lh /tmp/bizchat-src.tar.gz
+          echo "== имена env-переменных backend (только ключи, без значений) =="
+          docker exec bizchat-backend-prod printenv 2>/dev/null | cut -d= -f1 | sort | head -40 || true
+          echo "== файлы в infra/secrets (только имена) =="
+          ls /home/ubuntu/bizchat/infra/secrets/ 2>/dev/null || true
           EOS
+
+      - name: Download archive from server
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PASS: ${{ secrets.SERVER_PASS }}
+        run: |
+          sshpass -p "$SERVER_PASS" scp -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST:/tmp/bizchat-src.tar.gz" ./bizchat-src.tar.gz
+          ls -lh bizchat-src.tar.gz
+          # Контрольная проверка: в архиве не должно быть секретов
+          tar tzf bizchat-src.tar.gz | grep -i -E "\.env|secret|\.jks|\.keystore|key\.properties" || echo "OK: секретов в архиве нет"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bizchat-src
+          path: bizchat-src.tar.gz
+          retention-days: 3
