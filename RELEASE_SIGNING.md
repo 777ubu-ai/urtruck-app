@@ -22,6 +22,32 @@ release {
 Правильный keystore в репозитории есть — `keystore/urtruck-release.keystore` — но
 Gradle его **не использовал**.
 
+## 📌 Фактические отпечатки и статус (обновлено 2026-07-05)
+
+На проекте существуют **два кандидата на upload-ключ**, и «правильный» из них
+определяется **только эталоном Upload key из Play Console** (см. ниже):
+
+**1) Keystore, которым подписывает EAS** (`eas credentials -p android`,
+Build Credentials `Bc3SldLONR`, default — используется при `eas build`):
+- Type: JKS, Key Alias: `3079ff4a234ca93cda8a355212793892`
+- SHA-1:   `07:D0:4D:1E:27:C9:EE:DC:9C:EE:D1:0D:D7:65:E4:D4:54:8E:4C:C8`
+- SHA-256: `F8:15:CC:F3:BF:E1:A2:17:58:F9:5B:FC:C9:49:CE:B5:FE:35:75:BB:8E:47:0D:8B:1C:E1:C1:CF:FF:56:4A:53`
+
+**2) Локальный keystore** `keystore/urtruck-release.keystore`
+- Alias/SHA-1/SHA-256: _заполнить после того, как владелец даст store/key-пароль и alias_
+  (`keytool -list -v -keystore keystore/urtruck-release.keystore -alias <ALIAS>`).
+
+**Путь сборки:** на машине разработчика установлена только **JDK 26**, а Gradle-wrapper
+8.10.2 её не поддерживает → локальный `./gradlew bundleRelease` не соберётся. Прод-`.aab`
+собираем через **EAS** (`eas build -p android --profile production`, тип `app-bundle`),
+он подписывает keystore-ом `Bc3SldLONR` (SHA-1 `07:D0…`).
+
+**Решение по сверке с Play Upload key:**
+- Upload key == `07:D0:4D…:4C:C8` → EAS-сборка уже подписана верно, ничего больше не нужно.
+- Upload key == локального keystore → загрузить локальный keystore в EAS
+  (`eas credentials -p android` → Keystore → Upload) и пересобрать, либо собрать локально.
+- Не совпал ни один → Play Console → *Request upload key reset* (см. раздел ниже).
+
 ## ✅ Что исправлено в коде
 
 1. В `signingConfigs` добавлен блок `release`, читающий путь/пароли из свойств
