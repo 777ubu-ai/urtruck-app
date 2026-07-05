@@ -101,15 +101,31 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        // Release (upload) key. Значения задаются в android/gradle.properties
+        // (файл в .gitignore — пароли в git не коммитим). Пример свойств:
+        //   URTRUCK_UPLOAD_STORE_FILE=../../keystore/urtruck-release.keystore
+        //   URTRUCK_UPLOAD_STORE_PASSWORD=***
+        //   URTRUCK_UPLOAD_KEY_ALIAS=***
+        //   URTRUCK_UPLOAD_KEY_PASSWORD=***
+        release {
+            if (project.hasProperty('URTRUCK_UPLOAD_STORE_FILE')) {
+                storeFile file(URTRUCK_UPLOAD_STORE_FILE)
+                storePassword URTRUCK_UPLOAD_STORE_PASSWORD
+                keyAlias URTRUCK_UPLOAD_KEY_ALIAS
+                keyPassword URTRUCK_UPLOAD_KEY_PASSWORD
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            // Подпись релиза upload-ключом, если заданы свойства подписи в
+            // android/gradle.properties; иначе — безопасный фолбэк на debug
+            // (чтобы dev-сборки без секретов не падали). Прод-.aab для Google
+            // Play ОБЯЗАН собираться со свойствами URTRUCK_UPLOAD_* (см. выше).
+            signingConfig project.hasProperty('URTRUCK_UPLOAD_STORE_FILE') ? signingConfigs.release : signingConfigs.debug
             shrinkResources (findProperty('android.enableShrinkResourcesInReleaseBuilds')?.toBoolean() ?: false)
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"

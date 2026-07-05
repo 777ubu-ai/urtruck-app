@@ -59,3 +59,12 @@ tests/e2e/*.png
 # Design references (large PNG mockups — kept locally, not in git)
 design/UrTruck_New_Design_v1/*.png
 qa/debug/dumps/
+
+# Android signing secrets — НИКОГДА в git (guard для будущих файлов).
+# Существующий keystore/urtruck-release.keystore уже в истории — вынести
+# из репо и сбросить upload key отдельно (см. RELEASE_SIGNING.md).
+*.keystore
+*.jks
+*.p12
+!android/app/debug.keystore
+upload_certificate.pem
