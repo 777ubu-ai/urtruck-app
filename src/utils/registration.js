@@ -155,6 +155,60 @@ export const regAPI = {
     return data;
   },
 
+  // ── Email OTP (канал для Китая + резерв) ──────────────────────
+  // Бэкенд: POST /register/email/send { email, consent, role }
+  //         POST /register/email/verify { email, code, guest_token }
+  async sendEmailCode(email, extra = {}) {
+    const r = await fetch(`${BASE}/email/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        consent: extra.consent === true,
+        role: extra.role || null,
+      }),
+    });
+    let data = {};
+    try { data = await r.json(); } catch {}
+    if (r.status === 429) {
+      const retryHeader = r.headers.get('Retry-After');
+      let cooldown = retryHeader ? parseInt(retryHeader, 10) : 0;
+      if (!cooldown) {
+        const m = /(\d+)\s*сек/.exec(data.detail || '');
+        if (m) cooldown = parseInt(m[1], 10);
+      }
+      return { sent: false, ok: false, cooldown: true, cooldown_sec: cooldown || 60,
+               detail: normalizeDetail(data.detail, 'rate_limited') };
+    }
+    return data;
+  },
+
+  async verifyEmailCode(email, code) {
+    const guestToken = await storage.get(TOKEN_KEY);
+    const r = await fetch(`${BASE}/email/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, code, guest_token: guestToken }),
+    });
+    let data = {};
+    try { data = await r.json(); } catch {}
+    if (r.status === 429) {
+      const retryHeader = r.headers.get('Retry-After');
+      let cooldown = retryHeader ? parseInt(retryHeader, 10) : 0;
+      if (!cooldown) {
+        const m = /(\d+)\s*сек/.exec(data.detail || '');
+        if (m) cooldown = parseInt(m[1], 10);
+      }
+      return { token: null, cooldown: true, cooldown_sec: cooldown || 60,
+               detail: normalizeDetail(data.detail, 'rate_limited') };
+    }
+    if (data.token) {
+      await storage.set(TOKEN_KEY, data.token);
+      await storage.set(LEVEL_KEY, String(data.verification_level || 1));
+    }
+    return data;
+  },
+
   async getToken() {
     return await storage.get(TOKEN_KEY);
   },

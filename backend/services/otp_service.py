@@ -18,6 +18,8 @@ from services import whatsapp as wa
 # Stage 22: dedicated Mobizon SMS service (production-ready, parses
 # response codes, masks phones in logs, retries transient errors).
 from services import sms_mobizon
+# Email OTP (SMTP) — канал для Китая и резерв. MOCK если нет SMTP-реквизитов.
+from services import email_service
 
 # BETA bypass
 try:
@@ -66,6 +68,12 @@ def generate_code() -> str:
 def send_whatsapp(phone: str, code: str) -> dict:
     """Делегируем в services/whatsapp.py — там actual Meta Cloud call."""
     return wa.send_otp(phone, code)
+
+
+# ---------- Email ----------
+def send_email(identifier: str, code: str) -> dict:
+    """Делегируем в services/email_service.py (SMTP). identifier — это e-mail."""
+    return email_service.send_otp(identifier, code)
 
 
 # ---------- SMS ----------
@@ -160,6 +168,13 @@ def send_otp(phone: str, code: str, channel: str = "whatsapp") -> dict:
 
     channel = (channel or "whatsapp").lower()
 
+    # ── Email — отдельный идентификатор (e-mail), без fallback на phone-каналы ──
+    if channel == "email":
+        # здесь `phone` фактически несёт e-mail (единый строковый идентификатор).
+        r = send_email(phone, code)
+        r["attempts"] = [{"channel": "email", "sent": r.get("sent"), "mock": r.get("mock", False), "error": r.get("error")}]
+        return r
+
     # Приоритет по умолчанию: WA → TG → SMS. Если юзер выбрал конкретный — он первый.
     order = {
         "whatsapp": ["whatsapp", "telegram", "sms"],
@@ -206,4 +221,5 @@ def info() -> dict:
             "mode": "MOCK" if TG_MOCK else "REAL",
             "bot": TG_BOT_USERNAME,
         },
+        "email": email_service.info(),
     }

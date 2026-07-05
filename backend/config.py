@@ -50,6 +50,17 @@ TELEGRAM_API_HASH = os.getenv("TG_API_HASH", "")
 TELEGRAM_SESSION = "urtruck_scanner"
 TELEGRAM_DEMO_MODE = not (TELEGRAM_API_ID and TELEGRAM_API_HASH)
 
+# Email OTP (SMTP) — канал для Китая (WhatsApp/TG заблокированы) + резерв.
+# Подходит любой провайдер с SMTP: Resend / Amazon SES / SendGrid / Zoho / Yandex.
+# Если host/user/password не заданы — email_service работает в MOCK (код в лог).
+EMAIL_SMTP_HOST = os.getenv("EMAIL_SMTP_HOST", "")
+EMAIL_SMTP_PORT = int(os.getenv("EMAIL_SMTP_PORT", "587"))
+EMAIL_SMTP_USER = os.getenv("EMAIL_SMTP_USER", "")
+EMAIL_SMTP_PASSWORD = os.getenv("EMAIL_SMTP_PASSWORD", "")
+EMAIL_FROM = os.getenv("EMAIL_FROM", "no-reply@urtruck.kz")
+EMAIL_FROM_NAME = os.getenv("EMAIL_FROM_NAME", "UrTruck")
+EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "true").lower() in ("1", "true", "yes")
+
 # Интеграция с основным приложением
 APP_WEBHOOK_URL = "http://127.0.0.1:8080/webhook"
 
