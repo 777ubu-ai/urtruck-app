@@ -212,6 +212,78 @@ def otp_send(req: SendCodeRequest, request: Request = None):
     return wa_send(req, request=request)
 
 
+# ---------- ЭТАП 1b: Email авторизация (канал для Китая + резерв) ----------
+# WhatsApp/Telegram в Китае заблокированы, международный SMS на +86 ненадёжен.
+# Email не блокируется (QQ/163/Gmail). Идентификатор — e-mail (единый строковый
+# ключ, как phone: save_code/check_code/get_or_create_driver принимают строку).
+class EmailSendRequest(BaseModel):
+    email: str
+    consent: Optional[bool] = False
+    role: Optional[str] = None
+
+
+class EmailVerifyRequest(BaseModel):
+    email: str
+    code: str
+    guest_token: Optional[str] = None
+
+
+def _clean_email(e: str) -> str:
+    return (e or "").strip().lower()
+
+
+def _valid_email(e: str) -> bool:
+    import re
+    return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", e or ""))
+
+
+@reg_router.post("/email/send")
+def email_send(req: EmailSendRequest, request: Request = None):
+    email = _clean_email(req.email)
+    if not _valid_email(email):
+        raise HTTPException(status_code=400, detail="Неверный формат e-mail")
+    if not bool(req.consent):
+        raise HTTPException(status_code=400, detail="Для регистрации необходимо принять условия сервиса.")
+    limit_otp_send(email)
+    code = generate_code()
+    reg_dal.save_code(email, code)
+    result = otp_service.send_otp(email, code, channel="email")
+    is_mock = bool(result.get("mock"))
+    delivered = bool(result.get("sent")) and not result.get("error")
+    return {
+        "sent": delivered or is_mock,
+        "channel": "email",
+        "mock": is_mock,
+        "code": result.get("code") if is_mock else None,
+        "error": None if (delivered or is_mock) else (result.get("error") or "delivery_failed"),
+    }
+
+
+@reg_router.post("/email/verify")
+def email_verify(req: EmailVerifyRequest, request: Request = None):
+    email = _clean_email(req.email)
+    if not _valid_email(email):
+        raise HTTPException(status_code=400, detail="Неверный e-mail")
+    limit_otp_verify(email)
+    # BETA bypass — как в wa_verify (для тестеров/ревью).
+    is_beta_login = BETA_MODE and req.code.strip() == BETA_OTP_CODE
+    if not is_beta_login:
+        if not reg_dal.check_code(email, req.code):
+            raise HTTPException(status_code=400, detail="Неверный или истёкший код")
+        reg_dal.delete_code(email)
+    guest_id = reg_dal.get_driver_by_token(req.guest_token) if req.guest_token else None
+    driver = reg_dal.get_or_create_driver(email, upgrade_guest_id=guest_id)
+    token = reg_dal.create_session(driver["id"])
+    return {
+        "token": token,
+        "driver_id": driver["id"],
+        "user_id": driver["id"],
+        "email": email,
+        "current_step": driver.get("current_step") or "done",
+        "verification_level": driver.get("verification_level", 1) or 1,
+    }
+
+
 @reg_router.post("/whatsapp/verify")
 def wa_verify(req: VerifyCodeRequest, request: Request = None):
     """Проверка кода. Если валидный — создаёт driver + возвращает token.

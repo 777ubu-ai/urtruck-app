@@ -6,8 +6,12 @@
 //
 // Поле телефона: слева — CountryPicker (флаг + dial code), справа —
 // input для локальной части номера. После CTA "Продолжить" — отправка
-// SMS через regAPI.sendCode, навигация на существующий PremiumOtpScreen
-// (мост на текущий OTP flow до момента, пока не сделаем OtpV2 в batch 2).
+// SMS через regAPI.sendCode, навигация на OtpV2 (channel='phone').
+//
+// Email-канал (для Китая + резерв): вверху сегмент-переключатель
+// «Телефон / Email». В режиме Email вместо телефонного поля —
+// input почты; CTA вызывает regAPI.sendEmailCode(email, {consent, role})
+// и уводит на OtpV2 с channel='email' + email. Телефонный путь не тронут.
 
 import React, { useState } from 'react';
 import {
@@ -29,6 +33,9 @@ import { DEFAULT_COUNTRY } from '../../utils/countries';
 
 const sanitizeDigits = (s) => (s || '').replace(/[^\d]/g, '');
 
+// Та же проверка формата, что и на бэке (_valid_email в registration.py).
+const isValidEmail = (e) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test((e || '').trim());
+
 const formatLocalPhone = (digits) => {
   // Простой template для KZ/RU (+7): "7 (XXX) XXX-XX-XX" уже учитывает
   // первую "7" из dial. Здесь форматируем только локальную часть.
@@ -40,12 +47,19 @@ const formatLocalPhone = (digits) => {
   return `${d.slice(0, 3)} ${d.slice(3, 6)}-${d.slice(6, 8)}-${d.slice(8, 10)}`;
 };
 
-export default function PhoneV2Screen({ navigation }) {
+export default function PhoneV2Screen({ navigation, route }) {
   const { t } = useI18n();
+  // 'phone' | 'email' — email добавлен как отдельный канал входа
+  // (Китай + резерв), телефонный flow остаётся дефолтным.
+  const [mode, setMode] = useState('phone');
   const [country, setCountry] = useState(DEFAULT_COUNTRY);
   const [localDigits, setLocalDigits] = useState('');
+  const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  // Роль на этом шаге ещё не выбрана (выбор — на RoleV2 после OTP).
+  // Пробрасываем role только если пришла из deeplink/params (для аудита).
+  const role = route?.params?.role || null;
 
   const openCountryPicker = () => {
     navigation.navigate('CountryPicker', {
@@ -62,16 +76,44 @@ export default function PhoneV2Screen({ navigation }) {
     if (error) setError(null);
   };
 
+  const onChangeEmail = (text) => {
+    setEmail(text);
+    if (error) setError(null);
+  };
+
+  const switchMode = (next) => {
+    if (next === mode) return;
+    setMode(next);
+    setError(null);
+  };
+
   const fullPhone = `+${country.dial}${localDigits}`;
   const minDigits = country.dial === '7' ? 10 : 7;
-  const isValid = localDigits.length >= minDigits;
+  const isPhoneValid = localDigits.length >= minDigits;
+  const isEmailOk = isValidEmail(email);
+  const isValid = mode === 'email' ? isEmailOk : isPhoneValid;
 
   const submit = async () => {
     if (!isValid || busy) return;
     setBusy(true);
     setError(null);
     try {
-      const r = await regAPI.sendCode(fullPhone, 'whatsapp', { consent: true });
+      if (mode === 'email') {
+        const cleanEmail = email.trim().toLowerCase();
+        const r = await regAPI.sendEmailCode(cleanEmail, { consent: true, role });
+        if (r && r.sent === false && r.error && !r.cooldown) {
+          setError(t('phone_v2_send_failed'));
+          return;
+        }
+        navigation.navigate('OtpV2', {
+          channel: 'email',
+          email: cleanEmail,
+          mockCode: (r && r.mock) ? r.code : null,
+        });
+        return;
+      }
+
+      const r = await regAPI.sendCode(fullPhone, 'whatsapp', { consent: true, role });
       if (r && (r.ok === false || r.error)) {
         // Backend может вернуть cooldown/error — игнорим cooldown для UX,
         // OTP-экран сам прочитает и покажет.
@@ -79,6 +121,7 @@ export default function PhoneV2Screen({ navigation }) {
       // RC2: переход на OtpV2 (light-style) вместо legacy RegOtp.
       // Передаём phone + mockCode (если backend в beta-режиме).
       navigation.navigate('OtpV2', {
+        channel: 'phone',
         phone: fullPhone,
         mockCode: (r && (r.mock || r.beta)) ? r.code : null,
       });
@@ -104,32 +147,84 @@ export default function PhoneV2Screen({ navigation }) {
           <Text style={s.title}>{t('phone_v2_title')}</Text>
           <Text style={s.subtitle}>{t('phone_v2_subtitle')}</Text>
 
-          <View style={[s.inputRow, error && { borderColor: brand.error }]}>
+          {/* Переключатель канала входа: Телефон / Email */}
+          <View style={s.segment} testID="auth-channel-segment">
             <TouchableOpacity
-              onPress={openCountryPicker}
-              style={s.countryBtn}
-              activeOpacity={0.7}
-              testID="phone-v2-country-btn"
+              onPress={() => switchMode('phone')}
+              activeOpacity={0.8}
+              style={[s.segmentBtn, mode === 'phone' && s.segmentBtnActive]}
+              testID="auth-tab-phone"
             >
-              <Text style={s.flag}>{country.flag}</Text>
-              <Text style={s.dialCode}>+{country.dial}</Text>
-              <Feather name="chevron-down" size={16} color={brand.textSecondary} />
+              <Text style={[s.segmentText, mode === 'phone' && s.segmentTextActive]}>
+                {t('auth_tab_phone')}
+              </Text>
             </TouchableOpacity>
-            <View style={s.divider} />
-            <TextInput
-              value={formatLocalPhone(localDigits)}
-              onChangeText={onChangeLocal}
-              placeholder={country.dial === '7' ? '7 (___) ___-__-__' : '___-___-____'}
-              placeholderTextColor={brand.textTertiary}
-              keyboardType="phone-pad"
-              style={s.phoneInput}
-              autoFocus
-              maxLength={20}
-              testID="phone-v2-input"
-              textContentType="telephoneNumber"
-              autoComplete="tel"
-            />
+            <TouchableOpacity
+              onPress={() => switchMode('email')}
+              activeOpacity={0.8}
+              style={[s.segmentBtn, mode === 'email' && s.segmentBtnActive]}
+              testID="auth-tab-email"
+            >
+              <Text style={[s.segmentText, mode === 'email' && s.segmentTextActive]}>
+                {t('auth_tab_email')}
+              </Text>
+            </TouchableOpacity>
           </View>
+
+          {mode === 'email' ? (
+            <View style={[s.inputRow, error && { borderColor: brand.error }]}>
+              <Feather
+                name="mail"
+                size={20}
+                color={brand.textSecondary}
+                style={{ marginLeft: 10, marginRight: 4 }}
+              />
+              <TextInput
+                value={email}
+                onChangeText={onChangeEmail}
+                placeholder={t('email_v2_placeholder')}
+                placeholderTextColor={brand.textTertiary}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                style={s.phoneInput}
+                autoFocus
+                maxLength={120}
+                testID="email-v2-input"
+                textContentType="emailAddress"
+                autoComplete="email"
+                onSubmitEditing={submit}
+                returnKeyType="go"
+              />
+            </View>
+          ) : (
+            <View style={[s.inputRow, error && { borderColor: brand.error }]}>
+              <TouchableOpacity
+                onPress={openCountryPicker}
+                style={s.countryBtn}
+                activeOpacity={0.7}
+                testID="phone-v2-country-btn"
+              >
+                <Text style={s.flag}>{country.flag}</Text>
+                <Text style={s.dialCode}>+{country.dial}</Text>
+                <Feather name="chevron-down" size={16} color={brand.textSecondary} />
+              </TouchableOpacity>
+              <View style={s.divider} />
+              <TextInput
+                value={formatLocalPhone(localDigits)}
+                onChangeText={onChangeLocal}
+                placeholder={country.dial === '7' ? '7 (___) ___-__-__' : '___-___-____'}
+                placeholderTextColor={brand.textTertiary}
+                keyboardType="phone-pad"
+                style={s.phoneInput}
+                autoFocus
+                maxLength={20}
+                testID="phone-v2-input"
+                textContentType="telephoneNumber"
+                autoComplete="tel"
+              />
+            </View>
+          )}
 
           {error ? <Text style={s.error}>{error}</Text> : null}
 
@@ -158,7 +253,9 @@ export default function PhoneV2Screen({ navigation }) {
 
           <View style={s.hintRow}>
             <Feather name="shield" size={16} color={brand.textSecondary} />
-            <Text style={s.hint}>{t('phone_v2_send_hint')}</Text>
+            <Text style={s.hint}>
+              {mode === 'email' ? t('email_v2_send_hint') : t('phone_v2_send_hint')}
+            </Text>
           </View>
         </View>
 
@@ -201,7 +298,33 @@ const s = StyleSheet.create({
     ...typography.body,
     color: brand.textSecondary,
     textAlign: 'center',
-    marginBottom: 28,
+    marginBottom: 20,
+  },
+  segment: {
+    flexDirection: 'row',
+    backgroundColor: brand.surface,
+    borderWidth: 1,
+    borderColor: brand.border,
+    borderRadius: radius.lg,
+    padding: 4,
+    marginBottom: 16,
+  },
+  segmentBtn: {
+    flex: 1,
+    height: 40,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  segmentBtnActive: {
+    backgroundColor: brand.primary,
+  },
+  segmentText: {
+    ...typography.button,
+    color: brand.textSecondary,
+  },
+  segmentTextActive: {
+    color: brand.textOnPrimary,
   },
   inputRow: {
     flexDirection: 'row',
