@@ -31,6 +31,11 @@ mkdir -p dist/share
 cp web/share/og-default.png dist/share/og-default.png
 cp web/share/og-trip-template.svg dist/share/og-trip-template.svg
 
+echo "1b. Перенос legal-страниц (privacy/terms/support) в dist/legal/..."
+# Статические HTML вне SPA — нужны для App Store / Google Play (рабочий URL политики).
+mkdir -p dist/legal
+cp web/legal/*.html dist/legal/
+
 echo "2. Пост-обработка index.html + PWA + SW..."
 cp sw-template.js dist/sw.js
 

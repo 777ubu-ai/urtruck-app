@@ -35,6 +35,10 @@ jobs:
       - name: Post-process (SW + manifest)
         run: |
           cp sw-template.js dist/sw.js
+          # Legal pages (privacy/terms/support) — статические HTML вне SPA.
+          # Нужны для App Store / Google Play (рабочий URL политики).
+          mkdir -p dist/legal
+          cp web/legal/*.html dist/legal/
           python3 <<'PY'
           import re, json
           with open('dist/index.html', 'r') as f:
