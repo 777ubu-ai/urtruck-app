@@ -1167,10 +1167,19 @@ const translations = {
     phone_v2_send_hint: 'Мы отправим SMS с кодом\nдля входа или регистрации',
     phone_v2_send_failed: 'Не удалось отправить код. Попробуйте ещё раз.',
 
+    // ─── Email-вход (канал для Китая + резерв) ────────────────────
+    auth_tab_phone: 'Телефон',
+    auth_tab_email: 'Email',
+    email_v2_placeholder: 'you@example.com',
+    email_v2_send_hint: 'Мы отправим код на почту\nдля входа или регистрации',
+    email_v2_invalid: 'Неверный формат e-mail',
+
     // ─── RC2 auth-flow (OTP / Role / Profile) light-style ─────────
     otp_v2_title: 'Подтверждение',
     otp_v2_subtitle: 'Введите код из SMS',
     otp_v2_sent_to: 'Код отправлен на',
+    otp_v2_subtitle_email: 'Введите код из письма',
+    otp_v2_change_email: 'Изменить e-mail',
     otp_v2_cta: 'Подтвердить',
     otp_v2_resend_in: 'Отправить повторно через {time}',
     otp_v2_resend: 'Отправить ещё раз',
@@ -2538,10 +2547,19 @@ const translations = {
     phone_v2_send_hint: 'Кіру немесе тіркелу үшін\nSMS-код жібереміз',
     phone_v2_send_failed: 'Кодты жіберу мүмкін болмады. Қайта көріңіз.',
 
+    // ─── Email-кіру (Қытайға арналған канал + резерв) ─────────────
+    auth_tab_phone: 'Телефон',
+    auth_tab_email: 'Email',
+    email_v2_placeholder: 'you@example.com',
+    email_v2_send_hint: 'Кіру немесе тіркелу үшін\nпоштаға код жібереміз',
+    email_v2_invalid: 'E-mail форматы қате',
+
     // ─── RC2 auth-flow (KK) ────────────────────────────────────────
     otp_v2_title: 'Растау',
     otp_v2_subtitle: 'SMS кодын енгізіңіз',
     otp_v2_sent_to: 'Код жіберілді',
+    otp_v2_subtitle_email: 'Хаттағы кодты енгізіңіз',
+    otp_v2_change_email: 'E-mail өзгерту',
     otp_v2_cta: 'Растау',
     otp_v2_resend_in: 'Қайта жіберу: {time}',
     otp_v2_resend: 'Қайта жіберу',
@@ -3875,10 +3893,19 @@ const translations = {
     phone_v2_send_hint: '我们将发送 SMS 验证码\n用于登录或注册',
     phone_v2_send_failed: '发送验证码失败,请重试。',
 
+    // ─── 邮箱登录(中国渠道 + 备用) ──────────────────────────────
+    auth_tab_phone: '手机',
+    auth_tab_email: '邮箱',
+    email_v2_placeholder: 'you@example.com',
+    email_v2_send_hint: '我们将发送验证码到邮箱\n用于登录或注册',
+    email_v2_invalid: '邮箱格式不正确',
+
     // ─── RC2 auth-flow (ZH) ────────────────────────────────────────
     otp_v2_title: '验证',
     otp_v2_subtitle: '请输入短信中的验证码',
     otp_v2_sent_to: '验证码已发送至',
+    otp_v2_subtitle_email: '请输入邮件中的验证码',
+    otp_v2_change_email: '更改邮箱',
     otp_v2_cta: '确认',
     otp_v2_resend_in: '{time} 后可重新发送',
     otp_v2_resend: '重新发送',
@@ -5181,10 +5208,19 @@ const translations = {
     phone_v2_send_hint: "We'll send an SMS code\nto sign in or sign up",
     phone_v2_send_failed: 'Failed to send code. Please try again.',
 
+    // ─── Email sign-in (channel for China + fallback) ─────────────
+    auth_tab_phone: 'Phone',
+    auth_tab_email: 'Email',
+    email_v2_placeholder: 'you@example.com',
+    email_v2_send_hint: "We'll send a code to your email\nto sign in or sign up",
+    email_v2_invalid: 'Invalid e-mail format',
+
     // ─── RC2 auth-flow (EN) ────────────────────────────────────────
     otp_v2_title: 'Verification',
     otp_v2_subtitle: 'Enter the SMS code',
     otp_v2_sent_to: 'Code sent to',
+    otp_v2_subtitle_email: 'Enter the code from the email',
+    otp_v2_change_email: 'Change e-mail',
     otp_v2_cta: 'Confirm',
     otp_v2_resend_in: 'Resend in {time}',
     otp_v2_resend: 'Resend',

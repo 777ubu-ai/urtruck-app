@@ -11,6 +11,11 @@
 //
 // Бизнес-логика: regAPI.verifyCode (cooldown handling), signIn, после
 // verify — если backend знает role → reset Main; иначе reset RoleV2.
+//
+// Канал: route.params.channel = 'phone' (по умолчанию) | 'email'.
+// Для email идентификатор берётся из route.params.email, verify/resend
+// идут через regAPI.verifyEmailCode / sendEmailCode. Телефонный путь
+// не тронут — просто ветвление по channel.
 
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -52,12 +57,28 @@ const maskPhone = (raw) => {
   return `+${country} ${operator} *** ${last3}`;
 };
 
+// jo***@qq.com — оставляем первые 2 символа локальной части и домен.
+const maskEmail = (raw) => {
+  const e = (raw || '').trim();
+  const at = e.indexOf('@');
+  if (at < 1) return e;
+  const local = e.slice(0, at);
+  const domain = e.slice(at);
+  const head = local.slice(0, 2);
+  return `${head}***${domain}`;
+};
+
 export default function OtpV2Screen({ navigation, route }) {
   const { t } = useI18n();
   const { toast } = useToast();
   const { signIn, setRole, refreshLevel } = useAuth();
 
+  const channel = route?.params?.channel === 'email' ? 'email' : 'phone';
+  const isEmail = channel === 'email';
   const phone = route?.params?.phone || '+7';
+  const emailAddr = route?.params?.email || '';
+  // Единый идентификатор для verify/signIn (телефон или e-mail).
+  const identifier = isEmail ? emailAddr : phone;
   const initialMockCode = route?.params?.mockCode || null;
 
   const [code, setCode] = useState('');
@@ -97,7 +118,9 @@ export default function OtpV2Screen({ navigation, route }) {
     setLoading(true);
     setError('');
     try {
-      const r = await regAPI.verifyCode(phone, c);
+      const r = isEmail
+        ? await regAPI.verifyEmailCode(identifier, c)
+        : await regAPI.verifyCode(identifier, c);
       if (r.cooldown) {
         setSecondsLeft(r.cooldown_sec || 60);
         setError(t('otp_v2_wrong'));
@@ -109,7 +132,7 @@ export default function OtpV2Screen({ navigation, route }) {
         setCode('');
         return;
       }
-      await signIn(phone, r.verification_level || 1);
+      await signIn(identifier, r.verification_level || 1);
       push.autoRegister?.().catch(() => {});
 
       // RC2: если backend знает роль — в Main. Иначе на RoleV2.
@@ -129,7 +152,10 @@ export default function OtpV2Screen({ navigation, route }) {
         });
         return;
       }
-      navigation.reset({ index: 0, routes: [{ name: 'RoleV2', params: { phone } }] });
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'RoleV2', params: { phone: identifier, channel, email: emailAddr } }],
+      });
     } catch (e) {
       setError(t('otp_v2_wrong'));
       setCode('');
@@ -143,7 +169,9 @@ export default function OtpV2Screen({ navigation, route }) {
     setResending(true);
     setError('');
     try {
-      const r = await regAPI.sendCode(phone, 'sms', { consent: true });
+      const r = isEmail
+        ? await regAPI.sendEmailCode(identifier, { consent: true })
+        : await regAPI.sendCode(identifier, 'sms', { consent: true });
       if (r.sent || r.ok) {
         setSecondsLeft(RESEND_SECS);
         if ((r.mock || r.beta) && r.code) setMockCode(r.code);
@@ -182,9 +210,14 @@ export default function OtpV2Screen({ navigation, route }) {
 
         <View style={s.content}>
           <Text style={s.title}>{t('otp_v2_title')}</Text>
-          <Text style={s.subtitle}>{t('otp_v2_subtitle')}</Text>
+          <Text style={s.subtitle}>
+            {isEmail ? t('otp_v2_subtitle_email') : t('otp_v2_subtitle')}
+          </Text>
           <Text style={s.phoneHint}>
-            {t('otp_v2_sent_to')} <Text style={s.phoneStrong}>{maskPhone(phone)}</Text>
+            {t('otp_v2_sent_to')}{' '}
+            <Text style={s.phoneStrong}>
+              {isEmail ? maskEmail(identifier) : maskPhone(identifier)}
+            </Text>
           </Text>
 
           <Pressable
@@ -280,7 +313,9 @@ export default function OtpV2Screen({ navigation, route }) {
               accessibilityRole="button"
               style={({ pressed }) => [s.changeBtn, pressed && { opacity: 0.6 }]}
             >
-              <Text style={s.changeText}>{t('otp_v2_change_phone')}</Text>
+              <Text style={s.changeText}>
+                {isEmail ? t('otp_v2_change_email') : t('otp_v2_change_phone')}
+              </Text>
             </Pressable>
           </View>
 
