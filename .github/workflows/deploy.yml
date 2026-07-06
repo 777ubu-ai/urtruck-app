@@ -82,6 +82,32 @@ jobs:
           sshpass -p "$SERVER_PASS" scp -C -o StrictHostKeyChecking=no -r backend/* "$SERVER_USER@$SERVER_HOST:$BACKEND_DIR/"
           sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" "source ~/.nvm/nvm.sh && pm2 restart urtruck-security-api"
 
+      # Email OTP → REAL: берём Resend API-ключ из секрета URTRUCK_CMC и проставляем
+      # его в EMAIL_SMTP_PASSWORD прод-.env (тот же каталог, куда деплоится бэкенд).
+      # Секрет не печатается (GitHub маскирует). Guard: если секрет пуст/не задан —
+      # шаг ничего не делает, email остаётся в MOCK (ничего не ломается).
+      - name: Set Resend SMTP key (email OTP → REAL)
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PASS: ${{ secrets.SERVER_PASS }}
+          BACKEND_DIR: ${{ secrets.BACKEND_DIR || '/home/ubuntu/urtruck-security' }}
+          RESEND_KEY: ${{ secrets.URTRUCK_CMC }}
+        run: |
+          if [ -z "$RESEND_KEY" ]; then
+            echo "URTRUCK_CMC пуст/не задан в этом репозитории — пропускаю (email остаётся MOCK)."
+            exit 0
+          fi
+          sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
+            "cd $BACKEND_DIR && \
+             if grep -q '^EMAIL_SMTP_PASSWORD=' .env; then \
+               sed -i 's|^EMAIL_SMTP_PASSWORD=.*|EMAIL_SMTP_PASSWORD=$RESEND_KEY|' .env; \
+             else \
+               printf 'EMAIL_SMTP_HOST=smtp.resend.com\nEMAIL_SMTP_PORT=587\nEMAIL_SMTP_USER=resend\nEMAIL_SMTP_PASSWORD=$RESEND_KEY\nEMAIL_FROM=no-reply@urtruck.kz\nEMAIL_USE_TLS=true\n' >> .env; \
+             fi && \
+             source ~/.nvm/nvm.sh && pm2 restart urtruck-security-api"
+          echo "SMTP-ключ проставлен, urtruck-security-api перезапущен."
+
       - name: Health check
         env:
           # Public domain served by nginx, which proxies / → :8080 (web)
