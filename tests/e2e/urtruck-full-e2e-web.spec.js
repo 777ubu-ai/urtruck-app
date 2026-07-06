@@ -210,38 +210,21 @@ test.describe.serial('D. Клиент — регрессия + кросс-рол
     expect(bodyText).toContain('400 000'); // сумма ставки видна
     expect(bodyText).not.toMatch(/\$\s?4[0-9]{5}/); // нет «$420000/$400000»
 
-    // BUG (email-owner): backend-роль email-юзера = 'guest' → refreshLevel не
-    // синкает реальный id (AuthContext.js:36) → CargoDetail owner-check
-    // (owner_id === session.user.id, CargoDetail.js:155) ложен → владелец видит
-    // bidder-view и кнопки accept/reject ОТСУТСТВУЮТ. Фиксируем факт, accept
-    // делаем через API (backend-путь рабочий). См. отчёт, раздел «Баги».
-    const ownerAcceptVisible = await page.locator(tid('bid-accept')).first()
-      .isVisible().catch(() => false);
-    test.info().annotations.push({
-      type: 'known-bug',
-      description: `owner bid-accept доступен в UI: ${ownerAcceptVisible} (ожидается false из-за role=guest)`,
-    });
+    // BUG-1 (исправлен, AuthContext id-синк): владелец-email теперь видит
+    // owner-view. Принимаем ставку через UI по testID bid-accept.
+    const accept = page.locator(tid('bid-accept')).first();
+    await accept.waitFor({ state: 'visible', timeout: 10000 });
+    await accept.click();
+    await page.waitForTimeout(2000);
+    await shot(page, 'D2_02_after_accept_ui');
 
-    const list = await request.get(`${H.API}/market/bids?cargo_id=${cargoId}`, {
-      headers: { Authorization: `Bearer ${clientToken}` },
-    });
-    const bids = await list.json().catch(() => ({}));
-    const arr = Array.isArray(bids) ? bids : (bids.bids || []);
-    expect(arr.length).toBeGreaterThan(0);
-    const bidId = arr[0].id || arr[0].bid_id;
-
-    // Accept через API владельца → сделка создаётся (подтверждение смены статуса).
-    const acc = await request.post(`${H.API}/market/bids/${bidId}/accept`, {
-      headers: { Authorization: `Bearer ${clientToken}` },
-    });
-    expect([200, 201]).toContain(acc.status());
+    // Подтверждение смены статуса через API: сделка создана у владельца.
     const deals = await request.get(`${H.API}/market/deals`, {
       headers: { Authorization: `Bearer ${clientToken}` },
     });
     const dj = await deals.json().catch(() => ({}));
     const darr = Array.isArray(dj) ? dj : (dj.deals || []);
     expect(darr.length).toBeGreaterThan(0);
-    await shot(page, 'D2_02_after_accept_api');
   });
 
   test('D4. Клиентский таб-бар (есть Publish) и выход', async ({ page }) => {

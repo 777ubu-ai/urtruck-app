@@ -33,40 +33,37 @@ export const AuthProvider = ({ children }) => {
     const me = await regAPI.me();
     if (me && typeof me.verification_level === 'number') {
       setVerificationLevel(me.verification_level);
-      if (me.role && me.role !== 'guest') {
-        // PR-C1: /register/me не возвращает city, поэтому дёргаем ещё и
-        // /users/me — там есть name/city/about. Делаем параллельно с
-        // setSession, чтобы при ошибке хотя бы level+role+phone обновились.
+      const hasRealRole = me.role && me.role !== 'guest';
+      // Синкаем реальный backend-id в сессию ВСЕГДА, когда он известен — id не
+      // зависит от роли. Раньше синк был заперт за `role !== 'guest'`, из-за
+      // чего у email-владельцев (роль на бэке = 'guest') `session.user.id`
+      // оставался синтетическим `u_<ts>`, owner-check (owner_id ===
+      // session.user.id, CargoDetail) падал и владелец не видел accept/reject
+      // на своём грузе. (FULL_E2E 2026-07-06, BUG-1.)
+      if (me.id || hasRealRole) {
+        // /register/me не возвращает city — дёргаем /users/me за name/city.
+        // Только если роль настоящая (для guest поля всё равно пусты).
         // profile() fail-tolerant — вернёт null если /users/me недоступен.
-        const profile = await regAPI.profile();
+        const profile = hasRealRole ? await regAPI.profile() : null;
         const fullName = profile?.name || me.full_name || null;
         const city = profile?.city || null;
         setSession(prev => {
-          const next = prev
-            ? {
-                ...prev,
-                user: {
-                  ...prev.user,
-                  role: me.role,
-                  phone: me.phone,
-                  id: me.id,
-                  // Не затираем существующие значения, если backend не
-                  // вернул новых (offline / 4xx на /users/me).
-                  name: fullName || prev.user?.name || null,
-                  full_name: fullName || prev.user?.full_name || null,
-                  city: city || prev.user?.city || null,
-                },
-              }
-            : {
-                user: {
-                  role: me.role,
-                  phone: me.phone,
-                  id: me.id,
-                  name: fullName,
-                  full_name: fullName,
-                  city,
-                },
-              };
+          const base = prev?.user || {};
+          const next = {
+            ...(prev || {}),
+            user: {
+              ...base,
+              // Роль с бэка перекрываем ТОЛЬКО если она настоящая; иначе
+              // сохраняем клиентскую роль (выбранную на RoleV2 через setRole).
+              role: hasRealRole ? me.role : (base.role || null),
+              phone: me.phone || base.phone,
+              id: me.id || base.id,
+              // Не затираем существующие значения, если backend не вернул новых.
+              name: fullName || base.name || null,
+              full_name: fullName || base.full_name || null,
+              city: city || base.city || null,
+            },
+          };
           storage.set(KEY, JSON.stringify(next));
           return next;
         });
