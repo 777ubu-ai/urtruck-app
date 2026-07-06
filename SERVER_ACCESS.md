@@ -53,10 +53,19 @@ Host 185.22.65.11
 
 ## 4. Что где на сервере
 
+> ⚠️ **ВАЖНО (проверено 2026-07-06):** живой бэкенд-процесс PM2 `urtruck-security-api`
+> запускается из **`/home/ubuntu/urtruck/backend/`** — именно туда льёт CI (`main.py`
+> обновлялся оттуда), оттуда же читается **`.env`** (реальные секреты: Mobizon, admin,
+> VAPID, OpenAI, SMTP). Каталог `/home/ubuntu/urtruck-security/` ниже — **устаревший**
+> (в нём нет `main.py`); правки в его `.env` на прод НЕ влияют. Для секретов/.env и
+> любых ручных правок бэкенда используйте `/home/ubuntu/urtruck/backend/`.
+
 | Путь | Что |
 |---|---|
 | `/home/ubuntu/urtruck-app/` | Фронтенд (HTML/JS/CSS) |
-| `/home/ubuntu/urtruck-security/` | Бэкенд (FastAPI + SQLite) |
+| `/home/ubuntu/urtruck/backend/` | **Живой бэкенд** (FastAPI) — код, `.env`, CI-цель |
+| `/home/ubuntu/urtruck/backend/.env` | **Прод-секреты** (Mobizon, admin, VAPID, OpenAI, SMTP) |
+| `/home/ubuntu/urtruck-security/` | ⚠️ устаревший каталог (не рабочий процесс) |
 | `/home/ubuntu/urtruck-security/.env` | Секреты (токены, ключи) |
 | `/home/ubuntu/urtruck-security/database/security.db` | База данных |
 | `/home/ubuntu/urtruck-security/certs/egov.p12` | ЭЦП eGov.kz |
