@@ -57,7 +57,16 @@ export default function ChatsListScreen({ navigation, route }) {
     }
   }, []);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  // P2-аудит (чаты): раньше список обновлялся ТОЛЬКО при возврате на экран
+  // (useFocusEffect без polling) → новые сообщения и бейдж непрочитанного не
+  // появлялись, пока список открыт («видно после перезагрузки»). Добавлен
+  // лёгкий poll каждые 10с, пока экран в фокусе; снимается на blur/unmount
+  // (return cleanup от useFocusEffect). Транспорт прежний — HTTP-опрос.
+  useFocusEffect(useCallback(() => {
+    load();
+    const iv = setInterval(load, 10000);
+    return () => clearInterval(iv);
+  }, [load]));
   const onRefresh = () => { setRefreshing(true); load(); };
 
   const filtered = useMemo(() => {
