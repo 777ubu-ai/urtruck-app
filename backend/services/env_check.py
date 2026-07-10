@@ -86,11 +86,22 @@ def collect_issues() -> List[str]:
         issues.append(f"Storage: unknown STORAGE_PROVIDER={provider!r} (must be local|supabase|s3).")
 
     # Admin auth — never ship the placeholder password to production.
-    if _is_unsafe_password(os.getenv("ADMIN_PASSWORD", "")):
+    # Fix (B3): admin.py reads URTRUCK_ADMIN_PASS, not ADMIN_PASSWORD — the old
+    # check looked at the wrong var and never fired. Check the real var (with
+    # legacy ADMIN_PASSWORD as fallback) and reject the committed default too.
+    admin_pass = os.getenv("URTRUCK_ADMIN_PASS") or os.getenv("ADMIN_PASSWORD", "")
+    if _is_unsafe_password(admin_pass) or admin_pass == "urtruck-admin-2026":
         issues.append(
-            "Admin: ADMIN_PASSWORD is empty or matches a default placeholder "
-            "(change_me, admin, password, 123456). Set a strong unique value."
+            "Admin: URTRUCK_ADMIN_PASS is empty or a default placeholder "
+            "(urtruck-admin-2026 / admin / password / 123456). Set a strong unique value."
         )
+
+    # API key / admin token — committed defaults in api/auth.py. In prod they
+    # must be overridden or the /blacklist/add & /report endpoints are wide open.
+    if (os.getenv("URTRUCK_API_KEY") or "demo-api-key-change-me") == "demo-api-key-change-me":
+        issues.append("API: URTRUCK_API_KEY still the demo default — set a real key.")
+    if (os.getenv("URTRUCK_ADMIN_TOKEN") or "demo-admin-change-me") == "demo-admin-change-me":
+        issues.append("API: URTRUCK_ADMIN_TOKEN still the demo default — set a real token.")
 
     # CORS — production should not allow http://localhost or wildcard.
     cors = os.getenv("CORS_ORIGINS", "")

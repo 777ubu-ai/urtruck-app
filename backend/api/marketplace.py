@@ -470,7 +470,7 @@ def list_cargos(
 
 
 @mp_router.get("/cargos/{cargo_id}")
-def get_cargo(cargo_id: str):
+def get_cargo(cargo_id: str, authorization: Optional[str] = Header(None)):
     with get_conn() as c:
         row = c.execute("SELECT * FROM cargos WHERE id = ?", (cargo_id,)).fetchone()
     if not row:
@@ -480,6 +480,13 @@ def get_cargo(cargo_id: str):
         d["photos"] = json.loads(d.get("photos") or "[]")
     except Exception:
         d["photos"] = []
+    # Security (B2): контакт закрыт гейтом. owner_phone отдаём ТОЛЬКО владельцу
+    # листинга. Раньше detail-эндпоинт делал SELECT * и возвращал телефон всем —
+    # аноним перебором id мог собрать базу телефонов грузовладельцев. Список
+    # /cargos телефон уже вырезал (:462), теперь и карточка тоже.
+    caller = _maybe_user(authorization)
+    if not (caller and caller.get("id") == d.get("owner_id")):
+        d.pop("owner_phone", None)
     return d
 
 
@@ -734,12 +741,18 @@ def list_trips(
 
 
 @mp_router.get("/trips/{trip_id}")
-def get_trip(trip_id: str):
+def get_trip(trip_id: str, authorization: Optional[str] = Header(None)):
     with get_conn() as c:
         row = c.execute("SELECT * FROM trips WHERE id = ?", (trip_id,)).fetchone()
     if not row:
         raise HTTPException(status_code=404)
-    return dict(row)
+    d = dict(row)
+    # Security (B2): driver_phone — только владельцу рейса. Аноним/чужой по id
+    # телефон водителя не получает (сбор базы контактов перебором).
+    caller = _maybe_user(authorization)
+    if not (caller and caller.get("id") == d.get("driver_id")):
+        d.pop("driver_phone", None)
+    return d
 
 
 # ═══ Bids ═══
@@ -965,6 +978,12 @@ def list_bids(
         # the active-bids list. Owner can still inspect those through the
         # /market/my dashboard if needed.
         bids = [b for b in bids if b.get("status") not in ("cancelled", "rejected")]
+    # Security (B2): bidder_phone виден ТОЛЬКО владельцу листинга (он ведёт
+    # переговоры). Публичным/чужим вызовам /bids телефон оферента не отдаём —
+    # раньше SELECT b.* возвращал bidder_phone любому, кто знает cargo_id.
+    if not is_owner:
+        for b in bids:
+            b.pop("bidder_phone", None)
     return {"bids": bids}
 
 
