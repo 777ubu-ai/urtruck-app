@@ -34,7 +34,7 @@ import { useI18n } from '../../utils/useI18n';
 import { useAuth } from '../../utils/AuthContext';
 import { useToast } from '../../components/Toast';
 import { regAPI } from '../../utils/registration';
-import * as push from '../../utils/push';
+import { push } from '../../utils/push';
 import { brand, radius, typography } from '../../theme/brandV2';
 
 const CODE_LEN = 4;

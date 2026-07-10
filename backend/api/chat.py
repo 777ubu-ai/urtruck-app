@@ -520,8 +520,12 @@ def get_messages(room_id: str, limit: int = 100, offset: int = 0, user=Depends(r
         if uid not in (room["participant_1"], room["participant_2"]):
             raise HTTPException(status_code=403, detail="Вы не участник этого чата")
 
+        # P3: tiebreak по id. created_at имеет посекундную точность (TEXT
+        # CURRENT_TIMESTAMP) — два сообщения в одну секунду могли переставиться
+        # местами. Автоинкрементный id даёт детерминированный порядок.
         rows = c.execute(
-            "SELECT * FROM chat_messages WHERE room_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            "SELECT * FROM chat_messages WHERE room_id = ? "
+            "ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?",
             (room_id, limit, offset),
         ).fetchall()
 
@@ -539,6 +543,9 @@ def get_messages(room_id: str, limit: int = 100, offset: int = 0, user=Depends(r
     for r in reversed(rows):
         m = dict(r)
         m["mine"] = (m.get("sender_id") == uid)
+        # Возвращаем client_msg_id, чтобы клиент сопоставлял optimistic-пузырь
+        # по устойчивому id, а не по тексту (иначе два одинаковых сообщения
+        # «ок»/«ок» схлопывались в одно на время между поллами).
         messages.append(m)
     return {"messages": messages, "room": dict(room)}
 

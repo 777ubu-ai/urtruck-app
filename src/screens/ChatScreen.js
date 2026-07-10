@@ -185,6 +185,9 @@ export default function ChatScreen({ navigation, route }) {
           text: m.text, isPhoto: !!m.photo_url, photoUri: m.photo_url,
           isVoice: !!m.is_voice, time: fmtMsgTime(m.created_at),
           is_read: !!m.is_read,
+          // P3/merge: серверный client_msg_id для точного сопоставления
+          // optimistic-пузыря (его локальный id === clientMsgId).
+          clientMsgId: m.client_msg_id || null,
         };
       });
       // PR-C2 (P0-4 disappearing messages): defensive merge.
@@ -212,11 +215,13 @@ export default function ChatScreen({ navigation, route }) {
         const localOnly = prev.filter(m => {
           if (!m._optimistic) return false;
           if (serverIds.has(m.id)) return false;
-          // Дедуп по тексту: если сервер вернул сообщение с тем же
-          // текстом и временем последних 5 минут — считаем что это
-          // наше acked, не сохраняем local дубликат.
+          // Сопоставление optimistic → server: сначала по client_msg_id
+          // (устойчиво; локальный id пузыря === clientMsgId), иначе фолбэк
+          // по тексту. Это чинит схлопывание двух одинаковых сообщений
+          // («ок»/«ок») в одно между поллами.
           const ackedByServer = mapped.some(srv =>
-            srv.from === 'me' && srv.text === m.text
+            (srv.clientMsgId && srv.clientMsgId === m.id) ||
+            (srv.from === 'me' && srv.text === m.text)
           );
           return !ackedByServer;
         });
@@ -652,7 +657,12 @@ export default function ChatScreen({ navigation, route }) {
         <View style={{ flex: 1 }}>
           {/* Stage DS-1: prettifyPartnerName подменяет guest_/d3/d4 на "Собеседник". */}
           <Text style={s.partnerName} numberOfLines={1} testID="chat-partner-name">{prettifyPartnerName(resolvedPartner?.name, resolvedPartner?.id, t)}</Text>
-          <Text style={[s.online, { color: v1Accent.main }]}>● {t('online')}</Text>
+          {/* Канон «не показывать выдуманные данные»: убран статичный «● online»
+              (presence не реализован). Вместо него — честная роль собеседника
+              (Водитель/Грузовладелец) или ничего для support/неизвестного. */}
+          {(resolvedPartner?.role === 'driver' || resolvedPartner?.role === 'client')
+            ? <Text style={[s.online, { color: '#A8A29E' }]}>{t(resolvedPartner.role)}</Text>
+            : null}
         </View>
       </View>
 
