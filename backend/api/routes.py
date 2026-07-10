@@ -165,24 +165,38 @@ def mentions(phone: str = None, plate: str = None, user=Depends(require_level(1)
 
 @router.post("/report/driver")
 def report_driver(req: BlacklistAddRequest, user=Depends(require_level(1))):
-    """Пользовательская жалоба на водителя."""
-    entry = blacklist_mgr.add_to_blacklist(
-        phone=req.phone, plate=req.plate, name=req.name,
-        reason=f"[USER REPORT by {user['id']}] {req.reason}",
-        source="user_report",
-        severity=req.severity or "medium",
-    )
+    """Пользовательская жалоба на водителя.
+
+    I2 (anti-abuse): раньше жалоба СРАЗУ писалась в активный blacklist
+    (source=user_report), а blacklist_check при регистрации блокирует по
+    совпадению телефона/номера. То есть любой залогиненный юзер мог заранее
+    «зачернить» телефон конкурента/жертвы и заблокировать ему регистрацию.
+    Теперь жалоба идёт ТОЛЬКО в модерационную очередь (alerts) — попадёт в
+    blacklist лишь после ручного решения модератора через /blacklist/add
+    (require_admin). Плюс rate-limit 5/час на пользователя.
+    """
+    from api.rate_limit import limit_report_create
+    limit_report_create(user["id"])
     db.add_alert(
         "user_report", "medium",
         req.phone or req.plate or "unknown",
-        f"Пользовательская жалоба: {req.reason}",
+        f"Жалоба от {user['id']}: {req.reason} "
+        f"(phone={req.phone or '-'}, plate={req.plate or '-'}, name={req.name or '-'})",
     )
-    return {"ok": True, "entry": entry}
+    return {"ok": True, "queued": True, "message": "Жалоба отправлена на модерацию"}
 
 
 @router.get("/verification/{user_id}/history")
 def verification_history(user_id: str, user=Depends(require_level(1))):
-    """История всех проверок водителя."""
+    """История всех проверок водителя.
+
+    I1 (IDOR): раньше любой залогиненный юзер мог прочитать историю
+    верификации/биометрии ЛЮБОГО водителя по id (в логах — результаты
+    liveness/face_match, score_impact). Теперь доступ только к своей истории
+    или для роли admin/support.
+    """
+    if user_id != user["id"] and user.get("role") not in ("admin", "support"):
+        raise HTTPException(status_code=403, detail="Доступ только к своей истории проверок")
     return {"logs": db.get_logs(user_id, limit=50)}
 
 

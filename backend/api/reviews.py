@@ -9,6 +9,8 @@ from typing import List, Optional
 
 from database import reviews_dal
 from api.verification_gate import require_level
+from api.rate_limit import limit_review_create
+from config import BETA_MODE
 
 reviews_router = APIRouter()
 
@@ -27,8 +29,25 @@ def create_review(body: ReviewIn, user=Depends(require_level(1))):
     """Оставить отзыв (требует phone-верификацию минимум)."""
     if user["id"] == body.target_id:
         raise HTTPException(status_code=400, detail="Нельзя оставить отзыв самому себе")
+
+    # I3 (anti-fraud): не чаще 10 отзывов в час на пользователя.
+    limit_review_create(user["id"])
+
+    # I3: отзыв разрешён только реальному контрагенту — между author и target
+    # должна быть НЕотменённая сделка. Раньше с trip_id=None любой мог оставить
+    # неограниченно отзывов на кого угодно и накрутить рейтинг. BETA_MODE
+    # пропускает проверку, чтобы QA/тестеры могли прогонять флоу.
+    if not BETA_MODE and not reviews_dal.has_deal_between(user["id"], body.target_id):
+        raise HTTPException(
+            status_code=403,
+            detail="Оставить отзыв можно только после совместной сделки",
+        )
+
     if body.trip_id and reviews_dal.has_already_reviewed(user["id"], body.trip_id):
         raise HTTPException(status_code=409, detail="Вы уже оставили отзыв по этому рейсу")
+    # Дедуп по паре, когда рейс не указан (trip_id=None) — иначе спам отзывами.
+    if not body.trip_id and reviews_dal.has_reviewed_target(user["id"], body.target_id):
+        raise HTTPException(status_code=409, detail="Вы уже оставили отзыв этому пользователю")
 
     rid = reviews_dal.add_review(
         trip_id=body.trip_id,
