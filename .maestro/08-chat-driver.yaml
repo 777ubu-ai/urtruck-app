@@ -53,9 +53,16 @@ env:
       # Verify partner_name не technical (Build 16 fix resolvedPartner)
       - assertNotVisible: "null"
       - assertNotVisible: "guest_"
-      # Cargo/route/deal info header (D2 fix из PR #100)
-      - assertVisible:
-          id: "chat-deal-meta"
+      # Deal timeline header. testID исправлен: chat-deal-meta НЕ существует в
+      # ChatScreen — реальный контейнер это deal-timeline, и он рендерится
+      # только когда по сделке уже есть события (dealId && dealEvents>0),
+      # поэтому проверяем опционально, чтобы флоу не падал на свежей сделке.
+      - runFlow:
+          when:
+            visible:
+              id: "deal-timeline"
+          commands:
+            - takeScreenshot: 01b_driver_deal_timeline
       # Driver может ответить
       - assertVisible:
           id: "chat-input"

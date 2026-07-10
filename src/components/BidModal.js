@@ -172,7 +172,7 @@ export default function BidModal({
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
       <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={onClose}>
-        <TouchableOpacity style={[s.sheet, { backgroundColor: theme.bg, borderColor: theme.border }]} activeOpacity={1} onPress={() => {}}>
+        <TouchableOpacity testID="bid-modal" style={[s.sheet, { backgroundColor: theme.bg, borderColor: theme.border }]} activeOpacity={1} onPress={() => {}}>
         <ScrollView
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -227,6 +227,7 @@ export default function BidModal({
           <View style={[s.inputWrap, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <Text style={[s.dollar, { color: theme.textMuted }]}>{curSym}</Text>
             <TextInput
+              testID="bid-amount-input"
               style={[s.input, { color: theme.text }]}
               value={bid}
               onChangeText={setBid}
@@ -237,6 +238,7 @@ export default function BidModal({
           </View>
 
           <TextInput
+            testID="bid-message-input"
             style={[s.messageInput, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border }]}
             value={message}
             onChangeText={setMessage}
@@ -248,6 +250,7 @@ export default function BidModal({
           {error ? <Text style={s.errorText}>{error}</Text> : null}
 
           <TouchableOpacity
+            testID="bid-submit"
             style={[s.submitBtn, { backgroundColor: accent }, (!bid || loading) && s.submitBtnDisabled]}
             onPress={handleSubmit}
             disabled={!bid || loading}
