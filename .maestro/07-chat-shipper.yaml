@@ -44,9 +44,9 @@ env:
       - assertNotVisible: "null"
       - assertNotVisible: "undefined"
       - assertNotVisible: "guest_"
-      # Translate button visible (Build 15 feature)
-      - assertVisible:
-          id: "chat-lang-btn"
+      # chat-lang-btn (кнопка языка в шапке) отключена флагом
+      # CHAT_LANG_PILL_ENABLED=false — перевод теперь инлайн «🌐 Перевести»
+      # в сообщении. Устаревший assertVisible убран (валил флоу зря).
       # Input field
       - assertVisible:
           id: "chat-input"
