@@ -21,6 +21,15 @@ _beta_default = "false" if URTRUCK_ENV == "production" else "true"
 BETA_MODE = os.getenv("BETA_MODE", _beta_default).lower() in ("1", "true", "yes")
 BETA_OTP_CODE = os.getenv("BETA_OTP_CODE", "0000")
 
+# App Store / Google Play review — демо-вход для ревьюера (Guideline 2.1a).
+# Фиксированный email + код принимаются ТОЛЬКО для этого одного адреса —
+# это НЕ глобальный BETA_MODE (тот отключён на проде). Даёт ревьюеру доступ ко
+# всем функциям без реального OTP. Аккаунт обычный (не админ, чужие данные
+# по-прежнему защищены owner-check/IDOR-фиксами). Значения можно переопределить
+# в .env; код 4-значный, чтобы влезал в OTP-поле приложения (не 0000).
+REVIEWER_DEMO_EMAIL = os.getenv("REVIEWER_DEMO_EMAIL", "appreview@urtruck.kz").strip().lower()
+REVIEWER_DEMO_CODE = os.getenv("REVIEWER_DEMO_CODE", "1975")
+
 # Database
 # На сервере DB лежит в /home/ubuntu/urtruck/backend/database/security.db
 DB_PATH = os.getenv("DB_PATH", "/home/ubuntu/urtruck/backend/database/security.db")

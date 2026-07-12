@@ -19,7 +19,7 @@ from ocr.document_reader import extract_passport_data
 from biometrics.liveness import check_liveness, face_match
 from scoring.engine import calculate_score
 from database import db
-from config import BETA_MODE, BETA_OTP_CODE
+from config import BETA_MODE, BETA_OTP_CODE, REVIEWER_DEMO_EMAIL, REVIEWER_DEMO_CODE
 import logging
 
 reg_router = APIRouter()
@@ -244,6 +244,11 @@ def email_send(req: EmailSendRequest, request: Request = None):
         raise HTTPException(status_code=400, detail="Неверный формат e-mail")
     if not bool(req.consent):
         raise HTTPException(status_code=400, detail="Для регистрации необходимо принять условия сервиса.")
+    # App Review демо-вход: для ревьюерского адреса реальное письмо не шлём —
+    # код фиксированный (REVIEWER_DEMO_CODE), ревьюер вводит его сразу. Это
+    # гарантирует, что экран ввода кода откроется независимо от состояния SMTP.
+    if REVIEWER_DEMO_EMAIL and email == REVIEWER_DEMO_EMAIL:
+        return {"sent": True, "channel": "email", "mock": False, "code": None, "error": None}
     limit_otp_send(email)
     code = generate_code()
     reg_dal.save_code(email, code)
@@ -265,14 +270,36 @@ def email_verify(req: EmailVerifyRequest, request: Request = None):
     if not _valid_email(email):
         raise HTTPException(status_code=400, detail="Неверный e-mail")
     limit_otp_verify(email)
-    # BETA bypass — как в wa_verify (для тестеров/ревью).
+    # Ревьюерский демо-вход (Guideline 2.1a): фиксированный код принимается
+    # ТОЛЬКО для REVIEWER_DEMO_EMAIL. Не зависит от BETA_MODE (тот на проде off).
+    is_reviewer = bool(REVIEWER_DEMO_EMAIL) and email == REVIEWER_DEMO_EMAIL and req.code.strip() == REVIEWER_DEMO_CODE
+    # BETA bypass — для тестеров, когда включён BETA_MODE (на проде выключен).
     is_beta_login = BETA_MODE and req.code.strip() == BETA_OTP_CODE
-    if not is_beta_login:
+    if not (is_beta_login or is_reviewer):
         if not reg_dal.check_code(email, req.code):
             raise HTTPException(status_code=400, detail="Неверный или истёкший код")
         reg_dal.delete_code(email)
     guest_id = reg_dal.get_driver_by_token(req.guest_token) if req.guest_token else None
     driver = reg_dal.get_or_create_driver(email, upgrade_guest_id=guest_id)
+    # Демо-аккаунт для ревью (или beta) — провижн полного доступа, чтобы
+    # ревьюер видел ВСЕ функции (лента, ставки, чат, очередь) без прохождения
+    # верификации документов.
+    if is_reviewer or is_beta_login:
+        updates = {}
+        if not driver.get("full_name"):
+            updates["full_name"] = "App Review Demo" if is_reviewer else "Тестер"
+        if (driver.get("verification_level") or 0) < 2:
+            updates["verification_level"] = 2
+        if driver.get("role") in (None, "guest"):
+            updates["role"] = "driver"
+        if not driver.get("security_score"):
+            updates["security_score"] = 75
+            updates["security_color"] = "green"
+        if not driver.get("status") or driver.get("status") == "pending":
+            updates["status"] = "approved"
+        if updates:
+            reg_dal.update_driver(driver["id"], updates)
+            driver = reg_dal.get_driver(driver["id"]) or driver
     token = reg_dal.create_session(driver["id"])
     return {
         "token": token,
