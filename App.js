@@ -1,9 +1,9 @@
 import React, { useEffect, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Platform, AppState } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { ThemeProvider } from './src/utils/ThemeContext';
+import { ThemeProvider, useTheme } from './src/utils/ThemeContext';
 import { AuthProvider, useAuth } from './src/utils/AuthContext';
 import { ToastProvider } from './src/components/Toast';
 import OfflineBanner from './src/components/OfflineBanner';
@@ -82,6 +82,14 @@ function AppInner() {
   const navReadyRef = useRef(false);
   const pendingUrlRef = useRef(null);
   const { session, hasToken } = useAuth();
+  const { theme, isDark } = useTheme();
+
+  // Фон САМОГО навигатора (не только сцены). Без theme у NavigationContainer
+  // берётся DefaultTheme с БЕЛЫМ фоном — и он просвечивал снизу, под прозрачным
+  // плавающим таб-баром (белая полоса в зоне home-indicator на тёмной теме).
+  // Привязываем фон навигатора к текущей теме → полоса совпадает с фоном экрана.
+  const base = isDark ? DarkTheme : DefaultTheme;
+  const navTheme = { ...base, colors: { ...base.colors, background: theme.bg } };
 
   // Авторизован ли для «глубоких» экранов (Chat/ChatsList/CargoDetail…) —
   // они существуют только в полном стеке (session + роль). До этого маршрут
@@ -165,6 +173,7 @@ function AppInner() {
         <OfflineBanner />
         <NavigationContainer
           ref={navRef}
+          theme={navTheme}
           onReady={() => { navReadyRef.current = true; if (pendingUrlRef.current) routeFromUrl(pendingUrlRef.current); }}
         >
           <StatusBar style="light" />
