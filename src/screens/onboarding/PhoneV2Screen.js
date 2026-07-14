@@ -49,9 +49,10 @@ const formatLocalPhone = (digits) => {
 
 export default function PhoneV2Screen({ navigation, route }) {
   const { t } = useI18n();
-  // 'phone' | 'email' — email добавлен как отдельный канал входа
-  // (Китай + резерв), телефонный flow остаётся дефолтным.
-  const [mode, setMode] = useState('phone');
+  // 'phone' | 'email' — email сделан каналом входа ПО УМОЛЧАНИЮ: работает
+  // глобально (вкл. Китай) и не зависит от доставки SMS, которая надёжна
+  // только для номеров КЗ. Телефон остаётся доступен вкладкой (и как контакт).
+  const [mode, setMode] = useState('email');
   const [country, setCountry] = useState(DEFAULT_COUNTRY);
   const [localDigits, setLocalDigits] = useState('');
   const [email, setEmail] = useState('');
@@ -147,18 +148,10 @@ export default function PhoneV2Screen({ navigation, route }) {
           <Text style={s.title}>{t('phone_v2_title')}</Text>
           <Text style={s.subtitle}>{t('phone_v2_subtitle')}</Text>
 
-          {/* Переключатель канала входа: Телефон / Email */}
+          {/* Переключатель канала входа: Email (по умолчанию) / Телефон.
+              Email слева и активен по умолчанию — основной канал для всех,
+              включая иностранцев без казахстанского номера. */}
           <View style={s.segment} testID="auth-channel-segment">
-            <TouchableOpacity
-              onPress={() => switchMode('phone')}
-              activeOpacity={0.8}
-              style={[s.segmentBtn, mode === 'phone' && s.segmentBtnActive]}
-              testID="auth-tab-phone"
-            >
-              <Text style={[s.segmentText, mode === 'phone' && s.segmentTextActive]}>
-                {t('auth_tab_phone')}
-              </Text>
-            </TouchableOpacity>
             <TouchableOpacity
               onPress={() => switchMode('email')}
               activeOpacity={0.8}
@@ -167,6 +160,16 @@ export default function PhoneV2Screen({ navigation, route }) {
             >
               <Text style={[s.segmentText, mode === 'email' && s.segmentTextActive]}>
                 {t('auth_tab_email')}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => switchMode('phone')}
+              activeOpacity={0.8}
+              style={[s.segmentBtn, mode === 'phone' && s.segmentBtnActive]}
+              testID="auth-tab-phone"
+            >
+              <Text style={[s.segmentText, mode === 'phone' && s.segmentTextActive]}>
+                {t('auth_tab_phone')}
               </Text>
             </TouchableOpacity>
           </View>
