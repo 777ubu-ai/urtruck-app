@@ -769,6 +769,17 @@ def _money(amount, currency):
     return f"{amount} {sym}" if cur == "UZS" else f"{sym}{amount}"
 
 
+def _bid_currency(c, bid) -> str:
+    """Валюта родителя ставки (груз/рейс) — чтобы пуши/уведомления показывали
+    сумму в валюте листинга, а не хардкодным '$'. Fallback USD."""
+    r = None
+    if bid.get("cargo_id"):
+        r = c.execute("SELECT currency FROM cargos WHERE id = ?", (bid["cargo_id"],)).fetchone()
+    elif bid.get("trip_id"):
+        r = c.execute("SELECT currency FROM trips WHERE id = ?", (bid["trip_id"],)).fetchone()
+    return ((dict(r).get("currency") if r else None) or "USD")
+
+
 @mp_router.post("/bids")
 def create_bid(body: BidIn, user=Depends(require_level(1))):
     # cargo_id или trip_id — хотя бы один (для серверных грузов)
@@ -968,9 +979,15 @@ def list_bids(
     if not show_demo and not is_owner:
         bids = [
             b for b in bids
-            if not (b.get("bidder_id") or "").lower().startswith(DIRTY_BIDDER_PREFIXES)
-            and not _is_dirty_text(b.get("bidder_name"), b.get("bidder_phone"))
-            and b.get("status") not in ("cancelled", "rejected")
+            # Принятую (accepted) ставку показываем ВСЕГДА, даже если биддер —
+            # guest_/agent_ (иначе на принятом грузе CargoDetail видел «0
+            # предложений / Будьте первым», хотя сделка уже создана).
+            if b.get("status") == "accepted"
+            or (
+                not (b.get("bidder_id") or "").lower().startswith(DIRTY_BIDDER_PREFIXES)
+                and not _is_dirty_text(b.get("bidder_name"), b.get("bidder_phone"))
+                and b.get("status") not in ("cancelled", "rejected")
+            )
         ]
     elif is_owner and not show_demo:
         # Owner gets the full active-bid set, including dirty/QA bidders.
@@ -1503,8 +1520,10 @@ def counter_bid(bid_id: str, body: BidCounterIn, user=Depends(require_level(1)))
         counter_url = f"/trips/{bid['trip_id']}?bid={bid_id}"
     else:
         counter_url = "/"
-    title = f"🔁 Контр-оффер: ${body.amount}"
-    text = f"Владелец груза предложил ${body.amount} вместо ${bid['amount']}"
+    with get_conn() as c2:
+        cur = _bid_currency(c2, bid)
+    title = f"🔁 Контр-оффер: {_money(body.amount, cur)}"
+    text = f"Владелец груза предложил {_money(body.amount, cur)} вместо {_money(bid['amount'], cur)}"
     try:
         send_to_user(bid["bidder_id"], title, text, url=counter_url)
     except Exception:
@@ -1544,14 +1563,28 @@ def accept_counter(bid_id: str, user=Depends(require_level(1))):
     # bidder это водитель; trip-bid → bidder это грузовладелец. Иначе
     # владельцу рейса приходило неверное «Водитель согласился».
     agreed_word = "Водитель" if bid.get("cargo_id") else "Грузовладелец"
-    try:
-        send_to_user(owner_id, "✅ Контр-оффер принят", f"{agreed_word} согласился на ${counter}", url="/")
-    except Exception:
-        pass
-    try:
-        send_to_user(bid["bidder_id"], "✅ Сделка создана", f"Цена: ${counter}", url="/")
-    except Exception:
-        pass
+    deal_url = f"/deals/{result['deal_id']}"
+    with get_conn() as c2:
+        cur = _bid_currency(c2, bid)
+    money = _money(counter, cur)
+    from api.notifications import create_notification
+    # 🔴 fix: раньше accept_counter слал ТОЛЬКО push (ненадёжный) и НЕ создавал
+    # in-app уведомление → при недоставленном пуше сторона о сделке не узнавала
+    # («наверх приходит, вниз нет»). Теперь и push, и надёжный колокольчик обеим
+    # сторонам + deep-link на /deals/{id} + сумма в валюте листинга.
+    recipients = (
+        (owner_id, "✅ Контр-оффер принят", f"{agreed_word} согласился на {money}. Сделка создана."),
+        (bid["bidder_id"], "✅ Сделка создана", f"Цена: {money}"),
+    )
+    for uid_, title_, text_ in recipients:
+        try:
+            send_to_user(uid_, title_, text_, url=deal_url)
+        except Exception:
+            pass
+        try:
+            create_notification(uid_, "deal_created", title_, text_, "✅", url=deal_url)
+        except Exception:
+            pass
 
     return {"ok": True, "deal_id": result["deal_id"], "chat_room_id": result["chat_room_id"], "amount": counter}
 
@@ -1686,12 +1719,31 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
             c.execute("UPDATE cargos SET status = 'completed' WHERE id = ?", (deal["cargo_id"],))
         elif new_status == "cancelled" and deal["cargo_id"]:
             c.execute("UPDATE cargos SET status = 'active', taken_by = NULL WHERE id = ?", (deal["cargo_id"],))
-    # Push другой стороне
+    # 🔴 fix: раньше смена статуса сделки (Начать перевозку / Я доехал / отмена)
+    # слала ТОЛЬКО push и не создавала in-app уведомление → ведение сделки не
+    # оставляло следа в колокольчике. Теперь и push, и колокольчик другой стороне,
+    # сумма в валюте груза/рейса, deep-link на /deals/{id}.
     try:
         other_id = deal["driver_id"] if uid == deal["shipper_id"] else deal["shipper_id"]
         labels = {"in_progress": "🚛 Рейс начался", "delivered": "✅ Доставлен", "cancelled": "❌ Отменено"}
         if new_status in labels:
-            send_to_user(other_id, labels[new_status], f"{deal['from_city']}→{deal['to_city']} · ${deal['amount']}", url="/")
+            cur = "USD"
+            with get_conn() as c2:
+                src = ("cargos", deal["cargo_id"]) if deal.get("cargo_id") else (("trips", deal["trip_id"]) if deal.get("trip_id") else None)
+                if src:
+                    r = c2.execute(f"SELECT currency FROM {src[0]} WHERE id = ?", (src[1],)).fetchone()
+                    cur = ((dict(r).get("currency") if r else None) or "USD")
+            body_txt = f"{deal['from_city']}→{deal['to_city']} · {_money(deal['amount'], cur)}"
+            deal_url = f"/deals/{deal_id}"
+            try:
+                send_to_user(other_id, labels[new_status], body_txt, url=deal_url)
+            except Exception:
+                pass
+            try:
+                from api.notifications import create_notification
+                create_notification(other_id, "deal_status", labels[new_status], body_txt, "🚛", url=deal_url)
+            except Exception:
+                pass
     except Exception:
         pass
     return {"ok": True, "status": new_status}

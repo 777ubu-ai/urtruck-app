@@ -317,6 +317,11 @@ export default function CargoDetail({ navigation, route }) {
   };
 
   const view = cargoDisplay(c, t);
+  // Если по грузу есть ПРИНЯТАЯ ставка — в блоке цены показываем СУММУ СДЕЛКИ,
+  // а не цену объявления. Раньше заголовок висел «$12 000» (листинг), хотя
+  // сделка принята за $12 100 — на одном экране две разные цены путали.
+  const acceptedBid = bids.find(b => b.status === 'accepted');
+  const priceDisplay = acceptedBid ? formatPrice(acceptedBid.amount, c.currency) : view.price;
   const safePhotos = (c.photos || []).filter(p => typeof p === 'string' && !p.startsWith('data:') && p.length < 1000);
   const dash = t('not_specified');
 
@@ -387,8 +392,8 @@ export default function CargoDetail({ navigation, route }) {
         <GlassCard accent={v1Accent.main}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <View>
-              <Text style={[s.priceLabelV1, { color: v1Accent.main }]}>💰 {t('price')}</Text>
-              <Text style={[s.priceValueV1, { color: v1Accent.main }]} numberOfLines={1}>{view.price}</Text>
+              <Text style={[s.priceLabelV1, { color: v1Accent.main }]}>💰 {acceptedBid ? t('deal_price') : t('price')}</Text>
+              <Text style={[s.priceValueV1, { color: v1Accent.main }]} numberOfLines={1}>{priceDisplay}</Text>
             </View>
             {/* Stage 9: previously a "Предложить цену" button sat right
                 here next to the price block AND on the sticky bar at
