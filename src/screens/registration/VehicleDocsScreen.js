@@ -42,6 +42,13 @@ const maskDate = (v) => {
   return parts.join('.');
 };
 
+// OCR (license_reader) отдаёт дату в ISO 'YYYY-MM-DD'. Приводим к ДД.ММ.ГГГГ
+// ПЕРЕД maskDate — иначе '2027-12-28' читается как день-месяц-год → «20.27.1228».
+const ocrDateToMask = (v) => {
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v || '').trim());
+  return iso ? maskDate(`${iso[3]}${iso[2]}${iso[1]}`) : maskDate(v);
+};
+
 // Парс ДД.ММ.ГГГГ → Date | null (валидная календарная дата).
 const parseDate = (v) => {
   const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(String(v || '').trim());
@@ -137,8 +144,8 @@ export default function VehicleDocsScreen({ navigation }) {
       const res = await regAPI.uploadLicense(uri);
       setLicense({ uri, status: 'done', ocr: res || null });
       // Префилл редактируемых дат из OCR (если распознаны).
-      if (res?.issue_date && !licenseIssue) setLicenseIssue(maskDate(res.issue_date));
-      if (res?.expiry_date && !licenseExpiry) setLicenseExpiry(maskDate(res.expiry_date));
+      if (res?.issue_date && !licenseIssue) setLicenseIssue(ocrDateToMask(res.issue_date));
+      if (res?.expiry_date && !licenseExpiry) setLicenseExpiry(ocrDateToMask(res.expiry_date));
       const cats = res?.categories || [];
       await persistDraft({
         license_category: cats.length ? cats.join(',') : null,

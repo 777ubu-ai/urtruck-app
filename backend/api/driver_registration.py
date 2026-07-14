@@ -138,24 +138,52 @@ def save_draft(body: DraftBody, driver_id: str = Depends(get_current_driver)):
 
 @driver_reg_router.post("/submit")
 def submit_registration(driver_id: str = Depends(get_current_driver)):
-    """Отправка заявки на проверку: стартовый скоринг + status=pending.
-    Красный балл (<40) → manual_review для модератора."""
+    """Отправка заявки.
+
+    Модель (решение владельца): пока нет штатного модератора — АВТО-одобрение,
+    чтобы водитель начал работать сразу, НО с флагом manual_review_required=1,
+    чтобы админ позже просмотрел документы и при желании отозвал доступ.
+    Чёрный список — жёсткий гейт: заблокированного не пускаем даже авто.
+    Раньше здесь ставился status='pending' и заявка висела бесконечно, т.к.
+    штатного процесса одобрения нет."""
     driver = reg_dal.get_driver(driver_id)
     if not driver:
         raise HTTPException(status_code=404, detail="Водитель не найден")
 
     scoring = compute_start_score(driver)
-    status = "manual_review" if scoring["color"] == "red" else "pending"
+
+    # Blacklist-гейт: даже при авто-одобрении не пускаем тех, кто в ЧС
+    # (по телефону / госномеру / ФИО). Это реальная проверка (SQL к blacklist).
+    from blacklist import manager as blacklist_mgr
+    hits = blacklist_mgr.check_blacklist(
+        phone=driver.get("phone"),
+        plate=driver.get("vehicle_plate"),
+        name=driver.get("full_name"),
+    )
+    if hits:
+        reg_dal.update_driver(driver_id, {
+            "security_score": scoring["score"],
+            "security_color": scoring["color"],
+            "status": "rejected",
+            "role": "driver",
+            "submitted_at": datetime.utcnow().isoformat(),
+            "manual_review_required": 1,
+        })
+        return {"ok": False, "status": "rejected", "reason": "blacklist", "scoring": scoring}
+
+    # Авто-одобрение + флаг «проверить вручную позже».
     reg_dal.update_driver(driver_id, {
         "security_score": scoring["score"],
         "security_color": scoring["color"],
-        "status": status,
+        "status": "approved",
+        "verification_level": 3,
         "role": "driver",
         "submitted_at": datetime.utcnow().isoformat(),
-        "manual_review_required": 1 if scoring["color"] == "red" else 0,
+        "manual_review_required": 1,
     })
     return {
         "ok": True,
-        "status": status,
+        "status": "approved",
+        "manual_review": True,
         "scoring": scoring,
     }
