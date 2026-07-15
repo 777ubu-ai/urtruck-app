@@ -498,11 +498,35 @@ async def upload_license_selfie(
 ):
     """Селфи с водительскими правами в руках — антифрод-артефакт для модерации.
     Сохраняем файл в storage, в БД пишем ТОЛЬКО ключ/URL (не raw base64).
-    Liveness/face здесь НЕ проверяем (это не биометрия-гейт). raw/ИИН не
-    логируем; возвращаем публичный ключ файла (не приватный signed URL)."""
+    №2: раньше принимался ЛЮБОЙ upload (даже фото самой лицензии без лица).
+    Теперь проверяем, что в кадре есть ЛИЦО (check_liveness). На проде биометрия
+    реальная (face_recognition). Отказ — только когда лицо не обнаружено; при
+    инфраструктурной ошибке пропускаем (fail-open, не блокируем легитимных)."""
     data = await file.read()
     if not data:
         raise HTTPException(status_code=400, detail="Пустой файл")
+    # Антифрод-гейт: на селфи с правами должно быть лицо.
+    try:
+        import tempfile
+        from biometrics.liveness import check_liveness
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
+            tmp.write(data)
+            tmp_path = tmp.name
+        live = check_liveness(tmp_path) or {}
+        try:
+            Path(tmp_path).unlink(missing_ok=True)
+        except Exception:
+            pass
+        reason = (live.get("reason") or "").lower()
+        if "лицо не обнаружено" in reason or "лицо не найдено" in reason:
+            raise HTTPException(
+                status_code=400,
+                detail="На фото не видно лица. Сделайте селфи, держа права рядом с лицом.",
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        pass  # fail-open: инфра-ошибка биометрии не должна блокировать шаг
     url = storage.save_image(data, "license_selfies")
     reg_dal.update_driver(driver_id, {"license_selfie_url": url})
     return {"license_selfie_key": url}

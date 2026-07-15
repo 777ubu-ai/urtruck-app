@@ -30,7 +30,10 @@ export default function PhotoGuide({ source, testID, height = 240 }) {
 
 const s = StyleSheet.create({
   wrap: { marginBottom: 12 },
-  thumbWrap: { width: '100%', borderRadius: 12, overflow: 'hidden', backgroundColor: 'rgba(0,0,0,0.04)' },
+  // №13: фон был серым (rgba 0.04) — при resizeMode:contain у узкого образца
+  // по бокам виднелись серые «поля» (некрасиво). Прозрачный фон → поля
+  // сливаются с экраном, рамки-боксов больше нет.
+  thumbWrap: { width: '100%', borderRadius: 12, overflow: 'hidden', backgroundColor: 'transparent' },
   thumb: { width: '100%', height: '100%' },
   zoomBadge: {
     position: 'absolute', right: 8, bottom: 8,
