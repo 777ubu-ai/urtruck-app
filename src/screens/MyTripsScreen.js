@@ -18,6 +18,8 @@ import SegmentTabs from '../components/ui/v1/SegmentTabs';
 import StatsRow from '../components/ui/v1/StatsRow';
 import BellBadge from '../components/ui/v1/BellBadge';
 import { useUnreadNotifications } from '../utils/useUnreadNotifications';
+import { notificationsAPI } from '../utils/notificationsAPI';
+import { notifyNotifRead } from '../utils/unreadEvents';
 import { useMountedRef } from '../hooks/useMountedRef';
 import { useDealLocationBroadcast } from '../hooks/useDealLocationBroadcast';
 
@@ -153,6 +155,21 @@ export default function MyTripsScreen({ navigation, route }) {
     })();
     return () => { alive = false; };
   }, [isDriver]);
+
+  // Вариант Б: при открытии «Рейсы» помечаем события сделок прочитанными и
+  // мгновенно гасим бейдж на вкладке (notifyNotifRead → useUnreadNotifications
+  // перечитывает счётчик). Так «денежный» сигнал живёт внизу под пальцем, а
+  // когда водитель зашёл и посмотрел — точка сразу исчезает. Колокол-история
+  // наверху не трогается (readAll просто помечает прочитанным, не удаляет).
+  useEffect(() => {
+    const markRead = () => {
+      notificationsAPI.readAll().catch(() => {});
+      notifyNotifRead();
+    };
+    markRead();
+    const unsub = navigation.addListener('focus', markRead);
+    return unsub;
+  }, [navigation]);
 
   const onPublishRoute = () => {
     if (verState === 'approved') navigation.navigate('CreateTrip', { role });

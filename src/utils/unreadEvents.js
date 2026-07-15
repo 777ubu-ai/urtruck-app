@@ -24,3 +24,20 @@ export function notifyChatRead() {
     try { cb(); } catch {}
   }
 }
+
+// Параллельная шина для УВЕДОМЛЕНИЙ (колокол / бейдж «Рейсы», Вариант Б).
+// MyWork при фокусе помечает события сделок прочитанными и зовёт
+// notifyNotifRead() → useUnreadNotifications мгновенно перечитывает счётчик,
+// и бейдж на «Рейсы» гаснет сразу (а не через 12-сек polling).
+const notifListeners = new Set();
+
+export function subscribeNotifRead(cb) {
+  notifListeners.add(cb);
+  return () => notifListeners.delete(cb);
+}
+
+export function notifyNotifRead() {
+  for (const cb of notifListeners) {
+    try { cb(); } catch {}
+  }
+}

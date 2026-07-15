@@ -219,9 +219,19 @@ export default function BottomNav({ state, navigation }) {
           const iconName = iconKey ? (isDriver ? iconKey.driver : iconKey.client) : 'circle';
           const label = labelOf(route.name);
           const iconColor = isFocused ? accent.main : inactiveColor;
-          // Бейдж непрочитанного на табе «Чат» (§2.2.4 — критичный индикатор биржи).
-          const showChatBadge = route.name === 'Chats' && chatUnread > 0;
-          const badgeLabel = chatUnread > 9 ? '9+' : String(chatUnread);
+          // Бейджи непрочитанного (Вариант Б):
+          //  • «Чаты» = непрочитанные сообщения (chatUnread);
+          //  • «Рейсы»/MyWork = непрочитанные СОБЫТИЯ СДЕЛОК из колокола
+          //    (notifUnread — ставки/встречные/сделки/статусы). Денежный сигнал
+          //    теперь под пальцем, внизу, а не только в колоколе вверху.
+          // Колокол наверху остаётся как «история» — его не трогаем.
+          const tabBadgeCount =
+            route.name === 'Chats' ? chatUnread
+            : route.name === 'MyWork' ? notifUnread
+            : 0;
+          const showBadge = tabBadgeCount > 0;
+          const badgeLabel = tabBadgeCount > 9 ? '9+' : String(tabBadgeCount);
+          const badgeTestID = route.name === 'Chats' ? 'bottom-nav-chats-badge' : 'bottom-nav-mywork-badge';
 
           return (
             <TouchableOpacity
@@ -246,10 +256,10 @@ export default function BottomNav({ state, navigation }) {
                 ]}
               >
                 <Feather name={iconName} size={22} color={iconColor} />
-                {showChatBadge ? (
+                {showBadge ? (
                   <View
                     style={[s.iconBadge, { backgroundColor: colors.error, borderColor: barBg }]}
-                    testID="bottom-nav-chats-badge"
+                    testID={badgeTestID}
                   >
                     <Text style={s.iconBadgeText}>{badgeLabel}</Text>
                   </View>
