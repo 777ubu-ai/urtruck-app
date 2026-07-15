@@ -14,6 +14,7 @@ from fastapi.responses import HTMLResponse, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from database import db
+from services import file_signing
 
 admin_router = APIRouter()
 security = HTTPBasic()
@@ -351,7 +352,17 @@ def data_pending(q: str = "", status_filter: str = "", user: str = Depends(check
             ORDER BY updated_at DESC
             LIMIT 200
         """, params).fetchall()
-    return {"pending": [dict(r) for r in rows]}
+    # Документы отдаём админу (Basic Auth) подписанными ссылками — публичного
+    # доступа к storage больше нет. В БД сырой путь, подпись только на выходе.
+    _DOC_URL_FIELDS = ("selfie_url", "license_url", "passport_url", "vehicle_photo_url")
+    pending = []
+    for r in rows:
+        d = dict(r)
+        for f in _DOC_URL_FIELDS:
+            if d.get(f):
+                d[f] = file_signing.sign(d[f])
+        pending.append(d)
+    return {"pending": pending}
 
 
 @admin_router.get("/export/drivers.csv")

@@ -11,6 +11,7 @@ from typing import Optional
 
 from database.db import get_conn, new_id
 from api.verification_gate import require_level
+from services import file_signing
 from api.push import send_to_user
 
 chat_router = APIRouter()
@@ -543,6 +544,10 @@ def get_messages(room_id: str, limit: int = 100, offset: int = 0, user=Depends(r
     for r in reversed(rows):
         m = dict(r)
         m["mine"] = (m.get("sender_id") == uid)
+        # Вложение чата отдаём участнику подписанной ссылкой (?exp&sig) —
+        # storage больше не публичный. Проверка участия — выше (403 не-участнику).
+        if m.get("photo_url"):
+            m["photo_url"] = file_signing.sign(m["photo_url"])
         # Возвращаем client_msg_id, чтобы клиент сопоставлял optimistic-пузырь
         # по устойчивому id, а не по тексту (иначе два одинаковых сообщения
         # «ок»/«ок» схлопывались в одно на время между поллами).

@@ -33,8 +33,11 @@ if _sentry_dsn:
     except Exception as e:
         print(f"[sentry] init failed (continuing without): {e}", flush=True)
 
-from fastapi import FastAPI
+from typing import Optional
+
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest
@@ -139,10 +142,31 @@ app.include_router(qa_router, prefix="/api/v1/qa")
 app.include_router(metrics_router, prefix="")
 app.include_router(admin_router, prefix="/admin")
 
-# Раздача локального storage (только если provider=local)
+# Приватная раздача локального storage (только provider=local).
+# Публичный StaticFiles УБРАН: документы водителя и вложения больше не
+# отдаются анонимно. Файл выдаётся ТОЛЬКО по валидной подписанной ссылке
+# (?exp=&sig=, см. services/file_signing.py) — иначе 403. Подпись ставится
+# на выходе для владельца (/me) и админа (Basic Auth); в БД сырой путь.
 if storage_service.PROVIDER == "local":
     storage_service.LOCAL_ROOT.mkdir(parents=True, exist_ok=True)
-    app.mount("/storage", StaticFiles(directory=str(storage_service.LOCAL_ROOT)), name="storage")
+
+    @app.get("/storage/{path:path}")
+    def serve_signed_storage(path: str, exp: Optional[str] = None, sig: Optional[str] = None):
+        from services import file_signing
+        # Path-traversal: резолвим и требуем, чтобы путь остался внутри LOCAL_ROOT.
+        root = storage_service.LOCAL_ROOT.resolve()
+        try:
+            full = (root / path).resolve()
+        except (OSError, ValueError, RuntimeError):
+            raise HTTPException(status_code=403, detail="Forbidden")
+        if full != root and root not in full.parents:
+            raise HTTPException(status_code=403, detail="Forbidden")
+        # Подпись обязательна и должна быть валидной (HMAC + не истекла).
+        if not file_signing.verify(path, exp, sig):
+            raise HTTPException(status_code=403, detail="Invalid or missing signature")
+        if not full.is_file():
+            raise HTTPException(status_code=404, detail="Not found")
+        return FileResponse(str(full))
 
 
 @app.on_event("startup")

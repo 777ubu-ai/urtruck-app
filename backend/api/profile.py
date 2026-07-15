@@ -10,6 +10,7 @@ from typing import Optional, List
 
 from database import registration_dal as reg_dal
 from api.verification_gate import require_level
+from services import file_signing
 
 profile_router = APIRouter()
 
@@ -97,9 +98,11 @@ def get_profile(user=Depends(require_level(1))):
         "china_experience_years": d.get("china_experience_years"),
         "favorite_borders": _parse_borders(d.get("favorite_borders")),
         "emergency_contact": d.get("emergency_contact"),
-        "passport_intl_url": d.get("passport_intl_url"),
-        "tir_book_url": d.get("tir_book_url"),
-        "cmr_insurance_url": d.get("cmr_insurance_url"),
+        # Документы отдаём владельцу подписанной ссылкой (?exp&sig) — публичного
+        # доступа к storage больше нет. В БД хранится сырой путь, подпись только тут.
+        "passport_intl_url": file_signing.sign(d.get("passport_intl_url")),
+        "tir_book_url": file_signing.sign(d.get("tir_book_url")),
+        "cmr_insurance_url": file_signing.sign(d.get("cmr_insurance_url")),
     }
 
 
