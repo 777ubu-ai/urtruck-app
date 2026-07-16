@@ -670,6 +670,10 @@ export default function MyTripsScreen({ navigation, route }) {
               style={[s.acceptBtn, { flex: 1, minWidth: 110 }, busy && { opacity: 0.5 }]}
               disabled={busy}
               onPress={async () => {
+                // Принятие ставки создаёт сделку — подтверждаем, чтобы
+                // случайный тап не заключил сделку на десятки тысяч.
+                const sum = formatPrice(item.amount, currencyFor(item), t);
+                if (!(await confirmAction(t('accept_bid_confirm').replace('{sum}', sum)))) return;
                 setBusyBidId(item.id);
                 const r = await marketAPI.acceptBid(item.id);
                 setBusyBidId(null);

@@ -1030,6 +1030,29 @@ def list_bids(
     if not is_owner:
         for b in bids:
             b.pop("bidder_phone", None)
+    # Обогащаем ставки РЕАЛЬНЫМИ данными оферента (статус верификации +
+    # рейтинг + число отзывов), чтобы клиент не принимал ставку вслепую
+    # (раньше на карточке был rating:0 хардкод). Сбой не ломает список.
+    try:
+        from database import reviews_dal
+        with get_conn() as c3:
+            for b in bids:
+                did = b.get("bidder_id")
+                drow = c3.execute(
+                    "SELECT status FROM drivers_registration WHERE id = ?",
+                    (did,),
+                ).fetchone() if did else None
+                b["bidder_verified"] = bool(drow and drow["status"] == "approved")
+        for b in bids:
+            did = b.get("bidder_id")
+            summary = reviews_dal.get_rating_summary(did) if did else {}
+            b["bidder_rating"] = summary.get("average", 0) or 0
+            b["bidder_reviews_count"] = summary.get("count", 0) or 0
+    except Exception:
+        for b in bids:
+            b.setdefault("bidder_verified", False)
+            b.setdefault("bidder_rating", 0)
+            b.setdefault("bidder_reviews_count", 0)
     return {"bids": bids}
 
 

@@ -176,7 +176,13 @@ export default function CargoDetail({ navigation, route }) {
         const mapped = (d.bids || []).map(b => ({
           id: b.id, bidderId: b.bidder_id,
           name: b.bidder_name || b.bidder_phone || t('anonymous'),
-          co: 'KZ', rating: 0, amount: b.amount,
+          // Реальные данные оферента с бэка (list_bids обогащает) —
+          // клиент видит рейтинг/верификацию, а не принимает вслепую.
+          co: 'KZ',
+          rating: b.bidder_rating || 0,
+          reviews: b.bidder_reviews_count || 0,
+          verified: !!b.bidder_verified,
+          amount: b.amount,
           time: b.created_at?.slice(11, 16) || '•', message: b.message,
           status: b.status, isMine: b.bidder_id === myUserId,
           counterAmount: b.counter_amount,
@@ -429,7 +435,22 @@ export default function CargoDetail({ navigation, route }) {
                   <Text style={{ fontSize: 14 }}>{b.isMine ? '🫵' : b.status === 'accepted' ? '✅' : isCountered ? '🔁' : (FLAGS[b.co] || '🏳️')}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[s.bidName, { color: theme.text }]}>{b.name}{b.isMine ? ' ' + t('you_marker') : ''}</Text>
+                  <TouchableOpacity
+                    disabled={b.isMine || !b.bidderId}
+                    activeOpacity={0.7}
+                    onPress={() => navigation.navigate('DriverDetail', {
+                      driver: { id: b.bidderId, name: b.name, rating: b.rating, reviews: b.reviews, verified: b.verified, _server: true, _isDriver: true },
+                      role,
+                    })}
+                  >
+                    <Text style={[s.bidName, { color: theme.text }]}>{b.name}{b.isMine ? ' ' + t('you_marker') : (b.bidderId ? ' ›' : '')}</Text>
+                  </TouchableOpacity>
+                  {!b.isMine ? (
+                    <Text style={{ fontSize: 11, marginTop: 2, color: theme.textMuted }}>
+                      {b.verified ? '✅ ' + t('verified_short') + ' · ' : ''}
+                      {b.reviews > 0 ? `⭐ ${Number(b.rating).toFixed(1)} (${b.reviews})` : t('no_reviews_yet')}
+                    </Text>
+                  ) : null}
                   {b.message ? <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 2 }}>{b.message}</Text> : null}
                   <Text style={[s.bidInfo, {
                     color: b.status === 'accepted' ? '#22C55E'
@@ -497,6 +518,19 @@ export default function CargoDetail({ navigation, route }) {
                       testID="bid-accept"
                       style={[s.acceptBtn, { backgroundColor: v1Accent.main }, accepting === b.id && { opacity: 0.5 }]}
                       onPress={async () => {
+                        // Принятие ставки создаёт сделку — подтверждаем.
+                        const sum = formatPrice(b.amount, c.currency);
+                        const msg = t('accept_bid_confirm').replace('{sum}', sum);
+                        const ok = Platform.OS === 'web'
+                          ? (typeof window !== 'undefined' && window.confirm(msg))
+                          : await new Promise((res) => Alert.alert(
+                              t('accept_bid_confirm_title'), msg,
+                              [
+                                { text: t('cancel'), style: 'cancel', onPress: () => res(false) },
+                                { text: t('accept_bid_btn'), onPress: () => res(true) },
+                              ],
+                            ));
+                        if (!ok) return;
                         setAccepting(b.id);
                         try {
                           const r = await marketAPI.acceptBid(b.id);
