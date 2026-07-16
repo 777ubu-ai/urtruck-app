@@ -133,6 +133,9 @@ export default function ChatScreen({ navigation, route }) {
   const [lang, setLang] = useState('RU');
   const [translations, setTranslations] = useState({});
   const [translating, setTranslating] = useState(null);
+  // Авто-перевод всей ленты (ключевая фича Китай↔СНГ): при включении все
+  // входящие сообщения переводятся на язык интерфейса автоматически.
+  const [autoTranslate, setAutoTranslate] = useState(false);
   // Deal Room (PR2): карточка сделки + immutable timeline. Показываются только
   // при dealId — иначе старый чат выглядит как раньше.
   const [deal, setDeal] = useState(null);
@@ -246,6 +249,29 @@ export default function ChatScreen({ navigation, route }) {
       }
     }).catch(() => {});
   }, [partner?.id, initialRoomId]);
+
+  // Авто-перевод: когда включён, переводим все входящие сообщения без
+  // перевода на язык интерфейса. Кэш (наш стейт + серверный) не даёт
+  // переводить одно и то же дважды; при новом сообщении переводится только оно.
+  useEffect(() => {
+    if (!autoTranslate) return;
+    const lng = getLanguage().toLowerCase();
+    const pending = messages.filter(m => m && m.id && m.from !== 'me' && m.text && !translations[m.id]);
+    if (pending.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      for (const m of pending) {
+        if (cancelled) break;
+        try {
+          const r = await chatAPI.translate(m.id, lng);
+          if (!cancelled && r?.translated_text) {
+            setTranslations(prev => prev[m.id] ? prev : ({ ...prev, [m.id]: { text: r.translated_text, provider: r.provider, showOriginal: false } }));
+          }
+        } catch {}
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [autoTranslate, messages]);
 
   // Polling каждые 3 сек — подтягиваем ответы (Support/Володя/живые).
   // Пауза в фоне: на трассе свёрнутый чат не должен жечь трафик/батарею
@@ -667,9 +693,13 @@ export default function ChatScreen({ navigation, route }) {
       <BrandBarWithShare
         onBack={() => navigation.goBack()}
         accent={v1Accent.main}
-        {...(CHAT_LANG_PILL_ENABLED
-          ? { onShare: cycleLang, rightTestID: 'chat-lang-btn', rightIcon: `🌐 ${lang}` }
-          : {})}
+        onShare={() => {
+          const next = !autoTranslate;
+          setAutoTranslate(next);
+          toast(next ? '🌐 ' + t('autotranslate_on') : t('autotranslate_off'), 'info', 1800);
+        }}
+        rightTestID="chat-autotranslate-btn"
+        rightIcon={autoTranslate ? '🌐 ✓' : '🌐'}
       />
       <View style={s.partnerStrip}>
         <View style={[s.partnerAvatar, { backgroundColor: v1Accent.soft, borderColor: v1Accent.main }]}>
