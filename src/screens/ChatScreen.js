@@ -247,11 +247,19 @@ export default function ChatScreen({ navigation, route }) {
     }).catch(() => {});
   }, [partner?.id, initialRoomId]);
 
-  // Polling каждые 3 сек — подтягиваем ответы (Support/Володя/живые)
+  // Polling каждые 3 сек — подтягиваем ответы (Support/Володя/живые).
+  // Пауза в фоне: на трассе свёрнутый чат не должен жечь трафик/батарею
+  // каждые 3 сек. При возврате в foreground сразу перечитываем и возобновляем.
   useEffect(() => {
     if (!roomId) return;
-    const iv = setInterval(() => loadMessages(roomId), 3000);
-    return () => clearInterval(iv);
+    let iv = null;
+    const start = () => { if (!iv) iv = setInterval(() => loadMessages(roomId), 3000); };
+    const stop = () => { if (iv) { clearInterval(iv); iv = null; } };
+    start();
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') { loadMessages(roomId); start(); } else { stop(); }
+    });
+    return () => { stop(); sub?.remove?.(); };
   }, [roomId]);
 
   // QA-аудит P2-2: помечаем комнату активной, пока экран в фокусе — чтобы
