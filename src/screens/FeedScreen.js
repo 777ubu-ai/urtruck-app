@@ -252,6 +252,7 @@ export default function FeedScreen({ navigation, route }) {
           // fallback и пользователь видел «$700 000» там, где было
           // «700 000 ₸». Прокидываем явно.
           currency: c.currency,
+          payment_type: c.payment_type,
           pickup: c.pickup_date,
           bids: c.bids_count, photos: c.photos,
           photo: c.photos?.[0], isMine: c.owner_id === myUserId,
@@ -537,6 +538,7 @@ export default function FeedScreen({ navigation, route }) {
       { label: t('departure'), value: item.pickup || t('pickup_date_tbd') },
       km > 0 ? { label: t('distance'), value: `${km} км` } : null,
       perKm > 0 ? { label: t('per_km_short'), value: `${perKmStr} ${item.currency || ''}/км` } : null,
+      (item.payment_type && item.payment_type !== 'any') ? { label: t('payment_type_label'), value: t('pay_' + item.payment_type) } : null,
       item.tons > 0 ? { label: t('weight'), value: `${item.tons} т` } : null,
       item.m3 > 0 ? { label: t('volume'), value: `${item.m3} м³` } : null,
     ].filter(Boolean);

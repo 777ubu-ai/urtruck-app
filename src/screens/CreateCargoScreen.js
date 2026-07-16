@@ -109,6 +109,8 @@ export default function CreateCargoScreen({ navigation, route }) {
   const [currency, setCurrency] = useState('KZT');
   // Умная валюта по стране отправления, пока пользователь не выбрал вручную.
   const [currencyTouched, setCurrencyTouched] = useState(false);
+  // Тип оплаты (нал/безнал) — важен водителю. '' = не указан.
+  const [paymentType, setPaymentType] = useState('');
   const [photos, setPhotos] = useState([]);
   // PR-C1: comment state удалён вместе с Textarea ниже — поле молча
   // терялось, backend не имеет колонки.
@@ -168,6 +170,7 @@ export default function CreateCargoScreen({ navigation, route }) {
       volume_m3: parseInt(m3) || 0,
       price: priceNum,
       currency: priceMode === 'fixed' ? currency : 'KZT',
+      payment_type: paymentType || null,
       pickup_date: pickupDate || null,
       photos: photos || [],
       from_country:    fromPoint?.country || null,
@@ -428,6 +431,23 @@ export default function CreateCargoScreen({ navigation, route }) {
           ))}
         </View>
       </BottomSheet>
+
+      {/* Тип оплаты — важный параметр решения водителя. Опционально. */}
+      <View style={[s.priceCard, { borderColor: v1.border }]}>
+        <Text style={s.priceLabel}>💳 {t('payment_type_label')}</Text>
+        <View style={s.priceModeRow}>
+          {[['cashless', t('pay_cashless')], ['cash', t('pay_cash')], ['any', t('pay_any')]].map(([k, lbl]) => (
+            <TouchableOpacity
+              key={k}
+              style={[s.priceMode, paymentType === k ? { backgroundColor: accent.main, borderColor: accent.main } : { borderColor: v1.border }]}
+              onPress={() => setPaymentType(paymentType === k ? '' : k)}
+              testID={`cargo-pay-${k}`}
+            >
+              <Text style={[s.priceModeText, { color: paymentType === k ? '#0A0A0A' : v1.textMuted }]}>{lbl}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
 
       {/* Фото груза — collapsible */}
       <TouchableOpacity onPress={() => setShowPhotos((v) => !v)} activeOpacity={0.85} style={[s.photoToggle, { borderColor: v1.border }]}>

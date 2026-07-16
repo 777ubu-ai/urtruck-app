@@ -231,6 +231,11 @@ def _init():
             for col, ddl_type in ROUTE_COLS:
                 if col not in tcols:
                     c.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl_type}")
+        # 3.8: тип оплаты груза (cash|cashless|any) — важный параметр решения
+        # водителя. Колонка на cargos; NULL = не указан.
+        ccols = {r["name"] for r in c.execute("PRAGMA table_info(cargos)").fetchall()}
+        if "payment_type" not in ccols:
+            c.execute("ALTER TABLE cargos ADD COLUMN payment_type TEXT")
         # Задача B: живая гео-позиция машины по сделке (последняя точка).
         c.execute("""
             CREATE TABLE IF NOT EXISTS deal_locations (
@@ -258,6 +263,7 @@ class CargoIn(BaseModel):
     volume_m3: Optional[float] = 0
     price: Optional[int] = 0
     currency: Optional[str] = "USD"
+    payment_type: Optional[str] = None   # cash | cashless | any
     pickup_date: Optional[str] = None
     photos: Optional[List[str]] = None
     # Stage 8: structured route fields. The legacy `from_city` /
@@ -367,16 +373,17 @@ def create_cargo(body: CargoIn, user=Depends(require_level(1))):
     fc, fpt, fpn = _norm_route_triple(body.from_country, body.from_point_type, body.from_point_name)
     tc, tpt, tpn = _norm_route_triple(body.to_country, body.to_point_type, body.to_point_name)
     with get_conn() as c:
+        pay = body.payment_type if body.payment_type in ("cash", "cashless", "any") else None
         c.execute("""
             INSERT INTO cargos (id, owner_id, owner_phone, owner_name,
               from_city, to_city, cargo_desc, cargo_type,
-              weight_tons, volume_m3, price, currency, pickup_date, photos,
+              weight_tons, volume_m3, price, currency, payment_type, pickup_date, photos,
               from_country, from_point_type, from_point_name,
               to_country, to_point_type, to_point_name)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (cid, user["id"], user.get("phone"), user.get("full_name"),
               body.from_city, body.to_city, body.cargo_desc, body.cargo_type,
-              body.weight_tons, body.volume_m3, body.price, currency,
+              body.weight_tons, body.volume_m3, body.price, currency, pay,
               body.pickup_date,
               json.dumps(body.photos or [], ensure_ascii=False),
               fc, fpt, fpn, tc, tpt, tpn))
@@ -437,7 +444,7 @@ def list_cargos(
     with get_conn() as c:
         rows = c.execute(f"""
             SELECT id, owner_id, from_city, to_city, cargo_desc, cargo_type,
-                   weight_tons, volume_m3, price, currency, pickup_date, photos,
+                   weight_tons, volume_m3, price, currency, payment_type, pickup_date, photos,
                    bids_count, status, created_at,
                    from_country, from_point_type, from_point_name,
                    to_country, to_point_type, to_point_name
