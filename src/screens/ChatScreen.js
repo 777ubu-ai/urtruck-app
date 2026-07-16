@@ -13,6 +13,7 @@ import { chatAPI } from '../utils/chatAPI';
 import { marketAPI } from '../utils/marketAPI';
 import { formatPrice } from '../utils/normalizers';
 import { notifyChatRead } from '../utils/unreadEvents';
+import { refreshAppIconBadge } from '../utils/appBadge';
 import { useMountedRef } from '../hooks/useMountedRef';
 import { enqueueOutbox, flushOutbox } from '../utils/outbox';
 import { setActiveRoom } from '../utils/activeRoom';  // QA-аудит P2-2
@@ -341,7 +342,10 @@ export default function ChatScreen({ navigation, route }) {
   useEffect(() => {
     if (!roomId) return;
     notifyChatRead();
-    return () => notifyChatRead();
+    // BUG-003: пересчитываем app-icon badge прямо отсюда — BottomNav
+    // размонтирован (мы поверх табов), его syncAppIconBadge не сработает.
+    refreshAppIconBadge();
+    return () => { notifyChatRead(); refreshAppIconBadge(); };
   }, [roomId]);
 
   // Deal Room: загрузка карточки сделки + immutable timeline по dealId.
