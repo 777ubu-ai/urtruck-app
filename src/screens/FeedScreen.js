@@ -479,6 +479,19 @@ export default function FeedScreen({ navigation, route }) {
     if (toIso) {
       data = data.filter(d => { const v = ymd(dateField(d)); return v && v <= toIso; });
     }
+    // Скрываем просроченные из ОБЩЕЙ ленты: даём запас в 1 день после даты
+    // выезда, дальше убираем (у владельца остаётся в «Мои грузы/рейсы» с
+    // пометкой «Срок истёк»). Лента показывает грузы/рейсы чужой роли,
+    // поэтому свои публикации у владельца тут не прячутся.
+    {
+      const g = new Date();
+      g.setDate(g.getDate() - 1);            // граница = вчера (день выезда +1)
+      const graceIso = g.toISOString().slice(0, 10);
+      data = data.filter(d => {
+        const v = ymd(dateField(d));
+        return !v || v >= graceIso;          // без даты не прячем
+      });
+    }
     if (search.trim()) {
       const q = search.toLowerCase().trim();
       // Body-type synonyms: "тнт" → tent, "реф" → ref, "конт" → cont20/cont40.

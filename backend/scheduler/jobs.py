@@ -118,6 +118,62 @@ def push_reminders_job():
     print(f"[{now.isoformat()}] reminders: inactive={cnt['inactive']} route_match={cnt['route_match']}")
 
 
+def expired_notify_job():
+    """Ежедневно: владельцам грузов/рейсов, у которых срок выезда прошёл на
+    +1 день (сегодня — первый день, когда публикация скрыта из ленты), шлём
+    пуш «Срок истёк — продлить?». Дедуп на пользователя через push_log
+    (kind='expired'), чтобы не спамить."""
+    from datetime import timedelta
+    from database.db import get_conn
+    from services import push_sender
+
+    now = datetime.utcnow()
+    trigger_day = now.date() - timedelta(days=2)  # дата выезда, для которой сегодня наступил «просрочен»
+
+    def _pd(s):
+        s = str(s or "").strip()
+        for fmt, cut in (("%Y-%m-%d", 10), ("%d.%m.%Y", None)):
+            try:
+                return datetime.strptime(s[:cut] if cut else s, fmt).date()
+            except Exception:
+                pass
+        return None
+
+    owners = set()
+    try:
+        with get_conn() as c:
+            cargos = c.execute("SELECT owner_id AS uid, pickup_date AS d FROM cargos WHERE status = 'active'").fetchall()
+            trips = c.execute("SELECT driver_id AS uid, departure AS d FROM trips WHERE status = 'active'").fetchall()
+        for r in list(cargos) + list(trips):
+            if r["uid"] and _pd(r["d"]) == trigger_day:
+                owners.add(r["uid"])
+    except Exception as e:
+        print(f"  expired-notify query err: {e}")
+        return
+
+    thresh = (now - timedelta(hours=20)).isoformat()
+    sent = 0
+    for uid in owners:
+        try:
+            with get_conn() as c:
+                dup = c.execute(
+                    "SELECT 1 FROM push_log WHERE user_id = ? AND kind = 'expired' AND created_at > ?",
+                    (uid, thresh)).fetchone()
+            if dup:
+                continue
+            push_sender.send(
+                uid,
+                "⏳ Срок публикации истёк",
+                "Груз/рейс убран из ленты. Хотите продлить? Измените дату выезда.",
+                kind="expired",
+                url="/",
+            )
+            sent += 1
+        except Exception as e:
+            print(f"  expired push err {uid}: {e}")
+    print(f"[{now.isoformat()}] expired-notify: sent={sent}")
+
+
 def start_scheduler():
     sched = BackgroundScheduler()
     # Парсинг каждые 6 часов
@@ -128,6 +184,8 @@ def start_scheduler():
     sched.add_job(run_backup, IntervalTrigger(hours=1), id="db_backup")
     # Бот-напоминания: 10:00 UTC+6 (04:00 UTC) = Алматы утро
     sched.add_job(push_reminders_job, CronTrigger(hour=4, minute=0), id="push_reminders")
+    # Уведомление о просроченных публикациях: 05:00 UTC (11:00 Алматы)
+    sched.add_job(expired_notify_job, CronTrigger(hour=5, minute=0), id="expired_notify")
     sched.start()
     print("Scheduler started: TG-parse 6h, rescore monthly, DB backup hourly, reminders 10:00 Almaty")
     return sched

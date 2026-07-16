@@ -12,6 +12,8 @@ import { useToast } from './Toast';
 import { marketAPI } from '../utils/marketAPI';
 import { CURRENCY_SYMBOLS } from '../utils/normalizers';
 import { TRUCK_KEYS } from '../utils/truckConstants';
+import DatePicker from './DatePicker';
+import { formatDateForDisplay, normalizeDateInput } from '../utils/dateInput';
 
 const PAY_KEYS = ['cashless', 'cash', 'any'];
 
@@ -29,6 +31,8 @@ export default function EditCargoModal({ visible, cargo, onClose, onSaved }) {
   // цена/описание/вес/объём, из-за чего груз приходилось удалять и создавать).
   const [truckType, setTruckType] = useState(cargo?.cargo_type || 'tent');
   const [paymentType, setPaymentType] = useState(cargo?.payment_type || '');
+  // Дата выезда — чтобы владелец мог «продлить» просроченный груз.
+  const [pickupDate, setPickupDate] = useState(cargo?.pickup_date ? formatDateForDisplay(cargo.pickup_date) : '');
   const [saving, setSaving] = useState(false);
 
   // Пересинхронизация при смене груза (модалка переиспользуется).
@@ -40,6 +44,7 @@ export default function EditCargoModal({ visible, cargo, onClose, onSaved }) {
       setVolume(cargo?.volume_m3 != null ? String(cargo.volume_m3) : '');
       setTruckType(cargo?.cargo_type || 'tent');
       setPaymentType(cargo?.payment_type || '');
+      setPickupDate(cargo?.pickup_date ? formatDateForDisplay(cargo.pickup_date) : '');
     }
   }, [visible, cargo]);
 
@@ -61,6 +66,11 @@ export default function EditCargoModal({ visible, cargo, onClose, onSaved }) {
     if (volume.trim() !== '' && num(volume) != null) payload.volume_m3 = num(volume);
     if (truckType) payload.cargo_type = truckType;
     payload.payment_type = paymentType || '';  // '' → бэк снимет тип оплаты
+    // Дата выезда: нормализуем в ISO (как create_cargo/feed-фильтр ожидает).
+    if (pickupDate.trim()) {
+      const iso = normalizeDateInput(pickupDate);
+      if (iso) payload.pickup_date = iso;
+    }
     setSaving(true);
     const r = await marketAPI.updateCargo(cargo.id, payload);
     setSaving(false);
@@ -97,6 +107,9 @@ export default function EditCargoModal({ visible, cargo, onClose, onSaved }) {
                 style={[s.input, s.multiline, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]}
                 testID="edit-cargo-desc"
               />
+
+              <Text style={[s.label, { color: theme.textMuted }]}>📅 {t('pickupDate')}</Text>
+              <DatePicker value={pickupDate} onChange={setPickupDate} placeholder={t('pickupDate')} />
 
               <View style={s.row}>
                 <View style={{ flex: 1 }}>

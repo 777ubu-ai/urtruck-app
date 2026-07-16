@@ -265,11 +265,13 @@ export default function MyTripsScreen({ navigation, route }) {
   const isExpiredItem = (it) => {
     const d = parseDate(it.pickup_date || it.departure);
     if (!d) return false;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    // expired = pickup_date < today (strictly). today itself remains
-    // active.
-    return d < today;
+    // Запас в 1 день (согласовано с лентой): день выезда + 1 день ещё
+    // активен, дальше — «Срок истёк». Граница = вчера: expired, если
+    // дата < вчера.
+    const grace = new Date();
+    grace.setHours(0, 0, 0, 0);
+    grace.setDate(grace.getDate() - 1);
+    return d < grace;
   };
   const myItemsActive = myItemsRaw.filter((it) => !isExpiredItem(it));
   const myItemsExpired = myItemsRaw.filter((it) => isExpiredItem(it));
@@ -372,13 +374,14 @@ export default function MyTripsScreen({ navigation, route }) {
               что визуально врало пользователю (зелёное = "успешно"). Теперь
               цвет подбирается по item.status. */}
           <Text style={[s.statusLabel, { color: (() => {
+            if (item._expired) return '#EF4444';             // просрочен — красный
             const st = item.status || 'active';
             if (st === 'cancelled') return '#94A3B8';        // серый
             if (st === 'draft' || st === 'pending') return '#F59E0B'; // янтарный
             if (st === 'rejected' || st === 'expired') return '#EF4444'; // красный
             if (st === 'completed' || st === 'delivered') return '#22C55E'; // зелёный
             return '#22C55E'; // active по умолчанию — зелёный
-          })() }]}>{formatStatus(item.status || 'active')}</Text>
+          })() }]}>{item._expired ? `⏳ ${t('deadline_expired')}` : formatStatus(item.status || 'active')}</Text>
         </View>
         <Text style={[s.route, { color: theme.text }]}>{from} → {to}</Text>
         {desc ? <Text style={[s.desc, { color: theme.textMuted }]} numberOfLines={1}>{desc}</Text> : null}
@@ -416,6 +419,21 @@ export default function MyTripsScreen({ navigation, route }) {
             }}
           >
             <Text style={s.editBtnText}>✏️ {t('edit_btn')}</Text>
+          </TouchableOpacity>
+        )}
+        {/* Просроченный груз/рейс: «Продлить» — открывает правку даты. Изменил
+            дату на будущую → снова попадает в общую ленту. */}
+        {item._expired && (
+          <TouchableOpacity
+            testID="extend-deadline-btn"
+            style={[s.editBtn, { borderColor: '#F59E0B' }]}
+            onPress={(e) => {
+              e.stopPropagation && e.stopPropagation();
+              if (isCargo) setEditCargo(item);
+              else navigation.navigate('EditTrip', { tripId: item.id, trip: normalizeTrip({ ...item, isMine: true, _server: true }) });
+            }}
+          >
+            <Text style={[s.editBtnText, { color: '#F59E0B' }]}>⏳ {t('extend_deadline')}</Text>
           </TouchableOpacity>
         )}
         {/* Задача A: управление СВОИМ грузом — Изменить (цена/описание) + Удалить.

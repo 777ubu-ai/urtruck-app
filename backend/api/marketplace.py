@@ -767,6 +767,16 @@ def list_trips(
             if not _is_dirty_text(t.get("driver_name"), t.get("from_city"),
                                   t.get("to_city"), t.get("truck_type"))
         ]
+        # Скрываем просроченные рейсы из ПУБЛИЧНОЙ ленты: departure более чем
+        # на 1 день в прошлом (то же правило +1 день, что и для грузов в
+        # _public_cargo_ok). Owner-side /my сюда не проходит — там рейсы
+        # остаются с пометкой «Срок истёк».
+        _today = datetime.utcnow().date()
+        trips = [
+            t for t in trips
+            if not ((_dep := _parse_iso_date(t.get("departure")))
+                    and _dep < (_today - timedelta(days=1)))
+        ]
     # Обогащаем каждый рейс РЕАЛЬНЫМИ данными водителя (статус верификации +
     # рейтинг/число отзывов), чтобы фронт не выдумывал «★5.0 · Проверен».
     # Обогащение не должно ронять ленту — при любом сбое отдаём дефолты.
