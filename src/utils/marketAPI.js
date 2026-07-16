@@ -38,6 +38,34 @@ function normalizeDetail(d, status) {
 }
 
 export const marketAPI = {
+  // ─── Сохранённые маршруты (подписка «грузы по моему маршруту») ───
+  // Эндпоинт вне /market: /api/v1/searches.
+  async saveRoute({ from_city, to_city, truck_type = null }) {
+    try {
+      const r = await authedFetch(`${API_BASE}/searches`, {
+        method: 'POST', headers: await headers(),
+        body: JSON.stringify({ from_city, to_city, truck_type, notify: true }),
+      });
+      const data = await r.json().catch(() => ({}));
+      return { ok: r.ok, ...data };
+    } catch (e) {
+      return { ok: false, detail: e?.message || 'network_error' };
+    }
+  },
+  async listSavedRoutes() {
+    try {
+      const r = await authedFetch(`${API_BASE}/searches`, { headers: await headers() });
+      if (!r.ok) return { searches: [] };
+      return await r.json();
+    } catch { return { searches: [] }; }
+  },
+  async deleteSavedRoute(id) {
+    try {
+      const r = await authedFetch(`${API_BASE}/searches/${id}`, { method: 'DELETE', headers: await headers() });
+      return { ok: r.ok };
+    } catch { return { ok: false }; }
+  },
+
   // ─── Cargos ───
   async createCargo(data) {
     const r = await authedFetch(`${BASE}/cargos`, {
