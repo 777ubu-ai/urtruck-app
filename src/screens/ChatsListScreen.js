@@ -209,7 +209,7 @@ const s = StyleSheet.create({
   // превращаются в вертикальные «колонны». flexGrow:0 + height = compact-панель.
   filtersScroll: { flexGrow: 0, height: 48 },
   filters: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12 },
-  chip: { height: 34, paddingHorizontal: 14, borderRadius: 17, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  chip: { height: 44, paddingHorizontal: 14, borderRadius: 22, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   chipTxt: { fontSize: 12, fontWeight: '800' },
   card: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 14, borderWidth: 1, marginBottom: 8 },
   avatar: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },

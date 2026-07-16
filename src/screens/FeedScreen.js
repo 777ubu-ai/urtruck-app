@@ -123,7 +123,7 @@ export default function FeedScreen({ navigation, route }) {
   saveRouteBtn: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, marginLeft: 4 },
   saveRouteFull: { borderWidth: 1, borderRadius: 12, paddingVertical: 12, alignItems: 'center', marginTop: 14, minHeight: 44, justifyContent: 'center' },
   saveRouteFullText: { fontSize: 14, fontWeight: '800' },
-  filterBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  filterBtn: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   activeChipsRow: { paddingHorizontal: 16, paddingBottom: 8, gap: 6, alignItems: 'center' },
   activeChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, maxWidth: 220 },
   activeChipText: { color: '#fff', fontSize: 12, fontWeight: '700', flexShrink: 1 },
