@@ -81,12 +81,13 @@ export default function CargoDetail({ navigation, route }) {
   photo: { width: '100%', height: 200 },
   photoBadge: { position: 'absolute', top: 10, left: 10, backgroundColor: 'rgba(0,0,0,0.7)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
   photoBadgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
-  acceptBtn: { backgroundColor: '#22C55E', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 6 },
-  acceptBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
-  rejectBtn: { backgroundColor: 'transparent', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: '#EF4444' },
-  rejectBtnText: { color: '#EF4444', fontSize: 12, fontWeight: '700' },
-  miniBtn: { backgroundColor: 'transparent', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1 },
-  miniBtnText: { fontSize: 11, fontWeight: '700' },
+  // «Для перчаток и солнца»: крупные тап-цели (≥44pt) и читаемый текст.
+  acceptBtn: { backgroundColor: '#22C55E', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 12, minHeight: 44, justifyContent: 'center' },
+  acceptBtnText: { color: '#fff', fontSize: 14, fontWeight: '800' },
+  rejectBtn: { backgroundColor: 'transparent', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, minHeight: 44, justifyContent: 'center', borderWidth: 1, borderColor: '#EF4444' },
+  rejectBtnText: { color: '#EF4444', fontSize: 14, fontWeight: '700' },
+  miniBtn: { backgroundColor: 'transparent', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, minHeight: 44, justifyContent: 'center', borderWidth: 1 },
+  miniBtnText: { fontSize: 14, fontWeight: '700' },
   paymentBlock: { borderRadius: 12, borderWidth: 1, padding: 14 },
   reviewBlock: { borderRadius: 14, borderWidth: 1, padding: 16, alignItems: 'center', gap: 10 },
   reviewTitle: { fontSize: 15, fontWeight: '700' },
@@ -408,6 +409,26 @@ export default function CargoDetail({ navigation, route }) {
                 inline duplicate is removed. */}
           </View>
         </GlassCard>
+
+        {/* Карточка грузоотправителя — водитель видит, кому ставит ставку
+            (имя, верификация, рейтинг), а не ставит вслепую. */}
+        {!c.isMine && fullCargo?.owner_id ? (
+          <GlassCard>
+            <SectionTitle icon="👤" label={t('shipper_label')} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+              <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }} numberOfLines={1}>
+                {fullCargo.owner_name || t('anonymous')}
+              </Text>
+              <Text style={{ fontSize: 12, color: theme.textMuted }}>
+                {fullCargo.owner_verified ? '✅ ' + t('verified_short') + ' · ' : ''}
+                {fullCargo.owner_reviews_count > 0
+                  ? `⭐ ${Number(fullCargo.owner_rating).toFixed(1)} (${fullCargo.owner_reviews_count})`
+                  : t('no_reviews_yet')}
+              </Text>
+            </View>
+          </GlassCard>
+        ) : null}
+
         <Text style={[s.bidsTitle, { color: theme.text }]}>{formatBids(bids.length)}</Text>
         {bids.length === 0 && (
           <Text style={{ color: theme.textMuted, textAlign: 'center', padding: 20, fontSize: 13 }}>

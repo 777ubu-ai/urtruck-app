@@ -16,6 +16,7 @@ import { API_BASE } from '../config/env';
 import {v1Colors, useV1Colors, v1Radius, v1AccentFor} from '../theme/designV1';
 import GlassCard from '../components/ui/v1/GlassCard';
 import SectionTitle from '../components/ui/v1/SectionTitle';
+import { PhotoGallery } from '../components/PhotoGallery';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
 
 const TCOLORS = { tent: '#22C55E', ref: '#16A34A', platform: '#D97706', auto: '#7C3AED', izoterm: '#059669' };
@@ -181,6 +182,12 @@ export default function DriverDetail({ navigation, route }) {
               </View>
             ))}
           </View>
+          {/* Фото фуры — клиент видит машину перед передачей груза. */}
+          {serverProfile?.vehicle_photos?.length ? (
+            <View style={{ marginTop: 10 }}>
+              <PhotoGallery photos={serverProfile.vehicle_photos} />
+            </View>
+          ) : null}
         </GlassCard>
 
         <GlassCard>

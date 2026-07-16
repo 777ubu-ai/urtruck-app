@@ -91,8 +91,9 @@ export default function MyTripsScreen({ navigation, route }) {
   acceptBtnText: { color: '#FFF', ...typography.title },
   rejectBtn: { borderWidth: 1, borderColor: '#EF4444', borderRadius: radius.sm, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, alignItems: 'center' },
   rejectBtnText: { color: '#EF4444', ...typography.title },
-  miniBtn: { borderWidth: 1, borderRadius: radius.sm, paddingVertical: 6, paddingHorizontal: 10 },
-  miniBtnText: { fontSize: 11, fontWeight: '700' },
+  // «Для перчаток и солнца»: крупная тап-цель (≥44pt) и читаемый текст.
+  miniBtn: { borderWidth: 1, borderRadius: radius.sm, paddingVertical: 12, paddingHorizontal: 14, minHeight: 44, justifyContent: 'center' },
+  miniBtnText: { fontSize: 14, fontWeight: '700' },
   editBtn: { borderWidth: 1, borderColor: '#22C55E', borderRadius: 10, paddingVertical: 8, alignItems: 'center', marginTop: spacing.sm },
   editBtnText: { color: '#22C55E', fontSize: 12, fontWeight: '700' },
 

@@ -487,6 +487,25 @@ def get_cargo(cargo_id: str, authorization: Optional[str] = Header(None)):
     caller = _maybe_user(authorization)
     if not (caller and caller.get("id") == d.get("owner_id")):
         d.pop("owner_phone", None)
+    # Инфо о грузоотправителе (доверие: водитель видит, кому ставит ставку) —
+    # имя, статус верификации, рейтинг, число отзывов. Без телефона.
+    try:
+        from database import reviews_dal
+        owner_id = d.get("owner_id")
+        if owner_id:
+            with get_conn() as c2:
+                orow = c2.execute(
+                    "SELECT full_name, status FROM drivers_registration WHERE id = ?",
+                    (owner_id,),
+                ).fetchone()
+            if orow:
+                d["owner_name"] = orow["full_name"] or None
+                d["owner_verified"] = (orow["status"] == "approved")
+            summary = reviews_dal.get_rating_summary(owner_id)
+            d["owner_rating"] = summary.get("average", 0) or 0
+            d["owner_reviews_count"] = summary.get("count", 0) or 0
+    except Exception:
+        pass
     return d
 
 
@@ -1132,20 +1151,30 @@ def list_drivers(truck_type: str = "", limit: int = 30):
     with get_conn() as c:
         rows = c.execute(f"""
             SELECT id, phone, full_name, vehicle_type, vehicle_brand, vehicle_plate,
-                   vehicle_year, vehicle_capacity_kg, security_score, security_color
+                   vehicle_year, vehicle_capacity_kg, security_score, security_color,
+                   vehicle_photo_url, cabin_photo_url
             FROM drivers_registration
             WHERE {' AND '.join(where)}
             ORDER BY security_score DESC LIMIT ?
         """, (*params, limit)).fetchall()
 
+    from database import reviews_dal
+    from services import file_signing
     result = []
     for r in rows:
         d = dict(r)
         # Рейтинг
-        from database import reviews_dal
         summary = reviews_dal.get_rating_summary(d["id"])
         d["rating"] = summary.get("average", 0)
         d["reviews_count"] = summary.get("count", 0)
+        # Фото фуры — клиент должен видеть машину перед сделкой. Отдаём
+        # ПОДПИСАННЫЕ ссылки (не raw ключи), сырые поля убираем.
+        photos = []
+        for key in (d.pop("vehicle_photo_url", None), d.pop("cabin_photo_url", None)):
+            signed = file_signing.sign(key)
+            if signed:
+                photos.append(signed)
+        d["vehicle_photos"] = photos
         d.pop("phone", None)  # не отдаём контакт
         result.append(d)
     return {"drivers": result, "total": len(result)}
