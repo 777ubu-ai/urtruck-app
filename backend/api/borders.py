@@ -243,6 +243,34 @@ def list_borders(country: str = ""):
     return {"borders": out}
 
 
+# ── Пуш-алерт «очередь подошла»: watch по ГРНЗ ───────────────────────────
+class WatchIn(BaseModel):
+    plate: str
+
+
+@borders_router.post("/watch")
+def add_queue_watch(body: WatchIn, user_id: str = Depends(_current_user_id)):
+    """Следить за своим номером → пуш при смене статуса в очереди CGR."""
+    from cgr import queue_watch
+    ok = queue_watch.add_watch(user_id, body.plate)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Некорректный госномер")
+    return {"ok": True}
+
+
+@borders_router.delete("/watch")
+def remove_queue_watch(plate: str, user_id: str = Depends(_current_user_id)):
+    from cgr import queue_watch
+    queue_watch.remove_watch(user_id, plate)
+    return {"ok": True}
+
+
+@borders_router.get("/watch")
+def list_queue_watches(user_id: str = Depends(_current_user_id)):
+    from cgr import queue_watch
+    return {"watches": queue_watch.list_watches(user_id)}
+
+
 # ── Трек 1: полное онлайн-табло (номера + статус по пункту) ──────────────
 # Кэш 60с: /board живо фетчит несколько страниц HTML у CGR — без кэша тап по
 # каждому пункту дёргал бы CGR заново. Ключ = (checkpoint, status).

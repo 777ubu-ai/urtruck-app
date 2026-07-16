@@ -70,6 +70,17 @@ export default function QueueScreen({ navigation }) {
       // следующем открытии/фокусе статус подтягивается автоматически.
       storage.set(PLATE_KEY, p).catch(() => {});
       setTracking(true);
+      // Пуш-алерт: если водитель авторизован — регистрируем watch на сервере,
+      // чтобы прилетел пуш «очередь подошла» при смене статуса (даже когда
+      // приложение закрыто).
+      storage.get('ur_reg_token').then((tok) => {
+        if (!tok) return;
+        fetch(`${BASE}/watch`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tok}` },
+          body: JSON.stringify({ plate: p }),
+        }).catch(() => {});
+      }).catch(() => {});
     } catch (e) {
       if (!silent) setLookup({ error: true });
     } finally {
@@ -78,7 +89,17 @@ export default function QueueScreen({ navigation }) {
   };
 
   const stopTracking = () => {
+    const p = plate.trim();
     storage.remove(PLATE_KEY).catch(() => {});
+    // Снимаем серверный watch — пуши перестают приходить.
+    if (p) {
+      storage.get('ur_reg_token').then((tok) => {
+        if (!tok) return;
+        fetch(`${BASE}/watch?plate=${encodeURIComponent(p)}`, {
+          method: 'DELETE', headers: { 'Authorization': `Bearer ${tok}` },
+        }).catch(() => {});
+      }).catch(() => {});
+    }
     setTracking(false);
     setLookup(null);
     setPlate('');
