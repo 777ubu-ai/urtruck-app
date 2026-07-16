@@ -1778,6 +1778,21 @@ def get_deal(deal_id: str, user=Depends(require_level(1))):
             ).fetchone()
             if tr and tr["plate_truck"]:
                 d.setdefault("plate", tr["plate_truck"])
+        # Телефон КОНТРАГЕНТА по сделке — для звонка после заключения сделки.
+        # Endpoint строго gated (выше 403 для не-участников), поэтому отдать
+        # телефон второй стороны безопасно. Технические placeholder-телефоны
+        # (guest_/deleted_) не отдаём.
+        other_id = d["driver_id"] if uid == d["shipper_id"] else d["shipper_id"]
+        if other_id:
+            prow = c.execute(
+                "SELECT phone, full_name FROM drivers_registration WHERE id = ?",
+                (other_id,),
+            ).fetchone()
+            if prow:
+                ph = prow["phone"]
+                if ph and not str(ph).startswith(("guest_", "deleted_")):
+                    d["counterparty_phone"] = ph
+                d["counterparty_name"] = prow["full_name"]
     return d
 
 

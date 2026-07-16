@@ -331,11 +331,15 @@ export default function FeedScreen({ navigation, route }) {
     }, [isDriver, filterType])
   );
 
-  // Серверный поиск при вводе маршрута "Алматы→Москва"
+  // Серверный поиск по маршруту. Разделитель больше не только «→»: водителю
+  // тяжело набрать стрелку на телефоне. Принимаем «Алматы, Москва»,
+  // «Алматы - Москва», «Алматы — Москва», «Алматы→Москва», «Алматы->Москва».
+  // « - » (с пробелами) не ломает города через дефис («Алма-Ата»).
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (search.includes('→') || search.includes('->')) {
-        const sep = search.includes('→') ? '→' : '->';
+      const SEPARATORS = ['→', '->', '—', ' - ', ','];
+      const sep = SEPARATORS.find(x => search.includes(x));
+      if (sep) {
         const [from, to] = search.split(sep).map(s => s.trim());
         if (from && to) {
           if (isDriver) {

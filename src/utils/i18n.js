@@ -1108,6 +1108,7 @@ const translations = {
     translation_unavailable: 'Перевод недоступен',
     autotranslate_on: 'Авто-перевод включён',
     autotranslate_off: 'Авто-перевод выключен',
+    call_partner: 'Позвонить',
     theme_label: 'Тема',
     theme_light: 'Светлая',
     theme_dark: 'Тёмная',
@@ -2503,6 +2504,7 @@ const translations = {
     translation_unavailable: 'Аударма қолжетімсіз',
     autotranslate_on: 'Автоаударма қосулы',
     autotranslate_off: 'Автоаударма өшірулі',
+    call_partner: 'Қоңырау шалу',
 
     point_type_city: 'Қала',
     point_type_city_hint: 'Кез келген ірі қала немесе елді мекен',
@@ -3859,6 +3861,7 @@ const translations = {
     translation_unavailable: '翻译不可用',
     autotranslate_on: '已开启自动翻译',
     autotranslate_off: '已关闭自动翻译',
+    call_partner: '拨打电话',
 
     point_type_city: '城市',
     point_type_city_hint: '任何主要城市或居民点',
@@ -5170,6 +5173,7 @@ const translations = {
     translation_unavailable: 'Translation unavailable',
     autotranslate_on: 'Auto-translate on',
     autotranslate_off: 'Auto-translate off',
+    call_partner: 'Call',
     theme_label: 'Theme',
     theme_light: 'Light',
     theme_dark: 'Dark',

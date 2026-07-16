@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, FlatList, KeyboardAvoidingView, Platform, Image, AppState } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, FlatList, KeyboardAvoidingView, Platform, Image, AppState, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import * as ImagePicker from 'expo-image-picker';
@@ -89,6 +89,8 @@ export default function ChatScreen({ navigation, route }) {
   msgTextMe: { color: '#EAFBF1' },
   translated: { marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)' },
   translatedText: { color: 'rgba(255,255,255,0.55)', fontSize: 11, fontStyle: 'italic' },
+  callBtn: { marginTop: 8, borderWidth: 1, borderRadius: 12, paddingVertical: 12, alignItems: 'center', minHeight: 44, justifyContent: 'center' },
+  callBtnText: { fontSize: 14, fontWeight: '800' },
   msgTime: { color: v1.textMuted, fontSize: 9, textAlign: 'right', marginTop: 3 },
   msgTimeMe: { color: 'rgba(234,251,241,0.55)' },
   // Input bar
@@ -371,6 +373,8 @@ export default function ChatScreen({ navigation, route }) {
           amount: prev?.amount != null ? prev.amount : srv.amount,
           currency: prev?.currency || srv.currency,
           plate: prev?.plate || srv.plate,
+          counterparty_phone: srv.counterparty_phone || prev?.counterparty_phone,
+          counterparty_name: srv.counterparty_name || prev?.counterparty_name,
         }));
       })
       .catch(() => {});
@@ -730,6 +734,17 @@ export default function ChatScreen({ navigation, route }) {
             {dealId ? (
               <View style={{ marginBottom: 10 }}>
                 <DealRoomCard deal={deal} role={role} />
+                {/* Позвонить контрагенту — телефон доступен только участнику
+                    сделки (backend get_deal отдаёт его строго участнику). */}
+                {deal?.counterparty_phone ? (
+                  <TouchableOpacity
+                    style={[s.callBtn, { borderColor: v1Accent.main }]}
+                    onPress={() => Linking.openURL(`tel:${String(deal.counterparty_phone).replace(/[^\d+]/g, '')}`).catch(() => {})}
+                    testID="deal-call-btn"
+                  >
+                    <Text style={[s.callBtnText, { color: v1Accent.main }]}>📞 {t('call_partner')}</Text>
+                  </TouchableOpacity>
+                ) : null}
                 {dealEvents.length > 0 ? (
                   <View testID="deal-timeline">
                     {dealEvents.slice(-4).map((ev) => (
