@@ -5,13 +5,14 @@ import sqlite3
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from typing import Optional
 
 from database.db import get_conn, new_id
 from api.verification_gate import require_level
 from services import file_signing
+from services import storage_service as storage
 from api.push import send_to_user
 
 chat_router = APIRouter()
@@ -591,6 +592,21 @@ def translate_info():
     """Debug: какой провайдер, есть ли ключ. Сам ключ НЕ показывает."""
     from services.translate_service import get_info
     return get_info()
+
+@chat_router.post("/photo")
+async def upload_chat_photo(file: UploadFile = File(...), user=Depends(require_level(1))):
+    """4.3: загрузка фото для сообщения чата → storage, возвращаем КЛЮЧ.
+    Само сообщение шлётся через POST /chat/send с photo_url=этот ключ; на
+    чтении сервер подписывает ключ (см. sign в list-messages). Так фото видно
+    и получателю (раньше слался локальный uri устройства — не резолвился)."""
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Пустой файл")
+    if len(data) > 8 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Файл слишком большой")
+    key = storage.save_image(data, "chat_photos")
+    return {"photo_key": key}
+
 
 class TranslateIn(BaseModel):
     message_id: int

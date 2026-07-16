@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { storage } from './storage';
 import { API_BASE } from '../config/env';
 import { authedFetch } from './authEvents';  // QA-аудит P1-6: 401 → auth:expired
@@ -111,6 +112,27 @@ export const chatAPI = {
 
   // Загрузка вложения. uri — локальный путь после сжатия (compressImage).
   // multipart/form-data: НЕ ставим Content-Type вручную (boundary задаёт fetch).
+  // 4.3: загрузка фото сообщения в storage → { photo_key }. Native-safe
+  // multipart (на web — blob, на native — {uri,name,type}, иначе RN шлёт
+  // битый blob). Ключ идёт в chat.send как photo_url; сервер подпишет на чтении.
+  async uploadChatPhoto(uri) {
+    const token = await storage.get(TOKEN_KEY);
+    const form = new FormData();
+    if (Platform.OS === 'web') {
+      const blob = await fetch(uri).then((r) => r.blob());
+      form.append('file', blob, 'chat.jpg');
+    } else {
+      form.append('file', { uri, name: 'chat.jpg', type: 'image/jpeg' });
+    }
+    const r = await authedFetch(`${BASE}/photo`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    });
+    if (!r.ok) throw new Error(`chat photo upload failed ${r.status}`);
+    return r.json();
+  },
+
   async uploadAttachment(conversationId, { uri, kind = 'document', name = 'file.jpg', type = 'image/jpeg' } = {}) {
     const token = await storage.get(TOKEN_KEY);
     const blob = await authedFetch(uri).then((res) => res.blob());

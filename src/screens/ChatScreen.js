@@ -31,7 +31,9 @@ const IS_WEB = Platform.OS === 'web';
 
 // Stage 52: photo и voice upload в Support Chat не реализованы end-to-end (P0-1, Bug-B).
 // Скрываем кнопки до отдельного PR с multipart upload endpoint.
-const CHAT_PHOTO_ENABLED = false;
+// 4.3: включено — фото грузится в storage и шлётся ключом (см. sendPhoto).
+// Финальная проверка загрузки/рендера на устройстве — Level 5.
+const CHAT_PHOTO_ENABLED = true;
 const CHAT_VOICE_ENABLED = false;
 
 // Stage 52: локальный chat language pill не переводил содержимое чата (P0-3, P0-5),
@@ -488,14 +490,19 @@ export default function ChatScreen({ navigation, route }) {
         time: new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}),
       }]);
       const toId = recipientId();
-      if (toId) {
-        chatAPI.send({ toUserId: toId, photoUrl: photoUri, cargoId, tripId })
-          .catch(() => toast(t('chat_send_failed'), 'error'));
-      } else {
+      if (!toId) { toast(t('chat_send_failed'), 'error'); return; }
+      // 4.3: сначала грузим фото в storage → ключ, затем шлём сообщение с
+      // ключом (раньше слали локальный uri устройства — не резолвился у
+      // получателя). Сервер подпишет ключ на чтении, фото видно обеим сторонам.
+      try {
+        const up = await chatAPI.uploadChatPhoto(photoUri);
+        const key = up?.photo_key;
+        if (!key) throw new Error('no_key');
+        await chatAPI.send({ toUserId: toId, photoUrl: key, cargoId, tripId });
+        toast('📷 ' + t('photo_sent'), 'success', 1500);
+      } catch {
         toast(t('chat_send_failed'), 'error');
-        return;
       }
-      toast('📷 ' + t('photo_sent'), 'success', 1500);
     } catch (e) {
       toast(t('photo_failed'), 'error');
     }
