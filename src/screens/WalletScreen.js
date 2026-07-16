@@ -83,28 +83,13 @@ export default function WalletScreen({ route }) {
       <ScrollView contentContainerStyle={{ padding: 16 }}>
         <GradientText style={s.title} colors={['#22C55E', '#16A34A']}>{t('wallet')}</GradientText>
 
-        {/* Главная карточка баланса */}
+        {/* Честная карточка: бесплатный пилот, без фейкового «∞» баланса и
+            без кнопки-пустышки Premium (раньше $20/mo → просто тост). */}
         <View style={[s.balanceCard, { backgroundColor: theme.card, borderColor: accent + '30' }]}>
-          <View style={s.betaBadge}><Text style={s.betaBadgeText}>🎉 {t('testPeriod')}</Text></View>
-          <Text style={[s.balanceValue, { color: theme.text }]}>∞</Text>
-          <Text style={[s.balanceNote, { color: theme.textMuted }]}>{t('allFree')}</Text>
-        </View>
-
-        {/* Premium */}
-        <View style={[s.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <View style={s.premiumRow}>
-            <View>
-              <Text style={[s.premiumTitle, { color: theme.text }]}>⭐ {t('premium')}</Text>
-              <Text style={[s.premiumPrice, { color: theme.textMuted }]}><Text style={s.strike}>$20/mo</Text>  {t('allFree')}</Text>
-            </View>
-            <TouchableOpacity
-              style={[s.premiumBtn, { backgroundColor: premium ? '#22C55E' : accent }]}
-              onPress={() => { setPremium(true); toast(t('premiumActivated'), 'success'); }}
-              disabled={premium}
-            >
-              <Text style={s.premiumBtnText}>{premium ? '✓ ' + t('active_') : t('activate')}</Text>
-            </TouchableOpacity>
-          </View>
+          <View style={s.betaBadge}><Text style={s.betaBadgeText}>🎉 {t('wallet_beta_title')}</Text></View>
+          <Text style={[s.balanceNote, { color: theme.textMuted, marginTop: 10, textAlign: 'center', lineHeight: 19 }]}>
+            {t('wallet_beta_desc')}
+          </Text>
         </View>
 
         {/* 💱 Курсы валют (NEW — ниже Premium, выше способов оплаты) */}
