@@ -132,6 +132,9 @@ export default function ProfileScreen({ navigation, route }) {
     ...(isDriver ? [{ icon: 'shield', label: t('security_my_status'), sub: t('my_status_subtitle'), screen: 'Security', testID: 'profile-my-status' }] : []),
     { icon: 'star',          label: t('myReviews'),     screen: 'Reviews', testID: 'profile-my-reviews' },
     { icon: 'heart',         label: t('favorites_title'), screen: 'Favorites', testID: 'profile-favorites' },
+    // Этап 6.4: возвращаем полезные экраны, которые были недостижимы (сироты).
+    { icon: 'help-circle',   label: t('howit_header'),  screen: 'HowItWorks', testID: 'profile-how-it-works' },
+    { icon: 'info',          label: t('about_title'),   screen: 'About', testID: 'profile-about' },
   ];
 
   // PR-C2 (driver card): canonical specs line «Тент · 20 т · 86 м³».
