@@ -65,13 +65,15 @@ def info():
 
 
 @push_router.post("/subscribe")
-def subscribe(sub: SubscribeIn, authorization: str = None):
-    """Сохранить push-подписку. Юзер необязателен (можно guest)."""
+def subscribe(sub: SubscribeIn, authorization: Optional[str] = Header(None)):
+    """Сохранить push-подписку. Юзер необязателен (можно guest).
+
+    BUG-001 fix: раньше `authorization: str = None` без `Header(...)` → FastAPI
+    трактовал его как QUERY-параметр, а не HTTP-заголовок → user_id всегда NULL
+    → адресный web-push не доходил. Теперь читаем заголовок Authorization.
+    """
     user_id = None
     try:
-        # Пытаемся получить user, если токен есть
-        from fastapi import Header
-        # Простой парсинг
         if authorization and authorization.startswith("Bearer "):
             from database import registration_dal as reg_dal
             token = authorization.split(" ", 1)[1]
