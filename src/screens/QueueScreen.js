@@ -1,11 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator, TextInput, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../utils/ThemeContext';
 import { useI18n } from '../utils/useI18n';
 import {v1Colors, useV1Colors} from '../theme/designV1';
 import { API_BASE } from '../config/env';
 import { regAPI } from '../utils/registration';
+import { storage } from '../utils/storage';
+
+const PLATE_KEY = 'ur_queue_plate';
 
 const BASE = `${API_BASE}/borders`;
 
@@ -29,20 +33,52 @@ export default function QueueScreen({ navigation }) {
   const [lookup, setLookup] = useState(null);     // null | {found,...}
   const [lookupLoading, setLookupLoading] = useState(false);
 
-  const doLookup = async () => {
-    const p = plate.trim();
+  const [tracking, setTracking] = useState(false);  // сохранён ли номер для слежения
+
+  const doLookup = async (plateArg, { silent = false } = {}) => {
+    const p = (plateArg != null ? plateArg : plate).trim();
     if (p.length < 3 || lookupLoading) return;
-    setLookupLoading(true);
-    setLookup(null);
+    if (!silent) setLookupLoading(true);
+    if (!silent) setLookup(null);
     try {
       const r = await fetch(`${BASE}/lookup?plate=${encodeURIComponent(p)}`);
       setLookup(await r.json());
+      // Живое слежение: сохраняем номер — переживает перезапуск, при
+      // следующем открытии/фокусе статус подтягивается автоматически.
+      storage.set(PLATE_KEY, p).catch(() => {});
+      setTracking(true);
     } catch (e) {
-      setLookup({ error: true });
+      if (!silent) setLookup({ error: true });
     } finally {
-      setLookupLoading(false);
+      if (!silent) setLookupLoading(false);
     }
   };
+
+  const stopTracking = () => {
+    storage.remove(PLATE_KEY).catch(() => {});
+    setTracking(false);
+    setLookup(null);
+    setPlate('');
+  };
+
+  // Загрузка сохранённого номера при первом входе + автоподтягивание статуса.
+  useEffect(() => {
+    (async () => {
+      const saved = await storage.get(PLATE_KEY).catch(() => null);
+      if (saved) { setPlate(saved); setTracking(true); doLookup(saved); }
+    })();
+  }, []);
+
+  // Живое обновление: при возврате на экран перечитываем статус сохранённого
+  // номера (тихо, без спиннера) — водитель видит актуальную очередь.
+  useFocusEffect(
+    useCallback(() => {
+      (async () => {
+        const saved = await storage.get(PLATE_KEY).catch(() => null);
+        if (saved) doLookup(saved, { silent: true });
+      })();
+    }, [])
+  );
 
   // Текст статуса для результата личного поиска.
   const LOOKUP_STATUS_KEY = {
@@ -102,19 +138,14 @@ export default function QueueScreen({ navigation }) {
   const freest = cnList.length ? cnList.reduce((a, b) => (b.trucks_in_queue < a.trucks_in_queue ? b : a)) : null;
 
 
-  // Не одобрен → locked/promo состояние очереди (вместо полного функционала).
-  if (verState !== 'approved') {
-    // IA cleanup: Queue-гейт больше НЕ ведёт в driver-score (Security).
-    // pending — статус документов показывается на месте (без кнопки в score);
-    // unverified/rejected → документная проверка (Identity). Везде вторичная
-    // ссылка ведёт в CarGoRuqsat hub (CargoRuqsatInfo), а не в «Мой статус».
-    const gate = verState === 'review'
-      ? { title: t('queue_gate_pending_title'), text: t('queue_gate_pending_text'), btn: null, go: null }
-      : verState === 'rejected'
-        ? { title: t('queue_gate_rejected_title'), text: t('queue_gate_rejected_text'), btn: t('queue_gate_rejected_btn'), go: 'Identity' }
-        : { title: t('queue_gate_locked_title'), text: t('queue_gate_locked_text'), btn: t('queue_gate_locked_btn'), go: 'Identity' };
+  // Просмотр очередей на границе — ПУБЛИЧНЫЙ (данные CGR отдаются без
+  // авторизации). Раньше весь экран прятался за approved-гейтом — это
+  // отсекало главную ценность (посмотреть очередь, найти свою машину) от
+  // незарегистрированных водителей. Теперь смотрят ВСЕ; регистрация нужна
+  // только для брони места — на это ниже мягкий (не блокирующий) баннер.
+  if (verState === 'loading') {
     return (
-      <SafeAreaView style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']} testID="queue-gate">
+      <SafeAreaView style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']}>
         <View style={s.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={s.back}>
             <Text style={[s.backText, { color: theme.text }]}>‹</Text>
@@ -122,27 +153,7 @@ export default function QueueScreen({ navigation }) {
           <Text style={[s.headerTitle, { color: theme.text }]} testID="queue-title">{t('border_queues_title')}</Text>
           <View style={{ width: 44 }} />
         </View>
-        {verState === 'loading' ? (
-          <ActivityIndicator color="#1A5C3C" style={{ marginTop: 60 }} />
-        ) : (
-          <View style={s.gateWrap}>
-            <Text style={s.gateIcon}>🔒</Text>
-            <Text style={[s.gateTitle, { color: theme.text }]}>{gate.title}</Text>
-            <Text style={[s.gateText, { color: theme.textMuted }]}>{gate.text}</Text>
-            {gate.btn && gate.go ? (
-              <TouchableOpacity
-                style={s.gateBtn}
-                onPress={() => navigation.navigate(gate.go)}
-                testID="queue-gate-cta"
-              >
-                <Text style={s.gateBtnText}>{gate.btn}</Text>
-              </TouchableOpacity>
-            ) : null}
-            <TouchableOpacity style={s.gateSecondary} onPress={() => navigation.navigate('CargoRuqsatInfo')} testID="queue-cgr-link">
-              <Text style={[s.gateSecondaryText, { color: theme.textMuted }]}>{t('queue_cgr_cta')}</Text>
-            </TouchableOpacity>
-          </View>
-        )}
+        <ActivityIndicator color="#1A5C3C" style={{ marginTop: 60 }} />
       </SafeAreaView>
     );
   }
@@ -258,7 +269,28 @@ export default function QueueScreen({ navigation }) {
                 <Text style={[s.lookupResult, { color: theme.textMuted }]}>{t('queue_lookup_not_found')}</Text>
               )
             )}
+            {tracking ? (
+              <View style={s.trackRow}>
+                <Text style={[s.trackHint, { color: theme.textDim }]}>🟢 {t('queue_tracking_on')}</Text>
+                <TouchableOpacity onPress={stopTracking} testID="queue-stop-tracking">
+                  <Text style={[s.trackStop, { color: theme.textMuted }]}>{t('queue_stop_tracking')}</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
           </View>
+
+          {/* Незарегистрированным — мягкий баннер: смотреть можно всем,
+              бронь места нужна регистрация (крючок привлечения). */}
+          {verState !== 'approved' ? (
+            <TouchableOpacity
+              style={[s.regBanner, { borderColor: v1.driver || '#00E676', backgroundColor: (v1.driver || '#00E676') + '14' }]}
+              onPress={() => navigation.navigate('Identity')}
+              testID="queue-reg-banner"
+            >
+              <Text style={[s.regBannerText, { color: theme.text }]}>🔓 {t('queue_register_to_book')}</Text>
+              <Text style={[s.cgrLinkChevron, { color: theme.textMuted }]}>›</Text>
+            </TouchableOpacity>
+          ) : null}
 
           {/* Свободнее всего в Китай (ядро бизнеса) */}
           {freest ? (
@@ -343,6 +375,11 @@ const s = StyleSheet.create({
   cgrLinkText: { fontSize: 14, fontWeight: '800', color: '#1A5C3C' },
   cgrLinkChevron: { fontSize: 20, fontWeight: '300' },
   lookupBox: { marginHorizontal: 16, marginBottom: 8, padding: 12, borderRadius: 12, borderWidth: 1 },
+  trackRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 },
+  trackHint: { fontSize: 12, fontWeight: '700' },
+  trackStop: { fontSize: 12, fontWeight: '700', textDecorationLine: 'underline' },
+  regBanner: { marginHorizontal: 16, marginBottom: 12, padding: 14, borderRadius: 14, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 48 },
+  regBannerText: { fontSize: 14, fontWeight: '800', flex: 1 },
   lookupLabel: { fontSize: 12, fontWeight: '600', marginBottom: 8 },
   lookupRow: { flexDirection: 'row', gap: 8 },
   lookupInput: { flex: 1, height: 44, borderRadius: 10, borderWidth: 1, paddingHorizontal: 12, fontSize: 15, fontWeight: '700' },
