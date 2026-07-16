@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Platform, Linking, TouchableOpacity } from 'react-native';
 import { useTheme } from '../utils/ThemeContext';
 import { useI18n } from '../utils/useI18n';
+import { localizePlace } from '../utils/places';
 
 // Координаты основных городов [lat, lon]
 const CITIES = {
@@ -95,7 +96,7 @@ const parseCity = (str) => {
 
 export default function RouteMap({ from, to, transit, liveCoord, height = 200 }) {
   const { theme } = useTheme();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const fromCoord = parseCity(from);
   const toCoord = parseCity(to);
 
@@ -165,7 +166,7 @@ export default function RouteMap({ from, to, transit, liveCoord, height = 200 })
   return (
     <TouchableOpacity style={[s.placeholder, { backgroundColor: theme.border, height }]} onPress={openYandex}>
       <Text style={{ fontSize: 32 }}>🗺️</Text>
-      <Text style={[s.placeholderText, { color: theme.textSecondary }]}>{from} → {to}</Text>
+      <Text style={[s.placeholderText, { color: theme.textSecondary }]}>{localizePlace(from, lang)} → {localizePlace(to, lang)}</Text>
       <View style={s.placeholderBtn}>
         <Text style={s.placeholderBtnText}>{t('yandex_maps')}</Text>
       </View>

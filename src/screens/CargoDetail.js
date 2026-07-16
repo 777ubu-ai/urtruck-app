@@ -15,6 +15,7 @@ import { LEVELS, useAuth } from '../utils/AuthContext';
 import { marketAPI } from '../utils/marketAPI';
 import { reviewsAPI } from '../utils/reviews';
 import { normalizeCargo, cargoDisplay, sanitizeForDisplay, formatPrice } from '../utils/normalizers';
+import { localizePlace } from '../utils/places';
 import { formatDateForDisplay } from '../utils/dateInput';
 import { buildCargoShareText } from '../utils/share';
 import { WEB_URL } from '../config/env';
@@ -110,7 +111,7 @@ export default function CargoDetail({ navigation, route }) {
   // mixed shapes (server snake_case, FeedScreen camelCase, store.js demo)
   // all flow through normalizeCargo so renders never blow up on null.
   const cargo = normalizeCargo(paramCargo) || {};
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
   const { requireLevel, Gate } = useVerificationGate();
@@ -355,7 +356,7 @@ export default function CargoDetail({ navigation, route }) {
         {/* Stage 17: dropped the leading 📦 — Stage 16 quiet visual
             language already removed the bright route emoji from
             feed cards; the detail title should match. */}
-        <Text style={s.pageTitle} numberOfLines={1}>{view.from} → {view.to}</Text>
+        <Text style={s.pageTitle} numberOfLines={1}>{localizePlace(view.from, lang)} → {localizePlace(view.to, lang)}</Text>
 
         {safePhotos.length > 0 ? (
           <View style={{ marginBottom: 10, borderRadius: v1Radius.card, overflow: 'hidden' }}>
@@ -366,9 +367,9 @@ export default function CargoDetail({ navigation, route }) {
         <GlassCard>
           <SectionTitle icon="🛣️" label={t('trip_route')} />
           <View style={s.routeRow}>
-            <View style={[s.dot, { backgroundColor: '#EF4444' }]} /><Text style={[s.city, { color: v1.text }]}>{view.from}</Text>
+            <View style={[s.dot, { backgroundColor: '#EF4444' }]} /><Text style={[s.city, { color: v1.text }]}>{localizePlace(view.from, lang)}</Text>
             <View style={[s.line, { backgroundColor: v1.border }]} /><Text>🚛</Text><View style={[s.line, { backgroundColor: v1.border }]} />
-            <Text style={[s.city, { color: v1.text }]}>{view.to}</Text><View style={[s.dot, { backgroundColor: '#22C55E' }]} />
+            <Text style={[s.city, { color: v1.text }]}>{localizePlace(view.to, lang)}</Text><View style={[s.dot, { backgroundColor: '#22C55E' }]} />
           </View>
           <View style={s.grid}>
             {(() => {

@@ -5,6 +5,7 @@ import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useToast } from '../components/Toast';
 import RouteMap from '../components/RouteMap';
+import { localizePlace } from '../utils/places';
 import GradientText from '../components/GradientText';
 import ShareModal from '../components/ShareModal';
 import { routeStats } from '../utils/geo';
@@ -90,7 +91,7 @@ export default function TripDetail({ navigation, route }) {
       isTrip: true, _server: false, isMine: false,
     };
   }, [serverTrip, rawTrip, tripId]);
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
   const { requireLevel, Gate } = useVerificationGate();
@@ -314,17 +315,17 @@ export default function TripDetail({ navigation, route }) {
           <SectionTitle icon="🛣️" label={t('trip_route')} />
           <View style={s.routeRow}>
             <View style={[s.dot, { backgroundColor: '#EF4444' }]} />
-            <Text style={[s.city, { color: theme.text }]}>{view.from}</Text>
+            <Text style={[s.city, { color: theme.text }]}>{localizePlace(view.from, lang)}</Text>
           </View>
           {view.transit ? (
             <View style={s.routeRow}>
               <View style={[s.dot, { backgroundColor: '#334155' }]} />
-              <Text style={[s.transitCity, { color: theme.textSecondary }]}>{t('trip_via')} {view.transit}</Text>
+              <Text style={[s.transitCity, { color: theme.textSecondary }]}>{t('trip_via')} {localizePlace(view.transit, lang)}</Text>
             </View>
           ) : null}
           <View style={s.routeRow}>
             <View style={[s.dot, { backgroundColor: '#22C55E' }]} />
-            <Text style={[s.city, { color: theme.text }]}>{view.to}</Text>
+            <Text style={[s.city, { color: theme.text }]}>{localizePlace(view.to, lang)}</Text>
           </View>
 
           {stats && (
