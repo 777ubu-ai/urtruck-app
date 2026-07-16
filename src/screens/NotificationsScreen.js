@@ -139,11 +139,14 @@ export default function NotificationsScreen({ navigation }) {
           role,
         });
       } else if (kind === 'deals' && id) {
-        // У сделок нет собственного экрана (см. AppNavigator) — открываем
-        // список чатов, оттуда пользователь дойдёт до диалога по сделке.
-        navigation.navigate('ChatsList');
+        // Deal Room = ChatScreen с dealId (карточка сделки + timeline +
+        // сообщения). ChatScreen сам резолвит roomId по dealId. Раньше
+        // сваливали в общий список чатов — лишний тап и потеря контекста.
+        navigation.navigate('Chat', { dealId: id, role });
       } else if (kind === 'chats' && id) {
-        navigation.navigate('Chat', { chatId: id });
+        // ChatScreen ждёт roomId, а не chatId — раньше открывался пустой
+        // чат без истории и собеседника.
+        navigation.navigate('Chat', { roomId: id, role });
       } else if (kind === 'chat' || kind === 'chats') {
         navigation.navigate('ChatsList');
       }

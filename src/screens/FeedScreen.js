@@ -287,7 +287,11 @@ export default function FeedScreen({ navigation, route }) {
             type: n.truckType || 'tent',
             m3: n.availableM3 || 0,
             tons: n.capacityTons || 0,
-            rating: 5.0, reviews: 0, verified: true,
+            // Реальные данные водителя из бэка (list_trips обогащает). Больше
+            // не выдумываем «★5.0 · Проверен» — показываем как есть.
+            rating: rawT.driver_rating || 0,
+            reviews: rawT.driver_reviews_count || 0,
+            verified: !!rawT.driver_verified,
             tripRoute: `${n.from || '—'} → ${n.to || '—'}`,
             tripDates: n.departure && n.arrival ? `${n.departure} - ${n.arrival}` : (n.departure || ''),
           };

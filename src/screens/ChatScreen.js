@@ -345,6 +345,20 @@ export default function ChatScreen({ navigation, route }) {
       .catch(() => {});
   }, [dealId]);
 
+  // Пуш о сделке ведёт в Chat только с dealId (без roomId). Чтобы
+  // подгрузились и сообщения, а не только карточка сделки, — находим
+  // комнату этой сделки в /chat/rooms и подставляем roomId.
+  useEffect(() => {
+    if (roomId || !dealId) return;
+    let cancelled = false;
+    chatAPI.rooms().then((d) => {
+      if (cancelled) return;
+      const room = (d?.rooms || []).find((r) => r.deal_id === dealId);
+      if (room?.id) setRoomId(room.id);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [dealId, roomId]);
+
   const onCallSupport = async () => {
     try {
       await chatAPI.supportEscalate({ conversationId: roomId || null, reason: 'chat_cta' });

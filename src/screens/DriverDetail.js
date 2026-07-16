@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Modal, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
@@ -20,6 +20,7 @@ import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
 
 const TCOLORS = { tent: '#22C55E', ref: '#16A34A', platform: '#D97706', auto: '#7C3AED', izoterm: '#059669' };
 const FLAGS = { KZ: '🇰🇿', UZ: '🇺🇿', RU: '🇷🇺', KG: '🇰🇬', CN: '🇨🇳' };
+const REPORT_REASONS = ['report_reason_fraud', 'report_reason_noshow', 'report_reason_rude', 'report_reason_other'];
 
 export default function DriverDetail({ navigation, route }) {
   const v1 = useV1Colors();
@@ -33,6 +34,35 @@ export default function DriverDetail({ navigation, route }) {
   const [rateModal, setRateModal] = useState(false);
   const [reviewsData, setReviewsData] = useState(null);
   const [serverProfile, setServerProfile] = useState(null);
+  const [reportModal, setReportModal] = useState(false);
+  const [reporting, setReporting] = useState(false);
+
+  // Жалоба на водителя. Раньше причина бралась только через window.prompt
+  // (web) → на iOS/Android reason='' и репорт молча не уходил. Теперь
+  // выбор причины через модалку — работает на всех платформах.
+  const submitReport = (reason) => {
+    if (!reason || reporting) return;
+    setReporting(true);
+    fetch(`${API_BASE}/report/driver`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        driver_id: driver.id,
+        phone: driver.phone,
+        plate: driver.plate_truck,
+        name: driver.name,
+        reason,
+        severity: 'high',
+      }),
+    }).then(r => r.json()).then(() => {
+      setReporting(false);
+      setReportModal(false);
+      toast('🚨 ' + t('report_sent'), 'warn', 4000);
+    }).catch(() => {
+      setReporting(false);
+      toast(t('send_error'), 'error');
+    });
+  };
 
   useEffect(() => {
     if (driver?.id) {
@@ -191,31 +221,39 @@ export default function DriverDetail({ navigation, route }) {
 
         <TouchableOpacity
           style={s.reportBtn}
-          onPress={() => {
-            const ask = () => Platform.OS === 'web'
-              ? (window.prompt(t('report_driver_prompt'), '') || '').trim()
-              : '';
-            const reason = ask();
-            if (!reason) return;
-            fetch(`${API_BASE}/report/driver`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                driver_id: driver.id,
-                phone: driver.phone,
-                plate: driver.plate_truck,
-                name: driver.name,
-                reason,
-                severity: 'high',
-              }),
-            }).then(r => r.json()).then(() => {
-              toast('🚨 ' + t('report_sent'), 'warn', 4000);
-            }).catch(() => toast(t('send_error'), 'error'));
-          }}
+          onPress={() => setReportModal(true)}
+          testID="report-driver-btn"
         >
           <Text style={s.reportBtnText}>🚨 {t('report_driver')}</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      <Modal
+        visible={reportModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !reporting && setReportModal(false)}
+      >
+        <Pressable style={s.modalOverlay} onPress={() => !reporting && setReportModal(false)}>
+          <Pressable style={[s.modalCard, { backgroundColor: v1.card, borderColor: v1.border }]} onPress={() => {}}>
+            <Text style={[s.modalTitle, { color: v1.text }]}>{t('report_choose_reason')}</Text>
+            {REPORT_REASONS.map((rk) => (
+              <TouchableOpacity
+                key={rk}
+                style={[s.reasonRow, { borderColor: v1.border }]}
+                onPress={() => submitReport(t(rk))}
+                disabled={reporting}
+                activeOpacity={0.7}
+              >
+                <Text style={[s.reasonText, { color: v1.text }]}>{t(rk)}</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity onPress={() => setReportModal(false)} style={s.reasonCancel} disabled={reporting}>
+              <Text style={[s.reasonCancelText, { color: v1.textMuted }]}>{t('cancel')}</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
       <ShareModal visible={shareModal} onClose={() => setShareModal(false)} shareText={'UrTruck: ' + driver.name + ', ' + t(tt) + (driver.m3 ? ` ${driver.m3} м³` : '')} phone={driver.phone} driverId={driver.id} />
       <RatingModal
         visible={rateModal}
@@ -259,4 +297,11 @@ const s = StyleSheet.create({
   betaNote: { fontSize: 11, textAlign: 'center', marginTop: 6 },
   reportBtn: { marginTop: 12, backgroundColor: '#EF444415', borderWidth: 1, borderColor: '#EF444430', paddingVertical: 14, borderRadius: 14, alignItems: 'center' },
   reportBtnText: { color: '#EF4444', fontSize: 13, fontWeight: '700' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
+  modalCard: { borderTopLeftRadius: 20, borderTopRightRadius: 20, borderWidth: 1, padding: 20, paddingBottom: 32 },
+  modalTitle: { fontSize: 18, fontWeight: '800', marginBottom: 14, textAlign: 'center' },
+  reasonRow: { paddingVertical: 16, paddingHorizontal: 14, borderWidth: 1, borderRadius: 12, marginBottom: 10, minHeight: 52, justifyContent: 'center' },
+  reasonText: { fontSize: 15, fontWeight: '600' },
+  reasonCancel: { paddingVertical: 14, alignItems: 'center', marginTop: 4, minHeight: 48, justifyContent: 'center' },
+  reasonCancelText: { fontSize: 15, fontWeight: '700' },
 });

@@ -737,6 +737,29 @@ def list_trips(
             if not _is_dirty_text(t.get("driver_name"), t.get("from_city"),
                                   t.get("to_city"), t.get("truck_type"))
         ]
+    # Обогащаем каждый рейс РЕАЛЬНЫМИ данными водителя (статус верификации +
+    # рейтинг/число отзывов), чтобы фронт не выдумывал «★5.0 · Проверен».
+    # Обогащение не должно ронять ленту — при любом сбое отдаём дефолты.
+    try:
+        from database import reviews_dal
+        with get_conn() as c2:
+            for t in trips:
+                did = t.get("driver_id")
+                drow = c2.execute(
+                    "SELECT status FROM drivers_registration WHERE id = ?",
+                    (did,),
+                ).fetchone() if did else None
+                t["driver_verified"] = bool(drow and drow["status"] == "approved")
+        for t in trips:
+            did = t.get("driver_id")
+            summary = reviews_dal.get_rating_summary(did) if did else {}
+            t["driver_rating"] = summary.get("average", 0) or 0
+            t["driver_reviews_count"] = summary.get("count", 0) or 0
+    except Exception:
+        for t in trips:
+            t.setdefault("driver_verified", False)
+            t.setdefault("driver_rating", 0)
+            t.setdefault("driver_reviews_count", 0)
     return {"trips": trips, "total": len(trips)}
 
 
@@ -843,7 +866,12 @@ def create_bid(body: BidIn, user=Depends(require_level(1))):
                 # Валюта ставки = валюта груза (фолбэк USD), не хардкод «$».
                 money = _money(body.amount, row["currency"])
                 title = f"💰 Новое предложение {money}"
-                text = f"{user.get('full_name', 'Водитель')} предлагает {money} за {row['from_city']}→{row['to_city']}"
+                # .get(key, default) возвращает default ТОЛЬКО если ключа нет,
+                # но не если значение = None. У недозаполненных профилей
+                # full_name приходит None → текст был «None предлагает…».
+                # `or` покрывает и отсутствие ключа, и None, и пустую строку.
+                bidder_name = user.get('full_name') or 'Водитель'
+                text = f"{bidder_name} предлагает {money} за {row['from_city']}→{row['to_city']}"
                 post_notifs.append((row["owner_id"], title, text, "💰", cargo_url, True))
 
                 # PR-B (P0-D): eager chat-room create. Раньше chat_rooms
@@ -875,7 +903,8 @@ def create_bid(body: BidIn, user=Depends(require_level(1))):
                 # Валюта ставки = валюта рейса (фолбэк USD), не хардкод «$».
                 money = _money(body.amount, row["currency"])
                 title = f"📦 Новый заказ {money}"
-                text = f"{user.get('full_name', 'Клиент')} предлагает {money} за {row['from_city']}→{row['to_city']}"
+                bidder_name = user.get('full_name') or 'Клиент'
+                text = f"{bidder_name} предлагает {money} за {row['from_city']}→{row['to_city']}"
                 post_notifs.append((row["driver_id"], title, text, "📦", trip_url, True))
 
                 try:
