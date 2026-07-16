@@ -11,6 +11,9 @@ import { useTheme } from '../utils/ThemeContext';
 import { useToast } from './Toast';
 import { marketAPI } from '../utils/marketAPI';
 import { CURRENCY_SYMBOLS } from '../utils/normalizers';
+import { TRUCK_KEYS } from '../utils/truckConstants';
+
+const PAY_KEYS = ['cashless', 'cash', 'any'];
 
 export default function EditCargoModal({ visible, cargo, onClose, onSaved }) {
   const { t } = useI18n();
@@ -22,6 +25,10 @@ export default function EditCargoModal({ visible, cargo, onClose, onSaved }) {
   const [desc, setDesc] = useState(String(cargo?.cargo_desc ?? ''));
   const [weight, setWeight] = useState(cargo?.weight_tons != null ? String(cargo.weight_tons) : '');
   const [volume, setVolume] = useState(cargo?.volume_m3 != null ? String(cargo.volume_m3) : '');
+  // 2.10: теперь можно править и тип кузова, и тип оплаты (раньше — только
+  // цена/описание/вес/объём, из-за чего груз приходилось удалять и создавать).
+  const [truckType, setTruckType] = useState(cargo?.cargo_type || 'tent');
+  const [paymentType, setPaymentType] = useState(cargo?.payment_type || '');
   const [saving, setSaving] = useState(false);
 
   // Пересинхронизация при смене груза (модалка переиспользуется).
@@ -31,6 +38,8 @@ export default function EditCargoModal({ visible, cargo, onClose, onSaved }) {
       setDesc(String(cargo?.cargo_desc ?? ''));
       setWeight(cargo?.weight_tons != null ? String(cargo.weight_tons) : '');
       setVolume(cargo?.volume_m3 != null ? String(cargo.volume_m3) : '');
+      setTruckType(cargo?.cargo_type || 'tent');
+      setPaymentType(cargo?.payment_type || '');
     }
   }, [visible, cargo]);
 
@@ -50,6 +59,8 @@ export default function EditCargoModal({ visible, cargo, onClose, onSaved }) {
     if (price.trim() !== '' && num(price) != null) payload.price = Math.round(num(price));
     if (weight.trim() !== '' && num(weight) != null) payload.weight_tons = num(weight);
     if (volume.trim() !== '' && num(volume) != null) payload.volume_m3 = num(volume);
+    if (truckType) payload.cargo_type = truckType;
+    payload.payment_type = paymentType || '';  // '' → бэк снимет тип оплаты
     setSaving(true);
     const r = await marketAPI.updateCargo(cargo.id, payload);
     setSaving(false);
@@ -109,6 +120,32 @@ export default function EditCargoModal({ visible, cargo, onClose, onSaved }) {
                 </View>
               </View>
 
+              <Text style={[s.label, { color: theme.textMuted }]}>{t('truckType')}</Text>
+              <View style={s.chipsWrap}>
+                {TRUCK_KEYS.map((k) => (
+                  <TouchableOpacity
+                    key={k}
+                    style={[s.chip, { borderColor: truckType === k ? '#F59E0B' : theme.border, backgroundColor: truckType === k ? '#F59E0B22' : theme.bg }]}
+                    onPress={() => setTruckType(k)}
+                  >
+                    <Text style={[s.chipText, { color: truckType === k ? '#F59E0B' : theme.textMuted }]}>{t(k)}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={[s.label, { color: theme.textMuted }]}>{t('payment_type_label')}</Text>
+              <View style={s.chipsWrap}>
+                {PAY_KEYS.map((k) => (
+                  <TouchableOpacity
+                    key={k}
+                    style={[s.chip, { borderColor: paymentType === k ? '#F59E0B' : theme.border, backgroundColor: paymentType === k ? '#F59E0B22' : theme.bg }]}
+                    onPress={() => setPaymentType(paymentType === k ? '' : k)}
+                  >
+                    <Text style={[s.chipText, { color: paymentType === k ? '#F59E0B' : theme.textMuted }]}>{t('pay_' + k)}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
               <TouchableOpacity
                 onPress={onSave} disabled={saving}
                 style={[s.save, { backgroundColor: '#F59E0B', opacity: saving ? 0.6 : 1 }]}
@@ -136,6 +173,9 @@ const s = StyleSheet.create({
   input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15 },
   multiline: { minHeight: 64, textAlignVertical: 'top' },
   row: { flexDirection: 'row' },
+  chipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+  chip: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, borderWidth: 1, minHeight: 40, justifyContent: 'center' },
+  chipText: { fontSize: 13, fontWeight: '700' },
   save: { height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginTop: 20 },
   saveText: { color: '#0C0A09', fontSize: 16, fontWeight: '800' },
   cancel: { height: 44, alignItems: 'center', justifyContent: 'center', marginTop: 4 },

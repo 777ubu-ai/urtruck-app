@@ -536,6 +536,7 @@ class CargoPatchIn(BaseModel):
     price: Optional[int] = None
     currency: Optional[str] = None
     pickup_date: Optional[str] = None
+    payment_type: Optional[str] = None
 
 
 @mp_router.patch("/cargos/{cargo_id}")
@@ -586,6 +587,9 @@ def update_cargo(cargo_id: str, body: CargoPatchIn, user=Depends(require_level(1
             updates.append("currency = ?"); params.append(cur)
         if body.pickup_date is not None:
             updates.append("pickup_date = ?"); params.append(body.pickup_date)
+        if body.payment_type is not None:
+            pay = body.payment_type if body.payment_type in ("cash", "cashless", "any") else None
+            updates.append("payment_type = ?"); params.append(pay)
 
         if not updates:
             raise HTTPException(status_code=400, detail="Нечего обновлять")

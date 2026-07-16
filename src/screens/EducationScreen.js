@@ -38,7 +38,10 @@ export default function EducationScreen({ navigation }) {
             <View style={{ flex: 1 }}>
               <Text style={[s.videoLabel, { color: theme.textMuted }]}>{t('tutorial')} #{index + 1}</Text>
               <Text style={[s.videoTitle, { color: theme.text }]}>{t(item.key)}</Text>
-              <Text style={[s.duration, { color: '#EF4444' }]}>▶ {item.duration} · {t('watchVideo')}</Text>
+              {/* Честно: это тематический поиск на YouTube, а не конкретное
+                  видео с точной длительностью (раньше показывались выдуманные
+                  «3:20» и т.п., что выглядело как курируемый ролик). */}
+              <Text style={[s.duration, { color: theme.textMuted }]}>🔎 {t('edu_youtube_search')}</Text>
             </View>
           </TouchableOpacity>
         )}
