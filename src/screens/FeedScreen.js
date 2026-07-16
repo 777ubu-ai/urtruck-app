@@ -12,6 +12,7 @@ import { useVerificationGate } from '../components/VerificationGate';
 import { LEVELS, useAuth } from '../utils/AuthContext';
 import { SkeletonCard } from '../components/Skeleton';
 import { normalizeTrip, formatPrice, sanitizeForDisplay } from '../utils/normalizers';
+import { routeStats } from '../utils/geo';
 import { matchTruckTypes } from '../utils/truckSynonyms';
 import FeedCard from '../components/ui/v1/FeedCard';
 import SearchBar from '../components/ui/v1/SearchBar';
@@ -518,8 +519,18 @@ export default function FeedScreen({ navigation, route }) {
     // груза. Если backend не вернул pickup — показываем "Дата уточняется",
     // а не скрываем пилюлю целиком. Иначе пользователь не понимает,
     // когда груз надо забирать.
+    // Км и ставка-за-км — метрики №1 для решения «беру/не беру». routeStats
+    // уже используется на CargoDetail; выносим на карточку, чтобы водитель
+    // не открывал деталь ради двух цифр.
+    const stats = routeStats(item.from, item.to);
+    const km = (stats && stats.km) || 0;
+    const priceNum = Number(item.price) || 0;
+    const perKm = (km > 0 && priceNum > 0) ? priceNum / km : 0;
+    const perKmStr = perKm >= 10 ? String(Math.round(perKm)) : perKm.toFixed(1);
     const meta = [
       { label: t('departure'), value: item.pickup || t('pickup_date_tbd') },
+      km > 0 ? { label: t('distance'), value: `${km} км` } : null,
+      perKm > 0 ? { label: t('per_km_short'), value: `${perKmStr} ${item.currency || ''}/км` } : null,
       item.tons > 0 ? { label: t('weight'), value: `${item.tons} т` } : null,
       item.m3 > 0 ? { label: t('volume'), value: `${item.m3} м³` } : null,
     ].filter(Boolean);
