@@ -353,6 +353,17 @@ export default function QueueScreen({ navigation }) {
             ) : null}
           </View>
 
+          {/* Вход на экран «Мои номера в очереди» — список всех отслеживаемых
+              ГРНЗ с живым статусом и пуш-алертом. */}
+          <TouchableOpacity
+            style={[s.trackedLink, { backgroundColor: theme.card, borderColor: theme.border }]}
+            onPress={() => navigation.navigate('TrackedPlates')}
+            testID="queue-open-tracked"
+          >
+            <Text style={[s.trackedLinkText, { color: theme.text }]}>🚛 {t('tracked_open')}</Text>
+            <Text style={[s.cgrLinkChevron, { color: theme.textMuted }]}>›</Text>
+          </TouchableOpacity>
+
           {/* Незарегистрированным — мягкий баннер: смотреть можно всем,
               бронь места нужна регистрация (крючок привлечения). */}
           {verState !== 'approved' ? (
@@ -453,6 +464,8 @@ const s = StyleSheet.create({
   trackHint: { fontSize: 12, fontWeight: '700' },
   trackStop: { fontSize: 12, fontWeight: '700', textDecorationLine: 'underline' },
   regBanner: { marginHorizontal: 16, marginBottom: 12, padding: 14, borderRadius: 14, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 48 },
+  trackedLink: { marginHorizontal: 16, marginBottom: 12, paddingHorizontal: 14, paddingVertical: 14, borderRadius: 14, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 48 },
+  trackedLinkText: { fontSize: 14, fontWeight: '800', flex: 1 },
   regBannerText: { fontSize: 14, fontWeight: '800', flex: 1 },
   lookupLabel: { fontSize: 12, fontWeight: '600', marginBottom: 8 },
   lookupRow: { flexDirection: 'row', gap: 8 },

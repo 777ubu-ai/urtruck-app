@@ -37,6 +37,7 @@ import BlacklistScreen from '../screens/BlacklistScreen';
 import EducationScreen from '../screens/EducationScreen';
 import PushFilterScreen from '../screens/PushFilterScreen';
 import QueueScreen from '../screens/QueueScreen';
+import TrackedPlatesScreen from '../screens/TrackedPlatesScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
 import StatsScreen from '../screens/StatsScreen';
 import EditProfileScreen from '../screens/EditProfileScreen';
@@ -224,6 +225,7 @@ export default function AppNavigator() {
           <Stack.Screen name="Education" component={EducationScreen} />
           <Stack.Screen name="PushFilter" component={PushFilterScreen} />
           <Stack.Screen name="Queue" component={QueueScreen} />
+          <Stack.Screen name="TrackedPlates" component={TrackedPlatesScreen} />
           <Stack.Screen name="Notifications" component={NotificationsScreen} />
           <Stack.Screen name="Stats" component={StatsScreen} />
           <Stack.Screen name="EditProfile" component={EditProfileScreen} />
