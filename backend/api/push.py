@@ -105,6 +105,12 @@ def unsubscribe(sub: dict):
 @push_router.post("/register-native")
 def register_native(data: NativeTokenIn, authorization: Optional[str] = Header(None)):
     """Регистрация Expo/FCM push токена (native apps)."""
+    # BUG-008: пустой/битый токен раньше принимался (200) → мусорные строки в
+    # push_tokens_native, которые никогда не доставят, и коллизия на ''.
+    tok = (data.token or "").strip()
+    if not tok or len(tok) < 8:
+        raise HTTPException(status_code=400, detail="Некорректный push-токен")
+    data.token = tok
     user_id = None
     if authorization and authorization.startswith("Bearer "):
         try:
