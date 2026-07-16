@@ -42,6 +42,7 @@ export default function SelfieStepScreen({ navigation, route }) {
   // status: idle | busy | done | error
   const [selfie, setSelfie] = useState({ uri: null, status: 'idle' });
   const [confidence, setConfidence] = useState(0);
+  const [attempts, setAttempts] = useState(0);
   const [closeVisible, setCloseVisible] = useState(false);
   const [helpVisible, setHelpVisible] = useState(false);
 
@@ -88,18 +89,19 @@ export default function SelfieStepScreen({ navigation, route }) {
         toast(t('reg_selfie_confirmed'), 'success');
       } else {
         setSelfie({ uri, status: 'error' });
+        setAttempts((a) => a + 1);
         const detail = typeof res?.detail === 'string' ? res.detail : t('reg_selfie_bad_photo');
         toast(detail, 'error', 5000);
       }
     } catch (e) {
       setSelfie({ uri, status: 'error' });
+      setAttempts((a) => a + 1);
       toast(t('reg_selfie_bad_photo'), 'error');
     }
   };
 
   const verified = selfie.status === 'done';
-  const onNext = () => {
-    if (!verified) return;
+  const goForward = () => {
     // Безопасный форвард: только ключ личного фото из #73 (он уже сохранён
     // server-side). Raw selfie-uri/base64 дальше НЕ передаём — само селфи уже
     // ушло на /register/selfie.
@@ -107,6 +109,16 @@ export default function SelfieStepScreen({ navigation, route }) {
       personalPhotoKey: route?.params?.personalPhotoKey || null,
     });
   };
+  const onNext = () => {
+    if (!verified) return;
+    goForward();
+  };
+  // 7.5: liveness может падать из-за засветки/солнца, запирая водителя. После
+  // 2 неудачных попыток даём пройти дальше с пометкой на ручную проверку —
+  // фото уже загружено на сервер, модератор проверит (совпадает с авто-
+  // одобрением + флагом manual_review). Не «fake-success»: доступ к рейсам
+  // всё равно решается на серверной модерации.
+  const canManualReview = !verified && attempts >= 2;
 
   const progress = STEP / TOTAL_STEPS;
 
@@ -172,6 +184,15 @@ export default function SelfieStepScreen({ navigation, route }) {
           </Pressable>
         ) : null}
 
+        {/* 7.5: после 2 неудач liveness (засветка/солнце) не запираем —
+            даём отправить на ручную проверку. Фото уже на сервере. */}
+        {canManualReview ? (
+          <Pressable onPress={goForward} style={s.manualBtn} testID="selfie-manual-review">
+            <Feather name="user-check" size={16} color={brand.textSecondary} />
+            <Text style={s.manualText}>{t('reg_selfie_manual_review')}</Text>
+          </Pressable>
+        ) : null}
+
         {/* DEV/QA-only: прыжок на VehicleDocs в обход face_verified-гейта. */}
         <QaStepSkip
           onPress={() => navigation.navigate('VehicleDocs', {
@@ -219,6 +240,8 @@ const s = StyleSheet.create({
   okText: { ...typography.bodySmall, fontWeight: '800', color: brand.primary },
   retakeBtn: { marginTop: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 10 },
   retakeText: { ...typography.bodySmall, fontWeight: '700', color: brand.primary },
+  manualBtn: { marginTop: 6, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, minHeight: 44 },
+  manualText: { ...typography.bodySmall, fontWeight: '700', color: brand.textSecondary, textDecorationLine: 'underline' },
   err: { ...typography.caption, color: brand.error, marginTop: 12 },
   ctaWrap: { paddingHorizontal: 20, paddingBottom: 16, paddingTop: 8 },
   cta: { height: 56, borderRadius: radius.lg, backgroundColor: brand.primary, alignItems: 'center', justifyContent: 'center' },
