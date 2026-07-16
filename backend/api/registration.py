@@ -101,6 +101,21 @@ def logout(authorization: str = Header(None)):
     return {"ok": True, "revoked": revoked}
 
 
+# ---------- Account deletion (App Store Guideline 5.1.1(v)) ----------
+@reg_router.delete("/account")
+@reg_router.post("/account/delete")
+def delete_my_account(driver_id: str = Depends(get_current_driver)):
+    """Удаление аккаунта пользователем из приложения (требование Apple).
+    Обезличивает персональные данные и отзывает все сессии. Идемпотентно —
+    после удаления токен становится недействительным. POST-алиас нужен для
+    клиентов/прокси, которые не пропускают DELETE."""
+    try:
+        reg_dal.delete_account(driver_id)
+    except Exception:
+        raise HTTPException(status_code=500, detail="Не удалось удалить аккаунт")
+    return {"ok": True, "deleted": True}
+
+
 # ---------- Me endpoint ----------
 @reg_router.get("/me")
 def get_me(driver_id: str = Depends(get_current_driver)):

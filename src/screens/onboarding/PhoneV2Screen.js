@@ -23,6 +23,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
@@ -30,6 +31,22 @@ import { useI18n } from '../../utils/useI18n';
 import { regAPI } from '../../utils/registration';
 import { brand, radius, space, typography } from '../../theme/brandV2';
 import { DEFAULT_COUNTRY } from '../../utils/countries';
+import { WEB_URL } from '../../config/env';
+
+const LEGAL_BASE = WEB_URL || 'https://urtruck.kz';
+// Открытие юр-документов: window.open на web (новая вкладка) с fallback на
+// Linking.openURL — тот же приём, что в ConsentRow (Text onPress на
+// react-native-web ненадёжно ловит tap на мелких ссылках).
+const openLegal = (path) => {
+  const url = `${LEGAL_BASE}${path}`;
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    try {
+      const win = window.open(url, '_blank', 'noopener,noreferrer');
+      if (win) return;
+    } catch {}
+  }
+  Linking.openURL(url).catch(() => {});
+};
 
 const sanitizeDigits = (s) => (s || '').replace(/[^\d]/g, '');
 
@@ -264,9 +281,23 @@ export default function PhoneV2Screen({ navigation, route }) {
 
         <Text style={s.consent}>
           {t('onb_v2_consent_prefix')}{' '}
-          <Text style={s.consentLink}>{t('onb_v2_consent_offer')}</Text>
+          <Text
+            style={s.consentLink}
+            onPress={() => openLegal('/terms')}
+            accessibilityRole="link"
+            suppressHighlighting
+          >
+            {t('onb_v2_consent_offer')}
+          </Text>
           {' '}{t('onb_v2_consent_and')}{' '}
-          <Text style={s.consentLink}>{t('onb_v2_consent_privacy')}</Text>
+          <Text
+            style={s.consentLink}
+            onPress={() => openLegal('/privacy')}
+            accessibilityRole="link"
+            suppressHighlighting
+          >
+            {t('onb_v2_consent_privacy')}
+          </Text>
         </Text>
       </KeyboardAvoidingView>
     </SafeAreaView>

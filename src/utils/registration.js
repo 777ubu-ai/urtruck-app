@@ -209,6 +209,24 @@ export const regAPI = {
     return data;
   },
 
+  // App Store Guideline 5.1.1(v): удаление аккаунта прямо в приложении.
+  // Обезличивает данные на сервере и отзывает сессию. Best-effort по сети,
+  // но сам факт удаления клиент подтверждает по res.ok.
+  async deleteAccount() {
+    try {
+      const token = await this.getToken();
+      if (!token) return { ok: true, deleted: true };
+      const r = await fetch(`${BASE}/account`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const data = await r.json().catch(() => ({}));
+      return { ok: r.ok, ...data };
+    } catch (e) {
+      return { ok: false, detail: e?.message || 'network_error' };
+    }
+  },
+
   async getToken() {
     return await storage.get(TOKEN_KEY);
   },

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Image, ActivityIndicator, Alert, Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useI18n } from '../utils/useI18n';
 import { useAuth } from '../utils/AuthContext';
@@ -54,6 +54,8 @@ export default function EditProfileScreen({ navigation, route }) {
   infoText: { fontSize: 12, fontWeight: '600', lineHeight: 17 },
   skipRow: { alignItems: 'center', marginTop: v1Spacing.md, paddingVertical: 8 },
   skipText: { fontSize: 13, fontWeight: '700' },
+  deleteRow: { alignItems: 'center', marginTop: 4, marginBottom: v1Spacing.lg || 20, paddingVertical: 12, minHeight: 44, justifyContent: 'center' },
+  deleteText: { fontSize: 14, fontWeight: '700', color: '#EF4444' },
 
   // PR-D1: PRO-секция (driver only)
   proSection: { marginTop: v1Spacing.md },
@@ -95,8 +97,9 @@ export default function EditProfileScreen({ navigation, route }) {
   const accent = v1AccentFor(role);
   const accentKey = isDriver ? 'driver' : 'cargo';
   const { t } = useI18n();
-  const { session } = useAuth();
+  const { session, signOut } = useAuth();
   const { toast } = useToast();
+  const [deleting, setDeleting] = useState(false);
 
   const userId = session?.user?.id;
   const profile = getProfile(userId) || {};
@@ -272,6 +275,38 @@ export default function EditProfileScreen({ navigation, route }) {
     await clearDraft(draftKey);
     toast(serverOk ? '✓ ' + t('saveSettings') : '✓ ' + t('saved_locally'), serverOk ? 'success' : 'warn');
     navigation.goBack();
+  };
+
+  // App Store Guideline 5.1.1(v): удаление аккаунта из приложения.
+  // Кросс-платформенное подтверждение: Alert на native, window.confirm на
+  // web (Alert.alert с кнопками не работает в react-native-web).
+  const doDeleteAccount = async () => {
+    if (deleting) return;
+    setDeleting(true);
+    const res = await regAPI.deleteAccount();
+    setDeleting(false);
+    if (res.ok) {
+      toast('✓ ' + (t('delete_account_done') || 'Аккаунт удалён'), 'success', 2000);
+      try { await signOut(); } catch {}
+    } else {
+      toast('⚠ ' + (res.detail || t('save_error') || 'Ошибка'), 'error', 4000);
+    }
+  };
+
+  const confirmDeleteAccount = () => {
+    const title = t('delete_account_title') || 'Удалить аккаунт?';
+    const msg = t('delete_account_confirm') ||
+      'Все ваши данные будут удалены безвозвратно. Это действие нельзя отменить.';
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.confirm(`${title}\n\n${msg}`)) {
+        doDeleteAccount();
+      }
+      return;
+    }
+    Alert.alert(title, msg, [
+      { text: t('cancel') || 'Отмена', style: 'cancel' },
+      { text: t('delete_account_btn') || 'Удалить', style: 'destructive', onPress: doDeleteAccount },
+    ]);
   };
 
   return (
@@ -479,6 +514,21 @@ export default function EditProfileScreen({ navigation, route }) {
 
       <TouchableOpacity onPress={() => navigation.goBack()} style={s.skipRow} activeOpacity={0.7}>
         <Text style={[s.skipText, { color: accent.main }]}>{t('profile_setup_skip')}</Text>
+      </TouchableOpacity>
+
+      {/* App Store 5.1.1(v): удаление аккаунта прямо в приложении. */}
+      <TouchableOpacity
+        onPress={confirmDeleteAccount}
+        style={s.deleteRow}
+        activeOpacity={0.7}
+        disabled={deleting}
+        testID="delete-account-btn"
+      >
+        {deleting ? (
+          <ActivityIndicator color="#EF4444" />
+        ) : (
+          <Text style={s.deleteText}>{t('delete_account_action') || 'Удалить аккаунт'}</Text>
+        )}
       </TouchableOpacity>
     </Screen>
   );

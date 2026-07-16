@@ -11,11 +11,12 @@ const CONTACTS = [
   { icon: '📱', label: 'WhatsApp', value: '+7 700 603 3365', url: 'https://wa.me/77006033365' },
 ];
 
+// Только честные, проверяемые факты (App Store модерация + доверие).
 const STATS = [
-  { n: '5 000+', l: 'Проверенных перевозчиков' },
-  { n: '6', l: 'Стран (KZ, RU, UZ, CN, KG, TJ)' },
-  { n: '11', l: 'Языков интерфейса' },
-  { n: '24/7', l: 'Поддержка' },
+  { n: '6', l: 'Стран на маршрутах (KZ, RU, UZ, CN, KG, TJ)' },
+  { n: '4', l: 'Языка интерфейса (RU · KK · EN · ZH)' },
+  { n: '0%', l: 'Комиссия в бете' },
+  { n: 'Live', l: 'Очередь на границе КЗ' },
 ];
 
 export default function AboutScreen({ navigation }) {
@@ -48,7 +49,7 @@ export default function AboutScreen({ navigation }) {
         <Text style={[s.body, { color: theme.textSecondary }]}>
           UrTruck — маркетплейс грузоперевозок для международных маршрутов.
           Соединяем грузоотправителей и перевозчиков напрямую, без посредников.
-          Каждый водитель проходит проверку: ИИН, документы, liveness, blacklist-screening.
+          Водители проходят регистрацию с проверкой ИИН, документов и blacklist-screening.
         </Text>
 
         <Text style={[s.section, { color: theme.text }]}>{t('about_numbers')}</Text>
@@ -80,7 +81,7 @@ export default function AboutScreen({ navigation }) {
         <View style={[s.footer, { borderTopColor: theme.border }]}>
           <Text style={[s.footerText, { color: theme.textDim }]}>
             © 2026 UrTruck · Казахстан, Алматы{'\n'}
-            v1.0.50 · 17.04.2026 · Все права защищены
+            Все права защищены
           </Text>
         </View>
       </ScrollView>
