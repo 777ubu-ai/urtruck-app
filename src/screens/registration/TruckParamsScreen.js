@@ -269,8 +269,24 @@ export default function TruckParamsScreen({ navigation, route }) {
           testID="tp-color"
         />
 
-        {/* Грузоподъёмность (динамический ввод) */}
+        {/* Грузоподъёмность: чипы-пресеты (7.2 — быстрый выбор пальцем вместо
+            ручного ввода) + ручной ввод для нестандартных значений. */}
         <Text style={s.label}>{t('truck_params_tonnage')}</Text>
+        <View style={s.presetRow}>
+          {['3', '5', '10', '20', '25'].map((v) => {
+            const active = tonnage === v;
+            return (
+              <Pressable
+                key={v}
+                onPress={() => { setTonnage(v); if (errors.tonnage) setErrors((e) => ({ ...e, tonnage: null })); }}
+                style={[s.presetChip, active && s.presetChipActive]}
+                testID={`tp-tonnage-${v}`}
+              >
+                <Text style={[s.presetChipText, active && s.presetChipTextActive]}>{v} т</Text>
+              </Pressable>
+            );
+          })}
+        </View>
         <TextInput
           value={tonnage}
           onChangeText={setTonnage}
@@ -452,6 +468,11 @@ const s = StyleSheet.create({
   chipTextActive: { color: brand.primary, fontWeight: '700' },
   input: { height: 52, borderRadius: radius.md, borderWidth: 1, borderColor: brand.border, backgroundColor: brand.surface, paddingHorizontal: 16, color: brand.textPrimary, ...typography.body },
   inputErr: { borderColor: brand.danger || '#EF4444' },
+  presetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
+  presetChip: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: brand.border, backgroundColor: brand.surface, minHeight: 44, justifyContent: 'center' },
+  presetChipActive: { backgroundColor: brand.primary, borderColor: brand.primary },
+  presetChipText: { ...typography.body, fontWeight: '700', color: brand.textSecondary },
+  presetChipTextActive: { color: '#0C0A09' },
   // picker-поле (марка/модель/цвет)
   picker: { minHeight: 52, borderRadius: radius.md, borderWidth: 1, borderColor: brand.border, backgroundColor: brand.surface, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   pickerDisabled: { opacity: 0.5 },
