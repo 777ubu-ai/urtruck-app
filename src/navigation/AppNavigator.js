@@ -11,14 +11,7 @@ import BottomNav from '../components/ui/v1/BottomNav';
 
 import HowItWorksScreen from '../screens/HowItWorksScreen';
 import AboutScreen from '../screens/AboutScreen';
-import AuthScreen from '../screens/AuthScreen';
 import RoleScreen from '../screens/RoleScreen';
-// Stage 35-37: старые RegScreen / SignUpScreen / AuthScreen больше не
-// показываются пользователю в основном flow. Импорты сохранены только
-// для qaPreview (?qa=design), где галерея макетов всё ещё на них
-// ссылается, и как fallback в случае deeplink.
-import RegScreen from '../screens/RegScreen';
-import SignUpScreen from '../screens/SignUpScreen';
 import PremiumRegisterScreen from '../screens/registration/PremiumRegisterScreen';
 import PremiumOtpScreen from '../screens/registration/PremiumOtpScreen';
 import PremiumProfileScreen from '../screens/registration/PremiumProfileScreen';
@@ -28,25 +21,6 @@ import VehiclePhotosScreen from '../screens/registration/VehiclePhotosScreen';
 import IdentityStepScreen from '../screens/registration/IdentityStepScreen';
 import SelfieStepScreen from '../screens/registration/SelfieStepScreen';
 import PremiumLoginScreen from '../screens/registration/PremiumLoginScreen';
-// Driver-verification onboarding hub (2026-06-11). Точка входа из
-// Profile «Стать водителем / перевозчиком». Прежний flow начинался
-// прямо с `Identity` без сводки — этот dashboard собирает 10 пунктов и
-// показывает их статусы.
-import VerificationDashboardScreen from '../screens/verification/VerificationDashboardScreen';
-import VerificationPendingScreen from '../screens/verification/VerificationPendingScreen';
-import VerificationSubmittedScreen from '../screens/verification/VerificationSubmittedScreen';
-import VerificationApprovedScreen from '../screens/verification/VerificationApprovedScreen';
-// PR #105: 7 dedicated upload screens + review + rejected.
-import VerificationPersonalPhotoScreen from '../screens/verification/VerificationPersonalPhotoScreen';
-import VerificationSelfieWithLicenseScreen from '../screens/verification/VerificationSelfieWithLicenseScreen';
-import VerificationLicenseFrontScreen from '../screens/verification/VerificationLicenseFrontScreen';
-import VerificationLicenseBackScreen from '../screens/verification/VerificationLicenseBackScreen';
-import VerificationSrtsScreen from '../screens/verification/VerificationSrtsScreen';
-import VerificationTruckExteriorScreen from '../screens/verification/VerificationTruckExteriorScreen';
-import VerificationTruckInteriorScreen from '../screens/verification/VerificationTruckInteriorScreen';
-import VerificationReferralCodeScreen from '../screens/verification/VerificationReferralCodeScreen';
-import VerificationReviewSubmitScreen from '../screens/verification/VerificationReviewSubmitScreen';
-import VerificationRejectedScreen from '../screens/verification/VerificationRejectedScreen';
 import FeedScreen from '../screens/FeedScreen';
 import CargoDetail from '../screens/CargoDetail';
 import TrackTruckScreen from '../screens/TrackTruckScreen';
@@ -180,9 +154,6 @@ export default function AppNavigator() {
         <Stack.Screen name="RoleV2" component={RoleScreenV2} />
         <Stack.Screen name="ProfileV2" component={ProfileV2Screen} />
         {/* Legacy экраны — оставлены только для qaPreview-галереи. */}
-        <Stack.Screen name="SignUp" component={SignUpScreen} />
-        <Stack.Screen name="LegacyReg" component={RegScreen} />
-        <Stack.Screen name="LegacyAuth" component={AuthScreen} />
         {/* Premium flow */}
         <Stack.Screen name="Auth" component={PremiumLoginScreen} />
         <Stack.Screen name="Login" component={PremiumLoginScreen} />
@@ -268,24 +239,6 @@ export default function AppNavigator() {
         <Stack.Screen name="TruckParams" component={TruckParamsScreen} />
         <Stack.Screen name="VehicleDocs" component={VehicleDocsScreen} />
         <Stack.Screen name="VehiclePhotos" component={VehiclePhotosScreen} />
-        {/* Driver-verification hub (2026-06-11). Точка входа — кнопка
-            «Стать водителем / перевозчиком» в Profile. Dashboard сам
-            редиректит на pending/approved/rejected при необходимости. */}
-        <Stack.Screen name="VerificationDashboard" component={VerificationDashboardScreen} />
-        <Stack.Screen name="VerificationPending" component={VerificationPendingScreen} />
-        <Stack.Screen name="VerificationSubmitted" component={VerificationSubmittedScreen} />
-        <Stack.Screen name="VerificationApproved" component={VerificationApprovedScreen} />
-        {/* PR #105: 7 dedicated upload steps + review + rejected. */}
-        <Stack.Screen name="VerifyPersonalPhoto" component={VerificationPersonalPhotoScreen} />
-        <Stack.Screen name="VerifySelfieWithLicense" component={VerificationSelfieWithLicenseScreen} />
-        <Stack.Screen name="VerifyLicenseFront" component={VerificationLicenseFrontScreen} />
-        <Stack.Screen name="VerifyLicenseBack" component={VerificationLicenseBackScreen} />
-        <Stack.Screen name="VerifySrts" component={VerificationSrtsScreen} />
-        <Stack.Screen name="VerifyTruckExterior" component={VerificationTruckExteriorScreen} />
-        <Stack.Screen name="VerifyTruckInterior" component={VerificationTruckInteriorScreen} />
-        <Stack.Screen name="VerifyReferralCode" component={VerificationReferralCodeScreen} />
-        <Stack.Screen name="VerificationReview" component={VerificationReviewSubmitScreen} />
-        <Stack.Screen name="VerificationRejected" component={VerificationRejectedScreen} />
           {/* КАНОНИЧЕСКИЙ PRO-flow верификации водителя:
               Security → Identity → Selfie → VehicleDocs → VehiclePhotos →
               TruckParams → submit.

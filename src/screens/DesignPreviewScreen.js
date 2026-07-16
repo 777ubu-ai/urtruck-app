@@ -85,13 +85,8 @@ const SECTIONS = [
     { label: 'Premium OTP (driver)',       screen: 'RegOtp',     params: { role: 'driver', phone: '+77479171118' } },
     { label: 'Premium Profile (driver)',   screen: 'RegProfile', params: { role: 'driver' } },
     { label: 'Premium Profile (client)',   screen: 'RegProfile', params: { role: 'client' } },
-    // Legacy дизайны — оставлены в галерее для исторического сравнения,
-    // в реальном flow пользователь их больше не увидит.
     { label: 'Premium Login',         screen: 'Login' },
-    { label: 'Legacy SignUp driver',  screen: 'SignUp',     params: { role: 'driver' } },
-    { label: 'Legacy SignUp client',  screen: 'SignUp',     params: { role: 'client' } },
-    { label: 'Legacy multi-step Reg', screen: 'LegacyReg',  params: { role: 'driver' } },
-    { label: 'Legacy Auth (light)',   screen: 'LegacyAuth', params: { role: 'driver' } },
+    // Legacy SignUp/Reg/Auth-экраны удалены (Этап 6 чистки) — пункты убраны.
     { label: 'Profile setup driver',  screen: 'EditProfile', params: { role: 'driver' } },
     { label: 'Profile setup cargo owner', screen: 'EditProfile', params: { role: 'client' } },
   ]},

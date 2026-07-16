@@ -7,8 +7,6 @@ import { ThemeProvider, useTheme } from './src/utils/ThemeContext';
 import { AuthProvider, useAuth } from './src/utils/AuthContext';
 import { ToastProvider } from './src/components/Toast';
 import OfflineBanner from './src/components/OfflineBanner';
-// VerificationStatusBanner removed — after OTP users get full access
-// import VerificationStatusBanner from './src/components/VerificationStatusBanner';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import AppNavigator from './src/navigation/AppNavigator';
 import { flushOutbox } from './src/utils/outbox';
