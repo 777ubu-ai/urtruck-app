@@ -42,7 +42,7 @@ export default function EditTripScreen({ navigation, route }) {
   const [truckType, setTruckType] = useState(null);
   const [capacityTons, setCapacityTons] = useState('');
   const [availableM3, setAvailableM3] = useState('');
-  const [priceMode, setPriceMode] = useState('negotiable');
+  // Цена рейса обязательна (решение владельца): «По договорённости» убрана.
   const [price, setPrice] = useState('');
   const [currency, setCurrency] = useState('USD');
 
@@ -57,15 +57,8 @@ export default function EditTripScreen({ navigation, route }) {
     setTruckType(t.truckType || null);
     setCapacityTons(t.capacityTons != null ? String(t.capacityTons) : '');
     setAvailableM3(t.availableM3 != null ? String(t.availableM3) : '');
-    if (t.price > 0) {
-      setPriceMode('fixed');
-      setPrice(String(t.price));
-      setCurrency((t.currency || 'USD').toUpperCase());
-    } else {
-      setPriceMode('negotiable');
-      setPrice('');
-      setCurrency((t.currency || 'USD').toUpperCase());
-    }
+    setPrice(t.price > 0 ? String(t.price) : '');
+    setCurrency((t.currency || 'USD').toUpperCase());
   };
 
   useEffect(() => {
@@ -98,10 +91,9 @@ export default function EditTripScreen({ navigation, route }) {
     if (departureNorm && arrivalNorm && arrivalNorm < departureNorm) {
       toast(t('val_arrival_before_departure'), 'error'); return;
     }
+    const priceNum = Math.max(0, parseInt(String(price || '').trim().replace(/\s/g, ''), 10) || 0);
+    if (priceNum <= 0) { toast(t('val_price_required'), 'error'); return; }
     setSaving(true);
-    const priceNum = priceMode === 'fixed'
-      ? Math.max(0, parseInt(String(price || '').trim().replace(/\s/g, ''), 10) || 0)
-      : 0;
     const payload = {
       from_city: from.trim(),
       to_city: to.trim(),
@@ -115,7 +107,7 @@ export default function EditTripScreen({ navigation, route }) {
       capacity_tons: capacityTons ? Number(capacityTons) : null,
       available_m3: availableM3 ? Number(availableM3) : null,
       price: priceNum,
-      currency: priceMode === 'fixed' ? currency : (currency || 'USD'),
+      currency: currency || 'USD',
       // Stage 8 / Stage 13: forward the structured route triple
       // when the picker provided one. If `fromPoint` / `toPoint`
       // is null the user didn't change the route, so we omit the
@@ -217,47 +209,28 @@ export default function EditTripScreen({ navigation, route }) {
 
         <Text style={[s.label, { color: theme.textMuted }]}>💰 {t('payment_label_full')}</Text>
         <View style={[s.row, { marginBottom: 10 }]}>
-          <TouchableOpacity
-            style={[s.payModeBtn, { backgroundColor: theme.card, borderColor: theme.border }, priceMode === 'negotiable' && { backgroundColor: '#22C55E', borderColor: '#22C55E' }]}
-            onPress={() => { setPriceMode('negotiable'); setPrice(''); }}
-          >
-            <Text style={[s.payModeText, { color: theme.textSecondary }, priceMode === 'negotiable' && { color: '#fff' }]}>{t('payment_negotiable')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[s.payModeBtn, { backgroundColor: theme.card, borderColor: theme.border }, priceMode === 'fixed' && { backgroundColor: '#22C55E', borderColor: '#22C55E' }]}
-            onPress={() => setPriceMode('fixed')}
-          >
-            <Text style={[s.payModeText, { color: theme.textSecondary }, priceMode === 'fixed' && { color: '#fff' }]}>{t('payment_fixed')}</Text>
-          </TouchableOpacity>
+          <TextInput
+            style={[s.input, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border, flex: 2 }]}
+            placeholder={t('price_example_placeholder')}
+            placeholderTextColor={theme.textMuted}
+            keyboardType="numeric"
+            inputMode="numeric"
+            value={price}
+            onChangeText={(v) => setPrice(String(v || '').replace(/[^\d]/g, ''))}
+          />
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }} style={{ flex: 3 }}>
+            {/* Stage 11: pilot whitelist matches Create flows (RUB / USD / KZT / CNY). */}
+            {['KZT', 'USD', 'RUB', 'CNY'].map(k => (
+              <TouchableOpacity
+                key={k}
+                style={[s.currChip, { backgroundColor: theme.card, borderColor: theme.border }, currency === k && { backgroundColor: '#22C55E', borderColor: '#22C55E' }]}
+                onPress={() => setCurrency(k)}
+              >
+                <Text style={[s.currChipText, { color: theme.textSecondary }, currency === k && { color: '#fff' }]}>{CURRENCY_SYMBOLS[k]} {k}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
         </View>
-        {priceMode === 'fixed' && (
-          <View style={[s.row, { marginBottom: 10 }]}>
-            <TextInput
-              style={[s.input, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border, flex: 2 }]}
-              placeholder={t('price_example_placeholder')}
-              placeholderTextColor={theme.textMuted}
-              keyboardType="numeric"
-              inputMode="numeric"
-              value={price}
-              onChangeText={(v) => setPrice(String(v || '').replace(/[^\d]/g, ''))}
-            />
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }} style={{ flex: 3 }}>
-              {/* Stage 11: pilot whitelist matches Create flows
-                  (RUB / USD / KZT / CNY). The legacy
-                  Object.keys(CURRENCY_SYMBOLS) iteration also surfaced
-                  UZS, which is no longer offered. */}
-              {['KZT', 'USD', 'RUB', 'CNY'].map(k => (
-                <TouchableOpacity
-                  key={k}
-                  style={[s.currChip, { backgroundColor: theme.card, borderColor: theme.border }, currency === k && { backgroundColor: '#22C55E', borderColor: '#22C55E' }]}
-                  onPress={() => setCurrency(k)}
-                >
-                  <Text style={[s.currChipText, { color: theme.textSecondary }, currency === k && { color: '#fff' }]}>{CURRENCY_SYMBOLS[k]} {k}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        )}
 
         <Text style={[s.label, { color: truckType ? theme.textMuted : '#EF4444' }]}>
           {t('truckType')}{!truckType ? ' *' : ''}
@@ -291,7 +264,7 @@ export default function EditTripScreen({ navigation, route }) {
 
         <View style={[s.previewCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <Text style={[s.previewLabel, { color: theme.textMuted }]}>{t('price')}</Text>
-          <Text style={s.previewPrice}>{formatPrice(priceMode === 'fixed' ? Number(price) || 0 : 0, currency, t)}</Text>
+          <Text style={s.previewPrice}>{formatPrice(Number(price) || 0, currency, t)}</Text>
         </View>
 
         <TouchableOpacity

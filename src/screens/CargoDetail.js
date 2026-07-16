@@ -604,8 +604,10 @@ export default function CargoDetail({ navigation, route }) {
                   </View>
                 )}
 
-                {/* Driver — countered: Accept / Decline / Open chat */}
-                {b.isMine && isCountered && (
+                {/* Driver — countered: Accept / Decline / Open chat.
+                    !c.isMine — если груз мой, я всегда «хозяин», набор водителя
+                    не показываем (иначе на одном аккаунте дублировались кнопки). */}
+                {b.isMine && !c.isMine && isCountered && (
                   <View style={{ flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     <TouchableOpacity
                       testID="bid-decline-counter"
@@ -631,8 +633,11 @@ export default function CargoDetail({ navigation, route }) {
                   </View>
                 )}
 
-                {/* Driver — pending: Edit / Discount / Cancel / Open chat */}
-                {b.isMine && b.status === 'pending' && !hasAccepted && (
+                {/* Driver — pending: Edit / Cancel / Open chat.
+                    «Дать скидку» убрана — дублировала «Изменить» (там тоже
+                    меняют цену). !c.isMine — набор водителя не показываем на
+                    своём грузе. */}
+                {b.isMine && !c.isMine && b.status === 'pending' && !hasAccepted && (
                   <View style={{ flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     <TouchableOpacity
                       testID="bid-edit"
@@ -644,17 +649,6 @@ export default function CargoDetail({ navigation, route }) {
                       }}
                     >
                       <Text style={[s.miniBtnText, { color: '#22C55E' }]}>✏️ {t('edit_bid')}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      testID="bid-discount"
-                      style={[s.miniBtn, { borderColor: '#F59E0B' }]}
-                      onPress={() => {
-                        setEditingBid(b);
-                        setBidModalMode('discount');
-                        setBidModal(true);
-                      }}
-                    >
-                      <Text style={[s.miniBtnText, { color: '#F59E0B' }]}>💸 {t('give_discount')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       testID="bid-chat"

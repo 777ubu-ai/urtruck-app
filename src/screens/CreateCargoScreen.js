@@ -100,11 +100,9 @@ export default function CreateCargoScreen({ navigation, route }) {
   const [pickupDate, setPickupDate] = useState('');
   const [tons, setTons] = useState('');
   const [m3, setM3] = useState('');
-  // Цена опциональна: 'negotiable' (по умолчанию — «Жду предложений»,
-  // модель InDrive: перевозчики сами предложат цену) или 'fixed' (клиент
-  // знает сумму). Клиент часто приходит именно узнать рынок — не заставляем
-  // угадывать цену на входе.
-  const [priceMode, setPriceMode] = useState('negotiable');
+  // Цена ОБЯЗАТЕЛЬНА (решение владельца, приказ по скринам): клиент всегда
+  // указывает стартовую сумму, «Жду предложений»/«По договорённости» убраны —
+  // перевозчики торгуются от конкретной цифры (модель InDrive).
   const [price, setPrice] = useState('');
   const [currency, setCurrency] = useState('KZT');
   // Умная валюта по стране отправления, пока пользователь не выбрал вручную.
@@ -138,10 +136,8 @@ export default function CreateCargoScreen({ navigation, route }) {
     const wNum = parseFloat(tons) || 0;
     const vNum = parseFloat(m3) || 0;
     if (wNum <= 0 && vNum <= 0) errs.weight = t('val_weight_or_volume_required');
-    if (priceMode === 'fixed') {
-      const pNum = parseInt(String(price || '').replace(/\s/g, ''), 10) || 0;
-      if (pNum <= 0) errs.price = t('val_price_required');
-    }
+    const pNum = parseInt(String(price || '').replace(/\s/g, ''), 10) || 0;
+    if (pNum <= 0) errs.price = t('val_price_required');
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
       const firstKey = ['from', 'to', 'cargoDesc', 'weight', 'price'].find((k) => errs[k]);
@@ -154,9 +150,7 @@ export default function CreateCargoScreen({ navigation, route }) {
     // списка) — сохраняем его в локальный custom-список, чтобы в
     // следующий раз появилось в подсказках.
     try { addCustomCargoType(cargoDesc.trim()); } catch {}
-    const priceNum = priceMode === 'fixed'
-      ? Math.max(0, parseInt(String(price || '').replace(/\s/g, ''), 10) || 0)
-      : 0;
+    const priceNum = Math.max(0, parseInt(String(price || '').replace(/\s/g, ''), 10) || 0);
     // Stage 8: forward the structured route triple alongside the
     // legacy from_city / to_city strings. Backend tolerates missing
     // fields (free-text fallback supplies country='XX' for orphans),
@@ -169,7 +163,7 @@ export default function CreateCargoScreen({ navigation, route }) {
       weight_tons: parseInt(tons) || 0,
       volume_m3: parseInt(m3) || 0,
       price: priceNum,
-      currency: priceMode === 'fixed' ? currency : 'KZT',
+      currency: currency,
       payment_type: paymentType || null,
       pickup_date: pickupDate || null,
       photos: photos || [],
@@ -367,56 +361,33 @@ export default function CreateCargoScreen({ navigation, route }) {
       </View>
       {errors.weight ? <Text style={s.err}>⚠️ {errors.weight}</Text> : null}
 
-      {/* Цена опциональна. «Жду предложений» (по умолчанию) — перевозчики
-          сами предложат цену (модель InDrive); «Указать цену» — если клиент
-          знает сумму. */}
+      {/* Цена обязательна: клиент всегда указывает стартовую сумму — от неё
+          перевозчики торгуются. «Жду предложений»/«По договорённости» убраны. */}
       <View style={[s.priceCard, { borderColor: v1.border }]}>
         <Text style={s.priceLabel}>💰 {t('payment_label_full')}</Text>
-        <View style={s.priceModeRow}>
-          <TouchableOpacity
-            style={[s.priceMode, priceMode === 'negotiable' ? { backgroundColor: accent.main, borderColor: accent.main } : { borderColor: v1.border }]}
-            onPress={() => { setPriceMode('negotiable'); if (errors.price) setErrors((e) => ({ ...e, price: null })); }}
-            testID="cargo-price-negotiable"
-          >
-            <Text style={[s.priceModeText, { color: priceMode === 'negotiable' ? '#0A0A0A' : v1.textMuted }]}>{t('price_wait_offers')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[s.priceMode, priceMode === 'fixed' ? { backgroundColor: accent.main, borderColor: accent.main } : { borderColor: v1.border }]}
-            onPress={() => setPriceMode('fixed')}
-            testID="cargo-price-fixed"
-          >
-            <Text style={[s.priceModeText, { color: priceMode === 'fixed' ? '#0A0A0A' : v1.textMuted }]}>{t('price_set_amount')}</Text>
-          </TouchableOpacity>
+        <View style={s.row2}>
+          <View style={{ flex: 1 }}>
+            <Field
+              icon="💳"
+              label={t('amount_label')}
+              value={price}
+              onChangeText={(v) => { setPrice(String(v || '').replace(/[^\d]/g, '')); if (errors.price) setErrors((e) => ({ ...e, price: null })); }}
+              keyboardType="numeric"
+              placeholder={t('price_example_placeholder')}
+              testID="cargo-price-field"
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Field
+              variant="dropdown"
+              icon="¤"
+              label={t('currency_label')}
+              value={`${(CURRENCY_OPTIONS.find((c) => c.k === currency) || {}).l || ''} ${currency}`}
+              onPress={() => setShowCurrencyPicker((v) => !v)}
+            />
+          </View>
         </View>
-        {priceMode === 'fixed' ? (
-          <>
-            <View style={s.row2}>
-              <View style={{ flex: 1 }}>
-                <Field
-                  icon="💳"
-                  label={t('amount_label')}
-                  value={price}
-                  onChangeText={(v) => { setPrice(String(v || '').replace(/[^\d]/g, '')); if (errors.price) setErrors((e) => ({ ...e, price: null })); }}
-                  keyboardType="numeric"
-                  placeholder={t('price_example_placeholder')}
-                  testID="cargo-price-field"
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Field
-                  variant="dropdown"
-                  icon="¤"
-                  label={t('currency_label')}
-                  value={`${(CURRENCY_OPTIONS.find((c) => c.k === currency) || {}).l || ''} ${currency}`}
-                  onPress={() => setShowCurrencyPicker((v) => !v)}
-                />
-              </View>
-            </View>
-            {errors.price ? <Text style={s.err}>⚠️ {errors.price}</Text> : null}
-          </>
-        ) : (
-          <Text style={s.photoSub}>{t('price_wait_offers_hint')}</Text>
-        )}
+        {errors.price ? <Text style={s.err}>⚠️ {errors.price}</Text> : null}
       </View>
       <BottomSheet visible={showCurrencyPicker} onClose={() => setShowCurrencyPicker(false)} title={t('currency_label')}>
         <View style={s.currencyRow}>
