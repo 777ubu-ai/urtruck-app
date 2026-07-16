@@ -243,6 +243,55 @@ def list_borders(country: str = ""):
     return {"borders": out}
 
 
+# ── Трек 1: полное онлайн-табло (номера + статус по пункту) ──────────────
+# Кэш 60с: /board живо фетчит несколько страниц HTML у CGR — без кэша тап по
+# каждому пункту дёргал бы CGR заново. Ключ = (checkpoint, status).
+import time as _time
+_BOARD_CACHE: dict = {}
+_BOARD_TTL = 60
+
+
+@borders_router.get("/board")
+async def get_board(checkpoint: str = "", status: str = ""):
+    """Полное онлайн-табло CGR: строки очереди (ГРНЗ + статус + слот времени)
+    по пунктам пропуска. ПУБЛИЧНО (данные public-list, без авторизации).
+    Фильтр: checkpoint (подстрока названия), status."""
+    try:
+        from cgr.settings import cgr_settings
+        if not cgr_settings.feature_enabled:
+            return {"rows": [], "enabled": False}
+    except Exception:
+        return {"rows": [], "enabled": False}
+
+    key = ((checkpoint or "").strip().lower(), (status or "").strip())
+    now = _time.time()
+    hit = _BOARD_CACHE.get(key)
+    if hit and now - hit[0] < _BOARD_TTL:
+        return hit[1]
+
+    try:
+        from cgr import scoreboard_service
+        rows = await scoreboard_service.fetch_board_rows(
+            checkpoint=checkpoint or None, status=status or None)
+        out = {
+            "rows": [{
+                "checkpoint": r.get("checkpoint"),
+                "plate": r.get("plate"),
+                "queue_datetime": r.get("queue_datetime"),
+                "status": r["status"]["code"],
+                "is_late": r["status"]["is_late"],
+                "status_raw": r["status"]["raw"],
+            } for r in rows],
+            "enabled": True,
+        }
+        out["count"] = len(out["rows"])
+        _BOARD_CACHE[key] = (now, out)
+        return out
+    except Exception as e:
+        logger.exception("board failed: %s", e)
+        return {"rows": [], "enabled": True, "error": True}
+
+
 @borders_router.get("/{border_id}")
 def border_detail(border_id: str):
     """Детали одного погранперехода (legacy)."""

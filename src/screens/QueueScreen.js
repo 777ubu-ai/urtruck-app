@@ -17,6 +17,13 @@ const STATUS_COLORS = { green: '#22C55E', yellow: '#F59E0B', red: '#EF4444' };
 // Метки статуса локализованы через t() в рендере (statusLabel) — раньше были
 // хардкод-RU и протекали в ZH/EN/KZ.
 const STATUS_KEY = { green: 'queue_status_free', yellow: 'queue_status_moderate', red: 'queue_status_busy' };
+// Статусы строк табло (номер в очереди): цвет + i18n-ключ.
+const BOARD_STATUS = {
+  in_queue: { key: 'queue_lk_in_queue', color: '#2563EB' },
+  called:   { key: 'queue_lk_called',   color: '#F59E0B' },
+  crossed:  { key: 'queue_lk_crossed',  color: '#22C55E' },
+  revoked:  { key: 'queue_lk_revoked',  color: '#EF4444' },
+};
 
 export default function QueueScreen({ navigation }) {
   const v1 = useV1Colors();
@@ -32,6 +39,22 @@ export default function QueueScreen({ navigation }) {
   const [plate, setPlate] = useState('');
   const [lookup, setLookup] = useState(null);     // null | {found,...}
   const [lookupLoading, setLookupLoading] = useState(false);
+
+  // Трек 1: полное табло пункта (номера + статус). Раскрывается по кнопке.
+  const [boardFor, setBoardFor] = useState(null);      // имя пункта или null
+  const [boardRows, setBoardRows] = useState([]);
+  const [boardLoading, setBoardLoading] = useState(false);
+
+  const openBoard = async (name) => {
+    if (boardFor === name) { setBoardFor(null); setBoardRows([]); return; }
+    setBoardFor(name); setBoardRows([]); setBoardLoading(true);
+    try {
+      const r = await fetch(`${BASE}/board?checkpoint=${encodeURIComponent(name)}`);
+      const d = await r.json();
+      setBoardRows(Array.isArray(d.rows) ? d.rows : []);
+    } catch { setBoardRows([]); }
+    finally { setBoardLoading(false); }
+  };
 
   const [tracking, setTracking] = useState(false);  // сохранён ли номер для слежения
 
@@ -187,6 +210,36 @@ export default function QueueScreen({ navigation }) {
         {b.updated_at ? (
           <Text style={[s.updated, { color: theme.textDim }]}>{t('queue_updated')}: {String(b.updated_at).slice(11, 16)} UTC</Text>
         ) : null}
+
+        {/* Трек 1: раскрыть полное табло пункта (номера + статус). */}
+        <TouchableOpacity style={s.boardToggle} onPress={() => openBoard(b.name)} testID="queue-board-toggle">
+          <Text style={[s.boardToggleText, { color: v1.driver || '#00E676' }]}>
+            {boardFor === b.name ? `▲ ${t('queue_board_hide')}` : `▼ ${t('queue_board_show')}`}
+          </Text>
+        </TouchableOpacity>
+        {boardFor === b.name ? (
+          <View style={s.boardWrap}>
+            {boardLoading ? (
+              <ActivityIndicator color={col} style={{ marginVertical: 10 }} />
+            ) : boardRows.length === 0 ? (
+              <Text style={[s.boardEmpty, { color: theme.textMuted }]}>{t('no_data')}</Text>
+            ) : (
+              boardRows.slice(0, 50).map((row, i) => {
+                const st = BOARD_STATUS[row.status] || BOARD_STATUS.in_queue;
+                return (
+                  <View key={`${row.plate}-${i}`} style={[s.boardRow, { borderBottomColor: theme.border }]}>
+                    <Text style={[s.boardPlate, { color: theme.text }]} numberOfLines={1}>{row.plate}</Text>
+                    <Text style={[s.boardTime, { color: theme.textMuted }]} numberOfLines={1}>{row.queue_datetime || ''}</Text>
+                    <View style={[s.boardStatus, { backgroundColor: st.color + '20' }]}>
+                      <Text style={[s.boardStatusText, { color: st.color }]}>{t(st.key)}{row.is_late ? ' ⏱' : ''}</Text>
+                    </View>
+                  </View>
+                );
+              })
+            )}
+          </View>
+        ) : null}
+
         <TouchableOpacity style={s.bookBtn} onPress={openCgrPortal} testID="queue-book-cgr">
           <Text style={s.bookBtnText}>{t('queue_book_cgr')} ↗</Text>
         </TouchableOpacity>
@@ -402,4 +455,13 @@ const s = StyleSheet.create({
   detailWait: { fontSize: 12 },
   bookBtn: { marginTop: 12, height: 44, borderRadius: 10, backgroundColor: '#1A5C3C', alignItems: 'center', justifyContent: 'center' },
   bookBtnText: { color: '#FFF', fontSize: 14, fontWeight: '800' },
+  boardToggle: { marginTop: 10, paddingVertical: 8, minHeight: 40, justifyContent: 'center' },
+  boardToggleText: { fontSize: 13, fontWeight: '800' },
+  boardWrap: { marginTop: 4, marginBottom: 4 },
+  boardEmpty: { fontSize: 12, textAlign: 'center', paddingVertical: 10 },
+  boardRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, borderBottomWidth: 1 },
+  boardPlate: { flex: 1, fontSize: 13, fontWeight: '800', letterSpacing: 0.5 },
+  boardTime: { fontSize: 11, minWidth: 70, textAlign: 'right' },
+  boardStatus: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  boardStatusText: { fontSize: 11, fontWeight: '700' },
 });
