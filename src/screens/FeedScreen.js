@@ -208,6 +208,9 @@ export default function FeedScreen({ navigation, route }) {
   const [initialLoading, setInitialLoading] = useState(true);
   const mounted = useMountedRef();  // QA-аудит P1-8
   const [serverData, setServerData] = useState([]);
+  // 3.7: пагинация ленты. onEndReached увеличивает лимит и перезагружает
+  // (без append-логики — refetch заменяет данные, проще и без дублей).
+  const [pageLimit, setPageLimit] = useState(50);
   const [sortBy, setSortBy] = useState('newest');
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState(false);
@@ -225,7 +228,7 @@ export default function FeedScreen({ navigation, route }) {
     setLoadError(false);
     try {
       if (isDriver) {
-        const { cargos } = await marketAPI.listCargos({ cargoType: filterType || '' });
+        const { cargos } = await marketAPI.listCargos({ cargoType: filterType || '', limit: pageLimit });
         // Driver feed: ТОЛЬКО чужие грузы (counterparty supply). Если
         // backend вернул груз с owner_id равным текущему user_id,
         // водитель не должен видеть свой же груз — для управления
@@ -268,7 +271,7 @@ export default function FeedScreen({ navigation, route }) {
         // водителей — что и приводило к "Маршрут уточняется" и
         // навигации в DriverDetail с _profileMissing.
         const [tripsRes, driversRes] = await Promise.all([
-          marketAPI.listTrips({ truckType: filterType || '' }),
+          marketAPI.listTrips({ truckType: filterType || '', limit: pageLimit }),
           marketAPI.listDrivers({ truckType: filterType || '' }),
         ]);
         // Симметрично с driver-веткой: shipper не должен видеть
@@ -322,7 +325,7 @@ export default function FeedScreen({ navigation, route }) {
     }
   };
 
-  useEffect(() => { loadFromServer(); }, [isDriver, filterType]);
+  useEffect(() => { loadFromServer(); }, [isDriver, filterType, pageLimit]);
 
   // Refetch when user comes back to feed (e.g. after publishing a trip/cargo)
   // so the new card appears immediately without manual pull-to-refresh.
@@ -956,6 +959,14 @@ export default function FeedScreen({ navigation, route }) {
           renderItem={(args) => (isDriver || args.item.isMine) ? renderCargo(args) : renderDriver(args)}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 20, gap: 0 }}
           showsVerticalScrollIndicator={false}
+          onEndReachedThreshold={0.5}
+          onEndReached={() => {
+            // Догружаем следующую «страницу», только если сервер вернул
+            // полную страницу (значит есть ещё) — иначе не дёргаем.
+            if (!initialLoading && serverData.length >= pageLimit) {
+              setPageLimit((p) => p + 50);
+            }
+          }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accentColor} />}
           ListFooterComponent={
             filteredData.length > 0 ? (
