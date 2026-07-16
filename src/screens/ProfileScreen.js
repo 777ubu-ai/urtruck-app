@@ -131,6 +131,7 @@ export default function ProfileScreen({ navigation, route }) {
   const menuItems = [
     ...(isDriver ? [{ icon: 'shield', label: t('security_my_status'), sub: t('my_status_subtitle'), screen: 'Security', testID: 'profile-my-status' }] : []),
     { icon: 'star',          label: t('myReviews'),     screen: 'Reviews', testID: 'profile-my-reviews' },
+    { icon: 'heart',         label: t('favorites_title'), screen: 'Favorites', testID: 'profile-favorites' },
   ];
 
   // PR-C2 (driver card): canonical specs line «Тент · 20 т · 86 м³».

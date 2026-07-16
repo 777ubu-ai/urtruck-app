@@ -55,6 +55,7 @@ import ChatScreen from '../screens/ChatScreen';
 import WalletScreen from '../screens/WalletScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import ReviewsScreen from '../screens/ReviewsScreen';
+import FavoritesScreen from '../screens/FavoritesScreen';
 import ChatsListScreen from '../screens/ChatsListScreen';
 import ArchiveScreen from '../screens/ArchiveScreen';
 import MyTripsScreen from '../screens/MyTripsScreen';
@@ -244,6 +245,7 @@ export default function AppNavigator() {
           <Stack.Screen name="DriverDetail" component={DriverDetail} />
           <Stack.Screen name="Chat" component={ChatScreen} />
           <Stack.Screen name="Reviews" component={ReviewsScreen} />
+          <Stack.Screen name="Favorites" component={FavoritesScreen} />
           <Stack.Screen name="ChatsList" component={ChatsListScreen} />
           <Stack.Screen name="Archive" component={ArchiveScreen} />
           <Stack.Screen name="MyTripsList" component={MyTripsScreen} />

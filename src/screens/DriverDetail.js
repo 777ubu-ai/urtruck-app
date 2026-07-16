@@ -37,6 +37,30 @@ export default function DriverDetail({ navigation, route }) {
   const [serverProfile, setServerProfile] = useState(null);
   const [reportModal, setReportModal] = useState(false);
   const [reporting, setReporting] = useState(false);
+  const [isFav, setIsFav] = useState(false);
+  const [favBusy, setFavBusy] = useState(false);
+
+  // Избранное: сохранить надёжного перевозчика (персистится на сервере,
+  // виден в разделе «Избранное»). Раньше лайки жили в памяти и терялись.
+  useEffect(() => {
+    if (!driver?.id) return;
+    let alive = true;
+    marketAPI.favCheck('driver', driver.id).then(v => { if (alive) setIsFav(v); });
+    return () => { alive = false; };
+  }, [driver?.id]);
+
+  const toggleFav = async () => {
+    if (favBusy || !driver?.id) return;
+    setFavBusy(true);
+    const next = !isFav;
+    setIsFav(next); // оптимистично
+    const res = next
+      ? await marketAPI.favAdd('driver', driver.id, { name: driver.name, type: driver.type || driver.vehicle_type, plate: driver.plate_truck || driver.vehicle_plate })
+      : await marketAPI.favRemove('driver', driver.id);
+    if (!res.ok) { setIsFav(!next); toast(t('send_error'), 'error'); }
+    else toast(next ? '❤️ ' + t('in_favorites') : t('removed_from_favorites'), 'success', 1800);
+    setFavBusy(false);
+  };
 
   // Жалоба на водителя. Раньше причина бралась только через window.prompt
   // (web) → на iOS/Android reason='' и репорт молча не уходил. Теперь
@@ -224,6 +248,17 @@ export default function DriverDetail({ navigation, route }) {
         <TouchableOpacity style={[s.contactBtn, { backgroundColor: contactOpened ? v1Colors.driver : v1Accent.main }]} onPress={openContact} disabled={contactOpened}>
           <Text style={[s.contactBtnText, { color: '#0A0A0A' }]}>{contactOpened ? '✓ ' + t('contactOpened') : t('openContact')}</Text>
         </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[s.favBtn, { borderColor: isFav ? '#EF4444' : v1.border }]}
+          onPress={toggleFav}
+          disabled={favBusy}
+          testID="driver-fav-btn"
+        >
+          <Text style={[s.favBtnText, { color: isFav ? '#EF4444' : v1.text }]}>
+            {isFav ? '❤️ ' + t('in_favorites') : '🤍 ' + t('add_to_favorites')}
+          </Text>
+        </TouchableOpacity>
         <Text style={[s.betaNote, { color: v1.textMuted }]}>{t('freeForEarly')}</Text>
 
         <TouchableOpacity
@@ -302,6 +337,8 @@ const s = StyleSheet.create({
   contactBtn: { borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 6 },
   contactBtnText: { fontSize: 16, fontWeight: '800' },
   betaNote: { fontSize: 11, textAlign: 'center', marginTop: 6 },
+  favBtn: { marginTop: 10, borderWidth: 1, paddingVertical: 14, borderRadius: 14, alignItems: 'center', minHeight: 48, justifyContent: 'center' },
+  favBtnText: { fontSize: 14, fontWeight: '800' },
   reportBtn: { marginTop: 12, backgroundColor: '#EF444415', borderWidth: 1, borderColor: '#EF444430', paddingVertical: 14, borderRadius: 14, alignItems: 'center' },
   reportBtnText: { color: '#EF4444', fontSize: 13, fontWeight: '700' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },

@@ -66,6 +66,39 @@ export const marketAPI = {
     } catch { return { ok: false }; }
   },
 
+  // ─── Избранное (сохранённые водители/грузы) ── эндпоинт /api/v1/favorites
+  async favCheck(item_type, item_id) {
+    try {
+      const r = await authedFetch(`${API_BASE}/favorites/check?item_type=${encodeURIComponent(item_type)}&item_id=${encodeURIComponent(item_id)}`, { headers: await headers() });
+      if (!r.ok) return false;
+      const d = await r.json();
+      return !!d.is_favorite;
+    } catch { return false; }
+  },
+  async favAdd(item_type, item_id, item_data = {}) {
+    try {
+      const r = await authedFetch(`${API_BASE}/favorites`, {
+        method: 'POST', headers: await headers(),
+        body: JSON.stringify({ item_type, item_id, item_data }),
+      });
+      return { ok: r.ok };
+    } catch { return { ok: false }; }
+  },
+  async favRemove(item_type, item_id) {
+    try {
+      const r = await authedFetch(`${API_BASE}/favorites?item_type=${encodeURIComponent(item_type)}&item_id=${encodeURIComponent(item_id)}`, { method: 'DELETE', headers: await headers() });
+      return { ok: r.ok };
+    } catch { return { ok: false }; }
+  },
+  async favList(item_type = '') {
+    try {
+      const q = item_type ? `?item_type=${encodeURIComponent(item_type)}` : '';
+      const r = await authedFetch(`${API_BASE}/favorites${q}`, { headers: await headers() });
+      if (!r.ok) return { favorites: [] };
+      return await r.json();
+    } catch { return { favorites: [] }; }
+  },
+
   // ─── Cargos ───
   async createCargo(data) {
     const r = await authedFetch(`${BASE}/cargos`, {
