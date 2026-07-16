@@ -181,11 +181,11 @@ export default function BidModal({
           <View style={s.handle} />
           <Text style={[s.title, { color: theme.text }]}>{title}</Text>
           {!isPrefill && (
-            // PR-A re-apply (P0-3): когда у груза нет цены, бессмысленно
-            // показывать диапазон — даём honest текст «По договорённости».
-            // PR-C2: subtitle currency-aware, без hardcoded $.
+            // Показываем ЧЕСТНУЮ цену объявления, а не выдуманный «средний»
+            // диапазон вокруг неё (currentPrice±delta) — реальной рыночной
+            // статистики у нас нет, а фейковый диапазон подрывал доверие к торгу.
             hasBasePrice ? (
-              <Text style={[s.subtitle, { color: theme.textMuted }]}>{t('avgPrice')}: {fmtMoney(Number(currentPrice) - createDeltas[1])}–{fmtMoney(Number(currentPrice) + createDeltas[2])}</Text>
+              <Text style={[s.subtitle, { color: theme.textMuted }]}>{t('current_price_label')}: {fmtMoney(currentPrice)}</Text>
             ) : (
               <Text style={[s.subtitle, { color: theme.textMuted }]}>{t('payment_negotiable')}</Text>
             )

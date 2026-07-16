@@ -35,9 +35,11 @@ def create_review(body: ReviewIn, user=Depends(require_level(1))):
 
     # I3: отзыв разрешён только реальному контрагенту — между author и target
     # должна быть НЕотменённая сделка. Раньше с trip_id=None любой мог оставить
-    # неограниченно отзывов на кого угодно и накрутить рейтинг. BETA_MODE
-    # пропускает проверку, чтобы QA/тестеры могли прогонять флоу.
-    if not BETA_MODE and not reviews_dal.has_deal_between(user["id"], body.target_id):
+    # неограниченно отзывов на кого угодно и накрутить рейтинг.
+    # Проверка включена ВСЕГДА (раньше BETA_MODE её обходил, что позволяло
+    # накрутку рейтинга ещё до запуска). Легальный флоу отзыва идёт через
+    # реальную доставленную сделку → has_deal_between=True, проверка проходит.
+    if not reviews_dal.has_deal_between(user["id"], body.target_id):
         raise HTTPException(
             status_code=403,
             detail="Оставить отзыв можно только после совместной сделки",
