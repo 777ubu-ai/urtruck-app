@@ -55,7 +55,7 @@ export default function ChatScreen({ navigation, route }) {
   partnerAvatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   partnerAvatarIcon: { color: v1.text, fontSize: 16, fontWeight: '900' },
   partnerName: { color: v1.text, fontSize: 15, fontWeight: '800' },
-  online: { fontSize: 10, fontWeight: '700' },
+  online: { fontSize: 11, fontWeight: '700' },
   // System banner above the first message
   msgList: { padding: 14, paddingBottom: 20 },
   // PR4 Accept bid confirm-бар (inline, без модалки — работает и на web)
@@ -69,14 +69,14 @@ export default function ChatScreen({ navigation, route }) {
   acceptOkTxt: { color: '#0C0A09', fontSize: 12, fontWeight: '900' },
   chatOpened: { alignSelf: 'center', marginBottom: 16 },
   chatOpenedText: {
-    fontSize: 10, paddingHorizontal: 14, paddingVertical: 5,
+    fontSize: 11, paddingHorizontal: 14, paddingVertical: 5,
     borderRadius: 16, overflow: 'hidden',
     backgroundColor: v1.surface, color: v1.textMuted,
     borderWidth: 1, borderColor: v1.border,
   },
   msgRow: { marginBottom: 10 },
   msgRowMe: { alignItems: 'flex-end' },
-  senderLabel: { fontSize: 10, marginBottom: 3, marginLeft: 6, color: v1.textMuted },
+  senderLabel: { fontSize: 11, marginBottom: 3, marginLeft: 6, color: v1.textMuted },
   // B2B deal chat: компактнее и спокойнее (не consumer/WhatsApp). Меньше
   // padding/radius/maxWidth; outgoing — спокойный изумруд (не ядовитый #00E676).
   bubble: { maxWidth: '72%', paddingHorizontal: 11, paddingVertical: 7, borderRadius: 12 },
@@ -92,7 +92,7 @@ export default function ChatScreen({ navigation, route }) {
   translatedText: { color: 'rgba(255,255,255,0.55)', fontSize: 11, fontStyle: 'italic' },
   callBtn: { marginTop: 8, borderWidth: 1, borderRadius: 12, paddingVertical: 12, alignItems: 'center', minHeight: 44, justifyContent: 'center' },
   callBtnText: { fontSize: 14, fontWeight: '800' },
-  msgTime: { color: v1.textMuted, fontSize: 9, textAlign: 'right', marginTop: 3 },
+  msgTime: { color: v1.textMuted, fontSize: 11, textAlign: 'right', marginTop: 3 },
   msgTimeMe: { color: 'rgba(234,251,241,0.55)' },
   // Input bar
   inputRow: {
@@ -667,14 +667,14 @@ export default function ChatScreen({ navigation, route }) {
               }}
               disabled={translating === item.id}
             >
-              <Text style={{ color: isMe ? 'rgba(255,255,255,0.5)' : theme.textMuted, fontSize: 10 }}>
+              <Text style={{ color: isMe ? 'rgba(255,255,255,0.5)' : theme.textMuted, fontSize: 11 }}>
                 {translating === item.id ? '...' : tr ? (tr.showOriginal ? t('hide_original') : t('show_original')) : '🌐 ' + t('translate')}
               </Text>
             </TouchableOpacity>
           )}
           <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 4, marginTop: 3 }}>
             <Text style={[s.msgTime, isMe ? s.msgTimeMe : { color: v1.textMuted }]}>{item.time}</Text>
-            {statusIcon ? <Text style={{ fontSize: 10, color: statusColor }}>{statusIcon}</Text> : null}
+            {statusIcon ? <Text style={{ fontSize: 11, color: statusColor }}>{statusIcon}</Text> : null}
           </View>
         </View>
       </View>

@@ -68,7 +68,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 12,
   },
   placeholderIcon: { fontSize: 32 },
-  placeholderText: { fontSize: 10, marginTop: 6, textAlign: 'center' },
+  placeholderText: { fontSize: 11, marginTop: 6, textAlign: 'center' },
   captionRow: {
     flexDirection: 'row',
     alignItems: 'center',

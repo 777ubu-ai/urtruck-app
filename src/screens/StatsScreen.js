@@ -111,5 +111,5 @@ const s = StyleSheet.create({
   badgeText: { fontSize: 11, fontWeight: '700' },
   score: { alignItems: 'center' },
   scoreNum: { fontSize: 22, fontWeight: '900' },
-  scoreLabel: { fontSize: 9 },
+  scoreLabel: { fontSize: 11 },
 });

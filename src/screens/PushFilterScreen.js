@@ -21,7 +21,9 @@ const NOTIF_CATEGORIES = [
 export default function PushFilterScreen({ navigation, route }) {
   const v1 = useV1Colors();
   const { role } = route.params || {};
-  const accent = role === 'driver' ? '#4F46E5' : '#F59E0B';
+  // 5.4: driver-акцент = бренд-зелёный #00E676 (был индиго #4F46E5 —
+  // рассинхрон с ролью). Клиент — янтарный.
+  const accent = role === 'driver' ? '#00E676' : '#F59E0B';
   const { t } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
@@ -105,7 +107,7 @@ export default function PushFilterScreen({ navigation, route }) {
                   types.includes(k) && { backgroundColor: accent, borderColor: accent }]}
                 onPress={() => toggleType(k)}>
                 <Text style={[s.typeChipText, { color: theme.textSecondary },
-                  types.includes(k) && { color: '#fff' }]}>{t(k)}</Text>
+                  types.includes(k) && { color: '#0C0A09' }]}>{t(k)}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -135,5 +137,5 @@ const s = StyleSheet.create({
   typeChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderWidth: 1 },
   typeChipText: { fontSize: 12, fontWeight: '600' },
   saveBtn: { borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 14 },
-  saveBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  saveBtnText: { color: '#0C0A09', fontSize: 16, fontWeight: '800' },
 });

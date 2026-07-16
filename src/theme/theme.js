@@ -70,5 +70,5 @@ export const typography = {
   title: { fontSize: 15, fontWeight: '600', lineHeight: 20 },
   body: { fontSize: 14, fontWeight: '400', lineHeight: 20 },
   caption: { fontSize: 12, fontWeight: '500', lineHeight: 16 },
-  small: { fontSize: 10, fontWeight: '600', lineHeight: 14 },
+  small: { fontSize: 11, fontWeight: '600', lineHeight: 14 },
 };

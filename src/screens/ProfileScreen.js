@@ -551,7 +551,7 @@ const s = StyleSheet.create({
     borderRadius: 10, borderWidth: 1,
     alignItems: 'center', gap: 3,
   },
-  langCardText: { fontSize: 10, fontWeight: '600', textAlign: 'center' },
+  langCardText: { fontSize: 11, fontWeight: '600', textAlign: 'center' },
   pushBtn: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, borderRadius: 10, borderWidth: 1, marginTop: 12 },
   configureBtn: { fontSize: 12, fontWeight: '700' },
 

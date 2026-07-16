@@ -38,7 +38,7 @@ export default function TripDetail({ navigation, route }) {
   backText: { fontSize: 22 },
   title: { flex: 1, fontSize: 20, fontWeight: '900' },
   section: { padding: 16, borderRadius: 16, borderWidth: 1, marginBottom: 10 },
-  sectionTitle: { fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: 12, textTransform: 'uppercase' },
+  sectionTitle: { fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: 12, textTransform: 'uppercase' },
   routeRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 },
   dot: { width: 10, height: 10, borderRadius: 5 },
   city: { fontSize: 16, fontWeight: '800' },

@@ -85,7 +85,7 @@ export default function NotificationsScreen({ navigation }) {
   icon: { fontSize: 22, marginTop: 2 },
   title: { color: v1.text, fontSize: 14, marginBottom: 2 },
   body: { color: v1.textMuted, fontSize: 12, lineHeight: 17 },
-  time: { color: v1.textDim, fontSize: 10, marginTop: 4 },
+  time: { color: v1.textDim, fontSize: 11, marginTop: 4 },
   dot: { width: 8, height: 8, borderRadius: 4, marginTop: 6 },
 
   }), [v1]);

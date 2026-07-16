@@ -221,7 +221,7 @@ export default function DriverDetail({ navigation, route }) {
             right={reviewsData?.summary?.count > 0 ? (
               <Text style={{ color: '#FBBF24', fontSize: 12, fontWeight: '800' }}>★ {reviewsData.summary.average}</Text>
             ) : (
-              <Text style={{ color: v1.textDim, fontSize: 10 }}>{t('review_after_trip')}</Text>
+              <Text style={{ color: v1.textDim, fontSize: 11 }}>{t('review_after_trip')}</Text>
             )}
           />
 
@@ -317,7 +317,7 @@ const s = StyleSheet.create({
   backText: { fontSize: 22 },
   headerTitle: { flex: 1, fontSize: 18, fontWeight: '700' },
   section: { borderRadius: 16, padding: 18, borderWidth: 1, marginBottom: 10 },
-  sectionTitle: { fontSize: 10, fontWeight: '600', letterSpacing: 1, marginBottom: 12 },
+  sectionTitle: { fontSize: 11, fontWeight: '600', letterSpacing: 1, marginBottom: 12 },
   avatar: { width: 64, height: 64, borderRadius: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 2, marginBottom: 10 },
   name: { fontSize: 20, fontWeight: '800', marginBottom: 4 },
   verifyBadge: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, marginBottom: 6 },
@@ -326,14 +326,14 @@ const s = StyleSheet.create({
   reviewCount: { fontWeight: '400' },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
   gridItem: { width: '50%', marginBottom: 10 },
-  gridLabel: { fontSize: 10 },
+  gridLabel: { fontSize: 11 },
   gridValue: { fontSize: 13, fontWeight: '600', marginTop: 2 },
   review: { marginBottom: 10, paddingBottom: 10 },
   reviewHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
   reviewUser: { fontSize: 13, fontWeight: '600' },
   reviewStars: { color: '#FBBF24', fontSize: 12 },
   reviewText: { fontSize: 12 },
-  reviewAgo: { fontSize: 10, marginTop: 3 },
+  reviewAgo: { fontSize: 11, marginTop: 3 },
   contactBtn: { borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 6 },
   contactBtnText: { fontSize: 16, fontWeight: '800' },
   betaNote: { fontSize: 11, textAlign: 'center', marginTop: 6 },

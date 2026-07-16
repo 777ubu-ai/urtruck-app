@@ -328,7 +328,7 @@ const s = StyleSheet.create({
   },
   label: {
     height: LABEL_H,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
     letterSpacing: 0.2,
     marginTop: 3,
@@ -344,7 +344,7 @@ const s = StyleSheet.create({
     elevation: 10,
   },
   publishLabel: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '800',
     letterSpacing: 0.2,
     marginTop: 4,
@@ -359,5 +359,5 @@ const s = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 2,
   },
-  iconBadgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '900' },
+  iconBadgeText: { color: '#FFFFFF', fontSize: 11, fontWeight: '900' },
 });

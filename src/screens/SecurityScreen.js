@@ -133,7 +133,7 @@ const s = StyleSheet.create({
   verifyBtn: { height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
   verifyBtnText: { fontSize: 15, fontWeight: '800', color: '#0C0A09' },
   section: { borderRadius: 16, padding: 16, borderWidth: 1, marginBottom: 12 },
-  sectionTitle: { fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: 12, textTransform: 'uppercase' },
+  sectionTitle: { fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: 12, textTransform: 'uppercase' },
   tipRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1 },
   tipTitle: { fontSize: 13, fontWeight: '700' },
   tipDesc: { fontSize: 11, marginTop: 2 },

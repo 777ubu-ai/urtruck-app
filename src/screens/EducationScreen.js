@@ -58,7 +58,7 @@ const s = StyleSheet.create({
   title: { fontSize: 22, fontWeight: '900' },
   item: { flexDirection: 'row', gap: 12, padding: 14, borderRadius: 16, borderWidth: 1, alignItems: 'center' },
   thumbnail: { width: 64, height: 64, borderRadius: 12, backgroundColor: '#EF444420', alignItems: 'center', justifyContent: 'center' },
-  videoLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 3 },
+  videoLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 3 },
   videoTitle: { fontSize: 14, fontWeight: '700', marginBottom: 4 },
   duration: { fontSize: 11, fontWeight: '600' },
 });

@@ -24,10 +24,10 @@ export default function ReviewsScreen({ navigation, route }) {
   totalCount: { fontSize: 11, marginTop: 2 },
   summaryRight: { flex: 1, justifyContent: 'center', gap: 4 },
   barRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  barLabel: { fontSize: 10, fontWeight: '600', width: 16 },
+  barLabel: { fontSize: 11, fontWeight: '600', width: 16 },
   barBg: { flex: 1, height: 6, borderRadius: 3, overflow: 'hidden' },
   barFill: { height: '100%', backgroundColor: '#FBBF24' },
-  barCount: { fontSize: 10, width: 16, textAlign: 'right' },
+  barCount: { fontSize: 11, width: 16, textAlign: 'right' },
   card: { borderRadius: 14, padding: 14, borderWidth: 1 },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
   reviewUser: { fontSize: 14, fontWeight: '700' },
@@ -36,7 +36,7 @@ export default function ReviewsScreen({ navigation, route }) {
   starsEmpty: { fontSize: 13 },
   reviewAmount: { fontSize: 11, marginTop: 2 },
   reviewText: { fontSize: 13, lineHeight: 18, marginBottom: 6 },
-  reviewAgo: { fontSize: 10 },
+  reviewAgo: { fontSize: 11 },
 
   }), [v1]);
   const { role, targetId } = route.params || {};

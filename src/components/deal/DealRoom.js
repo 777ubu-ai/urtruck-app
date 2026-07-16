@@ -159,9 +159,9 @@ const s = StyleSheet.create({
   sysText: { fontSize: 11, fontWeight: '600', textAlign: 'center' },
   qaRow: { flexDirection: 'row', gap: 6, paddingHorizontal: 2, paddingBottom: 4 },
   qa: { flex: 1, borderWidth: 1, borderRadius: 10, paddingVertical: 6, alignItems: 'center', gap: 2 },
-  qaText: { fontSize: 9, fontWeight: '700', textAlign: 'center' },
+  qaText: { fontSize: 11, fontWeight: '700', textAlign: 'center' },
   docs: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderStyle: 'dashed', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7, marginBottom: 8 },
   docsHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   docsTitle: { fontSize: 12, fontWeight: '800' },
-  docsHint: { fontSize: 10, flex: 1 },
+  docsHint: { fontSize: 11, flex: 1 },
 });

@@ -146,7 +146,7 @@ export default function DesignPreviewScreen({ navigation }) {
   title: { color: v1.text, fontSize: 22, fontWeight: '900', marginTop: 8 },
   subtitle: { color: v1.textMuted, fontSize: 13, marginTop: 4, lineHeight: 18 },
   sectionTitle: {
-    color: v1.textMuted, fontSize: 10, fontWeight: '800',
+    color: v1.textMuted, fontSize: 11, fontWeight: '800',
     letterSpacing: 1, marginBottom: 8,
   },
   row: {
