@@ -656,24 +656,21 @@ export default function FeedScreen({ navigation, route }) {
           <Text style={[s.titleHero, { color: v1.text }]}>{isDriver ? t('cargos') : t('trucks')}</Text>
           <Text style={[s.titleHeroSub, { color: v1.textMuted }]}>{isDriver ? t('feed_driver_subtitle') : t('feed_client_subtitle')}</Text>
         </View>
-        {/* PR-C2: title-row publish CTA закомментирован — он дублировал
-            большой floating "+" в BottomNav (tab Publish), который виден
-            на всех экранах, не только Feed. Stage 16 раньше делал эту
-            кнопку primary CTA, но дублирование функционала путало
-            пользователя и забирало место рядом с заголовком.
-            TODO: redesign — если решим вернуть, перенести как secondary
-            (outline) или удалить celebrate animation на BottomNav плюсе. */}
-        {/*
-        <TouchableOpacity
-          style={[s.titleCta, { borderColor: accentColor, backgroundColor: accentColor }]}
-          onPress={() => navigation.navigate(isDriver ? 'CreateTrip' : 'CreateCargo', { role })}
-          testID={isDriver ? 'publish-trip-button' : 'publish-cargo-button'}
-          accessibilityRole="button"
-          accessibilityLabel={isDriver ? t('postTrip') : t('postCargo')}
-        >
-          <Text style={[s.titleCtaText, { color: '#0A0A0A' }]}>+ {isDriver ? t('postTrip') : t('postCargo')}</Text>
-        </TouchableOpacity>
-        */}
+        {/* Для КЛИЕНТА публикация груза — главное действие, а безымянный
+            «+» в таббаре не находится. Показываем явную кнопку «+Груз».
+            У водителя лента = основная работа (берёт грузы), поэтому CTA
+            публикации рейса ему на ленту не выносим (остаётся «+» в баре). */}
+        {!isDriver ? (
+          <TouchableOpacity
+            style={[s.titleCta, { borderColor: accentColor, backgroundColor: accentColor }]}
+            onPress={() => navigation.navigate('CreateCargo', { role })}
+            testID="publish-cargo-button"
+            accessibilityRole="button"
+            accessibilityLabel={t('postCargo')}
+          >
+            <Text style={[s.titleCtaText, { color: '#0A0A0A' }]}>+ {t('postCargo')}</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>

@@ -120,10 +120,13 @@ export default function MyTripsScreen({ navigation, route }) {
         ? rawInitialTab
         : (rawInitialTab === 'bids' ? 'offers' : rawInitialTab === 'deals' ? 'enroute' : 'searching'));
   const justCreatedTrip = route.params?.justCreatedTrip || null;
+  // Клиентский аналог: только что опубликованный груз показываем сразу в
+  // «Ищу машину», не дожидаясь серверного refetch (замыкаем цикл публикации).
+  const justCreatedCargo = route.params?.justCreatedCargo || null;
   const [tab, setTab] = useState(normInitialTab);
   const mounted = useMountedRef();  // QA-аудит P1-8
   const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(!justCreatedTrip);
+  const [loading, setLoading] = useState(!justCreatedTrip && !justCreatedCargo);
   const [bidModal, setBidModal] = useState(false);
   const [bidModalMode, setBidModalMode] = useState('edit');
   const [editingBid, setEditingBid] = useState(null);
@@ -217,6 +220,11 @@ export default function MyTripsScreen({ navigation, route }) {
     if (justCreatedTrip) {
       setData({ my_trips: [justCreatedTrip], my_cargos: [], my_bids: [], incoming_bids: [], my_deals: [] });
       setLoading(false);
+    } else if (justCreatedCargo) {
+      setData({ my_trips: [], my_cargos: [justCreatedCargo], my_bids: [], incoming_bids: [], my_deals: [] });
+      setLoading(false);
+      // Фоном подтягиваем серверные данные, чтобы список стал полным.
+      load();
     } else {
       load();
     }
@@ -225,6 +233,9 @@ export default function MyTripsScreen({ navigation, route }) {
   let myItemsRaw = isDriver ? (data?.my_trips || []) : (data?.my_cargos || []);
   if (justCreatedTrip && isDriver && !myItemsRaw.find(i => i.id === justCreatedTrip.id)) {
     myItemsRaw = [justCreatedTrip, ...myItemsRaw];
+  }
+  if (justCreatedCargo && !isDriver && !myItemsRaw.find(i => i.id === justCreatedCargo.id)) {
+    myItemsRaw = [justCreatedCargo, ...myItemsRaw];
   }
 
   // RC2 hotfix (P0-4): expired (pickup_date < сегодня) больше не
