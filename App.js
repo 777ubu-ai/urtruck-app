@@ -136,7 +136,16 @@ function AppInner() {
     if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
     let Notifications;
     try { Notifications = require('expo-notifications'); } catch { return; }
+    // BUG-006: getLastNotificationResponseAsync (запускающий тап) и listener
+    // на части версий Expo SDK срабатывают ОБА для одного и того же тапа →
+    // двойная навигация. Дедуп по identifier уведомления в общем замыкании.
+    const handled = new Set();
     const handleResponse = (response) => {
+      const rid = response?.notification?.request?.identifier;
+      if (rid) {
+        if (handled.has(rid)) return;
+        handled.add(rid);
+      }
       const url = response?.notification?.request?.content?.data?.url;
       if (url) routeFromUrl(url);
     };
