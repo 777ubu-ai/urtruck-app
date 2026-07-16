@@ -1827,6 +1827,23 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
                 pass
     except Exception:
         pass
+    # События сделки в immutable-timeline (не только push): смена статуса
+    # пишется в ленту, чтобы Deal Room показывал живую хронологию сделки,
+    # а не только принятие ставки.
+    try:
+        from database import deal_room_dal
+        actor_role = "client" if uid == deal["shipper_id"] else "driver"
+        deal_room_dal.create_deal_event(
+            "deal.status_changed",
+            actor_id=uid,
+            actor_role=actor_role,
+            deal_id=deal_id,
+            load_id=deal.get("cargo_id"),
+            trip_id=deal.get("trip_id"),
+            payload={"status": new_status},
+        )
+    except Exception:
+        pass
     return {"ok": True, "status": new_status}
 
 
