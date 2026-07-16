@@ -16,6 +16,8 @@ import {
   StyleSheet,
   ActivityIndicator,
   Image,
+  Platform,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
@@ -101,7 +103,23 @@ export default function VehicleDocsScreen({ navigation }) {
     }
   };
 
-  const pick = async () => {
+  // 7.1: раньше документы можно было только выбрать из галереи — водитель
+  // не мог сфотографировать техпаспорт/права на месте. Теперь даём выбор
+  // камера/галерея (на web камеры через ImagePicker нет — сразу галерея).
+  const pickFrom = async (source) => {
+    if (source === 'camera') {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (perm.status !== 'granted') {
+        toast(t('camera_permission_required'), 'error');
+        return null;
+      }
+      const r = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.9,
+      });
+      if (r.canceled || !r.assets?.[0]?.uri) return null;
+      return r.assets[0].uri;
+    }
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (perm.status !== 'granted') {
       toast(t('photo_permission_required'), 'error');
@@ -113,6 +131,17 @@ export default function VehicleDocsScreen({ navigation }) {
     });
     if (r.canceled || !r.assets?.[0]?.uri) return null;
     return r.assets[0].uri;
+  };
+
+  const pick = async () => {
+    if (Platform.OS === 'web') return pickFrom('gallery');
+    return new Promise((resolve) => {
+      Alert.alert(t('photo_source_title'), '', [
+        { text: t('photo_source_camera'), onPress: async () => resolve(await pickFrom('camera')) },
+        { text: t('photo_source_gallery'), onPress: async () => resolve(await pickFrom('gallery')) },
+        { text: t('cancel'), style: 'cancel', onPress: () => resolve(null) },
+      ]);
+    });
   };
 
   const handleTechpass = async () => {
