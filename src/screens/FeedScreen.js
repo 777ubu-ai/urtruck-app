@@ -12,6 +12,7 @@ import { useVerificationGate } from '../components/VerificationGate';
 import { LEVELS, useAuth } from '../utils/AuthContext';
 import { SkeletonCard } from '../components/Skeleton';
 import { normalizeTrip, formatPrice, sanitizeForDisplay } from '../utils/normalizers';
+import { localizePlace } from '../utils/places';
 import { routeStats } from '../utils/geo';
 import { matchTruckTypes } from '../utils/truckSynonyms';
 import FeedCard from '../components/ui/v1/FeedCard';
@@ -193,7 +194,7 @@ export default function FeedScreen({ navigation, route }) {
   const isDriver = role === 'driver';
   // Brand v3: driver = emerald, client = orange. No blue.
   const accent = isDriver ? '#22C55E' : '#F59E0B';
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { theme } = useTheme();
   const notifUnread = useUnreadNotifications();
   const { toast } = useToast();
@@ -745,7 +746,24 @@ export default function FeedScreen({ navigation, route }) {
           текущей ленте — пользователь видит реальные направления
           (Алматы, Астана, Урумчи и т.д.), а не пустой sheet с двумя
           текстовыми полями. Тап чипа подставляет город в input. */}
-      <BottomSheet visible={activeFilter === 'dir'} onClose={closeFilter} title={`🧭 ${t('filter_direction')}`}>
+      <BottomSheet
+        visible={activeFilter === 'dir'}
+        onClose={closeFilter}
+        title={`🧭 ${t('filter_direction')}`}
+        footer={(
+          <View style={s.filterActions}>
+            <TouchableOpacity
+              style={[s.filterActionBtn, { backgroundColor: v1.surface, borderColor: v1.border, borderWidth: 1 }]}
+              onPress={() => { setDirFrom(''); setDirTo(''); }}
+            >
+              <Text style={[s.filterActionText, { color: v1.textMuted }]}>{t('filter_reset')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[s.filterActionBtn, { backgroundColor: accentColor }]} onPress={closeFilter}>
+              <Text style={[s.filterActionText, { color: '#0A0A0A' }]}>{t('filter_apply')}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      >
         <Text style={[s.filterSectionLabel, { color: theme.textMuted }]}>{t('from')}</Text>
         <TextInput
           value={dirFrom}
@@ -765,7 +783,7 @@ export default function FeedScreen({ navigation, route }) {
                   onPress={() => setDirFrom(c)}
                   style={[s.filterPill, { borderColor: v1.border, backgroundColor: dirFrom === c ? accentColor : v1.surface }]}
                 >
-                  <Text style={[s.filterPillText, { color: dirFrom === c ? '#0A0A0A' : v1.text }]} numberOfLines={1}>{c}</Text>
+                  <Text style={[s.filterPillText, { color: dirFrom === c ? '#0A0A0A' : v1.text }]} numberOfLines={1}>{localizePlace(c, lang)}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -791,7 +809,7 @@ export default function FeedScreen({ navigation, route }) {
                   onPress={() => setDirTo(c)}
                   style={[s.filterPill, { borderColor: v1.border, backgroundColor: dirTo === c ? accentColor : v1.surface }]}
                 >
-                  <Text style={[s.filterPillText, { color: dirTo === c ? '#0A0A0A' : v1.text }]} numberOfLines={1}>{c}</Text>
+                  <Text style={[s.filterPillText, { color: dirTo === c ? '#0A0A0A' : v1.text }]} numberOfLines={1}>{localizePlace(c, lang)}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -814,18 +832,6 @@ export default function FeedScreen({ navigation, route }) {
             <Text style={[s.saveRouteFullText, { color: accentColor }]}>🔔 {t('save_route_notify')}</Text>
           </TouchableOpacity>
         ) : null}
-
-        <View style={s.filterActions}>
-          <TouchableOpacity
-            style={[s.filterActionBtn, { backgroundColor: v1.surface, borderColor: v1.border, borderWidth: 1 }]}
-            onPress={() => { setDirFrom(''); setDirTo(''); }}
-          >
-            <Text style={[s.filterActionText, { color: v1.textMuted }]}>{t('filter_reset')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[s.filterActionBtn, { backgroundColor: accentColor }]} onPress={closeFilter}>
-            <Text style={[s.filterActionText, { color: '#0A0A0A' }]}>{t('filter_apply')}</Text>
-          </TouchableOpacity>
-        </View>
       </BottomSheet>
 
       {/* Date sheet — real calendar/date-picker for both ends of the
