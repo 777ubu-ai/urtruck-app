@@ -207,6 +207,7 @@ export const push = {
     // хотя токен на сервере не сохранялся (push не доходил).
     const authToken = await storage.get(TOKEN_KEY);
     let regStatus = 0;
+    let regUserId;
     try {
       const resp = await fetch(`${BASE}/register-native`, {
         method: 'POST',
@@ -222,7 +223,8 @@ export const push = {
         }),
       });
       regStatus = resp.status;
-      dbg('register-native →', regStatus);
+      try { const j = await resp.json(); regUserId = j?.user_id; } catch {}
+      dbg('register-native →', regStatus, 'user_id=', regUserId);
     } catch (e) {
       dbg('register-native network error', String(e));
       return { ok: false, reason: 'register_failed', token, error: String(e) };
@@ -230,8 +232,15 @@ export const push = {
     if (regStatus < 200 || regStatus >= 300) {
       return { ok: false, reason: 'register_rejected', token, status: regStatus };
     }
+    // BUG-004: слали auth-токен, но сервер не привязал (user_id=null → протухший
+    // токен) → токен «висит» без владельца, push не дойдёт, а раньше клиент
+    // рапортовал ok и кэшировал → автозапуск не перезапускал регистрацию.
+    // Не кэшируем как успех, чтобы следующий старт повторил линковку.
+    if (authToken && !regUserId) {
+      return { ok: false, reason: 'not_linked', token, status: regStatus };
+    }
     await storage.set(NATIVE_TOKEN_KEY, token);
-    return { ok: true, token };
+    return { ok: true, token, user_id: regUserId };
   },
 
   // ── Единый автозапуск: web.subscribe() если PWA, иначе registerNative() ──
