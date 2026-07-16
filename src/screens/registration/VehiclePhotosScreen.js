@@ -37,7 +37,8 @@ export default function VehiclePhotosScreen({ navigation, route }) {
   const { toast } = useToast();
 
   const [vehiclePhoto, setVehiclePhoto] = useState({ uri: null, status: 'idle', key: null });
-  const [cabinPhoto, setCabinPhoto] = useState({ uri: null, status: 'idle', key: null });
+  // Фото салона/кабины убрано (решение владельца): это грузовик, салон клиенту
+  // не важен, а водителю лишняя беготня. Оставлено только фото авто снаружи.
   const [errors, setErrors] = useState({});
   const [closeVisible, setCloseVisible] = useState(false);
   const [helpVisible, setHelpVisible] = useState(false);
@@ -83,37 +84,16 @@ export default function VehiclePhotosScreen({ navigation, route }) {
     }
   };
 
-  // Фото салона/кабины — аналогично (cabin_photo_key).
-  const handleCabinPhoto = async () => {
-    const uri = await pickCameraOrGallery();
-    if (!uri) return;
-    setCabinPhoto({ uri, status: 'busy', key: null });
-    try {
-      const up = await regAPI.uploadCabinPhoto(uri);
-      const key = up?.cabin_photo_key || null;
-      if (!key) throw new Error('no_key');
-      setCabinPhoto({ uri, status: 'done', key });
-      if (errors.cabinPhoto) setErrors({ ...errors, cabinPhoto: null });
-    } catch (e) {
-      setCabinPhoto({ uri, status: 'error', key: null });
-      toast(t('vdocs_cabin_photo_upload_err'), 'error', 5000);
-    }
-  };
-
   const vehiclePhotoDone = vehiclePhoto.status === 'done';
-  const cabinPhotoDone = cabinPhoto.status === 'done';
 
   const onNext = () => {
-    const e = {
-      vehiclePhoto: vehiclePhotoDone ? null : t('missing_vehicle_photo'),
-      cabinPhoto: cabinPhotoDone ? null : t('missing_cabin_photo'),
-    };
-    setErrors(e);
-    const firstErr = Object.values(e).find(Boolean);
-    if (firstErr) {
-      toast(firstErr, 'error');
+    // Обязательно только фото авто снаружи (салон убран).
+    if (!vehiclePhotoDone) {
+      setErrors({ vehiclePhoto: t('missing_vehicle_photo') });
+      toast(t('missing_vehicle_photo'), 'error');
       return;
     }
+    setErrors({});
     navigation.navigate('TruckParams', {
       fromVerification: true,
       plate: route?.params?.plate || null,
@@ -183,19 +163,6 @@ export default function VehiclePhotosScreen({ navigation, route }) {
           errorText={t('vdocs_vehicle_photo_upload_err')}
         />
         {errors.vehiclePhoto ? <Text style={s.errText}>{errors.vehiclePhoto}</Text> : null}
-
-        <PhotoGuide
-          source={require('../../assets/onboarding/verification/guides/truck_interior_guide.png')}
-          testID="vp-interior-guide"
-        />
-        <DocCard
-          title={`🛋️ ${t('cabin_interior_photo')}`}
-          hint={t('vphotos_hint_cabin')}
-          doc={cabinPhoto}
-          onPick={handleCabinPhoto}
-          errorText={t('vdocs_cabin_photo_upload_err')}
-        />
-        {errors.cabinPhoto ? <Text style={s.errText}>{errors.cabinPhoto}</Text> : null}
 
         {/* DEV/QA-only: якорь-прыжок на TruckParams (используется как нижний
             scroll-anchor в Maestro, чтобы образцы вставали над футером). */}
