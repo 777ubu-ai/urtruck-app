@@ -44,20 +44,23 @@ function parseNotifUrl(url) {
   return { kind, id, params };
 }
 
-function navigateFromUrl(navRef, url) {
+function navigateFromUrl(navRef, url, role) {
   if (!navRef?.current) return;
   const parsed = parseNotifUrl(url);
   if (!parsed) return;
   const { kind, id, params } = parsed;
   try {
     if (kind === 'cargos' && id) {
-      navRef.current.navigate('CargoDetail', { cargoId: id, bidId: params.bid || null });
+      // BUG-005: прокидываем role, чтобы экран открылся в правильном виде.
+      navRef.current.navigate('CargoDetail', { cargoId: id, bidId: params.bid || null, role });
     } else if (kind === 'trips' && id) {
-      navRef.current.navigate('TripDetail', { tripId: id, bidId: params.bid || null });
+      navRef.current.navigate('TripDetail', { tripId: id, bidId: params.bid || null, role });
     } else if (kind === 'deals' && id) {
-      navRef.current.navigate('ChatsList');
+      // BUG-002: deals → Deal Room (ChatScreen с dealId), как в
+      // NotificationsScreen. Раньше кидало в общий список чатов без контекста.
+      navRef.current.navigate('Chat', { dealId: id, role });
     } else if (kind === 'chats' && id) {
-      navRef.current.navigate('Chat', { roomId: id });
+      navRef.current.navigate('Chat', { roomId: id, role });
     } else if (kind === 'chat' || kind === 'chats') {
       navRef.current.navigate('ChatsList');
     }
@@ -105,7 +108,7 @@ function AppInner() {
       pendingUrlRef.current = url;  // отложить
       return;
     }
-    navigateFromUrl(navRef, url);
+    navigateFromUrl(navRef, url, session?.user?.role);
   };
 
   // Повторяем отложенный deep-link, когда появилась авторизация (или навигатор
