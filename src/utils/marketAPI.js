@@ -162,6 +162,16 @@ export const marketAPI = {
     return d;
   },
 
+  // Продлить груз одним тапом («Ещё актуально» — Модель А): дата = сегодня.
+  async extendCargo(id) {
+    const r = await authedFetch(`${BASE}/cargos/${id}/extend`, {
+      method: 'POST', headers: await headers(),
+    });
+    const d = await r.json();
+    if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
+    return d;
+  },
+
   // ─── Trips ───
   async createTrip(data) {
     const r = await authedFetch(`${BASE}/trips`, {
@@ -191,6 +201,16 @@ export const marketAPI = {
     const r = await authedFetch(`${BASE}/trips/${id}`, {
       method: 'PATCH', headers: await headers(),
       body: JSON.stringify(payload),
+    });
+    const d = await r.json();
+    if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
+    return d;
+  },
+
+  // Продлить рейс одним тапом («Ещё актуально» — Модель А): дата = сегодня.
+  async extendTrip(id) {
+    const r = await authedFetch(`${BASE}/trips/${id}/extend`, {
+      method: 'POST', headers: await headers(),
     });
     const d = await r.json();
     if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };

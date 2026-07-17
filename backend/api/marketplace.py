@@ -169,8 +169,9 @@ def _public_cargo_ok(row: dict, today=None) -> bool:
     created = _parse_iso_date(row.get("created_at"))
     cutoff = _parse_iso_date(PUBLIC_CUTOFF_DATE)
 
-    # Stale pickup_date: more than 24h in the past → hide
-    if pickup and pickup < (today - timedelta(days=1)):
+    # Stale pickup_date → hide. Модель А: публикация живёт 3 дня (день выезда
+    # + 2). Прячем, когда дата загрузки более чем на 2 дня в прошлом.
+    if pickup and pickup < (today - timedelta(days=2)):
         return False
 
     # Created before cutoff → must have a still-valid future pickup, otherwise hide
@@ -599,6 +600,39 @@ def update_cargo(cargo_id: str, body: CargoPatchIn, user=Depends(require_level(1
     return {"ok": True, "cargo": updated}
 
 
+# ── Продление одним тапом (Модель А): «Ещё актуально» ────────────────────
+# Дата загрузки/выезда сбрасывается на сегодня → публикация снова живёт
+# 3 дня и возвращается в общую ленту. Без ручного ввода даты.
+@mp_router.post("/cargos/{cargo_id}/extend")
+def extend_cargo(cargo_id: str, user=Depends(require_level(1))):
+    new_date = datetime.utcnow().date().isoformat()
+    with get_conn() as c:
+        row = c.execute("SELECT owner_id, status FROM cargos WHERE id = ?", (cargo_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Груз не найден")
+        if row["owner_id"] != user["id"]:
+            raise HTTPException(status_code=403, detail="Можно продлить только свой груз")
+        if (row["status"] or "active") != "active":
+            raise HTTPException(status_code=409, detail="Груз не активен")
+        c.execute("UPDATE cargos SET pickup_date = ? WHERE id = ?", (new_date, cargo_id))
+    return {"ok": True, "pickup_date": new_date}
+
+
+@mp_router.post("/trips/{trip_id}/extend")
+def extend_trip(trip_id: str, user=Depends(require_level(1))):
+    new_date = datetime.utcnow().date().isoformat()
+    with get_conn() as c:
+        row = c.execute("SELECT driver_id, status FROM trips WHERE id = ?", (trip_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Рейс не найден")
+        if row["driver_id"] != user["id"]:
+            raise HTTPException(status_code=403, detail="Можно продлить только свой рейс")
+        if (row["status"] or "active") != "active":
+            raise HTTPException(status_code=409, detail="Рейс не активен")
+        c.execute("UPDATE trips SET departure = ? WHERE id = ?", (new_date, trip_id))
+    return {"ok": True, "departure": new_date}
+
+
 # ═══ Trips ═══
 
 @mp_router.post("/trips")
@@ -767,15 +801,14 @@ def list_trips(
             if not _is_dirty_text(t.get("driver_name"), t.get("from_city"),
                                   t.get("to_city"), t.get("truck_type"))
         ]
-        # Скрываем просроченные рейсы из ПУБЛИЧНОЙ ленты: departure более чем
-        # на 1 день в прошлом (то же правило +1 день, что и для грузов в
-        # _public_cargo_ok). Owner-side /my сюда не проходит — там рейсы
+        # Скрываем просроченные рейсы из ПУБЛИЧНОЙ ленты (Модель А: живёт
+        # 3 дня — departure + 2). Owner-side /my сюда не проходит — там рейсы
         # остаются с пометкой «Срок истёк».
         _today = datetime.utcnow().date()
         trips = [
             t for t in trips
             if not ((_dep := _parse_iso_date(t.get("departure")))
-                    and _dep < (_today - timedelta(days=1)))
+                    and _dep < (_today - timedelta(days=2)))
         ]
     # Обогащаем каждый рейс РЕАЛЬНЫМИ данными водителя (статус верификации +
     # рейтинг/число отзывов), чтобы фронт не выдумывал «★5.0 · Проверен».

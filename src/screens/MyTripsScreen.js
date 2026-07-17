@@ -96,6 +96,8 @@ export default function MyTripsScreen({ navigation, route }) {
   miniBtnText: { fontSize: 14, fontWeight: '700' },
   editBtn: { borderWidth: 1, borderColor: '#22C55E', borderRadius: 10, paddingVertical: 8, alignItems: 'center', marginTop: spacing.sm },
   editBtnText: { color: '#22C55E', fontSize: 12, fontWeight: '700' },
+  extendBtn: { flex: 1, backgroundColor: '#00E676', borderRadius: 10, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', minHeight: 40 },
+  extendBtnText: { color: '#0C0A09', fontSize: 13, fontWeight: '800' },
 
   }), [v1]);
   const { role } = route.params || {};
@@ -133,6 +135,20 @@ export default function MyTripsScreen({ navigation, route }) {
   const [editingBid, setEditingBid] = useState(null);
   const [editCargo, setEditCargo] = useState(null);  // задача A: правка своего груза
   const [busyBidId, setBusyBidId] = useState(null);
+  const [extending, setExtending] = useState(null);  // Модель А: продление одним тапом
+
+  // «Ещё актуально» — сбрасывает дату на сегодня, публикация снова живёт
+  // 3 дня и возвращается в ленту. Без ручного ввода даты.
+  const extendItem = async (item, isCargo) => {
+    if (extending) return;
+    setExtending(item.id);
+    try {
+      const r = isCargo ? await marketAPI.extendCargo(item.id) : await marketAPI.extendTrip(item.id);
+      if (r.ok) { toast('✅ ' + t('extended_toast'), 'success', 3000); load(); }
+      else toast(r.detail || t('send_error'), 'error');
+    } catch { toast(t('no_connection'), 'error'); }
+    finally { setExtending(null); }
+  };
 
   // Progressive verification: размещение рейса — trust-действие, доступно
   // только одобренному водителю. Источник статуса — regAPI.me()
@@ -265,12 +281,12 @@ export default function MyTripsScreen({ navigation, route }) {
   const isExpiredItem = (it) => {
     const d = parseDate(it.pickup_date || it.departure);
     if (!d) return false;
-    // Запас в 1 день (согласовано с лентой): день выезда + 1 день ещё
-    // активен, дальше — «Срок истёк». Граница = вчера: expired, если
-    // дата < вчера.
+    // Модель А: публикация живёт 3 дня (день выезда + 2), согласовано с
+    // лентой. Дальше — «Срок истёк». Граница = сегодня-2: expired, если
+    // дата < (сегодня − 2 дня).
     const grace = new Date();
     grace.setHours(0, 0, 0, 0);
-    grace.setDate(grace.getDate() - 1);
+    grace.setDate(grace.getDate() - 2);
     return d < grace;
   };
   const myItemsActive = myItemsRaw.filter((it) => !isExpiredItem(it));
@@ -421,20 +437,31 @@ export default function MyTripsScreen({ navigation, route }) {
             <Text style={s.editBtnText}>✏️ {t('edit_btn')}</Text>
           </TouchableOpacity>
         )}
-        {/* Просроченный груз/рейс: «Продлить» — открывает правку даты. Изменил
-            дату на будущую → снова попадает в общую ленту. */}
+        {/* Просроченный груз/рейс (Модель А): «Ещё актуально» — продление
+            ОДНИМ ТАПОМ (дата = сегодня, снова живёт 3 дня и в ленте). Рядом —
+            «Изменить дату», если нужна конкретная дата. */}
         {item._expired && (
-          <TouchableOpacity
-            testID="extend-deadline-btn"
-            style={[s.editBtn, { borderColor: '#F59E0B' }]}
-            onPress={(e) => {
-              e.stopPropagation && e.stopPropagation();
-              if (isCargo) setEditCargo(item);
-              else navigation.navigate('EditTrip', { tripId: item.id, trip: normalizeTrip({ ...item, isMine: true, _server: true }) });
-            }}
-          >
-            <Text style={[s.editBtnText, { color: '#F59E0B' }]}>⏳ {t('extend_deadline')}</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: spacing.sm }}>
+            <TouchableOpacity
+              testID="extend-oneclick-btn"
+              style={[s.extendBtn, extending === item.id && { opacity: 0.6 }]}
+              onPress={(e) => { e.stopPropagation && e.stopPropagation(); extendItem(item, isCargo); }}
+              disabled={extending === item.id}
+            >
+              <Text style={s.extendBtnText}>✅ {t('still_active')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              testID="extend-editdate-btn"
+              style={[s.editBtn, { borderColor: '#F59E0B', marginTop: 0, paddingHorizontal: 14 }]}
+              onPress={(e) => {
+                e.stopPropagation && e.stopPropagation();
+                if (isCargo) setEditCargo(item);
+                else navigation.navigate('EditTrip', { tripId: item.id, trip: normalizeTrip({ ...item, isMine: true, _server: true }) });
+              }}
+            >
+              <Text style={[s.editBtnText, { color: '#F59E0B' }]}>📅 {t('change_date')}</Text>
+            </TouchableOpacity>
+          </View>
         )}
         {/* Задача A: управление СВОИМ грузом — Изменить (цена/описание) + Удалить.
             Только для активного груза (taken/принятый редактировать нельзя). */}

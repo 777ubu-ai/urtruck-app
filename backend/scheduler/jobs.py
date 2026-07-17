@@ -119,16 +119,19 @@ def push_reminders_job():
 
 
 def expired_notify_job():
-    """Ежедневно: владельцам грузов/рейсов, у которых срок выезда прошёл на
-    +1 день (сегодня — первый день, когда публикация скрыта из ленты), шлём
-    пуш «Срок истёк — продлить?». Дедуп на пользователя через push_log
-    (kind='expired'), чтобы не спамить."""
+    """Ежедневно (Модель А): владельцам грузов/рейсов шлём напоминания по
+    нарастающей, пока публикация «стареет» (день выезда +1, +2, +3):
+      +1 день — «Ещё актуально?» (ещё в ленте)
+      +2 дня  — «Завтра уберём из ленты»
+      +3 дня  — «Убрано из ленты — вернуть?»
+    Дальше не напоминаем (без спама). Дедуп на пользователя через push_log
+    (kind='expired'). Продление — одним тапом «Ещё актуально» в приложении."""
     from datetime import timedelta
     from database.db import get_conn
     from services import push_sender
 
     now = datetime.utcnow()
-    trigger_day = now.date() - timedelta(days=2)  # дата выезда, для которой сегодня наступил «просрочен»
+    today = now.date()
 
     def _pd(s):
         s = str(s or "").strip()
@@ -139,21 +142,31 @@ def expired_notify_job():
                 pass
         return None
 
-    owners = set()
+    # user_id -> самая срочная стадия (1..3) среди его стареющих публикаций
+    urgency = {}
     try:
         with get_conn() as c:
             cargos = c.execute("SELECT owner_id AS uid, pickup_date AS d FROM cargos WHERE status = 'active'").fetchall()
             trips = c.execute("SELECT driver_id AS uid, departure AS d FROM trips WHERE status = 'active'").fetchall()
         for r in list(cargos) + list(trips):
-            if r["uid"] and _pd(r["d"]) == trigger_day:
-                owners.add(r["uid"])
+            dd = _pd(r["d"])
+            if not r["uid"] or not dd:
+                continue
+            days_past = (today - dd).days
+            if 1 <= days_past <= 3:
+                urgency[r["uid"]] = max(urgency.get(r["uid"], 0), days_past)
     except Exception as e:
         print(f"  expired-notify query err: {e}")
         return
 
+    MSG = {
+        1: ("🕐 Ваша публикация ещё актуальна?", "Продлите одним тапом — «Ещё актуально»."),
+        2: ("⏳ Завтра уберём из ленты", "Груз/рейс скоро исчезнет из поиска. Продлить?"),
+        3: ("📭 Публикация убрана из ленты", "Хотите вернуть? Нажмите «Ещё актуально»."),
+    }
     thresh = (now - timedelta(hours=20)).isoformat()
     sent = 0
-    for uid in owners:
+    for uid, dp in urgency.items():
         try:
             with get_conn() as c:
                 dup = c.execute(
@@ -161,13 +174,8 @@ def expired_notify_job():
                     (uid, thresh)).fetchone()
             if dup:
                 continue
-            push_sender.send(
-                uid,
-                "⏳ Срок публикации истёк",
-                "Груз/рейс убран из ленты. Хотите продлить? Измените дату выезда.",
-                kind="expired",
-                url="/",
-            )
+            title, body = MSG[dp]
+            push_sender.send(uid, title, body, kind="expired", url="/")
             sent += 1
         except Exception as e:
             print(f"  expired push err {uid}: {e}")
