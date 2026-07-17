@@ -6,9 +6,9 @@ import { useI18n } from '../utils/useI18n';
 import {v1Colors, useV1Colors} from '../theme/designV1';
 
 const CONTACTS = [
-  { icon: '💬', label: 'Telegram', value: '@UrTruckSupport', url: 'https://t.me/UrTruckSupport' },
-  { icon: '📧', label: 'Email', value: 'hello@urtruck.kz', url: 'mailto:hello@urtruck.kz' },
-  { icon: '📱', label: 'WhatsApp', value: '+7 700 603 3365', url: 'https://wa.me/77006033365' },
+  { icon: '💬', label: 'Telegram', value: '+7 747 917 11 18', url: 'https://t.me/+77479171118' },
+  { icon: '📧', label: 'Email', value: '777ubu@gmail.com', url: 'mailto:777ubu@gmail.com' },
+  { icon: '📱', label: 'WhatsApp', value: '+7 747 917 11 18', url: 'https://wa.me/77479171118' },
 ];
 
 // Только честные, проверяемые факты (App Store модерация + доверие).

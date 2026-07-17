@@ -121,7 +121,7 @@ async def telegram_webhook(request: Request):
             "ℹ️ *UrTruck Bot*\n\n"
             "Используется для OTP-подтверждения.\n"
             "Просто нажмите на ссылку в приложении — код подтвердится автоматически.\n\n"
-            "Поддержка: @UrTruckSupport"
+            "Поддержка: 777ubu@gmail.com · WhatsApp +7 747 917 11 18"
         )
         return {"ok": True}
 

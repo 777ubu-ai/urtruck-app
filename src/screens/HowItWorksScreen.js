@@ -7,8 +7,8 @@ import { useToast } from '../components/Toast';
 import {v1Colors, useV1Colors} from '../theme/designV1';
 import { accentColors } from '../utils/theme';
 
-const SUPPORT_TG = 'https://t.me/UrTruckSupport';
-const SUPPORT_EMAIL = 'hello@urtruck.kz';
+const SUPPORT_TG = 'https://t.me/+77479171118';
+const SUPPORT_EMAIL = '777ubu@gmail.com';
 
 // STEPS / FEATURES хранят только icon + ключи i18n; реальный текст
 // тянется через t() в момент рендера (см. buildSteps/buildFeatures
