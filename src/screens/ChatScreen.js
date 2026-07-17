@@ -523,7 +523,7 @@ export default function ChatScreen({ navigation, route }) {
     if (toId) {
       chatAPI.send({
         toUserId: toId,
-        text: `🎤 Голосовое сообщение (${duration}с)`,
+        text: `🎤 ${t('chat_voice_message')} (${duration}${t('unit_sec_short')})`,
         isVoice: true, voiceDuration: duration,
         cargoId, tripId,
       }).catch(() => toast(t('chat_send_failed'), 'error'));

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import { useTheme } from '../utils/ThemeContext';
+import { t } from '../utils/i18n';
 import { searchCargoTypes, addCustomCargoType, subscribeToCargoTypes } from '../utils/cargoTypes';
 
 export default function CargoTypeInput({ value, onChange, placeholder, style, testID }) {
@@ -50,7 +51,7 @@ export default function CargoTypeInput({ value, onChange, placeholder, style, te
             >
               <Text style={s.icon}>{c.icon || '📦'}</Text>
               <Text style={[s.name, { color: theme.text }]}>
-                {c.isCustom ? `«${c.name}» — Другой груз` : c.name}
+                {c.isCustom ? t('cargo_type_custom_label').replace('{name}', c.name) : c.name}
               </Text>
             </TouchableOpacity>
           ))}

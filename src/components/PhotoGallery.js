@@ -130,6 +130,7 @@ export const PhotoPicker = ({ photos = [], onChange }) => {
 // Галерея просмотра (CargoDetail)
 export const PhotoGallery = ({ photos = [] }) => {
   const { theme } = useTheme();
+  const { t } = useI18n();
   const [activeIdx, setActiveIdx] = useState(null);
   const screenWidth = Dimensions.get('window').width;
 
@@ -144,7 +145,7 @@ export const PhotoGallery = ({ photos = [] }) => {
           </TouchableOpacity>
         ))}
       </ScrollView>
-      <Text style={[g.count, { color: theme.textMuted }]}>📸 {photos.length} фото · нажмите чтобы увеличить</Text>
+      <Text style={[g.count, { color: theme.textMuted }]}>📸 {t('photo_gallery_count').replace('{n}', photos.length)}</Text>
 
       <Modal visible={activeIdx !== null} transparent animationType="fade" onRequestClose={() => setActiveIdx(null)}>
         <View style={g.viewer}>

@@ -107,7 +107,7 @@ export default function NotificationsScreen({ navigation }) {
 
   const markAllRead = async () => {
     await notificationsAPI.readAll();
-    toast('✓ Все прочитаны', 'success');
+    toast(`✓ ${t('notif_all_read')}`, 'success');
     load();
   };
 
@@ -167,9 +167,9 @@ export default function NotificationsScreen({ navigation }) {
   const cleanNotifText = (s) => {
     if (!s || typeof s !== 'string') return s;
     return s
-      .replace(/^None предлагает/, 'Водитель предлагает')
+      .replace(/^None предлагает/, t('notif_driver_offers'))
       .replace(/^None /, '')
-      .replace(/^null предлагает/, 'Водитель предлагает')
+      .replace(/^null предлагает/, t('notif_driver_offers'))
       .replace(/^null /, '');
   };
 

@@ -3,43 +3,28 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-nati
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 
+// Эмодзи-иконка вкладки остаётся тут, тексты (name / raw) — i18n-ключи,
+// резолвятся через t() при рендере (реактивно к смене языка).
 const CATEGORIES = [
   {
-    name: '🚛 Рейс',
+    icon: '🚛', nameKey: 'qp_tab_trip',
     phrases: ['phrLoading', 'phrDelay', 'phrDeparting', 'phrLoaded', 'phrCustoms'],
   },
   {
-    name: '📦 Груз',
+    icon: '📦', nameKey: 'qp_tab_cargo',
     phrases: ['phrSendAddr', 'phrPallets', 'phrWeight'],
   },
   {
-    name: '💰 Цена',
-    raw: [
-      'Какая финальная цена?',
-      'Цена включает таможню?',
-      'Предоплата нужна?',
-      'Можно безнал?',
-      'Расходы на границе за чей счёт?',
-    ],
+    icon: '💰', nameKey: 'qp_tab_price',
+    raw: ['qphrase_price_1', 'qphrase_price_2', 'qphrase_price_3', 'qphrase_price_4', 'qphrase_price_5'],
   },
   {
-    name: '📍 Маршрут',
-    raw: [
-      'Где сейчас машина?',
-      'Когда будешь на загрузке?',
-      'Ориентировочное время доставки?',
-      'Есть попутный груз?',
-      'Через какую границу поедешь?',
-    ],
+    icon: '📍', nameKey: 'qp_tab_route',
+    raw: ['qphrase_route_1', 'qphrase_route_2', 'qphrase_route_3', 'qphrase_route_4', 'qphrase_route_5'],
   },
   {
-    name: '📄 Документы',
-    raw: [
-      'Скинь фото ТТН',
-      'Нужна доверенность?',
-      'Какие документы на границе нужны?',
-      'CMR готова?',
-    ],
+    icon: '📄', nameKey: 'qp_tab_docs',
+    raw: ['qphrase_docs_1', 'qphrase_docs_2', 'qphrase_docs_3', 'qphrase_docs_4'],
   },
 ];
 
@@ -59,7 +44,7 @@ export default function QuickPhrases({ onSelect }) {
             style={[s.tab, { backgroundColor: i === activeTab ? '#1A5C3C' : theme.card, borderColor: theme.border }]}
             onPress={() => setActiveTab(i)}
           >
-            <Text style={[s.tabText, { color: i === activeTab ? '#FFF' : theme.textMuted }]}>{c.name}</Text>
+            <Text style={[s.tabText, { color: i === activeTab ? '#FFF' : theme.textMuted }]}>{`${c.icon} ${t(c.nameKey)}`}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -71,9 +56,9 @@ export default function QuickPhrases({ onSelect }) {
             <Text style={[s.text, { color: theme.textSecondary }]}>{t(k)}</Text>
           </TouchableOpacity>
         ))}
-        {(cat.raw || []).map((phrase, i) => (
-          <TouchableOpacity key={i} style={[s.btn, { backgroundColor: theme.card, borderColor: theme.border }]} onPress={() => onSelect(phrase)}>
-            <Text style={[s.text, { color: theme.textSecondary }]}>{phrase}</Text>
+        {(cat.raw || []).map((key, i) => (
+          <TouchableOpacity key={i} style={[s.btn, { backgroundColor: theme.card, borderColor: theme.border }]} onPress={() => onSelect(t(key))}>
+            <Text style={[s.text, { color: theme.textSecondary }]}>{t(key)}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>

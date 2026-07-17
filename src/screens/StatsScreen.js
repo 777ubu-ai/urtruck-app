@@ -47,7 +47,7 @@ export default function StatsScreen({ navigation }) {
       >
         {leaders.length === 0 && !loading && (
           <Text style={{ color: theme.textMuted, textAlign: 'center', marginTop: 40 }}>
-            Пока нет одобренных водителей с оценками
+            {t('stats_no_drivers')}
           </Text>
         )}
 
@@ -62,7 +62,7 @@ export default function StatsScreen({ navigation }) {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[s.name, { color: theme.text }]}>
-                  {d.full_name || 'Без имени'} {truck}
+                  {d.full_name || t('stats_no_name')} {truck}
                 </Text>
                 <Text style={[s.sub, { color: theme.textMuted }]}>
                   {d.vehicle_brand || ''} · {d.vehicle_plate || ''}

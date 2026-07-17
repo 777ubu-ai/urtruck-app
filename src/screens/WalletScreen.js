@@ -97,7 +97,7 @@ export default function WalletScreen({ route }) {
           <View style={s.fxHeader}>
             <Text style={[s.sectionTitle, { color: theme.textMuted }]}>{t('fx_rates_title')}</Text>
             <Text style={[s.fxUpdate, { color: theme.textMuted }]}>
-              {fxLoading ? '...' : `Обновлено ${updateStr}`}
+              {fxLoading ? '...' : `${t('wallet_fx_updated')} ${updateStr}`}
             </Text>
           </View>
           {fxLoading ? (
@@ -155,7 +155,7 @@ export default function WalletScreen({ route }) {
         {/* История транзакций */}
         {transactions.length > 0 && (
           <View style={[s.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Text style={[s.sectionTitle, { color: theme.textMuted }]}>📊 История ({transactions.length})</Text>
+            <Text style={[s.sectionTitle, { color: theme.textMuted }]}>📊 {t('wallet_history')} ({transactions.length})</Text>
             {transactions.map((tx, i) => (
               <View key={tx.id} style={[s.txRow, i < transactions.length - 1 && { borderBottomWidth: 1, borderBottomColor: theme.border }]}>
                 <View style={[s.txIcon, { backgroundColor: tx.amount > 0 ? '#22C55E20' : '#EF444420' }]}>

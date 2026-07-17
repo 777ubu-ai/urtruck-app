@@ -12,11 +12,12 @@ const CONTACTS = [
 ];
 
 // Только честные, проверяемые факты (App Store модерация + доверие).
+// Подписи — i18n-ключи, резолвятся через t() при рендере.
 const STATS = [
-  { n: '6', l: 'Стран на маршрутах (KZ, RU, UZ, CN, KG, TJ)' },
-  { n: '4', l: 'Языка интерфейса (RU · KK · EN · ZH)' },
-  { n: '0%', l: 'Комиссия в бете' },
-  { n: 'Live', l: 'Очередь на границе КЗ' },
+  { n: '6', lKey: 'about_stat_countries' },
+  { n: '4', lKey: 'about_stat_langs' },
+  { n: '0%', lKey: 'about_stat_commission' },
+  { n: 'Live', lKey: 'about_stat_queue' },
 ];
 
 export default function AboutScreen({ navigation }) {
@@ -40,16 +41,13 @@ export default function AboutScreen({ navigation }) {
           <Text style={s.heroEmoji}>🚛</Text>
           <Text style={[s.heroTitle, { color: theme.text }]}>UrTruck</Text>
           <Text style={[s.heroSub, { color: theme.textMuted }]}>
-            FTL Market · Международная логистика{'\n'}
-            Китай ↔ Казахстан ↔ Россия ↔ Узбекистан ↔ Кыргызстан
+            {t('about_hero_sub')}
           </Text>
         </View>
 
         <Text style={[s.section, { color: theme.text }]}>{t('about_what_we_do')}</Text>
         <Text style={[s.body, { color: theme.textSecondary }]}>
-          UrTruck — маркетплейс грузоперевозок для международных маршрутов.
-          Соединяем грузоотправителей и перевозчиков напрямую, без посредников.
-          Водители проходят регистрацию с проверкой ИИН, документов и blacklist-screening.
+          {t('about_body')}
         </Text>
 
         <Text style={[s.section, { color: theme.text }]}>{t('about_numbers')}</Text>
@@ -57,7 +55,7 @@ export default function AboutScreen({ navigation }) {
           {STATS.map((st, i) => (
             <View key={i} style={[s.statCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
               <Text style={[s.statNum, { color: accent }]}>{st.n}</Text>
-              <Text style={[s.statLabel, { color: theme.textMuted }]}>{st.l}</Text>
+              <Text style={[s.statLabel, { color: theme.textMuted }]}>{t(st.lKey)}</Text>
             </View>
           ))}
         </View>
@@ -80,8 +78,7 @@ export default function AboutScreen({ navigation }) {
 
         <View style={[s.footer, { borderTopColor: theme.border }]}>
           <Text style={[s.footerText, { color: theme.textDim }]}>
-            © 2026 UrTruck · Казахстан, Алматы{'\n'}
-            Все права защищены
+            {t('about_copyright')}
           </Text>
         </View>
       </ScrollView>

@@ -163,7 +163,7 @@ export default function FeedCard({
       {/* Phase 2A: "0 откликов" не выпячиваем — если данных нет, строки нет.
           B2B-карточка должна показывать число только когда оно несёт смысл. */}
       {responses != null && responses > 0 ? (
-        <Text style={[s.responses, { color: colors.textMuted }]}>{responses} {responses === 1 ? 'отклик' : 'откликов'}</Text>
+        <Text style={[s.responses, { color: colors.textMuted }]}>{responses} {responses === 1 ? t('feed_response_one') : t('feed_response_many')}</Text>
       ) : null}
 
       {(bottomLeft || bottomRight) ? (

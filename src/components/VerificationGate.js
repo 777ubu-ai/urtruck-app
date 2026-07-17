@@ -167,7 +167,7 @@ export function VerificationGateSheet({ visible, action, currentLevel, requiredL
 
           <View style={[s.trust, { backgroundColor: `${accentColors.browse}10` }]}>
             <Text style={[s.trustText, { color: theme.textMuted }]}>
-              🛡 Данные зашифрованы · регистрация занимает 1 минуту
+              🛡 {tGlobal('gate_encrypted_note')}
             </Text>
           </View>
         </Animated.View>
