@@ -38,6 +38,17 @@ const i18nLabel = (t, key, fallback) => {
   return v && v !== key ? v : fallback;
 };
 
+// Популярные направления коридора Китай↔СНГ — показываем сразу в пустом
+// пикере, чтобы город выбирался ОДНИМ ТАПОМ, без прохода Страна→Тип→Точка.
+const POPULAR_NAMES = [
+  'Алматы', 'Ташкент', 'Москва', 'Бишкек', 'Шымкент', 'Астана',
+  'Урумчи', 'Иу', 'Санкт-Петербург', 'Хоргос',
+  'Нур Жолы ↔ Хоргос', 'Достык ↔ Алашанькоу',
+];
+const POPULAR_POINTS = POPULAR_NAMES
+  .map((n) => POINTS.find((p) => p.name === n))
+  .filter(Boolean);
+
 // Stage 8: localised country name. Try the i18n key first
 // (`country_KZ`, `country_CN`, …). Fall back to the Russian name
 // in COUNTRIES so a regression doesn't surface bare `country_KZ`
@@ -88,6 +99,7 @@ export default function RoutePointPicker({
     },
     rowName: { fontSize: 14, fontWeight: '700' },
     rowMeta: { fontSize: 11, marginTop: 2 },
+    groupLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5, textTransform: 'uppercase', color: v1.textMuted, paddingHorizontal: 10, paddingTop: 10, paddingBottom: 4 },
     icon: { fontSize: 18 },
     fallback: {
       paddingHorizontal: 14, paddingVertical: 10,
@@ -207,22 +219,34 @@ export default function RoutePointPicker({
             ))
           )
         ) : step === 'country' ? (
-          visibleCountries.map((code) => {
-            const country = COUNTRIES[code];
-            const localName = localisedCountryName(t, code, country.name);
-            return (
-              <TouchableOpacity
-                key={code}
-                onPress={() => { setCountry(code); setStep('type'); }}
-                style={s.row}
-                testID={`route-country-${code}`}
-              >
-                <Text style={s.icon}>{country.flag}</Text>
-                <Text style={[s.rowName, { color: v1.text, flex: 1 }]}>{localName}</Text>
-                <Text style={{ color: v1.textMuted, fontSize: 16 }}>›</Text>
-              </TouchableOpacity>
-            );
-          })
+          <>
+            {/* Популярные — выбор города в один тап (обходит Страна→Тип→Точка) */}
+            {POPULAR_POINTS.length ? (
+              <>
+                <Text style={s.groupLabel}>{i18nLabel(t, 'route_popular', 'Популярные')}</Text>
+                {POPULAR_POINTS.map((p, i) => (
+                  <PointRow key={`pop:${p.name}:${i}`} p={p} v1={v1} s={s} onPick={() => commit(p)} />
+                ))}
+                <Text style={s.groupLabel}>{i18nLabel(t, 'route_all_countries', 'Все страны')}</Text>
+              </>
+            ) : null}
+            {visibleCountries.map((code) => {
+              const country = COUNTRIES[code];
+              const localName = localisedCountryName(t, code, country.name);
+              return (
+                <TouchableOpacity
+                  key={code}
+                  onPress={() => { setCountry(code); setStep('type'); }}
+                  style={s.row}
+                  testID={`route-country-${code}`}
+                >
+                  <Text style={s.icon}>{country.flag}</Text>
+                  <Text style={[s.rowName, { color: v1.text, flex: 1 }]}>{localName}</Text>
+                  <Text style={{ color: v1.textMuted, fontSize: 16 }}>›</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </>
         ) : step === 'type' ? (
           POINT_TYPES.map((it) => {
             const count = pointsForCountry(country, it.key).length;
