@@ -728,8 +728,11 @@ export default function ChatScreen({ navigation, route }) {
           {/* Маршрут груза в шапке — сразу видно, по какому заказу чат.
               Если маршрут известен (есть сделка) — показываем его; иначе
               честную роль собеседника (Водитель/Грузовладелец). */}
-          {deal && (deal.from_city || deal.to_city)
-            ? <Text style={[s.online, { color: v1Accent.main }]} numberOfLines={1}>📍 {localizePlace(deal.from_city || '—', getLanguage())} → {localizePlace(deal.to_city || '—', getLanguage())}</Text>
+          {deal && (deal.from_city || deal.to_city || deal.cargo_desc)
+            ? <Text style={[s.online, { color: v1Accent.main }]} numberOfLines={1}>
+                {deal.cargo_desc ? `📦 ${deal.cargo_desc} · ` : '📍 '}
+                {localizePlace(deal.from_city || '—', getLanguage())} → {localizePlace(deal.to_city || '—', getLanguage())}
+              </Text>
             : ((resolvedPartner?.role === 'driver' || resolvedPartner?.role === 'client')
                 ? <Text style={[s.online, { color: '#A8A29E' }]}>{t(resolvedPartner.role)}</Text>
                 : null)}
