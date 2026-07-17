@@ -98,6 +98,11 @@ export default function FeedScreen({ navigation, route }) {
   // guestRole-toggle (см. JSX выше).
   // Title row with outline CTA on the right (macros 07/08).
   titleRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12, gap: 12 },
+  routeSelector: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginBottom: 8, borderWidth: 1.5, borderRadius: 16, paddingVertical: 12, paddingHorizontal: 14, gap: 10 },
+  routeSelHalf: { flex: 1 },
+  routeSelLabel: { fontSize: 11, fontWeight: '700', marginBottom: 3, letterSpacing: 0.3 },
+  routeSelValue: { fontSize: 15, fontWeight: '800' },
+  routeSelArrow: { fontSize: 20, fontWeight: '900' },
   titleHero: { color: v1.text, fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
   titleHeroSub: { color: v1.textMuted, fontSize: 12, marginTop: 2 },
   titleCta: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 },
@@ -643,7 +648,8 @@ export default function FeedScreen({ navigation, route }) {
     // Stage 16: dropped per-chip emojis (🧭/📅/🚛/💰). Filter pills
     // now read as plain text + chevron — calmer strip, no four
     // colour spots competing with the price/CTA accent.
-    { key: 'dir',   label: t('filter_direction'), active: !!(dirFrom || dirTo),       onPress: () => setActiveFilter('dir') },
+    // inDrive-стиль: «Направление» вынесено в крупный селектор «Откуда → Куда»
+    // над поиском, поэтому в ряду мелких фильтров его больше нет.
     { key: 'date',  label: t('filter_date'),      active: !!(dateFrom || dateTo),     onPress: () => setActiveFilter('date') },
     { key: 'body',  label: t('filter_body'),      active: !!filterType,               onPress: () => setActiveFilter('body') },
     { key: 'price', label: t('filter_price'),     active: sortBy !== 'newest',        onPress: () => setActiveFilter('price') },
@@ -708,6 +714,29 @@ export default function FeedScreen({ navigation, route }) {
           </TouchableOpacity>
         ) : null}
       </View>
+
+      {/* inDrive-стиль: крупный селектор «Откуда → Куда» — главный способ
+          фильтра. Тап открывает шторку направления. Значения локализуются. */}
+      <TouchableOpacity
+        style={[s.routeSelector, { backgroundColor: v1.surface, borderColor: (dirFrom || dirTo) ? accentColor : v1.border }]}
+        onPress={() => setActiveFilter('dir')}
+        activeOpacity={0.85}
+        testID="feed-route-selector"
+      >
+        <View style={s.routeSelHalf}>
+          <Text style={[s.routeSelLabel, { color: v1.textMuted }]}>📍 {t('from')}</Text>
+          <Text style={[s.routeSelValue, { color: dirFrom ? v1.text : v1.textMuted }]} numberOfLines={1}>
+            {dirFrom ? localizePlace(dirFrom, lang) : t('create_field_from_placeholder')}
+          </Text>
+        </View>
+        <Text style={[s.routeSelArrow, { color: accentColor }]}>→</Text>
+        <View style={s.routeSelHalf}>
+          <Text style={[s.routeSelLabel, { color: v1.textMuted }]}>🏁 {t('to')}</Text>
+          <Text style={[s.routeSelValue, { color: dirTo ? v1.text : v1.textMuted }]} numberOfLines={1}>
+            {dirTo ? localizePlace(dirTo, lang) : t('create_field_to_placeholder')}
+          </Text>
+        </View>
+      </TouchableOpacity>
 
       <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
         <SearchBar
