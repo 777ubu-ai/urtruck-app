@@ -3,36 +3,27 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-nati
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 
-// Эмодзи-иконка вкладки остаётся тут, тексты (name / raw) — i18n-ключи,
-// резолвятся через t() при рендере (реактивно к смене языка).
-const CATEGORIES = [
-  {
-    icon: '🚛', nameKey: 'qp_tab_trip',
-    phrases: ['phrLoading', 'phrDelay', 'phrDeparting', 'phrLoaded', 'phrCustoms'],
-  },
-  {
-    icon: '📦', nameKey: 'qp_tab_cargo',
-    phrases: ['phrSendAddr', 'phrPallets', 'phrWeight'],
-  },
-  {
-    icon: '💰', nameKey: 'qp_tab_price',
-    raw: ['qphrase_price_1', 'qphrase_price_2', 'qphrase_price_3', 'qphrase_price_4', 'qphrase_price_5'],
-  },
-  {
-    icon: '📍', nameKey: 'qp_tab_route',
-    raw: ['qphrase_route_1', 'qphrase_route_2', 'qphrase_route_3', 'qphrase_route_4', 'qphrase_route_5'],
-  },
-  {
-    icon: '📄', nameKey: 'qp_tab_docs',
-    raw: ['qphrase_docs_1', 'qphrase_docs_2', 'qphrase_docs_3', 'qphrase_docs_4'],
-  },
+// Быстрые фразы ПО РОЛИ (как в inDrive): водитель сообщает статус и
+// уточняет груз/оплату; грузоотправитель спрашивает «где машина», просит
+// документы. Иконка вкладки — тут, тексты — i18n-ключи (реактивны к языку).
+const DRIVER_CATEGORIES = [
+  { icon: '🚛', nameKey: 'qp_tab_status', keys: ['phrLoading', 'phrLoaded', 'phrDeparting', 'phrDelay'] },
+  { icon: '📦', nameKey: 'qp_tab_cargo',  keys: ['phrSendAddr', 'phrPallets', 'phrWeight'] },
+  { icon: '💰', nameKey: 'qp_tab_price',  keys: ['qphrase_price_1', 'qphrase_price_3', 'qphrase_price_4', 'qphrase_price_5', 'phrCustoms'] },
+  { icon: '📄', nameKey: 'qp_tab_docs',   keys: ['qphrase_docs_3', 'qphrase_docs_2'] },
+];
+const CLIENT_CATEGORIES = [
+  { icon: '📍', nameKey: 'qp_tab_route', keys: ['qphrase_route_1', 'qphrase_route_2', 'qphrase_route_3', 'qphrase_route_5'] },
+  { icon: '📄', nameKey: 'qp_tab_docs',  keys: ['qphrase_docs_1', 'qphrase_docs_4', 'qphrase_docs_2'] },
+  { icon: '💰', nameKey: 'qp_tab_price', keys: ['qphrase_price_1', 'qphrase_price_2', 'qphrase_price_5'] },
 ];
 
-export default function QuickPhrases({ onSelect }) {
+export default function QuickPhrases({ onSelect, role }) {
   const { t } = useI18n();
   const { theme } = useTheme();
+  const CATEGORIES = role === 'driver' ? DRIVER_CATEGORIES : CLIENT_CATEGORIES;
   const [activeTab, setActiveTab] = useState(0);
-  const cat = CATEGORIES[activeTab];
+  const cat = CATEGORIES[Math.min(activeTab, CATEGORIES.length - 1)];
 
   return (
     <View style={[s.container, { backgroundColor: theme.bg, borderTopColor: theme.border }]}>
@@ -51,14 +42,9 @@ export default function QuickPhrases({ onSelect }) {
 
       {/* Phrases */}
       <ScrollView horizontal={false} contentContainerStyle={s.wrap}>
-        {(cat.phrases || []).map((k) => (
+        {(cat.keys || []).map((k) => (
           <TouchableOpacity key={k} style={[s.btn, { backgroundColor: theme.card, borderColor: theme.border }]} onPress={() => onSelect(t(k))}>
             <Text style={[s.text, { color: theme.textSecondary }]}>{t(k)}</Text>
-          </TouchableOpacity>
-        ))}
-        {(cat.raw || []).map((key, i) => (
-          <TouchableOpacity key={i} style={[s.btn, { backgroundColor: theme.card, borderColor: theme.border }]} onPress={() => onSelect(t(key))}>
-            <Text style={[s.text, { color: theme.textSecondary }]}>{t(key)}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>

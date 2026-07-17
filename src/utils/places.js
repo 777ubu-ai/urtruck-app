@@ -130,12 +130,15 @@ function localizeHead(head, lang) {
  * @param {string} lang — 'ru' | 'kk' | 'zh' | 'en'
  */
 export function localizePlace(raw, lang) {
-  if (!raw || (lang !== 'zh' && lang !== 'en')) return raw;
+  // getLanguage()/useI18n отдают код в ВЕРХНЕМ регистре (RU/KK/ZH/EN),
+  // а словарь — по 'zh'/'en'. Нормализуем, иначе локализация не срабатывает.
+  const l = String(lang || '').toLowerCase();
+  if (!raw || (l !== 'zh' && l !== 'en')) return raw;
   const s = String(raw);
   const ci = s.indexOf(',');           // отделяем «, 🇰🇿» / «, страна»
   const head = ci >= 0 ? s.slice(0, ci) : s;
   const tail = ci >= 0 ? s.slice(ci) : '';
-  return localizeHead(head, lang) + tail;
+  return localizeHead(head, l) + tail;
 }
 
 export { DICT };

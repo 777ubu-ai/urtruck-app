@@ -12,6 +12,7 @@ import { prettifyPartnerName, partnerInitial } from '../utils/displayName';
 import { chatAPI } from '../utils/chatAPI';
 import { marketAPI } from '../utils/marketAPI';
 import { formatPrice } from '../utils/normalizers';
+import { localizePlace } from '../utils/places';
 import { notifyChatRead } from '../utils/unreadEvents';
 import { refreshAppIconBadge } from '../utils/appBadge';
 import { useMountedRef } from '../hooks/useMountedRef';
@@ -724,12 +725,14 @@ export default function ChatScreen({ navigation, route }) {
         <View style={{ flex: 1 }}>
           {/* Stage DS-1: prettifyPartnerName подменяет guest_/d3/d4 на "Собеседник". */}
           <Text style={s.partnerName} numberOfLines={1} testID="chat-partner-name">{prettifyPartnerName(resolvedPartner?.name, resolvedPartner?.id, t)}</Text>
-          {/* Канон «не показывать выдуманные данные»: убран статичный «● online»
-              (presence не реализован). Вместо него — честная роль собеседника
-              (Водитель/Грузовладелец) или ничего для support/неизвестного. */}
-          {(resolvedPartner?.role === 'driver' || resolvedPartner?.role === 'client')
-            ? <Text style={[s.online, { color: '#A8A29E' }]}>{t(resolvedPartner.role)}</Text>
-            : null}
+          {/* Маршрут груза в шапке — сразу видно, по какому заказу чат.
+              Если маршрут известен (есть сделка) — показываем его; иначе
+              честную роль собеседника (Водитель/Грузовладелец). */}
+          {deal && (deal.from_city || deal.to_city)
+            ? <Text style={[s.online, { color: v1Accent.main }]} numberOfLines={1}>📍 {localizePlace(deal.from_city || '—', getLanguage())} → {localizePlace(deal.to_city || '—', getLanguage())}</Text>
+            : ((resolvedPartner?.role === 'driver' || resolvedPartner?.role === 'client')
+                ? <Text style={[s.online, { color: '#A8A29E' }]}>{t(resolvedPartner.role)}</Text>
+                : null)}
         </View>
       </View>
 
@@ -797,7 +800,7 @@ export default function ChatScreen({ navigation, route }) {
         }
         onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
       />
-      {showPhrases && <QuickPhrases onSelect={sendMessage} />}
+      {showPhrases && <QuickPhrases onSelect={sendMessage} role={role} />}
       <View style={s.inputRow}>
         <TouchableOpacity onPress={() => setShowPhrases(!showPhrases)} style={s.iconBtn}>
           <Text style={s.iconBtnText}>⚡</Text>
