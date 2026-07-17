@@ -9,7 +9,7 @@ import BrandHeader from '../components/ui/v1/BrandHeader';
 import Field from '../components/ui/v1/Field';
 import PrimaryButton from '../components/ui/v1/PrimaryButton';
 import BottomSheet from '../components/ui/v1/BottomSheet';
-import RoutePointPicker from '../components/RoutePointPicker';
+import LocationPickerModal from '../components/LocationPickerModal';
 import CargoTypeInput from '../components/CargoTypeInput';
 import { addCustomCargoType } from '../utils/cargoTypes';
 import DatePicker from '../components/DatePicker';
@@ -210,29 +210,8 @@ export default function CreateCargoScreen({ navigation, route }) {
         label={t('fromCountry')}
         value={from}
         placeholder={t('create_field_from_placeholder_cargo')}
-        onPress={() => setShowFromPicker((v) => !v)}
+        onPress={() => setShowFromPicker(true)}
       />
-      {showFromPicker ? (
-        <View style={s.pickerWrap}>
-          <RoutePointPicker
-            value={from}
-            onChange={(v, point) => {
-              setFrom(v);
-              setFromPoint(point || null);
-              // Умная валюта по стране отправления (Китай → CNY, РФ → RUB…),
-              // пока клиент не выбрал валюту вручную.
-              if (!currencyTouched && point?.country) {
-                const cc = { CN: 'CNY', RU: 'RUB', KZ: 'KZT', UZ: 'KZT', KG: 'KZT', TJ: 'KZT' }[String(point.country).toUpperCase()];
-                if (cc) setCurrency(cc);
-              }
-              if (errors.from) setErrors((e) => ({ ...e, from: null }));
-              if (v && v.trim()) setShowFromPicker(false);
-            }}
-            placeholder={'📍 ' + t('fromCountry')}
-            testID="cargo-from-input"
-          />
-        </View>
-      ) : null}
       {errors.from ? <Text style={s.err}>⚠️ {errors.from}</Text> : null}
 
       <Field
@@ -241,24 +220,39 @@ export default function CreateCargoScreen({ navigation, route }) {
         label={t('toCountry')}
         value={to}
         placeholder={t('create_field_to_placeholder_cargo')}
-        onPress={() => setShowToPicker((v) => !v)}
+        onPress={() => setShowToPicker(true)}
       />
-      {showToPicker ? (
-        <View style={s.pickerWrap}>
-          <RoutePointPicker
-            value={to}
-            onChange={(v, point) => {
-              setTo(v);
-              setToPoint(point || null);
-              if (errors.to) setErrors((e) => ({ ...e, to: null }));
-              if (v && v.trim()) setShowToPicker(false);
-            }}
-            placeholder={'🏁 ' + t('toCountry')}
-            testID="cargo-to-input"
-          />
-        </View>
-      ) : null}
       {errors.to ? <Text style={s.err}>⚠️ {errors.to}</Text> : null}
+
+      {/* Полноэкранный выбор города (inDrive-стиль): поиск + недавние +
+          избранное + популярные + погранпереходы. */}
+      <LocationPickerModal
+        visible={showFromPicker}
+        onClose={() => setShowFromPicker(false)}
+        title={t('loc_from_title')}
+        showGeo
+        onSelect={(v, point) => {
+          setFrom(v);
+          setFromPoint(point || null);
+          // Умная валюта по стране отправления (Китай → CNY, РФ → RUB…),
+          // пока клиент не выбрал валюту вручную.
+          if (!currencyTouched && point?.country) {
+            const cc = { CN: 'CNY', RU: 'RUB', KZ: 'KZT', UZ: 'KZT', KG: 'KZT', TJ: 'KZT' }[String(point.country).toUpperCase()];
+            if (cc) setCurrency(cc);
+          }
+          if (errors.from) setErrors((e) => ({ ...e, from: null }));
+        }}
+      />
+      <LocationPickerModal
+        visible={showToPicker}
+        onClose={() => setShowToPicker(false)}
+        title={t('loc_to_title')}
+        onSelect={(v, point) => {
+          setTo(v);
+          setToPoint(point || null);
+          if (errors.to) setErrors((e) => ({ ...e, to: null }));
+        }}
+      />
 
       {/* Stage 42: Описание груза — inline TextInput всегда видимый.
           Раньше было через Field+overlay+picker, и пользователю

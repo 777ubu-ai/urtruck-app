@@ -7,7 +7,7 @@ import { useToast } from '../components/Toast';
 import { marketAPI } from '../utils/marketAPI';
 import { normalizeTrip, formatPrice, CURRENCY_SYMBOLS } from '../utils/normalizers';
 import { normalizeDateInput, formatDateForDisplay } from '../utils/dateInput';
-import RoutePointPicker from '../components/RoutePointPicker';
+import LocationPickerModal from '../components/LocationPickerModal';
 import DatePicker from '../components/DatePicker';
 import {v1Colors, useV1Colors, v1AccentFor} from '../theme/designV1';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
@@ -36,6 +36,8 @@ export default function EditTripScreen({ navigation, route }) {
   const [fromPoint, setFromPoint] = useState(null);
   const [to, setTo] = useState('');
   const [toPoint, setToPoint] = useState(null);
+  const [showFromPicker, setShowFromPicker] = useState(false);
+  const [showToPicker, setShowToPicker] = useState(false);
   const [transit, setTransit] = useState('');
   const [departure, setDeparture] = useState('');
   const [arrival, setArrival] = useState('');
@@ -174,17 +176,33 @@ export default function EditTripScreen({ navigation, route }) {
             TextInput because the registry doesn't model multi-leg
             transits. */}
         <Text style={[s.label, { color: theme.textMuted }]}>{t('fromCountry')}</Text>
-        <RoutePointPicker
-          value={from}
-          onChange={(v, point) => { setFrom(v); setFromPoint(point || null); }}
-          placeholder={'📍 ' + t('fromCountry')}
-        />
+        <TouchableOpacity
+          style={[s.input, { backgroundColor: theme.card, borderColor: theme.border, justifyContent: 'center', marginBottom: 10 }]}
+          onPress={() => setShowFromPicker(true)}
+        >
+          <Text style={{ color: from ? theme.text : theme.textMuted, fontSize: 15 }}>{from || ('📍 ' + t('fromCountry'))}</Text>
+        </TouchableOpacity>
 
         <Text style={[s.label, { color: theme.textMuted }]}>{t('toCountry')}</Text>
-        <RoutePointPicker
-          value={to}
-          onChange={(v, point) => { setTo(v); setToPoint(point || null); }}
-          placeholder={'🏁 ' + t('toCountry')}
+        <TouchableOpacity
+          style={[s.input, { backgroundColor: theme.card, borderColor: theme.border, justifyContent: 'center', marginBottom: 10 }]}
+          onPress={() => setShowToPicker(true)}
+        >
+          <Text style={{ color: to ? theme.text : theme.textMuted, fontSize: 15 }}>{to || ('🏁 ' + t('toCountry'))}</Text>
+        </TouchableOpacity>
+
+        <LocationPickerModal
+          visible={showFromPicker}
+          onClose={() => setShowFromPicker(false)}
+          title={t('loc_from_title')}
+          showGeo
+          onSelect={(v, point) => { setFrom(v); setFromPoint(point || null); }}
+        />
+        <LocationPickerModal
+          visible={showToPicker}
+          onClose={() => setShowToPicker(false)}
+          title={t('loc_to_title')}
+          onSelect={(v, point) => { setTo(v); setToPoint(point || null); }}
         />
 
         <Text style={[s.label, { color: theme.textMuted }]}>{t('transit')}</Text>

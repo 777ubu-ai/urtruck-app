@@ -12,7 +12,7 @@ import Field from '../components/ui/v1/Field';
 // (backend TripIn не имеет comment, симметрия с CreateCargoScreen PR-C1).
 import PrimaryButton from '../components/ui/v1/PrimaryButton';
 import BottomSheet from '../components/ui/v1/BottomSheet';
-import RoutePointPicker from '../components/RoutePointPicker';
+import LocationPickerModal from '../components/LocationPickerModal';
 import DatePicker from '../components/DatePicker';
 import {v1Colors, useV1Colors, v1Radius, v1Spacing, v1Typography, v1AccentFor} from '../theme/designV1';
 import TruckTypeGrid from '../components/TruckTypeGrid';
@@ -179,31 +179,15 @@ export default function CreateTripScreen({ navigation, route }) {
       <Text style={s.title}>{t('postTrip')}</Text>
       <Text style={s.subtitle}>{t('create_trip_subtitle')}</Text>
 
-      {/* Откуда / Куда: tap-through to the RoutePointPicker (country
-          → type → point), Stage 7 / Stage 8 / Stage 11. */}
+      {/* Откуда / Куда: полноэкранный выбор города (inDrive-стиль). */}
       <Field
         variant="dropdown"
         icon="📍"
         label={t('signup_field_country')}
         value={from}
         placeholder={t('create_field_from_placeholder')}
-        onPress={() => setShowFromPicker((v) => !v)}
+        onPress={() => setShowFromPicker(true)}
       />
-      {showFromPicker ? (
-        <View style={s.pickerWrap}>
-          <RoutePointPicker
-            value={from}
-            onChange={(v, point) => {
-              setFrom(v);
-              setFromPoint(point || null);
-              if (errors.from) setErrors((e) => ({ ...e, from: null }));
-              if (v && v.trim()) setShowFromPicker(false);
-            }}
-            placeholder={'📍 ' + t('fromCountry')}
-            testID="trip-from-input"
-          />
-        </View>
-      ) : null}
       {errors.from ? <Text style={s.err}>⚠️ {errors.from}</Text> : null}
 
       <Field
@@ -212,24 +196,31 @@ export default function CreateTripScreen({ navigation, route }) {
         label={t('toCountry')}
         value={to}
         placeholder={t('create_field_to_placeholder')}
-        onPress={() => setShowToPicker((v) => !v)}
+        onPress={() => setShowToPicker(true)}
       />
-      {showToPicker ? (
-        <View style={s.pickerWrap}>
-          <RoutePointPicker
-            value={to}
-            onChange={(v, point) => {
-              setTo(v);
-              setToPoint(point || null);
-              if (errors.to) setErrors((e) => ({ ...e, to: null }));
-              if (v && v.trim()) setShowToPicker(false);
-            }}
-            placeholder={'🏁 ' + t('toCountry')}
-            testID="trip-to-input"
-          />
-        </View>
-      ) : null}
       {errors.to ? <Text style={s.err}>⚠️ {errors.to}</Text> : null}
+
+      <LocationPickerModal
+        visible={showFromPicker}
+        onClose={() => setShowFromPicker(false)}
+        title={t('loc_from_title')}
+        showGeo
+        onSelect={(v, point) => {
+          setFrom(v);
+          setFromPoint(point || null);
+          if (errors.from) setErrors((e) => ({ ...e, from: null }));
+        }}
+      />
+      <LocationPickerModal
+        visible={showToPicker}
+        onClose={() => setShowToPicker(false)}
+        title={t('loc_to_title')}
+        onSelect={(v, point) => {
+          setTo(v);
+          setToPoint(point || null);
+          if (errors.to) setErrors((e) => ({ ...e, to: null }));
+        }}
+      />
 
       {/* Дата выезда + Тип кузова — 2 колонки */}
       <View style={s.row2}>
