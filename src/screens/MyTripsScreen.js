@@ -21,7 +21,6 @@ import { useUnreadNotifications } from '../utils/useUnreadNotifications';
 import { notificationsAPI } from '../utils/notificationsAPI';
 import { notifyNotifRead } from '../utils/unreadEvents';
 import { useMountedRef } from '../hooks/useMountedRef';
-import { useDealLocationBroadcast } from '../hooks/useDealLocationBroadcast';
 
 export default function MyTripsScreen({ navigation, route }) {
   const v1 = useV1Colors();
@@ -324,9 +323,9 @@ export default function MyTripsScreen({ navigation, route }) {
   const driverOffers = myBids.filter((b) => ['pending', 'countered'].includes(b.status));
   const driverInWork = serverDeals.filter((d) => IN_WORK_STATUSES.includes(d.status));
   const driverDone = serverDeals.filter((d) => DONE_STATUSES.includes(d.status));
-  // Задача B: водитель транслирует свою гео-позицию по сделкам «в работе»
-  // (foreground). Для клиента — пустой массив (ничего не шлёт).
-  useDealLocationBroadcast(isDriver ? driverInWork.map((d) => d.id) : []);
+  // Задача B: авто-трансляция гео-позиции водителя вынесена на уровень
+  // приложения (AppNavigator/MainTabs) — работает на любом экране, не только
+  // здесь. Дубль-вызов убран, чтобы не слать координаты дважды.
   const driverArchive = [
     ...serverDeals.filter((d) => ARCHIVE_STATUSES.includes(d.status)).map((d) => ({ ...d, _kind: 'deal' })),
     ...myBids.filter((b) => ['rejected', 'cancelled', 'expired'].includes(b.status)).map((b) => ({ ...b, _kind: 'bid' })),

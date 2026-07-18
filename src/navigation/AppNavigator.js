@@ -7,6 +7,8 @@ import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useAuth } from '../utils/AuthContext';
 import { getChats, subscribe, getUnreadNotifications } from '../utils/store';
+import { marketAPI } from '../utils/marketAPI';
+import useDealLocationBroadcast from '../hooks/useDealLocationBroadcast';
 import BottomNav from '../components/ui/v1/BottomNav';
 
 import HowItWorksScreen from '../screens/HowItWorksScreen';
@@ -81,6 +83,32 @@ function MainTabs({ route }) {
     const unsub = subscribe(() => setTick(n => n + 1));
     return unsub;
   }, []);
+
+  // Авто-трансляция геопозиции водителя по активным сделкам — на уровне
+  // всего приложения (любой экран, пока приложение открыто), а не только
+  // «Мои рейсы». Водитель ничего не нажимает: как только сделка «в работе»,
+  // его позиция уходит на сервер (после разового разрешения на локацию).
+  // Клиент видит машину на «Где машина».
+  const [inWorkDealIds, setInWorkDealIds] = useState([]);
+  useEffect(() => {
+    if (!isDriver) { setInWorkDealIds([]); return; }
+    let alive = true;
+    const IN_WORK = ['accepted', 'in_progress', 'picked_up', 'at_border'];
+    const fetchIds = async () => {
+      try {
+        const d = await marketAPI.myDashboard();
+        const ids = (d?.my_deals || [])
+          .filter((x) => IN_WORK.includes(x.status))
+          .map((x) => x.id)
+          .filter(Boolean);
+        if (alive) setInWorkDealIds(ids);
+      } catch { /* тихо */ }
+    };
+    fetchIds();
+    const iv = setInterval(fetchIds, 60000);
+    return () => { alive = false; clearInterval(iv); };
+  }, [isDriver]);
+  useDealLocationBroadcast(inWorkDealIds);
 
   // Канон таб-баров (мастер-ТЗ §2.2–2.3).
   //   Водитель (5): Грузы (Feed) · Рейсы (MyWork) · Очередь (Queue, центр) ·
