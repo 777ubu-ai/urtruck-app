@@ -1452,13 +1452,14 @@ def accept_bid(bid_id: str, user=Depends(require_level(1))):
                 detail=f"Ставку нельзя принять в статусе {bid['status']}",
             )
         result = _finalize_accept_inline(c, user, bid, bid["amount"])
+        _cur = _bid_currency(c, bid)   # валюта ставки для текста уведомления
 
     # PR-B (P0-B): notification bidder'у со ссылкой на сделку, а не root "/".
     # _finalize_accept_inline уже создал deal + chat_room — даём прямую
     # ссылку на /deals/{id} чтобы фронт открыл сделку с активным чатом.
     deal_url = f"/deals/{result['deal_id']}"
     title = "✅ Ставка принята!"
-    text = f"Ваше предложение ${bid['amount']} принято! Сделка создана."
+    text = f"Ваше предложение {_money(bid['amount'], _cur)} принято! Сделка создана."
     try:
         send_to_user(bid["bidder_id"], title, text, url=deal_url)
     except Exception:
@@ -1528,14 +1529,16 @@ def update_bid(bid_id: str, body: BidUpdateIn, user=Depends(require_level(1))):
     if body.amount is not None and new_amount < old_amount:
         try:
             owner_id = None
+            _cur = "USD"
             with get_conn() as c2:
                 owner_id = _cargo_or_trip_owner_id(c2, updated)
+                _cur = _bid_currency(c2, updated)
             if owner_id:
                 recipient_role = "client" if updated.get("cargo_id") else "driver"
                 bidder_role_word = "Водитель" if recipient_role == "client" else "Грузовладелец"
                 bidder_label = updated.get("bidder_name") or bidder_role_word
-                title = f"💰 Скидка: ${old_amount} → ${new_amount}"
-                text = f"{bidder_label} снизил цену на ${old_amount - new_amount}"
+                title = f"💰 Скидка: {_money(old_amount, _cur)} → {_money(new_amount, _cur)}"
+                text = f"{bidder_label} снизил цену на {_money(old_amount - new_amount, _cur)}"
                 try:
                     send_to_user(owner_id, title, text, url="/")
                 except Exception:
@@ -1610,7 +1613,9 @@ def reject_bid(bid_id: str, user=Depends(require_level(1))):
     else:
         back_url = "/"
     title = "❌ Ставка отклонена"
-    body_text = f"Ваше предложение ${bid['amount']} отклонено"
+    with get_conn() as _cc:
+        _cur = _bid_currency(_cc, bid)
+    body_text = f"Ваше предложение {_money(bid['amount'], _cur)} отклонено"
     try:
         send_to_user(bid["bidder_id"], title, body_text, url=back_url)
     except Exception:
@@ -1741,8 +1746,10 @@ def decline_counter(bid_id: str, user=Depends(require_level(1))):
 
     try:
         owner_id = None
+        _cur = "USD"
         with get_conn() as c2:
             owner_id = _cargo_or_trip_owner_id(c2, bid)
+            _cur = _bid_currency(c2, bid)
         if owner_id:
             try:
                 send_to_user(owner_id, "❌ Контр-оффер отклонён", "Водитель отказался от вашего контр-оффера", url="/")
@@ -1751,7 +1758,7 @@ def decline_counter(bid_id: str, user=Depends(require_level(1))):
             try:
                 from api.notifications import create_notification
                 create_notification(owner_id, "bid", "❌ Контр-оффер отклонён",
-                                    f"Ставка ${bid['amount']} снова в статусе pending", "❌")
+                                    f"Ставка {_money(bid['amount'], _cur)} снова в статусе pending", "❌")
             except Exception:
                 pass
     except Exception:
@@ -1931,14 +1938,16 @@ class DealLocationIn(BaseModel):
 @mp_router.post("/deals/{deal_id}/location")
 def update_deal_location(deal_id: str, body: DealLocationIn, user=Depends(require_level(1))):
     """Водитель сделки шлёт свою гео-позицию. Только driver сделки и только
-    пока сделка в работе (accepted/in_progress/picked_up)."""
+    пока сделка в работе (accepted/in_progress/at_border/picked_up)."""
     with get_conn() as c:
         d = c.execute("SELECT driver_id, status FROM deals WHERE id = ?", (deal_id,)).fetchone()
         if not d:
             raise HTTPException(status_code=404, detail="Сделка не найдена")
         if d["driver_id"] != user["id"]:
             raise HTTPException(status_code=403, detail="Геопозицию отправляет только водитель сделки")
-        if d["status"] not in ("accepted", "in_progress", "picked_up"):
+        # at_border входит в рабочие статусы — иначе на границе (самый важный
+        # момент коридора Китай↔КЗ) трекинг замерзал бы (409).
+        if d["status"] not in ("accepted", "in_progress", "at_border", "picked_up"):
             raise HTTPException(status_code=409, detail="Сделка не в работе")
         c.execute(
             "INSERT INTO deal_locations (deal_id, lat, lng, heading, speed, updated_at) "

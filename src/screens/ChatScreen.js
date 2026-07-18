@@ -35,7 +35,10 @@ const IS_WEB = Platform.OS === 'web';
 // 4.3: включено — фото грузится в storage и шлётся ключом (см. sendPhoto).
 // Финальная проверка загрузки/рендера на устройстве — Level 5.
 const CHAT_PHOTO_ENABLED = true;
-const CHAT_VOICE_ENABLED = true;  // голосовые включены (тест на устройстве в build 38)
+// Голосовые выключены: аудио-файл пока НЕ выгружается на сервер (нет upload
+// endpoint), получатель звук не получит. Включим только вместе с загрузкой
+// аудио (по аналогии с uploadChatPhoto) — иначе фича нерабочая end-to-end.
+const CHAT_VOICE_ENABLED = false;
 
 // Stage 52: локальный chat language pill не переводил содержимое чата (P0-3, P0-5),
 // и среди опций оставался UZ (P0-4). Pill скрыт до реальной интеграции с chatAPI.translate.
@@ -234,9 +237,10 @@ export default function ChatScreen({ navigation, route }) {
           // («ок»/«ок») в одно между поллами.
           const ackedByServer = mapped.some(srv =>
             (srv.clientMsgId && srv.clientMsgId === m.id) ||
-            // фолбэк по тексту — ТОЛЬКО для непустого текста, иначе фото/
-            // голосовые (text='') ложно матчатся и пропадают/задваиваются.
-            (srv.from === 'me' && m.text && m.text.trim() !== '' && srv.text === m.text)
+            // фолбэк по тексту — ТОЛЬКО когда у серверного сообщения нет
+            // clientMsgId (старый бэк) и текст непустой. Иначе два одинаковых
+            // «ок» ложно схлопываются, а фото/голос (text='') матчатся зря.
+            (!srv.clientMsgId && srv.from === 'me' && m.text && m.text.trim() !== '' && srv.text === m.text)
           );
           return !ackedByServer;
         });

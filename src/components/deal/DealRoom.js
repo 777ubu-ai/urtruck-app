@@ -23,7 +23,8 @@ export const accentFor = (role) => (role === 'driver' ? DRIVER_ACCENT : CLIENT_A
 
 // Статус сделки → цвет (нейтральный fallback — серый).
 const DEAL_STATUS_COLOR = {
-  active: '#22C55E', confirmed: '#22C55E', in_progress: '#22C55E',
+  active: '#22C55E', confirmed: '#22C55E', accepted: '#22C55E',
+  in_progress: '#F59E0B', at_border: '#2563EB', picked_up: '#F59E0B',
   pending: '#F59E0B', draft: '#F59E0B',
   cancelled: '#94A3B8', rejected: '#EF4444', dispute: '#EF4444',
   completed: '#22C55E', delivered: '#22C55E',

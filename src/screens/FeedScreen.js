@@ -490,8 +490,11 @@ export default function FeedScreen({ navigation, route }) {
     // рейсы чужой роли, поэтому свои публикации у владельца тут не прячутся.
     {
       const g = new Date();
+      g.setHours(0, 0, 0, 0);
       g.setDate(g.getDate() - 2);            // граница = день выезда + 2 (живёт 3 дня)
-      const graceIso = g.toISOString().slice(0, 10);
+      // Локальная календарная дата (не toISOString/UTC) — согласовано с
+      // MyTripsScreen.isExpiredItem, иначе утром граница уезжала на сутки.
+      const graceIso = `${g.getFullYear()}-${String(g.getMonth() + 1).padStart(2, '0')}-${String(g.getDate()).padStart(2, '0')}`;
       data = data.filter(d => {
         const v = ymd(dateField(d));
         return !v || v >= graceIso;          // без даты не прячем

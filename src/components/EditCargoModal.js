@@ -61,7 +61,11 @@ export default function EditCargoModal({ visible, cargo, onClose, onSaved }) {
     // Раньше пустое price/weight/volume уходило как 0 → можно было случайно
     // обнулить цену груза, просто очистив поле.
     const payload = { cargo_desc: d };
-    if (price.trim() !== '' && num(price) != null) payload.price = Math.round(num(price));
+    // Цена обязательна и при редактировании (иначе через 0 возвращалась
+    // «По договорённости» — обход нового правила). price > 0 обязателен.
+    const pv = num(price);
+    if (!price.trim() || pv == null || pv <= 0) { toast(t('val_price_required'), 'error'); return; }
+    payload.price = Math.round(pv);
     if (weight.trim() !== '' && num(weight) != null) payload.weight_tons = num(weight);
     if (volume.trim() !== '' && num(volume) != null) payload.volume_m3 = num(volume);
     if (truckType) payload.cargo_type = truckType;

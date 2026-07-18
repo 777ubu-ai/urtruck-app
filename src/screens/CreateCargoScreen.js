@@ -13,6 +13,7 @@ import LocationPickerModal from '../components/LocationPickerModal';
 import CargoTypeInput from '../components/CargoTypeInput';
 import { addCustomCargoType } from '../utils/cargoTypes';
 import DatePicker from '../components/DatePicker';
+import { normalizeDateInput } from '../utils/dateInput';
 import { PhotoPicker } from '../components/PhotoGallery';
 import {v1Colors, useV1Colors, v1Radius, v1Spacing, v1Typography, v1AccentFor} from '../theme/designV1';
 import { TRUCK_KEYS } from '../utils/truckConstants';
@@ -138,9 +139,13 @@ export default function CreateCargoScreen({ navigation, route }) {
     if (wNum <= 0 && vNum <= 0) errs.weight = t('val_weight_or_volume_required');
     const pNum = parseInt(String(price || '').replace(/\s/g, ''), 10) || 0;
     if (pNum <= 0) errs.price = t('val_price_required');
+    // Дата загрузки обязательна (симметрично рейсу): без неё груз через 2 дня
+    // тихо выпадал из ленты, а у владельца висел «активным» без продления.
+    const pickupIso = normalizeDateInput(pickupDate);
+    if (!pickupIso) errs.pickupDate = t('val_pickup_date_required');
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
-      const firstKey = ['from', 'to', 'cargoDesc', 'weight', 'price'].find((k) => errs[k]);
+      const firstKey = ['from', 'to', 'cargoDesc', 'weight', 'price', 'pickupDate'].find((k) => errs[k]);
       toast(errs[firstKey] || t('fill_required_fields'), 'error', 4000);
       return;
     }
@@ -165,7 +170,7 @@ export default function CreateCargoScreen({ navigation, route }) {
       price: priceNum,
       currency: currency,
       payment_type: paymentType || null,
-      pickup_date: pickupDate || null,
+      pickup_date: pickupIso,   // ISO (нормализовано), не сырой DD.MM.YYYY
       photos: photos || [],
       from_country:    fromPoint?.country || null,
       from_point_type: fromPoint?.type    || null,

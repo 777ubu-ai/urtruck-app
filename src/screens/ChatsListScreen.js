@@ -75,8 +75,8 @@ export default function ChatsListScreen({ navigation, route }) {
       // фильтры (enriched /chat/rooms, PR #62)
       const unread = r.unread_count ?? r.unread ?? 0;
       if (filter === 'unread' && !(unread > 0)) return false;
-      if (filter === 'active' && !['active', 'confirmed', 'in_progress', 'pending'].includes(r.deal_status)) return false;
-      if (filter === 'archive' && !['completed', 'delivered', 'cancelled', 'rejected'].includes(r.deal_status)) return false;
+      if (filter === 'active' && !['active', 'confirmed', 'accepted', 'in_progress', 'at_border', 'picked_up', 'pending'].includes(r.deal_status)) return false;
+      if (filter === 'archive' && !['completed', 'delivered', 'cancelled', 'rejected', 'expired'].includes(r.deal_status)) return false;
       if (filter === 'support' && !r.is_support && r.partner_role !== 'support' && r.partner_id !== 'urtruck-support-bot') return false;
       // поиск
       if (!q) return true;

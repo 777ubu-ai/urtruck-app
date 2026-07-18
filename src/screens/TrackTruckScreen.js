@@ -43,8 +43,9 @@ export default function TrackTruckScreen({ navigation, route }) {
   // Живая «расшифровка» как в Яндекс.Такси: осталось км до пункта, скорость,
   // ETA, когда обновлялось, отметка «на границе».
   const destCoord = parseCity(to);
-  const driverCoord = (lat != null && lng != null && !Number.isNaN(lat)) ? [lat, lng] : null;
-  const kmLeft = (destCoord && driverCoord) ? Math.round(geoDistance(driverCoord, destCoord)) : null;
+  const driverCoord = (lat != null && lng != null && !Number.isNaN(lat) && !Number.isNaN(lng)) ? [lat, lng] : null;
+  const kmLeftRaw = (destCoord && driverCoord) ? geoDistance(driverCoord, destCoord) : null;
+  const kmLeft = (kmLeftRaw != null && !Number.isNaN(kmLeftRaw)) ? Math.round(kmLeftRaw) : null;
   const speedKmh = (loc && loc.speed != null && loc.speed >= 0) ? Math.round(loc.speed * 3.6) : null;
   const moving = speedKmh != null && speedKmh >= 5;
   const etaMin = (kmLeft != null && moving) ? Math.round((kmLeft / speedKmh) * 60) : null;
