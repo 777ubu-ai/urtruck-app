@@ -24,6 +24,7 @@ import GlassCard from '../components/ui/v1/GlassCard';
 import SectionTitle from '../components/ui/v1/SectionTitle';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
 import StickyCTABar from '../components/ui/v1/StickyCTABar';
+import { DealStatusTimeline } from '../components/deal/DealRoom';
 
 const FLAGS = { KZ: '🇰🇿', UZ: '🇺🇿', RU: '🇷🇺', KG: '🇰🇬', CN: '🇨🇳', TJ: '🇹🇯', TR: '🇹🇷', TM: '🇹🇲', MN: '🇲🇳', DE: '🇩🇪', FR: '🇫🇷' };
 
@@ -695,48 +696,48 @@ export default function CargoDetail({ navigation, route }) {
         <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
           <View style={[s.dealBlock, {
             borderColor: dealStatus === 'delivered' ? '#22C55E'
-              : dealStatus === 'in_progress' ? '#F59E0B'
               : dealStatus === 'cancelled' ? '#EF4444'
-              : '#F59E0B',
+              : dealAccent.main,
           }]}>
-            <Text style={[s.dealStatusLabel, {
-              color: dealStatus === 'delivered' ? '#22C55E'
-                : dealStatus === 'in_progress' ? '#F59E0B'
-                : dealStatus === 'cancelled' ? '#EF4444'
-                : '#F59E0B',
-            }]}>
-              {dealStatus === 'accepted' && '🤝 ' + t('status_accepted')}
-              {dealStatus === 'in_progress' && '🚛 ' + t('status_in_progress')}
-              {dealStatus === 'delivered' && '✅ ' + t('status_delivered')}
-              {dealStatus === 'cancelled' && '❌ ' + t('status_cancelled')}
-            </Text>
+            {/* Визуальный таймлайн заказа: Принят → В пути → На границе →
+                Доставлен (как у Uber Freight/inDrive). */}
+            <DealStatusTimeline status={dealStatus} role={role} />
 
             {/* Next-step hint */}
-            {(dealStatus === 'accepted' || dealStatus === 'in_progress') && (
-              <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 4, textAlign: 'center' }}>
+            {(dealStatus === 'accepted' || dealStatus === 'in_progress' || dealStatus === 'at_border') && (
+              <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 8, textAlign: 'center' }}>
                 {t('order_next_step')}: {
                   isDriverSide
-                    ? (dealStatus === 'accepted' ? t('driver_next_step_accepted') : t('driver_next_step_in_progress'))
-                    : (dealStatus === 'accepted' ? t('shipper_next_step_accepted') : t('shipper_next_step_in_progress'))
+                    ? (dealStatus === 'accepted' ? t('driver_next_step_accepted')
+                       : dealStatus === 'in_progress' ? t('driver_next_step_in_progress')
+                       : t('driver_next_step_at_border'))
+                    : (dealStatus === 'accepted' ? t('shipper_next_step_accepted')
+                       : t('shipper_next_step_in_progress'))
                 }
               </Text>
             )}
 
-            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginTop: 4 }}>
-              {/* Driver — accepted: Start delivery */}
+            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginTop: 10 }}>
+              {/* Driver — accepted → выехал (in_progress) */}
               {isDriverSide && dealStatus === 'accepted' && (
                 <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: dealAccent.main }]} onPress={() => changeDealStatus('in_progress')} disabled={statusLoading}>
                   <Text style={[s.dealActionText, { color: dealAccent.onAccent }]}>{statusLoading ? '...' : '🚛 ' + t('start_delivery')}</Text>
                 </TouchableOpacity>
               )}
-              {/* Driver — in_progress: I have arrived */}
+              {/* Driver — in_progress → на границе (at_border) */}
               {isDriverSide && dealStatus === 'in_progress' && (
+                <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: dealAccent.main }]} onPress={() => changeDealStatus('at_border')} disabled={statusLoading}>
+                  <Text style={[s.dealActionText, { color: dealAccent.onAccent }]}>{statusLoading ? '...' : '🛂 ' + t('mark_at_border')}</Text>
+                </TouchableOpacity>
+              )}
+              {/* Driver — at_border → доставлено (delivered) */}
+              {isDriverSide && dealStatus === 'at_border' && (
                 <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: dealAccent.main }]} onPress={() => changeDealStatus('delivered')} disabled={statusLoading}>
                   <Text style={[s.dealActionText, { color: dealAccent.onAccent }]}>{statusLoading ? '...' : '✅ ' + t('mark_arrived')}</Text>
                 </TouchableOpacity>
               )}
-              {/* Shipper — in_progress: Confirm delivery */}
-              {isShipper && dealStatus === 'in_progress' && (
+              {/* Shipper — in_progress/at_border → подтвердить доставку */}
+              {isShipper && (dealStatus === 'in_progress' || dealStatus === 'at_border') && (
                 <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: dealAccent.main }]} onPress={() => changeDealStatus('delivered')} disabled={statusLoading}>
                   <Text style={[s.dealActionText, { color: dealAccent.onAccent }]}>{statusLoading ? '...' : '✅ ' + t('confirm_delivery')}</Text>
                 </TouchableOpacity>
@@ -752,7 +753,7 @@ export default function CargoDetail({ navigation, route }) {
                 </TouchableOpacity>
               )}
               {/* Both — cancel deal */}
-              {(dealStatus === 'accepted' || dealStatus === 'in_progress') && (
+              {(dealStatus === 'accepted' || dealStatus === 'in_progress' || dealStatus === 'at_border') && (
                 <TouchableOpacity
                   style={[s.dealActionBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#EF4444' }]}
                   disabled={statusLoading}

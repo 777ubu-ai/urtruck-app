@@ -1852,7 +1852,10 @@ def get_deal(deal_id: str, user=Depends(require_level(1))):
 
 @mp_router.patch("/deals/{deal_id}/status")
 def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level(1))):
-    VALID = ["accepted", "in_progress", "delivered", "cancelled"]
+    # Этап-хаб заказа: добавлен промежуточный статус at_border («На границе») —
+    # ключевой для коридора Китай↔КЗ. Порядок: accepted → in_progress →
+    # at_border → delivered (cancelled — из любого рабочего).
+    VALID = ["accepted", "in_progress", "at_border", "delivered", "cancelled"]
     if new_status not in VALID:
         raise HTTPException(status_code=400, detail=f"Допустимые статусы: {', '.join(VALID)}")
     uid = user["id"]
@@ -1875,7 +1878,7 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
     # сумма в валюте груза/рейса, deep-link на /deals/{id}.
     try:
         other_id = deal["driver_id"] if uid == deal["shipper_id"] else deal["shipper_id"]
-        labels = {"in_progress": "🚛 Рейс начался", "delivered": "✅ Доставлен", "cancelled": "❌ Отменено"}
+        labels = {"in_progress": "🚛 Рейс начался", "at_border": "🛂 На границе", "delivered": "✅ Доставлен", "cancelled": "❌ Отменено"}
         if new_status in labels:
             cur = "USD"
             with get_conn() as c2:

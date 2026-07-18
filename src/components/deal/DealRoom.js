@@ -46,6 +46,57 @@ export function systemEventText(t, ev) {
   return raw || t('chat_system_event');
 }
 
+// Визуальный таймлайн статуса заказа (как у Uber Freight/inDrive):
+// Принят → В пути → На границе → Доставлен. Пройденные — зелёные, текущий —
+// акцентный, будущие — приглушённые. cancelled → красная плашка.
+const TL_ORDER = ['accepted', 'in_progress', 'at_border', 'delivered'];
+export function DealStatusTimeline({ status, role }) {
+  const { t } = useI18n();
+  const { theme } = useTheme();
+  const accent = accentFor(role);
+  const STEPS = [
+    { key: 'accepted',    icon: '🤝', label: t('status_accepted') },
+    { key: 'in_progress', icon: '🚛', label: t('status_in_progress') },
+    { key: 'at_border',   icon: '🛂', label: t('status_at_border') },
+    { key: 'delivered',   icon: '✅', label: t('status_delivered') },
+  ];
+  if (status === 'cancelled') {
+    return (
+      <View style={[s.tlCancel, { borderColor: '#EF4444' }]} testID="deal-timeline-cancelled">
+        <Text style={{ color: '#EF4444', fontWeight: '800', fontSize: 14 }}>❌ {t('status_cancelled')}</Text>
+      </View>
+    );
+  }
+  const cur = TL_ORDER.indexOf(status);
+  return (
+    <View style={s.tl} testID="deal-timeline">
+      {STEPS.map((st, i) => {
+        const done = cur > i;
+        const active = cur === i;
+        const on = done || active;
+        const col = done ? '#22C55E' : active ? accent : theme.textDim;
+        return (
+          <React.Fragment key={st.key}>
+            <View style={s.tlStep}>
+              <View style={[s.tlDot, {
+                backgroundColor: on ? col : 'transparent',
+                borderColor: col,
+                transform: [{ scale: active ? 1.15 : 1 }],
+              }]}>
+                <Text style={{ fontSize: 13 }}>{done ? '✓' : st.icon}</Text>
+              </View>
+              <Text style={[s.tlLabel, { color: on ? theme.text : theme.textMuted, fontWeight: active ? '800' : '600' }]} numberOfLines={1}>{st.label}</Text>
+            </View>
+            {i < STEPS.length - 1 ? (
+              <View style={[s.tlLine, { backgroundColor: cur > i ? '#22C55E' : theme.border }]} />
+            ) : null}
+          </React.Fragment>
+        );
+      })}
+    </View>
+  );
+}
+
 export function DealRoomCard({ deal, role }) {
   const { t } = useI18n();
   const { theme } = useTheme();
@@ -145,6 +196,12 @@ export function DealDocumentsPlaceholder() {
 }
 
 const s = StyleSheet.create({
+  tl: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingVertical: 4 },
+  tlStep: { alignItems: 'center', width: 66 },
+  tlDot: { width: 34, height: 34, borderRadius: 17, borderWidth: 2, alignItems: 'center', justifyContent: 'center', marginBottom: 5 },
+  tlLabel: { fontSize: 11, textAlign: 'center' },
+  tlLine: { flex: 1, height: 2, marginTop: 16, marginHorizontal: -6, borderRadius: 1 },
+  tlCancel: { borderWidth: 1, borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
   card: { borderRadius: 14, borderWidth: 1, borderLeftWidth: 4, padding: 12, marginBottom: 8, gap: 6 },
   cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   route: { fontSize: 15, fontWeight: '900', flex: 1 },
