@@ -124,7 +124,11 @@ export default function ChatScreen({ navigation, route }) {
   voiceTime: { fontSize: 11, minWidth: 30 },
 
   }), [v1]);
-  const { partner, role, cargoId, tripId, roomId: initialRoomId, dealId, bidId } = route.params || {};
+  const { partner, role, cargoId, tripId, roomId: initialRoomId, dealId: dealIdParam, bidId } = route.params || {};
+  // dealId — состояние: если чат открыт из «Чаты»/ставки (только roomId, без
+  // dealId), достаём deal_id из комнаты, чтобы подгрузить сделку → появляются
+  // кнопка звонка, маршрут в шапке и карточка сделки при ЛЮБОМ входе.
+  const [dealId, setDealId] = useState(dealIdParam || null);
   const { t } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
@@ -405,6 +409,21 @@ export default function ChatScreen({ navigation, route }) {
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [dealId, roomId]);
+
+  // Обратный резолв: пришли только с roomId (вход из «Чаты»/ставки) — находим
+  // deal_id этой комнаты, чтобы подгрузить сделку (телефон → кнопка звонка,
+  // маршрут в шапке, карточка сделки). Без этого в реальном чате звонка не
+  // было, хотя сделка есть.
+  useEffect(() => {
+    if (!roomId || dealId) return;
+    let cancelled = false;
+    chatAPI.rooms().then((d) => {
+      if (cancelled) return;
+      const room = (d?.rooms || []).find((r) => r.id === roomId);
+      if (room?.deal_id) setDealId(room.deal_id);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [roomId, dealId]);
 
   const onCallSupport = async () => {
     try {
