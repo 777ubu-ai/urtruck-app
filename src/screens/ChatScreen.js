@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, FlatList, KeyboardAvoidingView, Platform, Image, AppState, Linking } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, FlatList, KeyboardAvoidingView, Platform, Image, AppState, Linking, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import * as ImagePicker from 'expo-image-picker';
@@ -35,7 +35,7 @@ const IS_WEB = Platform.OS === 'web';
 // 4.3: включено — фото грузится в storage и шлётся ключом (см. sendPhoto).
 // Финальная проверка загрузки/рендера на устройстве — Level 5.
 const CHAT_PHOTO_ENABLED = true;
-const CHAT_VOICE_ENABLED = false;
+const CHAT_VOICE_ENABLED = true;  // голосовые включены (тест на устройстве в build 38)
 
 // Stage 52: локальный chat language pill не переводил содержимое чата (P0-3, P0-5),
 // и среди опций оставался UZ (P0-4). Pill скрыт до реальной интеграции с chatAPI.translate.
@@ -478,11 +478,29 @@ export default function ChatScreen({ navigation, route }) {
     }
   };
 
-  const sendPhoto = async () => {
+  // WhatsApp-style: тап по 📷 предлагает Камеру или Галерею (на native).
+  // На web камера ненадёжна — сразу галерея.
+  const sendPhoto = () => {
+    if (Platform.OS === 'web') { pickAndSend(false); return; }
+    Alert.alert(t('add_photo'), '', [
+      { text: '📷 ' + t('camera'), onPress: () => pickAndSend(true) },
+      { text: '🖼 ' + t('gallery'), onPress: () => pickAndSend(false) },
+      { text: t('cancel'), style: 'cancel' },
+    ]);
+  };
+
+  const pickAndSend = async (fromCamera) => {
     try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') { toast(t('photo_permission'), 'warn'); return; }
-      const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.7 });
+      if (fromCamera) {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') { toast(t('photo_permission'), 'warn'); return; }
+      } else {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') { toast(t('photo_permission'), 'warn'); return; }
+      }
+      const r = fromCamera
+        ? await ImagePicker.launchCameraAsync({ quality: 0.7 })
+        : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.7 });
       if (r.canceled || !r.assets?.[0]) return;
       const uri = r.assets[0].uri;
       let photoUri = uri;
