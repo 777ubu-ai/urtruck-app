@@ -37,11 +37,11 @@ export default function SecurityScreen({ navigation }) {
           <TouchableOpacity onPress={() => navigation.goBack()} style={[s.backBtn, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <Text style={[s.backText, { color: theme.text }]}>‹</Text>
           </TouchableOpacity>
-          <GradientText style={s.title} colors={['#DC2626', '#F59E0B']}>🛡 {t('security_my_status')}</GradientText>
+          <GradientText style={s.title} colors={['#DC2626', '#FF8400']}>🛡 {t('security_my_status')}</GradientText>
         </View>
 
         {loading ? (
-          <ActivityIndicator size="large" color="#F59E0B" style={{ marginTop: 40 }} />
+          <ActivityIndicator size="large" color="#FF8400" style={{ marginTop: 40 }} />
         ) : (
           <>
             {/* Мой скоринг — большая карточка */}

@@ -4,7 +4,7 @@
 // Заменяет старый RegScreen step=1 (WhatsApp + 5 progress dots).
 //
 // Дизайн: тёмный фон #0C0A09, role-aware акцент (driver=#22C55E,
-// client=#F59E0B), крупный заголовок, поле телефона +7 KZ-маска,
+// client=#FF8400), крупный заголовок, поле телефона +7 KZ-маска,
 // ConsentRow, single CTA «Получить код». НЕТ Apple/Google, НЕТ
 // "WhatsApp", НЕТ степ-баров «Личность/Документы/Транспорт/Готово».
 
@@ -30,7 +30,7 @@ import { formatPhoneForDisplay, normalizePhoneInput, toAsciiDigits } from '../..
 
 const ACCENT = {
   driver: { main: '#00E676', deep: '#00C766', soft: 'rgba(0,230,118,0.12)' },
-  client: { main: '#F59E0B', deep: '#D97706', soft: 'rgba(245,158,11,0.12)' },
+  client: { main: '#FF8400', deep: '#E06D00', soft: 'rgba(255,132,0,0.12)' },
 };
 
 export default function PremiumRegisterScreen({ navigation, route }) {
@@ -379,9 +379,9 @@ const s = StyleSheet.create({
     marginTop: 16,
     padding: 14,
     borderRadius: 14,
-    backgroundColor: 'rgba(245,158,11,0.08)',
+    backgroundColor: 'rgba(255,132,0,0.08)',
     borderWidth: 1,
-    borderColor: 'rgba(245,158,11,0.35)',
+    borderColor: 'rgba(255,132,0,0.35)',
     alignItems: 'center',
   },
   cooldownTitle: {

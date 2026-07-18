@@ -84,7 +84,7 @@ export const securityAPI = {
 
 export const COLOR_UI = {
   green: { bg: '#22C55E20', border: '#22C55E', text: '#22C55E', label: '🟢 Надёжный' },
-  yellow: { bg: '#F59E0B20', border: '#F59E0B', text: '#F59E0B', label: '🟡 Новичок' },
+  yellow: { bg: '#FF840020', border: '#FF8400', text: '#FF8400', label: '🟡 Новичок' },
   red: { bg: '#EF444420', border: '#EF4444', text: '#EF4444', label: '🔴 Проблемы' },
   black: { bg: '#DC262640', border: '#DC2626', text: '#FCA5A5', label: '⛔ В чёрном списке' },
 };

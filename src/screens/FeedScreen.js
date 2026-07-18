@@ -38,7 +38,7 @@ const ddmmToIso = (s) => {
 const TCOLORS = {
   // Brand v3: tent (default truck) maps to brand emerald. ref/izoterm keep
   // teal/cyan because those are *semantic* refrigeration cues, not UI blue.
-  tent: '#22C55E', ref: '#0891B2', platform: '#D97706', auto: '#7C3AED', izoterm: '#059669',
+  tent: '#22C55E', ref: '#0891B2', platform: '#E06D00', auto: '#7C3AED', izoterm: '#059669',
   cont20: '#6366F1', cont40: '#4338CA', jumbo: '#EC4899', mega: '#DB2777',
   curtain: '#8B5CF6', lowloader: '#F97316', tanker: '#10B981', dumptruck: '#EAB308',
   grain: '#CA8A04', livestock: '#84CC16', logger: '#65A30D', hazmat: '#DC2626',
@@ -116,7 +116,7 @@ export default function FeedScreen({ navigation, route }) {
   footerNoteText: { color: v1.textMuted, fontSize: 12, lineHeight: 17 },
   refreshBtn: { marginTop: 16, borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12 },
   // Old layout helpers kept for the still-existing publish modal below.
-  betaBar: { backgroundColor: '#F59E0B', paddingVertical: 6, paddingHorizontal: 14, alignItems: 'center' },
+  betaBar: { backgroundColor: '#FF8400', paddingVertical: 6, paddingHorizontal: 14, alignItems: 'center' },
   betaBarText: { color: '#0C0A09', fontSize: 11, fontWeight: '700', letterSpacing: 0.4 },
   header: { flexDirection: 'row', alignItems: 'center', padding: 16, paddingBottom: 8, gap: 8 },
   title: { fontSize: 22, fontWeight: '900' },
@@ -198,7 +198,7 @@ export default function FeedScreen({ navigation, route }) {
   const role = sessionRole || route.params?.role || 'driver';
   const isDriver = role === 'driver';
   // Brand v3: driver = emerald, client = orange. No blue.
-  const accent = isDriver ? '#22C55E' : '#F59E0B';
+  const accent = isDriver ? '#22C55E' : '#FF8400';
   const { t, lang } = useI18n();
   const { theme } = useTheme();
   const notifUnread = useUnreadNotifications();

@@ -8,7 +8,7 @@ import { v1Colors, v1Radius, v1Typography } from '../../../theme/designV1';
 export default function PrimaryButton({ label, onPress, loading, disabled, accent = 'driver', style, testID }) {
   // PR-D1 (build 18): driver-кнопка теперь #00E676 — белый текст на нём
   // нечитаем (контраст 2.07:1). Берём чёрный текст (driverOnAccent),
-  // даёт 11.4:1 — WCAG AAA. Для cargo (#F59E0B) контраст с белым
+  // даёт 11.4:1 — WCAG AAA. Для cargo (#FF8400) контраст с белым
   // тоже слабый, переводим на чёрный — 8.6:1.
   const isDriver = accent !== 'cargo';
   const color = isDriver ? v1Colors.driver : v1Colors.cargoOwner;

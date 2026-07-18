@@ -13,14 +13,14 @@ const PLATE_KEY = 'ur_queue_plate';
 
 const BASE = `${API_BASE}/borders`;
 
-const STATUS_COLORS = { green: '#22C55E', yellow: '#F59E0B', red: '#EF4444' };
+const STATUS_COLORS = { green: '#22C55E', yellow: '#FF8400', red: '#EF4444' };
 // Метки статуса локализованы через t() в рендере (statusLabel) — раньше были
 // хардкод-RU и протекали в ZH/EN/KZ.
 const STATUS_KEY = { green: 'queue_status_free', yellow: 'queue_status_moderate', red: 'queue_status_busy' };
 // Статусы строк табло (номер в очереди): цвет + i18n-ключ.
 const BOARD_STATUS = {
   in_queue: { key: 'queue_lk_in_queue', color: '#2563EB' },
-  called:   { key: 'queue_lk_called',   color: '#F59E0B' },
+  called:   { key: 'queue_lk_called',   color: '#FF8400' },
   crossed:  { key: 'queue_lk_crossed',  color: '#22C55E' },
   revoked:  { key: 'queue_lk_revoked',  color: '#EF4444' },
 };

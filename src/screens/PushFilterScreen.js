@@ -23,7 +23,7 @@ export default function PushFilterScreen({ navigation, route }) {
   const { role } = route.params || {};
   // 5.4: driver-акцент = бренд-зелёный #00E676 (был индиго #4F46E5 —
   // рассинхрон с ролью). Клиент — янтарный.
-  const accent = role === 'driver' ? '#00E676' : '#F59E0B';
+  const accent = role === 'driver' ? '#00E676' : '#FF8400';
   const { t } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();

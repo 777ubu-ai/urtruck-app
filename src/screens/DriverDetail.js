@@ -19,7 +19,7 @@ import SectionTitle from '../components/ui/v1/SectionTitle';
 import { PhotoGallery } from '../components/PhotoGallery';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
 
-const TCOLORS = { tent: '#22C55E', ref: '#16A34A', platform: '#D97706', auto: '#7C3AED', izoterm: '#059669' };
+const TCOLORS = { tent: '#22C55E', ref: '#16A34A', platform: '#E06D00', auto: '#7C3AED', izoterm: '#059669' };
 const FLAGS = { KZ: '🇰🇿', UZ: '🇺🇿', RU: '🇷🇺', KG: '🇰🇬', CN: '🇨🇳' };
 const REPORT_REASONS = ['report_reason_fraud', 'report_reason_noshow', 'report_reason_rude', 'report_reason_other'];
 

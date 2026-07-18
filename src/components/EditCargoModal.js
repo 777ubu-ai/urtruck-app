@@ -142,10 +142,10 @@ export default function EditCargoModal({ visible, cargo, onClose, onSaved }) {
                 {TRUCK_KEYS.map((k) => (
                   <TouchableOpacity
                     key={k}
-                    style={[s.chip, { borderColor: truckType === k ? '#F59E0B' : theme.border, backgroundColor: truckType === k ? '#F59E0B22' : theme.bg }]}
+                    style={[s.chip, { borderColor: truckType === k ? '#FF8400' : theme.border, backgroundColor: truckType === k ? '#FF840022' : theme.bg }]}
                     onPress={() => setTruckType(k)}
                   >
-                    <Text style={[s.chipText, { color: truckType === k ? '#F59E0B' : theme.textMuted }]}>{t(k)}</Text>
+                    <Text style={[s.chipText, { color: truckType === k ? '#FF8400' : theme.textMuted }]}>{t(k)}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -155,17 +155,17 @@ export default function EditCargoModal({ visible, cargo, onClose, onSaved }) {
                 {PAY_KEYS.map((k) => (
                   <TouchableOpacity
                     key={k}
-                    style={[s.chip, { borderColor: paymentType === k ? '#F59E0B' : theme.border, backgroundColor: paymentType === k ? '#F59E0B22' : theme.bg }]}
+                    style={[s.chip, { borderColor: paymentType === k ? '#FF8400' : theme.border, backgroundColor: paymentType === k ? '#FF840022' : theme.bg }]}
                     onPress={() => setPaymentType(paymentType === k ? '' : k)}
                   >
-                    <Text style={[s.chipText, { color: paymentType === k ? '#F59E0B' : theme.textMuted }]}>{t('pay_' + k)}</Text>
+                    <Text style={[s.chipText, { color: paymentType === k ? '#FF8400' : theme.textMuted }]}>{t('pay_' + k)}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
 
               <TouchableOpacity
                 onPress={onSave} disabled={saving}
-                style={[s.save, { backgroundColor: '#F59E0B', opacity: saving ? 0.6 : 1 }]}
+                style={[s.save, { backgroundColor: '#FF8400', opacity: saving ? 0.6 : 1 }]}
                 testID="edit-cargo-save"
               >
                 {saving ? <ActivityIndicator color="#0C0A09" /> : <Text style={s.saveText}>{t('edit_cargo_save')}</Text>}

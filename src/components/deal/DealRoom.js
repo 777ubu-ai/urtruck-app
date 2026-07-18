@@ -9,7 +9,7 @@
 //                      пока backend-action не подключён — без фейков)
 //   - DealDocumentsPlaceholder — секция «Документы» (PR3, заглушка)
 //
-// Акцент роли: driver #00E676 / client #F59E0B (источник истины CLAUDE.md).
+// Акцент роли: driver #00E676 / client #FF8400 (источник истины CLAUDE.md).
 
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
@@ -18,14 +18,14 @@ import { useI18n } from '../../utils/useI18n';
 import { useTheme } from '../../utils/ThemeContext';
 
 export const DRIVER_ACCENT = '#00E676';
-export const CLIENT_ACCENT = '#F59E0B';
+export const CLIENT_ACCENT = '#FF8400';
 export const accentFor = (role) => (role === 'driver' ? DRIVER_ACCENT : CLIENT_ACCENT);
 
 // Статус сделки → цвет (нейтральный fallback — серый).
 const DEAL_STATUS_COLOR = {
   active: '#22C55E', confirmed: '#22C55E', accepted: '#22C55E',
-  in_progress: '#F59E0B', at_border: '#2563EB', picked_up: '#F59E0B',
-  pending: '#F59E0B', draft: '#F59E0B',
+  in_progress: '#FF8400', at_border: '#2563EB', picked_up: '#FF8400',
+  pending: '#FF8400', draft: '#FF8400',
   cancelled: '#94A3B8', rejected: '#EF4444', dispute: '#EF4444',
   completed: '#22C55E', delivered: '#22C55E',
 };

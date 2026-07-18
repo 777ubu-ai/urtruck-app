@@ -86,9 +86,9 @@ export default function CargoDetail({ navigation, route }) {
   // «Для перчаток и солнца»: крупные тап-цели (≥44pt) и читаемый текст.
   acceptBtn: { backgroundColor: '#22C55E', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 12, minHeight: 44, justifyContent: 'center' },
   acceptBtnText: { color: '#fff', fontSize: 14, fontWeight: '800' },
-  rejectBtn: { backgroundColor: 'transparent', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, minHeight: 44, justifyContent: 'center', borderWidth: 1, borderColor: '#EF4444' },
+  rejectBtn: { backgroundColor: 'rgba(239,68,68,0.10)', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, minHeight: 44, justifyContent: 'center', borderWidth: 0 },
   rejectBtnText: { color: '#EF4444', fontSize: 14, fontWeight: '700' },
-  miniBtn: { backgroundColor: 'transparent', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, minHeight: 44, justifyContent: 'center', borderWidth: 1 },
+  miniBtn: { backgroundColor: 'rgba(148,163,184,0.14)', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, minHeight: 44, justifyContent: 'center', borderWidth: 0 },
   miniBtnText: { fontSize: 14, fontWeight: '700' },
   paymentBlock: { borderRadius: 12, borderWidth: 1, padding: 14 },
   reviewBlock: { borderRadius: 14, borderWidth: 1, padding: 16, alignItems: 'center', gap: 10 },
@@ -97,7 +97,7 @@ export default function CargoDetail({ navigation, route }) {
   reviewInput: { width: '100%', borderWidth: 1, borderRadius: 10, padding: 10, fontSize: 13 },
   reviewSubmitBtn: { backgroundColor: '#22C55E', borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10 },
   reviewSubmitText: { color: '#fff', fontSize: 13, fontWeight: '700' },
-  dealBlock: { borderWidth: 2, borderRadius: 14, padding: 16, alignItems: 'center', gap: 10 },
+  dealBlock: { borderWidth: 1, borderRadius: 14, padding: 16, alignItems: 'center', gap: 10 },
   dealStatusLabel: { fontSize: 15, fontWeight: '700' },
   dealActionBtn: { backgroundColor: '#22C55E', borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10 },
   dealActionText: { color: '#fff', fontSize: 13, fontWeight: '700' },
@@ -341,7 +341,7 @@ export default function CargoDetail({ navigation, route }) {
   const isDriverViewing = role === 'driver' || (driverId && driverId === myUserId);
   const v1Accent = v1AccentFor('client');
   // Кнопки сделки (чат/подтвердить/старт) — действия текущего зрителя, поэтому
-  // акцент роль-семантический: client → жёлтый #F59E0B, driver → неон #00E676.
+  // акцент роль-семантический: client → жёлтый #FF8400, driver → неон #00E676.
   // Раньше был хардкод #22C55E (зелёный) на всех поверхностях, в т.ч. клиентских.
   const dealAccent = v1AccentFor(isDriverSide ? 'driver' : 'client');
 
@@ -448,7 +448,7 @@ export default function CargoDetail({ navigation, route }) {
               borderColor: b.status === 'accepted' ? '#22C55E'
                 : b.status === 'rejected' ? '#EF444440'
                 : isCancelled ? '#78716C40'
-                : isCountered ? '#D97706' /* purple — counter active */
+                : isCountered ? '#E06D00' /* purple — counter active */
                 : b.isMine ? '#22C55E60' : theme.border,
               borderWidth: b.status === 'accepted' || isCountered || b.isMine ? 2 : 1,
               opacity: (b.status === 'rejected' || isCancelled) ? 0.55 : 1,
@@ -479,7 +479,7 @@ export default function CargoDetail({ navigation, route }) {
                     color: b.status === 'accepted' ? '#22C55E'
                       : b.status === 'rejected' ? '#EF4444'
                       : isCancelled ? '#78716C'
-                      : isCountered ? '#D97706'
+                      : isCountered ? '#E06D00'
                       : '#FBBF24',
                   }]}>
                     {b.status === 'accepted' ? '✅ ' + t('driver_chosen')
@@ -489,7 +489,7 @@ export default function CargoDetail({ navigation, route }) {
                       : b.time}
                   </Text>
                   {isCountered && b.counterAmount ? (
-                    <Text style={{ color: '#D97706', fontSize: 11, marginTop: 2, fontWeight: '700' }}>
+                    <Text style={{ color: '#E06D00', fontSize: 11, marginTop: 2, fontWeight: '700' }}>
                       {t('counter_amount')}: {formatPrice(b.counterAmount, c.currency || 'USD', t)}{b.counterMessage ? ` · ${b.counterMessage}` : ''}
                     </Text>
                   ) : null}
@@ -525,10 +525,10 @@ export default function CargoDetail({ navigation, route }) {
                     </TouchableOpacity>
                     <TouchableOpacity
                       testID="bid-counter"
-                      style={[s.miniBtn, { borderColor: '#D97706' }]}
+                      style={[s.miniBtn, { borderColor: '#E06D00' }]}
                       onPress={() => sendCounter(b)}
                     >
-                      <Text style={[s.miniBtnText, { color: '#D97706' }]}>🔁 {t('counter_offer')}</Text>
+                      <Text style={[s.miniBtnText, { color: '#E06D00' }]}>🔁 {t('counter_offer')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       testID="bid-chat"
@@ -694,11 +694,7 @@ export default function CargoDetail({ navigation, route }) {
       </ScrollView>
       {dealStatus && (
         <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
-          <View style={[s.dealBlock, {
-            borderColor: dealStatus === 'delivered' ? '#22C55E'
-              : dealStatus === 'cancelled' ? '#EF4444'
-              : dealAccent.main,
-          }]}>
+          <View style={[s.dealBlock, { borderColor: theme.border, backgroundColor: theme.card }]}>
             {/* Визуальный таймлайн заказа: Принят → В пути → На границе →
                 Доставлен (как у Uber Freight/inDrive). */}
             <DealStatusTimeline status={dealStatus} role={role} />
@@ -755,7 +751,7 @@ export default function CargoDetail({ navigation, route }) {
               {/* Both — cancel deal */}
               {(dealStatus === 'accepted' || dealStatus === 'in_progress' || dealStatus === 'at_border') && (
                 <TouchableOpacity
-                  style={[s.dealActionBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#EF4444' }]}
+                  style={[s.dealActionBtn, { backgroundColor: 'rgba(239,68,68,0.10)' }]}
                   disabled={statusLoading}
                   onPress={async () => {
                     const ok = (Platform.OS === 'web' && typeof window !== 'undefined' && window.confirm)
@@ -774,8 +770,8 @@ export default function CargoDetail({ navigation, route }) {
       )}
       {dealStatus === 'delivered' && (
         <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
-          <View style={[s.paymentBlock, { backgroundColor: theme.card, borderColor: '#F59E0B' }]}>
-            <Text style={{ color: '#F59E0B', fontSize: 13, fontWeight: '700' }}>{t('payment_pending_title')}</Text>
+          <View style={[s.paymentBlock, { backgroundColor: theme.card, borderColor: '#FF8400' }]}>
+            <Text style={{ color: '#FF8400', fontSize: 13, fontWeight: '700' }}>{t('payment_pending_title')}</Text>
             <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 4 }}>{t('payment_pending_desc')}</Text>
           </View>
         </View>

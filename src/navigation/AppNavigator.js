@@ -118,7 +118,7 @@ function MainTabs({ route }) {
   //   Клиент (5, приказ 2026-06-13): Грузы (MyWork) · Машины (Feed) ·
   //     «+» Создать (Publish, центр) · Чат (Chats, с бейджем) · Профиль.
   //     Чат добавлен — без переписки нет доверия грузоотправителя к бирже.
-  // BottomNav красит неон по роли: driver #00E676, client #F59E0B.
+  // BottomNav красит неон по роли: driver #00E676, client #FF8400.
   return (
     <Tab.Navigator
       screenOptions={{ headerShown: false }}

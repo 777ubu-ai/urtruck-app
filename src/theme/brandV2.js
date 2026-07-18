@@ -23,7 +23,7 @@ export const brand = {
 
   // Brand
   logoDark: '#0F172A',  // "Ur" в логотипе
-  logoAccent: '#F59E0B', // "Truck" в логотипе
+  logoAccent: '#FF8400', // "Truck" в логотипе
 
   // Primary CTA (зелёная кнопка "Продолжить")
   primary: '#16A34A',
@@ -31,7 +31,7 @@ export const brand = {
   primarySoft: '#DCFCE7',
 
   // Accent (оранжевый — используется точечно для иконок/маркеров)
-  accent: '#F59E0B',
+  accent: '#FF8400',
   accentHover: '#EA8A00',
   accentSoft: '#FEF3C7',
 
@@ -42,13 +42,13 @@ export const brand = {
 
   // States
   success: '#22C55E',
-  warning: '#F59E0B',
+  warning: '#FF8400',
   error: '#EF4444',
   info: '#3B82F6',
 
   // Map/illustration assist
   mapGray: '#E5E7EB',
-  routeOrange: '#F59E0B',
+  routeOrange: '#FF8400',
   routeGreen: '#16A34A',
 };
 

@@ -175,8 +175,8 @@ export default function FeedCard({
               style={[
                 s.btn,
                 bottomLeft.filled
-                  ? { backgroundColor: a.main, borderColor: a.main }
-                  : { backgroundColor: 'transparent', borderColor: colors.borderStrong },
+                  ? { backgroundColor: a.main }
+                  : { backgroundColor: colors.surfaceLift },
               ]}
               testID={bottomLeft.testID}
             >
@@ -195,8 +195,8 @@ export default function FeedCard({
                 // green is reserved for the screen-level primary CTA
                 // (publish-route / publish-cargo / floating +).
                 bottomRight.filled !== false
-                  ? { backgroundColor: a.main, borderColor: a.main }
-                  : { backgroundColor: 'transparent', borderColor: a.main },
+                  ? { backgroundColor: a.main }
+                  : { backgroundColor: a.soft },
               ]}
               testID={bottomRight.testID}
             >
@@ -242,6 +242,6 @@ const s = StyleSheet.create({
   metaValue: { fontSize: 13, fontWeight: '700' },
   responses: { fontSize: 11, marginBottom: 8 },
   bottomRow: { flexDirection: 'row', gap: 8, marginTop: 6 },
-  btn: { flex: 1, paddingVertical: 10, borderRadius: 12, alignItems: 'center', borderWidth: 1 },
+  btn: { flex: 1, paddingVertical: 10, borderRadius: 12, alignItems: 'center', borderWidth: 0 },
   btnText: { fontSize: 13, fontWeight: '700' },
 });

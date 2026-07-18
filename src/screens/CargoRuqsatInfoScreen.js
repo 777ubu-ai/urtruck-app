@@ -104,7 +104,7 @@ export default function CargoRuqsatInfoScreen({ navigation, route }) {
 
   return (
     <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]} edges={['top']}>
-      <BrandBarWithShare onBack={() => navigation.goBack()} accent="#F59E0B" />
+      <BrandBarWithShare onBack={() => navigation.goBack()} accent="#FF8400" />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -216,7 +216,7 @@ const s = StyleSheet.create({
   status: { fontSize: 13, marginBottom: 24 },
   section: { fontSize: 17, fontWeight: '800', marginBottom: 10, marginTop: 16 },
   body: { fontSize: 14, lineHeight: 21 },
-  cta: { backgroundColor: '#F59E0B', padding: 16, borderRadius: 14, alignItems: 'center', marginTop: 24 },
+  cta: { backgroundColor: '#FF8400', padding: 16, borderRadius: 14, alignItems: 'center', marginTop: 24 },
   ctaText: { color: '#0A0A0A', fontWeight: '800', fontSize: 14 },
   cpRow: {
     flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12,

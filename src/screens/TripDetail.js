@@ -51,10 +51,10 @@ export default function TripDetail({ navigation, route }) {
   dateLabel: { fontSize: 13, fontWeight: '500' },
   dateValue: { fontSize: 14, fontWeight: '700' },
   primaryBtn: { borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
-  secondaryBtn: { borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 8, borderWidth: 1.5 },
+  secondaryBtn: { borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 8, borderWidth: 0, backgroundColor: 'rgba(148,163,184,0.14)' },
   secondaryBtnText: { fontSize: 14, fontWeight: '700' },
   primaryBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
-  dangerBtn: { borderWidth: 1, borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 8 },
+  dangerBtn: { borderWidth: 0, borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 8, backgroundColor: 'rgba(239,68,68,0.10)' },
   dangerBtnText: { color: '#EF4444', fontSize: 13, fontWeight: '800' },
   dealActionBtn: { borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10 },
   dealActionText: { color: '#fff', fontSize: 13, fontWeight: '700' },
@@ -195,16 +195,16 @@ export default function TripDetail({ navigation, route }) {
         <View style={[s.section, {
           backgroundColor: theme.card,
           borderColor: dealStatus === 'delivered' ? '#22C55E'
-            : dealStatus === 'in_progress' ? '#F59E0B'
+            : dealStatus === 'in_progress' ? '#FF8400'
             : dealStatus === 'cancelled' ? '#EF4444'
-            : '#F59E0B',
+            : '#FF8400',
           borderWidth: 2,
         }]}>
           <Text style={[s.sectionTitle, {
             color: dealStatus === 'delivered' ? '#22C55E'
-              : dealStatus === 'in_progress' ? '#F59E0B'
+              : dealStatus === 'in_progress' ? '#FF8400'
               : dealStatus === 'cancelled' ? '#EF4444'
-              : '#F59E0B',
+              : '#FF8400',
             textAlign: 'center',
           }]}>
             {dealStatus === 'accepted'    && '🤝 ' + t('status_accepted')}

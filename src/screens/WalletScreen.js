@@ -31,7 +31,7 @@ const FX_FLAGS = { KZT: '🇰🇿', CNY: '🇨🇳', RUB: '🇷🇺' };
 export default function WalletScreen({ route }) {
   const v1 = useV1Colors();
   const { role } = route.params || {};
-  const accent = role === 'driver' ? '#22C55E' : '#F59E0B';
+  const accent = role === 'driver' ? '#22C55E' : '#FF8400';
   const { t } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();

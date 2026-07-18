@@ -30,7 +30,7 @@ import { formatCooldown } from '../../utils/formatCooldown';
 
 const ACCENT = {
   driver: { main: '#00E676', deep: '#00C766', soft: 'rgba(0,230,118,0.12)', glow: 'rgba(0,230,118,0.35)' },
-  client: { main: '#F59E0B', deep: '#D97706', soft: 'rgba(245,158,11,0.12)', glow: 'rgba(245,158,11,0.35)' },
+  client: { main: '#FF8400', deep: '#E06D00', soft: 'rgba(255,132,0,0.12)', glow: 'rgba(255,132,0,0.35)' },
 };
 
 const CODE_LEN = 4;

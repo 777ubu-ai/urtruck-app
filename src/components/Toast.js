@@ -53,7 +53,7 @@ const COLORS = {
   success: { bg: '#22C55E', icon: '✓' },
   error: { bg: '#EF4444', icon: '✕' },
   info: { bg: '#334155', icon: 'ℹ' },
-  warn: { bg: '#F59E0B', icon: '⚠' },
+  warn: { bg: '#FF8400', icon: '⚠' },
 };
 
 function ToastItem({ toast, onClose, index }) {

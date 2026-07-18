@@ -58,7 +58,7 @@ export default function ProfileScreen({ navigation, route }) {
   // на белых кнопках текст рендерится чёрным (driverOnAccent). #22C55E
   // ниже сохранён для семантических success-индикаторов (verified-tick,
   // загруженный документ) — там это «успех», а не бренд водителя.
-  const accent = isDriver ? '#00E676' : '#F59E0B';
+  const accent = isDriver ? '#00E676' : '#FF8400';
   const onAccent = isDriver ? '#0C0A09' : '#0C0A09';
   const { isDark, toggleTheme } = useTheme();
   // Stage 8: read tokens from the v1 hook so the screen lines up
@@ -194,7 +194,7 @@ export default function ProfileScreen({ navigation, route }) {
     <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]} edges={['top']}>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
         <View style={s.headerRow}>
-          <GradientText style={s.title} colors={isDriver ? ['#00E676', '#00C766'] : ['#F59E0B', '#EF4444']}>{t('profile')}</GradientText>
+          <GradientText style={s.title} colors={isDriver ? ['#00E676', '#00C766'] : ['#FF8400', '#EF4444']}>{t('profile')}</GradientText>
           <HelpButton accent={accent} />
         </View>
 

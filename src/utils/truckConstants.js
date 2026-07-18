@@ -36,7 +36,7 @@ export const TRUCK_MCI = {
 // Brand v3: tent (default) → emerald; sky/blue swapped to graphite slate.
 // `ref` keeps its semantic cyan because it's a refrigeration cue, not a UI accent.
 export const TRUCK_COLORS = {
-  tent: '#22C55E', ref: '#0891B2', platform: '#D97706', auto: '#7C3AED', izoterm: '#059669',
+  tent: '#22C55E', ref: '#0891B2', platform: '#E06D00', auto: '#7C3AED', izoterm: '#059669',
   cont20: '#6366F1', cont40: '#4338CA', jumbo: '#EC4899', mega: '#DB2777',
   curtain: '#8B5CF6', lowloader: '#F97316', tanker: '#10B981', dumptruck: '#EAB308',
   grain: '#CA8A04', livestock: '#84CC16', logger: '#65A30D', hazmat: '#DC2626',

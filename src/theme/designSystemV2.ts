@@ -33,22 +33,22 @@ export const colors = {
   borderStrong: '#B6C0CF',         // hover/focus
 
   // Акценты
-  accent:        '#F59E0B',        // основной оранжевый
+  accent:        '#FF8400',        // основной оранжевый
   accentHover:   '#EA8A00',        // pressed
   accentSoft:    '#FEF3C7',        // светлый фон с акцентом
-  accentGradient: ['#F59E0B', '#F97316'] as const,
+  accentGradient: ['#FF8400', '#F97316'] as const,
 
   // Состояния
   success:    '#22C55E',
-  warning:    '#F59E0B',
+  warning:    '#FF8400',
   error:      '#EF4444',
   info:       '#3B82F6',
   inactive:   '#CBD5E1',
 
   // Статусы (для cargo/trip/bid карточек)
   statusActive:    '#22C55E',
-  statusInProgress:'#F59E0B',
-  statusPending:   '#F59E0B',
+  statusInProgress:'#FF8400',
+  statusPending:   '#FF8400',
   statusCompleted: '#22C55E',
   statusDelivered: '#22C55E',
   statusCancelled: '#94A3B8',      // 👈 серый, не зелёный!

@@ -80,20 +80,20 @@ export default function MyTripsScreen({ navigation, route }) {
   cardBottom: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   price: { ...typography.h2, color: '#22C55E' },
   bidsLabel: { ...typography.caption, flex: 1 },
-  offersCta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.sm, paddingVertical: 10, paddingHorizontal: 12, borderRadius: radius.sm, backgroundColor: 'rgba(245,158,11,0.14)', borderWidth: 1, borderColor: 'rgba(245,158,11,0.45)' },
-  offersCtaText: { color: '#F59E0B', fontSize: 14, fontWeight: '800', flex: 1 },
-  offersCtaArrow: { color: '#F59E0B', fontSize: 18, fontWeight: '800' },
+  offersCta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.sm, paddingVertical: 10, paddingHorizontal: 12, borderRadius: radius.sm, backgroundColor: 'rgba(255,132,0,0.14)' },
+  offersCtaText: { color: '#FF8400', fontSize: 14, fontWeight: '800', flex: 1 },
+  offersCtaArrow: { color: '#FF8400', fontSize: 18, fontWeight: '800' },
 
   chatBtn: { backgroundColor: '#22C55E', borderRadius: radius.sm, paddingVertical: spacing.sm, alignItems: 'center', marginTop: spacing.sm },
   chatBtnText: { color: '#FFF', ...typography.title },
   acceptBtn: { backgroundColor: '#22C55E', borderRadius: radius.sm, paddingVertical: spacing.sm, alignItems: 'center' },
   acceptBtnText: { color: '#FFF', ...typography.title },
-  rejectBtn: { borderWidth: 1, borderColor: '#EF4444', borderRadius: radius.sm, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, alignItems: 'center' },
+  rejectBtn: { borderWidth: 0, borderRadius: radius.sm, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, alignItems: 'center', backgroundColor: 'rgba(239,68,68,0.10)' },
   rejectBtnText: { color: '#EF4444', ...typography.title },
   // «Для перчаток и солнца»: крупная тап-цель (≥44pt) и читаемый текст.
-  miniBtn: { borderWidth: 1, borderRadius: radius.sm, paddingVertical: 12, paddingHorizontal: 14, minHeight: 44, justifyContent: 'center' },
+  miniBtn: { borderWidth: 0, borderRadius: radius.sm, paddingVertical: 12, paddingHorizontal: 14, minHeight: 44, justifyContent: 'center', backgroundColor: 'rgba(148,163,184,0.14)' },
   miniBtnText: { fontSize: 14, fontWeight: '700' },
-  editBtn: { borderWidth: 1, borderColor: '#22C55E', borderRadius: 10, paddingVertical: 8, alignItems: 'center', marginTop: spacing.sm },
+  editBtn: { borderWidth: 0, borderRadius: 10, paddingVertical: 10, alignItems: 'center', marginTop: spacing.sm, backgroundColor: 'rgba(34,197,94,0.12)' },
   editBtnText: { color: '#22C55E', fontSize: 12, fontWeight: '700' },
   extendBtn: { flex: 1, backgroundColor: '#00E676', borderRadius: 10, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', minHeight: 40 },
   extendBtnText: { color: '#0C0A09', fontSize: 13, fontWeight: '800' },
@@ -101,7 +101,7 @@ export default function MyTripsScreen({ navigation, route }) {
   }), [v1]);
   const { role } = route.params || {};
   const isDriver = role === 'driver';
-  const accent = isDriver ? '#22C55E' : '#F59E0B';
+  const accent = isDriver ? '#22C55E' : '#FF8400';
   const { t } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
@@ -361,7 +361,7 @@ export default function MyTripsScreen({ navigation, route }) {
     const desc = item.cargo_desc || '';
     const isCargo = !!item.cargo_desc;
     const badge = isCargo ? t('badge_cargo') : t('badge_trip');
-    const badgeColor = isCargo ? '#F59E0B' : '#22C55E';
+    const badgeColor = isCargo ? '#FF8400' : '#22C55E';
     // Edit is allowed only for own ACTIVE trips. Backend will also block any
     // attempt with an accepted deal — but hiding the button is a much better
     // UX than letting the user tap → wait → see "edit denied".
@@ -392,7 +392,7 @@ export default function MyTripsScreen({ navigation, route }) {
             if (item._expired) return '#EF4444';             // просрочен — красный
             const st = item.status || 'active';
             if (st === 'cancelled') return '#94A3B8';        // серый
-            if (st === 'draft' || st === 'pending') return '#F59E0B'; // янтарный
+            if (st === 'draft' || st === 'pending') return '#FF8400'; // янтарный
             if (st === 'rejected' || st === 'expired') return '#EF4444'; // красный
             if (st === 'completed' || st === 'delivered') return '#22C55E'; // зелёный
             return '#22C55E'; // active по умолчанию — зелёный
@@ -451,14 +451,14 @@ export default function MyTripsScreen({ navigation, route }) {
             </TouchableOpacity>
             <TouchableOpacity
               testID="extend-editdate-btn"
-              style={[s.editBtn, { borderColor: '#F59E0B', marginTop: 0, paddingHorizontal: 14 }]}
+              style={[s.editBtn, { borderColor: '#FF8400', marginTop: 0, paddingHorizontal: 14 }]}
               onPress={(e) => {
                 e.stopPropagation && e.stopPropagation();
                 if (isCargo) setEditCargo(item);
                 else navigation.navigate('EditTrip', { tripId: item.id, trip: normalizeTrip({ ...item, isMine: true, _server: true }) });
               }}
             >
-              <Text style={[s.editBtnText, { color: '#F59E0B' }]}>📅 {t('change_date')}</Text>
+              <Text style={[s.editBtnText, { color: '#FF8400' }]}>📅 {t('change_date')}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -468,10 +468,10 @@ export default function MyTripsScreen({ navigation, route }) {
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
             <TouchableOpacity
               testID="my-cargo-edit-btn"
-              style={[s.miniBtn, { borderColor: '#F59E0B', flex: 1 }]}
+              style={[s.miniBtn, { borderColor: '#FF8400', flex: 1 }]}
               onPress={(e) => { e.stopPropagation && e.stopPropagation(); setEditCargo(item); }}
             >
-              <Text style={[s.miniBtnText, { color: '#F59E0B' }]}>✏️ {t('edit_btn')}</Text>
+              <Text style={[s.miniBtnText, { color: '#FF8400' }]}>✏️ {t('edit_btn')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               testID="my-cargo-delete-btn"
@@ -517,7 +517,7 @@ export default function MyTripsScreen({ navigation, route }) {
   };
 
   const renderDeal = ({ item }) => {
-    const sc = { accepted: '#22C55E', in_progress: '#F59E0B', delivered: '#22C55E', cancelled: '#EF4444' };
+    const sc = { accepted: '#22C55E', in_progress: '#FF8400', delivered: '#22C55E', cancelled: '#EF4444' };
     const busy = busyBidId === item.id;
     const nextStep = isDriver
       ? (item.status === 'accepted' ? t('driver_next_step_accepted')
@@ -532,7 +532,7 @@ export default function MyTripsScreen({ navigation, route }) {
         testID="my-order-card"
         activeOpacity={0.85}
         onPress={() => openDealCard(item)}
-        style={[s.card, { backgroundColor: theme.card, borderColor: sc[item.status] || theme.border, borderWidth: 2 }]}
+        style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]}
       >
         <View style={s.cardTop}>
           <View style={[s.badge, { backgroundColor: accent + '20' }]}>
@@ -621,12 +621,12 @@ export default function MyTripsScreen({ navigation, route }) {
           {!isDriver && ['accepted', 'in_progress', 'picked_up'].includes(item.status) && (
             <TouchableOpacity
               testID="deal-track-truck"
-              style={[s.miniBtn, { borderColor: '#F59E0B' }]}
+              style={[s.miniBtn, { borderColor: '#FF8400' }]}
               onPress={() => navigation.navigate('TrackTruck', {
                 dealId: item.id, from: item.from_city, to: item.to_city, driverName: item.driver_name,
               })}
             >
-              <Text style={[s.miniBtnText, { color: '#F59E0B' }]}>📍 {t('track_truck_btn')}</Text>
+              <Text style={[s.miniBtnText, { color: '#FF8400' }]}>📍 {t('track_truck_btn')}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -648,7 +648,7 @@ export default function MyTripsScreen({ navigation, route }) {
   const renderBid = ({ item }) => {
     const from = item.cargo_from || '—';
     const to = item.cargo_to || '—';
-    const sc = { pending: '#F59E0B', accepted: '#22C55E', rejected: '#EF4444', cancelled: '#78716C', countered: '#A855F7' };
+    const sc = { pending: '#FF8400', accepted: '#22C55E', rejected: '#EF4444', cancelled: '#78716C', countered: '#A855F7' };
     const sl = {
       pending: t('bid_pending'), accepted: t('bid_accepted'),
       rejected: t('bid_rejected'), cancelled: t('bid_cancelled'),
@@ -811,10 +811,10 @@ export default function MyTripsScreen({ navigation, route }) {
             </TouchableOpacity>
             <TouchableOpacity
               testID="bid-discount"
-              style={[s.miniBtn, { borderColor: '#F59E0B' }]}
+              style={[s.miniBtn, { borderColor: '#FF8400' }]}
               onPress={() => { setEditingBid(item); setBidModalMode('discount'); setBidModal(true); }}
             >
-              <Text style={[s.miniBtnText, { color: '#F59E0B' }]}>💸 {t('give_discount')}</Text>
+              <Text style={[s.miniBtnText, { color: '#FF8400' }]}>💸 {t('give_discount')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               testID="bid-chat"

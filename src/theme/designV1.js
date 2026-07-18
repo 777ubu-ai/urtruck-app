@@ -31,10 +31,10 @@ const DARK = {
   driverSoft: 'rgba(0,230,118,0.14)',
   driverOnAccent: '#0C0A09',
 
-  cargoOwner: '#F59E0B',
-  cargoOwnerDeep: '#D97706',
-  cargoOwnerGlow: 'rgba(245,158,11,0.35)',
-  cargoOwnerSoft: 'rgba(245,158,11,0.12)',
+  cargoOwner: '#FF8400',
+  cargoOwnerDeep: '#E06D00',
+  cargoOwnerGlow: 'rgba(255,132,0,0.35)',
+  cargoOwnerSoft: 'rgba(255,132,0,0.12)',
 
   text: '#F5F5F5',
   textMuted: '#9CA3AF',
@@ -48,7 +48,7 @@ const DARK = {
 
   error: '#EF4444',
   success: '#22C55E',
-  warning: '#F59E0B',
+  warning: '#FF8400',
 };
 
 const LIGHT = {
@@ -73,10 +73,10 @@ const LIGHT = {
   driverSoft: 'rgba(0,230,118,0.16)',
   driverOnAccent: '#0C0A09',
 
-  cargoOwner: '#F59E0B',
-  cargoOwnerDeep: '#D97706',
-  cargoOwnerGlow: 'rgba(245,158,11,0.35)',
-  cargoOwnerSoft: 'rgba(245,158,11,0.12)',
+  cargoOwner: '#FF8400',
+  cargoOwnerDeep: '#E06D00',
+  cargoOwnerGlow: 'rgba(255,132,0,0.35)',
+  cargoOwnerSoft: 'rgba(255,132,0,0.12)',
 
   text: '#0F172A',
   textMuted: '#475569',
@@ -86,7 +86,7 @@ const LIGHT = {
 
   error: '#DC2626',
   success: '#16A34A',
-  warning: '#D97706',
+  warning: '#E06D00',
 };
 
 // Frozen dark export — keeps every existing `StyleSheet.create({ … })`
@@ -139,7 +139,7 @@ export const v1Shadow = {
 export const v1AccentFor = (role) =>
   role === 'driver'
     ? { main: v1Colors.driver, deep: v1Colors.driverDeep, glow: v1Colors.driverGlow, soft: v1Colors.driverSoft, onAccent: v1Colors.driverOnAccent }
-    // client onAccent = тёмный (#0C0A09): белый на янтарном #F59E0B давал
+    // client onAccent = тёмный (#0C0A09): белый на янтарном #FF8400 давал
     // контраст ~2:1 (WCAG fail). Чёрный — ~11:1 (AAA), премиальнее. Симметрично
     // водительскому black-on-green.
     : { main: v1Colors.cargoOwner, deep: v1Colors.cargoOwnerDeep, glow: v1Colors.cargoOwnerGlow, soft: v1Colors.cargoOwnerSoft, onAccent: '#0C0A09' };

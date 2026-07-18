@@ -110,7 +110,7 @@ export default function TrackTruckScreen({ navigation, route }) {
             </Text>
           </View>
           <TruckMap lat={lat} lng={lng} title={driverName || t('track_truck_marker')} />
-          <TouchableOpacity style={[s.cta, { backgroundColor: '#F59E0B' }]} onPress={openExternal} testID="track-open-maps">
+          <TouchableOpacity style={[s.cta, { backgroundColor: '#FF8400' }]} onPress={openExternal} testID="track-open-maps">
             <Text style={s.ctaText}>🧭 {t('track_truck_open_maps')}</Text>
           </TouchableOpacity>
         </View>
