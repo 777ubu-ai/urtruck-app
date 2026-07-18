@@ -133,6 +133,39 @@ export const chatAPI = {
     return r.json();
   },
 
+  // Голосовое: аудио → storage, возвращает { voice_key }. Сообщение шлётся
+  // затем через send({ isVoice, voiceDuration, photoUrl: voice_key }).
+  async uploadChatVoice(uri) {
+    const token = await storage.get(TOKEN_KEY);
+    const form = new FormData();
+    if (Platform.OS === 'web') {
+      const blob = await fetch(uri).then((r) => r.blob());
+      const ext = (blob.type || '').includes('webm') ? 'webm' : 'm4a';
+      form.append('file', blob, `voice.${ext}`);
+    } else {
+      const ext = String(uri).split('.').pop() || 'm4a';
+      form.append('file', { uri, name: `voice.${ext}`, type: `audio/${ext === 'm4a' ? 'mp4' : ext}` });
+    }
+    const r = await authedFetch(`${BASE}/voice`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    });
+    if (!r.ok) throw new Error(`chat voice upload failed ${r.status}`);
+    return r.json();
+  },
+
+  // «Печатает…»: лёгкий пинг (fire-and-forget), партнёр увидит индикатор.
+  async typing(roomId) {
+    if (!roomId) return;
+    try {
+      await authedFetch(`${BASE}/typing`, {
+        method: 'POST', headers: await headers(),
+        body: JSON.stringify({ room_id: roomId }),
+      });
+    } catch { /* не мешаем набору текста */ }
+  },
+
   async uploadAttachment(conversationId, { uri, kind = 'document', name = 'file.jpg', type = 'image/jpeg' } = {}) {
     const token = await storage.get(TOKEN_KEY);
     const blob = await authedFetch(uri).then((res) => res.blob());

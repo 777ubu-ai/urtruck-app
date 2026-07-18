@@ -553,7 +553,11 @@ def get_messages(room_id: str, limit: int = 100, offset: int = 0, user=Depends(r
         # по устойчивому id, а не по тексту (иначе два одинаковых сообщения
         # «ок»/«ок» схлопывались в одно на время между поллами).
         messages.append(m)
-    return {"messages": messages, "room": dict(room)}
+    # «Печатает…»: жив ли typing-пинг партнёра (см. /typing).
+    partner_id = room["participant_2"] if room["participant_1"] == uid else room["participant_1"]
+    ts = _TYPING.get((room_id, partner_id))
+    partner_typing = bool(ts and (_time.time() - ts) < _TYPING_TTL)
+    return {"messages": messages, "room": dict(room), "partner_typing": partner_typing}
 
 
 @chat_router.get("/contacts")
@@ -606,6 +610,56 @@ async def upload_chat_photo(file: UploadFile = File(...), user=Depends(require_l
         raise HTTPException(status_code=413, detail="Файл слишком большой")
     key = storage.save_image(data, "chat_photos")
     return {"photo_key": key}
+
+
+@chat_router.post("/voice")
+async def upload_chat_voice(file: UploadFile = File(...), user=Depends(require_level(1))):
+    """Голосовое сообщение: загрузка аудио → storage, возвращаем КЛЮЧ.
+    Само сообщение шлётся через POST /chat/send с photo_url=этот ключ и
+    is_voice=true (ключ живёт в том же поле, подпись на чтении общая —
+    см. get_messages). Web пишет audio/webm, native (expo-av) — m4a."""
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Пустой файл")
+    if len(data) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Файл слишком большой")
+    name = (file.filename or "").lower()
+    ext = "m4a"
+    for cand in ("webm", "m4a", "mp3", "aac", "ogg", "wav"):
+        if name.endswith("." + cand):
+            ext = cand
+            break
+    key = storage.save_image(data, "chat_voice", ext=ext)
+    return {"voice_key": key}
+
+
+# ── «Печатает…» ──────────────────────────────────────────────────────────
+# In-memory (один PM2-процесс): (room_id, user_id) → unix-ts последнего пинга.
+# Партнёр видит индикатор, если пинг был < TYPING_TTL секунд назад. Пинги
+# летят раз в ~2.5с пока пользователь набирает; отдельной таблицы не нужно.
+import time as _time
+_TYPING: dict = {}
+_TYPING_TTL = 6
+
+
+class TypingIn(BaseModel):
+    room_id: str
+
+
+@chat_router.post("/typing")
+def typing_ping(body: TypingIn, user=Depends(require_level(1))):
+    uid = user["id"]
+    with get_conn() as c:
+        room = c.execute("SELECT participant_1, participant_2 FROM chat_rooms WHERE id = ?", (body.room_id,)).fetchone()
+    if not room or uid not in (room["participant_1"], room["participant_2"]):
+        raise HTTPException(status_code=403)
+    _TYPING[(body.room_id, uid)] = _time.time()
+    # мусор постепенно вычищаем, чтобы dict не рос бесконечно
+    if len(_TYPING) > 2000:
+        now = _time.time()
+        for k in [k for k, ts in _TYPING.items() if now - ts > 60]:
+            _TYPING.pop(k, None)
+    return {"ok": True}
 
 
 class TranslateIn(BaseModel):

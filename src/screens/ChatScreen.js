@@ -35,10 +35,10 @@ const IS_WEB = Platform.OS === 'web';
 // 4.3: включено — фото грузится в storage и шлётся ключом (см. sendPhoto).
 // Финальная проверка загрузки/рендера на устройстве — Level 5.
 const CHAT_PHOTO_ENABLED = true;
-// Голосовые выключены: аудио-файл пока НЕ выгружается на сервер (нет upload
-// endpoint), получатель звук не получит. Включим только вместе с загрузкой
-// аудио (по аналогии с uploadChatPhoto) — иначе фича нерабочая end-to-end.
-const CHAT_VOICE_ENABLED = false;
+// Голосовые включены: аудио выгружается на сервер (POST /chat/voice → ключ →
+// send с photoUrl=ключ), получатель играет по подписанному URL. Финальная
+// проверка записи/воспроизведения — на реальном устройстве.
+const CHAT_VOICE_ENABLED = true;
 
 // Stage 52: локальный chat language pill не переводил содержимое чата (P0-3, P0-5),
 // и среди опций оставался UZ (P0-4). Pill скрыт до реальной интеграции с chatAPI.translate.
@@ -143,6 +143,17 @@ export default function ChatScreen({ navigation, route }) {
   const [input, setInput] = useState('');
   const [showPhrases, setShowPhrases] = useState(false);
   const [recording, setRecording] = useState(false);
+  // «Печатает…»: индикатор партнёра (из poll) + троттл своего пинга.
+  const [partnerTyping, setPartnerTyping] = useState(false);
+  const lastTypingPing = useRef(0);
+  const onInputChange = (v) => {
+    setInput(v);
+    const now = Date.now();
+    if (roomId && v && now - lastTypingPing.current > 2500) {
+      lastTypingPing.current = now;
+      chatAPI.typing(roomId);   // fire-and-forget
+    }
+  };
   const [lang, setLang] = useState('RU');
   const [translations, setTranslations] = useState({});
   const [translating, setTranslating] = useState(null);
@@ -185,6 +196,8 @@ export default function ChatScreen({ navigation, route }) {
     try {
       const md = await chatAPI.messages(rid);
       if (!mounted.current) return;  // QA-аудит P1-8: чат закрыт во время poll
+      // «Печатает…»: сервер отдаёт живость typing-пинга партнёра.
+      setPartnerTyping(!!md.partner_typing);
       const mapped = (md.messages || []).map(m => {
         // Источник истины — серверный признак m.mine (сравнение sender_id с uid
         // на бэке). Локальный myId может быть фейковым ('u_<ts>') до синка
@@ -198,8 +211,12 @@ export default function ChatScreen({ navigation, route }) {
                (partner?.id && m.sender_id !== partner.id));
         return {
           id: String(m.id), from: fromMe ? 'me' : 'them',
-          text: m.text, isPhoto: !!m.photo_url, photoUri: m.photo_url,
-          isVoice: !!m.is_voice, time: fmtMsgTime(m.created_at),
+          // Голосовое хранит аудио-ключ в том же поле photo_url (подписанном
+          // сервером) — не путать с фото: isPhoto только когда НЕ voice.
+          text: m.text, isPhoto: !!m.photo_url && !m.is_voice, photoUri: m.photo_url,
+          isVoice: !!m.is_voice, voiceUrl: m.is_voice ? m.photo_url : undefined,
+          duration: m.voice_duration || 0,
+          time: fmtMsgTime(m.created_at),
           is_read: !!m.is_read,
           // P3/merge: серверный client_msg_id для точного сопоставления
           // optimistic-пузыря (его локальный id === clientMsgId).
@@ -564,7 +581,7 @@ export default function ChatScreen({ navigation, route }) {
 
   // HOT-006: единая запись/воспроизведение через voiceRecorder.
   // Web — MediaRecorder API; Native — expo-av (установлен ^16.0.8).
-  const appendVoiceMessage = (uri, duration) => {
+  const appendVoiceMessage = async (uri, duration) => {
     const mm = String(Math.floor(duration / 60)).padStart(1, '0');
     const ss = String(duration % 60).padStart(2, '0');
     const toId = recipientId();
@@ -577,13 +594,23 @@ export default function ChatScreen({ navigation, route }) {
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       isVoice: true, playing: false, voiceUrl: uri, duration, _optimistic: true,
     }]);
-    chatAPI.send({
-      roomId, toUserId: toId,
-      text: `🎤 ${t('chat_voice_message')} (${duration}${t('unit_sec_short')})`,
-      isVoice: true, voiceDuration: duration,
-      cargoId, tripId, clientMsgId: clientId,
-    }).then((r) => { if (r?.room_id) setRoomId(r.room_id); })
-      .catch(() => toast(t('chat_send_failed'), 'error'));
+    // Аудио сначала грузим в storage (как фото) → ключ → сообщение с ключом.
+    // Раньше файл вообще не выгружался и получатель звук не получал.
+    try {
+      const up = await chatAPI.uploadChatVoice(uri);
+      const key = up?.voice_key;
+      if (!key) throw new Error('no_key');
+      const r = await chatAPI.send({
+        roomId, toUserId: toId,
+        text: `🎤 ${t('chat_voice_message')} (${duration}${t('unit_sec_short')})`,
+        photoUrl: key,                     // аудио-ключ в общем поле вложения
+        isVoice: true, voiceDuration: duration,
+        cargoId, tripId, clientMsgId: clientId,
+      });
+      if (r?.room_id) setRoomId(r.room_id);
+    } catch {
+      toast(t('chat_send_failed'), 'error');
+    }
   };
 
   const startRecording = async () => {
@@ -682,7 +709,11 @@ export default function ChatScreen({ navigation, route }) {
                 <View key={i} style={[s.wavebar, { height: 4 + (i % 4) * 4, backgroundColor: isMe ? '#fff' : (theme.textMuted) }]} />
               ))}
             </View>
-            <Text style={[s.voiceTime, isMe && { color: '#fff' }, !isMe && { color: theme.text }]}>{item.playing ? t('voicePlaying') : '0:04'}</Text>
+            <Text style={[s.voiceTime, isMe && { color: '#fff' }, !isMe && { color: theme.text }]}>
+              {item.playing
+                ? t('voicePlaying')
+                : `${Math.floor((item.duration || 0) / 60)}:${String((item.duration || 0) % 60).padStart(2, '0')}`}
+            </Text>
           </TouchableOpacity>
         </View>
       );
@@ -781,7 +812,9 @@ export default function ChatScreen({ navigation, route }) {
           {/* Маршрут груза в шапке — сразу видно, по какому заказу чат.
               Если маршрут известен (есть сделка) — показываем его; иначе
               честную роль собеседника (Водитель/Грузовладелец). */}
-          {deal && (deal.from_city || deal.to_city || deal.cargo_desc)
+          {partnerTyping
+            ? <Text style={[s.online, { color: '#22C55E' }]}>✍️ {t('chat_typing')}</Text>
+            : deal && (deal.from_city || deal.to_city || deal.cargo_desc)
             ? <Text style={[s.online, { color: v1Accent.main }]} numberOfLines={1}>
                 {deal.cargo_desc ? `📦 ${deal.cargo_desc} · ` : '📍 '}
                 {localizePlace(deal.from_city || '—', getLanguage())} → {localizePlace(deal.to_city || '—', getLanguage())}
@@ -856,7 +889,7 @@ export default function ChatScreen({ navigation, route }) {
         }
         onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
       />
-      {showPhrases && <QuickPhrases onSelect={sendMessage} role={role} />}
+      {showPhrases && <QuickPhrases onSelect={sendMessage} role={role} dealStatus={deal?.status} />}
       <View style={s.inputRow}>
         <TouchableOpacity onPress={() => setShowPhrases(!showPhrases)} style={s.iconBtn}>
           <Text style={s.iconBtnText}>⚡</Text>
@@ -869,7 +902,7 @@ export default function ChatScreen({ navigation, route }) {
         <TextInput
           style={s.input}
           value={input}
-          onChangeText={setInput}
+          onChangeText={onInputChange}
           placeholder={t('message')}
           placeholderTextColor={v1.placeholder}
           onSubmitEditing={() => sendMessage()}
