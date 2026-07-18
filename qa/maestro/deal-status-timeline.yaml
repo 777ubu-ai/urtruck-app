@@ -1,0 +1,39 @@
+# deal-status-timeline — build 38: визуальный таймлайн сделки
+# 🤝 Принят → 🚛 В пути → 🛂 На границе → ✅ Доставлен (DealStatusTimeline,
+# подключён в CargoDetail.js, testID="deal-timeline").
+#
+# Предусловие (засев через API на ЛОКАЛЬНОМ backend): у boris есть сделка
+# в работе (accepted/in_progress). Смена статусов делается с driver-сессии
+# через PATCH /market/deals/{id}/status (VALID включает at_border).
+#
+# ⚠️ ЗАПУСК: приложение должно смотреть в тот же backend, что и ensure-actor.
+#    EXPO_PUBLIC_API_URL=http://127.0.0.1:8001 npx expo start   (см. _lib/README.md)
+appId: host.exp.Exponent
+name: deal-status-timeline
+tags: [deal, timeline, build38]
+env:
+  MAESTRO_ACTOR: boris
+---
+- runFlow: _lib/qa-login.yaml
+# Разрешение фоновой геолокации может всплыть на входе — снимаем, если есть.
+- runFlow:
+    when:
+      visible: "Allow"
+    commands:
+      - tapOn: "Allow"
+      - waitForAnimationToEnd
+- tapOn: { id: "bottom-nav-mywork" }
+- waitForAnimationToEnd
+- tapOn: { id: "my-work-tab-enroute" }
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: { id: "my-order-card" }
+    timeout: 8000
+- tapOn: { id: "my-order-card", index: 0 }
+- waitForAnimationToEnd
+# Таймлайн статусов присутствует на детали сделки.
+- extendedWaitUntil:
+    visible: { id: "deal-timeline" }
+    timeout: 8000
+- assertVisible: { id: "deal-timeline" }
+- takeScreenshot: TL_deal_status_timeline
