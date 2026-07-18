@@ -1,0 +1,47 @@
+# L3-13 — badge-sync: после прочтения чата счётчик/бейдж исчезает.
+#
+# ГРАНИЦЫ: app-icon badge (красный кружок на иконке) Maestro НЕ видит — это
+# # 👁 MANUAL. Maestro проверяет ВНУТРИ-приложенческий бейдж (bottom-nav-chats-badge)
+# и что он гаснет после открытия/прочтения чата. Связано с BUG-003 (badge
+# может зависать, пока открыт ChatScreen и BottomNav размонтирован).
+#
+# Перед прогоном:
+#   DEVICE=$(xcrun simctl list devices booted | grep -oE '[0-9A-F-]{36}' | head -1)
+#   # payload_chat.json как в 11 (room_id реальной комнаты)
+appId: com.urtruck.app
+---
+- launchApp:
+    clearState: false
+- tapOn:
+    id: "bottom-nav-feed"
+- waitForAnimationToEnd
+
+# 👁 MANUAL: инъекция push нового сообщения (приложение в фоне ИЛИ на другом
+# экране), чтобы поднять unread:
+#   xcrun simctl push "$DEVICE" com.urtruck.app .maestro/payload_chat.json
+# Ожидание: на вкладке «Чаты» появляется бейдж + красный кружок на иконке (👁).
+- assertVisible:
+    id: "bottom-nav-chats-badge"
+- takeScreenshot: p13_badge_present
+
+# Открываем чат и читаем → бейдж должен погаснуть.
+- tapOn:
+    id: "bottom-nav-chats"
+- waitForAnimationToEnd
+- tapOn:
+    id: "deal-room-list-card"
+    index: 0
+- waitForAnimationToEnd
+- assertVisible:
+    id: "chat-input"
+- takeScreenshot: p13_chat_read
+
+# Возврат на таб-бар → внутри-app бейдж должен исчезнуть.
+- tapOn:
+    id: "bottom-nav-feed"
+- waitForAnimationToEnd
+- assertNotVisible:
+    id: "bottom-nav-chats-badge"
+- takeScreenshot: p13_badge_cleared
+# 👁 MANUAL: проверь, что КРАСНЫЙ КРУЖОК на иконке приложения тоже исчез
+# (BUG-003 — на устройстве может зависнуть, если читал не с таб-бара).

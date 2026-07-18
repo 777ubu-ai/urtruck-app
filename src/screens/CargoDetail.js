@@ -401,8 +401,8 @@ export default function CargoDetail({ navigation, route }) {
         <GlassCard accent={v1Accent.main}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <View>
-              <Text style={[s.priceLabelV1, { color: v1Accent.main }]}>💰 {acceptedBid ? t('deal_price') : t('price')}</Text>
-              <Text style={[s.priceValueV1, { color: v1Accent.main }]} numberOfLines={1}>{priceDisplay}</Text>
+              <Text testID="cargo-price-label" style={[s.priceLabelV1, { color: v1Accent.main }]}>💰 {acceptedBid ? t('deal_price') : t('price')}</Text>
+              <Text testID="cargo-price-value" style={[s.priceValueV1, { color: v1Accent.main }]} numberOfLines={1}>{priceDisplay}</Text>
             </View>
             {/* Stage 9: previously a "Предложить цену" button sat right
                 here next to the price block AND on the sticky bar at

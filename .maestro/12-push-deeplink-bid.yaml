@@ -1,0 +1,36 @@
+# L3-12 — deep-link «новая ставка»: тап по пушу = экран груза с подсветкой ставки.
+#
+# ГРАНИЦЫ: см. 10/11. Системный баннер = ручное наблюдение; simctl push из
+# соседнего терминала. appId=com.urtruck.app (dev-client/standalone).
+#
+# Событие S1 (новая ставка на груз): backend шлёт url=/cargos/{id}?bid={bid}
+# (marketplace.py). Тап должен открыть CargoDetail нужного груза.
+#
+# Перед прогоном:
+#   DEVICE=$(xcrun simctl list devices booted | grep -oE '[0-9A-F-]{36}' | head -1)
+#   # payload_bid.json: { "aps":{"alert":{"title":"Новая ставка 450000 ₸",
+#   #   "body":"Алматы→Москва"}}, "url":"/cargos/CARGO_ID?bid=BID_ID",
+#   #   "data":{"type":"bid","cargoId":"CARGO_ID","bid":"BID_ID"} }
+appId: com.urtruck.app
+---
+- launchApp:
+    clearState: false
+- tapOn:
+    id: "bottom-nav-feed"
+- waitForAnimationToEnd
+- takeScreenshot: p12_start
+
+# 👁 MANUAL: инъекция bid-push и тап по баннеру:
+#   xcrun simctl push "$DEVICE" com.urtruck.app .maestro/payload_bid.json
+# Ожидание: открывается CargoDetail именно этого груза (не список, не другой груз).
+- assertVisible:
+    id: "cargo-price-value"     # мы на CargoDetail
+- takeScreenshot: p12_cargo_detail_opened
+
+# Ставки видны на экране груза (список bid). Проверяем секцию ставок.
+- assertVisible:
+    id: "bid-accept"            # владелец видит кнопку принятия хотя бы одной ставки
+- takeScreenshot: p12_bids_visible
+
+# Локали spot-check (текст пуша локализован) — 👁 MANUAL: повтори инъекцию с
+# payload на EN/KK/ZH и убедись, что title/body переведены на язык интерфейса.

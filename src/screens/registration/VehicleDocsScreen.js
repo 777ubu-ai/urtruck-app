@@ -254,11 +254,11 @@ export default function VehicleDocsScreen({ navigation }) {
 
   const progress = STEP / TOTAL_STEPS;
 
-  const DocCard = ({ title, hint, doc, onPick, errorText, children }) => (
+  const DocCard = ({ title, hint, doc, onPick, errorText, children, testID }) => (
     <View style={s.card}>
       <Text style={s.cardTitle}>{title}</Text>
       {hint ? <Text style={s.cardHint}>{hint}</Text> : null}
-      <Pressable onPress={onPick} style={s.slot} disabled={doc.status === 'busy'}>
+      <Pressable onPress={onPick} style={s.slot} disabled={doc.status === 'busy'} testID={testID}>
         {doc.uri ? (
           <Image source={{ uri: doc.uri }} style={s.thumb} resizeMode="cover" />
         ) : (
@@ -309,7 +309,7 @@ export default function VehicleDocsScreen({ navigation }) {
         <Text style={s.title}>{t('vdocs_title')}</Text>
         <Text style={s.subtitle}>{t('vdocs_subtitle')}</Text>
 
-        <DocCard title={`📄 ${t('vdocs_techpass')}`} hint={t('vdocs_hint_techpass')} doc={techpass} onPick={handleTechpass}>
+        <DocCard title={`📄 ${t('vdocs_techpass')}`} hint={t('vdocs_hint_techpass')} doc={techpass} onPick={handleTechpass} testID="vd-passport-photo">
           <View style={s.ocrBox}>
             <Text style={s.ocrTitle}>✅ {t('vdocs_recognized')}</Text>
             <Field label={t('vdocs_field_brand')} value={[techpass.ocr?.brand, techpass.ocr?.model].filter(Boolean).join(' ')} />
@@ -323,7 +323,7 @@ export default function VehicleDocsScreen({ navigation }) {
           source={require('../../assets/onboarding/verification/guides/license_front_guide.png')}
           testID="vd-license-guide"
         />
-        <DocCard title={`🪪 ${t('vdocs_license')}`} hint={t('vdocs_hint_license')} doc={license} onPick={handleLicense}>
+        <DocCard title={`🪪 ${t('vdocs_license')}`} hint={t('vdocs_hint_license')} doc={license} onPick={handleLicense} testID="vd-license-photo">
           <View style={s.ocrBox}>
             <Text style={s.ocrTitle}>✅ {t('vdocs_recognized')}</Text>
             <Field label={t('vdocs_field_categories')} value={(license.ocr?.categories || []).join(', ')} />
@@ -373,6 +373,7 @@ export default function VehicleDocsScreen({ navigation }) {
           doc={licenseSelfie}
           onPick={handleLicenseSelfie}
           errorText={t('vdocs_license_selfie_upload_err')}
+          testID="vd-license-selfie-photo"
         >
           <View style={s.okBox}>
             <Text style={s.okText}>✅ {t('vdocs_uploaded')}</Text>

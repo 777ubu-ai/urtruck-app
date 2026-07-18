@@ -1,0 +1,52 @@
+# reg_submit_tabs — прямое доказательство проверки B: driver, который прошёл
+# submit и авто-одобрен (status=approved, verification_level=3), попадает в
+# ПОЛНЫЙ стек с 5 вкладками, а не висит на экране ожидания.
+# Токен реального submit-driver передаётся через MAESTRO_REG_TOKEN (см. reg_a.tok).
+# Онбординг-часть — как в _lib/qa-login.yaml, но вместо ensure-actor вставляем
+# наш готовый Bearer-токен. Требует keychain reset перед прогоном (чистый вход).
+appId: host.exp.Exponent
+name: reg_submit_tabs
+tags: [driver, registration, approved, e2e]
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "UrTruck"
+    timeout: 15000
+- tapOn:
+    text: "UrTruck"
+    index: 0
+- extendedWaitUntil:
+    visible:
+      text: "Смотреть грузы|Continue|Профиль|Грузы"
+    timeout: 60000
+- runFlow:
+    when:
+      visible: "Continue"
+    commands:
+      - tapOn: { point: "50%,10%" }
+      - waitForAnimationToEnd
+- runFlow:
+    when:
+      visible: "Reload"
+    commands:
+      - tapOn: { point: "50%,10%" }
+      - waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: { id: "qa-debug-submit" }
+    timeout: 12000
+- tapOn: { id: "qa-debug-token" }
+- inputText: ${MAESTRO_REG_TOKEN}
+- hideKeyboard
+- tapOn: { id: "qa-debug-submit" }
+- extendedWaitUntil:
+    visible: { id: "bottom-nav-profile" }
+    timeout: 30000
+# ── approved driver → полный стек из 5 вкладок ──
+- assertVisible: { id: "bottom-nav-feed" }
+- assertVisible: { id: "bottom-nav-mywork" }
+- assertVisible: { id: "bottom-nav-queue" }
+- assertVisible: { id: "bottom-nav-chats" }
+- assertVisible: { id: "bottom-nav-profile" }
+# не должен висеть на экране ожидания/обновления
+- assertNotVisible: "Обновить приложение"
+- takeScreenshot: REG_approved_driver_5tabs
