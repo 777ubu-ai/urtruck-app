@@ -21,6 +21,7 @@ import FilterChips from '../components/ui/v1/FilterChips';
 import BellBadge from '../components/ui/v1/BellBadge';
 import LanguageSwitcher from '../components/LanguageSwitcher';
 import { useUnreadNotifications } from '../utils/useUnreadNotifications';
+import PressableScale from '../components/PressableScale';
 import { useMountedRef } from '../hooks/useMountedRef';
 import BottomSheet from '../components/ui/v1/BottomSheet';
 import DatePicker from '../components/DatePicker';
@@ -706,15 +707,15 @@ export default function FeedScreen({ navigation, route }) {
             У водителя лента = основная работа (берёт грузы), поэтому CTA
             публикации рейса ему на ленту не выносим (остаётся «+» в баре). */}
         {!isDriver ? (
-          <TouchableOpacity
-            style={[s.titleCta, { borderColor: accentColor, backgroundColor: accentColor }]}
+          <PressableScale
+            style={[s.titleCta, { backgroundColor: accentColor }]}
             onPress={() => navigation.navigate('CreateCargo', { role })}
             testID="publish-cargo-button"
             accessibilityRole="button"
             accessibilityLabel={t('postCargo')}
           >
             <Text style={[s.titleCtaText, { color: '#0A0A0A' }]}>+ {t('postCargo')}</Text>
-          </TouchableOpacity>
+          </PressableScale>
         ) : null}
       </View>
 

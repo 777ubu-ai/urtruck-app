@@ -21,6 +21,8 @@ import { useUnreadNotifications } from '../utils/useUnreadNotifications';
 import { notificationsAPI } from '../utils/notificationsAPI';
 import { notifyNotifRead } from '../utils/unreadEvents';
 import { useMountedRef } from '../hooks/useMountedRef';
+import FadeInUp, { PopIn } from '../components/ui/FadeInUp';
+import PressableScale from '../components/PressableScale';
 
 export default function MyTripsScreen({ navigation, route }) {
   const v1 = useV1Colors();
@@ -539,7 +541,13 @@ export default function MyTripsScreen({ navigation, route }) {
           <View style={[s.badge, { backgroundColor: accent + '20' }]}>
             <Text style={[s.badgeText, { color: accent }]}>{t('order_label')}</Text>
           </View>
-          <Text style={[s.statusLabel, { color: sc[item.status] || '#78716C' }]}>{formatStatus(item.status)}</Text>
+          {item.status === 'accepted' ? (
+            <PopIn style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Text style={[s.statusLabel, { color: sc[item.status] }]}>✓ {formatStatus(item.status)}</Text>
+            </PopIn>
+          ) : (
+            <Text style={[s.statusLabel, { color: sc[item.status] || '#78716C' }]}>{formatStatus(item.status)}</Text>
+          )}
         </View>
         <Text style={[s.route, { color: theme.text }]}>{item.from_city || '—'} → {item.to_city || '—'}</Text>
         {/* issue #3: груз/тип кузова на карточке заказа */}
@@ -599,7 +607,7 @@ export default function MyTripsScreen({ navigation, route }) {
               Когда груз уже «Везут» (in_progress) — договорённость в силе,
               самостоятельной отмены нет (вопросы — через чат/поддержку). */}
           {item.status === 'accepted' && (
-            <TouchableOpacity
+            <PressableScale
               style={[s.miniBtn, { backgroundColor: 'transparent' }, busy && { opacity: 0.5 }]}
               disabled={busy}
               onPress={async () => {
@@ -608,19 +616,19 @@ export default function MyTripsScreen({ navigation, route }) {
               }}
             >
               <Text style={[s.miniBtnText, { color: '#EF4444' }]}>⊘ {t('cancel_deal')}</Text>
-            </TouchableOpacity>
+            </PressableScale>
           )}
           {item.chat_room_id && (
-            <TouchableOpacity
+            <PressableScale
               style={[s.miniBtn, { backgroundColor: 'rgba(255,132,0,0.14)' }]}
               onPress={() => navigation.navigate('Chat', { roomId: item.chat_room_id, role })}
             >
               <Text style={[s.miniBtnText, { color: accent }]}>💬 {t('order_chat')}</Text>
-            </TouchableOpacity>
+            </PressableScale>
           )}
           {/* Задача B: грузоотправитель видит, где машина (на стадии «Везут»). */}
           {!isDriver && ['accepted', 'in_progress', 'picked_up'].includes(item.status) && (
-            <TouchableOpacity
+            <PressableScale
               testID="deal-track-truck"
               style={s.miniBtn}
               onPress={() => navigation.navigate('TrackTruck', {
@@ -628,7 +636,7 @@ export default function MyTripsScreen({ navigation, route }) {
               })}
             >
               <Text style={[s.miniBtnText, { color: theme.text }]}>📍 {t('track_truck_btn')}</Text>
-            </TouchableOpacity>
+            </PressableScale>
           )}
         </View>
       </TouchableOpacity>
@@ -893,7 +901,13 @@ export default function MyTripsScreen({ navigation, route }) {
   const CLIENT_DATA = { searching: clientSearching, offers: clientOffers, enroute: driverInWork, delivered: driverDone, archive: clientArchive };
   const CLIENT_RENDER = { searching: renderMyItem, offers: renderBid, enroute: renderDeal, delivered: renderDeal, archive: renderArchiveItem };
   const listData = isDriver ? (DRIVER_DATA[tab] || []) : (CLIENT_DATA[tab] || []);
-  const listRender = isDriver ? (DRIVER_RENDER[tab] || renderMyItem) : (CLIENT_RENDER[tab] || renderMyItem);
+  const listRenderBase = isDriver ? (DRIVER_RENDER[tab] || renderMyItem) : (CLIENT_RENDER[tab] || renderMyItem);
+  // Промпт-дизайн: карточки появляются каскадом (выезд 10px + fade, 50мс шаг).
+  const listRender = ({ item, index }) => (
+    <FadeInUp delay={Math.min(index || 0, 8) * 50}>
+      {listRenderBase({ item })}
+    </FadeInUp>
+  );
 
   const renderEmpty = () => {
     if (data?.authRequired) {
@@ -953,7 +967,7 @@ export default function MyTripsScreen({ navigation, route }) {
       ) : null}
 
       <View style={{ paddingHorizontal: 16 }}>
-        <SegmentTabs items={TABS} value={tab === 'archive' ? null : tab} onChange={setTab} accent={v1Accent.main} />
+        <SegmentTabs items={TABS} value={tab === 'archive' ? null : tab} onChange={setTab} accent={v1Accent.main} variant={isDriver ? 'pill' : 'underline'} />
         <StatsRow items={stats} accent={v1Accent.main} />
         {/* Архив — вторичный фильтр (issue #2): отменённые/отклонённые/
             истёкшие, НЕ основная вкладка. Активных заказов тут нет.

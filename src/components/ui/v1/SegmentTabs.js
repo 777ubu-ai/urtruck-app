@@ -5,9 +5,13 @@ import React from 'react';
 import { View, TouchableOpacity, Text, StyleSheet } from 'react-native';
 import { useV1Colors, v1Radius } from '../../../theme/designV1';
 
-export default function SegmentTabs({ items = [], value, onChange, accent }) {
+// variant='underline' — промпт-дизайн клиента: активная вкладка = текст
+// акцентом + полоса 3px снизу, без заливки. По умолчанию 'pill' (водитель
+// остаётся как был).
+export default function SegmentTabs({ items = [], value, onChange, accent, variant = 'pill' }) {
   const colors = useV1Colors();
   const activeAccent = accent || colors.driver;
+  const underline = variant === 'underline';
   // QA-аудит P2-5: на 390px длинные RU/KK-лейблы (4 driver-вкладки —
   // «Предложения»/«Завершённые») усекались в «Предложе…». Масштабируем
   // шрифт по числу вкладок + плотный трекинг, чтобы помещались целиком.
@@ -27,13 +31,22 @@ export default function SegmentTabs({ items = [], value, onChange, accent }) {
             accessibilityLabel={typeof it.label === 'string' ? it.label : undefined}
             style={[
               s.tab,
-              active
+              underline
+                ? { borderWidth: 0, borderRadius: 0, borderBottomWidth: 3,
+                    borderBottomColor: active ? activeAccent : 'transparent',
+                    backgroundColor: 'transparent' }
+                : active
                 ? { backgroundColor: activeAccent, borderColor: activeAccent }
                 : { backgroundColor: 'transparent', borderColor: colors.border },
             ]}
           >
             <Text
-              style={[s.label, { color: active ? '#0A0A0A' : colors.textMuted, fontSize, letterSpacing }]}
+              style={[s.label, {
+                color: underline
+                  ? (active ? activeAccent : colors.textMuted)
+                  : (active ? '#0A0A0A' : colors.textMuted),
+                fontSize, letterSpacing,
+              }]}
               numberOfLines={1}
               adjustsFontSizeToFit
               minimumFontScale={0.85}
