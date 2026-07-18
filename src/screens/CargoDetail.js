@@ -748,6 +748,20 @@ export default function CargoDetail({ navigation, route }) {
                   <Text style={[s.dealActionText, { color: dealAccent.onAccent }]}>💬 {t('order_chat')}</Text>
                 </TouchableOpacity>
               )}
+              {/* Both — накладная (CMR) из данных сделки */}
+              {dealId && (dealStatus === 'in_progress' || dealStatus === 'at_border' || dealStatus === 'delivered' || dealStatus === 'accepted') && (
+                <TouchableOpacity
+                  testID="deal-waybill"
+                  style={[s.dealActionBtn, { backgroundColor: 'rgba(148,163,184,0.14)' }]}
+                  onPress={async () => {
+                    const r = await marketAPI.waybillLink(dealId);
+                    if (r.ok) Linking.openURL(r.url).catch(() => {});
+                    else toast(r.detail || t('no_connection'), 'error');
+                  }}
+                >
+                  <Text style={[s.dealActionText, { color: theme.text }]}>📄 {t('waybill_btn')}</Text>
+                </TouchableOpacity>
+              )}
               {/* Both — cancel deal */}
               {(dealStatus === 'accepted' || dealStatus === 'in_progress' || dealStatus === 'at_border') && (
                 <TouchableOpacity

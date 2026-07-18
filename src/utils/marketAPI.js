@@ -162,6 +162,16 @@ export const marketAPI = {
     return d;
   },
 
+  // Накладная (CMR): подписанная ссылка для открытия в браузере/печати.
+  async waybillLink(dealId) {
+    const r = await authedFetch(`${BASE}/deals/${dealId}/waybill-link`, {
+      method: 'POST', headers: await headers(),
+    });
+    const d = await r.json();
+    if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status) };
+    return { ok: true, url: `${BASE}/deals/${dealId}/waybill?exp=${d.exp}&sig=${d.sig}` };
+  },
+
   // Продлить груз одним тапом («Ещё актуально» — Модель А): дата = сегодня.
   async extendCargo(id) {
     const r = await authedFetch(`${BASE}/cargos/${id}/extend`, {

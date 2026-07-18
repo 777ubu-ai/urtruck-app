@@ -600,6 +600,91 @@ def update_cargo(cargo_id: str, body: CargoPatchIn, user=Depends(require_level(1
     return {"ok": True, "cargo": updated}
 
 
+# ── Накладная (waybill/CMR) ──────────────────────────────────────────────
+# По завершении/в ходе сделки стороны получают печатную транспортную
+# накладную из данных заказа. Ссылка подписана HMAC (без auth-заголовка —
+# открывается в браузере), TTL 7 дней. Секрет — как у file_signing.
+import hmac as _wb_hmac
+import hashlib as _wb_hashlib
+import os as _wb_os
+import time as _wb_time
+from fastapi.responses import HTMLResponse
+
+
+def _wb_secret() -> bytes:
+    return (_wb_os.getenv("FILE_SIGNING_KEY") or _wb_os.getenv("URTRUCK_API_SECRET") or "").encode("utf-8")
+
+
+def _wb_sig(deal_id: str, exp: int) -> str:
+    return _wb_hmac.new(_wb_secret(), f"waybill|{deal_id}|{exp}".encode(), _wb_hashlib.sha256).hexdigest()
+
+
+@mp_router.post("/deals/{deal_id}/waybill-link")
+def waybill_link(deal_id: str, user=Depends(require_level(1))):
+    """Подписанная ссылка на накладную — только участнику сделки."""
+    with get_conn() as c:
+        d = c.execute("SELECT shipper_id, driver_id FROM deals WHERE id = ?", (deal_id,)).fetchone()
+    if not d:
+        raise HTTPException(status_code=404, detail="Сделка не найдена")
+    if user["id"] not in (d["shipper_id"], d["driver_id"]):
+        raise HTTPException(status_code=403)
+    exp = int(_wb_time.time()) + 7 * 24 * 3600
+    return {"exp": exp, "sig": _wb_sig(deal_id, exp)}
+
+
+@mp_router.get("/deals/{deal_id}/waybill")
+def waybill_html(deal_id: str, exp: int = 0, sig: str = ""):
+    """Печатная накладная (HTML). Доступ по подписи exp+sig (TTL)."""
+    if not exp or exp < _wb_time.time() or not _wb_hmac.compare_digest(sig or "", _wb_sig(deal_id, exp)):
+        raise HTTPException(status_code=403, detail="Ссылка недействительна или истекла")
+    with get_conn() as c:
+        d = c.execute("SELECT * FROM deals WHERE id = ?", (deal_id,)).fetchone()
+        if not d:
+            raise HTTPException(status_code=404)
+        d = dict(d)
+        cargo = {}
+        if d.get("cargo_id"):
+            r = c.execute("SELECT cargo_desc, cargo_type, weight_tons, volume_m3, currency, pickup_date FROM cargos WHERE id = ?", (d["cargo_id"],)).fetchone()
+            cargo = dict(r) if r else {}
+        plate = None
+        if d.get("trip_id"):
+            r = c.execute("SELECT plate_truck FROM trips WHERE id = ?", (d["trip_id"],)).fetchone()
+            plate = r["plate_truck"] if r else None
+        def person(uid):
+            r = c.execute("SELECT full_name, phone FROM drivers_registration WHERE id = ?", (uid,)).fetchone()
+            if not r:
+                return "—", "—"
+            ph = r["phone"] or "—"
+            if str(ph).startswith(("guest_", "deleted_")):
+                ph = "—"
+            return (r["full_name"] or "—"), ph
+        sh_name, sh_phone = person(d["shipper_id"])
+        dr_name, dr_phone = person(d["driver_id"])
+    cur = (d.get("currency") or cargo.get("currency") or "USD")
+    status_ru = {"accepted": "Принят", "in_progress": "В пути", "at_border": "На границе",
+                 "delivered": "Доставлен", "cancelled": "Отменён"}.get(d.get("status"), d.get("status") or "—")
+    row = lambda k, v: f"<tr><td>{k}</td><td><b>{v or '—'}</b></td></tr>"
+    html = f"""<!doctype html><html lang=ru><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<title>Накладная UrTruck № {deal_id[:8].upper()}</title>
+<style>body{{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:720px;margin:24px auto;padding:0 16px;color:#111}}
+h1{{font-size:20px}}h2{{font-size:14px;color:#666;font-weight:600;margin:18px 0 6px;text-transform:uppercase;letter-spacing:.5px}}
+table{{width:100%;border-collapse:collapse}}td{{padding:7px 10px;border-bottom:1px solid #eee;font-size:14px}}
+td:first-child{{color:#666;width:42%}}.head{{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #FF8400;padding-bottom:10px}}
+.logo{{font-weight:900;font-size:22px}}.logo span{{color:#FF8400}}.muted{{color:#888;font-size:12px}}
+@media print{{.noprint{{display:none}}}}
+.printbtn{{background:#FF8400;color:#111;border:none;border-radius:10px;padding:10px 18px;font-weight:800;font-size:14px;margin:16px 0;cursor:pointer}}</style></head><body>
+<div class=head><div class=logo>Ur<span>Truck</span></div><div class=muted>Транспортная накладная<br>№ {deal_id[:8].upper()} · {str(d.get('created_at') or '')[:10]}</div></div>
+<h2>Маршрут</h2><table>{row('Откуда', d.get('from_city'))}{row('Куда', d.get('to_city'))}{row('Статус', status_ru)}</table>
+<h2>Груз</h2><table>{row('Описание', cargo.get('cargo_desc'))}{row('Тип кузова', cargo.get('cargo_type'))}{row('Вес, т', cargo.get('weight_tons'))}{row('Объём, м³', cargo.get('volume_m3'))}{row('Дата загрузки', cargo.get('pickup_date'))}</table>
+<h2>Стороны</h2><table>{row('Грузоотправитель', sh_name)}{row('Телефон', sh_phone)}{row('Перевозчик (водитель)', dr_name)}{row('Телефон', dr_phone)}{row('Госномер тягача', plate)}</table>
+<h2>Оплата</h2><table>{row('Сумма сделки', f"{d.get('amount')} {cur}")}</table>
+<button class="printbtn noprint" onclick="window.print()">🖨 Печать / Сохранить PDF</button>
+<p class=muted>Сформировано автоматически платформой UrTruck (urtruck.kz) по данным сделки. Подписи сторон ставятся при загрузке/выгрузке.</p>
+</body></html>"""
+    return HTMLResponse(html)
+
+
 # ── Продление одним тапом (Модель А): «Ещё актуально» ────────────────────
 # Дата загрузки/выезда сбрасывается на сегодня → публикация снова живёт
 # 3 дня и возвращается в общую ленту. Без ручного ввода даты.

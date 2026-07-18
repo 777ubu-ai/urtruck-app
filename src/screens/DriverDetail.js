@@ -180,6 +180,24 @@ export default function DriverDetail({ navigation, route }) {
             </Text>
           </View>
           <Text style={s.ratingText}>★ {driver.rating || '—'} <Text style={[s.reviewCount, { color: v1.textMuted }]}>({driver.reviews || 0})</Text></Text>
+          {/* Бейджи доверия (соц-механика 满帮): считаются из реальных данных */}
+          {(() => {
+            const rating = parseFloat(driver.rating) || 0;
+            const reviews = parseInt(driver.reviews) || 0;
+            const badges = [];
+            if (rating >= 4.7 && reviews >= 5) badges.push('🤝 ' + t('badge_reliable'));
+            if (reviews >= 10) badges.push('🚛 ' + t('badge_experienced'));
+            if (!badges.length) return null;
+            return (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8, justifyContent: 'center' }}>
+                {badges.map((b) => (
+                  <View key={b} style={{ backgroundColor: 'rgba(0,230,118,0.10)', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
+                    <Text style={{ color: '#00C766', fontSize: 11, fontWeight: '800' }}>{b}</Text>
+                  </View>
+                ))}
+              </View>
+            );
+          })()}
         </GlassCard>
 
         <GlassCard>

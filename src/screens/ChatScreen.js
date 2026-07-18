@@ -145,6 +145,7 @@ export default function ChatScreen({ navigation, route }) {
   const [recording, setRecording] = useState(false);
   // «Печатает…»: индикатор партнёра (из poll) + троттл своего пинга.
   const [partnerTyping, setPartnerTyping] = useState(false);
+  const [partnerOnline, setPartnerOnline] = useState(false);
   const lastTypingPing = useRef(0);
   const onInputChange = (v) => {
     setInput(v);
@@ -198,6 +199,7 @@ export default function ChatScreen({ navigation, route }) {
       if (!mounted.current) return;  // QA-аудит P1-8: чат закрыт во время poll
       // «Печатает…»: сервер отдаёт живость typing-пинга партнёра.
       setPartnerTyping(!!md.partner_typing);
+      setPartnerOnline(!!md.partner_online);
       const mapped = (md.messages || []).map(m => {
         // Источник истины — серверный признак m.mine (сравнение sender_id с uid
         // на бэке). Локальный myId может быть фейковым ('u_<ts>') до синка
@@ -808,7 +810,15 @@ export default function ChatScreen({ navigation, route }) {
         </View>
         <View style={{ flex: 1 }}>
           {/* Stage DS-1: prettifyPartnerName подменяет guest_/d3/d4 на "Собеседник". */}
-          <Text style={s.partnerName} numberOfLines={1} testID="chat-partner-name">{prettifyPartnerName(resolvedPartner?.name, resolvedPartner?.id, t)}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={s.partnerName} numberOfLines={1} testID="chat-partner-name">{prettifyPartnerName(resolvedPartner?.name, resolvedPartner?.id, t)}</Text>
+            {partnerOnline ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#22C55E' }} />
+                <Text style={{ color: '#22C55E', fontSize: 11, fontWeight: '700' }}>{t('chat_online')}</Text>
+              </View>
+            ) : null}
+          </View>
           {/* Маршрут груза в шапке — сразу видно, по какому заказу чат.
               Если маршрут известен (есть сделка) — показываем его; иначе
               честную роль собеседника (Водитель/Грузовладелец). */}

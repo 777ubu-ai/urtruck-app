@@ -10,6 +10,9 @@ import OfflineBanner from './src/components/OfflineBanner';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import AppNavigator from './src/navigation/AppNavigator';
 import { flushOutbox } from './src/utils/outbox';
+// Фоновый GPS: сам импорт регистрирует TaskManager-таску (обязательно на
+// верхнем уровне, до маунта) — старт/стоп управляется из broadcast-хука.
+import './src/utils/backgroundLocation';
 import { chatAPI } from './src/utils/chatAPI';
 import { push } from './src/utils/push';
 

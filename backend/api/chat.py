@@ -267,6 +267,7 @@ class SendMessageIn(BaseModel):
 def send_message(body: SendMessageIn, user=Depends(require_level(1))):
     if not body.text and not body.photo_url:
         raise HTTPException(status_code=400, detail="text или photo_url обязателен")
+    _LAST_SEEN[user["id"]] = _time.time()   # активность для «онлайн»
 
     # Variant B: комната и получатель. Предпочтительно room_id (каноническая
     # комната) — получателя берём из участников, а НЕ из присланного to_user_id
@@ -557,7 +558,13 @@ def get_messages(room_id: str, limit: int = 100, offset: int = 0, user=Depends(r
     partner_id = room["participant_2"] if room["participant_1"] == uid else room["participant_1"]
     ts = _TYPING.get((room_id, partner_id))
     partner_typing = bool(ts and (_time.time() - ts) < _TYPING_TTL)
-    return {"messages": messages, "room": dict(room), "partner_typing": partner_typing}
+    # «Онлайн»: сам факт этого запроса — активность юзера. Партнёр онлайн,
+    # если его активность моложе 90с (его же поллинг в чате — каждые 3с).
+    _LAST_SEEN[uid] = _time.time()
+    seen = _LAST_SEEN.get(partner_id)
+    partner_online = bool(seen and (_time.time() - seen) < 90)
+    return {"messages": messages, "room": dict(room),
+            "partner_typing": partner_typing, "partner_online": partner_online}
 
 
 @chat_router.get("/contacts")
@@ -640,6 +647,9 @@ async def upload_chat_voice(file: UploadFile = File(...), user=Depends(require_l
 import time as _time
 _TYPING: dict = {}
 _TYPING_TTL = 6
+# «Онлайн»: user_id → unix-ts последней активности в чат-API (in-memory,
+# один PM2-процесс). Обновляется в get_messages/send.
+_LAST_SEEN: dict = {}
 
 
 class TypingIn(BaseModel):
