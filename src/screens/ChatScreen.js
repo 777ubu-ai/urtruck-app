@@ -230,7 +230,9 @@ export default function ChatScreen({ navigation, route }) {
           // («ок»/«ок») в одно между поллами.
           const ackedByServer = mapped.some(srv =>
             (srv.clientMsgId && srv.clientMsgId === m.id) ||
-            (srv.from === 'me' && srv.text === m.text)
+            // фолбэк по тексту — ТОЛЬКО для непустого текста, иначе фото/
+            // голосовые (text='') ложно матчатся и пропадают/задваиваются.
+            (srv.from === 'me' && m.text && m.text.trim() !== '' && srv.text === m.text)
           );
           return !ackedByServer;
         });
@@ -485,21 +487,31 @@ export default function ChatScreen({ navigation, route }) {
       const uri = r.assets[0].uri;
       let photoUri = uri;
       try { photoUri = await compressImage(uri, { maxSide: 800, quality: 0.7 }); } catch { /* fallback: оригинал */ }
+      const toId = recipientId();
+      // P1-1 fix: как и текст — достаточно roomId (бэк возьмёт получателя из
+      // участников). Без roomId нужен собеседник.
+      if (!roomId && !toId) { toast(t('chat_send_failed'), 'error'); return; }
+      // P1-1 fix: помечаем пузырь _optimistic + clientId, чтобы loadMessages
+      // не выкинул фото до подтверждения сервером (раньше без флага исчезало
+      // через 3 c). client_msg_id → идемпотентность (нет дублей при ретапе).
+      const clientId = 'c_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
       setMessages(prev => [...prev, {
-        id: Date.now().toString(), from: 'me',
+        id: clientId, from: 'me',
         text: '', isPhoto: true, photoUri,
         time: new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}),
+        _optimistic: true,
       }]);
-      const toId = recipientId();
-      if (!toId) { toast(t('chat_send_failed'), 'error'); return; }
       // 4.3: сначала грузим фото в storage → ключ, затем шлём сообщение с
       // ключом (раньше слали локальный uri устройства — не резолвился у
       // получателя). Сервер подпишет ключ на чтении, фото видно обеим сторонам.
+      // P1-1 fix: передаём roomId → фото уходит в ТУ ЖЕ комнату сделки,
+      // а не в новую «p:»-комнату.
       try {
         const up = await chatAPI.uploadChatPhoto(photoUri);
         const key = up?.photo_key;
         if (!key) throw new Error('no_key');
-        await chatAPI.send({ toUserId: toId, photoUrl: key, cargoId, tripId });
+        const r = await chatAPI.send({ roomId, toUserId: toId, photoUrl: key, cargoId, tripId, clientMsgId: clientId });
+        if (r.room_id) setRoomId(r.room_id);
         toast('📷 ' + t('photo_sent'), 'success', 1500);
       } catch {
         toast(t('chat_send_failed'), 'error');
@@ -514,23 +526,23 @@ export default function ChatScreen({ navigation, route }) {
   const appendVoiceMessage = (uri, duration) => {
     const mm = String(Math.floor(duration / 60)).padStart(1, '0');
     const ss = String(duration % 60).padStart(2, '0');
+    const toId = recipientId();
+    if (!roomId && !toId) { toast(t('chat_send_failed'), 'error'); return; }
+    // P1-1 fix: _optimistic + clientId + roomId (как у текста/фото).
+    const clientId = 'c_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
     setMessages(prev => [...prev, {
-      id: Date.now().toString(), from: 'me',
+      id: clientId, from: 'me',
       text: `🎤 ${mm}:${ss}`,
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      isVoice: true, playing: false, voiceUrl: uri, duration,
+      isVoice: true, playing: false, voiceUrl: uri, duration, _optimistic: true,
     }]);
-    const toId = recipientId();
-    if (toId) {
-      chatAPI.send({
-        toUserId: toId,
-        text: `🎤 ${t('chat_voice_message')} (${duration}${t('unit_sec_short')})`,
-        isVoice: true, voiceDuration: duration,
-        cargoId, tripId,
-      }).catch(() => toast(t('chat_send_failed'), 'error'));
-    } else {
-      toast(t('chat_send_failed'), 'error');
-    }
+    chatAPI.send({
+      roomId, toUserId: toId,
+      text: `🎤 ${t('chat_voice_message')} (${duration}${t('unit_sec_short')})`,
+      isVoice: true, voiceDuration: duration,
+      cargoId, tripId, clientMsgId: clientId,
+    }).then((r) => { if (r?.room_id) setRoomId(r.room_id); })
+      .catch(() => toast(t('chat_send_failed'), 'error'));
   };
 
   const startRecording = async () => {

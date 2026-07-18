@@ -65,7 +65,7 @@ export const push = {
 
     // 4. Отправляем на бэк
     const token = await storage.get(TOKEN_KEY);
-    await fetch(`${BASE}/subscribe`, {
+    const resp = await fetch(`${BASE}/subscribe`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -76,7 +76,14 @@ export const push = {
         keys: sub.toJSON().keys,
         user_agent: navigator.userAgent,
       }),
-    });
+    }).then((r) => r.json()).catch(() => ({}));
+    // P1-2 fix: если пользователь залогинен (есть token), но подписка не
+    // привязалась к user_id (токен протух на момент подписки) — адресный
+    // web-push не дойдёт. Не считаем успехом → повторим при след. запуске
+    // (симметрично native-пути с 'not_linked').
+    if (token && resp && !resp.user_id) {
+      return { ok: false, reason: 'not_linked', mock };
+    }
     return { ok: true, mock };
   },
 

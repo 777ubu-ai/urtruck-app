@@ -89,7 +89,10 @@ def subscribe(sub: SubscribeIn, authorization: Optional[str] = Header(None)):
             "last_seen = CURRENT_TIMESTAMP",
             (user_id, sub.endpoint, sub.keys.get("p256dh", ""), sub.keys.get("auth", ""), sub.user_agent),
         )
-    return {"ok": True, "mock": PUSH_MOCK}
+    # P1-2 fix: возвращаем user_id, чтобы фронт понял, привязалась ли подписка.
+    # Если пользователь залогинен, а user_id пуст (токен протух) — web-клиент
+    # не кэширует успех и повторит подписку (как native-путь).
+    return {"ok": True, "mock": PUSH_MOCK, "user_id": user_id}
 
 
 @push_router.post("/unsubscribe")
