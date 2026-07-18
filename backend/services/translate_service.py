@@ -30,12 +30,12 @@ def _get_api_key():
 
 
 def get_info():
-    """Debug info — НЕ показывает сам ключ."""
+    """Debug info — НЕ раскрывает ключ. QA-находка: endpoint публичный,
+    поэтому префикс ключа наружу не отдаём вовсе (только факт наличия)."""
     key = _get_api_key()
     return {
         "provider": _get_provider(),
         "openai_key_exists": bool(key and len(key) > 5),
-        "openai_key_prefix": key[:8] + "..." if key and len(key) > 8 else "empty",
     }
 
 
