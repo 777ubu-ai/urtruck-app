@@ -1,0 +1,44 @@
+# chat-voice-message — build 38: голосовые сообщения end-to-end
+#
+# ЧЕСТНОЕ ОГРАНИЧЕНИЕ: сама запись/воспроизведение звука в Maestro на
+# симуляторе не проверяется надёжно (нет реального микрофона, кнопка записи
+# 🎤 в ChatScreen.js пока БЕЗ testID). Поэтому:
+#   • UI-часть (что чат сделки открывается, поле ввода/иконки на месте) —
+#     проверяется этим флоу;
+#   • факт доставки голосового (is_voice=true + photo_url-ключ) —
+#     API-round-trip'ом на ЛОКАЛЬНОМ backend (scripts/test_chat_api.sh — гейты;
+#     позитивный round-trip и прослушивание — 📱 на устройстве, см.
+#     qa/CHAT_QA_MASTER.md);
+#   • реальная запись → отправка → прослушивание на ВТОРОМ устройстве —
+#     обязательный 📱-пункт ручного чек-листа (облако физически не может
+#     протестировать звук).
+#
+# ⚠️ ЗАПУСК: EXPO_PUBLIC_API_URL=http://127.0.0.1:8001 (см. _lib/README.md)
+appId: host.exp.Exponent
+name: chat-voice-message
+tags: [chat, voice, build38, partial]
+env:
+  MAESTRO_ACTOR: boris
+---
+- runFlow: _lib/qa-login.yaml
+- runFlow:
+    when:
+      visible: "Allow"
+    commands:
+      - tapOn: "Allow"
+      - waitForAnimationToEnd
+- tapOn: { id: "bottom-nav-chats" }
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: { id: "deal-room-list" }
+    timeout: 12000
+- tapOn: { id: "deal-room-list-card", index: 0 }
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: { id: "chat-input" }
+    timeout: 10000
+# Поле ввода и панель вложений присутствуют (📷/🎤 — визуально).
+- assertVisible: { id: "chat-input" }
+- takeScreenshot: VOICE_chat_room_ready
+# TODO(build38): добавить testID="chat-voice-record" на кнопку 🎤 в
+# ChatScreen.js, тогда можно будет автоматизировать longPress-запись.

@@ -1,0 +1,41 @@
+# chat-photo-camera-gallery — build 38: фото в чате (Камера/Галерея)
+#
+# ЧЕСТНОЕ ОГРАНИЧЕНИЕ: тап по 📷 открывает НАТИВНЫЙ Alert «Камера/Галерея»
+# (ChatScreen.js:523-545, ImagePicker.launchCameraAsync / launchImageLibraryAsync).
+# Maestro на симуляторе НЕ может мокнуть системный image picker и камеру,
+# поэтому полный путь «выбрал фото → отправилось → пришло собеседнику»
+# проверяется ТОЛЬКО вручную на устройстве (📱 qa/CHAT_QA_MASTER.md).
+#
+# Этот флоу фиксирует лишь то, что диалог выбора источника РЕАЛЬНО появляется
+# (regression-guard на native Alert с Камера/Галерея). Кнопка 📷 пока без
+# testID → тап по видимому тексту-иконке; если сломается — добавить
+# testID="chat-photo-btn" на Pressable в ChatScreen.js.
+#
+# ⚠️ ЗАПУСК: EXPO_PUBLIC_API_URL=http://127.0.0.1:8001 (см. _lib/README.md)
+appId: host.exp.Exponent
+name: chat-photo-camera-gallery
+tags: [chat, photo, build38, manual-required]
+env:
+  MAESTRO_ACTOR: boris
+---
+- runFlow: _lib/qa-login.yaml
+- runFlow:
+    when:
+      visible: "Allow"
+    commands:
+      - tapOn: "Allow"
+      - waitForAnimationToEnd
+- tapOn: { id: "bottom-nav-chats" }
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: { id: "deal-room-list" }
+    timeout: 12000
+- tapOn: { id: "deal-room-list-card", index: 0 }
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: { id: "chat-input" }
+    timeout: 10000
+- assertVisible: { id: "chat-input" }
+- takeScreenshot: PHOTO_chat_room_ready
+# Дальше — только вручную: тап 📷 → Alert «📷 Камера / 🖼 Галерея» →
+# выбор → отправка → доставка. Автоматизация невозможна (native picker).

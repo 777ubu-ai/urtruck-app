@@ -1,0 +1,42 @@
+# deal-waybill — build 38: накладная (CMR) на сделке
+# Кнопка «📄 Накладная» (testID="deal-waybill") на детали сделки →
+# POST /market/deals/{id}/waybill-link (подписанная ссылка, TTL 7д) →
+# GET /market/deals/{id}/waybill (печатный HTML).
+#
+# Предусловие: у boris есть сделка (см. deal-status-timeline).
+# Проверка «страница реально открылась» из Maestro ограничена (WebView/Share
+# sheet), поэтому здесь фиксируем ДОСТУПНОСТЬ кнопки и её тап без краша;
+# валидность самого HTML-документа проверяется API-тестом (см. _lib/README.md)
+# либо вручную на устройстве (📱 чек-лист qa/CHAT_QA_MASTER.md).
+#
+# ⚠️ ЗАПУСК: EXPO_PUBLIC_API_URL=http://127.0.0.1:8001 (см. _lib/README.md)
+appId: host.exp.Exponent
+name: deal-waybill
+tags: [deal, waybill, build38]
+env:
+  MAESTRO_ACTOR: boris
+---
+- runFlow: _lib/qa-login.yaml
+- runFlow:
+    when:
+      visible: "Allow"
+    commands:
+      - tapOn: "Allow"
+      - waitForAnimationToEnd
+- tapOn: { id: "bottom-nav-mywork" }
+- waitForAnimationToEnd
+- tapOn: { id: "my-work-tab-enroute" }
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: { id: "my-order-card" }
+    timeout: 8000
+- tapOn: { id: "my-order-card", index: 0 }
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: { id: "deal-waybill" }
+    timeout: 8000
+- assertVisible: { id: "deal-waybill" }
+- takeScreenshot: WB_deal_waybill_button
+- tapOn: { id: "deal-waybill" }
+- waitForAnimationToEnd
+- takeScreenshot: WB_deal_waybill_opened
