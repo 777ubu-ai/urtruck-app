@@ -225,7 +225,7 @@ const s = StyleSheet.create({
   subtitle: { fontSize: 13, marginTop: 2 },
   statusPill: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, borderWidth: 1 },
   statusText: { fontSize: 11, fontWeight: '900', letterSpacing: 0.5 },
-  price: { fontSize: 21, fontWeight: '900' },
+  price: { fontSize: 21, fontWeight: '900', fontVariant: ['tabular-nums'] },
   priceCaption: { fontSize: 11, marginTop: 1 },
   metaRow: {
     flexDirection: 'row', flexWrap: 'wrap', gap: 8,

@@ -67,7 +67,7 @@ export default function MyTripsScreen({ navigation, route }) {
   archiveToggle: { alignSelf: 'flex-end', paddingVertical: 6, paddingHorizontal: 4, marginTop: 2 },
   archiveToggleText: { fontSize: 12, fontWeight: '700' },
 
-  card: { borderRadius: radius.md, padding: spacing.md, borderWidth: 1, marginBottom: spacing.sm },
+  card: { borderRadius: 20, padding: 16, borderWidth: 0.5, marginBottom: 14, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 3 },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xs },
   badge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
   badgeText: { fontSize: 11, fontWeight: '800', letterSpacing: 1 },
@@ -78,7 +78,7 @@ export default function MyTripsScreen({ navigation, route }) {
   metaItem: { ...typography.caption },
   metaDot: { color: '#475569', fontSize: 11 },
   cardBottom: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  price: { ...typography.h2, color: '#22C55E' },
+  price: { fontSize: 24, fontWeight: '700', color: '#FF8400', fontVariant: ['tabular-nums'] },
   bidsLabel: { ...typography.caption, flex: 1 },
   offersCta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.sm, paddingVertical: 10, paddingHorizontal: 12, borderRadius: radius.sm, backgroundColor: 'rgba(255,132,0,0.14)' },
   offersCtaText: { color: '#FF8400', fontSize: 14, fontWeight: '800', flex: 1 },
@@ -517,7 +517,8 @@ export default function MyTripsScreen({ navigation, route }) {
   };
 
   const renderDeal = ({ item }) => {
-    const sc = { accepted: '#22C55E', in_progress: '#FF8400', delivered: '#22C55E', cancelled: '#EF4444' };
+    // Промпт-дизайн клиента: «Принят» — изумруд #10B981 (текст+галочка, без фона).
+    const sc = { accepted: '#10B981', in_progress: '#FF8400', at_border: '#2563EB', delivered: '#10B981', cancelled: '#EF4444' };
     const busy = busyBidId === item.id;
     const nextStep = isDriver
       ? (item.status === 'accepted' ? t('driver_next_step_accepted')
@@ -599,7 +600,7 @@ export default function MyTripsScreen({ navigation, route }) {
               самостоятельной отмены нет (вопросы — через чат/поддержку). */}
           {item.status === 'accepted' && (
             <TouchableOpacity
-              style={[s.miniBtn, { borderColor: '#EF4444' }, busy && { opacity: 0.5 }]}
+              style={[s.miniBtn, { backgroundColor: 'transparent' }, busy && { opacity: 0.5 }]}
               disabled={busy}
               onPress={async () => {
                 if (!(await confirmAction(t('cancel_deal_confirm')))) return;
@@ -611,7 +612,7 @@ export default function MyTripsScreen({ navigation, route }) {
           )}
           {item.chat_room_id && (
             <TouchableOpacity
-              style={[s.miniBtn, { borderColor: accent }]}
+              style={[s.miniBtn, { backgroundColor: 'rgba(255,132,0,0.14)' }]}
               onPress={() => navigation.navigate('Chat', { roomId: item.chat_room_id, role })}
             >
               <Text style={[s.miniBtnText, { color: accent }]}>💬 {t('order_chat')}</Text>
@@ -621,12 +622,12 @@ export default function MyTripsScreen({ navigation, route }) {
           {!isDriver && ['accepted', 'in_progress', 'picked_up'].includes(item.status) && (
             <TouchableOpacity
               testID="deal-track-truck"
-              style={[s.miniBtn, { borderColor: '#FF8400' }]}
+              style={s.miniBtn}
               onPress={() => navigation.navigate('TrackTruck', {
                 dealId: item.id, from: item.from_city, to: item.to_city, driverName: item.driver_name,
               })}
             >
-              <Text style={[s.miniBtnText, { color: '#FF8400' }]}>📍 {t('track_truck_btn')}</Text>
+              <Text style={[s.miniBtnText, { color: theme.text }]}>📍 {t('track_truck_btn')}</Text>
             </TouchableOpacity>
           )}
         </View>

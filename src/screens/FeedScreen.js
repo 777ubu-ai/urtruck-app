@@ -105,7 +105,7 @@ export default function FeedScreen({ navigation, route }) {
   routeSelArrow: { fontSize: 20, fontWeight: '900' },
   titleHero: { color: v1.text, fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
   titleHeroSub: { color: v1.textMuted, fontSize: 12, marginTop: 2 },
-  titleCta: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 },
+  titleCta: { borderWidth: 0, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 10, shadowColor: '#FF8400', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 5 },
   titleCtaText: { fontSize: 12, fontWeight: '800' },
   footerNote: {
     marginTop: 16, marginBottom: 8,
