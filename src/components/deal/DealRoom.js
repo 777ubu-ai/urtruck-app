@@ -156,19 +156,19 @@ export function DealQuickActions({ role, onOfferPrice, onAcceptBid, onSendDocume
   const { t } = useI18n();
   const { theme } = useTheme();
   const accent = accentFor(role);
-  // Действия, не подключённые к backend в этом PR, приходят как undefined →
-  // кнопка disabled/pending (НЕ фейково рабочая, §ЭТАП3).
+  // Недоступные в текущем состоянии действия НЕ показываем вовсе (раньше висели
+  // серыми «мёртвыми» кнопками — владелец справедливо принял их за баг). Кнопка
+  // рендерится только когда есть реальный обработчик.
   const Action = ({ icon, label, onPress }) => {
-    const enabled = typeof onPress === 'function';
+    if (typeof onPress !== 'function') return null;
     return (
       <TouchableOpacity
-        style={[s.qa, { borderColor: theme.border, opacity: enabled ? 1 : 0.45 }]}
-        onPress={enabled ? onPress : undefined}
-        disabled={!enabled}
+        style={[s.qa, { borderColor: theme.border }]}
+        onPress={onPress}
         testID={`deal-qa-${icon}`}
       >
-        <Feather name={icon} size={16} color={enabled ? accent : theme.textMuted} />
-        <Text style={[s.qaText, { color: enabled ? theme.text : theme.textMuted }]} numberOfLines={1}>{label}</Text>
+        <Feather name={icon} size={16} color={accent} />
+        <Text style={[s.qaText, { color: theme.text }]} numberOfLines={1}>{label}</Text>
       </TouchableOpacity>
     );
   };

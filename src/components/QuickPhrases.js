@@ -36,7 +36,13 @@ const CONTEXT_KEYS = {
 export default function QuickPhrases({ onSelect, role, dealStatus }) {
   const { t } = useI18n();
   const { theme } = useTheme();
-  const CATEGORIES = role === 'driver' ? DRIVER_CATEGORIES : CLIENT_CATEGORIES;
+  const rawCategories = role === 'driver' ? DRIVER_CATEGORIES : CLIENT_CATEGORIES;
+  // Без активной сделки статусные фразы («Я на погрузке», «Выезжаю») не к месту —
+  // это сбивало (владелец видел их в обычном чате без заказа). Показываем вкладку
+  // «Статус» только когда есть сделка.
+  const CATEGORIES = dealStatus
+    ? rawCategories
+    : rawCategories.filter((c) => c.nameKey !== 'qp_tab_status');
   const [activeTab, setActiveTab] = useState(0);
   const cat = CATEGORIES[Math.min(activeTab, CATEGORIES.length - 1)];
   const ctxKeys = (CONTEXT_KEYS[role === 'driver' ? 'driver' : 'client'] || {})[dealStatus] || null;

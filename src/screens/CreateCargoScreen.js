@@ -105,7 +105,7 @@ export default function CreateCargoScreen({ navigation, route }) {
   // указывает стартовую сумму, «Жду предложений»/«По договорённости» убраны —
   // перевозчики торгуются от конкретной цифры (модель InDrive).
   const [price, setPrice] = useState('');
-  const [currency, setCurrency] = useState('KZT');
+  const [currency, setCurrency] = useState('USD');
   // Умная валюта по стране отправления, пока пользователь не выбрал вручную.
   const [currencyTouched, setCurrencyTouched] = useState(false);
   // Тип оплаты (нал/безнал) — важен водителю. '' = не указан.
@@ -239,10 +239,11 @@ export default function CreateCargoScreen({ navigation, route }) {
         onSelect={(v, point) => {
           setFrom(v);
           setFromPoint(point || null);
-          // Умная валюта по стране отправления (Китай → CNY, РФ → RUB…),
-          // пока клиент не выбрал валюту вручную.
+          // Валюта по умолчанию — USD (валюта коридора Китай↔СНГ, решение
+          // владельца). Умная подстановка по стране отправления оставлена для
+          // РФ (RUB), пока клиент не выбрал валюту вручную; Китай остаётся в USD.
           if (!currencyTouched && point?.country) {
-            const cc = { CN: 'CNY', RU: 'RUB', KZ: 'KZT', UZ: 'KZT', KG: 'KZT', TJ: 'KZT' }[String(point.country).toUpperCase()];
+            const cc = { RU: 'RUB' }[String(point.country).toUpperCase()];
             if (cc) setCurrency(cc);
           }
           if (errors.from) setErrors((e) => ({ ...e, from: null }));

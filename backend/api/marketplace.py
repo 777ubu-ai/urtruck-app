@@ -1597,6 +1597,14 @@ def update_bid(bid_id: str, body: BidUpdateIn, user=Depends(require_level(1))):
 
         old_amount = bid["amount"]
         new_amount = body.amount if body.amount is not None else old_amount
+        # Нижний предел скидки: нельзя ронять ставку до символической суммы
+        # (в проде видели «$5333 → $1»). Разрешаем снижать не более чем на 90%
+        # от исходной — глубже это ошибка/абьюз, а не торг.
+        if body.amount is not None and old_amount and new_amount < old_amount * 0.1:
+            raise HTTPException(
+                status_code=400,
+                detail="Слишком большая скидка: цену нельзя снижать более чем на 90%",
+            )
         new_message = body.message if body.message is not None else bid.get("message")
 
         c.execute(

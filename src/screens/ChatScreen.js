@@ -13,6 +13,7 @@ import { chatAPI } from '../utils/chatAPI';
 import { marketAPI } from '../utils/marketAPI';
 import { formatPrice } from '../utils/normalizers';
 import { localizePlace } from '../utils/places';
+import { SERVER_URL } from '../config/env';
 import { notifyChatRead } from '../utils/unreadEvents';
 import { refreshAppIconBadge } from '../utils/appBadge';
 import { useMountedRef } from '../hooks/useMountedRef';
@@ -29,6 +30,15 @@ import DealAttachments from '../components/deal/DealAttachments';
 // HOT-006: реальная запись/воспроизведение для web (PWA deploy).
 // На нативе (Expo Go) expo-av не установлен — тост "скоро".
 const IS_WEB = Platform.OS === 'web';
+
+// Вложения (фото/голос) сервер отдаёт как ХОСТ-ОТНОСИТЕЛЬНЫЙ подписанный путь
+// (`/security/storage/...?exp=&sig=`). В вебе браузер сам достраивает адрес от
+// origin, а на нативе <Image>/аудио требуют абсолютный URL со схемой — иначе
+// картинка не грузится и виден только зелёный фон пузыря (баг «зелёные квадраты»).
+// SERVER_URL === '' на вебе (сохраняем относительный путь), 'https://urtruck.kz'
+// на нативе. Та же причина ломала воспроизведение голосовых на iOS.
+const resolveAttachment = (u) =>
+  (u && typeof u === 'string' && u.startsWith('/')) ? `${SERVER_URL}${u}` : u;
 
 // Stage 52: photo и voice upload в Support Chat не реализованы end-to-end (P0-1, Bug-B).
 // Скрываем кнопки до отдельного PR с multipart upload endpoint.
@@ -215,8 +225,8 @@ export default function ChatScreen({ navigation, route }) {
           id: String(m.id), from: fromMe ? 'me' : 'them',
           // Голосовое хранит аудио-ключ в том же поле photo_url (подписанном
           // сервером) — не путать с фото: isPhoto только когда НЕ voice.
-          text: m.text, isPhoto: !!m.photo_url && !m.is_voice, photoUri: m.photo_url,
-          isVoice: !!m.is_voice, voiceUrl: m.is_voice ? m.photo_url : undefined,
+          text: m.text, isPhoto: !!m.photo_url && !m.is_voice, photoUri: resolveAttachment(m.photo_url),
+          isVoice: !!m.is_voice, voiceUrl: m.is_voice ? resolveAttachment(m.photo_url) : undefined,
           duration: m.voice_duration || 0,
           time: fmtMsgTime(m.created_at),
           is_read: !!m.is_read,
@@ -522,11 +532,51 @@ export default function ChatScreen({ navigation, route }) {
 
   // WhatsApp-style: тап по 📷 предлагает Камеру или Галерею (на native).
   // На web камера ненадёжна — сразу галерея.
+  // Связь с партнёром: выбор WhatsApp или обычный звонок (как просил владелец).
+  // wa.me требует только цифры (без +); tel: — с плюсом. На web Alert-выбор не
+  // поддерживается — открываем WhatsApp (для китайского направления он нужнее).
+  const contactPartner = (rawPhone) => {
+    const phone = String(rawPhone || '').replace(/[^\d+]/g, '');
+    if (!phone) return;
+    const waNumber = phone.replace(/[^\d]/g, '');
+    const openWa = () => Linking.openURL(`https://wa.me/${waNumber}`).catch(() => {});
+    const openTel = () => Linking.openURL(`tel:${phone}`).catch(() => {});
+    if (Platform.OS === 'web') { openWa(); return; }
+    Alert.alert(t('contact_choose_title'), phone, [
+      { text: t('contact_whatsapp'), onPress: openWa },
+      { text: t('contact_call'), onPress: openTel },
+      { text: t('contact_cancel'), style: 'cancel' },
+    ]);
+  };
+
+  // Отправить свою геопозицию как сообщение со ссылкой на карту (открывается в
+  // Яндекс/Google Картах у собеседника). expo-location уже в проекте — работает
+  // и в текущей сборке. Для веба используем navigator.geolocation.
+  const sendLocation = async () => {
+    try {
+      let latitude, longitude;
+      if (Platform.OS === 'web') {
+        const pos = await new Promise((res, rej) =>
+          navigator.geolocation.getCurrentPosition(res, rej, { timeout: 10000 }));
+        ({ latitude, longitude } = pos.coords);
+      } else {
+        const Location = require('expo-location');
+        const perm = await Location.requestForegroundPermissionsAsync();
+        if (perm.status !== 'granted') { toast(t('location_denied'), 'error'); return; }
+        const pos = await Location.getCurrentPositionAsync({});
+        ({ latitude, longitude } = pos.coords);
+      }
+      const link = `https://yandex.ru/maps/?pt=${longitude},${latitude}&z=15&l=map`;
+      sendMessage(`📍 ${t('chat_location_msg')}: ${link}`);
+    } catch { toast(t('location_denied'), 'error'); }
+  };
+
   const sendPhoto = () => {
     if (Platform.OS === 'web') { pickAndSend(false); return; }
     Alert.alert(t('add_photo'), '', [
       { text: '📷 ' + t('camera'), onPress: () => pickAndSend(true) },
       { text: '🖼 ' + t('gallery'), onPress: () => pickAndSend(false) },
+      { text: '📍 ' + t('attach_location'), onPress: () => sendLocation() },
       { text: t('cancel'), style: 'cancel' },
     ]);
   };
@@ -852,7 +902,7 @@ export default function ChatScreen({ navigation, route }) {
                 {deal?.counterparty_phone ? (
                   <TouchableOpacity
                     style={[s.callBtn, { borderColor: v1Accent.main }]}
-                    onPress={() => Linking.openURL(`tel:${String(deal.counterparty_phone).replace(/[^\d+]/g, '')}`).catch(() => {})}
+                    onPress={() => contactPartner(deal.counterparty_phone)}
                     testID="deal-call-btn"
                   >
                     <Text style={[s.callBtnText, { color: v1Accent.main }]}>📞 {t('call_partner')}</Text>
@@ -886,6 +936,7 @@ export default function ChatScreen({ navigation, route }) {
                   role={role}
                   onCallSupport={onCallSupport}
                   onAcceptBid={canAcceptBid ? () => setAcceptConfirm(true) : undefined}
+                  onSendDocument={CHAT_PHOTO_ENABLED ? sendPhoto : undefined}
                 />
               </View>
             ) : null}

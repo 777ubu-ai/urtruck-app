@@ -91,7 +91,7 @@ export default function CreateTripScreen({ navigation, route }) {
   // Цена рейса ОБЯЗАТЕЛЬНА (решение владельца): водитель всегда указывает
   // ставку за рейс, «По договорённости» убрана.
   const [price, setPrice] = useState('');
-  const [currency, setCurrency] = useState('KZT');
+  const [currency, setCurrency] = useState('USD');
   // PR-C2: comment state удалён вместе с Textarea ниже — backend TripIn
   // не имеет поля comment, значение молча терялось. Симметрично с
   // CreateCargoScreen (PR-C1 fix).

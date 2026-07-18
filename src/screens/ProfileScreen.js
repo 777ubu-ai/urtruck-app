@@ -34,6 +34,24 @@ const QA_HOOK_ALLOWED = (() => {
   }
 })();
 
+// Реальная версия приложения (раньше была захардкожена «v1.0.50 · 17.04.2026»,
+// что вводило в заблуждение). Берём фактические значения сборки из expo-constants:
+// nativeAppVersion = app.json version (1.0.2), nativeBuildVersion = номер сборки
+// (например 38). На web build-номера нет → показываем только версию.
+const APP_VERSION_LABEL = (() => {
+  try {
+    const Constants = require('expo-constants').default;
+    const ver = Constants?.nativeAppVersion || Constants?.expoConfig?.version || '1.0.2';
+    const build = Constants?.nativeBuildVersion
+      || Constants?.expoConfig?.ios?.buildNumber
+      || Constants?.expoConfig?.android?.versionCode
+      || '';
+    return `v${ver}${build ? ` (${build})` : ''}`;
+  } catch {
+    return 'v1.0.2';
+  }
+})();
+
 // Stage 26: confirm() теперь принимает локализованные кнопки и
 // нормальный message (раньше message был жёстко "?", а cancel был
 // "✕"). Все три параметра title/msg/labels должны проходить через
@@ -411,10 +429,10 @@ export default function ProfileScreen({ navigation, route }) {
               } catch {}
             }}
           >
-            <Text style={[s.versionText, { color: theme.textMuted }]}>v1.0.50 · 17.04.2026</Text>
+            <Text style={[s.versionText, { color: theme.textMuted }]}>{APP_VERSION_LABEL}</Text>
           </TouchableOpacity>
         ) : (
-          <Text style={[s.versionRow, s.versionText, { color: theme.textMuted }]}>v1.0.50 · 17.04.2026</Text>
+          <Text style={[s.versionRow, s.versionText, { color: theme.textMuted }]}>{APP_VERSION_LABEL}</Text>
         )}
 
         {/* «Сменить роль» убрана по решению владельца (13.06): смена роли

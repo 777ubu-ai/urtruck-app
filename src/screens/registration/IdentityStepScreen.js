@@ -74,7 +74,7 @@ export default function IdentityStepScreen({ navigation }) {
     if (!res.ok) throw new Error('save_failed');
   };
 
-  const validateName = (v) => (!v || v.trim().length < 2 ? t('val_name_short') : null);
+  const validateName = (v, msgKey = 'val_name_short') => (!v || v.trim().length < 2 ? t(msgKey) : null);
 
   const validateIin = (v) => {
     if (!v) return t('val_required');
@@ -154,7 +154,7 @@ export default function IdentityStepScreen({ navigation }) {
     const e = {
       photo: photoUri ? null : t('identity_err_photo'),
       firstName: validateName(firstName),
-      lastName: validateName(lastName),
+      lastName: validateName(lastName, 'val_surname_short'),
       birth: validateBirth(birthDate),
       iin: validateIin(iin),
     };
