@@ -15,6 +15,14 @@ export const voice = {
     }
     try {
       const { Audio } = require('expo-av');
+      // Явно запрашиваем доступ к микрофону — без этого iOS не показывает диалог
+      // разрешения и запись падает («Нужен доступ к микрофону»). NSMicrophone-
+      // UsageDescription уже прописан в app.json (нужна пересборка build 39).
+      const perm = await Audio.requestPermissionsAsync();
+      if (!perm.granted) {
+        console.warn('[voice] microphone permission not granted');
+        return false;
+      }
       await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
       const { recording } = await Audio.Recording.createAsync(
         Audio.RecordingOptionsPresets.HIGH_QUALITY

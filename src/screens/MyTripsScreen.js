@@ -9,6 +9,7 @@ import { regAPI } from '../utils/registration';
 import { formatStatus, formatTruckType, formatBids } from '../utils/i18n';
 import { formatDateForDisplay } from '../utils/dateInput';
 import { formatPrice, normalizeTrip } from '../utils/normalizers';
+import { localizePlace, localizeCargoName } from '../utils/places';
 import EmptyState from '../components/ui/EmptyState';
 import BidModal from '../components/BidModal';
 import EditCargoModal from '../components/EditCargoModal';
@@ -104,7 +105,7 @@ export default function MyTripsScreen({ navigation, route }) {
   const { role } = route.params || {};
   const isDriver = role === 'driver';
   const accent = isDriver ? '#22C55E' : '#FF8400';
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
   const notifUnread = useUnreadNotifications();
@@ -400,8 +401,8 @@ export default function MyTripsScreen({ navigation, route }) {
             return '#22C55E'; // active по умолчанию — зелёный
           })() }]}>{item._expired ? `⏳ ${t('deadline_expired')}` : formatStatus(item.status || 'active')}</Text>
         </View>
-        <Text style={[s.route, { color: theme.text }]}>{from} → {to}</Text>
-        {desc ? <Text style={[s.desc, { color: theme.textMuted }]} numberOfLines={1}>{desc}</Text> : null}
+        <Text style={[s.route, { color: theme.text }]}>{localizePlace(from, lang)} → {localizePlace(to, lang)}</Text>
+        {desc ? <Text style={[s.desc, { color: theme.textMuted }]} numberOfLines={1}>{localizeCargoName(desc, lang)}</Text> : null}
         <View style={s.cardMeta}>
           <Text style={[s.metaItem, { color: theme.textDim }]}>{formatTruckType(item.truck_type || item.cargo_type)}</Text>
           <Text style={s.metaDot}>·</Text>
@@ -549,12 +550,12 @@ export default function MyTripsScreen({ navigation, route }) {
             <Text style={[s.statusLabel, { color: sc[item.status] || '#78716C' }]}>{formatStatus(item.status)}</Text>
           )}
         </View>
-        <Text style={[s.route, { color: theme.text }]}>{item.from_city || '—'} → {item.to_city || '—'}</Text>
+        <Text style={[s.route, { color: theme.text }]}>{localizePlace(item.from_city || '—', lang)} → {localizePlace(item.to_city || '—', lang)}</Text>
         {/* issue #3: груз/тип кузова на карточке заказа */}
         {(item.cargo_title || item.cargo_desc || item.cargo_type || item.truck_type) ? (
           <View style={s.cardMeta}>
             {(item.cargo_title || item.cargo_desc) ? (
-              <Text style={[s.metaItem, { color: theme.textMuted }]} numberOfLines={1}>📦 {item.cargo_title || item.cargo_desc}</Text>
+              <Text style={[s.metaItem, { color: theme.textMuted }]} numberOfLines={1}>📦 {localizeCargoName(item.cargo_title || item.cargo_desc, lang)}</Text>
             ) : null}
             {(item.cargo_type || item.truck_type) ? (
               <>
@@ -673,10 +674,10 @@ export default function MyTripsScreen({ navigation, route }) {
         opacity: item.status === 'cancelled' ? 0.6 : 1,
       }]}>
         <View style={s.cardTop}>
-          <Text style={[s.route, { color: theme.text }]}>{from} → {to}</Text>
+          <Text style={[s.route, { color: theme.text }]}>{localizePlace(from, lang)} → {localizePlace(to, lang)}</Text>
           <Text style={[s.statusLabel, { color: sc[item.status] || '#78716C' }]}>{sl[item.status] || item.status}</Text>
         </View>
-        {item.cargo_desc ? <Text style={[s.desc, { color: theme.textMuted }]} numberOfLines={1}>{item.cargo_desc}</Text> : null}
+        {item.cargo_desc ? <Text style={[s.desc, { color: theme.textMuted }]} numberOfLines={1}>{localizeCargoName(item.cargo_desc, lang)}</Text> : null}
         <View style={s.cardBottom}>
           <Text style={s.price}>{formatPrice(item.amount, currencyFor(item), t)}</Text>
           {item.message && <Text style={[s.bidsLabel, { color: theme.textMuted }]} numberOfLines={1}>{item.message}</Text>}
