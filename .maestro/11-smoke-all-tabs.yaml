@@ -52,6 +52,14 @@ env:
 - tapOn:
     id: "bottom-nav-profile"
 - waitForAnimationToEnd
+# Профиль водителя вырос (бейдж статуса Новичок/Проверенный/Профи, шкала 50/80/100 —
+# build 39), кнопка выхода ушла под фолд → скроллим до неё, как в
+# client-profilehunt / client-logout-verify.
+- scrollUntilVisible:
+    element:
+      id: "profile-logout"
+    direction: DOWN
+    timeout: 8000
 - assertVisible:
     id: "profile-logout"
 - takeScreenshot: 04_profile
