@@ -505,6 +505,35 @@ async def upload_personal_photo(
     return {"personal_photo_key": photo_url}
 
 
+# ---------- Удостоверение личности (новый порядок: шаг 2, 2 стороны) ----------
+@reg_router.post("/documents/id-front")
+async def upload_id_front(
+    file: UploadFile = File(...),
+    driver_id: str = Depends(get_current_driver),
+):
+    """Удостоверение личности — лицевая сторона. Храним только ключ файла."""
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Пустой файл")
+    url = storage.save_image(data, "id_documents")
+    reg_dal.update_driver(driver_id, {"id_front_url": url})
+    return {"id_front_key": url}
+
+
+@reg_router.post("/documents/id-back")
+async def upload_id_back(
+    file: UploadFile = File(...),
+    driver_id: str = Depends(get_current_driver),
+):
+    """Удостоверение личности — оборотная сторона. Храним только ключ файла."""
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Пустой файл")
+    url = storage.save_image(data, "id_documents")
+    reg_dal.update_driver(driver_id, {"id_back_url": url})
+    return {"id_back_key": url}
+
+
 # ---------- ЭТАП 3: Документы (права + техпаспорт) ----------
 @reg_router.post("/license-selfie")
 async def upload_license_selfie(
@@ -862,6 +891,9 @@ def get_status(driver_id: str = Depends(get_current_driver)):
     # «Личные данные» не заставлял переснимать уже загруженное фото.
     safe["has_personal_photo"] = bool(driver.get("personal_photo_url"))
     safe["personal_photo_key"] = driver.get("personal_photo_url") or None
+    # Новый порядок: удостоверение личности (2 стороны) + гражданство.
+    safe["has_id_front"] = bool(driver.get("id_front_url"))
+    safe["has_id_back"] = bool(driver.get("id_back_url"))
     return safe
 
 
