@@ -5,7 +5,7 @@ import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import {v1Colors, useV1Colors} from '../theme/designV1';
 import { useAuth } from '../utils/AuthContext';
-import { securityAPI, COLOR_UI } from '../utils/security';
+import { securityAPI, COLOR_UI, driverTier } from '../utils/security';
 import GradientText from '../components/GradientText';
 import SecurityBadge from '../components/SecurityBadge';
 
@@ -28,7 +28,13 @@ export default function SecurityScreen({ navigation }) {
     })();
   }, []);
 
-  const ui = score?.color_code ? (COLOR_UI[score.color_code] || COLOR_UI.yellow) : COLOR_UI.yellow;
+  // Чёрный список показываем как раньше; иначе — 4-уровневая лестница по баллам
+  // (Новый → Новичок → Опытный → Профи), а не единый «Новичок».
+  const isBlack = score?.color_code === 'black';
+  const tier = driverTier(score?.total_score ?? 50);
+  const ui = isBlack
+    ? COLOR_UI.black
+    : { bg: tier.color + '20', border: tier.color, text: tier.color, label: `${tier.emoji} ${t(tier.key)}` };
 
   return (
     <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
