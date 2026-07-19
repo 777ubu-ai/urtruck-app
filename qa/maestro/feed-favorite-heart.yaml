@@ -1,13 +1,15 @@
 # feed-favorite-heart — build 39: ❤️ быстрое сохранение перевозчика из ленты
-# Тап по ❤️ (testID="feed-fav") на карточке ленты → перевозчик в Избранном.
-# Актёр serik (driver) видит ленту грузов; ❤️ сохраняет. Для client-ленты
-# (машины) — та же кнопка feed-fav на FeedCard.
+# Тап по ❤️ (testID="feed-fav") на карточке ПЕРЕВОЗЧИКА → в Избранное.
+# ❤️ рендерится ТОЛЬКО у клиента (FeedScreen.js:679 onToggleFav={!isDriver …})
+# на карточках перевозчиков (renderDriver) → актёр boris (client).
+# ПРЕДУСЛОВИЕ: в клиентской ленте есть карточки перевозчиков (serik-рейс) —
+# засев scripts/qa_seed_fixtures.sh (рейс serik).
 # ⚠️ ЗАПУСК: EXPO_PUBLIC_API_URL=http://127.0.0.1:8001 (см. _lib/README.md)
 appId: host.exp.Exponent
 name: feed-favorite-heart
 tags: [feed, favorite, build39]
 env:
-  MAESTRO_ACTOR: serik
+  MAESTRO_ACTOR: boris
 ---
 - runFlow: _lib/qa-login.yaml
 - tapOn: { id: "bottom-nav-feed" }

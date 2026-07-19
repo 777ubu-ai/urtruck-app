@@ -29,3 +29,6 @@ CC=$(curl -sS -m10 -X POST "$BASE/market/cargos" -H "Authorization: Bearer $BORI
 NB=$(curl -sS -m10 -X POST "$BASE/market/bids" -H "Authorization: Bearer $SERIK" -H "Content-Type: application/json" -d "{\"cargo_id\":\"$CC\",\"amount\":1450,\"message\":\"Беру\"}" | python3 -c "import sys,json;print(json.load(sys.stdin).get('id',''))")
 DEAL=$(curl -sS -m15 -X POST "$BASE/market/bids/$NB/accept" -H "Authorization: Bearer $BORIS" -H "Content-Type: application/json" | python3 -c "import sys,json;print(json.load(sys.stdin).get('deal_id',''))")
 echo "DEAL_SEEDED deal=$DEAL cargoC=$CC"
+
+# --- Рейс serik (карточка перевозчика в клиентской ленте для ❤️) ---
+curl -sS -m10 -X POST "$BASE/market/trips" -H "Authorization: Bearer $SERIK" -H "Content-Type: application/json" -d '{"from_city":"Урумчи","to_city":"Алматы","truck_type":"tent","capacity_tons":20,"available_m3":80,"price":2000,"currency":"USD","departure":"2026-07-25"}' >/dev/null && echo "trip serik seeded"

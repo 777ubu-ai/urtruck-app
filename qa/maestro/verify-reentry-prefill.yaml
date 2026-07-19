@@ -17,6 +17,11 @@ env:
 - waitForAnimationToEnd
 # Уже верифицированный водитель НЕ должен видеть онбординг-регистрацию заново:
 # в профиле — обычные вкладки и данные, а не экран «Гражданство/Шаг 1».
+# Профиль вырос (бейдж статуса) → скроллим до logout.
+- scrollUntilVisible:
+    element: { id: "profile-logout" }
+    direction: DOWN
+    timeout: 8000
 - assertVisible: { id: "profile-logout" }
 - assertNotVisible: { id: "citizenship-continue" }
 - takeScreenshot: VR_profile_no_reonboard
