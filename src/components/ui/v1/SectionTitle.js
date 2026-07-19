@@ -4,16 +4,19 @@
 
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 import { useV1Colors } from '../../../theme/designV1';
 
-export default function SectionTitle({ icon, label, right }) {
+export default function SectionTitle({ icon, featherIcon, label, right }) {
   const colors = useV1Colors();
   return (
     <View style={s.row}>
-      <Text style={[s.label, { color: colors.textMuted }]}>
-        {icon ? <Text>{icon}  </Text> : null}
-        {label}
-      </Text>
+      <View style={s.left}>
+        {featherIcon
+          ? <Feather name={featherIcon} size={13} color={colors.textMuted} />
+          : icon ? <Text style={{ fontSize: 13 }}>{icon}</Text> : null}
+        <Text style={[s.label, { color: colors.textMuted }]}>{label}</Text>
+      </View>
       {right ? <View style={{ marginLeft: 8 }}>{right}</View> : null}
     </View>
   );
@@ -21,5 +24,6 @@ export default function SectionTitle({ icon, label, right }) {
 
 const s = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  left: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   label: { fontSize: 11, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase' },
 });

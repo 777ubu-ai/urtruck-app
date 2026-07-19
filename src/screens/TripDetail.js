@@ -312,7 +312,7 @@ export default function TripDetail({ navigation, route }) {
 
         {/* Информация о рейсе */}
         <GlassCard>
-          <SectionTitle icon="🛣️" label={t('trip_route')} />
+          <SectionTitle featherIcon="map" label={t('trip_route')} />
           <View style={s.routeRow}>
             <View style={[s.dot, { backgroundColor: '#EF4444' }]} />
             <Text style={[s.city, { color: theme.text }]}>{localizePlace(view.from, lang)}</Text>
@@ -342,7 +342,7 @@ export default function TripDetail({ navigation, route }) {
 
         {/* Даты */}
         <GlassCard>
-          <SectionTitle icon="📅" label={t('trip_dates')} />
+          <SectionTitle featherIcon="calendar" label={t('trip_dates')} />
           <View style={s.dateRow}>
             <Text style={[s.dateLabel, { color: v1.textMuted }]}>🚀 {t('trip_dep')}</Text>
             <Text style={[s.dateValue, { color: v1.text }]} testID="trip-detail-departure">{view.departure}</Text>
@@ -355,7 +355,7 @@ export default function TripDetail({ navigation, route }) {
 
         {/* Транспорт */}
         <GlassCard>
-          <SectionTitle icon="🚚" label={t('trip_transport')} />
+          <SectionTitle featherIcon="truck" label={t('trip_transport')} />
           <View style={s.dateRow}>
             <Text style={[s.dateLabel, { color: v1.textMuted }]}>{t('trip_truck_body')}</Text>
             <Text style={[s.dateValue, { color: v1.text }]} testID="trip-detail-truck">{view.truckType}</Text>
@@ -385,13 +385,13 @@ export default function TripDetail({ navigation, route }) {
 
         {/* Цена — выделенный блок с brand-accent */}
         <GlassCard accent={v1Accent.main}>
-          <SectionTitle icon="💰" label={t('price')} />
+          <SectionTitle featherIcon="dollar-sign" label={t('price')} />
           <Text style={[s.priceBig, { color: v1Accent.main }]} numberOfLines={1}>{view.price}</Text>
         </GlassCard>
 
         {/* Timeline статусов */}
         <GlassCard>
-          <SectionTitle icon="📍" label={t('trip_status')} />
+          <SectionTitle featherIcon="map-pin" label={t('trip_status')} />
           {TRIP_STATES.map((st, i) => {
             const info = TRIP_STATE_INFO[st];
             const currentIdx = TRIP_STATES.indexOf(trip.tripState || 'planned');
