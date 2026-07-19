@@ -1,0 +1,32 @@
+# contact-messengers — build 39: контакт-кнопка → WhatsApp/Viber/звонок
+# В чате/сделке кнопка контакта (testID="deal-call-btn") даёт выбор способа
+# связи: WhatsApp / Viber / звонок. Реальный набор/открытие мессенджера —
+# на устройстве; здесь проверяем, что кнопка есть и открывает меню выбора.
+#
+# ПРЕДУСЛОВИЕ: у boris есть сделка/чат с водителем (seed.sh + accept + msg).
+# ⚠️ ЗАПУСК: EXPO_PUBLIC_API_URL=http://127.0.0.1:8001 (см. _lib/README.md)
+appId: host.exp.Exponent
+name: contact-messengers
+tags: [chat, contact, messenger, build39]
+env:
+  MAESTRO_ACTOR: boris
+---
+- runFlow: _lib/qa-login.yaml
+- tapOn: { id: "bottom-nav-chats" }
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: { id: "deal-room-list" }
+    timeout: 12000
+- tapOn: { id: "deal-room-list-card", index: 0 }
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: { id: "chat-partner-name" }
+    timeout: 10000
+# Кнопка контакта/звонка присутствует в шапке чата сделки.
+- assertVisible: { id: "deal-call-btn" }
+- takeScreenshot: CONTACT_deal_call_btn
+- tapOn: { id: "deal-call-btn" }
+- waitForAnimationToEnd
+- takeScreenshot: CONTACT_choice_sheet
+# Меню выбора WhatsApp/Viber/звонок — визуально; реальное открытие мессенджера
+# только на устройстве (📱).

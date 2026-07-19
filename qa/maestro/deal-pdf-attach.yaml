@@ -1,0 +1,32 @@
+# deal-pdf-attach — build 39: PDF-вложения в сделке (expo-document-picker)
+# В сделке кнопка «Документ» (testID="attach-add" в DealAttachments) открывает
+# файловый пикер. Мокнуть выбор PDF на симуляторе нельзя (native picker) →
+# проверяем ДОСТУПНОСТЬ кнопки/секции; сам аплоад/список — API-проверкой
+# GET /market/deals/{id}/attachments или вручную на устройстве.
+#
+# ПРЕДУСЛОВИЕ: у boris есть сделка (принятая ставка). Засев — seed.sh + accept.
+# ⚠️ ЗАПУСК: EXPO_PUBLIC_API_URL=http://127.0.0.1:8001 (см. _lib/README.md)
+appId: host.exp.Exponent
+name: deal-pdf-attach
+tags: [deal, pdf, document-picker, build39]
+env:
+  MAESTRO_ACTOR: boris
+---
+- runFlow: _lib/qa-login.yaml
+- tapOn: { id: "bottom-nav-mywork" }
+- waitForAnimationToEnd
+- tapOn: { id: "my-work-tab-enroute" }
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: { id: "my-order-card" }
+    timeout: 8000
+- tapOn: { id: "my-order-card", index: 0 }
+- waitForAnimationToEnd
+# Секция вложений сделки присутствует.
+- extendedWaitUntil:
+    visible: { id: "deal-attachments" }
+    timeout: 8000
+- assertVisible: { id: "deal-attachments" }
+- assertVisible: { id: "attach-add" }
+- takeScreenshot: PDF_deal_attach_section
+# Тап открывает native document-picker — дальше только вручную (📱).

@@ -1,0 +1,31 @@
+# createcargo-guards — build 39: цена и дата обязательны, USD по умолчанию
+# «По договорённости» убрана; пустая цена/дата не публикуются.
+# ⚠️ ЗАПУСК: EXPO_PUBLIC_API_URL=http://127.0.0.1:8001 (см. _lib/README.md)
+appId: host.exp.Exponent
+name: createcargo-guards
+tags: [client, createcargo, build39]
+env:
+  MAESTRO_ACTOR: boris
+---
+- runFlow: _lib/qa-login.yaml
+- tapOn: { id: "bottom-nav-publish" }
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: { id: "cargo-desc-input" }
+    timeout: 10000
+# Заполняем только описание, цену/дату оставляем пустыми.
+- tapOn: { id: "cargo-desc-input" }
+- inputText: "QA guard тест — без цены"
+- hideKeyboard
+- scrollUntilVisible:
+    element: { id: "cargo-submit-button" }
+    direction: DOWN
+    timeout: 10000
+- tapOn: { id: "cargo-submit-button" }
+- waitForAnimationToEnd
+# Гвард: публикация НЕ прошла — остаёмся на форме (submit-кнопка ещё видна),
+# т.е. не ушли в ленту/деталь. (Тост об ошибке цены/даты — визуально.)
+- assertVisible: { id: "cargo-submit-button" }
+- takeScreenshot: CCG_guard_blocked_empty_price
+# Поле цены присутствует (валюта USD по умолчанию — визуально в поле).
+- assertVisible: { id: "cargo-price-field" }

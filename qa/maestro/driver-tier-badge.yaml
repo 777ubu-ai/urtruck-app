@@ -1,0 +1,23 @@
+# driver-tier-badge — build 39: статус водителя (Новичок → Проверенный → Профи)
+# serik через ensure-actor = approved level 3 → в профиле статус-тир (ряд 4
+# ProfileScreen.js:281) показывает «Проверенный» и шкалу (50/80/100).
+#
+# ⚠️ Бейдж статуса пока БЕЗ выделенного testID → ассертим по тексту.
+#    TODO(build39): testID="profile-tier-badge" на ряд статуса усилит флоу.
+# ⚠️ ЗАПУСК: EXPO_PUBLIC_API_URL=http://127.0.0.1:8001 (см. _lib/README.md)
+appId: host.exp.Exponent
+name: driver-tier-badge
+tags: [driver, status, build39]
+env:
+  MAESTRO_ACTOR: serik
+---
+- runFlow: _lib/qa-login.yaml
+- tapOn: { id: "bottom-nav-profile" }
+- waitForAnimationToEnd
+- assertVisible: { id: "profile-logout" }
+# Статус-тир виден в профиле (approved level 3 → «Проверенный»).
+- extendedWaitUntil:
+    visible: "Проверенный"
+    timeout: 8000
+- assertVisible: "Проверенный"
+- takeScreenshot: TIER_driver_proven_badge

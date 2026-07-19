@@ -1,0 +1,25 @@
+# feed-favorite-heart — build 39: ❤️ быстрое сохранение перевозчика из ленты
+# Тап по ❤️ (testID="feed-fav") на карточке ленты → перевозчик в Избранном.
+# Актёр serik (driver) видит ленту грузов; ❤️ сохраняет. Для client-ленты
+# (машины) — та же кнопка feed-fav на FeedCard.
+# ⚠️ ЗАПУСК: EXPO_PUBLIC_API_URL=http://127.0.0.1:8001 (см. _lib/README.md)
+appId: host.exp.Exponent
+name: feed-favorite-heart
+tags: [feed, favorite, build39]
+env:
+  MAESTRO_ACTOR: serik
+---
+- runFlow: _lib/qa-login.yaml
+- tapOn: { id: "bottom-nav-feed" }
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: { id: "feed-fav" }
+    timeout: 10000
+# Сохраняем первую карточку в избранное.
+- tapOn: { id: "feed-fav", index: 0 }
+- waitForAnimationToEnd
+- takeScreenshot: FAV_hearted_in_feed
+# ❤️ остаётся на месте (карточка не пропала, не краш).
+- assertVisible: { id: "feed-fav" }
+# TODO(build39): если в Профиле есть раздел «Избранное» с testID —
+# дописать переход и проверку, что карточка там появилась.

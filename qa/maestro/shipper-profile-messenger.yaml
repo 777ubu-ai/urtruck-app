@@ -1,0 +1,38 @@
+# shipper-profile-messenger — build 39: международный профиль грузоотправителя
+# Мессенджер (WeChat/WA/TG/Viber) + ID + БИН/ИНН, сохранение и повторное
+# открытие. Поля живут в EditProfileScreen (messenger_type/messenger_id/binInn).
+#
+# ⚠️ Поля мессенджера/БИН пока БЕЗ выделенных testID (только profile-save) →
+#    навигация/ассерт по тексту. TODO(build39): testID на инпуты мессенджера/БИН.
+# ⚠️ ЗАПУСК: EXPO_PUBLIC_API_URL=http://127.0.0.1:8001 (см. _lib/README.md)
+appId: host.exp.Exponent
+name: shipper-profile-messenger
+tags: [client, profile, messenger, build39]
+env:
+  MAESTRO_ACTOR: boris
+---
+- runFlow: _lib/qa-login.yaml
+- tapOn: { id: "bottom-nav-profile" }
+- waitForAnimationToEnd
+# Открываем редактирование профиля (кнопка редактирования/pro-cta клиента).
+- scrollUntilVisible:
+    element: { id: "profile-pro-cta" }
+    direction: DOWN
+    timeout: 8000
+- tapOn: { id: "profile-pro-cta" }
+- waitForAnimationToEnd
+# EditProfile грузоотправителя содержит секцию мессенджера и БИН/ИНН.
+- extendedWaitUntil:
+    visible: { id: "profile-save" }
+    timeout: 10000
+- takeScreenshot: SPM_edit_profile_shipper
+# Секция мессенджера присутствует (текст-маркеры). Если выбор скрыт за
+# скроллом — докручиваем.
+- scrollUntilVisible:
+    element: { text: "WeChat|Viber|Мессенджер|мессенджер|БИН|ИНН" }
+    direction: DOWN
+    timeout: 8000
+- assertVisible: { text: "WeChat|Viber|Мессенджер|мессенджер|БИН|ИНН" }
+- takeScreenshot: SPM_messenger_bin_section
+# Сохранение и повторное открытие (проверка персиста конкретных значений) —
+# требует ввода в поля без testID → отмечено для укрепления и 📱-прохода.
