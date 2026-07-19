@@ -88,15 +88,17 @@ export const securityAPI = {
 //   🟢 Профи       — 10+ выполненных рейсов (+ рейтинг ≥ 4.7, если известен)
 // Балл (security_score) — это «очки/прогресс» внутри уровня, а не сам уровень.
 // ctx: { confirmed: bool, trips: number, rating: number|null }
+// pct — «шкала доверия», привязана к уровню (не путает: 50/80/100), а не
+// абстрактный балл. Новичок 50 · Проверенный 80 · Профи 100.
 export function driverTier(ctx = {}) {
   const { confirmed = false, trips = 0, rating = null } = ctx;
   if (confirmed && trips >= 10 && (rating == null || rating >= 4.7)) {
-    return { key: 'tier_pro',      color: '#22C55E', emoji: '🟢' };
+    return { key: 'tier_pro',      color: '#22C55E', emoji: '🟢', pct: 100 };
   }
   if (confirmed) {
-    return { key: 'tier_verified', color: '#2563EB', emoji: '🔵' };
+    return { key: 'tier_verified', color: '#2563EB', emoji: '🔵', pct: 80 };
   }
-  return { key: 'tier_newbie',     color: '#FBBF24', emoji: '🟡' };
+  return { key: 'tier_newbie',     color: '#FBBF24', emoji: '🟡', pct: 50 };
 }
 
 // Число выполненных рейсов из списка сделок (my_deals) дашборда.
@@ -105,10 +107,13 @@ export function countCompletedTrips(deals) {
   return deals.filter((d) => d && (d.status === 'delivered' || d.status === 'completed')).length;
 }
 
-// Признак «документы подтверждены модератором» из строки водителя (/register/status).
+// Признак «верификация пройдена» → уровень «Проверенный». В бете живого
+// модератора нет (авто-одобрение), поэтому засчитываем сразу после успешного
+// завершения верификации: status=approved или verification_level ≥ 3.
 export function isDocsConfirmed(st) {
   if (!st) return false;
-  return st.status === 'approved' && !st.manual_review_required;
+  if (st.status === 'rejected') return false;
+  return st.status === 'approved' || Number(st.verification_level) >= 3;
 }
 
 export const COLOR_UI = {

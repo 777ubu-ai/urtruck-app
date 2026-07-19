@@ -283,9 +283,7 @@ export default function ProfileScreen({ navigation, route }) {
               return (
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
                   <Text style={{ fontSize: 12, fontWeight: '800', color: tr.color }}>{tr.emoji} {t(tr.key)}</Text>
-                  {profile.driver_score != null ? (
-                    <Text style={{ fontSize: 12, color: theme.textMuted }}>{`  ·  ${profile.driver_score}/100`}</Text>
-                  ) : null}
+                  <Text style={{ fontSize: 12, color: theme.textMuted }}>{`  ·  ${tr.pct}/100`}</Text>
                 </View>
               );
             })() : null}

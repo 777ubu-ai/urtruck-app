@@ -72,7 +72,7 @@ export default function SecurityScreen({ navigation }) {
             {/* Мой скоринг — большая карточка */}
             <View style={[s.heroCard, { backgroundColor: theme.card, borderColor: ui.border }]}>
               <Text style={[s.heroScore, { color: ui.text }]}>
-                {effectiveScore}<Text style={s.heroMax}>/100</Text>
+                {tier.pct}<Text style={s.heroMax}>/100</Text>
               </Text>
               <Text style={[s.heroLabel, { color: ui.text }]}>{ui.label}</Text>
               <Text style={[s.heroHint, { color: theme.textMuted }]}>
