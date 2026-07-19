@@ -110,7 +110,11 @@ export default function EditProfileScreen({ navigation, route }) {
   const [phone] = useState(session?.user?.phone || '+7 (***) ***-**-**');
   const [city, setCity] = useState(profile.city || '');
   const [email, setEmail] = useState(profile.email || '');
-  const [company, setCompany] = useState(profile.company || '');
+  const [company, setCompany] = useState(profile.company || profile.company_name || '');
+  const [binInn, setBinInn] = useState(profile.bin_inn || '');
+  // Предпочтительный мессенджер грузоотправителя + ID (WeChat важен для Китая).
+  const [messengerType, setMessengerType] = useState(profile.messenger_type || '');
+  const [messengerId, setMessengerId] = useState(profile.messenger_id || '');
   const [saving, setSaving] = useState(false);
 
   // PR-D1: PRO-секция (только водитель). Минимальный набор по спеке
@@ -136,6 +140,10 @@ export default function EditProfileScreen({ navigation, route }) {
       if (cancelled || !data) return;
       if (data.legal_form) setLegalForm(data.legal_form);
       if (data.china_experience_years != null) setChinaExp(String(data.china_experience_years));
+      if (data.company_name) setCompany(data.company_name);
+      if (data.bin_inn) setBinInn(data.bin_inn);
+      if (data.messenger_type) setMessengerType(data.messenger_type);
+      if (data.messenger_id) setMessengerId(data.messenger_id);
       if (Array.isArray(data.favorite_borders) && data.favorite_borders.length) setFavBorders(data.favorite_borders);
       if (data.emergency_contact) setEmergency(data.emergency_contact);
       if (data.passport_intl_url) setPassportIntlUrl(data.passport_intl_url);
@@ -151,8 +159,8 @@ export default function EditProfileScreen({ navigation, route }) {
   const draftKey = `edit_profile_${userId || 'guest'}_${role || 'na'}`;
   useDraft(
     draftKey,
-    { firstName, lastName, city, email, company, legalForm, chinaExp, favBorders, emergency },
-    { setFirstName, setLastName, setCity, setEmail, setCompany, setLegalForm, setChinaExp, setFavBorders, setEmergency },
+    { firstName, lastName, city, email, company, binInn, messengerType, messengerId, legalForm, chinaExp, favBorders, emergency },
+    { setFirstName, setLastName, setCity, setEmail, setCompany, setBinInn, setMessengerType, setMessengerId, setLegalForm, setChinaExp, setFavBorders, setEmergency },
   );
 
   const toggleBorder = (b) => {
@@ -237,6 +245,13 @@ export default function EditProfileScreen({ navigation, route }) {
       city,
       email: email.trim(),
       company: company.trim(),
+      // грузоотправитель: компания/БИН/мессенджер
+      ...(!isDriver ? {
+        company_name: company.trim(),
+        bin_inn: binInn.trim(),
+        messenger_type: messengerType,
+        messenger_id: messengerId.trim(),
+      } : {}),
       // PR-D1: PRO-поля. Сохраняются локально (store) — серверный sync
       // /users/me пока принимает только {name, city, about}, расширенные
       // PRO-поля live на фронте до тех пор, пока backend не получит
@@ -267,6 +282,12 @@ export default function EditProfileScreen({ navigation, route }) {
         if (passportIntlUrl) payload.passport_intl_url = passportIntlUrl;
         if (tirUrl)           payload.tir_book_url       = tirUrl;
         if (cmrUrl)           payload.cmr_insurance_url  = cmrUrl;
+      } else {
+        // грузоотправитель: компания, БИН/ИНН, мессенджер + ID
+        payload.company_name = company.trim();
+        payload.bin_inn = binInn.trim();
+        payload.messenger_type = messengerType;
+        payload.messenger_id = messengerId.trim();
       }
       const r = await regAPI.updateProfile(payload);
       serverOk = !!r.ok;
@@ -364,13 +385,23 @@ export default function EditProfileScreen({ navigation, route }) {
         placeholder={t('signup_city_pick')}
       />
       {!isDriver ? (
-        <Field
-          icon="🏢"
-          label={t('signup_field_company')}
-          placeholder={t('signup_field_company_optional')}
-          value={company}
-          onChangeText={setCompany}
-        />
+        <>
+          <Field
+            icon="🏢"
+            label={t('signup_field_company')}
+            placeholder={t('signup_field_company_optional')}
+            value={company}
+            onChangeText={setCompany}
+          />
+          <Field
+            icon="🆔"
+            label={t('bin_inn_label')}
+            placeholder={t('bin_inn_ph')}
+            value={binInn}
+            onChangeText={(v) => setBinInn(v.replace(/[^\d]/g, '').slice(0, 12))}
+            keyboardType="number-pad"
+          />
+        </>
       ) : null}
       <Field
         icon="✉️"
@@ -381,6 +412,52 @@ export default function EditProfileScreen({ navigation, route }) {
         keyboardType="email-address"
         autoCapitalize="none"
       />
+
+      {/* Связь (грузоотправитель): предпочтительный мессенджер + ID. WeChat важен
+          для Китая — показываем в списке первым. Опционально. */}
+      {!isDriver ? (
+        <View style={s.proSection}>
+          <Text style={s.proSectionTitle}>{t('contact_section')}</Text>
+          <Text style={[v1Typography.small, { color: v1.textMuted, marginBottom: 6, marginLeft: 4 }]}>
+            {t('messenger_pref')}
+          </Text>
+          <View style={s.bordersWrap}>
+            {[
+              { k: 'wechat', label: '💚 WeChat' },
+              { k: 'whatsapp', label: '📱 WhatsApp' },
+              { k: 'telegram', label: '💬 Telegram' },
+              { k: 'viber', label: '☎️ Viber' },
+            ].map((m) => {
+              const active = messengerType === m.k;
+              return (
+                <TouchableOpacity
+                  key={m.k}
+                  style={[s.borderChip, {
+                    backgroundColor: active ? accent.soft : v1.bg,
+                    borderColor: active ? accent.main : v1.border,
+                  }]}
+                  onPress={() => setMessengerType(active ? '' : m.k)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[s.borderChipText, { color: active ? accent.main : v1.textMuted }]}>{m.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          {messengerType ? (
+            <View style={{ marginTop: 8 }}>
+              <Field
+                icon="➕"
+                label={t('messenger_id_label')}
+                placeholder={t('messenger_id_ph')}
+                value={messengerId}
+                onChangeText={setMessengerId}
+                autoCapitalize="none"
+              />
+            </View>
+          ) : null}
+        </View>
+      ) : null}
 
       {/* PR-D1: PRO-секция — расширенный профиль водителя. Скрыта для клиента.
           Категории по спеке driver_onboarding.md §2 Экран 3:

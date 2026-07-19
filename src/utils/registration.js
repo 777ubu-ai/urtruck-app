@@ -289,6 +289,8 @@ export const regAPI = {
       'legal_form', 'china_experience_years', 'favorite_borders',
       'emergency_contact',
       'passport_intl_url', 'tir_book_url', 'cmr_insurance_url',
+      // профиль грузоотправителя
+      'company_name', 'bin_inn', 'country', 'messenger_type', 'messenger_id',
     ];
     const body = {};
     for (const k of allowed) {
