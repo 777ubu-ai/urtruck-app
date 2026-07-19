@@ -169,10 +169,11 @@ export default function TrackedPlatesScreen({ navigation }) {
               >
                 <View style={s.cardTop}>
                   <Text style={[s.plate, { color: theme.text }]} numberOfLines={1}>{it.plate}</Text>
-                  <View style={[s.badge, { backgroundColor: col + '26', borderColor: col + '80' }]}>
+                  <View style={[s.badge, { backgroundColor: col + '26', borderColor: col + '80', flexDirection: 'row', alignItems: 'center', gap: 3 }]}>
                     <Text style={[s.badgeText, { color: col }]} numberOfLines={1}>
-                      {st ? t(st.key) : t('queue_lk_unknown')}{it.is_late ? <>{' '}<Feather name="clock" size={11} color={col} /></> : null}
+                      {st ? t(st.key) : t('queue_lk_unknown')}
                     </Text>
+                    {it.is_late ? <Feather name="clock" size={11} color={col} /> : null}
                   </View>
                 </View>
 

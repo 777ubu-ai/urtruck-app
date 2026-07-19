@@ -19,10 +19,8 @@ import PremiumOtpScreen from '../screens/registration/PremiumOtpScreen';
 import PremiumProfileScreen from '../screens/registration/PremiumProfileScreen';
 import TruckParamsScreen from '../screens/registration/TruckParamsScreen';
 import VehicleDocsScreen from '../screens/registration/VehicleDocsScreen';
-import VehiclePhotosScreen from '../screens/registration/VehiclePhotosScreen';
 import IdentityStepScreen from '../screens/registration/IdentityStepScreen';
 import CitizenshipScreen from '../screens/registration/CitizenshipScreen';
-import SelfieStepScreen from '../screens/registration/SelfieStepScreen';
 import PremiumLoginScreen from '../screens/registration/PremiumLoginScreen';
 import FeedScreen from '../screens/FeedScreen';
 import CargoDetail from '../screens/CargoDetail';
@@ -267,10 +265,8 @@ export default function AppNavigator() {
           <Stack.Screen name="TrackTruck" component={TrackTruckScreen} />
         <Stack.Screen name="Citizenship" component={CitizenshipScreen} />
         <Stack.Screen name="Identity" component={IdentityStepScreen} />
-        <Stack.Screen name="Selfie" component={SelfieStepScreen} />
         <Stack.Screen name="TruckParams" component={TruckParamsScreen} />
         <Stack.Screen name="VehicleDocs" component={VehicleDocsScreen} />
-        <Stack.Screen name="VehiclePhotos" component={VehiclePhotosScreen} />
           {/* КАНОНИЧЕСКИЙ PRO-flow верификации водителя:
               Security → Identity → Selfie → VehicleDocs → VehiclePhotos →
               TruckParams → submit.
