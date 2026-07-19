@@ -221,6 +221,8 @@ export default function FeedScreen({ navigation, route }) {
   const [sortBy, setSortBy] = useState('newest');
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  // Избранные перевозчики (клиент) — id водителей. Быстрое сохранение из ленты.
+  const [favIds, setFavIds] = useState(() => new Set());
   // activeFilter is the chip that's currently expanded into a bottom-sheet.
   // null → no sheet open. One sheet at a time, scoped to its own state slice.
   const [activeFilter, setActiveFilter] = useState(null); // 'dir' | 'date' | 'body' | 'price' | null
@@ -333,6 +335,41 @@ export default function FeedScreen({ navigation, route }) {
   };
 
   useEffect(() => { loadFromServer(); }, [isDriver, filterType, pageLimit]);
+
+  // Клиент: подтягиваем список избранных водителей, чтобы сердечки в ленте
+  // отражали уже сохранённых. Гость/водитель — пропускаем.
+  useEffect(() => {
+    if (isDriver || !myUserId) return;
+    let alive = true;
+    (async () => {
+      const r = await marketAPI.favList('driver').catch(() => null);
+      if (alive && r?.favorites) setFavIds(new Set(r.favorites.map((f) => f.item_id)));
+    })();
+    return () => { alive = false; };
+  }, [isDriver, myUserId]);
+
+  // Тап по сердечку в карточке: сохранить/убрать перевозчика (оптимистично).
+  const toggleFav = async (item) => {
+    const id = item.driverId || item.id;
+    if (!id) return;
+    const has = favIds.has(id);
+    setFavIds((prev) => {
+      const next = new Set(prev);
+      if (has) next.delete(id); else next.add(id);
+      return next;
+    });
+    try {
+      if (has) await marketAPI.favRemove('driver', id);
+      else await marketAPI.favAdd('driver', id, { name: item.name, type: item.type, plate: item.plate_truck });
+    } catch {
+      // откат при ошибке
+      setFavIds((prev) => {
+        const next = new Set(prev);
+        if (has) next.add(id); else next.delete(id);
+        return next;
+      });
+    }
+  };
 
   // Refetch when user comes back to feed (e.g. after publishing a trip/cargo)
   // so the new card appears immediately without manual pull-to-refresh.
@@ -637,6 +674,8 @@ export default function FeedScreen({ navigation, route }) {
         priceCaption={item.isTrip ? t('per_trip') : `${item.reviews || 0} ${t('reviews')}`}
         onPress={onPress}
         bottomRight={{ label: t('details'), onPress, filled: false }}
+        favActive={!isDriver ? favIds.has(item.driverId || item.id) : undefined}
+        onToggleFav={!isDriver && myUserId ? () => toggleFav(item) : undefined}
         testID={item.isTrip ? 'trip-card' : 'driver-card'}
       />
     );

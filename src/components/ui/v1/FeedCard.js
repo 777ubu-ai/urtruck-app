@@ -35,6 +35,8 @@ export default function FeedCard({
   bottomLeft,
   bottomRight,
   onPress,
+  favActive,        // ❤️ в избранном
+  onToggleFav,      // быстрый тап «сохранить перевозчика» прямо из ленты
   testID,
 }) {
   const colors = useV1Colors();
@@ -126,6 +128,16 @@ export default function FeedCard({
           {subtitle ? <Text style={[s.subtitle, { color: colors.textMuted }]} numberOfLines={1}>{subtitle}</Text> : null}
         </View>
         <View style={{ alignItems: 'flex-end' }}>
+          {onToggleFav ? (
+            <TouchableOpacity
+              onPress={onToggleFav}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={{ marginBottom: 4 }}
+              testID="feed-fav"
+            >
+              <Text style={{ fontSize: 20 }}>{favActive ? '❤️' : '🤍'}</Text>
+            </TouchableOpacity>
+          ) : null}
           {/* Stage 16: status pill is now neutral (muted text + hairline
               border on the card surface). The accent-tinted pill on
               every card competed with the price chip and made every
