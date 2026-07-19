@@ -82,15 +82,33 @@ export const securityAPI = {
   },
 };
 
-// Лестница статусов водителя (4 уровня роста) по баллам скоринга.
-// Новый → Новичок → Опытный → Профи. Возвращает i18n-ключ + цвет + эмодзи.
-// Чёрный список обрабатывается отдельно (color_code === 'black').
-export function driverTier(score) {
-  const s = Number(score) || 0;
-  if (s >= 85) return { key: 'tier_pro',         color: '#22C55E', emoji: '🟢' };
-  if (s >= 65) return { key: 'tier_experienced', color: '#2563EB', emoji: '🔵' };
-  if (s >= 45) return { key: 'tier_newbie',      color: '#FF8400', emoji: '🟡' };
-  return              { key: 'tier_new',          color: '#94A3B8', emoji: '🔓' };
+// Лестница статусов водителя по РЕАЛЬНЫМ вехам (решение владельца):
+//   🟡 Новичок     — зарегистрировался, документы ещё не подтверждены
+//   🔵 Проверенный — документы подтверждены модератором (главный знак доверия)
+//   🟢 Профи       — 10+ выполненных рейсов (+ рейтинг ≥ 4.7, если известен)
+// Балл (security_score) — это «очки/прогресс» внутри уровня, а не сам уровень.
+// ctx: { confirmed: bool, trips: number, rating: number|null }
+export function driverTier(ctx = {}) {
+  const { confirmed = false, trips = 0, rating = null } = ctx;
+  if (confirmed && trips >= 10 && (rating == null || rating >= 4.7)) {
+    return { key: 'tier_pro',      color: '#22C55E', emoji: '🟢' };
+  }
+  if (confirmed) {
+    return { key: 'tier_verified', color: '#2563EB', emoji: '🔵' };
+  }
+  return { key: 'tier_newbie',     color: '#FBBF24', emoji: '🟡' };
+}
+
+// Число выполненных рейсов из списка сделок (my_deals) дашборда.
+export function countCompletedTrips(deals) {
+  if (!Array.isArray(deals)) return 0;
+  return deals.filter((d) => d && (d.status === 'delivered' || d.status === 'completed')).length;
+}
+
+// Признак «документы подтверждены модератором» из строки водителя (/register/status).
+export function isDocsConfirmed(st) {
+  if (!st) return false;
+  return st.status === 'approved' && !st.manual_review_required;
 }
 
 export const COLOR_UI = {
