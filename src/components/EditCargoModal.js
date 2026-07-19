@@ -12,6 +12,7 @@ import { useToast } from './Toast';
 import { marketAPI } from '../utils/marketAPI';
 import { CURRENCY_SYMBOLS } from '../utils/normalizers';
 import { TRUCK_KEYS } from '../utils/truckConstants';
+import Feather from '@expo/vector-icons/Feather';
 import DatePicker from './DatePicker';
 import { formatDateForDisplay, normalizeDateInput } from '../utils/dateInput';
 
@@ -112,7 +113,10 @@ export default function EditCargoModal({ visible, cargo, onClose, onSaved }) {
                 testID="edit-cargo-desc"
               />
 
-              <Text style={[s.label, { color: theme.textMuted }]}>📅 {t('pickupDate')}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="calendar" size={14} color={theme.textMuted} />
+                <Text style={[s.label, { color: theme.textMuted }]}>{t('pickupDate')}</Text>
+              </View>
               <DatePicker value={pickupDate} onChange={setPickupDate} placeholder={t('pickupDate')} />
 
               <View style={s.row}>

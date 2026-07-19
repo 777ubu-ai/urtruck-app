@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Platform } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
@@ -178,7 +179,10 @@ export default function TripDetail({ navigation, route }) {
           <TouchableOpacity onPress={() => navigation.goBack()} style={[s.backBtn, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <Text style={[s.backText, { color: theme.text }]}>‹</Text>
           </TouchableOpacity>
-          <GradientText style={s.title} colors={['#22C55E', '#16A34A']}>🚛 {t('trip_title')}</GradientText>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Feather name="truck" size={20} color="#22C55E" />
+            <GradientText style={s.title} colors={['#22C55E', '#16A34A']}>{t('trip_title')}</GradientText>
+          </View>
         </View>
         {dealStatus ? renderDealBlock() : (
           <View style={{ padding: 24, alignItems: 'center' }}>

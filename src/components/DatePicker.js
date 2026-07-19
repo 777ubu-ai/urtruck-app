@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform, Modal, ScrollView } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 import { useTheme } from '../utils/ThemeContext';
 import { useI18n } from '../utils/useI18n';
 
@@ -129,9 +130,12 @@ export default function DatePicker({ value, onChange, onClose, placeholder = 'DD
       style={[s.input, { backgroundColor: theme.card, borderColor: theme.border }]}
       onPress={() => setShowPicker(true)}
     >
-      <Text style={[s.inputText, { color: value ? theme.text : theme.textMuted }]}>
-        📅 {value || placeholder}
-      </Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <Feather name="calendar" size={15} color={value ? theme.text : theme.textMuted} />
+        <Text style={[s.inputText, { color: value ? theme.text : theme.textMuted }]}>
+          {value || placeholder}
+        </Text>
+      </View>
     </TouchableOpacity>
   );
 

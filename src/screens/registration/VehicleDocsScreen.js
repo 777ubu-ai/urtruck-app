@@ -255,11 +255,14 @@ export default function VehicleDocsScreen({ navigation }) {
 
   const progress = STEP / TOTAL_STEPS;
 
-  const DocCard = ({ title, hint, doc, onPick, errorText, children }) => (
+  const DocCard = ({ title, featherIcon, hint, doc, onPick, errorText, children, testID }) => (
     <View style={s.card}>
-      <Text style={s.cardTitle}>{title}</Text>
+      <View style={s.cardTitleRow}>
+        {featherIcon ? <Feather name={featherIcon} size={16} color={brand.textPrimary} /> : null}
+        <Text style={s.cardTitle}>{title}</Text>
+      </View>
       {hint ? <Text style={s.cardHint}>{hint}</Text> : null}
-      <Pressable onPress={onPick} style={s.slot} disabled={doc.status === 'busy'}>
+      <Pressable onPress={onPick} style={s.slot} disabled={doc.status === 'busy'} testID={testID}>
         {doc.uri ? (
           <Image source={{ uri: doc.uri }} style={s.thumb} resizeMode="cover" />
         ) : (
@@ -310,9 +313,12 @@ export default function VehicleDocsScreen({ navigation }) {
         <Text style={s.title}>{t('vdocs_title')}</Text>
         <Text style={s.subtitle}>{t('vdocs_subtitle')}</Text>
 
-        <DocCard title={`📄 ${t('vdocs_techpass')}`} hint={t('vdocs_hint_techpass')} doc={techpass} onPick={handleTechpass}>
+        <DocCard title={t('vdocs_techpass')} featherIcon="file-text" hint={t('vdocs_hint_techpass')} doc={techpass} onPick={handleTechpass} testID="vd-passport-photo">
           <View style={s.ocrBox}>
-            <Text style={s.ocrTitle}>✅ {t('vdocs_recognized')}</Text>
+            <View style={s.ocrTitleRow}>
+              <Feather name="check-circle" size={14} color={brand.textPrimary} />
+              <Text style={[s.ocrTitle, { marginBottom: 0 }]}>{t('vdocs_recognized')}</Text>
+            </View>
             <Field label={t('vdocs_field_brand')} value={[techpass.ocr?.brand, techpass.ocr?.model].filter(Boolean).join(' ')} />
             <Field label={t('vdocs_field_plate')} value={techpass.ocr?.plate_number} />
             <Field label={t('vdocs_field_vin')} value={techpass.ocr?.vin} />
@@ -324,9 +330,12 @@ export default function VehicleDocsScreen({ navigation }) {
           source={require('../../assets/onboarding/verification/guides/license_front_guide.png')}
           testID="vd-license-guide"
         />
-        <DocCard title={`🪪 ${t('vdocs_license')}`} hint={t('vdocs_hint_license')} doc={license} onPick={handleLicense}>
+        <DocCard title={t('vdocs_license')} featherIcon="credit-card" hint={t('vdocs_hint_license')} doc={license} onPick={handleLicense} testID="vd-license-photo">
           <View style={s.ocrBox}>
-            <Text style={s.ocrTitle}>✅ {t('vdocs_recognized')}</Text>
+            <View style={s.ocrTitleRow}>
+              <Feather name="check-circle" size={14} color={brand.textPrimary} />
+              <Text style={[s.ocrTitle, { marginBottom: 0 }]}>{t('vdocs_recognized')}</Text>
+            </View>
             <Field label={t('vdocs_field_categories')} value={(license.ocr?.categories || []).join(', ')} />
             <View style={[s.cceBadge, hasCCe ? s.cceOk : s.cceWarn]}>
               <Text style={[s.cceText, { color: hasCCe ? brand.primary : '#EF4444' }]}>
@@ -369,14 +378,19 @@ export default function VehicleDocsScreen({ navigation }) {
           testID="vd-license-selfie-guide"
         />
         <DocCard
-          title={`🤳 ${t('vdocs_license_selfie')}`}
+          title={t('vdocs_license_selfie')}
+          featherIcon="user"
           hint={t('vdocs_hint_license_selfie')}
           doc={licenseSelfie}
           onPick={handleLicenseSelfie}
           errorText={t('vdocs_license_selfie_upload_err')}
+          testID="vd-license-selfie-photo"
         >
           <View style={s.okBox}>
-            <Text style={s.okText}>✅ {t('vdocs_uploaded')}</Text>
+            <View style={s.okRow}>
+              <Feather name="check-circle" size={14} color={brand.primary} />
+              <Text style={s.okText}>{t('vdocs_uploaded')}</Text>
+            </View>
           </View>
         </DocCard>
         {errors.licenseSelfie ? <Text style={s.errText}>{errors.licenseSelfie}</Text> : null}
@@ -418,6 +432,7 @@ const s = StyleSheet.create({
   input: { height: 52, borderRadius: radius.md, borderWidth: 1, borderColor: brand.border, backgroundColor: brand.surface, paddingHorizontal: 16, color: brand.textPrimary, ...typography.body },
   inputErr: { borderColor: brand.error || '#EF4444' },
   card: { marginTop: 16, padding: 14, borderRadius: radius.lg, borderWidth: 1, borderColor: brand.border, backgroundColor: brand.surface },
+  cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   cardTitle: { ...typography.bodyLarge, fontWeight: '800', color: brand.textPrimary, marginBottom: 4 },
   cardHint: { ...typography.caption, color: brand.textSecondary, marginBottom: 10, lineHeight: 16 },
   slot: { height: 160, borderRadius: radius.md, borderWidth: 1, borderStyle: 'dashed', borderColor: brand.border, alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: brand.surfaceMuted, overflow: 'hidden' },
@@ -426,8 +441,10 @@ const s = StyleSheet.create({
   busyOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.45)', gap: 8 },
   busyText: { ...typography.bodySmall, color: '#fff' },
   ocrBox: { marginTop: 12, padding: 12, borderRadius: radius.md, backgroundColor: brand.surfaceMuted },
+  ocrTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
   ocrTitle: { ...typography.bodySmall, fontWeight: '800', color: brand.textPrimary, marginBottom: 8 },
   okBox: { marginTop: 12, padding: 12, borderRadius: radius.md, backgroundColor: brand.primarySoft },
+  okRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   okText: { ...typography.bodySmall, fontWeight: '800', color: brand.primary },
   fieldRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4, gap: 12 },
   fieldLabel: { ...typography.bodySmall, color: brand.textSecondary },

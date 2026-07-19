@@ -8,24 +8,25 @@ import { useToast } from './Toast';
 import { useI18n } from '../utils/useI18n';
 import { reviewsAPI } from '../utils/reviews';
 import { v1AccentFor } from '../theme/designV1';
+import Feather from '@expo/vector-icons/Feather';
 
-// Эмодзи-префикс остаётся здесь (иконка), текст берётся из i18n по ключу
+// Имя Feather-иконки остаётся здесь, текст берётся из i18n по ключу
 // `rating_tag_${k}` в момент рендера.
 const TAGS_BY_ROLE = {
   driver: [
-    { k: 'punctual', icon: '⏱' },
-    { k: 'clean', icon: '✨' },
-    { k: 'polite', icon: '👍' },
-    { k: 'careful', icon: '📦' },
-    { k: 'fast', icon: '⚡' },
-    { k: 'good_price', icon: '💰' },
+    { k: 'punctual', icon: 'clock' },
+    { k: 'clean', icon: 'star' },
+    { k: 'polite', icon: 'thumbs-up' },
+    { k: 'careful', icon: 'package' },
+    { k: 'fast', icon: 'zap' },
+    { k: 'good_price', icon: 'dollar-sign' },
   ],
   client: [
-    { k: 'fast_pay', icon: '💰' },
-    { k: 'honest', icon: '🤝' },
-    { k: 'clear_docs', icon: '📄' },
-    { k: 'reachable', icon: '📞' },
-    { k: 'good_cargo', icon: '📦' },
+    { k: 'fast_pay', icon: 'dollar-sign' },
+    { k: 'honest', icon: 'check' },
+    { k: 'clear_docs', icon: 'file-text' },
+    { k: 'reachable', icon: 'phone' },
+    { k: 'good_cargo', icon: 'package' },
   ],
 };
 
@@ -122,10 +123,12 @@ export default function RatingModal({ visible, onClose, onSubmitted, targetId, t
                 onHoverOut={() => Platform.OS === 'web' && setHover(0)}
                 style={s.starBtn}
               >
-                <Text style={[
-                  s.star,
-                  { opacity: (hover || rating) >= n ? 1 : 0.25 },
-                ]}>⭐</Text>
+                <Feather
+                  name="star"
+                  size={42}
+                  color="#FBBF24"
+                  style={{ opacity: (hover || rating) >= n ? 1 : 0.25 }}
+                />
               </Pressable>
             ))}
           </View>
@@ -144,13 +147,17 @@ export default function RatingModal({ visible, onClose, onSubmitted, targetId, t
                     style={[
                       s.tag,
                       {
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 6,
                         backgroundColor: active ? raterAccent.main : theme.card,
                         borderColor: active ? raterAccent.main : theme.border,
                       },
                     ]}
                     onPress={() => toggleTag(tag.k)}
                   >
-                    <Text style={[s.tagText, { color: active ? raterAccent.onAccent : theme.text }]}>{`${tag.icon} ${t('rating_tag_' + tag.k)}`}</Text>
+                    <Feather name={tag.icon} size={13} color={active ? raterAccent.onAccent : theme.text} />
+                    <Text style={[s.tagText, { color: active ? raterAccent.onAccent : theme.text }]}>{t('rating_tag_' + tag.k)}</Text>
                   </TouchableOpacity>
                 );
               })}

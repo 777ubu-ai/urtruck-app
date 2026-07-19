@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import {v1Colors, useV1Colors} from '../theme/designV1';
@@ -62,7 +63,10 @@ export default function SecurityScreen({ navigation }) {
           <TouchableOpacity onPress={() => navigation.goBack()} style={[s.backBtn, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <Text style={[s.backText, { color: theme.text }]}>‹</Text>
           </TouchableOpacity>
-          <GradientText style={s.title} colors={['#DC2626', '#FF8400']}>🛡 {t('security_my_status')}</GradientText>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+            <Feather name="shield" size={20} color="#DC2626" />
+            <GradientText style={s.title} colors={['#DC2626', '#FF8400']}>{t('security_my_status')}</GradientText>
+          </View>
         </View>
 
         {loading ? (
@@ -87,22 +91,28 @@ export default function SecurityScreen({ navigation }) {
                 onPress={() => navigation.navigate('Citizenship')}
                 testID="security-verify-docs"
               >
-                <Text style={s.verifyBtnText}>📄 {t('security_verify_cta')}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Feather name="file-text" size={15} color="#0C0A09" />
+                  <Text style={s.verifyBtnText}>{t('security_verify_cta')}</Text>
+                </View>
               </TouchableOpacity>
             ) : null}
 
             {/* Что улучшит скоринг */}
             <View style={[s.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <Text style={[s.sectionTitle, { color: theme.textMuted }]}>📈 {t('security_how_to_raise')}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+                <Feather name="trending-up" size={14} color={theme.textMuted} />
+                <Text style={[s.sectionTitle, { color: theme.textMuted, marginBottom: 0 }]}>{t('security_how_to_raise')}</Text>
+              </View>
               {[
-                { icon: '✅', title: t('security_tip_complete_trips'),  desc: t('security_tip_complete_trips_desc') },
-                { icon: '⭐', title: t('security_tip_get_reviews'),     desc: t('security_tip_get_reviews_desc') },
-                { icon: '📄', title: t('security_tip_verify_docs'),     desc: t('security_tip_verify_docs_desc') },
-                { icon: '🏦', title: t('security_tip_confirm_account'), desc: t('security_tip_confirm_account_desc') },
-                { icon: '🤳', title: t('biometry'),                     desc: t('security_tip_biometry_desc') },
+                { icon: 'check-circle', title: t('security_tip_complete_trips'),  desc: t('security_tip_complete_trips_desc') },
+                { icon: 'star',         title: t('security_tip_get_reviews'),     desc: t('security_tip_get_reviews_desc') },
+                { icon: 'file-text',    title: t('security_tip_verify_docs'),     desc: t('security_tip_verify_docs_desc') },
+                { icon: 'credit-card',  title: t('security_tip_confirm_account'), desc: t('security_tip_confirm_account_desc') },
+                { icon: 'camera',       title: t('biometry'),                     desc: t('security_tip_biometry_desc') },
               ].map(item => (
                 <View key={item.title} style={[s.tipRow, { borderBottomColor: theme.border }]}>
-                  <Text style={{ fontSize: 20 }}>{item.icon}</Text>
+                  <Feather name={item.icon} size={18} color={theme.text} />
                   <View style={{ flex: 1 }}>
                     <Text style={[s.tipTitle, { color: theme.text }]}>{item.title}</Text>
                     <Text style={[s.tipDesc, { color: theme.textMuted }]}>{item.desc}</Text>
@@ -113,14 +123,17 @@ export default function SecurityScreen({ navigation }) {
 
             {/* Чего избегать */}
             <View style={[s.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <Text style={[s.sectionTitle, { color: theme.textMuted }]}>⚠ {t('security_what_to_avoid')}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+                <Feather name="alert-triangle" size={14} color={theme.textMuted} />
+                <Text style={[s.sectionTitle, { color: theme.textMuted, marginBottom: 0 }]}>{t('security_what_to_avoid')}</Text>
+              </View>
               {[
-                { icon: '❌', title: t('security_avoid_cancel'), desc: t('security_avoid_cancel_desc') },
-                { icon: '📞', title: t('security_avoid_ignore'), desc: t('security_avoid_ignore_desc') },
-                { icon: '⏰', title: t('security_avoid_late'),   desc: t('security_avoid_late_desc') },
+                { icon: 'x-circle', title: t('security_avoid_cancel'), desc: t('security_avoid_cancel_desc') },
+                { icon: 'phone',    title: t('security_avoid_ignore'), desc: t('security_avoid_ignore_desc') },
+                { icon: 'clock',    title: t('security_avoid_late'),   desc: t('security_avoid_late_desc') },
               ].map(item => (
                 <View key={item.title} style={[s.tipRow, { borderBottomColor: theme.border }]}>
-                  <Text style={{ fontSize: 20 }}>{item.icon}</Text>
+                  <Feather name={item.icon} size={18} color={theme.text} />
                   <View style={{ flex: 1 }}>
                     <Text style={[s.tipTitle, { color: theme.text }]}>{item.title}</Text>
                     <Text style={[s.tipDesc, { color: theme.textMuted }]}>{item.desc}</Text>
@@ -131,7 +144,7 @@ export default function SecurityScreen({ navigation }) {
 
             {/* Политика конфиденциальности */}
             <View style={[s.privacyCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <Text style={{ fontSize: 24 }}>🔒</Text>
+              <Feather name="lock" size={24} color={theme.text} />
               <Text style={[s.privacyTitle, { color: theme.text }]}>{t('security_privacy_title')}</Text>
               <Text style={[s.privacyDesc, { color: theme.textMuted }]}>
                 {t('security_privacy_desc')}

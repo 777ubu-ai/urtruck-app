@@ -24,6 +24,7 @@ import { notifyNotifRead } from '../utils/unreadEvents';
 import { useMountedRef } from '../hooks/useMountedRef';
 import FadeInUp, { PopIn } from '../components/ui/FadeInUp';
 import PressableScale from '../components/PressableScale';
+import Feather from '@expo/vector-icons/Feather';
 
 export default function MyTripsScreen({ navigation, route }) {
   const v1 = useV1Colors();
@@ -391,15 +392,21 @@ export default function MyTripsScreen({ navigation, route }) {
               Раньше cancelled / draft / pending тоже рендерились #22C55E,
               что визуально врало пользователю (зелёное = "успешно"). Теперь
               цвет подбирается по item.status. */}
-          <Text style={[s.statusLabel, { color: (() => {
-            if (item._expired) return '#EF4444';             // просрочен — красный
-            const st = item.status || 'active';
-            if (st === 'cancelled') return '#94A3B8';        // серый
-            if (st === 'draft' || st === 'pending') return '#FF8400'; // янтарный
-            if (st === 'rejected' || st === 'expired') return '#EF4444'; // красный
-            if (st === 'completed' || st === 'delivered') return '#22C55E'; // зелёный
-            return '#22C55E'; // active по умолчанию — зелёный
-          })() }]}>{item._expired ? `⏳ ${t('deadline_expired')}` : formatStatus(item.status || 'active')}</Text>
+          {item._expired ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Feather name="clock" size={13} color="#EF4444" />
+              <Text style={[s.statusLabel, { color: '#EF4444' }]}>{t('deadline_expired')}</Text>
+            </View>
+          ) : (
+            <Text style={[s.statusLabel, { color: (() => {
+              const st = item.status || 'active';
+              if (st === 'cancelled') return '#94A3B8';        // серый
+              if (st === 'draft' || st === 'pending') return '#FF8400'; // янтарный
+              if (st === 'rejected' || st === 'expired') return '#EF4444'; // красный
+              if (st === 'completed' || st === 'delivered') return '#22C55E'; // зелёный
+              return '#22C55E'; // active по умолчанию — зелёный
+            })() }]}>{formatStatus(item.status || 'active')}</Text>
+          )}
         </View>
         <Text style={[s.route, { color: theme.text }]}>{localizePlace(from, lang)} → {localizePlace(to, lang)}</Text>
         {desc ? <Text style={[s.desc, { color: theme.textMuted }]} numberOfLines={1}>{localizeCargoName(desc, lang)}</Text> : null}
@@ -423,7 +430,10 @@ export default function MyTripsScreen({ navigation, route }) {
             ведёт в CargoDetail, где ставку можно принять/отклонить/написать. */}
         {isCargo && !isDriver && item.bids_count > 0 && (item.status || 'active') === 'active' && (
           <View style={s.offersCta} testID="cargo-offers-cta">
-            <Text style={s.offersCtaText} numberOfLines={1}>💬 {formatBids(item.bids_count)}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+              <Feather name="message-square" size={14} color="#FF8400" />
+              <Text style={s.offersCtaText} numberOfLines={1}>{formatBids(item.bids_count)}</Text>
+            </View>
             <Text style={s.offersCtaArrow}>›</Text>
           </View>
         )}
@@ -436,7 +446,10 @@ export default function MyTripsScreen({ navigation, route }) {
               navigation.navigate('EditTrip', { tripId: item.id, trip: normalizeTrip({ ...item, isMine: true, _server: true }) });
             }}
           >
-            <Text style={s.editBtnText}>✏️ {t('edit_btn')}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Feather name="edit-3" size={14} color="#22C55E" />
+              <Text style={s.editBtnText}>{t('edit_btn')}</Text>
+            </View>
           </TouchableOpacity>
         )}
         {/* Просроченный груз/рейс (Модель А): «Ещё актуально» — продление
@@ -450,7 +463,10 @@ export default function MyTripsScreen({ navigation, route }) {
               onPress={(e) => { e.stopPropagation && e.stopPropagation(); extendItem(item, isCargo); }}
               disabled={extending === item.id}
             >
-              <Text style={s.extendBtnText}>✅ {t('still_active')}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="check-circle" size={14} color="#0C0A09" />
+                <Text style={s.extendBtnText}>{t('still_active')}</Text>
+              </View>
             </TouchableOpacity>
             <TouchableOpacity
               testID="extend-editdate-btn"
@@ -461,7 +477,10 @@ export default function MyTripsScreen({ navigation, route }) {
                 else navigation.navigate('EditTrip', { tripId: item.id, trip: normalizeTrip({ ...item, isMine: true, _server: true }) });
               }}
             >
-              <Text style={[s.editBtnText, { color: '#FF8400' }]}>📅 {t('change_date')}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="calendar" size={14} color="#FF8400" />
+                <Text style={[s.editBtnText, { color: '#FF8400' }]}>{t('change_date')}</Text>
+              </View>
             </TouchableOpacity>
           </View>
         )}
@@ -474,7 +493,10 @@ export default function MyTripsScreen({ navigation, route }) {
               style={[s.miniBtn, { borderColor: '#FF8400', flex: 1 }]}
               onPress={(e) => { e.stopPropagation && e.stopPropagation(); setEditCargo(item); }}
             >
-              <Text style={[s.miniBtnText, { color: '#FF8400' }]}>✏️ {t('edit_btn')}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="edit-3" size={14} color="#FF8400" />
+                <Text style={[s.miniBtnText, { color: '#FF8400' }]}>{t('edit_btn')}</Text>
+              </View>
             </TouchableOpacity>
             <TouchableOpacity
               testID="my-cargo-delete-btn"
@@ -487,7 +509,10 @@ export default function MyTripsScreen({ navigation, route }) {
                 else toast((r && r.detail) || t('delete_failed'), 'error');
               }}
             >
-              <Text style={[s.miniBtnText, { color: '#EF4444' }]}>🗑 {t('delete_btn')}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="trash-2" size={14} color="#EF4444" />
+                <Text style={[s.miniBtnText, { color: '#EF4444' }]}>{t('delete_btn')}</Text>
+              </View>
             </TouchableOpacity>
           </View>
         )}
@@ -544,7 +569,8 @@ export default function MyTripsScreen({ navigation, route }) {
           </View>
           {item.status === 'accepted' ? (
             <PopIn style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <Text style={[s.statusLabel, { color: sc[item.status] }]}>✓ {formatStatus(item.status)}</Text>
+              <Feather name="check-circle" size={13} color={sc[item.status]} />
+              <Text style={[s.statusLabel, { color: sc[item.status] }]}>{formatStatus(item.status)}</Text>
             </PopIn>
           ) : (
             <Text style={[s.statusLabel, { color: sc[item.status] || '#78716C' }]}>{formatStatus(item.status)}</Text>
@@ -555,7 +581,10 @@ export default function MyTripsScreen({ navigation, route }) {
         {(item.cargo_title || item.cargo_desc || item.cargo_type || item.truck_type) ? (
           <View style={s.cardMeta}>
             {(item.cargo_title || item.cargo_desc) ? (
-              <Text style={[s.metaItem, { color: theme.textMuted }]} numberOfLines={1}>📦 {localizeCargoName(item.cargo_title || item.cargo_desc, lang)}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 }}>
+                <Feather name="package" size={13} color={theme.textMuted} />
+                <Text style={[s.metaItem, { color: theme.textMuted }]} numberOfLines={1}>{localizeCargoName(item.cargo_title || item.cargo_desc, lang)}</Text>
+              </View>
             ) : null}
             {(item.cargo_type || item.truck_type) ? (
               <>
@@ -583,7 +612,10 @@ export default function MyTripsScreen({ navigation, route }) {
               disabled={busy}
               onPress={() => setDealStatusOnServer(item, 'in_progress')}
             >
-              <Text style={s.acceptBtnText}>🚛 {t('start_delivery')}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="truck" size={15} color="#FFF" />
+                <Text style={s.acceptBtnText}>{t('start_delivery')}</Text>
+              </View>
             </TouchableOpacity>
           )}
           {isDriver && item.status === 'in_progress' && (
@@ -592,7 +624,10 @@ export default function MyTripsScreen({ navigation, route }) {
               disabled={busy}
               onPress={() => setDealStatusOnServer(item, 'delivered')}
             >
-              <Text style={s.acceptBtnText}>✅ {t('mark_arrived')}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="check-circle" size={15} color="#FFF" />
+                <Text style={s.acceptBtnText}>{t('mark_arrived')}</Text>
+              </View>
             </TouchableOpacity>
           )}
           {!isDriver && item.status === 'in_progress' && (
@@ -601,7 +636,10 @@ export default function MyTripsScreen({ navigation, route }) {
               disabled={busy}
               onPress={() => setDealStatusOnServer(item, 'delivered')}
             >
-              <Text style={[s.acceptBtnText, { color: '#0C0A09' }]}>✅ {t('confirm_delivery')}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="check-circle" size={15} color="#0C0A09" />
+                <Text style={[s.acceptBtnText, { color: '#0C0A09' }]}>{t('confirm_delivery')}</Text>
+              </View>
             </TouchableOpacity>
           )}
           {/* Задача 2: отмена сделки доступна ТОЛЬКО до выезда (accepted).
@@ -624,7 +662,10 @@ export default function MyTripsScreen({ navigation, route }) {
               style={[s.miniBtn, { backgroundColor: 'rgba(255,132,0,0.14)' }]}
               onPress={() => navigation.navigate('Chat', { roomId: item.chat_room_id, role })}
             >
-              <Text style={[s.miniBtnText, { color: accent }]}>💬 {t('order_chat')}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="message-square" size={14} color={accent} />
+                <Text style={[s.miniBtnText, { color: accent }]}>{t('order_chat')}</Text>
+              </View>
             </PressableScale>
           )}
           {/* Задача B: грузоотправитель видит, где машина (на стадии «Везут»). */}
@@ -636,7 +677,10 @@ export default function MyTripsScreen({ navigation, route }) {
                 dealId: item.id, from: item.from_city, to: item.to_city, driverName: item.driver_name,
               })}
             >
-              <Text style={[s.miniBtnText, { color: theme.text }]}>📍 {t('track_truck_btn')}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="map-pin" size={14} color={theme.text} />
+                <Text style={[s.miniBtnText, { color: theme.text }]}>{t('track_truck_btn')}</Text>
+              </View>
             </PressableScale>
           )}
         </View>
@@ -711,14 +755,20 @@ export default function MyTripsScreen({ navigation, route }) {
               style={[s.miniBtn, { borderColor: '#A855F7' }]}
               onPress={() => { setEditingBid(item); setBidModalMode('counter'); setBidModal(true); }}
             >
-              <Text style={[s.miniBtnText, { color: '#A855F7' }]}>🔁 {t('counter_offer')}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="refresh-cw" size={14} color="#A855F7" />
+                <Text style={[s.miniBtnText, { color: '#A855F7' }]}>{t('counter_offer')}</Text>
+              </View>
             </TouchableOpacity>
             <TouchableOpacity
               testID="bid-chat"
               style={[s.miniBtn, { borderColor: '#22C55E' }]}
               onPress={() => openChatForBid(item)}
             >
-              <Text style={[s.miniBtnText, { color: '#22C55E' }]}>💬 {t('open_bid_chat')}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="message-square" size={14} color="#22C55E" />
+                <Text style={[s.miniBtnText, { color: '#22C55E' }]}>{t('open_bid_chat')}</Text>
+              </View>
             </TouchableOpacity>
             <TouchableOpacity
               testID="bid-accept"
@@ -763,7 +813,10 @@ export default function MyTripsScreen({ navigation, route }) {
               style={[s.miniBtn, { borderColor: '#22C55E' }]}
               onPress={() => openChatForBid(item)}
             >
-              <Text style={[s.miniBtnText, { color: '#22C55E' }]}>💬 {t('open_bid_chat')}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="message-square" size={14} color="#22C55E" />
+                <Text style={[s.miniBtnText, { color: '#22C55E' }]}>{t('open_bid_chat')}</Text>
+              </View>
             </TouchableOpacity>
           </View>
         )}
@@ -790,7 +843,10 @@ export default function MyTripsScreen({ navigation, route }) {
               style={[s.miniBtn, { borderColor: '#22C55E' }]}
               onPress={() => openChatForBid(item)}
             >
-              <Text style={[s.miniBtnText, { color: '#22C55E' }]}>💬 {t('open_bid_chat')}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="message-square" size={14} color="#22C55E" />
+                <Text style={[s.miniBtnText, { color: '#22C55E' }]}>{t('open_bid_chat')}</Text>
+              </View>
             </TouchableOpacity>
             <TouchableOpacity
               testID="bid-accept-counter"
@@ -817,21 +873,30 @@ export default function MyTripsScreen({ navigation, route }) {
               style={[s.miniBtn, { borderColor: '#22C55E' }]}
               onPress={() => { setEditingBid(item); setBidModalMode('edit'); setBidModal(true); }}
             >
-              <Text style={[s.miniBtnText, { color: '#22C55E' }]}>✏️ {t('edit_bid')}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="edit-3" size={14} color="#22C55E" />
+                <Text style={[s.miniBtnText, { color: '#22C55E' }]}>{t('edit_bid')}</Text>
+              </View>
             </TouchableOpacity>
             <TouchableOpacity
               testID="bid-discount"
               style={[s.miniBtn, { borderColor: '#FF8400' }]}
               onPress={() => { setEditingBid(item); setBidModalMode('discount'); setBidModal(true); }}
             >
-              <Text style={[s.miniBtnText, { color: '#FF8400' }]}>💸 {t('give_discount')}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="dollar-sign" size={14} color="#FF8400" />
+                <Text style={[s.miniBtnText, { color: '#FF8400' }]}>{t('give_discount')}</Text>
+              </View>
             </TouchableOpacity>
             <TouchableOpacity
               testID="bid-chat"
               style={[s.miniBtn, { borderColor: '#22C55E' }]}
               onPress={() => openChatForBid(item)}
             >
-              <Text style={[s.miniBtnText, { color: '#22C55E' }]}>💬 {t('open_bid_chat')}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="message-square" size={14} color="#22C55E" />
+                <Text style={[s.miniBtnText, { color: '#22C55E' }]}>{t('open_bid_chat')}</Text>
+              </View>
             </TouchableOpacity>
             <TouchableOpacity
               testID="bid-cancel"
@@ -962,7 +1027,10 @@ export default function MyTripsScreen({ navigation, route }) {
             activeOpacity={0.85}
             style={[s.publishRouteBtn, { backgroundColor: v1Accent.main }]}
           >
-            <Text style={s.publishRouteText}>＋ {t('publish_route')}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Feather name="plus" size={16} color="#0C0A09" />
+              <Text style={s.publishRouteText}>{t('publish_route')}</Text>
+            </View>
           </TouchableOpacity>
         </View>
       ) : null}
@@ -1018,7 +1086,7 @@ export default function MyTripsScreen({ navigation, route }) {
       <Modal visible={pubGateVisible} transparent animationType="fade" onRequestClose={() => setPubGateVisible(false)}>
         <View style={s.pgBackdrop}>
           <View style={s.pgCard} testID="trips-publish-gate">
-            <Text style={s.pgIcon}>🔒</Text>
+            <Feather name="lock" size={40} color={v1.text} style={{ marginBottom: 12 }} />
             <Text style={s.pgTitle}>
               {verState === 'review' ? t('trips_gate_pending_title')
                 : verState === 'rejected' ? t('trips_gate_rejected_title')

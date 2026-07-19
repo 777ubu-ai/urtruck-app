@@ -102,9 +102,12 @@ export default function VehiclePhotosScreen({ navigation, route }) {
 
   const progress = STEP / TOTAL_STEPS;
 
-  const DocCard = ({ title, hint, doc, onPick, errorText }) => (
+  const DocCard = ({ title, titleIcon, hint, doc, onPick, errorText }) => (
     <View style={s.card}>
-      <Text style={s.cardTitle}>{title}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+        {titleIcon ? <Feather name={titleIcon} size={16} color={brand.textPrimary} /> : null}
+        <Text style={[s.cardTitle, { marginBottom: 0 }]}>{title}</Text>
+      </View>
       {hint ? <Text style={s.cardHint}>{hint}</Text> : null}
       <Pressable onPress={onPick} style={s.slot} disabled={doc.status === 'busy'}>
         {doc.uri ? (
@@ -123,7 +126,12 @@ export default function VehiclePhotosScreen({ navigation, route }) {
         ) : null}
       </Pressable>
       {doc.status === 'done' ? (
-        <View style={s.okBox}><Text style={s.okText}>✅ {t('vdocs_uploaded')}</Text></View>
+        <View style={s.okBox}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Feather name="check-circle" size={14} color={brand.primary} />
+            <Text style={s.okText}>{t('vdocs_uploaded')}</Text>
+          </View>
+        </View>
       ) : null}
       {doc.status === 'error' ? <Text style={s.errText}>{errorText}</Text> : null}
     </View>
@@ -156,7 +164,8 @@ export default function VehiclePhotosScreen({ navigation, route }) {
           testID="vp-exterior-guide"
         />
         <DocCard
-          title={`🚚 ${t('vehicle_photo_exterior')}`}
+          title={t('vehicle_photo_exterior')}
+          titleIcon="truck"
           hint={t('vphotos_hint_exterior')}
           doc={vehiclePhoto}
           onPick={handleVehiclePhoto}

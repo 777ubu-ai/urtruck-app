@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, FlatList, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import {v1Colors, useV1Colors, v1AccentFor} from '../theme/designV1';
@@ -89,13 +90,16 @@ export default function ReviewsScreen({ navigation, route }) {
   return (
     <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
       <BrandBarWithShare onBack={() => navigation.goBack()} accent={v1Accent.main} />
-      <Text style={s.titleHero}>⭐ {t('allReviews')}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingTop: 4, paddingBottom: 8 }}>
+        <Feather name="star" size={20} color={v1.text} />
+        <Text style={[s.titleHero, { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0 }]}>{t('allReviews')}</Text>
+      </View>
 
       {loading ? (
         <ActivityIndicator style={{ marginTop: 48 }} color={v1Accent.main} />
       ) : total === 0 ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 10 }}>
-          <Text style={{ fontSize: 56 }}>⭐</Text>
+          <Feather name="star" size={48} color={v1.textMuted} />
           <Text style={{ color: v1.textMuted, fontSize: 14, textAlign: 'center', lineHeight: 20 }}>{t('review_after_trip')}</Text>
         </View>
       ) : (

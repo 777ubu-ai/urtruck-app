@@ -367,7 +367,10 @@ export default function TruckParamsScreen({ navigation, route }) {
         {/* Блок прицепа — только для тягача/контейнеровоза */}
         {showTrailer ? (
           <View style={s.trailerBox} testID="tp-trailer-block">
-            <Text style={s.trailerTitle}>🚛 {t('truck_params_trailer')}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Feather name="truck" size={15} color={brand.textPrimary} />
+              <Text style={s.trailerTitle}>{t('truck_params_trailer')}</Text>
+            </View>
             <Text style={s.label}>{t('truck_params_trailer_plate')}</Text>
             <TextInput
               value={trailerPlate}

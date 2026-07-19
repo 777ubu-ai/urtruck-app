@@ -4,6 +4,7 @@
 
 import React from 'react';
 import { TouchableOpacity, View, Text, StyleSheet } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 import { useV1Colors } from '../../../theme/designV1';
 
 export default function BellBadge({ count = 0, onPress, testID }) {
@@ -17,7 +18,7 @@ export default function BellBadge({ count = 0, onPress, testID }) {
       testID={testID || 'bell-btn'}
       style={[s.btn, { borderColor: colors.border, backgroundColor: colors.surface }]}
     >
-      <Text style={s.icon}>🔔</Text>
+      <Feather name="bell" size={18} color={colors.text} />
       {visible ? (
         <View
           testID="bell-unread-badge"
@@ -40,7 +41,6 @@ const s = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 1,
   },
-  icon: { fontSize: 18 },
   badge: {
     position: 'absolute',
     top: -4, right: -4,

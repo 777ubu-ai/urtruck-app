@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, TouchableOpacity, Animated, Easing,
   Modal, Pressable, Platform,
 } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth, LEVELS } from '../utils/AuthContext';
 import { useTheme } from '../utils/ThemeContext';
@@ -114,7 +115,7 @@ export function VerificationGateSheet({ visible, action, currentLevel, requiredL
           <View style={[s.handle, { backgroundColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(15,23,42,0.15)' }]} />
 
           <View style={[s.lockBadge, { backgroundColor: `${accentColors.driver}15` }]}>
-            <Text style={s.lockEmoji}>🔒</Text>
+            <Feather name="lock" size={34} color={accentColors.driver} />
           </View>
 
           <Text style={[s.title, { color: theme.text }]}>{copy.title}</Text>
@@ -130,7 +131,7 @@ export function VerificationGateSheet({ visible, action, currentLevel, requiredL
                                     isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)',
                 },
               ]}>
-                {lvl <= currentLevel && <Text style={{ fontSize: 11, color: '#FFF' }}>✓</Text>}
+                {lvl <= currentLevel && <Feather name="check" size={14} color="#FFF" />}
               </View>
             ))}
           </View>
@@ -165,9 +166,10 @@ export function VerificationGateSheet({ visible, action, currentLevel, requiredL
             <Text style={[s.laterText, { color: theme.textMuted }]}>{tGlobal('not_now')}</Text>
           </TouchableOpacity>
 
-          <View style={[s.trust, { backgroundColor: `${accentColors.browse}10` }]}>
+          <View style={[s.trust, { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: `${accentColors.browse}10` }]}>
+            <Feather name="shield" size={13} color={theme.textMuted} />
             <Text style={[s.trustText, { color: theme.textMuted }]}>
-              🛡 {tGlobal('gate_encrypted_note')}
+              {tGlobal('gate_encrypted_note')}
             </Text>
           </View>
         </Animated.View>

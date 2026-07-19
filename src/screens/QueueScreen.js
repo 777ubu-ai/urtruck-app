@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator, TextInput, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Feather from '@expo/vector-icons/Feather';
 import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../utils/ThemeContext';
 import { useI18n } from '../utils/useI18n';
@@ -308,7 +309,10 @@ export default function QueueScreen({ navigation }) {
         >
           {/* Моя машина в очереди */}
           <View style={[s.lookupBox, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Text style={[s.lookupLabel, { color: theme.text }]}>🚛 {t('queue_my_plate_label')}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+              <Feather name="truck" size={15} color={theme.text} />
+              <Text style={[s.lookupLabel, { color: theme.text, marginBottom: 0 }]}>{t('queue_my_plate_label')}</Text>
+            </View>
             <View style={s.lookupRow}>
               <TextInput
                 style={[s.lookupInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]}
@@ -360,7 +364,10 @@ export default function QueueScreen({ navigation }) {
             onPress={() => navigation.navigate('TrackedPlates')}
             testID="queue-open-tracked"
           >
-            <Text style={[s.trackedLinkText, { color: theme.text }]}>🚛 {t('tracked_open')}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+              <Feather name="truck" size={15} color={theme.text} />
+              <Text style={[s.trackedLinkText, { color: theme.text }]}>{t('tracked_open')}</Text>
+            </View>
             <Text style={[s.cgrLinkChevron, { color: theme.textMuted }]}>›</Text>
           </TouchableOpacity>
 
@@ -372,7 +379,10 @@ export default function QueueScreen({ navigation }) {
               onPress={() => navigation.navigate('Citizenship')}
               testID="queue-reg-banner"
             >
-              <Text style={[s.regBannerText, { color: theme.text }]}>🔓 {t('queue_register_to_book')}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                <Feather name="unlock" size={15} color={v1.driver || '#00E676'} />
+                <Text style={[s.regBannerText, { color: theme.text }]}>{t('queue_register_to_book')}</Text>
+              </View>
               <Text style={[s.cgrLinkChevron, { color: theme.textMuted }]}>›</Text>
             </TouchableOpacity>
           ) : null}
@@ -384,7 +394,10 @@ export default function QueueScreen({ navigation }) {
               onPress={() => setSelectedCountry('CN')}
               testID="queue-freest"
             >
-              <Text style={s.freestLabel}>✨ {t('queue_hub_freest')} 🇨🇳</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                <Feather name="star" size={14} color="#22C55E" />
+                <Text style={[s.freestLabel, { marginBottom: 0 }]}>{t('queue_hub_freest')} 🇨🇳</Text>
+              </View>
               <Text style={[s.freestName, { color: theme.text }]}>
                 {freest.name} — {freest.trucks_in_queue} {t('vehicles_label').toLowerCase()} 🟢
               </Text>

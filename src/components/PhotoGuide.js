@@ -8,7 +8,8 @@
 // i18n не требуется и компонент безопасно вставлять в любой шаг.
 
 import React, { useState } from 'react';
-import { View, Image, Pressable, Modal, StyleSheet, Text } from 'react-native';
+import { View, Image, Pressable, Modal, StyleSheet } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 
 export default function PhotoGuide({ source, testID, height = 240 }) {
   const [zoom, setZoom] = useState(false);
@@ -17,7 +18,7 @@ export default function PhotoGuide({ source, testID, height = 240 }) {
     <View style={s.wrap}>
       <Pressable onPress={() => setZoom(true)} style={[s.thumbWrap, { height }]} testID={testID || 'photo-guide'}>
         <Image source={source} style={s.thumb} resizeMode="contain" />
-        <View style={s.zoomBadge}><Text style={s.zoomBadgeText}>🔍</Text></View>
+        <View style={s.zoomBadge}><Feather name="search" size={14} color="#fff" /></View>
       </Pressable>
       <Modal visible={zoom} transparent animationType="fade" onRequestClose={() => setZoom(false)}>
         <Pressable style={s.backdrop} onPress={() => setZoom(false)} testID="photo-guide-zoom">
@@ -40,7 +41,6 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 14,
     width: 28, height: 28, alignItems: 'center', justifyContent: 'center',
   },
-  zoomBadgeText: { fontSize: 14 },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', alignItems: 'center', justifyContent: 'center', padding: 16 },
   full: { width: '100%', height: '100%' },
 });

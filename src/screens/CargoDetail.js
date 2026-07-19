@@ -383,7 +383,7 @@ export default function CargoDetail({ navigation, route }) {
           <SectionTitle featherIcon="map" label={t('trip_route')} />
           <View style={s.routeRow}>
             <View style={[s.dot, { backgroundColor: '#EF4444' }]} /><Text style={[s.city, { color: v1.text }]}>{localizePlace(view.from, lang)}</Text>
-            <View style={[s.line, { backgroundColor: v1.border }]} /><Text>🚛</Text><View style={[s.line, { backgroundColor: v1.border }]} />
+            <View style={[s.line, { backgroundColor: v1.border }]} /><Feather name="truck" size={16} color={v1.textMuted} /><View style={[s.line, { backgroundColor: v1.border }]} />
             <Text style={[s.city, { color: v1.text }]}>{localizePlace(view.to, lang)}</Text><View style={[s.dot, { backgroundColor: '#22C55E' }]} />
           </View>
           <View style={s.grid}>
@@ -415,8 +415,11 @@ export default function CargoDetail({ navigation, route }) {
         <GlassCard accent={v1Accent.main}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <View>
-              <Text style={[s.priceLabelV1, { color: v1Accent.main }]}>💰 {acceptedBid ? t('deal_price') : t('price')}</Text>
-              <Text style={[s.priceValueV1, { color: v1Accent.main }]} numberOfLines={1}>{priceDisplay}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                <Feather name="dollar-sign" size={14} color={v1Accent.main} />
+                <Text testID="cargo-price-label" style={[s.priceLabelV1, { color: v1Accent.main }]}>{acceptedBid ? t('deal_price') : t('price')}</Text>
+              </View>
+              <Text testID="cargo-price-value" style={[s.priceValueV1, { color: v1Accent.main }]} numberOfLines={1}>{priceDisplay}</Text>
             </View>
             {/* Stage 9: previously a "Предложить цену" button sat right
                 here next to the price block AND on the sticky bar at

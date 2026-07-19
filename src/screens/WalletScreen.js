@@ -9,6 +9,7 @@ import { getTransactions, subscribe } from '../utils/store';
 import { fetchRates } from '../utils/exchangeRates';
 import { useMountedRef } from '../hooks/useMountedRef';
 import GradientText from '../components/GradientText';
+import Feather from '@expo/vector-icons/Feather';
 
 // Pilot currencies (Stage 5 / rev. 3): RUB / USD / KZT / CNY.
 // Wallet display + FX widget reduced to the same set so the picker
@@ -86,7 +87,10 @@ export default function WalletScreen({ route }) {
         {/* Честная карточка: бесплатный пилот, без фейкового «∞» баланса и
             без кнопки-пустышки Premium (раньше $20/mo → просто тост). */}
         <View style={[s.balanceCard, { backgroundColor: theme.card, borderColor: accent + '30' }]}>
-          <View style={s.betaBadge}><Text style={s.betaBadgeText}>🎉 {t('wallet_beta_title')}</Text></View>
+          <View style={[s.betaBadge, { flexDirection: 'row', alignItems: 'center', gap: 6 }]}>
+            <Feather name="gift" size={14} color="#22C55E" />
+            <Text style={s.betaBadgeText}>{t('wallet_beta_title')}</Text>
+          </View>
           <Text style={[s.balanceNote, { color: theme.textMuted, marginTop: 10, textAlign: 'center', lineHeight: 19 }]}>
             {t('wallet_beta_desc')}
           </Text>
@@ -155,7 +159,10 @@ export default function WalletScreen({ route }) {
         {/* История транзакций */}
         {transactions.length > 0 && (
           <View style={[s.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Text style={[s.sectionTitle, { color: theme.textMuted }]}>📊 {t('wallet_history')} ({transactions.length})</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Feather name="bar-chart-2" size={14} color={theme.textMuted} />
+              <Text style={[s.sectionTitle, { color: theme.textMuted }]}>{t('wallet_history')} ({transactions.length})</Text>
+            </View>
             {transactions.map((tx, i) => (
               <View key={tx.id} style={[s.txRow, i < transactions.length - 1 && { borderBottomWidth: 1, borderBottomColor: theme.border }]}>
                 <View style={[s.txIcon, { backgroundColor: tx.amount > 0 ? '#22C55E20' : '#EF444420' }]}>

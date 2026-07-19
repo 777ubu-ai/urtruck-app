@@ -12,6 +12,7 @@ import DatePicker from '../components/DatePicker';
 import {v1Colors, useV1Colors, v1AccentFor} from '../theme/designV1';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
 import TruckTypeGrid from '../components/TruckTypeGrid';
+import Feather from '@expo/vector-icons/Feather';
 
 const TRUCK_KEYS = ['tent', 'ref', 'platform', 'auto', 'izoterm', 'cont20', 'cont40', 'jumbo', 'mega', 'curtain', 'lowloader', 'tanker', 'dumptruck', 'grain', 'livestock', 'logger', 'hazmat', 'open_truck', 'closed', 'longliner', 'microvan'];
 const TRUCK_ICONS = {
@@ -167,7 +168,10 @@ export default function EditTripScreen({ navigation, route }) {
     <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
       <BrandBarWithShare onBack={() => navigation.goBack()} accent={v1Accent.main} />
       <View style={{ paddingHorizontal: 16, paddingTop: 4 }}>
-        <Text style={[s.title, { color: v1.text }]}>✏️ {t('edit_btn')}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Feather name="edit-3" size={16} color={v1.text} />
+          <Text style={[s.title, { color: v1.text }]}>{t('edit_btn')}</Text>
+        </View>
       </View>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
         {/* Stage 11: bring EditTrip onto the same RoutePointPicker
@@ -180,7 +184,14 @@ export default function EditTripScreen({ navigation, route }) {
           style={[s.input, { backgroundColor: theme.card, borderColor: theme.border, justifyContent: 'center', marginBottom: 10 }]}
           onPress={() => setShowFromPicker(true)}
         >
-          <Text style={{ color: from ? theme.text : theme.textMuted, fontSize: 15 }}>{from || ('📍 ' + t('fromCountry'))}</Text>
+          {from ? (
+            <Text style={{ color: theme.text, fontSize: 15 }}>{from}</Text>
+          ) : (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Feather name="map-pin" size={15} color={theme.textMuted} />
+              <Text style={{ color: theme.textMuted, fontSize: 15 }}>{t('fromCountry')}</Text>
+            </View>
+          )}
         </TouchableOpacity>
 
         <Text style={[s.label, { color: theme.textMuted }]}>{t('toCountry')}</Text>
@@ -188,7 +199,14 @@ export default function EditTripScreen({ navigation, route }) {
           style={[s.input, { backgroundColor: theme.card, borderColor: theme.border, justifyContent: 'center', marginBottom: 10 }]}
           onPress={() => setShowToPicker(true)}
         >
-          <Text style={{ color: to ? theme.text : theme.textMuted, fontSize: 15 }}>{to || ('🏁 ' + t('toCountry'))}</Text>
+          {to ? (
+            <Text style={{ color: theme.text, fontSize: 15 }}>{to}</Text>
+          ) : (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Feather name="flag" size={15} color={theme.textMuted} />
+              <Text style={{ color: theme.textMuted, fontSize: 15 }}>{t('toCountry')}</Text>
+            </View>
+          )}
         </TouchableOpacity>
 
         <LocationPickerModal
@@ -225,7 +243,10 @@ export default function EditTripScreen({ navigation, route }) {
           </View>
         </View>
 
-        <Text style={[s.label, { color: theme.textMuted }]}>💰 {t('payment_label_full')}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12, marginBottom: 6 }}>
+          <Feather name="dollar-sign" size={13} color={theme.textMuted} />
+          <Text style={[s.label, { color: theme.textMuted, marginTop: 0, marginBottom: 0 }]}>{t('payment_label_full')}</Text>
+        </View>
         <View style={[s.row, { marginBottom: 10 }]}>
           <TextInput
             style={[s.input, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border, flex: 2 }]}
@@ -291,7 +312,12 @@ export default function EditTripScreen({ navigation, route }) {
           style={[s.saveBtn, saving && { opacity: 0.6 }]}
           testID="edit-trip-save"
         >
-          {saving ? <ActivityIndicator color="#fff" /> : <Text style={s.saveBtnText}>💾 {t('save_changes')}</Text>}
+          {saving ? <ActivityIndicator color="#fff" /> : (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Feather name="save" size={15} color="#fff" />
+              <Text style={s.saveBtnText}>{t('save_changes')}</Text>
+            </View>
+          )}
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>

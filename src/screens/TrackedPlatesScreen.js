@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Feather from '@expo/vector-icons/Feather';
 import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../utils/ThemeContext';
 import { useI18n } from '../utils/useI18n';
@@ -121,7 +122,7 @@ export default function TrackedPlatesScreen({ navigation }) {
       <SafeAreaView style={{ flex: 1, backgroundColor: v1.bg }} edges={['top']}>
         {Header}
         <View style={s.guestWrap}>
-          <Text style={s.guestIcon}>🚛</Text>
+          <Feather name="truck" size={48} color={theme.textMuted} style={{ marginBottom: 16 }} />
           <Text style={[s.guestText, { color: theme.textMuted }]}>{t('tracked_need_reg')}</Text>
           <TouchableOpacity
             style={[s.primary, { backgroundColor: driver }]}
@@ -170,7 +171,7 @@ export default function TrackedPlatesScreen({ navigation }) {
                   <Text style={[s.plate, { color: theme.text }]} numberOfLines={1}>{it.plate}</Text>
                   <View style={[s.badge, { backgroundColor: col + '26', borderColor: col + '80' }]}>
                     <Text style={[s.badgeText, { color: col }]} numberOfLines={1}>
-                      {st ? t(st.key) : t('queue_lk_unknown')}{it.is_late ? ' ⏱' : ''}
+                      {st ? t(st.key) : t('queue_lk_unknown')}{it.is_late ? <>{' '}<Feather name="clock" size={11} color={col} /></> : null}
                     </Text>
                   </View>
                 </View>
@@ -183,13 +184,17 @@ export default function TrackedPlatesScreen({ navigation }) {
                 ) : null}
 
                 {called ? (
-                  <View style={[s.callMsg, { backgroundColor: col + '1A', borderColor: col + '4D' }]}>
-                    <Text style={[s.callMsgText, { color: '#FCD34D' }]}>🚛 {t('queue_lk_called')}</Text>
+                  <View style={[s.callMsg, { backgroundColor: col + '1A', borderColor: col + '4D', flexDirection: 'row', alignItems: 'center', gap: 6 }]}>
+                    <Feather name="truck" size={15} color="#FCD34D" />
+                    <Text style={[s.callMsgText, { color: '#FCD34D' }]}>{t('queue_lk_called')}</Text>
                   </View>
                 ) : null}
 
                 <View style={s.foot}>
-                  <Text style={[s.pushOn, { color: driver }]}>🔔 {t('tracked_push_on')}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Feather name="bell" size={14} color={driver} />
+                    <Text style={[s.pushOn, { color: driver }]}>{t('tracked_push_on')}</Text>
+                  </View>
                   <TouchableOpacity onPress={() => remove(it.plate)} style={[s.stop, { borderColor: theme.border }]} testID="tracked-stop">
                     <Text style={[s.stopText, { color: theme.textMuted }]}>{t('tracked_stop')}</Text>
                   </TouchableOpacity>
@@ -201,7 +206,10 @@ export default function TrackedPlatesScreen({ navigation }) {
 
         {/* Добавить номер */}
         <View style={[s.addBox, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[s.addLabel, { color: theme.text }]}>＋ {t('tracked_add_label')}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Feather name="plus" size={15} color={theme.text} />
+            <Text style={[s.addLabel, { color: theme.text }]}>{t('tracked_add_label')}</Text>
+          </View>
           <Text style={[s.addHint, { color: theme.textMuted }]}>{t('tracked_add_hint')}</Text>
           <View style={s.addRow}>
             <TextInput

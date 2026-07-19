@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, Modal, Dimensions, ScrollView, Alert, Platform } from 'react-native';
 import { useTheme } from '../utils/ThemeContext';
+import Feather from '@expo/vector-icons/Feather';
 import * as ImagePicker from 'expo-image-picker';
 import { useI18n } from '../utils/useI18n';
 
@@ -83,14 +84,14 @@ export const PhotoPicker = ({ photos = [], onChange }) => {
           <View key={i} style={p.item}>
             <Image source={{ uri }} style={p.img} />
             <TouchableOpacity style={p.removeBtn} onPress={() => remove(i)}>
-              <Text style={p.removeBtnText}>✕</Text>
+              <Feather name="x" size={14} color="#fff" />
             </TouchableOpacity>
-            {i === 0 && <View style={p.mainBadge}><Text style={p.mainBadgeText}>★</Text></View>}
+            {i === 0 && <View style={p.mainBadge}><Feather name="star" size={12} color="#0C0A09" /></View>}
           </View>
         ))}
         {photos.length < MAX_PHOTOS && (
           <TouchableOpacity style={[p.addBtn, { backgroundColor: theme.card, borderColor: theme.border }]} onPress={pick}>
-            <Text style={{ fontSize: 28 }}>📷</Text>
+            <Feather name="camera" size={26} color={theme.textSecondary} />
             <Text style={[p.addBtnText, { color: theme.textSecondary }]}>{t('addCargoPhoto')}</Text>
             <Text style={[p.counter, { color: theme.textMuted }]}>{photos.length}/{MAX_PHOTOS}</Text>
           </TouchableOpacity>
@@ -145,12 +146,15 @@ export const PhotoGallery = ({ photos = [] }) => {
           </TouchableOpacity>
         ))}
       </ScrollView>
-      <Text style={[g.count, { color: theme.textMuted }]}>📸 {t('photo_gallery_count').replace('{n}', photos.length)}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 4 }}>
+        <Feather name="camera" size={14} color={theme.textMuted} />
+        <Text style={[g.count, { color: theme.textMuted, marginTop: 0 }]}>{t('photo_gallery_count').replace('{n}', photos.length)}</Text>
+      </View>
 
       <Modal visible={activeIdx !== null} transparent animationType="fade" onRequestClose={() => setActiveIdx(null)}>
         <View style={g.viewer}>
           <TouchableOpacity style={g.closeViewer} onPress={() => setActiveIdx(null)}>
-            <Text style={g.closeViewerText}>✕</Text>
+            <Feather name="x" size={22} color="#fff" />
           </TouchableOpacity>
           <ScrollView
             horizontal

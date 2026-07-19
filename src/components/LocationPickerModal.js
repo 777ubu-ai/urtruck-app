@@ -13,6 +13,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Modal, View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Feather from '@expo/vector-icons/Feather';
 import { useV1Colors, v1Radius } from '../theme/designV1';
 import { useI18n } from '../utils/useI18n';
 import { storage } from '../utils/storage';
@@ -105,6 +106,8 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
     search: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: v1.surface, borderWidth: 1.5, borderColor: v1.driver, borderRadius: v1Radius.field, paddingHorizontal: 14, height: 50 },
     searchInput: { flex: 1, fontSize: 15, color: v1.text, paddingVertical: 0 },
     sectLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5, textTransform: 'uppercase', color: v1.textMuted, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 4 },
+    sectRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 4 },
+    sectLabelInline: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5, textTransform: 'uppercase', color: v1.textMuted },
     row: { flexDirection: 'row', alignItems: 'center', gap: 13, paddingHorizontal: 16, paddingVertical: 12 },
     lead: { width: 38, height: 38, borderRadius: 11, backgroundColor: v1.surface, borderWidth: 1, borderColor: v1.border, alignItems: 'center', justifyContent: 'center' },
     leadText: { fontSize: 19 },
@@ -116,6 +119,13 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
     divider: { height: 1, backgroundColor: v1.border, marginHorizontal: 16, marginVertical: 6 },
     empty: { color: v1.textMuted, fontSize: 13, padding: 16 },
   }), [v1]);
+
+  const Sect = ({ icon, children }) => (
+    <View style={s.sectRow}>
+      <Feather name={icon} size={13} color={v1.textMuted} />
+      <Text style={s.sectLabelInline}>{children}</Text>
+    </View>
+  );
 
   const Row = ({ p, showHeart = true }) => {
     const country = COUNTRIES[p.country] || {};
@@ -131,7 +141,7 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
         </View>
         {showHeart && !p.custom ? (
           <TouchableOpacity onPress={() => toggleFav(p)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} testID={`loc-fav-${p.name}`}>
-            <Text style={[s.heart, { color: isFav ? '#F87171' : v1.textMuted }]}>{isFav ? '♥' : '♡'}</Text>
+            <Feather name="heart" size={18} color={isFav ? '#F87171' : v1.textMuted} style={{ paddingHorizontal: 4 }} />
           </TouchableOpacity>
         ) : <Text style={s.chev}>›</Text>}
       </TouchableOpacity>
@@ -150,7 +160,7 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
 
         <View style={s.searchWrap}>
           <View style={s.search}>
-            <Text style={{ fontSize: 15 }}>🔍</Text>
+            <Feather name="search" size={16} color={v1.textMuted} />
             <TextInput
               style={s.searchInput}
               value={query}
@@ -183,7 +193,7 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
               {showGeo ? (
                 <TouchableOpacity style={s.row} onPress={useGeo} testID="loc-geo" activeOpacity={0.7}>
                   <View style={[s.lead, s.geoLead]}>
-                    {geoLoading ? <ActivityIndicator color={v1.driver} /> : <Text style={s.leadText}>📍</Text>}
+                    {geoLoading ? <ActivityIndicator color={v1.driver} /> : <Feather name="map-pin" size={18} color={v1.driver} />}
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={[s.name, { color: v1.driver }]}>{t('loc_geo')}</Text>
@@ -195,22 +205,22 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
 
               {favs.length ? (
                 <>
-                  <Text style={s.sectLabel}>⭐ {t('loc_favorites')}</Text>
+                  <Sect icon="star">{t('loc_favorites')}</Sect>
                   {favs.map((p, i) => <Row key={`fav:${pointKey(p)}:${i}`} p={p} />)}
                 </>
               ) : null}
 
               {recent.length ? (
                 <>
-                  <Text style={s.sectLabel}>🕐 {t('loc_recent')}</Text>
+                  <Sect icon="clock">{t('loc_recent')}</Sect>
                   {recent.map((p, i) => <Row key={`rec:${pointKey(p)}:${i}`} p={p} />)}
                 </>
               ) : null}
 
-              <Text style={s.sectLabel}>⭐ {t('route_popular')}</Text>
+              <Sect icon="star">{t('route_popular')}</Sect>
               {POPULAR.map((p, i) => <Row key={`pop:${pointKey(p)}:${i}`} p={p} />)}
 
-              <Text style={s.sectLabel}>🛂 {t('loc_borders')}</Text>
+              <Sect icon="flag">{t('loc_borders')}</Sect>
               {BORDERS.map((p, i) => <Row key={`bord:${pointKey(p)}:${i}`} p={p} showHeart={false} />)}
             </>
           )}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Modal, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import ShareModal from '../components/ShareModal';
@@ -172,27 +173,31 @@ export default function DriverDetail({ navigation, route }) {
             <Text style={{ fontSize: 32 }}>{FLAGS[driver.country] || '🏳️'}</Text>
           </View>
           <Text style={[s.name, { color: v1.text }]}>
-            {driverName} {driver.verified && <Text style={{ color: v1Accent.main }}>✓</Text>}
+            {driverName} {driver.verified && <Feather name="check-circle" size={15} color={v1Accent.main} />}
           </Text>
           <View style={[s.verifyBadge, { backgroundColor: driver.verified ? v1Colors.driverSoft : v1Colors.cargoOwnerSoft, borderColor: driver.verified ? v1Colors.driver : v1Colors.cargoOwner }]}>
             <Text style={[s.verifyText, { color: driver.verified ? v1Colors.driver : v1Colors.cargoOwner }]}>
               {driver.verified ? '🟢 ' + t('verified') : '🟡 ' + t('pending')}
             </Text>
           </View>
-          <Text style={s.ratingText}>★ {driver.rating || '—'} <Text style={[s.reviewCount, { color: v1.textMuted }]}>({driver.reviews || 0})</Text></Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Feather name="star" size={14} color="#FBBF24" />
+            <Text style={s.ratingText}>{driver.rating || '—'} <Text style={[s.reviewCount, { color: v1.textMuted }]}>({driver.reviews || 0})</Text></Text>
+          </View>
           {/* Бейджи доверия (соц-механика 满帮): считаются из реальных данных */}
           {(() => {
             const rating = parseFloat(driver.rating) || 0;
             const reviews = parseInt(driver.reviews) || 0;
             const badges = [];
-            if (rating >= 4.7 && reviews >= 5) badges.push('🤝 ' + t('badge_reliable'));
-            if (reviews >= 10) badges.push('🚛 ' + t('badge_experienced'));
+            if (rating >= 4.7 && reviews >= 5) badges.push({ icon: 'check', label: t('badge_reliable') });
+            if (reviews >= 10) badges.push({ icon: 'truck', label: t('badge_experienced') });
             if (!badges.length) return null;
             return (
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8, justifyContent: 'center' }}>
                 {badges.map((b) => (
-                  <View key={b} style={{ backgroundColor: 'rgba(0,230,118,0.10)', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
-                    <Text style={{ color: '#00C766', fontSize: 11, fontWeight: '800' }}>{b}</Text>
+                  <View key={b.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(0,230,118,0.10)', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
+                    <Feather name={b.icon} size={11} color="#00C766" />
+                    <Text style={{ color: '#00C766', fontSize: 11, fontWeight: '800' }}>{b.label}</Text>
                   </View>
                 ))}
               </View>
@@ -201,12 +206,12 @@ export default function DriverDetail({ navigation, route }) {
         </GlassCard>
 
         <GlassCard>
-          <SectionTitle icon="🛡" label={t('reliability_section')} />
+          <SectionTitle featherIcon="shield" label={t('reliability_section')} />
           <SecurityBadge userId={driver.id} phone={driver.phone} plate={driver.plate_truck} />
         </GlassCard>
 
         <GlassCard>
-          <SectionTitle icon="🚚" label={t('transport')} />
+          <SectionTitle featherIcon="truck" label={t('transport')} />
           <View style={s.grid}>
             {/* Stage 17: insert a single space between number and
                 unit so values render as "20 т" / "82 м³" instead of
@@ -234,10 +239,13 @@ export default function DriverDetail({ navigation, route }) {
 
         <GlassCard>
           <SectionTitle
-            icon="⭐"
+            featherIcon="star"
             label={`${t('reviews')} (${reviewsData?.summary?.count ?? 0})`}
             right={reviewsData?.summary?.count > 0 ? (
-              <Text style={{ color: '#FBBF24', fontSize: 12, fontWeight: '800' }}>★ {reviewsData.summary.average}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                <Feather name="star" size={12} color="#FBBF24" />
+                <Text style={{ color: '#FBBF24', fontSize: 12, fontWeight: '800' }}>{reviewsData.summary.average}</Text>
+              </View>
             ) : (
               <Text style={{ color: v1.textDim, fontSize: 11 }}>{t('review_after_trip')}</Text>
             )}
@@ -252,7 +260,11 @@ export default function DriverDetail({ navigation, route }) {
               <View key={i} style={[s.review, i < arr.length - 1 && { borderBottomWidth: 1, borderBottomColor: v1.border }]}>
                 <View style={s.reviewHeader}>
                   <Text style={[s.reviewUser, { color: v1.text }]}>{user}</Text>
-                  <Text style={s.reviewStars}>{'★'.repeat(Math.max(0, Math.min(5, parseInt(rating) || 0)))}</Text>
+                  <View style={{ flexDirection: 'row', gap: 1 }}>
+                    {Array.from({ length: Math.max(0, Math.min(5, parseInt(rating) || 0)) }).map((_, k) => (
+                      <Feather key={k} name="star" size={12} color="#FBBF24" />
+                    ))}
+                  </View>
                 </View>
                 {text ? <Text style={[s.reviewText, { color: v1.textMuted }]}>{text}</Text> : null}
                 <Text style={[s.reviewAgo, { color: v1.textMuted }]}>{ago}</Text>
@@ -264,7 +276,14 @@ export default function DriverDetail({ navigation, route }) {
         </GlassCard>
 
         <TouchableOpacity style={[s.contactBtn, { backgroundColor: contactOpened ? v1Colors.driver : v1Accent.main }]} onPress={openContact} disabled={contactOpened}>
-          <Text style={[s.contactBtnText, { color: '#0A0A0A' }]}>{contactOpened ? '✓ ' + t('contactOpened') : t('openContact')}</Text>
+          {contactOpened ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Feather name="check-circle" size={16} color="#0A0A0A" />
+              <Text style={[s.contactBtnText, { color: '#0A0A0A' }]}>{t('contactOpened')}</Text>
+            </View>
+          ) : (
+            <Text style={[s.contactBtnText, { color: '#0A0A0A' }]}>{t('openContact')}</Text>
+          )}
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -273,9 +292,12 @@ export default function DriverDetail({ navigation, route }) {
           disabled={favBusy}
           testID="driver-fav-btn"
         >
-          <Text style={[s.favBtnText, { color: isFav ? '#EF4444' : v1.text }]}>
-            {isFav ? '❤️ ' + t('in_favorites') : '🤍 ' + t('add_to_favorites')}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
+            <Feather name="heart" size={15} color={isFav ? '#EF4444' : v1.text} />
+            <Text style={[s.favBtnText, { color: isFav ? '#EF4444' : v1.text }]}>
+              {isFav ? t('in_favorites') : t('add_to_favorites')}
+            </Text>
+          </View>
         </TouchableOpacity>
         <Text style={[s.betaNote, { color: v1.textMuted }]}>{t('freeForEarly')}</Text>
 
@@ -284,7 +306,10 @@ export default function DriverDetail({ navigation, route }) {
           onPress={() => setReportModal(true)}
           testID="report-driver-btn"
         >
-          <Text style={s.reportBtnText}>🚨 {t('report_driver')}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
+            <Feather name="alert-triangle" size={14} color="#EF4444" />
+            <Text style={s.reportBtnText}>{t('report_driver')}</Text>
+          </View>
         </TouchableOpacity>
       </ScrollView>
 

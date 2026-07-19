@@ -167,8 +167,9 @@ export default function SelfieStepScreen({ navigation, route }) {
 
         {verified ? (
           <View style={s.okBox}>
+            <Feather name="check-circle" size={15} color={brand.primary} />
             <Text style={s.okText}>
-              ✅ {t('reg_selfie_confirmed')} ({Math.round((confidence || 0) * 100)}%)
+              {t('reg_selfie_confirmed')} ({Math.round((confidence || 0) * 100)}%)
             </Text>
           </View>
         ) : null}
@@ -236,7 +237,7 @@ const s = StyleSheet.create({
   thumb: { width: '100%', height: '100%' },
   busyOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.45)', gap: 8 },
   busyText: { ...typography.bodySmall, color: '#fff' },
-  okBox: { marginTop: 14, padding: 12, borderRadius: radius.md, backgroundColor: brand.primarySoft },
+  okBox: { marginTop: 14, padding: 12, borderRadius: radius.md, backgroundColor: brand.primarySoft, flexDirection: 'row', alignItems: 'center', gap: 6 },
   okText: { ...typography.bodySmall, fontWeight: '800', color: brand.primary },
   retakeBtn: { marginTop: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 10 },
   retakeText: { ...typography.bodySmall, fontWeight: '700', color: brand.primary },
