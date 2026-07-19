@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../utils/ThemeContext';
 import { useI18n } from '../utils/useI18n';
 import { useToast } from '../components/Toast';
+import { useAuth } from '../utils/AuthContext';
 import {v1Colors, useV1Colors} from '../theme/designV1';
 import { accentColors } from '../utils/theme';
 
@@ -41,7 +42,10 @@ export default function HowItWorksScreen({ navigation, route }) {
   const { theme, isDark } = useTheme();
   const { t } = useI18n();
   const { toast } = useToast();
-  const role = route?.params?.role || 'client';
+  // По умолчанию открываем вкладку по РОЛИ пользователя (клиент → «Для клиента»,
+  // водитель → «Для водителя»), переключатель остаётся. Явный param имеет приоритет.
+  const { session } = useAuth();
+  const role = route?.params?.role || (session?.user?.role === 'driver' ? 'driver' : 'client');
   const steps = role === 'driver' ? STEPS_DRIVER : STEPS_CLIENT;
   const accent = role === 'driver' ? accentColors.driver : accentColors.client;
 

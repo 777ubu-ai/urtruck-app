@@ -5,10 +5,12 @@ import { useTheme } from '../utils/ThemeContext';
 import { useI18n } from '../utils/useI18n';
 import {v1Colors, useV1Colors} from '../theme/designV1';
 
+// Номер телефона НЕ показываем (приватность — иначе завалят звонками). Тап по
+// строке сразу открывает мессенджер. Email оставляем как support-адрес.
 const CONTACTS = [
-  { icon: '💬', label: 'Telegram', value: '+7 747 917 11 18', url: 'https://t.me/+77479171118' },
+  { icon: '💬', label: 'Telegram', value: '', url: 'https://t.me/+77479171118' },
   { icon: '📧', label: 'Email', value: '777ubu@gmail.com', url: 'mailto:777ubu@gmail.com' },
-  { icon: '📱', label: 'WhatsApp', value: '+7 747 917 11 18', url: 'https://wa.me/77479171118' },
+  { icon: '📱', label: 'WhatsApp', value: '', url: 'https://wa.me/77479171118' },
 ];
 
 // Только честные, проверяемые факты (App Store модерация + доверие).
@@ -70,7 +72,7 @@ export default function AboutScreen({ navigation }) {
             <Text style={{ fontSize: 22 }}>{c.icon}</Text>
             <View style={{ flex: 1, marginLeft: 12 }}>
               <Text style={[s.contactLabel, { color: theme.text }]}>{c.label}</Text>
-              <Text style={[s.contactValue, { color: theme.textMuted }]}>{c.value}</Text>
+              {c.value ? <Text style={[s.contactValue, { color: theme.textMuted }]}>{c.value}</Text> : null}
             </View>
             <Text style={{ color: theme.textMuted }}>›</Text>
           </TouchableOpacity>
