@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../utils/useI18n';
 import { useToast } from '../components/Toast';
 import { useAuth } from '../utils/AuthContext';
@@ -182,7 +183,7 @@ export default function CreateTripScreen({ navigation, route }) {
       {/* Откуда / Куда: полноэкранный выбор города (inDrive-стиль). */}
       <Field
         variant="dropdown"
-        icon="📍"
+        featherIcon="map-pin"
         label={t('signup_field_country')}
         value={from}
         placeholder={t('create_field_from_placeholder')}
@@ -192,7 +193,7 @@ export default function CreateTripScreen({ navigation, route }) {
 
       <Field
         variant="dropdown"
-        icon="📍"
+        featherIcon="map-pin"
         label={t('toCountry')}
         value={to}
         placeholder={t('create_field_to_placeholder')}
@@ -227,7 +228,7 @@ export default function CreateTripScreen({ navigation, route }) {
         <View style={{ flex: 1 }}>
           <Field
             variant="dropdown"
-            icon="📅"
+            featherIcon="calendar"
             label={t('departure')}
             value={departure}
             placeholder=""
@@ -237,7 +238,7 @@ export default function CreateTripScreen({ navigation, route }) {
         <View style={{ flex: 1 }}>
           <Field
             variant="dropdown"
-            icon="🚚"
+            featherIcon="truck"
             label={t('truckType')}
             value={truckType ? t(truckType) : ''}
             placeholder=""
@@ -303,11 +304,14 @@ export default function CreateTripScreen({ navigation, route }) {
 
       {/* Цена block */}
       <View style={[s.priceCard, { borderColor: v1.border }]}>
-        <Text style={s.priceLabel}>💰 {t('payment_label_full')}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+          <Feather name="dollar-sign" size={15} color={v1.text} />
+          <Text style={[s.priceLabel, { marginBottom: 0 }]}>{t('payment_label_full')}</Text>
+        </View>
         <View style={s.row2}>
           <View style={{ flex: 1 }}>
             <Field
-              icon="💳"
+              featherIcon="credit-card"
               label={t('amount_label')}
               value={price}
               onChangeText={(v) => { setPrice(String(v || '').replace(/[^\d]/g, '')); if (errors.price) setErrors((e) => ({ ...e, price: null })); }}
@@ -319,7 +323,7 @@ export default function CreateTripScreen({ navigation, route }) {
           <View style={{ flex: 1 }}>
             <Field
               variant="dropdown"
-              icon="¤"
+              featherIcon="dollar-sign"
               label={t('currency_label')}
               value={`${(CURRENCY_OPTIONS.find((c) => c.k === currency) || {}).l || ''} ${currency}`}
               onPress={() => setShowCurrencyPicker((v) => !v)}
