@@ -6,6 +6,7 @@ import { useTheme } from '../utils/ThemeContext';
 import {v1Colors, useV1Colors} from '../theme/designV1';
 import { useAuth } from '../utils/AuthContext';
 import { securityAPI, COLOR_UI, driverTier } from '../utils/security';
+import { regAPI } from '../utils/registration';
 import GradientText from '../components/GradientText';
 import SecurityBadge from '../components/SecurityBadge';
 
@@ -15,6 +16,8 @@ export default function SecurityScreen({ navigation }) {
   const { theme } = useTheme();
   const { session } = useAuth();
   const [score, setScore] = useState(null);
+  const [rowScore, setRowScore] = useState(null);   // балл из drivers_registration (после верификации)
+  const [rowColor, setRowColor] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -24,14 +27,23 @@ export default function SecurityScreen({ navigation }) {
         const s = await securityAPI.getScore(userId);
         setScore(s);
       }
+      // После верификации балл пишется в строку водителя (security_score), а не в
+      // driver_scores — берём его как основной источник, иначе всегда «50/Новичок».
+      const st = await regAPI.status().catch(() => null);
+      if (st) {
+        if (st.security_score != null) setRowScore(st.security_score);
+        if (st.security_color) setRowColor(st.security_color);
+      }
       setLoading(false);
     })();
   }, []);
 
   // Чёрный список показываем как раньше; иначе — 4-уровневая лестница по баллам
   // (Новый → Новичок → Опытный → Профи), а не единый «Новичок».
-  const isBlack = score?.color_code === 'black';
-  const tier = driverTier(score?.total_score ?? 50);
+  // Приоритет: балл из строки водителя (свежая верификация) → driver_scores → 50.
+  const effectiveScore = rowScore != null ? rowScore : (score?.total_score ?? 50);
+  const isBlack = rowColor === 'black' || score?.color_code === 'black';
+  const tier = driverTier(effectiveScore);
   const ui = isBlack
     ? COLOR_UI.black
     : { bg: tier.color + '20', border: tier.color, text: tier.color, label: `${tier.emoji} ${t(tier.key)}` };
@@ -53,7 +65,7 @@ export default function SecurityScreen({ navigation }) {
             {/* Мой скоринг — большая карточка */}
             <View style={[s.heroCard, { backgroundColor: theme.card, borderColor: ui.border }]}>
               <Text style={[s.heroScore, { color: ui.text }]}>
-                {score?.total_score ?? 50}<Text style={s.heroMax}>/100</Text>
+                {effectiveScore}<Text style={s.heroMax}>/100</Text>
               </Text>
               <Text style={[s.heroLabel, { color: ui.text }]}>{ui.label}</Text>
               <Text style={[s.heroHint, { color: theme.textMuted }]}>

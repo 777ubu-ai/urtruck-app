@@ -10,6 +10,8 @@ import { useV1Colors } from '../theme/designV1';
 import { useAuth } from '../utils/AuthContext';
 import { getProfile, saveProfile } from '../utils/store';
 import { storage } from '../utils/storage';
+import { regAPI } from '../utils/registration';
+import { driverTier } from '../utils/security';
 import GradientText from '../components/GradientText';
 import HelpButton from '../components/HelpButton';
 import { API_BASE } from '../config/env';
@@ -103,6 +105,10 @@ export default function ProfileScreen({ navigation, route }) {
       const token = await storage.get('ur_reg_token');
       if (!token) return;
       const r = await fetch(`${API_BASE}/users/me`, { headers: { 'Authorization': `Bearer ${token}` } });
+      // Строка водителя: данные машины + статус/балл после верификации.
+      // /users/me их не возвращает — берём из /register/status.
+      let st = null;
+      try { st = await regAPI.status(); } catch {}
       if (r.ok) {
         const d = await r.json();
         setProfile(prev => {
@@ -113,8 +119,17 @@ export default function ProfileScreen({ navigation, route }) {
             ...(prev || {}),
             display_name: d.name || prev?.display_name,
             full_name: d.name || prev?.full_name,
-            city: d.city || prev?.city,
+            city: d.city || st?.city || prev?.city,
             bio: d.about || prev?.bio,
+            // После верификации: машина/статус/балл из строки водителя, чтобы
+            // профиль реально показывал сохранённые данные (а не «пусто»).
+            ...(st?.vehicle_type ? { truckType: st.vehicle_type } : {}),
+            ...(st?.capacity_tons != null ? { capacity_tons: st.capacity_tons } : {}),
+            ...(st?.volume_m3 != null ? { available_m3: st.volume_m3 } : {}),
+            ...(st?.security_score != null ? { driver_score: st.security_score } : {}),
+            ...(st?.status ? { reg_status: st.status } : {}),
+            ...(st?.verification_level != null ? { verification_level: st.verification_level } : {}),
+            is_verified: (st?.status === 'approved') || (Number(st?.verification_level) >= 2) || prev?.is_verified || false,
             // PR-D1: PRO-поля. Подтягиваем при focus — прогресс-бар PRO
             // и бейдж активного PRO обновятся сразу. Если backend ещё
             // не задеплоен с PRO — поля undefined и не затирают локал.
@@ -255,6 +270,16 @@ export default function ProfileScreen({ navigation, route }) {
                 {specsLine}
               </Text>
             ) : null}
+            {/* Row 4: статус-тир водителя (Новый→Новичок→Опытный→Профи) */}
+            {isDriver && profile.driver_score != null ? (() => {
+              const tr = driverTier(profile.driver_score);
+              return (
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: tr.color }}>{tr.emoji} {t(tr.key)}</Text>
+                  <Text style={{ fontSize: 12, color: theme.textMuted }}>{`  ·  ${profile.driver_score}/100`}</Text>
+                </View>
+              );
+            })() : null}
           </View>
           {/* ЭТАП 1 (canonical): карандаш = редактирование профиля (EditProfile).
               Документная PRO-верификация запускается кнопкой «Получить статус
