@@ -24,6 +24,12 @@ def _migrate(c):
         ("birth_date", "TEXT"),                 # шаг 1 (ДД.ММ.ГГГГ)
         ("personal_photo_url", "TEXT"),         # шаг 1: ключ/URL личного фото в storage
         ("residence_status", "TEXT"),           # шаг 2: citizen|kandas|foreigner
+        # Новый порядок верификации: шаг 1 «Гражданство» + шаг 2 «Удостоверение
+        # личности (2 стороны)». Всё добавлением — старые колонки не трогаем.
+        ("citizenship_country", "TEXT"),         # шаг 1: KZ|RU|UZ|KG|TJ|other
+        ("id_doc_type", "TEXT"),                 # шаг 2: id_card|passport|residence_permit
+        ("id_front_url", "TEXT"),                # шаг 2: удостоверение — лицевая
+        ("id_back_url", "TEXT"),                 # шаг 2: удостоверение — оборотная
         ("license_category", "TEXT"),           # шаг 3: напр. 'B, C, CE'
         ("license_issue_date", "TEXT"),         # шаг 3: для стажа
         ("license_expiry", "TEXT"),             # шаг 3: срок действия
