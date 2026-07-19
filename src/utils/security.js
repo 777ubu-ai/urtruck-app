@@ -82,6 +82,17 @@ export const securityAPI = {
   },
 };
 
+// Лестница статусов водителя (4 уровня роста) по баллам скоринга.
+// Новый → Новичок → Опытный → Профи. Возвращает i18n-ключ + цвет + эмодзи.
+// Чёрный список обрабатывается отдельно (color_code === 'black').
+export function driverTier(score) {
+  const s = Number(score) || 0;
+  if (s >= 85) return { key: 'tier_pro',         color: '#22C55E', emoji: '🟢' };
+  if (s >= 65) return { key: 'tier_experienced', color: '#2563EB', emoji: '🔵' };
+  if (s >= 45) return { key: 'tier_newbie',      color: '#FF8400', emoji: '🟡' };
+  return              { key: 'tier_new',          color: '#94A3B8', emoji: '🔓' };
+}
+
 export const COLOR_UI = {
   green: { bg: '#22C55E20', border: '#22C55E', text: '#22C55E', label: '🟢 Надёжный' },
   yellow: { bg: '#FF840020', border: '#FF8400', text: '#FF8400', label: '🟡 Новичок' },
