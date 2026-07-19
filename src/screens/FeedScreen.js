@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, Modal, RefreshControl, ScrollView, TextInput } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { useI18n } from '../utils/useI18n';
@@ -767,14 +768,20 @@ export default function FeedScreen({ navigation, route }) {
         testID="feed-route-selector"
       >
         <View style={s.routeSelHalf}>
-          <Text style={[s.routeSelLabel, { color: v1.textMuted }]}>📍 {t('from')}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Feather name="map-pin" size={11} color={v1.textMuted} />
+            <Text style={[s.routeSelLabel, { color: v1.textMuted }]}>{t('from')}</Text>
+          </View>
           <Text style={[s.routeSelValue, { color: dirFrom ? v1.text : v1.textMuted }]} numberOfLines={1}>
             {dirFrom ? localizePlace(dirFrom, lang) : t('create_field_from_placeholder')}
           </Text>
         </View>
-        <Text style={[s.routeSelArrow, { color: accentColor }]}>→</Text>
+        <Feather name="arrow-right" size={16} color={accentColor} style={s.routeSelArrow} />
         <View style={s.routeSelHalf}>
-          <Text style={[s.routeSelLabel, { color: v1.textMuted }]}>🏁 {t('to')}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Feather name="flag" size={11} color={v1.textMuted} />
+            <Text style={[s.routeSelLabel, { color: v1.textMuted }]}>{t('to')}</Text>
+          </View>
           <Text style={[s.routeSelValue, { color: dirTo ? v1.text : v1.textMuted }]} numberOfLines={1}>
             {dirTo ? localizePlace(dirTo, lang) : t('create_field_to_placeholder')}
           </Text>
@@ -816,7 +823,7 @@ export default function FeedScreen({ navigation, route }) {
           {sortBy !== 'newest' && (
             <View style={[s.activeChip, { backgroundColor: sortBy === 'rating' ? '#FBBF24' : accent }]}>
               <Text style={[s.activeChipText, { color: '#0C0A09' }]}>
-                {sortBy === 'price-asc' ? '💰 ' + t('filter_price_asc') : sortBy === 'price-desc' ? '💰 ' + t('filter_price_desc') : '★ ' + t('filter_rating_sort')}
+                {sortBy === 'price-asc' ? t('filter_price_asc') : sortBy === 'price-desc' ? t('filter_price_desc') : t('filter_rating_sort')}
               </Text>
               <TouchableOpacity onPress={() => setSortBy('newest')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                 <Text style={[s.activeChipClose, { color: '#0C0A09' }]}>✕</Text>
@@ -923,7 +930,7 @@ export default function FeedScreen({ navigation, route }) {
           window. DatePicker uses native <input type="date"> on web and
           a custom Modal calendar on native, so the chip never falls
           back to a plain TextInput. testID lets QA target it. */}
-      <BottomSheet visible={activeFilter === 'date'} onClose={closeFilter} title={`📅 ${t('filter_date')}`}>
+      <BottomSheet visible={activeFilter === 'date'} onClose={closeFilter} title={t('filter_date')}>
         <View testID="filter-date-sheet">
           <Text style={[s.filterSectionLabel, { color: theme.textMuted }]}>{t('filter_date_from')}</Text>
           <DatePicker value={dateFrom} onChange={setDateFrom} placeholder={t('date_placeholder')} />
@@ -949,7 +956,7 @@ export default function FeedScreen({ navigation, route }) {
       </BottomSheet>
 
       {/* Body sheet — only truck-type pills. */}
-      <BottomSheet visible={activeFilter === 'body'} onClose={closeFilter} title={`🚛 ${t('filter_body')}`}>
+      <BottomSheet visible={activeFilter === 'body'} onClose={closeFilter} title={t('filter_body')}>
         <Text style={[s.filterSectionLabel, { color: theme.textMuted }]}>{t('filter_truck_type')}</Text>
         <View style={s.filterPillWrap}>
           <TouchableOpacity
@@ -984,7 +991,7 @@ export default function FeedScreen({ navigation, route }) {
       </BottomSheet>
 
       {/* Price sheet — only sort + rating filter (clients only). */}
-      <BottomSheet visible={activeFilter === 'price'} onClose={closeFilter} title={`💰 ${t('filter_price')}`}>
+      <BottomSheet visible={activeFilter === 'price'} onClose={closeFilter} title={t('filter_price')}>
         {!isDriver && (
           <>
             <Text style={[s.filterSectionLabel, { color: theme.textMuted }]}>{t('filter_rating')}</Text>
