@@ -858,6 +858,10 @@ def get_status(driver_id: str = Depends(get_current_driver)):
     safe["has_license"] = bool(driver.get("license_url"))
     safe["has_passport"] = bool(driver.get("passport_url"))
     safe["has_vehicle_photo"] = bool(driver.get("vehicle_photo_url"))
+    # Личное фото: отдаём признак + ключ, чтобы при повторном входе экран
+    # «Личные данные» не заставлял переснимать уже загруженное фото.
+    safe["has_personal_photo"] = bool(driver.get("personal_photo_url"))
+    safe["personal_photo_key"] = driver.get("personal_photo_url") or None
     return safe
 
 

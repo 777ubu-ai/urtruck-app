@@ -8,7 +8,7 @@
 // в /register/selfie (там серверная валидация + госреестр). ИИН/ФИО/дату в лог
 // не пишем; личное фото в репо не сохраняем.
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -61,6 +61,35 @@ export default function IdentityStepScreen({ navigation }) {
   const [closeVisible, setCloseVisible] = useState(false);
   const [helpVisible, setHelpVisible] = useState(false);
   const [dobSheetVisible, setDobSheetVisible] = useState(false);
+  // Ключ уже загруженного личного фото (с сервера) — чтобы при повторном входе
+  // не заставлять переснимать.
+  const [serverPhotoKey, setServerPhotoKey] = useState(null);
+
+  // Повторный вход: подтягиваем уже сохранённые данные, а не пустую форму.
+  // Для новичка status() вернёт null/пусто → поля остаются пустыми (без регресса).
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const st = await regAPI.status().catch(() => null);
+      if (!alive || !st) return;
+      if (st.full_name && !firstName && !lastName) {
+        const parts = String(st.full_name).trim().split(/\s+/);
+        setLastName(parts[0] || '');           // full_name хранится как «Фамилия Имя»
+        setFirstName(parts.slice(1).join(' '));
+      }
+      if (st.birth_date && !birthDate) {
+        const s = String(st.birth_date).trim();
+        // Нормализуем ISO (YYYY-MM-DD) → DD.MM.YYYY, которое ждёт валидатор.
+        const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        setBirthDate(iso ? `${iso[3]}.${iso[2]}.${iso[1]}` : s);
+      }
+      if (st.iin && !iin) setIin(String(st.iin).replace(/\D/g, '').slice(0, 12));
+      if (st.has_personal_photo && st.personal_photo_key) {
+        setServerPhotoKey(st.personal_photo_key);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
 
   // ТЗ блок 10: при закрытии — сохранить несохранённые поля экрана в draft.
   // Бросаем при !ok, чтобы модал не вышел молча. Фото уже persist server-side.
@@ -152,7 +181,8 @@ export default function IdentityStepScreen({ navigation }) {
 
   const onNext = async () => {
     const e = {
-      photo: photoUri ? null : t('identity_err_photo'),
+      // Фото ок, если только что выбрали новое ИЛИ уже загружено ранее (повторный вход).
+      photo: (photoUri || serverPhotoKey) ? null : t('identity_err_photo'),
       firstName: validateName(firstName),
       lastName: validateName(lastName, 'val_surname_short'),
       birth: validateBirth(birthDate),
@@ -167,12 +197,15 @@ export default function IdentityStepScreen({ navigation }) {
     const fullName = `${lastName.trim()} ${firstName.trim()}`.trim();
 
     setSaving(true);
-    // 1) Реальный server-side upload личного фото. Без успешного upload дальше
-    //    НЕ идём (никакого fake-success) — показываем понятный toast.
-    let photoKey = null;
+    // 1) Личное фото. Если пользователь НЕ переснимал (повторный вход) — используем
+    //    уже загруженный на сервере ключ, без повторной выгрузки. Иначе — реальный
+    //    server-side upload (никакого fake-success).
+    let photoKey = serverPhotoKey;
     try {
-      const up = await regAPI.uploadPersonalPhoto(photoUri);
-      photoKey = up?.personal_photo_key || null;
+      if (photoUri) {
+        const up = await regAPI.uploadPersonalPhoto(photoUri);
+        photoKey = up?.personal_photo_key || null;
+      }
       if (!photoKey) throw new Error('no_key');
     } catch (err) {
       setSaving(false);
@@ -251,6 +284,11 @@ export default function IdentityStepScreen({ navigation }) {
           <Pressable onPress={takePhoto} style={s.photoSlot} testID="identity-photo">
             {photoUri ? (
               <Image source={{ uri: photoUri }} style={s.photoThumb} resizeMode="cover" />
+            ) : serverPhotoKey ? (
+              <>
+                <Feather name="check-circle" size={24} color="#22C55E" />
+                <Text style={[s.photoText, { color: '#22C55E' }]}>{t('chat_attach_status_uploaded')}</Text>
+              </>
             ) : (
               <>
                 <Feather name="camera" size={24} color={brand.textSecondary} />
