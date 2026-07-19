@@ -1034,7 +1034,7 @@ export default function MyTripsScreen({ navigation, route }) {
               testID="trips-publish-gate-cta"
               onPress={() => {
                 setPubGateVisible(false);
-                navigation.navigate(verState === 'review' ? 'Security' : 'Identity');
+                navigation.navigate(verState === 'review' ? 'Security' : 'Citizenship');
               }}
             >
               <Text style={s.pgBtnText}>

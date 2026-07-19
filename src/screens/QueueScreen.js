@@ -369,7 +369,7 @@ export default function QueueScreen({ navigation }) {
           {verState !== 'approved' ? (
             <TouchableOpacity
               style={[s.regBanner, { borderColor: v1.driver || '#00E676', backgroundColor: (v1.driver || '#00E676') + '14' }]}
-              onPress={() => navigation.navigate('Identity')}
+              onPress={() => navigation.navigate('Citizenship')}
               testID="queue-reg-banner"
             >
               <Text style={[s.regBannerText, { color: theme.text }]}>🔓 {t('queue_register_to_book')}</Text>

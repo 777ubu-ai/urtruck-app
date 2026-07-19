@@ -29,8 +29,8 @@ import PhotoGuide from '../../components/PhotoGuide';
 import QaStepSkip from '../../components/dev/QaStepSkip';
 import { brand, radius, typography } from '../../theme/brandV2';
 
-const TOTAL_STEPS = 5;
-const STEP = 4;
+const TOTAL_STEPS = 6;
+const STEP = 5;
 
 export default function VehiclePhotosScreen({ navigation, route }) {
   const { t } = useI18n();
@@ -138,7 +138,7 @@ export default function VehiclePhotosScreen({ navigation, route }) {
         <View style={s.progressTrack}>
           <View style={[s.progressFill, { width: `${progress * 100}%` }]} />
         </View>
-        <Text style={s.stepLabel}>{t('vphotos_step')}</Text>
+        <Text style={s.stepLabel}>{`${t('reg_step')} ${STEP} ${t('reg_of')} ${TOTAL_STEPS}`}</Text>
         <Pressable onPress={() => setHelpVisible(true)} style={s.backBtn} testID="vp-help" accessibilityLabel={t('reg_help_open')}>
           <Feather name="help-circle" size={22} color={brand.textSecondary} />
         </Pressable>

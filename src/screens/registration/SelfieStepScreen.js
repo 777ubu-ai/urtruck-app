@@ -29,8 +29,8 @@ import QaStepSkip from '../../components/dev/QaStepSkip';
 import { translit, hasCyrillic } from '../../utils/translit';
 import { brand, radius, typography } from '../../theme/brandV2';
 
-const TOTAL_STEPS = 5;
-const STEP = 2;
+const TOTAL_STEPS = 6;
+const STEP = 3;
 
 export default function SelfieStepScreen({ navigation, route }) {
   const { t } = useI18n();
@@ -131,7 +131,7 @@ export default function SelfieStepScreen({ navigation, route }) {
         <View style={s.progressTrack}>
           <View style={[s.progressFill, { width: `${progress * 100}%` }]} />
         </View>
-        <Text style={s.stepLabel}>{t('selfie_step')}</Text>
+        <Text style={s.stepLabel}>{`${t('reg_step')} ${STEP} ${t('reg_of')} ${TOTAL_STEPS}`}</Text>
         <Pressable onPress={() => setHelpVisible(true)} style={s.backBtn} testID="selfie-help" accessibilityLabel={t('reg_help_open')}>
           <Feather name="help-circle" size={22} color={brand.textSecondary} />
         </Pressable>

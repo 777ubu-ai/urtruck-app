@@ -20,6 +20,7 @@ import {
   Platform,
   Image,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
@@ -34,8 +35,8 @@ import QaStepSkip from '../../components/dev/QaStepSkip';
 import DateOfBirthSheet from '../../components/DateOfBirthSheet';
 import { brand, radius, typography } from '../../theme/brandV2';
 
-const TOTAL_STEPS = 5;
-const STEP = 1;
+const TOTAL_STEPS = 4;
+const STEP = 2;
 
 // Маска ДД.ММ.ГГГГ: только цифры (до 8), точки расставляются сами.
 const maskBirth = (v) => {
@@ -64,6 +65,11 @@ export default function IdentityStepScreen({ navigation }) {
   // Ключ уже загруженного личного фото (с сервера) — чтобы при повторном входе
   // не заставлять переснимать.
   const [serverPhotoKey, setServerPhotoKey] = useState(null);
+  // Удостоверение личности — лицевая/оборотная (новый порядок, шаг 2).
+  const [idFront, setIdFront] = useState(null);       // локальный uri
+  const [idBack, setIdBack] = useState(null);
+  const [hasIdFront, setHasIdFront] = useState(false); // уже на сервере
+  const [hasIdBack, setHasIdBack] = useState(false);
 
   // Повторный вход: подтягиваем уже сохранённые данные, а не пустую форму.
   // Для новичка status() вернёт null/пусто → поля остаются пустыми (без регресса).
@@ -87,6 +93,8 @@ export default function IdentityStepScreen({ navigation }) {
       if (st.has_personal_photo && st.personal_photo_key) {
         setServerPhotoKey(st.personal_photo_key);
       }
+      if (st.has_id_front) setHasIdFront(true);
+      if (st.has_id_back) setHasIdBack(true);
     })();
     return () => { alive = false; };
   }, []);
@@ -179,10 +187,40 @@ export default function IdentityStepScreen({ navigation }) {
     }
   };
 
+  // Выбор фото стороны удостоверения (камера/галерея).
+  const pickIdSide = (setter, errKey) => {
+    const apply = (r) => {
+      if (!r.canceled && r.assets?.[0]?.uri) {
+        setter(r.assets[0].uri);
+        if (errors[errKey]) setErrors((prev) => ({ ...prev, [errKey]: null }));
+      }
+    };
+    const cam = async () => {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (perm.status !== 'granted') { toast(t('camera_permission_required'), 'error', 5000); return; }
+      try { apply(await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.85 })); }
+      catch { toast(t('camera_error'), 'error', 4000); }
+    };
+    const gal = async () => {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (perm.status !== 'granted') { toast(t('photo_permission_required'), 'error', 5000); return; }
+      try { apply(await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.85 })); }
+      catch { toast(t('camera_error'), 'error', 4000); }
+    };
+    if (Platform.OS === 'web') { gal(); return; }
+    Alert.alert(t('id_step_title'), '', [
+      { text: '📷 ' + t('camera'), onPress: cam },
+      { text: '🖼 ' + t('gallery'), onPress: gal },
+      { text: t('cancel'), style: 'cancel' },
+    ]);
+  };
+
   const onNext = async () => {
     const e = {
       // Фото ок, если только что выбрали новое ИЛИ уже загружено ранее (повторный вход).
       photo: (photoUri || serverPhotoKey) ? null : t('identity_err_photo'),
+      idFront: (idFront || hasIdFront) ? null : t('id_err_front'),
+      idBack: (idBack || hasIdBack) ? null : t('id_err_back'),
       firstName: validateName(firstName),
       lastName: validateName(lastName, 'val_surname_short'),
       birth: validateBirth(birthDate),
@@ -219,6 +257,17 @@ export default function IdentityStepScreen({ navigation }) {
       return;
     }
 
+    // 1b) Удостоверение личности (2 стороны). Грузим только новые фото; если
+    //     сторона уже на сервере (повторный вход) — не перезагружаем.
+    try {
+      if (idFront) await regAPI.uploadIdFront(idFront);
+      if (idBack) await regAPI.uploadIdBack(idBack);
+    } catch (err) {
+      setSaving(false);
+      toast(t('identity_err_photo_upload'), 'error', 5000);
+      return;
+    }
+
     // 2) В draft пишем только whitelisted: full_name, birth_date и безопасный
     //    ключ фото (personal_photo_url). Fail-tolerant: фото уже сохранено
     //    server-side endpoint'ом, потеря авто-сейва прочих полей не критична.
@@ -233,14 +282,15 @@ export default function IdentityStepScreen({ navigation }) {
     }
     setSaving(false);
 
-    navigation.navigate('Selfie', {
+    // Упрощённый флоу (решение владельца): селфи и фото фуры убраны, чтобы не
+    // перегружать водителя. После удостоверения — сразу документы на авто.
+    navigation.navigate('VehicleDocs', {
       iin: iin.trim(),
       fullName,
       firstName: firstName.trim(),
       lastName: lastName.trim(),
       birth_date: birthDate.trim(),
-      photoUri,
-      personalPhotoKey: photoKey,
+      fromVerification: true,
     });
   };
 
@@ -259,7 +309,7 @@ export default function IdentityStepScreen({ navigation }) {
           <View style={s.progressTrack}>
             <View style={[s.progressFill, { width: `${progress * 100}%` }]} />
           </View>
-          <Text style={s.stepLabel}>{t('identity_step')}</Text>
+          <Text style={s.stepLabel}>{`${t('reg_step')} ${STEP} ${t('reg_of')} ${TOTAL_STEPS}`}</Text>
           <Pressable onPress={() => setHelpVisible(true)} style={s.backBtn} testID="identity-help" accessibilityLabel={t('reg_help_open')}>
             <Feather name="help-circle" size={22} color={brand.textSecondary} />
           </Pressable>
@@ -302,6 +352,31 @@ export default function IdentityStepScreen({ navigation }) {
             <Text style={s.photoGalleryText}>{photoUri ? t('identity_photo_retake_gallery') : t('identity_photo_gallery')}</Text>
           </Pressable>
           {errors.photo ? <Text style={s.err}>{errors.photo}</Text> : null}
+
+          {/* Удостоверение личности — 2 стороны (новый порядок верификации, шаг 2) */}
+          <Text style={s.label}>{t('id_step_title')}</Text>
+          <Text style={s.photoHint}>{t('id_photo_hint')}</Text>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <Pressable onPress={() => pickIdSide(setIdFront, 'idFront')} style={[s.photoSlot, { flex: 1, width: undefined }]} testID="identity-id-front">
+              {idFront ? (
+                <Image source={{ uri: idFront }} style={s.photoThumb} resizeMode="cover" />
+              ) : hasIdFront ? (
+                <><Feather name="check-circle" size={22} color="#22C55E" /><Text style={[s.photoText, { color: '#22C55E' }]}>{t('id_front_label')}</Text></>
+              ) : (
+                <><Feather name="credit-card" size={22} color={brand.textSecondary} /><Text style={s.photoText}>{t('id_front_label')}</Text></>
+              )}
+            </Pressable>
+            <Pressable onPress={() => pickIdSide(setIdBack, 'idBack')} style={[s.photoSlot, { flex: 1, width: undefined }]} testID="identity-id-back">
+              {idBack ? (
+                <Image source={{ uri: idBack }} style={s.photoThumb} resizeMode="cover" />
+              ) : hasIdBack ? (
+                <><Feather name="check-circle" size={22} color="#22C55E" /><Text style={[s.photoText, { color: '#22C55E' }]}>{t('id_back_label')}</Text></>
+              ) : (
+                <><Feather name="credit-card" size={22} color={brand.textSecondary} /><Text style={s.photoText}>{t('id_back_label')}</Text></>
+              )}
+            </Pressable>
+          </View>
+          {(errors.idFront || errors.idBack) ? <Text style={s.err}>{errors.idFront || errors.idBack}</Text> : null}
 
           {/* Имя */}
           <Text style={s.label}>{t('identity_first_name_label')}</Text>
@@ -361,15 +436,15 @@ export default function IdentityStepScreen({ navigation }) {
           />
           {errors.iin ? <Text style={s.err}>{errors.iin}</Text> : null}
 
-          {/* DEV/QA-only: прыжок на Selfie в обход нативного пикера (см. QaStepSkip). */}
+          {/* DEV/QA-only: прыжок на следующий шаг в обход нативного пикера. */}
           <QaStepSkip
-            onPress={() => navigation.navigate('Selfie', {
+            onPress={() => navigation.navigate('VehicleDocs', {
               iin: '000000000000',
               fullName: 'QA Tester',
               firstName: 'QA',
               lastName: 'Tester',
               birth_date: '01.01.1990',
-              personalPhotoKey: 'qa-skip',
+              fromVerification: true,
             })}
           />
         </ScrollView>

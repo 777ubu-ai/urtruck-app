@@ -38,8 +38,8 @@ import { brand, radius, typography } from '../../theme/brandV2';
 
 // Канонический PRO-flow = 4 экрана: Identity → Selfie → VehicleDocs →
 // этот экран → submit. Финальный шаг 4/4 (PR-V3 добавил Identity+Selfie).
-const TOTAL_STEPS = 5;
-const STEP = 5;
+const TOTAL_STEPS = 4;
+const STEP = 4;
 
 // 7.3 — мегаформа «Параметры фуры» разбита на под-шаги, чтобы не пугать
 // одной длинной портянкой. Под-шаг 0 «Транспорт» (кто/что за машина),
@@ -248,7 +248,7 @@ export default function TruckParamsScreen({ navigation, route }) {
         <View style={s.progressTrack}>
           <View style={[s.progressFill, { width: `${progress * 100}%` }]} />
         </View>
-        <Text style={s.stepLabel}>{t('truck_params_step')} · {subStep + 1}/{SUB_COUNT}</Text>
+        <Text style={s.stepLabel}>{`${t('reg_step')} ${STEP} ${t('reg_of')} ${TOTAL_STEPS}`} · {subStep + 1}/{SUB_COUNT}</Text>
         <Pressable onPress={() => setHelpVisible(true)} style={s.backBtn} testID="tp-help" accessibilityLabel={t('reg_help_open')}>
           <Feather name="help-circle" size={22} color={brand.textSecondary} />
         </Pressable>
