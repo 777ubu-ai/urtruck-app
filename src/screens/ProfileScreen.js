@@ -245,7 +245,7 @@ export default function ProfileScreen({ navigation, route }) {
             <Image source={{ uri: profile.avatar_url }} style={[s.avatar, { borderColor: accent + '40' }]} />
           ) : (
             <View style={[s.avatar, { backgroundColor: accent + '20', borderColor: accent + '30' }]}>
-              <Text style={{ fontSize: 24 }}>{isDriver ? '🚛' : '📦'}</Text>
+              <Feather name={isDriver ? 'truck' : 'package'} size={24} color={accent} />
             </View>
           )}
           <View style={s.profileInfo}>
@@ -266,9 +266,10 @@ export default function ProfileScreen({ navigation, route }) {
                 {phoneRoleLine}
               </Text>
               {isDriver && (profile.rating || profile.rating === 0) ? (
-                <Text style={[s.ratingInline, { color: '#FBBF24' }]}>
-                  {'  '}★ {profile.rating || 5.0}
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, marginLeft: 6 }}>
+                  <Feather name="star" size={12} color="#FBBF24" />
+                  <Text style={[s.ratingInline, { color: '#FBBF24' }]}>{profile.rating || 5.0}</Text>
+                </View>
               ) : null}
             </View>
             {/* Row 3: specs — Тент · 20 т · 86 м³ */}
@@ -306,9 +307,12 @@ export default function ProfileScreen({ navigation, route }) {
           <View style={[s.proCard, { backgroundColor: theme.card, borderColor: proActive ? accent : theme.border }]}>
             <View style={s.proHeader}>
               <View style={{ flex: 1 }}>
-                <Text style={[s.proTitle, { color: theme.text }]}>
-                  {proActive ? `⭐ ${t('pro_active_badge')}` : `⭐ ${t('pro_progress_title')}`}
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Feather name="star" size={15} color={theme.text} />
+                  <Text style={[s.proTitle, { color: theme.text }]}>
+                    {proActive ? t('pro_active_badge') : t('pro_progress_title')}
+                  </Text>
+                </View>
                 {proActive ? (
                   IS_BETA ? (
                     <Text style={[s.proSub, { color: theme.textMuted }]}>{t('pro_beta_note')}</Text>
@@ -400,19 +404,28 @@ export default function ProfileScreen({ navigation, route }) {
                 style={[s.themeBtn, { backgroundColor: isDark ? 'transparent' : accent, borderColor: isDark ? theme.border : accent }]}
                 onPress={() => { if (isDark) toggleTheme(); }}
               >
-                <Text style={[s.themeBtnText, { color: isDark ? theme.textMuted : onAccent }]}>☀️ {t('theme_light')}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <Feather name="sun" size={13} color={isDark ? theme.textMuted : onAccent} />
+                  <Text style={[s.themeBtnText, { color: isDark ? theme.textMuted : onAccent }]}>{t('theme_light')}</Text>
+                </View>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[s.themeBtn, { backgroundColor: isDark ? accent : 'transparent', borderColor: isDark ? accent : theme.border }]}
                 onPress={() => { if (!isDark) toggleTheme(); }}
               >
-                <Text style={[s.themeBtnText, { color: isDark ? onAccent : theme.textMuted }]}>🌙 {t('theme_dark')}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <Feather name="moon" size={13} color={isDark ? onAccent : theme.textMuted} />
+                  <Text style={[s.themeBtnText, { color: isDark ? onAccent : theme.textMuted }]}>{t('theme_dark')}</Text>
+                </View>
               </TouchableOpacity>
             </View>
           </View>
 
           <View style={[s.settingsRow, { marginTop: 12, flexDirection: 'column', alignItems: 'stretch' }]}>
-            <Text style={[s.settingLabel, { color: theme.text, marginBottom: 8 }]}>🌐 {t('language')}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+              <Feather name="globe" size={14} color={theme.text} />
+              <Text style={[s.settingLabel, { color: theme.text }]}>{t('language')}</Text>
+            </View>
             <View style={s.langGrid}>
               {LANGS.map(l => (
                 <TouchableOpacity
@@ -435,7 +448,10 @@ export default function ProfileScreen({ navigation, route }) {
             testID="profile-push-filter"
             accessibilityLabel={t('pushFilter')}
           >
-            <Text style={[s.settingLabel, { color: theme.text }]}>🔔 {t('pushFilter')}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Feather name="bell" size={14} color={theme.text} />
+              <Text style={[s.settingLabel, { color: theme.text }]}>{t('pushFilter')}</Text>
+            </View>
             <Text style={[s.configureBtn, { color: accent }]}>{t('configure')} →</Text>
           </TouchableOpacity>
         </View>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Feather from '@expo/vector-icons/Feather';
 import { useTheme } from '../utils/ThemeContext';
 import { useI18n } from '../utils/useI18n';
 import {v1Colors, useV1Colors} from '../theme/designV1';
@@ -68,12 +69,14 @@ export default function StatsScreen({ navigation }) {
                   {d.vehicle_brand || ''} · {d.vehicle_plate || ''}
                 </Text>
                 <View style={s.badges}>
-                  <View style={[s.badge, { backgroundColor: col + '20' }]}>
-                    <Text style={[s.badgeText, { color: col }]}>🛡 {d.security_score}</Text>
+                  <View style={[s.badge, { backgroundColor: col + '20', flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
+                    <Feather name="shield" size={13} color={col} />
+                    <Text style={[s.badgeText, { color: col }]}>{d.security_score}</Text>
                   </View>
                   {d.rating_count > 0 && (
-                    <View style={[s.badge, { backgroundColor: '#FBBF2420' }]}>
-                      <Text style={[s.badgeText, { color: '#FBBF24' }]}>⭐ {d.rating_avg} ({d.rating_count})</Text>
+                    <View style={[s.badge, { backgroundColor: '#FBBF2420', flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
+                      <Feather name="star" size={13} color="#FBBF24" />
+                      <Text style={[s.badgeText, { color: '#FBBF24' }]}>{d.rating_avg} ({d.rating_count})</Text>
                     </View>
                   )}
                 </View>

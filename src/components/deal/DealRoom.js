@@ -56,15 +56,18 @@ export function DealStatusTimeline({ status, role }) {
   const { theme } = useTheme();
   const accent = accentFor(role);
   const STEPS = [
-    { key: 'accepted',    icon: '🤝', label: t('status_accepted') },
-    { key: 'in_progress', icon: '🚛', label: t('status_in_progress') },
-    { key: 'at_border',   icon: '🛂', label: t('status_at_border') },
-    { key: 'delivered',   icon: '✅', label: t('status_delivered') },
+    { key: 'accepted',    icon: 'check',        label: t('status_accepted') },
+    { key: 'in_progress', icon: 'truck',        label: t('status_in_progress') },
+    { key: 'at_border',   icon: 'flag',         label: t('status_at_border') },
+    { key: 'delivered',   icon: 'check-circle', label: t('status_delivered') },
   ];
   if (status === 'cancelled') {
     return (
       <View style={[s.tlCancel, { borderColor: '#EF4444' }]} testID="deal-timeline-cancelled">
-        <Text style={{ color: '#EF4444', fontWeight: '800', fontSize: 14 }}>❌ {t('status_cancelled')}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Feather name="x-circle" size={15} color="#EF4444" />
+          <Text style={{ color: '#EF4444', fontWeight: '800', fontSize: 14 }}>{t('status_cancelled')}</Text>
+        </View>
       </View>
     );
   }
@@ -84,7 +87,7 @@ export function DealStatusTimeline({ status, role }) {
                 borderColor: col,
                 transform: [{ scale: active ? 1.15 : 1 }],
               }]}>
-                <Text style={{ fontSize: 13 }}>{done ? '✓' : st.icon}</Text>
+                <Feather name={done ? 'check' : st.icon} size={15} color={on ? '#0C0A09' : col} />
               </View>
               <Text style={[s.tlLabel, { color: on ? theme.text : theme.textMuted, fontWeight: active ? '800' : '600' }]} numberOfLines={1}>{st.label}</Text>
             </View>

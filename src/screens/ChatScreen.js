@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, FlatList, KeyboardAvoidingView, Platform, Image, AppState, Linking, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
+import Feather from '@expo/vector-icons/Feather';
 import * as ImagePicker from 'expo-image-picker';
 import { useI18n } from '../utils/useI18n';
 import { getLanguage } from '../utils/i18n';
@@ -755,7 +756,7 @@ export default function ChatScreen({ navigation, route }) {
             style={[s.bubble, s.voiceBubble, isMe ? s.bubbleMe : s.bubbleThem]}
             onPress={() => playVoice(item.id)}
           >
-            <Text style={{ fontSize: 20 }}>{item.playing ? '⏸' : '▶️'}</Text>
+            <Feather name={item.playing ? 'pause' : 'play'} size={20} color={isMe ? '#fff' : theme.text} />
             <View style={s.waveform}>
               {[...Array(15)].map((_, i) => (
                 <View key={i} style={[s.wavebar, { height: 4 + (i % 4) * 4, backgroundColor: isMe ? '#fff' : (theme.textMuted) }]} />
@@ -811,9 +812,14 @@ export default function ChatScreen({ navigation, route }) {
               }}
               disabled={translating === item.id}
             >
-              <Text style={{ color: isMe ? 'rgba(255,255,255,0.5)' : theme.textMuted, fontSize: 11 }}>
-                {translating === item.id ? '...' : tr ? (tr.showOriginal ? t('hide_original') : t('show_original')) : '🌐 ' + t('translate')}
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                {!tr && translating !== item.id ? (
+                  <Feather name="globe" size={12} color={isMe ? 'rgba(255,255,255,0.5)' : theme.textMuted} />
+                ) : null}
+                <Text style={{ color: isMe ? 'rgba(255,255,255,0.5)' : theme.textMuted, fontSize: 11 }}>
+                  {translating === item.id ? '...' : tr ? (tr.showOriginal ? t('hide_original') : t('show_original')) : t('translate')}
+                </Text>
+              </View>
             </TouchableOpacity>
           )}
           <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 4, marginTop: 3 }}>
@@ -873,12 +879,18 @@ export default function ChatScreen({ navigation, route }) {
               Если маршрут известен (есть сделка) — показываем его; иначе
               честную роль собеседника (Водитель/Грузовладелец). */}
           {partnerTyping
-            ? <Text style={[s.online, { color: '#22C55E' }]}>✍️ {t('chat_typing')}</Text>
+            ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Feather name="edit-3" size={12} color="#22C55E" />
+                <Text style={[s.online, { color: '#22C55E' }]}>{t('chat_typing')}</Text>
+              </View>
             : deal && (deal.from_city || deal.to_city || deal.cargo_desc)
-            ? <Text style={[s.online, { color: v1Accent.main }]} numberOfLines={1}>
-                {deal.cargo_desc ? `📦 ${deal.cargo_desc} · ` : '📍 '}
-                {localizePlace(deal.from_city || '—', getLanguage())} → {localizePlace(deal.to_city || '—', getLanguage())}
-              </Text>
+            ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Feather name={deal.cargo_desc ? 'package' : 'map-pin'} size={12} color={v1Accent.main} />
+                <Text style={[s.online, { color: v1Accent.main }]} numberOfLines={1}>
+                  {deal.cargo_desc ? `${deal.cargo_desc} · ` : ''}
+                  {localizePlace(deal.from_city || '—', getLanguage())} → {localizePlace(deal.to_city || '—', getLanguage())}
+                </Text>
+              </View>
             : ((resolvedPartner?.role === 'driver' || resolvedPartner?.role === 'client')
                 ? <Text style={[s.online, { color: '#A8A29E' }]}>{t(resolvedPartner.role)}</Text>
                 : null)}
@@ -905,7 +917,10 @@ export default function ChatScreen({ navigation, route }) {
                     onPress={() => contactPartner(deal.counterparty_phone)}
                     testID="deal-call-btn"
                   >
-                    <Text style={[s.callBtnText, { color: v1Accent.main }]}>📞 {t('call_partner')}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Feather name="phone" size={15} color={v1Accent.main} />
+                      <Text style={[s.callBtnText, { color: v1Accent.main }]}>{t('call_partner')}</Text>
+                    </View>
                   </TouchableOpacity>
                 ) : null}
                 {dealEvents.length > 0 ? (
@@ -953,11 +968,11 @@ export default function ChatScreen({ navigation, route }) {
       {showPhrases && <QuickPhrases onSelect={sendMessage} role={role} dealStatus={deal?.status} />}
       <View style={s.inputRow}>
         <TouchableOpacity onPress={() => setShowPhrases(!showPhrases)} style={s.iconBtn}>
-          <Text style={s.iconBtnText}>⚡</Text>
+          <Feather name="zap" size={18} color={v1.text} />
         </TouchableOpacity>
         {CHAT_PHOTO_ENABLED && (
           <TouchableOpacity onPress={sendPhoto} style={s.iconBtn}>
-            <Text style={s.iconBtnText}>📷</Text>
+            <Feather name="camera" size={18} color={v1.text} />
           </TouchableOpacity>
         )}
         <TextInput
@@ -975,7 +990,7 @@ export default function ChatScreen({ navigation, route }) {
             onPress={toggleVoice}
             style={[s.iconBtn, recording && { backgroundColor: v1Colors.error, borderColor: v1Colors.error }]}
           >
-            <Text style={s.iconBtnText}>{recording ? '⏹' : '🎤'}</Text>
+            <Feather name={recording ? 'square' : 'mic'} size={18} color={recording ? '#fff' : v1.text} />
           </TouchableOpacity>
         )}
         <TouchableOpacity

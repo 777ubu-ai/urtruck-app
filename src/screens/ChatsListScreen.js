@@ -124,7 +124,12 @@ export default function ChatsListScreen({ navigation, route }) {
           ) : null}
           {(cargoStr || bidStr || dealStatus) ? (
             <View style={s.row}>
-              {cargoStr ? <Text style={[s.cargo, { color: theme.textMuted }]} numberOfLines={1}>📦 {cargoStr}</Text> : null}
+              {cargoStr ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                  <Feather name="package" size={13} color={theme.textMuted} />
+                  <Text style={[s.cargo, { color: theme.textMuted }]} numberOfLines={1}>{cargoStr}</Text>
+                </View>
+              ) : null}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 {bidStr ? <Text style={[s.bid, { color: theme.text }]}>{bidStr}</Text> : null}
                 {dealStatus ? <Text style={[s.dealStatus, { color: accent }]}>{formatStatus(dealStatus)}</Text> : null}
@@ -153,7 +158,10 @@ export default function ChatsListScreen({ navigation, route }) {
 
   return (
     <SafeAreaView style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']} testID="deal-room-list">
-      <Text style={[s.title, { color: theme.text }]} testID="chats-header">💬 {t('chat_title')}</Text>
+      <View style={s.titleRow} testID="chats-header">
+        <Feather name="message-square" size={20} color={theme.text} />
+        <Text style={[s.title, { color: theme.text }]}>{t('chat_title')}</Text>
+      </View>
 
       <View style={[s.search, { backgroundColor: theme.card, borderColor: theme.border }]}>
         <Feather name="search" size={17} color={theme.textMuted} />
@@ -201,7 +209,8 @@ export default function ChatsListScreen({ navigation, route }) {
 }
 
 const s = StyleSheet.create({
-  title: { fontSize: 22, fontWeight: '900', paddingHorizontal: 16, paddingTop: 6, paddingBottom: 8 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingTop: 6, paddingBottom: 8 },
+  title: { fontSize: 22, fontWeight: '900' },
   search: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 12, paddingHorizontal: 12, height: 44, borderRadius: 12, borderWidth: 1 },
   searchInput: { flex: 1, fontSize: 14, paddingVertical: 0 },
   // filtersScroll фиксирует высоту горизонтального ScrollView — иначе на

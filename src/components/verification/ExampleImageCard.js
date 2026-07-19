@@ -8,13 +8,14 @@
 // рендерим аккуратный neutral placeholder — НИКАКОГО fake screenshot'а.
 import React from 'react';
 import { View, Text, StyleSheet, Image } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 import { useV1Colors } from '../../theme/designV1';
 import { useTheme } from '../../utils/ThemeContext';
 import { useI18n } from '../../utils/useI18n';
 
 const TONE = {
-  good: { color: '#16A34A', icon: '✓' },
-  bad:  { color: '#DC2626', icon: '✕' },
+  good: { color: '#16A34A', icon: 'check' },
+  bad:  { color: '#DC2626', icon: 'x' },
 };
 
 export default function ExampleImageCard({ source, kind = 'good', caption, testID }) {
@@ -32,7 +33,7 @@ export default function ExampleImageCard({ source, kind = 'good', caption, testI
           <Image source={source} style={s.image} resizeMode="cover" />
         ) : (
           <View style={s.placeholder}>
-            <Text style={[s.placeholderIcon, { color: v1.textMuted }]}>🖼</Text>
+            <Feather name="image" size={32} color={v1.textMuted} />
             <Text style={[s.placeholderText, { color: v1.textMuted }]}>
               {t('verification_example_placeholder')}
             </Text>
@@ -41,7 +42,7 @@ export default function ExampleImageCard({ source, kind = 'good', caption, testI
       </View>
       <View style={[s.captionRow, { borderTopColor: v1.border }]}>
         <View style={[s.dot, { backgroundColor: tone.color }]}>
-          <Text style={s.dotIcon}>{tone.icon}</Text>
+          <Feather name={tone.icon} size={11} color="#FFF" />
         </View>
         <Text style={[s.caption, { color: theme.text }]} numberOfLines={2}>
           {caption || (kind === 'good' ? t('verification_example_good') : t('verification_example_bad'))}

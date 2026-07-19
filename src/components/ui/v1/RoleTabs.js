@@ -3,6 +3,7 @@
 
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 import { useV1Colors, v1Radius, v1Typography, v1AccentFor } from '../../../theme/designV1';
 
 export default function RoleTabs({ value, onChange, t }) {
@@ -13,7 +14,7 @@ export default function RoleTabs({ value, onChange, t }) {
         active={value === 'driver'}
         accent={v1AccentFor('driver')}
         idle={colors}
-        emoji="🚚"
+        icon="truck"
         label={t('role_driver_title')}
         onPress={() => onChange('driver')}
       />
@@ -21,7 +22,7 @@ export default function RoleTabs({ value, onChange, t }) {
         active={value === 'client'}
         accent={v1AccentFor('client')}
         idle={colors}
-        emoji="📦"
+        icon="package"
         label={t('role_client_title')}
         onPress={() => onChange('client')}
       />
@@ -29,7 +30,7 @@ export default function RoleTabs({ value, onChange, t }) {
   );
 }
 
-function Tab({ active, accent, idle, emoji, label, onPress }) {
+function Tab({ active, accent, idle, icon, label, onPress }) {
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -41,7 +42,7 @@ function Tab({ active, accent, idle, emoji, label, onPress }) {
           : { backgroundColor: 'transparent', borderColor: idle.border },
       ]}
     >
-      <Text style={s.emoji}>{emoji}</Text>
+      <Feather name={icon} size={16} color={active ? accent.main : idle.textMuted} />
       <Text style={[s.label, { color: active ? accent.main : idle.textMuted }]} numberOfLines={1}>
         {label}
       </Text>
@@ -62,6 +63,5 @@ const s = StyleSheet.create({
     borderRadius: v1Radius.pill,
     borderWidth: 1,
   },
-  emoji: { fontSize: 16 },
   label: { ...v1Typography.body, fontWeight: '700' },
 });

@@ -6,6 +6,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Linking, Platform, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import { marketAPI } from '../utils/marketAPI';
@@ -80,7 +81,7 @@ export default function TrackTruckScreen({ navigation, route }) {
         <ActivityIndicator style={{ marginTop: 48 }} color={theme.text} />
       ) : !loc ? (
         <View style={s.empty}>
-          <Text style={{ fontSize: 44 }}>🛰️</Text>
+          <Feather name="navigation" size={44} color={theme.textMuted} />
           <Text style={[s.emptyTitle, { color: theme.text }]}>{t('track_truck_waiting')}</Text>
           <Text style={[s.emptyDesc, { color: theme.textMuted }]}>{t('track_truck_waiting_desc')}</Text>
         </View>
@@ -104,14 +105,22 @@ export default function TrackTruckScreen({ navigation, route }) {
             </View>
           </View>
           <View style={s.subRow}>
-            {nearBorder ? <Text style={[s.badgeBorder]}>🛂 {t('track_near_border')}</Text> : <View />}
+            {nearBorder ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Feather name="flag" size={12} color="#2563EB" />
+                <Text style={[s.badgeBorder]}>{t('track_near_border')}</Text>
+              </View>
+            ) : <View />}
             <Text style={[s.updated, { color: theme.textDim }]}>
               {agoMin == null ? '' : agoMin === 0 ? t('track_updated_now') : `${t('track_updated')} ${agoMin} ${t('track_min')} ${t('track_ago')}`}
             </Text>
           </View>
           <TruckMap lat={lat} lng={lng} title={driverName || t('track_truck_marker')} />
           <TouchableOpacity style={[s.cta, { backgroundColor: '#FF8400' }]} onPress={openExternal} testID="track-open-maps">
-            <Text style={s.ctaText}>🧭 {t('track_truck_open_maps')}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Feather name="compass" size={16} color="#0C0A09" />
+              <Text style={s.ctaText}>{t('track_truck_open_maps')}</Text>
+            </View>
           </TouchableOpacity>
         </View>
       )}

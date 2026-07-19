@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 
@@ -7,15 +8,15 @@ import { useTheme } from '../utils/ThemeContext';
 // уточняет груз/оплату; грузоотправитель спрашивает «где машина», просит
 // документы. Иконка вкладки — тут, тексты — i18n-ключи (реактивны к языку).
 const DRIVER_CATEGORIES = [
-  { icon: '🚛', nameKey: 'qp_tab_status', keys: ['phrLoading', 'phrLoaded', 'phrDeparting', 'phrDelay'] },
-  { icon: '📦', nameKey: 'qp_tab_cargo',  keys: ['phrSendAddr', 'phrPallets', 'phrWeight'] },
-  { icon: '💰', nameKey: 'qp_tab_price',  keys: ['qphrase_price_1', 'qphrase_price_3', 'qphrase_price_4', 'qphrase_price_5', 'phrCustoms'] },
-  { icon: '📄', nameKey: 'qp_tab_docs',   keys: ['qphrase_docs_3', 'qphrase_docs_2'] },
+  { feather: 'truck',       nameKey: 'qp_tab_status', keys: ['phrLoading', 'phrLoaded', 'phrDeparting', 'phrDelay'] },
+  { feather: 'package',     nameKey: 'qp_tab_cargo',  keys: ['phrSendAddr', 'phrPallets', 'phrWeight'] },
+  { feather: 'dollar-sign', nameKey: 'qp_tab_price',  keys: ['qphrase_price_1', 'qphrase_price_3', 'qphrase_price_4', 'qphrase_price_5', 'phrCustoms'] },
+  { feather: 'file-text',   nameKey: 'qp_tab_docs',   keys: ['qphrase_docs_3', 'qphrase_docs_2'] },
 ];
 const CLIENT_CATEGORIES = [
-  { icon: '📍', nameKey: 'qp_tab_route', keys: ['qphrase_route_1', 'qphrase_route_2', 'qphrase_route_3', 'qphrase_route_5'] },
-  { icon: '📄', nameKey: 'qp_tab_docs',  keys: ['qphrase_docs_1', 'qphrase_docs_4', 'qphrase_docs_2'] },
-  { icon: '💰', nameKey: 'qp_tab_price', keys: ['qphrase_price_1', 'qphrase_price_2', 'qphrase_price_5'] },
+  { feather: 'map-pin',     nameKey: 'qp_tab_route', keys: ['qphrase_route_1', 'qphrase_route_2', 'qphrase_route_3', 'qphrase_route_5'] },
+  { feather: 'file-text',   nameKey: 'qp_tab_docs',  keys: ['qphrase_docs_1', 'qphrase_docs_4', 'qphrase_docs_2'] },
+  { feather: 'dollar-sign', nameKey: 'qp_tab_price', keys: ['qphrase_price_1', 'qphrase_price_2', 'qphrase_price_5'] },
 ];
 
 // Контекстные подсказки по ЭТАПУ сделки (китайский приём 满帮/顺丰): фразы
@@ -54,7 +55,10 @@ export default function QuickPhrases({ onSelect, role, dealStatus }) {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.ctxRow}>
           {ctxKeys.map((k) => (
             <TouchableOpacity key={`ctx-${k}`} style={[s.ctxBtn, { borderColor: '#1A5C3C' }]} onPress={() => onSelect(t(k))}>
-              <Text style={[s.ctxText, { color: theme.text }]}>⚡ {t(k)}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="zap" size={13} color={theme.text} />
+                <Text style={[s.ctxText, { color: theme.text }]}>{t(k)}</Text>
+              </View>
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -67,7 +71,10 @@ export default function QuickPhrases({ onSelect, role, dealStatus }) {
             style={[s.tab, { backgroundColor: i === activeTab ? '#1A5C3C' : theme.card, borderColor: theme.border }]}
             onPress={() => setActiveTab(i)}
           >
-            <Text style={[s.tabText, { color: i === activeTab ? '#FFF' : theme.textMuted }]}>{`${c.icon} ${t(c.nameKey)}`}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Feather name={c.feather} size={13} color={i === activeTab ? '#FFF' : theme.textMuted} />
+              <Text style={[s.tabText, { color: i === activeTab ? '#FFF' : theme.textMuted }]}>{t(c.nameKey)}</Text>
+            </View>
           </TouchableOpacity>
         ))}
       </ScrollView>

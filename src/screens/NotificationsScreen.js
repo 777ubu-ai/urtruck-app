@@ -8,6 +8,7 @@ import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
 import { useAuth } from '../utils/AuthContext';
 import { useI18n } from '../utils/useI18n';
 import { getLanguage } from '../utils/i18n';
+import Feather from '@expo/vector-icons/Feather';
 
 // issue #7: localized time вместо сырого UTC-слайса "2026-06-11T08:30".
 // Backend хранит UTC; добавляем Z (если нет TZ), чтобы toLocaleString
@@ -214,7 +215,7 @@ export default function NotificationsScreen({ navigation }) {
         ListEmptyComponent={
           !loading ? (
             <View style={{ alignItems: 'center', paddingVertical: 60 }}>
-              <Text style={{ fontSize: 48, marginBottom: 10 }}>🔔</Text>
+              <Feather name="bell" size={48} color={v1.textMuted} style={{ marginBottom: 10 }} />
               <Text style={{ color: v1.textMuted }}>{t('notifications_empty')}</Text>
             </View>
           ) : null

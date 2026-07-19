@@ -10,6 +10,7 @@
 // показываются caller'ом через toast — этот компонент только UI.
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 import { useV1Colors } from '../../theme/designV1';
 import { useTheme } from '../../utils/ThemeContext';
 import { useI18n } from '../../utils/useI18n';
@@ -33,7 +34,10 @@ export default function UploadActionButtons({
         style={[s.primary, { backgroundColor: '#00A86B', opacity: busy ? 0.5 : 1 }]}
         testID={`${testIDPrefix}-camera`}
       >
-        <Text style={s.primaryText}>📷 {t('verification_action_take_photo')}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Feather name="camera" size={15} color="#FFF" />
+          <Text style={s.primaryText}>{t('verification_action_take_photo')}</Text>
+        </View>
       </TouchableOpacity>
       {mode === 'camera+gallery' ? (
         <TouchableOpacity
@@ -43,7 +47,10 @@ export default function UploadActionButtons({
           style={[s.secondary, { borderColor: v1.border, backgroundColor: theme.card, opacity: busy ? 0.5 : 1 }]}
           testID={`${testIDPrefix}-gallery`}
         >
-          <Text style={[s.secondaryText, { color: theme.text }]}>🖼 {t('verification_action_choose_gallery')}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Feather name="image" size={15} color={theme.text} />
+            <Text style={[s.secondaryText, { color: theme.text }]}>{t('verification_action_choose_gallery')}</Text>
+          </View>
         </TouchableOpacity>
       ) : null}
     </View>

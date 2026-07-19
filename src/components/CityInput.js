@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet, Keyboard } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 import { useTheme } from '../utils/ThemeContext';
 import { t } from '../utils/i18n';
 import { searchCities, formatCity, COUNTRIES, addCustomCity, subscribeToCities } from '../utils/cities';
@@ -64,7 +65,11 @@ export default function CityInput({ value, onChange, placeholder, style, testID 
               style={[s.item, i < suggestions.length - 1 && { borderBottomColor: theme.border, borderBottomWidth: 1 }, c.isCustom && { backgroundColor: theme.border + '40' }]}
               onPress={() => pick(c)}
             >
-              <Text style={s.flag}>{c.isCustom ? '➕' : (COUNTRIES[c.country]?.flag || '🏳️')}</Text>
+              {c.isCustom ? (
+                <Feather name="plus" size={18} color={theme.textMuted} style={s.flag} />
+              ) : (
+                <Text style={s.flag}>{COUNTRIES[c.country]?.flag || '🏳️'}</Text>
+              )}
               <View style={{ flex: 1 }}>
                 <Text style={[s.cityName, { color: theme.text }]}>
                   {c.isCustom ? t('city_input_custom_label').replace('{name}', c.name) : c.name}

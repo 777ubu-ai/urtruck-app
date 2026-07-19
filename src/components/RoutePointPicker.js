@@ -22,6 +22,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 import { useV1Colors, v1Radius } from '../theme/designV1';
 import { useI18n } from '../utils/useI18n';
 import {
@@ -169,7 +170,7 @@ export default function RoutePointPicker({
       testID={testID}
     >
       <View style={s.searchRow}>
-        <Text style={{ fontSize: 14 }}>🔍</Text>
+        <Feather name="search" size={15} color={v1.textMuted} />
         <TextInput
           style={[s.searchInput, { color: v1.text }]}
           value={query}
@@ -302,7 +303,7 @@ export default function RoutePointPicker({
           const cName = inferred ? localisedCountryName(t, inferred, c?.name) : null;
           return (
             <TouchableOpacity onPress={useFreeText} style={s.fallback} testID="route-use-free-text">
-              <Text style={{ fontSize: 14 }}>✏️</Text>
+              <Feather name="edit-3" size={15} color={v1.textMuted} />
               <Text style={[s.fallbackText, { color: v1.text }]} numberOfLines={1}>
                 {i18nLabel(t, 'route_use_free_text', 'Использовать как есть')}
                 {' · '}
