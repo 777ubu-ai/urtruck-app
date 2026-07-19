@@ -5,8 +5,9 @@ import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import {v1Colors, useV1Colors} from '../theme/designV1';
 import { useAuth } from '../utils/AuthContext';
-import { securityAPI, COLOR_UI, driverTier } from '../utils/security';
+import { securityAPI, COLOR_UI, driverTier, countCompletedTrips, isDocsConfirmed } from '../utils/security';
 import { regAPI } from '../utils/registration';
+import { marketAPI } from '../utils/marketAPI';
 import GradientText from '../components/GradientText';
 import SecurityBadge from '../components/SecurityBadge';
 
@@ -18,6 +19,9 @@ export default function SecurityScreen({ navigation }) {
   const [score, setScore] = useState(null);
   const [rowScore, setRowScore] = useState(null);   // балл из drivers_registration (после верификации)
   const [rowColor, setRowColor] = useState(null);
+  const [confirmed, setConfirmed] = useState(false); // документы подтверждены модератором
+  const [trips, setTrips] = useState(0);             // выполненных рейсов
+  const [rating, setRating] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -28,22 +32,25 @@ export default function SecurityScreen({ navigation }) {
         setScore(s);
       }
       // После верификации балл пишется в строку водителя (security_score), а не в
-      // driver_scores — берём его как основной источник, иначе всегда «50/Новичок».
+      // driver_scores — берём его как основной источник для «очков».
       const st = await regAPI.status().catch(() => null);
       if (st) {
         if (st.security_score != null) setRowScore(st.security_score);
         if (st.security_color) setRowColor(st.security_color);
+        if (st.rating != null) setRating(Number(st.rating));
+        setConfirmed(isDocsConfirmed(st));
       }
+      // Выполненные рейсы — для уровня «Профи».
+      const dash = await marketAPI.myDashboard().catch(() => null);
+      if (dash) setTrips(countCompletedTrips(dash.my_deals));
       setLoading(false);
     })();
   }, []);
 
-  // Чёрный список показываем как раньше; иначе — 4-уровневая лестница по баллам
-  // (Новый → Новичок → Опытный → Профи), а не единый «Новичок».
-  // Приоритет: балл из строки водителя (свежая верификация) → driver_scores → 50.
+  // Уровень по вехам: Новичок → Проверенный → Профи (балл — «очки» внутри уровня).
   const effectiveScore = rowScore != null ? rowScore : (score?.total_score ?? 50);
   const isBlack = rowColor === 'black' || score?.color_code === 'black';
-  const tier = driverTier(effectiveScore);
+  const tier = driverTier({ confirmed, trips, rating });
   const ui = isBlack
     ? COLOR_UI.black
     : { bg: tier.color + '20', border: tier.color, text: tier.color, label: `${tier.emoji} ${t(tier.key)}` };

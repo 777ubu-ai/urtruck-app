@@ -11,7 +11,8 @@ import { useAuth } from '../utils/AuthContext';
 import { getProfile, saveProfile } from '../utils/store';
 import { storage } from '../utils/storage';
 import { regAPI } from '../utils/registration';
-import { driverTier } from '../utils/security';
+import { driverTier, countCompletedTrips, isDocsConfirmed } from '../utils/security';
+import { marketAPI } from '../utils/marketAPI';
 import GradientText from '../components/GradientText';
 import HelpButton from '../components/HelpButton';
 import { API_BASE } from '../config/env';
@@ -109,6 +110,9 @@ export default function ProfileScreen({ navigation, route }) {
       // /users/me их не возвращает — берём из /register/status.
       let st = null;
       try { st = await regAPI.status(); } catch {}
+      // Выполненные рейсы — для уровня «Профи».
+      let completedTrips = 0;
+      try { const dash = await marketAPI.myDashboard(); completedTrips = countCompletedTrips(dash?.my_deals); } catch {}
       if (r.ok) {
         const d = await r.json();
         setProfile(prev => {
@@ -129,7 +133,10 @@ export default function ProfileScreen({ navigation, route }) {
             ...(st?.security_score != null ? { driver_score: st.security_score } : {}),
             ...(st?.status ? { reg_status: st.status } : {}),
             ...(st?.verification_level != null ? { verification_level: st.verification_level } : {}),
-            is_verified: (st?.status === 'approved') || (Number(st?.verification_level) >= 2) || prev?.is_verified || false,
+            ...(st?.rating != null ? { rating: Number(st.rating) } : {}),
+            doc_confirmed: isDocsConfirmed(st),
+            completed_trips: completedTrips,
+            is_verified: isDocsConfirmed(st) || prev?.is_verified || false,
             // PR-D1: PRO-поля. Подтягиваем при focus — прогресс-бар PRO
             // и бейдж активного PRO обновятся сразу. Если backend ещё
             // не задеплоен с PRO — поля undefined и не затирают локал.
@@ -270,13 +277,15 @@ export default function ProfileScreen({ navigation, route }) {
                 {specsLine}
               </Text>
             ) : null}
-            {/* Row 4: статус-тир водителя (Новый→Новичок→Опытный→Профи) */}
-            {isDriver && profile.driver_score != null ? (() => {
-              const tr = driverTier(profile.driver_score);
+            {/* Row 4: статус-тир водителя (Новичок → Проверенный → Профи) */}
+            {isDriver ? (() => {
+              const tr = driverTier({ confirmed: profile.doc_confirmed, trips: profile.completed_trips, rating: profile.rating });
               return (
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
                   <Text style={{ fontSize: 12, fontWeight: '800', color: tr.color }}>{tr.emoji} {t(tr.key)}</Text>
-                  <Text style={{ fontSize: 12, color: theme.textMuted }}>{`  ·  ${profile.driver_score}/100`}</Text>
+                  {profile.driver_score != null ? (
+                    <Text style={{ fontSize: 12, color: theme.textMuted }}>{`  ·  ${profile.driver_score}/100`}</Text>
+                  ) : null}
                 </View>
               );
             })() : null}
