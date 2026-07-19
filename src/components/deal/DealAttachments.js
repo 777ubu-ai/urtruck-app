@@ -13,8 +13,9 @@
 // Доступ к файлам закрыт на бэке (только участники) — фронт лишь рендерит.
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Platform, Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
 import { useTheme } from '../../utils/ThemeContext';
@@ -62,16 +63,17 @@ export default function DealAttachments({ conversationId, role = 'driver' }) {
 
   // Полный путь загрузки одного вложения с прохождением статусов.
   const runUpload = useCallback(async (item) => {
-    const { localId, uri, name } = item;
+    const { localId, uri, name, isPdf, mime } = item;
     const setStatus = (status) =>
       setLocal((prev) => prev.map((x) => (x.localId === localId ? { ...x, status } : x)));
     try {
       setStatus('uploading');
-      const compressed = await compressImage(uri, { preset: 'document' });
-      await chatAPI.uploadAttachment(conversationId, {
-        uri: compressed, kind: 'document', name, type: 'image/jpeg',
-      });
-      // успех: убираем из local, перечитываем server-список (без fake-строк)
+      // PDF/файл грузим как есть (без сжатия в JPEG — иначе документ ломался).
+      // Фото — сжимаем пресетом document.
+      const payload = isPdf
+        ? { uri, kind: 'document', name, type: mime || 'application/pdf' }
+        : { uri: await compressImage(uri, { preset: 'document' }), kind: 'document', name, type: 'image/jpeg' };
+      await chatAPI.uploadAttachment(conversationId, payload);
       setLocal((prev) => prev.filter((x) => x.localId !== localId));
       await load();
     } catch {
@@ -79,21 +81,41 @@ export default function DealAttachments({ conversationId, role = 'driver' }) {
     }
   }, [conversationId, load]);
 
+  const queueUpload = (item) => {
+    setLocal((prev) => [...prev, { ...item, status: 'queued' }]);
+    runUpload(item);
+  };
+
+  // Фото из галереи (сжимаем).
+  const pickImage = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (perm.status !== 'granted') return;
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 1 });
+    if (res.canceled || !res.assets?.[0]?.uri) return;
+    const localId = `att_${Date.now()}_${_localSeq++}`;
+    queueUpload({ localId, uri: res.assets[0].uri, name: `doc_${localId}.jpg`, isPdf: false });
+  };
+
+  // Файл-документ (PDF и пр.) через системный файловый менеджер.
+  const pickDocument = async () => {
+    const res = await DocumentPicker.getDocumentAsync({ type: ['application/pdf', 'image/*'], copyToCacheDirectory: true });
+    const file = res?.assets?.[0];
+    if (!file?.uri) return;
+    const localId = `att_${Date.now()}_${_localSeq++}`;
+    const isPdf = (file.mimeType || '').includes('pdf') || /\.pdf$/i.test(file.name || '');
+    queueUpload({ localId, uri: file.uri, name: file.name || `doc_${localId}.pdf`, isPdf, mime: file.mimeType });
+  };
+
   const onAttach = async () => {
     if (busy) return;
     setBusy(true);
     try {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (perm.status !== 'granted') { setBusy(false); return; }
-      const res = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 1,
-      });
-      if (res.canceled || !res.assets?.[0]?.uri) { setBusy(false); return; }
-      const uri = res.assets[0].uri;
-      const localId = `att_${Date.now()}_${_localSeq++}`;
-      const name = `doc_${localId}.jpg`;
-      setLocal((prev) => [...prev, { localId, uri, name, status: 'queued' }]);
-      runUpload({ localId, uri, name });
+      if (Platform.OS === 'web') { await pickDocument(); return; }
+      Alert.alert(t('chat_documents_title'), '', [
+        { text: '📄 ' + t('attachment_document'), onPress: pickDocument },
+        { text: '🖼 ' + t('gallery'), onPress: pickImage },
+        { text: t('cancel'), style: 'cancel' },
+      ]);
     } finally {
       setBusy(false);
     }

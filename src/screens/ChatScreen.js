@@ -540,11 +540,14 @@ export default function ChatScreen({ navigation, route }) {
     const phone = String(rawPhone || '').replace(/[^\d+]/g, '');
     if (!phone) return;
     const waNumber = phone.replace(/[^\d]/g, '');
+    const plusPhone = phone.startsWith('+') ? phone : `+${waNumber}`;
     const openWa = () => Linking.openURL(`https://wa.me/${waNumber}`).catch(() => {});
+    const openViber = () => Linking.openURL(`viber://chat?number=${encodeURIComponent(plusPhone)}`).catch(() => {});
     const openTel = () => Linking.openURL(`tel:${phone}`).catch(() => {});
     if (Platform.OS === 'web') { openWa(); return; }
     Alert.alert(t('contact_choose_title'), phone, [
       { text: t('contact_whatsapp'), onPress: openWa },
+      { text: t('contact_viber'), onPress: openViber },
       { text: t('contact_call'), onPress: openTel },
       { text: t('contact_cancel'), style: 'cancel' },
     ]);
