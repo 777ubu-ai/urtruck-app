@@ -313,7 +313,7 @@ export default function ProfileScreen({ navigation, route }) {
                   if ((verificationLevel || 0) >= 2) {
                     navigation.navigate('EditProfile', { role, focus: 'pro' });
                   } else {
-                    navigation.navigate('Identity');
+                    navigation.navigate('Citizenship');
                   }
                 }}
                 activeOpacity={0.85}

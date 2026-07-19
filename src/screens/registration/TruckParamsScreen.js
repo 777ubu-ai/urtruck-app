@@ -8,7 +8,7 @@
 // тягач/контейнеровоз, открывается блок прицепа (госномер + фото техпаспорта
 // прицепа). Данные уходят в PATCH /api/v1/driver/registration/draft.
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -38,8 +38,14 @@ import { brand, radius, typography } from '../../theme/brandV2';
 
 // Канонический PRO-flow = 4 экрана: Identity → Selfie → VehicleDocs →
 // этот экран → submit. Финальный шаг 4/4 (PR-V3 добавил Identity+Selfie).
-const TOTAL_STEPS = 5;
-const STEP = 5;
+const TOTAL_STEPS = 4;
+const STEP = 4;
+
+// 7.3 — мегаформа «Параметры фуры» разбита на под-шаги, чтобы не пугать
+// одной длинной портянкой. Под-шаг 0 «Транспорт» (кто/что за машина),
+// под-шаг 1 «Параметры и оснащение» (тоннаж/объём/габариты/прицеп/опции).
+// Прогресс-бар и счётчик N/СUB честно отражают под-прогресс внутри шага 5.
+const SUB_COUNT = 2;
 
 // Цвета кузова/кабины. key → i18n t('truck_color_<key>'); hex — образец
 // (swatch). 'other' без образца (свободный выбор «другой»).
@@ -94,6 +100,8 @@ export default function TruckParamsScreen({ navigation, route }) {
   const [closeVisible, setCloseVisible] = useState(false);
   const [submittedVisible, setSubmittedVisible] = useState(false); // ТЗ блок 12/13
   const [helpVisible, setHelpVisible] = useState(false);
+  const [subStep, setSubStep] = useState(0); // 0 «Транспорт» | 1 «Параметры»
+  const scrollRef = useRef(null);
 
   const showTrailer = useMemo(
     () => TYPES_WITH_TRAILER.includes(vehicleType),
@@ -103,16 +111,41 @@ export default function TruckParamsScreen({ navigation, route }) {
   const brandList = useMemo(() => searchTruckBrands(brandQuery), [brandQuery]);
   const brandModels = useMemo(() => (brandName ? modelsForBrand(brandName) : []), [brandName]);
 
-  const validate = () => {
+  // Валидация по под-шагам: обязательные поля привязаны к своему под-шагу,
+  // чтобы «Далее» не пускал дальше с незаполненным текущим экраном, а submit
+  // на финале перепроверял оба (и вернул на первый неполный под-шаг).
+  const validateStep = (idx) => {
     const e = {};
-    if (!residence) e.residence = t('truck_params_err_residence');
-    if (!vehicleType) e.vehicleType = t('truck_params_err_type');
-    const tons = parseNum(tonnage);
-    if (tons == null || tons < 1 || tons > 60) e.tonnage = t('truck_params_err_tonnage');
-    const vol = parseNum(volume);
-    if (vol == null || vol <= 0) e.volume = t('truck_params_err_volume');
-    setErrors(e);
+    if (idx === 0) {
+      if (!residence) e.residence = t('truck_params_err_residence');
+      if (!vehicleType) e.vehicleType = t('truck_params_err_type');
+    }
+    if (idx === 1) {
+      const tons = parseNum(tonnage);
+      if (tons == null || tons < 1 || tons > 60) e.tonnage = t('truck_params_err_tonnage');
+      const vol = parseNum(volume);
+      if (vol == null || vol <= 0) e.volume = t('truck_params_err_volume');
+    }
+    setErrors((prev) => ({ ...prev, ...e }));
     return Object.keys(e).length === 0;
+  };
+
+  const goToSub = (idx) => {
+    setSubStep(idx);
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  };
+
+  const goNext = () => {
+    if (!validateStep(subStep)) {
+      toast(t('val_fix_fields'), 'error');
+      return;
+    }
+    goToSub(Math.min(subStep + 1, SUB_COUNT - 1));
+  };
+
+  const goPrev = () => {
+    if (subStep > 0) goToSub(subStep - 1);
+    else navigation.goBack();
   };
 
   const buildPayload = () => ({
@@ -137,10 +170,10 @@ export default function TruckParamsScreen({ navigation, route }) {
   });
 
   const onSave = async () => {
-    if (!validate()) {
-      toast(t('val_fix_fields'), 'error');
-      return;
-    }
+    // Финальная проверка обоих под-шагов; при пробеле — вернуть на первый
+    // неполный под-шаг, чтобы пользователь увидел где именно ошибка.
+    if (!validateStep(0)) { goToSub(0); toast(t('val_fix_fields'), 'error'); return; }
+    if (!validateStep(1)) { goToSub(1); toast(t('val_fix_fields'), 'error'); return; }
     setSaving(true);
     const res = await regAPI.saveDriverDraft(buildPayload());
     if (!res.ok) {
@@ -203,18 +236,19 @@ export default function TruckParamsScreen({ navigation, route }) {
     </Pressable>
   );
 
-  const progress = STEP / TOTAL_STEPS;
+  // Честный прогресс: базовый шаг 5 из 5 делится на под-шаги 1/2 → 2/2.
+  const progress = (STEP - 1 + (subStep + 1) / SUB_COUNT) / TOTAL_STEPS;
 
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']} testID="truck-params-screen">
       <View style={s.header}>
-        <Pressable onPress={() => navigation.goBack()} style={s.backBtn} testID="tp-back">
+        <Pressable onPress={goPrev} style={s.backBtn} testID="tp-back">
           <Feather name="arrow-left" size={22} color={brand.textPrimary} />
         </Pressable>
         <View style={s.progressTrack}>
           <View style={[s.progressFill, { width: `${progress * 100}%` }]} />
         </View>
-        <Text style={s.stepLabel}>{t('truck_params_step')}</Text>
+        <Text style={s.stepLabel}>{`${t('reg_step')} ${STEP} ${t('reg_of')} ${TOTAL_STEPS}`} · {subStep + 1}/{SUB_COUNT}</Text>
         <Pressable onPress={() => setHelpVisible(true)} style={s.backBtn} testID="tp-help" accessibilityLabel={t('reg_help_open')}>
           <Feather name="help-circle" size={22} color={brand.textSecondary} />
         </Pressable>
@@ -223,9 +257,11 @@ export default function TruckParamsScreen({ navigation, route }) {
         </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
+      <ScrollView ref={scrollRef} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
         <Text style={s.title}>{t('truck_params_title')}</Text>
 
+        {subStep === 0 ? (
+        <>
         {/* ЭТАП 7 — статус пребывания в Казахстане (required) */}
         <Text style={s.label}>{t('residence_title')}</Text>
         <Selector items={RESIDENCE_OPTIONS} value={residence} onSelect={setResidence} prefix="residence" />
@@ -268,7 +304,11 @@ export default function TruckParamsScreen({ navigation, route }) {
           swatch={colorKey ? colorHex(colorKey) : null}
           testID="tp-color"
         />
+        </>
+        ) : null}
 
+        {subStep === 1 ? (
+        <>
         {/* Грузоподъёмность: чипы-пресеты (7.2 — быстрый выбор пальцем вместо
             ручного ввода) + ручной ввод для нестандартных значений. */}
         <Text style={s.label}>{t('truck_params_tonnage')}</Text>
@@ -349,17 +389,29 @@ export default function TruckParamsScreen({ navigation, route }) {
           <Text style={s.toggleLabel}>{t('truck_params_straps')}</Text>
           <Switch value={straps} onValueChange={setStraps} testID="tp-straps" trackColor={{ true: brand.primary }} />
         </View>
+        </>
+        ) : null}
       </ScrollView>
 
       <View style={s.ctaWrap}>
-        <Pressable
-          onPress={onSave}
-          disabled={saving}
-          style={[s.cta, saving && { opacity: 0.6 }]}
-          testID="tp-save"
-        >
-          <Text style={s.ctaText}>{t('truck_params_save')}</Text>
-        </Pressable>
+        {subStep < SUB_COUNT - 1 ? (
+          <Pressable
+            onPress={goNext}
+            style={s.cta}
+            testID="tp-next"
+          >
+            <Text style={s.ctaText}>{t('truck_params_next')}</Text>
+          </Pressable>
+        ) : (
+          <Pressable
+            onPress={onSave}
+            disabled={saving}
+            style={[s.cta, saving && { opacity: 0.6 }]}
+            testID="tp-save"
+          >
+            <Text style={s.ctaText}>{t('truck_params_save')}</Text>
+          </Pressable>
+        )}
       </View>
 
       {/* Bottom-sheet выбора марки / модели / цвета */}

@@ -344,6 +344,38 @@ export const regAPI = {
     return data;
   },
 
+  // Удостоверение личности — лицевая/оборотная (новый порядок, шаг 2).
+  // backend возвращает { id_front_key } / { id_back_key } и сам пишет url в БД.
+  async uploadIdFront(uri, onProgress) {
+    const token = await this.getToken();
+    onProgress?.('compressing');
+    const compressedUri = await compressImage(uri, { preset: 'document' });
+    onProgress?.('uploading');
+    const form = new FormData();
+    await appendImageFile(form, compressedUri, 'id_front.jpg');
+    const r = await fetch(`${BASE}/documents/id-front`, {
+      method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: form,
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(normalizeDetail(data?.detail, `id front upload failed ${r.status}`));
+    return data;
+  },
+
+  async uploadIdBack(uri, onProgress) {
+    const token = await this.getToken();
+    onProgress?.('compressing');
+    const compressedUri = await compressImage(uri, { preset: 'document' });
+    onProgress?.('uploading');
+    const form = new FormData();
+    await appendImageFile(form, compressedUri, 'id_back.jpg');
+    const r = await fetch(`${BASE}/documents/id-back`, {
+      method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: form,
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(normalizeDetail(data?.detail, `id back upload failed ${r.status}`));
+    return data;
+  },
+
   // Селфи с правами в руках (антифрод). Реальный server-side upload в storage;
   // backend возвращает { license_selfie_key } — безопасный ключ файла (не raw).
   async uploadLicenseSelfie(uri, onProgress) {

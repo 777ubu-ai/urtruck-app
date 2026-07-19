@@ -125,7 +125,7 @@ export default function TrackedPlatesScreen({ navigation }) {
           <Text style={[s.guestText, { color: theme.textMuted }]}>{t('tracked_need_reg')}</Text>
           <TouchableOpacity
             style={[s.primary, { backgroundColor: driver }]}
-            onPress={() => navigation.navigate('Identity')}
+            onPress={() => navigation.navigate('Citizenship')}
             testID="tracked-signin"
           >
             <Text style={[s.primaryText, { color: v1.driverOnAccent || '#0C0A09' }]}>{t('login_action')}</Text>
