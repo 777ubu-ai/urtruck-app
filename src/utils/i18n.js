@@ -1195,6 +1195,7 @@ const translations = {
     call_partner: 'Позвонить',
     contact_choose_title: 'Связаться с партнёром',
     contact_whatsapp: '💬 WhatsApp',
+    contact_viber: '☎️ Viber',
     contact_call: '📞 Позвонить',
     contact_cancel: 'Отмена',
     theme_label: 'Тема',
@@ -2757,6 +2758,7 @@ const translations = {
     call_partner: 'Қоңырау шалу',
     contact_choose_title: 'Серіктеспен байланысу',
     contact_whatsapp: '💬 WhatsApp',
+    contact_viber: '☎️ Viber',
     contact_call: '📞 Қоңырау шалу',
     contact_cancel: 'Болдырмау',
 
@@ -4280,6 +4282,7 @@ const translations = {
     call_partner: '拨打电话',
     contact_choose_title: '联系合作伙伴',
     contact_whatsapp: '💬 WhatsApp',
+    contact_viber: '☎️ Viber',
     contact_call: '📞 拨打电话',
     contact_cancel: '取消',
 
@@ -5756,6 +5759,7 @@ const translations = {
     call_partner: 'Call',
     contact_choose_title: 'Contact partner',
     contact_whatsapp: '💬 WhatsApp',
+    contact_viber: '☎️ Viber',
     contact_call: '📞 Call',
     contact_cancel: 'Cancel',
     theme_label: 'Theme',
