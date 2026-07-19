@@ -23,6 +23,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
 import { useToast } from '../../components/Toast';
+import { useAuth } from '../../utils/AuthContext';
 import { regAPI } from '../../utils/registration';
 import RegistrationCloseModal from '../../components/RegistrationCloseModal';
 import RegistrationSubmittedScreen from '../../components/RegistrationSubmittedScreen';
@@ -76,6 +77,7 @@ const parseNum = (s) => {
 export default function TruckParamsScreen({ navigation, route }) {
   const { t } = useI18n();
   const { toast } = useToast();
+  const { refreshLevel } = useAuth();
 
   const [vehicleType, setVehicleType] = useState(route?.params?.vehicleType || null);
   const [bodyType, setBodyType] = useState(null);
@@ -191,6 +193,9 @@ export default function TruckParamsScreen({ navigation, route }) {
         toast(t('save_error'), 'error');
         return;
       }
+      // Обновляем сессию сразу — чтобы допуск/роль/уровень/статус применились
+      // без перезапуска приложения (иначе профиль выглядит «пустым»).
+      refreshLevel?.().catch(() => {});
       setSubmittedVisible(true);
       return;
     }
