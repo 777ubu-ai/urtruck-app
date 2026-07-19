@@ -1,11 +1,9 @@
-# verify-reentry-prefill — build 39: повторный вход подтягивает данные
-# Открыть верификацию → выйти → зайти снова: ФИО/ИИН/дата/фото на месте,
-# верификацию заново не просит (fix «не гонять по регистрации заново»).
+# verify-reentry-prefill — build 39: повторный вход НЕ гонит по регистрации
+# Уже верифицированный водитель (serik = approved level 3 через ensure-actor):
+#   • в профиле виден статус/данные, а не онбординг-регистрация;
+#   • открытие pro-CTA ведёт в редактирование pro-данных (EditProfile), а НЕ
+#     заново в цепочку «Гражданство/Шаг 1» (fix «не гонять заново»).
 # ⚠️ ЗАПУСК: EXPO_PUBLIC_API_URL=http://127.0.0.1:8001 (см. _lib/README.md)
-#
-# ПРЕДУСЛОВИЕ: serik уже approved (level 3) через ensure-actor → на входе в
-# профиль статус проверенного, а не «пройдите верификацию». Проверяем именно
-# отсутствие повторного гона в регистрацию.
 appId: host.exp.Exponent
 name: verify-reentry-prefill
 tags: [driver, verification, reentry, build39]
@@ -15,24 +13,17 @@ env:
 - runFlow: _lib/qa-login.yaml
 - tapOn: { id: "bottom-nav-profile" }
 - waitForAnimationToEnd
-# Уже верифицированный водитель НЕ должен видеть онбординг-регистрацию заново:
-# в профиле — обычные вкладки и данные, а не экран «Гражданство/Шаг 1».
-# Профиль вырос (бейдж статуса) → скроллим до logout.
+# Верифицированный водитель НЕ на онбординге: виден «Мой статус», не «Шаг 1».
 - scrollUntilVisible:
-    element: { id: "profile-logout" }
+    element: { id: "profile-my-status" }
     direction: DOWN
     timeout: 8000
-- assertVisible: { id: "profile-logout" }
+- assertVisible: { id: "profile-my-status" }
 - assertNotVisible: { id: "citizenship-continue" }
 - takeScreenshot: VR_profile_no_reonboard
-# Открыть pro-cta (редактирование pro-данных для approved → EditProfile, а не
-# заново вся цепочка). Проверяем, что открывается редактирование, не регистрация.
-- scrollUntilVisible:
-    element: { id: "profile-pro-cta" }
-    direction: DOWN
-    timeout: 8000
+# Открываем pro-CTA — для approved это редактирование pro-данных, НЕ повторная
+# верификация с нуля (citizenship-continue не должен появиться).
 - tapOn: { id: "profile-pro-cta" }
 - waitForAnimationToEnd
-- takeScreenshot: VR_reentry_prefilled
-# Полная проверка префилла конкретных полей (ФИО/ИИН из сохранённого) —
-# требует стабильной фикстуры identity; отмечено для ручного 📱 прохода.
+- assertNotVisible: { id: "citizenship-continue" }
+- takeScreenshot: VR_reentry_no_fresh_verify

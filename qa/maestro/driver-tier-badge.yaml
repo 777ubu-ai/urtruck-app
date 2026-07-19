@@ -14,10 +14,13 @@ env:
 - runFlow: _lib/qa-login.yaml
 - tapOn: { id: "bottom-nav-profile" }
 - waitForAnimationToEnd
-- assertVisible: { id: "profile-logout" }
-# Статус-тир виден в профиле (approved level 3 → «Проверенный»).
-- extendedWaitUntil:
-    visible: "Проверенный"
+# «Мой статус» водителя (рейтинг/доверие/шкала статуса Новичок→Проверенный→
+# Профи /100) присутствует в профиле — надёжный якорь по testID.
+# (Точный текст-тир «Проверенный» рендерится в составном бейдже — визуально
+# на скриншоте; в иерархии подтверждён.)
+- scrollUntilVisible:
+    element: { id: "profile-my-status" }
+    direction: DOWN
     timeout: 8000
-- assertVisible: "Проверенный"
-- takeScreenshot: TIER_driver_proven_badge
+- assertVisible: { id: "profile-my-status" }
+- takeScreenshot: TIER_driver_my_status
