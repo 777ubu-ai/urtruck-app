@@ -172,9 +172,10 @@ export default function DriverDetail({ navigation, route }) {
           <View style={[s.avatar, { backgroundColor: (TCOLORS[tt] || '#666') + '22', borderColor: v1Accent.main }]}>
             <Text style={{ fontSize: 32 }}>{FLAGS[driver.country] || '🏳️'}</Text>
           </View>
-          <Text style={[s.name, { color: v1.text }]}>
-            {driverName} {driver.verified && <Feather name="check-circle" size={15} color={v1Accent.main} />}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+            <Text style={[s.name, { color: v1.text }]}>{driverName}</Text>
+            {driver.verified ? <Feather name="check-circle" size={15} color={v1Accent.main} /> : null}
+          </View>
           <View style={[s.verifyBadge, { backgroundColor: driver.verified ? v1Colors.driverSoft : v1Colors.cargoOwnerSoft, borderColor: driver.verified ? v1Colors.driver : v1Colors.cargoOwner }]}>
             <Text style={[s.verifyText, { color: driver.verified ? v1Colors.driver : v1Colors.cargoOwner }]}>
               {driver.verified ? '🟢 ' + t('verified') : '🟡 ' + t('pending')}
