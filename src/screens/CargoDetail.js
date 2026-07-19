@@ -1,5 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, TextInput, StyleSheet, ScrollView, Alert, Image, Platform } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
+
+// Кнопка действия сделки: иконка Feather + текст (вместо эмодзи-префикса).
+// В загрузке показываем «...». Цвет наследуется от родителя (onAccent/text).
+function DealActionLabel({ icon, text, color, loading }) {
+  if (loading) return <Text style={[dealLblStyle, { color }]}>...</Text>;
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+      <Feather name={icon} size={15} color={color} />
+      <Text style={[dealLblStyle, { color }]}>{text}</Text>
+    </View>
+  );
+}
+const dealLblStyle = { fontSize: 14, fontWeight: '800' };
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
 import { formatBids, t as tGlobal } from '../utils/i18n';
@@ -366,7 +380,7 @@ export default function CargoDetail({ navigation, route }) {
         ) : null}
 
         <GlassCard>
-          <SectionTitle icon="🛣️" label={t('trip_route')} />
+          <SectionTitle featherIcon="map" label={t('trip_route')} />
           <View style={s.routeRow}>
             <View style={[s.dot, { backgroundColor: '#EF4444' }]} /><Text style={[s.city, { color: v1.text }]}>{localizePlace(view.from, lang)}</Text>
             <View style={[s.line, { backgroundColor: v1.border }]} /><Text>🚛</Text><View style={[s.line, { backgroundColor: v1.border }]} />
@@ -416,7 +430,7 @@ export default function CargoDetail({ navigation, route }) {
             (имя, верификация, рейтинг), а не ставит вслепую. */}
         {!c.isMine && fullCargo?.owner_id ? (
           <GlassCard>
-            <SectionTitle icon="👤" label={t('shipper_label')} />
+            <SectionTitle featherIcon="user" label={t('shipper_label')} />
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
               <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }} numberOfLines={1}>
                 {fullCargo.owner_name || t('anonymous')}
@@ -717,25 +731,25 @@ export default function CargoDetail({ navigation, route }) {
               {/* Driver — accepted → выехал (in_progress) */}
               {isDriverSide && dealStatus === 'accepted' && (
                 <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: dealAccent.main }]} onPress={() => changeDealStatus('in_progress')} disabled={statusLoading}>
-                  <Text style={[s.dealActionText, { color: dealAccent.onAccent }]}>{statusLoading ? '...' : '🚛 ' + t('start_delivery')}</Text>
+                  <DealActionLabel icon="truck" text={t('start_delivery')} color={dealAccent.onAccent} loading={statusLoading} />
                 </TouchableOpacity>
               )}
               {/* Driver — in_progress → на границе (at_border) */}
               {isDriverSide && dealStatus === 'in_progress' && (
                 <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: dealAccent.main }]} onPress={() => changeDealStatus('at_border')} disabled={statusLoading}>
-                  <Text style={[s.dealActionText, { color: dealAccent.onAccent }]}>{statusLoading ? '...' : '🛂 ' + t('mark_at_border')}</Text>
+                  <DealActionLabel icon="flag" text={t('mark_at_border')} color={dealAccent.onAccent} loading={statusLoading} />
                 </TouchableOpacity>
               )}
               {/* Driver — at_border → доставлено (delivered) */}
               {isDriverSide && dealStatus === 'at_border' && (
                 <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: dealAccent.main }]} onPress={() => changeDealStatus('delivered')} disabled={statusLoading}>
-                  <Text style={[s.dealActionText, { color: dealAccent.onAccent }]}>{statusLoading ? '...' : '✅ ' + t('mark_arrived')}</Text>
+                  <DealActionLabel icon="check-circle" text={t('mark_arrived')} color={dealAccent.onAccent} loading={statusLoading} />
                 </TouchableOpacity>
               )}
               {/* Shipper — in_progress/at_border → подтвердить доставку */}
               {isShipper && (dealStatus === 'in_progress' || dealStatus === 'at_border') && (
                 <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: dealAccent.main }]} onPress={() => changeDealStatus('delivered')} disabled={statusLoading}>
-                  <Text style={[s.dealActionText, { color: dealAccent.onAccent }]}>{statusLoading ? '...' : '✅ ' + t('confirm_delivery')}</Text>
+                  <DealActionLabel icon="check-circle" text={t('confirm_delivery')} color={dealAccent.onAccent} loading={statusLoading} />
                 </TouchableOpacity>
               )}
               {/* Both — chat */}
@@ -745,7 +759,7 @@ export default function CargoDetail({ navigation, route }) {
                   style={[s.dealActionBtn, { backgroundColor: dealAccent.main }]}
                   onPress={() => navigation.navigate('Chat', { roomId: chatRoomId, role })}
                 >
-                  <Text style={[s.dealActionText, { color: dealAccent.onAccent }]}>💬 {t('order_chat')}</Text>
+                  <DealActionLabel icon="message-square" text={t('order_chat')} color={dealAccent.onAccent} />
                 </TouchableOpacity>
               )}
               {/* Both — накладная (CMR) из данных сделки */}
@@ -759,7 +773,7 @@ export default function CargoDetail({ navigation, route }) {
                     else toast(r.detail || t('no_connection'), 'error');
                   }}
                 >
-                  <Text style={[s.dealActionText, { color: theme.text }]}>📄 {t('waybill_btn')}</Text>
+                  <DealActionLabel icon="file-text" text={t('waybill_btn')} color={theme.text} />
                 </TouchableOpacity>
               )}
               {/* Both — cancel deal */}
