@@ -219,7 +219,7 @@ export default function QueueScreen({ navigation }) {
           </View>
           <View style={[s.statusBadge, { backgroundColor: col + '20' }]}>
             <View style={[s.statusDot, { backgroundColor: col }]} />
-            <Text style={[s.statusText, { color: col }]}>{t(STATUS_KEY[b.status] || 'queue_status_moderate')}</Text>
+            <Text style={[s.statusText, { color: col }]}>{t(STATUS_KEY[b.status] || 'queue_status_nodata')}</Text>
           </View>
         </View>
         <View style={s.detailRow}>
