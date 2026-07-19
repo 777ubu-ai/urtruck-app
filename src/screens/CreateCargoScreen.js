@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../utils/useI18n';
 import { useToast } from '../components/Toast';
 import { useAuth } from '../utils/AuthContext';
@@ -211,7 +212,7 @@ export default function CreateCargoScreen({ navigation, route }) {
 
       <Field
         variant="dropdown"
-        icon="📍"
+        featherIcon="map-pin"
         label={t('fromCountry')}
         value={from}
         placeholder={t('create_field_from_placeholder_cargo')}
@@ -221,7 +222,7 @@ export default function CreateCargoScreen({ navigation, route }) {
 
       <Field
         variant="dropdown"
-        icon="📍"
+        featherIcon="map-pin"
         label={t('toCountry')}
         value={to}
         placeholder={t('create_field_to_placeholder_cargo')}
@@ -266,7 +267,10 @@ export default function CreateCargoScreen({ navigation, route }) {
           Теперь любой custom text сохраняется (сумки/гвозди/мешки/
           стройматериалы/etc), а suggestions — лишь подсказка. */}
       <View style={s.fieldBlock}>
-        <Text style={s.label}>📦 {t('cargoDesc')}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6, marginLeft: 4 }}>
+          <Feather name="package" size={14} color={v1.textMuted} />
+          <Text style={[s.label, { marginBottom: 0, marginLeft: 0 }]}>{t('cargoDesc')}</Text>
+        </View>
         <CargoTypeInput
           value={cargoDesc}
           onChange={(v) => {
@@ -283,7 +287,7 @@ export default function CreateCargoScreen({ navigation, route }) {
         <View style={{ flex: 1 }}>
           <Field
             variant="dropdown"
-            icon="🚚"
+            featherIcon="truck"
             label={t('truckType')}
             value={truckType ? t(truckType) : ''}
             onPress={() => setShowTruckPicker((v) => !v)}
@@ -292,7 +296,7 @@ export default function CreateCargoScreen({ navigation, route }) {
         <View style={{ flex: 1 }}>
           <Field
             variant="dropdown"
-            icon="📅"
+            featherIcon="calendar"
             label={t('pickupDate')}
             value={pickupDate}
             onPress={() => setShowDatePicker((v) => !v)}
@@ -364,11 +368,14 @@ export default function CreateCargoScreen({ navigation, route }) {
       {/* Цена обязательна: клиент всегда указывает стартовую сумму — от неё
           перевозчики торгуются. «Жду предложений»/«По договорённости» убраны. */}
       <View style={[s.priceCard, { borderColor: v1.border }]}>
-        <Text style={s.priceLabel}>💰 {t('payment_label_full')}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+          <Feather name="dollar-sign" size={15} color={v1.text} />
+          <Text style={[s.priceLabel, { marginBottom: 0 }]}>{t('payment_label_full')}</Text>
+        </View>
         <View style={s.row2}>
           <View style={{ flex: 1 }}>
             <Field
-              icon="💳"
+              featherIcon="credit-card"
               label={t('amount_label')}
               value={price}
               onChangeText={(v) => { setPrice(String(v || '').replace(/[^\d]/g, '')); if (errors.price) setErrors((e) => ({ ...e, price: null })); }}
@@ -380,7 +387,7 @@ export default function CreateCargoScreen({ navigation, route }) {
           <View style={{ flex: 1 }}>
             <Field
               variant="dropdown"
-              icon="¤"
+              featherIcon="dollar-sign"
               label={t('currency_label')}
               value={`${(CURRENCY_OPTIONS.find((c) => c.k === currency) || {}).l || ''} ${currency}`}
               onPress={() => setShowCurrencyPicker((v) => !v)}
@@ -405,7 +412,10 @@ export default function CreateCargoScreen({ navigation, route }) {
 
       {/* Тип оплаты — важный параметр решения водителя. Опционально. */}
       <View style={[s.priceCard, { borderColor: v1.border }]}>
-        <Text style={s.priceLabel}>💳 {t('payment_type_label')}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+          <Feather name="credit-card" size={15} color={v1.text} />
+          <Text style={[s.priceLabel, { marginBottom: 0 }]}>{t('payment_type_label')}</Text>
+        </View>
         <View style={s.priceModeRow}>
           {[['cashless', t('pay_cashless')], ['cash', t('pay_cash')], ['any', t('pay_any')]].map(([k, lbl]) => (
             <TouchableOpacity

@@ -360,9 +360,9 @@ export default function EditProfileScreen({ navigation, route }) {
         <Text style={[s.avatarHint, { color: accent.main }]}>{t('profile_setup_add_photo')}</Text>
       </View>
 
-      <Field icon="👤" label={t('signup_field_first_name')} value={firstName} onChangeText={setFirstName} placeholder={t('signup_field_first_name')} />
-      <Field icon="👤" label={t('signup_field_last_name')} value={lastName} onChangeText={setLastName} placeholder={t('signup_field_last_name')} />
-      <Field icon="📞" label={t('signup_field_phone')} value={phone} onChangeText={() => {}} editable={false} />
+      <Field featherIcon="user" label={t('signup_field_first_name')} value={firstName} onChangeText={setFirstName} placeholder={t('signup_field_first_name')} />
+      <Field featherIcon="user" label={t('signup_field_last_name')} value={lastName} onChangeText={setLastName} placeholder={t('signup_field_last_name')} />
+      <Field featherIcon="phone" label={t('signup_field_phone')} value={phone} onChangeText={() => {}} editable={false} />
       {/* Stage 21: previously these were `Field variant="dropdown"`
           with `onPress={() => {}}` — taps did nothing, so users
           reported "страна не выбирается" and "город не выбирается".
@@ -372,13 +372,13 @@ export default function EditProfileScreen({ navigation, route }) {
           Picker UI for multi-country onboarding is tracked
           separately. */}
       <Field
-        icon="🌐"
+        featherIcon="globe"
         label={t('signup_field_country')}
         value={t('country_kazakhstan')}
         editable={false}
       />
       <Field
-        icon="📍"
+        featherIcon="map-pin"
         label={t('signup_field_city')}
         value={city}
         onChangeText={setCity}
@@ -387,14 +387,14 @@ export default function EditProfileScreen({ navigation, route }) {
       {!isDriver ? (
         <>
           <Field
-            icon="🏢"
+            featherIcon="briefcase"
             label={t('signup_field_company')}
             placeholder={t('signup_field_company_optional')}
             value={company}
             onChangeText={setCompany}
           />
           <Field
-            icon="🆔"
+            featherIcon="hash"
             label={t('bin_inn_label')}
             placeholder={t('bin_inn_ph')}
             value={binInn}
@@ -404,7 +404,7 @@ export default function EditProfileScreen({ navigation, route }) {
         </>
       ) : null}
       <Field
-        icon="✉️"
+        featherIcon="mail"
         label={t('signup_field_email_optional')}
         value={email}
         onChangeText={setEmail}
@@ -447,7 +447,7 @@ export default function EditProfileScreen({ navigation, route }) {
           {messengerType ? (
             <View style={{ marginTop: 8 }}>
               <Field
-                icon="➕"
+                featherIcon="at-sign"
                 label={t('messenger_id_label')}
                 placeholder={t('messenger_id_ph')}
                 value={messengerId}
@@ -486,7 +486,7 @@ export default function EditProfileScreen({ navigation, route }) {
 
           <Text style={s.proSectionTitle}>{t('pro_section_routes')}</Text>
           <Field
-            icon="🛣"
+            featherIcon="map"
             label={t('pro_field_china_experience')}
             value={chinaExp}
             onChangeText={(v) => setChinaExp(v.replace(/\D/g, '').slice(0, 2))}
@@ -519,7 +519,7 @@ export default function EditProfileScreen({ navigation, route }) {
 
           <Text style={s.proSectionTitle}>{t('pro_section_emergency')}</Text>
           <Field
-            icon="🆘"
+            featherIcon="alert-triangle"
             label={t('pro_field_emergency_contact')}
             value={emergency}
             onChangeText={setEmergency}
