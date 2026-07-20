@@ -332,7 +332,19 @@ export default function FeedScreen({ navigation, route }) {
           _server: true, _isDriver: true,
         }));
         if (!mounted.current) return;  // QA-аудит P1-8
-        setServerData([...tripsMapped, ...driversMapped]);
+        // Дедуп: один перевозчик не должен появляться дважды (карточкой рейса
+        // И карточкой профиля) — иначе ❤️ загоралось сразу на двух карточках
+        // (обе ключуются по driver id), и дублировались React-ключи.
+        // Убираем driver-профиль, если этот же водитель уже есть рейсом,
+        // и схлопываем повторы в самом списке водителей.
+        const tripDriverIds = new Set(tripsMapped.map((tt) => tt.driverId).filter(Boolean));
+        const seenDriverIds = new Set();
+        const driversDedup = driversMapped.filter((d) => {
+          if (!d.id || tripDriverIds.has(d.id) || seenDriverIds.has(d.id)) return false;
+          seenDriverIds.add(d.id);
+          return true;
+        });
+        setServerData([...tripsMapped, ...driversDedup]);
       }
     } catch (e) {
       console.warn('[Feed] Server load failed:', e);
@@ -570,6 +582,18 @@ export default function FeedScreen({ navigation, route }) {
     else if (sortBy === 'price-desc') data.sort((a, b) => (b.price || 0) - (a.price || 0));
     else if (sortBy === 'rating') data.sort((a, b) => (b.rating || 0) - (a.rating || 0));
     // 'newest' — по умолчанию (как в массиве)
+    // Защита от дубль-ключей в FlatList (тот же ключ, что в keyExtractor):
+    // повтор id → одинаковый React-ключ → две карточки «слипаются» и реагируют
+    // как одна (в т.ч. ❤️). Схлопываем строго по итоговому ключу.
+    const seenKeys = new Set();
+    data = data.filter((it) => {
+      const ns = it.isTrip ? 't' : (it.isMine ? 'c' : 'd');
+      const k = `${ns}:${it.id ?? ''}`;
+      if (it.id == null) return true;      // без id не трогаем (fallback на idx)
+      if (seenKeys.has(k)) return false;
+      seenKeys.add(k);
+      return true;
+    });
     return data;
   }, [currentData, filterType, search, sortBy, minRating, dirFrom, dirTo, dateFrom, dateTo]);
 

@@ -120,13 +120,20 @@ export const voice = {
       if (!this._webRecorder) { resolve(null); return; }
       this._webRecorder.onstop = () => {
         const blob = new Blob(this._webChunks, { type: this._webRecorder.mimeType });
-        const uri = URL.createObjectURL(blob);
         const duration = Math.round((Date.now() - (this._startTime || Date.now())) / 1000);
         this._webRecorder.stream.getTracks().forEach(t => t.stop());
         this._webRecorder = null;
         this._webChunks = [];
+        // Пустая запись (0 байт) → не создаём битый blob-URL. Так получатель
+        // не получает «пустое» голосовое, а отправитель видит понятную ошибку.
+        if (!blob || blob.size === 0) { resolve(null); return; }
+        const uri = URL.createObjectURL(blob);
         resolve({ uri, duration, blob });
       };
+      // requestData() форсит отдачу накопленных чанков ДО onstop — на part
+      // мобильных браузеров (iOS Safari) без этого ondataavailable иногда
+      // не срабатывает и blob выходит пустым.
+      try { this._webRecorder.requestData(); } catch { /* не критично */ }
       this._webRecorder.stop();
     });
   },
