@@ -619,6 +619,53 @@ def _wb_sig(deal_id: str, exp: int) -> str:
     return _wb_hmac.new(_wb_secret(), f"waybill|{deal_id}|{exp}".encode(), _wb_hashlib.sha256).hexdigest()
 
 
+def _party_contact(c, uid, deal):
+    """Возвращает (имя, телефон) участника сделки по его user id.
+
+    Раньше телефон искали ТОЛЬКО в drivers_registration — но клиент
+    (грузоотправитель) там не хранится (он авторизуется через Supabase OTP),
+    поэтому контрагент-клиент отдавался без телефона: кнопка «Позвонить»
+    не показывалась и WhatsApp не открывался. Телефон клиента лежит в
+    cargos.owner_phone / bids.bidder_phone. Проверяем все источники по
+    порядку: регистрация водителя → владелец груза → владелец рейса →
+    ставка. Технические placeholder-телефоны (guest_/deleted_) не отдаём."""
+    name = None
+    phone = None
+    r = c.execute(
+        "SELECT full_name, phone FROM drivers_registration WHERE id = ?", (uid,)
+    ).fetchone()
+    if r:
+        name = r["full_name"]
+        phone = r["phone"]
+    if not phone and deal.get("cargo_id"):
+        r2 = c.execute(
+            "SELECT owner_name, owner_phone FROM cargos WHERE id = ? AND owner_id = ?",
+            (deal["cargo_id"], uid),
+        ).fetchone()
+        if r2:
+            name = name or r2["owner_name"]
+            phone = phone or r2["owner_phone"]
+    if not phone and deal.get("trip_id"):
+        r3 = c.execute(
+            "SELECT driver_name, driver_phone FROM trips WHERE id = ? AND driver_id = ?",
+            (deal["trip_id"], uid),
+        ).fetchone()
+        if r3:
+            name = name or r3["driver_name"]
+            phone = phone or r3["driver_phone"]
+    if not phone and deal.get("bid_id"):
+        r4 = c.execute(
+            "SELECT bidder_name, bidder_phone FROM bids WHERE id = ? AND bidder_id = ?",
+            (deal["bid_id"], uid),
+        ).fetchone()
+        if r4:
+            name = name or r4["bidder_name"]
+            phone = phone or r4["bidder_phone"]
+    if phone and str(phone).startswith(("guest_", "deleted_")):
+        phone = None
+    return name, phone
+
+
 @mp_router.post("/deals/{deal_id}/waybill-link")
 def waybill_link(deal_id: str, user=Depends(require_level(1))):
     """Подписанная ссылка на накладную — только участнику сделки."""
@@ -651,13 +698,10 @@ def waybill_html(deal_id: str, exp: int = 0, sig: str = ""):
             r = c.execute("SELECT plate_truck FROM trips WHERE id = ?", (d["trip_id"],)).fetchone()
             plate = r["plate_truck"] if r else None
         def person(uid):
-            r = c.execute("SELECT full_name, phone FROM drivers_registration WHERE id = ?", (uid,)).fetchone()
-            if not r:
-                return "—", "—"
-            ph = r["phone"] or "—"
-            if str(ph).startswith(("guest_", "deleted_")):
-                ph = "—"
-            return (r["full_name"] or "—"), ph
+            # Ищем телефон во всех источниках (регистрация/груз/рейс/ставка),
+            # чтобы в накладной был контакт и клиента, и водителя.
+            nm, ph = _party_contact(c, uid, d)
+            return (nm or "—"), (ph or "—")
         sh_name, sh_phone = person(d["shipper_id"])
         dr_name, dr_phone = person(d["driver_id"])
     cur = (d.get("currency") or cargo.get("currency") or "USD")
@@ -1938,15 +1982,11 @@ def get_deal(deal_id: str, user=Depends(require_level(1))):
         # (guest_/deleted_) не отдаём.
         other_id = d["driver_id"] if uid == d["shipper_id"] else d["shipper_id"]
         if other_id:
-            prow = c.execute(
-                "SELECT phone, full_name FROM drivers_registration WHERE id = ?",
-                (other_id,),
-            ).fetchone()
-            if prow:
-                ph = prow["phone"]
-                if ph and not str(ph).startswith(("guest_", "deleted_")):
-                    d["counterparty_phone"] = ph
-                d["counterparty_name"] = prow["full_name"]
+            cp_name, cp_phone = _party_contact(c, other_id, d)
+            if cp_phone:
+                d["counterparty_phone"] = cp_phone
+            if cp_name:
+                d["counterparty_name"] = cp_name
     return d
 
 
