@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, Modal, RefreshControl, ScrollView, TextInput } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, Modal, RefreshControl, ScrollView } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -26,6 +26,7 @@ import PressableScale from '../components/PressableScale';
 import { useMountedRef } from '../hooks/useMountedRef';
 import BottomSheet from '../components/ui/v1/BottomSheet';
 import DatePicker from '../components/DatePicker';
+import LocationPickerModal from '../components/LocationPickerModal';
 import { v1Colors, v1AccentFor, useV1Colors } from '../theme/designV1';
 
 // DD.MM.YYYY ↔ YYYY-MM-DD bridges. DatePicker stores DD.MM.YYYY
@@ -105,6 +106,7 @@ export default function FeedScreen({ navigation, route }) {
   routeSelLabel: { fontSize: 11, fontWeight: '700', marginBottom: 3, letterSpacing: 0.3 },
   routeSelValue: { fontSize: 15, fontWeight: '800' },
   routeSelArrow: { fontSize: 20, fontWeight: '900' },
+  routeSelClear: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
   titleHero: { color: v1.text, fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
   titleHeroSub: { color: v1.textMuted, fontSize: 12, marginTop: 2 },
   titleCta: { borderWidth: 0, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 10, shadowColor: '#FF8400', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 5 },
@@ -229,6 +231,11 @@ export default function FeedScreen({ navigation, route }) {
   const [activeFilter, setActiveFilter] = useState(null); // 'dir' | 'date' | 'body' | 'price' | null
   const [dirFrom, setDirFrom] = useState('');
   const [dirTo, setDirTo] = useState('');
+  // Полноэкранный выбор города (как в CreateCargo) вместо тесной шторки со
+  // свободным вводом — можно искать любой город/погранпереход, а не только
+  // те, что уже попали в ленту.
+  const [showDirFromPicker, setShowDirFromPicker] = useState(false);
+  const [showDirToPicker, setShowDirToPicker] = useState(false);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const closeFilter = () => setActiveFilter(null);
@@ -761,13 +768,16 @@ export default function FeedScreen({ navigation, route }) {
 
       {/* inDrive-стиль: крупный селектор «Откуда → Куда» — главный способ
           фильтра. Тап открывает шторку направления. Значения локализуются. */}
-      <TouchableOpacity
+      <View
         style={[s.routeSelector, { backgroundColor: v1.surface, borderColor: (dirFrom || dirTo) ? accentColor : v1.border }]}
-        onPress={() => setActiveFilter('dir')}
-        activeOpacity={0.85}
         testID="feed-route-selector"
       >
-        <View style={s.routeSelHalf}>
+        <TouchableOpacity
+          style={s.routeSelHalf}
+          onPress={() => setShowDirFromPicker(true)}
+          activeOpacity={0.7}
+          testID="feed-route-from"
+        >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
             <Feather name="map-pin" size={11} color={v1.textMuted} />
             <Text style={[s.routeSelLabel, { color: v1.textMuted }]}>{t('from')}</Text>
@@ -775,9 +785,14 @@ export default function FeedScreen({ navigation, route }) {
           <Text style={[s.routeSelValue, { color: dirFrom ? v1.text : v1.textMuted }]} numberOfLines={1}>
             {dirFrom ? localizePlace(dirFrom, lang) : t('create_field_from_placeholder')}
           </Text>
-        </View>
+        </TouchableOpacity>
         <Feather name="arrow-right" size={16} color={accentColor} style={s.routeSelArrow} />
-        <View style={s.routeSelHalf}>
+        <TouchableOpacity
+          style={s.routeSelHalf}
+          onPress={() => setShowDirToPicker(true)}
+          activeOpacity={0.7}
+          testID="feed-route-to"
+        >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
             <Feather name="flag" size={11} color={v1.textMuted} />
             <Text style={[s.routeSelLabel, { color: v1.textMuted }]}>{t('to')}</Text>
@@ -785,8 +800,38 @@ export default function FeedScreen({ navigation, route }) {
           <Text style={[s.routeSelValue, { color: dirTo ? v1.text : v1.textMuted }]} numberOfLines={1}>
             {dirTo ? localizePlace(dirTo, lang) : t('create_field_to_placeholder')}
           </Text>
+        </TouchableOpacity>
+        {(dirFrom || dirTo) ? (
+          <TouchableOpacity
+            onPress={() => { setDirFrom(''); setDirTo(''); }}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            style={s.routeSelClear}
+            testID="feed-route-clear"
+          >
+            <Feather name="x" size={16} color={v1.textMuted} />
+          </TouchableOpacity>
+        ) : null}
+      </View>
+
+      {/* Подписка «грузы по моему маршруту» — ключевая ретеншн-петля.
+          Видна водителю, когда заданы обе точки. Пуш придёт, когда
+          появится груз по этому направлению. Раньше жила в шторке фильтра;
+          после перехода на полноэкранный пикер вынесена под селектор. */}
+      {isDriver && dirFrom.trim() && dirTo.trim() ? (
+        <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
+          <TouchableOpacity
+            style={[s.saveRouteFull, { borderColor: accentColor }]}
+            onPress={async () => {
+              const r = await marketAPI.saveRoute({ from_city: dirFrom.trim(), to_city: dirTo.trim(), truck_type: filterType || null });
+              if (r.ok) toast('🔔 ' + t('route_saved'), 'success', 3500);
+              else toast(r.detail || t('send_error'), 'error');
+            }}
+            testID="save-route-btn"
+          >
+            <Text style={[s.saveRouteFullText, { color: accentColor }]}>🔔 {t('save_route_notify')}</Text>
+          </TouchableOpacity>
         </View>
-      </TouchableOpacity>
+      ) : null}
 
       <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
         <SearchBar
@@ -833,98 +878,25 @@ export default function FeedScreen({ navigation, route }) {
         </ScrollView>
       )}
 
-      {/* Direction sheet — only city-from / city-to inputs.
-          Stage 50 (Bug 1): добавлены suggestion-чипы из городов в
-          текущей ленте — пользователь видит реальные направления
-          (Алматы, Астана, Урумчи и т.д.), а не пустой sheet с двумя
-          текстовыми полями. Тап чипа подставляет город в input. */}
-      <BottomSheet
-        visible={activeFilter === 'dir'}
-        onClose={closeFilter}
-        title={`🧭 ${t('filter_direction')}`}
-        footer={(
-          <View style={s.filterActions}>
-            <TouchableOpacity
-              style={[s.filterActionBtn, { backgroundColor: v1.surface, borderColor: v1.border, borderWidth: 1 }]}
-              onPress={() => { setDirFrom(''); setDirTo(''); }}
-            >
-              <Text style={[s.filterActionText, { color: v1.textMuted }]}>{t('filter_reset')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[s.filterActionBtn, { backgroundColor: accentColor }]} onPress={closeFilter}>
-              <Text style={[s.filterActionText, { color: '#0A0A0A' }]}>{t('filter_apply')}</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      >
-        <Text style={[s.filterSectionLabel, { color: theme.textMuted }]}>{t('from')}</Text>
-        <TextInput
-          value={dirFrom}
-          onChangeText={setDirFrom}
-          placeholder={t('create_field_from_placeholder')}
-          placeholderTextColor={v1.textMuted}
-          style={[s.filterInput, { backgroundColor: theme.card, borderColor: theme.border, color: theme.text }]}
-        />
-        {(() => {
-          const cities = Array.from(new Set(currentData.map(d => (d.from || '').trim()).filter(Boolean))).slice(0, 8);
-          if (cities.length === 0) return null;
-          return (
-            <View style={[s.filterPillRow, { marginTop: 8 }]}>
-              {cities.map((c) => (
-                <TouchableOpacity
-                  key={`from-${c}`}
-                  onPress={() => setDirFrom(c)}
-                  style={[s.filterPill, { borderColor: v1.border, backgroundColor: dirFrom === c ? accentColor : v1.surface }]}
-                >
-                  <Text style={[s.filterPillText, { color: dirFrom === c ? '#0A0A0A' : v1.text }]} numberOfLines={1}>{localizePlace(c, lang)}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          );
-        })()}
-
-        <Text style={[s.filterSectionLabel, { color: theme.textMuted, marginTop: 12 }]}>{t('to')}</Text>
-        <TextInput
-          value={dirTo}
-          onChangeText={setDirTo}
-          placeholder={t('create_field_to_placeholder')}
-          placeholderTextColor={v1.textMuted}
-          style={[s.filterInput, { backgroundColor: theme.card, borderColor: theme.border, color: theme.text }]}
-        />
-        {(() => {
-          const cities = Array.from(new Set(currentData.map(d => (d.to || '').trim()).filter(Boolean))).slice(0, 8);
-          if (cities.length === 0) return null;
-          return (
-            <View style={[s.filterPillRow, { marginTop: 8 }]}>
-              {cities.map((c) => (
-                <TouchableOpacity
-                  key={`to-${c}`}
-                  onPress={() => setDirTo(c)}
-                  style={[s.filterPill, { borderColor: v1.border, backgroundColor: dirTo === c ? accentColor : v1.surface }]}
-                >
-                  <Text style={[s.filterPillText, { color: dirTo === c ? '#0A0A0A' : v1.text }]} numberOfLines={1}>{localizePlace(c, lang)}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          );
-        })()}
-
-        {/* Подписка «грузы по моему маршруту» — ключевая ретеншн-петля.
-            Видна водителю, когда заданы обе точки. Пуш придёт, когда
-            появится груз по этому направлению. */}
-        {isDriver && dirFrom.trim() && dirTo.trim() ? (
-          <TouchableOpacity
-            style={[s.saveRouteFull, { borderColor: accentColor }]}
-            onPress={async () => {
-              const r = await marketAPI.saveRoute({ from_city: dirFrom.trim(), to_city: dirTo.trim(), truck_type: filterType || null });
-              if (r.ok) toast('🔔 ' + t('route_saved'), 'success', 3500);
-              else toast(r.detail || t('send_error'), 'error');
-            }}
-            testID="save-route-btn"
-          >
-            <Text style={[s.saveRouteFullText, { color: accentColor }]}>🔔 {t('save_route_notify')}</Text>
-          </TouchableOpacity>
-        ) : null}
-      </BottomSheet>
+      {/* Полноэкранный выбор города «Откуда/Куда» для фильтра ленты —
+          тот же LocationPickerModal, что и на создании груза: поиск,
+          недавние, избранное, популярные, погранпереходы. Заменил
+          прежнюю тесную шторку, где можно было выбрать только города,
+          уже попавшие в ленту. Храним p.name (город) — фильтр сравнивает
+          подстрокой с d.from / d.to. */}
+      <LocationPickerModal
+        visible={showDirFromPicker}
+        onClose={() => setShowDirFromPicker(false)}
+        title={t('loc_from_title')}
+        showGeo
+        onSelect={(v, point) => setDirFrom((point && point.name) || v || '')}
+      />
+      <LocationPickerModal
+        visible={showDirToPicker}
+        onClose={() => setShowDirToPicker(false)}
+        title={t('loc_to_title')}
+        onSelect={(v, point) => setDirTo((point && point.name) || v || '')}
+      />
 
       {/* Date sheet — real calendar/date-picker for both ends of the
           window. DatePicker uses native <input type="date"> on web and
