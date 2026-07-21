@@ -1265,7 +1265,16 @@ def list_bids(
             if b.get("bidder_id") == caller["id"] and b.get("status") in _active:
                 my_bid = b
                 break
-    if not is_owner:
+    # Конфиденциальный режим (BIDS_CONFIDENTIAL) — под будущую монетизацию.
+    # По умолчанию FALSE: ставки открыты для всех, не-владелец видит полный
+    # список с суммами (как до фичи). При TRUE — не-владельцу отдаём только
+    # принятые (публичные) + собственную ставку, чужие суммы скрыты.
+    try:
+        import config as _cfg
+        _bids_confidential = bool(getattr(_cfg, "BIDS_CONFIDENTIAL", False))
+    except Exception:
+        _bids_confidential = False
+    if _bids_confidential and not is_owner:
         # Только принятые (публично видимы) + собственная ставка бидера (из сырого
         # списка — если dirty-фильтр её убрал, возвращаем через my_bid).
         bids = [b for b in bids if b.get("status") == "accepted"]

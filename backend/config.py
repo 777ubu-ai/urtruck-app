@@ -21,6 +21,14 @@ _beta_default = "false" if URTRUCK_ENV == "production" else "true"
 BETA_MODE = os.getenv("BETA_MODE", _beta_default).lower() in ("1", "true", "yes")
 BETA_OTP_CODE = os.getenv("BETA_OTP_CODE", "0000")
 
+# Ставки: конфиденциальный режим (InDrive-модель) под будущую монетизацию.
+# По умолчанию FALSE — ставки ОТКРЫТЫ ДЛЯ ВСЕХ (полный список с суммами, как
+# до фичи). При TRUE — не-владелец видит только count + свою ставку (чужие
+# суммы скрыты). Телефон оферента в ЛЮБОМ режиме отдаётся только владельцу
+# (это security, не зависит от флага). Решение владельца 2026-07: открыть,
+# закрытый режим не удалять — спрятать за выключатель.
+BIDS_CONFIDENTIAL = os.getenv("BIDS_CONFIDENTIAL", "false").lower() in ("1", "true", "yes")
+
 # App Store / Google Play review — демо-вход для ревьюера (Guideline 2.1a).
 # Фиксированный email + код принимаются ТОЛЬКО для этого одного адреса —
 # это НЕ глобальный BETA_MODE (тот отключён на проде). Даёт ревьюеру доступ ко
