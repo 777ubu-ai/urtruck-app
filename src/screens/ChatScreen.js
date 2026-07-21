@@ -26,6 +26,8 @@ import QuickPhrases from '../components/QuickPhrases';
 import {v1Colors, useV1Colors, v1Radius, v1AccentFor} from '../theme/designV1';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
 import { DealRoomCard, SystemEventRow, DealQuickActions } from '../components/deal/DealRoom';
+import BargainCard from '../components/deal/BargainCard';
+import BidModal from '../components/BidModal';
 import DealAttachments from '../components/deal/DealAttachments';
 
 // HOT-006: реальная запись/воспроизведение для web (PWA deploy).
@@ -111,6 +113,13 @@ export default function ChatScreen({ navigation, route }) {
   callBtnText: { fontSize: 14, fontWeight: '800' },
   msgTime: { color: v1.textMuted, fontSize: 11, textAlign: 'right', marginTop: 3 },
   msgTimeMe: { color: 'rgba(234,251,241,0.55)' },
+  // Часть 2 — баннер «🤝 Сделка!» по центру ленты.
+  dealBannerRow: { alignItems: 'center', marginVertical: 12 },
+  dealBanner: {
+    backgroundColor: '#15512F', borderWidth: 1, borderColor: '#22C55E',
+    borderRadius: 16, paddingHorizontal: 18, paddingVertical: 10,
+  },
+  dealBannerText: { color: '#EAFBF1', fontSize: 16, fontWeight: '900', letterSpacing: -0.3 },
   // Input bar
   inputRow: {
     flexDirection: 'row', alignItems: 'center',
@@ -161,6 +170,11 @@ export default function ChatScreen({ navigation, route }) {
   // C2 (device-баг): вложение-фото не открывалось на весь экран. Тап по
   // фото-пузырю кладёт сюда абсолютный URL → показываем fullscreen-viewer.
   const [fullImage, setFullImage] = useState(null);
+  // Часть 2 (торг в чате): BidModal + refreshKey для BargainCard. Кнопка 💰 в
+  // инпут-баре и чипы в карточке торга шлют действия через существующие
+  // эндпоинты; bargainRefresh инкрементим, чтобы карточка перечитала статус.
+  const [bidModal, setBidModal] = useState({ visible: false, mode: 'create', bidId: null, amount: null });
+  const [bargainRefresh, setBargainRefresh] = useState(0);
   // «Печатает…»: индикатор партнёра (из poll) + троттл своего пинга.
   const [partnerTyping, setPartnerTyping] = useState(false);
   const [partnerOnline, setPartnerOnline] = useState(false);
@@ -473,6 +487,24 @@ export default function ChatScreen({ navigation, route }) {
     } catch { /* без фейков — просто не падаем */ }
   };
 
+  // Часть 2 — открытие BidModal из инпут-бара (💰) или чипа «Своя цена».
+  // mode: 'create' — новая ставка (из инпута); 'counter'/'edit' — из чипа.
+  const openBidModal = (mode = 'create', targetBidId = null, amount = null) => {
+    setBidModal({ visible: true, mode, bidId: targetBidId || bidId || null, amount });
+  };
+  // Момент сделки: кладём крупный зелёный баннер в ленту и перечитываем
+  // карточку торга/сделку (источник истины — статус на сервере).
+  const onBargainDeal = (amount) => {
+    const amountText = amount != null ? formatPrice(amount, deal?.currency || 'USD', t) : '';
+    setMessages((prev) => [...prev, {
+      id: 'deal_' + Date.now().toString(36),
+      from: 'system', isDeal: true, amountText,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    }]);
+    setBargainRefresh((n) => n + 1);
+    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 120);
+  };
+
   // PR4 — Accept bid. Кнопка активна только если есть bidId и сделка ещё не
   // принята. Confirm → реальный вызов /market/bids/{id}/accept (пишет immutable
   // deal.bid_accepted). После успеха — обновляем deal-статус и timeline.
@@ -756,6 +788,16 @@ export default function ChatScreen({ navigation, route }) {
 
   const renderMessage = ({ item }) => {
     const isMe = item.from === 'me';
+    // Часть 2 — момент сделки: крупный зелёный системный баннер по центру.
+    if (item.isDeal) {
+      return (
+        <View style={s.dealBannerRow} testID="chat-deal-banner">
+          <View style={s.dealBanner}>
+            <Text style={s.dealBannerText}>🤝 {t('deal_done')}{item.amountText ? ` ${item.amountText}` : ''}</Text>
+          </View>
+        </View>
+      );
+    }
     if (item.isPhoto) {
       return (
         <View style={[s.msgRow, isMe && s.msgRowMe]}>
@@ -932,6 +974,18 @@ export default function ChatScreen({ navigation, route }) {
         keyboardShouldPersistTaps="handled"
         ListHeaderComponent={
           <View>
+            {/* Часть 2 — карточка живого торга (до сделки). Сама скрывается,
+                если активной ставки нет или сделка уже заключена. */}
+            {(cargoId || tripId) ? (
+              <BargainCard
+                cargoId={cargoId}
+                tripId={tripId}
+                myUserId={myId}
+                refreshKey={bargainRefresh}
+                onOpenModal={openBidModal}
+                onDeal={onBargainDeal}
+              />
+            ) : null}
             {dealId ? (
               <View style={{ marginBottom: 10 }}>
                 <DealRoomCard deal={deal} role={role} />
@@ -996,6 +1050,15 @@ export default function ChatScreen({ navigation, route }) {
         <TouchableOpacity onPress={() => setShowPhrases(!showPhrases)} style={s.iconBtn}>
           <Feather name="zap" size={18} color={v1.text} />
         </TouchableOpacity>
+        {/* Часть 2 — «Предложить цену» (💰): открывает BidModal прямо в чате. */}
+        <TouchableOpacity
+          onPress={() => openBidModal('create')}
+          style={[s.iconBtn, { borderColor: v1Accent.main }]}
+          testID="chat-bid-btn"
+          accessibilityLabel={t('propose_price') || 'Предложить цену'}
+        >
+          <Feather name="dollar-sign" size={18} color={v1Accent.main} />
+        </TouchableOpacity>
         {CHAT_PHOTO_ENABLED && (
           <TouchableOpacity onPress={sendPhoto} style={s.iconBtn}>
             <Feather name="camera" size={18} color={v1.text} />
@@ -1044,6 +1107,22 @@ export default function ChatScreen({ navigation, route }) {
           </TouchableOpacity>
         </Pressable>
       </Modal>
+
+      {/* Часть 2 — BidModal торга в чате. После успеха инкрементим
+          bargainRefresh, чтобы карточка торга перечитала статус со сервера. */}
+      <BidModal
+        visible={bidModal.visible}
+        onClose={() => setBidModal((m) => ({ ...m, visible: false }))}
+        onSubmit={() => {
+          setBidModal((m) => ({ ...m, visible: false }));
+          setBargainRefresh((n) => n + 1);
+        }}
+        mode={bidModal.mode}
+        cargoId={cargoId}
+        tripId={tripId}
+        bidId={bidModal.bidId}
+        initialAmount={bidModal.amount}
+      />
     </SafeAreaView>
   );
 }

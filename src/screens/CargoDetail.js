@@ -134,6 +134,10 @@ export default function CargoDetail({ navigation, route }) {
   const myUserId = session?.user?.id;
   const [bidModal, setBidModal] = useState(false);
   const [bidModalMode, setBidModalMode] = useState('create');
+  // Часть 1 (конфиденциальные ставки): число предложений (видно всем) и признак
+  // владельца листинга (владелец видит все суммы; чужой — только свою + count).
+  const [bidsCount, setBidsCount] = useState(0);
+  const [isListingOwner, setIsListingOwner] = useState(false);
   const [editingBid, setEditingBid] = useState(null);
   const [shareModal, setShareModal] = useState(false);
   const [bids, setBids] = useState([]);
@@ -207,6 +211,10 @@ export default function CargoDetail({ navigation, route }) {
           counterBy: b.counter_by,
         }));
         setBids(mapped);
+        // Часть 1: count/is_owner с бэка. count = все предложения (видно всем),
+        // даже если чужие суммы не пришли (конфиденциальность на сервере).
+        setBidsCount(typeof d.count === 'number' ? d.count : mapped.length);
+        setIsListingOwner(!!d.is_owner);
         const accepted = mapped.find(b => b.status === 'accepted');
         if (accepted) {
           setAcceptedDriverId(accepted.bidderId);
@@ -448,8 +456,17 @@ export default function CargoDetail({ navigation, route }) {
           </GlassCard>
         ) : null}
 
-        <Text style={[s.bidsTitle, { color: theme.text }]}>{formatBids(bids.length)}</Text>
-        {bids.length === 0 && (
+        {/* Часть 1: показываем ЧИСЛО предложений (видно всем), не длину
+            урезанного списка. */}
+        <Text style={[s.bidsTitle, { color: theme.text }]} testID="cargo-bids-count">{formatBids(bidsCount)}</Text>
+        {/* Не-владелец: чужие суммы скрыты (модель InDriver) — видит только
+            своё предложение + может предложить свою цену. */}
+        {!isListingOwner && bidsCount > 0 && (
+          <Text style={{ color: theme.textMuted, textAlign: 'center', paddingHorizontal: 20, paddingBottom: 8, fontSize: 12 }} testID="cargo-bids-confidential">
+            {t('bids_confidential_hint')}
+          </Text>
+        )}
+        {bidsCount === 0 && (
           <Text style={{ color: theme.textMuted, textAlign: 'center', padding: 20, fontSize: 13 }}>
             {t('no_bids_be_first')}
           </Text>
