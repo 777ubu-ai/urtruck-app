@@ -34,7 +34,13 @@ def _migrate(c):
         ("license_issue_date", "TEXT"),         # шаг 3: для стажа
         ("license_expiry", "TEXT"),             # шаг 3: срок действия
         ("license_number", "TEXT"),             # шаг 3: номер прав (OCR)
-        ("license_selfie_url", "TEXT"),         # шаг 3: ключ/URL селфи с правами
+        ("license_selfie_url", "TEXT"),         # шаг 3: ключ/URL селфи с правами (legacy — селфи убрано)
+        # Переделка верификации (3 документа × 2 стороны): у техпаспорта и прав
+        # добавлены оборотные стороны. Лицевые — существующие passport_url (техпаспорт
+        # + OCR) и license_url (права + OCR). Идентификация — id_front/id_back +
+        # id_doc_type (id_card|passport). Всё добавлением, старые колонки не трогаем.
+        ("tech_back_url", "TEXT"),              # техпаспорт (СРТС) — оборотная сторона
+        ("license_back_url", "TEXT"),           # права (ВУ) — оборотная сторона
         ("vehicle_model", "TEXT"),              # шаг 4 (brand уже есть)
         ("vehicle_color", "TEXT"),              # шаг 4: цвет кузова/кабины (PR #70 UI)
         ("body_type", "TEXT"),                  # шаг 5: tent|ref|izoterm|board|container|tanker|platform

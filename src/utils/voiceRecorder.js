@@ -65,7 +65,17 @@ export const voice = {
         return this._playWeb(uri);
       }
       const { Audio } = require('expo-av');
-      const { sound } = await Audio.Sound.createAsync({ uri });
+      // C1 (device-баг): голосовое не проигрывалось у получателя на iOS.
+      // Первопричина — после записи audio-сессия остаётся в режиме записи
+      // (allowsRecordingIOS: true, выставлен в startRecording), и на iOS
+      // воспроизведение в этом режиме молчит/падает. А тот, кто только слушает
+      // (никогда не писал), играет в дефолтном режиме → в «бесшумном» режиме
+      // телефона тоже тишина. Перед воспроизведением явно переводим сессию в
+      // playback-режим: запись выключена, звук идёт даже в silent-mode.
+      try {
+        await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
+      } catch { /* не критично — пытаемся играть в текущем режиме */ }
+      const { sound } = await Audio.Sound.createAsync({ uri }, { shouldPlay: true });
       _sound = sound;
       await sound.playAsync();
       sound.setOnPlaybackStatusUpdate((status) => {

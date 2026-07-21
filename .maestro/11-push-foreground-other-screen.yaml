@@ -1,0 +1,39 @@
+# L3-11 — foreground push на ДРУГОМ экране: баннер виден, тап = навигация в чат.
+#
+# ГРАНИЦЫ (см. 10-foreground-push-suppress.yaml):
+#  - appId=com.urtruck.app → нужен dev-client/standalone на booted-симуляторе.
+#  - Системный iOS-баннер вне view-иерархии → факт «баннер показан» = РУЧНОЕ
+#    наблюдение (# 👁 MANUAL). Maestro проверяет только состояние приложения.
+#  - `xcrun simctl push` запускается в соседнем терминале между шагами.
+#
+# Перед прогоном:
+#   DEVICE=$(xcrun simctl list devices booted | grep -oE '[0-9A-F-]{36}' | head -1)
+#   # payload_chat.json: { "aps": {"alert":{"title":"Борис","body":"Тест"}},
+#   #   "url":"/chats/ROOM_ID", "data":{"type":"chat_message","room_id":"ROOM_ID"} }
+appId: com.urtruck.app
+---
+- launchApp:
+    clearState: false
+
+# Мы НЕ в чате — на Feed. Push другой комнаты ДОЛЖЕН показать баннер.
+- tapOn:
+    id: "bottom-nav-feed"
+- waitForAnimationToEnd
+- assertVisible:
+    id: "bottom-nav-feed"
+- takeScreenshot: p11_on_feed
+
+# 👁 MANUAL: инъекция push'а (НЕ открытой комнаты):
+#   xcrun simctl push "$DEVICE" com.urtruck.app .maestro/payload_chat.json
+# Ожидание: системный баннер ВИДЕН вверху (foreground) — зафиксируй глазами.
+- takeScreenshot: p11_after_push_MANUAL_check_banner
+
+# 👁 MANUAL: тапни по баннеру. Ожидание: открывается ЭТОТ чат (ChatScreen).
+# Если Maestro может нажать по notification — иначе тап вручную.
+- assertVisible:
+    id: "chat-input"            # после тапа мы в ChatScreen нужной комнаты
+- takeScreenshot: p11_opened_chat
+
+# Инвариант: приложение не увело на неверный экран, нет белого экрана/краша.
+- assertVisible:
+    id: "chat-input"

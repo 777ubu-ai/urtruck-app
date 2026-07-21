@@ -18,7 +18,7 @@ import { useV1Colors, v1Radius } from '../theme/designV1';
 import { useI18n } from '../utils/useI18n';
 import { storage } from '../utils/storage';
 import { localizePlace } from '../utils/places';
-import { COUNTRIES, POINTS, searchPoints, formatPoint } from '../utils/geography';
+import { COUNTRIES, COUNTRY_ORDER, POINTS, searchPoints, formatPoint, pointsForCountry } from '../utils/geography';
 
 const RECENT_KEY = 'ur_recent_places';
 const FAV_KEY = 'ur_fav_places';
@@ -48,10 +48,14 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
   const [recent, setRecent] = useState([]);
   const [favs, setFavs] = useState([]);
   const [geoLoading, setGeoLoading] = useState(false);
+  // Выбранная страна для режима «страна → города». null = обычный список
+  // (популярные/недавние/страны). Тап по стране раскрывает её города.
+  const [country, setCountry] = useState(null);
 
   useEffect(() => {
     if (!visible) return;
     setQuery('');
+    setCountry(null);
     (async () => {
       setRecent(await loadList(RECENT_KEY));
       setFavs(await loadList(FAV_KEY));
@@ -188,6 +192,20 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
                 </>
               ) : null}
             </>
+          ) : country ? (
+            /* Режим «страна → города»: список городов выбранной страны +
+               строка «← Все страны» для возврата. */
+            <>
+              <TouchableOpacity style={s.row} onPress={() => setCountry(null)} activeOpacity={0.7} testID="loc-country-back">
+                <View style={s.lead}><Text style={s.leadText}>‹</Text></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.name}>{t('loc_all_countries')}</Text>
+                  <Text style={s.sub} numberOfLines={1}>{localizePlace(COUNTRIES[country]?.name || '', lang)}</Text>
+                </View>
+              </TouchableOpacity>
+              <View style={s.divider} />
+              {pointsForCountry(country).map((p, i) => <Row key={`cc:${pointKey(p)}:${i}`} p={p} />)}
+            </>
           ) : (
             <>
               {showGeo ? (
@@ -219,6 +237,19 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
 
               <Sect icon="star">{t('route_popular')}</Sect>
               {POPULAR.map((p, i) => <Row key={`pop:${pointKey(p)}:${i}`} p={p} />)}
+
+              {/* Выбор по стране: тап раскрывает города страны (то, что просил
+                  владелец — «нажимаю Китай → внизу все города»). */}
+              <Sect icon="globe">{t('loc_countries')}</Sect>
+              {COUNTRY_ORDER.map((code) => (
+                <TouchableOpacity key={`country:${code}`} style={s.row} onPress={() => setCountry(code)} activeOpacity={0.7} testID={`loc-country-${code}`}>
+                  <View style={s.lead}><Text style={s.leadText}>{COUNTRIES[code]?.flag || '🌐'}</Text></View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.name} numberOfLines={1}>{localizePlace(COUNTRIES[code]?.name || code, lang)}</Text>
+                  </View>
+                  <Text style={s.chev}>›</Text>
+                </TouchableOpacity>
+              ))}
 
               <Sect icon="flag">{t('loc_borders')}</Sect>
               {BORDERS.map((p, i) => <Row key={`bord:${pointKey(p)}:${i}`} p={p} showHeart={false} />)}

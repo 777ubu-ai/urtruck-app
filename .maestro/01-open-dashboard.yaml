@@ -1,5 +1,5 @@
 appId: host.exp.Exponent
-name: pr104-01-open-dashboard
+name: pr104-01-client-profile-no-driver-cta
 tags:
   - smoke
   - pr104
@@ -7,40 +7,18 @@ tags:
 env:
   MAESTRO_ACTOR: boris
 ---
-# PR #104 L1 — happy path #1: client → Profile → tap «Стать водителем» →
-# VerificationDashboard либо auto-redirect на approved/pending screen.
+# PR#104 обновлён (2026-07): кнопка «Стать водителем» намеренно убрана из
+# клиентского профиля (решение владельца 2026-06-13, ProfileScreen.js:312).
+# Прежний happy-path «profile → become-driver → VerificationDashboard» больше
+# неактуален для клиента. Смоук теперь охраняет это состояние: клиентский
+# профиль открывается штатно и driver-CTA в нём отсутствует.
 - runFlow: ../qa/maestro/_lib/qa-login.yaml
 - tapOn:
     id: "bottom-nav-profile"
 - waitForAnimationToEnd
-- takeScreenshot: 00_profile
-- scrollUntilVisible:
-    element:
-      id: "profile-become-driver-cta"
-    direction: DOWN
-    timeout: 6000
 - assertVisible:
+    id: "profile-logout"
+- takeScreenshot: 00_client_profile
+# driver-CTA удалён — его не должно быть в клиентском профиле
+- assertNotVisible:
     id: "profile-become-driver-cta"
-- tapOn:
-    id: "profile-become-driver-cta"
-- waitForAnimationToEnd:
-    timeout: 4000
-- takeScreenshot: 01_after_cta_tap
-# Approved actor (boris=level3) → auto-redirect на ApprovedScreen.
-# Fresh actor (level<2) → остаётся на VerificationDashboard.
-- runFlow:
-    when:
-      visible:
-        id: "verification-approved-screen"
-    commands:
-      - assertVisible:
-          id: "verification-approved-screen"
-      - assertVisible:
-          id: "verification-approved-done-btn"
-- runFlow:
-    when:
-      visible:
-        id: "verification-dashboard"
-    commands:
-      - assertVisible:
-          id: "verification-dashboard"

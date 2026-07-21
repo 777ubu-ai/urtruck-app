@@ -219,11 +219,19 @@ export default function DriverDetail({ navigation, route }) {
                 the squashed "20т" / "82м³" the previous concat
                 produced. Matches the canonical formatter used in
                 cargoDisplay / tripDisplay. */}
+            {/* Показываем ТОЛЬКО заполненные поля — без прочерков «—».
+                У сохранённого/непроверенного водителя часто нет объёма/
+                тоннажа; вместо пустой карточки показываем что есть
+                (тип кузова, госномер, марка/модель, объём, тоннаж). */}
             {[
               [t('truckType'), t(tt)],
-              [t('volume'),    driver.m3   ? `${driver.m3} м³` : '—'],
-              [t('tonnage'),   driver.tons ? `${driver.tons} т` : '—'],
-            ].map(([l, v]) => (
+              driverPlate ? [t('truckPlate'), driverPlate] : null,
+              (driver.vehicle_brand || serverProfile?.vehicle_brand)
+                ? [t('brand_model'), [driver.vehicle_brand || serverProfile?.vehicle_brand, driver.vehicle_model || serverProfile?.vehicle_model].filter(Boolean).join(' ')]
+                : null,
+              driver.m3   ? [t('volume'),  `${driver.m3} м³`] : null,
+              driver.tons ? [t('tonnage'), `${driver.tons} т`] : null,
+            ].filter(Boolean).map(([l, v]) => (
               <View key={l} style={s.gridItem}>
                 <Text style={[s.gridLabel, { color: v1.textMuted }]}>{l}</Text>
                 <Text style={[s.gridValue, { color: v1.text }]}>{v}</Text>

@@ -717,6 +717,37 @@ async def upload_passport(
     }
 
 
+# ---------- Оборотные стороны техпаспорта и прав (переделка верификации) ----------
+# Лицевые: /documents/passport (техпаспорт + OCR) и /documents/license (права + OCR).
+# Оборотные — store-only (без OCR), по образцу /documents/id-back.
+@reg_router.post("/documents/tech-passport-back")
+async def upload_tech_passport_back(
+    file: UploadFile = File(...),
+    driver_id: str = Depends(get_current_driver),
+):
+    """Техпаспорт (СРТС) — оборотная сторона. Храним только ключ файла."""
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Пустой файл")
+    url = storage.save_image(data, "passports")
+    reg_dal.update_driver(driver_id, {"tech_back_url": url})
+    return {"tech_back_key": url}
+
+
+@reg_router.post("/documents/license-back")
+async def upload_license_back(
+    file: UploadFile = File(...),
+    driver_id: str = Depends(get_current_driver),
+):
+    """Водительские права (ВУ) — оборотная сторона. Храним только ключ файла."""
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Пустой файл")
+    url = storage.save_image(data, "licenses")
+    reg_dal.update_driver(driver_id, {"license_back_url": url})
+    return {"license_back_key": url}
+
+
 # ---------- ЭТАП 4: Транспорт ----------
 @reg_router.post("/vehicle")
 async def save_vehicle(
@@ -894,6 +925,13 @@ def get_status(driver_id: str = Depends(get_current_driver)):
     # Новый порядок: удостоверение личности (2 стороны) + гражданство.
     safe["has_id_front"] = bool(driver.get("id_front_url"))
     safe["has_id_back"] = bool(driver.get("id_back_url"))
+    # Переделка верификации: 3 документа × 2 стороны. Лицевые техпаспорта/прав —
+    # has_passport (техпаспорт) / has_license (права); оборотные — новые признаки.
+    # id_doc_type уже попадает в safe (не *_url) — фронт подтянет тумблер.
+    safe["has_tech_front"] = bool(driver.get("passport_url"))
+    safe["has_tech_back"] = bool(driver.get("tech_back_url"))
+    safe["has_license_front"] = bool(driver.get("license_url"))
+    safe["has_license_back"] = bool(driver.get("license_back_url"))
     return safe
 
 

@@ -60,6 +60,9 @@ export default function BidModal({
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // Ставку больше нельзя отправить (сессия истекла / ставка уже принята и т.п.):
+  // блокируем кнопку, чтобы пользователь не жал повторно и не ловил ту же ошибку.
+  const [locked, setLocked] = useState(false);
   const { t } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
@@ -68,6 +71,7 @@ export default function BidModal({
   useEffect(() => {
     if (!visible) return;
     setError('');
+    setLocked(false);
     if (isPrefill) {
       // For counter we leave the amount empty so the owner has to type a new
       // number — pre-filling with bidder's amount would be misleading.
@@ -140,8 +144,12 @@ export default function BidModal({
         toast('✓ ' + okMsg, 'success');
       } else if (r.status === 401) {
         setError(t('session_expired'));
+        setLocked(true);
       } else if (r.status === 409) {
+        // Ставку уже приняли/изменили — повтор не поможет. Блокируем кнопку,
+        // пользователь читает причину и закрывает окно (лента обновится).
         setError(r.detail || t('bid_not_pending'));
+        setLocked(true);
       } else {
         setError(r.detail || t('bid_failed'));
       }
@@ -251,9 +259,9 @@ export default function BidModal({
 
           <TouchableOpacity
             testID="bid-submit"
-            style={[s.submitBtn, { backgroundColor: accent }, (!bid || loading) && s.submitBtnDisabled]}
+            style={[s.submitBtn, { backgroundColor: accent }, (!bid || loading || locked) && s.submitBtnDisabled]}
             onPress={handleSubmit}
-            disabled={!bid || loading}
+            disabled={!bid || loading || locked}
           >
             {loading ? <ActivityIndicator color={onAccent} /> : (
               <Text style={[s.submitBtnText, { color: onAccent }]}>

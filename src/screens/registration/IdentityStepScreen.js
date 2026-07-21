@@ -52,7 +52,6 @@ export default function IdentityStepScreen({ navigation }) {
   const { t } = useI18n();
   const { toast } = useToast();
 
-  const [photoUri, setPhotoUri] = useState(null);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [birthDate, setBirthDate] = useState('');
@@ -62,10 +61,9 @@ export default function IdentityStepScreen({ navigation }) {
   const [closeVisible, setCloseVisible] = useState(false);
   const [helpVisible, setHelpVisible] = useState(false);
   const [dobSheetVisible, setDobSheetVisible] = useState(false);
-  // Ключ уже загруженного личного фото (с сервера) — чтобы при повторном входе
-  // не заставлять переснимать.
-  const [serverPhotoKey, setServerPhotoKey] = useState(null);
-  // Удостоверение личности — лицевая/оборотная (новый порядок, шаг 2).
+  // Переделка верификации (решение владельца): личное фото/селфи убраны.
+  // Документ личности: тип (удостоверение | паспорт) + 2 стороны.
+  const [docType, setDocType] = useState('id_card');  // 'id_card' | 'passport'
   const [idFront, setIdFront] = useState(null);       // локальный uri
   const [idBack, setIdBack] = useState(null);
   const [hasIdFront, setHasIdFront] = useState(false); // уже на сервере
@@ -90,9 +88,7 @@ export default function IdentityStepScreen({ navigation }) {
         setBirthDate(iso ? `${iso[3]}.${iso[2]}.${iso[1]}` : s);
       }
       if (st.iin && !iin) setIin(String(st.iin).replace(/\D/g, '').slice(0, 12));
-      if (st.has_personal_photo && st.personal_photo_key) {
-        setServerPhotoKey(st.personal_photo_key);
-      }
+      if (st.id_doc_type === 'id_card' || st.id_doc_type === 'passport') setDocType(st.id_doc_type);
       if (st.has_id_front) setHasIdFront(true);
       if (st.has_id_back) setHasIdBack(true);
     })();
@@ -141,53 +137,7 @@ export default function IdentityStepScreen({ navigation }) {
     return null;
   };
 
-  // issue #1: личное фото — это фото лица для верификации, поэтому
-  // ОСНОВНОЕ действие открывает камеру сразу (а не галерею со случайными
-  // скриншотами). Галерея — вторичная опция по явному выбору. Чистый
-  // preview показываем только после успешного локального выбора.
-  const applyPicked = (r) => {
-    if (!r.canceled && r.assets?.[0]?.uri) {
-      setPhotoUri(r.assets[0].uri);
-      if (errors.photo) setErrors({ ...errors, photo: null });
-    }
-  };
-
-  const takePhoto = async () => {
-    const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (perm.status !== 'granted') {
-      toast(t('camera_permission_required'), 'error', 5000);
-      return;
-    }
-    try {
-      const r = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        cameraType: ImagePicker.CameraType.front,
-        quality: 0.9,
-      });
-      applyPicked(r);
-    } catch {
-      toast(t('camera_error'), 'error', 4000);
-    }
-  };
-
-  const pickFromGallery = async () => {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (perm.status !== 'granted') {
-      toast(t('photo_permission_required'), 'error', 5000);
-      return;
-    }
-    try {
-      const r = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 0.9,
-      });
-      applyPicked(r);
-    } catch {
-      toast(t('camera_error'), 'error', 4000);
-    }
-  };
-
-  // Выбор фото стороны удостоверения (камера/галерея).
+  // Выбор фото стороны удостоверения/паспорта (камера/галерея).
   const pickIdSide = (setter, errKey) => {
     const apply = (r) => {
       if (!r.canceled && r.assets?.[0]?.uri) {
@@ -217,8 +167,7 @@ export default function IdentityStepScreen({ navigation }) {
 
   const onNext = async () => {
     const e = {
-      // Фото ок, если только что выбрали новое ИЛИ уже загружено ранее (повторный вход).
-      photo: (photoUri || serverPhotoKey) ? null : t('identity_err_photo'),
+      // Документ личности — 2 стороны (удостоверение ИЛИ паспорт). Личное фото убрано.
       idFront: (idFront || hasIdFront) ? null : t('id_err_front'),
       idBack: (idBack || hasIdBack) ? null : t('id_err_back'),
       firstName: validateName(firstName),
@@ -228,37 +177,15 @@ export default function IdentityStepScreen({ navigation }) {
     };
     setErrors(e);
     if (Object.values(e).some(Boolean)) {
-      toast(e.photo ? e.photo : t('reg_check_name_iin'), 'error');
+      toast(t('reg_check_name_iin'), 'error');
       return;
     }
     // Фамилия Имя — порядок как в документах.
     const fullName = `${lastName.trim()} ${firstName.trim()}`.trim();
 
     setSaving(true);
-    // 1) Личное фото. Если пользователь НЕ переснимал (повторный вход) — используем
-    //    уже загруженный на сервере ключ, без повторной выгрузки. Иначе — реальный
-    //    server-side upload (никакого fake-success).
-    let photoKey = serverPhotoKey;
-    try {
-      if (photoUri) {
-        const up = await regAPI.uploadPersonalPhoto(photoUri);
-        photoKey = up?.personal_photo_key || null;
-      }
-      if (!photoKey) throw new Error('no_key');
-    } catch (err) {
-      setSaving(false);
-      // issue #1: более конкретная ошибка где возможно (нет интернета /
-      // файл слишком большой / иначе общий upload-fail).
-      const msg = String(err?.message || err || '');
-      let key = 'identity_err_photo_upload';
-      if (/network|fetch|timeout|соединени|connection|интернет/i.test(msg)) key = 'upload_err_network';
-      else if (/413|too large|payload|size|больш/i.test(msg)) key = 'upload_err_too_large';
-      toast(t(key), 'error', 5000);
-      return;
-    }
-
-    // 1b) Удостоверение личности (2 стороны). Грузим только новые фото; если
-    //     сторона уже на сервере (повторный вход) — не перезагружаем.
+    // Документ личности (2 стороны). Грузим только новые фото; если сторона уже
+    // на сервере (повторный вход) — не перезагружаем. Личное фото/селфи убраны.
     try {
       if (idFront) await regAPI.uploadIdFront(idFront);
       if (idBack) await regAPI.uploadIdBack(idBack);
@@ -268,22 +195,21 @@ export default function IdentityStepScreen({ navigation }) {
       return;
     }
 
-    // 2) В draft пишем только whitelisted: full_name, birth_date и безопасный
-    //    ключ фото (personal_photo_url). Fail-tolerant: фото уже сохранено
-    //    server-side endpoint'ом, потеря авто-сейва прочих полей не критична.
+    // В draft пишем whitelisted: full_name, birth_date, id_doc_type (тип документа
+    // личности). Fail-tolerant: фото уже сохранены server-side endpoint'ами.
     try {
       await regAPI.saveDriverDraft({
         full_name: fullName,
         birth_date: birthDate.trim(),
-        personal_photo_url: photoKey,
+        id_doc_type: docType,
       });
     } catch (err) {
       // ignore
     }
     setSaving(false);
 
-    // Упрощённый флоу (решение владельца): селфи и фото фуры убраны, чтобы не
-    // перегружать водителя. После удостоверения — сразу документы на авто.
+    // Упрощённый флоу (решение владельца): личное фото/селфи/фото фуры убраны.
+    // После документа личности — сразу документы на авто (техпаспорт + права).
     navigation.navigate('VehicleDocs', {
       iin: iin.trim(),
       fullName,
@@ -322,39 +248,29 @@ export default function IdentityStepScreen({ navigation }) {
           <Text style={s.title}>{t('identity_title')}</Text>
           <Text style={s.subtitle}>{t('identity_subtitle')}</Text>
 
-          {/* Личная фотография (обязательно) */}
-          <Text style={s.label}>{t('identity_photo_label')}</Text>
-          <Text style={s.photoHint}>{t('identity_photo_hint')}</Text>
-          {/* Образец «как сфотографироваться» (✅/❌) — раньше показывался только
-              в verification-флоу; теперь и в рабочей регистрации. Тап = крупно. */}
-          <PhotoGuide
-            source={require('../../assets/onboarding/verification/guides/personal_photo_guide.png')}
-            testID="identity-photo-guide"
-          />
-          <Pressable onPress={takePhoto} style={s.photoSlot} testID="identity-photo">
-            {photoUri ? (
-              <Image source={{ uri: photoUri }} style={s.photoThumb} resizeMode="cover" />
-            ) : serverPhotoKey ? (
-              <>
-                <Feather name="check-circle" size={24} color="#22C55E" />
-                <Text style={[s.photoText, { color: '#22C55E' }]}>{t('chat_attach_status_uploaded')}</Text>
-              </>
-            ) : (
-              <>
-                <Feather name="camera" size={24} color={brand.textSecondary} />
-                <Text style={s.photoText}>{t('identity_photo_take')}</Text>
-              </>
-            )}
-          </Pressable>
-          {/* Вторичное действие — галерея, только по явному выбору (issue #1) */}
-          <Pressable onPress={pickFromGallery} style={s.photoGalleryLink} testID="identity-photo-gallery" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Feather name="image" size={14} color={brand.textTertiary} />
-            <Text style={s.photoGalleryText}>{photoUri ? t('identity_photo_retake_gallery') : t('identity_photo_gallery')}</Text>
-          </Pressable>
-          {errors.photo ? <Text style={s.err}>{errors.photo}</Text> : null}
+          {/* Документ личности: тип (удостоверение | паспорт). Личное фото/селфи убраны. */}
+          <Text style={s.label}>{t('id_doc_type_label')}</Text>
+          <View style={s.docTypeRow}>
+            <Pressable
+              onPress={() => setDocType('id_card')}
+              style={[s.docTypeBtn, docType === 'id_card' && s.docTypeBtnActive]}
+              testID="identity-doctype-id"
+            >
+              <Feather name="credit-card" size={16} color={docType === 'id_card' ? brand.primary : brand.textSecondary} />
+              <Text style={[s.docTypeText, docType === 'id_card' && s.docTypeTextActive]}>{t('id_doc_type_id')}</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setDocType('passport')}
+              style={[s.docTypeBtn, docType === 'passport' && s.docTypeBtnActive]}
+              testID="identity-doctype-passport"
+            >
+              <Feather name="book" size={16} color={docType === 'passport' ? brand.primary : brand.textSecondary} />
+              <Text style={[s.docTypeText, docType === 'passport' && s.docTypeTextActive]}>{t('id_doc_type_passport')}</Text>
+            </Pressable>
+          </View>
 
-          {/* Удостоверение личности — 2 стороны (новый порядок верификации, шаг 2) */}
-          <Text style={s.label}>{t('id_step_title')}</Text>
+          {/* Документ личности — 2 стороны (лицевая + оборотная) */}
+          <Text style={s.label}>{docType === 'passport' ? t('id_doc_type_passport') : t('id_step_title')}</Text>
           <Text style={s.photoHint}>{t('id_photo_hint')}</Text>
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <Pressable onPress={() => pickIdSide(setIdFront, 'idFront')} style={[s.photoSlot, { flex: 1, width: undefined }]} testID="identity-id-front">
@@ -491,6 +407,12 @@ const s = StyleSheet.create({
   photoSlot: { alignSelf: 'flex-start', width: 120, height: 120, borderRadius: radius.md, borderWidth: 1, borderStyle: 'dashed', borderColor: brand.border, alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: brand.surfaceMuted, overflow: 'hidden' },
   photoThumb: { width: '100%', height: '100%' },
   photoText: { ...typography.caption, color: brand.textSecondary },
+  // Тумблер типа документа личности (удостоверение | паспорт)
+  docTypeRow: { flexDirection: 'row', gap: 10 },
+  docTypeBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 48, borderRadius: radius.md, borderWidth: 1, borderColor: brand.border, backgroundColor: brand.surface },
+  docTypeBtnActive: { borderColor: brand.primary, backgroundColor: brand.primarySoft },
+  docTypeText: { ...typography.bodySmall, fontWeight: '700', color: brand.textSecondary },
+  docTypeTextActive: { color: brand.primary },
   photoGalleryLink: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, paddingVertical: 4 },
   photoGalleryText: { ...typography.caption, color: brand.textTertiary, textDecorationLine: 'underline' },
   input: { height: 52, borderRadius: radius.md, borderWidth: 1, borderColor: brand.border, backgroundColor: brand.surface, paddingHorizontal: 16, color: brand.textPrimary, ...typography.body },
