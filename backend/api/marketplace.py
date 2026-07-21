@@ -194,6 +194,31 @@ def _init():
             with get_conn() as c:
                 c.executescript(schema.read_text(encoding="utf-8"))
                 c.commit()
+    # Часть 3 (история цены): таблица price_events + связь chat_messages.event_id.
+    # Аддитивно и идемпотентно. Бэкфилл старых ставок НЕ делаем.
+    with get_conn() as c:
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS price_events (
+                id TEXT PRIMARY KEY,
+                bid_id TEXT NOT NULL,
+                actor_id TEXT,
+                actor_role TEXT,               -- owner | bidder
+                amount INTEGER,
+                kind TEXT NOT NULL,            -- proposed|updated|countered|accepted|rejected
+                comment TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_price_events_bid ON price_events(bid_id, created_at)")
+        # chat_messages.event_id — связь спец-сообщения с событием цены.
+        try:
+            cm_cols = {r["name"] for r in c.execute("PRAGMA table_info(chat_messages)").fetchall()}
+            if cm_cols and "event_id" not in cm_cols:
+                c.execute("ALTER TABLE chat_messages ADD COLUMN event_id TEXT")
+        except Exception:
+            pass
+        c.commit()
+
     # Idempotent migration: ensure newer columns exist on legacy DBs.
     # SQLite doesn't support `ALTER TABLE ADD COLUMN IF NOT EXISTS`, so we
     # check pragma_table_info and only add when missing.
@@ -1005,6 +1030,23 @@ def _bid_currency(c, bid) -> str:
     return ((dict(r).get("currency") if r else None) or "USD")
 
 
+def _record_price_event(c, bid_id, actor_id, actor_role, amount, kind, comment=None):
+    """Часть 3: записать событие цены в открытой транзакции c. Возвращает
+    event_id (для связи chat_messages.event_id) или None при сбое. Fail-tolerant —
+    сбой истории не должен ломать сам торг."""
+    try:
+        eid = new_id()
+        c.execute(
+            "INSERT INTO price_events (id, bid_id, actor_id, actor_role, amount, kind, comment) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (eid, bid_id, actor_id, actor_role, amount, kind, comment),
+        )
+        return eid
+    except Exception as e:
+        print(f"[price_event] write failed (continuing): {e}", flush=True)
+        return None
+
+
 @mp_router.post("/bids")
 def create_bid(body: BidIn, user=Depends(require_level(1))):
     # cargo_id или trip_id — хотя бы один (для серверных грузов)
@@ -1055,62 +1097,49 @@ def create_bid(body: BidIn, user=Depends(require_level(1))):
             VALUES (?,?,?,?,?,?,?,?)
         """, (bid_id, body.cargo_id, body.trip_id, user["id"],
               user.get("full_name"), user.get("phone"), body.amount, body.message))
+        # Часть 3: событие цены — предложение (автор ставки = bidder).
+        _record_price_event(c, bid_id, user["id"], "bidder", body.amount, "proposed", body.message)
 
         # Обновляем счётчик
         if body.cargo_id:
             c.execute("UPDATE cargos SET bids_count = bids_count + 1 WHERE id = ?", (body.cargo_id,))
             row = c.execute("SELECT owner_id, from_city, to_city, currency FROM cargos WHERE id = ?", (body.cargo_id,)).fetchone()
             if row:
-                # PR-B (P0-B): meaningful url в notification вместо дефолтного "/".
-                # NotificationsScreen (или будущая мобильная навигация) сможет
-                # распарсить query и открыть cargo detail с подсвеченной ставкой.
-                cargo_url = f"/cargos/{body.cargo_id}?bid={bid_id}"
-                # Валюта ставки = валюта груза (фолбэк USD), не хардкод «$».
                 money = _money(body.amount, row["currency"])
-                title = f"💰 Новое предложение {money}"
-                # .get(key, default) возвращает default ТОЛЬКО если ключа нет,
-                # но не если значение = None. У недозаполненных профилей
-                # full_name приходит None → текст был «None предлагает…».
-                # `or` покрывает и отсутствие ключа, и None, и пустую строку.
-                bidder_name = user.get('full_name') or 'Водитель'
-                text = f"{bidder_name} предлагает {money} за {row['from_city']}→{row['to_city']}"
-                post_notifs.append((row["owner_id"], title, text, "💰", cargo_url, True))
-
-                # PR-B (P0-D): eager chat-room create. Раньше chat_rooms
-                # появлялся только при первом POST /chat/send → cargo owner
-                # после получения push не имел thread'а с водителем и нигде
-                # в UI не мог инициировать чат. Endpoint POST /bids/{id}/chat
-                # уже умеет это явно, но фронт его не вызывает; вызывая
-                # _ensure_chat_room_inline тут, мы гарантируем что thread
-                # существует с момента создания ставки. Хелпер идемпотентен
-                # (UNIQUE (participant_1, participant_2)), повторный вызов
-                # из POST /bids/{id}/chat вернёт тот же room_id.
-                # Этот вызов идёт ВНУТРИ with потому что принимает open conn.
+                # Часть 4 (правило одного места): комнату чата создаём СНАЧАЛА,
+                # чтобы deeplink уведомления вёл ПРЯМО в неё (весь торг живёт в
+                # чате). Хелпер идемпотентен (UNIQUE пара). Fallback на cargo
+                # detail, если комнату не удалось создать.
                 try:
                     created_room_id = _ensure_chat_room_inline(
-                        c, user["id"], row["owner_id"],
-                        body.cargo_id, None, bid_id,
+                        c, user["id"], row["owner_id"], body.cargo_id, None, bid_id,
                     )
                 except Exception:
-                    pass
+                    created_room_id = None
+                bid_url = f"/chats/{created_room_id}" if created_room_id else f"/cargos/{body.cargo_id}?bid={bid_id}"
+                # Часть 4: текст пуша = событие + сумма + маршрут.
+                title = f"💰 Ставка {money}"
+                text = f"{money} · {row['from_city']}→{row['to_city']}"
+                post_notifs.append((row["owner_id"], title, text, "💰", bid_url, True))
 
         if body.trip_id:
             row = c.execute("SELECT driver_id, from_city, to_city, currency FROM trips WHERE id = ?", (body.trip_id,)).fetchone()
             if row:
-                # PR-B (P0-B + P0-F): trip-ветка раньше отправляла ТОЛЬКО push
-                # (send_to_user), без create_notification — у водителя ничего
-                # не появлялось в bell-list. Теперь симметрично с cargo-веткой:
-                # push + InApp + eager chat room.
-                trip_url = f"/trips/{body.trip_id}?bid={bid_id}"
-                # Валюта ставки = валюта рейса (фолбэк USD), не хардкод «$».
                 money = _money(body.amount, row["currency"])
-                title = f"📦 Новый заказ {money}"
-                bidder_name = user.get('full_name') or 'Клиент'
-                text = f"{bidder_name} предлагает {money} за {row['from_city']}→{row['to_city']}"
-                post_notifs.append((row["driver_id"], title, text, "📦", trip_url, True))
-
+                # Часть 4: комнату чата — сначала (deeplink ведёт в неё).
                 try:
                     created_room_id = _ensure_chat_room_inline(
+                        c, user["id"], row["driver_id"], None, body.trip_id, bid_id,
+                    )
+                except Exception:
+                    created_room_id = None
+                bid_url = f"/chats/{created_room_id}" if created_room_id else f"/trips/{body.trip_id}?bid={bid_id}"
+                title = f"📦 Заказ {money}"
+                text = f"{money} · {row['from_city']}→{row['to_city']}"
+                post_notifs.append((row["driver_id"], title, text, "📦", bid_url, True))
+
+                try:
+                    _ensure_chat_room_inline(
                         c, user["id"], row["driver_id"],
                         None, body.trip_id, bid_id,
                     )
@@ -1173,6 +1202,10 @@ def list_bids(
             ORDER BY b.created_at DESC LIMIT 100
         """, params).fetchall()
     bids = [dict(r) for r in rows]
+    # Часть 1: сырой список ДО dirty-фильтра — из него честно считаем число
+    # предложений и находим собственную ставку вызывающего (dirty-фильтр по
+    # prefix 'agent-'/'guest-' иначе прячет и его собственную ставку в QA).
+    _raw_bids = list(bids)
 
     # D12 (Maestro P1): owner of the cargo/trip must see every active bid on
     # their own listing, including bids from QA/agent accounts that the
@@ -1226,6 +1259,26 @@ def list_bids(
         # the active-bids list. Owner can still inspect those through the
         # /market/my dashboard if needed.
         bids = [b for b in bids if b.get("status") not in ("cancelled", "rejected")]
+    # Часть 1 (конфиденциальные ставки, модель InDriver — решение владельца):
+    # не-владелец НЕ видит ЧУЖИЕ суммы. Отдаём количество предложений + ТОЛЬКО
+    # свою ставку. Принятая (accepted) ставка видна ВСЕМ (сделка заключена).
+    # Владелец листинга видит всё как раньше (список/суммы/контр/принять).
+    _active = ("pending", "countered", "accepted")
+    # count/my_bid — из СЫРОГО списка (до dirty-фильтра), иначе своя QA-ставка
+    # (agent-) не попадёт. Реального юзера dirty-фильтр не трогает.
+    proposals_count = sum(1 for b in _raw_bids if b.get("status") in _active)
+    my_bid = None
+    if caller:
+        for b in _raw_bids:
+            if b.get("bidder_id") == caller["id"] and b.get("status") in _active:
+                my_bid = b
+                break
+    if not is_owner:
+        # Только принятые (публично видимы) + собственная ставка бидера (из сырого
+        # списка — если dirty-фильтр её убрал, возвращаем через my_bid).
+        bids = [b for b in bids if b.get("status") == "accepted"]
+        if my_bid and not any(b.get("id") == my_bid.get("id") for b in bids):
+            bids.append(my_bid)
     # Security (B2): bidder_phone виден ТОЛЬКО владельцу листинга (он ведёт
     # переговоры). Публичным/чужим вызовам /bids телефон оферента не отдаём —
     # раньше SELECT b.* возвращал bidder_phone любому, кто знает cargo_id.
@@ -1255,7 +1308,24 @@ def list_bids(
             b.setdefault("bidder_verified", False)
             b.setdefault("bidder_rating", 0)
             b.setdefault("bidder_reviews_count", 0)
-    return {"bids": bids}
+    # count = число предложений (видно всем); my_bid — своя ставка (для не-
+    # владельца это единственная сумма, которую он видит); is_owner — фронту
+    # решать, показывать полный список или конфиденциальный вид.
+    return {"bids": bids, "count": proposals_count, "my_bid": my_bid, "is_owner": is_owner}
+
+
+@mp_router.get("/bids/{bid_id}/events")
+def bid_price_events(bid_id: str):
+    """Часть 3: история цены по ставке (proposed/updated/countered/accepted/
+    rejected), сортировка по времени. Старые ставки без событий → пустой список
+    (бэкфилл не делаем)."""
+    with get_conn() as c:
+        rows = c.execute(
+            "SELECT id, bid_id, actor_id, actor_role, amount, kind, comment, created_at "
+            "FROM price_events WHERE bid_id = ? ORDER BY created_at ASC, id ASC",
+            (bid_id,),
+        ).fetchall()
+    return {"events": [dict(r) for r in rows]}
 
 
 # ═══ My Dashboard ═══
@@ -1581,6 +1651,8 @@ def accept_bid(bid_id: str, user=Depends(require_level(1))):
                 detail=f"Ставку нельзя принять в статусе {bid['status']}",
             )
         result = _finalize_accept_inline(c, user, bid, bid["amount"])
+        # Часть 3: событие — владелец принял ставку (actor=owner).
+        _record_price_event(c, bid_id, user["id"], "owner", bid["amount"], "accepted", None)
         _cur = _bid_currency(c, bid)   # валюта ставки для текста уведомления
 
     # PR-B (P0-B): notification bidder'у со ссылкой на сделку, а не root "/".
@@ -1655,6 +1727,8 @@ def update_bid(bid_id: str, body: BidUpdateIn, user=Depends(require_level(1))):
             "UPDATE bids SET amount = ?, message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (new_amount, new_message, bid_id),
         )
+        # Часть 3: событие — bidder изменил свою ставку.
+        _record_price_event(c, bid_id, user["id"], "bidder", new_amount, "updated", new_message)
         updated = dict(c.execute("SELECT * FROM bids WHERE id = ?", (bid_id,)).fetchone())
 
     # Discount notification: amount decreased → ping the cargo/trip owner.
@@ -1730,6 +1804,8 @@ def reject_bid(bid_id: str, user=Depends(require_level(1))):
             "UPDATE bids SET status = 'rejected', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (bid_id,),
         )
+        # Часть 3: событие — владелец отклонил (actor=owner).
+        _record_price_event(c, bid_id, user["id"], "owner", bid.get("amount"), "rejected", None)
         # M2: «отклики» (bids_count) = активные ставки. cancel уже уменьшал
         # счётчик, а reject — нет, из-за чего в ленте число откликов
         # завышалось после отклонений. Симметрично уменьшаем здесь.
@@ -1739,19 +1815,25 @@ def reject_bid(bid_id: str, user=Depends(require_level(1))):
                 (bid["cargo_id"],),
             )
 
-    # Notify the bidder.
-    # PR-B (P0-B): URL ведёт обратно на родительский cargo / trip, чтобы
-    # bidder мог посмотреть, сразу же опубликовать новую ставку или открыть
-    # уже созданный чат (eager chat-room остаётся видимым в /chat/rooms).
-    if bid.get("cargo_id"):
+    # Notify the bidder. Часть 4: deeplink ведёт в чат сделки (не на лист).
+    title = "❌ Ставка отклонена"
+    with get_conn() as _cc:
+        _cur = _bid_currency(_cc, bid)
+        try:
+            _rr = _ensure_chat_room_inline(
+                _cc, bid["bidder_id"], _cargo_or_trip_owner_id(_cc, bid),
+                bid.get("cargo_id"), bid.get("trip_id"), bid_id,
+            )
+        except Exception:
+            _rr = None
+    if _rr:
+        back_url = f"/chats/{_rr}"
+    elif bid.get("cargo_id"):
         back_url = f"/cargos/{bid['cargo_id']}"
     elif bid.get("trip_id"):
         back_url = f"/trips/{bid['trip_id']}"
     else:
         back_url = "/"
-    title = "❌ Ставка отклонена"
-    with get_conn() as _cc:
-        _cur = _bid_currency(_cc, bid)
     body_text = f"Ваше предложение {_money(bid['amount'], _cur)} отклонено"
     try:
         send_to_user(bid["bidder_id"], title, body_text, url=back_url)
@@ -1787,11 +1869,21 @@ def counter_bid(bid_id: str, body: BidCounterIn, user=Depends(require_level(1)))
             "WHERE id = ?",
             (body.amount, body.message, bid_id),
         )
+        # Часть 3: событие — владелец прислал контр (actor=owner).
+        _record_price_event(c, bid_id, user["id"], "owner", body.amount, "countered", body.message)
+        # Часть 4: комната чата пары (deeplink уведомления ведёт в неё).
+        try:
+            _counter_room = _ensure_chat_room_inline(
+                c, bid["bidder_id"], owner_id, bid.get("cargo_id"), bid.get("trip_id"), bid_id,
+            )
+        except Exception:
+            _counter_room = None
         updated = dict(c.execute("SELECT * FROM bids WHERE id = ?", (bid_id,)).fetchone())
 
-    # PR-B (P0-B): URL ведёт на родительский cargo / trip с подсветкой
-    # bid_id, чтобы bidder мог ответить — accept counter или decline.
-    if bid.get("cargo_id"):
+    # Часть 4: контр-оффер уводит bidder'а прямо в чат сделки.
+    if _counter_room:
+        counter_url = f"/chats/{_counter_room}"
+    elif bid.get("cargo_id"):
         counter_url = f"/cargos/{bid['cargo_id']}?bid={bid_id}"
     elif bid.get("trip_id"):
         counter_url = f"/trips/{bid['trip_id']}?bid={bid_id}"
@@ -1834,6 +1926,8 @@ def accept_counter(bid_id: str, user=Depends(require_level(1))):
             raise HTTPException(status_code=409, detail="Не найден владелец груза/рейса")
         owner_user = {"id": owner_id}
         result = _finalize_accept_inline(c, owner_user, bid, counter)
+        # Часть 3: событие — bidder принял контр-оффер (actor=bidder).
+        _record_price_event(c, bid_id, user["id"], "bidder", counter, "accepted", None)
 
     # Push to both sides.
     # M3: роль того, кто согласился, зависит от типа ставки. cargo-bid →

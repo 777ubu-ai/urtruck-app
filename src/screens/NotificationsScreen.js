@@ -144,9 +144,10 @@ export default function NotificationsScreen({ navigation }) {
         // сообщения). ChatScreen сам резолвит roomId по dealId. Раньше
         // сваливали в общий список чатов — лишний тап и потеря контекста.
         navigation.navigate('Chat', { dealId: id, role });
-      } else if (kind === 'chats' && id) {
-        // ChatScreen ждёт roomId, а не chatId — раньше открывался пустой
-        // чат без истории и собеседника.
+      } else if ((kind === 'chats' || kind === 'chat') && id) {
+        // Часть 4 (правило одного места): bid/deal-уведомления ведут ПРЯМО в
+        // комнату чата сделки. ChatScreen ждёт roomId. Обрабатываем и chat, и
+        // chats с id (раньше singular chat/{id} терял id и падал в ChatsList).
         navigation.navigate('Chat', { roomId: id, role });
       } else if (kind === 'chat' || kind === 'chats') {
         navigation.navigate('ChatsList');
