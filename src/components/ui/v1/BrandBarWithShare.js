@@ -25,6 +25,7 @@ export default function BrandBarWithShare({ onBack, onShare, accent, rightTestID
         style={s.backHit}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         accessibilityLabel="Back"
+        testID="brand-back"
       >
         <Text style={[s.backIcon, { color: arrowColor }]}>‹</Text>
       </TouchableOpacity>

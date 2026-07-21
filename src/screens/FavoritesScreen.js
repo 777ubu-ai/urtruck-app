@@ -43,6 +43,7 @@ export default function FavoritesScreen({ navigation, route }) {
         style={[s.card, { backgroundColor: v1.card, borderColor: v1.border }]}
         onPress={() => openDriver(item)}
         activeOpacity={0.8}
+        testID="favorite-card"
       >
         <Text style={s.heart}>❤️</Text>
         <View style={{ flex: 1 }}>
@@ -68,7 +69,7 @@ export default function FavoritesScreen({ navigation, route }) {
           contentContainerStyle={{ padding: 16, paddingTop: 8 }}
           refreshControl={<RefreshControl refreshing={false} onRefresh={load} tintColor={v1.textMuted} />}
           ListEmptyComponent={
-            <View style={s.center}>
+            <View style={s.center} testID="favorites-empty">
               <Text style={{ fontSize: 40, marginBottom: 10 }}>🤍</Text>
               <Text style={[s.emptyText, { color: v1.textMuted }]}>{t('favorites_empty')}</Text>
             </View>

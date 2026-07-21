@@ -992,6 +992,7 @@ export default function ChatScreen({ navigation, route }) {
           <TouchableOpacity
             onPress={toggleVoice}
             style={[s.iconBtn, recording && { backgroundColor: v1Colors.error, borderColor: v1Colors.error }]}
+            testID="chat-voice-btn"
           >
             <Feather name={recording ? 'square' : 'mic'} size={18} color={recording ? '#fff' : v1.text} />
           </TouchableOpacity>

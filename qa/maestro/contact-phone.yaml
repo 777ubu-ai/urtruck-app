@@ -1,0 +1,40 @@
+# contact-phone — кнопка «Позвонить» (deal-call-btn) видна в комнате сделки.
+# Правка marketplace.py._party_contact теперь отдаёт телефон контрагента-
+# клиента, поэтому кнопка появляется у ОБЕИХ сторон. Здесь проверяем сторону
+# клиента (boris); драйверскую (serik) — симметрично, сменив MAESTRO_ACTOR.
+#
+# Требует засеянной сделки boris↔serik (accepted bid) — см. отчёт QA.
+# На web «Позвонить» открывает WhatsApp; на native — выбор WhatsApp/Viber/
+# звонок с полным номером. Открытие внешнего приложения на симуляторе не
+# проверяем (раздел 6, реальное устройство) — проверяем видимость кнопки.
+appId: host.exp.Exponent
+name: contact-phone
+tags:
+  - client
+  - deal
+  - contact
+env:
+  MAESTRO_ACTOR: boris
+---
+- runFlow: _lib/qa-login.yaml
+- tapOn:
+    id: "bottom-nav-chats"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "deal-room-list"
+    timeout: 20000
+- takeScreenshot: CONTACT_01_deal_list
+- tapOn:
+    id: "deal-room-list-card"
+    index: 0
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "chat-input"
+    timeout: 15000
+- takeScreenshot: CONTACT_02_deal_room
+# Кнопка «Позвонить» видна клиенту (телефон контрагента отдаётся бэком)
+- assertVisible:
+    id: "deal-call-btn"
+- takeScreenshot: CONTACT_03_call_btn_visible

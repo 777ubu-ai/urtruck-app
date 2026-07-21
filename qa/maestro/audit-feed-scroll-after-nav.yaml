@@ -1,0 +1,114 @@
+# audit-feed-scroll-after-nav — БАГ B: «лента замирает / не скроллится»
+# после открытия карточки и возврата (и после открытия/закрытия фильтров).
+#
+# Стратегия: скролл считается ЖИВЫМ, если scrollUntilVisible доходит до
+# нижней плашки-дисклеймера ленты (ListFooter, testID feed-disclaimer —
+# рендерится только когда список непустой; достижима лишь реальным
+# скроллом). Если после какого-то действия скролл умирает — соответствующий
+# scrollUntilVisible упадёт по таймауту и укажет виновника (навигация /
+# LocationPickerModal / BottomSheet).
+#
+# Порядок важен: сначала НАВИГАЦИЯ из свежего верха ленты (первая карточка
+# полностью видна, кнопка «Подробнее» index 0 не под шапкой), затем скролл-
+# тесты. Требует засеянных рейсов (agent-serik) в ленте boris — см. отчёт QA.
+appId: host.exp.Exponent
+name: audit-feed-scroll-after-nav
+tags:
+  - client
+  - feed
+  - bugB
+  - audit
+env:
+  MAESTRO_ACTOR: boris
+---
+- runFlow: _lib/qa-login.yaml
+- tapOn:
+    id: "bottom-nav-feed"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "trip-card"
+    timeout: 20000
+- takeScreenshot: SCROLL_01_feed_top
+
+# (1) КАРТОЧКА → НАЗАД (из свежего верха: первая «Подробнее» полностью видна)
+- tapOn:
+    id: "feed-details-btn"
+    index: 0
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "trip-sticky-bid"
+    timeout: 15000
+- takeScreenshot: SCROLL_02_detail_open
+# Возврат через кнопку в шапке (id) — Maestro `back` (edge-swipe) на iOS
+# ненадёжен и часто не срабатывает.
+- tapOn:
+    id: "brand-back"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "trip-card"
+    timeout: 10000
+- takeScreenshot: SCROLL_03_back_to_feed
+
+# (2) СКРОЛЛ ПОСЛЕ НАВИГАЦИИ — главный сценарий бага. Если лента замёрзла,
+# scrollUntilVisible до дисклеймера не дойдёт → таймаут.
+- scrollUntilVisible:
+    element:
+      id: "feed-disclaimer"
+    direction: DOWN
+    timeout: 12000
+- takeScreenshot: SCROLL_04_scroll_after_nav_ok
+- scrollUntilVisible:
+    element:
+      id: "trip-card"
+    direction: UP
+    timeout: 12000
+
+# (3) ФИЛЬТР ГОРОДА (LocationPickerModal) → ЗАКРЫТЬ → СКРОЛЛ (гипотеза №3)
+- tapOn:
+    id: "feed-route-from"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "loc-search"
+    timeout: 10000
+- tapOn:
+    id: "loc-close"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "trip-card"
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      id: "feed-disclaimer"
+    direction: DOWN
+    timeout: 12000
+- takeScreenshot: SCROLL_05_scroll_after_city_filter_ok
+- scrollUntilVisible:
+    element:
+      id: "trip-card"
+    direction: UP
+    timeout: 12000
+
+# (4) ФИЛЬТР КУЗОВА (BottomSheet) → ЗАКРЫТЬ → СКРОЛЛ (гипотеза №1: оверлей)
+- tapOn:
+    id: "feed-chip-body"
+- waitForAnimationToEnd
+# BottomSheet закрывается тапом по затемнённому оверлею (верхняя часть
+# экрана над шторкой) → onClose.
+- tapOn:
+    point: "50%,12%"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "trip-card"
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      id: "feed-disclaimer"
+    direction: DOWN
+    timeout: 12000
+- takeScreenshot: SCROLL_06_all_scrolls_alive
