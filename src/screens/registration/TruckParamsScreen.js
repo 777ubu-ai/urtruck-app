@@ -65,7 +65,9 @@ const colorHex = (k) => (VEHICLE_COLORS.find((c) => c.key === k) || {}).hex;
 
 // ЭТАП 7 — статус пребывания в Казахстане (required). Стабильный enum;
 // i18n t('residence_<key>'). Backend уже принимает residence_status.
-const RESIDENCE_OPTIONS = ['citizen', 'kandas', 'foreigner'];
+// «Кандас» убран по решению владельца — оставляем два статуса:
+// гражданин Казахстана и иностранный гражданин.
+const RESIDENCE_OPTIONS = ['citizen', 'foreigner'];
 
 // Числовой ввод: оставляем только цифры и одну точку/запятую → число.
 const parseNum = (s) => {
