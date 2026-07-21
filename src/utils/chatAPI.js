@@ -18,20 +18,34 @@ async function headers() {
 
 export const chatAPI = {
   async send({ roomId, toUserId, text, photoUrl, isVoice, voiceDuration, cargoId, tripId, clientMsgId }) {
-    const r = await authedFetch(`${BASE}/send`, {
-      method: 'POST', headers: await headers(),
-      body: JSON.stringify({
-        // Variant B: room_id — приоритетный путь (бэк берёт получателя из
-        // участников комнаты, исключая гонку резолва собеседника на фронте).
-        room_id: roomId || null,
-        to_user_id: toUserId, text, photo_url: photoUrl,
-        is_voice: isVoice || false, voice_duration: voiceDuration,
-        cargo_id: cargoId, trip_id: tripId,
-        client_msg_id: clientMsgId,  // QA-аудит P1-3: идемпотентность
-        lang: getLanguage(),         // QA-аудит P2-8: локализация авто-ответа поддержки
-      }),
-    });
-    if (!r.ok) throw new Error(`send failed ${r.status}`);  // outbox ловит и ретраит
+    // C3 (device-баг «ложное нет сети»): различаем СЕТЕВОЙ сбой (fetch
+    // reject/таймаут — запрос не дошёл) и HTTP-ошибку (сервер ОТВЕТИЛ 4xx/5xx —
+    // сеть в порядке). Раньше оба случая бросали одинаковый Error, и ChatScreen
+    // показывал «Нет сети» даже на серверную ошибку + гонял её в бесконечный
+    // ретрай outbox. Помечаем ошибку флагами isNetwork / status.
+    let r;
+    try {
+      r = await authedFetch(`${BASE}/send`, {
+        method: 'POST', headers: await headers(),
+        body: JSON.stringify({
+          // Variant B: room_id — приоритетный путь (бэк берёт получателя из
+          // участников комнаты, исключая гонку резолва собеседника на фронте).
+          room_id: roomId || null,
+          to_user_id: toUserId, text, photo_url: photoUrl,
+          is_voice: isVoice || false, voice_duration: voiceDuration,
+          cargo_id: cargoId, trip_id: tripId,
+          client_msg_id: clientMsgId,  // QA-аудит P1-3: идемпотентность
+          lang: getLanguage(),         // QA-аудит P2-8: локализация авто-ответа поддержки
+        }),
+      });
+    } catch (e) {
+      // fetch отклонён — реальный сетевой сбой/таймаут (запрос не дошёл).
+      const err = new Error('network'); err.isNetwork = true; throw err;
+    }
+    if (!r.ok) {
+      // Сервер ответил ошибкой — это НЕ «нет сети».
+      const err = new Error(`send failed ${r.status}`); err.status = r.status; throw err;
+    }
     return r.json();
   },
 

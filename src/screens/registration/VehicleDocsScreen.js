@@ -6,7 +6,7 @@
 // действия прав. Фото авто/салона вынесены в отдельный шаг VehiclePhotos
 // (PR-V9). raw OCR / номера документов в лог НЕ выводим.
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -66,15 +66,35 @@ export default function VehicleDocsScreen({ navigation }) {
   const { t } = useI18n();
   const { toast } = useToast();
 
-  // Каждый док: { uri, status: 'idle'|'busy'|'done'|'error', ocr/key }
+  // Переделка верификации: 3 документа × 2 стороны. Селфи с правами УБРАНО.
+  // Техпаспорт и права — лицевая (OCR) + оборотная (store-only).
+  // Каждый док: { uri, status: 'idle'|'busy'|'done'|'error', ocr }
   const [techpass, setTechpass] = useState({ uri: null, status: 'idle', ocr: null });
+  const [techBack, setTechBack] = useState({ uri: null, status: 'idle' });
   const [license, setLicense] = useState({ uri: null, status: 'idle', ocr: null });
-  const [licenseSelfie, setLicenseSelfie] = useState({ uri: null, status: 'idle', key: null });
+  const [licenseBack, setLicenseBack] = useState({ uri: null, status: 'idle' });
   const [licenseIssue, setLicenseIssue] = useState('');   // дата выдачи (required)
   const [licenseExpiry, setLicenseExpiry] = useState(''); // срок действия (required)
   const [errors, setErrors] = useState({});
   const [closeVisible, setCloseVisible] = useState(false);
   const [helpVisible, setHelpVisible] = useState(false);
+
+  // Повторный вход: подтягиваем уже загруженные стороны (front техпаспорта/прав
+  // и обе оборотные) — водителю не нужно переснимать. get_status отдаёт признаки.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const st = await regAPI.status().catch(() => null);
+      if (!alive || !st) return;
+      if (st.has_tech_front) setTechpass((p) => (p.status === 'idle' ? { uri: null, status: 'done', ocr: null } : p));
+      if (st.has_tech_back) setTechBack((p) => (p.status === 'idle' ? { uri: null, status: 'done' } : p));
+      if (st.has_license_front) setLicense((p) => (p.status === 'idle' ? { uri: null, status: 'done', ocr: null } : p));
+      if (st.has_license_back) setLicenseBack((p) => (p.status === 'idle' ? { uri: null, status: 'done' } : p));
+      if (st.license_issue_date && !licenseIssue) setLicenseIssue(ocrDateToMask(st.license_issue_date));
+      if (st.license_expiry && !licenseExpiry) setLicenseExpiry(ocrDateToMask(st.license_expiry));
+    })();
+    return () => { alive = false; };
+  }, []);
 
   // ТЗ блок 10: при закрытии — дописать несохранённые даты прав в draft (фото
   // уже persist server-side). Бросаем при !ok, чтобы модал не вышел молча.
@@ -188,28 +208,39 @@ export default function VehicleDocsScreen({ navigation }) {
     }
   };
 
-  // Селфи с правами в руках — реальный server-side upload (antifraud). Без
-  // успешного upload дальше НЕ пускаем (no fake-success).
-  const handleLicenseSelfie = async () => {
+  // Оборотные стороны техпаспорта и прав — store-only upload (без OCR).
+  const handleTechBack = async () => {
     const uri = await pick();
     if (!uri) return;
-    setLicenseSelfie({ uri, status: 'busy', key: null });
+    setTechBack({ uri, status: 'busy' });
     try {
-      const up = await regAPI.uploadLicenseSelfie(uri);
-      const key = up?.license_selfie_key || null;
-      if (!key) throw new Error('no_key');
-      setLicenseSelfie({ uri, status: 'done', key });
-      await persistDraft({ license_selfie_url: key });
-      if (errors.licenseSelfie) setErrors({ ...errors, licenseSelfie: null });
+      await regAPI.uploadTechBack(uri);
+      setTechBack({ uri, status: 'done' });
+      if (errors.techBack) setErrors({ ...errors, techBack: null });
     } catch (e) {
-      setLicenseSelfie({ uri, status: 'error', key: null });
-      toast(t('vdocs_license_selfie_upload_err'), 'error', 5000);
+      setTechBack({ uri, status: 'error' });
+      toast(t('identity_err_photo_upload'), 'error', 5000);
+    }
+  };
+
+  const handleLicenseBack = async () => {
+    const uri = await pick();
+    if (!uri) return;
+    setLicenseBack({ uri, status: 'busy' });
+    try {
+      await regAPI.uploadLicenseBack(uri);
+      setLicenseBack({ uri, status: 'done' });
+      if (errors.licenseBack) setErrors({ ...errors, licenseBack: null });
+    } catch (e) {
+      setLicenseBack({ uri, status: 'error' });
+      toast(t('identity_err_photo_upload'), 'error', 5000);
     }
   };
 
   const techpassDone = techpass.status === 'done';
+  const techBackDone = techBack.status === 'done';
   const licenseDone = license.status === 'done';
-  const licenseSelfieDone = licenseSelfie.status === 'done';
+  const licenseBackDone = licenseBack.status === 'done';
   const hasCCe = license.ocr?.has_c_ce === true;
 
   const validateIssue = (v) => {
@@ -230,8 +261,9 @@ export default function VehicleDocsScreen({ navigation }) {
   const onNext = async () => {
     const e = {
       techpass: techpassDone ? null : t('vdocs_need_techpass'),
+      techBack: techBackDone ? null : t('id_err_back'),
       license: licenseDone ? null : t('vdocs_err_license'),
-      licenseSelfie: licenseSelfieDone ? null : t('vdocs_err_license_selfie'),
+      licenseBack: licenseBackDone ? null : t('id_err_back'),
       issue: validateIssue(licenseIssue),
       expiry: validateExpiry(licenseExpiry),
     };
@@ -265,6 +297,11 @@ export default function VehicleDocsScreen({ navigation }) {
       <Pressable onPress={onPick} style={s.slot} disabled={doc.status === 'busy'} testID={testID}>
         {doc.uri ? (
           <Image source={{ uri: doc.uri }} style={s.thumb} resizeMode="cover" />
+        ) : doc.status === 'done' ? (
+          <>
+            <Feather name="check-circle" size={22} color={brand.primary} />
+            <Text style={[s.slotText, { color: brand.primary }]}>{t('vdocs_uploaded')}</Text>
+          </>
         ) : (
           <>
             <Feather name="camera" size={22} color={brand.textSecondary} />
@@ -326,6 +363,12 @@ export default function VehicleDocsScreen({ navigation }) {
           </View>
         </DocCard>
 
+        {/* Техпаспорт — оборотная сторона (без OCR) */}
+        <DocCard title={`${t('vdocs_techpass')} — ${t('id_back_label')}`} featherIcon="file-text" hint={t('id_photo_hint')} doc={techBack} onPick={handleTechBack} testID="vd-tech-back-photo">
+          <View style={s.okBox}><View style={s.okRow}><Feather name="check-circle" size={14} color={brand.primary} /><Text style={s.okText}>{t('vdocs_uploaded')}</Text></View></View>
+        </DocCard>
+        {errors.techBack ? <Text style={s.errText}>{errors.techBack}</Text> : null}
+
         <PhotoGuide
           source={require('../../assets/onboarding/verification/guides/license_front_guide.png')}
           testID="vd-license-guide"
@@ -344,6 +387,12 @@ export default function VehicleDocsScreen({ navigation }) {
             </View>
           </View>
         </DocCard>
+
+        {/* Права — оборотная сторона (без OCR) */}
+        <DocCard title={`${t('vdocs_license')} — ${t('id_back_label')}`} featherIcon="credit-card" hint={t('id_photo_hint')} doc={licenseBack} onPick={handleLicenseBack} testID="vd-license-back-photo">
+          <View style={s.okBox}><View style={s.okRow}><Feather name="check-circle" size={14} color={brand.primary} /><Text style={s.okText}>{t('vdocs_uploaded')}</Text></View></View>
+        </DocCard>
+        {errors.licenseBack ? <Text style={s.errText}>{errors.licenseBack}</Text> : null}
 
         {/* Редактируемые даты прав — обязательны (prefill из OCR). */}
         <Text style={s.label}>{t('vdocs_field_issue')}</Text>
@@ -372,28 +421,7 @@ export default function VehicleDocsScreen({ navigation }) {
         />
         {errors.expiry ? <Text style={s.errText}>{errors.expiry}</Text> : null}
 
-        {/* Селфи с правами в руках (антифрод, обязательно) */}
-        <PhotoGuide
-          source={require('../../assets/onboarding/verification/guides/selfie_license_guide.png')}
-          testID="vd-license-selfie-guide"
-        />
-        <DocCard
-          title={t('vdocs_license_selfie')}
-          featherIcon="user"
-          hint={t('vdocs_hint_license_selfie')}
-          doc={licenseSelfie}
-          onPick={handleLicenseSelfie}
-          errorText={t('vdocs_license_selfie_upload_err')}
-          testID="vd-license-selfie-photo"
-        >
-          <View style={s.okBox}>
-            <View style={s.okRow}>
-              <Feather name="check-circle" size={14} color={brand.primary} />
-              <Text style={s.okText}>{t('vdocs_uploaded')}</Text>
-            </View>
-          </View>
-        </DocCard>
-        {errors.licenseSelfie ? <Text style={s.errText}>{errors.licenseSelfie}</Text> : null}
+        {/* Селфи с правами УБРАНО (решение владельца) — только 3 документа × 2 стороны. */}
         {errors.license ? <Text style={s.errText}>{errors.license}</Text> : null}
 
         {/* DEV/QA-only: прыжок на VehiclePhotos в обход OCR/upload-гейтов. */}

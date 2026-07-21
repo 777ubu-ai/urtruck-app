@@ -378,6 +378,39 @@ export const regAPI = {
     return data;
   },
 
+  // Оборотные стороны техпаспорта и прав (переделка верификации: 3 документа
+  // × 2 стороны). Лицевые — uploadPassport (техпаспорт+OCR) / uploadLicense
+  // (права+OCR). Оборотные — store-only, backend пишет url в БД сам.
+  async uploadTechBack(uri, onProgress) {
+    const token = await this.getToken();
+    onProgress?.('compressing');
+    const compressedUri = await compressImage(uri, { preset: 'document' });
+    onProgress?.('uploading');
+    const form = new FormData();
+    await appendImageFile(form, compressedUri, 'tech_back.jpg');
+    const r = await fetch(`${BASE}/documents/tech-passport-back`, {
+      method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: form,
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(normalizeDetail(data?.detail, `tech back upload failed ${r.status}`));
+    return data;
+  },
+
+  async uploadLicenseBack(uri, onProgress) {
+    const token = await this.getToken();
+    onProgress?.('compressing');
+    const compressedUri = await compressImage(uri, { preset: 'document' });
+    onProgress?.('uploading');
+    const form = new FormData();
+    await appendImageFile(form, compressedUri, 'license_back.jpg');
+    const r = await fetch(`${BASE}/documents/license-back`, {
+      method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: form,
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(normalizeDetail(data?.detail, `license back upload failed ${r.status}`));
+    return data;
+  },
+
   // Селфи с правами в руках (антифрод). Реальный server-side upload в storage;
   // backend возвращает { license_selfie_key } — безопасный ключ файла (не raw).
   async uploadLicenseSelfie(uri, onProgress) {

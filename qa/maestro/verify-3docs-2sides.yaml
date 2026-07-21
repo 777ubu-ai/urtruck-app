@@ -1,0 +1,115 @@
+# verify-3docs-2sides — переделка верификации (раздел B):
+# личное фото/селфи УБРАНЫ; документ личности с тумблером удостоверение/паспорт
+# и 2 сторонами; техпаспорт и права — по 2 стороны; «Шаг N из N» корректный.
+#
+# Загрузка фото идёт через нативный пикер (камера/галерея) — Maestro его не
+# драйвит, поэтому здесь проверяем СТРУКТУРУ экранов (слоты/тумблер/отсутствие
+# селфи/шаги) и переход Identity→VehicleDocs через dev-скип. Реальную загрузку
+# сторон покрывает API-тест (см. отчёт) + ручная проверка на устройстве.
+appId: host.exp.Exponent
+name: verify-3docs-2sides
+tags:
+  - driver
+  - registration
+  - verification
+  - bugB-section
+env:
+  MAESTRO_ACTOR: serik
+---
+- runFlow: _lib/qa-login.yaml
+- tapOn:
+    id: "bottom-nav-profile"
+- waitForAnimationToEnd
+# QA dev-only вход в верификацию (qa-debug login хардкодит level 3, поэтому
+# штатный pro-CTA ведёт в EditProfile — этот хук идёт прямо в Гражданство).
+- scrollUntilVisible:
+    element:
+      id: "qa-open-verification"
+    direction: DOWN
+    timeout: 10000
+- tapOn:
+    id: "qa-open-verification"
+- waitForAnimationToEnd
+# Экран «Гражданство» → выбор KZ → далее в документ личности
+- extendedWaitUntil:
+    visible:
+      id: "citizenship-continue"
+    timeout: 12000
+- tapOn:
+    id: "citizenship-KZ"
+- tapOn:
+    id: "citizenship-continue"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "identity-step-screen"
+    timeout: 12000
+- takeScreenshot: VERIFY_01_identity_screen
+
+# B: личное фото УБРАНО (слот identity-photo больше не существует)
+- assertNotVisible:
+    id: "identity-photo"
+# Тумблер: удостоверение | паспорт
+- assertVisible:
+    id: "identity-doctype-id"
+- assertVisible:
+    id: "identity-doctype-passport"
+# Документ личности — 2 стороны
+- assertVisible:
+    id: "identity-id-front"
+- assertVisible:
+    id: "identity-id-back"
+# Данные (ФИО/ИИН/дата) остались
+- assertVisible:
+    id: "identity-iin"
+# Шаг 2 из 4 (header-текст)
+- assertVisible: "Шаг 2 из 4"
+# Переключение на паспорт не роняет экран
+- tapOn:
+    id: "identity-doctype-passport"
+- waitForAnimationToEnd
+- takeScreenshot: VERIFY_02_passport_selected
+- assertVisible:
+    id: "identity-id-front"
+
+# Dev-скип на следующий шаг (нативный пикер Maestro не драйвит)
+- scrollUntilVisible:
+    element:
+      id: "qa-skip-step"
+    direction: DOWN
+    timeout: 8000
+- tapOn:
+    id: "qa-skip-step"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "vehicle-docs-screen"
+    timeout: 12000
+- takeScreenshot: VERIFY_03_vehicle_docs
+
+# B: селфи с правами УБРАНО
+- assertNotVisible:
+    id: "vd-license-selfie-photo"
+# Техпаспорт — 2 стороны
+- assertVisible:
+    id: "vd-passport-photo"
+- assertVisible:
+    id: "vd-tech-back-photo"
+# Права — 2 стороны (ниже по экрану — доскроллим)
+- scrollUntilVisible:
+    element:
+      id: "vd-license-photo"
+    direction: DOWN
+    timeout: 8000
+- assertVisible:
+    id: "vd-license-photo"
+- scrollUntilVisible:
+    element:
+      id: "vd-license-back-photo"
+    direction: DOWN
+    timeout: 8000
+- assertVisible:
+    id: "vd-license-back-photo"
+# Шаг 3 из 4
+- assertVisible: "Шаг 3 из 4"
+- takeScreenshot: VERIFY_04_all_docs_2sides

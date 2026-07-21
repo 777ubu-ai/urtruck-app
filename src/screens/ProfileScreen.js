@@ -503,6 +503,21 @@ export default function ProfileScreen({ navigation, route }) {
           </TouchableOpacity>
         ) : null}
 
+        {/* QA (dev-only): прямой вход в флоу верификации водителя. qa-debug login
+            хардкодит level 3, поэтому штатный pro-CTA (level≥2 → EditProfile) не
+            ведёт в регистрацию; этот хук даёт Maestro пройти Гражданство →
+            документ личности → техпаспорт → права. В проде не рендерится. */}
+        {QA_HOOK_ALLOWED ? (
+          <TouchableOpacity
+            style={s.logoutBtn}
+            onPress={() => navigation.navigate('Citizenship')}
+            testID="qa-open-verification"
+            accessibilityLabel="QA open verification"
+          >
+            <Text style={s.logoutText}>QA verification (dev only)</Text>
+          </TouchableOpacity>
+        ) : null}
+
         <TouchableOpacity
           style={s.logoutBtn}
           onPress={() => confirm(

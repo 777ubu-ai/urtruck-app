@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, FlatList, KeyboardAvoidingView, Platform, Image, AppState, Linking, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, FlatList, KeyboardAvoidingView, Platform, Image, AppState, Linking, Alert, Modal, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import Feather from '@expo/vector-icons/Feather';
@@ -132,6 +132,10 @@ export default function ChatScreen({ navigation, route }) {
   },
   sendBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   photoMsg: { width: 200, height: 150, borderRadius: 12 },
+  // C2: fullscreen-viewer вложения
+  fullBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', alignItems: 'center', justifyContent: 'center' },
+  fullImage: { width: '100%', height: '100%' },
+  fullClose: { position: 'absolute', top: 48, right: 20, width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
   voiceBubble: { flexDirection: 'row', alignItems: 'center', gap: 8, minWidth: 180 },
   waveform: { flexDirection: 'row', alignItems: 'center', gap: 2, flex: 1 },
   wavebar: { width: 2, borderRadius: 1 },
@@ -154,6 +158,9 @@ export default function ChatScreen({ navigation, route }) {
   const [input, setInput] = useState('');
   const [showPhrases, setShowPhrases] = useState(false);
   const [recording, setRecording] = useState(false);
+  // C2 (device-баг): вложение-фото не открывалось на весь экран. Тап по
+  // фото-пузырю кладёт сюда абсолютный URL → показываем fullscreen-viewer.
+  const [fullImage, setFullImage] = useState(null);
   // «Печатает…»: индикатор партнёра (из poll) + троттл своего пинга.
   const [partnerTyping, setPartnerTyping] = useState(false);
   const [partnerOnline, setPartnerOnline] = useState(false);
@@ -521,13 +528,20 @@ export default function ChatScreen({ navigation, route }) {
     setShowPhrases(false);
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
 
-    // Сохраняем на сервере; при сбое — в офлайн-очередь (ретрай позже).
+    // Сохраняем на сервере. C3: «Нет сети» показываем ТОЛЬКО при реальном
+    // сетевом сбое (e.isNetwork) — тогда кладём в офлайн-очередь на ретрай.
+    // При HTTP-ошибке (сервер ответил 4xx/5xx) сеть в порядке — показываем
+    // честную ошибку отправки, без ложного «нет сети» и без гонки outbox.
     try {
       const r = await chatAPI.send(payload);
       if (r.room_id) setRoomId(r.room_id);
-    } catch {
-      await enqueueOutbox({ clientId, payload });
-      toast(t('chat_queued'), 'info', 2500);
+    } catch (e) {
+      if (e?.isNetwork) {
+        await enqueueOutbox({ clientId, payload });
+        toast(t('chat_queued'), 'info', 2500);
+      } else {
+        toast(t('chat_send_failed'), 'error');
+      }
     }
   };
 
@@ -749,7 +763,10 @@ export default function ChatScreen({ navigation, route }) {
             <Text style={[s.senderLabel, { color: theme.textMuted }]}>{partner.name}</Text>
           ) : null}
           <View style={[s.bubble, isMe ? s.bubbleMe : s.bubbleThem, { padding: 4 }]}>
-            <Image source={{ uri: item.photoUri }} style={s.photoMsg} />
+            {/* C2: тап открывает фото на весь экран (fullscreen-viewer ниже). */}
+            <Pressable onPress={() => item.photoUri && setFullImage(item.photoUri)} testID="chat-photo-msg">
+              <Image source={{ uri: item.photoUri }} style={s.photoMsg} />
+            </Pressable>
             <Text style={[s.msgTime, isMe ? s.msgTimeMe : { color: v1.textMuted }, { marginTop: 4, marginRight: 4 }]}>{item.time}</Text>
           </View>
         </View>
@@ -1013,6 +1030,20 @@ export default function ChatScreen({ navigation, route }) {
         </TouchableOpacity>
       </View>
       </KeyboardAvoidingView>
+
+      {/* C2: fullscreen-просмотр вложения-фото. Тап по фото открывает; тап по
+          фону или крестику — закрывает. Подписанный URL уже абсолютный
+          (resolveAttachment применён при маппинге сообщений). */}
+      <Modal visible={!!fullImage} transparent animationType="fade" onRequestClose={() => setFullImage(null)}>
+        <Pressable style={s.fullBackdrop} onPress={() => setFullImage(null)} testID="chat-photo-fullscreen">
+          {fullImage ? (
+            <Image source={{ uri: fullImage }} style={s.fullImage} resizeMode="contain" />
+          ) : null}
+          <TouchableOpacity style={s.fullClose} onPress={() => setFullImage(null)} testID="chat-photo-close" hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+            <Feather name="x" size={26} color="#fff" />
+          </TouchableOpacity>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
