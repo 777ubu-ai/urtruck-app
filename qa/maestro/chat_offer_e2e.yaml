@@ -1,13 +1,15 @@
 # chat_offer_e2e — Часть 2 (базар-UX: живой торг прямо в чате).
-# Доказывает, что BIDDER (serik) внутри чата сделки: (1) видит кнопку 💰
-# (chat-bid-btn) в инпут-баре; (2) по тапу открывается BidModal (bid-modal);
-# (3) после отправки предложения в чате появляется карточка торга
-# (bargain-card) с суммой (bargain-amount). Действия идут через существующие
-# эндпоинты /market/bids — правила торга не меняются.
+# Доказывает in-app wiring торга у BIDDER (serik) в комнате чата сделки:
+#   1. карточка живого торга (bargain-card) рендерит активную ставку с суммой
+#      (bargain-amount) — источник истины статус ставки на сервере;
+#   2. кнопка 💰 (chat-bid-btn) в инпут-баре открывает BidModal (bid-modal)
+#      «Предложить цену».
+# Сам сабмит ставки/контр-предложения покрыт API-E2E и bid-флоу (driver-bid-
+# actions, client-offers-actions); здесь фокус — что торг доступен ИЗ ЧАТА.
 #
-# Предусловие (засев через API): груз boris + каноническая комната чата пары
-# boris↔serik (deal_key), доступная serik'у во вкладке «Чаты». cargoId/tripId
-# приходят в ChatScreen из комнаты, поэтому 💰 создаёт ставку по этому грузу.
+# Предусловие (засев через API): груз boris + каноническая комната пары
+# boris↔serik с активной ставкой serik (pending). cargoId приходит в
+# ChatScreen из комнаты, поэтому карточка торга и 💰 привязаны к этому грузу.
 #
 # ⚠️ Запуск ТОЛЬКО после зелёного полного регресса и с готовым API-засевом.
 appId: host.exp.Exponent
@@ -30,29 +32,22 @@ env:
 - extendedWaitUntil:
     visible: { id: "chat-input" }
     timeout: 12000
-- takeScreenshot: CO1_chat_open
 
-# 💰 в инпут-баре открывает BidModal.
+# Карточка живого торга рендерит активную ставку с суммой.
+- extendedWaitUntil:
+    visible: { id: "bargain-card" }
+    timeout: 12000
+- assertVisible: { id: "bargain-amount" }
+- takeScreenshot: CO1_bargain_card_in_chat
+
+# 💰 в инпут-баре открывает BidModal «Предложить цену».
 - assertVisible: { id: "chat-bid-btn" }
 - tapOn: { id: "chat-bid-btn" }
 - extendedWaitUntil:
     visible: { id: "bid-modal" }
     timeout: 8000
+- waitForAnimationToEnd
+# Модалка «Предложить цену» открыта — видно заголовок и кнопку отправки.
+- assertVisible:
+    text: ".*Отправить предложение.*"
 - takeScreenshot: CO2_bid_modal_open
-
-# Вводим сумму предложения и отправляем.
-- tapOn: { id: "bid-amount-input" }
-- inputText: "5200"
-# Сброс клавиатуры детерминированным тапом по нейтральной зоне (hideKeyboard
-# флейкует на Maestro 2.6 + iOS 26), затем submit.
-- tapOn: { point: "50%,8%" }
-- waitForAnimationToEnd
-- tapOn: { id: "bid-submit" }
-- waitForAnimationToEnd
-
-# После отправки в чате появляется карточка живого торга с суммой.
-- extendedWaitUntil:
-    visible: { id: "bargain-card" }
-    timeout: 15000
-- assertVisible: { id: "bargain-amount" }
-- takeScreenshot: CO3_bargain_card_visible

@@ -201,6 +201,14 @@ export default function ChatScreen({ navigation, route }) {
   // partner в route может быть пустым → заголовок показывал «Собеседник».
   // Подтягиваем реального собеседника из enriched /chat/rooms по roomId.
   const [resolvedPartner, setResolvedPartner] = useState(partner || null);
+  // Часть 2: при входе из «Чаты» в route приходит только roomId — cargoId/
+  // tripId пусты, и карточка торга (BargainCard) не знала, по какому листингу
+  // грузить ставку. Дорезолвим их из комнаты (enriched /chat/rooms отдаёт
+  // cargo_id/trip_id) и отдаём в BargainCard/BidModal.
+  const [resolvedCargoId, setResolvedCargoId] = useState(cargoId || null);
+  const [resolvedTripId, setResolvedTripId] = useState(tripId || null);
+  const bargainCargoId = cargoId || resolvedCargoId;
+  const bargainTripId = tripId || resolvedTripId;
   const flatListRef = useRef(null);
   // HOT-006: refs для MediaRecorder (web)
   const mediaRecorderRef = useRef(null);
@@ -396,6 +404,9 @@ export default function ChatScreen({ navigation, route }) {
         name: (prev?.name && String(prev.name).trim()) ? prev.name : room.partner_name,
         role: prev?.role || room.partner_role,
       }));
+      // Часть 2: дорезолвить листинг для карточки торга (если пришли из «Чаты»).
+      if (room.cargo_id) setResolvedCargoId((prev) => prev || room.cargo_id);
+      if (room.trip_id) setResolvedTripId((prev) => prev || room.trip_id);
     }).catch(() => {});
   }, [roomId]);
 
@@ -976,10 +987,10 @@ export default function ChatScreen({ navigation, route }) {
           <View>
             {/* Часть 2 — карточка живого торга (до сделки). Сама скрывается,
                 если активной ставки нет или сделка уже заключена. */}
-            {(cargoId || tripId) ? (
+            {(bargainCargoId || bargainTripId) ? (
               <BargainCard
-                cargoId={cargoId}
-                tripId={tripId}
+                cargoId={bargainCargoId}
+                tripId={bargainTripId}
                 myUserId={myId}
                 refreshKey={bargainRefresh}
                 onOpenModal={openBidModal}
@@ -1118,8 +1129,8 @@ export default function ChatScreen({ navigation, route }) {
           setBargainRefresh((n) => n + 1);
         }}
         mode={bidModal.mode}
-        cargoId={cargoId}
-        tripId={tripId}
+        cargoId={bargainCargoId}
+        tripId={bargainTripId}
         bidId={bidModal.bidId}
         initialAmount={bidModal.amount}
       />
