@@ -1138,14 +1138,6 @@ def create_bid(body: BidIn, user=Depends(require_level(1))):
                 text = f"{money} · {row['from_city']}→{row['to_city']}"
                 post_notifs.append((row["driver_id"], title, text, "📦", bid_url, True))
 
-                try:
-                    _ensure_chat_room_inline(
-                        c, user["id"], row["driver_id"],
-                        None, body.trip_id, bid_id,
-                    )
-                except Exception:
-                    pass
-
     # PR-B: post-commit notifications — connection с bid INSERT уже закрыт,
     # create_notification открывает свой conn без conflict'а с транзакцией.
     # Раздельные try/except: push и InApp независимы — failure одного не
@@ -1315,11 +1307,22 @@ def list_bids(
 
 
 @mp_router.get("/bids/{bid_id}/events")
-def bid_price_events(bid_id: str):
+def bid_price_events(bid_id: str, user=Depends(require_level(1))):
     """Часть 3: история цены по ставке (proposed/updated/countered/accepted/
     rejected), сортировка по времени. Старые ставки без событий → пустой список
-    (бэкфилл не делаем)."""
+    (бэкфилл не делаем).
+
+    Security: история содержит СУММЫ торга — при конфиденциальных ставках
+    (Часть 1) её нельзя отдавать анонимно/чужим. Доступ только участникам
+    торга: автору ставки (bidder) и владельцу листинга (owner)."""
     with get_conn() as c:
+        bid_row = c.execute("SELECT * FROM bids WHERE id = ?", (bid_id,)).fetchone()
+        if not bid_row:
+            raise HTTPException(status_code=404, detail="Ставка не найдена")
+        bid = dict(bid_row)
+        owner_id = _cargo_or_trip_owner_id(c, bid)
+        if user["id"] not in (bid.get("bidder_id"), owner_id):
+            raise HTTPException(status_code=403)
         rows = c.execute(
             "SELECT id, bid_id, actor_id, actor_role, amount, kind, comment, created_at "
             "FROM price_events WHERE bid_id = ? ORDER BY created_at ASC, id ASC",
