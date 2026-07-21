@@ -21,7 +21,6 @@ env:
 - tapOn:
     text: "Найти груз или маршрут..."
 - inputText: "Нигде→Никуда"
-- hideKeyboard
 # Debounce 500ms + сетевой запрос.
 - extendedWaitUntil:
     notVisible:
@@ -35,7 +34,6 @@ env:
 - tapOn:
     text: "Нигде→Никуда"
 - eraseText
-- hideKeyboard
 - extendedWaitUntil:
     visible:
       text: "Подробнее"

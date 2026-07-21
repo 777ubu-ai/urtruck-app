@@ -25,6 +25,7 @@ env:
 - scrollUntilVisible:
     element: { id: "deal-track-truck" }
     direction: DOWN
+    visibilityPercentage: 40
     timeout: 8000
 - tapOn: { id: "deal-track-truck" }
 - waitForAnimationToEnd

@@ -36,7 +36,9 @@ tags: [driver, registration, approved, e2e]
     timeout: 12000
 - tapOn: { id: "qa-debug-token" }
 - inputText: ${MAESTRO_REG_TOKEN}
-- hideKeyboard
+- tapOn:
+    point: "50%,12%"
+- waitForAnimationToEnd
 - tapOn: { id: "qa-debug-submit" }
 - extendedWaitUntil:
     visible: { id: "bottom-nav-profile" }

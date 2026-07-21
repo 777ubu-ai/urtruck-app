@@ -28,7 +28,6 @@ env:
 - tapOn:
     id: "chat-input"
 - inputText: "QA-audit persist 20260611"
-- hideKeyboard
 - tapOn:
     id: "chat-send-btn"
 - waitForAnimationToEnd

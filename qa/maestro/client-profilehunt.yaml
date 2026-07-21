@@ -45,25 +45,13 @@ env:
       - takeScreenshot: 74_pro_cta
       - back
 - waitForAnimationToEnd
-# Смена роли — диалог осмысленный, отменяем
-- scrollUntilVisible:
-    element: { id: "profile-change-role" }
-    direction: DOWN
-    timeout: 6000
-- tapOn: { id: "profile-change-role" }
-- waitForAnimationToEnd
-- takeScreenshot: 75_change_role_dialog
-- runFlow:
-    when:
-      visible: "Отмена"
-    commands:
-      - tapOn: "Отмена"
-- waitForAnimationToEnd
+# «Сменить роль» убрана владельцем (13.06) — кнопки нет, шаг снят.
 # Логаут ПОСЛЕДНИМ: жмём настоящую кнопку «Выйти», ловим поведение.
 - scrollUntilVisible:
     element: { id: "profile-logout" }
     direction: DOWN
-    timeout: 6000
+    visibilityPercentage: 40
+    timeout: 8000
 - tapOn: { id: "profile-logout" }
 - waitForAnimationToEnd
 - runFlow:
