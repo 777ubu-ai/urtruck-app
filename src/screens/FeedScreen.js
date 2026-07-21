@@ -369,6 +369,16 @@ export default function FeedScreen({ navigation, route }) {
   }, [isDriver, myUserId]);
 
   // Тап по сердечку в карточке: сохранить/убрать перевозчика (оптимистично).
+  // БАГ A: раньше catch ловил только throw, но favAdd/favRemove при HTTP-
+  // ошибке (403/401) НЕ бросают — возвращают {ok:false}. Оптимистичное ❤️
+  // оставалось гореть, а на сервере запись не появлялась → «Избранное пусто
+  // в профиле». Теперь проверяем r.ok и откатываем + сообщаем при любой
+  // неудаче (не только при исключении).
+  const rollback = (id, has) => setFavIds((prev) => {
+    const next = new Set(prev);
+    if (has) next.add(id); else next.delete(id);
+    return next;
+  });
   const toggleFav = async (item) => {
     const id = item.driverId || item.id;
     if (!id) return;
@@ -379,15 +389,16 @@ export default function FeedScreen({ navigation, route }) {
       return next;
     });
     try {
-      if (has) await marketAPI.favRemove('driver', id);
-      else await marketAPI.favAdd('driver', id, { name: item.name, type: item.type, plate: item.plate_truck });
+      const r = has
+        ? await marketAPI.favRemove('driver', id)
+        : await marketAPI.favAdd('driver', id, { name: item.name, type: item.type, plate: item.plate_truck });
+      if (!r || r.ok !== true) {
+        rollback(id, has);
+        toast(t('send_error'), 'error');
+      }
     } catch {
-      // откат при ошибке
-      setFavIds((prev) => {
-        const next = new Set(prev);
-        if (has) next.add(id); else next.delete(id);
-        return next;
-      });
+      rollback(id, has);
+      toast(t('send_error'), 'error');
     }
   };
 
@@ -654,7 +665,7 @@ export default function FeedScreen({ navigation, route }) {
         priceCaption={t('per_trip')}
         responses={item.bids || 0}
         onPress={openCargo}
-        bottomRight={{ label: t('details'), onPress: openCargo, filled: false }}
+        bottomRight={{ label: t('details'), onPress: openCargo, filled: false, testID: 'feed-details-btn' }}
         testID="cargo-card"
       />
     );
@@ -705,7 +716,7 @@ export default function FeedScreen({ navigation, route }) {
         priceText={item.isTrip ? formatPrice(item.price, item.currency, t) : `★ ${item.rating || '—'}`}
         priceCaption={item.isTrip ? t('per_trip') : `${item.reviews || 0} ${t('reviews')}`}
         onPress={onPress}
-        bottomRight={{ label: t('details'), onPress, filled: false }}
+        bottomRight={{ label: t('details'), onPress, filled: false, testID: 'feed-details-btn' }}
         favActive={!isDriver ? favIds.has(item.driverId || item.id) : undefined}
         onToggleFav={!isDriver && myUserId ? () => toggleFav(item) : undefined}
         testID={item.isTrip ? 'trip-card' : 'driver-card'}
@@ -1064,7 +1075,7 @@ export default function FeedScreen({ navigation, route }) {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accentColor} />}
           ListFooterComponent={
             filteredData.length > 0 ? (
-              <View style={[s.footerNote, { borderColor: v1.border, backgroundColor: v1.surface }]}>
+              <View style={[s.footerNote, { borderColor: v1.border, backgroundColor: v1.surface }]} testID="feed-disclaimer">
                 <Text style={[s.footerNoteText, { color: v1.textMuted }]} numberOfLines={2}>
                   🛡  {isDriver ? t('feed_driver_disclaimer') : t('feed_client_disclaimer')}
                 </Text>
