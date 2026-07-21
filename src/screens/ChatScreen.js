@@ -542,12 +542,18 @@ export default function ChatScreen({ navigation, route }) {
     const waNumber = phone.replace(/[^\d]/g, '');
     const plusPhone = phone.startsWith('+') ? phone : `+${waNumber}`;
     const openWa = () => Linking.openURL(`https://wa.me/${waNumber}`).catch(() => {});
-    const openViber = () => Linking.openURL(`viber://chat?number=${encodeURIComponent(plusPhone)}`).catch(() => {});
+    // Telegram открывается по номеру: tg://resolve?phone= (мобильные),
+    // с фолбэком на https://t.me/+<номер> для web/если приложение не стоит.
+    // Viber убран по решению владельца (не используем). WeChat по номеру
+    // открыть нельзя — у него нет deep-link на чат по телефону.
+    const openTg = () =>
+      Linking.openURL(`tg://resolve?phone=${waNumber}`)
+        .catch(() => Linking.openURL(`https://t.me/+${waNumber}`).catch(() => {}));
     const openTel = () => Linking.openURL(`tel:${phone}`).catch(() => {});
     if (Platform.OS === 'web') { openWa(); return; }
     Alert.alert(t('contact_choose_title'), phone, [
       { text: t('contact_whatsapp'), onPress: openWa },
-      { text: t('contact_viber'), onPress: openViber },
+      { text: t('contact_telegram'), onPress: openTg },
       { text: t('contact_call'), onPress: openTel },
       { text: t('contact_cancel'), style: 'cancel' },
     ]);
