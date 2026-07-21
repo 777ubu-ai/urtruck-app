@@ -47,11 +47,11 @@ env:
 - waitForAnimationToEnd
 # «Сменить роль» убрана владельцем (13.06) — кнопки нет, шаг снят.
 # Логаут ПОСЛЕДНИМ: жмём настоящую кнопку «Выйти», ловим поведение.
-- scrollUntilVisible:
-    element: { id: "profile-logout" }
-    direction: DOWN
-    visibilityPercentage: 40
-    timeout: 8000
+# profile-logout — нижняя кнопка под таб-баром, 100%/40% visibility не набирает.
+# Скроллим к низу и тапаем (Maestro тапает частично видимый элемент по id).
+- scroll
+- scroll
+- scroll
 - tapOn: { id: "profile-logout" }
 - waitForAnimationToEnd
 - runFlow:
