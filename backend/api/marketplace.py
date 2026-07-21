@@ -1311,8 +1311,18 @@ def list_bids(
             b.setdefault("bidder_reviews_count", 0)
     # count = число предложений (видно всем); my_bid — своя ставка (для не-
     # владельца это единственная сумма, которую он видит); is_owner — фронту
-    # решать, показывать полный список или конфиденциальный вид.
-    return {"bids": bids, "count": proposals_count, "my_bid": my_bid, "is_owner": is_owner}
+    # решать. confidential — ЯВНЫЙ сигнал режима: True только когда сервер
+    # реально прячет чужие суммы от этого вызывающего (BIDS_CONFIDENTIAL=true
+    # И не владелец). Фронт полагается на него, а не на длину списка — иначе
+    # dirty-фильтр QA-ставок (agent-*) в открытом режиме ложно выглядел бы как
+    # конфиденциальность.
+    return {
+        "bids": bids,
+        "count": proposals_count,
+        "my_bid": my_bid,
+        "is_owner": is_owner,
+        "confidential": bool(_bids_confidential and not is_owner),
+    }
 
 
 @mp_router.get("/bids/{bid_id}/events")

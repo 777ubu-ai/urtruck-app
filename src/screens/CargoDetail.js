@@ -220,8 +220,10 @@ export default function CargoDetail({ navigation, route }) {
         const count = typeof d.count === 'number' ? d.count : mapped.length;
         setBidsCount(count);
         setIsListingOwner(!!d.is_owner);
-        // Урезал ли сервер список? (конфиденциальный режим на бэке).
-        setBidsConfidential(!d.is_owner && mapped.length < count);
+        // Явный сигнал сервера: прячет ли он чужие суммы (BIDS_CONFIDENTIAL).
+        // Не полагаемся на длину списка — dirty-фильтр QA-ставок в открытом
+        // режиме иначе выглядел бы как конфиденциальность.
+        setBidsConfidential(!!d.confidential);
         const accepted = mapped.find(b => b.status === 'accepted');
         if (accepted) {
           setAcceptedDriverId(accepted.bidderId);
