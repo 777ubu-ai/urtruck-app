@@ -23,6 +23,7 @@
     "qa:currency": "node qa/utils/currencySmoke.js",
     "qa:theme": "node qa/utils/themeSmoke.js",
     "qa:geo": "node qa/utils/geographySmoke.js",
+    "qa:bargain": "playwright test --config qa/playwright.config.js qa/agents/bargain.flow.spec.js",
     "qa:ux": "node qa/utils/uxSmoke.js",
     "qa:mobile": "playwright test --config qa/playwright.mobile.config.js",
     "postinstall": "patch-package"

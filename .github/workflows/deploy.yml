@@ -32,6 +32,20 @@ jobs:
       - name: Build web
         run: npx expo export --platform web
 
+      - name: Bundle size guard
+        # Страж размера JS-бандла: для КЗ/Китая с медленным интернетом важно,
+        # чтобы приложение не разбухало незаметно (кто-то залил тяжёлую
+        # картинку/шрифт). Порог 12 МБ на самый большой JS-чанк — сейчас
+        # ~2.7 МБ, запас большой; предупреждаем, а не валим деплой.
+        run: |
+          MAXKB=12000
+          BIG=$(find dist/_expo/static/js -name '*.js' -printf '%s %p\n' 2>/dev/null | sort -rn | head -1)
+          SZ=$(echo "$BIG" | awk '{print int($1/1024)}')
+          echo "Крупнейший JS-чанк: ${SZ} КБ ($(echo "$BIG" | awk '{print $2}'))"
+          if [ "${SZ:-0}" -gt "$MAXKB" ]; then
+            echo "::warning::JS-бандл ${SZ} КБ превысил порог ${MAXKB} КБ — проверьте, не залили ли тяжёлый ассет."
+          fi
+
       - name: Post-process (SW + manifest)
         run: |
           cp sw-template.js dist/sw.js
