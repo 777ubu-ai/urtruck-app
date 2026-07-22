@@ -300,10 +300,11 @@ export default function FeedScreen({ navigation, route }) {
           const n = normalizeTrip({ ...rawT, _server: true });
           // Card title fallback ladder. Most trips on the live feed have
           // driver_name=null because driver profiles aren't fully populated
-          // yet — showing a generic "Водитель" repeatedly looks broken, so
-          // we synthesise a stable handle from the driver_id.
-          const idTail = (n.driverId || n.id || '').replace(/[^a-z0-9]/gi, '').slice(-4).toUpperCase() || '0000';
-          const cardName = n.driverName || `${tGlobal('carrier_handle_prefix')} #${idTail}`;
+          // yet. Раньше синтезировали хэш «Перевозчик #4F2A» — владельцу он
+          // выглядел как «непонятное имя». Теперь без имени показываем
+          // осмысленное: «Перевозчик UrTruck · <тип кузова>».
+          const cardName = n.driverName
+            || `${tGlobal('carrier_handle_prefix')} · ${formatTruckType(n.truckType || 'tent')}`;
           return {
             ...n,
             // Card-only fields kept alongside the canonical shape:
