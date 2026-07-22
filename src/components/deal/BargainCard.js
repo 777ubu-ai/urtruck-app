@@ -133,8 +133,17 @@ export default function BargainCard({ cargoId, tripId, myUserId, onOpenModal, on
           <>
             <Chip label={t('bargain_accept_counter')} primary tid="bargain-accept-counter"
               onPress={() => act(() => marketAPI.acceptCounterBid(bid.id), null, true, bid.counter_amount)} />
+            {/* Контр-назад (пинг-понг): updateBid на countered даёт 409 (pending-
+                гейт), поэтому сначала снимаем контр (→pending), затем правим цену. */}
             <Chip label={t('bargain_own_price')} tid="bargain-own"
-              onPress={() => onOpenModal && onOpenModal('edit', bid.id, current)} />
+              onPress={async () => {
+                if (busy) return;
+                setBusy(true);
+                const r = await marketAPI.declineCounterBid(bid.id).catch(() => null);
+                setBusy(false);
+                if (r && r.ok === false) { toast(r.detail || t('send_error'), 'error'); return; }
+                onOpenModal && onOpenModal('edit', bid.id, current);
+              }} />
             <Chip label={t('reject')} danger tid="bargain-decline"
               onPress={() => act(() => marketAPI.declineCounterBid(bid.id), t('counter_declined'))} />
           </>
