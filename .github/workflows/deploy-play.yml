@@ -106,6 +106,12 @@ jobs:
           fi
           echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/urtruck-upload-key.jks"
 
+      - name: Compute versionCode
+        # Монотонный versionCode: база 100 + порядковый номер запуска workflow,
+        # чтобы повторные автозаливки в internal-трек не конфликтовали друг с другом.
+        # (арифметика тут, а не в ${{ }} — GitHub Actions expressions не умеют "+")
+        run: echo "URTRUCK_VERSION_CODE=$((100 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+
       - name: Build release AAB
         env:
           EXPO_PUBLIC_API_URL: https://urtruck.kz
@@ -113,9 +119,7 @@ jobs:
           ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          # Монотонный versionCode: база 100 + порядковый номер запуска workflow,
-          # чтобы повторные автозаливки в internal-трек не конфликтовали друг с другом.
-          ORG_GRADLE_PROJECT_URTRUCK_VERSION_CODE: ${{ 100 + github.run_number }}
+          ORG_GRADLE_PROJECT_URTRUCK_VERSION_CODE: ${{ env.URTRUCK_VERSION_CODE }}
         run: |
           cd android
           chmod +x gradlew
