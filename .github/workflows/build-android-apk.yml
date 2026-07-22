@@ -37,6 +37,11 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Install Android SDK platform 36 / build-tools 36.0.0
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
       - name: Free runner disk space
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk || true
@@ -64,6 +69,10 @@ jobs:
         env:
           EXPO_NO_TELEMETRY: 1
           CI: 1
+
+      - name: Target API 36 (Google Play требование с 31.08.2026)
+        run: |
+          printf '\nandroid.compileSdkVersion=36\nandroid.targetSdkVersion=36\nandroid.buildToolsVersion=36.0.0\n' >> android/gradle.properties
 
       - name: Show generated android/ structure (debug)
         run: |

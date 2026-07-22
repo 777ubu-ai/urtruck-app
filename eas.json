@@ -22,7 +22,7 @@
     },
     "production": {
       "ios": { "autoIncrement": true, "image": "macos-sequoia-15.6-xcode-26.2" },
-      "android": { "autoIncrement": true },
+      "android": { "autoIncrement": true, "credentialsSource": "local" },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://urtruck.kz"
       }
