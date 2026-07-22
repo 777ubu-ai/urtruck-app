@@ -39,7 +39,9 @@ function borisCargoPayload(overrides = {}) {
     volume_m3: 40,
     price: 5000,
     currency: 'USD',
-    pickup_date: '2026-05-07',
+    // Дата загрузки — динамически +14 дней (бэкенд отклоняет дату в прошлом;
+    // раньше был захардкоженный день, который со временем протух).
+    pickup_date: new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10),
     photos: [],
     ...overrides,
   };
