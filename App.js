@@ -15,6 +15,28 @@ import { flushOutbox } from './src/utils/outbox';
 import './src/utils/backgroundLocation';
 import { chatAPI } from './src/utils/chatAPI';
 import { push } from './src/utils/push';
+import * as Sentry from '@sentry/react-native';
+
+// Sentry — мониторинг падений САМОГО приложения (у пользователей на телефонах).
+// Полноценно оживает в нативной сборке (build 42+); в Expo Go нативного модуля
+// нет — тогда работает как no-op, приложение не падает. DSN можно переопределить
+// через EXPO_PUBLIC_SENTRY_DSN (напр. отдельный проект React Native).
+// PII не отправляем (send_default_pii=false) — ИИН/ФИО/телефоны не уходят.
+const _SENTRY_DSN =
+  process.env.EXPO_PUBLIC_SENTRY_DSN ||
+  'https://18453143e7167ce08c98f2ce0d90bfd2@o4511743497273344.ingest.de.sentry.io/4511743527354448';
+try {
+  Sentry.init({
+    dsn: _SENTRY_DSN,
+    environment: process.env.EXPO_PUBLIC_SENTRY_ENV || 'production',
+    tracesSampleRate: 0.1,
+    sendDefaultPii: false,
+    enableNativeFramesTracking: false,
+  });
+} catch (e) {
+  // Нет нативного модуля (Expo Go) / иная причина — не мешаем запуску.
+  console.warn('[sentry] init skipped:', e && e.message);
+}
 
 // PR-C2 (chat / push P0): парсер url для notification tap navigation.
 // Backend кладёт в notification url относительный путь:
@@ -197,7 +219,7 @@ function AppInner() {
   );
 }
 
-export default function App() {
+function App() {
   return (
     <ErrorBoundary>
     <ThemeProvider>
@@ -208,3 +230,6 @@ export default function App() {
     </ErrorBoundary>
   );
 }
+
+// Sentry.wrap — оборачивает корень для перехвата крашей рендера/навигации.
+export default Sentry.wrap(App);
