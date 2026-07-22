@@ -19,7 +19,6 @@ env:
 # Заполняем описание
 - tapOn: { id: "cargo-desc-input" }
 - inputText: "QA тест — тент 15т"
-- hideKeyboard
 - takeScreenshot: 61_desc_filled
 # Скролл к submit. F4: НЕ должно быть кнопки «Сохранить черновик»
 - scrollUntilVisible:
@@ -36,7 +35,6 @@ env:
     timeout: 6000
 - tapOn: { id: "cargo-desc-input" }
 - eraseText
-- hideKeyboard
 - scrollUntilVisible:
     element: { id: "cargo-submit-button" }
     direction: DOWN

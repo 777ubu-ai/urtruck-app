@@ -48,7 +48,6 @@ env:
 - tapOn:
     id: "chat-input"
 - inputText: "lang-switch smoke EN"
-- hideKeyboard
 - tapOn:
     id: "chat-send-btn"
 - waitForAnimationToEnd

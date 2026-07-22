@@ -24,7 +24,6 @@ env:
     timeout: 8000
 - tapOn: { id: "chat-input" }
 - inputText: "QA self msg badge-no-self"
-- hideKeyboard
 - tapOn: { id: "chat-send-btn" }
 - waitForAnimationToEnd
 - assertVisible: "QA self msg badge-no-self"

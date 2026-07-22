@@ -46,7 +46,6 @@ env:
           commands:
             - tapOn: { id: "edit-cargo-price" }
             - eraseText
-            - hideKeyboard
             - scrollUntilVisible:
                 element: { id: "edit-cargo-save" }
                 direction: DOWN

@@ -31,7 +31,6 @@ env:
             - tapOn: { id: "edit-cargo-price" }
             - eraseText
             - inputText: "0"
-            - hideKeyboard
             - takeScreenshot: 81_bid_zero_entered
       # Стресс: буквы в сумме → не должно крашить
       - takeScreenshot: 82_bid_modal_state

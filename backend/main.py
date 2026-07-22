@@ -16,7 +16,13 @@ if _env.exists():
 # Sentry init — как можно раньше, до создания FastAPI app, чтобы ловить
 # ошибки startup. Если SENTRY_DSN пуст — graceful no-op.
 # См. docs/cgr/DECISIONS.md §2.
-_sentry_dsn = os.getenv("SENTRY_DSN", "").strip()
+# DSN проекта urtruck-backend (Sentry). Не секрет в строгом смысле (DSN нужен
+# только для приёма событий, spike-protection включён), репозиторий приватный —
+# держим значением по умолчанию, чтобы мониторинг работал сразу после деплоя
+# без ручной правки .env на сервере. Через env SENTRY_DSN можно переопределить
+# (например, отключить, задав пустую строку).
+_DEFAULT_SENTRY_DSN = "https://18453143e7167ce08c98f2ce0d90bfd2@o4511743497273344.ingest.de.sentry.io/4511743527354448"
+_sentry_dsn = os.getenv("SENTRY_DSN", _DEFAULT_SENTRY_DSN).strip()
 if _sentry_dsn:
     try:
         import sentry_sdk

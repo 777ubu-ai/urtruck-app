@@ -1,0 +1,69 @@
+# verify-reentry-prefill — повторный вход в верификацию подтягивает уже
+# загруженные стороны документов (водителю не нужно переснимать).
+#
+# Предусловие (сеет отчёт/раннер через API): у serik заполнены все стороны
+# (id_front/id_back + техпаспорт лицевая/оборотная + права лицевая/оборотная)
+# и даты прав. get_status отдаёт has_* → VehicleDocsScreen помечает слоты done.
+# Проверка: на VehicleDocs слоты в состоянии «Загружено», и vd-next проходит
+# БЕЗ требования пере-загрузки → доходит до «Параметры фуры» (truck-params).
+appId: host.exp.Exponent
+name: verify-reentry-prefill
+tags:
+  - driver
+  - registration
+  - verification
+  - reentry
+env:
+  MAESTRO_ACTOR: serik
+---
+- runFlow: _lib/qa-login.yaml
+- tapOn:
+    id: "bottom-nav-profile"
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element:
+      id: "qa-open-verification"
+    direction: DOWN
+    timeout: 10000
+- tapOn:
+    id: "qa-open-verification"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "citizenship-continue"
+    timeout: 12000
+- tapOn:
+    id: "citizenship-KZ"
+- tapOn:
+    id: "citizenship-continue"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "identity-step-screen"
+    timeout: 12000
+# Dev-скип на VehicleDocs (нативный пикер Maestro не драйвит)
+- scrollUntilVisible:
+    element:
+      id: "qa-skip-step"
+    direction: DOWN
+    timeout: 8000
+- tapOn:
+    id: "qa-skip-step"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "vehicle-docs-screen"
+    timeout: 12000
+- takeScreenshot: REENTRY_01_vehicle_docs_prefilled
+# Главное доказательство reentry: слоты подтянуты с сервера (done), поэтому
+# vd-next проходит БЕЗ требования пере-загрузки → «Параметры фуры». Если бы
+# стороны не подтянулись, было бы «загрузите оборотную сторону» и экран бы
+# остался на VehicleDocs (truck-params не достигнут).
+- tapOn:
+    id: "vd-next"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "truck-params-screen"
+    timeout: 12000
+- takeScreenshot: REENTRY_02_truck_params_reached

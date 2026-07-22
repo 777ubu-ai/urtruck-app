@@ -293,6 +293,15 @@ export const marketAPI = {
     return d;
   },
 
+  // Часть 3: история цены по ставке (движение $6000→$5500→$5200 в пузыре/шапке).
+  async bidEvents(bidId) {
+    try {
+      const r = await authedFetch(`${BASE}/bids/${bidId}/events`, { headers: await headers() });
+      if (!r.ok) return { events: [] };
+      return await r.json();
+    } catch { return { events: [] }; }
+  },
+
   async acceptCounterBid(bidId) {
     const r = await authedFetch(`${BASE}/bids/${bidId}/counter/accept`, {
       method: 'POST', headers: await headers(),

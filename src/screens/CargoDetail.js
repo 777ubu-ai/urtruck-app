@@ -134,6 +134,14 @@ export default function CargoDetail({ navigation, route }) {
   const myUserId = session?.user?.id;
   const [bidModal, setBidModal] = useState(false);
   const [bidModalMode, setBidModalMode] = useState('create');
+  // Часть 1 (конфиденциальные ставки): число предложений (видно всем) и признак
+  // владельца листинга (владелец видит все суммы; чужой — только свою + count).
+  const [bidsCount, setBidsCount] = useState(0);
+  const [isListingOwner, setIsListingOwner] = useState(false);
+  // Конфиденциальный вид включается АВТОМАТИЧЕСКИ по ответу сервера: если бэк
+  // (при BIDS_CONFIDENTIAL=true) урезал список не-владельцу — видимых ставок
+  // меньше, чем count. При открытом режиме сервер шлёт полный список → false.
+  const [bidsConfidential, setBidsConfidential] = useState(false);
   const [editingBid, setEditingBid] = useState(null);
   const [shareModal, setShareModal] = useState(false);
   const [bids, setBids] = useState([]);
@@ -207,6 +215,15 @@ export default function CargoDetail({ navigation, route }) {
           counterBy: b.counter_by,
         }));
         setBids(mapped);
+        // Часть 1: count/is_owner с бэка. count = все предложения (видно всем),
+        // даже если чужие суммы не пришли (конфиденциальность на сервере).
+        const count = typeof d.count === 'number' ? d.count : mapped.length;
+        setBidsCount(count);
+        setIsListingOwner(!!d.is_owner);
+        // Явный сигнал сервера: прячет ли он чужие суммы (BIDS_CONFIDENTIAL).
+        // Не полагаемся на длину списка — dirty-фильтр QA-ставок в открытом
+        // режиме иначе выглядел бы как конфиденциальность.
+        setBidsConfidential(!!d.confidential);
         const accepted = mapped.find(b => b.status === 'accepted');
         if (accepted) {
           setAcceptedDriverId(accepted.bidderId);
@@ -448,8 +465,18 @@ export default function CargoDetail({ navigation, route }) {
           </GlassCard>
         ) : null}
 
-        <Text style={[s.bidsTitle, { color: theme.text }]}>{formatBids(bids.length)}</Text>
-        {bids.length === 0 && (
+        {/* Часть 1: показываем ЧИСЛО предложений (видно всем), не длину
+            урезанного списка. */}
+        <Text style={[s.bidsTitle, { color: theme.text }]} testID="cargo-bids-count">{formatBids(bidsCount)}</Text>
+        {/* Конфиденциальный вид (модель InDriver) — ТОЛЬКО когда сервер реально
+            урезал список (BIDS_CONFIDENTIAL=true). При открытом режиме подсказки
+            нет, ниже рендерится полный список ставок как раньше. */}
+        {bidsConfidential && bidsCount > 0 && (
+          <Text style={{ color: theme.textMuted, textAlign: 'center', paddingHorizontal: 20, paddingBottom: 8, fontSize: 12 }} testID="cargo-bids-confidential">
+            {t('bids_confidential_hint')}
+          </Text>
+        )}
+        {bidsCount === 0 && (
           <Text style={{ color: theme.textMuted, textAlign: 'center', padding: 20, fontSize: 13 }}>
             {t('no_bids_be_first')}
           </Text>
