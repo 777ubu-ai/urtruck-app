@@ -104,7 +104,7 @@ export default function FeedCard({
       style={[s.card, compact && s.cardCompact, { backgroundColor: colors.surface, borderColor: colors.border }]}
       testID={testID}
     >
-      <View style={s.topRow}>
+      <View style={[s.topRow, compact && s.topRowCompact]}>
         {/* Stage 16: cargo/trip glyph tile loses the accent halo —
             neutral surface with the same hairline border the rest
             of the card uses. */}
@@ -133,7 +133,17 @@ export default function FeedCard({
               {titleText}
             </Text>
           )}
-          {subtitle ? <Text style={[s.subtitle, { color: colors.textMuted }]} numberOfLines={1}>{subtitle}</Text> : null}
+          {compact ? (
+            // Ультра-компакт (Вариант 1): параметры мелкой строкой прямо под
+            // маршрутом (тип · дата · вес · объём), без отдельной строки-подписи.
+            meta.length ? (
+              <Text style={[s.metaCompact, { color: colors.textDim }]} numberOfLines={1}>
+                {meta.map((m) => m.value).filter(Boolean).join('  ·  ')}
+              </Text>
+            ) : (subtitle ? <Text style={[s.metaCompact, { color: colors.textDim }]} numberOfLines={1}>{subtitle}</Text> : null)
+          ) : (
+            subtitle ? <Text style={[s.subtitle, { color: colors.textMuted }]} numberOfLines={1}>{subtitle}</Text> : null
+          )}
         </View>
         <View style={{ alignItems: 'flex-end' }}>
           {onToggleFav ? (
@@ -163,13 +173,6 @@ export default function FeedCard({
           {priceCaption ? <Text style={[s.priceCaption, { color: colors.textMuted }]}>{priceCaption}</Text> : null}
         </View>
       </View>
-
-      {meta.length && compact ? (
-        // Компактно: все параметры одной мелкой строкой через «·».
-        <Text style={[s.metaCompact, { color: colors.textDim }]} numberOfLines={1}>
-          {meta.map((m) => m.value).filter(Boolean).join('  ·  ')}
-        </Text>
-      ) : null}
 
       {meta.length && !compact ? (
         <View style={[s.metaRow, { borderTopColor: colors.border }]}>
@@ -249,6 +252,7 @@ const s = StyleSheet.create({
   routeCompact: { fontSize: 16 },
   metaCompact: { fontSize: 12, fontWeight: '600', marginTop: 4 },
   topRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 8 },
+  topRowCompact: { marginBottom: 0, alignItems: 'center', gap: 10 },
   iconBox: { width: 44, height: 44, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   icon: { fontSize: 22 },
   // Крупнее для читаемости на солнце (Этап 5.5/5.2): маршрут и цена —
