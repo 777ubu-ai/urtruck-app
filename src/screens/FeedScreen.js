@@ -28,6 +28,7 @@ import BottomSheet from '../components/ui/v1/BottomSheet';
 import DatePicker from '../components/DatePicker';
 import LocationPickerModal from '../components/LocationPickerModal';
 import { v1Colors, v1AccentFor, useV1Colors } from '../theme/designV1';
+import { storage } from '../utils/storage';
 
 // DD.MM.YYYY ↔ YYYY-MM-DD bridges. DatePicker stores DD.MM.YYYY
 // (matches CreateCargo / CreateTrip and the rest of the app); the
@@ -110,6 +111,7 @@ export default function FeedScreen({ navigation, route }) {
   titleHero: { color: v1.text, fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
   titleHeroSub: { color: v1.textMuted, fontSize: 12, marginTop: 2 },
   titleCta: { borderWidth: 0, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 10, shadowColor: '#FF8400', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 5 },
+  viewToggle: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: v1.border },
   titleCtaText: { fontSize: 12, fontWeight: '800' },
   footerNote: {
     marginTop: 16, marginBottom: 8,
@@ -240,6 +242,18 @@ export default function FeedScreen({ navigation, route }) {
   const [dateTo, setDateTo] = useState('');
   const closeFilter = () => setActiveFilter(null);
 
+  // Вид ленты: компактный список (по умолчанию, помещается 5-6 карточек) ↔
+  // крупные карточки. Выбор пользователя, запоминаем в storage.
+  const [compact, setCompact] = useState(true);
+  useEffect(() => {
+    storage.get('ur_feed_compact').then((v) => { if (v === '0' || v === '1') setCompact(v === '1'); }).catch(() => {});
+  }, []);
+  const toggleCompact = () => setCompact((c) => {
+    const next = !c;
+    storage.set('ur_feed_compact', next ? '1' : '0').catch(() => {});
+    return next;
+  });
+
   // Загрузка данных С СЕРВЕРА (главное изменение!)
   const loadFromServer = async () => {
     setLoadError(false);
@@ -333,19 +347,12 @@ export default function FeedScreen({ navigation, route }) {
           _server: true, _isDriver: true,
         }));
         if (!mounted.current) return;  // QA-аудит P1-8
-        // Дедуп: один перевозчик не должен появляться дважды (карточкой рейса
-        // И карточкой профиля) — иначе ❤️ загоралось сразу на двух карточках
-        // (обе ключуются по driver id), и дублировались React-ключи.
-        // Убираем driver-профиль, если этот же водитель уже есть рейсом,
-        // и схлопываем повторы в самом списке водителей.
-        const tripDriverIds = new Set(tripsMapped.map((tt) => tt.driverId).filter(Boolean));
-        const seenDriverIds = new Set();
-        const driversDedup = driversMapped.filter((d) => {
-          if (!d.id || tripDriverIds.has(d.id) || seenDriverIds.has(d.id)) return false;
-          seenDriverIds.add(d.id);
-          return true;
-        });
-        setServerData([...tripsMapped, ...driversDedup]);
+        // Решение владельца: лента «Рейсы» = ТОЛЬКО реальные рейсы с маршрутом
+        // и ценой. Пустые карточки-профили водителей (без маршрута: «имя · тип»)
+        // убраны — они путали («кто, куда, за сколько?»). driversMapped больше
+        // не подмешиваем; заодно уходит и старый баг двойного ❤️ (профиль+рейс
+        // одного водителя). Профиль водителя доступен из карточки его рейса.
+        setServerData([...tripsMapped]);
       }
     } catch (e) {
       console.warn('[Feed] Server load failed:', e);
@@ -667,6 +674,7 @@ export default function FeedScreen({ navigation, route }) {
         responses={item.bids || 0}
         onPress={openCargo}
         bottomRight={{ label: t('details'), onPress: openCargo, filled: false, testID: 'feed-details-btn' }}
+        compact={compact}
         testID="cargo-card"
       />
     );
@@ -720,6 +728,7 @@ export default function FeedScreen({ navigation, route }) {
         bottomRight={{ label: t('details'), onPress, filled: false, testID: 'feed-details-btn' }}
         favActive={!isDriver ? favIds.has(item.driverId || item.id) : undefined}
         onToggleFav={!isDriver && myUserId ? () => toggleFav(item) : undefined}
+        compact={compact}
         testID={item.isTrip ? 'trip-card' : 'driver-card'}
       />
     );
@@ -785,6 +794,17 @@ export default function FeedScreen({ navigation, route }) {
           <Text style={[s.titleHero, { color: v1.text }]}>{isDriver ? t('cargos') : t('trucks')}</Text>
           <Text style={[s.titleHeroSub, { color: v1.textMuted }]}>{isDriver ? t('feed_driver_subtitle') : t('feed_client_subtitle')}</Text>
         </View>
+        {/* Переключатель вида ленты: компактный список ↔ крупные карточки.
+            Иконка меняется на противоположный режим (подсказка «что будет»). */}
+        <TouchableOpacity
+          onPress={toggleCompact}
+          style={s.viewToggle}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          testID="feed-view-toggle"
+          accessibilityLabel={compact ? t('feed_view_large') : t('feed_view_compact')}
+        >
+          <Feather name={compact ? 'square' : 'list'} size={20} color={v1.textMuted} />
+        </TouchableOpacity>
         {/* Для КЛИЕНТА публикация груза — главное действие, а безымянный
             «+» в таббаре не находится. Показываем явную кнопку «+Груз».
             У водителя лента = основная работа (берёт грузы), поэтому CTA
