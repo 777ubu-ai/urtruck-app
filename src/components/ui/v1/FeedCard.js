@@ -37,6 +37,7 @@ export default function FeedCard({
   onPress,
   favActive,        // ❤️ в избранном
   onToggleFav,      // быстрый тап «сохранить перевозчика» прямо из ленты
+  compact = false,  // компактный вид списком (маршрут одной строкой, без кнопок)
   testID,
 }) {
   const colors = useV1Colors();
@@ -100,23 +101,30 @@ export default function FeedCard({
     <Card
       onPress={onPress}
       activeOpacity={0.85}
-      style={[s.card, { backgroundColor: colors.surface, borderColor: colors.border }]}
+      style={[s.card, compact && s.cardCompact, { backgroundColor: colors.surface, borderColor: colors.border }]}
       testID={testID}
     >
       <View style={s.topRow}>
         {/* Stage 16: cargo/trip glyph tile loses the accent halo —
             neutral surface with the same hairline border the rest
             of the card uses. */}
-        <View style={[s.iconBox, { backgroundColor: colors.surfaceLift, borderColor: colors.border }]}>
-          <Feather name={iconName} size={20} color={v2.textSecondary} />
-        </View>
+        {compact ? null : (
+          <View style={[s.iconBox, { backgroundColor: colors.surfaceLift, borderColor: colors.border }]}>
+            <Feather name={iconName} size={20} color={v2.textSecondary} />
+          </View>
+        )}
         <View style={{ flex: 1 }}>
           {hasRoute && !titleOverride ? (
-            // 2-строчный маршрут — пункт назначения всегда виден (issue #6)
-            <View>
-              <Text style={[s.route, { color: colors.text }]} numberOfLines={2}>{fromFull}</Text>
-              <Text style={[s.route, { color: colors.text }]} numberOfLines={2}>→ {toFull}</Text>
-            </View>
+            compact ? (
+              // Компактно: маршрут одной строкой «Откуда → Куда».
+              <Text style={[s.route, s.routeCompact, { color: colors.text }]} numberOfLines={1}>{routeText}</Text>
+            ) : (
+              // 2-строчный маршрут — пункт назначения всегда виден (issue #6)
+              <View>
+                <Text style={[s.route, { color: colors.text }]} numberOfLines={2}>{fromFull}</Text>
+                <Text style={[s.route, { color: colors.text }]} numberOfLines={2}>→ {toFull}</Text>
+              </View>
+            )
           ) : (
             <Text
               style={[s.route, { color: titleStrong ? colors.text : v2.textTertiary }]}
@@ -156,7 +164,14 @@ export default function FeedCard({
         </View>
       </View>
 
-      {meta.length ? (
+      {meta.length && compact ? (
+        // Компактно: все параметры одной мелкой строкой через «·».
+        <Text style={[s.metaCompact, { color: colors.textDim }]} numberOfLines={1}>
+          {meta.map((m) => m.value).filter(Boolean).join('  ·  ')}
+        </Text>
+      ) : null}
+
+      {meta.length && !compact ? (
         <View style={[s.metaRow, { borderTopColor: colors.border }]}>
           {meta.map((m, i) => (
             <View key={i} style={s.metaPill}>
@@ -178,7 +193,7 @@ export default function FeedCard({
         <Text style={[s.responses, { color: colors.textMuted }]}>{responses} {responses === 1 ? t('feed_response_one') : t('feed_response_many')}</Text>
       ) : null}
 
-      {(bottomLeft || bottomRight) ? (
+      {(bottomLeft || bottomRight) && !compact ? (
         <View style={s.bottomRow}>
           {bottomLeft ? (
             <TouchableOpacity
@@ -228,6 +243,11 @@ const s = StyleSheet.create({
     padding: 14,
     marginBottom: 10,
   },
+  // Компактный вид: меньше отступов и зазор между карточками, чтобы на экран
+  // помещалось 5-6 строк вместо 2 крупных.
+  cardCompact: { padding: 11, marginBottom: 7 },
+  routeCompact: { fontSize: 16 },
+  metaCompact: { fontSize: 12, fontWeight: '600', marginTop: 4 },
   topRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 8 },
   iconBox: { width: 44, height: 44, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   icon: { fontSize: 22 },
