@@ -140,6 +140,19 @@ export default function ChatScreen({ navigation, route }) {
     backgroundColor: v1.surface, color: v1.text,
   },
   sendBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  // WeChat-панель вложений: сетка плиток под строкой ввода.
+  attachPanel: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: 6,
+    paddingHorizontal: 12, paddingTop: 14, paddingBottom: 20,
+    borderTopWidth: 1, borderTopColor: v1.border, backgroundColor: v1.bgDeep,
+  },
+  attachTile: { width: '25%', alignItems: 'center', gap: 7, marginBottom: 8 },
+  attachIconBox: {
+    width: 54, height: 54, borderRadius: 16,
+    backgroundColor: v1.surface, borderWidth: 1, borderColor: v1.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  attachLabel: { fontSize: 11, color: v1.textMuted, fontWeight: '600' },
   photoMsg: { width: 200, height: 150, borderRadius: 12 },
   // C2: fullscreen-viewer вложения
   fullBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', alignItems: 'center', justifyContent: 'center' },
@@ -166,6 +179,9 @@ export default function ChatScreen({ navigation, route }) {
   const [roomId, setRoomId] = useState(initialRoomId || null);
   const [input, setInput] = useState('');
   const [showPhrases, setShowPhrases] = useState(false);
+  // WeChat-стиль: панель вложений снизу, открывается по «+». Главная строка
+  // ввода остаётся чистой ([+] · поле · 🎤 · отправить).
+  const [showAttach, setShowAttach] = useState(false);
   const [recording, setRecording] = useState(false);
   // C2 (device-баг): вложение-фото не открывалось на весь экран. Тап по
   // фото-пузырю кладёт сюда абсолютный URL → показываем fullscreen-viewer.
@@ -1056,29 +1072,23 @@ export default function ChatScreen({ navigation, route }) {
         }
         onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
       />
-      {showPhrases && <QuickPhrases onSelect={sendMessage} role={role} dealStatus={deal?.status} />}
+      {showPhrases && <QuickPhrases onSelect={(m) => { setShowPhrases(false); sendMessage(m); }} role={role} dealStatus={deal?.status} />}
+      {/* Чистая строка ввода (WeChat-стиль): [+] · поле · 🎤 · отправить.
+          Все вложения — под «+» в панели ниже, чтобы главный экран был чистым. */}
       <View style={s.inputRow}>
-        <TouchableOpacity onPress={() => setShowPhrases(!showPhrases)} style={s.iconBtn}>
-          <Feather name="zap" size={18} color={v1.text} />
-        </TouchableOpacity>
-        {/* Часть 2 — «Предложить цену» (💰): открывает BidModal прямо в чате. */}
         <TouchableOpacity
-          onPress={() => openBidModal('create')}
-          style={[s.iconBtn, { borderColor: v1Accent.main }]}
-          testID="chat-bid-btn"
-          accessibilityLabel={t('propose_price') || 'Предложить цену'}
+          onPress={() => { setShowPhrases(false); setShowAttach((v) => !v); }}
+          style={[s.iconBtn, showAttach && { borderColor: v1Accent.main, transform: [{ rotate: '45deg' }] }]}
+          testID="chat-attach-btn"
+          accessibilityLabel={t('chat_attach')}
         >
-          <Feather name="dollar-sign" size={18} color={v1Accent.main} />
+          <Feather name="plus" size={20} color={showAttach ? v1Accent.main : v1.text} />
         </TouchableOpacity>
-        {CHAT_PHOTO_ENABLED && (
-          <TouchableOpacity onPress={sendPhoto} style={s.iconBtn}>
-            <Feather name="camera" size={18} color={v1.text} />
-          </TouchableOpacity>
-        )}
         <TextInput
           style={s.input}
           value={input}
           onChangeText={onInputChange}
+          onFocus={() => setShowAttach(false)}
           placeholder={t('message')}
           placeholderTextColor={v1.placeholder}
           onSubmitEditing={() => sendMessage()}
@@ -1103,6 +1113,30 @@ export default function ChatScreen({ navigation, route }) {
           <FontAwesome5 name="paper-plane" size={16} color="#FFFFFF" solid />
         </TouchableOpacity>
       </View>
+
+      {/* Панель вложений (WeChat-сетка): открывается по «+». Тап по плитке
+          закрывает панель и запускает действие. */}
+      {showAttach && (
+        <View style={s.attachPanel} testID="chat-attach-panel">
+          {[
+            CHAT_PHOTO_ENABLED ? { key: 'gallery', icon: 'image', label: t('gallery'), on: () => pickAndSend(false) } : null,
+            CHAT_PHOTO_ENABLED ? { key: 'camera', icon: 'camera', label: t('camera'), on: () => pickAndSend(true) } : null,
+            { key: 'loc', icon: 'map-pin', label: t('attach_location'), on: () => sendLocation() },
+            { key: 'price', icon: 'dollar-sign', label: t('propose_price'), on: () => openBidModal('create') },
+            { key: 'phrases', icon: 'zap', label: t('quick_phrases'), on: () => setShowPhrases(true) },
+          ].filter(Boolean).map((it) => (
+            <TouchableOpacity
+              key={it.key}
+              style={s.attachTile}
+              testID={`chat-attach-${it.key}`}
+              onPress={() => { setShowAttach(false); it.on(); }}
+            >
+              <View style={s.attachIconBox}><Feather name={it.icon} size={22} color={v1.text} /></View>
+              <Text style={s.attachLabel} numberOfLines={1}>{it.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
       </KeyboardAvoidingView>
 
       {/* C2: fullscreen-просмотр вложения-фото. Тап по фото открывает; тап по
