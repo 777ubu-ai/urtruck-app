@@ -103,8 +103,8 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
   const s = useMemo(() => StyleSheet.create({
     safe: { flex: 1, backgroundColor: v1.bg },
     header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 10 },
-    back: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-    backText: { fontSize: 28, fontWeight: '300', color: v1.text },
+    back: { flexDirection: 'row', alignItems: 'center', gap: 4, height: 44, paddingRight: 8 },
+    backLabel: { fontSize: 16, fontWeight: '700', color: v1.text },
     title: { fontSize: 20, fontWeight: '800', letterSpacing: -0.3, color: v1.text, flex: 1 },
     searchWrap: { paddingHorizontal: 16, paddingBottom: 10 },
     search: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: v1.surface, borderWidth: 1.5, borderColor: v1.driver, borderRadius: v1Radius.field, paddingHorizontal: 14, height: 50 },
@@ -156,8 +156,9 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
     <Modal visible={visible} animationType="slide" onRequestClose={onClose} presentationStyle="fullScreen">
       <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
         <View style={s.header}>
-          <TouchableOpacity style={s.back} onPress={onClose} testID="loc-close">
-            <Text style={s.backText}>‹</Text>
+          <TouchableOpacity style={s.back} onPress={onClose} testID="loc-close" hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+            <Feather name="arrow-left" size={22} color={v1.text} />
+            <Text style={s.backLabel}>{t('back')}</Text>
           </TouchableOpacity>
           <Text style={s.title} numberOfLines={1}>{title}</Text>
         </View>
@@ -221,6 +222,22 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
                 </TouchableOpacity>
               ) : null}
 
+              {/* Порядок разделов по решению владельца: 1) Страны 2) Погран-
+                  переходы 3) Избранное. Недавние/Популярные — ниже. */}
+              <Sect icon="globe">{t('loc_countries')}</Sect>
+              {COUNTRY_ORDER.map((code) => (
+                <TouchableOpacity key={`country:${code}`} style={s.row} onPress={() => setCountry(code)} activeOpacity={0.7} testID={`loc-country-${code}`}>
+                  <View style={s.lead}><Text style={s.leadText}>{COUNTRIES[code]?.flag || '🌐'}</Text></View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.name} numberOfLines={1}>{localizePlace(COUNTRIES[code]?.name || code, lang)}</Text>
+                  </View>
+                  <Text style={s.chev}>›</Text>
+                </TouchableOpacity>
+              ))}
+
+              <Sect icon="flag">{t('loc_borders')}</Sect>
+              {BORDERS.map((p, i) => <Row key={`bord:${pointKey(p)}:${i}`} p={p} showHeart={false} />)}
+
               {favs.length ? (
                 <>
                   <Sect icon="star">{t('loc_favorites')}</Sect>
@@ -237,22 +254,6 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
 
               <Sect icon="star">{t('route_popular')}</Sect>
               {POPULAR.map((p, i) => <Row key={`pop:${pointKey(p)}:${i}`} p={p} />)}
-
-              {/* Выбор по стране: тап раскрывает города страны (то, что просил
-                  владелец — «нажимаю Китай → внизу все города»). */}
-              <Sect icon="globe">{t('loc_countries')}</Sect>
-              {COUNTRY_ORDER.map((code) => (
-                <TouchableOpacity key={`country:${code}`} style={s.row} onPress={() => setCountry(code)} activeOpacity={0.7} testID={`loc-country-${code}`}>
-                  <View style={s.lead}><Text style={s.leadText}>{COUNTRIES[code]?.flag || '🌐'}</Text></View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.name} numberOfLines={1}>{localizePlace(COUNTRIES[code]?.name || code, lang)}</Text>
-                  </View>
-                  <Text style={s.chev}>›</Text>
-                </TouchableOpacity>
-              ))}
-
-              <Sect icon="flag">{t('loc_borders')}</Sect>
-              {BORDERS.map((p, i) => <Row key={`bord:${pointKey(p)}:${i}`} p={p} showHeart={false} />)}
             </>
           )}
         </ScrollView>

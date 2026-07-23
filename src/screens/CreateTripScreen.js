@@ -38,6 +38,14 @@ const CURRENCY_OPTIONS = [
   { k: 'CNY', l: '¥' },
 ];
 
+// Дробный ввод (вес/объём): запятую→точку, только цифры и одна точка (31.5 т).
+const normalizeDecimal = (v) => {
+  let s = String(v || '').replace(',', '.').replace(/[^\d.]/g, '');
+  const i = s.indexOf('.');
+  if (i !== -1) s = s.slice(0, i + 1) + s.slice(i + 1).replace(/\./g, '');
+  return s;
+};
+
 export default function CreateTripScreen({ navigation, route }) {
   const v1 = useV1Colors();
   const s = React.useMemo(() => StyleSheet.create({
@@ -284,9 +292,9 @@ export default function CreateTripScreen({ navigation, route }) {
           <Field
             label={t('weight_label')}
             value={tons}
-            onChangeText={(v) => setTons(String(v || '').replace(/[^\d]/g, ''))}
-            keyboardType="numeric"
-            placeholder={t('weight_placeholder') || 'Например: 22'}
+            onChangeText={(v) => setTons(normalizeDecimal(v))}
+            keyboardType="decimal-pad"
+            placeholder={t('weight_placeholder') || 'Например: 31.5'}
             testID="trip-weight-field"
           />
         </View>
@@ -294,8 +302,8 @@ export default function CreateTripScreen({ navigation, route }) {
           <Field
             label={t('volume_label')}
             value={m3}
-            onChangeText={(v) => setM3(String(v || '').replace(/[^\d]/g, ''))}
-            keyboardType="numeric"
+            onChangeText={(v) => setM3(normalizeDecimal(v))}
+            keyboardType="decimal-pad"
             placeholder={t('volume_placeholder') || 'Например: 110'}
             testID="trip-volume-field"
           />

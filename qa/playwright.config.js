@@ -33,6 +33,9 @@ module.exports = defineConfig({
   // first thing the operator typically wants to see when a "white screen"
   // bug is reported in the field.
   projects: [
+    // Bargain: сквозной торг через API (без UI/симулятора). Самостоятельный —
+    // сам поднимает сессии через /qa/ensure-actor, зависимостей нет.
+    { name: 'bargain',         testMatch: /bargain\.flow\.spec\.js$/ },
     { name: 'serik',           testMatch: /serik\.driver\.spec\.js$/ },
     { name: 'boris',           testMatch: /boris\.shipper\.spec\.js$/, dependencies: ['serik'] },
     { name: 'cargo-currency',  testMatch: /cargo\.currency\.spec\.js$/ },
