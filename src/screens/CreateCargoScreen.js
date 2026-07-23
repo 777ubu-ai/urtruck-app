@@ -47,6 +47,16 @@ const CURRENCY_OPTIONS = [
   { k: 'CNY', l: '¥' },
 ];
 
+// Ввод дробных чисел (вес/объём): запятую → точку, оставляем цифры и ОДНУ точку.
+// Позволяет «31.5», «30,5» → «30.5». Раньше режущий /[^\d]/ выбрасывал дробную
+// часть, поэтому нельзя было указать 31.5 т.
+const normalizeDecimal = (v) => {
+  let s = String(v || '').replace(',', '.').replace(/[^\d.]/g, '');
+  const i = s.indexOf('.');
+  if (i !== -1) s = s.slice(0, i + 1) + s.slice(i + 1).replace(/\./g, '');
+  return s;
+};
+
 export default function CreateCargoScreen({ navigation, route }) {
   const v1 = useV1Colors();
   const s = React.useMemo(() => StyleSheet.create({
@@ -166,8 +176,8 @@ export default function CreateCargoScreen({ navigation, route }) {
       to_city: to.trim(),
       cargo_desc: cargoDesc.trim(),
       cargo_type: truckType,
-      weight_tons: parseInt(tons) || 0,
-      volume_m3: parseInt(m3) || 0,
+      weight_tons: parseFloat(tons) || 0,
+      volume_m3: parseFloat(m3) || 0,
       price: priceNum,
       currency: currency,
       payment_type: paymentType || null,
@@ -346,9 +356,9 @@ export default function CreateCargoScreen({ navigation, route }) {
           <Field
             label={t('weight_label')}
             value={tons}
-            onChangeText={(v) => { setTons(String(v || '').replace(/[^\d]/g, '')); if (errors.weight) setErrors((e) => ({ ...e, weight: null })); }}
-            keyboardType="numeric"
-            placeholder={t('weight_placeholder') || 'Например: 22'}
+            onChangeText={(v) => { setTons(normalizeDecimal(v)); if (errors.weight) setErrors((e) => ({ ...e, weight: null })); }}
+            keyboardType="decimal-pad"
+            placeholder={t('weight_placeholder') || 'Например: 31.5'}
             testID="cargo-weight-field"
           />
         </View>
@@ -356,8 +366,8 @@ export default function CreateCargoScreen({ navigation, route }) {
           <Field
             label={t('volume_label')}
             value={m3}
-            onChangeText={(v) => { setM3(String(v || '').replace(/[^\d]/g, '')); if (errors.weight) setErrors((e) => ({ ...e, weight: null })); }}
-            keyboardType="numeric"
+            onChangeText={(v) => { setM3(normalizeDecimal(v)); if (errors.weight) setErrors((e) => ({ ...e, weight: null })); }}
+            keyboardType="decimal-pad"
             placeholder={t('volume_placeholder') || 'Например: 110'}
             testID="cargo-volume-field"
           />
