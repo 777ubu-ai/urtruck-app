@@ -41,8 +41,16 @@ env:
 - takeScreenshot: CO1_bargain_card_in_chat
 
 # 💰 в инпут-баре открывает BidModal «Предложить цену».
-- assertVisible: { id: "chat-bid-btn" }
-- tapOn: { id: "chat-bid-btn" }
+# «+» (chat-attach-btn) открывает панель вложений → «Цена» (chat-attach-price)
+# открывает BidModal. Раньше 💰 была прямо в инпут-баре (chat-bid-btn); свежая
+# правка убрала её в WeChat-панель вложений.
+- assertVisible: { id: "chat-attach-btn" }
+- tapOn: { id: "chat-attach-btn" }
+- extendedWaitUntil:
+    visible: { id: "chat-attach-panel" }
+    timeout: 8000
+- assertVisible: { id: "chat-attach-price" }
+- tapOn: { id: "chat-attach-price" }
 - extendedWaitUntil:
     visible: { id: "bid-modal" }
     timeout: 8000
