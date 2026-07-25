@@ -17,7 +17,6 @@ import { colors, spacing, radius, typography } from '../theme/theme';
 import {v1Colors, useV1Colors, v1AccentFor} from '../theme/designV1';
 import SegmentTabs from '../components/ui/v1/SegmentTabs';
 import StatsRow from '../components/ui/v1/StatsRow';
-import BellBadge from '../components/ui/v1/BellBadge';
 import { useUnreadNotifications } from '../utils/useUnreadNotifications';
 import { notificationsAPI } from '../utils/notificationsAPI';
 import { notifyNotifRead } from '../utils/unreadEvents';
@@ -40,6 +39,7 @@ export default function MyTripsScreen({ navigation, route }) {
   ftlText: { fontSize: 11, fontWeight: '900', letterSpacing: 1 },
   bellBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, backgroundColor: v1.surface },
   bellIcon: { fontSize: 18 },
+  menuBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   titleBlock: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12 },
   titleHero: { color: v1.text, fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
   titleSub: { color: v1.textMuted, fontSize: 12, marginTop: 2 },
@@ -109,7 +109,6 @@ export default function MyTripsScreen({ navigation, route }) {
   const { t, lang } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
-  const notifUnread = useUnreadNotifications();
 
   // Driver tabs (issue #2): routes / offers / inwork / done (+ secondary
   // archive). Client (грузоотправитель) — зеркало в его терминах:
@@ -1020,10 +1019,17 @@ export default function MyTripsScreen({ navigation, route }) {
         <View style={s.brandRow}>
           <Text style={s.brandText}>UrTruck</Text>
         </View>
-        <BellBadge
-          count={notifUnread}
-          onPress={() => navigation.navigate('Notifications')}
-        />
+        {/* ☰ (top-right) → профиль и меню. Колокольчик уехал вниз в
+            таб-бар как вкладка «Сделки» (единый инбокс живой работы). */}
+        <TouchableOpacity
+          onPress={() => navigation.navigate('Profile', { role })}
+          style={s.menuBtn}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          testID="mywork-menu-btn"
+          accessibilityLabel={t('tab_profile')}
+        >
+          <Feather name="menu" size={24} color={v1.text} />
+        </TouchableOpacity>
       </View>
 
       <View style={s.titleBlock}>
