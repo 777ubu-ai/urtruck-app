@@ -58,6 +58,7 @@ export default function TripDetail({ navigation, route }) {
   dangerBtn: { borderWidth: 0, borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 8, backgroundColor: 'rgba(239,68,68,0.10)' },
   dangerBtnText: { color: '#EF4444', fontSize: 13, fontWeight: '800' },
   dealActionBtn: { borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10 },
+  dealActionGhost: { backgroundColor: 'transparent', borderWidth: 1.6 },
   dealActionText: { color: '#fff', fontSize: 13, fontWeight: '700' },
 
   }), [v1]);
@@ -236,17 +237,17 @@ export default function TripDetail({ navigation, route }) {
                 <Text style={s.dealActionText}>{statusLoading ? '...' : '✅ ' + t('mark_arrived')}</Text>
               </TouchableOpacity>
             )}
-            {isShipper && dealStatus === 'in_progress' && (
-              <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: v1Accent.main }]} onPress={() => changeDealStatus('delivered')} disabled={statusLoading}>
-                <Text style={[s.dealActionText, { color: v1Accent.onAccent }]}>{statusLoading ? '...' : '✅ ' + t('confirm_delivery')}</Text>
+            {isShipper && (dealStatus === 'in_progress' || dealStatus === 'at_border') && (
+              <TouchableOpacity style={[s.dealActionBtn, s.dealActionGhost, { borderColor: v1Accent.main }]} onPress={() => changeDealStatus('delivered')} disabled={statusLoading}>
+                <Text style={[s.dealActionText, { color: v1Accent.main }]}>{statusLoading ? '...' : '✅ ' + t('confirm_delivery')}</Text>
               </TouchableOpacity>
             )}
             {chatRoomId && (
               <TouchableOpacity
-                style={[s.dealActionBtn, { backgroundColor: v1Accent.main }]}
+                style={[s.dealActionBtn, s.dealActionGhost, { borderColor: v1Accent.main }]}
                 onPress={() => navigation.navigate('Chat', { roomId: chatRoomId, role, tripId: (trip && trip.id) || tripId, partner: driverId ? { id: driverId } : undefined })}
               >
-                <Text style={[s.dealActionText, { color: v1Accent.onAccent }]}>💬 {t('order_chat')}</Text>
+                <Text style={[s.dealActionText, { color: v1Accent.main }]}>💬 {t('order_chat')}</Text>
               </TouchableOpacity>
             )}
             {(dealStatus === 'accepted' || dealStatus === 'in_progress' || dealStatus === 'at_border') && (

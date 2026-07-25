@@ -114,6 +114,8 @@ export default function CargoDetail({ navigation, route }) {
   dealBlock: { borderWidth: 1, borderRadius: 14, padding: 16, alignItems: 'center', gap: 10 },
   dealStatusLabel: { fontSize: 15, fontWeight: '700' },
   dealActionBtn: { backgroundColor: '#22C55E', borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10 },
+  // Ghost-стиль (обводка) для акцентных действий сделки — вместо сплошной заливки.
+  dealActionGhost: { backgroundColor: 'transparent', borderWidth: 1.6 },
   dealActionText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   chatBtn: { backgroundColor: '#22C55E', borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
   chatBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
@@ -778,18 +780,19 @@ export default function CargoDetail({ navigation, route }) {
               )}
               {/* Shipper — in_progress/at_border → подтвердить доставку */}
               {isShipper && (dealStatus === 'in_progress' || dealStatus === 'at_border') && (
-                <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: dealAccent.main }]} onPress={() => changeDealStatus('delivered')} disabled={statusLoading}>
-                  <DealActionLabel icon="check-circle" text={t('confirm_delivery')} color={dealAccent.onAccent} loading={statusLoading} />
+                <TouchableOpacity style={[s.dealActionBtn, s.dealActionGhost, { borderColor: dealAccent.main }]} onPress={() => changeDealStatus('delivered')} disabled={statusLoading}>
+                  <DealActionLabel icon="check-circle" text={t('confirm_delivery')} color={dealAccent.main} loading={statusLoading} />
                 </TouchableOpacity>
               )}
-              {/* Both — chat */}
+              {/* Both — chat. Стиль ghost (обводка) вместо сплошной заливки —
+                  современнее и не «режет глаз» (решение владельца). */}
               {chatRoomId && (
                 <TouchableOpacity
                   testID="deal-order-chat"
-                  style={[s.dealActionBtn, { backgroundColor: dealAccent.main }]}
+                  style={[s.dealActionBtn, s.dealActionGhost, { borderColor: dealAccent.main }]}
                   onPress={() => navigation.navigate('Chat', { roomId: chatRoomId, role })}
                 >
-                  <DealActionLabel icon="message-square" text={t('order_chat')} color={dealAccent.onAccent} />
+                  <DealActionLabel icon="message-square" text={t('order_chat')} color={dealAccent.main} />
                 </TouchableOpacity>
               )}
               {/* Both — накладная (CMR) из данных сделки */}
