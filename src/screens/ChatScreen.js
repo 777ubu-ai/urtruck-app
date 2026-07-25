@@ -329,17 +329,27 @@ export default function ChatScreen({ navigation, route }) {
       loadMessages(initialRoomId);
       return;
     }
-    if (!partner?.id) return;
+    if (!partner?.id && !cargoId && !tripId) return;
+    let alive = true;
     chatAPI.rooms().then(d => {
-      const room = (d.rooms || []).find(r =>
-        r.participant_1 === partner.id || r.participant_2 === partner.id
-      );
-      if (room) {
+      const rooms = d.rooms || [];
+      let room = null;
+      if (partner?.id) {
+        room = rooms.find(r => r.participant_1 === partner.id || r.participant_2 === partner.id);
+      }
+      // Фолбэк: вход из карточки заказа/ставки БЕЗ roomId и БЕЗ partner —
+      // резолвим комнату по cargo_id/trip_id. Без этого первое сообщение и
+      // история не грузились (roomId оставался null, поллинг не стартовал).
+      if (!room && (cargoId || tripId)) {
+        room = rooms.find(r => (cargoId && r.cargo_id === cargoId) || (tripId && r.trip_id === tripId));
+      }
+      if (alive && room) {
         setRoomId(room.id);
         loadMessages(room.id);
       }
     }).catch(() => {});
-  }, [partner?.id, initialRoomId]);
+    return () => { alive = false; };
+  }, [partner?.id, initialRoomId, cargoId, tripId]);
 
   // Авто-перевод: когда включён, переводим все входящие сообщения без
   // перевода на язык интерфейса. Кэш (наш стейт + серверный) не даёт
