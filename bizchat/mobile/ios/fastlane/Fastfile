@@ -1,0 +1,50 @@
+# Fastlane — сборка Biz Chat iOS и заливка в TestFlight.
+#
+# Аутентификация — через App Store Connect API Key (без Apple ID/пароля):
+#   ASC_KEY_ID       — Key ID ключа
+#   ASC_ISSUER_ID    — Issuer ID (общий для команды)
+#   ASC_KEY_CONTENT  — содержимое .p8, закодированное в base64
+#   APPLE_TEAM_ID    — Team ID разработчика
+#
+# Подпись — automatic: Xcode сам создаёт/скачивает сертификат и профиль
+# (`-allowProvisioningUpdates` + API key). Отдельный сертификат руками не нужен.
+#
+# Сам Flutter/Dart компилируется на предыдущем шаге workflow
+# (`flutter build ios --no-codesign`); здесь только подпись, экспорт .ipa
+# и загрузка.
+
+default_platform(:ios)
+
+platform :ios do
+  desc "Собрать .ipa и загрузить в TestFlight"
+  lane :beta do
+    api_key = app_store_connect_api_key(
+      key_id: ENV["ASC_KEY_ID"],
+      issuer_id: ENV["ASC_ISSUER_ID"],
+      key_content: ENV["ASC_KEY_CONTENT"],
+      is_key_content_base64: true,
+    )
+
+    build_app(
+      workspace: "Runner.xcworkspace",
+      scheme: "Runner",
+      export_method: "app-store",
+      api_key: api_key,
+      xcargs: "-allowProvisioningUpdates",
+      export_options: {
+        signingStyle: "automatic",
+        teamID: ENV["APPLE_TEAM_ID"],
+      },
+      output_directory: "build",
+      output_name: "BizChat.ipa",
+      clean: true,
+    )
+
+    upload_to_testflight(
+      api_key: api_key,
+      app_identifier: "app.bizchat",
+      skip_waiting_for_build_processing: true,
+      # Замечания «что тестировать» можно заполнить позже в App Store Connect.
+    )
+  end
+end

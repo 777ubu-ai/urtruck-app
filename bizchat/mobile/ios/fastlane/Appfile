@@ -1,0 +1,3 @@
+app_identifier("app.bizchat")
+# Team ID и аутентификация приходят через переменные окружения (секреты CI):
+# APPLE_TEAM_ID, ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_CONTENT.
