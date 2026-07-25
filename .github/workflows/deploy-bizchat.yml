@@ -8,9 +8,10 @@ name: Deploy Biz Chat backend
 #
 # Вход без SMS и админ-доступ активируются, только если заданы секреты
 # репозитория (Settings → Secrets and variables → Actions):
-#   DEV_LOGIN_PHONE  — ваш номер, напр. +77479171118
-#   DEV_LOGIN_CODE   — мастер-код, напр. 112233
-#   ADMIN_PHONES     — номера админов через запятую (обычно тот же номер)
+#   DEV_LOGINS    — пары номер:код через запятую,
+#                   напр. +77479171118:8888,+77081839111:7777
+#   ADMIN_PHONES  — номера админов через запятую,
+#                   напр. +77479171118,+77081839111
 # Если секреты не заданы — деплой просто обновит код, вход останется по SMS.
 #
 # Репозиторий публичный, поэтому номер/код лежат ТОЛЬКО в секретах,
@@ -58,27 +59,25 @@ jobs:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SERVER_PASS: ${{ secrets.SERVER_PASS }}
-          DEV_LOGIN_PHONE: ${{ secrets.DEV_LOGIN_PHONE }}
-          DEV_LOGIN_CODE: ${{ secrets.DEV_LOGIN_CODE }}
+          DEV_LOGINS: ${{ secrets.DEV_LOGINS }}
           ADMIN_PHONES: ${{ secrets.ADMIN_PHONES }}
         run: |
-          if [ -z "$DEV_LOGIN_PHONE" ] && [ -z "$ADMIN_PHONES" ]; then
-            echo "Секреты DEV_LOGIN_*/ADMIN_PHONES не заданы — env не меняю (вход останется по SMS)."
+          if [ -z "$DEV_LOGINS" ] && [ -z "$ADMIN_PHONES" ]; then
+            echo "Секреты DEV_LOGINS/ADMIN_PHONES не заданы — env не меняю (вход останется по SMS)."
             exit 0
           fi
           # Идемпотентно обновляем .env.production: удаляем старые ключи и дописываем новые.
           sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
-            DEV_LOGIN_PHONE="$DEV_LOGIN_PHONE" DEV_LOGIN_CODE="$DEV_LOGIN_CODE" ADMIN_PHONES="$ADMIN_PHONES" 'bash -s' <<'EOS'
+            DEV_LOGINS="$DEV_LOGINS" ADMIN_PHONES="$ADMIN_PHONES" 'bash -s' <<'EOS'
             set -e
             ENV=/home/ubuntu/bizchat/infra/.env.production
             cp "$ENV" "$ENV.bak.$(date +%Y%m%d-%H%M%S)"
             # Удаляем прежние значения этих ключей (если были)
-            sed -i '/^DEV_LOGIN_PHONE=/d;/^DEV_LOGIN_CODE=/d;/^ADMIN_PHONES=/d' "$ENV"
+            sed -i '/^DEV_LOGINS=/d;/^ADMIN_PHONES=/d' "$ENV"
             # Дописываем актуальные (пустые — пропускаем)
-            [ -n "$DEV_LOGIN_PHONE" ] && echo "DEV_LOGIN_PHONE=$DEV_LOGIN_PHONE" >> "$ENV"
-            [ -n "$DEV_LOGIN_CODE" ]  && echo "DEV_LOGIN_CODE=$DEV_LOGIN_CODE"   >> "$ENV"
-            [ -n "$ADMIN_PHONES" ]    && echo "ADMIN_PHONES=$ADMIN_PHONES"       >> "$ENV"
-            echo "env.production обновлён (ключи DEV_LOGIN_*/ADMIN_PHONES)."
+            [ -n "$DEV_LOGINS" ]   && echo "DEV_LOGINS=$DEV_LOGINS"     >> "$ENV"
+            [ -n "$ADMIN_PHONES" ] && echo "ADMIN_PHONES=$ADMIN_PHONES" >> "$ENV"
+            echo "env.production обновлён (ключи DEV_LOGINS/ADMIN_PHONES)."
           EOS
 
       - name: Rebuild and restart backend container

@@ -49,18 +49,16 @@ export interface AppConfig {
    */
   adminPhones: string[];
   /**
-   * Мастер-вход без SMS для одного доверенного номера (владелец/тестер).
-   * Включается ТОЛЬКО когда заданы обе переменные DEV_LOGIN_PHONE и
-   * DEV_LOGIN_CODE. Для этого номера SMS не отправляется, а verify
-   * принимает фиксированный код. Работает в любом env (в т.ч. production) —
-   * это осознанный bypass для конкретного номера, а не глобальное
-   * отключение защиты. Если переменные пустые — поле undefined и обычный
-   * SMS-флоу работает как раньше.
+   * Мастер-вход без SMS для доверенных номеров (владелец/тестеры).
+   * Задаётся в .env одной переменной DEV_LOGINS в формате
+   * "phone:code,phone:code", например:
+   *   DEV_LOGINS=+77479171118:8888,+77081839111:7777
+   * Для этих номеров SMS не отправляется, а verify принимает указанный код.
+   * Работает в любом env (в т.ч. production) — это осознанный bypass для
+   * конкретных номеров, а не глобальное отключение защиты. Пустая
+   * переменная => список пуст и обычный SMS-флоу работает как раньше.
    */
-  devLogin?: {
-    phone: string;
-    code: string;
-  };
+  devLogins: Array<{ phone: string; code: string }>;
 }
 
 export default (): AppConfig => ({
@@ -118,11 +116,17 @@ export default (): AppConfig => ({
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean),
-  devLogin:
-    process.env.DEV_LOGIN_PHONE && process.env.DEV_LOGIN_CODE
-      ? {
-          phone: process.env.DEV_LOGIN_PHONE,
-          code: process.env.DEV_LOGIN_CODE,
-        }
-      : undefined,
+  // DEV_LOGINS="phone:code,phone:code" -> [{phone, code}, ...]
+  devLogins: (process.env.DEV_LOGINS || '')
+    .split(',')
+    .map((pair) => pair.trim())
+    .filter(Boolean)
+    .map((pair) => {
+      const idx = pair.lastIndexOf(':');
+      return {
+        phone: pair.slice(0, idx).trim(),
+        code: pair.slice(idx + 1).trim(),
+      };
+    })
+    .filter((d) => d.phone && d.code),
 });

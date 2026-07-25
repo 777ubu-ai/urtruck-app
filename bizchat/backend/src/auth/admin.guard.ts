@@ -8,6 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { AppConfig } from '../config/configuration';
 import { RequestWithUser } from './jwt-auth.guard';
+import { normalizePhone } from './phone.util';
 
 /**
  * Guard для админских эндпоинтов. Ставится ПОСЛЕ JwtAuthGuard в цепочке
@@ -29,9 +30,8 @@ export class AdminGuard implements CanActivate {
       throw new UnauthorizedException('Требуется авторизация');
     }
     const adminPhones = this.config.get('adminPhones', { infer: true });
-    const digits = (s: string) => s.replace(/\D/g, '');
-    const userDigits = digits(req.user.phone);
-    const isAdmin = adminPhones.some((p) => digits(p) === userDigits);
+    const userDigits = normalizePhone(req.user.phone);
+    const isAdmin = adminPhones.some((p) => normalizePhone(p) === userDigits);
     if (!isAdmin) {
       throw new ForbiddenException('Доступ только для администратора');
     }

@@ -17,6 +17,7 @@ import { Factory } from '../entities/factory.entity';
 import { SmsService } from './sms.service';
 import { AppConfig } from '../config/configuration';
 import { VerifySmsDto } from './dto/verify-sms.dto';
+import { normalizePhone } from './phone.util';
 
 export interface AuthResult {
   user: {
@@ -62,8 +63,8 @@ export class AuthService {
     const smsCfg = this.config.get('sms', { infer: true });
 
     // Мастер-вход: для доверенного номера SMS не шлём вообще — код фиксирован
-    // в DEV_LOGIN_CODE. Клиент сразу переходит на экран ввода кода.
-    if (this.isDevLoginPhone(phone)) {
+    // в DEV_LOGINS. Клиент сразу переходит на экран ввода кода.
+    if (this.findDevLogin(phone)) {
       this.logger.warn(`[DEV LOGIN] SMS для ${phone} не отправлен — мастер-код активен`);
       return { sent: true, cooldownSeconds: 0 };
     }
@@ -130,11 +131,10 @@ export class AuthService {
     const smsCfg = this.config.get('sms', { infer: true });
 
     // Мастер-вход: доверенный номер + фиксированный код обходят проверку по БД.
-    // Проверка кода — строгое сравнение с DEV_LOGIN_CODE (без хеша/попыток).
-    const isDevLogin = this.isDevLoginPhone(dto.phone);
-    if (isDevLogin) {
-      const devCode = this.config.get('devLogin', { infer: true })!.code;
-      if (dto.code !== devCode) {
+    // Проверка кода — строгое сравнение с кодом из DEV_LOGINS (без хеша/попыток).
+    const devLogin = this.findDevLogin(dto.phone);
+    if (devLogin) {
+      if (dto.code !== devLogin.code) {
         throw new BadRequestException('Неверный код');
       }
       // Код верный — пропускаем весь блок проверки SMS-записи ниже.
@@ -234,15 +234,15 @@ export class AuthService {
   // === helpers ===
 
   /**
-   * Является ли номер доверенным мастер-номером (DEV_LOGIN_PHONE).
+   * Найти запись мастер-входа для номера (DEV_LOGINS).
    * Сравнение по цифрам — устойчиво к '+', пробелам и дефисам.
-   * Если devLogin не сконфигурирован — всегда false (обычный SMS-флоу).
+   * Возвращает {phone, code} или undefined (тогда обычный SMS-флоу).
    */
-  private isDevLoginPhone(phone: string): boolean {
-    const devLogin = this.config.get('devLogin', { infer: true });
-    if (!devLogin) return false;
-    const digits = (s: string) => s.replace(/\D/g, '');
-    return digits(phone) === digits(devLogin.phone);
+  private findDevLogin(phone: string): { phone: string; code: string } | undefined {
+    const devLogins = this.config.get('devLogins', { infer: true });
+    if (!devLogins?.length) return undefined;
+    const target = normalizePhone(phone);
+    return devLogins.find((d) => normalizePhone(d.phone) === target);
   }
 
   private generateNumericCode(length: number): string {
