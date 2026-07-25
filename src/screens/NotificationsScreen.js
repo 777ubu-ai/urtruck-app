@@ -5,6 +5,7 @@ import { useToast } from '../components/Toast';
 import { notificationsAPI } from '../utils/notificationsAPI';
 import {v1Colors, useV1Colors, v1Radius, v1AccentFor} from '../theme/designV1';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
+import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import { useAuth } from '../utils/AuthContext';
 import { useI18n } from '../utils/useI18n';
 import { getLanguage } from '../utils/i18n';
@@ -198,11 +199,12 @@ export default function NotificationsScreen({ navigation }) {
 
   return (
     <SafeAreaView style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']}>
-      {/* Как вкладка «Дела» экран — корень таба (назад некуда). Как pushed
-          экран (deeplink 'Notifications') — показываем «назад». */}
+      {/* Как вкладка «Сделки» экран — корень таба (назад некуда), справа ☰.
+          Как pushed экран (deeplink 'Notifications') — показываем «назад». */}
       <BrandBarWithShare
         onBack={navigation.canGoBack?.() ? () => navigation.goBack() : undefined}
         accent={accent.main}
+        rightSlot={<HeaderMenuButton navigation={navigation} role={role} testID="deals-menu-btn" />}
       />
       <View style={s.titleRow}>
         {/* Заголовок совпадает с названием вкладки «Сделки», чтобы вход и

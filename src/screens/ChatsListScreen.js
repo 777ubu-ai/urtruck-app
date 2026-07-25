@@ -18,6 +18,7 @@ import { useI18n } from '../utils/useI18n';
 import { formatStatus } from '../utils/i18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useV1Colors } from '../theme/designV1';
+import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import { chatAPI } from '../utils/chatAPI';
 import { prettifyPartnerName } from '../utils/displayName';
 import { accentFor } from '../components/deal/DealRoom';
@@ -161,6 +162,8 @@ export default function ChatsListScreen({ navigation, route }) {
       <View style={s.titleRow} testID="chats-header">
         <Feather name="message-square" size={20} color={theme.text} />
         <Text style={[s.title, { color: theme.text }]}>{t('chat_title')}</Text>
+        <View style={{ flex: 1 }} />
+        <HeaderMenuButton navigation={navigation} role={role} testID="chats-menu-btn" />
       </View>
 
       <View style={[s.search, { backgroundColor: theme.card, borderColor: theme.border }]}>
