@@ -808,7 +808,10 @@ export default function FeedScreen({ navigation, route }) {
           testID="feed-view-toggle"
           accessibilityLabel={compact ? t('feed_view_large') : t('feed_view_compact')}
         >
-          <Feather name={compact ? 'square' : 'list'} size={20} color={v1.textMuted} />
+          {/* Иконка подсказывает, КУДА переключимся: в компактном режиме
+              показываем «крупные карточки» (grid), в крупном — «список»
+              (list). Пустой квадрат был непонятен. */}
+          <Feather name={compact ? 'grid' : 'list'} size={20} color={v1.textMuted} />
         </TouchableOpacity>
         {/* Для КЛИЕНТА публикация груза — главное действие, а безымянный
             «+» в таббаре не находится. Показываем явную кнопку «+Груз».
