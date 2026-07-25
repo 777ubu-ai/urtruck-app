@@ -20,15 +20,22 @@ export default function BrandBarWithShare({ onBack, onShare, accent, rightTestID
   const arrowColor = accent || colors.driver;
   return (
     <View style={s.row}>
-      <TouchableOpacity
-        onPress={onBack}
-        style={s.backHit}
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        accessibilityLabel="Back"
-        testID="brand-back"
-      >
-        <Text style={[s.backIcon, { color: arrowColor }]}>‹</Text>
-      </TouchableOpacity>
+      {/* Стрелку «назад» рисуем только когда есть куда возвращаться
+          (onBack передан). На корне вкладки (например «Дела») её нет —
+          иначе стрелка вводила бы в заблуждение. */}
+      {onBack ? (
+        <TouchableOpacity
+          onPress={onBack}
+          style={s.backHit}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityLabel="Back"
+          testID="brand-back"
+        >
+          <Text style={[s.backIcon, { color: arrowColor }]}>‹</Text>
+        </TouchableOpacity>
+      ) : (
+        <View style={s.backHit} />
+      )}
       <View style={s.brandRow}>
         <Text style={[s.brandText, { color: colors.text }]}>UrTruck</Text>
       </View>

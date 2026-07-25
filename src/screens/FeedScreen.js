@@ -19,9 +19,7 @@ import { matchTruckTypes } from '../utils/truckSynonyms';
 import FeedCard from '../components/ui/v1/FeedCard';
 import SearchBar from '../components/ui/v1/SearchBar';
 import FilterChips from '../components/ui/v1/FilterChips';
-import BellBadge from '../components/ui/v1/BellBadge';
 import LanguageSwitcher from '../components/LanguageSwitcher';
-import { useUnreadNotifications } from '../utils/useUnreadNotifications';
 import PressableScale from '../components/PressableScale';
 import { useMountedRef } from '../hooks/useMountedRef';
 import BottomSheet from '../components/ui/v1/BottomSheet';
@@ -97,6 +95,7 @@ export default function FeedScreen({ navigation, route }) {
   ftlText: { fontSize: 11, fontWeight: '900', letterSpacing: 1 },
   bellBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, backgroundColor: v1.surface },
   bellIcon: { fontSize: 18 },
+  menuBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   // Stage 45 guest toggle bar
   // RC2 fix: guestTabs/guestTab/guestTabText удалены вместе с
   // guestRole-toggle (см. JSX выше).
@@ -207,7 +206,6 @@ export default function FeedScreen({ navigation, route }) {
   const accent = isDriver ? '#22C55E' : '#FF8400';
   const { t, lang } = useI18n();
   const { theme } = useTheme();
-  const notifUnread = useUnreadNotifications();
   const { toast } = useToast();
   const { requireLevel, Gate } = useVerificationGate();
   const myUserId = session?.user?.id;
@@ -772,14 +770,21 @@ export default function FeedScreen({ navigation, route }) {
           <Text style={[s.brandText, { color: v1.text }]}>UrTruck</Text>
         </View>
         {isGuest ? (
-          // Гость не имеет уведомлений; placeholder чтобы заголовок
+          // Гость не имеет профиля; placeholder чтобы заголовок
           // остался по центру.
           <View style={{ width: 40 }} />
         ) : (
-          <BellBadge
-            count={notifUnread}
-            onPress={() => navigation.navigate('Notifications')}
-          />
+          // ☰ (top-right) → профиль и меню (как в inDrive / Yandex Go).
+          // Колокольчик уехал вниз в таб-бар как вкладка «Дела».
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Profile', { role })}
+            style={s.menuBtn}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            testID="feed-menu-btn"
+            accessibilityLabel={t('tab_profile')}
+          >
+            <Feather name="menu" size={24} color={v1.text} />
+          </TouchableOpacity>
         )}
       </View>
 

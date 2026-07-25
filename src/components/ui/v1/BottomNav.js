@@ -50,13 +50,14 @@ const UNREAD_POLL_MS = 12000;
 // truck — Feed (driver видит грузы, client видит транспорт)
 // clipboard — MyWork (мои рейсы / мои грузы)
 // message-circle — чат
-// user — профиль
+// inbox — «Дела» (единый инбокс: ставки, статусы сделок, уведомления).
+//         Заменил вкладку профиля — профиль ушёл наверх под ☰.
 const ICONS = {
   Feed:    { driver: 'package',  client: 'truck' },
   MyWork:  { driver: 'clipboard', client: 'clipboard' },
   Queue:   { driver: 'map-pin', client: 'map-pin' },
   Chats:   { driver: 'message-circle', client: 'message-circle' },
-  Profile: { driver: 'user', client: 'user' },
+  Deals:   { driver: 'inbox', client: 'inbox' },
 };
 
 // Industrial Luxury: неоновый акцент зависит от роли (источник истины —
@@ -162,7 +163,7 @@ export default function BottomNav({ state, navigation }) {
     if (name === 'MyWork')  return isDriver ? t('tab_my_work_driver') : t('tab_my_work_client');
     if (name === 'Queue')   return t('tab_queue');
     if (name === 'Chats')   return t('tab_chats');
-    if (name === 'Profile') return t('tab_profile');
+    if (name === 'Deals')   return t('tab_deals');
     return name;
   };
 
@@ -219,19 +220,18 @@ export default function BottomNav({ state, navigation }) {
           const iconName = iconKey ? (isDriver ? iconKey.driver : iconKey.client) : 'circle';
           const label = labelOf(route.name);
           const iconColor = isFocused ? accent.main : inactiveColor;
-          // Бейджи непрочитанного (Вариант Б):
+          // Бейджи непрочитанного:
           //  • «Чаты» = непрочитанные сообщения (chatUnread);
-          //  • «Рейсы»/MyWork = непрочитанные СОБЫТИЯ СДЕЛОК из колокола
-          //    (notifUnread — ставки/встречные/сделки/статусы). Денежный сигнал
-          //    теперь под пальцем, внизу, а не только в колоколе вверху.
-          // Колокол наверху остаётся как «история» — его не трогаем.
+          //  • «Дела» = непрочитанные СОБЫТИЯ СДЕЛОК (notifUnread — ставки/
+          //    встречные/сделки/статусы). Это бывший колокольчик, спущенный
+          //    вниз в таб-бар: вся живая работа под пальцем.
           const tabBadgeCount =
             route.name === 'Chats' ? chatUnread
-            : route.name === 'MyWork' ? notifUnread
+            : route.name === 'Deals' ? notifUnread
             : 0;
           const showBadge = tabBadgeCount > 0;
           const badgeLabel = tabBadgeCount > 9 ? '9+' : String(tabBadgeCount);
-          const badgeTestID = route.name === 'Chats' ? 'bottom-nav-chats-badge' : 'bottom-nav-mywork-badge';
+          const badgeTestID = route.name === 'Chats' ? 'bottom-nav-chats-badge' : 'bottom-nav-deals-badge';
 
           return (
             <TouchableOpacity

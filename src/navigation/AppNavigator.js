@@ -134,7 +134,10 @@ function MainTabs({ route }) {
           <Tab.Screen name="MyWork" component={MyTripsScreen} initialParams={{ role }} />
           <Tab.Screen name="Queue" component={QueueScreen} initialParams={{ role }} />
           <Tab.Screen name="Chats" component={ChatsListScreen} initialParams={{ role }} />
-          <Tab.Screen name="Profile" component={ProfileScreen} initialParams={{ role }} />
+          {/* «Дела» — единый инбокс всей активности (ставки, статусы сделок,
+              уведомления). Заменил вкладку Profile: профиль переехал наверх
+              под ☰ (top-right), а живая работа спустилась в таб-бар. */}
+          <Tab.Screen name="Deals" component={NotificationsScreen} initialParams={{ role }} />
         </>
       ) : (
         <>
@@ -142,7 +145,7 @@ function MainTabs({ route }) {
           <Tab.Screen name="Feed" component={FeedScreen} initialParams={{ role }} />
           <Tab.Screen name="Publish" component={PublishStub} initialParams={{ role }} />
           <Tab.Screen name="Chats" component={ChatsListScreen} initialParams={{ role }} />
-          <Tab.Screen name="Profile" component={ProfileScreen} initialParams={{ role }} />
+          <Tab.Screen name="Deals" component={NotificationsScreen} initialParams={{ role }} />
         </>
       )}
     </Tab.Navigator>
@@ -189,6 +192,7 @@ export default function AppNavigator() {
         <Stack.Screen name="RegOtp" component={PremiumOtpScreen} />
         <Stack.Screen name="RegProfile" component={PremiumProfileScreen} />
         <Stack.Screen name="Main" component={MainTabs} />
+        <Stack.Screen name="Profile" component={ProfileScreen} />
         <Stack.Screen name="CargoDetail" component={CargoDetail} />
         <Stack.Screen name="DriverDetail" component={DriverDetail} />
         <Stack.Screen name="Chat" component={ChatScreen} />
@@ -240,6 +244,9 @@ export default function AppNavigator() {
         // Полностью в приложении
         <>
           <Stack.Screen name="Main" component={MainTabs} />
+          {/* Профиль теперь открывается из ☰ (top-right) как отдельный экран
+              стека, а не как вкладка таб-бара (её занял «Дела»). */}
+          <Stack.Screen name="Profile" component={ProfileScreen} />
           <Stack.Screen name="CargoDetail" component={CargoDetail} />
           <Stack.Screen name="DriverDetail" component={DriverDetail} />
           <Stack.Screen name="Chat" component={ChatScreen} />

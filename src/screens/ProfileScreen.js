@@ -234,7 +234,21 @@ export default function ProfileScreen({ navigation, route }) {
     <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]} edges={['top']}>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
         <View style={s.headerRow}>
-          <GradientText style={s.title} colors={isDriver ? ['#00E676', '#00C766'] : ['#FF8400', '#EF4444']}>{t('profile')}</GradientText>
+          {/* Профиль теперь pushed-экран (открывается из ☰ в ленте), а не
+              корневая вкладка — нужна кнопка «назад». */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 8 }}>
+            {navigation.canGoBack?.() ? (
+              <TouchableOpacity
+                onPress={() => navigation.goBack()}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                testID="profile-back"
+                accessibilityLabel={t('back')}
+              >
+                <Feather name="arrow-left" size={24} color={theme.text} />
+              </TouchableOpacity>
+            ) : null}
+            <GradientText style={s.title} colors={isDriver ? ['#00E676', '#00C766'] : ['#FF8400', '#EF4444']}>{t('profile')}</GradientText>
+          </View>
           <HelpButton accent={accent} />
         </View>
 
