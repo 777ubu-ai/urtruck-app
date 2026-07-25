@@ -74,7 +74,9 @@ export default function RoleScreen({ navigation }) {
     try {
       setBusy('guest');
       await ensureGuest();
-      navigation.navigate('Main', { role: 'driver', guest: true });
+      // Гость = грузовладелец (client) по умолчанию: оранжевый бренд +
+      // лента «Машины». Роль сменится на реальную после входа.
+      navigation.navigate('Main', { role: 'client', guest: true });
     } catch (e) {
       setError(t('connection_failed'));
     } finally {

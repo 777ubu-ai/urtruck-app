@@ -163,7 +163,7 @@ const QaLoginHook = () => {
       // не будет; реальная role/phone подгрузятся из /register/me ниже.
       await signIn('qa-actor', 3, value);
       const me = await refreshLevel().catch(() => null);
-      const role = me?.role && me.role !== 'guest' ? me.role : 'driver';
+      const role = me?.role && me.role !== 'guest' ? me.role : 'client';
       setRole(role);
     } catch (e) {
       setErr('login failed');
@@ -233,9 +233,12 @@ export default function OnboardingV2Screen({ navigation }) {
       toast(t('no_connection'), 'error');
       return;
     }
+    // Гость по умолчанию = грузовладелец (client, оранжевый бренд + лента
+    // «Машины»). Решение владельца: незалогиненный посетитель сайта видит
+    // оранжевую тему, как в приложении. Роль сменится на реальную после входа.
     navigation.reset({
       index: 0,
-      routes: [{ name: 'Main', params: { role: 'driver', guest: true } }],
+      routes: [{ name: 'Main', params: { role: 'client', guest: true } }],
     });
   };
 

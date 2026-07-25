@@ -200,7 +200,9 @@ export default function FeedScreen({ navigation, route }) {
   const { session } = useAuth();
   const sessionRole = session?.user?.role || null;
   const isGuest = !sessionRole;
-  const role = sessionRole || route.params?.role || 'driver';
+  // Гость по умолчанию = грузовладелец (client, оранжевый). Совпадает с
+  // MainTabs и точками входа гостя (OnboardingV2 / RoleScreen).
+  const role = sessionRole || route.params?.role || 'client';
   const isDriver = role === 'driver';
   // Brand v3: driver = emerald, client = orange. No blue.
   const accent = isDriver ? '#22C55E' : '#FF8400';
