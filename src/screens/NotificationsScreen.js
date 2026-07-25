@@ -69,7 +69,8 @@ function parseNotifUrl(url) {
 
 export default function NotificationsScreen({ navigation }) {
   const { session } = useAuth();
-  const role = session?.user?.role || 'driver';
+  // Гость по умолчанию = client (оранжевый), как в остальном приложении.
+  const role = session?.user?.role || 'client';
   const { t } = useI18n();
   const v1 = useV1Colors();
   const s = React.useMemo(() => StyleSheet.create({
@@ -93,7 +94,7 @@ export default function NotificationsScreen({ navigation }) {
   const { toast } = useToast();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const accent = v1AccentFor('driver');
+  const accent = v1AccentFor(role);
 
   const load = async () => {
     setLoading(true);
