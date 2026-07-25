@@ -93,7 +93,7 @@ const SECTIONS = [
   { title: 'Tabs (driver)', items: [
     { label: 'Feed driver / Cargoes', screen: 'Main', params: { role: 'driver' } },
     { label: 'MyWork driver',         screen: 'MyTripsList', params: { role: 'driver' } },
-    { label: 'Profile driver',        screen: 'Main', params: { role: 'driver', screen: 'Profile' } },
+    { label: 'Profile driver',        screen: 'Profile', params: { role: 'driver' } },
   ]},
   { title: 'Tabs (cargo owner)', items: [
     { label: 'Feed cargo owner / Trips', screen: 'Main', params: { role: 'client' } },

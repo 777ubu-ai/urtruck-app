@@ -197,7 +197,12 @@ export default function NotificationsScreen({ navigation }) {
 
   return (
     <SafeAreaView style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']}>
-      <BrandBarWithShare onBack={() => navigation.goBack()} accent={accent.main} />
+      {/* Как вкладка «Дела» экран — корень таба (назад некуда). Как pushed
+          экран (deeplink 'Notifications') — показываем «назад». */}
+      <BrandBarWithShare
+        onBack={navigation.canGoBack?.() ? () => navigation.goBack() : undefined}
+        accent={accent.main}
+      />
       <View style={s.titleRow}>
         <Text style={s.titleHero}>{t('notifications_title')}</Text>
         {items.some(i => !i.is_read) ? (
