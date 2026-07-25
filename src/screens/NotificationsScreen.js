@@ -204,7 +204,9 @@ export default function NotificationsScreen({ navigation }) {
         accent={accent.main}
       />
       <View style={s.titleRow}>
-        <Text style={s.titleHero}>{t('notifications_title')}</Text>
+        {/* Заголовок совпадает с названием вкладки «Сделки», чтобы вход и
+            экран читались как одно целое. */}
+        <Text style={s.titleHero}>{t('tab_deals')}</Text>
         {items.some(i => !i.is_read) ? (
           <TouchableOpacity onPress={markAllRead}>
             <Text style={[s.markAll, { color: accent.main }]}>{t('notifications_mark_all_read')}</Text>
