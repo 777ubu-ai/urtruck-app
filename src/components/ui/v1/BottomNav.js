@@ -26,6 +26,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, AppState, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
+// MaterialCommunityIcons — только ради иконки «рукопожатие» для вкладки
+// «Сделки» (в наборе Feather рукопожатия нет). Иконка контурная,
+// монохромная → красится в акцент так же, как Feather-иконки.
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useV1Colors, v1AccentFor } from '../../../theme/designV1';
 import { useTheme } from '../../../utils/ThemeContext';
 import { useAuth } from '../../../utils/AuthContext';
@@ -50,14 +54,16 @@ const UNREAD_POLL_MS = 12000;
 // truck — Feed (driver видит грузы, client видит транспорт)
 // clipboard — MyWork (мои рейсы / мои грузы)
 // message-circle — чат
-// inbox — «Дела» (единый инбокс: ставки, статусы сделок, уведомления).
-//         Заменил вкладку профиля — профиль ушёл наверх под ☰.
+// handshake — «Сделки» (весь путь договорённости: ставки → торг →
+//         сделка → статусы). Заменил вкладку профиля — профиль ушёл
+//         наверх под ☰. Рендерится через MaterialCommunityIcons (см. ниже),
+//         остальные — через Feather.
 const ICONS = {
   Feed:    { driver: 'package',  client: 'truck' },
   MyWork:  { driver: 'clipboard', client: 'clipboard' },
   Queue:   { driver: 'map-pin', client: 'map-pin' },
   Chats:   { driver: 'message-circle', client: 'message-circle' },
-  Deals:   { driver: 'inbox', client: 'inbox' },
+  Deals:   { driver: 'handshake', client: 'handshake' },
 };
 
 // Industrial Luxury: неоновый акцент зависит от роли (источник истины —
@@ -255,7 +261,13 @@ export default function BottomNav({ state, navigation }) {
                   },
                 ]}
               >
-                <Feather name={iconName} size={22} color={iconColor} />
+                {route.name === 'Deals' ? (
+                  // Рукопожатие только в MaterialCommunityIcons; чуть крупнее
+                  // (24) для оптического баланса с Feather-иконками (22).
+                  <MaterialCommunityIcons name="handshake" size={24} color={iconColor} />
+                ) : (
+                  <Feather name={iconName} size={22} color={iconColor} />
+                )}
                 {showBadge ? (
                   <View
                     style={[s.iconBadge, { backgroundColor: colors.error, borderColor: barBg }]}
