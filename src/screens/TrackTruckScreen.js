@@ -48,16 +48,29 @@ export default function TrackTruckScreen({ navigation, route }) {
   const kmLeftRaw = (destCoord && driverCoord) ? geoDistance(driverCoord, destCoord) : null;
   const kmLeft = (kmLeftRaw != null && !Number.isNaN(kmLeftRaw)) ? Math.round(kmLeftRaw) : null;
   const speedKmh = (loc && loc.speed != null && loc.speed >= 0) ? Math.round(loc.speed * 3.6) : null;
-  const moving = speedKmh != null && speedKmh >= 5;
-  const etaMin = (kmLeft != null && moving) ? Math.round((kmLeft / speedKmh) * 60) : null;
-  const nearBorder = driverCoord ? isNearBorder(lat, lng) : false;
   const agoMin = (() => {
     if (!loc || !loc.updated_at) return null;
     const ts = Date.parse(String(loc.updated_at).replace(' ', 'T') + (String(loc.updated_at).endsWith('Z') ? '' : 'Z'));
     if (Number.isNaN(ts)) return null;
     return Math.max(0, Math.round((Date.now() - ts) / 60000));
   })();
+  // Точка «свежая» только если обновлялась недавно (≤ 30 мин). Иначе это старая
+  // отметка (водитель ещё не выехал / давно не выходил на связь) — НЕ показываем
+  // её как живое движение и не выдумываем скорость/ETA из протухших данных.
+  const isStale = agoMin == null || agoMin > 30;
+  const moving = speedKmh != null && speedKmh >= 5 && !isStale;
+  const etaMin = (kmLeft != null && moving) ? Math.round((kmLeft / speedKmh) * 60) : null;
+  const nearBorder = driverCoord ? isNearBorder(lat, lng) : false;
   const fmtEta = (m) => (m == null ? '—' : m < 60 ? `${m} ${t('track_min')}` : `${Math.floor(m / 60)} ${t('track_hour')} ${m % 60} ${t('track_min')}`);
+  // «Обновлено N назад» человеческим языком: мин → часы → дни (а не «2131 мин»).
+  const fmtAgo = (m) => {
+    if (m == null) return '';
+    if (m === 0) return t('track_updated_now');
+    const unit = m < 60 ? `${m} ${t('track_min')}`
+      : m < 1440 ? `${Math.floor(m / 60)} ${t('track_hour')}`
+      : `${Math.floor(m / 1440)} ${t('track_day')}`;
+    return `${t('track_updated')} ${unit} ${t('track_ago')}`;
+  };
   const openExternal = () => {
     if (lat == null) return;
     const url = Platform.OS === 'ios'
@@ -95,7 +108,7 @@ export default function TrackTruckScreen({ navigation, route }) {
             </View>
             <View style={[s.statDiv, { backgroundColor: theme.border }]} />
             <View style={s.stat}>
-              <Text style={[s.statNum, { color: moving ? '#22C55E' : theme.textMuted }]}>{speedKmh != null ? speedKmh : '—'}</Text>
+              <Text style={[s.statNum, { color: moving ? '#22C55E' : theme.textMuted }]}>{(!isStale && speedKmh != null) ? speedKmh : '—'}</Text>
               <Text style={[s.statLbl, { color: theme.textMuted }]}>{t('track_speed_label')} · {t('kmh_short')}</Text>
             </View>
             <View style={[s.statDiv, { backgroundColor: theme.border }]} />
@@ -104,16 +117,22 @@ export default function TrackTruckScreen({ navigation, route }) {
               <Text style={[s.statLbl, { color: theme.textMuted }]}>{t('track_eta_label')}</Text>
             </View>
           </View>
+          {/* Данные устарели → честно предупреждаем, а не выдаём старую точку за
+              живое движение (водитель ещё не выехал / давно не выходил на связь). */}
+          {isStale ? (
+            <View style={[s.staleBanner, { backgroundColor: 'rgba(245,158,11,0.12)', borderColor: '#F59E0B' }]}>
+              <Feather name="clock" size={13} color="#F59E0B" />
+              <Text style={s.staleText} numberOfLines={2}>{t('track_stale')}</Text>
+            </View>
+          ) : null}
           <View style={s.subRow}>
-            {nearBorder ? (
+            {nearBorder && !isStale ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <Feather name="flag" size={12} color="#2563EB" />
                 <Text style={[s.badgeBorder]}>{t('track_near_border')}</Text>
               </View>
             ) : <View />}
-            <Text style={[s.updated, { color: theme.textDim }]}>
-              {agoMin == null ? '' : agoMin === 0 ? t('track_updated_now') : `${t('track_updated')} ${agoMin} ${t('track_min')} ${t('track_ago')}`}
-            </Text>
+            <Text style={[s.updated, { color: theme.textDim }]}>{fmtAgo(agoMin)}</Text>
           </View>
           <TruckMap lat={lat} lng={lng} title={driverName || t('track_truck_marker')} />
           <TouchableOpacity style={[s.cta, { backgroundColor: '#FF8400' }]} onPress={openExternal} testID="track-open-maps">
@@ -142,6 +161,8 @@ const s = StyleSheet.create({
   subRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, marginBottom: 8, minHeight: 18 },
   badgeBorder: { color: '#2563EB', fontSize: 12, fontWeight: '800' },
   updated: { fontSize: 11, textAlign: 'right', flex: 1 },
+  staleBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, marginTop: 8, paddingHorizontal: 12, paddingVertical: 9, borderWidth: 1, borderRadius: 12 },
+  staleText: { flex: 1, fontSize: 12, color: '#F59E0B', fontWeight: '600', lineHeight: 16 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 8 },
   emptyTitle: { fontSize: 18, fontWeight: '800', textAlign: 'center', marginTop: 8 },
   emptyDesc: { fontSize: 13, textAlign: 'center', lineHeight: 19 },
