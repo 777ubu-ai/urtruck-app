@@ -618,7 +618,22 @@ export default function MyTripsScreen({ navigation, route }) {
               </View>
             </TouchableOpacity>
           )}
+          {/* Водитель «В работе»: две кнопки — «На границе» (необязательный шаг
+              коридора Китай↔СНГ, оживляет стадию таймлайна) и «Доставлен».
+              На внутреннем рейсе границу можно пропустить и сразу доставить. */}
           {isDriver && item.status === 'in_progress' && (
+            <TouchableOpacity
+              style={[s.acceptBtn, { backgroundColor: '#2563EB' }, busy && { opacity: 0.5 }]}
+              disabled={busy}
+              onPress={() => setDealStatusOnServer(item, 'at_border')}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="flag" size={15} color="#FFF" />
+                <Text style={s.acceptBtnText}>{t('status_at_border')}</Text>
+              </View>
+            </TouchableOpacity>
+          )}
+          {isDriver && (item.status === 'in_progress' || item.status === 'at_border') && (
             <TouchableOpacity
               style={[s.acceptBtn, busy && { opacity: 0.5 }]}
               disabled={busy}
@@ -630,7 +645,7 @@ export default function MyTripsScreen({ navigation, route }) {
               </View>
             </TouchableOpacity>
           )}
-          {!isDriver && item.status === 'in_progress' && (
+          {!isDriver && (item.status === 'in_progress' || item.status === 'at_border') && (
             <TouchableOpacity
               style={[s.acceptBtn, { backgroundColor: accent }, busy && { opacity: 0.5 }]}
               disabled={busy}
