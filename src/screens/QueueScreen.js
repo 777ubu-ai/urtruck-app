@@ -6,6 +6,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../utils/ThemeContext';
 import { useI18n } from '../utils/useI18n';
 import {v1Colors, useV1Colors} from '../theme/designV1';
+import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import { API_BASE } from '../config/env';
 import { regAPI } from '../utils/registration';
 import { storage } from '../utils/storage';
@@ -26,10 +27,11 @@ const BOARD_STATUS = {
   revoked:  { key: 'queue_lk_revoked',  color: '#EF4444' },
 };
 
-export default function QueueScreen({ navigation }) {
+export default function QueueScreen({ navigation, route }) {
   const v1 = useV1Colors();
   const { theme } = useTheme();
   const { t } = useI18n();
+  const role = route?.params?.role || 'client';
   const [borders, setBorders] = useState([]);
   const [loading, setLoading] = useState(true);
   // Хаб-навигация: 'hub' (страны) → 'country' (переходы выбранной страны).
@@ -284,7 +286,7 @@ export default function QueueScreen({ navigation }) {
         <Text style={[s.headerTitle, { color: theme.text }]} testID="queue-title">
           {selMeta ? `${selMeta.flag} ${selMeta.l}` : t('border_queues_title')}
         </Text>
-        <View style={{ width: 44 }} />
+        <HeaderMenuButton navigation={navigation} role={role} testID="queue-menu-btn" />
       </View>
 
       {/* ─────── Уровень 2: переходы выбранной страны ─────── */}

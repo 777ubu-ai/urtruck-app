@@ -236,6 +236,10 @@ export default function AppNavigator() {
           <Stack.Screen name="RegOtp" component={PremiumOtpScreen} />
           <Stack.Screen name="RegProfile" component={PremiumProfileScreen} />
           <Stack.Screen name="Main" component={MainTabs} />
+          {/* Профиль доступен и гостю (☰ в шапке) — показывает
+              ограниченный вид с приглашением зарегистрироваться. Без этой
+              регистрации маршрута navigate('Profile') у гостя не срабатывал. */}
+          <Stack.Screen name="Profile" component={ProfileScreen} />
           <Stack.Screen name="CargoDetail" component={CargoDetail} />
           <Stack.Screen name="DriverDetail" component={DriverDetail} />
           <Stack.Screen name="Chat" component={ChatScreen} />

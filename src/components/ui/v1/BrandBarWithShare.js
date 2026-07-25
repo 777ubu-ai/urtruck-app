@@ -15,7 +15,7 @@ import { useV1Colors } from '../../../theme/designV1';
 // Stage 44: rightIcon switched from `↗` glyph to a real share icon
 // (Feather `share-2`). Callers can still override `rightIcon` to a
 // string for back-compat, but the default is now the icon component.
-export default function BrandBarWithShare({ onBack, onShare, accent, rightTestID, rightIcon }) {
+export default function BrandBarWithShare({ onBack, onShare, accent, rightTestID, rightIcon, rightSlot }) {
   const colors = useV1Colors();
   const arrowColor = accent || colors.driver;
   return (
@@ -39,7 +39,11 @@ export default function BrandBarWithShare({ onBack, onShare, accent, rightTestID
       <View style={s.brandRow}>
         <Text style={[s.brandText, { color: colors.text }]}>UrTruck</Text>
       </View>
-      {onShare ? (
+      {/* rightSlot имеет приоритет: например, ☰ (профиль/меню) на корне
+          вкладки «Сделки». Иначе — кнопка «поделиться», если задан onShare. */}
+      {rightSlot ? (
+        rightSlot
+      ) : onShare ? (
         <TouchableOpacity
           onPress={onShare}
           style={[
