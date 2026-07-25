@@ -262,9 +262,10 @@ export default function BottomNav({ state, navigation }) {
                 ]}
               >
                 {route.name === 'Deals' ? (
-                  // Рукопожатие только в MaterialCommunityIcons; чуть крупнее
-                  // (24) для оптического баланса с Feather-иконками (22).
-                  <MaterialCommunityIcons name="handshake" size={24} color={iconColor} />
+                  // Рукопожатие только в MaterialCommunityIcons; контурный
+                  // вариант (-outline) в едином стиле с Feather-иконками и
+                  // читается чётче сплошного. Чуть крупнее (24) для баланса.
+                  <MaterialCommunityIcons name="handshake-outline" size={24} color={iconColor} />
                 ) : (
                   <Feather name={iconName} size={22} color={iconColor} />
                 )}
