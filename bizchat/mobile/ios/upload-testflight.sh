@@ -44,8 +44,8 @@ info "Инструменты на месте: Xcode, Flutter, CocoaPods, fastlan
 : "${ASC_KEY_P8_PATH:?Задайте ASC_KEY_P8_PATH — путь к файлу AuthKey_XXXX.p8}"
 [[ -f "$ASC_KEY_P8_PATH" ]] || die "Файл ключа не найден: $ASC_KEY_P8_PATH"
 
-# fastlane ждёт содержимое .p8 в base64 через ASC_KEY_CONTENT
-export ASC_KEY_CONTENT="$(base64 < "$ASC_KEY_P8_PATH")"
+# fastlane читает содержимое .p8 как есть (base64 не нужен)
+export ASC_KEY_CONTENT="$(cat "$ASC_KEY_P8_PATH")"
 
 # --- 3. Каталоги ---
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # .../bizchat/mobile/ios

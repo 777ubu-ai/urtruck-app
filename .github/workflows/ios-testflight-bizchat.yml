@@ -7,7 +7,8 @@ name: iOS TestFlight (Biz Chat)
 # ТРЕБУЕМЫЕ СЕКРЕТЫ (Settings → Secrets and variables → Actions):
 #   ASC_KEY_ID       — Key ID ключа App Store Connect API
 #   ASC_ISSUER_ID    — Issuer ID
-#   ASC_KEY_CONTENT  — содержимое .p8 в base64 (cat AuthKey_XXXX.p8 | base64)
+#   ASC_KEY_CONTENT  — содержимое файла .p8 как есть (открыть в TextEdit,
+#                      скопировать ВЕСЬ текст вместе с -----BEGIN/END----- строками)
 #   APPLE_TEAM_ID    — Team ID разработчика (App Store Connect → Membership)
 #
 # ПРЕДВАРИТЕЛЬНО в App Store Connect должно существовать приложение

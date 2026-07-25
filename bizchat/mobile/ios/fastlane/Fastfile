@@ -22,7 +22,9 @@ platform :ios do
       key_id: ENV["ASC_KEY_ID"],
       issuer_id: ENV["ASC_ISSUER_ID"],
       key_content: ENV["ASC_KEY_CONTENT"],
-      is_key_content_base64: true,
+      # ASC_KEY_CONTENT — сырое содержимое .p8 (многострочное, с
+      # -----BEGIN PRIVATE KEY-----). Base64 не требуется.
+      is_key_content_base64: false,
     )
 
     build_app(
