@@ -150,9 +150,16 @@ curl http://185.22.65.11:8001/api/v1/system/info   # статус OTP/face/stora
 Инструмент: пакет `graphifyy` (PyPI, MIT), команда `graphify`, ставится изолированно (`uv tool install graphifyy`, без extras → без LLM/egress).
 
 ### Канон UrTruck (нерушимо — проверять перед каждым касанием навигации)
-- Driver tab-bar = **5 вкладок**: `Feed` / `MyWork` / `Queue` / `Chats` / `Profile`.
-- `Chat` нельзя прятать в `Profile` — отдельная вкладка.
+- Driver tab-bar = **5 вкладок**: `Feed` / `MyWork` / `Queue` / `Chats` / `Deals`.
+- **Профиль — НЕ вкладка.** Открывается из ☰ (Feather `menu`, top-right в шапке
+  ленты) как pushed-экран стека (`Stack.Screen name="Profile"`). Паттерн inDrive/
+  Yandex Go. Не возвращать `Profile` во вкладки.
+- `Deals` (`NotificationsScreen`, иконка `inbox`) — единый инбокс живой работы:
+  ставки, статусы сделок, уведомления. Это бывший колокольчик, спущенный вниз.
+  Бейдж непрочитанного `notifUnread` — на `Deals` (не на `MyWork`).
+- `Chat` нельзя прятать — отдельная вкладка.
 - `Queue` — отдельная обычная центральная вкладка.
-- Client tab-bar не трогать без отдельного разрешения.
+- Client tab-bar не трогать без отдельного разрешения (перестановка профиль↔«Дела»
+  применена к обеим ролям по прямому указанию владельца).
 - Кнопка `Publish`/«Разместить» не должна становиться driver-вкладкой.
 - Не возвращать seed/demo/test data в production UI.
