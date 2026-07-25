@@ -198,39 +198,26 @@ export default function FeedCard({
 
       {(bottomLeft || bottomRight) && !compact ? (
         <View style={s.bottomRow}>
+          {/* Ghost-стиль (обводка) по решению владельца: прозрачный фон +
+              обводка/текст акцентом — вместо сплошной заливки. */}
           {bottomLeft ? (
             <TouchableOpacity
               onPress={bottomLeft.onPress}
               activeOpacity={0.85}
-              style={[
-                s.btn,
-                bottomLeft.filled
-                  ? { backgroundColor: a.main }
-                  : { backgroundColor: colors.surfaceLift },
-              ]}
+              style={[s.btn, { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: bottomLeft.filled ? a.main : colors.border }]}
               testID={bottomLeft.testID}
             >
-              <Text style={[s.btnText, { color: bottomLeft.filled ? '#0A0A0A' : colors.text }]}>{bottomLeft.label}</Text>
+              <Text style={[s.btnText, { color: bottomLeft.filled ? a.main : colors.text }]}>{bottomLeft.label}</Text>
             </TouchableOpacity>
           ) : null}
           {bottomRight ? (
             <TouchableOpacity
               onPress={bottomRight.onPress}
               activeOpacity={0.85}
-              style={[
-                s.btn,
-                // Stage 16: outline variant uses the role accent on a
-                // transparent fill (thin green border + green label)
-                // instead of the previous neutral grey border. Solid
-                // green is reserved for the screen-level primary CTA
-                // (publish-route / publish-cargo / floating +).
-                bottomRight.filled !== false
-                  ? { backgroundColor: a.main }
-                  : { backgroundColor: a.soft },
-              ]}
+              style={[s.btn, { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: a.main }]}
               testID={bottomRight.testID}
             >
-              <Text style={[s.btnText, { color: (bottomRight.filled !== false) ? '#0A0A0A' : a.main }]}>{bottomRight.label}</Text>
+              <Text style={[s.btnText, { color: a.main }]}>{bottomRight.label}</Text>
             </TouchableOpacity>
           ) : null}
         </View>

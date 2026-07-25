@@ -811,13 +811,13 @@ export default function FeedScreen({ navigation, route }) {
             публикации рейса ему на ленту не выносим (остаётся «+» в баре). */}
         {!isDriver ? (
           <PressableScale
-            style={[s.titleCta, { backgroundColor: accentColor }]}
+            style={[s.titleCta, { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: accentColor }]}
             onPress={() => navigation.navigate('CreateCargo', { role })}
             testID="publish-cargo-button"
             accessibilityRole="button"
             accessibilityLabel={t('postCargo')}
           >
-            <Text style={[s.titleCtaText, { color: '#0A0A0A' }]}>+ {t('postCargo')}</Text>
+            <Text style={[s.titleCtaText, { color: accentColor }]}>+ {t('postCargo')}</Text>
           </PressableScale>
         ) : null}
       </View>
