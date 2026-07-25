@@ -811,12 +811,19 @@ export default function CargoDetail({ navigation, route }) {
                 <TouchableOpacity
                   style={[s.dealActionBtn, { backgroundColor: 'rgba(239,68,68,0.10)' }]}
                   disabled={statusLoading}
-                  onPress={async () => {
-                    const ok = (Platform.OS === 'web' && typeof window !== 'undefined' && window.confirm)
-                      ? window.confirm(t('cancel_deal_confirm'))
-                      : true;
-                    if (!ok) return;
-                    changeDealStatus('cancelled');
+                  onPress={() => {
+                    // Подтверждение отмены на ОБЕИХ платформах. Раньше на native
+                    // ok=true всегда → случайный тап сразу отменял сделку без
+                    // вопроса. Теперь на телефоне — Alert с явным подтверждением.
+                    const doCancel = () => changeDealStatus('cancelled');
+                    if (Platform.OS === 'web') {
+                      if (typeof window !== 'undefined' && window.confirm(t('cancel_deal_confirm'))) doCancel();
+                    } else {
+                      Alert.alert(t('cancel_deal_confirm'), '', [
+                        { text: t('cancel'), style: 'cancel' },
+                        { text: t('confirm'), style: 'destructive', onPress: doCancel },
+                      ]);
+                    }
                   }}
                 >
                   <Text style={[s.dealActionText, { color: '#EF4444' }]}>⊘ {t('cancel_deal')}</Text>

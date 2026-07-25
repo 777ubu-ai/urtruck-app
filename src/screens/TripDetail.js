@@ -249,16 +249,22 @@ export default function TripDetail({ navigation, route }) {
                 <Text style={[s.dealActionText, { color: v1Accent.onAccent }]}>💬 {t('order_chat')}</Text>
               </TouchableOpacity>
             )}
-            {(dealStatus === 'accepted' || dealStatus === 'in_progress') && (
+            {(dealStatus === 'accepted' || dealStatus === 'in_progress' || dealStatus === 'at_border') && (
               <TouchableOpacity
                 style={[s.dealActionBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#EF4444' }]}
                 disabled={statusLoading}
-                onPress={async () => {
-                  const ok = (Platform.OS === 'web' && typeof window !== 'undefined' && window.confirm)
-                    ? window.confirm(t('cancel_deal_confirm'))
-                    : true;
-                  if (!ok) return;
-                  changeDealStatus('cancelled');
+                onPress={() => {
+                  // Подтверждение на обеих платформах (раньше на native отменяло
+                  // мгновенно без вопроса при случайном тапе).
+                  const doCancel = () => changeDealStatus('cancelled');
+                  if (Platform.OS === 'web') {
+                    if (typeof window !== 'undefined' && window.confirm(t('cancel_deal_confirm'))) doCancel();
+                  } else {
+                    Alert.alert(t('cancel_deal_confirm'), '', [
+                      { text: t('cancel'), style: 'cancel' },
+                      { text: t('confirm'), style: 'destructive', onPress: doCancel },
+                    ]);
+                  }
                 }}
               >
                 <Text style={[s.dealActionText, { color: '#EF4444' }]}>⊘ {t('cancel_deal')}</Text>
