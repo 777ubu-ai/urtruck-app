@@ -144,11 +144,18 @@ export default function ChatsListScreen({ navigation, route }) {
     const isCountered = bid.status === 'countered';
     const cur = bid.currency || 'USD';
     const statusColor = isCountered ? '#A855F7' : '#FF8400';
+    // Цвет = что требуется: оранжевый «горит» — нужно решение, фиолетовый —
+    // идёт торг. Заливка, а не только рамка: в кабине на солнце тонкую
+    // рамку не видно. Метка словами: клиенту «Новое предложение», водителю
+    // (его собственная ставка) — «Ждёт ответа».
+    const label = isCountered
+      ? t('deals_offer_bargain')
+      : (role === 'driver' ? t('deals_offer_waiting') : t('deals_offer_new'));
     return (
       <TouchableOpacity
         key={String(bid.id)}
         testID="deals-offer-card"
-        style={[s.card, { backgroundColor: theme.card, borderColor: statusColor, borderWidth: 1.5 }]}
+        style={[s.card, { backgroundColor: statusColor + '14', borderColor: statusColor, borderWidth: 1.5 }]}
         onPress={() => openOffer(bid)}
         activeOpacity={0.85}
       >
@@ -160,9 +167,7 @@ export default function ChatsListScreen({ navigation, route }) {
             <Text style={[s.name, { color: theme.text }]} numberOfLines={1}>
               {localizePlace(bid.cargo_from || '—', lang)} → {localizePlace(bid.cargo_to || '—', lang)}
             </Text>
-            <Text style={[s.dealStatus, { color: statusColor }]}>
-              {isCountered ? t('bid_countered') : t('bid_pending')}
-            </Text>
+            <Text style={[s.dealStatus, { color: statusColor }]}>{label}</Text>
           </View>
           {bid.cargo_desc ? (
             <Text style={[s.preview, { color: theme.textMuted }]} numberOfLines={1}>
@@ -311,7 +316,7 @@ export default function ChatsListScreen({ navigation, route }) {
           ListHeaderComponent={offersHeader}
           contentContainerStyle={{ padding: 12, paddingBottom: 24 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accent} />}
-          ListEmptyComponent={<Text style={[s.empty, { color: theme.textMuted }]}>{query || filter !== 'all' ? t('chat_no_results') : (dealsMode ? t('deals_empty') : t('chats_empty'))}</Text>}
+          ListEmptyComponent={<Text style={[s.empty, { color: theme.textMuted }]}>{query || filter !== 'all' ? t('chat_no_results') : (dealsMode ? (role === 'driver' ? t('deals_empty_driver') : t('deals_empty')) : t('chats_empty'))}</Text>}
         />
       )}
     </SafeAreaView>
