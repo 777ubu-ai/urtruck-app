@@ -17,18 +17,45 @@ class BizChatTheme {
   static const double rLg = 24;
   static const double rXl = 28;
 
+  /// Светлая тема: чистый белый фон и почти чёрный текст.
+  ///
+  /// ВАЖНО: генерируемая из seed-цвета палитра тонирует ВСЕ поверхности в
+  /// сиренево-серый — из-за этого интерфейс выглядел блёклым и «расплывчатым».
+  /// Поэтому поверхности переопределяем на нейтральные: контент и фото
+  /// становятся главными, а фирменный синий остаётся акцентом кнопок.
   static ThemeData light() {
     final scheme = ColorScheme.fromSeed(
       seedColor: _brandSeed,
       brightness: Brightness.light,
+    ).copyWith(
+      surface: const Color(0xFFFFFFFF),
+      onSurface: const Color(0xFF0A0A0A),
+      surfaceContainerLowest: const Color(0xFFFFFFFF),
+      surfaceContainerLow: const Color(0xFFFFFFFF),
+      surfaceContainer: const Color(0xFFF7F7F7),
+      surfaceContainerHigh: const Color(0xFFF2F2F2),
+      surfaceContainerHighest: const Color(0xFFEFEFEF),
+      onSurfaceVariant: const Color(0xFF6B6B6B),
+      outlineVariant: const Color(0xFFE0E0E0),
     );
     return _base(scheme);
   }
 
+  /// Тёмная тема: глубокий чёрный, как в ночных режимах соцсетей.
   static ThemeData dark() {
     final scheme = ColorScheme.fromSeed(
       seedColor: _brandSeed,
       brightness: Brightness.dark,
+    ).copyWith(
+      surface: const Color(0xFF000000),
+      onSurface: const Color(0xFFFAFAFA),
+      surfaceContainerLowest: const Color(0xFF000000),
+      surfaceContainerLow: const Color(0xFF0A0A0A),
+      surfaceContainer: const Color(0xFF141414),
+      surfaceContainerHigh: const Color(0xFF1C1C1C),
+      surfaceContainerHighest: const Color(0xFF242424),
+      onSurfaceVariant: const Color(0xFFA0A0A0),
+      outlineVariant: const Color(0xFF2E2E2E),
     );
     return _base(scheme);
   }
