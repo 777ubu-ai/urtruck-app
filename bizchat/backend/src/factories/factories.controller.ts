@@ -49,7 +49,7 @@ export class FactoriesController {
       // Ищем по названию, описанию и хэштегам одновременно.
       qb.andWhere(
         new Brackets((w) => {
-          w.where('f.company_name ILIKE :s', { s: `%${search}%` })
+          w.where('f.companyName ILIKE :s', { s: `%${search}%` })
             .orWhere('f.description ILIKE :s', { s: `%${search}%` })
             .orWhere(':tag = ANY(f.hashtags)', {
               tag: search.replace(/^#/, ''),
@@ -59,21 +59,21 @@ export class FactoriesController {
     }
 
     if (verified === 'true') {
-      qb.andWhere('f.verified_at IS NOT NULL');
+      qb.andWhere('f.verifiedAt IS NOT NULL');
     }
 
     switch (sort) {
       case 'products':
-        qb.orderBy('f.total_products', 'DESC');
+        qb.orderBy('f.totalProducts', 'DESC');
         break;
       case 'new':
-        qb.orderBy('f.created_at', 'DESC');
+        qb.orderBy('f.createdAt', 'DESC');
         break;
       default:
         // По умолчанию — сначала проверенные и надёжные: витрина должна
         // показывать лучших поставщиков первыми.
-        qb.orderBy('f.trust_score', 'DESC').addOrderBy(
-          'f.total_products',
+        qb.orderBy('f.trustScore', 'DESC').addOrderBy(
+          'f.totalProducts',
           'DESC',
         );
     }
