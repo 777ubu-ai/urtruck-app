@@ -225,24 +225,41 @@ class _SearchScreenState extends State<SearchScreen> {
             _debounce?.cancel();
             _applyQuery(_textController.text);
           },
+          style: const TextStyle(fontSize: 15),
           decoration: InputDecoration(
             hintText: l.searchHint,
-            prefixIcon: const Icon(Icons.search),
+            hintStyle: TextStyle(
+              fontSize: 15,
+              color: scheme.onSurfaceVariant,
+            ),
+            prefixIcon: Icon(Icons.search_rounded,
+                size: 21, color: scheme.onSurfaceVariant),
+            prefixIconConstraints:
+                const BoxConstraints(minWidth: 38, minHeight: 38),
             suffixIcon: _textController.text.isNotEmpty
                 ? IconButton(
-                    icon: const Icon(Icons.close),
+                    icon: const Icon(Icons.cancel_rounded, size: 18),
                     tooltip: l.searchHintTooltipClear,
                     onPressed: _clearQuery,
+                    visualDensity: VisualDensity.compact,
                   )
                 : null,
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(24),
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide.none,
             ),
             filled: true,
             fillColor: scheme.surfaceContainerHighest,
             contentPadding:
-                const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
             isDense: true,
           ),
         ),

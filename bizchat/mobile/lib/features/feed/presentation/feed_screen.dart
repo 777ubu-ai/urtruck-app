@@ -838,25 +838,51 @@ class _EmptyFeedView extends StatelessWidget {
         title = l.feedEmptyGenericTitle;
         message = l.feedEmptyGenericBody;
     }
+    final scheme = Theme.of(context).colorScheme;
+    // Пустой экран не должен выглядеть «поломкой»: иконка в фирменном
+    // круге-градиенте и внятный текст вместо серого значка на пустоте.
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 32),
       children: [
-        const SizedBox(height: 120),
-        Icon(icon,
-            size: 80, color: Theme.of(context).colorScheme.onSurfaceVariant),
-        const SizedBox(height: 16),
+        const SizedBox(height: 110),
+        Center(
+          child: Container(
+            width: 96,
+            height: 96,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  const Color(0xFF0B66FF).withValues(alpha: 0.12),
+                  const Color(0xFF00C2FF).withValues(alpha: 0.12),
+                ],
+              ),
+            ),
+            child: Icon(icon, size: 44, color: const Color(0xFF0B66FF)),
+          ),
+        ),
+        const SizedBox(height: 20),
         Text(
           title,
           textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.titleLarge,
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.3,
+          ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         Text(
           message,
           textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
+          style: TextStyle(
+            fontSize: 14,
+            height: 1.4,
+            color: scheme.onSurfaceVariant,
+          ),
         ),
       ],
     );
