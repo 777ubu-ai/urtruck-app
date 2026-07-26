@@ -58,7 +58,7 @@ jobs:
           cp "$ENV" "$ENV.bak.$(date +%Y%m%d-%H%M%S)"
           # Прописываем универсальный тестовый код (idempotent)
           sed -i '/^UNIVERSAL_LOGIN_CODE=/d' "$ENV"
-          echo "UNIVERSAL_LOGIN_CODE=112233" >> "$ENV"
+          echo "UNIVERSAL_LOGIN_CODE=000000" >> "$ENV"
           echo "UNIVERSAL_LOGIN_CODE прописан."
 
           cd /home/ubuntu/bizchat/infra

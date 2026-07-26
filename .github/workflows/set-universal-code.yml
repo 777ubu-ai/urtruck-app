@@ -1,0 +1,56 @@
+name: Set Biz Chat universal code
+
+# Меняет универсальный код входа (UNIVERSAL_LOGIN_CODE) без пересборки —
+# только правка .env + перезапуск backend (~15 сек).
+# Текущее значение задаётся ниже в CODE.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/biz-chat-inquiry-6v7qi2]
+    paths: ['.github/workflows/set-universal-code.yml']
+
+jobs:
+  set:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      CODE: "000000"
+    steps:
+      - name: Update universal code and restart backend
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PASS: ${{ secrets.SERVER_PASS }}
+        run: |
+          sudo apt-get install -y sshpass >/dev/null 2>&1
+          sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
+            CODE="$CODE" 'bash -s' <<'EOS'
+          set -e
+          ENV=/home/ubuntu/bizchat/infra/.env.production
+          cp "$ENV" "$ENV.bak.$(date +%Y%m%d-%H%M%S)"
+          sed -i '/^UNIVERSAL_LOGIN_CODE=/d' "$ENV"
+          echo "UNIVERSAL_LOGIN_CODE=$CODE" >> "$ENV"
+          echo "Код установлен: $CODE"
+          cd /home/ubuntu/bizchat/infra
+          docker compose -f docker-compose.production.yml -f docker-compose.staging.yml --env-file .env.production up -d backend
+          for i in $(seq 1 30); do
+            S=$(docker inspect -f '{{.State.Health.Status}}' bizchat-backend-prod 2>/dev/null || echo starting)
+            [ "$S" = "healthy" ] && { echo "healthy"; break; }
+            sleep 3
+          done
+          docker inspect -f 'backend: {{.State.Health.Status}}' bizchat-backend-prod
+          EOS
+
+      - name: Verify new code works
+        run: |
+          T="+77000004321"
+          curl -sS -m 15 -o /dev/null -w "send: %{http_code}\n" -X POST \
+            https://biz-chat.net/api/v1/auth/sms/send -H "Content-Type: application/json" -d "{\"phone\":\"$T\"}"
+          body=$(curl -sS -m 15 -X POST https://biz-chat.net/api/v1/auth/sms/verify \
+            -H "Content-Type: application/json" -d "{\"phone\":\"$T\",\"code\":\"000000\",\"type\":\"buyer\"}")
+          echo "$body" | head -c 120; echo
+          case "$body" in
+            *'"accessToken"'*) echo "✅ Код 000000 работает";;
+            *) echo "::error::000000 не сработал"; exit 1;;
+          esac
