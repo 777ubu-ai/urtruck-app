@@ -280,6 +280,7 @@ class UserPostPreview {
     required this.priceAmount,
     required this.priceCurrency,
     required this.likesCount,
+    required this.viewsCount,
     required this.isHotDeal,
   });
 
@@ -289,6 +290,7 @@ class UserPostPreview {
   final String priceAmount;
   final String priceCurrency;
   final int likesCount;
+  final int viewsCount;
   final bool isHotDeal;
 
   factory UserPostPreview.fromJson(Map<String, dynamic> json) {
@@ -305,6 +307,7 @@ class UserPostPreview {
       priceAmount: (json['priceAmount'] ?? '').toString(),
       priceCurrency: json['priceCurrency'] as String? ?? '',
       likesCount: (json['likesCount'] as num?)?.toInt() ?? 0,
+      viewsCount: (json['viewsCount'] as num?)?.toInt() ?? 0,
       isHotDeal: json['isHotDeal'] as bool? ?? false,
     );
   }

@@ -284,13 +284,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.zero,
         children: [
-          _ProfileHeader(profile: p),
+          // Сетка товаров идёт во всю ширину, поэтому общий отступ убран,
+          // а верхние блоки получают собственные поля.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: _ProfileHeader(profile: p),
+          ),
           const SizedBox(height: 14),
           // Кнопки действий на всю ширину — как в профилях соцсетей.
-          Row(
-            children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
               Expanded(
                 child: _ProfileActionButton(
                   label: l.profileEditTooltip,
@@ -322,20 +329,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
               ),
-            ],
+              ],
+            ),
           ),
           const SizedBox(height: 20),
           // Рекомендации поставщиков — знакомим покупателя с каталогом.
-          InterestingFactories(excludeUserId: p.id),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: InterestingFactories(excludeUserId: p.id),
+          ),
           const SizedBox(height: 16),
           if (p.factory != null) ...[
-            _FactoryCard(factory: p.factory!),
-            const SizedBox(height: 16),
-            // Posts grid — только для factory, потому что только заводы публикуют посты
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: _FactoryCard(factory: p.factory!),
+            ),
+            const SizedBox(height: 20),
+            // Сетка товаров — во всю ширину, последним блоком.
             _UserPostsGrid(userId: p.id),
-            const SizedBox(height: 16),
           ],
-          const SizedBox(height: 32),
+          const SizedBox(height: 24),
         ],
       ),
     );
@@ -706,34 +719,49 @@ class _UserPostsGridState extends State<_UserPostsGrid> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final l = AppLocalizations.of(context)!;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.grid_view_outlined,
-                    size: 18, color: scheme.onSurfaceVariant),
-                const SizedBox(width: 8),
-                Text(
-                  l.profileMyPosts,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+    // Сетка во всю ширину экрана, без карточки и отступов — как в лентах
+    // соцсетей: плитки стыкуются друг с другом и продолжаются вниз.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+            // Вкладки над сеткой: товары / видео / отмеченные.
+            Container(
+              decoration: BoxDecoration(
+                border: Border(
+                  top: BorderSide(color: scheme.outlineVariant, width: 0.5),
                 ),
-                const Spacer(),
-                if (_posts.isNotEmpty)
-                  Text(
-                    '${_posts.length}',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 11),
+                      decoration: BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(color: scheme.onSurface, width: 1.5),
                         ),
+                      ),
+                      child: Icon(Icons.grid_on_rounded,
+                          size: 23, color: scheme.onSurface),
+                    ),
                   ),
-              ],
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 11),
+                      child: Icon(Icons.slideshow_outlined,
+                          size: 23, color: scheme.onSurfaceVariant),
+                    ),
+                  ),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 11),
+                      child: Icon(Icons.person_pin_outlined,
+                          size: 23, color: scheme.onSurfaceVariant),
+                    ),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 12),
             if (_loading && _posts.isEmpty)
               const Padding(
                 padding: EdgeInsets.all(24),
@@ -777,15 +805,13 @@ class _UserPostsGridState extends State<_UserPostsGrid> {
                 gridDelegate:
                     const SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 3,
-                  crossAxisSpacing: 4,
-                  mainAxisSpacing: 4,
+                  crossAxisSpacing: 1.5,
+                  mainAxisSpacing: 1.5,
                 ),
                 itemCount: _posts.length,
                 itemBuilder: (_, i) => _PostThumbnail(post: _posts[i]),
               ),
-          ],
-        ),
-      ),
+      ],
     );
   }
 }
@@ -812,7 +838,7 @@ class _PostThumbnail extends StatelessWidget {
         fit: StackFit.expand,
         children: [
           ClipRRect(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.zero,
             child: imageUrl != null
                 ? CachedNetworkImage(
                     imageUrl: imageUrl,
@@ -866,16 +892,26 @@ class _PostThumbnail extends StatelessWidget {
                   ],
                 ),
               ),
-              child: Text(
-                '${post.priceAmount} ${post.priceCurrency}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.2,
-                ),
+              // Просмотры на плитке — как в сетках соцсетей; цена видна
+              // в карточке товара при открытии.
+              child: Row(
+                children: [
+                  const Icon(Icons.visibility_outlined,
+                      size: 13, color: Colors.white),
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: Text(
+                      '${post.viewsCount}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
