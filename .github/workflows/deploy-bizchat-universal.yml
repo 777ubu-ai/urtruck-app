@@ -3,7 +3,7 @@ name: Deploy Biz Chat backend (universal code)
 # Разворачивает обновлённый backend Biz Chat (с универсальным кодом входа
 # для тестов) и прописывает UNIVERSAL_LOGIN_CODE в .env.production.
 #
-# ВНИМАНИЕ: универсальный код 112233 — ТЕСТОВЫЙ, подходит к любому номеру.
+# ВНИМАНИЕ: универсальный код 000000 — ТЕСТОВЫЙ, подходит к любому номеру.
 # Для продакшена этот код нужно убрать и включить реальные SMS.
 #
 # Запуск: по push этого файла (контролируемо).
@@ -24,6 +24,10 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # Одно место истины для кода: и запись в .env, и проверка после деплоя.
+    # Раньше они разъехались (в env писали 000000, а проверяли 112233).
+    env:
+      UNIVERSAL_CODE: "000000"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -54,13 +58,14 @@ jobs:
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SERVER_PASS: ${{ secrets.SERVER_PASS }}
         run: |
-          sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'EOS'
+          sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
+            "UNIVERSAL_CODE='$UNIVERSAL_CODE' bash -s" <<'EOS'
           set -e
           ENV=/home/ubuntu/bizchat/infra/.env.production
           cp "$ENV" "$ENV.bak.$(date +%Y%m%d-%H%M%S)"
           # Прописываем универсальный тестовый код (idempotent)
           sed -i '/^UNIVERSAL_LOGIN_CODE=/d' "$ENV"
-          echo "UNIVERSAL_LOGIN_CODE=000000" >> "$ENV"
+          echo "UNIVERSAL_LOGIN_CODE=$UNIVERSAL_CODE" >> "$ENV"
           echo "UNIVERSAL_LOGIN_CODE прописан."
 
           cd /home/ubuntu/bizchat/infra
@@ -78,9 +83,14 @@ jobs:
           docker inspect -f 'backend: {{.State.Health.Status}}' bizchat-backend-prod
 
           echo "== Миграции БД =="
-          # Без этого шага новые миграции не применялись: схема держалась
-          # только на synchronize, что в продакшене опасно.
-          $COMPOSE exec -T backend npm run migration:run || echo "ВНИМАНИЕ: миграции не применились — проверить вручную"
+          # ВАЖНО: в production-образе нет ts-node, поэтому `npm run migration:run`
+          # (через typeorm-ts-node-commonjs) там не работает — раньше он падал молча
+          # и схема расходилась с сущностями (лента и каталог легли на 500 из-за
+          # отсутствующей колонки factories.website).
+          # Используем скомпилированный data-source и CLI из prod-зависимостей.
+          # Ошибка миграций = провал деплоя, а не предупреждение.
+          docker exec bizchat-backend-prod npm run migration:run:prod
+          docker exec bizchat-backend-prod npm run migration:show:prod || true
 
           echo "== Режим synchronize (риск авто-правки схемы) =="
           docker exec bizchat-backend-prod printenv DB_SYNCHRONIZE || echo "DB_SYNCHRONIZE не задан (по умолчанию выключен)"
@@ -89,6 +99,15 @@ jobs:
       - name: Verify universal code works
         run: |
           set -e
+          # Лента — главный экран приложения. Раньше проверка её не трогала,
+          # поэтому деплой со сломанной схемой БД считался успешным.
+          echo "== лента (главный экран) =="
+          feed_body=$(curl -fsS -m 20 "https://biz-chat.net/api/v1/posts/feed?limit=1" || true)
+          echo "$feed_body" | head -c 200; echo
+          case "$feed_body" in
+            *'"data"'*) echo "✅ Лента отвечает";;
+            *) echo "::error::Лента не вернула data — деплой сломал главный экран"; exit 1;;
+          esac
           echo "== каталог заводов =="
           cat_body=$(curl -fsS -m 20 "https://biz-chat.net/api/v1/factories?limit=3" || true)
           echo "$cat_body" | head -c 200; echo
@@ -100,9 +119,9 @@ jobs:
           echo "== sms/send (stub) =="
           curl -sS -m 15 -o /dev/null -w "send: %{http_code}\n" -X POST \
             https://biz-chat.net/api/v1/auth/sms/send -H "Content-Type: application/json" -d "{\"phone\":\"$T\"}"
-          echo "== verify универсальным кодом 112233 =="
+          echo "== verify универсальным кодом $UNIVERSAL_CODE =="
           body=$(curl -sS -m 15 -X POST https://biz-chat.net/api/v1/auth/sms/verify \
-            -H "Content-Type: application/json" -d "{\"phone\":\"$T\",\"code\":\"112233\",\"type\":\"buyer\"}")
+            -H "Content-Type: application/json" -d "{\"phone\":\"$T\",\"code\":\"$UNIVERSAL_CODE\",\"type\":\"buyer\"}")
           echo "$body" | head -c 200
           echo
           case "$body" in
