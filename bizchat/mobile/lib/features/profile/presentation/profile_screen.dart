@@ -8,6 +8,7 @@ import '../../auth/presentation/phone_screen.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../feed/presentation/hashtag_screen.dart';
 import '../../feed/presentation/post_detail_screen.dart';
+import '../../factories/presentation/interesting_factories.dart';
 import '../data/profile_repository.dart';
 import 'edit_profile_screen.dart';
 import 'follow_list_screen.dart';
@@ -181,6 +182,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         padding: const EdgeInsets.all(16),
         children: [
           _ProfileHeader(profile: p),
+          const SizedBox(height: 20),
+          // Рекомендации поставщиков — знакомим покупателя с каталогом.
+          InterestingFactories(excludeUserId: p.id),
           const SizedBox(height: 16),
           // S2-03: карточки статистики
           if (p.factory != null)
