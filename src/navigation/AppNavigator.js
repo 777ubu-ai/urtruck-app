@@ -63,13 +63,8 @@ import ProfileV2Screen from '../screens/onboarding/ProfileV2Screen';
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
-// Placeholder for the central "+" tab. The custom BottomNav intercepts the
-// press and navigates to CreateTrip / CreateCargo before this component ever
-// mounts, but react-navigation requires every Tab.Screen to have a real
-// component reference, so we keep this stub.
-function PublishStub() {
-  return <View style={{ flex: 1, backgroundColor: '#000' }} />;
-}
+// (Стаб центральной «+»-вкладки удалён 26.07.2026: у клиента размещение груза
+// переехало кнопкой внутрь «Мои грузы», вкладки Publish больше нет.)
 
 function MainTabs({ route }) {
   const { session } = useAuth();
@@ -109,14 +104,15 @@ function MainTabs({ route }) {
   }, [isDriver]);
   useDealLocationBroadcast(inWorkDealIds);
 
-  // Канон таб-баров (мастер-ТЗ §2.2–2.3).
+  // Канон таб-баров (мастер-ТЗ §2.2–2.3 + приказ владельца 2026-07-26).
   //   Водитель (5): Грузы (Feed) · Рейсы (MyWork) · Очередь (Queue, центр) ·
-  //     Чат (Chats, с бейджем непрочитанного) · Профиль. Кнопка «Разместить»
-  //     живёт ВНУТРИ «Рейсы», а не отдельной вкладкой (§2.2.2). Чат всегда
-  //     на панели — критичный инструмент биржи (§2.4).
-  //   Клиент (5, приказ 2026-06-13): Грузы (MyWork) · Машины (Feed) ·
-  //     «+» Создать (Publish, центр) · Чат (Chats, с бейджем) · Профиль.
-  //     Чат добавлен — без переписки нет доверия грузоотправителя к бирже.
+  //     Чат (Chats, с бейджем непрочитанного) · Сделки (Deals). Кнопка
+  //     «Разместить» живёт ВНУТРИ «Рейсы», а не отдельной вкладкой (§2.2.2).
+  //   Клиент (3, приказ 2026-07-26): Грузы (MyWork) · Машины (Feed) ·
+  //     Сделки (Deals = ChatsListScreen в dealsMode: входящие ставки + все
+  //     переписки; торг и чат — внутри комнаты сделки). Вкладки «Разместить»
+  //     и «Чаты» убраны: размещение — кнопкой внутри «Мои грузы», чат живёт
+  //     внутри сделки. Одна задача — одна вкладка, без дублей.
   // BottomNav красит неон по роли: driver #00E676, client #FF8400.
   return (
     <Tab.Navigator
@@ -143,9 +139,7 @@ function MainTabs({ route }) {
         <>
           <Tab.Screen name="MyWork" component={MyTripsScreen} initialParams={{ role }} />
           <Tab.Screen name="Feed" component={FeedScreen} initialParams={{ role }} />
-          <Tab.Screen name="Publish" component={PublishStub} initialParams={{ role }} />
-          <Tab.Screen name="Chats" component={ChatsListScreen} initialParams={{ role }} />
-          <Tab.Screen name="Deals" component={NotificationsScreen} initialParams={{ role }} />
+          <Tab.Screen name="Deals" component={ChatsListScreen} initialParams={{ role }} />
         </>
       )}
     </Tab.Navigator>
