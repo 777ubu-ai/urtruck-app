@@ -46,11 +46,16 @@ export class FactoriesController {
 
     const search = (q || '').trim();
     if (search) {
-      // Ищем по названию, описанию и хэштегам одновременно.
+      // Ищем по названию, описанию, хэштегам и месту одновременно.
+      // Город и страна важны не меньше названия: «Yiwu» или «CN» — это то,
+      // как покупатель на самом деле ищет поставщика, а имя завода он чаще
+      // всего заранее не знает.
       qb.andWhere(
         new Brackets((w) => {
           w.where('f.companyName ILIKE :s', { s: `%${search}%` })
             .orWhere('f.description ILIKE :s', { s: `%${search}%` })
+            .orWhere('u.city ILIKE :s', { s: `%${search}%` })
+            .orWhere('u.countryCode ILIKE :s', { s: `%${search}%` })
             .orWhere(':tag = ANY(f.hashtags)', {
               tag: search.replace(/^#/, ''),
             });
