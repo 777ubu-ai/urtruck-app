@@ -66,6 +66,16 @@ export class UsersController {
       throw new NotFoundException('Пользователь не найден');
     }
 
+    // Счётчики для шапки профиля (публикации / подписчики / подписки) —
+    // раньше их отдавал только публичный профиль, поэтому на своём экране
+    // показать их было нечем.
+    const [postsCount, followersCount, followingCount] = await Promise.all([
+      // Посты привязаны к заводу (factory_id = user_id владельца).
+      this.posts.count({ where: { factoryId: userId } }),
+      this.follows.count({ where: { followedId: userId } }),
+      this.follows.count({ where: { followerId: userId } }),
+    ]);
+
     return {
       id: user.id,
       phone: user.phone,
@@ -82,6 +92,9 @@ export class UsersController {
       pushEnabled: user.pushEnabled,
       notificationPrefs: user.notificationPrefs,
       createdAt: user.createdAt,
+      postsCount,
+      followersCount,
+      followingCount,
       // Только для заводов — разворачиваем factory
       factory: user.factory
         ? {

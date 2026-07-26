@@ -289,74 +289,140 @@ class _ProfileHeader extends StatelessWidget {
     final displayName = profile.name?.isNotEmpty == true
         ? profile.name!
         : (profile.factory?.companyName ?? l.profileNoName);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
+    // Шапка в духе профилей соцсетей: аватар и три счётчика в одну строку,
+    // ниже — имя с описанием, ниже — кнопки действий на всю ширину.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
           children: [
-            // Аватар с фирменным градиентным кольцом — как в соцсетях.
             FactoryAvatar(
               name: displayName,
               imageUrl: profile.avatarUrl != null
                   ? ApiClient.resolveMediaUrl(profile.avatarUrl!)
                   : null,
-              size: 78,
+              size: 86,
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 20),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
-                  Text(
-                    displayName,
-                    style: const TextStyle(
-                      fontSize: 19,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.4,
-                    ),
-                    overflow: TextOverflow.ellipsis,
+                  _CountStat(
+                    value: profile.postsCount,
+                    label: 'публикации',
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    profile.phone,
-                    style: TextStyle(
-                      fontSize: 13.5,
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 7),
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: profile.isFactory
-                              ? scheme.tertiaryContainer
-                              : scheme.secondaryContainer,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          profile.isFactory
-                              ? l.chatPartnerFactory
-                              : l.chatPartnerBuyer,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: profile.isFactory
-                                ? scheme.onTertiaryContainer
-                                : scheme.onSecondaryContainer,
-                          ),
+                  _CountStat(
+                    value: profile.followersCount,
+                    label: 'подписчики',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => FollowListScreen(
+                          userId: profile.id,
+                          mode: FollowListMode.followers,
                         ),
                       ),
-                      if (profile.verified) ...[
-                        const SizedBox(width: 6),
-                        Icon(Icons.verified,
-                            size: 16, color: scheme.primary),
-                      ],
-                    ],
+                    ),
+                  ),
+                  _CountStat(
+                    value: profile.followingCount,
+                    label: 'подписки',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => FollowListScreen(
+                          userId: profile.id,
+                          mode: FollowListMode.following,
+                        ),
+                      ),
+                    ),
                   ),
                 ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Flexible(
+              child: Text(
+                displayName,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.2,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (profile.verified) ...[
+              const SizedBox(width: 5),
+              const Icon(Icons.verified_rounded,
+                  size: 16, color: Color(0xFF0B66FF)),
+            ],
+          ],
+        ),
+        const SizedBox(height: 2),
+        Text(
+          profile.isFactory ? l.chatPartnerFactory : l.chatPartnerBuyer,
+          style: TextStyle(fontSize: 13.5, color: scheme.onSurfaceVariant),
+        ),
+        Text(
+          profile.phone,
+          style: TextStyle(fontSize: 13.5, color: scheme.onSurfaceVariant),
+        ),
+      ],
+    );
+  }
+}
+
+/// Счётчик в шапке профиля: крупная цифра, под ней подпись.
+/// Числа от тысячи сокращаем (5 018 → 5 018, 12500 → 12,5 тыс.).
+class _CountStat extends StatelessWidget {
+  const _CountStat({required this.value, required this.label, this.onTap});
+
+  final int value;
+  final String label;
+  final VoidCallback? onTap;
+
+  static String _format(int v) {
+    if (v < 1000) return '$v';
+    if (v < 100000) {
+      // 5018 → «5 018» (разделитель тысяч пробелом)
+      return v.toString().replaceAllMapped(
+            RegExp(r'(\d)(?=(\d{3})+$)'),
+            (m) => '${m[1]} ',
+          );
+    }
+    return '${(v / 1000).toStringAsFixed(0)} тыс.';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              _format(value),
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.4,
+                height: 1.15,
+              ),
+            ),
+            const SizedBox(height: 1),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12.5,
+                color: scheme.onSurfaceVariant,
               ),
             ),
           ],

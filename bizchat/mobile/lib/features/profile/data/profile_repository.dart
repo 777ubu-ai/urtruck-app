@@ -21,6 +21,9 @@ class MyProfile {
     required this.factory,
     required this.pushEnabled,
     required this.notificationPrefs,
+    this.postsCount = 0,
+    this.followersCount = 0,
+    this.followingCount = 0,
     this.quietHoursStart,
     this.quietHoursEnd,
   });
@@ -35,6 +38,10 @@ class MyProfile {
   final String? countryCode;
   final String? city;
   final String referralCode;
+  /// Счётчики для шапки профиля (публикации / подписчики / подписки).
+  final int postsCount;
+  final int followersCount;
+  final int followingCount;
   final int bonusPoints;
   final bool verified;
   final FactoryProfile? factory;
@@ -110,6 +117,9 @@ class MyProfile {
       referralCode: json['referralCode'] as String? ?? '',
       bonusPoints: json['bonusPoints'] as int? ?? 0,
       verified: json['verified'] as bool? ?? false,
+      postsCount: json['postsCount'] as int? ?? 0,
+      followersCount: json['followersCount'] as int? ?? 0,
+      followingCount: json['followingCount'] as int? ?? 0,
       factory: json['factory'] != null
           ? FactoryProfile.fromJson(
               (json['factory'] as Map).cast<String, dynamic>())
