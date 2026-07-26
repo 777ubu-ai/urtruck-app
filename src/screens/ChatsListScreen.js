@@ -64,6 +64,12 @@ export default function ChatsListScreen({ navigation, route }) {
   const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');
+  // UX 26.07 (приказ владельца): dealsMode делится на два раздела
+  // кнопками слева-справа — «Предложения» (стол переговоров) и «Чаты»
+  // (переписка). При первом заходе, если есть живые предложения,
+  // открываем сразу их.
+  const [seg, setSeg] = useState('chats');
+  const segInitRef = React.useRef(false);
 
   const load = useCallback(async () => {
     try {
@@ -71,10 +77,15 @@ export default function ChatsListScreen({ navigation, route }) {
       setRooms(data.rooms || []);
       if (dealsMode) {
         // Живые предложения: у клиента — входящие ставки водителей по моим
-        // грузам, у водителя (на будущее) — его собственные ставки.
+        // грузам, у водителя — его собственные ставки.
         const d = await marketAPI.myDashboard().catch(() => null);
         const raw = d ? (role === 'driver' ? d.my_bids : d.incoming_bids) || [] : [];
-        setOffers(raw.filter((b) => b.status === 'pending' || b.status === 'countered'));
+        const live = raw.filter((b) => b.status === 'pending' || b.status === 'countered');
+        setOffers(live);
+        if (!segInitRef.current) {
+          segInitRef.current = true;
+          if (live.length > 0) setSeg('offers');
+        }
       }
     } catch (e) {
       console.warn('chats load failed', e);
@@ -105,9 +116,16 @@ export default function ChatsListScreen({ navigation, route }) {
   }, [load]));
   const onRefresh = () => { setRefreshing(true); load(); };
 
+  // Непрочитанные комнаты — ВСЕГДА наверху списка (жалоба владельца: «бейдж 4,
+  // а сообщения найти не могу»). Внутри групп — свежие выше (порядок сервера).
+  const unreadRoomsCount = useMemo(
+    () => rooms.filter((r) => (r.unread_count ?? r.unread ?? 0) > 0).length,
+    [rooms]
+  );
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return rooms.filter((r) => {
+    const un = (r) => ((r.unread_count ?? r.unread ?? 0) > 0 ? 0 : 1);
+    return rooms.slice().sort((a, b) => un(a) - un(b)).filter((r) => {
       // фильтры (enriched /chat/rooms, PR #62)
       const unread = r.unread_count ?? r.unread ?? 0;
       if (filter === 'unread' && !(unread > 0)) return false;
@@ -186,16 +204,9 @@ export default function ChatsListScreen({ navigation, route }) {
     );
   };
 
-  // Секция над списком переписок: предложения, требующие решения.
-  const offersHeader = dealsMode && offers.length > 0 ? (
-    <View testID="deals-offers-section">
-      <Text style={[s.sectionTitle, { color: theme.text }]}>
-        {t('tab_offers')} ({offers.length})
-      </Text>
-      {offers.map(renderOfferCard)}
-      <Text style={[s.sectionTitle, { color: theme.text }]}>{t('chat_title')}</Text>
-    </View>
-  ) : null;
+  // UX 26.07: два раздела кнопками слева-справа (приказ владельца) —
+  // «Предложения (N)» и «Чаты». Показ прилепленной секции над списком убран.
+  const showOffersSeg = dealsMode && seg === 'offers';
 
   const renderItem = ({ item }) => {
     // Enriched /chat/rooms (PR #62): реальные данные сделки. Партнёр — через
@@ -277,43 +288,90 @@ export default function ChatsListScreen({ navigation, route }) {
         <HeaderMenuButton navigation={navigation} role={role} testID="chats-menu-btn" />
       </View>
 
-      <View style={[s.search, { backgroundColor: theme.card, borderColor: theme.border }]}>
-        <Feather name="search" size={17} color={theme.textMuted} />
-        <TextInput
-          style={[s.searchInput, { color: theme.text }]}
-          placeholder={t('chat_search_placeholder')}
-          placeholderTextColor={theme.textMuted}
-          value={query}
-          onChangeText={setQuery}
-          testID="deal-room-search"
-        />
-        {query ? <TouchableOpacity onPress={() => setQuery('')}><Feather name="x" size={16} color={theme.textMuted} /></TouchableOpacity> : null}
-      </View>
+      {/* UX 26.07: два раздела кнопками слева-справа. Слева — стол
+          переговоров (живые ставки), справа — вся переписка. */}
+      {dealsMode ? (
+        <View style={[s.segWrap, { backgroundColor: theme.card, borderColor: theme.border }]} testID="deals-seg">
+          <TouchableOpacity
+            style={[s.segBtn, seg === 'offers' && { backgroundColor: accent }]}
+            onPress={() => setSeg('offers')}
+            testID="deals-seg-offers"
+          >
+            <Text style={[s.segTxt, { color: seg === 'offers' ? '#0C0A09' : theme.textMuted }]}>{t('tab_offers')}</Text>
+            {offers.length > 0 ? (
+              <View style={[s.segBadge, { backgroundColor: seg === 'offers' ? '#0C0A09' : '#FF8400' }]}>
+                <Text style={[s.segBadgeTxt, { color: seg === 'offers' ? accent : '#FFF' }]}>{offers.length}</Text>
+              </View>
+            ) : null}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[s.segBtn, seg === 'chats' && { backgroundColor: accent }]}
+            onPress={() => setSeg('chats')}
+            testID="deals-seg-chats"
+          >
+            <Text style={[s.segTxt, { color: seg === 'chats' ? '#0C0A09' : theme.textMuted }]}>{t('tab_chats')}</Text>
+            {unreadRoomsCount > 0 ? (
+              <View style={[s.segBadge, { backgroundColor: seg === 'chats' ? '#0C0A09' : '#EF4444' }]}>
+                <Text style={[s.segBadgeTxt, { color: seg === 'chats' ? accent : '#FFF' }]}>{unreadRoomsCount}</Text>
+              </View>
+            ) : null}
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filtersScroll} contentContainerStyle={s.filters}>
-        {FILTERS.map((f) => {
-          const on = filter === f.key;
-          return (
-            <TouchableOpacity
-              key={f.key}
-              onPress={() => setFilter(f.key)}
-              style={[s.chip, { backgroundColor: on ? accent : theme.card, borderColor: on ? accent : theme.border }]}
-              testID={`deal-room-filter-${f.key}`}
-            >
-              <Text style={[s.chipTxt, { color: on ? '#0C0A09' : theme.textMuted }]}>{t(f.label)}</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
+      {!showOffersSeg ? (
+        <View style={[s.search, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <Feather name="search" size={17} color={theme.textMuted} />
+          <TextInput
+            style={[s.searchInput, { color: theme.text }]}
+            placeholder={t('chat_search_placeholder')}
+            placeholderTextColor={theme.textMuted}
+            value={query}
+            onChangeText={setQuery}
+            testID="deal-room-search"
+          />
+          {query ? <TouchableOpacity onPress={() => setQuery('')}><Feather name="x" size={16} color={theme.textMuted} /></TouchableOpacity> : null}
+        </View>
+      ) : null}
+
+      {!showOffersSeg ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filtersScroll} contentContainerStyle={s.filters}>
+          {FILTERS.map((f) => {
+            const on = filter === f.key;
+            // Счётчик на «Непрочитанных» — сразу видно, сколько сообщений искать.
+            const label = f.key === 'unread' && unreadRoomsCount > 0
+              ? `${t(f.label)} (${unreadRoomsCount})`
+              : t(f.label);
+            return (
+              <TouchableOpacity
+                key={f.key}
+                onPress={() => setFilter(f.key)}
+                style={[s.chip, { backgroundColor: on ? accent : theme.card, borderColor: on ? accent : theme.border }]}
+                testID={`deal-room-filter-${f.key}`}
+              >
+                <Text style={[s.chipTxt, { color: on ? '#0C0A09' : theme.textMuted }]}>{label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      ) : null}
 
       {loading ? (
         <ActivityIndicator color={accent} style={{ marginTop: 40 }} />
+      ) : showOffersSeg ? (
+        <FlatList
+          data={offers}
+          keyExtractor={(i) => String(i.id)}
+          renderItem={({ item }) => renderOfferCard(item)}
+          contentContainerStyle={{ padding: 12, paddingBottom: 24 }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accent} />}
+          ListEmptyComponent={<Text style={[s.empty, { color: theme.textMuted }]}>{t('deals_no_offers')}</Text>}
+        />
       ) : (
         <FlatList
           data={filtered}
           keyExtractor={(i) => String(i.id)}
           renderItem={renderItem}
-          ListHeaderComponent={offersHeader}
           contentContainerStyle={{ padding: 12, paddingBottom: 24 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accent} />}
           ListEmptyComponent={<Text style={[s.empty, { color: theme.textMuted }]}>{query || filter !== 'all' ? t('chat_no_results') : (dealsMode ? (role === 'driver' ? t('deals_empty_driver') : t('deals_empty')) : t('chats_empty'))}</Text>}
@@ -356,4 +414,10 @@ const s = StyleSheet.create({
   sectionTitle: { fontSize: 15, fontWeight: '900', marginTop: 6, marginBottom: 8 },
   offerAmount: { fontSize: 16, fontWeight: '900', marginTop: 2, fontVariant: ['tabular-nums'] },
   offerOpen: { fontSize: 12, fontWeight: '800' },
+  // Сегмент-переключатель «Предложения | Чаты» (кнопки слева-справа).
+  segWrap: { flexDirection: 'row', marginHorizontal: 12, marginBottom: 10, borderRadius: 14, borderWidth: 1, padding: 3, gap: 3 },
+  segBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 42, borderRadius: 11 },
+  segTxt: { fontSize: 14, fontWeight: '900' },
+  segBadge: { minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5, alignItems: 'center', justifyContent: 'center' },
+  segBadgeTxt: { fontSize: 11, fontWeight: '900' },
 });
