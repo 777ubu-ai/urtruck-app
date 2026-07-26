@@ -104,15 +104,14 @@ function MainTabs({ route }) {
   }, [isDriver]);
   useDealLocationBroadcast(inWorkDealIds);
 
-  // Канон таб-баров (мастер-ТЗ §2.2–2.3 + приказ владельца 2026-07-26).
-  //   Водитель (5): Грузы (Feed) · Рейсы (MyWork) · Очередь (Queue, центр) ·
-  //     Чат (Chats, с бейджем непрочитанного) · Сделки (Deals). Кнопка
-  //     «Разместить» живёт ВНУТРИ «Рейсы», а не отдельной вкладкой (§2.2.2).
-  //   Клиент (3, приказ 2026-07-26): Грузы (MyWork) · Машины (Feed) ·
-  //     Сделки (Deals = ChatsListScreen в dealsMode: входящие ставки + все
-  //     переписки; торг и чат — внутри комнаты сделки). Вкладки «Разместить»
-  //     и «Чаты» убраны: размещение — кнопкой внутри «Мои грузы», чат живёт
-  //     внутри сделки. Одна задача — одна вкладка, без дублей.
+  // Канон таб-баров (приказ владельца 2026-07-26, обе волны).
+  // Обе роли живут по одной логике: «Сделки» = единый инбокс (ставки сверху,
+  // переписки ниже; торг и чат — ВНУТРИ комнаты сделки). Отдельных вкладок
+  // «Чаты» и «Разместить» нет ни у кого: чат внутри сделки, размещение —
+  // кнопкой внутри «моего меню» (Рейсы/Грузы, §2.2.2).
+  //   Водитель (4): Грузы (Feed) · Рейсы (MyWork) · Очередь (Queue —
+  //     инструмент границы, не дубль) · Сделки (Deals).
+  //   Клиент (3): Грузы (MyWork) · Машины (Feed) · Сделки (Deals).
   // BottomNav красит неон по роли: driver #00E676, client #FF8400.
   return (
     <Tab.Navigator
@@ -129,11 +128,12 @@ function MainTabs({ route }) {
           <Tab.Screen name="Feed" component={FeedScreen} initialParams={{ role }} />
           <Tab.Screen name="MyWork" component={MyTripsScreen} initialParams={{ role }} />
           <Tab.Screen name="Queue" component={QueueScreen} initialParams={{ role }} />
-          <Tab.Screen name="Chats" component={ChatsListScreen} initialParams={{ role }} />
-          {/* «Дела» — единый инбокс всей активности (ставки, статусы сделок,
-              уведомления). Заменил вкладку Profile: профиль переехал наверх
-              под ☰ (top-right), а живая работа спустилась в таб-бар. */}
-          <Tab.Screen name="Deals" component={NotificationsScreen} initialParams={{ role }} />
+          {/* «Сделки» (26.07.2026, волна 2 — водитель зеркалит клиента):
+              ChatsListScreen в dealsMode — сверху мои ставки в работе
+              (pending/countered), ниже все переписки. Отдельная вкладка
+              «Чаты» убрана: чат живёт внутри комнаты сделки. «Очередь»
+              остаётся — это инструмент границы, а не дубль сделок. */}
+          <Tab.Screen name="Deals" component={ChatsListScreen} initialParams={{ role }} />
         </>
       ) : (
         <>

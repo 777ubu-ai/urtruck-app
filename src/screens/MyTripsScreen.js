@@ -17,9 +17,6 @@ import { colors, spacing, radius, typography } from '../theme/theme';
 import {v1Colors, useV1Colors, v1AccentFor} from '../theme/designV1';
 import SegmentTabs from '../components/ui/v1/SegmentTabs';
 import StatsRow from '../components/ui/v1/StatsRow';
-import { useUnreadNotifications } from '../utils/useUnreadNotifications';
-import { notificationsAPI } from '../utils/notificationsAPI';
-import { notifyNotifRead } from '../utils/unreadEvents';
 import { useMountedRef } from '../hooks/useMountedRef';
 import FadeInUp, { PopIn } from '../components/ui/FadeInUp';
 import PressableScale from '../components/PressableScale';
@@ -114,17 +111,17 @@ export default function MyTripsScreen({ navigation, route }) {
   // archive). Client (грузоотправитель) — зеркало в его терминах:
   // searching / enroute / delivered (+ archive). Legacy initialTab
   // (my/bids/deals) ремапим, чтобы deep-links/nav приземлялись корректно.
-  const DRIVER_TABS_KEYS = ['routes', 'offers', 'inwork', 'done', 'archive'];
-  // Клиент (приказ 26.07.2026): под-вкладки «Предложения» больше нет — входящие
-  // ставки живут во вкладке «Сделки» (таб-бар). Здесь только факты по грузам:
-  // разместил / везут / доставлено (+ архив). Легаси deep-links bids/offers
-  // приземляем на searching.
+  // Приказ 26.07.2026 (обе роли): под-вкладки «Предложения» здесь больше нет —
+  // ставки живут во вкладке «Сделки» (таб-бар). Тут только факты по моим
+  // публикациям: разместил / в работе / завершено (+ архив). Легаси
+  // deep-links bids/offers приземляем на первую вкладку.
+  const DRIVER_TABS_KEYS = ['routes', 'inwork', 'done', 'archive'];
   const CLIENT_TABS_KEYS = ['searching', 'enroute', 'delivered', 'archive'];
   const rawInitialTab = route.params?.initialTab || (isDriver ? 'routes' : 'searching');
   const normInitialTab = isDriver
     ? (DRIVER_TABS_KEYS.includes(rawInitialTab)
         ? rawInitialTab
-        : (rawInitialTab === 'bids' ? 'offers' : rawInitialTab === 'deals' ? 'inwork' : 'routes'))
+        : (rawInitialTab === 'deals' ? 'inwork' : 'routes'))
     : (CLIENT_TABS_KEYS.includes(rawInitialTab)
         ? rawInitialTab
         : (rawInitialTab === 'deals' ? 'enroute' : 'searching'));
@@ -182,24 +179,9 @@ export default function MyTripsScreen({ navigation, route }) {
     return () => { alive = false; };
   }, [isDriver]);
 
-  // Вариант Б: при открытии «Рейсы» помечаем события сделок прочитанными и
-  // мгновенно гасим бейдж на вкладке (notifyNotifRead → useUnreadNotifications
-  // перечитывает счётчик). Так «денежный» сигнал живёт внизу под пальцем, а
-  // когда водитель зашёл и посмотрел — точка сразу исчезает. Колокол-история
-  // наверху не трогается (readAll просто помечает прочитанным, не удаляет).
-  // Только driver: у клиента (26.07.2026) сигнал живёт на вкладке «Сделки» и
-  // гасится там (ChatsListScreen в dealsMode), иначе бейдж пропадал бы от
-  // простого захода в «Мои грузы».
-  useEffect(() => {
-    if (!isDriver) return;
-    const markRead = () => {
-      notificationsAPI.readAll().catch(() => {});
-      notifyNotifRead();
-    };
-    markRead();
-    const unsub = navigation.addListener('focus', markRead);
-    return unsub;
-  }, [navigation, isDriver]);
+  // Гашение бейджа событий (26.07.2026, обе роли): живёт на вкладке «Сделки»
+  // (ChatsListScreen в dealsMode). Здесь ничего не гасим — иначе бейдж
+  // пропадал бы от простого захода в «Мои рейсы»/«Мои грузы».
 
   const onPublishRoute = () => {
     if (verState === 'approved') navigation.navigate('CreateTrip', { role });
@@ -331,7 +313,6 @@ export default function MyTripsScreen({ navigation, route }) {
   const DONE_STATUSES = ['completed', 'delivered'];
   const ARCHIVE_STATUSES = ['cancelled', 'rejected', 'expired'];
   const serverDeals = (data?.my_deals) || [];
-  const driverOffers = myBids.filter((b) => ['pending', 'countered'].includes(b.status));
   const driverInWork = serverDeals.filter((d) => IN_WORK_STATUSES.includes(d.status));
   const driverDone = serverDeals.filter((d) => DONE_STATUSES.includes(d.status));
   // Задача B: авто-трансляция гео-позиции водителя вынесена на уровень
@@ -953,7 +934,6 @@ export default function MyTripsScreen({ navigation, route }) {
   const TABS = isDriver
     ? [
         { key: 'routes', label: t('tab_my_routes'), testID: 'my-work-tab-routes' },
-        { key: 'offers', label: t('tab_offers'),    testID: 'my-work-tab-offers' },
         { key: 'inwork', label: t('tab_in_work'),   testID: 'my-work-tab-inwork' },
         { key: 'done',   label: t('tab_done'),      testID: 'my-work-tab-done' },
       ]
@@ -965,7 +945,7 @@ export default function MyTripsScreen({ navigation, route }) {
 
   const stats = isDriver
     ? [
-        { value: driverOffers.length, label: t('tab_offers') },
+        { value: myItems.length,      label: t('tab_my_routes') },
         { value: driverInWork.length, label: t('tab_in_work') },
         { value: driverDone.length,   label: t('tab_done') },
       ]
@@ -981,8 +961,10 @@ export default function MyTripsScreen({ navigation, route }) {
       : item._kind === 'bid' ? renderBid({ item })
       : renderMyItem({ item });
 
-  const DRIVER_DATA = { routes: myItems, offers: driverOffers, inwork: driverInWork, done: driverDone, archive: driverArchive };
-  const DRIVER_RENDER = { routes: renderMyItem, offers: renderBid, inwork: renderDeal, done: renderDeal, archive: renderArchiveItem };
+  // Ставки водителя (driverOffers) переехали во вкладку «Сделки»; renderBid
+  // остаётся только для архивных ставок (renderArchiveItem).
+  const DRIVER_DATA = { routes: myItems, inwork: driverInWork, done: driverDone, archive: driverArchive };
+  const DRIVER_RENDER = { routes: renderMyItem, inwork: renderDeal, done: renderDeal, archive: renderArchiveItem };
   // Client (грузоотправитель, 26.07.2026): только стадии моих грузов — ищу
   // машину / везут / доставлено + архив. Входящие ставки живут во вкладке
   // «Сделки»; на карточке груза остаётся CTA «N предложений» → Сделки.
@@ -1003,7 +985,6 @@ export default function MyTripsScreen({ navigation, route }) {
     }
     if (isDriver) {
       if (tab === 'routes') return <EmptyState title={t('no_trips_yet')} description={t('no_trips_desc')} actionLabel={t('publish_route')} onAction={onPublishRoute} />;
-      if (tab === 'offers') return <EmptyState title={t('no_bids_yet_driver')} description={t('no_bids_desc')} actionLabel={t('find_cargos')} onAction={() => navigation.navigate('Feed', { role })} />;
       if (tab === 'inwork') return <EmptyState title={t('no_inwork_yet')} description={t('no_inwork_desc')} actionLabel={t('find_cargos')} onAction={() => navigation.navigate('Feed', { role })} />;
       if (tab === 'done') return <EmptyState title={t('no_done_yet')} description={t('no_done_desc')} />;
       return <EmptyState title={t('no_archive_yet')} description={t('no_archive_desc')} />;
