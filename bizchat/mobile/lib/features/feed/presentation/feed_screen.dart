@@ -9,6 +9,7 @@ import '../../../core/currency/converted_price_text.dart';
 import '../../../core/realtime/realtime_service.dart';
 import '../../../core/widgets/loading_skeleton.dart';
 import '../../../core/widgets/trust_badge.dart';
+import '../../../core/widgets/translatable_text.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../core/widgets/video_media_player.dart';
 import '../../chat/data/chat_repository.dart';
@@ -413,8 +414,12 @@ class _PostCardState extends State<_PostCard> {
         (rawTypeValue is String && rawTypeValue == 'video') &&
             rawMediaUrl != null;
 
+    // Лента во всю ширину экрана, без «плавающих» карточек с отступами —
+    // так устроены ленты соцсетей: фото работает на весь экран.
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      margin: const EdgeInsets.only(bottom: 6),
+      elevation: 0,
+      shape: const RoundedRectangleBorder(),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: _openDetail,
@@ -423,11 +428,11 @@ class _PostCardState extends State<_PostCard> {
           children: [
           // Шапка: аватар + название завода + Trust Score
           Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.fromLTRB(12, 9, 8, 9),
             child: Row(
               children: [
-                FactoryAvatar(name: post.factoryName, size: 46),
-                const SizedBox(width: 11),
+                FactoryAvatar(name: post.factoryName, size: 34),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -435,13 +440,14 @@ class _PostCardState extends State<_PostCard> {
                       Text(
                         post.factoryName,
                         style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -0.2,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: -0.1,
+                          height: 1.15,
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(height: 3),
+                      const SizedBox(height: 2),
                       // Живой бейдж вместо «Trust Score: 0» — для нового
                       // завода показывает «Новый», а не мёртвый ноль.
                       TrustBadge(score: post.trustScore),
@@ -573,7 +579,7 @@ class _PostCardState extends State<_PostCard> {
                           ? Icons.favorite_rounded
                           : Icons.favorite_border_rounded,
                       key: ValueKey<bool>(post.isLikedByMe),
-                      size: 27,
+                      size: 24,
                       color: post.isLikedByMe ? const Color(0xFFFF3040) : null,
                     ),
                   ),
@@ -581,12 +587,12 @@ class _PostCardState extends State<_PostCard> {
                   visualDensity: VisualDensity.compact,
                 ),
                 IconButton(
-                  icon: const Icon(Icons.chat_bubble_outline_rounded, size: 25),
+                  icon: const Icon(Icons.chat_bubble_outline_rounded, size: 23),
                   onPressed: _onCommentTap,
                   visualDensity: VisualDensity.compact,
                 ),
                 IconButton(
-                  icon: const Icon(Icons.near_me_outlined, size: 25),
+                  icon: const Icon(Icons.near_me_outlined, size: 23),
                   onPressed: _onShareTap,
                   visualDensity: VisualDensity.compact,
                 ),
@@ -606,7 +612,7 @@ class _PostCardState extends State<_PostCard> {
                           ? Icons.bookmark_rounded
                           : Icons.bookmark_border_rounded,
                       key: ValueKey<bool>(post.isSavedByMe),
-                      size: 26,
+                      size: 23,
                     ),
                   ),
                   onPressed: _saveInFlight ? null : _onSaveTap,
@@ -629,16 +635,18 @@ class _PostCardState extends State<_PostCard> {
                         ),
                   ),
                 const SizedBox(height: 4),
-                Text(
-                  post.title,
+                // Заголовок с автопереводом: завод пишет по-китайски —
+                // покупатель сразу видит на своём языке.
+                TranslatableText(
+                  text: post.title,
                   style: const TextStyle(
-                    fontSize: 17,
+                    fontSize: 15,
                     fontWeight: FontWeight.w700,
-                    letterSpacing: -0.3,
-                    height: 1.2,
+                    letterSpacing: -0.2,
+                    height: 1.25,
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 7),
                 // Характеристики — компактные чипы вместо блёклого текста.
                 Wrap(
                   spacing: 6,
@@ -657,11 +665,11 @@ class _PostCardState extends State<_PostCard> {
                 if (post.description != null &&
                     post.description!.isNotEmpty) ...[
                   const SizedBox(height: 6),
-                  Text(
-                    post.description!,
-                    maxLines: 2,
+                  TranslatableText(
+                    text: post.description!,
+                    maxLines: 3,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodyMedium,
+                    style: const TextStyle(fontSize: 14, height: 1.35),
                   ),
                 ],
                 const SizedBox(height: 8),
@@ -686,9 +694,9 @@ class _PostCardState extends State<_PostCard> {
                                 : _formatPrice(
                                     post.priceAmount, post.priceCurrency),
                             style: const TextStyle(
-                              fontSize: 22,
+                              fontSize: 19,
                               fontWeight: FontWeight.w800,
-                              letterSpacing: -0.6,
+                              letterSpacing: -0.5,
                               height: 1.1,
                             ),
                             overflow: TextOverflow.ellipsis,

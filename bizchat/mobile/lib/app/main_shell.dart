@@ -175,44 +175,49 @@ class _MainShellState extends State<MainShell> {
     final l = AppLocalizations.of(context)!;
     return Scaffold(
       body: IndexedStack(index: _index, children: tabs),
+      // Нижнее меню в духе соцсетей: только иконки, без подписей —
+      // экран не загромождён, контент занимает больше места.
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: (i) => setState(() => _index = i),
+        height: 58,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
         destinations: [
           NavigationDestination(
-            icon: const Icon(Icons.home_outlined),
-            selectedIcon: const Icon(Icons.home),
+            icon: const Icon(Icons.home_outlined, size: 26),
+            selectedIcon: const Icon(Icons.home_rounded, size: 26),
             label: l.navHome,
           ),
           const NavigationDestination(
-            icon: Icon(Icons.local_fire_department_outlined),
-            selectedIcon: Icon(Icons.local_fire_department, color: Colors.red),
+            icon: Icon(Icons.local_fire_department_outlined, size: 26),
+            selectedIcon: Icon(Icons.local_fire_department_rounded,
+                size: 26, color: Color(0xFFFF3040)),
             label: 'Акции',
           ),
           NavigationDestination(
-            icon: const Icon(Icons.search_outlined),
-            selectedIcon: const Icon(Icons.search),
+            icon: const Icon(Icons.search_rounded, size: 26),
+            selectedIcon: const Icon(Icons.search_rounded, size: 26),
             label: l.navSearch,
           ),
           NavigationDestination(
-            icon: const Icon(Icons.add_box_outlined),
-            selectedIcon: const Icon(Icons.add_box),
+            icon: const Icon(Icons.add_box_outlined, size: 26),
+            selectedIcon: const Icon(Icons.add_box_rounded, size: 26),
             label: l.navCreate,
           ),
           NavigationDestination(
             icon: _ChatsIconWithBadge(
-              icon: Icons.chat_bubble_outline,
+              icon: Icons.chat_bubble_outline_rounded,
               unread: _unreadChats,
             ),
             selectedIcon: _ChatsIconWithBadge(
-              icon: Icons.chat_bubble,
+              icon: Icons.chat_bubble_rounded,
               unread: _unreadChats,
             ),
             label: l.navChats,
           ),
           NavigationDestination(
-            icon: const Icon(Icons.person_outline),
-            selectedIcon: const Icon(Icons.person),
+            icon: const Icon(Icons.person_outline_rounded, size: 26),
+            selectedIcon: const Icon(Icons.person_rounded, size: 26),
             label: l.navProfile,
           ),
         ],
