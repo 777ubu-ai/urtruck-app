@@ -685,7 +685,7 @@ class _PostThumbnail extends StatelessWidget {
         fit: StackFit.expand,
         children: [
           ClipRRect(
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: BorderRadius.circular(12),
             child: imageUrl != null
                 ? CachedNetworkImage(
                     imageUrl: imageUrl,
@@ -718,25 +718,37 @@ class _PostThumbnail extends StatelessWidget {
                 child: const Text('🔥', style: TextStyle(fontSize: 9)),
               ),
             ),
+          // Градиентная подложка снизу: цена читается на любом фото,
+          // включая светлые (раньше белый текст терялся на белом фоне).
           Positioned(
-            left: 4,
-            right: 4,
-            bottom: 4,
-            child: Text(
-              '${post.priceAmount} ${post.priceCurrency}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                shadows: [
-                  Shadow(
-                    color: Colors.black87,
-                    blurRadius: 4,
-                    offset: Offset(0, 1),
-                  ),
-                ],
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(7, 14, 7, 6),
+              decoration: BoxDecoration(
+                borderRadius: const BorderRadius.vertical(
+                  bottom: Radius.circular(12),
+                ),
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.transparent,
+                    Colors.black.withValues(alpha: 0.72),
+                  ],
+                ),
+              ),
+              child: Text(
+                '${post.priceAmount} ${post.priceCurrency}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.2,
+                ),
               ),
             ),
           ),
