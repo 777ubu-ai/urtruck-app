@@ -705,5 +705,14 @@
   "profileMenuTooltip": "Меню",
   "profileTabGrid": "Публикации",
   "profileTabVideo": "Видео",
-  "profileNoVideosYet": "Пока нет видео"
+  "profileNoVideosYet": "Пока нет видео",
+  "factoriesTitle": "Заводы",
+  "factoriesSearchHint": "Название завода или город",
+  "factoriesVerifiedOnly": "Только проверенные",
+  "factoriesEmpty": "Заводов пока нет",
+  "factoriesSeeAll": "Все",
+  "factoriesInteresting": "Интересные заводы",
+  "createSheetTitle": "Создать",
+  "createSheetPost": "Публикация",
+  "createSheetStory": "История"
 }

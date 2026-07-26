@@ -8,6 +8,8 @@ import '../../../core/storage/auth_storage.dart';
 import '../../../core/widgets/trust_badge.dart';
 import '../../auth/presentation/phone_screen.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../create_post/presentation/create_post_screen.dart';
+import '../../factories/presentation/interesting_factories.dart';
 import '../../feed/presentation/hashtag_screen.dart';
 import '../../feed/presentation/post_detail_screen.dart';
 import '../data/profile_repository.dart';
@@ -26,12 +28,14 @@ import 'settings_screen.dart';
 ///      локация и контактные ссылки.
 ///   3. Кнопки «Редактировать профиль» и «Поделиться профилем» — под
 ///      описанием, не над ним.
-///   4. «Актуальное» — карусель кружков (собственные stories).
-///   5. Вкладки контента, переключающие сетку.
-///   6. Сетка превью 3 в ряд во всю ширину.
+///   4. «Интересные заводы» — карусель рекомендаций. Она же место платного
+///      размещения: заводы, которые платят за показ, встанут сюда.
+///   5. «Актуальное» — карусель кружков (собственные stories).
+///   6. Вкладки контента, переключающие сетку.
+///   7. Сетка превью 3 в ряд во всю ширину.
 ///
-/// Настройки, сохранённое, реферальный код и выход живут за «тремя
-/// полосками» в правом верхнем углу и на экране профиля не показываются.
+/// В шапке экрана слева «плюс» (создать публикацию или историю), справа
+/// «три полоски» с меню: настройки, сохранённое, реферальный код, выход.
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
@@ -44,6 +48,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   MyProfile? _profile;
   String? _error;
   bool _loading = false;
+
+  /// Нужен, чтобы «плюс» в шапке мог открыть тот же поток создания истории,
+  /// что и кружок «Новое» в ряду «Актуальное».
+  final _highlightsKey = GlobalKey<ProfileHighlightsState>();
 
   @override
   void initState() {
@@ -173,6 +181,57 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  /// Панель «Создать» с «плюса» слева вверху.
+  ///
+  /// В списке только то, что приложение действительно умеет: публикация и
+  /// история. Reels и эфиров у нас нет — пункты, ведущие в никуда, сюда не
+  /// добавляем.
+  void _openCreateSheet() {
+    final l = AppLocalizations.of(context)!;
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                l.createSheetTitle,
+                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.grid_on_rounded),
+              title: Text(l.createSheetPost),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                Navigator.of(context)
+                    .push(
+                      MaterialPageRoute(
+                        builder: (_) => const CreatePostScreen(),
+                      ),
+                    )
+                    .then((_) => _load());
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.add_circle_outline),
+              title: Text(l.createSheetStory),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                // Истории добавляются кружком «Новое» в ряду «Актуальное» —
+                // ведём туда же, чтобы не дублировать поток загрузки.
+                _highlightsKey.currentState?.createStory();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _copyReferral(String code) {
     final l = AppLocalizations.of(context)!;
     Clipboard.setData(ClipboardData(text: code));
@@ -193,9 +252,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
           l.profileTitle,
           style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 22),
         ),
-        // В правом верхнем углу — только «три полоски». Редактирование
-        // вынесено кнопкой под описанием (там, где ему и место), обновление
-        // делается протягиванием списка вниз.
+        // Слева вверху — «плюс»: создание публикации или истории.
+        // Справа — «три полоски» с меню. Ровно как в референсе.
+        leading: _profile == null
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.add, size: 28),
+                tooltip: l.createSheetTitle,
+                onPressed: _openCreateSheet,
+              ),
         actions: [
           if (_profile != null)
             IconButton(
@@ -293,8 +358,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ],
             ),
           ),
+          const SizedBox(height: 18),
+          // Блок рекомендаций — ровно там же, где он стоит в референсе:
+          // под кнопками действий и над «Актуальным». Он же будущее место
+          // платного размещения заводов.
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: InterestingFactories(excludeUserId: p.id),
+          ),
           const SizedBox(height: 16),
-          ProfileHighlights(userId: p.id, canCreate: p.isFactory),
+          ProfileHighlights(
+            key: _highlightsKey,
+            userId: p.id,
+            canCreate: p.isFactory,
+          ),
           const SizedBox(height: 4),
           _UserPostsGrid(userId: p.id),
           const SizedBox(height: 24),

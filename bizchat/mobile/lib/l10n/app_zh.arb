@@ -705,5 +705,14 @@
   "profileMenuTooltip": "菜单",
   "profileTabGrid": "帖子",
   "profileTabVideo": "视频",
-  "profileNoVideosYet": "暂无视频"
+  "profileNoVideosYet": "暂无视频",
+  "factoriesTitle": "工厂",
+  "factoriesSearchHint": "公司名称或城市",
+  "factoriesVerifiedOnly": "仅认证工厂",
+  "factoriesEmpty": "暂无工厂",
+  "factoriesSeeAll": "全部",
+  "factoriesInteresting": "推荐工厂",
+  "createSheetTitle": "创建",
+  "createSheetPost": "帖子",
+  "createSheetStory": "快拍"
 }

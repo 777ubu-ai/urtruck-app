@@ -705,5 +705,14 @@
   "profileMenuTooltip": "Menu",
   "profileTabGrid": "Posts",
   "profileTabVideo": "Video",
-  "profileNoVideosYet": "No videos yet"
+  "profileNoVideosYet": "No videos yet",
+  "factoriesTitle": "Factories",
+  "factoriesSearchHint": "Company name or city",
+  "factoriesVerifiedOnly": "Verified only",
+  "factoriesEmpty": "No factories yet",
+  "factoriesSeeAll": "See all",
+  "factoriesInteresting": "Suggested factories",
+  "createSheetTitle": "Create",
+  "createSheetPost": "Post",
+  "createSheetStory": "Story"
 }

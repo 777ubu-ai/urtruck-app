@@ -28,10 +28,10 @@ class ProfileHighlights extends StatefulWidget {
   final bool canCreate;
 
   @override
-  State<ProfileHighlights> createState() => _ProfileHighlightsState();
+  ProfileHighlightsState createState() => ProfileHighlightsState();
 }
 
-class _ProfileHighlightsState extends State<ProfileHighlights> {
+class ProfileHighlightsState extends State<ProfileHighlights> {
   final _repo = StoriesRepository();
   final _uploads = CreatePostRepository();
   final _picker = ImagePicker();
@@ -81,6 +81,10 @@ class _ProfileHighlightsState extends State<ProfileHighlights> {
     );
     if (mounted) _load();
   }
+
+  /// Публичный вход — панель «Создать» с «плюса» в шапке профиля ведёт
+  /// сюда, чтобы поток загрузки истории был один на весь экран.
+  Future<void> createStory() => _create();
 
   Future<void> _create() async {
     if (_busy) return;
