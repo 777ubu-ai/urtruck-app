@@ -8,6 +8,10 @@ name: Hotfix DB schema (factory bio/contacts)
 #
 # Применяем те же изменения напрямую через psql и отмечаем миграцию
 # выполненной, чтобы состояние схемы и таблица migrations совпадали.
+#
+# ВАЖНО: никаких вложенных heredoc'ов. Прошлый запуск провалился именно из-за
+# `<<'SQL'` внутри `<<'EOS'` — внутренний блок до psql не доходил. Каждый
+# оператор передаём отдельным `psql -c`.
 
 on:
   workflow_dispatch:
@@ -34,20 +38,18 @@ jobs:
           DBN=$(docker exec bizchat-backend-prod printenv DB_DATABASE 2>/dev/null || echo bizchat)
           echo "БД: $DBN, пользователь: $DBU"
 
+          psql_run() {
+            docker exec "$PG" psql -U "$DBU" -d "$DBN" -v ON_ERROR_STOP=1 -c "$1"
+          }
+
           echo "== Применяем изменения схемы =="
-          docker exec "$PG" psql -U "$DBU" -d "$DBN" -v ON_ERROR_STOP=1 <<'SQL'
-          ALTER TABLE factories ALTER COLUMN description TYPE text;
-          ALTER TABLE factories ADD COLUMN IF NOT EXISTS website varchar(256);
-          ALTER TABLE factories ADD COLUMN IF NOT EXISTS whatsapp varchar(32);
-          INSERT INTO migrations (timestamp, name)
-          SELECT 1744450000000, 'FactoryBioAndContacts1744450000000'
-          WHERE NOT EXISTS (
-            SELECT 1 FROM migrations WHERE name = 'FactoryBioAndContacts1744450000000'
-          );
-          SQL
+          psql_run 'ALTER TABLE "factories" ALTER COLUMN "description" TYPE text'
+          psql_run 'ALTER TABLE "factories" ADD COLUMN IF NOT EXISTS "website" varchar(256)'
+          psql_run 'ALTER TABLE "factories" ADD COLUMN IF NOT EXISTS "whatsapp" varchar(32)'
+          psql_run "INSERT INTO migrations (timestamp, name) SELECT 1744450000000, 'FactoryBioAndContacts1744450000000' WHERE NOT EXISTS (SELECT 1 FROM migrations WHERE name = 'FactoryBioAndContacts1744450000000')"
 
           echo "== Проверка колонок =="
-          docker exec "$PG" psql -U "$DBU" -d "$DBN" -c "\d factories" | grep -E "description|website|whatsapp"
+          docker exec "$PG" psql -U "$DBU" -d "$DBN" -c '\d factories' | grep -E "description|website|whatsapp"
 
           echo "== Перезапуск backend (сброс кеша метаданных) =="
           cd /home/ubuntu/bizchat/infra
