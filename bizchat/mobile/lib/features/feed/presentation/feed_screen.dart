@@ -431,7 +431,15 @@ class _PostCardState extends State<_PostCard> {
             padding: const EdgeInsets.fromLTRB(12, 9, 8, 9),
             child: Row(
               children: [
-                FactoryAvatar(name: post.factoryName, size: 34),
+                FactoryAvatar(
+                  name: post.factoryName,
+                  // Логотип завода: с сервера приходит относительный путь
+                  // (/uploads/...), resolveMediaUrl дополняет до абсолютного.
+                  imageUrl: post.factoryAvatarUrl == null
+                      ? null
+                      : ApiClient.resolveMediaUrl(post.factoryAvatarUrl!),
+                  size: 34,
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
@@ -918,13 +926,13 @@ class _FeedFilterTabs extends StatelessWidget {
           active: current == 'all',
           onTap: () => onChanged('all'),
         ),
-        const SizedBox(width: 16),
+        const SizedBox(width: 6),
         _FilterTab(
           label: l.feedFollowing,
           active: current == 'following',
           onTap: () => onChanged('following'),
         ),
-        const SizedBox(width: 16),
+        const SizedBox(width: 6),
         _FilterTab(
           label: '🔥 ${l.feedHotDeals}',
           active: current == 'hot_deal',
@@ -948,16 +956,26 @@ class _FilterTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    // Активная вкладка — залитая «таблетка»: сразу видно, где находишься
+    // (раньше отличалась только размером шрифта и терялась).
     return InkWell(
       onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+      borderRadius: BorderRadius.circular(100),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 13),
+        decoration: BoxDecoration(
+          color: active ? scheme.onSurface : Colors.transparent,
+          borderRadius: BorderRadius.circular(100),
+        ),
         child: Text(
           label,
           style: TextStyle(
-            fontSize: active ? 18 : 16,
-            fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-            color: active ? scheme.onSurface : scheme.onSurfaceVariant,
+            fontSize: 14,
+            fontWeight: active ? FontWeight.w700 : FontWeight.w600,
+            letterSpacing: -0.1,
+            color: active ? scheme.surface : scheme.onSurfaceVariant,
           ),
         ),
       ),
@@ -1024,6 +1042,12 @@ class _RealtimeStatusDotState extends State<_RealtimeStatusDot> {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context)!;
+    // Когда связь в порядке — индикатор не показываем: пользователю не нужен
+    // технический сигнал «всё хорошо», он только засорял шапку. Точка
+    // появляется лишь при проблемах со связью.
+    if (_status == RealtimeStatus.connected) {
+      return const SizedBox.shrink();
+    }
     return Tooltip(
       message: _tooltipFor(l),
       child: Center(

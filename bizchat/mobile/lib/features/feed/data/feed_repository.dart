@@ -126,6 +126,7 @@ class FeedPost {
     required this.sharesCount,
     required this.viewsCount,
     required this.factoryName,
+    this.factoryAvatarUrl,
     required this.factoryUserId,
     required this.trustScore,
     required this.factoryAvgRating,
@@ -154,6 +155,8 @@ class FeedPost {
   final int sharesCount;
   final int viewsCount;
   final String factoryName;
+  /// Логотип завода с сервера (может отсутствовать у новых заводов).
+  final String? factoryAvatarUrl;
   final String? factoryUserId; // owner — для проверки прав на удаление
   final int trustScore;
   final double factoryAvgRating;
@@ -194,6 +197,7 @@ class FeedPost {
       sharesCount: sharesCount ?? this.sharesCount,
       viewsCount: viewsCount ?? this.viewsCount,
       factoryName: factoryName,
+      factoryAvatarUrl: factoryAvatarUrl,
       factoryUserId: factoryUserId,
       trustScore: trustScore,
       factoryAvgRating: factoryAvgRating,
@@ -234,6 +238,7 @@ class FeedPost {
       sharesCount: counters['shares'] as int? ?? 0,
       viewsCount: counters['views'] as int? ?? 0,
       factoryName: factory?['companyName'] as String? ?? 'Завод',
+      factoryAvatarUrl: factory?['avatarUrl'] as String?,
       factoryUserId: factory?['userId'] as String?,
       trustScore: factory?['trustScore'] as int? ?? 50,
       factoryAvgRating: (factory?['avgRating'] as num?)?.toDouble() ?? 0.0,

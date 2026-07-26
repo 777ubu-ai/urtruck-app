@@ -289,28 +289,18 @@ class _ProfileHeader extends StatelessWidget {
     final displayName = profile.name?.isNotEmpty == true
         ? profile.name!
         : (profile.factory?.companyName ?? l.profileNoName);
-    final initial = displayName.isNotEmpty ? displayName[0].toUpperCase() : '?';
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Row(
           children: [
-            CircleAvatar(
-              radius: 36,
-              backgroundColor: scheme.primaryContainer,
-              backgroundImage: profile.avatarUrl != null
-                  ? NetworkImage(ApiClient.resolveMediaUrl(profile.avatarUrl!))
+            // Аватар с фирменным градиентным кольцом — как в соцсетях.
+            FactoryAvatar(
+              name: displayName,
+              imageUrl: profile.avatarUrl != null
+                  ? ApiClient.resolveMediaUrl(profile.avatarUrl!)
                   : null,
-              child: profile.avatarUrl == null
-                  ? Text(
-                      initial,
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w700,
-                        color: scheme.onPrimaryContainer,
-                      ),
-                    )
-                  : null,
+              size: 78,
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -319,15 +309,22 @@ class _ProfileHeader extends StatelessWidget {
                 children: [
                   Text(
                     displayName,
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                    style: const TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.4,
+                    ),
                     overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(height: 4),
-                  Text(profile.phone,
-                      style: Theme.of(context).textTheme.bodyMedium),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 2),
+                  Text(
+                    profile.phone,
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 7),
                   Row(
                     children: [
                       Container(
