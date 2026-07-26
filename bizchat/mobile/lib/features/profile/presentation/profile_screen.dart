@@ -182,6 +182,43 @@ class _ProfileScreenState extends State<ProfileScreen> {
         padding: const EdgeInsets.all(16),
         children: [
           _ProfileHeader(profile: p),
+          const SizedBox(height: 14),
+          // Кнопки действий на всю ширину — как в профилях соцсетей.
+          Row(
+            children: [
+              Expanded(
+                child: _ProfileActionButton(
+                  label: l.profileEditTooltip,
+                  icon: Icons.edit_outlined,
+                  onTap: () async {
+                    final updated = await Navigator.of(context).push<MyProfile>(
+                      MaterialPageRoute(
+                        builder: (_) => EditProfileScreen(initial: p),
+                      ),
+                    );
+                    if (updated != null && mounted) {
+                      setState(() => _profile = updated);
+                    }
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _ProfileActionButton(
+                  label: l.profileFollowers,
+                  icon: Icons.people_outline_rounded,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => FollowListScreen(
+                        userId: p.id,
+                        mode: FollowListMode.followers,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 20),
           // Рекомендации поставщиков — знакомим покупателя с каталогом.
           InterestingFactories(excludeUserId: p.id),
@@ -962,6 +999,57 @@ class _StatTile extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Кнопка действия в шапке профиля: серая «таблетка» во всю ширину колонки.
+/// Такой паттерн используют профили соцсетей — действия сразу под шапкой,
+/// без выпадающих меню.
+class _ProfileActionButton extends StatelessWidget {
+  const _ProfileActionButton({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        height: 36,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 16, color: scheme.onSurface),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                  color: scheme.onSurface,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
