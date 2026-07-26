@@ -90,6 +90,104 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  /// Меню профиля за «тремя чёрточками» — как в соцсетях: настройки,
+  /// подписки, сохранения и выход живут отдельным экраном, а не тянутся
+  /// бесконечным списком под сеткой товаров.
+  void _openMenu(MyProfile p) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          appBar: AppBar(
+            title: Text(AppLocalizations.of(context)!.profileTitle),
+          ),
+          body: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              _SettingsCard(profile: p),
+              const SizedBox(height: 16),
+              Card(
+                child: Column(
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.people_outline),
+                      title: Text(l.profileFollowers),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => FollowListScreen(
+                              userId: p.id,
+                              mode: FollowListMode.followers,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    ListTile(
+                      leading: const Icon(Icons.person_add_outlined),
+                      title: Text(l.profileFollowing),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => FollowListScreen(
+                              userId: p.id,
+                              mode: FollowListMode.following,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    ListTile(
+                      leading: const Icon(Icons.bookmark_outline),
+                      title: Text(l.profileMySaves),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const SavesScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    ListTile(
+                      leading: const Icon(Icons.settings_outlined),
+                      title: Text(l.profileSettings),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => SettingsScreen(profile: p),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              _ReferralCard(code: p.referralCode, onCopy: _copyReferral),
+              const SizedBox(height: 24),
+              FilledButton.icon(
+                onPressed: _logout,
+                icon: const Icon(Icons.logout),
+                label: Text(l.profileLogout),
+                style: FilledButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.errorContainer,
+                  foregroundColor: Theme.of(context).colorScheme.onErrorContainer,
+                  minimumSize: const Size.fromHeight(48),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   void _copyReferral(String code) {
     final l = AppLocalizations.of(context)!;
     Clipboard.setData(ClipboardData(text: code));
@@ -137,6 +235,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
             tooltip: l.profileRefreshTooltip,
             onPressed: _load,
           ),
+          // «Три чёрточки» — всё меню профиля открывается отдельным экраном.
+          if (_profile != null)
+            IconButton(
+              icon: const Icon(Icons.menu_rounded),
+              tooltip: 'Меню',
+              onPressed: () => _openMenu(_profile!),
+            ),
         ],
       ),
       body: _buildBody(),
@@ -223,10 +328,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           // Рекомендации поставщиков — знакомим покупателя с каталогом.
           InterestingFactories(excludeUserId: p.id),
           const SizedBox(height: 16),
-          // S2-03: карточки статистики
-          if (p.factory != null)
-            _StatsCards(factory: p.factory!),
-          if (p.factory != null) const SizedBox(height: 16),
           if (p.factory != null) ...[
             _FactoryCard(factory: p.factory!),
             const SizedBox(height: 16),
@@ -234,84 +335,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _UserPostsGrid(userId: p.id),
             const SizedBox(height: 16),
           ],
-          _SettingsCard(profile: p),
-          const SizedBox(height: 16),
-          Card(
-            child: Column(
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.people_outline),
-                  title: Text(l.profileFollowers),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => FollowListScreen(
-                          userId: p.id,
-                          mode: FollowListMode.followers,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-                const Divider(height: 1, indent: 56),
-                ListTile(
-                  leading: const Icon(Icons.person_add_outlined),
-                  title: Text(l.profileFollowing),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => FollowListScreen(
-                          userId: p.id,
-                          mode: FollowListMode.following,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-                const Divider(height: 1, indent: 56),
-                ListTile(
-                  leading: const Icon(Icons.bookmark_outline),
-                  title: Text(l.profileMySaves),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const SavesScreen(),
-                      ),
-                    );
-                  },
-                ),
-                const Divider(height: 1, indent: 56),
-                ListTile(
-                  leading: const Icon(Icons.settings_outlined),
-                  title: Text(l.profileSettings),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => SettingsScreen(profile: p),
-                      ),
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          _ReferralCard(code: p.referralCode, onCopy: _copyReferral),
-          const SizedBox(height: 24),
-          FilledButton.icon(
-            onPressed: _logout,
-            icon: const Icon(Icons.logout),
-            label: Text(l.profileLogout),
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.errorContainer,
-              foregroundColor: Theme.of(context).colorScheme.onErrorContainer,
-              minimumSize: const Size.fromHeight(48),
-            ),
-          ),
           const SizedBox(height: 32),
         ],
       ),
@@ -863,93 +886,6 @@ class _PostThumbnail extends StatelessWidget {
 }
 
 /// S2-03: карточки статистики для factory — товары/сделки/рейтинг/trust.
-class _StatsCards extends StatelessWidget {
-  const _StatsCards({required this.factory});
-  final FactoryProfile factory;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final cards = [
-      (
-        Icons.inventory_2_rounded,
-        factory.totalProducts.toString(),
-        'Товары',
-        Colors.blue,
-      ),
-      (
-        Icons.handshake_rounded,
-        factory.totalDeals.toString(),
-        'Сделки',
-        Colors.green,
-      ),
-      (
-        Icons.star_rounded,
-        factory.avgRating > 0
-            ? factory.avgRating.toStringAsFixed(1)
-            : '—',
-        factory.reviewsCount > 0
-            ? '${factory.reviewsCount} отз.'
-            : 'Рейтинг',
-        Colors.amber,
-      ),
-      (
-        Icons.verified_rounded,
-        factory.trustScore.toString(),
-        'Trust',
-        factory.trustScore >= 90
-            ? Colors.green
-            : factory.trustScore >= 70
-                ? Colors.orange
-                : Colors.grey,
-      ),
-    ];
-    return Row(
-      children: cards
-          .map((c) => Expanded(
-                child: Padding(
-                  padding: EdgeInsets.only(
-                      right: c == cards.last ? 0 : 8),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        vertical: 16, horizontal: 8),
-                    decoration: BoxDecoration(
-                      color: scheme.surfaceContainerLow,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: scheme.outlineVariant.withValues(alpha: 0.4),
-                        width: 1,
-                      ),
-                    ),
-                    child: Column(
-                      children: [
-                        Icon(c.$1, color: c.$4, size: 28),
-                        const SizedBox(height: 6),
-                        Text(
-                          c.$2,
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleLarge
-                              ?.copyWith(fontWeight: FontWeight.w800),
-                        ),
-                        Text(
-                          c.$3,
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
-                              ?.copyWith(color: scheme.onSurfaceVariant),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ))
-          .toList(),
-    );
-  }
-}
 
 /// Плитка метрики завода (товары / сделки / рейтинг).
 /// Заменяет строчку мелкого текста — цифра читается сразу, а нулевое
