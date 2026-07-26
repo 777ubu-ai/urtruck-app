@@ -12,7 +12,9 @@ on:
   workflow_dispatch:
   push:
     branches: [claude/biz-chat-inquiry-6v7qi2]
-    paths: ['.github/workflows/deploy-bizchat-universal.yml']
+    paths:
+      - 'bizchat/backend/**'
+      - '.github/workflows/deploy-bizchat-universal.yml'
 
 concurrency:
   group: deploy-bizchat
@@ -79,6 +81,13 @@ jobs:
       - name: Verify universal code works
         run: |
           set -e
+          echo "== каталог заводов =="
+          cat_body=$(curl -fsS -m 20 "https://biz-chat.net/api/v1/factories?limit=3" || true)
+          echo "$cat_body" | head -c 200; echo
+          case "$cat_body" in
+            *'"items"'*) echo "✅ Каталог заводов отвечает";;
+            *) echo "::error::Каталог заводов не вернул items"; exit 1;;
+          esac
           T="+77000000123"
           echo "== sms/send (stub) =="
           curl -sS -m 15 -o /dev/null -w "send: %{http_code}\n" -X POST \
