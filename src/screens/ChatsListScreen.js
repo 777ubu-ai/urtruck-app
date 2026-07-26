@@ -9,17 +9,32 @@
 // поддержка/спор/срочно). Industrial Luxury, dark premium.
 //
 // Не трогает driver tab-bar и client nav — это таб-route 'Chats'.
+//
+// Режим «Сделки» (решение владельца 26.07.2026): этот же экран монтируется
+// клиенту как вкладка Deals (route.name === 'Deals'). Тогда сверху списка
+// переписок появляется секция «Предложения (N)» — входящие ставки водителей
+// (pending/countered из myDashboard). Тап по предложению открывает комнату
+// сделки (openBidChat → Chat), где торг ведётся в BargainCard, а переписка —
+// ниже. Отдельная вкладка «Чаты» у клиента при этом скрыта: чат живёт внутри
+// сделки, вторых дверей нет.
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, TextInput, RefreshControl, ActivityIndicator, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import Feather from '@expo/vector-icons/Feather';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useI18n } from '../utils/useI18n';
 import { formatStatus } from '../utils/i18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useV1Colors } from '../theme/designV1';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import { chatAPI } from '../utils/chatAPI';
+import { marketAPI } from '../utils/marketAPI';
+import { notificationsAPI } from '../utils/notificationsAPI';
+import { notifyNotifRead } from '../utils/unreadEvents';
+import { useToast } from '../components/Toast';
+import { formatPrice } from '../utils/normalizers';
+import { localizePlace, localizeCargoName } from '../utils/places';
 import { prettifyPartnerName } from '../utils/displayName';
 import { accentFor } from '../components/deal/DealRoom';
 
@@ -35,12 +50,16 @@ const ROLE_LABEL = { driver: 'role_driver', client: 'role_client', support: 'rol
 
 export default function ChatsListScreen({ navigation, route }) {
   const v1 = useV1Colors();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { theme } = useTheme();
+  const { toast } = useToast();
   const role = route?.params?.role || 'client';
   const accent = accentFor(role);
+  // Вкладка «Сделки» (client): тот же список комнат + секция входящих ставок.
+  const dealsMode = route?.name === 'Deals';
 
   const [rooms, setRooms] = useState([]);
+  const [offers, setOffers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery] = useState('');
@@ -50,13 +69,29 @@ export default function ChatsListScreen({ navigation, route }) {
     try {
       const data = await chatAPI.rooms();
       setRooms(data.rooms || []);
+      if (dealsMode) {
+        // Живые предложения: у клиента — входящие ставки водителей по моим
+        // грузам, у водителя (на будущее) — его собственные ставки.
+        const d = await marketAPI.myDashboard().catch(() => null);
+        const raw = d ? (role === 'driver' ? d.my_bids : d.incoming_bids) || [] : [];
+        setOffers(raw.filter((b) => b.status === 'pending' || b.status === 'countered'));
+      }
     } catch (e) {
       console.warn('chats load failed', e);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [dealsMode, role]);
+
+  // В режиме «Сделки» открытие вкладки гасит бейдж непрочитанных событий
+  // (ставки/статусы) — аналог «варианта Б», который у водителя живёт в
+  // MyTripsScreen. История в ленте уведомлений не удаляется.
+  useFocusEffect(useCallback(() => {
+    if (!dealsMode) return;
+    notificationsAPI.readAll().catch(() => {});
+    notifyNotifRead();
+  }, [dealsMode]));
 
   // P2-аудит (чаты): раньше список обновлялся ТОЛЬКО при возврате на экран
   // (useFocusEffect без polling) → новые сообщения и бейдж непрочитанного не
@@ -89,6 +124,73 @@ export default function ChatsListScreen({ navigation, route }) {
       return hay.includes(q);
     });
   }, [rooms, query, filter]);
+
+  // Тап по предложению → комната сделки (торг в BargainCard + переписка).
+  const openOffer = async (bid) => {
+    try {
+      const r = await marketAPI.openBidChat(bid.id);
+      const roomId = r && (r.chat_room_id || r.chatRoomId);
+      if (r && r.ok && roomId) {
+        navigation.navigate('Chat', { roomId, role, cargoId: bid.cargo_id, bidId: bid.id });
+      } else {
+        toast((r && r.detail) || t('chat_open_failed'), 'error');
+      }
+    } catch {
+      toast(t('chat_open_failed'), 'error');
+    }
+  };
+
+  const renderOfferCard = (bid) => {
+    const isCountered = bid.status === 'countered';
+    const cur = bid.currency || 'USD';
+    const statusColor = isCountered ? '#A855F7' : '#FF8400';
+    return (
+      <TouchableOpacity
+        key={String(bid.id)}
+        testID="deals-offer-card"
+        style={[s.card, { backgroundColor: theme.card, borderColor: statusColor, borderWidth: 1.5 }]}
+        onPress={() => openOffer(bid)}
+        activeOpacity={0.85}
+      >
+        <View style={[s.avatar, { backgroundColor: statusColor + '22' }]}>
+          <Feather name="dollar-sign" size={18} color={statusColor} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <View style={s.row}>
+            <Text style={[s.name, { color: theme.text }]} numberOfLines={1}>
+              {localizePlace(bid.cargo_from || '—', lang)} → {localizePlace(bid.cargo_to || '—', lang)}
+            </Text>
+            <Text style={[s.dealStatus, { color: statusColor }]}>
+              {isCountered ? t('bid_countered') : t('bid_pending')}
+            </Text>
+          </View>
+          {bid.cargo_desc ? (
+            <Text style={[s.preview, { color: theme.textMuted }]} numberOfLines={1}>
+              {localizeCargoName(bid.cargo_desc, lang)}
+            </Text>
+          ) : null}
+          <View style={s.row}>
+            <Text style={[s.offerAmount, { color: theme.text }]}>
+              {formatPrice(bid.amount, cur, t)}
+              {isCountered && bid.counter_amount ? `  →  ${formatPrice(bid.counter_amount, cur, t)}` : ''}
+            </Text>
+            <Text style={[s.offerOpen, { color: accent }]}>{t('open_bid_chat')} ›</Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  // Секция над списком переписок: предложения, требующие решения.
+  const offersHeader = dealsMode && offers.length > 0 ? (
+    <View testID="deals-offers-section">
+      <Text style={[s.sectionTitle, { color: theme.text }]}>
+        {t('tab_offers')} ({offers.length})
+      </Text>
+      {offers.map(renderOfferCard)}
+      <Text style={[s.sectionTitle, { color: theme.text }]}>{t('chat_title')}</Text>
+    </View>
+  ) : null;
 
   const renderItem = ({ item }) => {
     // Enriched /chat/rooms (PR #62): реальные данные сделки. Партнёр — через
@@ -160,8 +262,12 @@ export default function ChatsListScreen({ navigation, route }) {
   return (
     <SafeAreaView style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']} testID="deal-room-list">
       <View style={s.titleRow} testID="chats-header">
-        <Feather name="message-square" size={20} color={theme.text} />
-        <Text style={[s.title, { color: theme.text }]}>{t('chat_title')}</Text>
+        {dealsMode ? (
+          <MaterialCommunityIcons name="handshake-outline" size={22} color={theme.text} />
+        ) : (
+          <Feather name="message-square" size={20} color={theme.text} />
+        )}
+        <Text style={[s.title, { color: theme.text }]}>{dealsMode ? t('tab_deals') : t('chat_title')}</Text>
         <View style={{ flex: 1 }} />
         <HeaderMenuButton navigation={navigation} role={role} testID="chats-menu-btn" />
       </View>
@@ -202,9 +308,10 @@ export default function ChatsListScreen({ navigation, route }) {
           data={filtered}
           keyExtractor={(i) => String(i.id)}
           renderItem={renderItem}
+          ListHeaderComponent={offersHeader}
           contentContainerStyle={{ padding: 12, paddingBottom: 24 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accent} />}
-          ListEmptyComponent={<Text style={[s.empty, { color: theme.textMuted }]}>{query || filter !== 'all' ? t('chat_no_results') : t('chats_empty')}</Text>}
+          ListEmptyComponent={<Text style={[s.empty, { color: theme.textMuted }]}>{query || filter !== 'all' ? t('chat_no_results') : (dealsMode ? t('deals_empty') : t('chats_empty'))}</Text>}
         />
       )}
     </SafeAreaView>
@@ -240,4 +347,8 @@ const s = StyleSheet.create({
   badge: { minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center' },
   badgeTxt: { color: '#0C0A09', fontSize: 12, fontWeight: '900' },
   empty: { textAlign: 'center', marginTop: 40, fontSize: 14 },
+  // Режим «Сделки»: заголовки секций и карточка входящего предложения.
+  sectionTitle: { fontSize: 15, fontWeight: '900', marginTop: 6, marginBottom: 8 },
+  offerAmount: { fontSize: 16, fontWeight: '900', marginTop: 2, fontVariant: ['tabular-nums'] },
+  offerOpen: { fontSize: 12, fontWeight: '800' },
 });

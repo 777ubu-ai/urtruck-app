@@ -231,9 +231,13 @@ export default function BottomNav({ state, navigation }) {
           //  • «Дела» = непрочитанные СОБЫТИЯ СДЕЛОК (notifUnread — ставки/
           //    встречные/сделки/статусы). Это бывший колокольчик, спущенный
           //    вниз в таб-бар: вся живая работа под пальцем.
+          //  • Если вкладки «Чаты» в баре нет (клиент, 3 вкладки с 26.07.2026 —
+          //    чат живёт внутри «Сделок»), непрочитанные сообщения плюсуются
+          //    к бейджу «Сделок», чтобы сигнал не терялся.
+          const hasChatsTab = state.routes.some((r) => r.name === 'Chats');
           const tabBadgeCount =
             route.name === 'Chats' ? chatUnread
-            : route.name === 'Deals' ? notifUnread
+            : route.name === 'Deals' ? (notifUnread + (hasChatsTab ? 0 : chatUnread))
             : 0;
           const showBadge = tabBadgeCount > 0;
           const badgeLabel = tabBadgeCount > 9 ? '9+' : String(tabBadgeCount);
