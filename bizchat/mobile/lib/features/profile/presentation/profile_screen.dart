@@ -10,20 +10,28 @@ import '../../auth/presentation/phone_screen.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../feed/presentation/hashtag_screen.dart';
 import '../../feed/presentation/post_detail_screen.dart';
-import '../../factories/presentation/interesting_factories.dart';
 import '../data/profile_repository.dart';
 import 'edit_profile_screen.dart';
 import 'follow_list_screen.dart';
+import 'profile_highlights.dart';
 import 'saves_screen.dart';
 import 'settings_screen.dart';
 
-/// Экран профиля. Загружает `/users/me` при первом открытии и показывает:
-/// - аватар (заглушка из инициала, если нет URL)
-/// - имя/телефон, тип (Байер/Завод)
-/// - языковые/валютные настройки
-/// - реферальный код
-/// - для заводов — название компании, Trust Score, хэштеги
-/// - кнопку Logout
+/// Экран своего профиля. Структура строго повторяет профиль соцсети и
+/// менять порядок блоков нельзя:
+///
+///   1. Шапка — аватар слева, три счётчика справа (публикации, подписчики,
+///      подписки). Это единственное место со статистикой на экране.
+///   2. Описание — имя, категория, текст «о себе», специализация тегами,
+///      локация и контактные ссылки.
+///   3. Кнопки «Редактировать профиль» и «Поделиться профилем» — под
+///      описанием, не над ним.
+///   4. «Актуальное» — карусель кружков (собственные stories).
+///   5. Вкладки контента, переключающие сетку.
+///   6. Сетка превью 3 в ряд во всю ширину.
+///
+/// Настройки, сохранённое, реферальный код и выход живут за «тремя
+/// полосками» в правом верхнем углу и на экране профиля не показываются.
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
@@ -92,69 +100,74 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  /// Меню профиля за «тремя чёрточками» — как в соцсетях: сохранения,
-  /// настройки, реферальный код и выход живут отдельным экраном, а не тянутся
-  /// бесконечным списком под сеткой товаров.
+  /// Меню за «тремя полосками» — выезжающая снизу панель, как в соцсетях:
+  /// список пунктов, каждый открывает свой экран. Отдельной страницы-меню
+  /// нет, панель ложится поверх профиля.
   ///
   /// Здесь НЕТ «Подписчиков»/«Подписок» — они кликабельны прямо в шапке
-  /// профиля, и дублировать их пунктами меню значит показывать одни и те же
-  /// данные дважды. Языка/валюты/страны здесь тоже нет — это экран
-  /// «Настройки», единственное место, где они редактируются.
+  /// профиля. Языка/валюты/страны тоже нет — это экран «Настройки»,
+  /// единственное место, где они редактируются.
   void _openMenu(MyProfile p) {
     final l = AppLocalizations.of(context)!;
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => Scaffold(
-          appBar: AppBar(title: Text(l.profileTitle)),
-          body: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              Card(
-                child: Column(
-                  children: [
-                    ListTile(
-                      leading: const Icon(Icons.bookmark_outline),
-                      title: Text(l.profileMySaves),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const SavesScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                    const Divider(height: 1, indent: 56),
-                    ListTile(
-                      leading: const Icon(Icons.settings_outlined),
-                      title: Text(l.profileSettings),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => SettingsScreen(profile: p),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.settings_outlined),
+              title: Text(l.profileSettings),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => SettingsScreen(profile: p),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.bookmark_outline),
+              title: Text(l.profileMySaves),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const SavesScreen()),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.card_giftcard),
+              title: Text(l.profileReferralCodeLabel),
+              subtitle: Text(
+                p.referralCode,
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontWeight: FontWeight.w700,
                 ),
               ),
-              const SizedBox(height: 16),
-              _ReferralCard(code: p.referralCode, onCopy: _copyReferral),
-              const SizedBox(height: 24),
-              FilledButton.icon(
-                onPressed: _logout,
-                icon: const Icon(Icons.logout),
-                label: Text(l.profileLogout),
-                style: FilledButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.errorContainer,
-                  foregroundColor: Theme.of(context).colorScheme.onErrorContainer,
-                  minimumSize: const Size.fromHeight(48),
-                ),
+              trailing: const Icon(Icons.copy, size: 20),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _copyReferral(p.referralCode);
+              },
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: Icon(Icons.logout,
+                  color: Theme.of(context).colorScheme.error),
+              title: Text(
+                l.profileLogout,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
-            ],
-          ),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _logout();
+              },
+            ),
+          ],
         ),
       ),
     );
@@ -180,38 +193,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
           l.profileTitle,
           style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 22),
         ),
+        // В правом верхнем углу — только «три полоски». Редактирование
+        // вынесено кнопкой под описанием (там, где ему и место), обновление
+        // делается протягиванием списка вниз.
         actions: [
           if (_profile != null)
             IconButton(
-              icon: const Icon(Icons.edit_outlined),
-              tooltip: l.profileEditTooltip,
-              onPressed: () async {
-                final updated = await Navigator.of(context).push<MyProfile>(
-                  MaterialPageRoute(
-                    builder: (_) => EditProfileScreen(initial: _profile!),
-                  ),
-                );
-                if (updated != null && mounted) {
-                  setState(() => _profile = updated);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(l.profileUpdatedSnack),
-                      duration: const Duration(seconds: 1),
-                    ),
-                  );
-                }
-              },
-            ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: l.profileRefreshTooltip,
-            onPressed: _load,
-          ),
-          // «Три чёрточки» — всё меню профиля открывается отдельным экраном.
-          if (_profile != null)
-            IconButton(
               icon: const Icon(Icons.menu_rounded),
-              tooltip: 'Меню',
+              tooltip: l.profileMenuTooltip,
               onPressed: () => _openMenu(_profile!),
             ),
         ],
@@ -257,69 +246,57 @@ class _ProfileScreenState extends State<ProfileScreen> {
       onRefresh: _load,
       child: ListView(
         padding: EdgeInsets.zero,
+        // Порядок блоков жёстко зафиксирован и повторяет профиль соцсети:
+        //   1) шапка: аватар + три счётчика
+        //   2) описание: имя, категория, текст, ссылки и контакты
+        //   3) кнопки «Редактировать профиль» и «Поделиться» — под описанием
+        //   4) «Актуальное» — карусель кружков
+        //   5) вкладки контента
+        //   6) сетка превью во всю ширину
+        // Ничего между этими блоками не вставляем.
         children: [
-          // Сетка товаров идёт во всю ширину, поэтому общий отступ убран,
-          // а верхние блоки получают собственные поля.
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
             child: _ProfileHeader(profile: p),
           ),
           const SizedBox(height: 14),
-          // Кнопки действий на всю ширину — как в профилях соцсетей.
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
               children: [
-              Expanded(
-                child: _ProfileActionButton(
-                  label: l.profileEditTooltip,
-                  icon: Icons.edit_outlined,
-                  onTap: () async {
-                    final updated = await Navigator.of(context).push<MyProfile>(
-                      MaterialPageRoute(
-                        builder: (_) => EditProfileScreen(initial: p),
-                      ),
-                    );
-                    if (updated != null && mounted) {
-                      setState(() => _profile = updated);
-                    }
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _ProfileActionButton(
-                  label: 'Поделиться',
-                  icon: Icons.ios_share_rounded,
-                  onTap: () => Share.share(
-                    'Biz Chat — ${p.factory?.companyName ?? p.name ?? "профиль"}\n'
-                    'https://biz-chat.net/app/',
+                Expanded(
+                  child: _ProfileActionButton(
+                    label: l.profileEditProfile,
+                    onTap: () async {
+                      final updated =
+                          await Navigator.of(context).push<MyProfile>(
+                        MaterialPageRoute(
+                          builder: (_) => EditProfileScreen(initial: p),
+                        ),
+                      );
+                      if (updated != null && mounted) {
+                        setState(() => _profile = updated);
+                      }
+                    },
                   ),
                 ),
-              ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _ProfileActionButton(
+                    label: l.profileShareProfile,
+                    onTap: () => Share.share(
+                      'Biz Chat — ${p.factory?.companyName ?? p.name ?? "профиль"}\n'
+                      'https://biz-chat.net/app/',
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
-          const SizedBox(height: 20),
-          // Рекомендации поставщиков — знакомим покупателя с каталогом.
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: InterestingFactories(excludeUserId: p.id),
-          ),
           const SizedBox(height: 16),
-          if (p.factory != null) ...[
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: _FactoryCard(
-                factory: p.factory!,
-                countryCode: p.countryCode,
-                city: p.city,
-              ),
-            ),
-            const SizedBox(height: 20),
-            // Сетка товаров — во всю ширину, последним блоком.
-            _UserPostsGrid(userId: p.id),
-          ],
+          ProfileHighlights(userId: p.id, canCreate: p.isFactory),
+          const SizedBox(height: 4),
+          _UserPostsGrid(userId: p.id),
           const SizedBox(height: 24),
         ],
       ),
@@ -341,6 +318,12 @@ class _ProfileHeader extends StatelessWidget {
     final bio = profile.factory?.description;
     final site = profile.factory?.website;
     final whatsapp = profile.factory?.whatsapp;
+    final tags = profile.factory?.hashtags ?? const <String>[];
+    final country = profile.countryCode?.trim() ?? '';
+    final town = profile.city?.trim() ?? '';
+    final location = country.isNotEmpty && town.isNotEmpty
+        ? l.profileLocationLine(country, town)
+        : (country.isNotEmpty ? country : town);
     // Шапка в духе профилей соцсетей: аватар и три счётчика в одну строку,
     // ниже — имя с описанием, ниже — кнопки действий на всю ширину.
     return Column(
@@ -360,12 +343,12 @@ class _ProfileHeader extends StatelessWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
-                  // Единственное место, где показывается количество товаров.
-                  // Число приходит тем же запросом, что и сетка ниже, поэтому
+                  // Единственное место со статистикой. Число публикаций
+                  // приходит тем же запросом, что и сетка ниже, поэтому
                   // разойтись с ней не может.
                   _CountStat(
                     value: profile.postsCount,
-                    label: l.profileWordProducts(profile.postsCount),
+                    label: l.profileWordPosts(profile.postsCount),
                   ),
                   _CountStat(
                     value: profile.followersCount,
@@ -422,12 +405,9 @@ class _ProfileHeader extends StatelessWidget {
           profile.isFactory ? l.chatPartnerFactory : l.chatPartnerBuyer,
           style: TextStyle(fontSize: 13.5, color: scheme.onSurfaceVariant),
         ),
-        // Номер входа в витрине профиля не показываем: это телефон аккаунта
-        // (может быть страны, отличной от страны завода), и как контакт для
-        // покупателя он бесполезен. Он остаётся в «Настройки → Аккаунт».
-        // Контактный канал завода — WhatsApp и сайт ниже.
         // «О себе» завода — то, ради чего покупатель и открывает профиль:
-        // что производят, условия опта, гарантии.
+        // что производят, условия опта, гарантии. Отдельного блока
+        // «О заводе» больше нет — весь этот текст живёт здесь, в описании.
         if (bio != null && bio.isNotEmpty) ...[
           const SizedBox(height: 6),
           Text(
@@ -435,7 +415,55 @@ class _ProfileHeader extends StatelessWidget {
             style: const TextStyle(fontSize: 13.5, height: 1.35),
           ),
         ],
-        // Контакты кликабельными строками, как ссылка wa.me в референсе.
+        // Специализация — тегами прямо в описании.
+        if (tags.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 2,
+            children: [
+              for (final tag in tags)
+                InkWell(
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => HashtagScreen(tag: tag)),
+                  ),
+                  child: Text(
+                    '#$tag',
+                    style: const TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF0B66FF),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
+        // Где находится производство — строкой контакта, а не отдельным блоком.
+        if (location.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Icon(Icons.place_outlined,
+                  size: 14, color: scheme.onSurfaceVariant),
+              const SizedBox(width: 5),
+              Flexible(
+                child: Text(
+                  location,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 13.5, color: scheme.onSurfaceVariant),
+                ),
+              ),
+            ],
+          ),
+        ],
+        // Контакты кликабельными строками.
+        // Номер входа здесь не показываем: это телефон аккаунта, он может
+        // быть страны, отличной от страны завода, и покупателю бесполезен.
+        // Он остаётся в «Настройки → Аккаунт». Контакт завода — WhatsApp
+        // (китайский номер вписывается в редактировании профиля) и сайт.
         if (whatsapp != null && whatsapp.isNotEmpty)
           _ProfileLink(
             icon: Icons.chat_rounded,
@@ -551,154 +579,6 @@ class _CountStat extends StatelessWidget {
   }
 }
 
-/// Блок «О заводе».
-///
-/// Здесь НЕТ количества товаров и подписчиков — они уже есть в шапке профиля,
-/// и повторять их значит показывать одни и те же цифры дважды. Блок несёт
-/// только те данные, которых в шапке нет: статус проверки, где находится
-/// производство, оценка покупателей, закрытые сделки и специализация.
-class _FactoryCard extends StatelessWidget {
-  const _FactoryCard({
-    required this.factory,
-    required this.countryCode,
-    required this.city,
-  });
-  final FactoryProfile factory;
-  final String? countryCode;
-  final String? city;
-
-  @override
-  Widget build(BuildContext context) {
-    final l = AppLocalizations.of(context)!;
-    final country = countryCode?.trim() ?? '';
-    final town = city?.trim() ?? '';
-    final location = country.isNotEmpty && town.isNotEmpty
-        ? l.profileLocationLine(country, town)
-        : (country.isNotEmpty ? country : town);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text(l.profileAboutFactory,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        )),
-                const Spacer(),
-                // Живой статус вместо «Trust Score: 0».
-                TrustBadge(
-                  score: factory.trustScore,
-                  verified: factory.verifiedAt != null,
-                  compact: false,
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            if (location.isNotEmpty)
-              _FactoryFactRow(
-                icon: Icons.place_outlined,
-                text: location,
-              ),
-            _FactoryFactRow(
-              icon: Icons.star_outline_rounded,
-              text: factory.reviewsCount > 0
-                  ? l.profileRatingWithReviews(
-                      factory.avgRating.toStringAsFixed(1),
-                      l.publicProfileReviewsCountPlural(factory.reviewsCount),
-                    )
-                  : l.profileNoRatingYet,
-            ),
-            _FactoryFactRow(
-              icon: Icons.handshake_outlined,
-              text: l.profileDealsClosed(factory.totalDeals),
-            ),
-            if (factory.hashtags.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 6,
-                children: factory.hashtags
-                    .map((tag) => ActionChip(
-                          label: Text('#$tag'),
-                          visualDensity: VisualDensity.compact,
-                          padding: EdgeInsets.zero,
-                          onPressed: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => HashtagScreen(tag: tag),
-                              ),
-                            );
-                          },
-                        ))
-                    .toList(),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Строка факта о заводе: иконка + текст. Одна строка — один смысл,
-/// без плиток с цифрами, которые уже показаны в шапке.
-class _FactoryFactRow extends StatelessWidget {
-  const _FactoryFactRow({required this.icon, required this.text});
-
-  final IconData icon;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        children: [
-          Icon(icon, size: 17, color: scheme.onSurfaceVariant),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(fontSize: 13.5, height: 1.3),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ReferralCard extends StatelessWidget {
-  const _ReferralCard({required this.code, required this.onCopy});
-  final String code;
-  final void Function(String) onCopy;
-
-  @override
-  Widget build(BuildContext context) {
-    final l = AppLocalizations.of(context)!;
-    return Card(
-      child: ListTile(
-        leading: const Icon(Icons.card_giftcard),
-        title: Text(l.profileReferralCodeLabel),
-        subtitle: Text(code,
-            style: const TextStyle(
-              fontFamily: 'monospace',
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-            )),
-        trailing: IconButton(
-          icon: const Icon(Icons.copy),
-          tooltip: l.profileReferralCopyTooltip,
-          onPressed: () => onCopy(code),
-        ),
-      ),
-    );
-  }
-}
-
 /// Instagram-style 3-колоночный grid превью постов завода. Загружает
 /// `/users/:id/posts` при первом монтировании. Тап на превью → детальный
 /// экран поста.
@@ -743,103 +623,143 @@ class _UserPostsGridState extends State<_UserPostsGrid> {
     }
   }
 
+  /// Выбранная вкладка: 0 — сетка публикаций, 1 — видео.
+  int _tab = 0;
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final l = AppLocalizations.of(context)!;
-    // Сетка во всю ширину экрана, без карточки и отступов — как в лентах
-    // соцсетей: плитки стыкуются друг с другом и продолжаются вниз.
+    // Вкладка «отмеченные» не рисуется: отметок на товарах в приложении нет,
+    // а вкладка, которая никогда не может ничего показать, только вводит в
+    // заблуждение. Появится функция — появится и третья вкладка.
+    final visible = _tab == 0
+        ? _posts
+        : _posts.where((p) => p.hasVideo).toList(growable: false);
+
+    // Сетка во всю ширину экрана, без карточки и отступов: плитки стыкуются
+    // друг с другом и продолжаются вниз.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-            // Вкладки над сеткой: товары / видео / отмеченные.
-            Container(
-              decoration: BoxDecoration(
-                border: Border(
-                  top: BorderSide(color: scheme.outlineVariant, width: 0.5),
+        Container(
+          decoration: BoxDecoration(
+            border: Border(
+              top: BorderSide(color: scheme.outlineVariant, width: 0.5),
+            ),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: _GridTab(
+                  icon: Icons.grid_on_rounded,
+                  tooltip: l.profileTabGrid,
+                  selected: _tab == 0,
+                  onTap: () => setState(() => _tab = 0),
                 ),
               ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 11),
-                      decoration: BoxDecoration(
-                        border: Border(
-                          bottom: BorderSide(color: scheme.onSurface, width: 1.5),
-                        ),
+              Expanded(
+                child: _GridTab(
+                  icon: Icons.slideshow_outlined,
+                  tooltip: l.profileTabVideo,
+                  selected: _tab == 1,
+                  onTap: () => setState(() => _tab = 1),
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (_loading && _posts.isEmpty)
+          const Padding(
+            padding: EdgeInsets.all(24),
+            child: Center(child: CircularProgressIndicator()),
+          )
+        else if (_error != null && _posts.isEmpty)
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                Text(_error!, textAlign: TextAlign.center),
+                const SizedBox(height: 8),
+                TextButton(onPressed: _load, child: Text(l.commonRetry)),
+              ],
+            ),
+          )
+        else if (visible.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 32),
+            child: Column(
+              children: [
+                Icon(
+                  _tab == 0 ? Icons.add_box_outlined : Icons.slideshow_outlined,
+                  size: 48,
+                  color: scheme.onSurfaceVariant,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _tab == 0 ? l.profileNoPostsYet : l.profileNoVideosYet,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: scheme.onSurfaceVariant,
                       ),
-                      child: Icon(Icons.grid_on_rounded,
-                          size: 23, color: scheme.onSurface),
-                    ),
-                  ),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 11),
-                      child: Icon(Icons.slideshow_outlined,
-                          size: 23, color: scheme.onSurfaceVariant),
-                    ),
-                  ),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 11),
-                      child: Icon(Icons.person_pin_outlined,
-                          size: 23, color: scheme.onSurfaceVariant),
-                    ),
-                  ),
-                ],
+                ),
+              ],
+            ),
+          )
+        else
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              crossAxisSpacing: 1.5,
+              mainAxisSpacing: 1.5,
+            ),
+            itemCount: visible.length,
+            itemBuilder: (_, i) => _PostThumbnail(post: visible[i]),
+          ),
+      ],
+    );
+  }
+}
+
+/// Вкладка над сеткой: иконка с подчёркиванием у активной.
+class _GridTab extends StatelessWidget {
+  const _GridTab({
+    required this.icon,
+    required this.tooltip,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 11),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: selected ? scheme.onSurface : Colors.transparent,
+                width: 1.5,
               ),
             ),
-            if (_loading && _posts.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(24),
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else if (_error != null && _posts.isEmpty)
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    Text(_error!, textAlign: TextAlign.center),
-                    const SizedBox(height: 8),
-                    TextButton(
-                      onPressed: _load,
-                      child: Text(l.commonRetry),
-                    ),
-                  ],
-                ),
-              )
-            else if (_posts.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 24),
-                child: Column(
-                  children: [
-                    Icon(Icons.add_box_outlined,
-                        size: 48, color: scheme.onSurfaceVariant),
-                    const SizedBox(height: 8),
-                    Text(
-                      l.profileNoPostsYet,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: scheme.onSurfaceVariant,
-                          ),
-                    ),
-                  ],
-                ),
-              )
-            else
-              GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate:
-                    const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3,
-                  crossAxisSpacing: 1.5,
-                  mainAxisSpacing: 1.5,
-                ),
-                itemCount: _posts.length,
-                itemBuilder: (_, i) => _PostThumbnail(post: _posts[i]),
-              ),
-      ],
+          ),
+          child: Icon(
+            icon,
+            size: 23,
+            color: selected ? scheme.onSurface : scheme.onSurfaceVariant,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -949,18 +869,12 @@ class _PostThumbnail extends StatelessWidget {
   }
 }
 
-/// Кнопка действия в шапке профиля: серая «таблетка» во всю ширину колонки.
-/// Такой паттерн используют профили соцсетей — действия сразу под шапкой,
-/// без выпадающих меню.
+/// Кнопка действия под описанием профиля: серая «таблетка» во всю ширину
+/// колонки, только текст — без иконки, как в профилях соцсетей.
 class _ProfileActionButton extends StatelessWidget {
-  const _ProfileActionButton({
-    required this.label,
-    required this.icon,
-    required this.onTap,
-  });
+  const _ProfileActionButton({required this.label, required this.onTap});
 
   final String label;
-  final IconData icon;
   final VoidCallback onTap;
 
   @override
@@ -972,28 +886,20 @@ class _ProfileActionButton extends StatelessWidget {
       child: Container(
         height: 36,
         alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
         decoration: BoxDecoration(
           color: scheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(10),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 16, color: scheme.onSurface),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w600,
-                  color: scheme.onSurface,
-                ),
-              ),
-            ),
-          ],
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 13.5,
+            fontWeight: FontWeight.w600,
+            color: scheme.onSurface,
+          ),
         ),
       ),
     );

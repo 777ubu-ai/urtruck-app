@@ -300,6 +300,7 @@ class UserPostPreview {
     required this.likesCount,
     required this.viewsCount,
     required this.isHotDeal,
+    required this.hasVideo,
   });
 
   final String id;
@@ -311,6 +312,10 @@ class UserPostPreview {
   final int viewsCount;
   final bool isHotDeal;
 
+  /// Есть ли среди медиа видео — по этому признаку пост попадает во
+  /// вкладку с видео на профиле.
+  final bool hasVideo;
+
   factory UserPostPreview.fromJson(Map<String, dynamic> json) {
     final media = (json['media'] as List?) ?? const [];
     String? thumb;
@@ -318,6 +323,9 @@ class UserPostPreview {
       final first = media.first;
       if (first is Map) thumb = first['url'] as String?;
     }
+    final hasVideo = media.any(
+      (m) => m is Map && (m['type'] as String?) == 'video',
+    );
     return UserPostPreview(
       id: json['id'] as String,
       title: json['title'] as String? ?? '',
@@ -327,6 +335,7 @@ class UserPostPreview {
       likesCount: (json['likesCount'] as num?)?.toInt() ?? 0,
       viewsCount: (json['viewsCount'] as num?)?.toInt() ?? 0,
       isHotDeal: json['isHotDeal'] as bool? ?? false,
+      hasVideo: hasVideo,
     );
   }
 }

@@ -480,8 +480,6 @@
   "profileLogoutConfirmTitle": "Log out?",
   "profileLogoutConfirmBody": "Your session will end and you will need to sign in via SMS again.",
   "profileLogoutConfirmAction": "Log out",
-  "profileEditTooltip": "Edit",
-  "profileRefreshTooltip": "Refresh",
   "profileReferralCopyTooltip": "Copy",
   "profileReferralCopied": "Referral code {code} copied",
   "@profileReferralCopied": {
@@ -490,13 +488,10 @@
   "profileLoadError": "Failed to load profile",
   "profileUpdatedSnack": "Profile updated",
   "profileNoName": "No name",
-  "profileAboutFactory": "About factory",
   "profileFactoryTrustScore": "Trust Score: {score}",
   "@profileFactoryTrustScore": {
     "placeholders": {"score": {"type": "int"}}
   },
-  "profileLanguageLabel": "Language",
-  "profileCurrencyLabel": "Currency",
   "profileCountryLabel": "Country",
   "profileCityLabel": "City",
   "profileReferralCodeLabel": "Referral code",
@@ -679,10 +674,6 @@
   "onboardingSubtitle3": "Negotiate prices, ask for samples and track shipments — all in one place",
   "onboardingTitle4": "Ready to start?",
   "onboardingSubtitle4": "Sign up in 30 seconds with your phone number — no email, no paperwork",
-  "profileWordProducts": "{count, plural, =1{product} other{products}}",
-  "@profileWordProducts": {
-    "placeholders": {"count": {"type": "int"}}
-  },
   "profileWordFollowers": "{count, plural, =1{follower} other{followers}}",
   "@profileWordFollowers": {
     "placeholders": {"count": {"type": "int"}}
@@ -695,11 +686,6 @@
   "@profileDealsClosed": {
     "placeholders": {"count": {"type": "int"}}
   },
-  "profileNoRatingYet": "No ratings yet",
-  "profileRatingWithReviews": "{rating} — {reviews}",
-  "@profileRatingWithReviews": {
-    "placeholders": {"rating": {"type": "String"}, "reviews": {"type": "String"}}
-  },
   "profileLocationLine": "{country} · {city}",
   "@profileLocationLine": {
     "placeholders": {"country": {"type": "String"}, "city": {"type": "String"}}
@@ -709,5 +695,15 @@
   "@postPriceInYourCurrency": {
     "placeholders": {"value": {"type": "String"}}
   },
-  "postFactoryNoReviewsYet": "No reviews yet"
+  "postFactoryNoReviewsYet": "No reviews yet",
+  "profileWordPosts": "{count, plural, =1{post} other{posts}}",
+  "@profileWordPosts": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "profileEditProfile": "Edit profile",
+  "profileShareProfile": "Share profile",
+  "profileMenuTooltip": "Menu",
+  "profileTabGrid": "Posts",
+  "profileTabVideo": "Video",
+  "profileNoVideosYet": "No videos yet"
 }

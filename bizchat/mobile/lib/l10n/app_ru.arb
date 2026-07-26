@@ -480,8 +480,6 @@
   "profileLogoutConfirmTitle": "Выйти из аккаунта?",
   "profileLogoutConfirmBody": "Сессия будет завершена, придётся снова войти по SMS.",
   "profileLogoutConfirmAction": "Выйти",
-  "profileEditTooltip": "Редактировать",
-  "profileRefreshTooltip": "Обновить",
   "profileReferralCopyTooltip": "Скопировать",
   "profileReferralCopied": "Реферальный код {code} скопирован",
   "@profileReferralCopied": {
@@ -490,13 +488,10 @@
   "profileLoadError": "Не удалось загрузить профиль",
   "profileUpdatedSnack": "Профиль обновлён",
   "profileNoName": "Без имени",
-  "profileAboutFactory": "О заводе",
   "profileFactoryTrustScore": "Trust Score: {score}",
   "@profileFactoryTrustScore": {
     "placeholders": {"score": {"type": "int"}}
   },
-  "profileLanguageLabel": "Язык",
-  "profileCurrencyLabel": "Валюта",
   "profileCountryLabel": "Страна",
   "profileCityLabel": "Город",
   "profileReferralCodeLabel": "Реферальный код",
@@ -679,10 +674,6 @@
   "onboardingSubtitle3": "Договаривайся о цене, проси образцы и отслеживай отгрузки — всё в одном месте",
   "onboardingTitle4": "Готовы начать?",
   "onboardingSubtitle4": "Регистрация за 30 секунд по номеру телефона — без email и документов",
-  "profileWordProducts": "{count, plural, =1{товар} few{товара} many{товаров} other{товара}}",
-  "@profileWordProducts": {
-    "placeholders": {"count": {"type": "int"}}
-  },
   "profileWordFollowers": "{count, plural, =1{подписчик} few{подписчика} many{подписчиков} other{подписчика}}",
   "@profileWordFollowers": {
     "placeholders": {"count": {"type": "int"}}
@@ -695,11 +686,6 @@
   "@profileDealsClosed": {
     "placeholders": {"count": {"type": "int"}}
   },
-  "profileNoRatingYet": "Оценок пока нет",
-  "profileRatingWithReviews": "{rating} — {reviews}",
-  "@profileRatingWithReviews": {
-    "placeholders": {"rating": {"type": "String"}, "reviews": {"type": "String"}}
-  },
   "profileLocationLine": "{country} · {city}",
   "@profileLocationLine": {
     "placeholders": {"country": {"type": "String"}, "city": {"type": "String"}}
@@ -709,5 +695,15 @@
   "@postPriceInYourCurrency": {
     "placeholders": {"value": {"type": "String"}}
   },
-  "postFactoryNoReviewsYet": "Отзывов пока нет"
+  "postFactoryNoReviewsYet": "Отзывов пока нет",
+  "profileWordPosts": "{count, plural, =1{публикация} few{публикации} many{публикаций} other{публикации}}",
+  "@profileWordPosts": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "profileEditProfile": "Редактировать профиль",
+  "profileShareProfile": "Поделиться профилем",
+  "profileMenuTooltip": "Меню",
+  "profileTabGrid": "Публикации",
+  "profileTabVideo": "Видео",
+  "profileNoVideosYet": "Пока нет видео"
 }

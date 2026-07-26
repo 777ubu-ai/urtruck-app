@@ -254,7 +254,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           if (p.isFactory) ...[
             Expanded(
               child: _StatTile(
-                label: l.profileWordProducts(p.factoryTotalProducts ?? 0),
+                label: l.profileWordPosts(p.factoryTotalProducts ?? 0),
                 value: '${p.factoryTotalProducts ?? 0}',
               ),
             ),

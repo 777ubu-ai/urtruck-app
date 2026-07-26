@@ -480,8 +480,6 @@
   "profileLogoutConfirmTitle": "退出登录?",
   "profileLogoutConfirmBody": "会话将结束,您需要通过短信重新登录。",
   "profileLogoutConfirmAction": "退出",
-  "profileEditTooltip": "编辑",
-  "profileRefreshTooltip": "刷新",
   "profileReferralCopyTooltip": "复制",
   "profileReferralCopied": "推荐码 {code} 已复制",
   "@profileReferralCopied": {
@@ -490,13 +488,10 @@
   "profileLoadError": "加载资料失败",
   "profileUpdatedSnack": "资料已更新",
   "profileNoName": "未命名",
-  "profileAboutFactory": "工厂介绍",
   "profileFactoryTrustScore": "信誉分: {score}",
   "@profileFactoryTrustScore": {
     "placeholders": {"score": {"type": "int"}}
   },
-  "profileLanguageLabel": "语言",
-  "profileCurrencyLabel": "货币",
   "profileCountryLabel": "国家",
   "profileCityLabel": "城市",
   "profileReferralCodeLabel": "推荐码",
@@ -679,10 +674,6 @@
   "onboardingSubtitle3": "议价、索要样品、追踪发货 — 全部一站完成",
   "onboardingTitle4": "准备好了吗？",
   "onboardingSubtitle4": "30秒手机号注册 — 无需邮箱、无需文件",
-  "profileWordProducts": "{count, plural, other{商品}}",
-  "@profileWordProducts": {
-    "placeholders": {"count": {"type": "int"}}
-  },
   "profileWordFollowers": "{count, plural, other{粉丝}}",
   "@profileWordFollowers": {
     "placeholders": {"count": {"type": "int"}}
@@ -695,11 +686,6 @@
   "@profileDealsClosed": {
     "placeholders": {"count": {"type": "int"}}
   },
-  "profileNoRatingYet": "暂无评分",
-  "profileRatingWithReviews": "{rating} — {reviews}",
-  "@profileRatingWithReviews": {
-    "placeholders": {"rating": {"type": "String"}, "reviews": {"type": "String"}}
-  },
   "profileLocationLine": "{country} · {city}",
   "@profileLocationLine": {
     "placeholders": {"country": {"type": "String"}, "city": {"type": "String"}}
@@ -709,5 +695,15 @@
   "@postPriceInYourCurrency": {
     "placeholders": {"value": {"type": "String"}}
   },
-  "postFactoryNoReviewsYet": "暂无评价"
+  "postFactoryNoReviewsYet": "暂无评价",
+  "profileWordPosts": "{count, plural, other{帖子}}",
+  "@profileWordPosts": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "profileEditProfile": "编辑资料",
+  "profileShareProfile": "分享主页",
+  "profileMenuTooltip": "菜单",
+  "profileTabGrid": "帖子",
+  "profileTabVideo": "视频",
+  "profileNoVideosYet": "暂无视频"
 }
