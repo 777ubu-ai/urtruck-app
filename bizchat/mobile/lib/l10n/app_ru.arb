@@ -5,7 +5,6 @@
 
   "navHome": "Главная",
   "navSearch": "Поиск",
-  "navCreate": "Создать",
   "navChats": "Чаты",
   "navProfile": "Профиль",
 
@@ -415,7 +414,6 @@
   "publicProfileFollowersLabel": "Подписчики",
   "publicProfileFollowingLabel": "Подписки",
 
-  "createPostMediaTitle": "Медиа товара (до 10)",
   "createPostMediaCount": "{count}/10 медиа",
   "@createPostMediaCount": {
     "placeholders": {"count": {"type": "int"}}
@@ -435,11 +433,9 @@
     "placeholders": {"title": {"type": "String"}}
   },
   "createPostNoMediaSnack": "Добавь хотя бы одно фото",
-  "createPostTitleRequired": "Название *",
   "createPostTitleHintExample": "Например, Хлопковые футболки оверсайз",
   "createPostTitleTooShort": "Минимум 3 символа",
   "createPostDescriptionHintExample": "Материал, характеристики, сертификаты…",
-  "createPostPriceRequired": "Цена *",
   "createPostPriceHintExample": "4.50",
   "createPostFieldRequired": "Обязательно",
   "createPostFieldInvalid": "Неверно",
@@ -450,7 +446,6 @@
   "createPostStockInStock": "В наличии",
   "createPostStockPreOrder": "Предзаказ",
   "createPostStockOutOfStock": "Нет в наличии",
-  "createPostCurrencyRequired": "Валюта *",
   "createPostHashtagInvalidChars": "Хэштег может содержать только буквы, цифры, _ и -",
   "createPostHashtagHintExample": "tshirt, wholesale, cotton…",
 
@@ -714,5 +709,14 @@
   "factoriesInteresting": "Интересные заводы",
   "createSheetTitle": "Создать",
   "createSheetPost": "Публикация",
-  "createSheetStory": "История"
+  "createSheetStory": "История",
+  "createPostSectionMedia": "Фото и видео",
+  "createPostSectionMediaHint": "Первое фото станет обложкой товара",
+  "createPostSectionAbout": "О товаре",
+  "createPostSectionTerms": "Цена и условия",
+  "createPostSectionTags": "Теги",
+  "createPostSectionTagsHint": "По ним товар найдут в поиске",
+  "createPostCover": "Обложка",
+  "createPostAddMore": "Ещё",
+  "createPostUploading": "Публикуем…"
 }

@@ -5,7 +5,6 @@
 
   "navHome": "Home",
   "navSearch": "Search",
-  "navCreate": "Create",
   "navChats": "Chats",
   "navProfile": "Profile",
 
@@ -415,7 +414,6 @@
   "publicProfileFollowersLabel": "Followers",
   "publicProfileFollowingLabel": "Following",
 
-  "createPostMediaTitle": "Product media (up to 10)",
   "createPostMediaCount": "{count}/10 media",
   "@createPostMediaCount": {
     "placeholders": {"count": {"type": "int"}}
@@ -435,11 +433,9 @@
     "placeholders": {"title": {"type": "String"}}
   },
   "createPostNoMediaSnack": "Add at least one photo",
-  "createPostTitleRequired": "Title *",
   "createPostTitleHintExample": "e.g. Oversize cotton t-shirts",
   "createPostTitleTooShort": "At least 3 characters",
   "createPostDescriptionHintExample": "Materials, specs, certifications…",
-  "createPostPriceRequired": "Price *",
   "createPostPriceHintExample": "4.50",
   "createPostFieldRequired": "Required",
   "createPostFieldInvalid": "Invalid",
@@ -450,7 +446,6 @@
   "createPostStockInStock": "In stock",
   "createPostStockPreOrder": "Pre-order",
   "createPostStockOutOfStock": "Out of stock",
-  "createPostCurrencyRequired": "Currency *",
   "createPostHashtagInvalidChars": "Hashtag can only contain letters, digits, _ and -",
   "createPostHashtagHintExample": "tshirt, wholesale, cotton…",
 
@@ -714,5 +709,14 @@
   "factoriesInteresting": "Suggested factories",
   "createSheetTitle": "Create",
   "createSheetPost": "Post",
-  "createSheetStory": "Story"
+  "createSheetStory": "Story",
+  "createPostSectionMedia": "Photos and video",
+  "createPostSectionMediaHint": "The first photo becomes the cover",
+  "createPostSectionAbout": "About the product",
+  "createPostSectionTerms": "Price and terms",
+  "createPostSectionTags": "Tags",
+  "createPostSectionTagsHint": "Buyers find the product by these",
+  "createPostCover": "Cover",
+  "createPostAddMore": "More",
+  "createPostUploading": "Publishing…"
 }

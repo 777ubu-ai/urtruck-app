@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import '../core/events/post_events.dart';
 import '../core/realtime/realtime_service.dart';
 import '../features/chat/data/chat_repository.dart';
 import '../features/chat/presentation/conversations_screen.dart';
-import '../features/create_post/presentation/create_post_screen.dart';
 import '../features/feed/presentation/feed_screen.dart';
 import '../features/notifications/presentation/notifications_screen.dart';
 import '../features/profile/presentation/profile_screen.dart';
@@ -14,14 +14,19 @@ import '../l10n/app_localizations.dart';
 
 /// Главный shell после авторизации.
 ///
-/// `IndexedStack` сохраняет состояние каждой вкладки между переключениями
-/// (Blueprint §1.1: «не теряем позицию в ленте при переходе в профиль»).
-/// 5 вкладок согласно Blueprint:
-///   🏠 Главная (лента) — реализована
-///   🔍 Поиск — реализован (по хэштегам, title, description)
-///   ➕ Создать — реализован (форма + upload фото)
-///   💬 Чаты — заглушка (Фаза 1, Direct)
-///   👤 Профиль — реализован
+/// `IndexedStack` сохраняет состояние каждой вкладки между переключениями —
+/// позиция в ленте не теряется при переходе в профиль.
+///
+/// Вкладки:
+///   0 🏠 Лента
+///   1 🔥 Акции
+///   2 🔍 Поиск
+///   3 💬 Чаты
+///   4 👤 Профиль
+///
+/// Кнопки «Создать» внизу НЕТ: публикация и история создаются «плюсом» в
+/// левом верхнем углу профиля, как в соцсетях. Нижнее меню — только
+/// навигация по разделам, без действий.
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
 
@@ -47,6 +52,7 @@ class _MainShellState extends State<MainShell> {
     super.initState();
     _setupPushListeners();
     _setupChatBadge();
+    PostEvents.instance.addListener(_onPostCreated);
   }
 
   /// S2-04: badge на иконке Чатов в bottom navigation — число непрочитанных.
@@ -125,8 +131,9 @@ class _MainShellState extends State<MainShell> {
     final data = message.data;
     final type = data['type'] as String?;
     if (type == 'message') {
-      // Открываем вкладку чатов (index=4 после добавления Hot Deals tab).
-      setState(() => _index = 4);
+      // Вкладка чатов. Индекс 3 — после удаления кнопки «Создать» из
+      // нижнего меню вкладки сдвинулись на одну влево.
+      setState(() => _index = 3);
     } else if (type == 'like' || type == 'comment') {
       // На уведомления о лайках/комментах — открываем экран нотификаций.
       Navigator.of(context).push(
@@ -143,23 +150,22 @@ class _MainShellState extends State<MainShell> {
     _onMessageOpenedSub?.cancel();
     _msgWsSub?.cancel();
     _chatBadgePoll?.cancel();
+    PostEvents.instance.removeListener(_onPostCreated);
     super.dispose();
   }
 
-  /// После публикации нового поста: переключаемся на ленту и принудительно
-  /// пересоздаём её через смену ключа — это чище, чем прокидывать стрим/колбэк
-  /// через несколько слоёв.
+  /// Пришло событие о публикации: пересоздаём ленту сменой ключа, чтобы
+  /// новый товар оказался в ней сразу. Вкладку НЕ переключаем — форму
+  /// открывают из профиля, и выкидывать пользователя из профиля некорректно.
   void _onPostCreated() {
-    setState(() {
-      _feedKey = UniqueKey();
-      _index = 0; // вкладка «Главная»
-    });
+    if (!mounted) return;
+    setState(() => _feedKey = UniqueKey());
   }
 
   @override
   Widget build(BuildContext context) {
-    // Собираем вкладки здесь, а не в const static — потому что FeedScreen
-    // получает динамический key и CreatePostScreen получает колбэк.
+    // Собираем вкладки здесь, а не в const static — FeedScreen получает
+    // динамический key, чтобы после публикации лента пересоздалась.
     final tabs = <Widget>[
       FeedScreen(key: _feedKey),
       const FeedScreen(
@@ -167,7 +173,6 @@ class _MainShellState extends State<MainShell> {
         hideFilterTabs: true,
       ),
       const SearchScreen(),
-      CreatePostScreen(onPostCreated: _onPostCreated),
       const ConversationsScreen(),
       const ProfileScreen(),
     ];
@@ -198,11 +203,6 @@ class _MainShellState extends State<MainShell> {
             icon: const Icon(Icons.search_rounded, size: 26),
             selectedIcon: const Icon(Icons.search_rounded, size: 26),
             label: l.navSearch,
-          ),
-          NavigationDestination(
-            icon: const Icon(Icons.add_box_outlined, size: 26),
-            selectedIcon: const Icon(Icons.add_box_rounded, size: 26),
-            label: l.navCreate,
           ),
           NavigationDestination(
             icon: _ChatsIconWithBadge(

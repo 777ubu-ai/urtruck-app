@@ -55,7 +55,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   double _uploadProgress = 0.0; // 0..1 прогресс загрузки медиа
 
   static const _currencies = ['USD', 'EUR', 'CNY', 'KZT', 'RUB'];
-  // Локализуемые метки для stock status берём в `_buildStockDropdown` через
+  // Локализуемые метки для stock status берём в `_buildStockChips` через
   // AppLocalizations; сами значения (ключи) — static константы.
   static const _stockOptionKeys = ['in_stock', 'pre_order', 'out_of_stock'];
 
@@ -387,89 +387,176 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     }
   }
 
+  /// Единое оформление полей: заполненная «таблетка» без рамки, скруглённая,
+  /// без счётчика символов под каждым полем — счётчики раньше стояли под
+  /// каждым вводом и превращали форму в таблицу цифр.
+  InputDecoration _dec({
+    required String label,
+    String? hint,
+    Widget? suffix,
+    String? prefixText,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      prefixText: prefixText,
+      suffixIcon: suffix,
+      counterText: '',
+      filled: true,
+      fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide.none,
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: scheme.primary, width: 1.6),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: scheme.error, width: 1.2),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: scheme.error, width: 1.6),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context)!;
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
         title: Text(
           l.createPostTitle,
-          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 22),
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 20),
         ),
+        scrolledUnderElevation: 0,
       ),
-      // Sticky кнопка «Опубликовать» внизу экрана — всегда видна,
-      // яркая, крупная. Раньше была маленьким TextButton в AppBar
-      // и на Huawei/маленьких экранах пользователи её не замечали.
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Прогресс-бар загрузки медиа (виден только при _submitting)
-              if (_submitting)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: LinearProgressIndicator(
-                      value: _uploadProgress,
-                      minHeight: 6,
+      // Кнопка публикации закреплена внизу и отделена тонкой линией: при
+      // длинной форме видно, что список продолжается под ней.
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: scheme.surface,
+          border: Border(
+            top: BorderSide(color: scheme.outlineVariant, width: 0.5),
+          ),
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_submitting)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: LinearProgressIndicator(
+                        value: _uploadProgress,
+                        minHeight: 5,
+                      ),
                     ),
                   ),
-                ),
-              FilledButton.icon(
-            onPressed: _submitting ? null : _submit,
-            icon: _submitting
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.5,
-                      color: Colors.white,
+                SizedBox(
+                  height: 54,
+                  child: FilledButton(
+                    onPressed: _submitting ? null : _submit,
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 54),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
                     ),
-                  )
-                : const Icon(Icons.publish_rounded, size: 22),
-            label: Text(
-              _submitting
-                  ? l.commonLoading
-                  : l.createPostPublish,
-              style: const TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.3,
-              ),
+                    child: _submitting
+                        ? Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.4,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                l.createPostUploading,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          )
+                        : Text(
+                            l.createPostPublish,
+                            style: const TextStyle(
+                              fontSize: 16.5,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
+                  ),
+                ),
+              ],
             ),
-            style: FilledButton.styleFrom(
-              minimumSize: const Size(double.infinity, 56),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-            ),
-          ),
-            ],
           ),
         ),
       ),
       body: Form(
         key: _formKey,
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
           children: [
-            _buildMediaSection(),
-            const SizedBox(height: 16),
-            _buildTitleField(),
-            const SizedBox(height: 12),
-            _buildDescriptionField(),
-            const SizedBox(height: 12),
-            _buildPriceRow(),
-            const SizedBox(height: 12),
-            _buildSpecsRow(),
-            const SizedBox(height: 12),
-            _buildStockDropdown(),
-            const SizedBox(height: 12),
-            _buildHashtagsSection(),
-            const SizedBox(height: 24),
+            // Форма разбита на смысловые блоки: медиа, о товаре, условия,
+            // теги. Раньше это был один сплошной столбец полей, в котором
+            // непонятно, где заканчивается одно и начинается другое.
+            _FormSection(
+              title: l.createPostSectionMedia,
+              subtitle: l.createPostSectionMediaHint,
+              child: _buildMediaSection(),
+            ),
+            const SizedBox(height: 14),
+            _FormSection(
+              title: l.createPostSectionAbout,
+              child: Column(
+                children: [
+                  _buildTitleField(),
+                  const SizedBox(height: 12),
+                  _buildDescriptionField(),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            _FormSection(
+              title: l.createPostSectionTerms,
+              child: Column(
+                children: [
+                  _buildPriceRow(),
+                  const SizedBox(height: 12),
+                  _buildSpecsRow(),
+                  const SizedBox(height: 14),
+                  _buildStockChips(),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            _FormSection(
+              title: l.createPostSectionTags,
+              subtitle: l.createPostSectionTagsHint,
+              child: _buildHashtagsSection(),
+            ),
           ],
         ),
       ),
@@ -479,107 +566,145 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   Widget _buildMediaSection() {
     final scheme = Theme.of(context).colorScheme;
     final l = AppLocalizations.of(context)!;
+
+    // Пока ничего не выбрано — крупная зона с тремя понятными действиями,
+    // а не три одинаковых серых квадрата непонятного назначения.
+    if (_pickedFiles.isEmpty) {
+      return Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _MediaAction(
+                  icon: Icons.photo_library_rounded,
+                  label: l.createPostAddPhoto,
+                  onTap: _pickImages,
+                  primary: true,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _MediaAction(
+                  icon: Icons.photo_camera_rounded,
+                  label: l.createPostCamera,
+                  onTap: _takePhoto,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _MediaAction(
+                  icon: Icons.videocam_rounded,
+                  label: l.createPostAddVideo,
+                  onTap: _pickVideo,
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          l.createPostMediaTitle,
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-        ),
-        const SizedBox(height: 8),
         SizedBox(
-          height: 100,
+          height: 104,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            // +3 для кнопок «Фото», «Камера» и «Видео»
-            itemCount: _pickedFiles.length + 3,
-            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            itemCount: _pickedFiles.length + 1,
+            separatorBuilder: (_, _) => const SizedBox(width: 10),
             itemBuilder: (_, i) {
               if (i == _pickedFiles.length) {
-                return _AddMediaTile(
-                  icon: Icons.photo_library_outlined,
-                  label: l.createPostAddPhoto,
+                return _MediaAction(
+                  icon: Icons.add_rounded,
+                  label: l.createPostAddMore,
                   onTap: _pickImages,
-                );
-              }
-              if (i == _pickedFiles.length + 1) {
-                // FEATURE-001: кнопка Камера для прямой съёмки
-                return _AddMediaTile(
-                  icon: Icons.camera_alt_outlined,
-                  label: l.createPostCamera,
-                  onTap: _takePhoto,
-                );
-              }
-              if (i == _pickedFiles.length + 2) {
-                return _AddMediaTile(
-                  icon: Icons.videocam_outlined,
-                  label: l.createPostAddVideo,
-                  onTap: _pickVideo,
+                  width: 84,
+                  height: 104,
                 );
               }
               final f = _pickedFiles[i];
               final isVideo = f.type == 'video';
-              return Stack(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: SizedBox(
-                      width: 100,
-                      height: 100,
-                      child: isVideo
-                          ? Container(
-                              color: scheme.surfaceContainerHighest,
-                              alignment: Alignment.center,
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.movie,
-                                      size: 32,
-                                      color: scheme.onSurfaceVariant),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    l.createPostAddVideo,
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      color: scheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            )
-                          : Image.memory(f.bytes, fit: BoxFit.cover),
-                    ),
-                  ),
-                  Positioned(
-                    top: 2,
-                    right: 2,
-                    child: InkWell(
-                      onTap: () => _removeImage(i),
-                      borderRadius: BorderRadius.circular(12),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.black54,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        padding: const EdgeInsets.all(4),
-                        child: const Icon(Icons.close,
-                            color: Colors.white, size: 16),
+              return SizedBox(
+                width: 84,
+                child: Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(14),
+                      child: SizedBox(
+                        width: 84,
+                        height: 104,
+                        child: isVideo
+                            ? Container(
+                                color: scheme.surfaceContainerHighest,
+                                alignment: Alignment.center,
+                                child: Icon(Icons.play_circle_fill_rounded,
+                                    size: 34, color: scheme.onSurfaceVariant),
+                              )
+                            : Image.memory(f.bytes, fit: BoxFit.cover),
                       ),
                     ),
-                  ),
-                ],
+                    // Первый файл — обложка карточки товара в ленте.
+                    // Подписываем явно, чтобы порядок не был сюрпризом.
+                    if (i == 0)
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 3),
+                          decoration: const BoxDecoration(
+                            color: Colors.black54,
+                            borderRadius: BorderRadius.vertical(
+                              bottom: Radius.circular(14),
+                            ),
+                          ),
+                          child: Text(
+                            l.createPostCover,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                    Positioned(
+                      top: 4,
+                      right: 4,
+                      child: InkWell(
+                        onTap: () => _removeImage(i),
+                        borderRadius: BorderRadius.circular(20),
+                        child: Container(
+                          decoration: const BoxDecoration(
+                            color: Colors.black54,
+                            shape: BoxShape.circle,
+                          ),
+                          padding: const EdgeInsets.all(4),
+                          child: const Icon(Icons.close,
+                              color: Colors.white, size: 14),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               );
             },
           ),
         ),
-        const SizedBox(height: 4),
-        Text(
-          l.createPostMediaCount(_pickedFiles.length),
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: scheme.onSurfaceVariant,
-              ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            _MediaChip(icon: Icons.photo_camera_rounded, onTap: _takePhoto),
+            const SizedBox(width: 8),
+            _MediaChip(icon: Icons.videocam_rounded, onTap: _pickVideo),
+            const Spacer(),
+            Text(
+              l.createPostMediaCount(_pickedFiles.length),
+              style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant),
+            ),
+          ],
         ),
       ],
     );
@@ -590,10 +715,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     return TextFormField(
       controller: _titleCtrl,
       maxLength: 256,
-      decoration: InputDecoration(
-        labelText: l.createPostTitleRequired,
-        border: const OutlineInputBorder(),
-        hintText: l.createPostTitleHintExample,
+      textCapitalization: TextCapitalization.sentences,
+      decoration: _dec(
+        label: l.createPostName,
+        hint: l.createPostTitleHintExample,
       ),
       validator: (v) {
         final t = (v ?? '').trim();
@@ -608,60 +733,58 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     return TextFormField(
       controller: _descCtrl,
       maxLength: 5000,
-      maxLines: 4,
-      minLines: 2,
-      decoration: InputDecoration(
-        labelText: l.createPostDescription,
-        border: const OutlineInputBorder(),
-        hintText: l.createPostDescriptionHintExample,
+      maxLines: 5,
+      minLines: 3,
+      textCapitalization: TextCapitalization.sentences,
+      decoration: _dec(
+        label: l.createPostDescription,
+        hint: l.createPostDescriptionHintExample,
       ),
     );
   }
 
   Widget _buildPriceRow() {
     final l = AppLocalizations.of(context)!;
-    return Row(
-      children: [
-        Expanded(
-          flex: 2,
-          child: TextFormField(
-            controller: _priceCtrl,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            inputFormatters: [
-              FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
-            ],
-            decoration: InputDecoration(
-              labelText: l.createPostPriceRequired,
-              border: const OutlineInputBorder(),
-              hintText: l.createPostPriceHintExample,
-            ),
-            validator: (v) {
-              final t = (v ?? '').replaceAll(',', '.').trim();
-              if (t.isEmpty) return l.createPostFieldRequired;
-              final n = double.tryParse(t);
-              if (n == null || n < 0) return l.createPostFieldInvalid;
-              return null;
-            },
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          flex: 1,
-          child: DropdownButtonFormField<String>(
-            initialValue: _currency,
-            decoration: InputDecoration(
-              labelText: l.createPostCurrencyRequired,
-              border: const OutlineInputBorder(),
-            ),
-            items: _currencies
-                .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                .toList(),
-            onChanged: (v) {
-              if (v != null) setState(() => _currency = v);
-            },
-          ),
-        ),
+    final scheme = Theme.of(context).colorScheme;
+    // Валюта — компактным выбором внутри поля цены, а не отдельной коробкой
+    // рядом: это одно значение, и разрывать его на два блока незачем.
+    return TextFormField(
+      controller: _priceCtrl,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      inputFormatters: [
+        FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
       ],
+      decoration: _dec(
+        label: l.createPostPrice,
+        hint: l.createPostPriceHintExample,
+        suffix: Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: _currency,
+              borderRadius: BorderRadius.circular(14),
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: scheme.onSurface,
+              ),
+              items: _currencies
+                  .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                  .toList(),
+              onChanged: (v) {
+                if (v != null) setState(() => _currency = v);
+              },
+            ),
+          ),
+        ),
+      ),
+      validator: (v) {
+        final t = (v ?? '').replaceAll(',', '.').trim();
+        if (t.isEmpty) return l.createPostFieldRequired;
+        final n = double.tryParse(t);
+        if (n == null || n < 0) return l.createPostFieldInvalid;
+        return null;
+      },
     );
   }
 
@@ -674,10 +797,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             controller: _moqCtrl,
             keyboardType: TextInputType.number,
             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            decoration: InputDecoration(
-              labelText: l.createPostMoqLabel,
-              border: const OutlineInputBorder(),
-            ),
+            decoration: _dec(label: l.createPostMoqLabel),
             validator: (v) {
               final n = int.tryParse((v ?? '').trim());
               if (n == null || n < 1) return l.createPostMoqMin;
@@ -685,16 +805,13 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             },
           ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 10),
         Expanded(
           child: TextFormField(
             controller: _shippingCtrl,
             keyboardType: TextInputType.number,
             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            decoration: InputDecoration(
-              labelText: l.createPostShippingLabel,
-              border: const OutlineInputBorder(),
-            ),
+            decoration: _dec(label: l.createPostShippingLabel),
             validator: (v) {
               final n = int.tryParse((v ?? '').trim());
               if (n == null || n < 0) return l.createPostShippingMin;
@@ -706,8 +823,11 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     );
   }
 
-  Widget _buildStockDropdown() {
+  /// Наличие — тремя переключателями вместо выпадающего списка: вариантов
+  /// всего три, и открывать ради них меню незачем.
+  Widget _buildStockChips() {
     final l = AppLocalizations.of(context)!;
+    final scheme = Theme.of(context).colorScheme;
     String labelFor(String key) {
       switch (key) {
         case 'pre_order':
@@ -719,19 +839,29 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           return l.createPostStockInStock;
       }
     }
-    return DropdownButtonFormField<String>(
-      initialValue: _stockStatus,
-      decoration: InputDecoration(
-        labelText: l.createPostStockStatus,
-        border: const OutlineInputBorder(),
-      ),
-      items: _stockOptionKeys
-          .map((key) =>
-              DropdownMenuItem(value: key, child: Text(labelFor(key))))
-          .toList(),
-      onChanged: (v) {
-        if (v != null) setState(() => _stockStatus = v);
-      },
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          child: Text(
+            l.createPostStockStatus,
+            style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+          ),
+        ),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: _stockOptionKeys.map((key) {
+            return ChoiceChip(
+              label: Text(labelFor(key)),
+              selected: _stockStatus == key,
+              onSelected: (_) => setState(() => _stockStatus = key),
+            );
+          }).toList(),
+        ),
+      ],
     );
   }
 
@@ -742,20 +872,20 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       children: [
         TextField(
           controller: _hashtagCtrl,
-          decoration: InputDecoration(
-            labelText: l.createPostHashtagsLabel,
-            hintText: l.createPostHashtagHintExample,
-            border: const OutlineInputBorder(),
-            suffixIcon: IconButton(
-              icon: const Icon(Icons.add),
+          decoration: _dec(
+            label: l.createPostHashtagsLabel,
+            hint: l.createPostHashtagHintExample,
+            prefixText: '#',
+            suffix: IconButton(
+              icon: const Icon(Icons.add_rounded),
               onPressed: _addHashtag,
             ),
           ),
           textInputAction: TextInputAction.done,
           onSubmitted: (_) => _addHashtag(),
         ),
-        const SizedBox(height: 8),
-        if (_hashtags.isNotEmpty)
+        if (_hashtags.isNotEmpty) ...[
+          const SizedBox(height: 10),
           Wrap(
             spacing: 6,
             runSpacing: 6,
@@ -763,25 +893,134 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 .map((tag) => Chip(
                       label: Text('#$tag'),
                       onDeleted: () => _removeHashtag(tag),
-                      deleteIcon: const Icon(Icons.close, size: 16),
+                      deleteIcon: const Icon(Icons.close, size: 15),
+                      visualDensity: VisualDensity.compact,
                     ))
                 .toList(),
           ),
+        ],
       ],
     );
   }
 }
 
-/// Универсальная плитка «Добавить медиа» — используется и для фото, и для
-/// видео в `create_post_screen`. Иконка и подпись настраиваются.
-class _AddMediaTile extends StatelessWidget {
-  const _AddMediaTile({
+/// Блок формы: заголовок, необязательная подсказка и содержимое в карточке.
+/// Разбивка на блоки — главное, чего не хватало форме: без неё поля идут
+/// сплошным списком и экран выглядит как анкета.
+class _FormSection extends StatelessWidget {
+  const _FormSection({
+    required this.title,
+    required this.child,
+    this.subtitle,
+  });
+
+  final String title;
+  final String? subtitle;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: scheme.outlineVariant, width: 0.8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 15.5,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.2,
+            ),
+          ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              subtitle!,
+              style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant),
+            ),
+          ],
+          const SizedBox(height: 14),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+/// Крупная кнопка добавления медиа: иконка над подписью.
+class _MediaAction extends StatelessWidget {
+  const _MediaAction({
     required this.icon,
     required this.label,
     required this.onTap,
+    this.primary = false,
+    this.width,
+    this.height = 96,
   });
+
   final IconData icon;
   final String label;
+  final VoidCallback onTap;
+
+  /// Основное действие подсвечено — с него начинают в большинстве случаев.
+  final bool primary;
+  final double? width;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final fg = primary ? scheme.primary : scheme.onSurfaceVariant;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        width: width,
+        height: height,
+        decoration: BoxDecoration(
+          color: primary
+              ? scheme.primary.withValues(alpha: 0.08)
+              : scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: primary
+                ? scheme.primary.withValues(alpha: 0.35)
+                : scheme.outlineVariant,
+          ),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 26, color: fg),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: fg,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Компактная круглая кнопка (камера/видео), когда медиа уже выбрано.
+class _MediaChip extends StatelessWidget {
+  const _MediaChip({required this.icon, required this.onTap});
+  final IconData icon;
   final VoidCallback onTap;
 
   @override
@@ -789,32 +1028,15 @@ class _AddMediaTile extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(20),
       child: Container(
-        width: 100,
-        height: 100,
+        width: 36,
+        height: 36,
         decoration: BoxDecoration(
-          color: scheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: scheme.outlineVariant,
-            style: BorderStyle.solid,
-            width: 1.5,
-          ),
+          color: scheme.surfaceContainerHighest.withValues(alpha: 0.6),
+          shape: BoxShape.circle,
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 32, color: scheme.onSurfaceVariant),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  ),
-            ),
-          ],
-        ),
+        child: Icon(icon, size: 19, color: scheme.onSurfaceVariant),
       ),
     );
   }

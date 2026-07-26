@@ -5,7 +5,6 @@
 
   "navHome": "首页",
   "navSearch": "搜索",
-  "navCreate": "发布",
   "navChats": "消息",
   "navProfile": "我的",
 
@@ -415,7 +414,6 @@
   "publicProfileFollowersLabel": "粉丝",
   "publicProfileFollowingLabel": "关注",
 
-  "createPostMediaTitle": "商品媒体(最多10)",
   "createPostMediaCount": "{count}/10 媒体",
   "@createPostMediaCount": {
     "placeholders": {"count": {"type": "int"}}
@@ -435,11 +433,9 @@
     "placeholders": {"title": {"type": "String"}}
   },
   "createPostNoMediaSnack": "请至少添加一张照片",
-  "createPostTitleRequired": "标题 *",
   "createPostTitleHintExample": "例如:纯棉宽松 T 恤",
   "createPostTitleTooShort": "至少 3 个字符",
   "createPostDescriptionHintExample": "材料、规格、认证…",
-  "createPostPriceRequired": "价格 *",
   "createPostPriceHintExample": "4.50",
   "createPostFieldRequired": "必填",
   "createPostFieldInvalid": "无效",
@@ -450,7 +446,6 @@
   "createPostStockInStock": "现货",
   "createPostStockPreOrder": "预订",
   "createPostStockOutOfStock": "无货",
-  "createPostCurrencyRequired": "货币 *",
   "createPostHashtagInvalidChars": "标签只能包含字母、数字、_ 和 -",
   "createPostHashtagHintExample": "tshirt, wholesale, cotton…",
 
@@ -714,5 +709,14 @@
   "factoriesInteresting": "推荐工厂",
   "createSheetTitle": "创建",
   "createSheetPost": "帖子",
-  "createSheetStory": "快拍"
+  "createSheetStory": "快拍",
+  "createPostSectionMedia": "图片和视频",
+  "createPostSectionMediaHint": "第一张图将作为封面",
+  "createPostSectionAbout": "商品信息",
+  "createPostSectionTerms": "价格与条件",
+  "createPostSectionTags": "标签",
+  "createPostSectionTagsHint": "买家通过标签找到商品",
+  "createPostCover": "封面",
+  "createPostAddMore": "更多",
+  "createPostUploading": "发布中…"
 }

@@ -8,6 +8,7 @@ import '../../../core/storage/auth_storage.dart';
 import '../../../core/widgets/trust_badge.dart';
 import '../../auth/presentation/phone_screen.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../../core/events/post_events.dart';
 import '../../create_post/presentation/create_post_screen.dart';
 import '../../factories/presentation/interesting_factories.dart';
 import '../../feed/presentation/hashtag_screen.dart';
@@ -52,6 +53,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// Нужен, чтобы «плюс» в шапке мог открыть тот же поток создания истории,
   /// что и кружок «Новое» в ряду «Актуальное».
   final _highlightsKey = GlobalKey<ProfileHighlightsState>();
+
+  /// Смена ключа пересоздаёт сетку товаров — так она перечитывает список
+  /// после публикации, не открывая своё состояние наружу.
+  Key _gridKey = UniqueKey();
 
   @override
   void initState() {
@@ -207,13 +212,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
               title: Text(l.createSheetPost),
               onTap: () {
                 Navigator.pop(sheetContext);
-                Navigator.of(context)
-                    .push(
-                      MaterialPageRoute(
-                        builder: (_) => const CreatePostScreen(),
-                      ),
-                    )
-                    .then((_) => _load());
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => CreatePostScreen(
+                      onPostCreated: () {
+                        // Свежий товар должен появиться и в сетке профиля,
+                        // и в ленте на соседней вкладке.
+                        PostEvents.instance.notifyCreated();
+                        _load();
+                        setState(() => _gridKey = UniqueKey());
+                      },
+                    ),
+                  ),
+                );
               },
             ),
             ListTile(
@@ -373,7 +384,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             canCreate: p.isFactory,
           ),
           const SizedBox(height: 4),
-          _UserPostsGrid(userId: p.id),
+          _UserPostsGrid(key: _gridKey, userId: p.id),
           const SizedBox(height: 24),
         ],
       ),
