@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/api/api_client.dart';
+import '../../../core/widgets/trust_badge.dart';
 import '../../../core/currency/converted_price_text.dart';
 import '../../../core/storage/auth_storage.dart';
 import '../../../l10n/app_localizations.dart';
@@ -1031,42 +1032,28 @@ class _FactoryHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final trustColor = trustScore >= 90
-        ? Colors.green
-        : trustScore >= 70
-            ? Colors.orange
-            : Colors.grey;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
       child: Row(
         children: [
-          CircleAvatar(
-            radius: 20,
-            backgroundColor: scheme.primaryContainer,
-            child: Text(
-              name.isNotEmpty ? name[0].toUpperCase() : '?',
-              style: TextStyle(
-                color: scheme.onPrimaryContainer,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
+          FactoryAvatar(name: name, size: 42),
+          const SizedBox(width: 11),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(name,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.2,
+                    ),
                     overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 3),
                 Row(
                   children: [
-                    Icon(Icons.verified, size: 14, color: trustColor),
-                    const SizedBox(width: 4),
-                    Text('Trust Score: $trustScore',
-                        style: Theme.of(context).textTheme.bodySmall),
+                    // Живой статус вместо «Trust Score: 0».
+                    TrustBadge(score: trustScore),
                     if (reviewsCount > 0 && factoryUserId != null) ...[
                       const SizedBox(width: 8),
                       InkWell(
