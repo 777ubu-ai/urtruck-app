@@ -105,7 +105,9 @@ export class UsersController {
             hashtags: user.factory.hashtags,
             trustScore: user.factory.trustScore,
             verifiedAt: user.factory.verifiedAt,
-            totalProducts: user.factory.totalProducts,
+            // Живой счёт постов, а не счётчик factories.total_products:
+            // счётчик мог разойтись с реальным списком товаров.
+            totalProducts: postsCount,
             totalDeals: user.factory.totalDeals,
             avgRating: parseFloat(user.factory.avgRating || '0'),
             reviewsCount: user.factory.reviewsCount ?? 0,
@@ -203,6 +205,13 @@ export class UsersController {
     if (!fresh) {
       throw new NotFoundException('Пользователь не найден');
     }
+    // Счётчики отдаём и здесь: экран редактирования профиля подставляет ответ
+    // PATCH прямо в состояние профиля, и без них шапка обнулялась.
+    const [postsCount, followersCount, followingCount] = await Promise.all([
+      this.posts.count({ where: { factoryId: userId } }),
+      this.follows.count({ where: { followedId: userId } }),
+      this.follows.count({ where: { followerId: userId } }),
+    ]);
     return {
       id: fresh.id,
       phone: fresh.phone,
@@ -221,6 +230,9 @@ export class UsersController {
       quietHoursStart: fresh.quietHoursStart,
       quietHoursEnd: fresh.quietHoursEnd,
       createdAt: fresh.createdAt,
+      postsCount,
+      followersCount,
+      followingCount,
       factory: fresh.factory
         ? {
             companyName: fresh.factory.companyName,
@@ -230,7 +242,7 @@ export class UsersController {
             hashtags: fresh.factory.hashtags,
             trustScore: fresh.factory.trustScore,
             verifiedAt: fresh.factory.verifiedAt,
-            totalProducts: fresh.factory.totalProducts,
+            totalProducts: postsCount,
             totalDeals: fresh.factory.totalDeals,
             avgRating: parseFloat(fresh.factory.avgRating || '0'),
             reviewsCount: fresh.factory.reviewsCount ?? 0,
@@ -263,15 +275,19 @@ export class UsersController {
 
     // Счётчики подписок + флаг подписки текущего юзера — параллельно
     const currentUserId = req.user?.sub;
-    const [followersCount, followingCount, myFollow] = await Promise.all([
-      this.follows.count({ where: { followedId: userId } }),
-      this.follows.count({ where: { followerId: userId } }),
-      currentUserId && currentUserId !== userId
-        ? this.follows.findOne({
-            where: { followerId: currentUserId, followedId: userId },
-          })
-        : Promise.resolve(null),
-    ]);
+    const [postsCount, followersCount, followingCount, myFollow] =
+      await Promise.all([
+        // Тот же фильтр, что и в GET /users/:id/posts — иначе число в шапке
+        // не совпадёт с сеткой товаров.
+        this.posts.count({ where: { factoryId: userId } }),
+        this.follows.count({ where: { followedId: userId } }),
+        this.follows.count({ where: { followerId: userId } }),
+        currentUserId && currentUserId !== userId
+          ? this.follows.findOne({
+              where: { followerId: currentUserId, followedId: userId },
+            })
+          : Promise.resolve(null),
+      ]);
 
     return {
       id: user.id,
@@ -290,12 +306,16 @@ export class UsersController {
             hashtags: user.factory.hashtags,
             trustScore: user.factory.trustScore,
             verifiedAt: user.factory.verifiedAt,
-            totalProducts: user.factory.totalProducts,
+            // Считаем товары живым запросом, а не счётчиком factories.
+            // Счётчик мог разойтись с реальным списком постов, и в профиле
+            // получалось «2 товара», а в сетке — другое количество.
+            totalProducts: postsCount,
             totalDeals: user.factory.totalDeals,
             avgRating: parseFloat(user.factory.avgRating || '0'),
             reviewsCount: user.factory.reviewsCount ?? 0,
           }
         : null,
+      postsCount,
       followersCount,
       followingCount,
       isFollowing: myFollow !== null,

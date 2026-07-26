@@ -698,5 +698,36 @@
   "onboardingTitle3": "即时联系工厂",
   "onboardingSubtitle3": "议价、索要样品、追踪发货 — 全部一站完成",
   "onboardingTitle4": "准备好了吗？",
-  "onboardingSubtitle4": "30秒手机号注册 — 无需邮箱、无需文件"
+  "onboardingSubtitle4": "30秒手机号注册 — 无需邮箱、无需文件",
+  "profileWordProducts": "{count, plural, other{商品}}",
+  "@profileWordProducts": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "profileWordFollowers": "{count, plural, other{粉丝}}",
+  "@profileWordFollowers": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "profileWordFollowing": "{count, plural, other{关注}}",
+  "@profileWordFollowing": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "profileDealsClosed": "{count, plural, =0{暂无成交} other{已完成 {count} 笔交易}}",
+  "@profileDealsClosed": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "profileNoRatingYet": "暂无评分",
+  "profileRatingWithReviews": "{rating} — {reviews}",
+  "@profileRatingWithReviews": {
+    "placeholders": {"rating": {"type": "String"}, "reviews": {"type": "String"}}
+  },
+  "profileLocationLine": "{country} · {city}",
+  "@profileLocationLine": {
+    "placeholders": {"country": {"type": "String"}, "city": {"type": "String"}}
+  },
+  "postPriceUnit": "单价",
+  "postPriceInYourCurrency": "≈ {value}（按你的币种）",
+  "@postPriceInYourCurrency": {
+    "placeholders": {"value": {"type": "String"}}
+  },
+  "postFactoryNoReviewsYet": "暂无评价"
 }

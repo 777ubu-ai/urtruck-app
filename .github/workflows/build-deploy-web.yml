@@ -38,9 +38,20 @@ jobs:
         working-directory: bizchat/mobile
         run: flutter pub get
 
-      - name: Analyze (не блокирует деплой, но покажет проблемы)
+      # Явная генерация локализаций из lib/l10n/*.arb. Полагаться на неявный
+      # запуск при pub get нельзя: если новые ключи не сгенерируются, сборка
+      # упадёт на «getter не определён» уже после долгой компиляции.
+      - name: Generate localizations
         working-directory: bizchat/mobile
-        continue-on-error: true
+        run: flutter gen-l10n
+
+      # Analyze БЛОКИРУЕТ деплой при ошибках компиляции.
+      # Раньше здесь стоял continue-on-error, и три сборки подряд падали
+      # на одной и той же ошибке уже в dart2js — а на сервере продолжала
+      # жить старая версия, хотя коммиты уходили как «выложено».
+      # Info и warning по-прежнему не блокируют — только errors.
+      - name: Analyze (ошибки блокируют деплой)
+        working-directory: bizchat/mobile
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
       - name: Build web

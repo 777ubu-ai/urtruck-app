@@ -698,5 +698,36 @@
   "onboardingTitle3": "Chat with factories instantly",
   "onboardingSubtitle3": "Negotiate prices, ask for samples and track shipments — all in one place",
   "onboardingTitle4": "Ready to start?",
-  "onboardingSubtitle4": "Sign up in 30 seconds with your phone number — no email, no paperwork"
+  "onboardingSubtitle4": "Sign up in 30 seconds with your phone number — no email, no paperwork",
+  "profileWordProducts": "{count, plural, =1{product} other{products}}",
+  "@profileWordProducts": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "profileWordFollowers": "{count, plural, =1{follower} other{followers}}",
+  "@profileWordFollowers": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "profileWordFollowing": "{count, plural, other{following}}",
+  "@profileWordFollowing": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "profileDealsClosed": "{count, plural, =0{No deals yet} =1{1 closed deal} other{{count} closed deals}}",
+  "@profileDealsClosed": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "profileNoRatingYet": "No ratings yet",
+  "profileRatingWithReviews": "{rating} — {reviews}",
+  "@profileRatingWithReviews": {
+    "placeholders": {"rating": {"type": "String"}, "reviews": {"type": "String"}}
+  },
+  "profileLocationLine": "{country} · {city}",
+  "@profileLocationLine": {
+    "placeholders": {"country": {"type": "String"}, "city": {"type": "String"}}
+  },
+  "postPriceUnit": "Price per unit",
+  "postPriceInYourCurrency": "≈ {value} in your currency",
+  "@postPriceInYourCurrency": {
+    "placeholders": {"value": {"type": "String"}}
+  },
+  "postFactoryNoReviewsYet": "No reviews yet"
 }

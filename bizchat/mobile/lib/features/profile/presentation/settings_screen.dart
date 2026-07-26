@@ -205,6 +205,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   title: Text(l.profileCurrency),
                   subtitle: Text(_profile.currency),
                 ),
+                // Страна и город переехали сюда из профиля: раньше они
+                // дублировались отдельной карточкой над меню, теперь данные
+                // аккаунта живут в одном месте.
+                if (_profile.countryCode != null &&
+                    _profile.countryCode!.isNotEmpty) ...[
+                  const Divider(height: 1, indent: 56),
+                  ListTile(
+                    leading: const Icon(Icons.flag_outlined),
+                    title: Text(l.profileCountryLabel),
+                    subtitle: Text(_profile.countryCode!),
+                  ),
+                ],
+                if (_profile.city != null && _profile.city!.isNotEmpty) ...[
+                  const Divider(height: 1, indent: 56),
+                  ListTile(
+                    leading: const Icon(Icons.location_city_outlined),
+                    title: Text(l.profileCityLabel),
+                    subtitle: Text(_profile.city!),
+                  ),
+                ],
                 const Divider(height: 1, indent: 56),
                 // Dark/Light/System theme toggle
                 Padding(

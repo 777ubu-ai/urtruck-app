@@ -92,56 +92,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  /// Меню профиля за «тремя чёрточками» — как в соцсетях: настройки,
-  /// подписки, сохранения и выход живут отдельным экраном, а не тянутся
+  /// Меню профиля за «тремя чёрточками» — как в соцсетях: сохранения,
+  /// настройки, реферальный код и выход живут отдельным экраном, а не тянутся
   /// бесконечным списком под сеткой товаров.
+  ///
+  /// Здесь НЕТ «Подписчиков»/«Подписок» — они кликабельны прямо в шапке
+  /// профиля, и дублировать их пунктами меню значит показывать одни и те же
+  /// данные дважды. Языка/валюты/страны здесь тоже нет — это экран
+  /// «Настройки», единственное место, где они редактируются.
   void _openMenu(MyProfile p) {
+    final l = AppLocalizations.of(context)!;
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => Scaffold(
-          appBar: AppBar(
-            title: Text(AppLocalizations.of(context)!.profileTitle),
-          ),
+          appBar: AppBar(title: Text(l.profileTitle)),
           body: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              _SettingsCard(profile: p),
-              const SizedBox(height: 16),
               Card(
                 child: Column(
                   children: [
-                    ListTile(
-                      leading: const Icon(Icons.people_outline),
-                      title: Text(l.profileFollowers),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => FollowListScreen(
-                              userId: p.id,
-                              mode: FollowListMode.followers,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                    const Divider(height: 1, indent: 56),
-                    ListTile(
-                      leading: const Icon(Icons.person_add_outlined),
-                      title: Text(l.profileFollowing),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => FollowListScreen(
-                              userId: p.id,
-                              mode: FollowListMode.following,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                    const Divider(height: 1, indent: 56),
                     ListTile(
                       leading: const Icon(Icons.bookmark_outline),
                       title: Text(l.profileMySaves),
@@ -340,7 +310,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           if (p.factory != null) ...[
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: _FactoryCard(factory: p.factory!),
+              child: _FactoryCard(
+                factory: p.factory!,
+                countryCode: p.countryCode,
+                city: p.city,
+              ),
             ),
             const SizedBox(height: 20),
             // Сетка товаров — во всю ширину, последним блоком.
@@ -386,13 +360,16 @@ class _ProfileHeader extends StatelessWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
+                  // Единственное место, где показывается количество товаров.
+                  // Число приходит тем же запросом, что и сетка ниже, поэтому
+                  // разойтись с ней не может.
                   _CountStat(
                     value: profile.postsCount,
-                    label: 'публикации',
+                    label: l.profileWordProducts(profile.postsCount),
                   ),
                   _CountStat(
                     value: profile.followersCount,
-                    label: 'подписчики',
+                    label: l.profileWordFollowers(profile.followersCount),
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => FollowListScreen(
@@ -404,7 +381,7 @@ class _ProfileHeader extends StatelessWidget {
                   ),
                   _CountStat(
                     value: profile.followingCount,
-                    label: 'подписки',
+                    label: l.profileWordFollowing(profile.followingCount),
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => FollowListScreen(
@@ -445,10 +422,10 @@ class _ProfileHeader extends StatelessWidget {
           profile.isFactory ? l.chatPartnerFactory : l.chatPartnerBuyer,
           style: TextStyle(fontSize: 13.5, color: scheme.onSurfaceVariant),
         ),
-        Text(
-          profile.phone,
-          style: TextStyle(fontSize: 13.5, color: scheme.onSurfaceVariant),
-        ),
+        // Номер входа в витрине профиля не показываем: это телефон аккаунта
+        // (может быть страны, отличной от страны завода), и как контакт для
+        // покупателя он бесполезен. Он остаётся в «Настройки → Аккаунт».
+        // Контактный канал завода — WhatsApp и сайт ниже.
         // «О себе» завода — то, ради чего покупатель и открывает профиль:
         // что производят, условия опта, гарантии.
         if (bio != null && bio.isNotEmpty) ...[
@@ -574,19 +551,30 @@ class _CountStat extends StatelessWidget {
   }
 }
 
+/// Блок «О заводе».
+///
+/// Здесь НЕТ количества товаров и подписчиков — они уже есть в шапке профиля,
+/// и повторять их значит показывать одни и те же цифры дважды. Блок несёт
+/// только те данные, которых в шапке нет: статус проверки, где находится
+/// производство, оценка покупателей, закрытые сделки и специализация.
 class _FactoryCard extends StatelessWidget {
-  const _FactoryCard({required this.factory});
+  const _FactoryCard({
+    required this.factory,
+    required this.countryCode,
+    required this.city,
+  });
   final FactoryProfile factory;
+  final String? countryCode;
+  final String? city;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final l = AppLocalizations.of(context)!;
-    final trustColor = factory.trustScore >= 90
-        ? Colors.green
-        : factory.trustScore >= 70
-            ? Colors.orange
-            : Colors.grey;
+    final country = countryCode?.trim() ?? '';
+    final town = city?.trim() ?? '';
+    final location = country.isNotEmpty && town.isNotEmpty
+        ? l.profileLocationLine(country, town)
+        : (country.isNotEmpty ? country : town);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -601,42 +589,31 @@ class _FactoryCard extends StatelessWidget {
                         )),
                 const Spacer(),
                 // Живой статус вместо «Trust Score: 0».
-                TrustBadge(score: factory.trustScore, compact: false),
+                TrustBadge(
+                  score: factory.trustScore,
+                  verified: factory.verifiedAt != null,
+                  compact: false,
+                ),
               ],
             ),
-            const SizedBox(height: 14),
-            // Три метрики плитками — читается с одного взгляда.
-            Row(
-              children: [
-                Expanded(
-                  child: _StatTile(
-                    icon: Icons.inventory_2_rounded,
-                    value: '${factory.totalProducts}',
-                    label: 'Товаров',
-                    accent: const Color(0xFF0B66FF),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _StatTile(
-                    icon: Icons.handshake_rounded,
-                    value: '${factory.totalDeals}',
-                    label: 'Сделок',
-                    accent: const Color(0xFF0F9D58),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _StatTile(
-                    icon: Icons.shield_rounded,
-                    value: factory.trustScore > 0
-                        ? '${factory.trustScore}'
-                        : '—',
-                    label: 'Рейтинг',
-                    accent: trustColor,
-                  ),
-                ),
-              ],
+            const SizedBox(height: 12),
+            if (location.isNotEmpty)
+              _FactoryFactRow(
+                icon: Icons.place_outlined,
+                text: location,
+              ),
+            _FactoryFactRow(
+              icon: Icons.star_outline_rounded,
+              text: factory.reviewsCount > 0
+                  ? l.profileRatingWithReviews(
+                      factory.avgRating.toStringAsFixed(1),
+                      l.publicProfileReviewsCountPlural(factory.reviewsCount),
+                    )
+                  : l.profileNoRatingYet,
+            ),
+            _FactoryFactRow(
+              icon: Icons.handshake_outlined,
+              text: l.profileDealsClosed(factory.totalDeals),
             ),
             if (factory.hashtags.isNotEmpty) ...[
               const SizedBox(height: 12),
@@ -665,43 +642,29 @@ class _FactoryCard extends StatelessWidget {
   }
 }
 
-class _SettingsCard extends StatelessWidget {
-  const _SettingsCard({required this.profile});
-  final MyProfile profile;
+/// Строка факта о заводе: иконка + текст. Одна строка — один смысл,
+/// без плиток с цифрами, которые уже показаны в шапке.
+class _FactoryFactRow extends StatelessWidget {
+  const _FactoryFactRow({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
 
   @override
   Widget build(BuildContext context) {
-    final l = AppLocalizations.of(context)!;
-    return Card(
-      child: Column(
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
         children: [
-          ListTile(
-            leading: const Icon(Icons.language),
-            title: Text(l.profileLanguageLabel),
-            trailing: Text(profile.language.toUpperCase()),
-          ),
-          const Divider(height: 1),
-          ListTile(
-            leading: const Icon(Icons.attach_money),
-            title: Text(l.profileCurrencyLabel),
-            trailing: Text(profile.currency),
-          ),
-          if (profile.countryCode != null) ...[
-            const Divider(height: 1),
-            ListTile(
-              leading: const Icon(Icons.flag_outlined),
-              title: Text(l.profileCountryLabel),
-              trailing: Text(profile.countryCode!),
+          Icon(icon, size: 17, color: scheme.onSurfaceVariant),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(fontSize: 13.5, height: 1.3),
             ),
-          ],
-          if (profile.city != null) ...[
-            const Divider(height: 1),
-            ListTile(
-              leading: const Icon(Icons.location_city),
-              title: Text(l.profileCityLabel),
-              trailing: Text(profile.city!),
-            ),
-          ],
+          ),
         ],
       ),
     );
@@ -978,61 +941,6 @@ class _PostThumbnail extends StatelessWidget {
                   ),
                 ],
               ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// S2-03: карточки статистики для factory — товары/сделки/рейтинг/trust.
-
-/// Плитка метрики завода (товары / сделки / рейтинг).
-/// Заменяет строчку мелкого текста — цифра читается сразу, а нулевое
-/// значение не выглядит поломкой благодаря спокойной подаче.
-class _StatTile extends StatelessWidget {
-  const _StatTile({
-    required this.icon,
-    required this.value,
-    required this.label,
-    required this.accent,
-  });
-
-  final IconData icon;
-  final String value;
-  final String label;
-  final Color accent;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, size: 18, color: accent),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.5,
-              height: 1.1,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w600,
-              color: scheme.onSurfaceVariant,
             ),
           ),
         ],

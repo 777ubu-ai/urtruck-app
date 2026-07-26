@@ -73,6 +73,11 @@ class MyProfile {
       bonusPoints: bonusPoints,
       verified: verified,
       factory: factory,
+      // Счётчики шапки нужно переносить явно: без них после смены
+      // push-настроек профиль перерисовывался с нулями.
+      postsCount: postsCount,
+      followersCount: followersCount,
+      followingCount: followingCount,
       pushEnabled: pushEnabled ?? this.pushEnabled,
       notificationPrefs: notificationPrefs ?? this.notificationPrefs,
       quietHoursStart: quietHoursStart,
@@ -96,6 +101,9 @@ class MyProfile {
       bonusPoints: bonusPoints,
       verified: verified,
       factory: factory,
+      postsCount: postsCount,
+      followersCount: followersCount,
+      followingCount: followingCount,
       pushEnabled: pushEnabled,
       notificationPrefs: notificationPrefs,
       quietHoursStart: start,

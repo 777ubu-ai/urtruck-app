@@ -248,6 +248,17 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
+          // Товары — только у заводов. Число живое (тот же счёт, что и сетка
+          // ниже), поэтому разойтись с самой сеткой не может.
+          if (p.isFactory) ...[
+            Expanded(
+              child: _StatTile(
+                label: l.profileWordProducts(p.factoryTotalProducts ?? 0),
+                value: '${p.factoryTotalProducts ?? 0}',
+              ),
+            ),
+            const SizedBox(width: 12),
+          ],
           Expanded(
             child: _StatTile(
               label: l.publicProfileFollowersLabel,
@@ -538,11 +549,13 @@ class _StatTile extends StatelessWidget {
   const _StatTile({
     required this.label,
     required this.value,
-    required this.onTap,
+    this.onTap,
   });
   final String label;
   final String value;
-  final VoidCallback onTap;
+
+  /// null — плитка не кликабельна (товары открываются из сетки ниже).
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {

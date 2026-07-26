@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/widgets/trust_badge.dart';
-import '../../../core/currency/converted_price_text.dart';
+import '../../../core/currency/currency_repository.dart';
 import '../../../core/storage/auth_storage.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../core/widgets/photo_viewer.dart';
@@ -788,11 +788,19 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             ),
           ),
         ],
-        const Divider(height: 32),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: _PriceSection(post: post),
-        ),
+        // Цена показывается ОДИН раз — в нижней панели, рядом с кнопкой
+        // «Написать заводу». Раньше тот же ценник дублировался ещё и здесь,
+        // в теле карточки, из-за чего одна и та же сумма выглядела как две
+        // разные (базовая валюта в теле, пересчитанная — внизу).
+        // В теле остаются только оптовые градации: это отдельные данные,
+        // которых в нижней панели нет.
+        if (post.priceTiers.isNotEmpty) ...[
+          const Divider(height: 32),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _PriceTiersSection(post: post),
+          ),
+        ],
         const Divider(height: 32),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -838,7 +846,9 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(l.postPriceLabel,
+                  // Явная подпись: раньше стояло просто «Цена», и было
+                  // непонятно, цена за штуку это или за партию.
+                  Text(l.postPriceUnit,
                       style: Theme.of(context).textTheme.bodySmall),
                   Text(
                     '${post.priceAmount} ${post.priceCurrency}',
@@ -846,11 +856,9 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                           fontWeight: FontWeight.w700,
                         ),
                   ),
-                  ConvertedPriceText(
-                    amount: post.priceAmount,
-                    fromCurrency: post.priceCurrency,
-                    prefix: '',
-                  ),
+                  // Пересчёт в валюту покупателя — с подписью, чтобы вторая
+                  // сумма не читалась как цена другого товара.
+                  _ConvertedPriceHint(post: post),
                 ],
               ),
             ),
@@ -1054,8 +1062,11 @@ class _FactoryHeader extends StatelessWidget {
                   children: [
                     // Живой статус вместо «Trust Score: 0».
                     TrustBadge(score: trustScore),
-                    if (reviewsCount > 0 && factoryUserId != null) ...[
-                      const SizedBox(width: 8),
+                    const SizedBox(width: 8),
+                    // Оценку показываем всегда — в профиле завода она тоже
+                    // видна всегда. Раньше при нуле отзывов строка исчезала,
+                    // и карточка товара выглядела беднее профиля.
+                    if (reviewsCount > 0 && factoryUserId != null)
                       InkWell(
                         onTap: () {
                           Navigator.of(context).push(
@@ -1080,8 +1091,20 @@ class _FactoryHeader extends StatelessWidget {
                             ),
                           ],
                         ),
+                      )
+                    else
+                      Flexible(
+                        child: Text(
+                          AppLocalizations.of(context)!
+                              .postFactoryNoReviewsYet,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(color: scheme.onSurfaceVariant),
+                        ),
                       ),
-                    ],
                   ],
                 ),
               ],
@@ -1211,8 +1234,38 @@ class _ActionsRow extends StatelessWidget {
   }
 }
 
-class _PriceSection extends StatelessWidget {
-  const _PriceSection({required this.post});
+/// Пересчёт цены в валюту покупателя, с подписью «в вашей валюте».
+/// Если валюта совпадает или курс не загружен — не рисуется вообще, чтобы
+/// не оставлять на экране висящее число без объяснения.
+class _ConvertedPriceHint extends StatelessWidget {
+  const _ConvertedPriceHint({required this.post});
+  final FeedPost post;
+
+  @override
+  Widget build(BuildContext context) {
+    final repo = CurrencyRepository.instance;
+    final converted = repo.formatConverted(
+      amount: post.priceAmount,
+      fromCurrency: post.priceCurrency,
+      targetCurrency: repo.currentUserCurrency,
+    );
+    if (converted == null) return const SizedBox.shrink();
+    final l = AppLocalizations.of(context)!;
+    // formatConverted отдаёт строку с «~» — здесь префикс задаём сами.
+    final value = converted.startsWith('~') ? converted.substring(1) : converted;
+    return Text(
+      l.postPriceInYourCurrency(value),
+      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+    );
+  }
+}
+
+/// Оптовые градации цены («от 100 шт — 4.20 USD»). Базовая цена здесь
+/// намеренно не повторяется: она показана в нижней панели карточки.
+class _PriceTiersSection extends StatelessWidget {
+  const _PriceTiersSection({required this.post});
   final FeedPost post;
 
   @override
@@ -1222,68 +1275,45 @@ class _PriceSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(l.postPriceLabel,
+        Text(l.postPriceTiers,
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w700,
                 )),
         const SizedBox(height: 8),
-        Text(
-          '${post.priceAmount} ${post.priceCurrency}',
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-        ),
-        ConvertedPriceText(
-          amount: post.priceAmount,
-          fromCurrency: post.priceCurrency,
-          prefix: '',
-          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                color: scheme.onSurfaceVariant,
-              ),
-        ),
-        if (post.priceTiers.isNotEmpty) ...[
-          const SizedBox(height: 16),
-          Text(l.postPriceTiers,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  )),
-          const SizedBox(height: 8),
-          Container(
-            decoration: BoxDecoration(
-              border: Border.all(color: scheme.outlineVariant),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Column(
-              children: [
-                for (var i = 0; i < post.priceTiers.length; i++) ...[
-                  if (i > 0) Divider(height: 1, color: scheme.outlineVariant),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 12),
-                    child: Row(
-                      children: [
-                        Icon(Icons.inventory_2_outlined,
-                            size: 16, color: scheme.onSurfaceVariant),
-                        const SizedBox(width: 8),
-                        Text(l.postPriceTierFromQty(post.priceTiers[i].quantity),
-                            style:
-                                Theme.of(context).textTheme.bodyMedium),
-                        const Spacer(),
-                        Text(
-                          '${post.priceTiers[i].price} ${post.priceCurrency}',
-                          style:
-                              Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ],
-            ),
+        Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: scheme.outlineVariant),
+            borderRadius: BorderRadius.circular(8),
           ),
-        ],
+          child: Column(
+            children: [
+              for (var i = 0; i < post.priceTiers.length; i++) ...[
+                if (i > 0) Divider(height: 1, color: scheme.outlineVariant),
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Row(
+                    children: [
+                      Icon(Icons.inventory_2_outlined,
+                          size: 16, color: scheme.onSurfaceVariant),
+                      const SizedBox(width: 8),
+                      Text(l.postPriceTierFromQty(post.priceTiers[i].quantity),
+                          style: Theme.of(context).textTheme.bodyMedium),
+                      const Spacer(),
+                      Text(
+                        '${post.priceTiers[i].price} ${post.priceCurrency}',
+                        style:
+                            Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       ],
     );
   }
