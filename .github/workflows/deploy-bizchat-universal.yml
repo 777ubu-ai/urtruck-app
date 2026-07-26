@@ -76,6 +76,14 @@ jobs:
             sleep 3
           done
           docker inspect -f 'backend: {{.State.Health.Status}}' bizchat-backend-prod
+
+          echo "== Миграции БД =="
+          # Без этого шага новые миграции не применялись: схема держалась
+          # только на synchronize, что в продакшене опасно.
+          $COMPOSE exec -T backend npm run migration:run || echo "ВНИМАНИЕ: миграции не применились — проверить вручную"
+
+          echo "== Режим synchronize (риск авто-правки схемы) =="
+          docker exec bizchat-backend-prod printenv DB_SYNCHRONIZE || echo "DB_SYNCHRONIZE не задан (по умолчанию выключен)"
           EOS
 
       - name: Verify universal code works
