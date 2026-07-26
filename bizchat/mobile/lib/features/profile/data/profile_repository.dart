@@ -200,6 +200,9 @@ class NotificationPrefs {
 class FactoryProfile {
   FactoryProfile({
     required this.companyName,
+    this.description,
+    this.website,
+    this.whatsapp,
     required this.hashtags,
     required this.trustScore,
     required this.verifiedAt,
@@ -210,6 +213,10 @@ class FactoryProfile {
   });
 
   final String companyName;
+  /// «О себе» завода — многострочное описание для витрины.
+  final String? description;
+  final String? website;
+  final String? whatsapp;
   final List<String> hashtags;
   final int trustScore;
   final DateTime? verifiedAt;
@@ -221,6 +228,9 @@ class FactoryProfile {
   factory FactoryProfile.fromJson(Map<String, dynamic> json) {
     return FactoryProfile(
       companyName: json['companyName'] as String? ?? 'Завод',
+      description: json['description'] as String?,
+      website: json['website'] as String?,
+      whatsapp: json['whatsapp'] as String?,
       hashtags: (json['hashtags'] as List?)?.cast<String>() ?? const [],
       trustScore: json['trustScore'] as int? ?? 50,
       verifiedAt: json['verifiedAt'] != null

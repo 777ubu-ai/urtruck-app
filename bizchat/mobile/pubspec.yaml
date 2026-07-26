@@ -49,6 +49,8 @@ dependencies:
   image_cropper: ^8.0.2
   flutter_webrtc: ^0.12.5
   share_plus: ^11.1.0
+  # Открытие внешних ссылок из профиля (сайт завода, WhatsApp).
+  url_launcher: ^6.3.1
 
 dev_dependencies:
   flutter_test:

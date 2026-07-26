@@ -81,6 +81,22 @@ export class UpdateMeDto {
   @Length(0, 4096)
   businessLicense?: string;
 
+  /// «О себе» завода — многострочное описание для витрины.
+  @IsOptional()
+  @IsString()
+  @Length(0, 2000)
+  description?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 256)
+  website?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 32)
+  whatsapp?: string;
+
   /**
    * Глобальный toggle push-уведомлений. Если false — сервер не шлёт пуши,
    * но in-app notifications всё равно создаются и видны в колокольчике.

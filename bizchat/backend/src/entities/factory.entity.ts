@@ -68,8 +68,18 @@ export class Factory {
   })
   priceCurrency!: string;
 
-  @Column({ type: 'varchar', length: 16, nullable: true })
+  /// «О себе» завода. Раньше было varchar(16) — не помещалась даже короткая
+  /// фраза, поэтому поле не использовалось. Теперь полноценный текст.
+  @Column({ type: 'text', nullable: true })
   description!: string | null;
+
+  /// Сайт компании.
+  @Column({ type: 'varchar', length: 256, nullable: true })
+  website!: string | null;
+
+  /// WhatsApp для связи — основной канал переговоров по опту.
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  whatsapp!: string | null;
 
   @Column({ name: 'verified_at', type: 'timestamptz', nullable: true })
   verifiedAt!: Date | null;

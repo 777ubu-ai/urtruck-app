@@ -1,6 +1,8 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher_string.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/storage/auth_storage.dart';
 import '../../../core/widgets/trust_badge.dart';
@@ -317,15 +319,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(width: 8),
               Expanded(
                 child: _ProfileActionButton(
-                  label: l.profileFollowers,
-                  icon: Icons.people_outline_rounded,
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => FollowListScreen(
-                        userId: p.id,
-                        mode: FollowListMode.followers,
-                      ),
-                    ),
+                  label: 'Поделиться',
+                  icon: Icons.ios_share_rounded,
+                  onTap: () => Share.share(
+                    'Biz Chat — ${p.factory?.companyName ?? p.name ?? "профиль"}\n'
+                    'https://biz-chat.net/app/',
                   ),
                 ),
               ),
@@ -366,6 +364,9 @@ class _ProfileHeader extends StatelessWidget {
     final displayName = profile.name?.isNotEmpty == true
         ? profile.name!
         : (profile.factory?.companyName ?? l.profileNoName);
+    final bio = profile.factory?.description;
+    final site = profile.factory?.website;
+    final whatsapp = profile.factory?.whatsapp;
     // Шапка в духе профилей соцсетей: аватар и три счётчика в одну строку,
     // ниже — имя с описанием, ниже — кнопки действий на всю ширину.
     return Column(
@@ -448,7 +449,71 @@ class _ProfileHeader extends StatelessWidget {
           profile.phone,
           style: TextStyle(fontSize: 13.5, color: scheme.onSurfaceVariant),
         ),
+        // «О себе» завода — то, ради чего покупатель и открывает профиль:
+        // что производят, условия опта, гарантии.
+        if (bio != null && bio.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            bio,
+            style: const TextStyle(fontSize: 13.5, height: 1.35),
+          ),
+        ],
+        // Контакты кликабельными строками, как ссылка wa.me в референсе.
+        if (whatsapp != null && whatsapp.isNotEmpty)
+          _ProfileLink(
+            icon: Icons.chat_rounded,
+            text: 'wa.me/$whatsapp',
+            url: 'https://wa.me/${whatsapp.replaceAll(RegExp(r'[^0-9]'), '')}',
+          ),
+        if (site != null && site.isNotEmpty)
+          _ProfileLink(
+            icon: Icons.link_rounded,
+            text: site,
+            url: site.startsWith('http') ? site : 'https://$site',
+          ),
       ],
+    );
+  }
+}
+
+/// Кликабельная ссылка в шапке профиля (сайт, WhatsApp).
+class _ProfileLink extends StatelessWidget {
+  const _ProfileLink({
+    required this.icon,
+    required this.text,
+    required this.url,
+  });
+
+  final IconData icon;
+  final String text;
+  final String url;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: InkWell(
+        onTap: () => launchUrlString(url, mode: LaunchMode.externalApplication),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: const Color(0xFF0B66FF)),
+            const SizedBox(width: 5),
+            Flexible(
+              child: Text(
+                text,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF0B66FF),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

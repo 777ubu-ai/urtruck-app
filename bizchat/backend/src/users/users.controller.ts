@@ -99,6 +99,9 @@ export class UsersController {
       factory: user.factory
         ? {
             companyName: user.factory.companyName,
+            description: user.factory.description,
+            website: user.factory.website,
+            whatsapp: user.factory.whatsapp,
             hashtags: user.factory.hashtags,
             trustScore: user.factory.trustScore,
             verifiedAt: user.factory.verifiedAt,
@@ -178,6 +181,15 @@ export class UsersController {
         // (GET /admin/factories/pending → POST .../verify).
         factoryPatch.businessLicense = dto.businessLicense;
       }
+      if (dto.description !== undefined) {
+        factoryPatch.description = dto.description || null;
+      }
+      if (dto.website !== undefined) {
+        factoryPatch.website = dto.website || null;
+      }
+      if (dto.whatsapp !== undefined) {
+        factoryPatch.whatsapp = dto.whatsapp || null;
+      }
       if (Object.keys(factoryPatch).length > 0) {
         await manager.update(Factory, { userId }, factoryPatch);
       }
@@ -212,6 +224,9 @@ export class UsersController {
       factory: fresh.factory
         ? {
             companyName: fresh.factory.companyName,
+            description: fresh.factory.description,
+            website: fresh.factory.website,
+            whatsapp: fresh.factory.whatsapp,
             hashtags: fresh.factory.hashtags,
             trustScore: fresh.factory.trustScore,
             verifiedAt: fresh.factory.verifiedAt,
@@ -269,6 +284,9 @@ export class UsersController {
       factory: user.factory
         ? {
             companyName: user.factory.companyName,
+            description: user.factory.description,
+            website: user.factory.website,
+            whatsapp: user.factory.whatsapp,
             hashtags: user.factory.hashtags,
             trustScore: user.factory.trustScore,
             verifiedAt: user.factory.verifiedAt,
