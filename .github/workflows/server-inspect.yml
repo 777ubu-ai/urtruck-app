@@ -1,6 +1,6 @@
 name: Server Inspect (read-only)
 
-# v6: диагностика ошибки 500 на /factories — читает свежие логи backend.
+# v7: срочная диагностика 500 на ленте и каталоге после деплоя миграций.
 on:
   workflow_dispatch:
   push:
@@ -12,22 +12,27 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
-      - name: Trigger error and read backend logs
+      - name: Read DB error from backend logs
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SERVER_PASS: ${{ secrets.SERVER_PASS }}
         run: |
           sudo apt-get install -y sshpass >/dev/null 2>&1
-          echo "== вызываем /factories чтобы ошибка попала в свежие логи =="
-          curl -sS -m 20 "https://biz-chat.net/api/v1/factories?limit=2" | head -c 200 || true
-          echo
-          sleep 3
+          echo "== вызываем ленту, чтобы ошибка попала в свежие логи =="
+          curl -sS -m 20 "https://biz-chat.net/api/v1/posts/feed?limit=1" | head -c 150 || true
+          echo; sleep 3
           sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'EOS'
           set +e
-          echo "===== последние ошибки backend ====="
-          docker logs --tail 120 bizchat-backend-prod 2>&1 | grep -iE "error|exception|query failed|syntax|column|relation" | tail -25
+          echo "===== ОШИБКИ БД в логах backend ====="
+          docker logs --tail 200 bizchat-backend-prod 2>&1 | grep -iE "QueryFailedError|column|relation .* does not exist|syntax error|error:" | tail -20
           echo
-          echo "===== последние 25 строк лога (как есть) ====="
-          docker logs --tail 25 bizchat-backend-prod 2>&1
+          echo "===== реальные колонки таблицы factories ====="
+          docker exec bizchat-postgres-prod psql -U "${DB_USERNAME:-bizchat}" -d "${DB_DATABASE:-bizchat}" -c "\d factories" 2>&1 | head -30
+          echo
+          echo "===== состояние миграций ====="
+          docker exec bizchat-postgres-prod psql -U "${DB_USERNAME:-bizchat}" -d "${DB_DATABASE:-bizchat}" -c "SELECT name FROM migrations ORDER BY id DESC LIMIT 5;" 2>&1 | head -12
+          echo
+          echo "===== DB_SYNCHRONIZE ====="
+          docker exec bizchat-backend-prod printenv DB_SYNCHRONIZE || echo "не задан"
           EOS
