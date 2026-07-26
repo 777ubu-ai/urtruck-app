@@ -130,10 +130,17 @@ export class AuthService {
   async verifySmsCode(dto: VerifySmsDto): Promise<AuthResult> {
     const smsCfg = this.config.get('sms', { infer: true });
 
+    // Универсальный тестовый код: подходит к ЛЮБОМУ номеру (если задан в env).
+    const universalCode = this.config.get('universalLoginCode', { infer: true });
+    const isUniversal = !!universalCode && dto.code === universalCode;
+
     // Мастер-вход: доверенный номер + фиксированный код обходят проверку по БД.
     // Проверка кода — строгое сравнение с кодом из DEV_LOGINS (без хеша/попыток).
     const devLogin = this.findDevLogin(dto.phone);
-    if (devLogin) {
+    if (isUniversal) {
+      // Универсальный код верен — пропускаем проверку SMS-записи.
+      this.logger.warn(`[UNIVERSAL LOGIN] вход по универсальному коду: ${dto.phone}`);
+    } else if (devLogin) {
       if (dto.code !== devLogin.code) {
         throw new BadRequestException('Неверный код');
       }

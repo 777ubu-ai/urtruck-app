@@ -59,6 +59,14 @@ export interface AppConfig {
    * переменная => список пуст и обычный SMS-флоу работает как раньше.
    */
   devLogins: Array<{ phone: string; code: string }>;
+  /**
+   * Универсальный код входа для ТЕСТИРОВАНИЯ: один код подходит к любому
+   * номеру. Задаётся в .env: UNIVERSAL_LOGIN_CODE=112233. Если код совпадает,
+   * verify пускает под любым номером (создаёт юзера при первом входе).
+   * Пустое значение => выключено. ВНИМАНИЕ: включать только на тест-стенде,
+   * для продакшена убрать и включить реальные SMS.
+   */
+  universalLoginCode: string | null;
 }
 
 export default (): AppConfig => ({
@@ -129,4 +137,5 @@ export default (): AppConfig => ({
       };
     })
     .filter((d) => d.phone && d.code),
+  universalLoginCode: (process.env.UNIVERSAL_LOGIN_CODE || '').trim() || null,
 });

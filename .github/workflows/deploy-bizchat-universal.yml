@@ -1,0 +1,94 @@
+name: Deploy Biz Chat backend (universal code)
+
+# Разворачивает обновлённый backend Biz Chat (с универсальным кодом входа
+# для тестов) и прописывает UNIVERSAL_LOGIN_CODE в .env.production.
+#
+# ВНИМАНИЕ: универсальный код 112233 — ТЕСТОВЫЙ, подходит к любому номеру.
+# Для продакшена этот код нужно убрать и включить реальные SMS.
+#
+# Запуск: по push этого файла (контролируемо).
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/biz-chat-inquiry-6v7qi2]
+    paths: ['.github/workflows/deploy-bizchat-universal.yml']
+
+concurrency:
+  group: deploy-bizchat
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Upload backend sources
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PASS: ${{ secrets.SERVER_PASS }}
+        run: |
+          sudo apt-get install -y sshpass >/dev/null 2>&1
+          tar czf backend-src.tar.gz -C bizchat/backend \
+            src package.json package-lock.json tsconfig.json tsconfig.build.json nest-cli.json
+          sshpass -p "$SERVER_PASS" scp -o StrictHostKeyChecking=no \
+            backend-src.tar.gz "$SERVER_USER@$SERVER_HOST:/tmp/backend-src.tar.gz"
+          sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" '
+            set -e
+            cd /home/ubuntu/bizchat/backend
+            rm -rf src
+            tar xzf /tmp/backend-src.tar.gz
+            rm -f /tmp/backend-src.tar.gz
+            echo "Исходники обновлены."
+          '
+
+      - name: Set UNIVERSAL_LOGIN_CODE and rebuild backend
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PASS: ${{ secrets.SERVER_PASS }}
+        run: |
+          sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'EOS'
+          set -e
+          ENV=/home/ubuntu/bizchat/infra/.env.production
+          cp "$ENV" "$ENV.bak.$(date +%Y%m%d-%H%M%S)"
+          # Прописываем универсальный тестовый код (idempotent)
+          sed -i '/^UNIVERSAL_LOGIN_CODE=/d' "$ENV"
+          echo "UNIVERSAL_LOGIN_CODE=112233" >> "$ENV"
+          echo "UNIVERSAL_LOGIN_CODE прописан."
+
+          cd /home/ubuntu/bizchat/infra
+          COMPOSE="docker compose -f docker-compose.production.yml -f docker-compose.staging.yml --env-file .env.production"
+          echo "== Сборка backend (с новым кодом) =="
+          $COMPOSE build backend
+          echo "== Перезапуск =="
+          $COMPOSE up -d backend
+          echo "== Ждём healthy =="
+          for i in $(seq 1 40); do
+            S=$(docker inspect -f '{{.State.Health.Status}}' bizchat-backend-prod 2>/dev/null || echo starting)
+            [ "$S" = "healthy" ] && { echo "healthy"; break; }
+            sleep 3
+          done
+          docker inspect -f 'backend: {{.State.Health.Status}}' bizchat-backend-prod
+          EOS
+
+      - name: Verify universal code works
+        run: |
+          set -e
+          T="+77000000123"
+          echo "== sms/send (stub) =="
+          curl -sS -m 15 -o /dev/null -w "send: %{http_code}\n" -X POST \
+            https://biz-chat.net/api/v1/auth/sms/send -H "Content-Type: application/json" -d "{\"phone\":\"$T\"}"
+          echo "== verify универсальным кодом 112233 =="
+          body=$(curl -sS -m 15 -X POST https://biz-chat.net/api/v1/auth/sms/verify \
+            -H "Content-Type: application/json" -d "{\"phone\":\"$T\",\"code\":\"112233\",\"type\":\"buyer\"}")
+          echo "$body" | head -c 200
+          echo
+          case "$body" in
+            *'"accessToken"'*) echo "✅ Универсальный код работает — вход выдал токены";;
+            *) echo "::error::Универсальный код не сработал"; exit 1;;
+          esac
