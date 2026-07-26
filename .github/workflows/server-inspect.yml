@@ -1,7 +1,6 @@
 name: Server Inspect (read-only)
 
-# v5: диагностика ошибки входа (Internal server error на sms/send).
-# Читает логи backend-контейнера bizchat вокруг ошибки SMS. Ничего не меняет.
+# v6: диагностика ошибки 500 на /factories — читает свежие логи backend.
 on:
   workflow_dispatch:
   push:
@@ -13,31 +12,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
-      - name: Read backend logs around SMS error
+      - name: Trigger error and read backend logs
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SERVER_PASS: ${{ secrets.SERVER_PASS }}
         run: |
           sudo apt-get install -y sshpass >/dev/null 2>&1
+          echo "== вызываем /factories чтобы ошибка попала в свежие логи =="
+          curl -sS -m 20 "https://biz-chat.net/api/v1/factories?limit=2" | head -c 200 || true
+          echo
+          sleep 3
           sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'EOS'
           set +e
-          echo "===== Последние 120 строк логов backend (фильтр по SMS/error) ====="
-          docker logs --tail 400 bizchat-backend-prod 2>&1 | grep -iE "sms|mobizon|error|exception|500|throw|ECONNREFUSED|timeout" | tail -60
-
-          echo; echo "===== SMS-конфиг в контейнере (только имена/режимы, без секретов) ====="
-          docker exec bizchat-backend-prod printenv 2>/dev/null | grep -E "^SMS_PROVIDER=|^MOBIZON_API_DOMAIN=|^NODE_ENV="
-          docker exec bizchat-backend-prod printenv 2>/dev/null | grep -q "^MOBIZON_API_KEY=" && echo "MOBIZON_API_KEY: задан" || echo "MOBIZON_API_KEY: НЕТ"
-          docker exec bizchat-backend-prod printenv 2>/dev/null | grep -q "^DEV_LOGINS=" && echo "DEV_LOGINS: задан" || echo "DEV_LOGINS: нет (мастер-вход не активен)"
-
-          echo; echo "===== Проверка Mobizon API напрямую (баланс) — покажет, жив ли ключ ====="
-          KEY=$(docker exec bizchat-backend-prod printenv MOBIZON_API_KEY 2>/dev/null)
-          DOM=$(docker exec bizchat-backend-prod printenv MOBIZON_API_DOMAIN 2>/dev/null)
-          DOM=${DOM:-api.mobizon.kz}
-          if [ -n "$KEY" ]; then
-            curl -sS -m 15 "https://$DOM/service/user/getownbalance?apiKey=$KEY&output=json" | head -c 300
-          else
-            echo "нет ключа Mobizon"
-          fi
-          echo; echo "===== ГОТОВО ====="
+          echo "===== последние ошибки backend ====="
+          docker logs --tail 120 bizchat-backend-prod 2>&1 | grep -iE "error|exception|query failed|syntax|column|relation" | tail -25
+          echo
+          echo "===== последние 25 строк лога (как есть) ====="
+          docker logs --tail 25 bizchat-backend-prod 2>&1
           EOS
