@@ -225,6 +225,19 @@ export default function ChatScreen({ navigation, route }) {
   const [resolvedTripId, setResolvedTripId] = useState(tripId || null);
   const bargainCargoId = cargoId || resolvedCargoId;
   const bargainTripId = tripId || resolvedTripId;
+  // Ревизия 26.07: BidModal открывался без currency → торг в чате по грузу в
+  // KZT/RUB рисовал «$». Валюта: из сделки (get_deal отдаёт currency груза),
+  // иначе дотягиваем с самого груза.
+  const [listingCurrency, setListingCurrency] = useState(null);
+  useEffect(() => {
+    if (deal?.currency) { setListingCurrency(deal.currency); return; }
+    if (!bargainCargoId) return;
+    let alive = true;
+    marketAPI.getCargo(bargainCargoId)
+      .then((c) => { if (alive && c?.currency) setListingCurrency(c.currency); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [deal?.currency, bargainCargoId]);
   const flatListRef = useRef(null);
   // HOT-006: refs для MediaRecorder (web)
   const mediaRecorderRef = useRef(null);
@@ -1177,6 +1190,7 @@ export default function ChatScreen({ navigation, route }) {
         tripId={bargainTripId}
         bidId={bidModal.bidId}
         initialAmount={bidModal.amount}
+        currency={listingCurrency || 'USD'}
       />
     </SafeAreaView>
   );

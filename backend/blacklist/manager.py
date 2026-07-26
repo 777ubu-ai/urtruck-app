@@ -17,7 +17,15 @@ def check_blacklist(phone=None, plate=None, name=None) -> list:
 
 
 def seed_demo_blacklist():
-    """Загружает демо-данные для показа работы системы."""
+    """Загружает демо-данные для показа работы системы.
+
+    Ревизия 26.07.2026: в production демо-записи в реальную таблицу blacklist
+    НЕ сеем (канон: no seed/demo data in prod). Включается только явным
+    SEED_DEMO_BLACKLIST=true в .env (например, на стенде для показа).
+    """
+    import os
+    if os.getenv("SEED_DEMO_BLACKLIST", "false").strip().lower() not in ("1", "true", "yes"):
+        return
     existing = db.blacklist_check(phone="+79991234567")
     if existing:
         return
