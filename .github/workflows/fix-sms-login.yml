@@ -1,0 +1,68 @@
+name: Fix Biz Chat SMS login (temp stub)
+
+# Mobizon API-ключ не авторизуется (code=8) — вход по SMS падает с 500.
+# Временно переключаем SMS_PROVIDER на stub: sms/send перестаёт падать,
+# экран ввода кода открывается, а сам код читается через dev peek endpoint
+# (сервер в NODE_ENV=staging). Пересборка образа не нужна — только env + restart.
+#
+# Откат на реальные SMS: вернуть SMS_PROVIDER=mobizon с рабочим ключом.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/biz-chat-inquiry-6v7qi2]
+    paths: ['.github/workflows/fix-sms-login.yml']
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Switch SMS provider to stub and restart backend
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PASS: ${{ secrets.SERVER_PASS }}
+        run: |
+          sudo apt-get install -y sshpass >/dev/null 2>&1
+          sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'EOS'
+          set -e
+          ENV=/home/ubuntu/bizchat/infra/.env.production
+          cp "$ENV" "$ENV.bak.$(date +%Y%m%d-%H%M%S)"
+
+          echo "== Было =="
+          grep -E "^SMS_PROVIDER=" "$ENV" || echo "(SMS_PROVIDER не задан)"
+
+          # Меняем провайдер на stub (или добавляем, если строки нет)
+          if grep -qE "^SMS_PROVIDER=" "$ENV"; then
+            sed -i 's/^SMS_PROVIDER=.*/SMS_PROVIDER=stub/' "$ENV"
+          else
+            echo "SMS_PROVIDER=stub" >> "$ENV"
+          fi
+          echo "== Стало =="
+          grep -E "^SMS_PROVIDER=" "$ENV"
+
+          echo "== Перезапуск backend (без пересборки — только env) =="
+          cd /home/ubuntu/bizchat/infra
+          docker compose -f docker-compose.production.yml -f docker-compose.staging.yml --env-file .env.production up -d backend
+          echo "== Ждём healthy =="
+          for i in $(seq 1 30); do
+            S=$(docker inspect -f '{{.State.Health.Status}}' bizchat-backend-prod 2>/dev/null || echo starting)
+            [ "$S" = "healthy" ] && { echo "backend healthy"; break; }
+            sleep 3
+          done
+          docker inspect -f 'backend: {{.State.Health.Status}}' bizchat-backend-prod
+          EOS
+
+      - name: Verify sms/send no longer 500
+        run: |
+          echo "== Пробуем sms/send на номер владельца (stub — SMS не уходит, код генерируется) =="
+          code=$(curl -sS -m 15 -o /tmp/r.json -w "%{http_code}" -X POST \
+            https://biz-chat.net/api/v1/auth/sms/send \
+            -H "Content-Type: application/json" \
+            -d '{"phone":"+77479171118"}' || echo ERR)
+          echo "sms/send → HTTP $code"
+          cat /tmp/r.json; echo
+          echo "== Достаём код через dev peek =="
+          curl -sS -m 15 "https://biz-chat.net/api/v1/auth/sms/peek/+77479171118" || true
+          echo
