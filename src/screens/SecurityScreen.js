@@ -84,8 +84,11 @@ export default function SecurityScreen({ navigation }) {
               </Text>
             </View>
 
-            {/* Driver PRO-верификация: сквозной поток документы → параметры фуры */}
-            {(session?.user?.role !== 'client') ? (
+            {/* Driver PRO-верификация: сквозной поток документы → параметры фуры.
+                Ревизия 26.07: у одобренного водителя (confirmed) CTA скрыт —
+                повторный вход в верификацию перезаписывал данные (хвост
+                бага «повторная регистрация после верификации»). */}
+            {(session?.user?.role !== 'client' && !confirmed) ? (
               <TouchableOpacity
                 style={[s.verifyBtn, { backgroundColor: '#00E676' }]}
                 onPress={() => navigation.navigate('Citizenship')}

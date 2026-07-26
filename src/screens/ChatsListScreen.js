@@ -85,8 +85,8 @@ export default function ChatsListScreen({ navigation, route }) {
   }, [dealsMode, role]);
 
   // В режиме «Сделки» открытие вкладки гасит бейдж непрочитанных событий
-  // (ставки/статусы) — аналог «варианта Б», который у водителя живёт в
-  // MyTripsScreen. История в ленте уведомлений не удаляется.
+  // (ставки/статусы). Это ЕДИНСТВЕННОЕ место гашения для обеих ролей —
+  // в MyTripsScreen ничего не гасится. История уведомлений не удаляется.
   useFocusEffect(useCallback(() => {
     if (!dealsMode) return;
     notificationsAPI.readAll().catch(() => {});

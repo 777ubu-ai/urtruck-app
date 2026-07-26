@@ -272,11 +272,10 @@ export default function AppNavigator() {
         <Stack.Screen name="Identity" component={IdentityStepScreen} />
         <Stack.Screen name="TruckParams" component={TruckParamsScreen} />
         <Stack.Screen name="VehicleDocs" component={VehicleDocsScreen} />
-          {/* КАНОНИЧЕСКИЙ PRO-flow верификации водителя:
-              Security → Identity → Selfie → VehicleDocs → VehiclePhotos →
-              TruckParams → submit.
-              Это 5 честных шагов (PR-V9 вынес фото авто+кабины в отдельный
-              шаг VehiclePhotos; см. TOTAL_STEPS=5 во всех пяти экранах).
+          {/* КАНОНИЧЕСКИЙ PRO-flow верификации водителя (4 шага):
+              Citizenship 1 → Identity 2 → VehicleDocs 3 → TruckParams 4 →
+              submit. TOTAL_STEPS=4 во всех четырёх экранах. Legacy-экраны
+              SelfieStepScreen/VehiclePhotosScreen не смонтированы.
 
               Reg/RegOtp/RegProfile (Premium) ниже — это ОБЩИЙ профиль
               (имя + город), а НЕ документная верификация. Оставлены как legacy

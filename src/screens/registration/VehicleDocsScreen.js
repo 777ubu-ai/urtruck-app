@@ -1,4 +1,4 @@
-// VehicleDocsScreen — Шаг 3/5 PRO-верификации (документы водителя + права).
+// VehicleDocsScreen — Шаг 3/4 PRO-верификации (документы водителя + права).
 //
 // Канонический PRO-flow: Identity → Selfie → этот экран → VehiclePhotos →
 // TruckParams → submit. Собирает: техпаспорт/СРТС (OCR), водительские права
