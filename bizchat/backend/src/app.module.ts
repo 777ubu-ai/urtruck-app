@@ -39,6 +39,7 @@ import { CurrencyModule } from './currency/currency.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { ModerationModule } from './moderation/moderation.module';
 import { AdminModule } from './admin/admin.module';
+import { FactoriesModule } from './factories/factories.module';
 
 @Module({
   imports: [
@@ -121,6 +122,7 @@ import { AdminModule } from './admin/admin.module';
     ReviewsModule,
     ModerationModule,
     AdminModule,
+    FactoriesModule,
   ],
   controllers: [AppController],
   providers: [
