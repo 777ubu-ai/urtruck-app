@@ -120,6 +120,16 @@ export default function ChatScreen({ navigation, route }) {
     borderRadius: 16, paddingHorizontal: 18, paddingVertical: 10,
   },
   dealBannerText: { color: '#EAFBF1', fontSize: 16, fontWeight: '900', letterSpacing: -0.3 },
+  // Плашка «идёт запись» над инпутом: красная точка + таймер + подсказка.
+  recBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 14, paddingVertical: 8,
+    backgroundColor: 'rgba(239,68,68,0.12)',
+    borderTopWidth: 1, borderTopColor: '#EF4444',
+  },
+  recDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#EF4444' },
+  recText: { color: '#EF4444', fontSize: 13, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  recHint: { color: v1.textMuted, fontSize: 12, flex: 1, textAlign: 'right' },
   // Input bar
   inputRow: {
     flexDirection: 'row', alignItems: 'center',
@@ -191,6 +201,16 @@ export default function ChatScreen({ navigation, route }) {
   // эндпоинты; bargainRefresh инкрементим, чтобы карточка перечитала статус.
   const [bidModal, setBidModal] = useState({ visible: false, mode: 'create', bidId: null, amount: null });
   const [bargainRefresh, setBargainRefresh] = useState(0);
+  // UX 26.07: тик-триггер «Документ» из «+»-меню → DealAttachments.onAttach().
+  const [attachDocTick, setAttachDocTick] = useState(0);
+  // Индикатор записи голоса: секунды тикают, пока recording=true — иначе
+  // непонятно, идёт запись или нет (жалоба владельца).
+  const [recordSecs, setRecordSecs] = useState(0);
+  useEffect(() => {
+    if (!recording) { setRecordSecs(0); return; }
+    const iv = setInterval(() => setRecordSecs((n) => n + 1), 1000);
+    return () => clearInterval(iv);
+  }, [recording]);
   // «Печатает…»: индикатор партнёра (из poll) + троттл своего пинга.
   const [partnerTyping, setPartnerTyping] = useState(false);
   const [partnerOnline, setPartnerOnline] = useState(false);
@@ -1060,7 +1080,10 @@ export default function ChatScreen({ navigation, route }) {
                     ))}
                   </View>
                 ) : null}
-                <DealAttachments conversationId={roomId} role={role} />
+                {/* UX 26.07 (приказ владельца): блок документов компактный —
+                    кнопка «Прикрепить» уехала вниз в «+»-меню; сам блок виден
+                    только когда документы уже есть. */}
+                <DealAttachments conversationId={roomId} role={role} compact attachTrigger={attachDocTick} />
                 {acceptConfirm ? (
                   <View style={s.acceptConfirm} testID="accept-bid-confirm">
                     <Text style={s.acceptConfirmTitle}>{t('accept_bid_confirm_title')}</Text>
@@ -1077,12 +1100,15 @@ export default function ChatScreen({ navigation, route }) {
                     </View>
                   </View>
                 ) : null}
-                <DealQuickActions
-                  role={role}
-                  onCallSupport={onCallSupport}
-                  onAcceptBid={canAcceptBid ? () => setAcceptConfirm(true) : undefined}
-                  onSendDocument={CHAT_PHOTO_ENABLED ? sendPhoto : undefined}
-                />
+                {/* UX 26.07: большие плитки «Документ/Поддержка» из шапки
+                    убраны — теперь они в «+»-меню внизу. Остаётся только
+                    «Принять ставку», когда она доступна. */}
+                {canAcceptBid ? (
+                  <DealQuickActions
+                    role={role}
+                    onAcceptBid={() => setAcceptConfirm(true)}
+                  />
+                ) : null}
               </View>
             ) : null}
             <View style={s.chatOpened}>
@@ -1096,6 +1122,17 @@ export default function ChatScreen({ navigation, route }) {
         onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
       />
       {showPhrases && <QuickPhrases onSelect={(m) => { setShowPhrases(false); sendMessage(m); }} role={role} dealStatus={deal?.status} />}
+      {/* Плашка записи: пульсирующая точка + таймер + подсказка. Без неё
+          не видно, что запись идёт (жалоба владельца 26.07). */}
+      {recording ? (
+        <View style={s.recBanner} testID="voice-rec-banner">
+          <View style={s.recDot} />
+          <Text style={s.recText}>
+            {t('voice_recording_live')} 0:{String(recordSecs % 60).padStart(2, '0')}
+          </Text>
+          <Text style={s.recHint}>{t('voice_recording_stop_hint')}</Text>
+        </View>
+      ) : null}
       {/* Чистая строка ввода (WeChat-стиль): [+] · поле · 🎤 · отправить.
           Все вложения — под «+» в панели ниже, чтобы главный экран был чистым. */}
       <View style={s.inputRow}>
@@ -1146,6 +1183,9 @@ export default function ChatScreen({ navigation, route }) {
             CHAT_PHOTO_ENABLED ? { key: 'camera', icon: 'camera', label: t('camera'), on: () => pickAndSend(true) } : null,
             { key: 'loc', icon: 'map-pin', label: t('attach_location'), on: () => sendLocation() },
             { key: 'price', icon: 'dollar-sign', label: t('propose_price'), on: () => openBidModal('create') },
+            // UX 26.07: «Документ» и «Поддержка» переехали сюда из шапки комнаты.
+            dealId ? { key: 'doc', icon: 'file-text', label: t('chat_quick_action_send_document'), on: () => setAttachDocTick((n) => n + 1) } : null,
+            { key: 'support', icon: 'life-buoy', label: t('chat_quick_action_call_support'), on: () => onCallSupport() },
             { key: 'phrases', icon: 'zap', label: t('quick_phrases'), on: () => setShowPhrases(true) },
           ].filter(Boolean).map((it) => (
             <TouchableOpacity

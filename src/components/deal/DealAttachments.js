@@ -41,7 +41,10 @@ function attachmentLabel(t, a) {
   return isDoc ? t('attachment_document') : t('attachment_photo');
 }
 
-export default function DealAttachments({ conversationId, role = 'driver' }) {
+// compact (UX 26.07): кнопка «Прикрепить» скрыта (действие живёт в «+»-меню
+// чата, см. attachTrigger), а при пустом списке блок не рендерится вовсе.
+// attachTrigger: внешний тик — инкремент запускает onAttach() (пикер файла).
+export default function DealAttachments({ conversationId, role = 'driver', compact = false, attachTrigger = 0 }) {
   const { t } = useI18n();
   const { theme } = useTheme();
   const accent = accentFor(role);
@@ -126,7 +129,16 @@ export default function DealAttachments({ conversationId, role = 'driver' }) {
     runUpload(item);   // тот же localId → без дубля
   };
 
+  // Внешний запуск пикера из «+»-меню чата (первый рендер не триггерит).
+  const prevTrigger = React.useRef(attachTrigger);
+  useEffect(() => {
+    if (attachTrigger > prevTrigger.current) onAttach();
+    prevTrigger.current = attachTrigger;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attachTrigger]);
+
   const isEmpty = server.length === 0 && local.length === 0;
+  if (compact && isEmpty) return null;
 
   const Row = ({ icon, label, statusKey, statusColor, onRetryPress }) => (
     <View style={s.row}>
@@ -149,16 +161,18 @@ export default function DealAttachments({ conversationId, role = 'driver' }) {
       <View style={s.head}>
         <Feather name="folder" size={14} color={theme.textMuted} />
         <Text style={[s.title, { color: theme.text }]}>{t('chat_documents_title')}</Text>
-        <TouchableOpacity
-          onPress={onAttach}
-          disabled={busy}
-          style={[s.attachBtn, { borderColor: accent, opacity: busy ? 0.5 : 1 }]}
-          testID="attach-add"
-        >
-          {busy ? <ActivityIndicator size="small" color={accent} />
-                : <Feather name="paperclip" size={13} color={accent} />}
-          <Text style={[s.attachTxt, { color: accent }]}>{t('chat_attach_add')}</Text>
-        </TouchableOpacity>
+        {!compact ? (
+          <TouchableOpacity
+            onPress={onAttach}
+            disabled={busy}
+            style={[s.attachBtn, { borderColor: accent, opacity: busy ? 0.5 : 1 }]}
+            testID="attach-add"
+          >
+            {busy ? <ActivityIndicator size="small" color={accent} />
+                  : <Feather name="paperclip" size={13} color={accent} />}
+            <Text style={[s.attachTxt, { color: accent }]}>{t('chat_attach_add')}</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       {isEmpty ? (
