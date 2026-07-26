@@ -58,10 +58,6 @@
   "feedEmptyTitle": "Постов пока нет",
   "feedEmptySubtitle": "Потяните вниз, чтобы обновить",
   "feedLoadError": "Не удалось загрузить ленту",
-  "feedTrustScore": "Trust Score: {score}",
-  "@feedTrustScore": {
-    "placeholders": {"score": {"type": "int"}}
-  },
   "feedMoq": "MOQ {moq} шт",
   "@feedMoq": {
     "placeholders": {"moq": {"type": "int"}}
@@ -335,14 +331,6 @@
   "publicProfileNoPosts": "Постов пока нет",
   "publicProfileAboutFactory": "О заводе",
   "publicProfileTrustScore": "Trust Score",
-  "publicProfileTotalProducts": "Товаров: {count}",
-  "@publicProfileTotalProducts": {
-    "placeholders": {"count": {"type": "int"}}
-  },
-  "publicProfileTotalDeals": "Сделок: {count}",
-  "@publicProfileTotalDeals": {
-    "placeholders": {"count": {"type": "int"}}
-  },
 
   "notifLikeText": "{actor} лайкнул ваш пост",
   "@notifLikeText": {
@@ -503,14 +491,6 @@
   "profileUpdatedSnack": "Профиль обновлён",
   "profileNoName": "Без имени",
   "profileAboutFactory": "О заводе",
-  "profileFactoryTotalProducts": "Товаров: {count}",
-  "@profileFactoryTotalProducts": {
-    "placeholders": {"count": {"type": "int"}}
-  },
-  "profileFactoryTotalDeals": "Сделок: {count}",
-  "@profileFactoryTotalDeals": {
-    "placeholders": {"count": {"type": "int"}}
-  },
   "profileFactoryTrustScore": "Trust Score: {score}",
   "@profileFactoryTrustScore": {
     "placeholders": {"score": {"type": "int"}}

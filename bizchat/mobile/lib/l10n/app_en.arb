@@ -58,10 +58,6 @@
   "feedEmptyTitle": "No posts yet",
   "feedEmptySubtitle": "Pull down to refresh",
   "feedLoadError": "Failed to load feed",
-  "feedTrustScore": "Trust Score: {score}",
-  "@feedTrustScore": {
-    "placeholders": {"score": {"type": "int"}}
-  },
   "feedMoq": "MOQ {moq} pcs",
   "@feedMoq": {
     "placeholders": {"moq": {"type": "int"}}
@@ -335,14 +331,6 @@
   "publicProfileNoPosts": "No posts yet",
   "publicProfileAboutFactory": "About factory",
   "publicProfileTrustScore": "Trust Score",
-  "publicProfileTotalProducts": "Products: {count}",
-  "@publicProfileTotalProducts": {
-    "placeholders": {"count": {"type": "int"}}
-  },
-  "publicProfileTotalDeals": "Deals: {count}",
-  "@publicProfileTotalDeals": {
-    "placeholders": {"count": {"type": "int"}}
-  },
 
   "notifLikeText": "{actor} liked your post",
   "@notifLikeText": {
@@ -503,14 +491,6 @@
   "profileUpdatedSnack": "Profile updated",
   "profileNoName": "No name",
   "profileAboutFactory": "About factory",
-  "profileFactoryTotalProducts": "Products: {count}",
-  "@profileFactoryTotalProducts": {
-    "placeholders": {"count": {"type": "int"}}
-  },
-  "profileFactoryTotalDeals": "Deals: {count}",
-  "@profileFactoryTotalDeals": {
-    "placeholders": {"count": {"type": "int"}}
-  },
   "profileFactoryTrustScore": "Trust Score: {score}",
   "@profileFactoryTrustScore": {
     "placeholders": {"score": {"type": "int"}}

@@ -58,10 +58,6 @@
   "feedEmptyTitle": "暂无帖子",
   "feedEmptySubtitle": "下拉刷新",
   "feedLoadError": "加载失败",
-  "feedTrustScore": "信誉分: {score}",
-  "@feedTrustScore": {
-    "placeholders": {"score": {"type": "int"}}
-  },
   "feedMoq": "起订量 {moq} 件",
   "@feedMoq": {
     "placeholders": {"moq": {"type": "int"}}
@@ -335,14 +331,6 @@
   "publicProfileNoPosts": "暂无帖子",
   "publicProfileAboutFactory": "工厂介绍",
   "publicProfileTrustScore": "信誉分",
-  "publicProfileTotalProducts": "商品: {count}",
-  "@publicProfileTotalProducts": {
-    "placeholders": {"count": {"type": "int"}}
-  },
-  "publicProfileTotalDeals": "成交: {count}",
-  "@publicProfileTotalDeals": {
-    "placeholders": {"count": {"type": "int"}}
-  },
 
   "notifLikeText": "{actor} 点赞了您的帖子",
   "@notifLikeText": {
@@ -503,14 +491,6 @@
   "profileUpdatedSnack": "资料已更新",
   "profileNoName": "未命名",
   "profileAboutFactory": "工厂介绍",
-  "profileFactoryTotalProducts": "商品: {count}",
-  "@profileFactoryTotalProducts": {
-    "placeholders": {"count": {"type": "int"}}
-  },
-  "profileFactoryTotalDeals": "成交: {count}",
-  "@profileFactoryTotalDeals": {
-    "placeholders": {"count": {"type": "int"}}
-  },
   "profileFactoryTrustScore": "信誉分: {score}",
   "@profileFactoryTrustScore": {
     "placeholders": {"score": {"type": "int"}}

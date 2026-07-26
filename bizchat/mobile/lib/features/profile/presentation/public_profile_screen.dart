@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../../../core/api/api_client.dart';
+import '../../../core/widgets/trust_badge.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../feed/presentation/hashtag_screen.dart';
 import '../../feed/presentation/post_detail_screen.dart';
@@ -371,15 +372,15 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     );
   }
 
+  /// Блок «О заводе» на публичном профиле.
+  ///
+  /// Не повторяет ничего из соседних блоков: количество товаров показано
+  /// плитками выше, оценка — в карточке отзывов, город и страна — в шапке.
+  /// Здесь остаются статус доверия, закрытые сделки и специализация.
   Widget _buildFactoryCard(PublicProfile p) {
     final scheme = Theme.of(context).colorScheme;
     final l = AppLocalizations.of(context)!;
     final score = p.factoryTrustScore ?? 50;
-    final trustColor = score >= 90
-        ? Colors.green
-        : score >= 70
-            ? Colors.orange
-            : Colors.grey;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Card(
@@ -388,30 +389,25 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(l.publicProfileAboutFactory,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      )),
+              Row(
+                children: [
+                  Text(l.publicProfileAboutFactory,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          )),
+                  const Spacer(),
+                  // Тот же бейдж, что в профиле и в карточке товара, вместо
+                  // строки «Trust Score: 0», которая читалась как поломка.
+                  TrustBadge(score: score, compact: false),
+                ],
+              ),
               const SizedBox(height: 12),
               Row(
                 children: [
-                  Icon(Icons.verified, size: 18, color: trustColor),
-                  const SizedBox(width: 8),
-                  Text(l.feedTrustScore(score)),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Icon(Icons.inventory_2_outlined,
-                      size: 18, color: scheme.onSurfaceVariant),
-                  const SizedBox(width: 8),
-                  Text(l.publicProfileTotalProducts(p.factoryTotalProducts ?? 0)),
-                  const SizedBox(width: 16),
                   Icon(Icons.handshake_outlined,
                       size: 18, color: scheme.onSurfaceVariant),
                   const SizedBox(width: 8),
-                  Text(l.publicProfileTotalDeals(p.factoryTotalDeals ?? 0)),
+                  Text(l.profileDealsClosed(p.factoryTotalDeals ?? 0)),
                 ],
               ),
               if (p.factoryHashtags.isNotEmpty) ...[
