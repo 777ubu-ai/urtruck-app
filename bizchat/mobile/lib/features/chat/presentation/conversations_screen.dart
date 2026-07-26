@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../core/realtime/realtime_service.dart';
 import '../../../core/widgets/loading_skeleton.dart';
+import '../../../core/widgets/trust_badge.dart';
 import '../../../l10n/app_localizations.dart';
 import '../data/chat_repository.dart';
 import 'conversation_screen.dart';
@@ -188,34 +189,21 @@ class _ConversationTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final l = AppLocalizations.of(context)!;
-    final isFactory = item.other.type == 'factory';
-    final initial = item.other.name.isNotEmpty
-        ? item.other.name[0].toUpperCase()
-        : '?';
     final lastText = item.lastMessageText ?? l.chatNoMessagesShort;
     return ListTile(
       onTap: onTap,
-      leading: CircleAvatar(
-        radius: 24,
-        backgroundColor: isFactory
-            ? scheme.tertiaryContainer
-            : scheme.secondaryContainer,
-        child: Text(
-          initial,
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            color: isFactory
-                ? scheme.onTertiaryContainer
-                : scheme.onSecondaryContainer,
-          ),
-        ),
-      ),
+      // Градиентный аватар с кольцом — единый стиль с лентой и профилем.
+      leading: FactoryAvatar(name: item.other.name, size: 54),
       title: Row(
         children: [
           Expanded(
             child: Text(
               item.other.name,
-              style: const TextStyle(fontWeight: FontWeight.w700),
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                letterSpacing: -0.1,
+              ),
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -245,14 +233,16 @@ class _ConversationTile extends StatelessWidget {
               lastText,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: item.unreadCount > 0
-                        ? scheme.onSurface
-                        : scheme.onSurfaceVariant,
-                    fontWeight: item.unreadCount > 0
-                        ? FontWeight.w600
-                        : FontWeight.normal,
-                  ),
+              style: TextStyle(
+                fontSize: 13.5,
+                height: 1.3,
+                color: item.unreadCount > 0
+                    ? scheme.onSurface
+                    : scheme.onSurfaceVariant,
+                fontWeight: item.unreadCount > 0
+                    ? FontWeight.w600
+                    : FontWeight.normal,
+              ),
             ),
           ),
           if (item.unreadCount > 0) ...[
