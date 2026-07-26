@@ -193,36 +193,52 @@ class _AddStoryCircle extends StatelessWidget {
         width: 76,
         child: Column(
           children: [
+            // Фирменный градиентный кружок вместо плоского серого —
+            // задаёт «живой» тон всей ленте с первого экрана.
             Container(
               width: 64,
               height: 64,
               decoration: BoxDecoration(
-                color: scheme.surfaceContainerHighest,
                 shape: BoxShape.circle,
-                border: Border.all(
-                  color: scheme.outline,
-                  width: 2,
-                  style: BorderStyle.solid,
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF0B66FF), Color(0xFF00C2FF)],
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF0B66FF).withValues(alpha: 0.28),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
               ),
               child: Center(
                 child: creating
                     ? const SizedBox(
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
                       )
-                    : Icon(Icons.add,
-                        size: 28, color: scheme.onSurfaceVariant),
+                    : const Icon(Icons.add_rounded,
+                        size: 30, color: Colors.white),
               ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 6),
             Text(
               AppLocalizations.of(context)!.storyAddLabel,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodySmall,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: scheme.onSurface,
+              ),
             ),
           ],
         ),

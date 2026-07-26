@@ -8,6 +8,7 @@ import '../../../core/api/api_client.dart';
 import '../../../core/currency/converted_price_text.dart';
 import '../../../core/realtime/realtime_service.dart';
 import '../../../core/widgets/loading_skeleton.dart';
+import '../../../core/widgets/trust_badge.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../core/widgets/video_media_player.dart';
 import '../../chat/data/chat_repository.dart';
@@ -425,50 +426,25 @@ class _PostCardState extends State<_PostCard> {
             padding: const EdgeInsets.all(12),
             child: Row(
               children: [
-                CircleAvatar(
-                  backgroundColor: scheme.primaryContainer,
-                  child: Text(
-                    post.factoryName.isNotEmpty
-                        ? post.factoryName[0].toUpperCase()
-                        : '?',
-                    style: TextStyle(
-                      color: scheme.onPrimaryContainer,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
+                FactoryAvatar(name: post.factoryName, size: 46),
+                const SizedBox(width: 11),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         post.factoryName,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.2,
+                        ),
                         overflow: TextOverflow.ellipsis,
                       ),
-                      Row(
-                        children: [
-                          Icon(
-                            post.trustScore >= 70
-                                ? Icons.verified
-                                : Icons.info_outline,
-                            size: 14,
-                            color: post.trustScore >= 90
-                                ? Colors.green
-                                : (post.trustScore >= 70
-                                    ? Colors.orange
-                                    : Colors.grey),
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            l.profileFactoryTrustScore(post.trustScore),
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                        ],
-                      ),
+                      const SizedBox(height: 3),
+                      // Живой бейдж вместо «Trust Score: 0» — для нового
+                      // завода показывает «Новый», а не мёртвый ноль.
+                      TrustBadge(score: post.trustScore),
                     ],
                   ),
                 ),
@@ -594,21 +570,25 @@ class _PostCardState extends State<_PostCard> {
                     ),
                     child: Icon(
                       post.isLikedByMe
-                          ? Icons.favorite
-                          : Icons.favorite_border,
+                          ? Icons.favorite_rounded
+                          : Icons.favorite_border_rounded,
                       key: ValueKey<bool>(post.isLikedByMe),
-                      color: post.isLikedByMe ? Colors.red : null,
+                      size: 27,
+                      color: post.isLikedByMe ? const Color(0xFFFF3040) : null,
                     ),
                   ),
                   onPressed: _onLikeTap,
+                  visualDensity: VisualDensity.compact,
                 ),
                 IconButton(
-                  icon: const Icon(Icons.mode_comment_outlined),
+                  icon: const Icon(Icons.chat_bubble_outline_rounded, size: 25),
                   onPressed: _onCommentTap,
+                  visualDensity: VisualDensity.compact,
                 ),
                 IconButton(
-                  icon: const Icon(Icons.send_outlined),
+                  icon: const Icon(Icons.near_me_outlined, size: 25),
                   onPressed: _onShareTap,
+                  visualDensity: VisualDensity.compact,
                 ),
                 const Spacer(),
                 IconButton(
@@ -623,12 +603,14 @@ class _PostCardState extends State<_PostCard> {
                     ),
                     child: Icon(
                       post.isSavedByMe
-                          ? Icons.bookmark
-                          : Icons.bookmark_border,
+                          ? Icons.bookmark_rounded
+                          : Icons.bookmark_border_rounded,
                       key: ValueKey<bool>(post.isSavedByMe),
+                      size: 26,
                     ),
                   ),
                   onPressed: _saveInFlight ? null : _onSaveTap,
+                  visualDensity: VisualDensity.compact,
                 ),
               ],
             ),
@@ -649,27 +631,26 @@ class _PostCardState extends State<_PostCard> {
                 const SizedBox(height: 4),
                 Text(
                   post.title,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.3,
+                    height: 1.2,
+                  ),
                 ),
-                const SizedBox(height: 4),
-                Row(
+                const SizedBox(height: 8),
+                // Характеристики — компактные чипы вместо блёклого текста.
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
                   children: [
-                    Icon(Icons.inventory_2_outlined,
-                        size: 16, color: scheme.onSurfaceVariant),
-                    const SizedBox(width: 4),
-                    Text(
-                      l.feedMoqShort(post.moq),
-                      style: Theme.of(context).textTheme.bodySmall,
+                    _MetaChip(
+                      icon: Icons.inventory_2_rounded,
+                      label: l.feedMoqShort(post.moq),
                     ),
-                    const SizedBox(width: 16),
-                    Icon(Icons.local_shipping_outlined,
-                        size: 16, color: scheme.onSurfaceVariant),
-                    const SizedBox(width: 4),
-                    Text(
-                      l.feedShippingDaysShort(post.shippingDays),
-                      style: Theme.of(context).textTheme.bodySmall,
+                    _MetaChip(
+                      icon: Icons.local_shipping_rounded,
+                      label: l.feedShippingDaysShort(post.shippingDays),
                     ),
                   ],
                 ),
@@ -688,19 +669,38 @@ class _PostCardState extends State<_PostCard> {
                 // ВАЖНО: НЕ оборачивать FilledButton + ConvertedPriceText в Row
                 // внутри этой Column (loose width) — будет BoxConstraints forces
                 // infinite width. ConvertedPriceText кладём отдельной строкой.
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: FilledButton.tonalIcon(
-                    onPressed: () {
-                      _showPriceSheet(context);
-                    },
-                    icon: const Icon(Icons.attach_money),
-                    label: Text(
-                      // ЗАДАЧА 12: если цена > 100000 — показать «Цена по запросу»
-                      (double.tryParse(post.priceAmount) ?? 0) > 100000
-                          ? AppLocalizations.of(context)!.feedPriceOnRequest
-                          : '${post.priceAmount} ${post.priceCurrency}',
-                      style: const TextStyle(fontSize: 16),
+                // Цена — главный элемент карточки маркетплейса: крупная,
+                // читаемая с первого взгляда. Тап открывает лист с тиражами.
+                InkWell(
+                  onTap: () => _showPriceSheet(context),
+                  borderRadius: BorderRadius.circular(14),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            (double.tryParse(post.priceAmount) ?? 0) > 100000
+                                ? AppLocalizations.of(context)!
+                                    .feedPriceOnRequest
+                                : _formatPrice(
+                                    post.priceAmount, post.priceCurrency),
+                            style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.6,
+                              height: 1.1,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Icon(
+                          Icons.expand_more_rounded,
+                          size: 20,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -1129,5 +1129,79 @@ class _NotificationBellState extends State<_NotificationBell> {
           ),
       ],
     );
+  }
+}
+
+/// Компактный чип характеристики товара (MOQ, срок доставки).
+/// Заменяет блёклый текст с иконкой — визуально «собирает» метаданные.
+class _MetaChip extends StatelessWidget {
+  const _MetaChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(100),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: scheme.onSurfaceVariant),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Человеческий формат цены: «500.00 KZT» → «500 ₸», «1.00 USD» → «$1».
+/// Хвостовые нули убираем, символ валюты ставим по локальной привычке
+/// (для USD/EUR — перед суммой, для остальных — после).
+String _formatPrice(String amount, String currency) {
+  final value = double.tryParse(amount);
+  String number;
+  if (value == null) {
+    number = amount;
+  } else if (value == value.roundToDouble()) {
+    number = value.toStringAsFixed(0);
+  } else {
+    number = value.toStringAsFixed(2);
+  }
+
+  // Разделитель тысяч пробелом: 1234567 → 1 234 567
+  final parts = number.split('.');
+  final intPart = parts[0].replaceAllMapped(
+    RegExp(r'(\d)(?=(\d{3})+$)'),
+    (m) => '${m[1]} ',
+  );
+  number = parts.length > 1 ? '$intPart.${parts[1]}' : intPart;
+
+  switch (currency.toUpperCase()) {
+    case 'USD':
+      return '\$$number';
+    case 'EUR':
+      return '€$number';
+    case 'KZT':
+      return '$number ₸';
+    case 'RUB':
+      return '$number ₽';
+    case 'CNY':
+      return '$number ¥';
+    default:
+      return '$number $currency';
   }
 }

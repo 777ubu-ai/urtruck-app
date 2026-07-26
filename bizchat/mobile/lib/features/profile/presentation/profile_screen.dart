@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/storage/auth_storage.dart';
+import '../../../core/widgets/trust_badge.dart';
 import '../../auth/presentation/phone_screen.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../feed/presentation/hashtag_screen.dart';
@@ -387,31 +388,49 @@ class _FactoryCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(l.profileAboutFactory,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    )),
-            const SizedBox(height: 12),
             Row(
               children: [
-                Icon(Icons.verified, size: 18, color: trustColor),
-                const SizedBox(width: 8),
-                Text(l.profileFactoryTrustScore(factory.trustScore),
-                    style: Theme.of(context).textTheme.bodyMedium),
+                Text(l.profileAboutFactory,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        )),
+                const Spacer(),
+                // Живой статус вместо «Trust Score: 0».
+                TrustBadge(score: factory.trustScore, compact: false),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 14),
+            // Три метрики плитками — читается с одного взгляда.
             Row(
               children: [
-                Icon(Icons.inventory_2_outlined,
-                    size: 18, color: scheme.onSurfaceVariant),
+                Expanded(
+                  child: _StatTile(
+                    icon: Icons.inventory_2_rounded,
+                    value: '${factory.totalProducts}',
+                    label: 'Товаров',
+                    accent: const Color(0xFF0B66FF),
+                  ),
+                ),
                 const SizedBox(width: 8),
-                Text(l.profileFactoryTotalProducts(factory.totalProducts)),
-                const SizedBox(width: 16),
-                Icon(Icons.handshake_outlined,
-                    size: 18, color: scheme.onSurfaceVariant),
+                Expanded(
+                  child: _StatTile(
+                    icon: Icons.handshake_rounded,
+                    value: '${factory.totalDeals}',
+                    label: 'Сделок',
+                    accent: const Color(0xFF0F9D58),
+                  ),
+                ),
                 const SizedBox(width: 8),
-                Text(l.profileFactoryTotalDeals(factory.totalDeals)),
+                Expanded(
+                  child: _StatTile(
+                    icon: Icons.shield_rounded,
+                    value: factory.trustScore > 0
+                        ? '${factory.trustScore}'
+                        : '—',
+                    label: 'Рейтинг',
+                    accent: trustColor,
+                  ),
+                ),
               ],
             ),
             if (factory.hashtags.isNotEmpty) ...[
@@ -812,6 +831,59 @@ class _StatsCards extends StatelessWidget {
                 ),
               ))
           .toList(),
+    );
+  }
+}
+
+/// Плитка метрики завода (товары / сделки / рейтинг).
+/// Заменяет строчку мелкого текста — цифра читается сразу, а нулевое
+/// значение не выглядит поломкой благодаря спокойной подаче.
+class _StatTile extends StatelessWidget {
+  const _StatTile({
+    required this.icon,
+    required this.value,
+    required this.label,
+    required this.accent,
+  });
+
+  final IconData icon;
+  final String value;
+  final String label;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, size: 18, color: accent),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.5,
+              height: 1.1,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
