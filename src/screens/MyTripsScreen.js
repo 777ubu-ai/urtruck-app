@@ -320,7 +320,9 @@ export default function MyTripsScreen({ navigation, route }) {
   //   accepted | in_progress | picked_up  → В работе (inwork)
   //   completed | delivered               → Завершённые (done)
   //   cancelled | rejected | expired      → Архив (вторичный фильтр)
-  const IN_WORK_STATUSES = ['accepted', 'in_progress', 'picked_up'];
+  // 27.07: 'at_border' («На границе») ОБЯЗАТЕЛЬНО в «В работе» — иначе груз на
+  // границе выпадал из всех вкладок (не done, не archive) и «терялся».
+  const IN_WORK_STATUSES = ['accepted', 'in_progress', 'picked_up', 'at_border'];
   const DONE_STATUSES = ['completed', 'delivered'];
   const ARCHIVE_STATUSES = ['cancelled', 'rejected', 'expired'];
   const serverDeals = (data?.my_deals) || [];
