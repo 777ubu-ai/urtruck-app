@@ -168,6 +168,8 @@ export default function ChatScreen({ navigation, route }) {
   fullBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', alignItems: 'center', justifyContent: 'center' },
   fullImage: { width: '100%', height: '100%' },
   fullClose: { position: 'absolute', top: 48, right: 20, width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
+  fullSave: { position: 'absolute', bottom: 44, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 24 },
+  fullSaveTxt: { color: '#fff', fontSize: 15, fontWeight: '800' },
   voiceBubble: { flexDirection: 'row', alignItems: 'center', gap: 8, minWidth: 180 },
   waveform: { flexDirection: 'row', alignItems: 'center', gap: 2, flex: 1 },
   wavebar: { width: 2, borderRadius: 1 },
@@ -196,6 +198,22 @@ export default function ChatScreen({ navigation, route }) {
   // C2 (device-баг): вложение-фото не открывалось на весь экран. Тап по
   // фото-пузырю кладёт сюда абсолютный URL → показываем fullscreen-viewer.
   const [fullImage, setFullImage] = useState(null);
+  // Сохранить открытое фото. Web: новая вкладка (там «Сохранить в фото» долгим
+  // тапом — программно из PWA в Галерею нельзя). Native: системный Share-лист.
+  const saveFullImage = async () => {
+    if (!fullImage) return;
+    try {
+      if (Platform.OS === 'web') {
+        if (typeof window !== 'undefined') window.open(fullImage, '_blank');
+        else await Linking.openURL(fullImage);
+      } else {
+        const { Share } = require('react-native');
+        await Share.share({ url: fullImage, message: fullImage });
+      }
+    } catch {
+      Linking.openURL(fullImage).catch(() => toast(t('send_error'), 'error'));
+    }
+  };
   // Часть 2 (торг в чате): BidModal + refreshKey для BargainCard. Кнопка 💰 в
   // инпут-баре и чипы в карточке торга шлют действия через существующие
   // эндпоинты; bargainRefresh инкрементим, чтобы карточка перечитала статус.
@@ -1213,6 +1231,18 @@ export default function ChatScreen({ navigation, route }) {
           ) : null}
           <TouchableOpacity style={s.fullClose} onPress={() => setFullImage(null)} testID="chat-photo-close" hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
             <Feather name="x" size={26} color="#fff" />
+          </TouchableOpacity>
+          {/* Сохранить/поделиться фото (жалоба владельца: некуда сохранить).
+              На web открываем картинку в новой вкладке — там долгим тапом
+              «Сохранить в фото»; на нативе — системный Share-лист. */}
+          <TouchableOpacity
+            style={s.fullSave}
+            testID="chat-photo-save"
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            onPress={(e) => { e.stopPropagation && e.stopPropagation(); saveFullImage(); }}
+          >
+            <Feather name="download" size={18} color="#fff" />
+            <Text style={s.fullSaveTxt}>{t('save')}</Text>
           </TouchableOpacity>
         </Pressable>
       </Modal>
