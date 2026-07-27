@@ -38,13 +38,13 @@ import { localizePlace, localizeCargoName } from '../utils/places';
 import { prettifyPartnerName } from '../utils/displayName';
 import { accentFor } from '../components/deal/DealRoom';
 
-// Декластер 27.07 (спека владельца): фильтров минимум. «Непрочитанные»
-// убраны — непрочитанные и так всплывают наверх с бейджем; «Активные»
-// убраны — это «Все» минус архив, а архив вынесен отдельным чипом.
+// Декластер 27.07 (спека владельца): фильтров минимум — Все · Архив.
+// «Непрочитанные» убраны (и так наверху с бейджем), «Активные» дублировали
+// «Все», «Поддержка» убрана приказом 27.07 — чат поддержки виден в «Все»,
+// а вызвать её можно из «+»-меню комнаты.
 const FILTERS = [
   { key: 'all',     label: 'chat_filter_all' },
   { key: 'archive', label: 'chat_filter_archive' },
-  { key: 'support', label: 'chat_filter_support' },
 ];
 
 const ROLE_LABEL = { driver: 'role_driver', client: 'role_client', support: 'role_support' };
@@ -200,7 +200,9 @@ export default function ChatsListScreen({ navigation, route }) {
       <TouchableOpacity
         key={String(bid.id)}
         testID="deals-offer-card"
-        style={[s.card, { backgroundColor: statusColor + '14', borderColor: statusColor, borderWidth: 1.5 }]}
+        // 27.07: без заливки (весь список бежевым «слипался») — белая
+        // карточка, сигнал несёт цветная обводка.
+        style={[s.card, { backgroundColor: theme.card, borderColor: statusColor, borderWidth: 1.5 }]}
         onPress={() => openOffer(bid)}
         activeOpacity={0.85}
       >

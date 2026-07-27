@@ -1371,8 +1371,13 @@ def my_dashboard(user=Depends(require_level(1))):
         # для my_bids это единственный источник: груз/рейс чужой, в payload его
         # нет, без JOIN фронт рисовал сумму хардкодным «$». COALESCE: ставка
         # может быть на cargo или на trip.
+        # Маршрут ставки: для cargo-ставок — города груза, для trip-ставок —
+        # города рейса (раньше trip-ставки шли без маршрута → «— → —» в UI).
         my_bids = [dict(r) for r in c.execute(
-            "SELECT b.*, c.from_city as cargo_from, c.to_city as cargo_to, c.cargo_desc, "
+            "SELECT b.*, "
+            "COALESCE(c.from_city, t.from_city) as cargo_from, "
+            "COALESCE(c.to_city, t.to_city) as cargo_to, "
+            "c.cargo_desc, "
             "COALESCE(c.currency, t.currency) AS currency "
             "FROM bids b LEFT JOIN cargos c ON b.cargo_id = c.id "
             "LEFT JOIN trips t ON b.trip_id = t.id "
