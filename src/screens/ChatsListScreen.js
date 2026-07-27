@@ -285,22 +285,24 @@ export default function ChatsListScreen({ navigation, route }) {
             </Text>
             {time ? <Text style={[s.time, { color: theme.textDim }]}>{time}</Text> : null}
           </View>
-          {infoStr ? (
-            <Text style={[s.info, { color: theme.textMuted }]} numberOfLines={1}>{infoStr}</Text>
+          {/* Статус живёт на строке маршрута (справа), цена — внизу одна:
+              «8600 KZT В РАБОТЕ» слитно читалось как одно (спека владельца п.6). */}
+          {(infoStr || dealStatus) ? (
+            <View style={s.row}>
+              <Text style={[s.info, { color: theme.textMuted, flex: 1 }]} numberOfLines={1}>{infoStr}</Text>
+              {dealStatus ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <View style={[s.statusDot, { backgroundColor: STATUS_DOT[dealStatus] || '#94A3B8' }]} />
+                  <Text style={[s.statusTiny, { color: theme.textDim }]}>{formatStatus(dealStatus)}</Text>
+                </View>
+              ) : null}
+            </View>
           ) : null}
           <View style={s.row}>
             <Text style={[s.preview, { color: theme.textMuted }]} numberOfLines={1}>
               {item.last_message || t('chat_no_messages')}
             </Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-              {bidStr ? <Text style={[s.bid, { color: theme.text }]}>{bidStr}</Text> : null}
-              {dealStatus ? (
-                <>
-                  <View style={[s.statusDot, { backgroundColor: STATUS_DOT[dealStatus] || '#94A3B8' }]} />
-                  <Text style={[s.statusTiny, { color: theme.textDim }]}>{formatStatus(dealStatus)}</Text>
-                </>
-              ) : null}
-            </View>
+            {bidStr ? <Text style={[s.bid, { color: theme.text }]}>{bidStr}</Text> : null}
           </View>
         </View>
         <View style={s.right}>
