@@ -242,6 +242,14 @@ export default function MyTripsScreen({ navigation, route }) {
     }
   }, []);
 
+  // 27.07: перечитываем список при каждом возврате на экран — иначе статус
+  // сделки (Везут/Доставлено), изменённый второй стороной, не обновлялся до
+  // ручного pull-to-refresh.
+  useEffect(() => {
+    const unsub = navigation.addListener('focus', () => { load(); });
+    return unsub;
+  }, [navigation]);
+
   let myItemsRaw = isDriver ? (data?.my_trips || []) : (data?.my_cargos || []);
   if (justCreatedTrip && isDriver && !myItemsRaw.find(i => i.id === justCreatedTrip.id)) {
     myItemsRaw = [justCreatedTrip, ...myItemsRaw];

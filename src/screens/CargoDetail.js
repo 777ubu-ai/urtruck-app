@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, TextInput, StyleSheet, ScrollView, Alert, Image, Platform } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import Feather from '@expo/vector-icons/Feather';
 
 // Кнопка действия сделки: иконка Feather + текст (вместо эмодзи-префикса).
@@ -301,22 +302,30 @@ export default function CargoDetail({ navigation, route }) {
     }
   };
 
-  // On mount: try to fetch the deal by id (if route provided one), otherwise
-  // look it up via /market/my and match by cargo_id. This lets a re-opened
-  // CargoDetail show the deal block with full state instead of staying empty.
-  useEffect(() => {
+  // Синхронизация статуса сделки. Раньше грузилось ТОЛЬКО на mount — если
+  // вторая сторона (водитель) двигала статус, у клиента карточка застывала на
+  // «Принят», пока не перезайдёшь. Теперь: перечитываем при каждом фокусе
+  // экрана + лёгкий поллинг раз в 15с, пока экран открыт (как в чате/сделках).
+  const refreshDeal = useCallback(() => {
     if (!cid) return;
     marketAPI.getCargo(cid).then(d => { if (d && d.id) setFullCargo(d); }).catch(() => {});
     loadBids();
-    if (routeDealId) {
-      marketAPI.getDeal(routeDealId).then(d => { if (d && d.ok !== false) applyDeal(d); }).catch(() => {});
+    const dealIdToFetch = routeDealId || dealId;
+    if (dealIdToFetch) {
+      marketAPI.getDeal(dealIdToFetch).then(d => { if (d && d.ok !== false) applyDeal(d); }).catch(() => {});
     } else {
       marketAPI.myDashboard().then(d => {
         const found = (d?.my_deals || []).find(x => x.cargo_id === cid);
         if (found) applyDeal(found);
       }).catch(() => {});
     }
-  }, [c.id, cid, routeDealId]);
+  }, [cid, routeDealId, dealId]);
+
+  useFocusEffect(useCallback(() => {
+    refreshDeal();
+    const iv = setInterval(refreshDeal, 15000);
+    return () => clearInterval(iv);
+  }, [refreshDeal]));
 
   const onDeleteCargo = () => {
     const doDel = async () => {
