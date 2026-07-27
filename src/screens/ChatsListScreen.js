@@ -38,10 +38,11 @@ import { localizePlace, localizeCargoName } from '../utils/places';
 import { prettifyPartnerName } from '../utils/displayName';
 import { accentFor } from '../components/deal/DealRoom';
 
+// Декластер 27.07 (спека владельца): фильтров минимум. «Непрочитанные»
+// убраны — непрочитанные и так всплывают наверх с бейджем; «Активные»
+// убраны — это «Все» минус архив, а архив вынесен отдельным чипом.
 const FILTERS = [
   { key: 'all',     label: 'chat_filter_all' },
-  { key: 'unread',  label: 'chat_filter_unread' },
-  { key: 'active',  label: 'chat_filter_active_deals' },
   { key: 'archive', label: 'chat_filter_archive' },
   { key: 'support', label: 'chat_filter_support' },
 ];
@@ -244,14 +245,24 @@ export default function ChatsListScreen({ navigation, route }) {
   // «Предложения (N)» и «Чаты». Показ прилепленной секции над списком убран.
   const showOffersSeg = dealsMode && seg === 'offers';
 
+  // Декластер 27.07 (спека владельца): карточка компактнее (~-20% высоты),
+  // жирным только имя / цена / счётчик непрочитанных; роль — маленькой серой
+  // меткой у имени; маршрут+груз+вес — одна серая строка; статус — цветная
+  // точка + мелкий серый текст (не кричащий зелёный капс); бейдж
+  // непрочитанного — оранжевый сигнальный, а не акцент роли.
+  const STATUS_DOT = {
+    accepted: '#22C55E', confirmed: '#22C55E',
+    in_progress: '#FF8400', picked_up: '#FF8400', at_border: '#2563EB',
+    completed: '#94A3B8', delivered: '#94A3B8',
+    cancelled: '#EF4444', rejected: '#EF4444', expired: '#94A3B8',
+  };
   const renderItem = ({ item }) => {
-    // Enriched /chat/rooms (PR #62): реальные данные сделки. Партнёр — через
-    // корректную сигнатуру prettifyPartnerName(name, id, t).
     const partnerName = prettifyPartnerName(item.partner_name, item.partner_id, t);
     const isSupport = item.is_support || item.partner_role === 'support' || item.partner_id === 'urtruck-support-bot';
     const roleKey = ROLE_LABEL[item.partner_role] || (isSupport ? 'role_support' : null);
     const routeStr = item.route_label || [item.route_from, item.route_to].filter(Boolean).join(' → ');
     const cargoStr = [item.cargo_title, item.cargo_weight ? `${item.cargo_weight}т` : null].filter(Boolean).join(' · ');
+    const infoStr = [routeStr, cargoStr].filter(Boolean).join(' · ');
     const bidStr = item.bid_amount != null ? `${item.bid_amount}${item.bid_currency ? ' ' + item.bid_currency : ''}` : null;
     const dealStatus = item.deal_status || null;
     const urgent = item.is_dispute || item.priority === 'urgent' || item.priority === 'support';
@@ -263,37 +274,34 @@ export default function ChatsListScreen({ navigation, route }) {
         style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]}
         onPress={() => navigation.navigate('Chat', { partner: { id: item.partner_id || item.id, name: partnerName }, roomId: item.id, dealId: item.deal_id, role })}
       >
-        <View style={[s.avatar, { backgroundColor: accent + '22' }]}>
-          <Feather name={isSupport ? 'shield' : 'user'} size={18} color={accent} />
+        <View style={[s.avatar, { backgroundColor: accent + '18' }]}>
+          <Feather name={isSupport ? 'shield' : 'user'} size={16} color={accent} />
         </View>
         <View style={{ flex: 1 }}>
           <View style={s.row}>
-            <Text style={[s.name, { color: theme.text }]} numberOfLines={1}>{partnerName}</Text>
+            <Text style={{ flex: 1 }} numberOfLines={1}>
+              <Text style={[s.name, { color: theme.text }]}>{partnerName}</Text>
+              {roleKey ? <Text style={[s.roleInline, { color: theme.textDim }]}>  ·  {t(roleKey)}</Text> : null}
+            </Text>
             {time ? <Text style={[s.time, { color: theme.textDim }]}>{time}</Text> : null}
           </View>
-          {(roleKey || routeStr) ? (
-            <View style={s.row}>
-              {roleKey ? <Text style={[s.metaTag, { color: accent }]}>{t(roleKey)}</Text> : null}
-              {routeStr ? <Text style={[s.meta, { color: theme.textMuted }]} numberOfLines={1}>{routeStr}</Text> : null}
-            </View>
+          {infoStr ? (
+            <Text style={[s.info, { color: theme.textMuted }]} numberOfLines={1}>{infoStr}</Text>
           ) : null}
-          {(cargoStr || bidStr || dealStatus) ? (
-            <View style={s.row}>
-              {cargoStr ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
-                  <Feather name="package" size={13} color={theme.textMuted} />
-                  <Text style={[s.cargo, { color: theme.textMuted }]} numberOfLines={1}>{cargoStr}</Text>
-                </View>
+          <View style={s.row}>
+            <Text style={[s.preview, { color: theme.textMuted }]} numberOfLines={1}>
+              {item.last_message || t('chat_no_messages')}
+            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+              {bidStr ? <Text style={[s.bid, { color: theme.text }]}>{bidStr}</Text> : null}
+              {dealStatus ? (
+                <>
+                  <View style={[s.statusDot, { backgroundColor: STATUS_DOT[dealStatus] || '#94A3B8' }]} />
+                  <Text style={[s.statusTiny, { color: theme.textDim }]}>{formatStatus(dealStatus)}</Text>
+                </>
               ) : null}
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                {bidStr ? <Text style={[s.bid, { color: theme.text }]}>{bidStr}</Text> : null}
-                {dealStatus ? <Text style={[s.dealStatus, { color: accent }]}>{formatStatus(dealStatus)}</Text> : null}
-              </View>
             </View>
-          ) : null}
-          <Text style={[s.preview, { color: theme.textMuted }]} numberOfLines={1}>
-            {item.last_message || t('chat_no_messages')}
-          </Text>
+          </View>
         </View>
         <View style={s.right}>
           {urgent ? (
@@ -302,7 +310,7 @@ export default function ChatsListScreen({ navigation, route }) {
             </View>
           ) : null}
           {unread > 0 ? (
-            <View style={[s.badge, { backgroundColor: accent }]} testID="deal-room-list-unread">
+            <View style={[s.badge, { backgroundColor: '#FF8400' }]} testID="deal-room-list-unread">
               <Text style={s.badgeTxt}>{unread > 9 ? '9+' : unread}</Text>
             </View>
           ) : null}
@@ -429,18 +437,22 @@ const s = StyleSheet.create({
   filters: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12 },
   chip: { height: 44, paddingHorizontal: 14, borderRadius: 22, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   chipTxt: { fontSize: 12, fontWeight: '800' },
-  card: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 14, borderWidth: 1, marginBottom: 8 },
-  avatar: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  // Декластер 27.07: карточка ниже (~20%), жирным только имя/цена/счётчик.
+  card: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9, paddingHorizontal: 11, borderRadius: 13, borderWidth: 1, marginBottom: 6 },
+  avatar: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  name: { fontSize: 15, fontWeight: '800', flex: 1 },
+  name: { fontSize: 15, fontWeight: '800' },
+  roleInline: { fontSize: 12, fontWeight: '400' },
   time: { fontSize: 11 },
-  metaTag: { fontSize: 11, fontWeight: '800' },
-  meta: { fontSize: 12, flex: 1, textAlign: 'right' },
-  preview: { fontSize: 13, marginTop: 2 },
-  cargo: { fontSize: 12, flex: 1 },
-  bid: { fontSize: 12, fontWeight: '800' },
+  info: { fontSize: 12, fontWeight: '400', marginTop: 1 },
+  preview: { fontSize: 13, fontWeight: '400', marginTop: 1, flex: 1 },
+  bid: { fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  statusDot: { width: 7, height: 7, borderRadius: 4 },
+  statusTiny: { fontSize: 10, fontWeight: '400' },
+  // Метка на карточке ПРЕДЛОЖЕНИЯ («Новое предложение»/«Торг») — там она
+  // главный сигнал, остаётся заметной (в чатах статусы — точкой).
   dealStatus: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
-  right: { alignItems: 'flex-end', gap: 6 },
+  right: { alignItems: 'flex-end', gap: 5 },
   flag: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8 },
   flagTxt: { fontSize: 11, fontWeight: '900', color: '#EF4444' },
   badge: { minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center' },
