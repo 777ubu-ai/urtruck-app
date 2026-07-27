@@ -800,7 +800,8 @@ export default function ChatScreen({ navigation, route }) {
       }
       recordStartRef.current = Date.now();
       setRecording(true);
-      toast(t('voice_recording'), 'info', 3000);
+      // Тост убран (26.07): индикатор записи один — красная плашка с
+      // таймером над строкой ввода. Два индикатора путали.
     } catch (e) {
       console.warn('[voice] start failed:', e);
       toast(t('voice_permission'), 'warn');
