@@ -186,7 +186,8 @@ class _FactoryRow extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final l = AppLocalizations.of(context)!;
     final place = [factory.city, factory.countryCode]
-        .where((e) => e != null && e!.isNotEmpty)
+        .whereType<String>()
+        .where((e) => e.isNotEmpty)
         .join(' · ');
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),

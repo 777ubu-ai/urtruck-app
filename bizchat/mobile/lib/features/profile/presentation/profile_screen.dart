@@ -671,7 +671,7 @@ class _CountStat extends StatelessWidget {
 /// `/users/:id/posts` при первом монтировании. Тап на превью → детальный
 /// экран поста.
 class _UserPostsGrid extends StatefulWidget {
-  const _UserPostsGrid({required this.userId});
+  const _UserPostsGrid({super.key, required this.userId});
   final String userId;
 
   @override
