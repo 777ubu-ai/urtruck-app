@@ -70,17 +70,25 @@ export default function ChatsListScreen({ navigation, route }) {
   const load = useCallback(async () => {
     try {
       const data = await chatAPI.rooms();
-      setRooms(data.rooms || []);
+      const rooms = data.rooms || [];
+      setRooms(rooms);
       if (dealsMode) {
         // Живые предложения: у клиента — входящие ставки водителей по моим
         // грузам, у водителя — его собственные ставки.
         const d = await marketAPI.myDashboard().catch(() => null);
         const raw = d ? (role === 'driver' ? d.my_bids : d.incoming_bids) || [] : [];
+        // Приказ 27.07: как только по ставке НАЧАЛАСЬ переписка (есть комната
+        // с сообщением) — она уходит в «Чаты» и пропадает из «Предложений».
+        // «Предложения» = только свежие ставки, где разговора ещё нет.
+        const talkedBidIds = new Set(
+          rooms.filter((r) => r.bid_id && r.last_message).map((r) => r.bid_id)
+        );
         // Мёртвые ставки не показываем: груз удалён (LEFT JOIN дал пустой
         // маршрут) — торговаться не о чем, карточка «— → —» только путала.
         const live = raw.filter((b) =>
           (b.status === 'pending' || b.status === 'countered')
           && !(b.cargo_id && !b.cargo_from && !b.trip_id)
+          && !talkedBidIds.has(b.id)
         );
         setOffers(live);
         if (!segInitRef.current) {
