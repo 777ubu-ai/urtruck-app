@@ -559,11 +559,18 @@ def get_cargo(cargo_id: str, authorization: Optional[str] = Header(None)):
         if owner_id:
             with get_conn() as c2:
                 orow = c2.execute(
-                    "SELECT full_name, status FROM drivers_registration WHERE id = ?",
+                    "SELECT full_name, phone, status FROM drivers_registration WHERE id = ?",
                     (owner_id,),
                 ).fetchone()
             if orow:
-                d["owner_name"] = orow["full_name"] or None
+                # 27.07: не показываем «Аноним». Цепочка: имя → хвост телефона
+                # (+XXXX) → «Пользователь UrTruck». Пустое full_name бывает у
+                # клиентов, вошедших по OTP без ввода имени.
+                _nm = (orow["full_name"] or "").strip()
+                if not _nm:
+                    _ph = "".join(ch for ch in (orow["phone"] or "") if ch.isdigit())
+                    _nm = f"+{_ph[-4:]}" if len(_ph) >= 4 else "Пользователь UrTruck"
+                d["owner_name"] = _nm
                 d["owner_verified"] = (orow["status"] == "approved")
             summary = reviews_dal.get_rating_summary(owner_id)
             d["owner_rating"] = summary.get("average", 0) or 0
