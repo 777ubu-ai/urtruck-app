@@ -38,14 +38,9 @@ import { localizePlace, localizeCargoName } from '../utils/places';
 import { prettifyPartnerName } from '../utils/displayName';
 import { accentFor } from '../components/deal/DealRoom';
 
-// Декластер 27.07 (спека владельца): фильтров минимум — Все · Архив.
-// «Непрочитанные» убраны (и так наверху с бейджем), «Активные» дублировали
-// «Все», «Поддержка» убрана приказом 27.07 — чат поддержки виден в «Все»,
-// а вызвать её можно из «+»-меню комнаты.
-const FILTERS = [
-  { key: 'all',     label: 'chat_filter_all' },
-  { key: 'archive', label: 'chat_filter_archive' },
-];
+// Приказ владельца 27.07: строки фильтров НЕТ вообще (Все/Архив/Поддержка
+// убраны). Список один: непрочитанные наверху, дальше по свежести; поиск
+// остаётся. Чат поддержки виден в общем списке и в «+»-меню комнаты.
 
 const ROLE_LABEL = { driver: 'role_driver', client: 'role_client', support: 'role_support' };
 
@@ -380,28 +375,6 @@ export default function ChatsListScreen({ navigation, route }) {
           />
           {query ? <TouchableOpacity onPress={() => setQuery('')}><Feather name="x" size={16} color={theme.textMuted} /></TouchableOpacity> : null}
         </View>
-      ) : null}
-
-      {!showOffersSeg ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filtersScroll} contentContainerStyle={s.filters}>
-          {FILTERS.map((f) => {
-            const on = filter === f.key;
-            // Счётчик на «Непрочитанных» — сразу видно, сколько сообщений искать.
-            const label = f.key === 'unread' && unreadRoomsCount > 0
-              ? `${t(f.label)} (${unreadRoomsCount})`
-              : t(f.label);
-            return (
-              <TouchableOpacity
-                key={f.key}
-                onPress={() => setFilter(f.key)}
-                style={[s.chip, { backgroundColor: on ? accent : theme.card, borderColor: on ? accent : theme.border }]}
-                testID={`deal-room-filter-${f.key}`}
-              >
-                <Text style={[s.chipTxt, { color: on ? '#0C0A09' : theme.textMuted }]}>{label}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
       ) : null}
 
       {loading ? (
