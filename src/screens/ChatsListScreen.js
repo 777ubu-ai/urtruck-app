@@ -30,6 +30,7 @@ import { useV1Colors } from '../theme/designV1';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import { chatAPI } from '../utils/chatAPI';
 import { marketAPI } from '../utils/marketAPI';
+import { storage } from '../utils/storage';
 import { notificationsAPI } from '../utils/notificationsAPI';
 import { notifyNotifRead } from '../utils/unreadEvents';
 import { useToast } from '../components/Toast';
@@ -66,6 +67,35 @@ export default function ChatsListScreen({ navigation, route }) {
   // открываем сразу их.
   const [seg, setSeg] = useState('chats');
   const segInitRef = React.useRef(false);
+  // Просмотренные предложения (локально): открыл — карточка гаснет, «новое»
+  // снимается, непросмотренные всплывают наверх. Ключ — id ставки.
+  const SEEN_KEY = 'ur_seen_offers';
+  const [seenOffers, setSeenOffers] = useState({});
+  useEffect(() => {
+    storage.get(SEEN_KEY).then((raw) => { try { if (raw) setSeenOffers(JSON.parse(raw)); } catch {} });
+  }, []);
+  const markOfferSeen = (bidId) => {
+    setSeenOffers((prev) => {
+      if (prev[bidId]) return prev;
+      const next = { ...prev, [bidId]: 1 };
+      storage.set(SEEN_KEY, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  };
+  // Относительное время: «5 мин», «2 ч», «вчера», иначе дата.
+  const relTime = (raw) => {
+    if (!raw) return '';
+    const d = new Date(String(raw).replace(' ', 'T') + (String(raw).includes('Z') ? '' : 'Z'));
+    if (isNaN(d)) return '';
+    const min = Math.max(0, Math.round((Date.now() - d.getTime()) / 60000));
+    if (min < 1) return t('time_now');
+    if (min < 60) return `${min} ${t('time_min')}`;
+    const h = Math.round(min / 60);
+    if (h < 24) return `${h} ${t('time_hour')}`;
+    const dd = Math.round(h / 24);
+    if (dd === 1) return t('time_yesterday');
+    return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+  };
 
   const load = useCallback(async () => {
     try {
@@ -173,8 +203,19 @@ export default function ChatsListScreen({ navigation, route }) {
     }
   };
 
+  // Непросмотренные предложения — наверх; внутри групп свежие выше по времени.
+  const offersSorted = React.useMemo(() => {
+    const ts = (b) => { const d = new Date(String(b.created_at || '').replace(' ', 'T')); return isNaN(d) ? 0 : d.getTime(); };
+    return offers.slice().sort((a, b) => {
+      const sa = seenOffers[a.id] ? 1 : 0, sb = seenOffers[b.id] ? 1 : 0;
+      if (sa !== sb) return sa - sb;         // непросмотренные первыми
+      return ts(b) - ts(a);                   // затем свежие выше
+    });
+  }, [offers, seenOffers]);
+
   // Тап по предложению → комната сделки (торг в BargainCard + переписка).
   const openOffer = async (bid) => {
+    markOfferSeen(bid.id);
     try {
       const r = await marketAPI.openBidChat(bid.id);
       const roomId = r && (r.chat_room_id || r.chatRoomId);
@@ -191,33 +232,32 @@ export default function ChatsListScreen({ navigation, route }) {
   const renderOfferCard = (bid) => {
     const isCountered = bid.status === 'countered';
     const cur = bid.currency || 'USD';
-    const statusColor = isCountered ? '#A855F7' : '#FF8400';
-    // Цвет = что требуется: оранжевый «горит» — нужно решение, фиолетовый —
-    // идёт торг. Заливка, а не только рамка: в кабине на солнце тонкую
-    // рамку не видно. Метка словами: клиенту «Новое предложение», водителю
-    // (его собственная ставка) — «Ждёт ответа».
+    const seen = !!seenOffers[bid.id];
+    // Просмотренное — приглушаем (серая рамка, без «новое», меньше внимания);
+    // непросмотренное — горит цветом + синяя точка «новое».
+    const statusColor = seen ? theme.border : (isCountered ? '#A855F7' : '#FF8400');
     const label = isCountered
       ? t('deals_offer_bargain')
       : (role === 'driver' ? t('deals_offer_waiting') : t('deals_offer_new'));
+    const time = relTime(bid.created_at);
     return (
       <TouchableOpacity
         key={String(bid.id)}
         testID="deals-offer-card"
-        // 27.07: без заливки (весь список бежевым «слипался») — белая
-        // карточка, сигнал несёт цветная обводка.
-        style={[s.card, { backgroundColor: theme.card, borderColor: statusColor, borderWidth: 1.5 }]}
+        style={[s.card, { backgroundColor: theme.card, borderColor: statusColor, borderWidth: 1.5, opacity: seen ? 0.72 : 1 }]}
         onPress={() => openOffer(bid)}
         activeOpacity={0.85}
       >
-        <View style={[s.avatar, { backgroundColor: statusColor + '22' }]}>
-          <Feather name="dollar-sign" size={18} color={statusColor} />
+        <View style={[s.avatar, { backgroundColor: (isCountered ? '#A855F7' : '#FF8400') + '22' }]}>
+          <Feather name="dollar-sign" size={18} color={isCountered ? '#A855F7' : '#FF8400'} />
+          {!seen ? <View style={s.newDot} testID="deals-offer-newdot" /> : null}
         </View>
         <View style={{ flex: 1 }}>
           <View style={s.row}>
-            <Text style={[s.name, { color: theme.text }]} numberOfLines={1}>
+            <Text style={[s.name, { color: theme.text, fontWeight: seen ? '600' : '800' }]} numberOfLines={1}>
               {localizePlace(bid.cargo_from || '—', lang)} → {localizePlace(bid.cargo_to || '—', lang)}
             </Text>
-            <Text style={[s.dealStatus, { color: statusColor }]}>{label}</Text>
+            {time ? <Text style={[s.time, { color: theme.textDim }]}>{time}</Text> : null}
           </View>
           {bid.cargo_desc ? (
             <Text style={[s.preview, { color: theme.textMuted }]} numberOfLines={1}>
@@ -229,7 +269,10 @@ export default function ChatsListScreen({ navigation, route }) {
               {formatPrice(bid.amount, cur, t)}
               {isCountered && bid.counter_amount ? `  →  ${formatPrice(bid.counter_amount, cur, t)}` : ''}
             </Text>
-            <Text style={[s.offerOpen, { color: accent }]}>{t('open_bid_chat')} ›</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              {!seen ? <Text style={[s.dealStatus, { color: isCountered ? '#A855F7' : '#FF8400' }]}>{label}</Text> : null}
+              <Text style={[s.offerOpen, { color: accent }]}>{t('open_bid_chat')} ›</Text>
+            </View>
           </View>
         </View>
         {/* Убрать предложение (водитель — отменить свою ставку, клиент —
@@ -389,7 +432,7 @@ export default function ChatsListScreen({ navigation, route }) {
         <ActivityIndicator color={accent} style={{ marginTop: 40 }} />
       ) : showOffersSeg ? (
         <FlatList
-          data={offers}
+          data={offersSorted}
           keyExtractor={(i) => String(i.id)}
           renderItem={({ item }) => renderOfferCard(item)}
           contentContainerStyle={{ padding: 12, paddingBottom: 24 }}
@@ -454,4 +497,6 @@ const s = StyleSheet.create({
   segBadge: { minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5, alignItems: 'center', justifyContent: 'center' },
   segBadgeTxt: { fontSize: 11, fontWeight: '900' },
   offerDismiss: { alignSelf: 'flex-start', width: 28, height: 28, borderRadius: 14, borderWidth: 1, borderColor: '#EF4444', alignItems: 'center', justifyContent: 'center' },
+  // Синяя точка «новое» на аватаре непросмотренного предложения.
+  newDot: { position: 'absolute', top: -3, right: -3, width: 12, height: 12, borderRadius: 6, backgroundColor: '#2563EB', borderWidth: 2, borderColor: '#fff' },
 });
