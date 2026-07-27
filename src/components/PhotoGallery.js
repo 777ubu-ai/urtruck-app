@@ -140,6 +140,7 @@ export const PhotoGallery = ({ photos = [] }) => {
   const { theme } = useTheme();
   const { t } = useI18n();
   const [activeIdx, setActiveIdx] = useState(null);
+  const [errored, setErrored] = useState({});   // индексы битых фото (старые blob)
   const screenWidth = Dimensions.get('window').width;
 
   if (!photos.length) return null;
@@ -148,15 +149,31 @@ export const PhotoGallery = ({ photos = [] }) => {
     <View style={g.wrap}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={g.gallery}>
         {photos.map((uri, i) => (
-          <TouchableOpacity key={i} onPress={() => setActiveIdx(i)} style={g.thumb}>
-            <Image source={{ uri: resolvePhoto(uri) }} style={g.thumbImg} />
+          <TouchableOpacity key={i} onPress={() => setActiveIdx(i)} style={[g.thumb, { backgroundColor: theme.card }]}>
+            {errored[i] ? (
+              <View style={[g.thumbImg, g.thumbBroken, { borderColor: theme.border }]}>
+                <Feather name="image" size={22} color={theme.textMuted} />
+                <Text style={[g.brokenTxt, { color: theme.textMuted }]}>{t('photo_unavailable')}</Text>
+              </View>
+            ) : (
+              <Image
+                source={{ uri: resolvePhoto(uri) }}
+                style={g.thumbImg}
+                onError={() => setErrored((e) => ({ ...e, [i]: true }))}
+              />
+            )}
           </TouchableOpacity>
         ))}
       </ScrollView>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 4 }}>
+      {/* Подпись тоже кликабельная — тап открывает просмотр (не только миниатюра). */}
+      <TouchableOpacity
+        onPress={() => setActiveIdx(0)}
+        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 4 }}
+        activeOpacity={0.7}
+      >
         <Feather name="camera" size={14} color={theme.textMuted} />
         <Text style={[g.count, { color: theme.textMuted, marginTop: 0 }]}>{t('photo_gallery_count').replace('{n}', photos.length)}</Text>
-      </View>
+      </TouchableOpacity>
 
       <Modal visible={activeIdx !== null} transparent animationType="fade" onRequestClose={() => setActiveIdx(null)}>
         <View style={g.viewer}>
@@ -219,6 +236,8 @@ const g = StyleSheet.create({
   gallery: { gap: 8, paddingBottom: 6 },
   thumb: { width: 140, height: 140, borderRadius: 14, overflow: 'hidden' },
   thumbImg: { width: '100%', height: '100%' },
+  thumbBroken: { alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1, borderStyle: 'dashed', borderRadius: 14 },
+  brokenTxt: { fontSize: 10, fontWeight: '600', textAlign: 'center', paddingHorizontal: 6 },
   count: { fontSize: 11, fontWeight: '600', marginTop: 4, textAlign: 'center' },
   viewer: { flex: 1, backgroundColor: '#000' },
   closeViewer: { position: 'absolute', top: 50, right: 20, zIndex: 10, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },

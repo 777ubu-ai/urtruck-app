@@ -86,7 +86,10 @@ export default function CargoDetail({ navigation, route }) {
   bidBtn: { backgroundColor: '#22C55E', borderRadius: 14, paddingHorizontal: 22, paddingVertical: 14 },
   bidBtnText: { color: '#fff', fontSize: 14, fontWeight: '800' },
   bidsTitle: { fontSize: 14, fontWeight: '700', marginBottom: 8 },
-  bidCard: { borderRadius: 12, padding: 12, borderWidth: 1, marginBottom: 6, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  // 27.07: было flexDirection:'row' → кнопки справа съедали ширину и имя/
+  // сообщение схлопывались в вертикальный столбик по букве. Теперь колонка:
+  // сверху [флаг+имя ... сумма], ниже — кнопки на всю ширину (сами переносятся).
+  bidCard: { borderRadius: 12, padding: 12, borderWidth: 1, marginBottom: 6, flexDirection: 'column' },
   bidLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, marginRight: 8 },
   bidFlag: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   bidName: { fontSize: 13, fontWeight: '600' },
@@ -464,7 +467,7 @@ export default function CargoDetail({ navigation, route }) {
             <SectionTitle featherIcon="user" label={t('shipper_label')} />
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
               <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }} numberOfLines={1}>
-                {fullCargo.owner_name || t('anonymous')}
+                {fullCargo.owner_name || t('chat_partner_fallback')}
               </Text>
               <Text style={{ fontSize: 12, color: theme.textMuted }}>
                 {fullCargo.owner_verified ? '✅ ' + t('verified_short') + ' · ' : ''}
