@@ -4,8 +4,15 @@ import { useTheme } from '../utils/ThemeContext';
 import Feather from '@expo/vector-icons/Feather';
 import * as ImagePicker from 'expo-image-picker';
 import { useI18n } from '../utils/useI18n';
+import { SERVER_URL } from '../config/env';
 
 const MAX_PHOTOS = 5;
+
+// Подписанные ссылки приходят относительными («/security/storage/…»). На вебе
+// SERVER_URL='' (тот же origin), на нативе — https://urtruck.kz. Без этого
+// <Image> на телефоне не грузил относительный путь → пустая галерея.
+const resolvePhoto = (u) =>
+  (u && typeof u === 'string' && u.startsWith('/')) ? `${SERVER_URL}${u}` : u;
 
 // HOT-005: источник фото — камера или галерея.
 // На web камера в ImagePicker нестабильна — показываем только галерею.
@@ -142,7 +149,7 @@ export const PhotoGallery = ({ photos = [] }) => {
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={g.gallery}>
         {photos.map((uri, i) => (
           <TouchableOpacity key={i} onPress={() => setActiveIdx(i)} style={g.thumb}>
-            <Image source={{ uri }} style={g.thumbImg} />
+            <Image source={{ uri: resolvePhoto(uri) }} style={g.thumbImg} />
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -164,7 +171,7 @@ export const PhotoGallery = ({ photos = [] }) => {
           >
             {photos.map((uri, i) => (
               <View key={i} style={{ width: screenWidth, alignItems: 'center', justifyContent: 'center' }}>
-                <Image source={{ uri }} style={{ width: screenWidth, height: '100%', resizeMode: 'contain' }} />
+                <Image source={{ uri: resolvePhoto(uri) }} style={{ width: screenWidth, height: '100%', resizeMode: 'contain' }} />
               </View>
             ))}
           </ScrollView>

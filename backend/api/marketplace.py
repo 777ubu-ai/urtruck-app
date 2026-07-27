@@ -9,13 +9,30 @@ from datetime import datetime, timedelta
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fastapi import APIRouter, HTTPException, Depends, Query, Header
+from fastapi import APIRouter, HTTPException, Depends, Query, Header, UploadFile, File
 from pydantic import BaseModel
 from typing import Optional, List
 
 from database.db import get_conn, new_id
 from api.verification_gate import require_level, get_user, _extract_driver
 from api.push import send_to_user
+from services import file_signing as _cargo_file_signing
+from services import storage_service as _cargo_storage
+
+
+def _sign_cargo_photos(photos):
+    """Фото груза хранятся как storage-ключи; отдаём ПОДПИСАННЫЕ ссылки, чтобы
+    их видел не только автор (раньше сохранялся локальный blob:/file: uri
+    устройства — у другого он пустой). Уже-URL/подписанные оставляем как есть."""
+    out = []
+    for p in (photos or []):
+        if not isinstance(p, str) or not p:
+            continue
+        if p.startswith(('http://', 'https://', 'data:', 'blob:', 'file:', '/security/storage/', '/storage/')):
+            out.append(p)
+        else:
+            out.append(_cargo_file_signing.sign(p) or p)
+    return out
 
 mp_router = APIRouter()
 
@@ -484,7 +501,7 @@ def list_cargos(
     for r in rows:
         d = dict(r)
         try:
-            d["photos"] = json.loads(d.get("photos") or "[]")
+            d["photos"] = _sign_cargo_photos(json.loads(d.get("photos") or "[]"))
         except Exception:
             # QA-аудит P2-6: раньше битый JSON в photos молча превращался в
             # [] — фото груза «исчезали» без следа. Логируем, чтобы порча
@@ -502,6 +519,20 @@ def list_cargos(
     return {"cargos": result, "total": len(result)}
 
 
+@mp_router.post("/cargos/photo")
+async def upload_cargo_photo(file: UploadFile = File(...), user=Depends(require_level(1))):
+    """Фото груза → storage, возвращаем КЛЮЧ (как у /chat/photo). Ключ кладётся
+    в cargos.photos; на выдаче подписывается (_sign_cargo_photos). Раньше фронт
+    сохранял локальный uri устройства — у других он не открывался."""
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Пустой файл")
+    if len(data) > 8 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Файл слишком большой")
+    key = _cargo_storage.save_image(data, "cargo_photos")
+    return {"photo_key": key}
+
+
 @mp_router.get("/cargos/{cargo_id}")
 def get_cargo(cargo_id: str, authorization: Optional[str] = Header(None)):
     with get_conn() as c:
@@ -510,7 +541,7 @@ def get_cargo(cargo_id: str, authorization: Optional[str] = Header(None)):
         raise HTTPException(status_code=404, detail="Груз не найден")
     d = dict(row)
     try:
-        d["photos"] = json.loads(d.get("photos") or "[]")
+        d["photos"] = _sign_cargo_photos(json.loads(d.get("photos") or "[]"))
     except Exception:
         d["photos"] = []
     # Security (B2): контакт закрыт гейтом. owner_phone отдаём ТОЛЬКО владельцу
@@ -1410,7 +1441,7 @@ def my_dashboard(user=Depends(require_level(1))):
 
     for cargo in my_cargos:
         try:
-            cargo["photos"] = json.loads(cargo.get("photos") or "[]")
+            cargo["photos"] = _sign_cargo_photos(json.loads(cargo.get("photos") or "[]"))
         except Exception:
             cargo["photos"] = []
 

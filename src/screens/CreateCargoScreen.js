@@ -191,6 +191,20 @@ export default function CreateCargoScreen({ navigation, route }) {
       to_point_name:   toPoint?.name      || null,
     };
     try {
+      // 27.07: фото сперва грузим в storage → ключи, и только их шлём в
+      // payload. Раньше сохранялся локальный uri устройства (blob:/file:) —
+      // у другого пользователя фото не открывалось. Битую загрузку пропускаем,
+      // публикацию груза из-за фото не срываем.
+      if (photos && photos.length) {
+        const keys = [];
+        for (const uri of photos) {
+          try {
+            const up = await marketAPI.uploadCargoPhoto(uri);
+            if (up?.photo_key) keys.push(up.photo_key);
+          } catch (e) { console.warn('[cargo] photo upload skipped:', e?.message); }
+        }
+        payload.photos = keys;
+      }
       const r = await marketAPI.createCargo(payload);
       if (r.ok || r.id) {
         toast('✓ ' + t('cargo_published'), 'success', 4000);

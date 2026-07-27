@@ -1,4 +1,5 @@
 // Marketplace API — грузы, рейсы, ставки через сервер
+import { Platform } from 'react-native';
 import { storage } from './storage';
 import { API_BASE } from '../config/env';
 import { authedFetch } from './authEvents';  // QA-аудит P1-6: 401 → auth:expired
@@ -108,6 +109,26 @@ export const marketAPI = {
     const d = await r.json();
     if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
     return d;
+  },
+
+  // Загрузка одного фото груза → storage-ключ (мультипарт, как в чате).
+  // Ключ кладётся в cargos.photos; сервер подпишет его на выдаче.
+  async uploadCargoPhoto(uri) {
+    const token = await storage.get('ur_reg_token');
+    const form = new FormData();
+    if (Platform.OS === 'web') {
+      const blob = await fetch(uri).then((x) => x.blob());
+      form.append('file', blob, 'cargo.jpg');
+    } else {
+      form.append('file', { uri, name: 'cargo.jpg', type: 'image/jpeg' });
+    }
+    const r = await authedFetch(`${BASE}/cargos/photo`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    });
+    if (!r.ok) throw new Error(`cargo photo upload failed ${r.status}`);
+    return r.json();
   },
 
   async listCargos({ status = 'active', fromCity = '', toCity = '', cargoType = '', limit = 50, offset = 0 } = {}) {

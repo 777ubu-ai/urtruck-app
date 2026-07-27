@@ -87,12 +87,15 @@ export default function MyTripsScreen({ navigation, route }) {
 
   chatBtn: { backgroundColor: '#22C55E', borderRadius: radius.sm, paddingVertical: spacing.sm, alignItems: 'center', marginTop: spacing.sm },
   chatBtnText: { color: '#FFF', ...typography.title },
-  acceptBtn: { backgroundColor: '#22C55E', borderRadius: radius.sm, paddingVertical: spacing.sm, alignItems: 'center' },
+  // 27.07: кнопки действий сделки вылезали за карточку. Делаем их гибкими
+  // (flexGrow/Shrink + minWidth) — в ряду с flexWrap они заполняют ширину и
+  // аккуратно переносятся на след. строку, не вылезая за края.
+  acceptBtn: { backgroundColor: '#22C55E', borderRadius: radius.sm, paddingVertical: spacing.sm, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', flexGrow: 1, flexShrink: 1, minWidth: 130 },
   acceptBtnText: { color: '#FFF', ...typography.title },
-  rejectBtn: { borderWidth: 0, borderRadius: radius.sm, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, alignItems: 'center', backgroundColor: 'rgba(239,68,68,0.10)' },
+  rejectBtn: { borderWidth: 0, borderRadius: radius.sm, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, alignItems: 'center', justifyContent: 'center', flexGrow: 1, flexShrink: 1, minWidth: 110, backgroundColor: 'rgba(239,68,68,0.10)' },
   rejectBtnText: { color: '#EF4444', ...typography.title },
   // «Для перчаток и солнца»: крупная тап-цель (≥44pt) и читаемый текст.
-  miniBtn: { borderWidth: 0, borderRadius: radius.sm, paddingVertical: 12, paddingHorizontal: 14, minHeight: 44, justifyContent: 'center', backgroundColor: 'rgba(148,163,184,0.14)' },
+  miniBtn: { borderWidth: 0, borderRadius: radius.sm, paddingVertical: 12, paddingHorizontal: 14, minHeight: 44, alignItems: 'center', justifyContent: 'center', flexGrow: 1, flexShrink: 1, minWidth: 110, backgroundColor: 'rgba(148,163,184,0.14)' },
   miniBtnText: { fontSize: 14, fontWeight: '700' },
   editBtn: { borderWidth: 0, borderRadius: 10, paddingVertical: 10, alignItems: 'center', marginTop: spacing.sm, backgroundColor: 'rgba(34,197,94,0.12)' },
   editBtnText: { color: '#22C55E', fontSize: 12, fontWeight: '700' },
