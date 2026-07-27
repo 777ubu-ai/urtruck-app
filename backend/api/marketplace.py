@@ -551,6 +551,12 @@ def delete_cargo(cargo_id: str, user=Depends(require_level(1))):
         if row["owner_id"] != user["id"]:
             raise HTTPException(status_code=403, detail="Можно удалять только свои грузы")
         c.execute("UPDATE cargos SET status = 'cancelled' WHERE id = ?", (cargo_id,))
+        # Ревизия 26.07: живые ставки удалённого груза отменяем каскадом —
+        # иначе у водителей вечно висели «мёртвые» предложения без груза.
+        c.execute(
+            "UPDATE bids SET status = 'cancelled' WHERE cargo_id = ? AND status IN ('pending', 'countered')",
+            (cargo_id,),
+        )
     return {"ok": True}
 
 

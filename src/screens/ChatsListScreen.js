@@ -18,7 +18,7 @@
 // ниже. Отдельная вкладка «Чаты» у клиента при этом скрыта: чат живёт внутри
 // сделки, вторых дверей нет.
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, TextInput, RefreshControl, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, TextInput, RefreshControl, ActivityIndicator, ScrollView, Platform, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import Feather from '@expo/vector-icons/Feather';
@@ -80,7 +80,12 @@ export default function ChatsListScreen({ navigation, route }) {
         // грузам, у водителя — его собственные ставки.
         const d = await marketAPI.myDashboard().catch(() => null);
         const raw = d ? (role === 'driver' ? d.my_bids : d.incoming_bids) || [] : [];
-        const live = raw.filter((b) => b.status === 'pending' || b.status === 'countered');
+        // Мёртвые ставки не показываем: груз удалён (LEFT JOIN дал пустой
+        // маршрут) — торговаться не о чем, карточка «— → —» только путала.
+        const live = raw.filter((b) =>
+          (b.status === 'pending' || b.status === 'countered')
+          && !(b.cargo_id && !b.cargo_from && !b.trip_id)
+        );
         setOffers(live);
         if (!segInitRef.current) {
           segInitRef.current = true;
@@ -143,6 +148,27 @@ export default function ChatsListScreen({ navigation, route }) {
     });
   }, [rooms, query, filter]);
 
+  // Убрать предложение из списка: водитель отменяет СВОЮ ставку, клиент
+  // отклоняет входящую. С подтверждением — действие необратимо.
+  const dismissOffer = async (bid) => {
+    const q = role === 'driver' ? t('cancel_bid_confirm') : t('reject_bid_confirm_q');
+    const doIt = async () => {
+      const r = role === 'driver'
+        ? await marketAPI.cancelBid(bid.id).catch(() => null)
+        : await marketAPI.rejectBid(bid.id).catch(() => null);
+      if (r && r.ok) { toast(role === 'driver' ? t('bid_cancelled_toast') : t('bid_rejected_toast'), 'success'); load(); }
+      else toast((r && r.detail) || t('send_error'), 'error');
+    };
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.confirm) {
+      if (window.confirm(q)) doIt();
+    } else {
+      Alert.alert(q, '', [
+        { text: t('cancel'), style: 'cancel' },
+        { text: 'OK', onPress: doIt },
+      ]);
+    }
+  };
+
   // Тап по предложению → комната сделки (торг в BargainCard + переписка).
   const openOffer = async (bid) => {
     try {
@@ -200,6 +226,16 @@ export default function ChatsListScreen({ navigation, route }) {
             <Text style={[s.offerOpen, { color: accent }]}>{t('open_bid_chat')} ›</Text>
           </View>
         </View>
+        {/* Убрать предложение (водитель — отменить свою ставку, клиент —
+            отклонить входящую) прямо из списка, без захода в комнату. */}
+        <TouchableOpacity
+          onPress={(e) => { e.stopPropagation && e.stopPropagation(); dismissOffer(bid); }}
+          style={s.offerDismiss}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          testID="deals-offer-dismiss"
+        >
+          <Feather name="x" size={16} color="#EF4444" />
+        </TouchableOpacity>
       </TouchableOpacity>
     );
   };
@@ -420,4 +456,5 @@ const s = StyleSheet.create({
   segTxt: { fontSize: 14, fontWeight: '900' },
   segBadge: { minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5, alignItems: 'center', justifyContent: 'center' },
   segBadgeTxt: { fontSize: 11, fontWeight: '900' },
+  offerDismiss: { alignSelf: 'flex-start', width: 28, height: 28, borderRadius: 14, borderWidth: 1, borderColor: '#EF4444', alignItems: 'center', justifyContent: 'center' },
 });

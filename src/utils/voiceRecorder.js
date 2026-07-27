@@ -116,7 +116,10 @@ export const voice = {
       this._webRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) this._webChunks.push(e.data);
       };
-      this._webRecorder.start();
+      // start(400): чанки копятся каждые 400мс. Без timeslice iOS Safari на
+      // короткой записи (1-2с) часто не успевает выдать данные к stop() —
+      // блоб выходил пустым и юзер видел «Не удалось записать голосовое».
+      this._webRecorder.start(400);
       this._startTime = Date.now();
       return true;
     } catch (e) {
