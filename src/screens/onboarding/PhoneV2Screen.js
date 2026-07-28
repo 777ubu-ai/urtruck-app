@@ -396,6 +396,14 @@ const s = StyleSheet.create({
     ...typography.bodyLarge,
     color: brand.textPrimary,
     paddingVertical: 0,
+    // Chrome/Firefox рисуют собственную рамку и focus-outline поверх
+    // TextInput (RN Web не гасит их). Скрин 28.07 показывал жирную чёрную
+    // рамку вокруг поля email — это дефолтный <input>-border браузера.
+    // На native эти пропы игнорируются (валидные style-ключи для web).
+    borderWidth: 0,
+    outlineStyle: 'none',
+    outlineWidth: 0,
+    backgroundColor: 'transparent',
   },
   error: {
     color: brand.error,
