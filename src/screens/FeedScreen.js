@@ -1094,7 +1094,10 @@ export default function FeedScreen({ navigation, route }) {
             return `${ns}:${i.id ?? idx}`;
           }}
           renderItem={(args) => (isDriver || args.item.isMine) ? renderCargo(args) : renderDriver(args)}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 20, gap: 0 }}
+          // Клиент (!isDriver) видит floating «+Груз» поверх ленты — без
+          // запаса снизу кнопка перекрывает цену последней карточки при
+          // скролле в конец. У водителя такой кнопки нет.
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: isDriver ? 20 : 90, gap: 0 }}
           showsVerticalScrollIndicator={false}
           onEndReachedThreshold={0.5}
           onEndReached={() => {
