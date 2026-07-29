@@ -57,6 +57,14 @@ export default function TripDetail({ navigation, route }) {
   primaryBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
   dangerBtn: { borderWidth: 0, borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 8, backgroundColor: 'rgba(239,68,68,0.10)' },
   dangerBtnText: { color: '#EF4444', fontSize: 13, fontWeight: '800' },
+  myBidCard: { marginHorizontal: 16, marginBottom: 12, padding: 14, borderRadius: 16, borderWidth: 2 },
+  myBidHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  myBidLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' },
+  myBidAmount: { fontSize: 22, fontWeight: '900', letterSpacing: -0.3 },
+  myBidStatus: { fontSize: 13, fontWeight: '600', marginBottom: 12 },
+  myBidBtnRow: { flexDirection: 'row', gap: 10 },
+  myBidBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, alignItems: 'center' },
+  myBidBtnText: { fontSize: 14, fontWeight: '800' },
   dealActionBtn: { borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10 },
   dealActionGhost: { backgroundColor: 'transparent', borderWidth: 1.6 },
   dealActionText: { color: '#fff', fontSize: 13, fontWeight: '700' },
@@ -112,6 +120,12 @@ export default function TripDetail({ navigation, route }) {
   const [shipperId, setShipperId] = React.useState(null);
   const [driverId, setDriverId] = React.useState(null);
   const [statusLoading, setStatusLoading] = React.useState(false);
+  // Моя активная ставка на ЭТОТ рейс — чтобы показать плашку «Вы предложили X»
+  // с кнопками [Изменить] [Чат] вместо тупого «Предложить цену», когда клиент
+  // уже сделал ставку (жалоба 28.07, скрин IMG_6791: пусто под статусом
+  // рейса — непонятно, дошло или нет).
+  const [myActiveBid, setMyActiveBid] = React.useState(null);
+  const [openingChat, setOpeningChat] = React.useState(false);
 
   // Same authoritative-role logic as CargoDetail: route.params.role wins,
   // id-based comparison is a fallback for direct entry without a role hint.
@@ -127,20 +141,62 @@ export default function TripDetail({ navigation, route }) {
     if (d.driver_id) setDriverId(d.driver_id);
   };
 
-  // Pull deal once on mount when navigated from MyTripsScreen → Orders.
-  // Without this the deal-block stays empty after re-open.
+  // Загрузка dashboard: (1) существующая сделка (deal-block); (2) моя
+  // активная ставка на этот рейс (плашка «Вы предложили X»). Один запрос,
+  // два потребителя. Reload-триггер — refreshBidTick — чтобы после закрытия
+  // BidModal подтянуть свежие данные.
+  const [refreshBidTick, setRefreshBidTick] = React.useState(0);
+  const findMyBidFor = (list, tid) =>
+    (list || []).find(b =>
+      b.trip_id === tid &&
+      (b.status === 'pending' || b.status === 'countered')
+    ) || null;
+
   React.useEffect(() => {
     const tid = (trip && trip.id) || tripId;
     if (!tid) return;
+    marketAPI.myDashboard().then(d => {
+      // Существующая сделка (accepted+)
+      if (!routeDealId) {
+        const foundDeal = (d?.my_deals || []).find(x => x.trip_id === tid);
+        if (foundDeal) applyDeal(foundDeal);
+      }
+      // Моя pending/countered ставка на этот рейс
+      setMyActiveBid(findMyBidFor(d?.my_bids, tid));
+    }).catch(() => {});
     if (routeDealId) {
       marketAPI.getDeal(routeDealId).then(d => { if (d && d.ok !== false) applyDeal(d); }).catch(() => {});
-    } else {
-      marketAPI.myDashboard().then(d => {
-        const found = (d?.my_deals || []).find(x => x.trip_id === tid);
-        if (found) applyDeal(found);
-      }).catch(() => {});
     }
-  }, [trip && trip.id, tripId, routeDealId]);
+  }, [trip && trip.id, tripId, routeDealId, refreshBidTick]);
+
+  const openBidChat = React.useCallback(async () => {
+    if (!myActiveBid || openingChat) return;
+    setOpeningChat(true);
+    try {
+      const r = await marketAPI.openBidChat(myActiveBid.id);
+      if (r?.ok && r.chat_room_id) {
+        navigation.navigate('Chat', {
+          roomId: r.chat_room_id,
+          partner: r.partner_id ? { id: r.partner_id, name: r.partner_name, role: r.partner_role } : undefined,
+        });
+      } else {
+        toast(r?.detail || t('no_connection'), 'error');
+      }
+    } catch {
+      toast(t('no_connection'), 'error');
+    } finally {
+      setOpeningChat(false);
+    }
+  }, [myActiveBid, openingChat, navigation, toast, t]);
+
+  const myBidStatusLabel = React.useMemo(() => {
+    if (!myActiveBid) return '';
+    switch (myActiveBid.status) {
+      case 'countered': return t('my_bid_status_countered') || 'Водитель предложил встречную цену';
+      case 'pending':
+      default:          return t('my_bid_status_pending')   || 'Ожидает ответа водителя';
+    }
+  }, [myActiveBid, t]);
 
   // When entering by tripId only (Orders → trip) — load full trip from API
   // so departure/arrival/truckType render instead of empty placeholders.
@@ -471,22 +527,50 @@ export default function TripDetail({ navigation, route }) {
 
       {dealStatus ? renderDealBlock() : null}
 
-      {/* Sticky CTA — shipper viewing someone else's trip.
-          Stage 20: collapsed to a single primary action
-          ("Предложить цену"). Earlier the bar carried a secondary
-          "💬 Написать водителю" too, which created a split-attention
-          surface: the user could chat without ever committing to a
-          bid, and the same chat link reappeared inside the deal
-          block after the bid was accepted. The pre-bid chat path
-          mostly produced empty rooms ("сколько повезёшь?"), the
-          deal-block chat is the canonical place to talk once the
-          driver is actually selected. Stripping the secondary keeps
-          one clear next step on this surface.
+      {/* «Моя ставка» плашка — показываем, когда клиент уже сделал ставку
+          на этот рейс и сделки ещё нет. По жалобе владельца 28.07: после
+          отправки предложения на карточке рейса не было НИКАКОЙ обратной
+          связи (дошло/не дошло/можно ли изменить/где чат). Плашка + два
+          действия: изменить сумму или сразу перейти в чат. */}
+      {myActiveBid && !dealStatus && !isOwner ? (
+        <View style={[s.myBidCard, { borderColor: v1Accent.main, backgroundColor: v1.card }]} testID="trip-my-active-bid">
+          <View style={s.myBidHeader}>
+            <Text style={[s.myBidLabel, { color: v1.textMuted }]}>{t('my_bid_label') || 'Моя ставка'}</Text>
+            <Text style={[s.myBidAmount, { color: v1Accent.main }]}>
+              {(() => {
+                const cur = (myActiveBid.currency || trip.currency || 'USD').toUpperCase();
+                const sym = { USD: '$', KZT: '₸', RUB: '₽', CNY: '¥', UZS: 'сум' }[cur] || '$';
+                const num = String(Math.round(Number(myActiveBid.amount) || 0))
+                  .replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+                return cur === 'UZS' ? `${num} ${sym}` : `${sym}${num}`;
+              })()}
+            </Text>
+          </View>
+          <Text style={[s.myBidStatus, { color: v1.text }]}>{myBidStatusLabel}</Text>
+          <View style={s.myBidBtnRow}>
+            <TouchableOpacity
+              style={[s.myBidBtn, { borderColor: v1Accent.main }]}
+              onPress={() => setBidModal(true)}
+              testID="trip-my-bid-edit"
+            >
+              <Text style={[s.myBidBtnText, { color: v1Accent.main }]}>✏️ {t('edit_bid') || 'Изменить'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.myBidBtn, { backgroundColor: v1Accent.main, borderColor: v1Accent.main }]}
+              onPress={openBidChat}
+              disabled={openingChat}
+              testID="trip-my-bid-chat"
+            >
+              <Text style={[s.myBidBtnText, { color: v1Accent.onAccent }]}>💬 {t('open_chat') || 'Чат'}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : null}
 
-          Owner of the trip and any role with an active deal
-          continue to see no sticky bar — their actions live in
-          the deal block. */}
-      {!isOwner && !dealStatus && role === 'client' ? (
+      {/* Sticky CTA — shipper viewing someone else's trip.
+          Если у клиента уже есть активная ставка — прячем «Предложить цену»
+          (действия перенесены в плашку выше: [Изменить] [Чат]). */}
+      {!isOwner && !dealStatus && role === 'client' && !myActiveBid ? (
         <StickyCTABar
           accent={v1Accent.main}
           primary={{
@@ -500,16 +584,18 @@ export default function TripDetail({ navigation, route }) {
         />
       ) : null}
 
-      {/* Stage 10: BidModal bound to tripId. Re-used component from
-          CargoDetail; mode='create' POSTs /market/bids with trip_id
-          and the backend pushes a notification to the trip owner. */}
+      {/* BidModal: create для новой ставки, edit — когда есть активная. */}
       <BidModal
         visible={bidModal}
-        onClose={() => setBidModal(false)}
+        onClose={() => { setBidModal(false); setRefreshBidTick(x => x + 1); }}
         onSubmit={() => {
-          toast('✓ ' + t('bidSent'), 'success');
+          setRefreshBidTick(x => x + 1);
+          toast('✓ ' + (myActiveBid ? t('bid_updated') : t('bidSent')), 'success');
         }}
-        mode="create"
+        mode={myActiveBid ? 'edit' : 'create'}
+        bidId={myActiveBid?.id}
+        initialAmount={myActiveBid?.amount}
+        initialMessage={myActiveBid?.message}
         currentPrice={trip.price || 0}
         currency={trip.currency}
         tripId={trip.id}

@@ -116,6 +116,14 @@ export default function CargoDetail({ navigation, route }) {
   reviewSubmitBtn: { backgroundColor: '#22C55E', borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10 },
   reviewSubmitText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   dealBlock: { borderWidth: 1, borderRadius: 14, padding: 16, alignItems: 'center', gap: 10 },
+  myBidCard: { padding: 14, borderRadius: 16, borderWidth: 2 },
+  myBidHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  myBidLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' },
+  myBidAmount: { fontSize: 22, fontWeight: '900', letterSpacing: -0.3 },
+  myBidStatus: { fontSize: 13, fontWeight: '600', marginBottom: 12 },
+  myBidBtnRow: { flexDirection: 'row', gap: 10 },
+  myBidBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, alignItems: 'center' },
+  myBidBtnText: { fontSize: 14, fontWeight: '800' },
   dealStatusLabel: { fontSize: 15, fontWeight: '700' },
   dealActionBtn: { backgroundColor: '#22C55E', borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10 },
   // Ghost-стиль (обводка) для акцентных действий сделки — вместо сплошной заливки.
@@ -375,7 +383,32 @@ export default function CargoDetail({ navigation, route }) {
   // а не цену объявления. Раньше заголовок висел «$12 000» (листинг), хотя
   // сделка принята за $12 100 — на одном экране две разные цены путали.
   const acceptedBid = bids.find(b => b.status === 'accepted');
+  // Моя активная (pending/countered) ставка на чужой груз — используется
+  // для плашки «Моя ставка $X · Ожидает ответа», симметрично TripDetail.
+  const myPendingBid = bids.find(b => b.isMine && (b.status === 'pending' || b.status === 'countered'));
   const priceDisplay = acceptedBid ? formatPrice(acceptedBid.amount, c.currency) : view.price;
+  const myBidStatusLabel = React.useMemo(() => {
+    if (!myPendingBid) return '';
+    switch (myPendingBid.status) {
+      case 'countered': return t('my_bid_status_countered') || 'Клиент предложил встречную цену';
+      case 'pending':
+      default:          return t('my_bid_status_pending')   || 'Ожидает ответа клиента';
+    }
+  }, [myPendingBid, t]);
+  const openMyBidChat = React.useCallback(async () => {
+    if (!myPendingBid) return;
+    try {
+      const r = await marketAPI.openBidChat(myPendingBid.id);
+      if (r?.ok && r.chat_room_id) {
+        navigation.navigate('Chat', {
+          roomId: r.chat_room_id,
+          partner: r.partner_id ? { id: r.partner_id, name: r.partner_name, role: r.partner_role } : undefined,
+        });
+      } else {
+        toast(r?.detail || t('no_connection'), 'error');
+      }
+    } catch { toast(t('no_connection'), 'error'); }
+  }, [myPendingBid, navigation, toast, t]);
   const safePhotos = (c.photos || []).filter(p => typeof p === 'string' && !p.startsWith('data:') && p.length < 1000);
   const dash = t('not_specified');
 
@@ -750,6 +783,37 @@ export default function CargoDetail({ navigation, route }) {
           );
         })}
       </ScrollView>
+      {/* Плашка «Моя ставка» (водитель уже сделал ставку на этот груз, но
+          сделки ещё нет). По жалобе владельца 28.07: клиент отправил ставку —
+          и никакой обратной связи. Показывает сумму, статус (ожидает/встречка)
+          и кнопки [Изменить] [Чат]. Симметрично TripDetail. */}
+      {myPendingBid && isDriverViewing && !dealStatus ? (
+        <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
+          <View style={[s.myBidCard, { borderColor: v1Accent.main, backgroundColor: theme.card }]} testID="cargo-my-active-bid">
+            <View style={s.myBidHeader}>
+              <Text style={[s.myBidLabel, { color: theme.textMuted }]}>{t('my_bid_label') || 'Моя ставка'}</Text>
+              <Text style={[s.myBidAmount, { color: v1Accent.main }]}>{formatPrice(myPendingBid.amount, c.currency)}</Text>
+            </View>
+            <Text style={[s.myBidStatus, { color: theme.text }]}>{myBidStatusLabel}</Text>
+            <View style={s.myBidBtnRow}>
+              <TouchableOpacity
+                style={[s.myBidBtn, { borderColor: v1Accent.main }]}
+                onPress={() => { setEditingBid(myPendingBid); setBidModalMode('edit'); setBidModal(true); }}
+                testID="cargo-my-bid-edit"
+              >
+                <Text style={[s.myBidBtnText, { color: v1Accent.main }]}>✏️ {t('edit_bid') || 'Изменить'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.myBidBtn, { backgroundColor: v1Accent.main, borderColor: v1Accent.main }]}
+                onPress={openMyBidChat}
+                testID="cargo-my-bid-chat"
+              >
+                <Text style={[s.myBidBtnText, { color: v1Accent.onAccent }]}>💬 {t('open_chat') || 'Чат'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      ) : null}
       {dealStatus && (
         <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
           <View style={[s.dealBlock, { borderColor: theme.border, backgroundColor: theme.card }]}>
@@ -920,7 +984,7 @@ export default function CargoDetail({ navigation, route }) {
       {/* Sticky CTA — pinned bottom row.
           - non-owner with no accepted bid yet: «Откликнуться» + «Чат» (если room уже создан).
           - owner / accepted: bar скрывается, обычные блоки detail дают нужные действия. */}
-      {!c.isMine && !dealStatus ? (
+      {!c.isMine && !dealStatus && !myPendingBid ? (
         <StickyCTABar
           accent={v1Accent.main}
           primary={{
