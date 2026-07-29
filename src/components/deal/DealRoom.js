@@ -9,7 +9,7 @@
 //                      пока backend-action не подключён — без фейков)
 //   - DealDocumentsPlaceholder — секция «Документы» (PR3, заглушка)
 //
-// Акцент роли: driver #00E676 / client #F59E0B (источник истины CLAUDE.md).
+// Акцент роли: driver #00E676 / client #FF8400 (источник истины CLAUDE.md).
 
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
@@ -18,13 +18,14 @@ import { useI18n } from '../../utils/useI18n';
 import { useTheme } from '../../utils/ThemeContext';
 
 export const DRIVER_ACCENT = '#00E676';
-export const CLIENT_ACCENT = '#F59E0B';
+export const CLIENT_ACCENT = '#FF8400';
 export const accentFor = (role) => (role === 'driver' ? DRIVER_ACCENT : CLIENT_ACCENT);
 
 // Статус сделки → цвет (нейтральный fallback — серый).
 const DEAL_STATUS_COLOR = {
-  active: '#22C55E', confirmed: '#22C55E', in_progress: '#22C55E',
-  pending: '#F59E0B', draft: '#F59E0B',
+  active: '#22C55E', confirmed: '#22C55E', accepted: '#22C55E',
+  in_progress: '#FF8400', at_border: '#2563EB', picked_up: '#FF8400',
+  pending: '#FF8400', draft: '#FF8400',
   cancelled: '#94A3B8', rejected: '#EF4444', dispute: '#EF4444',
   completed: '#22C55E', delivered: '#22C55E',
 };
@@ -44,6 +45,60 @@ export function systemEventText(t, ev) {
       .replace('{status}', p.status || '—');
   }
   return raw || t('chat_system_event');
+}
+
+// Визуальный таймлайн статуса заказа (как у Uber Freight/inDrive):
+// Принят → В пути → На границе → Доставлен. Пройденные — зелёные, текущий —
+// акцентный, будущие — приглушённые. cancelled → красная плашка.
+const TL_ORDER = ['accepted', 'in_progress', 'at_border', 'delivered'];
+export function DealStatusTimeline({ status, role }) {
+  const { t } = useI18n();
+  const { theme } = useTheme();
+  const accent = accentFor(role);
+  const STEPS = [
+    { key: 'accepted',    icon: 'check',        label: t('status_accepted') },
+    { key: 'in_progress', icon: 'truck',        label: t('status_in_progress') },
+    { key: 'at_border',   icon: 'flag',         label: t('status_at_border') },
+    { key: 'delivered',   icon: 'check-circle', label: t('status_delivered') },
+  ];
+  if (status === 'cancelled') {
+    return (
+      <View style={[s.tlCancel, { borderColor: '#EF4444' }]} testID="deal-timeline-cancelled">
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Feather name="x-circle" size={15} color="#EF4444" />
+          <Text style={{ color: '#EF4444', fontWeight: '800', fontSize: 14 }}>{t('status_cancelled')}</Text>
+        </View>
+      </View>
+    );
+  }
+  const cur = TL_ORDER.indexOf(status);
+  return (
+    <View style={s.tl} testID="deal-timeline">
+      {STEPS.map((st, i) => {
+        const done = cur > i;
+        const active = cur === i;
+        const on = done || active;
+        const col = done ? '#22C55E' : active ? accent : theme.textDim;
+        return (
+          <React.Fragment key={st.key}>
+            <View style={s.tlStep}>
+              <View style={[s.tlDot, {
+                backgroundColor: on ? col : 'transparent',
+                borderColor: col,
+                transform: [{ scale: active ? 1.15 : 1 }],
+              }]}>
+                <Feather name={done ? 'check' : st.icon} size={15} color={on ? '#0C0A09' : col} />
+              </View>
+              <Text style={[s.tlLabel, { color: on ? theme.text : theme.textMuted, fontWeight: active ? '800' : '600' }]} numberOfLines={1}>{st.label}</Text>
+            </View>
+            {i < STEPS.length - 1 ? (
+              <View style={[s.tlLine, { backgroundColor: cur > i ? '#22C55E' : theme.border }]} />
+            ) : null}
+          </React.Fragment>
+        );
+      })}
+    </View>
+  );
 }
 
 export function DealRoomCard({ deal, role }) {
@@ -104,19 +159,19 @@ export function DealQuickActions({ role, onOfferPrice, onAcceptBid, onSendDocume
   const { t } = useI18n();
   const { theme } = useTheme();
   const accent = accentFor(role);
-  // Действия, не подключённые к backend в этом PR, приходят как undefined →
-  // кнопка disabled/pending (НЕ фейково рабочая, §ЭТАП3).
+  // Недоступные в текущем состоянии действия НЕ показываем вовсе (раньше висели
+  // серыми «мёртвыми» кнопками — владелец справедливо принял их за баг). Кнопка
+  // рендерится только когда есть реальный обработчик.
   const Action = ({ icon, label, onPress }) => {
-    const enabled = typeof onPress === 'function';
+    if (typeof onPress !== 'function') return null;
     return (
       <TouchableOpacity
-        style={[s.qa, { borderColor: theme.border, opacity: enabled ? 1 : 0.45 }]}
-        onPress={enabled ? onPress : undefined}
-        disabled={!enabled}
+        style={[s.qa, { borderColor: theme.border }]}
+        onPress={onPress}
         testID={`deal-qa-${icon}`}
       >
-        <Feather name={icon} size={16} color={enabled ? accent : theme.textMuted} />
-        <Text style={[s.qaText, { color: enabled ? theme.text : theme.textMuted }]} numberOfLines={1}>{label}</Text>
+        <Feather name={icon} size={16} color={accent} />
+        <Text style={[s.qaText, { color: theme.text }]} numberOfLines={1}>{label}</Text>
       </TouchableOpacity>
     );
   };
@@ -145,6 +200,12 @@ export function DealDocumentsPlaceholder() {
 }
 
 const s = StyleSheet.create({
+  tl: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingVertical: 4 },
+  tlStep: { alignItems: 'center', width: 66 },
+  tlDot: { width: 34, height: 34, borderRadius: 17, borderWidth: 2, alignItems: 'center', justifyContent: 'center', marginBottom: 5 },
+  tlLabel: { fontSize: 11, textAlign: 'center' },
+  tlLine: { flex: 1, height: 2, marginTop: 16, marginHorizontal: -6, borderRadius: 1 },
+  tlCancel: { borderWidth: 1, borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
   card: { borderRadius: 14, borderWidth: 1, borderLeftWidth: 4, padding: 12, marginBottom: 8, gap: 6 },
   cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   route: { fontSize: 15, fontWeight: '900', flex: 1 },
@@ -159,9 +220,9 @@ const s = StyleSheet.create({
   sysText: { fontSize: 11, fontWeight: '600', textAlign: 'center' },
   qaRow: { flexDirection: 'row', gap: 6, paddingHorizontal: 2, paddingBottom: 4 },
   qa: { flex: 1, borderWidth: 1, borderRadius: 10, paddingVertical: 6, alignItems: 'center', gap: 2 },
-  qaText: { fontSize: 9, fontWeight: '700', textAlign: 'center' },
+  qaText: { fontSize: 11, fontWeight: '700', textAlign: 'center' },
   docs: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderStyle: 'dashed', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7, marginBottom: 8 },
   docsHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   docsTitle: { fontSize: 12, fontWeight: '800' },
-  docsHint: { fontSize: 10, flex: 1 },
+  docsHint: { fontSize: 11, flex: 1 },
 });

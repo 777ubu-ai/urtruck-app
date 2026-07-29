@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { storage } from './storage';
 import { API_BASE } from '../config/env';
 import { authedFetch } from './authEvents';  // QA-аудит P1-6: 401 → auth:expired
@@ -17,20 +18,34 @@ async function headers() {
 
 export const chatAPI = {
   async send({ roomId, toUserId, text, photoUrl, isVoice, voiceDuration, cargoId, tripId, clientMsgId }) {
-    const r = await authedFetch(`${BASE}/send`, {
-      method: 'POST', headers: await headers(),
-      body: JSON.stringify({
-        // Variant B: room_id — приоритетный путь (бэк берёт получателя из
-        // участников комнаты, исключая гонку резолва собеседника на фронте).
-        room_id: roomId || null,
-        to_user_id: toUserId, text, photo_url: photoUrl,
-        is_voice: isVoice || false, voice_duration: voiceDuration,
-        cargo_id: cargoId, trip_id: tripId,
-        client_msg_id: clientMsgId,  // QA-аудит P1-3: идемпотентность
-        lang: getLanguage(),         // QA-аудит P2-8: локализация авто-ответа поддержки
-      }),
-    });
-    if (!r.ok) throw new Error(`send failed ${r.status}`);  // outbox ловит и ретраит
+    // C3 (device-баг «ложное нет сети»): различаем СЕТЕВОЙ сбой (fetch
+    // reject/таймаут — запрос не дошёл) и HTTP-ошибку (сервер ОТВЕТИЛ 4xx/5xx —
+    // сеть в порядке). Раньше оба случая бросали одинаковый Error, и ChatScreen
+    // показывал «Нет сети» даже на серверную ошибку + гонял её в бесконечный
+    // ретрай outbox. Помечаем ошибку флагами isNetwork / status.
+    let r;
+    try {
+      r = await authedFetch(`${BASE}/send`, {
+        method: 'POST', headers: await headers(),
+        body: JSON.stringify({
+          // Variant B: room_id — приоритетный путь (бэк берёт получателя из
+          // участников комнаты, исключая гонку резолва собеседника на фронте).
+          room_id: roomId || null,
+          to_user_id: toUserId, text, photo_url: photoUrl,
+          is_voice: isVoice || false, voice_duration: voiceDuration,
+          cargo_id: cargoId, trip_id: tripId,
+          client_msg_id: clientMsgId,  // QA-аудит P1-3: идемпотентность
+          lang: getLanguage(),         // QA-аудит P2-8: локализация авто-ответа поддержки
+        }),
+      });
+    } catch (e) {
+      // fetch отклонён — реальный сетевой сбой/таймаут (запрос не дошёл).
+      const err = new Error('network'); err.isNetwork = true; throw err;
+    }
+    if (!r.ok) {
+      // Сервер ответил ошибкой — это НЕ «нет сети».
+      const err = new Error(`send failed ${r.status}`); err.status = r.status; throw err;
+    }
     return r.json();
   },
 
@@ -111,6 +126,60 @@ export const chatAPI = {
 
   // Загрузка вложения. uri — локальный путь после сжатия (compressImage).
   // multipart/form-data: НЕ ставим Content-Type вручную (boundary задаёт fetch).
+  // 4.3: загрузка фото сообщения в storage → { photo_key }. Native-safe
+  // multipart (на web — blob, на native — {uri,name,type}, иначе RN шлёт
+  // битый blob). Ключ идёт в chat.send как photo_url; сервер подпишет на чтении.
+  async uploadChatPhoto(uri) {
+    const token = await storage.get(TOKEN_KEY);
+    const form = new FormData();
+    if (Platform.OS === 'web') {
+      const blob = await fetch(uri).then((r) => r.blob());
+      form.append('file', blob, 'chat.jpg');
+    } else {
+      form.append('file', { uri, name: 'chat.jpg', type: 'image/jpeg' });
+    }
+    const r = await authedFetch(`${BASE}/photo`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    });
+    if (!r.ok) throw new Error(`chat photo upload failed ${r.status}`);
+    return r.json();
+  },
+
+  // Голосовое: аудио → storage, возвращает { voice_key }. Сообщение шлётся
+  // затем через send({ isVoice, voiceDuration, photoUrl: voice_key }).
+  async uploadChatVoice(uri) {
+    const token = await storage.get(TOKEN_KEY);
+    const form = new FormData();
+    if (Platform.OS === 'web') {
+      const blob = await fetch(uri).then((r) => r.blob());
+      const ext = (blob.type || '').includes('webm') ? 'webm' : 'm4a';
+      form.append('file', blob, `voice.${ext}`);
+    } else {
+      const ext = String(uri).split('.').pop() || 'm4a';
+      form.append('file', { uri, name: `voice.${ext}`, type: `audio/${ext === 'm4a' ? 'mp4' : ext}` });
+    }
+    const r = await authedFetch(`${BASE}/voice`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    });
+    if (!r.ok) throw new Error(`chat voice upload failed ${r.status}`);
+    return r.json();
+  },
+
+  // «Печатает…»: лёгкий пинг (fire-and-forget), партнёр увидит индикатор.
+  async typing(roomId) {
+    if (!roomId) return;
+    try {
+      await authedFetch(`${BASE}/typing`, {
+        method: 'POST', headers: await headers(),
+        body: JSON.stringify({ room_id: roomId }),
+      });
+    } catch { /* не мешаем набору текста */ }
+  },
+
   async uploadAttachment(conversationId, { uri, kind = 'document', name = 'file.jpg', type = 'image/jpeg' } = {}) {
     const token = await storage.get(TOKEN_KEY);
     const blob = await authedFetch(uri).then((res) => res.blob());

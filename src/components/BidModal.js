@@ -60,6 +60,9 @@ export default function BidModal({
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // Ставку больше нельзя отправить (сессия истекла / ставка уже принята и т.п.):
+  // блокируем кнопку, чтобы пользователь не жал повторно и не ловил ту же ошибку.
+  const [locked, setLocked] = useState(false);
   const { t } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
@@ -68,6 +71,7 @@ export default function BidModal({
   useEffect(() => {
     if (!visible) return;
     setError('');
+    setLocked(false);
     if (isPrefill) {
       // For counter we leave the amount empty so the owner has to type a new
       // number — pre-filling with bidder's amount would be misleading.
@@ -140,8 +144,12 @@ export default function BidModal({
         toast('✓ ' + okMsg, 'success');
       } else if (r.status === 401) {
         setError(t('session_expired'));
+        setLocked(true);
       } else if (r.status === 409) {
+        // Ставку уже приняли/изменили — повтор не поможет. Блокируем кнопку,
+        // пользователь читает причину и закрывает окно (лента обновится).
         setError(r.detail || t('bid_not_pending'));
+        setLocked(true);
       } else {
         setError(r.detail || t('bid_failed'));
       }
@@ -172,7 +180,7 @@ export default function BidModal({
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
       <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={onClose}>
-        <TouchableOpacity style={[s.sheet, { backgroundColor: theme.bg, borderColor: theme.border }]} activeOpacity={1} onPress={() => {}}>
+        <TouchableOpacity testID="bid-modal" style={[s.sheet, { backgroundColor: theme.bg, borderColor: theme.border }]} activeOpacity={1} onPress={() => {}}>
         <ScrollView
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -181,11 +189,11 @@ export default function BidModal({
           <View style={s.handle} />
           <Text style={[s.title, { color: theme.text }]}>{title}</Text>
           {!isPrefill && (
-            // PR-A re-apply (P0-3): когда у груза нет цены, бессмысленно
-            // показывать диапазон — даём honest текст «По договорённости».
-            // PR-C2: subtitle currency-aware, без hardcoded $.
+            // Показываем ЧЕСТНУЮ цену объявления, а не выдуманный «средний»
+            // диапазон вокруг неё (currentPrice±delta) — реальной рыночной
+            // статистики у нас нет, а фейковый диапазон подрывал доверие к торгу.
             hasBasePrice ? (
-              <Text style={[s.subtitle, { color: theme.textMuted }]}>{t('avgPrice')}: {fmtMoney(Number(currentPrice) - createDeltas[1])}–{fmtMoney(Number(currentPrice) + createDeltas[2])}</Text>
+              <Text style={[s.subtitle, { color: theme.textMuted }]}>{t('current_price_label')}: {fmtMoney(currentPrice)}</Text>
             ) : (
               <Text style={[s.subtitle, { color: theme.textMuted }]}>{t('payment_negotiable')}</Text>
             )
@@ -227,6 +235,7 @@ export default function BidModal({
           <View style={[s.inputWrap, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <Text style={[s.dollar, { color: theme.textMuted }]}>{curSym}</Text>
             <TextInput
+              testID="bid-amount-input"
               style={[s.input, { color: theme.text }]}
               value={bid}
               onChangeText={setBid}
@@ -237,6 +246,7 @@ export default function BidModal({
           </View>
 
           <TextInput
+            testID="bid-message-input"
             style={[s.messageInput, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border }]}
             value={message}
             onChangeText={setMessage}
@@ -248,9 +258,10 @@ export default function BidModal({
           {error ? <Text style={s.errorText}>{error}</Text> : null}
 
           <TouchableOpacity
-            style={[s.submitBtn, { backgroundColor: accent }, (!bid || loading) && s.submitBtnDisabled]}
+            testID="bid-submit"
+            style={[s.submitBtn, { backgroundColor: accent }, (!bid || loading || locked) && s.submitBtnDisabled]}
             onPress={handleSubmit}
-            disabled={!bid || loading}
+            disabled={!bid || loading || locked}
           >
             {loading ? <ActivityIndicator color={onAccent} /> : (
               <Text style={[s.submitBtnText, { color: onAccent }]}>

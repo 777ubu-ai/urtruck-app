@@ -9,13 +9,30 @@ from datetime import datetime, timedelta
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fastapi import APIRouter, HTTPException, Depends, Query, Header
+from fastapi import APIRouter, HTTPException, Depends, Query, Header, UploadFile, File
 from pydantic import BaseModel
 from typing import Optional, List
 
 from database.db import get_conn, new_id
 from api.verification_gate import require_level, get_user, _extract_driver
 from api.push import send_to_user
+from services import file_signing as _cargo_file_signing
+from services import storage_service as _cargo_storage
+
+
+def _sign_cargo_photos(photos):
+    """Фото груза хранятся как storage-ключи; отдаём ПОДПИСАННЫЕ ссылки, чтобы
+    их видел не только автор (раньше сохранялся локальный blob:/file: uri
+    устройства — у другого он пустой). Уже-URL/подписанные оставляем как есть."""
+    out = []
+    for p in (photos or []):
+        if not isinstance(p, str) or not p:
+            continue
+        if p.startswith(('http://', 'https://', 'data:', 'blob:', 'file:', '/security/storage/', '/storage/')):
+            out.append(p)
+        else:
+            out.append(_cargo_file_signing.sign(p) or p)
+    return out
 
 mp_router = APIRouter()
 
@@ -169,8 +186,9 @@ def _public_cargo_ok(row: dict, today=None) -> bool:
     created = _parse_iso_date(row.get("created_at"))
     cutoff = _parse_iso_date(PUBLIC_CUTOFF_DATE)
 
-    # Stale pickup_date: more than 24h in the past → hide
-    if pickup and pickup < (today - timedelta(days=1)):
+    # Stale pickup_date → hide. Модель А: публикация живёт 3 дня (день выезда
+    # + 2). Прячем, когда дата загрузки более чем на 2 дня в прошлом.
+    if pickup and pickup < (today - timedelta(days=2)):
         return False
 
     # Created before cutoff → must have a still-valid future pickup, otherwise hide
@@ -193,6 +211,31 @@ def _init():
             with get_conn() as c:
                 c.executescript(schema.read_text(encoding="utf-8"))
                 c.commit()
+    # Часть 3 (история цены): таблица price_events + связь chat_messages.event_id.
+    # Аддитивно и идемпотентно. Бэкфилл старых ставок НЕ делаем.
+    with get_conn() as c:
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS price_events (
+                id TEXT PRIMARY KEY,
+                bid_id TEXT NOT NULL,
+                actor_id TEXT,
+                actor_role TEXT,               -- owner | bidder
+                amount INTEGER,
+                kind TEXT NOT NULL,            -- proposed|updated|countered|accepted|rejected
+                comment TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_price_events_bid ON price_events(bid_id, created_at)")
+        # chat_messages.event_id — связь спец-сообщения с событием цены.
+        try:
+            cm_cols = {r["name"] for r in c.execute("PRAGMA table_info(chat_messages)").fetchall()}
+            if cm_cols and "event_id" not in cm_cols:
+                c.execute("ALTER TABLE chat_messages ADD COLUMN event_id TEXT")
+        except Exception:
+            pass
+        c.commit()
+
     # Idempotent migration: ensure newer columns exist on legacy DBs.
     # SQLite doesn't support `ALTER TABLE ADD COLUMN IF NOT EXISTS`, so we
     # check pragma_table_info and only add when missing.
@@ -231,6 +274,11 @@ def _init():
             for col, ddl_type in ROUTE_COLS:
                 if col not in tcols:
                     c.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl_type}")
+        # 3.8: тип оплаты груза (cash|cashless|any) — важный параметр решения
+        # водителя. Колонка на cargos; NULL = не указан.
+        ccols = {r["name"] for r in c.execute("PRAGMA table_info(cargos)").fetchall()}
+        if "payment_type" not in ccols:
+            c.execute("ALTER TABLE cargos ADD COLUMN payment_type TEXT")
         # Задача B: живая гео-позиция машины по сделке (последняя точка).
         c.execute("""
             CREATE TABLE IF NOT EXISTS deal_locations (
@@ -258,6 +306,7 @@ class CargoIn(BaseModel):
     volume_m3: Optional[float] = 0
     price: Optional[int] = 0
     currency: Optional[str] = "USD"
+    payment_type: Optional[str] = None   # cash | cashless | any
     pickup_date: Optional[str] = None
     photos: Optional[List[str]] = None
     # Stage 8: structured route fields. The legacy `from_city` /
@@ -367,16 +416,17 @@ def create_cargo(body: CargoIn, user=Depends(require_level(1))):
     fc, fpt, fpn = _norm_route_triple(body.from_country, body.from_point_type, body.from_point_name)
     tc, tpt, tpn = _norm_route_triple(body.to_country, body.to_point_type, body.to_point_name)
     with get_conn() as c:
+        pay = body.payment_type if body.payment_type in ("cash", "cashless", "any") else None
         c.execute("""
             INSERT INTO cargos (id, owner_id, owner_phone, owner_name,
               from_city, to_city, cargo_desc, cargo_type,
-              weight_tons, volume_m3, price, currency, pickup_date, photos,
+              weight_tons, volume_m3, price, currency, payment_type, pickup_date, photos,
               from_country, from_point_type, from_point_name,
               to_country, to_point_type, to_point_name)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (cid, user["id"], user.get("phone"), user.get("full_name"),
               body.from_city, body.to_city, body.cargo_desc, body.cargo_type,
-              body.weight_tons, body.volume_m3, body.price, currency,
+              body.weight_tons, body.volume_m3, body.price, currency, pay,
               body.pickup_date,
               json.dumps(body.photos or [], ensure_ascii=False),
               fc, fpt, fpn, tc, tpt, tpn))
@@ -437,7 +487,7 @@ def list_cargos(
     with get_conn() as c:
         rows = c.execute(f"""
             SELECT id, owner_id, from_city, to_city, cargo_desc, cargo_type,
-                   weight_tons, volume_m3, price, currency, pickup_date, photos,
+                   weight_tons, volume_m3, price, currency, payment_type, pickup_date, photos,
                    bids_count, status, created_at,
                    from_country, from_point_type, from_point_name,
                    to_country, to_point_type, to_point_name
@@ -451,7 +501,7 @@ def list_cargos(
     for r in rows:
         d = dict(r)
         try:
-            d["photos"] = json.loads(d.get("photos") or "[]")
+            d["photos"] = _sign_cargo_photos(json.loads(d.get("photos") or "[]"))
         except Exception:
             # QA-аудит P2-6: раньше битый JSON в photos молча превращался в
             # [] — фото груза «исчезали» без следа. Логируем, чтобы порча
@@ -469,17 +519,64 @@ def list_cargos(
     return {"cargos": result, "total": len(result)}
 
 
+@mp_router.post("/cargos/photo")
+async def upload_cargo_photo(file: UploadFile = File(...), user=Depends(require_level(1))):
+    """Фото груза → storage, возвращаем КЛЮЧ (как у /chat/photo). Ключ кладётся
+    в cargos.photos; на выдаче подписывается (_sign_cargo_photos). Раньше фронт
+    сохранял локальный uri устройства — у других он не открывался."""
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Пустой файл")
+    if len(data) > 8 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Файл слишком большой")
+    key = _cargo_storage.save_image(data, "cargo_photos")
+    return {"photo_key": key}
+
+
 @mp_router.get("/cargos/{cargo_id}")
-def get_cargo(cargo_id: str):
+def get_cargo(cargo_id: str, authorization: Optional[str] = Header(None)):
     with get_conn() as c:
         row = c.execute("SELECT * FROM cargos WHERE id = ?", (cargo_id,)).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Груз не найден")
     d = dict(row)
     try:
-        d["photos"] = json.loads(d.get("photos") or "[]")
+        d["photos"] = _sign_cargo_photos(json.loads(d.get("photos") or "[]"))
     except Exception:
         d["photos"] = []
+    # Security (B2): контакт закрыт гейтом. owner_phone отдаём ТОЛЬКО владельцу
+    # листинга. Раньше detail-эндпоинт делал SELECT * и возвращал телефон всем —
+    # аноним перебором id мог собрать базу телефонов грузовладельцев. Список
+    # /cargos телефон уже вырезал (:462), теперь и карточка тоже.
+    caller = _maybe_user(authorization)
+    if not (caller and caller.get("id") == d.get("owner_id")):
+        d.pop("owner_phone", None)
+    # Инфо о грузоотправителе (доверие: водитель видит, кому ставит ставку) —
+    # имя, статус верификации, рейтинг, число отзывов. Без телефона.
+    try:
+        from database import reviews_dal
+        owner_id = d.get("owner_id")
+        if owner_id:
+            with get_conn() as c2:
+                orow = c2.execute(
+                    "SELECT full_name, phone, status FROM drivers_registration WHERE id = ?",
+                    (owner_id,),
+                ).fetchone()
+            if orow:
+                # 27.07: не показываем «Аноним». Цепочка: имя → хвост телефона
+                # (+XXXX) → «Пользователь UrTruck». Пустое full_name бывает у
+                # клиентов, вошедших по OTP без ввода имени.
+                _nm = (orow["full_name"] or "").strip()
+                if not _nm:
+                    _ph = "".join(ch for ch in (orow["phone"] or "") if ch.isdigit())
+                    _nm = f"+{_ph[-4:]}" if len(_ph) >= 4 else "Пользователь UrTruck"
+                d["owner_name"] = _nm
+                d["owner_verified"] = (orow["status"] == "approved")
+            summary = reviews_dal.get_rating_summary(owner_id)
+            d["owner_rating"] = summary.get("average", 0) or 0
+            d["owner_reviews_count"] = summary.get("count", 0) or 0
+    except Exception:
+        pass
     return d
 
 
@@ -492,6 +589,12 @@ def delete_cargo(cargo_id: str, user=Depends(require_level(1))):
         if row["owner_id"] != user["id"]:
             raise HTTPException(status_code=403, detail="Можно удалять только свои грузы")
         c.execute("UPDATE cargos SET status = 'cancelled' WHERE id = ?", (cargo_id,))
+        # Ревизия 26.07: живые ставки удалённого груза отменяем каскадом —
+        # иначе у водителей вечно висели «мёртвые» предложения без груза.
+        c.execute(
+            "UPDATE bids SET status = 'cancelled' WHERE cargo_id = ? AND status IN ('pending', 'countered')",
+            (cargo_id,),
+        )
     return {"ok": True}
 
 
@@ -503,6 +606,7 @@ class CargoPatchIn(BaseModel):
     price: Optional[int] = None
     currency: Optional[str] = None
     pickup_date: Optional[str] = None
+    payment_type: Optional[str] = None
 
 
 @mp_router.patch("/cargos/{cargo_id}")
@@ -553,6 +657,9 @@ def update_cargo(cargo_id: str, body: CargoPatchIn, user=Depends(require_level(1
             updates.append("currency = ?"); params.append(cur)
         if body.pickup_date is not None:
             updates.append("pickup_date = ?"); params.append(body.pickup_date)
+        if body.payment_type is not None:
+            pay = body.payment_type if body.payment_type in ("cash", "cashless", "any") else None
+            updates.append("payment_type = ?"); params.append(pay)
 
         if not updates:
             raise HTTPException(status_code=400, detail="Нечего обновлять")
@@ -560,6 +667,168 @@ def update_cargo(cargo_id: str, body: CargoPatchIn, user=Depends(require_level(1
         c.execute(f"UPDATE cargos SET {', '.join(updates)} WHERE id = ?", params)
         updated = dict(c.execute("SELECT * FROM cargos WHERE id = ?", (cargo_id,)).fetchone())
     return {"ok": True, "cargo": updated}
+
+
+# ── Накладная (waybill/CMR) ──────────────────────────────────────────────
+# По завершении/в ходе сделки стороны получают печатную транспортную
+# накладную из данных заказа. Ссылка подписана HMAC (без auth-заголовка —
+# открывается в браузере), TTL 7 дней. Секрет — как у file_signing.
+import hmac as _wb_hmac
+import hashlib as _wb_hashlib
+import os as _wb_os
+import time as _wb_time
+from fastapi.responses import HTMLResponse
+
+
+def _wb_secret() -> bytes:
+    return (_wb_os.getenv("FILE_SIGNING_KEY") or _wb_os.getenv("URTRUCK_API_SECRET") or "").encode("utf-8")
+
+
+def _wb_sig(deal_id: str, exp: int) -> str:
+    return _wb_hmac.new(_wb_secret(), f"waybill|{deal_id}|{exp}".encode(), _wb_hashlib.sha256).hexdigest()
+
+
+def _party_contact(c, uid, deal):
+    """Возвращает (имя, телефон) участника сделки по его user id.
+
+    Раньше телефон искали ТОЛЬКО в drivers_registration — но клиент
+    (грузоотправитель) там не хранится (он авторизуется через Supabase OTP),
+    поэтому контрагент-клиент отдавался без телефона: кнопка «Позвонить»
+    не показывалась и WhatsApp не открывался. Телефон клиента лежит в
+    cargos.owner_phone / bids.bidder_phone. Проверяем все источники по
+    порядку: регистрация водителя → владелец груза → владелец рейса →
+    ставка. Технические placeholder-телефоны (guest_/deleted_) не отдаём."""
+    name = None
+    phone = None
+    r = c.execute(
+        "SELECT full_name, phone FROM drivers_registration WHERE id = ?", (uid,)
+    ).fetchone()
+    if r:
+        name = r["full_name"]
+        phone = r["phone"]
+    if not phone and deal.get("cargo_id"):
+        r2 = c.execute(
+            "SELECT owner_name, owner_phone FROM cargos WHERE id = ? AND owner_id = ?",
+            (deal["cargo_id"], uid),
+        ).fetchone()
+        if r2:
+            name = name or r2["owner_name"]
+            phone = phone or r2["owner_phone"]
+    if not phone and deal.get("trip_id"):
+        r3 = c.execute(
+            "SELECT driver_name, driver_phone FROM trips WHERE id = ? AND driver_id = ?",
+            (deal["trip_id"], uid),
+        ).fetchone()
+        if r3:
+            name = name or r3["driver_name"]
+            phone = phone or r3["driver_phone"]
+    if not phone and deal.get("bid_id"):
+        r4 = c.execute(
+            "SELECT bidder_name, bidder_phone FROM bids WHERE id = ? AND bidder_id = ?",
+            (deal["bid_id"], uid),
+        ).fetchone()
+        if r4:
+            name = name or r4["bidder_name"]
+            phone = phone or r4["bidder_phone"]
+    if phone and str(phone).startswith(("guest_", "deleted_")):
+        phone = None
+    return name, phone
+
+
+@mp_router.post("/deals/{deal_id}/waybill-link")
+def waybill_link(deal_id: str, user=Depends(require_level(1))):
+    """Подписанная ссылка на накладную — только участнику сделки."""
+    with get_conn() as c:
+        d = c.execute("SELECT shipper_id, driver_id FROM deals WHERE id = ?", (deal_id,)).fetchone()
+    if not d:
+        raise HTTPException(status_code=404, detail="Сделка не найдена")
+    if user["id"] not in (d["shipper_id"], d["driver_id"]):
+        raise HTTPException(status_code=403)
+    exp = int(_wb_time.time()) + 7 * 24 * 3600
+    return {"exp": exp, "sig": _wb_sig(deal_id, exp)}
+
+
+@mp_router.get("/deals/{deal_id}/waybill")
+def waybill_html(deal_id: str, exp: int = 0, sig: str = ""):
+    """Печатная накладная (HTML). Доступ по подписи exp+sig (TTL)."""
+    if not exp or exp < _wb_time.time() or not _wb_hmac.compare_digest(sig or "", _wb_sig(deal_id, exp)):
+        raise HTTPException(status_code=403, detail="Ссылка недействительна или истекла")
+    with get_conn() as c:
+        d = c.execute("SELECT * FROM deals WHERE id = ?", (deal_id,)).fetchone()
+        if not d:
+            raise HTTPException(status_code=404)
+        d = dict(d)
+        cargo = {}
+        if d.get("cargo_id"):
+            r = c.execute("SELECT cargo_desc, cargo_type, weight_tons, volume_m3, currency, pickup_date FROM cargos WHERE id = ?", (d["cargo_id"],)).fetchone()
+            cargo = dict(r) if r else {}
+        plate = None
+        if d.get("trip_id"):
+            r = c.execute("SELECT plate_truck FROM trips WHERE id = ?", (d["trip_id"],)).fetchone()
+            plate = r["plate_truck"] if r else None
+        def person(uid):
+            # Ищем телефон во всех источниках (регистрация/груз/рейс/ставка),
+            # чтобы в накладной был контакт и клиента, и водителя.
+            nm, ph = _party_contact(c, uid, d)
+            return (nm or "—"), (ph or "—")
+        sh_name, sh_phone = person(d["shipper_id"])
+        dr_name, dr_phone = person(d["driver_id"])
+    cur = (d.get("currency") or cargo.get("currency") or "USD")
+    status_ru = {"accepted": "Принят", "in_progress": "В пути", "at_border": "На границе",
+                 "delivered": "Доставлен", "cancelled": "Отменён"}.get(d.get("status"), d.get("status") or "—")
+    row = lambda k, v: f"<tr><td>{k}</td><td><b>{v or '—'}</b></td></tr>"
+    html = f"""<!doctype html><html lang=ru><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<title>Накладная UrTruck № {deal_id[:8].upper()}</title>
+<style>body{{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:720px;margin:24px auto;padding:0 16px;color:#111}}
+h1{{font-size:20px}}h2{{font-size:14px;color:#666;font-weight:600;margin:18px 0 6px;text-transform:uppercase;letter-spacing:.5px}}
+table{{width:100%;border-collapse:collapse}}td{{padding:7px 10px;border-bottom:1px solid #eee;font-size:14px}}
+td:first-child{{color:#666;width:42%}}.head{{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #FF8400;padding-bottom:10px}}
+.logo{{font-weight:900;font-size:22px}}.logo span{{color:#FF8400}}.muted{{color:#888;font-size:12px}}
+@media print{{.noprint{{display:none}}}}
+.printbtn{{background:#FF8400;color:#111;border:none;border-radius:10px;padding:10px 18px;font-weight:800;font-size:14px;margin:16px 0;cursor:pointer}}</style></head><body>
+<div class=head><div class=logo>Ur<span>Truck</span></div><div class=muted>Транспортная накладная<br>№ {deal_id[:8].upper()} · {str(d.get('created_at') or '')[:10]}</div></div>
+<h2>Маршрут</h2><table>{row('Откуда', d.get('from_city'))}{row('Куда', d.get('to_city'))}{row('Статус', status_ru)}</table>
+<h2>Груз</h2><table>{row('Описание', cargo.get('cargo_desc'))}{row('Тип кузова', cargo.get('cargo_type'))}{row('Вес, т', cargo.get('weight_tons'))}{row('Объём, м³', cargo.get('volume_m3'))}{row('Дата загрузки', cargo.get('pickup_date'))}</table>
+<h2>Стороны</h2><table>{row('Грузоотправитель', sh_name)}{row('Телефон', sh_phone)}{row('Перевозчик (водитель)', dr_name)}{row('Телефон', dr_phone)}{row('Госномер тягача', plate)}</table>
+<h2>Оплата</h2><table>{row('Сумма сделки', f"{d.get('amount')} {cur}")}</table>
+<button class="printbtn noprint" onclick="window.print()">🖨 Печать / Сохранить PDF</button>
+<p class=muted>Сформировано автоматически платформой UrTruck (urtruck.kz) по данным сделки. Подписи сторон ставятся при загрузке/выгрузке.</p>
+</body></html>"""
+    return HTMLResponse(html)
+
+
+# ── Продление одним тапом (Модель А): «Ещё актуально» ────────────────────
+# Дата загрузки/выезда сбрасывается на сегодня → публикация снова живёт
+# 3 дня и возвращается в общую ленту. Без ручного ввода даты.
+@mp_router.post("/cargos/{cargo_id}/extend")
+def extend_cargo(cargo_id: str, user=Depends(require_level(1))):
+    new_date = datetime.utcnow().date().isoformat()
+    with get_conn() as c:
+        row = c.execute("SELECT owner_id, status FROM cargos WHERE id = ?", (cargo_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Груз не найден")
+        if row["owner_id"] != user["id"]:
+            raise HTTPException(status_code=403, detail="Можно продлить только свой груз")
+        if (row["status"] or "active") != "active":
+            raise HTTPException(status_code=409, detail="Груз не активен")
+        c.execute("UPDATE cargos SET pickup_date = ? WHERE id = ?", (new_date, cargo_id))
+    return {"ok": True, "pickup_date": new_date}
+
+
+@mp_router.post("/trips/{trip_id}/extend")
+def extend_trip(trip_id: str, user=Depends(require_level(1))):
+    new_date = datetime.utcnow().date().isoformat()
+    with get_conn() as c:
+        row = c.execute("SELECT driver_id, status FROM trips WHERE id = ?", (trip_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Рейс не найден")
+        if row["driver_id"] != user["id"]:
+            raise HTTPException(status_code=403, detail="Можно продлить только свой рейс")
+        if (row["status"] or "active") != "active":
+            raise HTTPException(status_code=409, detail="Рейс не активен")
+        c.execute("UPDATE trips SET departure = ? WHERE id = ?", (new_date, trip_id))
+    return {"ok": True, "departure": new_date}
 
 
 # ═══ Trips ═══
@@ -730,16 +999,54 @@ def list_trips(
             if not _is_dirty_text(t.get("driver_name"), t.get("from_city"),
                                   t.get("to_city"), t.get("truck_type"))
         ]
+        # Скрываем просроченные рейсы из ПУБЛИЧНОЙ ленты (Модель А: живёт
+        # 3 дня — departure + 2). Owner-side /my сюда не проходит — там рейсы
+        # остаются с пометкой «Срок истёк».
+        _today = datetime.utcnow().date()
+        trips = [
+            t for t in trips
+            if not ((_dep := _parse_iso_date(t.get("departure")))
+                    and _dep < (_today - timedelta(days=2)))
+        ]
+    # Обогащаем каждый рейс РЕАЛЬНЫМИ данными водителя (статус верификации +
+    # рейтинг/число отзывов), чтобы фронт не выдумывал «★5.0 · Проверен».
+    # Обогащение не должно ронять ленту — при любом сбое отдаём дефолты.
+    try:
+        from database import reviews_dal
+        with get_conn() as c2:
+            for t in trips:
+                did = t.get("driver_id")
+                drow = c2.execute(
+                    "SELECT status FROM drivers_registration WHERE id = ?",
+                    (did,),
+                ).fetchone() if did else None
+                t["driver_verified"] = bool(drow and drow["status"] == "approved")
+        for t in trips:
+            did = t.get("driver_id")
+            summary = reviews_dal.get_rating_summary(did) if did else {}
+            t["driver_rating"] = summary.get("average", 0) or 0
+            t["driver_reviews_count"] = summary.get("count", 0) or 0
+    except Exception:
+        for t in trips:
+            t.setdefault("driver_verified", False)
+            t.setdefault("driver_rating", 0)
+            t.setdefault("driver_reviews_count", 0)
     return {"trips": trips, "total": len(trips)}
 
 
 @mp_router.get("/trips/{trip_id}")
-def get_trip(trip_id: str):
+def get_trip(trip_id: str, authorization: Optional[str] = Header(None)):
     with get_conn() as c:
         row = c.execute("SELECT * FROM trips WHERE id = ?", (trip_id,)).fetchone()
     if not row:
         raise HTTPException(status_code=404)
-    return dict(row)
+    d = dict(row)
+    # Security (B2): driver_phone — только владельцу рейса. Аноним/чужой по id
+    # телефон водителя не получает (сбор базы контактов перебором).
+    caller = _maybe_user(authorization)
+    if not (caller and caller.get("id") == d.get("driver_id")):
+        d.pop("driver_phone", None)
+    return d
 
 
 # ═══ Bids ═══
@@ -754,6 +1061,34 @@ def _money(amount, currency):
     cur = (currency or "USD").upper()
     sym = _CURRENCY_SYMBOLS.get(cur, "$")
     return f"{amount} {sym}" if cur == "UZS" else f"{sym}{amount}"
+
+
+def _bid_currency(c, bid) -> str:
+    """Валюта родителя ставки (груз/рейс) — чтобы пуши/уведомления показывали
+    сумму в валюте листинга, а не хардкодным '$'. Fallback USD."""
+    r = None
+    if bid.get("cargo_id"):
+        r = c.execute("SELECT currency FROM cargos WHERE id = ?", (bid["cargo_id"],)).fetchone()
+    elif bid.get("trip_id"):
+        r = c.execute("SELECT currency FROM trips WHERE id = ?", (bid["trip_id"],)).fetchone()
+    return ((dict(r).get("currency") if r else None) or "USD")
+
+
+def _record_price_event(c, bid_id, actor_id, actor_role, amount, kind, comment=None):
+    """Часть 3: записать событие цены в открытой транзакции c. Возвращает
+    event_id (для связи chat_messages.event_id) или None при сбое. Fail-tolerant —
+    сбой истории не должен ломать сам торг."""
+    try:
+        eid = new_id()
+        c.execute(
+            "INSERT INTO price_events (id, bid_id, actor_id, actor_role, amount, kind, comment) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (eid, bid_id, actor_id, actor_role, amount, kind, comment),
+        )
+        return eid
+    except Exception as e:
+        print(f"[price_event] write failed (continuing): {e}", flush=True)
+        return None
 
 
 @mp_router.post("/bids")
@@ -806,61 +1141,46 @@ def create_bid(body: BidIn, user=Depends(require_level(1))):
             VALUES (?,?,?,?,?,?,?,?)
         """, (bid_id, body.cargo_id, body.trip_id, user["id"],
               user.get("full_name"), user.get("phone"), body.amount, body.message))
+        # Часть 3: событие цены — предложение (автор ставки = bidder).
+        _record_price_event(c, bid_id, user["id"], "bidder", body.amount, "proposed", body.message)
 
         # Обновляем счётчик
         if body.cargo_id:
             c.execute("UPDATE cargos SET bids_count = bids_count + 1 WHERE id = ?", (body.cargo_id,))
             row = c.execute("SELECT owner_id, from_city, to_city, currency FROM cargos WHERE id = ?", (body.cargo_id,)).fetchone()
             if row:
-                # PR-B (P0-B): meaningful url в notification вместо дефолтного "/".
-                # NotificationsScreen (или будущая мобильная навигация) сможет
-                # распарсить query и открыть cargo detail с подсвеченной ставкой.
-                cargo_url = f"/cargos/{body.cargo_id}?bid={bid_id}"
-                # Валюта ставки = валюта груза (фолбэк USD), не хардкод «$».
                 money = _money(body.amount, row["currency"])
-                title = f"💰 Новое предложение {money}"
-                text = f"{user.get('full_name', 'Водитель')} предлагает {money} за {row['from_city']}→{row['to_city']}"
-                post_notifs.append((row["owner_id"], title, text, "💰", cargo_url, True))
-
-                # PR-B (P0-D): eager chat-room create. Раньше chat_rooms
-                # появлялся только при первом POST /chat/send → cargo owner
-                # после получения push не имел thread'а с водителем и нигде
-                # в UI не мог инициировать чат. Endpoint POST /bids/{id}/chat
-                # уже умеет это явно, но фронт его не вызывает; вызывая
-                # _ensure_chat_room_inline тут, мы гарантируем что thread
-                # существует с момента создания ставки. Хелпер идемпотентен
-                # (UNIQUE (participant_1, participant_2)), повторный вызов
-                # из POST /bids/{id}/chat вернёт тот же room_id.
-                # Этот вызов идёт ВНУТРИ with потому что принимает open conn.
+                # Часть 4 (правило одного места): комнату чата создаём СНАЧАЛА,
+                # чтобы deeplink уведомления вёл ПРЯМО в неё (весь торг живёт в
+                # чате). Хелпер идемпотентен (UNIQUE пара). Fallback на cargo
+                # detail, если комнату не удалось создать.
                 try:
                     created_room_id = _ensure_chat_room_inline(
-                        c, user["id"], row["owner_id"],
-                        body.cargo_id, None, bid_id,
+                        c, user["id"], row["owner_id"], body.cargo_id, None, bid_id,
                     )
                 except Exception:
-                    pass
+                    created_room_id = None
+                bid_url = f"/chats/{created_room_id}" if created_room_id else f"/cargos/{body.cargo_id}?bid={bid_id}"
+                # Часть 4: текст пуша = событие + сумма + маршрут.
+                title = f"💰 Ставка {money}"
+                text = f"{money} · {row['from_city']}→{row['to_city']}"
+                post_notifs.append((row["owner_id"], title, text, "💰", bid_url, True))
 
         if body.trip_id:
             row = c.execute("SELECT driver_id, from_city, to_city, currency FROM trips WHERE id = ?", (body.trip_id,)).fetchone()
             if row:
-                # PR-B (P0-B + P0-F): trip-ветка раньше отправляла ТОЛЬКО push
-                # (send_to_user), без create_notification — у водителя ничего
-                # не появлялось в bell-list. Теперь симметрично с cargo-веткой:
-                # push + InApp + eager chat room.
-                trip_url = f"/trips/{body.trip_id}?bid={bid_id}"
-                # Валюта ставки = валюта рейса (фолбэк USD), не хардкод «$».
                 money = _money(body.amount, row["currency"])
-                title = f"📦 Новый заказ {money}"
-                text = f"{user.get('full_name', 'Клиент')} предлагает {money} за {row['from_city']}→{row['to_city']}"
-                post_notifs.append((row["driver_id"], title, text, "📦", trip_url, True))
-
+                # Часть 4: комнату чата — сначала (deeplink ведёт в неё).
                 try:
                     created_room_id = _ensure_chat_room_inline(
-                        c, user["id"], row["driver_id"],
-                        None, body.trip_id, bid_id,
+                        c, user["id"], row["driver_id"], None, body.trip_id, bid_id,
                     )
                 except Exception:
-                    pass
+                    created_room_id = None
+                bid_url = f"/chats/{created_room_id}" if created_room_id else f"/trips/{body.trip_id}?bid={bid_id}"
+                title = f"📦 Заказ {money}"
+                text = f"{money} · {row['from_city']}→{row['to_city']}"
+                post_notifs.append((row["driver_id"], title, text, "📦", bid_url, True))
 
     # PR-B: post-commit notifications — connection с bid INSERT уже закрыт,
     # create_notification открывает свой conn без conflict'а с транзакцией.
@@ -918,6 +1238,10 @@ def list_bids(
             ORDER BY b.created_at DESC LIMIT 100
         """, params).fetchall()
     bids = [dict(r) for r in rows]
+    # Часть 1: сырой список ДО dirty-фильтра — из него честно считаем число
+    # предложений и находим собственную ставку вызывающего (dirty-фильтр по
+    # prefix 'agent-'/'guest-' иначе прячет и его собственную ставку в QA).
+    _raw_bids = list(bids)
 
     # D12 (Maestro P1): owner of the cargo/trip must see every active bid on
     # their own listing, including bids from QA/agent accounts that the
@@ -955,9 +1279,15 @@ def list_bids(
     if not show_demo and not is_owner:
         bids = [
             b for b in bids
-            if not (b.get("bidder_id") or "").lower().startswith(DIRTY_BIDDER_PREFIXES)
-            and not _is_dirty_text(b.get("bidder_name"), b.get("bidder_phone"))
-            and b.get("status") not in ("cancelled", "rejected")
+            # Принятую (accepted) ставку показываем ВСЕГДА, даже если биддер —
+            # guest_/agent_ (иначе на принятом грузе CargoDetail видел «0
+            # предложений / Будьте первым», хотя сделка уже создана).
+            if b.get("status") == "accepted"
+            or (
+                not (b.get("bidder_id") or "").lower().startswith(DIRTY_BIDDER_PREFIXES)
+                and not _is_dirty_text(b.get("bidder_name"), b.get("bidder_phone"))
+                and b.get("status") not in ("cancelled", "rejected")
+            )
         ]
     elif is_owner and not show_demo:
         # Owner gets the full active-bid set, including dirty/QA bidders.
@@ -965,7 +1295,103 @@ def list_bids(
         # the active-bids list. Owner can still inspect those through the
         # /market/my dashboard if needed.
         bids = [b for b in bids if b.get("status") not in ("cancelled", "rejected")]
-    return {"bids": bids}
+    # Часть 1 (конфиденциальные ставки, модель InDriver — решение владельца):
+    # не-владелец НЕ видит ЧУЖИЕ суммы. Отдаём количество предложений + ТОЛЬКО
+    # свою ставку. Принятая (accepted) ставка видна ВСЕМ (сделка заключена).
+    # Владелец листинга видит всё как раньше (список/суммы/контр/принять).
+    _active = ("pending", "countered", "accepted")
+    # count/my_bid — из СЫРОГО списка (до dirty-фильтра), иначе своя QA-ставка
+    # (agent-) не попадёт. Реального юзера dirty-фильтр не трогает.
+    proposals_count = sum(1 for b in _raw_bids if b.get("status") in _active)
+    my_bid = None
+    if caller:
+        for b in _raw_bids:
+            if b.get("bidder_id") == caller["id"] and b.get("status") in _active:
+                my_bid = b
+                break
+    # Конфиденциальный режим (BIDS_CONFIDENTIAL) — под будущую монетизацию.
+    # По умолчанию FALSE: ставки открыты для всех, не-владелец видит полный
+    # список с суммами (как до фичи). При TRUE — не-владельцу отдаём только
+    # принятые (публичные) + собственную ставку, чужие суммы скрыты.
+    try:
+        import config as _cfg
+        _bids_confidential = bool(getattr(_cfg, "BIDS_CONFIDENTIAL", False))
+    except Exception:
+        _bids_confidential = False
+    if _bids_confidential and not is_owner:
+        # Только принятые (публично видимы) + собственная ставка бидера (из сырого
+        # списка — если dirty-фильтр её убрал, возвращаем через my_bid).
+        bids = [b for b in bids if b.get("status") == "accepted"]
+        if my_bid and not any(b.get("id") == my_bid.get("id") for b in bids):
+            bids.append(my_bid)
+    # Security (B2): bidder_phone виден ТОЛЬКО владельцу листинга (он ведёт
+    # переговоры). Публичным/чужим вызовам /bids телефон оферента не отдаём —
+    # раньше SELECT b.* возвращал bidder_phone любому, кто знает cargo_id.
+    if not is_owner:
+        for b in bids:
+            b.pop("bidder_phone", None)
+    # Обогащаем ставки РЕАЛЬНЫМИ данными оферента (статус верификации +
+    # рейтинг + число отзывов), чтобы клиент не принимал ставку вслепую
+    # (раньше на карточке был rating:0 хардкод). Сбой не ломает список.
+    try:
+        from database import reviews_dal
+        with get_conn() as c3:
+            for b in bids:
+                did = b.get("bidder_id")
+                drow = c3.execute(
+                    "SELECT status FROM drivers_registration WHERE id = ?",
+                    (did,),
+                ).fetchone() if did else None
+                b["bidder_verified"] = bool(drow and drow["status"] == "approved")
+        for b in bids:
+            did = b.get("bidder_id")
+            summary = reviews_dal.get_rating_summary(did) if did else {}
+            b["bidder_rating"] = summary.get("average", 0) or 0
+            b["bidder_reviews_count"] = summary.get("count", 0) or 0
+    except Exception:
+        for b in bids:
+            b.setdefault("bidder_verified", False)
+            b.setdefault("bidder_rating", 0)
+            b.setdefault("bidder_reviews_count", 0)
+    # count = число предложений (видно всем); my_bid — своя ставка (для не-
+    # владельца это единственная сумма, которую он видит); is_owner — фронту
+    # решать. confidential — ЯВНЫЙ сигнал режима: True только когда сервер
+    # реально прячет чужие суммы от этого вызывающего (BIDS_CONFIDENTIAL=true
+    # И не владелец). Фронт полагается на него, а не на длину списка — иначе
+    # dirty-фильтр QA-ставок (agent-*) в открытом режиме ложно выглядел бы как
+    # конфиденциальность.
+    return {
+        "bids": bids,
+        "count": proposals_count,
+        "my_bid": my_bid,
+        "is_owner": is_owner,
+        "confidential": bool(_bids_confidential and not is_owner),
+    }
+
+
+@mp_router.get("/bids/{bid_id}/events")
+def bid_price_events(bid_id: str, user=Depends(require_level(1))):
+    """Часть 3: история цены по ставке (proposed/updated/countered/accepted/
+    rejected), сортировка по времени. Старые ставки без событий → пустой список
+    (бэкфилл не делаем).
+
+    Security: история содержит СУММЫ торга — при конфиденциальных ставках
+    (Часть 1) её нельзя отдавать анонимно/чужим. Доступ только участникам
+    торга: автору ставки (bidder) и владельцу листинга (owner)."""
+    with get_conn() as c:
+        bid_row = c.execute("SELECT * FROM bids WHERE id = ?", (bid_id,)).fetchone()
+        if not bid_row:
+            raise HTTPException(status_code=404, detail="Ставка не найдена")
+        bid = dict(bid_row)
+        owner_id = _cargo_or_trip_owner_id(c, bid)
+        if user["id"] not in (bid.get("bidder_id"), owner_id):
+            raise HTTPException(status_code=403)
+        rows = c.execute(
+            "SELECT id, bid_id, actor_id, actor_role, amount, kind, comment, created_at "
+            "FROM price_events WHERE bid_id = ? ORDER BY created_at ASC, id ASC",
+            (bid_id,),
+        ).fetchall()
+    return {"events": [dict(r) for r in rows]}
 
 
 # ═══ My Dashboard ═══
@@ -983,8 +1409,13 @@ def my_dashboard(user=Depends(require_level(1))):
         # для my_bids это единственный источник: груз/рейс чужой, в payload его
         # нет, без JOIN фронт рисовал сумму хардкодным «$». COALESCE: ставка
         # может быть на cargo или на trip.
+        # Маршрут ставки: для cargo-ставок — города груза, для trip-ставок —
+        # города рейса (раньше trip-ставки шли без маршрута → «— → —» в UI).
         my_bids = [dict(r) for r in c.execute(
-            "SELECT b.*, c.from_city as cargo_from, c.to_city as cargo_to, c.cargo_desc, "
+            "SELECT b.*, "
+            "COALESCE(c.from_city, t.from_city) as cargo_from, "
+            "COALESCE(c.to_city, t.to_city) as cargo_to, "
+            "c.cargo_desc, "
             "COALESCE(c.currency, t.currency) AS currency "
             "FROM bids b LEFT JOIN cargos c ON b.cargo_id = c.id "
             "LEFT JOIN trips t ON b.trip_id = t.id "
@@ -1017,7 +1448,7 @@ def my_dashboard(user=Depends(require_level(1))):
 
     for cargo in my_cargos:
         try:
-            cargo["photos"] = json.loads(cargo.get("photos") or "[]")
+            cargo["photos"] = _sign_cargo_photos(json.loads(cargo.get("photos") or "[]"))
         except Exception:
             cargo["photos"] = []
 
@@ -1044,20 +1475,30 @@ def list_drivers(truck_type: str = "", limit: int = 30):
     with get_conn() as c:
         rows = c.execute(f"""
             SELECT id, phone, full_name, vehicle_type, vehicle_brand, vehicle_plate,
-                   vehicle_year, vehicle_capacity_kg, security_score, security_color
+                   vehicle_year, vehicle_capacity_kg, security_score, security_color,
+                   vehicle_photo_url, cabin_photo_url
             FROM drivers_registration
             WHERE {' AND '.join(where)}
             ORDER BY security_score DESC LIMIT ?
         """, (*params, limit)).fetchall()
 
+    from database import reviews_dal
+    from services import file_signing
     result = []
     for r in rows:
         d = dict(r)
         # Рейтинг
-        from database import reviews_dal
         summary = reviews_dal.get_rating_summary(d["id"])
         d["rating"] = summary.get("average", 0)
         d["reviews_count"] = summary.get("count", 0)
+        # Фото фуры — клиент должен видеть машину перед сделкой. Отдаём
+        # ПОДПИСАННЫЕ ссылки (не raw ключи), сырые поля убираем.
+        photos = []
+        for key in (d.pop("vehicle_photo_url", None), d.pop("cabin_photo_url", None)):
+            signed = file_signing.sign(key)
+            if signed:
+                photos.append(signed)
+        d["vehicle_photos"] = photos
         d.pop("phone", None)  # не отдаём контакт
         result.append(d)
     return {"drivers": result, "total": len(result)}
@@ -1281,13 +1722,16 @@ def accept_bid(bid_id: str, user=Depends(require_level(1))):
                 detail=f"Ставку нельзя принять в статусе {bid['status']}",
             )
         result = _finalize_accept_inline(c, user, bid, bid["amount"])
+        # Часть 3: событие — владелец принял ставку (actor=owner).
+        _record_price_event(c, bid_id, user["id"], "owner", bid["amount"], "accepted", None)
+        _cur = _bid_currency(c, bid)   # валюта ставки для текста уведомления
 
     # PR-B (P0-B): notification bidder'у со ссылкой на сделку, а не root "/".
     # _finalize_accept_inline уже создал deal + chat_room — даём прямую
     # ссылку на /deals/{id} чтобы фронт открыл сделку с активным чатом.
     deal_url = f"/deals/{result['deal_id']}"
     title = "✅ Ставка принята!"
-    text = f"Ваше предложение ${bid['amount']} принято! Сделка создана."
+    text = f"Ваше предложение {_money(bid['amount'], _cur)} принято! Сделка создана."
     try:
         send_to_user(bid["bidder_id"], title, text, url=deal_url)
     except Exception:
@@ -1340,12 +1784,22 @@ def update_bid(bid_id: str, body: BidUpdateIn, user=Depends(require_level(1))):
 
         old_amount = bid["amount"]
         new_amount = body.amount if body.amount is not None else old_amount
+        # Нижний предел скидки: нельзя ронять ставку до символической суммы
+        # (в проде видели «$5333 → $1»). Разрешаем снижать не более чем на 90%
+        # от исходной — глубже это ошибка/абьюз, а не торг.
+        if body.amount is not None and old_amount and new_amount < old_amount * 0.1:
+            raise HTTPException(
+                status_code=400,
+                detail="Слишком большая скидка: цену нельзя снижать более чем на 90%",
+            )
         new_message = body.message if body.message is not None else bid.get("message")
 
         c.execute(
             "UPDATE bids SET amount = ?, message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (new_amount, new_message, bid_id),
         )
+        # Часть 3: событие — bidder изменил свою ставку.
+        _record_price_event(c, bid_id, user["id"], "bidder", new_amount, "updated", new_message)
         updated = dict(c.execute("SELECT * FROM bids WHERE id = ?", (bid_id,)).fetchone())
 
     # Discount notification: amount decreased → ping the cargo/trip owner.
@@ -1357,14 +1811,16 @@ def update_bid(bid_id: str, body: BidUpdateIn, user=Depends(require_level(1))):
     if body.amount is not None and new_amount < old_amount:
         try:
             owner_id = None
+            _cur = "USD"
             with get_conn() as c2:
                 owner_id = _cargo_or_trip_owner_id(c2, updated)
+                _cur = _bid_currency(c2, updated)
             if owner_id:
                 recipient_role = "client" if updated.get("cargo_id") else "driver"
                 bidder_role_word = "Водитель" if recipient_role == "client" else "Грузовладелец"
                 bidder_label = updated.get("bidder_name") or bidder_role_word
-                title = f"💰 Скидка: ${old_amount} → ${new_amount}"
-                text = f"{bidder_label} снизил цену на ${old_amount - new_amount}"
+                title = f"💰 Скидка: {_money(old_amount, _cur)} → {_money(new_amount, _cur)}"
+                text = f"{bidder_label} снизил цену на {_money(old_amount - new_amount, _cur)}"
                 try:
                     send_to_user(owner_id, title, text, url="/")
                 except Exception:
@@ -1419,6 +1875,8 @@ def reject_bid(bid_id: str, user=Depends(require_level(1))):
             "UPDATE bids SET status = 'rejected', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (bid_id,),
         )
+        # Часть 3: событие — владелец отклонил (actor=owner).
+        _record_price_event(c, bid_id, user["id"], "owner", bid.get("amount"), "rejected", None)
         # M2: «отклики» (bids_count) = активные ставки. cancel уже уменьшал
         # счётчик, а reject — нет, из-за чего в ленте число откликов
         # завышалось после отклонений. Симметрично уменьшаем здесь.
@@ -1428,18 +1886,26 @@ def reject_bid(bid_id: str, user=Depends(require_level(1))):
                 (bid["cargo_id"],),
             )
 
-    # Notify the bidder.
-    # PR-B (P0-B): URL ведёт обратно на родительский cargo / trip, чтобы
-    # bidder мог посмотреть, сразу же опубликовать новую ставку или открыть
-    # уже созданный чат (eager chat-room остаётся видимым в /chat/rooms).
-    if bid.get("cargo_id"):
+    # Notify the bidder. Часть 4: deeplink ведёт в чат сделки (не на лист).
+    title = "❌ Ставка отклонена"
+    with get_conn() as _cc:
+        _cur = _bid_currency(_cc, bid)
+        try:
+            _rr = _ensure_chat_room_inline(
+                _cc, bid["bidder_id"], _cargo_or_trip_owner_id(_cc, bid),
+                bid.get("cargo_id"), bid.get("trip_id"), bid_id,
+            )
+        except Exception:
+            _rr = None
+    if _rr:
+        back_url = f"/chats/{_rr}"
+    elif bid.get("cargo_id"):
         back_url = f"/cargos/{bid['cargo_id']}"
     elif bid.get("trip_id"):
         back_url = f"/trips/{bid['trip_id']}"
     else:
         back_url = "/"
-    title = "❌ Ставка отклонена"
-    body_text = f"Ваше предложение ${bid['amount']} отклонено"
+    body_text = f"Ваше предложение {_money(bid['amount'], _cur)} отклонено"
     try:
         send_to_user(bid["bidder_id"], title, body_text, url=back_url)
     except Exception:
@@ -1474,18 +1940,30 @@ def counter_bid(bid_id: str, body: BidCounterIn, user=Depends(require_level(1)))
             "WHERE id = ?",
             (body.amount, body.message, bid_id),
         )
+        # Часть 3: событие — владелец прислал контр (actor=owner).
+        _record_price_event(c, bid_id, user["id"], "owner", body.amount, "countered", body.message)
+        # Часть 4: комната чата пары (deeplink уведомления ведёт в неё).
+        try:
+            _counter_room = _ensure_chat_room_inline(
+                c, bid["bidder_id"], owner_id, bid.get("cargo_id"), bid.get("trip_id"), bid_id,
+            )
+        except Exception:
+            _counter_room = None
         updated = dict(c.execute("SELECT * FROM bids WHERE id = ?", (bid_id,)).fetchone())
 
-    # PR-B (P0-B): URL ведёт на родительский cargo / trip с подсветкой
-    # bid_id, чтобы bidder мог ответить — accept counter или decline.
-    if bid.get("cargo_id"):
+    # Часть 4: контр-оффер уводит bidder'а прямо в чат сделки.
+    if _counter_room:
+        counter_url = f"/chats/{_counter_room}"
+    elif bid.get("cargo_id"):
         counter_url = f"/cargos/{bid['cargo_id']}?bid={bid_id}"
     elif bid.get("trip_id"):
         counter_url = f"/trips/{bid['trip_id']}?bid={bid_id}"
     else:
         counter_url = "/"
-    title = f"🔁 Контр-оффер: ${body.amount}"
-    text = f"Владелец груза предложил ${body.amount} вместо ${bid['amount']}"
+    with get_conn() as c2:
+        cur = _bid_currency(c2, bid)
+    title = f"🔁 Контр-оффер: {_money(body.amount, cur)}"
+    text = f"Владелец груза предложил {_money(body.amount, cur)} вместо {_money(bid['amount'], cur)}"
     try:
         send_to_user(bid["bidder_id"], title, text, url=counter_url)
     except Exception:
@@ -1519,20 +1997,36 @@ def accept_counter(bid_id: str, user=Depends(require_level(1))):
             raise HTTPException(status_code=409, detail="Не найден владелец груза/рейса")
         owner_user = {"id": owner_id}
         result = _finalize_accept_inline(c, owner_user, bid, counter)
+        # Часть 3: событие — bidder принял контр-оффер (actor=bidder).
+        _record_price_event(c, bid_id, user["id"], "bidder", counter, "accepted", None)
 
     # Push to both sides.
     # M3: роль того, кто согласился, зависит от типа ставки. cargo-bid →
     # bidder это водитель; trip-bid → bidder это грузовладелец. Иначе
     # владельцу рейса приходило неверное «Водитель согласился».
     agreed_word = "Водитель" if bid.get("cargo_id") else "Грузовладелец"
-    try:
-        send_to_user(owner_id, "✅ Контр-оффер принят", f"{agreed_word} согласился на ${counter}", url="/")
-    except Exception:
-        pass
-    try:
-        send_to_user(bid["bidder_id"], "✅ Сделка создана", f"Цена: ${counter}", url="/")
-    except Exception:
-        pass
+    deal_url = f"/deals/{result['deal_id']}"
+    with get_conn() as c2:
+        cur = _bid_currency(c2, bid)
+    money = _money(counter, cur)
+    from api.notifications import create_notification
+    # 🔴 fix: раньше accept_counter слал ТОЛЬКО push (ненадёжный) и НЕ создавал
+    # in-app уведомление → при недоставленном пуше сторона о сделке не узнавала
+    # («наверх приходит, вниз нет»). Теперь и push, и надёжный колокольчик обеим
+    # сторонам + deep-link на /deals/{id} + сумма в валюте листинга.
+    recipients = (
+        (owner_id, "✅ Контр-оффер принят", f"{agreed_word} согласился на {money}. Сделка создана."),
+        (bid["bidder_id"], "✅ Сделка создана", f"Цена: {money}"),
+    )
+    for uid_, title_, text_ in recipients:
+        try:
+            send_to_user(uid_, title_, text_, url=deal_url)
+        except Exception:
+            pass
+        try:
+            create_notification(uid_, "deal_created", title_, text_, "✅", url=deal_url)
+        except Exception:
+            pass
 
     return {"ok": True, "deal_id": result["deal_id"], "chat_room_id": result["chat_room_id"], "amount": counter}
 
@@ -1554,8 +2048,10 @@ def decline_counter(bid_id: str, user=Depends(require_level(1))):
 
     try:
         owner_id = None
+        _cur = "USD"
         with get_conn() as c2:
             owner_id = _cargo_or_trip_owner_id(c2, bid)
+            _cur = _bid_currency(c2, bid)
         if owner_id:
             try:
                 send_to_user(owner_id, "❌ Контр-оффер отклонён", "Водитель отказался от вашего контр-оффера", url="/")
@@ -1564,7 +2060,7 @@ def decline_counter(bid_id: str, user=Depends(require_level(1))):
             try:
                 from api.notifications import create_notification
                 create_notification(owner_id, "bid", "❌ Контр-оффер отклонён",
-                                    f"Ставка ${bid['amount']} снова в статусе pending", "❌")
+                                    f"Ставка {_money(bid['amount'], _cur)} снова в статусе pending", "❌")
             except Exception:
                 pass
     except Exception:
@@ -1645,12 +2141,26 @@ def get_deal(deal_id: str, user=Depends(require_level(1))):
             ).fetchone()
             if tr and tr["plate_truck"]:
                 d.setdefault("plate", tr["plate_truck"])
+        # Телефон КОНТРАГЕНТА по сделке — для звонка после заключения сделки.
+        # Endpoint строго gated (выше 403 для не-участников), поэтому отдать
+        # телефон второй стороны безопасно. Технические placeholder-телефоны
+        # (guest_/deleted_) не отдаём.
+        other_id = d["driver_id"] if uid == d["shipper_id"] else d["shipper_id"]
+        if other_id:
+            cp_name, cp_phone = _party_contact(c, other_id, d)
+            if cp_phone:
+                d["counterparty_phone"] = cp_phone
+            if cp_name:
+                d["counterparty_name"] = cp_name
     return d
 
 
 @mp_router.patch("/deals/{deal_id}/status")
 def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level(1))):
-    VALID = ["accepted", "in_progress", "delivered", "cancelled"]
+    # Этап-хаб заказа: добавлен промежуточный статус at_border («На границе») —
+    # ключевой для коридора Китай↔КЗ. Порядок: accepted → in_progress →
+    # at_border → delivered (cancelled — из любого рабочего).
+    VALID = ["accepted", "in_progress", "at_border", "delivered", "cancelled"]
     if new_status not in VALID:
         raise HTTPException(status_code=400, detail=f"Допустимые статусы: {', '.join(VALID)}")
     uid = user["id"]
@@ -1667,12 +2177,48 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
             c.execute("UPDATE cargos SET status = 'completed' WHERE id = ?", (deal["cargo_id"],))
         elif new_status == "cancelled" and deal["cargo_id"]:
             c.execute("UPDATE cargos SET status = 'active', taken_by = NULL WHERE id = ?", (deal["cargo_id"],))
-    # Push другой стороне
+    # 🔴 fix: раньше смена статуса сделки (Начать перевозку / Я доехал / отмена)
+    # слала ТОЛЬКО push и не создавала in-app уведомление → ведение сделки не
+    # оставляло следа в колокольчике. Теперь и push, и колокольчик другой стороне,
+    # сумма в валюте груза/рейса, deep-link на /deals/{id}.
     try:
         other_id = deal["driver_id"] if uid == deal["shipper_id"] else deal["shipper_id"]
-        labels = {"in_progress": "🚛 Рейс начался", "delivered": "✅ Доставлен", "cancelled": "❌ Отменено"}
+        labels = {"in_progress": "🚛 Рейс начался", "at_border": "🛂 На границе", "delivered": "✅ Доставлен", "cancelled": "❌ Отменено"}
         if new_status in labels:
-            send_to_user(other_id, labels[new_status], f"{deal['from_city']}→{deal['to_city']} · ${deal['amount']}", url="/")
+            cur = "USD"
+            with get_conn() as c2:
+                src = ("cargos", deal["cargo_id"]) if deal.get("cargo_id") else (("trips", deal["trip_id"]) if deal.get("trip_id") else None)
+                if src:
+                    r = c2.execute(f"SELECT currency FROM {src[0]} WHERE id = ?", (src[1],)).fetchone()
+                    cur = ((dict(r).get("currency") if r else None) or "USD")
+            body_txt = f"{deal['from_city']}→{deal['to_city']} · {_money(deal['amount'], cur)}"
+            deal_url = f"/deals/{deal_id}"
+            try:
+                send_to_user(other_id, labels[new_status], body_txt, url=deal_url)
+            except Exception:
+                pass
+            try:
+                from api.notifications import create_notification
+                create_notification(other_id, "deal_status", labels[new_status], body_txt, "🚛", url=deal_url)
+            except Exception:
+                pass
+    except Exception:
+        pass
+    # События сделки в immutable-timeline (не только push): смена статуса
+    # пишется в ленту, чтобы Deal Room показывал живую хронологию сделки,
+    # а не только принятие ставки.
+    try:
+        from database import deal_room_dal
+        actor_role = "client" if uid == deal["shipper_id"] else "driver"
+        deal_room_dal.create_deal_event(
+            "deal.status_changed",
+            actor_id=uid,
+            actor_role=actor_role,
+            deal_id=deal_id,
+            load_id=deal.get("cargo_id"),
+            trip_id=deal.get("trip_id"),
+            payload={"status": new_status},
+        )
     except Exception:
         pass
     return {"ok": True, "status": new_status}
@@ -1690,14 +2236,16 @@ class DealLocationIn(BaseModel):
 @mp_router.post("/deals/{deal_id}/location")
 def update_deal_location(deal_id: str, body: DealLocationIn, user=Depends(require_level(1))):
     """Водитель сделки шлёт свою гео-позицию. Только driver сделки и только
-    пока сделка в работе (accepted/in_progress/picked_up)."""
+    пока сделка в работе (accepted/in_progress/at_border/picked_up)."""
     with get_conn() as c:
         d = c.execute("SELECT driver_id, status FROM deals WHERE id = ?", (deal_id,)).fetchone()
         if not d:
             raise HTTPException(status_code=404, detail="Сделка не найдена")
         if d["driver_id"] != user["id"]:
             raise HTTPException(status_code=403, detail="Геопозицию отправляет только водитель сделки")
-        if d["status"] not in ("accepted", "in_progress", "picked_up"):
+        # at_border входит в рабочие статусы — иначе на границе (самый важный
+        # момент коридора Китай↔КЗ) трекинг замерзал бы (409).
+        if d["status"] not in ("accepted", "in_progress", "at_border", "picked_up"):
             raise HTTPException(status_code=409, detail="Сделка не в работе")
         c.execute(
             "INSERT INTO deal_locations (deal_id, lat, lng, heading, speed, updated_at) "

@@ -29,8 +29,8 @@ import QaStepSkip from '../../components/dev/QaStepSkip';
 import { translit, hasCyrillic } from '../../utils/translit';
 import { brand, radius, typography } from '../../theme/brandV2';
 
-const TOTAL_STEPS = 5;
-const STEP = 2;
+const TOTAL_STEPS = 6;
+const STEP = 3;
 
 export default function SelfieStepScreen({ navigation, route }) {
   const { t } = useI18n();
@@ -42,6 +42,7 @@ export default function SelfieStepScreen({ navigation, route }) {
   // status: idle | busy | done | error
   const [selfie, setSelfie] = useState({ uri: null, status: 'idle' });
   const [confidence, setConfidence] = useState(0);
+  const [attempts, setAttempts] = useState(0);
   const [closeVisible, setCloseVisible] = useState(false);
   const [helpVisible, setHelpVisible] = useState(false);
 
@@ -88,18 +89,19 @@ export default function SelfieStepScreen({ navigation, route }) {
         toast(t('reg_selfie_confirmed'), 'success');
       } else {
         setSelfie({ uri, status: 'error' });
+        setAttempts((a) => a + 1);
         const detail = typeof res?.detail === 'string' ? res.detail : t('reg_selfie_bad_photo');
         toast(detail, 'error', 5000);
       }
     } catch (e) {
       setSelfie({ uri, status: 'error' });
+      setAttempts((a) => a + 1);
       toast(t('reg_selfie_bad_photo'), 'error');
     }
   };
 
   const verified = selfie.status === 'done';
-  const onNext = () => {
-    if (!verified) return;
+  const goForward = () => {
     // Безопасный форвард: только ключ личного фото из #73 (он уже сохранён
     // server-side). Raw selfie-uri/base64 дальше НЕ передаём — само селфи уже
     // ушло на /register/selfie.
@@ -107,6 +109,16 @@ export default function SelfieStepScreen({ navigation, route }) {
       personalPhotoKey: route?.params?.personalPhotoKey || null,
     });
   };
+  const onNext = () => {
+    if (!verified) return;
+    goForward();
+  };
+  // 7.5: liveness может падать из-за засветки/солнца, запирая водителя. После
+  // 2 неудачных попыток даём пройти дальше с пометкой на ручную проверку —
+  // фото уже загружено на сервер, модератор проверит (совпадает с авто-
+  // одобрением + флагом manual_review). Не «fake-success»: доступ к рейсам
+  // всё равно решается на серверной модерации.
+  const canManualReview = !verified && attempts >= 2;
 
   const progress = STEP / TOTAL_STEPS;
 
@@ -119,7 +131,7 @@ export default function SelfieStepScreen({ navigation, route }) {
         <View style={s.progressTrack}>
           <View style={[s.progressFill, { width: `${progress * 100}%` }]} />
         </View>
-        <Text style={s.stepLabel}>{t('selfie_step')}</Text>
+        <Text style={s.stepLabel}>{`${t('reg_step')} ${STEP} ${t('reg_of')} ${TOTAL_STEPS}`}</Text>
         <Pressable onPress={() => setHelpVisible(true)} style={s.backBtn} testID="selfie-help" accessibilityLabel={t('reg_help_open')}>
           <Feather name="help-circle" size={22} color={brand.textSecondary} />
         </Pressable>
@@ -155,8 +167,9 @@ export default function SelfieStepScreen({ navigation, route }) {
 
         {verified ? (
           <View style={s.okBox}>
+            <Feather name="check-circle" size={15} color={brand.primary} />
             <Text style={s.okText}>
-              ✅ {t('reg_selfie_confirmed')} ({Math.round((confidence || 0) * 100)}%)
+              {t('reg_selfie_confirmed')} ({Math.round((confidence || 0) * 100)}%)
             </Text>
           </View>
         ) : null}
@@ -169,6 +182,15 @@ export default function SelfieStepScreen({ navigation, route }) {
           <Pressable onPress={takeSelfie} style={s.retakeBtn} testID="selfie-retake">
             <Feather name="refresh-ccw" size={16} color={brand.primary} />
             <Text style={s.retakeText}>{t('reg_selfie_retake')}</Text>
+          </Pressable>
+        ) : null}
+
+        {/* 7.5: после 2 неудач liveness (засветка/солнце) не запираем —
+            даём отправить на ручную проверку. Фото уже на сервере. */}
+        {canManualReview ? (
+          <Pressable onPress={goForward} style={s.manualBtn} testID="selfie-manual-review">
+            <Feather name="user-check" size={16} color={brand.textSecondary} />
+            <Text style={s.manualText}>{t('reg_selfie_manual_review')}</Text>
           </Pressable>
         ) : null}
 
@@ -215,10 +237,12 @@ const s = StyleSheet.create({
   thumb: { width: '100%', height: '100%' },
   busyOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.45)', gap: 8 },
   busyText: { ...typography.bodySmall, color: '#fff' },
-  okBox: { marginTop: 14, padding: 12, borderRadius: radius.md, backgroundColor: brand.primarySoft },
+  okBox: { marginTop: 14, padding: 12, borderRadius: radius.md, backgroundColor: brand.primarySoft, flexDirection: 'row', alignItems: 'center', gap: 6 },
   okText: { ...typography.bodySmall, fontWeight: '800', color: brand.primary },
   retakeBtn: { marginTop: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 10 },
   retakeText: { ...typography.bodySmall, fontWeight: '700', color: brand.primary },
+  manualBtn: { marginTop: 6, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, minHeight: 44 },
+  manualText: { ...typography.bodySmall, fontWeight: '700', color: brand.textSecondary, textDecorationLine: 'underline' },
   err: { ...typography.caption, color: brand.error, marginTop: 12 },
   ctaWrap: { paddingHorizontal: 20, paddingBottom: 16, paddingTop: 8 },
   cta: { height: 56, borderRadius: radius.lg, backgroundColor: brand.primary, alignItems: 'center', justifyContent: 'center' },

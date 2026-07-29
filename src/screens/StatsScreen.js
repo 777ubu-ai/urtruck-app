@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Feather from '@expo/vector-icons/Feather';
 import { useTheme } from '../utils/ThemeContext';
 import { useI18n } from '../utils/useI18n';
 import {v1Colors, useV1Colors} from '../theme/designV1';
@@ -10,7 +11,7 @@ const BASE = API_BASE;
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 const TRUCK_ICONS = { tent: '🚚', ref: '🧊', platform: '🛻', tanker: '🛢️', auto: '🚗', van: '🚐' };
-const COLOR_BADGE = { green: '#22C55E', yellow: '#F59E0B', red: '#EF4444' };
+const COLOR_BADGE = { green: '#22C55E', yellow: '#FF8400', red: '#EF4444' };
 
 export default function StatsScreen({ navigation }) {
   const v1 = useV1Colors();
@@ -47,7 +48,7 @@ export default function StatsScreen({ navigation }) {
       >
         {leaders.length === 0 && !loading && (
           <Text style={{ color: theme.textMuted, textAlign: 'center', marginTop: 40 }}>
-            Пока нет одобренных водителей с оценками
+            {t('stats_no_drivers')}
           </Text>
         )}
 
@@ -62,18 +63,20 @@ export default function StatsScreen({ navigation }) {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[s.name, { color: theme.text }]}>
-                  {d.full_name || 'Без имени'} {truck}
+                  {d.full_name || t('stats_no_name')} {truck}
                 </Text>
                 <Text style={[s.sub, { color: theme.textMuted }]}>
                   {d.vehicle_brand || ''} · {d.vehicle_plate || ''}
                 </Text>
                 <View style={s.badges}>
-                  <View style={[s.badge, { backgroundColor: col + '20' }]}>
-                    <Text style={[s.badgeText, { color: col }]}>🛡 {d.security_score}</Text>
+                  <View style={[s.badge, { backgroundColor: col + '20', flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
+                    <Feather name="shield" size={13} color={col} />
+                    <Text style={[s.badgeText, { color: col }]}>{d.security_score}</Text>
                   </View>
                   {d.rating_count > 0 && (
-                    <View style={[s.badge, { backgroundColor: '#FBBF2420' }]}>
-                      <Text style={[s.badgeText, { color: '#FBBF24' }]}>⭐ {d.rating_avg} ({d.rating_count})</Text>
+                    <View style={[s.badge, { backgroundColor: '#FBBF2420', flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
+                      <Feather name="star" size={13} color="#FBBF24" />
+                      <Text style={[s.badgeText, { color: '#FBBF24' }]}>{d.rating_avg} ({d.rating_count})</Text>
                     </View>
                   )}
                 </View>
@@ -111,5 +114,5 @@ const s = StyleSheet.create({
   badgeText: { fontSize: 11, fontWeight: '700' },
   score: { alignItems: 'center' },
   scoreNum: { fontSize: 22, fontWeight: '900' },
-  scoreLabel: { fontSize: 9 },
+  scoreLabel: { fontSize: 11 },
 });

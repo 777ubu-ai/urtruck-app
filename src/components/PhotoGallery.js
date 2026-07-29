@@ -1,10 +1,18 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, Modal, Dimensions, ScrollView, Alert, Platform } from 'react-native';
 import { useTheme } from '../utils/ThemeContext';
+import Feather from '@expo/vector-icons/Feather';
 import * as ImagePicker from 'expo-image-picker';
 import { useI18n } from '../utils/useI18n';
+import { SERVER_URL } from '../config/env';
 
 const MAX_PHOTOS = 5;
+
+// Подписанные ссылки приходят относительными («/security/storage/…»). На вебе
+// SERVER_URL='' (тот же origin), на нативе — https://urtruck.kz. Без этого
+// <Image> на телефоне не грузил относительный путь → пустая галерея.
+const resolvePhoto = (u) =>
+  (u && typeof u === 'string' && u.startsWith('/')) ? `${SERVER_URL}${u}` : u;
 
 // HOT-005: источник фото — камера или галерея.
 // На web камера в ImagePicker нестабильна — показываем только галерею.
@@ -83,14 +91,14 @@ export const PhotoPicker = ({ photos = [], onChange }) => {
           <View key={i} style={p.item}>
             <Image source={{ uri }} style={p.img} />
             <TouchableOpacity style={p.removeBtn} onPress={() => remove(i)}>
-              <Text style={p.removeBtnText}>✕</Text>
+              <Feather name="x" size={14} color="#fff" />
             </TouchableOpacity>
-            {i === 0 && <View style={p.mainBadge}><Text style={p.mainBadgeText}>★</Text></View>}
+            {i === 0 && <View style={p.mainBadge}><Feather name="star" size={12} color="#0C0A09" /></View>}
           </View>
         ))}
         {photos.length < MAX_PHOTOS && (
           <TouchableOpacity style={[p.addBtn, { backgroundColor: theme.card, borderColor: theme.border }]} onPress={pick}>
-            <Text style={{ fontSize: 28 }}>📷</Text>
+            <Feather name="camera" size={26} color={theme.textSecondary} />
             <Text style={[p.addBtnText, { color: theme.textSecondary }]}>{t('addCargoPhoto')}</Text>
             <Text style={[p.counter, { color: theme.textMuted }]}>{photos.length}/{MAX_PHOTOS}</Text>
           </TouchableOpacity>
@@ -130,7 +138,9 @@ export const PhotoPicker = ({ photos = [], onChange }) => {
 // Галерея просмотра (CargoDetail)
 export const PhotoGallery = ({ photos = [] }) => {
   const { theme } = useTheme();
+  const { t } = useI18n();
   const [activeIdx, setActiveIdx] = useState(null);
+  const [errored, setErrored] = useState({});   // индексы битых фото (старые blob)
   const screenWidth = Dimensions.get('window').width;
 
   if (!photos.length) return null;
@@ -139,17 +149,36 @@ export const PhotoGallery = ({ photos = [] }) => {
     <View style={g.wrap}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={g.gallery}>
         {photos.map((uri, i) => (
-          <TouchableOpacity key={i} onPress={() => setActiveIdx(i)} style={g.thumb}>
-            <Image source={{ uri }} style={g.thumbImg} />
+          <TouchableOpacity key={i} onPress={() => setActiveIdx(i)} style={[g.thumb, { backgroundColor: theme.card }]}>
+            {errored[i] ? (
+              <View style={[g.thumbImg, g.thumbBroken, { borderColor: theme.border }]}>
+                <Feather name="image" size={22} color={theme.textMuted} />
+                <Text style={[g.brokenTxt, { color: theme.textMuted }]}>{t('photo_unavailable')}</Text>
+              </View>
+            ) : (
+              <Image
+                source={{ uri: resolvePhoto(uri) }}
+                style={g.thumbImg}
+                onError={() => setErrored((e) => ({ ...e, [i]: true }))}
+              />
+            )}
           </TouchableOpacity>
         ))}
       </ScrollView>
-      <Text style={[g.count, { color: theme.textMuted }]}>📸 {photos.length} фото · нажмите чтобы увеличить</Text>
+      {/* Подпись тоже кликабельная — тап открывает просмотр (не только миниатюра). */}
+      <TouchableOpacity
+        onPress={() => setActiveIdx(0)}
+        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 4 }}
+        activeOpacity={0.7}
+      >
+        <Feather name="camera" size={14} color={theme.textMuted} />
+        <Text style={[g.count, { color: theme.textMuted, marginTop: 0 }]}>{t('photo_gallery_count').replace('{n}', photos.length)}</Text>
+      </TouchableOpacity>
 
       <Modal visible={activeIdx !== null} transparent animationType="fade" onRequestClose={() => setActiveIdx(null)}>
         <View style={g.viewer}>
           <TouchableOpacity style={g.closeViewer} onPress={() => setActiveIdx(null)}>
-            <Text style={g.closeViewerText}>✕</Text>
+            <Feather name="x" size={22} color="#fff" />
           </TouchableOpacity>
           <ScrollView
             horizontal
@@ -159,7 +188,7 @@ export const PhotoGallery = ({ photos = [] }) => {
           >
             {photos.map((uri, i) => (
               <View key={i} style={{ width: screenWidth, alignItems: 'center', justifyContent: 'center' }}>
-                <Image source={{ uri }} style={{ width: screenWidth, height: '100%', resizeMode: 'contain' }} />
+                <Image source={{ uri: resolvePhoto(uri) }} style={{ width: screenWidth, height: '100%', resizeMode: 'contain' }} />
               </View>
             ))}
           </ScrollView>
@@ -187,14 +216,14 @@ const p = StyleSheet.create({
     position: 'absolute', bottom: 4, left: 4,
     backgroundColor: '#FBBF24', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6,
   },
-  mainBadgeText: { color: '#0C0A09', fontSize: 9, fontWeight: '900' },
+  mainBadgeText: { color: '#0C0A09', fontSize: 11, fontWeight: '900' },
   addBtn: {
     width: 100, height: 100,
     borderRadius: 12, borderWidth: 1, borderStyle: 'dashed',
     alignItems: 'center', justifyContent: 'center', gap: 4,
   },
-  addBtnText: { fontSize: 9, fontWeight: '600', textAlign: 'center', paddingHorizontal: 4 },
-  counter: { fontSize: 9, fontWeight: '700' },
+  addBtnText: { fontSize: 11, fontWeight: '600', textAlign: 'center', paddingHorizontal: 4 },
+  counter: { fontSize: 11, fontWeight: '700' },
   sourceBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   sourceSheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 32 },
   sourceTitle: { fontSize: 16, fontWeight: '700', textAlign: 'center', marginBottom: 14 },
@@ -207,6 +236,8 @@ const g = StyleSheet.create({
   gallery: { gap: 8, paddingBottom: 6 },
   thumb: { width: 140, height: 140, borderRadius: 14, overflow: 'hidden' },
   thumbImg: { width: '100%', height: '100%' },
+  thumbBroken: { alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1, borderStyle: 'dashed', borderRadius: 14 },
+  brokenTxt: { fontSize: 10, fontWeight: '600', textAlign: 'center', paddingHorizontal: 6 },
   count: { fontSize: 11, fontWeight: '600', marginTop: 4, textAlign: 'center' },
   viewer: { flex: 1, backgroundColor: '#000' },
   closeViewer: { position: 'absolute', top: 50, right: 20, zIndex: 10, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },

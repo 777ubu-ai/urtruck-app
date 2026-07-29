@@ -1,10 +1,12 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Platform } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useToast } from '../components/Toast';
 import RouteMap from '../components/RouteMap';
+import { localizePlace } from '../utils/places';
 import GradientText from '../components/GradientText';
 import ShareModal from '../components/ShareModal';
 import { routeStats } from '../utils/geo';
@@ -38,7 +40,7 @@ export default function TripDetail({ navigation, route }) {
   backText: { fontSize: 22 },
   title: { flex: 1, fontSize: 20, fontWeight: '900' },
   section: { padding: 16, borderRadius: 16, borderWidth: 1, marginBottom: 10 },
-  sectionTitle: { fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: 12, textTransform: 'uppercase' },
+  sectionTitle: { fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: 12, textTransform: 'uppercase' },
   routeRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 },
   dot: { width: 10, height: 10, borderRadius: 5 },
   city: { fontSize: 16, fontWeight: '800' },
@@ -50,12 +52,13 @@ export default function TripDetail({ navigation, route }) {
   dateLabel: { fontSize: 13, fontWeight: '500' },
   dateValue: { fontSize: 14, fontWeight: '700' },
   primaryBtn: { borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
-  secondaryBtn: { borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 8, borderWidth: 1.5 },
+  secondaryBtn: { borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 8, borderWidth: 0, backgroundColor: 'rgba(148,163,184,0.14)' },
   secondaryBtnText: { fontSize: 14, fontWeight: '700' },
   primaryBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
-  dangerBtn: { borderWidth: 1, borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 8 },
+  dangerBtn: { borderWidth: 0, borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 8, backgroundColor: 'rgba(239,68,68,0.10)' },
   dangerBtnText: { color: '#EF4444', fontSize: 13, fontWeight: '800' },
   dealActionBtn: { borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10 },
+  dealActionGhost: { backgroundColor: 'transparent', borderWidth: 1.6 },
   dealActionText: { color: '#fff', fontSize: 13, fontWeight: '700' },
 
   }), [v1]);
@@ -90,7 +93,7 @@ export default function TripDetail({ navigation, route }) {
       isTrip: true, _server: false, isMine: false,
     };
   }, [serverTrip, rawTrip, tripId]);
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
   const { requireLevel, Gate } = useVerificationGate();
@@ -177,7 +180,10 @@ export default function TripDetail({ navigation, route }) {
           <TouchableOpacity onPress={() => navigation.goBack()} style={[s.backBtn, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <Text style={[s.backText, { color: theme.text }]}>‹</Text>
           </TouchableOpacity>
-          <GradientText style={s.title} colors={['#22C55E', '#16A34A']}>🚛 {t('trip_title')}</GradientText>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Feather name="truck" size={20} color="#22C55E" />
+            <GradientText style={s.title} colors={['#22C55E', '#16A34A']}>{t('trip_title')}</GradientText>
+          </View>
         </View>
         {dealStatus ? renderDealBlock() : (
           <View style={{ padding: 24, alignItems: 'center' }}>
@@ -194,16 +200,16 @@ export default function TripDetail({ navigation, route }) {
         <View style={[s.section, {
           backgroundColor: theme.card,
           borderColor: dealStatus === 'delivered' ? '#22C55E'
-            : dealStatus === 'in_progress' ? '#F59E0B'
+            : dealStatus === 'in_progress' ? '#FF8400'
             : dealStatus === 'cancelled' ? '#EF4444'
-            : '#F59E0B',
+            : '#FF8400',
           borderWidth: 2,
         }]}>
           <Text style={[s.sectionTitle, {
             color: dealStatus === 'delivered' ? '#22C55E'
-              : dealStatus === 'in_progress' ? '#F59E0B'
+              : dealStatus === 'in_progress' ? '#FF8400'
               : dealStatus === 'cancelled' ? '#EF4444'
-              : '#F59E0B',
+              : '#FF8400',
             textAlign: 'center',
           }]}>
             {dealStatus === 'accepted'    && '🤝 ' + t('status_accepted')}
@@ -231,29 +237,35 @@ export default function TripDetail({ navigation, route }) {
                 <Text style={s.dealActionText}>{statusLoading ? '...' : '✅ ' + t('mark_arrived')}</Text>
               </TouchableOpacity>
             )}
-            {isShipper && dealStatus === 'in_progress' && (
-              <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: v1Accent.main }]} onPress={() => changeDealStatus('delivered')} disabled={statusLoading}>
-                <Text style={[s.dealActionText, { color: v1Accent.onAccent }]}>{statusLoading ? '...' : '✅ ' + t('confirm_delivery')}</Text>
+            {isShipper && (dealStatus === 'in_progress' || dealStatus === 'at_border') && (
+              <TouchableOpacity style={[s.dealActionBtn, s.dealActionGhost, { borderColor: v1Accent.main }]} onPress={() => changeDealStatus('delivered')} disabled={statusLoading}>
+                <Text style={[s.dealActionText, { color: v1Accent.main }]}>{statusLoading ? '...' : '✅ ' + t('confirm_delivery')}</Text>
               </TouchableOpacity>
             )}
             {chatRoomId && (
               <TouchableOpacity
-                style={[s.dealActionBtn, { backgroundColor: v1Accent.main }]}
+                style={[s.dealActionBtn, s.dealActionGhost, { borderColor: v1Accent.main }]}
                 onPress={() => navigation.navigate('Chat', { roomId: chatRoomId, role, tripId: (trip && trip.id) || tripId, partner: driverId ? { id: driverId } : undefined })}
               >
-                <Text style={[s.dealActionText, { color: v1Accent.onAccent }]}>💬 {t('order_chat')}</Text>
+                <Text style={[s.dealActionText, { color: v1Accent.main }]}>💬 {t('order_chat')}</Text>
               </TouchableOpacity>
             )}
-            {(dealStatus === 'accepted' || dealStatus === 'in_progress') && (
+            {(dealStatus === 'accepted' || dealStatus === 'in_progress' || dealStatus === 'at_border') && (
               <TouchableOpacity
                 style={[s.dealActionBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#EF4444' }]}
                 disabled={statusLoading}
-                onPress={async () => {
-                  const ok = (Platform.OS === 'web' && typeof window !== 'undefined' && window.confirm)
-                    ? window.confirm(t('cancel_deal_confirm'))
-                    : true;
-                  if (!ok) return;
-                  changeDealStatus('cancelled');
+                onPress={() => {
+                  // Подтверждение на обеих платформах (раньше на native отменяло
+                  // мгновенно без вопроса при случайном тапе).
+                  const doCancel = () => changeDealStatus('cancelled');
+                  if (Platform.OS === 'web') {
+                    if (typeof window !== 'undefined' && window.confirm(t('cancel_deal_confirm'))) doCancel();
+                  } else {
+                    Alert.alert(t('cancel_deal_confirm'), '', [
+                      { text: t('cancel'), style: 'cancel' },
+                      { text: t('confirm'), style: 'destructive', onPress: doCancel },
+                    ]);
+                  }
                 }}
               >
                 <Text style={[s.dealActionText, { color: '#EF4444' }]}>⊘ {t('cancel_deal')}</Text>
@@ -311,20 +323,20 @@ export default function TripDetail({ navigation, route }) {
 
         {/* Информация о рейсе */}
         <GlassCard>
-          <SectionTitle icon="🛣️" label={t('trip_route')} />
+          <SectionTitle featherIcon="map" label={t('trip_route')} />
           <View style={s.routeRow}>
             <View style={[s.dot, { backgroundColor: '#EF4444' }]} />
-            <Text style={[s.city, { color: theme.text }]}>{view.from}</Text>
+            <Text style={[s.city, { color: theme.text }]}>{localizePlace(view.from, lang)}</Text>
           </View>
           {view.transit ? (
             <View style={s.routeRow}>
               <View style={[s.dot, { backgroundColor: '#334155' }]} />
-              <Text style={[s.transitCity, { color: theme.textSecondary }]}>{t('trip_via')} {view.transit}</Text>
+              <Text style={[s.transitCity, { color: theme.textSecondary }]}>{t('trip_via')} {localizePlace(view.transit, lang)}</Text>
             </View>
           ) : null}
           <View style={s.routeRow}>
             <View style={[s.dot, { backgroundColor: '#22C55E' }]} />
-            <Text style={[s.city, { color: theme.text }]}>{view.to}</Text>
+            <Text style={[s.city, { color: theme.text }]}>{localizePlace(view.to, lang)}</Text>
           </View>
 
           {stats && (
@@ -341,7 +353,7 @@ export default function TripDetail({ navigation, route }) {
 
         {/* Даты */}
         <GlassCard>
-          <SectionTitle icon="📅" label={t('trip_dates')} />
+          <SectionTitle featherIcon="calendar" label={t('trip_dates')} />
           <View style={s.dateRow}>
             <Text style={[s.dateLabel, { color: v1.textMuted }]}>🚀 {t('trip_dep')}</Text>
             <Text style={[s.dateValue, { color: v1.text }]} testID="trip-detail-departure">{view.departure}</Text>
@@ -354,7 +366,7 @@ export default function TripDetail({ navigation, route }) {
 
         {/* Транспорт */}
         <GlassCard>
-          <SectionTitle icon="🚚" label={t('trip_transport')} />
+          <SectionTitle featherIcon="truck" label={t('trip_transport')} />
           <View style={s.dateRow}>
             <Text style={[s.dateLabel, { color: v1.textMuted }]}>{t('trip_truck_body')}</Text>
             <Text style={[s.dateValue, { color: v1.text }]} testID="trip-detail-truck">{view.truckType}</Text>
@@ -384,13 +396,13 @@ export default function TripDetail({ navigation, route }) {
 
         {/* Цена — выделенный блок с brand-accent */}
         <GlassCard accent={v1Accent.main}>
-          <SectionTitle icon="💰" label={t('price')} />
+          <SectionTitle featherIcon="dollar-sign" label={t('price')} />
           <Text style={[s.priceBig, { color: v1Accent.main }]} numberOfLines={1}>{view.price}</Text>
         </GlassCard>
 
         {/* Timeline статусов */}
         <GlassCard>
-          <SectionTitle icon="📍" label={t('trip_status')} />
+          <SectionTitle featherIcon="map-pin" label={t('trip_status')} />
           {TRIP_STATES.map((st, i) => {
             const info = TRIP_STATE_INFO[st];
             const currentIdx = TRIP_STATES.indexOf(trip.tripState || 'planned');

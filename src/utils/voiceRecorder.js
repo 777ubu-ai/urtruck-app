@@ -15,6 +15,14 @@ export const voice = {
     }
     try {
       const { Audio } = require('expo-av');
+      // Явно запрашиваем доступ к микрофону — без этого iOS не показывает диалог
+      // разрешения и запись падает («Нужен доступ к микрофону»). NSMicrophone-
+      // UsageDescription уже прописан в app.json (нужна пересборка build 39).
+      const perm = await Audio.requestPermissionsAsync();
+      if (!perm.granted) {
+        console.warn('[voice] microphone permission not granted');
+        return false;
+      }
       await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
       const { recording } = await Audio.Recording.createAsync(
         Audio.RecordingOptionsPresets.HIGH_QUALITY
@@ -57,7 +65,17 @@ export const voice = {
         return this._playWeb(uri);
       }
       const { Audio } = require('expo-av');
-      const { sound } = await Audio.Sound.createAsync({ uri });
+      // C1 (device-баг): голосовое не проигрывалось у получателя на iOS.
+      // Первопричина — после записи audio-сессия остаётся в режиме записи
+      // (allowsRecordingIOS: true, выставлен в startRecording), и на iOS
+      // воспроизведение в этом режиме молчит/падает. А тот, кто только слушает
+      // (никогда не писал), играет в дефолтном режиме → в «бесшумном» режиме
+      // телефона тоже тишина. Перед воспроизведением явно переводим сессию в
+      // playback-режим: запись выключена, звук идёт даже в silent-mode.
+      try {
+        await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
+      } catch { /* не критично — пытаемся играть в текущем режиме */ }
+      const { sound } = await Audio.Sound.createAsync({ uri }, { shouldPlay: true });
       _sound = sound;
       await sound.playAsync();
       sound.setOnPlaybackStatusUpdate((status) => {
@@ -98,7 +116,10 @@ export const voice = {
       this._webRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) this._webChunks.push(e.data);
       };
-      this._webRecorder.start();
+      // start(400): чанки копятся каждые 400мс. Без timeslice iOS Safari на
+      // короткой записи (1-2с) часто не успевает выдать данные к stop() —
+      // блоб выходил пустым и юзер видел «Не удалось записать голосовое».
+      this._webRecorder.start(400);
       this._startTime = Date.now();
       return true;
     } catch (e) {
@@ -112,13 +133,20 @@ export const voice = {
       if (!this._webRecorder) { resolve(null); return; }
       this._webRecorder.onstop = () => {
         const blob = new Blob(this._webChunks, { type: this._webRecorder.mimeType });
-        const uri = URL.createObjectURL(blob);
         const duration = Math.round((Date.now() - (this._startTime || Date.now())) / 1000);
         this._webRecorder.stream.getTracks().forEach(t => t.stop());
         this._webRecorder = null;
         this._webChunks = [];
+        // Пустая запись (0 байт) → не создаём битый blob-URL. Так получатель
+        // не получает «пустое» голосовое, а отправитель видит понятную ошибку.
+        if (!blob || blob.size === 0) { resolve(null); return; }
+        const uri = URL.createObjectURL(blob);
         resolve({ uri, duration, blob });
       };
+      // requestData() форсит отдачу накопленных чанков ДО onstop — на part
+      // мобильных браузеров (iOS Safari) без этого ondataavailable иногда
+      // не срабатывает и blob выходит пустым.
+      try { this._webRecorder.requestData(); } catch { /* не критично */ }
       this._webRecorder.stop();
     });
   },

@@ -1,4 +1,5 @@
 // Marketplace API — грузы, рейсы, ставки через сервер
+import { Platform } from 'react-native';
 import { storage } from './storage';
 import { API_BASE } from '../config/env';
 import { authedFetch } from './authEvents';  // QA-аудит P1-6: 401 → auth:expired
@@ -38,6 +39,67 @@ function normalizeDetail(d, status) {
 }
 
 export const marketAPI = {
+  // ─── Сохранённые маршруты (подписка «грузы по моему маршруту») ───
+  // Эндпоинт вне /market: /api/v1/searches.
+  async saveRoute({ from_city, to_city, truck_type = null }) {
+    try {
+      const r = await authedFetch(`${API_BASE}/searches`, {
+        method: 'POST', headers: await headers(),
+        body: JSON.stringify({ from_city, to_city, truck_type, notify: true }),
+      });
+      const data = await r.json().catch(() => ({}));
+      return { ok: r.ok, ...data };
+    } catch (e) {
+      return { ok: false, detail: e?.message || 'network_error' };
+    }
+  },
+  async listSavedRoutes() {
+    try {
+      const r = await authedFetch(`${API_BASE}/searches`, { headers: await headers() });
+      if (!r.ok) return { searches: [] };
+      return await r.json();
+    } catch { return { searches: [] }; }
+  },
+  async deleteSavedRoute(id) {
+    try {
+      const r = await authedFetch(`${API_BASE}/searches/${id}`, { method: 'DELETE', headers: await headers() });
+      return { ok: r.ok };
+    } catch { return { ok: false }; }
+  },
+
+  // ─── Избранное (сохранённые водители/грузы) ── эндпоинт /api/v1/favorites
+  async favCheck(item_type, item_id) {
+    try {
+      const r = await authedFetch(`${API_BASE}/favorites/check?item_type=${encodeURIComponent(item_type)}&item_id=${encodeURIComponent(item_id)}`, { headers: await headers() });
+      if (!r.ok) return false;
+      const d = await r.json();
+      return !!d.is_favorite;
+    } catch { return false; }
+  },
+  async favAdd(item_type, item_id, item_data = {}) {
+    try {
+      const r = await authedFetch(`${API_BASE}/favorites`, {
+        method: 'POST', headers: await headers(),
+        body: JSON.stringify({ item_type, item_id, item_data }),
+      });
+      return { ok: r.ok };
+    } catch { return { ok: false }; }
+  },
+  async favRemove(item_type, item_id) {
+    try {
+      const r = await authedFetch(`${API_BASE}/favorites?item_type=${encodeURIComponent(item_type)}&item_id=${encodeURIComponent(item_id)}`, { method: 'DELETE', headers: await headers() });
+      return { ok: r.ok };
+    } catch { return { ok: false }; }
+  },
+  async favList(item_type = '') {
+    try {
+      const q = item_type ? `?item_type=${encodeURIComponent(item_type)}` : '';
+      const r = await authedFetch(`${API_BASE}/favorites${q}`, { headers: await headers() });
+      if (!r.ok) return { favorites: [] };
+      return await r.json();
+    } catch { return { favorites: [] }; }
+  },
+
   // ─── Cargos ───
   async createCargo(data) {
     const r = await authedFetch(`${BASE}/cargos`, {
@@ -47,6 +109,26 @@ export const marketAPI = {
     const d = await r.json();
     if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
     return d;
+  },
+
+  // Загрузка одного фото груза → storage-ключ (мультипарт, как в чате).
+  // Ключ кладётся в cargos.photos; сервер подпишет его на выдаче.
+  async uploadCargoPhoto(uri) {
+    const token = await storage.get('ur_reg_token');
+    const form = new FormData();
+    if (Platform.OS === 'web') {
+      const blob = await fetch(uri).then((x) => x.blob());
+      form.append('file', blob, 'cargo.jpg');
+    } else {
+      form.append('file', { uri, name: 'cargo.jpg', type: 'image/jpeg' });
+    }
+    const r = await authedFetch(`${BASE}/cargos/photo`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    });
+    if (!r.ok) throw new Error(`cargo photo upload failed ${r.status}`);
+    return r.json();
   },
 
   async listCargos({ status = 'active', fromCity = '', toCity = '', cargoType = '', limit = 50, offset = 0 } = {}) {
@@ -101,6 +183,26 @@ export const marketAPI = {
     return d;
   },
 
+  // Накладная (CMR): подписанная ссылка для открытия в браузере/печати.
+  async waybillLink(dealId) {
+    const r = await authedFetch(`${BASE}/deals/${dealId}/waybill-link`, {
+      method: 'POST', headers: await headers(),
+    });
+    const d = await r.json();
+    if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status) };
+    return { ok: true, url: `${BASE}/deals/${dealId}/waybill?exp=${d.exp}&sig=${d.sig}` };
+  },
+
+  // Продлить груз одним тапом («Ещё актуально» — Модель А): дата = сегодня.
+  async extendCargo(id) {
+    const r = await authedFetch(`${BASE}/cargos/${id}/extend`, {
+      method: 'POST', headers: await headers(),
+    });
+    const d = await r.json();
+    if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
+    return d;
+  },
+
   // ─── Trips ───
   async createTrip(data) {
     const r = await authedFetch(`${BASE}/trips`, {
@@ -130,6 +232,16 @@ export const marketAPI = {
     const r = await authedFetch(`${BASE}/trips/${id}`, {
       method: 'PATCH', headers: await headers(),
       body: JSON.stringify(payload),
+    });
+    const d = await r.json();
+    if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
+    return d;
+  },
+
+  // Продлить рейс одним тапом («Ещё актуально» — Модель А): дата = сегодня.
+  async extendTrip(id) {
+    const r = await authedFetch(`${BASE}/trips/${id}/extend`, {
+      method: 'POST', headers: await headers(),
     });
     const d = await r.json();
     if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
@@ -200,6 +312,15 @@ export const marketAPI = {
     const d = await r.json();
     if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
     return d;
+  },
+
+  // Часть 3: история цены по ставке (движение $6000→$5500→$5200 в пузыре/шапке).
+  async bidEvents(bidId) {
+    try {
+      const r = await authedFetch(`${BASE}/bids/${bidId}/events`, { headers: await headers() });
+      if (!r.ok) return { events: [] };
+      return await r.json();
+    } catch { return { events: [] }; }
   },
 
   async acceptCounterBid(bidId) {

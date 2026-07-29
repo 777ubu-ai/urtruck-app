@@ -3,7 +3,7 @@ import { Text, Platform } from 'react-native';
 
 // Gradient text — на web через linear-gradient + background-clip
 // На mobile — fallback на solid color
-export default function GradientText({ children, style, colors = ['#F59E0B', '#EF4444'], ...props }) {
+export default function GradientText({ children, style, colors = ['#FF8400', '#EF4444'], ...props }) {
   if (Platform.OS === 'web') {
     return (
       <Text

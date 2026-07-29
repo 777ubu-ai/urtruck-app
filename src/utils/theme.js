@@ -69,25 +69,25 @@ export const accentColors = {
 // Status colors
 export const statusColors = {
   success:  { color: '#22c55e', bg: 'rgba(34,197,94,0.15)' },
-  warning:  { color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' },
+  warning:  { color: '#FF8400', bg: 'rgba(255,132,0,0.15)' },
   danger:   { color: '#ef4444', bg: 'rgba(239,68,68,0.15)' },
   info:     { color: '#3b82f6', bg: 'rgba(59,130,246,0.15)' },
 };
 
 // Scoring colors
 export const scoringColor = (score) =>
-  score >= 70 ? '#22c55e' : score >= 40 ? '#f59e0b' : '#ef4444';
+  score >= 70 ? '#22c55e' : score >= 40 ? '#FF8400' : '#ef4444';
 
 // Truck type colors (all green-based for consistency)
 export const truckColors = {
-  tent: '#22c55e', ref: '#3b82f6', platform: '#f59e0b',
+  tent: '#22c55e', ref: '#3b82f6', platform: '#FF8400',
   auto: '#a855f7', izoterm: '#06b6d4',
 };
 
 export const colors = {
   success: '#22c55e',
   error: '#ef4444',
-  warning: '#f59e0b',
+  warning: '#FF8400',
   rating: '#eab308',
   online: '#22c55e',
 };
@@ -149,7 +149,7 @@ export const DS = {
   // Badge
   badge: (color) => ({
     backgroundColor: color === '#22c55e' ? 'rgba(34,197,94,0.15)'
-      : color === '#f59e0b' ? 'rgba(245,158,11,0.15)'
+      : color === '#FF8400' ? 'rgba(255,132,0,0.15)'
       : color === '#ef4444' ? 'rgba(239,68,68,0.15)'
       : 'rgba(59,130,246,0.15)',
     paddingHorizontal: 10,

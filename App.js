@@ -1,16 +1,42 @@
 import React, { useEffect, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { Platform } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import { Platform, AppState } from 'react-native';
+import { NavigationContainer, DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { ThemeProvider } from './src/utils/ThemeContext';
-import { AuthProvider } from './src/utils/AuthContext';
+import { ThemeProvider, useTheme } from './src/utils/ThemeContext';
+import { AuthProvider, useAuth } from './src/utils/AuthContext';
 import { ToastProvider } from './src/components/Toast';
 import OfflineBanner from './src/components/OfflineBanner';
-// VerificationStatusBanner removed — after OTP users get full access
-// import VerificationStatusBanner from './src/components/VerificationStatusBanner';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import AppNavigator from './src/navigation/AppNavigator';
+import { flushOutbox } from './src/utils/outbox';
+// Фоновый GPS: сам импорт регистрирует TaskManager-таску (обязательно на
+// верхнем уровне, до маунта) — старт/стоп управляется из broadcast-хука.
+import './src/utils/backgroundLocation';
+import { chatAPI } from './src/utils/chatAPI';
+import { push } from './src/utils/push';
+import * as Sentry from '@sentry/react-native';
+
+// Sentry — мониторинг падений САМОГО приложения (у пользователей на телефонах).
+// Полноценно оживает в нативной сборке (build 42+); в Expo Go нативного модуля
+// нет — тогда работает как no-op, приложение не падает. DSN можно переопределить
+// через EXPO_PUBLIC_SENTRY_DSN (напр. отдельный проект React Native).
+// PII не отправляем (send_default_pii=false) — ИИН/ФИО/телефоны не уходят.
+const _SENTRY_DSN =
+  process.env.EXPO_PUBLIC_SENTRY_DSN ||
+  'https://18453143e7167ce08c98f2ce0d90bfd2@o4511743497273344.ingest.de.sentry.io/4511743527354448';
+try {
+  Sentry.init({
+    dsn: _SENTRY_DSN,
+    environment: process.env.EXPO_PUBLIC_SENTRY_ENV || 'production',
+    tracesSampleRate: 0.1,
+    sendDefaultPii: false,
+    enableNativeFramesTracking: false,
+  });
+} catch (e) {
+  // Нет нативного модуля (Expo Go) / иная причина — не мешаем запуску.
+  console.warn('[sentry] init skipped:', e && e.message);
+}
 
 // PR-C2 (chat / push P0): парсер url для notification tap navigation.
 // Backend кладёт в notification url относительный путь:
@@ -43,20 +69,23 @@ function parseNotifUrl(url) {
   return { kind, id, params };
 }
 
-function navigateFromUrl(navRef, url) {
+function navigateFromUrl(navRef, url, role) {
   if (!navRef?.current) return;
   const parsed = parseNotifUrl(url);
   if (!parsed) return;
   const { kind, id, params } = parsed;
   try {
     if (kind === 'cargos' && id) {
-      navRef.current.navigate('CargoDetail', { cargoId: id, bidId: params.bid || null });
+      // BUG-005: прокидываем role, чтобы экран открылся в правильном виде.
+      navRef.current.navigate('CargoDetail', { cargoId: id, bidId: params.bid || null, role });
     } else if (kind === 'trips' && id) {
-      navRef.current.navigate('TripDetail', { tripId: id, bidId: params.bid || null });
+      navRef.current.navigate('TripDetail', { tripId: id, bidId: params.bid || null, role });
     } else if (kind === 'deals' && id) {
-      navRef.current.navigate('ChatsList');
+      // BUG-002: deals → Deal Room (ChatScreen с dealId), как в
+      // NotificationsScreen. Раньше кидало в общий список чатов без контекста.
+      navRef.current.navigate('Chat', { dealId: id, role });
     } else if (kind === 'chats' && id) {
-      navRef.current.navigate('Chat', { roomId: id });
+      navRef.current.navigate('Chat', { roomId: id, role });
     } else if (kind === 'chat' || kind === 'chats') {
       navRef.current.navigate('ChatsList');
     }
@@ -65,74 +94,142 @@ function navigateFromUrl(navRef, url) {
   }
 }
 
-// Welcome-splash показывает НАТИВНЫЙ splash (app.json → urtruck-splash.png,
-// resizeMode contain) — он сам уходит, когда отрисован первый кадр JS. JS-оверлей
-// убран (14.06): он накладывался на первый слайд онбординга (там своя такая же
-// картинка) → при затухании двоилось «UrTruck». Нативного splash достаточно.
+// Welcome-splash показывает НАТИВНЫЙ splash (app.json → splash.image), он сам
+// уходит, когда отрисован первый кадр JS. JS-оверлей убран (баг: всплывал ПОВЕРХ
+// уже загруженной ленты → «двоение UrTruck», как и в предыдущий раз 14.06).
+// Нативного splash достаточно во всех прод-сборках.
 
-export default function App() {
+// AppInner живёт ПОД AuthProvider — поэтому знает состояние сессии и может
+// (а) откладывать deep-link до готовности навигатора и авторизованного стека,
+// (б) прогонять офлайн-очередь чата глобально, (в) пере-регистрировать push
+// на запуске (лечит ротацию Expo-токена).
+function AppInner() {
   const navRef = useRef();
+  const navReadyRef = useRef(false);
+  const pendingUrlRef = useRef(null);
+  const { session, hasToken } = useAuth();
+  const { theme, isDark } = useTheme();
 
-  // Web (PWA) — Service Worker уже умеет showNotification и postMessage
-  // при tap (см. sw-template.js). Подписываемся на 'message' с
-  // type='notification' и навигируем по url.
+  // Фон САМОГО навигатора (не только сцены). Без theme у NavigationContainer
+  // берётся DefaultTheme с БЕЛЫМ фоном — и он просвечивал снизу, под прозрачным
+  // плавающим таб-баром (белая полоса в зоне home-indicator на тёмной теме).
+  // Привязываем фон навигатора к текущей теме → полоса совпадает с фоном экрана.
+  const base = isDark ? DarkTheme : DefaultTheme;
+  const navTheme = { ...base, colors: { ...base.colors, background: theme.bg } };
+
+  // Авторизован ли для «глубоких» экранов (Chat/ChatsList/CargoDetail…) —
+  // они существуют только в полном стеке (session + роль). До этого маршрут
+  // отсутствует, navigate падал и тап по пушу «терялся».
+  const authedForDeepLink = !!(session && session.user && session.user.role);
+
+  // P5: единая точка навигации по url из пуша. Если навигатор не готов или
+  // пользователь ещё не в авторизованном стеке — откладываем url и повторим,
+  // когда всё будет готово (см. useEffect ниже и onReady у контейнера).
+  const routeFromUrl = (url) => {
+    if (!url) return;
+    const parsed = parseNotifUrl(url);
+    const needsAuth = parsed && ['chats', 'chat', 'deals', 'cargos', 'trips'].includes(parsed.kind);
+    if (!navReadyRef.current || !navRef.current || (needsAuth && !authedForDeepLink)) {
+      pendingUrlRef.current = url;  // отложить
+      return;
+    }
+    navigateFromUrl(navRef, url, session?.user?.role);
+  };
+
+  // Повторяем отложенный deep-link, когда появилась авторизация (или навигатор
+  // стал готов через onReady, который тоже дергает routeFromUrl).
+  useEffect(() => {
+    if (pendingUrlRef.current && navReadyRef.current && authedForDeepLink) {
+      const u = pendingUrlRef.current;
+      pendingUrlRef.current = null;
+      setTimeout(() => navigateFromUrl(navRef, u), 250);
+    }
+  }, [authedForDeepLink]);
+
+  // Web (PWA) — Service Worker присылает postMessage при tap по уведомлению.
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof navigator === 'undefined') return;
     const handler = (event) => {
-      if (event.data?.type === 'notification' && event.data.url) {
-        navigateFromUrl(navRef, event.data.url);
-      }
+      if (event.data?.type === 'notification' && event.data.url) routeFromUrl(event.data.url);
     };
     navigator.serviceWorker?.addEventListener('message', handler);
     return () => navigator.serviceWorker?.removeEventListener('message', handler);
-  }, []);
+  }, [authedForDeepLink]);
 
-  // PR-C2 (P0 push tap navigation): на iOS/Android нативный push'и
-  // приходят через expo-notifications. До этого pomenta был только
-  // setNotificationHandler в push.js (показывает banner в foreground),
-  // но НЕ было реакции на tap (background/closed). Тап открывал app
-  // на ровном месте — пользователь не понимал что произошло.
-  // Подписываемся на:
-  //   - addNotificationResponseReceivedListener — пользователь тапнул
-  //   - getLastNotificationResponseAsync — initial entry если app
-  //     стартовал из push'a (cold start)
-  // url достаём из notification.data — backend кладёт его в
-  // payload.data.url через push_sender.send.
+  // Native (iOS/Android) — tap по пушу в фоне/закрытом приложении + cold start.
   useEffect(() => {
     if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
     let Notifications;
-    try { Notifications = require('expo-notifications'); }
-    catch { return; }
-
+    try { Notifications = require('expo-notifications'); } catch { return; }
+    // BUG-006: getLastNotificationResponseAsync (запускающий тап) и listener
+    // на части версий Expo SDK срабатывают ОБА для одного и того же тапа →
+    // двойная навигация. Дедуп по identifier уведомления в общем замыкании.
+    const handled = new Set();
     const handleResponse = (response) => {
+      const rid = response?.notification?.request?.identifier;
+      if (rid) {
+        if (handled.has(rid)) return;
+        handled.add(rid);
+      }
       const url = response?.notification?.request?.content?.data?.url;
-      if (url) navigateFromUrl(navRef, url);
+      if (url) routeFromUrl(url);
     };
-
-    // Cold start case
     Notifications.getLastNotificationResponseAsync?.()
       .then((resp) => { if (resp) handleResponse(resp); })
       .catch(() => {});
-
     const sub = Notifications.addNotificationResponseReceivedListener?.(handleResponse);
     return () => { sub?.remove?.(); };
-  }, []);
+  }, [authedForDeepLink]);
 
+  // P2: глобальный прогон офлайн-очереди чата — на старте и при возврате
+  // приложения в active (сеть могла восстановиться). Раньше flush был привязан
+  // только к открытому ChatScreen → неотправленный текст застревал, пока юзер
+  // не переоткроет тот же чат. Backend идемпотентен по client_msg_id — дублей нет.
+  useEffect(() => {
+    if (!hasToken) return;
+    const doFlush = () => { flushOutbox((p) => chatAPI.send(p)).catch(() => {}); };
+    doFlush();
+    const sub = AppState.addEventListener('change', (s) => { if (s === 'active') doFlush(); });
+    return () => sub?.remove?.();
+  }, [hasToken]);
+
+  // P5: пере-регистрация push-токена на запуске для уже залогиненного юзера.
+  // Раньше autoRegister звался только сразу после OTP — при ротации Expo-токена
+  // (обновление/переустановка приложения) пуши переставали доходить до
+  // следующего логина. Теперь обновляем токен на бэке при каждом старте.
+  useEffect(() => {
+    if (!hasToken) return;
+    push.autoRegister?.().catch(() => {});
+  }, [hasToken]);
+
+  return (
+    <SafeAreaProvider>
+      <ToastProvider>
+        <OfflineBanner />
+        <NavigationContainer
+          ref={navRef}
+          theme={navTheme}
+          onReady={() => { navReadyRef.current = true; if (pendingUrlRef.current) routeFromUrl(pendingUrlRef.current); }}
+        >
+          <StatusBar style="light" />
+          <AppNavigator />
+        </NavigationContainer>
+      </ToastProvider>
+    </SafeAreaProvider>
+  );
+}
+
+function App() {
   return (
     <ErrorBoundary>
     <ThemeProvider>
       <AuthProvider>
-        <SafeAreaProvider>
-          <ToastProvider>
-            <OfflineBanner />
-            <NavigationContainer ref={navRef}>
-              <StatusBar style="light" />
-              <AppNavigator />
-            </NavigationContainer>
-          </ToastProvider>
-        </SafeAreaProvider>
+        <AppInner />
       </AuthProvider>
     </ThemeProvider>
     </ErrorBoundary>
   );
 }
+
+// Sentry.wrap — оборачивает корень для перехвата крашей рендера/навигации.
+export default Sentry.wrap(App);

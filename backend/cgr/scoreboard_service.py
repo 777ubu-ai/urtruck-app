@@ -94,6 +94,37 @@ async def _aggregate_queue() -> dict[str, int]:
     return totals
 
 
+async def fetch_board_rows(checkpoint: str | None = None,
+                           status: str | None = None,
+                           max_pages: int = 4) -> list[dict]:
+    """Трек 1 — полное онлайн-табло: строки очереди (ГРНЗ + статус + слот) по
+    пунктам пропуска. Публичные данные public-list, без авторизации. Опционально
+    фильтр по пункту (подстрока) и статусу. Возвращает список
+    {checkpoint, plate, queue_datetime, status:{code,is_late,raw}}.
+
+    Переиспользует проверенный parse_public_list — новую разметку не парсим."""
+    if not cgr_settings.feature_enabled:
+        return []
+    out: list[dict] = []
+    prev_sig = None
+    for page in range(1, max_pages + 1):
+        html = await cgr_client.fetch_public_list(status=status, page=page)
+        rows = parse_public_list(html)
+        if not rows:
+            break
+        sig = (rows[0]["plate"], rows[0]["checkpoint"], len(rows))
+        if sig == prev_sig:  # пагинация исчерпана
+            break
+        prev_sig = sig
+        out.extend(rows)
+        if len(rows) < 15:
+            break
+    if checkpoint:
+        cl = checkpoint.strip().lower()
+        out = [r for r in out if cl in (r.get("checkpoint") or "").lower()]
+    return out
+
+
 async def fetch_and_store() -> dict:
     """Цикл fetch → aggregate → store. Вызывается APScheduler'ом каждые
     CGR_SCOREBOARD_INTERVAL_MIN минут."""

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, Modal, RefreshControl, ScrollView, TextInput } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, Modal, RefreshControl, ScrollView } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { useI18n } from '../utils/useI18n';
@@ -12,17 +13,20 @@ import { useVerificationGate } from '../components/VerificationGate';
 import { LEVELS, useAuth } from '../utils/AuthContext';
 import { SkeletonCard } from '../components/Skeleton';
 import { normalizeTrip, formatPrice, sanitizeForDisplay } from '../utils/normalizers';
+import { localizePlace } from '../utils/places';
+import { routeStats } from '../utils/geo';
 import { matchTruckTypes } from '../utils/truckSynonyms';
 import FeedCard from '../components/ui/v1/FeedCard';
 import SearchBar from '../components/ui/v1/SearchBar';
 import FilterChips from '../components/ui/v1/FilterChips';
-import BellBadge from '../components/ui/v1/BellBadge';
 import LanguageSwitcher from '../components/LanguageSwitcher';
-import { useUnreadNotifications } from '../utils/useUnreadNotifications';
+import PressableScale from '../components/PressableScale';
 import { useMountedRef } from '../hooks/useMountedRef';
 import BottomSheet from '../components/ui/v1/BottomSheet';
 import DatePicker from '../components/DatePicker';
+import LocationPickerModal from '../components/LocationPickerModal';
 import { v1Colors, v1AccentFor, useV1Colors } from '../theme/designV1';
+import { storage } from '../utils/storage';
 
 // DD.MM.YYYY ↔ YYYY-MM-DD bridges. DatePicker stores DD.MM.YYYY
 // (matches CreateCargo / CreateTrip and the rest of the app); the
@@ -36,7 +40,7 @@ const ddmmToIso = (s) => {
 const TCOLORS = {
   // Brand v3: tent (default truck) maps to brand emerald. ref/izoterm keep
   // teal/cyan because those are *semantic* refrigeration cues, not UI blue.
-  tent: '#22C55E', ref: '#0891B2', platform: '#D97706', auto: '#7C3AED', izoterm: '#059669',
+  tent: '#22C55E', ref: '#0891B2', platform: '#E06D00', auto: '#7C3AED', izoterm: '#059669',
   cont20: '#6366F1', cont40: '#4338CA', jumbo: '#EC4899', mega: '#DB2777',
   curtain: '#8B5CF6', lowloader: '#F97316', tanker: '#10B981', dumptruck: '#EAB308',
   grain: '#CA8A04', livestock: '#84CC16', logger: '#65A30D', hazmat: '#DC2626',
@@ -91,14 +95,22 @@ export default function FeedScreen({ navigation, route }) {
   ftlText: { fontSize: 11, fontWeight: '900', letterSpacing: 1 },
   bellBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, backgroundColor: v1.surface },
   bellIcon: { fontSize: 18 },
+  menuBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   // Stage 45 guest toggle bar
   // RC2 fix: guestTabs/guestTab/guestTabText удалены вместе с
   // guestRole-toggle (см. JSX выше).
   // Title row with outline CTA on the right (macros 07/08).
   titleRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12, gap: 12 },
+  routeSelector: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginBottom: 8, borderWidth: 1.5, borderRadius: 16, paddingVertical: 12, paddingHorizontal: 14, gap: 10 },
+  routeSelHalf: { flex: 1 },
+  routeSelLabel: { fontSize: 11, fontWeight: '700', marginBottom: 3, letterSpacing: 0.3 },
+  routeSelValue: { fontSize: 15, fontWeight: '800' },
+  routeSelArrow: { fontSize: 20, fontWeight: '900' },
+  routeSelClear: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
   titleHero: { color: v1.text, fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
   titleHeroSub: { color: v1.textMuted, fontSize: 12, marginTop: 2 },
-  titleCta: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 },
+  titleCta: { borderWidth: 0, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 10, shadowColor: '#FF8400', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 5 },
+  viewToggle: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: v1.border },
   titleCtaText: { fontSize: 12, fontWeight: '800' },
   footerNote: {
     marginTop: 16, marginBottom: 8,
@@ -109,7 +121,7 @@ export default function FeedScreen({ navigation, route }) {
   footerNoteText: { color: v1.textMuted, fontSize: 12, lineHeight: 17 },
   refreshBtn: { marginTop: 16, borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12 },
   // Old layout helpers kept for the still-existing publish modal below.
-  betaBar: { backgroundColor: '#F59E0B', paddingVertical: 6, paddingHorizontal: 14, alignItems: 'center' },
+  betaBar: { backgroundColor: '#FF8400', paddingVertical: 6, paddingHorizontal: 14, alignItems: 'center' },
   betaBarText: { color: '#0C0A09', fontSize: 11, fontWeight: '700', letterSpacing: 0.4 },
   header: { flexDirection: 'row', alignItems: 'center', padding: 16, paddingBottom: 8, gap: 8 },
   title: { fontSize: 22, fontWeight: '900' },
@@ -120,14 +132,16 @@ export default function FeedScreen({ navigation, route }) {
   searchInput: { flex: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, borderWidth: 1 },
   clearBtn: { paddingHorizontal: 8 },
   saveRouteBtn: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, marginLeft: 4 },
-  filterBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  saveRouteFull: { borderWidth: 1, borderRadius: 12, paddingVertical: 12, alignItems: 'center', marginTop: 14, minHeight: 44, justifyContent: 'center' },
+  saveRouteFullText: { fontSize: 14, fontWeight: '800' },
+  filterBtn: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   activeChipsRow: { paddingHorizontal: 16, paddingBottom: 8, gap: 6, alignItems: 'center' },
   activeChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, maxWidth: 220 },
   activeChipText: { color: '#fff', fontSize: 12, fontWeight: '700', flexShrink: 1 },
   activeChipClose: { color: '#fff', fontSize: 13, fontWeight: '800', marginLeft: 2 },
   filterSheet: { borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, paddingBottom: 40, maxHeight: '80%' },
   filterSheetTitle: { fontSize: 20, fontWeight: '800', marginBottom: 16 },
-  filterSectionLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 1, marginTop: 14, marginBottom: 8 },
+  filterSectionLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 1, marginTop: 14, marginBottom: 8 },
   filterPillRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', rowGap: 8 },
   filterPillWrap: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', rowGap: 8 },
   filterPill: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, alignSelf: 'flex-start' },
@@ -141,15 +155,15 @@ export default function FeedScreen({ navigation, route }) {
   route: { fontSize: 17, fontWeight: '700', marginBottom: 5, letterSpacing: -0.2, color: '#F8FAFC' },
   cargoName: { fontSize: 12, marginBottom: 8 },
   badges: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
-  badge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 16, fontSize: 10, fontWeight: '700', overflow: 'hidden' },
+  badge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 16, fontSize: 11, fontWeight: '700', overflow: 'hidden' },
   price: { color: '#22C55E', fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
-  bidsCount: { fontSize: 10, marginTop: 2 },
+  bidsCount: { fontSize: 11, marginTop: 2 },
   driverName: { fontSize: 16, fontWeight: '700' },
   rating: { color: '#FBBF24', fontSize: 12, fontWeight: '700', marginVertical: 4 },
   tripBadge: { position: 'absolute', top: -1, right: 12, backgroundColor: '#22C55E', paddingHorizontal: 10, paddingVertical: 3, borderBottomLeftRadius: 8, borderBottomRightRadius: 8 },
-  tripBadgeText: { color: '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 0.5 },
+  tripBadgeText: { color: '#fff', fontSize: 11, fontWeight: '900', letterSpacing: 0.5 },
   mineBadge: { position: 'absolute', top: -1, right: 12, paddingHorizontal: 10, paddingVertical: 3, borderBottomLeftRadius: 8, borderBottomRightRadius: 8 },
-  mineBadgeText: { color: '#0C0A09', fontSize: 9, fontWeight: '900', letterSpacing: 0.5 },
+  mineBadgeText: { color: '#0C0A09', fontSize: 11, fontWeight: '900', letterSpacing: 0.5 },
   quickChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 18, borderWidth: 1 },
   quickChipText: { fontSize: 11, fontWeight: '700' },
   tripRoute: { fontSize: 13, fontWeight: '800', marginTop: 4 },
@@ -161,11 +175,11 @@ export default function FeedScreen({ navigation, route }) {
   formTitle: { fontSize: 20, fontWeight: '800', marginBottom: 16 },
   fi: { borderRadius: 12, padding: 14, fontSize: 14, borderWidth: 1, marginBottom: 10 },
   frow: { flexDirection: 'row', gap: 8 },
-  formLabel: { fontSize: 10, fontWeight: '600', letterSpacing: 0.5, marginBottom: 6, marginTop: 4, textTransform: 'uppercase' },
+  formLabel: { fontSize: 11, fontWeight: '600', letterSpacing: 0.5, marginBottom: 6, marginTop: 4, textTransform: 'uppercase' },
   hintBox: { backgroundColor: '#22C55E15', borderRadius: 10, padding: 10, marginBottom: 12, borderWidth: 1, borderColor: '#22C55E30' },
   hintText: { fontSize: 11, lineHeight: 16 },
   typeCard: { width: 88, paddingVertical: 12, paddingHorizontal: 8, borderRadius: 12, borderWidth: 1, alignItems: 'center', gap: 4 },
-  typeCardText: { fontSize: 10, fontWeight: '600', textAlign: 'center' },
+  typeCardText: { fontSize: 11, fontWeight: '600', textAlign: 'center' },
   currChip: { paddingHorizontal: 10, paddingVertical: 10, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   currChipText: { fontSize: 12, fontWeight: '700' },
   payModeBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1.5, alignItems: 'center' },
@@ -186,13 +200,14 @@ export default function FeedScreen({ navigation, route }) {
   const { session } = useAuth();
   const sessionRole = session?.user?.role || null;
   const isGuest = !sessionRole;
-  const role = sessionRole || route.params?.role || 'driver';
+  // Гость по умолчанию = грузовладелец (client, оранжевый). Совпадает с
+  // MainTabs и точками входа гостя (OnboardingV2 / RoleScreen).
+  const role = sessionRole || route.params?.role || 'client';
   const isDriver = role === 'driver';
   // Brand v3: driver = emerald, client = orange. No blue.
-  const accent = isDriver ? '#22C55E' : '#F59E0B';
-  const { t } = useI18n();
+  const accent = isDriver ? '#22C55E' : '#FF8400';
+  const { t, lang } = useI18n();
   const { theme } = useTheme();
-  const notifUnread = useUnreadNotifications();
   const { toast } = useToast();
   const { requireLevel, Gate } = useVerificationGate();
   const myUserId = session?.user?.id;
@@ -205,24 +220,46 @@ export default function FeedScreen({ navigation, route }) {
   const [initialLoading, setInitialLoading] = useState(true);
   const mounted = useMountedRef();  // QA-аудит P1-8
   const [serverData, setServerData] = useState([]);
+  // 3.7: пагинация ленты. onEndReached увеличивает лимит и перезагружает
+  // (без append-логики — refetch заменяет данные, проще и без дублей).
+  const [pageLimit, setPageLimit] = useState(50);
   const [sortBy, setSortBy] = useState('newest');
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  // Избранные перевозчики (клиент) — id водителей. Быстрое сохранение из ленты.
+  const [favIds, setFavIds] = useState(() => new Set());
   // activeFilter is the chip that's currently expanded into a bottom-sheet.
   // null → no sheet open. One sheet at a time, scoped to its own state slice.
   const [activeFilter, setActiveFilter] = useState(null); // 'dir' | 'date' | 'body' | 'price' | null
   const [dirFrom, setDirFrom] = useState('');
   const [dirTo, setDirTo] = useState('');
+  // Полноэкранный выбор города (как в CreateCargo) вместо тесной шторки со
+  // свободным вводом — можно искать любой город/погранпереход, а не только
+  // те, что уже попали в ленту.
+  const [showDirFromPicker, setShowDirFromPicker] = useState(false);
+  const [showDirToPicker, setShowDirToPicker] = useState(false);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const closeFilter = () => setActiveFilter(null);
+
+  // Вид ленты: компактный список (по умолчанию, помещается 5-6 карточек) ↔
+  // крупные карточки. Выбор пользователя, запоминаем в storage.
+  const [compact, setCompact] = useState(true);
+  useEffect(() => {
+    storage.get('ur_feed_compact').then((v) => { if (v === '0' || v === '1') setCompact(v === '1'); }).catch(() => {});
+  }, []);
+  const toggleCompact = () => setCompact((c) => {
+    const next = !c;
+    storage.set('ur_feed_compact', next ? '1' : '0').catch(() => {});
+    return next;
+  });
 
   // Загрузка данных С СЕРВЕРА (главное изменение!)
   const loadFromServer = async () => {
     setLoadError(false);
     try {
       if (isDriver) {
-        const { cargos } = await marketAPI.listCargos({ cargoType: filterType || '' });
+        const { cargos } = await marketAPI.listCargos({ cargoType: filterType || '', limit: pageLimit });
         // Driver feed: ТОЛЬКО чужие грузы (counterparty supply). Если
         // backend вернул груз с owner_id равным текущему user_id,
         // водитель не должен видеть свой же груз — для управления
@@ -249,6 +286,7 @@ export default function FeedScreen({ navigation, route }) {
           // fallback и пользователь видел «$700 000» там, где было
           // «700 000 ₸». Прокидываем явно.
           currency: c.currency,
+          payment_type: c.payment_type,
           pickup: c.pickup_date,
           bids: c.bids_count, photos: c.photos,
           photo: c.photos?.[0], isMine: c.owner_id === myUserId,
@@ -264,7 +302,7 @@ export default function FeedScreen({ navigation, route }) {
         // водителей — что и приводило к "Маршрут уточняется" и
         // навигации в DriverDetail с _profileMissing.
         const [tripsRes, driversRes] = await Promise.all([
-          marketAPI.listTrips({ truckType: filterType || '' }),
+          marketAPI.listTrips({ truckType: filterType || '', limit: pageLimit }),
           marketAPI.listDrivers({ truckType: filterType || '' }),
         ]);
         // Симметрично с driver-веткой: shipper не должен видеть
@@ -276,10 +314,11 @@ export default function FeedScreen({ navigation, route }) {
           const n = normalizeTrip({ ...rawT, _server: true });
           // Card title fallback ladder. Most trips on the live feed have
           // driver_name=null because driver profiles aren't fully populated
-          // yet — showing a generic "Водитель" repeatedly looks broken, so
-          // we synthesise a stable handle from the driver_id.
-          const idTail = (n.driverId || n.id || '').replace(/[^a-z0-9]/gi, '').slice(-4).toUpperCase() || '0000';
-          const cardName = n.driverName || `${tGlobal('carrier_handle_prefix')} #${idTail}`;
+          // yet. Раньше синтезировали хэш «Перевозчик #4F2A» — владельцу он
+          // выглядел как «непонятное имя». Теперь без имени показываем
+          // осмысленное: «Перевозчик UrTruck · <тип кузова>».
+          const cardName = n.driverName
+            || `${tGlobal('carrier_handle_prefix')} · ${formatTruckType(n.truckType || 'tent')}`;
           return {
             ...n,
             // Card-only fields kept alongside the canonical shape:
@@ -287,7 +326,11 @@ export default function FeedScreen({ navigation, route }) {
             type: n.truckType || 'tent',
             m3: n.availableM3 || 0,
             tons: n.capacityTons || 0,
-            rating: 5.0, reviews: 0, verified: true,
+            // Реальные данные водителя из бэка (list_trips обогащает). Больше
+            // не выдумываем «★5.0 · Проверен» — показываем как есть.
+            rating: rawT.driver_rating || 0,
+            reviews: rawT.driver_reviews_count || 0,
+            verified: !!rawT.driver_verified,
             tripRoute: `${n.from || '—'} → ${n.to || '—'}`,
             tripDates: n.departure && n.arrival ? `${n.departure} - ${n.arrival}` : (n.departure || ''),
           };
@@ -304,7 +347,12 @@ export default function FeedScreen({ navigation, route }) {
           _server: true, _isDriver: true,
         }));
         if (!mounted.current) return;  // QA-аудит P1-8
-        setServerData([...tripsMapped, ...driversMapped]);
+        // Решение владельца: лента «Рейсы» = ТОЛЬКО реальные рейсы с маршрутом
+        // и ценой. Пустые карточки-профили водителей (без маршрута: «имя · тип»)
+        // убраны — они путали («кто, куда, за сколько?»). driversMapped больше
+        // не подмешиваем; заодно уходит и старый баг двойного ❤️ (профиль+рейс
+        // одного водителя). Профиль водителя доступен из карточки его рейса.
+        setServerData([...tripsMapped]);
       }
     } catch (e) {
       console.warn('[Feed] Server load failed:', e);
@@ -314,7 +362,53 @@ export default function FeedScreen({ navigation, route }) {
     }
   };
 
-  useEffect(() => { loadFromServer(); }, [isDriver, filterType]);
+  useEffect(() => { loadFromServer(); }, [isDriver, filterType, pageLimit]);
+
+  // Клиент: подтягиваем список избранных водителей, чтобы сердечки в ленте
+  // отражали уже сохранённых. Гость/водитель — пропускаем.
+  useEffect(() => {
+    if (isDriver || !myUserId) return;
+    let alive = true;
+    (async () => {
+      const r = await marketAPI.favList('driver').catch(() => null);
+      if (alive && r?.favorites) setFavIds(new Set(r.favorites.map((f) => f.item_id)));
+    })();
+    return () => { alive = false; };
+  }, [isDriver, myUserId]);
+
+  // Тап по сердечку в карточке: сохранить/убрать перевозчика (оптимистично).
+  // БАГ A: раньше catch ловил только throw, но favAdd/favRemove при HTTP-
+  // ошибке (403/401) НЕ бросают — возвращают {ok:false}. Оптимистичное ❤️
+  // оставалось гореть, а на сервере запись не появлялась → «Избранное пусто
+  // в профиле». Теперь проверяем r.ok и откатываем + сообщаем при любой
+  // неудаче (не только при исключении).
+  const rollback = (id, has) => setFavIds((prev) => {
+    const next = new Set(prev);
+    if (has) next.add(id); else next.delete(id);
+    return next;
+  });
+  const toggleFav = async (item) => {
+    const id = item.driverId || item.id;
+    if (!id) return;
+    const has = favIds.has(id);
+    setFavIds((prev) => {
+      const next = new Set(prev);
+      if (has) next.delete(id); else next.add(id);
+      return next;
+    });
+    try {
+      const r = has
+        ? await marketAPI.favRemove('driver', id)
+        : await marketAPI.favAdd('driver', id, { name: item.name, type: item.type, plate: item.plate_truck });
+      if (!r || r.ok !== true) {
+        rollback(id, has);
+        toast(t('send_error'), 'error');
+      }
+    } catch {
+      rollback(id, has);
+      toast(t('send_error'), 'error');
+    }
+  };
 
   // Refetch when user comes back to feed (e.g. after publishing a trip/cargo)
   // so the new card appears immediately without manual pull-to-refresh.
@@ -324,11 +418,15 @@ export default function FeedScreen({ navigation, route }) {
     }, [isDriver, filterType])
   );
 
-  // Серверный поиск при вводе маршрута "Алматы→Москва"
+  // Серверный поиск по маршруту. Разделитель больше не только «→»: водителю
+  // тяжело набрать стрелку на телефоне. Принимаем «Алматы, Москва»,
+  // «Алматы - Москва», «Алматы — Москва», «Алматы→Москва», «Алматы->Москва».
+  // « - » (с пробелами) не ломает города через дефис («Алма-Ата»).
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (search.includes('→') || search.includes('->')) {
-        const sep = search.includes('→') ? '→' : '->';
+      const SEPARATORS = ['→', '->', '—', ' - ', ','];
+      const sep = SEPARATORS.find(x => search.includes(x));
+      if (sep) {
         const [from, to] = search.split(sep).map(s => s.trim());
         if (from && to) {
           if (isDriver) {
@@ -463,6 +561,22 @@ export default function FeedScreen({ navigation, route }) {
     if (toIso) {
       data = data.filter(d => { const v = ymd(dateField(d)); return v && v <= toIso; });
     }
+    // Скрываем просроченные из ОБЩЕЙ ленты (Модель А: публикация живёт 3 дня —
+    // день выезда + 2). Дальше убираем; у владельца остаётся в «Мои грузы/
+    // рейсы» с «Срок истёк» и продлением одним тапом. Лента показывает грузы/
+    // рейсы чужой роли, поэтому свои публикации у владельца тут не прячутся.
+    {
+      const g = new Date();
+      g.setHours(0, 0, 0, 0);
+      g.setDate(g.getDate() - 2);            // граница = день выезда + 2 (живёт 3 дня)
+      // Локальная календарная дата (не toISOString/UTC) — согласовано с
+      // MyTripsScreen.isExpiredItem, иначе утром граница уезжала на сутки.
+      const graceIso = `${g.getFullYear()}-${String(g.getMonth() + 1).padStart(2, '0')}-${String(g.getDate()).padStart(2, '0')}`;
+      data = data.filter(d => {
+        const v = ymd(dateField(d));
+        return !v || v >= graceIso;          // без даты не прячем
+      });
+    }
     if (search.trim()) {
       const q = search.toLowerCase().trim();
       // Body-type synonyms: "тнт" → tent, "реф" → ref, "конт" → cont20/cont40.
@@ -487,6 +601,18 @@ export default function FeedScreen({ navigation, route }) {
     else if (sortBy === 'price-desc') data.sort((a, b) => (b.price || 0) - (a.price || 0));
     else if (sortBy === 'rating') data.sort((a, b) => (b.rating || 0) - (a.rating || 0));
     // 'newest' — по умолчанию (как в массиве)
+    // Защита от дубль-ключей в FlatList (тот же ключ, что в keyExtractor):
+    // повтор id → одинаковый React-ключ → две карточки «слипаются» и реагируют
+    // как одна (в т.ч. ❤️). Схлопываем строго по итоговому ключу.
+    const seenKeys = new Set();
+    data = data.filter((it) => {
+      const ns = it.isTrip ? 't' : (it.isMine ? 'c' : 'd');
+      const k = `${ns}:${it.id ?? ''}`;
+      if (it.id == null) return true;      // без id не трогаем (fallback на idx)
+      if (seenKeys.has(k)) return false;
+      seenKeys.add(k);
+      return true;
+    });
     return data;
   }, [currentData, filterType, search, sortBy, minRating, dirFrom, dirTo, dateFrom, dateTo]);
 
@@ -514,8 +640,19 @@ export default function FeedScreen({ navigation, route }) {
     // груза. Если backend не вернул pickup — показываем "Дата уточняется",
     // а не скрываем пилюлю целиком. Иначе пользователь не понимает,
     // когда груз надо забирать.
+    // Км и ставка-за-км — метрики №1 для решения «беру/не беру». routeStats
+    // уже используется на CargoDetail; выносим на карточку, чтобы водитель
+    // не открывал деталь ради двух цифр.
+    const stats = routeStats(item.from, item.to);
+    const km = (stats && stats.km) || 0;
+    const priceNum = Number(item.price) || 0;
+    const perKm = (km > 0 && priceNum > 0) ? priceNum / km : 0;
+    const perKmStr = perKm >= 10 ? String(Math.round(perKm)) : perKm.toFixed(1);
     const meta = [
       { label: t('departure'), value: item.pickup || t('pickup_date_tbd') },
+      km > 0 ? { label: t('distance'), value: `${km} км` } : null,
+      perKm > 0 ? { label: t('per_km_short'), value: `${perKmStr} ${item.currency || ''}/км` } : null,
+      (item.payment_type && item.payment_type !== 'any') ? { label: t('payment_type_label'), value: t('pay_' + item.payment_type) } : null,
       item.tons > 0 ? { label: t('weight'), value: `${item.tons} т` } : null,
       item.m3 > 0 ? { label: t('volume'), value: `${item.m3} м³` } : null,
     ].filter(Boolean);
@@ -536,7 +673,8 @@ export default function FeedScreen({ navigation, route }) {
         priceCaption={t('per_trip')}
         responses={item.bids || 0}
         onPress={openCargo}
-        bottomRight={{ label: t('details'), onPress: openCargo, filled: false }}
+        bottomRight={{ label: t('details'), onPress: openCargo, filled: false, testID: 'feed-details-btn' }}
+        compact={compact}
         testID="cargo-card"
       />
     );
@@ -587,7 +725,10 @@ export default function FeedScreen({ navigation, route }) {
         priceText={item.isTrip ? formatPrice(item.price, item.currency, t) : `★ ${item.rating || '—'}`}
         priceCaption={item.isTrip ? t('per_trip') : `${item.reviews || 0} ${t('reviews')}`}
         onPress={onPress}
-        bottomRight={{ label: t('details'), onPress, filled: false }}
+        bottomRight={{ label: t('details'), onPress, filled: false, testID: 'feed-details-btn' }}
+        favActive={!isDriver ? favIds.has(item.driverId || item.id) : undefined}
+        onToggleFav={!isDriver && myUserId ? () => toggleFav(item) : undefined}
+        compact={compact}
         testID={item.isTrip ? 'trip-card' : 'driver-card'}
       />
     );
@@ -603,7 +744,8 @@ export default function FeedScreen({ navigation, route }) {
     // Stage 16: dropped per-chip emojis (🧭/📅/🚛/💰). Filter pills
     // now read as plain text + chevron — calmer strip, no four
     // colour spots competing with the price/CTA accent.
-    { key: 'dir',   label: t('filter_direction'), active: !!(dirFrom || dirTo),       onPress: () => setActiveFilter('dir') },
+    // inDrive-стиль: «Направление» вынесено в крупный селектор «Откуда → Куда»
+    // над поиском, поэтому в ряду мелких фильтров его больше нет.
     { key: 'date',  label: t('filter_date'),      active: !!(dateFrom || dateTo),     onPress: () => setActiveFilter('date') },
     { key: 'body',  label: t('filter_body'),      active: !!filterType,               onPress: () => setActiveFilter('body') },
     { key: 'price', label: t('filter_price'),     active: sortBy !== 'newest',        onPress: () => setActiveFilter('price') },
@@ -630,14 +772,21 @@ export default function FeedScreen({ navigation, route }) {
           <Text style={[s.brandText, { color: v1.text }]}>UrTruck</Text>
         </View>
         {isGuest ? (
-          // Гость не имеет уведомлений; placeholder чтобы заголовок
+          // Гость не имеет профиля; placeholder чтобы заголовок
           // остался по центру.
           <View style={{ width: 40 }} />
         ) : (
-          <BellBadge
-            count={notifUnread}
-            onPress={() => navigation.navigate('Notifications')}
-          />
+          // ☰ (top-right) → профиль и меню (как в inDrive / Yandex Go).
+          // Колокольчик уехал вниз в таб-бар как вкладка «Дела».
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Profile', { role })}
+            style={s.menuBtn}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            testID="feed-menu-btn"
+            accessibilityLabel={t('tab_profile')}
+          >
+            <Feather name="menu" size={24} color={v1.text} />
+          </TouchableOpacity>
         )}
       </View>
 
@@ -652,25 +801,103 @@ export default function FeedScreen({ navigation, route }) {
           <Text style={[s.titleHero, { color: v1.text }]}>{isDriver ? t('cargos') : t('trucks')}</Text>
           <Text style={[s.titleHeroSub, { color: v1.textMuted }]}>{isDriver ? t('feed_driver_subtitle') : t('feed_client_subtitle')}</Text>
         </View>
-        {/* PR-C2: title-row publish CTA закомментирован — он дублировал
-            большой floating "+" в BottomNav (tab Publish), который виден
-            на всех экранах, не только Feed. Stage 16 раньше делал эту
-            кнопку primary CTA, но дублирование функционала путало
-            пользователя и забирало место рядом с заголовком.
-            TODO: redesign — если решим вернуть, перенести как secondary
-            (outline) или удалить celebrate animation на BottomNav плюсе. */}
-        {/*
+        {/* Переключатель вида ленты: компактный список ↔ крупные карточки.
+            Иконка меняется на противоположный режим (подсказка «что будет»). */}
         <TouchableOpacity
-          style={[s.titleCta, { borderColor: accentColor, backgroundColor: accentColor }]}
-          onPress={() => navigation.navigate(isDriver ? 'CreateTrip' : 'CreateCargo', { role })}
-          testID={isDriver ? 'publish-trip-button' : 'publish-cargo-button'}
-          accessibilityRole="button"
-          accessibilityLabel={isDriver ? t('postTrip') : t('postCargo')}
+          onPress={toggleCompact}
+          style={s.viewToggle}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          testID="feed-view-toggle"
+          accessibilityLabel={compact ? t('feed_view_large') : t('feed_view_compact')}
         >
-          <Text style={[s.titleCtaText, { color: '#0A0A0A' }]}>+ {isDriver ? t('postTrip') : t('postCargo')}</Text>
+          {/* Иконка подсказывает, КУДА переключимся: в компактном режиме
+              показываем «крупные карточки» (grid), в крупном — «список»
+              (list). Пустой квадрат был непонятен. */}
+          <Feather name={compact ? 'grid' : 'list'} size={20} color={v1.textMuted} />
         </TouchableOpacity>
-        */}
+        {/* Для КЛИЕНТА публикация груза — главное действие, а безымянный
+            «+» в таббаре не находится. Показываем явную кнопку «+Груз».
+            У водителя лента = основная работа (берёт грузы), поэтому CTA
+            публикации рейса ему на ленту не выносим (остаётся «+» в баре). */}
+        {!isDriver ? (
+          <PressableScale
+            style={[s.titleCta, { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: accentColor }]}
+            onPress={() => navigation.navigate('CreateCargo', { role })}
+            testID="publish-cargo-button"
+            accessibilityRole="button"
+            accessibilityLabel={t('postCargo')}
+          >
+            <Text style={[s.titleCtaText, { color: accentColor }]}>+ {t('postCargo')}</Text>
+          </PressableScale>
+        ) : null}
       </View>
+
+      {/* inDrive-стиль: крупный селектор «Откуда → Куда» — главный способ
+          фильтра. Тап открывает шторку направления. Значения локализуются. */}
+      <View
+        style={[s.routeSelector, { backgroundColor: v1.surface, borderColor: (dirFrom || dirTo) ? accentColor : v1.border }]}
+        testID="feed-route-selector"
+      >
+        <TouchableOpacity
+          style={s.routeSelHalf}
+          onPress={() => setShowDirFromPicker(true)}
+          activeOpacity={0.7}
+          testID="feed-route-from"
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Feather name="map-pin" size={11} color={v1.textMuted} />
+            <Text style={[s.routeSelLabel, { color: v1.textMuted }]}>{t('from')}</Text>
+          </View>
+          <Text style={[s.routeSelValue, { color: dirFrom ? v1.text : v1.textMuted }]} numberOfLines={1}>
+            {dirFrom ? localizePlace(dirFrom, lang) : t('create_field_from_placeholder')}
+          </Text>
+        </TouchableOpacity>
+        <Feather name="arrow-right" size={16} color={accentColor} style={s.routeSelArrow} />
+        <TouchableOpacity
+          style={s.routeSelHalf}
+          onPress={() => setShowDirToPicker(true)}
+          activeOpacity={0.7}
+          testID="feed-route-to"
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Feather name="flag" size={11} color={v1.textMuted} />
+            <Text style={[s.routeSelLabel, { color: v1.textMuted }]}>{t('to')}</Text>
+          </View>
+          <Text style={[s.routeSelValue, { color: dirTo ? v1.text : v1.textMuted }]} numberOfLines={1}>
+            {dirTo ? localizePlace(dirTo, lang) : t('create_field_to_placeholder')}
+          </Text>
+        </TouchableOpacity>
+        {(dirFrom || dirTo) ? (
+          <TouchableOpacity
+            onPress={() => { setDirFrom(''); setDirTo(''); }}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            style={s.routeSelClear}
+            testID="feed-route-clear"
+          >
+            <Feather name="x" size={16} color={v1.textMuted} />
+          </TouchableOpacity>
+        ) : null}
+      </View>
+
+      {/* Подписка «грузы по моему маршруту» — ключевая ретеншн-петля.
+          Видна водителю, когда заданы обе точки. Пуш придёт, когда
+          появится груз по этому направлению. Раньше жила в шторке фильтра;
+          после перехода на полноэкранный пикер вынесена под селектор. */}
+      {isDriver && dirFrom.trim() && dirTo.trim() ? (
+        <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
+          <TouchableOpacity
+            style={[s.saveRouteFull, { borderColor: accentColor }]}
+            onPress={async () => {
+              const r = await marketAPI.saveRoute({ from_city: dirFrom.trim(), to_city: dirTo.trim(), truck_type: filterType || null });
+              if (r.ok) toast('🔔 ' + t('route_saved'), 'success', 3500);
+              else toast(r.detail || t('send_error'), 'error');
+            }}
+            testID="save-route-btn"
+          >
+            <Text style={[s.saveRouteFullText, { color: accentColor }]}>🔔 {t('save_route_notify')}</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
       <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
         <SearchBar
@@ -707,7 +934,7 @@ export default function FeedScreen({ navigation, route }) {
           {sortBy !== 'newest' && (
             <View style={[s.activeChip, { backgroundColor: sortBy === 'rating' ? '#FBBF24' : accent }]}>
               <Text style={[s.activeChipText, { color: '#0C0A09' }]}>
-                {sortBy === 'price-asc' ? '💰 ' + t('filter_price_asc') : sortBy === 'price-desc' ? '💰 ' + t('filter_price_desc') : '★ ' + t('filter_rating_sort')}
+                {sortBy === 'price-asc' ? t('filter_price_asc') : sortBy === 'price-desc' ? t('filter_price_desc') : t('filter_rating_sort')}
               </Text>
               <TouchableOpacity onPress={() => setSortBy('newest')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                 <Text style={[s.activeChipClose, { color: '#0C0A09' }]}>✕</Text>
@@ -717,82 +944,31 @@ export default function FeedScreen({ navigation, route }) {
         </ScrollView>
       )}
 
-      {/* Direction sheet — only city-from / city-to inputs.
-          Stage 50 (Bug 1): добавлены suggestion-чипы из городов в
-          текущей ленте — пользователь видит реальные направления
-          (Алматы, Астана, Урумчи и т.д.), а не пустой sheet с двумя
-          текстовыми полями. Тап чипа подставляет город в input. */}
-      <BottomSheet visible={activeFilter === 'dir'} onClose={closeFilter} title={`🧭 ${t('filter_direction')}`}>
-        <Text style={[s.filterSectionLabel, { color: theme.textMuted }]}>{t('from')}</Text>
-        <TextInput
-          value={dirFrom}
-          onChangeText={setDirFrom}
-          placeholder={t('create_field_from_placeholder')}
-          placeholderTextColor={v1.textMuted}
-          style={[s.filterInput, { backgroundColor: theme.card, borderColor: theme.border, color: theme.text }]}
-        />
-        {(() => {
-          const cities = Array.from(new Set(currentData.map(d => (d.from || '').trim()).filter(Boolean))).slice(0, 8);
-          if (cities.length === 0) return null;
-          return (
-            <View style={[s.filterPillRow, { marginTop: 8 }]}>
-              {cities.map((c) => (
-                <TouchableOpacity
-                  key={`from-${c}`}
-                  onPress={() => setDirFrom(c)}
-                  style={[s.filterPill, { borderColor: v1.border, backgroundColor: dirFrom === c ? accentColor : v1.surface }]}
-                >
-                  <Text style={[s.filterPillText, { color: dirFrom === c ? '#0A0A0A' : v1.text }]} numberOfLines={1}>{c}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          );
-        })()}
-
-        <Text style={[s.filterSectionLabel, { color: theme.textMuted, marginTop: 12 }]}>{t('to')}</Text>
-        <TextInput
-          value={dirTo}
-          onChangeText={setDirTo}
-          placeholder={t('create_field_to_placeholder')}
-          placeholderTextColor={v1.textMuted}
-          style={[s.filterInput, { backgroundColor: theme.card, borderColor: theme.border, color: theme.text }]}
-        />
-        {(() => {
-          const cities = Array.from(new Set(currentData.map(d => (d.to || '').trim()).filter(Boolean))).slice(0, 8);
-          if (cities.length === 0) return null;
-          return (
-            <View style={[s.filterPillRow, { marginTop: 8 }]}>
-              {cities.map((c) => (
-                <TouchableOpacity
-                  key={`to-${c}`}
-                  onPress={() => setDirTo(c)}
-                  style={[s.filterPill, { borderColor: v1.border, backgroundColor: dirTo === c ? accentColor : v1.surface }]}
-                >
-                  <Text style={[s.filterPillText, { color: dirTo === c ? '#0A0A0A' : v1.text }]} numberOfLines={1}>{c}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          );
-        })()}
-
-        <View style={s.filterActions}>
-          <TouchableOpacity
-            style={[s.filterActionBtn, { backgroundColor: v1.surface, borderColor: v1.border, borderWidth: 1 }]}
-            onPress={() => { setDirFrom(''); setDirTo(''); }}
-          >
-            <Text style={[s.filterActionText, { color: v1.textMuted }]}>{t('filter_reset')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[s.filterActionBtn, { backgroundColor: accentColor }]} onPress={closeFilter}>
-            <Text style={[s.filterActionText, { color: '#0A0A0A' }]}>{t('filter_apply')}</Text>
-          </TouchableOpacity>
-        </View>
-      </BottomSheet>
+      {/* Полноэкранный выбор города «Откуда/Куда» для фильтра ленты —
+          тот же LocationPickerModal, что и на создании груза: поиск,
+          недавние, избранное, популярные, погранпереходы. Заменил
+          прежнюю тесную шторку, где можно было выбрать только города,
+          уже попавшие в ленту. Храним p.name (город) — фильтр сравнивает
+          подстрокой с d.from / d.to. */}
+      <LocationPickerModal
+        visible={showDirFromPicker}
+        onClose={() => setShowDirFromPicker(false)}
+        title={t('loc_from_title')}
+        showGeo
+        onSelect={(v, point) => setDirFrom((point && point.name) || v || '')}
+      />
+      <LocationPickerModal
+        visible={showDirToPicker}
+        onClose={() => setShowDirToPicker(false)}
+        title={t('loc_to_title')}
+        onSelect={(v, point) => setDirTo((point && point.name) || v || '')}
+      />
 
       {/* Date sheet — real calendar/date-picker for both ends of the
           window. DatePicker uses native <input type="date"> on web and
           a custom Modal calendar on native, so the chip never falls
           back to a plain TextInput. testID lets QA target it. */}
-      <BottomSheet visible={activeFilter === 'date'} onClose={closeFilter} title={`📅 ${t('filter_date')}`}>
+      <BottomSheet visible={activeFilter === 'date'} onClose={closeFilter} title={t('filter_date')}>
         <View testID="filter-date-sheet">
           <Text style={[s.filterSectionLabel, { color: theme.textMuted }]}>{t('filter_date_from')}</Text>
           <DatePicker value={dateFrom} onChange={setDateFrom} placeholder={t('date_placeholder')} />
@@ -818,7 +994,7 @@ export default function FeedScreen({ navigation, route }) {
       </BottomSheet>
 
       {/* Body sheet — only truck-type pills. */}
-      <BottomSheet visible={activeFilter === 'body'} onClose={closeFilter} title={`🚛 ${t('filter_body')}`}>
+      <BottomSheet visible={activeFilter === 'body'} onClose={closeFilter} title={t('filter_body')}>
         <Text style={[s.filterSectionLabel, { color: theme.textMuted }]}>{t('filter_truck_type')}</Text>
         <View style={s.filterPillWrap}>
           <TouchableOpacity
@@ -853,7 +1029,7 @@ export default function FeedScreen({ navigation, route }) {
       </BottomSheet>
 
       {/* Price sheet — only sort + rating filter (clients only). */}
-      <BottomSheet visible={activeFilter === 'price'} onClose={closeFilter} title={`💰 ${t('filter_price')}`}>
+      <BottomSheet visible={activeFilter === 'price'} onClose={closeFilter} title={t('filter_price')}>
         {!isDriver && (
           <>
             <Text style={[s.filterSectionLabel, { color: theme.textMuted }]}>{t('filter_rating')}</Text>
@@ -919,10 +1095,18 @@ export default function FeedScreen({ navigation, route }) {
           renderItem={(args) => (isDriver || args.item.isMine) ? renderCargo(args) : renderDriver(args)}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 20, gap: 0 }}
           showsVerticalScrollIndicator={false}
+          onEndReachedThreshold={0.5}
+          onEndReached={() => {
+            // Догружаем следующую «страницу», только если сервер вернул
+            // полную страницу (значит есть ещё) — иначе не дёргаем.
+            if (!initialLoading && serverData.length >= pageLimit) {
+              setPageLimit((p) => p + 50);
+            }
+          }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accentColor} />}
           ListFooterComponent={
             filteredData.length > 0 ? (
-              <View style={[s.footerNote, { borderColor: v1.border, backgroundColor: v1.surface }]}>
+              <View style={[s.footerNote, { borderColor: v1.border, backgroundColor: v1.surface }]} testID="feed-disclaimer">
                 <Text style={[s.footerNoteText, { color: v1.textMuted }]} numberOfLines={2}>
                   🛡  {isDriver ? t('feed_driver_disclaimer') : t('feed_client_disclaimer')}
                 </Text>

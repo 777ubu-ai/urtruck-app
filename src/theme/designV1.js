@@ -31,14 +31,16 @@ const DARK = {
   driverSoft: 'rgba(0,230,118,0.14)',
   driverOnAccent: '#0C0A09',
 
-  cargoOwner: '#F59E0B',
-  cargoOwnerDeep: '#D97706',
-  cargoOwnerGlow: 'rgba(245,158,11,0.35)',
-  cargoOwnerSoft: 'rgba(245,158,11,0.12)',
+  cargoOwner: '#FF8400',
+  cargoOwnerDeep: '#E06D00',
+  cargoOwnerGlow: 'rgba(255,132,0,0.35)',
+  cargoOwnerSoft: 'rgba(255,132,0,0.12)',
 
   text: '#F5F5F5',
   textMuted: '#9CA3AF',
-  textDim: '#5A6068',
+  // Этап 5.1: было #5A6068 (2.92:1 на surface — провал WCAG даже для крупного).
+  // Поднято до #8B92A0 (≈5.9:1) — теперь мелкие подписи читаются на солнце.
+  textDim: '#8B92A0',
   // Stage 50: placeholder бампнут с #5A6068 → #8B92A0, чтобы хинты
   // полей читались на тёмном surface (#0F1418). Старое значение давало
   // ~3:1 контраст, ниже WCAG AA для нормального текста.
@@ -46,7 +48,7 @@ const DARK = {
 
   error: '#EF4444',
   success: '#22C55E',
-  warning: '#F59E0B',
+  warning: '#FF8400',
 };
 
 const LIGHT = {
@@ -71,19 +73,20 @@ const LIGHT = {
   driverSoft: 'rgba(0,230,118,0.16)',
   driverOnAccent: '#0C0A09',
 
-  cargoOwner: '#F59E0B',
-  cargoOwnerDeep: '#D97706',
-  cargoOwnerGlow: 'rgba(245,158,11,0.35)',
-  cargoOwnerSoft: 'rgba(245,158,11,0.12)',
+  cargoOwner: '#FF8400',
+  cargoOwnerDeep: '#E06D00',
+  cargoOwnerGlow: 'rgba(255,132,0,0.35)',
+  cargoOwnerSoft: 'rgba(255,132,0,0.12)',
 
   text: '#0F172A',
   textMuted: '#475569',
-  textDim: '#94A3B8',
+  // Этап 5.1: было #94A3B8 (2.56:1 на белом — провал). #64748B ≈ 4.8:1.
+  textDim: '#64748B',
   placeholder: '#94A3B8',
 
   error: '#DC2626',
   success: '#16A34A',
-  warning: '#D97706',
+  warning: '#E06D00',
 };
 
 // Frozen dark export — keeps every existing `StyleSheet.create({ … })`
@@ -136,7 +139,7 @@ export const v1Shadow = {
 export const v1AccentFor = (role) =>
   role === 'driver'
     ? { main: v1Colors.driver, deep: v1Colors.driverDeep, glow: v1Colors.driverGlow, soft: v1Colors.driverSoft, onAccent: v1Colors.driverOnAccent }
-    // client onAccent = тёмный (#0C0A09): белый на янтарном #F59E0B давал
+    // client onAccent = тёмный (#0C0A09): белый на янтарном #FF8400 давал
     // контраст ~2:1 (WCAG fail). Чёрный — ~11:1 (AAA), премиальнее. Симметрично
     // водительскому black-on-green.
     : { main: v1Colors.cargoOwner, deep: v1Colors.cargoOwnerDeep, glow: v1Colors.cargoOwnerGlow, soft: v1Colors.cargoOwnerSoft, onAccent: '#0C0A09' };

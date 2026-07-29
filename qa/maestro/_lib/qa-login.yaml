@@ -38,6 +38,18 @@ appId: host.exp.Exponent
 # If a previous flow left an active session on Main, force-logout through the
 # dev-only QA logout button (skips the iOS Alert dialog). This guarantees
 # qa-debug-submit is reachable for the actor we are about to log in as.
+#
+# ⚠️ НАДЁЖНОСТЬ (проверено на прогоне 2026-07): эта logout-ветка хрупкая в
+# Expo Go — кнопка qa-debug-logout внизу Profile перекрывается нижней
+# навигацией, и tap по её центру иногда попадает в средний таб (Queue),
+# из-за чего сессия не сбрасывается. Токен теперь в SecureStore (Keychain),
+# поэтому очистка AsyncStorage сессию НЕ убирает. Надёжный рецепт чистого
+# прогона — сбросить Keychain перед запуском, чтобы вход шёл по простому пути
+# (эта ветка вообще не срабатывает):
+#     xcrun simctl terminate booted host.exp.Exponent
+#     xcrun simctl keychain booted reset
+# TODO: приподнять qa-debug-logout над таб-баром (paddingBottom в ProfileScreen
+# dev-блоке) — тогда ветка станет стабильной без внешнего reset.
 - runFlow:
     when:
       visible:
@@ -65,10 +77,36 @@ appId: host.exp.Exponent
 - tapOn:
     id: "qa-debug-token"
 - inputText: ${output.token}
-- hideKeyboard
+# hideKeyboard флейкует на Maestro 2.6 + iOS 26 («Couldn't hide the keyboard»).
+# Детерминированно сбрасываем клавиатуру тапом по верхней нейтральной зоне
+# (шапка онбординга, не интерактивная), затем сабмитим токен.
+- tapOn:
+    point: "50%,12%"
+- waitForAnimationToEnd
 - tapOn:
     id: "qa-debug-submit"
+# Водитель (serik): после входа приложение запрашивает ФОНОВУЮ локацию, и Expo Go
+# показывает свой JS-диалог «Experience needs permissions for locationBackground»
+# поверх Main (RN Modal → перекрывает bottom-nav в accessibility-дереве). Диалог
+# всплывает с задержкой (после загрузки Main), поэтому одноразового ожидания мало.
+# Цикл: закрыть Deny если виден → короткое optional-ожидание bottom-nav. Для
+# клиента (boris) диалога нет — bottom-nav появляется сразу и последующие
+# итерации мгновенно проходят (быстро); у водителя — ловим поздний диалог.
+- repeat:
+    times: 6
+    commands:
+      - runFlow:
+          when:
+            visible: "Deny"
+          commands:
+            - tapOn: "Deny"
+            - waitForAnimationToEnd
+      - extendedWaitUntil:
+          visible:
+            id: "bottom-nav-profile"
+          timeout: 4000
+          optional: true
 - extendedWaitUntil:
     visible:
       id: "bottom-nav-profile"
-    timeout: 30000
+    timeout: 15000

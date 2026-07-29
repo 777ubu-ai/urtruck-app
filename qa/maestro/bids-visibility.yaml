@@ -1,0 +1,50 @@
+# bids-visibility — видимость ставок по умолчанию (открытый режим).
+# Решение владельца 2026-07 (финальное): ставки ОТКРЫТЫ ДЛЯ ВСЕХ. Не-владелец
+# в CargoDetail видит счётчик предложений (cargo-bids-count) И полный список
+# ставок с суммами; подсказки о скрытых ставках (cargo-bids-confidential) НЕТ.
+# Конфиденциальный режим спрятан за флагом BIDS_CONFIDENTIAL (default False) —
+# под будущую монетизацию, поэтому здесь проверяем именно ОТКРЫТОЕ поведение.
+#
+# Предусловие (засев через API): груз boris с ≥1 активной ставкой от serik.
+# Смотрит НЕ-владелец. Берём serik (водитель): его лента — это ГРУЗЫ, поэтому
+# cargo-card доступен напрямую (у клиента/аудитора лента по умолчанию —
+# «Машины»/рейсы, и груз пришлось бы искать через переключатель). serik —
+# не владелец листинга, ровно та роль, для которой проверяем видимость.
+#
+# ⚠️ Запуск ТОЛЬКО после зелёного полного регресса и с готовым API-засевом.
+appId: host.exp.Exponent
+name: bids-visibility
+tags: [bids, visibility, market, e2e]
+env:
+  MAESTRO_ACTOR: serik
+---
+- runFlow: _lib/qa-login.yaml
+
+# Открываем первый груз из ленты (засев гарантирует груз с активной ставкой).
+- assertVisible: { id: "bottom-nav-feed" }
+- tapOn: { id: "bottom-nav-feed" }
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: { id: "cargo-card" }
+    timeout: 12000
+- tapOn: { id: "cargo-card", index: 0 }
+- waitForAnimationToEnd
+
+# Счётчик предложений виден (агрегированная величина — в любом режиме).
+- extendedWaitUntil:
+    visible: { id: "cargo-bids-count" }
+    timeout: 15000
+- assertVisible: { id: "cargo-bids-count" }
+- takeScreenshot: BV1_cargo_bids_count
+
+# Открытый режим (default): подсказки о скрытых ставках НЕТ — не-владелец
+# видит полный список с суммами.
+- assertNotVisible: { id: "cargo-bids-confidential" }
+- takeScreenshot: BV2_open_full_list
+
+# ── Конфиденциальный режим (BIDS_CONFIDENTIAL=true) — под будущую монетизацию.
+#    Включается отдельным прогоном с env-флагом; тогда не-владелец видит только
+#    счётчик + свою ставку, а подсказка cargo-bids-confidential ПОЯВЛЯЕТСЯ.
+#    Оставлено закомментированным намеренно (дефолт — открыто):
+# - assertVisible: { id: "cargo-bids-confidential" }
+# - takeScreenshot: BV3_confidential_hint

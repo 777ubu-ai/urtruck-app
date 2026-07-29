@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../utils/useI18n';
 import { useToast } from '../components/Toast';
 import { useAuth } from '../utils/AuthContext';
@@ -12,7 +13,7 @@ import Field from '../components/ui/v1/Field';
 // (backend TripIn не имеет comment, симметрия с CreateCargoScreen PR-C1).
 import PrimaryButton from '../components/ui/v1/PrimaryButton';
 import BottomSheet from '../components/ui/v1/BottomSheet';
-import RoutePointPicker from '../components/RoutePointPicker';
+import LocationPickerModal from '../components/LocationPickerModal';
 import DatePicker from '../components/DatePicker';
 import {v1Colors, useV1Colors, v1Radius, v1Spacing, v1Typography, v1AccentFor} from '../theme/designV1';
 import TruckTypeGrid from '../components/TruckTypeGrid';
@@ -36,6 +37,14 @@ const CURRENCY_OPTIONS = [
   { k: 'RUB', l: '₽' },
   { k: 'CNY', l: '¥' },
 ];
+
+// Дробный ввод (вес/объём): запятую→точку, только цифры и одна точка (31.5 т).
+const normalizeDecimal = (v) => {
+  let s = String(v || '').replace(',', '.').replace(/[^\d.]/g, '');
+  const i = s.indexOf('.');
+  if (i !== -1) s = s.slice(0, i + 1) + s.slice(i + 1).replace(/\./g, '');
+  return s;
+};
 
 export default function CreateTripScreen({ navigation, route }) {
   const v1 = useV1Colors();
@@ -88,9 +97,10 @@ export default function CreateTripScreen({ navigation, route }) {
   const [truckType, setTruckType] = useState(null);
   const [tons, setTons] = useState('');
   const [m3, setM3] = useState('');
-  const [priceMode, setPriceMode] = useState('negotiable');
+  // Цена рейса ОБЯЗАТЕЛЬНА (решение владельца): водитель всегда указывает
+  // ставку за рейс, «По договорённости» убрана.
   const [price, setPrice] = useState('');
-  const [currency, setCurrency] = useState('KZT');
+  const [currency, setCurrency] = useState('USD');
   // PR-C2: comment state удалён вместе с Textarea ниже — backend TripIn
   // не имеет поля comment, значение молча терялось. Симметрично с
   // CreateCargoScreen (PR-C1 fix).
@@ -121,17 +131,17 @@ export default function CreateTripScreen({ navigation, route }) {
     if (departureNorm && arrivalNorm && arrivalNorm < departureNorm) {
       errs.arrival = t('val_arrival_before_departure');
     }
+    const pNum = parseInt(String(price || '').replace(/\s/g, ''), 10) || 0;
+    if (pNum <= 0) errs.price = t('val_price_required');
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
-      const firstKey = ['from', 'to', 'departure', 'truckType', 'arrival'].find((k) => errs[k]);
+      const firstKey = ['from', 'to', 'departure', 'truckType', 'arrival', 'price'].find((k) => errs[k]);
       toast(errs[firstKey] || t('fill_required_fields'), 'error', 4000);
       return;
     }
     setErrors({});
     setSubmitting(true);
-    const priceNum = priceMode === 'fixed'
-      ? Math.max(0, parseInt(String(price || '').replace(/\s/g, ''), 10) || 0)
-      : 0;
+    const priceNum = Math.max(0, parseInt(String(price || '').replace(/\s/g, ''), 10) || 0);
     const payload = {
       from_city: from.trim(),
       to_city: to.trim(),
@@ -144,7 +154,7 @@ export default function CreateTripScreen({ navigation, route }) {
       capacity_tons: tons ? Number(tons) : null,
       available_m3: m3 ? Number(m3) : null,
       price: priceNum,
-      currency: priceMode === 'fixed' ? currency : 'KZT',
+      currency: currency,
       departure: departureNorm,
       arrival: arrivalNorm,
       // Stage 8: structured route triple from RoutePointPicker.
@@ -178,64 +188,55 @@ export default function CreateTripScreen({ navigation, route }) {
       <Text style={s.title}>{t('postTrip')}</Text>
       <Text style={s.subtitle}>{t('create_trip_subtitle')}</Text>
 
-      {/* Откуда / Куда: tap-through to the RoutePointPicker (country
-          → type → point), Stage 7 / Stage 8 / Stage 11. */}
+      {/* Откуда / Куда: полноэкранный выбор города (inDrive-стиль). */}
       <Field
         variant="dropdown"
-        icon="📍"
+        featherIcon="map-pin"
         label={t('signup_field_country')}
         value={from}
         placeholder={t('create_field_from_placeholder')}
-        onPress={() => setShowFromPicker((v) => !v)}
+        onPress={() => setShowFromPicker(true)}
       />
-      {showFromPicker ? (
-        <View style={s.pickerWrap}>
-          <RoutePointPicker
-            value={from}
-            onChange={(v, point) => {
-              setFrom(v);
-              setFromPoint(point || null);
-              if (errors.from) setErrors((e) => ({ ...e, from: null }));
-              if (v && v.trim()) setShowFromPicker(false);
-            }}
-            placeholder={'📍 ' + t('fromCountry')}
-            testID="trip-from-input"
-          />
-        </View>
-      ) : null}
       {errors.from ? <Text style={s.err}>⚠️ {errors.from}</Text> : null}
 
       <Field
         variant="dropdown"
-        icon="📍"
+        featherIcon="map-pin"
         label={t('toCountry')}
         value={to}
         placeholder={t('create_field_to_placeholder')}
-        onPress={() => setShowToPicker((v) => !v)}
+        onPress={() => setShowToPicker(true)}
       />
-      {showToPicker ? (
-        <View style={s.pickerWrap}>
-          <RoutePointPicker
-            value={to}
-            onChange={(v, point) => {
-              setTo(v);
-              setToPoint(point || null);
-              if (errors.to) setErrors((e) => ({ ...e, to: null }));
-              if (v && v.trim()) setShowToPicker(false);
-            }}
-            placeholder={'🏁 ' + t('toCountry')}
-            testID="trip-to-input"
-          />
-        </View>
-      ) : null}
       {errors.to ? <Text style={s.err}>⚠️ {errors.to}</Text> : null}
+
+      <LocationPickerModal
+        visible={showFromPicker}
+        onClose={() => setShowFromPicker(false)}
+        title={t('loc_from_title')}
+        showGeo
+        onSelect={(v, point) => {
+          setFrom(v);
+          setFromPoint(point || null);
+          if (errors.from) setErrors((e) => ({ ...e, from: null }));
+        }}
+      />
+      <LocationPickerModal
+        visible={showToPicker}
+        onClose={() => setShowToPicker(false)}
+        title={t('loc_to_title')}
+        onSelect={(v, point) => {
+          setTo(v);
+          setToPoint(point || null);
+          if (errors.to) setErrors((e) => ({ ...e, to: null }));
+        }}
+      />
 
       {/* Дата выезда + Тип кузова — 2 колонки */}
       <View style={s.row2}>
         <View style={{ flex: 1 }}>
           <Field
             variant="dropdown"
-            icon="📅"
+            featherIcon="calendar"
             label={t('departure')}
             value={departure}
             placeholder=""
@@ -245,7 +246,7 @@ export default function CreateTripScreen({ navigation, route }) {
         <View style={{ flex: 1 }}>
           <Field
             variant="dropdown"
-            icon="🚚"
+            featherIcon="truck"
             label={t('truckType')}
             value={truckType ? t(truckType) : ''}
             placeholder=""
@@ -291,9 +292,9 @@ export default function CreateTripScreen({ navigation, route }) {
           <Field
             label={t('weight_label')}
             value={tons}
-            onChangeText={(v) => setTons(String(v || '').replace(/[^\d]/g, ''))}
-            keyboardType="numeric"
-            placeholder={t('weight_placeholder') || 'Например: 22'}
+            onChangeText={(v) => setTons(normalizeDecimal(v))}
+            keyboardType="decimal-pad"
+            placeholder={t('weight_placeholder') || 'Например: 31.5'}
             testID="trip-weight-field"
           />
         </View>
@@ -301,8 +302,8 @@ export default function CreateTripScreen({ navigation, route }) {
           <Field
             label={t('volume_label')}
             value={m3}
-            onChangeText={(v) => setM3(String(v || '').replace(/[^\d]/g, ''))}
-            keyboardType="numeric"
+            onChangeText={(v) => setM3(normalizeDecimal(v))}
+            keyboardType="decimal-pad"
             placeholder={t('volume_placeholder') || 'Например: 110'}
             testID="trip-volume-field"
           />
@@ -311,47 +312,33 @@ export default function CreateTripScreen({ navigation, route }) {
 
       {/* Цена block */}
       <View style={[s.priceCard, { borderColor: v1.border }]}>
-        <Text style={s.priceLabel}>💰 {t('payment_label_full')}</Text>
-        <View style={s.priceModeRow}>
-          <TouchableOpacity
-            testID="trip-payment-negotiable"
-            onPress={() => { setPriceMode('negotiable'); setPrice(''); }}
-            style={[s.priceMode, priceMode === 'negotiable' ? { backgroundColor: accent.main, borderColor: accent.main } : { borderColor: v1.border }]}
-          >
-            <Text style={[s.priceModeText, { color: priceMode === 'negotiable' ? '#0A0A0A' : v1.textMuted }]}>{t('payment_negotiable')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            testID="trip-payment-fixed"
-            onPress={() => setPriceMode('fixed')}
-            style={[s.priceMode, priceMode === 'fixed' ? { backgroundColor: accent.main, borderColor: accent.main } : { borderColor: v1.border }]}
-          >
-            <Text style={[s.priceModeText, { color: priceMode === 'fixed' ? '#0A0A0A' : v1.textMuted }]}>{t('payment_fixed')}</Text>
-          </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+          <Feather name="dollar-sign" size={15} color={v1.text} />
+          <Text style={[s.priceLabel, { marginBottom: 0 }]}>{t('payment_label_full')}</Text>
         </View>
-        {priceMode === 'fixed' ? (
-          <View style={s.row2}>
-            <View style={{ flex: 1 }}>
-              <Field
-                icon="💳"
-                label={t('amount_label')}
-                value={price}
-                onChangeText={(v) => setPrice(String(v || '').replace(/[^\d]/g, ''))}
-                keyboardType="numeric"
-                placeholder={t('price_example_placeholder')}
-                testID="trip-price-input"
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Field
-                variant="dropdown"
-                icon="¤"
-                label={t('currency_label')}
-                value={`${(CURRENCY_OPTIONS.find((c) => c.k === currency) || {}).l || ''} ${currency}`}
-                onPress={() => setShowCurrencyPicker((v) => !v)}
-              />
-            </View>
+        <View style={s.row2}>
+          <View style={{ flex: 1 }}>
+            <Field
+              featherIcon="credit-card"
+              label={t('amount_label')}
+              value={price}
+              onChangeText={(v) => { setPrice(String(v || '').replace(/[^\d]/g, '')); if (errors.price) setErrors((e) => ({ ...e, price: null })); }}
+              keyboardType="numeric"
+              placeholder={t('price_example_placeholder')}
+              testID="trip-price-input"
+            />
           </View>
-        ) : null}
+          <View style={{ flex: 1 }}>
+            <Field
+              variant="dropdown"
+              featherIcon="dollar-sign"
+              label={t('currency_label')}
+              value={`${(CURRENCY_OPTIONS.find((c) => c.k === currency) || {}).l || ''} ${currency}`}
+              onPress={() => setShowCurrencyPicker((v) => !v)}
+            />
+          </View>
+        </View>
+        {errors.price ? <Text style={s.err}>⚠️ {errors.price}</Text> : null}
       </View>
       <BottomSheet visible={showCurrencyPicker} onClose={() => setShowCurrencyPicker(false)} title={t('currency_label')}>
         <View style={s.currencyRow}>

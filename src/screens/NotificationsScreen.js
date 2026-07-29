@@ -5,9 +5,11 @@ import { useToast } from '../components/Toast';
 import { notificationsAPI } from '../utils/notificationsAPI';
 import {v1Colors, useV1Colors, v1Radius, v1AccentFor} from '../theme/designV1';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
+import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import { useAuth } from '../utils/AuthContext';
 import { useI18n } from '../utils/useI18n';
 import { getLanguage } from '../utils/i18n';
+import Feather from '@expo/vector-icons/Feather';
 
 // issue #7: localized time вместо сырого UTC-слайса "2026-06-11T08:30".
 // Backend хранит UTC; добавляем Z (если нет TZ), чтобы toLocaleString
@@ -68,7 +70,8 @@ function parseNotifUrl(url) {
 
 export default function NotificationsScreen({ navigation }) {
   const { session } = useAuth();
-  const role = session?.user?.role || 'driver';
+  // Гость по умолчанию = client (оранжевый), как в остальном приложении.
+  const role = session?.user?.role || 'client';
   const { t } = useI18n();
   const v1 = useV1Colors();
   const s = React.useMemo(() => StyleSheet.create({
@@ -85,14 +88,14 @@ export default function NotificationsScreen({ navigation }) {
   icon: { fontSize: 22, marginTop: 2 },
   title: { color: v1.text, fontSize: 14, marginBottom: 2 },
   body: { color: v1.textMuted, fontSize: 12, lineHeight: 17 },
-  time: { color: v1.textDim, fontSize: 10, marginTop: 4 },
+  time: { color: v1.textDim, fontSize: 11, marginTop: 4 },
   dot: { width: 8, height: 8, borderRadius: 4, marginTop: 6 },
 
   }), [v1]);
   const { toast } = useToast();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const accent = v1AccentFor('driver');
+  const accent = v1AccentFor(role);
 
   const load = async () => {
     setLoading(true);
@@ -107,7 +110,7 @@ export default function NotificationsScreen({ navigation }) {
 
   const markAllRead = async () => {
     await notificationsAPI.readAll();
-    toast('✓ Все прочитаны', 'success');
+    toast(`✓ ${t('notif_all_read')}`, 'success');
     load();
   };
 
@@ -139,11 +142,15 @@ export default function NotificationsScreen({ navigation }) {
           role,
         });
       } else if (kind === 'deals' && id) {
-        // У сделок нет собственного экрана (см. AppNavigator) — открываем
-        // список чатов, оттуда пользователь дойдёт до диалога по сделке.
-        navigation.navigate('ChatsList');
-      } else if (kind === 'chats' && id) {
-        navigation.navigate('Chat', { chatId: id });
+        // Deal Room = ChatScreen с dealId (карточка сделки + timeline +
+        // сообщения). ChatScreen сам резолвит roomId по dealId. Раньше
+        // сваливали в общий список чатов — лишний тап и потеря контекста.
+        navigation.navigate('Chat', { dealId: id, role });
+      } else if ((kind === 'chats' || kind === 'chat') && id) {
+        // Часть 4 (правило одного места): bid/deal-уведомления ведут ПРЯМО в
+        // комнату чата сделки. ChatScreen ждёт roomId. Обрабатываем и chat, и
+        // chats с id (раньше singular chat/{id} терял id и падал в ChatsList).
+        navigation.navigate('Chat', { roomId: id, role });
       } else if (kind === 'chat' || kind === 'chats') {
         navigation.navigate('ChatsList');
       }
@@ -164,9 +171,9 @@ export default function NotificationsScreen({ navigation }) {
   const cleanNotifText = (s) => {
     if (!s || typeof s !== 'string') return s;
     return s
-      .replace(/^None предлагает/, 'Водитель предлагает')
+      .replace(/^None предлагает/, t('notif_driver_offers'))
       .replace(/^None /, '')
-      .replace(/^null предлагает/, 'Водитель предлагает')
+      .replace(/^null предлагает/, t('notif_driver_offers'))
       .replace(/^null /, '');
   };
 
@@ -192,9 +199,17 @@ export default function NotificationsScreen({ navigation }) {
 
   return (
     <SafeAreaView style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']}>
-      <BrandBarWithShare onBack={() => navigation.goBack()} accent={accent.main} />
+      {/* Как вкладка «Сделки» экран — корень таба (назад некуда), справа ☰.
+          Как pushed экран (deeplink 'Notifications') — показываем «назад». */}
+      <BrandBarWithShare
+        onBack={navigation.canGoBack?.() ? () => navigation.goBack() : undefined}
+        accent={accent.main}
+        rightSlot={<HeaderMenuButton navigation={navigation} role={role} testID="deals-menu-btn" />}
+      />
       <View style={s.titleRow}>
-        <Text style={s.titleHero}>{t('notifications_title')}</Text>
+        {/* Заголовок совпадает с названием вкладки «Сделки», чтобы вход и
+            экран читались как одно целое. */}
+        <Text style={s.titleHero}>{t('tab_deals')}</Text>
         {items.some(i => !i.is_read) ? (
           <TouchableOpacity onPress={markAllRead}>
             <Text style={[s.markAll, { color: accent.main }]}>{t('notifications_mark_all_read')}</Text>
@@ -211,7 +226,7 @@ export default function NotificationsScreen({ navigation }) {
         ListEmptyComponent={
           !loading ? (
             <View style={{ alignItems: 'center', paddingVertical: 60 }}>
-              <Text style={{ fontSize: 48, marginBottom: 10 }}>🔔</Text>
+              <Feather name="bell" size={48} color={v1.textMuted} style={{ marginBottom: 10 }} />
               <Text style={{ color: v1.textMuted }}>{t('notifications_empty')}</Text>
             </View>
           ) : null

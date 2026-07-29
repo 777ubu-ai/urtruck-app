@@ -1,0 +1,56 @@
+# feed-favorite-heart — БАГ A: ❤️ на карточке перевозчика в ленте должно
+# реально сохраняться (Профиль → «Избранное» содержит перевозчика, не пусто).
+#
+# Первопричина бага (см. отчёт QA): favorites висели за require_level(1) —
+# на проде (BETA_MODE=false) клиент level 0 получал 403, фронт молча глотал
+# (toggleFav не проверял r.ok), ❤️ горело оптимистично, а запись не
+# сохранялась. Фикс: бэк — get_user вместо require_level(1); фронт — откат
+# + тост при неудаче. Этот флоу — happy-path регресс (boris level 3): круг
+# ❤️ → сохранение → показ в профиле работает без регрессий.
+#
+# Стартовое состояние: избранное boris очищено перед прогоном (см. отчёт).
+appId: host.exp.Exponent
+name: feed-favorite-heart
+tags:
+  - client
+  - favorites
+  - bugA
+env:
+  MAESTRO_ACTOR: boris
+---
+- runFlow: _lib/qa-login.yaml
+- tapOn:
+    id: "bottom-nav-feed"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "trip-card"
+    timeout: 20000
+- takeScreenshot: FAV_01_feed
+# Тап по сердечку первой карточки перевозчика — сохранить в избранное
+- tapOn:
+    id: "feed-fav"
+    index: 0
+- waitForAnimationToEnd
+- takeScreenshot: FAV_02_heart_tapped
+# Профиль → «Избранное»: перевозчик ДОЛЖЕН присутствовать (не пусто)
+- tapOn:
+    id: "bottom-nav-profile"
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element:
+      id: "profile-favorites"
+    direction: DOWN
+    timeout: 8000
+- tapOn:
+    id: "profile-favorites"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "favorite-card"
+    timeout: 10000
+- assertVisible:
+    id: "favorite-card"
+- assertNotVisible:
+    id: "favorites-empty"
+- takeScreenshot: FAV_03_favorites_has_card

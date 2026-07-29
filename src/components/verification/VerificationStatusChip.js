@@ -16,7 +16,7 @@ import { useI18n } from '../../utils/useI18n';
 export const STATUS_COLORS = {
   missing:        { fg: '#475569', bg: '#475569' + '14', border: '#475569' + '30' },
   uploaded:       { fg: '#2563EB', bg: '#2563EB' + '14', border: '#2563EB' + '30' },
-  pending_review: { fg: '#D97706', bg: '#D97706' + '14', border: '#D97706' + '30' },
+  pending_review: { fg: '#E06D00', bg: '#E06D00' + '14', border: '#E06D00' + '30' },
   approved:       { fg: '#16A34A', bg: '#16A34A' + '14', border: '#16A34A' + '30' },
   rejected:       { fg: '#DC2626', bg: '#DC2626' + '14', border: '#DC2626' + '30' },
 };

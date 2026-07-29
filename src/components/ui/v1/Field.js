@@ -10,6 +10,7 @@
 
 import React from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 import { useV1Colors, v1Radius, v1Spacing, v1Typography } from '../../../theme/designV1';
 
 export default function Field(props) {
@@ -17,8 +18,18 @@ export default function Field(props) {
   return <InputRow {...props} />;
 }
 
+// Ведущая иконка поля. Приоритет — профессиональная Feather-иконка (монохром,
+// серый), эмодзи оставлен как fallback для ещё не мигрированных экранов.
+function FieldIcon({ featherIcon, icon, color }) {
+  if (featherIcon) {
+    return <Feather name={featherIcon} size={18} color={color} style={{ width: 20, textAlign: 'center' }} />;
+  }
+  if (icon) return <Text style={[s.icon, { color }]}>{icon}</Text>;
+  return null;
+}
+
 function InputRow({
-  icon, label, value, onChangeText, placeholder,
+  icon, featherIcon, label, value, onChangeText, placeholder,
   secureTextEntry, onTogglePassword, isPasswordVisible,
   keyboardType, autoCapitalize = 'sentences', maxLength, error, helper,
   // Stage 21: pass-through editable so callers can render a
@@ -47,7 +58,7 @@ function InputRow({
           { backgroundColor: colors.surface, borderColor: error ? colors.error : colors.border },
         ]}
       >
-        {icon ? <Text style={[s.icon, { color: colors.textMuted }]}>{icon}</Text> : null}
+        <FieldIcon featherIcon={featherIcon} icon={icon} color={colors.textMuted} />
         <View style={{ flex: 1 }}>
           <TextInput
             style={[s.input, { color: colors.text }, !editable && { opacity: 0.7 }]}
@@ -76,7 +87,7 @@ function InputRow({
   );
 }
 
-function DropdownRow({ icon, label, value, onPress, placeholder, testID }) {
+function DropdownRow({ icon, featherIcon, label, value, onPress, placeholder, testID }) {
   const colors = useV1Colors();
   return (
     <View style={{ marginBottom: v1Spacing.sm }}>
@@ -97,7 +108,7 @@ function DropdownRow({ icon, label, value, onPress, placeholder, testID }) {
         ]}
         testID={testID}
       >
-        {icon ? <Text style={[s.icon, { color: colors.textMuted }]}>{icon}</Text> : null}
+        <FieldIcon featherIcon={featherIcon} icon={icon} color={colors.textMuted} />
         <View style={{ flex: 1 }}>
           <Text style={[s.input, { color: value ? colors.text : colors.placeholder }]} numberOfLines={1}>
             {value || placeholder || '—'}

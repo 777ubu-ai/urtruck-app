@@ -7,46 +7,21 @@ import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useAuth } from '../utils/AuthContext';
 import { getChats, subscribe, getUnreadNotifications } from '../utils/store';
+import { marketAPI } from '../utils/marketAPI';
+import useDealLocationBroadcast from '../hooks/useDealLocationBroadcast';
 import BottomNav from '../components/ui/v1/BottomNav';
 
 import HowItWorksScreen from '../screens/HowItWorksScreen';
 import AboutScreen from '../screens/AboutScreen';
-import AuthScreen from '../screens/AuthScreen';
 import RoleScreen from '../screens/RoleScreen';
-// Stage 35-37: старые RegScreen / SignUpScreen / AuthScreen больше не
-// показываются пользователю в основном flow. Импорты сохранены только
-// для qaPreview (?qa=design), где галерея макетов всё ещё на них
-// ссылается, и как fallback в случае deeplink.
-import RegScreen from '../screens/RegScreen';
-import SignUpScreen from '../screens/SignUpScreen';
 import PremiumRegisterScreen from '../screens/registration/PremiumRegisterScreen';
 import PremiumOtpScreen from '../screens/registration/PremiumOtpScreen';
 import PremiumProfileScreen from '../screens/registration/PremiumProfileScreen';
 import TruckParamsScreen from '../screens/registration/TruckParamsScreen';
 import VehicleDocsScreen from '../screens/registration/VehicleDocsScreen';
-import VehiclePhotosScreen from '../screens/registration/VehiclePhotosScreen';
 import IdentityStepScreen from '../screens/registration/IdentityStepScreen';
-import SelfieStepScreen from '../screens/registration/SelfieStepScreen';
+import CitizenshipScreen from '../screens/registration/CitizenshipScreen';
 import PremiumLoginScreen from '../screens/registration/PremiumLoginScreen';
-// Driver-verification onboarding hub (2026-06-11). Точка входа из
-// Profile «Стать водителем / перевозчиком». Прежний flow начинался
-// прямо с `Identity` без сводки — этот dashboard собирает 10 пунктов и
-// показывает их статусы.
-import VerificationDashboardScreen from '../screens/verification/VerificationDashboardScreen';
-import VerificationPendingScreen from '../screens/verification/VerificationPendingScreen';
-import VerificationSubmittedScreen from '../screens/verification/VerificationSubmittedScreen';
-import VerificationApprovedScreen from '../screens/verification/VerificationApprovedScreen';
-// PR #105: 7 dedicated upload screens + review + rejected.
-import VerificationPersonalPhotoScreen from '../screens/verification/VerificationPersonalPhotoScreen';
-import VerificationSelfieWithLicenseScreen from '../screens/verification/VerificationSelfieWithLicenseScreen';
-import VerificationLicenseFrontScreen from '../screens/verification/VerificationLicenseFrontScreen';
-import VerificationLicenseBackScreen from '../screens/verification/VerificationLicenseBackScreen';
-import VerificationSrtsScreen from '../screens/verification/VerificationSrtsScreen';
-import VerificationTruckExteriorScreen from '../screens/verification/VerificationTruckExteriorScreen';
-import VerificationTruckInteriorScreen from '../screens/verification/VerificationTruckInteriorScreen';
-import VerificationReferralCodeScreen from '../screens/verification/VerificationReferralCodeScreen';
-import VerificationReviewSubmitScreen from '../screens/verification/VerificationReviewSubmitScreen';
-import VerificationRejectedScreen from '../screens/verification/VerificationRejectedScreen';
 import FeedScreen from '../screens/FeedScreen';
 import CargoDetail from '../screens/CargoDetail';
 import TrackTruckScreen from '../screens/TrackTruckScreen';
@@ -55,6 +30,7 @@ import ChatScreen from '../screens/ChatScreen';
 import WalletScreen from '../screens/WalletScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import ReviewsScreen from '../screens/ReviewsScreen';
+import FavoritesScreen from '../screens/FavoritesScreen';
 import ChatsListScreen from '../screens/ChatsListScreen';
 import ArchiveScreen from '../screens/ArchiveScreen';
 import MyTripsScreen from '../screens/MyTripsScreen';
@@ -62,6 +38,7 @@ import BlacklistScreen from '../screens/BlacklistScreen';
 import EducationScreen from '../screens/EducationScreen';
 import PushFilterScreen from '../screens/PushFilterScreen';
 import QueueScreen from '../screens/QueueScreen';
+import TrackedPlatesScreen from '../screens/TrackedPlatesScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
 import StatsScreen from '../screens/StatsScreen';
 import EditProfileScreen from '../screens/EditProfileScreen';
@@ -86,13 +63,8 @@ import ProfileV2Screen from '../screens/onboarding/ProfileV2Screen';
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
-// Placeholder for the central "+" tab. The custom BottomNav intercepts the
-// press and navigates to CreateTrip / CreateCargo before this component ever
-// mounts, but react-navigation requires every Tab.Screen to have a real
-// component reference, so we keep this stub.
-function PublishStub() {
-  return <View style={{ flex: 1, backgroundColor: '#000' }} />;
-}
+// (Стаб центральной «+»-вкладки удалён 26.07.2026: у клиента размещение груза
+// переехало кнопкой внутрь «Мои грузы», вкладки Publish больше нет.)
 
 function MainTabs({ route }) {
   const { session } = useAuth();
@@ -106,15 +78,41 @@ function MainTabs({ route }) {
     return unsub;
   }, []);
 
-  // Канон таб-баров (мастер-ТЗ §2.2–2.3).
-  //   Водитель (5): Грузы (Feed) · Рейсы (MyWork) · Очередь (Queue, центр) ·
-  //     Чат (Chats, с бейджем непрочитанного) · Профиль. Кнопка «Разместить»
-  //     живёт ВНУТРИ «Рейсы», а не отдельной вкладкой (§2.2.2). Чат всегда
-  //     на панели — критичный инструмент биржи (§2.4).
-  //   Клиент (5, приказ 2026-06-13): Грузы (MyWork) · Машины (Feed) ·
-  //     «+» Создать (Publish, центр) · Чат (Chats, с бейджем) · Профиль.
-  //     Чат добавлен — без переписки нет доверия грузоотправителя к бирже.
-  // BottomNav красит неон по роли: driver #00E676, client #F59E0B.
+  // Авто-трансляция геопозиции водителя по активным сделкам — на уровне
+  // всего приложения (любой экран, пока приложение открыто), а не только
+  // «Мои рейсы». Водитель ничего не нажимает: как только сделка «в работе»,
+  // его позиция уходит на сервер (после разового разрешения на локацию).
+  // Клиент видит машину на «Где машина».
+  const [inWorkDealIds, setInWorkDealIds] = useState([]);
+  useEffect(() => {
+    if (!isDriver) { setInWorkDealIds([]); return; }
+    let alive = true;
+    const IN_WORK = ['accepted', 'in_progress', 'picked_up', 'at_border'];
+    const fetchIds = async () => {
+      try {
+        const d = await marketAPI.myDashboard();
+        const ids = (d?.my_deals || [])
+          .filter((x) => IN_WORK.includes(x.status))
+          .map((x) => x.id)
+          .filter(Boolean);
+        if (alive) setInWorkDealIds(ids);
+      } catch { /* тихо */ }
+    };
+    fetchIds();
+    const iv = setInterval(fetchIds, 60000);
+    return () => { alive = false; clearInterval(iv); };
+  }, [isDriver]);
+  useDealLocationBroadcast(inWorkDealIds);
+
+  // Канон таб-баров (приказ владельца 2026-07-26, обе волны).
+  // Обе роли живут по одной логике: «Сделки» = единый инбокс (ставки сверху,
+  // переписки ниже; торг и чат — ВНУТРИ комнаты сделки). Отдельных вкладок
+  // «Чаты» и «Разместить» нет ни у кого: чат внутри сделки, размещение —
+  // кнопкой внутри «моего меню» (Рейсы/Грузы, §2.2.2).
+  //   Водитель (4): Грузы (Feed) · Рейсы (MyWork) · Очередь (Queue —
+  //     инструмент границы, не дубль) · Сделки (Deals).
+  //   Клиент (3): Грузы (MyWork) · Машины (Feed) · Сделки (Deals).
+  // BottomNav красит неон по роли: driver #00E676, client #FF8400.
   return (
     <Tab.Navigator
       screenOptions={{ headerShown: false }}
@@ -130,16 +128,18 @@ function MainTabs({ route }) {
           <Tab.Screen name="Feed" component={FeedScreen} initialParams={{ role }} />
           <Tab.Screen name="MyWork" component={MyTripsScreen} initialParams={{ role }} />
           <Tab.Screen name="Queue" component={QueueScreen} initialParams={{ role }} />
-          <Tab.Screen name="Chats" component={ChatsListScreen} initialParams={{ role }} />
-          <Tab.Screen name="Profile" component={ProfileScreen} initialParams={{ role }} />
+          {/* «Сделки» (26.07.2026, волна 2 — водитель зеркалит клиента):
+              ChatsListScreen в dealsMode — сверху мои ставки в работе
+              (pending/countered), ниже все переписки. Отдельная вкладка
+              «Чаты» убрана: чат живёт внутри комнаты сделки. «Очередь»
+              остаётся — это инструмент границы, а не дубль сделок. */}
+          <Tab.Screen name="Deals" component={ChatsListScreen} initialParams={{ role }} />
         </>
       ) : (
         <>
           <Tab.Screen name="MyWork" component={MyTripsScreen} initialParams={{ role }} />
           <Tab.Screen name="Feed" component={FeedScreen} initialParams={{ role }} />
-          <Tab.Screen name="Publish" component={PublishStub} initialParams={{ role }} />
-          <Tab.Screen name="Chats" component={ChatsListScreen} initialParams={{ role }} />
-          <Tab.Screen name="Profile" component={ProfileScreen} initialParams={{ role }} />
+          <Tab.Screen name="Deals" component={ChatsListScreen} initialParams={{ role }} />
         </>
       )}
     </Tab.Navigator>
@@ -179,9 +179,6 @@ export default function AppNavigator() {
         <Stack.Screen name="RoleV2" component={RoleScreenV2} />
         <Stack.Screen name="ProfileV2" component={ProfileV2Screen} />
         {/* Legacy экраны — оставлены только для qaPreview-галереи. */}
-        <Stack.Screen name="SignUp" component={SignUpScreen} />
-        <Stack.Screen name="LegacyReg" component={RegScreen} />
-        <Stack.Screen name="LegacyAuth" component={AuthScreen} />
         {/* Premium flow */}
         <Stack.Screen name="Auth" component={PremiumLoginScreen} />
         <Stack.Screen name="Login" component={PremiumLoginScreen} />
@@ -189,6 +186,7 @@ export default function AppNavigator() {
         <Stack.Screen name="RegOtp" component={PremiumOtpScreen} />
         <Stack.Screen name="RegProfile" component={PremiumProfileScreen} />
         <Stack.Screen name="Main" component={MainTabs} />
+        <Stack.Screen name="Profile" component={ProfileScreen} />
         <Stack.Screen name="CargoDetail" component={CargoDetail} />
         <Stack.Screen name="DriverDetail" component={DriverDetail} />
         <Stack.Screen name="Chat" component={ChatScreen} />
@@ -232,6 +230,10 @@ export default function AppNavigator() {
           <Stack.Screen name="RegOtp" component={PremiumOtpScreen} />
           <Stack.Screen name="RegProfile" component={PremiumProfileScreen} />
           <Stack.Screen name="Main" component={MainTabs} />
+          {/* Профиль доступен и гостю (☰ в шапке) — показывает
+              ограниченный вид с приглашением зарегистрироваться. Без этой
+              регистрации маршрута navigate('Profile') у гостя не срабатывал. */}
+          <Stack.Screen name="Profile" component={ProfileScreen} />
           <Stack.Screen name="CargoDetail" component={CargoDetail} />
           <Stack.Screen name="DriverDetail" component={DriverDetail} />
           <Stack.Screen name="Chat" component={ChatScreen} />
@@ -240,10 +242,14 @@ export default function AppNavigator() {
         // Полностью в приложении
         <>
           <Stack.Screen name="Main" component={MainTabs} />
+          {/* Профиль теперь открывается из ☰ (top-right) как отдельный экран
+              стека, а не как вкладка таб-бара (её занял «Дела»). */}
+          <Stack.Screen name="Profile" component={ProfileScreen} />
           <Stack.Screen name="CargoDetail" component={CargoDetail} />
           <Stack.Screen name="DriverDetail" component={DriverDetail} />
           <Stack.Screen name="Chat" component={ChatScreen} />
           <Stack.Screen name="Reviews" component={ReviewsScreen} />
+          <Stack.Screen name="Favorites" component={FavoritesScreen} />
           <Stack.Screen name="ChatsList" component={ChatsListScreen} />
           <Stack.Screen name="Archive" component={ArchiveScreen} />
           <Stack.Screen name="MyTripsList" component={MyTripsScreen} />
@@ -251,6 +257,7 @@ export default function AppNavigator() {
           <Stack.Screen name="Education" component={EducationScreen} />
           <Stack.Screen name="PushFilter" component={PushFilterScreen} />
           <Stack.Screen name="Queue" component={QueueScreen} />
+          <Stack.Screen name="TrackedPlates" component={TrackedPlatesScreen} />
           <Stack.Screen name="Notifications" component={NotificationsScreen} />
           <Stack.Screen name="Stats" component={StatsScreen} />
           <Stack.Screen name="EditProfile" component={EditProfileScreen} />
@@ -261,34 +268,14 @@ export default function AppNavigator() {
           <Stack.Screen name="CreateTrip" component={CreateTripScreen} />
           <Stack.Screen name="CreateCargo" component={CreateCargoScreen} />
           <Stack.Screen name="TrackTruck" component={TrackTruckScreen} />
+        <Stack.Screen name="Citizenship" component={CitizenshipScreen} />
         <Stack.Screen name="Identity" component={IdentityStepScreen} />
-        <Stack.Screen name="Selfie" component={SelfieStepScreen} />
         <Stack.Screen name="TruckParams" component={TruckParamsScreen} />
         <Stack.Screen name="VehicleDocs" component={VehicleDocsScreen} />
-        <Stack.Screen name="VehiclePhotos" component={VehiclePhotosScreen} />
-        {/* Driver-verification hub (2026-06-11). Точка входа — кнопка
-            «Стать водителем / перевозчиком» в Profile. Dashboard сам
-            редиректит на pending/approved/rejected при необходимости. */}
-        <Stack.Screen name="VerificationDashboard" component={VerificationDashboardScreen} />
-        <Stack.Screen name="VerificationPending" component={VerificationPendingScreen} />
-        <Stack.Screen name="VerificationSubmitted" component={VerificationSubmittedScreen} />
-        <Stack.Screen name="VerificationApproved" component={VerificationApprovedScreen} />
-        {/* PR #105: 7 dedicated upload steps + review + rejected. */}
-        <Stack.Screen name="VerifyPersonalPhoto" component={VerificationPersonalPhotoScreen} />
-        <Stack.Screen name="VerifySelfieWithLicense" component={VerificationSelfieWithLicenseScreen} />
-        <Stack.Screen name="VerifyLicenseFront" component={VerificationLicenseFrontScreen} />
-        <Stack.Screen name="VerifyLicenseBack" component={VerificationLicenseBackScreen} />
-        <Stack.Screen name="VerifySrts" component={VerificationSrtsScreen} />
-        <Stack.Screen name="VerifyTruckExterior" component={VerificationTruckExteriorScreen} />
-        <Stack.Screen name="VerifyTruckInterior" component={VerificationTruckInteriorScreen} />
-        <Stack.Screen name="VerifyReferralCode" component={VerificationReferralCodeScreen} />
-        <Stack.Screen name="VerificationReview" component={VerificationReviewSubmitScreen} />
-        <Stack.Screen name="VerificationRejected" component={VerificationRejectedScreen} />
-          {/* КАНОНИЧЕСКИЙ PRO-flow верификации водителя:
-              Security → Identity → Selfie → VehicleDocs → VehiclePhotos →
-              TruckParams → submit.
-              Это 5 честных шагов (PR-V9 вынес фото авто+кабины в отдельный
-              шаг VehiclePhotos; см. TOTAL_STEPS=5 во всех пяти экранах).
+          {/* КАНОНИЧЕСКИЙ PRO-flow верификации водителя (4 шага):
+              Citizenship 1 → Identity 2 → VehicleDocs 3 → TruckParams 4 →
+              submit. TOTAL_STEPS=4 во всех четырёх экранах. Legacy-экраны
+              SelfieStepScreen/VehiclePhotosScreen не смонтированы.
 
               Reg/RegOtp/RegProfile (Premium) ниже — это ОБЩИЙ профиль
               (имя + город), а НЕ документная верификация. Оставлены как legacy

@@ -32,6 +32,20 @@ jobs:
       - name: Build web
         run: npx expo export --platform web
 
+      - name: Bundle size guard
+        # Страж размера JS-бандла: для КЗ/Китая с медленным интернетом важно,
+        # чтобы приложение не разбухало незаметно (кто-то залил тяжёлую
+        # картинку/шрифт). Порог 12 МБ на самый большой JS-чанк — сейчас
+        # ~2.7 МБ, запас большой; предупреждаем, а не валим деплой.
+        run: |
+          MAXKB=12000
+          BIG=$(find dist/_expo/static/js -name '*.js' -printf '%s %p\n' 2>/dev/null | sort -rn | head -1)
+          SZ=$(echo "$BIG" | awk '{print int($1/1024)}')
+          echo "Крупнейший JS-чанк: ${SZ} КБ ($(echo "$BIG" | awk '{print $2}'))"
+          if [ "${SZ:-0}" -gt "$MAXKB" ]; then
+            echo "::warning::JS-бандл ${SZ} КБ превысил порог ${MAXKB} КБ — проверьте, не залили ли тяжёлый ассет."
+          fi
+
       - name: Post-process (SW + manifest)
         run: |
           cp sw-template.js dist/sw.js
@@ -82,31 +96,13 @@ jobs:
           sshpass -p "$SERVER_PASS" scp -C -o StrictHostKeyChecking=no -r backend/* "$SERVER_USER@$SERVER_HOST:$BACKEND_DIR/"
           sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" "source ~/.nvm/nvm.sh && pm2 restart urtruck-security-api"
 
-      # Email OTP → REAL: берём Resend API-ключ из секрета URTRUCK_CMC и проставляем
-      # его в EMAIL_SMTP_PASSWORD прод-.env (тот же каталог, куда деплоится бэкенд).
-      # Секрет не печатается (GitHub маскирует). Guard: если секрет пуст/не задан —
-      # шаг ничего не делает, email остаётся в MOCK (ничего не ломается).
-      - name: Set Resend SMTP key (email OTP → REAL)
-        env:
-          SERVER_HOST: ${{ secrets.SERVER_HOST }}
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-          SERVER_PASS: ${{ secrets.SERVER_PASS }}
-          BACKEND_DIR: ${{ secrets.BACKEND_DIR || '/home/ubuntu/urtruck-security' }}
-          RESEND_KEY: ${{ secrets.URTRUCK_CMC }}
-        run: |
-          if [ -z "$RESEND_KEY" ]; then
-            echo "URTRUCK_CMC пуст/не задан в этом репозитории — пропускаю (email остаётся MOCK)."
-            exit 0
-          fi
-          sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
-            "cd $BACKEND_DIR && \
-             if grep -q '^EMAIL_SMTP_PASSWORD=' .env; then \
-               sed -i 's|^EMAIL_SMTP_PASSWORD=.*|EMAIL_SMTP_PASSWORD=$RESEND_KEY|' .env; \
-             else \
-               printf 'EMAIL_SMTP_HOST=smtp.resend.com\nEMAIL_SMTP_PORT=587\nEMAIL_SMTP_USER=resend\nEMAIL_SMTP_PASSWORD=$RESEND_KEY\nEMAIL_FROM=no-reply@urtruck.kz\nEMAIL_USE_TLS=true\n' >> .env; \
-             fi && \
-             source ~/.nvm/nvm.sh && pm2 restart urtruck-security-api"
-          echo "SMTP-ключ проставлен, urtruck-security-api перезапущен."
+      # Email SMTP настраивается НАПРЯМУЮ в $BACKEND_DIR/.env на сервере
+      # (провайдер выбирается там: Gmail SMTP / Resend / SES и т.д.). CI больше
+      # НЕ перезаписывает email-креды автоматически — раньше этот шаг вписывал
+      # Resend-ключ и затирал ручную Gmail-настройку при каждом деплое. Теперь
+      # email-конфиг — единственный источник истины в серверном .env.
+      - name: Email SMTP note (managed on server .env)
+        run: echo "Email SMTP управляется в BACKEND_DIR/.env на сервере; CI его не трогает (см. комментарий в workflow)."
 
       - name: Health check
         env:

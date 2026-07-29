@@ -19,7 +19,7 @@ from ocr.document_reader import extract_passport_data
 from biometrics.liveness import check_liveness, face_match
 from scoring.engine import calculate_score
 from database import db
-from config import BETA_MODE, BETA_OTP_CODE
+from config import BETA_MODE, BETA_OTP_CODE, REVIEWER_DEMO_EMAIL, REVIEWER_DEMO_CODE
 import logging
 
 reg_router = APIRouter()
@@ -99,6 +99,21 @@ def logout(authorization: str = Header(None)):
         except Exception:
             revoked = False
     return {"ok": True, "revoked": revoked}
+
+
+# ---------- Account deletion (App Store Guideline 5.1.1(v)) ----------
+@reg_router.delete("/account")
+@reg_router.post("/account/delete")
+def delete_my_account(driver_id: str = Depends(get_current_driver)):
+    """Удаление аккаунта пользователем из приложения (требование Apple).
+    Обезличивает персональные данные и отзывает все сессии. Идемпотентно —
+    после удаления токен становится недействительным. POST-алиас нужен для
+    клиентов/прокси, которые не пропускают DELETE."""
+    try:
+        reg_dal.delete_account(driver_id)
+    except Exception:
+        raise HTTPException(status_code=500, detail="Не удалось удалить аккаунт")
+    return {"ok": True, "deleted": True}
 
 
 # ---------- Me endpoint ----------
@@ -244,6 +259,11 @@ def email_send(req: EmailSendRequest, request: Request = None):
         raise HTTPException(status_code=400, detail="Неверный формат e-mail")
     if not bool(req.consent):
         raise HTTPException(status_code=400, detail="Для регистрации необходимо принять условия сервиса.")
+    # App Review демо-вход: для ревьюерского адреса реальное письмо не шлём —
+    # код фиксированный (REVIEWER_DEMO_CODE), ревьюер вводит его сразу. Это
+    # гарантирует, что экран ввода кода откроется независимо от состояния SMTP.
+    if REVIEWER_DEMO_EMAIL and email == REVIEWER_DEMO_EMAIL:
+        return {"sent": True, "channel": "email", "mock": False, "code": None, "error": None}
     limit_otp_send(email)
     code = generate_code()
     reg_dal.save_code(email, code)
@@ -265,14 +285,36 @@ def email_verify(req: EmailVerifyRequest, request: Request = None):
     if not _valid_email(email):
         raise HTTPException(status_code=400, detail="Неверный e-mail")
     limit_otp_verify(email)
-    # BETA bypass — как в wa_verify (для тестеров/ревью).
+    # Ревьюерский демо-вход (Guideline 2.1a): фиксированный код принимается
+    # ТОЛЬКО для REVIEWER_DEMO_EMAIL. Не зависит от BETA_MODE (тот на проде off).
+    is_reviewer = bool(REVIEWER_DEMO_EMAIL) and email == REVIEWER_DEMO_EMAIL and req.code.strip() == REVIEWER_DEMO_CODE
+    # BETA bypass — для тестеров, когда включён BETA_MODE (на проде выключен).
     is_beta_login = BETA_MODE and req.code.strip() == BETA_OTP_CODE
-    if not is_beta_login:
+    if not (is_beta_login or is_reviewer):
         if not reg_dal.check_code(email, req.code):
             raise HTTPException(status_code=400, detail="Неверный или истёкший код")
         reg_dal.delete_code(email)
     guest_id = reg_dal.get_driver_by_token(req.guest_token) if req.guest_token else None
     driver = reg_dal.get_or_create_driver(email, upgrade_guest_id=guest_id)
+    # Демо-аккаунт для ревью (или beta) — провижн полного доступа, чтобы
+    # ревьюер видел ВСЕ функции (лента, ставки, чат, очередь) без прохождения
+    # верификации документов.
+    if is_reviewer or is_beta_login:
+        updates = {}
+        if not driver.get("full_name"):
+            updates["full_name"] = "App Review Demo" if is_reviewer else "Тестер"
+        if (driver.get("verification_level") or 0) < 2:
+            updates["verification_level"] = 2
+        if driver.get("role") in (None, "guest"):
+            updates["role"] = "driver"
+        if not driver.get("security_score"):
+            updates["security_score"] = 75
+            updates["security_color"] = "green"
+        if not driver.get("status") or driver.get("status") == "pending":
+            updates["status"] = "approved"
+        if updates:
+            reg_dal.update_driver(driver["id"], updates)
+            driver = reg_dal.get_driver(driver["id"]) or driver
     token = reg_dal.create_session(driver["id"])
     return {
         "token": token,
@@ -463,6 +505,35 @@ async def upload_personal_photo(
     return {"personal_photo_key": photo_url}
 
 
+# ---------- Удостоверение личности (новый порядок: шаг 2, 2 стороны) ----------
+@reg_router.post("/documents/id-front")
+async def upload_id_front(
+    file: UploadFile = File(...),
+    driver_id: str = Depends(get_current_driver),
+):
+    """Удостоверение личности — лицевая сторона. Храним только ключ файла."""
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Пустой файл")
+    url = storage.save_image(data, "id_documents")
+    reg_dal.update_driver(driver_id, {"id_front_url": url})
+    return {"id_front_key": url}
+
+
+@reg_router.post("/documents/id-back")
+async def upload_id_back(
+    file: UploadFile = File(...),
+    driver_id: str = Depends(get_current_driver),
+):
+    """Удостоверение личности — оборотная сторона. Храним только ключ файла."""
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Пустой файл")
+    url = storage.save_image(data, "id_documents")
+    reg_dal.update_driver(driver_id, {"id_back_url": url})
+    return {"id_back_key": url}
+
+
 # ---------- ЭТАП 3: Документы (права + техпаспорт) ----------
 @reg_router.post("/license-selfie")
 async def upload_license_selfie(
@@ -471,11 +542,35 @@ async def upload_license_selfie(
 ):
     """Селфи с водительскими правами в руках — антифрод-артефакт для модерации.
     Сохраняем файл в storage, в БД пишем ТОЛЬКО ключ/URL (не raw base64).
-    Liveness/face здесь НЕ проверяем (это не биометрия-гейт). raw/ИИН не
-    логируем; возвращаем публичный ключ файла (не приватный signed URL)."""
+    №2: раньше принимался ЛЮБОЙ upload (даже фото самой лицензии без лица).
+    Теперь проверяем, что в кадре есть ЛИЦО (check_liveness). На проде биометрия
+    реальная (face_recognition). Отказ — только когда лицо не обнаружено; при
+    инфраструктурной ошибке пропускаем (fail-open, не блокируем легитимных)."""
     data = await file.read()
     if not data:
         raise HTTPException(status_code=400, detail="Пустой файл")
+    # Антифрод-гейт: на селфи с правами должно быть лицо.
+    try:
+        import tempfile
+        from biometrics.liveness import check_liveness
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
+            tmp.write(data)
+            tmp_path = tmp.name
+        live = check_liveness(tmp_path) or {}
+        try:
+            Path(tmp_path).unlink(missing_ok=True)
+        except Exception:
+            pass
+        reason = (live.get("reason") or "").lower()
+        if "лицо не обнаружено" in reason or "лицо не найдено" in reason:
+            raise HTTPException(
+                status_code=400,
+                detail="На фото не видно лица. Сделайте селфи, держа права рядом с лицом.",
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        pass  # fail-open: инфра-ошибка биометрии не должна блокировать шаг
     url = storage.save_image(data, "license_selfies")
     reg_dal.update_driver(driver_id, {"license_selfie_url": url})
     return {"license_selfie_key": url}
@@ -620,6 +715,37 @@ async def upload_passport(
         "extracted": ocr_result,
         "next": "vehicle",
     }
+
+
+# ---------- Оборотные стороны техпаспорта и прав (переделка верификации) ----------
+# Лицевые: /documents/passport (техпаспорт + OCR) и /documents/license (права + OCR).
+# Оборотные — store-only (без OCR), по образцу /documents/id-back.
+@reg_router.post("/documents/tech-passport-back")
+async def upload_tech_passport_back(
+    file: UploadFile = File(...),
+    driver_id: str = Depends(get_current_driver),
+):
+    """Техпаспорт (СРТС) — оборотная сторона. Храним только ключ файла."""
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Пустой файл")
+    url = storage.save_image(data, "passports")
+    reg_dal.update_driver(driver_id, {"tech_back_url": url})
+    return {"tech_back_key": url}
+
+
+@reg_router.post("/documents/license-back")
+async def upload_license_back(
+    file: UploadFile = File(...),
+    driver_id: str = Depends(get_current_driver),
+):
+    """Водительские права (ВУ) — оборотная сторона. Храним только ключ файла."""
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Пустой файл")
+    url = storage.save_image(data, "licenses")
+    reg_dal.update_driver(driver_id, {"license_back_url": url})
+    return {"license_back_key": url}
 
 
 # ---------- ЭТАП 4: Транспорт ----------
@@ -792,6 +918,20 @@ def get_status(driver_id: str = Depends(get_current_driver)):
     safe["has_license"] = bool(driver.get("license_url"))
     safe["has_passport"] = bool(driver.get("passport_url"))
     safe["has_vehicle_photo"] = bool(driver.get("vehicle_photo_url"))
+    # Личное фото: отдаём признак + ключ, чтобы при повторном входе экран
+    # «Личные данные» не заставлял переснимать уже загруженное фото.
+    safe["has_personal_photo"] = bool(driver.get("personal_photo_url"))
+    safe["personal_photo_key"] = driver.get("personal_photo_url") or None
+    # Новый порядок: удостоверение личности (2 стороны) + гражданство.
+    safe["has_id_front"] = bool(driver.get("id_front_url"))
+    safe["has_id_back"] = bool(driver.get("id_back_url"))
+    # Переделка верификации: 3 документа × 2 стороны. Лицевые техпаспорта/прав —
+    # has_passport (техпаспорт) / has_license (права); оборотные — новые признаки.
+    # id_doc_type уже попадает в safe (не *_url) — фронт подтянет тумблер.
+    safe["has_tech_front"] = bool(driver.get("passport_url"))
+    safe["has_tech_back"] = bool(driver.get("tech_back_url"))
+    safe["has_license_front"] = bool(driver.get("license_url"))
+    safe["has_license_back"] = bool(driver.get("license_back_url"))
     return safe
 
 

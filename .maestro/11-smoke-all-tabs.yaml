@@ -1,0 +1,64 @@
+appId: host.exp.Exponent
+name: night-ops-11-smoke-all-tabs
+tags:
+  - night-ops
+  - smoke
+env:
+  MAESTRO_ACTOR: serik
+---
+# Smoke: старт всех основных экранов водителя (5 канонических вкладок).
+# Цель — убедиться, что ни один таб не падает при открытии. Инвариант после
+# каждого перехода: bottom-nav остаётся видимым (нет краша/белого экрана).
+# Актёр serik = driver → доступны все 5 вкладок (Feed/MyWork/Queue/Chats/Profile).
+#
+# Запуск (локально, Mac): см. qa/maestro/README.md. Нужен Metro (npx expo
+# start --ios) + локальный backend + MAESTRO_QA_AGENT_TOKEN для ensure-actor.
+- runFlow: ../qa/maestro/_lib/qa-login.yaml
+
+# Feed (стартовый)
+- assertVisible:
+    id: "bottom-nav"
+- assertVisible:
+    id: "bottom-nav-feed"
+- takeScreenshot: 00_feed
+
+# MyWork
+- tapOn:
+    id: "bottom-nav-mywork"
+- waitForAnimationToEnd
+- assertVisible:
+    id: "bottom-nav"
+- takeScreenshot: 01_mywork
+
+# Queue
+- tapOn:
+    id: "bottom-nav-queue"
+- waitForAnimationToEnd
+- assertVisible:
+    id: "queue-title"
+- takeScreenshot: 02_queue
+
+# Chats
+- tapOn:
+    id: "bottom-nav-chats"
+- waitForAnimationToEnd
+- assertVisible:
+    id: "deal-room-list"
+- assertVisible:
+    id: "chats-header"
+- takeScreenshot: 03_chats
+
+# Profile
+- tapOn:
+    id: "bottom-nav-profile"
+- waitForAnimationToEnd
+- assertVisible:
+    id: "profile-logout"
+- takeScreenshot: 04_profile
+
+# Инвариант: вернулись на Feed, таб-бар цел
+- tapOn:
+    id: "bottom-nav-feed"
+- waitForAnimationToEnd
+- assertVisible:
+    id: "bottom-nav"

@@ -146,7 +146,7 @@ const s = StyleSheet.create({
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: '#44403C', alignSelf: 'center', marginBottom: 18 },
   title: { fontSize: 20, fontWeight: '800', marginBottom: 14 },
   previewBox: { borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 16 },
-  previewLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 1.2, marginBottom: 6 },
+  previewLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 1.2, marginBottom: 6 },
   previewText: { fontSize: 12, lineHeight: 17 },
   grid: { flexDirection: 'row', justifyContent: 'space-between', gap: 8, marginBottom: 12 },
   channelBtn: { flex: 1, alignItems: 'center', gap: 6, padding: 10, borderRadius: 14, borderWidth: 1 },

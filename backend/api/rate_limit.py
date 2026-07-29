@@ -48,3 +48,8 @@ def limit_guest_create(ip: str):
 def limit_review_create(user_id: str):
     """Не больше 10 отзывов в час от одного пользователя."""
     check_rate(f"review:{user_id}", max_per_window=10, window_sec=3600)
+
+
+def limit_report_create(user_id: str):
+    """Не больше 5 жалоб на водителей в час от одного пользователя (анти-абьюз)."""
+    check_rate(f"report:{user_id}", max_per_window=5, window_sec=3600)

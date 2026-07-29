@@ -26,6 +26,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, AppState, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
+// MaterialCommunityIcons — только ради иконки «рукопожатие» для вкладки
+// «Сделки» (в наборе Feather рукопожатия нет). Иконка контурная,
+// монохромная → красится в акцент так же, как Feather-иконки.
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useV1Colors, v1AccentFor } from '../../../theme/designV1';
 import { useTheme } from '../../../utils/ThemeContext';
 import { useAuth } from '../../../utils/AuthContext';
@@ -50,21 +54,24 @@ const UNREAD_POLL_MS = 12000;
 // truck — Feed (driver видит грузы, client видит транспорт)
 // clipboard — MyWork (мои рейсы / мои грузы)
 // message-circle — чат
-// user — профиль
+// handshake — «Сделки» (весь путь договорённости: ставки → торг →
+//         сделка → статусы). Заменил вкладку профиля — профиль ушёл
+//         наверх под ☰. Рендерится через MaterialCommunityIcons (см. ниже),
+//         остальные — через Feather.
 const ICONS = {
   Feed:    { driver: 'package',  client: 'truck' },
   MyWork:  { driver: 'clipboard', client: 'clipboard' },
   Queue:   { driver: 'map-pin', client: 'map-pin' },
   Chats:   { driver: 'message-circle', client: 'message-circle' },
-  Profile: { driver: 'user', client: 'user' },
+  Deals:   { driver: 'handshake', client: 'handshake' },
 };
 
 // Industrial Luxury: неоновый акцент зависит от роли (источник истины —
-// CLAUDE.md: driver #00E676 изумруд, client #F59E0B янтарь). Текст поверх
+// CLAUDE.md: driver #00E676 изумруд, client #FF8400 янтарь). Текст поверх
 // «+»-кнопки — чёрный (#0C0A09): на изумруде/янтаре даёт AAA-контраст.
 const ROLE_ACCENT = {
   driver: { main: '#00E676', soft: 'rgba(0,230,118,0.14)' },
-  client: { main: '#F59E0B', soft: 'rgba(245,158,11,0.16)' },
+  client: { main: '#FF8400', soft: 'rgba(255,132,0,0.16)' },
 };
 
 // H1-фикс: безусловная сверка бейджа на иконке приложения с серверным
@@ -162,7 +169,7 @@ export default function BottomNav({ state, navigation }) {
     if (name === 'MyWork')  return isDriver ? t('tab_my_work_driver') : t('tab_my_work_client');
     if (name === 'Queue')   return t('tab_queue');
     if (name === 'Chats')   return t('tab_chats');
-    if (name === 'Profile') return t('tab_profile');
+    if (name === 'Deals')   return t('tab_deals');
     return name;
   };
 
@@ -219,9 +226,22 @@ export default function BottomNav({ state, navigation }) {
           const iconName = iconKey ? (isDriver ? iconKey.driver : iconKey.client) : 'circle';
           const label = labelOf(route.name);
           const iconColor = isFocused ? accent.main : inactiveColor;
-          // Бейдж непрочитанного на табе «Чат» (§2.2.4 — критичный индикатор биржи).
-          const showChatBadge = route.name === 'Chats' && chatUnread > 0;
-          const badgeLabel = chatUnread > 9 ? '9+' : String(chatUnread);
+          // Бейджи непрочитанного:
+          //  • «Чаты» = непрочитанные сообщения (chatUnread);
+          //  • «Дела» = непрочитанные СОБЫТИЯ СДЕЛОК (notifUnread — ставки/
+          //    встречные/сделки/статусы). Это бывший колокольчик, спущенный
+          //    вниз в таб-бар: вся живая работа под пальцем.
+          //  • Если вкладки «Чаты» в баре нет (клиент, 3 вкладки с 26.07.2026 —
+          //    чат живёт внутри «Сделок»), непрочитанные сообщения плюсуются
+          //    к бейджу «Сделок», чтобы сигнал не терялся.
+          const hasChatsTab = state.routes.some((r) => r.name === 'Chats');
+          const tabBadgeCount =
+            route.name === 'Chats' ? chatUnread
+            : route.name === 'Deals' ? (notifUnread + (hasChatsTab ? 0 : chatUnread))
+            : 0;
+          const showBadge = tabBadgeCount > 0;
+          const badgeLabel = tabBadgeCount > 9 ? '9+' : String(tabBadgeCount);
+          const badgeTestID = route.name === 'Chats' ? 'bottom-nav-chats-badge' : 'bottom-nav-deals-badge';
 
           return (
             <TouchableOpacity
@@ -245,11 +265,18 @@ export default function BottomNav({ state, navigation }) {
                   },
                 ]}
               >
-                <Feather name={iconName} size={22} color={iconColor} />
-                {showChatBadge ? (
+                {route.name === 'Deals' ? (
+                  // Рукопожатие только в MaterialCommunityIcons; контурный
+                  // вариант (-outline) в едином стиле с Feather-иконками и
+                  // читается чётче сплошного. Чуть крупнее (24) для баланса.
+                  <MaterialCommunityIcons name="handshake-outline" size={24} color={iconColor} />
+                ) : (
+                  <Feather name={iconName} size={22} color={iconColor} />
+                )}
+                {showBadge ? (
                   <View
                     style={[s.iconBadge, { backgroundColor: colors.error, borderColor: barBg }]}
-                    testID="bottom-nav-chats-badge"
+                    testID={badgeTestID}
                   >
                     <Text style={s.iconBadgeText}>{badgeLabel}</Text>
                   </View>
@@ -318,7 +345,7 @@ const s = StyleSheet.create({
   },
   label: {
     height: LABEL_H,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
     letterSpacing: 0.2,
     marginTop: 3,
@@ -334,7 +361,7 @@ const s = StyleSheet.create({
     elevation: 10,
   },
   publishLabel: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '800',
     letterSpacing: 0.2,
     marginTop: 4,
@@ -349,5 +376,5 @@ const s = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 2,
   },
-  iconBadgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '900' },
+  iconBadgeText: { color: '#FFFFFF', fontSize: 11, fontWeight: '900' },
 });

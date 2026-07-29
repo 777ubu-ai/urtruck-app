@@ -5,12 +5,14 @@ import sqlite3
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from typing import Optional
 
 from database.db import get_conn, new_id
 from api.verification_gate import require_level
+from services import file_signing
+from services import storage_service as storage
 from api.push import send_to_user
 
 chat_router = APIRouter()
@@ -265,6 +267,7 @@ class SendMessageIn(BaseModel):
 def send_message(body: SendMessageIn, user=Depends(require_level(1))):
     if not body.text and not body.photo_url:
         raise HTTPException(status_code=400, detail="text или photo_url обязателен")
+    _LAST_SEEN[user["id"]] = _time.time()   # активность для «онлайн»
 
     # Variant B: комната и получатель. Предпочтительно room_id (каноническая
     # комната) — получателя берём из участников, а НЕ из присланного to_user_id
@@ -520,8 +523,12 @@ def get_messages(room_id: str, limit: int = 100, offset: int = 0, user=Depends(r
         if uid not in (room["participant_1"], room["participant_2"]):
             raise HTTPException(status_code=403, detail="Вы не участник этого чата")
 
+        # P3: tiebreak по id. created_at имеет посекундную точность (TEXT
+        # CURRENT_TIMESTAMP) — два сообщения в одну секунду могли переставиться
+        # местами. Автоинкрементный id даёт детерминированный порядок.
         rows = c.execute(
-            "SELECT * FROM chat_messages WHERE room_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            "SELECT * FROM chat_messages WHERE room_id = ? "
+            "ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?",
             (room_id, limit, offset),
         ).fetchall()
 
@@ -539,8 +546,25 @@ def get_messages(room_id: str, limit: int = 100, offset: int = 0, user=Depends(r
     for r in reversed(rows):
         m = dict(r)
         m["mine"] = (m.get("sender_id") == uid)
+        # Вложение чата отдаём участнику подписанной ссылкой (?exp&sig) —
+        # storage больше не публичный. Проверка участия — выше (403 не-участнику).
+        if m.get("photo_url"):
+            m["photo_url"] = file_signing.sign(m["photo_url"])
+        # Возвращаем client_msg_id, чтобы клиент сопоставлял optimistic-пузырь
+        # по устойчивому id, а не по тексту (иначе два одинаковых сообщения
+        # «ок»/«ок» схлопывались в одно на время между поллами).
         messages.append(m)
-    return {"messages": messages, "room": dict(room)}
+    # «Печатает…»: жив ли typing-пинг партнёра (см. /typing).
+    partner_id = room["participant_2"] if room["participant_1"] == uid else room["participant_1"]
+    ts = _TYPING.get((room_id, partner_id))
+    partner_typing = bool(ts and (_time.time() - ts) < _TYPING_TTL)
+    # «Онлайн»: сам факт этого запроса — активность юзера. Партнёр онлайн,
+    # если его активность моложе 90с (его же поллинг в чате — каждые 3с).
+    _LAST_SEEN[uid] = _time.time()
+    seen = _LAST_SEEN.get(partner_id)
+    partner_online = bool(seen and (_time.time() - seen) < 90)
+    return {"messages": messages, "room": dict(room),
+            "partner_typing": partner_typing, "partner_online": partner_online}
 
 
 @chat_router.get("/contacts")
@@ -579,6 +603,74 @@ def translate_info():
     """Debug: какой провайдер, есть ли ключ. Сам ключ НЕ показывает."""
     from services.translate_service import get_info
     return get_info()
+
+@chat_router.post("/photo")
+async def upload_chat_photo(file: UploadFile = File(...), user=Depends(require_level(1))):
+    """4.3: загрузка фото для сообщения чата → storage, возвращаем КЛЮЧ.
+    Само сообщение шлётся через POST /chat/send с photo_url=этот ключ; на
+    чтении сервер подписывает ключ (см. sign в list-messages). Так фото видно
+    и получателю (раньше слался локальный uri устройства — не резолвился)."""
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Пустой файл")
+    if len(data) > 8 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Файл слишком большой")
+    key = storage.save_image(data, "chat_photos")
+    return {"photo_key": key}
+
+
+@chat_router.post("/voice")
+async def upload_chat_voice(file: UploadFile = File(...), user=Depends(require_level(1))):
+    """Голосовое сообщение: загрузка аудио → storage, возвращаем КЛЮЧ.
+    Само сообщение шлётся через POST /chat/send с photo_url=этот ключ и
+    is_voice=true (ключ живёт в том же поле, подпись на чтении общая —
+    см. get_messages). Web пишет audio/webm, native (expo-av) — m4a."""
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Пустой файл")
+    if len(data) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Файл слишком большой")
+    name = (file.filename or "").lower()
+    ext = "m4a"
+    for cand in ("webm", "m4a", "mp3", "aac", "ogg", "wav"):
+        if name.endswith("." + cand):
+            ext = cand
+            break
+    key = storage.save_image(data, "chat_voice", ext=ext)
+    return {"voice_key": key}
+
+
+# ── «Печатает…» ──────────────────────────────────────────────────────────
+# In-memory (один PM2-процесс): (room_id, user_id) → unix-ts последнего пинга.
+# Партнёр видит индикатор, если пинг был < TYPING_TTL секунд назад. Пинги
+# летят раз в ~2.5с пока пользователь набирает; отдельной таблицы не нужно.
+import time as _time
+_TYPING: dict = {}
+_TYPING_TTL = 6
+# «Онлайн»: user_id → unix-ts последней активности в чат-API (in-memory,
+# один PM2-процесс). Обновляется в get_messages/send.
+_LAST_SEEN: dict = {}
+
+
+class TypingIn(BaseModel):
+    room_id: str
+
+
+@chat_router.post("/typing")
+def typing_ping(body: TypingIn, user=Depends(require_level(1))):
+    uid = user["id"]
+    with get_conn() as c:
+        room = c.execute("SELECT participant_1, participant_2 FROM chat_rooms WHERE id = ?", (body.room_id,)).fetchone()
+    if not room or uid not in (room["participant_1"], room["participant_2"]):
+        raise HTTPException(status_code=403)
+    _TYPING[(body.room_id, uid)] = _time.time()
+    # мусор постепенно вычищаем, чтобы dict не рос бесконечно
+    if len(_TYPING) > 2000:
+        now = _time.time()
+        for k in [k for k, ts in _TYPING.items() if now - ts > 60]:
+            _TYPING.pop(k, None)
+    return {"ok": True}
+
 
 class TranslateIn(BaseModel):
     message_id: int

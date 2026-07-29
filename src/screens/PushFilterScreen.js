@@ -6,22 +6,25 @@ import { useTheme } from '../utils/ThemeContext';
 import {v1Colors, useV1Colors} from '../theme/designV1';
 import { useToast } from '../components/Toast';
 import { getPushSettings, setPushSettings } from '../utils/store';
+import Feather from '@expo/vector-icons/Feather';
 
 const TRUCK_KEYS = ['tent', 'ref', 'platform', 'auto', 'izoterm', 'cont20', 'cont40', 'jumbo', 'curtain', 'lowloader', 'tanker', 'dumptruck'];
 
 const NOTIF_CATEGORIES = [
-  { key: 'new_cargos', icon: '📦' },
-  { key: 'bids',       icon: '💬' },
-  { key: 'moderation', icon: '🛡' },
-  { key: 'reviews',    icon: '⭐' },
-  { key: 'trips',      icon: '🚛' },
-  { key: 'system',     icon: '🔔' },
+  { key: 'new_cargos', icon: 'package' },
+  { key: 'bids',       icon: 'message-square' },
+  { key: 'moderation', icon: 'shield' },
+  { key: 'reviews',    icon: 'star' },
+  { key: 'trips',      icon: 'truck' },
+  { key: 'system',     icon: 'bell' },
 ];
 
 export default function PushFilterScreen({ navigation, route }) {
   const v1 = useV1Colors();
   const { role } = route.params || {};
-  const accent = role === 'driver' ? '#4F46E5' : '#F59E0B';
+  // 5.4: driver-акцент = бренд-зелёный #00E676 (был индиго #4F46E5 —
+  // рассинхрон с ролью). Клиент — янтарный.
+  const accent = role === 'driver' ? '#00E676' : '#FF8400';
   const { t } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
@@ -48,7 +51,10 @@ export default function PushFilterScreen({ navigation, route }) {
         <TouchableOpacity onPress={() => navigation.goBack()} style={[s.backBtn, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <Text style={[s.backText, { color: theme.text }]}>‹</Text>
         </TouchableOpacity>
-        <Text style={[s.title, { color: theme.text }]}>🔔 {t('push_title')}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Feather name="bell" size={20} color={theme.text} />
+          <Text style={[s.title, { color: theme.text }]}>{t('push_title')}</Text>
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
@@ -58,7 +64,10 @@ export default function PushFilterScreen({ navigation, route }) {
           <View key={cat.key} style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <View style={s.row}>
               <View style={{ flex: 1 }}>
-                <Text style={[s.label, { color: theme.text }]}>{cat.icon} {t('push_cat_' + cat.key)}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Feather name={cat.icon} size={15} color={theme.text} />
+                  <Text style={[s.label, { color: theme.text }]}>{t('push_cat_' + cat.key)}</Text>
+                </View>
                 <Text style={[s.desc, { color: theme.textMuted }]}>{t('push_cat_' + cat.key + '_desc')}</Text>
               </View>
               <Switch
@@ -105,7 +114,7 @@ export default function PushFilterScreen({ navigation, route }) {
                   types.includes(k) && { backgroundColor: accent, borderColor: accent }]}
                 onPress={() => toggleType(k)}>
                 <Text style={[s.typeChipText, { color: theme.textSecondary },
-                  types.includes(k) && { color: '#fff' }]}>{t(k)}</Text>
+                  types.includes(k) && { color: '#0C0A09' }]}>{t(k)}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -135,5 +144,5 @@ const s = StyleSheet.create({
   typeChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderWidth: 1 },
   typeChipText: { fontSize: 12, fontWeight: '600' },
   saveBtn: { borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 14 },
-  saveBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  saveBtnText: { color: '#0C0A09', fontSize: 16, fontWeight: '800' },
 });

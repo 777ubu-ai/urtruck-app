@@ -118,6 +118,131 @@ def push_reminders_job():
     print(f"[{now.isoformat()}] reminders: inactive={cnt['inactive']} route_match={cnt['route_match']}")
 
 
+def expired_notify_job():
+    """Ежедневно (Модель А): владельцам грузов/рейсов шлём напоминания по
+    нарастающей, пока публикация «стареет» (день выезда +1, +2, +3):
+      +1 день — «Ещё актуально?» (ещё в ленте)
+      +2 дня  — «Завтра уберём из ленты»
+      +3 дня  — «Убрано из ленты — вернуть?»
+    Дальше не напоминаем (без спама). Дедуп на пользователя через push_log
+    (kind='expired'). Продление — одним тапом «Ещё актуально» в приложении."""
+    from datetime import timedelta
+    from database.db import get_conn
+    from services import push_sender
+
+    now = datetime.utcnow()
+    today = now.date()
+
+    def _pd(s):
+        s = str(s or "").strip()
+        for fmt, cut in (("%Y-%m-%d", 10), ("%d.%m.%Y", None)):
+            try:
+                return datetime.strptime(s[:cut] if cut else s, fmt).date()
+            except Exception:
+                pass
+        return None
+
+    # user_id -> самая срочная стадия (1..3) среди его стареющих публикаций
+    urgency = {}
+    try:
+        with get_conn() as c:
+            cargos = c.execute("SELECT owner_id AS uid, pickup_date AS d FROM cargos WHERE status = 'active'").fetchall()
+            trips = c.execute("SELECT driver_id AS uid, departure AS d FROM trips WHERE status = 'active'").fetchall()
+        for r in list(cargos) + list(trips):
+            dd = _pd(r["d"])
+            if not r["uid"] or not dd:
+                continue
+            days_past = (today - dd).days
+            if 1 <= days_past <= 3:
+                urgency[r["uid"]] = max(urgency.get(r["uid"], 0), days_past)
+    except Exception as e:
+        print(f"  expired-notify query err: {e}")
+        return
+
+    MSG = {
+        1: ("🕐 Ваша публикация ещё актуальна?", "Продлите одним тапом — «Ещё актуально»."),
+        2: ("⏳ Завтра уберём из ленты", "Груз/рейс скоро исчезнет из поиска. Продлить?"),
+        3: ("📭 Публикация убрана из ленты", "Хотите вернуть? Нажмите «Ещё актуально»."),
+    }
+    thresh = (now - timedelta(hours=20)).isoformat()
+    sent = 0
+    for uid, dp in urgency.items():
+        try:
+            with get_conn() as c:
+                dup = c.execute(
+                    "SELECT 1 FROM push_log WHERE user_id = ? AND kind = 'expired' AND created_at > ?",
+                    (uid, thresh)).fetchone()
+            if dup:
+                continue
+            title, body = MSG[dp]
+            push_sender.send(uid, title, body, kind="expired", url="/")
+            sent += 1
+        except Exception as e:
+            print(f"  expired push err {uid}: {e}")
+    print(f"[{now.isoformat()}] expired-notify: sent={sent}")
+
+
+def no_bids_notify_job():
+    """Проактивная подсказка владельцу, если на груз/рейс за 18+ часов не
+    пришло ни одной ставки (стандарт бирж грузоперевозок — Della/АТИ дают
+    похожую нотификацию + предлагают поднять/скорректировать цену). Раз в
+    жизни публикации — дедуп через push_log(kind='no_bids'), не спамим."""
+    from datetime import timedelta
+    from database.db import get_conn
+    from services import push_sender
+
+    now = datetime.utcnow()
+    threshold = (now - timedelta(hours=18)).isoformat()
+    dedup_thresh = (now - timedelta(hours=20)).isoformat()  # шире окна проверки — шлём 1 раз
+    sent = 0
+
+    with get_conn() as c:
+        cargos = c.execute("""
+            SELECT id, owner_id, from_city, to_city FROM cargos
+            WHERE status = 'active' AND bids_count = 0 AND created_at < ?
+        """, (threshold,)).fetchall()
+        trips = c.execute("""
+            SELECT t.id, t.driver_id, t.from_city, t.to_city FROM trips t
+            WHERE t.status = 'active' AND t.created_at < ?
+              AND NOT EXISTS (SELECT 1 FROM bids b WHERE b.trip_id = t.id)
+        """, (threshold,)).fetchall()
+
+    def already_sent(uid, entity_id):
+        with get_conn() as c:
+            return bool(c.execute(
+                "SELECT 1 FROM push_log WHERE user_id = ? AND kind = 'no_bids' "
+                "AND data_json LIKE ? AND created_at > ?",
+                (uid, f"%{entity_id}%", dedup_thresh)).fetchone())
+
+    for cid, owner_id, fr, to in cargos:
+        if not owner_id or already_sent(owner_id, cid):
+            continue
+        try:
+            push_sender.send(
+                owner_id, "📦 Пока нет предложений",
+                f"{fr} → {to} · 18 часов без ставок. Возможно, стоит скорректировать цену?",
+                kind="no_bids", data={"cargo_id": cid}, url="/",
+            )
+            sent += 1
+        except Exception as e:
+            print(f"  no_bids cargo err {cid}: {e}")
+
+    for tid, driver_id, fr, to in trips:
+        if not driver_id or already_sent(driver_id, tid):
+            continue
+        try:
+            push_sender.send(
+                driver_id, "🚛 Пока нет предложений",
+                f"{fr} → {to} · 18 часов без предложений на рейс. Возможно, стоит скорректировать цену?",
+                kind="no_bids", data={"trip_id": tid}, url="/",
+            )
+            sent += 1
+        except Exception as e:
+            print(f"  no_bids trip err {tid}: {e}")
+
+    print(f"[{now.isoformat()}] no-bids-notify: sent={sent}")
+
+
 def start_scheduler():
     sched = BackgroundScheduler()
     # Парсинг каждые 6 часов
@@ -128,8 +253,13 @@ def start_scheduler():
     sched.add_job(run_backup, IntervalTrigger(hours=1), id="db_backup")
     # Бот-напоминания: 10:00 UTC+6 (04:00 UTC) = Алматы утро
     sched.add_job(push_reminders_job, CronTrigger(hour=4, minute=0), id="push_reminders")
+    # Уведомление о просроченных публикациях: 05:00 UTC (11:00 Алматы)
+    sched.add_job(expired_notify_job, CronTrigger(hour=5, minute=0), id="expired_notify")
+    # «Пока нет предложений» (18ч без ставок) — проверяем каждые 3 часа,
+    # дедуп по data_json удерживает один пуш на публикацию.
+    sched.add_job(no_bids_notify_job, IntervalTrigger(hours=3), id="no_bids_notify")
     sched.start()
-    print("Scheduler started: TG-parse 6h, rescore monthly, DB backup hourly, reminders 10:00 Almaty")
+    print("Scheduler started: TG-parse 6h, rescore monthly, DB backup hourly, reminders 10:00 Almaty, no-bids 3h")
     return sched
 
 

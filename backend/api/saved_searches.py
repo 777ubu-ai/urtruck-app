@@ -62,18 +62,38 @@ def delete_saved_search(search_id: int, user=Depends(require_level(1))):
     return {"ok": True}
 
 
+def _norm_city(s: str) -> str:
+    """Нормализация города для матчинга: берём часть до запятой (отсекаем
+    страну/регион) и приводим к нижнему регистру. Иначе «Алматы» не
+    совпадало с «Алматы, KZ» и пуши не срабатывали никогда."""
+    return (s or "").split(",")[0].strip().lower()
+
+
 def notify_matching_users(from_city: str, to_city: str, cargo_desc: str = ""):
-    """Вызывается при публикации нового груза — пушит matching подписчикам."""
+    """Вызывается при публикации нового груза — пушит matching подписчикам.
+
+    Матчинг НОРМАЛИЗОВАННЫЙ (город без страны, регистронезависимо), а не по
+    точному равенству строк — раньше «Алматы» ≠ «Алматы, KZ» и петля молчала.
+    """
+    nf, nt = _norm_city(from_city), _norm_city(to_city)
+    if not nf or not nt:
+        return 0
     with get_conn() as c:
         rows = c.execute(
-            "SELECT DISTINCT user_id FROM saved_searches WHERE from_city = ? AND to_city = ? AND notify = 1",
-            (from_city, to_city),
+            "SELECT DISTINCT user_id, from_city, to_city FROM saved_searches WHERE notify = 1"
         ).fetchall()
     sent = 0
+    seen = set()
     for r in rows:
+        if _norm_city(r["from_city"]) != nf or _norm_city(r["to_city"]) != nt:
+            continue
+        uid = r["user_id"]
+        if uid in seen:
+            continue
+        seen.add(uid)
         try:
             send_to_user(
-                r["user_id"],
+                uid,
                 f"📦 Новый груз: {from_city} → {to_city}",
                 cargo_desc[:100] if cargo_desc else "Появился груз по вашему маршруту!",
                 url="/",

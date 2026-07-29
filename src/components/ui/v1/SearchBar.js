@@ -4,6 +4,7 @@
 
 import React from 'react';
 import { View, TextInput, TouchableOpacity, Text, StyleSheet } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 import { useV1Colors, v1Radius } from '../../../theme/designV1';
 
 export default function SearchBar({ value, onChangeText, placeholder, onClear, testID }) {
@@ -15,7 +16,7 @@ export default function SearchBar({ value, onChangeText, placeholder, onClear, t
         { backgroundColor: colors.surface, borderColor: colors.border },
       ]}
     >
-      <Text style={[s.icon, { color: colors.textMuted }]}>🔍</Text>
+      <Feather name="search" size={15} color={colors.textMuted} />
       <TextInput
         style={[s.input, { color: colors.text }]}
         value={value}
@@ -27,7 +28,7 @@ export default function SearchBar({ value, onChangeText, placeholder, onClear, t
       />
       {value ? (
         <TouchableOpacity onPress={onClear} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Text style={[s.clear, { color: colors.textMuted }]}>✕</Text>
+          <Feather name="x" size={15} color={colors.textMuted} style={s.clear} />
         </TouchableOpacity>
       ) : null}
     </View>

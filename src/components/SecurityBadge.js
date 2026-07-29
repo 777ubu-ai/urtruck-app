@@ -14,17 +14,15 @@ export default function SecurityBadge({ userId, phone, plate, compact = false })
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      // 1. Получаем текущий score
+      // Показываем ТОЛЬКО реальный скоринг с сервера. Раньше при
+      // отсутствии балла отправлялся fullCheck с захардкоженными
+      // «хорошими» фактами (страховка есть, стаж 3г, 5 рейсов, 4 отзыва) —
+      // и клиент видел «надёжного» водителя, который на деле не проверен.
+      // Это подрывало саму идею скоринга. Теперь честно: нет реального
+      // балла → бейдж «Новичок / не проверен» (ветка !score ниже).
       let s = userId ? await securityAPI.getScore(userId) : null;
-      // 2. Если нет — запускаем полную проверку
       if (!s || s.total_score == null || s.message) {
-        const f = await securityAPI.fullCheck({
-          user_id: userId || 'anon-' + Date.now(),
-          phone, plate,
-          has_insurance: true, experience_years: 3, completed_trips: 5,
-          positive_reviews: 4, negative_reviews: 0,
-        });
-        if (f) s = f;
+        s = null;
       }
       if (!cancelled) { setScore(s); setLoading(false); }
     })();

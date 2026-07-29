@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Platform, Linking, TouchableOpacity } from 'react-native';
 import { useTheme } from '../utils/ThemeContext';
 import { useI18n } from '../utils/useI18n';
+import { localizePlace } from '../utils/places';
 
 // Координаты основных городов [lat, lon]
 const CITIES = {
@@ -15,7 +16,11 @@ const CITIES = {
   'Костанай': [53.2189, 63.6356], 'Кызылорда': [44.8488, 65.4823],
   'Уральск': [51.2333, 51.3667], 'Актау': [43.6500, 51.1800],
   'Петропавловск': [54.8650, 69.1500], 'Кокшетау': [53.2833, 69.3833],
-  'Хоргос': [44.2113, 80.4137],
+  // Пограничные переходы КЗ↔КНР (обе стороны — для построения маршрута)
+  'Хоргос': [44.2113, 80.4137], 'Нур Жолы': [44.2113, 80.4137], 'Нур жолы': [44.2113, 80.4137],
+  'Достык': [45.2553, 82.4820], 'Алашанькоу': [45.1717, 82.5686],
+  'Майкапчагай': [47.4300, 85.5600], 'Зимунай': [47.4300, 85.7900], 'Джеминай': [47.4300, 85.7900],
+  'Бахты': [46.7500, 82.7000], 'Тачэн': [46.7500, 82.9800],
   // Россия
   'Москва': [55.7558, 37.6176], 'Moscow': [55.7558, 37.6176],
   'Санкт-Петербург': [59.9311, 30.3609], 'СПб': [59.9311, 30.3609],
@@ -64,34 +69,54 @@ const CITIES = {
   'Дубай': [25.2048, 55.2708],
 };
 
+// Чистим строку от флагов/эмодзи/📍 и хвоста ", страна" → голое имя города.
+const EMOJI_RE = /[\u{1F1E6}-\u{1F1FF}\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}]/gu;
+const cleanName = (str) => String(str || '')
+  .split(',')[0]                     // отбрасываем ", KZ" / ", 🇰🇿"
+  .replace(EMOJI_RE, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+// Кандидаты для поиска координат: полное имя + части составного названия
+// перехода ("Нур Жолы ↔ Хоргос" → ["...", "Нур Жолы", "Хоргос"];
+// "Алашанькоу-сухой порт" → ["...", "Алашанькоу", "сухой порт"]).
+const cityTokens = (str) => {
+  const base = cleanName(str);
+  if (!base) return [];
+  const parts = base.split(/[↔—–/-]/).map((x) => x.trim()).filter(Boolean);
+  return [base, ...parts];
+};
+
 const parseCity = (str) => {
-  if (!str) return null;
-  // Разбиваем "Москва, RU" или "Москва, 🇷🇺"
-  const name = str.split(',')[0].trim();
-  return CITIES[name] || null;
+  for (const tok of cityTokens(str)) {
+    if (CITIES[tok]) return CITIES[tok];
+  }
+  return null;
 };
 
 export default function RouteMap({ from, to, transit, liveCoord, height = 200 }) {
   const { theme } = useTheme();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const fromCoord = parseCity(from);
   const toCoord = parseCity(to);
 
-  // Открыть в Яндекс.Картах с маршрутом для грузовика
+  // Открыть в Яндекс.Картах ИМЕННО маршрутом (rtext), а не текстовым поиском.
+  // Где есть координаты — берём их (точный маршрут + километраж); иначе
+  // отдаём чистое имя города — Яндекс сам геокодит и строит маршрут.
+  // Раньше при неизвестном городе вся строка «Откуда → Куда» с флагами
+  // летела в text-поиск → «Ничего не найдено».
   const openYandex = () => {
-    if (!fromCoord || !toCoord) {
-      const q = encodeURIComponent((from || '') + ' → ' + (to || ''));
-      Linking.openURL(`https://yandex.com/maps/?text=${q}`);
-      return;
-    }
-    // rtt=auto — авто-маршрут (Яндекс не имеет специального для грузовиков в публичном API)
-    let url = `https://yandex.com/maps/?rtext=${fromCoord[0]},${fromCoord[1]}~`;
-    if (transit) {
-      const tCoord = parseCity(transit);
-      if (tCoord) url += `${tCoord[0]},${tCoord[1]}~`;
-    }
-    url += `${toCoord[0]},${toCoord[1]}&rtt=auto`;
-    Linking.openURL(url);
+    const parts = [];
+    const push = (coord, raw) => {
+      if (coord) { parts.push(`${coord[0]},${coord[1]}`); return; }
+      const n = cleanName(raw);
+      if (n) parts.push(encodeURIComponent(n));
+    };
+    push(fromCoord, from);
+    if (transit) push(parseCity(transit), transit);
+    push(toCoord, to);
+    if (parts.length < 2) return;  // маршрут строим минимум из двух точек
+    Linking.openURL(`https://yandex.com/maps/?rtext=${parts.join('~')}&rtt=auto`);
   };
 
   // Web: встраиваем Яндекс.Карты через map-widget (без API key)
@@ -141,7 +166,7 @@ export default function RouteMap({ from, to, transit, liveCoord, height = 200 })
   return (
     <TouchableOpacity style={[s.placeholder, { backgroundColor: theme.border, height }]} onPress={openYandex}>
       <Text style={{ fontSize: 32 }}>🗺️</Text>
-      <Text style={[s.placeholderText, { color: theme.textSecondary }]}>{from} → {to}</Text>
+      <Text style={[s.placeholderText, { color: theme.textSecondary }]}>{localizePlace(from, lang)} → {localizePlace(to, lang)}</Text>
       <View style={s.placeholderBtn}>
         <Text style={s.placeholderBtnText}>{t('yandex_maps')}</Text>
       </View>

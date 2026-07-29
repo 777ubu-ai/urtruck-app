@@ -5,17 +5,21 @@ import { useTheme } from '../utils/ThemeContext';
 import { useI18n } from '../utils/useI18n';
 import {v1Colors, useV1Colors} from '../theme/designV1';
 
+// Номер телефона НЕ показываем (приватность — иначе завалят звонками). Тап по
+// строке сразу открывает мессенджер. Email оставляем как support-адрес.
 const CONTACTS = [
-  { icon: '💬', label: 'Telegram', value: '@UrTruckSupport', url: 'https://t.me/UrTruckSupport' },
-  { icon: '📧', label: 'Email', value: 'hello@urtruck.kz', url: 'mailto:hello@urtruck.kz' },
-  { icon: '📱', label: 'WhatsApp', value: '+7 700 603 3365', url: 'https://wa.me/77006033365' },
+  { icon: '💬', label: 'Telegram', value: '', url: 'https://t.me/+77479171118' },
+  { icon: '📧', label: 'Email', value: '777ubu@gmail.com', url: 'mailto:777ubu@gmail.com' },
+  { icon: '📱', label: 'WhatsApp', value: '', url: 'https://wa.me/77479171118' },
 ];
 
+// Только честные, проверяемые факты (App Store модерация + доверие).
+// Подписи — i18n-ключи, резолвятся через t() при рендере.
 const STATS = [
-  { n: '5 000+', l: 'Проверенных перевозчиков' },
-  { n: '6', l: 'Стран (KZ, RU, UZ, CN, KG, TJ)' },
-  { n: '11', l: 'Языков интерфейса' },
-  { n: '24/7', l: 'Поддержка' },
+  { n: '6', lKey: 'about_stat_countries' },
+  { n: '4', lKey: 'about_stat_langs' },
+  { n: '0%', lKey: 'about_stat_commission' },
+  { n: 'Live', lKey: 'about_stat_queue' },
 ];
 
 export default function AboutScreen({ navigation }) {
@@ -39,16 +43,13 @@ export default function AboutScreen({ navigation }) {
           <Text style={s.heroEmoji}>🚛</Text>
           <Text style={[s.heroTitle, { color: theme.text }]}>UrTruck</Text>
           <Text style={[s.heroSub, { color: theme.textMuted }]}>
-            FTL Market · Международная логистика{'\n'}
-            Китай ↔ Казахстан ↔ Россия ↔ Узбекистан ↔ Кыргызстан
+            {t('about_hero_sub')}
           </Text>
         </View>
 
         <Text style={[s.section, { color: theme.text }]}>{t('about_what_we_do')}</Text>
         <Text style={[s.body, { color: theme.textSecondary }]}>
-          UrTruck — маркетплейс грузоперевозок для международных маршрутов.
-          Соединяем грузоотправителей и перевозчиков напрямую, без посредников.
-          Каждый водитель проходит проверку: ИИН, документы, liveness, blacklist-screening.
+          {t('about_body')}
         </Text>
 
         <Text style={[s.section, { color: theme.text }]}>{t('about_numbers')}</Text>
@@ -56,7 +57,7 @@ export default function AboutScreen({ navigation }) {
           {STATS.map((st, i) => (
             <View key={i} style={[s.statCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
               <Text style={[s.statNum, { color: accent }]}>{st.n}</Text>
-              <Text style={[s.statLabel, { color: theme.textMuted }]}>{st.l}</Text>
+              <Text style={[s.statLabel, { color: theme.textMuted }]}>{t(st.lKey)}</Text>
             </View>
           ))}
         </View>
@@ -71,7 +72,7 @@ export default function AboutScreen({ navigation }) {
             <Text style={{ fontSize: 22 }}>{c.icon}</Text>
             <View style={{ flex: 1, marginLeft: 12 }}>
               <Text style={[s.contactLabel, { color: theme.text }]}>{c.label}</Text>
-              <Text style={[s.contactValue, { color: theme.textMuted }]}>{c.value}</Text>
+              {c.value ? <Text style={[s.contactValue, { color: theme.textMuted }]}>{c.value}</Text> : null}
             </View>
             <Text style={{ color: theme.textMuted }}>›</Text>
           </TouchableOpacity>
@@ -79,8 +80,7 @@ export default function AboutScreen({ navigation }) {
 
         <View style={[s.footer, { borderTopColor: theme.border }]}>
           <Text style={[s.footerText, { color: theme.textDim }]}>
-            © 2026 UrTruck · Казахстан, Алматы{'\n'}
-            v1.0.50 · 17.04.2026 · Все права защищены
+            {t('about_copyright')}
           </Text>
         </View>
       </ScrollView>

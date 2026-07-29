@@ -40,6 +40,15 @@ async def _booking_poll_job():
         logger.exception("cgr.scheduler: booking_poll_job crashed")
 
 
+async def _queue_watch_job():
+    from cgr import queue_watch
+    try:
+        result = await queue_watch.check_watches()
+        logger.info("cgr.scheduler: queue_watch_job: %s", result)
+    except Exception:
+        logger.exception("cgr.scheduler: queue_watch_job crashed")
+
+
 async def _bootstrap_job():
     """Разовый старт: засеять справочник переходов из CGR и сразу собрать
     первое табло, чтобы данные были доступны не дожидаясь первого интервала."""
@@ -79,7 +88,23 @@ def start() -> AsyncIOScheduler | None:
         logger.warning("cgr.scheduler: already running, skip")
         return _scheduler
 
+    # Таблица watch'ей для пуш-алерта «очередь подошла».
+    try:
+        from cgr import queue_watch
+        queue_watch.init_schema()
+    except Exception:
+        logger.exception("cgr.scheduler: queue_watch init_schema failed")
+
     s = AsyncIOScheduler(timezone="UTC")
+    s.add_job(
+        _queue_watch_job,
+        IntervalTrigger(minutes=10),
+        id="cgr_queue_watch",
+        name="CGR queue-watch push alerts",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=300,
+    )
     s.add_job(
         _scoreboard_job,
         IntervalTrigger(minutes=cgr_settings.scoreboard_interval_min),

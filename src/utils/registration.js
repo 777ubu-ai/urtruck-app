@@ -209,6 +209,24 @@ export const regAPI = {
     return data;
   },
 
+  // App Store Guideline 5.1.1(v): удаление аккаунта прямо в приложении.
+  // Обезличивает данные на сервере и отзывает сессию. Best-effort по сети,
+  // но сам факт удаления клиент подтверждает по res.ok.
+  async deleteAccount() {
+    try {
+      const token = await this.getToken();
+      if (!token) return { ok: true, deleted: true };
+      const r = await fetch(`${BASE}/account`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const data = await r.json().catch(() => ({}));
+      return { ok: r.ok, ...data };
+    } catch (e) {
+      return { ok: false, detail: e?.message || 'network_error' };
+    }
+  },
+
   async getToken() {
     return await storage.get(TOKEN_KEY);
   },
@@ -271,6 +289,8 @@ export const regAPI = {
       'legal_form', 'china_experience_years', 'favorite_borders',
       'emergency_contact',
       'passport_intl_url', 'tir_book_url', 'cmr_insurance_url',
+      // профиль грузоотправителя
+      'company_name', 'bin_inn', 'country', 'messenger_type', 'messenger_id',
     ];
     const body = {};
     for (const k of allowed) {
@@ -323,6 +343,71 @@ export const regAPI = {
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(normalizeDetail(data?.detail, `photo upload failed ${r.status}`));
+    return data;
+  },
+
+  // Удостоверение личности — лицевая/оборотная (новый порядок, шаг 2).
+  // backend возвращает { id_front_key } / { id_back_key } и сам пишет url в БД.
+  async uploadIdFront(uri, onProgress) {
+    const token = await this.getToken();
+    onProgress?.('compressing');
+    const compressedUri = await compressImage(uri, { preset: 'document' });
+    onProgress?.('uploading');
+    const form = new FormData();
+    await appendImageFile(form, compressedUri, 'id_front.jpg');
+    const r = await fetch(`${BASE}/documents/id-front`, {
+      method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: form,
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(normalizeDetail(data?.detail, `id front upload failed ${r.status}`));
+    return data;
+  },
+
+  async uploadIdBack(uri, onProgress) {
+    const token = await this.getToken();
+    onProgress?.('compressing');
+    const compressedUri = await compressImage(uri, { preset: 'document' });
+    onProgress?.('uploading');
+    const form = new FormData();
+    await appendImageFile(form, compressedUri, 'id_back.jpg');
+    const r = await fetch(`${BASE}/documents/id-back`, {
+      method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: form,
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(normalizeDetail(data?.detail, `id back upload failed ${r.status}`));
+    return data;
+  },
+
+  // Оборотные стороны техпаспорта и прав (переделка верификации: 3 документа
+  // × 2 стороны). Лицевые — uploadPassport (техпаспорт+OCR) / uploadLicense
+  // (права+OCR). Оборотные — store-only, backend пишет url в БД сам.
+  async uploadTechBack(uri, onProgress) {
+    const token = await this.getToken();
+    onProgress?.('compressing');
+    const compressedUri = await compressImage(uri, { preset: 'document' });
+    onProgress?.('uploading');
+    const form = new FormData();
+    await appendImageFile(form, compressedUri, 'tech_back.jpg');
+    const r = await fetch(`${BASE}/documents/tech-passport-back`, {
+      method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: form,
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(normalizeDetail(data?.detail, `tech back upload failed ${r.status}`));
+    return data;
+  },
+
+  async uploadLicenseBack(uri, onProgress) {
+    const token = await this.getToken();
+    onProgress?.('compressing');
+    const compressedUri = await compressImage(uri, { preset: 'document' });
+    onProgress?.('uploading');
+    const form = new FormData();
+    await appendImageFile(form, compressedUri, 'license_back.jpg');
+    const r = await fetch(`${BASE}/documents/license-back`, {
+      method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: form,
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(normalizeDetail(data?.detail, `license back upload failed ${r.status}`));
     return data;
   },
 

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../utils/useI18n';
 import { useToast } from '../components/Toast';
 import { useAuth } from '../utils/AuthContext';
@@ -9,10 +10,11 @@ import BrandHeader from '../components/ui/v1/BrandHeader';
 import Field from '../components/ui/v1/Field';
 import PrimaryButton from '../components/ui/v1/PrimaryButton';
 import BottomSheet from '../components/ui/v1/BottomSheet';
-import RoutePointPicker from '../components/RoutePointPicker';
+import LocationPickerModal from '../components/LocationPickerModal';
 import CargoTypeInput from '../components/CargoTypeInput';
 import { addCustomCargoType } from '../utils/cargoTypes';
 import DatePicker from '../components/DatePicker';
+import { normalizeDateInput } from '../utils/dateInput';
 import { PhotoPicker } from '../components/PhotoGallery';
 import {v1Colors, useV1Colors, v1Radius, v1Spacing, v1Typography, v1AccentFor} from '../theme/designV1';
 import { TRUCK_KEYS } from '../utils/truckConstants';
@@ -44,6 +46,16 @@ const CURRENCY_OPTIONS = [
   { k: 'RUB', l: '₽' },
   { k: 'CNY', l: '¥' },
 ];
+
+// Ввод дробных чисел (вес/объём): запятую → точку, оставляем цифры и ОДНУ точку.
+// Позволяет «31.5», «30,5» → «30.5». Раньше режущий /[^\d]/ выбрасывал дробную
+// часть, поэтому нельзя было указать 31.5 т.
+const normalizeDecimal = (v) => {
+  let s = String(v || '').replace(',', '.').replace(/[^\d.]/g, '');
+  const i = s.indexOf('.');
+  if (i !== -1) s = s.slice(0, i + 1) + s.slice(i + 1).replace(/\./g, '');
+  return s;
+};
 
 export default function CreateCargoScreen({ navigation, route }) {
   const v1 = useV1Colors();
@@ -100,10 +112,15 @@ export default function CreateCargoScreen({ navigation, route }) {
   const [pickupDate, setPickupDate] = useState('');
   const [tons, setTons] = useState('');
   const [m3, setM3] = useState('');
-  // «По договорённости» убрана — цена указывается всегда (priceMode фиксирован).
-  const [priceMode] = useState('fixed');
+  // Цена ОБЯЗАТЕЛЬНА (решение владельца, приказ по скринам): клиент всегда
+  // указывает стартовую сумму, «Жду предложений»/«По договорённости» убраны —
+  // перевозчики торгуются от конкретной цифры (модель InDrive).
   const [price, setPrice] = useState('');
-  const [currency, setCurrency] = useState('KZT');
+  const [currency, setCurrency] = useState('USD');
+  // Умная валюта по стране отправления, пока пользователь не выбрал вручную.
+  const [currencyTouched, setCurrencyTouched] = useState(false);
+  // Тип оплаты (нал/безнал) — важен водителю. '' = не указан.
+  const [paymentType, setPaymentType] = useState('');
   const [photos, setPhotos] = useState([]);
   // PR-C1: comment state удалён вместе с Textarea ниже — поле молча
   // терялось, backend не имеет колонки.
@@ -122,19 +139,24 @@ export default function CreateCargoScreen({ navigation, route }) {
   const submit = async () => {
     if (submitting) return;
     const errs = {};
+    // Обязательны только маршрут, описание и хотя бы вес/объём. Тип кузова
+    // предзаполнен (не барьер), дата и цена — необязательны: клиент часто
+    // приходит именно узнать рынок и собрать ставки.
     if (!from.trim()) errs.from = t('val_from_required');
     if (!to.trim()) errs.to = t('val_to_required');
     if (!cargoDesc.trim()) errs.cargoDesc = t('val_cargo_desc_required');
-    if (!truckType) errs.truckType = t('val_truck_type_required');
-    if (!pickupDate) errs.pickupDate = t('val_pickup_date_required');
     const wNum = parseFloat(tons) || 0;
     const vNum = parseFloat(m3) || 0;
     if (wNum <= 0 && vNum <= 0) errs.weight = t('val_weight_or_volume_required');
     const pNum = parseInt(String(price || '').replace(/\s/g, ''), 10) || 0;
     if (pNum <= 0) errs.price = t('val_price_required');
+    // Дата загрузки обязательна (симметрично рейсу): без неё груз через 2 дня
+    // тихо выпадал из ленты, а у владельца висел «активным» без продления.
+    const pickupIso = normalizeDateInput(pickupDate);
+    if (!pickupIso) errs.pickupDate = t('val_pickup_date_required');
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
-      const firstKey = ['from', 'to', 'cargoDesc', 'truckType', 'pickupDate', 'weight', 'price'].find((k) => errs[k]);
+      const firstKey = ['from', 'to', 'cargoDesc', 'weight', 'price', 'pickupDate'].find((k) => errs[k]);
       toast(errs[firstKey] || t('fill_required_fields'), 'error', 4000);
       return;
     }
@@ -144,9 +166,7 @@ export default function CreateCargoScreen({ navigation, route }) {
     // списка) — сохраняем его в локальный custom-список, чтобы в
     // следующий раз появилось в подсказках.
     try { addCustomCargoType(cargoDesc.trim()); } catch {}
-    const priceNum = priceMode === 'fixed'
-      ? Math.max(0, parseInt(String(price || '').replace(/\s/g, ''), 10) || 0)
-      : 0;
+    const priceNum = Math.max(0, parseInt(String(price || '').replace(/\s/g, ''), 10) || 0);
     // Stage 8: forward the structured route triple alongside the
     // legacy from_city / to_city strings. Backend tolerates missing
     // fields (free-text fallback supplies country='XX' for orphans),
@@ -156,11 +176,12 @@ export default function CreateCargoScreen({ navigation, route }) {
       to_city: to.trim(),
       cargo_desc: cargoDesc.trim(),
       cargo_type: truckType,
-      weight_tons: parseInt(tons) || 0,
-      volume_m3: parseInt(m3) || 0,
+      weight_tons: parseFloat(tons) || 0,
+      volume_m3: parseFloat(m3) || 0,
       price: priceNum,
-      currency: priceMode === 'fixed' ? currency : 'KZT',
-      pickup_date: pickupDate || null,
+      currency: currency,
+      payment_type: paymentType || null,
+      pickup_date: pickupIso,   // ISO (нормализовано), не сырой DD.MM.YYYY
       photos: photos || [],
       from_country:    fromPoint?.country || null,
       from_point_type: fromPoint?.type    || null,
@@ -170,10 +191,32 @@ export default function CreateCargoScreen({ navigation, route }) {
       to_point_name:   toPoint?.name      || null,
     };
     try {
+      // 27.07: фото сперва грузим в storage → ключи, и только их шлём в
+      // payload. Раньше сохранялся локальный uri устройства (blob:/file:) —
+      // у другого пользователя фото не открывалось. Битую загрузку пропускаем,
+      // публикацию груза из-за фото не срываем.
+      if (photos && photos.length) {
+        const keys = [];
+        for (const uri of photos) {
+          try {
+            const up = await marketAPI.uploadCargoPhoto(uri);
+            if (up?.photo_key) keys.push(up.photo_key);
+          } catch (e) { console.warn('[cargo] photo upload skipped:', e?.message); }
+        }
+        payload.photos = keys;
+      }
       const r = await marketAPI.createCargo(payload);
       if (r.ok || r.id) {
         toast('✓ ' + t('cargo_published'), 'success', 4000);
-        navigation.goBack();
+        // Замыкаем цикл: ведём в «Ищу машину» с только что размещённым
+        // грузом (статус «ждём ставки»), а не goBack() в никуда.
+        const justCreated = {
+          id: r.id,
+          ...payload,
+          status: 'active',
+          created_at: new Date().toISOString(),
+        };
+        navigation.replace('MyTripsList', { role, initialTab: 'searching', justCreatedCargo: justCreated });
       } else {
         toast(r.detail || t('send_error'), 'error');
       }
@@ -193,53 +236,54 @@ export default function CreateCargoScreen({ navigation, route }) {
 
       <Field
         variant="dropdown"
-        icon="📍"
+        featherIcon="map-pin"
         label={t('fromCountry')}
         value={from}
         placeholder={t('create_field_from_placeholder_cargo')}
-        onPress={() => setShowFromPicker((v) => !v)}
+        onPress={() => setShowFromPicker(true)}
       />
-      {showFromPicker ? (
-        <View style={s.pickerWrap}>
-          <RoutePointPicker
-            value={from}
-            onChange={(v, point) => {
-              setFrom(v);
-              setFromPoint(point || null);
-              if (errors.from) setErrors((e) => ({ ...e, from: null }));
-              if (v && v.trim()) setShowFromPicker(false);
-            }}
-            placeholder={'📍 ' + t('fromCountry')}
-            testID="cargo-from-input"
-          />
-        </View>
-      ) : null}
       {errors.from ? <Text style={s.err}>⚠️ {errors.from}</Text> : null}
 
       <Field
         variant="dropdown"
-        icon="📍"
+        featherIcon="map-pin"
         label={t('toCountry')}
         value={to}
         placeholder={t('create_field_to_placeholder_cargo')}
-        onPress={() => setShowToPicker((v) => !v)}
+        onPress={() => setShowToPicker(true)}
       />
-      {showToPicker ? (
-        <View style={s.pickerWrap}>
-          <RoutePointPicker
-            value={to}
-            onChange={(v, point) => {
-              setTo(v);
-              setToPoint(point || null);
-              if (errors.to) setErrors((e) => ({ ...e, to: null }));
-              if (v && v.trim()) setShowToPicker(false);
-            }}
-            placeholder={'🏁 ' + t('toCountry')}
-            testID="cargo-to-input"
-          />
-        </View>
-      ) : null}
       {errors.to ? <Text style={s.err}>⚠️ {errors.to}</Text> : null}
+
+      {/* Полноэкранный выбор города (inDrive-стиль): поиск + недавние +
+          избранное + популярные + погранпереходы. */}
+      <LocationPickerModal
+        visible={showFromPicker}
+        onClose={() => setShowFromPicker(false)}
+        title={t('loc_from_title')}
+        showGeo
+        onSelect={(v, point) => {
+          setFrom(v);
+          setFromPoint(point || null);
+          // Валюта по умолчанию — USD (валюта коридора Китай↔СНГ, решение
+          // владельца). Умная подстановка по стране отправления оставлена для
+          // РФ (RUB), пока клиент не выбрал валюту вручную; Китай остаётся в USD.
+          if (!currencyTouched && point?.country) {
+            const cc = { RU: 'RUB' }[String(point.country).toUpperCase()];
+            if (cc) setCurrency(cc);
+          }
+          if (errors.from) setErrors((e) => ({ ...e, from: null }));
+        }}
+      />
+      <LocationPickerModal
+        visible={showToPicker}
+        onClose={() => setShowToPicker(false)}
+        title={t('loc_to_title')}
+        onSelect={(v, point) => {
+          setTo(v);
+          setToPoint(point || null);
+          if (errors.to) setErrors((e) => ({ ...e, to: null }));
+        }}
+      />
 
       {/* Stage 42: Описание груза — inline TextInput всегда видимый.
           Раньше было через Field+overlay+picker, и пользователю
@@ -247,7 +291,10 @@ export default function CreateCargoScreen({ navigation, route }) {
           Теперь любой custom text сохраняется (сумки/гвозди/мешки/
           стройматериалы/etc), а suggestions — лишь подсказка. */}
       <View style={s.fieldBlock}>
-        <Text style={s.label}>📦 {t('cargoDesc')}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6, marginLeft: 4 }}>
+          <Feather name="package" size={14} color={v1.textMuted} />
+          <Text style={[s.label, { marginBottom: 0, marginLeft: 0 }]}>{t('cargoDesc')}</Text>
+        </View>
         <CargoTypeInput
           value={cargoDesc}
           onChange={(v) => {
@@ -264,7 +311,7 @@ export default function CreateCargoScreen({ navigation, route }) {
         <View style={{ flex: 1 }}>
           <Field
             variant="dropdown"
-            icon="🚚"
+            featherIcon="truck"
             label={t('truckType')}
             value={truckType ? t(truckType) : ''}
             onPress={() => setShowTruckPicker((v) => !v)}
@@ -273,7 +320,7 @@ export default function CreateCargoScreen({ navigation, route }) {
         <View style={{ flex: 1 }}>
           <Field
             variant="dropdown"
-            icon="📅"
+            featherIcon="calendar"
             label={t('pickupDate')}
             value={pickupDate}
             onPress={() => setShowDatePicker((v) => !v)}
@@ -323,9 +370,9 @@ export default function CreateCargoScreen({ navigation, route }) {
           <Field
             label={t('weight_label')}
             value={tons}
-            onChangeText={(v) => { setTons(String(v || '').replace(/[^\d]/g, '')); if (errors.weight) setErrors((e) => ({ ...e, weight: null })); }}
-            keyboardType="numeric"
-            placeholder={t('weight_placeholder') || 'Например: 22'}
+            onChangeText={(v) => { setTons(normalizeDecimal(v)); if (errors.weight) setErrors((e) => ({ ...e, weight: null })); }}
+            keyboardType="decimal-pad"
+            placeholder={t('weight_placeholder') || 'Например: 31.5'}
             testID="cargo-weight-field"
           />
         </View>
@@ -333,8 +380,8 @@ export default function CreateCargoScreen({ navigation, route }) {
           <Field
             label={t('volume_label')}
             value={m3}
-            onChangeText={(v) => { setM3(String(v || '').replace(/[^\d]/g, '')); if (errors.weight) setErrors((e) => ({ ...e, weight: null })); }}
-            keyboardType="numeric"
+            onChangeText={(v) => { setM3(normalizeDecimal(v)); if (errors.weight) setErrors((e) => ({ ...e, weight: null })); }}
+            keyboardType="decimal-pad"
             placeholder={t('volume_placeholder') || 'Например: 110'}
             testID="cargo-volume-field"
           />
@@ -342,14 +389,17 @@ export default function CreateCargoScreen({ navigation, route }) {
       </View>
       {errors.weight ? <Text style={s.err}>⚠️ {errors.weight}</Text> : null}
 
-      {/* Цена block — «По договорённости» убрана (решение владельца 13.06):
-          цену указывают всегда, ввод суммы + валюта. */}
+      {/* Цена обязательна: клиент всегда указывает стартовую сумму — от неё
+          перевозчики торгуются. «Жду предложений»/«По договорённости» убраны. */}
       <View style={[s.priceCard, { borderColor: v1.border }]}>
-        <Text style={s.priceLabel}>💰 {t('payment_label_full')}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+          <Feather name="dollar-sign" size={15} color={v1.text} />
+          <Text style={[s.priceLabel, { marginBottom: 0 }]}>{t('payment_label_full')}</Text>
+        </View>
         <View style={s.row2}>
           <View style={{ flex: 1 }}>
             <Field
-              icon="💳"
+              featherIcon="credit-card"
               label={t('amount_label')}
               value={price}
               onChangeText={(v) => { setPrice(String(v || '').replace(/[^\d]/g, '')); if (errors.price) setErrors((e) => ({ ...e, price: null })); }}
@@ -361,7 +411,7 @@ export default function CreateCargoScreen({ navigation, route }) {
           <View style={{ flex: 1 }}>
             <Field
               variant="dropdown"
-              icon="¤"
+              featherIcon="dollar-sign"
               label={t('currency_label')}
               value={`${(CURRENCY_OPTIONS.find((c) => c.k === currency) || {}).l || ''} ${currency}`}
               onPress={() => setShowCurrencyPicker((v) => !v)}
@@ -375,7 +425,7 @@ export default function CreateCargoScreen({ navigation, route }) {
           {CURRENCY_OPTIONS.map((c) => (
             <TouchableOpacity
               key={c.k}
-              onPress={() => { setCurrency(c.k); setShowCurrencyPicker(false); }}
+              onPress={() => { setCurrency(c.k); setCurrencyTouched(true); setShowCurrencyPicker(false); }}
               style={[s.currencyChip, currency === c.k ? { backgroundColor: accent.main, borderColor: accent.main } : { borderColor: v1.border }]}
             >
               <Text style={[s.currencyText, { color: currency === c.k ? '#0A0A0A' : v1.textMuted }]}>{c.l} {c.k}</Text>
@@ -383,6 +433,26 @@ export default function CreateCargoScreen({ navigation, route }) {
           ))}
         </View>
       </BottomSheet>
+
+      {/* Тип оплаты — важный параметр решения водителя. Опционально. */}
+      <View style={[s.priceCard, { borderColor: v1.border }]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+          <Feather name="credit-card" size={15} color={v1.text} />
+          <Text style={[s.priceLabel, { marginBottom: 0 }]}>{t('payment_type_label')}</Text>
+        </View>
+        <View style={s.priceModeRow}>
+          {[['cashless', t('pay_cashless')], ['cash', t('pay_cash')], ['any', t('pay_any')]].map(([k, lbl]) => (
+            <TouchableOpacity
+              key={k}
+              style={[s.priceMode, paymentType === k ? { backgroundColor: accent.main, borderColor: accent.main } : { borderColor: v1.border }]}
+              onPress={() => setPaymentType(paymentType === k ? '' : k)}
+              testID={`cargo-pay-${k}`}
+            >
+              <Text style={[s.priceModeText, { color: paymentType === k ? '#0A0A0A' : v1.textMuted }]}>{lbl}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
 
       {/* Фото груза — collapsible */}
       <TouchableOpacity onPress={() => setShowPhotos((v) => !v)} activeOpacity={0.85} style={[s.photoToggle, { borderColor: v1.border }]}>

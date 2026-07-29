@@ -20,7 +20,7 @@ export default function BrandHeader({ onBack, accent, compact = false }) {
     <View style={[s.row, compact && { paddingTop: 8 }]}>
       <View style={s.side}>
         {onBack ? (
-          <TouchableOpacity onPress={onBack} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <TouchableOpacity onPress={onBack} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} testID="brand-back">
             <Text style={[s.back, { color: arrowColor }]}>‹</Text>
           </TouchableOpacity>
         ) : null}

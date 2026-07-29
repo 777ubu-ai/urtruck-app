@@ -6,6 +6,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { AppState } from 'react-native';
 import { notificationsAPI } from './notificationsAPI';
+import { subscribeNotifRead } from './unreadEvents';
 
 const POLL_MS = 12000;
 
@@ -33,10 +34,14 @@ export function useUnreadNotifications(enabled = true) {
     const sub = AppState.addEventListener('change', (next) => {
       if (next === 'active') fetchCount();
     });
+    // Мгновенный re-fetch, когда экран пометил уведомления прочитанными
+    // (MyWork при фокусе) — иначе бейдж висел бы до следующего 12-сек poll.
+    const unsub = subscribeNotifRead(fetchCount);
     return () => {
       mounted = false;
       clearInterval(timerRef.current);
       sub?.remove?.();
+      unsub?.();
     };
   }, [enabled]);
 

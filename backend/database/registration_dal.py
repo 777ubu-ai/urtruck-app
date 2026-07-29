@@ -24,11 +24,23 @@ def _migrate(c):
         ("birth_date", "TEXT"),                 # шаг 1 (ДД.ММ.ГГГГ)
         ("personal_photo_url", "TEXT"),         # шаг 1: ключ/URL личного фото в storage
         ("residence_status", "TEXT"),           # шаг 2: citizen|kandas|foreigner
+        # Новый порядок верификации: шаг 1 «Гражданство» + шаг 2 «Удостоверение
+        # личности (2 стороны)». Всё добавлением — старые колонки не трогаем.
+        ("citizenship_country", "TEXT"),         # шаг 1: KZ|RU|UZ|KG|TJ|other
+        ("id_doc_type", "TEXT"),                 # шаг 2: id_card|passport|residence_permit
+        ("id_front_url", "TEXT"),                # шаг 2: удостоверение — лицевая
+        ("id_back_url", "TEXT"),                 # шаг 2: удостоверение — оборотная
         ("license_category", "TEXT"),           # шаг 3: напр. 'B, C, CE'
         ("license_issue_date", "TEXT"),         # шаг 3: для стажа
         ("license_expiry", "TEXT"),             # шаг 3: срок действия
         ("license_number", "TEXT"),             # шаг 3: номер прав (OCR)
-        ("license_selfie_url", "TEXT"),         # шаг 3: ключ/URL селфи с правами
+        ("license_selfie_url", "TEXT"),         # шаг 3: ключ/URL селфи с правами (legacy — селфи убрано)
+        # Переделка верификации (3 документа × 2 стороны): у техпаспорта и прав
+        # добавлены оборотные стороны. Лицевые — существующие passport_url (техпаспорт
+        # + OCR) и license_url (права + OCR). Идентификация — id_front/id_back +
+        # id_doc_type (id_card|passport). Всё добавлением, старые колонки не трогаем.
+        ("tech_back_url", "TEXT"),              # техпаспорт (СРТС) — оборотная сторона
+        ("license_back_url", "TEXT"),           # права (ВУ) — оборотная сторона
         ("vehicle_model", "TEXT"),              # шаг 4 (brand уже есть)
         ("vehicle_color", "TEXT"),              # шаг 4: цвет кузова/кабины (PR #70 UI)
         ("body_type", "TEXT"),                  # шаг 5: tent|ref|izoterm|board|container|tanker|platform
@@ -267,3 +279,68 @@ def get_driver_by_token(token: str) -> str | None:
             c.execute("DELETE FROM reg_sessions WHERE token = ?", (token,))
             return None
         return row["driver_id"]
+
+
+# ---------- Account deletion (App Store Guideline 5.1.1(v)) ----------
+def delete_account(driver_id: str) -> bool:
+    """Удаление аккаунта пользователем из приложения.
+
+    Требование Apple: приложение с регистрацией ОБЯЗАНО давать удаление
+    аккаунта прямо в приложении. Мы обезличиваем все персональные данные
+    (PII) и отзываем все сессии. Строку физически НЕ удаляем, чтобы не
+    осиротить связанные сущности (сделки/чаты/скоринг ссылаются на user_id),
+    но после этого войти под аккаунтом невозможно, а личные данные стёрты.
+
+    Идемпотентно: повторный вызов безопасен. Возвращает True, если аккаунт
+    найден и обезличен; False — если такого driver_id нет (сессии всё равно
+    зачищаются).
+    """
+    with get_conn() as c:
+        exists = c.execute(
+            "SELECT id FROM drivers_registration WHERE id = ?", (driver_id,)
+        ).fetchone()
+        if not exists:
+            c.execute("DELETE FROM reg_sessions WHERE driver_id = ?", (driver_id,))
+            return False
+
+        cols = {r["name"] for r in c.execute(
+            "PRAGMA table_info(drivers_registration)"
+        ).fetchall()}
+        # PII-поля — обнуляем те, что реально существуют в схеме.
+        null_fields = [
+            "full_name", "iin", "personal_photo_url", "license_selfie_url",
+            "license_number", "license_ocr", "passport_ocr", "license_category",
+            "license_issue_date", "license_expiry", "birth_date", "city",
+            "about", "vehicle_plate", "emergency_contact", "passport_intl_url",
+            "tir_book_url", "cmr_insurance_url", "vehicle_photo_url",
+            "cabin_photo_url", "adr_cert_url", "draft_json", "avatar_url",
+            "email",
+        ]
+        sets = []
+        params = []
+        # phone — UNIQUE NOT NULL в старых схемах, поэтому ставим уникальный
+        # placeholder, а не NULL.
+        if "phone" in cols:
+            sets.append("phone = ?")
+            params.append(f"deleted_{driver_id[:16]}")
+        for f in null_fields:
+            if f in cols:
+                sets.append(f"{f} = NULL")
+        if "status" in cols:
+            sets.append("status = 'deleted'")
+        if "role" in cols:
+            sets.append("role = 'deleted'")
+        if "verification_level" in cols:
+            sets.append("verification_level = 0")
+        if "manual_review_required" in cols:
+            sets.append("manual_review_required = 0")
+        if "updated_at" in cols:
+            sets.append("updated_at = CURRENT_TIMESTAMP")
+        params.append(driver_id)
+        c.execute(
+            f"UPDATE drivers_registration SET {', '.join(sets)} WHERE id = ?",
+            params,
+        )
+        # Отзываем все активные сессии этого пользователя.
+        c.execute("DELETE FROM reg_sessions WHERE driver_id = ?", (driver_id,))
+        return True

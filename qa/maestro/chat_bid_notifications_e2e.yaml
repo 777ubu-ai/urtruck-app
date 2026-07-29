@@ -36,7 +36,6 @@ env:
 # Шаг 9: owner отвечает через UI
 - tapOn: { id: "chat-input" }
 - inputText: "QA owner reply MAESTRO"
-- hideKeyboard
 - tapOn: { id: "chat-send-btn" }
 - waitForAnimationToEnd
 - extendedWaitUntil:

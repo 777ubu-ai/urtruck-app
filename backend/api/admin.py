@@ -14,6 +14,7 @@ from fastapi.responses import HTMLResponse, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from database import db
+from services import file_signing
 
 admin_router = APIRouter()
 security = HTTPBasic()
@@ -351,7 +352,17 @@ def data_pending(q: str = "", status_filter: str = "", user: str = Depends(check
             ORDER BY updated_at DESC
             LIMIT 200
         """, params).fetchall()
-    return {"pending": [dict(r) for r in rows]}
+    # Документы отдаём админу (Basic Auth) подписанными ссылками — публичного
+    # доступа к storage больше нет. В БД сырой путь, подпись только на выходе.
+    _DOC_URL_FIELDS = ("selfie_url", "license_url", "passport_url", "vehicle_photo_url")
+    pending = []
+    for r in rows:
+        d = dict(r)
+        for f in _DOC_URL_FIELDS:
+            if d.get(f):
+                d[f] = file_signing.sign(d[f])
+        pending.append(d)
+    return {"pending": pending}
 
 
 @admin_router.get("/export/drivers.csv")
@@ -428,3 +439,85 @@ def admin_reject(driver_id: str, reason: str = "Не прошёл проверк
     except Exception as e:
         print(f"[push] reject failed: {e}")
     return {"ok": True, "id": driver_id, "action": "rejected", "reason": reason, "by": user}
+
+
+# ── Очистка старых тестовых грузов/рейсов ────────────────────────────────
+# Удаляет ТОЛЬКО записи, которые уже невидимы в публичной ленте (просрочены
+# по правилу «Модель А», +2 дня после даты) И не имеют ставок/сделок —
+# то есть чистая мусорная запись без последствий для истории. Ничего, что
+# сейчас видно хоть одному пользователю, не трогается.
+@admin_router.post("/cleanup-stale-listings")
+def admin_cleanup_stale_listings(dry_run: bool = True, user: str = Depends(check_admin)):
+    from datetime import date, timedelta
+    from database.db import get_conn
+    import re as _re
+
+    def parse_date(s):
+        if not s:
+            return None
+        s = str(s).strip()
+        for fmt_re, conv in [
+            (r"^(\d{4})-(\d{2})-(\d{2})", lambda m: date(int(m[1]), int(m[2]), int(m[3]))),
+            (r"^(\d{2})\.(\d{2})\.(\d{4})$", lambda m: date(int(m[3]), int(m[2]), int(m[1]))),
+        ]:
+            m = _re.match(fmt_re, s)
+            if m:
+                try:
+                    return conv(m.groups())
+                except Exception:
+                    pass
+        return None
+
+    today = date.today()
+    grace = today - timedelta(days=2)
+
+    with get_conn() as c:
+        cargo_rows = c.execute(
+            "SELECT id, pickup_date, created_at FROM cargos WHERE status = 'active'"
+        ).fetchall()
+        trip_rows = c.execute(
+            "SELECT id, departure, created_at FROM trips WHERE status = 'active'"
+        ).fetchall()
+        cargo_with_refs = {r[0] for r in c.execute(
+            "SELECT DISTINCT cargo_id FROM bids WHERE cargo_id IS NOT NULL"
+        ).fetchall()} | {r[0] for r in c.execute(
+            "SELECT DISTINCT cargo_id FROM deals WHERE cargo_id IS NOT NULL"
+        ).fetchall()}
+        trip_with_refs = {r[0] for r in c.execute(
+            "SELECT DISTINCT trip_id FROM bids WHERE trip_id IS NOT NULL"
+        ).fetchall()} | {r[0] for r in c.execute(
+            "SELECT DISTINCT trip_id FROM deals WHERE trip_id IS NOT NULL"
+        ).fetchall()}
+
+        cargo_del, cargo_skip = [], []
+        for cid, pickup, created in cargo_rows:
+            pd, cd = parse_date(pickup), parse_date(created)
+            stale = (pd and pd < grace) or (not pd and cd and cd < grace)
+            if not stale:
+                continue
+            (cargo_skip if cid in cargo_with_refs else cargo_del).append(cid)
+
+        trip_del, trip_skip = [], []
+        for tid, dep, created in trip_rows:
+            dd, cd = parse_date(dep), parse_date(created)
+            stale = (dd and dd < grace) or (not dd and cd and cd < grace)
+            if not stale:
+                continue
+            (trip_skip if tid in trip_with_refs else trip_del).append(tid)
+
+        if not dry_run:
+            for cid in cargo_del:
+                c.execute("DELETE FROM cargos WHERE id = ?", (cid,))
+            for tid in trip_del:
+                c.execute("DELETE FROM trips WHERE id = ?", (tid,))
+
+    return {
+        "dry_run": dry_run,
+        "cargos_deleted": len(cargo_del) if not dry_run else 0,
+        "cargos_would_delete": len(cargo_del),
+        "cargos_skipped_has_bids_or_deals": cargo_skip,
+        "trips_deleted": len(trip_del) if not dry_run else 0,
+        "trips_would_delete": len(trip_del),
+        "trips_skipped_has_bids_or_deals": trip_skip,
+        "by": user,
+    }

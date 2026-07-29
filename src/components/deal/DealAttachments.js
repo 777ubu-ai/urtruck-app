@@ -13,8 +13,9 @@
 // Доступ к файлам закрыт на бэке (только участники) — фронт лишь рендерит.
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Platform, Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
 import { useTheme } from '../../utils/ThemeContext';
@@ -24,10 +25,10 @@ import { accentFor } from './DealRoom';
 
 const STATUS_META = {
   queued:    { icon: 'clock',        color: '#94A3B8', key: 'chat_attach_status_queued' },
-  uploading: { icon: 'upload-cloud', color: '#F59E0B', key: 'chat_attach_status_uploading' },
+  uploading: { icon: 'upload-cloud', color: '#FF8400', key: 'chat_attach_status_uploading' },
   uploaded:  { icon: 'check-circle', color: '#22C55E', key: 'chat_attach_status_uploaded' },
   failed:    { icon: 'alert-circle', color: '#EF4444', key: 'chat_attach_status_failed' },
-  retrying:  { icon: 'refresh-cw',   color: '#F59E0B', key: 'chat_attach_status_retrying' },
+  retrying:  { icon: 'refresh-cw',   color: '#FF8400', key: 'chat_attach_status_retrying' },
 };
 
 let _localSeq = 0;
@@ -40,7 +41,10 @@ function attachmentLabel(t, a) {
   return isDoc ? t('attachment_document') : t('attachment_photo');
 }
 
-export default function DealAttachments({ conversationId, role = 'driver' }) {
+// compact (UX 26.07): кнопка «Прикрепить» скрыта (действие живёт в «+»-меню
+// чата, см. attachTrigger), а при пустом списке блок не рендерится вовсе.
+// attachTrigger: внешний тик — инкремент запускает onAttach() (пикер файла).
+export default function DealAttachments({ conversationId, role = 'driver', compact = false, attachTrigger = 0 }) {
   const { t } = useI18n();
   const { theme } = useTheme();
   const accent = accentFor(role);
@@ -62,16 +66,17 @@ export default function DealAttachments({ conversationId, role = 'driver' }) {
 
   // Полный путь загрузки одного вложения с прохождением статусов.
   const runUpload = useCallback(async (item) => {
-    const { localId, uri, name } = item;
+    const { localId, uri, name, isPdf, mime } = item;
     const setStatus = (status) =>
       setLocal((prev) => prev.map((x) => (x.localId === localId ? { ...x, status } : x)));
     try {
       setStatus('uploading');
-      const compressed = await compressImage(uri, { preset: 'document' });
-      await chatAPI.uploadAttachment(conversationId, {
-        uri: compressed, kind: 'document', name, type: 'image/jpeg',
-      });
-      // успех: убираем из local, перечитываем server-список (без fake-строк)
+      // PDF/файл грузим как есть (без сжатия в JPEG — иначе документ ломался).
+      // Фото — сжимаем пресетом document.
+      const payload = isPdf
+        ? { uri, kind: 'document', name, type: mime || 'application/pdf' }
+        : { uri: await compressImage(uri, { preset: 'document' }), kind: 'document', name, type: 'image/jpeg' };
+      await chatAPI.uploadAttachment(conversationId, payload);
       setLocal((prev) => prev.filter((x) => x.localId !== localId));
       await load();
     } catch {
@@ -79,21 +84,41 @@ export default function DealAttachments({ conversationId, role = 'driver' }) {
     }
   }, [conversationId, load]);
 
+  const queueUpload = (item) => {
+    setLocal((prev) => [...prev, { ...item, status: 'queued' }]);
+    runUpload(item);
+  };
+
+  // Фото из галереи (сжимаем).
+  const pickImage = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (perm.status !== 'granted') return;
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 1 });
+    if (res.canceled || !res.assets?.[0]?.uri) return;
+    const localId = `att_${Date.now()}_${_localSeq++}`;
+    queueUpload({ localId, uri: res.assets[0].uri, name: `doc_${localId}.jpg`, isPdf: false });
+  };
+
+  // Файл-документ (PDF и пр.) через системный файловый менеджер.
+  const pickDocument = async () => {
+    const res = await DocumentPicker.getDocumentAsync({ type: ['application/pdf', 'image/*'], copyToCacheDirectory: true });
+    const file = res?.assets?.[0];
+    if (!file?.uri) return;
+    const localId = `att_${Date.now()}_${_localSeq++}`;
+    const isPdf = (file.mimeType || '').includes('pdf') || /\.pdf$/i.test(file.name || '');
+    queueUpload({ localId, uri: file.uri, name: file.name || `doc_${localId}.pdf`, isPdf, mime: file.mimeType });
+  };
+
   const onAttach = async () => {
     if (busy) return;
     setBusy(true);
     try {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (perm.status !== 'granted') { setBusy(false); return; }
-      const res = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 1,
-      });
-      if (res.canceled || !res.assets?.[0]?.uri) { setBusy(false); return; }
-      const uri = res.assets[0].uri;
-      const localId = `att_${Date.now()}_${_localSeq++}`;
-      const name = `doc_${localId}.jpg`;
-      setLocal((prev) => [...prev, { localId, uri, name, status: 'queued' }]);
-      runUpload({ localId, uri, name });
+      if (Platform.OS === 'web') { await pickDocument(); return; }
+      Alert.alert(t('chat_documents_title'), '', [
+        { text: '📄 ' + t('attachment_document'), onPress: pickDocument },
+        { text: '🖼 ' + t('gallery'), onPress: pickImage },
+        { text: t('cancel'), style: 'cancel' },
+      ]);
     } finally {
       setBusy(false);
     }
@@ -104,7 +129,16 @@ export default function DealAttachments({ conversationId, role = 'driver' }) {
     runUpload(item);   // тот же localId → без дубля
   };
 
+  // Внешний запуск пикера из «+»-меню чата (первый рендер не триггерит).
+  const prevTrigger = React.useRef(attachTrigger);
+  useEffect(() => {
+    if (attachTrigger > prevTrigger.current) onAttach();
+    prevTrigger.current = attachTrigger;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attachTrigger]);
+
   const isEmpty = server.length === 0 && local.length === 0;
+  if (compact && isEmpty) return null;
 
   const Row = ({ icon, label, statusKey, statusColor, onRetryPress }) => (
     <View style={s.row}>
@@ -127,16 +161,18 @@ export default function DealAttachments({ conversationId, role = 'driver' }) {
       <View style={s.head}>
         <Feather name="folder" size={14} color={theme.textMuted} />
         <Text style={[s.title, { color: theme.text }]}>{t('chat_documents_title')}</Text>
-        <TouchableOpacity
-          onPress={onAttach}
-          disabled={busy}
-          style={[s.attachBtn, { borderColor: accent, opacity: busy ? 0.5 : 1 }]}
-          testID="attach-add"
-        >
-          {busy ? <ActivityIndicator size="small" color={accent} />
-                : <Feather name="paperclip" size={13} color={accent} />}
-          <Text style={[s.attachTxt, { color: accent }]}>{t('chat_attach_add')}</Text>
-        </TouchableOpacity>
+        {!compact ? (
+          <TouchableOpacity
+            onPress={onAttach}
+            disabled={busy}
+            style={[s.attachBtn, { borderColor: accent, opacity: busy ? 0.5 : 1 }]}
+            testID="attach-add"
+          >
+            {busy ? <ActivityIndicator size="small" color={accent} />
+                  : <Feather name="paperclip" size={13} color={accent} />}
+            <Text style={[s.attachTxt, { color: accent }]}>{t('chat_attach_add')}</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       {isEmpty ? (
@@ -173,11 +209,11 @@ const s = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   title: { fontSize: 12, fontWeight: '800', flex: 1 },
   attachBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
-  attachTxt: { fontSize: 10, fontWeight: '800' },
-  empty: { fontSize: 10 },
+  attachTxt: { fontSize: 11, fontWeight: '800' },
+  empty: { fontSize: 11 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   name: { fontSize: 11, flex: 1 },
-  status: { fontSize: 9, fontWeight: '800', textTransform: 'uppercase' },
+  status: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
   retryBtn: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  retryTxt: { fontSize: 9, fontWeight: '800' },
+  retryTxt: { fontSize: 11, fontWeight: '800' },
 });

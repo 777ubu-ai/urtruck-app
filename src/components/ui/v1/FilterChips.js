@@ -21,6 +21,7 @@ export default function FilterChips({ items = [], accent }) {
           key={it.key}
           onPress={it.onPress}
           activeOpacity={0.85}
+          testID={it.testID || `feed-chip-${it.key}`}
           style={[
             s.chip,
             it.active

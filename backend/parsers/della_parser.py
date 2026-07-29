@@ -101,9 +101,12 @@ def search_driver(phone: str = None, plate: str = None, name: str = None) -> lis
 
 def run_parse():
     """Парсинг: демо + real HTTP попытка."""
+    import os
     count = 0
-    # DEMO
-    for entry in DEMO_COMPLAINTS:
+    # DEMO — только при явном SEED_DEMO_BLACKLIST=true (ревизия 26.07.2026:
+    # демо-претензии не должны попадать в production-таблицу blacklist).
+    demo_enabled = os.getenv("SEED_DEMO_BLACKLIST", "false").strip().lower() in ("1", "true", "yes")
+    for entry in (DEMO_COMPLAINTS if demo_enabled else []):
         existing = db.blacklist_check(
             phone=entry.get("phone"), plate=entry.get("plate"),
         )

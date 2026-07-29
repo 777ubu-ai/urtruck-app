@@ -11,7 +11,7 @@ import { Modal, View, Text, TouchableOpacity, StyleSheet, ScrollView, KeyboardAv
 import { useV1Colors } from '../../../theme/designV1';
 import { useTheme } from '../../../utils/ThemeContext';
 
-export default function BottomSheet({ visible, onClose, title, children, scroll = true }) {
+export default function BottomSheet({ visible, onClose, title, children, scroll = true, footer = null }) {
   const colors = useV1Colors();
   const { isDark } = useTheme();
   const overlayBg = isDark ? 'rgba(0,0,0,0.7)' : 'rgba(15,23,42,0.45)';
@@ -40,6 +40,9 @@ export default function BottomSheet({ visible, onClose, title, children, scroll 
             {scroll
               ? <ScrollView style={{ maxHeight: 480 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">{children}</ScrollView>
               : children}
+            {/* Закреплённый футер — кнопки действий всегда видны, не уезжают
+                в прокрутку (баг «внизу кнопки не видать» в длинном фильтре). */}
+            {footer ? <View style={{ marginTop: 12 }}>{footer}</View> : null}
           </TouchableOpacity>
         </TouchableOpacity>
       </KeyboardAvoidingView>

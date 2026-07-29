@@ -10,6 +10,7 @@ from typing import Optional, List
 
 from database import registration_dal as reg_dal
 from api.verification_gate import require_level
+from services import file_signing
 
 profile_router = APIRouter()
 
@@ -34,6 +35,13 @@ class UpdateProfileIn(BaseModel):
     passport_intl_url: Optional[str] = None
     tir_book_url: Optional[str] = None
     cmr_insurance_url: Optional[str] = None
+    # Профиль грузоотправителя (междунар.): компания, БИН/ИНН, страна и
+    # предпочтительный мессенджер + ID (WeChat/WhatsApp/Telegram/Viber).
+    company_name: Optional[str] = None
+    bin_inn: Optional[str] = None
+    country: Optional[str] = None
+    messenger_type: Optional[str] = Field(None, description="wechat|whatsapp|telegram|viber")
+    messenger_id: Optional[str] = None
 
 
 # Колонки, добавляемые на лету в drivers_registration
@@ -42,6 +50,8 @@ PRO_COLUMNS = [
     "legal_form", "china_experience_years",
     "favorite_borders", "emergency_contact",
     "passport_intl_url", "tir_book_url", "cmr_insurance_url",
+    # профиль грузоотправителя
+    "company_name", "bin_inn", "country", "messenger_type", "messenger_id",
 ]
 
 
@@ -97,9 +107,17 @@ def get_profile(user=Depends(require_level(1))):
         "china_experience_years": d.get("china_experience_years"),
         "favorite_borders": _parse_borders(d.get("favorite_borders")),
         "emergency_contact": d.get("emergency_contact"),
-        "passport_intl_url": d.get("passport_intl_url"),
-        "tir_book_url": d.get("tir_book_url"),
-        "cmr_insurance_url": d.get("cmr_insurance_url"),
+        # профиль грузоотправителя
+        "company_name": d.get("company_name"),
+        "bin_inn": d.get("bin_inn"),
+        "country": d.get("country"),
+        "messenger_type": d.get("messenger_type"),
+        "messenger_id": d.get("messenger_id"),
+        # Документы отдаём владельцу подписанной ссылкой (?exp&sig) — публичного
+        # доступа к storage больше нет. В БД хранится сырой путь, подпись только тут.
+        "passport_intl_url": file_signing.sign(d.get("passport_intl_url")),
+        "tir_book_url": file_signing.sign(d.get("tir_book_url")),
+        "cmr_insurance_url": file_signing.sign(d.get("cmr_insurance_url")),
     }
 
 
@@ -133,6 +151,19 @@ def update_profile(body: UpdateProfileIn, user=Depends(require_level(1))):
         updates["tir_book_url"] = body.tir_book_url.strip()
     if body.cmr_insurance_url is not None:
         updates["cmr_insurance_url"] = body.cmr_insurance_url.strip()
+    # Профиль грузоотправителя
+    if body.company_name is not None:
+        updates["company_name"] = body.company_name.strip()
+    if body.bin_inn is not None:
+        updates["bin_inn"] = body.bin_inn.strip()
+    if body.country is not None:
+        updates["country"] = body.country.strip()
+    if body.messenger_type is not None:
+        mt = body.messenger_type.strip().lower()
+        if mt in {"wechat", "whatsapp", "telegram", "viber", ""}:
+            updates["messenger_type"] = mt
+    if body.messenger_id is not None:
+        updates["messenger_id"] = body.messenger_id.strip()
 
     if not updates:
         return {"ok": True, "detail": "Нечего обновлять"}

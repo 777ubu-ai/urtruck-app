@@ -6,10 +6,14 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Linking, Platform, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import { marketAPI } from '../utils/marketAPI';
 import TruckMap from '../components/TruckMap';
+import { parseCity, distance as geoDistance, isNearBorder } from '../utils/geo';
+import { localizePlace } from '../utils/places';
+import { getLanguage } from '../utils/i18n';
 
 export default function TrackTruckScreen({ navigation, route }) {
   const { dealId, from, to, driverName } = route.params || {};
@@ -30,12 +34,43 @@ export default function TrackTruckScreen({ navigation, route }) {
   useEffect(() => {
     mounted.current = true;
     load();
-    const iv = setInterval(load, 15000);
+    const iv = setInterval(load, 10000);   // 10с — живее «движение машины»
     return () => { mounted.current = false; clearInterval(iv); };
   }, [load]);
 
   const lat = loc ? Number(loc.lat) : null;
   const lng = loc ? Number(loc.lng) : null;
+
+  // Живая «расшифровка» как в Яндекс.Такси: осталось км до пункта, скорость,
+  // ETA, когда обновлялось, отметка «на границе».
+  const destCoord = parseCity(to);
+  const driverCoord = (lat != null && lng != null && !Number.isNaN(lat) && !Number.isNaN(lng)) ? [lat, lng] : null;
+  const kmLeftRaw = (destCoord && driverCoord) ? geoDistance(driverCoord, destCoord) : null;
+  const kmLeft = (kmLeftRaw != null && !Number.isNaN(kmLeftRaw)) ? Math.round(kmLeftRaw) : null;
+  const speedKmh = (loc && loc.speed != null && loc.speed >= 0) ? Math.round(loc.speed * 3.6) : null;
+  const agoMin = (() => {
+    if (!loc || !loc.updated_at) return null;
+    const ts = Date.parse(String(loc.updated_at).replace(' ', 'T') + (String(loc.updated_at).endsWith('Z') ? '' : 'Z'));
+    if (Number.isNaN(ts)) return null;
+    return Math.max(0, Math.round((Date.now() - ts) / 60000));
+  })();
+  // Точка «свежая» только если обновлялась недавно (≤ 30 мин). Иначе это старая
+  // отметка (водитель ещё не выехал / давно не выходил на связь) — НЕ показываем
+  // её как живое движение и не выдумываем скорость/ETA из протухших данных.
+  const isStale = agoMin == null || agoMin > 30;
+  const moving = speedKmh != null && speedKmh >= 5 && !isStale;
+  const etaMin = (kmLeft != null && moving) ? Math.round((kmLeft / speedKmh) * 60) : null;
+  const nearBorder = driverCoord ? isNearBorder(lat, lng) : false;
+  const fmtEta = (m) => (m == null ? '—' : m < 60 ? `${m} ${t('track_min')}` : `${Math.floor(m / 60)} ${t('track_hour')} ${m % 60} ${t('track_min')}`);
+  // «Обновлено N назад» человеческим языком: мин → часы → дни (а не «2131 мин»).
+  const fmtAgo = (m) => {
+    if (m == null) return '';
+    if (m === 0) return t('track_updated_now');
+    const unit = m < 60 ? `${m} ${t('track_min')}`
+      : m < 1440 ? `${Math.floor(m / 60)} ${t('track_hour')}`
+      : `${Math.floor(m / 1440)} ${t('track_day')}`;
+    return `${t('track_updated')} ${unit} ${t('track_ago')}`;
+  };
   const openExternal = () => {
     if (lat == null) return;
     const url = Platform.OS === 'ios'
@@ -53,21 +88,58 @@ export default function TrackTruckScreen({ navigation, route }) {
         <Text style={[s.title, { color: theme.text }]} numberOfLines={1}>{t('track_truck_title')}</Text>
         <View style={{ width: 24 }} />
       </View>
-      <Text style={[s.route, { color: theme.textMuted }]} numberOfLines={1}>{(from || '—')} → {(to || '—')}</Text>
+      <Text style={[s.route, { color: theme.textMuted }]} numberOfLines={1}>{localizePlace(from || '—', getLanguage())} → {localizePlace(to || '—', getLanguage())}</Text>
 
       {loading ? (
         <ActivityIndicator style={{ marginTop: 48 }} color={theme.text} />
       ) : !loc ? (
         <View style={s.empty}>
-          <Text style={{ fontSize: 44 }}>🛰️</Text>
+          <Feather name="navigation" size={44} color={theme.textMuted} />
           <Text style={[s.emptyTitle, { color: theme.text }]}>{t('track_truck_waiting')}</Text>
           <Text style={[s.emptyDesc, { color: theme.textMuted }]}>{t('track_truck_waiting_desc')}</Text>
         </View>
       ) : (
         <View style={{ flex: 1 }}>
+          {/* Живая расшифровка: осталось · скорость · ETA · обновлено */}
+          <View style={[s.stats, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <View style={s.stat}>
+              <Text style={[s.statNum, { color: theme.text }]}>{kmLeft != null ? kmLeft : '—'}</Text>
+              <Text style={[s.statLbl, { color: theme.textMuted }]}>{t('track_left')} · {t('km_short')}</Text>
+            </View>
+            <View style={[s.statDiv, { backgroundColor: theme.border }]} />
+            <View style={s.stat}>
+              <Text style={[s.statNum, { color: moving ? '#22C55E' : theme.textMuted }]}>{(!isStale && speedKmh != null) ? speedKmh : '—'}</Text>
+              <Text style={[s.statLbl, { color: theme.textMuted }]}>{t('track_speed_label')} · {t('kmh_short')}</Text>
+            </View>
+            <View style={[s.statDiv, { backgroundColor: theme.border }]} />
+            <View style={s.stat}>
+              <Text style={[s.statNum, { color: theme.text, fontSize: 15 }]}>{moving ? fmtEta(etaMin) : t('track_stopped')}</Text>
+              <Text style={[s.statLbl, { color: theme.textMuted }]}>{t('track_eta_label')}</Text>
+            </View>
+          </View>
+          {/* Данные устарели → честно предупреждаем, а не выдаём старую точку за
+              живое движение (водитель ещё не выехал / давно не выходил на связь). */}
+          {isStale ? (
+            <View style={[s.staleBanner, { backgroundColor: 'rgba(245,158,11,0.12)', borderColor: '#F59E0B' }]}>
+              <Feather name="clock" size={13} color="#F59E0B" />
+              <Text style={s.staleText} numberOfLines={2}>{t('track_stale')}</Text>
+            </View>
+          ) : null}
+          <View style={s.subRow}>
+            {nearBorder && !isStale ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Feather name="flag" size={12} color="#2563EB" />
+                <Text style={[s.badgeBorder]}>{t('track_near_border')}</Text>
+              </View>
+            ) : <View />}
+            <Text style={[s.updated, { color: theme.textDim }]}>{fmtAgo(agoMin)}</Text>
+          </View>
           <TruckMap lat={lat} lng={lng} title={driverName || t('track_truck_marker')} />
-          <TouchableOpacity style={[s.cta, { backgroundColor: '#F59E0B' }]} onPress={openExternal} testID="track-open-maps">
-            <Text style={s.ctaText}>🧭 {t('track_truck_open_maps')}</Text>
+          <TouchableOpacity style={[s.cta, { backgroundColor: '#FF8400' }]} onPress={openExternal} testID="track-open-maps">
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Feather name="compass" size={16} color="#0C0A09" />
+              <Text style={s.ctaText}>{t('track_truck_open_maps')}</Text>
+            </View>
           </TouchableOpacity>
         </View>
       )}
@@ -81,6 +153,16 @@ const s = StyleSheet.create({
   back: { fontSize: 30, fontWeight: '300', width: 24 },
   title: { fontSize: 18, fontWeight: '800', flex: 1, textAlign: 'center' },
   route: { fontSize: 13, textAlign: 'center', marginBottom: 8 },
+  stats: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginBottom: 6, borderWidth: 1, borderRadius: 14, paddingVertical: 12 },
+  stat: { flex: 1, alignItems: 'center' },
+  statNum: { fontSize: 22, fontWeight: '900' },
+  statLbl: { fontSize: 10.5, fontWeight: '700', marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.3, textAlign: 'center' },
+  statDiv: { width: 1, height: 34 },
+  subRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, marginBottom: 8, minHeight: 18 },
+  badgeBorder: { color: '#2563EB', fontSize: 12, fontWeight: '800' },
+  updated: { fontSize: 11, textAlign: 'right', flex: 1 },
+  staleBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, marginTop: 8, paddingHorizontal: 12, paddingVertical: 9, borderWidth: 1, borderRadius: 12 },
+  staleText: { flex: 1, fontSize: 12, color: '#F59E0B', fontWeight: '600', lineHeight: 16 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 8 },
   emptyTitle: { fontSize: 18, fontWeight: '800', textAlign: 'center', marginTop: 8 },
   emptyDesc: { fontSize: 13, textAlign: 'center', lineHeight: 19 },

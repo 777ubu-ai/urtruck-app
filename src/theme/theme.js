@@ -20,8 +20,8 @@ export const colors = {
   green: '#22C55E',
   greenDeep: '#16A34A',
   greenMuted: 'rgba(34,197,94,0.12)',
-  orange: '#F59E0B',
-  orangeMuted: 'rgba(245,158,11,0.12)',
+  orange: '#FF8400',
+  orangeMuted: 'rgba(255,132,0,0.12)',
   red: '#EF4444',
   // Legacy aliases — point at brand emerald to neutralize stray imports.
   // Do NOT use in new code; prefer `tokens.colorPrimary` / `tokens.colorAccent`.
@@ -70,5 +70,5 @@ export const typography = {
   title: { fontSize: 15, fontWeight: '600', lineHeight: 20 },
   body: { fontSize: 14, fontWeight: '400', lineHeight: 20 },
   caption: { fontSize: 12, fontWeight: '500', lineHeight: 16 },
-  small: { fontSize: 10, fontWeight: '600', lineHeight: 14 },
+  small: { fontSize: 11, fontWeight: '600', lineHeight: 14 },
 };

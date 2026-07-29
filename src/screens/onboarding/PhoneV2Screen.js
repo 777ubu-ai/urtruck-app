@@ -23,6 +23,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
@@ -30,6 +31,22 @@ import { useI18n } from '../../utils/useI18n';
 import { regAPI } from '../../utils/registration';
 import { brand, radius, space, typography } from '../../theme/brandV2';
 import { DEFAULT_COUNTRY } from '../../utils/countries';
+import { WEB_URL } from '../../config/env';
+
+const LEGAL_BASE = WEB_URL || 'https://urtruck.kz';
+// Открытие юр-документов: window.open на web (новая вкладка) с fallback на
+// Linking.openURL — тот же приём, что в ConsentRow (Text onPress на
+// react-native-web ненадёжно ловит tap на мелких ссылках).
+const openLegal = (path) => {
+  const url = `${LEGAL_BASE}${path}`;
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    try {
+      const win = window.open(url, '_blank', 'noopener,noreferrer');
+      if (win) return;
+    } catch {}
+  }
+  Linking.openURL(url).catch(() => {});
+};
 
 const sanitizeDigits = (s) => (s || '').replace(/[^\d]/g, '');
 
@@ -49,9 +66,10 @@ const formatLocalPhone = (digits) => {
 
 export default function PhoneV2Screen({ navigation, route }) {
   const { t } = useI18n();
-  // 'phone' | 'email' — email добавлен как отдельный канал входа
-  // (Китай + резерв), телефонный flow остаётся дефолтным.
-  const [mode, setMode] = useState('phone');
+  // 'phone' | 'email' — email сделан каналом входа ПО УМОЛЧАНИЮ: работает
+  // глобально (вкл. Китай) и не зависит от доставки SMS, которая надёжна
+  // только для номеров КЗ. Телефон остаётся доступен вкладкой (и как контакт).
+  const [mode, setMode] = useState('email');
   const [country, setCountry] = useState(DEFAULT_COUNTRY);
   const [localDigits, setLocalDigits] = useState('');
   const [email, setEmail] = useState('');
@@ -147,18 +165,10 @@ export default function PhoneV2Screen({ navigation, route }) {
           <Text style={s.title}>{t('phone_v2_title')}</Text>
           <Text style={s.subtitle}>{t('phone_v2_subtitle')}</Text>
 
-          {/* Переключатель канала входа: Телефон / Email */}
+          {/* Переключатель канала входа: Email (по умолчанию) / Телефон.
+              Email слева и активен по умолчанию — основной канал для всех,
+              включая иностранцев без казахстанского номера. */}
           <View style={s.segment} testID="auth-channel-segment">
-            <TouchableOpacity
-              onPress={() => switchMode('phone')}
-              activeOpacity={0.8}
-              style={[s.segmentBtn, mode === 'phone' && s.segmentBtnActive]}
-              testID="auth-tab-phone"
-            >
-              <Text style={[s.segmentText, mode === 'phone' && s.segmentTextActive]}>
-                {t('auth_tab_phone')}
-              </Text>
-            </TouchableOpacity>
             <TouchableOpacity
               onPress={() => switchMode('email')}
               activeOpacity={0.8}
@@ -167,6 +177,16 @@ export default function PhoneV2Screen({ navigation, route }) {
             >
               <Text style={[s.segmentText, mode === 'email' && s.segmentTextActive]}>
                 {t('auth_tab_email')}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => switchMode('phone')}
+              activeOpacity={0.8}
+              style={[s.segmentBtn, mode === 'phone' && s.segmentBtnActive]}
+              testID="auth-tab-phone"
+            >
+              <Text style={[s.segmentText, mode === 'phone' && s.segmentTextActive]}>
+                {t('auth_tab_phone')}
               </Text>
             </TouchableOpacity>
           </View>
@@ -261,9 +281,23 @@ export default function PhoneV2Screen({ navigation, route }) {
 
         <Text style={s.consent}>
           {t('onb_v2_consent_prefix')}{' '}
-          <Text style={s.consentLink}>{t('onb_v2_consent_offer')}</Text>
+          <Text
+            style={s.consentLink}
+            onPress={() => openLegal('/terms')}
+            accessibilityRole="link"
+            suppressHighlighting
+          >
+            {t('onb_v2_consent_offer')}
+          </Text>
           {' '}{t('onb_v2_consent_and')}{' '}
-          <Text style={s.consentLink}>{t('onb_v2_consent_privacy')}</Text>
+          <Text
+            style={s.consentLink}
+            onPress={() => openLegal('/privacy')}
+            accessibilityRole="link"
+            suppressHighlighting
+          >
+            {t('onb_v2_consent_privacy')}
+          </Text>
         </Text>
       </KeyboardAvoidingView>
     </SafeAreaView>

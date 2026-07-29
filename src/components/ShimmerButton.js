@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { TouchableOpacity, Text, View, Animated, StyleSheet, Platform } from 'react-native';
 
 // Кнопка с shimmer-эффектом и градиентом
-export default function ShimmerButton({ onPress, children, style, textStyle, colors = ['#F59E0B', '#EF4444'], disabled }) {
+export default function ShimmerButton({ onPress, children, style, textStyle, colors = ['#FF8400', '#EF4444'], disabled }) {
   const shimmer = useRef(new Animated.Value(-1)).current;
 
   useEffect(() => {

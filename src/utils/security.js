@@ -82,9 +82,43 @@ export const securityAPI = {
   },
 };
 
+// Лестница статусов водителя по РЕАЛЬНЫМ вехам (решение владельца):
+//   🟡 Новичок     — зарегистрировался, документы ещё не подтверждены
+//   🔵 Проверенный — документы подтверждены модератором (главный знак доверия)
+//   🟢 Профи       — 10+ выполненных рейсов (+ рейтинг ≥ 4.7, если известен)
+// Балл (security_score) — это «очки/прогресс» внутри уровня, а не сам уровень.
+// ctx: { confirmed: bool, trips: number, rating: number|null }
+// pct — «шкала доверия», привязана к уровню (не путает: 50/80/100), а не
+// абстрактный балл. Новичок 50 · Проверенный 80 · Профи 100.
+export function driverTier(ctx = {}) {
+  const { confirmed = false, trips = 0, rating = null } = ctx;
+  if (confirmed && trips >= 10 && (rating == null || rating >= 4.7)) {
+    return { key: 'tier_pro',      color: '#22C55E', emoji: '🟢', pct: 100 };
+  }
+  if (confirmed) {
+    return { key: 'tier_verified', color: '#2563EB', emoji: '🔵', pct: 80 };
+  }
+  return { key: 'tier_newbie',     color: '#FBBF24', emoji: '🟡', pct: 50 };
+}
+
+// Число выполненных рейсов из списка сделок (my_deals) дашборда.
+export function countCompletedTrips(deals) {
+  if (!Array.isArray(deals)) return 0;
+  return deals.filter((d) => d && (d.status === 'delivered' || d.status === 'completed')).length;
+}
+
+// Признак «верификация пройдена» → уровень «Проверенный». В бете живого
+// модератора нет (авто-одобрение), поэтому засчитываем сразу после успешного
+// завершения верификации: status=approved или verification_level ≥ 3.
+export function isDocsConfirmed(st) {
+  if (!st) return false;
+  if (st.status === 'rejected') return false;
+  return st.status === 'approved' || Number(st.verification_level) >= 3;
+}
+
 export const COLOR_UI = {
   green: { bg: '#22C55E20', border: '#22C55E', text: '#22C55E', label: '🟢 Надёжный' },
-  yellow: { bg: '#F59E0B20', border: '#F59E0B', text: '#F59E0B', label: '🟡 Новичок' },
+  yellow: { bg: '#FF840020', border: '#FF8400', text: '#FF8400', label: '🟡 Новичок' },
   red: { bg: '#EF444420', border: '#EF4444', text: '#EF4444', label: '🔴 Проблемы' },
   black: { bg: '#DC262640', border: '#DC2626', text: '#FCA5A5', label: '⛔ В чёрном списке' },
 };

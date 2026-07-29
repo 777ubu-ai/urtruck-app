@@ -307,8 +307,8 @@ const s = StyleSheet.create({
   },
   cooldownBox: {
     marginTop: 16, padding: 14, borderRadius: 14,
-    backgroundColor: 'rgba(245,158,11,0.08)',
-    borderWidth: 1, borderColor: 'rgba(245,158,11,0.35)',
+    backgroundColor: 'rgba(255,132,0,0.08)',
+    borderWidth: 1, borderColor: 'rgba(255,132,0,0.35)',
     alignItems: 'center',
   },
   cooldownTitle: { color: '#F5F5F5', fontSize: 14, fontWeight: '800', marginBottom: 4, textAlign: 'center' },

@@ -21,6 +21,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
 import { useAuth } from '../../utils/AuthContext';
 import { useToast } from '../../components/Toast';
@@ -29,7 +30,7 @@ import { regAPI } from '../../utils/registration';
 
 const ACCENT = {
   driver: { main: '#00E676', deep: '#00C766', soft: 'rgba(0,230,118,0.12)' },
-  client: { main: '#F59E0B', deep: '#D97706', soft: 'rgba(245,158,11,0.12)' },
+  client: { main: '#FF8400', deep: '#E06D00', soft: 'rgba(255,132,0,0.12)' },
 };
 
 export default function PremiumProfileScreen({ navigation, route }) {
@@ -106,9 +107,10 @@ export default function PremiumProfileScreen({ navigation, route }) {
           showsVerticalScrollIndicator={false}
         >
           <View style={s.header}>
-            <View style={[s.roleBadge, { backgroundColor: accent.soft, borderColor: accent.main }]}>
+            <View style={[s.roleBadge, { backgroundColor: accent.soft, borderColor: accent.main, flexDirection: 'row', alignItems: 'center', gap: 6 }]}>
+              <Feather name={role === 'driver' ? 'truck' : 'package'} size={14} color={accent.main} />
               <Text style={[s.roleBadgeText, { color: accent.main }]}>
-                {role === 'driver' ? '🚛' : '📦'} {role === 'driver' ? t('role_driver') : t('role_shipper')}
+                {role === 'driver' ? t('role_driver') : t('role_shipper')}
               </Text>
             </View>
           </View>

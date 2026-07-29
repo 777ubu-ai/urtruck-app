@@ -85,20 +85,15 @@ const SECTIONS = [
     { label: 'Premium OTP (driver)',       screen: 'RegOtp',     params: { role: 'driver', phone: '+77479171118' } },
     { label: 'Premium Profile (driver)',   screen: 'RegProfile', params: { role: 'driver' } },
     { label: 'Premium Profile (client)',   screen: 'RegProfile', params: { role: 'client' } },
-    // Legacy дизайны — оставлены в галерее для исторического сравнения,
-    // в реальном flow пользователь их больше не увидит.
     { label: 'Premium Login',         screen: 'Login' },
-    { label: 'Legacy SignUp driver',  screen: 'SignUp',     params: { role: 'driver' } },
-    { label: 'Legacy SignUp client',  screen: 'SignUp',     params: { role: 'client' } },
-    { label: 'Legacy multi-step Reg', screen: 'LegacyReg',  params: { role: 'driver' } },
-    { label: 'Legacy Auth (light)',   screen: 'LegacyAuth', params: { role: 'driver' } },
+    // Legacy SignUp/Reg/Auth-экраны удалены (Этап 6 чистки) — пункты убраны.
     { label: 'Profile setup driver',  screen: 'EditProfile', params: { role: 'driver' } },
     { label: 'Profile setup cargo owner', screen: 'EditProfile', params: { role: 'client' } },
   ]},
   { title: 'Tabs (driver)', items: [
     { label: 'Feed driver / Cargoes', screen: 'Main', params: { role: 'driver' } },
     { label: 'MyWork driver',         screen: 'MyTripsList', params: { role: 'driver' } },
-    { label: 'Profile driver',        screen: 'Main', params: { role: 'driver', screen: 'Profile' } },
+    { label: 'Profile driver',        screen: 'Profile', params: { role: 'driver' } },
   ]},
   { title: 'Tabs (cargo owner)', items: [
     { label: 'Feed cargo owner / Trips', screen: 'Main', params: { role: 'client' } },
@@ -151,7 +146,7 @@ export default function DesignPreviewScreen({ navigation }) {
   title: { color: v1.text, fontSize: 22, fontWeight: '900', marginTop: 8 },
   subtitle: { color: v1.textMuted, fontSize: 13, marginTop: 4, lineHeight: 18 },
   sectionTitle: {
-    color: v1.textMuted, fontSize: 10, fontWeight: '800',
+    color: v1.textMuted, fontSize: 11, fontWeight: '800',
     letterSpacing: 1, marginBottom: 8,
   },
   row: {

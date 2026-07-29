@@ -1,23 +1,37 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator, TextInput, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Feather from '@expo/vector-icons/Feather';
+import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../utils/ThemeContext';
 import { useI18n } from '../utils/useI18n';
 import {v1Colors, useV1Colors} from '../theme/designV1';
+import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import { API_BASE } from '../config/env';
 import { regAPI } from '../utils/registration';
+import { storage } from '../utils/storage';
+
+const PLATE_KEY = 'ur_queue_plate';
 
 const BASE = `${API_BASE}/borders`;
 
-const STATUS_COLORS = { green: '#22C55E', yellow: '#F59E0B', red: '#EF4444' };
+const STATUS_COLORS = { green: '#22C55E', yellow: '#FF8400', red: '#EF4444' };
 // Метки статуса локализованы через t() в рендере (statusLabel) — раньше были
 // хардкод-RU и протекали в ZH/EN/KZ.
 const STATUS_KEY = { green: 'queue_status_free', yellow: 'queue_status_moderate', red: 'queue_status_busy' };
+// Статусы строк табло (номер в очереди): цвет + i18n-ключ.
+const BOARD_STATUS = {
+  in_queue: { key: 'queue_lk_in_queue', color: '#2563EB' },
+  called:   { key: 'queue_lk_called',   color: '#FF8400' },
+  crossed:  { key: 'queue_lk_crossed',  color: '#22C55E' },
+  revoked:  { key: 'queue_lk_revoked',  color: '#EF4444' },
+};
 
-export default function QueueScreen({ navigation }) {
+export default function QueueScreen({ navigation, route }) {
   const v1 = useV1Colors();
   const { theme } = useTheme();
   const { t } = useI18n();
+  const role = route?.params?.role || 'client';
   const [borders, setBorders] = useState([]);
   const [loading, setLoading] = useState(true);
   // Хаб-навигация: 'hub' (страны) → 'country' (переходы выбранной страны).
@@ -29,20 +43,89 @@ export default function QueueScreen({ navigation }) {
   const [lookup, setLookup] = useState(null);     // null | {found,...}
   const [lookupLoading, setLookupLoading] = useState(false);
 
-  const doLookup = async () => {
-    const p = plate.trim();
+  // Трек 1: полное табло пункта (номера + статус). Раскрывается по кнопке.
+  const [boardFor, setBoardFor] = useState(null);      // имя пункта или null
+  const [boardRows, setBoardRows] = useState([]);
+  const [boardLoading, setBoardLoading] = useState(false);
+
+  const openBoard = async (name) => {
+    if (boardFor === name) { setBoardFor(null); setBoardRows([]); return; }
+    setBoardFor(name); setBoardRows([]); setBoardLoading(true);
+    try {
+      const r = await fetch(`${BASE}/board?checkpoint=${encodeURIComponent(name)}`);
+      const d = await r.json();
+      setBoardRows(Array.isArray(d.rows) ? d.rows : []);
+    } catch { setBoardRows([]); }
+    finally { setBoardLoading(false); }
+  };
+
+  const [tracking, setTracking] = useState(false);  // сохранён ли номер для слежения
+
+  const doLookup = async (plateArg, { silent = false } = {}) => {
+    const p = (plateArg != null ? plateArg : plate).trim();
     if (p.length < 3 || lookupLoading) return;
-    setLookupLoading(true);
-    setLookup(null);
+    if (!silent) setLookupLoading(true);
+    if (!silent) setLookup(null);
     try {
       const r = await fetch(`${BASE}/lookup?plate=${encodeURIComponent(p)}`);
       setLookup(await r.json());
+      // Живое слежение: сохраняем номер — переживает перезапуск, при
+      // следующем открытии/фокусе статус подтягивается автоматически.
+      storage.set(PLATE_KEY, p).catch(() => {});
+      setTracking(true);
+      // Пуш-алерт: если водитель авторизован — регистрируем watch на сервере,
+      // чтобы прилетел пуш «очередь подошла» при смене статуса (даже когда
+      // приложение закрыто).
+      storage.get('ur_reg_token').then((tok) => {
+        if (!tok) return;
+        fetch(`${BASE}/watch`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tok}` },
+          body: JSON.stringify({ plate: p }),
+        }).catch(() => {});
+      }).catch(() => {});
     } catch (e) {
-      setLookup({ error: true });
+      if (!silent) setLookup({ error: true });
     } finally {
-      setLookupLoading(false);
+      if (!silent) setLookupLoading(false);
     }
   };
+
+  const stopTracking = () => {
+    const p = plate.trim();
+    storage.remove(PLATE_KEY).catch(() => {});
+    // Снимаем серверный watch — пуши перестают приходить.
+    if (p) {
+      storage.get('ur_reg_token').then((tok) => {
+        if (!tok) return;
+        fetch(`${BASE}/watch?plate=${encodeURIComponent(p)}`, {
+          method: 'DELETE', headers: { 'Authorization': `Bearer ${tok}` },
+        }).catch(() => {});
+      }).catch(() => {});
+    }
+    setTracking(false);
+    setLookup(null);
+    setPlate('');
+  };
+
+  // Загрузка сохранённого номера при первом входе + автоподтягивание статуса.
+  useEffect(() => {
+    (async () => {
+      const saved = await storage.get(PLATE_KEY).catch(() => null);
+      if (saved) { setPlate(saved); setTracking(true); doLookup(saved); }
+    })();
+  }, []);
+
+  // Живое обновление: при возврате на экран перечитываем статус сохранённого
+  // номера (тихо, без спиннера) — водитель видит актуальную очередь.
+  useFocusEffect(
+    useCallback(() => {
+      (async () => {
+        const saved = await storage.get(PLATE_KEY).catch(() => null);
+        if (saved) doLookup(saved, { silent: true });
+      })();
+    }, [])
+  );
 
   // Текст статуса для результата личного поиска.
   const LOOKUP_STATUS_KEY = {
@@ -102,19 +185,14 @@ export default function QueueScreen({ navigation }) {
   const freest = cnList.length ? cnList.reduce((a, b) => (b.trucks_in_queue < a.trucks_in_queue ? b : a)) : null;
 
 
-  // Не одобрен → locked/promo состояние очереди (вместо полного функционала).
-  if (verState !== 'approved') {
-    // IA cleanup: Queue-гейт больше НЕ ведёт в driver-score (Security).
-    // pending — статус документов показывается на месте (без кнопки в score);
-    // unverified/rejected → документная проверка (Identity). Везде вторичная
-    // ссылка ведёт в CarGoRuqsat hub (CargoRuqsatInfo), а не в «Мой статус».
-    const gate = verState === 'review'
-      ? { title: t('queue_gate_pending_title'), text: t('queue_gate_pending_text'), btn: null, go: null }
-      : verState === 'rejected'
-        ? { title: t('queue_gate_rejected_title'), text: t('queue_gate_rejected_text'), btn: t('queue_gate_rejected_btn'), go: 'Identity' }
-        : { title: t('queue_gate_locked_title'), text: t('queue_gate_locked_text'), btn: t('queue_gate_locked_btn'), go: 'Identity' };
+  // Просмотр очередей на границе — ПУБЛИЧНЫЙ (данные CGR отдаются без
+  // авторизации). Раньше весь экран прятался за approved-гейтом — это
+  // отсекало главную ценность (посмотреть очередь, найти свою машину) от
+  // незарегистрированных водителей. Теперь смотрят ВСЕ; регистрация нужна
+  // только для брони места — на это ниже мягкий (не блокирующий) баннер.
+  if (verState === 'loading') {
     return (
-      <SafeAreaView style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']} testID="queue-gate">
+      <SafeAreaView style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']}>
         <View style={s.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={s.back}>
             <Text style={[s.backText, { color: theme.text }]}>‹</Text>
@@ -122,27 +200,7 @@ export default function QueueScreen({ navigation }) {
           <Text style={[s.headerTitle, { color: theme.text }]} testID="queue-title">{t('border_queues_title')}</Text>
           <View style={{ width: 44 }} />
         </View>
-        {verState === 'loading' ? (
-          <ActivityIndicator color="#1A5C3C" style={{ marginTop: 60 }} />
-        ) : (
-          <View style={s.gateWrap}>
-            <Text style={s.gateIcon}>🔒</Text>
-            <Text style={[s.gateTitle, { color: theme.text }]}>{gate.title}</Text>
-            <Text style={[s.gateText, { color: theme.textMuted }]}>{gate.text}</Text>
-            {gate.btn && gate.go ? (
-              <TouchableOpacity
-                style={s.gateBtn}
-                onPress={() => navigation.navigate(gate.go)}
-                testID="queue-gate-cta"
-              >
-                <Text style={s.gateBtnText}>{gate.btn}</Text>
-              </TouchableOpacity>
-            ) : null}
-            <TouchableOpacity style={s.gateSecondary} onPress={() => navigation.navigate('CargoRuqsatInfo')} testID="queue-cgr-link">
-              <Text style={[s.gateSecondaryText, { color: theme.textMuted }]}>{t('queue_cgr_cta')}</Text>
-            </TouchableOpacity>
-          </View>
-        )}
+        <ActivityIndicator color="#1A5C3C" style={{ marginTop: 60 }} />
       </SafeAreaView>
     );
   }
@@ -163,7 +221,7 @@ export default function QueueScreen({ navigation }) {
           </View>
           <View style={[s.statusBadge, { backgroundColor: col + '20' }]}>
             <View style={[s.statusDot, { backgroundColor: col }]} />
-            <Text style={[s.statusText, { color: col }]}>{t(STATUS_KEY[b.status] || 'queue_status_moderate')}</Text>
+            <Text style={[s.statusText, { color: col }]}>{t(STATUS_KEY[b.status] || 'queue_status_nodata')}</Text>
           </View>
         </View>
         <View style={s.detailRow}>
@@ -176,6 +234,36 @@ export default function QueueScreen({ navigation }) {
         {b.updated_at ? (
           <Text style={[s.updated, { color: theme.textDim }]}>{t('queue_updated')}: {String(b.updated_at).slice(11, 16)} UTC</Text>
         ) : null}
+
+        {/* Трек 1: раскрыть полное табло пункта (номера + статус). */}
+        <TouchableOpacity style={s.boardToggle} onPress={() => openBoard(b.name)} testID="queue-board-toggle">
+          <Text style={[s.boardToggleText, { color: v1.driver || '#00E676' }]}>
+            {boardFor === b.name ? `▲ ${t('queue_board_hide')}` : `▼ ${t('queue_board_show')}`}
+          </Text>
+        </TouchableOpacity>
+        {boardFor === b.name ? (
+          <View style={s.boardWrap}>
+            {boardLoading ? (
+              <ActivityIndicator color={col} style={{ marginVertical: 10 }} />
+            ) : boardRows.length === 0 ? (
+              <Text style={[s.boardEmpty, { color: theme.textMuted }]}>{t('no_data')}</Text>
+            ) : (
+              boardRows.slice(0, 50).map((row, i) => {
+                const st = BOARD_STATUS[row.status] || BOARD_STATUS.in_queue;
+                return (
+                  <View key={`${row.plate}-${i}`} style={[s.boardRow, { borderBottomColor: theme.border }]}>
+                    <Text style={[s.boardPlate, { color: theme.text }]} numberOfLines={1}>{row.plate}</Text>
+                    <Text style={[s.boardTime, { color: theme.textMuted }]} numberOfLines={1}>{row.queue_datetime || ''}</Text>
+                    <View style={[s.boardStatus, { backgroundColor: st.color + '20' }]}>
+                      <Text style={[s.boardStatusText, { color: st.color }]}>{t(st.key)}{row.is_late ? ' ⏱' : ''}</Text>
+                    </View>
+                  </View>
+                );
+              })
+            )}
+          </View>
+        ) : null}
+
         <TouchableOpacity style={s.bookBtn} onPress={openCgrPortal} testID="queue-book-cgr">
           <Text style={s.bookBtnText}>{t('queue_book_cgr')} ↗</Text>
         </TouchableOpacity>
@@ -198,7 +286,7 @@ export default function QueueScreen({ navigation }) {
         <Text style={[s.headerTitle, { color: theme.text }]} testID="queue-title">
           {selMeta ? `${selMeta.flag} ${selMeta.l}` : t('border_queues_title')}
         </Text>
-        <View style={{ width: 44 }} />
+        <HeaderMenuButton navigation={navigation} role={role} testID="queue-menu-btn" />
       </View>
 
       {/* ─────── Уровень 2: переходы выбранной страны ─────── */}
@@ -223,7 +311,10 @@ export default function QueueScreen({ navigation }) {
         >
           {/* Моя машина в очереди */}
           <View style={[s.lookupBox, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Text style={[s.lookupLabel, { color: theme.text }]}>🚛 {t('queue_my_plate_label')}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+              <Feather name="truck" size={15} color={theme.text} />
+              <Text style={[s.lookupLabel, { color: theme.text, marginBottom: 0 }]}>{t('queue_my_plate_label')}</Text>
+            </View>
             <View style={s.lookupRow}>
               <TextInput
                 style={[s.lookupInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]}
@@ -258,7 +349,45 @@ export default function QueueScreen({ navigation }) {
                 <Text style={[s.lookupResult, { color: theme.textMuted }]}>{t('queue_lookup_not_found')}</Text>
               )
             )}
+            {tracking ? (
+              <View style={s.trackRow}>
+                <Text style={[s.trackHint, { color: theme.textDim }]}>🟢 {t('queue_tracking_on')}</Text>
+                <TouchableOpacity onPress={stopTracking} testID="queue-stop-tracking">
+                  <Text style={[s.trackStop, { color: theme.textMuted }]}>{t('queue_stop_tracking')}</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
           </View>
+
+          {/* Вход на экран «Мои номера в очереди» — список всех отслеживаемых
+              ГРНЗ с живым статусом и пуш-алертом. */}
+          <TouchableOpacity
+            style={[s.trackedLink, { backgroundColor: theme.card, borderColor: theme.border }]}
+            onPress={() => navigation.navigate('TrackedPlates')}
+            testID="queue-open-tracked"
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+              <Feather name="truck" size={15} color={theme.text} />
+              <Text style={[s.trackedLinkText, { color: theme.text }]}>{t('tracked_open')}</Text>
+            </View>
+            <Text style={[s.cgrLinkChevron, { color: theme.textMuted }]}>›</Text>
+          </TouchableOpacity>
+
+          {/* Незарегистрированным — мягкий баннер: смотреть можно всем,
+              бронь места нужна регистрация (крючок привлечения). */}
+          {verState !== 'approved' ? (
+            <TouchableOpacity
+              style={[s.regBanner, { borderColor: v1.driver || '#00E676', backgroundColor: (v1.driver || '#00E676') + '14' }]}
+              onPress={() => navigation.navigate('Citizenship')}
+              testID="queue-reg-banner"
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                <Feather name="unlock" size={15} color={v1.driver || '#00E676'} />
+                <Text style={[s.regBannerText, { color: theme.text }]}>{t('queue_register_to_book')}</Text>
+              </View>
+              <Text style={[s.cgrLinkChevron, { color: theme.textMuted }]}>›</Text>
+            </TouchableOpacity>
+          ) : null}
 
           {/* Свободнее всего в Китай (ядро бизнеса) */}
           {freest ? (
@@ -267,7 +396,10 @@ export default function QueueScreen({ navigation }) {
               onPress={() => setSelectedCountry('CN')}
               testID="queue-freest"
             >
-              <Text style={s.freestLabel}>✨ {t('queue_hub_freest')} 🇨🇳</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                <Feather name="star" size={14} color="#22C55E" />
+                <Text style={[s.freestLabel, { marginBottom: 0 }]}>{t('queue_hub_freest')} 🇨🇳</Text>
+              </View>
               <Text style={[s.freestName, { color: theme.text }]}>
                 {freest.name} — {freest.trucks_in_queue} {t('vehicles_label').toLowerCase()} 🟢
               </Text>
@@ -329,8 +461,8 @@ const s = StyleSheet.create({
   stats: { flexDirection: 'row', gap: 20 },
   stat: { alignItems: 'center' },
   statNum: { fontSize: 20, fontWeight: '900' },
-  statLabel: { fontSize: 10, marginTop: 2 },
-  updated: { fontSize: 10, marginTop: 8, textAlign: 'right' },
+  statLabel: { fontSize: 11, marginTop: 2 },
+  updated: { fontSize: 11, marginTop: 8, textAlign: 'right' },
   gateWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
   gateIcon: { fontSize: 48, marginBottom: 16 },
   gateTitle: { fontSize: 20, fontWeight: '800', textAlign: 'center', marginBottom: 10 },
@@ -343,6 +475,13 @@ const s = StyleSheet.create({
   cgrLinkText: { fontSize: 14, fontWeight: '800', color: '#1A5C3C' },
   cgrLinkChevron: { fontSize: 20, fontWeight: '300' },
   lookupBox: { marginHorizontal: 16, marginBottom: 8, padding: 12, borderRadius: 12, borderWidth: 1 },
+  trackRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 },
+  trackHint: { fontSize: 12, fontWeight: '700' },
+  trackStop: { fontSize: 12, fontWeight: '700', textDecorationLine: 'underline' },
+  regBanner: { marginHorizontal: 16, marginBottom: 12, padding: 14, borderRadius: 14, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 48 },
+  trackedLink: { marginHorizontal: 16, marginBottom: 12, paddingHorizontal: 14, paddingVertical: 14, borderRadius: 14, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 48 },
+  trackedLinkText: { fontSize: 14, fontWeight: '800', flex: 1 },
+  regBannerText: { fontSize: 14, fontWeight: '800', flex: 1 },
   lookupLabel: { fontSize: 12, fontWeight: '600', marginBottom: 8 },
   lookupRow: { flexDirection: 'row', gap: 8 },
   lookupInput: { flex: 1, height: 44, borderRadius: 10, borderWidth: 1, paddingHorizontal: 12, fontSize: 15, fontWeight: '700' },
@@ -365,4 +504,13 @@ const s = StyleSheet.create({
   detailWait: { fontSize: 12 },
   bookBtn: { marginTop: 12, height: 44, borderRadius: 10, backgroundColor: '#1A5C3C', alignItems: 'center', justifyContent: 'center' },
   bookBtnText: { color: '#FFF', fontSize: 14, fontWeight: '800' },
+  boardToggle: { marginTop: 10, paddingVertical: 8, minHeight: 40, justifyContent: 'center' },
+  boardToggleText: { fontSize: 13, fontWeight: '800' },
+  boardWrap: { marginTop: 4, marginBottom: 4 },
+  boardEmpty: { fontSize: 12, textAlign: 'center', paddingVertical: 10 },
+  boardRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, borderBottomWidth: 1 },
+  boardPlate: { flex: 1, fontSize: 13, fontWeight: '800', letterSpacing: 0.5 },
+  boardTime: { fontSize: 11, minWidth: 70, textAlign: 'right' },
+  boardStatus: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  boardStatusText: { fontSize: 11, fontWeight: '700' },
 });

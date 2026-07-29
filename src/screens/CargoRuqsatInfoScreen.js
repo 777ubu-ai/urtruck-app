@@ -14,6 +14,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useV1Colors } from '../theme/designV1';
@@ -104,7 +105,7 @@ export default function CargoRuqsatInfoScreen({ navigation, route }) {
 
   return (
     <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]} edges={['top']}>
-      <BrandBarWithShare onBack={() => navigation.goBack()} accent="#F59E0B" />
+      <BrandBarWithShare onBack={() => navigation.goBack()} accent="#FF8400" />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -115,11 +116,17 @@ export default function CargoRuqsatInfoScreen({ navigation, route }) {
         keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.text} />}
       >
-        <Text style={[s.title, { color: theme.text }]}>🚧 {t('cargoruqsat_page_title')}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+          <Feather name="tool" size={20} color={theme.text} />
+          <Text style={[s.title, { color: theme.text, marginBottom: 0 }]}>{t('cargoruqsat_page_title')}</Text>
+        </View>
         <Text style={[s.status, { color: theme.textMuted }]}>{t('cargoruqsat_page_status')}</Text>
 
         {/* ────────── Live-табло ────────── */}
-        <Text style={[s.section, { color: theme.text }]}>📊 {t('cargoruqsat_live_title')}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 16, marginBottom: 10 }}>
+          <Feather name="bar-chart-2" size={16} color={theme.text} />
+          <Text style={[s.section, { color: theme.text, marginTop: 0, marginBottom: 0 }]}>{t('cargoruqsat_live_title')}</Text>
+        </View>
         {loading ? (
           <ActivityIndicator size="small" color={theme.text} style={{ marginVertical: 16 }} />
         ) : scoreboardError ? (
@@ -175,9 +182,10 @@ export default function CargoRuqsatInfoScreen({ navigation, route }) {
         </TouchableOpacity>
 
         {/* ────────── Привязка номера брони (TZ §3.2) ────────── */}
-        <Text style={[s.section, { color: theme.text, marginTop: 28 }]}>
-          🔗 {t('cargoruqsat_booking_title')}
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 28, marginBottom: 10 }}>
+          <Feather name="link" size={16} color={theme.text} />
+          <Text style={[s.section, { color: theme.text, marginTop: 0, marginBottom: 0 }]}>{t('cargoruqsat_booking_title')}</Text>
+        </View>
         <Text style={[s.body, { color: theme.textSecondary, marginBottom: 12 }]}>
           {t('cargoruqsat_booking_hint')}
         </Text>
@@ -216,7 +224,7 @@ const s = StyleSheet.create({
   status: { fontSize: 13, marginBottom: 24 },
   section: { fontSize: 17, fontWeight: '800', marginBottom: 10, marginTop: 16 },
   body: { fontSize: 14, lineHeight: 21 },
-  cta: { backgroundColor: '#F59E0B', padding: 16, borderRadius: 14, alignItems: 'center', marginTop: 24 },
+  cta: { backgroundColor: '#FF8400', padding: 16, borderRadius: 14, alignItems: 'center', marginTop: 24 },
   ctaText: { color: '#0A0A0A', fontWeight: '800', fontSize: 14 },
   cpRow: {
     flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12,

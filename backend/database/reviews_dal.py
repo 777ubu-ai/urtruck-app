@@ -67,3 +67,28 @@ def has_already_reviewed(author_id: str, trip_id: str) -> bool:
             (author_id, trip_id),
         ).fetchone()
     return bool(row)
+
+
+def has_deal_between(user_a: str, user_b: str) -> bool:
+    """True, если между двумя пользователями есть НЕотменённая сделка (в любую
+    сторону). Отзыв разрешаем только реальному контрагенту — защита от накрутки
+    рейтинга (I3): раньше с trip_id=None можно было спамить отзывами на любого."""
+    with get_conn() as c:
+        row = c.execute(
+            "SELECT 1 FROM deals WHERE status != 'cancelled' AND "
+            "((shipper_id = ? AND driver_id = ?) OR (shipper_id = ? AND driver_id = ?)) "
+            "LIMIT 1",
+            (user_a, user_b, user_b, user_a),
+        ).fetchone()
+    return bool(row)
+
+
+def has_reviewed_target(author_id: str, target_id: str) -> bool:
+    """True, если author уже оставлял отзыв на target. Дедуп по паре для случая
+    trip_id=None (иначе один пользователь мог оставить неограниченно отзывов)."""
+    with get_conn() as c:
+        row = c.execute(
+            "SELECT 1 FROM reviews WHERE author_id = ? AND target_id = ? LIMIT 1",
+            (author_id, target_id),
+        ).fetchone()
+    return bool(row)

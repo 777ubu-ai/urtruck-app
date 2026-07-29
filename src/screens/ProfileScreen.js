@@ -10,6 +10,9 @@ import { useV1Colors } from '../theme/designV1';
 import { useAuth } from '../utils/AuthContext';
 import { getProfile, saveProfile } from '../utils/store';
 import { storage } from '../utils/storage';
+import { regAPI } from '../utils/registration';
+import { driverTier, countCompletedTrips, isDocsConfirmed } from '../utils/security';
+import { marketAPI } from '../utils/marketAPI';
 import GradientText from '../components/GradientText';
 import HelpButton from '../components/HelpButton';
 import { API_BASE } from '../config/env';
@@ -31,6 +34,24 @@ const QA_HOOK_ALLOWED = (() => {
     return Constants?.appOwnership !== 'standalone';
   } catch {
     return false;
+  }
+})();
+
+// Реальная версия приложения (раньше была захардкожена «v1.0.50 · 17.04.2026»,
+// что вводило в заблуждение). Берём фактические значения сборки из expo-constants:
+// nativeAppVersion = app.json version (1.0.2), nativeBuildVersion = номер сборки
+// (например 38). На web build-номера нет → показываем только версию.
+const APP_VERSION_LABEL = (() => {
+  try {
+    const Constants = require('expo-constants').default;
+    const ver = Constants?.nativeAppVersion || Constants?.expoConfig?.version || '1.0.3';
+    const build = Constants?.nativeBuildVersion
+      || Constants?.expoConfig?.ios?.buildNumber
+      || Constants?.expoConfig?.android?.versionCode
+      || '';
+    return `v${ver}${build ? ` (${build})` : ''}`;
+  } catch {
+    return 'v1.0.3';
   }
 })();
 
@@ -58,7 +79,7 @@ export default function ProfileScreen({ navigation, route }) {
   // на белых кнопках текст рендерится чёрным (driverOnAccent). #22C55E
   // ниже сохранён для семантических success-индикаторов (verified-tick,
   // загруженный документ) — там это «успех», а не бренд водителя.
-  const accent = isDriver ? '#00E676' : '#F59E0B';
+  const accent = isDriver ? '#00E676' : '#FF8400';
   const onAccent = isDriver ? '#0C0A09' : '#0C0A09';
   const { isDark, toggleTheme } = useTheme();
   // Stage 8: read tokens from the v1 hook so the screen lines up
@@ -85,6 +106,13 @@ export default function ProfileScreen({ navigation, route }) {
       const token = await storage.get('ur_reg_token');
       if (!token) return;
       const r = await fetch(`${API_BASE}/users/me`, { headers: { 'Authorization': `Bearer ${token}` } });
+      // Строка водителя: данные машины + статус/балл после верификации.
+      // /users/me их не возвращает — берём из /register/status.
+      let st = null;
+      try { st = await regAPI.status(); } catch {}
+      // Выполненные рейсы — для уровня «Профи».
+      let completedTrips = 0;
+      try { const dash = await marketAPI.myDashboard(); completedTrips = countCompletedTrips(dash?.my_deals); } catch {}
       if (r.ok) {
         const d = await r.json();
         setProfile(prev => {
@@ -95,8 +123,20 @@ export default function ProfileScreen({ navigation, route }) {
             ...(prev || {}),
             display_name: d.name || prev?.display_name,
             full_name: d.name || prev?.full_name,
-            city: d.city || prev?.city,
+            city: d.city || st?.city || prev?.city,
             bio: d.about || prev?.bio,
+            // После верификации: машина/статус/балл из строки водителя, чтобы
+            // профиль реально показывал сохранённые данные (а не «пусто»).
+            ...(st?.vehicle_type ? { truckType: st.vehicle_type } : {}),
+            ...(st?.capacity_tons != null ? { capacity_tons: st.capacity_tons } : {}),
+            ...(st?.volume_m3 != null ? { available_m3: st.volume_m3 } : {}),
+            ...(st?.security_score != null ? { driver_score: st.security_score } : {}),
+            ...(st?.status ? { reg_status: st.status } : {}),
+            ...(st?.verification_level != null ? { verification_level: st.verification_level } : {}),
+            ...(st?.rating != null ? { rating: Number(st.rating) } : {}),
+            doc_confirmed: isDocsConfirmed(st),
+            completed_trips: completedTrips,
+            is_verified: isDocsConfirmed(st) || prev?.is_verified || false,
             // PR-D1: PRO-поля. Подтягиваем при focus — прогресс-бар PRO
             // и бейдж активного PRO обновятся сразу. Если backend ещё
             // не задеплоен с PRO — поля undefined и не затирают локал.
@@ -131,6 +171,10 @@ export default function ProfileScreen({ navigation, route }) {
   const menuItems = [
     ...(isDriver ? [{ icon: 'shield', label: t('security_my_status'), sub: t('my_status_subtitle'), screen: 'Security', testID: 'profile-my-status' }] : []),
     { icon: 'star',          label: t('myReviews'),     screen: 'Reviews', testID: 'profile-my-reviews' },
+    { icon: 'heart',         label: t('favorites_title'), screen: 'Favorites', testID: 'profile-favorites' },
+    // Этап 6.4: возвращаем полезные экраны, которые были недостижимы (сироты).
+    { icon: 'help-circle',   label: t('howit_header'),  screen: 'HowItWorks', testID: 'profile-how-it-works' },
+    { icon: 'info',          label: t('about_title'),   screen: 'About', testID: 'profile-about' },
   ];
 
   // PR-C2 (driver card): canonical specs line «Тент · 20 т · 86 м³».
@@ -190,7 +234,21 @@ export default function ProfileScreen({ navigation, route }) {
     <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]} edges={['top']}>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
         <View style={s.headerRow}>
-          <GradientText style={s.title} colors={isDriver ? ['#00E676', '#00C766'] : ['#F59E0B', '#EF4444']}>{t('profile')}</GradientText>
+          {/* Профиль теперь pushed-экран (открывается из ☰ в ленте), а не
+              корневая вкладка — нужна кнопка «назад». */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 8 }}>
+            {navigation.canGoBack?.() ? (
+              <TouchableOpacity
+                onPress={() => navigation.goBack()}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                testID="profile-back"
+                accessibilityLabel={t('back')}
+              >
+                <Feather name="arrow-left" size={24} color={theme.text} />
+              </TouchableOpacity>
+            ) : null}
+            <GradientText style={s.title} colors={isDriver ? ['#00E676', '#00C766'] : ['#FF8400', '#EF4444']}>{t('profile')}</GradientText>
+          </View>
           <HelpButton accent={accent} />
         </View>
 
@@ -201,7 +259,7 @@ export default function ProfileScreen({ navigation, route }) {
             <Image source={{ uri: profile.avatar_url }} style={[s.avatar, { borderColor: accent + '40' }]} />
           ) : (
             <View style={[s.avatar, { backgroundColor: accent + '20', borderColor: accent + '30' }]}>
-              <Text style={{ fontSize: 24 }}>{isDriver ? '🚛' : '📦'}</Text>
+              <Feather name={isDriver ? 'truck' : 'package'} size={24} color={accent} />
             </View>
           )}
           <View style={s.profileInfo}>
@@ -222,9 +280,10 @@ export default function ProfileScreen({ navigation, route }) {
                 {phoneRoleLine}
               </Text>
               {isDriver && (profile.rating || profile.rating === 0) ? (
-                <Text style={[s.ratingInline, { color: '#FBBF24' }]}>
-                  {'  '}★ {profile.rating || 5.0}
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, marginLeft: 6 }}>
+                  <Feather name="star" size={12} color="#FBBF24" />
+                  <Text style={[s.ratingInline, { color: '#FBBF24' }]}>{profile.rating || 5.0}</Text>
+                </View>
               ) : null}
             </View>
             {/* Row 3: specs — Тент · 20 т · 86 м³ */}
@@ -233,6 +292,16 @@ export default function ProfileScreen({ navigation, route }) {
                 {specsLine}
               </Text>
             ) : null}
+            {/* Row 4: статус-тир водителя (Новичок → Проверенный → Профи) */}
+            {isDriver ? (() => {
+              const tr = driverTier({ confirmed: profile.doc_confirmed, trips: profile.completed_trips, rating: profile.rating });
+              return (
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: tr.color }}>{tr.emoji} {t(tr.key)}</Text>
+                  <Text style={{ fontSize: 12, color: theme.textMuted }}>{`  ·  ${tr.pct}/100`}</Text>
+                </View>
+              );
+            })() : null}
           </View>
           {/* ЭТАП 1 (canonical): карандаш = редактирование профиля (EditProfile).
               Документная PRO-верификация запускается кнопкой «Получить статус
@@ -252,9 +321,12 @@ export default function ProfileScreen({ navigation, route }) {
           <View style={[s.proCard, { backgroundColor: theme.card, borderColor: proActive ? accent : theme.border }]}>
             <View style={s.proHeader}>
               <View style={{ flex: 1 }}>
-                <Text style={[s.proTitle, { color: theme.text }]}>
-                  {proActive ? `⭐ ${t('pro_active_badge')}` : `⭐ ${t('pro_progress_title')}`}
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Feather name="star" size={15} color={theme.text} />
+                  <Text style={[s.proTitle, { color: theme.text }]}>
+                    {proActive ? t('pro_active_badge') : t('pro_progress_title')}
+                  </Text>
+                </View>
                 {proActive ? (
                   IS_BETA ? (
                     <Text style={[s.proSub, { color: theme.textMuted }]}>{t('pro_beta_note')}</Text>
@@ -291,7 +363,7 @@ export default function ProfileScreen({ navigation, route }) {
                   if ((verificationLevel || 0) >= 2) {
                     navigation.navigate('EditProfile', { role, focus: 'pro' });
                   } else {
-                    navigation.navigate('Identity');
+                    navigation.navigate('Citizenship');
                   }
                 }}
                 activeOpacity={0.85}
@@ -346,19 +418,28 @@ export default function ProfileScreen({ navigation, route }) {
                 style={[s.themeBtn, { backgroundColor: isDark ? 'transparent' : accent, borderColor: isDark ? theme.border : accent }]}
                 onPress={() => { if (isDark) toggleTheme(); }}
               >
-                <Text style={[s.themeBtnText, { color: isDark ? theme.textMuted : onAccent }]}>☀️ {t('theme_light')}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <Feather name="sun" size={13} color={isDark ? theme.textMuted : onAccent} />
+                  <Text style={[s.themeBtnText, { color: isDark ? theme.textMuted : onAccent }]}>{t('theme_light')}</Text>
+                </View>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[s.themeBtn, { backgroundColor: isDark ? accent : 'transparent', borderColor: isDark ? accent : theme.border }]}
                 onPress={() => { if (!isDark) toggleTheme(); }}
               >
-                <Text style={[s.themeBtnText, { color: isDark ? onAccent : theme.textMuted }]}>🌙 {t('theme_dark')}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <Feather name="moon" size={13} color={isDark ? onAccent : theme.textMuted} />
+                  <Text style={[s.themeBtnText, { color: isDark ? onAccent : theme.textMuted }]}>{t('theme_dark')}</Text>
+                </View>
               </TouchableOpacity>
             </View>
           </View>
 
           <View style={[s.settingsRow, { marginTop: 12, flexDirection: 'column', alignItems: 'stretch' }]}>
-            <Text style={[s.settingLabel, { color: theme.text, marginBottom: 8 }]}>🌐 {t('language')}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+              <Feather name="globe" size={14} color={theme.text} />
+              <Text style={[s.settingLabel, { color: theme.text }]}>{t('language')}</Text>
+            </View>
             <View style={s.langGrid}>
               {LANGS.map(l => (
                 <TouchableOpacity
@@ -381,7 +462,10 @@ export default function ProfileScreen({ navigation, route }) {
             testID="profile-push-filter"
             accessibilityLabel={t('pushFilter')}
           >
-            <Text style={[s.settingLabel, { color: theme.text }]}>🔔 {t('pushFilter')}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Feather name="bell" size={14} color={theme.text} />
+              <Text style={[s.settingLabel, { color: theme.text }]}>{t('pushFilter')}</Text>
+            </View>
             <Text style={[s.configureBtn, { color: accent }]}>{t('configure')} →</Text>
           </TouchableOpacity>
         </View>
@@ -407,10 +491,10 @@ export default function ProfileScreen({ navigation, route }) {
               } catch {}
             }}
           >
-            <Text style={[s.versionText, { color: theme.textMuted }]}>v1.0.50 · 17.04.2026</Text>
+            <Text style={[s.versionText, { color: theme.textMuted }]}>{APP_VERSION_LABEL}</Text>
           </TouchableOpacity>
         ) : (
-          <Text style={[s.versionRow, s.versionText, { color: theme.textMuted }]}>v1.0.50 · 17.04.2026</Text>
+          <Text style={[s.versionRow, s.versionText, { color: theme.textMuted }]}>{APP_VERSION_LABEL}</Text>
         )}
 
         {/* «Сменить роль» убрана по решению владельца (13.06): смена роли
@@ -430,6 +514,21 @@ export default function ProfileScreen({ navigation, route }) {
             accessibilityLabel="QA debug logout"
           >
             <Text style={s.logoutText}>QA logout (dev only)</Text>
+          </TouchableOpacity>
+        ) : null}
+
+        {/* QA (dev-only): прямой вход в флоу верификации водителя. qa-debug login
+            хардкодит level 3, поэтому штатный pro-CTA (level≥2 → EditProfile) не
+            ведёт в регистрацию; этот хук даёт Maestro пройти Гражданство →
+            документ личности → техпаспорт → права. В проде не рендерится. */}
+        {QA_HOOK_ALLOWED ? (
+          <TouchableOpacity
+            style={s.logoutBtn}
+            onPress={() => navigation.navigate('Citizenship')}
+            testID="qa-open-verification"
+            accessibilityLabel="QA open verification"
+          >
+            <Text style={s.logoutText}>QA verification (dev only)</Text>
           </TouchableOpacity>
         ) : null}
 
@@ -547,7 +646,7 @@ const s = StyleSheet.create({
     borderRadius: 10, borderWidth: 1,
     alignItems: 'center', gap: 3,
   },
-  langCardText: { fontSize: 10, fontWeight: '600', textAlign: 'center' },
+  langCardText: { fontSize: 11, fontWeight: '600', textAlign: 'center' },
   pushBtn: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, borderRadius: 10, borderWidth: 1, marginTop: 12 },
   configureBtn: { fontSize: 12, fontWeight: '700' },
 

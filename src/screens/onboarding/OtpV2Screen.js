@@ -34,7 +34,7 @@ import { useI18n } from '../../utils/useI18n';
 import { useAuth } from '../../utils/AuthContext';
 import { useToast } from '../../components/Toast';
 import { regAPI } from '../../utils/registration';
-import * as push from '../../utils/push';
+import { push } from '../../utils/push';
 import { brand, radius, typography } from '../../theme/brandV2';
 
 const CODE_LEN = 4;
@@ -157,7 +157,9 @@ export default function OtpV2Screen({ navigation, route }) {
         routes: [{ name: 'RoleV2', params: { phone: identifier, channel, email: emailAddr } }],
       });
     } catch (e) {
-      setError(t('otp_v2_wrong'));
+      // 7.4: сетевой сбой (fetch throw) ≠ неверный код. На 3G в рейсе водитель
+      // тыкал код, думая что ошибся, а это отвалилась связь. Разводим.
+      setError(t('no_connection'));
       setCode('');
     } finally {
       setLoading(false);

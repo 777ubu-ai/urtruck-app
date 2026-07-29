@@ -65,13 +65,15 @@ def info():
 
 
 @push_router.post("/subscribe")
-def subscribe(sub: SubscribeIn, authorization: str = None):
-    """Сохранить push-подписку. Юзер необязателен (можно guest)."""
+def subscribe(sub: SubscribeIn, authorization: Optional[str] = Header(None)):
+    """Сохранить push-подписку. Юзер необязателен (можно guest).
+
+    BUG-001 fix: раньше `authorization: str = None` без `Header(...)` → FastAPI
+    трактовал его как QUERY-параметр, а не HTTP-заголовок → user_id всегда NULL
+    → адресный web-push не доходил. Теперь читаем заголовок Authorization.
+    """
     user_id = None
     try:
-        # Пытаемся получить user, если токен есть
-        from fastapi import Header
-        # Простой парсинг
         if authorization and authorization.startswith("Bearer "):
             from database import registration_dal as reg_dal
             token = authorization.split(" ", 1)[1]
@@ -87,7 +89,10 @@ def subscribe(sub: SubscribeIn, authorization: str = None):
             "last_seen = CURRENT_TIMESTAMP",
             (user_id, sub.endpoint, sub.keys.get("p256dh", ""), sub.keys.get("auth", ""), sub.user_agent),
         )
-    return {"ok": True, "mock": PUSH_MOCK}
+    # P1-2 fix: возвращаем user_id, чтобы фронт понял, привязалась ли подписка.
+    # Если пользователь залогинен, а user_id пуст (токен протух) — web-клиент
+    # не кэширует успех и повторит подписку (как native-путь).
+    return {"ok": True, "mock": PUSH_MOCK, "user_id": user_id}
 
 
 @push_router.post("/unsubscribe")
@@ -103,6 +108,12 @@ def unsubscribe(sub: dict):
 @push_router.post("/register-native")
 def register_native(data: NativeTokenIn, authorization: Optional[str] = Header(None)):
     """Регистрация Expo/FCM push токена (native apps)."""
+    # BUG-008: пустой/битый токен раньше принимался (200) → мусорные строки в
+    # push_tokens_native, которые никогда не доставят, и коллизия на ''.
+    tok = (data.token or "").strip()
+    if not tok or len(tok) < 8:
+        raise HTTPException(status_code=400, detail="Некорректный push-токен")
+    data.token = tok
     user_id = None
     if authorization and authorization.startswith("Bearer "):
         try:

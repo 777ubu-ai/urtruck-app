@@ -11,6 +11,12 @@ import { useTheme } from '../utils/ThemeContext';
 import { useToast } from './Toast';
 import { marketAPI } from '../utils/marketAPI';
 import { CURRENCY_SYMBOLS } from '../utils/normalizers';
+import { TRUCK_KEYS } from '../utils/truckConstants';
+import Feather from '@expo/vector-icons/Feather';
+import DatePicker from './DatePicker';
+import { formatDateForDisplay, normalizeDateInput } from '../utils/dateInput';
+
+const PAY_KEYS = ['cashless', 'cash', 'any'];
 
 export default function EditCargoModal({ visible, cargo, onClose, onSaved }) {
   const { t } = useI18n();
@@ -22,6 +28,12 @@ export default function EditCargoModal({ visible, cargo, onClose, onSaved }) {
   const [desc, setDesc] = useState(String(cargo?.cargo_desc ?? ''));
   const [weight, setWeight] = useState(cargo?.weight_tons != null ? String(cargo.weight_tons) : '');
   const [volume, setVolume] = useState(cargo?.volume_m3 != null ? String(cargo.volume_m3) : '');
+  // 2.10: теперь можно править и тип кузова, и тип оплаты (раньше — только
+  // цена/описание/вес/объём, из-за чего груз приходилось удалять и создавать).
+  const [truckType, setTruckType] = useState(cargo?.cargo_type || 'tent');
+  const [paymentType, setPaymentType] = useState(cargo?.payment_type || '');
+  // Дата выезда — чтобы владелец мог «продлить» просроченный груз.
+  const [pickupDate, setPickupDate] = useState(cargo?.pickup_date ? formatDateForDisplay(cargo.pickup_date) : '');
   const [saving, setSaving] = useState(false);
 
   // Пересинхронизация при смене груза (модалка переиспользуется).
@@ -31,6 +43,9 @@ export default function EditCargoModal({ visible, cargo, onClose, onSaved }) {
       setDesc(String(cargo?.cargo_desc ?? ''));
       setWeight(cargo?.weight_tons != null ? String(cargo.weight_tons) : '');
       setVolume(cargo?.volume_m3 != null ? String(cargo.volume_m3) : '');
+      setTruckType(cargo?.cargo_type || 'tent');
+      setPaymentType(cargo?.payment_type || '');
+      setPickupDate(cargo?.pickup_date ? formatDateForDisplay(cargo.pickup_date) : '');
     }
   }, [visible, cargo]);
 
@@ -47,9 +62,20 @@ export default function EditCargoModal({ visible, cargo, onClose, onSaved }) {
     // Раньше пустое price/weight/volume уходило как 0 → можно было случайно
     // обнулить цену груза, просто очистив поле.
     const payload = { cargo_desc: d };
-    if (price.trim() !== '' && num(price) != null) payload.price = Math.round(num(price));
+    // Цена обязательна и при редактировании (иначе через 0 возвращалась
+    // «По договорённости» — обход нового правила). price > 0 обязателен.
+    const pv = num(price);
+    if (!price.trim() || pv == null || pv <= 0) { toast(t('val_price_required'), 'error'); return; }
+    payload.price = Math.round(pv);
     if (weight.trim() !== '' && num(weight) != null) payload.weight_tons = num(weight);
     if (volume.trim() !== '' && num(volume) != null) payload.volume_m3 = num(volume);
+    if (truckType) payload.cargo_type = truckType;
+    payload.payment_type = paymentType || '';  // '' → бэк снимет тип оплаты
+    // Дата выезда: нормализуем в ISO (как create_cargo/feed-фильтр ожидает).
+    if (pickupDate.trim()) {
+      const iso = normalizeDateInput(pickupDate);
+      if (iso) payload.pickup_date = iso;
+    }
     setSaving(true);
     const r = await marketAPI.updateCargo(cargo.id, payload);
     setSaving(false);
@@ -87,6 +113,12 @@ export default function EditCargoModal({ visible, cargo, onClose, onSaved }) {
                 testID="edit-cargo-desc"
               />
 
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="calendar" size={14} color={theme.textMuted} />
+                <Text style={[s.label, { color: theme.textMuted }]}>{t('pickupDate')}</Text>
+              </View>
+              <DatePicker value={pickupDate} onChange={setPickupDate} placeholder={t('pickupDate')} />
+
               <View style={s.row}>
                 <View style={{ flex: 1 }}>
                   <Text style={[s.label, { color: theme.textMuted }]}>{t('edit_cargo_weight')}</Text>
@@ -109,9 +141,35 @@ export default function EditCargoModal({ visible, cargo, onClose, onSaved }) {
                 </View>
               </View>
 
+              <Text style={[s.label, { color: theme.textMuted }]}>{t('truckType')}</Text>
+              <View style={s.chipsWrap}>
+                {TRUCK_KEYS.map((k) => (
+                  <TouchableOpacity
+                    key={k}
+                    style={[s.chip, { borderColor: truckType === k ? '#FF8400' : theme.border, backgroundColor: truckType === k ? '#FF840022' : theme.bg }]}
+                    onPress={() => setTruckType(k)}
+                  >
+                    <Text style={[s.chipText, { color: truckType === k ? '#FF8400' : theme.textMuted }]}>{t(k)}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={[s.label, { color: theme.textMuted }]}>{t('payment_type_label')}</Text>
+              <View style={s.chipsWrap}>
+                {PAY_KEYS.map((k) => (
+                  <TouchableOpacity
+                    key={k}
+                    style={[s.chip, { borderColor: paymentType === k ? '#FF8400' : theme.border, backgroundColor: paymentType === k ? '#FF840022' : theme.bg }]}
+                    onPress={() => setPaymentType(paymentType === k ? '' : k)}
+                  >
+                    <Text style={[s.chipText, { color: paymentType === k ? '#FF8400' : theme.textMuted }]}>{t('pay_' + k)}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
               <TouchableOpacity
                 onPress={onSave} disabled={saving}
-                style={[s.save, { backgroundColor: '#F59E0B', opacity: saving ? 0.6 : 1 }]}
+                style={[s.save, { backgroundColor: '#FF8400', opacity: saving ? 0.6 : 1 }]}
                 testID="edit-cargo-save"
               >
                 {saving ? <ActivityIndicator color="#0C0A09" /> : <Text style={s.saveText}>{t('edit_cargo_save')}</Text>}
@@ -136,6 +194,9 @@ const s = StyleSheet.create({
   input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15 },
   multiline: { minHeight: 64, textAlignVertical: 'top' },
   row: { flexDirection: 'row' },
+  chipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+  chip: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, borderWidth: 1, minHeight: 40, justifyContent: 'center' },
+  chipText: { fontSize: 13, fontWeight: '700' },
   save: { height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginTop: 20 },
   saveText: { color: '#0C0A09', fontSize: 16, fontWeight: '800' },
   cancel: { height: 44, alignItems: 'center', justifyContent: 'center', marginTop: 4 },

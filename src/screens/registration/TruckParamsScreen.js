@@ -8,7 +8,7 @@
 // тягач/контейнеровоз, открывается блок прицепа (госномер + фото техпаспорта
 // прицепа). Данные уходят в PATCH /api/v1/driver/registration/draft.
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -23,6 +23,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
 import { useToast } from '../../components/Toast';
+import { useAuth } from '../../utils/AuthContext';
 import { regAPI } from '../../utils/registration';
 import RegistrationCloseModal from '../../components/RegistrationCloseModal';
 import RegistrationSubmittedScreen from '../../components/RegistrationSubmittedScreen';
@@ -38,8 +39,14 @@ import { brand, radius, typography } from '../../theme/brandV2';
 
 // Канонический PRO-flow = 4 экрана: Identity → Selfie → VehicleDocs →
 // этот экран → submit. Финальный шаг 4/4 (PR-V3 добавил Identity+Selfie).
-const TOTAL_STEPS = 5;
-const STEP = 5;
+const TOTAL_STEPS = 4;
+const STEP = 4;
+
+// 7.3 — мегаформа «Параметры фуры» разбита на под-шаги, чтобы не пугать
+// одной длинной портянкой. Под-шаг 0 «Транспорт» (кто/что за машина),
+// под-шаг 1 «Параметры и оснащение» (тоннаж/объём/габариты/прицеп/опции).
+// Прогресс-бар и счётчик N/СUB честно отражают под-прогресс внутри шага 5.
+const SUB_COUNT = 2;
 
 // Цвета кузова/кабины. key → i18n t('truck_color_<key>'); hex — образец
 // (swatch). 'other' без образца (свободный выбор «другой»).
@@ -58,7 +65,9 @@ const colorHex = (k) => (VEHICLE_COLORS.find((c) => c.key === k) || {}).hex;
 
 // ЭТАП 7 — статус пребывания в Казахстане (required). Стабильный enum;
 // i18n t('residence_<key>'). Backend уже принимает residence_status.
-const RESIDENCE_OPTIONS = ['citizen', 'kandas', 'foreigner'];
+// «Кандас» убран по решению владельца — оставляем два статуса:
+// гражданин Казахстана и иностранный гражданин.
+const RESIDENCE_OPTIONS = ['citizen', 'foreigner'];
 
 // Числовой ввод: оставляем только цифры и одну точку/запятую → число.
 const parseNum = (s) => {
@@ -70,6 +79,7 @@ const parseNum = (s) => {
 export default function TruckParamsScreen({ navigation, route }) {
   const { t } = useI18n();
   const { toast } = useToast();
+  const { refreshLevel } = useAuth();
 
   const [vehicleType, setVehicleType] = useState(route?.params?.vehicleType || null);
   const [bodyType, setBodyType] = useState(null);
@@ -94,6 +104,8 @@ export default function TruckParamsScreen({ navigation, route }) {
   const [closeVisible, setCloseVisible] = useState(false);
   const [submittedVisible, setSubmittedVisible] = useState(false); // ТЗ блок 12/13
   const [helpVisible, setHelpVisible] = useState(false);
+  const [subStep, setSubStep] = useState(0); // 0 «Транспорт» | 1 «Параметры»
+  const scrollRef = useRef(null);
 
   const showTrailer = useMemo(
     () => TYPES_WITH_TRAILER.includes(vehicleType),
@@ -103,16 +115,41 @@ export default function TruckParamsScreen({ navigation, route }) {
   const brandList = useMemo(() => searchTruckBrands(brandQuery), [brandQuery]);
   const brandModels = useMemo(() => (brandName ? modelsForBrand(brandName) : []), [brandName]);
 
-  const validate = () => {
+  // Валидация по под-шагам: обязательные поля привязаны к своему под-шагу,
+  // чтобы «Далее» не пускал дальше с незаполненным текущим экраном, а submit
+  // на финале перепроверял оба (и вернул на первый неполный под-шаг).
+  const validateStep = (idx) => {
     const e = {};
-    if (!residence) e.residence = t('truck_params_err_residence');
-    if (!vehicleType) e.vehicleType = t('truck_params_err_type');
-    const tons = parseNum(tonnage);
-    if (tons == null || tons < 1 || tons > 60) e.tonnage = t('truck_params_err_tonnage');
-    const vol = parseNum(volume);
-    if (vol == null || vol <= 0) e.volume = t('truck_params_err_volume');
-    setErrors(e);
+    if (idx === 0) {
+      if (!residence) e.residence = t('truck_params_err_residence');
+      if (!vehicleType) e.vehicleType = t('truck_params_err_type');
+    }
+    if (idx === 1) {
+      const tons = parseNum(tonnage);
+      if (tons == null || tons < 1 || tons > 60) e.tonnage = t('truck_params_err_tonnage');
+      const vol = parseNum(volume);
+      if (vol == null || vol <= 0) e.volume = t('truck_params_err_volume');
+    }
+    setErrors((prev) => ({ ...prev, ...e }));
     return Object.keys(e).length === 0;
+  };
+
+  const goToSub = (idx) => {
+    setSubStep(idx);
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  };
+
+  const goNext = () => {
+    if (!validateStep(subStep)) {
+      toast(t('val_fix_fields'), 'error');
+      return;
+    }
+    goToSub(Math.min(subStep + 1, SUB_COUNT - 1));
+  };
+
+  const goPrev = () => {
+    if (subStep > 0) goToSub(subStep - 1);
+    else navigation.goBack();
   };
 
   const buildPayload = () => ({
@@ -137,10 +174,10 @@ export default function TruckParamsScreen({ navigation, route }) {
   });
 
   const onSave = async () => {
-    if (!validate()) {
-      toast(t('val_fix_fields'), 'error');
-      return;
-    }
+    // Финальная проверка обоих под-шагов; при пробеле — вернуть на первый
+    // неполный под-шаг, чтобы пользователь увидел где именно ошибка.
+    if (!validateStep(0)) { goToSub(0); toast(t('val_fix_fields'), 'error'); return; }
+    if (!validateStep(1)) { goToSub(1); toast(t('val_fix_fields'), 'error'); return; }
     setSaving(true);
     const res = await regAPI.saveDriverDraft(buildPayload());
     if (!res.ok) {
@@ -158,6 +195,9 @@ export default function TruckParamsScreen({ navigation, route }) {
         toast(t('save_error'), 'error');
         return;
       }
+      // Обновляем сессию сразу — чтобы допуск/роль/уровень/статус применились
+      // без перезапуска приложения (иначе профиль выглядит «пустым»).
+      refreshLevel?.().catch(() => {});
       setSubmittedVisible(true);
       return;
     }
@@ -203,18 +243,19 @@ export default function TruckParamsScreen({ navigation, route }) {
     </Pressable>
   );
 
-  const progress = STEP / TOTAL_STEPS;
+  // Честный прогресс: базовый шаг 5 из 5 делится на под-шаги 1/2 → 2/2.
+  const progress = (STEP - 1 + (subStep + 1) / SUB_COUNT) / TOTAL_STEPS;
 
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']} testID="truck-params-screen">
       <View style={s.header}>
-        <Pressable onPress={() => navigation.goBack()} style={s.backBtn} testID="tp-back">
+        <Pressable onPress={goPrev} style={s.backBtn} testID="tp-back">
           <Feather name="arrow-left" size={22} color={brand.textPrimary} />
         </Pressable>
         <View style={s.progressTrack}>
           <View style={[s.progressFill, { width: `${progress * 100}%` }]} />
         </View>
-        <Text style={s.stepLabel}>{t('truck_params_step')}</Text>
+        <Text style={s.stepLabel}>{`${t('reg_step')} ${STEP} ${t('reg_of')} ${TOTAL_STEPS}`} · {subStep + 1}/{SUB_COUNT}</Text>
         <Pressable onPress={() => setHelpVisible(true)} style={s.backBtn} testID="tp-help" accessibilityLabel={t('reg_help_open')}>
           <Feather name="help-circle" size={22} color={brand.textSecondary} />
         </Pressable>
@@ -223,9 +264,11 @@ export default function TruckParamsScreen({ navigation, route }) {
         </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
+      <ScrollView ref={scrollRef} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
         <Text style={s.title}>{t('truck_params_title')}</Text>
 
+        {subStep === 0 ? (
+        <>
         {/* ЭТАП 7 — статус пребывания в Казахстане (required) */}
         <Text style={s.label}>{t('residence_title')}</Text>
         <Selector items={RESIDENCE_OPTIONS} value={residence} onSelect={setResidence} prefix="residence" />
@@ -268,9 +311,29 @@ export default function TruckParamsScreen({ navigation, route }) {
           swatch={colorKey ? colorHex(colorKey) : null}
           testID="tp-color"
         />
+        </>
+        ) : null}
 
-        {/* Грузоподъёмность (динамический ввод) */}
+        {subStep === 1 ? (
+        <>
+        {/* Грузоподъёмность: чипы-пресеты (7.2 — быстрый выбор пальцем вместо
+            ручного ввода) + ручной ввод для нестандартных значений. */}
         <Text style={s.label}>{t('truck_params_tonnage')}</Text>
+        <View style={s.presetRow}>
+          {['3', '5', '10', '20', '25'].map((v) => {
+            const active = tonnage === v;
+            return (
+              <Pressable
+                key={v}
+                onPress={() => { setTonnage(v); if (errors.tonnage) setErrors((e) => ({ ...e, tonnage: null })); }}
+                style={[s.presetChip, active && s.presetChipActive]}
+                testID={`tp-tonnage-${v}`}
+              >
+                <Text style={[s.presetChipText, active && s.presetChipTextActive]}>{v} т</Text>
+              </Pressable>
+            );
+          })}
+        </View>
         <TextInput
           value={tonnage}
           onChangeText={setTonnage}
@@ -306,7 +369,10 @@ export default function TruckParamsScreen({ navigation, route }) {
         {/* Блок прицепа — только для тягача/контейнеровоза */}
         {showTrailer ? (
           <View style={s.trailerBox} testID="tp-trailer-block">
-            <Text style={s.trailerTitle}>🚛 {t('truck_params_trailer')}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Feather name="truck" size={15} color={brand.textPrimary} />
+              <Text style={s.trailerTitle}>{t('truck_params_trailer')}</Text>
+            </View>
             <Text style={s.label}>{t('truck_params_trailer_plate')}</Text>
             <TextInput
               value={trailerPlate}
@@ -333,17 +399,29 @@ export default function TruckParamsScreen({ navigation, route }) {
           <Text style={s.toggleLabel}>{t('truck_params_straps')}</Text>
           <Switch value={straps} onValueChange={setStraps} testID="tp-straps" trackColor={{ true: brand.primary }} />
         </View>
+        </>
+        ) : null}
       </ScrollView>
 
       <View style={s.ctaWrap}>
-        <Pressable
-          onPress={onSave}
-          disabled={saving}
-          style={[s.cta, saving && { opacity: 0.6 }]}
-          testID="tp-save"
-        >
-          <Text style={s.ctaText}>{t('truck_params_save')}</Text>
-        </Pressable>
+        {subStep < SUB_COUNT - 1 ? (
+          <Pressable
+            onPress={goNext}
+            style={s.cta}
+            testID="tp-next"
+          >
+            <Text style={s.ctaText}>{t('truck_params_next')}</Text>
+          </Pressable>
+        ) : (
+          <Pressable
+            onPress={onSave}
+            disabled={saving}
+            style={[s.cta, saving && { opacity: 0.6 }]}
+            testID="tp-save"
+          >
+            <Text style={s.ctaText}>{t('truck_params_save')}</Text>
+          </Pressable>
+        )}
       </View>
 
       {/* Bottom-sheet выбора марки / модели / цвета */}
@@ -452,6 +530,11 @@ const s = StyleSheet.create({
   chipTextActive: { color: brand.primary, fontWeight: '700' },
   input: { height: 52, borderRadius: radius.md, borderWidth: 1, borderColor: brand.border, backgroundColor: brand.surface, paddingHorizontal: 16, color: brand.textPrimary, ...typography.body },
   inputErr: { borderColor: brand.danger || '#EF4444' },
+  presetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
+  presetChip: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: brand.border, backgroundColor: brand.surface, minHeight: 44, justifyContent: 'center' },
+  presetChipActive: { backgroundColor: brand.primary, borderColor: brand.primary },
+  presetChipText: { ...typography.body, fontWeight: '700', color: brand.textSecondary },
+  presetChipTextActive: { color: '#0C0A09' },
   // picker-поле (марка/модель/цвет)
   picker: { minHeight: 52, borderRadius: radius.md, borderWidth: 1, borderColor: brand.border, backgroundColor: brand.surface, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   pickerDisabled: { opacity: 0.5 },

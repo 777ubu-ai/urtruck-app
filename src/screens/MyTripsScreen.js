@@ -9,6 +9,7 @@ import { regAPI } from '../utils/registration';
 import { formatStatus, formatTruckType, formatBids } from '../utils/i18n';
 import { formatDateForDisplay } from '../utils/dateInput';
 import { formatPrice, normalizeTrip } from '../utils/normalizers';
+import { localizePlace, localizeCargoName } from '../utils/places';
 import EmptyState from '../components/ui/EmptyState';
 import BidModal from '../components/BidModal';
 import EditCargoModal from '../components/EditCargoModal';
@@ -16,10 +17,10 @@ import { colors, spacing, radius, typography } from '../theme/theme';
 import {v1Colors, useV1Colors, v1AccentFor} from '../theme/designV1';
 import SegmentTabs from '../components/ui/v1/SegmentTabs';
 import StatsRow from '../components/ui/v1/StatsRow';
-import BellBadge from '../components/ui/v1/BellBadge';
-import { useUnreadNotifications } from '../utils/useUnreadNotifications';
 import { useMountedRef } from '../hooks/useMountedRef';
-import { useDealLocationBroadcast } from '../hooks/useDealLocationBroadcast';
+import FadeInUp, { PopIn } from '../components/ui/FadeInUp';
+import PressableScale from '../components/PressableScale';
+import Feather from '@expo/vector-icons/Feather';
 
 export default function MyTripsScreen({ navigation, route }) {
   const v1 = useV1Colors();
@@ -35,6 +36,7 @@ export default function MyTripsScreen({ navigation, route }) {
   ftlText: { fontSize: 11, fontWeight: '900', letterSpacing: 1 },
   bellBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, backgroundColor: v1.surface },
   bellIcon: { fontSize: 18 },
+  menuBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   titleBlock: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12 },
   titleHero: { color: v1.text, fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
   titleSub: { color: v1.textMuted, fontSize: 12, marginTop: 2 },
@@ -66,67 +68,93 @@ export default function MyTripsScreen({ navigation, route }) {
   archiveToggle: { alignSelf: 'flex-end', paddingVertical: 6, paddingHorizontal: 4, marginTop: 2 },
   archiveToggleText: { fontSize: 12, fontWeight: '700' },
 
-  card: { borderRadius: radius.md, padding: spacing.md, borderWidth: 1, marginBottom: spacing.sm },
+  card: { borderRadius: 20, padding: 16, borderWidth: 0.5, marginBottom: 14, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 3 },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xs },
   badge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
-  badgeText: { fontSize: 9, fontWeight: '800', letterSpacing: 1 },
+  badgeText: { fontSize: 11, fontWeight: '800', letterSpacing: 1 },
   statusLabel: { ...typography.small },
   route: { ...typography.title, marginBottom: 4 },
   desc: { ...typography.body, marginBottom: spacing.xs },
   cardMeta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: spacing.xs },
   metaItem: { ...typography.caption },
-  metaDot: { color: '#475569', fontSize: 10 },
+  metaDot: { color: '#475569', fontSize: 11 },
   cardBottom: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  price: { ...typography.h2, color: '#22C55E' },
+  price: { fontSize: 24, fontWeight: '700', color: '#FF8400', fontVariant: ['tabular-nums'] },
   bidsLabel: { ...typography.caption, flex: 1 },
-  offersCta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.sm, paddingVertical: 10, paddingHorizontal: 12, borderRadius: radius.sm, backgroundColor: 'rgba(245,158,11,0.14)', borderWidth: 1, borderColor: 'rgba(245,158,11,0.45)' },
-  offersCtaText: { color: '#F59E0B', fontSize: 14, fontWeight: '800', flex: 1 },
-  offersCtaArrow: { color: '#F59E0B', fontSize: 18, fontWeight: '800' },
+  offersCta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.sm, paddingVertical: 10, paddingHorizontal: 12, borderRadius: radius.sm, backgroundColor: 'rgba(255,132,0,0.14)' },
+  offersCtaText: { color: '#FF8400', fontSize: 14, fontWeight: '800', flex: 1 },
+  offersCtaArrow: { color: '#FF8400', fontSize: 18, fontWeight: '800' },
 
   chatBtn: { backgroundColor: '#22C55E', borderRadius: radius.sm, paddingVertical: spacing.sm, alignItems: 'center', marginTop: spacing.sm },
   chatBtnText: { color: '#FFF', ...typography.title },
-  acceptBtn: { backgroundColor: '#22C55E', borderRadius: radius.sm, paddingVertical: spacing.sm, alignItems: 'center' },
+  // 27.07: кнопки действий сделки вылезали за карточку. Делаем их гибкими
+  // (flexGrow/Shrink + minWidth) — в ряду с flexWrap они заполняют ширину и
+  // аккуратно переносятся на след. строку, не вылезая за края.
+  acceptBtn: { backgroundColor: '#22C55E', borderRadius: radius.sm, paddingVertical: spacing.sm, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', flexGrow: 1, flexShrink: 1, minWidth: 130 },
   acceptBtnText: { color: '#FFF', ...typography.title },
-  rejectBtn: { borderWidth: 1, borderColor: '#EF4444', borderRadius: radius.sm, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, alignItems: 'center' },
+  rejectBtn: { borderWidth: 0, borderRadius: radius.sm, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, alignItems: 'center', justifyContent: 'center', flexGrow: 1, flexShrink: 1, minWidth: 110, backgroundColor: 'rgba(239,68,68,0.10)' },
   rejectBtnText: { color: '#EF4444', ...typography.title },
-  miniBtn: { borderWidth: 1, borderRadius: radius.sm, paddingVertical: 6, paddingHorizontal: 10 },
-  miniBtnText: { fontSize: 11, fontWeight: '700' },
-  editBtn: { borderWidth: 1, borderColor: '#22C55E', borderRadius: 10, paddingVertical: 8, alignItems: 'center', marginTop: spacing.sm },
+  // «Для перчаток и солнца»: крупная тап-цель (≥44pt) и читаемый текст.
+  miniBtn: { borderWidth: 0, borderRadius: radius.sm, paddingVertical: 12, paddingHorizontal: 14, minHeight: 44, alignItems: 'center', justifyContent: 'center', flexGrow: 1, flexShrink: 1, minWidth: 110, backgroundColor: 'rgba(148,163,184,0.14)' },
+  miniBtnText: { fontSize: 14, fontWeight: '700' },
+  editBtn: { borderWidth: 0, borderRadius: 10, paddingVertical: 10, alignItems: 'center', marginTop: spacing.sm, backgroundColor: 'rgba(34,197,94,0.12)' },
   editBtnText: { color: '#22C55E', fontSize: 12, fontWeight: '700' },
+  extendBtn: { flex: 1, backgroundColor: '#00E676', borderRadius: 10, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', minHeight: 40 },
+  extendBtnText: { color: '#0C0A09', fontSize: 13, fontWeight: '800' },
 
   }), [v1]);
   const { role } = route.params || {};
   const isDriver = role === 'driver';
-  const accent = isDriver ? '#22C55E' : '#F59E0B';
-  const { t } = useI18n();
+  const accent = isDriver ? '#22C55E' : '#FF8400';
+  const { t, lang } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
-  const notifUnread = useUnreadNotifications();
 
   // Driver tabs (issue #2): routes / offers / inwork / done (+ secondary
   // archive). Client (грузоотправитель) — зеркало в его терминах:
   // searching / enroute / delivered (+ archive). Legacy initialTab
   // (my/bids/deals) ремапим, чтобы deep-links/nav приземлялись корректно.
-  const DRIVER_TABS_KEYS = ['routes', 'offers', 'inwork', 'done', 'archive'];
-  const CLIENT_TABS_KEYS = ['searching', 'offers', 'enroute', 'delivered', 'archive'];
+  // Приказ 26.07.2026 (обе роли): под-вкладки «Предложения» здесь больше нет —
+  // ставки живут во вкладке «Сделки» (таб-бар). Тут только факты по моим
+  // публикациям: разместил / в работе / завершено (+ архив). Легаси
+  // deep-links bids/offers приземляем на первую вкладку.
+  const DRIVER_TABS_KEYS = ['routes', 'inwork', 'done', 'archive'];
+  const CLIENT_TABS_KEYS = ['searching', 'enroute', 'delivered', 'archive'];
   const rawInitialTab = route.params?.initialTab || (isDriver ? 'routes' : 'searching');
   const normInitialTab = isDriver
     ? (DRIVER_TABS_KEYS.includes(rawInitialTab)
         ? rawInitialTab
-        : (rawInitialTab === 'bids' ? 'offers' : rawInitialTab === 'deals' ? 'inwork' : 'routes'))
+        : (rawInitialTab === 'deals' ? 'inwork' : 'routes'))
     : (CLIENT_TABS_KEYS.includes(rawInitialTab)
         ? rawInitialTab
-        : (rawInitialTab === 'bids' ? 'offers' : rawInitialTab === 'deals' ? 'enroute' : 'searching'));
+        : (rawInitialTab === 'deals' ? 'enroute' : 'searching'));
   const justCreatedTrip = route.params?.justCreatedTrip || null;
+  // Клиентский аналог: только что опубликованный груз показываем сразу в
+  // «Ищу машину», не дожидаясь серверного refetch (замыкаем цикл публикации).
+  const justCreatedCargo = route.params?.justCreatedCargo || null;
   const [tab, setTab] = useState(normInitialTab);
   const mounted = useMountedRef();  // QA-аудит P1-8
   const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(!justCreatedTrip);
+  const [loading, setLoading] = useState(!justCreatedTrip && !justCreatedCargo);
   const [bidModal, setBidModal] = useState(false);
   const [bidModalMode, setBidModalMode] = useState('edit');
   const [editingBid, setEditingBid] = useState(null);
   const [editCargo, setEditCargo] = useState(null);  // задача A: правка своего груза
   const [busyBidId, setBusyBidId] = useState(null);
+  const [extending, setExtending] = useState(null);  // Модель А: продление одним тапом
+
+  // «Ещё актуально» — сбрасывает дату на сегодня, публикация снова живёт
+  // 3 дня и возвращается в ленту. Без ручного ввода даты.
+  const extendItem = async (item, isCargo) => {
+    if (extending) return;
+    setExtending(item.id);
+    try {
+      const r = isCargo ? await marketAPI.extendCargo(item.id) : await marketAPI.extendTrip(item.id);
+      if (r.ok) { toast('✅ ' + t('extended_toast'), 'success', 3000); load(); }
+      else toast(r.detail || t('send_error'), 'error');
+    } catch { toast(t('no_connection'), 'error'); }
+    finally { setExtending(null); }
+  };
 
   // Progressive verification: размещение рейса — trust-действие, доступно
   // только одобренному водителю. Источник статуса — regAPI.me()
@@ -153,6 +181,10 @@ export default function MyTripsScreen({ navigation, route }) {
     })();
     return () => { alive = false; };
   }, [isDriver]);
+
+  // Гашение бейджа событий (26.07.2026, обе роли): живёт на вкладке «Сделки»
+  // (ChatsListScreen в dealsMode). Здесь ничего не гасим — иначе бейдж
+  // пропадал бы от простого захода в «Мои рейсы»/«Мои грузы».
 
   const onPublishRoute = () => {
     if (verState === 'approved') navigation.navigate('CreateTrip', { role });
@@ -200,14 +232,30 @@ export default function MyTripsScreen({ navigation, route }) {
     if (justCreatedTrip) {
       setData({ my_trips: [justCreatedTrip], my_cargos: [], my_bids: [], incoming_bids: [], my_deals: [] });
       setLoading(false);
+    } else if (justCreatedCargo) {
+      setData({ my_trips: [], my_cargos: [justCreatedCargo], my_bids: [], incoming_bids: [], my_deals: [] });
+      setLoading(false);
+      // Фоном подтягиваем серверные данные, чтобы список стал полным.
+      load();
     } else {
       load();
     }
   }, []);
 
+  // 27.07: перечитываем список при каждом возврате на экран — иначе статус
+  // сделки (Везут/Доставлено), изменённый второй стороной, не обновлялся до
+  // ручного pull-to-refresh.
+  useEffect(() => {
+    const unsub = navigation.addListener('focus', () => { load(); });
+    return unsub;
+  }, [navigation]);
+
   let myItemsRaw = isDriver ? (data?.my_trips || []) : (data?.my_cargos || []);
   if (justCreatedTrip && isDriver && !myItemsRaw.find(i => i.id === justCreatedTrip.id)) {
     myItemsRaw = [justCreatedTrip, ...myItemsRaw];
+  }
+  if (justCreatedCargo && !isDriver && !myItemsRaw.find(i => i.id === justCreatedCargo.id)) {
+    myItemsRaw = [justCreatedCargo, ...myItemsRaw];
   }
 
   // RC2 hotfix (P0-4): expired (pickup_date < сегодня) больше не
@@ -236,11 +284,13 @@ export default function MyTripsScreen({ navigation, route }) {
   const isExpiredItem = (it) => {
     const d = parseDate(it.pickup_date || it.departure);
     if (!d) return false;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    // expired = pickup_date < today (strictly). today itself remains
-    // active.
-    return d < today;
+    // Модель А: публикация живёт 3 дня (день выезда + 2), согласовано с
+    // лентой. Дальше — «Срок истёк». Граница = сегодня-2: expired, если
+    // дата < (сегодня − 2 дня).
+    const grace = new Date();
+    grace.setHours(0, 0, 0, 0);
+    grace.setDate(grace.getDate() - 2);
+    return d < grace;
   };
   const myItemsActive = myItemsRaw.filter((it) => !isExpiredItem(it));
   const myItemsExpired = myItemsRaw.filter((it) => isExpiredItem(it));
@@ -270,16 +320,17 @@ export default function MyTripsScreen({ navigation, route }) {
   //   accepted | in_progress | picked_up  → В работе (inwork)
   //   completed | delivered               → Завершённые (done)
   //   cancelled | rejected | expired      → Архив (вторичный фильтр)
-  const IN_WORK_STATUSES = ['accepted', 'in_progress', 'picked_up'];
+  // 27.07: 'at_border' («На границе») ОБЯЗАТЕЛЬНО в «В работе» — иначе груз на
+  // границе выпадал из всех вкладок (не done, не archive) и «терялся».
+  const IN_WORK_STATUSES = ['accepted', 'in_progress', 'picked_up', 'at_border'];
   const DONE_STATUSES = ['completed', 'delivered'];
   const ARCHIVE_STATUSES = ['cancelled', 'rejected', 'expired'];
   const serverDeals = (data?.my_deals) || [];
-  const driverOffers = myBids.filter((b) => ['pending', 'countered'].includes(b.status));
   const driverInWork = serverDeals.filter((d) => IN_WORK_STATUSES.includes(d.status));
   const driverDone = serverDeals.filter((d) => DONE_STATUSES.includes(d.status));
-  // Задача B: водитель транслирует свою гео-позицию по сделкам «в работе»
-  // (foreground). Для клиента — пустой массив (ничего не шлёт).
-  useDealLocationBroadcast(isDriver ? driverInWork.map((d) => d.id) : []);
+  // Задача B: авто-трансляция гео-позиции водителя вынесена на уровень
+  // приложения (AppNavigator/MainTabs) — работает на любом экране, не только
+  // здесь. Дубль-вызов убран, чтобы не слать координаты дважды.
   const driverArchive = [
     ...serverDeals.filter((d) => ARCHIVE_STATUSES.includes(d.status)).map((d) => ({ ...d, _kind: 'deal' })),
     ...myBids.filter((b) => ['rejected', 'cancelled', 'expired'].includes(b.status)).map((b) => ({ ...b, _kind: 'bid' })),
@@ -297,11 +348,8 @@ export default function MyTripsScreen({ navigation, route }) {
   // «Ищу машину» = только активные грузы (без already taken — у принятого
   // груза есть сделка, она показывается в «Везут», иначе был бы дубль).
   const clientSearching = myItems.filter((c) => !c.status || c.status === 'active');
-  // Входящие предложения водителей по моим грузам — ядро сделки. Раньше были
-  // видны только в колокольчике; теперь это отдельная вкладка у клиента
-  // (myBids у клиента = incoming_bids). renderBid уже умеет принять/отклонить/
-  // контр-оффер/чат для !isDriver.
-  const clientOffers = myBids.filter((b) => ['pending', 'countered'].includes(b.status));
+  // Входящие предложения водителей у клиента живут во вкладке «Сделки»
+  // (26.07.2026), здесь их под-вкладки больше нет.
   const clientArchive = [
     ...serverDeals.filter((d) => ARCHIVE_STATUSES.includes(d.status)).map((d) => ({ ...d, _kind: 'deal' })),
     ...myItemsExpired.map((it) => ({ ...it, _kind: 'cargo', _expired: true })),
@@ -315,7 +363,7 @@ export default function MyTripsScreen({ navigation, route }) {
     const desc = item.cargo_desc || '';
     const isCargo = !!item.cargo_desc;
     const badge = isCargo ? t('badge_cargo') : t('badge_trip');
-    const badgeColor = isCargo ? '#F59E0B' : '#22C55E';
+    const badgeColor = isCargo ? '#FF8400' : '#22C55E';
     // Edit is allowed only for own ACTIVE trips. Backend will also block any
     // attempt with an accepted deal — but hiding the button is a much better
     // UX than letting the user tap → wait → see "edit denied".
@@ -342,17 +390,24 @@ export default function MyTripsScreen({ navigation, route }) {
               Раньше cancelled / draft / pending тоже рендерились #22C55E,
               что визуально врало пользователю (зелёное = "успешно"). Теперь
               цвет подбирается по item.status. */}
-          <Text style={[s.statusLabel, { color: (() => {
-            const st = item.status || 'active';
-            if (st === 'cancelled') return '#94A3B8';        // серый
-            if (st === 'draft' || st === 'pending') return '#F59E0B'; // янтарный
-            if (st === 'rejected' || st === 'expired') return '#EF4444'; // красный
-            if (st === 'completed' || st === 'delivered') return '#22C55E'; // зелёный
-            return '#22C55E'; // active по умолчанию — зелёный
-          })() }]}>{formatStatus(item.status || 'active')}</Text>
+          {item._expired ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Feather name="clock" size={13} color="#EF4444" />
+              <Text style={[s.statusLabel, { color: '#EF4444' }]}>{t('deadline_expired')}</Text>
+            </View>
+          ) : (
+            <Text style={[s.statusLabel, { color: (() => {
+              const st = item.status || 'active';
+              if (st === 'cancelled') return '#94A3B8';        // серый
+              if (st === 'draft' || st === 'pending') return '#FF8400'; // янтарный
+              if (st === 'rejected' || st === 'expired') return '#EF4444'; // красный
+              if (st === 'completed' || st === 'delivered') return '#22C55E'; // зелёный
+              return '#22C55E'; // active по умолчанию — зелёный
+            })() }]}>{formatStatus(item.status || 'active')}</Text>
+          )}
         </View>
-        <Text style={[s.route, { color: theme.text }]}>{from} → {to}</Text>
-        {desc ? <Text style={[s.desc, { color: theme.textMuted }]} numberOfLines={1}>{desc}</Text> : null}
+        <Text style={[s.route, { color: theme.text }]}>{localizePlace(from, lang)} → {localizePlace(to, lang)}</Text>
+        {desc ? <Text style={[s.desc, { color: theme.textMuted }]} numberOfLines={1}>{localizeCargoName(desc, lang)}</Text> : null}
         <View style={s.cardMeta}>
           <Text style={[s.metaItem, { color: theme.textDim }]}>{formatTruckType(item.truck_type || item.cargo_type)}</Text>
           <Text style={s.metaDot}>·</Text>
@@ -368,14 +423,21 @@ export default function MyTripsScreen({ navigation, route }) {
           <Text style={s.price}>{formatPrice(item.price, item.currency, t)}</Text>
           {item.bids_count > 0 && !(isCargo && !isDriver) && <Text style={[s.bidsLabel, { color: theme.textMuted }]}>{formatBids(item.bids_count)}</Text>}
         </View>
-        {/* B (предложения не прятать в колокол): у клиента входящие ставки —
-            заметный янтарный CTA прямо на карточке груза. Тап по карточке уже
-            ведёт в CargoDetail, где ставку можно принять/отклонить/написать. */}
+        {/* Индикатор откликов на карточке груза. С 26.07.2026 работа со
+            ставками живёт во вкладке «Сделки» — тап по плашке ведёт туда
+            (витрина показывает «есть отклик», решение принимается в Сделках). */}
         {isCargo && !isDriver && item.bids_count > 0 && (item.status || 'active') === 'active' && (
-          <View style={s.offersCta} testID="cargo-offers-cta">
-            <Text style={s.offersCtaText} numberOfLines={1}>💬 {formatBids(item.bids_count)}</Text>
+          <TouchableOpacity
+            style={s.offersCta}
+            testID="cargo-offers-cta"
+            onPress={(e) => { e.stopPropagation && e.stopPropagation(); navigation.navigate('Deals'); }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+              <Feather name="message-square" size={14} color="#FF8400" />
+              <Text style={s.offersCtaText} numberOfLines={1}>{formatBids(item.bids_count)}</Text>
+            </View>
             <Text style={s.offersCtaArrow}>›</Text>
-          </View>
+          </TouchableOpacity>
         )}
         {canEditTrip && (
           <TouchableOpacity
@@ -386,8 +448,43 @@ export default function MyTripsScreen({ navigation, route }) {
               navigation.navigate('EditTrip', { tripId: item.id, trip: normalizeTrip({ ...item, isMine: true, _server: true }) });
             }}
           >
-            <Text style={s.editBtnText}>✏️ {t('edit_btn')}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Feather name="edit-3" size={14} color="#22C55E" />
+              <Text style={s.editBtnText}>{t('edit_btn')}</Text>
+            </View>
           </TouchableOpacity>
+        )}
+        {/* Просроченный груз/рейс (Модель А): «Ещё актуально» — продление
+            ОДНИМ ТАПОМ (дата = сегодня, снова живёт 3 дня и в ленте). Рядом —
+            «Изменить дату», если нужна конкретная дата. */}
+        {item._expired && (
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: spacing.sm }}>
+            <TouchableOpacity
+              testID="extend-oneclick-btn"
+              style={[s.extendBtn, extending === item.id && { opacity: 0.6 }]}
+              onPress={(e) => { e.stopPropagation && e.stopPropagation(); extendItem(item, isCargo); }}
+              disabled={extending === item.id}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="check-circle" size={14} color="#0C0A09" />
+                <Text style={s.extendBtnText}>{t('still_active')}</Text>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              testID="extend-editdate-btn"
+              style={[s.editBtn, { borderColor: '#FF8400', marginTop: 0, paddingHorizontal: 14 }]}
+              onPress={(e) => {
+                e.stopPropagation && e.stopPropagation();
+                if (isCargo) setEditCargo(item);
+                else navigation.navigate('EditTrip', { tripId: item.id, trip: normalizeTrip({ ...item, isMine: true, _server: true }) });
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="calendar" size={14} color="#FF8400" />
+                <Text style={[s.editBtnText, { color: '#FF8400' }]}>{t('change_date')}</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
         )}
         {/* Задача A: управление СВОИМ грузом — Изменить (цена/описание) + Удалить.
             Только для активного груза (taken/принятый редактировать нельзя). */}
@@ -395,10 +492,13 @@ export default function MyTripsScreen({ navigation, route }) {
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
             <TouchableOpacity
               testID="my-cargo-edit-btn"
-              style={[s.miniBtn, { borderColor: '#F59E0B', flex: 1 }]}
+              style={[s.miniBtn, { borderColor: '#FF8400', flex: 1 }]}
               onPress={(e) => { e.stopPropagation && e.stopPropagation(); setEditCargo(item); }}
             >
-              <Text style={[s.miniBtnText, { color: '#F59E0B' }]}>✏️ {t('edit_btn')}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="edit-3" size={14} color="#FF8400" />
+                <Text style={[s.miniBtnText, { color: '#FF8400' }]}>{t('edit_btn')}</Text>
+              </View>
             </TouchableOpacity>
             <TouchableOpacity
               testID="my-cargo-delete-btn"
@@ -411,7 +511,10 @@ export default function MyTripsScreen({ navigation, route }) {
                 else toast((r && r.detail) || t('delete_failed'), 'error');
               }}
             >
-              <Text style={[s.miniBtnText, { color: '#EF4444' }]}>🗑 {t('delete_btn')}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="trash-2" size={14} color="#EF4444" />
+                <Text style={[s.miniBtnText, { color: '#EF4444' }]}>{t('delete_btn')}</Text>
+              </View>
             </TouchableOpacity>
           </View>
         )}
@@ -444,7 +547,8 @@ export default function MyTripsScreen({ navigation, route }) {
   };
 
   const renderDeal = ({ item }) => {
-    const sc = { accepted: '#22C55E', in_progress: '#F59E0B', delivered: '#22C55E', cancelled: '#EF4444' };
+    // Промпт-дизайн клиента: «Принят» — изумруд #10B981 (текст+галочка, без фона).
+    const sc = { accepted: '#10B981', in_progress: '#FF8400', at_border: '#2563EB', delivered: '#10B981', cancelled: '#EF4444' };
     const busy = busyBidId === item.id;
     const nextStep = isDriver
       ? (item.status === 'accepted' ? t('driver_next_step_accepted')
@@ -459,20 +563,30 @@ export default function MyTripsScreen({ navigation, route }) {
         testID="my-order-card"
         activeOpacity={0.85}
         onPress={() => openDealCard(item)}
-        style={[s.card, { backgroundColor: theme.card, borderColor: sc[item.status] || theme.border, borderWidth: 2 }]}
+        style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]}
       >
         <View style={s.cardTop}>
           <View style={[s.badge, { backgroundColor: accent + '20' }]}>
             <Text style={[s.badgeText, { color: accent }]}>{t('order_label')}</Text>
           </View>
-          <Text style={[s.statusLabel, { color: sc[item.status] || '#78716C' }]}>{formatStatus(item.status)}</Text>
+          {item.status === 'accepted' ? (
+            <PopIn style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Feather name="check-circle" size={13} color={sc[item.status]} />
+              <Text style={[s.statusLabel, { color: sc[item.status] }]}>{formatStatus(item.status)}</Text>
+            </PopIn>
+          ) : (
+            <Text style={[s.statusLabel, { color: sc[item.status] || '#78716C' }]}>{formatStatus(item.status)}</Text>
+          )}
         </View>
-        <Text style={[s.route, { color: theme.text }]}>{item.from_city || '—'} → {item.to_city || '—'}</Text>
+        <Text style={[s.route, { color: theme.text }]}>{localizePlace(item.from_city || '—', lang)} → {localizePlace(item.to_city || '—', lang)}</Text>
         {/* issue #3: груз/тип кузова на карточке заказа */}
         {(item.cargo_title || item.cargo_desc || item.cargo_type || item.truck_type) ? (
           <View style={s.cardMeta}>
             {(item.cargo_title || item.cargo_desc) ? (
-              <Text style={[s.metaItem, { color: theme.textMuted }]} numberOfLines={1}>📦 {item.cargo_title || item.cargo_desc}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 }}>
+                <Feather name="package" size={13} color={theme.textMuted} />
+                <Text style={[s.metaItem, { color: theme.textMuted }]} numberOfLines={1}>{localizeCargoName(item.cargo_title || item.cargo_desc, lang)}</Text>
+              </View>
             ) : null}
             {(item.cargo_type || item.truck_type) ? (
               <>
@@ -500,33 +614,57 @@ export default function MyTripsScreen({ navigation, route }) {
               disabled={busy}
               onPress={() => setDealStatusOnServer(item, 'in_progress')}
             >
-              <Text style={s.acceptBtnText}>🚛 {t('start_delivery')}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="truck" size={15} color="#FFF" />
+                <Text style={s.acceptBtnText}>{t('start_delivery')}</Text>
+              </View>
             </TouchableOpacity>
           )}
+          {/* Водитель «В работе»: две кнопки — «На границе» (необязательный шаг
+              коридора Китай↔СНГ, оживляет стадию таймлайна) и «Доставлен».
+              На внутреннем рейсе границу можно пропустить и сразу доставить. */}
           {isDriver && item.status === 'in_progress' && (
+            <TouchableOpacity
+              style={[s.acceptBtn, { backgroundColor: '#2563EB' }, busy && { opacity: 0.5 }]}
+              disabled={busy}
+              onPress={() => setDealStatusOnServer(item, 'at_border')}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="flag" size={15} color="#FFF" />
+                <Text style={s.acceptBtnText}>{t('status_at_border')}</Text>
+              </View>
+            </TouchableOpacity>
+          )}
+          {isDriver && (item.status === 'in_progress' || item.status === 'at_border') && (
             <TouchableOpacity
               style={[s.acceptBtn, busy && { opacity: 0.5 }]}
               disabled={busy}
               onPress={() => setDealStatusOnServer(item, 'delivered')}
             >
-              <Text style={s.acceptBtnText}>✅ {t('mark_arrived')}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="check-circle" size={15} color="#FFF" />
+                <Text style={s.acceptBtnText}>{t('mark_arrived')}</Text>
+              </View>
             </TouchableOpacity>
           )}
-          {!isDriver && item.status === 'in_progress' && (
+          {!isDriver && (item.status === 'in_progress' || item.status === 'at_border') && (
             <TouchableOpacity
               style={[s.acceptBtn, { backgroundColor: accent }, busy && { opacity: 0.5 }]}
               disabled={busy}
               onPress={() => setDealStatusOnServer(item, 'delivered')}
             >
-              <Text style={[s.acceptBtnText, { color: '#0C0A09' }]}>✅ {t('confirm_delivery')}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="check-circle" size={15} color="#0C0A09" />
+                <Text style={[s.acceptBtnText, { color: '#0C0A09' }]}>{t('confirm_delivery')}</Text>
+              </View>
             </TouchableOpacity>
           )}
           {/* Задача 2: отмена сделки доступна ТОЛЬКО до выезда (accepted).
               Когда груз уже «Везут» (in_progress) — договорённость в силе,
               самостоятельной отмены нет (вопросы — через чат/поддержку). */}
           {item.status === 'accepted' && (
-            <TouchableOpacity
-              style={[s.miniBtn, { borderColor: '#EF4444' }, busy && { opacity: 0.5 }]}
+            <PressableScale
+              style={[s.miniBtn, { backgroundColor: 'transparent' }, busy && { opacity: 0.5 }]}
               disabled={busy}
               onPress={async () => {
                 if (!(await confirmAction(t('cancel_deal_confirm')))) return;
@@ -534,27 +672,33 @@ export default function MyTripsScreen({ navigation, route }) {
               }}
             >
               <Text style={[s.miniBtnText, { color: '#EF4444' }]}>⊘ {t('cancel_deal')}</Text>
-            </TouchableOpacity>
+            </PressableScale>
           )}
           {item.chat_room_id && (
-            <TouchableOpacity
-              style={[s.miniBtn, { borderColor: accent }]}
+            <PressableScale
+              style={[s.miniBtn, { backgroundColor: 'rgba(255,132,0,0.14)' }]}
               onPress={() => navigation.navigate('Chat', { roomId: item.chat_room_id, role })}
             >
-              <Text style={[s.miniBtnText, { color: accent }]}>💬 {t('order_chat')}</Text>
-            </TouchableOpacity>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="message-square" size={14} color={accent} />
+                <Text style={[s.miniBtnText, { color: accent }]}>{t('order_chat')}</Text>
+              </View>
+            </PressableScale>
           )}
           {/* Задача B: грузоотправитель видит, где машина (на стадии «Везут»). */}
           {!isDriver && ['accepted', 'in_progress', 'picked_up'].includes(item.status) && (
-            <TouchableOpacity
+            <PressableScale
               testID="deal-track-truck"
-              style={[s.miniBtn, { borderColor: '#F59E0B' }]}
+              style={s.miniBtn}
               onPress={() => navigation.navigate('TrackTruck', {
                 dealId: item.id, from: item.from_city, to: item.to_city, driverName: item.driver_name,
               })}
             >
-              <Text style={[s.miniBtnText, { color: '#F59E0B' }]}>📍 {t('track_truck_btn')}</Text>
-            </TouchableOpacity>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="map-pin" size={14} color={theme.text} />
+                <Text style={[s.miniBtnText, { color: theme.text }]}>{t('track_truck_btn')}</Text>
+              </View>
+            </PressableScale>
           )}
         </View>
       </TouchableOpacity>
@@ -575,7 +719,7 @@ export default function MyTripsScreen({ navigation, route }) {
   const renderBid = ({ item }) => {
     const from = item.cargo_from || '—';
     const to = item.cargo_to || '—';
-    const sc = { pending: '#F59E0B', accepted: '#22C55E', rejected: '#EF4444', cancelled: '#78716C', countered: '#A855F7' };
+    const sc = { pending: '#FF8400', accepted: '#22C55E', rejected: '#EF4444', cancelled: '#78716C', countered: '#A855F7' };
     const sl = {
       pending: t('bid_pending'), accepted: t('bid_accepted'),
       rejected: t('bid_rejected'), cancelled: t('bid_cancelled'),
@@ -591,10 +735,10 @@ export default function MyTripsScreen({ navigation, route }) {
         opacity: item.status === 'cancelled' ? 0.6 : 1,
       }]}>
         <View style={s.cardTop}>
-          <Text style={[s.route, { color: theme.text }]}>{from} → {to}</Text>
+          <Text style={[s.route, { color: theme.text }]}>{localizePlace(from, lang)} → {localizePlace(to, lang)}</Text>
           <Text style={[s.statusLabel, { color: sc[item.status] || '#78716C' }]}>{sl[item.status] || item.status}</Text>
         </View>
-        {item.cargo_desc ? <Text style={[s.desc, { color: theme.textMuted }]} numberOfLines={1}>{item.cargo_desc}</Text> : null}
+        {item.cargo_desc ? <Text style={[s.desc, { color: theme.textMuted }]} numberOfLines={1}>{localizeCargoName(item.cargo_desc, lang)}</Text> : null}
         <View style={s.cardBottom}>
           <Text style={s.price}>{formatPrice(item.amount, currencyFor(item), t)}</Text>
           {item.message && <Text style={[s.bidsLabel, { color: theme.textMuted }]} numberOfLines={1}>{item.message}</Text>}
@@ -628,20 +772,30 @@ export default function MyTripsScreen({ navigation, route }) {
               style={[s.miniBtn, { borderColor: '#A855F7' }]}
               onPress={() => { setEditingBid(item); setBidModalMode('counter'); setBidModal(true); }}
             >
-              <Text style={[s.miniBtnText, { color: '#A855F7' }]}>🔁 {t('counter_offer')}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="refresh-cw" size={14} color="#A855F7" />
+                <Text style={[s.miniBtnText, { color: '#A855F7' }]}>{t('counter_offer')}</Text>
+              </View>
             </TouchableOpacity>
             <TouchableOpacity
               testID="bid-chat"
               style={[s.miniBtn, { borderColor: '#22C55E' }]}
               onPress={() => openChatForBid(item)}
             >
-              <Text style={[s.miniBtnText, { color: '#22C55E' }]}>💬 {t('open_bid_chat')}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="message-square" size={14} color="#22C55E" />
+                <Text style={[s.miniBtnText, { color: '#22C55E' }]}>{t('open_bid_chat')}</Text>
+              </View>
             </TouchableOpacity>
             <TouchableOpacity
               testID="bid-accept"
               style={[s.acceptBtn, { flex: 1, minWidth: 110 }, busy && { opacity: 0.5 }]}
               disabled={busy}
               onPress={async () => {
+                // Принятие ставки создаёт сделку — подтверждаем, чтобы
+                // случайный тап не заключил сделку на десятки тысяч.
+                const sum = formatPrice(item.amount, currencyFor(item), t);
+                if (!(await confirmAction(t('accept_bid_confirm').replace('{sum}', sum)))) return;
                 setBusyBidId(item.id);
                 const r = await marketAPI.acceptBid(item.id);
                 setBusyBidId(null);
@@ -676,7 +830,10 @@ export default function MyTripsScreen({ navigation, route }) {
               style={[s.miniBtn, { borderColor: '#22C55E' }]}
               onPress={() => openChatForBid(item)}
             >
-              <Text style={[s.miniBtnText, { color: '#22C55E' }]}>💬 {t('open_bid_chat')}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="message-square" size={14} color="#22C55E" />
+                <Text style={[s.miniBtnText, { color: '#22C55E' }]}>{t('open_bid_chat')}</Text>
+              </View>
             </TouchableOpacity>
           </View>
         )}
@@ -703,7 +860,10 @@ export default function MyTripsScreen({ navigation, route }) {
               style={[s.miniBtn, { borderColor: '#22C55E' }]}
               onPress={() => openChatForBid(item)}
             >
-              <Text style={[s.miniBtnText, { color: '#22C55E' }]}>💬 {t('open_bid_chat')}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="message-square" size={14} color="#22C55E" />
+                <Text style={[s.miniBtnText, { color: '#22C55E' }]}>{t('open_bid_chat')}</Text>
+              </View>
             </TouchableOpacity>
             <TouchableOpacity
               testID="bid-accept-counter"
@@ -730,21 +890,30 @@ export default function MyTripsScreen({ navigation, route }) {
               style={[s.miniBtn, { borderColor: '#22C55E' }]}
               onPress={() => { setEditingBid(item); setBidModalMode('edit'); setBidModal(true); }}
             >
-              <Text style={[s.miniBtnText, { color: '#22C55E' }]}>✏️ {t('edit_bid')}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="edit-3" size={14} color="#22C55E" />
+                <Text style={[s.miniBtnText, { color: '#22C55E' }]}>{t('edit_bid')}</Text>
+              </View>
             </TouchableOpacity>
             <TouchableOpacity
               testID="bid-discount"
-              style={[s.miniBtn, { borderColor: '#F59E0B' }]}
+              style={[s.miniBtn, { borderColor: '#FF8400' }]}
               onPress={() => { setEditingBid(item); setBidModalMode('discount'); setBidModal(true); }}
             >
-              <Text style={[s.miniBtnText, { color: '#F59E0B' }]}>💸 {t('give_discount')}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="dollar-sign" size={14} color="#FF8400" />
+                <Text style={[s.miniBtnText, { color: '#FF8400' }]}>{t('give_discount')}</Text>
+              </View>
             </TouchableOpacity>
             <TouchableOpacity
               testID="bid-chat"
               style={[s.miniBtn, { borderColor: '#22C55E' }]}
               onPress={() => openChatForBid(item)}
             >
-              <Text style={[s.miniBtnText, { color: '#22C55E' }]}>💬 {t('open_bid_chat')}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="message-square" size={14} color="#22C55E" />
+                <Text style={[s.miniBtnText, { color: '#22C55E' }]}>{t('open_bid_chat')}</Text>
+              </View>
             </TouchableOpacity>
             <TouchableOpacity
               testID="bid-cancel"
@@ -778,20 +947,18 @@ export default function MyTripsScreen({ navigation, route }) {
   const TABS = isDriver
     ? [
         { key: 'routes', label: t('tab_my_routes'), testID: 'my-work-tab-routes' },
-        { key: 'offers', label: t('tab_offers'),    testID: 'my-work-tab-offers' },
         { key: 'inwork', label: t('tab_in_work'),   testID: 'my-work-tab-inwork' },
         { key: 'done',   label: t('tab_done'),      testID: 'my-work-tab-done' },
       ]
     : [
         { key: 'searching', label: t('client_tab_searching'), testID: 'my-work-tab-searching' },
-        { key: 'offers',    label: clientOffers.length ? `${t('tab_offers')} (${clientOffers.length})` : t('tab_offers'), testID: 'my-work-tab-offers-client' },
         { key: 'enroute',   label: t('client_tab_enroute'),   testID: 'my-work-tab-enroute' },
         { key: 'delivered', label: t('client_tab_delivered'), testID: 'my-work-tab-delivered' },
       ];
 
   const stats = isDriver
     ? [
-        { value: driverOffers.length, label: t('tab_offers') },
+        { value: myItems.length,      label: t('tab_my_routes') },
         { value: driverInWork.length, label: t('tab_in_work') },
         { value: driverDone.length,   label: t('tab_done') },
       ]
@@ -807,15 +974,23 @@ export default function MyTripsScreen({ navigation, route }) {
       : item._kind === 'bid' ? renderBid({ item })
       : renderMyItem({ item });
 
-  const DRIVER_DATA = { routes: myItems, offers: driverOffers, inwork: driverInWork, done: driverDone, archive: driverArchive };
-  const DRIVER_RENDER = { routes: renderMyItem, offers: renderBid, inwork: renderDeal, done: renderDeal, archive: renderArchiveItem };
-  // Client (грузоотправитель): входящие ставки — отдельная вкладка «Предложения»
-  // (ядро сделки, раньше прятались в колокольчике) + дубль-CTA на карточке груза.
-  // Остальные вкладки — стадии: ищу машину / везут / доставлено + архив.
-  const CLIENT_DATA = { searching: clientSearching, offers: clientOffers, enroute: driverInWork, delivered: driverDone, archive: clientArchive };
-  const CLIENT_RENDER = { searching: renderMyItem, offers: renderBid, enroute: renderDeal, delivered: renderDeal, archive: renderArchiveItem };
+  // Ставки водителя (driverOffers) переехали во вкладку «Сделки»; renderBid
+  // остаётся только для архивных ставок (renderArchiveItem).
+  const DRIVER_DATA = { routes: myItems, inwork: driverInWork, done: driverDone, archive: driverArchive };
+  const DRIVER_RENDER = { routes: renderMyItem, inwork: renderDeal, done: renderDeal, archive: renderArchiveItem };
+  // Client (грузоотправитель, 26.07.2026): только стадии моих грузов — ищу
+  // машину / везут / доставлено + архив. Входящие ставки живут во вкладке
+  // «Сделки»; на карточке груза остаётся CTA «N предложений» → Сделки.
+  const CLIENT_DATA = { searching: clientSearching, enroute: driverInWork, delivered: driverDone, archive: clientArchive };
+  const CLIENT_RENDER = { searching: renderMyItem, enroute: renderDeal, delivered: renderDeal, archive: renderArchiveItem };
   const listData = isDriver ? (DRIVER_DATA[tab] || []) : (CLIENT_DATA[tab] || []);
-  const listRender = isDriver ? (DRIVER_RENDER[tab] || renderMyItem) : (CLIENT_RENDER[tab] || renderMyItem);
+  const listRenderBase = isDriver ? (DRIVER_RENDER[tab] || renderMyItem) : (CLIENT_RENDER[tab] || renderMyItem);
+  // Промпт-дизайн: карточки появляются каскадом (выезд 10px + fade, 50мс шаг).
+  const listRender = ({ item, index }) => (
+    <FadeInUp delay={Math.min(index || 0, 8) * 50}>
+      {listRenderBase({ item })}
+    </FadeInUp>
+  );
 
   const renderEmpty = () => {
     if (data?.authRequired) {
@@ -823,13 +998,11 @@ export default function MyTripsScreen({ navigation, route }) {
     }
     if (isDriver) {
       if (tab === 'routes') return <EmptyState title={t('no_trips_yet')} description={t('no_trips_desc')} actionLabel={t('publish_route')} onAction={onPublishRoute} />;
-      if (tab === 'offers') return <EmptyState title={t('no_bids_yet_driver')} description={t('no_bids_desc')} actionLabel={t('find_cargos')} onAction={() => navigation.navigate('Feed', { role })} />;
       if (tab === 'inwork') return <EmptyState title={t('no_inwork_yet')} description={t('no_inwork_desc')} actionLabel={t('find_cargos')} onAction={() => navigation.navigate('Feed', { role })} />;
       if (tab === 'done') return <EmptyState title={t('no_done_yet')} description={t('no_done_desc')} />;
       return <EmptyState title={t('no_archive_yet')} description={t('no_archive_desc')} />;
     }
     if (tab === 'searching') return <EmptyState title={t('no_cargos_yet')} description={t('client_searching_desc')} actionLabel={t('place_cargo')} onAction={() => navigation.navigate('CreateCargo')} />;
-    if (tab === 'offers') return <EmptyState title={t('no_responses_yet')} description={t('no_responses_desc')} actionLabel={t('place_cargo')} onAction={() => navigation.navigate('CreateCargo')} />;
     if (tab === 'enroute') return <EmptyState title={t('client_no_enroute_yet')} description={t('client_no_enroute_desc')} />;
     if (tab === 'delivered') return <EmptyState title={t('client_no_delivered_yet')} description={t('client_no_delivered_desc')} />;
     return <EmptyState title={t('no_archive_yet')} description={t('no_archive_desc')} />;
@@ -847,10 +1020,17 @@ export default function MyTripsScreen({ navigation, route }) {
         <View style={s.brandRow}>
           <Text style={s.brandText}>UrTruck</Text>
         </View>
-        <BellBadge
-          count={notifUnread}
-          onPress={() => navigation.navigate('Notifications')}
-        />
+        {/* ☰ (top-right) → профиль и меню. Колокольчик уехал вниз в
+            таб-бар как вкладка «Сделки» (единый инбокс живой работы). */}
+        <TouchableOpacity
+          onPress={() => navigation.navigate('Profile', { role })}
+          style={s.menuBtn}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          testID="mywork-menu-btn"
+          accessibilityLabel={t('tab_profile')}
+        >
+          <Feather name="menu" size={24} color={v1.text} />
+        </TouchableOpacity>
       </View>
 
       <View style={s.titleBlock}>
@@ -858,24 +1038,26 @@ export default function MyTripsScreen({ navigation, route }) {
         <Text style={s.titleSub}>{isDriver ? t('my_trips_subtitle') : t('my_cargos_subtitle')}</Text>
       </View>
 
-      {/* §2.2.2: кнопка размещения у водителя живёт ВНУТРИ «Рейсы», а не
-          отдельной вкладкой (центр бара занят «Очередью»). У клиента
-          размещение — это «+» в баре, поэтому кнопка здесь только driver. */}
-      {isDriver ? (
-        <View style={{ paddingHorizontal: 16, marginBottom: 10 }}>
-          <TouchableOpacity
-            testID="mytrips-publish-route"
-            onPress={onPublishRoute}
-            activeOpacity={0.85}
-            style={[s.publishRouteBtn, { backgroundColor: v1Accent.main }]}
-          >
-            <Text style={s.publishRouteText}>＋ {t('publish_route')}</Text>
-          </TouchableOpacity>
-        </View>
-      ) : null}
+      {/* §2.2.2: кнопка размещения живёт ВНУТРИ «моего меню», а не отдельной
+          вкладкой. Driver: «Разместить рейс» (через verification-gate).
+          Client (26.07.2026): «Разместить груз» — центральная «+»-вкладка
+          из таб-бара убрана, размещение в одном месте с моими грузами. */}
+      <View style={{ paddingHorizontal: 16, marginBottom: 10 }}>
+        <TouchableOpacity
+          testID={isDriver ? 'mytrips-publish-route' : 'mytrips-place-cargo'}
+          onPress={isDriver ? onPublishRoute : () => navigation.navigate('CreateCargo', { role })}
+          activeOpacity={0.85}
+          style={[s.publishRouteBtn, { backgroundColor: v1Accent.main }]}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Feather name="plus" size={16} color="#0C0A09" />
+            <Text style={s.publishRouteText}>{isDriver ? t('publish_route') : t('place_cargo')}</Text>
+          </View>
+        </TouchableOpacity>
+      </View>
 
       <View style={{ paddingHorizontal: 16 }}>
-        <SegmentTabs items={TABS} value={tab === 'archive' ? null : tab} onChange={setTab} accent={v1Accent.main} />
+        <SegmentTabs items={TABS} value={tab === 'archive' ? null : tab} onChange={setTab} accent={v1Accent.main} variant={isDriver ? 'pill' : 'underline'} />
         <StatsRow items={stats} accent={v1Accent.main} />
         {/* Архив — вторичный фильтр (issue #2): отменённые/отклонённые/
             истёкшие, НЕ основная вкладка. Активных заказов тут нет.
@@ -925,7 +1107,7 @@ export default function MyTripsScreen({ navigation, route }) {
       <Modal visible={pubGateVisible} transparent animationType="fade" onRequestClose={() => setPubGateVisible(false)}>
         <View style={s.pgBackdrop}>
           <View style={s.pgCard} testID="trips-publish-gate">
-            <Text style={s.pgIcon}>🔒</Text>
+            <Feather name="lock" size={40} color={v1.text} style={{ marginBottom: 12 }} />
             <Text style={s.pgTitle}>
               {verState === 'review' ? t('trips_gate_pending_title')
                 : verState === 'rejected' ? t('trips_gate_rejected_title')
@@ -941,7 +1123,7 @@ export default function MyTripsScreen({ navigation, route }) {
               testID="trips-publish-gate-cta"
               onPress={() => {
                 setPubGateVisible(false);
-                navigation.navigate(verState === 'review' ? 'Security' : 'Identity');
+                navigation.navigate(verState === 'review' ? 'Security' : 'Citizenship');
               }}
             >
               <Text style={s.pgBtnText}>

@@ -1,0 +1,50 @@
+# chat_counter_response_e2e — Часть 1B (ГЛАВНАЯ жалоба владельца):
+# грузоотправитель КОНТРИТ → у ВОДИТЕЛЯ в чате ЕСТЬ рабочие кнопки ответа
+# [Принять контр][Своя цена][Отклонить] — водитель НЕ в тупике.
+#
+# Доказывает in-app у BIDDER (serik) на контр-оффере:
+#   1. карточка торга (bargain-card) с суммой контра (bargain-amount);
+#   2. кнопка [Принять контр] (bargain-accept-counter) ВИДНА и работает;
+#   3. тап → создаётся сделка, в чат падает «🤝 Сделка!» (chat-deal-banner).
+#
+# Предусловие (засев через API): груз boris + ставка serik + КОНТР boris
+# (status=countered). serik входит в чат этой сделки.
+#
+# ⚠️ Запуск на свободном симуляторе (SDK-52 Expo Go), actor только agent-serik.
+appId: host.exp.Exponent
+name: chat_counter_response_e2e
+tags: [chat, bargain, counter, e2e]
+env:
+  MAESTRO_ACTOR: serik
+---
+- runFlow: _lib/qa-login.yaml
+
+# Открываем комнату чата сделки (верхняя — самая свежая).
+- assertVisible: { id: "bottom-nav-chats" }
+- tapOn: { id: "bottom-nav-chats" }
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: { id: "deal-room-list-card" }
+    timeout: 12000
+- tapOn: { id: "deal-room-list-card", index: 0 }
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: { id: "chat-input" }
+    timeout: 12000
+
+# У водителя на контр-оффере ЕСТЬ карточка торга и кнопка ответа.
+- extendedWaitUntil:
+    visible: { id: "bargain-card" }
+    timeout: 12000
+- assertVisible: { id: "bargain-amount" }
+- assertVisible: { id: "bargain-accept-counter" }
+- takeScreenshot: CR1_driver_has_accept_counter
+
+# Водитель принимает контр → сделка.
+- tapOn: { id: "bargain-accept-counter" }
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: { id: "chat-deal-banner" }
+    timeout: 15000
+- assertVisible: { id: "chat-deal-banner" }
+- takeScreenshot: CR2_deal_done

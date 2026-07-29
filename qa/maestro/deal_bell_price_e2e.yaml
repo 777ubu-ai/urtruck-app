@@ -1,0 +1,47 @@
+# deal_bell_price_e2e — владелец груза boris: (1) на «Мои грузы» присутствует
+# колокольчик (bell-btn); (2) в CargoDetail сделки показывается «Цена сделки» с
+# суммой сделки (₸450000), а не цена объявления. Предусловие засеяно через API
+# (см. seed A-D в задаче): груз KZT Алматы→Урумчи, ставка serik, контр boris,
+# accept serik → deal 450000 → доставлено.
+#
+# ⚠️ Почему НЕ открываем экран «Уведомления» и НЕ тапаем по карточке уведомления:
+# в Expo Go/Bridgeless XCUITest строки уведомлений НЕ имеют resource-id (только
+# accessibilityText), а кнопка «назад» в шапке тоже не адресуема по id и свайп-
+# назад ненадёжен. Прежний координатный тап 50%,58% ломался при росте списка.
+# Поэтому идём детерминированно по testID через вкладку «Доставлено» → карточку
+# сделки. Доставку самих уведомлений покрывает chat_bid_notifications_e2e.
+appId: host.exp.Exponent
+name: deal_bell_price_e2e
+tags: [deals, notifications, price, e2e]
+env:
+  MAESTRO_ACTOR: boris
+---
+- runFlow: _lib/qa-login.yaml
+
+# ── Колокольчик присутствует на «Мои грузы» (MyTrips) ──
+- assertVisible: { id: "bottom-nav-mywork" }
+- tapOn: { id: "bottom-nav-mywork" }
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: { id: "bell-btn" }
+    timeout: 12000
+- takeScreenshot: DB1_mytrips_bell
+
+# ── Цена сделки в CargoDetail — детерминированная навигация по testID ──
+# Фильтр «Доставлено» (my-work-tab-delivered) → карточка сделки (my-order-card)
+# → openDealCard → CargoDetail c dealId → блок «Цена сделки». Любая доставленная
+# сделка ведёт в CargoDetail с cargo-price-value, поэтому путь устойчив к
+# порядку/количеству элементов (в отличие от прежнего тапа по координате).
+- tapOn: { id: "my-work-tab-delivered" }
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: { id: "my-order-card" }
+    timeout: 12000
+- tapOn: { id: "my-order-card" }
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: { id: "cargo-price-value" }
+    timeout: 15000
+- assertVisible: { id: "cargo-price-label" }
+- assertVisible: { id: "cargo-price-value" }
+- takeScreenshot: DB3_cargodetail_deal_price

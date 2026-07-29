@@ -6,6 +6,7 @@
 import { useEffect, useRef } from 'react';
 import { Platform, AppState } from 'react-native';
 import { marketAPI } from '../utils/marketAPI';
+import { setActiveDealIds, startBackgroundTracking, stopBackgroundTracking } from '../utils/backgroundLocation';
 
 const INTERVAL_MS = 25000;
 
@@ -13,6 +14,15 @@ export function useDealLocationBroadcast(activeDealIds) {
   const idsRef = useRef([]);
   idsRef.current = Array.isArray(activeDealIds) ? activeDealIds : [];
   const key = idsRef.current.join(',');
+
+  // Фоновый трекинг: список сделок кладём в storage (фоновая таска читает
+  // его сама), есть сделки → стартуем background updates, нет → стоп.
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    setActiveDealIds(idsRef.current);
+    if (idsRef.current.length) startBackgroundTracking();
+    else stopBackgroundTracking();
+  }, [key]);
 
   useEffect(() => {
     if (Platform.OS === 'web') return;            // в вебе геолокации нет

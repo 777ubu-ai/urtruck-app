@@ -19,6 +19,7 @@
 //   - approved      → disabled, но всё равно показываем для прозрачности
 import React from 'react';
 import { TouchableOpacity, View, Text, StyleSheet } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 import VerificationStatusChip, { STATUS_COLORS } from './VerificationStatusChip';
 import { useV1Colors } from '../../theme/designV1';
 import { useTheme } from '../../utils/ThemeContext';
@@ -77,9 +78,13 @@ export default function VerificationCard({
         ) : null}
       </View>
       {!disabled ? (
-        <Text style={[s.chev, { color: v1.textMuted }]}>›</Text>
+        <View style={s.chevWrap}>
+          <Feather name="chevron-right" size={22} color={v1.textMuted} />
+        </View>
       ) : (
-        <Text style={[s.chev, { color: STATUS_COLORS.approved.fg, fontSize: 18 }]}>✓</Text>
+        <View style={s.chevWrap}>
+          <Feather name="check-circle" size={18} color={STATUS_COLORS.approved.fg} />
+        </View>
       )}
     </TouchableOpacity>
   );
@@ -112,4 +117,5 @@ const s = StyleSheet.create({
   },
   reasonText: { fontSize: 12, fontWeight: '600' },
   chev: { fontSize: 26, fontWeight: '300', marginLeft: 4, lineHeight: 28 },
+  chevWrap: { marginLeft: 4, alignSelf: 'center' },
 });

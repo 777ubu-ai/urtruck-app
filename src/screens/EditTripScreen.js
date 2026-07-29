@@ -7,11 +7,12 @@ import { useToast } from '../components/Toast';
 import { marketAPI } from '../utils/marketAPI';
 import { normalizeTrip, formatPrice, CURRENCY_SYMBOLS } from '../utils/normalizers';
 import { normalizeDateInput, formatDateForDisplay } from '../utils/dateInput';
-import RoutePointPicker from '../components/RoutePointPicker';
+import LocationPickerModal from '../components/LocationPickerModal';
 import DatePicker from '../components/DatePicker';
 import {v1Colors, useV1Colors, v1AccentFor} from '../theme/designV1';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
 import TruckTypeGrid from '../components/TruckTypeGrid';
+import Feather from '@expo/vector-icons/Feather';
 
 const TRUCK_KEYS = ['tent', 'ref', 'platform', 'auto', 'izoterm', 'cont20', 'cont40', 'jumbo', 'mega', 'curtain', 'lowloader', 'tanker', 'dumptruck', 'grain', 'livestock', 'logger', 'hazmat', 'open_truck', 'closed', 'longliner', 'microvan'];
 const TRUCK_ICONS = {
@@ -36,13 +37,15 @@ export default function EditTripScreen({ navigation, route }) {
   const [fromPoint, setFromPoint] = useState(null);
   const [to, setTo] = useState('');
   const [toPoint, setToPoint] = useState(null);
+  const [showFromPicker, setShowFromPicker] = useState(false);
+  const [showToPicker, setShowToPicker] = useState(false);
   const [transit, setTransit] = useState('');
   const [departure, setDeparture] = useState('');
   const [arrival, setArrival] = useState('');
   const [truckType, setTruckType] = useState(null);
   const [capacityTons, setCapacityTons] = useState('');
   const [availableM3, setAvailableM3] = useState('');
-  const [priceMode, setPriceMode] = useState('negotiable');
+  // Цена рейса обязательна (решение владельца): «По договорённости» убрана.
   const [price, setPrice] = useState('');
   const [currency, setCurrency] = useState('USD');
 
@@ -57,15 +60,8 @@ export default function EditTripScreen({ navigation, route }) {
     setTruckType(t.truckType || null);
     setCapacityTons(t.capacityTons != null ? String(t.capacityTons) : '');
     setAvailableM3(t.availableM3 != null ? String(t.availableM3) : '');
-    if (t.price > 0) {
-      setPriceMode('fixed');
-      setPrice(String(t.price));
-      setCurrency((t.currency || 'USD').toUpperCase());
-    } else {
-      setPriceMode('negotiable');
-      setPrice('');
-      setCurrency((t.currency || 'USD').toUpperCase());
-    }
+    setPrice(t.price > 0 ? String(t.price) : '');
+    setCurrency((t.currency || 'USD').toUpperCase());
   };
 
   useEffect(() => {
@@ -98,10 +94,9 @@ export default function EditTripScreen({ navigation, route }) {
     if (departureNorm && arrivalNorm && arrivalNorm < departureNorm) {
       toast(t('val_arrival_before_departure'), 'error'); return;
     }
+    const priceNum = Math.max(0, parseInt(String(price || '').trim().replace(/\s/g, ''), 10) || 0);
+    if (priceNum <= 0) { toast(t('val_price_required'), 'error'); return; }
     setSaving(true);
-    const priceNum = priceMode === 'fixed'
-      ? Math.max(0, parseInt(String(price || '').trim().replace(/\s/g, ''), 10) || 0)
-      : 0;
     const payload = {
       from_city: from.trim(),
       to_city: to.trim(),
@@ -115,7 +110,7 @@ export default function EditTripScreen({ navigation, route }) {
       capacity_tons: capacityTons ? Number(capacityTons) : null,
       available_m3: availableM3 ? Number(availableM3) : null,
       price: priceNum,
-      currency: priceMode === 'fixed' ? currency : (currency || 'USD'),
+      currency: currency || 'USD',
       // Stage 8 / Stage 13: forward the structured route triple
       // when the picker provided one. If `fromPoint` / `toPoint`
       // is null the user didn't change the route, so we omit the
@@ -173,7 +168,10 @@ export default function EditTripScreen({ navigation, route }) {
     <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
       <BrandBarWithShare onBack={() => navigation.goBack()} accent={v1Accent.main} />
       <View style={{ paddingHorizontal: 16, paddingTop: 4 }}>
-        <Text style={[s.title, { color: v1.text }]}>✏️ {t('edit_btn')}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Feather name="edit-3" size={16} color={v1.text} />
+          <Text style={[s.title, { color: v1.text }]}>{t('edit_btn')}</Text>
+        </View>
       </View>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
         {/* Stage 11: bring EditTrip onto the same RoutePointPicker
@@ -182,17 +180,47 @@ export default function EditTripScreen({ navigation, route }) {
             TextInput because the registry doesn't model multi-leg
             transits. */}
         <Text style={[s.label, { color: theme.textMuted }]}>{t('fromCountry')}</Text>
-        <RoutePointPicker
-          value={from}
-          onChange={(v, point) => { setFrom(v); setFromPoint(point || null); }}
-          placeholder={'📍 ' + t('fromCountry')}
-        />
+        <TouchableOpacity
+          style={[s.input, { backgroundColor: theme.card, borderColor: theme.border, justifyContent: 'center', marginBottom: 10 }]}
+          onPress={() => setShowFromPicker(true)}
+        >
+          {from ? (
+            <Text style={{ color: theme.text, fontSize: 15 }}>{from}</Text>
+          ) : (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Feather name="map-pin" size={15} color={theme.textMuted} />
+              <Text style={{ color: theme.textMuted, fontSize: 15 }}>{t('fromCountry')}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
 
         <Text style={[s.label, { color: theme.textMuted }]}>{t('toCountry')}</Text>
-        <RoutePointPicker
-          value={to}
-          onChange={(v, point) => { setTo(v); setToPoint(point || null); }}
-          placeholder={'🏁 ' + t('toCountry')}
+        <TouchableOpacity
+          style={[s.input, { backgroundColor: theme.card, borderColor: theme.border, justifyContent: 'center', marginBottom: 10 }]}
+          onPress={() => setShowToPicker(true)}
+        >
+          {to ? (
+            <Text style={{ color: theme.text, fontSize: 15 }}>{to}</Text>
+          ) : (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Feather name="flag" size={15} color={theme.textMuted} />
+              <Text style={{ color: theme.textMuted, fontSize: 15 }}>{t('toCountry')}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+
+        <LocationPickerModal
+          visible={showFromPicker}
+          onClose={() => setShowFromPicker(false)}
+          title={t('loc_from_title')}
+          showGeo
+          onSelect={(v, point) => { setFrom(v); setFromPoint(point || null); }}
+        />
+        <LocationPickerModal
+          visible={showToPicker}
+          onClose={() => setShowToPicker(false)}
+          title={t('loc_to_title')}
+          onSelect={(v, point) => { setTo(v); setToPoint(point || null); }}
         />
 
         <Text style={[s.label, { color: theme.textMuted }]}>{t('transit')}</Text>
@@ -215,49 +243,33 @@ export default function EditTripScreen({ navigation, route }) {
           </View>
         </View>
 
-        <Text style={[s.label, { color: theme.textMuted }]}>💰 {t('payment_label_full')}</Text>
-        <View style={[s.row, { marginBottom: 10 }]}>
-          <TouchableOpacity
-            style={[s.payModeBtn, { backgroundColor: theme.card, borderColor: theme.border }, priceMode === 'negotiable' && { backgroundColor: '#22C55E', borderColor: '#22C55E' }]}
-            onPress={() => { setPriceMode('negotiable'); setPrice(''); }}
-          >
-            <Text style={[s.payModeText, { color: theme.textSecondary }, priceMode === 'negotiable' && { color: '#fff' }]}>{t('payment_negotiable')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[s.payModeBtn, { backgroundColor: theme.card, borderColor: theme.border }, priceMode === 'fixed' && { backgroundColor: '#22C55E', borderColor: '#22C55E' }]}
-            onPress={() => setPriceMode('fixed')}
-          >
-            <Text style={[s.payModeText, { color: theme.textSecondary }, priceMode === 'fixed' && { color: '#fff' }]}>{t('payment_fixed')}</Text>
-          </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12, marginBottom: 6 }}>
+          <Feather name="dollar-sign" size={13} color={theme.textMuted} />
+          <Text style={[s.label, { color: theme.textMuted, marginTop: 0, marginBottom: 0 }]}>{t('payment_label_full')}</Text>
         </View>
-        {priceMode === 'fixed' && (
-          <View style={[s.row, { marginBottom: 10 }]}>
-            <TextInput
-              style={[s.input, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border, flex: 2 }]}
-              placeholder={t('price_example_placeholder')}
-              placeholderTextColor={theme.textMuted}
-              keyboardType="numeric"
-              inputMode="numeric"
-              value={price}
-              onChangeText={(v) => setPrice(String(v || '').replace(/[^\d]/g, ''))}
-            />
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }} style={{ flex: 3 }}>
-              {/* Stage 11: pilot whitelist matches Create flows
-                  (RUB / USD / KZT / CNY). The legacy
-                  Object.keys(CURRENCY_SYMBOLS) iteration also surfaced
-                  UZS, which is no longer offered. */}
-              {['KZT', 'USD', 'RUB', 'CNY'].map(k => (
-                <TouchableOpacity
-                  key={k}
-                  style={[s.currChip, { backgroundColor: theme.card, borderColor: theme.border }, currency === k && { backgroundColor: '#22C55E', borderColor: '#22C55E' }]}
-                  onPress={() => setCurrency(k)}
-                >
-                  <Text style={[s.currChipText, { color: theme.textSecondary }, currency === k && { color: '#fff' }]}>{CURRENCY_SYMBOLS[k]} {k}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        )}
+        <View style={[s.row, { marginBottom: 10 }]}>
+          <TextInput
+            style={[s.input, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border, flex: 2 }]}
+            placeholder={t('price_example_placeholder')}
+            placeholderTextColor={theme.textMuted}
+            keyboardType="numeric"
+            inputMode="numeric"
+            value={price}
+            onChangeText={(v) => setPrice(String(v || '').replace(/[^\d]/g, ''))}
+          />
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }} style={{ flex: 3 }}>
+            {/* Stage 11: pilot whitelist matches Create flows (RUB / USD / KZT / CNY). */}
+            {['KZT', 'USD', 'RUB', 'CNY'].map(k => (
+              <TouchableOpacity
+                key={k}
+                style={[s.currChip, { backgroundColor: theme.card, borderColor: theme.border }, currency === k && { backgroundColor: '#22C55E', borderColor: '#22C55E' }]}
+                onPress={() => setCurrency(k)}
+              >
+                <Text style={[s.currChipText, { color: theme.textSecondary }, currency === k && { color: '#fff' }]}>{CURRENCY_SYMBOLS[k]} {k}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
 
         <Text style={[s.label, { color: truckType ? theme.textMuted : '#EF4444' }]}>
           {t('truckType')}{!truckType ? ' *' : ''}
@@ -291,7 +303,7 @@ export default function EditTripScreen({ navigation, route }) {
 
         <View style={[s.previewCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <Text style={[s.previewLabel, { color: theme.textMuted }]}>{t('price')}</Text>
-          <Text style={s.previewPrice}>{formatPrice(priceMode === 'fixed' ? Number(price) || 0 : 0, currency, t)}</Text>
+          <Text style={s.previewPrice}>{formatPrice(Number(price) || 0, currency, t)}</Text>
         </View>
 
         <TouchableOpacity
@@ -300,7 +312,12 @@ export default function EditTripScreen({ navigation, route }) {
           style={[s.saveBtn, saving && { opacity: 0.6 }]}
           testID="edit-trip-save"
         >
-          {saving ? <ActivityIndicator color="#fff" /> : <Text style={s.saveBtnText}>💾 {t('save_changes')}</Text>}
+          {saving ? <ActivityIndicator color="#fff" /> : (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Feather name="save" size={15} color="#fff" />
+              <Text style={s.saveBtnText}>{t('save_changes')}</Text>
+            </View>
+          )}
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>

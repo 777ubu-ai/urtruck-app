@@ -15,7 +15,7 @@ export default function VerificationTimeline({ steps = [], current = 0 }) {
         const done = idx < current;
         const active = idx === current;
         const future = idx > current;
-        const dotColor = done ? '#16A34A' : active ? '#D97706' : v1.border;
+        const dotColor = done ? '#16A34A' : active ? '#E06D00' : v1.border;
         const lineColor = done ? '#16A34A' : v1.border;
         return (
           <View key={idx} style={s.row}>

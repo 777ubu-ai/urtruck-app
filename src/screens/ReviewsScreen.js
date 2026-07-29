@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, FlatList, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import {v1Colors, useV1Colors, v1AccentFor} from '../theme/designV1';
@@ -24,10 +25,10 @@ export default function ReviewsScreen({ navigation, route }) {
   totalCount: { fontSize: 11, marginTop: 2 },
   summaryRight: { flex: 1, justifyContent: 'center', gap: 4 },
   barRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  barLabel: { fontSize: 10, fontWeight: '600', width: 16 },
+  barLabel: { fontSize: 11, fontWeight: '600', width: 16 },
   barBg: { flex: 1, height: 6, borderRadius: 3, overflow: 'hidden' },
   barFill: { height: '100%', backgroundColor: '#FBBF24' },
-  barCount: { fontSize: 10, width: 16, textAlign: 'right' },
+  barCount: { fontSize: 11, width: 16, textAlign: 'right' },
   card: { borderRadius: 14, padding: 14, borderWidth: 1 },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
   reviewUser: { fontSize: 14, fontWeight: '700' },
@@ -36,7 +37,7 @@ export default function ReviewsScreen({ navigation, route }) {
   starsEmpty: { fontSize: 13 },
   reviewAmount: { fontSize: 11, marginTop: 2 },
   reviewText: { fontSize: 13, lineHeight: 18, marginBottom: 6 },
-  reviewAgo: { fontSize: 10 },
+  reviewAgo: { fontSize: 11 },
 
   }), [v1]);
   const { role, targetId } = route.params || {};
@@ -89,13 +90,16 @@ export default function ReviewsScreen({ navigation, route }) {
   return (
     <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
       <BrandBarWithShare onBack={() => navigation.goBack()} accent={v1Accent.main} />
-      <Text style={s.titleHero}>⭐ {t('allReviews')}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingTop: 4, paddingBottom: 8 }}>
+        <Feather name="star" size={20} color={v1.text} />
+        <Text style={[s.titleHero, { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0 }]}>{t('allReviews')}</Text>
+      </View>
 
       {loading ? (
         <ActivityIndicator style={{ marginTop: 48 }} color={v1Accent.main} />
       ) : total === 0 ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 10 }}>
-          <Text style={{ fontSize: 56 }}>⭐</Text>
+          <Feather name="star" size={48} color={v1.textMuted} />
           <Text style={{ color: v1.textMuted, fontSize: 14, textAlign: 'center', lineHeight: 20 }}>{t('review_after_trip')}</Text>
         </View>
       ) : (

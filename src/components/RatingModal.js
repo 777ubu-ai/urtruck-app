@@ -8,22 +8,25 @@ import { useToast } from './Toast';
 import { useI18n } from '../utils/useI18n';
 import { reviewsAPI } from '../utils/reviews';
 import { v1AccentFor } from '../theme/designV1';
+import Feather from '@expo/vector-icons/Feather';
 
+// Имя Feather-иконки остаётся здесь, текст берётся из i18n по ключу
+// `rating_tag_${k}` в момент рендера.
 const TAGS_BY_ROLE = {
   driver: [
-    { k: 'punctual', l: '⏱ Пунктуален' },
-    { k: 'clean', l: '✨ Чистый кузов' },
-    { k: 'polite', l: '👍 Вежлив' },
-    { k: 'careful', l: '📦 Бережно вёз' },
-    { k: 'fast', l: '⚡ Быстро' },
-    { k: 'good_price', l: '💰 Честная цена' },
+    { k: 'punctual', icon: 'clock' },
+    { k: 'clean', icon: 'star' },
+    { k: 'polite', icon: 'thumbs-up' },
+    { k: 'careful', icon: 'package' },
+    { k: 'fast', icon: 'zap' },
+    { k: 'good_price', icon: 'dollar-sign' },
   ],
   client: [
-    { k: 'fast_pay', l: '💰 Быстро оплатил' },
-    { k: 'honest', l: '🤝 Честный' },
-    { k: 'clear_docs', l: '📄 Документы в порядке' },
-    { k: 'reachable', l: '📞 На связи' },
-    { k: 'good_cargo', l: '📦 Нормальный груз' },
+    { k: 'fast_pay', icon: 'dollar-sign' },
+    { k: 'honest', icon: 'check' },
+    { k: 'clear_docs', icon: 'file-text' },
+    { k: 'reachable', icon: 'phone' },
+    { k: 'good_cargo', icon: 'package' },
   ],
 };
 
@@ -69,7 +72,7 @@ export default function RatingModal({ visible, onClose, onSubmitted, targetId, t
         tripId, targetId, targetRole, rating, text: text.trim() || null, tags,
       });
       if (r.ok) {
-        toast('✓ Спасибо за отзыв!', 'success');
+        toast(`✓ ${t('rating_thanks')}`, 'success');
         onSubmitted?.(r);
         onClose?.();
       } else {
@@ -84,8 +87,8 @@ export default function RatingModal({ visible, onClose, onSubmitted, targetId, t
 
   if (!visible) return null;
 
-  const ratingLabels = ['', 'Ужасно 😟', 'Плохо 😕', 'Нормально 🙂', 'Хорошо 😊', 'Отлично 🎉'];
-  const ratingColor = rating >= 4 ? '#22C55E' : rating >= 3 ? '#F59E0B' : rating > 0 ? '#EF4444' : theme.textMuted;
+  const ratingLabels = ['', t('rating_label_1'), t('rating_label_2'), t('rating_label_3'), t('rating_label_4'), t('rating_label_5')];
+  const ratingColor = rating >= 4 ? '#22C55E' : rating >= 3 ? '#FF8400' : rating > 0 ? '#EF4444' : theme.textMuted;
 
   return (
     <Modal transparent visible={visible} animationType="none" onRequestClose={onClose}>
@@ -100,10 +103,14 @@ export default function RatingModal({ visible, onClose, onSubmitted, targetId, t
           <View style={[s.handle, { backgroundColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(15,23,42,0.15)' }]} />
 
           <Text style={[s.title, { color: theme.text }]}>
-            Как прошёл рейс?
+            {t('rating_how_was_trip')}
           </Text>
           <Text style={[s.subtitle, { color: theme.textMuted }]}>
-            {targetName ? `Оцени ${targetRole === 'driver' ? 'водителя' : 'заказчика'} ${targetName}` : 'Оцени партнёра'}
+            {targetName
+              ? t('rating_rate_target')
+                  .replace('{role}', targetRole === 'driver' ? t('rating_role_driver') : t('rating_role_client'))
+                  .replace('{name}', targetName)
+              : t('rating_rate_partner')}
           </Text>
 
           {/* 5 звёзд */}
@@ -116,35 +123,41 @@ export default function RatingModal({ visible, onClose, onSubmitted, targetId, t
                 onHoverOut={() => Platform.OS === 'web' && setHover(0)}
                 style={s.starBtn}
               >
-                <Text style={[
-                  s.star,
-                  { opacity: (hover || rating) >= n ? 1 : 0.25 },
-                ]}>⭐</Text>
+                <Feather
+                  name="star"
+                  size={42}
+                  color="#FBBF24"
+                  style={{ opacity: (hover || rating) >= n ? 1 : 0.25 }}
+                />
               </Pressable>
             ))}
           </View>
           <Text style={[s.ratingLabel, { color: ratingColor }]}>
-            {ratingLabels[hover || rating] || 'Выбери звёзды'}
+            {ratingLabels[hover || rating] || t('rating_choose_stars')}
           </Text>
 
           {/* Теги */}
           {rating > 0 && (
             <View style={s.tagsWrap}>
-              {available.map(t => {
-                const active = tags.includes(t.k);
+              {available.map(tag => {
+                const active = tags.includes(tag.k);
                 return (
                   <TouchableOpacity
-                    key={t.k}
+                    key={tag.k}
                     style={[
                       s.tag,
                       {
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 6,
                         backgroundColor: active ? raterAccent.main : theme.card,
                         borderColor: active ? raterAccent.main : theme.border,
                       },
                     ]}
-                    onPress={() => toggleTag(t.k)}
+                    onPress={() => toggleTag(tag.k)}
                   >
-                    <Text style={[s.tagText, { color: active ? raterAccent.onAccent : theme.text }]}>{t.l}</Text>
+                    <Feather name={tag.icon} size={13} color={active ? raterAccent.onAccent : theme.text} />
+                    <Text style={[s.tagText, { color: active ? raterAccent.onAccent : theme.text }]}>{t('rating_tag_' + tag.k)}</Text>
                   </TouchableOpacity>
                 );
               })}

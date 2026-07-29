@@ -22,6 +22,7 @@ from typing import Optional
 from api.verification_gate import require_level
 from database import deal_room_dal as dr
 from services import storage_service
+from services import file_signing
 
 # Лимит размера вложения (защита от больших оригиналов; клиент сжимает по
 # §5 мастер-ТЗ — document 1600/0.8, photo 1280/0.75). 12 МБ — запас.
@@ -62,7 +63,11 @@ def conversation_messages(conversation_id: str, limit: int = 100, offset: int = 
         raise HTTPException(status_code=404, detail="Беседа не найдена")
     if not dr.is_participant(conversation_id, user["id"]):
         raise HTTPException(status_code=403, detail="Вы не участник этой беседы")
-    return {"messages": dr.get_messages(conversation_id, limit, offset)}
+    msgs = dr.get_messages(conversation_id, limit, offset)
+    for m in msgs:
+        if m.get("photo_url"):
+            m["photo_url"] = file_signing.sign(m["photo_url"])
+    return {"messages": msgs}
 
 
 @deal_room_router.post("/chat/conversations/{conversation_id}/read")
@@ -158,6 +163,9 @@ async def upload_attachment(
         upload_status="uploaded",
         message_id=message_id,
     )
+    # Отдаём загрузившему подписанную ссылку — storage больше не публичный.
+    if isinstance(att, dict) and att.get("url"):
+        att = {**att, "url": file_signing.sign(att["url"])}
     return {"attachment": att}
 
 
@@ -167,4 +175,8 @@ def list_conversation_attachments(conversation_id: str, user=Depends(require_lev
         raise HTTPException(status_code=404, detail="Беседа не найдена")
     if not dr.is_participant(conversation_id, user["id"]):
         raise HTTPException(status_code=403, detail="Вы не участник этой беседы")
-    return {"attachments": dr.list_attachments(conversation_id)}
+    atts = dr.list_attachments(conversation_id)
+    for a in atts:
+        if a.get("url"):
+            a["url"] = file_signing.sign(a["url"])
+    return {"attachments": atts}

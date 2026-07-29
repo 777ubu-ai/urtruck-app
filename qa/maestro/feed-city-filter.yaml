@@ -1,0 +1,78 @@
+# feed-city-filter — фильтр «Откуда → Куда» в ленте открывает ПОЛНОЭКРАННЫЙ
+# LocationPickerModal (а не тесную шторку), поиск города применяет чип,
+# крестик сбрасывает оба конца. Регресс на правку e97553b.
+appId: host.exp.Exponent
+name: feed-city-filter
+tags:
+  - client
+  - feed
+  - filter
+env:
+  MAESTRO_ACTOR: boris
+---
+- runFlow: _lib/qa-login.yaml
+- tapOn:
+    id: "bottom-nav-feed"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "trip-card"
+    timeout: 20000
+
+# «Откуда» → полноэкранный пикер (loc-search — поле поиска пикера)
+- tapOn:
+    id: "feed-route-from"
+- extendedWaitUntil:
+    visible:
+      id: "loc-search"
+    timeout: 10000
+- takeScreenshot: CITY_01_picker_fullscreen
+- tapOn:
+    id: "loc-search"
+- inputText: "Алматы"
+- waitForAnimationToEnd
+- tapOn:
+    id: "loc-point-Алматы"
+- waitForAnimationToEnd
+# чип применился → появился крестик сброса направления
+- extendedWaitUntil:
+    visible:
+      id: "feed-route-clear"
+    timeout: 8000
+- takeScreenshot: CITY_02_from_applied
+
+# «Куда»
+- tapOn:
+    id: "feed-route-to"
+- extendedWaitUntil:
+    visible:
+      id: "loc-search"
+    timeout: 10000
+- tapOn:
+    id: "loc-search"
+- inputText: "Москва"
+- waitForAnimationToEnd
+- tapOn:
+    id: "loc-point-Москва"
+- waitForAnimationToEnd
+- takeScreenshot: CITY_03_to_applied
+
+# крестик сбрасывает оба конца. Мелкий hit-target × — в Expo Go New Arch
+# первый синтетический тап Maestro иногда не триггерит onPress, поэтому
+# повторяем тап, пока крестик не исчезнет (реальный сброс dirFrom/dirTo).
+- tapOn:
+    id: "feed-route-clear"
+- waitForAnimationToEnd
+- runFlow:
+    when:
+      visible:
+        id: "feed-route-clear"
+    commands:
+      - tapOn:
+          id: "feed-route-clear"
+      - waitForAnimationToEnd
+- extendedWaitUntil:
+    notVisible:
+      id: "feed-route-clear"
+    timeout: 6000
+- takeScreenshot: CITY_04_cleared

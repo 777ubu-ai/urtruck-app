@@ -9,7 +9,13 @@ from pydantic import BaseModel
 from typing import Optional
 
 from database.db import get_conn
-from api.verification_gate import require_level
+# Избранное — приватная закладка пользователя (сохранённый перевозчик/груз).
+# Это НЕ действие, требующее верификации: любой аутентифицированный юзер
+# (в т.ч. level 0) вправе сохранить карточку себе. Раньше стоял
+# require_level(1) → на проде (BETA_MODE=false) клиент с level 0 получал 403,
+# фронт молча его глотал, ❤️ горело оптимистично, а запись не сохранялась
+# → «Избранное пусто в профиле». Первопричина БАГ A. Гейт снят до get_user.
+from api.verification_gate import get_user
 
 fav_router = APIRouter()
 
@@ -31,7 +37,7 @@ class FavIn(BaseModel):
 
 
 @fav_router.post("")
-def add_favorite(body: FavIn, user=Depends(require_level(1))):
+def add_favorite(body: FavIn, user=Depends(get_user)):
     with get_conn() as c:
         c.execute(
             "INSERT OR IGNORE INTO favorites (user_id, item_type, item_id, item_data) VALUES (?, ?, ?, ?)",
@@ -41,7 +47,7 @@ def add_favorite(body: FavIn, user=Depends(require_level(1))):
 
 
 @fav_router.delete("")
-def remove_favorite(item_type: str, item_id: str, user=Depends(require_level(1))):
+def remove_favorite(item_type: str, item_id: str, user=Depends(get_user)):
     with get_conn() as c:
         c.execute(
             "DELETE FROM favorites WHERE user_id = ? AND item_type = ? AND item_id = ?",
@@ -51,7 +57,7 @@ def remove_favorite(item_type: str, item_id: str, user=Depends(require_level(1))
 
 
 @fav_router.get("")
-def list_favorites(item_type: str = "", user=Depends(require_level(1))):
+def list_favorites(item_type: str = "", user=Depends(get_user)):
     with get_conn() as c:
         if item_type:
             rows = c.execute(
@@ -75,7 +81,7 @@ def list_favorites(item_type: str = "", user=Depends(require_level(1))):
 
 
 @fav_router.get("/check")
-def check_favorite(item_type: str, item_id: str, user=Depends(require_level(1))):
+def check_favorite(item_type: str, item_id: str, user=Depends(get_user)):
     with get_conn() as c:
         row = c.execute(
             "SELECT 1 FROM favorites WHERE user_id = ? AND item_type = ? AND item_id = ?",

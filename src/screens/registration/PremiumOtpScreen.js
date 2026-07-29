@@ -21,6 +21,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../utils/AuthContext';
@@ -30,7 +31,7 @@ import { formatCooldown } from '../../utils/formatCooldown';
 
 const ACCENT = {
   driver: { main: '#00E676', deep: '#00C766', soft: 'rgba(0,230,118,0.12)', glow: 'rgba(0,230,118,0.35)' },
-  client: { main: '#F59E0B', deep: '#D97706', soft: 'rgba(245,158,11,0.12)', glow: 'rgba(245,158,11,0.35)' },
+  client: { main: '#FF8400', deep: '#E06D00', soft: 'rgba(255,132,0,0.12)', glow: 'rgba(255,132,0,0.35)' },
 };
 
 const CODE_LEN = 4;
@@ -219,11 +220,16 @@ export default function PremiumOtpScreen({ navigation, route }) {
             >
               <Text style={s.backIcon}>←</Text>
             </Pressable>
-            <View style={[s.roleBadge, { backgroundColor: accent.soft, borderColor: accent.main }]}>
+            <View style={[s.roleBadge, { backgroundColor: accent.soft, borderColor: accent.main, flexDirection: 'row', alignItems: 'center', gap: 6 }]}>
+              <Feather
+                name={mode === 'login' ? 'lock' : (role === 'driver' ? 'truck' : 'package')}
+                size={14}
+                color={accent.main}
+              />
               <Text style={[s.roleBadgeText, { color: accent.main }]}>
                 {mode === 'login'
-                  ? `🔐 ${t('login_action')}`
-                  : (role === 'driver' ? `🚛 ${t('role_driver')}` : `📦 ${t('role_shipper')}`)}
+                  ? t('login_action')
+                  : (role === 'driver' ? t('role_driver') : t('role_shipper'))}
               </Text>
             </View>
           </View>
@@ -282,8 +288,9 @@ export default function PremiumOtpScreen({ navigation, route }) {
           {error ? <Text style={s.err}>{error}</Text> : null}
 
           {mockCode ? (
-            <View style={[s.mockBanner, { backgroundColor: accent.soft, borderColor: accent.main }]}>
-              <Text style={[s.mockText, { color: accent.main }]}>🔓 Mock: {mockCode}</Text>
+            <View style={[s.mockBanner, { backgroundColor: accent.soft, borderColor: accent.main, flexDirection: 'row', alignItems: 'center', gap: 6 }]}>
+              <Feather name="unlock" size={14} color={accent.main} />
+              <Text style={[s.mockText, { color: accent.main }]}>Mock: {mockCode}</Text>
             </View>
           ) : null}
 

@@ -9,6 +9,7 @@ import { getTransactions, subscribe } from '../utils/store';
 import { fetchRates } from '../utils/exchangeRates';
 import { useMountedRef } from '../hooks/useMountedRef';
 import GradientText from '../components/GradientText';
+import Feather from '@expo/vector-icons/Feather';
 
 // Pilot currencies (Stage 5 / rev. 3): RUB / USD / KZT / CNY.
 // Wallet display + FX widget reduced to the same set so the picker
@@ -31,7 +32,7 @@ const FX_FLAGS = { KZT: '🇰🇿', CNY: '🇨🇳', RUB: '🇷🇺' };
 export default function WalletScreen({ route }) {
   const v1 = useV1Colors();
   const { role } = route.params || {};
-  const accent = role === 'driver' ? '#22C55E' : '#F59E0B';
+  const accent = role === 'driver' ? '#22C55E' : '#FF8400';
   const { t } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
@@ -83,28 +84,16 @@ export default function WalletScreen({ route }) {
       <ScrollView contentContainerStyle={{ padding: 16 }}>
         <GradientText style={s.title} colors={['#22C55E', '#16A34A']}>{t('wallet')}</GradientText>
 
-        {/* Главная карточка баланса */}
+        {/* Честная карточка: бесплатный пилот, без фейкового «∞» баланса и
+            без кнопки-пустышки Premium (раньше $20/mo → просто тост). */}
         <View style={[s.balanceCard, { backgroundColor: theme.card, borderColor: accent + '30' }]}>
-          <View style={s.betaBadge}><Text style={s.betaBadgeText}>🎉 {t('testPeriod')}</Text></View>
-          <Text style={[s.balanceValue, { color: theme.text }]}>∞</Text>
-          <Text style={[s.balanceNote, { color: theme.textMuted }]}>{t('allFree')}</Text>
-        </View>
-
-        {/* Premium */}
-        <View style={[s.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <View style={s.premiumRow}>
-            <View>
-              <Text style={[s.premiumTitle, { color: theme.text }]}>⭐ {t('premium')}</Text>
-              <Text style={[s.premiumPrice, { color: theme.textMuted }]}><Text style={s.strike}>$20/mo</Text>  {t('allFree')}</Text>
-            </View>
-            <TouchableOpacity
-              style={[s.premiumBtn, { backgroundColor: premium ? '#22C55E' : accent }]}
-              onPress={() => { setPremium(true); toast(t('premiumActivated'), 'success'); }}
-              disabled={premium}
-            >
-              <Text style={s.premiumBtnText}>{premium ? '✓ ' + t('active_') : t('activate')}</Text>
-            </TouchableOpacity>
+          <View style={[s.betaBadge, { flexDirection: 'row', alignItems: 'center', gap: 6 }]}>
+            <Feather name="gift" size={14} color="#22C55E" />
+            <Text style={s.betaBadgeText}>{t('wallet_beta_title')}</Text>
           </View>
+          <Text style={[s.balanceNote, { color: theme.textMuted, marginTop: 10, textAlign: 'center', lineHeight: 19 }]}>
+            {t('wallet_beta_desc')}
+          </Text>
         </View>
 
         {/* 💱 Курсы валют (NEW — ниже Premium, выше способов оплаты) */}
@@ -112,7 +101,7 @@ export default function WalletScreen({ route }) {
           <View style={s.fxHeader}>
             <Text style={[s.sectionTitle, { color: theme.textMuted }]}>{t('fx_rates_title')}</Text>
             <Text style={[s.fxUpdate, { color: theme.textMuted }]}>
-              {fxLoading ? '...' : `Обновлено ${updateStr}`}
+              {fxLoading ? '...' : `${t('wallet_fx_updated')} ${updateStr}`}
             </Text>
           </View>
           {fxLoading ? (
@@ -170,7 +159,10 @@ export default function WalletScreen({ route }) {
         {/* История транзакций */}
         {transactions.length > 0 && (
           <View style={[s.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Text style={[s.sectionTitle, { color: theme.textMuted }]}>📊 История ({transactions.length})</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Feather name="bar-chart-2" size={14} color={theme.textMuted} />
+              <Text style={[s.sectionTitle, { color: theme.textMuted }]}>{t('wallet_history')} ({transactions.length})</Text>
+            </View>
             {transactions.map((tx, i) => (
               <View key={tx.id} style={[s.txRow, i < transactions.length - 1 && { borderBottomWidth: 1, borderBottomColor: theme.border }]}>
                 <View style={[s.txIcon, { backgroundColor: tx.amount > 0 ? '#22C55E20' : '#EF444420' }]}>
@@ -201,7 +193,7 @@ const s = StyleSheet.create({
   balanceValue: { fontSize: 48, fontWeight: '900' },
   balanceNote: { fontSize: 12, marginTop: 4 },
   section: { borderRadius: 16, padding: 16, borderWidth: 1, marginBottom: 12 },
-  sectionTitle: { fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
+  sectionTitle: { fontSize: 11, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
   currencyBtn: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, borderWidth: 1, marginTop: 10 },
   currencyText: { fontSize: 12, fontWeight: '700' },
   premiumRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
@@ -211,20 +203,20 @@ const s = StyleSheet.create({
   premiumBtn: { borderRadius: 12, paddingHorizontal: 16, paddingVertical: 10 },
   premiumBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   fxHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
-  fxUpdate: { fontSize: 10, fontWeight: '600' },
+  fxUpdate: { fontSize: 11, fontWeight: '600' },
   fxGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   fxCard: { width: '47%', flexGrow: 1, padding: 12, borderRadius: 12, borderWidth: 1, alignItems: 'center', gap: 4 },
   fxFlag: { fontSize: 22, marginBottom: 2 },
-  fxPair: { fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
+  fxPair: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
   fxRate: { fontSize: 18, fontWeight: '900', marginTop: 2 },
-  fxFallback: { fontSize: 10, textAlign: 'center', marginTop: 10 },
+  fxFallback: { fontSize: 11, textAlign: 'center', marginTop: 10 },
   payRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
   payIcon: { fontSize: 20 },
   payName: { flex: 1, fontSize: 13 },
-  paySoon: { fontSize: 10, fontWeight: '600' },
+  paySoon: { fontSize: 11, fontWeight: '600' },
   txRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
   txIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   txDesc: { fontSize: 13, fontWeight: '600' },
-  txDate: { fontSize: 10, marginTop: 2 },
+  txDate: { fontSize: 11, marginTop: 2 },
   txAmount: { fontSize: 14, fontWeight: '900' },
 });
