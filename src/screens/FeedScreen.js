@@ -1147,13 +1147,17 @@ export default function FeedScreen({ navigation, route }) {
           публикации рейса ему на ленту не выносим (остаётся «+» в баре). */}
       {!isDriver ? (
         <PressableScale
-          style={[s.fab, { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: accentColor }]}
+          // Сплошная заливка, не ghost-обводка: кнопка плавает поверх
+          // скроллящейся ленты, и с прозрачным фоном текст карточки под
+          // ней "просвечивал" — выглядело как перекрытие/баг. Цвет текста —
+          // onAccent (тёмный), тот же контраст-фикс, что и у driver-кнопок.
+          style={[s.fab, { backgroundColor: accentColor }]}
           onPress={() => navigation.navigate('CreateCargo', { role })}
           testID="publish-cargo-button"
           accessibilityRole="button"
           accessibilityLabel={t('postCargo')}
         >
-          <Text style={[s.titleCtaText, { color: accentColor }]}>+ {t('postCargo')}</Text>
+          <Text style={[s.titleCtaText, { color: v1Accent.onAccent }]}>+ {t('postCargo')}</Text>
         </PressableScale>
       ) : null}
 
