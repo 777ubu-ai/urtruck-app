@@ -665,6 +665,7 @@ export default function FeedScreen({ navigation, route }) {
     const perKm = (km > 0 && priceNum > 0) ? priceNum / km : 0;
     const perKmStr = perKm >= 10 ? String(Math.round(perKm)) : perKm.toFixed(1);
     const meta = [
+      item.type ? { label: t('truckType'), value: formatTruckType(item.type) } : null,
       { label: t('departure'), value: item.pickup || t('pickup_date_tbd') },
       km > 0 ? { label: t('distance'), value: `${km} км` } : null,
       perKm > 0 ? { label: t('per_km_short'), value: `${perKmStr} ${item.currency || ''}/км` } : null,
@@ -723,6 +724,7 @@ export default function FeedScreen({ navigation, route }) {
     };
     // Stage 17: same emoji-strip as cargo cards above.
     const meta = [
+      item.type ? { label: t('truckType'), value: formatTruckType(item.type) } : null,
       item.tripDates ? { label: t('departure'), value: item.tripDates.split(' - ')[0] || item.tripDates } : null,
       item.tons > 0 ? { label: t('weight'), value: `${item.tons} т` } : null,
       item.m3 > 0 ? { label: t('volume'), value: `${item.m3} м³` } : null,
