@@ -483,10 +483,18 @@ export default function TripDetail({ navigation, route }) {
             onPress: async () => {
               const ok = await requireLevel(LEVELS.PHONE, 'bid');
               if (!ok) return;
+              // BUG-fix (2026-07-30): driverId (state) заполняется только
+              // внутри applyDeal(), т.е. только когда сделка УЖЕ есть — а
+              // эта кнопка как раз для случая "сделки ещё нет". driverId
+              // был всегда null в момент клика → чат открывался без
+              // адресата (generic "Пользователь UrTruck", send() падал
+              // без to_user_id/room_id). trip.driverId приходит прямо из
+              // normalizeTrip и доступен сразу, без deal.
+              const partnerId = trip?.driverId || driverId;
               navigation.navigate('Chat', {
                 role,
                 tripId: (trip && trip.id) || tripId,
-                partner: driverId ? { id: driverId } : undefined,
+                partner: partnerId ? { id: partnerId, name: trip?.driverName } : undefined,
               });
             },
             testID: 'trip-sticky-chat',
