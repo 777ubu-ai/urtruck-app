@@ -521,3 +521,57 @@ def admin_cleanup_stale_listings(dry_run: bool = True, user: str = Depends(check
         "trips_skipped_has_bids_or_deals": trip_skip,
         "by": user,
     }
+
+
+# 2026-07-30: разовая чистка сид/дубликат-рейсов с прод-фида (owner-запрос).
+# Список id зафиксирован вручную после ручного разбора /market/trips —
+# это НЕ общий алгоритм поиска дублей, а конкретные 9 записей с
+# driver_name=null/мусорным именем и verified=false, чьи маршруты
+# дублируют уже существующие рейсы у настоящих аккаунтов. Одноразовый
+# эндпоинт: после применения можно удалить.
+FAKE_TRIP_IDS_2026_07_30 = [
+    "9c0ec0b8-34eb-4e2f-b761-4bd7917eec61",
+    "a7678a10-361b-4e9e-93d1-98ac2597152f",
+    "a69e19e1-a311-4fc6-aa51-d12d507ecba0",
+    "2d7b3803-107a-4fd6-a02e-d18083f4dd93",
+    "0f3e42b1-2604-4ba4-ba32-8709571b43fd",
+    "0d73639e-b21a-4443-9057-ccb677d504b3",
+    "a1a3f441-8e1d-422c-89de-55188c68cd31",
+    "58abbec5-d941-4973-bd95-911b5139d90f",
+    "7af7fab2-16c7-4809-a274-142c5fc20070",
+]
+
+
+@admin_router.post("/cleanup-fake-trips-2026-07-30")
+def admin_cleanup_fake_trips(dry_run: bool = True, user: str = Depends(check_admin)):
+    from database.db import get_conn
+
+    with get_conn() as c:
+        trip_with_refs = {r[0] for r in c.execute(
+            "SELECT DISTINCT trip_id FROM bids WHERE trip_id IS NOT NULL"
+        ).fetchall()} | {r[0] for r in c.execute(
+            "SELECT DISTINCT trip_id FROM deals WHERE trip_id IS NOT NULL"
+        ).fetchall()}
+
+        found, missing = [], []
+        for tid in FAKE_TRIP_IDS_2026_07_30:
+            row = c.execute(
+                "SELECT id, driver_id, driver_name, from_city, to_city FROM trips WHERE id = ?", (tid,)
+            ).fetchone()
+            (found if row else missing).append(tid)
+
+        trip_del = [tid for tid in found if tid not in trip_with_refs]
+        trip_skip = [tid for tid in found if tid in trip_with_refs]
+
+        if not dry_run:
+            for tid in trip_del:
+                c.execute("DELETE FROM trips WHERE id = ?", (tid,))
+
+    return {
+        "dry_run": dry_run,
+        "trips_deleted": len(trip_del) if not dry_run else 0,
+        "trips_would_delete": trip_del,
+        "trips_skipped_has_bids_or_deals": trip_skip,
+        "trip_ids_not_found": missing,
+        "by": user,
+    }
