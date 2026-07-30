@@ -640,3 +640,56 @@ def admin_cleanup_fake_trips_batch2(dry_run: bool = True, user: str = Depends(ch
         "trip_ids_not_found": missing,
         "by": user,
     }
+
+
+# 2026-07-30: чистка дубли-комнат чата у известных тестовых аккаунтов
+# (owner-запрос со скриншотом «Сделки» — Ali Li/Cvbbb Zcvvvb дублировались
+# по одной комнате на каждый груз/рейс, до фикса v2.0.9 deal_key). Критерий:
+# оставляем только комнаты, привязанные к реальной СДЕЛКЕ (deals.chat_room_id),
+# всё остальное для этих 3 аккаунтов — удаляем, включая комнаты с
+# сообщениями без сделки (owner подтвердил явно).
+# ВАЖНО: скоуп жёстко ограничен TEST_DRIVER_IDS — не общий "удалить все
+# комнаты без сделки" (это снесло бы легитимные pre-deal переписки
+# реальных будущих пользователей).
+TEST_DRIVER_IDS_2026_07_30 = [
+    "3da5d039-15df-4b0f-a119-e8ec08b4c971",
+    "ebde25aa-822c-4703-9568-ce916d06e3fe",
+    "bce99dd4-f144-485e-a55c-187d9942a587",
+]
+
+
+@admin_router.post("/cleanup-fake-chat-rooms-2026-07-30")
+def admin_cleanup_fake_chat_rooms(dry_run: bool = True, user: str = Depends(check_admin)):
+    from database.db import get_conn
+
+    placeholders = ",".join("?" * len(TEST_DRIVER_IDS_2026_07_30))
+    with get_conn() as c:
+        rooms = c.execute(f"""
+            SELECT id, participant_1, participant_2, last_message, trip_id, cargo_id
+            FROM chat_rooms
+            WHERE participant_1 IN ({placeholders}) OR participant_2 IN ({placeholders})
+        """, (*TEST_DRIVER_IDS_2026_07_30, *TEST_DRIVER_IDS_2026_07_30)).fetchall()
+
+        room_with_deal = {r[0] for r in c.execute(
+            "SELECT DISTINCT chat_room_id FROM deals WHERE chat_room_id IS NOT NULL"
+        ).fetchall()}
+
+        room_del, room_keep = [], []
+        for r in rooms:
+            (room_keep if r["id"] in room_with_deal else room_del).append({
+                "id": r["id"], "last_message": r["last_message"],
+                "trip_id": r["trip_id"], "cargo_id": r["cargo_id"],
+            })
+
+        if not dry_run:
+            for r in room_del:
+                c.execute("DELETE FROM chat_messages WHERE room_id = ?", (r["id"],))
+                c.execute("DELETE FROM chat_rooms WHERE id = ?", (r["id"],))
+
+    return {
+        "dry_run": dry_run,
+        "rooms_deleted": len(room_del) if not dry_run else 0,
+        "rooms_would_delete": room_del,
+        "rooms_kept_has_deal": room_keep,
+        "by": user,
+    }
