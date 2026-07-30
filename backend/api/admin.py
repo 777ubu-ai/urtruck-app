@@ -575,3 +575,68 @@ def admin_cleanup_fake_trips(dry_run: bool = True, user: str = Depends(check_adm
         "trip_ids_not_found": missing,
         "by": user,
     }
+
+
+# 2026-07-30 batch 2: owner подтвердил, что оставшиеся "именные" аккаунты
+# (3da5d039 = Cvbbb Zcvvvb/+77479171118, ebde25aa = Ali Li, bce99dd4 =
+# Жиенгалиев Миржан) — тоже внутренние тестовые/dev-аккаунты, не реальные
+# клиенты (owner confirmed 2026-07-30). Удаляем все их оставшиеся 21
+# рейсов той же безопасной схемой (пропуск при наличии ставок/сделок).
+# 4 рейса с реальными ставками (см. FAKE_TRIP_IDS_2026_07_30) сюда
+# намеренно НЕ включены — по ним отдельно проверяем bidder_id.
+TEST_TRIP_IDS_2026_07_30_BATCH2 = [
+    "8d6c9dd6-223f-4cd0-9272-c594755af282",
+    "93db4749-7404-4cba-9144-7273887ad00c",
+    "8f8f1610-ff9d-4d13-8698-6c6a3e97c0ec",
+    "e8d8f37e-d11f-46f1-8791-18545e6ef4a9",
+    "677cffd1-fc45-4526-a726-62609ab0234a",
+    "f97bb402-aa5f-4384-8bf2-2af9978e3aa2",
+    "3c09cbec-1e3b-4e86-bd93-cb7f357b6605",
+    "e96b0cb2-b43c-4e5d-ae2e-eb9466bae467",
+    "e67846a7-62ba-4d23-9cef-0cf32838e2d9",
+    "cc015ed8-4e0b-4d3b-966e-350afdd08eb0",
+    "1dbb80e5-16ef-4ae9-8e55-2275f0d1ddac",
+    "4602e0ad-85ff-417e-a9ba-48f75db36a45",
+    "bcb97c66-13e9-4c7b-a0ee-ceadd7d0e973",
+    "d0146ad1-afd9-4a0a-b371-8c7ac762bda7",
+    "5634ba76-ca27-49ef-96d3-247c059dadfc",
+    "89e39895-d1bb-494e-be16-7e3f80e71681",
+    "31727444-ff7f-4b20-9149-9771a9775000",
+    "d93d0ad4-40e1-4123-a47f-614b8b2f3387",
+    "71016179-5b5f-4b23-a23d-29fff47cf12b",
+    "1e731772-e28d-49ac-b0c4-058a30c19d4e",
+    "0321e3fb-e97c-4f2a-bb0e-51ee24606cb9",
+]
+
+
+@admin_router.post("/cleanup-fake-trips-2026-07-30-batch2")
+def admin_cleanup_fake_trips_batch2(dry_run: bool = True, user: str = Depends(check_admin)):
+    from database.db import get_conn
+
+    with get_conn() as c:
+        trip_with_refs = {r[0] for r in c.execute(
+            "SELECT DISTINCT trip_id FROM bids WHERE trip_id IS NOT NULL"
+        ).fetchall()} | {r[0] for r in c.execute(
+            "SELECT DISTINCT trip_id FROM deals WHERE trip_id IS NOT NULL"
+        ).fetchall()}
+
+        found, missing = [], []
+        for tid in TEST_TRIP_IDS_2026_07_30_BATCH2:
+            row = c.execute("SELECT id FROM trips WHERE id = ?", (tid,)).fetchone()
+            (found if row else missing).append(tid)
+
+        trip_del = [tid for tid in found if tid not in trip_with_refs]
+        trip_skip = [tid for tid in found if tid in trip_with_refs]
+
+        if not dry_run:
+            for tid in trip_del:
+                c.execute("DELETE FROM trips WHERE id = ?", (tid,))
+
+    return {
+        "dry_run": dry_run,
+        "trips_deleted": len(trip_del) if not dry_run else 0,
+        "trips_would_delete": trip_del,
+        "trips_skipped_has_bids_or_deals": trip_skip,
+        "trip_ids_not_found": missing,
+        "by": user,
+    }
