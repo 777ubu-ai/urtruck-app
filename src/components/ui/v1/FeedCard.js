@@ -14,7 +14,7 @@
 //   responses: number             — small count line ("👥 12 откликов")
 
 import React from 'react';
-import { View, Text, TouchableOpacity, Pressable, StyleSheet, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import { useV1Colors, v1Radius, v1AccentFor } from '../../../theme/designV1';
 import { colors as v2 } from '../../../theme/designSystemV2';
@@ -47,11 +47,6 @@ export default function FeedCard({
   // Цветом идёт textSecondary (slate), а не accent — иконка-шильдик
   // не должна конкурировать с ценой за внимание.
   const iconName = variant === 'trip' ? 'truck' : 'package';
-  // Разгрузка карточки на web: сердечко-избранное видно только при hover
-  // (или если уже в избранном — чтобы не терять индикацию активного
-  // состояния). На native hover нет, показываем как раньше — всегда.
-  const [favHovered, setFavHovered] = React.useState(false);
-  const showFav = Platform.OS !== 'web' || favHovered || favActive;
 
   // Phase 2A: empty-route fallback. На TestFlight build 1 пользователь
   // видел карточки "— → —"; backend иногда возвращает from=null, to=null
@@ -152,16 +147,14 @@ export default function FeedCard({
         </View>
         <View style={{ alignItems: 'flex-end' }}>
           {onToggleFav ? (
-            <Pressable
+            <TouchableOpacity
               onPress={onToggleFav}
-              onHoverIn={() => setFavHovered(true)}
-              onHoverOut={() => setFavHovered(false)}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              style={{ marginBottom: 4, opacity: showFav ? 1 : 0 }}
+              style={{ marginBottom: 4 }}
               testID="feed-fav"
             >
               <Text style={{ fontSize: 20 }}>{favActive ? '❤️' : '🤍'}</Text>
-            </Pressable>
+            </TouchableOpacity>
           ) : null}
           {/* Stage 16: status pill is now neutral (muted text + hairline
               border on the card surface). The accent-tinted pill on
@@ -238,11 +231,11 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderRadius: v1Radius.card,
     padding: 14,
-    marginBottom: 14,
+    marginBottom: 10,
   },
   // Компактный вид: меньше отступов и зазор между карточками, чтобы на экран
   // помещалось 5-6 строк вместо 2 крупных.
-  cardCompact: { padding: 11, marginBottom: 10 },
+  cardCompact: { padding: 11, marginBottom: 7 },
   routeCompact: { fontSize: 16 },
   metaCompact: { fontSize: 12, fontWeight: '600', marginTop: 4 },
   topRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 8 },
@@ -255,7 +248,7 @@ const s = StyleSheet.create({
   subtitle: { fontSize: 13, marginTop: 2 },
   statusPill: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, borderWidth: 1 },
   statusText: { fontSize: 11, fontWeight: '900', letterSpacing: 0.5 },
-  price: { fontSize: 19, fontWeight: '900', fontVariant: ['tabular-nums'], letterSpacing: 0.2 },
+  price: { fontSize: 21, fontWeight: '900', fontVariant: ['tabular-nums'] },
   priceCaption: { fontSize: 11, marginTop: 1 },
   metaRow: {
     flexDirection: 'row', flexWrap: 'wrap', gap: 8,

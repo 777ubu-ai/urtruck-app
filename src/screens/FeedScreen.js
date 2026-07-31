@@ -110,22 +110,6 @@ export default function FeedScreen({ navigation, route }) {
   titleHero: { color: v1.text, fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
   titleHeroSub: { color: v1.textMuted, fontSize: 12, marginTop: 2 },
   titleCta: { borderWidth: 0, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 10, shadowColor: '#FF8400', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 5 },
-  // Floating «+Груз»: не участвует в layout шапки/ленты, докается поверх
-  // FlatList над таб-баром. backgroundColor задаётся inline (surface-тон
-  // экрана недоступен в StyleSheet.create вне компонента).
-  fab: {
-    position: 'absolute',
-    right: 16,
-    bottom: 20,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    shadowColor: '#FF8400',
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 5,
-  },
   viewToggle: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: v1.border },
   titleCtaText: { fontSize: 12, fontWeight: '800' },
   footerNote: {
@@ -665,7 +649,6 @@ export default function FeedScreen({ navigation, route }) {
     const perKm = (km > 0 && priceNum > 0) ? priceNum / km : 0;
     const perKmStr = perKm >= 10 ? String(Math.round(perKm)) : perKm.toFixed(1);
     const meta = [
-      item.type ? { label: t('truckType'), value: formatTruckType(item.type) } : null,
       { label: t('departure'), value: item.pickup || t('pickup_date_tbd') },
       km > 0 ? { label: t('distance'), value: `${km} км` } : null,
       perKm > 0 ? { label: t('per_km_short'), value: `${perKmStr} ${item.currency || ''}/км` } : null,
@@ -724,7 +707,6 @@ export default function FeedScreen({ navigation, route }) {
     };
     // Stage 17: same emoji-strip as cargo cards above.
     const meta = [
-      item.type ? { label: t('truckType'), value: formatTruckType(item.type) } : null,
       item.tripDates ? { label: t('departure'), value: item.tripDates.split(' - ')[0] || item.tripDates } : null,
       item.tons > 0 ? { label: t('weight'), value: `${item.tons} т` } : null,
       item.m3 > 0 ? { label: t('volume'), value: `${item.m3} м³` } : null,
@@ -833,6 +815,21 @@ export default function FeedScreen({ navigation, route }) {
               (list). Пустой квадрат был непонятен. */}
           <Feather name={compact ? 'grid' : 'list'} size={20} color={v1.textMuted} />
         </TouchableOpacity>
+        {/* Для КЛИЕНТА публикация груза — главное действие, а безымянный
+            «+» в таббаре не находится. Показываем явную кнопку «+Груз».
+            У водителя лента = основная работа (берёт грузы), поэтому CTA
+            публикации рейса ему на ленту не выносим (остаётся «+» в баре). */}
+        {!isDriver ? (
+          <PressableScale
+            style={[s.titleCta, { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: accentColor }]}
+            onPress={() => navigation.navigate('CreateCargo', { role })}
+            testID="publish-cargo-button"
+            accessibilityRole="button"
+            accessibilityLabel={t('postCargo')}
+          >
+            <Text style={[s.titleCtaText, { color: accentColor }]}>+ {t('postCargo')}</Text>
+          </PressableScale>
+        ) : null}
       </View>
 
       {/* inDrive-стиль: крупный селектор «Откуда → Куда» — главный способ
@@ -1096,10 +1093,7 @@ export default function FeedScreen({ navigation, route }) {
             return `${ns}:${i.id ?? idx}`;
           }}
           renderItem={(args) => (isDriver || args.item.isMine) ? renderCargo(args) : renderDriver(args)}
-          // Клиент (!isDriver) видит floating «+Груз» поверх ленты — без
-          // запаса снизу кнопка перекрывает цену последней карточки при
-          // скролле в конец. У водителя такой кнопки нет.
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: isDriver ? 20 : 90, gap: 0 }}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 20, gap: 0 }}
           showsVerticalScrollIndicator={false}
           onEndReachedThreshold={0.5}
           onEndReached={() => {
@@ -1140,28 +1134,6 @@ export default function FeedScreen({ navigation, route }) {
           }
         />
       )}
-
-      {/* Для КЛИЕНТА публикация груза — главное действие, а безымянный
-          «+» в таббаре не находится. Раньше кнопка жила в шапке (title-row)
-          и отъедала место у заголовка/переключателя вида; вынесена в
-          floating-кнопку поверх ленты (не участвует в layout шапки).
-          У водителя лента = основная работа (берёт грузы), поэтому CTA
-          публикации рейса ему на ленту не выносим (остаётся «+» в баре). */}
-      {!isDriver ? (
-        <PressableScale
-          // Сплошная заливка, не ghost-обводка: кнопка плавает поверх
-          // скроллящейся ленты, и с прозрачным фоном текст карточки под
-          // ней "просвечивал" — выглядело как перекрытие/баг. Цвет текста —
-          // onAccent (тёмный), тот же контраст-фикс, что и у driver-кнопок.
-          style={[s.fab, { backgroundColor: accentColor }]}
-          onPress={() => navigation.navigate('CreateCargo', { role })}
-          testID="publish-cargo-button"
-          accessibilityRole="button"
-          accessibilityLabel={t('postCargo')}
-        >
-          <Text style={[s.titleCtaText, { color: v1Accent.onAccent }]}>+ {t('postCargo')}</Text>
-        </PressableScale>
-      ) : null}
 
       {Gate}
     </SafeAreaView>

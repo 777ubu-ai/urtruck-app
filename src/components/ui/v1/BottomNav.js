@@ -329,10 +329,6 @@ const s = StyleSheet.create({
     justifyContent: 'flex-start',
     paddingHorizontal: 2,
     minHeight: PILL_H + LABEL_H + 4,
-    // web: браузер рисует чёрный focus-ring поверх активной вкладки после
-    // клика (RN Web не убирает outline сам) — глушим его, своя подсветка
-    // уже есть через accent.soft на .pill.
-    outlineStyle: 'none',
   },
   // «Таблетка» под иконкой — фон+неоновая тень появляются только у активного.
   pill: {

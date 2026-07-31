@@ -13,6 +13,7 @@ import { routeStats } from '../utils/geo';
 import { removeTrip, advanceTripState, TRIP_STATES, TRIP_STATE_INFO } from '../utils/store';
 import { useVerificationGate } from '../components/VerificationGate';
 import { LEVELS, useAuth } from '../utils/AuthContext';
+import BidModal from '../components/BidModal';
 import { marketAPI } from '../utils/marketAPI';
 import { normalizeTrip, tripDisplay } from '../utils/normalizers';
 import { buildTripShareText } from '../utils/share';
@@ -99,6 +100,11 @@ export default function TripDetail({ navigation, route }) {
   const { session } = useAuth();
   const myUserId = session?.user?.id;
   const [shareModal, setShareModal] = React.useState(false);
+  // Stage 10: shipper-side bid flow on a driver's trip. The cargo
+  // owner opens the trip and can propose a price (RUB/USD/KZT/CNY)
+  // — same BidModal already used on CargoDetail, just bound to
+  // tripId instead of cargoId.
+  const [bidModal, setBidModal] = React.useState(false);
   // Deal-block state (mirrors CargoDetail)
   const [dealId, setDealId] = React.useState(routeDealId || null);
   const [dealStatus, setDealStatus] = React.useState(null);
@@ -466,11 +472,16 @@ export default function TripDetail({ navigation, route }) {
       {dealStatus ? renderDealBlock() : null}
 
       {/* Sticky CTA — shipper viewing someone else's trip.
-          Владелец решил вернуть прямой чат вместо ставки (2026-07-29):
-          "Предложить цену" → "Написать водителю", сразу открывает чат.
-          Stage 20 когда-то убирал именно эту кнопку из-за пустых
-          пре-бид чатов — если проблема вернётся, торг остаётся доступен
-          из комнаты чата (BargainCard), просто не с этого экрана.
+          Stage 20: collapsed to a single primary action
+          ("Предложить цену"). Earlier the bar carried a secondary
+          "💬 Написать водителю" too, which created a split-attention
+          surface: the user could chat without ever committing to a
+          bid, and the same chat link reappeared inside the deal
+          block after the bid was accepted. The pre-bid chat path
+          mostly produced empty rooms ("сколько повезёшь?"), the
+          deal-block chat is the canonical place to talk once the
+          driver is actually selected. Stripping the secondary keeps
+          one clear next step on this surface.
 
           Owner of the trip and any role with an active deal
           continue to see no sticky bar — their actions live in
@@ -479,28 +490,33 @@ export default function TripDetail({ navigation, route }) {
         <StickyCTABar
           accent={v1Accent.main}
           primary={{
-            label: t('write_driver'),
+            label: t('suggestPrice'),
             onPress: async () => {
               const ok = await requireLevel(LEVELS.PHONE, 'bid');
-              if (!ok) return;
-              // BUG-fix (2026-07-30): driverId (state) заполняется только
-              // внутри applyDeal(), т.е. только когда сделка УЖЕ есть — а
-              // эта кнопка как раз для случая "сделки ещё нет". driverId
-              // был всегда null в момент клика → чат открывался без
-              // адресата (generic "Пользователь UrTruck", send() падал
-              // без to_user_id/room_id). trip.driverId приходит прямо из
-              // normalizeTrip и доступен сразу, без deal.
-              const partnerId = trip?.driverId || driverId;
-              navigation.navigate('Chat', {
-                role,
-                tripId: (trip && trip.id) || tripId,
-                partner: partnerId ? { id: partnerId, name: trip?.driverName } : undefined,
-              });
+              if (ok) setBidModal(true);
             },
-            testID: 'trip-sticky-chat',
+            testID: 'trip-sticky-bid',
           }}
         />
       ) : null}
+
+      {/* Stage 10: BidModal bound to tripId. Re-used component from
+          CargoDetail; mode='create' POSTs /market/bids with trip_id
+          and the backend pushes a notification to the trip owner. */}
+      <BidModal
+        visible={bidModal}
+        onClose={() => setBidModal(false)}
+        onSubmit={() => {
+          toast('✓ ' + t('bidSent'), 'success');
+        }}
+        mode="create"
+        currentPrice={trip.price || 0}
+        currency={trip.currency}
+        tripId={trip.id}
+        accent={v1Accent.main}
+        onAccent={v1Accent.onAccent}
+      />
+
 
       <ShareModal
         visible={shareModal}
