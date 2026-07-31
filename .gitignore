@@ -68,5 +68,7 @@ qa/debug/dumps/
 *.p12
 !android/app/debug.keystore
 upload_certificate.pem
-*.aab
+keystore/
 credentials.json
+*.aab
+google-play-service-account.json

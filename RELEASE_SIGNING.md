@@ -104,8 +104,34 @@ jarsigner -verify -verbose -certs app-release.aab
 - **EAS:** `eas build -p android --profile production`
 - **Локально:** `cd android && ./gradlew bundleRelease`
   (артефакт: `android/app/build/outputs/bundle/release/app-release.aab`)
+- **GitHub Actions (авто):** `.github/workflows/deploy-play.yml` — см. раздел ниже.
 
 После сборки сверить SHA-1/256 бандла с Upload key в Play — должны совпасть.
+
+## 🤖 Автозаливка в Google Play через GitHub Actions (deploy-play.yml)
+
+Актуальный upload-keystore — `keystore/my-upload-key.jks` (alias `upload`), пришёл
+на смену скомпрометированному `urtruck-release.keystore` (см. раздел Security выше).
+Файл и `credentials.json` **не коммитятся** (см. `.gitignore`) — храним только как
+GitHub Secrets:
+
+| Secret | Значение |
+|---|---|
+| `ANDROID_KEYSTORE_BASE64` | `base64 -w0 keystore/my-upload-key.jks` (Windows: `[Convert]::ToBase64String([IO.File]::ReadAllBytes("keystore/my-upload-key.jks")) \| Set-Content keystore.b64`) |
+| `ANDROID_KEYSTORE_PASSWORD` | пароль keystore из `credentials.json` |
+| `ANDROID_KEY_ALIAS` | `upload` |
+| `ANDROID_KEY_PASSWORD` | пароль ключа из `credentials.json` |
+| `PLAY_SERVICE_ACCOUNT_JSON` | содержимое JSON-ключа сервисного аккаунта Google Play (Play Console → Setup → API access → Service accounts → Create/Manage → Keys, роль **Release manager**) |
+
+Workflow сам подставляет эти секреты в Gradle через `ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_*`
+(тот же механизм, что и `~/.gradle/gradle.properties` локально), собирает `.aab` и
+заливает через `r0adkll/upload-google-play`. Push в `main` → трек `internal`
+(без ревью Google, только тестеры). Ручной запуск (`workflow_dispatch`) — выбор
+трека вплоть до `production`.
+
+**Важно:** пароли `1234qwer` в текущем `credentials.json` — временные локальные,
+для продакшена рекомендуется сгенерировать keystore с надёжным паролем ещё раз
+(reset upload key в Play Console) до первой заливки через CI.
 
 ## ⚠️ Security (обязательно к исправлению)
 

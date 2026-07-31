@@ -1,0 +1,148 @@
+name: Deploy Android to Google Play
+
+# Триггеры:
+#   - push в main с изменениями в android/, app.json, package.json или src/**
+#     → автосборка .aab и заливка в internal-трек (без ревью Google, видно
+#       только тестерам — безопасно гонять на каждый push).
+#   - workflow_dispatch → ручной запуск с выбором трека (в т.ч. production).
+#
+# Требуемые секреты репозитория (Settings → Secrets and variables → Actions):
+#   ANDROID_KEYSTORE_BASE64   — `base64 -w0 keystore/my-upload-key.jks`
+#   ANDROID_KEYSTORE_PASSWORD — пароль keystore
+#   ANDROID_KEY_ALIAS         — алиас ключа (upload)
+#   ANDROID_KEY_PASSWORD      — пароль ключа
+#   PLAY_SERVICE_ACCOUNT_JSON — содержимое JSON-ключа сервисного аккаунта
+#                               Google Play Console (Setup → API access)
+#
+# См. также android/app/build.gradle (signingConfigs.release читает
+# URTRUCK_UPLOAD_* project-properties, которые сюда прокидываются через
+# ORG_GRADLE_PROJECT_*).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "android/**"
+      - "app.json"
+      - "package.json"
+      - "package-lock.json"
+      - "src/**"
+      - ".github/workflows/deploy-play.yml"
+  workflow_dispatch:
+    inputs:
+      track:
+        description: "Google Play track"
+        required: true
+        default: "internal"
+        type: choice
+        options:
+          - internal
+          - alpha
+          - beta
+          - production
+      status:
+        description: "Release status на выбранном треке"
+        required: true
+        default: "completed"
+        type: choice
+        options:
+          - completed
+          - inProgress
+          - halted
+
+jobs:
+  build-and-submit:
+    name: Build AAB and upload to Play
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK platform 36 / build-tools 36.0.0
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk || true
+          df -h
+
+      - name: Install npm dependencies
+        run: |
+          npm ci --legacy-peer-deps --ignore-scripts \
+            || npm install --legacy-peer-deps --ignore-scripts --no-audit --no-fund
+
+      - name: Apply patches (if patches/ exists)
+        run: |
+          if [ -d patches ] && [ "$(ls -A patches 2>/dev/null)" ]; then
+            npx patch-package
+          fi
+
+      - name: Decode upload keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "::error::Секрет ANDROID_KEYSTORE_BASE64 не задан — заливка в Play невозможна."
+            exit 1
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/urtruck-upload-key.jks"
+
+      - name: Compute versionCode
+        # Монотонный versionCode: база 100 + порядковый номер запуска workflow,
+        # чтобы повторные автозаливки в internal-трек не конфликтовали друг с другом.
+        # (арифметика тут, а не в ${{ }} — GitHub Actions expressions не умеют "+")
+        run: echo "URTRUCK_VERSION_CODE=$((100 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+
+      - name: Build release AAB
+        env:
+          EXPO_PUBLIC_API_URL: https://urtruck.kz
+          ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_STORE_FILE: ${{ format('{0}/urtruck-upload-key.jks', runner.temp) }}
+          ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ORG_GRADLE_PROJECT_URTRUCK_VERSION_CODE: ${{ env.URTRUCK_VERSION_CODE }}
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew bundleRelease --no-daemon --stacktrace --warning-mode=summary
+
+      - name: Remove keystore from runner
+        if: always()
+        run: rm -f "$RUNNER_TEMP/urtruck-upload-key.jks"
+
+      - name: Upload AAB as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: UrTruck-aab
+          path: android/app/build/outputs/bundle/release/app-release.aab
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Upload to Google Play
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.urtruck.app
+          releaseFiles: android/app/build/outputs/bundle/release/app-release.aab
+          tracks: ${{ inputs.track || 'internal' }}
+          status: ${{ inputs.status || 'completed' }}
+          inAppUpdatePriority: 2
