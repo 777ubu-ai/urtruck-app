@@ -50,11 +50,18 @@ export default function BidModal({
   accent = '#22C55E',
   onAccent = '#fff',
 }) {
-  const isCounter = mode === 'counter';
-  const isEdit = mode === 'edit' || mode === 'discount';
-  const isDiscount = mode === 'discount';
+  // Runtime-режим: если create упирается в дубль (409 duplicate_bid) — бэк
+  // отдаёт existing_bid_id/existing_amount, и модалка «на лету» переключается
+  // в edit, чтобы пользователь не оставался в тупике «измените её, но нельзя».
+  const [runtimeMode, setRuntimeMode] = useState(mode);
+  const [runtimeBidId, setRuntimeBidId] = useState(bidId);
+  const [runtimeInitialAmount, setRuntimeInitialAmount] = useState(initialAmount);
+  const effectiveMode = runtimeMode;
+  const isCounter = effectiveMode === 'counter';
+  const isEdit = effectiveMode === 'edit' || effectiveMode === 'discount';
+  const isDiscount = effectiveMode === 'discount';
   const isPrefill = isEdit || isCounter;
-  const baseAmount = isPrefill ? Number(initialAmount) || 0 : 0;
+  const baseAmount = isPrefill ? Number(runtimeInitialAmount) || 0 : 0;
 
   const [bid, setBid] = useState('');
   const [message, setMessage] = useState('');
@@ -66,6 +73,16 @@ export default function BidModal({
   const { t } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
+
+  // При каждом открытии сбрасываем runtime-режим на исходный prop, чтобы
+  // если модалка была переведена в edit из-за duplicate_bid — при следующем
+  // открытии не оставаться в чужом состоянии.
+  useEffect(() => {
+    if (!visible) return;
+    setRuntimeMode(mode);
+    setRuntimeBidId(bidId);
+    setRuntimeInitialAmount(initialAmount);
+  }, [visible, mode, bidId, initialAmount]);
 
   // Re-seed inputs every time the modal becomes visible or the source bid changes.
   useEffect(() => {
@@ -81,7 +98,7 @@ export default function BidModal({
       setBid('');
       setMessage('');
     }
-  }, [visible, mode, bidId, initialAmount, initialMessage]);
+  }, [visible, effectiveMode, runtimeBidId, runtimeInitialAmount, initialMessage]);
 
   // PR-A re-apply (P0-3 BidModal $0 / negotiable): когда у груза нет
   // цены (price=null/0 → currentPrice=0), кнопки [$0, $200, $400]
@@ -117,7 +134,7 @@ export default function BidModal({
     try {
       let r;
       if (isCounter) {
-        r = await marketAPI.counterBid(bidId, {
+        r = await marketAPI.counterBid(runtimeBidId, {
           amount: amountInt,
           message: message.trim() || null,
         });
@@ -125,7 +142,7 @@ export default function BidModal({
         const payload = { amount: amountInt };
         // Send message only if user changed it from the original — avoids overwriting.
         if (message !== (initialMessage || '')) payload.message = message.trim() || null;
-        r = await marketAPI.updateBid(bidId, payload);
+        r = await marketAPI.updateBid(runtimeBidId, payload);
       } else {
         r = await marketAPI.createBid({
           cargo_id: cargoId || null,
@@ -145,6 +162,18 @@ export default function BidModal({
       } else if (r.status === 401) {
         setError(t('session_expired'));
         setLocked(true);
+      } else if (r.status === 409 && r.detailObj && r.detailObj.error === 'duplicate_bid') {
+        // Дубль ставки: переводим модалку в режим edit существующей ставки,
+        // подставляем текущую сумму/сообщение — не блокируем кнопку.
+        // Так пользователь одним нажатием меняет ставку вместо тупика.
+        setRuntimeMode('edit');
+        setRuntimeBidId(r.detailObj.existing_bid_id);
+        setRuntimeInitialAmount(r.detailObj.existing_amount);
+        setBid(String(r.detailObj.existing_amount || amountInt));
+        setMessage(r.detailObj.existing_message || '');
+        setError('');
+        setLocked(false);
+        toast(t('bid_switched_to_edit') || 'Меняем существующую ставку', 'info');
       } else if (r.status === 409) {
         // Ставку уже приняли/изменили — повтор не поможет. Блокируем кнопку,
         // пользователь читает причину и закрывает окно (лента обновится).

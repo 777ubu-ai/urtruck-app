@@ -44,14 +44,14 @@ const QA_HOOK_ALLOWED = (() => {
 const APP_VERSION_LABEL = (() => {
   try {
     const Constants = require('expo-constants').default;
-    const ver = Constants?.nativeAppVersion || Constants?.expoConfig?.version || '1.0.3';
+    const ver = Constants?.nativeAppVersion || Constants?.expoConfig?.version || '1.0.4';
     const build = Constants?.nativeBuildVersion
       || Constants?.expoConfig?.ios?.buildNumber
       || Constants?.expoConfig?.android?.versionCode
       || '';
     return `v${ver}${build ? ` (${build})` : ''}`;
   } catch {
-    return 'v1.0.3';
+    return 'v1.0.4';
   }
 })();
 

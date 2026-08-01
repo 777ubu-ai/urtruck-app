@@ -255,7 +255,16 @@ export const marketAPI = {
       body: JSON.stringify(data),
     });
     const d = await r.json();
-    if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
+    if (!r.ok) {
+      // Особый случай: у автора уже есть активная ставка. Бэк возвращает
+      // объект с existing_bid_id/existing_amount/existing_message — прокидываем
+      // как detailObj, чтобы модалка сама переключилась в режим edit.
+      const raw = d && d.detail;
+      if (r.status === 409 && raw && typeof raw === 'object' && raw.error === 'duplicate_bid') {
+        return { ok: false, status: 409, detail: raw.message, detailObj: raw };
+      }
+      return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
+    }
     return d;
   },
 

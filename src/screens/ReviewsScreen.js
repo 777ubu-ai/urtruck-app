@@ -37,6 +37,9 @@ export default function ReviewsScreen({ navigation, route }) {
   starsEmpty: { fontSize: 13 },
   reviewAmount: { fontSize: 11, marginTop: 2 },
   reviewText: { fontSize: 13, lineHeight: 18, marginBottom: 6 },
+  tagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 6 },
+  tag: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, borderWidth: 1 },
+  tagTxt: { fontSize: 11, fontWeight: '600' },
   reviewAgo: { fontSize: 11 },
 
   }), [v1]);
@@ -79,6 +82,15 @@ export default function ReviewsScreen({ navigation, route }) {
           </View>
           <Text style={s.stars}>{'★'.repeat(rating)}<Text style={[s.starsEmpty, { color: theme.border }]}>{'★'.repeat(5 - rating)}</Text></Text>
         </View>
+        {Array.isArray(item.tags) && item.tags.length > 0 ? (
+          <View style={s.tagsRow}>
+            {item.tags.map((tag) => (
+              <View key={tag} style={[s.tag, { backgroundColor: '#FBBF2418', borderColor: '#FBBF24' }]}>
+                <Text style={[s.tagTxt, { color: '#FBBF24' }]}>{t(`rating_tag_${tag}`) || tag}</Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
         {item.text ? <Text style={[s.reviewText, { color: theme.textSecondary }]}>{item.text}</Text> : null}
         {when ? <Text style={[s.reviewAgo, { color: theme.textMuted }]}>{when}</Text> : null}
       </View>

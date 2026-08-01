@@ -12,7 +12,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Modal, View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useV1Colors, v1Radius } from '../theme/designV1';
 import { useI18n } from '../utils/useI18n';
@@ -154,6 +154,13 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose} presentationStyle="fullScreen">
+      {/* React Native Modal с presentationStyle="fullScreen" рендерится в
+          отдельной native-иерархии, safe-area контекст из App root не
+          наследуется — из-за этого на iPhone с dynamic island кнопка «Назад»
+          в header'е слипалась с временем в статус-баре (жалоба владельца
+          28.07, скрин IMG_6789). Свой SafeAreaProvider внутри модалки
+          восстанавливает реальные insets, и edges=['top'] снова работает. */}
+      <SafeAreaProvider>
       <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
         <View style={s.header}>
           <TouchableOpacity style={s.back} onPress={onClose} testID="loc-close" hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
@@ -258,6 +265,7 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
           )}
         </ScrollView>
       </SafeAreaView>
+      </SafeAreaProvider>
     </Modal>
   );
 }

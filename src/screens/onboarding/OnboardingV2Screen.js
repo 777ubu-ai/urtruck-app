@@ -42,12 +42,17 @@ import { useToast } from '../../components/Toast';
 import { useAuth } from '../../utils/AuthContext';
 import { brand, radius, typography } from '../../theme/brandV2';
 
-// QA-only safety gate. The block below renders ONLY in dev bundles
-// inside Expo Go / Metro — `__DEV__` flips to false in EAS production /
-// TestFlight bundles, and `Constants.appOwnership === 'standalone'`
-// covers ad-hoc/prod IPAs that somehow ship with __DEV__=true.
+// QA-only safety gate. The block below renders ONLY when three conditions
+// hold together:
+//   1. __DEV__ is true (false in EAS production / TestFlight bundles);
+//   2. app is not standalone (covers ad-hoc/prod IPAs that ship __DEV__=true);
+//   3. explicit opt-in flag EXPO_PUBLIC_QA_HOOKS=1 — Maestro CI выставляет
+//      её через eas.json profile qa; на обычном dev-сервере / Expo Go у
+//      владельца её нет → блок не появляется. Раньше блок случайно вылезал
+//      на любой dev-сборке через веб-порт 8081 (скрин 28.07).
 const QA_HOOK_ALLOWED = (() => {
   if (typeof __DEV__ === 'undefined' || !__DEV__) return false;
+  if (process.env.EXPO_PUBLIC_QA_HOOKS !== '1') return false;
   try {
     const Constants = require('expo-constants').default;
     return Constants?.appOwnership !== 'standalone';

@@ -1128,13 +1128,23 @@ def create_bid(body: BidIn, user=Depends(require_level(1))):
                 raise HTTPException(status_code=409, detail="Рейс больше не доступен для ставок")
         # M1: дедуп — у одного автора не должно быть двух активных ставок на
         # тот же груз/рейс (для изменения цены есть PATCH /bids/{id}).
+        # Возвращаем id/сумму/сообщение старой ставки в теле 409 — фронт
+        # переключит модалку в режим edit и подставит текущие значения
+        # вместо тупика «измените её, но кнопка серая».
         dup = c.execute(
-            "SELECT id FROM bids WHERE bidder_id = ? AND status IN ('pending','countered') "
+            "SELECT id, amount, message FROM bids WHERE bidder_id = ? "
+            "AND status IN ('pending','countered') "
             "AND ((cargo_id IS NOT NULL AND cargo_id = ?) OR (trip_id IS NOT NULL AND trip_id = ?))",
             (user["id"], body.cargo_id, body.trip_id),
         ).fetchone()
         if dup:
-            raise HTTPException(status_code=409, detail="У вас уже есть активная ставка — измените её")
+            raise HTTPException(status_code=409, detail={
+                "error": "duplicate_bid",
+                "message": "У вас уже есть активная ставка — измените её",
+                "existing_bid_id": dup["id"],
+                "existing_amount": dup["amount"],
+                "existing_message": dup["message"],
+            })
 
         c.execute("""
             INSERT INTO bids (id, cargo_id, trip_id, bidder_id, bidder_name, bidder_phone, amount, message)
