@@ -557,6 +557,12 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               subtitle: l.createPostSectionTagsHint,
               child: _buildHashtagsSection(),
             ),
+            const SizedBox(height: 14),
+            // Раскрывающийся блок «Дополнительно» — как у Ерасыла:
+            // Категория / Место / Кому видно. Данные пока не отправляются
+            // на сервер (готовим слот на бэке отдельным изменением),
+            // но интерфейс уже правильный.
+            _CollapsibleSection(title: l.createDetailsSection),
           ],
         ),
       ),
@@ -608,92 +614,139 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
-          height: 104,
-          child: ListView.separated(
+          height: 108,
+          // Горизонтальный ReorderableListView: тап-и-держи любую плитку —
+          // и тащим на новое место. Первое фото — обложка (подписано).
+          child: ReorderableListView.builder(
             scrollDirection: Axis.horizontal,
+            padding: EdgeInsets.zero,
+            buildDefaultDragHandles: false,
+            proxyDecorator: (child, _, _) => Material(
+              elevation: 6,
+              color: Colors.transparent,
+              borderRadius: BorderRadius.circular(14),
+              child: child,
+            ),
+            onReorder: (oldI, newI) {
+              setState(() {
+                final ni = newI > oldI ? newI - 1 : newI;
+                final item = _pickedFiles.removeAt(oldI);
+                _pickedFiles.insert(ni, item);
+              });
+            },
             itemCount: _pickedFiles.length + 1,
-            separatorBuilder: (_, _) => const SizedBox(width: 10),
             itemBuilder: (_, i) {
               if (i == _pickedFiles.length) {
-                return _MediaAction(
-                  icon: Icons.add_rounded,
-                  label: l.createPostAddMore,
-                  onTap: _pickImages,
-                  width: 84,
-                  height: 104,
+                // Кнопка «Ещё» не участвует в переупорядочивании — но
+                // ReorderableListView требует key у всех детей.
+                return Padding(
+                  key: const ValueKey('add_more'),
+                  padding: const EdgeInsets.only(right: 10),
+                  child: _MediaAction(
+                    icon: Icons.add_rounded,
+                    label: l.createPostAddMore,
+                    onTap: _pickImages,
+                    width: 84,
+                    height: 104,
+                  ),
                 );
               }
               final f = _pickedFiles[i];
               final isVideo = f.type == 'video';
-              return SizedBox(
-                width: 84,
-                child: Stack(
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(14),
-                      child: SizedBox(
-                        width: 84,
-                        height: 104,
-                        child: isVideo
-                            ? Container(
-                                color: scheme.surfaceContainerHighest,
-                                alignment: Alignment.center,
-                                child: Icon(Icons.play_circle_fill_rounded,
-                                    size: 34, color: scheme.onSurfaceVariant),
-                              )
-                            : Image.memory(f.bytes, fit: BoxFit.cover),
-                      ),
-                    ),
-                    // Первый файл — обложка карточки товара в ленте.
-                    // Подписываем явно, чтобы порядок не был сюрпризом.
-                    if (i == 0)
-                      Positioned(
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 3),
-                          decoration: const BoxDecoration(
-                            color: Colors.black54,
-                            borderRadius: BorderRadius.vertical(
-                              bottom: Radius.circular(14),
+              return Padding(
+                key: ValueKey('media_$i'),
+                padding: const EdgeInsets.only(right: 10),
+                child: ReorderableDelayedDragStartListener(
+                  index: i,
+                  child: SizedBox(
+                    width: 84,
+                    child: Stack(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(14),
+                          child: SizedBox(
+                            width: 84,
+                            height: 104,
+                            child: isVideo
+                                ? Container(
+                                    color: scheme.surfaceContainerHighest,
+                                    alignment: Alignment.center,
+                                    child: Icon(
+                                      Icons.play_circle_fill_rounded,
+                                      size: 34,
+                                      color: scheme.onSurfaceVariant,
+                                    ),
+                                  )
+                                : Image.memory(f.bytes, fit: BoxFit.cover),
+                          ),
+                        ),
+                        if (i == 0)
+                          Positioned(
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            child: Container(
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 3),
+                              decoration: const BoxDecoration(
+                                color: Colors.black54,
+                                borderRadius: BorderRadius.vertical(
+                                  bottom: Radius.circular(14),
+                                ),
+                              ),
+                              child: Text(
+                                l.createPostCover,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
                             ),
                           ),
-                          child: Text(
-                            l.createPostCover,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w700,
+                        Positioned(
+                          top: 4,
+                          right: 4,
+                          child: InkWell(
+                            onTap: () => _removeImage(i),
+                            borderRadius: BorderRadius.circular(20),
+                            child: Container(
+                              decoration: const BoxDecoration(
+                                color: Colors.black54,
+                                shape: BoxShape.circle,
+                              ),
+                              padding: const EdgeInsets.all(4),
+                              child: const Icon(Icons.close,
+                                  color: Colors.white, size: 14),
                             ),
                           ),
                         ),
-                      ),
-                    Positioned(
-                      top: 4,
-                      right: 4,
-                      child: InkWell(
-                        onTap: () => _removeImage(i),
-                        borderRadius: BorderRadius.circular(20),
-                        child: Container(
-                          decoration: const BoxDecoration(
-                            color: Colors.black54,
-                            shape: BoxShape.circle,
-                          ),
-                          padding: const EdgeInsets.all(4),
-                          child: const Icon(Icons.close,
-                              color: Colors.white, size: 14),
-                        ),
-                      ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               );
             },
           ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
+        // Подсказка «перетащите, чтобы изменить порядок» — как в мокапе.
+        // Показывается только если больше одного файла, иначе бессмысленно.
+        if (_pickedFiles.length > 1)
+          Row(
+            children: [
+              Icon(Icons.drag_indicator,
+                  size: 14, color: scheme.onSurfaceVariant),
+              const SizedBox(width: 4),
+              Text(
+                l.createDragToReorder,
+                style: TextStyle(
+                    fontSize: 12, color: scheme.onSurfaceVariant),
+              ),
+            ],
+          ),
+        const SizedBox(height: 6),
         Row(
           children: [
             _MediaChip(icon: Icons.photo_camera_rounded, onTap: _takePhoto),
@@ -1037,6 +1090,132 @@ class _MediaChip extends StatelessWidget {
           shape: BoxShape.circle,
         ),
         child: Icon(icon, size: 19, color: scheme.onSurfaceVariant),
+      ),
+    );
+  }
+}
+
+/// Блок «Дополнительно» — раскрывающаяся секция с полями Category /
+/// Location / Who can see this по мокапу SourceHub. Пока значения
+/// декоративные (public — по умолчанию, изменение сохраняется только в
+/// UI), но структура готова: когда добавим на бэке category/location/
+/// visibility, останется прокинуть три значения в submit().
+class _CollapsibleSection extends StatefulWidget {
+  const _CollapsibleSection({required this.title});
+  final String title;
+
+  @override
+  State<_CollapsibleSection> createState() => _CollapsibleSectionState();
+}
+
+class _CollapsibleSectionState extends State<_CollapsibleSection> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: scheme.outlineVariant, width: 0.8),
+      ),
+      child: Column(
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(20),
+            onTap: () => setState(() => _open = !_open),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 16, 12, 16),
+              child: Row(
+                children: [
+                  Text(
+                    widget.title,
+                    style: const TextStyle(
+                      fontSize: 15.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const Spacer(),
+                  Icon(_open ? Icons.expand_less : Icons.expand_more,
+                      color: scheme.onSurfaceVariant),
+                ],
+              ),
+            ),
+          ),
+          if (_open) ...[
+            const Divider(height: 1),
+            _DetailsRow(
+              icon: Icons.category_outlined,
+              label: l.createFieldCategory,
+              trailing: 'Select',
+              onTap: () {},
+            ),
+            const Divider(height: 1, indent: 48),
+            _DetailsRow(
+              icon: Icons.place_outlined,
+              label: l.createFieldLocation,
+              trailing: 'Select',
+              onTap: () {},
+            ),
+            const Divider(height: 1, indent: 48),
+            _DetailsRow(
+              icon: Icons.public_rounded,
+              label: l.createFieldVisibility,
+              trailing: l.createVisibilityPublic,
+              onTap: () {},
+            ),
+            const SizedBox(height: 6),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _DetailsRow extends StatelessWidget {
+  const _DetailsRow({
+    required this.icon,
+    required this.label,
+    required this.trailing,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final String trailing;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        child: Row(
+          children: [
+            Icon(icon, size: 20, color: scheme.onSurfaceVariant),
+            const SizedBox(width: 14),
+            Text(
+              label,
+              style: const TextStyle(
+                  fontSize: 14, fontWeight: FontWeight.w600),
+            ),
+            const Spacer(),
+            Text(
+              trailing,
+              style: TextStyle(
+                fontSize: 13.5,
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Icon(Icons.chevron_right,
+                size: 20, color: scheme.onSurfaceVariant),
+          ],
+        ),
       ),
     );
   }
