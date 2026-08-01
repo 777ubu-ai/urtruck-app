@@ -871,20 +871,6 @@ export default function CargoDetail({ navigation, route }) {
                   <DealActionLabel icon="message-square" text={t('order_chat')} color={dealAccent.main} />
                 </TouchableOpacity>
               )}
-              {/* Both — накладная (CMR) из данных сделки */}
-              {dealId && (dealStatus === 'in_progress' || dealStatus === 'at_border' || dealStatus === 'delivered' || dealStatus === 'accepted') && (
-                <TouchableOpacity
-                  testID="deal-waybill"
-                  style={[s.dealActionBtn, { backgroundColor: 'rgba(148,163,184,0.14)' }]}
-                  onPress={async () => {
-                    const r = await marketAPI.waybillLink(dealId);
-                    if (r.ok) Linking.openURL(r.url).catch(() => {});
-                    else toast(r.detail || t('no_connection'), 'error');
-                  }}
-                >
-                  <DealActionLabel icon="file-text" text={t('waybill_btn')} color={theme.text} />
-                </TouchableOpacity>
-              )}
               {/* Both — cancel deal */}
               {(dealStatus === 'accepted' || dealStatus === 'in_progress' || dealStatus === 'at_border') && (
                 <TouchableOpacity
@@ -909,14 +895,6 @@ export default function CargoDetail({ navigation, route }) {
                 </TouchableOpacity>
               )}
             </View>
-          </View>
-        </View>
-      )}
-      {dealStatus === 'delivered' && (
-        <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
-          <View style={[s.paymentBlock, { backgroundColor: theme.card, borderColor: '#FF8400' }]}>
-            <Text style={{ color: '#FF8400', fontSize: 13, fontWeight: '700' }}>{t('payment_pending_title')}</Text>
-            <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 4 }}>{t('payment_pending_desc')}</Text>
           </View>
         </View>
       )}

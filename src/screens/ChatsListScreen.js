@@ -39,9 +39,8 @@ import { localizePlace, localizeCargoName } from '../utils/places';
 import { prettifyPartnerName } from '../utils/displayName';
 import { accentFor } from '../components/deal/DealRoom';
 
-// Приказ владельца 27.07: строки фильтров НЕТ вообще (Все/Архив/Поддержка
-// убраны). Список один: непрочитанные наверху, дальше по свежести; поиск
-// остаётся. Чат поддержки виден в общем списке и в «+»-меню комнаты.
+// 01.08: владелец запросил фильтр-табы обратно — Все/Непрочитанные/Активные/Архив.
+// Логика фильтрации (строки ниже) не менялась — возвращаем горизонтальные чипы.
 
 const ROLE_LABEL = { driver: 'role_driver', client: 'role_client', support: 'role_support' };
 
@@ -164,7 +163,12 @@ export default function ChatsListScreen({ navigation, route }) {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const un = (r) => ((r.unread_count ?? r.unread ?? 0) > 0 ? 0 : 1);
-    return rooms.slice().sort((a, b) => un(a) - un(b)).filter((r) => {
+    const ts = (r) => { const d = new Date(String(r.last_message_at || r.last_at || '').replace(' ', 'T')); return isNaN(d) ? 0 : d.getTime(); };
+    return rooms.slice().sort((a, b) => {
+      const diff = un(a) - un(b);
+      if (diff !== 0) return diff;
+      return ts(b) - ts(a);
+    }).filter((r) => {
       // фильтры (enriched /chat/rooms, PR #62)
       const unread = r.unread_count ?? r.unread ?? 0;
       if (filter === 'unread' && !(unread > 0)) return false;
@@ -414,18 +418,42 @@ export default function ChatsListScreen({ navigation, route }) {
       ) : null}
 
       {!showOffersSeg ? (
-        <View style={[s.search, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Feather name="search" size={17} color={theme.textMuted} />
-          <TextInput
-            style={[s.searchInput, { color: theme.text }]}
-            placeholder={t('chat_search_placeholder')}
-            placeholderTextColor={theme.textMuted}
-            value={query}
-            onChangeText={setQuery}
-            testID="deal-room-search"
-          />
-          {query ? <TouchableOpacity onPress={() => setQuery('')}><Feather name="x" size={16} color={theme.textMuted} /></TouchableOpacity> : null}
-        </View>
+        <>
+          <View style={[s.search, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Feather name="search" size={17} color={theme.textMuted} />
+            <TextInput
+              style={[s.searchInput, { color: theme.text }]}
+              placeholder={t('chat_search_placeholder')}
+              placeholderTextColor={theme.textMuted}
+              value={query}
+              onChangeText={setQuery}
+              testID="deal-room-search"
+            />
+            {query ? <TouchableOpacity onPress={() => setQuery('')}><Feather name="x" size={16} color={theme.textMuted} /></TouchableOpacity> : null}
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filtersScroll} contentContainerStyle={s.filters}>
+            {[
+              { key: 'all', label: t('chat_filter_all') },
+              { key: 'unread', label: t('chat_filter_unread'), count: unreadRoomsCount },
+              { key: 'active', label: t('chat_filter_active_deals') },
+              { key: 'archive', label: t('chat_filter_archive') },
+            ].map((f) => {
+              const on = filter === f.key;
+              return (
+                <TouchableOpacity
+                  key={f.key}
+                  testID={`chat-filter-${f.key}`}
+                  style={[s.chip, { backgroundColor: on ? accent : 'transparent', borderColor: on ? accent : theme.border }]}
+                  onPress={() => setFilter(f.key)}
+                >
+                  <Text style={[s.chipTxt, { color: on ? '#0C0A09' : theme.textMuted }]}>
+                    {f.label}{f.count ? ` (${f.count})` : ''}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </>
       ) : null}
 
       {loading ? (

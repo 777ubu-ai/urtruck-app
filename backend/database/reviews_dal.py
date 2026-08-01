@@ -29,11 +29,24 @@ def add_review(*, trip_id, author_id, author_role, target_id, target_role, ratin
 def get_reviews_for(target_id: str, limit: int = 50) -> list:
     with get_conn() as c:
         rows = c.execute(
-            "SELECT * FROM reviews WHERE target_id = ? AND is_visible = 1 "
-            "ORDER BY created_at DESC LIMIT ?",
+            "SELECT r.*, dr.full_name AS author_name "
+            "FROM reviews r "
+            "LEFT JOIN drivers_registration dr ON dr.id = r.author_id "
+            "WHERE r.target_id = ? AND r.is_visible = 1 "
+            "ORDER BY r.created_at DESC LIMIT ?",
             (target_id, limit),
         ).fetchall()
-    return [dict(r) for r in rows]
+    result = []
+    for r in rows:
+        d = dict(r)
+        if d.get("tags") and isinstance(d["tags"], str):
+            try:
+                d["tags"] = json.loads(d["tags"])
+            except Exception:
+                d["tags"] = []
+        d["user"] = d.get("author_name") or (str(d.get("author_id", ""))[:8] if d.get("author_id") else None)
+        result.append(d)
+    return result
 
 
 def get_rating_summary(target_id: str) -> dict:

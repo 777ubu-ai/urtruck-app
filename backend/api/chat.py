@@ -478,6 +478,52 @@ def _enrich_rooms_with_deal_context(rooms: list, uid: str) -> None:
                             room["route_to"] = cargo["to_city"]
                             room["route_label"] = f"{cargo['from_city']} → {cargo['to_city']}"
 
+            # --- fallback: нет сделки → данные из cargo/bid/trip комнаты ---
+            if not deal:
+                r_cargo_id = room.get("cargo_id")
+                r_bid_id = room.get("bid_id")
+                r_trip_id = room.get("trip_id")
+                if r_bid_id:
+                    bid_row = c.execute(
+                        "SELECT cargo_id, trip_id, amount, status FROM bids WHERE id = ?",
+                        (r_bid_id,),
+                    ).fetchone()
+                    if bid_row:
+                        bid_row = dict(bid_row)
+                        room["bid_id"] = r_bid_id
+                        room["bid_amount"] = bid_row.get("amount")
+                        if not r_cargo_id:
+                            r_cargo_id = bid_row.get("cargo_id")
+                        if not r_trip_id:
+                            r_trip_id = bid_row.get("trip_id")
+                if r_cargo_id:
+                    cargo = c.execute(
+                        "SELECT cargo_desc, cargo_type, weight_tons, currency, "
+                        "from_city, to_city FROM cargos WHERE id = ?",
+                        (r_cargo_id,),
+                    ).fetchone()
+                    if cargo:
+                        cargo = dict(cargo)
+                        room["cargo_title"] = cargo.get("cargo_desc")
+                        room["cargo_type"] = cargo.get("cargo_type")
+                        room["cargo_weight"] = cargo.get("weight_tons")
+                        room["bid_currency"] = cargo.get("currency")
+                        if not room["route_label"] and cargo.get("from_city") and cargo.get("to_city"):
+                            room["route_from"] = cargo["from_city"]
+                            room["route_to"] = cargo["to_city"]
+                            room["route_label"] = f"{cargo['from_city']} → {cargo['to_city']}"
+                if r_trip_id and not room["route_label"]:
+                    trip = c.execute(
+                        "SELECT from_city, to_city, driver_name FROM trips WHERE id = ?",
+                        (r_trip_id,),
+                    ).fetchone()
+                    if trip:
+                        trip = dict(trip)
+                        if trip.get("from_city") and trip.get("to_city"):
+                            room["route_from"] = trip["from_city"]
+                            room["route_to"] = trip["to_city"]
+                            room["route_label"] = f"{trip['from_city']} → {trip['to_city']}"
+
             # --- support / роль партнёра-бота ---
             if partner_id == SUPPORT_ID:
                 room["is_support"] = True

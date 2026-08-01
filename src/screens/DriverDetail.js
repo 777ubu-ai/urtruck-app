@@ -275,6 +275,15 @@ export default function DriverDetail({ navigation, route }) {
                     ))}
                   </View>
                 </View>
+                {Array.isArray(r.tags) && r.tags.length > 0 ? (
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4, marginBottom: 2 }}>
+                    {r.tags.map((tag) => (
+                      <View key={tag} style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: '#FBBF2418', borderWidth: 1, borderColor: '#FBBF24' }}>
+                        <Text style={{ fontSize: 10, fontWeight: '600', color: '#FBBF24' }}>{t(`rating_tag_${tag}`) || tag}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
                 {text ? <Text style={[s.reviewText, { color: v1.textMuted }]}>{text}</Text> : null}
                 <Text style={[s.reviewAgo, { color: v1.textMuted }]}>{ago}</Text>
               </View>
