@@ -777,5 +777,6 @@
   "createFieldLocation": "Место",
   "createFieldVisibility": "Кому видно",
   "createVisibilityPublic": "Всем",
-  "createDragToReorder": "Перетащите, чтобы изменить порядок"
+  "createDragToReorder": "Перетащите, чтобы изменить порядок",
+  "feedInviteContactTooltip": "Пригласить контакт"
 }

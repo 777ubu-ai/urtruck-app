@@ -777,5 +777,6 @@
   "createFieldLocation": "Location",
   "createFieldVisibility": "Who can see this",
   "createVisibilityPublic": "Public",
-  "createDragToReorder": "Drag to reorder"
+  "createDragToReorder": "Drag to reorder",
+  "feedInviteContactTooltip": "Invite contact"
 }

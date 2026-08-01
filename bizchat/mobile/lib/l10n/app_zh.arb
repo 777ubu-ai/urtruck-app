@@ -777,5 +777,6 @@
   "createFieldLocation": "位置",
   "createFieldVisibility": "谁可以看到",
   "createVisibilityPublic": "所有人",
-  "createDragToReorder": "拖动以重新排序"
+  "createDragToReorder": "拖动以重新排序",
+  "feedInviteContactTooltip": "邀请联系人"
 }

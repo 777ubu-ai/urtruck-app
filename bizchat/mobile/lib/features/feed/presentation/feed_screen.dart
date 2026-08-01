@@ -124,68 +124,23 @@ class _FeedScreenState extends State<FeedScreen> {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context)!;
-    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
-        // Верхняя панель по мокапу SourceHub: слева логотип со слоганом,
-        // справа — поиск (иконка), сообщения (пузырёк), уведомления
-        // (колокольчик). Никаких вкладок здесь нет, они опустились на строку
-        // ниже под шапку.
-        leadingWidth: double.infinity,
-        leading: Padding(
-          padding: const EdgeInsets.only(left: 16),
-          child: Row(
-            children: [
-              Container(
-                width: 30,
-                height: 30,
-                decoration: BoxDecoration(
-                  color: scheme.primary,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                alignment: Alignment.center,
-                child: Icon(Icons.hub_rounded,
-                    color: scheme.onPrimary, size: 18),
-              ),
-              const SizedBox(width: 10),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    l.appTitle,
-                    style: const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w800,
-                      height: 1.1,
-                      letterSpacing: -0.3,
-                    ),
-                  ),
-                  Text(
-                    l.brandTagline,
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: scheme.onSurfaceVariant,
-                      height: 1.1,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(width: 8),
-              const _RealtimeStatusDot(),
-            ],
-          ),
-        ),
+        // По мокапу SourceHub слева — только «назад» (стрелка), в центре
+        // ничего, справа три иконки: пригласить контакт, сообщения,
+        // уведомления. Логотип и слоган на главной панели НЕ показываются —
+        // они путают, потому что дублируют название вкладки браузера.
+        leading: const _RealtimeStatusDot(),
         title: const SizedBox.shrink(),
         titleSpacing: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.search_rounded),
-            tooltip: l.navExplore,
+            icon: const Icon(Icons.person_add_alt_1_rounded),
+            tooltip: l.feedInviteContactTooltip,
             onPressed: () {
-              // Тап на «Поиск» — быстрый путь на вкладку Explore. Пусть
-              // экран поиска остаётся источником истины, здесь просто
-              // проброс из шапки.
+              // Пока переносит на «Обзор» — оттуда идёт поиск заводов
+              // и добавление в подписки. Позже здесь будет прямая форма
+              // «Пригласить контакт» по номеру телефона.
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const SearchScreen()),
               );

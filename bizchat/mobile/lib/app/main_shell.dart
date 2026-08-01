@@ -158,46 +158,60 @@ class _MainShellState extends State<MainShell> {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       body: IndexedStack(index: _index, children: tabs),
+      // Нижнее меню строго по мокапу SourceHub: пять пунктов с подписями,
+      // подпись активной вкладки — зелёная. «Create» — центральная
+      // крупная зелёная кнопка со скругленными углами.
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: _onNavTap,
-        height: 58,
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
+        height: 72,
+        backgroundColor: scheme.surface,
+        surfaceTintColor: scheme.surface,
+        indicatorColor: Colors.transparent,
+        overlayColor: WidgetStateProperty.all(Colors.transparent),
+        labelBehavior:
+            NavigationDestinationLabelBehavior.onlyShowSelected,
         destinations: [
           NavigationDestination(
-            icon: const Icon(Icons.home_outlined, size: 26),
-            selectedIcon: const Icon(Icons.home_rounded, size: 26),
+            icon: Icon(Icons.home_outlined,
+                size: 26, color: scheme.onSurfaceVariant),
+            selectedIcon:
+                Icon(Icons.home_rounded, size: 26, color: scheme.primary),
             label: l.navHome,
           ),
           NavigationDestination(
-            icon: const Icon(Icons.search_rounded, size: 26),
-            selectedIcon: const Icon(Icons.search_rounded, size: 26),
+            icon: Icon(Icons.search_rounded,
+                size: 26, color: scheme.onSurfaceVariant),
+            selectedIcon: Icon(Icons.search_rounded,
+                size: 26, color: scheme.primary),
             label: l.navExplore,
           ),
-          // Create — центральная зелёная кнопка «+», как у Ерасыла в
-          // мокапе SourceHub. Не переключает вкладку, а открывает форму
-          // публикации поверх текущего экрана.
           NavigationDestination(
             icon: Container(
-              width: 42,
-              height: 30,
+              width: 48,
+              height: 34,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: scheme.primary,
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(Icons.add, color: scheme.onPrimary, size: 22),
+              child:
+                  Icon(Icons.add, color: scheme.onPrimary, size: 24),
             ),
             label: l.navCreate,
           ),
           NavigationDestination(
-            icon: const Icon(Icons.bookmark_outline_rounded, size: 26),
-            selectedIcon: const Icon(Icons.bookmark_rounded, size: 26),
+            icon: Icon(Icons.bookmark_outline_rounded,
+                size: 26, color: scheme.onSurfaceVariant),
+            selectedIcon: Icon(Icons.bookmark_rounded,
+                size: 26, color: scheme.primary),
             label: l.navSaved,
           ),
           NavigationDestination(
-            icon: const Icon(Icons.person_outline_rounded, size: 26),
-            selectedIcon: const Icon(Icons.person_rounded, size: 26),
+            icon: Icon(Icons.person_outline_rounded,
+                size: 26, color: scheme.onSurfaceVariant),
+            selectedIcon: Icon(Icons.person_rounded,
+                size: 26, color: scheme.primary),
             label: l.navProfile,
           ),
         ],

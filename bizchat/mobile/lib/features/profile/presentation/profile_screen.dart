@@ -318,84 +318,714 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
     }
     final p = _profile!;
+    // Если профиль — завод, показываем ту же структуру, что и на публичном
+    // профиле (мокап SourceHub Factory Page): cover сверху, крупный аватар
+    // поверх него, кнопка «Редактировать», плашка Verified, четыре
+    // счётчика, структурированные факты и пять вкладок с сеткой постов.
+    if (p.isFactory) {
+      return RefreshIndicator(
+        onRefresh: _load,
+        child: _FactoryHome(
+          profile: p,
+          highlightsKey: _highlightsKey,
+          gridKey: _gridKey,
+          onEdit: _openEdit,
+        ),
+      );
+    }
+    // Байер: старая простая раскладка — cover им не нужен, структурированных
+    // полей нет.
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
         padding: EdgeInsets.zero,
-        // Порядок блоков жёстко зафиксирован и повторяет профиль соцсети:
-        //   1) шапка: аватар + три счётчика
-        //   2) описание: имя, категория, текст, ссылки и контакты
-        //   3) кнопки «Редактировать профиль» и «Поделиться» — под описанием
-        //   4) «Актуальное» — карусель кружков
-        //   5) вкладки контента
-        //   6) сетка превью во всю ширину
-        // Ничего между этими блоками не вставляем.
         children: [
-          if (p.factory?.coverUrl != null && p.factory!.coverUrl!.isNotEmpty)
-            _CoverBanner(url: p.factory!.coverUrl!),
           Padding(
-            padding: EdgeInsets.fromLTRB(
-              16,
-              (p.factory?.coverUrl != null && p.factory!.coverUrl!.isNotEmpty)
-                  ? 12
-                  : 16,
-              16,
-              0,
-            ),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
             child: _ProfileHeader(profile: p),
           ),
           const SizedBox(height: 14),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
+            child: _ProfileActionButton(
+              label: l.profileEditProfile,
+              onTap: _openEdit,
+            ),
+          ),
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openEdit() async {
+    final p = _profile!;
+    final updated = await Navigator.of(context).push<MyProfile>(
+      MaterialPageRoute(
+        builder: (_) => EditProfileScreen(initial: p),
+      ),
+    );
+    if (updated != null && mounted) {
+      setState(() {
+        _profile = updated;
+        _gridKey = UniqueKey();
+      });
+    }
+  }
+}
+
+/// Домашняя страница завода — свой профиль с той же раскладкой, что и на
+/// публичном профиле по мокапу SourceHub. Владелец и покупатель видят
+/// одинаковое лицо магазина, чтобы владельцу было очевидно, как его страница
+/// выглядит для покупателя.
+class _FactoryHome extends StatelessWidget {
+  const _FactoryHome({
+    required this.profile,
+    required this.highlightsKey,
+    required this.gridKey,
+    required this.onEdit,
+  });
+
+  final MyProfile profile;
+  final GlobalKey<ProfileHighlightsState> highlightsKey;
+  final Key gridKey;
+  final VoidCallback onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
+    final scheme = Theme.of(context).colorScheme;
+    final f = profile.factory;
+    final coverUrl = (f?.coverUrl != null && f!.coverUrl!.isNotEmpty)
+        ? ApiClient.resolveMediaUrl(f.coverUrl!)
+        : null;
+    final avatarUrl = profile.avatarUrl != null
+        ? ApiClient.resolveMediaUrl(profile.avatarUrl!)
+        : null;
+    final displayName = profile.name?.isNotEmpty == true
+        ? profile.name!
+        : (f?.companyName ?? l.profileNoName);
+    final country = profile.countryCode?.trim() ?? '';
+    final town = profile.city?.trim() ?? '';
+    final place = country.isNotEmpty && town.isNotEmpty
+        ? '$town, $country'
+        : (country.isNotEmpty ? country : town);
+    final verified = f?.verifiedAt != null;
+
+    return DefaultTabController(
+      length: 5,
+      child: NestedScrollView(
+        headerSliverBuilder: (_, __) => [
+          SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: _ProfileActionButton(
-                    label: l.profileEditProfile,
-                    onTap: () async {
-                      final updated =
-                          await Navigator.of(context).push<MyProfile>(
-                        MaterialPageRoute(
-                          builder: (_) => EditProfileScreen(initial: p),
+                // Cover + аватар, наложенный на его нижнюю границу
+                _CoverWithAvatar(
+                  coverUrl: coverUrl,
+                  avatarUrl: avatarUrl,
+                  companyName: f?.companyName ?? displayName,
+                ),
+                const SizedBox(height: 44),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              displayName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.3,
+                              ),
+                            ),
+                          ),
+                          if (verified) ...[
+                            const SizedBox(width: 6),
+                            Icon(Icons.verified_rounded,
+                                size: 20, color: scheme.primary),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          if (place.isNotEmpty) ...[
+                            Icon(Icons.place_outlined,
+                                size: 14, color: scheme.onSurfaceVariant),
+                            const SizedBox(width: 4),
+                            Text(place,
+                                style: TextStyle(
+                                    color: scheme.onSurfaceVariant,
+                                    fontSize: 13)),
+                          ],
+                          if (place.isNotEmpty && f?.establishedYear != null)
+                            Text('  ·  ',
+                                style: TextStyle(
+                                    color: scheme.onSurfaceVariant)),
+                          if (f?.establishedYear != null)
+                            Text(
+                              l.factoryEstablished(f!.establishedYear!),
+                              style: TextStyle(
+                                  color: scheme.onSurfaceVariant,
+                                  fontSize: 13),
+                            ),
+                        ],
+                      ),
+                      if (verified) ...[
+                        const SizedBox(height: 8),
+                        _VerifiedBadge(scheme: scheme, l: l),
+                      ],
+                      const SizedBox(height: 14),
+                      _FactoryStatsRow(profile: profile),
+                      if (f?.description != null &&
+                          f!.description!.isNotEmpty) ...[
+                        const SizedBox(height: 14),
+                        Text(
+                          f.description!,
+                          style: const TextStyle(
+                              fontSize: 13.5, height: 1.4),
                         ),
-                      );
-                      if (updated != null && mounted) {
-                        setState(() => _profile = updated);
-                      }
-                    },
+                      ],
+                      if (f?.address != null && f!.address!.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(Icons.storefront_outlined,
+                                size: 15, color: scheme.onSurfaceVariant),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                f.address!,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: scheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                      const SizedBox(height: 12),
+                      _FactsGridForMe(profile: profile, l: l),
+                      if ((f?.whatsapp != null && f!.whatsapp!.isNotEmpty) ||
+                          (f?.website != null && f!.website!.isNotEmpty)) ...[
+                        if (f!.whatsapp != null && f.whatsapp!.isNotEmpty)
+                          ProfileLink(
+                            icon: Icons.chat_rounded,
+                            text: 'wa.me/${f.whatsapp}',
+                            url:
+                                'https://wa.me/${f.whatsapp!.replaceAll(RegExp(r'[^0-9]'), '')}',
+                          ),
+                        if (f.website != null && f.website!.isNotEmpty)
+                          ProfileLink(
+                            icon: Icons.link_rounded,
+                            text: f.website!,
+                            url: f.website!.startsWith('http')
+                                ? f.website!
+                                : 'https://${f.website!}',
+                          ),
+                      ],
+                      const SizedBox(height: 14),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: onEdit,
+                          icon: const Icon(Icons.edit_outlined, size: 18),
+                          label: Text(l.profileEditProfile),
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size(0, 40),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      ProfileHighlights(
+                        key: highlightsKey,
+                        userId: profile.id,
+                        canCreate: true,
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _ProfileActionButton(
-                    label: l.profileShareProfile,
-                    onTap: () => Share.share(
-                      'SourceHub — ${p.factory?.companyName ?? p.name ?? "профиль"}\n'
-                      'https://biz-chat.net/app/',
-                    ),
-                  ),
-                ),
+                const SizedBox(height: 8),
               ],
             ),
           ),
-          const SizedBox(height: 18),
-          // Блок рекомендаций — ровно там же, где он стоит в референсе:
-          // под кнопками действий и над «Актуальным». Он же будущее место
-          // платного размещения заводов.
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: InterestingFactories(excludeUserId: p.id),
-          ),
-          const SizedBox(height: 16),
-          ProfileHighlights(
-            key: _highlightsKey,
-            userId: p.id,
-            canCreate: p.isFactory,
-          ),
-          const SizedBox(height: 4),
-          _UserPostsGrid(key: _gridKey, userId: p.id),
-          const SizedBox(height: 24),
         ],
+        body: _FactoryTabsForMe(profile: profile, gridKey: gridKey),
+      ),
+    );
+  }
+}
+
+class _VerifiedBadge extends StatelessWidget {
+  const _VerifiedBadge({required this.scheme, required this.l});
+  final ColorScheme scheme;
+  final AppLocalizations l;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: scheme.primary.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.check_circle_rounded, size: 14, color: scheme.primary),
+          const SizedBox(width: 5),
+          Text(
+            l.factoryVerifiedFactory,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: scheme.primary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CoverWithAvatar extends StatelessWidget {
+  const _CoverWithAvatar({
+    required this.coverUrl,
+    required this.avatarUrl,
+    required this.companyName,
+  });
+  final String? coverUrl;
+  final String? avatarUrl;
+  final String companyName;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final letter =
+        companyName.trim().isNotEmpty ? companyName.trim()[0].toUpperCase() : '?';
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        SizedBox(
+          width: double.infinity,
+          height: 160,
+          child: coverUrl != null
+              ? CachedNetworkImage(
+                  imageUrl: coverUrl!,
+                  fit: BoxFit.cover,
+                  placeholder: (_, __) =>
+                      Container(color: scheme.surfaceContainerHighest),
+                  errorWidget: (_, __, ___) =>
+                      Container(color: scheme.surfaceContainerHighest),
+                )
+              : Container(color: scheme.surfaceContainerHighest),
+        ),
+        Positioned(
+          left: 16,
+          bottom: -34,
+          child: Container(
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(
+              color: scheme.surface,
+              shape: BoxShape.circle,
+            ),
+            child: CircleAvatar(
+              radius: 40,
+              backgroundColor: scheme.primary,
+              backgroundImage: avatarUrl != null
+                  ? CachedNetworkImageProvider(avatarUrl!)
+                  : null,
+              child: avatarUrl == null
+                  ? Text(
+                      letter,
+                      style: TextStyle(
+                        color: scheme.onPrimary,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 26,
+                      ),
+                    )
+                  : null,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FactoryStatsRow extends StatelessWidget {
+  const _FactoryStatsRow({required this.profile});
+  final MyProfile profile;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
+    final f = profile.factory;
+    return Row(
+      children: [
+        Expanded(
+          child: _StatCell(
+            value: '${profile.followersCount}',
+            label: l.profileWordFollowers(profile.followersCount),
+          ),
+        ),
+        Expanded(
+          child: _StatCell(
+            value: '${profile.postsCount}',
+            label: l.profileWordPosts(profile.postsCount),
+          ),
+        ),
+        Expanded(
+          child: _StatCell(
+            value: '—',
+            label: l.factoryStatProfileViews,
+          ),
+        ),
+        Expanded(
+          child: _StatCell(
+            value: (f?.avgRating ?? 0) > 0
+                ? f!.avgRating.toStringAsFixed(1)
+                : '—',
+            label: l.factoryStatRating,
+            starred: true,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _StatCell extends StatelessWidget {
+  const _StatCell({
+    required this.value,
+    required this.label,
+    this.starred = false,
+  });
+  final String value;
+  final String label;
+  final bool starred;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.3,
+                height: 1.1,
+              ),
+            ),
+            if (starred && value != '—') ...[
+              const SizedBox(width: 3),
+              const Icon(Icons.star_rounded,
+                  size: 14, color: Colors.amber),
+            ],
+          ],
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant),
+        ),
+      ],
+    );
+  }
+}
+
+class _FactsGridForMe extends StatelessWidget {
+  const _FactsGridForMe({required this.profile, required this.l});
+  final MyProfile profile;
+  final AppLocalizations l;
+
+  String _factoryTypeLabel(String? key) {
+    switch (key) {
+      case 'manufacturer':
+        return l.editProfileFactoryTypeManufacturer;
+      case 'trading':
+        return l.editProfileFactoryTypeTrading;
+      case 'both':
+        return l.editProfileFactoryTypeBoth;
+      default:
+        return '—';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final f = profile.factory;
+    if (f == null) return const SizedBox.shrink();
+    final items = <(IconData, String, String)>[
+      if (f.factoryType != null)
+        (Icons.factory_outlined, l.factoryFieldType,
+            _factoryTypeLabel(f.factoryType)),
+      if (f.certifications.isNotEmpty)
+        (Icons.verified_outlined, l.factoryFieldCertifications,
+            f.certifications.join(', ')),
+      if (f.mainProducts.isNotEmpty)
+        (Icons.inventory_2_outlined, l.factoryFieldMainProducts,
+            f.mainProducts.join(', ')),
+      if (f.exportMarkets.isNotEmpty)
+        (Icons.public_outlined, l.factoryFieldExportMarkets,
+            f.exportMarkets.join(', ')),
+      if (f.totalEmployees != null && f.totalEmployees!.isNotEmpty)
+        (Icons.groups_2_outlined, l.factoryFieldTotalEmployees,
+            f.totalEmployees!),
+    ];
+    if (items.isEmpty) return const SizedBox.shrink();
+    final scheme = Theme.of(context).colorScheme;
+    final rows = <Widget>[];
+    for (var i = 0; i < items.length; i += 2) {
+      final left = items[i];
+      final right = i + 1 < items.length ? items[i + 1] : null;
+      Widget cell((IconData, String, String) it) => Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(it.$1, size: 16, color: scheme.onSurfaceVariant),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(it.$2,
+                        style: TextStyle(
+                            fontSize: 11.5,
+                            color: scheme.onSurfaceVariant)),
+                    const SizedBox(height: 2),
+                    Text(it.$3,
+                        style: const TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                            height: 1.25)),
+                  ],
+                ),
+              ),
+            ],
+          );
+      rows.add(Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: cell(left)),
+            const SizedBox(width: 12),
+            Expanded(child: right == null ? const SizedBox() : cell(right)),
+          ],
+        ),
+      ));
+    }
+    return Column(children: rows);
+  }
+}
+
+/// Пять вкладок на своём профиле: Posts / Products / About / Certificates /
+/// Reviews. Владелец видит их так же, как их видит покупатель на публичном
+/// профиле.
+class _FactoryTabsForMe extends StatelessWidget {
+  const _FactoryTabsForMe({required this.profile, required this.gridKey});
+  final MyProfile profile;
+  final Key gridKey;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
+    return Column(
+      children: [
+        TabBar(
+          isScrollable: true,
+          tabAlignment: TabAlignment.start,
+          labelStyle:
+              const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+          tabs: [
+            Tab(text: l.factoryTabPosts),
+            Tab(text: l.factoryTabProducts),
+            Tab(text: l.factoryTabAbout),
+            Tab(text: l.factoryTabCertificates),
+            Tab(text: l.factoryTabReviews),
+          ],
+        ),
+        Expanded(
+          child: TabBarView(
+            children: [
+              _UserPostsGrid(key: gridKey, userId: profile.id),
+              _UserPostsGrid(userId: profile.id, productsOnly: true),
+              _AboutForMe(profile: profile),
+              _CertificatesForMe(profile: profile),
+              _ReviewsPlaceholderForMe(profile: profile),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AboutForMe extends StatelessWidget {
+  const _AboutForMe({required this.profile});
+  final MyProfile profile;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
+    final scheme = Theme.of(context).colorScheme;
+    final f = profile.factory;
+    final desc = f?.description;
+    final address = f?.address;
+    final tags = f?.hashtags ?? const <String>[];
+    if ((desc == null || desc.isEmpty) &&
+        (address == null || address.isEmpty) &&
+        tags.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(l.factoryNoAboutInfo,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: scheme.onSurfaceVariant)),
+        ),
+      );
+    }
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        if (desc != null && desc.isNotEmpty)
+          Text(desc, style: const TextStyle(fontSize: 14, height: 1.45)),
+        if (address != null && address.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.storefront_outlined,
+                  size: 18, color: scheme.onSurfaceVariant),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(address,
+                    style: const TextStyle(fontSize: 13.5, height: 1.35)),
+              ),
+            ],
+          ),
+        ],
+        if (tags.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: tags
+                .map((tag) => ActionChip(
+                      label: Text('#$tag'),
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => HashtagScreen(tag: tag),
+                          ),
+                        );
+                      },
+                    ))
+                .toList(),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _CertificatesForMe extends StatelessWidget {
+  const _CertificatesForMe({required this.profile});
+  final MyProfile profile;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
+    final scheme = Theme.of(context).colorScheme;
+    final certs = profile.factory?.certifications ?? const <String>[];
+    if (certs.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(l.factoryNoCertificates,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: scheme.onSurfaceVariant)),
+        ),
+      );
+    }
+    return ListView.separated(
+      padding: const EdgeInsets.all(16),
+      itemCount: certs.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      itemBuilder: (_, i) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: scheme.outlineVariant),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.verified_outlined,
+                color: scheme.primary, size: 22),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(certs[i],
+                  style: const TextStyle(
+                      fontSize: 14.5, fontWeight: FontWeight.w700)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ReviewsPlaceholderForMe extends StatelessWidget {
+  const _ReviewsPlaceholderForMe({required this.profile});
+  final MyProfile profile;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
+    final scheme = Theme.of(context).colorScheme;
+    final f = profile.factory;
+    final count = f?.reviewsCount ?? 0;
+    final rating = f?.avgRating ?? 0;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.reviews_outlined,
+                size: 56, color: scheme.onSurfaceVariant),
+            const SizedBox(height: 12),
+            Text(
+              count > 0
+                  ? '${rating.toStringAsFixed(1)} ★ · ${l.publicProfileReviewsCountPlural(count)}'
+                  : l.publicProfileNoReviewsTitle,
+              style: const TextStyle(
+                  fontSize: 15, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -659,8 +1289,16 @@ class _CountStat extends StatelessWidget {
 /// `/users/:id/posts` при первом монтировании. Тап на превью → детальный
 /// экран поста.
 class _UserPostsGrid extends StatefulWidget {
-  const _UserPostsGrid({super.key, required this.userId});
+  const _UserPostsGrid({
+    super.key,
+    required this.userId,
+    this.productsOnly = false,
+  });
   final String userId;
+
+  /// Если true — сразу открываем сетку только с товарами (type=='product')
+  /// и скрываем внутренние вкладки-переключатели.
+  final bool productsOnly;
 
   @override
   State<_UserPostsGrid> createState() => _UserPostsGridState();
@@ -706,45 +1344,48 @@ class _UserPostsGridState extends State<_UserPostsGrid> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final l = AppLocalizations.of(context)!;
-    // Вкладка «отмеченные» не рисуется: отметок на товарах в приложении нет,
-    // а вкладка, которая никогда не может ничего показать, только вводит в
-    // заблуждение. Появится функция — появится и третья вкладка.
-    final visible = _tab == 0
-        ? _posts
-        : _posts.where((p) => p.hasVideo).toList(growable: false);
+    // productsOnly — Products-вкладка на факторной странице показывает
+    // только type=='product'; в этом случае внутренний переключатель
+    // не нужен.
+    final visible = widget.productsOnly
+        ? _posts.where((p) => p.type == 'product').toList(growable: false)
+        : _tab == 0
+            ? _posts
+            : _posts.where((p) => p.hasVideo).toList(growable: false);
 
     // Сетка во всю ширину экрана, без карточки и отступов: плитки стыкуются
     // друг с другом и продолжаются вниз.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Container(
-          decoration: BoxDecoration(
-            border: Border(
-              top: BorderSide(color: scheme.outlineVariant, width: 0.5),
+        if (!widget.productsOnly)
+          Container(
+            decoration: BoxDecoration(
+              border: Border(
+                top: BorderSide(color: scheme.outlineVariant, width: 0.5),
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _GridTab(
+                    icon: Icons.grid_on_rounded,
+                    tooltip: l.profileTabGrid,
+                    selected: _tab == 0,
+                    onTap: () => setState(() => _tab = 0),
+                  ),
+                ),
+                Expanded(
+                  child: _GridTab(
+                    icon: Icons.slideshow_outlined,
+                    tooltip: l.profileTabVideo,
+                    selected: _tab == 1,
+                    onTap: () => setState(() => _tab = 1),
+                  ),
+                ),
+              ],
             ),
           ),
-          child: Row(
-            children: [
-              Expanded(
-                child: _GridTab(
-                  icon: Icons.grid_on_rounded,
-                  tooltip: l.profileTabGrid,
-                  selected: _tab == 0,
-                  onTap: () => setState(() => _tab = 0),
-                ),
-              ),
-              Expanded(
-                child: _GridTab(
-                  icon: Icons.slideshow_outlined,
-                  tooltip: l.profileTabVideo,
-                  selected: _tab == 1,
-                  onTap: () => setState(() => _tab = 1),
-                ),
-              ),
-            ],
-          ),
-        ),
         if (_loading && _posts.isEmpty)
           const Padding(
             padding: EdgeInsets.all(24),
