@@ -4,6 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import Feather from '@expo/vector-icons/Feather';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
+import { formatBids } from '../utils/i18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useToast } from '../components/Toast';
 import RouteMap from '../components/RouteMap';
@@ -64,6 +65,7 @@ export default function TripDetail({ navigation, route }) {
   myBidAmount: { fontSize: 22, fontWeight: '900', letterSpacing: -0.3 },
   myBidStatus: { fontSize: 13, fontWeight: '600', marginBottom: 12 },
   myBidCounter: { fontSize: 14, fontWeight: '800', marginBottom: 12 },
+  bidsTitle: { fontSize: 14, fontWeight: '700', marginTop: 2, marginBottom: 8 },
   myBidBtnRow: { flexDirection: 'row', gap: 10 },
   myBidBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, alignItems: 'center' },
   myBidBtnText: { fontSize: 14, fontWeight: '800' },
@@ -426,6 +428,8 @@ export default function TripDetail({ navigation, route }) {
 
   const stats = routeStats(trip.from, trip.to, trip.transit);
   const view = tripDisplay(trip, t);
+  // Принятая ставка → в блоке цены показываем сумму сделки, не листинг.
+  const acceptedBid = bids.find(b => b.status === 'accepted');
 
   const onDelete = () => {
     const confirmDelete = () => {
@@ -585,11 +589,34 @@ export default function TripDetail({ navigation, route }) {
           </TouchableOpacity>
         ) : null}
 
-        {/* Цена — выделенный блок с brand-accent */}
+        {/* Цена — выделенный блок с brand-accent. Если ставка ПРИНЯТА —
+            показываем сумму сделки, а не цену объявления (две разные цифры
+            на одном экране путали, зеркально CargoDetail). */}
         <GlassCard accent={v1Accent.main}>
-          <SectionTitle featherIcon="dollar-sign" label={t('price')} />
-          <Text style={[s.priceBig, { color: v1Accent.main }]} numberOfLines={1}>{view.price}</Text>
+          <SectionTitle featherIcon="dollar-sign" label={acceptedBid ? t('deal_price') : t('price')} />
+          <Text style={[s.priceBig, { color: v1Accent.main }]} numberOfLines={1} testID="trip-price-value">
+            {acceptedBid ? formatPrice(acceptedBid.amount, acceptedBid.currency || trip.currency, t) : view.price}
+          </Text>
         </GlassCard>
+
+        {/* Рыночный пульс: число предложений на этот рейс (видно всем —
+            социальное давление «машину заберут»), confidential-подсказка,
+            «будьте первым» на пустом рейсе. Зеркально CargoDetail. */}
+        {!isOwner ? (
+          <>
+            <Text style={[s.bidsTitle, { color: v1.text }]} testID="trip-bids-count">{formatBids(bidsCount)}</Text>
+            {bidsConfidential && bidsCount > 0 ? (
+              <Text style={{ color: v1.textMuted, textAlign: 'center', paddingHorizontal: 20, paddingBottom: 8, fontSize: 12 }}>
+                {t('bids_confidential_hint')}
+              </Text>
+            ) : null}
+            {bidsCount === 0 ? (
+              <Text style={{ color: v1.textMuted, paddingBottom: 8, fontSize: 13 }}>
+                {t('no_bids_be_first')}
+              </Text>
+            ) : null}
+          </>
+        ) : null}
 
         {/* Timeline статусов */}
         <GlassCard>
@@ -789,6 +816,22 @@ export default function TripDetail({ navigation, route }) {
             },
             testID: 'trip-sticky-bid',
           }}
+          secondary={{
+            // Чат с водителем доступен ДО ставки (на базаре сначала
+            // разговаривают) — зеркально CargoDetail. Комната создастся
+            // на первом сообщении по driverId.
+            label: '💬 ' + t('order_chat'),
+            onPress: () => {
+              if (chatRoomId) {
+                navigation.navigate('Chat', { roomId: chatRoomId, role, tripId: tid });
+              } else if (trip.driverId) {
+                navigation.navigate('Chat', { partner: { id: trip.driverId }, tripId: tid, role });
+              } else {
+                toast(t('chat_open_failed'), 'error');
+              }
+            },
+            testID: 'trip-sticky-chat',
+          }}
         />
       ) : null}
 
@@ -807,6 +850,7 @@ export default function TripDetail({ navigation, route }) {
         currentPrice={trip.price || 0}
         currency={trip.currency}
         tripId={trip.id}
+        direction="down"
         accent={v1Accent.main}
         onAccent={v1Accent.onAccent}
       />

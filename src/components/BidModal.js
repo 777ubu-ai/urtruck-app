@@ -49,6 +49,11 @@ export default function BidModal({
   // прокидывают v1AccentFor('client').main = оранжевый + onAccent = #0C0A09.
   accent = '#22C55E',
   onAccent = '#fff',
+  // Направление торга для quick-чипов (create-режим). 'up' (по умолчанию) —
+  // водитель на грузе просит БОЛЬШЕ бюджета клиента: цена/+200/+400.
+  // 'down' — клиент на рейсе торгуется ВНИЗ от цены водителя: цена/−200/−400.
+  // Раньше чипы всегда шли вверх и подталкивали клиента ПЕРЕПЛАТИТЬ.
+  direction = 'up',
 }) {
   // Runtime-режим: если create упирается в дубль (409 duplicate_bid) — бэк
   // отдаёт existing_bid_id/existing_amount, и модалка «на лету» переключается
@@ -117,8 +122,9 @@ export default function BidModal({
   };
   const hasBasePrice = Number(currentPrice) > 0;
   const createDeltas = CURRENCY_DELTAS[cur] || CURRENCY_DELTAS.USD;
+  const signedDeltas = direction === 'down' ? createDeltas.map((d) => -d) : createDeltas;
   const createQuickPrices = hasBasePrice
-    ? createDeltas.map((d) => Number(currentPrice) + d)
+    ? signedDeltas.map((d) => Math.max(1, Number(currentPrice) + d))
     : [];
   const discountSteps = DISCOUNT_DELTAS[cur] || DISCOUNT_DELTAS.USD;
 
