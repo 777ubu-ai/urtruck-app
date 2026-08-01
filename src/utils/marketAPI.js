@@ -31,8 +31,8 @@ function normalizeDetail(d, status) {
   if (typeof d === 'string') return d;
   if (typeof d === 'object') {
     if (d.hint && typeof d.hint === 'string' && d.hint.length) return d.hint;
+    if (d.message && typeof d.message === 'string' && d.message.length) return d.message;
     if (d.error && typeof d.error === 'string' && d.error.length) return d.error;
-    if (d.message && typeof d.message === 'string') return d.message;
     try { return JSON.stringify(d); } catch { return `Ошибка ${status}`; }
   }
   return String(d);

@@ -126,6 +126,7 @@ export default function TripDetail({ navigation, route }) {
   // рейса — непонятно, дошло или нет).
   const [myActiveBid, setMyActiveBid] = React.useState(null);
   const [openingChat, setOpeningChat] = React.useState(false);
+  const [cancelling, setCancelling] = React.useState(false);
 
   // Same authoritative-role logic as CargoDetail: route.params.role wins,
   // id-based comparison is a fallback for direct entry without a role hint.
@@ -148,7 +149,7 @@ export default function TripDetail({ navigation, route }) {
   const [refreshBidTick, setRefreshBidTick] = React.useState(0);
   const findMyBidFor = (list, tid) =>
     (list || []).find(b =>
-      b.trip_id === tid &&
+      String(b.trip_id) === String(tid) &&
       (b.status === 'pending' || b.status === 'countered')
     ) || null;
 
@@ -562,6 +563,32 @@ export default function TripDetail({ navigation, route }) {
               testID="trip-my-bid-chat"
             >
               <Text style={[s.myBidBtnText, { color: v1Accent.onAccent }]}>💬 {t('open_chat') || 'Чат'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.myBidBtn, { borderColor: '#EF4444' }, cancelling && { opacity: 0.5 }]}
+              onPress={async () => {
+                const ok = (typeof window !== 'undefined' && window.confirm)
+                  ? window.confirm(t('cancel_bid_confirm'))
+                  : true;
+                if (!ok) return;
+                setCancelling(true);
+                try {
+                  const r = await marketAPI.cancelBid(myActiveBid.id);
+                  if (r.ok) {
+                    toast('⊘ ' + t('bid_cancelled_toast'), 'success');
+                    setRefreshBidTick(x => x + 1);
+                  } else {
+                    toast(r.detail || t('cancel_failed'), 'error');
+                  }
+                } catch {
+                  toast(t('no_connection'), 'error');
+                }
+                setCancelling(false);
+              }}
+              disabled={cancelling}
+              testID="trip-my-bid-cancel"
+            >
+              <Text style={[s.myBidBtnText, { color: '#EF4444' }]}>⊘ {t('cancel_bid') || 'Отменить'}</Text>
             </TouchableOpacity>
           </View>
         </View>
