@@ -115,9 +115,18 @@ export default function ChatsListScreen({ navigation, route }) {
       setRooms(rooms);
       if (dealsMode) {
         // Живые предложения: у клиента — входящие ставки водителей по моим
-        // грузам, у водителя — его собственные ставки.
+        // грузам; у водителя — его собственные ставки ПЛЮС входящие ставки
+        // клиентов на его рейсы (_incoming — для верной подписи/действий:
+        // входящую водитель отклоняет rejectBid, свою отменяет cancelBid).
         const d = await marketAPI.myDashboard().catch(() => null);
-        const raw = d ? (role === 'driver' ? d.my_bids : d.incoming_bids) || [] : [];
+        const raw = d
+          ? (role === 'driver'
+              ? [
+                  ...(d.my_bids || []),
+                  ...((d.incoming_bids || []).filter((b) => b.trip_id).map((b) => ({ ...b, _incoming: true }))),
+                ]
+              : (d.incoming_bids || []))
+          : [];
         // Раньше «начатая переписка» (комната с любым last_message) выбрасывала
         // ставку из «Предложений» в «Чаты» (приказ 27.07). Но бэк создаёт
         // комнату вместе со ставкой и часто уже кладёт туда системное
@@ -202,15 +211,17 @@ export default function ChatsListScreen({ navigation, route }) {
     return result;
   }, [rooms, query, pinnedIds, t, lang]);
 
-  // Убрать предложение из списка: водитель отменяет СВОЮ ставку, клиент
-  // отклоняет входящую. С подтверждением — действие необратимо.
+  // Убрать предложение из списка: СВОЮ ставку отменяем (cancelBid),
+  // входящую отклоняем (rejectBid). У водителя теперь бывают обе:
+  // свои ставки на грузы и входящие (_incoming) на его рейсы.
   const dismissOffer = async (bid) => {
-    const q = role === 'driver' ? t('cancel_bid_confirm') : t('reject_bid_confirm_q');
+    const isMineBid = role === 'driver' && !bid._incoming;
+    const q = isMineBid ? t('cancel_bid_confirm') : t('reject_bid_confirm_q');
     const doIt = async () => {
-      const r = role === 'driver'
+      const r = isMineBid
         ? await marketAPI.cancelBid(bid.id).catch(() => null)
         : await marketAPI.rejectBid(bid.id).catch(() => null);
-      if (r && r.ok) { toast(role === 'driver' ? t('bid_cancelled_toast') : t('bid_rejected_toast'), 'success'); load(); }
+      if (r && r.ok) { toast(isMineBid ? t('bid_cancelled_toast') : t('bid_rejected_toast'), 'success'); load(); }
       else toast((r && r.detail) || t('send_error'), 'error');
     };
     if (Platform.OS === 'web' && typeof window !== 'undefined' && window.confirm) {
@@ -258,7 +269,7 @@ export default function ChatsListScreen({ navigation, route }) {
     const statusColor = seen ? theme.border : (isCountered ? '#A855F7' : '#FF8400');
     const label = isCountered
       ? t('deals_offer_bargain')
-      : (role === 'driver' ? t('deals_offer_waiting') : t('deals_offer_new'));
+      : (role === 'driver' && !bid._incoming ? t('deals_offer_waiting') : t('deals_offer_new'));
     const time = relTime(bid.created_at);
     return (
       <TouchableOpacity

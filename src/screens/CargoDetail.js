@@ -754,9 +754,17 @@ export default function CargoDetail({ navigation, route }) {
                       testID="bid-cancel"
                       style={[s.miniBtn, { borderColor: '#EF4444' }, cancelling === b.id && { opacity: 0.5 }]}
                       onPress={async () => {
-                        const ok = (typeof window !== 'undefined' && window.confirm)
-                          ? window.confirm(t('cancel_bid_confirm'))
-                          : true;
+                        // Подтверждение на обеих платформах — раньше на native
+                        // window.confirm отсутствовал → ok=true, отмена мгновенно.
+                        const ok = Platform.OS === 'web'
+                          ? (typeof window !== 'undefined' && window.confirm(t('cancel_bid_confirm')))
+                          : await new Promise((res) => Alert.alert(
+                              t('cancel_bid_confirm'), '',
+                              [
+                                { text: t('cancel'), style: 'cancel', onPress: () => res(false) },
+                                { text: t('cancel_bid'), style: 'destructive', onPress: () => res(true) },
+                              ],
+                            ));
                         if (!ok) return;
                         setCancelling(b.id);
                         try {

@@ -1455,12 +1455,21 @@ def my_dashboard(user=Depends(require_level(1))):
             "FROM bids b LEFT JOIN cargos c ON b.cargo_id = c.id "
             "LEFT JOIN trips t ON b.trip_id = t.id "
             "WHERE b.bidder_id = ? ORDER BY b.created_at DESC LIMIT 50", (uid,)).fetchall()]
-        # Ставки на МОИ грузы (входящие) — валюта груза.
+        # Ставки на МОИ листинги (входящие): грузы (клиент) И рейсы (водитель).
+        # Раньше JOIN шёл только на cargos — ставки клиентов на рейс водителя
+        # не попадали в incoming_bids вообще, водитель их нигде не видел.
+        # COALESCE: маршрут/валюта — от родителя (груз или рейс).
         incoming_bids = [dict(r) for r in c.execute(
-            "SELECT b.*, c.from_city as cargo_from, c.to_city as cargo_to, c.cargo_desc, "
-            "c.currency AS currency "
-            "FROM bids b JOIN cargos c ON b.cargo_id = c.id "
-            "WHERE c.owner_id = ? ORDER BY b.created_at DESC LIMIT 50", (uid,)).fetchall()]
+            "SELECT b.*, "
+            "COALESCE(c.from_city, t.from_city) as cargo_from, "
+            "COALESCE(c.to_city, t.to_city) as cargo_to, "
+            "c.cargo_desc, "
+            "COALESCE(c.currency, t.currency) AS currency "
+            "FROM bids b "
+            "LEFT JOIN cargos c ON b.cargo_id = c.id "
+            "LEFT JOIN trips t ON b.trip_id = t.id "
+            "WHERE c.owner_id = ? OR t.driver_id = ? "
+            "ORDER BY b.created_at DESC LIMIT 50", (uid, uid)).fetchall()]
         # Мои сделки. LEFT JOIN на cargos (описание/тип кузова/дата подачи) и на
         # drivers_registration (имя водителя/грузоотправителя) — без JOIN карточка
         # сделки на клиенте «Везут»/«Доставлено» рендерилась без груза, без типа
