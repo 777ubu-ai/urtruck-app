@@ -212,6 +212,13 @@ class FactoryProfile {
     this.website,
     this.whatsapp,
     this.address,
+    this.coverUrl,
+    this.factoryType,
+    this.mainProducts = const [],
+    this.certifications = const [],
+    this.exportMarkets = const [],
+    this.totalEmployees,
+    this.establishedYear,
     required this.hashtags,
     required this.trustScore,
     required this.verifiedAt,
@@ -228,6 +235,15 @@ class FactoryProfile {
   final String? whatsapp;
   /// Физический адрес — этаж/ряд/секция и т.п., текст как есть.
   final String? address;
+  /// Cover-баннер сверху страницы завода.
+  final String? coverUrl;
+  /// 'manufacturer' | 'trading' | 'both'.
+  final String? factoryType;
+  final List<String> mainProducts;
+  final List<String> certifications;
+  final List<String> exportMarkets;
+  final String? totalEmployees;
+  final int? establishedYear;
   final List<String> hashtags;
   final int trustScore;
   final DateTime? verifiedAt;
@@ -243,6 +259,15 @@ class FactoryProfile {
       website: json['website'] as String?,
       whatsapp: json['whatsapp'] as String?,
       address: json['address'] as String?,
+      coverUrl: json['coverUrl'] as String?,
+      factoryType: json['factoryType'] as String?,
+      mainProducts: (json['mainProducts'] as List?)?.cast<String>() ?? const [],
+      certifications:
+          (json['certifications'] as List?)?.cast<String>() ?? const [],
+      exportMarkets:
+          (json['exportMarkets'] as List?)?.cast<String>() ?? const [],
+      totalEmployees: json['totalEmployees'] as String?,
+      establishedYear: (json['establishedYear'] as num?)?.toInt(),
       hashtags: (json['hashtags'] as List?)?.cast<String>() ?? const [],
       trustScore: json['trustScore'] as int? ?? 50,
       verifiedAt: json['verifiedAt'] != null
@@ -305,6 +330,7 @@ class UserPostPreview {
     required this.viewsCount,
     required this.isHotDeal,
     required this.hasVideo,
+    required this.type,
   });
 
   final String id;
@@ -319,6 +345,11 @@ class UserPostPreview {
   /// Есть ли среди медиа видео — по этому признаку пост попадает во
   /// вкладку с видео на профиле.
   final bool hasVideo;
+
+  /// 'product' | 'reel' | 'hot_deal' | 'group_buy' — по этому полю пост
+  /// попадает во вкладку «Products» (только type=='product') или в общий
+  /// список «Posts» на профиле завода.
+  final String type;
 
   factory UserPostPreview.fromJson(Map<String, dynamic> json) {
     final media = (json['media'] as List?) ?? const [];
@@ -340,6 +371,7 @@ class UserPostPreview {
       viewsCount: (json['viewsCount'] as num?)?.toInt() ?? 0,
       isHotDeal: json['isHotDeal'] as bool? ?? false,
       hasVideo: hasVideo,
+      type: json['type'] as String? ?? 'product',
     );
   }
 }
@@ -358,6 +390,13 @@ class PublicProfile {
     this.factoryWebsite,
     this.factoryWhatsapp,
     this.factoryAddress,
+    this.factoryCoverUrl,
+    this.factoryType,
+    this.factoryMainProducts = const [],
+    this.factoryCertifications = const [],
+    this.factoryExportMarkets = const [],
+    this.factoryTotalEmployees,
+    this.factoryEstablishedYear,
     required this.factoryHashtags,
     required this.factoryTrustScore,
     required this.factoryTotalProducts,
@@ -382,6 +421,13 @@ class PublicProfile {
   final String? factoryWebsite;
   final String? factoryWhatsapp;
   final String? factoryAddress;
+  final String? factoryCoverUrl;
+  final String? factoryType;
+  final List<String> factoryMainProducts;
+  final List<String> factoryCertifications;
+  final List<String> factoryExportMarkets;
+  final String? factoryTotalEmployees;
+  final int? factoryEstablishedYear;
   final List<String> factoryHashtags;
   final int? factoryTrustScore;
   final int? factoryTotalProducts;
@@ -418,6 +464,17 @@ class PublicProfile {
       factoryWebsite: factory?['website'] as String?,
       factoryWhatsapp: factory?['whatsapp'] as String?,
       factoryAddress: factory?['address'] as String?,
+      factoryCoverUrl: factory?['coverUrl'] as String?,
+      factoryType: factory?['factoryType'] as String?,
+      factoryMainProducts:
+          (factory?['mainProducts'] as List?)?.cast<String>() ?? const [],
+      factoryCertifications:
+          (factory?['certifications'] as List?)?.cast<String>() ?? const [],
+      factoryExportMarkets:
+          (factory?['exportMarkets'] as List?)?.cast<String>() ?? const [],
+      factoryTotalEmployees: factory?['totalEmployees'] as String?,
+      factoryEstablishedYear:
+          (factory?['establishedYear'] as num?)?.toInt(),
       factoryHashtags:
           (factory?['hashtags'] as List?)?.cast<String>() ?? const [],
       factoryTrustScore: factory?['trustScore'] as int?,
@@ -615,6 +672,13 @@ class ProfileRepository {
     String? website,
     String? whatsapp,
     String? address,
+    String? coverUrl,
+    String? factoryType,
+    List<String>? mainProducts,
+    List<String>? certifications,
+    List<String>? exportMarkets,
+    String? totalEmployees,
+    int? establishedYear,
     bool? pushEnabled,
     Map<String, bool>? notificationPrefsPatch,
     /// HH:MM или пустая строка/null чтобы отключить.
@@ -634,6 +698,13 @@ class ProfileRepository {
     if (website != null) body['website'] = website;
     if (whatsapp != null) body['whatsapp'] = whatsapp;
     if (address != null) body['address'] = address;
+    if (coverUrl != null) body['coverUrl'] = coverUrl;
+    if (factoryType != null) body['factoryType'] = factoryType;
+    if (mainProducts != null) body['mainProducts'] = mainProducts;
+    if (certifications != null) body['certifications'] = certifications;
+    if (exportMarkets != null) body['exportMarkets'] = exportMarkets;
+    if (totalEmployees != null) body['totalEmployees'] = totalEmployees;
+    if (establishedYear != null) body['establishedYear'] = establishedYear;
     if (pushEnabled != null) body['pushEnabled'] = pushEnabled;
     if (notificationPrefsPatch != null && notificationPrefsPatch.isNotEmpty) {
       body['notificationPrefs'] = notificationPrefsPatch;

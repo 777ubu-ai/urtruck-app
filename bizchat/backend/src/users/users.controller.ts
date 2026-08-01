@@ -103,6 +103,13 @@ export class UsersController {
             website: user.factory.website,
             whatsapp: user.factory.whatsapp,
             address: user.factory.address,
+            coverUrl: user.factory.coverUrl,
+            factoryType: user.factory.factoryType,
+            mainProducts: user.factory.mainProducts ?? [],
+            certifications: user.factory.certifications ?? [],
+            exportMarkets: user.factory.exportMarkets ?? [],
+            totalEmployees: user.factory.totalEmployees,
+            establishedYear: user.factory.establishedYear,
             hashtags: user.factory.hashtags,
             trustScore: user.factory.trustScore,
             verifiedAt: user.factory.verifiedAt,
@@ -196,6 +203,27 @@ export class UsersController {
       if (dto.address !== undefined) {
         factoryPatch.address = dto.address || null;
       }
+      if (dto.coverUrl !== undefined) {
+        factoryPatch.coverUrl = dto.coverUrl || null;
+      }
+      if (dto.factoryType !== undefined) {
+        factoryPatch.factoryType = dto.factoryType || null;
+      }
+      if (dto.mainProducts !== undefined) {
+        factoryPatch.mainProducts = dto.mainProducts;
+      }
+      if (dto.certifications !== undefined) {
+        factoryPatch.certifications = dto.certifications;
+      }
+      if (dto.exportMarkets !== undefined) {
+        factoryPatch.exportMarkets = dto.exportMarkets;
+      }
+      if (dto.totalEmployees !== undefined) {
+        factoryPatch.totalEmployees = dto.totalEmployees || null;
+      }
+      if (dto.establishedYear !== undefined) {
+        factoryPatch.establishedYear = dto.establishedYear || null;
+      }
       if (Object.keys(factoryPatch).length > 0) {
         await manager.update(Factory, { userId }, factoryPatch);
       }
@@ -244,6 +272,13 @@ export class UsersController {
             website: fresh.factory.website,
             whatsapp: fresh.factory.whatsapp,
             address: fresh.factory.address,
+            coverUrl: fresh.factory.coverUrl,
+            factoryType: fresh.factory.factoryType,
+            mainProducts: fresh.factory.mainProducts ?? [],
+            certifications: fresh.factory.certifications ?? [],
+            exportMarkets: fresh.factory.exportMarkets ?? [],
+            totalEmployees: fresh.factory.totalEmployees,
+            establishedYear: fresh.factory.establishedYear,
             hashtags: fresh.factory.hashtags,
             trustScore: fresh.factory.trustScore,
             verifiedAt: fresh.factory.verifiedAt,
@@ -309,6 +344,13 @@ export class UsersController {
             website: user.factory.website,
             whatsapp: user.factory.whatsapp,
             address: user.factory.address,
+            coverUrl: user.factory.coverUrl,
+            factoryType: user.factory.factoryType,
+            mainProducts: user.factory.mainProducts ?? [],
+            certifications: user.factory.certifications ?? [],
+            exportMarkets: user.factory.exportMarkets ?? [],
+            totalEmployees: user.factory.totalEmployees,
+            establishedYear: user.factory.establishedYear,
             hashtags: user.factory.hashtags,
             trustScore: user.factory.trustScore,
             verifiedAt: user.factory.verifiedAt,

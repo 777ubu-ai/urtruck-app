@@ -103,6 +103,40 @@ export class UpdateMeDto {
   @Length(0, 1024)
   address?: string;
 
+  /// Cover-баннер завода — URL загруженного изображения.
+  @IsOptional()
+  @IsString()
+  @Length(0, 1024)
+  coverUrl?: string;
+
+  /// Тип завода: manufacturer / trading / both.
+  @IsOptional()
+  @IsString()
+  @IsIn(['manufacturer', 'trading', 'both'])
+  factoryType?: string;
+
+  /// Специализация — короткий список.
+  @IsOptional()
+  mainProducts?: string[];
+
+  /// Сертификаты качества.
+  @IsOptional()
+  certifications?: string[];
+
+  /// Регионы экспорта.
+  @IsOptional()
+  exportMarkets?: string[];
+
+  /// Размер производства — диапазон строкой (10+, 260+).
+  @IsOptional()
+  @IsString()
+  @Length(0, 32)
+  totalEmployees?: string;
+
+  /// Год основания.
+  @IsOptional()
+  establishedYear?: number;
+
   /**
    * Глобальный toggle push-уведомлений. Если false — сервер не шлёт пуши,
    * но in-app notifications всё равно создаются и видны в колокольчике.

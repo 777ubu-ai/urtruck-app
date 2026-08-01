@@ -9,8 +9,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:bizchat/main.dart';
 
 void main() {
-  testWidgets('BizChatApp starts with auth gate', (WidgetTester tester) async {
-    await tester.pumpWidget(const BizChatApp());
+  testWidgets('SourceHubApp starts with auth gate',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(const SourceHubApp());
 
     // Первый кадр — _AuthGate показывает индикатор загрузки, пока
     // идёт проверка наличия сессии в secure storage.

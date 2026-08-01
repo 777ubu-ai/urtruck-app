@@ -331,8 +331,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
         //   6) сетка превью во всю ширину
         // Ничего между этими блоками не вставляем.
         children: [
+          if (p.factory?.coverUrl != null && p.factory!.coverUrl!.isNotEmpty)
+            _CoverBanner(url: p.factory!.coverUrl!),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            padding: EdgeInsets.fromLTRB(
+              16,
+              (p.factory?.coverUrl != null && p.factory!.coverUrl!.isNotEmpty)
+                  ? 12
+                  : 16,
+              16,
+              0,
+            ),
             child: _ProfileHeader(profile: p),
           ),
           const SizedBox(height: 14),
@@ -968,6 +977,31 @@ class _ProfileActionButton extends StatelessWidget {
             color: scheme.onSurface,
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Cover-баннер сверху страницы завода — фото производства во всю ширину,
+/// без скруглений и внешних отступов. Аватар накладывается на его нижнюю
+/// границу в _ProfileHeader; тут только фон.
+class _CoverBanner extends StatelessWidget {
+  const _CoverBanner({required this.url});
+  final String url;
+
+  @override
+  Widget build(BuildContext context) {
+    final resolved = ApiClient.resolveMediaUrl(url);
+    final scheme = Theme.of(context).colorScheme;
+    return SizedBox(
+      width: double.infinity,
+      height: 140,
+      child: CachedNetworkImage(
+        imageUrl: resolved,
+        fit: BoxFit.cover,
+        placeholder: (_, _) => Container(color: scheme.surfaceContainerHighest),
+        errorWidget: (_, _, _) =>
+            Container(color: scheme.surfaceContainerHighest),
       ),
     );
   }

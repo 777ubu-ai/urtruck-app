@@ -30,6 +30,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   late final TextEditingController _websiteCtrl;
   late final TextEditingController _whatsappCtrl;
   late final TextEditingController _addressCtrl;
+  late final TextEditingController _mainProductsCtrl;
+  late final TextEditingController _certificationsCtrl;
+  late final TextEditingController _exportMarketsCtrl;
+  late final TextEditingController _totalEmployeesCtrl;
+  late final TextEditingController _establishedCtrl;
+  String? _factoryType;
+  String? _coverUrl;
+  bool _uploadingCover = false;
   late String _language;
   late String _currency;
   late String? _countryCode;
@@ -54,6 +62,22 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _websiteCtrl = TextEditingController(text: p.factory?.website ?? '');
     _whatsappCtrl = TextEditingController(text: p.factory?.whatsapp ?? '');
     _addressCtrl = TextEditingController(text: p.factory?.address ?? '');
+    _mainProductsCtrl = TextEditingController(
+      text: (p.factory?.mainProducts ?? const []).join(', '),
+    );
+    _certificationsCtrl = TextEditingController(
+      text: (p.factory?.certifications ?? const []).join(', '),
+    );
+    _exportMarketsCtrl = TextEditingController(
+      text: (p.factory?.exportMarkets ?? const []).join(', '),
+    );
+    _totalEmployeesCtrl =
+        TextEditingController(text: p.factory?.totalEmployees ?? '');
+    _establishedCtrl = TextEditingController(
+      text: p.factory?.establishedYear?.toString() ?? '',
+    );
+    _factoryType = p.factory?.factoryType;
+    _coverUrl = p.factory?.coverUrl;
     _language = p.language;
     _currency = p.currency;
     _countryCode = p.countryCode;
@@ -69,6 +93,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _websiteCtrl.dispose();
     _whatsappCtrl.dispose();
     _addressCtrl.dispose();
+    _mainProductsCtrl.dispose();
+    _certificationsCtrl.dispose();
+    _exportMarketsCtrl.dispose();
+    _totalEmployeesCtrl.dispose();
+    _establishedCtrl.dispose();
     super.dispose();
   }
 
@@ -103,6 +132,44 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
+  Future<void> _pickCover() async {
+    try {
+      final picked = await _picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1600,
+        imageQuality: 85,
+      );
+      if (picked == null) return;
+      setState(() => _uploadingCover = true);
+      final bytes = await picked.readAsBytes();
+      final result = await _uploadsRepo.uploadImages([
+        (filename: picked.name, bytes: bytes),
+      ]);
+      if (!mounted) return;
+      if (result.isNotEmpty) {
+        setState(() => _coverUrl = result.first.url);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(AppLocalizations.of(context)!
+                .editProfileAvatarUploadError(e.toString())),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _uploadingCover = false);
+    }
+  }
+
+  /// Строки, разделённые запятой, — в чистый список без пустых элементов.
+  List<String> _splitCsv(String raw) => raw
+      .split(',')
+      .map((s) => s.trim())
+      .where((s) => s.isNotEmpty)
+      .toList(growable: false);
+
   Future<void> _save() async {
     if (_saving) return;
     if (!_formKey.currentState!.validate()) return;
@@ -121,6 +188,19 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         website: isFactory ? _websiteCtrl.text.trim() : null,
         whatsapp: isFactory ? _whatsappCtrl.text.trim() : null,
         address: isFactory ? _addressCtrl.text.trim() : null,
+        coverUrl: isFactory ? (_coverUrl ?? '') : null,
+        factoryType: isFactory ? (_factoryType ?? '') : null,
+        mainProducts:
+            isFactory ? _splitCsv(_mainProductsCtrl.text) : null,
+        certifications:
+            isFactory ? _splitCsv(_certificationsCtrl.text) : null,
+        exportMarkets:
+            isFactory ? _splitCsv(_exportMarketsCtrl.text) : null,
+        totalEmployees:
+            isFactory ? _totalEmployeesCtrl.text.trim() : null,
+        establishedYear: isFactory
+            ? int.tryParse(_establishedCtrl.text.trim())
+            : null,
       );
       if (!mounted) return;
       Navigator.of(context).pop(updated);
@@ -255,6 +335,100 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   prefixIcon: const Icon(Icons.link_rounded),
                 ),
               ),
+              const SizedBox(height: 20),
+              // Обложка магазина — крупный баннер вверху страницы завода.
+              _CoverPicker(
+                coverUrl: _coverUrl,
+                uploading: _uploadingCover,
+                onPick: _pickCover,
+                onClear: () => setState(() => _coverUrl = ''),
+                resolve: _resolveAvatar,
+                labelPick: l.editProfileCoverPick,
+                labelTitle: l.editProfileCoverLabel,
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: _factoryType,
+                decoration: InputDecoration(
+                  labelText: l.editProfileFactoryTypeLabel,
+                  border: const OutlineInputBorder(),
+                ),
+                items: [
+                  DropdownMenuItem(
+                    value: 'manufacturer',
+                    child: Text(l.editProfileFactoryTypeManufacturer),
+                  ),
+                  DropdownMenuItem(
+                    value: 'trading',
+                    child: Text(l.editProfileFactoryTypeTrading),
+                  ),
+                  DropdownMenuItem(
+                    value: 'both',
+                    child: Text(l.editProfileFactoryTypeBoth),
+                  ),
+                ],
+                onChanged: (v) => setState(() => _factoryType = v),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _mainProductsCtrl,
+                maxLines: 2,
+                minLines: 1,
+                decoration: InputDecoration(
+                  labelText: l.editProfileMainProductsLabel,
+                  border: const OutlineInputBorder(),
+                  hintText: l.editProfileMainProductsHint,
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _certificationsCtrl,
+                maxLines: 2,
+                minLines: 1,
+                decoration: InputDecoration(
+                  labelText: l.editProfileCertificationsLabel,
+                  border: const OutlineInputBorder(),
+                  hintText: l.editProfileCertificationsHint,
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _exportMarketsCtrl,
+                maxLines: 2,
+                minLines: 1,
+                decoration: InputDecoration(
+                  labelText: l.editProfileExportMarketsLabel,
+                  border: const OutlineInputBorder(),
+                  hintText: l.editProfileExportMarketsHint,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _totalEmployeesCtrl,
+                      decoration: InputDecoration(
+                        labelText: l.editProfileTotalEmployeesLabel,
+                        border: const OutlineInputBorder(),
+                        hintText: l.editProfileTotalEmployeesHint,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _establishedCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: l.editProfileEstablishedYearLabel,
+                        border: const OutlineInputBorder(),
+                        hintText: l.editProfileEstablishedYearHint,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: 12),
             ],
             DropdownButtonFormField<String>(
@@ -385,5 +559,107 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     // Используем тот же helper что и для media — в ApiClient.
     // Импорт прямой делать не хочется (циклические зависимости риски), используем repo.
     return _uploadsRepo.baseStaticUrl + url;
+  }
+}
+
+/// Виджет выбора обложки магазина: пустое место кнопкой «выбрать», либо
+/// уже загруженная картинка с overlay-контролами (заменить / убрать).
+class _CoverPicker extends StatelessWidget {
+  const _CoverPicker({
+    required this.coverUrl,
+    required this.uploading,
+    required this.onPick,
+    required this.onClear,
+    required this.resolve,
+    required this.labelPick,
+    required this.labelTitle,
+  });
+
+  final String? coverUrl;
+  final bool uploading;
+  final VoidCallback onPick;
+  final VoidCallback onClear;
+  final String Function(String) resolve;
+  final String labelPick;
+  final String labelTitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final has = coverUrl != null && coverUrl!.isNotEmpty;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 6),
+          child: Text(labelTitle,
+              style: TextStyle(
+                fontSize: 13,
+                color: scheme.onSurfaceVariant,
+              )),
+        ),
+        InkWell(
+          onTap: uploading ? null : onPick,
+          borderRadius: BorderRadius.circular(14),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: Container(
+              width: double.infinity,
+              height: 130,
+              color: scheme.surfaceContainerHighest,
+              child: has
+                  ? Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        Image.network(resolve(coverUrl!), fit: BoxFit.cover),
+                        if (uploading)
+                          Container(
+                            color: Colors.black38,
+                            alignment: Alignment.center,
+                            child: const CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              color: Colors.white,
+                            ),
+                          ),
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: InkWell(
+                            onTap: onClear,
+                            borderRadius: BorderRadius.circular(20),
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: const BoxDecoration(
+                                color: Colors.black54,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.close,
+                                  size: 16, color: Colors.white),
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
+                  : Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.photo_camera_rounded,
+                            size: 28, color: scheme.onSurfaceVariant),
+                        const SizedBox(height: 6),
+                        Text(
+                          labelPick,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }

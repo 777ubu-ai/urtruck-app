@@ -84,6 +84,53 @@ export class Factory {
   @Column({ type: 'text', nullable: true })
   address!: string | null;
 
+  /// Cover-баннер сверху страницы завода — фото производства.
+  @Column({ name: 'cover_url', type: 'text', nullable: true })
+  coverUrl!: string | null;
+
+  /// Тип завода: 'manufacturer' | 'trading' | 'both'.
+  @Column({ name: 'factory_type', type: 'varchar', length: 32, nullable: true })
+  factoryType!: string | null;
+
+  /// Короткий список специализации (до 10 позиций).
+  @Column({
+    name: 'main_products',
+    type: 'text',
+    array: true,
+    default: () => "'{}'",
+  })
+  mainProducts!: string[];
+
+  /// Сертификаты качества (BSCI, ISO 9001, OEKO-TEX и т.п.).
+  @Column({
+    type: 'text',
+    array: true,
+    default: () => "'{}'",
+  })
+  certifications!: string[];
+
+  /// Регионы экспорта.
+  @Column({
+    name: 'export_markets',
+    type: 'text',
+    array: true,
+    default: () => "'{}'",
+  })
+  exportMarkets!: string[];
+
+  /// Размер производства — диапазон строкой (10+, 50+, 260+).
+  @Column({
+    name: 'total_employees',
+    type: 'varchar',
+    length: 32,
+    nullable: true,
+  })
+  totalEmployees!: string | null;
+
+  /// Год основания.
+  @Column({ name: 'established_year', type: 'int', nullable: true })
+  establishedYear!: number | null;
+
   /// WhatsApp для связи — основной канал переговоров по опту.
   @Column({ type: 'varchar', length: 32, nullable: true })
   whatsapp!: string | null;
