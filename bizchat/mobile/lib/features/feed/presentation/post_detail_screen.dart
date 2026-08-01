@@ -258,13 +258,12 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         text: post.title,
         targetLang: uiLang,
       );
-      // Переводим description если есть и отличается от title
+      // Переводим ОЧИЩЕННОЕ описание (без дубля title и контактов заводa)
+      final cleaned = _cleanDescription(post.description, post.title);
       String? descTranslated;
-      if (post.description != null &&
-          post.description!.isNotEmpty &&
-          post.description != post.title) {
+      if (cleaned != null && cleaned.isNotEmpty) {
         descTranslated = await repo.translate(
-          text: post.description!,
+          text: cleaned,
           targetLang: uiLang,
         );
       }
@@ -670,6 +669,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       );
     }
     if (post == null) return const SizedBox.shrink();
+    // Очищаем описание один раз — используем и для показа, и для условия.
+    final cleanedDesc = _cleanDescription(post.description, post.title);
     return ListView(
       padding: EdgeInsets.zero,
       children: [
@@ -719,10 +720,10 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             onSaveTap: _onSaveTap,
           ),
         ),
-        // BUG-010: не показываем описание если оно дублирует title или пустое
-        if (post.description != null &&
-            post.description!.isNotEmpty &&
-            post.description!.trim() != post.title.trim()) ...[
+        // BUG-010: не показываем описание если оно дублирует title, пустое
+        // или содержит только контакты (Contact/WeChat/Email/Phone —
+        // это данные профиля завода, здесь их быть не должно).
+        if (cleanedDesc != null) ...[
           const Divider(height: 32),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -741,7 +742,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  _translatedDescription ?? post.description!,
+                  _translatedDescription ?? cleanedDesc,
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 const SizedBox(height: 4),
@@ -1808,4 +1809,36 @@ class _GroupBuyJoinSheetState extends State<_GroupBuyJoinSheet> {
       ),
     );
   }
+}
+
+/// Очищает описание товара от «мусора», из-за которого один и тот же текст
+/// читался на карточке дважды:
+///   1. Префикс, полностью совпадающий с title — парсер поста иногда кладёт
+///      название в первую строку описания.
+///   2. Контактные строки вида `Contact: ...`, `WeChat: ...`, `Email: ...`,
+///      `Phone: ...`, `Telegram: ...`, `WhatsApp: ...`, `Address: ...`
+///      — это данные профиля завода, а не характеристика товара.
+/// Возвращает `null`, если после очистки остаётся пусто или ровно тот же
+/// title — тогда блок описания скрывается целиком.
+String? _cleanDescription(String? raw, String title) {
+  if (raw == null) return null;
+  var text = raw.trim();
+  if (text.isEmpty) return null;
+  final titleTrim = title.trim();
+  if (titleTrim.isNotEmpty &&
+      text.toLowerCase().startsWith(titleTrim.toLowerCase())) {
+    text = text.substring(titleTrim.length).trim();
+  }
+  final contactPattern = RegExp(
+    r'^\s*(contact|contacts|wechat|we\s*chat|email|e-mail|phone|tel|telephone|telegram|whatsapp|whats\s*app|address|адрес|контакт|контакты|телефон|почта|имейл|вичат)\s*[:：\-–—]',
+    caseSensitive: false,
+  );
+  final cleanedLines = text
+      .split(RegExp(r'\r?\n'))
+      .where((line) => !contactPattern.hasMatch(line))
+      .toList();
+  text = cleanedLines.join('\n').trim();
+  if (text.isEmpty) return null;
+  if (text.toLowerCase() == titleTrim.toLowerCase()) return null;
+  return text;
 }

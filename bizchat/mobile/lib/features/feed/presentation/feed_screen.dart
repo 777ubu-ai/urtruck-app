@@ -219,10 +219,23 @@ class _PostCardState extends State<_PostCard> {
   bool _likeInFlight = false;
   bool _saveInFlight = false;
 
+  /// Индекс текущего слайда в карусели медиа. Раньше в ленте показывалось
+  /// только первое фото — если товар из шести, увидеть остальные пять
+  /// можно было только открыв карточку. По мокапу SourceHub карусель
+  /// свайпается прямо в ленте, а внизу — точки-индикаторы.
+  final PageController _mediaPageController = PageController();
+  int _mediaIndex = 0;
+
   @override
   void initState() {
     super.initState();
     post = widget.post;
+  }
+
+  @override
+  void dispose() {
+    _mediaPageController.dispose();
+    super.dispose();
   }
 
   /// Тап по bookmark — оптимистично переключаем UI, потом await API.
@@ -407,17 +420,14 @@ class _PostCardState extends State<_PostCard> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final l = AppLocalizations.of(context)!;
-    final firstMedia = post.media.isNotEmpty ? post.media.first : null;
-    // Defensive: бэк теоретически может прислать `url`/`type` не строкой —
-    // используем `is String` чтобы не падать в `as String?` cast при rendering.
-    final rawUrlValue = firstMedia?['url'];
-    final rawMediaUrl = rawUrlValue is String ? rawUrlValue : null;
-    final firstMediaUrl =
-        rawMediaUrl != null ? ApiClient.resolveMediaUrl(rawMediaUrl) : null;
-    final rawTypeValue = firstMedia?['type'];
-    final firstMediaIsVideo =
-        (rawTypeValue is String && rawTypeValue == 'video') &&
-            rawMediaUrl != null;
+    // Все медиа поста для карусели в ленте. Раньше показывалось только
+    // первое фото — теперь свайпается всё, как в Instagram.
+    final mediaList = post.media
+        .whereType<Map>()
+        .map((m) => Map<String, dynamic>.from(m as Map))
+        .where((m) => m['url'] is String)
+        .toList(growable: false);
+    final hasMedia = mediaList.isNotEmpty;
 
     // Лента во всю ширину экрана, без «плавающих» карточек с отступами —
     // так устроены ленты соцсетей: фото работает на весь экран.
@@ -470,46 +480,82 @@ class _PostCardState extends State<_PostCard> {
               ],
             ),
           ),
-          // Медиа (первое фото или заглушка) + Hot Deal badge поверх
+          // Медиа-карусель с точками-индикаторами и счётчиком «i/N» в углу,
+          // как в мокапе SourceHub. Свайпается прямо в ленте.
           Stack(
             children: [
-              // WOW-1: double-tap to like (Instagram-style)
               DoubleTapLike(
                 onLike: () {
                   if (!post.isLikedByMe) _onLikeTap();
                 },
                 child: AspectRatio(
-                aspectRatio: 1,
-                child: firstMediaUrl == null
-                    ? Container(
-                        color: scheme.surfaceContainerHighest,
-                        child: Icon(Icons.image,
-                            size: 48, color: scheme.onSurfaceVariant),
-                      )
-                    : firstMediaIsVideo
-                        ? VideoMediaPlayer(
-                            mediaUrl: rawMediaUrl,
-                            autoplay: false, // в ленте — preview, не auto-play
-                            fit: BoxFit.cover,
-                          )
-                        : CachedNetworkImage(
-                            imageUrl: firstMediaUrl,
-                            fit: BoxFit.cover,
-                            placeholder: (_, __) => Container(
-                              color: scheme.surfaceContainerHighest,
-                              child: const Center(
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2),
+                  aspectRatio: 1,
+                  child: !hasMedia
+                      ? Container(
+                          color: scheme.surfaceContainerHighest,
+                          child: Icon(Icons.image,
+                              size: 48, color: scheme.onSurfaceVariant),
+                        )
+                      : PageView.builder(
+                          controller: _mediaPageController,
+                          itemCount: mediaList.length,
+                          onPageChanged: (i) =>
+                              setState(() => _mediaIndex = i),
+                          itemBuilder: (_, i) {
+                            final m = mediaList[i];
+                            final rawUrl = m['url'] as String;
+                            final url = ApiClient.resolveMediaUrl(rawUrl);
+                            final isVideo = m['type'] == 'video';
+                            if (isVideo) {
+                              return VideoMediaPlayer(
+                                mediaUrl: rawUrl,
+                                autoplay: false,
+                                fit: BoxFit.cover,
+                              );
+                            }
+                            return CachedNetworkImage(
+                              imageUrl: url,
+                              fit: BoxFit.cover,
+                              placeholder: (_, __) => Container(
+                                color: scheme.surfaceContainerHighest,
+                                child: const Center(
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2),
+                                ),
                               ),
-                            ),
-                            errorWidget: (_, __, ___) => Container(
-                              color: scheme.surfaceContainerHighest,
-                              child: Icon(Icons.broken_image,
-                                  color: scheme.onSurfaceVariant),
-                            ),
-                          ),
+                              errorWidget: (_, __, ___) => Container(
+                                color: scheme.surfaceContainerHighest,
+                                child: Icon(Icons.broken_image,
+                                    color: scheme.onSurfaceVariant),
+                              ),
+                            );
+                          },
+                        ),
                 ),
               ),
+              // Счётчик «1/6» в правом верхнем углу — как в мокапе, только
+              // когда фото больше одного (одиночному счётчик не нужен).
+              if (mediaList.length > 1)
+                Positioned(
+                  top: 12,
+                  right: 12,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.55),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      '${_mediaIndex + 1}/${mediaList.length}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
               if (post.isHotDeal && post.discountPercent > 0)
                 Positioned(
                   top: 12,
@@ -538,10 +584,11 @@ class _PostCardState extends State<_PostCard> {
                     ),
                   ),
                 ),
-              // Group Buy badge с прогрессом
+              // Group Buy badge — сдвинут ниже, чтобы не спорить со
+              // счётчиком «1/N» в правом верхнем углу.
               if (post.groupBuy != null)
                 Positioned(
-                  top: 12,
+                  bottom: 12,
                   right: 12,
                   child: Container(
                     padding: const EdgeInsets.symmetric(
@@ -569,6 +616,30 @@ class _PostCardState extends State<_PostCard> {
                 ),
             ],
           ),
+          // Точки-индикаторы под каруселью — как в Instagram и в мокапе
+          // SourceHub. Рисуем ТОЛЬКО когда фото больше одного.
+          if (mediaList.length > 1)
+            Padding(
+              padding: const EdgeInsets.only(top: 6, bottom: 2),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(mediaList.length, (i) {
+                  final active = i == _mediaIndex;
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    margin: const EdgeInsets.symmetric(horizontal: 2.5),
+                    width: active ? 7 : 6,
+                    height: active ? 7 : 6,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: active
+                          ? scheme.primary
+                          : scheme.onSurfaceVariant.withValues(alpha: 0.35),
+                    ),
+                  );
+                }),
+              ),
+            ),
           // Кнопки действий
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
