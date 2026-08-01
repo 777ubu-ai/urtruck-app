@@ -2,12 +2,12 @@ import 'dart:async';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import '../core/events/post_events.dart';
-import '../core/realtime/realtime_service.dart';
-import '../features/chat/data/chat_repository.dart';
 import '../features/chat/presentation/conversations_screen.dart';
+import '../features/create_post/presentation/create_post_screen.dart';
 import '../features/feed/presentation/feed_screen.dart';
 import '../features/notifications/presentation/notifications_screen.dart';
 import '../features/profile/presentation/profile_screen.dart';
+import '../features/profile/presentation/saves_screen.dart';
 import '../features/search/presentation/search_screen.dart';
 import '../firebase_options.dart';
 import '../l10n/app_localizations.dart';
@@ -17,16 +17,16 @@ import '../l10n/app_localizations.dart';
 /// `IndexedStack` сохраняет состояние каждой вкладки между переключениями —
 /// позиция в ленте не теряется при переходе в профиль.
 ///
-/// Вкладки:
-///   0 🏠 Лента
-///   1 🔥 Акции
-///   2 🔍 Поиск
-///   3 💬 Чаты
-///   4 👤 Профиль
+/// Вкладки — по дизайну руководителя проекта (SourceHub main page):
+///   0 🏠 Home
+///   1 🔍 Explore
+///   2 ➕ Create — центральная зелёная кнопка, открывает поверх экрана
+///   3 🔖 Saved
+///   4 👤 Profile
 ///
-/// Кнопки «Создать» внизу НЕТ: публикация и история создаются «плюсом» в
-/// левом верхнем углу профиля, как в соцсетях. Нижнее меню — только
-/// навигация по разделам, без действий.
+/// Чаты и уведомления живут в верхней панели главного экрана
+/// (иконки-пузырёк и колокольчик), а не в нижнем меню — как в мокапе
+/// SourceHub и в Instagram.
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
 
@@ -43,38 +43,12 @@ class _MainShellState extends State<MainShell> {
 
   StreamSubscription<RemoteMessage>? _onMessageSub;
   StreamSubscription<RemoteMessage>? _onMessageOpenedSub;
-  StreamSubscription<Map<String, dynamic>>? _msgWsSub;
-  Timer? _chatBadgePoll;
-  int _unreadChats = 0;
 
   @override
   void initState() {
     super.initState();
     _setupPushListeners();
-    _setupChatBadge();
     PostEvents.instance.addListener(_onPostCreated);
-  }
-
-  /// S2-04: badge на иконке Чатов в bottom navigation — число непрочитанных.
-  /// Polling /conversations/unread-count каждые 15 сек + WS для мгновенного
-  /// инкремента при приходе message:new.
-  void _setupChatBadge() {
-    _refreshChatBadge();
-    _chatBadgePoll =
-        Timer.periodic(const Duration(seconds: 15), (_) => _refreshChatBadge());
-    _msgWsSub = RealtimeService.instance.messageStream.listen((data) {
-      if (data['_type'] != null) return; // call-events игнорируем
-      if (mounted) setState(() => _unreadChats += 1);
-    });
-  }
-
-  Future<void> _refreshChatBadge() async {
-    if (!mounted) return;
-    try {
-      final count = await ChatRepository().getTotalUnreadCount();
-      if (!mounted) return;
-      if (count != _unreadChats) setState(() => _unreadChats = count);
-    } catch (_) {/* игнорируем сетевые ошибки */}
   }
 
   /// Подписка на FCM-события. Если Firebase не настроен (placeholder
@@ -131,9 +105,13 @@ class _MainShellState extends State<MainShell> {
     final data = message.data;
     final type = data['type'] as String?;
     if (type == 'message') {
-      // Вкладка чатов. Индекс 3 — после удаления кнопки «Создать» из
-      // нижнего меню вкладки сдвинулись на одну влево.
-      setState(() => _index = 3);
+      // Чаты живут отдельным экраном, доступным иконкой-пузырьком в
+      // верхней панели ленты. По пушу открываем их поверх текущего.
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => const ConversationsScreen(),
+        ),
+      );
     } else if (type == 'like' || type == 'comment') {
       // На уведомления о лайках/комментах — открываем экран нотификаций.
       Navigator.of(context).push(
@@ -148,8 +126,6 @@ class _MainShellState extends State<MainShell> {
   void dispose() {
     _onMessageSub?.cancel();
     _onMessageOpenedSub?.cancel();
-    _msgWsSub?.cancel();
-    _chatBadgePoll?.cancel();
     PostEvents.instance.removeListener(_onPostCreated);
     super.dispose();
   }
@@ -166,25 +142,25 @@ class _MainShellState extends State<MainShell> {
   Widget build(BuildContext context) {
     // Собираем вкладки здесь, а не в const static — FeedScreen получает
     // динамический key, чтобы после публикации лента пересоздалась.
+    // Create — не полноценная вкладка, а модальный экран поверх текущей.
+    // Заменяем его в IndexedStack SizedBox'ом, чтобы у нижнего меню было
+    // пять «слотов» в правильном порядке, но при тапе на «+» индекс не
+    // менялся — экран открывается через Navigator.push.
     final tabs = <Widget>[
       FeedScreen(key: _feedKey),
-      const FeedScreen(
-        initialFilter: 'hot_deal',
-        hideFilterTabs: true,
-      ),
       const SearchScreen(),
-      const ConversationsScreen(),
+      const SizedBox.shrink(),
+      const SavesScreen(),
       const ProfileScreen(),
     ];
 
     final l = AppLocalizations.of(context)!;
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       body: IndexedStack(index: _index, children: tabs),
-      // Нижнее меню в духе соцсетей: только иконки, без подписей —
-      // экран не загромождён, контент занимает больше места.
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
+        onDestinationSelected: _onNavTap,
         height: 58,
         labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
         destinations: [
@@ -193,27 +169,31 @@ class _MainShellState extends State<MainShell> {
             selectedIcon: const Icon(Icons.home_rounded, size: 26),
             label: l.navHome,
           ),
-          const NavigationDestination(
-            icon: Icon(Icons.local_fire_department_outlined, size: 26),
-            selectedIcon: Icon(Icons.local_fire_department_rounded,
-                size: 26, color: Color(0xFFFF3040)),
-            label: 'Акции',
-          ),
           NavigationDestination(
             icon: const Icon(Icons.search_rounded, size: 26),
             selectedIcon: const Icon(Icons.search_rounded, size: 26),
-            label: l.navSearch,
+            label: l.navExplore,
+          ),
+          // Create — центральная зелёная кнопка «+», как у Ерасыла в
+          // мокапе SourceHub. Не переключает вкладку, а открывает форму
+          // публикации поверх текущего экрана.
+          NavigationDestination(
+            icon: Container(
+              width: 42,
+              height: 30,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: scheme.primary,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(Icons.add, color: scheme.onPrimary, size: 22),
+            ),
+            label: l.navCreate,
           ),
           NavigationDestination(
-            icon: _ChatsIconWithBadge(
-              icon: Icons.chat_bubble_outline_rounded,
-              unread: _unreadChats,
-            ),
-            selectedIcon: _ChatsIconWithBadge(
-              icon: Icons.chat_bubble_rounded,
-              unread: _unreadChats,
-            ),
-            label: l.navChats,
+            icon: const Icon(Icons.bookmark_outline_rounded, size: 26),
+            selectedIcon: const Icon(Icons.bookmark_rounded, size: 26),
+            label: l.navSaved,
           ),
           NavigationDestination(
             icon: const Icon(Icons.person_outline_rounded, size: 26),
@@ -224,46 +204,18 @@ class _MainShellState extends State<MainShell> {
       ),
     );
   }
-}
 
-/// Иконка чатов с красным бейджем непрочитанных (S2-04).
-class _ChatsIconWithBadge extends StatelessWidget {
-  const _ChatsIconWithBadge({required this.icon, required this.unread});
-  final IconData icon;
-  final int unread;
-
-  @override
-  Widget build(BuildContext context) {
-    if (unread <= 0) return Icon(icon);
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Icon(icon),
-        Positioned(
-          top: -4,
-          right: -6,
-          child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-            constraints: const BoxConstraints(minWidth: 16),
-            decoration: BoxDecoration(
-              color: Colors.red,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.white, width: 1),
-            ),
-            child: Text(
-              unread > 99 ? '99+' : '$unread',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
+  /// Тап по вкладке нижнего меню. Индекс 2 («+») — не вкладка, а действие:
+  /// открываем форму публикации поверх текущего экрана, вкладку не меняем.
+  void _onNavTap(int i) {
+    if (i == 2) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => CreatePostScreen(onPostCreated: _onPostCreated),
         ),
-      ],
-    );
+      );
+      return;
+    }
+    setState(() => _index = i);
   }
 }
-

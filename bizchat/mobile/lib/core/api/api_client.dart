@@ -2,7 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import '../storage/auth_storage.dart';
 
-/// HTTP-клиент для общения с backend Biz Chat.
+/// HTTP-клиент для общения с backend SourceHub.
 /// Все запросы идут через него, нигде больше http не инстанцируется.
 ///
 /// Base URL определяется автоматически:

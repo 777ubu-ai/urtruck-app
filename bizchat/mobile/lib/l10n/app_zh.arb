@@ -1,7 +1,7 @@
 {
   "@@locale": "zh",
 
-  "appTitle": "Biz Chat",
+  "appTitle": "SourceHub",
 
   "navHome": "首页",
   "navSearch": "搜索",
@@ -726,5 +726,13 @@
   "editProfileWhatsappLabel": "WhatsApp",
   "editProfileWhatsappHint": "+86 123 4567 8900",
   "editProfileAddressLabel": "地址",
-  "editProfileAddressHint": "楼层、排号、铺位号"
+  "editProfileAddressHint": "楼层、排号、铺位号",
+  "navExplore": "发现",
+  "navCreate": "发布",
+  "navSaved": "收藏",
+  "brandTagline": "Connect. Source. Grow.",
+  "feedNavTitle": "首页",
+  "feedForYou": "为你推荐",
+  "feedFollowing": "关注",
+  "postContact": "联系"
 }

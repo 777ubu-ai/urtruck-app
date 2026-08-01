@@ -1,7 +1,7 @@
 {
   "@@locale": "en",
 
-  "appTitle": "Biz Chat",
+  "appTitle": "SourceHub",
 
   "navHome": "Home",
   "navSearch": "Search",
@@ -726,5 +726,13 @@
   "editProfileWhatsappLabel": "WhatsApp",
   "editProfileWhatsappHint": "+86 123 4567 8900",
   "editProfileAddressLabel": "Address",
-  "editProfileAddressHint": "Floor, row, unit number — whatever helps buyers find you"
+  "editProfileAddressHint": "Floor, row, unit number — whatever helps buyers find you",
+  "navExplore": "Explore",
+  "navCreate": "Create",
+  "navSaved": "Saved",
+  "brandTagline": "Connect. Source. Grow.",
+  "feedNavTitle": "Home",
+  "feedForYou": "For you",
+  "feedFollowing": "Following",
+  "postContact": "Contact"
 }

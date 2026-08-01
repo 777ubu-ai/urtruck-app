@@ -31,11 +31,11 @@ void main() async {
   // чтобы splash не висел на cold start.
   // ignore: unawaited_futures
   CurrencyRepository.instance.load();
-  runApp(const BizChatApp());
+  runApp(const SourceHubApp());
 }
 
-class BizChatApp extends StatelessWidget {
-  const BizChatApp({super.key});
+class SourceHubApp extends StatelessWidget {
+  const SourceHubApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -50,10 +50,10 @@ class BizChatApp extends StatelessWidget {
           valueListenable: ThemeNotifier.instance,
           builder: (_, themeMode, __) {
             return MaterialApp(
-              title: 'Biz Chat',
+              title: 'SourceHub',
               debugShowCheckedModeBanner: false,
-              theme: BizChatTheme.light(),
-              darkTheme: BizChatTheme.dark(),
+              theme: SourceHubTheme.light(),
+              darkTheme: SourceHubTheme.dark(),
               themeMode: themeMode,
               locale: locale,
               supportedLocales: LocaleNotifier.supportedLocales,

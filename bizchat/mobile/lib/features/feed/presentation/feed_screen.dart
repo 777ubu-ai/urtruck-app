@@ -16,12 +16,13 @@ import '../../chat/data/chat_repository.dart';
 import '../../chat/presentation/conversation_screen.dart';
 import '../../notifications/data/notifications_repository.dart';
 import '../../notifications/presentation/notifications_screen.dart';
+import '../../chat/presentation/conversations_screen.dart';
+import '../../search/presentation/search_screen.dart';
 import '../../stories/presentation/stories_ring.dart';
 import '../data/feed_repository.dart';
 import 'comments_sheet.dart';
 import 'hashtag_screen.dart';
 import 'post_detail_screen.dart';
-import 'reels_screen.dart';
 
 /// Главная лента — экран после регистрации.
 /// Blueprint §1.1 вкладка «Главная», §2 анатомия поста.
@@ -122,40 +123,89 @@ class _FeedScreenState extends State<FeedScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
-        leading: const _RealtimeStatusDot(),
-        title: widget.hideFilterTabs
-            ? Row(
+        // Верхняя панель по мокапу SourceHub: слева логотип со слоганом,
+        // справа — поиск (иконка), сообщения (пузырёк), уведомления
+        // (колокольчик). Никаких вкладок здесь нет, они опустились на строку
+        // ниже под шапку.
+        leadingWidth: double.infinity,
+        leading: Padding(
+          padding: const EdgeInsets.only(left: 16),
+          child: Row(
+            children: [
+              Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  color: scheme.primary,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                alignment: Alignment.center,
+                child: Icon(Icons.hub_rounded,
+                    color: scheme.onPrimary, size: 18),
+              ),
+              const SizedBox(width: 10),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.local_fire_department, color: Colors.red),
-                  const SizedBox(width: 8),
-                  Text(AppLocalizations.of(context)!.feedHotDeals),
+                  Text(
+                    l.appTitle,
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                      height: 1.1,
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                  Text(
+                    l.brandTagline,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: scheme.onSurfaceVariant,
+                      height: 1.1,
+                    ),
+                  ),
                 ],
-              )
-            : _FeedFilterTabs(
-                current: _filter,
-                onChanged: _switchFilter,
               ),
-        centerTitle: true,
+              const SizedBox(width: 8),
+              const _RealtimeStatusDot(),
+            ],
+          ),
+        ),
+        title: const SizedBox.shrink(),
+        titleSpacing: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.video_library_outlined),
-            tooltip: AppLocalizations.of(context)!.feedReelsTooltip,
+            icon: const Icon(Icons.search_rounded),
+            tooltip: l.navExplore,
             onPressed: () {
+              // Тап на «Поиск» — быстрый путь на вкладку Explore. Пусть
+              // экран поиска остаётся источником истины, здесь просто
+              // проброс из шапки.
               Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const ReelsScreen(),
-                ),
+                MaterialPageRoute(builder: (_) => const SearchScreen()),
               );
             },
           ),
+          _ChatIconWithBadge(),
           const Padding(
             padding: EdgeInsets.only(right: 8),
             child: _NotificationBell(),
           ),
         ],
+        bottom: widget.hideFilterTabs
+            ? null
+            : PreferredSize(
+                preferredSize: const Size.fromHeight(46),
+                child: _FeedFilterTabs(
+                  current: _filter,
+                  onChanged: _switchFilter,
+                ),
+              ),
       ),
       body: RefreshIndicator(
         onRefresh: _refresh,
@@ -605,6 +655,31 @@ class _PostCardState extends State<_PostCard> {
                   visualDensity: VisualDensity.compact,
                 ),
                 const Spacer(),
+                // Кнопка «Связаться» прямо на карточке — по мокапу SourceHub.
+                // Быстрый чат с заводом, не открывая карточку товара.
+                Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: FilledButton.icon(
+                    onPressed: _openChatWithFactory,
+                    icon: const Icon(Icons.chat_rounded, size: 16),
+                    label: Text(
+                      AppLocalizations.of(context)!.postContact,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    style: FilledButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 0),
+                      minimumSize: const Size(0, 32),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  ),
+                ),
                 IconButton(
                   icon: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 220),
@@ -1160,6 +1235,93 @@ class _NotificationBellState extends State<_NotificationBell> {
         IconButton(
           icon: const Icon(Icons.notifications_none),
           tooltip: AppLocalizations.of(context)!.feedNotificationsTooltip,
+          onPressed: _open,
+        ),
+        if (_unread > 0)
+          Positioned(
+            top: 8,
+            right: 6,
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+              constraints: const BoxConstraints(minWidth: 16),
+              decoration: BoxDecoration(
+                color: Colors.red,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                _unread > 99 ? '99+' : '$_unread',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Иконка чата в шапке ленты с бейджем непрочитанных диалогов.
+/// Заменяет одноимённую вкладку в нижнем меню — теперь чаты живут в
+/// верхней панели, как в мокапе SourceHub и в Instagram.
+class _ChatIconWithBadge extends StatefulWidget {
+  @override
+  State<_ChatIconWithBadge> createState() => _ChatIconWithBadgeState();
+}
+
+class _ChatIconWithBadgeState extends State<_ChatIconWithBadge> {
+  final _repo = ChatRepository();
+  int _unread = 0;
+  Timer? _pollTimer;
+  StreamSubscription<Map<String, dynamic>>? _wsSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+    _pollTimer =
+        Timer.periodic(const Duration(seconds: 15), (_) => _refresh());
+    _wsSub = RealtimeService.instance.messageStream.listen((data) {
+      if (data['_type'] != null) return;
+      if (mounted) setState(() => _unread += 1);
+    });
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    _wsSub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refresh() async {
+    if (!mounted) return;
+    try {
+      final c = await _repo.getTotalUnreadCount();
+      if (!mounted) return;
+      if (c != _unread) setState(() => _unread = c);
+    } catch (_) {/* polling — игнорируем */}
+  }
+
+  Future<void> _open() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const ConversationsScreen()),
+    );
+    await _refresh();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        IconButton(
+          icon: const Icon(Icons.chat_bubble_outline_rounded),
+          tooltip: AppLocalizations.of(context)!.navChats,
           onPressed: _open,
         ),
         if (_unread > 0)

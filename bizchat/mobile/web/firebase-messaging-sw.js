@@ -44,7 +44,7 @@ if (self.firebaseConfig.apiKey !== 'PLACEHOLDER') {
 
   messaging.onBackgroundMessage(function (payload) {
     const notification = payload.notification || {};
-    const title = notification.title || 'Biz Chat';
+    const title = notification.title || 'SourceHub';
     const options = {
       body: notification.body || '',
       icon: '/icons/Icon-192.png',

@@ -361,7 +361,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: _ProfileActionButton(
                     label: l.profileShareProfile,
                     onTap: () => Share.share(
-                      'Biz Chat — ${p.factory?.companyName ?? p.name ?? "профиль"}\n'
+                      'SourceHub — ${p.factory?.companyName ?? p.name ?? "профиль"}\n'
                       'https://biz-chat.net/app/',
                     ),
                   ),

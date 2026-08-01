@@ -418,7 +418,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 32),
           Center(
             child: Text(
-              'Biz Chat © 2026',
+              'SourceHub © 2026',
               style: TextStyle(
                 color: scheme.onSurfaceVariant,
                 fontSize: 12,

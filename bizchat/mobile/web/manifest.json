@@ -1,10 +1,10 @@
 {
-    "name": "Biz Chat — заводы Китая напрямую",
-    "short_name": "Biz Chat",
+    "name": "SourceHub — заводы Китая напрямую",
+    "short_name": "SourceHub",
     "start_url": "/app/",
     "display": "standalone",
     "background_color": "#FFFFFF",
-    "theme_color": "#0B66FF",
+    "theme_color": "#0E7C4E",
     "description": "Маркетплейс прямых поставок: товары от проверенных заводов Китая, переписка с производителем и групповые закупки.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,

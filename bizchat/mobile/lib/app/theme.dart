@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
 
-/// Темы Biz Chat. Обе обязательны с первого дня
-/// (Blueprint §22 — байеры СНГ работают ночью).
+/// Темы SourceHub. Обе обязательны с первого дня — байеры СНГ работают ночью.
 ///
 /// Направление дизайна — Material 3 Expressive (тренд 2025–2026):
 /// выразительная типографика, мягкие крупные скругления, спокойные
 /// tonal-поверхности, единый плавный motion на всех платформах.
-class BizChatTheme {
-  BizChatTheme._();
+class SourceHubTheme {
+  SourceHubTheme._();
 
-  static const _brandSeed = Color(0xFF0B66FF); // фирменный синий Biz Chat
+  /// Фирменный зелёный SourceHub — из дизайна Ерасыла. Тёмный, приглушённый,
+  /// а не кислотный «партнёрский» — для B2B-контекста серьёзнее и не спорит
+  /// с фото товаров.
+  static const _brandSeed = Color(0xFF0E7C4E);
 
   // Единая шкала скруглений — крупнее, чем дефолт M3 (тренд «soft UI»).
   static const double rSm = 14;
@@ -274,7 +276,7 @@ class BizChatTheme {
 
 /// Кастомный transition builder для PageTransitionsTheme — fade + slight slide.
 /// Реализует [PageTransitionsBuilder.buildTransitions], применяется глобально
-/// через pageTransitionsTheme в [BizChatTheme._base].
+/// через pageTransitionsTheme в [SourceHubTheme._base].
 class _FadeThroughTransitionBuilder extends PageTransitionsBuilder {
   const _FadeThroughTransitionBuilder();
 

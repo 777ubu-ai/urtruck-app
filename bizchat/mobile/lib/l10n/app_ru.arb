@@ -1,7 +1,7 @@
 {
   "@@locale": "ru",
 
-  "appTitle": "Biz Chat",
+  "appTitle": "SourceHub",
 
   "navHome": "Главная",
   "navSearch": "Поиск",
@@ -726,5 +726,13 @@
   "editProfileWhatsappLabel": "WhatsApp",
   "editProfileWhatsappHint": "+86 123 4567 8900",
   "editProfileAddressLabel": "Адрес",
-  "editProfileAddressHint": "Этаж, ряд, номер секции — как удобнее найти"
+  "editProfileAddressHint": "Этаж, ряд, номер секции — как удобнее найти",
+  "navExplore": "Обзор",
+  "navCreate": "Создать",
+  "navSaved": "Сохранённое",
+  "brandTagline": "Connect. Source. Grow.",
+  "feedNavTitle": "Главная",
+  "feedForYou": "Для вас",
+  "feedFollowing": "Подписки",
+  "postContact": "Связаться"
 }
