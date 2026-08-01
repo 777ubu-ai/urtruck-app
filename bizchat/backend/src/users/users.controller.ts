@@ -102,6 +102,7 @@ export class UsersController {
             description: user.factory.description,
             website: user.factory.website,
             whatsapp: user.factory.whatsapp,
+            address: user.factory.address,
             hashtags: user.factory.hashtags,
             trustScore: user.factory.trustScore,
             verifiedAt: user.factory.verifiedAt,
@@ -192,6 +193,9 @@ export class UsersController {
       if (dto.whatsapp !== undefined) {
         factoryPatch.whatsapp = dto.whatsapp || null;
       }
+      if (dto.address !== undefined) {
+        factoryPatch.address = dto.address || null;
+      }
       if (Object.keys(factoryPatch).length > 0) {
         await manager.update(Factory, { userId }, factoryPatch);
       }
@@ -239,6 +243,7 @@ export class UsersController {
             description: fresh.factory.description,
             website: fresh.factory.website,
             whatsapp: fresh.factory.whatsapp,
+            address: fresh.factory.address,
             hashtags: fresh.factory.hashtags,
             trustScore: fresh.factory.trustScore,
             verifiedAt: fresh.factory.verifiedAt,
@@ -303,6 +308,7 @@ export class UsersController {
             description: user.factory.description,
             website: user.factory.website,
             whatsapp: user.factory.whatsapp,
+            address: user.factory.address,
             hashtags: user.factory.hashtags,
             trustScore: user.factory.trustScore,
             verifiedAt: user.factory.verifiedAt,

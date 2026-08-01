@@ -207,15 +207,23 @@ class _FactoryRow extends StatelessWidget {
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (place.isNotEmpty)
+          // Краткое «что за завод» — на списке из тысяч строк это то, по
+          // чему покупатель вообще решает, тапать или листать дальше.
+          if (factory.description != null &&
+              factory.description!.isNotEmpty)
             Text(
-              place,
+              factory.description!,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12.5),
+              style: const TextStyle(fontSize: 12.5),
             ),
           Text(
-            l.profileWordPosts(factory.totalProducts),
+            [
+              if (place.isNotEmpty) place,
+              l.profileWordPosts(factory.totalProducts),
+            ].join(' · '),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12.5),
           ),
         ],

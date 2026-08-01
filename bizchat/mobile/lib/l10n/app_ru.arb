@@ -718,5 +718,13 @@
   "createPostSectionTagsHint": "По ним товар найдут в поиске",
   "createPostCover": "Обложка",
   "createPostAddMore": "Ещё",
-  "createPostUploading": "Публикуем…"
+  "createPostUploading": "Публикуем…",
+  "editProfileDescriptionLabel": "О заводе",
+  "editProfileDescriptionHint": "Что производите, условия опта, гарантии — 5-6 строк для витрины",
+  "editProfileWebsiteLabel": "Сайт",
+  "editProfileWebsiteHint": "example.com",
+  "editProfileWhatsappLabel": "WhatsApp",
+  "editProfileWhatsappHint": "+86 123 4567 8900",
+  "editProfileAddressLabel": "Адрес",
+  "editProfileAddressHint": "Этаж, ряд, номер секции — как удобнее найти"
 }

@@ -77,6 +77,13 @@ export class Factory {
   @Column({ type: 'varchar', length: 256, nullable: true })
   website!: string | null;
 
+  /// Физический адрес (этаж/ряд/секция торгового центра и т.п.) — текст,
+  /// не координаты. locationLat/locationLng ниже это точка на карте,
+  /// а это то, что реально пишут на площадках-источниках и что нужно
+  /// показать покупателю как есть.
+  @Column({ type: 'text', nullable: true })
+  address!: string | null;
+
   /// WhatsApp для связи — основной канал переговоров по опту.
   @Column({ type: 'varchar', length: 32, nullable: true })
   whatsapp!: string | null;

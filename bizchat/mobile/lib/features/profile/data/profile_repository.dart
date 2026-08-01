@@ -211,6 +211,7 @@ class FactoryProfile {
     this.description,
     this.website,
     this.whatsapp,
+    this.address,
     required this.hashtags,
     required this.trustScore,
     required this.verifiedAt,
@@ -225,6 +226,8 @@ class FactoryProfile {
   final String? description;
   final String? website;
   final String? whatsapp;
+  /// Физический адрес — этаж/ряд/секция и т.п., текст как есть.
+  final String? address;
   final List<String> hashtags;
   final int trustScore;
   final DateTime? verifiedAt;
@@ -239,6 +242,7 @@ class FactoryProfile {
       description: json['description'] as String?,
       website: json['website'] as String?,
       whatsapp: json['whatsapp'] as String?,
+      address: json['address'] as String?,
       hashtags: (json['hashtags'] as List?)?.cast<String>() ?? const [],
       trustScore: json['trustScore'] as int? ?? 50,
       verifiedAt: json['verifiedAt'] != null
@@ -350,6 +354,10 @@ class PublicProfile {
     required this.countryCode,
     required this.city,
     required this.factoryCompanyName,
+    this.factoryDescription,
+    this.factoryWebsite,
+    this.factoryWhatsapp,
+    this.factoryAddress,
     required this.factoryHashtags,
     required this.factoryTrustScore,
     required this.factoryTotalProducts,
@@ -369,6 +377,11 @@ class PublicProfile {
   final String? countryCode;
   final String? city;
   final String? factoryCompanyName;
+  /// «О себе» завода — то, ради чего покупатель открывает эту страницу.
+  final String? factoryDescription;
+  final String? factoryWebsite;
+  final String? factoryWhatsapp;
+  final String? factoryAddress;
   final List<String> factoryHashtags;
   final int? factoryTrustScore;
   final int? factoryTotalProducts;
@@ -401,6 +414,10 @@ class PublicProfile {
       countryCode: json['countryCode'] as String?,
       city: json['city'] as String?,
       factoryCompanyName: factory?['companyName'] as String?,
+      factoryDescription: factory?['description'] as String?,
+      factoryWebsite: factory?['website'] as String?,
+      factoryWhatsapp: factory?['whatsapp'] as String?,
+      factoryAddress: factory?['address'] as String?,
       factoryHashtags:
           (factory?['hashtags'] as List?)?.cast<String>() ?? const [],
       factoryTrustScore: factory?['trustScore'] as int?,
@@ -594,6 +611,10 @@ class ProfileRepository {
     String? countryCode,
     String? city,
     String? companyName,
+    String? description,
+    String? website,
+    String? whatsapp,
+    String? address,
     bool? pushEnabled,
     Map<String, bool>? notificationPrefsPatch,
     /// HH:MM или пустая строка/null чтобы отключить.
@@ -609,6 +630,10 @@ class ProfileRepository {
     if (countryCode != null) body['countryCode'] = countryCode;
     if (city != null) body['city'] = city;
     if (companyName != null) body['companyName'] = companyName;
+    if (description != null) body['description'] = description;
+    if (website != null) body['website'] = website;
+    if (whatsapp != null) body['whatsapp'] = whatsapp;
+    if (address != null) body['address'] = address;
     if (pushEnabled != null) body['pushEnabled'] = pushEnabled;
     if (notificationPrefsPatch != null && notificationPrefsPatch.isNotEmpty) {
       body['notificationPrefs'] = notificationPrefsPatch;

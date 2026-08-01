@@ -97,6 +97,12 @@ export class UpdateMeDto {
   @Length(0, 32)
   whatsapp?: string;
 
+  /// Физический адрес завода — этаж/ряд/секция и т.п.
+  @IsOptional()
+  @IsString()
+  @Length(0, 1024)
+  address?: string;
+
   /**
    * Глобальный toggle push-уведомлений. Если false — сервер не шлёт пуши,
    * но in-app notifications всё равно создаются и видны в колокольчике.

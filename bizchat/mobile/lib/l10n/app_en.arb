@@ -718,5 +718,13 @@
   "createPostSectionTagsHint": "Buyers find the product by these",
   "createPostCover": "Cover",
   "createPostAddMore": "More",
-  "createPostUploading": "Publishing…"
+  "createPostUploading": "Publishing…",
+  "editProfileDescriptionLabel": "About the factory",
+  "editProfileDescriptionHint": "What you produce, wholesale terms, guarantees — 5-6 lines for the storefront",
+  "editProfileWebsiteLabel": "Website",
+  "editProfileWebsiteHint": "example.com",
+  "editProfileWhatsappLabel": "WhatsApp",
+  "editProfileWhatsappHint": "+86 123 4567 8900",
+  "editProfileAddressLabel": "Address",
+  "editProfileAddressHint": "Floor, row, unit number — whatever helps buyers find you"
 }

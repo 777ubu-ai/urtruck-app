@@ -2,9 +2,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:url_launcher/url_launcher_string.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/storage/auth_storage.dart';
+import '../../../core/widgets/profile_link.dart';
 import '../../../core/widgets/trust_badge.dart';
 import '../../auth/presentation/phone_screen.dart';
 import '../../../l10n/app_localizations.dart';
@@ -406,6 +406,7 @@ class _ProfileHeader extends StatelessWidget {
     final bio = profile.factory?.description;
     final site = profile.factory?.website;
     final whatsapp = profile.factory?.whatsapp;
+    final address = profile.factory?.address;
     final tags = profile.factory?.hashtags ?? const <String>[];
     final country = profile.countryCode?.trim() ?? '';
     final town = profile.city?.trim() ?? '';
@@ -547,19 +548,41 @@ class _ProfileHeader extends StatelessWidget {
             ],
           ),
         ],
+        // Точный адрес (этаж/ряд/секция) — отдельной строкой от города и
+        // страны выше: это разные уровни детализации.
+        if (address != null && address.isNotEmpty) ...[
+          const SizedBox(height: 2),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.storefront_outlined,
+                  size: 14, color: scheme.onSurfaceVariant),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  address,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 13.5, color: scheme.onSurfaceVariant),
+                ),
+              ),
+            ],
+          ),
+        ],
         // Контакты кликабельными строками.
         // Номер входа здесь не показываем: это телефон аккаунта, он может
         // быть страны, отличной от страны завода, и покупателю бесполезен.
         // Он остаётся в «Настройки → Аккаунт». Контакт завода — WhatsApp
         // (китайский номер вписывается в редактировании профиля) и сайт.
         if (whatsapp != null && whatsapp.isNotEmpty)
-          _ProfileLink(
+          ProfileLink(
             icon: Icons.chat_rounded,
             text: 'wa.me/$whatsapp',
             url: 'https://wa.me/${whatsapp.replaceAll(RegExp(r'[^0-9]'), '')}',
           ),
         if (site != null && site.isNotEmpty)
-          _ProfileLink(
+          ProfileLink(
             icon: Icons.link_rounded,
             text: site,
             url: site.startsWith('http') ? site : 'https://$site',
@@ -569,50 +592,6 @@ class _ProfileHeader extends StatelessWidget {
   }
 }
 
-/// Кликабельная ссылка в шапке профиля (сайт, WhatsApp).
-class _ProfileLink extends StatelessWidget {
-  const _ProfileLink({
-    required this.icon,
-    required this.text,
-    required this.url,
-  });
-
-  final IconData icon;
-  final String text;
-  final String url;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 4),
-      child: InkWell(
-        onTap: () => launchUrlString(url, mode: LaunchMode.externalApplication),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 14, color: const Color(0xFF0B66FF)),
-            const SizedBox(width: 5),
-            Flexible(
-              child: Text(
-                text,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF0B66FF),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Счётчик в шапке профиля: крупная цифра, под ней подпись.
-/// Числа от тысячи сокращаем (5 018 → 5 018, 12500 → 12,5 тыс.).
 class _CountStat extends StatelessWidget {
   const _CountStat({required this.value, required this.label, this.onTap});
 

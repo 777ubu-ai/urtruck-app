@@ -26,6 +26,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   late final TextEditingController _nameCtrl;
   late final TextEditingController _companyCtrl;
   late final TextEditingController _cityCtrl;
+  late final TextEditingController _descriptionCtrl;
+  late final TextEditingController _websiteCtrl;
+  late final TextEditingController _whatsappCtrl;
+  late final TextEditingController _addressCtrl;
   late String _language;
   late String _currency;
   late String? _countryCode;
@@ -45,6 +49,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _companyCtrl =
         TextEditingController(text: p.factory?.companyName ?? '');
     _cityCtrl = TextEditingController(text: p.city ?? '');
+    _descriptionCtrl =
+        TextEditingController(text: p.factory?.description ?? '');
+    _websiteCtrl = TextEditingController(text: p.factory?.website ?? '');
+    _whatsappCtrl = TextEditingController(text: p.factory?.whatsapp ?? '');
+    _addressCtrl = TextEditingController(text: p.factory?.address ?? '');
     _language = p.language;
     _currency = p.currency;
     _countryCode = p.countryCode;
@@ -56,6 +65,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _nameCtrl.dispose();
     _companyCtrl.dispose();
     _cityCtrl.dispose();
+    _descriptionCtrl.dispose();
+    _websiteCtrl.dispose();
+    _whatsappCtrl.dispose();
+    _addressCtrl.dispose();
     super.dispose();
   }
 
@@ -95,16 +108,19 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
     try {
+      final isFactory = widget.initial.isFactory;
       final updated = await _repo.updateMe(
         name: _nameCtrl.text.trim(),
-        companyName: widget.initial.isFactory
-            ? _companyCtrl.text.trim()
-            : null,
+        companyName: isFactory ? _companyCtrl.text.trim() : null,
         city: _cityCtrl.text.trim(),
         language: _language,
         currency: _currency,
         countryCode: _countryCode,
         avatarUrl: _avatarUrl ?? '',
+        description: isFactory ? _descriptionCtrl.text.trim() : null,
+        website: isFactory ? _websiteCtrl.text.trim() : null,
+        whatsapp: isFactory ? _whatsappCtrl.text.trim() : null,
+        address: isFactory ? _addressCtrl.text.trim() : null,
       );
       if (!mounted) return;
       Navigator.of(context).pop(updated);
@@ -187,6 +203,57 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   if (t.isEmpty) return l.editProfileCompanyRequiredError;
                   return null;
                 },
+              ),
+              const SizedBox(height: 12),
+              // «О заводе» — то, что покупатель видит первым делом на
+              // витрине. Раньше поля для этого в форме не было вообще, хотя
+              // сервер его давно принимал — заполнить бренд мог только
+              // напрямую в базе.
+              TextFormField(
+                controller: _descriptionCtrl,
+                maxLength: 2000,
+                maxLines: 5,
+                minLines: 3,
+                decoration: InputDecoration(
+                  labelText: l.editProfileDescriptionLabel,
+                  border: const OutlineInputBorder(),
+                  hintText: l.editProfileDescriptionHint,
+                  alignLabelWithHint: true,
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _addressCtrl,
+                maxLength: 1024,
+                maxLines: 2,
+                minLines: 1,
+                decoration: InputDecoration(
+                  labelText: l.editProfileAddressLabel,
+                  border: const OutlineInputBorder(),
+                  hintText: l.editProfileAddressHint,
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _whatsappCtrl,
+                keyboardType: TextInputType.phone,
+                decoration: InputDecoration(
+                  labelText: l.editProfileWhatsappLabel,
+                  border: const OutlineInputBorder(),
+                  hintText: l.editProfileWhatsappHint,
+                  prefixIcon: const Icon(Icons.chat_rounded),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _websiteCtrl,
+                keyboardType: TextInputType.url,
+                decoration: InputDecoration(
+                  labelText: l.editProfileWebsiteLabel,
+                  border: const OutlineInputBorder(),
+                  hintText: l.editProfileWebsiteHint,
+                  prefixIcon: const Icon(Icons.link_rounded),
+                ),
               ),
               const SizedBox(height: 12),
             ],

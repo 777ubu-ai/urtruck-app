@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../../../core/api/api_client.dart';
+import '../../../core/widgets/profile_link.dart';
 import '../../../core/widgets/trust_badge.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../feed/presentation/hashtag_screen.dart';
@@ -71,6 +72,10 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         countryCode: p.countryCode,
         city: p.city,
         factoryCompanyName: p.factoryCompanyName,
+        factoryDescription: p.factoryDescription,
+        factoryWebsite: p.factoryWebsite,
+        factoryWhatsapp: p.factoryWhatsapp,
+        factoryAddress: p.factoryAddress,
         factoryHashtags: p.factoryHashtags,
         factoryTrustScore: p.factoryTrustScore,
         factoryTotalProducts: p.factoryTotalProducts,
@@ -374,13 +379,22 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
 
   /// Блок «О заводе» на публичном профиле.
   ///
-  /// Не повторяет ничего из соседних блоков: количество товаров показано
+  /// Это самое важное, что видит покупатель, открывший чужой профиль —
+  /// раньше здесь не было ни описания, ни адреса, ни контактов: backend
+  /// их уже отдавал, но мобильная модель их не читала, а форма
+  /// редактирования не давала их вообще заполнить. Теперь все три звена
+  /// на месте.
+  ///
+  /// Не повторяет то, что уже есть в соседних блоках: количество товаров —
   /// плитками выше, оценка — в карточке отзывов, город и страна — в шапке.
-  /// Здесь остаются статус доверия, закрытые сделки и специализация.
   Widget _buildFactoryCard(PublicProfile p) {
     final scheme = Theme.of(context).colorScheme;
     final l = AppLocalizations.of(context)!;
     final score = p.factoryTrustScore ?? 50;
+    final description = p.factoryDescription;
+    final address = p.factoryAddress;
+    final whatsapp = p.factoryWhatsapp;
+    final website = p.factoryWebsite;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Card(
@@ -401,6 +415,51 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                   TrustBadge(score: score, compact: false),
                 ],
               ),
+              // Главное — что за завод и что он производит. Без этого
+              // карточка была пустой рамкой с одним бейджем внутри.
+              if (description != null && description.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Text(
+                  description,
+                  style: const TextStyle(fontSize: 13.5, height: 1.4),
+                ),
+              ],
+              if (address != null && address.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.storefront_outlined,
+                        size: 16, color: scheme.onSurfaceVariant),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        address,
+                        style: TextStyle(
+                            fontSize: 13, color: scheme.onSurfaceVariant),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              if ((whatsapp != null && whatsapp.isNotEmpty) ||
+                  (website != null && website.isNotEmpty)) ...[
+                const SizedBox(height: 10),
+                if (whatsapp != null && whatsapp.isNotEmpty)
+                  ProfileLink(
+                    icon: Icons.chat_rounded,
+                    text: 'wa.me/$whatsapp',
+                    url:
+                        'https://wa.me/${whatsapp.replaceAll(RegExp(r'[^0-9]'), '')}',
+                  ),
+                if (website != null && website.isNotEmpty)
+                  ProfileLink(
+                    icon: Icons.link_rounded,
+                    text: website,
+                    url:
+                        website.startsWith('http') ? website : 'https://$website',
+                  ),
+              ],
               const SizedBox(height: 12),
               Row(
                 children: [
