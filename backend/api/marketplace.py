@@ -1047,6 +1047,30 @@ def get_trip(trip_id: str, authorization: Optional[str] = Header(None)):
     caller = _maybe_user(authorization)
     if not (caller and caller.get("id") == d.get("driver_id")):
         d.pop("driver_phone", None)
+    # Инфо о водителе (доверие: клиент видит, кому доверяет груз) — имя,
+    # статус верификации, рейтинг, число отзывов. Зеркально get_cargo:
+    # owner_* → driver_*. Без телефона (гейт выше).
+    try:
+        from database import reviews_dal
+        drv_id = d.get("driver_id")
+        if drv_id:
+            with get_conn() as c2:
+                drow = c2.execute(
+                    "SELECT full_name, phone, status FROM drivers_registration WHERE id = ?",
+                    (drv_id,),
+                ).fetchone()
+            if drow:
+                _nm = (drow["full_name"] or "").strip()
+                if not _nm:
+                    _ph = "".join(ch for ch in (drow["phone"] or "") if ch.isdigit())
+                    _nm = f"+{_ph[-4:]}" if len(_ph) >= 4 else "Пользователь UrTruck"
+                d["driver_display_name"] = _nm
+                d["driver_verified"] = (drow["status"] == "approved")
+            summary = reviews_dal.get_rating_summary(drv_id)
+            d["driver_rating"] = summary.get("average", 0) or 0
+            d["driver_reviews_count"] = summary.get("count", 0) or 0
+    except Exception:
+        pass
     return d
 
 
