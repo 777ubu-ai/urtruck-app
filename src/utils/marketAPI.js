@@ -350,6 +350,17 @@ export const marketAPI = {
     return d;
   },
 
+  // Owner отменяет свою же встречную (дизайн-2026: под капотом Принять для
+  // countered = cancel_counter → accept_bid одной кнопкой).
+  async cancelOwnCounter(bidId) {
+    const r = await authedFetch(`${BASE}/bids/${bidId}/counter/cancel`, {
+      method: 'POST', headers: await headers(),
+    });
+    const d = await r.json();
+    if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
+    return d;
+  },
+
   async openBidChat(bidId) {
     const r = await authedFetch(`${BASE}/bids/${bidId}/chat`, {
       method: 'POST', headers: await headers(),

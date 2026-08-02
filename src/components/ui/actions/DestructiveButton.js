@@ -42,13 +42,13 @@ const s = StyleSheet.create({
   btn: {
     height: 48,
     borderRadius: 12,
-    borderWidth: 1.5,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     backgroundColor: 'transparent',
   },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  icon: { fontSize: 15, fontWeight: '700' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  icon: { fontSize: 14, fontWeight: '700' },
   label: { fontSize: 14, fontWeight: '700' },
 });

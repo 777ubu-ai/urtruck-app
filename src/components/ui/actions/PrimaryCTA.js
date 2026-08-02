@@ -48,15 +48,15 @@ export default function PrimaryCTA({
 }
 
 const s = StyleSheet.create({
-  // 56px — стандарт primary CTA (Apple HIG, Material 3). Не 44 (это mini).
+  // 48px + компактный шрифт — по замечанию владельца тексты вылезали за рамки.
   btn: {
-    height: 56,
-    borderRadius: 14,
+    height: 48,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 14,
   },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  icon: { fontSize: 18, fontWeight: '700' },
-  label: { fontSize: 16, fontWeight: '800', letterSpacing: 0.1 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  icon: { fontSize: 15, fontWeight: '700' },
+  label: { fontSize: 14, fontWeight: '800' },
 });

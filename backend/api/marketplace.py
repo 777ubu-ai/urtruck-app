@@ -2242,6 +2242,29 @@ def accept_counter(bid_id: str, user=Depends(require_level(1))):
     return {"ok": True, "deal_id": result["deal_id"], "chat_room_id": result["chat_room_id"], "amount": counter}
 
 
+@mp_router.post("/bids/{bid_id}/counter/cancel")
+def cancel_counter_as_owner(bid_id: str, user=Depends(require_level(1))):
+    """Cargo/trip owner отменяет СВОЮ встречную цену. Ставка возвращается в
+    pending — теперь owner может принять оригинал одной кнопкой. Дизайн-
+    система 2026 (приказ владельца 02.08): «две кнопки: Принять и Отклонить,
+    без «отменить встречную» — водитель это не поймёт». Endpoint для того,
+    чтобы фронт под капотом делал cancel→accept одним нажатием «Принять $X»."""
+    with get_conn() as c:
+        bid = _load_bid_or_404(c, bid_id)
+        owner_id = _cargo_or_trip_owner_id(c, bid)
+        if not owner_id or owner_id != user["id"]:
+            raise HTTPException(status_code=403, detail="Только владелец груза/рейса может отменить свою встречную")
+        if bid["status"] != "countered":
+            raise HTTPException(status_code=409, detail=f"Нет активной встречной (статус {bid['status']})")
+        c.execute(
+            "UPDATE bids SET status = 'pending', counter_amount = NULL, counter_message = NULL, "
+            "counter_by = NULL, counter_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (bid_id,),
+        )
+        _record_price_event(c, bid_id, user["id"], "owner", bid.get("amount"), "counter_cancelled", None)
+    return {"ok": True, "bid_id": bid_id, "status": "pending"}
+
+
 @mp_router.post("/bids/{bid_id}/counter/decline")
 def decline_counter(bid_id: str, user=Depends(require_level(1))):
     """Bidder declines the counter; bid returns to 'pending', counter fields cleared."""
