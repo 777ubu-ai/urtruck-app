@@ -2221,6 +2221,11 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
             c.execute("UPDATE cargos SET status = 'completed' WHERE id = ?", (deal["cargo_id"],))
         elif new_status == "cancelled" and deal["cargo_id"]:
             c.execute("UPDATE cargos SET status = 'active', taken_by = NULL WHERE id = ?", (deal["cargo_id"],))
+        # Синхронизация trip status при смене deal status
+        _DEAL_TO_TRIP = {"in_progress": "in_transit", "delivered": "delivered", "cancelled": "cancelled"}
+        if deal.get("trip_id") and new_status in _DEAL_TO_TRIP:
+            c.execute("UPDATE trips SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                       (_DEAL_TO_TRIP[new_status], deal["trip_id"]))
     # 🔴 fix: раньше смена статуса сделки (Начать перевозку / Я доехал / отмена)
     # слала ТОЛЬКО push и не создавала in-app уведомление → ведение сделки не
     # оставляло следа в колокольчике. Теперь и push, и колокольчик другой стороне,
@@ -2263,6 +2268,26 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
             trip_id=deal.get("trip_id"),
             payload={"status": new_status},
         )
+    except Exception:
+        pass
+    # Системное сообщение в чат — чтобы оба участника видели смену статуса inline
+    try:
+        chat_labels = {
+            "in_progress": "🚛 Рейс начался",
+            "at_border": "🛂 Груз на границе",
+            "delivered": "✅ Груз доставлен",
+            "cancelled": "❌ Сделка отменена",
+        }
+        if new_status in chat_labels and deal.get("chat_room_id"):
+            with get_conn() as c3:
+                c3.execute(
+                    "INSERT INTO chat_messages (room_id, sender_id, text) VALUES (?,?,?)",
+                    (deal["chat_room_id"], "system", chat_labels[new_status]),
+                )
+                c3.execute(
+                    "UPDATE chat_rooms SET last_message = ?, last_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (chat_labels[new_status][:50], deal["chat_room_id"]),
+                )
     except Exception:
         pass
     return {"ok": True, "status": new_status}

@@ -120,6 +120,12 @@ export default function ChatScreen({ navigation, route }) {
     borderRadius: 16, paddingHorizontal: 18, paddingVertical: 10,
   },
   dealBannerText: { color: '#EAFBF1', fontSize: 16, fontWeight: '900', letterSpacing: -0.3 },
+  systemMsgRow: { alignItems: 'center', marginVertical: 6 },
+  systemMsgPill: {
+    backgroundColor: 'rgba(148,163,184,0.18)', borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 6, maxWidth: '80%',
+  },
+  systemMsgText: { color: '#94A3B8', fontSize: 13, fontWeight: '600', textAlign: 'center' },
   // Плашка «идёт запись» над инпутом: красная точка + таймер + подсказка.
   recBanner: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
@@ -318,8 +324,9 @@ export default function ChatScreen({ navigation, route }) {
             ? m.mine
             : ((myId && m.sender_id === myId) ||
                (partner?.id && m.sender_id !== partner.id));
+        const isSystemMsg = m.sender_id === 'system';
         return {
-          id: String(m.id), from: fromMe ? 'me' : 'them',
+          id: String(m.id), from: isSystemMsg ? 'system' : (fromMe ? 'me' : 'them'),
           // Голосовое хранит аудио-ключ в том же поле photo_url (подписанном
           // сервером) — не путать с фото: isPhoto только когда НЕ voice.
           text: m.text, isPhoto: !!m.photo_url && !m.is_voice, photoUri: resolveAttachment(m.photo_url),
@@ -892,6 +899,15 @@ export default function ChatScreen({ navigation, route }) {
         <View style={s.dealBannerRow} testID="chat-deal-banner">
           <View style={s.dealBanner}>
             <Text style={s.dealBannerText}>🤝 {t('deal_done')}{item.amountText ? ` ${item.amountText}` : ''}</Text>
+          </View>
+        </View>
+      );
+    }
+    if (item.from === 'system') {
+      return (
+        <View style={s.systemMsgRow}>
+          <View style={s.systemMsgPill}>
+            <Text style={s.systemMsgText}>{item.text}</Text>
           </View>
         </View>
       );

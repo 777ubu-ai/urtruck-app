@@ -447,11 +447,13 @@ export default function TripDetail({ navigation, route }) {
           {/* Визуальный таймлайн заказа: Принят → В пути → На границе →
               Доставлен — как в CargoDetail (раньше был цветной текст-статус). */}
           <DealStatusTimeline status={dealStatus} role={role} />
-          {(dealStatus === 'accepted' || dealStatus === 'in_progress') && (
+          {(dealStatus === 'accepted' || dealStatus === 'in_progress' || dealStatus === 'at_border') && (
             <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 4, textAlign: 'center' }}>
               {t('order_next_step')}: {
                 isDriverSide
-                  ? (dealStatus === 'accepted' ? t('driver_next_step_accepted') : t('driver_next_step_in_progress'))
+                  ? (dealStatus === 'accepted' ? t('driver_next_step_accepted')
+                     : dealStatus === 'in_progress' ? t('driver_next_step_in_progress')
+                     : t('driver_next_step_at_border'))
                   : (dealStatus === 'accepted' ? t('shipper_next_step_accepted') : t('shipper_next_step_in_progress'))
               }
             </Text>
@@ -463,6 +465,11 @@ export default function TripDetail({ navigation, route }) {
               </TouchableOpacity>
             )}
             {isDriverSide && dealStatus === 'in_progress' && (
+              <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: v1Accent.main }]} onPress={() => changeDealStatus('at_border')} disabled={statusLoading}>
+                <Text style={s.dealActionText}>{statusLoading ? '...' : '🛂 ' + t('mark_at_border')}</Text>
+              </TouchableOpacity>
+            )}
+            {isDriverSide && dealStatus === 'at_border' && (
               <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: v1Accent.main }]} onPress={() => changeDealStatus('delivered')} disabled={statusLoading}>
                 <Text style={s.dealActionText}>{statusLoading ? '...' : '✅ ' + t('mark_arrived')}</Text>
               </TouchableOpacity>
