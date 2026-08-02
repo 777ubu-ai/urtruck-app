@@ -26,6 +26,10 @@ import SectionTitle from '../components/ui/v1/SectionTitle';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
 import StickyCTABar from '../components/ui/v1/StickyCTABar';
 import { DealStatusTimeline } from '../components/deal/DealRoom';
+import PrimaryCTA from '../components/ui/actions/PrimaryCTA';
+import SecondaryButton from '../components/ui/actions/SecondaryButton';
+import DestructiveButton from '../components/ui/actions/DestructiveButton';
+import PriceSavingsBadge from '../components/deal/PriceSavingsBadge';
 import { reviewsAPI } from '../utils/reviews';
 
 export default function TripDetail({ navigation, route }) {
@@ -737,61 +741,71 @@ export default function TripDetail({ navigation, route }) {
                 <Text style={[s.bidAmt, { color: v1Accent.main }]}>{formatPrice(b.amount, b.currency || trip.currency, t)}</Text>
               </View>
               {b.status === 'pending' && !hasAccepted ? (
-                <View style={{ flexDirection: 'row', gap: 6, marginTop: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                  <TouchableOpacity
-                    testID="trip-bid-reject"
-                    style={[s.rejectBtn, rejecting === b.id && { opacity: 0.5 }]}
-                    onPress={() => rejectClientBid(b)}
-                    disabled={!!rejecting || !!accepting}
-                  >
-                    <Text style={s.rejectBtnText}>{t('reject_btn')}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    testID="trip-bid-counter"
-                    style={s.miniBtn}
-                    onPress={() => { setCounterBidTarget(b); setBidModal(true); }}
-                  >
-                    <Text style={[s.miniBtnText, { color: '#E06D00' }]}>🔁 {t('counter_offer')}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    testID="trip-bid-chat"
-                    style={s.miniBtn}
-                    onPress={() => openChatForBid(b)}
-                  >
-                    <Text style={[s.miniBtnText, { color: v1Accent.main }]}>💬 {t('open_bid_chat')}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
+                <View style={{ marginTop: 10, gap: 8, alignSelf: 'stretch' }}>
+                  {/* Водитель + входящая ставка pending: primary «Принять»
+                      (driver green), Chat + Counter в паре, Destructive Reject. */}
+                  <PriceSavingsBadge listingPrice={trip.price} bidPrice={b.amount} currency={trip.currency || 'USD'} />
+                  <PrimaryCTA
                     testID="trip-bid-accept"
-                    style={[s.acceptBtn, { backgroundColor: v1Accent.main }, accepting === b.id && { opacity: 0.5 }]}
-                    onPress={() => acceptClientBid(b)}
+                    role="driver"
+                    icon="✓"
+                    label={t('accept_bid_btn')}
+                    loading={accepting === b.id}
                     disabled={!!accepting || !!rejecting}
-                  >
-                    <Text style={[s.acceptBtnText, { color: v1Accent.onAccent }]}>{t('accept_bid_btn')}</Text>
-                  </TouchableOpacity>
+                    onPress={() => acceptClientBid(b)}
+                  />
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <SecondaryButton
+                      testID="trip-bid-chat"
+                      role="driver"
+                      icon="💬"
+                      label={t('open_bid_chat')}
+                      onPress={() => openChatForBid(b)}
+                      disabled={!!accepting || !!rejecting}
+                    />
+                    <SecondaryButton
+                      testID="trip-bid-counter"
+                      role="driver"
+                      icon="🔁"
+                      label={t('counter_offer')}
+                      onPress={() => { setCounterBidTarget(b); setBidModal(true); }}
+                      disabled={!!accepting || !!rejecting}
+                    />
+                  </View>
+                  <DestructiveButton
+                    testID="trip-bid-reject"
+                    icon="✕"
+                    label={t('reject_btn')}
+                    loading={rejecting === b.id}
+                    disabled={!!accepting || !!rejecting}
+                    onPress={() => rejectClientBid(b)}
+                  />
                 </View>
               ) : null}
               {isCountered ? (
-                <View style={{ flexDirection: 'row', gap: 6, marginTop: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                <View style={{ marginTop: 10, gap: 8, alignSelf: 'stretch' }}>
                   {b.counterAmount ? (
-                    <Text style={{ color: '#E06D00', fontSize: 11, fontWeight: '700', alignSelf: 'center', marginRight: 'auto' }}>
-                      {t('counter_amount')}: {formatPrice(b.counterAmount, b.currency || trip.currency, t)}
+                    <Text style={{ color: '#E06D00', fontSize: 12, fontWeight: '700' }}>
+                      🔁 {t('counter_amount')}: {formatPrice(b.counterAmount, b.currency || trip.currency, t)}
                     </Text>
                   ) : null}
-                  <TouchableOpacity
-                    testID="trip-bid-reject"
-                    style={[s.rejectBtn, rejecting === b.id && { opacity: 0.5 }]}
-                    onPress={() => rejectClientBid(b)}
-                    disabled={!!rejecting}
-                  >
-                    <Text style={s.rejectBtnText}>{t('reject_btn')}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
+                  {/* Водитель + свой контр отправлен: ждём хода клиента. */}
+                  <SecondaryButton
                     testID="trip-bid-chat"
-                    style={s.miniBtn}
+                    role="driver"
+                    icon="💬"
+                    label={t('open_bid_chat')}
                     onPress={() => openChatForBid(b)}
-                  >
-                    <Text style={[s.miniBtnText, { color: v1Accent.main }]}>💬 {t('open_bid_chat')}</Text>
-                  </TouchableOpacity>
+                    disabled={!!rejecting}
+                  />
+                  <DestructiveButton
+                    testID="trip-bid-reject"
+                    icon="✕"
+                    label={t('reject_btn')}
+                    loading={rejecting === b.id}
+                    disabled={!!rejecting}
+                    onPress={() => rejectClientBid(b)}
+                  />
                 </View>
               ) : null}
             </View>
@@ -944,63 +958,68 @@ export default function TripDetail({ navigation, route }) {
           <Text style={[s.myBidStatus, { color: v1.text }]}>{myBidStatusLabel}</Text>
           {myActiveBid.status === 'countered' && myActiveBid.counterAmount ? (
             <>
-              {/* Встречная цена водителя — сумма крупно + его комментарий.
-                  Ответ в один тап: принять (создаёт сделку) или отклонить. */}
+              {/* Клиент + водитель прислал контр: primary «Принять контр $X»
+                  (client orange), Chat + Destructive Decline. Иерархия 2026. */}
               <Text style={[s.myBidCounter, { color: '#E06D00' }]} testID="trip-counter-amount">
                 🔁 {t('counter_amount')}: {formatPrice(myActiveBid.counterAmount, myActiveBid.currency || trip.currency)}
                 {myActiveBid.counterMessage ? ` · ${myActiveBid.counterMessage}` : ''}
               </Text>
-              <View style={[s.myBidBtnRow, { flexWrap: 'wrap' }]}>
-                <TouchableOpacity
-                  style={[s.myBidBtn, { borderColor: '#EF4444' }, counterActing && { opacity: 0.5 }]}
-                  onPress={declineCounter}
+              <View style={{ marginTop: 8, gap: 8 }}>
+                <PrimaryCTA
+                  testID="trip-counter-accept"
+                  role="client"
+                  icon="✓"
+                  label={`${t('accept_counter')} ${formatPrice(myActiveBid.counterAmount, myActiveBid.currency || trip.currency)}`}
+                  loading={counterActing}
                   disabled={counterActing}
-                  testID="trip-counter-decline"
-                >
-                  <Text style={[s.myBidBtnText, { color: '#EF4444' }]}>↩ {t('decline_counter')}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[s.myBidBtn, { borderColor: v1Accent.main }]}
+                  onPress={acceptCounter}
+                />
+                <SecondaryButton
+                  testID="trip-my-bid-chat"
+                  role="client"
+                  icon="💬"
+                  label={t('open_chat') || 'Чат'}
                   onPress={openBidChat}
                   disabled={openingChat}
-                  testID="trip-my-bid-chat"
-                >
-                  <Text style={[s.myBidBtnText, { color: v1Accent.main }]}>💬 {t('open_chat') || 'Чат'}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[s.myBidBtn, { backgroundColor: v1Accent.main, borderColor: v1Accent.main, flexBasis: '100%' }, counterActing && { opacity: 0.5 }]}
-                  onPress={acceptCounter}
+                />
+                <DestructiveButton
+                  testID="trip-counter-decline"
+                  icon="↩"
+                  label={t('decline_counter')}
+                  loading={counterActing}
                   disabled={counterActing}
-                  testID="trip-counter-accept"
-                >
-                  <Text style={[s.myBidBtnText, { color: v1Accent.onAccent }]}>
-                    ✅ {t('accept_counter')} {formatPrice(myActiveBid.counterAmount, myActiveBid.currency || trip.currency)}
-                  </Text>
-                </TouchableOpacity>
+                  onPress={declineCounter}
+                />
               </View>
             </>
           ) : (
-          <View style={s.myBidBtnRow}>
-            <TouchableOpacity
-              style={[s.myBidBtn, { borderColor: v1Accent.main }]}
-              onPress={() => setBidModal(true)}
-              testID="trip-my-bid-edit"
-            >
-              <Text style={[s.myBidBtnText, { color: v1Accent.main }]}>✏️ {t('edit_bid') || 'Изменить'}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[s.myBidBtn, { backgroundColor: v1Accent.main, borderColor: v1Accent.main }]}
-              onPress={openBidChat}
-              disabled={openingChat}
-              testID="trip-my-bid-chat"
-            >
-              <Text style={[s.myBidBtnText, { color: v1Accent.onAccent }]}>💬 {t('open_chat') || 'Чат'}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[s.myBidBtn, { borderColor: '#EF4444' }, cancelling && { opacity: 0.5 }]}
+          <View style={{ marginTop: 8, gap: 8 }}>
+            {/* Клиент + своя ставка pending: primary НЕТ (ждём хода водителя). */}
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <SecondaryButton
+                testID="trip-my-bid-edit"
+                role="client"
+                icon="✏️"
+                label={t('edit_bid') || 'Изменить'}
+                onPress={() => setBidModal(true)}
+                disabled={cancelling}
+              />
+              <SecondaryButton
+                testID="trip-my-bid-chat"
+                role="client"
+                icon="💬"
+                label={t('open_chat') || 'Чат'}
+                onPress={openBidChat}
+                disabled={openingChat || cancelling}
+              />
+            </View>
+            <DestructiveButton
+              testID="trip-my-bid-cancel"
+              icon="⊘"
+              label={t('cancel_bid') || 'Отменить'}
+              loading={cancelling}
+              disabled={cancelling}
               onPress={async () => {
-                // Подтверждение на обеих платформах (web:confirm, native:Alert) —
-                // раньше native отменял мгновенно при случайном тапе.
                 const ok = Platform.OS === 'web'
                   ? (typeof window !== 'undefined' && window.confirm(t('cancel_bid_confirm')))
                   : await new Promise((res) => Alert.alert(
@@ -1025,11 +1044,7 @@ export default function TripDetail({ navigation, route }) {
                 }
                 setCancelling(false);
               }}
-              disabled={cancelling}
-              testID="trip-my-bid-cancel"
-            >
-              <Text style={[s.myBidBtnText, { color: '#EF4444' }]}>⊘ {t('cancel_bid') || 'Отменить'}</Text>
-            </TouchableOpacity>
+            />
           </View>
           )}
         </View>

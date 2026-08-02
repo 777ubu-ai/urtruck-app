@@ -40,6 +40,10 @@ import SectionTitle from '../components/ui/v1/SectionTitle';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
 import StickyCTABar from '../components/ui/v1/StickyCTABar';
 import { DealStatusTimeline } from '../components/deal/DealRoom';
+import PrimaryCTA from '../components/ui/actions/PrimaryCTA';
+import SecondaryButton from '../components/ui/actions/SecondaryButton';
+import DestructiveButton from '../components/ui/actions/DestructiveButton';
+import PriceSavingsBadge from '../components/deal/PriceSavingsBadge';
 
 const FLAGS = { KZ: '🇰🇿', UZ: '🇺🇿', RU: '🇷🇺', KG: '🇰🇬', CN: '🇨🇳', TJ: '🇹🇯', TR: '🇹🇷', TM: '🇹🇲', MN: '🇲🇳', DE: '🇩🇪', FR: '🇫🇷' };
 
@@ -597,50 +601,25 @@ export default function CargoDetail({ navigation, route }) {
               <View style={{ alignItems: 'flex-end' }}>
                 <Text style={s.bidAmt}>{formatPrice(b.amount, c.currency || 'USD', t)}</Text>
 
-                {/* Cargo owner — pending: Reject / Counter / Accept / Open chat */}
+                {/* Дизайн-система 2026 (приказ владельца 02.08):
+                    Одна главная кнопка (56px, role-accent) + пара вторичных
+                    (48px) + деструктив (48px, контур). Иерархия: Принять →
+                    Чат/Торг → Отклонить. Заменяет предыдущую «стену из 4
+                    одинаковых кнопок». Savings-badge показывает выгоду цены.
+                    После accept — success-state (semantic green #22C55E,
+                    отличный от driver-акцента). */}
                 {c.isMine && b.status === 'pending' && !hasAccepted && (
-                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                    <TouchableOpacity
-                      testID="bid-reject"
-                      style={[s.rejectBtn, rejecting === b.id && { opacity: 0.5 }]}
-                      onPress={async () => {
-                        setRejecting(b.id);
-                        try {
-                          const r = await marketAPI.rejectBid(b.id);
-                          if (r.ok) {
-                            toast('❌ ' + t('bid_rejected_toast'), 'success');
-                            loadBids();
-                          } else {
-                            toast(r.detail || t('reject_failed'), 'error');
-                          }
-                        } catch {
-                          toast(t('no_connection'), 'error');
-                        }
-                        setRejecting(null);
-                      }}
-                      disabled={!!rejecting || !!accepting}
-                    >
-                      <Text style={s.rejectBtnText}>{t('reject_btn')}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      testID="bid-counter"
-                      style={[s.miniBtn, { borderColor: '#E06D00' }]}
-                      onPress={() => sendCounter(b)}
-                    >
-                      <Text style={[s.miniBtnText, { color: '#E06D00' }]}>🔁 {t('counter_offer')}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      testID="bid-chat"
-                      style={[s.miniBtn, { borderColor: v1Accent.main }]}
-                      onPress={() => openChatForBid(b)}
-                    >
-                      <Text style={[s.miniBtnText, { color: v1Accent.main }]}>💬 {t('open_bid_chat')}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
+                  <View style={{ marginTop: 10, gap: 8, alignSelf: 'stretch' }}>
+                    <PriceSavingsBadge listingPrice={c.price} bidPrice={b.amount} currency={c.currency || 'USD'} />
+                    <PrimaryCTA
                       testID="bid-accept"
-                      style={[s.acceptBtn, { backgroundColor: v1Accent.main }, accepting === b.id && { opacity: 0.5 }]}
+                      role="client"
+                      icon="✓"
+                      label={accepting === b.id ? '...' : t('accept_bid_btn')}
+                      loading={accepting === b.id}
+                      disabled={!!accepting || !!rejecting}
+                      success={dealStatus === 'accepted' && dealId != null}
                       onPress={async () => {
-                        // Принятие ставки создаёт сделку — подтверждаем.
                         const sum = formatPrice(b.amount, c.currency);
                         const msg = t('accept_bid_confirm').replace('{sum}', sum);
                         const ok = Platform.OS === 'web'
@@ -669,19 +648,68 @@ export default function CargoDetail({ navigation, route }) {
                         }
                         setAccepting(null);
                       }}
+                    />
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      <SecondaryButton
+                        testID="bid-chat"
+                        role="client"
+                        icon="💬"
+                        label={t('open_bid_chat')}
+                        onPress={() => openChatForBid(b)}
+                        disabled={!!accepting || !!rejecting}
+                      />
+                      <SecondaryButton
+                        testID="bid-counter"
+                        role="client"
+                        icon="🔁"
+                        label={t('counter_offer')}
+                        onPress={() => sendCounter(b)}
+                        disabled={!!accepting || !!rejecting}
+                      />
+                    </View>
+                    <DestructiveButton
+                      testID="bid-reject"
+                      icon="✕"
+                      label={t('reject_btn')}
+                      loading={rejecting === b.id}
                       disabled={!!accepting || !!rejecting}
-                    >
-                      <Text style={[s.acceptBtnText, { color: v1Accent.onAccent }]}>{t('accept_bid_btn')}</Text>
-                    </TouchableOpacity>
+                      onPress={async () => {
+                        setRejecting(b.id);
+                        try {
+                          const r = await marketAPI.rejectBid(b.id);
+                          if (r.ok) {
+                            toast('❌ ' + t('bid_rejected_toast'), 'success');
+                            loadBids();
+                          } else {
+                            toast(r.detail || t('reject_failed'), 'error');
+                          }
+                        } catch {
+                          toast(t('no_connection'), 'error');
+                        }
+                        setRejecting(null);
+                      }}
+                    />
                   </View>
                 )}
 
-                {/* Cargo owner — countered: Reject / Open chat (no direct accept) */}
+                {/* Клиент + countered: primary НЕТ (клиент уже сделал контр,
+                    следующий ход — за водителем). Только Chat + Destructive. */}
                 {c.isMine && isCountered && (
-                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                    <TouchableOpacity
+                  <View style={{ marginTop: 10, gap: 8, alignSelf: 'stretch' }}>
+                    <SecondaryButton
+                      testID="bid-chat"
+                      role="client"
+                      icon="💬"
+                      label={t('open_bid_chat')}
+                      onPress={() => openChatForBid(b)}
+                      disabled={!!rejecting}
+                    />
+                    <DestructiveButton
                       testID="bid-reject"
-                      style={[s.rejectBtn, rejecting === b.id && { opacity: 0.5 }]}
+                      icon="✕"
+                      label={t('reject_btn')}
+                      loading={rejecting === b.id}
+                      disabled={!!rejecting}
                       onPress={async () => {
                         setRejecting(b.id);
                         try {
@@ -691,79 +719,70 @@ export default function CargoDetail({ navigation, route }) {
                         } catch { toast(t('no_connection'), 'error'); }
                         setRejecting(null);
                       }}
-                      disabled={!!rejecting}
-                    >
-                      <Text style={s.rejectBtnText}>{t('reject_btn')}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      testID="bid-chat"
-                      style={[s.miniBtn, { borderColor: '#22C55E' }]}
-                      onPress={() => openChatForBid(b)}
-                    >
-                      <Text style={[s.miniBtnText, { color: '#22C55E' }]}>💬 {t('open_bid_chat')}</Text>
-                    </TouchableOpacity>
+                    />
                   </View>
                 )}
 
-                {/* Driver — countered: Accept / Decline / Open chat.
-                    !c.isMine — если груз мой, я всегда «хозяин», набор водителя
-                    не показываем (иначе на одном аккаунте дублировались кнопки). */}
+                {/* Водитель + countered: primary = «Принять контр $X» (driver
+                    green), Chat + Destructive Decline. */}
                 {b.isMine && !c.isMine && isCountered && (
-                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                    <TouchableOpacity
-                      testID="bid-decline-counter"
-                      style={[s.miniBtn, { borderColor: '#EF4444' }]}
-                      onPress={() => declineCounter(b)}
-                    >
-                      <Text style={[s.miniBtnText, { color: '#EF4444' }]}>↩ {t('decline_counter')}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      testID="bid-chat"
-                      style={[s.miniBtn, { borderColor: '#22C55E' }]}
-                      onPress={() => openChatForBid(b)}
-                    >
-                      <Text style={[s.miniBtnText, { color: '#22C55E' }]}>💬 {t('open_bid_chat')}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
+                  <View style={{ marginTop: 10, gap: 8, alignSelf: 'stretch' }}>
+                    <PrimaryCTA
                       testID="bid-accept-counter"
-                      style={[s.acceptBtn]}
+                      role="driver"
+                      icon="✓"
+                      label={`${t('accept_counter')} ${formatPrice(b.counterAmount, c.currency || 'USD', t)}`}
                       onPress={() => acceptCounter(b)}
-                    >
-                      <Text style={s.acceptBtnText}>{t('accept_counter')} {formatPrice(b.counterAmount, c.currency || 'USD', t)}</Text>
-                    </TouchableOpacity>
+                    />
+                    <SecondaryButton
+                      testID="bid-chat"
+                      role="driver"
+                      icon="💬"
+                      label={t('open_bid_chat')}
+                      onPress={() => openChatForBid(b)}
+                    />
+                    <DestructiveButton
+                      testID="bid-decline-counter"
+                      icon="↩"
+                      label={t('decline_counter')}
+                      onPress={() => declineCounter(b)}
+                    />
                   </View>
                 )}
 
-                {/* Driver — pending: Edit / Cancel / Open chat.
-                    «Дать скидку» убрана — дублировала «Изменить» (там тоже
-                    меняют цену). !c.isMine — набор водителя не показываем на
-                    своём грузе. */}
+                {/* Водитель + своя ставка pending: primary НЕТ (ждём хода
+                    клиента), только Edit + Chat + Destructive Cancel. */}
                 {b.isMine && !c.isMine && b.status === 'pending' && !hasAccepted && (
-                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                    <TouchableOpacity
-                      testID="bid-edit"
-                      style={[s.miniBtn, { borderColor: '#22C55E' }]}
-                      onPress={() => {
-                        setEditingBid(b);
-                        setBidModalMode('edit');
-                        setBidModal(true);
-                      }}
-                    >
-                      <Text style={[s.miniBtnText, { color: '#22C55E' }]}>✏️ {t('edit_bid')}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      testID="bid-chat"
-                      style={[s.miniBtn, { borderColor: '#22C55E' }]}
-                      onPress={() => openChatForBid(b)}
-                    >
-                      <Text style={[s.miniBtnText, { color: '#22C55E' }]}>💬 {t('open_bid_chat')}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
+                  <View style={{ marginTop: 10, gap: 8, alignSelf: 'stretch' }}>
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      <SecondaryButton
+                        testID="bid-edit"
+                        role="driver"
+                        icon="✏️"
+                        label={t('edit_bid')}
+                        onPress={() => {
+                          setEditingBid(b);
+                          setBidModalMode('edit');
+                          setBidModal(true);
+                        }}
+                        disabled={!!cancelling}
+                      />
+                      <SecondaryButton
+                        testID="bid-chat"
+                        role="driver"
+                        icon="💬"
+                        label={t('open_bid_chat')}
+                        onPress={() => openChatForBid(b)}
+                        disabled={!!cancelling}
+                      />
+                    </View>
+                    <DestructiveButton
                       testID="bid-cancel"
-                      style={[s.miniBtn, { borderColor: '#EF4444' }, cancelling === b.id && { opacity: 0.5 }]}
+                      icon="⊘"
+                      label={t('cancel_bid')}
+                      loading={cancelling === b.id}
+                      disabled={!!cancelling}
                       onPress={async () => {
-                        // Подтверждение на обеих платформах — раньше на native
-                        // window.confirm отсутствовал → ok=true, отмена мгновенно.
                         const ok = Platform.OS === 'web'
                           ? (typeof window !== 'undefined' && window.confirm(t('cancel_bid_confirm')))
                           : await new Promise((res) => Alert.alert(
@@ -788,10 +807,7 @@ export default function CargoDetail({ navigation, route }) {
                         }
                         setCancelling(null);
                       }}
-                      disabled={!!cancelling}
-                    >
-                      <Text style={[s.miniBtnText, { color: '#EF4444' }]}>⊘ {t('cancel_bid')}</Text>
-                    </TouchableOpacity>
+                    />
                   </View>
                 )}
               </View>
@@ -813,57 +829,64 @@ export default function CargoDetail({ navigation, route }) {
             <Text style={[s.myBidStatus, { color: theme.text }]}>{myBidStatusLabel}</Text>
             {myPendingBid.status === 'countered' && myPendingBid.counterAmount ? (
               <>
-                {/* Клиент прислал встречную цену — водитель отвечает прямо
-                    здесь: сумма + [Отклонить] [Чат] [Принять $X]. Симметрично
-                    TripDetail. Раньше это жило в списке ставок и дублировалось. */}
+                {/* Водитель + пришёл контр-оффер от клиента: primary =
+                    «Принять контр $X» (driver green), Secondary Chat,
+                    Destructive Decline. Иерархия дизайн-системы 2026. */}
                 <Text style={[s.myBidCounter, { color: '#E06D00' }]} testID="cargo-counter-amount">
                   🔁 {t('counter_amount')}: {formatPrice(myPendingBid.counterAmount, c.currency, t)}
                   {myPendingBid.counterMessage ? ` · ${myPendingBid.counterMessage}` : ''}
                 </Text>
-                <View style={[s.myBidBtnRow, { flexWrap: 'wrap' }]}>
-                  <TouchableOpacity
-                    style={[s.myBidBtn, { borderColor: '#EF4444' }]}
-                    onPress={() => declineCounter(myPendingBid)}
-                    testID="cargo-counter-decline"
-                  >
-                    <Text style={[s.myBidBtnText, { color: '#EF4444' }]}>↩ {t('decline_counter')}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[s.myBidBtn, { borderColor: v1Accent.main }]}
-                    onPress={openMyBidChat}
-                    testID="cargo-my-bid-chat"
-                  >
-                    <Text style={[s.myBidBtnText, { color: v1Accent.main }]}>💬 {t('open_chat') || 'Чат'}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[s.myBidBtn, { backgroundColor: v1Accent.main, borderColor: v1Accent.main, flexBasis: '100%' }]}
-                    onPress={() => acceptCounter(myPendingBid)}
+                <View style={{ marginTop: 8, gap: 8 }}>
+                  <PrimaryCTA
                     testID="cargo-counter-accept"
-                  >
-                    <Text style={[s.myBidBtnText, { color: v1Accent.onAccent }]}>
-                      ✅ {t('accept_counter')} {formatPrice(myPendingBid.counterAmount, c.currency, t)}
-                    </Text>
-                  </TouchableOpacity>
+                    role="driver"
+                    icon="✓"
+                    label={`${t('accept_counter')} ${formatPrice(myPendingBid.counterAmount, c.currency, t)}`}
+                    onPress={() => acceptCounter(myPendingBid)}
+                  />
+                  <SecondaryButton
+                    testID="cargo-my-bid-chat"
+                    role="driver"
+                    icon="💬"
+                    label={t('open_chat') || 'Чат'}
+                    onPress={openMyBidChat}
+                  />
+                  <DestructiveButton
+                    testID="cargo-counter-decline"
+                    icon="↩"
+                    label={t('decline_counter')}
+                    onPress={() => declineCounter(myPendingBid)}
+                  />
                 </View>
               </>
             ) : (
-              <View style={s.myBidBtnRow}>
-                <TouchableOpacity
-                  style={[s.myBidBtn, { borderColor: v1Accent.main }]}
-                  onPress={() => { setEditingBid(myPendingBid); setBidModalMode('edit'); setBidModal(true); }}
-                  testID="cargo-my-bid-edit"
-                >
-                  <Text style={[s.myBidBtnText, { color: v1Accent.main }]}>✏️ {t('edit_bid') || 'Изменить'}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[s.myBidBtn, { backgroundColor: v1Accent.main, borderColor: v1Accent.main }]}
-                  onPress={openMyBidChat}
-                  testID="cargo-my-bid-chat"
-                >
-                  <Text style={[s.myBidBtnText, { color: v1Accent.onAccent }]}>💬 {t('open_chat') || 'Чат'}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[s.myBidBtn, { borderColor: '#EF4444' }, cancelling === myPendingBid.id && { opacity: 0.5 }]}
+              <View style={{ marginTop: 8, gap: 8 }}>
+                {/* Водитель + своя ставка pending: primary НЕТ (ждём хода
+                    клиента). Edit + Chat в паре, Cancel как destructive. */}
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <SecondaryButton
+                    testID="cargo-my-bid-edit"
+                    role="driver"
+                    icon="✏️"
+                    label={t('edit_bid') || 'Изменить'}
+                    onPress={() => { setEditingBid(myPendingBid); setBidModalMode('edit'); setBidModal(true); }}
+                    disabled={cancelling === myPendingBid.id}
+                  />
+                  <SecondaryButton
+                    testID="cargo-my-bid-chat"
+                    role="driver"
+                    icon="💬"
+                    label={t('open_chat') || 'Чат'}
+                    onPress={openMyBidChat}
+                    disabled={cancelling === myPendingBid.id}
+                  />
+                </View>
+                <DestructiveButton
+                  testID="cargo-my-bid-cancel"
+                  icon="⊘"
+                  label={t('cancel_bid') || 'Отменить'}
+                  loading={cancelling === myPendingBid.id}
+                  disabled={cancelling === myPendingBid.id}
                   onPress={async () => {
                     const ok = Platform.OS === 'web'
                       ? (typeof window !== 'undefined' && window.confirm(t('cancel_bid_confirm')))
@@ -883,11 +906,7 @@ export default function CargoDetail({ navigation, route }) {
                     } catch { toast(t('no_connection'), 'error'); }
                     setCancelling(null);
                   }}
-                  disabled={cancelling === myPendingBid.id}
-                  testID="cargo-my-bid-cancel"
-                >
-                  <Text style={[s.myBidBtnText, { color: '#EF4444' }]}>⊘ {t('cancel_bid') || 'Отменить'}</Text>
-                </TouchableOpacity>
+                />
               </View>
             )}
           </View>
