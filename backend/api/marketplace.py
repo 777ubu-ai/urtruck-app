@@ -433,7 +433,7 @@ def create_cargo(body: CargoIn, user=Depends(require_level(1))):
     # Push подписчикам маршрута
     try:
         from api.saved_searches import notify_matching_users
-        notify_matching_users(body.from_city, body.to_city, body.cargo_desc)
+        notify_matching_users(body.from_city, body.to_city, body.cargo_desc, cargo_id=cid)
     except Exception:
         pass
 
@@ -1563,6 +1563,14 @@ def update_trip_status(trip_id: str, new_status: str, user=Depends(require_level
         if trip["driver_id"] != user["id"]:
             raise HTTPException(status_code=403, detail="Только водитель может менять статус")
         c.execute("UPDATE trips SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (new_status, trip_id))
+        # Обратный синк deal.status — иначе legacy-эндпоинт рейса расходился со
+        # статусом сделки (deal остаётся accepted, а trip уже delivered).
+        _TRIP_TO_DEAL = {"in_transit": "in_progress", "delivered": "delivered", "cancelled": "cancelled"}
+        if new_status in _TRIP_TO_DEAL:
+            c.execute(
+                "UPDATE deals SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE trip_id = ? AND status NOT IN ('delivered','cancelled')",
+                (_TRIP_TO_DEAL[new_status], trip_id),
+            )
 
     # Push + InApp notification
     try:
@@ -1783,6 +1791,22 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount: int):
         )
     except Exception as e:
         print(f"[accept_bid] deal_event write failed (continuing): {e}", flush=True)
+
+    # Системный маркер в чат — чтобы Deal Room сразу не был пустым (раньше до
+    # первой смены статуса комната открывалась без единого сообщения).
+    try:
+        if chat_room_id:
+            _mk = f"🤝 Сделка создана · {final_amount}"
+            c.execute(
+                "INSERT INTO chat_messages (room_id, sender_id, text) VALUES (?,?,?)",
+                (chat_room_id, "system", _mk),
+            )
+            c.execute(
+                "UPDATE chat_rooms SET last_message = ?, last_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (_mk[:50], chat_room_id),
+            )
+    except Exception as e:
+        print(f"[accept_bid] chat marker write failed (continuing): {e}", flush=True)
 
     return {
         "deal_id": deal_id,
@@ -2090,7 +2114,11 @@ def counter_bid(bid_id: str, body: BidCounterIn, user=Depends(require_level(1)))
     with get_conn() as c2:
         cur = _bid_currency(c2, bid)
     title = f"🔁 Контр-оффер: {_money(body.amount, cur)}"
-    text = f"Владелец груза предложил {_money(body.amount, cur)} вместо {_money(bid['amount'], cur)}"
+    # Роль-зависимый текст: для bid на груз контр шлёт владелец груза; для bid
+    # на рейс — владелец рейса (водитель). Иначе биддеру на рейс приходило
+    # неверное «Владелец груза предложил».
+    _owner_word = "Владелец груза" if bid.get("cargo_id") else "Владелец рейса"
+    text = f"{_owner_word} предложил {_money(body.amount, cur)} вместо {_money(bid['amount'], cur)}"
     try:
         send_to_user(bid["bidder_id"], title, text, url=counter_url)
     except Exception:
@@ -2189,8 +2217,11 @@ def decline_counter(bid_id: str, user=Depends(require_level(1))):
                 _dc_url = f"/trips/{bid['trip_id']}?bid={bid_id}"
             else:
                 _dc_url = "/"
+            # Роль-зависимо: контр отклоняет биддер. Для bid на груз биддер —
+            # водитель; для bid на рейс — грузовладелец.
+            _decliner_word = "Водитель" if bid.get("cargo_id") else "Грузовладелец"
             try:
-                send_to_user(owner_id, "❌ Контр-оффер отклонён", "Водитель отказался от вашего контр-оффера", url=_dc_url)
+                send_to_user(owner_id, "❌ Контр-оффер отклонён", f"{_decliner_word} отказался от вашего контр-оффера", url=_dc_url)
             except Exception:
                 pass
             try:

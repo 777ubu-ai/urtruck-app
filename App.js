@@ -109,6 +109,12 @@ function navigateFromUrl(navRef, url, role) {
       navRef.current.navigate('Chat', { roomId: id, role });
     } else if (kind === 'chat' || kind === 'chats') {
       navRef.current.navigate('ChatsList');
+    } else if (kind === 'profile') {
+      // Раньше пуши про отзыв/статус документов слали url="/profile", а парсер
+      // его не знал → тап падал в дефолтный экран. Профиль — pushed-экран стека.
+      navRef.current.navigate('Profile');
+    } else if (kind === 'notifications') {
+      navRef.current.navigate('Notifications');
     }
   } catch (e) {
     console.warn('[push] navigate failed:', e?.message);
@@ -149,7 +155,7 @@ function AppInner() {
   const routeFromUrl = (url) => {
     if (!url) return;
     const parsed = parseNotifUrl(url);
-    const needsAuth = parsed && ['chats', 'chat', 'deals', 'cargos', 'trips'].includes(parsed.kind);
+    const needsAuth = parsed && ['chats', 'chat', 'deals', 'cargos', 'trips', 'profile', 'notifications'].includes(parsed.kind);
     if (!navReadyRef.current || !navRef.current || (needsAuth && !authedForDeepLink)) {
       pendingUrlRef.current = url;  // отложить
       return;
