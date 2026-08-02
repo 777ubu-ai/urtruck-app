@@ -105,10 +105,10 @@ export default function BargainCard({ cargoId, tripId, myUserId, onOpenModal, on
     <View style={s.wrap} testID="bargain-card">
       <View style={s.row}>
         <Text style={s.label}>{statusLabel}</Text>
-        <Text style={s.amount} testID="bargain-amount">{money(current)}</Text>
+        <Text style={s.amount} testID="bargain-amount" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{money(current)}</Text>
       </View>
       {movement.length > 1 ? (
-        <Text style={s.movement} testID="bargain-movement">
+        <Text style={s.movement} testID="bargain-movement" numberOfLines={1}>
           {movement.map((a) => money(a)).join('  →  ')}
         </Text>
       ) : null}
@@ -161,7 +161,7 @@ const styles = (v1) => StyleSheet.create({
   wrap: { marginHorizontal: 12, marginTop: 10, padding: 14, borderRadius: v1Radius.field, backgroundColor: v1.surface, borderWidth: 1, borderColor: v1.driver },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   label: { color: v1.textMuted, fontSize: 12, fontWeight: '700' },
-  amount: { color: v1.text, fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
+  amount: { color: v1.text, fontSize: 26, fontWeight: '900', letterSpacing: -0.5, flexShrink: 1 },
   movement: { color: v1.textMuted, fontSize: 13, fontWeight: '700', marginTop: 4 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 12 },
   chip: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 20, borderWidth: 1, borderColor: v1.border, backgroundColor: v1.bgDeep },

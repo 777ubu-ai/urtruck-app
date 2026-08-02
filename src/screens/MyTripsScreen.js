@@ -79,7 +79,7 @@ export default function MyTripsScreen({ navigation, route }) {
   metaItem: { ...typography.caption },
   metaDot: { color: '#475569', fontSize: 11 },
   cardBottom: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  price: { fontSize: 24, fontWeight: '700', color: '#FF8400', fontVariant: ['tabular-nums'] },
+  price: { fontSize: 24, fontWeight: '700', color: '#FF8400', fontVariant: ['tabular-nums'], flexShrink: 1 },
   bidsLabel: { ...typography.caption, flex: 1 },
   offersCta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.sm, paddingVertical: 10, paddingHorizontal: 12, borderRadius: radius.sm, backgroundColor: 'rgba(255,132,0,0.14)' },
   offersCtaText: { color: '#FF8400', fontSize: 14, fontWeight: '800', flex: 1 },
@@ -420,7 +420,7 @@ export default function MyTripsScreen({ navigation, route }) {
           </Text>
         </View>
         <View style={s.cardBottom}>
-          <Text style={s.price}>{formatPrice(item.price, item.currency, t)}</Text>
+          <Text style={s.price} numberOfLines={1}>{formatPrice(item.price, item.currency, t)}</Text>
           {item.bids_count > 0 && !(isCargo && !isDriver) && <Text style={[s.bidsLabel, { color: theme.textMuted }]}>{formatBids(item.bids_count)}</Text>}
         </View>
         {/* Индикатор откликов на карточке груза. С 26.07.2026 работа со
@@ -597,7 +597,7 @@ export default function MyTripsScreen({ navigation, route }) {
           </View>
         ) : null}
         <View style={s.cardBottom}>
-          <Text style={s.price}>{(item.amount || 0) > 0 ? formatPrice(item.amount, currencyFor(item), t) : t('negotiable')}</Text>
+          <Text style={s.price} numberOfLines={1}>{(item.amount || 0) > 0 ? formatPrice(item.amount, currencyFor(item), t) : t('negotiable')}</Text>
           <Text style={[s.metaItem, { color: theme.textDim }]}>{formatDateForDisplay(item.departure || item.created_at)}</Text>
         </View>
         {nextStep ? (
@@ -740,7 +740,7 @@ export default function MyTripsScreen({ navigation, route }) {
         </View>
         {item.cargo_desc ? <Text style={[s.desc, { color: theme.textMuted }]} numberOfLines={1}>{localizeCargoName(item.cargo_desc, lang)}</Text> : null}
         <View style={s.cardBottom}>
-          <Text style={s.price}>{formatPrice(item.amount, currencyFor(item), t)}</Text>
+          <Text style={s.price} numberOfLines={1}>{formatPrice(item.amount, currencyFor(item), t)}</Text>
           {item.message && <Text style={[s.bidsLabel, { color: theme.textMuted }]} numberOfLines={1}>{item.message}</Text>}
         </View>
         {isCountered && item.counter_amount ? (
