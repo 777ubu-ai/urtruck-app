@@ -60,12 +60,15 @@ export default function SegmentTabs({ items = [], value, onChange, accent, varia
   );
 }
 
+// Дизайн 2026 v4 (03.08): chip-стиль, компактнее. Раньше 10pt vertical padding
+// и жирный 13pt текст — pill'ы толстые. Теперь 6pt padding, шрифт 12,
+// gap 6 — плотный ряд табов.
 const s = StyleSheet.create({
-  row: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  row: { flexDirection: 'row', gap: 6, marginBottom: 10 },
   tab: {
-    flex: 1, paddingVertical: 10,
-    borderRadius: v1Radius.pill, borderWidth: 1,
+    flex: 1, paddingVertical: 6,
+    borderRadius: 8, borderWidth: 1,
     alignItems: 'center', justifyContent: 'center',
   },
-  label: { fontSize: 13, fontWeight: '800' },
+  label: { fontSize: 12, fontWeight: '700' },
 });
