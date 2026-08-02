@@ -559,21 +559,21 @@ export default function ProfileScreen({ navigation, route }) {
 const s = StyleSheet.create({
   container: { flex: 1 },
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
-  title: { fontSize: 22, fontWeight: '900' },
+  title: { fontSize: 19, fontWeight: '700', letterSpacing: -0.2 },
 
   // PR-D1: PRO progress card
-  proCard: { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 14 },
+  proCard: { borderRadius: 10, borderWidth: 1, padding: 14, marginBottom: 14 },
   proHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
-  proTitle: { fontSize: 14, fontWeight: '800' },
+  proTitle: { fontSize: 14, fontWeight: '700' },
   proSub: { fontSize: 11, marginTop: 2 },
-  proPercent: { fontSize: 18, fontWeight: '900' },
+  proPercent: { fontSize: 16, fontWeight: '800', letterSpacing: -0.2 },
   proTrack: { height: 6, borderRadius: 3, overflow: 'hidden' },
   proFill: { height: '100%', borderRadius: 3 },
   proCta: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    paddingVertical: 11, borderRadius: 10, marginTop: 12,
+    minHeight: 44, paddingVertical: 11, borderRadius: 10, marginTop: 12,
   },
-  proCtaText: { fontSize: 13, fontWeight: '800' },
+  proCtaText: { fontSize: 13, fontWeight: '700' },
 
   // Driver-verification entry CTA (2026-06-11) — компактная зелёная
   // строка под profile card. На client'а наглядно говорит, что приложение
@@ -589,7 +589,7 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    borderRadius: 16,
+    borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 14,
     borderWidth: 1,
@@ -606,7 +606,7 @@ const s = StyleSheet.create({
   },
   profileInfo: { flex: 1, gap: 3 },
   profileNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  name: { fontSize: 17, fontWeight: '800', flexShrink: 1 },
+  name: { fontSize: 16, fontWeight: '700', flexShrink: 1 },
   verifiedDot: { width: 16, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   profileMetaRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'nowrap' },
   phone: { fontSize: 12, flexShrink: 1 },
@@ -616,7 +616,7 @@ const s = StyleSheet.create({
 
   // PR-C2 (WeChat grouped list)
   menuGroup: {
-    borderRadius: 14,
+    borderRadius: 10,
     borderWidth: 1,
     marginBottom: 14,
     overflow: 'hidden',
@@ -634,7 +634,7 @@ const s = StyleSheet.create({
   menuSub: { fontSize: 11, marginTop: 1 },
 
   // PR-C2 (compact settings)
-  settingsCard: { borderRadius: 14, padding: 12, borderWidth: 1, marginBottom: 12 },
+  settingsCard: { borderRadius: 10, padding: 12, borderWidth: 1, marginBottom: 12 },
   settingsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   settingLabel: { fontSize: 13, fontWeight: '600' },
   themeBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1 },

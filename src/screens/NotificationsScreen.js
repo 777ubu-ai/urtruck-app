@@ -77,15 +77,16 @@ export default function NotificationsScreen({ navigation }) {
   const s = React.useMemo(() => StyleSheet.create({
 
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12 },
-  titleHero: { color: v1.text, fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
+  titleHero: { color: v1.text, fontSize: 19, fontWeight: '700', letterSpacing: -0.2 },
   markAll: { fontSize: 12, fontWeight: '800' },
   card: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 12,
     backgroundColor: v1.surface,
     borderColor: v1.border, borderWidth: 1,
-    padding: 14, borderRadius: v1Radius.field, marginBottom: 8,
+    padding: 14, borderRadius: 10, marginBottom: 8,
+    shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1,
   },
-  icon: { fontSize: 22, marginTop: 2 },
+  icon: { fontSize: 18, marginTop: 2 },
   title: { color: v1.text, fontSize: 14, marginBottom: 2 },
   body: { color: v1.textMuted, fontSize: 12, lineHeight: 17 },
   time: { color: v1.textDim, fontSize: 11, marginTop: 4 },
@@ -188,7 +189,7 @@ export default function NotificationsScreen({ navigation }) {
       >
         <Text style={s.icon}>{item.icon || '🔔'}</Text>
         <View style={{ flex: 1 }}>
-          <Text style={[s.title, { fontWeight: isUnread ? '800' : '500' }]}>{cleanTitle}</Text>
+          <Text style={[s.title, { fontWeight: isUnread ? '700' : '500' }]}>{cleanTitle}</Text>
           {cleanBody ? <Text style={s.body}>{cleanBody}</Text> : null}
           <Text style={s.time}>{formatNotifTime(item.created_at)}</Text>
         </View>

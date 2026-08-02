@@ -307,7 +307,7 @@ export default function ChatsListScreen({ navigation, route }) {
       <TouchableOpacity
         key={String(bid.id)}
         testID="deals-offer-card"
-        style={[s.card, { backgroundColor: theme.card, borderColor: statusColor, borderWidth: 1.5, opacity: seen ? 0.72 : 1 }]}
+        style={[s.card, { backgroundColor: theme.card, borderColor: statusColor, borderWidth: 1, opacity: seen ? 0.72 : 1 }]}
         onPress={() => openOffer(bid)}
         activeOpacity={0.85}
       >
@@ -328,7 +328,7 @@ export default function ChatsListScreen({ navigation, route }) {
             </Text>
           ) : null}
           <View style={s.row}>
-            <Text style={[s.offerAmount, { color: theme.text }]} numberOfLines={1}>
+            <Text style={[s.offerAmount, { color: '#FF8400' }]} numberOfLines={1}>
               {formatPrice(bid.amount, cur, t)}
               {isCountered && bid.counter_amount ? `  →  ${formatPrice(bid.counter_amount, cur, t)}` : ''}
             </Text>
@@ -370,7 +370,7 @@ export default function ChatsListScreen({ navigation, route }) {
       <TouchableOpacity
         key={'deal_' + deal.id}
         testID="deals-deal-card"
-        style={[s.card, { backgroundColor: theme.card, borderColor: statusColor, borderWidth: 1.5 }]}
+        style={[s.card, { backgroundColor: theme.card, borderColor: statusColor, borderWidth: 1 }]}
         onPress={() => {
           // «Дом заказа»: тап по сделке — в карточку заказа (там прогресс-бар,
           // статусы, кнопка «💬 Открыть чат»), а не сразу в чат.
@@ -399,7 +399,7 @@ export default function ChatsListScreen({ navigation, route }) {
             </Text>
           ) : null}
           <View style={s.row}>
-            <Text style={[s.offerAmount, { color: theme.text }]} numberOfLines={1}>
+            <Text style={[s.offerAmount, { color: '#FF8400' }]} numberOfLines={1}>
               {formatPrice(deal.amount, cur, t)}
             </Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -598,17 +598,17 @@ export default function ChatsListScreen({ navigation, route }) {
 
 const s = StyleSheet.create({
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingTop: 6, paddingBottom: 8 },
-  title: { fontSize: 22, fontWeight: '900' },
-  search: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 12, marginBottom: 4, paddingHorizontal: 12, height: 44, borderRadius: 12, borderWidth: 1 },
+  title: { fontSize: 19, fontWeight: '700', letterSpacing: -0.2 },
+  search: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 12, marginBottom: 4, paddingHorizontal: 12, height: 44, borderRadius: 10, borderWidth: 1 },
   searchInput: { flex: 1, fontSize: 14, paddingVertical: 0 },
   sectionRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 10, paddingBottom: 6 },
   sectionDot: { width: 8, height: 8, borderRadius: 4 },
   sectionLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
   // Декластер 27.07: карточка ниже (~20%), жирным только имя/цена/счётчик.
-  card: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9, paddingHorizontal: 11, borderRadius: 13, borderWidth: 1, marginBottom: 6 },
+  card: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1, marginBottom: 8, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
   avatar: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  name: { fontSize: 15, fontWeight: '800' },
+  name: { fontSize: 14, fontWeight: '700' },
   roleInline: { fontSize: 12, fontWeight: '400' },
   time: { fontSize: 11 },
   info: { fontSize: 12, fontWeight: '400', marginTop: 1 },
@@ -627,7 +627,7 @@ const s = StyleSheet.create({
   empty: { textAlign: 'center', marginTop: 40, fontSize: 14 },
   // Режим «Сделки»: заголовки секций и карточка входящего предложения.
   sectionTitle: { fontSize: 15, fontWeight: '900', marginTop: 6, marginBottom: 8 },
-  offerAmount: { fontSize: 16, fontWeight: '900', marginTop: 2, fontVariant: ['tabular-nums'] },
+  offerAmount: { fontSize: 16, fontWeight: '700', color: '#FF8400', marginTop: 2, fontVariant: ['tabular-nums'] },
   offerOpen: { fontSize: 12, fontWeight: '800' },
   // Сегмент-переключатель «Предложения | Чаты» (кнопки слева-справа).
   segWrap: { flexDirection: 'row', marginHorizontal: 12, marginBottom: 10, borderRadius: 14, borderWidth: 1, padding: 3, gap: 3 },

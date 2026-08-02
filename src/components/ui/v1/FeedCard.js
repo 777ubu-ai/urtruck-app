@@ -166,7 +166,7 @@ export default function FeedCard({
             </View>
           ) : null}
           {priceText ? (
-            <Text style={[s.price, { color: a.main, marginTop: status ? 6 : 0 }]} numberOfLines={1}>
+            <Text style={[s.price, { color: '#FF8400', marginTop: status ? 6 : 0 }]} numberOfLines={1}>
               {priceText}
             </Text>
           ) : null}
@@ -229,14 +229,15 @@ export default function FeedCard({
 const s = StyleSheet.create({
   card: {
     borderWidth: 1,
-    borderRadius: v1Radius.card,
+    borderRadius: 10,
     padding: 14,
-    marginBottom: 10,
+    marginBottom: 8,
+    shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1,
   },
   // Компактный вид: меньше отступов и зазор между карточками, чтобы на экран
   // помещалось 5-6 строк вместо 2 крупных.
   cardCompact: { padding: 11, marginBottom: 7 },
-  routeCompact: { fontSize: 16 },
+  routeCompact: { fontSize: 14 },
   metaCompact: { fontSize: 12, fontWeight: '600', marginTop: 4 },
   topRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 8 },
   topRowCompact: { marginBottom: 0, alignItems: 'center', gap: 10 },
@@ -244,11 +245,11 @@ const s = StyleSheet.create({
   icon: { fontSize: 22 },
   // Крупнее для читаемости на солнце (Этап 5.5/5.2): маршрут и цена —
   // главные цифры на карточке; убираем 9/10px как нижний предел.
-  route: { fontSize: 18, fontWeight: '800' },
+  route: { fontSize: 14, fontWeight: '700' },
   subtitle: { fontSize: 13, marginTop: 2 },
   statusPill: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, borderWidth: 1 },
   statusText: { fontSize: 11, fontWeight: '900', letterSpacing: 0.5 },
-  price: { fontSize: 21, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  price: { fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'] },
   priceCaption: { fontSize: 11, marginTop: 1 },
   metaRow: {
     flexDirection: 'row', flexWrap: 'wrap', gap: 8,

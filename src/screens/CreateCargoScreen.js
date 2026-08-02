@@ -61,7 +61,7 @@ export default function CreateCargoScreen({ navigation, route }) {
   const v1 = useV1Colors();
   const s = React.useMemo(() => StyleSheet.create({
 
-  title: { ...v1Typography.h1, marginTop: v1Spacing.sm },
+  title: { ...v1Typography.h1, fontSize: 19, fontWeight: '700', letterSpacing: -0.2, marginTop: v1Spacing.sm },
   subtitle: { ...v1Typography.bodyMd, marginTop: 4, marginBottom: v1Spacing.md },
   row2: { flexDirection: 'row', gap: 10 },
   truckScroll: { gap: 8, paddingVertical: 4, paddingBottom: 10 },
@@ -72,26 +72,26 @@ export default function CreateCargoScreen({ navigation, route }) {
   fieldBlock: { marginBottom: v1Spacing.sm, zIndex: 100 },
   label: { color: v1.textMuted, fontSize: 12, fontWeight: '700', letterSpacing: 0.5, marginBottom: 6, marginLeft: 4 },
   err: { color: v1Colors.error, fontSize: 11, marginTop: 4, marginLeft: 6, marginBottom: 6 },
-  priceCard: { borderWidth: 1, borderRadius: v1Radius.card, padding: 12, marginBottom: v1Spacing.sm },
+  priceCard: { borderWidth: 1, borderRadius: 10, padding: 12, marginBottom: v1Spacing.sm },
   priceLabel: { color: v1.text, fontSize: 13, fontWeight: '700', marginBottom: 10 },
   priceModeRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
-  priceMode: { flex: 1, paddingVertical: 10, borderRadius: 999, borderWidth: 1, alignItems: 'center' },
+  priceMode: { flex: 1, paddingVertical: 10, borderRadius: 8, borderWidth: 1, alignItems: 'center' },
   priceModeText: { fontSize: 13, fontWeight: '700' },
   currencyRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 },
-  currencyChip: { paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, borderWidth: 1 },
+  currencyChip: { paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, borderWidth: 1 },
   currencyText: { fontSize: 12, fontWeight: '700' },
   photoToggle: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingVertical: 12, paddingHorizontal: 14,
-    borderWidth: 1, borderRadius: v1Radius.field,
+    borderWidth: 1, borderRadius: 10,
     backgroundColor: v1.surface,
     marginBottom: v1Spacing.sm,
   },
   photoIcon: { fontSize: 16, color: v1.textMuted, width: 20, textAlign: 'center' },
   photoLabel: { color: v1.text, fontSize: 13, fontWeight: '700' },
   photoSub: { color: v1.textMuted, fontSize: 11, marginTop: 2 },
-  photoChevron: { fontSize: 18, fontWeight: '900' },
-  infoBox: { borderWidth: 1, borderRadius: v1Radius.field, padding: 12, marginTop: v1Spacing.sm, marginBottom: v1Spacing.md },
+  photoChevron: { fontSize: 15, fontWeight: '900' },
+  infoBox: { borderWidth: 1, borderRadius: 10, padding: 12, marginTop: v1Spacing.sm, marginBottom: v1Spacing.md },
   infoText: { fontSize: 12, fontWeight: '600', lineHeight: 17 },
   draftRow: { alignItems: 'center', marginTop: v1Spacing.md, paddingVertical: 8 },
   draftText: { fontSize: 13, fontWeight: '700' },
@@ -485,7 +485,7 @@ export default function CreateCargoScreen({ navigation, route }) {
         loading={submitting}
         accent="cargo"
         testID="cargo-submit-button"
-        style={{ marginTop: v1Spacing.sm }}
+        style={{ marginTop: v1Spacing.sm, height: 44, borderRadius: 10 }}
       />
       {/* «Сохранить черновик» убран (2026-06-13): кнопка только тостила
           feature_coming_soon — мёртвое действие на экране публикации. Вернём,
