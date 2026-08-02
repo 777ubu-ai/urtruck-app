@@ -251,14 +251,26 @@ export default function ChatsListScreen({ navigation, route }) {
     return [...dealCards, ...sorted];
   }, [offers, deals, seenOffers]);
 
-  // Тап по предложению → комната сделки (торг в BargainCard + переписка).
+  // «Дом заказа»: тап по предложению ведёт в карточку заказа, не в чат.
+  // Раньше карточка предложения открывала Deal Room (чат) — водитель терял
+  // контекст ЗАКАЗА и искал торг в переписке. Кнопка «💬 Открыть чат» есть
+  // на карточке заказа рядом, никто ничего не теряет.
   const openOffer = async (bid) => {
     markOfferSeen(bid.id);
+    if (bid.cargo_id) {
+      navigation.navigate('CargoDetail', { cargoId: bid.cargo_id, bidId: bid.id, role });
+      return;
+    }
+    if (bid.trip_id) {
+      navigation.navigate('TripDetail', { tripId: bid.trip_id, bidId: bid.id, role });
+      return;
+    }
+    // Фолбэк для очень старых ставок без cargo_id/trip_id (не должно быть).
     try {
       const r = await marketAPI.openBidChat(bid.id);
       const roomId = r && (r.chat_room_id || r.chatRoomId);
       if (r && r.ok && roomId) {
-        navigation.navigate('Chat', { roomId, role, cargoId: bid.cargo_id, tripId: bid.trip_id, bidId: bid.id });
+        navigation.navigate('Chat', { roomId, role, bidId: bid.id });
       } else {
         toast((r && r.detail) || t('chat_open_failed'), 'error');
       }
@@ -347,8 +359,14 @@ export default function ChatsListScreen({ navigation, route }) {
         testID="deals-deal-card"
         style={[s.card, { backgroundColor: theme.card, borderColor: statusColor, borderWidth: 1.5 }]}
         onPress={() => {
-          if (deal.chat_room_id) {
-            navigation.navigate('Chat', { roomId: deal.chat_room_id, dealId: deal.id, role, cargoId: deal.cargo_id, tripId: deal.trip_id });
+          // «Дом заказа»: тап по сделке — в карточку заказа (там прогресс-бар,
+          // статусы, кнопка «💬 Открыть чат»), а не сразу в чат.
+          if (deal.cargo_id) {
+            navigation.navigate('CargoDetail', { cargoId: deal.cargo_id, dealId: deal.id, role });
+          } else if (deal.trip_id) {
+            navigation.navigate('TripDetail', { tripId: deal.trip_id, dealId: deal.id, role });
+          } else if (deal.chat_room_id) {
+            navigation.navigate('Chat', { roomId: deal.chat_room_id, dealId: deal.id, role });
           }
         }}
         activeOpacity={0.85}
@@ -413,7 +431,23 @@ export default function ChatsListScreen({ navigation, route }) {
       <TouchableOpacity
         testID="deal-room-list-card"
         style={[s.card, { backgroundColor: theme.card, borderColor: isPinned ? accent + '66' : theme.border }]}
-        onPress={() => navigation.navigate('Chat', { partner: { id: item.partner_id || item.id, name: partnerName }, roomId: item.id, dealId: item.deal_id, role })}
+        onPress={() => {
+          // «Дом заказа» (dealsMode): тап по строке — в карточку заказа, где
+          // сверху блок торга/сделки и кнопка «💬 Открыть чат» рядом. Обычный
+          // экран «Чаты» продолжает вести в переписку (переписка = переписка).
+          // Support-строка (Data Room / бот поддержки) всегда идёт в чат.
+          if (dealsMode && !isSupport) {
+            if (item.cargo_id) {
+              navigation.navigate('CargoDetail', { cargoId: item.cargo_id, dealId: item.deal_id, role });
+              return;
+            }
+            if (item.trip_id) {
+              navigation.navigate('TripDetail', { tripId: item.trip_id, dealId: item.deal_id, role });
+              return;
+            }
+          }
+          navigation.navigate('Chat', { partner: { id: item.partner_id || item.id, name: partnerName }, roomId: item.id, dealId: item.deal_id, role });
+        }}
         onLongPress={() => {
           const id = String(item.id);
           const wasPinned = pinnedIds.includes(id);
