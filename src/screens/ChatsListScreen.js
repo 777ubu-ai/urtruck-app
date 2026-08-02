@@ -186,6 +186,21 @@ export default function ChatsListScreen({ navigation, route }) {
     () => rooms.filter((r) => (r.unread_count ?? r.unread ?? 0) > 0).length,
     [rooms]
   );
+
+  // Непросмотренные предложения — наверх; внутри групп свежие выше по времени.
+  // ВАЖНО: объявлено ПЕРЕД sections (иначе TDZ-ошибка «Cannot access
+  // offersSorted before initialization» → крашится вся вкладка «Сделки»).
+  const offersSorted = React.useMemo(() => {
+    const ts = (b) => { const d = new Date(String(b.created_at || '').replace(' ', 'T')); return isNaN(d) ? 0 : d.getTime(); };
+    const sorted = offers.slice().sort((a, b) => {
+      const sa = seenOffers[a.id] ? 1 : 0, sb = seenOffers[b.id] ? 1 : 0;
+      if (sa !== sb) return sa - sb;
+      return ts(b) - ts(a);
+    });
+    const dealCards = deals.map((dl) => ({ ...dl, _isDeal: true }));
+    return [...dealCards, ...sorted];
+  }, [offers, deals, seenOffers]);
+
   const sections = useMemo(() => {
     const q = query.trim().toLowerCase();
     const ts = (r) => { const d = new Date(String(r.last_message_at || r.last_at || '').replace(' ', 'T')); return isNaN(d) ? 0 : d.getTime(); };
@@ -248,18 +263,6 @@ export default function ChatsListScreen({ navigation, route }) {
       ]);
     }
   };
-
-  // Непросмотренные предложения — наверх; внутри групп свежие выше по времени.
-  const offersSorted = React.useMemo(() => {
-    const ts = (b) => { const d = new Date(String(b.created_at || '').replace(' ', 'T')); return isNaN(d) ? 0 : d.getTime(); };
-    const sorted = offers.slice().sort((a, b) => {
-      const sa = seenOffers[a.id] ? 1 : 0, sb = seenOffers[b.id] ? 1 : 0;
-      if (sa !== sb) return sa - sb;
-      return ts(b) - ts(a);
-    });
-    const dealCards = deals.map((dl) => ({ ...dl, _isDeal: true }));
-    return [...dealCards, ...sorted];
-  }, [offers, deals, seenOffers]);
 
   // «Дом заказа»: тап по предложению ведёт в карточку заказа, не в чат.
   // Раньше карточка предложения открывала Deal Room (чат) — водитель терял
