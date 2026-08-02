@@ -1,101 +1,20 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform, Modal, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform, Modal } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import { useTheme } from '../utils/ThemeContext';
 import { useI18n } from '../utils/useI18n';
-
-// DatePicker с календарём
-// value формат: "DD.MM.YYYY"
-// Web: нативный <input type="date">
-// Mobile: собственный календарь (модальное окно с выбором месяца/дня)
 
 const MONTHS = {
   RU: ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'],
   EN: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
 };
 
-const parseIso = (v) => {
-  // "DD.MM.YYYY" -> "YYYY-MM-DD" for native input
-  if (!v) return undefined; // undefined removes value attr, avoids pattern mismatch
-  const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(v);
-  return m ? `${m[3]}-${m[2]}-${m[1]}` : undefined;
-};
-
-const formatFromIso = (iso) => {
-  if (!iso) return '';
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-  return m ? `${m[3]}.${m[2]}.${m[1]}` : '';
-};
-
-// Минимум сегодня, максимум +3 месяца
-const getMinMaxIso = () => {
-  const today = new Date();
-  const min = today.toISOString().split('T')[0];
-  const max = new Date(today);
-  max.setMonth(max.getMonth() + 3);
-  return { min, max: max.toISOString().split('T')[0] };
-};
-
 export default function DatePicker({ value, onChange, onClose, placeholder = 'DD.MM.YYYY', style, min, max, defaultOpen = false }) {
   const { theme } = useTheme();
   const { t } = useI18n();
-  // PR-A re-apply (P0-1 DatePicker дубль): когда DatePicker встраивается
-  // под Field-обёрткой в форму (см. CreateCargoScreen), у внешнего Field
-  // уже есть label+value preview. Чтобы не было дубля «Дата сверху +
-  // 📅 ДД.ММ.ГГГГ снизу», новый prop `defaultOpen` инициализирует
-  // календарь сразу открытым И отключает собственный preview-row.
   const [showPicker, setShowPicker] = useState(defaultOpen === true);
-  // PR-C2: когда родитель открыл DatePicker в режиме `defaultOpen=true`,
-  // а пользователь закрыл модалку tap'ом по overlay (без выбора даты),
-  // родителю надо узнать об этом и снять свой trigger-флаг, иначе
-  // обёртка `<View style={s.pickerWrap}>` остаётся в DOM и пользователь
-  // видит пустой подсвеченный блок. `onClose` зовётся в обоих путях
-  // закрытия Modal — onRequestClose (Android back) и overlay tap.
   const dismiss = () => { setShowPicker(false); onClose && onClose(); };
-  const mm = getMinMaxIso();
 
-  // Web: нативный input type=date.
-  // RC2 hotfix (P0-1): на iPhone Safari mobile web input был визуально
-  // обрезан/мелкий ("Jul 17 —" fragment). Причины:
-  //   - padding: 14 + fontSize: 14 → итоговая высота ~42pt < Apple HIG
-  //     минимум 44pt для tap targets;
-  //   - native value-display на iOS Safari использует системную
-  //     типографику с своим padding'ом поверх нашего → может clip'аться.
-  // Fix: fontSize → 17, padding → 16, явный minHeight: 48,
-  //      lineHeight, WebkitAppearance:none — чтобы Safari не оборачивал
-  //      input в свой mini-button style.
-  if (Platform.OS === 'web') {
-    return (
-      <View style={[s.wrapper, style]}>
-        <input
-          type="date"
-          value={parseIso(value)}
-          onChange={(e) => onChange(formatFromIso(e.target.value))}
-          style={{
-            backgroundColor: theme.card,
-            color: theme.text,
-            border: `1px solid ${theme.border}`,
-            borderRadius: 12,
-            padding: 16,
-            fontSize: 17,
-            lineHeight: '1.4',
-            minHeight: 48,
-            width: '100%',
-            display: 'block',
-            boxSizing: 'border-box',
-            fontFamily: 'inherit',
-            colorScheme: theme.bg === '#0C0A09' ? 'dark' : 'light',
-            WebkitAppearance: 'none',
-            appearance: 'none',
-          }}
-          min={min || mm.min}
-          max={max || mm.max}
-        />
-      </View>
-    );
-  }
-
-  // Mobile: простой календарь
   const today = new Date();
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
@@ -109,21 +28,68 @@ export default function DatePicker({ value, onChange, onClose, placeholder = 'DD
   const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
   const firstDay = new Date(viewYear, viewMonth, 1).getDay();
   const offset = firstDay === 0 ? 6 : firstDay - 1;
-
-  // Stage 52 / P1-8: запрещаем выбор прошлых дат на native.
-  // Полночь сегодняшнего дня — границу применяем и к pick(), и к рендеру
-  // (disabled-стиль), чтобы пользователь не мог тапнуть прошлый день и не
-  // видел его доступным.
   const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
   const pick = (day) => {
     const picked = new Date(viewYear, viewMonth, day);
-    if (picked < todayStart) return; // P1-8
+    if (picked < todayStart) return;
     const d = String(day).padStart(2, '0');
     const m = String(viewMonth + 1).padStart(2, '0');
     onChange(`${d}.${m}.${viewYear}`);
     setShowPicker(false);
   };
+
+  const calendarGrid = (
+    <View style={[s.cal, { backgroundColor: theme.card, borderColor: theme.border }]}>
+      <View style={s.calHeader}>
+        <TouchableOpacity onPress={() => {
+          if (viewMonth === 0) { setViewMonth(11); setViewYear(viewYear - 1); }
+          else setViewMonth(viewMonth - 1);
+        }}>
+          <Text style={[s.navArrow, { color: theme.text }]}>‹</Text>
+        </TouchableOpacity>
+        <Text style={[s.calTitle, { color: theme.text }]}>
+          {MONTHS.EN[viewMonth]} {viewYear}
+        </Text>
+        <TouchableOpacity onPress={() => {
+          if (viewMonth === 11) { setViewMonth(0); setViewYear(viewYear + 1); }
+          else setViewMonth(viewMonth + 1);
+        }}>
+          <Text style={[s.navArrow, { color: theme.text }]}>›</Text>
+        </TouchableOpacity>
+      </View>
+      <View style={s.weekRow}>
+        {['Mo','Tu','We','Th','Fr','Sa','Su'].map(d => (
+          <Text key={d} style={[s.weekDay, { color: theme.textMuted }]}>{d}</Text>
+        ))}
+      </View>
+      <View style={s.daysGrid}>
+        {[...Array(offset)].map((_, i) => <View key={'e' + i} style={s.dayCell} />)}
+        {[...Array(daysInMonth)].map((_, i) => {
+          const day = i + 1;
+          const isSelected = selected && selected.d === day && selected.m === viewMonth + 1 && selected.y === viewYear;
+          const dayDate = new Date(viewYear, viewMonth, day);
+          const isPast = dayDate < todayStart;
+          const isToday = day === today.getDate() && viewMonth === today.getMonth() && viewYear === today.getFullYear();
+          return (
+            <TouchableOpacity
+              key={day}
+              style={[
+                s.dayCell,
+                isSelected && { backgroundColor: '#22C55E' },
+                isToday && !isSelected && { borderWidth: 1.5, borderColor: '#22C55E' },
+                isPast && { opacity: 0.25 },
+              ]}
+              disabled={isPast}
+              onPress={() => pick(day)}
+            >
+              <Text style={[s.dayText, { color: isSelected ? '#fff' : theme.text }]}>{day}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
+  );
 
   const renderDisplay = () => (
     <TouchableOpacity
@@ -139,62 +105,22 @@ export default function DatePicker({ value, onChange, onClose, placeholder = 'DD
     </TouchableOpacity>
   );
 
+  if (Platform.OS === 'web') {
+    return (
+      <View style={[s.wrapper, style]}>
+        {!defaultOpen && !showPicker && renderDisplay()}
+        {showPicker && calendarGrid}
+      </View>
+    );
+  }
+
   return (
     <View style={[s.wrapper, style]}>
-      {/* P1-7: пока календарь открыт, не показываем preview-полоску — иначе
-          на iOS под полупрозрачным overlay'ем видна вторая дата сверху.
-          PR-A re-apply (P0-1): когда `defaultOpen=true` (форма уже имеет
-          Field-row триггера сверху), preview мы вообще не рендерим, иначе
-          получается двойной date row. */}
       {!defaultOpen && !showPicker && renderDisplay()}
       <Modal visible={showPicker} transparent animationType="fade" onRequestClose={dismiss}>
         <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={dismiss}>
-          <TouchableOpacity style={[s.cal, { backgroundColor: theme.card, borderColor: theme.border }]} activeOpacity={1}>
-            <View style={s.calHeader}>
-              <TouchableOpacity onPress={() => {
-                if (viewMonth === 0) { setViewMonth(11); setViewYear(viewYear - 1); }
-                else setViewMonth(viewMonth - 1);
-              }}>
-                <Text style={[s.navArrow, { color: theme.text }]}>‹</Text>
-              </TouchableOpacity>
-              <Text style={[s.calTitle, { color: theme.text }]}>
-                {MONTHS.EN[viewMonth]} {viewYear}
-              </Text>
-              <TouchableOpacity onPress={() => {
-                if (viewMonth === 11) { setViewMonth(0); setViewYear(viewYear + 1); }
-                else setViewMonth(viewMonth + 1);
-              }}>
-                <Text style={[s.navArrow, { color: theme.text }]}>›</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={s.weekRow}>
-              {['Mo','Tu','We','Th','Fr','Sa','Su'].map(d => (
-                <Text key={d} style={[s.weekDay, { color: theme.textMuted }]}>{d}</Text>
-              ))}
-            </View>
-            <View style={s.daysGrid}>
-              {[...Array(offset)].map((_, i) => <View key={'e' + i} style={s.dayCell} />)}
-              {[...Array(daysInMonth)].map((_, i) => {
-                const day = i + 1;
-                const isSelected = selected && selected.d === day && selected.m === viewMonth + 1 && selected.y === viewYear;
-                const dayDate = new Date(viewYear, viewMonth, day);
-                const isPast = dayDate < todayStart;
-                return (
-                  <TouchableOpacity
-                    key={day}
-                    style={[
-                      s.dayCell,
-                      isSelected && { backgroundColor: '#22C55E' },
-                      isPast && { opacity: 0.25 },
-                    ]}
-                    disabled={isPast}
-                    onPress={() => pick(day)}
-                  >
-                    <Text style={[s.dayText, { color: isSelected ? '#fff' : theme.text }]}>{day}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+          <TouchableOpacity activeOpacity={1}>
+            {calendarGrid}
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
@@ -207,7 +133,7 @@ const s = StyleSheet.create({
   input: { borderRadius: 12, padding: 14, borderWidth: 1 },
   inputText: { fontSize: 14, fontWeight: '500' },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', alignItems: 'center', justifyContent: 'center' },
-  cal: { width: 320, borderRadius: 16, padding: 16, borderWidth: 1 },
+  cal: { width: 320, maxWidth: '100%', borderRadius: 16, padding: 16, borderWidth: 1 },
   calHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   navArrow: { fontSize: 28, fontWeight: '700', paddingHorizontal: 14 },
   calTitle: { fontSize: 16, fontWeight: '800' },

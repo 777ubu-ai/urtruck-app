@@ -56,6 +56,7 @@ export default function ChatsListScreen({ navigation, route }) {
 
   const [rooms, setRooms] = useState([]);
   const [offers, setOffers] = useState([]);
+  const [deals, setDeals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery] = useState('');
@@ -141,9 +142,13 @@ export default function ChatsListScreen({ navigation, route }) {
           && !(b.cargo_id && !b.cargo_from && !b.trip_id)
         );
         setOffers(live);
+        const activeDeals = (d?.my_deals || []).filter((dl) =>
+          dl.status === 'accepted' || dl.status === 'in_progress' || dl.status === 'picked_up' || dl.status === 'at_border'
+        );
+        setDeals(activeDeals);
         if (!segInitRef.current) {
           segInitRef.current = true;
-          if (live.length > 0) setSeg('offers');
+          if (live.length > 0 || activeDeals.length > 0) setSeg('offers');
         }
       }
     } catch (e) {
@@ -237,12 +242,14 @@ export default function ChatsListScreen({ navigation, route }) {
   // Непросмотренные предложения — наверх; внутри групп свежие выше по времени.
   const offersSorted = React.useMemo(() => {
     const ts = (b) => { const d = new Date(String(b.created_at || '').replace(' ', 'T')); return isNaN(d) ? 0 : d.getTime(); };
-    return offers.slice().sort((a, b) => {
+    const sorted = offers.slice().sort((a, b) => {
       const sa = seenOffers[a.id] ? 1 : 0, sb = seenOffers[b.id] ? 1 : 0;
-      if (sa !== sb) return sa - sb;         // непросмотренные первыми
-      return ts(b) - ts(a);                   // затем свежие выше
+      if (sa !== sb) return sa - sb;
+      return ts(b) - ts(a);
     });
-  }, [offers, seenOffers]);
+    const dealCards = deals.map((dl) => ({ ...dl, _isDeal: true }));
+    return [...dealCards, ...sorted];
+  }, [offers, deals, seenOffers]);
 
   // Тап по предложению → комната сделки (торг в BargainCard + переписка).
   const openOffer = async (bid) => {
@@ -296,11 +303,11 @@ export default function ChatsListScreen({ navigation, route }) {
             </Text>
           ) : null}
           <View style={s.row}>
-            <Text style={[s.offerAmount, { color: theme.text }]}>
+            <Text style={[s.offerAmount, { color: theme.text }]} numberOfLines={1}>
               {formatPrice(bid.amount, cur, t)}
               {isCountered && bid.counter_amount ? `  →  ${formatPrice(bid.counter_amount, cur, t)}` : ''}
             </Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 }}>
               {!seen ? <Text style={[s.dealStatus, { color: isCountered ? '#A855F7' : '#FF8400' }]}>{label}</Text> : null}
               <Text style={[s.offerOpen, { color: accent }]}>{t('open_bid_chat')} ›</Text>
             </View>
@@ -316,6 +323,60 @@ export default function ChatsListScreen({ navigation, route }) {
         >
           <Feather name="x" size={16} color="#EF4444" />
         </TouchableOpacity>
+      </TouchableOpacity>
+    );
+  };
+
+  const DEAL_STATUS_LABEL = {
+    accepted: t('deal_status_accepted'),
+    in_progress: t('deal_status_in_progress'),
+    picked_up: t('deal_status_picked_up'),
+    at_border: t('deal_status_at_border'),
+  };
+  const DEAL_STATUS_COLOR = {
+    accepted: '#22C55E', in_progress: '#FF8400', picked_up: '#FF8400', at_border: '#2563EB',
+  };
+
+  const renderDealCard = (deal) => {
+    const statusColor = DEAL_STATUS_COLOR[deal.status] || '#22C55E';
+    const statusLabel = DEAL_STATUS_LABEL[deal.status] || deal.status;
+    const cur = deal.currency || 'USD';
+    return (
+      <TouchableOpacity
+        key={'deal_' + deal.id}
+        testID="deals-deal-card"
+        style={[s.card, { backgroundColor: theme.card, borderColor: statusColor, borderWidth: 1.5 }]}
+        onPress={() => {
+          if (deal.chat_room_id) {
+            navigation.navigate('Chat', { roomId: deal.chat_room_id, dealId: deal.id, role, cargoId: deal.cargo_id, tripId: deal.trip_id });
+          }
+        }}
+        activeOpacity={0.85}
+      >
+        <View style={[s.avatar, { backgroundColor: statusColor + '22' }]}>
+          <MaterialCommunityIcons name="handshake-outline" size={18} color={statusColor} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <View style={s.row}>
+            <Text style={[s.name, { color: theme.text }]} numberOfLines={1}>
+              {localizePlace(deal.from_city || '—', lang)} → {localizePlace(deal.to_city || '—', lang)}
+            </Text>
+          </View>
+          {deal.cargo_desc ? (
+            <Text style={[s.preview, { color: theme.textMuted }]} numberOfLines={1}>
+              {localizeCargoName(deal.cargo_desc, lang)}
+            </Text>
+          ) : null}
+          <View style={s.row}>
+            <Text style={[s.offerAmount, { color: theme.text }]} numberOfLines={1}>
+              {formatPrice(deal.amount, cur, t)}
+            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: statusColor }} />
+              <Text style={[s.dealStatus, { color: statusColor }]}>{statusLabel}</Text>
+            </View>
+          </View>
+        </View>
       </TouchableOpacity>
     );
   };
@@ -433,9 +494,9 @@ export default function ChatsListScreen({ navigation, route }) {
             testID="deals-seg-offers"
           >
             <Text style={[s.segTxt, { color: seg === 'offers' ? '#0C0A09' : theme.textMuted }]}>{t('tab_offers')}</Text>
-            {offers.length > 0 ? (
+            {(offers.length + deals.length) > 0 ? (
               <View style={[s.segBadge, { backgroundColor: seg === 'offers' ? '#0C0A09' : '#FF8400' }]}>
-                <Text style={[s.segBadgeTxt, { color: seg === 'offers' ? accent : '#FFF' }]}>{offers.length}</Text>
+                <Text style={[s.segBadgeTxt, { color: seg === 'offers' ? accent : '#FFF' }]}>{offers.length + deals.length}</Text>
               </View>
             ) : null}
           </TouchableOpacity>
@@ -474,8 +535,8 @@ export default function ChatsListScreen({ navigation, route }) {
       ) : showOffersSeg ? (
         <FlatList
           data={offersSorted}
-          keyExtractor={(i) => String(i.id)}
-          renderItem={({ item }) => renderOfferCard(item)}
+          keyExtractor={(i) => String(i._isDeal ? 'deal_' + i.id : i.id)}
+          renderItem={({ item }) => item._isDeal ? renderDealCard(item) : renderOfferCard(item)}
           contentContainerStyle={{ padding: 12, paddingBottom: 24 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accent} />}
           ListEmptyComponent={<Text style={[s.empty, { color: theme.textMuted }]}>{t('deals_no_offers')}</Text>}
