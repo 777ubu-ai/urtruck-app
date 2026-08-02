@@ -608,118 +608,159 @@ export default function CargoDetail({ navigation, route }) {
                     одинаковых кнопок». Savings-badge показывает выгоду цены.
                     После accept — success-state (semantic green #22C55E,
                     отличный от driver-акцента). */}
+                {/* Дизайн 2026 v2 (приказ владельца 03.08 «две кнопки, вот и всё»):
+                    только [Принять $X] [Отклонить]. Чат и «Своя цена» —
+                    маленькие ссылки под кнопками, не полноразмерные кнопки. */}
                 {c.isMine && b.status === 'pending' && !hasAccepted && (
-                  <View style={{ marginTop: 10, gap: 8, alignSelf: 'stretch' }}>
+                  <View style={{ marginTop: 10, gap: 6, alignSelf: 'stretch' }}>
                     <PriceSavingsBadge listingPrice={c.price} bidPrice={b.amount} currency={c.currency || 'USD'} />
-                    <PrimaryCTA
-                      testID="bid-accept"
-                      role="client"
-                      icon="✓"
-                      label={accepting === b.id ? '...' : t('accept_bid_btn')}
-                      loading={accepting === b.id}
-                      disabled={!!accepting || !!rejecting}
-                      success={dealStatus === 'accepted' && dealId != null}
-                      onPress={async () => {
-                        const sum = formatPrice(b.amount, c.currency);
-                        const msg = t('accept_bid_confirm').replace('{sum}', sum);
-                        const ok = Platform.OS === 'web'
-                          ? (typeof window !== 'undefined' && window.confirm(msg))
-                          : await new Promise((res) => Alert.alert(
-                              t('accept_bid_confirm_title'), msg,
-                              [
-                                { text: t('cancel'), style: 'cancel', onPress: () => res(false) },
-                                { text: t('accept_bid_btn'), onPress: () => res(true) },
-                              ],
-                            ));
-                        if (!ok) return;
-                        setAccepting(b.id);
-                        try {
-                          const r = await marketAPI.acceptBid(b.id);
-                          if (r.ok) {
-                            toast('✓ ' + t('driver_chosen'), 'success');
-                            if (r.chat_room_id) setChatRoomId(r.chat_room_id);
-                            if (r.deal_id) { setDealId(r.deal_id); setDealStatus('accepted'); }
-                            loadBids();
-                          } else {
-                            toast(r.detail || t('accept_failed'), 'error');
-                          }
-                        } catch {
-                          toast(t('no_connection'), 'error');
-                        }
-                        setAccepting(null);
-                      }}
-                    />
                     <View style={{ flexDirection: 'row', gap: 8 }}>
-                      <SecondaryButton
-                        testID="bid-chat"
+                      <PrimaryCTA
+                        testID="bid-accept"
                         role="client"
-                        icon="💬"
-                        label={t('open_bid_chat')}
-                        onPress={() => openChatForBid(b)}
+                        icon="✓"
+                        label={`${t('accept_bid_btn')} ${formatPrice(b.amount, c.currency || 'USD', t)}`}
+                        loading={accepting === b.id}
                         disabled={!!accepting || !!rejecting}
+                        success={dealStatus === 'accepted' && dealId != null}
+                        style={{ flex: 1 }}
+                        onPress={async () => {
+                          const sum = formatPrice(b.amount, c.currency);
+                          const msg = t('accept_bid_confirm').replace('{sum}', sum);
+                          const ok = Platform.OS === 'web'
+                            ? (typeof window !== 'undefined' && window.confirm(msg))
+                            : await new Promise((res) => Alert.alert(
+                                t('accept_bid_confirm_title'), msg,
+                                [
+                                  { text: t('cancel'), style: 'cancel', onPress: () => res(false) },
+                                  { text: t('accept_bid_btn'), onPress: () => res(true) },
+                                ],
+                              ));
+                          if (!ok) return;
+                          setAccepting(b.id);
+                          try {
+                            const r = await marketAPI.acceptBid(b.id);
+                            if (r.ok) {
+                              toast('✓ ' + t('driver_chosen'), 'success');
+                              if (r.chat_room_id) setChatRoomId(r.chat_room_id);
+                              if (r.deal_id) { setDealId(r.deal_id); setDealStatus('accepted'); }
+                              loadBids();
+                            } else {
+                              toast(r.detail || t('accept_failed'), 'error');
+                            }
+                          } catch {
+                            toast(t('no_connection'), 'error');
+                          }
+                          setAccepting(null);
+                        }}
                       />
-                      <SecondaryButton
-                        testID="bid-counter"
-                        role="client"
-                        icon="🔁"
-                        label={t('counter_offer')}
-                        onPress={() => sendCounter(b)}
+                      <DestructiveButton
+                        testID="bid-reject"
+                        icon="✕"
+                        label={t('reject_btn')}
+                        loading={rejecting === b.id}
                         disabled={!!accepting || !!rejecting}
+                        style={{ flex: 1 }}
+                        onPress={async () => {
+                          setRejecting(b.id);
+                          try {
+                            const r = await marketAPI.rejectBid(b.id);
+                            if (r.ok) {
+                              toast('❌ ' + t('bid_rejected_toast'), 'success');
+                              loadBids();
+                            } else {
+                              toast(r.detail || t('reject_failed'), 'error');
+                            }
+                          } catch {
+                            toast(t('no_connection'), 'error');
+                          }
+                          setRejecting(null);
+                        }}
                       />
                     </View>
-                    <DestructiveButton
-                      testID="bid-reject"
-                      icon="✕"
-                      label={t('reject_btn')}
-                      loading={rejecting === b.id}
-                      disabled={!!accepting || !!rejecting}
-                      onPress={async () => {
-                        setRejecting(b.id);
-                        try {
-                          const r = await marketAPI.rejectBid(b.id);
-                          if (r.ok) {
-                            toast('❌ ' + t('bid_rejected_toast'), 'success');
-                            loadBids();
-                          } else {
-                            toast(r.detail || t('reject_failed'), 'error');
-                          }
-                        } catch {
-                          toast(t('no_connection'), 'error');
-                        }
-                        setRejecting(null);
-                      }}
-                    />
+                    <View style={{ flexDirection: 'row', gap: 18, justifyContent: 'center', marginTop: 4 }}>
+                      <TouchableOpacity onPress={() => openChatForBid(b)} testID="bid-chat" hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                        <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '600' }}>💬 {t('open_chat') || 'Чат'}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => sendCounter(b)} testID="bid-counter" hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                        <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '600' }}>🔁 {t('counter_offer')}</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 )}
 
-                {/* Клиент + countered: primary НЕТ (клиент уже сделал контр,
-                    следующий ход — за водителем). Только Chat + Destructive. */}
+                {/* Клиент + countered: те же 2 кнопки. «Принять $X» под капотом
+                    отменяет свою встречку и принимает оригинал водителя одним
+                    нажатием (см. cancelOwnCounter → acceptBid). Требование
+                    владельца: две кнопки во всех состояниях, без «отменить
+                    встречную». */}
                 {c.isMine && isCountered && (
-                  <View style={{ marginTop: 10, gap: 8, alignSelf: 'stretch' }}>
-                    <SecondaryButton
-                      testID="bid-chat"
-                      role="client"
-                      icon="💬"
-                      label={t('open_bid_chat')}
-                      onPress={() => openChatForBid(b)}
-                      disabled={!!rejecting}
-                    />
-                    <DestructiveButton
-                      testID="bid-reject"
-                      icon="✕"
-                      label={t('reject_btn')}
-                      loading={rejecting === b.id}
-                      disabled={!!rejecting}
-                      onPress={async () => {
-                        setRejecting(b.id);
-                        try {
-                          const r = await marketAPI.rejectBid(b.id);
-                          if (r.ok) { toast('❌ ' + t('bid_rejected_toast'), 'success'); loadBids(); }
-                          else toast(r.detail || t('reject_failed'), 'error');
-                        } catch { toast(t('no_connection'), 'error'); }
-                        setRejecting(null);
-                      }}
-                    />
+                  <View style={{ marginTop: 10, gap: 6, alignSelf: 'stretch' }}>
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      <PrimaryCTA
+                        testID="bid-accept"
+                        role="client"
+                        icon="✓"
+                        label={`${t('accept_bid_btn')} ${formatPrice(b.amount, c.currency || 'USD', t)}`}
+                        loading={accepting === b.id}
+                        disabled={!!accepting || !!rejecting}
+                        style={{ flex: 1 }}
+                        onPress={async () => {
+                          // Confirm сначала — под капотом два вызова, дороже отменить нельзя.
+                          const sum = formatPrice(b.amount, c.currency);
+                          const msg = t('accept_bid_confirm').replace('{sum}', sum);
+                          const ok = Platform.OS === 'web'
+                            ? (typeof window !== 'undefined' && window.confirm(msg))
+                            : await new Promise((res) => Alert.alert(
+                                t('accept_bid_confirm_title'), msg,
+                                [
+                                  { text: t('cancel'), style: 'cancel', onPress: () => res(false) },
+                                  { text: t('accept_bid_btn'), onPress: () => res(true) },
+                                ],
+                              ));
+                          if (!ok) return;
+                          setAccepting(b.id);
+                          try {
+                            // Шаг 1: отменяем свою встречку (ставка → pending).
+                            const c1 = await marketAPI.cancelOwnCounter(b.id);
+                            if (!c1.ok) { toast(c1.detail || t('accept_failed'), 'error'); setAccepting(null); return; }
+                            // Шаг 2: принимаем оригинальную сумму водителя.
+                            const r = await marketAPI.acceptBid(b.id);
+                            if (r.ok) {
+                              toast('✓ ' + t('driver_chosen'), 'success');
+                              if (r.chat_room_id) setChatRoomId(r.chat_room_id);
+                              if (r.deal_id) { setDealId(r.deal_id); setDealStatus('accepted'); }
+                              loadBids();
+                            } else {
+                              toast(r.detail || t('accept_failed'), 'error');
+                            }
+                          } catch { toast(t('no_connection'), 'error'); }
+                          setAccepting(null);
+                        }}
+                      />
+                      <DestructiveButton
+                        testID="bid-reject"
+                        icon="✕"
+                        label={t('reject_btn')}
+                        loading={rejecting === b.id}
+                        disabled={!!rejecting || !!accepting}
+                        style={{ flex: 1 }}
+                        onPress={async () => {
+                          setRejecting(b.id);
+                          try {
+                            const r = await marketAPI.rejectBid(b.id);
+                            if (r.ok) { toast('❌ ' + t('bid_rejected_toast'), 'success'); loadBids(); }
+                            else toast(r.detail || t('reject_failed'), 'error');
+                          } catch { toast(t('no_connection'), 'error'); }
+                          setRejecting(null);
+                        }}
+                      />
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 18, justifyContent: 'center', marginTop: 4 }}>
+                      <TouchableOpacity onPress={() => openChatForBid(b)} testID="bid-chat" hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                        <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '600' }}>💬 {t('open_chat') || 'Чат'}</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 )}
 
