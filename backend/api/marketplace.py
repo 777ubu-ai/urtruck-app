@@ -1680,6 +1680,31 @@ def _notify_rejected_siblings(rejected_siblings):
                     create_notification(sib["bidder_id"], "bid_rejected", title, text, "❌", url=url)
                 except Exception:
                     pass
+            # P3-fix: след в чате проигравшего биддера — но только если комната
+            # УЖЕ существует (торг/контр её создавали). Пустую не плодим.
+            try:
+                with get_conn() as _cc2:
+                    owner_id = _cargo_or_trip_owner_id(_cc2, sib)
+                    if owner_id:
+                        _p1, _p2 = sorted([sib["bidder_id"], owner_id])
+                        if sib.get("cargo_id"):
+                            _dk = f"c:{sib['cargo_id']}:{_p1}:{_p2}"
+                        elif sib.get("trip_id"):
+                            _dk = f"t:{sib['trip_id']}:{_p1}:{_p2}"
+                        else:
+                            _dk = f"p:{_p1}:{_p2}"
+                        _rr = _cc2.execute("SELECT id FROM chat_rooms WHERE deal_key = ?", (_dk,)).fetchone()
+                        if _rr:
+                            _cc2.execute(
+                                "INSERT INTO chat_messages (room_id, sender_id, text) VALUES (?,?,?)",
+                                (_rr["id"], "system", title),
+                            )
+                            _cc2.execute(
+                                "UPDATE chat_rooms SET last_message = ?, last_at = CURRENT_TIMESTAMP WHERE id = ?",
+                                (title[:50], _rr["id"]),
+                            )
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -1752,6 +1777,10 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount: int):
         "WHERE (cargo_id = ? OR trip_id = ?) AND id != ? AND status IN ('pending', 'countered')",
         (bid.get("cargo_id"), bid.get("trip_id"), bid_id),
     )
+    # P3-fix: пишем событие в ценовой timeline каждой перебитой ставки — иначе
+    # у проигравших история обрывалась на «proposed» без финала.
+    for _sib in rejected_siblings:
+        _record_price_event(c, _sib["id"], user["id"], "owner", _sib.get("amount"), "rejected", None)
 
     chat_room_id = _ensure_chat_room_inline(
         c, shipper_id, driver_id, bid.get("cargo_id"), bid.get("trip_id")
@@ -1973,6 +2002,8 @@ def cancel_bid(bid_id: str, user=Depends(require_level(1))):
             "UPDATE bids SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (bid_id,),
         )
+        # P3-fix: финал в ценовом timeline — раньше отмена не оставляла события.
+        _record_price_event(c, bid_id, user["id"], "bidder", bid.get("amount"), "cancelled", None)
         # Decrement bids_count safely (never below 0).
         if bid.get("cargo_id"):
             c.execute(
@@ -2203,6 +2234,8 @@ def decline_counter(bid_id: str, user=Depends(require_level(1))):
             "counter_by = NULL, counter_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (bid_id,),
         )
+        # P3-fix: фиксируем отказ от контр-оффера в ценовом timeline.
+        _record_price_event(c, bid_id, user["id"], "bidder", bid.get("amount"), "declined", None)
 
     try:
         owner_id = None

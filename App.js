@@ -169,7 +169,9 @@ function AppInner() {
     if (pendingUrlRef.current && navReadyRef.current && authedForDeepLink) {
       const u = pendingUrlRef.current;
       pendingUrlRef.current = null;
-      setTimeout(() => navigateFromUrl(navRef, u), 250);
+      // P3-fix: передаём role — иначе отложенный deeplink доигрывался без
+      // роли и CargoDetail/TripDetail открывались в неправильном виде.
+      setTimeout(() => navigateFromUrl(navRef, u, session?.user?.role), 250);
     }
   }, [authedForDeepLink]);
 
