@@ -48,15 +48,16 @@ export default function PrimaryCTA({
 }
 
 const s = StyleSheet.create({
-  // 48px + компактный шрифт — по замечанию владельца тексты вылезали за рамки.
+  // Дизайн 2026 v3 (03.08): 44px + шрифт 13. Владелец: «стандартные размеры,
+  // аккуратно, не как для слепого». iOS HIG minimum tappable = 44pt.
   btn: {
-    height: 48,
-    borderRadius: 12,
+    height: 44,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
   },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  icon: { fontSize: 15, fontWeight: '700' },
-  label: { fontSize: 14, fontWeight: '800' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  icon: { fontSize: 13, fontWeight: '700' },
+  label: { fontSize: 13, fontWeight: '700' },
 });

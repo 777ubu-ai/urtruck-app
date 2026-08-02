@@ -42,8 +42,11 @@ export default function MyTripsScreen({ navigation, route }) {
   titleSub: { color: v1.textMuted, fontSize: 12, marginTop: 2 },
   // Кнопка «Разместить рейс» (driver, §2.2.2). Текст чёрный — на изумруде
   // #00E676 даёт AAA-контраст (источник истины — CLAUDE.md).
-  publishRouteBtn: { height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  publishRouteText: { color: '#0C0A09', fontSize: 15, fontWeight: '800' },
+  // Дизайн 2026 v3 (03.08): outline вместо заливки — «+ Разместить груз» не
+  // primary-CTA этой страницы (главное действие — тап по карточке груза).
+  // Меньше 40px, тонкий контур, чтобы не «кричал» и не «для слепого».
+  publishRouteBtn: { height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1, backgroundColor: 'transparent' },
+  publishRouteText: { fontSize: 13, fontWeight: '700' },
   // Gate-модалка размещения рейса (progressive verification).
   pgBackdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.5)', alignItems: 'center', justifyContent: 'center', padding: 28 },
   pgCard: { width: '100%', maxWidth: 420, backgroundColor: v1.surface, borderRadius: 20, padding: 24, alignItems: 'center' },
@@ -81,9 +84,11 @@ export default function MyTripsScreen({ navigation, route }) {
   cardBottom: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   price: { fontSize: 24, fontWeight: '700', color: '#FF8400', fontVariant: ['tabular-nums'], flexShrink: 1 },
   bidsLabel: { ...typography.caption, flex: 1 },
-  offersCta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.sm, paddingVertical: 10, paddingHorizontal: 12, borderRadius: radius.sm, backgroundColor: 'rgba(255,132,0,0.14)' },
-  offersCtaText: { color: '#FF8400', fontSize: 14, fontWeight: '800', flex: 1 },
-  offersCtaArrow: { color: '#FF8400', fontSize: 18, fontWeight: '800' },
+  // Дизайн 2026 v3: плашка «N предложений» — outline вместо заливки,
+  // компактнее (меньше 32px), шрифт 12. Не «кричит».
+  offersCta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.sm, paddingVertical: 6, paddingHorizontal: 10, borderRadius: radius.sm, borderWidth: 1, borderColor: '#FF8400', backgroundColor: 'transparent' },
+  offersCtaText: { color: '#FF8400', fontSize: 12, fontWeight: '700', flex: 1 },
+  offersCtaArrow: { color: '#FF8400', fontSize: 14, fontWeight: '700' },
 
   chatBtn: { backgroundColor: '#22C55E', borderRadius: radius.sm, paddingVertical: spacing.sm, alignItems: 'center', marginTop: spacing.sm },
   chatBtnText: { color: '#FFF', ...typography.title },
@@ -1046,12 +1051,12 @@ export default function MyTripsScreen({ navigation, route }) {
         <TouchableOpacity
           testID={isDriver ? 'mytrips-publish-route' : 'mytrips-place-cargo'}
           onPress={isDriver ? onPublishRoute : () => navigation.navigate('CreateCargo', { role })}
-          activeOpacity={0.85}
-          style={[s.publishRouteBtn, { backgroundColor: v1Accent.main }]}
+          activeOpacity={0.75}
+          style={[s.publishRouteBtn, { borderColor: v1Accent.main }]}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Feather name="plus" size={16} color="#0C0A09" />
-            <Text style={s.publishRouteText}>{isDriver ? t('publish_route') : t('place_cargo')}</Text>
+            <Feather name="plus" size={14} color={v1Accent.main} />
+            <Text style={[s.publishRouteText, { color: v1Accent.main }]}>{isDriver ? t('publish_route') : t('place_cargo')}</Text>
           </View>
         </TouchableOpacity>
       </View>
