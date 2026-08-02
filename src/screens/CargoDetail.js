@@ -302,10 +302,13 @@ export default function CargoDetail({ navigation, route }) {
     }
   };
 
+  const lastLocalChange = React.useRef(0);
   const applyDeal = (d) => {
     if (!d || !d.id) return;
     setDealId(d.id);
-    setDealStatus(d.status || 'accepted');
+    if (Date.now() - lastLocalChange.current > 30000) {
+      setDealStatus(d.status || 'accepted');
+    }
     if (d.chat_room_id) setChatRoomId(d.chat_room_id);
     if (d.shipper_id) setShipperId(d.shipper_id);
     if (d.driver_id) {
@@ -362,6 +365,7 @@ export default function CargoDetail({ navigation, route }) {
     try {
       const r = await marketAPI.updateDealStatus(dealId, newStatus);
       if (r.ok) {
+        lastLocalChange.current = Date.now();
         setDealStatus(newStatus);
         const msg = newStatus === 'cancelled' ? t('deal_cancelled_toast') : t('deal_updated_toast');
         toast(msg, 'success');
@@ -529,11 +533,10 @@ export default function CargoDetail({ navigation, route }) {
             {t('no_bids_be_first')}
           </Text>
         )}
-        {/* Свою активную ставку водитель видит в плашке «МОЯ СТАВКА» ниже —
-            из списка предложений её прячем, иначе цена и кнопки [Изменить]/
-            [Чат] дублируются дважды (жалоба владельца 01.08). Скрываем ровно
-            ту ставку, что рендерит плашка (myPendingBid при isDriverViewing). */}
-        {bids.filter(b => !(myPendingBid && isDriverViewing && !dealStatus && b.id === myPendingBid.id)).map(b => {
+          {bids.filter(b => {
+          if (b.isMine && (b.status === 'pending' || b.status === 'countered') && isDriverViewing && !dealStatus) return false;
+          return true;
+        }).map(b => {
           const hasAccepted = bids.some(x => x.status === 'accepted');
           const isCancelled = b.status === 'cancelled';
           const isCountered = b.status === 'countered';

@@ -155,10 +155,13 @@ export default function TripDetail({ navigation, route }) {
   const isDriverSide = role === 'driver' || (driverId && driverId === myUserId);
   const isShipper = role === 'client' || role === 'shipper' || (shipperId && shipperId === myUserId);
 
+  const lastLocalChange = React.useRef(0);
   const applyDeal = (d) => {
     if (!d || !d.id) return;
     setDealId(d.id);
-    setDealStatus(d.status || 'accepted');
+    if (Date.now() - lastLocalChange.current > 30000) {
+      setDealStatus(d.status || 'accepted');
+    }
     if (d.chat_room_id) setChatRoomId(d.chat_room_id);
     if (d.shipper_id) setShipperId(d.shipper_id);
     if (d.driver_id) setDriverId(d.driver_id);
@@ -396,6 +399,7 @@ export default function TripDetail({ navigation, route }) {
     try {
       const r = await marketAPI.updateDealStatus(dealId, newStatus);
       if (r.ok) {
+        lastLocalChange.current = Date.now();
         setDealStatus(newStatus);
         toast(newStatus === 'cancelled' ? t('deal_cancelled_toast') : t('deal_updated_toast'), 'success');
       } else {
