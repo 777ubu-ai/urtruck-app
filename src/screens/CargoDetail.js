@@ -487,20 +487,15 @@ export default function CargoDetail({ navigation, route }) {
           </View>
         </GlassCard>
 
-        <GlassCard accent={v1Accent.main}>
+        {/* Дизайн v6 (04.08): компакт-строка цены — label слева, сумма справа
+            в одну линию. Без accent-рамки (была огромная оранжевая рамка). */}
+        <GlassCard>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                <Feather name="dollar-sign" size={14} color={v1Accent.main} />
-                <Text testID="cargo-price-label" style={[s.priceLabelV1, { color: theme.textMuted }]}>{acceptedBid ? t('deal_price') : t('price')}</Text>
-              </View>
-              <Text testID="cargo-price-value" style={[s.priceValueV1, { color: '#FF8400' }]} numberOfLines={1}>{priceDisplay}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Feather name="dollar-sign" size={12} color={theme.textMuted} />
+              <Text testID="cargo-price-label" style={{ color: theme.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' }}>{acceptedBid ? t('deal_price') : t('price')}</Text>
             </View>
-            {/* Stage 9: previously a "Предложить цену" button sat right
-                here next to the price block AND on the sticky bar at
-                the bottom — clicking either ran the same setBidModal(true).
-                The sticky bar is the canonical primary CTA, so this
-                inline duplicate is removed. */}
+            <Text testID="cargo-price-value" style={{ color: '#FF8400', fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'] }} numberOfLines={1}>{priceDisplay}</Text>
           </View>
         </GlassCard>
 
