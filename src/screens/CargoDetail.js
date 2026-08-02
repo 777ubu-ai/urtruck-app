@@ -136,8 +136,10 @@ export default function CargoDetail({ navigation, route }) {
   dealActionText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   chatBtn: { backgroundColor: '#22C55E', borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
   chatBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  deleteMyBtn: { borderWidth: 1, borderColor: '#EF4444', borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
-  deleteMyBtnText: { color: '#EF4444', fontSize: 13, fontWeight: '800' },
+  // Дизайн 2026 v3 (03.08): «Удалить груз» — редкое действие, не должно
+  // «кричать» красным контуром. Text-only серый, красным только при нажатии.
+  deleteMyBtn: { paddingVertical: 10, alignItems: 'center' },
+  deleteMyBtnText: { color: '#94A3B8', fontSize: 12, fontWeight: '600' },
 
   }), [v1]);
   const { cargo: paramCargo, cargoId, role, dealId: routeDealId } = route.params || {};
@@ -490,9 +492,9 @@ export default function CargoDetail({ navigation, route }) {
             <View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                 <Feather name="dollar-sign" size={14} color={v1Accent.main} />
-                <Text testID="cargo-price-label" style={[s.priceLabelV1, { color: v1Accent.main }]}>{acceptedBid ? t('deal_price') : t('price')}</Text>
+                <Text testID="cargo-price-label" style={[s.priceLabelV1, { color: theme.textMuted }]}>{acceptedBid ? t('deal_price') : t('price')}</Text>
               </View>
-              <Text testID="cargo-price-value" style={[s.priceValueV1, { color: v1Accent.main }]} numberOfLines={1}>{priceDisplay}</Text>
+              <Text testID="cargo-price-value" style={[s.priceValueV1, { color: theme.text }]} numberOfLines={1}>{priceDisplay}</Text>
             </View>
             {/* Stage 9: previously a "Предложить цену" button sat right
                 here next to the price block AND on the sticky bar at

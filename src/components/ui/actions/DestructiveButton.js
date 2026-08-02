@@ -40,15 +40,15 @@ export default function DestructiveButton({
 
 const s = StyleSheet.create({
   btn: {
-    height: 48,
-    borderRadius: 12,
+    height: 44,
+    borderRadius: 10,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     backgroundColor: 'transparent',
   },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  icon: { fontSize: 14, fontWeight: '700' },
-  label: { fontSize: 14, fontWeight: '700' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  icon: { fontSize: 12, fontWeight: '700' },
+  label: { fontSize: 13, fontWeight: '700' },
 });
