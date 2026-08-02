@@ -976,65 +976,78 @@ export default function CargoDetail({ navigation, route }) {
               </Text>
             )}
 
-            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginTop: 10 }}>
-              {/* Driver — accepted → выехал (in_progress) */}
+            {/* Дизайн 2026 v5: один Primary CTA + маленькие text-ссылки
+                (Чат, Отмена). Никаких огромных заливных зелёных кнопок. */}
+            <View style={{ marginTop: 10, gap: 6 }}>
               {isDriverSide && dealStatus === 'accepted' && (
-                <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: dealAccent.main }]} onPress={() => changeDealStatus('in_progress')} disabled={statusLoading}>
-                  <DealActionLabel icon="truck" text={t('start_delivery')} color={dealAccent.onAccent} loading={statusLoading} />
-                </TouchableOpacity>
-              )}
-              {/* Driver — in_progress → на границе (at_border) */}
-              {isDriverSide && dealStatus === 'in_progress' && (
-                <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: dealAccent.main }]} onPress={() => changeDealStatus('at_border')} disabled={statusLoading}>
-                  <DealActionLabel icon="flag" text={t('mark_at_border')} color={dealAccent.onAccent} loading={statusLoading} />
-                </TouchableOpacity>
-              )}
-              {/* Driver — at_border → доставлено (delivered) */}
-              {isDriverSide && dealStatus === 'at_border' && (
-                <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: dealAccent.main }]} onPress={() => changeDealStatus('delivered')} disabled={statusLoading}>
-                  <DealActionLabel icon="check-circle" text={t('mark_arrived')} color={dealAccent.onAccent} loading={statusLoading} />
-                </TouchableOpacity>
-              )}
-              {/* Shipper — in_progress/at_border → подтвердить доставку */}
-              {isShipper && (dealStatus === 'in_progress' || dealStatus === 'at_border') && (
-                <TouchableOpacity style={[s.dealActionBtn, s.dealActionGhost, { borderColor: dealAccent.main }]} onPress={() => changeDealStatus('delivered')} disabled={statusLoading}>
-                  <DealActionLabel icon="check-circle" text={t('confirm_delivery')} color={dealAccent.main} loading={statusLoading} />
-                </TouchableOpacity>
-              )}
-              {/* Both — chat. Стиль ghost (обводка) вместо сплошной заливки —
-                  современнее и не «режет глаз» (решение владельца). */}
-              {chatRoomId && (
-                <TouchableOpacity
-                  testID="deal-order-chat"
-                  style={[s.dealActionBtn, s.dealActionGhost, { borderColor: dealAccent.main }]}
-                  onPress={() => navigation.navigate('Chat', { roomId: chatRoomId, role })}
-                >
-                  <DealActionLabel icon="message-square" text={t('order_chat')} color={dealAccent.main} />
-                </TouchableOpacity>
-              )}
-              {/* Both — cancel deal */}
-              {(dealStatus === 'accepted' || dealStatus === 'in_progress' || dealStatus === 'at_border') && (
-                <TouchableOpacity
-                  style={[s.dealActionBtn, { backgroundColor: 'rgba(239,68,68,0.10)' }]}
+                <PrimaryCTA
+                  role={role || 'driver'}
+                  icon="🚛"
+                  label={t('start_delivery')}
+                  loading={statusLoading}
                   disabled={statusLoading}
-                  onPress={() => {
-                    // Подтверждение отмены на ОБЕИХ платформах. Раньше на native
-                    // ok=true всегда → случайный тап сразу отменял сделку без
-                    // вопроса. Теперь на телефоне — Alert с явным подтверждением.
-                    const doCancel = () => changeDealStatus('cancelled');
-                    if (Platform.OS === 'web') {
-                      if (typeof window !== 'undefined' && window.confirm(t('cancel_deal_confirm'))) doCancel();
-                    } else {
-                      Alert.alert(t('cancel_deal_confirm'), '', [
-                        { text: t('cancel'), style: 'cancel' },
-                        { text: t('confirm'), style: 'destructive', onPress: doCancel },
-                      ]);
-                    }
-                  }}
-                >
-                  <Text style={[s.dealActionText, { color: '#EF4444' }]}>⊘ {t('cancel_deal')}</Text>
-                </TouchableOpacity>
+                  onPress={() => changeDealStatus('in_progress')}
+                />
               )}
+              {isDriverSide && dealStatus === 'in_progress' && (
+                <PrimaryCTA
+                  role={role || 'driver'}
+                  icon="🛂"
+                  label={t('mark_at_border')}
+                  loading={statusLoading}
+                  disabled={statusLoading}
+                  onPress={() => changeDealStatus('at_border')}
+                />
+              )}
+              {isDriverSide && dealStatus === 'at_border' && (
+                <PrimaryCTA
+                  role={role || 'driver'}
+                  icon="✅"
+                  label={t('mark_arrived')}
+                  loading={statusLoading}
+                  disabled={statusLoading}
+                  onPress={() => changeDealStatus('delivered')}
+                />
+              )}
+              {isShipper && (dealStatus === 'in_progress' || dealStatus === 'at_border') && (
+                <SecondaryButton
+                  role={role || 'client'}
+                  icon="✅"
+                  label={t('confirm_delivery')}
+                  disabled={statusLoading}
+                  onPress={() => changeDealStatus('delivered')}
+                />
+              )}
+              <View style={{ flexDirection: 'row', gap: 18, justifyContent: 'center', marginTop: 2 }}>
+                {chatRoomId && (
+                  <TouchableOpacity
+                    testID="deal-order-chat"
+                    onPress={() => navigation.navigate('Chat', { roomId: chatRoomId, role })}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '600' }}>💬 {t('order_chat')}</Text>
+                  </TouchableOpacity>
+                )}
+                {(dealStatus === 'accepted' || dealStatus === 'in_progress' || dealStatus === 'at_border') && (
+                  <TouchableOpacity
+                    disabled={statusLoading}
+                    onPress={() => {
+                      const doCancel = () => changeDealStatus('cancelled');
+                      if (Platform.OS === 'web') {
+                        if (typeof window !== 'undefined' && window.confirm(t('cancel_deal_confirm'))) doCancel();
+                      } else {
+                        Alert.alert(t('cancel_deal_confirm'), '', [
+                          { text: t('cancel'), style: 'cancel' },
+                          { text: t('confirm'), style: 'destructive', onPress: doCancel },
+                        ]);
+                      }
+                    }}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '600' }}>⊘ {t('cancel_deal')}</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
           </View>
         </View>

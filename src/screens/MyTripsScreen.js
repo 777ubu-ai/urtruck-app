@@ -1070,7 +1070,12 @@ export default function MyTripsScreen({ navigation, route }) {
       </View>
 
       <View style={{ paddingHorizontal: 16 }}>
-        <SegmentTabs items={TABS} value={tab === 'archive' ? null : tab} onChange={setTab} accent={v1Accent.main} variant={isDriver ? 'pill' : 'underline'} />
+        {/* Дизайн 2026 v5 (04.08): единый underline-стиль табов для обеих ролей.
+            Раньше driver получал 'pill' — активный таб заливался зелёным блоком
+            на всю кнопку («Завершённые» в скриншоте 03.08 → user жаловался
+            «закрашивать не должно быть»). Теперь только тонкая полоска под
+            активным табом, никакой заливки. */}
+        <SegmentTabs items={TABS} value={tab === 'archive' ? null : tab} onChange={setTab} accent={v1Accent.main} variant="underline" />
         <StatsRow items={stats} accent={v1Accent.main} />
         {/* Архив — вторичный фильтр (issue #2): отменённые/отклонённые/
             истёкшие, НЕ основная вкладка. Активных заказов тут нет.
