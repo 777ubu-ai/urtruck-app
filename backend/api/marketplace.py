@@ -433,7 +433,7 @@ def create_cargo(body: CargoIn, user=Depends(require_level(1))):
     # Push подписчикам маршрута
     try:
         from api.saved_searches import notify_matching_users
-        notify_matching_users(body.from_city, body.to_city, body.cargo_desc)
+        notify_matching_users(body.from_city, body.to_city, body.cargo_desc, cargo_id=cid)
     except Exception:
         pass
 
@@ -1563,15 +1563,24 @@ def update_trip_status(trip_id: str, new_status: str, user=Depends(require_level
         if trip["driver_id"] != user["id"]:
             raise HTTPException(status_code=403, detail="Только водитель может менять статус")
         c.execute("UPDATE trips SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (new_status, trip_id))
+        # Обратный синк deal.status — иначе legacy-эндпоинт рейса расходился со
+        # статусом сделки (deal остаётся accepted, а trip уже delivered).
+        _TRIP_TO_DEAL = {"in_transit": "in_progress", "delivered": "delivered", "cancelled": "cancelled"}
+        if new_status in _TRIP_TO_DEAL:
+            c.execute(
+                "UPDATE deals SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE trip_id = ? AND status NOT IN ('delivered','cancelled')",
+                (_TRIP_TO_DEAL[new_status], trip_id),
+            )
 
     # Push + InApp notification
     try:
         from api.notifications import create_notification
         labels = {"booked": "📦 Груз принят", "in_transit": "🚛 В пути", "delivered": "✅ Доставлен"}
         if new_status in labels and trip["booked_by"]:
-            send_to_user(trip["booked_by"], labels[new_status], f"{trip['from_city']}→{trip['to_city']}", url="/")
+            _turl = f"/trips/{trip_id}"
+            send_to_user(trip["booked_by"], labels[new_status], f"{trip['from_city']}→{trip['to_city']}", url=_turl)
             create_notification(trip["booked_by"], "trip_status", labels[new_status],
-                                f"Рейс {trip['from_city']}→{trip['to_city']}: {new_status}", "🚛")
+                                f"Рейс {trip['from_city']}→{trip['to_city']}: {new_status}", "🚛", url=_turl)
     except Exception:
         pass
 
@@ -1639,6 +1648,67 @@ def _ensure_chat_room_inline(c, user_a: str, user_b: str, cargo_id, trip_id, bid
     return row["id"] if row else rid
 
 
+def _notify_rejected_siblings(rejected_siblings):
+    """Уведомить авторов перебитых ставок, что их предложение отклонено при
+    accept выигравшей ставки. Раньше сайд-ставки гасились молча (auto-reject
+    в _finalize_accept_inline) — биддер видел «pending», а по факту его уже
+    отклонили. Вызывается ПОСЛЕ коммита accept-транзакции."""
+    if not rejected_siblings:
+        return
+    try:
+        from api.notifications import create_notification
+    except Exception:
+        create_notification = None
+    for sib in rejected_siblings:
+        try:
+            with get_conn() as _cc:
+                _cur = _bid_currency(_cc, sib)
+            if sib.get("cargo_id"):
+                url = f"/cargos/{sib['cargo_id']}"
+            elif sib.get("trip_id"):
+                url = f"/trips/{sib['trip_id']}"
+            else:
+                url = "/"
+            title = "❌ Ставка не выбрана"
+            text = f"По заказу выбран другой исполнитель. Предложение {_money(sib.get('amount'), _cur)} отклонено."
+            try:
+                send_to_user(sib["bidder_id"], title, text, url=url)
+            except Exception:
+                pass
+            if create_notification:
+                try:
+                    create_notification(sib["bidder_id"], "bid_rejected", title, text, "❌", url=url)
+                except Exception:
+                    pass
+            # P3-fix: след в чате проигравшего биддера — но только если комната
+            # УЖЕ существует (торг/контр её создавали). Пустую не плодим.
+            try:
+                with get_conn() as _cc2:
+                    owner_id = _cargo_or_trip_owner_id(_cc2, sib)
+                    if owner_id:
+                        _p1, _p2 = sorted([sib["bidder_id"], owner_id])
+                        if sib.get("cargo_id"):
+                            _dk = f"c:{sib['cargo_id']}:{_p1}:{_p2}"
+                        elif sib.get("trip_id"):
+                            _dk = f"t:{sib['trip_id']}:{_p1}:{_p2}"
+                        else:
+                            _dk = f"p:{_p1}:{_p2}"
+                        _rr = _cc2.execute("SELECT id FROM chat_rooms WHERE deal_key = ?", (_dk,)).fetchone()
+                        if _rr:
+                            _cc2.execute(
+                                "INSERT INTO chat_messages (room_id, sender_id, text) VALUES (?,?,?)",
+                                (_rr["id"], "system", title),
+                            )
+                            _cc2.execute(
+                                "UPDATE chat_rooms SET last_message = ?, last_at = CURRENT_TIMESTAMP WHERE id = ?",
+                                (title[:50], _rr["id"]),
+                            )
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+
 def _finalize_accept_inline(c, user, bid: dict, final_amount: int):
     """Shared accept logic used by accept_bid and counter/accept.
 
@@ -1694,11 +1764,23 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount: int):
     if cur.rowcount == 0:
         raise HTTPException(status_code=409, detail="Ставка уже обработана")
     # Auto-decline siblings: anything still pending OR countered on the same parent.
+    # Сначала собираем перебитые ставки (id/bidder/amount) — их авторов надо
+    # уведомить после коммита (см. _notify_rejected_siblings).
+    _sibs = c.execute(
+        "SELECT id, bidder_id, amount, cargo_id, trip_id FROM bids "
+        "WHERE (cargo_id = ? OR trip_id = ?) AND id != ? AND status IN ('pending', 'countered')",
+        (bid.get("cargo_id"), bid.get("trip_id"), bid_id),
+    ).fetchall()
+    rejected_siblings = [dict(r) for r in _sibs]
     c.execute(
         "UPDATE bids SET status = 'rejected', updated_at = CURRENT_TIMESTAMP "
         "WHERE (cargo_id = ? OR trip_id = ?) AND id != ? AND status IN ('pending', 'countered')",
         (bid.get("cargo_id"), bid.get("trip_id"), bid_id),
     )
+    # P3-fix: пишем событие в ценовой timeline каждой перебитой ставки — иначе
+    # у проигравших история обрывалась на «proposed» без финала.
+    for _sib in rejected_siblings:
+        _record_price_event(c, _sib["id"], user["id"], "owner", _sib.get("amount"), "rejected", None)
 
     chat_room_id = _ensure_chat_room_inline(
         c, shipper_id, driver_id, bid.get("cargo_id"), bid.get("trip_id")
@@ -1739,6 +1821,22 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount: int):
     except Exception as e:
         print(f"[accept_bid] deal_event write failed (continuing): {e}", flush=True)
 
+    # Системный маркер в чат — чтобы Deal Room сразу не был пустым (раньше до
+    # первой смены статуса комната открывалась без единого сообщения).
+    try:
+        if chat_room_id:
+            _mk = f"🤝 Сделка создана · {final_amount}"
+            c.execute(
+                "INSERT INTO chat_messages (room_id, sender_id, text) VALUES (?,?,?)",
+                (chat_room_id, "system", _mk),
+            )
+            c.execute(
+                "UPDATE chat_rooms SET last_message = ?, last_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (_mk[:50], chat_room_id),
+            )
+    except Exception as e:
+        print(f"[accept_bid] chat marker write failed (continuing): {e}", flush=True)
+
     return {
         "deal_id": deal_id,
         "chat_room_id": chat_room_id,
@@ -1746,6 +1844,7 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount: int):
         "to_city": to_city,
         "shipper_id": shipper_id,
         "driver_id": driver_id,
+        "rejected_siblings": rejected_siblings,
     }
 
 
@@ -1785,6 +1884,9 @@ def accept_bid(bid_id: str, user=Depends(require_level(1))):
         create_notification(bid["bidder_id"], "bid_accepted", title, text, "✅", url=deal_url)
     except Exception:
         pass
+
+    # Уведомляем авторов перебитых ставок (auto-reject внутри _finalize).
+    _notify_rejected_siblings(result.get("rejected_siblings"))
 
     return {"ok": True, "deal_id": result["deal_id"], "chat_room_id": result["chat_room_id"]}
 
@@ -1865,13 +1967,19 @@ def update_bid(bid_id: str, body: BidUpdateIn, user=Depends(require_level(1))):
                 bidder_label = updated.get("bidder_name") or bidder_role_word
                 title = f"💰 Скидка: {_money(old_amount, _cur)} → {_money(new_amount, _cur)}"
                 text = f"{bidder_label} снизил цену на {_money(old_amount - new_amount, _cur)}"
+                if updated.get("cargo_id"):
+                    _disc_url = f"/cargos/{updated['cargo_id']}?bid={bid_id}"
+                elif updated.get("trip_id"):
+                    _disc_url = f"/trips/{updated['trip_id']}?bid={bid_id}"
+                else:
+                    _disc_url = "/"
                 try:
-                    send_to_user(owner_id, title, text, url="/")
+                    send_to_user(owner_id, title, text, url=_disc_url)
                 except Exception:
                     pass
                 try:
                     from api.notifications import create_notification
-                    create_notification(owner_id, "bid", title, text, "💰")
+                    create_notification(owner_id, "bid", title, text, "💰", url=_disc_url)
                 except Exception:
                     pass
         except Exception:
@@ -1894,12 +2002,42 @@ def cancel_bid(bid_id: str, user=Depends(require_level(1))):
             "UPDATE bids SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (bid_id,),
         )
+        # P3-fix: финал в ценовом timeline — раньше отмена не оставляла события.
+        _record_price_event(c, bid_id, user["id"], "bidder", bid.get("amount"), "cancelled", None)
         # Decrement bids_count safely (never below 0).
         if bid.get("cargo_id"):
             c.execute(
                 "UPDATE cargos SET bids_count = MAX(0, bids_count - 1) WHERE id = ?",
                 (bid["cargo_id"],),
             )
+
+    # Уведомляем владельца груза/рейса, что биддер отозвал ставку. Раньше отмена
+    # проходила молча — владелец видел прежнее число откликов и «висящую» ставку
+    # в «Предложениях», не зная, что она уже снята.
+    try:
+        with get_conn() as _cc:
+            owner_id = _cargo_or_trip_owner_id(_cc, bid)
+            _cur = _bid_currency(_cc, bid)
+        if owner_id:
+            if bid.get("cargo_id"):
+                back_url = f"/cargos/{bid['cargo_id']}"
+            elif bid.get("trip_id"):
+                back_url = f"/trips/{bid['trip_id']}"
+            else:
+                back_url = "/"
+            title = "↩️ Ставка отозвана"
+            body_text = f"Предложение {_money(bid['amount'], _cur)} отозвано автором"
+            try:
+                send_to_user(owner_id, title, body_text, url=back_url)
+            except Exception:
+                pass
+            try:
+                from api.notifications import create_notification
+                create_notification(owner_id, "bid_cancelled", title, body_text, "↩️", url=back_url)
+            except Exception:
+                pass
+    except Exception:
+        pass
 
     return {"ok": True, "bid_id": bid_id, "status": "cancelled"}
 
@@ -2007,7 +2145,11 @@ def counter_bid(bid_id: str, body: BidCounterIn, user=Depends(require_level(1)))
     with get_conn() as c2:
         cur = _bid_currency(c2, bid)
     title = f"🔁 Контр-оффер: {_money(body.amount, cur)}"
-    text = f"Владелец груза предложил {_money(body.amount, cur)} вместо {_money(bid['amount'], cur)}"
+    # Роль-зависимый текст: для bid на груз контр шлёт владелец груза; для bid
+    # на рейс — владелец рейса (водитель). Иначе биддеру на рейс приходило
+    # неверное «Владелец груза предложил».
+    _owner_word = "Владелец груза" if bid.get("cargo_id") else "Владелец рейса"
+    text = f"{_owner_word} предложил {_money(body.amount, cur)} вместо {_money(bid['amount'], cur)}"
     try:
         send_to_user(bid["bidder_id"], title, text, url=counter_url)
     except Exception:
@@ -2072,6 +2214,9 @@ def accept_counter(bid_id: str, user=Depends(require_level(1))):
         except Exception:
             pass
 
+    # Уведомляем авторов перебитых ставок (auto-reject внутри _finalize).
+    _notify_rejected_siblings(result.get("rejected_siblings"))
+
     return {"ok": True, "deal_id": result["deal_id"], "chat_room_id": result["chat_room_id"], "amount": counter}
 
 
@@ -2089,6 +2234,8 @@ def decline_counter(bid_id: str, user=Depends(require_level(1))):
             "counter_by = NULL, counter_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (bid_id,),
         )
+        # P3-fix: фиксируем отказ от контр-оффера в ценовом timeline.
+        _record_price_event(c, bid_id, user["id"], "bidder", bid.get("amount"), "declined", None)
 
     try:
         owner_id = None
@@ -2097,14 +2244,23 @@ def decline_counter(bid_id: str, user=Depends(require_level(1))):
             owner_id = _cargo_or_trip_owner_id(c2, bid)
             _cur = _bid_currency(c2, bid)
         if owner_id:
+            if bid.get("cargo_id"):
+                _dc_url = f"/cargos/{bid['cargo_id']}?bid={bid_id}"
+            elif bid.get("trip_id"):
+                _dc_url = f"/trips/{bid['trip_id']}?bid={bid_id}"
+            else:
+                _dc_url = "/"
+            # Роль-зависимо: контр отклоняет биддер. Для bid на груз биддер —
+            # водитель; для bid на рейс — грузовладелец.
+            _decliner_word = "Водитель" if bid.get("cargo_id") else "Грузовладелец"
             try:
-                send_to_user(owner_id, "❌ Контр-оффер отклонён", "Водитель отказался от вашего контр-оффера", url="/")
+                send_to_user(owner_id, "❌ Контр-оффер отклонён", f"{_decliner_word} отказался от вашего контр-оффера", url=_dc_url)
             except Exception:
                 pass
             try:
                 from api.notifications import create_notification
                 create_notification(owner_id, "bid", "❌ Контр-оффер отклонён",
-                                    f"Ставка {_money(bid['amount'], _cur)} снова в статусе pending", "❌")
+                                    f"Ставка {_money(bid['amount'], _cur)} снова в статусе pending", "❌", url=_dc_url)
             except Exception:
                 pass
     except Exception:
@@ -2207,6 +2363,17 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
     VALID = ["accepted", "in_progress", "at_border", "delivered", "cancelled"]
     if new_status not in VALID:
         raise HTTPException(status_code=400, detail=f"Допустимые статусы: {', '.join(VALID)}")
+    # Разрешённые переходы. Раньше валидации не было — двойной тап или
+    # рассинхрон фронта мог перескочить accepted → delivered, минуя «в пути»/
+    # «на границе». Отмена доступна из любого рабочего статуса; at_border можно
+    # пропустить (внутренние рейсы без границы) — accepted → delivered нельзя.
+    _FLOW = {
+        "accepted":    {"in_progress", "cancelled"},
+        "in_progress": {"at_border", "delivered", "cancelled"},
+        "at_border":   {"delivered", "cancelled"},
+        "delivered":   set(),
+        "cancelled":   set(),
+    }
     uid = user["id"]
     with get_conn() as c:
         row = c.execute("SELECT * FROM deals WHERE id = ?", (deal_id,)).fetchone()
@@ -2215,6 +2382,12 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
         deal = dict(row)
         if uid not in (deal["shipper_id"], deal["driver_id"]):
             raise HTTPException(status_code=403)
+        cur_status = deal.get("status") or "accepted"
+        if new_status == cur_status:
+            return {"ok": True, "status": new_status}  # идемпотентно, без шума
+        allowed = _FLOW.get(cur_status)
+        if allowed is not None and new_status not in allowed:
+            raise HTTPException(status_code=409, detail=f"Недопустимый переход: {cur_status} → {new_status}")
         c.execute("UPDATE deals SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                    (new_status, deal_id))
         if new_status == "delivered" and deal["cargo_id"]:
@@ -2222,7 +2395,7 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
         elif new_status == "cancelled" and deal["cargo_id"]:
             c.execute("UPDATE cargos SET status = 'active', taken_by = NULL WHERE id = ?", (deal["cargo_id"],))
         # Синхронизация trip status при смене deal status
-        _DEAL_TO_TRIP = {"in_progress": "in_transit", "delivered": "delivered", "cancelled": "cancelled"}
+        _DEAL_TO_TRIP = {"in_progress": "in_transit", "at_border": "in_transit", "delivered": "delivered", "cancelled": "cancelled"}
         if deal.get("trip_id") and new_status in _DEAL_TO_TRIP:
             c.execute("UPDATE trips SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                        (_DEAL_TO_TRIP[new_status], deal["trip_id"]))

@@ -69,7 +69,7 @@ def _norm_city(s: str) -> str:
     return (s or "").split(",")[0].strip().lower()
 
 
-def notify_matching_users(from_city: str, to_city: str, cargo_desc: str = ""):
+def notify_matching_users(from_city: str, to_city: str, cargo_desc: str = "", cargo_id: str = None):
     """Вызывается при публикации нового груза — пушит matching подписчикам.
 
     Матчинг НОРМАЛИЗОВАННЫЙ (город без страны, регистронезависимо), а не по
@@ -96,7 +96,7 @@ def notify_matching_users(from_city: str, to_city: str, cargo_desc: str = ""):
                 uid,
                 f"📦 Новый груз: {from_city} → {to_city}",
                 cargo_desc[:100] if cargo_desc else "Появился груз по вашему маршруту!",
-                url="/",
+                url=(f"/cargos/{cargo_id}" if cargo_id else "/"),
             )
             sent += 1
         except Exception:
