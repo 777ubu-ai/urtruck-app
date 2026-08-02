@@ -51,16 +51,24 @@ export default function StatsRow({ items = [] }) {
   );
 }
 
+// Дизайн 2026 v4 (03.08): горизонтальная строка вместо трёх высоких карточек.
+// Раньше «2 / 0 / 1» занимали треть экрана вертикально. Теперь одна плоская
+// строка ~40px: [📦 2 Мои  🚚 0 Везут  ✅ 1 Доставлено]. Шрифт значения 14,
+// label 12 — компакт, помещается больше грузов ниже.
 const s = StyleSheet.create({
-  row: { flexDirection: 'row', gap: 8, marginBottom: 14 },
+  row: { flexDirection: 'row', alignItems: 'stretch', gap: 6, marginBottom: 10 },
   cell: {
     flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: v1Radius.field,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    borderRadius: 8,
     borderWidth: 1,
+    gap: 4,
   },
-  icon: { fontSize: 12, opacity: 0.55, marginBottom: 4 },
-  value: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3 },
-  label: { fontSize: 11, marginTop: 2 },
+  icon: { fontSize: 12, opacity: 0.7 },
+  value: { fontSize: 14, fontWeight: '700', letterSpacing: -0.2 },
+  label: { fontSize: 11, fontWeight: '600' },
 });

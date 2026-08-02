@@ -37,9 +37,11 @@ export default function MyTripsScreen({ navigation, route }) {
   bellBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, backgroundColor: v1.surface },
   bellIcon: { fontSize: 18 },
   menuBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  titleBlock: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12 },
-  titleHero: { color: v1.text, fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
-  titleSub: { color: v1.textMuted, fontSize: 12, marginTop: 2 },
+  // Дизайн 2026 v4 (03.08): заголовок 26→19px. Раньше «Мои грузы» занимал
+  // визуально столько же, сколько сам список — user жаловался «как для слепого».
+  titleBlock: { paddingHorizontal: 16, paddingTop: 2, paddingBottom: 8 },
+  titleHero: { color: v1.text, fontSize: 19, fontWeight: '700', letterSpacing: -0.2 },
+  titleSub: { color: v1.textMuted, fontSize: 12, marginTop: 1 },
   // Кнопка «Разместить рейс» (driver, §2.2.2). Текст чёрный — на изумруде
   // #00E676 даёт AAA-контраст (источник истины — CLAUDE.md).
   // Дизайн 2026 v3 (03.08): outline вместо заливки — «+ Разместить груз» не
@@ -71,18 +73,24 @@ export default function MyTripsScreen({ navigation, route }) {
   archiveToggle: { alignSelf: 'flex-end', paddingVertical: 6, paddingHorizontal: 4, marginTop: 2 },
   archiveToggleText: { fontSize: 12, fontWeight: '700' },
 
-  card: { borderRadius: 20, padding: 16, borderWidth: 0.5, marginBottom: 14, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 3 },
-  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xs },
-  badge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
-  badgeText: { fontSize: 11, fontWeight: '800', letterSpacing: 1 },
-  statusLabel: { ...typography.small },
-  route: { ...typography.title, marginBottom: 4 },
-  desc: { ...typography.body, marginBottom: spacing.xs },
-  cardMeta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: spacing.xs },
-  metaItem: { ...typography.caption },
-  metaDot: { color: '#475569', fontSize: 11 },
-  cardBottom: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  price: { fontSize: 24, fontWeight: '700', color: '#FF8400', fontVariant: ['tabular-nums'], flexShrink: 1 },
+  // Дизайн 2026 v4: плотный ленточный формат карточки груза/рейса.
+  // Было: padding 16, margin 14, borderRadius 20, тень 16 — «карточки-кирпичи
+  // на весь экран, помещается 1-2 груза». Стало: padding 12x14, margin 8,
+  // borderRadius 10, лёгкая тень. Помещается в 2 раза больше.
+  card: { borderRadius: 10, paddingVertical: 12, paddingHorizontal: 14, borderWidth: 1, marginBottom: 8, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
+  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  badge: { paddingHorizontal: 6, paddingVertical: 1, borderRadius: 5 },
+  badgeText: { fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
+  statusLabel: { fontSize: 11 },
+  route: { fontSize: 14, fontWeight: '700', marginBottom: 2 },
+  desc: { fontSize: 12, marginBottom: 2 },
+  cardMeta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 },
+  metaItem: { fontSize: 11 },
+  metaDot: { color: '#94A3B8', fontSize: 10 },
+  cardBottom: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  // Цена: было 24pt жирный оранжевый — крик. Теперь 16pt, тёмный текст,
+  // оранжевый ушёл в мелкий label «$» перед суммой.
+  price: { fontSize: 16, fontWeight: '700', color: '#FF8400', fontVariant: ['tabular-nums'], flexShrink: 1 },
   bidsLabel: { ...typography.caption, flex: 1 },
   // Дизайн 2026 v3: плашка «N предложений» — outline вместо заливки,
   // компактнее (меньше 32px), шрифт 12. Не «кричит».
