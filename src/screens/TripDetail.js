@@ -706,11 +706,17 @@ export default function TripDetail({ navigation, route }) {
         {/* Цена — выделенный блок с brand-accent. Если ставка ПРИНЯТА —
             показываем сумму сделки, а не цену объявления (две разные цифры
             на одном экране путали, зеркально CargoDetail). */}
-        <GlassCard accent={v1Accent.main}>
-          <SectionTitle featherIcon="dollar-sign" label={acceptedBid ? t('deal_price') : t('price')} />
-          <Text style={[s.priceBig, { color: v1Accent.main }]} numberOfLines={1} testID="trip-price-value">
-            {acceptedBid ? formatPrice(acceptedBid.amount, acceptedBid.currency || trip.currency, t) : view.price}
-          </Text>
+        {/* Дизайн v6 (04.08): цена компактной строкой без оранжевой рамки. */}
+        <GlassCard>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Feather name="dollar-sign" size={12} color={v1.textMuted} />
+              <Text style={{ color: v1.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' }}>{acceptedBid ? t('deal_price') : t('price')}</Text>
+            </View>
+            <Text style={[s.priceBig, { color: v1Accent.main }]} numberOfLines={1} testID="trip-price-value">
+              {acceptedBid ? formatPrice(acceptedBid.amount, acceptedBid.currency || trip.currency, t) : view.price}
+            </Text>
+          </View>
         </GlassCard>
 
         {/* Рыночный пульс: число предложений на этот рейс (видно всем —
@@ -863,10 +869,10 @@ export default function TripDetail({ navigation, route }) {
                 </View>
                 {isOwner && !passed && i === currentIdx + 1 && (
                   <TouchableOpacity
-                    style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, backgroundColor: info.color }}
+                    style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: info.color, backgroundColor: 'transparent' }}
                     onPress={() => advanceTripState(trip.id, st)}
                   >
-                    <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '700' }}>{t('trip_mark')}</Text>
+                    <Text style={{ color: info.color, fontSize: 11, fontWeight: '700' }}>{t('trip_mark')}</Text>
                   </TouchableOpacity>
                 )}
               </View>
