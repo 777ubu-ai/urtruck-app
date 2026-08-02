@@ -14,7 +14,7 @@ function DealActionLabel({ icon, text, color, loading }) {
     </View>
   );
 }
-const dealLblStyle = { fontSize: 14, fontWeight: '800' };
+const dealLblStyle = { fontSize: 13, fontWeight: '700' };
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
 import { formatBids, t as tGlobal } from '../utils/i18n';
@@ -66,9 +66,9 @@ export default function CargoDetail({ navigation, route }) {
   // Brand bar moved to <BrandBarWithShare/> in stage 3D — local
   // brandBar/backHit/backIcon/brandRow/brandText/ftlPill/ftlText/shareBtn/
   // shareIcon styles were removed as part of stage 3E cleanup.
-  pageTitle: { color: v1.text, fontSize: 22, fontWeight: '900', letterSpacing: -0.5, marginVertical: 12 },
+  pageTitle: { color: v1.text, fontSize: 19, fontWeight: '700', letterSpacing: -0.2, marginVertical: 12 },
   priceLabelV1: { fontSize: 11, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 },
-  priceValueV1: { fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
+  priceValueV1: { fontSize: 16, fontWeight: '700', letterSpacing: -0.2, color: '#FF8400', fontVariant: ['tabular-nums'] },
   // Legacy local styles still used by deal-block / bid cards / reviews
   header: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 },
   backBtn: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
@@ -77,7 +77,7 @@ export default function CargoDetail({ navigation, route }) {
   section: { borderRadius: 16, padding: 18, borderWidth: 1, marginBottom: 10 },
   routeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 14 },
   dot: { width: 10, height: 10, borderRadius: 5 },
-  city: { fontSize: 17, fontWeight: '800' },
+  city: { fontSize: 15, fontWeight: '700' },
   line: { flex: 1, height: 1 },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
   gridItem: { width: '50%', marginBottom: 10 },
@@ -93,12 +93,12 @@ export default function CargoDetail({ navigation, route }) {
   // 27.07: было flexDirection:'row' → кнопки справа съедали ширину и имя/
   // сообщение схлопывались в вертикальный столбик по букве. Теперь колонка:
   // сверху [флаг+имя ... сумма], ниже — кнопки на всю ширину (сами переносятся).
-  bidCard: { borderRadius: 12, padding: 12, borderWidth: 1, marginBottom: 6, flexDirection: 'column' },
+  bidCard: { borderRadius: 10, padding: 12, borderWidth: 1, marginBottom: 8, flexDirection: 'column', shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
   bidLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, marginRight: 8 },
   bidFlag: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   bidName: { fontSize: 13, fontWeight: '600' },
   bidInfo: { color: '#FBBF24', fontSize: 11 },
-  bidAmt: { color: '#22C55E', fontSize: 16, fontWeight: '900' },
+  bidAmt: { color: '#FF8400', fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'] },
   confirmBanner: { backgroundColor: '#22C55E20', borderWidth: 1, borderColor: '#22C55E', borderRadius: 12, padding: 14, marginBottom: 12, alignItems: 'center' },
   confirmText: { color: '#22C55E', fontSize: 14, fontWeight: '800' },
   photoWrap: { borderRadius: 16, overflow: 'hidden', borderWidth: 1, marginBottom: 12, position: 'relative' },
@@ -120,17 +120,17 @@ export default function CargoDetail({ navigation, route }) {
   reviewSubmitBtn: { backgroundColor: '#22C55E', borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10 },
   reviewSubmitText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   dealBlock: { borderWidth: 1, borderRadius: 14, padding: 16, alignItems: 'center', gap: 10 },
-  myBidCard: { padding: 14, borderRadius: 16, borderWidth: 2 },
+  myBidCard: { padding: 14, borderRadius: 10, borderWidth: 2, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
   myBidHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
   myBidLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' },
-  myBidAmount: { fontSize: 22, fontWeight: '900', letterSpacing: -0.3, flexShrink: 1 },
+  myBidAmount: { fontSize: 16, fontWeight: '700', letterSpacing: -0.2, flexShrink: 1, fontVariant: ['tabular-nums'] },
   myBidStatus: { fontSize: 13, fontWeight: '600', marginBottom: 12 },
   myBidCounter: { fontSize: 14, fontWeight: '800', marginBottom: 12 },
   myBidBtnRow: { flexDirection: 'row', gap: 10 },
   myBidBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, alignItems: 'center' },
   myBidBtnText: { fontSize: 14, fontWeight: '800' },
   dealStatusLabel: { fontSize: 15, fontWeight: '700' },
-  dealActionBtn: { backgroundColor: '#22C55E', borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10 },
+  dealActionBtn: { backgroundColor: '#22C55E', borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   // Ghost-стиль (обводка) для акцентных действий сделки — вместо сплошной заливки.
   dealActionGhost: { backgroundColor: 'transparent', borderWidth: 1.6 },
   dealActionText: { color: '#fff', fontSize: 13, fontWeight: '700' },
@@ -494,7 +494,7 @@ export default function CargoDetail({ navigation, route }) {
                 <Feather name="dollar-sign" size={14} color={v1Accent.main} />
                 <Text testID="cargo-price-label" style={[s.priceLabelV1, { color: theme.textMuted }]}>{acceptedBid ? t('deal_price') : t('price')}</Text>
               </View>
-              <Text testID="cargo-price-value" style={[s.priceValueV1, { color: theme.text }]} numberOfLines={1}>{priceDisplay}</Text>
+              <Text testID="cargo-price-value" style={[s.priceValueV1, { color: '#FF8400' }]} numberOfLines={1}>{priceDisplay}</Text>
             </View>
             {/* Stage 9: previously a "Предложить цену" button sat right
                 here next to the price block AND on the sticky bar at

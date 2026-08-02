@@ -49,6 +49,10 @@ jobs:
       - name: Post-process (SW + manifest)
         run: |
           cp sw-template.js dist/sw.js
+          # Версия приложения в корень статики → https://urtruck.kz/.version.
+          # expo export не копирует корневой .version, поэтому кладём вручную,
+          # иначе номер сборки на сайте не обновляется после деплоя.
+          cp .version dist/.version
           # Legal pages (privacy/terms/support) — статические HTML вне SPA.
           # Нужны для App Store / Google Play (рабочий URL политики).
           mkdir -p dist/legal

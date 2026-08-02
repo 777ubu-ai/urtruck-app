@@ -107,19 +107,19 @@ export default function FeedScreen({ navigation, route }) {
   routeSelValue: { fontSize: 15, fontWeight: '800' },
   routeSelArrow: { fontSize: 20, fontWeight: '900' },
   routeSelClear: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
-  titleHero: { color: v1.text, fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
-  titleHeroSub: { color: v1.textMuted, fontSize: 12, marginTop: 2 },
-  titleCta: { borderWidth: 0, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 10, shadowColor: '#FF8400', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 5 },
+  titleHero: { color: v1.text, fontSize: 19, fontWeight: '700', letterSpacing: -0.2 },
+  titleHeroSub: { color: v1.textMuted, fontSize: 11, marginTop: 2 },
+  titleCta: { borderWidth: 0, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10, shadowColor: '#FF8400', shadowOpacity: 0, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 0 },
   viewToggle: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: v1.border },
-  titleCtaText: { fontSize: 12, fontWeight: '800' },
+  titleCtaText: { fontSize: 13, fontWeight: '700' },
   footerNote: {
     marginTop: 16, marginBottom: 8,
-    borderWidth: 1, borderRadius: 14,
+    borderWidth: 1, borderRadius: 10,
     padding: 12,
     backgroundColor: v1.surface,
   },
   footerNoteText: { color: v1.textMuted, fontSize: 12, lineHeight: 17 },
-  refreshBtn: { marginTop: 16, borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12 },
+  refreshBtn: { marginTop: 16, borderRadius: 10, paddingHorizontal: 24, paddingVertical: 12 },
   // Old layout helpers kept for the still-existing publish modal below.
   betaBar: { backgroundColor: '#FF8400', paddingVertical: 6, paddingHorizontal: 14, alignItems: 'center' },
   betaBarText: { color: '#0C0A09', fontSize: 11, fontWeight: '700', letterSpacing: 0.4 },
@@ -132,11 +132,11 @@ export default function FeedScreen({ navigation, route }) {
   searchInput: { flex: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, borderWidth: 1 },
   clearBtn: { paddingHorizontal: 8 },
   saveRouteBtn: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, marginLeft: 4 },
-  saveRouteFull: { borderWidth: 1, borderRadius: 12, paddingVertical: 12, alignItems: 'center', marginTop: 14, minHeight: 44, justifyContent: 'center' },
-  saveRouteFullText: { fontSize: 14, fontWeight: '800' },
+  saveRouteFull: { borderWidth: 1, borderRadius: 10, paddingVertical: 12, alignItems: 'center', marginTop: 14, minHeight: 44, justifyContent: 'center' },
+  saveRouteFullText: { fontSize: 13, fontWeight: '700' },
   filterBtn: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   activeChipsRow: { paddingHorizontal: 16, paddingBottom: 8, gap: 6, alignItems: 'center' },
-  activeChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, maxWidth: 220 },
+  activeChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, maxWidth: 220 },
   activeChipText: { color: '#fff', fontSize: 12, fontWeight: '700', flexShrink: 1 },
   activeChipClose: { color: '#fff', fontSize: 13, fontWeight: '800', marginLeft: 2 },
   filterSheet: { borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, paddingBottom: 40, maxHeight: '80%' },
@@ -144,12 +144,12 @@ export default function FeedScreen({ navigation, route }) {
   filterSectionLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 1, marginTop: 14, marginBottom: 8 },
   filterPillRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', rowGap: 8 },
   filterPillWrap: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', rowGap: 8 },
-  filterPill: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, alignSelf: 'flex-start' },
-  filterPillText: { fontSize: 12, fontWeight: '600' },
+  filterPill: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8, borderWidth: 1, alignSelf: 'flex-start' },
+  filterPillText: { fontSize: 12, fontWeight: '700' },
   filterInput: { paddingHorizontal: 14, paddingVertical: 12, borderRadius: 12, borderWidth: 1, fontSize: 14 },
   filterActions: { flexDirection: 'row', gap: 10, marginTop: 24 },
-  filterActionBtn: { flex: 1, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
-  filterActionText: { fontSize: 15, fontWeight: '800' },
+  filterActionBtn: { flex: 1, borderRadius: 10, paddingVertical: 14, alignItems: 'center' },
+  filterActionText: { fontSize: 13, fontWeight: '700' },
   card: { borderRadius: 14, padding: 16, borderWidth: 1, borderColor: '#263244', backgroundColor: '#111827' },
   cardRow: { flexDirection: 'row', alignItems: 'flex-start' },
   route: { fontSize: 17, fontWeight: '700', marginBottom: 5, letterSpacing: -0.2, color: '#F8FAFC' },
@@ -821,7 +821,7 @@ export default function FeedScreen({ navigation, route }) {
             публикации рейса ему на ленту не выносим (остаётся «+» в баре). */}
         {!isDriver ? (
           <PressableScale
-            style={[s.titleCta, { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: accentColor }]}
+            style={[s.titleCta, { backgroundColor: 'transparent', borderWidth: 1, borderColor: accentColor }]}
             onPress={() => navigation.navigate('CreateCargo', { role })}
             testID="publish-cargo-button"
             accessibilityRole="button"
