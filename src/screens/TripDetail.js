@@ -462,56 +462,78 @@ export default function TripDetail({ navigation, route }) {
               }
             </Text>
           )}
-          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginTop: 10 }}>
+          {/* Дизайн 2026 v5 (04.08): те же компакт-кнопки что везде.
+              Один Primary CTA следующего шага + маленький «Чат» + destructive
+              Отмена. Больше НИ ОДНОЙ гигантской заливной кнопки. */}
+          <View style={{ marginTop: 10, gap: 6 }}>
             {isDriverSide && dealStatus === 'accepted' && (
-              <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: v1Accent.main }]} onPress={() => changeDealStatus('in_progress')} disabled={statusLoading}>
-                <Text style={s.dealActionText}>{statusLoading ? '...' : '🚛 ' + t('start_delivery')}</Text>
-              </TouchableOpacity>
+              <PrimaryCTA
+                role={role || 'driver'}
+                icon="🚛"
+                label={t('start_delivery')}
+                loading={statusLoading}
+                disabled={statusLoading}
+                onPress={() => changeDealStatus('in_progress')}
+              />
             )}
             {isDriverSide && dealStatus === 'in_progress' && (
-              <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: v1Accent.main }]} onPress={() => changeDealStatus('at_border')} disabled={statusLoading}>
-                <Text style={s.dealActionText}>{statusLoading ? '...' : '🛂 ' + t('mark_at_border')}</Text>
-              </TouchableOpacity>
+              <PrimaryCTA
+                role={role || 'driver'}
+                icon="🛂"
+                label={t('mark_at_border')}
+                loading={statusLoading}
+                disabled={statusLoading}
+                onPress={() => changeDealStatus('at_border')}
+              />
             )}
             {isDriverSide && dealStatus === 'at_border' && (
-              <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: v1Accent.main }]} onPress={() => changeDealStatus('delivered')} disabled={statusLoading}>
-                <Text style={s.dealActionText}>{statusLoading ? '...' : '✅ ' + t('mark_arrived')}</Text>
-              </TouchableOpacity>
+              <PrimaryCTA
+                role={role || 'driver'}
+                icon="✅"
+                label={t('mark_arrived')}
+                loading={statusLoading}
+                disabled={statusLoading}
+                onPress={() => changeDealStatus('delivered')}
+              />
             )}
             {isShipper && (dealStatus === 'in_progress' || dealStatus === 'at_border') && (
-              <TouchableOpacity style={[s.dealActionBtn, s.dealActionGhost, { borderColor: v1Accent.main }]} onPress={() => changeDealStatus('delivered')} disabled={statusLoading}>
-                <Text style={[s.dealActionText, { color: v1Accent.main }]}>{statusLoading ? '...' : '✅ ' + t('confirm_delivery')}</Text>
-              </TouchableOpacity>
-            )}
-            {chatRoomId && (
-              <TouchableOpacity
-                style={[s.dealActionBtn, s.dealActionGhost, { borderColor: v1Accent.main }]}
-                onPress={() => navigation.navigate('Chat', { roomId: chatRoomId, role, tripId: (trip && trip.id) || tripId, partner: driverId ? { id: driverId } : undefined })}
-              >
-                <Text style={[s.dealActionText, { color: v1Accent.main }]}>💬 {t('order_chat')}</Text>
-              </TouchableOpacity>
-            )}
-            {(dealStatus === 'accepted' || dealStatus === 'in_progress' || dealStatus === 'at_border') && (
-              <TouchableOpacity
-                style={[s.dealActionBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#EF4444' }]}
+              <SecondaryButton
+                role={role || 'client'}
+                icon="✅"
+                label={t('confirm_delivery')}
                 disabled={statusLoading}
-                onPress={() => {
-                  // Подтверждение на обеих платформах (раньше на native отменяло
-                  // мгновенно без вопроса при случайном тапе).
-                  const doCancel = () => changeDealStatus('cancelled');
-                  if (Platform.OS === 'web') {
-                    if (typeof window !== 'undefined' && window.confirm(t('cancel_deal_confirm'))) doCancel();
-                  } else {
-                    Alert.alert(t('cancel_deal_confirm'), '', [
-                      { text: t('cancel'), style: 'cancel' },
-                      { text: t('confirm'), style: 'destructive', onPress: doCancel },
-                    ]);
-                  }
-                }}
-              >
-                <Text style={[s.dealActionText, { color: '#EF4444' }]}>⊘ {t('cancel_deal')}</Text>
-              </TouchableOpacity>
+                onPress={() => changeDealStatus('delivered')}
+              />
             )}
+            <View style={{ flexDirection: 'row', gap: 18, justifyContent: 'center', marginTop: 2 }}>
+              {chatRoomId && (
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('Chat', { roomId: chatRoomId, role, tripId: (trip && trip.id) || tripId, partner: driverId ? { id: driverId } : undefined })}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                >
+                  <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '600' }}>💬 {t('order_chat')}</Text>
+                </TouchableOpacity>
+              )}
+              {(dealStatus === 'accepted' || dealStatus === 'in_progress' || dealStatus === 'at_border') && (
+                <TouchableOpacity
+                  disabled={statusLoading}
+                  onPress={() => {
+                    const doCancel = () => changeDealStatus('cancelled');
+                    if (Platform.OS === 'web') {
+                      if (typeof window !== 'undefined' && window.confirm(t('cancel_deal_confirm'))) doCancel();
+                    } else {
+                      Alert.alert(t('cancel_deal_confirm'), '', [
+                        { text: t('cancel'), style: 'cancel' },
+                        { text: t('confirm'), style: 'destructive', onPress: doCancel },
+                      ]);
+                    }
+                  }}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                >
+                  <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '600' }}>⊘ {t('cancel_deal')}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
         </View>
       </View>
@@ -864,20 +886,22 @@ export default function TripDetail({ navigation, route }) {
             client CTA surface from now on. The owner branch is
             unchanged — owner still sees Edit / Delete inline. */}
         {role === 'client' ? null : isOwner ? (
-          <>
+          <View style={{ marginHorizontal: 16, marginTop: 8 }}>
             {(trip.status || 'active') === 'active' && !dealStatus && (
-              <TouchableOpacity
-                style={[s.primaryBtn, { backgroundColor: v1Accent.main }]}
+              <SecondaryButton
+                role="driver"
+                icon="✏️"
+                label={t('edit_btn')}
                 onPress={() => navigation.navigate('EditTrip', { tripId: trip.id, trip })}
                 testID="trip-detail-edit-btn"
-              >
-                <Text style={[s.primaryBtnText, { color: '#0A0A0A' }]}>✏️ {t('edit_btn')}</Text>
-              </TouchableOpacity>
+              />
             )}
-            <TouchableOpacity style={[s.dangerBtn, { borderColor: '#EF4444' }]} onPress={onDelete}>
-              <Text style={s.dangerBtnText}>🗑 {t('trip_delete')}</Text>
+            {/* Удалить рейс — text-only серый, как «Удалить груз» на CargoDetail.
+                Больше не красная контурная кнопка на весь ряд (жалоба 03.08). */}
+            <TouchableOpacity onPress={onDelete} style={{ paddingVertical: 10, alignItems: 'center', marginTop: 8 }} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+              <Text style={{ color: '#94A3B8', fontSize: 12, fontWeight: '600' }}>🗑 {t('trip_delete')}</Text>
             </TouchableOpacity>
-          </>
+          </View>
         ) : null}
       </ScrollView>
 
