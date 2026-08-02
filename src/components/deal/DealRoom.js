@@ -36,9 +36,13 @@ const DEAL_STATUS_COLOR = {
 export function systemEventText(t, ev) {
   const raw = ev?.i18n_key || ev?.event_type || '';
   const flat = raw.replace(/[.\-]/g, '_');
+  const p = ev?.payload || {};
+  if (flat === 'deal_event_status_changed' && p.status) {
+    const specific = t(`deal_event_status_${p.status}`);
+    if (specific && specific !== `deal_event_status_${p.status}`) return specific;
+  }
   const translated = t(flat);
   if (translated && translated !== flat) {
-    const p = ev?.payload || {};
     return translated
       .replace('{amount}', p.amount != null ? String(p.amount) : '—')
       .replace('{currency}', p.currency || '')
