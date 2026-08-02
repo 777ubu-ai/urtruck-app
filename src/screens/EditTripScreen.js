@@ -45,9 +45,11 @@ export default function EditTripScreen({ navigation, route }) {
   const [truckType, setTruckType] = useState(null);
   const [capacityTons, setCapacityTons] = useState('');
   const [availableM3, setAvailableM3] = useState('');
-  // Цена рейса обязательна (решение владельца): «По договорённости» убрана.
   const [price, setPrice] = useState('');
   const [currency, setCurrency] = useState('USD');
+  const priceRef = React.useRef(null);
+  const scrollRef = React.useRef(null);
+  const priceInputY = React.useRef(0);
 
   // Hydrate form from current trip values once we have them.
   const hydrateFromTrip = (t) => {
@@ -173,7 +175,7 @@ export default function EditTripScreen({ navigation, route }) {
           <Text style={[s.title, { color: v1.text }]}>{t('edit_btn')}</Text>
         </View>
       </View>
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+      <ScrollView ref={scrollRef} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
         {/* Stage 11: bring EditTrip onto the same RoutePointPicker
             that Create-flows already use. Same country → type → point
             stages, same auto-close, same theme. Transit stays a free
@@ -247,8 +249,9 @@ export default function EditTripScreen({ navigation, route }) {
           <Feather name="dollar-sign" size={13} color={theme.textMuted} />
           <Text style={[s.label, { color: theme.textMuted, marginTop: 0, marginBottom: 0 }]}>{t('payment_label_full')}</Text>
         </View>
-        <View style={[s.row, { marginBottom: 10 }]}>
+        <View style={[s.row, { marginBottom: 10 }]} onLayout={(e) => { priceInputY.current = e.nativeEvent.layout.y; }}>
           <TextInput
+            ref={priceRef}
             style={[s.input, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border, flex: 2 }]}
             placeholder={t('price_example_placeholder')}
             placeholderTextColor={theme.textMuted}
@@ -301,10 +304,18 @@ export default function EditTripScreen({ navigation, route }) {
           </View>
         </View>
 
-        <View style={[s.previewCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+        <TouchableOpacity
+          activeOpacity={0.7}
+          style={[s.previewCard, { backgroundColor: theme.card, borderColor: theme.border }]}
+          onPress={() => {
+            scrollRef.current?.scrollTo({ y: priceInputY.current, animated: true });
+            setTimeout(() => priceRef.current?.focus(), 300);
+          }}
+        >
           <Text style={[s.previewLabel, { color: theme.textMuted }]}>{t('price')}</Text>
           <Text style={s.previewPrice}>{formatPrice(Number(price) || 0, currency, t)}</Text>
-        </View>
+          <Feather name="edit-2" size={14} color={theme.textMuted} style={{ position: 'absolute', top: 10, right: 12 }} />
+        </TouchableOpacity>
 
         <TouchableOpacity
           onPress={onSave}

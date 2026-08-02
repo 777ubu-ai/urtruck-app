@@ -121,6 +121,7 @@ export default function CargoDetail({ navigation, route }) {
   myBidLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' },
   myBidAmount: { fontSize: 22, fontWeight: '900', letterSpacing: -0.3 },
   myBidStatus: { fontSize: 13, fontWeight: '600', marginBottom: 12 },
+  myBidCounter: { fontSize: 14, fontWeight: '800', marginBottom: 12 },
   myBidBtnRow: { flexDirection: 'row', gap: 10 },
   myBidBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, alignItems: 'center' },
   myBidBtnText: { fontSize: 14, fontWeight: '800' },
@@ -301,10 +302,13 @@ export default function CargoDetail({ navigation, route }) {
     }
   };
 
+  const lastLocalChange = React.useRef(0);
   const applyDeal = (d) => {
     if (!d || !d.id) return;
     setDealId(d.id);
-    setDealStatus(d.status || 'accepted');
+    if (Date.now() - lastLocalChange.current > 30000) {
+      setDealStatus(d.status || 'accepted');
+    }
     if (d.chat_room_id) setChatRoomId(d.chat_room_id);
     if (d.shipper_id) setShipperId(d.shipper_id);
     if (d.driver_id) {
@@ -361,6 +365,7 @@ export default function CargoDetail({ navigation, route }) {
     try {
       const r = await marketAPI.updateDealStatus(dealId, newStatus);
       if (r.ok) {
+        lastLocalChange.current = Date.now();
         setDealStatus(newStatus);
         const msg = newStatus === 'cancelled' ? t('deal_cancelled_toast') : t('deal_updated_toast');
         toast(msg, 'success');
@@ -528,7 +533,10 @@ export default function CargoDetail({ navigation, route }) {
             {t('no_bids_be_first')}
           </Text>
         )}
-        {bids.map(b => {
+          {bids.filter(b => {
+          if (b.isMine && (b.status === 'pending' || b.status === 'countered') && isDriverViewing && !dealStatus) return false;
+          return true;
+        }).map(b => {
           const hasAccepted = bids.some(x => x.status === 'accepted');
           const isCancelled = b.status === 'cancelled';
           const isCountered = b.status === 'countered';
@@ -754,9 +762,17 @@ export default function CargoDetail({ navigation, route }) {
                       testID="bid-cancel"
                       style={[s.miniBtn, { borderColor: '#EF4444' }, cancelling === b.id && { opacity: 0.5 }]}
                       onPress={async () => {
-                        const ok = (typeof window !== 'undefined' && window.confirm)
-                          ? window.confirm(t('cancel_bid_confirm'))
-                          : true;
+                        // Подтверждение на обеих платформах — раньше на native
+                        // window.confirm отсутствовал → ok=true, отмена мгновенно.
+                        const ok = Platform.OS === 'web'
+                          ? (typeof window !== 'undefined' && window.confirm(t('cancel_bid_confirm')))
+                          : await new Promise((res) => Alert.alert(
+                              t('cancel_bid_confirm'), '',
+                              [
+                                { text: t('cancel'), style: 'cancel', onPress: () => res(false) },
+                                { text: t('cancel_bid'), style: 'destructive', onPress: () => res(true) },
+                              ],
+                            ));
                         if (!ok) return;
                         setCancelling(b.id);
                         try {
@@ -795,22 +811,85 @@ export default function CargoDetail({ navigation, route }) {
               <Text style={[s.myBidAmount, { color: v1Accent.main }]}>{formatPrice(myPendingBid.amount, c.currency)}</Text>
             </View>
             <Text style={[s.myBidStatus, { color: theme.text }]}>{myBidStatusLabel}</Text>
-            <View style={s.myBidBtnRow}>
-              <TouchableOpacity
-                style={[s.myBidBtn, { borderColor: v1Accent.main }]}
-                onPress={() => { setEditingBid(myPendingBid); setBidModalMode('edit'); setBidModal(true); }}
-                testID="cargo-my-bid-edit"
-              >
-                <Text style={[s.myBidBtnText, { color: v1Accent.main }]}>✏️ {t('edit_bid') || 'Изменить'}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[s.myBidBtn, { backgroundColor: v1Accent.main, borderColor: v1Accent.main }]}
-                onPress={openMyBidChat}
-                testID="cargo-my-bid-chat"
-              >
-                <Text style={[s.myBidBtnText, { color: v1Accent.onAccent }]}>💬 {t('open_chat') || 'Чат'}</Text>
-              </TouchableOpacity>
-            </View>
+            {myPendingBid.status === 'countered' && myPendingBid.counterAmount ? (
+              <>
+                {/* Клиент прислал встречную цену — водитель отвечает прямо
+                    здесь: сумма + [Отклонить] [Чат] [Принять $X]. Симметрично
+                    TripDetail. Раньше это жило в списке ставок и дублировалось. */}
+                <Text style={[s.myBidCounter, { color: '#E06D00' }]} testID="cargo-counter-amount">
+                  🔁 {t('counter_amount')}: {formatPrice(myPendingBid.counterAmount, c.currency, t)}
+                  {myPendingBid.counterMessage ? ` · ${myPendingBid.counterMessage}` : ''}
+                </Text>
+                <View style={[s.myBidBtnRow, { flexWrap: 'wrap' }]}>
+                  <TouchableOpacity
+                    style={[s.myBidBtn, { borderColor: '#EF4444' }]}
+                    onPress={() => declineCounter(myPendingBid)}
+                    testID="cargo-counter-decline"
+                  >
+                    <Text style={[s.myBidBtnText, { color: '#EF4444' }]}>↩ {t('decline_counter')}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[s.myBidBtn, { borderColor: v1Accent.main }]}
+                    onPress={openMyBidChat}
+                    testID="cargo-my-bid-chat"
+                  >
+                    <Text style={[s.myBidBtnText, { color: v1Accent.main }]}>💬 {t('open_chat') || 'Чат'}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[s.myBidBtn, { backgroundColor: v1Accent.main, borderColor: v1Accent.main, flexBasis: '100%' }]}
+                    onPress={() => acceptCounter(myPendingBid)}
+                    testID="cargo-counter-accept"
+                  >
+                    <Text style={[s.myBidBtnText, { color: v1Accent.onAccent }]}>
+                      ✅ {t('accept_counter')} {formatPrice(myPendingBid.counterAmount, c.currency, t)}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : (
+              <View style={s.myBidBtnRow}>
+                <TouchableOpacity
+                  style={[s.myBidBtn, { borderColor: v1Accent.main }]}
+                  onPress={() => { setEditingBid(myPendingBid); setBidModalMode('edit'); setBidModal(true); }}
+                  testID="cargo-my-bid-edit"
+                >
+                  <Text style={[s.myBidBtnText, { color: v1Accent.main }]}>✏️ {t('edit_bid') || 'Изменить'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.myBidBtn, { backgroundColor: v1Accent.main, borderColor: v1Accent.main }]}
+                  onPress={openMyBidChat}
+                  testID="cargo-my-bid-chat"
+                >
+                  <Text style={[s.myBidBtnText, { color: v1Accent.onAccent }]}>💬 {t('open_chat') || 'Чат'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.myBidBtn, { borderColor: '#EF4444' }, cancelling === myPendingBid.id && { opacity: 0.5 }]}
+                  onPress={async () => {
+                    const ok = Platform.OS === 'web'
+                      ? (typeof window !== 'undefined' && window.confirm(t('cancel_bid_confirm')))
+                      : await new Promise((res) => Alert.alert(
+                          t('cancel_bid_confirm'), '',
+                          [
+                            { text: t('cancel'), style: 'cancel', onPress: () => res(false) },
+                            { text: t('cancel_bid'), style: 'destructive', onPress: () => res(true) },
+                          ],
+                        ));
+                    if (!ok) return;
+                    setCancelling(myPendingBid.id);
+                    try {
+                      const r = await marketAPI.cancelBid(myPendingBid.id);
+                      if (r.ok) { toast('⊘ ' + t('bid_cancelled_toast'), 'success'); loadBids(); }
+                      else toast(r.detail || t('cancel_failed'), 'error');
+                    } catch { toast(t('no_connection'), 'error'); }
+                    setCancelling(null);
+                  }}
+                  disabled={cancelling === myPendingBid.id}
+                  testID="cargo-my-bid-cancel"
+                >
+                  <Text style={[s.myBidBtnText, { color: '#EF4444' }]}>⊘ {t('cancel_bid') || 'Отменить'}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         </View>
       ) : null}

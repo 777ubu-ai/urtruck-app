@@ -1,8 +1,10 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, TextInput, StyleSheet, ScrollView, Alert, Platform } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import Feather from '@expo/vector-icons/Feather';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
+import { formatBids } from '../utils/i18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useToast } from '../components/Toast';
 import RouteMap from '../components/RouteMap';
@@ -15,7 +17,7 @@ import { useVerificationGate } from '../components/VerificationGate';
 import { LEVELS, useAuth } from '../utils/AuthContext';
 import BidModal from '../components/BidModal';
 import { marketAPI } from '../utils/marketAPI';
-import { normalizeTrip, tripDisplay } from '../utils/normalizers';
+import { normalizeTrip, tripDisplay, formatPrice } from '../utils/normalizers';
 import { buildTripShareText } from '../utils/share';
 import { WEB_URL } from '../config/env';
 import {v1Colors, useV1Colors, v1Radius, v1AccentFor} from '../theme/designV1';
@@ -23,6 +25,8 @@ import GlassCard from '../components/ui/v1/GlassCard';
 import SectionTitle from '../components/ui/v1/SectionTitle';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
 import StickyCTABar from '../components/ui/v1/StickyCTABar';
+import { DealStatusTimeline } from '../components/deal/DealRoom';
+import { reviewsAPI } from '../utils/reviews';
 
 export default function TripDetail({ navigation, route }) {
   const v1 = useV1Colors();
@@ -62,6 +66,24 @@ export default function TripDetail({ navigation, route }) {
   myBidLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' },
   myBidAmount: { fontSize: 22, fontWeight: '900', letterSpacing: -0.3 },
   myBidStatus: { fontSize: 13, fontWeight: '600', marginBottom: 12 },
+  myBidCounter: { fontSize: 14, fontWeight: '800', marginBottom: 12 },
+  bidsTitle: { fontSize: 14, fontWeight: '700', marginTop: 2, marginBottom: 8 },
+  // Owner-вид: карточка ставки клиента на мой рейс (компакт CargoDetail.bidCard)
+  ownerBidCard: { borderRadius: 12, padding: 12, borderWidth: 1, marginBottom: 8 },
+  bidAmt: { fontSize: 16, fontWeight: '900', flexShrink: 0 },
+  miniBtn: { backgroundColor: 'rgba(148,163,184,0.14)', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, minHeight: 44, justifyContent: 'center' },
+  miniBtnText: { fontSize: 14, fontWeight: '700' },
+  rejectBtn: { backgroundColor: 'rgba(239,68,68,0.10)', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, minHeight: 44, justifyContent: 'center' },
+  rejectBtnText: { color: '#EF4444', fontSize: 14, fontWeight: '700' },
+  acceptBtn: { borderRadius: 10, paddingHorizontal: 16, paddingVertical: 12, minHeight: 44, justifyContent: 'center' },
+  acceptBtnText: { fontSize: 14, fontWeight: '800' },
+  // Отзыв после доставки (trip-сделка)
+  reviewBlock: { borderRadius: 14, borderWidth: 1, padding: 16, alignItems: 'center', gap: 10 },
+  reviewTitle: { fontSize: 15, fontWeight: '700' },
+  starsRow: { flexDirection: 'row', gap: 8 },
+  reviewInput: { width: '100%', borderWidth: 1, borderRadius: 10, padding: 10, fontSize: 13 },
+  reviewSubmitBtn: { borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10 },
+  reviewSubmitText: { fontSize: 13, fontWeight: '700' },
   myBidBtnRow: { flexDirection: 'row', gap: 10 },
   myBidBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, alignItems: 'center' },
   myBidBtnText: { fontSize: 14, fontWeight: '800' },
@@ -126,48 +148,107 @@ export default function TripDetail({ navigation, route }) {
   // рейса — непонятно, дошло или нет).
   const [myActiveBid, setMyActiveBid] = React.useState(null);
   const [openingChat, setOpeningChat] = React.useState(false);
+  const [cancelling, setCancelling] = React.useState(false);
 
   // Same authoritative-role logic as CargoDetail: route.params.role wins,
   // id-based comparison is a fallback for direct entry without a role hint.
   const isDriverSide = role === 'driver' || (driverId && driverId === myUserId);
   const isShipper = role === 'client' || role === 'shipper' || (shipperId && shipperId === myUserId);
 
+  const lastLocalChange = React.useRef(0);
   const applyDeal = (d) => {
     if (!d || !d.id) return;
     setDealId(d.id);
-    setDealStatus(d.status || 'accepted');
+    if (Date.now() - lastLocalChange.current > 30000) {
+      setDealStatus(d.status || 'accepted');
+    }
     if (d.chat_room_id) setChatRoomId(d.chat_room_id);
     if (d.shipper_id) setShipperId(d.shipper_id);
     if (d.driver_id) setDriverId(d.driver_id);
   };
 
-  // Загрузка dashboard: (1) существующая сделка (deal-block); (2) моя
-  // активная ставка на этот рейс (плашка «Вы предложили X»). Один запрос,
-  // два потребителя. Reload-триггер — refreshBidTick — чтобы после закрытия
-  // BidModal подтянуть свежие данные.
+  // Живые данные торга (зеркально CargoDetail.refreshDeal). Раньше dashboard
+  // грузился ОДИН раз на mount — экран «замерзал»: встречка или принятие от
+  // водителя не появлялись, пока клиент не перезайдёт. Теперь: перечитываем
+  // рейс + ставки + сделку на каждом фокусе экрана + поллинг раз в 15с.
+  // refreshBidTick — ручной триггер после закрытия BidModal.
   const [refreshBidTick, setRefreshBidTick] = React.useState(0);
-  const findMyBidFor = (list, tid) =>
-    (list || []).find(b =>
-      b.trip_id === tid &&
-      (b.status === 'pending' || b.status === 'countered')
-    ) || null;
+  const [bids, setBids] = React.useState([]);
+  const [bidsCount, setBidsCount] = React.useState(0);
+  const [bidsConfidential, setBidsConfidential] = React.useState(false);
+  const [isListingOwner, setIsListingOwner] = React.useState(false);
+  const [counterActing, setCounterActing] = React.useState(false);
+  // Owner-вид (водитель на своём рейсе): действия по ставкам клиентов.
+  const [accepting, setAccepting] = React.useState(null);
+  const [rejecting, setRejecting] = React.useState(null);
+  // Встречка владельца по конкретной ставке клиента (BidModal mode='counter').
+  const [counterBidTarget, setCounterBidTarget] = React.useState(null);
+  // Отзыв после доставки (trip-сделка не имеет CargoDetail-страницы).
+  const [reviewRating, setReviewRating] = React.useState(0);
+  const [reviewText, setReviewText] = React.useState('');
+  const [reviewSent, setReviewSent] = React.useState(false);
+  const [reviewLoading, setReviewLoading] = React.useState(false);
+  const tid = (trip && trip.id) || tripId;
 
-  React.useEffect(() => {
-    const tid = (trip && trip.id) || tripId;
+  // Один источник ставок — GET /bids?trip_id (как CargoDetail): даёт счётчик
+  // предложений, confidential-режим, owner-вид и МОЮ ставку со встречкой
+  // (counter_amount/counter_message) — dashboard my_bids этого не давал.
+  const loadBids = React.useCallback(() => {
     if (!tid) return;
-    marketAPI.myDashboard().then(d => {
-      // Существующая сделка (accepted+)
-      if (!routeDealId) {
-        const foundDeal = (d?.my_deals || []).find(x => x.trip_id === tid);
-        if (foundDeal) applyDeal(foundDeal);
-      }
-      // Моя pending/countered ставка на этот рейс
-      setMyActiveBid(findMyBidFor(d?.my_bids, tid));
+    marketAPI.listBids({ tripId: tid }).then(d => {
+      const mapped = (d.bids || []).map(b => ({
+        id: b.id, bidderId: b.bidder_id,
+        name: b.bidder_name || t('anonymous'),
+        rating: b.bidder_rating || 0,
+        reviews: b.bidder_reviews_count || 0,
+        verified: !!b.bidder_verified,
+        amount: b.amount, currency: b.currency,
+        message: b.message, status: b.status,
+        isMine: b.bidder_id === myUserId,
+        counterAmount: b.counter_amount,
+        counterMessage: b.counter_message,
+        time: b.created_at?.slice(11, 16) || '•',
+      }));
+      setBids(mapped);
+      setBidsCount(typeof d.count === 'number' ? d.count : mapped.length);
+      setIsListingOwner(!!d.is_owner);
+      setBidsConfidential(!!d.confidential);
+      // Моя активная ставка: my_bid с бэка авторитетнее маппинга по myUserId
+      // (session.user.id бывает синтетическим u_<ts> до refresh из /register/me).
+      const raw = d.my_bid && (d.my_bid.status === 'pending' || d.my_bid.status === 'countered')
+        ? d.my_bid : null;
+      const mine = raw ? {
+        id: raw.id, amount: raw.amount, currency: raw.currency,
+        message: raw.message, status: raw.status,
+        counterAmount: raw.counter_amount, counterMessage: raw.counter_message,
+      } : (mapped.find(b => b.isMine && (b.status === 'pending' || b.status === 'countered')) || null);
+      setMyActiveBid(mine);
     }).catch(() => {});
+  }, [tid, myUserId, t]);
+
+  const refreshAll = React.useCallback(() => {
+    if (!tid) return;
+    // Свежий рейс с сервера — актуальная цена/статус + driver_rating/
+    // driver_verified для карточки водителя (get_trip обогащает).
+    marketAPI.getTrip(tid).then(d => { if (d && !d.detail) setServerTrip(d); }).catch(() => {});
+    loadBids();
     if (routeDealId) {
       marketAPI.getDeal(routeDealId).then(d => { if (d && d.ok !== false) applyDeal(d); }).catch(() => {});
+    } else {
+      marketAPI.myDashboard().then(d => {
+        const foundDeal = (d?.my_deals || []).find(x => String(x.trip_id) === String(tid));
+        if (foundDeal) applyDeal(foundDeal);
+      }).catch(() => {});
     }
-  }, [trip && trip.id, tripId, routeDealId, refreshBidTick]);
+  }, [tid, routeDealId, loadBids]);
+
+  useFocusEffect(React.useCallback(() => {
+    refreshAll();
+    const iv = setInterval(refreshAll, 15000);
+    return () => clearInterval(iv);
+  }, [refreshAll]));
+
+  React.useEffect(() => { if (refreshBidTick > 0) refreshAll(); }, [refreshBidTick]);
 
   const openBidChat = React.useCallback(async () => {
     if (!myActiveBid || openingChat) return;
@@ -198,14 +279,119 @@ export default function TripDetail({ navigation, route }) {
     }
   }, [myActiveBid, t]);
 
-  // When entering by tripId only (Orders → trip) — load full trip from API
-  // so departure/arrival/truckType render instead of empty placeholders.
-  React.useEffect(() => {
-    if (rawTrip || !tripId) return;
-    marketAPI.getTrip(tripId).then(d => {
-      if (d && !d.detail) setServerTrip(d);
-    }).catch(() => {});
-  }, [tripId, rawTrip]);
+  // Встречка водителя: клиент отвечает ПРЯМО со страницы рейса — принять
+  // за сумму встречки (создаёт сделку) или отклонить. Раньше клиент видел
+  // только текст «встречная цена» без суммы и без кнопок — петля торга
+  // рвалась, надо было идти искать чат.
+  const acceptCounter = React.useCallback(async () => {
+    if (!myActiveBid || counterActing) return;
+    const sum = formatPrice(myActiveBid.counterAmount, myActiveBid.currency || trip.currency);
+    const msg = (t('accept_bid_confirm') || 'Принять предложение за {sum}?').replace('{sum}', sum);
+    const ok = Platform.OS === 'web'
+      ? (typeof window !== 'undefined' && window.confirm(msg))
+      : await new Promise((res) => Alert.alert(
+          t('accept_counter') || 'Принять', msg,
+          [
+            { text: t('cancel'), style: 'cancel', onPress: () => res(false) },
+            { text: t('accept_counter') || 'Принять', onPress: () => res(true) },
+          ],
+        ));
+    if (!ok) return;
+    setCounterActing(true);
+    try {
+      const r = await marketAPI.acceptCounterBid(myActiveBid.id);
+      if (r.ok) {
+        toast('✅ ' + t('counter_accepted'), 'success');
+        if (r.chat_room_id) setChatRoomId(r.chat_room_id);
+        if (r.deal_id) { setDealId(r.deal_id); setDealStatus('accepted'); }
+        refreshAll();
+      } else {
+        toast(r.detail || t('accept_failed'), 'error');
+      }
+    } catch {
+      toast(t('no_connection'), 'error');
+    }
+    setCounterActing(false);
+  }, [myActiveBid, counterActing, trip.currency, refreshAll, toast, t]);
+
+  const declineCounter = React.useCallback(async () => {
+    if (!myActiveBid || counterActing) return;
+    setCounterActing(true);
+    try {
+      const r = await marketAPI.declineCounterBid(myActiveBid.id);
+      if (r.ok) {
+        toast('↩ ' + t('counter_declined'), 'success');
+        refreshAll();
+      } else {
+        toast(r.detail || t('reject_failed'), 'error');
+      }
+    } catch {
+      toast(t('no_connection'), 'error');
+    }
+    setCounterActing(false);
+  }, [myActiveBid, counterActing, refreshAll, toast, t]);
+
+  // ─── Owner-вид: водитель отвечает на ставки клиентов на СВОЙ рейс ───
+  // (зеркально owner-виду CargoDetail: Отклонить / Встречка / Чат / Принять)
+  const openChatForBid = async (bid) => {
+    try {
+      const r = await marketAPI.openBidChat(bid.id);
+      if (r?.ok && (r.chat_room_id || r.chatRoomId)) {
+        navigation.navigate('Chat', { roomId: r.chat_room_id || r.chatRoomId, role });
+      } else {
+        toast(r?.detail || t('chat_open_failed'), 'error');
+      }
+    } catch {
+      toast(t('no_connection'), 'error');
+    }
+  };
+
+  const rejectClientBid = async (bid) => {
+    setRejecting(bid.id);
+    try {
+      const r = await marketAPI.rejectBid(bid.id);
+      if (r.ok) {
+        toast('❌ ' + t('bid_rejected_toast'), 'success');
+        refreshAll();
+      } else {
+        toast(r.detail || t('reject_failed'), 'error');
+      }
+    } catch {
+      toast(t('no_connection'), 'error');
+    }
+    setRejecting(null);
+  };
+
+  const acceptClientBid = async (bid) => {
+    // Принятие создаёт сделку — подтверждаем на обеих платформах.
+    const sum = formatPrice(bid.amount, bid.currency || trip.currency);
+    const msg = t('accept_bid_confirm').replace('{sum}', sum);
+    const ok = Platform.OS === 'web'
+      ? (typeof window !== 'undefined' && window.confirm(msg))
+      : await new Promise((res) => Alert.alert(
+          t('accept_bid_confirm_title') || t('accept_bid_btn'), msg,
+          [
+            { text: t('cancel'), style: 'cancel', onPress: () => res(false) },
+            { text: t('accept_bid_btn'), onPress: () => res(true) },
+          ],
+        ));
+    if (!ok) return;
+    setAccepting(bid.id);
+    try {
+      const r = await marketAPI.acceptBid(bid.id);
+      if (r.ok) {
+        toast('✓ ' + t('bid_accepted_toast'), 'success');
+        if (r.chat_room_id) setChatRoomId(r.chat_room_id);
+        if (r.deal_id) { setDealId(r.deal_id); setDealStatus('accepted'); }
+        refreshAll();
+      } else {
+        toast(r.detail || t('accept_failed'), 'error');
+      }
+    } catch {
+      toast(t('no_connection'), 'error');
+    }
+    setAccepting(null);
+  };
 
   const changeDealStatus = async (newStatus) => {
     if (!dealId || statusLoading) return;
@@ -213,6 +399,7 @@ export default function TripDetail({ navigation, route }) {
     try {
       const r = await marketAPI.updateDealStatus(dealId, newStatus);
       if (r.ok) {
+        lastLocalChange.current = Date.now();
         setDealStatus(newStatus);
         toast(newStatus === 'cancelled' ? t('deal_cancelled_toast') : t('deal_updated_toast'), 'success');
       } else {
@@ -255,24 +442,11 @@ export default function TripDetail({ navigation, route }) {
       <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
         <View style={[s.section, {
           backgroundColor: theme.card,
-          borderColor: dealStatus === 'delivered' ? '#22C55E'
-            : dealStatus === 'in_progress' ? '#FF8400'
-            : dealStatus === 'cancelled' ? '#EF4444'
-            : '#FF8400',
-          borderWidth: 2,
+          borderColor: theme.border,
         }]}>
-          <Text style={[s.sectionTitle, {
-            color: dealStatus === 'delivered' ? '#22C55E'
-              : dealStatus === 'in_progress' ? '#FF8400'
-              : dealStatus === 'cancelled' ? '#EF4444'
-              : '#FF8400',
-            textAlign: 'center',
-          }]}>
-            {dealStatus === 'accepted'    && '🤝 ' + t('status_accepted')}
-            {dealStatus === 'in_progress' && '🚛 ' + t('status_in_progress')}
-            {dealStatus === 'delivered'   && '✅ ' + t('status_delivered')}
-            {dealStatus === 'cancelled'   && '❌ ' + t('status_cancelled')}
-          </Text>
+          {/* Визуальный таймлайн заказа: Принят → В пути → На границе →
+              Доставлен — как в CargoDetail (раньше был цветной текст-статус). */}
+          <DealStatusTimeline status={dealStatus} role={role} />
           {(dealStatus === 'accepted' || dealStatus === 'in_progress') && (
             <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 4, textAlign: 'center' }}>
               {t('order_next_step')}: {
@@ -335,6 +509,8 @@ export default function TripDetail({ navigation, route }) {
 
   const stats = routeStats(trip.from, trip.to, trip.transit);
   const view = tripDisplay(trip, t);
+  // Принятая ставка → в блоке цены показываем сумму сделки, не листинг.
+  const acceptedBid = bids.find(b => b.status === 'accepted');
 
   const onDelete = () => {
     const confirmDelete = () => {
@@ -427,10 +603,16 @@ export default function TripDetail({ navigation, route }) {
             <Text style={[s.dateLabel, { color: v1.textMuted }]}>{t('trip_truck_body')}</Text>
             <Text style={[s.dateValue, { color: v1.text }]} testID="trip-detail-truck">{view.truckType}</Text>
           </View>
-          <View style={s.dateRow}>
-            <Text style={[s.dateLabel, { color: v1.textMuted }]}>{t('trip_driver')}</Text>
-            <Text style={[s.dateValue, { color: v1.text }]}>{view.driverName}</Text>
-          </View>
+          {/* Владелец видит себя строкой («Вы»); для чужого зрителя строка
+              убрана — ниже отдельная карточка водителя с рейтингом и тапом
+              на профиль (элемент доверия, зеркально карточке грузоотправителя
+              в CargoDetail). */}
+          {isOwner ? (
+            <View style={s.dateRow}>
+              <Text style={[s.dateLabel, { color: v1.textMuted }]}>{t('trip_driver')}</Text>
+              <Text style={[s.dateValue, { color: v1.text }]}>{view.driverName}</Text>
+            </View>
+          ) : null}
           {/* Stage 17: label was the legacy `Свободно` key above an
               `X м³` value — confusing because that word reads like a
               border-queue status, not a volume metric. Replaced with
@@ -450,11 +632,164 @@ export default function TripDetail({ navigation, route }) {
           )}
         </GlassCard>
 
-        {/* Цена — выделенный блок с brand-accent */}
+        {/* Карточка водителя — клиент видит, КОМУ доверяет груз: имя,
+            верификация, рейтинг, тап → профиль водителя (DriverDetail).
+            Данные — из обогащённого GET /trips/{id} (driver_display_name /
+            driver_verified / driver_rating / driver_reviews_count). */}
+        {!isOwner && (trip.driverId || view.driverName) ? (
+          <TouchableOpacity
+            activeOpacity={trip.driverId ? 0.75 : 1}
+            disabled={!trip.driverId}
+            onPress={() => navigation.navigate('DriverDetail', {
+              driver: {
+                id: trip.driverId,
+                name: serverTrip?.driver_display_name || view.driverName,
+                rating: serverTrip?.driver_rating || 0,
+                reviews: serverTrip?.driver_reviews_count || 0,
+                verified: !!serverTrip?.driver_verified,
+                _server: true, _isDriver: true,
+              },
+              role,
+            })}
+            testID="trip-driver-card"
+          >
+            <GlassCard>
+              <SectionTitle featherIcon="user" label={t('trip_driver')} />
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                <Text style={{ color: v1.text, fontSize: 15, fontWeight: '700' }} numberOfLines={1}>
+                  {serverTrip?.driver_display_name || view.driverName}{trip.driverId ? ' ›' : ''}
+                </Text>
+                <Text style={{ fontSize: 12, color: v1.textMuted }}>
+                  {serverTrip?.driver_verified ? '✅ ' + t('verified_short') + ' · ' : ''}
+                  {serverTrip?.driver_reviews_count > 0
+                    ? `⭐ ${Number(serverTrip.driver_rating).toFixed(1)} (${serverTrip.driver_reviews_count})`
+                    : t('no_reviews_yet')}
+                </Text>
+              </View>
+            </GlassCard>
+          </TouchableOpacity>
+        ) : null}
+
+        {/* Цена — выделенный блок с brand-accent. Если ставка ПРИНЯТА —
+            показываем сумму сделки, а не цену объявления (две разные цифры
+            на одном экране путали, зеркально CargoDetail). */}
         <GlassCard accent={v1Accent.main}>
-          <SectionTitle featherIcon="dollar-sign" label={t('price')} />
-          <Text style={[s.priceBig, { color: v1Accent.main }]} numberOfLines={1}>{view.price}</Text>
+          <SectionTitle featherIcon="dollar-sign" label={acceptedBid ? t('deal_price') : t('price')} />
+          <Text style={[s.priceBig, { color: v1Accent.main }]} numberOfLines={1} testID="trip-price-value">
+            {acceptedBid ? formatPrice(acceptedBid.amount, acceptedBid.currency || trip.currency, t) : view.price}
+          </Text>
         </GlassCard>
+
+        {/* Рыночный пульс: число предложений на этот рейс (видно всем —
+            социальное давление «машину заберут»), confidential-подсказка,
+            «будьте первым» на пустом рейсе. Зеркально CargoDetail. */}
+        <Text style={[s.bidsTitle, { color: v1.text }]} testID="trip-bids-count">{formatBids(bidsCount)}</Text>
+        {!isOwner && !isListingOwner && bidsConfidential && bidsCount > 0 ? (
+          <Text style={{ color: v1.textMuted, textAlign: 'center', paddingHorizontal: 20, paddingBottom: 8, fontSize: 12 }}>
+            {t('bids_confidential_hint')}
+          </Text>
+        ) : null}
+        {!isOwner && !isListingOwner && bidsCount === 0 ? (
+          <Text style={{ color: v1.textMuted, paddingBottom: 8, fontSize: 13 }}>
+            {t('no_bids_be_first')}
+          </Text>
+        ) : null}
+
+        {/* Owner-вид: водитель на СВОЁМ рейсе видит ставки клиентов и
+            отвечает прямо здесь — [Отклонить] [Встречка] [Чат] [Принять].
+            Раньше владелец рейса не видел предложений на этой странице
+            вообще (в отличие от владельца груза в CargoDetail). */}
+        {(isOwner || isListingOwner) ? bids.map(b => {
+          const hasAccepted = bids.some(x => x.status === 'accepted');
+          const isCountered = b.status === 'countered';
+          return (
+            <View key={b.id} style={[s.ownerBidCard, {
+              backgroundColor: v1.card,
+              borderColor: b.status === 'accepted' ? '#22C55E'
+                : isCountered ? '#E06D00'
+                : v1.border,
+              borderWidth: b.status === 'accepted' || isCountered ? 2 : 1,
+            }]}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <View style={{ flex: 1, marginRight: 8 }}>
+                  <Text style={{ color: v1.text, fontSize: 13, fontWeight: '600' }} numberOfLines={1}>{b.name}</Text>
+                  <Text style={{ fontSize: 11, marginTop: 2, color: v1.textMuted }}>
+                    {b.verified ? '✅ ' + t('verified_short') + ' · ' : ''}
+                    {b.reviews > 0 ? `⭐ ${Number(b.rating).toFixed(1)} (${b.reviews})` : t('no_reviews_yet')}
+                  </Text>
+                  {b.message ? <Text style={{ color: v1.textMuted, fontSize: 11, marginTop: 2 }}>{b.message}</Text> : null}
+                  <Text style={{
+                    fontSize: 11, marginTop: 2,
+                    color: b.status === 'accepted' ? '#22C55E' : isCountered ? '#E06D00' : '#FBBF24',
+                  }}>
+                    {b.status === 'accepted' ? '✅ ' + t('bid_accepted')
+                      : isCountered ? '🔁 ' + t('counter_sent_status')
+                      : b.time}
+                  </Text>
+                </View>
+                <Text style={[s.bidAmt, { color: v1Accent.main }]}>{formatPrice(b.amount, b.currency || trip.currency, t)}</Text>
+              </View>
+              {b.status === 'pending' && !hasAccepted ? (
+                <View style={{ flexDirection: 'row', gap: 6, marginTop: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  <TouchableOpacity
+                    testID="trip-bid-reject"
+                    style={[s.rejectBtn, rejecting === b.id && { opacity: 0.5 }]}
+                    onPress={() => rejectClientBid(b)}
+                    disabled={!!rejecting || !!accepting}
+                  >
+                    <Text style={s.rejectBtnText}>{t('reject_btn')}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    testID="trip-bid-counter"
+                    style={s.miniBtn}
+                    onPress={() => { setCounterBidTarget(b); setBidModal(true); }}
+                  >
+                    <Text style={[s.miniBtnText, { color: '#E06D00' }]}>🔁 {t('counter_offer')}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    testID="trip-bid-chat"
+                    style={s.miniBtn}
+                    onPress={() => openChatForBid(b)}
+                  >
+                    <Text style={[s.miniBtnText, { color: v1Accent.main }]}>💬 {t('open_bid_chat')}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    testID="trip-bid-accept"
+                    style={[s.acceptBtn, { backgroundColor: v1Accent.main }, accepting === b.id && { opacity: 0.5 }]}
+                    onPress={() => acceptClientBid(b)}
+                    disabled={!!accepting || !!rejecting}
+                  >
+                    <Text style={[s.acceptBtnText, { color: v1Accent.onAccent }]}>{t('accept_bid_btn')}</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+              {isCountered ? (
+                <View style={{ flexDirection: 'row', gap: 6, marginTop: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  {b.counterAmount ? (
+                    <Text style={{ color: '#E06D00', fontSize: 11, fontWeight: '700', alignSelf: 'center', marginRight: 'auto' }}>
+                      {t('counter_amount')}: {formatPrice(b.counterAmount, b.currency || trip.currency, t)}
+                    </Text>
+                  ) : null}
+                  <TouchableOpacity
+                    testID="trip-bid-reject"
+                    style={[s.rejectBtn, rejecting === b.id && { opacity: 0.5 }]}
+                    onPress={() => rejectClientBid(b)}
+                    disabled={!!rejecting}
+                  >
+                    <Text style={s.rejectBtnText}>{t('reject_btn')}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    testID="trip-bid-chat"
+                    style={s.miniBtn}
+                    onPress={() => openChatForBid(b)}
+                  >
+                    <Text style={[s.miniBtnText, { color: v1Accent.main }]}>💬 {t('open_bid_chat')}</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+            </View>
+          );
+        }) : null}
 
         {/* Timeline статусов */}
         <GlassCard>
@@ -527,6 +862,59 @@ export default function TripDetail({ navigation, route }) {
 
       {dealStatus ? renderDealBlock() : null}
 
+      {/* Отзыв после доставки. Trip-сделка не проходит через CargoDetail,
+          поэтому без этого блока участникам trip-сделки было негде оценить
+          друг друга. Клиент оценивает водителя, водитель — клиента. */}
+      {dealStatus === 'delivered' && !reviewSent && (isShipper ? (driverId || trip.driverId) : shipperId) ? (
+        <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
+          <View style={[s.reviewBlock, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Text style={[s.reviewTitle, { color: theme.text }]}>{isShipper ? t('rate_driver') : t('rate_shipper')}</Text>
+            <View style={s.starsRow}>
+              {[1, 2, 3, 4, 5].map(n => (
+                <TouchableOpacity key={n} onPress={() => setReviewRating(n)}>
+                  <Text style={{ fontSize: 28 }}>{n <= reviewRating ? '★' : '☆'}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <TextInput
+              style={[s.reviewInput, { backgroundColor: theme.bg, color: theme.text, borderColor: theme.border }]}
+              value={reviewText}
+              onChangeText={setReviewText}
+              placeholder={t('comment_optional')}
+              placeholderTextColor={theme.textMuted}
+              maxLength={200}
+            />
+            <TouchableOpacity
+              style={[s.reviewSubmitBtn, { backgroundColor: v1Accent.main }, reviewRating === 0 && { opacity: 0.4 }]}
+              disabled={reviewRating === 0 || reviewLoading}
+              onPress={async () => {
+                setReviewLoading(true);
+                try {
+                  await reviewsAPI.create({
+                    targetId: isShipper ? (driverId || trip.driverId) : shipperId,
+                    targetRole: isShipper ? 'driver' : 'client',
+                    rating: reviewRating,
+                    text: reviewText.trim() || null,
+                  });
+                  setReviewSent(true);
+                  toast(t('thanks_for_review'), 'success');
+                } catch {
+                  toast(t('review_failed'), 'error');
+                }
+                setReviewLoading(false);
+              }}
+            >
+              <Text style={[s.reviewSubmitText, { color: v1Accent.onAccent }]}>{reviewLoading ? '...' : t('submit_rating')}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : null}
+      {dealStatus === 'delivered' && reviewSent ? (
+        <View style={{ paddingHorizontal: 16, paddingBottom: 8, alignItems: 'center' }}>
+          <Text style={{ color: '#22C55E', fontSize: 14, fontWeight: '600' }}>{t('thanks_for_review')}</Text>
+        </View>
+      ) : null}
+
       {/* «Моя ставка» плашка — показываем, когда клиент уже сделал ставку
           на этот рейс и сделки ещё нет. По жалобе владельца 28.07: после
           отправки предложения на карточке рейса не было НИКАКОЙ обратной
@@ -547,6 +935,44 @@ export default function TripDetail({ navigation, route }) {
             </Text>
           </View>
           <Text style={[s.myBidStatus, { color: v1.text }]}>{myBidStatusLabel}</Text>
+          {myActiveBid.status === 'countered' && myActiveBid.counterAmount ? (
+            <>
+              {/* Встречная цена водителя — сумма крупно + его комментарий.
+                  Ответ в один тап: принять (создаёт сделку) или отклонить. */}
+              <Text style={[s.myBidCounter, { color: '#E06D00' }]} testID="trip-counter-amount">
+                🔁 {t('counter_amount')}: {formatPrice(myActiveBid.counterAmount, myActiveBid.currency || trip.currency)}
+                {myActiveBid.counterMessage ? ` · ${myActiveBid.counterMessage}` : ''}
+              </Text>
+              <View style={[s.myBidBtnRow, { flexWrap: 'wrap' }]}>
+                <TouchableOpacity
+                  style={[s.myBidBtn, { borderColor: '#EF4444' }, counterActing && { opacity: 0.5 }]}
+                  onPress={declineCounter}
+                  disabled={counterActing}
+                  testID="trip-counter-decline"
+                >
+                  <Text style={[s.myBidBtnText, { color: '#EF4444' }]}>↩ {t('decline_counter')}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.myBidBtn, { borderColor: v1Accent.main }]}
+                  onPress={openBidChat}
+                  disabled={openingChat}
+                  testID="trip-my-bid-chat"
+                >
+                  <Text style={[s.myBidBtnText, { color: v1Accent.main }]}>💬 {t('open_chat') || 'Чат'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.myBidBtn, { backgroundColor: v1Accent.main, borderColor: v1Accent.main, flexBasis: '100%' }, counterActing && { opacity: 0.5 }]}
+                  onPress={acceptCounter}
+                  disabled={counterActing}
+                  testID="trip-counter-accept"
+                >
+                  <Text style={[s.myBidBtnText, { color: v1Accent.onAccent }]}>
+                    ✅ {t('accept_counter')} {formatPrice(myActiveBid.counterAmount, myActiveBid.currency || trip.currency)}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          ) : (
           <View style={s.myBidBtnRow}>
             <TouchableOpacity
               style={[s.myBidBtn, { borderColor: v1Accent.main }]}
@@ -563,7 +989,42 @@ export default function TripDetail({ navigation, route }) {
             >
               <Text style={[s.myBidBtnText, { color: v1Accent.onAccent }]}>💬 {t('open_chat') || 'Чат'}</Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.myBidBtn, { borderColor: '#EF4444' }, cancelling && { opacity: 0.5 }]}
+              onPress={async () => {
+                // Подтверждение на обеих платформах (web:confirm, native:Alert) —
+                // раньше native отменял мгновенно при случайном тапе.
+                const ok = Platform.OS === 'web'
+                  ? (typeof window !== 'undefined' && window.confirm(t('cancel_bid_confirm')))
+                  : await new Promise((res) => Alert.alert(
+                      t('cancel_bid_confirm'), '',
+                      [
+                        { text: t('cancel'), style: 'cancel', onPress: () => res(false) },
+                        { text: t('cancel_bid'), style: 'destructive', onPress: () => res(true) },
+                      ],
+                    ));
+                if (!ok) return;
+                setCancelling(true);
+                try {
+                  const r = await marketAPI.cancelBid(myActiveBid.id);
+                  if (r.ok) {
+                    toast('⊘ ' + t('bid_cancelled_toast'), 'success');
+                    setRefreshBidTick(x => x + 1);
+                  } else {
+                    toast(r.detail || t('cancel_failed'), 'error');
+                  }
+                } catch {
+                  toast(t('no_connection'), 'error');
+                }
+                setCancelling(false);
+              }}
+              disabled={cancelling}
+              testID="trip-my-bid-cancel"
+            >
+              <Text style={[s.myBidBtnText, { color: '#EF4444' }]}>⊘ {t('cancel_bid') || 'Отменить'}</Text>
+            </TouchableOpacity>
           </View>
+          )}
         </View>
       ) : null}
 
@@ -581,24 +1042,41 @@ export default function TripDetail({ navigation, route }) {
             },
             testID: 'trip-sticky-bid',
           }}
+          secondary={{
+            // Чат с водителем доступен ДО ставки (на базаре сначала
+            // разговаривают) — зеркально CargoDetail. Комната создастся
+            // на первом сообщении по driverId.
+            label: '💬 ' + t('order_chat'),
+            onPress: () => {
+              if (chatRoomId) {
+                navigation.navigate('Chat', { roomId: chatRoomId, role, tripId: tid });
+              } else if (trip.driverId) {
+                navigation.navigate('Chat', { partner: { id: trip.driverId }, tripId: tid, role });
+              } else {
+                toast(t('chat_open_failed'), 'error');
+              }
+            },
+            testID: 'trip-sticky-chat',
+          }}
         />
       ) : null}
 
-      {/* BidModal: create для новой ставки, edit — когда есть активная. */}
+      {/* BidModal: create — новая ставка клиента; edit — своя активная;
+          counter — владелец-водитель отвечает встречкой на ставку клиента.
+          Toast успеха показывает сама модалка (bidSent/bid_updated/
+          counter_sent) — здесь только refresh, без второго тоста. */}
       <BidModal
         visible={bidModal}
-        onClose={() => { setBidModal(false); setRefreshBidTick(x => x + 1); }}
-        onSubmit={() => {
-          setRefreshBidTick(x => x + 1);
-          toast('✓ ' + (myActiveBid ? t('bid_updated') : t('bidSent')), 'success');
-        }}
-        mode={myActiveBid ? 'edit' : 'create'}
-        bidId={myActiveBid?.id}
-        initialAmount={myActiveBid?.amount}
-        initialMessage={myActiveBid?.message}
+        onClose={() => { setBidModal(false); setCounterBidTarget(null); setRefreshBidTick(x => x + 1); }}
+        onSubmit={() => { setRefreshBidTick(x => x + 1); }}
+        mode={counterBidTarget ? 'counter' : (myActiveBid ? 'edit' : 'create')}
+        bidId={counterBidTarget?.id || myActiveBid?.id}
+        initialAmount={counterBidTarget ? counterBidTarget.amount : myActiveBid?.amount}
+        initialMessage={counterBidTarget ? '' : myActiveBid?.message}
         currentPrice={trip.price || 0}
         currency={trip.currency}
         tripId={trip.id}
+        direction="down"
         accent={v1Accent.main}
         onAccent={v1Accent.onAccent}
       />

@@ -18,7 +18,7 @@
 // ниже. Отдельная вкладка «Чаты» у клиента при этом скрыта: чат живёт внутри
 // сделки, вторых дверей нет.
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, TextInput, RefreshControl, ActivityIndicator, ScrollView, Platform, Alert } from 'react-native';
+import { View, Text, FlatList, SectionList, TouchableOpacity, StyleSheet, TextInput, RefreshControl, ActivityIndicator, Platform, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import Feather from '@expo/vector-icons/Feather';
@@ -39,8 +39,8 @@ import { localizePlace, localizeCargoName } from '../utils/places';
 import { prettifyPartnerName } from '../utils/displayName';
 import { accentFor } from '../components/deal/DealRoom';
 
-// 01.08: владелец запросил фильтр-табы обратно — Все/Непрочитанные/Активные/Архив.
-// Логика фильтрации (строки ниже) не менялась — возвращаем горизонтальные чипы.
+// 01.08 v2: вместо 4 фильтр-чипов — секции (Закреплённые / Новые / Ранее)
+// + долгое нажатие → закрепить/открепить (до 5, AsyncStorage).
 
 const ROLE_LABEL = { driver: 'role_driver', client: 'role_client', support: 'role_support' };
 
@@ -59,7 +59,6 @@ export default function ChatsListScreen({ navigation, route }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState('all');
   // UX 26.07 (приказ владельца): dealsMode делится на два раздела
   // кнопками слева-справа — «Предложения» (стол переговоров) и «Чаты»
   // (переписка). При первом заходе, если есть живые предложения,
@@ -78,6 +77,19 @@ export default function ChatsListScreen({ navigation, route }) {
       if (prev[bidId]) return prev;
       const next = { ...prev, [bidId]: 1 };
       storage.set(SEEN_KEY, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  };
+  const PINNED_KEY = 'ur_pinned_chats';
+  const [pinnedIds, setPinnedIds] = useState([]);
+  useEffect(() => {
+    storage.get(PINNED_KEY).then((raw) => { try { if (raw) setPinnedIds(JSON.parse(raw)); } catch {} });
+  }, []);
+  const togglePin = (roomId) => {
+    setPinnedIds((prev) => {
+      const id = String(roomId);
+      const next = prev.includes(id) ? prev.filter((x) => x !== id) : (prev.length >= 5 ? prev : [...prev, id]);
+      storage.set(PINNED_KEY, JSON.stringify(next)).catch(() => {});
       return next;
     });
   };
@@ -103,9 +115,18 @@ export default function ChatsListScreen({ navigation, route }) {
       setRooms(rooms);
       if (dealsMode) {
         // Живые предложения: у клиента — входящие ставки водителей по моим
-        // грузам, у водителя — его собственные ставки.
+        // грузам; у водителя — его собственные ставки ПЛЮС входящие ставки
+        // клиентов на его рейсы (_incoming — для верной подписи/действий:
+        // входящую водитель отклоняет rejectBid, свою отменяет cancelBid).
         const d = await marketAPI.myDashboard().catch(() => null);
-        const raw = d ? (role === 'driver' ? d.my_bids : d.incoming_bids) || [] : [];
+        const raw = d
+          ? (role === 'driver'
+              ? [
+                  ...(d.my_bids || []),
+                  ...((d.incoming_bids || []).filter((b) => b.trip_id).map((b) => ({ ...b, _incoming: true }))),
+                ]
+              : (d.incoming_bids || []))
+          : [];
         // Раньше «начатая переписка» (комната с любым last_message) выбрасывала
         // ставку из «Предложений» в «Чаты» (приказ 27.07). Но бэк создаёт
         // комнату вместе со ставкой и часто уже кладёт туда системное
@@ -160,22 +181,11 @@ export default function ChatsListScreen({ navigation, route }) {
     () => rooms.filter((r) => (r.unread_count ?? r.unread ?? 0) > 0).length,
     [rooms]
   );
-  const filtered = useMemo(() => {
+  const sections = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const un = (r) => ((r.unread_count ?? r.unread ?? 0) > 0 ? 0 : 1);
     const ts = (r) => { const d = new Date(String(r.last_message_at || r.last_at || '').replace(' ', 'T')); return isNaN(d) ? 0 : d.getTime(); };
-    return rooms.slice().sort((a, b) => {
-      const diff = un(a) - un(b);
-      if (diff !== 0) return diff;
-      return ts(b) - ts(a);
-    }).filter((r) => {
-      // фильтры (enriched /chat/rooms, PR #62)
-      const unread = r.unread_count ?? r.unread ?? 0;
-      if (filter === 'unread' && !(unread > 0)) return false;
-      if (filter === 'active' && !['active', 'confirmed', 'accepted', 'in_progress', 'at_border', 'picked_up', 'pending'].includes(r.deal_status)) return false;
-      if (filter === 'archive' && !['completed', 'delivered', 'cancelled', 'rejected', 'expired'].includes(r.deal_status)) return false;
-      if (filter === 'support' && !r.is_support && r.partner_role !== 'support' && r.partner_id !== 'urtruck-support-bot') return false;
-      // поиск
+    const byTime = (a, b) => ts(b) - ts(a);
+    const match = (r) => {
       if (!q) return true;
       const hay = [
         prettifyPartnerName(r.partner_name, r.partner_id, t), r.partner_company,
@@ -183,18 +193,35 @@ export default function ChatsListScreen({ navigation, route }) {
         r.cargo_title, r.cargo_type, r.vehicle_plate, r.last_message,
       ].filter(Boolean).join(' ').toLowerCase();
       return hay.includes(q);
-    });
-  }, [rooms, query, filter]);
+    };
+    const pinned = [], unread = [], rest = [];
+    for (const r of rooms) {
+      if (!match(r)) continue;
+      if (pinnedIds.includes(String(r.id))) pinned.push(r);
+      else if ((r.unread_count ?? r.unread ?? 0) > 0) unread.push(r);
+      else rest.push(r);
+    }
+    pinned.sort((a, b) => pinnedIds.indexOf(String(a.id)) - pinnedIds.indexOf(String(b.id)));
+    unread.sort(byTime);
+    rest.sort(byTime);
+    const result = [];
+    if (pinned.length) result.push({ key: 'pinned', data: pinned });
+    if (unread.length) result.push({ key: 'unread', count: unread.length, data: unread });
+    if (rest.length) result.push({ key: 'rest', data: rest });
+    return result;
+  }, [rooms, query, pinnedIds, t, lang]);
 
-  // Убрать предложение из списка: водитель отменяет СВОЮ ставку, клиент
-  // отклоняет входящую. С подтверждением — действие необратимо.
+  // Убрать предложение из списка: СВОЮ ставку отменяем (cancelBid),
+  // входящую отклоняем (rejectBid). У водителя теперь бывают обе:
+  // свои ставки на грузы и входящие (_incoming) на его рейсы.
   const dismissOffer = async (bid) => {
-    const q = role === 'driver' ? t('cancel_bid_confirm') : t('reject_bid_confirm_q');
+    const isMineBid = role === 'driver' && !bid._incoming;
+    const q = isMineBid ? t('cancel_bid_confirm') : t('reject_bid_confirm_q');
     const doIt = async () => {
-      const r = role === 'driver'
+      const r = isMineBid
         ? await marketAPI.cancelBid(bid.id).catch(() => null)
         : await marketAPI.rejectBid(bid.id).catch(() => null);
-      if (r && r.ok) { toast(role === 'driver' ? t('bid_cancelled_toast') : t('bid_rejected_toast'), 'success'); load(); }
+      if (r && r.ok) { toast(isMineBid ? t('bid_cancelled_toast') : t('bid_rejected_toast'), 'success'); load(); }
       else toast((r && r.detail) || t('send_error'), 'error');
     };
     if (Platform.OS === 'web' && typeof window !== 'undefined' && window.confirm) {
@@ -224,7 +251,7 @@ export default function ChatsListScreen({ navigation, route }) {
       const r = await marketAPI.openBidChat(bid.id);
       const roomId = r && (r.chat_room_id || r.chatRoomId);
       if (r && r.ok && roomId) {
-        navigation.navigate('Chat', { roomId, role, cargoId: bid.cargo_id, bidId: bid.id });
+        navigation.navigate('Chat', { roomId, role, cargoId: bid.cargo_id, tripId: bid.trip_id, bidId: bid.id });
       } else {
         toast((r && r.detail) || t('chat_open_failed'), 'error');
       }
@@ -242,7 +269,7 @@ export default function ChatsListScreen({ navigation, route }) {
     const statusColor = seen ? theme.border : (isCountered ? '#A855F7' : '#FF8400');
     const label = isCountered
       ? t('deals_offer_bargain')
-      : (role === 'driver' ? t('deals_offer_waiting') : t('deals_offer_new'));
+      : (role === 'driver' && !bid._incoming ? t('deals_offer_waiting') : t('deals_offer_new'));
     const time = relTime(bid.created_at);
     return (
       <TouchableOpacity
@@ -259,13 +286,13 @@ export default function ChatsListScreen({ navigation, route }) {
         <View style={{ flex: 1 }}>
           <View style={s.row}>
             <Text style={[s.name, { color: theme.text, fontWeight: seen ? '600' : '800' }]} numberOfLines={1}>
-              {localizePlace(bid.cargo_from || '—', lang)} → {localizePlace(bid.cargo_to || '—', lang)}
+              {localizePlace(bid.cargo_from || bid.trip_from || '—', lang)} → {localizePlace(bid.cargo_to || bid.trip_to || '—', lang)}
             </Text>
             {time ? <Text style={[s.time, { color: theme.textDim }]}>{time}</Text> : null}
           </View>
-          {bid.cargo_desc ? (
+          {(bid.cargo_desc || bid.trip_desc) ? (
             <Text style={[s.preview, { color: theme.textMuted }]} numberOfLines={1}>
-              {localizeCargoName(bid.cargo_desc, lang)}
+              {localizeCargoName(bid.cargo_desc || bid.trip_desc, lang)}
             </Text>
           ) : null}
           <View style={s.row}>
@@ -308,7 +335,8 @@ export default function ChatsListScreen({ navigation, route }) {
     completed: '#94A3B8', delivered: '#94A3B8',
     cancelled: '#EF4444', rejected: '#EF4444', expired: '#94A3B8',
   };
-  const renderItem = ({ item }) => {
+  const renderItem = ({ item, section }) => {
+    const isPinned = section?.key === 'pinned';
     const partnerName = prettifyPartnerName(item.partner_name, item.partner_id, t);
     const isSupport = item.is_support || item.partner_role === 'support' || item.partner_id === 'urtruck-support-bot';
     const roleKey = ROLE_LABEL[item.partner_role] || (isSupport ? 'role_support' : null);
@@ -323,8 +351,16 @@ export default function ChatsListScreen({ navigation, route }) {
     return (
       <TouchableOpacity
         testID="deal-room-list-card"
-        style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]}
+        style={[s.card, { backgroundColor: theme.card, borderColor: isPinned ? accent + '66' : theme.border }]}
         onPress={() => navigation.navigate('Chat', { partner: { id: item.partner_id || item.id, name: partnerName }, roomId: item.id, dealId: item.deal_id, role })}
+        onLongPress={() => {
+          const id = String(item.id);
+          const wasPinned = pinnedIds.includes(id);
+          if (!wasPinned && pinnedIds.length >= 5) { toast(t('pin_limit_reached'), 'error'); return; }
+          togglePin(id);
+          toast(wasPinned ? t('chat_unpinned') : t('chat_pinned'), 'success');
+        }}
+        delayLongPress={400}
       >
         <View style={[s.avatar, { backgroundColor: accent + '18' }]}>
           <Feather name={isSupport ? 'shield' : 'user'} size={16} color={accent} />
@@ -358,6 +394,7 @@ export default function ChatsListScreen({ navigation, route }) {
           </View>
         </View>
         <View style={s.right}>
+          {isPinned ? <Feather name="map-pin" size={12} color={theme.textDim} /> : null}
           {urgent ? (
             <View style={[s.flag, { backgroundColor: '#EF444422' }]}>
               <Text style={s.flagTxt}>{t(item.is_dispute ? 'chat_flag_dispute' : 'chat_flag_urgent')}</Text>
@@ -418,42 +455,18 @@ export default function ChatsListScreen({ navigation, route }) {
       ) : null}
 
       {!showOffersSeg ? (
-        <>
-          <View style={[s.search, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Feather name="search" size={17} color={theme.textMuted} />
-            <TextInput
-              style={[s.searchInput, { color: theme.text }]}
-              placeholder={t('chat_search_placeholder')}
-              placeholderTextColor={theme.textMuted}
-              value={query}
-              onChangeText={setQuery}
-              testID="deal-room-search"
-            />
-            {query ? <TouchableOpacity onPress={() => setQuery('')}><Feather name="x" size={16} color={theme.textMuted} /></TouchableOpacity> : null}
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filtersScroll} contentContainerStyle={s.filters}>
-            {[
-              { key: 'all', label: t('chat_filter_all') },
-              { key: 'unread', label: t('chat_filter_unread'), count: unreadRoomsCount },
-              { key: 'active', label: t('chat_filter_active_deals') },
-              { key: 'archive', label: t('chat_filter_archive') },
-            ].map((f) => {
-              const on = filter === f.key;
-              return (
-                <TouchableOpacity
-                  key={f.key}
-                  testID={`chat-filter-${f.key}`}
-                  style={[s.chip, { backgroundColor: on ? accent : 'transparent', borderColor: on ? accent : theme.border }]}
-                  onPress={() => setFilter(f.key)}
-                >
-                  <Text style={[s.chipTxt, { color: on ? '#0C0A09' : theme.textMuted }]}>
-                    {f.label}{f.count ? ` (${f.count})` : ''}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </>
+        <View style={[s.search, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <Feather name="search" size={17} color={theme.textMuted} />
+          <TextInput
+            style={[s.searchInput, { color: theme.text }]}
+            placeholder={t('chat_search_placeholder')}
+            placeholderTextColor={theme.textMuted}
+            value={query}
+            onChangeText={setQuery}
+            testID="deal-room-search"
+          />
+          {query ? <TouchableOpacity onPress={() => setQuery('')}><Feather name="x" size={16} color={theme.textMuted} /></TouchableOpacity> : null}
+        </View>
       ) : null}
 
       {loading ? (
@@ -468,13 +481,25 @@ export default function ChatsListScreen({ navigation, route }) {
           ListEmptyComponent={<Text style={[s.empty, { color: theme.textMuted }]}>{t('deals_no_offers')}</Text>}
         />
       ) : (
-        <FlatList
-          data={filtered}
+        <SectionList
+          sections={sections}
           keyExtractor={(i) => String(i.id)}
           renderItem={renderItem}
+          renderSectionHeader={({ section }) => (
+            <View style={s.sectionRow}>
+              {section.key === 'pinned' ? <Feather name="map-pin" size={13} color={theme.textMuted} /> : null}
+              {section.key === 'unread' ? <View style={[s.sectionDot, { backgroundColor: '#FF8400' }]} /> : null}
+              <Text style={[s.sectionLabel, { color: theme.textMuted }]}>
+                {section.key === 'pinned' ? t('section_pinned')
+                 : section.key === 'unread' ? `${t('section_new')} (${section.count})`
+                 : t('section_earlier')}
+              </Text>
+            </View>
+          )}
+          stickySectionHeadersEnabled={false}
           contentContainerStyle={{ padding: 12, paddingBottom: 24 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accent} />}
-          ListEmptyComponent={<Text style={[s.empty, { color: theme.textMuted }]}>{query || filter !== 'all' ? t('chat_no_results') : (dealsMode ? (role === 'driver' ? t('deals_empty_driver') : t('deals_empty')) : t('chats_empty'))}</Text>}
+          ListEmptyComponent={<Text style={[s.empty, { color: theme.textMuted }]}>{query ? t('chat_no_results') : (dealsMode ? (role === 'driver' ? t('deals_empty_driver') : t('deals_empty')) : t('chats_empty'))}</Text>}
         />
       )}
     </SafeAreaView>
@@ -484,15 +509,11 @@ export default function ChatsListScreen({ navigation, route }) {
 const s = StyleSheet.create({
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingTop: 6, paddingBottom: 8 },
   title: { fontSize: 22, fontWeight: '900' },
-  search: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 12, paddingHorizontal: 12, height: 44, borderRadius: 12, borderWidth: 1 },
+  search: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 12, marginBottom: 4, paddingHorizontal: 12, height: 44, borderRadius: 12, borderWidth: 1 },
   searchInput: { flex: 1, fontSize: 14, paddingVertical: 0 },
-  // filtersScroll фиксирует высоту горизонтального ScrollView — иначе на
-  // react-native-web он растягивается по вертикали и chips (alignItems:stretch)
-  // превращаются в вертикальные «колонны». flexGrow:0 + height = compact-панель.
-  filtersScroll: { flexGrow: 0, height: 48 },
-  filters: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12 },
-  chip: { height: 44, paddingHorizontal: 14, borderRadius: 22, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  chipTxt: { fontSize: 12, fontWeight: '800' },
+  sectionRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 10, paddingBottom: 6 },
+  sectionDot: { width: 8, height: 8, borderRadius: 4 },
+  sectionLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
   // Декластер 27.07: карточка ниже (~20%), жирным только имя/цена/счётчик.
   card: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9, paddingHorizontal: 11, borderRadius: 13, borderWidth: 1, marginBottom: 6 },
   avatar: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },

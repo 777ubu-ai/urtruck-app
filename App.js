@@ -17,6 +17,27 @@ import { chatAPI } from './src/utils/chatAPI';
 import { push } from './src/utils/push';
 import * as Sentry from '@sentry/react-native';
 
+// Глобально убираем браузерную синюю обводку фокуса (outline) с полей ввода и
+// нажимаемых элементов на web/PWA. react-native-web рендерит TextInput как
+// <input>/<textarea>, и браузер рисует свою рамку ПОВЕРХ нашей — жалоба
+// владельца 01.08 («синий квадратик заново поверх рамки, убрать везде»).
+// Одна инъекция вместо outlineStyle на каждом инпуте. Нативной сборки не
+// касается (Platform.OS !== 'web').
+if (Platform.OS === 'web' && typeof document !== 'undefined' && !document.getElementById('ur-no-outline')) {
+  const style = document.createElement('style');
+  style.id = 'ur-no-outline';
+  style.textContent = `
+    input, textarea, select, button, [contenteditable] { outline: none !important; }
+    input:focus, textarea:focus, select:focus, button:focus, [contenteditable]:focus,
+    [tabindex]:focus, [role="button"]:focus, a:focus {
+      outline: none !important;
+      box-shadow: none !important;
+    }
+    * { -webkit-tap-highlight-color: transparent; }
+  `;
+  document.head.appendChild(style);
+}
+
 // Sentry — мониторинг падений САМОГО приложения (у пользователей на телефонах).
 // Полноценно оживает в нативной сборке (build 42+); в Expo Go нативного модуля
 // нет — тогда работает как no-op, приложение не падает. DSN можно переопределить

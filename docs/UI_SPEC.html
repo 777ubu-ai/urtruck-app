@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UrTruck UI Spec — Полная спецификация экранов v2.0</title>
+<style>
+  @font-face {
+    font-family: 'Spec';
+    src: local('SF Pro Display'), local('Inter'), local('Segoe UI'), local('Roboto');
+    font-weight: 100 900;
+  }
+  :root {
+    --bg: #FAFAF8;
+    --surface: #FFFFFF;
+    --surface2: #F3F2EF;
+    --border: #E2E0DB;
+    --text: #1A1917;
+    --text2: #5C5A54;
+    --text3: #8E8C86;
+    --driver: #00E676;
+    --driver-bg: #E8FFF1;
+    --driver-on: #0C0A09;
+    --client: #FF8400;
+    --client-bg: #FFF4E6;
+    --client-on: #0C0A09;
+    --danger: #EF4444;
+    --info: #3B82F6;
+    --gold: #FBBF24;
+    --card-shadow: 0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+    --section-gap: 48px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0C0A09; --surface: #1C1917; --surface2: #292524;
+      --border: #3D3A36; --text: #FAFAF9; --text2: #A8A5A0; --text3: #6B6965;
+      --driver-bg: #0C2A16; --client-bg: #2A1A00;
+      --card-shadow: 0 1px 3px rgba(0,0,0,.3);
+    }
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Spec', system-ui, -apple-system, sans-serif;
+    background: var(--bg); color: var(--text);
+    line-height: 1.6; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 40px 24px 80px; }
+  .page-header { text-align: center; padding: 56px 0 40px; border-bottom: 1px solid var(--border); margin-bottom: var(--section-gap); }
+  .page-header .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--text3); margin-bottom: 12px; }
+  .page-header h1 { font-size: 32px; font-weight: 800; letter-spacing: -0.5px; text-wrap: balance; line-height: 1.2; }
+  .page-header .subtitle { color: var(--text2); font-size: 15px; margin-top: 8px; max-width: 520px; margin-left: auto; margin-right: auto; }
+  .page-header .date { color: var(--text3); font-size: 12px; margin-top: 12px; }
+  .print-btn { display: inline-flex; align-items: center; gap: 6px; margin-top: 16px; padding: 10px 24px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text2); font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s; }
+  .print-btn:hover { background: var(--surface2); color: var(--text); }
+  @media print { .print-btn, .role-toggle, .no-print { display: none !important; } .role-section { display: block !important; } .screen { break-inside: avoid; } }
+  .role-toggle { display: flex; gap: 4px; background: var(--surface2); border-radius: 12px; padding: 4px; width: fit-content; margin: 0 auto 40px; position: sticky; top: 12px; z-index: 100; box-shadow: var(--card-shadow); }
+  .role-btn { padding: 10px 28px; border: none; border-radius: 9px; font-size: 14px; font-weight: 700; cursor: pointer; background: transparent; color: var(--text3); transition: all .2s; font-family: inherit; }
+  .role-btn:focus-visible { outline: 2px solid var(--info); outline-offset: 2px; }
+  .role-btn.active-driver { background: var(--driver); color: var(--driver-on); box-shadow: 0 2px 8px rgba(0,230,118,.3); }
+  .role-btn.active-client { background: var(--client); color: var(--client-on); box-shadow: 0 2px 8px rgba(255,132,0,.3); }
+  .role-section { display: none; }
+  .role-section.visible { display: block; }
+  .tabbar { display: flex; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 12px 8px; gap: 4px; margin-bottom: 32px; box-shadow: var(--card-shadow); }
+  .tabbar-item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 4px; border-radius: 10px; border: none; background: none; color: var(--text3); font-family: inherit; cursor: default; }
+  .tabbar-item .tab-icon { font-size: 20px; }
+  .tabbar-item .tab-label { font-size: 11px; font-weight: 600; letter-spacing: 0.2px; }
+  .tabbar-item.active-d { color: var(--driver); background: var(--driver-bg); }
+  .tabbar-item.active-c { color: var(--client); background: var(--client-bg); }
+  .tabbar-item .badge { position: absolute; top: -2px; right: -2px; background: var(--danger); color: #fff; font-size: 9px; font-weight: 800; min-width: 16px; height: 16px; border-radius: 8px; display: flex; align-items: center; justify-content: center; padding: 0 4px; }
+  .tabbar-item .tab-icon-wrap { position: relative; }
+  .screen { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; margin-bottom: 24px; overflow: hidden; box-shadow: var(--card-shadow); }
+  .screen-header { padding: 20px 24px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; gap: 14px; }
+  .screen-num { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; flex-shrink: 0; }
+  .screen-num.d { background: var(--driver); color: var(--driver-on); }
+  .screen-num.c { background: var(--client); color: var(--client-on); }
+  .screen-header h2 { font-size: 18px; font-weight: 800; letter-spacing: -0.3px; line-height: 1.3; }
+  .screen-header .screen-file { font-size: 11px; color: var(--text3); font-family: 'SF Mono', 'Menlo', 'Consolas', monospace; margin-top: 2px; }
+  .screen-body { padding: 20px 24px; }
+  .zone { margin-bottom: 20px; padding: 14px 16px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface2); }
+  .zone:last-child { margin-bottom: 0; }
+  .zone-label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text3); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+  .zone-label .dot { width: 6px; height: 6px; border-radius: 3px; display: inline-block; }
+  .zone-label .dot.green { background: var(--driver); }
+  .zone-label .dot.orange { background: var(--client); }
+  .zone-label .dot.blue { background: var(--info); }
+  .zone-label .dot.red { background: var(--danger); }
+  .zone-label .dot.gold { background: var(--gold); }
+  .zone ul { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+  .zone li { font-size: 13px; color: var(--text2); line-height: 1.5; padding-left: 16px; position: relative; }
+  .zone li::before { content: ''; position: absolute; left: 0; top: 8px; width: 4px; height: 4px; border-radius: 2px; background: var(--text3); }
+  .zone li strong { color: var(--text); font-weight: 600; }
+  .zone li code { font-size: 11px; background: var(--bg); padding: 1px 5px; border-radius: 4px; font-family: 'SF Mono', 'Menlo', 'Consolas', monospace; color: var(--text2); }
+  .act { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 6px; white-space: nowrap; }
+  .act.nav { background: #DBEAFE; color: #1D4ED8; }
+  .act.api { background: #FEF3C7; color: #92400E; }
+  .act.modal { background: #F3E8FF; color: #7C3AED; }
+  .act.danger { background: #FEE2E2; color: #B91C1C; }
+  @media (prefers-color-scheme: dark) {
+    .act.nav { background: #1E3A5F; color: #93C5FD; }
+    .act.api { background: #422006; color: #FCD34D; }
+    .act.modal { background: #2E1065; color: #C4B5FD; }
+    .act.danger { background: #450A0A; color: #FCA5A5; }
+  }
+  .spec-table { width: 100%; font-size: 12px; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  .spec-table th { text-align: left; font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text3); padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  .spec-table td { padding: 8px 8px; border-bottom: 1px solid var(--border); color: var(--text2); vertical-align: top; }
+  .spec-table td:first-child { color: var(--text); font-weight: 600; }
+  .spec-table tr:last-child td { border-bottom: none; }
+  .overflow-x { overflow-x: auto; }
+  .divider { border: none; border-top: 1px solid var(--border); margin: var(--section-gap) 0; }
+  .section-title { font-size: 14px; font-weight: 800; letter-spacing: -0.2px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid var(--border); display: flex; align-items: center; gap: 8px; }
+  .section-title .ico { font-size: 16px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 32px; }
+  .legend-item { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text2); }
+  @media (max-width: 640px) { .wrap { padding: 24px 16px 60px; } .page-header { padding: 32px 0 24px; } .page-header h1 { font-size: 24px; } .screen-body { padding: 16px; } .role-btn { padding: 8px 18px; font-size: 13px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="page-header">
+  <div class="eyebrow">UrTruck UI Specification</div>
+  <h1>&#128666; UrTruck &mdash; Полная спецификация экранов</h1>
+  <div class="subtitle">Каждая страница, каждая кнопка, каждый переход. Канон, которому следует фронтенд.</div>
+  <div class="date">Версия от 01.08.2026 &nbsp;|&nbsp; Сгенерировано из кода</div>
+  <button class="print-btn no-print" onclick="window.print()">&#128424; Скачать PDF (Ctrl+P)</button>
+</div>
+
+<div class="legend no-print">
+  <span class="legend-item"><span class="act nav">&#8594; Screen</span> навигация</span>
+  <span class="legend-item"><span class="act api">API</span> серверный вызов</span>
+  <span class="legend-item"><span class="act modal">Modal</span> модальное окно</span>
+  <span class="legend-item"><span class="act danger">Danger</span> деструктивное действие</span>
+</div>
+
+<div class="role-toggle no-print" id="roleToggle">
+  <button class="role-btn active-client" data-role="client" onclick="switchRole('client')">&#128230; Клиент (3 вкладки)</button>
+  <button class="role-btn" data-role="driver" onclick="switchRole('driver')">&#128666; Водитель (4 вкладки)</button>
+  <button class="role-btn" data-role="both" onclick="switchRole('both')">Обе роли</button>
+</div>
+
+<!-- ============================================ -->
+<!-- CLIENT SECTION                               -->
+<!-- ============================================ -->
+<div class="role-section visible" id="sec-client">
+
+<div class="section-title"><span class="ico">&#128230;</span> КЛИЕНТ &mdash; Грузоотправитель (3 вкладки)</div>
+<div class="tabbar">
+  <button class="tabbar-item active-c"><span class="tab-icon">&#128203;</span><span class="tab-label">Грузы</span></button>
+  <button class="tabbar-item"><span class="tab-icon">&#128666;</span><span class="tab-label">Машины</span></button>
+  <button class="tabbar-item"><div class="tab-icon-wrap"><span class="tab-icon">&#129309;</span><span class="badge">3</span></div><span class="tab-label">Сделки</span></button>
+</div>
+
+<!-- C1: MyWork -->
+<div class="screen">
+  <div class="screen-header"><div class="screen-num c">1</div><div><h2>Мои грузы (MyWork)</h2><div class="screen-file">MyTripsScreen.js</div></div></div>
+  <div class="screen-body">
+    <div class="zone"><div class="zone-label"><span class="dot orange"></span> Шапка</div><ul>
+      <li><strong>BrandBar:</strong> стрелка назад | UrTruck | <code>menu</code> <span class="act nav">&#8594; Profile</span></li>
+      <li><strong>Заголовок:</strong> &laquo;Мои грузы&raquo; + подзаголовок</li>
+      <li><strong>CTA:</strong> кнопка <strong>[+ Разместить груз]</strong>, оранжевый фон <span class="act nav">&#8594; CreateCargo</span></li>
+    </ul></div>
+    <div class="zone"><div class="zone-label"><span class="dot blue"></span> Сегменты (3 вкладки, underline)</div><ul>
+      <li><strong>Ищу машину</strong> &mdash; мои активные грузы (<code>status=active</code>)</li>
+      <li><strong>Везут</strong> &mdash; сделки <code>accepted / in_progress / picked_up / at_border</code></li>
+      <li><strong>Доставлено</strong> &mdash; сделки <code>completed / delivered</code></li>
+      <li><strong>Архив (N):</strong> toggle-ссылка внизу &mdash; отменённые / просроченные</li>
+    </ul></div>
+    <div class="zone"><div class="zone-label"><span class="dot orange"></span> Карточка груза (в &laquo;Ищу машину&raquo;)</div><ul>
+      <li>Бейдж <strong>ГРУЗ</strong> (оранжевый) + статус (цвет)</li>
+      <li>Маршрут: <strong>Город &#8594; Город</strong></li>
+      <li>Описание + мета (кузов, дата)</li>
+      <li>Цена (оранжевый, крупный)</li>
+      <li>Плашка <strong>&laquo;N предложений&raquo;</strong> (если bids&gt;0) <span class="act nav">&#8594; Deals (вкладка)</span></li>
+      <li>Кнопки: <strong>Изменить</strong> <span class="act modal">EditCargoModal</span> | <strong>Удалить</strong> <span class="act danger">deleteCargo</span></li>
+      <li>Для истекших: <strong>Ещё актуально</strong> <span class="act api">extendCargo</span> + <strong>Изменить дату</strong></li>
+    </ul></div>
+    <div class="zone"><div class="zone-label"><span class="dot orange"></span> Карточка сделки (в &laquo;Везут&raquo; / &laquo;Доставлено&raquo;)</div><ul>
+      <li>Бейдж <strong>ЗАКАЗ</strong> + статус-индикатор</li>
+      <li>Маршрут, груз, тип кузова, цена, дата</li>
+      <li>Подсказка &laquo;Следующий шаг&raquo;</li>
+      <li><code>in_progress / at_border</code>: кнопка <strong>Подтвердить доставку</strong> <span class="act api">&#8594; delivered</span></li>
+      <li><code>accepted</code>: кнопка <strong>Отменить сделку</strong> <span class="act danger">cancel</span></li>
+      <li>Кнопка <strong>Чат</strong> <span class="act nav">&#8594; Chat</span> (если есть room_id)</li>
+      <li>Кнопка <strong>Где машина</strong> <span class="act nav">&#8594; TrackTruck</span></li>
+    </ul></div>
+    <div class="zone"><div class="zone-label"><span class="dot red"></span> Пустые состояния</div><ul>
+      <li>&laquo;Ищу машину&raquo;: CTA &laquo;Разместить груз&raquo; <span class="act nav">&#8594; CreateCargo</span></li>
+      <li>Остальные: текст без CTA</li>
+      <li>Без токена: &laquo;Войдите&raquo; <span class="act nav">&#8594; Role</span></li>
+    </ul></div>
+  </div>
+</div>
+
+<!-- C2: Feed -->
+<div class="screen">
+  <div class="screen-header"><div class="screen-num c">2</div><div><h2>Машины (Feed)</h2><div class="screen-file">FeedScreen.js</div></div></div>
+  <div class="screen-body">
+    <div class="zone"><div class="zone-label"><span class="dot orange"></span> Шапка</div><ul>
+      <li><strong>BrandBar:</strong> | UrTruck | <code>menu</code> <span class="act nav">&#8594; Profile</span></li>
+      <li><strong>Заголовок:</strong> &laquo;Машины&raquo; + подзаголовок + toggle вида (compact/large)</li>
+      <li><strong>CTA:</strong> outline-кнопка <strong>[+ Груз]</strong> <span class="act nav">&#8594; CreateCargo</span></li>
+    </ul></div>
+    <div class="zone"><div class="zone-label"><span class="dot blue"></span> Фильтры</div><ul>
+      <li><strong>RouteSelector:</strong> &laquo;Откуда &#8594; Куда&raquo; (inDrive-стиль) <span class="act modal">LocationPickerModal</span></li>
+      <li><strong>SearchBar:</strong> текстовый поиск (debounce 500мс)</li>
+      <li><strong>FilterChips:</strong> Дата | Тип кузова | Цена/Рейтинг (каждый &#8594; BottomSheet)</li>
+    </ul></div>
+    <div class="zone"><div class="zone-label"><span class="dot orange"></span> Карточка рейса (FeedCard, variant=&quot;trip&quot;)</div><ul>
+      <li>Маршрут: <strong>Город &#8594; Город</strong></li>
+      <li>Мета-пилюли: тип кузова, верификация, дата</li>
+      <li>Цена + рейтинг</li>
+      <li>Сердечко (избранное) <span class="act api">favAdd/favRemove</span></li>
+      <li>Кнопка <strong>Подробнее</strong> <span class="act nav">&#8594; TripDetail</span></li>
+    </ul></div>
+  </div>
+</div>
+
+<!-- C3: Deals -->
+<div class="screen">
+  <div class="screen-header"><div class="screen-num c">3</div><div><h2>Сделки (Deals)</h2><div class="screen-file">ChatsListScreen.js (dealsMode)</div></div></div>
+  <div class="screen-body">
+    <div class="zone"><div class="zone-label"><span class="dot blue"></span> Сегмент-переключатель</div><ul>
+      <li><strong>Предложения (N)</strong> &mdash; входящие ставки водителей (<code>incoming_bids</code>)</li>
+      <li><strong>Чаты</strong> &mdash; все переписки + бейдж непрочитанных</li>
+    </ul></div>
+    <div class="zone"><div class="zone-label"><span class="dot orange"></span> Раздел &laquo;Предложения&raquo; (клиент)</div><ul>
+      <li>Аватар + иконка <code>$</code> + точка &laquo;новое&raquo;</li>
+      <li>Маршрут + описание груза + сумма (+ встречная если countered)</li>
+      <li>Статус: Новое / Торг / Ожидает</li>
+      <li><strong>Открыть чат</strong> <span class="act nav">&#8594; Chat</span></li>
+      <li>Кнопка X &mdash; <strong>отклонить ставку</strong> <span class="act danger">rejectBid</span></li>
+    </ul></div>
+    <div class="zone"><div class="zone-label"><span class="dot orange"></span> Раздел &laquo;Чаты&raquo;</div><ul>
+      <li><strong>Поиск</strong> по имени / компании / маршруту / грузу / госномеру</li>
+      <li><strong>Фильтры:</strong> Все | Непрочитанные (N) | Активные | Архив</li>
+      <li>Карточка: аватар, имя+роль, маршрут+груз+вес, статус, сообщение, цена, время, бейдж</li>
+      <li><strong>Сортировка:</strong> непрочитанные наверху, далее по <code>last_message_at</code> desc</li>
+    </ul></div>
+  </div>
+</div>
+
+<!-- C4: CargoDetail -->
+<div class="screen">
+  <div class="screen-header"><div class="screen-num c">4</div><div><h2>Деталь груза (CargoDetail)</h2><div class="screen-file">CargoDetail.js</div></div></div>
+  <div class="screen-body">
+    <div class="zone"><div class="zone-label"><span class="dot orange"></span> Содержимое</div><ul>
+      <li><strong>BrandBarWithShare:</strong> назад | UrTruck | <span class="act modal">ShareModal</span></li>
+      <li>Маршрут (22px) + PhotoGallery + GlassCard &laquo;Маршрут&raquo; + GlassCard &laquo;Цена&raquo;</li>
+    </ul></div>
+    <div class="zone"><div class="zone-label"><span class="dot orange"></span> Ставки (клиент = владелец)</div><ul>
+      <li>Каждая: флаг, имя <span class="act nav">&#8594; DriverDetail</span>, рейтинг, сумма, сообщение</li>
+      <li><code>pending</code>: <strong>Отклонить</strong> | <strong>Встречное</strong> <span class="act modal">BidModal</span> | <strong>Чат</strong> | <strong>Принять</strong> <span class="act api">acceptBid</span></li>
+      <li><code>countered</code>: <strong>Отклонить</strong> | <strong>Чат</strong></li>
+    </ul></div>
+    <div class="zone"><div class="zone-label"><span class="dot blue"></span> Блок сделки</div><ul>
+      <li><strong>DealStatusTimeline:</strong> Принят &#8594; В пути &#8594; На границе &#8594; Доставлен</li>
+      <li>Кнопки: Подтвердить доставку | Чат | Отменить</li>
+    </ul></div>
+    <div class="zone"><div class="zone-label"><span class="dot gold"></span> Отзыв (после доставки)</div><ul>
+      <li>5 звёзд + текст + теги + &laquo;Отправить&raquo; <span class="act api">submitReview</span></li>
+    </ul></div>
+  </div>
+</div>
+
+<!-- C5: CreateCargo -->
+<div class="screen">
+  <div class="screen-header"><div class="screen-num c">5</div><div><h2>Разместить груз (CreateCargo)</h2><div class="screen-file">CreateCargoScreen.js</div></div></div>
+  <div class="screen-body">
+    <div class="zone"><div class="zone-label"><span class="dot orange"></span> Форма</div><ul>
+      <li><strong>Откуда</strong> + <strong>Куда</strong> <span class="act modal">LocationPickerModal</span></li>
+      <li><strong>Описание груза</strong> (CargoTypeInput с подсказками)</li>
+      <li><strong>Тип кузова</strong> <span class="act modal">TruckTypeGrid</span></li>
+      <li><strong>Дата загрузки</strong> (DatePicker)</li>
+      <li><strong>Вес (т)</strong> + <strong>Объём (м3)</strong></li>
+      <li><strong>Цена</strong> + валюта (KZT/USD/RUB/CNY) + тип оплаты (нал/безнал)</li>
+      <li><strong>Фото</strong> (необязательно)</li>
+      <li><strong>Опубликовать</strong> <span class="act api">createCargo</span></li>
+    </ul></div>
+    <div class="zone"><div class="zone-label"><span class="dot red"></span> Обязательно</div><ul>
+      <li>Откуда, Куда, описание, вес или объём, цена, дата</li>
+    </ul></div>
+  </div>
+</div>
+
+<!-- C6: Profile -->
+<div class="screen">
+  <div class="screen-header"><div class="screen-num c">6</div><div><h2>Профиль</h2><div class="screen-file">ProfileScreen.js</div></div></div>
+  <div class="screen-body">
+    <div class="zone"><div class="zone-label"><span class="dot orange"></span> Карточка</div><ul>
+      <li>Аватар + имя + галочка + телефон + роль &laquo;Грузовладелец&raquo;</li>
+      <li>Карандаш <span class="act nav">&#8594; EditProfile</span></li>
+    </ul></div>
+    <div class="zone"><div class="zone-label"><span class="dot blue"></span> Меню</div><ul>
+      <li>Мои отзывы <span class="act nav">&#8594; Reviews</span></li>
+      <li>Избранное <span class="act nav">&#8594; Favorites</span></li>
+      <li>Как это работает <span class="act nav">&#8594; HowItWorks</span></li>
+      <li>О приложении <span class="act nav">&#8594; About</span></li>
+      <li><em>PRO-блок и &laquo;Мой статус&raquo; НЕ показываются клиенту</em></li>
+    </ul></div>
+    <div class="zone"><div class="zone-label"><span class="dot orange"></span> Настройки</div><ul>
+      <li>Тема: Light / Dark | Язык: RU/EN/KK/ZH | Push <span class="act nav">&#8594; PushFilter</span></li>
+      <li><strong>Выйти</strong> (с подтверждением) <span class="act danger">signOut</span></li>
+    </ul></div>
+  </div>
+</div>
+
+<!-- C7: Chat + DriverDetail -->
+<div class="screen">
+  <div class="screen-header"><div class="screen-num c">7</div><div><h2>Чат + Карточка водителя</h2><div class="screen-file">ChatScreen.js / DriverDetail.js</div></div></div>
+  <div class="screen-body">
+    <div class="zone"><div class="zone-label"><span class="dot orange"></span> Комната чата</div><ul>
+      <li>Шапка + полоса партнёра (аватар, имя, онлайн)</li>
+      <li>DealRoomCard: карточка сделки (маршрут, груз, цена, статус)</li>
+      <li>BargainCard: торг (ставка, контроферт, кнопки)</li>
+      <li>Сообщения: пузыри, фото, голосовые, системные события</li>
+      <li>Панель: [+] вложения | TextInput | микрофон | отправить</li>
+    </ul></div>
+    <div class="zone"><div class="zone-label"><span class="dot orange"></span> Карточка водителя</div><ul>
+      <li>Аватар + флаг + имя + верификация + рейтинг + бейджи доверия</li>
+      <li>SecurityBadge (скоринг) + транспорт + отзывы (звёзды+теги+текст)</li>
+      <li><strong>Написать</strong> <span class="act nav">&#8594; Chat</span> | <strong>В избранное</strong> | <strong>Пожаловаться</strong> <span class="act modal">ReportModal</span></li>
+    </ul></div>
+  </div>
+</div>
+
+</div><!-- /sec-client -->
+
+
+<!-- ============================================ -->
+<!-- DRIVER SECTION                               -->
+<!-- ============================================ -->
+<div class="role-section" id="sec-driver">
+
+<div class="section-title"><span class="ico">&#128666;</span> ВОДИТЕЛЬ (4 вкладки)</div>
+<div class="tabbar">
+  <button class="tabbar-item active-d"><span class="tab-icon">&#128230;</span><span class="tab-label">Грузы</span></button>
+  <button class="tabbar-item"><span class="tab-icon">&#128203;</span><span class="tab-label">Рейсы</span></button>
+  <button class="tabbar-item"><span class="tab-icon">&#128205;</span><span class="tab-label">Очередь</span></button>
+  <button class="tabbar-item"><div class="tab-icon-wrap"><span class="tab-icon">&#129309;</span><span class="badge">5</span></div><span class="tab-label">Сделки</span></button>
+</div>
+
+<!-- D1: Feed -->
+<div class="screen">
+  <div class="screen-header"><div class="screen-num d">1</div><div><h2>Грузы (Feed)</h2><div class="screen-file">FeedScreen.js</div></div></div>
+  <div class="screen-body">
+    <div class="zone"><div class="zone-label"><span class="dot green"></span> Шапка</div><ul>
+      <li><strong>BrandBar:</strong> | UrTruck | <code>menu</code> <span class="act nav">&#8594; Profile</span></li>
+      <li>&laquo;Грузы&raquo; + подзаголовок + toggle вида. CTA &laquo;+Груз&raquo; <strong>НЕ показывается</strong></li>
+    </ul></div>
+    <div class="zone"><div class="zone-label"><span class="dot blue"></span> Фильтры</div><ul>
+      <li><strong>RouteSelector</strong> (inDrive) + <strong>Подписка на маршрут</strong> (при обеих точках) <span class="act api">subscribeRoute</span></li>
+      <li>SearchBar + FilterChips: Дата | Кузов | Цена (без рейтинга для водителя)</li>
+    </ul></div>
+    <div class="zone"><div class="zone-label"><span class="dot green"></span> Карточка груза</div><ul>
+      <li>Маршрут + описание + мета-пилюли (дата, км, $/км, оплата, вес, объём)</li>
+      <li>Цена + число откликов</li>
+      <li><strong>Подробнее</strong> <span class="act nav">&#8594; CargoDetail</span></li>
+    </ul></div>
+  </div>
+</div>
+
+<!-- D2: MyWork -->
+<div class="screen">
+  <div class="screen-header"><div class="screen-num d">2</div><div><h2>Мои рейсы (MyWork)</h2><div class="screen-file">MyTripsScreen.js</div></div></div>
+  <div class="screen-body">
+    <div class="zone"><div class="zone-label"><span class="dot green"></span> Шапка</div><ul>
+      <li>BrandBar + &laquo;Мои рейсы&raquo;</li>
+      <li><strong>[+ Разместить рейс]</strong> изумрудный, чёрный текст <span class="act nav">&#8594; CreateTrip</span></li>
+      <li><strong>Verification Gate:</strong> если не approved &mdash; модалка (unverified &#8594; Citizenship, review &#8594; Security)</li>
+    </ul></div>
+    <div class="zone"><div class="zone-label"><span class="dot blue"></span> Сегменты (pill)</div><ul>
+      <li><strong>Мои рейсы</strong> (active) | <strong>В работе</strong> (accepted..at_border) | <strong>Завершённые</strong> (delivered)</li>
+      <li><strong>Архив (N)</strong> &mdash; отменённые / просроченные</li>
+    </ul></div>
+    <div class="zone"><div class="zone-label"><span class="dot green"></span> Карточка рейса</div><ul>
+      <li>Бейдж РЕЙС + маршрут + мета + цена</li>
+      <li><strong>Изменить</strong> <span class="act nav">&#8594; EditTrip</span> | Для просроченных: <strong>Ещё актуально</strong></li>
+    </ul></div>
+    <div class="zone"><div class="zone-label"><span class="dot green"></span> Карточка заказа (В работе)</div><ul>
+      <li><code>accepted</code>: <strong>Начать перевозку</strong> <span class="act api">&#8594; in_progress</span></li>
+      <li><code>in_progress</code>: <strong>На границе</strong> <span class="act api">&#8594; at_border</span> + <strong>Доставлен</strong> <span class="act api">&#8594; delivered</span></li>
+      <li><code>at_border</code>: <strong>Доставлен</strong> <span class="act api">&#8594; delivered</span></li>
+      <li><strong>Отменить</strong> <span class="act danger">cancel</span> + <strong>Чат</strong> <span class="act nav">&#8594; Chat</span></li>
+    </ul></div>
+  </div>
+</div>
+
+<!-- D3: Queue -->
+<div class="screen">
+  <div class="screen-header"><div class="screen-num d">3</div><div><h2>Очередь на границе (Queue)</h2><div class="screen-file">QueueScreen.js</div></div></div>
+  <div class="screen-body">
+    <div class="zone"><div class="zone-label"><span class="dot green"></span> Уровень 1: Хаб</div><ul>
+      <li><strong>Мой номер:</strong> ввод госномера + Найти <span class="act api">GET /borders/lookup</span></li>
+      <li>Результат: статус + пункт + время. Слежение (push при смене)</li>
+      <li><strong>Мои номера</strong> <span class="act nav">&#8594; TrackedPlates</span></li>
+      <li>Баннер верификации <span class="act nav">&#8594; Citizenship</span></li>
+      <li>Самый свободный переход (мини-карточка)</li>
+      <li>Выбор страны: CN / RU / UZ / KG / TM</li>
+      <li>CarGoRuqsat <span class="act nav">&#8594; CargoRuqsatInfo</span></li>
+    </ul></div>
+    <div class="zone"><div class="zone-label"><span class="dot blue"></span> Уровень 2: Переходы</div><ul>
+      <li>Карточка: название + статус (green/yellow/red) + машин + часов + обновлено</li>
+      <li><strong>Табло</strong> (раскрытие) + <strong>Забронировать</strong> &#8594; cgr.qoldau.kz</li>
+    </ul></div>
+  </div>
+</div>
+
+<!-- D4: Deals -->
+<div class="screen">
+  <div class="screen-header"><div class="screen-num d">4</div><div><h2>Сделки (Deals)</h2><div class="screen-file">ChatsListScreen.js (dealsMode)</div></div></div>
+  <div class="screen-body">
+    <div class="zone"><div class="zone-label"><span class="dot green"></span> Предложения (водитель)</div><ul>
+      <li>Мои отправленные ставки: маршрут + груз + сумма + статус</li>
+      <li><strong>Открыть чат</strong> <span class="act nav">&#8594; Chat</span> | X <strong>отменить</strong> <span class="act danger">cancelBid</span></li>
+    </ul></div>
+    <div class="zone"><div class="zone-label"><span class="dot green"></span> Чаты</div><ul>
+      <li>Идентичен клиенту: поиск + фильтры (Все/Непрочитанные/Активные/Архив)</li>
+      <li>Непрочитанные наверху. Тап <span class="act nav">&#8594; Chat</span></li>
+    </ul></div>
+  </div>
+</div>
+
+<!-- D5: CargoDetail -->
+<div class="screen">
+  <div class="screen-header"><div class="screen-num d">5</div><div><h2>Деталь груза (чужой)</h2><div class="screen-file">CargoDetail.js</div></div></div>
+  <div class="screen-body">
+    <div class="zone"><div class="zone-label"><span class="dot green"></span> Содержимое + моя ставка</div><ul>
+      <li>Маршрут + фото + маршрут-карта + цена + грузоотправитель</li>
+      <li>Ставки: видит только счётчик + свою (конфиденциальный режим)</li>
+      <li>Моя ставка pending: <strong>Изменить</strong> <span class="act modal">BidModal</span> | <strong>Чат</strong> | <strong>Отменить</strong></li>
+      <li>Моя ставка countered: <strong>Отклонить</strong> | <strong>Чат</strong> | <strong>Принять контроферт</strong> <span class="act api">acceptCounter</span></li>
+    </ul></div>
+    <div class="zone"><div class="zone-label"><span class="dot green"></span> StickyCTABar (нет ставки)</div><ul>
+      <li><strong>Предложить цену</strong> <span class="act modal">BidModal + VerificationGate</span></li>
+      <li><strong>Чат</strong> <span class="act nav">&#8594; Chat</span></li>
+    </ul></div>
+    <div class="zone"><div class="zone-label"><span class="dot blue"></span> Deal-блок + отзыв</div><ul>
+      <li>Таймлайн + кнопки: Начать / На границе / Доставлен</li>
+      <li>Отзыв (delivered): 5 звёзд + теги + текст</li>
+    </ul></div>
+  </div>
+</div>
+
+<!-- D6: CreateTrip -->
+<div class="screen">
+  <div class="screen-header"><div class="screen-num d">6</div><div><h2>Разместить рейс</h2><div class="screen-file">CreateTripScreen.js</div></div></div>
+  <div class="screen-body">
+    <div class="zone"><div class="zone-label"><span class="dot green"></span> Форма</div><ul>
+      <li>Откуда + Куда + Транзит (опц.) + Дата выезда + Дата прибытия (опц.)</li>
+      <li>Тип кузова + Грузоподъёмность + Объём</li>
+      <li><strong>Цена</strong> (ОБЯЗАТЕЛЬНА) + валюта (KZT/USD/RUB/CNY)</li>
+      <li><strong>Опубликовать</strong> <span class="act api">createTrip</span></li>
+    </ul></div>
+  </div>
+</div>
+
+<!-- D7: Profile -->
+<div class="screen">
+  <div class="screen-header"><div class="screen-num d">7</div><div><h2>Профиль водителя</h2><div class="screen-file">ProfileScreen.js</div></div></div>
+  <div class="screen-body">
+    <div class="zone"><div class="zone-label"><span class="dot green"></span> Карточка</div><ul>
+      <li>Аватар + имя + галочка + рейтинг + спеки (Тент . 20 т . 86 м3)</li>
+      <li>Тир: Новичок / Проверенный / Профи (прогресс /100)</li>
+    </ul></div>
+    <div class="zone"><div class="zone-label"><span class="dot green"></span> PRO-блок (только водитель)</div><ul>
+      <li>Прогресс 4 полей + <strong>Получить PRO</strong> <span class="act nav">&#8594; EditProfile / Citizenship</span></li>
+    </ul></div>
+    <div class="zone"><div class="zone-label"><span class="dot blue"></span> Меню</div><ul>
+      <li><strong>Мой статус</strong> <span class="act nav">&#8594; Security</span> (только водитель)</li>
+      <li>Отзывы / Избранное / Как работает / О приложении</li>
+      <li>Настройки + Выйти &mdash; идентично клиенту</li>
+    </ul></div>
+  </div>
+</div>
+
+<!-- D8: Chat -->
+<div class="screen">
+  <div class="screen-header"><div class="screen-num d">8</div><div><h2>Чат (идентичен клиенту)</h2><div class="screen-file">ChatScreen.js</div></div></div>
+  <div class="screen-body">
+    <div class="zone"><div class="zone-label"><span class="dot green"></span> Структура</div><ul>
+      <li>Партнёр + DealRoomCard + BargainCard + сообщения + DealQuickActions</li>
+      <li>Вложения: [+] фото / голосовое</li>
+    </ul></div>
+  </div>
+</div>
+
+</div><!-- /sec-driver -->
+
+
+<!-- ============================================ -->
+<!-- NAV MAP + CANON                              -->
+<!-- ============================================ -->
+<hr class="divider">
+<div class="section-title"><span class="ico">&#9654;</span> Карта навигации</div>
+<div class="overflow-x">
+<table class="spec-table">
+  <thead><tr><th>Экран</th><th>Действие</th><th>Куда</th><th>Роль</th></tr></thead>
+  <tbody>
+    <tr><td>Feed</td><td>Тап по карточке</td><td>CargoDetail (driver) / TripDetail (client)</td><td>Обе</td></tr>
+    <tr><td>Feed</td><td>Гамбургер</td><td>Profile</td><td>Обе</td></tr>
+    <tr><td>Feed (client)</td><td>+ Груз</td><td>CreateCargo</td><td>Client</td></tr>
+    <tr><td>MyWork</td><td>+ Разместить</td><td>CreateTrip (gate) / CreateCargo</td><td>Обе</td></tr>
+    <tr><td>MyWork</td><td>Тап по рейсу/грузу</td><td>TripDetail / CargoDetail</td><td>Обе</td></tr>
+    <tr><td>MyWork</td><td>Чат по заказу</td><td>Chat</td><td>Обе</td></tr>
+    <tr><td>MyWork (client)</td><td>N предложений</td><td>Deals (вкладка)</td><td>Client</td></tr>
+    <tr><td>Queue</td><td>Выбор страны</td><td>Queue (уровень 2)</td><td>Driver</td></tr>
+    <tr><td>Deals/Предложения</td><td>Тап</td><td>Chat (openBidChat)</td><td>Обе</td></tr>
+    <tr><td>Deals/Чаты</td><td>Тап</td><td>Chat</td><td>Обе</td></tr>
+    <tr><td>CargoDetail</td><td>Предложить цену</td><td>BidModal</td><td>Driver</td></tr>
+    <tr><td>CargoDetail</td><td>Принять ставку</td><td>acceptBid &#8594; Chat</td><td>Client</td></tr>
+    <tr><td>Profile</td><td>Мой статус</td><td>Security</td><td>Driver</td></tr>
+    <tr><td>Profile</td><td>PRO CTA</td><td>EditProfile / Citizenship</td><td>Driver</td></tr>
+    <tr><td>Chat</td><td>BargainCard</td><td>acceptBid / counterBid / rejectBid</td><td>Обе</td></tr>
+  </tbody>
+</table>
+</div>
+
+<hr class="divider">
+<div class="section-title"><span class="ico">&#9888;</span> КАНОН (нерушимые правила)</div>
+<div class="zone" style="border-left: 3px solid var(--danger);">
+  <ul>
+    <li>Вкладок &laquo;Чаты&raquo; и &laquo;Разместить&raquo; <strong>НЕТ ни у одной роли</strong></li>
+    <li>Переписка живёт внутри &laquo;Сделок&raquo;; размещение &mdash; кнопка внутри MyWork</li>
+    <li><strong>Профиль &mdash; НЕ вкладка.</strong> Из гамбургера (<code>menu</code>), pushed screen</li>
+    <li>Колокольчик в шапке <strong>НЕ возвращать</strong> (пушей достаточно)</li>
+    <li>Сделки = ChatsListScreen в dealsMode: сегменты &laquo;Предложения | Чаты&raquo;</li>
+    <li>Бейдж на Deals = notifUnread + chatUnread</li>
+    <li>Driver акцент: <strong>#00E676</strong> (текст на нём: <strong>#0C0A09</strong> чёрный, НЕ белый!)</li>
+    <li>Client акцент: <strong>#FF8400</strong></li>
+    <li>Фон: <strong>#0C0A09</strong> (тёмная тема по умолчанию &mdash; ночные рейсы)</li>
+    <li>Все тексты через <code>t(...)</code> &mdash; 4 языка (RU/EN/KK/ZH)</li>
+  </ul>
+</div>
+
+</div><!-- /wrap -->
+
+<script>
+function switchRole(role) {
+  const cl = document.getElementById('sec-client');
+  const dr = document.getElementById('sec-driver');
+  if (role === 'both') { cl.classList.add('visible'); dr.classList.add('visible'); }
+  else { cl.classList.toggle('visible', role === 'client'); dr.classList.toggle('visible', role === 'driver'); }
+  document.querySelectorAll('.role-btn').forEach(b => {
+    b.classList.remove('active-client', 'active-driver');
+    if (b.dataset.role === role) {
+      if (role === 'client') b.classList.add('active-client');
+      else if (role === 'driver') b.classList.add('active-driver');
+      else { b.classList.add('active-client'); }
+    }
+  });
+}
+</script>
+</body>
+</html>

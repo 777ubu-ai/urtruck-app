@@ -60,10 +60,9 @@ def _maybe_user(authorization: Optional[str]) -> Optional[dict]:
 # /market/my regardless of these filters.
 DIRTY_TOKENS = (
     "test", "demo", "seed", "mock", "qa", "playwright",
-    "тест", "тестер", "баке", "володя", "автотест", "трусы",
-    "белик", "серик",
-    # Stage 52 / P0-6: латинские варианты, попадавшиеся в TestFlight build 1.
-    "serik", "boris",
+    "тест", "тестер", "автотест",
+    # Только явно тестовые слова; реальные имена (серик, boris и т.д.)
+    # убраны — они скрывали настоящих пользователей из ленты (P1 bug).
 )
 # Date threshold below which an item must justify itself with a future
 # pickup_date — anything older than this with no pickup is treated as stale
@@ -764,8 +763,10 @@ def waybill_html(deal_id: str, exp: int = 0, sig: str = ""):
             cargo = dict(r) if r else {}
         plate = None
         if d.get("trip_id"):
-            r = c.execute("SELECT plate_truck FROM trips WHERE id = ?", (d["trip_id"],)).fetchone()
-            plate = r["plate_truck"] if r else None
+            tr = c.execute("SELECT driver_id FROM trips WHERE id = ?", (d["trip_id"],)).fetchone()
+            if tr and tr["driver_id"]:
+                vp = c.execute("SELECT vehicle_plate FROM drivers_registration WHERE id = ?", (tr["driver_id"],)).fetchone()
+                plate = vp["vehicle_plate"] if vp else None
         def person(uid):
             # Ищем телефон во всех источниках (регистрация/груз/рейс/ставка),
             # чтобы в накладной был контакт и клиента, и водителя.
@@ -1046,6 +1047,30 @@ def get_trip(trip_id: str, authorization: Optional[str] = Header(None)):
     caller = _maybe_user(authorization)
     if not (caller and caller.get("id") == d.get("driver_id")):
         d.pop("driver_phone", None)
+    # Инфо о водителе (доверие: клиент видит, кому доверяет груз) — имя,
+    # статус верификации, рейтинг, число отзывов. Зеркально get_cargo:
+    # owner_* → driver_*. Без телефона (гейт выше).
+    try:
+        from database import reviews_dal
+        drv_id = d.get("driver_id")
+        if drv_id:
+            with get_conn() as c2:
+                drow = c2.execute(
+                    "SELECT full_name, phone, status FROM drivers_registration WHERE id = ?",
+                    (drv_id,),
+                ).fetchone()
+            if drow:
+                _nm = (drow["full_name"] or "").strip()
+                if not _nm:
+                    _ph = "".join(ch for ch in (drow["phone"] or "") if ch.isdigit())
+                    _nm = f"+{_ph[-4:]}" if len(_ph) >= 4 else "Пользователь UrTruck"
+                d["driver_display_name"] = _nm
+                d["driver_verified"] = (drow["status"] == "approved")
+            summary = reviews_dal.get_rating_summary(drv_id)
+            d["driver_rating"] = summary.get("average", 0) or 0
+            d["driver_reviews_count"] = summary.get("count", 0) or 0
+    except Exception:
+        pass
     return d
 
 
@@ -1430,12 +1455,21 @@ def my_dashboard(user=Depends(require_level(1))):
             "FROM bids b LEFT JOIN cargos c ON b.cargo_id = c.id "
             "LEFT JOIN trips t ON b.trip_id = t.id "
             "WHERE b.bidder_id = ? ORDER BY b.created_at DESC LIMIT 50", (uid,)).fetchall()]
-        # Ставки на МОИ грузы (входящие) — валюта груза.
+        # Ставки на МОИ листинги (входящие): грузы (клиент) И рейсы (водитель).
+        # Раньше JOIN шёл только на cargos — ставки клиентов на рейс водителя
+        # не попадали в incoming_bids вообще, водитель их нигде не видел.
+        # COALESCE: маршрут/валюта — от родителя (груз или рейс).
         incoming_bids = [dict(r) for r in c.execute(
-            "SELECT b.*, c.from_city as cargo_from, c.to_city as cargo_to, c.cargo_desc, "
-            "c.currency AS currency "
-            "FROM bids b JOIN cargos c ON b.cargo_id = c.id "
-            "WHERE c.owner_id = ? ORDER BY b.created_at DESC LIMIT 50", (uid,)).fetchall()]
+            "SELECT b.*, "
+            "COALESCE(c.from_city, t.from_city) as cargo_from, "
+            "COALESCE(c.to_city, t.to_city) as cargo_to, "
+            "c.cargo_desc, "
+            "COALESCE(c.currency, t.currency) AS currency "
+            "FROM bids b "
+            "LEFT JOIN cargos c ON b.cargo_id = c.id "
+            "LEFT JOIN trips t ON b.trip_id = t.id "
+            "WHERE c.owner_id = ? OR t.driver_id = ? "
+            "ORDER BY b.created_at DESC LIMIT 50", (uid, uid)).fetchall()]
         # Мои сделки. LEFT JOIN на cargos (описание/тип кузова/дата подачи) и на
         # drivers_registration (имя водителя/грузоотправителя) — без JOIN карточка
         # сделки на клиенте «Везут»/«Доставлено» рендерилась без груза, без типа
@@ -2144,13 +2178,13 @@ def get_deal(deal_id: str, user=Depends(require_level(1))):
             if cr:
                 d.setdefault("cargo_desc", cr["cargo_desc"])
                 d.setdefault("currency", cr["currency"])
-        # Trip enrichment — plate (госномер тягача) for the optional row.
+        # Trip enrichment — plate (госномер тягача) from drivers_registration.
         if d.get("trip_id"):
-            tr = c.execute(
-                "SELECT plate_truck FROM trips WHERE id = ?", (d["trip_id"],)
-            ).fetchone()
-            if tr and tr["plate_truck"]:
-                d.setdefault("plate", tr["plate_truck"])
+            tr = c.execute("SELECT driver_id FROM trips WHERE id = ?", (d["trip_id"],)).fetchone()
+            if tr and tr["driver_id"]:
+                vp = c.execute("SELECT vehicle_plate FROM drivers_registration WHERE id = ?", (tr["driver_id"],)).fetchone()
+                if vp and vp["vehicle_plate"]:
+                    d.setdefault("plate", vp["vehicle_plate"])
         # Телефон КОНТРАГЕНТА по сделке — для звонка после заключения сделки.
         # Endpoint строго gated (выше 403 для не-участников), поэтому отдать
         # телефон второй стороны безопасно. Технические placeholder-телефоны
