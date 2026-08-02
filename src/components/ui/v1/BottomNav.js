@@ -226,22 +226,28 @@ export default function BottomNav({ state, navigation }) {
           const iconName = iconKey ? (isDriver ? iconKey.driver : iconKey.client) : 'circle';
           const label = labelOf(route.name);
           const iconColor = isFocused ? accent.main : inactiveColor;
-          // Бейджи непрочитанного:
-          //  • «Чаты» = непрочитанные сообщения (chatUnread);
-          //  • «Дела» = непрочитанные СОБЫТИЯ СДЕЛОК (notifUnread — ставки/
-          //    встречные/сделки/статусы). Это бывший колокольчик, спущенный
-          //    вниз в таб-бар: вся живая работа под пальцем.
-          //  • Если вкладки «Чаты» в баре нет (клиент, 3 вкладки с 26.07.2026 —
-          //    чат живёт внутри «Сделок»), непрочитанные сообщения плюсуются
-          //    к бейджу «Сделок», чтобы сигнал не терялся.
+          // Бейджи непрочитанного (03.08 v2 — приказ владельца по скриншотам):
+          //  • «Чаты» = непрочитанные сообщения (chatUnread).
+          //  • «Сделки» = все живые события сделок (notifUnread + chatUnread
+          //    когда вкладки «Чаты» нет).
+          //  • «Мои грузы / Мои рейсы» (MyWork) = ТОТ ЖЕ notifUnread. Раньше
+          //    бейдж был только на «Сделках» и клиент не видел сигнал, находясь
+          //    в «Мои грузы»: «пришло 1 предложение на мой груз — а бейджа на
+          //    Грузы нет». Дублируем сигнал: событие произошло на моём заказе →
+          //    вижу его И на «Грузы» И на «Сделки». Не «переезжает» — просто
+          //    виден с обеих сторон, куда логично зайти.
           const hasChatsTab = state.routes.some((r) => r.name === 'Chats');
           const tabBadgeCount =
             route.name === 'Chats' ? chatUnread
             : route.name === 'Deals' ? (notifUnread + (hasChatsTab ? 0 : chatUnread))
+            : route.name === 'MyWork' ? notifUnread
             : 0;
           const showBadge = tabBadgeCount > 0;
           const badgeLabel = tabBadgeCount > 9 ? '9+' : String(tabBadgeCount);
-          const badgeTestID = route.name === 'Chats' ? 'bottom-nav-chats-badge' : 'bottom-nav-deals-badge';
+          const badgeTestID =
+            route.name === 'Chats' ? 'bottom-nav-chats-badge'
+            : route.name === 'MyWork' ? 'bottom-nav-mywork-badge'
+            : 'bottom-nav-deals-badge';
 
           return (
             <TouchableOpacity
