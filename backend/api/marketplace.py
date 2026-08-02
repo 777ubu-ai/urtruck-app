@@ -1195,7 +1195,11 @@ def create_bid(body: BidIn, user=Depends(require_level(1))):
                     )
                 except Exception:
                     created_room_id = None
-                bid_url = f"/chats/{created_room_id}" if created_room_id else f"/cargos/{body.cargo_id}?bid={bid_id}"
+                # «Дом заказа» (02.08.2026): пуш ведёт в карточку груза, а не
+                # в чат — там сверху блок ставки и кнопка «💬 Открыть чат»
+                # рядом. Комнату по-прежнему создаём заранее (чтобы чат уже
+                # был готов, когда клиент решит переписываться).
+                bid_url = f"/cargos/{body.cargo_id}?bid={bid_id}"
                 # Часть 4: текст пуша = событие + сумма + маршрут.
                 title = f"💰 Ставка {money}"
                 text = f"{money} · {row['from_city']}→{row['to_city']}"
@@ -1212,7 +1216,8 @@ def create_bid(body: BidIn, user=Depends(require_level(1))):
                     )
                 except Exception:
                     created_room_id = None
-                bid_url = f"/chats/{created_room_id}" if created_room_id else f"/trips/{body.trip_id}?bid={bid_id}"
+                # «Дом заказа»: пуш → карточка рейса (см. коммент выше).
+                bid_url = f"/trips/{body.trip_id}?bid={bid_id}"
                 title = f"📦 Заказ {money}"
                 text = f"{money} · {row['from_city']}→{row['to_city']}"
                 post_notifs.append((row["driver_id"], title, text, "📦", bid_url, True))
@@ -1869,10 +1874,16 @@ def accept_bid(bid_id: str, user=Depends(require_level(1))):
         _record_price_event(c, bid_id, user["id"], "owner", bid["amount"], "accepted", None)
         _cur = _bid_currency(c, bid)   # валюта ставки для текста уведомления
 
-    # PR-B (P0-B): notification bidder'у со ссылкой на сделку, а не root "/".
-    # _finalize_accept_inline уже создал deal + chat_room — даём прямую
-    # ссылку на /deals/{id} чтобы фронт открыл сделку с активным чатом.
-    deal_url = f"/deals/{result['deal_id']}"
+    # «Дом заказа» (02.08.2026): пуш о принятой ставке ведёт в карточку
+    # заказа (там сверху блок сделки + прогресс-бар + кнопка «💬 Открыть
+    # чат»), а не в Deal Room. Так и статус доставки, и контакт с
+    # контрагентом всегда в одном месте.
+    if bid.get("cargo_id"):
+        deal_url = f"/cargos/{bid['cargo_id']}"
+    elif bid.get("trip_id"):
+        deal_url = f"/trips/{bid['trip_id']}"
+    else:
+        deal_url = f"/deals/{result['deal_id']}"
     title = "✅ Ставка принята!"
     text = f"Ваше предложение {_money(bid['amount'], _cur)} принято! Сделка создана."
     try:
@@ -2079,12 +2090,15 @@ def reject_bid(bid_id: str, user=Depends(require_level(1))):
             )
         except Exception:
             _rr = None
-    if _rr:
-        back_url = f"/chats/{_rr}"
-    elif bid.get("cargo_id"):
+    # «Дом заказа»: биддер попадает в карточку СВОЕЙ ставки (груз/рейс),
+    # а не в чат — там сразу видно, что ставка отклонена, и можно поставить
+    # новую или уйти. Чат — фолбэк, если по какой-то причине нет id.
+    if bid.get("cargo_id"):
         back_url = f"/cargos/{bid['cargo_id']}"
     elif bid.get("trip_id"):
         back_url = f"/trips/{bid['trip_id']}"
+    elif _rr:
+        back_url = f"/chats/{_rr}"
     else:
         back_url = "/"
     body_text = f"Ваше предложение {_money(bid['amount'], _cur)} отклонено"
@@ -2133,13 +2147,15 @@ def counter_bid(bid_id: str, body: BidCounterIn, user=Depends(require_level(1)))
             _counter_room = None
         updated = dict(c.execute("SELECT * FROM bids WHERE id = ?", (bid_id,)).fetchone())
 
-    # Часть 4: контр-оффер уводит bidder'а прямо в чат сделки.
-    if _counter_room:
-        counter_url = f"/chats/{_counter_room}"
-    elif bid.get("cargo_id"):
+    # «Дом заказа»: контр-оффер ведёт биддера в карточку заказа (там сверху
+    # плашка «🔁 Встречная цена X — Принять / Своя цена / Отклонить»), а не
+    # сразу в чат. Чат — фолбэк.
+    if bid.get("cargo_id"):
         counter_url = f"/cargos/{bid['cargo_id']}?bid={bid_id}"
     elif bid.get("trip_id"):
         counter_url = f"/trips/{bid['trip_id']}?bid={bid_id}"
+    elif _counter_room:
+        counter_url = f"/chats/{_counter_room}"
     else:
         counter_url = "/"
     with get_conn() as c2:
@@ -2191,7 +2207,13 @@ def accept_counter(bid_id: str, user=Depends(require_level(1))):
     # bidder это водитель; trip-bid → bidder это грузовладелец. Иначе
     # владельцу рейса приходило неверное «Водитель согласился».
     agreed_word = "Водитель" if bid.get("cargo_id") else "Грузовладелец"
-    deal_url = f"/deals/{result['deal_id']}"
+    # «Дом заказа»: пуш о сделке ведёт в карточку заказа, а не в Deal Room.
+    if bid.get("cargo_id"):
+        deal_url = f"/cargos/{bid['cargo_id']}"
+    elif bid.get("trip_id"):
+        deal_url = f"/trips/{bid['trip_id']}"
+    else:
+        deal_url = f"/deals/{result['deal_id']}"
     with get_conn() as c2:
         cur = _bid_currency(c2, bid)
     money = _money(counter, cur)
@@ -2414,7 +2436,15 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
                     r = c2.execute(f"SELECT currency FROM {src[0]} WHERE id = ?", (src[1],)).fetchone()
                     cur = ((dict(r).get("currency") if r else None) or "USD")
             body_txt = f"{deal['from_city']}→{deal['to_city']} · {_money(deal['amount'], cur)}"
-            deal_url = f"/deals/{deal_id}"
+            # «Дом заказа»: смена статуса ведёт в карточку заказа с прогресс-
+            # баром отслеживания. Раньше — в Deal Room (чат), но статус ≠
+            # переписка.
+            if deal.get("cargo_id"):
+                deal_url = f"/cargos/{deal['cargo_id']}"
+            elif deal.get("trip_id"):
+                deal_url = f"/trips/{deal['trip_id']}"
+            else:
+                deal_url = f"/deals/{deal_id}"
             try:
                 send_to_user(other_id, labels[new_status], body_txt, url=deal_url)
             except Exception:

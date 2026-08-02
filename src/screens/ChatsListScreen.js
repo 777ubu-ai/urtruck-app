@@ -210,11 +210,21 @@ export default function ChatsListScreen({ navigation, route }) {
     unread.sort(byTime);
     rest.sort(byTime);
     const result = [];
+    // Дом заказа: в «Сделках» сверху единая секция «Активные» — сделки в
+    // работе + живые ставки/контр-офферы. Тап по строке ведёт в карточку
+    // заказа (см. renderDealCard / renderOfferCard). Раньше это была
+    // отдельная под-вкладка «Предложения» — водители путались, где искать.
+    if (dealsMode) {
+      const activeItems = offersSorted;
+      if (activeItems.length) {
+        result.push({ key: 'active', data: activeItems, count: activeItems.length, _kind: 'active' });
+      }
+    }
     if (pinned.length) result.push({ key: 'pinned', data: pinned });
     if (unread.length) result.push({ key: 'unread', count: unread.length, data: unread });
     if (rest.length) result.push({ key: 'rest', data: rest });
     return result;
-  }, [rooms, query, pinnedIds, t, lang]);
+  }, [rooms, query, pinnedIds, offersSorted, dealsMode, t, lang]);
 
   // Убрать предложение из списка: СВОЮ ставку отменяем (cancelBid),
   // входящую отклоняем (rejectBid). У водителя теперь бывают обе:
@@ -251,14 +261,26 @@ export default function ChatsListScreen({ navigation, route }) {
     return [...dealCards, ...sorted];
   }, [offers, deals, seenOffers]);
 
-  // Тап по предложению → комната сделки (торг в BargainCard + переписка).
+  // «Дом заказа»: тап по предложению ведёт в карточку заказа, не в чат.
+  // Раньше карточка предложения открывала Deal Room (чат) — водитель терял
+  // контекст ЗАКАЗА и искал торг в переписке. Кнопка «💬 Открыть чат» есть
+  // на карточке заказа рядом, никто ничего не теряет.
   const openOffer = async (bid) => {
     markOfferSeen(bid.id);
+    if (bid.cargo_id) {
+      navigation.navigate('CargoDetail', { cargoId: bid.cargo_id, bidId: bid.id, role });
+      return;
+    }
+    if (bid.trip_id) {
+      navigation.navigate('TripDetail', { tripId: bid.trip_id, bidId: bid.id, role });
+      return;
+    }
+    // Фолбэк для очень старых ставок без cargo_id/trip_id (не должно быть).
     try {
       const r = await marketAPI.openBidChat(bid.id);
       const roomId = r && (r.chat_room_id || r.chatRoomId);
       if (r && r.ok && roomId) {
-        navigation.navigate('Chat', { roomId, role, cargoId: bid.cargo_id, tripId: bid.trip_id, bidId: bid.id });
+        navigation.navigate('Chat', { roomId, role, bidId: bid.id });
       } else {
         toast((r && r.detail) || t('chat_open_failed'), 'error');
       }
@@ -347,8 +369,14 @@ export default function ChatsListScreen({ navigation, route }) {
         testID="deals-deal-card"
         style={[s.card, { backgroundColor: theme.card, borderColor: statusColor, borderWidth: 1.5 }]}
         onPress={() => {
-          if (deal.chat_room_id) {
-            navigation.navigate('Chat', { roomId: deal.chat_room_id, dealId: deal.id, role, cargoId: deal.cargo_id, tripId: deal.trip_id });
+          // «Дом заказа»: тап по сделке — в карточку заказа (там прогресс-бар,
+          // статусы, кнопка «💬 Открыть чат»), а не сразу в чат.
+          if (deal.cargo_id) {
+            navigation.navigate('CargoDetail', { cargoId: deal.cargo_id, dealId: deal.id, role });
+          } else if (deal.trip_id) {
+            navigation.navigate('TripDetail', { tripId: deal.trip_id, dealId: deal.id, role });
+          } else if (deal.chat_room_id) {
+            navigation.navigate('Chat', { roomId: deal.chat_room_id, dealId: deal.id, role });
           }
         }}
         activeOpacity={0.85}
@@ -381,9 +409,11 @@ export default function ChatsListScreen({ navigation, route }) {
     );
   };
 
-  // UX 26.07: два раздела кнопками слева-справа (приказ владельца) —
-  // «Предложения (N)» и «Чаты». Показ прилепленной секции над списком убран.
-  const showOffersSeg = dealsMode && seg === 'offers';
+  // Дом заказа 02.08.2026 (приказ владельца): «Предложения» и «Чаты»
+  // объединены в единый список. Одна строка = одна связка «заказ+контрагент».
+  // Сегмент оставлен только на fallback для не-dealsMode путей, но в UI не
+  // показывается. showOffersSeg = false всегда (используем секции).
+  const showOffersSeg = false;
 
   // Декластер 27.07 (спека владельца): карточка компактнее (~-20% высоты),
   // жирным только имя / цена / счётчик непрочитанных; роль — маленькой серой
@@ -397,6 +427,11 @@ export default function ChatsListScreen({ navigation, route }) {
     cancelled: '#EF4444', rejected: '#EF4444', expired: '#94A3B8',
   };
   const renderItem = ({ item, section }) => {
+    // Дом заказа: секция «Активные» рендерит карточки предложений/сделок,
+    // а не строки чата. Остальные секции — обычные строки переписки.
+    if (section?.key === 'active') {
+      return item._isDeal ? renderDealCard(item) : renderOfferCard(item);
+    }
     const isPinned = section?.key === 'pinned';
     const partnerName = prettifyPartnerName(item.partner_name, item.partner_id, t);
     const isSupport = item.is_support || item.partner_role === 'support' || item.partner_id === 'urtruck-support-bot';
@@ -413,7 +448,23 @@ export default function ChatsListScreen({ navigation, route }) {
       <TouchableOpacity
         testID="deal-room-list-card"
         style={[s.card, { backgroundColor: theme.card, borderColor: isPinned ? accent + '66' : theme.border }]}
-        onPress={() => navigation.navigate('Chat', { partner: { id: item.partner_id || item.id, name: partnerName }, roomId: item.id, dealId: item.deal_id, role })}
+        onPress={() => {
+          // «Дом заказа» (dealsMode): тап по строке — в карточку заказа, где
+          // сверху блок торга/сделки и кнопка «💬 Открыть чат» рядом. Обычный
+          // экран «Чаты» продолжает вести в переписку (переписка = переписка).
+          // Support-строка (Data Room / бот поддержки) всегда идёт в чат.
+          if (dealsMode && !isSupport) {
+            if (item.cargo_id) {
+              navigation.navigate('CargoDetail', { cargoId: item.cargo_id, dealId: item.deal_id, role });
+              return;
+            }
+            if (item.trip_id) {
+              navigation.navigate('TripDetail', { tripId: item.trip_id, dealId: item.deal_id, role });
+              return;
+            }
+          }
+          navigation.navigate('Chat', { partner: { id: item.partner_id || item.id, name: partnerName }, roomId: item.id, dealId: item.deal_id, role });
+        }}
         onLongPress={() => {
           const id = String(item.id);
           const wasPinned = pinnedIds.includes(id);
@@ -484,36 +535,9 @@ export default function ChatsListScreen({ navigation, route }) {
         <HeaderMenuButton navigation={navigation} role={role} testID="chats-menu-btn" />
       </View>
 
-      {/* UX 26.07: два раздела кнопками слева-справа. Слева — стол
-          переговоров (живые ставки), справа — вся переписка. */}
-      {dealsMode ? (
-        <View style={[s.segWrap, { backgroundColor: theme.card, borderColor: theme.border }]} testID="deals-seg">
-          <TouchableOpacity
-            style={[s.segBtn, seg === 'offers' && { backgroundColor: accent }]}
-            onPress={() => setSeg('offers')}
-            testID="deals-seg-offers"
-          >
-            <Text style={[s.segTxt, { color: seg === 'offers' ? '#0C0A09' : theme.textMuted }]}>{t('tab_offers')}</Text>
-            {(offers.length + deals.length) > 0 ? (
-              <View style={[s.segBadge, { backgroundColor: seg === 'offers' ? '#0C0A09' : '#FF8400' }]}>
-                <Text style={[s.segBadgeTxt, { color: seg === 'offers' ? accent : '#FFF' }]}>{offers.length + deals.length}</Text>
-              </View>
-            ) : null}
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[s.segBtn, seg === 'chats' && { backgroundColor: accent }]}
-            onPress={() => setSeg('chats')}
-            testID="deals-seg-chats"
-          >
-            <Text style={[s.segTxt, { color: seg === 'chats' ? '#0C0A09' : theme.textMuted }]}>{t('tab_chats')}</Text>
-            {unreadRoomsCount > 0 ? (
-              <View style={[s.segBadge, { backgroundColor: seg === 'chats' ? '#0C0A09' : '#EF4444' }]}>
-                <Text style={[s.segBadgeTxt, { color: seg === 'chats' ? accent : '#FFF' }]}>{unreadRoomsCount}</Text>
-              </View>
-            ) : null}
-          </TouchableOpacity>
-        </View>
-      ) : null}
+      {/* Дом заказа 02.08: сегмент «Предложения / Чаты» убран. Единый список
+          с секцией «Активные» сверху (см. sections в useMemo). Иначе водители
+          путались, где искать торг — он был и там, и там. */}
 
       {!showOffersSeg ? (
         <View style={[s.search, { backgroundColor: theme.card, borderColor: theme.border }]}>
@@ -548,12 +572,14 @@ export default function ChatsListScreen({ navigation, route }) {
           renderItem={renderItem}
           renderSectionHeader={({ section }) => (
             <View style={s.sectionRow}>
+              {section.key === 'active' ? <MaterialCommunityIcons name="handshake-outline" size={14} color={accent} /> : null}
               {section.key === 'pinned' ? <Feather name="map-pin" size={13} color={theme.textMuted} /> : null}
               {section.key === 'unread' ? <View style={[s.sectionDot, { backgroundColor: '#FF8400' }]} /> : null}
-              <Text style={[s.sectionLabel, { color: theme.textMuted }]}>
-                {section.key === 'pinned' ? t('section_pinned')
+              <Text style={[s.sectionLabel, { color: section.key === 'active' ? accent : theme.textMuted }]}>
+                {section.key === 'active' ? `${t('deals_section_active')} (${section.count})`
+                 : section.key === 'pinned' ? t('section_pinned')
                  : section.key === 'unread' ? `${t('section_new')} (${section.count})`
-                 : t('section_earlier')}
+                 : (dealsMode ? t('deals_section_conversations') : t('section_earlier'))}
               </Text>
             </View>
           )}
