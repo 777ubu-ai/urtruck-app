@@ -251,7 +251,7 @@ export default function ChatsListScreen({ navigation, route }) {
       const r = await marketAPI.openBidChat(bid.id);
       const roomId = r && (r.chat_room_id || r.chatRoomId);
       if (r && r.ok && roomId) {
-        navigation.navigate('Chat', { roomId, role, cargoId: bid.cargo_id, bidId: bid.id });
+        navigation.navigate('Chat', { roomId, role, cargoId: bid.cargo_id, tripId: bid.trip_id, bidId: bid.id });
       } else {
         toast((r && r.detail) || t('chat_open_failed'), 'error');
       }
@@ -286,13 +286,13 @@ export default function ChatsListScreen({ navigation, route }) {
         <View style={{ flex: 1 }}>
           <View style={s.row}>
             <Text style={[s.name, { color: theme.text, fontWeight: seen ? '600' : '800' }]} numberOfLines={1}>
-              {localizePlace(bid.cargo_from || '—', lang)} → {localizePlace(bid.cargo_to || '—', lang)}
+              {localizePlace(bid.cargo_from || bid.trip_from || '—', lang)} → {localizePlace(bid.cargo_to || bid.trip_to || '—', lang)}
             </Text>
             {time ? <Text style={[s.time, { color: theme.textDim }]}>{time}</Text> : null}
           </View>
-          {bid.cargo_desc ? (
+          {(bid.cargo_desc || bid.trip_desc) ? (
             <Text style={[s.preview, { color: theme.textMuted }]} numberOfLines={1}>
-              {localizeCargoName(bid.cargo_desc, lang)}
+              {localizeCargoName(bid.cargo_desc || bid.trip_desc, lang)}
             </Text>
           ) : null}
           <View style={s.row}>
@@ -509,7 +509,7 @@ export default function ChatsListScreen({ navigation, route }) {
 const s = StyleSheet.create({
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingTop: 6, paddingBottom: 8 },
   title: { fontSize: 22, fontWeight: '900' },
-  search: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 12, paddingHorizontal: 12, height: 44, borderRadius: 12, borderWidth: 1 },
+  search: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 12, marginBottom: 4, paddingHorizontal: 12, height: 44, borderRadius: 12, borderWidth: 1 },
   searchInput: { flex: 1, fontSize: 14, paddingVertical: 0 },
   sectionRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 10, paddingBottom: 6 },
   sectionDot: { width: 8, height: 8, borderRadius: 4 },

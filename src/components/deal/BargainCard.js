@@ -85,7 +85,7 @@ export default function BargainCard({ cargoId, tripId, myUserId, onOpenModal, on
   const current = bid.status === 'countered' && bid.counter_amount ? bid.counter_amount : bid.amount;
   const statusLabel =
     bid.status === 'countered' ? t('bargain_countered')
-    : bid.status === 'pending' ? t('bargain_pending')
+    : bid.status === 'pending' ? (isOwner ? (t('bargain_incoming') || t('bargain_pending')) : t('bargain_pending'))
     : bid.status;
 
   const s = styles(v1);
