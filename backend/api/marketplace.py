@@ -2222,7 +2222,7 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
         elif new_status == "cancelled" and deal["cargo_id"]:
             c.execute("UPDATE cargos SET status = 'active', taken_by = NULL WHERE id = ?", (deal["cargo_id"],))
         # Синхронизация trip status при смене deal status
-        _DEAL_TO_TRIP = {"in_progress": "in_transit", "delivered": "delivered", "cancelled": "cancelled"}
+        _DEAL_TO_TRIP = {"in_progress": "in_transit", "at_border": "in_transit", "delivered": "delivered", "cancelled": "cancelled"}
         if deal.get("trip_id") and new_status in _DEAL_TO_TRIP:
             c.execute("UPDATE trips SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                        (_DEAL_TO_TRIP[new_status], deal["trip_id"]))
