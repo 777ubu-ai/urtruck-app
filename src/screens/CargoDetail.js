@@ -40,6 +40,10 @@ import SectionTitle from '../components/ui/v1/SectionTitle';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
 import StickyCTABar from '../components/ui/v1/StickyCTABar';
 import { DealStatusTimeline } from '../components/deal/DealRoom';
+import PrimaryCTA from '../components/ui/actions/PrimaryCTA';
+import SecondaryButton from '../components/ui/actions/SecondaryButton';
+import DestructiveButton from '../components/ui/actions/DestructiveButton';
+import PriceSavingsBadge from '../components/deal/PriceSavingsBadge';
 
 const FLAGS = { KZ: '🇰🇿', UZ: '🇺🇿', RU: '🇷🇺', KG: '🇰🇬', CN: '🇨🇳', TJ: '🇹🇯', TR: '🇹🇷', TM: '🇹🇲', MN: '🇲🇳', DE: '🇩🇪', FR: '🇫🇷' };
 
@@ -597,50 +601,25 @@ export default function CargoDetail({ navigation, route }) {
               <View style={{ alignItems: 'flex-end' }}>
                 <Text style={s.bidAmt}>{formatPrice(b.amount, c.currency || 'USD', t)}</Text>
 
-                {/* Cargo owner — pending: Reject / Counter / Accept / Open chat */}
+                {/* Дизайн-система 2026 (приказ владельца 02.08):
+                    Одна главная кнопка (56px, role-accent) + пара вторичных
+                    (48px) + деструктив (48px, контур). Иерархия: Принять →
+                    Чат/Торг → Отклонить. Заменяет предыдущую «стену из 4
+                    одинаковых кнопок». Savings-badge показывает выгоду цены.
+                    После accept — success-state (semantic green #22C55E,
+                    отличный от driver-акцента). */}
                 {c.isMine && b.status === 'pending' && !hasAccepted && (
-                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                    <TouchableOpacity
-                      testID="bid-reject"
-                      style={[s.rejectBtn, rejecting === b.id && { opacity: 0.5 }]}
-                      onPress={async () => {
-                        setRejecting(b.id);
-                        try {
-                          const r = await marketAPI.rejectBid(b.id);
-                          if (r.ok) {
-                            toast('❌ ' + t('bid_rejected_toast'), 'success');
-                            loadBids();
-                          } else {
-                            toast(r.detail || t('reject_failed'), 'error');
-                          }
-                        } catch {
-                          toast(t('no_connection'), 'error');
-                        }
-                        setRejecting(null);
-                      }}
-                      disabled={!!rejecting || !!accepting}
-                    >
-                      <Text style={s.rejectBtnText}>{t('reject_btn')}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      testID="bid-counter"
-                      style={[s.miniBtn, { borderColor: '#E06D00' }]}
-                      onPress={() => sendCounter(b)}
-                    >
-                      <Text style={[s.miniBtnText, { color: '#E06D00' }]}>🔁 {t('counter_offer')}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      testID="bid-chat"
-                      style={[s.miniBtn, { borderColor: v1Accent.main }]}
-                      onPress={() => openChatForBid(b)}
-                    >
-                      <Text style={[s.miniBtnText, { color: v1Accent.main }]}>💬 {t('open_bid_chat')}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
+                  <View style={{ marginTop: 10, gap: 8, alignSelf: 'stretch' }}>
+                    <PriceSavingsBadge listingPrice={c.price} bidPrice={b.amount} currency={c.currency || 'USD'} />
+                    <PrimaryCTA
                       testID="bid-accept"
-                      style={[s.acceptBtn, { backgroundColor: v1Accent.main }, accepting === b.id && { opacity: 0.5 }]}
+                      role="client"
+                      icon="✓"
+                      label={accepting === b.id ? '...' : t('accept_bid_btn')}
+                      loading={accepting === b.id}
+                      disabled={!!accepting || !!rejecting}
+                      success={dealStatus === 'accepted' && dealId != null}
                       onPress={async () => {
-                        // Принятие ставки создаёт сделку — подтверждаем.
                         const sum = formatPrice(b.amount, c.currency);
                         const msg = t('accept_bid_confirm').replace('{sum}', sum);
                         const ok = Platform.OS === 'web'
@@ -669,10 +648,47 @@ export default function CargoDetail({ navigation, route }) {
                         }
                         setAccepting(null);
                       }}
+                    />
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      <SecondaryButton
+                        testID="bid-chat"
+                        role="client"
+                        icon="💬"
+                        label={t('open_bid_chat')}
+                        onPress={() => openChatForBid(b)}
+                        disabled={!!accepting || !!rejecting}
+                      />
+                      <SecondaryButton
+                        testID="bid-counter"
+                        role="client"
+                        icon="🔁"
+                        label={t('counter_offer')}
+                        onPress={() => sendCounter(b)}
+                        disabled={!!accepting || !!rejecting}
+                      />
+                    </View>
+                    <DestructiveButton
+                      testID="bid-reject"
+                      icon="✕"
+                      label={t('reject_btn')}
+                      loading={rejecting === b.id}
                       disabled={!!accepting || !!rejecting}
-                    >
-                      <Text style={[s.acceptBtnText, { color: v1Accent.onAccent }]}>{t('accept_bid_btn')}</Text>
-                    </TouchableOpacity>
+                      onPress={async () => {
+                        setRejecting(b.id);
+                        try {
+                          const r = await marketAPI.rejectBid(b.id);
+                          if (r.ok) {
+                            toast('❌ ' + t('bid_rejected_toast'), 'success');
+                            loadBids();
+                          } else {
+                            toast(r.detail || t('reject_failed'), 'error');
+                          }
+                        } catch {
+                          toast(t('no_connection'), 'error');
+                        }
+                        setRejecting(null);
+                      }}
+                    />
                   </View>
                 )}
 
