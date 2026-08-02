@@ -53,6 +53,9 @@ jobs:
           # expo export не копирует корневой .version, поэтому кладём вручную,
           # иначе номер сборки на сайте не обновляется после деплоя.
           cp .version dist/.version
+          # Дубль версии в НЕ-dotfile: nginx на сервере отдаёт /.version → 403
+          # (deny на точечные файлы), поэтому проверяемый по HTTP путь — /version.txt.
+          cp .version dist/version.txt
           # Legal pages (privacy/terms/support) — статические HTML вне SPA.
           # Нужны для App Store / Google Play (рабочий URL политики).
           mkdir -p dist/legal
