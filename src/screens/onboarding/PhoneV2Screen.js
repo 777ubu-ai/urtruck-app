@@ -156,6 +156,23 @@ export default function PhoneV2Screen({ navigation, route }) {
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
+        {/* Back-кнопка 44x44 в SafeArea — по требованию владельца 04.08:
+            «видимая кнопка Назад в левом верхнем углу всех экранов авторизации».
+            Раньше на PhoneV2 её не было — user не мог вернуться на Onboarding. */}
+        {navigation.canGoBack() && (
+          <View style={s.headerRow}>
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              style={s.backBtn}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              testID="phone-v2-back"
+              accessibilityRole="button"
+              accessibilityLabel="back"
+            >
+              <Feather name="arrow-left" size={22} color={brand.textPrimary} />
+            </TouchableOpacity>
+          </View>
+        )}
         <View style={s.content}>
           <Text style={s.logo}>
             <Text style={{ color: brand.logoDark }}>Ur</Text>
@@ -271,34 +288,41 @@ export default function PhoneV2Screen({ navigation, route }) {
             )}
           </TouchableOpacity>
 
-          <View style={s.hintRow}>
-            <Feather name="shield" size={16} color={brand.textSecondary} />
-            <Text style={s.hint}>
+          {/* Инфо-блок: как придёт код. Отдельный контейнер с иконкой,
+              чтобы не путался с юридическим согласием ниже (жалоба 04.08). */}
+          <View style={s.infoBlock}>
+            <Feather name="shield" size={14} color={brand.textSecondary} />
+            <Text style={s.infoText}>
               {mode === 'email' ? t('email_v2_send_hint') : t('phone_v2_send_hint')}
             </Text>
           </View>
         </View>
 
-        <Text style={s.consent}>
-          {t('onb_v2_consent_prefix')}{' '}
-          <Text
-            style={s.consentLink}
-            onPress={() => openLegal('/terms')}
-            accessibilityRole="link"
-            suppressHighlighting
-          >
-            {t('onb_v2_consent_offer')}
+        {/* Юридическое согласие — ОТДЕЛЬНЫЙ блок с чёткой визуальной
+            разделительной линией. Ссылки на оферту и privacy — тапабельные
+            (уже были, но теперь чётко видны). */}
+        <View style={s.consentBlock}>
+          <Text style={s.consent}>
+            {t('onb_v2_consent_prefix')}{' '}
+            <Text
+              style={s.consentLink}
+              onPress={() => openLegal('/legal/terms.html')}
+              accessibilityRole="link"
+              suppressHighlighting
+            >
+              {t('onb_v2_consent_offer')}
+            </Text>
+            {' '}{t('onb_v2_consent_and')}{' '}
+            <Text
+              style={s.consentLink}
+              onPress={() => openLegal('/legal/privacy.html')}
+              accessibilityRole="link"
+              suppressHighlighting
+            >
+              {t('onb_v2_consent_privacy')}
+            </Text>
           </Text>
-          {' '}{t('onb_v2_consent_and')}{' '}
-          <Text
-            style={s.consentLink}
-            onPress={() => openLegal('/privacy')}
-            accessibilityRole="link"
-            suppressHighlighting
-          >
-            {t('onb_v2_consent_privacy')}
-          </Text>
-        </Text>
+        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -309,10 +333,20 @@ const s = StyleSheet.create({
     flex: 1,
     backgroundColor: brand.bg,
   },
+  headerRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingTop: 4,
+  },
+  backBtn: {
+    width: 44, height: 44,
+    borderRadius: 22,
+    alignItems: 'center', justifyContent: 'center',
+  },
   content: {
     flex: 1,
     paddingHorizontal: 20,
-    paddingTop: 24,
+    paddingTop: 12,
   },
   logo: {
     fontSize: 36,
@@ -441,12 +475,36 @@ const s = StyleSheet.create({
     color: brand.textSecondary,
     textAlign: 'center',
   },
+  // Инфо-блок: подсказка о доставке кода. Serif italic → нейтральный
+  // компакт, чтобы не соревновался с consent-блоком внизу.
+  infoBlock: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 12,
+    paddingHorizontal: 12,
+  },
+  infoText: {
+    fontSize: 12,
+    color: brand.textSecondary,
+    textAlign: 'center',
+    flexShrink: 1,
+  },
+  // Юрсогласие: разделительная линия сверху + чуть больше вертикального
+  // воздуха, чтобы точно не путалось с info-блоком.
+  consentBlock: {
+    borderTopWidth: 1,
+    borderTopColor: brand.border,
+    paddingTop: 12,
+    paddingHorizontal: 24,
+    paddingBottom: 16,
+    marginTop: 8,
+  },
   consent: {
     fontSize: 12,
     color: brand.textSecondary,
     textAlign: 'center',
-    paddingHorizontal: 24,
-    paddingBottom: 16,
   },
   consentLink: {
     color: brand.textPrimary,

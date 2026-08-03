@@ -27,6 +27,9 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  AppState,
+  Linking,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
@@ -93,11 +96,40 @@ export default function OtpV2Screen({ navigation, route }) {
     setTimeout(() => inputRef.current?.focus?.(), 250);
   }, []);
 
+  // Возврат из Mail-приложения → возвращаем фокус на скрытое поле,
+  // чтобы iOS показал системную подсказку «Из "Сообщения": XXXX».
+  // Без этого пользователь возвращался с кодом в буфере, но фокуса на
+  // поле не было и подсказка не появлялась.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        setTimeout(() => inputRef.current?.focus?.(), 150);
+      }
+    });
+    return () => sub?.remove?.();
+  }, []);
+
   useEffect(() => {
     if (secondsLeft <= 0) return;
     const id = setInterval(() => setSecondsLeft((v) => Math.max(0, v - 1)), 1000);
     return () => clearInterval(id);
   }, [secondsLeft]);
+
+  // «Открыть почту» — универсальный deeplink на почтовый клиент.
+  // iOS: message:// (Apple Mail) с fallback на Gmail / Outlook.
+  // Android: mailto: → системный picker. Web: no-op (у пользователя браузер).
+  const openMailApp = async () => {
+    if (Platform.OS === 'web') return;
+    const targets = Platform.OS === 'ios'
+      ? ['message://', 'googlegmail://', 'ms-outlook://', 'mailto:']
+      : ['mailto:'];
+    for (const url of targets) {
+      try {
+        const can = await Linking.canOpenURL(url);
+        if (can) { await Linking.openURL(url); return; }
+      } catch {}
+    }
+  };
 
   const onChangeCode = (raw) => {
     const digits = raw.replace(/\D/g, '').slice(0, CODE_LEN);
@@ -210,7 +242,11 @@ export default function OtpV2Screen({ navigation, route }) {
           </Pressable>
         </View>
 
-        <View style={s.content}>
+        <ScrollView
+          contentContainerStyle={s.content}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
           <Text style={s.title}>{t('otp_v2_title')}</Text>
           <Text style={s.subtitle}>
             {isEmail ? t('otp_v2_subtitle_email') : t('otp_v2_subtitle')}
@@ -256,8 +292,14 @@ export default function OtpV2Screen({ navigation, route }) {
             maxLength={CODE_LEN}
             style={s.hiddenInput}
             autoFocus
+            // oneTimeCode + one-time-code = стандарт для iOS/Android/Web:
+            // системная подсказка после прихода письма (iOS Mail →
+            // клавиатура QuickBar подсовывает код автоматически). Раньше
+            // стоял autoComplete="sms-otp" — только Android SMS, для email
+            // не работало.
             textContentType="oneTimeCode"
-            autoComplete="sms-otp"
+            autoComplete="one-time-code"
+            importantForAutofill="yes"
             testID="otp-v2-input"
             editable={!loading}
           />
@@ -289,6 +331,18 @@ export default function OtpV2Screen({ navigation, route }) {
               <Text style={s.ctaPrimaryText}>{t('otp_v2_cta')}</Text>
             )}
           </Pressable>
+
+          {isEmail && Platform.OS !== 'web' && (
+            <Pressable
+              onPress={openMailApp}
+              testID="otp-v2-open-mail"
+              accessibilityRole="button"
+              style={({ pressed }) => [s.openMailBtn, pressed && { opacity: 0.7 }]}
+            >
+              <Feather name="mail" size={16} color={brand.primary} />
+              <Text style={s.openMailText}>{t('otp_v2_open_mail') || 'Открыть почту'}</Text>
+            </Pressable>
+          )}
 
           <View style={s.resendBlock}>
             {secondsLeft > 0 ? (
@@ -322,7 +376,7 @@ export default function OtpV2Screen({ navigation, route }) {
           </View>
 
           <Text style={s.helpText}>{t('otp_v2_help')}</Text>
-        </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -336,13 +390,17 @@ const s = StyleSheet.create({
     paddingTop: 4,
     paddingBottom: 4,
   },
+  // 44×44 — iOS HIG minimum tappable + видимая рамка (не «прозрачный» back
+  // как раньше, когда юзер не понимал где ткнуть).
   backBtn: {
-    width: 40, height: 40,
+    width: 44, height: 44,
     alignItems: 'center', justifyContent: 'center',
+    borderRadius: 22,
   },
   content: {
-    flex: 1,
+    flexGrow: 1,
     paddingHorizontal: 24,
+    paddingBottom: 24,
   },
   title: {
     ...typography.h1,
@@ -431,6 +489,23 @@ const s = StyleSheet.create({
   ctaPrimaryText: {
     ...typography.button,
     color: brand.textOnPrimary,
+  },
+  openMailBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: brand.primary,
+    backgroundColor: 'transparent',
+    marginTop: 10,
+  },
+  openMailText: {
+    color: brand.primary,
+    fontSize: 14,
+    fontWeight: '700',
   },
   resendBlock: {
     alignItems: 'center',
