@@ -1490,7 +1490,7 @@ def my_dashboard(user=Depends(require_level(1))):
             "COALESCE(c.to_country, t.to_country) AS to_country, "
             "t.truck_type AS truck_type, "
             "dr.full_name AS driver_name, sh.full_name AS shipper_name, "
-            "(SELECT m.body FROM chat_messages m WHERE m.room_id = d.chat_room_id "
+            "(SELECT m.text FROM chat_messages m WHERE m.room_id = d.chat_room_id "
             " ORDER BY m.created_at DESC LIMIT 1) AS last_message, "
             "(SELECT m.created_at FROM chat_messages m WHERE m.room_id = d.chat_room_id "
             " ORDER BY m.created_at DESC LIMIT 1) AS last_message_at, "
