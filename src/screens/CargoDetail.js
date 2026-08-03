@@ -15,7 +15,7 @@ function DealActionLabel({ icon, text, color, loading }) {
   );
 }
 const dealLblStyle = { fontSize: 13, fontWeight: '700' };
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
 import { formatBids, t as tGlobal } from '../utils/i18n';
 import { useTheme } from '../utils/ThemeContext';
@@ -221,7 +221,7 @@ export default function CargoDetail({ navigation, route }) {
       .then(d => {
         const mapped = (d.bids || []).map(b => ({
           id: b.id, bidderId: b.bidder_id,
-          name: b.bidder_name || b.bidder_phone || t('anonymous'),
+          name: b.bidder_name || b.bidder_phone || t('driver'),
           // Реальные данные оферента с бэка (list_bids обогащает) —
           // клиент видит рейтинг/верификацию, а не принимает вслепую.
           co: 'KZ',
@@ -252,24 +252,6 @@ export default function CargoDetail({ navigation, route }) {
         }
       })
       .catch(() => {});
-  };
-
-  const openChatForBid = async (bid) => {
-    try {
-      const r = await marketAPI.openBidChat(bid.id);
-      if (r.ok) {
-        const roomId = r.chat_room_id || r.chatRoomId;
-        if (roomId) {
-          navigation.navigate('Chat', { roomId, role });
-        } else {
-          toast(t('chat_open_failed'), 'error');
-        }
-      } else {
-        toast(r.detail || t('chat_open_failed'), 'error');
-      }
-    } catch {
-      toast(t('no_connection'), 'error');
-    }
   };
 
   const sendCounter = (bid) => {
@@ -406,20 +388,6 @@ export default function CargoDetail({ navigation, route }) {
       default:          return t('my_bid_status_pending')   || 'Ожидает ответа клиента';
     }
   }, [myPendingBid, t]);
-  const openMyBidChat = React.useCallback(async () => {
-    if (!myPendingBid) return;
-    try {
-      const r = await marketAPI.openBidChat(myPendingBid.id);
-      if (r?.ok && r.chat_room_id) {
-        navigation.navigate('Chat', {
-          roomId: r.chat_room_id,
-          partner: r.partner_id ? { id: r.partner_id, name: r.partner_name, role: r.partner_role } : undefined,
-        });
-      } else {
-        toast(r?.detail || t('no_connection'), 'error');
-      }
-    } catch { toast(t('no_connection'), 'error'); }
-  }, [myPendingBid, navigation, toast, t]);
   const safePhotos = (c.photos || []).filter(p => typeof p === 'string' && !p.startsWith('data:') && p.length < 1000);
   const dash = t('not_specified');
 
@@ -433,6 +401,7 @@ export default function CargoDetail({ navigation, route }) {
   // акцент роль-семантический: client → жёлтый #FF8400, driver → неон #00E676.
   // Раньше был хардкод #22C55E (зелёный) на всех поверхностях, в т.ч. клиентских.
   const dealAccent = v1AccentFor(isDriverSide ? 'driver' : 'client');
+  const insets = useSafeAreaInsets();
 
   return (
     <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
@@ -442,7 +411,7 @@ export default function CargoDetail({ navigation, route }) {
         accent={v1Accent.main}
         rightTestID="cargo-share-btn"
       />
-      <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 0, paddingBottom: 60 }}>
+      <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 0, paddingBottom: 60 + insets.bottom }}>
         {/* Stage 17: dropped the leading 📦 — Stage 16 quiet visual
             language already removed the bright route emoji from
             feed cards; the detail title should match. */}
@@ -605,84 +574,84 @@ export default function CargoDetail({ navigation, route }) {
                     одинаковых кнопок». Savings-badge показывает выгоду цены.
                     После accept — success-state (semantic green #22C55E,
                     отличный от driver-акцента). */}
-                {/* Дизайн 2026 v2 (приказ владельца 03.08 «две кнопки, вот и всё»):
-                    только [Принять $X] [Отклонить]. Чат и «Своя цена» —
-                    маленькие ссылки под кнопками, не полноразмерные кнопки. */}
+                {/* Дизайн 2026 v3 (приказ владельца 03.08, скриншоты): до
+                    создания сделки — никакого чата. Иерархия — одна большая
+                    «Принять», вторичная «Предложить свою цену», текстовый
+                    «Отклонить». */}
                 {c.isMine && b.status === 'pending' && !hasAccepted && (
                   <View style={{ marginTop: 10, gap: 6, alignSelf: 'stretch' }}>
                     <PriceSavingsBadge listingPrice={c.price} bidPrice={b.amount} currency={c.currency || 'USD'} />
-                    <View style={{ flexDirection: 'row', gap: 8 }}>
-                      <PrimaryCTA
-                        testID="bid-accept"
-                        role="client"
-                        icon="✓"
-                        label={`${t('accept_bid_btn')} ${formatPrice(b.amount, c.currency || 'USD', t)}`}
-                        loading={accepting === b.id}
-                        disabled={!!accepting || !!rejecting}
-                        success={dealStatus === 'accepted' && dealId != null}
-                        style={{ flex: 1 }}
-                        onPress={async () => {
-                          const sum = formatPrice(b.amount, c.currency);
-                          const msg = t('accept_bid_confirm').replace('{sum}', sum);
-                          const ok = Platform.OS === 'web'
-                            ? (typeof window !== 'undefined' && window.confirm(msg))
-                            : await new Promise((res) => Alert.alert(
-                                t('accept_bid_confirm_title'), msg,
-                                [
-                                  { text: t('cancel'), style: 'cancel', onPress: () => res(false) },
-                                  { text: t('accept_bid_btn'), onPress: () => res(true) },
-                                ],
-                              ));
-                          if (!ok) return;
-                          setAccepting(b.id);
-                          try {
-                            const r = await marketAPI.acceptBid(b.id);
-                            if (r.ok) {
-                              toast('✓ ' + t('driver_chosen'), 'success');
-                              if (r.chat_room_id) setChatRoomId(r.chat_room_id);
-                              if (r.deal_id) { setDealId(r.deal_id); setDealStatus('accepted'); }
-                              loadBids();
-                            } else {
-                              toast(r.detail || t('accept_failed'), 'error');
-                            }
-                          } catch {
-                            toast(t('no_connection'), 'error');
+                    <PrimaryCTA
+                      testID="bid-accept"
+                      role="client"
+                      icon="✓"
+                      label={`${t('accept_bid_btn')} ${formatPrice(b.amount, c.currency || 'USD', t)}`}
+                      loading={accepting === b.id}
+                      disabled={!!accepting || !!rejecting}
+                      success={dealStatus === 'accepted' && dealId != null}
+                      onPress={async () => {
+                        const sum = formatPrice(b.amount, c.currency);
+                        const msg = t('accept_bid_confirm').replace('{sum}', sum);
+                        const ok = Platform.OS === 'web'
+                          ? (typeof window !== 'undefined' && window.confirm(msg))
+                          : await new Promise((res) => Alert.alert(
+                              t('accept_bid_confirm_title'), msg,
+                              [
+                                { text: t('cancel'), style: 'cancel', onPress: () => res(false) },
+                                { text: t('accept_bid_btn'), onPress: () => res(true) },
+                              ],
+                            ));
+                        if (!ok) return;
+                        setAccepting(b.id);
+                        try {
+                          const r = await marketAPI.acceptBid(b.id);
+                          if (r.ok) {
+                            toast('✓ ' + t('driver_chosen'), 'success');
+                            if (r.chat_room_id) setChatRoomId(r.chat_room_id);
+                            if (r.deal_id) { setDealId(r.deal_id); setDealStatus('accepted'); }
+                            loadBids();
+                          } else {
+                            toast(r.detail || t('accept_failed'), 'error');
                           }
-                          setAccepting(null);
-                        }}
-                      />
-                      <DestructiveButton
-                        testID="bid-reject"
-                        icon="✕"
-                        label={t('reject_btn')}
-                        loading={rejecting === b.id}
-                        disabled={!!accepting || !!rejecting}
-                        style={{ flex: 1 }}
-                        onPress={async () => {
-                          setRejecting(b.id);
-                          try {
-                            const r = await marketAPI.rejectBid(b.id);
-                            if (r.ok) {
-                              toast('❌ ' + t('bid_rejected_toast'), 'success');
-                              loadBids();
-                            } else {
-                              toast(r.detail || t('reject_failed'), 'error');
-                            }
-                          } catch {
-                            toast(t('no_connection'), 'error');
+                        } catch {
+                          toast(t('no_connection'), 'error');
+                        }
+                        setAccepting(null);
+                      }}
+                    />
+                    <SecondaryButton
+                      testID="bid-counter"
+                      role="client"
+                      icon="🔁"
+                      label={t('counter_offer')}
+                      disabled={!!accepting || !!rejecting}
+                      onPress={() => sendCounter(b)}
+                    />
+                    <TouchableOpacity
+                      testID="bid-reject"
+                      onPress={async () => {
+                        setRejecting(b.id);
+                        try {
+                          const r = await marketAPI.rejectBid(b.id);
+                          if (r.ok) {
+                            toast('❌ ' + t('bid_rejected_toast'), 'success');
+                            loadBids();
+                          } else {
+                            toast(r.detail || t('reject_failed'), 'error');
                           }
-                          setRejecting(null);
-                        }}
-                      />
-                    </View>
-                    <View style={{ flexDirection: 'row', gap: 18, justifyContent: 'center', marginTop: 4 }}>
-                      <TouchableOpacity onPress={() => openChatForBid(b)} testID="bid-chat" hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                        <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '600' }}>💬 {t('open_chat') || 'Чат'}</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={() => sendCounter(b)} testID="bid-counter" hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                        <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '600' }}>🔁 {t('counter_offer')}</Text>
-                      </TouchableOpacity>
-                    </View>
+                        } catch {
+                          toast(t('no_connection'), 'error');
+                        }
+                        setRejecting(null);
+                      }}
+                      disabled={!!accepting || !!rejecting}
+                      style={{ alignSelf: 'center', paddingVertical: 6, paddingHorizontal: 10 }}
+                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                    >
+                      <Text style={{ color: '#EF4444', fontSize: 13, fontWeight: '700', opacity: (accepting || rejecting) ? 0.55 : 1 }}>
+                        {rejecting === b.id ? '…' : t('reject_btn')}
+                      </Text>
+                    </TouchableOpacity>
                   </View>
                 )}
 
@@ -753,16 +722,11 @@ export default function CargoDetail({ navigation, route }) {
                         }}
                       />
                     </View>
-                    <View style={{ flexDirection: 'row', gap: 18, justifyContent: 'center', marginTop: 4 }}>
-                      <TouchableOpacity onPress={() => openChatForBid(b)} testID="bid-chat" hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                        <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '600' }}>💬 {t('open_chat') || 'Чат'}</Text>
-                      </TouchableOpacity>
-                    </View>
                   </View>
                 )}
 
                 {/* Водитель + countered: primary = «Принять контр $X» (driver
-                    green), Chat + Destructive Decline. */}
+                    green), Destructive Decline. Чат — только после сделки. */}
                 {b.isMine && !c.isMine && isCountered && (
                   <View style={{ marginTop: 10, gap: 8, alignSelf: 'stretch' }}>
                     <PrimaryCTA
@@ -771,13 +735,6 @@ export default function CargoDetail({ navigation, route }) {
                       icon="✓"
                       label={`${t('accept_counter')} ${formatPrice(b.counterAmount, c.currency || 'USD', t)}`}
                       onPress={() => acceptCounter(b)}
-                    />
-                    <SecondaryButton
-                      testID="bid-chat"
-                      role="driver"
-                      icon="💬"
-                      label={t('open_bid_chat')}
-                      onPress={() => openChatForBid(b)}
                     />
                     <DestructiveButton
                       testID="bid-decline-counter"
@@ -792,28 +749,18 @@ export default function CargoDetail({ navigation, route }) {
                     клиента), только Edit + Chat + Destructive Cancel. */}
                 {b.isMine && !c.isMine && b.status === 'pending' && !hasAccepted && (
                   <View style={{ marginTop: 10, gap: 8, alignSelf: 'stretch' }}>
-                    <View style={{ flexDirection: 'row', gap: 8 }}>
-                      <SecondaryButton
-                        testID="bid-edit"
-                        role="driver"
-                        icon="✏️"
-                        label={t('edit_bid')}
-                        onPress={() => {
-                          setEditingBid(b);
-                          setBidModalMode('edit');
-                          setBidModal(true);
-                        }}
-                        disabled={!!cancelling}
-                      />
-                      <SecondaryButton
-                        testID="bid-chat"
-                        role="driver"
-                        icon="💬"
-                        label={t('open_bid_chat')}
-                        onPress={() => openChatForBid(b)}
-                        disabled={!!cancelling}
-                      />
-                    </View>
+                    <SecondaryButton
+                      testID="bid-edit"
+                      role="driver"
+                      icon="✏️"
+                      label={t('edit_bid')}
+                      onPress={() => {
+                        setEditingBid(b);
+                        setBidModalMode('edit');
+                        setBidModal(true);
+                      }}
+                      disabled={!!cancelling}
+                    />
                     <DestructiveButton
                       testID="bid-cancel"
                       icon="⊘"
@@ -882,13 +829,6 @@ export default function CargoDetail({ navigation, route }) {
                     label={`${t('accept_counter')} ${formatPrice(myPendingBid.counterAmount, c.currency, t)}`}
                     onPress={() => acceptCounter(myPendingBid)}
                   />
-                  <SecondaryButton
-                    testID="cargo-my-bid-chat"
-                    role="driver"
-                    icon="💬"
-                    label={t('open_chat') || 'Чат'}
-                    onPress={openMyBidChat}
-                  />
                   <DestructiveButton
                     testID="cargo-counter-decline"
                     icon="↩"
@@ -900,25 +840,15 @@ export default function CargoDetail({ navigation, route }) {
             ) : (
               <View style={{ marginTop: 8, gap: 8 }}>
                 {/* Водитель + своя ставка pending: primary НЕТ (ждём хода
-                    клиента). Edit + Chat в паре, Cancel как destructive. */}
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <SecondaryButton
-                    testID="cargo-my-bid-edit"
-                    role="driver"
-                    icon="✏️"
-                    label={t('edit_bid') || 'Изменить'}
-                    onPress={() => { setEditingBid(myPendingBid); setBidModalMode('edit'); setBidModal(true); }}
-                    disabled={cancelling === myPendingBid.id}
-                  />
-                  <SecondaryButton
-                    testID="cargo-my-bid-chat"
-                    role="driver"
-                    icon="💬"
-                    label={t('open_chat') || 'Чат'}
-                    onPress={openMyBidChat}
-                    disabled={cancelling === myPendingBid.id}
-                  />
-                </View>
+                    клиента). Чат — только после сделки. */}
+                <SecondaryButton
+                  testID="cargo-my-bid-edit"
+                  role="driver"
+                  icon="✏️"
+                  label={t('edit_bid') || 'Изменить'}
+                  onPress={() => { setEditingBid(myPendingBid); setBidModalMode('edit'); setBidModal(true); }}
+                  disabled={cancelling === myPendingBid.id}
+                />
                 <DestructiveButton
                   testID="cargo-my-bid-cancel"
                   icon="⊘"

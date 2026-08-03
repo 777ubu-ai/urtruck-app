@@ -25,6 +25,15 @@ import { localizePlace, localizeCargoName } from '../utils/places';
 import { countryFlag } from '../utils/countryFlags';
 import { prettifyPartnerName } from '../utils/displayName';
 import { accentFor } from '../components/deal/DealRoom';
+import BottomSheet from '../components/ui/v1/BottomSheet';
+import DatePicker from '../components/DatePicker';
+
+const BODY_TYPES = ['tent', 'ref', 'platform', 'auto', 'izoterm'];
+// DD.MM.YYYY → YYYYMMDD (сравнимое число); мусор/пусто → null.
+const dateSortKey = (raw) => {
+  const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(String(raw || ''));
+  return m ? Number(`${m[3]}${m[2]}${m[1]}`) : null;
+};
 
 const ROLE_LABEL = { driver: 'role_driver', client: 'role_client', support: 'role_support' };
 const ACTIVE_STATUSES = new Set(['accepted', 'in_progress', 'at_border', 'awaiting_confirmation']);
@@ -59,6 +68,9 @@ export default function ChatsListScreen({ navigation, route }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery] = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filters, setFilters] = useState({ status: null, bodyType: null, dateFrom: '', unreadOnly: false });
+  const filtersActive = !!(filters.status || filters.bodyType || filters.dateFrom || filters.unreadOnly);
 
   // ═══ Deals-mode состояние ═══
   const [dealTab, setDealTab] = useState('active');
@@ -522,10 +534,10 @@ export default function ChatsListScreen({ navigation, route }) {
           <Feather name="truck" size={18} color={theme.textMuted} />
           <View>
             <Text style={[s.sectionTitle, { color: theme.text }]}>
-              {t('deals_tab_active') === 'В работе' ? 'Активные перевозки и статусы' : t('deals_tab_active')}
+              {t('deals_active_heading') || t('deals_tab_active')}
             </Text>
             <Text style={[s.sectionSub, { color: theme.textMuted }]}>
-              {lang === 'RU' ? 'Следите за прогрессом текущих сделок' : lang === 'EN' ? 'Track your current deals' : ''}
+              {t('deals_active_subheading')}
             </Text>
           </View>
         </View>
@@ -533,11 +545,38 @@ export default function ChatsListScreen({ navigation, route }) {
     );
   };
 
+  // Сырые данные текущей вкладки (до поиска/фильтров) — на них решаем,
+  // показывать ли иконку фильтра (пустой список → фильтр не нужен).
+  const rawTabData = dealTab === 'offers' ? offersData
+    : dealTab === 'active' ? activeDeals
+    : completedDeals;
+
   // ═══ Deals content ═══
   const renderDealsContent = () => {
-    let data = dealTab === 'offers' ? offersData
-      : dealTab === 'active' ? activeDeals
-      : completedDeals;
+    let data = rawTabData;
+
+    // Фильтры (статус/кузов/дата/непрочитанные) — применяются раньше
+    // текстового поиска. Поле, которого нет у записи, не отфильтровывает
+    // её (например, у входящих ставок нет truck_type).
+    if (filters.status) {
+      data = data.filter((item) => item.status === filters.status);
+    }
+    if (filters.bodyType) {
+      data = data.filter((item) => {
+        const bt = item.cargo_type || item.truck_type;
+        return !bt || bt === filters.bodyType;
+      });
+    }
+    if (filters.dateFrom) {
+      const from = dateSortKey(filters.dateFrom);
+      data = data.filter((item) => {
+        const key = dateSortKey(item.departure || item.pickup_date);
+        return key == null || key >= from;
+      });
+    }
+    if (filters.unreadOnly) {
+      data = data.filter((item) => (item.unread_count || 0) > 0);
+    }
 
     // Поиск по содержимому
     const q = query.trim().toLowerCase();
@@ -587,18 +626,32 @@ export default function ChatsListScreen({ navigation, route }) {
         <HeaderMenuButton navigation={navigation} role={role} testID="chats-menu-btn" />
       </View>
 
-      {/* Поиск — на всех вкладках */}
-      <View style={[s.search, { backgroundColor: theme.card, borderColor: theme.border }]}>
-        <Feather name="search" size={17} color={theme.textMuted} />
-        <TextInput
-          style={[s.searchInput, { color: theme.text }]}
-          placeholder={dealsMode ? (lang === 'RU' ? 'Поиск: водитель, маршрут, груз' : t('chat_search_placeholder')) : t('chat_search_placeholder')}
-          placeholderTextColor={theme.textMuted}
-          value={query}
-          onChangeText={setQuery}
-          testID="deal-room-search"
-        />
-        {query ? <TouchableOpacity onPress={() => setQuery('')}><Feather name="x" size={16} color={theme.textMuted} /></TouchableOpacity> : null}
+      {/* Поиск — на всех вкладках. Кнопка фильтра — только в Сделках и только
+          когда во вкладке есть что фильтровать (правило владельца 03.08:
+          на пустом/коротком списке фильтр — лишний элемент). */}
+      <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 12 }}>
+        <View style={[s.search, { backgroundColor: theme.card, borderColor: theme.border, flex: 1, marginHorizontal: 0 }]}>
+          <Feather name="search" size={17} color={theme.textMuted} />
+          <TextInput
+            style={[s.searchInput, { color: theme.text }]}
+            placeholder={dealsMode ? (lang === 'RU' ? 'Поиск: водитель, маршрут, груз' : t('chat_search_placeholder')) : t('chat_search_placeholder')}
+            placeholderTextColor={theme.textMuted}
+            value={query}
+            onChangeText={setQuery}
+            testID="deal-room-search"
+          />
+          {query ? <TouchableOpacity onPress={() => setQuery('')}><Feather name="x" size={16} color={theme.textMuted} /></TouchableOpacity> : null}
+        </View>
+        {dealsMode && rawTabData.length > 0 ? (
+          <TouchableOpacity
+            testID="deals-filter-btn"
+            onPress={() => setFiltersOpen(true)}
+            style={[s.filterBtn, { backgroundColor: theme.card, borderColor: filtersActive ? accent : theme.border }]}
+          >
+            <Feather name="sliders" size={17} color={filtersActive ? accent : theme.textMuted} />
+            {filtersActive ? <View style={[s.filterDot, { backgroundColor: accent }]} /> : null}
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       {dealsMode ? renderDealTabs() : null}
@@ -629,6 +682,89 @@ export default function ChatsListScreen({ navigation, route }) {
           ListEmptyComponent={<Text style={[s.empty, { color: theme.textMuted }]}>{query ? t('chat_no_results') : t('chats_empty')}</Text>}
         />
       )}
+
+      {dealsMode ? (
+        <BottomSheet
+          visible={filtersOpen}
+          onClose={() => setFiltersOpen(false)}
+          title={t('deals_filters_title')}
+          footer={
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TouchableOpacity
+                testID="deals-filter-reset"
+                onPress={() => setFilters({ status: null, bodyType: null, dateFrom: '', unreadOnly: false })}
+                style={[s.filterFootBtn, { borderColor: theme.border }]}
+              >
+                <Text style={[s.filterFootText, { color: theme.text }]}>{t('reset_filters')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                testID="deals-filter-apply"
+                onPress={() => setFiltersOpen(false)}
+                style={[s.filterFootBtn, { backgroundColor: accent, borderColor: accent }]}
+              >
+                <Text style={[s.filterFootText, { color: '#0A0A0A' }]}>{t('apply_filters')}</Text>
+              </TouchableOpacity>
+            </View>
+          }
+        >
+          {dealTab !== 'offers' ? (
+            <>
+              <Text style={[s.filterLabel, { color: theme.textMuted }]}>{t('filter_status')}</Text>
+              <View style={s.chipsRow}>
+                {(dealTab === 'active'
+                  ? ['accepted', 'in_progress', 'at_border', 'awaiting_confirmation']
+                  : ['completed', 'delivered', 'cancelled']
+                ).map((st) => {
+                  const selected = filters.status === st;
+                  return (
+                    <TouchableOpacity
+                      key={st}
+                      testID={`deals-filter-status-${st}`}
+                      onPress={() => setFilters((f) => ({ ...f, status: f.status === st ? null : st }))}
+                      style={[s.chip, { borderColor: selected ? accent : theme.border, backgroundColor: selected ? accent + '18' : 'transparent' }]}
+                    >
+                      <Text style={{ color: selected ? accent : theme.text, fontSize: 13, fontWeight: '600' }}>{STATUS_LABEL[st]}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </>
+          ) : null}
+
+          <Text style={[s.filterLabel, { color: theme.textMuted }]}>{t('filter_body_type')}</Text>
+          <View style={s.chipsRow}>
+            {BODY_TYPES.map((bt) => {
+              const selected = filters.bodyType === bt;
+              return (
+                <TouchableOpacity
+                  key={bt}
+                  testID={`deals-filter-body-${bt}`}
+                  onPress={() => setFilters((f) => ({ ...f, bodyType: f.bodyType === bt ? null : bt }))}
+                  style={[s.chip, { borderColor: selected ? accent : theme.border, backgroundColor: selected ? accent + '18' : 'transparent' }]}
+                >
+                  <Text style={{ color: selected ? accent : theme.text, fontSize: 13, fontWeight: '600' }}>{t(bt)}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <Text style={[s.filterLabel, { color: theme.textMuted }]}>{t('filter_date_from')}</Text>
+          <DatePicker
+            value={filters.dateFrom}
+            onChange={(v) => setFilters((f) => ({ ...f, dateFrom: v }))}
+            placeholder={t('filter_date_from')}
+          />
+
+          <TouchableOpacity
+            testID="deals-filter-unread"
+            onPress={() => setFilters((f) => ({ ...f, unreadOnly: !f.unreadOnly }))}
+            style={s.unreadRow}
+          >
+            <Feather name={filters.unreadOnly ? 'check-square' : 'square'} size={19} color={filters.unreadOnly ? accent : theme.textMuted} />
+            <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600' }}>{t('filter_unread_only')}</Text>
+          </TouchableOpacity>
+        </BottomSheet>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -639,6 +775,15 @@ const s = StyleSheet.create({
   // Поиск
   search: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 12, marginBottom: 8, paddingHorizontal: 12, height: 44, borderRadius: 12, borderWidth: 1 },
   searchInput: { flex: 1, fontSize: 14, paddingVertical: 0 },
+  // Компактная кнопка фильтра справа от поиска
+  filterBtn: { width: 44, height: 44, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  filterDot: { position: 'absolute', top: 7, right: 7, width: 7, height: 7, borderRadius: 4 },
+  filterLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', marginTop: 14, marginBottom: 8 },
+  chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1.5 },
+  unreadRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 16, paddingVertical: 4 },
+  filterFootBtn: { flex: 1, height: 46, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  filterFootText: { fontSize: 14, fontWeight: '700' },
   // Вкладки сделок
   tabBar: { flexDirection: 'row', marginHorizontal: 12, borderBottomWidth: 1, marginBottom: 4 },
   tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderBottomWidth: 2, borderBottomColor: 'transparent' },

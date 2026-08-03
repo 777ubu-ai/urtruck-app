@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, TextInput, StyleSheet, ScrollView, Alert, Platform } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import Feather from '@expo/vector-icons/Feather';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
 import { formatBids } from '../utils/i18n';
 import { useTheme } from '../utils/ThemeContext';
@@ -60,6 +60,8 @@ export default function TripDetail({ navigation, route }) {
   dateLabel: { fontSize: 13, fontWeight: '500' },
   dateValue: { fontSize: 14, fontWeight: '700' },
   primaryBtn: { borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
+  editCompactBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, alignSelf: 'flex-start', paddingHorizontal: 16, height: 38, borderRadius: 10, borderWidth: 1.5, marginTop: 4 },
+  editCompactText: { fontSize: 13, fontWeight: '700' },
   secondaryBtn: { borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 8, borderWidth: 0, backgroundColor: 'rgba(148,163,184,0.14)' },
   secondaryBtnText: { fontSize: 14, fontWeight: '700' },
   primaryBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
@@ -202,7 +204,7 @@ export default function TripDetail({ navigation, route }) {
     marketAPI.listBids({ tripId: tid }).then(d => {
       const mapped = (d.bids || []).map(b => ({
         id: b.id, bidderId: b.bidder_id,
-        name: b.bidder_name || t('anonymous'),
+        name: b.bidder_name || t('shipper_label'),
         rating: b.bidder_rating || 0,
         reviews: b.bidder_reviews_count || 0,
         verified: !!b.bidder_verified,
@@ -336,20 +338,8 @@ export default function TripDetail({ navigation, route }) {
   }, [myActiveBid, counterActing, refreshAll, toast, t]);
 
   // ─── Owner-вид: водитель отвечает на ставки клиентов на СВОЙ рейс ───
-  // (зеркально owner-виду CargoDetail: Отклонить / Встречка / Чат / Принять)
-  const openChatForBid = async (bid) => {
-    try {
-      const r = await marketAPI.openBidChat(bid.id);
-      if (r?.ok && (r.chat_room_id || r.chatRoomId)) {
-        navigation.navigate('Chat', { roomId: r.chat_room_id || r.chatRoomId, role });
-      } else {
-        toast(r?.detail || t('chat_open_failed'), 'error');
-      }
-    } catch {
-      toast(t('no_connection'), 'error');
-    }
-  };
-
+  // (зеркально owner-виду CargoDetail: Отклонить / Встречка / Принять;
+  // чат — только после создания сделки, см. renderDealBlock)
   const rejectClientBid = async (bid) => {
     setRejecting(bid.id);
     try {
@@ -548,6 +538,7 @@ export default function TripDetail({ navigation, route }) {
   // v1 visual: emerald accent for trip-detail (driver supply); orange when
   // shipper opens it (client-side flow).
   const v1Accent = v1AccentFor(role === 'client' || role === 'shipper' ? 'client' : 'driver');
+  const insets = useSafeAreaInsets();
 
   return (
     <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
@@ -558,7 +549,7 @@ export default function TripDetail({ navigation, route }) {
         rightTestID="trip-share-btn"
       />
 
-      <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 0, paddingBottom: 60 }}>
+      <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 0, paddingBottom: 60 + insets.bottom }}>
         {/* Stage 17: leading 🚛 dropped to match Stage 16's quiet
             language across detail titles. */}
         <Text style={s.pageTitle}>{t('trip_title')}</Text>
@@ -618,16 +609,6 @@ export default function TripDetail({ navigation, route }) {
             <Text style={[s.dateLabel, { color: v1.textMuted }]}>{t('trip_truck_body')}</Text>
             <Text style={[s.dateValue, { color: v1.text }]} testID="trip-detail-truck">{view.truckType}</Text>
           </View>
-          {/* Владелец видит себя строкой («Вы»); для чужого зрителя строка
-              убрана — ниже отдельная карточка водителя с рейтингом и тапом
-              на профиль (элемент доверия, зеркально карточке грузоотправителя
-              в CargoDetail). */}
-          {isOwner ? (
-            <View style={s.dateRow}>
-              <Text style={[s.dateLabel, { color: v1.textMuted }]}>{t('trip_driver')}</Text>
-              <Text style={[s.dateValue, { color: v1.text }]}>{view.driverName}</Text>
-            </View>
-          ) : null}
           {/* Stage 17: label was the legacy `Свободно` key above an
               `X м³` value — confusing because that word reads like a
               border-queue status, not a volume metric. Replaced with
@@ -746,8 +727,9 @@ export default function TripDetail({ navigation, route }) {
               </View>
               {b.status === 'pending' && !hasAccepted ? (
                 <View style={{ marginTop: 10, gap: 8, alignSelf: 'stretch' }}>
-                  {/* Водитель + входящая ставка pending: primary «Принять»
-                      (driver green), Chat + Counter в паре, Destructive Reject. */}
+                  {/* Приказ владельца 03.08 (скриншоты): до создания сделки
+                      никакого чата. Иерархия — одна большая «Принять»,
+                      вторичная «Предложить свою цену», текстовый «Отклонить». */}
                   <PriceSavingsBadge listingPrice={trip.price} bidPrice={b.amount} currency={trip.currency || 'USD'} />
                   <PrimaryCTA
                     testID="trip-bid-accept"
@@ -758,32 +740,25 @@ export default function TripDetail({ navigation, route }) {
                     disabled={!!accepting || !!rejecting}
                     onPress={() => acceptClientBid(b)}
                   />
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <SecondaryButton
-                      testID="trip-bid-chat"
-                      role="driver"
-                      icon="💬"
-                      label={t('open_bid_chat')}
-                      onPress={() => openChatForBid(b)}
-                      disabled={!!accepting || !!rejecting}
-                    />
-                    <SecondaryButton
-                      testID="trip-bid-counter"
-                      role="driver"
-                      icon="🔁"
-                      label={t('counter_offer')}
-                      onPress={() => { setCounterBidTarget(b); setBidModal(true); }}
-                      disabled={!!accepting || !!rejecting}
-                    />
-                  </View>
-                  <DestructiveButton
-                    testID="trip-bid-reject"
-                    icon="✕"
-                    label={t('reject_btn')}
-                    loading={rejecting === b.id}
+                  <SecondaryButton
+                    testID="trip-bid-counter"
+                    role="driver"
+                    icon="🔁"
+                    label={t('counter_offer')}
+                    onPress={() => { setCounterBidTarget(b); setBidModal(true); }}
                     disabled={!!accepting || !!rejecting}
-                    onPress={() => rejectClientBid(b)}
                   />
+                  <TouchableOpacity
+                    testID="trip-bid-reject"
+                    onPress={() => rejectClientBid(b)}
+                    disabled={!!accepting || !!rejecting}
+                    style={{ alignSelf: 'center', paddingVertical: 6, paddingHorizontal: 10 }}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <Text style={{ color: '#EF4444', fontSize: 13, fontWeight: '700', opacity: (accepting || rejecting) ? 0.55 : 1 }}>
+                      {rejecting === b.id ? '…' : t('reject_btn')}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               ) : null}
               {isCountered ? (
@@ -793,15 +768,7 @@ export default function TripDetail({ navigation, route }) {
                       🔁 {t('counter_amount')}: {formatPrice(b.counterAmount, b.currency || trip.currency, t)}
                     </Text>
                   ) : null}
-                  {/* Водитель + свой контр отправлен: ждём хода клиента. */}
-                  <SecondaryButton
-                    testID="trip-bid-chat"
-                    role="driver"
-                    icon="💬"
-                    label={t('open_bid_chat')}
-                    onPress={() => openChatForBid(b)}
-                    disabled={!!rejecting}
-                  />
+                  {/* Водитель + свой контр отправлен: ждём хода клиента, без чата. */}
                   <DestructiveButton
                     testID="trip-bid-reject"
                     icon="✕"
@@ -816,7 +783,10 @@ export default function TripDetail({ navigation, route }) {
           );
         }) : null}
 
-        {/* Timeline статусов */}
+        {/* Timeline статусов — только после создания сделки (приказ владельца
+            03.08): пока водитель рассматривает предложение, перевозка ещё
+            не началась, и этот блок вводит в заблуждение. */}
+        {dealStatus ? (
         <GlassCard>
           <SectionTitle featherIcon="map-pin" label={t('trip_status')} />
           {TRIP_STATES.map((st, i) => {
@@ -855,6 +825,7 @@ export default function TripDetail({ navigation, route }) {
             );
           })}
         </GlassCard>
+        ) : null}
 
         {/* Кнопки.
             Stage 17: client-side block was rendering an inline
@@ -869,13 +840,17 @@ export default function TripDetail({ navigation, route }) {
             unchanged — owner still sees Edit / Delete inline. */}
         {role === 'client' ? null : isOwner ? (
           <>
+            {/* Компактная служебная кнопка (приказ владельца 03.08): «Редактировать»
+                на всю ширину читалась как главное действие экрана, хотя это
+                обычная служебная функция. */}
             {(trip.status || 'active') === 'active' && !dealStatus && (
               <TouchableOpacity
-                style={[s.primaryBtn, { backgroundColor: v1Accent.main }]}
+                style={[s.editCompactBtn, { borderColor: v1Accent.main, backgroundColor: v1.card }]}
                 onPress={() => navigation.navigate('EditTrip', { tripId: trip.id, trip })}
                 testID="trip-detail-edit-btn"
               >
-                <Text style={[s.primaryBtnText, { color: '#0A0A0A' }]}>✏️ {t('edit_btn')}</Text>
+                <Feather name="edit-2" size={14} color={v1Accent.main} />
+                <Text style={[s.editCompactText, { color: v1Accent.main }]}>{t('edit_trip_compact')}</Text>
               </TouchableOpacity>
             )}
             {(trip.status || 'active') === 'active' && !dealStatus && (
