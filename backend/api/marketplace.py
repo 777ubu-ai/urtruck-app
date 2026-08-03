@@ -303,6 +303,12 @@ def _init():
             for col, ddl_type in ROUTE_COLS:
                 if col not in tcols:
                     c.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl_type}")
+            # PR2 (03.08): published_at — момент публикации, обновляется при
+            # republish. Идемпотентно: добавляем колонку и backfill'им только
+            # NULL-строки (безопасно перезапускать на каждом старте сервера).
+            if "published_at" not in tcols:
+                c.execute(f"ALTER TABLE {table} ADD COLUMN published_at TEXT")
+            c.execute(f"UPDATE {table} SET published_at = created_at WHERE published_at IS NULL")
         # 3.8: тип оплаты груза (cash|cashless|any) — важный параметр решения
         # водителя. Колонка на cargos; NULL = не указан.
         ccols = {r["name"] for r in c.execute("PRAGMA table_info(cargos)").fetchall()}
@@ -455,8 +461,8 @@ def create_cargo(body: CargoIn, user=Depends(require_level(1))):
               from_city, to_city, cargo_desc, cargo_type,
               weight_tons, volume_m3, price, currency, payment_type, pickup_date, photos,
               from_country, from_point_type, from_point_name,
-              to_country, to_point_type, to_point_name)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+              to_country, to_point_type, to_point_name, published_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
         """, (cid, user["id"], user.get("phone"), user.get("full_name"),
               body.from_city, body.to_city, body.cargo_desc, body.cargo_type,
               body.weight_tons, body.volume_m3, body.price, currency, pay,
@@ -521,11 +527,11 @@ def list_cargos(
         rows = c.execute(f"""
             SELECT id, owner_id, from_city, to_city, cargo_desc, cargo_type,
                    weight_tons, volume_m3, price, currency, payment_type, pickup_date, photos,
-                   bids_count, status, created_at,
+                   bids_count, status, created_at, published_at,
                    from_country, from_point_type, from_point_name,
                    to_country, to_point_type, to_point_name
             FROM cargos WHERE {where_sql}
-            ORDER BY created_at DESC LIMIT ? OFFSET ?
+            ORDER BY published_at DESC LIMIT ? OFFSET ?
         """, (*params, limit, offset)).fetchall()
         total = c.execute(f"SELECT COUNT(*) FROM cargos WHERE {where_sql}", params).fetchone()[0]
 
@@ -951,7 +957,8 @@ def republish_trip(trip_id: str, user=Depends(require_level(1))):
             raise HTTPException(status_code=409, detail="Рейс не в статусе unpublished/expired")
         new_date = datetime.utcnow().date().isoformat()
         c.execute(
-            "UPDATE trips SET status = 'active', departure = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            "UPDATE trips SET status = 'active', departure = ?, "
+            "published_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (new_date, trip_id))
     return {"ok": True, "status": "active", "departure": new_date}
 
@@ -969,7 +976,8 @@ def republish_cargo(cargo_id: str, user=Depends(require_level(1))):
             raise HTTPException(status_code=409, detail="Груз не в статусе unpublished/expired")
         new_date = datetime.utcnow().date().isoformat()
         c.execute(
-            "UPDATE cargos SET status = 'active', pickup_date = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            "UPDATE cargos SET status = 'active', pickup_date = ?, "
+            "published_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (new_date, cargo_id))
     return {"ok": True, "status": "active", "pickup_date": new_date}
 
@@ -995,8 +1003,8 @@ def create_trip(body: TripIn, user=Depends(require_level(1))):
               from_city, to_city, transit, truck_type,
               capacity_tons, available_m3, price, currency, departure, arrival,
               from_country, from_point_type, from_point_name,
-              to_country, to_point_type, to_point_name)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+              to_country, to_point_type, to_point_name, published_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
         """, (tid, user["id"], user.get("phone"), user.get("full_name"),
               body.from_city, body.to_city, body.transit, body.truck_type,
               body.capacity_tons, body.available_m3, body.price, currency,
@@ -1128,11 +1136,11 @@ def list_trips(
         rows = c.execute(f"""
             SELECT id, driver_id, driver_name, from_city, to_city, transit,
                    truck_type, capacity_tons, available_m3, price, currency,
-                   departure, arrival, status, created_at,
+                   departure, arrival, status, created_at, published_at,
                    from_country, from_point_type, from_point_name,
                    to_country, to_point_type, to_point_name
             FROM trips WHERE {where_sql}
-            ORDER BY created_at DESC LIMIT ? OFFSET ?
+            ORDER BY published_at DESC LIMIT ? OFFSET ?
         """, (*params, limit, offset)).fetchall()
 
     trips = [dict(r) for r in rows]
