@@ -885,7 +885,7 @@ export default function ChatScreen({ navigation, route }) {
   const displayMessages = React.useMemo(() => {
     const hasDealBanner = messages.some((m) => m.isDeal);
     if (hasDealBanner || !deal || !deal.status || deal.status === 'cancelled') return messages;
-    const accepted = ['accepted', 'in_progress', 'picked_up', 'at_border', 'delivered', 'completed'];
+    const accepted = ['accepted', 'in_progress', 'at_border', 'delivered', 'completed'];
     if (!accepted.includes(deal.status)) return messages;
     const amountText = deal.amount != null ? formatPrice(deal.amount, deal.currency || 'USD', t) : '';
     return [...messages, { id: 'deal_persistent', from: 'system', isDeal: true, amountText, time: '' }];

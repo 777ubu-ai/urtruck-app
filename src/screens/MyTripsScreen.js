@@ -335,7 +335,7 @@ export default function MyTripsScreen({ navigation, route }) {
   //   cancelled | rejected | expired      → Архив (вторичный фильтр)
   // 27.07: 'at_border' («На границе») ОБЯЗАТЕЛЬНО в «В работе» — иначе груз на
   // границе выпадал из всех вкладок (не done, не archive) и «терялся».
-  const IN_WORK_STATUSES = ['accepted', 'in_progress', 'picked_up', 'at_border'];
+  const IN_WORK_STATUSES = ['accepted', 'in_progress', 'at_border'];
   const DONE_STATUSES = ['completed', 'delivered'];
   const ARCHIVE_STATUSES = ['cancelled', 'rejected', 'expired'];
   const serverDeals = (data?.my_deals) || [];
@@ -699,7 +699,7 @@ export default function MyTripsScreen({ navigation, route }) {
             </PressableScale>
           )}
           {/* Задача B: грузоотправитель видит, где машина (на стадии «Везут»). */}
-          {!isDriver && ['accepted', 'in_progress', 'picked_up'].includes(item.status) && (
+          {!isDriver && ['accepted', 'in_progress'].includes(item.status) && (
             <PressableScale
               testID="deal-track-truck"
               style={s.miniBtn}
@@ -791,16 +791,6 @@ export default function MyTripsScreen({ navigation, route }) {
               </View>
             </TouchableOpacity>
             <TouchableOpacity
-              testID="bid-chat"
-              style={[s.miniBtn, { borderColor: '#22C55E' }]}
-              onPress={() => openChatForBid(item)}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="message-square" size={14} color="#22C55E" />
-                <Text style={[s.miniBtnText, { color: '#22C55E' }]}>{t('open_bid_chat')}</Text>
-              </View>
-            </TouchableOpacity>
-            <TouchableOpacity
               testID="bid-accept"
               style={[s.acceptBtn, { flex: 1, minWidth: 110 }, busy && { opacity: 0.5 }]}
               disabled={busy}
@@ -838,16 +828,6 @@ export default function MyTripsScreen({ navigation, route }) {
             >
               <Text style={s.rejectBtnText}>{t('reject_btn')}</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              testID="bid-chat"
-              style={[s.miniBtn, { borderColor: '#22C55E' }]}
-              onPress={() => openChatForBid(item)}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="message-square" size={14} color="#22C55E" />
-                <Text style={[s.miniBtnText, { color: '#22C55E' }]}>{t('open_bid_chat')}</Text>
-              </View>
-            </TouchableOpacity>
           </View>
         )}
 
@@ -867,16 +847,6 @@ export default function MyTripsScreen({ navigation, route }) {
               }}
             >
               <Text style={[s.miniBtnText, { color: '#EF4444' }]}>↩ {t('decline_counter')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              testID="bid-chat"
-              style={[s.miniBtn, { borderColor: '#22C55E' }]}
-              onPress={() => openChatForBid(item)}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="message-square" size={14} color="#22C55E" />
-                <Text style={[s.miniBtnText, { color: '#22C55E' }]}>{t('open_bid_chat')}</Text>
-              </View>
             </TouchableOpacity>
             <TouchableOpacity
               testID="bid-accept-counter"
@@ -916,16 +886,6 @@ export default function MyTripsScreen({ navigation, route }) {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <Feather name="dollar-sign" size={14} color="#FF8400" />
                 <Text style={[s.miniBtnText, { color: '#FF8400' }]}>{t('give_discount')}</Text>
-              </View>
-            </TouchableOpacity>
-            <TouchableOpacity
-              testID="bid-chat"
-              style={[s.miniBtn, { borderColor: '#22C55E' }]}
-              onPress={() => openChatForBid(item)}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="message-square" size={14} color="#22C55E" />
-                <Text style={[s.miniBtnText, { color: '#22C55E' }]}>{t('open_bid_chat')}</Text>
               </View>
             </TouchableOpacity>
             <TouchableOpacity

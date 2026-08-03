@@ -87,7 +87,7 @@ function MainTabs({ route }) {
   useEffect(() => {
     if (!isDriver) { setInWorkDealIds([]); return; }
     let alive = true;
-    const IN_WORK = ['accepted', 'in_progress', 'picked_up', 'at_border'];
+    const IN_WORK = ['accepted', 'in_progress', 'at_border'];
     const fetchIds = async () => {
       try {
         const d = await marketAPI.myDashboard();

@@ -26,7 +26,7 @@ import { prettifyPartnerName } from '../utils/displayName';
 import { accentFor } from '../components/deal/DealRoom';
 
 const ROLE_LABEL = { driver: 'role_driver', client: 'role_client', support: 'role_support' };
-const ACTIVE_STATUSES = new Set(['accepted', 'in_progress', 'picked_up', 'at_border', 'awaiting_confirmation']);
+const ACTIVE_STATUSES = new Set(['accepted', 'in_progress', 'at_border', 'awaiting_confirmation']);
 const COMPLETED_STATUSES = new Set(['completed', 'delivered', 'cancelled']);
 
 const STATUS_COLOR = {
