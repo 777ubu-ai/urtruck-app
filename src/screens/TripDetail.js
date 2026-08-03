@@ -40,57 +40,57 @@ export default function TripDetail({ navigation, route }) {
   // Brand bar moved to <BrandBarWithShare/> in stage 3D — local
   // brandBar/backHit/backIcon/brandRow/brandText/ftlPill/ftlText/shareBtn/
   // shareIcon styles were removed as part of stage 3E cleanup.
-  pageTitle: { color: v1.text, fontSize: 19, fontWeight: '700', letterSpacing: -0.2, marginVertical: 12 },
-  priceBig: { fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  pageTitle: { color: v1.text, fontSize: 24, fontWeight: '900', letterSpacing: -0.5, marginVertical: 12 },
+  priceBig: { fontSize: 28, fontWeight: '900', letterSpacing: -0.5 },
   // Legacy local styles still used by deal-block / timeline
   header: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 },
   backBtn: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   backText: { fontSize: 22 },
-  title: { flex: 1, fontSize: 19, fontWeight: '700', letterSpacing: -0.2 },
+  title: { flex: 1, fontSize: 20, fontWeight: '900' },
   section: { padding: 16, borderRadius: 16, borderWidth: 1, marginBottom: 10 },
   sectionTitle: { fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: 12, textTransform: 'uppercase' },
   routeRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 },
   dot: { width: 10, height: 10, borderRadius: 5 },
-  city: { fontSize: 15, fontWeight: '700' },
-  transitCity: { fontSize: 12, fontStyle: 'italic' },
+  city: { fontSize: 16, fontWeight: '800' },
+  transitCity: { fontSize: 13, fontStyle: 'italic' },
   statsRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
-  statPill: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
+  statPill: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
   statText: { fontSize: 12, fontWeight: '700' },
   dateRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8 },
-  dateLabel: { fontSize: 12, fontWeight: '500' },
+  dateLabel: { fontSize: 13, fontWeight: '500' },
   dateValue: { fontSize: 14, fontWeight: '700' },
-  primaryBtn: { borderRadius: 10, paddingVertical: 12, minHeight: 44, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
-  secondaryBtn: { borderRadius: 10, paddingVertical: 12, minHeight: 44, alignItems: 'center', justifyContent: 'center', marginTop: 8, borderWidth: 1, backgroundColor: 'transparent' },
-  secondaryBtnText: { fontSize: 13, fontWeight: '700' },
-  primaryBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
-  dangerBtn: { borderWidth: 1, borderRadius: 10, paddingVertical: 12, minHeight: 44, alignItems: 'center', justifyContent: 'center', marginTop: 8, backgroundColor: 'transparent' },
-  dangerBtnText: { color: '#EF4444', fontSize: 13, fontWeight: '700' },
-  myBidCard: { marginHorizontal: 16, marginBottom: 12, padding: 14, borderRadius: 10, borderWidth: 1, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
+  primaryBtn: { borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
+  secondaryBtn: { borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 8, borderWidth: 0, backgroundColor: 'rgba(148,163,184,0.14)' },
+  secondaryBtnText: { fontSize: 14, fontWeight: '700' },
+  primaryBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  dangerBtn: { borderWidth: 0, borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 8, backgroundColor: 'rgba(239,68,68,0.10)' },
+  dangerBtnText: { color: '#EF4444', fontSize: 13, fontWeight: '800' },
+  myBidCard: { marginHorizontal: 16, marginBottom: 12, padding: 14, borderRadius: 16, borderWidth: 2 },
   myBidHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
   myBidLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' },
-  myBidAmount: { fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'], flexShrink: 1 },
-  myBidStatus: { fontSize: 12, fontWeight: '600', marginBottom: 12 },
-  myBidCounter: { fontSize: 13, fontWeight: '700', marginBottom: 12 },
+  myBidAmount: { fontSize: 22, fontWeight: '900', letterSpacing: -0.3, flexShrink: 1 },
+  myBidStatus: { fontSize: 13, fontWeight: '600', marginBottom: 12 },
+  myBidCounter: { fontSize: 14, fontWeight: '800', marginBottom: 12 },
   bidsTitle: { fontSize: 14, fontWeight: '700', marginTop: 2, marginBottom: 8 },
   // Owner-вид: карточка ставки клиента на мой рейс (компакт CargoDetail.bidCard)
-  ownerBidCard: { borderRadius: 10, padding: 12, borderWidth: 1, marginBottom: 8, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
-  bidAmt: { fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  ownerBidCard: { borderRadius: 12, padding: 12, borderWidth: 1, marginBottom: 8 },
+  bidAmt: { fontSize: 16, fontWeight: '900' },
   miniBtn: { backgroundColor: 'rgba(148,163,184,0.14)', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, minHeight: 44, justifyContent: 'center' },
-  miniBtnText: { fontSize: 13, fontWeight: '700' },
-  rejectBtn: { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#EF4444', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, minHeight: 44, justifyContent: 'center' },
-  rejectBtnText: { color: '#EF4444', fontSize: 13, fontWeight: '700' },
+  miniBtnText: { fontSize: 14, fontWeight: '700' },
+  rejectBtn: { backgroundColor: 'rgba(239,68,68,0.10)', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, minHeight: 44, justifyContent: 'center' },
+  rejectBtnText: { color: '#EF4444', fontSize: 14, fontWeight: '700' },
   acceptBtn: { borderRadius: 10, paddingHorizontal: 16, paddingVertical: 12, minHeight: 44, justifyContent: 'center' },
-  acceptBtnText: { fontSize: 13, fontWeight: '700' },
+  acceptBtnText: { fontSize: 14, fontWeight: '800' },
   // Отзыв после доставки (trip-сделка)
-  reviewBlock: { borderRadius: 10, borderWidth: 1, padding: 16, alignItems: 'center', gap: 10 },
-  reviewTitle: { fontSize: 14, fontWeight: '700' },
+  reviewBlock: { borderRadius: 14, borderWidth: 1, padding: 16, alignItems: 'center', gap: 10 },
+  reviewTitle: { fontSize: 15, fontWeight: '700' },
   starsRow: { flexDirection: 'row', gap: 8 },
   reviewInput: { width: '100%', borderWidth: 1, borderRadius: 10, padding: 10, fontSize: 13 },
-  reviewSubmitBtn: { borderRadius: 10, paddingHorizontal: 20, paddingVertical: 12, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  reviewSubmitBtn: { borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10 },
   reviewSubmitText: { fontSize: 13, fontWeight: '700' },
   myBidBtnRow: { flexDirection: 'row', gap: 10 },
-  myBidBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-  myBidBtnText: { fontSize: 13, fontWeight: '700' },
+  myBidBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, alignItems: 'center' },
+  myBidBtnText: { fontSize: 14, fontWeight: '800' },
   dealActionBtn: { borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10 },
   dealActionGhost: { backgroundColor: 'transparent', borderWidth: 1.6 },
   dealActionText: { color: '#fff', fontSize: 13, fontWeight: '700' },
@@ -462,78 +462,56 @@ export default function TripDetail({ navigation, route }) {
               }
             </Text>
           )}
-          {/* Дизайн 2026 v5 (04.08): те же компакт-кнопки что везде.
-              Один Primary CTA следующего шага + маленький «Чат» + destructive
-              Отмена. Больше НИ ОДНОЙ гигантской заливной кнопки. */}
-          <View style={{ marginTop: 10, gap: 6 }}>
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginTop: 10 }}>
             {isDriverSide && dealStatus === 'accepted' && (
-              <PrimaryCTA
-                role={role || 'driver'}
-                icon="🚛"
-                label={t('start_delivery')}
-                loading={statusLoading}
-                disabled={statusLoading}
-                onPress={() => changeDealStatus('in_progress')}
-              />
+              <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: v1Accent.main }]} onPress={() => changeDealStatus('in_progress')} disabled={statusLoading}>
+                <Text style={s.dealActionText}>{statusLoading ? '...' : '🚛 ' + t('start_delivery')}</Text>
+              </TouchableOpacity>
             )}
             {isDriverSide && dealStatus === 'in_progress' && (
-              <PrimaryCTA
-                role={role || 'driver'}
-                icon="🛂"
-                label={t('mark_at_border')}
-                loading={statusLoading}
-                disabled={statusLoading}
-                onPress={() => changeDealStatus('at_border')}
-              />
+              <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: v1Accent.main }]} onPress={() => changeDealStatus('at_border')} disabled={statusLoading}>
+                <Text style={s.dealActionText}>{statusLoading ? '...' : '🛂 ' + t('mark_at_border')}</Text>
+              </TouchableOpacity>
             )}
             {isDriverSide && dealStatus === 'at_border' && (
-              <PrimaryCTA
-                role={role || 'driver'}
-                icon="✅"
-                label={t('mark_arrived')}
-                loading={statusLoading}
-                disabled={statusLoading}
-                onPress={() => changeDealStatus('delivered')}
-              />
+              <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: v1Accent.main }]} onPress={() => changeDealStatus('delivered')} disabled={statusLoading}>
+                <Text style={s.dealActionText}>{statusLoading ? '...' : '✅ ' + t('mark_arrived')}</Text>
+              </TouchableOpacity>
             )}
             {isShipper && (dealStatus === 'in_progress' || dealStatus === 'at_border') && (
-              <SecondaryButton
-                role={role || 'client'}
-                icon="✅"
-                label={t('confirm_delivery')}
-                disabled={statusLoading}
-                onPress={() => changeDealStatus('delivered')}
-              />
+              <TouchableOpacity style={[s.dealActionBtn, s.dealActionGhost, { borderColor: v1Accent.main }]} onPress={() => changeDealStatus('delivered')} disabled={statusLoading}>
+                <Text style={[s.dealActionText, { color: v1Accent.main }]}>{statusLoading ? '...' : '✅ ' + t('confirm_delivery')}</Text>
+              </TouchableOpacity>
             )}
-            <View style={{ flexDirection: 'row', gap: 18, justifyContent: 'center', marginTop: 2 }}>
-              {chatRoomId && (
-                <TouchableOpacity
-                  onPress={() => navigation.navigate('Chat', { roomId: chatRoomId, role, tripId: (trip && trip.id) || tripId, partner: driverId ? { id: driverId } : undefined })}
-                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                >
-                  <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '600' }}>💬 {t('order_chat')}</Text>
-                </TouchableOpacity>
-              )}
-              {(dealStatus === 'accepted' || dealStatus === 'in_progress' || dealStatus === 'at_border') && (
-                <TouchableOpacity
-                  disabled={statusLoading}
-                  onPress={() => {
-                    const doCancel = () => changeDealStatus('cancelled');
-                    if (Platform.OS === 'web') {
-                      if (typeof window !== 'undefined' && window.confirm(t('cancel_deal_confirm'))) doCancel();
-                    } else {
-                      Alert.alert(t('cancel_deal_confirm'), '', [
-                        { text: t('cancel'), style: 'cancel' },
-                        { text: t('confirm'), style: 'destructive', onPress: doCancel },
-                      ]);
-                    }
-                  }}
-                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                >
-                  <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '600' }}>⊘ {t('cancel_deal')}</Text>
-                </TouchableOpacity>
-              )}
-            </View>
+            {chatRoomId && (
+              <TouchableOpacity
+                style={[s.dealActionBtn, s.dealActionGhost, { borderColor: v1Accent.main }]}
+                onPress={() => navigation.navigate('Chat', { roomId: chatRoomId, role, tripId: (trip && trip.id) || tripId, partner: driverId ? { id: driverId } : undefined })}
+              >
+                <Text style={[s.dealActionText, { color: v1Accent.main }]}>💬 {t('order_chat')}</Text>
+              </TouchableOpacity>
+            )}
+            {(dealStatus === 'accepted' || dealStatus === 'in_progress' || dealStatus === 'at_border') && (
+              <TouchableOpacity
+                style={[s.dealActionBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#EF4444' }]}
+                disabled={statusLoading}
+                onPress={() => {
+                  // Подтверждение на обеих платформах (раньше на native отменяло
+                  // мгновенно без вопроса при случайном тапе).
+                  const doCancel = () => changeDealStatus('cancelled');
+                  if (Platform.OS === 'web') {
+                    if (typeof window !== 'undefined' && window.confirm(t('cancel_deal_confirm'))) doCancel();
+                  } else {
+                    Alert.alert(t('cancel_deal_confirm'), '', [
+                      { text: t('cancel'), style: 'cancel' },
+                      { text: t('confirm'), style: 'destructive', onPress: doCancel },
+                    ]);
+                  }
+                }}
+              >
+                <Text style={[s.dealActionText, { color: '#EF4444' }]}>⊘ {t('cancel_deal')}</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </View>
@@ -689,7 +667,7 @@ export default function TripDetail({ navigation, route }) {
             <GlassCard>
               <SectionTitle featherIcon="user" label={t('trip_driver')} />
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
-                <Text style={{ color: v1.text, fontSize: 14, fontWeight: '700' }} numberOfLines={1}>
+                <Text style={{ color: v1.text, fontSize: 15, fontWeight: '700' }} numberOfLines={1}>
                   {serverTrip?.driver_display_name || view.driverName}{trip.driverId ? ' ›' : ''}
                 </Text>
                 <Text style={{ fontSize: 12, color: v1.textMuted }}>
@@ -706,17 +684,11 @@ export default function TripDetail({ navigation, route }) {
         {/* Цена — выделенный блок с brand-accent. Если ставка ПРИНЯТА —
             показываем сумму сделки, а не цену объявления (две разные цифры
             на одном экране путали, зеркально CargoDetail). */}
-        {/* Дизайн v6 (04.08): цена компактной строкой без оранжевой рамки. */}
-        <GlassCard>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Feather name="dollar-sign" size={12} color={v1.textMuted} />
-              <Text style={{ color: v1.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' }}>{acceptedBid ? t('deal_price') : t('price')}</Text>
-            </View>
-            <Text style={[s.priceBig, { color: v1Accent.main }]} numberOfLines={1} testID="trip-price-value">
-              {acceptedBid ? formatPrice(acceptedBid.amount, acceptedBid.currency || trip.currency, t) : view.price}
-            </Text>
-          </View>
+        <GlassCard accent={v1Accent.main}>
+          <SectionTitle featherIcon="dollar-sign" label={acceptedBid ? t('deal_price') : t('price')} />
+          <Text style={[s.priceBig, { color: v1Accent.main }]} numberOfLines={1} testID="trip-price-value">
+            {acceptedBid ? formatPrice(acceptedBid.amount, acceptedBid.currency || trip.currency, t) : view.price}
+          </Text>
         </GlassCard>
 
         {/* Рыночный пульс: число предложений на этот рейс (видно всем —
@@ -869,10 +841,10 @@ export default function TripDetail({ navigation, route }) {
                 </View>
                 {isOwner && !passed && i === currentIdx + 1 && (
                   <TouchableOpacity
-                    style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: info.color, backgroundColor: 'transparent' }}
+                    style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, backgroundColor: info.color }}
                     onPress={() => advanceTripState(trip.id, st)}
                   >
-                    <Text style={{ color: info.color, fontSize: 11, fontWeight: '700' }}>{t('trip_mark')}</Text>
+                    <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '700' }}>{t('trip_mark')}</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -892,22 +864,19 @@ export default function TripDetail({ navigation, route }) {
             client CTA surface from now on. The owner branch is
             unchanged — owner still sees Edit / Delete inline. */}
         {role === 'client' ? null : isOwner ? (
-          <View style={{ marginHorizontal: 16, marginTop: 8 }}>
+          <>
             {(trip.status || 'active') === 'active' && !dealStatus && (
-              <SecondaryButton
-                role="driver"
-                icon="✏️"
-                label={t('edit_btn')}
+              <TouchableOpacity
+                style={[s.primaryBtn, { backgroundColor: v1Accent.main }]}
                 onPress={() => navigation.navigate('EditTrip', { tripId: trip.id, trip })}
                 testID="trip-detail-edit-btn"
-              />
+              >
+                <Text style={[s.primaryBtnText, { color: '#0A0A0A' }]}>✏️ {t('edit_btn')}</Text>
+              </TouchableOpacity>
             )}
-            {/* Удалить рейс — text-only серый, как «Удалить груз» на CargoDetail.
-                Больше не красная контурная кнопка на весь ряд (жалоба 03.08). */}
-            <TouchableOpacity onPress={onDelete} style={{ paddingVertical: 10, alignItems: 'center', marginTop: 8 }} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-              <Text style={{ color: '#94A3B8', fontSize: 12, fontWeight: '600' }}>🗑 {t('trip_delete')}</Text>
-            </TouchableOpacity>
-          </View>
+            {/* PR 2: подключить PATCH /market/trips/{id}/unpublish → status=unpublished.
+                До этого кнопку не показываем — removeTrip удаляет из памяти, а не снимает с публикации. */}
+          </>
         ) : null}
       </ScrollView>
 
@@ -1081,8 +1050,9 @@ export default function TripDetail({ navigation, route }) {
       ) : null}
 
       {/* Sticky CTA — shipper viewing someone else's trip.
-          Если у клиента уже есть активная ставка — прячем «Предложить цену»
-          (действия перенесены в плашку выше: [Изменить] [Чат]). */}
+          Только «Предложить цену» — свободный чат до сделки убран (решение
+          владельца 03.08): после accept ставки автоматически создаётся комната
+          сделки, до этого переговоры ведутся через ставку/контрпредложение. */}
       {!isOwner && !dealStatus && role === 'client' && !myActiveBid ? (
         <StickyCTABar
           accent={v1Accent.main}
@@ -1093,22 +1063,6 @@ export default function TripDetail({ navigation, route }) {
               if (ok) setBidModal(true);
             },
             testID: 'trip-sticky-bid',
-          }}
-          secondary={{
-            // Чат с водителем доступен ДО ставки (на базаре сначала
-            // разговаривают) — зеркально CargoDetail. Комната создастся
-            // на первом сообщении по driverId.
-            label: '💬 ' + t('order_chat'),
-            onPress: () => {
-              if (chatRoomId) {
-                navigation.navigate('Chat', { roomId: chatRoomId, role, tripId: tid });
-              } else if (trip.driverId) {
-                navigation.navigate('Chat', { partner: { id: trip.driverId }, tripId: tid, role });
-              } else {
-                toast(t('chat_open_failed'), 'error');
-              }
-            },
-            testID: 'trip-sticky-chat',
           }}
         />
       ) : null}

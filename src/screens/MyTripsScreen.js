@@ -16,7 +16,6 @@ import EditCargoModal from '../components/EditCargoModal';
 import { colors, spacing, radius, typography } from '../theme/theme';
 import {v1Colors, useV1Colors, v1AccentFor} from '../theme/designV1';
 import SegmentTabs from '../components/ui/v1/SegmentTabs';
-import StatsRow from '../components/ui/v1/StatsRow';
 import { useMountedRef } from '../hooks/useMountedRef';
 import FadeInUp, { PopIn } from '../components/ui/FadeInUp';
 import PressableScale from '../components/PressableScale';
@@ -305,9 +304,10 @@ export default function MyTripsScreen({ navigation, route }) {
     grace.setDate(grace.getDate() - 2);
     return d < grace;
   };
-  const myItemsActive = myItemsRaw.filter((it) => !isExpiredItem(it));
+  const DONE_ITEM_STATUSES = new Set(['completed', 'delivered']);
+  const myItemsActive = myItemsRaw.filter((it) => !isExpiredItem(it) && !DONE_ITEM_STATUSES.has(it.status));
   const myItemsExpired = myItemsRaw.filter((it) => isExpiredItem(it));
-  const myItems = myItemsActive;
+  const myItems = [...myItemsActive, ...myItemsExpired.map(it => ({ ...it, _expired: true }))];
 
   const myBids = isDriver ? (data?.my_bids || []) : (data?.incoming_bids || []);
   // Валюта суммы ставки/сделки. Бэкенд теперь отдаёт currency на ставках
@@ -318,12 +318,7 @@ export default function MyTripsScreen({ navigation, route }) {
     (item && item.currency)
     || (item && (data?.my_cargos || []).find((cc) => cc.id === item.cargo_id)?.currency)
     || 'USD';
-  // Архив: server-deals + локально-вычисленные expired (без изменения
-  // backend данных). justCreated не дублируется т.к. он active.
-  const myDeals = [
-    ...((data?.my_deals) || []),
-    ...myItemsExpired.map((it) => ({ ...it, _expired: true })),
-  ];
+  const myDeals = (data?.my_deals) || [];
 
   // ─── Driver tab buckets (issue #2/#3) ───
   // Жёсткий маппинг статусов сделок/ставок на 4 driver-вкладки + вторичный
@@ -335,7 +330,7 @@ export default function MyTripsScreen({ navigation, route }) {
   //   cancelled | rejected | expired      → Архив (вторичный фильтр)
   // 27.07: 'at_border' («На границе») ОБЯЗАТЕЛЬНО в «В работе» — иначе груз на
   // границе выпадал из всех вкладок (не done, не archive) и «терялся».
-  const IN_WORK_STATUSES = ['accepted', 'in_progress', 'picked_up', 'at_border'];
+  const IN_WORK_STATUSES = ['accepted', 'in_progress', 'at_border'];
   const DONE_STATUSES = ['completed', 'delivered'];
   const ARCHIVE_STATUSES = ['cancelled', 'rejected', 'expired'];
   const serverDeals = (data?.my_deals) || [];
@@ -347,7 +342,6 @@ export default function MyTripsScreen({ navigation, route }) {
   const driverArchive = [
     ...serverDeals.filter((d) => ARCHIVE_STATUSES.includes(d.status)).map((d) => ({ ...d, _kind: 'deal' })),
     ...myBids.filter((b) => ['rejected', 'cancelled', 'expired'].includes(b.status)).map((b) => ({ ...b, _kind: 'bid' })),
-    ...myItemsExpired.map((it) => ({ ...it, _kind: 'route', _expired: true })),
   ];
 
   // ─── Client (грузоотправитель) buckets — зеркало водителя в его терминах ───
@@ -365,7 +359,6 @@ export default function MyTripsScreen({ navigation, route }) {
   // (26.07.2026), здесь их под-вкладки больше нет.
   const clientArchive = [
     ...serverDeals.filter((d) => ARCHIVE_STATUSES.includes(d.status)).map((d) => ({ ...d, _kind: 'deal' })),
-    ...myItemsExpired.map((it) => ({ ...it, _kind: 'cargo', _expired: true })),
   ];
 
   // ─── Cards ───
@@ -560,9 +553,10 @@ export default function MyTripsScreen({ navigation, route }) {
   };
 
   const renderDeal = ({ item }) => {
-    // Промпт-дизайн клиента: «Принят» — изумруд #10B981 (текст+галочка, без фона).
     const sc = { accepted: '#10B981', in_progress: '#FF8400', at_border: '#2563EB', delivered: '#10B981', cancelled: '#EF4444' };
     const busy = busyBidId === item.id;
+    const isDomestic = item.from_country && item.to_country
+      && item.from_country.toUpperCase() === item.to_country.toUpperCase();
     const nextStep = isDriver
       ? (item.status === 'accepted' ? t('driver_next_step_accepted')
           : item.status === 'in_progress' ? t('driver_next_step_in_progress')
@@ -623,20 +617,21 @@ export default function MyTripsScreen({ navigation, route }) {
         <View style={{ flexDirection: 'row', gap: 6, marginTop: spacing.sm, flexWrap: 'wrap' }}>
           {isDriver && item.status === 'accepted' && (
             <TouchableOpacity
-              style={[s.acceptBtn, busy && { opacity: 0.5 }]}
+              style={[s.acceptBtn, { backgroundColor: '#FF8400' }, busy && { opacity: 0.5 }]}
               disabled={busy}
               onPress={() => setDealStatusOnServer(item, 'in_progress')}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="truck" size={15} color="#FFF" />
-                <Text style={s.acceptBtnText}>{t('start_delivery')}</Text>
+                <Feather name="truck" size={15} color="#0C0A09" />
+                <Text style={[s.acceptBtnText, { color: '#0C0A09' }]}>{t('start_delivery')}</Text>
               </View>
             </TouchableOpacity>
           )}
-          {/* Водитель «В работе»: две кнопки — «На границе» (необязательный шаг
-              коридора Китай↔СНГ, оживляет стадию таймлайна) и «Доставлен».
-              На внутреннем рейсе границу можно пропустить и сразу доставить. */}
-          {isDriver && item.status === 'in_progress' && (
+          {/* Водитель «В работе»: ОДНО следующее действие по типу маршрута.
+              Международный (from_country !== to_country): in_progress → «На границе».
+              Внутренний (from_country === to_country): in_progress → «Груз доставлен»,
+              at_border пропускается — границы нет. */}
+          {isDriver && item.status === 'in_progress' && !isDomestic && (
             <TouchableOpacity
               style={[s.acceptBtn, { backgroundColor: '#2563EB' }, busy && { opacity: 0.5 }]}
               disabled={busy}
@@ -648,7 +643,19 @@ export default function MyTripsScreen({ navigation, route }) {
               </View>
             </TouchableOpacity>
           )}
-          {isDriver && (item.status === 'in_progress' || item.status === 'at_border') && (
+          {isDriver && item.status === 'in_progress' && isDomestic && (
+            <TouchableOpacity
+              style={[s.acceptBtn, busy && { opacity: 0.5 }]}
+              disabled={busy}
+              onPress={() => setDealStatusOnServer(item, 'delivered')}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="check-circle" size={15} color="#FFF" />
+                <Text style={s.acceptBtnText}>{t('mark_arrived')}</Text>
+              </View>
+            </TouchableOpacity>
+          )}
+          {isDriver && item.status === 'at_border' && (
             <TouchableOpacity
               style={[s.acceptBtn, busy && { opacity: 0.5 }]}
               disabled={busy}
@@ -699,7 +706,7 @@ export default function MyTripsScreen({ navigation, route }) {
             </PressableScale>
           )}
           {/* Задача B: грузоотправитель видит, где машина (на стадии «Везут»). */}
-          {!isDriver && ['accepted', 'in_progress', 'picked_up'].includes(item.status) && (
+          {!isDriver && ['accepted', 'in_progress'].includes(item.status) && (
             <PressableScale
               testID="deal-track-truck"
               style={s.miniBtn}
@@ -791,16 +798,6 @@ export default function MyTripsScreen({ navigation, route }) {
               </View>
             </TouchableOpacity>
             <TouchableOpacity
-              testID="bid-chat"
-              style={[s.miniBtn, { borderColor: '#22C55E' }]}
-              onPress={() => openChatForBid(item)}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="message-square" size={14} color="#22C55E" />
-                <Text style={[s.miniBtnText, { color: '#22C55E' }]}>{t('open_bid_chat')}</Text>
-              </View>
-            </TouchableOpacity>
-            <TouchableOpacity
               testID="bid-accept"
               style={[s.acceptBtn, { flex: 1, minWidth: 110 }, busy && { opacity: 0.5 }]}
               disabled={busy}
@@ -838,16 +835,6 @@ export default function MyTripsScreen({ navigation, route }) {
             >
               <Text style={s.rejectBtnText}>{t('reject_btn')}</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              testID="bid-chat"
-              style={[s.miniBtn, { borderColor: '#22C55E' }]}
-              onPress={() => openChatForBid(item)}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="message-square" size={14} color="#22C55E" />
-                <Text style={[s.miniBtnText, { color: '#22C55E' }]}>{t('open_bid_chat')}</Text>
-              </View>
-            </TouchableOpacity>
           </View>
         )}
 
@@ -867,16 +854,6 @@ export default function MyTripsScreen({ navigation, route }) {
               }}
             >
               <Text style={[s.miniBtnText, { color: '#EF4444' }]}>↩ {t('decline_counter')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              testID="bid-chat"
-              style={[s.miniBtn, { borderColor: '#22C55E' }]}
-              onPress={() => openChatForBid(item)}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="message-square" size={14} color="#22C55E" />
-                <Text style={[s.miniBtnText, { color: '#22C55E' }]}>{t('open_bid_chat')}</Text>
-              </View>
             </TouchableOpacity>
             <TouchableOpacity
               testID="bid-accept-counter"
@@ -916,16 +893,6 @@ export default function MyTripsScreen({ navigation, route }) {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <Feather name="dollar-sign" size={14} color="#FF8400" />
                 <Text style={[s.miniBtnText, { color: '#FF8400' }]}>{t('give_discount')}</Text>
-              </View>
-            </TouchableOpacity>
-            <TouchableOpacity
-              testID="bid-chat"
-              style={[s.miniBtn, { borderColor: '#22C55E' }]}
-              onPress={() => openChatForBid(item)}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="message-square" size={14} color="#22C55E" />
-                <Text style={[s.miniBtnText, { color: '#22C55E' }]}>{t('open_bid_chat')}</Text>
               </View>
             </TouchableOpacity>
             <TouchableOpacity
@@ -969,17 +936,6 @@ export default function MyTripsScreen({ navigation, route }) {
         { key: 'delivered', label: t('client_tab_delivered'), testID: 'my-work-tab-delivered' },
       ];
 
-  const stats = isDriver
-    ? [
-        { value: myItems.length,      label: t('tab_my_routes') },
-        { value: driverInWork.length, label: t('tab_in_work') },
-        { value: driverDone.length,   label: t('tab_done') },
-      ]
-    : [
-        { value: clientSearching.length, label: t('client_tab_searching') },
-        { value: driverInWork.length,    label: t('client_tab_enroute') },
-        { value: driverDone.length,      label: t('client_tab_delivered') },
-      ];
 
   // Archive renderer dispatches by item kind (deal / bid / expired route).
   const renderArchiveItem = ({ item }) =>
@@ -1070,13 +1026,7 @@ export default function MyTripsScreen({ navigation, route }) {
       </View>
 
       <View style={{ paddingHorizontal: 16 }}>
-        {/* Дизайн 2026 v5 (04.08): единый underline-стиль табов для обеих ролей.
-            Раньше driver получал 'pill' — активный таб заливался зелёным блоком
-            на всю кнопку («Завершённые» в скриншоте 03.08 → user жаловался
-            «закрашивать не должно быть»). Теперь только тонкая полоска под
-            активным табом, никакой заливки. */}
-        <SegmentTabs items={TABS} value={tab === 'archive' ? null : tab} onChange={setTab} accent={v1Accent.main} variant="underline" />
-        <StatsRow items={stats} accent={v1Accent.main} />
+        <SegmentTabs items={TABS} value={tab === 'archive' ? null : tab} onChange={setTab} accent={v1Accent.main} variant={isDriver ? 'pill' : 'underline'} />
         {/* Архив — вторичный фильтр (issue #2): отменённые/отклонённые/
             истёкшие, НЕ основная вкладка. Активных заказов тут нет.
             Доступен обеим ролям (driver и грузоотправитель). */}

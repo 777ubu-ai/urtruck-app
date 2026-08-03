@@ -1108,9 +1108,9 @@ export default function CargoDetail({ navigation, route }) {
           </TouchableOpacity>
         </View>
       )}
-      {/* Sticky CTA — pinned bottom row.
-          - non-owner with no accepted bid yet: «Откликнуться» + «Чат» (если room уже создан).
-          - owner / accepted: bar скрывается, обычные блоки detail дают нужные действия. */}
+      {/* Sticky CTA — только «Предложить цену». Свободный чат до сделки убран
+          (решение владельца 03.08): переговоры ведутся через ставку/контрпредложение,
+          чат создаётся автоматически после accept. */}
       {!c.isMine && !dealStatus && !myPendingBid ? (
         <StickyCTABar
           accent={v1Accent.main}
@@ -1121,23 +1121,6 @@ export default function CargoDetail({ navigation, route }) {
               if (ok) setBidModal(true);
             },
             testID: 'cargo-sticky-bid',
-          }}
-          secondary={{
-            // Чат с грузовладельцем доступен ВСЕГДА (до ставки тоже) —
-            // как в InDrive/WhatsApp. Если комната уже есть — открываем её;
-            // иначе открываем чат по owner_id, комната создастся на первом
-            // сообщении (ChatScreen.resolvedPartner подтянет реальное имя).
-            label: '💬 ' + t('order_chat'),
-            onPress: () => {
-              if (chatRoomId) {
-                navigation.navigate('Chat', { roomId: chatRoomId, role, cargoId: cid });
-              } else if (c.owner_id) {
-                navigation.navigate('Chat', { partner: { id: c.owner_id }, cargoId: cid, role });
-              } else {
-                toast(t('chat_open_failed'), 'error');
-              }
-            },
-            testID: 'cargo-sticky-chat',
           }}
         />
       ) : null}
