@@ -240,7 +240,6 @@ export default function BottomNav({ state, navigation }) {
           const tabBadgeCount =
             route.name === 'Chats' ? chatUnread
             : route.name === 'Deals' ? (notifUnread + (hasChatsTab ? 0 : chatUnread))
-            : route.name === 'MyWork' ? notifUnread
             : 0;
           const showBadge = tabBadgeCount > 0;
           const badgeLabel = tabBadgeCount > 9 ? '9+' : String(tabBadgeCount);

@@ -1486,20 +1486,52 @@ def my_dashboard(user=Depends(require_level(1))):
             "c.currency AS currency, "
             "c.weight_tons AS weight_tons, c.volume_m3 AS volume_m3, "
             "c.pickup_date AS departure, "
-            "dr.full_name AS driver_name, sh.full_name AS shipper_name "
+            "dr.full_name AS driver_name, sh.full_name AS shipper_name, "
+            "(SELECT m.body FROM chat_messages m WHERE m.room_id = d.chat_room_id "
+            " ORDER BY m.created_at DESC LIMIT 1) AS last_message, "
+            "(SELECT m.created_at FROM chat_messages m WHERE m.room_id = d.chat_room_id "
+            " ORDER BY m.created_at DESC LIMIT 1) AS last_message_at, "
+            "(SELECT COUNT(*) FROM chat_messages m WHERE m.room_id = d.chat_room_id "
+            " AND m.is_read = 0 AND m.sender_id != ?) AS unread_count "
             "FROM deals d "
             "LEFT JOIN cargos c ON d.cargo_id = c.id "
             "LEFT JOIN drivers_registration dr ON dr.id = d.driver_id "
             "LEFT JOIN drivers_registration sh ON sh.id = d.shipper_id "
             "WHERE d.shipper_id = ? OR d.driver_id = ? "
             "ORDER BY d.created_at DESC LIMIT 50",
-            (uid, uid)).fetchall()]
+            (uid, uid, uid)).fetchall()]
 
     for cargo in my_cargos:
         try:
             cargo["photos"] = _sign_cargo_photos(json.loads(cargo.get("photos") or "[]"))
         except Exception:
             cargo["photos"] = []
+
+    # Для вкладки «Предложения»: к каждому грузу — количество живых ставок,
+    # минимальная цена и время самой свежей ставки. Фронт группирует по cargo.
+    cargo_ids = [cg["id"] for cg in my_cargos]
+    active_bids_by_cargo = {}
+    if cargo_ids:
+        with get_conn() as c2:
+            ph = ",".join("?" * len(cargo_ids))
+            rows = c2.execute(
+                f"SELECT cargo_id, COUNT(*) AS cnt, MIN(amount) AS min_price, "
+                f"MAX(created_at) AS latest_bid_at "
+                f"FROM bids WHERE cargo_id IN ({ph}) AND status IN ('pending','countered') "
+                f"GROUP BY cargo_id",
+                cargo_ids,
+            ).fetchall()
+            for r in rows:
+                active_bids_by_cargo[r["cargo_id"]] = {
+                    "active_bids_count": r["cnt"],
+                    "min_bid_price": r["min_price"],
+                    "latest_bid_at": r["latest_bid_at"],
+                }
+    for cargo in my_cargos:
+        ab = active_bids_by_cargo.get(cargo["id"], {})
+        cargo["active_bids_count"] = ab.get("active_bids_count", 0)
+        cargo["min_bid_price"] = ab.get("min_bid_price")
+        cargo["latest_bid_at"] = ab.get("latest_bid_at")
 
     return {
         "my_cargos": my_cargos,

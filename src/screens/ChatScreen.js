@@ -1079,6 +1079,65 @@ export default function ChatScreen({ navigation, route }) {
         </View>
       </View>
 
+      {/* Персистентный баннер сделки — всегда виден над списком сообщений */}
+      {(bargainCargoId || bargainTripId) ? (
+        <BargainCard
+          cargoId={bargainCargoId}
+          tripId={bargainTripId}
+          myUserId={myId}
+          refreshKey={bargainRefresh}
+          onOpenModal={openBidModal}
+          onDeal={onBargainDeal}
+        />
+      ) : null}
+      {dealId ? (
+        <View style={{ paddingHorizontal: 12, paddingBottom: 6 }}>
+          <DealRoomCard deal={deal} role={role} />
+          {deal?.counterparty_phone ? (
+            <TouchableOpacity
+              style={[s.callBtn, { borderColor: v1Accent.main }]}
+              onPress={() => contactPartner(deal.counterparty_phone)}
+              testID="deal-call-btn"
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="phone" size={15} color={v1Accent.main} />
+                <Text style={[s.callBtnText, { color: v1Accent.main }]}>{t('call_partner')}</Text>
+              </View>
+            </TouchableOpacity>
+          ) : null}
+          {dealEvents.length > 0 ? (
+            <View testID="deal-timeline">
+              {dealEvents.slice(-4).map((ev) => (
+                <SystemEventRow key={ev.id || ev.event_type} ev={ev} />
+              ))}
+            </View>
+          ) : null}
+          <DealAttachments conversationId={roomId} role={role} compact attachTrigger={attachDocTick} />
+          {acceptConfirm ? (
+            <View style={s.acceptConfirm} testID="accept-bid-confirm">
+              <Text style={s.acceptConfirmTitle}>{t('accept_bid_confirm_title')}</Text>
+              <Text style={s.acceptConfirmText}>
+                {t('accept_bid_confirm_text')} {deal?.amount != null ? formatPrice(deal.amount, deal.currency || 'USD', t) : ''}
+              </Text>
+              <View style={s.acceptConfirmRow}>
+                <TouchableOpacity onPress={() => setAcceptConfirm(false)} style={s.acceptCancelBtn} disabled={accepting}>
+                  <Text style={s.acceptCancelTxt}>{t('cancel')}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={doAcceptBid} style={s.acceptOkBtn} disabled={accepting} testID="accept-bid-ok">
+                  <Text style={s.acceptOkTxt}>{accepting ? '…' : t('action_accept_bid')}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : null}
+          {canAcceptBid ? (
+            <DealQuickActions
+              role={role}
+              onAcceptBid={() => setAcceptConfirm(true)}
+            />
+          ) : null}
+        </View>
+      ) : null}
+
       <FlatList
         ref={flatListRef}
         data={displayMessages}
@@ -1087,80 +1146,11 @@ export default function ChatScreen({ navigation, route }) {
         contentContainerStyle={s.msgList}
         keyboardShouldPersistTaps="handled"
         ListHeaderComponent={
-          <View>
-            {/* Часть 2 — карточка живого торга (до сделки). Сама скрывается,
-                если активной ставки нет или сделка уже заключена. */}
-            {(bargainCargoId || bargainTripId) ? (
-              <BargainCard
-                cargoId={bargainCargoId}
-                tripId={bargainTripId}
-                myUserId={myId}
-                refreshKey={bargainRefresh}
-                onOpenModal={openBidModal}
-                onDeal={onBargainDeal}
-              />
-            ) : null}
-            {dealId ? (
-              <View style={{ marginBottom: 10 }}>
-                <DealRoomCard deal={deal} role={role} />
-                {/* Позвонить контрагенту — телефон доступен только участнику
-                    сделки (backend get_deal отдаёт его строго участнику). */}
-                {deal?.counterparty_phone ? (
-                  <TouchableOpacity
-                    style={[s.callBtn, { borderColor: v1Accent.main }]}
-                    onPress={() => contactPartner(deal.counterparty_phone)}
-                    testID="deal-call-btn"
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Feather name="phone" size={15} color={v1Accent.main} />
-                      <Text style={[s.callBtnText, { color: v1Accent.main }]}>{t('call_partner')}</Text>
-                    </View>
-                  </TouchableOpacity>
-                ) : null}
-                {dealEvents.length > 0 ? (
-                  <View testID="deal-timeline">
-                    {dealEvents.slice(-4).map((ev) => (
-                      <SystemEventRow key={ev.id || ev.event_type} ev={ev} />
-                    ))}
-                  </View>
-                ) : null}
-                {/* UX 26.07 (приказ владельца): блок документов компактный —
-                    кнопка «Прикрепить» уехала вниз в «+»-меню; сам блок виден
-                    только когда документы уже есть. */}
-                <DealAttachments conversationId={roomId} role={role} compact attachTrigger={attachDocTick} />
-                {acceptConfirm ? (
-                  <View style={s.acceptConfirm} testID="accept-bid-confirm">
-                    <Text style={s.acceptConfirmTitle}>{t('accept_bid_confirm_title')}</Text>
-                    <Text style={s.acceptConfirmText}>
-                      {t('accept_bid_confirm_text')} {deal?.amount != null ? formatPrice(deal.amount, deal.currency || 'USD', t) : ''}
-                    </Text>
-                    <View style={s.acceptConfirmRow}>
-                      <TouchableOpacity onPress={() => setAcceptConfirm(false)} style={s.acceptCancelBtn} disabled={accepting}>
-                        <Text style={s.acceptCancelTxt}>{t('cancel')}</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={doAcceptBid} style={s.acceptOkBtn} disabled={accepting} testID="accept-bid-ok">
-                        <Text style={s.acceptOkTxt}>{accepting ? '…' : t('action_accept_bid')}</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ) : null}
-                {/* UX 26.07: большие плитки «Документ/Поддержка» из шапки
-                    убраны — теперь они в «+»-меню внизу. Остаётся только
-                    «Принять ставку», когда она доступна. */}
-                {canAcceptBid ? (
-                  <DealQuickActions
-                    role={role}
-                    onAcceptBid={() => setAcceptConfirm(true)}
-                  />
-                ) : null}
-              </View>
-            ) : null}
-            <View style={s.chatOpened}>
-              <Text style={s.chatOpenedText}>
-                {t('chatOpened')}
-                {CHAT_LANG_PILL_ENABLED ? ` · ${t('translation')}: ${LANGS[lang]}` : ''}
-              </Text>
-            </View>
+          <View style={s.chatOpened}>
+            <Text style={s.chatOpenedText}>
+              {t('chatOpened')}
+              {CHAT_LANG_PILL_ENABLED ? ` · ${t('translation')}: ${LANGS[lang]}` : ''}
+            </Text>
           </View>
         }
         onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}

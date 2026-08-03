@@ -1,24 +1,12 @@
-// ChatsListScreen — Deal Room список (PR2).
+// ChatsListScreen — «Сделки» (dealsMode) и «Чаты» (обычный режим).
 //
-// Серьёзный B2B-список сделок поверх backend foundation. Источник данных —
-// chatAPI.rooms() (старый эндпоинт, не сломан); навигация в 'Chat' сохранена.
-//
-// PR2 добавляет: заголовок, поиск (имя/компания/маршрут/груз/госномер),
-// фильтры (Все/Непрочитанные/Активные/Архив/Поддержка), обогащённые карточки
-// (роль, маршрут, груз, статус, последнее сообщение, время, unread, индикатор
-// поддержка/спор/срочно). Industrial Luxury, dark premium.
-//
-// Не трогает driver tab-bar и client nav — это таб-route 'Chats'.
-//
-// Режим «Сделки» (решение владельца 26.07.2026): этот же экран монтируется
-// клиенту как вкладка Deals (route.name === 'Deals'). Тогда сверху списка
-// переписок появляется секция «Предложения (N)» — входящие ставки водителей
-// (pending/countered из myDashboard). Тап по предложению открывает комнату
-// сделки (openBidChat → Chat), где торг ведётся в BargainCard, а переписка —
-// ниже. Отдельная вкладка «Чаты» у клиента при этом скрыта: чат живёт внутри
-// сделки, вторых дверей нет.
+// Архитектура «Сделки» (PR перестройка 03.08.2026):
+// Три вкладки: Предложения / В работе / Завершённые.
+// Источник данных — бизнес-сущности (cargos+bids / deals), НЕ chat rooms.
+// Chat rooms используются только для last_message + unread_count внутри
+// карточки сделки. Room не создаёт самостоятельную строку.
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, FlatList, SectionList, TouchableOpacity, StyleSheet, TextInput, RefreshControl, ActivityIndicator, Platform, Alert } from 'react-native';
+import { View, Text, FlatList, SectionList, TouchableOpacity, StyleSheet, TextInput, RefreshControl, ActivityIndicator, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import Feather from '@expo/vector-icons/Feather';
@@ -31,18 +19,31 @@ import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import { chatAPI } from '../utils/chatAPI';
 import { marketAPI } from '../utils/marketAPI';
 import { storage } from '../utils/storage';
-import { notificationsAPI } from '../utils/notificationsAPI';
-import { notifyNotifRead } from '../utils/unreadEvents';
 import { useToast } from '../components/Toast';
 import { formatPrice } from '../utils/normalizers';
 import { localizePlace, localizeCargoName } from '../utils/places';
 import { prettifyPartnerName } from '../utils/displayName';
 import { accentFor } from '../components/deal/DealRoom';
 
-// 01.08 v2: вместо 4 фильтр-чипов — секции (Закреплённые / Новые / Ранее)
-// + долгое нажатие → закрепить/открепить (до 5, AsyncStorage).
-
 const ROLE_LABEL = { driver: 'role_driver', client: 'role_client', support: 'role_support' };
+const ACTIVE_STATUSES = new Set(['accepted', 'in_progress', 'picked_up', 'at_border', 'awaiting_confirmation']);
+const COMPLETED_STATUSES = new Set(['completed', 'delivered', 'cancelled']);
+
+const STATUS_COLOR = {
+  accepted: '#22C55E', in_progress: '#FF8400', picked_up: '#FF8400',
+  at_border: '#2563EB', awaiting_confirmation: '#FF8400',
+  completed: '#94A3B8', delivered: '#22C55E', cancelled: '#EF4444',
+};
+const STATUS_LABEL = {
+  accepted: 'Принят',
+  in_progress: 'В пути',
+  picked_up: 'Забран',
+  at_border: 'На границе',
+  awaiting_confirmation: 'Ожидает подтверждения',
+  completed: 'Завершён',
+  delivered: 'Доставлено',
+  cancelled: 'Отменена',
+};
 
 export default function ChatsListScreen({ navigation, route }) {
   const v1 = useV1Colors();
@@ -51,36 +52,24 @@ export default function ChatsListScreen({ navigation, route }) {
   const { toast } = useToast();
   const role = route?.params?.role || 'client';
   const accent = accentFor(role);
-  // Вкладка «Сделки» (client): тот же список комнат + секция входящих ставок.
   const dealsMode = route?.name === 'Deals';
 
+  // ═══ Общее состояние ═══
   const [rooms, setRooms] = useState([]);
-  const [offers, setOffers] = useState([]);
-  const [deals, setDeals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery] = useState('');
-  // UX 26.07 (приказ владельца): dealsMode делится на два раздела
-  // кнопками слева-справа — «Предложения» (стол переговоров) и «Чаты»
-  // (переписка). При первом заходе, если есть живые предложения,
-  // открываем сразу их.
-  const [seg, setSeg] = useState('chats');
-  const segInitRef = React.useRef(false);
-  // Просмотренные предложения (локально): открыл — карточка гаснет, «новое»
-  // снимается, непросмотренные всплывают наверх. Ключ — id ставки.
-  const SEEN_KEY = 'ur_seen_offers';
-  const [seenOffers, setSeenOffers] = useState({});
-  useEffect(() => {
-    storage.get(SEEN_KEY).then((raw) => { try { if (raw) setSeenOffers(JSON.parse(raw)); } catch {} });
-  }, []);
-  const markOfferSeen = (bidId) => {
-    setSeenOffers((prev) => {
-      if (prev[bidId]) return prev;
-      const next = { ...prev, [bidId]: 1 };
-      storage.set(SEEN_KEY, JSON.stringify(next)).catch(() => {});
-      return next;
-    });
-  };
+
+  // ═══ Deals-mode состояние ═══
+  const [dealTab, setDealTab] = useState('active');
+  const [myCargos, setMyCargos] = useState([]);
+  const [myTrips, setMyTrips] = useState([]);
+  const [allDeals, setAllDeals] = useState([]);
+  const [incomingBids, setIncomingBids] = useState([]);
+  const [myBids, setMyBids] = useState([]);
+  const tabInitRef = React.useRef(false);
+
+  // ═══ Чаты-mode состояние ═══
   const PINNED_KEY = 'ur_pinned_chats';
   const [pinnedIds, setPinnedIds] = useState([]);
   useEffect(() => {
@@ -94,7 +83,7 @@ export default function ChatsListScreen({ navigation, route }) {
       return next;
     });
   };
-  // Относительное время: «5 мин», «2 ч», «вчера», иначе дата.
+
   const relTime = (raw) => {
     if (!raw) return '';
     const d = new Date(String(raw).replace(' ', 'T') + (String(raw).includes('Z') ? '' : 'Z'));
@@ -109,47 +98,30 @@ export default function ChatsListScreen({ navigation, route }) {
     return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
   };
 
+  // ═══ Загрузка ═══
   const load = useCallback(async () => {
     try {
-      const data = await chatAPI.rooms();
-      const rooms = data.rooms || [];
-      setRooms(rooms);
       if (dealsMode) {
-        // Живые предложения: у клиента — входящие ставки водителей по моим
-        // грузам; у водителя — его собственные ставки ПЛЮС входящие ставки
-        // клиентов на его рейсы (_incoming — для верной подписи/действий:
-        // входящую водитель отклоняет rejectBid, свою отменяет cancelBid).
         const d = await marketAPI.myDashboard().catch(() => null);
-        const raw = d
-          ? (role === 'driver'
-              ? [
-                  ...(d.my_bids || []),
-                  ...((d.incoming_bids || []).filter((b) => b.trip_id).map((b) => ({ ...b, _incoming: true }))),
-                ]
-              : (d.incoming_bids || []))
-          : [];
-        // Раньше «начатая переписка» (комната с любым last_message) выбрасывала
-        // ставку из «Предложений» в «Чаты» (приказ 27.07). Но бэк создаёт
-        // комнату вместе со ставкой и часто уже кладёт туда системное
-        // сообщение — из-за этого свежие ставки исчезали из «Предложений»,
-        // а у клиента «1 предложение» на карточке груза вело в пустой список
-        // (жалоба 28.07). Показываем ВСЕ живые ставки — дубль с «Чаты» ок:
-        // разные разделы, разные действия (Принять/Отклонить vs переписка).
-        // Мёртвые ставки не показываем: груз удалён (LEFT JOIN дал пустой
-        // маршрут) — торговаться не о чем, карточка «— → —» только путала.
-        const live = raw.filter((b) =>
-          (b.status === 'pending' || b.status === 'countered')
-          && !(b.cargo_id && !b.cargo_from && !b.trip_id)
-        );
-        setOffers(live);
-        const activeDeals = (d?.my_deals || []).filter((dl) =>
-          dl.status === 'accepted' || dl.status === 'in_progress' || dl.status === 'picked_up' || dl.status === 'at_border'
-        );
-        setDeals(activeDeals);
-        if (!segInitRef.current) {
-          segInitRef.current = true;
-          if (live.length > 0 || activeDeals.length > 0) setSeg('offers');
+        if (d) {
+          setMyCargos(d.my_cargos || []);
+          setMyTrips(d.my_trips || []);
+          setAllDeals(d.my_deals || []);
+          setIncomingBids((d.incoming_bids || []).filter((b) => b.status === 'pending' || b.status === 'countered'));
+          setMyBids((d.my_bids || []).filter((b) => b.status === 'pending' || b.status === 'countered'));
+          if (!tabInitRef.current) {
+            tabInitRef.current = true;
+            const hasOffers = role === 'client'
+              ? (d.my_cargos || []).some((c) => (c.active_bids_count || 0) > 0)
+              : (d.my_bids || []).some((b) => b.status === 'pending' || b.status === 'countered');
+            const hasActive = (d.my_deals || []).some((dl) => ACTIVE_STATUSES.has(dl.status));
+            if (hasActive) setDealTab('active');
+            else if (hasOffers) setDealTab('offers');
+          }
         }
+      } else {
+        const data = await chatAPI.rooms();
+        setRooms(data.rooms || []);
       }
     } catch (e) {
       console.warn('chats load failed', e);
@@ -159,20 +131,6 @@ export default function ChatsListScreen({ navigation, route }) {
     }
   }, [dealsMode, role]);
 
-  // В режиме «Сделки» открытие вкладки гасит бейдж непрочитанных событий
-  // (ставки/статусы). Это ЕДИНСТВЕННОЕ место гашения для обеих ролей —
-  // в MyTripsScreen ничего не гасится. История уведомлений не удаляется.
-  useFocusEffect(useCallback(() => {
-    if (!dealsMode) return;
-    notificationsAPI.readAll().catch(() => {});
-    notifyNotifRead();
-  }, [dealsMode]));
-
-  // P2-аудит (чаты): раньше список обновлялся ТОЛЬКО при возврате на экран
-  // (useFocusEffect без polling) → новые сообщения и бейдж непрочитанного не
-  // появлялись, пока список открыт («видно после перезагрузки»). Добавлен
-  // лёгкий poll каждые 10с, пока экран в фокусе; снимается на blur/unmount
-  // (return cleanup от useFocusEffect). Транспорт прежний — HTTP-опрос.
   useFocusEffect(useCallback(() => {
     load();
     const iv = setInterval(load, 10000);
@@ -180,28 +138,238 @@ export default function ChatsListScreen({ navigation, route }) {
   }, [load]));
   const onRefresh = () => { setRefreshing(true); load(); };
 
-  // Непрочитанные комнаты — ВСЕГДА наверху списка (жалоба владельца: «бейдж 4,
-  // а сообщения найти не могу»). Внутри групп — свежие выше (порядок сервера).
-  const unreadRoomsCount = useMemo(
-    () => rooms.filter((r) => (r.unread_count ?? r.unread ?? 0) > 0).length,
-    [rooms]
-  );
+  // ═══ DEALS MODE — данные для вкладок ═══
 
-  // Непросмотренные предложения — наверх; внутри групп свежие выше по времени.
-  // ВАЖНО: объявлено ПЕРЕД sections (иначе TDZ-ошибка «Cannot access
-  // offersSorted before initialization» → крашится вся вкладка «Сделки»).
-  const offersSorted = React.useMemo(() => {
-    const ts = (b) => { const d = new Date(String(b.created_at || '').replace(' ', 'T')); return isNaN(d) ? 0 : d.getTime(); };
-    const sorted = offers.slice().sort((a, b) => {
-      const sa = seenOffers[a.id] ? 1 : 0, sb = seenOffers[b.id] ? 1 : 0;
-      if (sa !== sb) return sa - sb;
-      return ts(b) - ts(a);
+  // Предложения (клиент): грузы с активными ставками
+  // Предложения (водитель): мои ставки + входящие на мои рейсы
+  const offersData = useMemo(() => {
+    if (!dealsMode) return [];
+    if (role === 'client') {
+      return myCargos
+        .filter((c) => (c.active_bids_count || 0) > 0 && c.status === 'active')
+        .sort((a, b) => {
+          const ta = new Date(a.latest_bid_at || a.created_at || '').getTime() || 0;
+          const tb = new Date(b.latest_bid_at || b.created_at || '').getTime() || 0;
+          return tb - ta;
+        });
+    }
+    const bids = [
+      ...myBids,
+      ...incomingBids.filter((b) => b.trip_id).map((b) => ({ ...b, _incoming: true })),
+    ];
+    return bids.sort((a, b) => {
+      const ta = new Date(a.created_at || '').getTime() || 0;
+      const tb = new Date(b.created_at || '').getTime() || 0;
+      return tb - ta;
     });
-    const dealCards = deals.map((dl) => ({ ...dl, _isDeal: true }));
-    return [...dealCards, ...sorted];
-  }, [offers, deals, seenOffers]);
+  }, [dealsMode, role, myCargos, myBids, incomingBids]);
 
-  const sections = useMemo(() => {
+  const activeDeals = useMemo(() => {
+    if (!dealsMode) return [];
+    return allDeals
+      .filter((d) => ACTIVE_STATUSES.has(d.status))
+      .sort((a, b) => {
+        const ta = new Date(a.last_message_at || a.updated_at || a.created_at || '').getTime() || 0;
+        const tb = new Date(b.last_message_at || b.updated_at || b.created_at || '').getTime() || 0;
+        return tb - ta;
+      });
+  }, [dealsMode, allDeals]);
+
+  const completedDeals = useMemo(() => {
+    if (!dealsMode) return [];
+    return allDeals
+      .filter((d) => COMPLETED_STATUSES.has(d.status))
+      .sort((a, b) => {
+        const ta = new Date(a.updated_at || a.created_at || '').getTime() || 0;
+        const tb = new Date(b.updated_at || b.created_at || '').getTime() || 0;
+        return tb - ta;
+      });
+  }, [dealsMode, allDeals]);
+
+  const offersBadge = offersData.length;
+  const activeBadge = activeDeals.length;
+  const completedBadge = completedDeals.filter((d) => (d.unread_count || 0) > 0).length;
+
+  // Фильтр по поиску для deals
+  const filterByQuery = (items, getHaystack) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter((item) => getHaystack(item).toLowerCase().includes(q));
+  };
+
+  // ═══ Рендер: карточка предложения (клиент) — один груз ═══
+  const renderCargoOffer = ({ item: cargo }) => {
+    const cnt = cargo.active_bids_count || 0;
+    const minPrice = cargo.min_bid_price;
+    const cur = cargo.currency || 'USD';
+    const time = relTime(cargo.latest_bid_at);
+    return (
+      <TouchableOpacity
+        key={cargo.id}
+        testID="deals-cargo-offer"
+        style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]}
+        onPress={() => navigation.navigate('CargoDetail', { cargoId: cargo.id, role })}
+        activeOpacity={0.7}
+      >
+        <View style={[s.avatar, { backgroundColor: '#FF840015' }]}>
+          <Feather name="package" size={18} color="#FF8400" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <View style={s.row}>
+            <Text style={[s.name, { color: theme.text }]} numberOfLines={1}>
+              {localizePlace(cargo.from_city || '—', lang)} → {localizePlace(cargo.to_city || '—', lang)}
+            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+              <Feather name="clock" size={11} color={theme.textDim} />
+              <Text style={[s.time, { color: theme.textDim }]}>{time}</Text>
+            </View>
+          </View>
+          {cargo.cargo_desc ? (
+            <Text style={[s.meta, { color: theme.textMuted }]} numberOfLines={1}>
+              {localizeCargoName(cargo.cargo_desc, lang)}
+            </Text>
+          ) : null}
+          <View style={s.row}>
+            <View style={[s.statusPill, { backgroundColor: '#FF840015' }]}>
+              <View style={[s.statusDot, { backgroundColor: '#FF8400' }]} />
+              <Text style={[s.statusPillText, { color: '#FF8400' }]}>
+                {cnt} {t('deals_offers_count')}
+              </Text>
+            </View>
+            <Text style={[s.price, { color: theme.text }]}>
+              {minPrice ? `${t('deals_offers_from')} ${formatPrice(minPrice, cur, t)}` : ''}
+            </Text>
+          </View>
+        </View>
+        <Feather name="chevron-right" size={18} color={theme.textDim} style={{ marginLeft: 4 }} />
+      </TouchableOpacity>
+    );
+  };
+
+  // ═══ Рендер: карточка предложения (водитель) — одна ставка ═══
+  const renderDriverBid = ({ item: bid }) => {
+    const isCountered = bid.status === 'countered';
+    const cur = bid.currency || 'USD';
+    const time = relTime(bid.created_at);
+    const label = isCountered
+      ? t('deals_offer_bargain')
+      : (bid._incoming ? t('deals_offer_new') : t('deals_offer_waiting'));
+    const statusColor = isCountered ? '#A855F7' : '#FF8400';
+    return (
+      <TouchableOpacity
+        key={bid.id}
+        testID="deals-driver-bid"
+        style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]}
+        onPress={() => {
+          if (bid.cargo_id) navigation.navigate('CargoDetail', { cargoId: bid.cargo_id, bidId: bid.id, role });
+          else if (bid.trip_id) navigation.navigate('TripDetail', { tripId: bid.trip_id, bidId: bid.id, role });
+        }}
+        activeOpacity={0.7}
+      >
+        <View style={[s.avatar, { backgroundColor: statusColor + '15' }]}>
+          <Feather name="dollar-sign" size={18} color={statusColor} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <View style={s.row}>
+            <Text style={[s.name, { color: theme.text }]} numberOfLines={1}>
+              {localizePlace(bid.cargo_from || bid.trip_from || '—', lang)} → {localizePlace(bid.cargo_to || bid.trip_to || '—', lang)}
+            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+              <Feather name="clock" size={11} color={theme.textDim} />
+              <Text style={[s.time, { color: theme.textDim }]}>{time}</Text>
+            </View>
+          </View>
+          <View style={s.row}>
+            <View style={[s.statusPill, { backgroundColor: statusColor + '15' }]}>
+              <View style={[s.statusDot, { backgroundColor: statusColor }]} />
+              <Text style={[s.statusPillText, { color: statusColor }]}>{label}</Text>
+            </View>
+            <Text style={[s.price, { color: theme.text }]}>
+              {formatPrice(bid.amount, cur, t)}
+              {isCountered && bid.counter_amount ? ` → ${formatPrice(bid.counter_amount, cur, t)}` : ''}
+            </Text>
+          </View>
+        </View>
+        <Feather name="chevron-right" size={18} color={theme.textDim} style={{ marginLeft: 4 }} />
+      </TouchableOpacity>
+    );
+  };
+
+  // ═══ Рендер: карточка сделки (для «В работе» и «Завершённые») ═══
+  const renderDealCard = ({ item: deal }) => {
+    const statusColor = STATUS_COLOR[deal.status] || '#94A3B8';
+    const statusLabel = STATUS_LABEL[deal.status] || formatStatus(deal.status);
+    const cur = deal.currency || 'USD';
+    const unread = deal.unread_count || 0;
+    const time = relTime(deal.last_message_at || deal.updated_at);
+    const partnerName = role === 'client'
+      ? (deal.driver_name || t('role_driver'))
+      : (deal.shipper_name || t('role_client'));
+    const isCompleted = COMPLETED_STATUSES.has(deal.status);
+    return (
+      <TouchableOpacity
+        key={deal.id}
+        testID="deals-deal-card"
+        style={[s.card, { backgroundColor: theme.card, borderColor: theme.border, opacity: deal.status === 'cancelled' ? 0.65 : 1 }]}
+        onPress={() => {
+          if (deal.cargo_id) {
+            navigation.navigate('CargoDetail', { cargoId: deal.cargo_id, dealId: deal.id, role });
+          } else if (deal.trip_id) {
+            navigation.navigate('TripDetail', { tripId: deal.trip_id, dealId: deal.id, role });
+          }
+        }}
+        activeOpacity={0.7}
+      >
+        <View style={[s.avatar, { backgroundColor: statusColor + '15' }]}>
+          <MaterialCommunityIcons name="account-outline" size={20} color={statusColor} />
+        </View>
+        <View style={{ flex: 1 }}>
+          {/* Строка 1: Имя · Роль                Время */}
+          <View style={s.row}>
+            <Text style={{ flex: 1 }} numberOfLines={1}>
+              <Text style={[s.name, { color: theme.text }]}>{partnerName}</Text>
+              <Text style={[s.roleSuffix, { color: theme.textDim }]}>  · {t('role_driver')}</Text>
+            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+              <Feather name="clock" size={11} color={theme.textDim} />
+              <Text style={[s.time, { color: theme.textDim }]}>{time}</Text>
+            </View>
+          </View>
+          {/* Строка 2: Маршрут                  Непрочитанные */}
+          <View style={s.row}>
+            <Text style={[s.route, { color: theme.textMuted }]} numberOfLines={1}>
+              {localizePlace(deal.from_city || '—', lang)} → {localizePlace(deal.to_city || '—', lang)}
+            </Text>
+            {unread > 0 ? (
+              <View style={[s.badge, { backgroundColor: '#FF8400' }]}>
+                <Text style={s.badgeTxt}>{unread > 9 ? '9+' : unread}</Text>
+              </View>
+            ) : null}
+          </View>
+          {/* Строка 3: Статус-пилл */}
+          <View style={[s.statusPill, { backgroundColor: statusColor + '15', alignSelf: 'flex-start' }]}>
+            <View style={[s.statusDot, { backgroundColor: statusColor }]} />
+            <Text style={[s.statusPillText, { color: statusColor }]}>{statusLabel}</Text>
+          </View>
+          {/* Строка 4: Последнее сообщение    Цена */}
+          <View style={s.row}>
+            {deal.last_message ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flex: 1 }}>
+                <Feather name="message-circle" size={12} color={theme.textMuted} />
+                <Text style={[s.lastMsg, { color: theme.textMuted }]} numberOfLines={1}>{deal.last_message}</Text>
+              </View>
+            ) : <View style={{ flex: 1 }} />}
+            <Text style={[s.price, { color: theme.text }]}>{formatPrice(deal.amount, cur, t)}</Text>
+          </View>
+        </View>
+        <Feather name="chevron-right" size={18} color={theme.textDim} style={{ marginLeft: 4 }} />
+      </TouchableOpacity>
+    );
+  };
+
+  // ═══ CHATS MODE — секции (не-deals) ═══
+  const chatSections = useMemo(() => {
+    if (dealsMode) return [];
     const q = query.trim().toLowerCase();
     const ts = (r) => { const d = new Date(String(r.last_message_at || r.last_at || '').replace(' ', 'T')); return isNaN(d) ? 0 : d.getTime(); };
     const byTime = (a, b) => ts(b) - ts(a);
@@ -225,216 +393,19 @@ export default function ChatsListScreen({ navigation, route }) {
     unread.sort(byTime);
     rest.sort(byTime);
     const result = [];
-    // Дом заказа: в «Сделках» сверху единая секция «Активные» — сделки в
-    // работе + живые ставки/контр-офферы. Тап по строке ведёт в карточку
-    // заказа (см. renderDealCard / renderOfferCard). Раньше это была
-    // отдельная под-вкладка «Предложения» — водители путались, где искать.
-    if (dealsMode) {
-      const activeItems = offersSorted;
-      if (activeItems.length) {
-        result.push({ key: 'active', data: activeItems, count: activeItems.length, _kind: 'active' });
-      }
-    }
     if (pinned.length) result.push({ key: 'pinned', data: pinned });
     if (unread.length) result.push({ key: 'unread', count: unread.length, data: unread });
     if (rest.length) result.push({ key: 'rest', data: rest });
     return result;
-  }, [rooms, query, pinnedIds, offersSorted, dealsMode, t, lang]);
+  }, [rooms, query, pinnedIds, dealsMode, t, lang]);
 
-  // Убрать предложение из списка: СВОЮ ставку отменяем (cancelBid),
-  // входящую отклоняем (rejectBid). У водителя теперь бывают обе:
-  // свои ставки на грузы и входящие (_incoming) на его рейсы.
-  const dismissOffer = async (bid) => {
-    const isMineBid = role === 'driver' && !bid._incoming;
-    const q = isMineBid ? t('cancel_bid_confirm') : t('reject_bid_confirm_q');
-    const doIt = async () => {
-      const r = isMineBid
-        ? await marketAPI.cancelBid(bid.id).catch(() => null)
-        : await marketAPI.rejectBid(bid.id).catch(() => null);
-      if (r && r.ok) { toast(isMineBid ? t('bid_cancelled_toast') : t('bid_rejected_toast'), 'success'); load(); }
-      else toast((r && r.detail) || t('send_error'), 'error');
-    };
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.confirm) {
-      if (window.confirm(q)) doIt();
-    } else {
-      Alert.alert(q, '', [
-        { text: t('cancel'), style: 'cancel' },
-        { text: 'OK', onPress: doIt },
-      ]);
-    }
-  };
-
-  // «Дом заказа»: тап по предложению ведёт в карточку заказа, не в чат.
-  // Раньше карточка предложения открывала Deal Room (чат) — водитель терял
-  // контекст ЗАКАЗА и искал торг в переписке. Кнопка «💬 Открыть чат» есть
-  // на карточке заказа рядом, никто ничего не теряет.
-  const openOffer = async (bid) => {
-    markOfferSeen(bid.id);
-    if (bid.cargo_id) {
-      navigation.navigate('CargoDetail', { cargoId: bid.cargo_id, bidId: bid.id, role });
-      return;
-    }
-    if (bid.trip_id) {
-      navigation.navigate('TripDetail', { tripId: bid.trip_id, bidId: bid.id, role });
-      return;
-    }
-    // Фолбэк для очень старых ставок без cargo_id/trip_id (не должно быть).
-    try {
-      const r = await marketAPI.openBidChat(bid.id);
-      const roomId = r && (r.chat_room_id || r.chatRoomId);
-      if (r && r.ok && roomId) {
-        navigation.navigate('Chat', { roomId, role, bidId: bid.id });
-      } else {
-        toast((r && r.detail) || t('chat_open_failed'), 'error');
-      }
-    } catch {
-      toast(t('chat_open_failed'), 'error');
-    }
-  };
-
-  const renderOfferCard = (bid) => {
-    const isCountered = bid.status === 'countered';
-    const cur = bid.currency || 'USD';
-    const seen = !!seenOffers[bid.id];
-    // Просмотренное — приглушаем (серая рамка, без «новое», меньше внимания);
-    // непросмотренное — горит цветом + синяя точка «новое».
-    const statusColor = seen ? theme.border : (isCountered ? '#A855F7' : '#FF8400');
-    const label = isCountered
-      ? t('deals_offer_bargain')
-      : (role === 'driver' && !bid._incoming ? t('deals_offer_waiting') : t('deals_offer_new'));
-    const time = relTime(bid.created_at);
-    return (
-      <TouchableOpacity
-        key={String(bid.id)}
-        testID="deals-offer-card"
-        style={[s.card, { backgroundColor: theme.card, borderColor: statusColor, borderWidth: 1, opacity: seen ? 0.72 : 1 }]}
-        onPress={() => openOffer(bid)}
-        activeOpacity={0.85}
-      >
-        <View style={[s.avatar, { backgroundColor: (isCountered ? '#A855F7' : '#FF8400') + '22' }]}>
-          <Feather name="dollar-sign" size={18} color={isCountered ? '#A855F7' : '#FF8400'} />
-          {!seen ? <View style={s.newDot} testID="deals-offer-newdot" /> : null}
-        </View>
-        <View style={{ flex: 1 }}>
-          <View style={s.row}>
-            <Text style={[s.name, { color: theme.text, fontWeight: seen ? '600' : '800' }]} numberOfLines={1}>
-              {localizePlace(bid.cargo_from || bid.trip_from || '—', lang)} → {localizePlace(bid.cargo_to || bid.trip_to || '—', lang)}
-            </Text>
-            {time ? <Text style={[s.time, { color: theme.textDim }]}>{time}</Text> : null}
-          </View>
-          {(bid.cargo_desc || bid.trip_desc) ? (
-            <Text style={[s.preview, { color: theme.textMuted }]} numberOfLines={1}>
-              {localizeCargoName(bid.cargo_desc || bid.trip_desc, lang)}
-            </Text>
-          ) : null}
-          <View style={s.row}>
-            <Text style={[s.offerAmount, { color: '#FF8400' }]} numberOfLines={1}>
-              {formatPrice(bid.amount, cur, t)}
-              {isCountered && bid.counter_amount ? `  →  ${formatPrice(bid.counter_amount, cur, t)}` : ''}
-            </Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-              {!seen ? <Text style={[s.dealStatus, { color: isCountered ? '#A855F7' : '#FF8400' }]}>{label}</Text> : null}
-              <Text style={[s.offerOpen, { color: accent }]}>{t('open_bid_chat')} ›</Text>
-            </View>
-          </View>
-        </View>
-        {/* Убрать предложение (водитель — отменить свою ставку, клиент —
-            отклонить входящую) прямо из списка, без захода в комнату. */}
-        <TouchableOpacity
-          onPress={(e) => { e.stopPropagation && e.stopPropagation(); dismissOffer(bid); }}
-          style={s.offerDismiss}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          testID="deals-offer-dismiss"
-        >
-          <Feather name="x" size={16} color="#EF4444" />
-        </TouchableOpacity>
-      </TouchableOpacity>
-    );
-  };
-
-  const DEAL_STATUS_LABEL = {
-    accepted: t('deal_status_accepted'),
-    in_progress: t('deal_status_in_progress'),
-    picked_up: t('deal_status_picked_up'),
-    at_border: t('deal_status_at_border'),
-  };
-  const DEAL_STATUS_COLOR = {
-    accepted: '#22C55E', in_progress: '#FF8400', picked_up: '#FF8400', at_border: '#2563EB',
-  };
-
-  const renderDealCard = (deal) => {
-    const statusColor = DEAL_STATUS_COLOR[deal.status] || '#22C55E';
-    const statusLabel = DEAL_STATUS_LABEL[deal.status] || deal.status;
-    const cur = deal.currency || 'USD';
-    return (
-      <TouchableOpacity
-        key={'deal_' + deal.id}
-        testID="deals-deal-card"
-        style={[s.card, { backgroundColor: theme.card, borderColor: statusColor, borderWidth: 1 }]}
-        onPress={() => {
-          // «Дом заказа»: тап по сделке — в карточку заказа (там прогресс-бар,
-          // статусы, кнопка «💬 Открыть чат»), а не сразу в чат.
-          if (deal.cargo_id) {
-            navigation.navigate('CargoDetail', { cargoId: deal.cargo_id, dealId: deal.id, role });
-          } else if (deal.trip_id) {
-            navigation.navigate('TripDetail', { tripId: deal.trip_id, dealId: deal.id, role });
-          } else if (deal.chat_room_id) {
-            navigation.navigate('Chat', { roomId: deal.chat_room_id, dealId: deal.id, role });
-          }
-        }}
-        activeOpacity={0.85}
-      >
-        <View style={[s.avatar, { backgroundColor: statusColor + '22' }]}>
-          <MaterialCommunityIcons name="handshake-outline" size={18} color={statusColor} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <View style={s.row}>
-            <Text style={[s.name, { color: theme.text }]} numberOfLines={1}>
-              {localizePlace(deal.from_city || '—', lang)} → {localizePlace(deal.to_city || '—', lang)}
-            </Text>
-          </View>
-          {deal.cargo_desc ? (
-            <Text style={[s.preview, { color: theme.textMuted }]} numberOfLines={1}>
-              {localizeCargoName(deal.cargo_desc, lang)}
-            </Text>
-          ) : null}
-          <View style={s.row}>
-            <Text style={[s.offerAmount, { color: '#FF8400' }]} numberOfLines={1}>
-              {formatPrice(deal.amount, cur, t)}
-            </Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: statusColor }} />
-              <Text style={[s.dealStatus, { color: statusColor }]}>{statusLabel}</Text>
-            </View>
-          </View>
-        </View>
-      </TouchableOpacity>
-    );
-  };
-
-  // Дом заказа 02.08.2026 (приказ владельца): «Предложения» и «Чаты»
-  // объединены в единый список. Одна строка = одна связка «заказ+контрагент».
-  // Сегмент оставлен только на fallback для не-dealsMode путей, но в UI не
-  // показывается. showOffersSeg = false всегда (используем секции).
-  const showOffersSeg = false;
-
-  // Декластер 27.07 (спека владельца): карточка компактнее (~-20% высоты),
-  // жирным только имя / цена / счётчик непрочитанных; роль — маленькой серой
-  // меткой у имени; маршрут+груз+вес — одна серая строка; статус — цветная
-  // точка + мелкий серый текст (не кричащий зелёный капс); бейдж
-  // непрочитанного — оранжевый сигнальный, а не акцент роли.
-  const STATUS_DOT = {
+  const STATUS_DOT_CHAT = {
     accepted: '#22C55E', confirmed: '#22C55E',
     in_progress: '#FF8400', picked_up: '#FF8400', at_border: '#2563EB',
     completed: '#94A3B8', delivered: '#94A3B8',
     cancelled: '#EF4444', rejected: '#EF4444', expired: '#94A3B8',
   };
-  const renderItem = ({ item, section }) => {
-    // Дом заказа: секция «Активные» рендерит карточки предложений/сделок,
-    // а не строки чата. Остальные секции — обычные строки переписки.
-    if (section?.key === 'active') {
-      return item._isDeal ? renderDealCard(item) : renderOfferCard(item);
-    }
+  const renderChatItem = ({ item, section }) => {
     const isPinned = section?.key === 'pinned';
     const partnerName = prettifyPartnerName(item.partner_name, item.partner_id, t);
     const isSupport = item.is_support || item.partner_role === 'support' || item.partner_id === 'urtruck-support-bot';
@@ -452,20 +423,6 @@ export default function ChatsListScreen({ navigation, route }) {
         testID="deal-room-list-card"
         style={[s.card, { backgroundColor: theme.card, borderColor: isPinned ? accent + '66' : theme.border }]}
         onPress={() => {
-          // «Дом заказа» (dealsMode): тап по строке — в карточку заказа, где
-          // сверху блок торга/сделки и кнопка «💬 Открыть чат» рядом. Обычный
-          // экран «Чаты» продолжает вести в переписку (переписка = переписка).
-          // Support-строка (Data Room / бот поддержки) всегда идёт в чат.
-          if (dealsMode && !isSupport) {
-            if (item.cargo_id) {
-              navigation.navigate('CargoDetail', { cargoId: item.cargo_id, dealId: item.deal_id, role });
-              return;
-            }
-            if (item.trip_id) {
-              navigation.navigate('TripDetail', { tripId: item.trip_id, dealId: item.deal_id, role });
-              return;
-            }
-          }
           navigation.navigate('Chat', { partner: { id: item.partner_id || item.id, name: partnerName }, roomId: item.id, dealId: item.deal_id, role });
         }}
         onLongPress={() => {
@@ -484,28 +441,26 @@ export default function ChatsListScreen({ navigation, route }) {
           <View style={s.row}>
             <Text style={{ flex: 1 }} numberOfLines={1}>
               <Text style={[s.name, { color: theme.text }]}>{partnerName}</Text>
-              {roleKey ? <Text style={[s.roleInline, { color: theme.textDim }]}>  ·  {t(roleKey)}</Text> : null}
+              {roleKey ? <Text style={[s.roleSuffix, { color: theme.textDim }]}>  ·  {t(roleKey)}</Text> : null}
             </Text>
             {time ? <Text style={[s.time, { color: theme.textDim }]}>{time}</Text> : null}
           </View>
-          {/* Статус живёт на строке маршрута (справа), цена — внизу одна:
-              «8600 KZT В РАБОТЕ» слитно читалось как одно (спека владельца п.6). */}
           {(infoStr || dealStatus) ? (
             <View style={s.row}>
-              <Text style={[s.info, { color: theme.textMuted, flex: 1 }]} numberOfLines={1}>{infoStr}</Text>
+              <Text style={[s.meta, { color: theme.textMuted, flex: 1 }]} numberOfLines={1}>{infoStr}</Text>
               {dealStatus ? (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                  <View style={[s.statusDot, { backgroundColor: STATUS_DOT[dealStatus] || '#94A3B8' }]} />
-                  <Text style={[s.statusTiny, { color: theme.textDim }]}>{formatStatus(dealStatus)}</Text>
+                  <View style={[s.statusDot, { backgroundColor: STATUS_DOT_CHAT[dealStatus] || '#94A3B8' }]} />
+                  <Text style={{ fontSize: 10, color: theme.textDim }}>{formatStatus(dealStatus)}</Text>
                 </View>
               ) : null}
             </View>
           ) : null}
           <View style={s.row}>
-            <Text style={[s.preview, { color: theme.textMuted }]} numberOfLines={1}>
+            <Text style={[s.lastMsg, { color: theme.textMuted }]} numberOfLines={1}>
               {item.last_message || t('chat_no_messages')}
             </Text>
-            {bidStr ? <Text style={[s.bid, { color: theme.text }]}>{bidStr}</Text> : null}
+            {bidStr ? <Text style={[s.price, { color: theme.text }]}>{bidStr}</Text> : null}
           </View>
         </View>
         <View style={s.right}>
@@ -525,6 +480,100 @@ export default function ChatsListScreen({ navigation, route }) {
     );
   };
 
+  // ═══ Deals tab bar ═══
+  const renderDealTabs = () => {
+    const tabs = [
+      { key: 'offers', label: t('deals_tab_offers'), badge: offersBadge },
+      { key: 'active', label: t('deals_tab_active'), badge: activeBadge },
+      { key: 'completed', label: t('deals_tab_completed'), badge: completedBadge || 0 },
+    ];
+    return (
+      <View style={[s.tabBar, { borderColor: theme.border }]}>
+        {tabs.map((tab) => {
+          const isActive = dealTab === tab.key;
+          return (
+            <TouchableOpacity
+              key={tab.key}
+              style={[s.tab, isActive && { borderBottomColor: '#FF8400', borderBottomWidth: 2 }]}
+              onPress={() => setDealTab(tab.key)}
+              activeOpacity={0.7}
+            >
+              <Text style={[s.tabText, { color: isActive ? theme.text : theme.textMuted, fontWeight: isActive ? '700' : '400' }]}>
+                {tab.label}
+              </Text>
+              {tab.badge > 0 ? (
+                <View style={[s.tabBadge, { backgroundColor: '#FF8400' }]}>
+                  <Text style={s.tabBadgeTxt}>{tab.badge}</Text>
+                </View>
+              ) : null}
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    );
+  };
+
+  // ═══ Section header для «В работе» ═══
+  const renderSectionHeader = () => {
+    if (dealTab !== 'active' || activeDeals.length === 0) return null;
+    return (
+      <View style={s.sectionHeader}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Feather name="truck" size={18} color={theme.textMuted} />
+          <View>
+            <Text style={[s.sectionTitle, { color: theme.text }]}>
+              {t('deals_tab_active') === 'В работе' ? 'Активные перевозки и статусы' : t('deals_tab_active')}
+            </Text>
+            <Text style={[s.sectionSub, { color: theme.textMuted }]}>
+              {lang === 'RU' ? 'Следите за прогрессом текущих сделок' : lang === 'EN' ? 'Track your current deals' : ''}
+            </Text>
+          </View>
+        </View>
+      </View>
+    );
+  };
+
+  // ═══ Deals content ═══
+  const renderDealsContent = () => {
+    let data = dealTab === 'offers' ? offersData
+      : dealTab === 'active' ? activeDeals
+      : completedDeals;
+
+    // Поиск по содержимому
+    const q = query.trim().toLowerCase();
+    if (q) {
+      data = data.filter((item) => {
+        const hay = [
+          item.from_city, item.to_city, item.cargo_desc, item.driver_name,
+          item.shipper_name, item.cargo_from, item.cargo_to, item.cargo_desc,
+          item.last_message,
+        ].filter(Boolean).join(' ').toLowerCase();
+        return hay.includes(q);
+      });
+    }
+
+    const emptyText = dealTab === 'offers'
+      ? (role === 'driver' ? t('deals_empty_driver') : t('deals_no_offers'))
+      : dealTab === 'active' ? t('deals_no_active')
+      : t('deals_no_completed');
+
+    const renderFn = dealTab === 'offers'
+      ? (role === 'client' ? renderCargoOffer : renderDriverBid)
+      : renderDealCard;
+
+    return (
+      <FlatList
+        data={data}
+        keyExtractor={(item) => String(item.id)}
+        renderItem={renderFn}
+        ListHeaderComponent={renderSectionHeader}
+        contentContainerStyle={{ padding: 12, paddingBottom: 24 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accent} />}
+        ListEmptyComponent={<Text style={[s.empty, { color: theme.textMuted }]}>{emptyText}</Text>}
+      />
+    );
+  };
+
   return (
     <SafeAreaView style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']} testID="deal-room-list">
       <View style={s.titleRow} testID="chats-header">
@@ -538,58 +587,46 @@ export default function ChatsListScreen({ navigation, route }) {
         <HeaderMenuButton navigation={navigation} role={role} testID="chats-menu-btn" />
       </View>
 
-      {/* Дом заказа 02.08: сегмент «Предложения / Чаты» убран. Единый список
-          с секцией «Активные» сверху (см. sections в useMemo). Иначе водители
-          путались, где искать торг — он был и там, и там. */}
+      {/* Поиск — на всех вкладках */}
+      <View style={[s.search, { backgroundColor: theme.card, borderColor: theme.border }]}>
+        <Feather name="search" size={17} color={theme.textMuted} />
+        <TextInput
+          style={[s.searchInput, { color: theme.text }]}
+          placeholder={dealsMode ? (lang === 'RU' ? 'Поиск: водитель, маршрут, груз' : t('chat_search_placeholder')) : t('chat_search_placeholder')}
+          placeholderTextColor={theme.textMuted}
+          value={query}
+          onChangeText={setQuery}
+          testID="deal-room-search"
+        />
+        {query ? <TouchableOpacity onPress={() => setQuery('')}><Feather name="x" size={16} color={theme.textMuted} /></TouchableOpacity> : null}
+      </View>
 
-      {!showOffersSeg ? (
-        <View style={[s.search, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Feather name="search" size={17} color={theme.textMuted} />
-          <TextInput
-            style={[s.searchInput, { color: theme.text }]}
-            placeholder={t('chat_search_placeholder')}
-            placeholderTextColor={theme.textMuted}
-            value={query}
-            onChangeText={setQuery}
-            testID="deal-room-search"
-          />
-          {query ? <TouchableOpacity onPress={() => setQuery('')}><Feather name="x" size={16} color={theme.textMuted} /></TouchableOpacity> : null}
-        </View>
-      ) : null}
+      {dealsMode ? renderDealTabs() : null}
 
       {loading ? (
         <ActivityIndicator color={accent} style={{ marginTop: 40 }} />
-      ) : showOffersSeg ? (
-        <FlatList
-          data={offersSorted}
-          keyExtractor={(i) => String(i._isDeal ? 'deal_' + i.id : i.id)}
-          renderItem={({ item }) => item._isDeal ? renderDealCard(item) : renderOfferCard(item)}
-          contentContainerStyle={{ padding: 12, paddingBottom: 24 }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accent} />}
-          ListEmptyComponent={<Text style={[s.empty, { color: theme.textMuted }]}>{t('deals_no_offers')}</Text>}
-        />
+      ) : dealsMode ? (
+        renderDealsContent()
       ) : (
         <SectionList
-          sections={sections}
+          sections={chatSections}
           keyExtractor={(i) => String(i.id)}
-          renderItem={renderItem}
+          renderItem={renderChatItem}
           renderSectionHeader={({ section }) => (
             <View style={s.sectionRow}>
-              {section.key === 'active' ? <MaterialCommunityIcons name="handshake-outline" size={14} color={accent} /> : null}
               {section.key === 'pinned' ? <Feather name="map-pin" size={13} color={theme.textMuted} /> : null}
-              {section.key === 'unread' ? <View style={[s.sectionDot, { backgroundColor: '#FF8400' }]} /> : null}
-              <Text style={[s.sectionLabel, { color: section.key === 'active' ? accent : theme.textMuted }]}>
-                {section.key === 'active' ? `${t('deals_section_active')} (${section.count})`
-                 : section.key === 'pinned' ? t('section_pinned')
+              {section.key === 'unread' ? <View style={[s.sectionDot2, { backgroundColor: '#FF8400' }]} /> : null}
+              <Text style={[s.sectionLabel, { color: theme.textMuted }]}>
+                {section.key === 'pinned' ? t('section_pinned')
                  : section.key === 'unread' ? `${t('section_new')} (${section.count})`
-                 : (dealsMode ? t('deals_section_conversations') : t('section_earlier'))}
+                 : t('section_earlier')}
               </Text>
             </View>
           )}
           stickySectionHeadersEnabled={false}
           contentContainerStyle={{ padding: 12, paddingBottom: 24 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accent} />}
-          ListEmptyComponent={<Text style={[s.empty, { color: theme.textMuted }]}>{query ? t('chat_no_results') : (dealsMode ? (role === 'driver' ? t('deals_empty_driver') : t('deals_empty')) : t('chats_empty'))}</Text>}
+          ListEmptyComponent={<Text style={[s.empty, { color: theme.textMuted }]}>{query ? t('chat_no_results') : t('chats_empty')}</Text>}
         />
       )}
     </SafeAreaView>
@@ -599,43 +636,43 @@ export default function ChatsListScreen({ navigation, route }) {
 const s = StyleSheet.create({
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingTop: 6, paddingBottom: 8 },
   title: { fontSize: 19, fontWeight: '700', letterSpacing: -0.2 },
-  search: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 12, marginBottom: 4, paddingHorizontal: 12, height: 44, borderRadius: 10, borderWidth: 1 },
+  // Поиск
+  search: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 12, marginBottom: 8, paddingHorizontal: 12, height: 44, borderRadius: 12, borderWidth: 1 },
   searchInput: { flex: 1, fontSize: 14, paddingVertical: 0 },
-  sectionRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 10, paddingBottom: 6 },
-  sectionDot: { width: 8, height: 8, borderRadius: 4 },
-  sectionLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
-  // Декластер 27.07: карточка ниже (~20%), жирным только имя/цена/счётчик.
-  card: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1, marginBottom: 8, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
-  avatar: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  // Вкладки сделок
+  tabBar: { flexDirection: 'row', marginHorizontal: 12, borderBottomWidth: 1, marginBottom: 4 },
+  tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderBottomWidth: 2, borderBottomColor: 'transparent' },
+  tabText: { fontSize: 14 },
+  tabBadge: { minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5, alignItems: 'center', justifyContent: 'center' },
+  tabBadgeTxt: { color: '#fff', fontSize: 11, fontWeight: '800' },
+  // Section header
+  sectionHeader: { paddingHorizontal: 4, paddingTop: 4, paddingBottom: 12 },
+  sectionTitle: { fontSize: 15, fontWeight: '700' },
+  sectionSub: { fontSize: 12, marginTop: 1 },
+  // Карточки
+  card: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1, marginBottom: 8, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
+  avatar: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 2 },
   name: { fontSize: 14, fontWeight: '700' },
-  roleInline: { fontSize: 12, fontWeight: '400' },
+  roleSuffix: { fontSize: 12, fontWeight: '400' },
   time: { fontSize: 11 },
-  info: { fontSize: 12, fontWeight: '400', marginTop: 1 },
-  preview: { fontSize: 13, fontWeight: '400', marginTop: 1, flex: 1 },
-  bid: { fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  meta: { fontSize: 12, fontWeight: '400' },
+  route: { fontSize: 13, flex: 1 },
+  lastMsg: { fontSize: 12, flex: 1 },
+  price: { fontSize: 14, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  // Статус-пилл
+  statusPill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, marginTop: 3 },
   statusDot: { width: 7, height: 7, borderRadius: 4 },
-  statusTiny: { fontSize: 10, fontWeight: '400' },
-  // Метка на карточке ПРЕДЛОЖЕНИЯ («Новое предложение»/«Торг») — там она
-  // главный сигнал, остаётся заметной (в чатах статусы — точкой).
-  dealStatus: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
+  statusPillText: { fontSize: 12, fontWeight: '600' },
+  // Бейджи
+  badge: { minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center' },
+  badgeTxt: { color: '#fff', fontSize: 12, fontWeight: '800' },
+  // Чаты-секции
+  sectionRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 10, paddingBottom: 6 },
+  sectionDot2: { width: 8, height: 8, borderRadius: 4 },
+  sectionLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
   right: { alignItems: 'flex-end', gap: 5 },
   flag: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8 },
   flagTxt: { fontSize: 11, fontWeight: '900', color: '#EF4444' },
-  badge: { minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center' },
-  badgeTxt: { color: '#0C0A09', fontSize: 12, fontWeight: '900' },
   empty: { textAlign: 'center', marginTop: 40, fontSize: 14 },
-  // Режим «Сделки»: заголовки секций и карточка входящего предложения.
-  sectionTitle: { fontSize: 15, fontWeight: '900', marginTop: 6, marginBottom: 8 },
-  offerAmount: { fontSize: 16, fontWeight: '700', color: '#FF8400', marginTop: 2, fontVariant: ['tabular-nums'] },
-  offerOpen: { fontSize: 12, fontWeight: '800' },
-  // Сегмент-переключатель «Предложения | Чаты» (кнопки слева-справа).
-  segWrap: { flexDirection: 'row', marginHorizontal: 12, marginBottom: 10, borderRadius: 14, borderWidth: 1, padding: 3, gap: 3 },
-  segBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 42, borderRadius: 11 },
-  segTxt: { fontSize: 14, fontWeight: '900' },
-  segBadge: { minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5, alignItems: 'center', justifyContent: 'center' },
-  segBadgeTxt: { fontSize: 11, fontWeight: '900' },
-  offerDismiss: { alignSelf: 'flex-start', width: 28, height: 28, borderRadius: 14, borderWidth: 1, borderColor: '#EF4444', alignItems: 'center', justifyContent: 'center' },
-  // Синяя точка «новое» на аватаре непросмотренного предложения.
-  newDot: { position: 'absolute', top: -3, right: -3, width: 12, height: 12, borderRadius: 6, backgroundColor: '#2563EB', borderWidth: 2, borderColor: '#fff' },
 });

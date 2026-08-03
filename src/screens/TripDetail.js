@@ -1081,8 +1081,9 @@ export default function TripDetail({ navigation, route }) {
       ) : null}
 
       {/* Sticky CTA — shipper viewing someone else's trip.
-          Если у клиента уже есть активная ставка — прячем «Предложить цену»
-          (действия перенесены в плашку выше: [Изменить] [Чат]). */}
+          Только «Предложить цену» — свободный чат до сделки убран (решение
+          владельца 03.08): после accept ставки автоматически создаётся комната
+          сделки, до этого переговоры ведутся через ставку/контрпредложение. */}
       {!isOwner && !dealStatus && role === 'client' && !myActiveBid ? (
         <StickyCTABar
           accent={v1Accent.main}
@@ -1093,22 +1094,6 @@ export default function TripDetail({ navigation, route }) {
               if (ok) setBidModal(true);
             },
             testID: 'trip-sticky-bid',
-          }}
-          secondary={{
-            // Чат с водителем доступен ДО ставки (на базаре сначала
-            // разговаривают) — зеркально CargoDetail. Комната создастся
-            // на первом сообщении по driverId.
-            label: '💬 ' + t('order_chat'),
-            onPress: () => {
-              if (chatRoomId) {
-                navigation.navigate('Chat', { roomId: chatRoomId, role, tripId: tid });
-              } else if (trip.driverId) {
-                navigation.navigate('Chat', { partner: { id: trip.driverId }, tripId: tid, role });
-              } else {
-                toast(t('chat_open_failed'), 'error');
-              }
-            },
-            testID: 'trip-sticky-chat',
           }}
         />
       ) : null}
