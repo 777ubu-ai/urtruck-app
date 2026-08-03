@@ -120,6 +120,8 @@ export default function CargoDetail({ navigation, route }) {
   reviewSubmitBtn: { backgroundColor: '#22C55E', borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10 },
   reviewSubmitText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   dealBlock: { borderWidth: 1, borderRadius: 14, padding: 16, alignItems: 'center', gap: 10 },
+  clarifyRoutePill: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, alignSelf: 'stretch' },
+  clarifyRouteText: { fontSize: 13, fontWeight: '600' },
   myBidCard: { padding: 14, borderRadius: 10, borderWidth: 2, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
   myBidHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
   myBidLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' },
@@ -200,7 +202,12 @@ export default function CargoDetail({ navigation, route }) {
     const fromParam = cargo && cargo.isMine;
     const fromServer = myUserId && fullCargo.owner_id === myUserId;
     // owner_id нужен для прямого чата с грузовладельцем (кнопка внизу).
-    return { ...normalized, owner_id: fullCargo.owner_id, isMine: fromParam || fromServer || normalized.isMine };
+    // from_country/to_country — для гейта статуса сделки (см. isDomestic/
+    // hasKnownRoute ниже): без них дом. и межд. маршруты неразличимы.
+    return {
+      ...normalized, owner_id: fullCargo.owner_id, isMine: fromParam || fromServer || normalized.isMine,
+      from_country: fullCargo.from_country, to_country: fullCargo.to_country,
+    };
   })();
   const cid = cargoId || c.id;
   // route.params.role is the authoritative side hint when CargoDetail is opened
@@ -213,6 +220,14 @@ export default function CargoDetail({ navigation, route }) {
   const isShipper = role === 'client' || role === 'shipper'
     || !!c.isMine
     || (shipperId && shipperId === myUserId);
+  // Гейт статуса сделки (приказ владельца 03.08, зеркально MyTripsScreen):
+  // домашний рейс не идёт через границу, международный не доставляется
+  // минуя её, неизвестный маршрут не двигается дальше вообще — сервер это
+  // уже блокирует 409-м, здесь просто не предлагаем действие, которое
+  // всё равно будет отклонено.
+  const hasKnownRoute = Boolean(c.from_country && c.to_country);
+  const isDomesticRoute = hasKnownRoute
+    && String(c.from_country).trim().toUpperCase() === String(c.to_country).trim().toUpperCase();
   if (!cid && !c.from) return null;
 
   const loadBids = () => {
@@ -248,7 +263,13 @@ export default function CargoDetail({ navigation, route }) {
         const accepted = mapped.find(b => b.status === 'accepted');
         if (accepted) {
           setAcceptedDriverId(accepted.bidderId);
-          if (!dealStatus) setDealStatus('accepted');
+          // Updater-форма, а не `if (!dealStatus)`: loadBids вызывается из
+          // refreshDeal (useCallback без dealStatus в deps) — при каждом
+          // 15-секундном опросе замыкание видело dealStatus=null с момента
+          // маунта и затирало уже продвинутый in_progress/at_border обратно
+          // в accepted. prev всегда свежий независимо от того, чьё замыкание
+          // вызвало setDealStatus.
+          setDealStatus((prev) => prev || 'accepted');
         }
       })
       .catch(() => {});
@@ -470,22 +491,40 @@ export default function CargoDetail({ navigation, route }) {
 
         {/* Карточка грузоотправителя — водитель видит, кому ставит ставку
             (имя, верификация, рейтинг), а не ставит вслепую. */}
-        {!c.isMine && fullCargo?.owner_id ? (
-          <GlassCard>
-            <SectionTitle featherIcon="user" label={t('shipper_label')} />
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
-              <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }} numberOfLines={1}>
-                {fullCargo.owner_name || t('chat_partner_fallback')}
-              </Text>
-              <Text style={{ fontSize: 12, color: theme.textMuted }}>
-                {fullCargo.owner_verified ? '✅ ' + t('verified_short') + ' · ' : ''}
-                {fullCargo.owner_reviews_count > 0
-                  ? `⭐ ${Number(fullCargo.owner_rating).toFixed(1)} (${fullCargo.owner_reviews_count})`
-                  : t('no_reviews_yet')}
-              </Text>
-            </View>
-          </GlassCard>
-        ) : null}
+        {!c.isMine && fullCargo?.owner_id ? (() => {
+          // Приказ владельца 03.08: не выдавать нейтральную роль за
+          // подтверждённую личность. owner_name с бэка иногда — не имя, а
+          // техническая заглушка (хвост телефона «+2244» или generic-строка),
+          // когда профиль не заполнен. В этом случае показываем нейтральное
+          // «Грузоотправитель», а не псевдо-имя.
+          const rawName = fullCargo.owner_name || '';
+          const hasRealName = rawName && !rawName.startsWith('+') && rawName !== 'Пользователь UrTruck';
+          return (
+            <GlassCard>
+              <SectionTitle featherIcon="user" label={t('shipper_label')} />
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }} numberOfLines={1}>
+                  {hasRealName ? rawName : t('shipper_label')}
+                  {!hasRealName && fullCargo.owner_verified ? ` · ${t('verified_short')}` : ''}
+                </Text>
+                <Text style={{ fontSize: 12, color: theme.textMuted }}>
+                  {hasRealName ? (
+                    <>
+                      {fullCargo.owner_verified ? '✅ ' + t('verified_short') + ' · ' : ''}
+                      {fullCargo.owner_reviews_count > 0
+                        ? `⭐ ${Number(fullCargo.owner_rating).toFixed(1)} (${fullCargo.owner_reviews_count})`
+                        : t('no_reviews_yet')}
+                    </>
+                  ) : (
+                    fullCargo.owner_reviews_count > 0
+                      ? `${t('rating_label')} ${Number(fullCargo.owner_rating).toFixed(1)}`
+                      : t('profile_incomplete')
+                  )}
+                </Text>
+              </View>
+            </GlassCard>
+          );
+        })() : null}
 
         {/* Часть 1: показываем ЧИСЛО предложений (видно всем), не длину
             урезанного списка. */}
@@ -887,17 +926,22 @@ export default function CargoDetail({ navigation, route }) {
                 Доставлен (как у Uber Freight/inDrive). */}
             <DealStatusTimeline status={dealStatus} role={role} />
 
-            {/* Next-step hint */}
+            {/* Next-step hint — при неизвестном маршруте подсказка не должна
+                называть шаг, который сервер всё равно отклонит 409-м. */}
             {(dealStatus === 'accepted' || dealStatus === 'in_progress' || dealStatus === 'at_border') && (
               <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 8, textAlign: 'center' }}>
-                {t('order_next_step')}: {
-                  isDriverSide
-                    ? (dealStatus === 'accepted' ? t('driver_next_step_accepted')
-                       : dealStatus === 'in_progress' ? t('driver_next_step_in_progress')
-                       : t('driver_next_step_at_border'))
-                    : (dealStatus === 'accepted' ? t('shipper_next_step_accepted')
-                       : t('shipper_next_step_in_progress'))
-                }
+                {dealStatus === 'in_progress' && !hasKnownRoute ? t('clarify_route') : (
+                  <>
+                    {t('order_next_step')}: {
+                      isDriverSide
+                        ? (dealStatus === 'accepted' ? t('driver_next_step_accepted')
+                           : dealStatus === 'in_progress' ? t('driver_next_step_in_progress')
+                           : t('driver_next_step_at_border'))
+                        : (dealStatus === 'accepted' ? t('shipper_next_step_accepted')
+                           : t('shipper_next_step_in_progress'))
+                    }
+                  </>
+                )}
               </Text>
             )}
 
@@ -914,7 +958,18 @@ export default function CargoDetail({ navigation, route }) {
                   onPress={() => changeDealStatus('in_progress')}
                 />
               )}
-              {isDriverSide && dealStatus === 'in_progress' && (
+              {/* Гейт маршрута (03.08): неизвестные страны — ни один переход
+                  дальше не пройдёт на сервере (409), поэтому вместо кнопки
+                  показываем нейтральную плашку. Домашний рейс (страны
+                  совпадают) не идёт через границу — пропускаем «На границе»
+                  и предлагаем сразу «Доставлен». */}
+              {isDriverSide && dealStatus === 'in_progress' && !hasKnownRoute && (
+                <View style={s.clarifyRoutePill} testID="deal-clarify-route">
+                  <Feather name="alert-circle" size={14} color={theme.textMuted} />
+                  <Text style={[s.clarifyRouteText, { color: theme.textMuted }]}>{t('clarify_route')}</Text>
+                </View>
+              )}
+              {isDriverSide && dealStatus === 'in_progress' && hasKnownRoute && !isDomesticRoute && (
                 <PrimaryCTA
                   role={role || 'driver'}
                   icon="🛂"
@@ -922,6 +977,16 @@ export default function CargoDetail({ navigation, route }) {
                   loading={statusLoading}
                   disabled={statusLoading}
                   onPress={() => changeDealStatus('at_border')}
+                />
+              )}
+              {isDriverSide && dealStatus === 'in_progress' && hasKnownRoute && isDomesticRoute && (
+                <PrimaryCTA
+                  role={role || 'driver'}
+                  icon="✅"
+                  label={t('mark_arrived')}
+                  loading={statusLoading}
+                  disabled={statusLoading}
+                  onPress={() => changeDealStatus('delivered')}
                 />
               )}
               {isDriverSide && dealStatus === 'at_border' && (
@@ -934,7 +999,13 @@ export default function CargoDetail({ navigation, route }) {
                   onPress={() => changeDealStatus('delivered')}
                 />
               )}
-              {isShipper && (dealStatus === 'in_progress' || dealStatus === 'at_border') && (
+              {isShipper && dealStatus === 'in_progress' && !hasKnownRoute && (
+                <View style={s.clarifyRoutePill} testID="deal-clarify-route">
+                  <Feather name="alert-circle" size={14} color={theme.textMuted} />
+                  <Text style={[s.clarifyRouteText, { color: theme.textMuted }]}>{t('clarify_route')}</Text>
+                </View>
+              )}
+              {isShipper && ((dealStatus === 'in_progress' && hasKnownRoute) || dealStatus === 'at_border') && (
                 <SecondaryButton
                   role={role || 'client'}
                   icon="✅"

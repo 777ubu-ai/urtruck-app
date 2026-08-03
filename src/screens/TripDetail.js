@@ -114,7 +114,14 @@ export default function TripDetail({ navigation, route }) {
   // empty trip object below keeps the screen on a loading state
   // until the network response replaces it.
   const trip = React.useMemo(() => {
-    const normalised = normalizeTrip(serverTrip || rawTrip);
+    const src = serverTrip || rawTrip;
+    const normalised = normalizeTrip(src);
+    // from_country/to_country — для гейта статуса сделки (isDomesticRoute/
+    // hasKnownRoute ниже); normalizeTrip их не прокидывает.
+    if (normalised && src) {
+      normalised.from_country = src.from_country;
+      normalised.to_country = src.to_country;
+    }
     return normalised || {
       id: tripId || null,
       from: '', to: '', transit: '',
@@ -160,6 +167,12 @@ export default function TripDetail({ navigation, route }) {
   // id-based comparison is a fallback for direct entry without a role hint.
   const isDriverSide = role === 'driver' || (driverId && driverId === myUserId);
   const isShipper = role === 'client' || role === 'shipper' || (shipperId && shipperId === myUserId);
+  // Гейт статуса сделки (приказ владельца 03.08, зеркально CargoDetail):
+  // домашний рейс не идёт через границу, международный не доставляется
+  // минуя её, неизвестный маршрут не двигается дальше вообще.
+  const hasKnownRoute = Boolean(trip.from_country && trip.to_country);
+  const isDomesticRoute = hasKnownRoute
+    && String(trip.from_country).trim().toUpperCase() === String(trip.to_country).trim().toUpperCase();
 
   const lastLocalChange = React.useRef(0);
   const applyDeal = (d) => {
@@ -443,13 +456,17 @@ export default function TripDetail({ navigation, route }) {
           <DealStatusTimeline status={dealStatus} role={role} />
           {(dealStatus === 'accepted' || dealStatus === 'in_progress' || dealStatus === 'at_border') && (
             <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 4, textAlign: 'center' }}>
-              {t('order_next_step')}: {
-                isDriverSide
-                  ? (dealStatus === 'accepted' ? t('driver_next_step_accepted')
-                     : dealStatus === 'in_progress' ? t('driver_next_step_in_progress')
-                     : t('driver_next_step_at_border'))
-                  : (dealStatus === 'accepted' ? t('shipper_next_step_accepted') : t('shipper_next_step_in_progress'))
-              }
+              {dealStatus === 'in_progress' && !hasKnownRoute ? t('clarify_route') : (
+                <>
+                  {t('order_next_step')}: {
+                    isDriverSide
+                      ? (dealStatus === 'accepted' ? t('driver_next_step_accepted')
+                         : dealStatus === 'in_progress' ? t('driver_next_step_in_progress')
+                         : t('driver_next_step_at_border'))
+                      : (dealStatus === 'accepted' ? t('shipper_next_step_accepted') : t('shipper_next_step_in_progress'))
+                  }
+                </>
+              )}
             </Text>
           )}
           <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginTop: 10 }}>
@@ -458,9 +475,20 @@ export default function TripDetail({ navigation, route }) {
                 <Text style={s.dealActionText}>{statusLoading ? '...' : '🚛 ' + t('start_delivery')}</Text>
               </TouchableOpacity>
             )}
-            {isDriverSide && dealStatus === 'in_progress' && (
+            {(isDriverSide || isShipper) && dealStatus === 'in_progress' && !hasKnownRoute && (
+              <View style={[s.dealActionBtn, { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: 'transparent', borderWidth: 1, borderColor: theme.border }]} testID="deal-clarify-route">
+                <Feather name="alert-circle" size={14} color={theme.textMuted} />
+                <Text style={[s.dealActionText, { color: theme.textMuted }]}>{t('clarify_route')}</Text>
+              </View>
+            )}
+            {isDriverSide && dealStatus === 'in_progress' && hasKnownRoute && !isDomesticRoute && (
               <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: v1Accent.main }]} onPress={() => changeDealStatus('at_border')} disabled={statusLoading}>
                 <Text style={s.dealActionText}>{statusLoading ? '...' : '🛂 ' + t('mark_at_border')}</Text>
+              </TouchableOpacity>
+            )}
+            {isDriverSide && dealStatus === 'in_progress' && hasKnownRoute && isDomesticRoute && (
+              <TouchableOpacity style={[s.dealActionBtn, { backgroundColor: v1Accent.main }]} onPress={() => changeDealStatus('delivered')} disabled={statusLoading}>
+                <Text style={s.dealActionText}>{statusLoading ? '...' : '✅ ' + t('mark_arrived')}</Text>
               </TouchableOpacity>
             )}
             {isDriverSide && dealStatus === 'at_border' && (
@@ -468,7 +496,7 @@ export default function TripDetail({ navigation, route }) {
                 <Text style={s.dealActionText}>{statusLoading ? '...' : '✅ ' + t('mark_arrived')}</Text>
               </TouchableOpacity>
             )}
-            {isShipper && (dealStatus === 'in_progress' || dealStatus === 'at_border') && (
+            {isShipper && ((dealStatus === 'in_progress' && hasKnownRoute) || dealStatus === 'at_border') && (
               <TouchableOpacity style={[s.dealActionBtn, s.dealActionGhost, { borderColor: v1Accent.main }]} onPress={() => changeDealStatus('delivered')} disabled={statusLoading}>
                 <Text style={[s.dealActionText, { color: v1Accent.main }]}>{statusLoading ? '...' : '✅ ' + t('confirm_delivery')}</Text>
               </TouchableOpacity>

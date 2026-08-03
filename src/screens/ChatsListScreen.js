@@ -74,6 +74,13 @@ export default function ChatsListScreen({ navigation, route }) {
 
   // ═══ Deals-mode состояние ═══
   const [dealTab, setDealTab] = useState('active');
+  // Статус — понятие, разное для каждой вкладки (offers не знает at_border/
+  // delivered), поэтому при смене вкладки сбрасываем именно его — иначе
+  // фильтр «зависает» и список ложно показывает пусто (тип кузова/дата/
+  // непрочитанные остаются: их смысл не зависит от вкладки).
+  React.useEffect(() => {
+    setFilters((f) => (f.status ? { ...f, status: null } : f));
+  }, [dealTab]);
   const [myCargos, setMyCargos] = useState([]);
   const [myTrips, setMyTrips] = useState([]);
   const [allDeals, setAllDeals] = useState([]);
