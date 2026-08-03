@@ -20,6 +20,7 @@ import { useMountedRef } from '../hooks/useMountedRef';
 import FadeInUp, { PopIn } from '../components/ui/FadeInUp';
 import PressableScale from '../components/PressableScale';
 import Feather from '@expo/vector-icons/Feather';
+import { countryFlag } from '../utils/countryFlags';
 
 export default function MyTripsScreen({ navigation, route }) {
   const v1 = useV1Colors();
@@ -325,7 +326,7 @@ export default function MyTripsScreen({ navigation, route }) {
   // Архив. Карточка с «Начать перевозку» (accepted/in_progress) НИКОГДА не
   // попадает в Архив — она живёт только в «В работе».
   //   pending | countered                 → Предложения (offers)
-  //   accepted | in_progress | picked_up  → В работе (inwork)
+  //   accepted | in_progress  → В работе (inwork)
   //   completed | delivered               → Завершённые (done)
   //   cancelled | rejected | expired      → Архив (вторичный фильтр)
   // 27.07: 'at_border' («На границе») ОБЯЗАТЕЛЬНО в «В работе» — иначе груз на
@@ -347,7 +348,7 @@ export default function MyTripsScreen({ navigation, route }) {
   // ─── Client (грузоотправитель) buckets — зеркало водителя в его терминах ───
   //   Ищу машину (searching) = активные мои грузы (идут ставки; принять/
   //                            отклонить ставку — В КАРТОЧКЕ груза, не вкладкой)
-  //   Везут (enroute)        = сделки accepted/in_progress/picked_up
+  //   Везут (enroute)        = сделки accepted/in_progress
   //   Доставлено (delivered) = сделки completed/delivered
   //   Архив                  = отменённые/отклонённые/истёкшие сделки + истёкшие грузы
   // Сделки общие с driver-ветвью (driverInWork/driverDone = «мои сделки по
@@ -412,7 +413,7 @@ export default function MyTripsScreen({ navigation, route }) {
             })() }]}>{formatStatus(item.status || 'active')}</Text>
           )}
         </View>
-        <Text style={[s.route, { color: theme.text }]}>{localizePlace(from, lang)} → {localizePlace(to, lang)}</Text>
+        <Text style={[s.route, { color: theme.text }]}>{countryFlag(item.from_country)} {localizePlace(from, lang)} → {countryFlag(item.to_country)} {localizePlace(to, lang)}</Text>
         {desc ? <Text style={[s.desc, { color: theme.textMuted }]} numberOfLines={1}>{localizeCargoName(desc, lang)}</Text> : null}
         <View style={s.cardMeta}>
           <Text style={[s.metaItem, { color: theme.textDim }]}>{formatTruckType(item.truck_type || item.cargo_type)}</Text>
@@ -555,8 +556,9 @@ export default function MyTripsScreen({ navigation, route }) {
   const renderDeal = ({ item }) => {
     const sc = { accepted: '#10B981', in_progress: '#FF8400', at_border: '#2563EB', delivered: '#10B981', cancelled: '#EF4444' };
     const busy = busyBidId === item.id;
-    const isDomestic = item.from_country && item.to_country
-      && item.from_country.toUpperCase() === item.to_country.toUpperCase();
+    const hasCountries = Boolean(item.from_country && item.to_country);
+    const isDomestic = hasCountries
+      && item.from_country.trim().toUpperCase() === item.to_country.trim().toUpperCase();
     const nextStep = isDriver
       ? (item.status === 'accepted' ? t('driver_next_step_accepted')
           : item.status === 'in_progress' ? t('driver_next_step_in_progress')
@@ -585,7 +587,7 @@ export default function MyTripsScreen({ navigation, route }) {
             <Text style={[s.statusLabel, { color: sc[item.status] || '#78716C' }]}>{formatStatus(item.status)}</Text>
           )}
         </View>
-        <Text style={[s.route, { color: theme.text }]}>{localizePlace(item.from_city || '—', lang)} → {localizePlace(item.to_city || '—', lang)}</Text>
+        <Text style={[s.route, { color: theme.text }]}>{countryFlag(item.from_country)} {localizePlace(item.from_city || '—', lang)} → {countryFlag(item.to_country)} {localizePlace(item.to_city || '—', lang)}</Text>
         {/* issue #3: груз/тип кузова на карточке заказа */}
         {(item.cargo_title || item.cargo_desc || item.cargo_type || item.truck_type) ? (
           <View style={s.cardMeta}>
@@ -631,7 +633,7 @@ export default function MyTripsScreen({ navigation, route }) {
               Международный (from_country !== to_country): in_progress → «На границе».
               Внутренний (from_country === to_country): in_progress → «Груз доставлен»,
               at_border пропускается — границы нет. */}
-          {isDriver && item.status === 'in_progress' && !isDomestic && (
+          {isDriver && item.status === 'in_progress' && hasCountries && !isDomestic && (
             <TouchableOpacity
               style={[s.acceptBtn, { backgroundColor: '#2563EB' }, busy && { opacity: 0.5 }]}
               disabled={busy}
@@ -643,7 +645,7 @@ export default function MyTripsScreen({ navigation, route }) {
               </View>
             </TouchableOpacity>
           )}
-          {isDriver && item.status === 'in_progress' && isDomestic && (
+          {isDriver && item.status === 'in_progress' && (!hasCountries || isDomestic) && (
             <TouchableOpacity
               style={[s.acceptBtn, busy && { opacity: 0.5 }]}
               disabled={busy}
@@ -755,7 +757,7 @@ export default function MyTripsScreen({ navigation, route }) {
         opacity: item.status === 'cancelled' ? 0.6 : 1,
       }]}>
         <View style={s.cardTop}>
-          <Text style={[s.route, { color: theme.text }]}>{localizePlace(from, lang)} → {localizePlace(to, lang)}</Text>
+          <Text style={[s.route, { color: theme.text }]}>{countryFlag(item.from_country)} {localizePlace(from, lang)} → {countryFlag(item.to_country)} {localizePlace(to, lang)}</Text>
           <Text style={[s.statusLabel, { color: sc[item.status] || '#78716C' }]}>{sl[item.status] || item.status}</Text>
         </View>
         {item.cargo_desc ? <Text style={[s.desc, { color: theme.textMuted }]} numberOfLines={1}>{localizeCargoName(item.cargo_desc, lang)}</Text> : null}

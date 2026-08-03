@@ -597,6 +597,25 @@ def delete_cargo(cargo_id: str, user=Depends(require_level(1))):
     return {"ok": True}
 
 
+@mp_router.patch("/cargos/{cargo_id}/unpublish")
+def unpublish_cargo(cargo_id: str, user=Depends(require_level(1))):
+    """Снять груз с публикации. Ставит status=unpublished, отклоняет pending-ставки."""
+    with get_conn() as c:
+        row = c.execute("SELECT owner_id, status FROM cargos WHERE id = ?", (cargo_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Груз не найден")
+        if row["owner_id"] != user["id"]:
+            raise HTTPException(status_code=403, detail="Можно снять только свой груз")
+        if row["status"] not in (None, "active"):
+            raise HTTPException(status_code=409, detail="Груз уже не активен")
+        c.execute("UPDATE cargos SET status = 'unpublished', updated_at = CURRENT_TIMESTAMP WHERE id = ?", (cargo_id,))
+        c.execute(
+            "UPDATE bids SET status = 'rejected', updated_at = CURRENT_TIMESTAMP "
+            "WHERE cargo_id = ? AND status IN ('pending', 'countered')", (cargo_id,)
+        )
+    return {"ok": True, "status": "unpublished"}
+
+
 class CargoPatchIn(BaseModel):
     cargo_desc: Optional[str] = None
     cargo_type: Optional[str] = None
@@ -830,6 +849,25 @@ def extend_trip(trip_id: str, user=Depends(require_level(1))):
             raise HTTPException(status_code=409, detail="Рейс не активен")
         c.execute("UPDATE trips SET departure = ? WHERE id = ?", (new_date, trip_id))
     return {"ok": True, "departure": new_date}
+
+
+@mp_router.patch("/trips/{trip_id}/unpublish")
+def unpublish_trip(trip_id: str, user=Depends(require_level(1))):
+    """Снять рейс с публикации. Ставит status=unpublished, отклоняет pending-ставки."""
+    with get_conn() as c:
+        row = c.execute("SELECT driver_id, status FROM trips WHERE id = ?", (trip_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Рейс не найден")
+        if row["driver_id"] != user["id"]:
+            raise HTTPException(status_code=403, detail="Можно снять только свой рейс")
+        if row["status"] not in (None, "active"):
+            raise HTTPException(status_code=409, detail="Рейс уже не активен")
+        c.execute("UPDATE trips SET status = 'unpublished', updated_at = CURRENT_TIMESTAMP WHERE id = ?", (trip_id,))
+        c.execute(
+            "UPDATE bids SET status = 'rejected', updated_at = CURRENT_TIMESTAMP "
+            "WHERE trip_id = ? AND status IN ('pending', 'countered')", (trip_id,)
+        )
+    return {"ok": True, "status": "unpublished"}
 
 
 # ═══ Trips ═══
@@ -1455,6 +1493,8 @@ def my_dashboard(user=Depends(require_level(1))):
             "SELECT b.*, "
             "COALESCE(c.from_city, t.from_city) as cargo_from, "
             "COALESCE(c.to_city, t.to_city) as cargo_to, "
+            "COALESCE(c.from_country, t.from_country) AS from_country, "
+            "COALESCE(c.to_country, t.to_country) AS to_country, "
             "c.cargo_desc, "
             "COALESCE(c.currency, t.currency) AS currency "
             "FROM bids b LEFT JOIN cargos c ON b.cargo_id = c.id "
@@ -1468,6 +1508,8 @@ def my_dashboard(user=Depends(require_level(1))):
             "SELECT b.*, "
             "COALESCE(c.from_city, t.from_city) as cargo_from, "
             "COALESCE(c.to_city, t.to_city) as cargo_to, "
+            "COALESCE(c.from_country, t.from_country) AS from_country, "
+            "COALESCE(c.to_country, t.to_country) AS to_country, "
             "c.cargo_desc, "
             "COALESCE(c.currency, t.currency) AS currency "
             "FROM bids b "
@@ -2567,16 +2609,14 @@ class DealLocationIn(BaseModel):
 @mp_router.post("/deals/{deal_id}/location")
 def update_deal_location(deal_id: str, body: DealLocationIn, user=Depends(require_level(1))):
     """Водитель сделки шлёт свою гео-позицию. Только driver сделки и только
-    пока сделка в работе (accepted/in_progress/at_border/picked_up)."""
+    пока сделка в работе (accepted/in_progress/at_border)."""
     with get_conn() as c:
         d = c.execute("SELECT driver_id, status FROM deals WHERE id = ?", (deal_id,)).fetchone()
         if not d:
             raise HTTPException(status_code=404, detail="Сделка не найдена")
         if d["driver_id"] != user["id"]:
             raise HTTPException(status_code=403, detail="Геопозицию отправляет только водитель сделки")
-        # at_border входит в рабочие статусы — иначе на границе (самый важный
-        # момент коридора Китай↔КЗ) трекинг замерзал бы (409).
-        if d["status"] not in ("accepted", "in_progress", "at_border", "picked_up"):
+        if d["status"] not in ("accepted", "in_progress", "at_border"):
             raise HTTPException(status_code=409, detail="Сделка не в работе")
         c.execute(
             "INSERT INTO deal_locations (deal_id, lat, lng, heading, speed, updated_at) "

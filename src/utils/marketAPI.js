@@ -248,6 +248,24 @@ export const marketAPI = {
     return d;
   },
 
+  async unpublishTrip(id) {
+    const r = await authedFetch(`${BASE}/trips/${id}/unpublish`, {
+      method: 'PATCH', headers: await headers(),
+    });
+    const d = await r.json();
+    if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
+    return d;
+  },
+
+  async unpublishCargo(id) {
+    const r = await authedFetch(`${BASE}/cargos/${id}/unpublish`, {
+      method: 'PATCH', headers: await headers(),
+    });
+    const d = await r.json();
+    if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
+    return d;
+  },
+
   // ─── Bids ───
   async createBid(data) {
     const r = await authedFetch(`${BASE}/bids`, {

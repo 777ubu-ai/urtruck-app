@@ -524,17 +524,21 @@ export default function TripDetail({ navigation, route }) {
   const acceptedBid = bids.find(b => b.status === 'accepted');
 
   const onDelete = () => {
-    const confirmDelete = () => {
-      removeTrip(trip.id);
-      toast('🗑 ' + t('trip_deleted_toast'), 'info');
-      navigation.goBack();
+    const confirmDelete = async () => {
+      const res = await marketAPI.unpublishTrip(trip.id);
+      if (res.ok) {
+        toast('🗑 ' + t('trip_deleted_toast'), 'info');
+        navigation.goBack();
+      } else {
+        toast(res.detail || 'Ошибка', 'error');
+      }
     };
     if (Platform.OS === 'web') {
       if (window.confirm(t('trip_delete_q'))) confirmDelete();
     } else {
       Alert.alert(t('trip_delete_q'), '', [
         { text: t('cancel') },
-        { text: t('delete'), style: 'destructive', onPress: confirmDelete },
+        { text: t('trip_delete'), style: 'destructive', onPress: confirmDelete },
       ]);
     }
   };
@@ -874,8 +878,15 @@ export default function TripDetail({ navigation, route }) {
                 <Text style={[s.primaryBtnText, { color: '#0A0A0A' }]}>✏️ {t('edit_btn')}</Text>
               </TouchableOpacity>
             )}
-            {/* PR 2: подключить PATCH /market/trips/{id}/unpublish → status=unpublished.
-                До этого кнопку не показываем — removeTrip удаляет из памяти, а не снимает с публикации. */}
+            {(trip.status || 'active') === 'active' && !dealStatus && (
+              <TouchableOpacity
+                style={[s.primaryBtn, { backgroundColor: '#94A3B8', marginTop: 8 }]}
+                onPress={onDelete}
+                testID="trip-detail-unpublish-btn"
+              >
+                <Text style={[s.primaryBtnText, { color: '#fff' }]}>{t('trip_delete')}</Text>
+              </TouchableOpacity>
+            )}
           </>
         ) : null}
       </ScrollView>

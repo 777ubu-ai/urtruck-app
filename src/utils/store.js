@@ -16,13 +16,9 @@ export const subscribe = (cb) => {
 let trips = [];
 export const getTrips = () => trips;
 export const getTrip = (id) => trips.find(t => t.id === id);
-export const TRIP_STATES = ['planned', 'picked_up', 'in_transit', 'delivered'];
-// Labels use i18n keys — resolved at render time via t()
+export const TRIP_STATES = ['planned', 'in_transit', 'delivered'];
 export const TRIP_STATE_INFO = {
   planned:    { icon: '📝', labelKey: 'trip_planned',        color: '#78716C' },
-  picked_up:  { icon: '📦', labelKey: 'trip_cargo_accepted', color: '#FF8400' },
-  // in_transit = warning/orange (in-flight), delivered = success/emerald.
-  // Splitting them avoids two phases reading as the same confirmed state.
   in_transit: { icon: '🚛', labelKey: 'trip_in_transit',     color: '#FF8400' },
   delivered:  { icon: '✅', labelKey: 'trip_delivered',      color: '#22C55E' },
 };

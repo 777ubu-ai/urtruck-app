@@ -22,6 +22,7 @@ import { storage } from '../utils/storage';
 import { useToast } from '../components/Toast';
 import { formatPrice } from '../utils/normalizers';
 import { localizePlace, localizeCargoName } from '../utils/places';
+import { countryFlag } from '../utils/countryFlags';
 import { prettifyPartnerName } from '../utils/displayName';
 import { accentFor } from '../components/deal/DealRoom';
 
@@ -30,14 +31,13 @@ const ACTIVE_STATUSES = new Set(['accepted', 'in_progress', 'at_border', 'awaiti
 const COMPLETED_STATUSES = new Set(['completed', 'delivered', 'cancelled']);
 
 const STATUS_COLOR = {
-  accepted: '#22C55E', in_progress: '#FF8400', picked_up: '#FF8400',
+  accepted: '#22C55E', in_progress: '#FF8400',
   at_border: '#2563EB', awaiting_confirmation: '#FF8400',
   completed: '#94A3B8', delivered: '#22C55E', cancelled: '#EF4444',
 };
 const STATUS_LABEL = {
   accepted: 'Принят',
   in_progress: 'В пути',
-  picked_up: 'Забран',
   at_border: 'На границе',
   awaiting_confirmation: 'Ожидает подтверждения',
   completed: 'Завершён',
@@ -217,7 +217,7 @@ export default function ChatsListScreen({ navigation, route }) {
         <View style={{ flex: 1 }}>
           <View style={s.row}>
             <Text style={[s.name, { color: theme.text }]} numberOfLines={1}>
-              {localizePlace(cargo.from_city || '—', lang)} → {localizePlace(cargo.to_city || '—', lang)}
+              {countryFlag(cargo.from_country)} {localizePlace(cargo.from_city || '—', lang)} → {countryFlag(cargo.to_country)} {localizePlace(cargo.to_city || '—', lang)}
             </Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
               <Feather name="clock" size={11} color={theme.textDim} />
@@ -272,7 +272,7 @@ export default function ChatsListScreen({ navigation, route }) {
         <View style={{ flex: 1 }}>
           <View style={s.row}>
             <Text style={[s.name, { color: theme.text }]} numberOfLines={1}>
-              {localizePlace(bid.cargo_from || bid.trip_from || '—', lang)} → {localizePlace(bid.cargo_to || bid.trip_to || '—', lang)}
+              {countryFlag(bid.from_country)} {localizePlace(bid.cargo_from || bid.trip_from || '—', lang)} → {countryFlag(bid.to_country)} {localizePlace(bid.cargo_to || bid.trip_to || '—', lang)}
             </Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
               <Feather name="clock" size={11} color={theme.textDim} />
@@ -338,7 +338,7 @@ export default function ChatsListScreen({ navigation, route }) {
           {/* Строка 2: Маршрут                  Непрочитанные */}
           <View style={s.row}>
             <Text style={[s.route, { color: theme.textMuted }]} numberOfLines={1}>
-              {localizePlace(deal.from_city || '—', lang)} → {localizePlace(deal.to_city || '—', lang)}
+              {countryFlag(deal.from_country)} {localizePlace(deal.from_city || '—', lang)} → {countryFlag(deal.to_country)} {localizePlace(deal.to_city || '—', lang)}
             </Text>
             {unread > 0 ? (
               <View style={[s.badge, { backgroundColor: '#FF8400' }]}>
@@ -401,7 +401,7 @@ export default function ChatsListScreen({ navigation, route }) {
 
   const STATUS_DOT_CHAT = {
     accepted: '#22C55E', confirmed: '#22C55E',
-    in_progress: '#FF8400', picked_up: '#FF8400', at_border: '#2563EB',
+    in_progress: '#FF8400', at_border: '#2563EB',
     completed: '#94A3B8', delivered: '#94A3B8',
     cancelled: '#EF4444', rejected: '#EF4444', expired: '#94A3B8',
   };
