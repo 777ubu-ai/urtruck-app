@@ -114,6 +114,12 @@ async function mockServer(page, { dealStatus }) {
   await page.route('**/api/v1/reviews**', async route => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ reviews: [], summary: { count: 0, average: 0 } }) });
   });
+  await page.route('**/api/v1/notifications/unread**', async route => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ unread: 0 }) });
+  });
+  await page.route('**/api/v1/notifications**', async route => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ notifications: [] }) });
+  });
   await page.route('**/api/v1/chat/**', async route => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ rooms: [], contacts: [], messages: [] }) });
   });
@@ -180,6 +186,12 @@ async function mockServerMutable(page, { initialStatus, statusChangeShouldFail =
   });
   await page.route('**/api/v1/reviews**', async route => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ reviews: [], summary: { count: 0, average: 0 } }) });
+  });
+  await page.route('**/api/v1/notifications/unread**', async route => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ unread: 0 }) });
+  });
+  await page.route('**/api/v1/notifications**', async route => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ notifications: [] }) });
   });
   await page.route('**/api/v1/chat/**', async route => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ rooms: [], contacts: [], messages: [] }) });
@@ -327,5 +339,70 @@ test.describe('Deal status after a successful transition', () => {
     body = await page.locator('body').innerText();
     expect(body).not.toContain('Начать перевозку');
     expect(body).toContain('На границе');
+  });
+});
+
+// ─── Scenario E: leaving the deal screen (back to the list) and reopening it
+// must re-fetch the deal, never fall back to a stale/initial 'accepted'. ──
+
+test.describe('Deal status survives navigating away and back', () => {
+  test.use({ locale: 'ru-RU', timezoneId: 'Asia/Almaty' });
+
+  test('at_border: back to list then reopen still shows at_border, not accepted', async ({ page }) => {
+    await mockServerMutable(page, { initialStatus: 'at_border', statusChangeShouldFail: false });
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await enterAsDriver(page);
+    await openDealCard(page, { tabTestId: 'my-work-tab-inwork' });
+
+    await expect(page.locator('[data-testid="deal-action-mark-arrived"]')).toBeVisible();
+    await expect(page.locator('[data-testid="deal-action-start-delivery"]')).toHaveCount(0);
+
+    // Pop the detail screen off the stack (real "went back") and reopen the
+    // SAME deal from the list — the component may or may not remount, but
+    // either way the status must come fresh from the server, not from a
+    // leftover navigation param or stale in-memory default.
+    await page.locator('[data-testid="brand-back"]').first().click();
+    await page.waitForTimeout(800);
+    const card = page.locator('[data-testid="my-order-card"]').first();
+    await expect(card).toBeVisible({ timeout: 10000 });
+    await card.click();
+    await page.waitForTimeout(1500);
+
+    await expect(page.locator('[data-testid="deal-action-mark-arrived"]')).toBeVisible();
+    await expect(page.locator('[data-testid="deal-action-start-delivery"]')).toHaveCount(0);
+    const body = await page.locator('body').innerText();
+    expect(body).not.toContain('Начать перевозку');
+    expect(body).toContain('На границе');
+  });
+});
+
+// ─── Progress bar: on a narrow real-device width, the 4 step labels used to
+// sit in a fixed 66px box without being width-constrained, so long labels
+// bled into their neighbours ("слипались"). Below 361px they're now hidden
+// in favour of a single "Текущий статус: <label>" line under the icons. ──
+
+test.describe('Progress bar narrow-screen fallback', () => {
+  test.use({ locale: 'ru-RU', timezoneId: 'Asia/Almaty' });
+
+  test('width=340px: in_progress deal shows "Текущий статус: В работе", no console errors', async ({ page }) => {
+    const consoleErrors = [];
+    page.on('console', (msg) => { if (msg.type() === 'error') consoleErrors.push(msg.text().slice(0, 300)); });
+    page.on('pageerror', (err) => consoleErrors.push('PAGEERROR: ' + err.message));
+
+    await page.setViewportSize({ width: 340, height: 800 });
+    await mockServer(page, { dealStatus: 'in_progress' });
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await enterAsDriver(page);
+    await openDealCard(page, { tabTestId: 'my-work-tab-inwork' });
+
+    const currentStatus = page.locator('[data-testid="deal-timeline-current-status"]');
+    await expect(currentStatus).toBeVisible();
+    await expect(currentStatus).toContainText('В работе');
+    // The 4 individual step labels must be gone on this width — only the
+    // single fallback line + icons remain (no per-step overlap possible).
+    await expect(page.locator('[data-testid="deal-timeline"]').getByText('Принят', { exact: true })).toHaveCount(0);
+    await expect(page.locator('[data-testid="deal-timeline"]').getByText('На границе', { exact: true })).toHaveCount(0);
+
+    expect(consoleErrors, `console errors: ${consoleErrors.join(' | ')}`).toHaveLength(0);
   });
 });

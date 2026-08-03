@@ -47,6 +47,11 @@ import PriceSavingsBadge from '../components/deal/PriceSavingsBadge';
 
 const FLAGS = { KZ: '🇰🇿', UZ: '🇺🇿', RU: '🇷🇺', KG: '🇰🇬', CN: '🇨🇳', TJ: '🇹🇯', TR: '🇹🇷', TM: '🇹🇲', MN: '🇲🇳', DE: '🇩🇪', FR: '🇫🇷' };
 
+// Порядок стадий сделки — используется, чтобы applyDeal() никогда не
+// откатывал статус назад (устаревший ответ getDeal/myDashboard не должен
+// перезаписать более свежий, уже более продвинутый статус).
+const DEAL_STATUS_RANK = { accepted: 1, in_progress: 2, at_border: 3, delivered: 4, completed: 4 };
+
 // HOT-003: скрываем техмусор из description (остатки init_db, стектрейсы и т.п.)
 const TRASH_RE = /init_db|phone_formatter|json_merger|bin_iin|SQL|sqlite|traceback|\bError:|File "[^"]+\.py"|line \d+|^```|stderr|\.py\b|SELECT |INSERT |UPDATE |DELETE |CREATE TABLE/gi;
 // Stage 9: combine the legacy tech-stack scrub with the new
@@ -132,10 +137,10 @@ export default function CargoDetail({ navigation, route }) {
   myBidBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, alignItems: 'center' },
   myBidBtnText: { fontSize: 14, fontWeight: '800' },
   dealStatusLabel: { fontSize: 15, fontWeight: '700' },
-  dealActionBtn: { backgroundColor: '#22C55E', borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  dealActionBtn: { backgroundColor: '#22C55E', borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10, minHeight: 44, alignItems: 'center', justifyContent: 'center', maxWidth: '100%', flexShrink: 1 },
   // Ghost-стиль (обводка) для акцентных действий сделки — вместо сплошной заливки.
   dealActionGhost: { backgroundColor: 'transparent', borderWidth: 1.6 },
-  dealActionText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  dealActionText: { color: '#fff', fontSize: 13, fontWeight: '700', flexShrink: 1 },
   chatBtn: { backgroundColor: '#22C55E', borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
   chatBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   // Дизайн 2026 v3 (03.08): «Удалить груз» — редкое действие, не должно
@@ -324,10 +329,20 @@ export default function CargoDetail({ navigation, route }) {
     if (seq != null && seq !== dealFetchSeq.current) return; // ответ устарел
     setDealId(d.id);
     // deal.status — ЕДИНСТВЕННЫЙ источник статуса после создания сделки
-    // (приказ владельца 04.08 п.1). Никакого anti-flicker таймера здесь
-    // больше нет — request-id guard решает ту же задачу без риска
-    // «залипания» на устаревшем статусе.
-    setDealStatus(d.status || 'accepted');
+    // (приказ владельца 04.08 п.1). seq-guard выше отсекает большинство
+    // гонок, но добавляем вторую независимую страховку: даже если устаревший
+    // ответ каким-то образом пройдёт (напр. параллельный поллинг вне
+    // dealFetchSeq), статус не должен ОТКАТЫВАТЬСЯ назад по жизненному циклу
+    // сделки (05.08, п.6). cancelled — терминальный статус, применяется
+    // всегда, из любого состояния.
+    setDealStatus((prev) => {
+      const next = d.status || 'accepted';
+      if (!prev || next === 'cancelled' || prev === 'cancelled') return next;
+      const prevRank = DEAL_STATUS_RANK[prev] ?? 0;
+      const nextRank = DEAL_STATUS_RANK[next] ?? 0;
+      if (nextRank < prevRank) return prev; // устаревший ответ — не откатываем
+      return next;
+    });
     if (d.chat_room_id) setChatRoomId(d.chat_room_id);
     if (d.shipper_id) setShipperId(d.shipper_id);
     if (d.driver_id) {
@@ -644,6 +659,7 @@ export default function CargoDetail({ navigation, route }) {
                       role="client"
                       icon="✓"
                       label={`${t('accept_bid_btn')} ${formatPrice(b.amount, c.currency || 'USD', t)}`}
+                      numberOfLines={2}
                       loading={accepting === b.id}
                       disabled={!!accepting || !!rejecting}
                       success={dealStatus === 'accepted' && dealId != null}
@@ -703,10 +719,10 @@ export default function CargoDetail({ navigation, route }) {
                         setRejecting(null);
                       }}
                       disabled={!!accepting || !!rejecting}
-                      style={{ alignSelf: 'center', paddingVertical: 6, paddingHorizontal: 10 }}
+                      style={{ alignSelf: 'center', maxWidth: '100%', paddingVertical: 6, paddingHorizontal: 10 }}
                       hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                     >
-                      <Text style={{ color: '#EF4444', fontSize: 13, fontWeight: '700', opacity: (accepting || rejecting) ? 0.55 : 1 }}>
+                      <Text style={{ color: '#EF4444', fontSize: 13, fontWeight: '700', opacity: (accepting || rejecting) ? 0.55 : 1, flexShrink: 1 }} numberOfLines={1} ellipsizeMode="tail">
                         {rejecting === b.id ? '…' : t('reject_btn')}
                       </Text>
                     </TouchableOpacity>
@@ -725,6 +741,7 @@ export default function CargoDetail({ navigation, route }) {
                         role="client"
                         icon="✓"
                         label={`${t('accept_bid_btn')} ${formatPrice(b.amount, c.currency || 'USD', t)}`}
+                        numberOfLines={2}
                         loading={accepting === b.id}
                         disabled={!!accepting || !!rejecting}
                         onPress={async () => {
@@ -772,10 +789,10 @@ export default function CargoDetail({ navigation, route }) {
                           setRejecting(null);
                         }}
                         disabled={!!rejecting || !!accepting}
-                        style={{ alignSelf: 'center', paddingVertical: 6, paddingHorizontal: 10 }}
+                        style={{ alignSelf: 'center', maxWidth: '100%', paddingVertical: 6, paddingHorizontal: 10 }}
                         hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                       >
-                        <Text style={{ color: '#EF4444', fontSize: 13, fontWeight: '700', opacity: (accepting || rejecting) ? 0.55 : 1 }}>
+                        <Text style={{ color: '#EF4444', fontSize: 13, fontWeight: '700', opacity: (accepting || rejecting) ? 0.55 : 1, flexShrink: 1 }} numberOfLines={1} ellipsizeMode="tail">
                           {rejecting === b.id ? '…' : t('reject_btn')}
                         </Text>
                       </TouchableOpacity>
@@ -791,6 +808,7 @@ export default function CargoDetail({ navigation, route }) {
                       role="driver"
                       icon="✓"
                       label={`${t('accept_counter')} ${formatPrice(b.counterAmount, c.currency || 'USD', t)}`}
+                      numberOfLines={2}
                       onPress={() => acceptCounter(b)}
                     />
                     <DestructiveButton
@@ -884,6 +902,7 @@ export default function CargoDetail({ navigation, route }) {
                     role="driver"
                     icon="✓"
                     label={`${t('accept_counter')} ${formatPrice(myPendingBid.counterAmount, c.currency, t)}`}
+                    numberOfLines={2}
                     onPress={() => acceptCounter(myPendingBid)}
                   />
                   <DestructiveButton

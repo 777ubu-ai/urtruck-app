@@ -32,6 +32,11 @@ import DestructiveButton from '../components/ui/actions/DestructiveButton';
 import PriceSavingsBadge from '../components/deal/PriceSavingsBadge';
 import { reviewsAPI } from '../utils/reviews';
 
+// Порядок стадий сделки — используется, чтобы applyDeal() никогда не
+// откатывал статус назад (устаревший ответ getDeal/myDashboard не должен
+// перезаписать более свежий, уже более продвинутый статус).
+const DEAL_STATUS_RANK = { accepted: 1, in_progress: 2, at_border: 3, delivered: 4, completed: 4 };
+
 export default function TripDetail({ navigation, route }) {
   const v1 = useV1Colors();
   const s = React.useMemo(() => StyleSheet.create({
@@ -93,9 +98,9 @@ export default function TripDetail({ navigation, route }) {
   myBidBtnRow: { flexDirection: 'row', gap: 10 },
   myBidBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, alignItems: 'center' },
   myBidBtnText: { fontSize: 14, fontWeight: '800' },
-  dealActionBtn: { borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10 },
+  dealActionBtn: { borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, maxWidth: '100%', flexShrink: 1 },
   dealActionGhost: { backgroundColor: 'transparent', borderWidth: 1.6 },
-  dealActionText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  dealActionText: { color: '#fff', fontSize: 13, fontWeight: '700', flexShrink: 1 },
 
   }), [v1]);
   const { trip: rawTrip, tripId, role, dealId: routeDealId } = route.params || {};
@@ -183,9 +188,18 @@ export default function TripDetail({ navigation, route }) {
     if (seq != null && seq !== dealFetchSeq.current) return; // ответ устарел
     setDealId(d.id);
     // deal.status — ЕДИНСТВЕННЫЙ источник статуса после создания сделки
-    // (приказ владельца 04.08 п.1). Anti-flicker таймер убран — request-id
-    // guard решает ту же задачу без риска «залипания» на старом статусе.
-    setDealStatus(d.status || 'accepted');
+    // (приказ владельца 04.08 п.1). seq-guard выше отсекает большинство
+    // гонок, но добавляем вторую независимую страховку: даже если устаревший
+    // ответ каким-то образом пройдёт, статус не должен ОТКАТЫВАТЬСЯ назад по
+    // жизненному циклу сделки (05.08, п.6). cancelled — терминален, применяется всегда.
+    setDealStatus((prev) => {
+      const next = d.status || 'accepted';
+      if (!prev || next === 'cancelled' || prev === 'cancelled') return next;
+      const prevRank = DEAL_STATUS_RANK[prev] ?? 0;
+      const nextRank = DEAL_STATUS_RANK[next] ?? 0;
+      if (nextRank < prevRank) return prev; // устаревший ответ — не откатываем
+      return next;
+    });
     if (d.chat_room_id) setChatRoomId(d.chat_room_id);
     if (d.shipper_id) setShipperId(d.shipper_id);
     if (d.driver_id) setDriverId(d.driver_id);
@@ -783,10 +797,10 @@ export default function TripDetail({ navigation, route }) {
                     testID="trip-bid-reject"
                     onPress={() => rejectClientBid(b)}
                     disabled={!!accepting || !!rejecting}
-                    style={{ alignSelf: 'center', paddingVertical: 6, paddingHorizontal: 10 }}
+                    style={{ alignSelf: 'center', maxWidth: '100%', paddingVertical: 6, paddingHorizontal: 10 }}
                     hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                   >
-                    <Text style={{ color: '#EF4444', fontSize: 13, fontWeight: '700', opacity: (accepting || rejecting) ? 0.55 : 1 }}>
+                    <Text style={{ color: '#EF4444', fontSize: 13, fontWeight: '700', opacity: (accepting || rejecting) ? 0.55 : 1, flexShrink: 1 }} numberOfLines={1} ellipsizeMode="tail">
                       {rejecting === b.id ? '…' : t('reject_btn')}
                     </Text>
                   </TouchableOpacity>
@@ -992,6 +1006,7 @@ export default function TripDetail({ navigation, route }) {
                   role="client"
                   icon="✓"
                   label={`${t('accept_counter')} ${formatPrice(myActiveBid.counterAmount, myActiveBid.currency || trip.currency)}`}
+                  numberOfLines={2}
                   loading={counterActing}
                   disabled={counterActing}
                   onPress={acceptCounter}

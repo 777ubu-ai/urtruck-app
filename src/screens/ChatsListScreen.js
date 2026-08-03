@@ -787,10 +787,10 @@ const s = StyleSheet.create({
   filterDot: { position: 'absolute', top: 7, right: 7, width: 7, height: 7, borderRadius: 4 },
   filterLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', marginTop: 14, marginBottom: 8 },
   chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1.5 },
+  chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1.5, maxWidth: '100%' },
   unreadRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 16, paddingVertical: 4 },
-  filterFootBtn: { flex: 1, height: 46, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  filterFootText: { fontSize: 14, fontWeight: '700' },
+  filterFootBtn: { flex: 1, height: 46, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center', minWidth: 0, maxWidth: '100%' },
+  filterFootText: { fontSize: 14, fontWeight: '700', flexShrink: 1, textAlign: 'center' },
   // Вкладки сделок
   tabBar: { flexDirection: 'row', marginHorizontal: 12, borderBottomWidth: 1, marginBottom: 4 },
   tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderBottomWidth: 2, borderBottomColor: 'transparent' },

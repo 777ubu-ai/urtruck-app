@@ -12,10 +12,18 @@
 // Акцент роли: driver #00E676 / client #FF8400 (источник истины CLAUDE.md).
 
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
 import { useTheme } from '../../utils/ThemeContext';
+
+// На узких экранах (iPhone SE/mini, компактный Android) 4 подписи этапов
+// («Принят / В работе / На границе / Завершён») слипаются друг с другом —
+// каждый шаг зафиксирован в 66px, а сама подпись не была прижата к этой
+// ширине (центрирование без stretch не сжимает контент, numberOfLines без
+// width-констрейнта не обрезает). Ниже 361px подписи скрываем совсем и
+// показываем только «Текущий статус: <label>» под рядом иконок.
+const TL_NARROW = (Dimensions.get('window').width || 390) <= 360;
 
 export const DRIVER_ACCENT = '#00E676';
 export const CLIENT_ACCENT = '#FF8400';
@@ -77,30 +85,39 @@ export function DealStatusTimeline({ status, role }) {
   }
   const cur = TL_ORDER.indexOf(status);
   return (
-    <View style={s.tl} testID="deal-timeline">
-      {STEPS.map((st, i) => {
-        const done = cur > i;
-        const active = cur === i;
-        const on = done || active;
-        const col = done ? '#22C55E' : active ? accent : theme.textDim;
-        return (
-          <React.Fragment key={st.key}>
-            <View style={s.tlStep}>
-              <View style={[s.tlDot, {
-                backgroundColor: on ? col : 'transparent',
-                borderColor: col,
-                transform: [{ scale: active ? 1.15 : 1 }],
-              }]}>
-                <Feather name={done ? 'check' : st.icon} size={15} color={on ? '#0C0A09' : col} />
+    <View testID="deal-timeline">
+      <View style={s.tl}>
+        {STEPS.map((st, i) => {
+          const done = cur > i;
+          const active = cur === i;
+          const on = done || active;
+          const col = done ? '#22C55E' : active ? accent : theme.textDim;
+          return (
+            <React.Fragment key={st.key}>
+              <View style={s.tlStep}>
+                <View style={[s.tlDot, {
+                  backgroundColor: on ? col : 'transparent',
+                  borderColor: col,
+                  transform: [{ scale: active ? 1.15 : 1 }],
+                }]}>
+                  <Feather name={done ? 'check' : st.icon} size={15} color={on ? '#0C0A09' : col} />
+                </View>
+                {TL_NARROW ? null : (
+                  <Text style={[s.tlLabel, { color: on ? theme.text : theme.textMuted, fontWeight: active ? '800' : '600' }]} numberOfLines={1} ellipsizeMode="tail">{st.label}</Text>
+                )}
               </View>
-              <Text style={[s.tlLabel, { color: on ? theme.text : theme.textMuted, fontWeight: active ? '800' : '600' }]} numberOfLines={1}>{st.label}</Text>
-            </View>
-            {i < STEPS.length - 1 ? (
-              <View style={[s.tlLine, { backgroundColor: cur > i ? '#22C55E' : theme.border }]} />
-            ) : null}
-          </React.Fragment>
-        );
-      })}
+              {i < STEPS.length - 1 ? (
+                <View style={[s.tlLine, { backgroundColor: cur > i ? '#22C55E' : theme.border }]} />
+              ) : null}
+            </React.Fragment>
+          );
+        })}
+      </View>
+      {TL_NARROW ? (
+        <Text style={[s.tlCurrentStatus, { color: theme.textMuted }]} numberOfLines={1} testID="deal-timeline-current-status">
+          {t('trip_current_status')}: {STEPS[cur >= 0 ? cur : 0]?.label || ''}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -205,10 +222,14 @@ export function DealDocumentsPlaceholder() {
 
 const s = StyleSheet.create({
   tl: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingVertical: 4 },
-  tlStep: { alignItems: 'center', width: 66 },
+  // width:66 — верхняя граница шага; minWidth:0 обязателен, иначе Yoga не
+  // сжимает tlLabel ниже его «естественной» ширины и подписи соседних
+  // шагов наезжают друг на друга (та же причина, что у переполнения кнопок).
+  tlStep: { alignItems: 'center', width: 66, minWidth: 0, flexShrink: 1 },
   tlDot: { width: 34, height: 34, borderRadius: 17, borderWidth: 2, alignItems: 'center', justifyContent: 'center', marginBottom: 5 },
-  tlLabel: { fontSize: 11, textAlign: 'center' },
+  tlLabel: { fontSize: 11, textAlign: 'center', width: '100%', flexShrink: 1, minWidth: 0 },
   tlLine: { flex: 1, height: 2, marginTop: 16, marginHorizontal: -6, borderRadius: 1 },
+  tlCurrentStatus: { fontSize: 12, fontWeight: '600', textAlign: 'center', marginTop: 6 },
   tlCancel: { borderWidth: 1, borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
   card: { borderRadius: 14, borderWidth: 1, borderLeftWidth: 4, padding: 12, marginBottom: 8, gap: 6 },
   cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },

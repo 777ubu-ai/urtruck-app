@@ -103,17 +103,17 @@ export default function MyTripsScreen({ navigation, route }) {
   // 27.07: кнопки действий сделки вылезали за карточку. Делаем их гибкими
   // (flexGrow/Shrink + minWidth) — в ряду с flexWrap они заполняют ширину и
   // аккуратно переносятся на след. строку, не вылезая за края.
-  acceptBtn: { backgroundColor: '#22C55E', borderRadius: radius.sm, paddingVertical: spacing.sm, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', flexGrow: 1, flexShrink: 1, minWidth: 130 },
-  acceptBtnText: { color: '#FFF', ...typography.title },
-  rejectBtn: { borderWidth: 0, borderRadius: radius.sm, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, alignItems: 'center', justifyContent: 'center', flexGrow: 1, flexShrink: 1, minWidth: 110, backgroundColor: 'rgba(239,68,68,0.10)' },
-  rejectBtnText: { color: '#EF4444', ...typography.title },
+  acceptBtn: { backgroundColor: '#22C55E', borderRadius: radius.sm, paddingVertical: spacing.sm, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', flexGrow: 1, flexShrink: 1, minWidth: 130, maxWidth: '100%' },
+  acceptBtnText: { color: '#FFF', ...typography.title, flexShrink: 1, textAlign: 'center' },
+  rejectBtn: { borderWidth: 0, borderRadius: radius.sm, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, alignItems: 'center', justifyContent: 'center', flexGrow: 1, flexShrink: 1, minWidth: 110, maxWidth: '100%', backgroundColor: 'rgba(239,68,68,0.10)' },
+  rejectBtnText: { color: '#EF4444', ...typography.title, flexShrink: 1, textAlign: 'center' },
   // «Для перчаток и солнца»: крупная тап-цель (≥44pt) и читаемый текст.
-  miniBtn: { borderWidth: 0, borderRadius: radius.sm, paddingVertical: 12, paddingHorizontal: 14, minHeight: 44, alignItems: 'center', justifyContent: 'center', flexGrow: 1, flexShrink: 1, minWidth: 110, backgroundColor: 'rgba(148,163,184,0.14)' },
-  miniBtnText: { fontSize: 14, fontWeight: '700' },
-  editBtn: { borderWidth: 0, borderRadius: 10, paddingVertical: 10, alignItems: 'center', marginTop: spacing.sm, backgroundColor: 'rgba(34,197,94,0.12)' },
-  editBtnText: { color: '#22C55E', fontSize: 12, fontWeight: '700' },
-  extendBtn: { flex: 1, backgroundColor: '#00E676', borderRadius: 10, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', minHeight: 40 },
-  extendBtnText: { color: '#0C0A09', fontSize: 13, fontWeight: '800' },
+  miniBtn: { borderWidth: 0, borderRadius: radius.sm, paddingVertical: 12, paddingHorizontal: 14, minHeight: 44, alignItems: 'center', justifyContent: 'center', flexGrow: 1, flexShrink: 1, minWidth: 110, maxWidth: '100%', backgroundColor: 'rgba(148,163,184,0.14)' },
+  miniBtnText: { fontSize: 14, fontWeight: '700', flexShrink: 1, textAlign: 'center' },
+  editBtn: { borderWidth: 0, borderRadius: 10, paddingVertical: 10, alignItems: 'center', marginTop: spacing.sm, backgroundColor: 'rgba(34,197,94,0.12)', maxWidth: '100%' },
+  editBtnText: { color: '#22C55E', fontSize: 12, fontWeight: '700', flexShrink: 1, textAlign: 'center' },
+  extendBtn: { flex: 1, backgroundColor: '#00E676', borderRadius: 10, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', minHeight: 40, maxWidth: '100%' },
+  extendBtnText: { color: '#0C0A09', fontSize: 13, fontWeight: '800', flexShrink: 1, textAlign: 'center' },
 
   }), [v1]);
   const { role } = route.params || {};

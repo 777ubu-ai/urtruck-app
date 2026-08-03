@@ -5,6 +5,7 @@ import React from 'react';
 import { TouchableOpacity, Text, StyleSheet, View } from 'react-native';
 import { v1AccentFor } from '../../../theme/designV1';
 import { useTheme } from '../../../utils/ThemeContext';
+import { SAFE_BUTTON_STYLE, SAFE_ROW_STYLE, SAFE_ICON_STYLE, SAFE_LABEL_STYLE, safeFontSize } from './safeButtonStyles';
 
 export default function SecondaryButton({
   label,
@@ -14,6 +15,7 @@ export default function SecondaryButton({
   disabled = false,
   testID,
   style,
+  numberOfLines = 1,
 }) {
   const accent = v1AccentFor(role);
   const { theme } = useTheme();
@@ -27,14 +29,19 @@ export default function SecondaryButton({
     >
       <View style={s.row}>
         {icon ? <Text style={[s.icon, { color: accent.main }]}>{icon}</Text> : null}
-        <Text style={[s.label, { color: theme.text }]} numberOfLines={1}>{label}</Text>
+        <Text style={[s.label, { color: theme.text }]} numberOfLines={numberOfLines} ellipsizeMode="tail">{label}</Text>
       </View>
     </TouchableOpacity>
   );
 }
 
 const s = StyleSheet.create({
+  // flex:1 — сохранён для случаев, когда SecondaryButton всё же ставят в
+  // ряд (сейчас таких мест не осталось, но не ломаем API); одиночное
+  // использование в вертикальном стеке (alignItems:'stretch' родителя)
+  // всё равно тянется на всю ширину благодаря SAFE_BUTTON_STYLE.
   btn: {
+    ...SAFE_BUTTON_STYLE,
     flex: 1,
     height: 48,
     borderRadius: 12,
@@ -44,7 +51,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 12,
     backgroundColor: 'transparent',
   },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  icon: { fontSize: 16 },
-  label: { fontSize: 14, fontWeight: '700' },
+  row: { ...SAFE_ROW_STYLE, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  icon: { ...SAFE_ICON_STYLE, fontSize: safeFontSize(16) },
+  label: { ...SAFE_LABEL_STYLE, fontSize: safeFontSize(14), fontWeight: '700' },
 });
