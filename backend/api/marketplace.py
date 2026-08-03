@@ -132,6 +132,13 @@ def _validate_future_date(value, field_name: str):
 _ALLOWED_POINT_TYPES = ("city", "border", "terminal", "hub")
 
 
+_COUNTRY_ALIASES = {
+    "KAZ": "KZ", "CHN": "CN", "RUS": "RU", "UZB": "UZ", "KGZ": "KG",
+    "TJK": "TJ", "BLR": "BY", "TUR": "TR", "IRN": "IR", "AFG": "AF",
+    "PAK": "PK", "MNG": "MN", "GEO": "GE", "AZE": "AZ", "ARM": "AM",
+    "TKM": "TM", "UKR": "UA",
+}
+
 def _norm_route_triple(country, point_type, point_name):
     """Normalise the structured route triple. Country is an ISO-2 code
     (upper-case); type is one of the allowed shapes, otherwise dropped;
@@ -144,6 +151,8 @@ def _norm_route_triple(country, point_type, point_name):
     c = (country or "").strip().upper() or None
     if c is not None and (len(c) > 4 or not c.isalpha()):
         c = None
+    if c is not None and len(c) == 3:
+        c = _COUNTRY_ALIASES.get(c, c)
     pt = (point_type or "").strip().lower() or None
     if pt is not None and pt not in _ALLOWED_POINT_TYPES:
         pt = None
@@ -289,6 +298,10 @@ def _init():
                 updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        c.commit()
+    # One-time migration: picked_up → in_progress (status removed from code).
+    with get_conn() as c:
+        c.execute("UPDATE deals SET status = 'in_progress' WHERE status = 'picked_up'")
         c.commit()
 
 _init()
@@ -606,13 +619,30 @@ def unpublish_cargo(cargo_id: str, user=Depends(require_level(1))):
             raise HTTPException(status_code=404, detail="Груз не найден")
         if row["owner_id"] != user["id"]:
             raise HTTPException(status_code=403, detail="Можно снять только свой груз")
-        if row["status"] not in (None, "active"):
+        if row["status"] not in (None, "active", "draft", "expired"):
             raise HTTPException(status_code=409, detail="Груз уже не активен")
+        active_deal = c.execute(
+            "SELECT id FROM deals WHERE cargo_id = ? AND status IN ('accepted','in_progress','at_border','awaiting_confirmation') LIMIT 1",
+            (cargo_id,)).fetchone()
+        if active_deal:
+            raise HTTPException(status_code=409, detail="Нельзя снять с публикации: перевозка уже началась")
+        cancelled_bids = c.execute(
+            "SELECT bidder_id FROM bids WHERE cargo_id = ? AND status IN ('pending', 'countered')",
+            (cargo_id,)).fetchall()
         c.execute("UPDATE cargos SET status = 'unpublished', updated_at = CURRENT_TIMESTAMP WHERE id = ?", (cargo_id,))
         c.execute(
-            "UPDATE bids SET status = 'rejected', updated_at = CURRENT_TIMESTAMP "
+            "UPDATE bids SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP "
             "WHERE cargo_id = ? AND status IN ('pending', 'countered')", (cargo_id,)
         )
+    try:
+        from api.notifications import create_notification
+        for bid in cancelled_bids:
+            send_to_user(bid["bidder_id"], "📋 Груз снят с публикации",
+                         "Грузовладелец снял груз с публикации", url=f"/cargos/{cargo_id}")
+            create_notification(bid["bidder_id"], "bid_cancelled",
+                                "Груз снят с публикации", "Грузовладелец снял груз с публикации", "📋")
+    except Exception:
+        pass
     return {"ok": True, "status": "unpublished"}
 
 
@@ -860,14 +890,67 @@ def unpublish_trip(trip_id: str, user=Depends(require_level(1))):
             raise HTTPException(status_code=404, detail="Рейс не найден")
         if row["driver_id"] != user["id"]:
             raise HTTPException(status_code=403, detail="Можно снять только свой рейс")
-        if row["status"] not in (None, "active"):
+        if row["status"] not in (None, "active", "draft", "expired"):
             raise HTTPException(status_code=409, detail="Рейс уже не активен")
+        active_deal = c.execute(
+            "SELECT id FROM deals WHERE trip_id = ? AND status IN ('accepted','in_progress','at_border','awaiting_confirmation') LIMIT 1",
+            (trip_id,)).fetchone()
+        if active_deal:
+            raise HTTPException(status_code=409, detail="Нельзя снять с публикации: перевозка уже началась")
+        cancelled_bids = c.execute(
+            "SELECT bidder_id, cargo_id FROM bids WHERE trip_id = ? AND status IN ('pending', 'countered')",
+            (trip_id,)).fetchall()
         c.execute("UPDATE trips SET status = 'unpublished', updated_at = CURRENT_TIMESTAMP WHERE id = ?", (trip_id,))
         c.execute(
-            "UPDATE bids SET status = 'rejected', updated_at = CURRENT_TIMESTAMP "
+            "UPDATE bids SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP "
             "WHERE trip_id = ? AND status IN ('pending', 'countered')", (trip_id,)
         )
+    try:
+        from api.notifications import create_notification
+        for bid in cancelled_bids:
+            send_to_user(bid["bidder_id"], "📋 Рейс снят с публикации",
+                         "Водитель снял рейс с публикации", url=f"/trips/{trip_id}")
+            create_notification(bid["bidder_id"], "bid_cancelled",
+                                "Рейс снят с публикации", "Водитель снял рейс с публикации", "📋")
+    except Exception:
+        pass
     return {"ok": True, "status": "unpublished"}
+
+
+@mp_router.patch("/trips/{trip_id}/republish")
+def republish_trip(trip_id: str, user=Depends(require_level(1))):
+    """Опубликовать снова снятый рейс. Обновляет дату выезда на сегодня."""
+    with get_conn() as c:
+        row = c.execute("SELECT driver_id, status FROM trips WHERE id = ?", (trip_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Рейс не найден")
+        if row["driver_id"] != user["id"]:
+            raise HTTPException(status_code=403, detail="Можно публиковать только свой рейс")
+        if row["status"] not in ("unpublished", "expired"):
+            raise HTTPException(status_code=409, detail="Рейс не в статусе unpublished/expired")
+        new_date = datetime.utcnow().date().isoformat()
+        c.execute(
+            "UPDATE trips SET status = 'active', departure = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (new_date, trip_id))
+    return {"ok": True, "status": "active", "departure": new_date}
+
+
+@mp_router.patch("/cargos/{cargo_id}/republish")
+def republish_cargo(cargo_id: str, user=Depends(require_level(1))):
+    """Опубликовать снова снятый груз. Обновляет дату подачи на сегодня."""
+    with get_conn() as c:
+        row = c.execute("SELECT owner_id, status FROM cargos WHERE id = ?", (cargo_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Груз не найден")
+        if row["owner_id"] != user["id"]:
+            raise HTTPException(status_code=403, detail="Можно публиковать только свой груз")
+        if row["status"] not in ("unpublished", "expired"):
+            raise HTTPException(status_code=409, detail="Груз не в статусе unpublished/expired")
+        new_date = datetime.utcnow().date().isoformat()
+        c.execute(
+            "UPDATE cargos SET status = 'active', pickup_date = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (new_date, cargo_id))
+    return {"ok": True, "status": "active", "pickup_date": new_date}
 
 
 # ═══ Trips ═══
@@ -1176,7 +1259,6 @@ def create_bid(body: BidIn, user=Depends(require_level(1))):
     # accept_bid / reject_bid / update_bid этот баг не имели потому что
     # create_notification у них уже ВНЕ with-блока. Делаем то же тут.
     post_notifs: list = []  # каждый элемент: (recipient_id, title, body, icon, url, push)
-    created_room_id = None  # Variant B: канонический room_id, вернём фронту
 
     with get_conn() as c:
         # M1: нельзя ставить на уже занятый/истёкший груз или рейс. Пустой/
@@ -1223,22 +1305,7 @@ def create_bid(body: BidIn, user=Depends(require_level(1))):
             row = c.execute("SELECT owner_id, from_city, to_city, currency FROM cargos WHERE id = ?", (body.cargo_id,)).fetchone()
             if row:
                 money = _money(body.amount, row["currency"])
-                # Часть 4 (правило одного места): комнату чата создаём СНАЧАЛА,
-                # чтобы deeplink уведомления вёл ПРЯМО в неё (весь торг живёт в
-                # чате). Хелпер идемпотентен (UNIQUE пара). Fallback на cargo
-                # detail, если комнату не удалось создать.
-                try:
-                    created_room_id = _ensure_chat_room_inline(
-                        c, user["id"], row["owner_id"], body.cargo_id, None, bid_id,
-                    )
-                except Exception:
-                    created_room_id = None
-                # «Дом заказа» (02.08.2026): пуш ведёт в карточку груза, а не
-                # в чат — там сверху блок ставки и кнопка «💬 Открыть чат»
-                # рядом. Комнату по-прежнему создаём заранее (чтобы чат уже
-                # был готов, когда клиент решит переписываться).
                 bid_url = f"/cargos/{body.cargo_id}?bid={bid_id}"
-                # Часть 4: текст пуша = событие + сумма + маршрут.
                 title = f"💰 Ставка {money}"
                 text = f"{money} · {row['from_city']}→{row['to_city']}"
                 post_notifs.append((row["owner_id"], title, text, "💰", bid_url, True))
@@ -1247,14 +1314,6 @@ def create_bid(body: BidIn, user=Depends(require_level(1))):
             row = c.execute("SELECT driver_id, from_city, to_city, currency FROM trips WHERE id = ?", (body.trip_id,)).fetchone()
             if row:
                 money = _money(body.amount, row["currency"])
-                # Часть 4: комнату чата — сначала (deeplink ведёт в неё).
-                try:
-                    created_room_id = _ensure_chat_room_inline(
-                        c, user["id"], row["driver_id"], None, body.trip_id, bid_id,
-                    )
-                except Exception:
-                    created_room_id = None
-                # «Дом заказа»: пуш → карточка рейса (см. коммент выше).
                 bid_url = f"/trips/{body.trip_id}?bid={bid_id}"
                 title = f"📦 Заказ {money}"
                 text = f"{money} · {row['from_city']}→{row['to_city']}"
@@ -1276,9 +1335,7 @@ def create_bid(body: BidIn, user=Depends(require_level(1))):
         except Exception:
             pass
 
-    # Variant B: возвращаем канонический room_id — фронт открывает чат сразу
-    # по нему, без догадок о собеседнике.
-    return {"id": bid_id, "ok": True, "room_id": created_room_id}
+    return {"id": bid_id, "ok": True}
 
 
 @mp_router.get("/bids")
@@ -2216,13 +2273,6 @@ def counter_bid(bid_id: str, body: BidCounterIn, user=Depends(require_level(1)))
         )
         # Часть 3: событие — владелец прислал контр (actor=owner).
         _record_price_event(c, bid_id, user["id"], "owner", body.amount, "countered", body.message)
-        # Часть 4: комната чата пары (deeplink уведомления ведёт в неё).
-        try:
-            _counter_room = _ensure_chat_room_inline(
-                c, bid["bidder_id"], owner_id, bid.get("cargo_id"), bid.get("trip_id"), bid_id,
-            )
-        except Exception:
-            _counter_room = None
         updated = dict(c.execute("SELECT * FROM bids WHERE id = ?", (bid_id,)).fetchone())
 
     # «Дом заказа»: контр-оффер ведёт биддера в карточку заказа (там сверху
@@ -2232,8 +2282,6 @@ def counter_bid(bid_id: str, body: BidCounterIn, user=Depends(require_level(1)))
         counter_url = f"/cargos/{bid['cargo_id']}?bid={bid_id}"
     elif bid.get("trip_id"):
         counter_url = f"/trips/{bid['trip_id']}?bid={bid_id}"
-    elif _counter_room:
-        counter_url = f"/chats/{_counter_room}"
     else:
         counter_url = "/"
     with get_conn() as c2:
@@ -2394,27 +2442,9 @@ def decline_counter(bid_id: str, user=Depends(require_level(1))):
 
 @mp_router.post("/bids/{bid_id}/chat")
 def open_chat_for_bid(bid_id: str, user=Depends(require_level(1))):
-    """Open (or fetch) a chat room for a still-active bid, *before* accept.
-
-    chat_rooms schema does not require deal_id, so this is safe: we reuse the
-    same `(participant_1, participant_2)` UNIQUE pair logic as accept_bid.
-    Allowed for the bidder and the cargo/trip owner while the bid is in
-    pending or countered state.
-    """
-    with get_conn() as c:
-        bid = _load_bid_or_404(c, bid_id)
-        if bid["status"] not in ("pending", "countered"):
-            raise HTTPException(status_code=409, detail=f"Чат недоступен в статусе {bid['status']}")
-        owner_id = _cargo_or_trip_owner_id(c, bid)
-        if not owner_id:
-            raise HTTPException(status_code=409, detail="Не найден владелец груза/рейса")
-        if user["id"] not in (bid["bidder_id"], owner_id):
-            raise HTTPException(status_code=403, detail="Чат доступен только участникам сделки")
-        chat_room_id = _ensure_chat_room_inline(
-            c, bid["bidder_id"], owner_id, bid.get("cargo_id"), bid.get("trip_id")
-        )
-
-    return {"ok": True, "chat_room_id": chat_room_id}
+    """Чат доступен только после принятия ставки (создания сделки).
+    До accept — торг идёт через ставки/контрпредложения."""
+    raise HTTPException(status_code=409, detail="Чат доступен только после принятия ставки")
 
 
 # ═══ Deals ═══

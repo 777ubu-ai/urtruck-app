@@ -306,7 +306,9 @@ export default function MyTripsScreen({ navigation, route }) {
     return d < grace;
   };
   const DONE_ITEM_STATUSES = new Set(['completed', 'delivered']);
-  const myItemsActive = myItemsRaw.filter((it) => !isExpiredItem(it) && !DONE_ITEM_STATUSES.has(it.status));
+  const HIDDEN_ITEM_STATUSES = new Set(['completed', 'delivered', 'unpublished']);
+  const myItemsActive = myItemsRaw.filter((it) => !isExpiredItem(it) && !HIDDEN_ITEM_STATUSES.has(it.status));
+  const myItemsUnpublished = myItemsRaw.filter((it) => it.status === 'unpublished');
   const myItemsExpired = myItemsRaw.filter((it) => isExpiredItem(it));
   const myItems = [...myItemsActive, ...myItemsExpired.map(it => ({ ...it, _expired: true }))];
 
@@ -343,6 +345,7 @@ export default function MyTripsScreen({ navigation, route }) {
   const driverArchive = [
     ...serverDeals.filter((d) => ARCHIVE_STATUSES.includes(d.status)).map((d) => ({ ...d, _kind: 'deal' })),
     ...myBids.filter((b) => ['rejected', 'cancelled', 'expired'].includes(b.status)).map((b) => ({ ...b, _kind: 'bid' })),
+    ...myItemsUnpublished.map((it) => ({ ...it, _kind: 'unpublished' })),
   ];
 
   // ─── Client (грузоотправитель) buckets — зеркало водителя в его терминах ───
@@ -360,6 +363,7 @@ export default function MyTripsScreen({ navigation, route }) {
   // (26.07.2026), здесь их под-вкладки больше нет.
   const clientArchive = [
     ...serverDeals.filter((d) => ARCHIVE_STATUSES.includes(d.status)).map((d) => ({ ...d, _kind: 'deal' })),
+    ...myItemsUnpublished.map((it) => ({ ...it, _kind: 'unpublished' })),
   ];
 
   // ─── Cards ───
@@ -545,6 +549,24 @@ export default function MyTripsScreen({ navigation, route }) {
     setBusyBidId(null);
   };
 
+  const republishItem = async (item, isCargo) => {
+    setBusyBidId(item.id);
+    try {
+      const r = isCargo
+        ? await marketAPI.republishCargo(item.id)
+        : await marketAPI.republishTrip(item.id);
+      if (r.ok) {
+        toast('✅ ' + t('republish'), 'success');
+        load();
+      } else {
+        toast(r.detail || t('send_error'), 'error');
+      }
+    } catch {
+      toast(t('no_connection'), 'error');
+    }
+    setBusyBidId(null);
+  };
+
   const openDealCard = (deal) => {
     if (deal.cargo_id) {
       navigation.navigate('CargoDetail', { cargoId: deal.cargo_id, dealId: deal.id, role });
@@ -645,7 +667,7 @@ export default function MyTripsScreen({ navigation, route }) {
               </View>
             </TouchableOpacity>
           )}
-          {isDriver && item.status === 'in_progress' && (!hasCountries || isDomestic) && (
+          {isDriver && item.status === 'in_progress' && hasCountries && isDomestic && (
             <TouchableOpacity
               style={[s.acceptBtn, busy && { opacity: 0.5 }]}
               disabled={busy}
@@ -654,6 +676,18 @@ export default function MyTripsScreen({ navigation, route }) {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <Feather name="check-circle" size={15} color="#FFF" />
                 <Text style={s.acceptBtnText}>{t('mark_arrived')}</Text>
+              </View>
+            </TouchableOpacity>
+          )}
+          {isDriver && item.status === 'in_progress' && !hasCountries && (
+            <TouchableOpacity
+              style={[s.acceptBtn, { backgroundColor: '#94A3B8' }, busy && { opacity: 0.5 }]}
+              disabled={busy}
+              onPress={() => openDealCard(item)}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="alert-circle" size={15} color="#FFF" />
+                <Text style={s.acceptBtnText}>{t('clarify_route')}</Text>
               </View>
             </TouchableOpacity>
           )}
@@ -939,10 +973,35 @@ export default function MyTripsScreen({ navigation, route }) {
       ];
 
 
-  // Archive renderer dispatches by item kind (deal / bid / expired route).
+  const renderUnpublishedItem = ({ item }) => {
+    const isCargo = !!item.cargo_desc;
+    const from = item.from_city || '—';
+    const to = item.to_city || '—';
+    return (
+      <View style={[s.card, { backgroundColor: theme.card, borderColor: theme.border, opacity: 0.7 }]}>
+        <View style={s.cardTop}>
+          <View style={[s.badge, { backgroundColor: '#94A3B820' }]}>
+            <Text style={[s.badgeText, { color: '#94A3B8' }]}>{isCargo ? t('badge_cargo') : t('badge_trip')}</Text>
+          </View>
+          <Text style={[s.statusLabel, { color: '#94A3B8' }]}>{t('status_unpublished')}</Text>
+        </View>
+        <Text style={[s.route, { color: theme.text }]}>{countryFlag(item.from_country)} {localizePlace(from, lang)} → {countryFlag(item.to_country)} {localizePlace(to, lang)}</Text>
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: spacing.sm }}>
+          <TouchableOpacity
+            style={[s.acceptBtn, { backgroundColor: accent, flex: 1 }]}
+            onPress={() => republishItem(item, isCargo)}
+          >
+            <Text style={[s.acceptBtnText, { color: '#0C0A09' }]}>{t('republish')}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
   const renderArchiveItem = ({ item }) =>
     item._kind === 'deal' ? renderDeal({ item })
       : item._kind === 'bid' ? renderBid({ item })
+      : item._kind === 'unpublished' ? renderUnpublishedItem({ item })
       : renderMyItem({ item });
 
   // Ставки водителя (driverOffers) переехали во вкладку «Сделки»; renderBid

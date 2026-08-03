@@ -7,7 +7,24 @@ const FLAGS = {
   TM: '\u{1F1F9}\u{1F1F2}', UA: '\u{1F1FA}\u{1F1E6}',
 };
 
+const ALIASES = {
+  KAZ: 'KZ', CHN: 'CN', RUS: 'RU', UZB: 'UZ', KGZ: 'KG', TJK: 'TJ',
+  BLR: 'BY', TUR: 'TR', IRN: 'IR', AFG: 'AF', PAK: 'PK', MNG: 'MN',
+  GEO: 'GE', AZE: 'AZ', ARM: 'AM', TKM: 'TM', UKR: 'UA',
+  KAZAKHSTAN: 'KZ', CHINA: 'CN', RUSSIA: 'RU', UZBEKISTAN: 'UZ',
+  KYRGYZSTAN: 'KG', TAJIKISTAN: 'TJ', BELARUS: 'BY', TURKEY: 'TR',
+  IRAN: 'IR', AFGHANISTAN: 'AF', PAKISTAN: 'PK', MONGOLIA: 'MN',
+  GEORGIA: 'GE', AZERBAIJAN: 'AZ', ARMENIA: 'AM', TURKMENISTAN: 'TM',
+  UKRAINE: 'UA',
+  КАЗАХСТАН: 'KZ', КИТАЙ: 'CN', РОССИЯ: 'RU', УЗБЕКИСТАН: 'UZ',
+  КЫРГЫЗСТАН: 'KG', ТАДЖИКИСТАН: 'TJ', БЕЛАРУСЬ: 'BY', ТУРЦИЯ: 'TR',
+  ИРАН: 'IR', АФГАНИСТАН: 'AF', ПАКИСТАН: 'PK', МОНГОЛИЯ: 'MN',
+  ГРУЗИЯ: 'GE', АЗЕРБАЙДЖАН: 'AZ', АРМЕНИЯ: 'AM', ТУРКМЕНИСТАН: 'TM',
+  УКРАИНА: 'UA',
+};
+
 export function countryFlag(code) {
   if (!code) return '';
-  return FLAGS[code.trim().toUpperCase()] || '';
+  const norm = code.trim().toUpperCase();
+  return FLAGS[norm] || FLAGS[ALIASES[norm]] || '';
 }
