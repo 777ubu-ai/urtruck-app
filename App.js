@@ -115,6 +115,14 @@ function navigateFromUrl(navRef, url, role) {
       navRef.current.navigate('Profile');
     } else if (kind === 'notifications') {
       navRef.current.navigate('Notifications');
+    } else if (kind === 'auth' && params.token) {
+      // Магик-линк из email-письма: urtruck://auth?token=... или
+      // https://urtruck.kz/auth?token=... — открывает приложение и
+      // подтверждает вход без ручного ввода кода. Требует backend endpoint
+      // POST /register/verify-magic-link (см. регистрацию.py). Пока endpoint
+      // не готов — фронт передаёт token в OtpV2 через params.magicToken;
+      // тот проверит его через regAPI.verifyMagicLink и завершит логин.
+      navRef.current.navigate('OtpV2', { channel: 'email', magicToken: params.token });
     }
   } catch (e) {
     console.warn('[push] navigate failed:', e?.message);
