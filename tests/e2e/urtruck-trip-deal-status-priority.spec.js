@@ -119,6 +119,74 @@ async function mockServer(page, { dealStatus }) {
   });
 }
 
+// Same as mockServer, but the deal's status lives in a mutable box so a
+// status-change action can actually move it (or fail to) — needed to test
+// the 409-then-refetch and the successful-transition paths, where the
+// server's answer must change between the initial load and after the click.
+async function mockServerMutable(page, { initialStatus, statusChangeShouldFail = false }) {
+  const box = { status: initialStatus };
+
+  await page.route('**/api/v1/register/guest', async route => {
+    await route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ ok: true, token: 'pw-tok-tds', access_token: 'pw-tok-tds', role: 'driver', user_id: DRIVER_ID, user: { id: DRIVER_ID, role: 'driver' } }),
+    });
+  });
+  await page.route('**/api/v1/register/me', async route => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id: DRIVER_ID, role: 'driver', verification_level: 3 }) });
+  });
+  await page.route('**/api/v1/users/me**', async route => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id: DRIVER_ID, name: 'PW Driver', city: '', about: '' }) });
+  });
+  await page.route('**/api/v1/market/cargos**', async route => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ cargos: [], total: 0 }) });
+  });
+  await page.route('**/api/v1/market/trips**', async route => {
+    if (route.request().url().includes('/trips/' + TRIP_ID)) {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(makeTrip()) });
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ trips: [makeTrip()], total: 1 }) });
+  });
+  await page.route('**/api/v1/market/drivers**', async route => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ drivers: [] }) });
+  });
+  await page.route('**/api/v1/market/bids**', async route => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ bids: [], count: 0, is_owner: true }) });
+  });
+  await page.route('**/api/v1/market/my', async route => {
+    await route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({
+        my_cargos: [], my_bids: [], incoming_bids: [], my_trips: [makeTrip()],
+        my_deals: [{ ...makeDeal(box.status), driver_name: 'PW Driver', shipper_name: 'PW Shipper' }],
+      }),
+    });
+  });
+  // getDeal always answers with the CURRENT authoritative status.
+  await page.route('**/api/v1/market/deals/' + DEAL_ID, async route => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(makeDeal(box.status)) });
+  });
+  // The status-change endpoint either rejects (409, box unchanged — mirrors
+  // the backend's real state-machine 409) or applies the new status.
+  await page.route('**/api/v1/market/deals/*/status**', async route => {
+    if (statusChangeShouldFail) {
+      await route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ detail: 'Недопустимый переход' }) });
+      return;
+    }
+    const url = new URL(route.request().url());
+    box.status = url.searchParams.get('new_status') || box.status;
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, status: box.status }) });
+  });
+  await page.route('**/api/v1/reviews**', async route => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ reviews: [], summary: { count: 0, average: 0 } }) });
+  });
+  await page.route('**/api/v1/chat/**', async route => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ rooms: [], contacts: [], messages: [] }) });
+  });
+  return box;
+}
+
 // Skip onboarding/auth/role-select entirely by seeding a token directly —
 // AuthContext resolves hasToken/session/hasRole from /register/me (mocked
 // above to return role:'driver'), landing straight on the driver tab bar.
@@ -201,5 +269,63 @@ test.describe('Trip status priority — deal.status over legacy tripState', () =
     const body = await page.locator('body').innerText();
     expect(body).not.toContain('Запланирован');
     expect(body).not.toContain('Статус рейса');
+  });
+});
+
+// ─── Scenario C: 409 on an invalid transition must not leave a stale
+// action button — the screen must refetch and keep showing the real
+// (unchanged) server status. ───────────────────────────────────────────────
+
+test.describe('Deal status after a rejected (409) transition', () => {
+  test.use({ locale: 'ru-RU', timezoneId: 'Asia/Almaty' });
+
+  test('at_border: rejected "mark delivered" keeps at_border, no accepted/start-delivery leak', async ({ page }) => {
+    const box = await mockServerMutable(page, { initialStatus: 'at_border', statusChangeShouldFail: true });
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await enterAsDriver(page);
+    await openDealCard(page, { tabTestId: 'my-work-tab-inwork' });
+
+    await expect(page.locator('[data-testid="deal-action-mark-arrived"]')).toBeVisible(); // at_border's only driver action
+
+    await page.locator('[data-testid="deal-action-mark-arrived"]').first().click();
+    await page.waitForTimeout(1500); // await the rejected PATCH + forced refetch
+
+    // Server rejected the change — box.status never moved off at_border.
+    expect(box.status).toBe('at_border');
+    // The screen must reflect that: same action still offered, and the
+    // accepted-state action must never leak in after a failed attempt.
+    await expect(page.locator('[data-testid="deal-action-mark-arrived"]')).toBeVisible();
+    await expect(page.locator('[data-testid="deal-action-start-delivery"]')).toHaveCount(0);
+    const body = await page.locator('body').innerText();
+    expect(body).not.toContain('Начать перевозку');
+  });
+});
+
+// ─── Scenario D: a successful transition must update both the mock's
+// authoritative state and the on-screen action button. ─────────────────────
+
+test.describe('Deal status after a successful transition', () => {
+  test.use({ locale: 'ru-RU', timezoneId: 'Asia/Almaty' });
+
+  test('accepted -> in_progress: "Начать перевозку" replaced by the next action', async ({ page }) => {
+    const box = await mockServerMutable(page, { initialStatus: 'accepted', statusChangeShouldFail: false });
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await enterAsDriver(page);
+    await openDealCard(page, { tabTestId: 'my-work-tab-inwork' });
+
+    let body = await page.locator('body').innerText();
+    expect(body).toContain('Начать перевозку');
+
+    await page.locator('[data-testid="deal-action-start-delivery"]').first().click();
+    await page.waitForTimeout(1500); // await the successful PATCH + forced refetch
+
+    expect(box.status).toBe('in_progress');
+    // The accepted-state action button must be gone; international route
+    // (KZ->UZ) means the next driver action is mark_at_border ("На границе").
+    await expect(page.locator('[data-testid="deal-action-start-delivery"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="deal-action-mark-at-border"]')).toBeVisible();
+    body = await page.locator('body').innerText();
+    expect(body).not.toContain('Начать перевозку');
+    expect(body).toContain('На границе');
   });
 });

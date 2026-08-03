@@ -260,16 +260,18 @@ export default function CargoDetail({ navigation, route }) {
         // Не полагаемся на длину списка — dirty-фильтр QA-ставок в открытом
         // режиме иначе выглядел бы как конфиденциальность.
         setBidsConfidential(!!d.confidential);
+        // bid.status ЗАСТЫВАЕТ на 'accepted' навсегда с момента accept_bid —
+        // он не двигается вместе с in_progress/at_border/delivered. Раньше
+        // здесь стоял setDealStatus((prev) => prev || 'accepted') «пока
+        // сделка не загрузилась» — но если фактический fetch сделки (см.
+        // refreshDeal → getDeal) опаздывал или падал, экран застывал на
+        // «Принят»/«Начать перевозку», хотя список уже показывал in_progress/
+        // at_border. Единственный источник dealStatus — ответ getDeal/
+        // myDashboard (см. applyDeal). bid.status здесь используется только
+        // для определения ЛИЧНОСТИ водителя (acceptedDriverId), не статуса.
         const accepted = mapped.find(b => b.status === 'accepted');
         if (accepted) {
           setAcceptedDriverId(accepted.bidderId);
-          // Updater-форма, а не `if (!dealStatus)`: loadBids вызывается из
-          // refreshDeal (useCallback без dealStatus в deps) — при каждом
-          // 15-секундном опросе замыкание видело dealStatus=null с момента
-          // маунта и затирало уже продвинутый in_progress/at_border обратно
-          // в accepted. prev всегда свежий независимо от того, чьё замыкание
-          // вызвало setDealStatus.
-          setDealStatus((prev) => prev || 'accepted');
         }
       })
       .catch(() => {});
@@ -311,13 +313,21 @@ export default function CargoDetail({ navigation, route }) {
     }
   };
 
-  const lastLocalChange = React.useRef(0);
-  const applyDeal = (d) => {
+  // Монотонный счётчик запросов сделки — защита от гонки: если более
+  // старый (медленный) fetch отвечает ПОСЛЕ более нового, его результат
+  // отбрасывается (приказ владельца 04.08 п.3). Каждый refreshDeal() берёт
+  // новый номер; applyDeal() применяет ответ только если seq всё ещё
+  // актуален на момент resolve.
+  const dealFetchSeq = React.useRef(0);
+  const applyDeal = (d, seq) => {
     if (!d || !d.id) return;
+    if (seq != null && seq !== dealFetchSeq.current) return; // ответ устарел
     setDealId(d.id);
-    if (Date.now() - lastLocalChange.current > 30000) {
-      setDealStatus(d.status || 'accepted');
-    }
+    // deal.status — ЕДИНСТВЕННЫЙ источник статуса после создания сделки
+    // (приказ владельца 04.08 п.1). Никакого anti-flicker таймера здесь
+    // больше нет — request-id guard решает ту же задачу без риска
+    // «залипания» на устаревшем статусе.
+    setDealStatus(d.status || 'accepted');
     if (d.chat_room_id) setChatRoomId(d.chat_room_id);
     if (d.shipper_id) setShipperId(d.shipper_id);
     if (d.driver_id) {
@@ -334,13 +344,18 @@ export default function CargoDetail({ navigation, route }) {
     if (!cid) return;
     marketAPI.getCargo(cid).then(d => { if (d && d.id) setFullCargo(d); }).catch(() => {});
     loadBids();
-    const dealIdToFetch = routeDealId || dealId;
+    const seq = ++dealFetchSeq.current;
+    // dealId (state) авторитетнее routeDealId — тот навсегда фиксирован
+    // параметрами навигации, а dealId уже содержит реальный id, если
+    // сделка создана прямо в этой сессии (owner принял ставку без
+    // изначального dealId в route.params).
+    const dealIdToFetch = dealId || routeDealId;
     if (dealIdToFetch) {
-      marketAPI.getDeal(dealIdToFetch).then(d => { if (d && d.ok !== false) applyDeal(d); }).catch(() => {});
+      marketAPI.getDeal(dealIdToFetch).then(d => { if (d && d.ok !== false) applyDeal(d, seq); }).catch(() => {});
     } else {
       marketAPI.myDashboard().then(d => {
         const found = (d?.my_deals || []).find(x => x.cargo_id === cid);
-        if (found) applyDeal(found);
+        if (found) applyDeal(found, seq);
       }).catch(() => {});
     }
   }, [cid, routeDealId, dealId]);
@@ -374,16 +389,20 @@ export default function CargoDetail({ navigation, route }) {
     try {
       const r = await marketAPI.updateDealStatus(dealId, newStatus);
       if (r.ok) {
-        lastLocalChange.current = Date.now();
-        setDealStatus(newStatus);
+        setDealStatus(newStatus); // оптимистично — мгновенная реакция UI
         const msg = newStatus === 'cancelled' ? t('deal_cancelled_toast') : t('deal_updated_toast');
         toast(msg, 'success');
       } else {
+        // 409 и другие отказы: сервер уже знает реальный статус — не
+        // оставляем старую кнопку, сразу перечитываем сделку (приказ
+        // владельца 04.08 п.3).
         toast(r.detail || t('update_failed'), 'error');
       }
     } catch {
       toast(t('no_connection'), 'error');
     }
+    // И на успехе, и на отказе — единственная правда приходит с сервера.
+    refreshDeal();
     setStatusLoading(false);
   };
 
@@ -701,7 +720,6 @@ export default function CargoDetail({ navigation, route }) {
                     встречную». */}
                 {c.isMine && isCountered && (
                   <View style={{ marginTop: 10, gap: 6, alignSelf: 'stretch' }}>
-                    <View style={{ flexDirection: 'row', gap: 8 }}>
                       <PrimaryCTA
                         testID="bid-accept"
                         role="client"
@@ -709,7 +727,6 @@ export default function CargoDetail({ navigation, route }) {
                         label={`${t('accept_bid_btn')} ${formatPrice(b.amount, c.currency || 'USD', t)}`}
                         loading={accepting === b.id}
                         disabled={!!accepting || !!rejecting}
-                        style={{ flex: 1 }}
                         onPress={async () => {
                           // Confirm сначала — под капотом два вызова, дороже отменить нельзя.
                           const sum = formatPrice(b.amount, c.currency);
@@ -743,13 +760,8 @@ export default function CargoDetail({ navigation, route }) {
                           setAccepting(null);
                         }}
                       />
-                      <DestructiveButton
+                      <TouchableOpacity
                         testID="bid-reject"
-                        icon="✕"
-                        label={t('reject_btn')}
-                        loading={rejecting === b.id}
-                        disabled={!!rejecting || !!accepting}
-                        style={{ flex: 1 }}
                         onPress={async () => {
                           setRejecting(b.id);
                           try {
@@ -759,8 +771,14 @@ export default function CargoDetail({ navigation, route }) {
                           } catch { toast(t('no_connection'), 'error'); }
                           setRejecting(null);
                         }}
-                      />
-                    </View>
+                        disabled={!!rejecting || !!accepting}
+                        style={{ alignSelf: 'center', paddingVertical: 6, paddingHorizontal: 10 }}
+                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                      >
+                        <Text style={{ color: '#EF4444', fontSize: 13, fontWeight: '700', opacity: (accepting || rejecting) ? 0.55 : 1 }}>
+                          {rejecting === b.id ? '…' : t('reject_btn')}
+                        </Text>
+                      </TouchableOpacity>
                   </View>
                 )}
 
