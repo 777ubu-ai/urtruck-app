@@ -160,6 +160,27 @@ def _norm_route_triple(country, point_type, point_name):
     return c, pt, pn
 
 
+def _deal_country_guard(cur_status: str, new_status: str, from_country: Optional[str], to_country: Optional[str]):
+    """Серверная проверка маршрута для перехода из in_progress (приказ
+    владельца 03.08.2026): фронту нельзя доверять — статус сделки описывает
+    реальную логистику. Домашний рейс (страны совпадают) не проходит границу;
+    международный (страны разные) не может доставиться, минуя границу;
+    неизвестный маршрут (страна не указана) не двигается дальше без
+    уточнения. Действует только на in_progress → {at_border, delivered} —
+    cancelled и остальные переходы существующей state machine не трогает.
+    """
+    if cur_status != "in_progress" or new_status not in ("at_border", "delivered"):
+        return
+    fc = (from_country or "").strip().upper() or None
+    tc = (to_country or "").strip().upper() or None
+    if not fc or not tc:
+        raise HTTPException(status_code=409, detail="Уточните страны маршрута")
+    if fc == tc and new_status == "at_border":
+        raise HTTPException(status_code=409, detail="Внутренний рейс не проходит через границу")
+    if fc != tc and new_status == "delivered":
+        raise HTTPException(status_code=409, detail="Международный рейс должен пройти этап «На границе»")
+
+
 def _is_dirty_text(*fields) -> bool:
     """Cheap substring match for moderation tokens. Case-insensitive, RU+EN.
 
@@ -2541,6 +2562,16 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
         allowed = _FLOW.get(cur_status)
         if allowed is not None and new_status not in allowed:
             raise HTTPException(status_code=409, detail=f"Недопустимый переход: {cur_status} → {new_status}")
+        route = c.execute(
+            "SELECT COALESCE(c.from_country, t.from_country) AS from_country, "
+            "COALESCE(c.to_country, t.to_country) AS to_country "
+            "FROM deals d LEFT JOIN cargos c ON d.cargo_id = c.id "
+            "LEFT JOIN trips t ON d.trip_id = t.id WHERE d.id = ?",
+            (deal_id,),
+        ).fetchone()
+        _deal_country_guard(cur_status, new_status,
+                             route["from_country"] if route else None,
+                             route["to_country"] if route else None)
         c.execute("UPDATE deals SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                    (new_status, deal_id))
         if new_status == "delivered" and deal["cargo_id"]:
