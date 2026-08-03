@@ -16,7 +16,6 @@ import EditCargoModal from '../components/EditCargoModal';
 import { colors, spacing, radius, typography } from '../theme/theme';
 import {v1Colors, useV1Colors, v1AccentFor} from '../theme/designV1';
 import SegmentTabs from '../components/ui/v1/SegmentTabs';
-import StatsRow from '../components/ui/v1/StatsRow';
 import { useMountedRef } from '../hooks/useMountedRef';
 import FadeInUp, { PopIn } from '../components/ui/FadeInUp';
 import PressableScale from '../components/PressableScale';
@@ -305,8 +304,10 @@ export default function MyTripsScreen({ navigation, route }) {
     grace.setDate(grace.getDate() - 2);
     return d < grace;
   };
-  const myItemsActive = myItemsRaw.filter((it) => !isExpiredItem(it));
+  const DONE_ITEM_STATUSES = new Set(['completed', 'delivered']);
+  const myItemsActive = myItemsRaw.filter((it) => !isExpiredItem(it) && !DONE_ITEM_STATUSES.has(it.status));
   const myItemsExpired = myItemsRaw.filter((it) => isExpiredItem(it));
+  const myItemsCompleted = myItemsRaw.filter((it) => !isExpiredItem(it) && DONE_ITEM_STATUSES.has(it.status));
   const myItems = myItemsActive;
 
   const myBids = isDriver ? (data?.my_bids || []) : (data?.incoming_bids || []);
@@ -623,32 +624,44 @@ export default function MyTripsScreen({ navigation, route }) {
         <View style={{ flexDirection: 'row', gap: 6, marginTop: spacing.sm, flexWrap: 'wrap' }}>
           {isDriver && item.status === 'accepted' && (
             <TouchableOpacity
-              style={[s.acceptBtn, busy && { opacity: 0.5 }]}
+              style={[s.acceptBtn, { backgroundColor: '#FF8400' }, busy && { opacity: 0.5 }]}
               disabled={busy}
               onPress={() => setDealStatusOnServer(item, 'in_progress')}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="truck" size={15} color="#FFF" />
-                <Text style={s.acceptBtnText}>{t('start_delivery')}</Text>
+                <Feather name="truck" size={15} color="#0C0A09" />
+                <Text style={[s.acceptBtnText, { color: '#0C0A09' }]}>{t('start_delivery')}</Text>
               </View>
             </TouchableOpacity>
           )}
-          {/* Водитель «В работе»: две кнопки — «На границе» (необязательный шаг
-              коридора Китай↔СНГ, оживляет стадию таймлайна) и «Доставлен».
-              На внутреннем рейсе границу можно пропустить и сразу доставить. */}
+          {/* Водитель «В работе»: ОДНО следующее действие по статусу.
+              in_progress → «На границе» (синий) — следующий шаг коридора.
+              at_border → «Груз доставлен» (зелёный) — финальный шаг.
+              Кнопка «Пропустить границу» (skip) доступна inline для
+              внутренних рейсов — тап по «На границе» long-press не нужен,
+              пользователь просто не нажимает её и ждёт доставки. */}
           {isDriver && item.status === 'in_progress' && (
-            <TouchableOpacity
-              style={[s.acceptBtn, { backgroundColor: '#2563EB' }, busy && { opacity: 0.5 }]}
-              disabled={busy}
-              onPress={() => setDealStatusOnServer(item, 'at_border')}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="flag" size={15} color="#FFF" />
-                <Text style={s.acceptBtnText}>{t('status_at_border')}</Text>
-              </View>
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity
+                style={[s.acceptBtn, { backgroundColor: '#2563EB' }, busy && { opacity: 0.5 }]}
+                disabled={busy}
+                onPress={() => setDealStatusOnServer(item, 'at_border')}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Feather name="flag" size={15} color="#FFF" />
+                  <Text style={s.acceptBtnText}>{t('status_at_border')}</Text>
+                </View>
+              </TouchableOpacity>
+              <PressableScale
+                style={[s.miniBtn, busy && { opacity: 0.5 }]}
+                disabled={busy}
+                onPress={() => setDealStatusOnServer(item, 'delivered')}
+              >
+                <Text style={[s.miniBtnText, { color: theme.textMuted }]}>{t('mark_arrived')}</Text>
+              </PressableScale>
+            </>
           )}
-          {isDriver && (item.status === 'in_progress' || item.status === 'at_border') && (
+          {isDriver && item.status === 'at_border' && (
             <TouchableOpacity
               style={[s.acceptBtn, busy && { opacity: 0.5 }]}
               disabled={busy}
@@ -929,17 +942,6 @@ export default function MyTripsScreen({ navigation, route }) {
         { key: 'delivered', label: t('client_tab_delivered'), testID: 'my-work-tab-delivered' },
       ];
 
-  const stats = isDriver
-    ? [
-        { value: myItems.length,      label: t('tab_my_routes') },
-        { value: driverInWork.length, label: t('tab_in_work') },
-        { value: driverDone.length,   label: t('tab_done') },
-      ]
-    : [
-        { value: clientSearching.length, label: t('client_tab_searching') },
-        { value: driverInWork.length,    label: t('client_tab_enroute') },
-        { value: driverDone.length,      label: t('client_tab_delivered') },
-      ];
 
   // Archive renderer dispatches by item kind (deal / bid / expired route).
   const renderArchiveItem = ({ item }) =>
@@ -1030,13 +1032,7 @@ export default function MyTripsScreen({ navigation, route }) {
       </View>
 
       <View style={{ paddingHorizontal: 16 }}>
-        {/* Дизайн 2026 v5 (04.08): единый underline-стиль табов для обеих ролей.
-            Раньше driver получал 'pill' — активный таб заливался зелёным блоком
-            на всю кнопку («Завершённые» в скриншоте 03.08 → user жаловался
-            «закрашивать не должно быть»). Теперь только тонкая полоска под
-            активным табом, никакой заливки. */}
-        <SegmentTabs items={TABS} value={tab === 'archive' ? null : tab} onChange={setTab} accent={v1Accent.main} variant="underline" />
-        <StatsRow items={stats} accent={v1Accent.main} />
+        <SegmentTabs items={TABS} value={tab === 'archive' ? null : tab} onChange={setTab} accent={v1Accent.main} variant={isDriver ? 'pill' : 'underline'} />
         {/* Архив — вторичный фильтр (issue #2): отменённые/отклонённые/
             истёкшие, НЕ основная вкладка. Активных заказов тут нет.
             Доступен обеим ролям (driver и грузоотправитель). */}
