@@ -874,9 +874,8 @@ export default function TripDetail({ navigation, route }) {
                 <Text style={[s.primaryBtnText, { color: '#0A0A0A' }]}>✏️ {t('edit_btn')}</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity style={[s.dangerBtn, { borderColor: '#94A3B8' }]} onPress={onDelete}>
-              <Text style={[s.dangerBtnText, { color: '#94A3B8' }]}>{t('trip_delete')}</Text>
-            </TouchableOpacity>
+            {/* PR 2: подключить PATCH /market/trips/{id}/unpublish → status=unpublished.
+                До этого кнопку не показываем — removeTrip удаляет из памяти, а не снимает с публикации. */}
           </>
         ) : null}
       </ScrollView>

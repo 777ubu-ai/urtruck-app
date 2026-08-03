@@ -307,8 +307,7 @@ export default function MyTripsScreen({ navigation, route }) {
   const DONE_ITEM_STATUSES = new Set(['completed', 'delivered']);
   const myItemsActive = myItemsRaw.filter((it) => !isExpiredItem(it) && !DONE_ITEM_STATUSES.has(it.status));
   const myItemsExpired = myItemsRaw.filter((it) => isExpiredItem(it));
-  const myItemsCompleted = myItemsRaw.filter((it) => !isExpiredItem(it) && DONE_ITEM_STATUSES.has(it.status));
-  const myItems = myItemsActive;
+  const myItems = [...myItemsActive, ...myItemsExpired.map(it => ({ ...it, _expired: true }))];
 
   const myBids = isDriver ? (data?.my_bids || []) : (data?.incoming_bids || []);
   // Валюта суммы ставки/сделки. Бэкенд теперь отдаёт currency на ставках
@@ -319,12 +318,7 @@ export default function MyTripsScreen({ navigation, route }) {
     (item && item.currency)
     || (item && (data?.my_cargos || []).find((cc) => cc.id === item.cargo_id)?.currency)
     || 'USD';
-  // Архив: server-deals + локально-вычисленные expired (без изменения
-  // backend данных). justCreated не дублируется т.к. он active.
-  const myDeals = [
-    ...((data?.my_deals) || []),
-    ...myItemsExpired.map((it) => ({ ...it, _expired: true })),
-  ];
+  const myDeals = (data?.my_deals) || [];
 
   // ─── Driver tab buckets (issue #2/#3) ───
   // Жёсткий маппинг статусов сделок/ставок на 4 driver-вкладки + вторичный
@@ -348,7 +342,6 @@ export default function MyTripsScreen({ navigation, route }) {
   const driverArchive = [
     ...serverDeals.filter((d) => ARCHIVE_STATUSES.includes(d.status)).map((d) => ({ ...d, _kind: 'deal' })),
     ...myBids.filter((b) => ['rejected', 'cancelled', 'expired'].includes(b.status)).map((b) => ({ ...b, _kind: 'bid' })),
-    ...myItemsExpired.map((it) => ({ ...it, _kind: 'route', _expired: true })),
   ];
 
   // ─── Client (грузоотправитель) buckets — зеркало водителя в его терминах ───
@@ -366,7 +359,6 @@ export default function MyTripsScreen({ navigation, route }) {
   // (26.07.2026), здесь их под-вкладки больше нет.
   const clientArchive = [
     ...serverDeals.filter((d) => ARCHIVE_STATUSES.includes(d.status)).map((d) => ({ ...d, _kind: 'deal' })),
-    ...myItemsExpired.map((it) => ({ ...it, _kind: 'cargo', _expired: true })),
   ];
 
   // ─── Cards ───
@@ -561,9 +553,10 @@ export default function MyTripsScreen({ navigation, route }) {
   };
 
   const renderDeal = ({ item }) => {
-    // Промпт-дизайн клиента: «Принят» — изумруд #10B981 (текст+галочка, без фона).
     const sc = { accepted: '#10B981', in_progress: '#FF8400', at_border: '#2563EB', delivered: '#10B981', cancelled: '#EF4444' };
     const busy = busyBidId === item.id;
+    const isDomestic = item.from_country && item.to_country
+      && item.from_country.toUpperCase() === item.to_country.toUpperCase();
     const nextStep = isDriver
       ? (item.status === 'accepted' ? t('driver_next_step_accepted')
           : item.status === 'in_progress' ? t('driver_next_step_in_progress')
@@ -634,32 +627,33 @@ export default function MyTripsScreen({ navigation, route }) {
               </View>
             </TouchableOpacity>
           )}
-          {/* Водитель «В работе»: ОДНО следующее действие по статусу.
-              in_progress → «На границе» (синий) — следующий шаг коридора.
-              at_border → «Груз доставлен» (зелёный) — финальный шаг.
-              Кнопка «Пропустить границу» (skip) доступна inline для
-              внутренних рейсов — тап по «На границе» long-press не нужен,
-              пользователь просто не нажимает её и ждёт доставки. */}
-          {isDriver && item.status === 'in_progress' && (
-            <>
-              <TouchableOpacity
-                style={[s.acceptBtn, { backgroundColor: '#2563EB' }, busy && { opacity: 0.5 }]}
-                disabled={busy}
-                onPress={() => setDealStatusOnServer(item, 'at_border')}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Feather name="flag" size={15} color="#FFF" />
-                  <Text style={s.acceptBtnText}>{t('status_at_border')}</Text>
-                </View>
-              </TouchableOpacity>
-              <PressableScale
-                style={[s.miniBtn, busy && { opacity: 0.5 }]}
-                disabled={busy}
-                onPress={() => setDealStatusOnServer(item, 'delivered')}
-              >
-                <Text style={[s.miniBtnText, { color: theme.textMuted }]}>{t('mark_arrived')}</Text>
-              </PressableScale>
-            </>
+          {/* Водитель «В работе»: ОДНО следующее действие по типу маршрута.
+              Международный (from_country !== to_country): in_progress → «На границе».
+              Внутренний (from_country === to_country): in_progress → «Груз доставлен»,
+              at_border пропускается — границы нет. */}
+          {isDriver && item.status === 'in_progress' && !isDomestic && (
+            <TouchableOpacity
+              style={[s.acceptBtn, { backgroundColor: '#2563EB' }, busy && { opacity: 0.5 }]}
+              disabled={busy}
+              onPress={() => setDealStatusOnServer(item, 'at_border')}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="flag" size={15} color="#FFF" />
+                <Text style={s.acceptBtnText}>{t('status_at_border')}</Text>
+              </View>
+            </TouchableOpacity>
+          )}
+          {isDriver && item.status === 'in_progress' && isDomestic && (
+            <TouchableOpacity
+              style={[s.acceptBtn, busy && { opacity: 0.5 }]}
+              disabled={busy}
+              onPress={() => setDealStatusOnServer(item, 'delivered')}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="check-circle" size={15} color="#FFF" />
+                <Text style={s.acceptBtnText}>{t('mark_arrived')}</Text>
+              </View>
+            </TouchableOpacity>
           )}
           {isDriver && item.status === 'at_border' && (
             <TouchableOpacity
