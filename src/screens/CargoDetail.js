@@ -17,7 +17,7 @@ function DealActionLabel({ icon, text, color, loading }) {
 const dealLblStyle = { fontSize: 13, fontWeight: '700' };
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
-import { formatBids, t as tGlobal } from '../utils/i18n';
+import { formatBids, formatStatus, t as tGlobal } from '../utils/i18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useToast } from '../components/Toast';
 import { PhotoGallery } from '../components/PhotoGallery';
@@ -40,7 +40,6 @@ import GlassCard from '../components/ui/v1/GlassCard';
 import SectionTitle from '../components/ui/v1/SectionTitle';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
 import StickyCTABar from '../components/ui/v1/StickyCTABar';
-import { DealStatusTimeline } from '../components/deal/DealRoom';
 import PrimaryCTA from '../components/ui/actions/PrimaryCTA';
 import SecondaryButton from '../components/ui/actions/SecondaryButton';
 import DestructiveButton from '../components/ui/actions/DestructiveButton';
@@ -121,8 +120,6 @@ export default function CargoDetail({ navigation, route }) {
   reviewSubmitBtn: { backgroundColor: '#22C55E', borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10 },
   reviewSubmitText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   dealBlock: { borderWidth: 1, borderRadius: 14, padding: 16, alignItems: 'center', gap: 10 },
-  clarifyRoutePill: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, alignSelf: 'stretch' },
-  clarifyRouteText: { fontSize: 13, fontWeight: '600' },
   myBidCard: { padding: 14, borderRadius: 10, borderWidth: 2, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
   myBidHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
   myBidLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' },
@@ -181,7 +178,6 @@ export default function CargoDetail({ navigation, route }) {
   const [dealStatus, setDealStatus] = useState(null);
   const [shipperId, setShipperId] = useState(null);
   const [driverId, setDriverId] = useState(null);
-  const [statusLoading, setStatusLoading] = useState(false);
   const [reviewRating, setReviewRating] = useState(0);
   const [reviewText, setReviewText] = useState('');
   const [reviewSent, setReviewSent] = useState(false);
@@ -227,8 +223,6 @@ export default function CargoDetail({ navigation, route }) {
   // уже блокирует 409-м, здесь просто не предлагаем действие, которое
   // всё равно будет отклонено.
   const hasKnownRoute = Boolean(c.from_country && c.to_country);
-  const isDomesticRoute = hasKnownRoute
-    && String(c.from_country).trim().toUpperCase() === String(c.to_country).trim().toUpperCase();
   if (!cid && !c.from) return null;
 
   const loadBids = () => {
@@ -389,28 +383,9 @@ export default function CargoDetail({ navigation, route }) {
     }
   };
 
-  const changeDealStatus = async (newStatus) => {
-    if (!dealId || statusLoading) return;
-    setStatusLoading(true);
-    try {
-      const r = await marketAPI.updateDealStatus(dealId, newStatus);
-      if (r.ok) {
-        setDealStatus(newStatus); // оптимистично — мгновенная реакция UI
-        const msg = newStatus === 'cancelled' ? t('deal_cancelled_toast') : t('deal_updated_toast');
-        toast(msg, 'success');
-      } else {
-        // 409 и другие отказы: сервер уже знает реальный статус — не
-        // оставляем старую кнопку, сразу перечитываем сделку (приказ
-        // владельца 04.08 п.3).
-        toast(r.detail || t('update_failed'), 'error');
-      }
-    } catch {
-      toast(t('no_connection'), 'error');
-    }
-    // И на успехе, и на отказе — единственная правда приходит с сервера.
-    refreshDeal();
-    setStatusLoading(false);
-  };
+  // changeDealStatus удалён (05.08.2026): кнопки статуса переехали в
+  // ChatScreen (единственное место действия на deal.status, см. п.9/13 ТЗ).
+  // Эта страница только показывает текущий статус текстом (см. ниже).
 
   const handleBid = () => {
     // Ставка отправлена через BidModal → перезагружаем список с сервера
@@ -954,14 +929,17 @@ export default function CargoDetail({ navigation, route }) {
       {dealStatus && (
         <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
           <View style={[s.dealBlock, { borderColor: theme.border, backgroundColor: theme.card }]}>
-            {/* Визуальный таймлайн заказа: Принят → В пути → На границе →
-                Доставлен (как у Uber Freight/inDrive). */}
-            <DealStatusTimeline status={dealStatus} role={role} />
-
-            {/* Next-step hint — при неизвестном маршруте подсказка не должна
-                называть шаг, который сервер всё равно отклонит 409-м. */}
+            {/* Компактный статус вместо горизонтальной шкалы Принят/В работе/
+                На границе/Завершён (05.08.2026, п.9 ТЗ). Кнопки действия
+                («Начать»/«На границе»/«Доставлен»/«Подтвердить получение»/
+                «Отменить») переехали в разговор (ChatScreen) — единственное
+                место действия на статус сделки, без дублей между экранами. */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', alignSelf: 'stretch' }}>
+              <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '600' }}>{t('trip_current_status')}</Text>
+              <Text style={{ color: theme.text, fontSize: 13, fontWeight: '800' }}>{formatStatus(dealStatus)}</Text>
+            </View>
             {(dealStatus === 'accepted' || dealStatus === 'in_progress' || dealStatus === 'at_border') && (
-              <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 8, textAlign: 'center' }}>
+              <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 6 }}>
                 {dealStatus === 'in_progress' && !hasKnownRoute ? t('clarify_route') : (
                   <>
                     {t('order_next_step')}: {
@@ -976,107 +954,16 @@ export default function CargoDetail({ navigation, route }) {
                 )}
               </Text>
             )}
-
-            {/* Дизайн 2026 v5: один Primary CTA + маленькие text-ссылки
-                (Чат, Отмена). Никаких огромных заливных зелёных кнопок. */}
-            <View style={{ marginTop: 10, gap: 6 }}>
-              {isDriverSide && dealStatus === 'accepted' && (
-                <PrimaryCTA
-                  role={role || 'driver'}
-                  icon="🚛"
-                  label={t('start_delivery')}
-                  loading={statusLoading}
-                  disabled={statusLoading}
-                  onPress={() => changeDealStatus('in_progress')}
-                />
-              )}
-              {/* Гейт маршрута (03.08): неизвестные страны — ни один переход
-                  дальше не пройдёт на сервере (409), поэтому вместо кнопки
-                  показываем нейтральную плашку. Домашний рейс (страны
-                  совпадают) не идёт через границу — пропускаем «На границе»
-                  и предлагаем сразу «Доставлен». */}
-              {isDriverSide && dealStatus === 'in_progress' && !hasKnownRoute && (
-                <View style={s.clarifyRoutePill} testID="deal-clarify-route">
-                  <Feather name="alert-circle" size={14} color={theme.textMuted} />
-                  <Text style={[s.clarifyRouteText, { color: theme.textMuted }]}>{t('clarify_route')}</Text>
-                </View>
-              )}
-              {isDriverSide && dealStatus === 'in_progress' && hasKnownRoute && !isDomesticRoute && (
-                <PrimaryCTA
-                  role={role || 'driver'}
-                  icon="🛂"
-                  label={t('mark_at_border')}
-                  loading={statusLoading}
-                  disabled={statusLoading}
-                  onPress={() => changeDealStatus('at_border')}
-                />
-              )}
-              {isDriverSide && dealStatus === 'in_progress' && hasKnownRoute && isDomesticRoute && (
-                <PrimaryCTA
-                  role={role || 'driver'}
-                  icon="✅"
-                  label={t('mark_arrived')}
-                  loading={statusLoading}
-                  disabled={statusLoading}
-                  onPress={() => changeDealStatus('delivered')}
-                />
-              )}
-              {isDriverSide && dealStatus === 'at_border' && (
-                <PrimaryCTA
-                  role={role || 'driver'}
-                  icon="✅"
-                  label={t('mark_arrived')}
-                  loading={statusLoading}
-                  disabled={statusLoading}
-                  onPress={() => changeDealStatus('delivered')}
-                />
-              )}
-              {isShipper && dealStatus === 'in_progress' && !hasKnownRoute && (
-                <View style={s.clarifyRoutePill} testID="deal-clarify-route">
-                  <Feather name="alert-circle" size={14} color={theme.textMuted} />
-                  <Text style={[s.clarifyRouteText, { color: theme.textMuted }]}>{t('clarify_route')}</Text>
-                </View>
-              )}
-              {isShipper && ((dealStatus === 'in_progress' && hasKnownRoute) || dealStatus === 'at_border') && (
-                <SecondaryButton
-                  role={role || 'client'}
-                  icon="✅"
-                  label={t('confirm_delivery')}
-                  disabled={statusLoading}
-                  onPress={() => changeDealStatus('delivered')}
-                />
-              )}
-              <View style={{ flexDirection: 'row', gap: 18, justifyContent: 'center', marginTop: 2 }}>
-                {chatRoomId && (
-                  <TouchableOpacity
-                    testID="deal-order-chat"
-                    onPress={() => navigation.navigate('Chat', { roomId: chatRoomId, role })}
-                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                  >
-                    <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '600' }}>💬 {t('order_chat')}</Text>
-                  </TouchableOpacity>
-                )}
-                {(dealStatus === 'accepted' || dealStatus === 'in_progress' || dealStatus === 'at_border') && (
-                  <TouchableOpacity
-                    disabled={statusLoading}
-                    onPress={() => {
-                      const doCancel = () => changeDealStatus('cancelled');
-                      if (Platform.OS === 'web') {
-                        if (typeof window !== 'undefined' && window.confirm(t('cancel_deal_confirm'))) doCancel();
-                      } else {
-                        Alert.alert(t('cancel_deal_confirm'), '', [
-                          { text: t('cancel'), style: 'cancel' },
-                          { text: t('confirm'), style: 'destructive', onPress: doCancel },
-                        ]);
-                      }
-                    }}
-                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                  >
-                    <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '600' }}>⊘ {t('cancel_deal')}</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
+            {chatRoomId && (
+              <TouchableOpacity
+                testID="deal-order-chat"
+                onPress={() => navigation.navigate('Chat', { roomId: chatRoomId, role })}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                style={{ alignSelf: 'center', marginTop: 10 }}
+              >
+                <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '600' }}>💬 {t('order_chat')}</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       )}
