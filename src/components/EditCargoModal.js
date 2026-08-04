@@ -22,8 +22,10 @@ export default function EditCargoModal({ visible, cargo, onClose, onSaved }) {
   const { t } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
-  // Символ валюты — из самого груза (USD→$, KZT→₸…), не хардкод ₸.
-  const curSym = CURRENCY_SYMBOLS[String(cargo?.currency || 'USD').toUpperCase()] || '$';
+  // Символ валюты — из самого груза (USD→$, EUR→€…), не хардкод ₸.
+  // Для legacy-валюты без символа показываем ISO-код, а не чужой '$'.
+  const curCode = String(cargo?.currency || 'USD').toUpperCase();
+  const curSym = CURRENCY_SYMBOLS[curCode] || curCode;
   const [price, setPrice] = useState(String(cargo?.price ?? ''));
   const [desc, setDesc] = useState(String(cargo?.cargo_desc ?? ''));
   const [weight, setWeight] = useState(cargo?.weight_tons != null ? String(cargo.weight_tons) : '');

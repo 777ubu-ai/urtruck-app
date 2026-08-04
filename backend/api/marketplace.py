@@ -131,6 +131,12 @@ def _validate_future_date(value, field_name: str):
 
 _ALLOWED_POINT_TYPES = ("city", "border", "terminal", "hub")
 
+# Core-валюты для НОВЫХ операций (cargo/trip create+edit). Старые записи в
+# других валютах (KZT/UZS/KGS/…) НЕ конвертируются и остаются как есть на
+# read-путях; создать/сохранить новую запись можно только в одной из этих.
+_ALLOWED_CURRENCIES = ("USD", "CNY", "RUB", "EUR")
+_CURRENCY_ERROR = "Валюта не поддерживается. Разрешены: USD, CNY, RUB, EUR."
+
 
 def _norm_route_triple(country, point_type, point_name):
     """Normalise the structured route triple. Country is an ISO-2 code
@@ -405,8 +411,8 @@ def create_cargo(body: CargoIn, user=Depends(require_level(1))):
     # ends up NULL/empty. Old rows already in DB with a removed code keep
     # their value (read paths stay permissive).
     currency = (body.currency or "USD").upper()
-    if currency not in ("USD", "KZT", "RUB", "CNY"):
-        currency = "USD"
+    if currency not in _ALLOWED_CURRENCIES:
+        raise HTTPException(status_code=422, detail=_CURRENCY_ERROR)
     cid = new_id()
     # Stage 8: persist structured route alongside the legacy free-text
     # columns. Country code normalised to upper-case; missing fields
@@ -651,8 +657,8 @@ def update_cargo(cargo_id: str, body: CargoPatchIn, user=Depends(require_level(1
             updates.append("price = ?"); params.append(body.price)
         if body.currency is not None:
             cur = (body.currency or "USD").upper()
-            if cur not in ("USD", "KZT", "RUB", "CNY"):
-                raise HTTPException(status_code=400, detail="currency: USD/KZT/RUB/CNY")
+            if cur not in _ALLOWED_CURRENCIES:
+                raise HTTPException(status_code=422, detail=_CURRENCY_ERROR)
             updates.append("currency = ?"); params.append(cur)
         if body.pickup_date is not None:
             updates.append("pickup_date = ?"); params.append(body.pickup_date)
@@ -842,8 +848,8 @@ def create_trip(body: TripIn, user=Depends(require_level(1))):
     _validate_future_date(body.departure, "departure")
     # Same pilot whitelist as create_cargo — see note there.
     currency = (body.currency or "USD").upper()
-    if currency not in ("USD", "KZT", "RUB", "CNY"):
-        currency = "USD"
+    if currency not in _ALLOWED_CURRENCIES:
+        raise HTTPException(status_code=422, detail=_CURRENCY_ERROR)
     tid = new_id()
     fc, fpt, fpn = _norm_route_triple(body.from_country, body.from_point_type, body.from_point_name)
     tc, tpt, tpn = _norm_route_triple(body.to_country, body.to_point_type, body.to_point_name)
@@ -912,8 +918,8 @@ def update_trip(trip_id: str, body: TripPatchIn, user=Depends(require_level(1)))
             updates.append("price = ?"); params.append(body.price)
         if body.currency is not None:
             cur = (body.currency or "USD").upper()
-            if cur not in ("USD", "KZT", "RUB", "CNY"):
-                raise HTTPException(status_code=400, detail="currency: USD/KZT/RUB/CNY")
+            if cur not in _ALLOWED_CURRENCIES:
+                raise HTTPException(status_code=422, detail=_CURRENCY_ERROR)
             updates.append("currency = ?"); params.append(cur)
         # Stage 8: update structured route fields when the patch
         # includes them. We normalise via the same helper used on

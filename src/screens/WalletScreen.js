@@ -14,8 +14,8 @@ import Feather from '@expo/vector-icons/Feather';
 // Pilot currencies (Stage 5 / rev. 3): RUB / USD / KZT / CNY.
 // Wallet display + FX widget reduced to the same set so the picker
 // can't surface a currency that the publish flow no longer accepts.
-const CURRENCIES = ['USD', 'CNY', 'KZT', 'RUB'];
-const SYMBOLS = { USD: '$', CNY: '¥', KZT: '₸', RUB: '₽' };
+const CURRENCIES = ['USD', 'CNY', 'RUB', 'EUR'];
+const SYMBOLS = { USD: '$', CNY: '¥', RUB: '₽', EUR: '€' };
 
 const PAYMENT_METHODS = [
   { icon: '💳', name: 'Visa / MasterCard' },

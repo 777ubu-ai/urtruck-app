@@ -94,6 +94,7 @@ export function convert(amount, from = 'USD', to = 'KZT') {
 const CURRENCY_CONFIG = {
   USD: { symbol: '$', position: 'before', separator: ',' },
   CNY: { symbol: '¥', position: 'before', separator: ',' },
+  EUR: { symbol: '€', position: 'before', separator: ',' },
   KZT: { symbol: '₸', position: 'after', separator: ' ' },
   UZS: { symbol: 'сум', position: 'after', separator: ' ' },
   RUB: { symbol: '₽', position: 'after', separator: ' ' },
@@ -101,10 +102,16 @@ const CURRENCY_CONFIG = {
 };
 
 export function formatMoney(amount, currency = 'USD') {
-  const cfg = CURRENCY_CONFIG[currency] || CURRENCY_CONFIG.USD;
+  const cfg = CURRENCY_CONFIG[currency];
   const abs = Math.abs(Math.round(amount));
-  const formatted = abs.toString().replace(/\B(?=(\d{3})+(?!\d))/g, cfg.separator);
   const sign = amount < 0 ? '−' : amount > 0 ? '+' : '';
+  // Неизвестная/legacy валюта (UZS/KGS и т.п.) — показываем сумму + ISO-код
+  // (напр. «987654321 UZS»), а не подставляем чужой символ $. Конвертации нет.
+  if (!cfg) {
+    const formatted = abs.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    return `${sign}${formatted} ${currency}`;
+  }
+  const formatted = abs.toString().replace(/\B(?=(\d{3})+(?!\d))/g, cfg.separator);
   return cfg.position === 'before'
     ? `${sign}${cfg.symbol}${formatted}`
     : `${sign}${formatted} ${cfg.symbol}`;
@@ -112,4 +119,6 @@ export function formatMoney(amount, currency = 'USD') {
 
 export function getRates() { return { ...rates }; }
 
-export const CURRENCIES = ['USD', 'KZT', 'RUB', 'CNY', 'UZS', 'KGS'];
+// Пилотный набор для НОВЫХ операций (выбор валюты). EUR добавлен без курса —
+// только символ/формат-конфиг, никакой конвертации (rates не трогаем).
+export const CURRENCIES = ['USD', 'CNY', 'RUB', 'EUR'];

@@ -261,8 +261,8 @@ export default function EditTripScreen({ navigation, route }) {
             onChangeText={(v) => setPrice(String(v || '').replace(/[^\d]/g, ''))}
           />
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }} style={{ flex: 3 }}>
-            {/* Stage 11: pilot whitelist matches Create flows (RUB / USD / KZT / CNY). */}
-            {['KZT', 'USD', 'RUB', 'CNY'].map(k => (
+            {/* Pilot whitelist matches Create flows (USD / CNY / RUB / EUR). */}
+            {['USD', 'CNY', 'RUB', 'EUR'].map(k => (
               <TouchableOpacity
                 key={k}
                 style={[s.currChip, { backgroundColor: theme.card, borderColor: theme.border }, currency === k && { backgroundColor: '#22C55E', borderColor: '#22C55E' }]}

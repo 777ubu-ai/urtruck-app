@@ -495,7 +495,7 @@ export default function CargoDetail({ navigation, route }) {
               <Feather name="dollar-sign" size={12} color={theme.textMuted} />
               <Text testID="cargo-price-label" style={{ color: theme.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' }}>{acceptedBid ? t('deal_price') : t('price')}</Text>
             </View>
-            <Text testID="cargo-price-value" style={{ color: '#FF8400', fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'] }} numberOfLines={1}>{priceDisplay}</Text>
+            <Text testID="cargo-price-value" style={{ color: '#FF8400', fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'], flexShrink: 1 }} numberOfLines={1}>{priceDisplay}</Text>
           </View>
         </GlassCard>
 

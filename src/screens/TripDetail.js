@@ -41,7 +41,7 @@ export default function TripDetail({ navigation, route }) {
   // brandBar/backHit/backIcon/brandRow/brandText/ftlPill/ftlText/shareBtn/
   // shareIcon styles were removed as part of stage 3E cleanup.
   pageTitle: { color: v1.text, fontSize: 24, fontWeight: '900', letterSpacing: -0.5, marginVertical: 12 },
-  priceBig: { fontSize: 28, fontWeight: '900', letterSpacing: -0.5 },
+  priceBig: { fontSize: 28, fontWeight: '900', letterSpacing: -0.5, flexShrink: 1 },
   // Legacy local styles still used by deal-block / timeline
   header: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 },
   backBtn: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
@@ -947,9 +947,11 @@ export default function TripDetail({ navigation, route }) {
             <Text style={[s.myBidAmount, { color: v1Accent.main }]}>
               {(() => {
                 const cur = (myActiveBid.currency || trip.currency || 'USD').toUpperCase();
-                const sym = { USD: '$', KZT: '₸', RUB: '₽', CNY: '¥', UZS: 'сум' }[cur] || '$';
+                const sym = { USD: '$', EUR: '€', KZT: '₸', RUB: '₽', CNY: '¥', UZS: 'сум' }[cur];
                 const num = String(Math.round(Number(myActiveBid.amount) || 0))
                   .replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+                // Legacy-валюта без символа — сумма + ISO-код суффиксом, не '$'.
+                if (!sym) return `${num} ${cur}`;
                 return cur === 'UZS' ? `${num} ${sym}` : `${sym}${num}`;
               })()}
             </Text>

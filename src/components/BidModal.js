@@ -114,11 +114,14 @@ export default function BidModal({
   // PR-C2: deltas теперь currency-aware — для KZT +50k/+100k вместо
   // тонких +200/+400 которые были бы абсурдом на тенге.
   const cur = (currency || 'USD').toUpperCase();
-  const curSym = CURRENCY_SYMBOLS[cur] || '$';
+  // Для legacy-валюты без символа показываем ISO-код суффиксом, а не чужой '$'.
+  const knownSym = CURRENCY_SYMBOLS[cur];
+  const curSym = knownSym || cur;
   const fmtMoney = (n) => {
     if (n == null || Number.isNaN(Number(n))) return '';
     const grouped = String(Math.round(Number(n))).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-    return cur === 'UZS' ? `${grouped} ${curSym}` : `${curSym}${grouped}`;
+    // ISO-код / UZS / KGS — суффиксом; символьные валюты ($/€/₸/₽/¥) — префиксом.
+    return (!knownSym || cur === 'UZS' || cur === 'KGS') ? `${grouped} ${curSym}` : `${curSym}${grouped}`;
   };
   const hasBasePrice = Number(currentPrice) > 0;
   const createDeltas = CURRENCY_DELTAS[cur] || CURRENCY_DELTAS.USD;

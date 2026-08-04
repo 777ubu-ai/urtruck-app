@@ -36,15 +36,15 @@ import TruckTypeGrid from '../components/TruckTypeGrid';
 //   - photo picker (collapsible "Фото груза (необязательно)")
 //   - orange brand accent
 
-// Pilot currencies (Stage 5 / rev. 3): RUB / USD / KZT / CNY only.
-// Removed: UZS / KGS / EUR / AED. Old persisted cargo with a removed
-// currency still reads safely — the backend marketplace.py keeps a
-// permissive read path; only NEW publish actions are constrained.
+// Pilot currencies (core set): USD / CNY / RUB / EUR only.
+// Old persisted cargo with any other currency (KZT/UZS/KGS…) still reads
+// safely — the backend marketplace.py keeps a permissive read path and the
+// display fallback shows the ISO code; only NEW publish actions are constrained.
 const CURRENCY_OPTIONS = [
-  { k: 'KZT', l: '₸' },
   { k: 'USD', l: '$' },
-  { k: 'RUB', l: '₽' },
   { k: 'CNY', l: '¥' },
+  { k: 'RUB', l: '₽' },
+  { k: 'EUR', l: '€' },
 ];
 
 // Ввод дробных чисел (вес/объём): запятую → точку, оставляем цифры и ОДНУ точку.
