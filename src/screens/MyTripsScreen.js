@@ -988,6 +988,7 @@ export default function MyTripsScreen({ navigation, route }) {
         <Text style={[s.route, { color: theme.text }]}>{countryFlag(item.from_country)} {localizePlace(from, lang)} → {countryFlag(item.to_country)} {localizePlace(to, lang)}</Text>
         <View style={{ flexDirection: 'row', gap: 8, marginTop: spacing.sm }}>
           <TouchableOpacity
+            testID="republish-btn"
             style={[s.acceptBtn, { backgroundColor: accent, flex: 1 }]}
             onPress={() => republishItem(item, isCargo)}
           >

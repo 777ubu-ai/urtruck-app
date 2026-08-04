@@ -513,6 +513,7 @@ export default function ChatsListScreen({ navigation, route }) {
           return (
             <TouchableOpacity
               key={tab.key}
+              testID={`deals-tab-${tab.key}`}
               style={[s.tab, isActive && { borderBottomColor: '#FF8400', borderBottomWidth: 2 }]}
               onPress={() => setDealTab(tab.key)}
               activeOpacity={0.7}
