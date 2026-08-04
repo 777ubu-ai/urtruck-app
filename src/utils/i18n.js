@@ -954,6 +954,7 @@ const translations = {
     shipper_next_step_accepted: 'Ожидайте начала перевозки',
     shipper_next_step_in_progress: 'Подтвердите получение груза',
     order_chat: 'Чат по заказу',
+    write_message: 'Написать сообщение',
 
     // Trip form
     tripRoute: 'Маршрут рейса',
@@ -2679,6 +2680,7 @@ const translations = {
     shipper_next_step_accepted: 'Тасымалдың басталуын күтіңіз',
     shipper_next_step_in_progress: 'Жүкті алғаныңызды растаңыз',
     order_chat: 'Тапсырыс бойынша чат',
+    write_message: 'Хабарлама жазу',
     bid_failed: 'Ұсынысты жіберу мүмкін болмады', accept_failed: 'Ұсынысты қабылдау мүмкін болмады',
     all: 'Барлығы',
     arrival: 'Келу',
@@ -4427,6 +4429,7 @@ const translations = {
     shipper_next_step_accepted: '等待司机出发',
     shipper_next_step_in_progress: '请确认收货',
     order_chat: '订单聊天',
+    write_message: '发消息',
     bid_failed: '报价发送失败', accept_failed: '接受报价失败',
     filter_direction: '方向',
     filter_date: '日期',
@@ -6210,6 +6213,7 @@ const translations = {
     shipper_next_step_accepted: 'Wait for driver to depart',
     shipper_next_step_in_progress: 'Confirm receipt of cargo',
     order_chat: 'Order chat',
+    write_message: 'Write a message',
     postTrip: 'Publish trip', goingToChina: 'Publish trip', postCargo: 'Post', bids: 'bids',
     tripRoute: 'Trip route', fromCountry: 'From (country, city)', toCountry: 'To (country, city)',
     availableFrom: 'Available from', availableTo: 'Available to',

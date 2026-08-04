@@ -30,6 +30,7 @@ import BargainCard from '../components/deal/BargainCard';
 import BidModal from '../components/BidModal';
 import DealAttachments from '../components/deal/DealAttachments';
 import { pickDealStatus } from '../utils/dealStatusOrder';
+import { openContactPartner } from '../utils/contactPartner';
 
 // HOT-006: реальная запись/воспроизведение для web (PWA deploy).
 // На нативе (Expo Go) expo-av не установлен — тост "скоро".
@@ -720,31 +721,10 @@ export default function ChatScreen({ navigation, route }) {
 
   // WhatsApp-style: тап по 📷 предлагает Камеру или Галерею (на native).
   // На web камера ненадёжна — сразу галерея.
-  // Связь с партнёром: выбор WhatsApp или обычный звонок (как просил владелец).
-  // wa.me требует только цифры (без +); tel: — с плюсом. На web Alert-выбор не
-  // поддерживается — открываем WhatsApp (для китайского направления он нужнее).
-  const contactPartner = (rawPhone) => {
-    const phone = String(rawPhone || '').replace(/[^\d+]/g, '');
-    if (!phone) return;
-    const waNumber = phone.replace(/[^\d]/g, '');
-    const plusPhone = phone.startsWith('+') ? phone : `+${waNumber}`;
-    const openWa = () => Linking.openURL(`https://wa.me/${waNumber}`).catch(() => {});
-    // Telegram открывается по номеру: tg://resolve?phone= (мобильные),
-    // с фолбэком на https://t.me/+<номер> для web/если приложение не стоит.
-    // Viber убран по решению владельца (не используем). WeChat по номеру
-    // открыть нельзя — у него нет deep-link на чат по телефону.
-    const openTg = () =>
-      Linking.openURL(`tg://resolve?phone=${waNumber}`)
-        .catch(() => Linking.openURL(`https://t.me/+${waNumber}`).catch(() => {}));
-    const openTel = () => Linking.openURL(`tel:${phone}`).catch(() => {});
-    if (Platform.OS === 'web') { openWa(); return; }
-    Alert.alert(t('contact_choose_title'), phone, [
-      { text: t('contact_whatsapp'), onPress: openWa },
-      { text: t('contact_telegram'), onPress: openTg },
-      { text: t('contact_call'), onPress: openTel },
-      { text: t('contact_cancel'), style: 'cancel' },
-    ]);
-  };
+  // Связь с партнёром: выбор WhatsApp/Telegram/звонок — вынесено в
+  // src/utils/contactPartner.js (05.08.2026, п.6/17 ТЗ), т.к. теперь нужна
+  // тем же способом и на CargoDetail/TripDetail (secondary-кнопка «Позвонить»).
+  const contactPartner = (rawPhone) => openContactPartner(rawPhone, t);
 
   // Отправить свою геопозицию как сообщение со ссылкой на карту (открывается в
   // Яндекс/Google Картах у собеседника). expo-location уже в проекте — работает
