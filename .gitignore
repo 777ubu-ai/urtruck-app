@@ -75,3 +75,6 @@ keystore/
 credentials.json
 *.aab
 google-play-service-account.json
+
+# Claude Code harness runtime state (PID/timestamp, session-local — не версионируется)
+.claude/scheduled_tasks.lock
