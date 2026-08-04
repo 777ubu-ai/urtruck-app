@@ -2511,18 +2511,26 @@ def get_deal(deal_id: str, user=Depends(require_level(1))):
         # Cargo enrichment — cargo_desc + currency for the "Ставка" line.
         if d.get("cargo_id"):
             cr = c.execute(
-                "SELECT cargo_desc, currency FROM cargos WHERE id = ?", (d["cargo_id"],)
+                "SELECT cargo_desc, currency, from_country, to_country FROM cargos WHERE id = ?", (d["cargo_id"],)
             ).fetchone()
             if cr:
                 d.setdefault("cargo_desc", cr["cargo_desc"])
                 d.setdefault("currency", cr["currency"])
-        # Trip enrichment — plate (госномер тягача) from drivers_registration.
+                d.setdefault("from_country", cr["from_country"])
+                d.setdefault("to_country", cr["to_country"])
+        # Trip enrichment — plate (госномер тягача) from drivers_registration
+        # + from_country/to_country (нужны фронту для домашний/международный
+        # рейс, чтобы решить какая кнопка следующего шага — «На границе» или
+        # «Груз доставлен» напрямую, см. ChatScreen.js).
         if d.get("trip_id"):
-            tr = c.execute("SELECT driver_id FROM trips WHERE id = ?", (d["trip_id"],)).fetchone()
-            if tr and tr["driver_id"]:
-                vp = c.execute("SELECT vehicle_plate FROM drivers_registration WHERE id = ?", (tr["driver_id"],)).fetchone()
-                if vp and vp["vehicle_plate"]:
-                    d.setdefault("plate", vp["vehicle_plate"])
+            tr = c.execute("SELECT driver_id, from_country, to_country FROM trips WHERE id = ?", (d["trip_id"],)).fetchone()
+            if tr:
+                d.setdefault("from_country", tr["from_country"])
+                d.setdefault("to_country", tr["to_country"])
+                if tr["driver_id"]:
+                    vp = c.execute("SELECT vehicle_plate FROM drivers_registration WHERE id = ?", (tr["driver_id"],)).fetchone()
+                    if vp and vp["vehicle_plate"]:
+                        d.setdefault("plate", vp["vehicle_plate"])
         # Телефон КОНТРАГЕНТА по сделке — для звонка после заключения сделки.
         # Endpoint строго gated (выше 403 для не-участников), поэтому отдать
         # телефон второй стороны безопасно. Технические placeholder-телефоны

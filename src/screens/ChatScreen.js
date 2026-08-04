@@ -5,7 +5,7 @@ import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import Feather from '@expo/vector-icons/Feather';
 import * as ImagePicker from 'expo-image-picker';
 import { useI18n } from '../utils/useI18n';
-import { getLanguage } from '../utils/i18n';
+import { getLanguage, formatStatus } from '../utils/i18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useToast } from '../components/Toast';
 import { compressImage } from '../utils/imageCompress';
@@ -29,6 +29,7 @@ import { DealRoomCard, SystemEventRow, DealQuickActions } from '../components/de
 import BargainCard from '../components/deal/BargainCard';
 import BidModal from '../components/BidModal';
 import DealAttachments from '../components/deal/DealAttachments';
+import { pickDealStatus } from '../utils/dealStatusOrder';
 
 // HOT-006: реальная запись/воспроизведение для web (PWA deploy).
 // На нативе (Expo Go) expo-av не установлен — тост "скоро".
@@ -80,6 +81,16 @@ export default function ChatScreen({ navigation, route }) {
   acceptCancelTxt: { color: v1.textMuted, fontSize: 12, fontWeight: '800' },
   acceptOkBtn: { flex: 1, paddingVertical: 9, borderRadius: 10, backgroundColor: v1Colors.driver, alignItems: 'center' },
   acceptOkTxt: { color: '#0C0A09', fontSize: 12, fontWeight: '900' },
+  // Компактный статус перевозки (05.08.2026) — заменяет горизонтальную шкалу.
+  statusRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  statusRowLabel: { color: v1.textMuted, fontSize: 12, fontWeight: '600' },
+  statusRowValue: { fontSize: 13, fontWeight: '800' },
+  dealNextBtn: { borderRadius: 12, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', minHeight: 48, marginBottom: 8 },
+  dealNextBtnText: { color: '#0C0A09', fontSize: 15, fontWeight: '800' },
+  dealCancelBtn: { borderRadius: 12, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 8, backgroundColor: 'rgba(239,68,68,0.10)' },
+  dealCancelBtnText: { color: '#EF4444', fontSize: 13, fontWeight: '700' },
+  dealTrackBtn: { borderRadius: 12, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 8, borderWidth: 1, borderColor: v1.border, backgroundColor: v1.surface },
+  dealTrackBtnText: { color: v1.text, fontSize: 13, fontWeight: '700' },
   msgRow: { marginBottom: 10 },
   msgRowMe: { alignItems: 'flex-end' },
   senderLabel: { fontSize: 11, marginBottom: 3, marginLeft: 6, color: v1.textMuted },
@@ -494,20 +505,27 @@ export default function ChatScreen({ navigation, route }) {
   // существует и проверяет, что caller — участник сделки) и сливаем
   // пустые поля с серверным ответом. Никаких подделок: если backend
   // вернул `null`, остаётся текущая «—» в UI.
-  useEffect(() => {
+  //
+  // 05.08.2026 (п.13 ТЗ, баги 1/2/4): раньше мёрдж был `prev?.status ||
+  // srv.status` — свежий ответ сервера НИКОГДА не мог перезаписать уже
+  // выставленный статус (даже устаревший из route-параметров). Теперь —
+  // тот же монотонный guard, что в CargoDetail/TripDetail (pickDealStatus:
+  // не откатывается назад, completed/delivered/cancelled не «отменяются
+  // задним числом»), плюс seq-guard от гонок параллельных запросов.
+  const dealFetchSeq = useRef(0);
+  const refreshDeal = () => {
     if (!dealId) return;
-    const p = route.params || {};
-    setDeal({
-      status: p.dealStatus, from_city: p.fromCity, to_city: p.toCity,
-      cargo_desc: p.cargoDesc, cargo_id: p.cargoId, amount: p.amount, plate: p.plate,
-    });
+    const seq = ++dealFetchSeq.current;
     marketAPI.getDeal(dealId)
       .then((srv) => {
         if (!srv || typeof srv !== 'object') return;
+        if (seq !== dealFetchSeq.current) return; // ответ устарел
         setDeal((prev) => ({
-          status: prev?.status || srv.status,
+          status: pickDealStatus(prev?.status, srv.status || 'accepted'),
           from_city: prev?.from_city || srv.from_city,
           to_city: prev?.to_city || srv.to_city,
+          from_country: prev?.from_country || srv.from_country,
+          to_country: prev?.to_country || srv.to_country,
           cargo_desc: prev?.cargo_desc || srv.cargo_desc,
           cargo_id: prev?.cargo_id || srv.cargo_id,
           amount: prev?.amount != null ? prev.amount : srv.amount,
@@ -518,9 +536,23 @@ export default function ChatScreen({ navigation, route }) {
         }));
       })
       .catch(() => {});
+  };
+  useEffect(() => {
+    if (!dealId) return;
+    const p = route.params || {};
+    setDeal({
+      status: p.dealStatus, from_city: p.fromCity, to_city: p.toCity,
+      cargo_desc: p.cargoDesc, cargo_id: p.cargoId, amount: p.amount, plate: p.plate,
+    });
+    refreshDeal();
     chatAPI.dealTimeline(dealId)
       .then(r => setDealEvents(Array.isArray(r?.events) ? r.events : []))
       .catch(() => {});
+    // Периодический refetch (как в CargoDetail/TripDetail) — вторая сторона
+    // могла продвинуть статус (Начать/На границе/Доставлено), пока этот
+    // экран открыт; без поллинга статус тут не обновится сам.
+    const iv = setInterval(refreshDeal, 15000);
+    return () => clearInterval(iv);
   }, [dealId]);
 
   // Пуш о сделке ведёт в Chat только с dealId (без roomId). Чтобы
@@ -602,6 +634,42 @@ export default function ChatScreen({ navigation, route }) {
       setAccepting(false);
     }
   };
+
+  // Статус перевозки (05.08.2026, п.4/9 ТЗ): раньше «Начать перевозку»/«На
+  // границе»/«Груз доставлен»/«Подтвердить получение» жили в CargoDetail/
+  // TripDetail/MyTripsScreen — три места с независимыми кнопками на одну и
+  // ту же сделку. Теперь единственное место действия — разговор (здесь).
+  // CargoDetail/TripDetail показывают тот же статус только текстом (см.
+  // компактный «Текущий статус / Следующий шаг» там), без своей кнопки.
+  const [statusLoading, setStatusLoading] = useState(false);
+  const changeDealStatus = async (newStatus) => {
+    if (!dealId || statusLoading) return;
+    setStatusLoading(true);
+    try {
+      const r = await marketAPI.updateDealStatus(dealId, newStatus);
+      if (r.ok) {
+        toast(newStatus === 'cancelled' ? t('deal_cancelled_toast') : t('deal_updated_toast'), 'success');
+      } else {
+        // 409 и другие отказы: сервер уже знает реальный статус — не
+        // оставляем устаревшую кнопку, сразу перечитываем сделку.
+        toast(r.detail || t('update_failed'), 'error');
+      }
+    } catch {
+      toast(t('no_connection'), 'error');
+    }
+    // И на успехе, и на отказе — единственная правда приходит с сервера.
+    refreshDeal();
+    if (dealId) {
+      chatAPI.dealTimeline(dealId)
+        .then((r2) => setDealEvents(Array.isArray(r2?.events) ? r2.events : []))
+        .catch(() => {});
+    }
+    setStatusLoading(false);
+  };
+  const dealHasCountries = Boolean(deal?.from_country && deal?.to_country);
+  const dealIsDomestic = dealHasCountries
+    && deal.from_country.trim().toUpperCase() === deal.to_country.trim().toUpperCase();
+  const isShipperSide = role === 'client' || role === 'shipper';
 
   // QA-аудит P0 (silent message loss): раньше все три send-пути были под
   // `if (partner?.id)` с route.params.partner — при входе в чат только по
@@ -1047,6 +1115,75 @@ export default function ChatScreen({ navigation, route }) {
           <DealRoomCard deal={deal} role={role} />
           {/* Кнопка звонка переехала в шапку (chat-header-call-btn) —
               WhatsApp-упрощение 04.08.2026, отдельная во весь экран убрана. */}
+          {/* Статус перевозки (05.08.2026, п.9 ТЗ): вместо горизонтальной
+              шкалы Принят/В работе/На границе/Завершён — компактный текст
+              «Текущий статус / Следующий шаг» + ОДНА кнопка следующего
+              действия. Кнопки — единственное место действия теперь здесь
+              (не в CargoDetail/TripDetail/Мои рейсы). */}
+          {deal?.status && deal.status !== 'cancelled' ? (
+            <View style={s.statusRow} testID="chat-deal-status-compact">
+              <Text style={s.statusRowLabel}>{t('trip_current_status')}</Text>
+              <Text style={[s.statusRowValue, { color: v1Accent.main }]}>{formatStatus(deal.status)}</Text>
+            </View>
+          ) : null}
+          {(() => {
+            if (!deal?.status || deal.status === 'cancelled' || deal.status === 'delivered' || deal.status === 'completed') return null;
+            let action = null;
+            if (role === 'driver') {
+              if (deal.status === 'accepted') action = { key: 'in_progress', icon: 'truck', label: t('start_delivery') };
+              else if (deal.status === 'in_progress' && dealHasCountries && !dealIsDomestic) action = { key: 'at_border', icon: 'flag', label: t('status_at_border') };
+              else if (deal.status === 'in_progress' && dealHasCountries && dealIsDomestic) action = { key: 'delivered', icon: 'check-circle', label: t('mark_arrived') };
+              else if (deal.status === 'at_border') action = { key: 'delivered', icon: 'check-circle', label: t('mark_arrived') };
+            } else if (isShipperSide && (deal.status === 'in_progress' || deal.status === 'at_border')) {
+              action = { key: 'delivered', icon: 'check-circle', label: t('confirm_delivery') };
+            }
+            if (!action) return null;
+            return (
+              <TouchableOpacity
+                testID={`deal-action-${action.key === 'delivered' ? 'mark-arrived' : action.key === 'at_border' ? 'mark-at-border' : 'start-delivery'}`}
+                style={[s.dealNextBtn, { backgroundColor: v1Accent.main, opacity: statusLoading ? 0.6 : 1 }]}
+                disabled={statusLoading}
+                onPress={() => changeDealStatus(action.key)}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Feather name={action.icon} size={16} color="#0C0A09" />
+                  <Text style={s.dealNextBtnText}>{statusLoading ? '…' : action.label}</Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })()}
+          {deal?.status === 'accepted' ? (
+            <TouchableOpacity
+              testID="deal-cancel-btn"
+              style={[s.dealCancelBtn, { opacity: statusLoading ? 0.6 : 1 }]}
+              disabled={statusLoading}
+              onPress={async () => {
+                const ok = Platform.OS === 'web'
+                  ? (typeof window !== 'undefined' && window.confirm(t('cancel_deal_confirm')))
+                  : await new Promise((res) => Alert.alert(t('cancel_deal_confirm'), '', [
+                      { text: t('cancel'), style: 'cancel', onPress: () => res(false) },
+                      { text: 'OK', onPress: () => res(true) },
+                    ]));
+                if (ok) changeDealStatus('cancelled');
+              }}
+            >
+              <Text style={s.dealCancelBtnText}>⊘ {t('cancel_deal')}</Text>
+            </TouchableOpacity>
+          ) : null}
+          {isShipperSide && dealId && ['accepted', 'in_progress'].includes(deal?.status) ? (
+            <TouchableOpacity
+              testID="deal-track-truck"
+              style={s.dealTrackBtn}
+              onPress={() => navigation.navigate('TrackTruck', {
+                dealId, from: deal?.from_city, to: deal?.to_city,
+              })}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="map-pin" size={14} color={v1.text} />
+                <Text style={s.dealTrackBtnText}>{t('track_truck_btn')}</Text>
+              </View>
+            </TouchableOpacity>
+          ) : null}
           {dealEvents.length > 0 ? (
             <View testID="deal-timeline">
               {dealEvents.slice(-4).map((ev) => (
