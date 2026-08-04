@@ -35,8 +35,10 @@ import { useTheme } from '../../../utils/ThemeContext';
 import { useAuth } from '../../../utils/AuthContext';
 import { useI18n } from '../../../utils/useI18n';
 import { chatAPI } from '../../../utils/chatAPI';
+import { marketAPI } from '../../../utils/marketAPI';
 import { subscribeChatRead } from '../../../utils/unreadEvents';
 import { useUnreadNotifications } from '../../../utils/useUnreadNotifications';
+import { computeDealsUnread } from '../../../utils/dealsUnread';
 // Phase 2A: единая палитра — оранжевый акцент и серый inactive,
 // независимо от роли. Раньше driver получал blue, client — yellow;
 // для B2B-логистики единый orange выглядит как взрослая платформа.
@@ -158,6 +160,35 @@ export default function BottomNav({ state, navigation }) {
     syncIcon();
   }, [notifUnread]);
 
+  // Бейдж таба «Сделки» (05.08.2026, п.4/22 ТЗ): раньше = notifUnread +
+  // chatUnread — два счётчика, физически не связанных с тем, что реально
+  // видно в самом списке «Сделки» (там сумма берётся из per-deal
+  // unread_count + actionable-офферы). Теперь один источник — та же
+  // marketAPI.myDashboard(), что грузит ChatsListScreen, и та же формула
+  // (src/utils/dealsUnread.js) — бейдж таба и сумма по карточкам списка
+  // теперь считаются идентично и не могут разойтись.
+  const [dealsUnread, setDealsUnread] = useState(0);
+  useEffect(() => {
+    let mounted = true;
+    if (!hasToken) { setDealsUnread(0); return; }
+    const fetchDealsUnread = async () => {
+      try {
+        const d = await marketAPI.myDashboard();
+        if (mounted) setDealsUnread(computeDealsUnread(d));
+      } catch {
+        // тихо — бейдж остаётся на предыдущем значении
+      }
+    };
+    fetchDealsUnread();
+    const iv = setInterval(fetchDealsUnread, UNREAD_POLL_MS);
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') fetchDealsUnread();
+    });
+    // Открытие чата сделки тоже гасит часть этого счётчика — пересчитать.
+    const unsub = subscribeChatRead(fetchDealsUnread);
+    return () => { mounted = false; clearInterval(iv); sub?.remove?.(); unsub?.(); };
+  }, [hasToken]);
+
   // Иконка приложения (C1) теперь синхронизируется внутри fetchUnread через
   // syncAppIconBadge() — безусловно на каждом fetch (mount/poll/AppState/
   // прочтение). Прежний useEffect([chatUnread]) удалён: он писал иконку лишь
@@ -226,20 +257,20 @@ export default function BottomNav({ state, navigation }) {
           const iconName = iconKey ? (isDriver ? iconKey.driver : iconKey.client) : 'circle';
           const label = labelOf(route.name);
           const iconColor = isFocused ? accent.main : inactiveColor;
-          // Бейджи непрочитанного (03.08 v2 — приказ владельца по скриншотам):
-          //  • «Чаты» = непрочитанные сообщения (chatUnread).
-          //  • «Сделки» = все живые события сделок (notifUnread + chatUnread
-          //    когда вкладки «Чаты» нет).
-          //  • «Мои грузы / Мои рейсы» (MyWork) = ТОТ ЖЕ notifUnread. Раньше
-          //    бейдж был только на «Сделках» и клиент не видел сигнал, находясь
-          //    в «Мои грузы»: «пришло 1 предложение на мой груз — а бейджа на
-          //    Грузы нет». Дублируем сигнал: событие произошло на моём заказе →
-          //    вижу его И на «Грузы» И на «Сделки». Не «переезжает» — просто
-          //    виден с обеих сторон, куда логично зайти.
-          const hasChatsTab = state.routes.some((r) => r.name === 'Chats');
+          // Бейджи непрочитанного (05.08.2026, п.4/22 ТЗ):
+          //  • «Чаты» (если таб вообще есть) = непрочитанные сообщения (chatUnread).
+          //  • «Сделки» = dealsUnread — единая формула (dealsUnread.js),
+          //    та же, что даёт сумму по карточкам самого списка «Сделки».
+          //    notifUnread здесь больше не участвует: уведомления — отдельная
+          //    таблица без привязки к статусу сделки/ставки, реальный сигнал
+          //    «есть что сделать» даёт только dealsUnread.
+          //  • «Мои грузы / Мои рейсы» (MyWork) — без бейджа: активная сделка
+          //    после Фазы A живёт только в «Сделках» (см. MyTripsScreen.js),
+          //    дублировать сигнал сюда — значит тянуть пользователя обратно
+          //    в старую модель «то же самое в двух местах».
           const tabBadgeCount =
             route.name === 'Chats' ? chatUnread
-            : route.name === 'Deals' ? (notifUnread + (hasChatsTab ? 0 : chatUnread))
+            : route.name === 'Deals' ? dealsUnread
             : 0;
           const showBadge = tabBadgeCount > 0;
           const badgeLabel = tabBadgeCount > 9 ? '9+' : String(tabBadgeCount);

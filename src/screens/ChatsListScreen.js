@@ -25,6 +25,7 @@ import { localizePlace, localizeCargoName } from '../utils/places';
 import { countryFlag } from '../utils/countryFlags';
 import { prettifyPartnerName } from '../utils/displayName';
 import { accentFor } from '../components/deal/DealRoom';
+import { isBidActionable } from '../utils/dealsUnread';
 
 const ROLE_LABEL = { driver: 'role_driver', client: 'role_client', support: 'role_support' };
 const ACTIVE_STATUSES = new Set(['accepted', 'in_progress', 'at_border', 'awaiting_confirmation']);
@@ -214,14 +215,32 @@ export default function ChatsListScreen({ navigation, route }) {
   // место для каждого разговора, без дублей в других экранах).
   const unifiedDealItems = useMemo(() => {
     if (!dealsMode) return [];
-    const offers = offersData.map((it) => ({ _kind: 'offer', _sortAt: it.latest_bid_at || it.created_at || '', _data: it }));
-    const deals = [...activeDeals, ...completedDeals].map((it) => ({ _kind: 'deal', _sortAt: it.last_message_at || it.updated_at || it.created_at || '', _data: it }));
-    const closedBids = closedBidsData.map((it) => ({ _kind: 'closedBid', _sortAt: it.updated_at || it.created_at || '', _data: it }));
+    // _unread — единая формула «требует внимания сейчас» (dealsUnread.js,
+    // п.4/22 ТЗ): для сделки — реальные непрочитанные сообщения; для
+    // предложения — мяч на моей стороне; закрытые переговоры — никогда.
+    const offers = offersData.map((it) => ({
+      _kind: 'offer',
+      _sortAt: it.latest_bid_at || it.created_at || '',
+      _unread: role === 'client' ? ((it.active_bids_count || 0) > 0 ? 1 : 0) : (isBidActionable(it, { asOwner: !!it._incoming }) ? 1 : 0),
+      _data: it,
+    }));
+    const deals = [...activeDeals, ...completedDeals].map((it) => ({
+      _kind: 'deal',
+      _sortAt: it.last_message_at || it.updated_at || it.created_at || '',
+      _unread: it.unread_count || 0,
+      _data: it,
+    }));
+    const closedBids = closedBidsData.map((it) => ({
+      _kind: 'closedBid',
+      _sortAt: it.updated_at || it.created_at || '',
+      _unread: 0,
+      _data: it,
+    }));
     return [...offers, ...deals, ...closedBids].sort((a, b) => (new Date(b._sortAt).getTime() || 0) - (new Date(a._sortAt).getTime() || 0));
-  }, [dealsMode, offersData, activeDeals, completedDeals, closedBidsData]);
+  }, [dealsMode, role, offersData, activeDeals, completedDeals, closedBidsData]);
 
   // ═══ Рендер: карточка предложения (клиент) — один груз ═══
-  const renderCargoOffer = ({ item: cargo }) => {
+  const renderCargoOffer = ({ item: cargo, unread = 0 }) => {
     const cnt = cargo.active_bids_count || 0;
     const minPrice = cargo.min_bid_price;
     const cur = cargo.currency || 'USD';
@@ -253,11 +272,18 @@ export default function ChatsListScreen({ navigation, route }) {
             </Text>
           ) : null}
           <View style={s.row}>
-            <View style={[s.statusPill, { backgroundColor: '#FF840015' }]}>
-              <View style={[s.statusDot, { backgroundColor: '#FF8400' }]} />
-              <Text style={[s.statusPillText, { color: '#FF8400' }]}>
-                {cnt} {t('deals_offers_count')}
-              </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 }}>
+              <View style={[s.statusPill, { backgroundColor: '#FF840015' }]}>
+                <View style={[s.statusDot, { backgroundColor: '#FF8400' }]} />
+                <Text style={[s.statusPillText, { color: '#FF8400' }]}>
+                  {cnt} {t('deals_offers_count')}
+                </Text>
+              </View>
+              {unread > 0 ? (
+                <View style={[s.badge, { backgroundColor: '#FF8400' }]}>
+                  <Text style={s.badgeTxt}>{unread > 9 ? '9+' : unread}</Text>
+                </View>
+              ) : null}
             </View>
             <Text style={[s.price, { color: theme.text }]} numberOfLines={1} ellipsizeMode="tail">
               {minPrice ? `${t('deals_offers_from')} ${formatPrice(minPrice, cur, t)}` : ''}
@@ -271,7 +297,7 @@ export default function ChatsListScreen({ navigation, route }) {
 
   // ═══ Рендер: карточка одной ставки (предложение ИЛИ закрытые переговоры:
   // отклонено/отменено/истекло) — для обеих ролей, не только водителя ═══
-  const renderBidCard = ({ item: bid }) => {
+  const renderBidCard = ({ item: bid, unread = 0 }) => {
     const isCountered = bid.status === 'countered';
     const isClosed = bid.status === 'rejected' || bid.status === 'cancelled' || bid.status === 'expired';
     const cur = bid.currency || 'USD';
@@ -307,9 +333,16 @@ export default function ChatsListScreen({ navigation, route }) {
             </View>
           </View>
           <View style={s.row}>
-            <View style={[s.statusPill, { backgroundColor: statusColor + '15' }]}>
-              <View style={[s.statusDot, { backgroundColor: statusColor }]} />
-              <Text style={[s.statusPillText, { color: statusColor }]}>{label}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 }}>
+              <View style={[s.statusPill, { backgroundColor: statusColor + '15' }]}>
+                <View style={[s.statusDot, { backgroundColor: statusColor }]} />
+                <Text style={[s.statusPillText, { color: statusColor }]}>{label}</Text>
+              </View>
+              {unread > 0 ? (
+                <View style={[s.badge, { backgroundColor: statusColor }]}>
+                  <Text style={s.badgeTxt}>{unread > 9 ? '9+' : unread}</Text>
+                </View>
+              ) : null}
             </View>
             <Text style={[s.price, { color: theme.text }]} numberOfLines={1} ellipsizeMode="tail">
               {formatPrice(bid.amount, cur, t)}
@@ -511,10 +544,12 @@ export default function ChatsListScreen({ navigation, route }) {
   // ═══ Deals content — один плоский список, без вкладок и секций ═══
   const renderUnifiedDealItem = ({ item }) => {
     if (item._kind === 'offer') {
-      return role === 'client' ? renderCargoOffer({ item: item._data }) : renderBidCard({ item: item._data });
+      return role === 'client'
+        ? renderCargoOffer({ item: item._data, unread: item._unread })
+        : renderBidCard({ item: item._data, unread: item._unread });
     }
     if (item._kind === 'closedBid') {
-      return renderBidCard({ item: item._data });
+      return renderBidCard({ item: item._data, unread: 0 });
     }
     return renderDealCard({ item: item._data });
   };
@@ -523,7 +558,7 @@ export default function ChatsListScreen({ navigation, route }) {
     let data = unifiedDealItems;
 
     if (unreadOnly) {
-      data = data.filter(({ _data: item }) => (item.unread_count || 0) > 0);
+      data = data.filter((item) => (item._unread || 0) > 0);
     }
 
     // Поиск по содержимому
