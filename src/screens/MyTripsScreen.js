@@ -123,24 +123,19 @@ export default function MyTripsScreen({ navigation, route }) {
   const { theme } = useTheme();
   const { toast } = useToast();
 
-  // Driver tabs (issue #2): routes / offers / inwork / done (+ secondary
-  // archive). Client (грузоотправитель) — зеркало в его терминах:
-  // searching / enroute / delivered (+ archive). Legacy initialTab
-  // (my/bids/deals) ремапим, чтобы deep-links/nav приземлялись корректно.
-  // Приказ 26.07.2026 (обе роли): под-вкладки «Предложения» здесь больше нет —
-  // ставки живут во вкладке «Сделки» (таб-бар). Тут только факты по моим
-  // публикациям: разместил / в работе / завершено (+ архив). Легаси
-  // deep-links bids/offers приземляем на первую вкладку.
-  const DRIVER_TABS_KEYS = ['routes', 'inwork', 'done', 'archive'];
-  const CLIENT_TABS_KEYS = ['searching', 'enroute', 'delivered', 'archive'];
+  // Driver tabs: Мои рейсы / Завершённые (+ секундарный Архив). Client
+  // (грузоотправитель) — зеркало: Мои грузы / Доставлено (+ Архив).
+  // WhatsApp-упрощение (04.08.2026, п.8 ТЗ): «В работе»/«Везут» как
+  // отдельная вкладка убраны — пока рейс/груз активен (открыт ИЛИ уже в
+  // работе по сделке), он живёт в первой вкладке; статус виден на самой
+  // карточке. Легаси initialTab (my/bids/deals/inwork/enroute) ремапим на
+  // первую вкладку, чтобы старые deep-links/навигация не приземлялись в никуда.
+  const DRIVER_TABS_KEYS = ['routes', 'done', 'archive'];
+  const CLIENT_TABS_KEYS = ['searching', 'delivered', 'archive'];
   const rawInitialTab = route.params?.initialTab || (isDriver ? 'routes' : 'searching');
   const normInitialTab = isDriver
-    ? (DRIVER_TABS_KEYS.includes(rawInitialTab)
-        ? rawInitialTab
-        : (rawInitialTab === 'deals' ? 'inwork' : 'routes'))
-    : (CLIENT_TABS_KEYS.includes(rawInitialTab)
-        ? rawInitialTab
-        : (rawInitialTab === 'deals' ? 'enroute' : 'searching'));
+    ? (DRIVER_TABS_KEYS.includes(rawInitialTab) ? rawInitialTab : 'routes')
+    : (CLIENT_TABS_KEYS.includes(rawInitialTab) ? rawInitialTab : 'searching');
   const justCreatedTrip = route.params?.justCreatedTrip || null;
   // Клиентский аналог: только что опубликованный груз показываем сразу в
   // «Ищу машину», не дожидаясь серверного refetch (замыкаем цикл публикации).
@@ -958,17 +953,15 @@ export default function MyTripsScreen({ navigation, route }) {
   // labels (Active / Completed / Archive). The keys are kept for testID
   // backward compat — existing E2E rely on them.
   const v1Accent = v1AccentFor(isDriver ? 'driver' : 'client');
-  // Driver (issue #2): Мои рейсы / Предложения / В работе / Завершённые.
-  // Client keeps the legacy 3-tab layout untouched.
+  // WhatsApp-упрощение (04.08.2026, п.8 ТЗ): 2 основные вкладки вместо 3 —
+  // «В работе»/«Везут» убраны, статус активной сделки виден на карточке.
   const TABS = isDriver
     ? [
         { key: 'routes', label: t('tab_my_routes'), testID: 'my-work-tab-routes' },
-        { key: 'inwork', label: t('tab_in_work'),   testID: 'my-work-tab-inwork' },
         { key: 'done',   label: t('tab_done'),      testID: 'my-work-tab-done' },
       ]
     : [
         { key: 'searching', label: t('client_tab_searching'), testID: 'my-work-tab-searching' },
-        { key: 'enroute',   label: t('client_tab_enroute'),   testID: 'my-work-tab-enroute' },
         { key: 'delivered', label: t('client_tab_delivered'), testID: 'my-work-tab-delivered' },
       ];
 
@@ -1007,13 +1000,24 @@ export default function MyTripsScreen({ navigation, route }) {
 
   // Ставки водителя (driverOffers) переехали во вкладку «Сделки»; renderBid
   // остаётся только для архивных ставок (renderArchiveItem).
-  const DRIVER_DATA = { routes: myItems, inwork: driverInWork, done: driverDone, archive: driverArchive };
-  const DRIVER_RENDER = { routes: renderMyItem, inwork: renderDeal, done: renderDeal, archive: renderArchiveItem };
-  // Client (грузоотправитель, 26.07.2026): только стадии моих грузов — ищу
-  // машину / везут / доставлено + архив. Входящие ставки живут во вкладке
-  // «Сделки»; на карточке груза остаётся CTA «N предложений» → Сделки.
-  const CLIENT_DATA = { searching: clientSearching, enroute: driverInWork, delivered: driverDone, archive: clientArchive };
-  const CLIENT_RENDER = { searching: renderMyItem, enroute: renderDeal, delivered: renderDeal, archive: renderArchiveItem };
+  // «Мои рейсы» = открытые рейсы + рейсы с активной сделкой (WhatsApp-
+  // упрощение 04.08.2026 — раньше это были две отдельные вкладки). Рейс,
+  // на который уже приняли ставку, переходит в статус 'booked' и остаётся
+  // в myItems — исключаем его отсюда по trip_id, чтобы не показать дважды
+  // (второй раз — карточкой сделки с актуальным статусом/действиями).
+  const driverInWorkTripIds = new Set(driverInWork.map((d) => d.trip_id).filter(Boolean));
+  const driverRoutesData = [
+    ...myItems.filter((it) => !driverInWorkTripIds.has(it.id)),
+    ...driverInWork.map((d) => ({ ...d, _kind: 'deal' })),
+  ];
+  const DRIVER_DATA = { routes: driverRoutesData, done: driverDone, archive: driverArchive };
+  const DRIVER_RENDER = { routes: renderArchiveItem, done: renderDeal, archive: renderArchiveItem };
+  // Client (грузоотправитель): «Мои грузы» = ищу машину + везут (активная
+  // сделка) одной вкладкой. clientSearching уже исключает груз со статусом
+  // 'taken' (принятая ставка), так что дублей с driverInWork нет.
+  const clientSearchingData = [...clientSearching, ...driverInWork.map((d) => ({ ...d, _kind: 'deal' }))];
+  const CLIENT_DATA = { searching: clientSearchingData, delivered: driverDone, archive: clientArchive };
+  const CLIENT_RENDER = { searching: renderArchiveItem, delivered: renderDeal, archive: renderArchiveItem };
   const listData = isDriver ? (DRIVER_DATA[tab] || []) : (CLIENT_DATA[tab] || []);
   const listRenderBase = isDriver ? (DRIVER_RENDER[tab] || renderMyItem) : (CLIENT_RENDER[tab] || renderMyItem);
   // Промпт-дизайн: карточки появляются каскадом (выезд 10px + fade, 50мс шаг).
@@ -1029,12 +1033,10 @@ export default function MyTripsScreen({ navigation, route }) {
     }
     if (isDriver) {
       if (tab === 'routes') return <EmptyState title={t('no_trips_yet')} description={t('no_trips_desc')} actionLabel={t('publish_route')} onAction={onPublishRoute} />;
-      if (tab === 'inwork') return <EmptyState title={t('no_inwork_yet')} description={t('no_inwork_desc')} actionLabel={t('find_cargos')} onAction={() => navigation.navigate('Feed', { role })} />;
       if (tab === 'done') return <EmptyState title={t('no_done_yet')} description={t('no_done_desc')} />;
       return <EmptyState title={t('no_archive_yet')} description={t('no_archive_desc')} />;
     }
     if (tab === 'searching') return <EmptyState title={t('no_cargos_yet')} description={t('client_searching_desc')} actionLabel={t('place_cargo')} onAction={() => navigation.navigate('CreateCargo')} />;
-    if (tab === 'enroute') return <EmptyState title={t('client_no_enroute_yet')} description={t('client_no_enroute_desc')} />;
     if (tab === 'delivered') return <EmptyState title={t('client_no_delivered_yet')} description={t('client_no_delivered_desc')} />;
     return <EmptyState title={t('no_archive_yet')} description={t('no_archive_desc')} />;
   };

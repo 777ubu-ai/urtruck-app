@@ -53,12 +53,6 @@ const CHAT_PHOTO_ENABLED = true;
 // проверка записи/воспроизведения — на реальном устройстве.
 const CHAT_VOICE_ENABLED = true;
 
-// Stage 52: локальный chat language pill не переводил содержимое чата (P0-3, P0-5),
-// и среди опций оставался UZ (P0-4). Pill скрыт до реальной интеграции с chatAPI.translate.
-const CHAT_LANG_PILL_ENABLED = false;
-const LANGS = { RU: 'Русский', KK: 'Қазақша', EN: 'English', ZH: '中文' };
-const LANG_KEYS = Object.keys(LANGS);
-
 export default function ChatScreen({ navigation, route }) {
   const v1 = useV1Colors();
   const s = React.useMemo(() => StyleSheet.create({
@@ -86,13 +80,6 @@ export default function ChatScreen({ navigation, route }) {
   acceptCancelTxt: { color: v1.textMuted, fontSize: 12, fontWeight: '800' },
   acceptOkBtn: { flex: 1, paddingVertical: 9, borderRadius: 10, backgroundColor: v1Colors.driver, alignItems: 'center' },
   acceptOkTxt: { color: '#0C0A09', fontSize: 12, fontWeight: '900' },
-  chatOpened: { alignSelf: 'center', marginBottom: 16 },
-  chatOpenedText: {
-    fontSize: 11, paddingHorizontal: 14, paddingVertical: 5,
-    borderRadius: 16, overflow: 'hidden',
-    backgroundColor: v1.surface, color: v1.textMuted,
-    borderWidth: 1, borderColor: v1.border,
-  },
   msgRow: { marginBottom: 10 },
   msgRowMe: { alignItems: 'flex-end' },
   senderLabel: { fontSize: 11, marginBottom: 3, marginLeft: 6, color: v1.textMuted },
@@ -109,17 +96,8 @@ export default function ChatScreen({ navigation, route }) {
   msgTextMe: { color: '#EAFBF1' },
   translated: { marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)' },
   translatedText: { color: 'rgba(255,255,255,0.55)', fontSize: 11, fontStyle: 'italic' },
-  callBtn: { marginTop: 8, borderWidth: 1, borderRadius: 12, paddingVertical: 12, alignItems: 'center', minHeight: 44, justifyContent: 'center' },
-  callBtnText: { fontSize: 14, fontWeight: '800' },
   msgTime: { color: v1.textMuted, fontSize: 11, textAlign: 'right', marginTop: 3 },
   msgTimeMe: { color: 'rgba(234,251,241,0.55)' },
-  // Часть 2 — баннер «🤝 Сделка!» по центру ленты.
-  dealBannerRow: { alignItems: 'center', marginVertical: 12 },
-  dealBanner: {
-    backgroundColor: '#15512F', borderWidth: 1, borderColor: '#22C55E',
-    borderRadius: 16, paddingHorizontal: 18, paddingVertical: 10,
-  },
-  dealBannerText: { color: '#EAFBF1', fontSize: 16, fontWeight: '900', letterSpacing: -0.3 },
   systemMsgRow: { alignItems: 'center', marginVertical: 6 },
   systemMsgPill: {
     backgroundColor: 'rgba(148,163,184,0.18)', borderRadius: 12,
@@ -247,7 +225,6 @@ export default function ChatScreen({ navigation, route }) {
       chatAPI.typing(roomId);   // fire-and-forget
     }
   };
-  const [lang, setLang] = useState('RU');
   const [translations, setTranslations] = useState({});
   const [translating, setTranslating] = useState(null);
   // Авто-перевод всей ленты (ключевая фича Китай↔СНГ): при включении все
@@ -587,13 +564,14 @@ export default function ChatScreen({ navigation, route }) {
   const openBidModal = (mode = 'create', targetBidId = null, amount = null) => {
     setBidModal({ visible: true, mode, bidId: targetBidId || bidId || null, amount });
   };
-  // Момент сделки: кладём крупный зелёный баннер в ленту и перечитываем
-  // карточку торга/сделку (источник истины — статус на сервере).
+  // Момент сделки — компактное серое системное сообщение (WhatsApp-упрощение
+  // 04.08.2026: раньше был отдельный крупный зелёный баннер, дублирующий
+  // статус/цену, уже видные в закреплённой карточке сделки сверху).
   const onBargainDeal = (amount) => {
     const amountText = amount != null ? formatPrice(amount, deal?.currency || 'USD', t) : '';
     setMessages((prev) => [...prev, {
       id: 'deal_' + Date.now().toString(36),
-      from: 'system', isDeal: true, amountText,
+      from: 'system', text: `🤝 ${t('deal_done')}${amountText ? ' ' + amountText : ''}`,
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     }]);
     setBargainRefresh((n) => n + 1);
@@ -876,33 +854,8 @@ export default function ChatScreen({ navigation, route }) {
     try { voice.stop?.(); } catch {}
   }, []);
 
-  const cycleLang = () => {
-    const next = LANG_KEYS[(LANG_KEYS.indexOf(lang) + 1) % LANG_KEYS.length];
-    setLang(next);
-    toast(`🌐 ${LANGS[next]}`, 'info', 1500);
-  };
-
-  const displayMessages = React.useMemo(() => {
-    const hasDealBanner = messages.some((m) => m.isDeal);
-    if (hasDealBanner || !deal || !deal.status || deal.status === 'cancelled') return messages;
-    const accepted = ['accepted', 'in_progress', 'at_border', 'delivered', 'completed'];
-    if (!accepted.includes(deal.status)) return messages;
-    const amountText = deal.amount != null ? formatPrice(deal.amount, deal.currency || 'USD', t) : '';
-    return [...messages, { id: 'deal_persistent', from: 'system', isDeal: true, amountText, time: '' }];
-  }, [messages, deal, t]);
-
   const renderMessage = ({ item }) => {
     const isMe = item.from === 'me';
-    // Часть 2 — момент сделки: крупный зелёный системный баннер по центру.
-    if (item.isDeal) {
-      return (
-        <View style={s.dealBannerRow} testID="chat-deal-banner">
-          <View style={s.dealBanner}>
-            <Text style={s.dealBannerText}>🤝 {t('deal_done')}{item.amountText ? ` ${item.amountText}` : ''}</Text>
-          </View>
-        </View>
-      );
-    }
     if (item.from === 'system') {
       return (
         <View style={s.systemMsgRow}>
@@ -1030,16 +983,22 @@ export default function ChatScreen({ navigation, route }) {
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
+      {/* WhatsApp-упрощение (04.08.2026): справа в шапке — только телефон,
+          когда он есть у сделки. Глобус автоперевода переехал в меню «+»
+          (реже нужен, чем звонок, и не должен жить в шапке рядом с именем). */}
       <BrandBarWithShare
         onBack={() => navigation.goBack()}
         accent={v1Accent.main}
-        onShare={() => {
-          const next = !autoTranslate;
-          setAutoTranslate(next);
-          toast(next ? '🌐 ' + t('autotranslate_on') : t('autotranslate_off'), 'info', 1800);
-        }}
-        rightTestID="chat-autotranslate-btn"
-        rightIcon={autoTranslate ? '🌐 ✓' : '🌐'}
+        rightSlot={deal?.counterparty_phone ? (
+          <TouchableOpacity
+            onPress={() => contactPartner(deal.counterparty_phone)}
+            style={s.iconBtn}
+            testID="chat-header-call-btn"
+            accessibilityLabel={t('call_partner')}
+          >
+            <Feather name="phone" size={18} color={v1Accent.main} />
+          </TouchableOpacity>
+        ) : undefined}
       />
       <View style={s.partnerStrip}>
         <View style={[s.partnerAvatar, { backgroundColor: v1Accent.soft, borderColor: v1Accent.main }]}>
@@ -1057,21 +1016,14 @@ export default function ChatScreen({ navigation, route }) {
               </View>
             ) : null}
           </View>
-          {/* Маршрут груза в шапке — сразу видно, по какому заказу чат.
-              Если маршрут известен (есть сделка) — показываем его; иначе
-              честную роль собеседника (Водитель/Грузовладелец). */}
+          {/* Маршрут/груз сделки теперь показывает только закреплённая
+              карточка (DealRoomCard) ниже — вторая строка шапки не дублирует
+              её, а несёт то, чего там нет: «печатает…» или роль собеседника
+              (WhatsApp-упрощение 04.08.2026). */}
           {partnerTyping
             ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <Feather name="edit-3" size={12} color="#22C55E" />
                 <Text style={[s.online, { color: '#22C55E' }]}>{t('chat_typing')}</Text>
-              </View>
-            : deal && (deal.from_city || deal.to_city || deal.cargo_desc)
-            ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Feather name={deal.cargo_desc ? 'package' : 'map-pin'} size={12} color={v1Accent.main} />
-                <Text style={[s.online, { color: v1Accent.main }]} numberOfLines={1}>
-                  {deal.cargo_desc ? `${deal.cargo_desc} · ` : ''}
-                  {localizePlace(deal.from_city || '—', getLanguage())} → {localizePlace(deal.to_city || '—', getLanguage())}
-                </Text>
               </View>
             : ((resolvedPartner?.role === 'driver' || resolvedPartner?.role === 'client')
                 ? <Text style={[s.online, { color: '#A8A29E' }]}>{t(resolvedPartner.role)}</Text>
@@ -1093,18 +1045,8 @@ export default function ChatScreen({ navigation, route }) {
       {dealId ? (
         <View style={{ paddingHorizontal: 12, paddingBottom: 6 }}>
           <DealRoomCard deal={deal} role={role} />
-          {deal?.counterparty_phone ? (
-            <TouchableOpacity
-              style={[s.callBtn, { borderColor: v1Accent.main }]}
-              onPress={() => contactPartner(deal.counterparty_phone)}
-              testID="deal-call-btn"
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="phone" size={15} color={v1Accent.main} />
-                <Text style={[s.callBtnText, { color: v1Accent.main }]}>{t('call_partner')}</Text>
-              </View>
-            </TouchableOpacity>
-          ) : null}
+          {/* Кнопка звонка переехала в шапку (chat-header-call-btn) —
+              WhatsApp-упрощение 04.08.2026, отдельная во весь экран убрана. */}
           {dealEvents.length > 0 ? (
             <View testID="deal-timeline">
               {dealEvents.slice(-4).map((ev) => (
@@ -1140,19 +1082,11 @@ export default function ChatScreen({ navigation, route }) {
 
       <FlatList
         ref={flatListRef}
-        data={displayMessages}
+        data={messages}
         keyExtractor={i => i.id}
         renderItem={renderMessage}
         contentContainerStyle={s.msgList}
         keyboardShouldPersistTaps="handled"
-        ListHeaderComponent={
-          <View style={s.chatOpened}>
-            <Text style={s.chatOpenedText}>
-              {t('chatOpened')}
-              {CHAT_LANG_PILL_ENABLED ? ` · ${t('translation')}: ${LANGS[lang]}` : ''}
-            </Text>
-          </View>
-        }
         onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
       />
       {showPhrases && <QuickPhrases onSelect={(m) => { setShowPhrases(false); sendMessage(m); }} role={role} dealStatus={deal?.status} />}
@@ -1189,23 +1123,27 @@ export default function ChatScreen({ navigation, route }) {
           returnKeyType="send"
           testID="chat-input"
         />
-        {CHAT_VOICE_ENABLED && (
+        {/* WhatsApp-style: одна кнопка справа, а не две рядом — микрофон,
+            пока поле пустое, отправка, как только появился текст
+            (04.08.2026, п.5 ТЗ). Во время записи всегда виден стоп. */}
+        {CHAT_VOICE_ENABLED && (!input.trim() || recording) ? (
           <TouchableOpacity
             onPress={toggleVoice}
-            style={[s.iconBtn, recording && { backgroundColor: v1Colors.error, borderColor: v1Colors.error }]}
+            style={[s.sendBtn, { backgroundColor: recording ? v1Colors.error : v1Accent.main }]}
             testID="chat-voice-btn"
           >
-            <Feather name={recording ? 'square' : 'mic'} size={18} color={recording ? '#fff' : v1.text} />
+            <Feather name={recording ? 'square' : 'mic'} size={18} color="#FFFFFF" />
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            onPress={() => sendMessage()}
+            style={[s.sendBtn, { backgroundColor: v1Accent.main }]}
+            testID="chat-send-btn"
+            accessibilityLabel="Send"
+          >
+            <FontAwesome5 name="paper-plane" size={16} color="#FFFFFF" solid />
           </TouchableOpacity>
         )}
-        <TouchableOpacity
-          onPress={() => sendMessage()}
-          style={[s.sendBtn, { backgroundColor: v1Accent.main }]}
-          testID="chat-send-btn"
-          accessibilityLabel="Send"
-        >
-          <FontAwesome5 name="paper-plane" size={16} color="#FFFFFF" solid />
-        </TouchableOpacity>
       </View>
 
       {/* Панель вложений (WeChat-сетка): открывается по «+». Тап по плитке
@@ -1221,6 +1159,12 @@ export default function ChatScreen({ navigation, route }) {
             dealId ? { key: 'doc', icon: 'file-text', label: t('chat_quick_action_send_document'), on: () => setAttachDocTick((n) => n + 1) } : null,
             { key: 'support', icon: 'life-buoy', label: t('chat_quick_action_call_support'), on: () => onCallSupport() },
             { key: 'phrases', icon: 'zap', label: t('quick_phrases'), on: () => setShowPhrases(true) },
+            // Автоперевод переехал сюда из шапки (там остался только телефон).
+            { key: 'translate', icon: 'globe', label: autoTranslate ? t('autotranslate_on') : t('translate'), on: () => {
+              const next = !autoTranslate;
+              setAutoTranslate(next);
+              toast(next ? '🌐 ' + t('autotranslate_on') : t('autotranslate_off'), 'info', 1800);
+            } },
           ].filter(Boolean).map((it) => (
             <TouchableOpacity
               key={it.key}

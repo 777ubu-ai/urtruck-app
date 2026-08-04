@@ -319,6 +319,8 @@ export default function TripDetail({ navigation, route }) {
         if (r.chat_room_id) setChatRoomId(r.chat_room_id);
         if (r.deal_id) { setDealId(r.deal_id); setDealStatus('accepted'); }
         refreshAll();
+        // WhatsApp-упрощение (04.08.2026, п.9 ТЗ): согласовали цену — сразу в чат.
+        if (r.chat_room_id) navigation.navigate('Chat', { roomId: r.chat_room_id, dealId: r.deal_id, role });
       } else {
         toast(r.detail || t('accept_failed'), 'error');
       }
@@ -386,6 +388,8 @@ export default function TripDetail({ navigation, route }) {
         if (r.chat_room_id) setChatRoomId(r.chat_room_id);
         if (r.deal_id) { setDealId(r.deal_id); setDealStatus('accepted'); }
         refreshAll();
+        // WhatsApp-упрощение (04.08.2026, п.9 ТЗ): сразу в чат сделки.
+        if (r.chat_room_id) navigation.navigate('Chat', { roomId: r.chat_room_id, dealId: r.deal_id, role });
       } else {
         toast(r.detail || t('accept_failed'), 'error');
       }
