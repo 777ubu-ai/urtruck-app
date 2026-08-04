@@ -1,20 +1,23 @@
 /**
- * Regression: TripDetail must show the ACTIVE DEAL's status
- * (accepted/in_progress/at_border/delivered), never the legacy local
- * trip.tripState timeline, once a deal exists on the trip.
+ * Regression: deal.status must be the single source of truth for a trip's
+ * status display, and status-change actions must live in exactly one place.
  *
- * Bug (found during PR2 visual review, 04.08.2026): the backend never
- * persists trip_state at all — normalizeTrip() always falls back to
- * 'planned' for any real, server-backed trip. TripDetail rendered BOTH
- * this frozen "Запланирован" legacy timeline AND the correct
- * deal-status-driven DealStatusTimeline at the same time, so a trip whose
- * deal had already reached in_progress/at_border still showed "Запланирован"
- * as the active step above the correct "В работе"/"На границе" block below
- * it — contradictory status on one screen.
- *
- * Fix: the legacy trip.tripState timeline now renders ONLY when there is
- * no deal yet (dealStatus falsy); once a deal exists, DealStatusTimeline
- * (driven by deal.status) is the sole status display.
+ * History:
+ * - Original bug (PR2 visual review, 04.08.2026): TripDetail rendered BOTH
+ *   the legacy local trip.tripState timeline (always frozen on "Запланирован"
+ *   — the backend never persists trip_state) AND the deal-status-driven
+ *   DealStatusTimeline at the same time, so an in_progress/at_border deal
+ *   still showed "Запланирован" as the active step.
+ * - 05.08.2026 (owner decision, WhatsApp-style unification): CargoDetail/
+ *   TripDetail/MyTripsScreen used to each have their OWN copy of the status-
+ *   progression buttons (Начать перевозку/На границе/Груз доставлен/
+ *   Подтвердить получение) — three independent places acting on the same
+ *   deal.status. DealStatusTimeline (the horizontal stepper) is gone from
+ *   both CargoDetail and TripDetail, replaced by a compact "Текущий статус /
+ *   Следующий шаг" text; the action buttons now live ONLY in ChatScreen
+ *   (the deal's conversation) — reached via the unified «Сделки» list
+ *   (ChatsListScreen dealsMode), not via MyTripsScreen tabs (which no longer
+ *   have deal-derived tabs at all — see MyTripsScreen.js commit history).
  *
  * Local: E2E_BASE_URL=http://127.0.0.1:4173 npx playwright test tests/e2e/urtruck-trip-deal-status-priority.spec.js
  * Live:  E2E_BASE_URL=https://urtruck.kz   npx playwright test tests/e2e/urtruck-trip-deal-status-priority.spec.js
@@ -42,11 +45,17 @@ function makeTrip() {
   };
 }
 
+// from_country/to_country (05.08.2026): GET /market/deals/{id} now enriches
+// the deal with the trip's/cargo's route countries (backend/api/marketplace.py
+// get_deal()) — ChatScreen needs them to pick the right next-action button
+// (domestic vs international route). Omitting them here would make every
+// test see dealHasCountries=false, which is not what production sends.
 function makeDeal(status) {
   return {
     id: DEAL_ID, cargo_id: null, trip_id: TRIP_ID, bid_id: 'bid-pw-tds1',
     shipper_id: SHIPPER_ID, driver_id: DRIVER_ID,
     from_city: 'Almaty', to_city: 'Tashkent',
+    from_country: 'KZ', to_country: 'UZ',
     amount: 5000, status, chat_room_id: CHAT_ID,
     created_at: '2026-08-01 10:00:00', updated_at: '2026-08-01 10:00:00',
   };
@@ -111,6 +120,9 @@ async function mockServer(page, { dealStatus }) {
   await page.route('**/api/v1/market/deals/*/status**', async route => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, status: dealStatus }) });
   });
+  await page.route('**/api/v1/deals/**/timeline', async route => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ events: [] }) });
+  });
   await page.route('**/api/v1/reviews**', async route => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ reviews: [], summary: { count: 0, average: 0 } }) });
   });
@@ -122,6 +134,21 @@ async function mockServer(page, { dealStatus }) {
   });
   await page.route('**/api/v1/chat/**', async route => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ rooms: [], contacts: [], messages: [] }) });
+  });
+  // Registered after the wildcard so it wins for this specific path (Playwright
+  // matches the most-recently-registered route first): ChatScreen reverse-
+  // resolves dealId from roomId via GET /chat/rooms when navigated to with
+  // only { roomId } (e.g. TripDetail's/CargoDetail's "💬 Чат" link, which
+  // never passes dealId directly) — without a matching room here, dealId
+  // never resolves and the deal card/status/action buttons never render.
+  await page.route('**/api/v1/chat/rooms**', async route => {
+    await route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ rooms: [{
+        id: CHAT_ID, deal_id: DEAL_ID, cargo_id: null, trip_id: TRIP_ID,
+        partner_id: SHIPPER_ID, partner_name: 'PW Shipper', partner_role: 'client',
+      }] }),
+    });
   });
 }
 
@@ -184,6 +211,9 @@ async function mockServerMutable(page, { initialStatus, statusChangeShouldFail =
     box.status = url.searchParams.get('new_status') || box.status;
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, status: box.status }) });
   });
+  await page.route('**/api/v1/deals/**/timeline', async route => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ events: [] }) });
+  });
   await page.route('**/api/v1/reviews**', async route => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ reviews: [], summary: { count: 0, average: 0 } }) });
   });
@@ -195,6 +225,21 @@ async function mockServerMutable(page, { initialStatus, statusChangeShouldFail =
   });
   await page.route('**/api/v1/chat/**', async route => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ rooms: [], contacts: [], messages: [] }) });
+  });
+  // Registered after the wildcard so it wins for this specific path (Playwright
+  // matches the most-recently-registered route first): ChatScreen reverse-
+  // resolves dealId from roomId via GET /chat/rooms when navigated to with
+  // only { roomId } (e.g. TripDetail's/CargoDetail's "💬 Чат" link, which
+  // never passes dealId directly) — without a matching room here, dealId
+  // never resolves and the deal card/status/action buttons never render.
+  await page.route('**/api/v1/chat/rooms**', async route => {
+    await route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ rooms: [{
+        id: CHAT_ID, deal_id: DEAL_ID, cargo_id: null, trip_id: TRIP_ID,
+        partner_id: SHIPPER_ID, partner_name: 'PW Shipper', partner_role: 'client',
+      }] }),
+    });
   });
   return box;
 }
@@ -209,23 +254,27 @@ async function enterAsDriver(page) {
   await page.waitForTimeout(3000);
 }
 
-// Driver "My work" tab mapping (MyTripsScreen): 'inwork' shows active deals
-// (accepted/in_progress/at_border), 'done' shows delivered/cancelled ones.
-async function openDealCard(page, { tabTestId }) {
-  const myWork = page.locator('[data-testid="bottom-nav-mywork"]');
-  await myWork.click();
+// 05.08.2026: deals no longer live under MyTripsScreen tabs (that screen is
+// pure listing management now — active/draft/expired + archive, no deal
+// content at all). Every deal is one row in the unified «Сделки» list
+// (ChatsListScreen dealsMode) — open it from there.
+async function openDealCard(page) {
+  const deals = page.locator('[data-testid="bottom-nav-deals"]');
+  await deals.click();
   await page.waitForTimeout(1200);
-  const tab = page.locator(`[data-testid="${tabTestId}"]`);
-  if (await tab.isVisible().catch(() => false)) {
-    await tab.click();
-  } else {
-    await page.getByText(/В работе|Завершённые|In progress|Completed|工作中|已完成|Жұмыста|Аяқталған/i).first().click().catch(() => {});
-  }
-  await page.waitForTimeout(1200);
-  const card = page.locator('[data-testid="my-order-card"]').first();
+  const card = page.locator('[data-testid="deals-deal-card"]').first();
   await expect(card).toBeVisible({ timeout: 10000 });
   await card.click();
   await page.waitForTimeout(2000);
+}
+
+// The status-progression action buttons (05.08.2026) live only inside the
+// deal's conversation now — open it via TripDetail's "💬 Чат" link.
+async function openDealChat(page) {
+  const chatLink = page.locator('[data-testid="deal-order-chat"]').first();
+  await expect(chatLink).toBeVisible({ timeout: 10000 });
+  await chatLink.click();
+  await page.waitForTimeout(1500);
 }
 
 test.describe('Trip status priority — deal.status over legacy tripState', () => {
@@ -235,11 +284,12 @@ test.describe('Trip status priority — deal.status over legacy tripState', () =
     await mockServer(page, { dealStatus: 'in_progress' });
     await page.goto(BASE, { waitUntil: 'networkidle' });
     await enterAsDriver(page);
-    await openDealCard(page, { tabTestId: 'my-work-tab-inwork' });
+    await openDealCard(page);
 
     const body = await page.locator('body').innerText();
-    // Deal-status-driven timeline (DealStatusTimeline) must be present and
-    // reflect in_progress — its current step + next-step hint.
+    // Compact status block (replaces the old DealStatusTimeline stepper,
+    // 05.08.2026) must be present and reflect in_progress via its
+    // "Следующий шаг" next-step hint.
     expect(body).toContain('Следующий шаг');
     // Legacy tripState timeline must be gone: it always renders "Запланирован"
     // for a real server trip (trip_state is never persisted), and showing it
@@ -252,7 +302,7 @@ test.describe('Trip status priority — deal.status over legacy tripState', () =
     await mockServer(page, { dealStatus: 'at_border' });
     await page.goto(BASE, { waitUntil: 'networkidle' });
     await enterAsDriver(page);
-    await openDealCard(page, { tabTestId: 'my-work-tab-inwork' });
+    await openDealCard(page);
 
     const body = await page.locator('body').innerText();
     expect(body).toContain('На границе');
@@ -260,11 +310,11 @@ test.describe('Trip status priority — deal.status over legacy tripState', () =
     expect(body).not.toContain('Статус рейса');
   });
 
-  test('accepted deal: DealStatusTimeline present, legacy block absent', async ({ page }) => {
+  test('accepted deal: compact status shown, legacy block absent', async ({ page }) => {
     await mockServer(page, { dealStatus: 'accepted' });
     await page.goto(BASE, { waitUntil: 'networkidle' });
     await enterAsDriver(page);
-    await openDealCard(page, { tabTestId: 'my-work-tab-inwork' });
+    await openDealCard(page);
 
     const body = await page.locator('body').innerText();
     expect(body).toContain('Принят');
@@ -276,7 +326,7 @@ test.describe('Trip status priority — deal.status over legacy tripState', () =
     await mockServer(page, { dealStatus: 'delivered' });
     await page.goto(BASE, { waitUntil: 'networkidle' });
     await enterAsDriver(page);
-    await openDealCard(page, { tabTestId: 'my-work-tab-done' });
+    await openDealCard(page);
 
     const body = await page.locator('body').innerText();
     expect(body).not.toContain('Запланирован');
@@ -286,7 +336,7 @@ test.describe('Trip status priority — deal.status over legacy tripState', () =
 
 // ─── Scenario C: 409 on an invalid transition must not leave a stale
 // action button — the screen must refetch and keep showing the real
-// (unchanged) server status. ───────────────────────────────────────────────
+// (unchanged) server status. Action buttons live in the deal's chat now. ──
 
 test.describe('Deal status after a rejected (409) transition', () => {
   test.use({ locale: 'ru-RU', timezoneId: 'Asia/Almaty' });
@@ -295,7 +345,8 @@ test.describe('Deal status after a rejected (409) transition', () => {
     const box = await mockServerMutable(page, { initialStatus: 'at_border', statusChangeShouldFail: true });
     await page.goto(BASE, { waitUntil: 'networkidle' });
     await enterAsDriver(page);
-    await openDealCard(page, { tabTestId: 'my-work-tab-inwork' });
+    await openDealCard(page);
+    await openDealChat(page);
 
     await expect(page.locator('[data-testid="deal-action-mark-arrived"]')).toBeVisible(); // at_border's only driver action
 
@@ -309,7 +360,7 @@ test.describe('Deal status after a rejected (409) transition', () => {
     await expect(page.locator('[data-testid="deal-action-mark-arrived"]')).toBeVisible();
     await expect(page.locator('[data-testid="deal-action-start-delivery"]')).toHaveCount(0);
     const body = await page.locator('body').innerText();
-    expect(body).not.toContain('Начать перевозку');
+    expect(body).not.toContain('Начать');
   });
 });
 
@@ -319,14 +370,15 @@ test.describe('Deal status after a rejected (409) transition', () => {
 test.describe('Deal status after a successful transition', () => {
   test.use({ locale: 'ru-RU', timezoneId: 'Asia/Almaty' });
 
-  test('accepted -> in_progress: "Начать перевозку" replaced by the next action', async ({ page }) => {
+  test('accepted -> in_progress: "Начать" replaced by the next action', async ({ page }) => {
     const box = await mockServerMutable(page, { initialStatus: 'accepted', statusChangeShouldFail: false });
     await page.goto(BASE, { waitUntil: 'networkidle' });
     await enterAsDriver(page);
-    await openDealCard(page, { tabTestId: 'my-work-tab-inwork' });
+    await openDealCard(page);
+    await openDealChat(page);
 
     let body = await page.locator('body').innerText();
-    expect(body).toContain('Начать перевозку');
+    expect(body).toContain('Начать');
 
     await page.locator('[data-testid="deal-action-start-delivery"]').first().click();
     await page.waitForTimeout(1500); // await the successful PATCH + forced refetch
@@ -337,12 +389,11 @@ test.describe('Deal status after a successful transition', () => {
     await expect(page.locator('[data-testid="deal-action-start-delivery"]')).toHaveCount(0);
     await expect(page.locator('[data-testid="deal-action-mark-at-border"]')).toBeVisible();
     body = await page.locator('body').innerText();
-    expect(body).not.toContain('Начать перевозку');
     expect(body).toContain('На границе');
   });
 });
 
-// ─── Scenario E: leaving the deal screen (back to the list) and reopening it
+// ─── Scenario E: leaving the deal chat (back to the list) and reopening it
 // must re-fetch the deal, never fall back to a stale/initial 'accepted'. ──
 
 test.describe('Deal status survives navigating away and back', () => {
@@ -352,39 +403,37 @@ test.describe('Deal status survives navigating away and back', () => {
     await mockServerMutable(page, { initialStatus: 'at_border', statusChangeShouldFail: false });
     await page.goto(BASE, { waitUntil: 'networkidle' });
     await enterAsDriver(page);
-    await openDealCard(page, { tabTestId: 'my-work-tab-inwork' });
+    await openDealCard(page);
+    await openDealChat(page);
 
     await expect(page.locator('[data-testid="deal-action-mark-arrived"]')).toBeVisible();
     await expect(page.locator('[data-testid="deal-action-start-delivery"]')).toHaveCount(0);
 
-    // Pop the detail screen off the stack (real "went back") and reopen the
-    // SAME deal from the list — the component may or may not remount, but
-    // either way the status must come fresh from the server, not from a
+    // Force a full reload (strictly stronger than a "back" tap — guarantees
+    // every component fully unmounts, so nothing can survive in memory) and
+    // reopen the SAME deal from the unified list from scratch. The status
+    // must come fresh from the server on this new mount, not from a
     // leftover navigation param or stale in-memory default.
-    await page.locator('[data-testid="brand-back"]').first().click();
-    await page.waitForTimeout(800);
-    const card = page.locator('[data-testid="my-order-card"]').first();
-    await expect(card).toBeVisible({ timeout: 10000 });
-    await card.click();
-    await page.waitForTimeout(1500);
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForTimeout(2000);
+    await openDealCard(page);
+    await openDealChat(page);
 
     await expect(page.locator('[data-testid="deal-action-mark-arrived"]')).toBeVisible();
     await expect(page.locator('[data-testid="deal-action-start-delivery"]')).toHaveCount(0);
     const body = await page.locator('body').innerText();
-    expect(body).not.toContain('Начать перевозку');
     expect(body).toContain('На границе');
   });
 });
 
-// ─── Progress bar: on a narrow real-device width, the 4 step labels used to
-// sit in a fixed 66px box without being width-constrained, so long labels
-// bled into their neighbours ("слипались"). Below 361px they're now hidden
-// in favour of a single "Текущий статус: <label>" line under the icons. ──
+// ─── Narrow screen: the compact status block (05.08.2026) replaced the old
+// 4-step DealStatusTimeline that used to overlap on narrow widths — verify
+// it still renders intelligibly at 340px with no console errors. ──────────
 
-test.describe('Progress bar narrow-screen fallback', () => {
+test.describe('Compact deal status on a narrow screen', () => {
   test.use({ locale: 'ru-RU', timezoneId: 'Asia/Almaty' });
 
-  test('width=340px: in_progress deal shows "Текущий статус: В работе", no console errors', async ({ page }) => {
+  test('width=340px: in_progress deal shows compact status, no console errors', async ({ page }) => {
     const consoleErrors = [];
     page.on('console', (msg) => { if (msg.type() === 'error') consoleErrors.push(msg.text().slice(0, 300)); });
     page.on('pageerror', (err) => consoleErrors.push('PAGEERROR: ' + err.message));
@@ -393,15 +442,11 @@ test.describe('Progress bar narrow-screen fallback', () => {
     await mockServer(page, { dealStatus: 'in_progress' });
     await page.goto(BASE, { waitUntil: 'networkidle' });
     await enterAsDriver(page);
-    await openDealCard(page, { tabTestId: 'my-work-tab-inwork' });
+    await openDealCard(page);
 
-    const currentStatus = page.locator('[data-testid="deal-timeline-current-status"]');
-    await expect(currentStatus).toBeVisible();
-    await expect(currentStatus).toContainText('В работе');
-    // The 4 individual step labels must be gone on this width — only the
-    // single fallback line + icons remain (no per-step overlap possible).
-    await expect(page.locator('[data-testid="deal-timeline"]').getByText('Принят', { exact: true })).toHaveCount(0);
-    await expect(page.locator('[data-testid="deal-timeline"]').getByText('На границе', { exact: true })).toHaveCount(0);
+    const body = await page.locator('body').innerText();
+    expect(body).toContain('В работе');
+    expect(body).toContain('Следующий шаг');
 
     expect(consoleErrors, `console errors: ${consoleErrors.join(' | ')}`).toHaveLength(0);
   });

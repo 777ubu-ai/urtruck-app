@@ -454,6 +454,7 @@ export default function TripDetail({ navigation, route }) {
           )}
           {chatRoomId && (
             <TouchableOpacity
+              testID="deal-order-chat"
               style={{ alignSelf: 'center', marginTop: 10 }}
               onPress={() => navigation.navigate('Chat', { roomId: chatRoomId, role, tripId: (trip && trip.id) || tripId, partner: driverId ? { id: driverId } : undefined })}
             >
