@@ -41,6 +41,9 @@ const QA_HOOK_ALLOWED = (() => {
 // что вводило в заблуждение). Берём фактические значения сборки из expo-constants:
 // nativeAppVersion = app.json version (1.0.2), nativeBuildVersion = номер сборки
 // (например 38). На web build-номера нет → показываем только версию.
+// Preview-сборки (05.08.2026): EXPO_PUBLIC_BUILD_COMMIT инлайнится Expo в
+// бандл на этапе сборки, если задан при `expo export`. На проде/CI (deploy.sh,
+// deploy.yml) переменная не задана → суффикс пустой, метка не меняется.
 const APP_VERSION_LABEL = (() => {
   try {
     const Constants = require('expo-constants').default;
@@ -49,7 +52,8 @@ const APP_VERSION_LABEL = (() => {
       || Constants?.expoConfig?.ios?.buildNumber
       || Constants?.expoConfig?.android?.versionCode
       || '';
-    return `v${ver}${build ? ` (${build})` : ''}`;
+    const commit = process.env.EXPO_PUBLIC_BUILD_COMMIT;
+    return `v${ver}${build ? ` (${build})` : ''}${commit ? ` · Build: ${commit}` : ''}`;
   } catch {
     return 'v1.0.4';
   }
