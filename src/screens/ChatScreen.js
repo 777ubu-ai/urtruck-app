@@ -5,7 +5,7 @@ import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import Feather from '@expo/vector-icons/Feather';
 import * as ImagePicker from 'expo-image-picker';
 import { useI18n } from '../utils/useI18n';
-import { getLanguage } from '../utils/i18n';
+import { getLanguage, formatStatus } from '../utils/i18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useToast } from '../components/Toast';
 import { compressImage } from '../utils/imageCompress';
@@ -29,6 +29,8 @@ import { DealRoomCard, SystemEventRow, DealQuickActions } from '../components/de
 import BargainCard from '../components/deal/BargainCard';
 import BidModal from '../components/BidModal';
 import DealAttachments from '../components/deal/DealAttachments';
+import { pickDealStatus, userFacingDealStatus } from '../utils/dealStatusOrder';
+import { openContactPartner } from '../utils/contactPartner';
 
 // HOT-006: реальная запись/воспроизведение для web (PWA deploy).
 // На нативе (Expo Go) expo-av не установлен — тост "скоро".
@@ -52,12 +54,6 @@ const CHAT_PHOTO_ENABLED = true;
 // send с photoUrl=ключ), получатель играет по подписанному URL. Финальная
 // проверка записи/воспроизведения — на реальном устройстве.
 const CHAT_VOICE_ENABLED = true;
-
-// Stage 52: локальный chat language pill не переводил содержимое чата (P0-3, P0-5),
-// и среди опций оставался UZ (P0-4). Pill скрыт до реальной интеграции с chatAPI.translate.
-const CHAT_LANG_PILL_ENABLED = false;
-const LANGS = { RU: 'Русский', KK: 'Қазақша', EN: 'English', ZH: '中文' };
-const LANG_KEYS = Object.keys(LANGS);
 
 export default function ChatScreen({ navigation, route }) {
   const v1 = useV1Colors();
@@ -86,13 +82,16 @@ export default function ChatScreen({ navigation, route }) {
   acceptCancelTxt: { color: v1.textMuted, fontSize: 12, fontWeight: '800' },
   acceptOkBtn: { flex: 1, paddingVertical: 9, borderRadius: 10, backgroundColor: v1Colors.driver, alignItems: 'center' },
   acceptOkTxt: { color: '#0C0A09', fontSize: 12, fontWeight: '900' },
-  chatOpened: { alignSelf: 'center', marginBottom: 16 },
-  chatOpenedText: {
-    fontSize: 11, paddingHorizontal: 14, paddingVertical: 5,
-    borderRadius: 16, overflow: 'hidden',
-    backgroundColor: v1.surface, color: v1.textMuted,
-    borderWidth: 1, borderColor: v1.border,
-  },
+  // Компактный статус перевозки (05.08.2026) — заменяет горизонтальную шкалу.
+  statusRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  statusRowLabel: { color: v1.textMuted, fontSize: 12, fontWeight: '600' },
+  statusRowValue: { fontSize: 13, fontWeight: '800' },
+  dealNextBtn: { borderRadius: 12, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', minHeight: 48, marginBottom: 8 },
+  dealNextBtnText: { color: '#0C0A09', fontSize: 15, fontWeight: '800' },
+  dealCancelBtn: { borderRadius: 12, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 8, backgroundColor: 'rgba(239,68,68,0.10)' },
+  dealCancelBtnText: { color: '#EF4444', fontSize: 13, fontWeight: '700' },
+  dealTrackBtn: { borderRadius: 12, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 8, borderWidth: 1, borderColor: v1.border, backgroundColor: v1.surface },
+  dealTrackBtnText: { color: v1.text, fontSize: 13, fontWeight: '700' },
   msgRow: { marginBottom: 10 },
   msgRowMe: { alignItems: 'flex-end' },
   senderLabel: { fontSize: 11, marginBottom: 3, marginLeft: 6, color: v1.textMuted },
@@ -109,17 +108,8 @@ export default function ChatScreen({ navigation, route }) {
   msgTextMe: { color: '#EAFBF1' },
   translated: { marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)' },
   translatedText: { color: 'rgba(255,255,255,0.55)', fontSize: 11, fontStyle: 'italic' },
-  callBtn: { marginTop: 8, borderWidth: 1, borderRadius: 12, paddingVertical: 12, alignItems: 'center', minHeight: 44, justifyContent: 'center' },
-  callBtnText: { fontSize: 14, fontWeight: '800' },
   msgTime: { color: v1.textMuted, fontSize: 11, textAlign: 'right', marginTop: 3 },
   msgTimeMe: { color: 'rgba(234,251,241,0.55)' },
-  // Часть 2 — баннер «🤝 Сделка!» по центру ленты.
-  dealBannerRow: { alignItems: 'center', marginVertical: 12 },
-  dealBanner: {
-    backgroundColor: '#15512F', borderWidth: 1, borderColor: '#22C55E',
-    borderRadius: 16, paddingHorizontal: 18, paddingVertical: 10,
-  },
-  dealBannerText: { color: '#EAFBF1', fontSize: 16, fontWeight: '900', letterSpacing: -0.3 },
   systemMsgRow: { alignItems: 'center', marginVertical: 6 },
   systemMsgPill: {
     backgroundColor: 'rgba(148,163,184,0.18)', borderRadius: 12,
@@ -247,7 +237,6 @@ export default function ChatScreen({ navigation, route }) {
       chatAPI.typing(roomId);   // fire-and-forget
     }
   };
-  const [lang, setLang] = useState('RU');
   const [translations, setTranslations] = useState({});
   const [translating, setTranslating] = useState(null);
   // Авто-перевод всей ленты (ключевая фича Китай↔СНГ): при включении все
@@ -517,20 +506,27 @@ export default function ChatScreen({ navigation, route }) {
   // существует и проверяет, что caller — участник сделки) и сливаем
   // пустые поля с серверным ответом. Никаких подделок: если backend
   // вернул `null`, остаётся текущая «—» в UI.
-  useEffect(() => {
+  //
+  // 05.08.2026 (п.13 ТЗ, баги 1/2/4): раньше мёрдж был `prev?.status ||
+  // srv.status` — свежий ответ сервера НИКОГДА не мог перезаписать уже
+  // выставленный статус (даже устаревший из route-параметров). Теперь —
+  // тот же монотонный guard, что в CargoDetail/TripDetail (pickDealStatus:
+  // не откатывается назад, completed/delivered/cancelled не «отменяются
+  // задним числом»), плюс seq-guard от гонок параллельных запросов.
+  const dealFetchSeq = useRef(0);
+  const refreshDeal = () => {
     if (!dealId) return;
-    const p = route.params || {};
-    setDeal({
-      status: p.dealStatus, from_city: p.fromCity, to_city: p.toCity,
-      cargo_desc: p.cargoDesc, cargo_id: p.cargoId, amount: p.amount, plate: p.plate,
-    });
+    const seq = ++dealFetchSeq.current;
     marketAPI.getDeal(dealId)
       .then((srv) => {
         if (!srv || typeof srv !== 'object') return;
+        if (seq !== dealFetchSeq.current) return; // ответ устарел
         setDeal((prev) => ({
-          status: prev?.status || srv.status,
+          status: pickDealStatus(prev?.status, srv.status || 'accepted'),
           from_city: prev?.from_city || srv.from_city,
           to_city: prev?.to_city || srv.to_city,
+          from_country: prev?.from_country || srv.from_country,
+          to_country: prev?.to_country || srv.to_country,
           cargo_desc: prev?.cargo_desc || srv.cargo_desc,
           cargo_id: prev?.cargo_id || srv.cargo_id,
           amount: prev?.amount != null ? prev.amount : srv.amount,
@@ -541,9 +537,23 @@ export default function ChatScreen({ navigation, route }) {
         }));
       })
       .catch(() => {});
+  };
+  useEffect(() => {
+    if (!dealId) return;
+    const p = route.params || {};
+    setDeal({
+      status: p.dealStatus, from_city: p.fromCity, to_city: p.toCity,
+      cargo_desc: p.cargoDesc, cargo_id: p.cargoId, amount: p.amount, plate: p.plate,
+    });
+    refreshDeal();
     chatAPI.dealTimeline(dealId)
       .then(r => setDealEvents(Array.isArray(r?.events) ? r.events : []))
       .catch(() => {});
+    // Периодический refetch (как в CargoDetail/TripDetail) — вторая сторона
+    // могла продвинуть статус (Начать/На границе/Доставлено), пока этот
+    // экран открыт; без поллинга статус тут не обновится сам.
+    const iv = setInterval(refreshDeal, 15000);
+    return () => clearInterval(iv);
   }, [dealId]);
 
   // Пуш о сделке ведёт в Chat только с dealId (без roomId). Чтобы
@@ -587,13 +597,14 @@ export default function ChatScreen({ navigation, route }) {
   const openBidModal = (mode = 'create', targetBidId = null, amount = null) => {
     setBidModal({ visible: true, mode, bidId: targetBidId || bidId || null, amount });
   };
-  // Момент сделки: кладём крупный зелёный баннер в ленту и перечитываем
-  // карточку торга/сделку (источник истины — статус на сервере).
+  // Момент сделки — компактное серое системное сообщение (WhatsApp-упрощение
+  // 04.08.2026: раньше был отдельный крупный зелёный баннер, дублирующий
+  // статус/цену, уже видные в закреплённой карточке сделки сверху).
   const onBargainDeal = (amount) => {
     const amountText = amount != null ? formatPrice(amount, deal?.currency || 'USD', t) : '';
     setMessages((prev) => [...prev, {
       id: 'deal_' + Date.now().toString(36),
-      from: 'system', isDeal: true, amountText,
+      from: 'system', text: `🤝 ${t('deal_done')}${amountText ? ' ' + amountText : ''}`,
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     }]);
     setBargainRefresh((n) => n + 1);
@@ -624,6 +635,45 @@ export default function ChatScreen({ navigation, route }) {
       setAccepting(false);
     }
   };
+
+  // Статус перевозки (05.08.2026, п.4/9 ТЗ): раньше «Начать перевозку»/«На
+  // границе»/«Груз доставлен»/«Подтвердить получение» жили в CargoDetail/
+  // TripDetail/MyTripsScreen — три места с независимыми кнопками на одну и
+  // ту же сделку. Теперь единственное место действия — разговор (здесь).
+  // CargoDetail/TripDetail показывают тот же статус только текстом (см.
+  // компактный «Текущий статус / Следующий шаг» там), без своей кнопки.
+  const [statusLoading, setStatusLoading] = useState(false);
+  const changeDealStatus = async (newStatus) => {
+    if (!dealId || statusLoading) return;
+    setStatusLoading(true);
+    try {
+      const r = await marketAPI.updateDealStatus(dealId, newStatus);
+      if (r.ok) {
+        // «Статус обновлён» больше не показываем (05.08.2026, п.10 ТЗ):
+        // компактная строка статуса и кнопка следующего действия меняются
+        // тут же на экране — отдельный тост тому же самому событию только
+        // перекрывал шапку/карточку, не добавляя новой информации. Отмену
+        // сделки (более редкое, необратимое действие) по-прежнему
+        // подтверждаем явно.
+        if (newStatus === 'cancelled') toast(t('deal_cancelled_toast'), 'success');
+      } else {
+        // 409 и другие отказы: сервер уже знает реальный статус — не
+        // оставляем устаревшую кнопку, сразу перечитываем сделку.
+        toast(r.detail || t('update_failed'), 'error');
+      }
+    } catch {
+      toast(t('no_connection'), 'error');
+    }
+    // И на успехе, и на отказе — единственная правда приходит с сервера.
+    refreshDeal();
+    if (dealId) {
+      chatAPI.dealTimeline(dealId)
+        .then((r2) => setDealEvents(Array.isArray(r2?.events) ? r2.events : []))
+        .catch(() => {});
+    }
+    setStatusLoading(false);
+  };
+  const isShipperSide = role === 'client' || role === 'shipper';
 
   // QA-аудит P0 (silent message loss): раньше все три send-пути были под
   // `if (partner?.id)` с route.params.partner — при входе в чат только по
@@ -674,31 +724,10 @@ export default function ChatScreen({ navigation, route }) {
 
   // WhatsApp-style: тап по 📷 предлагает Камеру или Галерею (на native).
   // На web камера ненадёжна — сразу галерея.
-  // Связь с партнёром: выбор WhatsApp или обычный звонок (как просил владелец).
-  // wa.me требует только цифры (без +); tel: — с плюсом. На web Alert-выбор не
-  // поддерживается — открываем WhatsApp (для китайского направления он нужнее).
-  const contactPartner = (rawPhone) => {
-    const phone = String(rawPhone || '').replace(/[^\d+]/g, '');
-    if (!phone) return;
-    const waNumber = phone.replace(/[^\d]/g, '');
-    const plusPhone = phone.startsWith('+') ? phone : `+${waNumber}`;
-    const openWa = () => Linking.openURL(`https://wa.me/${waNumber}`).catch(() => {});
-    // Telegram открывается по номеру: tg://resolve?phone= (мобильные),
-    // с фолбэком на https://t.me/+<номер> для web/если приложение не стоит.
-    // Viber убран по решению владельца (не используем). WeChat по номеру
-    // открыть нельзя — у него нет deep-link на чат по телефону.
-    const openTg = () =>
-      Linking.openURL(`tg://resolve?phone=${waNumber}`)
-        .catch(() => Linking.openURL(`https://t.me/+${waNumber}`).catch(() => {}));
-    const openTel = () => Linking.openURL(`tel:${phone}`).catch(() => {});
-    if (Platform.OS === 'web') { openWa(); return; }
-    Alert.alert(t('contact_choose_title'), phone, [
-      { text: t('contact_whatsapp'), onPress: openWa },
-      { text: t('contact_telegram'), onPress: openTg },
-      { text: t('contact_call'), onPress: openTel },
-      { text: t('contact_cancel'), style: 'cancel' },
-    ]);
-  };
+  // Связь с партнёром: выбор WhatsApp/Telegram/звонок — вынесено в
+  // src/utils/contactPartner.js (05.08.2026, п.6/17 ТЗ), т.к. теперь нужна
+  // тем же способом и на CargoDetail/TripDetail (secondary-кнопка «Позвонить»).
+  const contactPartner = (rawPhone) => openContactPartner(rawPhone, t);
 
   // Отправить свою геопозицию как сообщение со ссылкой на карту (открывается в
   // Яндекс/Google Картах у собеседника). expo-location уже в проекте — работает
@@ -876,33 +905,8 @@ export default function ChatScreen({ navigation, route }) {
     try { voice.stop?.(); } catch {}
   }, []);
 
-  const cycleLang = () => {
-    const next = LANG_KEYS[(LANG_KEYS.indexOf(lang) + 1) % LANG_KEYS.length];
-    setLang(next);
-    toast(`🌐 ${LANGS[next]}`, 'info', 1500);
-  };
-
-  const displayMessages = React.useMemo(() => {
-    const hasDealBanner = messages.some((m) => m.isDeal);
-    if (hasDealBanner || !deal || !deal.status || deal.status === 'cancelled') return messages;
-    const accepted = ['accepted', 'in_progress', 'at_border', 'delivered', 'completed'];
-    if (!accepted.includes(deal.status)) return messages;
-    const amountText = deal.amount != null ? formatPrice(deal.amount, deal.currency || 'USD', t) : '';
-    return [...messages, { id: 'deal_persistent', from: 'system', isDeal: true, amountText, time: '' }];
-  }, [messages, deal, t]);
-
   const renderMessage = ({ item }) => {
     const isMe = item.from === 'me';
-    // Часть 2 — момент сделки: крупный зелёный системный баннер по центру.
-    if (item.isDeal) {
-      return (
-        <View style={s.dealBannerRow} testID="chat-deal-banner">
-          <View style={s.dealBanner}>
-            <Text style={s.dealBannerText}>🤝 {t('deal_done')}{item.amountText ? ` ${item.amountText}` : ''}</Text>
-          </View>
-        </View>
-      );
-    }
     if (item.from === 'system') {
       return (
         <View style={s.systemMsgRow}>
@@ -1030,16 +1034,22 @@ export default function ChatScreen({ navigation, route }) {
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
+      {/* WhatsApp-упрощение (04.08.2026): справа в шапке — только телефон,
+          когда он есть у сделки. Глобус автоперевода переехал в меню «+»
+          (реже нужен, чем звонок, и не должен жить в шапке рядом с именем). */}
       <BrandBarWithShare
         onBack={() => navigation.goBack()}
         accent={v1Accent.main}
-        onShare={() => {
-          const next = !autoTranslate;
-          setAutoTranslate(next);
-          toast(next ? '🌐 ' + t('autotranslate_on') : t('autotranslate_off'), 'info', 1800);
-        }}
-        rightTestID="chat-autotranslate-btn"
-        rightIcon={autoTranslate ? '🌐 ✓' : '🌐'}
+        rightSlot={deal?.counterparty_phone ? (
+          <TouchableOpacity
+            onPress={() => contactPartner(deal.counterparty_phone)}
+            style={s.iconBtn}
+            testID="chat-header-call-btn"
+            accessibilityLabel={t('call_partner')}
+          >
+            <Feather name="phone" size={18} color={v1Accent.main} />
+          </TouchableOpacity>
+        ) : undefined}
       />
       <View style={s.partnerStrip}>
         <View style={[s.partnerAvatar, { backgroundColor: v1Accent.soft, borderColor: v1Accent.main }]}>
@@ -1057,21 +1067,14 @@ export default function ChatScreen({ navigation, route }) {
               </View>
             ) : null}
           </View>
-          {/* Маршрут груза в шапке — сразу видно, по какому заказу чат.
-              Если маршрут известен (есть сделка) — показываем его; иначе
-              честную роль собеседника (Водитель/Грузовладелец). */}
+          {/* Маршрут/груз сделки теперь показывает только закреплённая
+              карточка (DealRoomCard) ниже — вторая строка шапки не дублирует
+              её, а несёт то, чего там нет: «печатает…» или роль собеседника
+              (WhatsApp-упрощение 04.08.2026). */}
           {partnerTyping
             ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <Feather name="edit-3" size={12} color="#22C55E" />
                 <Text style={[s.online, { color: '#22C55E' }]}>{t('chat_typing')}</Text>
-              </View>
-            : deal && (deal.from_city || deal.to_city || deal.cargo_desc)
-            ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Feather name={deal.cargo_desc ? 'package' : 'map-pin'} size={12} color={v1Accent.main} />
-                <Text style={[s.online, { color: v1Accent.main }]} numberOfLines={1}>
-                  {deal.cargo_desc ? `${deal.cargo_desc} · ` : ''}
-                  {localizePlace(deal.from_city || '—', getLanguage())} → {localizePlace(deal.to_city || '—', getLanguage())}
-                </Text>
               </View>
             : ((resolvedPartner?.role === 'driver' || resolvedPartner?.role === 'client')
                 ? <Text style={[s.online, { color: '#A8A29E' }]}>{t(resolvedPartner.role)}</Text>
@@ -1093,23 +1096,98 @@ export default function ChatScreen({ navigation, route }) {
       {dealId ? (
         <View style={{ paddingHorizontal: 12, paddingBottom: 6 }}>
           <DealRoomCard deal={deal} role={role} />
-          {deal?.counterparty_phone ? (
+          {/* Кнопка звонка переехала в шапку (chat-header-call-btn) —
+              WhatsApp-упрощение 04.08.2026, отдельная во весь экран убрана. */}
+          {/* Статус перевозки (05.08.2026, п.9 ТЗ): вместо горизонтальной
+              шкалы Принят/В работе/На границе/Завершён — компактный текст
+              «Текущий статус / Следующий шаг» + ОДНА кнопка следующего
+              действия. Кнопки — единственное место действия теперь здесь
+              (не в CargoDetail/TripDetail/Мои рейсы). */}
+          {deal?.status && deal.status !== 'cancelled' ? (
+            <View style={s.statusRow} testID="chat-deal-status-compact">
+              <Text style={s.statusRowLabel}>{t('trip_current_status')}</Text>
+              <Text style={[s.statusRowValue, { color: v1Accent.main }]}>{formatStatus(userFacingDealStatus(deal.status))}</Text>
+            </View>
+          ) : null}
+          {(() => {
+            if (!deal?.status || deal.status === 'cancelled' || deal.status === 'delivered' || deal.status === 'completed') return null;
+            let action = null;
+            // «На границе» временно убрана из пользовательского словаря
+            // (05.08.2026, п.8 ТЗ): backend допускает in_progress → delivered
+            // НАПРЯМУЮ на любом маршруте (_FLOW в marketplace.py — at_border
+            // необязательный промежуточный шаг, не обязательный), поэтому
+            // кнопка «На границе» больше не показывается вовсе — водитель
+            // на международном рейсе тоже видит сразу «Доставлен». Если
+            // deal.status уже реально at_border (проставлен раньше/другим
+            // клиентом), следующий шаг всё равно «Доставлен» — рассинхрона
+            // с реальным статусом нет.
+            if (role === 'driver') {
+              if (deal.status === 'accepted') action = { key: 'in_progress', icon: 'truck', label: t('start_delivery') };
+              else if (deal.status === 'in_progress' || deal.status === 'at_border') action = { key: 'delivered', icon: 'check-circle', label: t('mark_arrived') };
+            } else if (isShipperSide && (deal.status === 'in_progress' || deal.status === 'at_border')) {
+              action = { key: 'delivered', icon: 'check-circle', label: t('confirm_delivery') };
+            }
+            if (!action) return null;
+            return (
+              <TouchableOpacity
+                testID={`deal-action-${action.key === 'delivered' ? 'mark-arrived' : 'start-delivery'}`}
+                style={[s.dealNextBtn, { backgroundColor: v1Accent.main, opacity: statusLoading ? 0.6 : 1 }]}
+                disabled={statusLoading}
+                onPress={() => changeDealStatus(action.key)}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Feather name={action.icon} size={16} color="#0C0A09" />
+                  <Text style={s.dealNextBtnText}>{statusLoading ? '…' : action.label}</Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })()}
+          {deal?.status === 'accepted' ? (
             <TouchableOpacity
-              style={[s.callBtn, { borderColor: v1Accent.main }]}
-              onPress={() => contactPartner(deal.counterparty_phone)}
-              testID="deal-call-btn"
+              testID="deal-cancel-btn"
+              style={[s.dealCancelBtn, { opacity: statusLoading ? 0.6 : 1 }]}
+              disabled={statusLoading}
+              onPress={async () => {
+                const ok = Platform.OS === 'web'
+                  ? (typeof window !== 'undefined' && window.confirm(t('cancel_deal_confirm')))
+                  : await new Promise((res) => Alert.alert(t('cancel_deal_confirm'), '', [
+                      { text: t('cancel'), style: 'cancel', onPress: () => res(false) },
+                      { text: 'OK', onPress: () => res(true) },
+                    ]));
+                if (ok) changeDealStatus('cancelled');
+              }}
+            >
+              <Text style={s.dealCancelBtnText}>⊘ {t('cancel_deal')}</Text>
+            </TouchableOpacity>
+          ) : null}
+          {isShipperSide && dealId && ['accepted', 'in_progress'].includes(deal?.status) ? (
+            <TouchableOpacity
+              testID="deal-track-truck"
+              style={s.dealTrackBtn}
+              onPress={() => navigation.navigate('TrackTruck', {
+                dealId, from: deal?.from_city, to: deal?.to_city,
+              })}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="phone" size={15} color={v1Accent.main} />
-                <Text style={[s.callBtnText, { color: v1Accent.main }]}>{t('call_partner')}</Text>
+                <Feather name="map-pin" size={14} color={v1.text} />
+                <Text style={s.dealTrackBtnText}>{t('track_truck_btn')}</Text>
               </View>
             </TouchableOpacity>
           ) : null}
           {dealEvents.length > 0 ? (
             <View testID="deal-timeline">
-              {dealEvents.slice(-4).map((ev) => (
-                <SystemEventRow key={ev.id || ev.event_type} ev={ev} />
-              ))}
+              {/* «На границе» временно убрана из пользовательского словаря
+                  (05.08.2026, п.8 ТЗ) — событие о пересечении границы не
+                  несёт действия для пользователя (следующая кнопка всё
+                  равно «Доставлен»), поэтому не показываем его отдельной
+                  строкой в ленте событий сделки. deal.status на бэкенде
+                  при этом остаётся настоящим at_border. */}
+              {dealEvents
+                .filter((ev) => ev?.payload?.status !== 'at_border')
+                .slice(-4)
+                .map((ev) => (
+                  <SystemEventRow key={ev.id || ev.event_type} ev={ev} />
+                ))}
             </View>
           ) : null}
           <DealAttachments conversationId={roomId} role={role} compact attachTrigger={attachDocTick} />
@@ -1140,19 +1218,11 @@ export default function ChatScreen({ navigation, route }) {
 
       <FlatList
         ref={flatListRef}
-        data={displayMessages}
+        data={messages}
         keyExtractor={i => i.id}
         renderItem={renderMessage}
         contentContainerStyle={s.msgList}
         keyboardShouldPersistTaps="handled"
-        ListHeaderComponent={
-          <View style={s.chatOpened}>
-            <Text style={s.chatOpenedText}>
-              {t('chatOpened')}
-              {CHAT_LANG_PILL_ENABLED ? ` · ${t('translation')}: ${LANGS[lang]}` : ''}
-            </Text>
-          </View>
-        }
         onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
       />
       {showPhrases && <QuickPhrases onSelect={(m) => { setShowPhrases(false); sendMessage(m); }} role={role} dealStatus={deal?.status} />}
@@ -1189,23 +1259,27 @@ export default function ChatScreen({ navigation, route }) {
           returnKeyType="send"
           testID="chat-input"
         />
-        {CHAT_VOICE_ENABLED && (
+        {/* WhatsApp-style: одна кнопка справа, а не две рядом — микрофон,
+            пока поле пустое, отправка, как только появился текст
+            (04.08.2026, п.5 ТЗ). Во время записи всегда виден стоп. */}
+        {CHAT_VOICE_ENABLED && (!input.trim() || recording) ? (
           <TouchableOpacity
             onPress={toggleVoice}
-            style={[s.iconBtn, recording && { backgroundColor: v1Colors.error, borderColor: v1Colors.error }]}
+            style={[s.sendBtn, { backgroundColor: recording ? v1Colors.error : v1Accent.main }]}
             testID="chat-voice-btn"
           >
-            <Feather name={recording ? 'square' : 'mic'} size={18} color={recording ? '#fff' : v1.text} />
+            <Feather name={recording ? 'square' : 'mic'} size={18} color="#FFFFFF" />
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            onPress={() => sendMessage()}
+            style={[s.sendBtn, { backgroundColor: v1Accent.main }]}
+            testID="chat-send-btn"
+            accessibilityLabel="Send"
+          >
+            <FontAwesome5 name="paper-plane" size={16} color="#FFFFFF" solid />
           </TouchableOpacity>
         )}
-        <TouchableOpacity
-          onPress={() => sendMessage()}
-          style={[s.sendBtn, { backgroundColor: v1Accent.main }]}
-          testID="chat-send-btn"
-          accessibilityLabel="Send"
-        >
-          <FontAwesome5 name="paper-plane" size={16} color="#FFFFFF" solid />
-        </TouchableOpacity>
       </View>
 
       {/* Панель вложений (WeChat-сетка): открывается по «+». Тап по плитке
@@ -1221,6 +1295,12 @@ export default function ChatScreen({ navigation, route }) {
             dealId ? { key: 'doc', icon: 'file-text', label: t('chat_quick_action_send_document'), on: () => setAttachDocTick((n) => n + 1) } : null,
             { key: 'support', icon: 'life-buoy', label: t('chat_quick_action_call_support'), on: () => onCallSupport() },
             { key: 'phrases', icon: 'zap', label: t('quick_phrases'), on: () => setShowPhrases(true) },
+            // Автоперевод переехал сюда из шапки (там остался только телефон).
+            { key: 'translate', icon: 'globe', label: autoTranslate ? t('autotranslate_on') : t('translate'), on: () => {
+              const next = !autoTranslate;
+              setAutoTranslate(next);
+              toast(next ? '🌐 ' + t('autotranslate_on') : t('autotranslate_off'), 'info', 1800);
+            } },
           ].filter(Boolean).map((it) => (
             <TouchableOpacity
               key={it.key}

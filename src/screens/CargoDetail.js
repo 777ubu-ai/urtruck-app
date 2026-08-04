@@ -15,9 +15,9 @@ function DealActionLabel({ icon, text, color, loading }) {
   );
 }
 const dealLblStyle = { fontSize: 13, fontWeight: '700' };
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
-import { formatBids, t as tGlobal } from '../utils/i18n';
+import { formatBids, formatStatus, t as tGlobal } from '../utils/i18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useToast } from '../components/Toast';
 import { PhotoGallery } from '../components/PhotoGallery';
@@ -29,6 +29,8 @@ import { useVerificationGate } from '../components/VerificationGate';
 import { LEVELS, useAuth } from '../utils/AuthContext';
 import { marketAPI } from '../utils/marketAPI';
 import { reviewsAPI } from '../utils/reviews';
+import { pickDealStatus, userFacingDealStatus } from '../utils/dealStatusOrder';
+import { openContactPartner } from '../utils/contactPartner';
 import { normalizeCargo, cargoDisplay, sanitizeForDisplay, formatPrice } from '../utils/normalizers';
 import { localizePlace } from '../utils/places';
 import { formatDateForDisplay } from '../utils/dateInput';
@@ -39,7 +41,6 @@ import GlassCard from '../components/ui/v1/GlassCard';
 import SectionTitle from '../components/ui/v1/SectionTitle';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
 import StickyCTABar from '../components/ui/v1/StickyCTABar';
-import { DealStatusTimeline } from '../components/deal/DealRoom';
 import PrimaryCTA from '../components/ui/actions/PrimaryCTA';
 import SecondaryButton from '../components/ui/actions/SecondaryButton';
 import DestructiveButton from '../components/ui/actions/DestructiveButton';
@@ -98,7 +99,11 @@ export default function CargoDetail({ navigation, route }) {
   bidFlag: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   bidName: { fontSize: 13, fontWeight: '600' },
   bidInfo: { color: '#FBBF24', fontSize: 11 },
-  bidAmt: { color: '#FF8400', fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  // Сумма ставки ВОДИТЕЛЯ на груз клиента — зелёная (роль источника цены),
+  // не оранжевая: та же карточка показывает и цену груза владельца
+  // (priceValueV1, оранжевая), совпадение цвета читалось как одна цена
+  // (05.08.2026, п.16 ТЗ).
+  bidAmt: { color: '#00C766', fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'] },
   confirmBanner: { backgroundColor: '#22C55E20', borderWidth: 1, borderColor: '#22C55E', borderRadius: 12, padding: 14, marginBottom: 12, alignItems: 'center' },
   confirmText: { color: '#22C55E', fontSize: 14, fontWeight: '800' },
   photoWrap: { borderRadius: 16, overflow: 'hidden', borderWidth: 1, marginBottom: 12, position: 'relative' },
@@ -130,10 +135,10 @@ export default function CargoDetail({ navigation, route }) {
   myBidBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, alignItems: 'center' },
   myBidBtnText: { fontSize: 14, fontWeight: '800' },
   dealStatusLabel: { fontSize: 15, fontWeight: '700' },
-  dealActionBtn: { backgroundColor: '#22C55E', borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  dealActionBtn: { backgroundColor: '#22C55E', borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10, minHeight: 44, alignItems: 'center', justifyContent: 'center', maxWidth: '100%', flexShrink: 1 },
   // Ghost-стиль (обводка) для акцентных действий сделки — вместо сплошной заливки.
   dealActionGhost: { backgroundColor: 'transparent', borderWidth: 1.6 },
-  dealActionText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  dealActionText: { color: '#fff', fontSize: 13, fontWeight: '700', flexShrink: 1 },
   chatBtn: { backgroundColor: '#22C55E', borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
   chatBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   // Дизайн 2026 v3 (03.08): «Удалить груз» — редкое действие, не должно
@@ -176,9 +181,12 @@ export default function CargoDetail({ navigation, route }) {
   const [chatRoomId, setChatRoomId] = useState(null);
   const [dealId, setDealId] = useState(routeDealId || null);
   const [dealStatus, setDealStatus] = useState(null);
+  // Телефон контрагента — только после сделки (backend get_deal() гейтит
+  // counterparty_phone участием в сделке, т.е. только post-accept), для
+  // secondary-кнопки «Позвонить» (05.08.2026, п.6/17 ТЗ).
+  const [counterpartyPhone, setCounterpartyPhone] = useState(null);
   const [shipperId, setShipperId] = useState(null);
   const [driverId, setDriverId] = useState(null);
-  const [statusLoading, setStatusLoading] = useState(false);
   const [reviewRating, setReviewRating] = useState(0);
   const [reviewText, setReviewText] = useState('');
   const [reviewSent, setReviewSent] = useState(false);
@@ -200,7 +208,12 @@ export default function CargoDetail({ navigation, route }) {
     const fromParam = cargo && cargo.isMine;
     const fromServer = myUserId && fullCargo.owner_id === myUserId;
     // owner_id нужен для прямого чата с грузовладельцем (кнопка внизу).
-    return { ...normalized, owner_id: fullCargo.owner_id, isMine: fromParam || fromServer || normalized.isMine };
+    // from_country/to_country — для гейта статуса сделки (см. isDomestic/
+    // hasKnownRoute ниже): без них дом. и межд. маршруты неразличимы.
+    return {
+      ...normalized, owner_id: fullCargo.owner_id, isMine: fromParam || fromServer || normalized.isMine,
+      from_country: fullCargo.from_country, to_country: fullCargo.to_country,
+    };
   })();
   const cid = cargoId || c.id;
   // route.params.role is the authoritative side hint when CargoDetail is opened
@@ -213,6 +226,12 @@ export default function CargoDetail({ navigation, route }) {
   const isShipper = role === 'client' || role === 'shipper'
     || !!c.isMine
     || (shipperId && shipperId === myUserId);
+  // Гейт статуса сделки (приказ владельца 03.08, зеркально MyTripsScreen):
+  // домашний рейс не идёт через границу, международный не доставляется
+  // минуя её, неизвестный маршрут не двигается дальше вообще — сервер это
+  // уже блокирует 409-м, здесь просто не предлагаем действие, которое
+  // всё равно будет отклонено.
+  const hasKnownRoute = Boolean(c.from_country && c.to_country);
   if (!cid && !c.from) return null;
 
   const loadBids = () => {
@@ -221,7 +240,7 @@ export default function CargoDetail({ navigation, route }) {
       .then(d => {
         const mapped = (d.bids || []).map(b => ({
           id: b.id, bidderId: b.bidder_id,
-          name: b.bidder_name || b.bidder_phone || t('anonymous'),
+          name: b.bidder_name || b.bidder_phone || t('driver'),
           // Реальные данные оферента с бэка (list_bids обогащает) —
           // клиент видит рейтинг/верификацию, а не принимает вслепую.
           co: 'KZ',
@@ -245,31 +264,21 @@ export default function CargoDetail({ navigation, route }) {
         // Не полагаемся на длину списка — dirty-фильтр QA-ставок в открытом
         // режиме иначе выглядел бы как конфиденциальность.
         setBidsConfidential(!!d.confidential);
+        // bid.status ЗАСТЫВАЕТ на 'accepted' навсегда с момента accept_bid —
+        // он не двигается вместе с in_progress/at_border/delivered. Раньше
+        // здесь стоял setDealStatus((prev) => prev || 'accepted') «пока
+        // сделка не загрузилась» — но если фактический fetch сделки (см.
+        // refreshDeal → getDeal) опаздывал или падал, экран застывал на
+        // «Принят»/«Начать перевозку», хотя список уже показывал in_progress/
+        // at_border. Единственный источник dealStatus — ответ getDeal/
+        // myDashboard (см. applyDeal). bid.status здесь используется только
+        // для определения ЛИЧНОСТИ водителя (acceptedDriverId), не статуса.
         const accepted = mapped.find(b => b.status === 'accepted');
         if (accepted) {
           setAcceptedDriverId(accepted.bidderId);
-          if (!dealStatus) setDealStatus('accepted');
         }
       })
       .catch(() => {});
-  };
-
-  const openChatForBid = async (bid) => {
-    try {
-      const r = await marketAPI.openBidChat(bid.id);
-      if (r.ok) {
-        const roomId = r.chat_room_id || r.chatRoomId;
-        if (roomId) {
-          navigation.navigate('Chat', { roomId, role });
-        } else {
-          toast(t('chat_open_failed'), 'error');
-        }
-      } else {
-        toast(r.detail || t('chat_open_failed'), 'error');
-      }
-    } catch {
-      toast(t('no_connection'), 'error');
-    }
   };
 
   const sendCounter = (bid) => {
@@ -286,6 +295,9 @@ export default function CargoDetail({ navigation, route }) {
         if (r.chat_room_id) setChatRoomId(r.chat_room_id);
         if (r.deal_id) { setDealId(r.deal_id); setDealStatus('accepted'); }
         loadBids();
+        // WhatsApp-упрощение (04.08.2026, п.9 ТЗ): согласовали цену — сразу
+        // в чат сделки, а не «ищите сами кнопку внизу карточки».
+        if (r.chat_room_id) navigation.navigate('Chat', { roomId: r.chat_room_id, dealId: r.deal_id, role });
       } else {
         toast(r.detail || t('accept_failed'), 'error');
       }
@@ -308,14 +320,25 @@ export default function CargoDetail({ navigation, route }) {
     }
   };
 
-  const lastLocalChange = React.useRef(0);
-  const applyDeal = (d) => {
+  // Монотонный счётчик запросов сделки — защита от гонки: если более
+  // старый (медленный) fetch отвечает ПОСЛЕ более нового, его результат
+  // отбрасывается (приказ владельца 04.08 п.3). Каждый refreshDeal() берёт
+  // новый номер; applyDeal() применяет ответ только если seq всё ещё
+  // актуален на момент resolve.
+  const dealFetchSeq = React.useRef(0);
+  const applyDeal = (d, seq) => {
     if (!d || !d.id) return;
+    if (seq != null && seq !== dealFetchSeq.current) return; // ответ устарел
     setDealId(d.id);
-    if (Date.now() - lastLocalChange.current > 30000) {
-      setDealStatus(d.status || 'accepted');
-    }
+    // deal.status — ЕДИНСТВЕННЫЙ источник статуса после создания сделки
+    // (приказ владельца 04.08 п.1). seq-guard выше отсекает большинство
+    // гонок, но добавляем вторую независимую страховку через общий
+    // pickDealStatus (utils/dealStatusOrder.js, 05.08 п.6): статус не
+    // откатывается назад, а completed/delivered — не «отменяются задним
+    // числом» устаревшим cancelled.
+    setDealStatus((prev) => pickDealStatus(prev, d.status || 'accepted'));
     if (d.chat_room_id) setChatRoomId(d.chat_room_id);
+    if (d.counterparty_phone) setCounterpartyPhone(d.counterparty_phone);
     if (d.shipper_id) setShipperId(d.shipper_id);
     if (d.driver_id) {
       setDriverId(d.driver_id);
@@ -331,13 +354,18 @@ export default function CargoDetail({ navigation, route }) {
     if (!cid) return;
     marketAPI.getCargo(cid).then(d => { if (d && d.id) setFullCargo(d); }).catch(() => {});
     loadBids();
-    const dealIdToFetch = routeDealId || dealId;
+    const seq = ++dealFetchSeq.current;
+    // dealId (state) авторитетнее routeDealId — тот навсегда фиксирован
+    // параметрами навигации, а dealId уже содержит реальный id, если
+    // сделка создана прямо в этой сессии (owner принял ставку без
+    // изначального dealId в route.params).
+    const dealIdToFetch = dealId || routeDealId;
     if (dealIdToFetch) {
-      marketAPI.getDeal(dealIdToFetch).then(d => { if (d && d.ok !== false) applyDeal(d); }).catch(() => {});
+      marketAPI.getDeal(dealIdToFetch).then(d => { if (d && d.ok !== false) applyDeal(d, seq); }).catch(() => {});
     } else {
       marketAPI.myDashboard().then(d => {
         const found = (d?.my_deals || []).find(x => x.cargo_id === cid);
-        if (found) applyDeal(found);
+        if (found) applyDeal(found, seq);
       }).catch(() => {});
     }
   }, [cid, routeDealId, dealId]);
@@ -365,24 +393,9 @@ export default function CargoDetail({ navigation, route }) {
     }
   };
 
-  const changeDealStatus = async (newStatus) => {
-    if (!dealId || statusLoading) return;
-    setStatusLoading(true);
-    try {
-      const r = await marketAPI.updateDealStatus(dealId, newStatus);
-      if (r.ok) {
-        lastLocalChange.current = Date.now();
-        setDealStatus(newStatus);
-        const msg = newStatus === 'cancelled' ? t('deal_cancelled_toast') : t('deal_updated_toast');
-        toast(msg, 'success');
-      } else {
-        toast(r.detail || t('update_failed'), 'error');
-      }
-    } catch {
-      toast(t('no_connection'), 'error');
-    }
-    setStatusLoading(false);
-  };
+  // changeDealStatus удалён (05.08.2026): кнопки статуса переехали в
+  // ChatScreen (единственное место действия на deal.status, см. п.9/13 ТЗ).
+  // Эта страница только показывает текущий статус текстом (см. ниже).
 
   const handleBid = () => {
     // Ставка отправлена через BidModal → перезагружаем список с сервера
@@ -406,20 +419,6 @@ export default function CargoDetail({ navigation, route }) {
       default:          return t('my_bid_status_pending')   || 'Ожидает ответа клиента';
     }
   }, [myPendingBid, t]);
-  const openMyBidChat = React.useCallback(async () => {
-    if (!myPendingBid) return;
-    try {
-      const r = await marketAPI.openBidChat(myPendingBid.id);
-      if (r?.ok && r.chat_room_id) {
-        navigation.navigate('Chat', {
-          roomId: r.chat_room_id,
-          partner: r.partner_id ? { id: r.partner_id, name: r.partner_name, role: r.partner_role } : undefined,
-        });
-      } else {
-        toast(r?.detail || t('no_connection'), 'error');
-      }
-    } catch { toast(t('no_connection'), 'error'); }
-  }, [myPendingBid, navigation, toast, t]);
   const safePhotos = (c.photos || []).filter(p => typeof p === 'string' && !p.startsWith('data:') && p.length < 1000);
   const dash = t('not_specified');
 
@@ -433,6 +432,7 @@ export default function CargoDetail({ navigation, route }) {
   // акцент роль-семантический: client → жёлтый #FF8400, driver → неон #00E676.
   // Раньше был хардкод #22C55E (зелёный) на всех поверхностях, в т.ч. клиентских.
   const dealAccent = v1AccentFor(isDriverSide ? 'driver' : 'client');
+  const insets = useSafeAreaInsets();
 
   return (
     <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
@@ -442,7 +442,7 @@ export default function CargoDetail({ navigation, route }) {
         accent={v1Accent.main}
         rightTestID="cargo-share-btn"
       />
-      <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 0, paddingBottom: 60 }}>
+      <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 0, paddingBottom: 60 + insets.bottom }}>
         {/* Stage 17: dropped the leading 📦 — Stage 16 quiet visual
             language already removed the bright route emoji from
             feed cards; the detail title should match. */}
@@ -490,33 +490,51 @@ export default function CargoDetail({ navigation, route }) {
         {/* Дизайн v6 (04.08): компакт-строка цены — label слева, сумма справа
             в одну линию. Без accent-рамки (была огромная оранжевая рамка). */}
         <GlassCard>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 }}>
               <Feather name="dollar-sign" size={12} color={theme.textMuted} />
               <Text testID="cargo-price-label" style={{ color: theme.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' }}>{acceptedBid ? t('deal_price') : t('price')}</Text>
             </View>
-            <Text testID="cargo-price-value" style={{ color: '#FF8400', fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'] }} numberOfLines={1}>{priceDisplay}</Text>
+            <Text testID="cargo-price-value" style={{ color: '#FF8400', fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'], flexShrink: 1, minWidth: 0, textAlign: 'right' }} numberOfLines={1} ellipsizeMode="tail">{priceDisplay}</Text>
           </View>
         </GlassCard>
 
         {/* Карточка грузоотправителя — водитель видит, кому ставит ставку
             (имя, верификация, рейтинг), а не ставит вслепую. */}
-        {!c.isMine && fullCargo?.owner_id ? (
-          <GlassCard>
-            <SectionTitle featherIcon="user" label={t('shipper_label')} />
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
-              <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }} numberOfLines={1}>
-                {fullCargo.owner_name || t('chat_partner_fallback')}
-              </Text>
-              <Text style={{ fontSize: 12, color: theme.textMuted }}>
-                {fullCargo.owner_verified ? '✅ ' + t('verified_short') + ' · ' : ''}
-                {fullCargo.owner_reviews_count > 0
-                  ? `⭐ ${Number(fullCargo.owner_rating).toFixed(1)} (${fullCargo.owner_reviews_count})`
-                  : t('no_reviews_yet')}
-              </Text>
-            </View>
-          </GlassCard>
-        ) : null}
+        {!c.isMine && fullCargo?.owner_id ? (() => {
+          // Приказ владельца 03.08: не выдавать нейтральную роль за
+          // подтверждённую личность. owner_name с бэка иногда — не имя, а
+          // техническая заглушка (хвост телефона «+2244» или generic-строка),
+          // когда профиль не заполнен. В этом случае показываем нейтральное
+          // «Грузоотправитель», а не псевдо-имя.
+          const rawName = fullCargo.owner_name || '';
+          const hasRealName = rawName && !rawName.startsWith('+') && rawName !== 'Пользователь UrTruck';
+          return (
+            <GlassCard>
+              <SectionTitle featherIcon="user" label={t('shipper_label')} />
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }} numberOfLines={1}>
+                  {hasRealName ? rawName : t('shipper_label')}
+                  {!hasRealName && fullCargo.owner_verified ? ` · ${t('verified_short')}` : ''}
+                </Text>
+                <Text style={{ fontSize: 12, color: theme.textMuted }}>
+                  {hasRealName ? (
+                    <>
+                      {fullCargo.owner_verified ? '✅ ' + t('verified_short') + ' · ' : ''}
+                      {fullCargo.owner_reviews_count > 0
+                        ? `⭐ ${Number(fullCargo.owner_rating).toFixed(1)} (${fullCargo.owner_reviews_count})`
+                        : t('no_reviews_yet')}
+                    </>
+                  ) : (
+                    fullCargo.owner_reviews_count > 0
+                      ? `${t('rating_label')} ${Number(fullCargo.owner_rating).toFixed(1)}`
+                      : t('profile_incomplete')
+                  )}
+                </Text>
+              </View>
+            </GlassCard>
+          );
+        })() : null}
 
         {/* Часть 1: показываем ЧИСЛО предложений (видно всем), не длину
             урезанного списка. */}
@@ -605,84 +623,87 @@ export default function CargoDetail({ navigation, route }) {
                     одинаковых кнопок». Savings-badge показывает выгоду цены.
                     После accept — success-state (semantic green #22C55E,
                     отличный от driver-акцента). */}
-                {/* Дизайн 2026 v2 (приказ владельца 03.08 «две кнопки, вот и всё»):
-                    только [Принять $X] [Отклонить]. Чат и «Своя цена» —
-                    маленькие ссылки под кнопками, не полноразмерные кнопки. */}
+                {/* Дизайн 2026 v3 (приказ владельца 03.08, скриншоты): до
+                    создания сделки — никакого чата. Иерархия — одна большая
+                    «Принять», вторичная «Предложить свою цену», текстовый
+                    «Отклонить». */}
                 {c.isMine && b.status === 'pending' && !hasAccepted && (
                   <View style={{ marginTop: 10, gap: 6, alignSelf: 'stretch' }}>
                     <PriceSavingsBadge listingPrice={c.price} bidPrice={b.amount} currency={c.currency || 'USD'} />
-                    <View style={{ flexDirection: 'row', gap: 8 }}>
-                      <PrimaryCTA
-                        testID="bid-accept"
-                        role="client"
-                        icon="✓"
-                        label={`${t('accept_bid_btn')} ${formatPrice(b.amount, c.currency || 'USD', t)}`}
-                        loading={accepting === b.id}
-                        disabled={!!accepting || !!rejecting}
-                        success={dealStatus === 'accepted' && dealId != null}
-                        style={{ flex: 1 }}
-                        onPress={async () => {
-                          const sum = formatPrice(b.amount, c.currency);
-                          const msg = t('accept_bid_confirm').replace('{sum}', sum);
-                          const ok = Platform.OS === 'web'
-                            ? (typeof window !== 'undefined' && window.confirm(msg))
-                            : await new Promise((res) => Alert.alert(
-                                t('accept_bid_confirm_title'), msg,
-                                [
-                                  { text: t('cancel'), style: 'cancel', onPress: () => res(false) },
-                                  { text: t('accept_bid_btn'), onPress: () => res(true) },
-                                ],
-                              ));
-                          if (!ok) return;
-                          setAccepting(b.id);
-                          try {
-                            const r = await marketAPI.acceptBid(b.id);
-                            if (r.ok) {
-                              toast('✓ ' + t('driver_chosen'), 'success');
-                              if (r.chat_room_id) setChatRoomId(r.chat_room_id);
-                              if (r.deal_id) { setDealId(r.deal_id); setDealStatus('accepted'); }
-                              loadBids();
-                            } else {
-                              toast(r.detail || t('accept_failed'), 'error');
-                            }
-                          } catch {
-                            toast(t('no_connection'), 'error');
+                    <PrimaryCTA
+                      testID="bid-accept"
+                      role="client"
+                      icon="✓"
+                      label={`${t('accept_bid_btn')} ${formatPrice(b.amount, c.currency || 'USD', t)}`}
+                      numberOfLines={2}
+                      loading={accepting === b.id}
+                      disabled={!!accepting || !!rejecting}
+                      success={dealStatus === 'accepted' && dealId != null}
+                      onPress={async () => {
+                        const sum = formatPrice(b.amount, c.currency);
+                        const msg = t('accept_bid_confirm').replace('{sum}', sum);
+                        const ok = Platform.OS === 'web'
+                          ? (typeof window !== 'undefined' && window.confirm(msg))
+                          : await new Promise((res) => Alert.alert(
+                              t('accept_bid_confirm_title'), msg,
+                              [
+                                { text: t('cancel'), style: 'cancel', onPress: () => res(false) },
+                                { text: t('accept_bid_btn'), onPress: () => res(true) },
+                              ],
+                            ));
+                        if (!ok) return;
+                        setAccepting(b.id);
+                        try {
+                          const r = await marketAPI.acceptBid(b.id);
+                          if (r.ok) {
+                            toast('✓ ' + t('driver_chosen'), 'success');
+                            if (r.chat_room_id) setChatRoomId(r.chat_room_id);
+                            if (r.deal_id) { setDealId(r.deal_id); setDealStatus('accepted'); }
+                            loadBids();
+                            // WhatsApp-упрощение (04.08.2026, п.9 ТЗ): сразу в чат сделки.
+                            if (r.chat_room_id) navigation.navigate('Chat', { roomId: r.chat_room_id, dealId: r.deal_id, role });
+                          } else {
+                            toast(r.detail || t('accept_failed'), 'error');
                           }
-                          setAccepting(null);
-                        }}
-                      />
-                      <DestructiveButton
-                        testID="bid-reject"
-                        icon="✕"
-                        label={t('reject_btn')}
-                        loading={rejecting === b.id}
-                        disabled={!!accepting || !!rejecting}
-                        style={{ flex: 1 }}
-                        onPress={async () => {
-                          setRejecting(b.id);
-                          try {
-                            const r = await marketAPI.rejectBid(b.id);
-                            if (r.ok) {
-                              toast('❌ ' + t('bid_rejected_toast'), 'success');
-                              loadBids();
-                            } else {
-                              toast(r.detail || t('reject_failed'), 'error');
-                            }
-                          } catch {
-                            toast(t('no_connection'), 'error');
+                        } catch {
+                          toast(t('no_connection'), 'error');
+                        }
+                        setAccepting(null);
+                      }}
+                    />
+                    <SecondaryButton
+                      testID="bid-counter"
+                      role="client"
+                      icon="🔁"
+                      label={t('counter_offer')}
+                      disabled={!!accepting || !!rejecting}
+                      onPress={() => sendCounter(b)}
+                    />
+                    <TouchableOpacity
+                      testID="bid-reject"
+                      onPress={async () => {
+                        setRejecting(b.id);
+                        try {
+                          const r = await marketAPI.rejectBid(b.id);
+                          if (r.ok) {
+                            toast('❌ ' + t('bid_rejected_toast'), 'success');
+                            loadBids();
+                          } else {
+                            toast(r.detail || t('reject_failed'), 'error');
                           }
-                          setRejecting(null);
-                        }}
-                      />
-                    </View>
-                    <View style={{ flexDirection: 'row', gap: 18, justifyContent: 'center', marginTop: 4 }}>
-                      <TouchableOpacity onPress={() => openChatForBid(b)} testID="bid-chat" hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                        <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '600' }}>💬 {t('open_chat') || 'Чат'}</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={() => sendCounter(b)} testID="bid-counter" hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                        <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '600' }}>🔁 {t('counter_offer')}</Text>
-                      </TouchableOpacity>
-                    </View>
+                        } catch {
+                          toast(t('no_connection'), 'error');
+                        }
+                        setRejecting(null);
+                      }}
+                      disabled={!!accepting || !!rejecting}
+                      style={{ alignSelf: 'center', maxWidth: '100%', paddingVertical: 6, paddingHorizontal: 10 }}
+                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                    >
+                      <Text style={{ color: '#EF4444', fontSize: 13, fontWeight: '700', opacity: (accepting || rejecting) ? 0.55 : 1, flexShrink: 1 }} numberOfLines={1} ellipsizeMode="tail">
+                        {rejecting === b.id ? '…' : t('reject_btn')}
+                      </Text>
+                    </TouchableOpacity>
                   </View>
                 )}
 
@@ -693,15 +714,14 @@ export default function CargoDetail({ navigation, route }) {
                     встречную». */}
                 {c.isMine && isCountered && (
                   <View style={{ marginTop: 10, gap: 6, alignSelf: 'stretch' }}>
-                    <View style={{ flexDirection: 'row', gap: 8 }}>
                       <PrimaryCTA
                         testID="bid-accept"
                         role="client"
                         icon="✓"
                         label={`${t('accept_bid_btn')} ${formatPrice(b.amount, c.currency || 'USD', t)}`}
+                        numberOfLines={2}
                         loading={accepting === b.id}
                         disabled={!!accepting || !!rejecting}
-                        style={{ flex: 1 }}
                         onPress={async () => {
                           // Confirm сначала — под капотом два вызова, дороже отменить нельзя.
                           const sum = formatPrice(b.amount, c.currency);
@@ -728,6 +748,8 @@ export default function CargoDetail({ navigation, route }) {
                               if (r.chat_room_id) setChatRoomId(r.chat_room_id);
                               if (r.deal_id) { setDealId(r.deal_id); setDealStatus('accepted'); }
                               loadBids();
+                              // WhatsApp-упрощение (04.08.2026, п.9 ТЗ): сразу в чат сделки.
+                              if (r.chat_room_id) navigation.navigate('Chat', { roomId: r.chat_room_id, dealId: r.deal_id, role });
                             } else {
                               toast(r.detail || t('accept_failed'), 'error');
                             }
@@ -735,13 +757,8 @@ export default function CargoDetail({ navigation, route }) {
                           setAccepting(null);
                         }}
                       />
-                      <DestructiveButton
+                      <TouchableOpacity
                         testID="bid-reject"
-                        icon="✕"
-                        label={t('reject_btn')}
-                        loading={rejecting === b.id}
-                        disabled={!!rejecting || !!accepting}
-                        style={{ flex: 1 }}
                         onPress={async () => {
                           setRejecting(b.id);
                           try {
@@ -751,18 +768,19 @@ export default function CargoDetail({ navigation, route }) {
                           } catch { toast(t('no_connection'), 'error'); }
                           setRejecting(null);
                         }}
-                      />
-                    </View>
-                    <View style={{ flexDirection: 'row', gap: 18, justifyContent: 'center', marginTop: 4 }}>
-                      <TouchableOpacity onPress={() => openChatForBid(b)} testID="bid-chat" hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                        <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '600' }}>💬 {t('open_chat') || 'Чат'}</Text>
+                        disabled={!!rejecting || !!accepting}
+                        style={{ alignSelf: 'center', maxWidth: '100%', paddingVertical: 6, paddingHorizontal: 10 }}
+                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                      >
+                        <Text style={{ color: '#EF4444', fontSize: 13, fontWeight: '700', opacity: (accepting || rejecting) ? 0.55 : 1, flexShrink: 1 }} numberOfLines={1} ellipsizeMode="tail">
+                          {rejecting === b.id ? '…' : t('reject_btn')}
+                        </Text>
                       </TouchableOpacity>
-                    </View>
                   </View>
                 )}
 
                 {/* Водитель + countered: primary = «Принять контр $X» (driver
-                    green), Chat + Destructive Decline. */}
+                    green), Destructive Decline. Чат — только после сделки. */}
                 {b.isMine && !c.isMine && isCountered && (
                   <View style={{ marginTop: 10, gap: 8, alignSelf: 'stretch' }}>
                     <PrimaryCTA
@@ -770,14 +788,8 @@ export default function CargoDetail({ navigation, route }) {
                       role="driver"
                       icon="✓"
                       label={`${t('accept_counter')} ${formatPrice(b.counterAmount, c.currency || 'USD', t)}`}
+                      numberOfLines={2}
                       onPress={() => acceptCounter(b)}
-                    />
-                    <SecondaryButton
-                      testID="bid-chat"
-                      role="driver"
-                      icon="💬"
-                      label={t('open_bid_chat')}
-                      onPress={() => openChatForBid(b)}
                     />
                     <DestructiveButton
                       testID="bid-decline-counter"
@@ -792,28 +804,18 @@ export default function CargoDetail({ navigation, route }) {
                     клиента), только Edit + Chat + Destructive Cancel. */}
                 {b.isMine && !c.isMine && b.status === 'pending' && !hasAccepted && (
                   <View style={{ marginTop: 10, gap: 8, alignSelf: 'stretch' }}>
-                    <View style={{ flexDirection: 'row', gap: 8 }}>
-                      <SecondaryButton
-                        testID="bid-edit"
-                        role="driver"
-                        icon="✏️"
-                        label={t('edit_bid')}
-                        onPress={() => {
-                          setEditingBid(b);
-                          setBidModalMode('edit');
-                          setBidModal(true);
-                        }}
-                        disabled={!!cancelling}
-                      />
-                      <SecondaryButton
-                        testID="bid-chat"
-                        role="driver"
-                        icon="💬"
-                        label={t('open_bid_chat')}
-                        onPress={() => openChatForBid(b)}
-                        disabled={!!cancelling}
-                      />
-                    </View>
+                    <SecondaryButton
+                      testID="bid-edit"
+                      role="driver"
+                      icon="✏️"
+                      label={t('edit_bid')}
+                      onPress={() => {
+                        setEditingBid(b);
+                        setBidModalMode('edit');
+                        setBidModal(true);
+                      }}
+                      disabled={!!cancelling}
+                    />
                     <DestructiveButton
                       testID="bid-cancel"
                       icon="⊘"
@@ -859,10 +861,15 @@ export default function CargoDetail({ navigation, route }) {
           и кнопки [Изменить] [Чат]. Симметрично TripDetail. */}
       {myPendingBid && isDriverViewing && !dealStatus ? (
         <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
-          <View style={[s.myBidCard, { borderColor: v1Accent.main, backgroundColor: theme.card }]} testID="cargo-my-active-bid">
+          {/* Карточка своей ставки видна только водителю (isDriverViewing) —
+              значит и цена, и рамка красятся его цветом (dealAccent), а не
+              жёстко клиентским v1Accent, как было раньше: две разные по
+              смыслу цены (груз владельца — оранжевым, ставка водителя —
+              тоже оранжевым) читались как одна (05.08.2026, п.16 ТЗ). */}
+          <View style={[s.myBidCard, { borderColor: dealAccent.main, backgroundColor: theme.card }]} testID="cargo-my-active-bid">
             <View style={s.myBidHeader}>
               <Text style={[s.myBidLabel, { color: theme.textMuted }]}>{t('my_bid_label') || 'Моя ставка'}</Text>
-              <Text style={[s.myBidAmount, { color: v1Accent.main }]}>{formatPrice(myPendingBid.amount, c.currency)}</Text>
+              <Text style={[s.myBidAmount, { color: dealAccent.main }]}>{formatPrice(myPendingBid.amount, c.currency)}</Text>
             </View>
             <Text style={[s.myBidStatus, { color: theme.text }]}>{myBidStatusLabel}</Text>
             {myPendingBid.status === 'countered' && myPendingBid.counterAmount ? (
@@ -880,14 +887,8 @@ export default function CargoDetail({ navigation, route }) {
                     role="driver"
                     icon="✓"
                     label={`${t('accept_counter')} ${formatPrice(myPendingBid.counterAmount, c.currency, t)}`}
+                    numberOfLines={2}
                     onPress={() => acceptCounter(myPendingBid)}
-                  />
-                  <SecondaryButton
-                    testID="cargo-my-bid-chat"
-                    role="driver"
-                    icon="💬"
-                    label={t('open_chat') || 'Чат'}
-                    onPress={openMyBidChat}
                   />
                   <DestructiveButton
                     testID="cargo-counter-decline"
@@ -898,33 +899,26 @@ export default function CargoDetail({ navigation, route }) {
                 </View>
               </>
             ) : (
-              <View style={{ marginTop: 8, gap: 8 }}>
+              <View style={{ marginTop: 8, gap: 4 }}>
                 {/* Водитель + своя ставка pending: primary НЕТ (ждём хода
-                    клиента). Edit + Chat в паре, Cancel как destructive. */}
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <SecondaryButton
-                    testID="cargo-my-bid-edit"
-                    role="driver"
-                    icon="✏️"
-                    label={t('edit_bid') || 'Изменить'}
-                    onPress={() => { setEditingBid(myPendingBid); setBidModalMode('edit'); setBidModal(true); }}
-                    disabled={cancelling === myPendingBid.id}
-                  />
-                  <SecondaryButton
-                    testID="cargo-my-bid-chat"
-                    role="driver"
-                    icon="💬"
-                    label={t('open_chat') || 'Чат'}
-                    onPress={openMyBidChat}
-                    disabled={cancelling === myPendingBid.id}
-                  />
-                </View>
-                <DestructiveButton
-                  testID="cargo-my-bid-cancel"
-                  icon="⊘"
-                  label={t('cancel_bid') || 'Отменить'}
-                  loading={cancelling === myPendingBid.id}
+                    клиента). Чат — только после сделки. Секция 15 ТЗ
+                    (05.08.2026): убраны декоративные emoji-иконки
+                    (карандаш/запрет), «Отозвать ставку» — мелкая красная
+                    текстовая ссылка, а не большая деструктивная кнопка —
+                    отзыв ставки не должен визуально спорить с реальными
+                    действиями (Изменить/принять контрпредложение). */}
+                <SecondaryButton
+                  testID="cargo-my-bid-edit"
+                  role="driver"
+                  label={t('edit_bid') || 'Изменить'}
+                  onPress={() => { setEditingBid(myPendingBid); setBidModalMode('edit'); setBidModal(true); }}
                   disabled={cancelling === myPendingBid.id}
+                />
+                <TouchableOpacity
+                  testID="cargo-my-bid-cancel"
+                  disabled={cancelling === myPendingBid.id}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  style={{ alignSelf: 'center', marginTop: 6, opacity: cancelling === myPendingBid.id ? 0.5 : 1 }}
                   onPress={async () => {
                     const ok = Platform.OS === 'web'
                       ? (typeof window !== 'undefined' && window.confirm(t('cancel_bid_confirm')))
@@ -939,12 +933,16 @@ export default function CargoDetail({ navigation, route }) {
                     setCancelling(myPendingBid.id);
                     try {
                       const r = await marketAPI.cancelBid(myPendingBid.id);
-                      if (r.ok) { toast('⊘ ' + t('bid_cancelled_toast'), 'success'); loadBids(); }
+                      if (r.ok) { toast(t('bid_cancelled_toast'), 'success'); loadBids(); }
                       else toast(r.detail || t('cancel_failed'), 'error');
                     } catch { toast(t('no_connection'), 'error'); }
                     setCancelling(null);
                   }}
-                />
+                >
+                  <Text style={{ color: '#EF4444', fontSize: 13, fontWeight: '600' }}>
+                    {cancelling === myPendingBid.id ? '…' : t('withdraw_bid_link')}
+                  </Text>
+                </TouchableOpacity>
               </View>
             )}
           </View>
@@ -953,97 +951,57 @@ export default function CargoDetail({ navigation, route }) {
       {dealStatus && (
         <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
           <View style={[s.dealBlock, { borderColor: theme.border, backgroundColor: theme.card }]}>
-            {/* Визуальный таймлайн заказа: Принят → В пути → На границе →
-                Доставлен (как у Uber Freight/inDrive). */}
-            <DealStatusTimeline status={dealStatus} role={role} />
-
-            {/* Next-step hint */}
+            {/* Компактный статус вместо горизонтальной шкалы Принят/В работе/
+                На границе/Завершён (05.08.2026, п.9 ТЗ). Кнопки действия
+                («Начать»/«На границе»/«Доставлен»/«Подтвердить получение»/
+                «Отменить») переехали в разговор (ChatScreen) — единственное
+                место действия на статус сделки, без дублей между экранами. */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', alignSelf: 'stretch' }}>
+              <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '600' }}>{t('trip_current_status')}</Text>
+              <Text style={{ color: theme.text, fontSize: 13, fontWeight: '800' }}>{formatStatus(userFacingDealStatus(dealStatus))}</Text>
+            </View>
             {(dealStatus === 'accepted' || dealStatus === 'in_progress' || dealStatus === 'at_border') && (
-              <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 8, textAlign: 'center' }}>
-                {t('order_next_step')}: {
-                  isDriverSide
-                    ? (dealStatus === 'accepted' ? t('driver_next_step_accepted')
-                       : dealStatus === 'in_progress' ? t('driver_next_step_in_progress')
-                       : t('driver_next_step_at_border'))
-                    : (dealStatus === 'accepted' ? t('shipper_next_step_accepted')
-                       : t('shipper_next_step_in_progress'))
-                }
+              <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 6 }}>
+                {dealStatus === 'in_progress' && !hasKnownRoute ? t('clarify_route') : (
+                  <>
+                    {t('order_next_step')}: {
+                      isDriverSide
+                        ? (dealStatus === 'accepted' ? t('driver_next_step_accepted')
+                           : dealStatus === 'in_progress' ? t('driver_next_step_in_progress')
+                           : t('driver_next_step_at_border'))
+                        : (dealStatus === 'accepted' ? t('shipper_next_step_accepted')
+                           : t('shipper_next_step_in_progress'))
+                    }
+                  </>
+                )}
               </Text>
             )}
-
-            {/* Дизайн 2026 v5: один Primary CTA + маленькие text-ссылки
-                (Чат, Отмена). Никаких огромных заливных зелёных кнопок. */}
-            <View style={{ marginTop: 10, gap: 6 }}>
-              {isDriverSide && dealStatus === 'accepted' && (
+            {chatRoomId && (
+              <View style={{ marginTop: 10, gap: 8 }}>
+                {/* «Написать сообщение» — главное действие по сделке
+                    (05.08.2026, п.5/17 ТЗ): большая ролевая кнопка вместо
+                    мелкой ссылки «Чат по заказу». Звонок — secondary,
+                    видна только когда backend уже отдал counterparty_phone
+                    (гейт по участию в сделке = только post-accept). */}
                 <PrimaryCTA
-                  role={role || 'driver'}
-                  icon="🚛"
-                  label={t('start_delivery')}
-                  loading={statusLoading}
-                  disabled={statusLoading}
-                  onPress={() => changeDealStatus('in_progress')}
+                  testID="deal-order-chat"
+                  role={isDriverSide ? 'driver' : 'client'}
+                  icon="💬"
+                  label={t('write_message')}
+                  onPress={() => navigation.navigate('Chat', { roomId: chatRoomId, role })}
+                  style={{ height: 54 }}
                 />
-              )}
-              {isDriverSide && dealStatus === 'in_progress' && (
-                <PrimaryCTA
-                  role={role || 'driver'}
-                  icon="🛂"
-                  label={t('mark_at_border')}
-                  loading={statusLoading}
-                  disabled={statusLoading}
-                  onPress={() => changeDealStatus('at_border')}
-                />
-              )}
-              {isDriverSide && dealStatus === 'at_border' && (
-                <PrimaryCTA
-                  role={role || 'driver'}
-                  icon="✅"
-                  label={t('mark_arrived')}
-                  loading={statusLoading}
-                  disabled={statusLoading}
-                  onPress={() => changeDealStatus('delivered')}
-                />
-              )}
-              {isShipper && (dealStatus === 'in_progress' || dealStatus === 'at_border') && (
-                <SecondaryButton
-                  role={role || 'client'}
-                  icon="✅"
-                  label={t('confirm_delivery')}
-                  disabled={statusLoading}
-                  onPress={() => changeDealStatus('delivered')}
-                />
-              )}
-              <View style={{ flexDirection: 'row', gap: 18, justifyContent: 'center', marginTop: 2 }}>
-                {chatRoomId && (
-                  <TouchableOpacity
-                    testID="deal-order-chat"
-                    onPress={() => navigation.navigate('Chat', { roomId: chatRoomId, role })}
-                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                  >
-                    <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '600' }}>💬 {t('order_chat')}</Text>
-                  </TouchableOpacity>
-                )}
-                {(dealStatus === 'accepted' || dealStatus === 'in_progress' || dealStatus === 'at_border') && (
-                  <TouchableOpacity
-                    disabled={statusLoading}
-                    onPress={() => {
-                      const doCancel = () => changeDealStatus('cancelled');
-                      if (Platform.OS === 'web') {
-                        if (typeof window !== 'undefined' && window.confirm(t('cancel_deal_confirm'))) doCancel();
-                      } else {
-                        Alert.alert(t('cancel_deal_confirm'), '', [
-                          { text: t('cancel'), style: 'cancel' },
-                          { text: t('confirm'), style: 'destructive', onPress: doCancel },
-                        ]);
-                      }
-                    }}
-                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                  >
-                    <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '600' }}>⊘ {t('cancel_deal')}</Text>
-                  </TouchableOpacity>
-                )}
+                {counterpartyPhone ? (
+                  <SecondaryButton
+                    testID="deal-order-call"
+                    role={isDriverSide ? 'driver' : 'client'}
+                    icon="📞"
+                    label={t('call_partner')}
+                    onPress={() => openContactPartner(counterpartyPhone, t)}
+                  />
+                ) : null}
               </View>
-            </View>
+            )}
           </View>
         </View>
       )}
@@ -1099,7 +1057,7 @@ export default function CargoDetail({ navigation, route }) {
         </View>
       )}
       {/* Legacy "Open chat with driver" button removed: deal-block above
-          already renders a single chat CTA ("Чат по заказу") for both sides
+          already renders the single "Написать сообщение" CTA for both sides
           to avoid duplicate buttons. */}
       {c.isMine && !chatRoomId && (
         <View style={{ padding: 16, paddingTop: 0 }}>

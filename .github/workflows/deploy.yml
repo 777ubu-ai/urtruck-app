@@ -67,6 +67,44 @@ jobs:
           # Inject manifest + PWA meta
           if '<link rel="manifest"' not in html:
               html = html.replace('</head>', '<link rel="manifest" href="/manifest.json" />\n</head>')
+          # 05.08.2026 (Фаза A выкладка): CI-путь раньше не форсировал сброс
+          # старого service-worker кэша (в отличие от deploy.sh) — Safari/PWA
+          # мог показывать старый бандл до собственного цикла обновления SW.
+          # Тот же приём, что в deploy.sh: localStorage-версия проверяется
+          # синхронно при загрузке, при несовпадении — чистим caches API,
+          # снимаем регистрацию SW и делаем один принудительный reload.
+          # Версия кэша (v7-market) совпадает с CACHE/STATIC_CACHE в
+          # sw-template.js — держать в одном шаге при следующем бампе.
+          bootstrap = '''<script>
+          (async()=>{
+            const V='v7-market';
+            const cur=localStorage.getItem('ur_sw_v');
+            if(cur!==V){
+              if('caches' in window){const ks=await caches.keys();await Promise.all(ks.map(k=>caches.delete(k)))}
+              if('serviceWorker' in navigator){const regs=await navigator.serviceWorker.getRegistrations();await Promise.all(regs.map(r=>r.unregister()))}
+              localStorage.setItem('ur_sw_v',V);
+              location.reload();
+              return;
+            }
+            if('serviceWorker' in navigator){
+              try{
+                const reg=await navigator.serviceWorker.register('/sw.js?v=7');
+                if(reg.waiting){reg.waiting.postMessage({type:'SKIP_WAITING'})}
+                reg.addEventListener('updatefound',()=>{
+                  const nw=reg.installing;
+                  nw&&nw.addEventListener('statechange',()=>{
+                    if(nw.state==='installed'&&navigator.serviceWorker.controller){
+                      nw.postMessage({type:'SKIP_WAITING'});
+                      setTimeout(()=>location.reload(),300)
+                    }
+                  })
+                })
+              }catch(e){}
+            }
+          })();
+          </script>'''
+          if 'ur_sw_v' not in html:
+              html = html.replace('</body>', bootstrap + '\n</body>')
           with open('dist/index.html', 'w') as f:
               f.write(html)
           # Manifest
@@ -81,6 +119,32 @@ jobs:
           with open('dist/manifest.json', 'w') as f:
               json.dump(manifest, f)
           PY
+
+      - name: Backup current production (rollback safety)
+        # 05.08.2026 (Фаза A выкладка): раньше CI-путь ничего не бэкапил перед
+        # перезаписью REMOTE_DIR/BACKEND_DIR — откатиться можно было только
+        # деплоем предыдущего коммита заново. Кладём таймстемп-копию ВНЕ
+        # web-корня (nginx её не отдаёт — не "доступна пользователям"),
+        # только для быстрого восстановления руками при необходимости.
+        # Не валим деплой, если бэкапить нечего (первый прогон и т.п.).
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PASS: ${{ secrets.SERVER_PASS }}
+          REMOTE_DIR: ${{ secrets.REMOTE_DIR || '/home/ubuntu/urtruck-app' }}
+          BACKEND_DIR: ${{ secrets.BACKEND_DIR || '/home/ubuntu/urtruck-security' }}
+        run: |
+          sudo apt-get install -y sshpass
+          STAMP=$(date -u +%Y%m%d-%H%M%S)-${GITHUB_SHA::7}
+          sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" "
+            mkdir -p ~/urtruck-rollback/frontend ~/urtruck-rollback/backend
+            [ -d '$REMOTE_DIR' ] && cp -a '$REMOTE_DIR' ~/urtruck-rollback/frontend/$STAMP || echo 'no existing frontend to back up'
+            [ -d '$BACKEND_DIR' ] && cp -a '$BACKEND_DIR' ~/urtruck-rollback/backend/$STAMP || echo 'no existing backend to back up'
+            cd ~/urtruck-rollback/frontend && ls -dt */ 2>/dev/null | tail -n +11 | xargs -r rm -rf
+            cd ~/urtruck-rollback/backend && ls -dt */ 2>/dev/null | tail -n +11 | xargs -r rm -rf
+            echo \"Backed up as $STAMP (kept last 10)\"
+          "
+          echo "ROLLBACK_STAMP=$STAMP" >> "$GITHUB_ENV"
 
       - name: Deploy to server
         env:

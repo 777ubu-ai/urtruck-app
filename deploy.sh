@@ -80,7 +80,7 @@ html = re.sub(r'<meta charset="utf-8" />.*?<title>UrTruck</title>', new_head, ht
 
 loading_html = '''<div id="root"><div style="display:flex;flex:1;height:100vh;align-items:center;justify-content:center;background:#0A1628;flex-direction:column;gap:16px"><div style="color:#378ADD;font-size:46px;font-weight:900;letter-spacing:-1.5px;font-family:-apple-system,BlinkMacSystemFont,sans-serif">UrTruck</div><div style="color:#FFFFFF;font-size:12px;font-weight:700;letter-spacing:3px">INTERNATIONAL LOGISTICS</div></div></div><style>@keyframes truck{from{transform:translateX(-300px);opacity:0}to{transform:translateX(0);opacity:1}}</style><script>
 (async()=>{
-  const V='v5-market';
+  const V='v7-market';
   const cur=localStorage.getItem('ur_sw_v');
   if(cur!==V){
     if('caches' in window){const ks=await caches.keys();await Promise.all(ks.map(k=>caches.delete(k)))}
@@ -91,7 +91,7 @@ loading_html = '''<div id="root"><div style="display:flex;flex:1;height:100vh;al
   }
   if('serviceWorker' in navigator){
     try{
-      const reg=await navigator.serviceWorker.register('/sw.js?v=5');
+      const reg=await navigator.serviceWorker.register('/sw.js?v=7');
       if(reg.waiting){reg.waiting.postMessage({type:'SKIP_WAITING'})}
       reg.addEventListener('updatefound',()=>{
         const nw=reg.installing;

@@ -20,6 +20,7 @@ import { useV1Colors, v1Radius, v1AccentFor } from '../../../theme/designV1';
 import { colors as v2 } from '../../../theme/designSystemV2';
 import { useI18n } from '../../../utils/useI18n';
 import { localizePlace } from '../../../utils/places';
+import { countryFlag } from '../../../utils/countryFlags';
 
 export default function FeedCard({
   variant = 'cargo',
@@ -81,10 +82,11 @@ export default function FeedCard({
   // Локализуем названия городов на язык интерфейса (zh/en) по справочнику —
   // ярлыки переводит t(), а сами города лежат в базе по-русски.
   const loc = (v) => localizePlace(v, lang);
-  const fromFull = isEmptyOrDash(fromText) ? '—' : loc(fromCountry && !hasFlag(fromText) ? `${fromText}, ${fromCountry}` : fromText);
-  const toFull = isEmptyOrDash(toText) ? '—' : loc(toCountry && !hasFlag(toText) ? `${toText}, ${toCountry}` : toText);
+  const ff = (code) => countryFlag(code);
+  const fromFull = isEmptyOrDash(fromText) ? '—' : (ff(fromCountry) ? `${ff(fromCountry)} ${loc(fromText)}` : loc(fromCountry && !hasFlag(fromText) ? `${fromText}, ${fromCountry}` : fromText));
+  const toFull = isEmptyOrDash(toText) ? '—' : (ff(toCountry) ? `${ff(toCountry)} ${loc(toText)}` : loc(toCountry && !hasFlag(toText) ? `${toText}, ${toCountry}` : toText));
   const routeText = hasRoute
-    ? `${isEmptyOrDash(fromText) ? '—' : loc(fromText)} → ${isEmptyOrDash(toText) ? '—' : loc(toText)}`
+    ? `${isEmptyOrDash(fromText) ? '—' : (ff(fromCountry) || '') + ' ' + loc(fromText)} → ${isEmptyOrDash(toText) ? '—' : (ff(toCountry) || '') + ' ' + loc(toText)}`.trim()
     : t('route_pending');
 
   // QA #11 leftover: driver-карточка (профиль водителя, а не рейс) маршрута
@@ -113,7 +115,7 @@ export default function FeedCard({
             <Feather name={iconName} size={20} color={v2.textSecondary} />
           </View>
         )}
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
           {hasRoute && !titleOverride ? (
             compact ? (
               // Компактно: маршрут одной строкой «Откуда → Куда».
@@ -145,7 +147,7 @@ export default function FeedCard({
             subtitle ? <Text style={[s.subtitle, { color: colors.textMuted }]} numberOfLines={1}>{subtitle}</Text> : null
           )}
         </View>
-        <View style={{ alignItems: 'flex-end' }}>
+        <View style={{ alignItems: 'flex-end', flexShrink: 0, maxWidth: '45%' }}>
           {onToggleFav ? (
             <TouchableOpacity
               onPress={onToggleFav}

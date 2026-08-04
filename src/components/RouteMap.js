@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, Platform, Linking, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, Linking, TouchableOpacity } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 import { useTheme } from '../utils/ThemeContext';
 import { useI18n } from '../utils/useI18n';
 import { localizePlace } from '../utils/places';
@@ -94,18 +95,48 @@ const parseCity = (str) => {
   return null;
 };
 
-export default function RouteMap({ from, to, transit, liveCoord, height = 200 }) {
+// Расстояние по прямой (Haversine, км) — та же формула, что и в utils/geo.js
+// (два независимых справочника городов, RouteMap.js исторически шире).
+const haversine = (a, b) => {
+  const R = 6371;
+  const dLat = (b[0] - a[0]) * Math.PI / 180;
+  const dLon = (b[1] - a[1]) * Math.PI / 180;
+  const lat1 = a[0] * Math.PI / 180;
+  const lat2 = b[0] * Math.PI / 180;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  return Math.round(2 * R * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h)));
+};
+
+// RouteMap → «Плановый маршрут» (05.08.2026, п.18 ТЗ). Раньше здесь был
+// встроенный интерактивный Яндекс.Виджет с маркерами (в т.ч. заготовка под
+// «живой» фиолетовый маркер грузовика через liveCoord — параметр нигде не
+// передавался, но само наличие маркера в коде подразумевало трекинг,
+// которого нет). Никакого GPS-слежения в проекте не реализовано — честная
+// карточка: откуда/куда, прикидка расстояния и времени, кнопка «Открыть
+// маршрут» во внешней карте и явный текст «не отслеживается», без единой
+// заявки на реальное местоположение машины.
+export default function RouteMap({ from, to, transit }) {
   const { theme } = useTheme();
   const { t, lang } = useI18n();
   const fromCoord = parseCity(from);
   const toCoord = parseCity(to);
+  const transitCoord = transit ? parseCity(transit) : null;
 
-  // Открыть в Яндекс.Картах ИМЕННО маршрутом (rtext), а не текстовым поиском.
-  // Где есть координаты — берём их (точный маршрут + километраж); иначе
-  // отдаём чистое имя города — Яндекс сам геокодит и строит маршрут.
-  // Раньше при неизвестном городе вся строка «Откуда → Куда» с флагами
-  // летела в text-поиск → «Ничего не найдено».
-  const openYandex = () => {
+  let km = null, days = null;
+  if (fromCoord && toCoord) {
+    km = transitCoord
+      ? haversine(fromCoord, transitCoord) + haversine(transitCoord, toCoord)
+      : haversine(fromCoord, toCoord);
+    // Маршрут по дороге обычно на 25% длиннее по прямой; ~600 км/день с
+    // учётом отдыха и границ — та же прикидка, что и в utils/geo.js.
+    km = Math.round(km * 1.25);
+    days = Math.ceil(km / 600);
+  }
+
+  // Открыть маршрут во внешней карте (rtext), а не текстовым поиском. Где
+  // есть координаты — берём их (точный маршрут); иначе отдаём чистое имя
+  // города — карта сама геокодит.
+  const openExternalRoute = () => {
     const parts = [];
     const push = (coord, raw) => {
       if (coord) { parts.push(`${coord[0]},${coord[1]}`); return; }
@@ -113,78 +144,50 @@ export default function RouteMap({ from, to, transit, liveCoord, height = 200 })
       if (n) parts.push(encodeURIComponent(n));
     };
     push(fromCoord, from);
-    if (transit) push(parseCity(transit), transit);
+    if (transit) push(transitCoord, transit);
     push(toCoord, to);
     if (parts.length < 2) return;  // маршрут строим минимум из двух точек
     Linking.openURL(`https://yandex.com/maps/?rtext=${parts.join('~')}&rtt=auto`);
   };
 
-  // Web: встраиваем Яндекс.Карты через map-widget (без API key)
-  if (Platform.OS === 'web' && fromCoord && toCoord) {
-    // Центрируем на середине маршрута
-    const centerLat = (fromCoord[0] + toCoord[0]) / 2;
-    const centerLon = (fromCoord[1] + toCoord[1]) / 2;
-    // Зум зависит от расстояния
-    const dLat = Math.abs(fromCoord[0] - toCoord[0]);
-    const dLon = Math.abs(fromCoord[1] - toCoord[1]);
-    const maxD = Math.max(dLat, dLon);
-    let zoom = 4;
-    if (maxD < 1) zoom = 9;
-    else if (maxD < 3) zoom = 7;
-    else if (maxD < 8) zoom = 6;
-    else if (maxD < 20) zoom = 5;
-    else if (maxD < 50) zoom = 4;
-    else zoom = 3;
-
-    // Маркеры: pm2rdm = red dot middle, pm2gnm = green, pm2vvm = violet (live truck)
-    let pts = `${fromCoord[1]},${fromCoord[0]},pm2rdm~${toCoord[1]},${toCoord[0]},pm2gnm`;
-    if (transit) {
-      const tCoord = parseCity(transit);
-      if (tCoord) pts = `${fromCoord[1]},${fromCoord[0]},pm2rdm~${tCoord[1]},${tCoord[0]},pm2blm~${toCoord[1]},${toCoord[0]},pm2gnm`;
-    }
-    if (liveCoord) {
-      pts += `~${liveCoord[1]},${liveCoord[0]},pm2vvm`;
-    }
-    const src = `https://yandex.com/map-widget/v1/?ll=${centerLon},${centerLat}&z=${zoom}&pt=${pts}&lang=ru_RU`;
-
-    return (
-      <View style={[s.wrap, { borderColor: theme.border, height }]}>
-        <iframe
-          src={src}
-          style={{ border: 0, width: '100%', height, borderRadius: 12, display: 'block' }}
-          title="Yandex Map"
-          allowFullScreen
-        />
-        <TouchableOpacity style={[s.openBtn, { backgroundColor: 'rgba(255,204,0,0.95)' }]} onPress={openYandex}>
-          <Text style={s.openBtnText}>{t('yandex_maps_open')}</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  // Mobile или нет координат — placeholder с открытием Яндекс.Навигатора
   return (
-    <TouchableOpacity style={[s.placeholder, { backgroundColor: theme.border, height }]} onPress={openYandex}>
-      <Text style={{ fontSize: 32 }}>🗺️</Text>
-      <Text style={[s.placeholderText, { color: theme.textSecondary }]}>{localizePlace(from, lang)} → {localizePlace(to, lang)}</Text>
-      <View style={s.placeholderBtn}>
-        <Text style={s.placeholderBtnText}>{t('yandex_maps')}</Text>
+    <View style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]} testID="planned-route-card">
+      <View style={s.headerRow}>
+        <Feather name="map" size={14} color={theme.textMuted} />
+        <Text style={[s.title, { color: theme.textMuted }]}>{t('planned_route_title')}</Text>
       </View>
-    </TouchableOpacity>
+      <Text style={[s.route, { color: theme.text }]} numberOfLines={2}>
+        {localizePlace(from, lang)}
+        {transit ? `  ·  ${t('trip_via')} ${localizePlace(transit, lang)}` : ''}
+        {'  →  '}
+        {localizePlace(to, lang)}
+      </Text>
+      {km != null ? (
+        <Text style={[s.stats, { color: theme.textMuted }]}>
+          📏 ~{km} {t('km_short')}   ⏱ ~{days} {t('days_short')}
+        </Text>
+      ) : null}
+      <TouchableOpacity style={[s.openBtn, { borderColor: theme.border }]} onPress={openExternalRoute} testID="planned-route-open-btn">
+        <Feather name="external-link" size={13} color={theme.text} />
+        <Text style={[s.openBtnText, { color: theme.text }]}>{t('open_route_btn')}</Text>
+      </TouchableOpacity>
+      {/* Честный дисклеймер — GPS-трекинга в приложении сейчас нет. */}
+      <View style={s.disclaimerRow}>
+        <Feather name="map-pin" size={11} color={theme.textDim} />
+        <Text style={[s.disclaimer, { color: theme.textDim }]} numberOfLines={2}>{t('location_not_tracked')}</Text>
+      </View>
+    </View>
   );
 }
 
 const s = StyleSheet.create({
-  wrap: { position: 'relative', borderRadius: 12, overflow: 'hidden', borderWidth: 1, marginBottom: 12 },
-  openBtn: {
-    position: 'absolute', bottom: 8, right: 8,
-    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8,
-    shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 4, shadowOffset: { width: 0, height: 2 },
-    elevation: 5,
-  },
-  openBtnText: { fontSize: 11, fontWeight: '800', color: '#000' },
-  placeholder: { borderRadius: 12, alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12, padding: 20 },
-  placeholderText: { fontSize: 14, fontWeight: '700', textAlign: 'center' },
-  placeholderBtn: { backgroundColor: '#FFCC00', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, marginTop: 4 },
-  placeholderBtnText: { color: '#000', fontSize: 12, fontWeight: '800' },
+  card: { borderRadius: 12, borderWidth: 1, padding: 14, marginBottom: 12, gap: 8 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  title: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' },
+  route: { fontSize: 14, fontWeight: '700' },
+  stats: { fontSize: 12, fontWeight: '600' },
+  openBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1, borderRadius: 10, paddingVertical: 10, alignSelf: 'stretch' },
+  openBtnText: { fontSize: 13, fontWeight: '700' },
+  disclaimerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 5, marginTop: 2 },
+  disclaimer: { fontSize: 11, flex: 1, flexShrink: 1 },
 });

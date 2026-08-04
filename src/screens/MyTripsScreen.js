@@ -11,15 +11,13 @@ import { formatDateForDisplay } from '../utils/dateInput';
 import { formatPrice, normalizeTrip } from '../utils/normalizers';
 import { localizePlace, localizeCargoName } from '../utils/places';
 import EmptyState from '../components/ui/EmptyState';
-import BidModal from '../components/BidModal';
 import EditCargoModal from '../components/EditCargoModal';
 import { colors, spacing, radius, typography } from '../theme/theme';
 import {v1Colors, useV1Colors, v1AccentFor} from '../theme/designV1';
-import SegmentTabs from '../components/ui/v1/SegmentTabs';
 import { useMountedRef } from '../hooks/useMountedRef';
-import FadeInUp, { PopIn } from '../components/ui/FadeInUp';
-import PressableScale from '../components/PressableScale';
+import FadeInUp from '../components/ui/FadeInUp';
 import Feather from '@expo/vector-icons/Feather';
+import { countryFlag } from '../utils/countryFlags';
 
 export default function MyTripsScreen({ navigation, route }) {
   const v1 = useV1Colors();
@@ -58,17 +56,6 @@ export default function MyTripsScreen({ navigation, route }) {
   pgBtnText: { color: '#0C0A09', fontSize: 16, fontWeight: '800' },
   pgCancel: { marginTop: 10, paddingVertical: 8 },
   pgCancelText: { color: v1.textMuted, fontSize: 13, fontWeight: '600' },
-  // Legacy local styles still used by existing renderBid / renderDeal /
-  // renderMyItem; kept untouched to preserve their layout.
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
-  back: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  backText: { fontSize: 28, fontWeight: '300' },
-  headerTitle: { ...typography.h2, textAlign: 'center' },
-  headerSub: { ...typography.caption, textAlign: 'center', marginTop: 2 },
-
-  tabs: { flexDirection: 'row', marginHorizontal: spacing.lg, borderRadius: radius.sm, padding: 3, marginBottom: spacing.md, borderWidth: 1 },
-  tab: { flex: 1, paddingVertical: spacing.sm, borderRadius: 7, alignItems: 'center', borderWidth: 1 },
-  tabText: { ...typography.caption, fontWeight: '700' },
   archiveToggle: { alignSelf: 'flex-end', paddingVertical: 6, paddingHorizontal: 4, marginTop: 2 },
   archiveToggleText: { fontSize: 12, fontWeight: '700' },
 
@@ -97,22 +84,18 @@ export default function MyTripsScreen({ navigation, route }) {
   offersCtaText: { color: '#FF8400', fontSize: 12, fontWeight: '700', flex: 1 },
   offersCtaArrow: { color: '#FF8400', fontSize: 14, fontWeight: '700' },
 
-  chatBtn: { backgroundColor: '#22C55E', borderRadius: radius.sm, paddingVertical: spacing.sm, alignItems: 'center', marginTop: spacing.sm },
-  chatBtnText: { color: '#FFF', ...typography.title },
   // 27.07: кнопки действий сделки вылезали за карточку. Делаем их гибкими
   // (flexGrow/Shrink + minWidth) — в ряду с flexWrap они заполняют ширину и
   // аккуратно переносятся на след. строку, не вылезая за края.
-  acceptBtn: { backgroundColor: '#22C55E', borderRadius: radius.sm, paddingVertical: spacing.sm, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', flexGrow: 1, flexShrink: 1, minWidth: 130 },
-  acceptBtnText: { color: '#FFF', ...typography.title },
-  rejectBtn: { borderWidth: 0, borderRadius: radius.sm, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, alignItems: 'center', justifyContent: 'center', flexGrow: 1, flexShrink: 1, minWidth: 110, backgroundColor: 'rgba(239,68,68,0.10)' },
-  rejectBtnText: { color: '#EF4444', ...typography.title },
+  acceptBtn: { backgroundColor: '#22C55E', borderRadius: radius.sm, paddingVertical: spacing.sm, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', flexGrow: 1, flexShrink: 1, minWidth: 130, maxWidth: '100%' },
+  acceptBtnText: { color: '#FFF', ...typography.title, flexShrink: 1, textAlign: 'center' },
   // «Для перчаток и солнца»: крупная тап-цель (≥44pt) и читаемый текст.
-  miniBtn: { borderWidth: 0, borderRadius: radius.sm, paddingVertical: 12, paddingHorizontal: 14, minHeight: 44, alignItems: 'center', justifyContent: 'center', flexGrow: 1, flexShrink: 1, minWidth: 110, backgroundColor: 'rgba(148,163,184,0.14)' },
-  miniBtnText: { fontSize: 14, fontWeight: '700' },
-  editBtn: { borderWidth: 0, borderRadius: 10, paddingVertical: 10, alignItems: 'center', marginTop: spacing.sm, backgroundColor: 'rgba(34,197,94,0.12)' },
-  editBtnText: { color: '#22C55E', fontSize: 12, fontWeight: '700' },
-  extendBtn: { flex: 1, backgroundColor: '#00E676', borderRadius: 10, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', minHeight: 40 },
-  extendBtnText: { color: '#0C0A09', fontSize: 13, fontWeight: '800' },
+  miniBtn: { borderWidth: 0, borderRadius: radius.sm, paddingVertical: 12, paddingHorizontal: 14, minHeight: 44, alignItems: 'center', justifyContent: 'center', flexGrow: 1, flexShrink: 1, minWidth: 110, maxWidth: '100%', backgroundColor: 'rgba(148,163,184,0.14)' },
+  miniBtnText: { fontSize: 14, fontWeight: '700', flexShrink: 1, textAlign: 'center' },
+  editBtn: { borderWidth: 0, borderRadius: 10, paddingVertical: 10, alignItems: 'center', marginTop: spacing.sm, backgroundColor: 'rgba(34,197,94,0.12)', maxWidth: '100%' },
+  editBtnText: { color: '#22C55E', fontSize: 12, fontWeight: '700', flexShrink: 1, textAlign: 'center' },
+  extendBtn: { flex: 1, backgroundColor: '#00E676', borderRadius: 10, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', minHeight: 40, maxWidth: '100%' },
+  extendBtnText: { color: '#0C0A09', fontSize: 13, fontWeight: '800', flexShrink: 1, textAlign: 'center' },
 
   }), [v1]);
   const { role } = route.params || {};
@@ -122,24 +105,17 @@ export default function MyTripsScreen({ navigation, route }) {
   const { theme } = useTheme();
   const { toast } = useToast();
 
-  // Driver tabs (issue #2): routes / offers / inwork / done (+ secondary
-  // archive). Client (грузоотправитель) — зеркало в его терминах:
-  // searching / enroute / delivered (+ archive). Legacy initialTab
-  // (my/bids/deals) ремапим, чтобы deep-links/nav приземлялись корректно.
-  // Приказ 26.07.2026 (обе роли): под-вкладки «Предложения» здесь больше нет —
-  // ставки живут во вкладке «Сделки» (таб-бар). Тут только факты по моим
-  // публикациям: разместил / в работе / завершено (+ архив). Легаси
-  // deep-links bids/offers приземляем на первую вкладку.
-  const DRIVER_TABS_KEYS = ['routes', 'inwork', 'done', 'archive'];
-  const CLIENT_TABS_KEYS = ['searching', 'enroute', 'delivered', 'archive'];
+  // Решение владельца (05.08.2026): «Грузы»/«Рейсы» — только управление
+  // объявлениями. Один основной раздел (Мои рейсы / Мои грузы) + Архив
+  // (вторичный toggle, не таб). Всё, что было «Завершённые»/«Доставлено» —
+  // это уже сделки, они целиком в «Сделках». Легаси initialTab
+  // (my/bids/deals/inwork/enroute/done/delivered) ремапим на основной раздел.
+  const DRIVER_TABS_KEYS = ['routes', 'archive'];
+  const CLIENT_TABS_KEYS = ['searching', 'archive'];
   const rawInitialTab = route.params?.initialTab || (isDriver ? 'routes' : 'searching');
   const normInitialTab = isDriver
-    ? (DRIVER_TABS_KEYS.includes(rawInitialTab)
-        ? rawInitialTab
-        : (rawInitialTab === 'deals' ? 'inwork' : 'routes'))
-    : (CLIENT_TABS_KEYS.includes(rawInitialTab)
-        ? rawInitialTab
-        : (rawInitialTab === 'deals' ? 'enroute' : 'searching'));
+    ? (DRIVER_TABS_KEYS.includes(rawInitialTab) ? rawInitialTab : 'routes')
+    : (CLIENT_TABS_KEYS.includes(rawInitialTab) ? rawInitialTab : 'searching');
   const justCreatedTrip = route.params?.justCreatedTrip || null;
   // Клиентский аналог: только что опубликованный груз показываем сразу в
   // «Ищу машину», не дожидаясь серверного refetch (замыкаем цикл публикации).
@@ -148,10 +124,9 @@ export default function MyTripsScreen({ navigation, route }) {
   const mounted = useMountedRef();  // QA-аудит P1-8
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(!justCreatedTrip && !justCreatedCargo);
-  const [bidModal, setBidModal] = useState(false);
-  const [bidModalMode, setBidModalMode] = useState('edit');
-  const [editingBid, setEditingBid] = useState(null);
   const [editCargo, setEditCargo] = useState(null);  // задача A: правка своего груза
+  // Название сохранено ради минимального диффа — общий «id занятой операции»
+  // (republish/продление); ставки (bid) переехали в «Сделки».
   const [busyBidId, setBusyBidId] = useState(null);
   const [extending, setExtending] = useState(null);  // Модель А: продление одним тапом
 
@@ -304,9 +279,31 @@ export default function MyTripsScreen({ navigation, route }) {
     grace.setDate(grace.getDate() - 2);
     return d < grace;
   };
-  const DONE_ITEM_STATUSES = new Set(['completed', 'delivered']);
-  const myItemsActive = myItemsRaw.filter((it) => !isExpiredItem(it) && !DONE_ITEM_STATUSES.has(it.status));
-  const myItemsExpired = myItemsRaw.filter((it) => isExpiredItem(it));
+  // Решение владельца (05.08.2026): «Грузы»/«Рейсы» — ТОЛЬКО управление
+  // объявлениями (active/draft/expired + архив unpublished/cancelled/rejected).
+  // Всё, что связано со сделкой — целиком в «Сделках». Статусы листинга во
+  // время сделки (см. backend/api/marketplace.py, _DEAL_TO_TRIP и accept_bid):
+  // trip: active → booked → in_transit → delivered/cancelled
+  // cargo: active → taken → completed (или обратно active при отмене сделки)
+  // Все «занятые сделкой» статусы скрываем здесь так же, как completed/
+  // delivered — иначе один и тот же рейс/груз виден и тут, и в Сделках.
+  const HIDDEN_ITEM_STATUSES = new Set(['completed', 'delivered', 'unpublished', 'booked', 'taken', 'in_transit']);
+  // Приоритет статуса над датой (05.08.2026, п.6/13/25 аудита): раньше
+  // «просрочено» считалось ТОЛЬКО по дате, без учёта item.status — доставленный
+  // рейс с прошедшей датой выезда всё равно попадал в myItemsExpired и рисовал
+  // «Срок истёк» + рабочие на вид кнопки «Ещё актуально»/«Изменить дату»,
+  // которые бэкенд (extend_trip/extend_cargo) отклоняет 409 «не активен»,
+  // потому что статус уже не 'active'. Источник истины: если у публикации уже
+  // есть исход по сделке (HIDDEN_ITEM_STATUSES) или она сама закрыта
+  // (cancelled/rejected), это НЕ «истёкшая публикация» — статус приоритетнее
+  // даты. «Истёкшая» относится только к публикации, которая так и осталась
+  // активной/черновиком и просто не нашла сделку вовремя.
+  const isOpenPublicationStatus = (it) => !it.status || it.status === 'active' || it.status === 'draft';
+  const myItemsActive = myItemsRaw.filter((it) => isOpenPublicationStatus(it) && !isExpiredItem(it));
+  const myItemsUnpublished = myItemsRaw.filter((it) => it.status === 'unpublished');
+  // Отменённые/отклонённые ОБЪЯВЛЕНИЯ (не сделки/ставки — те в «Сделках»).
+  const myItemsClosed = myItemsRaw.filter((it) => it.status === 'cancelled' || it.status === 'rejected');
+  const myItemsExpired = myItemsRaw.filter((it) => isOpenPublicationStatus(it) && isExpiredItem(it));
   const myItems = [...myItemsActive, ...myItemsExpired.map(it => ({ ...it, _expired: true }))];
 
   const myBids = isDriver ? (data?.my_bids || []) : (data?.incoming_bids || []);
@@ -318,48 +315,16 @@ export default function MyTripsScreen({ navigation, route }) {
     (item && item.currency)
     || (item && (data?.my_cargos || []).find((cc) => cc.id === item.cargo_id)?.currency)
     || 'USD';
-  const myDeals = (data?.my_deals) || [];
 
-  // ─── Driver tab buckets (issue #2/#3) ───
-  // Жёсткий маппинг статусов сделок/ставок на 4 driver-вкладки + вторичный
-  // Архив. Карточка с «Начать перевозку» (accepted/in_progress) НИКОГДА не
-  // попадает в Архив — она живёт только в «В работе».
-  //   pending | countered                 → Предложения (offers)
-  //   accepted | in_progress | picked_up  → В работе (inwork)
-  //   completed | delivered               → Завершённые (done)
-  //   cancelled | rejected | expired      → Архив (вторичный фильтр)
-  // 27.07: 'at_border' («На границе») ОБЯЗАТЕЛЬНО в «В работе» — иначе груз на
-  // границе выпадал из всех вкладок (не done, не archive) и «терялся».
-  const IN_WORK_STATUSES = ['accepted', 'in_progress', 'at_border'];
-  const DONE_STATUSES = ['completed', 'delivered'];
-  const ARCHIVE_STATUSES = ['cancelled', 'rejected', 'expired'];
-  const serverDeals = (data?.my_deals) || [];
-  const driverInWork = serverDeals.filter((d) => IN_WORK_STATUSES.includes(d.status));
-  const driverDone = serverDeals.filter((d) => DONE_STATUSES.includes(d.status));
-  // Задача B: авто-трансляция гео-позиции водителя вынесена на уровень
-  // приложения (AppNavigator/MainTabs) — работает на любом экране, не только
-  // здесь. Дубль-вызов убран, чтобы не слать координаты дважды.
-  const driverArchive = [
-    ...serverDeals.filter((d) => ARCHIVE_STATUSES.includes(d.status)).map((d) => ({ ...d, _kind: 'deal' })),
-    ...myBids.filter((b) => ['rejected', 'cancelled', 'expired'].includes(b.status)).map((b) => ({ ...b, _kind: 'bid' })),
-  ];
-
-  // ─── Client (грузоотправитель) buckets — зеркало водителя в его терминах ───
-  //   Ищу машину (searching) = активные мои грузы (идут ставки; принять/
-  //                            отклонить ставку — В КАРТОЧКЕ груза, не вкладкой)
-  //   Везут (enroute)        = сделки accepted/in_progress/picked_up
-  //   Доставлено (delivered) = сделки completed/delivered
-  //   Архив                  = отменённые/отклонённые/истёкшие сделки + истёкшие грузы
-  // Сделки общие с driver-ветвью (driverInWork/driverDone = «мои сделки по
-  // статусу», роль не важна) — переиспользуем их для клиента.
-  // «Ищу машину» = только активные грузы (без already taken — у принятого
-  // груза есть сделка, она показывается в «Везут», иначе был бы дубль).
+  // «Ищу машину» = только активные грузы (booked/taken уже отфильтрованы выше
+  // через HIDDEN_ITEM_STATUSES — такой груз живёт в «Сделках», не дублируется тут).
   const clientSearching = myItems.filter((c) => !c.status || c.status === 'active');
-  // Входящие предложения водителей у клиента живут во вкладке «Сделки»
-  // (26.07.2026), здесь их под-вкладки больше нет.
-  const clientArchive = [
-    ...serverDeals.filter((d) => ARCHIVE_STATUSES.includes(d.status)).map((d) => ({ ...d, _kind: 'deal' })),
-  ];
+  // Архив — только объявления: неопубликованные + закрытые (отменённые/
+  // отклонённые как ЛИСТИНГИ). Отменённые/отклонённые СДЕЛКИ и СТАВКИ — это
+  // переговоры, они живут в «Сделках» со статусом «Отменено» (05.08.2026:
+  // раньше дублировались и здесь, и там; теперь у каждой записи одно место).
+  const driverArchive = [...myItemsUnpublished, ...myItemsClosed].map((it) => ({ ...it, _kind: 'unpublished' }));
+  const clientArchive = [...myItemsUnpublished, ...myItemsClosed].map((it) => ({ ...it, _kind: 'unpublished' }));
 
   // ─── Cards ───
 
@@ -412,7 +377,7 @@ export default function MyTripsScreen({ navigation, route }) {
             })() }]}>{formatStatus(item.status || 'active')}</Text>
           )}
         </View>
-        <Text style={[s.route, { color: theme.text }]}>{localizePlace(from, lang)} → {localizePlace(to, lang)}</Text>
+        <Text style={[s.route, { color: theme.text }]}>{countryFlag(item.from_country)} {localizePlace(from, lang)} → {countryFlag(item.to_country)} {localizePlace(to, lang)}</Text>
         {desc ? <Text style={[s.desc, { color: theme.textMuted }]} numberOfLines={1}>{localizeCargoName(desc, lang)}</Text> : null}
         <View style={s.cardMeta}>
           <Text style={[s.metaItem, { color: theme.textDim }]}>{formatTruckType(item.truck_type || item.cargo_type)}</Text>
@@ -424,6 +389,22 @@ export default function MyTripsScreen({ navigation, route }) {
               ? formatDateForDisplay(item.pickup_date || item.departure || item.created_at)
               : formatDateForDisplay(item.departure || item.created_at)}
           </Text>
+          {/* Вес/объём (05.08.2026, п.1/2 ТЗ) — cargo: weight_tons/volume_m3,
+              trip: capacity_tons/available_m3 (разные имена колонок бэкенда).
+              «т»/«м³» — как и в FeedScreen.js, хардкод без i18n (сложившаяся
+              конвенция для метрических единиц в этом проекте). */}
+          {(isCargo ? item.weight_tons : item.capacity_tons) ? (
+            <>
+              <Text style={s.metaDot}>·</Text>
+              <Text style={[s.metaItem, { color: theme.textDim }]}>{isCargo ? item.weight_tons : item.capacity_tons} т</Text>
+            </>
+          ) : null}
+          {(isCargo ? item.volume_m3 : item.available_m3) ? (
+            <>
+              <Text style={s.metaDot}>·</Text>
+              <Text style={[s.metaItem, { color: theme.textDim }]}>{isCargo ? item.volume_m3 : item.available_m3} м³</Text>
+            </>
+          ) : null}
         </View>
         <View style={s.cardBottom}>
           <Text style={s.price} numberOfLines={1}>{formatPrice(item.price, item.currency, t)}</Text>
@@ -528,12 +509,14 @@ export default function MyTripsScreen({ navigation, route }) {
     );
   };
 
-  const setDealStatusOnServer = async (deal, newStatus) => {
-    setBusyBidId(deal.id);
+  const republishItem = async (item, isCargo) => {
+    setBusyBidId(item.id);
     try {
-      const r = await marketAPI.updateDealStatus(deal.id, newStatus);
+      const r = isCargo
+        ? await marketAPI.republishCargo(item.id)
+        : await marketAPI.republishTrip(item.id);
       if (r.ok) {
-        toast(newStatus === 'cancelled' ? t('deal_cancelled_toast') : t('deal_updated_toast'), 'success');
+        toast('✅ ' + t('republish'), 'success');
         load();
       } else {
         toast(r.detail || t('send_error'), 'error');
@@ -544,414 +527,52 @@ export default function MyTripsScreen({ navigation, route }) {
     setBusyBidId(null);
   };
 
-  const openDealCard = (deal) => {
-    if (deal.cargo_id) {
-      navigation.navigate('CargoDetail', { cargoId: deal.cargo_id, dealId: deal.id, role });
-    } else if (deal.trip_id) {
-      navigation.navigate('TripDetail', { tripId: deal.trip_id, dealId: deal.id, role });
-    }
-  };
+  // Карточка сделки/статус перевозки/чат/трекинг/отзыв — переехали целиком в
+  // «Сделки» (ChatScreen), решение владельца 05.08.2026: «Мои рейсы»/«Мои
+  // грузы» — только управление объявлениями. renderDeal/openDealCard/
+  // setDealStatusOnServer удалены как мёртвый код вместе с этим экраном.
 
-  const renderDeal = ({ item }) => {
-    const sc = { accepted: '#10B981', in_progress: '#FF8400', at_border: '#2563EB', delivered: '#10B981', cancelled: '#EF4444' };
-    const busy = busyBidId === item.id;
-    const isDomestic = item.from_country && item.to_country
-      && item.from_country.toUpperCase() === item.to_country.toUpperCase();
-    const nextStep = isDriver
-      ? (item.status === 'accepted' ? t('driver_next_step_accepted')
-          : item.status === 'in_progress' ? t('driver_next_step_in_progress')
-          : null)
-      : (item.status === 'accepted' ? t('shipper_next_step_accepted')
-          : item.status === 'in_progress' ? t('shipper_next_step_in_progress')
-          : null);
+  // renderBid удалён: единственный вызов был из renderArchiveItem для
+  // _kind==='bid', а такие записи в архив больше не попадают (отклонённые/
+  // отменённые ставки теперь показываются в «Сделках» статусом «Отменено» —
+  // см. ChatsListScreen.js). Accept/reject/counter самих ставок — там же.
 
+  // ─── Layout ───
+
+  const v1Accent = v1AccentFor(isDriver ? 'driver' : 'client');
+
+  const renderUnpublishedItem = ({ item }) => {
+    const isCargo = !!item.cargo_desc;
+    const from = item.from_city || '—';
+    const to = item.to_city || '—';
     return (
-      <TouchableOpacity
-        testID="my-order-card"
-        activeOpacity={0.85}
-        onPress={() => openDealCard(item)}
-        style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]}
-      >
+      <View style={[s.card, { backgroundColor: theme.card, borderColor: theme.border, opacity: 0.7 }]}>
         <View style={s.cardTop}>
-          <View style={[s.badge, { backgroundColor: accent + '20' }]}>
-            <Text style={[s.badgeText, { color: accent }]}>{t('order_label')}</Text>
+          <View style={[s.badge, { backgroundColor: '#94A3B820' }]}>
+            <Text style={[s.badgeText, { color: '#94A3B8' }]}>{isCargo ? t('badge_cargo') : t('badge_trip')}</Text>
           </View>
-          {item.status === 'accepted' ? (
-            <PopIn style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <Feather name="check-circle" size={13} color={sc[item.status]} />
-              <Text style={[s.statusLabel, { color: sc[item.status] }]}>{formatStatus(item.status)}</Text>
-            </PopIn>
-          ) : (
-            <Text style={[s.statusLabel, { color: sc[item.status] || '#78716C' }]}>{formatStatus(item.status)}</Text>
-          )}
+          <Text style={[s.statusLabel, { color: '#94A3B8' }]}>{formatStatus(item.status || 'unpublished')}</Text>
         </View>
-        <Text style={[s.route, { color: theme.text }]}>{localizePlace(item.from_city || '—', lang)} → {localizePlace(item.to_city || '—', lang)}</Text>
-        {/* issue #3: груз/тип кузова на карточке заказа */}
-        {(item.cargo_title || item.cargo_desc || item.cargo_type || item.truck_type) ? (
-          <View style={s.cardMeta}>
-            {(item.cargo_title || item.cargo_desc) ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 }}>
-                <Feather name="package" size={13} color={theme.textMuted} />
-                <Text style={[s.metaItem, { color: theme.textMuted }]} numberOfLines={1}>{localizeCargoName(item.cargo_title || item.cargo_desc, lang)}</Text>
-              </View>
-            ) : null}
-            {(item.cargo_type || item.truck_type) ? (
-              <>
-                <Text style={s.metaDot}>·</Text>
-                <Text style={[s.metaItem, { color: theme.textDim }]}>{formatTruckType(item.truck_type || item.cargo_type)}</Text>
-              </>
-            ) : null}
-          </View>
-        ) : null}
-        <View style={s.cardBottom}>
-          <Text style={s.price} numberOfLines={1}>{(item.amount || 0) > 0 ? formatPrice(item.amount, currencyFor(item), t) : t('negotiable')}</Text>
-          <Text style={[s.metaItem, { color: theme.textDim }]}>{formatDateForDisplay(item.departure || item.created_at)}</Text>
+        <Text style={[s.route, { color: theme.text }]}>{countryFlag(item.from_country)} {localizePlace(from, lang)} → {countryFlag(item.to_country)} {localizePlace(to, lang)}</Text>
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: spacing.sm }}>
+          <TouchableOpacity
+            testID="republish-btn"
+            style={[s.acceptBtn, { backgroundColor: accent, flex: 1 }]}
+            onPress={() => republishItem(item, isCargo)}
+          >
+            <Text style={[s.acceptBtnText, { color: '#0C0A09' }]}>{t('republish')}</Text>
+          </TouchableOpacity>
         </View>
-        {nextStep ? (
-          <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 4 }}>
-            {t('order_next_step')}: {nextStep}
-          </Text>
-        ) : null}
-
-        {/* Status CTA */}
-        <View style={{ flexDirection: 'row', gap: 6, marginTop: spacing.sm, flexWrap: 'wrap' }}>
-          {isDriver && item.status === 'accepted' && (
-            <TouchableOpacity
-              style={[s.acceptBtn, { backgroundColor: '#FF8400' }, busy && { opacity: 0.5 }]}
-              disabled={busy}
-              onPress={() => setDealStatusOnServer(item, 'in_progress')}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="truck" size={15} color="#0C0A09" />
-                <Text style={[s.acceptBtnText, { color: '#0C0A09' }]}>{t('start_delivery')}</Text>
-              </View>
-            </TouchableOpacity>
-          )}
-          {/* Водитель «В работе»: ОДНО следующее действие по типу маршрута.
-              Международный (from_country !== to_country): in_progress → «На границе».
-              Внутренний (from_country === to_country): in_progress → «Груз доставлен»,
-              at_border пропускается — границы нет. */}
-          {isDriver && item.status === 'in_progress' && !isDomestic && (
-            <TouchableOpacity
-              style={[s.acceptBtn, { backgroundColor: '#2563EB' }, busy && { opacity: 0.5 }]}
-              disabled={busy}
-              onPress={() => setDealStatusOnServer(item, 'at_border')}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="flag" size={15} color="#FFF" />
-                <Text style={s.acceptBtnText}>{t('status_at_border')}</Text>
-              </View>
-            </TouchableOpacity>
-          )}
-          {isDriver && item.status === 'in_progress' && isDomestic && (
-            <TouchableOpacity
-              style={[s.acceptBtn, busy && { opacity: 0.5 }]}
-              disabled={busy}
-              onPress={() => setDealStatusOnServer(item, 'delivered')}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="check-circle" size={15} color="#FFF" />
-                <Text style={s.acceptBtnText}>{t('mark_arrived')}</Text>
-              </View>
-            </TouchableOpacity>
-          )}
-          {isDriver && item.status === 'at_border' && (
-            <TouchableOpacity
-              style={[s.acceptBtn, busy && { opacity: 0.5 }]}
-              disabled={busy}
-              onPress={() => setDealStatusOnServer(item, 'delivered')}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="check-circle" size={15} color="#FFF" />
-                <Text style={s.acceptBtnText}>{t('mark_arrived')}</Text>
-              </View>
-            </TouchableOpacity>
-          )}
-          {!isDriver && (item.status === 'in_progress' || item.status === 'at_border') && (
-            <TouchableOpacity
-              style={[s.acceptBtn, { backgroundColor: accent }, busy && { opacity: 0.5 }]}
-              disabled={busy}
-              onPress={() => setDealStatusOnServer(item, 'delivered')}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="check-circle" size={15} color="#0C0A09" />
-                <Text style={[s.acceptBtnText, { color: '#0C0A09' }]}>{t('confirm_delivery')}</Text>
-              </View>
-            </TouchableOpacity>
-          )}
-          {/* Задача 2: отмена сделки доступна ТОЛЬКО до выезда (accepted).
-              Когда груз уже «Везут» (in_progress) — договорённость в силе,
-              самостоятельной отмены нет (вопросы — через чат/поддержку). */}
-          {item.status === 'accepted' && (
-            <PressableScale
-              style={[s.miniBtn, { backgroundColor: 'transparent' }, busy && { opacity: 0.5 }]}
-              disabled={busy}
-              onPress={async () => {
-                if (!(await confirmAction(t('cancel_deal_confirm')))) return;
-                setDealStatusOnServer(item, 'cancelled');
-              }}
-            >
-              <Text style={[s.miniBtnText, { color: '#EF4444' }]}>⊘ {t('cancel_deal')}</Text>
-            </PressableScale>
-          )}
-          {item.chat_room_id && (
-            <PressableScale
-              style={[s.miniBtn, { backgroundColor: 'rgba(255,132,0,0.14)' }]}
-              onPress={() => navigation.navigate('Chat', { roomId: item.chat_room_id, role })}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="message-square" size={14} color={accent} />
-                <Text style={[s.miniBtnText, { color: accent }]}>{t('order_chat')}</Text>
-              </View>
-            </PressableScale>
-          )}
-          {/* Задача B: грузоотправитель видит, где машина (на стадии «Везут»). */}
-          {!isDriver && ['accepted', 'in_progress'].includes(item.status) && (
-            <PressableScale
-              testID="deal-track-truck"
-              style={s.miniBtn}
-              onPress={() => navigation.navigate('TrackTruck', {
-                dealId: item.id, from: item.from_city, to: item.to_city, driverName: item.driver_name,
-              })}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="map-pin" size={14} color={theme.text} />
-                <Text style={[s.miniBtnText, { color: theme.text }]}>{t('track_truck_btn')}</Text>
-              </View>
-            </PressableScale>
-          )}
-        </View>
-      </TouchableOpacity>
-    );
-  };
-
-  const openChatForBid = async (bid) => {
-    const r = await marketAPI.openBidChat(bid.id);
-    if (r.ok) {
-      const roomId = r.chat_room_id || r.chatRoomId;
-      if (roomId) navigation.navigate('Chat', { roomId, role });
-      else toast(t('chat_open_failed'), 'error');
-    } else {
-      toast(r.detail || t('chat_open_failed'), 'error');
-    }
-  };
-
-  const renderBid = ({ item }) => {
-    const from = item.cargo_from || '—';
-    const to = item.cargo_to || '—';
-    const sc = { pending: '#FF8400', accepted: '#22C55E', rejected: '#EF4444', cancelled: '#78716C', countered: '#A855F7' };
-    const sl = {
-      pending: t('bid_pending'), accepted: t('bid_accepted'),
-      rejected: t('bid_rejected'), cancelled: t('bid_cancelled'),
-      countered: t('bid_countered'),
-    };
-    const busy = busyBidId === item.id;
-    const isCountered = item.status === 'countered';
-    return (
-      <View testID="my-bid-card" style={[s.card, {
-        backgroundColor: theme.card,
-        borderColor: isCountered ? '#A855F7' : theme.border,
-        borderWidth: isCountered ? 2 : 1,
-        opacity: item.status === 'cancelled' ? 0.6 : 1,
-      }]}>
-        <View style={s.cardTop}>
-          <Text style={[s.route, { color: theme.text }]}>{localizePlace(from, lang)} → {localizePlace(to, lang)}</Text>
-          <Text style={[s.statusLabel, { color: sc[item.status] || '#78716C' }]}>{sl[item.status] || item.status}</Text>
-        </View>
-        {item.cargo_desc ? <Text style={[s.desc, { color: theme.textMuted }]} numberOfLines={1}>{localizeCargoName(item.cargo_desc, lang)}</Text> : null}
-        <View style={s.cardBottom}>
-          <Text style={s.price} numberOfLines={1}>{formatPrice(item.amount, currencyFor(item), t)}</Text>
-          {item.message && <Text style={[s.bidsLabel, { color: theme.textMuted }]} numberOfLines={1}>{item.message}</Text>}
-        </View>
-        {isCountered && item.counter_amount ? (
-          <Text style={{ color: '#A855F7', fontSize: 12, fontWeight: '700', marginTop: 4 }}>
-            {t('counter_amount')}: {formatPrice(item.counter_amount, currencyFor(item), t)}
-            {item.counter_message ? ` · ${item.counter_message}` : ''}
-          </Text>
-        ) : null}
-
-        {/* Cargo owner — pending: Reject / Counter / Open chat / Accept */}
-        {!isDriver && item.status === 'pending' && (
-          <View style={{ flexDirection: 'row', gap: 6, marginTop: spacing.sm, flexWrap: 'wrap' }}>
-            <TouchableOpacity
-              testID="bid-reject"
-              style={[s.rejectBtn, busy && { opacity: 0.5 }]}
-              disabled={busy}
-              onPress={async () => {
-                setBusyBidId(item.id);
-                const r = await marketAPI.rejectBid(item.id);
-                setBusyBidId(null);
-                if (r.ok) { toast('❌ ' + t('bid_rejected_toast'), 'success'); load(); }
-                else toast(r.detail || t('reject_failed'), 'error');
-              }}
-            >
-              <Text style={s.rejectBtnText}>{t('reject_btn')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              testID="bid-counter"
-              style={[s.miniBtn, { borderColor: '#A855F7' }]}
-              onPress={() => { setEditingBid(item); setBidModalMode('counter'); setBidModal(true); }}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="refresh-cw" size={14} color="#A855F7" />
-                <Text style={[s.miniBtnText, { color: '#A855F7' }]}>{t('counter_offer')}</Text>
-              </View>
-            </TouchableOpacity>
-            <TouchableOpacity
-              testID="bid-accept"
-              style={[s.acceptBtn, { flex: 1, minWidth: 110 }, busy && { opacity: 0.5 }]}
-              disabled={busy}
-              onPress={async () => {
-                // Принятие ставки создаёт сделку — подтверждаем, чтобы
-                // случайный тап не заключил сделку на десятки тысяч.
-                const sum = formatPrice(item.amount, currencyFor(item), t);
-                if (!(await confirmAction(t('accept_bid_confirm').replace('{sum}', sum)))) return;
-                setBusyBidId(item.id);
-                const r = await marketAPI.acceptBid(item.id);
-                setBusyBidId(null);
-                if (r.ok) { toast(t('bid_accepted_toast'), 'success'); load(); }
-                else toast(r.detail || t('send_error'), 'error');
-              }}
-            >
-              <Text style={s.acceptBtnText}>{t('accept_bid_btn')} {formatPrice(item.amount, currencyFor(item), t)}</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Cargo owner — countered: Reject + Open chat (no direct accept) */}
-        {!isDriver && isCountered && (
-          <View style={{ flexDirection: 'row', gap: 6, marginTop: spacing.sm, flexWrap: 'wrap' }}>
-            <TouchableOpacity
-              testID="bid-reject"
-              style={[s.rejectBtn, busy && { opacity: 0.5 }]}
-              disabled={busy}
-              onPress={async () => {
-                setBusyBidId(item.id);
-                const r = await marketAPI.rejectBid(item.id);
-                setBusyBidId(null);
-                if (r.ok) { toast('❌ ' + t('bid_rejected_toast'), 'success'); load(); }
-                else toast(r.detail || t('reject_failed'), 'error');
-              }}
-            >
-              <Text style={s.rejectBtnText}>{t('reject_btn')}</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Driver — countered: Accept counter / Decline counter / Open chat */}
-        {isDriver && isCountered && (
-          <View style={{ flexDirection: 'row', gap: 6, marginTop: spacing.sm, flexWrap: 'wrap' }}>
-            <TouchableOpacity
-              testID="bid-decline-counter"
-              style={[s.miniBtn, { borderColor: '#EF4444' }, busy && { opacity: 0.5 }]}
-              disabled={busy}
-              onPress={async () => {
-                setBusyBidId(item.id);
-                const r = await marketAPI.declineCounterBid(item.id);
-                setBusyBidId(null);
-                if (r.ok) { toast('↩ ' + t('counter_declined'), 'success'); load(); }
-                else toast(r.detail || t('reject_failed'), 'error');
-              }}
-            >
-              <Text style={[s.miniBtnText, { color: '#EF4444' }]}>↩ {t('decline_counter')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              testID="bid-accept-counter"
-              style={[s.acceptBtn, busy && { opacity: 0.5 }]}
-              disabled={busy}
-              onPress={async () => {
-                setBusyBidId(item.id);
-                const r = await marketAPI.acceptCounterBid(item.id);
-                setBusyBidId(null);
-                if (r.ok) { toast('✅ ' + t('counter_accepted'), 'success'); load(); }
-                else toast(r.detail || t('accept_failed'), 'error');
-              }}
-            >
-              <Text style={s.acceptBtnText}>{t('accept_counter')} {formatPrice(item.counter_amount, currencyFor(item), t)}</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Driver — pending: Edit / Discount / Open chat / Cancel */}
-        {isDriver && item.status === 'pending' && (
-          <View style={{ flexDirection: 'row', gap: 6, marginTop: spacing.sm, flexWrap: 'wrap' }}>
-            <TouchableOpacity
-              testID="bid-edit"
-              style={[s.miniBtn, { borderColor: '#22C55E' }]}
-              onPress={() => { setEditingBid(item); setBidModalMode('edit'); setBidModal(true); }}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="edit-3" size={14} color="#22C55E" />
-                <Text style={[s.miniBtnText, { color: '#22C55E' }]}>{t('edit_bid')}</Text>
-              </View>
-            </TouchableOpacity>
-            <TouchableOpacity
-              testID="bid-discount"
-              style={[s.miniBtn, { borderColor: '#FF8400' }]}
-              onPress={() => { setEditingBid(item); setBidModalMode('discount'); setBidModal(true); }}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="dollar-sign" size={14} color="#FF8400" />
-                <Text style={[s.miniBtnText, { color: '#FF8400' }]}>{t('give_discount')}</Text>
-              </View>
-            </TouchableOpacity>
-            <TouchableOpacity
-              testID="bid-cancel"
-              style={[s.miniBtn, { borderColor: '#EF4444' }, busy && { opacity: 0.5 }]}
-              disabled={busy}
-              onPress={async () => {
-                if (!(await confirmAction(t('cancel_bid_confirm')))) return;
-                setBusyBidId(item.id);
-                const r = await marketAPI.cancelBid(item.id);
-                setBusyBidId(null);
-                if (r.ok) { toast('⊘ ' + t('bid_cancelled_toast'), 'success'); load(); }
-                else toast(r.detail || t('cancel_failed'), 'error');
-              }}
-            >
-              <Text style={[s.miniBtnText, { color: '#EF4444' }]}>⊘ {t('cancel_bid')}</Text>
-            </TouchableOpacity>
-          </View>
-        )}
       </View>
     );
   };
 
-  // ─── Layout ───
-
-  // Map the original `my / bids / deals` tab keys to the macro-11/12
-  // labels (Active / Completed / Archive). The keys are kept for testID
-  // backward compat — existing E2E rely on them.
-  const v1Accent = v1AccentFor(isDriver ? 'driver' : 'client');
-  // Driver (issue #2): Мои рейсы / Предложения / В работе / Завершённые.
-  // Client keeps the legacy 3-tab layout untouched.
-  const TABS = isDriver
-    ? [
-        { key: 'routes', label: t('tab_my_routes'), testID: 'my-work-tab-routes' },
-        { key: 'inwork', label: t('tab_in_work'),   testID: 'my-work-tab-inwork' },
-        { key: 'done',   label: t('tab_done'),      testID: 'my-work-tab-done' },
-      ]
-    : [
-        { key: 'searching', label: t('client_tab_searching'), testID: 'my-work-tab-searching' },
-        { key: 'enroute',   label: t('client_tab_enroute'),   testID: 'my-work-tab-enroute' },
-        { key: 'delivered', label: t('client_tab_delivered'), testID: 'my-work-tab-delivered' },
-      ];
-
-
-  // Archive renderer dispatches by item kind (deal / bid / expired route).
-  const renderArchiveItem = ({ item }) =>
-    item._kind === 'deal' ? renderDeal({ item })
-      : item._kind === 'bid' ? renderBid({ item })
-      : renderMyItem({ item });
-
-  // Ставки водителя (driverOffers) переехали во вкладку «Сделки»; renderBid
-  // остаётся только для архивных ставок (renderArchiveItem).
-  const DRIVER_DATA = { routes: myItems, inwork: driverInWork, done: driverDone, archive: driverArchive };
-  const DRIVER_RENDER = { routes: renderMyItem, inwork: renderDeal, done: renderDeal, archive: renderArchiveItem };
-  // Client (грузоотправитель, 26.07.2026): только стадии моих грузов — ищу
-  // машину / везут / доставлено + архив. Входящие ставки живут во вкладке
-  // «Сделки»; на карточке груза остаётся CTA «N предложений» → Сделки.
-  const CLIENT_DATA = { searching: clientSearching, enroute: driverInWork, delivered: driverDone, archive: clientArchive };
-  const CLIENT_RENDER = { searching: renderMyItem, enroute: renderDeal, delivered: renderDeal, archive: renderArchiveItem };
+  // Архив содержит только неопубликованные объявления (см. driverArchive/
+  // clientArchive выше) — отдельного dispatch-рендерера больше не нужно.
+  const DRIVER_DATA = { routes: myItems, archive: driverArchive };
+  const DRIVER_RENDER = { routes: renderMyItem, archive: renderUnpublishedItem };
+  const CLIENT_DATA = { searching: clientSearching, archive: clientArchive };
+  const CLIENT_RENDER = { searching: renderMyItem, archive: renderUnpublishedItem };
   const listData = isDriver ? (DRIVER_DATA[tab] || []) : (CLIENT_DATA[tab] || []);
   const listRenderBase = isDriver ? (DRIVER_RENDER[tab] || renderMyItem) : (CLIENT_RENDER[tab] || renderMyItem);
   // Промпт-дизайн: карточки появляются каскадом (выезд 10px + fade, 50мс шаг).
@@ -967,13 +588,9 @@ export default function MyTripsScreen({ navigation, route }) {
     }
     if (isDriver) {
       if (tab === 'routes') return <EmptyState title={t('no_trips_yet')} description={t('no_trips_desc')} actionLabel={t('publish_route')} onAction={onPublishRoute} />;
-      if (tab === 'inwork') return <EmptyState title={t('no_inwork_yet')} description={t('no_inwork_desc')} actionLabel={t('find_cargos')} onAction={() => navigation.navigate('Feed', { role })} />;
-      if (tab === 'done') return <EmptyState title={t('no_done_yet')} description={t('no_done_desc')} />;
       return <EmptyState title={t('no_archive_yet')} description={t('no_archive_desc')} />;
     }
     if (tab === 'searching') return <EmptyState title={t('no_cargos_yet')} description={t('client_searching_desc')} actionLabel={t('place_cargo')} onAction={() => navigation.navigate('CreateCargo')} />;
-    if (tab === 'enroute') return <EmptyState title={t('client_no_enroute_yet')} description={t('client_no_enroute_desc')} />;
-    if (tab === 'delivered') return <EmptyState title={t('client_no_delivered_yet')} description={t('client_no_delivered_desc')} />;
     return <EmptyState title={t('no_archive_yet')} description={t('no_archive_desc')} />;
   };
 
@@ -1026,10 +643,10 @@ export default function MyTripsScreen({ navigation, route }) {
       </View>
 
       <View style={{ paddingHorizontal: 16 }}>
-        <SegmentTabs items={TABS} value={tab === 'archive' ? null : tab} onChange={setTab} accent={v1Accent.main} variant={isDriver ? 'pill' : 'underline'} />
-        {/* Архив — вторичный фильтр (issue #2): отменённые/отклонённые/
-            истёкшие, НЕ основная вкладка. Активных заказов тут нет.
-            Доступен обеим ролям (driver и грузоотправитель). */}
+        {/* Решение владельца 05.08.2026: один основной раздел (листинги),
+            вкладок для переключения больше нет — SegmentTabs с одной вечно
+            активной кнопкой был бы лишним элементом. Архив — единственный
+            вторичный toggle, доступен обеим ролям. */}
         {(
           <TouchableOpacity
             testID="my-work-archive-toggle"
@@ -1051,17 +668,6 @@ export default function MyTripsScreen({ navigation, route }) {
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
         ListEmptyComponent={renderEmpty()}
-      />
-
-      <BidModal
-        visible={bidModal}
-        onClose={() => { setBidModal(false); setEditingBid(null); }}
-        onSubmit={() => load()}
-        mode={bidModalMode}
-        bidId={editingBid?.id}
-        initialAmount={editingBid?.amount}
-        initialMessage={editingBid?.message}
-        currency={currencyFor(editingBid)}
       />
 
       <EditCargoModal

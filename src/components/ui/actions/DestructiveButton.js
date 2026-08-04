@@ -5,6 +5,7 @@
 
 import React from 'react';
 import { TouchableOpacity, Text, ActivityIndicator, StyleSheet, View } from 'react-native';
+import { SAFE_BUTTON_STYLE, SAFE_ROW_STYLE, SAFE_ICON_STYLE, SAFE_LABEL_STYLE, safeFontSize } from './safeButtonStyles';
 
 const RED = '#EF4444';
 
@@ -16,6 +17,7 @@ export default function DestructiveButton({
   disabled = false,
   testID,
   style,
+  numberOfLines = 1,
 }) {
   const isDisabled = disabled || loading;
   return (
@@ -31,7 +33,7 @@ export default function DestructiveButton({
       ) : (
         <View style={s.row}>
           {icon ? <Text style={[s.icon, { color: RED }]}>{icon}</Text> : null}
-          <Text style={[s.label, { color: RED }]} numberOfLines={1}>{label}</Text>
+          <Text style={[s.label, { color: RED }]} numberOfLines={numberOfLines} ellipsizeMode="tail">{label}</Text>
         </View>
       )}
     </TouchableOpacity>
@@ -40,6 +42,7 @@ export default function DestructiveButton({
 
 const s = StyleSheet.create({
   btn: {
+    ...SAFE_BUTTON_STYLE,
     height: 44,
     borderRadius: 10,
     borderWidth: 1,
@@ -48,7 +51,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 10,
     backgroundColor: 'transparent',
   },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  icon: { fontSize: 12, fontWeight: '700' },
-  label: { fontSize: 13, fontWeight: '700' },
+  row: { ...SAFE_ROW_STYLE, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
+  icon: { ...SAFE_ICON_STYLE, fontSize: safeFontSize(12), fontWeight: '700' },
+  label: { ...SAFE_LABEL_STYLE, fontSize: safeFontSize(13), fontWeight: '700' },
 });
