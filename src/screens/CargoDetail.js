@@ -29,6 +29,7 @@ import { useVerificationGate } from '../components/VerificationGate';
 import { LEVELS, useAuth } from '../utils/AuthContext';
 import { marketAPI } from '../utils/marketAPI';
 import { reviewsAPI } from '../utils/reviews';
+import { pickDealStatus } from '../utils/dealStatusOrder';
 import { normalizeCargo, cargoDisplay, sanitizeForDisplay, formatPrice } from '../utils/normalizers';
 import { localizePlace } from '../utils/places';
 import { formatDateForDisplay } from '../utils/dateInput';
@@ -46,11 +47,6 @@ import DestructiveButton from '../components/ui/actions/DestructiveButton';
 import PriceSavingsBadge from '../components/deal/PriceSavingsBadge';
 
 const FLAGS = { KZ: '🇰🇿', UZ: '🇺🇿', RU: '🇷🇺', KG: '🇰🇬', CN: '🇨🇳', TJ: '🇹🇯', TR: '🇹🇷', TM: '🇹🇲', MN: '🇲🇳', DE: '🇩🇪', FR: '🇫🇷' };
-
-// Порядок стадий сделки — используется, чтобы applyDeal() никогда не
-// откатывал статус назад (устаревший ответ getDeal/myDashboard не должен
-// перезаписать более свежий, уже более продвинутый статус).
-const DEAL_STATUS_RANK = { accepted: 1, in_progress: 2, at_border: 3, delivered: 4, completed: 4 };
 
 // HOT-003: скрываем техмусор из description (остатки init_db, стектрейсы и т.п.)
 const TRASH_RE = /init_db|phone_formatter|json_merger|bin_iin|SQL|sqlite|traceback|\bError:|File "[^"]+\.py"|line \d+|^```|stderr|\.py\b|SELECT |INSERT |UPDATE |DELETE |CREATE TABLE/gi;
@@ -330,19 +326,11 @@ export default function CargoDetail({ navigation, route }) {
     setDealId(d.id);
     // deal.status — ЕДИНСТВЕННЫЙ источник статуса после создания сделки
     // (приказ владельца 04.08 п.1). seq-guard выше отсекает большинство
-    // гонок, но добавляем вторую независимую страховку: даже если устаревший
-    // ответ каким-то образом пройдёт (напр. параллельный поллинг вне
-    // dealFetchSeq), статус не должен ОТКАТЫВАТЬСЯ назад по жизненному циклу
-    // сделки (05.08, п.6). cancelled — терминальный статус, применяется
-    // всегда, из любого состояния.
-    setDealStatus((prev) => {
-      const next = d.status || 'accepted';
-      if (!prev || next === 'cancelled' || prev === 'cancelled') return next;
-      const prevRank = DEAL_STATUS_RANK[prev] ?? 0;
-      const nextRank = DEAL_STATUS_RANK[next] ?? 0;
-      if (nextRank < prevRank) return prev; // устаревший ответ — не откатываем
-      return next;
-    });
+    // гонок, но добавляем вторую независимую страховку через общий
+    // pickDealStatus (utils/dealStatusOrder.js, 05.08 п.6): статус не
+    // откатывается назад, а completed/delivered — не «отменяются задним
+    // числом» устаревшим cancelled.
+    setDealStatus((prev) => pickDealStatus(prev, d.status || 'accepted'));
     if (d.chat_room_id) setChatRoomId(d.chat_room_id);
     if (d.shipper_id) setShipperId(d.shipper_id);
     if (d.driver_id) {

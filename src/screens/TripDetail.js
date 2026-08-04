@@ -31,11 +31,7 @@ import SecondaryButton from '../components/ui/actions/SecondaryButton';
 import DestructiveButton from '../components/ui/actions/DestructiveButton';
 import PriceSavingsBadge from '../components/deal/PriceSavingsBadge';
 import { reviewsAPI } from '../utils/reviews';
-
-// Порядок стадий сделки — используется, чтобы applyDeal() никогда не
-// откатывал статус назад (устаревший ответ getDeal/myDashboard не должен
-// перезаписать более свежий, уже более продвинутый статус).
-const DEAL_STATUS_RANK = { accepted: 1, in_progress: 2, at_border: 3, delivered: 4, completed: 4 };
+import { pickDealStatus } from '../utils/dealStatusOrder';
 
 export default function TripDetail({ navigation, route }) {
   const v1 = useV1Colors();
@@ -189,17 +185,11 @@ export default function TripDetail({ navigation, route }) {
     setDealId(d.id);
     // deal.status — ЕДИНСТВЕННЫЙ источник статуса после создания сделки
     // (приказ владельца 04.08 п.1). seq-guard выше отсекает большинство
-    // гонок, но добавляем вторую независимую страховку: даже если устаревший
-    // ответ каким-то образом пройдёт, статус не должен ОТКАТЫВАТЬСЯ назад по
-    // жизненному циклу сделки (05.08, п.6). cancelled — терминален, применяется всегда.
-    setDealStatus((prev) => {
-      const next = d.status || 'accepted';
-      if (!prev || next === 'cancelled' || prev === 'cancelled') return next;
-      const prevRank = DEAL_STATUS_RANK[prev] ?? 0;
-      const nextRank = DEAL_STATUS_RANK[next] ?? 0;
-      if (nextRank < prevRank) return prev; // устаревший ответ — не откатываем
-      return next;
-    });
+    // гонок, но добавляем вторую независимую страховку через общий
+    // pickDealStatus (utils/dealStatusOrder.js, 05.08 п.6): статус не
+    // откатывается назад, а completed/delivered — не «отменяются задним
+    // числом» устаревшим cancelled.
+    setDealStatus((prev) => pickDealStatus(prev, d.status || 'accepted'));
     if (d.chat_room_id) setChatRoomId(d.chat_room_id);
     if (d.shipper_id) setShipperId(d.shipper_id);
     if (d.driver_id) setDriverId(d.driver_id);
