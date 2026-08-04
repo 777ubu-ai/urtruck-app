@@ -119,9 +119,12 @@ async function mockServer(page) {
   });
 }
 
-async function enterAsDriver(page) {
+async function enterAsDriver(page, lang) {
   await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
-  await page.evaluate(() => localStorage.setItem('ur_reg_token', 'pw-tok-ovf'));
+  await page.evaluate((l) => {
+    localStorage.setItem('ur_reg_token', 'pw-tok-ovf');
+    if (l) localStorage.setItem('ur_lang', l);
+  }, lang);
   await page.reload({ waitUntil: 'networkidle' });
   await page.waitForTimeout(3000);
 }
@@ -187,11 +190,42 @@ test.describe('Action buttons never overflow their box (pending bid card)', () =
 
       await assertNoTextOverflow(page, ['trip-bid-accept', 'trip-bid-counter', 'trip-bid-reject']);
 
+      // counter_offer label was shortened to "Своя цена" in an earlier pass
+      // (button-label-shortening commit) — this assertion just needs to
+      // track the current copy, the overflow geometry above is the real check.
       const body = await page.locator('body').innerText();
-      expect(body).toContain('Предложить свою цену');
+      expect(body).toContain('Своя цена');
       expect(body).toContain('Отклонить');
 
       expect(consoleErrors, `console errors: ${consoleErrors.join(' | ')}`).toHaveLength(0);
+    });
+  }
+});
+
+// Секция 20/28 ТЗ (05.08.2026): та же геометрическая проверка на самой
+// узкой реальной ширине (320px), но по очереди во всех 4 языках — русские/
+// казахские слова длиннее английских по числу символов, самый частый
+// источник переполнения кнопок именно там, не в EN/ZH.
+test.describe('Action buttons never overflow their box — all 4 languages @320px', () => {
+  for (const lang of ['RU', 'KK', 'ZH', 'EN']) {
+    test(`lang=${lang}: accept/counter/reject text stays inside their buttons`, async ({ page }) => {
+      const consoleErrors = [];
+      page.on('console', (msg) => { if (msg.type() === 'error') consoleErrors.push(msg.text().slice(0, 300)); });
+      page.on('pageerror', (err) => consoleErrors.push('PAGEERROR: ' + err.message));
+
+      await page.setViewportSize({ width: 320, height: 800 });
+      await mockServer(page);
+      await page.goto(BASE, { waitUntil: 'networkidle' });
+      await enterAsDriver(page, lang);
+      await openOwnTripWithPendingBid(page);
+
+      await expect(page.locator('[data-testid="trip-bid-accept"]')).toBeVisible();
+      await expect(page.locator('[data-testid="trip-bid-counter"]')).toBeVisible();
+      await expect(page.locator('[data-testid="trip-bid-reject"]')).toBeVisible();
+
+      await assertNoTextOverflow(page, ['trip-bid-accept', 'trip-bid-counter', 'trip-bid-reject']);
+
+      expect(consoleErrors, `console errors (${lang}): ${consoleErrors.join(' | ')}`).toHaveLength(0);
     });
   }
 });
