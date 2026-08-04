@@ -298,14 +298,18 @@ test.describe('Trip status priority — deal.status over legacy tripState', () =
     expect(body).not.toContain('Статус рейса');
   });
 
-  test('at_border deal: still no legacy "Запланирован" leak', async ({ page }) => {
+  test('at_border deal: collapsed to "В работе" (п.8 ТЗ), no legacy "Запланирован" leak', async ({ page }) => {
     await mockServer(page, { dealStatus: 'at_border' });
     await page.goto(BASE, { waitUntil: 'networkidle' });
     await enterAsDriver(page);
     await openDealCard(page);
 
+    // «На границе» временно убрана из пользовательского словаря
+    // (05.08.2026, п.8 ТЗ): at_border показывается пользователю как
+    // «В работе» — deal.status на бэкенде при этом остаётся at_border.
     const body = await page.locator('body').innerText();
-    expect(body).toContain('На границе');
+    expect(body).toContain('В работе');
+    expect(body).not.toContain('На границе');
     expect(body).not.toContain('Запланирован');
     expect(body).not.toContain('Статус рейса');
   });
@@ -384,12 +388,16 @@ test.describe('Deal status after a successful transition', () => {
     await page.waitForTimeout(1500); // await the successful PATCH + forced refetch
 
     expect(box.status).toBe('in_progress');
-    // The accepted-state action button must be gone; international route
-    // (KZ->UZ) means the next driver action is mark_at_border ("На границе").
+    // The accepted-state action button must be gone; «На границе» временно
+    // убрана из словаря (05.08.2026, п.8 ТЗ) — backend допускает
+    // in_progress -> delivered напрямую на любом маршруте, поэтому даже на
+    // международном (KZ->UZ) следующее действие сразу «Доставлен», без
+    // промежуточной кнопки mark-at-border.
     await expect(page.locator('[data-testid="deal-action-start-delivery"]')).toHaveCount(0);
-    await expect(page.locator('[data-testid="deal-action-mark-at-border"]')).toBeVisible();
+    await expect(page.locator('[data-testid="deal-action-mark-at-border"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="deal-action-mark-arrived"]')).toBeVisible();
     body = await page.locator('body').innerText();
-    expect(body).toContain('На границе');
+    expect(body).not.toContain('На границе');
   });
 });
 
@@ -421,8 +429,13 @@ test.describe('Deal status survives navigating away and back', () => {
 
     await expect(page.locator('[data-testid="deal-action-mark-arrived"]')).toBeVisible();
     await expect(page.locator('[data-testid="deal-action-start-delivery"]')).toHaveCount(0);
+    // «На границе» временно убрана из словаря (05.08.2026, п.8 ТЗ) —
+    // status_at_border на дисплее сворачивается в «В работе», реальный
+    // deal.status на сервере (проверено выше через box.status в других
+    // тестах этого файла) при этом остаётся настоящим at_border.
     const body = await page.locator('body').innerText();
-    expect(body).toContain('На границе');
+    expect(body).toContain('В работе');
+    expect(body).not.toContain('На границе');
   });
 });
 

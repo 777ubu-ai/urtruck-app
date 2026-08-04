@@ -26,6 +26,7 @@ import { countryFlag } from '../utils/countryFlags';
 import { prettifyPartnerName } from '../utils/displayName';
 import { accentFor } from '../components/deal/DealRoom';
 import { isBidActionable } from '../utils/dealsUnread';
+import { userFacingDealStatus } from '../utils/dealStatusOrder';
 
 const ROLE_LABEL = { driver: 'role_driver', client: 'role_client', support: 'role_support' };
 const ACTIVE_STATUSES = new Set(['accepted', 'in_progress', 'at_border', 'awaiting_confirmation']);
@@ -512,7 +513,7 @@ export default function ChatsListScreen({ navigation, route }) {
               {dealStatus ? (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                   <View style={[s.statusDot, { backgroundColor: STATUS_DOT_CHAT[dealStatus] || '#94A3B8' }]} />
-                  <Text style={{ fontSize: 10, color: theme.textDim }}>{formatStatus(dealStatus)}</Text>
+                  <Text style={{ fontSize: 10, color: theme.textDim }}>{formatStatus(userFacingDealStatus(dealStatus))}</Text>
                 </View>
               ) : null}
             </View>

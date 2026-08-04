@@ -29,7 +29,7 @@ import { useVerificationGate } from '../components/VerificationGate';
 import { LEVELS, useAuth } from '../utils/AuthContext';
 import { marketAPI } from '../utils/marketAPI';
 import { reviewsAPI } from '../utils/reviews';
-import { pickDealStatus } from '../utils/dealStatusOrder';
+import { pickDealStatus, userFacingDealStatus } from '../utils/dealStatusOrder';
 import { openContactPartner } from '../utils/contactPartner';
 import { normalizeCargo, cargoDisplay, sanitizeForDisplay, formatPrice } from '../utils/normalizers';
 import { localizePlace } from '../utils/places';
@@ -942,7 +942,7 @@ export default function CargoDetail({ navigation, route }) {
                 место действия на статус сделки, без дублей между экранами. */}
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', alignSelf: 'stretch' }}>
               <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '600' }}>{t('trip_current_status')}</Text>
-              <Text style={{ color: theme.text, fontSize: 13, fontWeight: '800' }}>{formatStatus(dealStatus)}</Text>
+              <Text style={{ color: theme.text, fontSize: 13, fontWeight: '800' }}>{formatStatus(userFacingDealStatus(dealStatus))}</Text>
             </View>
             {(dealStatus === 'accepted' || dealStatus === 'in_progress' || dealStatus === 'at_border') && (
               <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 6 }}>

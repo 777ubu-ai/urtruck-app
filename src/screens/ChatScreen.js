@@ -29,7 +29,7 @@ import { DealRoomCard, SystemEventRow, DealQuickActions } from '../components/de
 import BargainCard from '../components/deal/BargainCard';
 import BidModal from '../components/BidModal';
 import DealAttachments from '../components/deal/DealAttachments';
-import { pickDealStatus } from '../utils/dealStatusOrder';
+import { pickDealStatus, userFacingDealStatus } from '../utils/dealStatusOrder';
 import { openContactPartner } from '../utils/contactPartner';
 
 // HOT-006: реальная запись/воспроизведение для web (PWA deploy).
@@ -649,7 +649,13 @@ export default function ChatScreen({ navigation, route }) {
     try {
       const r = await marketAPI.updateDealStatus(dealId, newStatus);
       if (r.ok) {
-        toast(newStatus === 'cancelled' ? t('deal_cancelled_toast') : t('deal_updated_toast'), 'success');
+        // «Статус обновлён» больше не показываем (05.08.2026, п.10 ТЗ):
+        // компактная строка статуса и кнопка следующего действия меняются
+        // тут же на экране — отдельный тост тому же самому событию только
+        // перекрывал шапку/карточку, не добавляя новой информации. Отмену
+        // сделки (более редкое, необратимое действие) по-прежнему
+        // подтверждаем явно.
+        if (newStatus === 'cancelled') toast(t('deal_cancelled_toast'), 'success');
       } else {
         // 409 и другие отказы: сервер уже знает реальный статус — не
         // оставляем устаревшую кнопку, сразу перечитываем сделку.
@@ -667,9 +673,6 @@ export default function ChatScreen({ navigation, route }) {
     }
     setStatusLoading(false);
   };
-  const dealHasCountries = Boolean(deal?.from_country && deal?.to_country);
-  const dealIsDomestic = dealHasCountries
-    && deal.from_country.trim().toUpperCase() === deal.to_country.trim().toUpperCase();
   const isShipperSide = role === 'client' || role === 'shipper';
 
   // QA-аудит P0 (silent message loss): раньше все три send-пути были под
@@ -1103,24 +1106,31 @@ export default function ChatScreen({ navigation, route }) {
           {deal?.status && deal.status !== 'cancelled' ? (
             <View style={s.statusRow} testID="chat-deal-status-compact">
               <Text style={s.statusRowLabel}>{t('trip_current_status')}</Text>
-              <Text style={[s.statusRowValue, { color: v1Accent.main }]}>{formatStatus(deal.status)}</Text>
+              <Text style={[s.statusRowValue, { color: v1Accent.main }]}>{formatStatus(userFacingDealStatus(deal.status))}</Text>
             </View>
           ) : null}
           {(() => {
             if (!deal?.status || deal.status === 'cancelled' || deal.status === 'delivered' || deal.status === 'completed') return null;
             let action = null;
+            // «На границе» временно убрана из пользовательского словаря
+            // (05.08.2026, п.8 ТЗ): backend допускает in_progress → delivered
+            // НАПРЯМУЮ на любом маршруте (_FLOW в marketplace.py — at_border
+            // необязательный промежуточный шаг, не обязательный), поэтому
+            // кнопка «На границе» больше не показывается вовсе — водитель
+            // на международном рейсе тоже видит сразу «Доставлен». Если
+            // deal.status уже реально at_border (проставлен раньше/другим
+            // клиентом), следующий шаг всё равно «Доставлен» — рассинхрона
+            // с реальным статусом нет.
             if (role === 'driver') {
               if (deal.status === 'accepted') action = { key: 'in_progress', icon: 'truck', label: t('start_delivery') };
-              else if (deal.status === 'in_progress' && dealHasCountries && !dealIsDomestic) action = { key: 'at_border', icon: 'flag', label: t('status_at_border') };
-              else if (deal.status === 'in_progress' && dealHasCountries && dealIsDomestic) action = { key: 'delivered', icon: 'check-circle', label: t('mark_arrived') };
-              else if (deal.status === 'at_border') action = { key: 'delivered', icon: 'check-circle', label: t('mark_arrived') };
+              else if (deal.status === 'in_progress' || deal.status === 'at_border') action = { key: 'delivered', icon: 'check-circle', label: t('mark_arrived') };
             } else if (isShipperSide && (deal.status === 'in_progress' || deal.status === 'at_border')) {
               action = { key: 'delivered', icon: 'check-circle', label: t('confirm_delivery') };
             }
             if (!action) return null;
             return (
               <TouchableOpacity
-                testID={`deal-action-${action.key === 'delivered' ? 'mark-arrived' : action.key === 'at_border' ? 'mark-at-border' : 'start-delivery'}`}
+                testID={`deal-action-${action.key === 'delivered' ? 'mark-arrived' : 'start-delivery'}`}
                 style={[s.dealNextBtn, { backgroundColor: v1Accent.main, opacity: statusLoading ? 0.6 : 1 }]}
                 disabled={statusLoading}
                 onPress={() => changeDealStatus(action.key)}
@@ -1166,9 +1176,18 @@ export default function ChatScreen({ navigation, route }) {
           ) : null}
           {dealEvents.length > 0 ? (
             <View testID="deal-timeline">
-              {dealEvents.slice(-4).map((ev) => (
-                <SystemEventRow key={ev.id || ev.event_type} ev={ev} />
-              ))}
+              {/* «На границе» временно убрана из пользовательского словаря
+                  (05.08.2026, п.8 ТЗ) — событие о пересечении границы не
+                  несёт действия для пользователя (следующая кнопка всё
+                  равно «Доставлен»), поэтому не показываем его отдельной
+                  строкой в ленте событий сделки. deal.status на бэкенде
+                  при этом остаётся настоящим at_border. */}
+              {dealEvents
+                .filter((ev) => ev?.payload?.status !== 'at_border')
+                .slice(-4)
+                .map((ev) => (
+                  <SystemEventRow key={ev.id || ev.event_type} ev={ev} />
+                ))}
             </View>
           ) : null}
           <DealAttachments conversationId={roomId} role={role} compact attachTrigger={attachDocTick} />

@@ -30,7 +30,7 @@ import SecondaryButton from '../components/ui/actions/SecondaryButton';
 import DestructiveButton from '../components/ui/actions/DestructiveButton';
 import PriceSavingsBadge from '../components/deal/PriceSavingsBadge';
 import { reviewsAPI } from '../utils/reviews';
-import { pickDealStatus } from '../utils/dealStatusOrder';
+import { pickDealStatus, userFacingDealStatus } from '../utils/dealStatusOrder';
 import { openContactPartner } from '../utils/contactPartner';
 
 export default function TripDetail({ navigation, route }) {
@@ -441,7 +441,7 @@ export default function TripDetail({ navigation, route }) {
         }]}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', alignSelf: 'stretch' }}>
             <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '600' }}>{t('trip_current_status')}</Text>
-            <Text style={{ color: theme.text, fontSize: 13, fontWeight: '800' }}>{formatStatus(dealStatus)}</Text>
+            <Text style={{ color: theme.text, fontSize: 13, fontWeight: '800' }}>{formatStatus(userFacingDealStatus(dealStatus))}</Text>
           </View>
           {(dealStatus === 'accepted' || dealStatus === 'in_progress' || dealStatus === 'at_border') && (
             <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 6, textAlign: 'center' }}>

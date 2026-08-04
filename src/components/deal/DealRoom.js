@@ -12,18 +12,11 @@
 // Акцент роли: driver #00E676 / client #FF8400 (источник истины CLAUDE.md).
 
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
 import { useTheme } from '../../utils/ThemeContext';
-
-// На узких экранах (iPhone SE/mini, компактный Android) 4 подписи этапов
-// («Принят / В работе / На границе / Завершён») слипаются друг с другом —
-// каждый шаг зафиксирован в 66px, а сама подпись не была прижата к этой
-// ширине (центрирование без stretch не сжимает контент, numberOfLines без
-// width-констрейнта не обрезает). Ниже 361px подписи скрываем совсем и
-// показываем только «Текущий статус: <label>» под рядом иконок.
-const TL_NARROW = (Dimensions.get('window').width || 390) <= 360;
+import { userFacingDealStatus } from '../../utils/dealStatusOrder';
 
 export const DRIVER_ACCENT = '#00E676';
 export const CLIENT_ACCENT = '#FF8400';
@@ -59,68 +52,12 @@ export function systemEventText(t, ev) {
   return raw || t('chat_system_event');
 }
 
-// Визуальный таймлайн статуса заказа (как у Uber Freight/inDrive):
-// Принят → В пути → На границе → Доставлен. Пройденные — зелёные, текущий —
-// акцентный, будущие — приглушённые. cancelled → красная плашка.
-const TL_ORDER = ['accepted', 'in_progress', 'at_border', 'delivered'];
-export function DealStatusTimeline({ status, role }) {
-  const { t } = useI18n();
-  const { theme } = useTheme();
-  const accent = accentFor(role);
-  const STEPS = [
-    { key: 'accepted',    icon: 'check',        label: t('status_accepted') },
-    { key: 'in_progress', icon: 'truck',        label: t('status_in_progress') },
-    { key: 'at_border',   icon: 'flag',         label: t('status_at_border') },
-    { key: 'delivered',   icon: 'check-circle', label: t('status_delivered') },
-  ];
-  if (status === 'cancelled') {
-    return (
-      <View style={[s.tlCancel, { borderColor: '#EF4444' }]} testID="deal-timeline-cancelled">
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <Feather name="x-circle" size={15} color="#EF4444" />
-          <Text style={{ color: '#EF4444', fontWeight: '800', fontSize: 14 }}>{t('status_cancelled')}</Text>
-        </View>
-      </View>
-    );
-  }
-  const cur = TL_ORDER.indexOf(status);
-  return (
-    <View testID="deal-timeline">
-      <View style={s.tl}>
-        {STEPS.map((st, i) => {
-          const done = cur > i;
-          const active = cur === i;
-          const on = done || active;
-          const col = done ? '#22C55E' : active ? accent : theme.textDim;
-          return (
-            <React.Fragment key={st.key}>
-              <View style={s.tlStep}>
-                <View style={[s.tlDot, {
-                  backgroundColor: on ? col : 'transparent',
-                  borderColor: col,
-                  transform: [{ scale: active ? 1.15 : 1 }],
-                }]}>
-                  <Feather name={done ? 'check' : st.icon} size={15} color={on ? '#0C0A09' : col} />
-                </View>
-                {TL_NARROW ? null : (
-                  <Text style={[s.tlLabel, { color: on ? theme.text : theme.textMuted, fontWeight: active ? '800' : '600' }]} numberOfLines={1} ellipsizeMode="tail">{st.label}</Text>
-                )}
-              </View>
-              {i < STEPS.length - 1 ? (
-                <View style={[s.tlLine, { backgroundColor: cur > i ? '#22C55E' : theme.border }]} />
-              ) : null}
-            </React.Fragment>
-          );
-        })}
-      </View>
-      {TL_NARROW ? (
-        <Text style={[s.tlCurrentStatus, { color: theme.textMuted }]} numberOfLines={1} testID="deal-timeline-current-status">
-          {t('trip_current_status')}: {STEPS[cur >= 0 ? cur : 0]?.label || ''}
-        </Text>
-      ) : null}
-    </View>
-  );
-}
+// DealStatusTimeline (горизонтальная шкала Принят/В работе/На границе/
+// Завершён) удалена 05.08.2026 (п.9 ТЗ) — нигде не импортировалась после
+// того, как CargoDetail.js/TripDetail.js/ChatScreen.js перешли на
+// компактную строку «Текущий статус» + одну кнопку действия; вместе с ней
+// ушёл единственный источник слова «На границе» как отдельного видимого
+// пользователю шага (п.8 ТЗ).
 
 export function DealRoomCard({ deal, role }) {
   const { t } = useI18n();
@@ -128,11 +65,15 @@ export function DealRoomCard({ deal, role }) {
   const accent = accentFor(role);
   if (!deal) return null;
   const status = deal.status || 'active';
-  const stColor = DEAL_STATUS_COLOR[status] || '#94A3B8';
+  // userFacingDealStatus (05.08.2026, п.8 ТЗ): «На границе» временно не
+  // показываем пользователю отдельным шагом, карточка сворачивает его в
+  // «В работе» (текст и цвет) — реальный deal.status при этом не меняется.
+  const displayStatus = userFacingDealStatus(status);
+  const stColor = DEAL_STATUS_COLOR[displayStatus] || '#94A3B8';
   // H-1: статус сделки русским словом через i18n; фолбэк на сырой статус для
   // немаппленных значений (confirmed/draft/dispute — нет ключа status_*).
-  const stKey = 'status_' + status;
-  const stLabel = t(stKey) !== stKey ? t(stKey) : status;
+  const stKey = 'status_' + displayStatus;
+  const stLabel = t(stKey) !== stKey ? t(stKey) : displayStatus;
   const route = [deal.from_city, deal.to_city].filter(Boolean).join(' → ') || '—';
 
   const Field = ({ icon, label, value }) => (
@@ -221,16 +162,6 @@ export function DealDocumentsPlaceholder() {
 }
 
 const s = StyleSheet.create({
-  tl: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingVertical: 4 },
-  // width:66 — верхняя граница шага; minWidth:0 обязателен, иначе Yoga не
-  // сжимает tlLabel ниже его «естественной» ширины и подписи соседних
-  // шагов наезжают друг на друга (та же причина, что у переполнения кнопок).
-  tlStep: { alignItems: 'center', width: 66, minWidth: 0, flexShrink: 1 },
-  tlDot: { width: 34, height: 34, borderRadius: 17, borderWidth: 2, alignItems: 'center', justifyContent: 'center', marginBottom: 5 },
-  tlLabel: { fontSize: 11, textAlign: 'center', width: '100%', flexShrink: 1, minWidth: 0 },
-  tlLine: { flex: 1, height: 2, marginTop: 16, marginHorizontal: -6, borderRadius: 1 },
-  tlCurrentStatus: { fontSize: 12, fontWeight: '600', textAlign: 'center', marginTop: 6 },
-  tlCancel: { borderWidth: 1, borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
   card: { borderRadius: 14, borderWidth: 1, borderLeftWidth: 4, padding: 12, marginBottom: 8, gap: 6 },
   cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   route: { fontSize: 15, fontWeight: '900', flex: 1 },
