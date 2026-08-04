@@ -115,7 +115,7 @@ export default function FeedCard({
             <Feather name={iconName} size={20} color={v2.textSecondary} />
           </View>
         )}
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
           {hasRoute && !titleOverride ? (
             compact ? (
               // Компактно: маршрут одной строкой «Откуда → Куда».
@@ -147,7 +147,7 @@ export default function FeedCard({
             subtitle ? <Text style={[s.subtitle, { color: colors.textMuted }]} numberOfLines={1}>{subtitle}</Text> : null
           )}
         </View>
-        <View style={{ alignItems: 'flex-end' }}>
+        <View style={{ alignItems: 'flex-end', flexShrink: 0, maxWidth: '45%' }}>
           {onToggleFav ? (
             <TouchableOpacity
               onPress={onToggleFav}

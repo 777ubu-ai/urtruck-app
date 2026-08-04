@@ -255,7 +255,7 @@ export default function ChatsListScreen({ navigation, route }) {
                 {cnt} {t('deals_offers_count')}
               </Text>
             </View>
-            <Text style={[s.price, { color: theme.text }]}>
+            <Text style={[s.price, { color: theme.text }]} numberOfLines={1} ellipsizeMode="tail">
               {minPrice ? `${t('deals_offers_from')} ${formatPrice(minPrice, cur, t)}` : ''}
             </Text>
           </View>
@@ -303,7 +303,7 @@ export default function ChatsListScreen({ navigation, route }) {
               <View style={[s.statusDot, { backgroundColor: statusColor }]} />
               <Text style={[s.statusPillText, { color: statusColor }]}>{label}</Text>
             </View>
-            <Text style={[s.price, { color: theme.text }]}>
+            <Text style={[s.price, { color: theme.text }]} numberOfLines={1} ellipsizeMode="tail">
               {formatPrice(bid.amount, cur, t)}
               {isCountered && bid.counter_amount ? ` → ${formatPrice(bid.counter_amount, cur, t)}` : ''}
             </Text>
@@ -378,7 +378,7 @@ export default function ChatsListScreen({ navigation, route }) {
                 <Text style={[s.lastMsg, { color: theme.textMuted }]} numberOfLines={1}>{deal.last_message}</Text>
               </View>
             ) : <View style={{ flex: 1 }} />}
-            <Text style={[s.price, { color: theme.text }]}>{formatPrice(deal.amount, cur, t)}</Text>
+            <Text style={[s.price, { color: theme.text }]} numberOfLines={1} ellipsizeMode="tail">{formatPrice(deal.amount, cur, t)}</Text>
           </View>
         </View>
         <Feather name="chevron-right" size={18} color={theme.textDim} style={{ marginLeft: 4 }} />
@@ -479,7 +479,7 @@ export default function ChatsListScreen({ navigation, route }) {
             <Text style={[s.lastMsg, { color: theme.textMuted }]} numberOfLines={1}>
               {item.last_message || t('chat_no_messages')}
             </Text>
-            {bidStr ? <Text style={[s.price, { color: theme.text }]}>{bidStr}</Text> : null}
+            {bidStr ? <Text style={[s.price, { color: theme.text }]} numberOfLines={1} ellipsizeMode="tail">{bidStr}</Text> : null}
           </View>
         </View>
         <View style={s.right}>
@@ -811,9 +811,12 @@ const s = StyleSheet.create({
   meta: { fontSize: 12, fontWeight: '400' },
   route: { fontSize: 13, flex: 1 },
   lastMsg: { fontSize: 12, flex: 1 },
-  price: { fontSize: 14, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  // flexShrink/minWidth:0/maxWidth — длинная цена (UZS/KGS с суффиксом,
+  // "X → Y" у торга) не должна раздвигать карточку "Сделки" за экран;
+  // ellipsis вместо горизонтального оверфлоу (05.08.2026, п.4).
+  price: { fontSize: 14, fontWeight: '700', fontVariant: ['tabular-nums'], flexShrink: 1, minWidth: 0, maxWidth: '60%', textAlign: 'right' },
   // Статус-пилл
-  statusPill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, marginTop: 3 },
+  statusPill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, marginTop: 3, flexShrink: 0 },
   statusDot: { width: 7, height: 7, borderRadius: 4 },
   statusPillText: { fontSize: 12, fontWeight: '600' },
   // Бейджи
