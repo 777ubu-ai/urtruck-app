@@ -288,11 +288,22 @@ export default function MyTripsScreen({ navigation, route }) {
   // Все «занятые сделкой» статусы скрываем здесь так же, как completed/
   // delivered — иначе один и тот же рейс/груз виден и тут, и в Сделках.
   const HIDDEN_ITEM_STATUSES = new Set(['completed', 'delivered', 'unpublished', 'booked', 'taken', 'in_transit']);
-  const myItemsActive = myItemsRaw.filter((it) => !isExpiredItem(it) && !HIDDEN_ITEM_STATUSES.has(it.status));
+  // Приоритет статуса над датой (05.08.2026, п.6/13/25 аудита): раньше
+  // «просрочено» считалось ТОЛЬКО по дате, без учёта item.status — доставленный
+  // рейс с прошедшей датой выезда всё равно попадал в myItemsExpired и рисовал
+  // «Срок истёк» + рабочие на вид кнопки «Ещё актуально»/«Изменить дату»,
+  // которые бэкенд (extend_trip/extend_cargo) отклоняет 409 «не активен»,
+  // потому что статус уже не 'active'. Источник истины: если у публикации уже
+  // есть исход по сделке (HIDDEN_ITEM_STATUSES) или она сама закрыта
+  // (cancelled/rejected), это НЕ «истёкшая публикация» — статус приоритетнее
+  // даты. «Истёкшая» относится только к публикации, которая так и осталась
+  // активной/черновиком и просто не нашла сделку вовремя.
+  const isOpenPublicationStatus = (it) => !it.status || it.status === 'active' || it.status === 'draft';
+  const myItemsActive = myItemsRaw.filter((it) => isOpenPublicationStatus(it) && !isExpiredItem(it));
   const myItemsUnpublished = myItemsRaw.filter((it) => it.status === 'unpublished');
   // Отменённые/отклонённые ОБЪЯВЛЕНИЯ (не сделки/ставки — те в «Сделках»).
   const myItemsClosed = myItemsRaw.filter((it) => it.status === 'cancelled' || it.status === 'rejected');
-  const myItemsExpired = myItemsRaw.filter((it) => isExpiredItem(it));
+  const myItemsExpired = myItemsRaw.filter((it) => isOpenPublicationStatus(it) && isExpiredItem(it));
   const myItems = [...myItemsActive, ...myItemsExpired.map(it => ({ ...it, _expired: true }))];
 
   const myBids = isDriver ? (data?.my_bids || []) : (data?.incoming_bids || []);
