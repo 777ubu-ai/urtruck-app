@@ -173,7 +173,7 @@ const translations = {
 
     // Feed
     cargos: 'Грузы',
-    trucks: 'Рейсы',
+    trucks: 'Машины',
     active: 'активных',
     active_cargos: 'активных грузов',
     available_trips: 'доступных рейсов',
@@ -2081,7 +2081,6 @@ const translations = {
     status_delivered: 'Аяқталды',
     status_in_progress: 'Жұмыста',
     status_unknown: 'Көрсетілмеген',
-    tab_feed_client: 'Көліктер',
     tab_profile: 'Профиль',
     tab_queue: 'Кезек',
     theme_dark: 'Қараңғы',
@@ -5574,7 +5573,7 @@ const translations = {
     trip_transport: 'Transport',
     trip_truck_body: 'Truck body',
     trip_via: 'via',
-    trucks: 'Trips',
+    trucks: 'Trucks',
     val_to_required: 'Specify the destination city',
     verified_short: 'Verified',
     voicePlaying: 'Playing...',
