@@ -25,15 +25,6 @@ import { localizePlace, localizeCargoName } from '../utils/places';
 import { countryFlag } from '../utils/countryFlags';
 import { prettifyPartnerName } from '../utils/displayName';
 import { accentFor } from '../components/deal/DealRoom';
-import BottomSheet from '../components/ui/v1/BottomSheet';
-import DatePicker from '../components/DatePicker';
-
-const BODY_TYPES = ['tent', 'ref', 'platform', 'auto', 'izoterm'];
-// DD.MM.YYYY → YYYYMMDD (сравнимое число); мусор/пусто → null.
-const dateSortKey = (raw) => {
-  const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(String(raw || ''));
-  return m ? Number(`${m[3]}${m[2]}${m[1]}`) : null;
-};
 
 const ROLE_LABEL = { driver: 'role_driver', client: 'role_client', support: 'role_support' };
 const ACTIVE_STATUSES = new Set(['accepted', 'in_progress', 'at_border', 'awaiting_confirmation']);
@@ -70,9 +61,9 @@ export default function ChatsListScreen({ navigation, route }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery] = useState('');
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const [filters, setFilters] = useState({ bodyType: null, dateFrom: '', unreadOnly: false });
-  const filtersActive = !!(filters.bodyType || filters.dateFrom || filters.unreadOnly);
+  // Решение владельца (05.08.2026, п.3): максимум 2 компактных фильтра —
+  // Все / Непрочитанные. Шторка с кузовом/датой убрана целиком.
+  const [unreadOnly, setUnreadOnly] = useState(false);
 
   // ═══ Deals-mode состояние ═══
   // Вкладок больше нет (WhatsApp-упрощение 04.08.2026) — предложения и
@@ -121,8 +112,12 @@ export default function ChatsListScreen({ navigation, route }) {
           setMyCargos(d.my_cargos || []);
           setMyTrips(d.my_trips || []);
           setAllDeals(d.my_deals || []);
-          setIncomingBids((d.incoming_bids || []).filter((b) => b.status === 'pending' || b.status === 'countered'));
-          setMyBids((d.my_bids || []).filter((b) => b.status === 'pending' || b.status === 'countered'));
+          // Полные списки (не только pending/countered) — отклонённые/
+          // отменённые/истёкшие ставки тоже показываются в едином списке
+          // статусом «Отменено» (05.08.2026, решение владельца п.3), а не
+          // пропадают из UI совсем.
+          setIncomingBids(d.incoming_bids || []);
+          setMyBids(d.my_bids || []);
         }
       } else {
         const data = await chatAPI.rooms();
@@ -145,6 +140,9 @@ export default function ChatsListScreen({ navigation, route }) {
 
   // ═══ DEALS MODE — данные для вкладок ═══
 
+  const OPEN_BID_STATUSES = new Set(['pending', 'countered']);
+  const CLOSED_BID_STATUSES = new Set(['rejected', 'cancelled', 'expired']);
+
   // Предложения (клиент): грузы с активными ставками
   // Предложения (водитель): мои ставки + входящие на мои рейсы
   const offersData = useMemo(() => {
@@ -159,8 +157,8 @@ export default function ChatsListScreen({ navigation, route }) {
         });
     }
     const bids = [
-      ...myBids,
-      ...incomingBids.filter((b) => b.trip_id).map((b) => ({ ...b, _incoming: true })),
+      ...myBids.filter((b) => OPEN_BID_STATUSES.has(b.status)),
+      ...incomingBids.filter((b) => b.trip_id && OPEN_BID_STATUSES.has(b.status)).map((b) => ({ ...b, _incoming: true })),
     ];
     return bids.sort((a, b) => {
       const ta = new Date(a.created_at || '').getTime() || 0;
@@ -168,6 +166,25 @@ export default function ChatsListScreen({ navigation, route }) {
       return tb - ta;
     });
   }, [dealsMode, role, myCargos, myBids, incomingBids]);
+
+  // Отклонённые/отменённые/истёкшие ставки — переговоры, которые не стали
+  // сделкой. Раньше жили в архиве «Мои рейсы»/«Мои грузы» и пропадали из UI
+  // при его чистке (05.08.2026); теперь единственное место — этот список,
+  // статус «Отменено».
+  const closedBidsData = useMemo(() => {
+    if (!dealsMode) return [];
+    const bids = role === 'client'
+      ? incomingBids.filter((b) => b.cargo_id && CLOSED_BID_STATUSES.has(b.status))
+      : [
+          ...myBids.filter((b) => CLOSED_BID_STATUSES.has(b.status)),
+          ...incomingBids.filter((b) => b.trip_id && CLOSED_BID_STATUSES.has(b.status)).map((b) => ({ ...b, _incoming: true })),
+        ];
+    return bids.sort((a, b) => {
+      const ta = new Date(a.updated_at || a.created_at || '').getTime() || 0;
+      const tb = new Date(b.updated_at || b.created_at || '').getTime() || 0;
+      return tb - ta;
+    });
+  }, [dealsMode, role, myBids, incomingBids]);
 
   const activeDeals = useMemo(() => {
     if (!dealsMode) return [];
@@ -191,14 +208,17 @@ export default function ChatsListScreen({ navigation, route }) {
       });
   }, [dealsMode, allDeals]);
 
-  // Один плоский список: предложения и сделки вперемешку, по свежести
-  // (WhatsApp-упрощение 04.08.2026, вкладок больше нет).
+  // Один плоский список: предложения, сделки и закрытые переговоры
+  // вперемешку, по свежести (WhatsApp-упрощение 04.08.2026, вкладок нет;
+  // 05.08.2026: отклонённые/отменённые ставки тоже сюда — единственное
+  // место для каждого разговора, без дублей в других экранах).
   const unifiedDealItems = useMemo(() => {
     if (!dealsMode) return [];
     const offers = offersData.map((it) => ({ _kind: 'offer', _sortAt: it.latest_bid_at || it.created_at || '', _data: it }));
     const deals = [...activeDeals, ...completedDeals].map((it) => ({ _kind: 'deal', _sortAt: it.last_message_at || it.updated_at || it.created_at || '', _data: it }));
-    return [...offers, ...deals].sort((a, b) => (new Date(b._sortAt).getTime() || 0) - (new Date(a._sortAt).getTime() || 0));
-  }, [dealsMode, offersData, activeDeals, completedDeals]);
+    const closedBids = closedBidsData.map((it) => ({ _kind: 'closedBid', _sortAt: it.updated_at || it.created_at || '', _data: it }));
+    return [...offers, ...deals, ...closedBids].sort((a, b) => (new Date(b._sortAt).getTime() || 0) - (new Date(a._sortAt).getTime() || 0));
+  }, [dealsMode, offersData, activeDeals, completedDeals, closedBidsData]);
 
   // ═══ Рендер: карточка предложения (клиент) — один груз ═══
   const renderCargoOffer = ({ item: cargo }) => {
@@ -249,20 +269,24 @@ export default function ChatsListScreen({ navigation, route }) {
     );
   };
 
-  // ═══ Рендер: карточка предложения (водитель) — одна ставка ═══
-  const renderDriverBid = ({ item: bid }) => {
+  // ═══ Рендер: карточка одной ставки (предложение ИЛИ закрытые переговоры:
+  // отклонено/отменено/истекло) — для обеих ролей, не только водителя ═══
+  const renderBidCard = ({ item: bid }) => {
     const isCountered = bid.status === 'countered';
+    const isClosed = bid.status === 'rejected' || bid.status === 'cancelled' || bid.status === 'expired';
     const cur = bid.currency || 'USD';
-    const time = relTime(bid.created_at);
-    const label = isCountered
-      ? t('deals_offer_bargain')
-      : (bid._incoming ? t('deals_offer_new') : t('deals_offer_waiting'));
-    const statusColor = isCountered ? '#A855F7' : '#FF8400';
+    const time = relTime(bid.updated_at || bid.created_at);
+    const label = isClosed
+      ? t('status_cancelled')
+      : isCountered
+        ? t('deals_offer_bargain')
+        : (bid._incoming ? t('deals_offer_new') : t('deals_offer_waiting'));
+    const statusColor = isClosed ? '#94A3B8' : isCountered ? '#A855F7' : '#FF8400';
     return (
       <TouchableOpacity
         key={bid.id}
         testID="deals-driver-bid"
-        style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]}
+        style={[s.card, { backgroundColor: theme.card, borderColor: theme.border, opacity: isClosed ? 0.65 : 1 }]}
         onPress={() => {
           if (bid.cargo_id) navigation.navigate('CargoDetail', { cargoId: bid.cargo_id, bidId: bid.id, role });
           else if (bid.trip_id) navigation.navigate('TripDetail', { tripId: bid.trip_id, bidId: bid.id, role });
@@ -487,7 +511,10 @@ export default function ChatsListScreen({ navigation, route }) {
   // ═══ Deals content — один плоский список, без вкладок и секций ═══
   const renderUnifiedDealItem = ({ item }) => {
     if (item._kind === 'offer') {
-      return role === 'client' ? renderCargoOffer({ item: item._data }) : renderDriverBid({ item: item._data });
+      return role === 'client' ? renderCargoOffer({ item: item._data }) : renderBidCard({ item: item._data });
+    }
+    if (item._kind === 'closedBid') {
+      return renderBidCard({ item: item._data });
     }
     return renderDealCard({ item: item._data });
   };
@@ -495,25 +522,7 @@ export default function ChatsListScreen({ navigation, route }) {
   const renderDealsContent = () => {
     let data = unifiedDealItems;
 
-    // Фильтры (кузов/дата/непрочитанные) — применяются раньше текстового
-    // поиска. Поле, которого нет у записи, не отфильтровывает её (например,
-    // у входящих ставок нет truck_type). Фильтр по статусу убран вместе с
-    // вкладками — статусы теперь смешаны (offer/deal) и не образуют
-    // осмысленного единого набора для чекбоксов.
-    if (filters.bodyType) {
-      data = data.filter(({ _data: item }) => {
-        const bt = item.cargo_type || item.truck_type;
-        return !bt || bt === filters.bodyType;
-      });
-    }
-    if (filters.dateFrom) {
-      const from = dateSortKey(filters.dateFrom);
-      data = data.filter(({ _data: item }) => {
-        const key = dateSortKey(item.departure || item.pickup_date);
-        return key == null || key >= from;
-      });
-    }
-    if (filters.unreadOnly) {
+    if (unreadOnly) {
       data = data.filter(({ _data: item }) => (item.unread_count || 0) > 0);
     }
 
@@ -557,11 +566,9 @@ export default function ChatsListScreen({ navigation, route }) {
         <HeaderMenuButton navigation={navigation} role={role} testID="chats-menu-btn" />
       </View>
 
-      {/* Поиск — на всех вкладках. Кнопка фильтра — только в Сделках и только
-          когда во вкладке есть что фильтровать (правило владельца 03.08:
-          на пустом/коротком списке фильтр — лишний элемент). */}
-      <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 12 }}>
-        <View style={[s.search, { backgroundColor: theme.card, borderColor: theme.border, flex: 1, marginHorizontal: 0 }]}>
+      {/* Поиск — на всех вкладках. */}
+      <View style={{ paddingHorizontal: 12 }}>
+        <View style={[s.search, { backgroundColor: theme.card, borderColor: theme.border, marginHorizontal: 0 }]}>
           <Feather name="search" size={17} color={theme.textMuted} />
           <TextInput
             style={[s.searchInput, { color: theme.text }]}
@@ -573,17 +580,28 @@ export default function ChatsListScreen({ navigation, route }) {
           />
           {query ? <TouchableOpacity onPress={() => setQuery('')}><Feather name="x" size={16} color={theme.textMuted} /></TouchableOpacity> : null}
         </View>
-        {dealsMode && unifiedDealItems.length > 0 ? (
-          <TouchableOpacity
-            testID="deals-filter-btn"
-            onPress={() => setFiltersOpen(true)}
-            style={[s.filterBtn, { backgroundColor: theme.card, borderColor: filtersActive ? accent : theme.border }]}
-          >
-            <Feather name="sliders" size={17} color={filtersActive ? accent : theme.textMuted} />
-            {filtersActive ? <View style={[s.filterDot, { backgroundColor: accent }]} /> : null}
-          </TouchableOpacity>
-        ) : null}
       </View>
+
+      {/* Решение владельца (05.08.2026, п.3): максимум 2 компактных фильтра
+          вместо шторки — Все / Непрочитанные, без отдельных секций. */}
+      {dealsMode ? (
+        <View style={s.quickFilterRow}>
+          <TouchableOpacity
+            testID="deals-filter-all"
+            onPress={() => setUnreadOnly(false)}
+            style={[s.quickFilterChip, { borderColor: !unreadOnly ? accent : theme.border, backgroundColor: !unreadOnly ? accent + '18' : 'transparent' }]}
+          >
+            <Text style={{ color: !unreadOnly ? accent : theme.textMuted, fontSize: 13, fontWeight: '700' }}>{t('all')}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            testID="deals-filter-unread"
+            onPress={() => setUnreadOnly(true)}
+            style={[s.quickFilterChip, { borderColor: unreadOnly ? accent : theme.border, backgroundColor: unreadOnly ? accent + '18' : 'transparent' }]}
+          >
+            <Text style={{ color: unreadOnly ? accent : theme.textMuted, fontSize: 13, fontWeight: '700' }}>{t('filter_unread_only')}</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
       {loading ? (
         <ActivityIndicator color={accent} style={{ marginTop: 40 }} />
@@ -612,64 +630,6 @@ export default function ChatsListScreen({ navigation, route }) {
         />
       )}
 
-      {dealsMode ? (
-        <BottomSheet
-          visible={filtersOpen}
-          onClose={() => setFiltersOpen(false)}
-          title={t('deals_filters_title')}
-          footer={
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <TouchableOpacity
-                testID="deals-filter-reset"
-                onPress={() => setFilters({ bodyType: null, dateFrom: '', unreadOnly: false })}
-                style={[s.filterFootBtn, { borderColor: theme.border }]}
-              >
-                <Text style={[s.filterFootText, { color: theme.text }]}>{t('reset_filters')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                testID="deals-filter-apply"
-                onPress={() => setFiltersOpen(false)}
-                style={[s.filterFootBtn, { backgroundColor: accent, borderColor: accent }]}
-              >
-                <Text style={[s.filterFootText, { color: '#0A0A0A' }]}>{t('apply_filters')}</Text>
-              </TouchableOpacity>
-            </View>
-          }
-        >
-          <Text style={[s.filterLabel, { color: theme.textMuted }]}>{t('filter_body_type')}</Text>
-          <View style={s.chipsRow}>
-            {BODY_TYPES.map((bt) => {
-              const selected = filters.bodyType === bt;
-              return (
-                <TouchableOpacity
-                  key={bt}
-                  testID={`deals-filter-body-${bt}`}
-                  onPress={() => setFilters((f) => ({ ...f, bodyType: f.bodyType === bt ? null : bt }))}
-                  style={[s.chip, { borderColor: selected ? accent : theme.border, backgroundColor: selected ? accent + '18' : 'transparent' }]}
-                >
-                  <Text style={{ color: selected ? accent : theme.text, fontSize: 13, fontWeight: '600' }}>{t(bt)}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          <Text style={[s.filterLabel, { color: theme.textMuted }]}>{t('filter_date_from')}</Text>
-          <DatePicker
-            value={filters.dateFrom}
-            onChange={(v) => setFilters((f) => ({ ...f, dateFrom: v }))}
-            placeholder={t('filter_date_from')}
-          />
-
-          <TouchableOpacity
-            testID="deals-filter-unread"
-            onPress={() => setFilters((f) => ({ ...f, unreadOnly: !f.unreadOnly }))}
-            style={s.unreadRow}
-          >
-            <Feather name={filters.unreadOnly ? 'check-square' : 'square'} size={19} color={filters.unreadOnly ? accent : theme.textMuted} />
-            <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600' }}>{t('filter_unread_only')}</Text>
-          </TouchableOpacity>
-        </BottomSheet>
-      ) : null}
     </SafeAreaView>
   );
 }
@@ -680,15 +640,9 @@ const s = StyleSheet.create({
   // Поиск
   search: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 12, marginBottom: 8, paddingHorizontal: 12, height: 44, borderRadius: 12, borderWidth: 1 },
   searchInput: { flex: 1, fontSize: 14, paddingVertical: 0 },
-  // Компактная кнопка фильтра справа от поиска
-  filterBtn: { width: 44, height: 44, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-  filterDot: { position: 'absolute', top: 7, right: 7, width: 7, height: 7, borderRadius: 4 },
-  filterLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', marginTop: 14, marginBottom: 8 },
-  chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1.5, maxWidth: '100%' },
-  unreadRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 16, paddingVertical: 4 },
-  filterFootBtn: { flex: 1, height: 46, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center', minWidth: 0, maxWidth: '100%' },
-  filterFootText: { fontSize: 14, fontWeight: '700', flexShrink: 1, textAlign: 'center' },
+  // Компактные фильтры Все/Непрочитанные (05.08.2026, п.3 — заменили шторку)
+  quickFilterRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 12, marginBottom: 8 },
+  quickFilterChip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, borderWidth: 1.5 },
   // Карточки
   card: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1, marginBottom: 8, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
   avatar: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
