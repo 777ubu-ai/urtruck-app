@@ -712,7 +712,13 @@ export default function TripDetail({ navigation, route }) {
                       : b.time}
                   </Text>
                 </View>
-                <Text style={[s.bidAmt, { color: v1Accent.main }]}>{formatPrice(b.amount, b.currency || trip.currency, t)}</Text>
+                {/* Эта ветка — ставки КЛИЕНТОВ на рейс водителя (владелец
+                    рейса их просматривает), поэтому цена всегда клиентская
+                    (оранжевая) вне зависимости от v1Accent текущего role —
+                    раньше здесь была v1Accent.main, которая для водителя-
+                    владельца давала зелёный на чужой (клиентской) цене
+                    (05.08.2026, п.16 ТЗ). */}
+                <Text style={[s.bidAmt, { color: '#FF8400' }]}>{formatPrice(b.amount, b.currency || trip.currency, t)}</Text>
               </View>
               {b.status === 'pending' && !hasAccepted ? (
                 <View style={{ marginTop: 10, gap: 8, alignSelf: 'stretch' }}>
@@ -939,8 +945,12 @@ export default function TripDetail({ navigation, route }) {
           {myActiveBid.status === 'countered' && myActiveBid.counterAmount ? (
             <>
               {/* Клиент + водитель прислал контр: primary «Принять контр $X»
-                  (client orange), Chat + Destructive Decline. Иерархия 2026. */}
-              <Text style={[s.myBidCounter, { color: '#E06D00' }]} testID="trip-counter-amount">
+                  (client orange), Chat + Destructive Decline. Иерархия 2026.
+                  Цена в самом контр-оффере — водительская (это ЕГО встречная
+                  цена), поэтому текст зелёный, не оранжевый (05.08.2026,
+                  п.16 ТЗ: цена красится по роли источника, а не по статусу
+                  карточки). */}
+              <Text style={[s.myBidCounter, { color: '#00C766' }]} testID="trip-counter-amount">
                 🔁 {t('counter_amount')}: {formatPrice(myActiveBid.counterAmount, myActiveBid.currency || trip.currency)}
                 {myActiveBid.counterMessage ? ` · ${myActiveBid.counterMessage}` : ''}
               </Text>
@@ -966,24 +976,24 @@ export default function TripDetail({ navigation, route }) {
               </View>
             </>
           ) : (
-          <View style={{ marginTop: 8, gap: 8 }}>
+          <View style={{ marginTop: 8, gap: 4 }}>
             {/* Клиент + своя ставка pending: primary НЕТ (ждём хода водителя),
                 чата ещё нет — сделки нет. Edit — единственная кнопка,
-                на всю ширину (не в паре). */}
+                на всю ширину (не в паре). Секция 15 ТЗ (05.08.2026): убраны
+                декоративные emoji-иконки, «Отозвать ставку» — мелкая
+                красная текстовая ссылка, а не большая деструктивная кнопка. */}
             <SecondaryButton
               testID="trip-my-bid-edit"
               role="client"
-              icon="✏️"
               label={t('edit_bid') || 'Изменить'}
               onPress={() => setBidModal(true)}
               disabled={cancelling}
             />
-            <DestructiveButton
+            <TouchableOpacity
               testID="trip-my-bid-cancel"
-              icon="⊘"
-              label={t('cancel_bid') || 'Отменить'}
-              loading={cancelling}
               disabled={cancelling}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={{ alignSelf: 'center', marginTop: 6, opacity: cancelling ? 0.5 : 1 }}
               onPress={async () => {
                 const ok = Platform.OS === 'web'
                   ? (typeof window !== 'undefined' && window.confirm(t('cancel_bid_confirm')))
@@ -999,7 +1009,7 @@ export default function TripDetail({ navigation, route }) {
                 try {
                   const r = await marketAPI.cancelBid(myActiveBid.id);
                   if (r.ok) {
-                    toast('⊘ ' + t('bid_cancelled_toast'), 'success');
+                    toast(t('bid_cancelled_toast'), 'success');
                     setRefreshBidTick(x => x + 1);
                   } else {
                     toast(r.detail || t('cancel_failed'), 'error');
@@ -1009,7 +1019,11 @@ export default function TripDetail({ navigation, route }) {
                 }
                 setCancelling(false);
               }}
-            />
+            >
+              <Text style={{ color: '#EF4444', fontSize: 13, fontWeight: '600' }}>
+                {cancelling ? '…' : t('withdraw_bid_link')}
+              </Text>
+            </TouchableOpacity>
           </View>
           )}
         </View>

@@ -99,7 +99,11 @@ export default function CargoDetail({ navigation, route }) {
   bidFlag: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   bidName: { fontSize: 13, fontWeight: '600' },
   bidInfo: { color: '#FBBF24', fontSize: 11 },
-  bidAmt: { color: '#FF8400', fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  // Сумма ставки ВОДИТЕЛЯ на груз клиента — зелёная (роль источника цены),
+  // не оранжевая: та же карточка показывает и цену груза владельца
+  // (priceValueV1, оранжевая), совпадение цвета читалось как одна цена
+  // (05.08.2026, п.16 ТЗ).
+  bidAmt: { color: '#00C766', fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'] },
   confirmBanner: { backgroundColor: '#22C55E20', borderWidth: 1, borderColor: '#22C55E', borderRadius: 12, padding: 14, marginBottom: 12, alignItems: 'center' },
   confirmText: { color: '#22C55E', fontSize: 14, fontWeight: '800' },
   photoWrap: { borderRadius: 16, overflow: 'hidden', borderWidth: 1, marginBottom: 12, position: 'relative' },
@@ -857,10 +861,15 @@ export default function CargoDetail({ navigation, route }) {
           и кнопки [Изменить] [Чат]. Симметрично TripDetail. */}
       {myPendingBid && isDriverViewing && !dealStatus ? (
         <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
-          <View style={[s.myBidCard, { borderColor: v1Accent.main, backgroundColor: theme.card }]} testID="cargo-my-active-bid">
+          {/* Карточка своей ставки видна только водителю (isDriverViewing) —
+              значит и цена, и рамка красятся его цветом (dealAccent), а не
+              жёстко клиентским v1Accent, как было раньше: две разные по
+              смыслу цены (груз владельца — оранжевым, ставка водителя —
+              тоже оранжевым) читались как одна (05.08.2026, п.16 ТЗ). */}
+          <View style={[s.myBidCard, { borderColor: dealAccent.main, backgroundColor: theme.card }]} testID="cargo-my-active-bid">
             <View style={s.myBidHeader}>
               <Text style={[s.myBidLabel, { color: theme.textMuted }]}>{t('my_bid_label') || 'Моя ставка'}</Text>
-              <Text style={[s.myBidAmount, { color: v1Accent.main }]}>{formatPrice(myPendingBid.amount, c.currency)}</Text>
+              <Text style={[s.myBidAmount, { color: dealAccent.main }]}>{formatPrice(myPendingBid.amount, c.currency)}</Text>
             </View>
             <Text style={[s.myBidStatus, { color: theme.text }]}>{myBidStatusLabel}</Text>
             {myPendingBid.status === 'countered' && myPendingBid.counterAmount ? (
@@ -890,23 +899,26 @@ export default function CargoDetail({ navigation, route }) {
                 </View>
               </>
             ) : (
-              <View style={{ marginTop: 8, gap: 8 }}>
+              <View style={{ marginTop: 8, gap: 4 }}>
                 {/* Водитель + своя ставка pending: primary НЕТ (ждём хода
-                    клиента). Чат — только после сделки. */}
+                    клиента). Чат — только после сделки. Секция 15 ТЗ
+                    (05.08.2026): убраны декоративные emoji-иконки
+                    (карандаш/запрет), «Отозвать ставку» — мелкая красная
+                    текстовая ссылка, а не большая деструктивная кнопка —
+                    отзыв ставки не должен визуально спорить с реальными
+                    действиями (Изменить/принять контрпредложение). */}
                 <SecondaryButton
                   testID="cargo-my-bid-edit"
                   role="driver"
-                  icon="✏️"
                   label={t('edit_bid') || 'Изменить'}
                   onPress={() => { setEditingBid(myPendingBid); setBidModalMode('edit'); setBidModal(true); }}
                   disabled={cancelling === myPendingBid.id}
                 />
-                <DestructiveButton
+                <TouchableOpacity
                   testID="cargo-my-bid-cancel"
-                  icon="⊘"
-                  label={t('cancel_bid') || 'Отменить'}
-                  loading={cancelling === myPendingBid.id}
                   disabled={cancelling === myPendingBid.id}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  style={{ alignSelf: 'center', marginTop: 6, opacity: cancelling === myPendingBid.id ? 0.5 : 1 }}
                   onPress={async () => {
                     const ok = Platform.OS === 'web'
                       ? (typeof window !== 'undefined' && window.confirm(t('cancel_bid_confirm')))
@@ -921,12 +933,16 @@ export default function CargoDetail({ navigation, route }) {
                     setCancelling(myPendingBid.id);
                     try {
                       const r = await marketAPI.cancelBid(myPendingBid.id);
-                      if (r.ok) { toast('⊘ ' + t('bid_cancelled_toast'), 'success'); loadBids(); }
+                      if (r.ok) { toast(t('bid_cancelled_toast'), 'success'); loadBids(); }
                       else toast(r.detail || t('cancel_failed'), 'error');
                     } catch { toast(t('no_connection'), 'error'); }
                     setCancelling(null);
                   }}
-                />
+                >
+                  <Text style={{ color: '#EF4444', fontSize: 13, fontWeight: '600' }}>
+                    {cancelling === myPendingBid.id ? '…' : t('withdraw_bid_link')}
+                  </Text>
+                </TouchableOpacity>
               </View>
             )}
           </View>
