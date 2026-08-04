@@ -1,7 +1,10 @@
-// UrTruck Service Worker · v6 — network-first для HTML/JS, cache-first для статики,
+// UrTruck Service Worker · v7 — network-first для HTML/JS, cache-first для статики,
 // API never cached (otherwise stale demo cards survive deploys).
-const CACHE = 'urtruck-v6-market';
-const STATIC_CACHE = 'urtruck-static-v6';
+// v7 (05.08.2026): бамп ключа кэша при выкладке Фазы A (WhatsApp-упрощение
+// Сделок/Рейсов/Грузов) — activate() ниже удаляет все ключи кроме текущих,
+// так что смена v6→v7 сама по себе форсирует очистку старого кэша у клиентов.
+const CACHE = 'urtruck-v7-market';
+const STATIC_CACHE = 'urtruck-static-v7';
 
 self.addEventListener('install', (e) => {
   // Сразу активируем новый SW без ожидания закрытия вкладок
