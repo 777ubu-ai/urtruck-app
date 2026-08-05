@@ -47,6 +47,7 @@ for schema_name in ("chat_schema.sql", "notifications_schema.sql"):
         with get_conn() as conn:
             conn.executescript(schema.read_text(encoding="utf-8"))
 
+import api.marketplace as marketplace_api
 from api.marketplace import mp_router
 from api.chat import chat_router
 from api.notifications import notif_router
@@ -77,6 +78,31 @@ def as_user(uid: str):
         "phone": "+70000000000",
         "verification_level": 1,
     })
+
+
+def fake_maybe_user(authorization):
+    """Keep optional-auth endpoints on the same isolated test identity model.
+
+    This module replaces require_level with a ContextVar fixture. The public
+    cargo detail endpoint does not use require_level, so without this matching
+    optional-auth fixture the test mixes two auth systems and can silently
+    behave as anonymous even though the business logic is correct.
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    token = authorization.split(" ", 1)[1]
+    for uid, known_token in TOKENS.items():
+        if token == known_token:
+            return {
+                "id": uid,
+                "full_name": uid,
+                "phone": "+70000000000",
+                "verification_level": 1,
+            }
+    return None
+
+
+marketplace_api._maybe_user = fake_maybe_user
 
 
 def get_entity(uid: str, path: str):
