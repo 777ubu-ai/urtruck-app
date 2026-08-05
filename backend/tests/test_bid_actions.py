@@ -634,7 +634,7 @@ def test_pr_b_trip_bid_creates_notif_without_eager_chat_room():
     expect(room is None, "no chat_room before trip bid acceptance")
 
 
-def test_pr_b_accept_bid_creates_accepted_notif_with_deal_url():
+def test_pr_b_accept_bid_creates_accepted_notif_with_order_url():
     print("\n=== PR-B test_accept_bid_creates_accepted_notif_with_deal_url ===")
     owner = "owner-pr-b5"
     driver = "driver-pr-b5"
@@ -652,8 +652,8 @@ def test_pr_b_accept_bid_creates_accepted_notif_with_deal_url():
     accepted = [n for n in notifs if n["type"] == "bid_accepted"]
     expect(len(accepted) >= 1, f"driver got bid_accepted notif (count={len(accepted)})")
     n = accepted[0]
-    expect(n["url"] == f"/deals/{deal_id}",
-           f"accepted notif url=/deals/{{id}} (got {n['url']})")
+    expect(n["url"] == f"/cargos/{cargo_id}",
+           f"accepted notif url=/cargos/{{id}} (got {n['url']})")
 
 
 def test_pr_b_reject_bid_notif_has_back_url():
