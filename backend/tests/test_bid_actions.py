@@ -326,12 +326,15 @@ def test_my_dashboard_driver_with_bids():
     print("\n=== test_my_dashboard_driver_with_bids ===")
     cargo_id = seed_cargo(owner_id="dash2-owner")
     as_user("dash2-driver")
-    bid_pending   = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1000}).json()["id"]
     bid_cancelled = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1100}).json()["id"]
-    bid_rejected  = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1200}).json()["id"]
     client.post(f"/api/v1/market/bids/{bid_cancelled}/cancel")
+
+    bid_rejected = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1200}).json()["id"]
     as_user("dash2-owner")
     client.post(f"/api/v1/market/bids/{bid_rejected}/reject")
+
+    as_user("dash2-driver")
+    bid_pending = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1000}).json()["id"]
 
     as_user("dash2-driver")
     r = client.get("/api/v1/market/my")
