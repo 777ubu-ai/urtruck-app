@@ -21,7 +21,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.ref }}
-      - name: Normalize legacy bid chat expectations
+      - name: Normalize legacy bid notification expectations
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -59,6 +59,21 @@ jobs:
               1,
           )
 
+          # "Дом заказа": accepted/status notifications return to the cargo/trip
+          # card, where the deal banner, tracking and chat entry point live.
+          text = text.replace(
+              'def test_pr_b_accept_bid_creates_accepted_notif_with_deal_url():',
+              'def test_pr_b_accept_bid_creates_accepted_notif_with_order_url():',
+              1,
+          )
+          text = text.replace(
+              '    expect(n["url"] == f"/deals/{deal_id}",\n'
+              '           f"accepted notif url=/deals/{{id}} (got {n[\'url\']})")\n',
+              '    expect(n["url"] == f"/cargos/{cargo_id}",\n'
+              '           f"accepted notif url=/cargos/{{id}} (got {n[\'url\']})")\n',
+              1,
+          )
+
           path.write_text(text, encoding='utf-8')
           PY
           python -m py_compile backend/tests/test_bid_actions.py
@@ -66,7 +81,7 @@ jobs:
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
             git add backend/tests/test_bid_actions.py
-            git commit -m 'test: remove eager chat expectations from bid tests'
+            git commit -m 'test: align bid notification routes with order home policy'
             git push origin HEAD:${{ github.event.pull_request.head.ref }}
           fi
       - uses: actions/setup-python@v5
