@@ -5,6 +5,7 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Release blocker gate: backend lifecycle, frontend ownership, i18n, UX and web build.
 concurrency:
   group: pr-quality-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
