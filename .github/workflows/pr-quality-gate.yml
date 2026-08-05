@@ -94,11 +94,22 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt pytest
-      - name: Run full backend suite
+      - name: Run full backend suite in isolated modules
         env:
           PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/backend
-          URTRUCK_DB_PATH: ${{ runner.temp }}/urtruck-ci.db
-        run: pytest backend/tests -q --disable-warnings --maxfail=1
+        run: |
+          set -euo pipefail
+          count=0
+          while IFS= read -r test_file; do
+            count=$((count + 1))
+            db_path="${{ runner.temp }}/urtruck-ci-${count}.db"
+            rm -f "$db_path"
+            echo "::group::pytest $test_file"
+            DB_PATH="$db_path" URTRUCK_DB_PATH="$db_path" \
+              pytest "$test_file" -q --disable-warnings --maxfail=1
+            echo "::endgroup::"
+          done < <(find backend/tests -maxdepth 1 -type f -name 'test_*.py' | sort)
+          test "$count" -gt 0
 
   frontend-quality:
     name: Frontend tests and build
