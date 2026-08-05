@@ -18,6 +18,7 @@ from api.verification_gate import require_level, get_user, _extract_driver
 from api.push import send_to_user
 from services import file_signing as _cargo_file_signing
 from services import storage_service as _cargo_storage
+from services.geo_normalize import normalize_country, is_international_route
 
 
 def _sign_cargo_photos(photos):
@@ -162,23 +163,38 @@ def _norm_route_triple(country, point_type, point_name):
 
 def _deal_country_guard(cur_status: str, new_status: str, from_country: Optional[str], to_country: Optional[str]):
     """Серверная проверка маршрута для перехода из in_progress (приказ
-    владельца 03.08.2026): фронту нельзя доверять — статус сделки описывает
-    реальную логистику. Домашний рейс (страны совпадают) не проходит границу;
-    международный (страны разные) не может доставиться, минуя границу;
-    неизвестный маршрут (страна не указана) не двигается дальше без
-    уточнения. Действует только на in_progress → {at_border, delivered} —
-    cancelled и остальные переходы существующей state machine не трогает.
+    владельца 03.08.2026, ужесточено аудитом Блок 4 / P0-3): фронту нельзя
+    доверять — статус сделки описывает реальную логистику. Домашний рейс
+    (страны совпадают) не проходит границу; международный (страны разные) не
+    может доставиться, минуя границу; неизвестный/неуказанный маршрут не
+    двигается дальше без уточнения. Страны сравниваются через единый канон
+    `services.geo_normalize` (ISO-2 + известные RU/EN названия и ISO-3) —
+    раньше здесь была грубая эвристика `len<=4 and isalpha()`, пропускавшая
+    любой алфавитный мусор ("XX"/"ZZ") как «международный». Действует только
+    на in_progress → {at_border, delivered} — cancelled и остальные переходы
+    существующей state machine не трогает.
     """
     if cur_status != "in_progress" or new_status not in ("at_border", "delivered"):
         return
-    fc = (from_country or "").strip().upper() or None
-    tc = (to_country or "").strip().upper() or None
-    if not fc or not tc:
-        raise HTTPException(status_code=409, detail="Уточните страны маршрута")
-    if fc == tc and new_status == "at_border":
-        raise HTTPException(status_code=409, detail="Внутренний рейс не проходит через границу")
-    if fc != tc and new_status == "delivered":
-        raise HTTPException(status_code=409, detail="Международный рейс должен пройти этап «На границе»")
+    intl, code = is_international_route(from_country, to_country)
+    if intl is None:
+        detail = {
+            "error": code,  # ROUTE_COUNTRY_UNKNOWN | ROUTE_REQUIRES_CLARIFICATION
+            "message": "Не удалось определить страну маршрута — уточните маршрут перед продолжением"
+                       if code == "ROUTE_COUNTRY_UNKNOWN"
+                       else "Укажите страну отправления и назначения перед этим статусом",
+        }
+        raise HTTPException(status_code=409, detail=detail)
+    if not intl and new_status == "at_border":
+        raise HTTPException(status_code=409, detail={
+            "error": "ROUTE_NOT_INTERNATIONAL",
+            "message": "Внутренний рейс не проходит через границу",
+        })
+    if intl and new_status == "delivered":
+        raise HTTPException(status_code=409, detail={
+            "error": "ROUTE_REQUIRES_BORDER_STEP",
+            "message": "Международный рейс должен пройти этап «На границе»",
+        })
 
 
 def _is_dirty_text(*fields) -> bool:
@@ -2531,6 +2547,16 @@ def get_deal(deal_id: str, user=Depends(require_level(1))):
                     vp = c.execute("SELECT vehicle_plate FROM drivers_registration WHERE id = ?", (tr["driver_id"],)).fetchone()
                     if vp and vp["vehicle_plate"]:
                         d.setdefault("plate", vp["vehicle_plate"])
+        # Блок 4 (P0-3): нормализованный вердикт по стране — ЕДИНЫЙ источник
+        # истины для фронта. Раньше MyTripsScreen.js и TripDetail.js каждый
+        # вычисляли "международный/внутренний" по-своему (и TripDetail.js
+        # вообще не проверял) — теперь оба обязаны читать готовое поле
+        # отсюда, а не пересчитывать сами.
+        _intl, _code = is_international_route(d.get("from_country"), d.get("to_country"))
+        d["from_country_code"] = normalize_country(d.get("from_country"))
+        d["to_country_code"] = normalize_country(d.get("to_country"))
+        d["is_international"] = _intl  # true | false | null (не определён)
+        d["route_country_valid"] = _code == "ok"
         # Телефон КОНТРАГЕНТА по сделке — для звонка после заключения сделки.
         # Endpoint строго gated (выше 403 для не-участников), поэтому отдать
         # телефон второй стороны безопасно. Технические placeholder-телефоны

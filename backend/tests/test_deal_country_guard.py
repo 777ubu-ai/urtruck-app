@@ -85,7 +85,12 @@ def expect(cond, msg):
 
 def _make_in_progress_deal(owner_id, driver_id, from_country, to_country):
     """Seed a cargo with the given route, accept a bid on it, and advance
-    the resulting deal to in_progress. Returns deal_id."""
+    the resulting deal to in_progress. Returns deal_id.
+
+    Аудит Блок 3 (P0-2, 05.08.2026): accepted→in_progress теперь разрешён
+    ТОЛЬКО driver_id (раньше — любой участник, включая владельца груза,
+    что и было первопричиной P0-2). Актёра сменили на driver_id, логика
+    country-guard (предмет ЭТОГО файла) не менялась."""
     cargo_id = seed_cargo(owner_id=owner_id, from_country=from_country, to_country=to_country)
     as_user(driver_id)
     bid_id = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 2500}).json()["id"]
@@ -93,6 +98,7 @@ def _make_in_progress_deal(owner_id, driver_id, from_country, to_country):
     r = client.post(f"/api/v1/market/bids/{bid_id}/accept")
     expect(r.status_code == 200, f"accept bid 200 (got {r.status_code} {r.text})")
     deal_id = r.json()["deal_id"]
+    as_user(driver_id)  # P0-2: только водитель может начать рейс
     r = client.patch(f"/api/v1/market/deals/{deal_id}/status?new_status=in_progress")
     expect(r.status_code == 200, f"accepted -> in_progress 200 (got {r.status_code} {r.text})")
     return deal_id
@@ -101,7 +107,7 @@ def _make_in_progress_deal(owner_id, driver_id, from_country, to_country):
 def test_domestic_at_border_409():
     print("\n=== test_domestic_at_border_409 (KZ -> KZ, at_border) ===")
     deal_id = _make_in_progress_deal("owner-dom-1", "driver-dom-1", "KZ", "KZ")
-    as_user("owner-dom-1")
+    as_user("driver-dom-1")  # P0-2: actor
     r = client.patch(f"/api/v1/market/deals/{deal_id}/status?new_status=at_border")
     expect(r.status_code == 409, f"KZ->KZ at_border -> 409 (got {r.status_code} {r.text})")
 
@@ -109,7 +115,7 @@ def test_domestic_at_border_409():
 def test_domestic_delivered_200():
     print("\n=== test_domestic_delivered_200 (KZ -> KZ, delivered) ===")
     deal_id = _make_in_progress_deal("owner-dom-2", "driver-dom-2", "KZ", "KZ")
-    as_user("owner-dom-2")
+    as_user("driver-dom-2")  # P0-2: actor
     r = client.patch(f"/api/v1/market/deals/{deal_id}/status?new_status=delivered")
     expect(r.status_code == 200, f"KZ->KZ delivered -> 200 (got {r.status_code} {r.text})")
 
@@ -117,7 +123,7 @@ def test_domestic_delivered_200():
 def test_international_at_border_200():
     print("\n=== test_international_at_border_200 (CN -> KZ, at_border) ===")
     deal_id = _make_in_progress_deal("owner-intl-1", "driver-intl-1", "CN", "KZ")
-    as_user("owner-intl-1")
+    as_user("driver-intl-1")  # P0-2: actor
     r = client.patch(f"/api/v1/market/deals/{deal_id}/status?new_status=at_border")
     expect(r.status_code == 200, f"CN->KZ at_border -> 200 (got {r.status_code} {r.text})")
 
@@ -125,7 +131,7 @@ def test_international_at_border_200():
 def test_international_direct_delivered_409():
     print("\n=== test_international_direct_delivered_409 (CN -> KZ, direct delivered) ===")
     deal_id = _make_in_progress_deal("owner-intl-2", "driver-intl-2", "CN", "KZ")
-    as_user("owner-intl-2")
+    as_user("driver-intl-2")  # P0-2: actor
     r = client.patch(f"/api/v1/market/deals/{deal_id}/status?new_status=delivered")
     expect(r.status_code == 409, f"CN->KZ direct delivered -> 409 (got {r.status_code} {r.text})")
     # At_border первый — после него delivered должен пройти.
@@ -138,16 +144,20 @@ def test_international_direct_delivered_409():
 def test_unknown_route_at_border_409():
     print("\n=== test_unknown_route_at_border_409 (null -> null, at_border) ===")
     deal_id = _make_in_progress_deal("owner-unk-1", "driver-unk-1", None, None)
-    as_user("owner-unk-1")
+    as_user("driver-unk-1")  # P0-2: actor
     r = client.patch(f"/api/v1/market/deals/{deal_id}/status?new_status=at_border")
     expect(r.status_code == 409, f"null->null at_border -> 409 (got {r.status_code} {r.text})")
-    expect("Уточните страны маршрута" in r.json().get("detail", ""), "409 detail asks to clarify route")
+    # Блок 4 (P0-3): формат ошибки теперь структурный ({error, message}) —
+    # ROUTE_REQUIRES_CLARIFICATION вместо plain-string "Уточните страны маршрута".
+    detail = r.json().get("detail", {})
+    expect(isinstance(detail, dict) and detail.get("error") == "ROUTE_REQUIRES_CLARIFICATION",
+           f"409 detail.error == ROUTE_REQUIRES_CLARIFICATION (got {detail})")
 
 
 def test_unknown_route_delivered_409():
     print("\n=== test_unknown_route_delivered_409 (null -> null, delivered) ===")
     deal_id = _make_in_progress_deal("owner-unk-2", "driver-unk-2", None, None)
-    as_user("owner-unk-2")
+    as_user("driver-unk-2")  # P0-2: actor
     r = client.patch(f"/api/v1/market/deals/{deal_id}/status?new_status=delivered")
     expect(r.status_code == 409, f"null->null delivered -> 409 (got {r.status_code} {r.text})")
 
