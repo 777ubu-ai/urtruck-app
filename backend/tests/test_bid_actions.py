@@ -483,28 +483,15 @@ def test_owner_cannot_directly_accept_countered():
     expect(r.status_code == 409, f"owner accept countered → 409 (got {r.status_code})")
 
 
-def test_chat_from_pending_bid():
-    print("\n=== test_chat_from_pending_bid ===")
+def test_chat_from_pending_bid_is_blocked():
+    """A working chat room must not exist until the bid is accepted."""
+    print("
+=== test_chat_from_pending_bid_is_blocked ===")
     cargo_id, bid_id = _new_pending_bid("chat-owner", "chat-driver", 1000)
     as_user("chat-driver")
-    r1 = client.post(f"/api/v1/market/bids/{bid_id}/chat")
-    expect(r1.status_code == 200, f"chat from pending 200 (got {r1.status_code} {r1.text})")
-    rid_a = r1.json()["chat_room_id"]
-    expect(bool(rid_a), "chat_room_id returned")
-
-    # Idempotent: same caller again → same room
-    r2 = client.post(f"/api/v1/market/bids/{bid_id}/chat")
-    expect(r2.json()["chat_room_id"] == rid_a, "idempotent for same user")
-
-    # Owner-side opens it → same room (UNIQUE pair)
-    as_user("chat-owner")
-    r3 = client.post(f"/api/v1/market/bids/{bid_id}/chat")
-    expect(r3.json()["chat_room_id"] == rid_a, "owner gets same room")
-
-    # Outsider blocked
-    as_user("outsider")
-    r4 = client.post(f"/api/v1/market/bids/{bid_id}/chat")
-    expect(r4.status_code == 403, f"outsider chat → 403 (got {r4.status_code})")
+    r = client.post(f"/api/v1/market/bids/{bid_id}/chat")
+    expect(r.status_code == 409, f"pending bid chat blocked → 409 (got {r.status_code} {r.text})")
+    expect(query_chat_room("chat-owner", "chat-driver") is None, "no chat room before accept")
 
 
 def test_chat_blocked_when_bid_not_active():
