@@ -284,9 +284,11 @@ def test_list_bids_shows_cancelled_and_rejected_statuses():
     """GET /bids?cargo_id=... returns new lifecycle states (smoke check on persistence)."""
     print("\n=== test_list_bids_shows_cancelled_and_rejected_statuses ===")
     cargo_id = seed_cargo(owner_id="dash-owner")
-    as_user("dash-driver")
+    as_user("dash-driver-a")
     bid_a = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 100}).json()["id"]
+    as_user("dash-driver-b")
     bid_b = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 200}).json()["id"]
+    as_user("dash-driver-a")
     client.post(f"/api/v1/market/bids/{bid_a}/cancel")
 
     as_user("dash-owner")
