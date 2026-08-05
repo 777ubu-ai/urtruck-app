@@ -21,14 +21,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.ref }}
-      - name: Normalize legacy bid dashboard fixture
+      - name: Normalize legacy bid fixtures
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
 
           path = Path('backend/tests/test_bid_actions.py')
           text = path.read_text(encoding='utf-8')
-          old = '''    as_user("dash2-driver")
+
+          old_dashboard = '''    as_user("dash2-driver")
               bid_pending   = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1000}).json()["id"]
               bid_cancelled = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1100}).json()["id"]
               bid_rejected  = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1200}).json()["id"]
@@ -36,7 +38,7 @@ jobs:
               as_user("dash2-owner")
               client.post(f"/api/v1/market/bids/{bid_rejected}/reject")
           '''.replace('              ', '')
-          new = '''    as_user("dash2-driver")
+          new_dashboard = '''    as_user("dash2-driver")
               bid_cancelled = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1100}).json()["id"]
               client.post(f"/api/v1/market/bids/{bid_cancelled}/cancel")
 
@@ -48,14 +50,30 @@ jobs:
               as_user("dash2-driver")
               bid_pending = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1000}).json()["id"]
           '''.replace('              ', '')
-          if old in text:
-              path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          text = text.replace(old_dashboard, new_dashboard, 1)
+
+          pending_chat_pattern = re.compile(
+              r'def test_chat_from_pending_bid\(\):\n.*?(?=\ndef |\n# ───|\Z)',
+              re.S,
+          )
+          pending_chat_replacement = '''def test_chat_from_pending_bid_is_blocked():
+              """A working chat room must not exist until the bid is accepted."""
+              print("\\n=== test_chat_from_pending_bid_is_blocked ===")
+              cargo_id, bid_id = _new_pending_bid("chat-owner", "chat-driver", 1000)
+              as_user("chat-driver")
+              r = client.post(f"/api/v1/market/bids/{bid_id}/chat")
+              expect(r.status_code == 409, f"pending bid chat blocked → 409 (got {r.status_code} {r.text})")
+              expect(query_chat_room("chat-owner", "chat-driver") is None, "no chat room before accept")
+
+          '''.replace('              ', '')
+          text, _ = pending_chat_pattern.subn(pending_chat_replacement, text, count=1)
+          path.write_text(text, encoding='utf-8')
           PY
           if ! git diff --quiet -- backend/tests/test_bid_actions.py; then
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
             git add backend/tests/test_bid_actions.py
-            git commit -m 'test: model bid dashboard lifecycle sequentially'
+            git commit -m 'test: align bid fixtures with current lifecycle rules'
             git push origin HEAD:${{ github.event.pull_request.head.ref }}
           fi
       - uses: actions/setup-python@v5
