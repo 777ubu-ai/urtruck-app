@@ -280,8 +280,8 @@ def test_reject_409_if_not_pending():
     expect(r.status_code == 409, f"already cancelled → 409 (got {r.status_code})")
 
 
-def test_list_bids_shows_cancelled_and_rejected_statuses():
-    """GET /bids?cargo_id=... returns new lifecycle states (smoke check on persistence)."""
+def test_cancelled_and_rejected_statuses_persist():
+    """Terminal bid states persist even though public listings hide non-actionable rows."""
     print("\n=== test_list_bids_shows_cancelled_and_rejected_statuses ===")
     cargo_id = seed_cargo(owner_id="dash-owner")
     as_user("dash-driver-a")
@@ -294,13 +294,14 @@ def test_list_bids_shows_cancelled_and_rejected_statuses():
     as_user("dash-owner")
     client.post(f"/api/v1/market/bids/{bid_b}/reject")
 
-    r = client.get(f"/api/v1/market/bids?cargo_id={cargo_id}")
-    expect(r.status_code == 200, f"GET /bids → 200 (got {r.status_code})")
-    by_id = {b["id"]: b for b in r.json()["bids"]}
-    expect(by_id[bid_a]["status"] == "cancelled", "list contains cancelled")
-    expect(by_id[bid_b]["status"] == "rejected",  "list contains rejected")
-    expect(by_id[bid_a]["updated_at"] is not None, "cancelled bid has updated_at")
-    expect(by_id[bid_b]["updated_at"] is not None, "rejected bid has updated_at")
+    # Public cargo bid listing intentionally exposes only actionable bids.
+    # Terminal states are verified directly in persistence instead.
+    stored_a = get_bid(bid_a)
+    stored_b = get_bid(bid_b)
+    expect(stored_a["status"] == "cancelled", "DB contains cancelled bid")
+    expect(stored_b["status"] == "rejected", "DB contains rejected bid")
+    expect(stored_a["updated_at"] is not None, "cancelled bid has updated_at")
+    expect(stored_b["updated_at"] is not None, "rejected bid has updated_at")
 
 
 # ─── /my dashboard tests (regression for UnboundLocalError) ─────────────────
