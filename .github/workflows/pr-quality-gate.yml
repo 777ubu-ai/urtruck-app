@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   backend-tests:
@@ -19,71 +19,6 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.ref }}
-      - name: Normalize legacy bid notification expectations
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path('backend/tests/test_bid_actions.py')
-          text = path.read_text(encoding='utf-8')
-
-          # Working chat is intentionally unavailable before bid acceptance.
-          text = text.replace(
-              'def test_pr_b_cargo_bid_creates_notif_with_url_and_chat_room():',
-              'def test_pr_b_cargo_bid_creates_notif_without_eager_chat_room():',
-              1,
-          )
-          text = text.replace(
-              '    # Eager chat_room\n'
-              '    room = query_chat_room(driver, owner)\n'
-              '    expect(room is not None, "chat_room created eagerly (cargo bid)")\n'
-              '    expect(room["cargo_id"] == cargo_id, f"chat_room.cargo_id={cargo_id} (got {room[\'cargo_id\']})")\n',
-              '    room = query_chat_room(driver, owner)\n'
-              '    expect(room is None, "no chat_room before cargo bid acceptance")\n',
-              1,
-          )
-          text = text.replace(
-              'def test_pr_b_trip_bid_creates_notif_with_url_and_chat_room():',
-              'def test_pr_b_trip_bid_creates_notif_without_eager_chat_room():',
-              1,
-          )
-          text = text.replace(
-              '    # Eager chat_room\n'
-              '    room = query_chat_room(client_id, driver)\n'
-              '    expect(room is not None, "chat_room created eagerly (trip bid)")\n'
-              '    expect(room["trip_id"] == trip_id, f"chat_room.trip_id={trip_id} (got {room[\'trip_id\']})")\n',
-              '    room = query_chat_room(client_id, driver)\n'
-              '    expect(room is None, "no chat_room before trip bid acceptance")\n',
-              1,
-          )
-
-          # "Дом заказа": accepted/status notifications return to the cargo/trip
-          # card, where the deal banner, tracking and chat entry point live.
-          text = text.replace(
-              'def test_pr_b_accept_bid_creates_accepted_notif_with_deal_url():',
-              'def test_pr_b_accept_bid_creates_accepted_notif_with_order_url():',
-              1,
-          )
-          text = text.replace(
-              '    expect(n["url"] == f"/deals/{deal_id}",\n'
-              '           f"accepted notif url=/deals/{{id}} (got {n[\'url\']})")\n',
-              '    expect(n["url"] == f"/cargos/{cargo_id}",\n'
-              '           f"accepted notif url=/cargos/{{id}} (got {n[\'url\']})")\n',
-              1,
-          )
-
-          path.write_text(text, encoding='utf-8')
-          PY
-          python -m py_compile backend/tests/test_bid_actions.py
-          if ! git diff --quiet -- backend/tests/test_bid_actions.py; then
-            git config user.name 'github-actions[bot]'
-            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git add backend/tests/test_bid_actions.py
-            git commit -m 'test: align bid notification routes with order home policy'
-            git push origin HEAD:${{ github.event.pull_request.head.ref }}
-          fi
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -94,16 +29,20 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt pytest
+      - name: Compile backend and tests
+        run: |
+          python -m compileall -q backend
       - name: Run full backend suite in isolated modules
         env:
           PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/backend
+          APP_ENV: test
         run: |
           set -euo pipefail
           count=0
           while IFS= read -r test_file; do
             count=$((count + 1))
             db_path="${{ runner.temp }}/urtruck-ci-${count}.db"
-            rm -f "$db_path"
+            rm -f "$db_path" "$db_path-wal" "$db_path-shm"
             echo "::group::check $test_file"
             if grep -Eq '^def test_' "$test_file"; then
               DB_PATH="$db_path" URTRUCK_DB_PATH="$db_path" \
