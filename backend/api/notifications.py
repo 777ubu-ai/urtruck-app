@@ -1,6 +1,7 @@
 """InApp Notifications API — история уведомлений с колокольчиком."""
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from fastapi import APIRouter, Depends
@@ -56,34 +57,47 @@ def create_notification(user_id: str, type: str, title: str, body: str = "", ico
             )
 
 
+def _notification_path(value: str) -> str:
+    """Return a canonical path from a relative or absolute notification URL."""
+    value = str(value or "").strip()
+    if not value:
+        return ""
+    try:
+        parsed = urlsplit(value)
+        path = parsed.path or ""
+    except Exception:
+        path = value.split("?", 1)[0].split("#", 1)[0]
+    if path and not path.startswith("/"):
+        path = f"/{path}"
+    return path.rstrip("/") or "/"
+
+
 def mark_notifications_read_by_urls(user_id: str, urls) -> int:
-    """Mark notifications for the entity paths the user actually opened.
+    """Mark unread notifications whose canonical path was actually opened.
 
-    A notification may contain either a bare path or the same path followed by
-    a query string. GLOB is used with a literal ``?`` encoded as ``[?]`` so
-    SQLite does not treat it as a wildcard. This keeps matching strict and
-    prevents a short/similar entity id from consuming another entity's badge.
+    Matching is performed in Python after selecting only this user's unread
+    rows. This avoids SQLite wildcard/escaping edge cases and correctly handles
+    relative URLs, absolute URLs, query strings and fragments. Only exact
+    canonical paths match, so similar entity identifiers remain isolated.
     """
-    clean_urls = []
-    for value in urls or []:
-        value = str(value or "").strip()
-        if value and value not in clean_urls:
-            clean_urls.append(value)
-    if not user_id or not clean_urls:
+    target_paths = {_notification_path(value) for value in (urls or [])}
+    target_paths.discard("")
+    if not user_id or not target_paths:
         return 0
-
-    clauses = []
-    params = []
-    for path in clean_urls:
-        clauses.append("(url = ? OR url GLOB ?)")
-        params.extend((path, f"{path}[?]*"))
 
     try:
         with get_conn() as c:
+            rows = c.execute(
+                "SELECT id, url FROM notifications WHERE user_id = ? AND is_read = 0",
+                (user_id,),
+            ).fetchall()
+            ids = [row["id"] for row in rows if _notification_path(row["url"]) in target_paths]
+            if not ids:
+                return 0
+            placeholders = ",".join("?" for _ in ids)
             cur = c.execute(
-                "UPDATE notifications SET is_read = 1 "
-                f"WHERE user_id = ? AND is_read = 0 AND ({' OR '.join(clauses)})",
-                (user_id, *params),
+                f"UPDATE notifications SET is_read = 1 WHERE user_id = ? AND id IN ({placeholders})",
+                (user_id, *ids),
             )
             return cur.rowcount or 0
     except Exception as exc:
