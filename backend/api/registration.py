@@ -109,6 +109,19 @@ def delete_my_account(driver_id: str = Depends(get_current_driver)):
     Обезличивает персональные данные и отзывает все сессии. Идемпотентно —
     после удаления токен становится недействительным. POST-алиас нужен для
     клиентов/прокси, которые не пропускают DELETE."""
+    # Блок 2 аудита (P1-3): push-регистрации удаляемого аккаунта тоже
+    # обязаны деактивироваться — иначе после обезличивания drivers_registration
+    # push_tokens_native/push_subscriptions продолжают указывать на
+    # (уже несуществующего) пользователя и потенциально годны к угону через
+    # /push/register-native (см. P0-1 фикс: деактивированный токен свободен
+    # для легитимного переиспользования). Best-effort — сбой здесь не должен
+    # блокировать само удаление аккаунта (Apple Guideline 5.1.1(v) требует
+    # надёжного удаления данных).
+    try:
+        from api.push import deactivate_user_push
+        deactivate_user_push(driver_id, reason="account_deleted")
+    except Exception:
+        pass
     try:
         reg_dal.delete_account(driver_id)
     except Exception:
