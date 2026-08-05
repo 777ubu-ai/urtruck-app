@@ -247,11 +247,15 @@ def _compute_recipient_badge(user_id: str) -> int:
     try:
         with get_conn() as c:
             try:
+                # Блок 5 аудита (P1-1, вариант B): system-сообщения исключены
+                # — тот же фильтр, что в api/chat.py unread_count(), иначе
+                # APNs-бейдж на иконке расходился бы с in-app бейджем
+                # «Сделки» (двойной счёт одного события).
                 row = c.execute(
                     "SELECT COUNT(*) FROM chat_messages m "
                     "JOIN chat_rooms r ON r.id = m.room_id "
                     "WHERE (r.participant_1 = ? OR r.participant_2 = ?) "
-                    "AND m.sender_id != ? AND m.is_read = 0",
+                    "AND m.sender_id != ? AND m.sender_id != 'system' AND m.is_read = 0",
                     (user_id, user_id, user_id),
                 ).fetchone()
                 total += int(row[0]) if row else 0

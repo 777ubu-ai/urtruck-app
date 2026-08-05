@@ -356,9 +356,13 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
 def my_rooms(user=Depends(require_level(1))):
     uid = user["id"]
     with get_conn() as c:
+        # Блок 5 аудита (P1-1, вариант B): per-room unread — тот же фильтр
+        # sender_id != 'system', что и в /chat/unread ниже, чтобы карточка
+        # конкретной сделки и общий бейдж считали событие одинаково.
         rows = c.execute("""
             SELECT r.*,
-                   (SELECT COUNT(*) FROM chat_messages m WHERE m.room_id = r.id AND m.is_read = 0 AND m.sender_id != ?) as unread
+                   (SELECT COUNT(*) FROM chat_messages m WHERE m.room_id = r.id AND m.is_read = 0
+                    AND m.sender_id != ? AND m.sender_id != 'system') as unread
             FROM chat_rooms r
             WHERE r.participant_1 = ? OR r.participant_2 = ?
             ORDER BY r.last_at DESC LIMIT 50
@@ -631,13 +635,22 @@ def special_contacts():
 
 @chat_router.get("/unread")
 def unread_count(user=Depends(require_level(1))):
+    # Блок 5 аудита (P1-1, вариант B): системные сообщения (sender_id=
+    # 'system' — «Сделка создана»/«Рейс начался»/... , см. marketplace.py
+    # _finalize_accept_inline и update_deal_status) исключены из
+    # chatUnread. Эти же события ВСЕГДА параллельно создают запись в
+    # notifications (create_notification) — раньше badge на «Сделки»
+    # считал одно бизнес-событие ДВАЖДЫ (+1 chatUnread за системное
+    # сообщение, +1 notifUnread за notification). Теперь системное
+    # событие живёт в общем счётчике только через notifications —
+    # см. services/push_sender._compute_recipient_badge (тот же фильтр).
     uid = user["id"]
     with get_conn() as c:
         row = c.execute("""
             SELECT COUNT(*) as cnt FROM chat_messages m
             JOIN chat_rooms r ON m.room_id = r.id
             WHERE (r.participant_1 = ? OR r.participant_2 = ?)
-              AND m.sender_id != ? AND m.is_read = 0
+              AND m.sender_id != ? AND m.sender_id != 'system' AND m.is_read = 0
         """, (uid, uid, uid)).fetchone()
     return {"unread": row["cnt"] if row else 0}
 

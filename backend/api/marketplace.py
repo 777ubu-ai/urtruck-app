@@ -606,6 +606,15 @@ def get_cargo(cargo_id: str, authorization: Optional[str] = Header(None)):
     caller = _maybe_user(authorization)
     if not (caller and caller.get("id") == d.get("owner_id")):
         d.pop("owner_phone", None)
+    # Блок 5 аудита (P1-2): пользователь реально открыл карточку груза —
+    # гасим уведомления, которые вели именно сюда (новая ставка/принято/
+    # отклонено и т.п.), не трогая чужие.
+    if caller and caller.get("id"):
+        try:
+            from api.notifications import mark_notifications_read_by_urls
+            mark_notifications_read_by_urls(caller["id"], [f"/cargos/{cargo_id}"])
+        except Exception:
+            pass
     # Инфо о грузоотправителе (доверие: водитель видит, кому ставит ставку) —
     # имя, статус верификации, рейтинг, число отзывов. Без телефона.
     try:
@@ -1213,6 +1222,14 @@ def get_trip(trip_id: str, authorization: Optional[str] = Header(None)):
     caller = _maybe_user(authorization)
     if not (caller and caller.get("id") == d.get("driver_id")):
         d.pop("driver_phone", None)
+    # Блок 5 аудита (P1-2): аналогично get_cargo — гасим уведомления,
+    # которые вели именно на этот рейс.
+    if caller and caller.get("id"):
+        try:
+            from api.notifications import mark_notifications_read_by_urls
+            mark_notifications_read_by_urls(caller["id"], [f"/trips/{trip_id}"])
+        except Exception:
+            pass
     # Инфо о водителе (доверие: клиент видит, кому доверяет груз) — имя,
     # статус верификации, рейтинг, число отзывов. Зеркально get_cargo:
     # owner_* → driver_*. Без телефона (гейт выше).
