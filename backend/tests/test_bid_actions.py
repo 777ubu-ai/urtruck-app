@@ -485,8 +485,7 @@ def test_owner_cannot_directly_accept_countered():
 
 def test_chat_from_pending_bid_is_blocked():
     """A working chat room must not exist until the bid is accepted."""
-    print("
-=== test_chat_from_pending_bid_is_blocked ===")
+    print("\n=== test_chat_from_pending_bid_is_blocked ===")
     cargo_id, bid_id = _new_pending_bid("chat-owner", "chat-driver", 1000)
     as_user("chat-driver")
     r = client.post(f"/api/v1/market/bids/{bid_id}/chat")
