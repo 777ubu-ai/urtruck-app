@@ -588,7 +588,7 @@ def test_pr_b_create_bid_rejects_negative_amount():
     expect(r.status_code == 400, f"amount<0 → 400 (got {r.status_code} {r.text})")
 
 
-def test_pr_b_cargo_bid_creates_notif_with_url_and_chat_room():
+def test_pr_b_cargo_bid_creates_notif_without_eager_chat_room():
     print("\n=== PR-B test_cargo_bid_creates_notif_with_url_and_chat_room ===")
     owner = "owner-pr-b3"
     driver = "driver-pr-b3"
@@ -608,13 +608,11 @@ def test_pr_b_cargo_bid_creates_notif_with_url_and_chat_room():
     expect("Новое предложение" in n["title"] or "$2500" in n["title"],
            f"notif title meaningful (got {n['title']!r})")
 
-    # Eager chat_room
     room = query_chat_room(driver, owner)
-    expect(room is not None, "chat_room created eagerly (cargo bid)")
-    expect(room["cargo_id"] == cargo_id, f"chat_room.cargo_id={cargo_id} (got {room['cargo_id']})")
+    expect(room is None, "no chat_room before cargo bid acceptance")
 
 
-def test_pr_b_trip_bid_creates_notif_with_url_and_chat_room():
+def test_pr_b_trip_bid_creates_notif_without_eager_chat_room():
     print("\n=== PR-B test_trip_bid_creates_notif_with_url_and_chat_room ===")
     driver = "driver-pr-b4"
     client_id = "client-pr-b4"
@@ -632,10 +630,8 @@ def test_pr_b_trip_bid_creates_notif_with_url_and_chat_room():
     expect(n["url"] == f"/trips/{trip_id}?bid={bid_id}",
            f"notif url=/trips/X?bid=Y (got {n['url']})")
 
-    # Eager chat_room
     room = query_chat_room(client_id, driver)
-    expect(room is not None, "chat_room created eagerly (trip bid)")
-    expect(room["trip_id"] == trip_id, f"chat_room.trip_id={trip_id} (got {room['trip_id']})")
+    expect(room is None, "no chat_room before trip bid acceptance")
 
 
 def test_pr_b_accept_bid_creates_accepted_notif_with_deal_url():
