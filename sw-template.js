@@ -1,4 +1,4 @@
-// UrTruck Service Worker · v8 — network-first для HTML/JS, cache-first для статики,
+// UrTruck Service Worker · v9 — network-first для HTML/JS, cache-first для статики,
 // API never cached (otherwise stale demo cards survive deploys).
 // v8 (05.08.2026): диагностика показала, что телефоны, уже получившие v7
 // (бамп 158b612, 17:08 UTC 04.08), НЕ подхватывали более поздние деплои того
@@ -8,8 +8,15 @@
 // не срабатывал, а сам sw.js был побайтово идентичен — браузер не видел
 // повода переустанавливать воркер. Бамп v7→v8 форсирует одноразовую очистку
 // у всех клиентов независимо от того, что у них уже закэшировано.
-const CACHE = 'urtruck-v8-market';
-const STATIC_CACHE = 'urtruck-static-v8';
+// v9 (05.08.2026): повторный бамп по запросу владельца сразу после v8 —
+// код в main был проверен grep'ом и уже содержал нужный UI ДО v8 (см.
+// build-info.json/commit b43e7a1 и коммит dcdb863 "Упростить Сделки/Чат/
+// Мои рейсы"), но раз v8 задеплоился считанные минуты назад, часть клиентов
+// могла не успеть пройти цикл unregister+reload. Бамп v9 — не признак того,
+// что где-то был не тот код, а дополнительная гарантия форсированного
+// сброса на всякий случай.
+const CACHE = 'urtruck-v9-market';
+const STATIC_CACHE = 'urtruck-static-v9';
 
 self.addEventListener('install', (e) => {
   // Сразу активируем новый SW без ожидания закрытия вкладок
