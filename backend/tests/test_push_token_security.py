@@ -150,44 +150,61 @@ def test_after_logout_token_can_be_safely_reclaimed_by_another_user():
     assert row["invalidated_at"] is None
 
 
-def test_same_device_user_switch_reassigns_and_deactivates_old_owner():
-    """Смена пользователя на ОДНОМ устройстве БЕЗ явного logout (например,
-    юзер просто разлогинился локально и залогинился другим аккаунтом, а
-    фронт ещё не успел вызвать /logout-cleanup) — device_id одинаковый на
-    новой регистрации ДРУГОГО токена (новый install/токен от Expo для
-    нового пользователя на том же физическом устройстве) обязан
-    деактивировать все активные push-записи старого владельца на этом
-    device_id."""
+def test_bare_device_id_claim_on_new_token_does_not_deactivate_others():
+    """Пре-мёрдж ревью (05.08.2026, P1-блокер, найден 2 независимыми
+    ревьюерами): раньше device-wide зачистка (_reassign_device_if_needed)
+    вызывалась БЕЗУСЛОВНО, в т.ч. на регистрации СОВЕРШЕННО НОВОГО токена —
+    авторизованный атакующий B, просто ЗНАЯ device_id жертвы A (документирован
+    как "не секрет" — мог утечь в лог/Sentry/на общем устройстве), мог одним
+    запросом со СВОИМ новым токеном и чужим device_id мгновенно погасить
+    активный push A, не касаясь её токена вообще. Теперь device-wide зачистка
+    происходит ТОЛЬКО когда _resolve_ownership независимо подтвердил legitimate
+    reassign для ЭТОГО конкретного identifier (см. test_same_device_user_switch_*
+    ниже) — голого заявления device_id в регистрации НОВОГО токена недостаточно."""
     uid_a, tok_a = _new_user_token()
     uid_b, tok_b = _new_user_token()
-    device = "d-shared-5555555"
-    tok_a_native = "ExponentPushToken[unit-test-switch-a]"
-    tok_b_native = "ExponentPushToken[unit-test-switch-b]"
+    device = "d-shared-6666666"
+    tok_a_native = "ExponentPushToken[unit-test-dos-victim]"
+    tok_b_native = "ExponentPushToken[unit-test-dos-attacker]"
 
     client.post("/api/v1/push/register-native", json={"token": tok_a_native, "device_id": device}, headers=_auth(tok_a))
     row_a = _native_row(tok_a_native)
     assert row_a["active"] == 1 and row_a["user_id"] == uid_a
 
-    # B логинится на том же устройстве, получает НОВЫЙ push-токен (типично
-    # для Expo при новой сессии/переустановке), но device_id тот же.
+    # B (не владеющий устройством A) регистрирует СВОЙ НОВЫЙ токен, заявляя
+    # ТОТ ЖЕ device_id, что и A — это ровно эксплойт из ревью.
     r = client.post("/api/v1/push/register-native", json={"token": tok_b_native, "device_id": device}, headers=_auth(tok_b))
-    assert r.status_code == 200, r.text
+    assert r.status_code == 200, r.text  # регистрация СВОЕГО токена — легитимна сама по себе
 
     row_a_after = _native_row(tok_a_native)
     row_b_after = _native_row(tok_b_native)
     assert row_b_after["user_id"] == uid_b and row_b_after["active"] == 1
-    assert row_a_after["active"] == 0, "старая активная запись A на этом устройстве должна деактивироваться"
-    assert row_a_after["invalidated_reason"] == "device_reassigned"
+    assert row_a_after["active"] == 1, (
+        "P1-регресс: A НЕ должна пострадать от того, что B просто заявил её device_id "
+        "в регистрации СВОЕГО НОВОГО токена (без владения устройством A)"
+    )
+    assert tok_a_native in [t["token"] for t in push_sender._native_tokens(uid_a)]
 
-    # Инвариант: один device_id — не более одного активного user_id одновременно.
-    from database.db import get_conn
-    with get_conn() as c:
-        active_owners = {r["user_id"] for r in c.execute(
-            "SELECT DISTINCT user_id FROM push_tokens_native WHERE device_id = ? AND active = 1", (device,)
-        ).fetchall()}
-    assert active_owners == {uid_b}, f"на одном device_id активен не один владелец: {active_owners}"
 
-    # push A на это устройство больше не пойдёт.
+def test_same_device_user_switch_via_explicit_logout_still_works():
+    """Легитимный сценарий P1-4 (смена пользователя на одном устройстве)
+    по-прежнему работает через ОСНОВНОЙ, рекомендованный путь — явный
+    /push/logout-cleanup (вызывается из AuthContext.signOut() до отзыва
+    сессии) — а не через голое заявление device_id в новой регистрации."""
+    uid_a, tok_a = _new_user_token()
+    uid_b, tok_b = _new_user_token()
+    device = "d-shared-7777777"
+    tok_a_native = "ExponentPushToken[unit-test-switch-a2]"
+    tok_b_native = "ExponentPushToken[unit-test-switch-b2]"
+
+    client.post("/api/v1/push/register-native", json={"token": tok_a_native, "device_id": device}, headers=_auth(tok_a))
+    client.post("/api/v1/push/logout-cleanup", json={"device_id": device}, headers=_auth(tok_a))
+    assert _native_row(tok_a_native)["active"] == 0
+
+    r = client.post("/api/v1/push/register-native", json={"token": tok_b_native, "device_id": device}, headers=_auth(tok_b))
+    assert r.status_code == 200, r.text
+    assert _native_row(tok_b_native)["user_id"] == uid_b
+    assert _native_row(tok_b_native)["active"] == 1
     assert tok_a_native not in [t["token"] for t in push_sender._native_tokens(uid_a)]
 
 
@@ -266,17 +283,52 @@ def test_unsubscribe_requires_ownership():
     assert row["active"] == 0
 
 
+def test_anonymous_request_cannot_deactivate_owned_push():
+    """Пре-мёрдж ревью (05.08.2026, P1-блокер): было
+    `owner is not None AND user_id is not None AND owner != user_id` —
+    для ПОЛНОСТЬЮ анонимного запроса (без заголовка Authorization) user_id
+    всегда None, второе условие всегда ложно, проверка не срабатывала
+    вообще — кто угодно мог молча деактивировать чужую владеемую подписку
+    без единого токена авторизации. Владеемую запись должен уметь
+    деактивировать только её реальный владелец; анонимная запись
+    (owner is None) по-прежнему доступна анониму — не регресс для гостей."""
+    uid_a, tok_a = _new_user_token()
+    endpoint = "https://fcm.googleapis.com/fcm/send/unit-test-anon-attack"
+    native_tok = "ExponentPushToken[unit-test-anon-attack]"
+    client.post("/api/v1/push/subscribe", json={
+        "endpoint": endpoint, "keys": {"p256dh": "p", "auth": "a"}, "device_id": "d-anon-1",
+    }, headers=_auth(tok_a))
+    client.post("/api/v1/push/register-native", json={"token": native_tok, "device_id": "d-anon-1"}, headers=_auth(tok_a))
+
+    # Полностью анонимный запрос — БЕЗ заголовка Authorization вообще.
+    r1 = client.post("/api/v1/push/unsubscribe", json={"endpoint": endpoint})
+    assert r1.status_code == 403, f"аноним не должен уметь деактивировать чужую подписку: {r1.status_code} {r1.text}"
+    assert _sub_row(endpoint)["active"] == 1
+
+    r2 = client.post("/api/v1/push/unregister-native", json={"token": native_tok})
+    assert r2.status_code == 403, f"аноним не должен уметь деактивировать чужой native-токен: {r2.status_code} {r2.text}"
+    assert _native_row(native_tok)["active"] == 1
+
+    # Анонимная (никем не занятая) подписка по-прежнему доступна анониму — не регресс.
+    anon_endpoint = "https://fcm.googleapis.com/fcm/send/unit-test-truly-anon"
+    client.post("/api/v1/push/subscribe", json={"endpoint": anon_endpoint, "keys": {"p256dh": "p", "auth": "a"}})
+    r3 = client.post("/api/v1/push/unsubscribe", json={"endpoint": anon_endpoint})
+    assert r3.status_code == 200, f"анонимную (без владельца) подписку аноним отписать обязан: {r3.status_code} {r3.text}"
+
+
 if __name__ == "__main__":
     fails = 0
     for fn in [test_register_then_reregister_same_owner_no_duplicate,
                test_b_cannot_hijack_a_token_without_device_match,
                test_logout_deactivates_native_token,
                test_after_logout_token_can_be_safely_reclaimed_by_another_user,
-               test_same_device_user_switch_reassigns_and_deactivates_old_owner,
+               test_bare_device_id_claim_on_new_token_does_not_deactivate_others,
+               test_same_device_user_switch_via_explicit_logout_still_works,
                test_invalid_expo_token_marked_inactive_not_deleted,
                test_multiple_devices_same_user_both_active,
                test_web_push_hijack_blocked,
-               test_unsubscribe_requires_ownership]:
+               test_unsubscribe_requires_ownership,
+               test_anonymous_request_cannot_deactivate_owned_push]:
         try:
             fn(); print(f"  ✅ {fn.__name__}")
         except Exception as e:

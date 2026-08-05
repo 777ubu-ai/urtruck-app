@@ -1754,7 +1754,20 @@ def list_drivers(truck_type: str = "", limit: int = 30):
 
 @mp_router.patch("/trips/{trip_id}/status")
 def update_trip_status(trip_id: str, new_status: str, user=Depends(require_level(1))):
-    """Обновить статус рейса: active → booked → in_transit → delivered."""
+    """Обновить статус рейса: active → booked → in_transit → delivered.
+
+    Пре-мёрдж ревью (05.08.2026, P0-БЛОКЕР, независимый adversarial review):
+    раньше синхронизировал deals.status НАПРЯМУЮ blind UPDATE'ом, в ПОЛНЫЙ
+    ОБХОД actor-FSM/country-guard из update_deal_status — водитель мог одним
+    PATCH сюда перескочить accepted→delivered, включая международный
+    маршрут БЕЗ at_border, обнуляя весь смысл P0-2/P0-3 (оба фикса живут
+    только в соседнем эндпоинте, этот путь их не знал вообще). Теперь синк
+    идёт через ОБЩУЮ _transition_deal() — обойти проверку через этот
+    legacy-путь больше нельзя, т.к. валидация одна на оба места. Невалидный
+    (по FSM/country) синк не роняет сам trip-статус (best-effort legacy-
+    совместимость — фронт этот эндпоинт не вызывает, см. аудит) — просто
+    пропускается, с явным логом, а не тихо.
+    """
     VALID = ["active", "booked", "in_transit", "delivered", "cancelled"]
     if new_status not in VALID:
         raise HTTPException(status_code=400, detail=f"Допустимые статусы: {', '.join(VALID)}")
@@ -1765,14 +1778,25 @@ def update_trip_status(trip_id: str, new_status: str, user=Depends(require_level
         if trip["driver_id"] != user["id"]:
             raise HTTPException(status_code=403, detail="Только водитель может менять статус")
         c.execute("UPDATE trips SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (new_status, trip_id))
-        # Обратный синк deal.status — иначе legacy-эндпоинт рейса расходился со
-        # статусом сделки (deal остаётся accepted, а trip уже delivered).
         _TRIP_TO_DEAL = {"in_transit": "in_progress", "delivered": "delivered", "cancelled": "cancelled"}
         if new_status in _TRIP_TO_DEAL:
-            c.execute(
-                "UPDATE deals SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE trip_id = ? AND status NOT IN ('delivered','cancelled')",
-                (_TRIP_TO_DEAL[new_status], trip_id),
-            )
+            deal_row = c.execute(
+                "SELECT * FROM deals WHERE trip_id = ? AND status NOT IN ('delivered','cancelled')",
+                (trip_id,),
+            ).fetchone()
+            if deal_row:
+                import uuid as _uuid2
+                deal = dict(deal_row)
+                request_id = _uuid2.uuid4().hex[:12]
+                try:
+                    _transition_deal(c, deal, _TRIP_TO_DEAL[new_status], user["id"], request_id)
+                except DealTransitionError as e:
+                    print(
+                        f"[deal-fsm] update_trip_status: sync SKIPPED (legacy-путь не может обойти FSM) "
+                        f"trip={trip_id} deal={deal['id']} {deal.get('status')}->{_TRIP_TO_DEAL[new_status]} "
+                        f"reason={e.detail}",
+                        flush=True,
+                    )
 
     # Push + InApp notification
     try:
@@ -2615,6 +2639,123 @@ _DRIVER_ONLY_TRANSITIONS = {
     ("at_border", "delivered"),
 }
 
+# Разрешённые переходы. Раньше валидации не было — двойной тап или
+# рассинхрон фронта мог перескочить accepted → delivered, минуя «в пути»/
+# «на границе». Отмена доступна из любого рабочего статуса; at_border можно
+# пропустить (внутренние рейсы без границы) — accepted → delivered нельзя.
+_DEAL_FLOW = {
+    "accepted":    {"in_progress", "cancelled"},
+    "in_progress": {"at_border", "delivered", "cancelled"},
+    "at_border":   {"delivered", "cancelled"},
+    "delivered":   set(),
+    "cancelled":   set(),
+}
+_DEAL_STATUS_LABELS = {
+    "in_progress": "🚛 Рейс начался", "at_border": "🛂 На границе",
+    "delivered": "✅ Доставлен", "cancelled": "❌ Отменено",
+}
+
+
+class DealTransitionError(Exception):
+    """Пре-мёрдж ревью (05.08.2026, P0-блокер): раньше вся FSM/country-guard/
+    actor-проверка жила ТОЛЬКО внутри HTTP-хендлера update_deal_status —
+    независимый adversarial-review нашёл, что PATCH /trips/{id}/status
+    (update_trip_status, отдельный legacy-эндпоинт ниже) синхронизирует
+    deals.status НАПРЯМУЮ, в обход этой валидации целиком (driver мог
+    прыгнуть accepted→delivered, включая международный маршрут БЕЗ
+    at_border). Вынесено в общую функцию _transition_deal, которую теперь
+    вызывают ОБА места — обойти проверку через соседний endpoint больше
+    нельзя, т.к. проверка одна на весь модуль, а не дублирована/забыта."""
+    def __init__(self, status_code: int, detail):
+        self.status_code = status_code
+        self.detail = detail
+
+
+def _transition_deal(c, deal: dict, new_status: str, actor_uid: str, request_id: str) -> dict | None:
+    """Единая точка входа для смены deals.status — валидирует и атомарно
+    применяет переход. Вызывается ИЗ УЖЕ ОТКРЫТОЙ транзакции (`c` — тот же
+    коннект, что открыл вызывающий, чтобы cargos/trips-синк оставался в
+    одном commit). Бросает DealTransitionError на любое нарушение (actor/
+    FLOW/country/race) — вызывающий сам решает, превращать её в HTTPException
+    или проглатывать (см. update_trip_status — там невалидный sync не должен
+    ронять сам trip-статус, только пропускаться).
+
+    Возвращает применённый event_payload (для аудит-лога) либо None, если
+    переход не понадобился (идемпотентный повтор).
+    """
+    deal_id = deal["id"]
+    cur_status = deal.get("status") or "accepted"
+    if new_status == cur_status:
+        return None  # идемпотентно, без шума — уведомление не создаём
+    allowed = _DEAL_FLOW.get(cur_status)
+    if allowed is not None and new_status not in allowed:
+        raise DealTransitionError(409, {
+            "error": "INVALID_STATUS_TRANSITION",
+            "message": f"Недопустимый переход: {cur_status} → {new_status}",
+        })
+    # P0-2: actor-aware FSM. "cancelled" продуктово разрешена ОБЕИМ сторонам
+    # из любого рабочего статуса (так уже вело себя приложение — см.
+    # комментарий у _DRIVER_ONLY_TRANSITIONS выше).
+    if (cur_status, new_status) in _DRIVER_ONLY_TRANSITIONS:
+        if not deal.get("driver_id") or actor_uid != deal["driver_id"]:
+            raise DealTransitionError(403, {
+                "error": "ACTION_NOT_ALLOWED_FOR_ROLE",
+                "message": "Этот статус может установить только водитель по сделке",
+            })
+    route = c.execute(
+        "SELECT COALESCE(c.from_country, t.from_country) AS from_country, "
+        "COALESCE(c.to_country, t.to_country) AS to_country "
+        "FROM deals d LEFT JOIN cargos c ON d.cargo_id = c.id "
+        "LEFT JOIN trips t ON d.trip_id = t.id WHERE d.id = ?",
+        (deal_id,),
+    ).fetchone()
+    # _deal_country_guard кидает HTTPException напрямую (историческая
+    # сигнатура) — оборачиваем в DealTransitionError, чтобы ОБА вызывающих
+    # (update_deal_status и update_trip_status) ловили ЕДИНЫЙ тип исключения
+    # и не пришлось дублировать try/except на каждый внутренний источник
+    # ошибки. Без этого update_trip_status ловил бы только FLOW/actor-
+    # ошибки, а HTTPException из country-guard пролетал бы мимо catch и
+    # ронял бы весь запрос вместо best-effort пропуска синка.
+    try:
+        _deal_country_guard(cur_status, new_status,
+                             route["from_country"] if route else None,
+                             route["to_country"] if route else None)
+    except HTTPException as e:
+        raise DealTransitionError(e.status_code, e.detail)
+    actor_role_log = "driver" if actor_uid == deal.get("driver_id") else "shipper"
+    print(
+        f"[deal-fsm] deal={deal_id} actor={actor_uid} role={actor_role_log} "
+        f"{cur_status}->{new_status} request_id={request_id}",
+        flush=True,
+    )
+    # Пре-мёрдж ревью: SELECT-then-UPDATE без блокировки строки — гонка двух
+    # одновременных PATCH с разными new_status давала ДВА HTTP 200 в 60%
+    # прогонов (adversarial review, 18/30). Conditional UPDATE (WHERE status
+    # = <тот, что мы только что прочитали>) атомарно проверяет, что статус
+    # не изменился под нами; rowcount=0 → кто-то нас обогнал — сообщаем 409,
+    # а не тихо перезаписываем чужой уже закоммиченный результат.
+    cur = c.execute(
+        "UPDATE deals SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = ?",
+        (new_status, deal_id, cur_status),
+    )
+    if cur.rowcount == 0:
+        raise DealTransitionError(409, {
+            "error": "STATUS_CHANGED_CONCURRENTLY",
+            "message": "Статус сделки уже изменён другим запросом — обновите и попробуйте снова",
+        })
+    if new_status == "delivered" and deal.get("cargo_id"):
+        c.execute("UPDATE cargos SET status = 'completed' WHERE id = ?", (deal["cargo_id"],))
+    elif new_status == "cancelled" and deal.get("cargo_id"):
+        c.execute("UPDATE cargos SET status = 'active', taken_by = NULL WHERE id = ?", (deal["cargo_id"],))
+    _DEAL_TO_TRIP = {"in_progress": "in_transit", "at_border": "in_transit", "delivered": "delivered", "cancelled": "cancelled"}
+    if deal.get("trip_id") and new_status in _DEAL_TO_TRIP:
+        c.execute("UPDATE trips SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                   (_DEAL_TO_TRIP[new_status], deal["trip_id"]))
+    event_payload = {"status": new_status, "old_status": cur_status, "request_id": request_id}
+    if new_status == "cancelled" and cur_status in ("in_progress", "at_border"):
+        event_payload["mid_transit_cancel"] = True
+    return event_payload
+
 
 @mp_router.patch("/deals/{deal_id}/status")
 def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level(1))):
@@ -2627,17 +2768,6 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
             "error": "INVALID_STATUS",
             "message": f"Допустимые статусы: {', '.join(VALID)}",
         })
-    # Разрешённые переходы. Раньше валидации не было — двойной тап или
-    # рассинхрон фронта мог перескочить accepted → delivered, минуя «в пути»/
-    # «на границе». Отмена доступна из любого рабочего статуса; at_border можно
-    # пропустить (внутренние рейсы без границы) — accepted → delivered нельзя.
-    _FLOW = {
-        "accepted":    {"in_progress", "cancelled"},
-        "in_progress": {"at_border", "delivered", "cancelled"},
-        "at_border":   {"delivered", "cancelled"},
-        "delivered":   set(),
-        "cancelled":   set(),
-    }
     uid = user["id"]
     import uuid as _uuid
     request_id = _uuid.uuid4().hex[:12]
@@ -2648,56 +2778,14 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
         deal = dict(row)
         if uid not in (deal["shipper_id"], deal["driver_id"]):
             raise HTTPException(status_code=403)
-        cur_status = deal.get("status") or "accepted"
-        if new_status == cur_status:
-            return {"ok": True, "status": new_status}  # идемпотентно, без шума — уведомление не создаём
-        allowed = _FLOW.get(cur_status)
-        if allowed is not None and new_status not in allowed:
-            raise HTTPException(status_code=409, detail={
-                "error": "INVALID_STATUS_TRANSITION",
-                "message": f"Недопустимый переход: {cur_status} → {new_status}",
-            })
-        # P0-2: actor-aware FSM. "cancelled" продуктово разрешена ОБЕИМ
-        # сторонам из любого рабочего статуса (так уже вело себя приложение
-        # — TripDetail.js показывает «Отменить» водителю и грузовладельцу
-        # для accepted/in_progress/at_border; сужать эту существующую
-        # возможность — отдельное продуктовое решение вне периметра этого
-        # фикса). Отмену ПОСЛЕ выезда (in_progress/at_border) помечаем в
-        # аудит-логе отдельным флагом — см. deal_room_dal.create_deal_event
-        # ниже — чтобы это оставалось видимым, а не тихим.
-        if (cur_status, new_status) in _DRIVER_ONLY_TRANSITIONS:
-            if not deal.get("driver_id") or uid != deal["driver_id"]:
-                raise HTTPException(status_code=403, detail={
-                    "error": "ACTION_NOT_ALLOWED_FOR_ROLE",
-                    "message": "Этот статус может установить только водитель по сделке",
-                })
-        actor_role_log = "driver" if uid == deal.get("driver_id") else "shipper"
-        print(
-            f"[deal-fsm] deal={deal_id} actor={uid} role={actor_role_log} "
-            f"{cur_status}->{new_status} request_id={request_id}",
-            flush=True,
-        )
-        route = c.execute(
-            "SELECT COALESCE(c.from_country, t.from_country) AS from_country, "
-            "COALESCE(c.to_country, t.to_country) AS to_country "
-            "FROM deals d LEFT JOIN cargos c ON d.cargo_id = c.id "
-            "LEFT JOIN trips t ON d.trip_id = t.id WHERE d.id = ?",
-            (deal_id,),
-        ).fetchone()
-        _deal_country_guard(cur_status, new_status,
-                             route["from_country"] if route else None,
-                             route["to_country"] if route else None)
-        c.execute("UPDATE deals SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                   (new_status, deal_id))
-        if new_status == "delivered" and deal["cargo_id"]:
-            c.execute("UPDATE cargos SET status = 'completed' WHERE id = ?", (deal["cargo_id"],))
-        elif new_status == "cancelled" and deal["cargo_id"]:
-            c.execute("UPDATE cargos SET status = 'active', taken_by = NULL WHERE id = ?", (deal["cargo_id"],))
-        # Синхронизация trip status при смене deal status
-        _DEAL_TO_TRIP = {"in_progress": "in_transit", "at_border": "in_transit", "delivered": "delivered", "cancelled": "cancelled"}
-        if deal.get("trip_id") and new_status in _DEAL_TO_TRIP:
-            c.execute("UPDATE trips SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                       (_DEAL_TO_TRIP[new_status], deal["trip_id"]))
+        cur_status_before = deal.get("status") or "accepted"
+        try:
+            event_payload = _transition_deal(c, deal, new_status, uid, request_id)
+        except DealTransitionError as e:
+            raise HTTPException(status_code=e.status_code, detail=e.detail)
+        if event_payload is None:
+            return {"ok": True, "status": new_status}  # идемпотентно
+        cur_status = cur_status_before
     # 🔴 fix: раньше смена статуса сделки (Начать перевозку / Я доехал / отмена)
     # слала ТОЛЬКО push и не создавала in-app уведомление → ведение сделки не
     # оставляло следа в колокольчике. Теперь и push, и колокольчик другой стороне,
@@ -2739,15 +2827,8 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
     try:
         from database import deal_room_dal
         actor_role = "client" if uid == deal["shipper_id"] else "driver"
-        # Блок 3 (P0-2): полный аудит-след перехода — old_status/request_id
-        # добавлены, чтобы по логам можно было расследовать конкретный
-        # переход (кто, с какого статуса, в рамках какого HTTP-запроса).
-        # mid_transit_cancel — явный флаг для отмены ПОСЛЕ выезда (см.
-        # комментарий у _DRIVER_ONLY_TRANSITIONS выше): продуктово разрешена
-        # обеим сторонам, но остаётся видимой в аудите, а не тихой.
-        event_payload = {"status": new_status, "old_status": cur_status, "request_id": request_id}
-        if new_status == "cancelled" and cur_status in ("in_progress", "at_border"):
-            event_payload["mid_transit_cancel"] = True
+        # event_payload (old_status/request_id/mid_transit_cancel) уже
+        # посчитан в _transition_deal() выше — единая точка правды.
         deal_room_dal.create_deal_event(
             "deal.status_changed",
             actor_id=uid,

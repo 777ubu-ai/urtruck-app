@@ -243,6 +243,89 @@ def test_cancel_mid_transit_allowed_both_and_audited():
     assert "request_id" in payload
 
 
+def test_trip_status_endpoint_cannot_bypass_fsm_or_country_guard():
+    """Пре-мёрдж ревью (05.08.2026, P0-блокер, независимый adversarial
+    review): PATCH /trips/{id}/status раньше синхронизировал deals.status
+    НАПРЯМУЮ, в обход всей FSM/country-guard — driver мог одним запросом
+    сюда перескочить accepted→delivered, включая международный маршрут
+    БЕЗ at_border. Регресс-тест на оба конкретных репро из ревью."""
+    from database.db import get_conn, new_id
+
+    # Репро 1: accepted -> delivered напрямую (пропуск in_progress/at_border).
+    trip_id = new_id()
+    d = seed_deal("accepted", from_country="KZ", to_country="KZ")
+    with get_conn() as c:
+        c.execute("INSERT INTO trips (id, driver_id, from_city, to_city, price, status) VALUES (?,?,?,?,?,?)",
+                   (trip_id, DRIVER, "Almaty", "Astana", 3000, "booked"))
+        c.execute("UPDATE deals SET trip_id = ? WHERE id = ?", (trip_id, d))
+    as_user(DRIVER)
+    r = client.patch(f"/api/v1/market/trips/{trip_id}/status", params={"new_status": "delivered"})
+    assert r.status_code == 200, r.text  # сам trip-статус обновляется (legacy-совместимость)
+    assert deal_status(d) == "accepted", (
+        "БЛОКЕР-регресс: deals.status не должен перепрыгнуть в delivered в обход FSM "
+        f"через /trips/status, получили {deal_status(d)!r}"
+    )
+
+    # Репро 2: международный маршрут, in_progress -> delivered БЕЗ at_border.
+    trip_id2 = new_id()
+    d2 = seed_deal("in_progress", from_country="CN", to_country="KZ")
+    with get_conn() as c:
+        c.execute("INSERT INTO trips (id, driver_id, from_city, to_city, price, status) VALUES (?,?,?,?,?,?)",
+                   (trip_id2, DRIVER, "Urumqi", "Almaty", 5000, "in_transit"))
+        c.execute("UPDATE deals SET trip_id = ? WHERE id = ?", (trip_id2, d2))
+    as_user(DRIVER)
+    r2 = client.patch(f"/api/v1/market/trips/{trip_id2}/status", params={"new_status": "delivered"})
+    assert r2.status_code == 200, r2.text
+    assert deal_status(d2) == "in_progress", (
+        "БЛОКЕР-регресс: международный маршрут не должен доставляться в обход at_border "
+        f"через /trips/status, получили {deal_status(d2)!r}"
+    )
+
+
+def test_concurrent_conflicting_patch_does_not_give_two_false_200():
+    """Пре-мёрдж ревью (05.08.2026, P0-блокер, независимый adversarial
+    review): SELECT-then-UPDATE без блокировки строки — 2 одновременных
+    PATCH с разными new_status давали 18/30 (60%) двойных ложных HTTP 200.
+    Conditional UPDATE (WHERE status=<прочитанный>) должен гарантировать,
+    что ровно ОДИН из двух конкурентных запросов получает 200, второй —
+    409 STATUS_CHANGED_CONCURRENTLY, и итоговый статус в БД соответствует
+    именно победившему запросу (не «тихо один из двух»)."""
+    import threading
+
+    results = {}
+
+    def _do(actor, target, key):
+        d_local = threading.current_thread()
+        try:
+            as_user(actor)
+            r = client.patch(f"/api/v1/market/deals/{shared_deal}/status", params={"new_status": target})
+            results[key] = (r.status_code, r.json())
+        except Exception as e:
+            results[key] = ("EXC", str(e))
+
+    conflicts_ok = 0
+    for _ in range(15):
+        shared_deal = seed_deal("in_progress", from_country="KZ", to_country="KZ")
+        t1 = threading.Thread(target=_do, args=(DRIVER, "delivered", "A"))
+        t2 = threading.Thread(target=_do, args=(DRIVER, "cancelled", "B"))
+        t1.start(); t2.start()
+        t1.join(); t2.join()
+        codes = sorted(c for c, _ in results.values())
+        final = deal_status(shared_deal)
+        # Ровно один 200 + один 409/иной-код (никогда два одновременных 200
+        # на взаимоисключающие терминальные статусы), и финальный статус в
+        # БД обязан совпадать с тем запросом, который реально получил 200.
+        two_hundreds = codes.count(200)
+        assert two_hundreds <= 1, f"два конкурентных запроса получили 200 одновременно: {results}"
+        if results["A"][0] == 200:
+            assert final == "delivered", f"A получил 200, но в БД {final!r}"
+        if results["B"][0] == 200:
+            assert final == "cancelled", f"B получил 200, но в БД {final!r}"
+        assert final in ("delivered", "cancelled"), f"неожиданный финальный статус: {final}"
+        conflicts_ok += 1
+    assert conflicts_ok == 15
+
+
 if __name__ == "__main__":
     fails = 0
     for fn in [test_shipper_cannot_start_trip, test_shipper_cannot_set_at_border,
@@ -255,7 +338,9 @@ if __name__ == "__main__":
                test_stranger_gets_403, test_repeat_status_is_idempotent_noop,
                test_skip_steps_gives_409, test_terminal_status_does_not_change,
                test_unknown_status_400, test_cancel_allowed_for_both_parties_from_accepted,
-               test_cancel_mid_transit_allowed_both_and_audited]:
+               test_cancel_mid_transit_allowed_both_and_audited,
+               test_trip_status_endpoint_cannot_bypass_fsm_or_country_guard,
+               test_concurrent_conflicting_patch_does_not_give_two_false_200]:
         try:
             fn(); print(f"  ✅ {fn.__name__}")
         except Exception as e:

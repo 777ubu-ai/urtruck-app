@@ -296,7 +296,24 @@ def subscribe(sub: SubscribeIn, authorization: Optional[str] = Header(None)):
                 (user_id, sub.endpoint, sub.keys.get("p256dh", ""), sub.keys.get("auth", ""),
                  sub.user_agent, device_id, sub.platform, sub.app_version),
             )
-        _reassign_device_if_needed(c, device_id, user_id)
+        # Пре-мёрдж ревью (05.08.2026, P1-блокер, найден 2 независимыми
+        # ревьюерами): device-wide деактивация раньше вызывалась БЕЗУСЛОВНО,
+        # в том числе на ветке "new" — авторизованный атакующий, просто
+        # ЗНАЯ (не владея) чужой device_id, мог заявить его в теле СВОЕЙ
+        # НОВОЙ регистрации и мгновенно погасить активный push жертвы, не
+        # трогая её токен вообще. Ограничиваем побочную зачистку только
+        # веткой "reassign" — там _resolve_ownership уже независимо
+        # подтвердил, что ИМЕННО ЭТОТ endpoint/token раньше был связан с
+        # этим device_id (либо неактивен и свободен), а не просто принял
+        # голое заявление в новом запросе. Узкий побочный эффект: если
+        # пользователь НЕ разлогинился явно (POST /push/logout-cleanup) и
+        # новый пользователь на том же устройстве регистрирует НОВЫЙ токен
+        # (обычный случай при первом входе Expo выдаёт новый токен) — старая
+        # активная запись сама по себе не деактивируется этим путём; она
+        # гасится штатно через logout-cleanup (основной сценарий) или когда
+        # реальный владелец сам явно выйдет.
+        if decision == "reassign":
+            _reassign_device_if_needed(c, device_id, user_id)
         c.commit()
     # P1-2(legacy) fix: возвращаем user_id, чтобы фронт понял, привязалась ли подписка.
     return {"ok": True, "mock": PUSH_MOCK, "user_id": user_id}
@@ -316,7 +333,18 @@ def unsubscribe(sub: dict, authorization: Optional[str] = Header(None)):
         if row is None:
             return {"ok": True}  # уже нет — идемпотентно
         owner = row["user_id"]
-        if owner is not None and user_id is not None and owner != user_id:
+        # Пре-мёрдж ревью (05.08.2026, P1-блокер, найден независимым
+        # ревьюером): было `owner is not None AND user_id is not None AND
+        # owner != user_id` — раз ПОЛНОСТЬЮ анонимный запрос (без заголовка
+        # Authorization вообще) даёт user_id=None, второе условие всегда
+        # ложно, и проверка НИКОГДА не срабатывала для анонимного
+        # вызывающего — любой мог молча деактивировать ЧУЖУЮ владеемую
+        # запись, просто не приложив токен. Корректная модель (см. докстринг
+        # выше): владеемую (owner is not None) запись может деактивировать
+        # ТОЛЬКО её реальный владелец — анонимный вызывающий не приравнён к
+        # владельцу. Анонимные (owner is None) записи по-прежнему может
+        # деактивировать кто угодно, включая анонима — это не менялось.
+        if owner is not None and owner != user_id:
             raise HTTPException(status_code=403, detail="Нельзя отписать чужой push")
         c.execute(
             "UPDATE push_subscriptions SET active = 0, invalidated_at = CURRENT_TIMESTAMP, "
@@ -378,7 +406,11 @@ def register_native(data: NativeTokenIn, authorization: Optional[str] = Header(N
                 "  active = 1, last_seen = CURRENT_TIMESTAMP",
                 (user_id, data.token, data.provider or "expo", data.platform, data.device_name, device_id, data.app_version),
             )
-        _reassign_device_if_needed(c, device_id, user_id)
+        # См. комментарий в subscribe() выше — device-wide зачистка только
+        # после подтверждённого reassign, не на голое заявление device_id
+        # в новой регистрации (пре-мёрдж ревью, P1-блокер).
+        if decision == "reassign":
+            _reassign_device_if_needed(c, device_id, user_id)
         c.commit()
     return {"ok": True, "user_id": user_id}
 
@@ -396,7 +428,18 @@ def unregister_native(body: dict, authorization: Optional[str] = Header(None)):
         if row is None:
             return {"ok": True}
         owner = row["user_id"]
-        if owner is not None and user_id is not None and owner != user_id:
+        # Пре-мёрдж ревью (05.08.2026, P1-блокер, найден независимым
+        # ревьюером): было `owner is not None AND user_id is not None AND
+        # owner != user_id` — раз ПОЛНОСТЬЮ анонимный запрос (без заголовка
+        # Authorization вообще) даёт user_id=None, второе условие всегда
+        # ложно, и проверка НИКОГДА не срабатывала для анонимного
+        # вызывающего — любой мог молча деактивировать ЧУЖУЮ владеемую
+        # запись, просто не приложив токен. Корректная модель (см. докстринг
+        # выше): владеемую (owner is not None) запись может деактивировать
+        # ТОЛЬКО её реальный владелец — анонимный вызывающий не приравнён к
+        # владельцу. Анонимные (owner is None) записи по-прежнему может
+        # деактивировать кто угодно, включая анонима — это не менялось.
+        if owner is not None and owner != user_id:
             raise HTTPException(status_code=403, detail="Нельзя удалить чужой push-токен")
         c.execute(
             "UPDATE push_tokens_native SET active = 0, invalidated_at = CURRENT_TIMESTAMP, "
