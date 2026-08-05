@@ -74,37 +74,40 @@ def create_notification(user_id: str, type: str, title: str, body: str = "", ico
 
 
 def mark_notifications_read_by_urls(user_id: str, urls) -> int:
-    """Блок 5 аудита (P1-2): «событие, отображённое внутри конкретной
-    карточки/чата, помечается прочитанным при открытии» — вызывается из
-    GET /market/deals/{id}, /cargos/{id}, /trips/{id} (см. api/marketplace.py)
-    для ТЕКУЩЕГО пользователя каждый раз, когда он реально открывает
-    сущность, к которой ведёт уведомление. Раньше единственное место,
-    гасившее notifUnread (POST /notifications/read-all), было доступно
-    только с экрана NotificationsScreen, а тот нигде не подключён к
-    навигации (колокольчик убран по канону) — notifUnread рос бессрочно.
-    Это НЕ «погасить всё при открытии вкладки» (см. ТЗ п.3 — так делать
-    нельзя, если пользователь событие не видел) — гасятся только
-    уведомления с URL, который пользователь только что реально открыл.
-    Best-effort, не бросает исключений наружу."""
-    urls = [u for u in (urls or []) if u]
-    if not user_id or not urls:
+    """Пометить прочитанными уведомления конкретной открытой сущности.
+
+    Уведомления могут хранить как голый путь (`/cargos/{id}`), так и путь с
+    query-строкой (`/cargos/{id}?bid=...`). Сопоставление намеренно строгое:
+    только точный путь либо тот же путь сразу перед `?`, чтобы открытие одного
+    груза не погасило уведомления другого груза с похожим id.
+
+    Best-effort: ошибка не ломает выдачу карточки, но пишется в stderr, чтобы
+    проблема не оставалась полностью невидимой в логах.
+    """
+    clean_urls = []
+    for value in urls or []:
+        value = str(value or "").strip()
+        if value and value not in clean_urls:
+            clean_urls.append(value)
+    if not user_id or not clean_urls:
         return 0
-    # Некоторые уведомления (например bid_created) кладут url с query-
-    # строкой — "/cargos/{id}?bid={bid_id}" (см. marketplace.py create_bid),
-    # не голый путь. Сравниваем и точным совпадением, и префиксом ("url
-    # LIKE 'path?%'"), чтобы оба варианта гасли при открытии сущности.
+
+    clauses = []
+    params = []
+    for path in clean_urls:
+        clauses.append("(url = ? OR substr(url, 1, length(?) + 1) = ? || '?')")
+        params.extend((path, path, path))
+
     try:
         with get_conn() as c:
-            placeholders_eq = " OR ".join(["url = ?"] * len(urls))
-            placeholders_like = " OR ".join(["url LIKE ?"] * len(urls))
-            params = list(urls) + [f"{u}?%" for u in urls]
             cur = c.execute(
-                f"UPDATE notifications SET is_read = 1 "
-                f"WHERE user_id = ? AND is_read = 0 AND ({placeholders_eq} OR {placeholders_like})",
+                "UPDATE notifications SET is_read = 1 "
+                f"WHERE user_id = ? AND is_read = 0 AND ({' OR '.join(clauses)})",
                 (user_id, *params),
             )
             return cur.rowcount or 0
-    except Exception:
+    except Exception as exc:
+        print(f"[notifications] mark-read failed user={user_id}: {exc}", file=sys.stderr, flush=True)
         return 0
 
 
