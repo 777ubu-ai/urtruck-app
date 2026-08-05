@@ -1,0 +1,63 @@
+name: PR Quality Gate
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: pr-quality-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend-tests:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest
+      - name: Run full backend suite
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend
+          URTRUCK_DB_PATH: ${{ runner.temp }}/urtruck-ci.db
+        run: pytest -q --disable-warnings --maxfail=1
+
+  frontend-quality:
+    name: Frontend tests and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Frontend ownership tests
+        run: |
+          node --test tests/frontend/test_storage_remove_by_prefix.mjs
+          node --test tests/frontend/test_outbox_user_ownership.mjs
+      - name: i18n smoke
+        run: npm run qa:i18n
+      - name: UX smoke
+        run: npm run qa:ux
+      - name: Web production build
+        env:
+          CI: 'true'
+        run: npm run build:web
