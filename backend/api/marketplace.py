@@ -2542,7 +2542,35 @@ def get_deal(deal_id: str, user=Depends(require_level(1))):
                 d["counterparty_phone"] = cp_phone
             if cp_name:
                 d["counterparty_name"] = cp_name
+    # Блок 5 аудита (P1-2): пользователь реально открыл сделку — гасим
+    # уведомления, которые вели именно сюда. Статус-уведомления шлют
+    # url=/cargos/{id}|/trips/{id} (см. update_deal_status), a bid_accepted/
+    # deal_created — url=/deals/{id} — гасим все три варианта, какие есть.
+    try:
+        from api.notifications import mark_notifications_read_by_urls
+        urls = [f"/deals/{deal_id}"]
+        if d.get("cargo_id"):
+            urls.append(f"/cargos/{d['cargo_id']}")
+        if d.get("trip_id"):
+            urls.append(f"/trips/{d['trip_id']}")
+        mark_notifications_read_by_urls(uid, urls)
+    except Exception:
+        pass
     return d
+
+
+#: Аудит Блок 3 (P0-2): переходы ВПЕРЁД по логистике сделки (не отмена)
+#: обязаны исполняться только водителем — раньше `uid in (shipper_id,
+#: driver_id)` пропускал ЛЮБУЮ из сторон, и грузовладелец мог сам себе
+#: подтвердить "Начал рейс"/"На границе"/"Доставлено" без единого действия
+#: водителя. cancelled НЕ входит сюда намеренно — см. комментарий ниже про
+#: отмену.
+_DRIVER_ONLY_TRANSITIONS = {
+    ("accepted", "in_progress"),
+    ("in_progress", "at_border"),
+    ("in_progress", "delivered"),
+    ("at_border", "delivered"),
+}
 
 
 @mp_router.patch("/deals/{deal_id}/status")
@@ -2552,7 +2580,10 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
     # at_border → delivered (cancelled — из любого рабочего).
     VALID = ["accepted", "in_progress", "at_border", "delivered", "cancelled"]
     if new_status not in VALID:
-        raise HTTPException(status_code=400, detail=f"Допустимые статусы: {', '.join(VALID)}")
+        raise HTTPException(status_code=400, detail={
+            "error": "INVALID_STATUS",
+            "message": f"Допустимые статусы: {', '.join(VALID)}",
+        })
     # Разрешённые переходы. Раньше валидации не было — двойной тап или
     # рассинхрон фронта мог перескочить accepted → delivered, минуя «в пути»/
     # «на границе». Отмена доступна из любого рабочего статуса; at_border можно
@@ -2565,6 +2596,8 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
         "cancelled":   set(),
     }
     uid = user["id"]
+    import uuid as _uuid
+    request_id = _uuid.uuid4().hex[:12]
     with get_conn() as c:
         row = c.execute("SELECT * FROM deals WHERE id = ?", (deal_id,)).fetchone()
         if not row:
@@ -2574,10 +2607,33 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
             raise HTTPException(status_code=403)
         cur_status = deal.get("status") or "accepted"
         if new_status == cur_status:
-            return {"ok": True, "status": new_status}  # идемпотентно, без шума
+            return {"ok": True, "status": new_status}  # идемпотентно, без шума — уведомление не создаём
         allowed = _FLOW.get(cur_status)
         if allowed is not None and new_status not in allowed:
-            raise HTTPException(status_code=409, detail=f"Недопустимый переход: {cur_status} → {new_status}")
+            raise HTTPException(status_code=409, detail={
+                "error": "INVALID_STATUS_TRANSITION",
+                "message": f"Недопустимый переход: {cur_status} → {new_status}",
+            })
+        # P0-2: actor-aware FSM. "cancelled" продуктово разрешена ОБЕИМ
+        # сторонам из любого рабочего статуса (так уже вело себя приложение
+        # — TripDetail.js показывает «Отменить» водителю и грузовладельцу
+        # для accepted/in_progress/at_border; сужать эту существующую
+        # возможность — отдельное продуктовое решение вне периметра этого
+        # фикса). Отмену ПОСЛЕ выезда (in_progress/at_border) помечаем в
+        # аудит-логе отдельным флагом — см. deal_room_dal.create_deal_event
+        # ниже — чтобы это оставалось видимым, а не тихим.
+        if (cur_status, new_status) in _DRIVER_ONLY_TRANSITIONS:
+            if not deal.get("driver_id") or uid != deal["driver_id"]:
+                raise HTTPException(status_code=403, detail={
+                    "error": "ACTION_NOT_ALLOWED_FOR_ROLE",
+                    "message": "Этот статус может установить только водитель по сделке",
+                })
+        actor_role_log = "driver" if uid == deal.get("driver_id") else "shipper"
+        print(
+            f"[deal-fsm] deal={deal_id} actor={uid} role={actor_role_log} "
+            f"{cur_status}->{new_status} request_id={request_id}",
+            flush=True,
+        )
         route = c.execute(
             "SELECT COALESCE(c.from_country, t.from_country) AS from_country, "
             "COALESCE(c.to_country, t.to_country) AS to_country "
@@ -2640,6 +2696,15 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
     try:
         from database import deal_room_dal
         actor_role = "client" if uid == deal["shipper_id"] else "driver"
+        # Блок 3 (P0-2): полный аудит-след перехода — old_status/request_id
+        # добавлены, чтобы по логам можно было расследовать конкретный
+        # переход (кто, с какого статуса, в рамках какого HTTP-запроса).
+        # mid_transit_cancel — явный флаг для отмены ПОСЛЕ выезда (см.
+        # комментарий у _DRIVER_ONLY_TRANSITIONS выше): продуктово разрешена
+        # обеим сторонам, но остаётся видимой в аудите, а не тихой.
+        event_payload = {"status": new_status, "old_status": cur_status, "request_id": request_id}
+        if new_status == "cancelled" and cur_status in ("in_progress", "at_border"):
+            event_payload["mid_transit_cancel"] = True
         deal_room_dal.create_deal_event(
             "deal.status_changed",
             actor_id=uid,
@@ -2647,7 +2712,7 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
             deal_id=deal_id,
             load_id=deal.get("cargo_id"),
             trip_id=deal.get("trip_id"),
-            payload={"status": new_status},
+            payload=event_payload,
         )
     except Exception:
         pass
