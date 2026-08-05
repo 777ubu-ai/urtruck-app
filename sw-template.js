@@ -1,10 +1,15 @@
-// UrTruck Service Worker · v7 — network-first для HTML/JS, cache-first для статики,
+// UrTruck Service Worker · v8 — network-first для HTML/JS, cache-first для статики,
 // API never cached (otherwise stale demo cards survive deploys).
-// v7 (05.08.2026): бамп ключа кэша при выкладке Фазы A (WhatsApp-упрощение
-// Сделок/Рейсов/Грузов) — activate() ниже удаляет все ключи кроме текущих,
-// так что смена v6→v7 сама по себе форсирует очистку старого кэша у клиентов.
-const CACHE = 'urtruck-v7-market';
-const STATIC_CACHE = 'urtruck-static-v7';
+// v8 (05.08.2026): диагностика показала, что телефоны, уже получившие v7
+// (бамп 158b612, 17:08 UTC 04.08), НЕ подхватывали более поздние деплои того
+// же дня — bootstrap-скрипт в index.html сравнивает localStorage.ur_sw_v с
+// текущим V и чистит кэш/переустанавливает SW только при СМЕНЕ версии; раз
+// v7→v7 не менялось между коммитами 158b612..98b95b5, повторный force-clear
+// не срабатывал, а сам sw.js был побайтово идентичен — браузер не видел
+// повода переустанавливать воркер. Бамп v7→v8 форсирует одноразовую очистку
+// у всех клиентов независимо от того, что у них уже закэшировано.
+const CACHE = 'urtruck-v8-market';
+const STATIC_CACHE = 'urtruck-static-v8';
 
 self.addEventListener('install', (e) => {
   // Сразу активируем новый SW без ожидания закрытия вкладок

@@ -73,11 +73,21 @@ jobs:
           # Тот же приём, что в deploy.sh: localStorage-версия проверяется
           # синхронно при загрузке, при несовпадении — чистим caches API,
           # снимаем регистрацию SW и делаем один принудительный reload.
-          # Версия кэша (v7-market) совпадает с CACHE/STATIC_CACHE в
+          # Версия кэша (v8-market) совпадает с CACHE/STATIC_CACHE в
           # sw-template.js — держать в одном шаге при следующем бампе.
+          # v8 (05.08.2026): предыдущий баг класса — V бампался один раз
+          # (v6→v7 в 158b612), а все ПОСЛЕДУЮЩИЕ деплои того же дня оставляли
+          # V неизменным. localStorage у уже посетивших клиентов совпадал →
+          # ветка force-clear не срабатывала, sw.js был побайтово тем же
+          # файлом → браузер не видел повода переустанавливать воркер →
+          # телефоны с уже выставленным ur_sw_v='v7-market' не подхватывали
+          # более поздние коммиты того дня. Правило на будущее: КАЖДЫЙ деплой,
+          # меняющий фронтенд-код, обязан бампать V здесь синхронно с
+          # sw-template.js — иначе force-clear для уже посетивших клиентов не
+          # сработает.
           bootstrap = '''<script>
           (async()=>{
-            const V='v7-market';
+            const V='v8-market';
             const cur=localStorage.getItem('ur_sw_v');
             if(cur!==V){
               if('caches' in window){const ks=await caches.keys();await Promise.all(ks.map(k=>caches.delete(k)))}
@@ -88,7 +98,7 @@ jobs:
             }
             if('serviceWorker' in navigator){
               try{
-                const reg=await navigator.serviceWorker.register('/sw.js?v=7');
+                const reg=await navigator.serviceWorker.register('/sw.js?v=8');
                 if(reg.waiting){reg.waiting.postMessage({type:'SKIP_WAITING'})}
                 reg.addEventListener('updatefound',()=>{
                   const nw=reg.installing;
@@ -119,6 +129,19 @@ jobs:
           with open('dist/manifest.json', 'w') as f:
               json.dump(manifest, f)
           PY
+
+      - name: Build-info marker (public commit proof)
+        # 05.08.2026: раньше не было способа публично доказать, какой именно
+        # коммит реально отдаёт production — только "CI зелёный" (что НЕ
+        # доказывает раскатку на клиенты, см. следующий шаг). /build-info.json
+        # публично проверяем в Health check и должны проверять руками при
+        # любом подозрении на устаревшую версию.
+        run: |
+          BUILT_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          cat > dist/build-info.json <<JSON
+          {"commit":"${GITHUB_SHA}","short":"${GITHUB_SHA::7}","built_at":"${BUILT_AT}","version":$(cat .version)}
+          JSON
+          cat dist/build-info.json
 
       - name: Backup current production (rollback safety)
         # 05.08.2026 (Фаза A выкладка): раньше CI-путь ничего не бэкапил перед
@@ -154,8 +177,49 @@ jobs:
           REMOTE_DIR: ${{ secrets.REMOTE_DIR || '/home/ubuntu/urtruck-app' }}
         run: |
           sudo apt-get install -y sshpass
+          # 05.08.2026: expo export хеширует имена JS-чанков по контенту —
+          # каждый деплой добавляет НОВЫЙ файл, но scp -r никогда не удаляет
+          # старые. Годы простоя копятся orphan-бандлы в _expo/static/js/web/;
+          # если у какого-то клиента где-то намертво закэширован старый
+          # index.html со старым хешем, он тихо продолжает получать старый
+          # JS вместо честного 404. Чистим старые ассеты перед заливкой новых.
+          sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" "rm -rf '$REMOTE_DIR/_expo'"
           sshpass -p "$SERVER_PASS" scp -C -o StrictHostKeyChecking=no -r dist/* "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/"
           sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" "chmod -R 755 $REMOTE_DIR"
+
+      - name: Verify production filesystem (public-proof diagnostics)
+        # 05.08.2026: "CI зелёный" не доказывает, что реальный urtruck.kz
+        # отдаёт этот код — nginx мог смотреть в другую директорию, root мог
+        # быть не там, куда льёт scp. Печатаем РЕАЛЬНОЕ состояние сервера
+        # (какой root у активного server_name, что реально лежит на диске и
+        # с какими mtime) в лог этого джоба — читать через get_job_logs, не
+        # со слов CI-статуса.
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PASS: ${{ secrets.SERVER_PASS }}
+          REMOTE_DIR: ${{ secrets.REMOTE_DIR || '/home/ubuntu/urtruck-app' }}
+        run: |
+          sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" "
+            echo '--- nginx -T | grep -A25 urtruck.kz (active config for this server_name) ---'
+            (sudo -n nginx -T 2>/dev/null || nginx -T 2>/dev/null) | grep -B2 -A25 'server_name.*urtruck' || echo 'NOT FOUND in nginx -T (or no read permission — try sudo -n manually)'
+            echo
+            echo '--- readlink -f \$REMOTE_DIR (real path, resolves symlinks) ---'
+            readlink -f '$REMOTE_DIR'
+            echo
+            echo '--- ls -la \$REMOTE_DIR (top level, mtimes) ---'
+            ls -la '$REMOTE_DIR'
+            echo
+            echo '--- index.html mtime + bundle filenames referenced ---'
+            stat -c '%y %n' '$REMOTE_DIR/index.html'
+            grep -oE '_expo/static/js/web/index-[a-f0-9]+\.js' '$REMOTE_DIR/index.html'
+            echo
+            echo '--- build-info.json on disk ---'
+            cat '$REMOTE_DIR/build-info.json' 2>/dev/null || echo 'MISSING'
+            echo
+            echo '--- how many JS bundle files actually on disk (orphan check) ---'
+            ls -la '$REMOTE_DIR/_expo/static/js/web/' 2>/dev/null | grep '\.js$'
+          "
 
       - name: Deploy backend
         env:
@@ -206,6 +270,18 @@ jobs:
             exit 1
           fi
           echo "✅ Frontend OK"
+
+          # --- build-info.json must be publicly reachable and match this run's commit ---
+          # Единственная публичная (не только серверная) проверка "какой
+          # коммит реально отдаёт production" — curl с внешней стороны, как
+          # видит его пользователь, а не то, что лежит на диске сервера.
+          info=$(curl -fsS --max-time 10 "$PUBLIC_BASE_URL/build-info.json" || true)
+          echo "build-info.json: $info"
+          if ! echo "$info" | grep -q "\"${GITHUB_SHA}\""; then
+            echo "::error::/build-info.json does not contain this run's commit ${GITHUB_SHA} — production is NOT serving this build"
+            exit 1
+          fi
+          echo "✅ build-info.json OK — public commit matches ${GITHUB_SHA::7}"
 
           # --- Backend: /security/api/v1/system/info must return JSON with otp field ---
           ok=0
