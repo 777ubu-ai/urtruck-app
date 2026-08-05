@@ -1,0 +1,44 @@
+name: Diagnose unread marker
+
+on:
+  push:
+    branches:
+      - audit/release-blockers-2026-08-06
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest
+      - name: Inject temporary diagnostics
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('backend/api/marketplace.py')
+          s = p.read_text(encoding='utf-8')
+          old = '''    caller = _maybe_user(authorization)\n    if not (caller and caller.get("id") == d.get("owner_id")):\n        d.pop("owner_phone", None)\n    # Блок 5 аудита (P1-2): пользователь реально открыл карточку груза —\n    # гасим уведомления, которые вели именно сюда (новая ставка/принято/\n    # отклонено и т.п.), не трогая чужие.\n    if caller and caller.get("id"):\n        try:\n            from api.notifications import mark_notifications_read_by_urls\n            mark_notifications_read_by_urls(caller["id"], [f"/cargos/{cargo_id}"])\n        except Exception:\n            pass\n'''
+          new = '''    caller = _maybe_user(authorization)\n    print(f"[diag-unread] authorization={authorization!r} caller={caller!r} owner={d.get('owner_id')!r}", flush=True)\n    if not (caller and caller.get("id") == d.get("owner_id")):\n        d.pop("owner_phone", None)\n    # Блок 5 аудита (P1-2): пользователь реально открыл карточку груза —\n    # гасим уведомления, которые вели именно сюда (новая ставка/принято/\n    # отклонено и т.п.), не трогая чужие.\n    if caller and caller.get("id"):\n        try:\n            from api.notifications import mark_notifications_read_by_urls\n            updated = mark_notifications_read_by_urls(caller["id"], [f"/cargos/{cargo_id}"])\n            print(f"[diag-unread] updated={updated} path=/cargos/{cargo_id}", flush=True)\n        except Exception as exc:\n            print(f"[diag-unread] exception={exc!r}", flush=True)\n'''
+          if old not in s:
+              raise SystemExit('target block not found')
+          p.write_text(s.replace(old, new, 1), encoding='utf-8')
+          PY
+      - name: Run focused unread test
+        env:
+          PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/backend
+          APP_ENV: test
+          DB_PATH: /tmp/urtruck-diag-unread.db
+          URTRUCK_DB_PATH: /tmp/urtruck-diag-unread.db
+        run: pytest backend/tests/test_unread_deduplication.py::test_opening_cargo_marks_only_its_notifications_read -q -s --disable-warnings
