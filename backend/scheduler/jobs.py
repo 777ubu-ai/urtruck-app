@@ -72,6 +72,20 @@ def push_reminders_job():
             LIMIT 200
         """, (threshold, (now - timedelta(hours=20)).isoformat())).fetchall()
     for r in rows:
+        # Блок 6 аудита (P1-8): push может не дойти (нет permission/offline/
+        # провайдер недоступен) — notification создаём НЕЗАВИСИМО и ДО
+        # попытки push, чтобы событие не терялось молча. event_key —
+        # день+юзер, повторный прогон джобы в тот же день не задвоит запись
+        # (UNIQUE(user_id, event_key), см. api/notifications.py).
+        try:
+            from api.notifications import create_notification
+            create_notification(
+                r["id"], "reminder", "🚛 UrTruck ждёт вас",
+                "Есть новые грузы. Загляните в ленту.", "🚛", url="/",
+                event_key=f"reminder-inactive:{now.date().isoformat()}",
+            )
+        except Exception as e:
+            print(f"  reminder notif err {r['id']}: {e}")
         try:
             push_sender.send(
                 r["id"],
@@ -100,11 +114,19 @@ def push_reminders_job():
         for r in saved:
             if (r["cnt"] or 0) < 1:
                 continue
+            _title = f"📦 {r['cnt']} новых грузов"
+            _body = f"{r['from_city']} → {r['to_city']}"
+            try:
+                from api.notifications import create_notification
+                create_notification(
+                    r["user_id"], "reminder", _title, _body, "📦", url="/",
+                    event_key=f"reminder-route:{r['from_city']}:{r['to_city']}:{now.date().isoformat()}",
+                )
+            except Exception as e:
+                print(f"  saved_searches notif err: {e}")
             try:
                 push_sender.send(
-                    r["user_id"],
-                    f"📦 {r['cnt']} новых грузов",
-                    f"{r['from_city']} → {r['to_city']}",
+                    r["user_id"], _title, _body,
                     kind="reminder",
                     data={"from": r["from_city"], "to": r["to_city"]},
                     url="/",
@@ -175,6 +197,13 @@ def expired_notify_job():
             if dup:
                 continue
             title, body = MSG[dp]
+            # Блок 6 (P1-8): notification — до/независимо от push.
+            try:
+                from api.notifications import create_notification
+                create_notification(uid, "expired", title, body, "📭", url="/",
+                                     event_key=f"expired:stage{dp}:{now.date().isoformat()}")
+            except Exception as e:
+                print(f"  expired notif err {uid}: {e}")
             push_sender.send(uid, title, body, kind="expired", url="/")
             sent += 1
         except Exception as e:
@@ -217,12 +246,18 @@ def no_bids_notify_job():
     for cid, owner_id, fr, to in cargos:
         if not owner_id or already_sent(owner_id, cid):
             continue
+        _title = "📦 Пока нет предложений"
+        _body = f"{fr} → {to} · 18 часов без ставок. Возможно, стоит скорректировать цену?"
+        # Блок 6 (P1-8): notification — до/независимо от push. event_key
+        # привязан к сущности (не ко времени) — «раз в жизни публикации».
         try:
-            push_sender.send(
-                owner_id, "📦 Пока нет предложений",
-                f"{fr} → {to} · 18 часов без ставок. Возможно, стоит скорректировать цену?",
-                kind="no_bids", data={"cargo_id": cid}, url="/",
-            )
+            from api.notifications import create_notification
+            create_notification(owner_id, "no_bids", _title, _body, "📦",
+                                 url=f"/cargos/{cid}", event_key=f"no_bids:cargo:{cid}")
+        except Exception as e:
+            print(f"  no_bids cargo notif err {cid}: {e}")
+        try:
+            push_sender.send(owner_id, _title, _body, kind="no_bids", data={"cargo_id": cid}, url="/")
             sent += 1
         except Exception as e:
             print(f"  no_bids cargo err {cid}: {e}")
@@ -230,12 +265,16 @@ def no_bids_notify_job():
     for tid, driver_id, fr, to in trips:
         if not driver_id or already_sent(driver_id, tid):
             continue
+        _title = "🚛 Пока нет предложений"
+        _body = f"{fr} → {to} · 18 часов без предложений на рейс. Возможно, стоит скорректировать цену?"
         try:
-            push_sender.send(
-                driver_id, "🚛 Пока нет предложений",
-                f"{fr} → {to} · 18 часов без предложений на рейс. Возможно, стоит скорректировать цену?",
-                kind="no_bids", data={"trip_id": tid}, url="/",
-            )
+            from api.notifications import create_notification
+            create_notification(driver_id, "no_bids", _title, _body, "🚛",
+                                 url=f"/trips/{tid}", event_key=f"no_bids:trip:{tid}")
+        except Exception as e:
+            print(f"  no_bids trip notif err {tid}: {e}")
+        try:
+            push_sender.send(driver_id, _title, _body, kind="no_bids", data={"trip_id": tid}, url="/")
             sent += 1
         except Exception as e:
             print(f"  no_bids trip err {tid}: {e}")
