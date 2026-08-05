@@ -17,9 +17,6 @@ jobs:
     name: Backend tests
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    defaults:
-      run:
-        working-directory: backend
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -28,14 +25,15 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
       - name: Install dependencies
+        working-directory: backend
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt pytest
       - name: Run full backend suite
         env:
-          PYTHONPATH: ${{ github.workspace }}/backend
+          PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/backend
           URTRUCK_DB_PATH: ${{ runner.temp }}/urtruck-ci.db
-        run: pytest -q --disable-warnings --maxfail=1
+        run: pytest backend/tests -q --disable-warnings --maxfail=1
 
   frontend-quality:
     name: Frontend tests and build
@@ -51,8 +49,8 @@ jobs:
         run: npm ci
       - name: Frontend ownership tests
         run: |
-          node --test tests/frontend/test_storage_remove_by_prefix.mjs
-          node --test tests/frontend/test_outbox_user_ownership.mjs
+          node --experimental-loader ./tests/frontend/loader.mjs --test tests/frontend/test_storage_remove_by_prefix.mjs
+          node --experimental-loader ./tests/frontend/loader.mjs --test tests/frontend/test_outbox_user_ownership.mjs
       - name: i18n smoke
         run: npm run qa:i18n
       - name: UX smoke
