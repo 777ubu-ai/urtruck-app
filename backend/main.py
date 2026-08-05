@@ -4,14 +4,49 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-# Загрузка .env (до всех imports которые читают env)
+# Загрузка .env (до всех imports которые читают env).
+# Аудит (Этап 1, побочный эффект): раньше .env БЕЗУСЛОВНО перезаписывал
+# os.environ — переменная, заданная снаружи (например DB_PATH=/tmp/test.db
+# перед запуском тестов), тихо терялась, и тесты/изолированные прогоны
+# незаметно подключались к тому DB_PATH, что лежит в .env. Теперь .env
+# заполняет ТОЛЬКО отсутствующие переменные (`setdefault`) — внешнее
+# окружение всегда в приоритете, как и положено для 12-factor конфигурации.
 _env = Path(__file__).resolve().parent / ".env"
 if _env.exists():
     for line in _env.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if line and not line.startswith("#") and "=" in line:
             k, v = line.split("=", 1)
-            os.environ[k.strip()] = v.strip()
+            os.environ.setdefault(k.strip(), v.strip())
+
+# Guard: тестовый прогон (ENV=test) не должен иметь возможность случайно
+# подключиться к продовому DB_PATH (сервер — /home/ubuntu/...). Если это
+# произошло — это либо забытый export DB_PATH в CI/локальном шелле, либо
+# .env с прод-путём, подхваченный по ошибке. Роняем процесс немедленно,
+# не даём ему стартовать против чужих данных.
+_ENV_NAME = os.getenv("ENV", os.getenv("URTRUCK_ENV", "production")).strip().lower()
+_DB_PATH_RAW = os.getenv("DB_PATH", "/home/ubuntu/urtruck/backend/database/security.db")
+_PROD_DB_MARKERS = ("/home/ubuntu/",)
+
+
+def _masked_db_path(path: str) -> str:
+    """Путь к БД в логах — не секрет, но не печатаем полную серверную
+    структуру директорий (окружение/пользователи хоста) без необходимости."""
+    p = Path(path)
+    parts = p.parts[-2:] if len(p.parts) >= 2 else p.parts
+    return ".../" + "/".join(parts) if parts else str(path)
+
+
+if _ENV_NAME == "test" and _DB_PATH_RAW.startswith(_PROD_DB_MARKERS):
+    print(
+        f"[startup] ФАТАЛЬНО: ENV=test, но DB_PATH указывает на серверный "
+        f"путь ({_masked_db_path(_DB_PATH_RAW)}). Тестовый прогон против "
+        f"production/server-like пути запрещён — завершаю процесс.",
+        flush=True,
+    )
+    sys.exit(1)
+
+print(f"[startup] ENV={_ENV_NAME} DB_PATH={_masked_db_path(_DB_PATH_RAW)}", flush=True)
 
 # Sentry init — как можно раньше, до создания FastAPI app, чтобы ловить
 # ошибки startup. Если SENTRY_DSN пуст — graceful no-op.
