@@ -40,6 +40,10 @@ export default function PrimaryCTA({
       disabled={isDisabled}
       activeOpacity={0.85}
       testID={testID}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: isDisabled, busy: loading }}
+      hitSlop={4}
     >
       {loading ? (
         <ActivityIndicator color={fg} size="small" />
@@ -61,6 +65,11 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 16,
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
   },
   responsiveWidth: {
     width: '100%',

@@ -33,6 +33,10 @@ export default function DestructiveButton({
       disabled={isDisabled}
       activeOpacity={0.7}
       testID={testID}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: isDisabled, busy: loading }}
+      hitSlop={4}
     >
       {loading ? (
         <ActivityIndicator color={RED} size="small" />

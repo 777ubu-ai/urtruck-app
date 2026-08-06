@@ -32,6 +32,10 @@ export default function SecondaryButton({
       disabled={disabled}
       activeOpacity={0.75}
       testID={testID}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: !!disabled }}
+      hitSlop={4}
     >
       <View style={s.row}>
         {icon ? <Text style={[s.icon, { color: accent.main }]}>{icon}</Text> : null}
