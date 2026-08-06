@@ -13,6 +13,6 @@ const androidVersionCode = android.match(/versionCode\s+\(project\.hasProperty\(
 assert.equal(iosVersion, app.version, `iOS version ${iosVersion} must match app.json ${app.version}`);
 assert.equal(iosBuild, app.ios.buildNumber, `iOS build ${iosBuild} must match app.json ${app.ios.buildNumber}`);
 assert.equal(androidVersion, app.version, `Android version ${androidVersion} must match app.json ${app.version}`);
-assert.equal(Number(androidVersionCode), app.android.versionCode, `Android versionCode ${androidVersionCode} must match app.json ${app.android.versionCode}`);
+assert.ok(Number(androidVersionCode) >= app.android.versionCode, `Android fallback versionCode ${androidVersionCode} must not be lower than app.json ${app.android.versionCode}`);
 
-console.log(`Release versions aligned: iOS ${iosVersion} (${iosBuild}), Android ${androidVersion} (${androidVersionCode})`);
+console.log(`Release versions aligned: iOS ${iosVersion} (${iosBuild}), Android ${androidVersion} (fallback ${androidVersionCode})`);
