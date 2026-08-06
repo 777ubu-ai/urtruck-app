@@ -1,0 +1,163 @@
+name: Production Backup
+
+on:
+  workflow_dispatch:
+    inputs:
+      note:
+        description: Optional backup note
+        required: false
+        default: manual
+
+permissions:
+  contents: read
+
+concurrency:
+  group: urtruck-production-maintenance
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: Backup DB, storage, env and server config
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Install SSH client
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+
+      - name: Create and verify production backup
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PASS: ${{ secrets.SERVER_PASS }}
+          REMOTE_DIR: ${{ secrets.REMOTE_DIR || '/home/ubuntu/urtruck-app' }}
+          BACKEND_DIR: ${{ secrets.BACKEND_DIR || '/home/ubuntu/urtruck-security' }}
+          BACKUP_NOTE: ${{ inputs.note }}
+        run: |
+          set -euo pipefail
+          test -n "$SERVER_HOST"
+          test -n "$SERVER_USER"
+          test -n "$SERVER_PASS"
+
+          sshpass -p "$SERVER_PASS" ssh \
+            -o StrictHostKeyChecking=no \
+            -o ServerAliveInterval=20 \
+            "$SERVER_USER@$SERVER_HOST" \
+            "REMOTE_DIR='$REMOTE_DIR' BACKEND_DIR='$BACKEND_DIR' BACKUP_NOTE='$BACKUP_NOTE' bash -s" <<'REMOTE'
+          set -euo pipefail
+          umask 077
+
+          STAMP="$(date -u +%Y%m%d-%H%M%S)"
+          ROOT="$HOME/urtruck-backups"
+          DEST="$ROOT/$STAMP"
+          mkdir -p "$DEST" "$ROOT"
+
+          echo "Backup destination: $DEST"
+          echo "UTC: $(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$DEST/manifest.txt"
+          echo "host: $(hostname)" >> "$DEST/manifest.txt"
+          echo "note: ${BACKUP_NOTE:-manual}" >> "$DEST/manifest.txt"
+          echo "remote_dir: $REMOTE_DIR" >> "$DEST/manifest.txt"
+          echo "backend_dir: $BACKEND_DIR" >> "$DEST/manifest.txt"
+
+          # Resolve DB path from server env first, then known legacy locations.
+          DB_PATH=""
+          if [ -f "$BACKEND_DIR/.env" ]; then
+            DB_PATH=$(sed -nE 's/^(URTRUCK_DB_PATH|DB_PATH)=(.*)$/\2/p' "$BACKEND_DIR/.env" | tail -1 | tr -d "'\"" || true)
+            case "$DB_PATH" in
+              "") ;;
+              /*) ;;
+              *) DB_PATH="$BACKEND_DIR/$DB_PATH" ;;
+            esac
+          fi
+          if [ -z "$DB_PATH" ] || [ ! -f "$DB_PATH" ]; then
+            for candidate in \
+              "$BACKEND_DIR/urtruck.db" \
+              "$BACKEND_DIR/database.db" \
+              "$BACKEND_DIR/database/urtruck.db" \
+              "$BACKEND_DIR/database/urtruck-security.db"; do
+              if [ -f "$candidate" ]; then DB_PATH="$candidate"; break; fi
+            done
+          fi
+
+          if [ -n "$DB_PATH" ] && [ -f "$DB_PATH" ]; then
+            mkdir -p "$DEST/database"
+            if command -v sqlite3 >/dev/null 2>&1; then
+              sqlite3 "$DB_PATH" ".timeout 10000" ".backup '$DEST/database/production.db'"
+              sqlite3 "$DEST/database/production.db" "PRAGMA quick_check;" | tee "$DEST/database/quick_check.txt"
+              grep -qx ok "$DEST/database/quick_check.txt"
+            else
+              cp -a "$DB_PATH" "$DEST/database/production.db"
+              [ -f "$DB_PATH-wal" ] && cp -a "$DB_PATH-wal" "$DEST/database/production.db-wal" || true
+              [ -f "$DB_PATH-shm" ] && cp -a "$DB_PATH-shm" "$DEST/database/production.db-shm" || true
+            fi
+            echo "database_source: $DB_PATH" >> "$DEST/manifest.txt"
+          else
+            echo "ERROR: production SQLite database was not found" >&2
+            exit 1
+          fi
+
+          # Environment files: stored only inside private backup directory.
+          mkdir -p "$DEST/env"
+          found_env=0
+          for env_file in "$BACKEND_DIR/.env" "$REMOTE_DIR/.env"; do
+            if [ -f "$env_file" ]; then
+              cp -a "$env_file" "$DEST/env/$(basename "$(dirname "$env_file")")-env"
+              found_env=1
+            fi
+          done
+          if [ "$found_env" -ne 1 ]; then
+            echo "ERROR: no .env file found" >&2
+            exit 1
+          fi
+
+          # Storage may exist under either the backend root or legacy security path.
+          mkdir -p "$DEST/storage"
+          storage_found=0
+          for storage_dir in \
+            "$BACKEND_DIR/storage" \
+            "$BACKEND_DIR/backend/storage" \
+            "$HOME/urtruck-security/storage"; do
+            if [ -d "$storage_dir" ]; then
+              tar -C "$(dirname "$storage_dir")" -czf "$DEST/storage/$(basename "$storage_dir").tar.gz" "$(basename "$storage_dir")"
+              echo "storage_source: $storage_dir" >> "$DEST/manifest.txt"
+              storage_found=1
+              break
+            fi
+          done
+          if [ "$storage_found" -ne 1 ]; then
+            echo "WARNING: local storage directory not found (external storage may be in use)" | tee -a "$DEST/manifest.txt"
+          fi
+
+          # Server configuration and process definitions.
+          mkdir -p "$DEST/config"
+          if command -v nginx >/dev/null 2>&1; then
+            (sudo -n nginx -T 2>&1 || nginx -T 2>&1 || true) > "$DEST/config/nginx-T.txt"
+          fi
+          if command -v pm2 >/dev/null 2>&1; then
+            pm2 jlist > "$DEST/config/pm2-jlist.json" 2>/dev/null || true
+            pm2 save --force >/dev/null 2>&1 || true
+            [ -f "$HOME/.pm2/dump.pm2" ] && cp -a "$HOME/.pm2/dump.pm2" "$DEST/config/" || true
+          fi
+          if command -v systemctl >/dev/null 2>&1; then
+            systemctl list-unit-files --type=service > "$DEST/config/systemd-services.txt" 2>/dev/null || true
+          fi
+          [ -d /etc/nginx ] && (sudo -n tar -czf "$DEST/config/nginx.tar.gz" /etc/nginx 2>/dev/null || true)
+
+          # Lightweight code snapshots for immediate rollback.
+          mkdir -p "$DEST/code"
+          [ -d "$REMOTE_DIR" ] && tar --exclude='.git' -C "$(dirname "$REMOTE_DIR")" -czf "$DEST/code/frontend.tar.gz" "$(basename "$REMOTE_DIR")"
+          [ -d "$BACKEND_DIR" ] && tar --exclude='.git' --exclude='storage' -C "$(dirname "$BACKEND_DIR")" -czf "$DEST/code/backend.tar.gz" "$(basename "$BACKEND_DIR")"
+
+          find "$DEST" -type f -print0 | sort -z | xargs -0 sha256sum > "$DEST/SHA256SUMS"
+          test -s "$DEST/SHA256SUMS"
+          sha256sum -c "$DEST/SHA256SUMS"
+
+          du -sh "$DEST" | tee "$DEST/size.txt"
+          find "$DEST" -maxdepth 3 -type f -printf '%s %p\n' | sort -n >> "$DEST/manifest.txt"
+
+          # Keep the latest ten complete backup sets.
+          find "$ROOT" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' \
+            | sort -rn | tail -n +11 | cut -d' ' -f2- | xargs -r rm -rf
+
+          echo "BACKUP_OK=$STAMP"
+          echo "Backup verified: $DEST"
+          REMOTE
