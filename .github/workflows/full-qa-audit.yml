@@ -74,9 +74,19 @@ jobs:
           retention-days: 21
 
   web-pwa-visual:
-    name: Playwright web and PWA visual audit
+    name: Playwright ${{ matrix.suite }} visual audit
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: desktop
+            config: qa/playwright.config.js
+            limit: 25m
+          - suite: mobile
+            config: qa/playwright.mobile.config.js
+            limit: 15m
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -95,7 +105,7 @@ jobs:
         run: |
           npx serve dist -l 4173 > /tmp/urtruck-serve.log 2>&1 &
           npx wait-on http://127.0.0.1:4173
-      - name: Run desktop and mobile Playwright suites
+      - name: Run ${{ matrix.suite }} Playwright suite
         env:
           E2E_BASE_URL: http://127.0.0.1:4173
           QA_BASE_URL: http://127.0.0.1:4173
@@ -103,19 +113,18 @@ jobs:
         run: |
           mkdir -p qa-artifacts/playwright
           set +e
-          timeout --signal=TERM --kill-after=30s 15m npx playwright test --config qa/playwright.config.js
-          desktop_rc=$?
-          timeout --signal=TERM --kill-after=30s 12m npx playwright test --config qa/playwright.mobile.config.js
-          mobile_rc=$?
+          timeout --signal=TERM --kill-after=30s "${{ matrix.limit }}" \
+            npx playwright test --config "${{ matrix.config }}"
+          suite_rc=$?
           set -e
-          printf '{"desktop_exit":%s,"mobile_exit":%s}\n' "$desktop_rc" "$mobile_rc" > qa-artifacts/playwright/summary.json
-          test "$desktop_rc" -eq 0
-          test "$mobile_rc" -eq 0
+          printf '{"suite":"%s","exit":%s}\n' \
+            "${{ matrix.suite }}" "$suite_rc" > "qa-artifacts/playwright/${{ matrix.suite }}-summary.json"
+          test "$suite_rc" -eq 0
       - name: Upload screenshots, video, traces and HTML report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: full-qa-playwright-${{ github.sha }}
+          name: full-qa-playwright-${{ matrix.suite }}-${{ github.sha }}
           path: |
             playwright-report
             test-results
