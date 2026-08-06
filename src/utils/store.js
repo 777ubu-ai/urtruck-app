@@ -18,9 +18,9 @@ export const getTrips = () => trips;
 export const getTrip = (id) => trips.find(t => t.id === id);
 export const TRIP_STATES = ['planned', 'in_transit', 'delivered'];
 export const TRIP_STATE_INFO = {
-  planned:    { icon: '📝', labelKey: 'trip_planned',        color: '#78716C' },
-  in_transit: { icon: '🚛', labelKey: 'trip_in_transit',     color: '#FF8400' },
-  delivered:  { icon: '✅', labelKey: 'trip_delivered',      color: '#22C55E' },
+  planned:    { icon: '📝', labelKey: 'trip_planned',    fallbackLabel: 'Запланирован', color: '#78716C' },
+  in_transit: { icon: '🚛', labelKey: 'trip_in_transit', fallbackLabel: 'В пути',       color: '#FF8400' },
+  delivered:  { icon: '✅', labelKey: 'trip_delivered',  fallbackLabel: 'Доставлен',    color: '#22C55E' },
 };
 
 export const addTrip = (t) => {
@@ -43,11 +43,16 @@ export const advanceTripState = (tripId, nextState) => {
   });
   const info = TRIP_STATE_INFO[nextState];
   if (info) {
+    // State metadata stores an i18n key, not a pre-rendered `label`. The old
+    // code dereferenced `info.label` and crashed every valid state advance.
+    // This legacy in-memory notification path has no i18n hook, so use the
+    // explicit human-readable fallback and always normalize before casing.
+    const label = String(info.label || info.fallbackLabel || nextState || 'статус');
     addNotification({
       type: 'trip_state',
       icon: info.icon,
-      title: `Рейс: ${info.label}`,
-      text: `Статус обновлён: ${info.label.toLowerCase()}`,
+      title: `Рейс: ${label}`,
+      text: `Статус обновлён: ${label.toLowerCase()}`,
     });
   }
   notify();
