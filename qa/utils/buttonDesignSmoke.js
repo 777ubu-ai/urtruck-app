@@ -8,11 +8,16 @@ function expect(source, needle, message) {
   if (!source.includes(needle)) throw new Error(message);
 }
 
+const primary = read('src/components/ui/actions/PrimaryCTA.js');
 const secondary = read('src/components/ui/actions/SecondaryButton.js');
 const destructive = read('src/components/ui/actions/DestructiveButton.js');
 const cargo = read('src/screens/CargoDetail.js');
 const trip = read('src/screens/TripDetail.js');
 
+expect(primary, "maxWidth: 520", 'PrimaryCTA must stay readable on wide screens');
+expect(primary, "minHeight: 48", 'PrimaryCTA tap target must be at least 48px');
+expect(primary, "fullWidth = false", 'PrimaryCTA must explicitly opt into unlimited width');
+expect(primary, "alignSelf: 'center'", 'PrimaryCTA must be centered on wide screens');
 expect(secondary, "maxWidth: 420", 'SecondaryButton must stay compact on wide screens');
 expect(secondary, "minHeight: 48", 'SecondaryButton tap target must be at least 48px');
 expect(secondary, "fullWidth = false", 'SecondaryButton must explicitly opt into full width');
