@@ -26,7 +26,10 @@ async function snap(page, actor, label) {
   const slug = String(label || 'step').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 60);
   const file = path.join(runDir(), `${actor}-${nextStep(actor)}-${slug}.png`);
   try {
-    await page.screenshot({ path: file, fullPage: true });
+    // The app keeps unread/push polling active. A browser screenshot must not
+    // be allowed to consume the whole test timeout if Chromium cannot reach a
+    // stable full-page layout while that polling is running.
+    await page.screenshot({ path: file, fullPage: true, timeout: 10000 });
     return file;
   } catch (e) {
     return null;
