@@ -1111,30 +1111,52 @@ export default function ChatScreen({ navigation, route }) {
             </View>
           ) : null}
           {(() => {
-            if (!deal?.status || deal.status === 'cancelled' || deal.status === 'delivered' || deal.status === 'completed') return null;
+            // RC1: строгая ролевая FSM. Водитель начинает рейс и отмечает
+            // фактическую доставку; грузоотправитель может только подтвердить
+            // получение ПОСЛЕ статуса delivered. Никаких переходов
+            // in_progress -> delivered со стороны грузоотправителя.
+            if (!deal?.status || deal.status === 'cancelled' || deal.status === 'completed') return null;
             let action = null;
-            // «На границе» временно убрана из пользовательского словаря
-            // (05.08.2026, п.8 ТЗ): backend допускает in_progress → delivered
-            // НАПРЯМУЮ на любом маршруте (_FLOW в marketplace.py — at_border
-            // необязательный промежуточный шаг, не обязательный), поэтому
-            // кнопка «На границе» больше не показывается вовсе — водитель
-            // на международном рейсе тоже видит сразу «Доставлен». Если
-            // deal.status уже реально at_border (проставлен раньше/другим
-            // клиентом), следующий шаг всё равно «Доставлен» — рассинхрона
-            // с реальным статусом нет.
             if (role === 'driver') {
-              if (deal.status === 'accepted') action = { key: 'in_progress', icon: 'truck', label: t('start_delivery') };
-              else if (deal.status === 'in_progress' || deal.status === 'at_border') action = { key: 'delivered', icon: 'check-circle', label: t('mark_arrived') };
-            } else if (isShipperSide && (deal.status === 'in_progress' || deal.status === 'at_border')) {
-              action = { key: 'delivered', icon: 'check-circle', label: t('confirm_delivery') };
+              if (deal.status === 'accepted') {
+                action = { key: 'in_progress', icon: 'truck', label: t('start_delivery') };
+              } else if (deal.status === 'in_progress' || deal.status === 'at_border') {
+                action = { key: 'delivered', icon: 'package', label: t('mark_arrived') };
+              }
+            } else if (isShipperSide && deal.status === 'delivered') {
+              action = { key: 'completed', icon: 'check-circle', label: t('confirm_delivery') };
             }
             if (!action) return null;
             return (
               <TouchableOpacity
-                testID={`deal-action-${action.key === 'delivered' ? 'mark-arrived' : 'start-delivery'}`}
+                testID={
+                  action.key === 'in_progress'
+                    ? 'deal-action-start-delivery'
+                    : action.key === 'delivered'
+                      ? 'deal-action-mark-arrived'
+                      : 'deal-action-confirm-receipt'
+                }
                 style={[s.dealNextBtn, { backgroundColor: v1Accent.main, opacity: statusLoading ? 0.6 : 1 }]}
                 disabled={statusLoading}
-                onPress={() => changeDealStatus(action.key)}
+                onPress={async () => {
+                  let ok = true;
+                  if (action.key === 'delivered' || action.key === 'completed') {
+                    const message = action.key === 'delivered'
+                      ? (t('confirm_mark_delivered') || 'Подтвердите, что груз действительно доставлен и передан получателю.')
+                      : (t('confirm_receipt') || 'Подтвердите, что груз получен. После этого сделка будет завершена.');
+                    ok = Platform.OS === 'web'
+                      ? (typeof window !== 'undefined' && window.confirm(message))
+                      : await new Promise((res) => Alert.alert(
+                          action.label,
+                          message,
+                          [
+                            { text: t('cancel'), style: 'cancel', onPress: () => res(false) },
+                            { text: action.label, onPress: () => res(true) },
+                          ],
+                        ));
+                  }
+                  if (ok) changeDealStatus(action.key);
+                }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                   <Feather name={action.icon} size={16} color="#0C0A09" />
