@@ -4,7 +4,7 @@ tags:
   - smoke
   - release
 ---
-- runFlow: driver-tabs.yaml
+- runFlow: _obsolete/driver-tabs.yaml
 - runFlow: client-tabs.yaml
-- runFlow: profile-queue-chats.yaml
+- runFlow: _obsolete/profile-queue-chats.yaml
 - runFlow: verification-render.yaml
