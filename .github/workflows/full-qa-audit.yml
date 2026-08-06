@@ -76,7 +76,7 @@ jobs:
   web-pwa-visual:
     name: Playwright web and PWA visual audit
     runs-on: ubuntu-latest
-    timeout-minutes: 55
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -103,9 +103,9 @@ jobs:
         run: |
           mkdir -p qa-artifacts/playwright
           set +e
-          npx playwright test --config qa/playwright.config.js
+          timeout --signal=TERM --kill-after=30s 15m npx playwright test --config qa/playwright.config.js
           desktop_rc=$?
-          npx playwright test --config qa/playwright.mobile.config.js
+          timeout --signal=TERM --kill-after=30s 12m npx playwright test --config qa/playwright.mobile.config.js
           mobile_rc=$?
           set -e
           printf '{"desktop_exit":%s,"mobile_exit":%s}\n' "$desktop_rc" "$mobile_rc" > qa-artifacts/playwright/summary.json
