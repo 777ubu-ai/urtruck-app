@@ -148,9 +148,9 @@ test('driver · full registration + reload + logout + login', async ({ page }) =
   await installAuthMock(page, 'driver');
 
   // ── 1. Landing → RoleScreen ──
-  await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
+  await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
   await clearLocalStorage(page);
-  await page.reload({ waitUntil: 'networkidle' }).catch(() => {});
+  await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
   await page.waitForTimeout(1500);
   await snap(page, 'reg-driver', '01-landing');
   if (await page.getByTestId('role-driver').isVisible().catch(() => false)) {
@@ -307,7 +307,7 @@ test('driver · full registration + reload + logout + login', async ({ page }) =
   }
 
   // 12. Reload — сессия должна остаться
-  await page.reload({ waitUntil: 'networkidle' }).catch(() => {});
+  await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
   await page.waitForTimeout(1500);
   const stillInMain = await page.getByTestId('bottom-nav').isVisible({ timeout: 4000 }).catch(() => false);
   if (stillInMain) {
@@ -325,7 +325,7 @@ test('driver · full registration + reload + logout + login', async ({ page }) =
     window.localStorage.removeItem('ur_session');
     window.localStorage.removeItem('ur_verification_level');
   });
-  await page.reload({ waitUntil: 'networkidle' }).catch(() => {});
+  await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
   await page.waitForTimeout(1500);
   const onRoleAfterLogout = await page.getByTestId('role-driver').isVisible({ timeout: 4000 }).catch(() => false);
   if (onRoleAfterLogout) {
@@ -391,7 +391,7 @@ test('driver · full registration + reload + logout + login', async ({ page }) =
   }
 
   // 16. Reload — сессия после login сохранилась
-  await page.reload({ waitUntil: 'networkidle' }).catch(() => {});
+  await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
   await page.waitForTimeout(1500);
   const stillInMain2 = await page.getByTestId('bottom-nav').isVisible({ timeout: 4000 }).catch(() => false);
   if (stillInMain2) {
@@ -416,9 +416,9 @@ test('client · full registration + reload + logout + login', async ({ page }) =
   await clearStorage(page);
   await installAuthMock(page, 'client');
 
-  await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
+  await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
   await clearLocalStorage(page);
-  await page.reload({ waitUntil: 'networkidle' }).catch(() => {});
+  await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
   await page.waitForTimeout(1500);
   await snap(page, 'reg-client', '01-landing');
 
@@ -497,7 +497,7 @@ test('client · full registration + reload + logout + login', async ({ page }) =
   }
 
   // reload
-  await page.reload({ waitUntil: 'networkidle' }).catch(() => {});
+  await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
   await page.waitForTimeout(1500);
   if (await page.getByTestId('bottom-nav').isVisible({ timeout: 4000 }).catch(() => false)) {
     log.pass(ACTOR, 'client-reload-keeps-main');
@@ -529,9 +529,9 @@ test('cooldown · 429 from backend shows friendly banner + Ввести код',
     });
   });
 
-  await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
+  await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
   await clearLocalStorage(page);
-  await page.reload({ waitUntil: 'networkidle' }).catch(() => {});
+  await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
   await page.waitForTimeout(1500);
 
   await page.getByTestId('role-driver').click({ force: true }).catch(() => {});
@@ -599,9 +599,9 @@ test('auth gate · guest cargo Подробнее opens premium register (driver
   const errors = await captureNet(page);
   await clearStorage(page);
 
-  await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
+  await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
   await clearLocalStorage(page);
-  await page.reload({ waitUntil: 'networkidle' }).catch(() => {});
+  await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
   await page.waitForTimeout(2000);
 
   // Открыть feed без регистрации — нажать на role-driver
