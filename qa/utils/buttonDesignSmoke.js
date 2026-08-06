@@ -24,6 +24,10 @@ expect(secondary, "minHeight: 48", 'SecondaryButton tap target must be at least 
 expect(secondary, "fullWidth = false", 'SecondaryButton must explicitly opt into full width');
 expect(destructive, "maxWidth: 420", 'DestructiveButton must stay compact on wide screens');
 expect(destructive, "minHeight: 44", 'DestructiveButton tap target must be at least 44px');
+expect(primary, 'accessibilityRole="button"', 'PrimaryCTA must expose the button role');
+expect(primary, 'accessibilityState={{ disabled: isDisabled, busy: loading }}', 'PrimaryCTA must expose disabled and busy states');
+expect(secondary, 'accessibilityLabel={label}', 'SecondaryButton must expose its visible label');
+expect(destructive, 'accessibilityState={{ disabled: isDisabled, busy: loading }}', 'DestructiveButton must expose disabled and busy states');
 expect(sticky, 'const MAX_CONTENT_WIDTH = 720', 'Sticky CTA content width must be capped on desktop');
 expect(sticky, 'useSafeAreaInsets', 'Sticky CTA must account for device safe area');
 expect(sticky, "minHeight: 48", 'Sticky CTA buttons need at least a 48px tap target');
