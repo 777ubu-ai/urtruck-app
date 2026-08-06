@@ -221,9 +221,9 @@ test('premium login · logout clears localStorage and returns to RoleScreen', as
   // через storage.removeItem вручную — иначе нужно ходить в Profile UI,
   // что выходит за рамки этого guard'а.
   // На проде urtruck.kz нагнетает редирект ?v=NN → / при первой
-  // загрузке, поэтому ждём networkidle + явный sleep, иначе
+  // загрузке, поэтому ждём DOM + явный sleep, иначе
   // page.evaluate ловит "Execution context was destroyed".
-  await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
+  await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
   await page.waitForTimeout(1500);
   await page.evaluate(() => {
     window.localStorage.setItem('ur_reg_token', 'mock-token-test-logout');
@@ -232,7 +232,7 @@ test('premium login · logout clears localStorage and returns to RoleScreen', as
       user: { phone: '+77479171118', role: 'driver', id: 'u_mock' },
     }));
   });
-  await page.reload({ waitUntil: 'networkidle' }).catch(() => {});
+  await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
   await page.waitForTimeout(1500);
 
   // имитируем logout: signOut() чистит token+session+level
@@ -241,7 +241,7 @@ test('premium login · logout clears localStorage and returns to RoleScreen', as
     window.localStorage.removeItem('ur_session');
     window.localStorage.removeItem('ur_verification_level');
   });
-  await page.reload({ waitUntil: 'networkidle' }).catch(() => {});
+  await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
   await page.waitForTimeout(1500);
 
   // должны увидеть RoleScreen (role-driver testID присутствует)
