@@ -182,16 +182,26 @@ export const chatAPI = {
 
   async uploadAttachment(conversationId, { uri, kind = 'document', name = 'file.jpg', type = 'image/jpeg' } = {}) {
     const token = await storage.get(TOKEN_KEY);
-    const blob = await authedFetch(uri).then((res) => res.blob());
     const form = new FormData();
-    form.append('file', blob, name);
+    // React Native cannot reliably fetch file:// / content:// URIs into a
+    // Blob. Use the native multipart descriptor there; web still needs Blob.
+    if (Platform.OS === 'web') {
+      const blob = await fetch(uri).then((res) => {
+        if (!res.ok) throw new Error(`document read failed ${res.status}`);
+        return res.blob();
+      });
+      form.append('file', blob, name);
+    } else {
+      form.append('file', { uri, name, type });
+    }
     form.append('kind', kind);
     const r = await authedFetch(`${API_BASE}/chat/conversations/${conversationId}/attachments`, {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: form,
     });
-    if (!r.ok) throw new Error(`upload failed ${r.status}`);
-    return r.json();
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data?.detail || `upload failed ${r.status}`);
+    return data;
   },
 };

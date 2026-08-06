@@ -144,8 +144,18 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
           </Text>
         </View>
         {showHeart && !p.custom ? (
-          <TouchableOpacity onPress={() => toggleFav(p)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} testID={`loc-fav-${p.name}`}>
-            <Feather name="heart" size={18} color={isFav ? '#F87171' : v1.textMuted} style={{ paddingHorizontal: 4 }} />
+          <TouchableOpacity
+            onPress={(event) => {
+              // Nested inside the selectable location row. On web/PWA the
+              // press bubbles unless stopped and used to select the location
+              // while merely adding it to favourites.
+              event?.stopPropagation?.();
+              toggleFav(p);
+            }}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            testID={`loc-fav-${p.name}`}
+          >
+            <Feather name="heart" size={18} color={isFav ? v1.driver : v1.textMuted} style={{ paddingHorizontal: 4 }} />
           </TouchableOpacity>
         ) : <Text style={s.chev}>›</Text>}
       </TouchableOpacity>

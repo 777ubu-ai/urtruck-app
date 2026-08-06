@@ -29,9 +29,9 @@ async function bodyText(page) {
 }
 async function clear(page) {
   await page.context().clearCookies().catch(() => {});
-  await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
+  await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
   await page.evaluate(() => { try { localStorage.clear(); sessionStorage.clear(); } catch {} }).catch(() => {});
-  await page.reload({ waitUntil: 'networkidle' }).catch(() => {});
+  await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
   await page.waitForTimeout(1500);
 }
 async function noLegacy(page, label) {
@@ -274,7 +274,7 @@ test('lock 6 · driver register → logout → login restores same role', async 
     window.localStorage.removeItem('ur_session');
     window.localStorage.removeItem('ur_verification_level');
   });
-  await page.reload({ waitUntil: 'networkidle' }).catch(() => {});
+  await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
   await page.waitForTimeout(1500);
   if (await page.getByTestId('role-driver').isVisible().catch(() => false)) {
     log.pass(ACTOR, 'driver-logout-returns-role');
@@ -352,7 +352,7 @@ test('lock 7 · client register → logout → login restores client', async ({ 
     window.localStorage.removeItem('ur_session');
     window.localStorage.removeItem('ur_verification_level');
   });
-  await page.reload({ waitUntil: 'networkidle' }).catch(() => {});
+  await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
   await page.waitForTimeout(1500);
   if (await page.getByTestId('role-client').isVisible().catch(() => false)) {
     log.pass(ACTOR, 'client-logout-returns-role');
@@ -396,9 +396,9 @@ test('lock 8 · no password input fields in any premium auth screen', async ({ p
     ['role-driver', 'register'],
     ['role-login', 'login'],
   ]) {
-    await page.goto(BASE_URL, { waitUntil: 'networkidle' }).catch(() => {});
+    await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
     await page.evaluate(() => { try { localStorage.clear(); sessionStorage.clear(); } catch {} }).catch(() => {});
-    await page.reload({ waitUntil: 'networkidle' }).catch(() => {});
+    await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
     await page.waitForTimeout(1200);
     await page.getByTestId(testId).click({ force: true }).catch(() => {});
     await page.waitForTimeout(800);

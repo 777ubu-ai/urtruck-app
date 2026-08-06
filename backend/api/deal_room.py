@@ -23,6 +23,8 @@ from api.verification_gate import require_level
 from database import deal_room_dal as dr
 from services import storage_service
 from services import file_signing
+from api.push import send_to_user
+from database.db import get_conn
 
 # Лимит размера вложения (защита от больших оригиналов; клиент сжимает по
 # §5 мастер-ТЗ — document 1600/0.8, photo 1280/0.75). 12 МБ — запас.
@@ -166,6 +168,37 @@ async def upload_attachment(
     # Отдаём загрузившему подписанную ссылку — storage больше не публичный.
     if isinstance(att, dict) and att.get("url"):
         att = {**att, "url": file_signing.sign(att["url"])}
+
+    # Attachment upload is a conversation event too. Previously it was saved
+    # successfully but the other participant received no push, so the file was
+    # only discovered after manually opening the chat.
+    try:
+        with get_conn() as c:
+            room = c.execute(
+                "SELECT participant_1, participant_2 FROM chat_rooms WHERE id = ?",
+                (conversation_id,),
+            ).fetchone()
+        if room:
+            recipient_id = room["participant_2"] if room["participant_1"] == user["id"] else room["participant_1"]
+            label = "📄 Документ" if resolved_kind == "document" else "🖼 Фото"
+            send_to_user(
+                recipient_id,
+                "Новое вложение в сделке",
+                label,
+                url=f"/chats/{conversation_id}",
+                kind="chat",
+                data={
+                    "type": "chat_attachment",
+                    "room_id": conversation_id,
+                    "attachment_id": att.get("id") if isinstance(att, dict) else None,
+                    "sender_id": user["id"],
+                    "recipient_id": recipient_id,
+                },
+            )
+    except Exception as exc:
+        # Upload remains successful even when a push provider is temporarily
+        # unavailable; send_to_user records provider diagnostics separately.
+        print(f"[attachment-push] failed room={conversation_id}: {exc}", flush=True)
     return {"attachment": att}
 
 

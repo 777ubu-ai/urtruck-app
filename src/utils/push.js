@@ -223,7 +223,7 @@ export const push = {
       handleNotification: async (notification) => {
         try {
           const data = notification?.request?.content?.data || {};
-          if (data.type === 'chat_message' && data.room_id && data.room_id === getActiveRoom()) {
+          if ((data.type === 'chat_message' || data.type === 'chat_attachment') && data.room_id && data.room_id === getActiveRoom()) {
             // SDK 52: shouldShowAlert устарел → дублируем shouldShowBanner/
             // shouldShowList, иначе баннер не подавляется. shouldSetBadge
             // false — сообщение читается прямо сейчас.

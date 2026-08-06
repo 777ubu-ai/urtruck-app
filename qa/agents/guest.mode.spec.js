@@ -49,9 +49,9 @@ async function mockBackend(page) {
 
 async function gotoFresh(page) {
   await mockBackend(page);
-  await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
+  await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
   await page.evaluate(() => { try { localStorage.clear(); sessionStorage.clear(); } catch {} }).catch(() => {});
-  await page.reload({ waitUntil: 'networkidle' }).catch(() => {});
+  await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
   await page.waitForTimeout(1500);
 }
 

@@ -35,13 +35,13 @@ async function shotAll(page, vpName) {
 
   const shot = async (name) => {
     await page.waitForTimeout(500);
-    await page.screenshot({ path: path.join(dir, `${name}.png`), fullPage: true }).catch(() => {});
+    await page.screenshot({ path: path.join(dir, `${name}.png`), fullPage: true, timeout: 10000 }).catch(() => {});
   };
 
   // 1. RoleScreen (guest)
-  await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
+  await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
   await page.evaluate(() => { try { localStorage.clear(); sessionStorage.clear(); } catch {} }).catch(() => {});
-  await page.reload({ waitUntil: 'networkidle' }).catch(() => {});
+  await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
   await page.waitForTimeout(1500);
   await shot('01-role');
 
@@ -51,18 +51,18 @@ async function shotAll(page, vpName) {
   await shot('02-register-driver');
 
   // 3. PremiumRegister client
-  await page.goto(BASE_URL, { waitUntil: 'networkidle' }).catch(() => {});
+  await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
   await page.evaluate(() => { try { localStorage.clear(); } catch {} }).catch(() => {});
-  await page.reload({ waitUntil: 'networkidle' }).catch(() => {});
+  await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
   await page.waitForTimeout(1200);
   await page.getByTestId('role-client').click({ force: true }).catch(() => {});
   await page.waitForTimeout(1000);
   await shot('03-register-client');
 
   // 4. PremiumLogin
-  await page.goto(BASE_URL, { waitUntil: 'networkidle' }).catch(() => {});
+  await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
   await page.evaluate(() => { try { localStorage.clear(); } catch {} }).catch(() => {});
-  await page.reload({ waitUntil: 'networkidle' }).catch(() => {});
+  await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
   await page.waitForTimeout(1200);
   await page.getByTestId('role-login').click({ force: true }).catch(() => {});
   await page.waitForTimeout(1000);
@@ -88,9 +88,9 @@ async function shotAll(page, vpName) {
       await page.route('**/api/v1/register/whatsapp/verify', (r2) =>
         r2.fulfill({ status: 200, contentType: 'application/json',
           body: JSON.stringify({ token: 'visual', verification_level: 1, role: null, beta: true }) }));
-      await page.goto(BASE_URL, { waitUntil: 'networkidle' }).catch(() => {});
+      await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
       await page.evaluate(() => { try { localStorage.clear(); } catch {} }).catch(() => {});
-      await page.reload({ waitUntil: 'networkidle' }).catch(() => {});
+      await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
       await page.waitForTimeout(1500);
       const btn = page.getByTestId(role === 'driver' ? 'role-driver' : 'role-client');
       if (await btn.isVisible({ timeout: 5000 }).catch(() => false)) {
@@ -129,7 +129,7 @@ async function shotAll(page, vpName) {
         }));
       } catch {}
     });
-    await page.reload({ waitUntil: 'networkidle' }).catch(() => {});
+    await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
     await page.waitForTimeout(2500);
     await shot('08-feed-driver');
   } catch (e) {
@@ -145,7 +145,7 @@ async function shotAll(page, vpName) {
         }));
       } catch {}
     });
-    await page.reload({ waitUntil: 'networkidle' }).catch(() => {});
+    await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
     await page.waitForTimeout(2500);
     await shot('09-feed-client');
   } catch (e) {
@@ -173,7 +173,7 @@ async function shotAll(page, vpName) {
         }));
       } catch {}
     });
-    await page.reload({ waitUntil: 'networkidle' }).catch(() => {});
+    await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
     await page.waitForTimeout(2500);
     const pubTrip = page.getByTestId('publish-trip-button');
     if (await pubTrip.isVisible({ timeout: 4000 }).catch(() => false)) {
