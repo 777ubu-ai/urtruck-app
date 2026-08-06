@@ -11,6 +11,7 @@ import { useI18n } from '../utils/useI18n';
 import { useV1Colors } from '../theme/designV1';
 import { marketAPI } from '../utils/marketAPI';
 import BrandHeader from '../components/ui/v1/BrandHeader';
+import Feather from '@expo/vector-icons/Feather';
 
 export default function FavoritesScreen({ navigation, route }) {
   const v1 = useV1Colors();
@@ -45,7 +46,7 @@ export default function FavoritesScreen({ navigation, route }) {
         activeOpacity={0.8}
         testID="favorite-card"
       >
-        <Text style={s.heart}>❤️</Text>
+        <Feather name="heart" size={20} color={v1.driver} style={s.heart} />
         <View style={{ flex: 1 }}>
           <Text style={[s.name, { color: v1.text }]} numberOfLines={1}>{d.name || t('anonymous')}</Text>
           {d.type ? <Text style={[s.sub, { color: v1.textMuted }]} numberOfLines={1}>{t(d.type)}{d.plate ? ` · ${d.plate}` : ''}</Text> : null}
@@ -85,7 +86,7 @@ const s = StyleSheet.create({
   center: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
   emptyText: { fontSize: 14, textAlign: 'center', paddingHorizontal: 30 },
   card: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderWidth: 1, borderRadius: 14, marginBottom: 10, minHeight: 60 },
-  heart: { fontSize: 20 },
+  heart: { width: 22 },
   name: { fontSize: 15, fontWeight: '700' },
   sub: { fontSize: 12, marginTop: 2 },
   chevron: { fontSize: 22, fontWeight: '300' },

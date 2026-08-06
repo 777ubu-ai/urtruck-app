@@ -236,7 +236,20 @@ function AppInner() {
   // следующего логина. Теперь обновляем токен на бэке при каждом старте.
   useEffect(() => {
     if (!hasToken) return;
-    push.autoRegister?.().catch(() => {});
+    let lastAttempt = 0;
+    const refreshPushBinding = () => {
+      const now = Date.now();
+      // Avoid duplicate native calls during rapid active/inactive transitions,
+      // while still repairing a rotated token after returning from background.
+      if (now - lastAttempt < 30_000) return;
+      lastAttempt = now;
+      push.autoRegister?.().catch(() => {});
+    };
+    refreshPushBinding();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') refreshPushBinding();
+    });
+    return () => sub?.remove?.();
   }, [hasToken]);
 
   return (

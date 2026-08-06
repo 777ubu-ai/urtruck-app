@@ -59,7 +59,7 @@ export default function DriverDetail({ navigation, route }) {
       ? await marketAPI.favAdd('driver', driver.id, { name: driver.name, type: driver.type || driver.vehicle_type, plate: driver.plate_truck || driver.vehicle_plate })
       : await marketAPI.favRemove('driver', driver.id);
     if (!res.ok) { setIsFav(!next); toast(t('send_error'), 'error'); }
-    else toast(next ? '❤️ ' + t('in_favorites') : t('removed_from_favorites'), 'success', 1800);
+    else toast(next ? '✓ ' + t('in_favorites') : t('removed_from_favorites'), 'success', 1800);
     setFavBusy(false);
   };
 
@@ -305,14 +305,14 @@ export default function DriverDetail({ navigation, route }) {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[s.favBtn, { borderColor: isFav ? '#EF4444' : v1.border }]}
+          style={[s.favBtn, { borderColor: isFav ? v1Colors.driver : v1.border }]}
           onPress={toggleFav}
           disabled={favBusy}
           testID="driver-fav-btn"
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
-            <Feather name="heart" size={15} color={isFav ? '#EF4444' : v1.text} />
-            <Text style={[s.favBtnText, { color: isFav ? '#EF4444' : v1.text }]}>
+            <Feather name="heart" size={15} color={isFav ? v1Colors.driver : v1.text} />
+            <Text style={[s.favBtnText, { color: isFav ? v1Colors.driver : v1.text }]}>
               {isFav ? t('in_favorites') : t('add_to_favorites')}
             </Text>
           </View>

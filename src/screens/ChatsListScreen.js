@@ -16,6 +16,7 @@ import { formatStatus } from '../utils/i18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useV1Colors } from '../theme/designV1';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
+import SegmentTabs from '../components/ui/v1/SegmentTabs';
 import { chatAPI } from '../utils/chatAPI';
 import { marketAPI } from '../utils/marketAPI';
 import { storage } from '../utils/storage';
@@ -65,7 +66,7 @@ export default function ChatsListScreen({ navigation, route }) {
   const [query, setQuery] = useState('');
   // Решение владельца (05.08.2026, п.3): максимум 2 компактных фильтра —
   // Все / Непрочитанные. Шторка с кузовом/датой убрана целиком.
-  const [unreadOnly, setUnreadOnly] = useState(false);
+  const [dealTab, setDealTab] = useState('offers');
 
   // ═══ Deals-mode состояние ═══
   // Вкладок больше нет (WhatsApp-упрощение 04.08.2026) — предложения и
@@ -542,7 +543,13 @@ export default function ChatsListScreen({ navigation, route }) {
     );
   };
 
-  // ═══ Deals content — один плоский список, без вкладок и секций ═══
+  const dealTabs = useMemo(() => ([
+    { key: 'offers', label: t('deals_tab_offers'), count: offersData.length, testID: 'deals-tab-offers' },
+    { key: 'active', label: t('deals_tab_active'), count: activeDeals.length, testID: 'deals-tab-active' },
+    { key: 'completed', label: t('deals_tab_completed'), count: completedDeals.length + closedBidsData.length, testID: 'deals-tab-completed' },
+  ]), [t, offersData.length, activeDeals.length, completedDeals.length, closedBidsData.length]);
+
+  // Одинаковый путь для обеих ролей: Предложения → В работе → Завершённые.
   const renderUnifiedDealItem = ({ item }) => {
     if (item._kind === 'offer') {
       return role === 'client'
@@ -556,11 +563,11 @@ export default function ChatsListScreen({ navigation, route }) {
   };
 
   const renderDealsContent = () => {
-    let data = unifiedDealItems;
-
-    if (unreadOnly) {
-      data = data.filter((item) => (item._unread || 0) > 0);
-    }
+    let data = unifiedDealItems.filter((item) => {
+      if (dealTab === 'offers') return item._kind === 'offer';
+      if (dealTab === 'active') return item._kind === 'deal' && ACTIVE_STATUSES.has(item._data.status);
+      return item._kind === 'closedBid' || (item._kind === 'deal' && COMPLETED_STATUSES.has(item._data.status));
+    });
 
     // Поиск по содержимому
     const q = query.trim().toLowerCase();
@@ -575,7 +582,11 @@ export default function ChatsListScreen({ navigation, route }) {
       });
     }
 
-    const emptyText = role === 'driver' ? t('deals_empty_driver') : t('deals_empty_unified');
+    const emptyText = dealTab === 'active'
+      ? t('deals_no_active')
+      : dealTab === 'completed'
+        ? t('deals_no_completed')
+        : (role === 'driver' ? t('deals_empty_driver') : t('deals_empty_unified'));
 
     return (
       <FlatList
@@ -621,21 +632,8 @@ export default function ChatsListScreen({ navigation, route }) {
       {/* Решение владельца (05.08.2026, п.3): максимум 2 компактных фильтра
           вместо шторки — Все / Непрочитанные, без отдельных секций. */}
       {dealsMode ? (
-        <View style={s.quickFilterRow}>
-          <TouchableOpacity
-            testID="deals-filter-all"
-            onPress={() => setUnreadOnly(false)}
-            style={[s.quickFilterChip, { borderColor: !unreadOnly ? accent : theme.border, backgroundColor: !unreadOnly ? accent + '18' : 'transparent' }]}
-          >
-            <Text style={{ color: !unreadOnly ? accent : theme.textMuted, fontSize: 13, fontWeight: '700' }}>{t('all')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            testID="deals-filter-unread"
-            onPress={() => setUnreadOnly(true)}
-            style={[s.quickFilterChip, { borderColor: unreadOnly ? accent : theme.border, backgroundColor: unreadOnly ? accent + '18' : 'transparent' }]}
-          >
-            <Text style={{ color: unreadOnly ? accent : theme.textMuted, fontSize: 13, fontWeight: '700' }}>{t('filter_unread_only')}</Text>
-          </TouchableOpacity>
+        <View style={s.dealTabsWrap}>
+          <SegmentTabs items={dealTabs} value={dealTab} onChange={setDealTab} accent={accent} variant="underline" />
         </View>
       ) : null}
 
@@ -677,8 +675,7 @@ const s = StyleSheet.create({
   search: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 12, marginBottom: 8, paddingHorizontal: 12, height: 44, borderRadius: 12, borderWidth: 1 },
   searchInput: { flex: 1, fontSize: 14, paddingVertical: 0 },
   // Компактные фильтры Все/Непрочитанные (05.08.2026, п.3 — заменили шторку)
-  quickFilterRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 12, marginBottom: 8 },
-  quickFilterChip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, borderWidth: 1.5 },
+  dealTabsWrap: { paddingHorizontal: 12 },
   // Карточки
   card: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1, marginBottom: 8, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
   avatar: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
