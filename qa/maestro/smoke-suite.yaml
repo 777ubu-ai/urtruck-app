@@ -1,0 +1,10 @@
+appId: host.exp.Exponent
+name: UrTruck Maestro smoke suite
+tags:
+  - smoke
+  - release
+---
+- runFlow: _obsolete/driver-tabs.yaml
+- runFlow: client-tabs.yaml
+- runFlow: _obsolete/profile-queue-chats.yaml
+- runFlow: verification-render.yaml
