@@ -10,54 +10,40 @@ const { defineConfig } = require('@playwright/test');
 const path = require('path');
 
 const AGENTS_DIR = path.resolve(__dirname, 'agents');
+const captureAll = process.env.QA_CAPTURE_ALL === '1';
 
 module.exports = defineConfig({
   testDir: AGENTS_DIR,
   timeout: 120000,
   workers: 1,
   retries: 0,
-  reporter: [['list']],
+  reporter: [['list'], ['html', { outputFolder: 'playwright-report/desktop', open: 'never' }]],
   globalSetup: require.resolve('./utils/qaGlobalSetup.js'),
   use: {
     headless: true,
     viewport: { width: 1440, height: 900 },
     ignoreHTTPSErrors: true,
-    screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
-    trace: 'retain-on-failure',
+    screenshot: captureAll ? 'on' : 'only-on-failure',
+    video: captureAll ? 'on' : 'retain-on-failure',
+    trace: captureAll ? 'on-first-retry' : 'retain-on-failure',
     locale: 'ru-RU',
     timezoneId: 'Asia/Almaty',
   },
-  // Order matters: serik publishes a route → boris responds → auditor audits.
-  // trip-clicks runs standalone: it doesn't depend on QA state and is the
-  // first thing the operator typically wants to see when a "white screen"
-  // bug is reported in the field.
   projects: [
-    // Bargain: сквозной торг через API (без UI/симулятора). Самостоятельный —
-    // сам поднимает сессии через /qa/ensure-actor, зависимостей нет.
     { name: 'bargain',         testMatch: /bargain\.flow\.spec\.js$/ },
     { name: 'serik',           testMatch: /serik\.driver\.spec\.js$/ },
     { name: 'boris',           testMatch: /boris\.shipper\.spec\.js$/, dependencies: ['serik'] },
     { name: 'cargo-currency',  testMatch: /cargo\.currency\.spec\.js$/ },
     { name: 'preview-gate',    testMatch: /preview\.gate\.spec\.js$/ },
     { name: 'ui-smoke',        testMatch: /ui\.smoke\.spec\.js$/ },
-    // Stage 35: гард на удаление старой регистрации.
     { name: 'premium-reg',     testMatch: /premium\.registration\.spec\.js$/ },
-    // Stage 37: гард на premium login + session persistence.
     { name: 'premium-login',   testMatch: /premium\.login\.spec\.js$/ },
-    // Stage 38: full E2E regression auth + registration.
     { name: 'full-auth',       testMatch: /full\.auth\.regression\.spec\.js$/ },
-    // Stage 41: classic auth logic lock — register vs login разделены.
     { name: 'auth-lock',       testMatch: /auth\.logic\.lock\.spec\.js$/ },
-    // Stage 42: cargo description ручной ввод.
     { name: 'cargo-desc',      testMatch: /cargo\.description\.spec\.js$/ },
-    // Stage 42: visual screenshots всех экранов на 3 viewport'ах.
     { name: 'visual',          testMatch: /visual\.screenshots\.spec\.js$/ },
-    // Stage 45: гостевой режим (filters + language switch).
     { name: 'guest-mode',      testMatch: /guest\.mode\.spec\.js$/ },
-    // Stage 46: phone input работает с любой клавиатурой (KZ/RU/EN/CN).
     { name: 'phone-keyboard',  testMatch: /phone\.input\.keyboard\.spec\.js$/ },
-    // Stage 49: RoleScreen перерисовка при смене языка + новые CTA.
     { name: 'role-i18n',       testMatch: /role\.i18n\.spec\.js$/ },
     { name: 'trip-clicks',         testMatch: /trip\.detail\.clicks\.spec\.js$/ },
     { name: 'shipper-trip-crash',  testMatch: /shipper\.trip\.crash\.spec\.js$/ },

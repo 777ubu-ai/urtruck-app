@@ -1,0 +1,182 @@
+name: UrTruck Full QA Audit
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: full-qa-audit-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  api-and-backend:
+    name: API and backend regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest pytest-json-report
+      - name: Run every backend/API module in isolation
+        env:
+          PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/backend
+          APP_ENV: test
+        run: |
+          set -euo pipefail
+          python -m compileall -q backend
+          mkdir -p qa-artifacts/backend-json qa-artifacts/backend-logs
+          count=0
+          failed=0
+          while IFS= read -r test_file; do
+            count=$((count + 1))
+            stem="$(basename "$test_file" .py)"
+            db_path="${{ runner.temp }}/urtruck-full-qa-${count}.db"
+            rm -f "$db_path" "$db_path-wal" "$db_path-shm"
+            echo "::group::${stem}"
+            set +e
+            if grep -Eq '^def test_' "$test_file"; then
+              DB_PATH="$db_path" URTRUCK_DB_PATH="$db_path" \
+                pytest "$test_file" -q --disable-warnings --maxfail=25 \
+                --json-report --json-report-file="qa-artifacts/backend-json/${stem}.json" \
+                2>&1 | tee "qa-artifacts/backend-logs/${stem}.log"
+              rc=${PIPESTATUS[0]}
+            else
+              DB_PATH="$db_path" URTRUCK_DB_PATH="$db_path" \
+                python "$test_file" 2>&1 | tee "qa-artifacts/backend-logs/${stem}.log"
+              rc=${PIPESTATUS[0]}
+            fi
+            set -e
+            echo "::endgroup::"
+            if [ "$rc" -ne 0 ]; then failed=$((failed + 1)); fi
+          done < <(find backend/tests -maxdepth 1 -type f -name 'test_*.py' | sort)
+          printf '{"modules":%s,"failed_modules":%s}\n' "$count" "$failed" > qa-artifacts/backend-summary.json
+          test "$count" -gt 0
+          test "$failed" -eq 0
+      - name: Upload backend reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-qa-backend-${{ github.sha }}
+          path: qa-artifacts/backend-*
+          if-no-files-found: warn
+          retention-days: 21
+
+  web-pwa-visual:
+    name: Playwright web and PWA visual audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Install dependencies and Chromium
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Build production web app
+        env:
+          CI: 'true'
+        run: npm run build:web
+      - name: Start local production server
+        run: |
+          npx serve dist -l 4173 > /tmp/urtruck-serve.log 2>&1 &
+          npx wait-on http://127.0.0.1:4173
+      - name: Run desktop and mobile Playwright suites
+        env:
+          E2E_BASE_URL: http://127.0.0.1:4173
+          QA_BASE_URL: http://127.0.0.1:4173
+          QA_CAPTURE_ALL: '1'
+        run: |
+          mkdir -p qa-artifacts/playwright
+          set +e
+          timeout --signal=TERM --kill-after=30s 15m npx playwright test --config qa/playwright.config.js
+          desktop_rc=$?
+          timeout --signal=TERM --kill-after=30s 12m npx playwright test --config qa/playwright.mobile.config.js
+          mobile_rc=$?
+          set -e
+          printf '{"desktop_exit":%s,"mobile_exit":%s}\n' "$desktop_rc" "$mobile_rc" > qa-artifacts/playwright/summary.json
+          test "$desktop_rc" -eq 0
+          test "$mobile_rc" -eq 0
+      - name: Upload screenshots, video, traces and HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-qa-playwright-${{ github.sha }}
+          path: |
+            playwright-report
+            test-results
+            qa-artifacts
+            /tmp/urtruck-serve.log
+          if-no-files-found: warn
+          retention-days: 21
+
+  maestro-mobile-contract:
+    name: Maestro mobile scenarios and release contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate every Maestro flow
+        run: |
+          set -euo pipefail
+          ruby -e 'require "yaml"; Dir["qa/maestro/**/*.{yml,yaml}"].sort.each { |p| YAML.load_stream(File.read(p)); puts "YAML OK #{p}" }'
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          root = Path('qa/maestro')
+          for suite in root.glob('*suite*.yaml'):
+              refs = re.findall(r'runFlow:\s*([^\s#]+)', suite.read_text(encoding='utf-8'))
+              missing = [r for r in refs if not (root / r).is_file()]
+              if missing:
+                  raise SystemExit(f'{suite}: missing flows {missing}')
+              print(suite, '->', len(refs), 'flows')
+          PY
+      - name: Upload Maestro scenarios
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-qa-maestro-${{ github.sha }}
+          path: qa/maestro
+          retention-days: 21
+
+  design-and-logic-gate:
+    name: Design, FSM and UX gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run QA Center checks
+        run: npm run qa:center:quick
+      - name: Run frontend unit regressions
+        run: |
+          node --experimental-loader ./tests/frontend/loader.mjs --test tests/frontend/*.mjs
+      - name: Archive production build and QA definitions
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-qa-design-logic-${{ github.sha }}
+          path: |
+            dist
+            qa
+          if-no-files-found: warn
+          retention-days: 21
