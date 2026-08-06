@@ -1,7 +1,7 @@
 """Production-like migration regression suite.
 
 Builds a legacy SQLite database using the pre-audit push/notification schemas,
-imports the current migration code, and verifies that startup upgrades are
+runs the current migration code, and verifies that startup upgrades are
 additive, idempotent, and preserve existing production rows.
 """
 import os
@@ -9,9 +9,9 @@ import sqlite3
 import sys
 from pathlib import Path
 
+import pytest
+
 TEST_DB = os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_production_like_migrations.db")
-for suffix in ("", "-wal", "-shm"):
-    Path(TEST_DB + suffix).unlink(missing_ok=True)
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
@@ -67,26 +67,49 @@ CREATE TABLE notifications (
 );
 """
 
-with sqlite3.connect(TEST_DB) as conn:
-    conn.executescript(LEGACY_SCHEMA)
-    conn.execute(
-        "INSERT INTO push_subscriptions(user_id,endpoint,p256dh,auth,user_agent) VALUES(?,?,?,?,?)",
-        ("legacy-user", "https://legacy.example/sub", "legacy-p", "legacy-a", "legacy-browser"),
-    )
-    conn.execute(
-        "INSERT INTO push_tokens_native(user_id,token,provider,platform,device_name) VALUES(?,?,?,?,?)",
-        ("legacy-user", "ExponentPushToken[legacy-row]", "expo", "android", "Legacy Phone"),
-    )
-    conn.execute(
-        "INSERT INTO notifications(user_id,type,title,url) VALUES(?,?,?,?)",
-        ("legacy-user", "legacy", "Legacy notification", "/cargos/legacy"),
-    )
-    conn.commit()
-
-# Importing these modules executes the real startup migrations.
+# Imported during collection. The module fixture below deliberately rebuilds a
+# legacy schema *after* the repository-wide session fixture has initialized its
+# clean test DB, then explicitly reruns these real migrations.
 import api.push as push_api
 import api.notifications as notifications_api
 from database.db import get_conn
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _legacy_database_after_session_harness():
+    """Seed legacy rows after tests/conftest.py finishes its session reset.
+
+    The global harness intentionally unlinks and recreates the SQLite database
+    before the suite starts. Seeding at module-import time therefore loses the
+    legacy rows. A module fixture runs later, making this test independent of
+    pytest collection/import order while still exercising the real migrations.
+    """
+    with sqlite3.connect(TEST_DB) as conn:
+        conn.executescript("""
+            DROP TABLE IF EXISTS push_token_audit;
+            DROP TABLE IF EXISTS push_subscriptions;
+            DROP TABLE IF EXISTS push_tokens_native;
+            DROP TABLE IF EXISTS push_log;
+            DROP TABLE IF EXISTS notifications;
+        """)
+        conn.executescript(LEGACY_SCHEMA)
+        conn.execute(
+            "INSERT INTO push_subscriptions(user_id,endpoint,p256dh,auth,user_agent) VALUES(?,?,?,?,?)",
+            ("legacy-user", "https://legacy.example/sub", "legacy-p", "legacy-a", "legacy-browser"),
+        )
+        conn.execute(
+            "INSERT INTO push_tokens_native(user_id,token,provider,platform,device_name) VALUES(?,?,?,?,?)",
+            ("legacy-user", "ExponentPushToken[legacy-row]", "expo", "android", "Legacy Phone"),
+        )
+        conn.execute(
+            "INSERT INTO notifications(user_id,type,title,url) VALUES(?,?,?,?)",
+            ("legacy-user", "legacy", "Legacy notification", "/cargos/legacy"),
+        )
+        conn.commit()
+
+    push_api._init_schema()
+    notifications_api._init()
+    yield
 
 
 def _columns(table):
