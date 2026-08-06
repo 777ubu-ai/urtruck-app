@@ -1,0 +1,81 @@
+name: UrTruck QA Center
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: qa-center-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quick-gate:
+    name: QA Center quick gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run static, UX and production-build checks
+        run: npm run qa:center:quick
+      - name: Upload web build
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-center-web-build-${{ github.sha }}
+          path: dist
+          if-no-files-found: warn
+          retention-days: 7
+
+  maestro-contract:
+    name: Maestro flow contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Maestro YAML syntax and referenced flows
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruby -e '
+            require "yaml"
+            Dir["qa/maestro/**/*.{yml,yaml}"].sort.each do |path|
+              YAML.load_stream(File.read(path))
+              puts "YAML OK #{path}"
+            end
+          '
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          root = Path('qa/maestro')
+          suite = root / 'smoke-suite.yaml'
+          text = suite.read_text(encoding='utf-8')
+          refs = re.findall(r'runFlow:\s*([^\s#]+)', text)
+          if not refs:
+              raise SystemExit('smoke-suite.yaml has no runFlow entries')
+          missing = [ref for ref in refs if not (root / ref).is_file()]
+          if missing:
+              raise SystemExit(f'Missing Maestro flows: {missing}')
+          print('Maestro smoke suite references:', ', '.join(refs))
+          PY
+      - name: Archive Maestro contracts
+        uses: actions/upload-artifact@v4
+        with:
+          name: maestro-contracts-${{ github.sha }}
+          path: |
+            qa/maestro/*.yaml
+            qa/maestro/*.yml
+            qa/maestro/README.md
+            qa/README.md
+          if-no-files-found: error
+          retention-days: 14
