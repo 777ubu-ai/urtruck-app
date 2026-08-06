@@ -67,6 +67,25 @@ CREATE TABLE IF NOT EXISTS deal_events (
 CREATE INDEX IF NOT EXISTS idx_deal_events_deal ON deal_events(deal_id);
 CREATE INDEX IF NOT EXISTS idx_deal_events_conv ON deal_events(conversation_id);
 
+-- RC1: защита immutable timeline от повторного одного и того же перехода.
+-- На телефоне дублировалось «Рейс начался», когда один статус успевал прийти
+-- через два серверных пути. Старые события не удаляем; новые точные дубли
+-- (тот же deal + event_type + payload) тихо игнорируются на уровне БД.
+CREATE TRIGGER IF NOT EXISTS trg_deal_events_dedupe_status
+BEFORE INSERT ON deal_events
+WHEN NEW.event_type = 'deal.status_changed'
+ AND NEW.deal_id IS NOT NULL
+ AND EXISTS (
+    SELECT 1
+    FROM deal_events e
+    WHERE e.deal_id = NEW.deal_id
+      AND e.event_type = NEW.event_type
+      AND COALESCE(e.payload_json, '') = COALESCE(NEW.payload_json, '')
+ )
+BEGIN
+    SELECT RAISE(IGNORE);
+END;
+
 -- Эскалация в поддержку (future-ready; support как 3-й участник).
 CREATE TABLE IF NOT EXISTS support_escalations (
     id                       TEXT PRIMARY KEY,
