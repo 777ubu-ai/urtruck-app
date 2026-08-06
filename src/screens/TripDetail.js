@@ -12,7 +12,7 @@ import { localizePlace } from '../utils/places';
 import GradientText from '../components/GradientText';
 import ShareModal from '../components/ShareModal';
 import { routeStats } from '../utils/geo';
-import { removeTrip, advanceTripState, TRIP_STATES, TRIP_STATE_INFO } from '../utils/store';
+import { TRIP_STATES, TRIP_STATE_INFO } from '../utils/store';
 import { useVerificationGate } from '../components/VerificationGate';
 import { LEVELS, useAuth } from '../utils/AuthContext';
 import BidModal from '../components/BidModal';
@@ -530,7 +530,7 @@ export default function TripDetail({ navigation, route }) {
         rightTestID="trip-share-btn"
       />
 
-      <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 0, paddingBottom: 60 + insets.bottom }}>
+      <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 0, paddingBottom: 96 + insets.bottom }}>
         {/* Stage 17: leading 🚛 dropped to match Stage 16's quiet
             language across detail titles. */}
         <Text style={s.pageTitle}>{t('trip_title')}</Text>
@@ -814,14 +814,6 @@ export default function TripDetail({ navigation, route }) {
                     <Text style={{ color: info.color, fontSize: 11, marginTop: 2 }}>{t('trip_current_status')}</Text>
                   )}
                 </View>
-                {isOwner && !passed && i === currentIdx + 1 && (
-                  <TouchableOpacity
-                    style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, backgroundColor: info.color }}
-                    onPress={() => advanceTripState(trip.id, st)}
-                  >
-                    <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '700' }}>{t('trip_mark')}</Text>
-                  </TouchableOpacity>
-                )}
               </View>
             );
           })}
