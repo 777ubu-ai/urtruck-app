@@ -15,21 +15,6 @@ const pick = (...vals) => {
   return null;
 };
 
-// Stage 9: scrub QA / debug / development markers from any user-visible
-// string before it lands on a card or detail screen. The QA agents
-// tag every record they create with a run-id token like `[ar-rmoxxxx]`
-// and sometimes prefix descriptions with the test name itself
-// (`currency-regression …`, `Direct probe …`, `agent-boris …`). These
-// strings are useful for QA correlation but should never reach a
-// real user.
-//
-// Backend keeps the tags in cargo_desc / from_city / to_city so the
-// QA cleanup script can find and delete the records. Frontend strips
-// them for display only.
-//
-// The regex is conservative — it only deletes the markers themselves
-// and collapses the resulting double spaces. Adjacent meaningful text
-// stays intact.
 const PUBLIC_TRASH = /\s*\[ar-[a-z0-9]+\]\s*|\bcurrency-regression\b\s*|\bagent-[a-z0-9-]+\b\s*|\bDirect probe\b\s*/gi;
 export const sanitizeForDisplay = (s) => {
   if (s === null || s === undefined) return s;
@@ -41,35 +26,40 @@ export const sanitizeForDisplay = (s) => {
     .trim();
 };
 
-// Currency utilities. The server stores `currency` as ISO code; UI shows
-// a symbol next to the price. Default to USD when missing — matches DB
-// migration (ALTER TABLE … ADD COLUMN currency TEXT DEFAULT 'USD').
 export const CURRENCY_SYMBOLS = { USD: '$', KZT: '₸', RUB: '₽', CNY: '¥', UZS: 'сўм', KGS: 'сом' };
 
+// Legacy data contains ISO codes, symbols and several textual aliases. Keep a
+// single canonical ISO currency everywhere so list/detail/bid screens cannot
+// disagree because one path received "₸" and another received "KZT".
+const CURRENCY_ALIASES = {
+  '$': 'USD', US$: 'USD', USD: 'USD', DOLLAR: 'USD', DOLLARS: 'USD',
+  '₸': 'KZT', KZT: 'KZT', ТГ: 'KZT', ТЕНГЕ: 'KZT', TENGE: 'KZT',
+  '₽': 'RUB', RUB: 'RUB', РУБ: 'RUB', РУБЛЬ: 'RUB', RUBLE: 'RUB',
+  '¥': 'CNY', '￥': 'CNY', CNY: 'CNY', RMB: 'CNY', ЮАНЬ: 'CNY', YUAN: 'CNY',
+  UZS: 'UZS', СУМ: 'UZS', SUM: 'UZS',
+  KGS: 'KGS', СОМ: 'KGS', SOM: 'KGS',
+};
+
+export const normalizeCurrency = (currency, fallback = 'USD') => {
+  const raw = String(currency || '').trim().toUpperCase();
+  return CURRENCY_ALIASES[raw] || (CURRENCY_SYMBOLS[raw] ? raw : fallback);
+};
+
 export const formatPrice = (amount, currency, t) => {
-  const cur = (currency || 'USD').toUpperCase();
-  const sym = CURRENCY_SYMBOLS[cur] || '$';
-  if (!amount || Number(amount) <= 0) {
+  const cur = normalizeCurrency(currency);
+  const sym = CURRENCY_SYMBOLS[cur];
+  const numeric = Number(amount);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
     return t ? t('payment_negotiable') : 'По договорённости';
   }
-  // Group thousands without using Intl (web safari quirks).
-  const n = String(Math.round(Number(amount))).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-  // Symbol prefix for $/₸/₽/¥; suffix for сўм/сом (UZS/KGS).
+  const n = String(Math.round(numeric)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   return cur === 'UZS' || cur === 'KGS' ? `${n} ${sym}` : `${sym}${n}`;
 };
 
-// Canonical Trip:
-//   id, from, to, transit, departure, arrival,
-//   truckType, capacityTons, availableM3,
-//   price, currency, driverId, driverName, driverPhone,
-//   status, createdAt, isTrip: true
 export const normalizeTrip = (raw) => {
   if (!raw) return null;
   return {
     id: raw.id || raw.trip_id || null,
-    // Stage 50 (Bug 10): добавлен fallback на структурированный
-    // from_point_name/to_point_name — если backend вернул пустые
-    // from_city/to_city, карточка не показывает "—".
     from: pick(raw.from_city, raw.from, raw.fromCity, raw.from_point_name),
     to: pick(raw.to_city, raw.to, raw.toCity, raw.to_point_name),
     transit: pick(raw.transit, raw.transitCity, raw.transit_city),
@@ -79,7 +69,7 @@ export const normalizeTrip = (raw) => {
     capacityTons: raw.capacity_tons ?? raw.capacityTons ?? raw.tons ?? null,
     availableM3: raw.available_m3 ?? raw.availableM3 ?? raw.m3 ?? raw.available_volume_m3 ?? null,
     price: raw.price ?? null,
-    currency: pick(raw.currency, 'USD'),
+    currency: normalizeCurrency(raw.currency),
     driverId: pick(raw.driver_id, raw.driverId),
     driverName: pick(raw.driver_name, raw.driverName, raw.name),
     driverPhone: pick(raw.driver_phone, raw.driverPhone, raw.phone),
@@ -94,11 +84,6 @@ export const normalizeTrip = (raw) => {
   };
 };
 
-// Canonical Cargo:
-//   id, from, to, cargoDesc, cargoType,
-//   weightTons, volumeM3, price, pickupDate,
-//   ownerId, ownerName, ownerPhone,
-//   bidsCount, status, createdAt, photos, isMine
 export const normalizeCargo = (raw) => {
   if (!raw) return null;
   const photosRaw = raw.photos || raw.photo || [];
@@ -115,7 +100,7 @@ export const normalizeCargo = (raw) => {
     volumeM3: raw.volume_m3 ?? raw.volumeM3 ?? raw.m3 ?? null,
     price: raw.price ?? null,
     pickupDate: pick(raw.pickup_date, raw.pickupDate, raw.pickup),
-    currency: pick(raw.currency, 'USD'),
+    currency: normalizeCurrency(raw.currency),
     ownerId: pick(raw.owner_id, raw.ownerId),
     ownerName: pick(raw.owner_name, raw.ownerName, raw.name),
     ownerPhone: pick(raw.owner_phone, raw.ownerPhone, raw.phone),
@@ -131,17 +116,8 @@ export const normalizeCargo = (raw) => {
 export const cargoDisplay = (cargo, t) => {
   const dash = (t && t('not_specified')) || 'Не указано';
   const typeLabel = cargo?.cargoType ? (t ? t(cargo.cargoType) : cargo.cargoType) : null;
-  // Stage 17/20: weight and volume ship as two separate display
-  // fields. Detail screens render them as two distinct rows so a
-  // missing volume doesn't shadow the present weight (and vice
-  // versa). The legacy combined `weightVol` field was kept around
-  // for backward-compat but no caller reads it any more, so it's
-  // gone from the display object too.
   const weight = cargo?.weightTons > 0 ? `${cargo.weightTons} т` : dash;
   const volume = cargo?.volumeM3 > 0 ? `${cargo.volumeM3} м³` : dash;
-  // Stage 9: scrub QA markers / agent ids / currency-regression
-  // labels from any text we surface to the user. The source row may
-  // still carry them so the QA cleanup script can find the record.
   return {
     from: sanitizeForDisplay(cargo?.from) || dash,
     to: sanitizeForDisplay(cargo?.to) || dash,
@@ -155,13 +131,9 @@ export const cargoDisplay = (cargo, t) => {
   };
 };
 
-// Display-time helper: converts canonical fields to UI strings with safe
-// fallbacks. Use in detail screens so "—" only shows for genuinely missing
-// fields, not for transient state during normalization.
 export const tripDisplay = (trip, t) => {
   const dash = (t && t('not_specified')) || 'Не указано';
   const truck = trip?.truckType ? (t ? t(trip.truckType) : trip.truckType) : dash;
-  // Stage 9: same sanitiser pass for trip detail display.
   return {
     from: sanitizeForDisplay(trip?.from) || dash,
     to: sanitizeForDisplay(trip?.to) || dash,
