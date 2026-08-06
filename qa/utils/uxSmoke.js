@@ -110,8 +110,8 @@ if (/\brespond:\s*'/.test(i18nSrc)) {
   if (/import CityInput/.test(editTrip)) {
     failures.push('EditTripScreen still imports legacy CityInput (should use RoutePointPicker)');
   }
-  if (!/import RoutePointPicker/.test(editTrip)) {
-    failures.push('EditTripScreen does not import RoutePointPicker');
+  if (!/import (RoutePointPicker|LocationPickerModal)/.test(editTrip)) {
+    failures.push('EditTripScreen does not import the structured route picker');
   }
   if (/placeholder="20"/.test(editTrip) || /placeholder="82"/.test(editTrip)) {
     failures.push('EditTripScreen kept literal "20"/"82" placeholders');

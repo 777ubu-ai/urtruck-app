@@ -40,11 +40,17 @@ export function subscribeOutbox(cb) {
   return () => listeners.delete(cb);
 }
 
-export async function enqueueOutbox(item) {
+export async function enqueueOutbox(item, userId) {
   // item: { clientId, payload }  (payload — аргументы chatAPI.send)
+  // userId (Блок 2, P1-5): владелец записи — чья это была сессия в момент
+  // постановки в очередь. Без этого поля flushOutbox не может отличить
+  // «мои неотправленные сообщения» от «сообщения предыдущего пользователя
+  // на этом же устройстве» и раньше отправлял всё подряд под ЛЮБЫМ
+  // залогиненным юзером (App.js гонял flush по факту hasToken, без проверки
+  // владельца).
   const arr = await _load();
   if (arr.some((x) => x.clientId === item.clientId)) return;  // уже в очереди
-  arr.push({ clientId: item.clientId, payload: item.payload, ts: Date.now() });
+  arr.push({ clientId: item.clientId, payload: item.payload, userId: userId || null, ts: Date.now() });
   await _save(arr);
 }
 
@@ -55,11 +61,19 @@ export async function outboxCount() {
 // Прогон очереди. sendFn(payload) должен бросать при неуспехе.
 // Возвращает число успешно отправленных. При первой сетевой ошибке
 // останавливаемся (сеть, вероятно, недоступна) — порядок сохраняется.
-export async function flushOutbox(sendFn) {
+//
+// activeUserId (Блок 2, P1-5): отправляем ТОЛЬКО записи текущего активного
+// пользователя. Запись без userId — legacy (поставлена в очередь до этого
+// фикса) — трактуем как принадлежащую текущему юзеру (иначе она застряла
+// бы в очереди навсегда). Запись с ЧУЖИМ userId — не трогаем и не удаляем
+// («карантин»): она уедет либо когда её реальный владелец снова
+// залогинится, либо будет явно вычищена в signOut (см. clearOutbox).
+export async function flushOutbox(sendFn, activeUserId) {
   let arr = await _load();
   if (!arr.length) return 0;
   let sent = 0;
   for (const item of [...arr]) {
+    if (item.userId && activeUserId && item.userId !== activeUserId) continue;
     try {
       await sendFn(item.payload);          // success или deduped (backend) — оба ок
       arr = arr.filter((x) => x.clientId !== item.clientId);
@@ -70,4 +84,18 @@ export async function flushOutbox(sendFn) {
     }
   }
   return sent;
+}
+
+/** Блок 2 (P1-5): полная очистка outbox — вызывается при logout, чтобы
+ * недоотправленные сообщения вышедшего пользователя не «дожили» и не
+ * ушли под следующей сессией на этом устройстве. */
+export async function clearOutbox() {
+  await _save([]);
+}
+
+/** То же, но только записи конкретного владельца (используется, если
+ * когда-нибудь понадобится точечная очистка без потери чужих записей). */
+export async function clearOutboxForUser(userId) {
+  const arr = await _load();
+  await _save(arr.filter((x) => x.userId !== userId));
 }

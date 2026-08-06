@@ -47,9 +47,12 @@ FCM_MOCK = not FCM_SERVER_KEY
 
 # ───────────────────────── Storage helpers ─────────────────────────
 def _web_subs(user_id: str) -> list[dict]:
+    # P0-1/P1-3/P1-4: только active=1 — деактивированные (logout, отписка,
+    # угон-конфликт разрешён в пользу другого владельца) сюда не попадают.
     with get_conn() as c:
         rows = c.execute(
-            "SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ?",
+            "SELECT endpoint, p256dh, auth FROM push_subscriptions "
+            "WHERE user_id = ? AND (active = 1 OR active IS NULL)",
             (user_id,),
         ).fetchall()
     return [dict(r) for r in rows]
@@ -58,7 +61,8 @@ def _web_subs(user_id: str) -> list[dict]:
 def _native_tokens(user_id: str) -> list[dict]:
     with get_conn() as c:
         rows = c.execute(
-            "SELECT token, provider, platform FROM push_tokens_native WHERE user_id = ?",
+            "SELECT token, provider, platform FROM push_tokens_native "
+            "WHERE user_id = ? AND (active = 1 OR active IS NULL)",
             (user_id,),
         ).fetchall()
     return [dict(r) for r in rows]
@@ -111,9 +115,17 @@ def _send_web(user_id: str, title: str, body: str, data: dict, url: str) -> int:
             # 404/410 — подписка мёртвая, чистим
             status = getattr(e.response, "status_code", 0) if e.response else 0
             if status in (404, 410):
+                # Блок 1 (P0-1 модель): деактивируем, а не удаляем — сохраняем
+                # аудит-след и не даём "мёртвой" строке молча ожить при
+                # переиспользовании того же endpoint другим владельцем без
+                # прохождения через _resolve_ownership.
                 with get_conn() as c:
-                    c.execute("DELETE FROM push_subscriptions WHERE endpoint = ?", (sub["endpoint"],))
-                log.info(f"dead sub removed: {sub['endpoint'][:60]}")
+                    c.execute(
+                        "UPDATE push_subscriptions SET active = 0, invalidated_at = CURRENT_TIMESTAMP, "
+                        "invalidated_reason = 'webpush_dead' WHERE endpoint = ?",
+                        (sub["endpoint"],),
+                    )
+                log.info(f"dead sub deactivated: {sub['endpoint'][:60]}")
             else:
                 log.warning(f"webpush err {status}: {e}")
         except Exception as e:
@@ -166,9 +178,15 @@ def _send_expo(tokens: list[str], title: str, body: str, data: dict, badge: Opti
                 if err in ("DeviceNotRegistered", "InvalidCredentials"):
                     dead.append(tokens[i])
         if dead:
+            # Блок 1 (P0-1 модель): деактивируем, а не удаляем — см. комментарий
+            # в _send_web выше.
             with get_conn() as c:
                 for d in dead:
-                    c.execute("DELETE FROM push_tokens_native WHERE token = ?", (d,))
+                    c.execute(
+                        "UPDATE push_tokens_native SET active = 0, invalidated_at = CURRENT_TIMESTAMP, "
+                        "invalidated_reason = 'expo_device_not_registered' WHERE token = ?",
+                        (d,),
+                    )
         sent = sum(1 for tk in tickets if isinstance(tk, dict) and tk.get("status") == "ok")
         return sent
     except Exception as e:
@@ -229,11 +247,15 @@ def _compute_recipient_badge(user_id: str) -> int:
     try:
         with get_conn() as c:
             try:
+                # Блок 5 аудита (P1-1, вариант B): system-сообщения исключены
+                # — тот же фильтр, что в api/chat.py unread_count(), иначе
+                # APNs-бейдж на иконке расходился бы с in-app бейджем
+                # «Сделки» (двойной счёт одного события).
                 row = c.execute(
                     "SELECT COUNT(*) FROM chat_messages m "
                     "JOIN chat_rooms r ON r.id = m.room_id "
                     "WHERE (r.participant_1 = ? OR r.participant_2 = ?) "
-                    "AND m.sender_id != ? AND m.is_read = 0",
+                    "AND m.sender_id != ? AND m.sender_id != 'system' AND m.is_read = 0",
                     (user_id, user_id, user_id),
                 ).fetchone()
                 total += int(row[0]) if row else 0

@@ -1,12 +1,10 @@
 """Storage service — локальный FS (default) + Supabase/S3 (optional).
 
 Provider выбирается через env STORAGE_PROVIDER=local|supabase|s3.
-
-local: сохраняет в /home/ubuntu/urtruck-security/storage/<category>/<uuid>.jpg
-supabase: upload в bucket через Supabase Storage REST API
-s3: boto3 upload в S3
 """
 import os
+import re
+import tempfile
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -15,8 +13,15 @@ import httpx
 
 PROVIDER = os.getenv("STORAGE_PROVIDER", "local")
 
-# Local
-LOCAL_ROOT = Path(os.getenv("STORAGE_LOCAL_ROOT", "/home/ubuntu/urtruck-security/storage"))
+# Local. Production keeps the existing server path. Tests, CI and local
+# development use a writable temporary directory unless explicitly configured.
+_env = os.getenv("ENV", os.getenv("APP_ENV", "production")).strip().lower()
+_default_root = (
+    Path(tempfile.gettempdir()) / "urtruck-storage"
+    if _env in {"test", "testing", "dev", "development", "local", "ci"}
+    else Path("/home/ubuntu/urtruck-security/storage")
+)
+LOCAL_ROOT = Path(os.getenv("STORAGE_LOCAL_ROOT", str(_default_root))).expanduser()
 LOCAL_PUBLIC_BASE = os.getenv("STORAGE_LOCAL_PUBLIC_BASE", "/security/storage")
 
 # Supabase
@@ -28,13 +33,32 @@ SUPABASE_BUCKET = os.getenv("SUPABASE_BUCKET", "urtruck-docs")
 S3_BUCKET = os.getenv("S3_BUCKET", "")
 S3_REGION = os.getenv("S3_REGION", "eu-central-1")
 
+_SAFE_SEGMENT_RE = re.compile(r"[^A-Za-z0-9_-]+")
+_SAFE_EXT_RE = re.compile(r"[^A-Za-z0-9]+")
+
+
+def _safe_segment(value: str, fallback: str) -> str:
+    cleaned = _SAFE_SEGMENT_RE.sub("-", str(value or "").strip()).strip("-_")
+    return cleaned[:64] or fallback
+
+
+def _safe_ext(value: str) -> str:
+    cleaned = _SAFE_EXT_RE.sub("", str(value or "").strip().lstrip(".")).lower()
+    return cleaned[:10] or "jpg"
+
 
 def _gen_key(category: str, ext: str = "jpg") -> str:
-    return f"{category}/{uuid.uuid4().hex}.{ext}"
+    """Generate a storage key without allowing caller-controlled path parts."""
+    return f"{_safe_segment(category, 'uploads')}/{uuid.uuid4().hex}.{_safe_ext(ext)}"
 
 
 def _save_local(data: bytes, key: str) -> str:
-    full_path = LOCAL_ROOT / key
+    root = LOCAL_ROOT.resolve()
+    full_path = (root / key).resolve()
+    try:
+        full_path.relative_to(root)
+    except ValueError as exc:
+        raise ValueError("Недопустимый путь хранения") from exc
     full_path.parent.mkdir(parents=True, exist_ok=True)
     full_path.write_bytes(data)
     return f"{LOCAL_PUBLIC_BASE}/{key}"
@@ -73,13 +97,24 @@ def save_image(data: bytes, category: str, ext: str = "jpg") -> str:
 
 
 def get_local_path(url_or_path: str) -> Optional[str]:
-    """Преобразует public URL обратно в локальный путь (для OCR/liveness)."""
+    """Преобразует public URL обратно в локальный путь (для OCR/liveness).
+
+    Public storage URLs are untrusted input. Resolve them and require the
+    result to remain inside LOCAL_ROOT so encoded/explicit ``..`` segments
+    cannot expose arbitrary server files.
+    """
     if not url_or_path:
         return None
     if url_or_path.startswith(LOCAL_PUBLIC_BASE):
         rel = url_or_path[len(LOCAL_PUBLIC_BASE):].lstrip("/")
-        return str(LOCAL_ROOT / rel)
-    return url_or_path  # если это уже локальный путь
+        root = LOCAL_ROOT.resolve()
+        candidate = (root / rel).resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError:
+            return None
+        return str(candidate)
+    return url_or_path
 
 
 def info() -> dict:

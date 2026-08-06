@@ -9,6 +9,40 @@ const BASE = `${API_BASE}/push`;
 const TOKEN_KEY = 'ur_reg_token';
 const PUSH_ASKED = 'ur_push_asked';
 const NATIVE_TOKEN_KEY = 'ur_push_native_token';
+// P0-1 (аудит push-безопасности): технический идентификатор устройства —
+// НЕ секрет, НЕ user_id, НЕ сам push-токен. Генерируется один раз и живёт
+// в storage постоянно (переживает logout/login — это "глобальная" настройка
+// устройства, а не пользователя, см. Блок 2 п.5 плана исправлений). Backend
+// использует его, чтобы отличить «тот же физический телефон сменил
+// пользователя» (легитимно) от «кто-то узнал чужой токен» (блокируется).
+const DEVICE_ID_KEY = 'ur_device_id';
+
+function _uuidv4() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    try { return crypto.randomUUID(); } catch {}
+  }
+  // device_id не секрет — Math.random-фоллбэк достаточен там, где
+  // crypto.randomUUID недоступен (старые WebView/RN JS-движки).
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+async function getOrCreateDeviceId() {
+  let id = await storage.get(DEVICE_ID_KEY);
+  if (!id) {
+    id = _uuidv4();
+    await storage.set(DEVICE_ID_KEY, id);
+  }
+  return id;
+}
+
+function _maskToken(tok) {
+  if (!tok) return '';
+  return tok.length <= 8 ? `${tok.slice(0, 2)}...` : `${tok.slice(0, 4)}...${tok.slice(-4)}`;
+}
 
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -65,6 +99,7 @@ export const push = {
 
     // 4. Отправляем на бэк
     const token = await storage.get(TOKEN_KEY);
+    const deviceId = await getOrCreateDeviceId();
     const resp = await fetch(`${BASE}/subscribe`, {
       method: 'POST',
       headers: {
@@ -75,8 +110,16 @@ export const push = {
         endpoint: sub.endpoint,
         keys: sub.toJSON().keys,
         user_agent: navigator.userAgent,
+        device_id: deviceId,
+        platform: 'web',
       }),
-    }).then((r) => r.json()).catch(() => ({}));
+    }).then((r) => (r.status === 409 ? { conflict: true } : r.json())).catch(() => ({}));
+    // P0-1: чужой endpoint (409 TOKEN_OWNERSHIP_CONFLICT) — не наш случай в
+    // норме (endpoint уникален по подписке браузера), но на всякий случай
+    // не считаем успехом и не повторяем бесконечно молча.
+    if (resp && resp.conflict) {
+      return { ok: false, reason: 'token_conflict', mock };
+    }
     // P1-2 fix: если пользователь залогинен (есть token), но подписка не
     // привязалась к user_id (токен протух на момент подписки) — адресный
     // web-push не дойдёт. Не считаем успехом → повторим при след. запуске
@@ -88,14 +131,25 @@ export const push = {
   },
 
   async unsubscribe() {
+    // P0-1 fix: раньше эти два запроса шли БЕЗ Authorization — backend не
+    // мог проверить владельца (owner-check в /unsubscribe и
+    // /unregister-native завязан на текущего вызывающего). Без заголовка
+    // owner-check тихо пропускался. Теперь шлём тот же Bearer, что и при
+    // подписке — обычный logout продолжает деактивировать СВОИ записи как
+    // раньше, а не чужие.
+    const authToken = await storage.get(TOKEN_KEY);
+    const authHeaders = {
+      'Content-Type': 'application/json',
+      'Authorization': authToken ? `Bearer ${authToken}` : '',
+    };
     if (this.isSupported()) {
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.getSubscription();
       if (sub) {
         await fetch(`${BASE}/unsubscribe`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ endpoint: sub.endpoint }),
+          headers: authHeaders,
+          body: JSON.stringify({ endpoint: sub.endpoint, reason: 'user_unsubscribed' }),
         });
         await sub.unsubscribe();
       }
@@ -106,13 +160,42 @@ export const push = {
       if (existing) {
         await fetch(`${BASE}/unregister-native`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: existing }),
+          headers: authHeaders,
+          body: JSON.stringify({ token: existing, reason: 'user_unregistered' }),
         });
         await storage.remove(NATIVE_TOKEN_KEY);
       }
     } catch {}
   },
+
+  /** P1-3/P1-4 (Блок 2): деактивировать push ТЕКУЩЕГО пользователя на
+   * этом устройстве при logout — сервер помечает push_subscriptions/
+   * push_tokens_native неактивными по user_id+device_id, чтобы push,
+   * адресованный уже вышедшему пользователю, больше не доставлялся на
+   * этот телефон, даже если следующий пользователь ещё не залогинился
+   * (окно между logout и login на общем устройстве). Best-effort — сетевая
+   * ошибка не должна блокировать сам logout.
+   */
+  async logoutCleanup() {
+    try {
+      const authToken = await storage.get(TOKEN_KEY);
+      if (!authToken) return { ok: false, reason: 'no_token' };
+      const deviceId = await getOrCreateDeviceId();
+      const resp = await fetch(`${BASE}/logout-cleanup`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({ device_id: deviceId }),
+      });
+      return resp.ok ? await resp.json() : { ok: false, status: resp.status };
+    } catch (e) {
+      return { ok: false, reason: 'network_error', error: String(e) };
+    }
+  },
+
+  getOrCreateDeviceId,
 
   // ── Native (Expo Notifications) ──
   isNative() {
@@ -184,6 +267,7 @@ export const push = {
     // expo-constants. Если константы нет — fallback на старый zero-arg
     // вызов (web/legacy).
     let projectId;
+    let appVersion = null;
     try {
       const Constants = require('expo-constants').default;
       projectId =
@@ -191,6 +275,7 @@ export const push = {
         Constants?.easConfig?.projectId ||
         Constants?.manifest?.extra?.eas?.projectId ||
         null;
+      appVersion = Constants?.expoConfig?.version || Constants?.manifest?.version || null;
     } catch { projectId = null; }
     // issue #5: dev-only debug logging для проверки регистрации токена на
     // реальном устройстве/dev-билде (в проде молчим).
@@ -207,12 +292,13 @@ export const push = {
     }
     const token = tokenData?.data;
     if (!token) { dbg('no token returned'); return { ok: false, reason: 'no_token' }; }
-    dbg('expo token', token);
+    dbg('expo token', _maskToken(token)); // P0-1: полный токен в логи не пишем даже в dev
 
     // Отправляем на бэк. issue #5: проверяем ответ — раньше статус
     // игнорировался и при 401/500 функция всё равно возвращала ok:true,
     // хотя токен на сервере не сохранялся (push не доходил).
     const authToken = await storage.get(TOKEN_KEY);
+    const deviceId = await getOrCreateDeviceId();
     let regStatus = 0;
     let regUserId;
     try {
@@ -227,6 +313,8 @@ export const push = {
           provider: 'expo',
           platform: Platform.OS,
           device_name: Device.modelName || Device.deviceName || null,
+          device_id: deviceId,
+          app_version: appVersion,
         }),
       });
       regStatus = resp.status;
@@ -235,6 +323,13 @@ export const push = {
     } catch (e) {
       dbg('register-native network error', String(e));
       return { ok: false, reason: 'register_failed', token, error: String(e) };
+    }
+    if (regStatus === 409) {
+      // P0-1: TOKEN_OWNERSHIP_CONFLICT — этот физический токен уже активно
+      // привязан к другому пользователю на другом устройстве (не должно
+      // случаться в норме на одном юзере/девайсе; для старых клиентов без
+      // device_id это единственный сигнал — не считаем успехом).
+      return { ok: false, reason: 'token_conflict', token, status: regStatus };
     }
     if (regStatus < 200 || regStatus >= 300) {
       return { ok: false, reason: 'register_rejected', token, status: regStatus };

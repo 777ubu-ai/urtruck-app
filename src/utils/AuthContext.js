@@ -2,6 +2,9 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { storage } from './storage';
 import { regAPI } from './registration';
 import { subscribeAuthExpired, setAuthExpirySuppressed } from './authEvents';
+import { push } from './push';
+import { clearOutbox } from './outbox';
+import { clearQueue } from './offlineQueue';
 
 // Уровни доверия (lazy registration)
 // 0 = guest — только смотрит ленту
@@ -161,6 +164,16 @@ export const AuthProvider = ({ children }) => {
     // хвост после — чтобы 401 от logout/guest re-init не ретриггерил
     // повторный signOut (защита от цикла разлогина).
     setAuthExpirySuppressed(true);
+
+    // Блок 2 аудита (P1-3/P1-4): деактивируем push ТЕКУЩЕГО пользователя на
+    // backend, пока токен ещё валиден — ОБЯЗАТЕЛЬНО до regAPI.logout()
+    // (который отзывает сессию: после него /push/logout-cleanup вернёт 401
+    // и деактивация push не выполнится вовсе — не переставлять порядок).
+    // Best-effort: сетевая ошибка не блокирует сам logout.
+    try {
+      await push.logoutCleanup();
+    } catch {}
+
     // RC2 hotfix (P1-2): пользователи жаловались что после OK на
     // "Выйти из аккаунта" они оставались залогинены. Корень — некоторые
     // ключи (ur_driver_vehicle, ur_client_company, лангуаге-state)
@@ -169,12 +182,26 @@ export const AuthProvider = ({ children }) => {
     // Fix: 1) очищаем ВСЕ известные ur_* ключи; 2) сбрасываем in-memory
     // state ПОСЛЕ storage cleanup; 3) делаем async чтобы вызывающий
     // мог await перед reset навигации.
+    //
+    // Блок 2 аудита (P1-5): дополнительно чистим ЛОКАЛЬНЫЕ данные,
+    // специфичные для ЭТОГО пользователя (не глобальные настройки
+    // устройства — язык/тема/device_id НЕ трогаем, см. storage.js):
+    // outbox чата (недоотправленные сообщения — не должны уйти под
+    // следующей сессией), offline-очередь, закреплённые чаты, список
+    // сделок для фоновой геолокации, черновики форм (динамические
+    // ur_draft_* ключи).
     try {
       await Promise.all([
         storage.remove(KEY),                    // ur_session
         storage.remove('ur_verification_level'),
         storage.remove('ur_driver_vehicle'),    // batch-2 локальный профиль
         storage.remove('ur_client_company'),    // batch-2 локальный профиль
+        storage.remove('ur_pinned_chats'),      // кэш закреплённых чатов (P1-5)
+        storage.remove('ur_bg_deal_ids'),       // кэш сделок для фоновой геолокации (P1-5)
+        storage.remove('ur_queue_plate'),       // номер машины на границе — per-user ввод (P1-5)
+        storage.removeByPrefix('ur_draft_'),    // черновики форм — динамические ключи (P1-5)
+        clearOutbox(),                          // ur_chat_outbox (P1-5)
+        clearQueue(),                           // ur_offline_queue (P1-5)
       ]);
     } catch {}
     try {
@@ -190,7 +217,7 @@ export const AuthProvider = ({ children }) => {
     setHasToken(false);
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
       // eslint-disable-next-line no-console
-      console.warn('[Auth] logout cleared session + storage');
+      console.warn('[Auth] logout cleared session + storage + push + queues');
     }
     // Снимаем suppression с задержкой — перекрываем окно guest re-init.
     setTimeout(() => setAuthExpirySuppressed(false), 1500);

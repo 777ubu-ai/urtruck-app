@@ -454,14 +454,15 @@ export default function ChatScreen({ navigation, route }) {
   useEffect(() => {
     const doFlush = async () => {
       try {
-        const sent = await flushOutbox((p) => chatAPI.send(p));
+        // Блок 2 (P1-5): отправляем только очередь ТЕКУЩЕГО юзера.
+        const sent = await flushOutbox((p) => chatAPI.send(p), session?.user?.id);
         if (sent > 0 && mounted.current && roomId) loadMessages(roomId);
       } catch {}
     };
     doFlush();
     const sub = AppState.addEventListener('change', (s) => { if (s === 'active') doFlush(); });
     return () => sub?.remove?.();
-  }, [roomId]);
+  }, [roomId, session?.user?.id]);
 
   // issue #4: разрешаем реального собеседника для заголовка из enriched
   // rooms по roomId, если из route пришёл пустой/технический partner.
@@ -714,7 +715,7 @@ export default function ChatScreen({ navigation, route }) {
       if (r.room_id) setRoomId(r.room_id);
     } catch (e) {
       if (e?.isNetwork) {
-        await enqueueOutbox({ clientId, payload });
+        await enqueueOutbox({ clientId, payload }, session?.user?.id);
         toast(t('chat_queued'), 'info', 2500);
       } else {
         toast(t('chat_send_failed'), 'error');

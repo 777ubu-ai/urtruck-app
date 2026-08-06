@@ -87,4 +87,24 @@ export const storage = {
       await baseRemove(key);
     } catch {}
   },
+
+  /** Блок 2 аудита (P1-5): удалить ВСЕ ключи с данным префиксом — нужно
+   * для logout-очистки динамических per-room/per-form ключей (черновики
+   * `ur_draft_<id>` и т.п.), у которых нет фиксированного набора имён и
+   * их нельзя перечислить заранее через storage.remove(key). Секьюрные
+   * ключи (SECURE_KEYS) сюда никогда не попадают — префикс `ur_draft_`/
+   * прочие пользовательские кэши в SecureStore не хранятся. */
+  async removeByPrefix(prefix) {
+    try {
+      let keys = [];
+      if (isWeb) {
+        if (typeof window === 'undefined') return;
+        keys = Object.keys(window.localStorage);
+      } else {
+        keys = await AsyncStorage.getAllKeys();
+      }
+      const toRemove = keys.filter((k) => k.startsWith(prefix));
+      await Promise.all(toRemove.map((k) => this.remove(k)));
+    } catch {}
+  },
 };

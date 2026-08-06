@@ -109,6 +109,19 @@ def delete_my_account(driver_id: str = Depends(get_current_driver)):
     Обезличивает персональные данные и отзывает все сессии. Идемпотентно —
     после удаления токен становится недействительным. POST-алиас нужен для
     клиентов/прокси, которые не пропускают DELETE."""
+    # Блок 2 аудита (P1-3): push-регистрации удаляемого аккаунта тоже
+    # обязаны деактивироваться — иначе после обезличивания drivers_registration
+    # push_tokens_native/push_subscriptions продолжают указывать на
+    # (уже несуществующего) пользователя и потенциально годны к угону через
+    # /push/register-native (см. P0-1 фикс: деактивированный токен свободен
+    # для легитимного переиспользования). Best-effort — сбой здесь не должен
+    # блокировать само удаление аккаунта (Apple Guideline 5.1.1(v) требует
+    # надёжного удаления данных).
+    try:
+        from api.push import deactivate_user_push
+        deactivate_user_push(driver_id, reason="account_deleted")
+    except Exception:
+        pass
     try:
         reg_dal.delete_account(driver_id)
     except Exception:
@@ -881,7 +894,27 @@ def run_moderation(driver_id: str = Depends(get_current_driver)):
         update_fields["role"] = "driver"
     reg_dal.update_driver(driver_id, update_fields)
 
-    # Push-триггер
+    # Push-триггер. Блок 6 аудита (P1-8): раньше это событие (итог модерации
+    # регистрации) существовало ТОЛЬКО как push — если permission не выдан/
+    # устройство offline/провайдер недоступен, пользователь никогда не
+    # узнавал результат проверки документов нигде в приложении. Теперь
+    # notification создаётся ДО push, независимо от его результата.
+    try:
+        from api.notifications import create_notification
+        if auto_approved:
+            create_notification(driver_id, "reg_status", "🎉 UrTruck",
+                                 "Регистрация завершена! Можно начинать работать.", "🎉", url="/",
+                                 event_key=f"reg-status:{driver_id}:approved")
+        elif status == "manual_review":
+            create_notification(driver_id, "reg_status", "⏳ UrTruck",
+                                 "Документы на ручной проверке. Ответ в течение часа.", "⏳", url="/profile",
+                                 event_key=f"reg-status:{driver_id}:manual_review")
+        elif status == "rejected":
+            create_notification(driver_id, "reg_status", "⛔ UrTruck",
+                                 f"Регистрация отклонена: {rejected_reason}", "⛔", url="/profile",
+                                 event_key=f"reg-status:{driver_id}:rejected")
+    except Exception as e:
+        print(f"[notif] moderate failed: {e}")
     try:
         from api.push import send_to_user
         if auto_approved:

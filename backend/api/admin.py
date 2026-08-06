@@ -414,6 +414,20 @@ def admin_approve(driver_id: str, user: str = Depends(check_admin)):
         "role": "driver",
         "approved_at": "CURRENT_TIMESTAMP",
     })
+    # Блок 6 аудита (P1-8): notification — до/независимо от push (админ-
+    # решение, критичное для пользователя — не должно теряться, если push
+    # не дошёл). event_key = driver+action+день: гасит случайный двойной
+    # клик «Одобрить» в течение дня, но не мешает НОВОМУ approve позже
+    # (например, после rejected → повторная подача документов → approved
+    # на другой день — это уже другое событие, не дубль).
+    try:
+        from datetime import datetime as _dt
+        from api.notifications import create_notification
+        create_notification(driver_id, "reg_status", "🎉 UrTruck",
+                             "Документы одобрены! Можно брать рейсы.", "🎉", url="/profile",
+                             event_key=f"admin-approve:{driver_id}:{_dt.utcnow().date().isoformat()}")
+    except Exception as e:
+        print(f"[notif] approve failed: {e}")
     # Push водителю
     try:
         send_to_user(driver_id, "🎉 UrTruck", "Документы одобрены! Можно брать рейсы.", url="/profile")
@@ -434,6 +448,15 @@ def admin_reject(driver_id: str, reason: str = "Не прошёл проверк
         "manual_review_required": 0,
         "rejected_reason": reason,
     })
+    # Блок 6 аудита (P1-8): см. комментарий в admin_approve выше.
+    try:
+        from datetime import datetime as _dt
+        from api.notifications import create_notification
+        create_notification(driver_id, "reg_status", "⛔ UrTruck",
+                             f"Документы отклонены: {reason}", "⛔", url="/profile",
+                             event_key=f"admin-reject:{driver_id}:{_dt.utcnow().date().isoformat()}")
+    except Exception as e:
+        print(f"[notif] reject failed: {e}")
     try:
         send_to_user(driver_id, "⛔ UrTruck", f"Документы отклонены: {reason}", url="/profile")
     except Exception as e:

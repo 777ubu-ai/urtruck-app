@@ -280,25 +280,28 @@ def test_reject_409_if_not_pending():
     expect(r.status_code == 409, f"already cancelled → 409 (got {r.status_code})")
 
 
-def test_list_bids_shows_cancelled_and_rejected_statuses():
-    """GET /bids?cargo_id=... returns new lifecycle states (smoke check on persistence)."""
+def test_cancelled_and_rejected_statuses_persist():
+    """Terminal bid states persist even though public listings hide non-actionable rows."""
     print("\n=== test_list_bids_shows_cancelled_and_rejected_statuses ===")
     cargo_id = seed_cargo(owner_id="dash-owner")
-    as_user("dash-driver")
+    as_user("dash-driver-a")
     bid_a = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 100}).json()["id"]
+    as_user("dash-driver-b")
     bid_b = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 200}).json()["id"]
+    as_user("dash-driver-a")
     client.post(f"/api/v1/market/bids/{bid_a}/cancel")
 
     as_user("dash-owner")
     client.post(f"/api/v1/market/bids/{bid_b}/reject")
 
-    r = client.get(f"/api/v1/market/bids?cargo_id={cargo_id}")
-    expect(r.status_code == 200, f"GET /bids → 200 (got {r.status_code})")
-    by_id = {b["id"]: b for b in r.json()["bids"]}
-    expect(by_id[bid_a]["status"] == "cancelled", "list contains cancelled")
-    expect(by_id[bid_b]["status"] == "rejected",  "list contains rejected")
-    expect(by_id[bid_a]["updated_at"] is not None, "cancelled bid has updated_at")
-    expect(by_id[bid_b]["updated_at"] is not None, "rejected bid has updated_at")
+    # Public cargo bid listing intentionally exposes only actionable bids.
+    # Terminal states are verified directly in persistence instead.
+    stored_a = get_bid(bid_a)
+    stored_b = get_bid(bid_b)
+    expect(stored_a["status"] == "cancelled", "DB contains cancelled bid")
+    expect(stored_b["status"] == "rejected", "DB contains rejected bid")
+    expect(stored_a["updated_at"] is not None, "cancelled bid has updated_at")
+    expect(stored_b["updated_at"] is not None, "rejected bid has updated_at")
 
 
 # ─── /my dashboard tests (regression for UnboundLocalError) ─────────────────
@@ -323,12 +326,15 @@ def test_my_dashboard_driver_with_bids():
     print("\n=== test_my_dashboard_driver_with_bids ===")
     cargo_id = seed_cargo(owner_id="dash2-owner")
     as_user("dash2-driver")
-    bid_pending   = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1000}).json()["id"]
     bid_cancelled = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1100}).json()["id"]
-    bid_rejected  = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1200}).json()["id"]
     client.post(f"/api/v1/market/bids/{bid_cancelled}/cancel")
+
+    bid_rejected = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1200}).json()["id"]
     as_user("dash2-owner")
     client.post(f"/api/v1/market/bids/{bid_rejected}/reject")
+
+    as_user("dash2-driver")
+    bid_pending = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1000}).json()["id"]
 
     as_user("dash2-driver")
     r = client.get("/api/v1/market/my")
@@ -477,28 +483,14 @@ def test_owner_cannot_directly_accept_countered():
     expect(r.status_code == 409, f"owner accept countered → 409 (got {r.status_code})")
 
 
-def test_chat_from_pending_bid():
-    print("\n=== test_chat_from_pending_bid ===")
+def test_chat_from_pending_bid_is_blocked():
+    """A working chat room must not exist until the bid is accepted."""
+    print("\n=== test_chat_from_pending_bid_is_blocked ===")
     cargo_id, bid_id = _new_pending_bid("chat-owner", "chat-driver", 1000)
     as_user("chat-driver")
-    r1 = client.post(f"/api/v1/market/bids/{bid_id}/chat")
-    expect(r1.status_code == 200, f"chat from pending 200 (got {r1.status_code} {r1.text})")
-    rid_a = r1.json()["chat_room_id"]
-    expect(bool(rid_a), "chat_room_id returned")
-
-    # Idempotent: same caller again → same room
-    r2 = client.post(f"/api/v1/market/bids/{bid_id}/chat")
-    expect(r2.json()["chat_room_id"] == rid_a, "idempotent for same user")
-
-    # Owner-side opens it → same room (UNIQUE pair)
-    as_user("chat-owner")
-    r3 = client.post(f"/api/v1/market/bids/{bid_id}/chat")
-    expect(r3.json()["chat_room_id"] == rid_a, "owner gets same room")
-
-    # Outsider blocked
-    as_user("outsider")
-    r4 = client.post(f"/api/v1/market/bids/{bid_id}/chat")
-    expect(r4.status_code == 403, f"outsider chat → 403 (got {r4.status_code})")
+    r = client.post(f"/api/v1/market/bids/{bid_id}/chat")
+    expect(r.status_code == 409, f"pending bid chat blocked → 409 (got {r.status_code} {r.text})")
+    expect(query_chat_room("chat-owner", "chat-driver") is None, "no chat room before accept")
 
 
 def test_chat_blocked_when_bid_not_active():
@@ -596,7 +588,7 @@ def test_pr_b_create_bid_rejects_negative_amount():
     expect(r.status_code == 400, f"amount<0 → 400 (got {r.status_code} {r.text})")
 
 
-def test_pr_b_cargo_bid_creates_notif_with_url_and_chat_room():
+def test_pr_b_cargo_bid_creates_notif_without_eager_chat_room():
     print("\n=== PR-B test_cargo_bid_creates_notif_with_url_and_chat_room ===")
     owner = "owner-pr-b3"
     driver = "driver-pr-b3"
@@ -616,13 +608,11 @@ def test_pr_b_cargo_bid_creates_notif_with_url_and_chat_room():
     expect("Новое предложение" in n["title"] or "$2500" in n["title"],
            f"notif title meaningful (got {n['title']!r})")
 
-    # Eager chat_room
     room = query_chat_room(driver, owner)
-    expect(room is not None, "chat_room created eagerly (cargo bid)")
-    expect(room["cargo_id"] == cargo_id, f"chat_room.cargo_id={cargo_id} (got {room['cargo_id']})")
+    expect(room is None, "no chat_room before cargo bid acceptance")
 
 
-def test_pr_b_trip_bid_creates_notif_with_url_and_chat_room():
+def test_pr_b_trip_bid_creates_notif_without_eager_chat_room():
     print("\n=== PR-B test_trip_bid_creates_notif_with_url_and_chat_room ===")
     driver = "driver-pr-b4"
     client_id = "client-pr-b4"
@@ -640,13 +630,11 @@ def test_pr_b_trip_bid_creates_notif_with_url_and_chat_room():
     expect(n["url"] == f"/trips/{trip_id}?bid={bid_id}",
            f"notif url=/trips/X?bid=Y (got {n['url']})")
 
-    # Eager chat_room
     room = query_chat_room(client_id, driver)
-    expect(room is not None, "chat_room created eagerly (trip bid)")
-    expect(room["trip_id"] == trip_id, f"chat_room.trip_id={trip_id} (got {room['trip_id']})")
+    expect(room is None, "no chat_room before trip bid acceptance")
 
 
-def test_pr_b_accept_bid_creates_accepted_notif_with_deal_url():
+def test_pr_b_accept_bid_creates_accepted_notif_with_order_url():
     print("\n=== PR-B test_accept_bid_creates_accepted_notif_with_deal_url ===")
     owner = "owner-pr-b5"
     driver = "driver-pr-b5"
@@ -664,8 +652,8 @@ def test_pr_b_accept_bid_creates_accepted_notif_with_deal_url():
     accepted = [n for n in notifs if n["type"] == "bid_accepted"]
     expect(len(accepted) >= 1, f"driver got bid_accepted notif (count={len(accepted)})")
     n = accepted[0]
-    expect(n["url"] == f"/deals/{deal_id}",
-           f"accepted notif url=/deals/{{id}} (got {n['url']})")
+    expect(n["url"] == f"/cargos/{cargo_id}",
+           f"accepted notif url=/cargos/{{id}} (got {n['url']})")
 
 
 def test_pr_b_reject_bid_notif_has_back_url():
