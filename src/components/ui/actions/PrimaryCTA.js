@@ -1,8 +1,6 @@
 // Дизайн-система 2026: primary CTA — одно главное действие на экране.
-// Высота 56px, role-accent фон, черный/белый текст по контрасту (onAccent из
-// v1AccentFor). При успехе (success=true) — семантический зелёный #22C55E
-// (не driver-неон), плюс галочка и заблокированное состояние. Иерархия:
-// primary 56 > secondary 48 > destructive 48. Одна кнопка на экран.
+// На телефоне кнопка занимает доступную ширину, на desktop/tablet не
+// растягивается бесконечной полосой. Для специальных панелей есть fullWidth.
 
 import React from 'react';
 import { TouchableOpacity, Text, ActivityIndicator, StyleSheet, View } from 'react-native';
@@ -20,6 +18,7 @@ export default function PrimaryCTA({
   loading = false,
   disabled = false,
   success = false,
+  fullWidth = false,
   testID,
   style,
   numberOfLines = 1,
@@ -31,7 +30,12 @@ export default function PrimaryCTA({
 
   return (
     <TouchableOpacity
-      style={[s.btn, { backgroundColor: bg, opacity: (disabled && !success) || loading ? 0.55 : 1 }, style]}
+      style={[
+        s.btn,
+        fullWidth ? s.fullWidth : s.responsiveWidth,
+        { backgroundColor: bg, opacity: (disabled && !success) || loading ? 0.55 : 1 },
+        style,
+      ]}
       onPress={success ? undefined : onPress}
       disabled={isDisabled}
       activeOpacity={0.85}
@@ -50,17 +54,24 @@ export default function PrimaryCTA({
 }
 
 const s = StyleSheet.create({
-  // Дизайн 2026 v3 (03.08): 44px + шрифт 13. Владелец: «стандартные размеры,
-  // аккуратно, не как для слепого». iOS HIG minimum tappable = 44pt.
   btn: {
     ...SAFE_BUTTON_STYLE,
-    height: 44,
-    borderRadius: 10,
+    minHeight: 48,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: 16,
   },
-  row: { ...SAFE_ROW_STYLE, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
-  icon: { ...SAFE_ICON_STYLE, fontSize: safeFontSize(13), fontWeight: '700' },
-  label: { ...SAFE_LABEL_STYLE, fontSize: safeFontSize(13), fontWeight: '700' },
+  responsiveWidth: {
+    width: '100%',
+    maxWidth: 520,
+    alignSelf: 'center',
+  },
+  fullWidth: {
+    width: '100%',
+    alignSelf: 'stretch',
+  },
+  row: { ...SAFE_ROW_STYLE, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  icon: { ...SAFE_ICON_STYLE, fontSize: safeFontSize(14), fontWeight: '700' },
+  label: { ...SAFE_LABEL_STYLE, fontSize: safeFontSize(14), fontWeight: '800', textAlign: 'center' },
 });
