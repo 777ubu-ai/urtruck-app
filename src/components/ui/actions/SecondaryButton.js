@@ -16,12 +16,18 @@ export default function SecondaryButton({
   testID,
   style,
   numberOfLines = 1,
+  fullWidth = false,
 }) {
   const accent = v1AccentFor(role);
   const { theme } = useTheme();
   return (
     <TouchableOpacity
-      style={[s.btn, { borderColor: theme.border, opacity: disabled ? 0.55 : 1 }, style]}
+      style={[
+        s.btn,
+        fullWidth ? s.fullWidth : s.compact,
+        { borderColor: theme.border, opacity: disabled ? 0.55 : 1 },
+        style,
+      ]}
       onPress={onPress}
       disabled={disabled}
       activeOpacity={0.75}
@@ -36,22 +42,31 @@ export default function SecondaryButton({
 }
 
 const s = StyleSheet.create({
-  // flex:1 — сохранён для случаев, когда SecondaryButton всё же ставят в
-  // ряд (сейчас таких мест не осталось, но не ломаем API); одиночное
-  // использование в вертикальном стеке (alignItems:'stretch' родителя)
-  // всё равно тянется на всю ширину благодаря SAFE_BUTTON_STYLE.
   btn: {
     ...SAFE_BUTTON_STYLE,
-    flex: 1,
     height: 48,
+    minHeight: 48,
     borderRadius: 12,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: 18,
     backgroundColor: 'transparent',
+  },
+  compact: {
+    width: '100%',
+    maxWidth: 420,
+    alignSelf: 'center',
+    flexGrow: 0,
+    flexShrink: 1,
+  },
+  fullWidth: {
+    width: '100%',
+    alignSelf: 'stretch',
+    flexGrow: 0,
+    flexShrink: 1,
   },
   row: { ...SAFE_ROW_STYLE, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
   icon: { ...SAFE_ICON_STYLE, fontSize: safeFontSize(16) },
-  label: { ...SAFE_LABEL_STYLE, fontSize: safeFontSize(14), fontWeight: '700' },
+  label: { ...SAFE_LABEL_STYLE, fontSize: safeFontSize(14), fontWeight: '700', textAlign: 'center' },
 });
