@@ -26,8 +26,9 @@
     "qa:bargain": "playwright test --config qa/playwright.config.js qa/agents/bargain.flow.spec.js",
     "qa:ux": "node qa/utils/uxSmoke.js",
     "qa:trip-status": "node qa/utils/tripStatusSmoke.js",
+    "qa:buttons": "node qa/utils/buttonDesignSmoke.js",
     "qa:mobile": "playwright test --config qa/playwright.mobile.config.js",
-    "qa:center:quick": "npm run qa:i18n && npm run qa:currency && npm run qa:theme && npm run qa:geo && npm run qa:ux && npm run qa:trip-status && npm run build:web",
+    "qa:center:quick": "npm run qa:i18n && npm run qa:currency && npm run qa:theme && npm run qa:geo && npm run qa:ux && npm run qa:trip-status && npm run qa:buttons && npm run build:web",
     "qa:center:web": "npm run build:web && playwright test --config qa/playwright.mobile.config.js",
     "qa:center:maestro:smoke": "maestro test qa/maestro/smoke-suite.yaml --format junit --output qa/artifacts/maestro-smoke.xml",
     "postinstall": "patch-package"
