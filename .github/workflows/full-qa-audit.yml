@@ -1,0 +1,149 @@
+name: UrTruck Full QA Audit
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: full-qa-audit-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  api-and-backend:
+    name: API and backend regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest pytest-json-report
+      - name: Run backend and API tests with report
+        env:
+          PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/backend
+          APP_ENV: test
+          DB_PATH: ${{ runner.temp }}/urtruck-full-qa.db
+          URTRUCK_DB_PATH: ${{ runner.temp }}/urtruck-full-qa.db
+        run: |
+          python -m compileall -q backend
+          pytest backend/tests -q --disable-warnings --maxfail=25 \
+            --json-report --json-report-file=qa-artifacts/backend-report.json
+      - name: Upload backend report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-qa-backend-${{ github.sha }}
+          path: qa-artifacts/backend-report.json
+          if-no-files-found: warn
+          retention-days: 21
+
+  web-pwa-visual:
+    name: Playwright web and PWA visual audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Install dependencies and Chromium
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Build production web app
+        env:
+          CI: 'true'
+        run: npm run build:web
+      - name: Start local production server
+        run: |
+          npx serve dist -l 4173 > /tmp/urtruck-serve.log 2>&1 &
+          npx wait-on http://127.0.0.1:4173
+      - name: Run desktop and mobile Playwright suites
+        env:
+          E2E_BASE_URL: http://127.0.0.1:4173
+          QA_CAPTURE_ALL: '1'
+        run: |
+          mkdir -p qa-artifacts/playwright
+          npx playwright test --config qa/playwright.config.js --reporter=line,html
+          npx playwright test --config qa/playwright.mobile.config.js --reporter=line,html
+      - name: Upload screenshots, video, traces and HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-qa-playwright-${{ github.sha }}
+          path: |
+            playwright-report
+            test-results
+            qa-artifacts
+            /tmp/urtruck-serve.log
+          if-no-files-found: warn
+          retention-days: 21
+
+  maestro-mobile-contract:
+    name: Maestro mobile scenarios and release contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate every Maestro flow
+        run: |
+          set -euo pipefail
+          ruby -e 'require "yaml"; Dir["qa/maestro/**/*.{yml,yaml}"].sort.each { |p| YAML.load_stream(File.read(p)); puts "YAML OK #{p}" }'
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          root = Path('qa/maestro')
+          for suite in root.glob('*suite*.yaml'):
+              refs = re.findall(r'runFlow:\s*([^\s#]+)', suite.read_text(encoding='utf-8'))
+              missing = [r for r in refs if not (root / r).is_file()]
+              if missing:
+                  raise SystemExit(f'{suite}: missing flows {missing}')
+              print(suite, '->', len(refs), 'flows')
+          PY
+      - name: Upload Maestro scenarios
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-qa-maestro-${{ github.sha }}
+          path: qa/maestro
+          retention-days: 21
+
+  design-and-logic-gate:
+    name: Design, FSM and UX gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run QA Center checks
+        run: npm run qa:center:quick
+      - name: Run frontend unit regressions
+        run: |
+          node --experimental-loader ./tests/frontend/loader.mjs --test tests/frontend/*.mjs
+      - name: Archive production build and QA definitions
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-qa-design-logic-${{ github.sha }}
+          path: |
+            dist
+            qa
+          if-no-files-found: warn
+          retention-days: 21
