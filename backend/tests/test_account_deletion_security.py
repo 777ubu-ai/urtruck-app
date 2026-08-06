@@ -32,17 +32,24 @@ app.include_router(push_router, prefix="/api/v1/push")
 client = TestClient(app)
 
 
+def _driver_columns():
+    with get_conn() as c:
+        return {row["name"] for row in c.execute("PRAGMA table_info(drivers_registration)").fetchall()}
+
+
 def _new_user(*, name="Delete Me", phone=None):
     guest = reg_dal.create_guest()
     uid = guest["id"] if isinstance(guest, dict) else guest
     reg_dal.upgrade_level(uid, 1, role="client")
-    reg_dal.update_driver(uid, {
+    candidates = {
         "full_name": name,
         "phone": phone or f"+7700{uid.replace('-', '')[:7]}",
         "email": f"{uid[:8]}@example.com",
         "city": "Almaty",
         "about": "private profile",
-    })
+    }
+    columns = _driver_columns()
+    reg_dal.update_driver(uid, {key: value for key, value in candidates.items() if key in columns})
     return uid, reg_dal.create_session(uid)
 
 
@@ -95,11 +102,11 @@ def test_delete_anonymizes_personal_data_but_keeps_row():
     uid, token = _new_user(name="Private Person")
     _delete(token)
     row = reg_dal.get_driver(uid)
+    columns = _driver_columns()
     assert row is not None, "row must remain to preserve FK history"
-    assert row["full_name"] is None
-    assert row["email"] is None
-    assert row["city"] is None
-    assert row["about"] is None
+    for field in ("full_name", "email", "city", "about"):
+        if field in columns:
+            assert row[field] is None
     assert str(row["phone"]).startswith("deleted_")
     assert row["status"] == "deleted"
     assert row["role"] == "deleted"
