@@ -18,11 +18,17 @@ export default function DestructiveButton({
   testID,
   style,
   numberOfLines = 1,
+  fullWidth = false,
 }) {
   const isDisabled = disabled || loading;
   return (
     <TouchableOpacity
-      style={[s.btn, { borderColor: RED, opacity: isDisabled ? 0.55 : 1 }, style]}
+      style={[
+        s.btn,
+        fullWidth ? s.fullWidth : s.compact,
+        { borderColor: RED, opacity: isDisabled ? 0.55 : 1 },
+        style,
+      ]}
       onPress={onPress}
       disabled={isDisabled}
       activeOpacity={0.7}
@@ -44,14 +50,28 @@ const s = StyleSheet.create({
   btn: {
     ...SAFE_BUTTON_STYLE,
     height: 44,
+    minHeight: 44,
     borderRadius: 10,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 10,
+    paddingHorizontal: 14,
     backgroundColor: 'transparent',
+  },
+  compact: {
+    width: '100%',
+    maxWidth: 420,
+    alignSelf: 'center',
+    flexGrow: 0,
+    flexShrink: 1,
+  },
+  fullWidth: {
+    width: '100%',
+    alignSelf: 'stretch',
+    flexGrow: 0,
+    flexShrink: 1,
   },
   row: { ...SAFE_ROW_STYLE, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
   icon: { ...SAFE_ICON_STYLE, fontSize: safeFontSize(12), fontWeight: '700' },
-  label: { ...SAFE_LABEL_STYLE, fontSize: safeFontSize(13), fontWeight: '700' },
+  label: { ...SAFE_LABEL_STYLE, fontSize: safeFontSize(13), fontWeight: '700', textAlign: 'center' },
 });
