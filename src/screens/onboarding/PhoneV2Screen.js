@@ -253,6 +253,7 @@ export default function PhoneV2Screen({ navigation, route }) {
                 placeholder={country.dial === '7' ? '7 (___) ___-__-__' : '___-___-____'}
                 placeholderTextColor={brand.textTertiary}
                 keyboardType="phone-pad"
+                inputMode="tel"
                 style={s.phoneInput}
                 autoFocus
                 maxLength={20}
