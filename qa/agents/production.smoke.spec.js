@@ -55,7 +55,7 @@ test('production auth, deals, chat, documents and favorites routes are live and 
     ['auth session', '/security/api/v1/register/me'],
     ['deals', '/security/api/v1/market/deals'],
     ['chat', '/security/api/v1/chat/unread'],
-    ['documents', '/security/api/v1/docs/ttn/qa-production-smoke/pdf'],
+    ['documents', '/security/api/v1/market/deals/qa-production-smoke/waybill'],
     ['favorites', '/security/api/v1/favorites'],
   ];
 
