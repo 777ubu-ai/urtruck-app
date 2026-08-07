@@ -21,5 +21,5 @@ def test_ttn_pdf_falls_back_to_printable_html_without_weasyprint(monkeypatch):
     assert response.status_code == 200
     assert response.media_type == "text/html"
     assert response.headers["x-urtruck-pdf-fallback"] == "html"
-    assert response.headers["content-disposition"] == 'inline; filename="TTN-trip-uns.html"'
+    assert response.headers["content-disposition"] == 'inline; filename="TTN-trip-un.html"'
     assert "Товарно-транспортная накладная" in response.body.decode("utf-8")
