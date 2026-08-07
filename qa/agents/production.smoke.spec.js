@@ -2,7 +2,7 @@ const { test, expect } = require('@playwright/test');
 const fs = require('fs');
 
 const PROD = 'https://urtruck.kz';
-const EXPECTED_COMMIT = '304d14a2726704223cac2aa9d46e65c8155e2eaa';
+const EXPECTED_COMMIT = process.env.PRODUCTION_EXPECTED_COMMIT;
 
 async function expectHealthy(response, label) {
   expect(response.status(), `${label} returned server error`).toBeLessThan(500);
@@ -10,6 +10,8 @@ async function expectHealthy(response, label) {
 }
 
 test('production serves the merged build and public critical APIs', async ({ request }) => {
+  expect(EXPECTED_COMMIT).toMatch(/^[0-9a-f]{40}$/);
+
   const build = await expectHealthy(await request.get(`${PROD}/build-info.json`), 'build-info');
   expect(build.status()).toBe(200);
   const buildInfo = await build.json();
@@ -71,6 +73,8 @@ test('production onboarding renders and reaches both auth channels', async ({ pa
   await page.goto(PROD, { waitUntil: 'domcontentloaded', timeout: 60000 });
   const start = page.getByTestId('onb-v2-cta-phone');
   await expect(start).toBeVisible({ timeout: 30000 });
+  await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+  await page.waitForTimeout(2000);
   await page.screenshot({ path: 'qa-artifacts/production-smoke/01-live-onboarding.png', fullPage: true });
 
   await start.click();
