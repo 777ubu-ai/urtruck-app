@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const fs = require('fs');
 
 const PROD = 'https://urtruck.kz';
 const EXPECTED_COMMIT = '304d14a2726704223cac2aa9d46e65c8155e2eaa';
@@ -51,21 +52,22 @@ test('production serves the merged build and public critical APIs', async ({ req
 
 test('production auth, deals, chat, documents and favorites routes are live and guarded', async ({ request }) => {
   const routes = [
-    ['auth session', 'get', '/security/api/v1/register/me'],
-    ['deals', 'get', '/security/api/v1/market/deals'],
-    ['chat', 'get', '/security/api/v1/chat/unread'],
-    ['documents', 'get', '/security/api/v1/docs/ttn/qa-production-smoke/pdf'],
-    ['favorites', 'get', '/security/api/v1/favorites'],
+    ['auth session', '/security/api/v1/register/me'],
+    ['deals', '/security/api/v1/market/deals'],
+    ['chat', '/security/api/v1/chat/unread'],
+    ['documents', '/security/api/v1/docs/ttn/qa-production-smoke/pdf'],
+    ['favorites', '/security/api/v1/favorites'],
   ];
 
-  for (const [label, method, path] of routes) {
-    const response = await expectHealthy(await request[method](`${PROD}${path}`), label);
+  for (const [label, path] of routes) {
+    const response = await expectHealthy(await request.get(`${PROD}${path}`), label);
     expect(response.status(), `${label} route is missing`).not.toBe(404);
     expect([200, 401, 403, 422], `${label} returned unexpected status`).toContain(response.status());
   }
 });
 
 test('production onboarding renders and reaches both auth channels', async ({ page }) => {
+  fs.mkdirSync('qa-artifacts/production-smoke', { recursive: true });
   await page.goto(PROD, { waitUntil: 'domcontentloaded', timeout: 60000 });
   const start = page.getByTestId('onb-v2-cta-phone');
   await expect(start).toBeVisible({ timeout: 30000 });
