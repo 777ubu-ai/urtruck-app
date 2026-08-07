@@ -9,7 +9,7 @@ from pathlib import Path
 from datetime import datetime
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends
 from fastapi.responses import Response, HTMLResponse
 
 from api.verification_gate import require_level
@@ -93,17 +93,28 @@ def generate_ttn(trip_id: str, user=Depends(require_level(1))):
 
 @docs_router.get("/ttn/{trip_id}/pdf")
 def download_ttn_pdf(trip_id: str):
-    """PDF версия ТТН (если weasyprint установлен)."""
-    try:
-        from weasyprint import HTML as WPHTML
-    except ImportError:
-        raise HTTPException(status_code=501, detail="PDF генерация недоступна. Используйте /ttn/{id} для HTML-печати через браузер (Ctrl+P).")
-
+    """PDF версия ТТН; без WeasyPrint возвращает печатный HTML."""
     trip = {"id": trip_id, "from": "Алматы", "to": "Астана", "cargo": "Товары", "tons": 20, "m3": 82, "type": "tent", "price": 1500}
     driver = {"full_name": "—", "phone": "—", "iin": "—"}
     html = _ttn_html(trip, driver)
+    safe_id = "".join(ch for ch in trip_id[:8] if ch.isalnum() or ch in "-_") or "document"
+
+    try:
+        from weasyprint import HTML as WPHTML
+    except ImportError:
+        # Production images may intentionally omit the heavy native
+        # WeasyPrint stack. Keep the document usable through the browser's
+        # Print / Save as PDF flow instead of exposing a 501 dead end.
+        return HTMLResponse(
+            content=html,
+            headers={
+                "Content-Disposition": f'inline; filename="TTN-{safe_id}.html"',
+                "X-UrTruck-PDF-Fallback": "html",
+            },
+        )
+
     pdf = WPHTML(string=html).write_pdf()
     return Response(
         content=pdf, media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="TTN-{trip_id[:8]}.pdf"'},
+        headers={"Content-Disposition": f'attachment; filename="TTN-{safe_id}.pdf"'},
     )
