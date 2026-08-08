@@ -1,9 +1,7 @@
-// FilterChips — horizontal pill row with dropdown chevron.
-// Each chip is { key, icon, label, active, onPress }. Active state highlights
-// with the role accent (emerald/orange) — caller passes accent color.
-
+// FilterChips — compact premium filter controls with a clear active state.
 import React from 'react';
-import { ScrollView, TouchableOpacity, View, Text, StyleSheet } from 'react-native';
+import { ScrollView, TouchableOpacity, Text, StyleSheet } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 import { useV1Colors, v1Radius } from '../../../theme/designV1';
 
 export default function FilterChips({ items = [], accent }) {
@@ -11,29 +9,24 @@ export default function FilterChips({ items = [], accent }) {
   const activeAccent = accent || colors.driver;
   const inactiveText = colors.textMuted;
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={s.scroll}
-    >
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.scroll}>
       {items.map((it) => (
         <TouchableOpacity
           key={it.key}
           onPress={it.onPress}
-          activeOpacity={0.85}
+          activeOpacity={0.78}
+          accessibilityRole="button"
           testID={it.testID || `feed-chip-${it.key}`}
           style={[
             s.chip,
             it.active
-              ? { borderColor: activeAccent, backgroundColor: `${activeAccent}1A` }
-              : { borderColor: colors.border, backgroundColor: 'transparent' },
+              ? { borderColor: `${activeAccent}55`, backgroundColor: `${activeAccent}12` }
+              : { borderColor: colors.border, backgroundColor: colors.surface },
           ]}
         >
           {it.icon ? <Text style={[s.icon, { color: it.active ? activeAccent : inactiveText }]}>{it.icon}</Text> : null}
-          <Text style={[s.label, { color: it.active ? activeAccent : inactiveText }]} numberOfLines={1}>
-            {it.label}
-          </Text>
-          <Text style={[s.caret, { color: it.active ? activeAccent : inactiveText }]}>⌄</Text>
+          <Text style={[s.label, { color: it.active ? activeAccent : inactiveText }]} numberOfLines={1}>{it.label}</Text>
+          <Feather name="chevron-down" size={14} color={it.active ? activeAccent : inactiveText} />
         </TouchableOpacity>
       ))}
     </ScrollView>
@@ -41,13 +34,13 @@ export default function FilterChips({ items = [], accent }) {
 }
 
 const s = StyleSheet.create({
-  scroll: { gap: 8, paddingVertical: 4 },
+  scroll: { gap: 8, paddingVertical: 5 },
   chip: {
+    minHeight: 40,
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 12, paddingVertical: 8,
+    paddingHorizontal: 14, paddingVertical: 9,
     borderRadius: v1Radius.pill, borderWidth: 1,
   },
   icon: { fontSize: 12 },
-  label: { fontSize: 12, fontWeight: '700', maxWidth: 110 },
-  caret: { fontSize: 12, fontWeight: '900' },
+  label: { fontSize: 13, fontWeight: '700', maxWidth: 118 },
 });
