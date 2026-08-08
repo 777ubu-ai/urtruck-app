@@ -88,9 +88,15 @@ const LIGHT = {
   warning: '#F59E0B',
 };
 
-// Frozen dark export — keeps every existing `StyleSheet.create({ … })`
-// snapshot compiling. New components should call `useV1Colors()`.
-export const v1Colors = DARK;
+// Redesign 08.08.2026 (owner spec — единый светлый B2B): frozen export теперь
+// = LIGHT, чтобы ВСЕ статические `StyleSheet.create({ … })`-снапшоты (≈65
+// файлов) отрисовались в светлой зелёной палитре без ручной правки каждого.
+// LIGHT содержит тот же набор ключей, что DARK (driver*/cargoOwner*/text*),
+// поэтому v1AccentFor и типографика продолжают резолвиться. Роль-развилка в
+// LIGHT схлопнута: driver и cargoOwner оба #168A5B (единая зелёная тема для
+// обеих ролей по ТЗ). Тёмная палитра (DARK) сохранена для возможного отката,
+// но по умолчанию не используется (см. ThemeContext — isDark=false).
+export const v1Colors = LIGHT;
 
 // Theme-aware accessor — read in render to pick up theme toggles.
 export const useV1Colors = () => {
