@@ -27,7 +27,7 @@ const DEAL_STATUS_COLOR = {
   active: '#168A5B', confirmed: '#168A5B', accepted: '#168A5B',
   in_progress: '#FF8400', at_border: '#168A5B',
   pending: '#FF8400', draft: '#FF8400',
-  cancelled: '#94A3B8', rejected: '#EF4444', dispute: '#EF4444',
+  cancelled: '#7C8B82', rejected: '#EF4444', dispute: '#EF4444',
   completed: '#168A5B', delivered: '#168A5B',
 };
 
@@ -69,7 +69,7 @@ export function DealRoomCard({ deal, role }) {
   // показываем пользователю отдельным шагом, карточка сворачивает его в
   // «В работе» (текст и цвет) — реальный deal.status при этом не меняется.
   const displayStatus = userFacingDealStatus(status);
-  const stColor = DEAL_STATUS_COLOR[displayStatus] || '#94A3B8';
+  const stColor = DEAL_STATUS_COLOR[displayStatus] || '#7C8B82';
   // H-1: статус сделки русским словом через i18n; фолбэк на сырой статус для
   // немаппленных значений (confirmed/draft/dispute — нет ключа status_*).
   const stKey = 'status_' + displayStatus;

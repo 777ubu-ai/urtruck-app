@@ -24,7 +24,7 @@ import { compressImage } from '../../utils/imageCompress';
 import { accentFor } from './DealRoom';
 
 const STATUS_META = {
-  queued:    { icon: 'clock',        color: '#94A3B8', key: 'chat_attach_status_queued' },
+  queued:    { icon: 'clock',        color: '#7C8B82', key: 'chat_attach_status_queued' },
   uploading: { icon: 'upload-cloud', color: '#FF8400', key: 'chat_attach_status_uploading' },
   uploaded:  { icon: 'check-circle', color: '#168A5B', key: 'chat_attach_status_uploaded' },
   failed:    { icon: 'alert-circle', color: '#EF4444', key: 'chat_attach_status_failed' },

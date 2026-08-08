@@ -157,7 +157,7 @@ export function VerificationGateSheet({ visible, action, currentLevel, requiredL
               detail-экрана пользователь видел
               ErrorBoundary. */}
           <TouchableOpacity onPress={onClose} style={s.altBtn}>
-            <Text style={[s.altText, { color: accentColors.browse || '#94A3B8' }]}>
+            <Text style={[s.altText, { color: accentColors.browse || '#7C8B82' }]}>
               {tGlobal('gate_browse')}
             </Text>
           </TouchableOpacity>

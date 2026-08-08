@@ -112,10 +112,10 @@ export default function ChatScreen({ navigation, route }) {
   msgTimeMe: { color: 'rgba(234,251,241,0.55)' },
   systemMsgRow: { alignItems: 'center', marginVertical: 6 },
   systemMsgPill: {
-    backgroundColor: 'rgba(148,163,184,0.18)', borderRadius: 12,
+    backgroundColor: 'rgba(124,139,130,0.14)', borderRadius: 12,
     paddingHorizontal: 14, paddingVertical: 6, maxWidth: '80%',
   },
-  systemMsgText: { color: '#94A3B8', fontSize: 13, fontWeight: '600', textAlign: 'center' },
+  systemMsgText: { color: '#617067', fontSize: 13, fontWeight: '600', textAlign: 'center' },
   // Плашка «идёт запись» над инпутом: красная точка + таймер + подсказка.
   recBanner: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
