@@ -150,17 +150,17 @@ export default function FeedScreen({ navigation, route }) {
   filterActions: { flexDirection: 'row', gap: 10, marginTop: 24 },
   filterActionBtn: { flex: 1, borderRadius: 10, paddingVertical: 14, alignItems: 'center' },
   filterActionText: { fontSize: 13, fontWeight: '700' },
-  card: { borderRadius: 14, padding: 16, borderWidth: 1, borderColor: '#263244', backgroundColor: '#111827' },
+  card: { borderRadius: 14, padding: 16, borderWidth: 1, borderColor: v1.border, backgroundColor: v1.surface },
   cardRow: { flexDirection: 'row', alignItems: 'flex-start' },
-  route: { fontSize: 17, fontWeight: '700', marginBottom: 5, letterSpacing: -0.2, color: '#F8FAFC' },
+  route: { fontSize: 17, fontWeight: '700', marginBottom: 5, letterSpacing: -0.2, color: v1.text },
   cargoName: { fontSize: 12, marginBottom: 8 },
   badges: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
   badge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 16, fontSize: 11, fontWeight: '700', overflow: 'hidden' },
-  price: { color: '#22C55E', fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
+  price: { color: '#168A5B', fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
   bidsCount: { fontSize: 11, marginTop: 2 },
   driverName: { fontSize: 16, fontWeight: '700' },
   rating: { color: '#FBBF24', fontSize: 12, fontWeight: '700', marginVertical: 4 },
-  tripBadge: { position: 'absolute', top: -1, right: 12, backgroundColor: '#22C55E', paddingHorizontal: 10, paddingVertical: 3, borderBottomLeftRadius: 8, borderBottomRightRadius: 8 },
+  tripBadge: { position: 'absolute', top: -1, right: 12, backgroundColor: '#168A5B', paddingHorizontal: 10, paddingVertical: 3, borderBottomLeftRadius: 8, borderBottomRightRadius: 8 },
   tripBadgeText: { color: '#fff', fontSize: 11, fontWeight: '900', letterSpacing: 0.5 },
   mineBadge: { position: 'absolute', top: -1, right: 12, paddingHorizontal: 10, paddingVertical: 3, borderBottomLeftRadius: 8, borderBottomRightRadius: 8 },
   mineBadgeText: { color: '#0C0A09', fontSize: 11, fontWeight: '900', letterSpacing: 0.5 },
@@ -205,7 +205,7 @@ export default function FeedScreen({ navigation, route }) {
   const role = sessionRole || route.params?.role || 'client';
   const isDriver = role === 'driver';
   // Brand v3: driver = emerald, client = orange. No blue.
-  const accent = isDriver ? '#22C55E' : '#FF8400';
+  const accent = '#168A5B'; // redesign: единый зелёный для обеих ролей
   const { t, lang } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
