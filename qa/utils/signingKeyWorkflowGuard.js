@@ -19,4 +19,13 @@ assert.ok(/unset KEY/.test(s), 'KEY должен быть unset после ис�
 // значение пишется только в файл (>> "$tmp"), не в stdout
 assert.ok(/printf 'FILE_SIGNING_KEY=%s/.test(s) && />> .*tmp/.test(s), 'KEY должен писаться в temp-файл (>>), не в stdout');
 
-console.log('signing-key workflow guard OK: dispatch-only, значение не выводится, .env не печатается, KEY unset');
+// доп. security-инварианты (STEP admin PR review):
+assert.ok(!/printenv/.test(s), 'printenv запрещён (может вывести секрет)');
+assert.ok(!/(^|\s|;|&&)env(\s|$|;)/.test(s.replace(/[A-Z_]+=/g,'')), 'голый env-дамп запрещён');
+assert.ok(!/set\s+-x/.test(s), 'set -x запрещён (трейс может раскрыть секрет)');
+assert.ok(!/upload-artifact[\s\S]{0,200}\.env/.test(s), 'upload-artifact с .env запрещён');
+assert.ok(!/GITHUB_OUTPUT[\s\S]{0,80}(KEY|FILE_SIGNING)/.test(s), 'секрет в GITHUB_OUTPUT запрещён');
+// минимальные permissions
+assert.ok(/permissions:\s*[\r\n]+\s*contents:\s*read/.test(raw), 'permissions должны быть contents: read');
+
+console.log('signing-key workflow guard OK: dispatch-only, значение не выводится, .env/printenv/env/set-x/artifact/GITHUB_OUTPUT чисто, permissions:read, KEY unset');

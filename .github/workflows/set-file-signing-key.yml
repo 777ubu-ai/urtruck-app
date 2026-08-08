@@ -32,6 +32,10 @@ concurrency:
 jobs:
   set-signing-key:
     runs-on: ubuntu-latest
+    # production environment: если в репозитории на нём настроены required
+    # reviewers/protection — job будет ждать approval перед prod-мутацией.
+    # Если environment не сконфигурирован, ссылка безвредна (no-op).
+    environment: production
     timeout-minutes: 10
     steps:
       - name: Checkout
