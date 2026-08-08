@@ -286,12 +286,12 @@ def startup():
         import traceback
         print(f"[startup] TG bot FAILED: {e}", flush=True)
         traceback.print_exc()
-    # Парсинг Della/ATI при старте
-    try:
-        from parsers.della_parser import run_parse as della_parse
-        della_parse()
-    except Exception as e:
-        print(f"Della parse failed: {e}")
+    # P0-9 (08.08.2026): парсинг Della/ATI БОЛЬШЕ НЕ запускается на старте.
+    # Раньше della_parse() на каждом рестарте авто-заносил в blacklist
+    # результаты слепого regex-скрейпинга (случайные телефоны → блок живых
+    # людей). Демо-сид (SEED_DEMO_BLACKLIST=true) при необходимости
+    # выполняется отдельной admin-командой/скриптом, а не деструктивным
+    # side-effect'ом при каждом старте процесса.
     # CGR scheduler (AsyncIOScheduler, separate from existing BackgroundScheduler).
     # Стартует только если CGR_FEATURE_ENABLED=true И CGR_IIN_SALT задан.
     try:
@@ -303,6 +303,20 @@ def startup():
             print("[startup] CGR scheduler skipped (feature disabled or settings missing)", flush=True)
     except Exception as e:
         print(f"[startup] CGR scheduler FAILED (continuing): {e}", flush=True)
+
+    # P0-8 (08.08.2026): основной BackgroundScheduler (часовые бэкапы БД,
+    # продуктовые пуши, месячная переоценка) раньше не запускался в
+    # production вообще — start_scheduler() жил только в __main__ модуля.
+    # Теперь стартуем здесь, безопасно: идемпотентный синглтон + fcntl-lock
+    # против дубля при нескольких воркерах (см. scheduler/jobs.py).
+    try:
+        from scheduler.jobs import start_scheduler
+        if start_scheduler() is not None:
+            print("[startup] BackgroundScheduler started (backups/pushes/rescore)", flush=True)
+        else:
+            print("[startup] BackgroundScheduler skipped (disabled or lock held elsewhere)", flush=True)
+    except Exception as e:
+        print(f"[startup] BackgroundScheduler FAILED (continuing): {e}", flush=True)
 
     print("=" * 50)
     print("UrTruck Security API started on port 8001")
@@ -320,6 +334,11 @@ async def shutdown():
         cgr_jobs.stop()
     except Exception as e:
         print(f"[shutdown] cgr_jobs.stop failed: {e}", flush=True)
+    try:
+        from scheduler.jobs import stop_scheduler
+        stop_scheduler()
+    except Exception as e:
+        print(f"[shutdown] stop_scheduler failed: {e}", flush=True)
     try:
         from cgr.client import cgr_client
         await cgr_client.close()
