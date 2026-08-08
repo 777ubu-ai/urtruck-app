@@ -29,6 +29,75 @@ _STATUS_TO_LIFECYCLE = {
 }
 
 
+def _send_booking_change_push(booking: dict, parsed: dict | None,
+                              old_status: str | None, old_position: int | None,
+                              new_status: str, new_position: int | None) -> bool:
+    """Send one throttled push for a meaningful CGR booking change.
+
+    The CGR parser exposes a more precise public status (``called``,
+    ``crossed``, ``revoked``) than the local lifecycle constraint.  Keep the
+    database lifecycle normalized, but use the precise code for the driver's
+    notification text.
+    """
+    parsed_code = (parsed or {}).get("status")
+    status_kind = {
+        "called": "queue_called",
+        "crossed": "queue_crossed",
+        "revoked": "queue_revoked",
+    }.get(parsed_code)
+
+    position_changed = (
+        new_position is not None
+        and old_position is not None
+        and new_position != old_position
+    )
+    lifecycle_changed = old_status != new_status
+    if not status_kind and not position_changed and not lifecycle_changed:
+        return False
+
+    # Do not notify about the first harmless transition pending -> active
+    # unless CGR has a precise event or a known queue position.
+    if lifecycle_changed and old_status == "pending" and not status_kind and not position_changed:
+        return False
+
+    push_kind = status_kind or ("queue_position" if position_changed else f"queue_{new_status}")
+    if not cgr_dal.should_send_push(
+        booking["id"], push_kind, throttle_minutes=cgr_settings.push_throttle_minutes
+    ):
+        return False
+
+    plate_or_booking = booking.get("cgr_booking_number") or "бронь"
+    checkpoint = booking.get("checkpoint_code")
+    if parsed_code == "called":
+        title = "🚛 Ваша очередь подошла"
+        body = f"Бронь {plate_or_booking}: вас вызвали на пункт пропуска."
+    elif parsed_code == "crossed":
+        title = "✅ Граница пройдена"
+        body = f"Бронь {plate_or_booking}: пункт пропуска пройден."
+    elif parsed_code == "revoked":
+        title = "⚠️ Бронь отозвана"
+        body = f"Бронь {plate_or_booking}: проверьте статус в CarGoRuqsat."
+    elif position_changed:
+        title = "📍 Обновилась позиция в очереди"
+        body = f"Бронь {plate_or_booking}: позиция {new_position}."
+    else:
+        title = "🔄 Обновился статус очереди"
+        body = f"Бронь {plate_or_booking}: статус обновлён."
+    if checkpoint:
+        body += f" Пункт: {checkpoint}."
+
+    try:
+        from api.push import send_to_user
+        send_to_user(booking["urtruck_user_id"], title, body,
+                     url="/queue", kind="queue",
+                     data={"booking_id": booking["id"], "status": parsed_code or new_status})
+        cgr_dal.log_push_sent(booking["id"], push_kind)
+        return True
+    except Exception:
+        logger.exception("cgr.booking: push failed for booking %s", booking.get("id"))
+        return False
+
+
 def _to_lifecycle(code: str | None) -> str:
     return _STATUS_TO_LIFECYCLE.get(code or "", "pending")
 
@@ -83,8 +152,8 @@ def create_booking(
 async def poll_active() -> dict:
     """Cron: каждые CGR_BOOKING_POLL_INTERVAL_MIN минут — опрашивать активные брони.
 
-    Раздел 3.3 ТЗ + раздел 5.1 чеклиста.
-    Локализация push — на стороне notifications_router (TODO когда подключим).
+    Раздел 3.3 ТЗ + раздел 5.1 чеклиста. Важные изменения отправляются
+    адресным throttled push через общий UrTruck push-контур.
     """
     global _metrics_polls
 
@@ -119,6 +188,7 @@ async def poll_active() -> dict:
             new_position = parsed.get("queue_position")
 
         was_changed = (new_status != b["status"]) or (new_position != b.get("queue_position"))
+        push_sent = False
         if was_changed:
             cgr_dal.update_booking_status(
                 booking_id=b["id"],
@@ -127,8 +197,10 @@ async def poll_active() -> dict:
                 last_known_payload=parsed,
             )
             changed += 1
-            # TODO: вызвать send_localized_push если позиция/статус изменились
-            # с учётом cgr_dal.should_send_push (throttle)
+            push_sent = _send_booking_change_push(
+                b, parsed, b["status"], b.get("queue_position"),
+                new_status, new_position,
+            )
 
         cgr_dal.log_booking_poll(
             booking_id=b["id"],
@@ -136,7 +208,7 @@ async def poll_active() -> dict:
             new_status=new_status,
             old_position=b.get("queue_position"),
             new_position=new_position,
-            push_sent=False,
+            push_sent=push_sent,
         )
 
     _metrics_polls += polled
