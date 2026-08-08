@@ -1,22 +1,10 @@
-// UrTruck Service Worker · v9 — network-first для HTML/JS, cache-first для статики,
+// UrTruck Service Worker · v11 — network-first для HTML/JS, cache-first для статики,
 // API never cached (otherwise stale demo cards survive deploys).
-// v8 (05.08.2026): диагностика показала, что телефоны, уже получившие v7
-// (бамп 158b612, 17:08 UTC 04.08), НЕ подхватывали более поздние деплои того
-// же дня — bootstrap-скрипт в index.html сравнивает localStorage.ur_sw_v с
-// текущим V и чистит кэш/переустанавливает SW только при СМЕНЕ версии; раз
-// v7→v7 не менялось между коммитами 158b612..98b95b5, повторный force-clear
-// не срабатывал, а сам sw.js был побайтово идентичен — браузер не видел
-// повода переустанавливать воркер. Бамп v7→v8 форсирует одноразовую очистку
-// у всех клиентов независимо от того, что у них уже закэшировано.
-// v9 (05.08.2026): повторный бамп по запросу владельца сразу после v8 —
-// код в main был проверен grep'ом и уже содержал нужный UI ДО v8 (см.
-// build-info.json/commit b43e7a1 и коммит dcdb863 "Упростить Сделки/Чат/
-// Мои рейсы"), но раз v8 задеплоился считанные минуты назад, часть клиентов
-// могла не успеть пройти цикл unregister+reload. Бамп v9 — не признак того,
-// что где-то был не тот код, а дополнительная гарантия форсированного
-// сброса на всякий случай.
-const CACHE = 'urtruck-v10-market';
-const STATIC_CACHE = 'urtruck-static-v10';
+// v11 (09.08.2026): theme-switch release. Every frontend release that must
+// reach already-installed PWA clients bumps the cache epoch so the new bundle
+// cannot remain hidden behind an older service-worker cache.
+const CACHE = 'urtruck-v11-market';
+const STATIC_CACHE = 'urtruck-static-v11';
 
 self.addEventListener('install', (e) => {
   // Сразу активируем новый SW без ожидания закрытия вкладок
@@ -44,8 +32,7 @@ self.addEventListener('fetch', (e) => {
 
   // Any backend API call — always network, never cached. Without this,
   // /api/v1/market/trips and similar JSON responses fall into the cache-first
-  // branch below and stale entries (e.g. removed test drivers) keep being
-  // served from disk after backend cleanup.
+  // branch below and stale entries keep being served after backend cleanup.
   if (url.pathname.startsWith('/security/api/') || url.pathname.startsWith('/api/')) return;
 
   // HTML и JS — network-first (чтобы обновлялся bundle без залипания)
