@@ -4,7 +4,9 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 const f = '.github/workflows/set-file-signing-key.yml';
-const s = fs.readFileSync(f, 'utf8');
+const raw = fs.readFileSync(f, 'utf8');
+// strip comment lines (# ... и YAML-комменты) — проверяем только исполняемое
+const s = raw.split('\n').filter(l => !l.trim().startsWith('#')).join('\n');
 
 // dispatch-only
 assert.ok(/^on:\s*[\r\n]+\s*workflow_dispatch:/m.test(s), 'workflow должен быть только workflow_dispatch');
