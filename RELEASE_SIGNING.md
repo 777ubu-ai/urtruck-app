@@ -3,6 +3,52 @@
 Документ создан после инцидента: Google Play Console отклонял `.aab`, т.к. бандл
 подписывался **не тем ключом**. Здесь — причина, исправление и правила на будущее.
 
+## 🔴🔴 UPLOAD KEY СКОМПРОМЕТИРОВАН (08.08.2026, STEP 3)
+
+Прежний upload keystore **`keystore/urtruck-release.keystore`** был закоммичен в
+git и **остаётся извлекаемым из истории** (blob `e082fe95…`, 2746 байт;
+`git rev-list --all --objects | grep urtruck-release.keystore`). Любой с доступом
+к истории репозитория может подписать `.aab` как UrTruck. Ключ считать
+скомпрометированным.
+
+**Статус:** из HEAD/рабочего дерева файл удалён, `.gitignore` покрывает
+`*.keystore/*.jks/*.p12`, добавлен CI-guard `qa:keystore` (не даёт снова
+закоммитить keystore). Но **reset самого upload key в Play Console — EXTERNAL,
+не выполнен** (нет доступа к Play Console). Пока reset не сделан, старый ключ
+остаётся валидным для подписи. См. процедуру ниже.
+
+### Точная процедура (для владельца, вне репозитория)
+
+```bash
+# 1) Сгенерировать НОВЫЙ upload key (материал НЕ коммитить — .gitignore закрывает):
+keytool -genkeypair -v \
+  -keystore urtruck-upload-NEW.jks -alias urtruck-upload \
+  -keyalg RSA -keysize 2048 -validity 10000 \
+  -storetype JKS
+# запомнить store/key пароли — они пойдут в GitHub Secrets, не в git
+
+# 2) Экспортировать сертификат (PEM) для запроса reset в Play Console:
+keytool -export -rfc \
+  -keystore urtruck-upload-NEW.jks -alias urtruck-upload \
+  -file urtruck-upload-NEW.pem
+
+# 3) Google Play Console → приложение → Setup → App integrity →
+#    Upload key certificate → "Request upload key reset" →
+#    приложить urtruck-upload-NEW.pem, указать причину «key exposed in VCS».
+#    Google активирует новый ключ в течение ~48 часов.
+
+# 4) Обновить GitHub Secrets (deploy-play.yml их читает):
+#    ANDROID_KEYSTORE_BASE64  = base64 -w0 urtruck-upload-NEW.jks
+#    ANDROID_KEYSTORE_PASSWORD = <store pass>
+#    ANDROID_KEY_ALIAS         = urtruck-upload
+#    ANDROID_KEY_PASSWORD      = <key pass>
+
+# 5) (Гигиена) переписать историю git, убрав старый blob, ЛИБо принять, что
+#    старый ключ после reset в Play всё равно недействителен для загрузки.
+```
+
+Не заявлять reset выполненным без подтверждения из Play Console.
+
 ## 🔴 Корневая причина (подтверждена аудитом)
 
 `android/app/build.gradle` содержал:
