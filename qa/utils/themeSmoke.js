@@ -1,27 +1,13 @@
-// Theme smoke — static check that the v1 design tokens expose both
-// dark and light variants and that the key components consume the
-// theme-aware hook (`useV1Colors`) instead of the static `v1Colors`
-// fallback. We don't render React here; this is a fast file-level
-// guard that catches regressions where someone re-introduces a
-// static dark-only colour into a top-level component.
-//
-// Pass criteria:
-//   1. designV1.js exports `useV1Colors` and the LIGHT branch contains
-//      a non-black `bg` and a non-white `text` (otherwise the light
-//      mode would be unreadable).
-//   2. The frame-level components — Screen, BottomNav, BottomSheet,
-//      BrandHeader, BrandBarWithShare, FilterChips, FeedCard,
-//      GlassCard, SearchBar, Field, Textarea, OutlineButton, Checkbox,
-//      RoleCard, RoleTabs, SegmentTabs, SectionTitle, StatsRow,
-//      StickyCTABar, BellBadge — all import `useV1Colors`. If a
-//      component still pulls only the static `v1Colors` token, the
-//      smoke fails so the operator knows light mode is broken there.
+// Theme smoke — static guard for light/dark architecture.
+// It verifies that ThemeContext resolves the selected mode at runtime and that
+// user-facing v1 surfaces consume `useV1Colors` rather than frozen light tokens.
 
 const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const DESIGN_V1 = path.join(ROOT, 'src', 'theme', 'designV1.js');
+const THEME_CONTEXT = path.join(ROOT, 'src', 'utils', 'ThemeContext.js');
 
 const FRAME_COMPONENTS = [
   'Screen.js', 'BottomNav.js', 'BottomSheet.js',
@@ -30,46 +16,50 @@ const FRAME_COMPONENTS = [
   'FeedCard.js', 'GlassCard.js',
   'Field.js', 'Textarea.js',
   'OutlineButton.js', 'Checkbox.js',
-  // Stage 20: RoleCard.js dropped — RoleScreen is now full-image hotspots.
   'RoleTabs.js', 'SegmentTabs.js',
   'SectionTitle.js', 'StatsRow.js',
   'StickyCTABar.js', 'BellBadge.js',
 ];
 
-// Theme-dependent token keys. References to these via the static
-// `v1Colors` export are dark-only and break light mode; `v1.X` (the
-// hook-bound local) is fine.
 const THEME_KEYS = [
   'bg', 'bgDeep', 'surface', 'surfaceLift', 'surfaceMuted',
   'border', 'borderStrong', 'text', 'textMuted', 'textDim', 'placeholder',
 ];
 
-// Whitelist of screens or specific token references that may legitimately
-// stay on the static `v1Colors` export. Empty for now — every user-facing
-// screen must reach colours through useV1Colors.
-//
-// To exempt a screen, list it here with a one-line comment explaining
-// why (e.g. "splash uses single-frame asset preload, no theme switching
-// before first paint").
-const SCREEN_WHITELIST = new Set([
-  // intentionally empty after Stage 6 / revision 2 sweep
-]);
-
+const SCREEN_WHITELIST = new Set([]);
 const failures = [];
 
-// 1. Tokens — designV1.js
+// 1. ThemeContext must not freeze the app to one theme.
+const contextSrc = fs.readFileSync(THEME_CONTEXT, 'utf8');
+if (/const\s+isDark\s*=\s*false\s*;/.test(contextSrc)) {
+  failures.push('ThemeContext hardcodes `isDark = false` — dark toggle is disabled');
+}
+if (!/themeMode\s*===\s*['"]dark['"]/.test(contextSrc)) {
+  failures.push('ThemeContext does not resolve explicit dark mode');
+}
+if (!/themeMode\s*===\s*['"]auto['"][\s\S]*systemDark/.test(contextSrc)) {
+  failures.push('ThemeContext does not resolve system theme while in auto mode');
+}
+if (!/storage\.set\(KEY,\s*mode\)/.test(contextSrc)) {
+  failures.push('ThemeContext does not persist the selected theme');
+}
+
+// 2. Tokens — both variants and render-time hooks must exist.
 const tokensSrc = fs.readFileSync(DESIGN_V1, 'utf8');
 if (!/export const useV1Colors/.test(tokensSrc)) {
   failures.push('designV1.js missing `useV1Colors` export');
 }
-if (!/const LIGHT = \{[\s\S]*?bg:\s*'#F6F8F7'/.test(tokensSrc)) {
-  failures.push('designV1.js LIGHT.bg is not a non-black light value');
+if (!/export const useV1Typography/.test(tokensSrc)) {
+  failures.push('designV1.js missing `useV1Typography` export');
 }
-if (!/const LIGHT = \{[\s\S]*?text:\s*'#14221C'/.test(tokensSrc)) {
-  failures.push('designV1.js LIGHT.text is not a dark on-light value');
+if (!/const LIGHT = \{[\s\S]*?bg:\s*'#F6F8F7'/.test(tokensSrc)) {
+  failures.push('designV1.js LIGHT.bg is not the expected light surface');
+}
+if (!/const DARK = \{[\s\S]*?bg:\s*'#0F1512'/.test(tokensSrc)) {
+  failures.push('designV1.js DARK.bg is not the approved dark surface');
 }
 
-// 2. Frame components consume the hook
+// 3. Frame components consume the hook.
 for (const file of FRAME_COMPONENTS) {
   const p = path.join(ROOT, 'src', 'components', 'ui', 'v1', file);
   if (!fs.existsSync(p)) {
@@ -78,32 +68,28 @@ for (const file of FRAME_COMPONENTS) {
   }
   const src = fs.readFileSync(p, 'utf8');
   if (!/useV1Colors/.test(src)) {
-    failures.push(`${file}: does not import useV1Colors — light theme will not apply`);
+    failures.push(`${file}: does not import useV1Colors — theme switching will not apply`);
   }
 }
 
-// 3. Screens — every user-facing screen must NOT reference theme-dependent
-// tokens through the static `v1Colors` export. Brand accents
-// (driver / cargoOwner / glow / soft / error / success / warning) are
-// theme-independent and may stay on `v1Colors`.
+// 4. Screens must not bind theme-dependent surface/text tokens to frozen v1Colors.
 const SCREENS_DIR = path.join(ROOT, 'src', 'screens');
 const themeTokenRe = new RegExp(`\\bv1Colors\\.(${THEME_KEYS.join('|')})\\b`, 'g');
 const screenFiles = fs.readdirSync(SCREENS_DIR).filter((n) => n.endsWith('.js'));
-let screenFails = 0;
 for (const file of screenFiles) {
   if (SCREEN_WHITELIST.has(file)) continue;
   const src = fs.readFileSync(path.join(SCREENS_DIR, file), 'utf8');
   const hits = [...src.matchAll(themeTokenRe)];
   if (hits.length) {
     const sample = hits.slice(0, 3).map((h) => h[0]).join(', ');
-    failures.push(`screens/${file}: ${hits.length} static v1Colors theme reference(s) — light mode will not apply (${sample}${hits.length > 3 ? '…' : ''})`);
-    screenFails += 1;
+    failures.push(`screens/${file}: ${hits.length} frozen theme reference(s) (${sample}${hits.length > 3 ? '…' : ''})`);
   }
 }
 
 console.log(`[theme] frame components checked: ${FRAME_COMPONENTS.length}`);
-console.log(`[theme] screens checked: ${screenFiles.length} (whitelisted: ${SCREEN_WHITELIST.size})`);
-console.log(`[theme] designV1.js exports useV1Colors + LIGHT/DARK token sets`);
+console.log(`[theme] screens checked: ${screenFiles.length}`);
+console.log('[theme] ThemeContext runtime mode + persistence checked');
+console.log('[theme] LIGHT/DARK token sets checked');
 
 if (failures.length) {
   console.log('\n[theme] FAIL:');
