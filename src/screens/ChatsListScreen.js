@@ -277,7 +277,7 @@ export default function ChatsListScreen({ navigation, route }) {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 }}>
               <View style={[s.statusPill, { backgroundColor: '#FF840015' }]}>
                 <View style={[s.statusDot, { backgroundColor: '#FF8400' }]} />
-                <Text style={[s.statusPillText, { color: '#FF8400' }]}>
+                <Text style={[s.statusPillText, { color: '#E06D00' }]}>
                   {cnt} {t('deals_offers_count')}
                 </Text>
               </View>

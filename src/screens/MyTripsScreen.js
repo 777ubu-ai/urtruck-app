@@ -76,13 +76,13 @@ export default function MyTripsScreen({ navigation, route }) {
   cardBottom: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   // Цена: было 24pt жирный оранжевый — крик. Теперь 16pt, тёмный текст,
   // оранжевый ушёл в мелкий label «$» перед суммой.
-  price: { fontSize: 16, fontWeight: '700', color: '#FF8400', fontVariant: ['tabular-nums'], flexShrink: 1 },
+  price: { fontSize: 16, fontWeight: '700', color: '#E06D00', fontVariant: ['tabular-nums'], flexShrink: 1 },
   bidsLabel: { ...typography.caption, flex: 1 },
   // Дизайн 2026 v3: плашка «N предложений» — outline вместо заливки,
   // компактнее (меньше 32px), шрифт 12. Не «кричит».
   offersCta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.sm, paddingVertical: 6, paddingHorizontal: 10, borderRadius: radius.sm, borderWidth: 1, borderColor: '#FF8400', backgroundColor: 'transparent' },
-  offersCtaText: { color: '#FF8400', fontSize: 12, fontWeight: '700', flex: 1 },
-  offersCtaArrow: { color: '#FF8400', fontSize: 14, fontWeight: '700' },
+  offersCtaText: { color: '#E06D00', fontSize: 12, fontWeight: '700', flex: 1 },
+  offersCtaArrow: { color: '#E06D00', fontSize: 14, fontWeight: '700' },
 
   // 27.07: кнопки действий сделки вылезали за карточку. Делаем их гибкими
   // (flexGrow/Shrink + minWidth) — в ряду с flexWrap они заполняют ширину и
@@ -468,7 +468,7 @@ export default function MyTripsScreen({ navigation, route }) {
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <Feather name="calendar" size={14} color="#FF8400" />
-                <Text style={[s.editBtnText, { color: '#FF8400' }]}>{t('change_date')}</Text>
+                <Text style={[s.editBtnText, { color: '#E06D00' }]}>{t('change_date')}</Text>
               </View>
             </TouchableOpacity>
           </View>
@@ -484,7 +484,7 @@ export default function MyTripsScreen({ navigation, route }) {
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <Feather name="edit-3" size={14} color="#FF8400" />
-                <Text style={[s.miniBtnText, { color: '#FF8400' }]}>{t('edit_btn')}</Text>
+                <Text style={[s.miniBtnText, { color: '#E06D00' }]}>{t('edit_btn')}</Text>
               </View>
             </TouchableOpacity>
             <TouchableOpacity

@@ -69,7 +69,7 @@ export default function CargoDetail({ navigation, route }) {
   // shareIcon styles were removed as part of stage 3E cleanup.
   pageTitle: { color: v1.text, fontSize: 19, fontWeight: '700', letterSpacing: -0.2, marginVertical: 12 },
   priceLabelV1: { fontSize: 11, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 },
-  priceValueV1: { fontSize: 16, fontWeight: '700', letterSpacing: -0.2, color: '#FF8400', fontVariant: ['tabular-nums'] },
+  priceValueV1: { fontSize: 16, fontWeight: '700', letterSpacing: -0.2, color: '#E06D00', fontVariant: ['tabular-nums'] },
   // Legacy local styles still used by deal-block / bid cards / reviews
   header: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 },
   backBtn: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
@@ -495,7 +495,7 @@ export default function CargoDetail({ navigation, route }) {
               <Feather name="dollar-sign" size={12} color={theme.textMuted} />
               <Text testID="cargo-price-label" style={{ color: theme.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' }}>{acceptedBid ? t('deal_price') : t('price')}</Text>
             </View>
-            <Text testID="cargo-price-value" style={{ color: '#FF8400', fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'], flexShrink: 1, minWidth: 0, textAlign: 'right' }} numberOfLines={1} ellipsizeMode="tail">{priceDisplay}</Text>
+            <Text testID="cargo-price-value" style={{ color: '#E06D00', fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'], flexShrink: 1, minWidth: 0, textAlign: 'right' }} numberOfLines={1} ellipsizeMode="tail">{priceDisplay}</Text>
           </View>
         </GlassCard>
 

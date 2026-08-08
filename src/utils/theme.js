@@ -69,7 +69,7 @@ export const accentColors = {
 // Status colors
 export const statusColors = {
   success:  { color: '#22c55e', bg: 'rgba(34,197,94,0.15)' },
-  warning:  { color: '#FF8400', bg: 'rgba(255,132,0,0.15)' },
+  warning:  { color: '#E06D00', bg: 'rgba(255,132,0,0.15)' },
   danger:   { color: '#ef4444', bg: 'rgba(239,68,68,0.15)' },
   info:     { color: '#3b82f6', bg: 'rgba(59,130,246,0.15)' },
 };

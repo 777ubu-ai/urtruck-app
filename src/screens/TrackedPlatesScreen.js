@@ -15,7 +15,7 @@ const BASE = `${API_BASE}/borders`;
 // (BOARD_STATUS / LOOKUP_STATUS_KEY) и с макетом «Мои номера в очереди».
 const ST = {
   in_queue: { key: 'queue_lk_in_queue', color: '#168A5B' },
-  called:   { key: 'queue_lk_called',   color: '#FF8400' },
+  called:   { key: 'queue_lk_called',   color: '#E06D00' },
   crossed:  { key: 'queue_lk_crossed',  color: '#168A5B' },
   revoked:  { key: 'queue_lk_revoked',  color: '#EF4444' },
 };

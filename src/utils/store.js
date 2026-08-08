@@ -19,7 +19,7 @@ export const getTrip = (id) => trips.find(t => t.id === id);
 export const TRIP_STATES = ['planned', 'in_transit', 'delivered'];
 export const TRIP_STATE_INFO = {
   planned:    { icon: '📝', labelKey: 'trip_planned',    fallbackLabel: 'Запланирован', color: '#78716C' },
-  in_transit: { icon: '🚛', labelKey: 'trip_in_transit', fallbackLabel: 'В пути',       color: '#FF8400' },
+  in_transit: { icon: '🚛', labelKey: 'trip_in_transit', fallbackLabel: 'В пути',       color: '#E06D00' },
   delivered:  { icon: '✅', labelKey: 'trip_delivered',  fallbackLabel: 'Доставлен',    color: '#22C55E' },
 };
 

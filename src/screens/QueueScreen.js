@@ -22,7 +22,7 @@ const STATUS_KEY = { green: 'queue_status_free', yellow: 'queue_status_moderate'
 // Статусы строк табло (номер в очереди): цвет + i18n-ключ.
 const BOARD_STATUS = {
   in_queue: { key: 'queue_lk_in_queue', color: '#168A5B' },
-  called:   { key: 'queue_lk_called',   color: '#FF8400' },
+  called:   { key: 'queue_lk_called',   color: '#E06D00' },
   crossed:  { key: 'queue_lk_crossed',  color: '#168A5B' },
   revoked:  { key: 'queue_lk_revoked',  color: '#EF4444' },
 };

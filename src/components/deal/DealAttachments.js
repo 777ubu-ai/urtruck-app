@@ -25,10 +25,10 @@ import { accentFor } from './DealRoom';
 
 const STATUS_META = {
   queued:    { icon: 'clock',        color: '#7C8B82', key: 'chat_attach_status_queued' },
-  uploading: { icon: 'upload-cloud', color: '#FF8400', key: 'chat_attach_status_uploading' },
+  uploading: { icon: 'upload-cloud', color: '#E06D00', key: 'chat_attach_status_uploading' },
   uploaded:  { icon: 'check-circle', color: '#168A5B', key: 'chat_attach_status_uploaded' },
   failed:    { icon: 'alert-circle', color: '#EF4444', key: 'chat_attach_status_failed' },
-  retrying:  { icon: 'refresh-cw',   color: '#FF8400', key: 'chat_attach_status_retrying' },
+  retrying:  { icon: 'refresh-cw',   color: '#E06D00', key: 'chat_attach_status_retrying' },
 };
 
 let _localSeq = 0;

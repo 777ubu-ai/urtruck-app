@@ -718,7 +718,7 @@ export default function TripDetail({ navigation, route }) {
                     раньше здесь была v1Accent.main, которая для водителя-
                     владельца давала зелёный на чужой (клиентской) цене
                     (05.08.2026, п.16 ТЗ). */}
-                <Text style={[s.bidAmt, { color: '#FF8400' }]}>{formatPrice(b.amount, b.currency || trip.currency, t)}</Text>
+                <Text style={[s.bidAmt, { color: '#E06D00' }]}>{formatPrice(b.amount, b.currency || trip.currency, t)}</Text>
               </View>
               {b.status === 'pending' && !hasAccepted ? (
                 <View style={{ marginTop: 10, gap: 8, alignSelf: 'stretch' }}>
