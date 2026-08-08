@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator, TextInput, Linking } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator, TextInput, Linking, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useFocusEffect } from '@react-navigation/native';
@@ -47,6 +47,42 @@ export default function QueueScreen({ navigation, route }) {
   const [boardFor, setBoardFor] = useState(null);      // имя пункта или null
   const [boardRows, setBoardRows] = useState([]);
   const [boardLoading, setBoardLoading] = useState(false);
+  const [bookingModal, setBookingModal] = useState(false);
+  const [bookingNumber, setBookingNumber] = useState('');
+  const [bookingCheckpoint, setBookingCheckpoint] = useState('');
+  const [myBookings, setMyBookings] = useState([]);
+  const [bookingLoading, setBookingLoading] = useState(false);
+  const [bookingError, setBookingError] = useState('');
+
+  const loadMyBookings = useCallback(async () => {
+    try {
+      const tok = await storage.get('ur_reg_token');
+      if (!tok) { setMyBookings([]); return; }
+      const r = await fetch(`${BASE}/bookings/active`, { headers: { Authorization: `Bearer ${tok}` } });
+      const d = await r.json();
+      setMyBookings(Array.isArray(d.bookings) ? d.bookings : []);
+    } catch { setMyBookings([]); }
+  }, []);
+
+  const attachBooking = async () => {
+    const number = bookingNumber.trim();
+    if (number.length < 3 || bookingLoading) return;
+    setBookingLoading(true); setBookingError('');
+    try {
+      const tok = await storage.get('ur_reg_token');
+      if (!tok) { setBookingModal(false); navigation.navigate('Citizenship'); return; }
+      const r = await fetch(`${BASE}/bookings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+        body: JSON.stringify({ booking_number: number, checkpoint_code: bookingCheckpoint.trim() || null }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail || 'Не удалось привязать бронь');
+      setBookingNumber(''); setBookingCheckpoint(''); setBookingModal(false);
+      await loadMyBookings();
+    } catch (e) { setBookingError(e.message || 'Ошибка'); }
+    finally { setBookingLoading(false); }
+  };
 
   const openBoard = async (name) => {
     if (boardFor === name) { setBoardFor(null); setBoardRows([]); return; }
@@ -170,6 +206,7 @@ export default function QueueScreen({ navigation, route }) {
   };
 
   useEffect(() => { fetchBorders(); }, []);
+  useFocusEffect(useCallback(() => { loadMyBookings(); }, [loadMyBookings]));
 
   // Метаданные стран для хаба (порядок: ядро Китай → СНГ).
   const COUNTRIES = [
@@ -373,6 +410,29 @@ export default function QueueScreen({ navigation, route }) {
             <Text style={[s.cgrLinkChevron, { color: theme.textMuted }]}>›</Text>
           </TouchableOpacity>
 
+          <View style={[s.bookingsBox, { backgroundColor: theme.card, borderColor: theme.border }]} testID="queue-my-bookings">
+            <View style={s.bookingsHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.bookingsTitle, { color: theme.text }]}>Мои брони очереди</Text>
+                <Text style={[s.bookingsHint, { color: theme.textMuted }]}>Статус машины и уведомления в UrTruck</Text>
+              </View>
+              <TouchableOpacity style={s.addBookingBtn} onPress={() => { setBookingError(''); setBookingModal(true); }} testID="queue-add-booking">
+                <Text style={s.addBookingBtnText}>+ Добавить</Text>
+              </TouchableOpacity>
+            </View>
+            {myBookings.length === 0 ? (
+              <Text style={[s.emptyBooking, { color: theme.textMuted }]}>Привяжите номер брони, оформленной в CarGoRuqsat</Text>
+            ) : myBookings.map((b) => (
+              <View key={String(b.id)} style={[s.bookingRow, { borderTopColor: theme.border }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.bookingNumber, { color: theme.text }]}>{b.cgr_booking_number}</Text>
+                  <Text style={[s.bookingMeta, { color: theme.textMuted }]}>{b.checkpoint_code || 'Пункт не указан'} · {b.queue_position ? `позиция ${b.queue_position}` : 'статус обновляется'}</Text>
+                </View>
+                <Text style={[s.bookingStatus, { color: b.status === 'active' ? '#16A34A' : '#64748B' }]}>{b.status}</Text>
+              </View>
+            ))}
+          </View>
+
           {/* Незарегистрированным — мягкий баннер: смотреть можно всем,
               бронь места нужна регистрация (крючок привлечения). */}
           {verState !== 'approved' ? (
@@ -429,13 +489,26 @@ export default function QueueScreen({ navigation, route }) {
             );
           })}
 
-          {/* CarGoRuqsat портал */}
+          {/* Оформление новой брони остаётся в официальной системе до подключения Smart Bridge. */}
           <TouchableOpacity style={[s.cgrLink, { marginTop: 16, marginHorizontal: 0 }]} onPress={() => navigation.navigate('CargoRuqsatInfo')} testID="queue-cgr-link-approved">
-            <Text style={s.cgrLinkText}>🅿️ {t('queue_cgr_cta')}</Text>
+            <Text style={s.cgrLinkText}>Оформить новую бронь в CarGoRuqsat ↗</Text>
             <Text style={[s.cgrLinkChevron, { color: theme.textMuted }]}>›</Text>
           </TouchableOpacity>
         </ScrollView>
       )}
+      <Modal visible={bookingModal} transparent animationType="fade" onRequestClose={() => setBookingModal(false)}>
+        <View style={s.modalBackdrop}>
+          <View style={[s.modalCard, { backgroundColor: theme.card }]}>
+            <Text style={[s.modalTitle, { color: theme.text }]}>Добавить бронь</Text>
+            <Text style={[s.modalHint, { color: theme.textMuted }]}>Введите номер брони из официальной системы CarGoRuqsat. UrTruck будет показывать статус и отправлять уведомления.</Text>
+            <TextInput value={bookingNumber} onChangeText={setBookingNumber} placeholder="Номер брони" placeholderTextColor={theme.textDim} style={[s.modalInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} autoCapitalize="characters" />
+            <TextInput value={bookingCheckpoint} onChangeText={setBookingCheckpoint} placeholder="Пункт пропуска (необязательно)" placeholderTextColor={theme.textDim} style={[s.modalInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
+            {bookingError ? <Text style={s.bookingError}>{bookingError}</Text> : null}
+            <TouchableOpacity style={s.modalPrimary} onPress={attachBooking} disabled={bookingLoading}><Text style={s.modalPrimaryText}>{bookingLoading ? 'Сохраняем…' : 'Привязать бронь'}</Text></TouchableOpacity>
+            <TouchableOpacity style={s.modalSecondary} onPress={() => setBookingModal(false)}><Text style={[s.modalSecondaryText, { color: theme.textMuted }]}>Отмена</Text></TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -478,6 +551,27 @@ const s = StyleSheet.create({
   trackRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 },
   trackHint: { fontSize: 12, fontWeight: '700' },
   trackStop: { fontSize: 12, fontWeight: '700', textDecorationLine: 'underline' },
+  bookingsBox: { marginHorizontal: 16, marginBottom: 8, padding: 14, borderRadius: 10, borderWidth: 1 },
+  bookingsHeader: { flexDirection: 'row', alignItems: 'center' },
+  bookingsTitle: { fontSize: 15, fontWeight: '800' },
+  bookingsHint: { fontSize: 11, marginTop: 3 },
+  addBookingBtn: { backgroundColor: '#1A5C3C', borderRadius: 9, paddingHorizontal: 12, paddingVertical: 9 },
+  addBookingBtnText: { color: '#FFF', fontSize: 12, fontWeight: '800' },
+  emptyBooking: { fontSize: 12, lineHeight: 18, marginTop: 12 },
+  bookingRow: { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, paddingTop: 10, marginTop: 10 },
+  bookingNumber: { fontSize: 13, fontWeight: '800' },
+  bookingMeta: { fontSize: 11, marginTop: 3 },
+  bookingStatus: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  modalCard: { width: '100%', maxWidth: 420, borderRadius: 18, padding: 20 },
+  modalTitle: { fontSize: 20, fontWeight: '800', marginBottom: 8 },
+  modalHint: { fontSize: 13, lineHeight: 19, marginBottom: 14 },
+  modalInput: { height: 48, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, marginBottom: 10 },
+  bookingError: { color: '#DC2626', fontSize: 12, marginBottom: 8 },
+  modalPrimary: { height: 48, borderRadius: 10, backgroundColor: '#1A5C3C', alignItems: 'center', justifyContent: 'center', marginTop: 4 },
+  modalPrimaryText: { color: '#FFF', fontSize: 14, fontWeight: '800' },
+  modalSecondary: { alignItems: 'center', paddingVertical: 12 },
+  modalSecondaryText: { fontSize: 13, fontWeight: '700' },
   regBanner: { marginHorizontal: 16, marginBottom: 12, padding: 14, borderRadius: 10, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 48 },
   trackedLink: { marginHorizontal: 16, marginBottom: 12, paddingHorizontal: 14, paddingVertical: 14, borderRadius: 10, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 48 },
   trackedLinkText: { fontSize: 14, fontWeight: '700', flex: 1 },
