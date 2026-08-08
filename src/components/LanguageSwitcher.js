@@ -104,7 +104,7 @@ export default function LanguageSwitcher({ style, testID = 'language-switcher', 
                   >
                     <Text style={{ fontSize: 22 }}>{l.flag}</Text>
                     <Text style={[s.rowText, { color: theme.text }]}>{l.label}</Text>
-                    {active && <Text style={{ color: '#22C55E', fontSize: 16, fontWeight: '700' }}>✓</Text>}
+                    {active && <Text style={{ color: '#168A5B', fontSize: 16, fontWeight: '700' }}>✓</Text>}
                   </TouchableOpacity>
                 );
               })}

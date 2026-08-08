@@ -15,15 +15,15 @@ const PLATE_KEY = 'ur_queue_plate';
 
 const BASE = `${API_BASE}/borders`;
 
-const STATUS_COLORS = { green: '#22C55E', yellow: '#FF8400', red: '#EF4444' };
+const STATUS_COLORS = { green: '#168A5B', yellow: '#FF8400', red: '#EF4444' };
 // Метки статуса локализованы через t() в рендере (statusLabel) — раньше были
 // хардкод-RU и протекали в ZH/EN/KZ.
 const STATUS_KEY = { green: 'queue_status_free', yellow: 'queue_status_moderate', red: 'queue_status_busy' };
 // Статусы строк табло (номер в очереди): цвет + i18n-ключ.
 const BOARD_STATUS = {
-  in_queue: { key: 'queue_lk_in_queue', color: '#2563EB' },
+  in_queue: { key: 'queue_lk_in_queue', color: '#168A5B' },
   called:   { key: 'queue_lk_called',   color: '#FF8400' },
-  crossed:  { key: 'queue_lk_crossed',  color: '#22C55E' },
+  crossed:  { key: 'queue_lk_crossed',  color: '#168A5B' },
   revoked:  { key: 'queue_lk_revoked',  color: '#EF4444' },
 };
 
@@ -274,7 +274,7 @@ export default function QueueScreen({ navigation, route }) {
 
         {/* Трек 1: раскрыть полное табло пункта (номера + статус). */}
         <TouchableOpacity style={s.boardToggle} onPress={() => openBoard(b.name)} testID="queue-board-toggle">
-          <Text style={[s.boardToggleText, { color: v1.driver || '#00E676' }]}>
+          <Text style={[s.boardToggleText, { color: v1.driver || '#168A5B' }]}>
             {boardFor === b.name ? `▲ ${t('queue_board_hide')}` : `▼ ${t('queue_board_show')}`}
           </Text>
         </TouchableOpacity>
@@ -437,12 +437,12 @@ export default function QueueScreen({ navigation, route }) {
               бронь места нужна регистрация (крючок привлечения). */}
           {verState !== 'approved' ? (
             <TouchableOpacity
-              style={[s.regBanner, { borderColor: v1.driver || '#00E676', backgroundColor: (v1.driver || '#00E676') + '14' }]}
+              style={[s.regBanner, { borderColor: v1.driver || '#168A5B', backgroundColor: (v1.driver || '#168A5B') + '14' }]}
               onPress={() => navigation.navigate('Citizenship')}
               testID="queue-reg-banner"
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
-                <Feather name="unlock" size={15} color={v1.driver || '#00E676'} />
+                <Feather name="unlock" size={15} color={v1.driver || '#168A5B'} />
                 <Text style={[s.regBannerText, { color: theme.text }]}>{t('queue_register_to_book')}</Text>
               </View>
               <Text style={[s.cgrLinkChevron, { color: theme.textMuted }]}>›</Text>
@@ -452,12 +452,12 @@ export default function QueueScreen({ navigation, route }) {
           {/* Свободнее всего в Китай (ядро бизнеса) */}
           {freest ? (
             <TouchableOpacity
-              style={[s.freestCard, { borderColor: '#22C55E' }]}
+              style={[s.freestCard, { borderColor: '#168A5B' }]}
               onPress={() => setSelectedCountry('CN')}
               testID="queue-freest"
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                <Feather name="star" size={14} color="#22C55E" />
+                <Feather name="star" size={14} color="#168A5B" />
                 <Text style={[s.freestLabel, { marginBottom: 0 }]}>{t('queue_hub_freest')} 🇨🇳</Text>
               </View>
               <Text style={[s.freestName, { color: theme.text }]}>
@@ -585,7 +585,7 @@ const s = StyleSheet.create({
   lookupResult: { fontSize: 14, fontWeight: '700', marginTop: 10 },
   lookupSub: { fontSize: 12, marginTop: 3 },
   freestCard: { borderWidth: 1, borderRadius: 10, padding: 14, marginBottom: 16, backgroundColor: 'rgba(34,197,94,0.08)' },
-  freestLabel: { fontSize: 12, fontWeight: '700', color: '#22C55E', marginBottom: 4 },
+  freestLabel: { fontSize: 12, fontWeight: '700', color: '#168A5B', marginBottom: 4 },
   freestName: { fontSize: 14, fontWeight: '700' },
   sectionTitle: { fontSize: 12, fontWeight: '700', letterSpacing: 0.5, marginBottom: 10, textTransform: 'uppercase' },
   countryCard: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 8 },

@@ -11,7 +11,7 @@ const BASE = API_BASE;
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 const TRUCK_ICONS = { tent: '🚚', ref: '🧊', platform: '🛻', tanker: '🛢️', auto: '🚗', van: '🚐' };
-const COLOR_BADGE = { green: '#22C55E', yellow: '#FF8400', red: '#EF4444' };
+const COLOR_BADGE = { green: '#168A5B', yellow: '#FF8400', red: '#EF4444' };
 
 export default function StatsScreen({ navigation }) {
   const v1 = useV1Colors();

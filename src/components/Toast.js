@@ -50,7 +50,7 @@ export const ToastProvider = ({ children }) => {
 };
 
 const COLORS = {
-  success: { bg: '#22C55E', icon: '✓' },
+  success: { bg: '#168A5B', icon: '✓' },
   error: { bg: '#EF4444', icon: '✕' },
   info: { bg: '#334155', icon: 'ℹ' },
   warn: { bg: '#FF8400', icon: '⚠' },

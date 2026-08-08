@@ -20,7 +20,7 @@ import SectionTitle from '../components/ui/v1/SectionTitle';
 import { PhotoGallery } from '../components/PhotoGallery';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
 
-const TCOLORS = { tent: '#22C55E', ref: '#16A34A', platform: '#E06D00', auto: '#7C3AED', izoterm: '#059669' };
+const TCOLORS = { tent: '#168A5B', ref: '#16A34A', platform: '#E06D00', auto: '#7C3AED', izoterm: '#059669' };
 const FLAGS = { KZ: '🇰🇿', UZ: '🇺🇿', RU: '🇷🇺', KG: '🇰🇬', CN: '🇨🇳' };
 const REPORT_REASONS = ['report_reason_fraud', 'report_reason_noshow', 'report_reason_rude', 'report_reason_other'];
 
@@ -108,7 +108,7 @@ export default function DriverDetail({ navigation, route }) {
       <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
         <Text style={{ color: theme.textMuted, fontSize: 14 }}>{t('incomplete_data')}</Text>
         <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: 16 }}>
-          <Text style={{ color: '#22C55E', fontSize: 14, fontWeight: '600' }}>← {t('back_short')}</Text>
+          <Text style={{ color: '#168A5B', fontSize: 14, fontWeight: '600' }}>← {t('back_short')}</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );

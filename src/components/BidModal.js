@@ -47,7 +47,7 @@ export default function BidModal({
   // Брендовый акцент модалки. По умолчанию — driver-зелёный (не ломаем
   // водителя). Клиентские экраны (TripDetail/CargoDetail для грузоотправителя)
   // прокидывают v1AccentFor('client').main = оранжевый + onAccent = #0C0A09.
-  accent = '#22C55E',
+  accent = '#168A5B',
   onAccent = '#fff',
   // Направление торга для quick-чипов (create-режим). 'up' (по умолчанию) —
   // водитель на грузе просит БОЛЬШЕ бюджета клиента: цена/+200/+400.
@@ -323,15 +323,15 @@ const s = StyleSheet.create({
   subtitle: { fontSize: 12, marginBottom: 6 },
   quickRow: { flexDirection: 'row', gap: 8, marginBottom: 14, marginTop: 10 },
   quickBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center', borderWidth: 1 },
-  quickBtnActive: { backgroundColor: '#22C55E18', borderColor: '#22C55E' },
+  quickBtnActive: { backgroundColor: '#168A5B18', borderColor: '#168A5B' },
   quickBtnText: { fontSize: 15, fontWeight: '700' },
-  quickBtnTextActive: { color: '#22C55E' },
+  quickBtnTextActive: { color: '#168A5B' },
   inputWrap: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, borderWidth: 1, marginBottom: 10, paddingHorizontal: 14 },
   dollar: { fontSize: 18, fontWeight: '700', marginRight: 4 },
   input: { flex: 1, fontSize: 18, fontWeight: '700', paddingVertical: 16 },
   messageInput: { borderWidth: 1, borderRadius: 12, padding: 12, fontSize: 14, marginBottom: 14 },
   errorText: { color: '#EF4444', fontSize: 13, textAlign: 'center', marginBottom: 10 },
-  submitBtn: { backgroundColor: '#22C55E', borderRadius: 14, paddingVertical: 16, alignItems: 'center' },
+  submitBtn: { backgroundColor: '#168A5B', borderRadius: 14, paddingVertical: 16, alignItems: 'center' },
   submitBtnDisabled: { backgroundColor: '#292524' },
   submitBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
 });

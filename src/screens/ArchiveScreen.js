@@ -55,7 +55,7 @@ const s = StyleSheet.create({
   item: { padding: 14, borderRadius: 14, borderWidth: 1 },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
   route: { fontSize: 15, fontWeight: '700' },
-  price: { color: '#22C55E', fontSize: 16, fontWeight: '900' },
+  price: { color: '#168A5B', fontSize: 16, fontWeight: '900' },
   cargo: { fontSize: 12, marginBottom: 8 },
   footer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   rating: { color: '#FBBF24', fontSize: 13 },

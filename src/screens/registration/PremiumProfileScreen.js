@@ -29,7 +29,7 @@ import { saveProfile } from '../../utils/store';
 import { regAPI } from '../../utils/registration';
 
 const ACCENT = {
-  driver: { main: '#00E676', deep: '#00C766', soft: 'rgba(0,230,118,0.12)' },
+  driver: { main: '#168A5B', deep: '#00C766', soft: 'rgba(0,230,118,0.12)' },
   client: { main: '#FF8400', deep: '#E06D00', soft: 'rgba(255,132,0,0.12)' },
 };
 

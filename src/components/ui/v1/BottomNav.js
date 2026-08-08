@@ -69,7 +69,7 @@ const ICONS = {
 };
 
 // Industrial Luxury: неоновый акцент зависит от роли (источник истины —
-// CLAUDE.md: driver #00E676 изумруд, client #FF8400 янтарь). Текст поверх
+// CLAUDE.md: driver #168A5B изумруд, client #FF8400 янтарь). Текст поверх
 // «+»-кнопки — чёрный (#0C0A09): на изумруде/янтаре даёт AAA-контраст.
 const ROLE_ACCENT = {
   driver: { main: '#168A5B', soft: '#E8F6EF' },

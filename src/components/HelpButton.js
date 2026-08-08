@@ -15,11 +15,11 @@ import { useI18n } from '../utils/useI18n';
 //            используется дефолтный набор для регистрации.
 //   support: куда вести при нажатии на «Написать в техподдержку».
 //            По умолчанию — wa.me/77479171118 (UrTruck support).
-//   accent:  цвет акцента (бренд по роли). По умолчанию #22C55E.
+//   accent:  цвет акцента (бренд по роли). По умолчанию #168A5B.
 
 const DEFAULT_SUPPORT = 'https://wa.me/77479171118';
 
-export default function HelpButton({ topics, support = DEFAULT_SUPPORT, accent = '#22C55E', style }) {
+export default function HelpButton({ topics, support = DEFAULT_SUPPORT, accent = '#168A5B', style }) {
   const { theme } = useTheme();
   const { t } = useI18n();
   const [open, setOpen] = useState(false);

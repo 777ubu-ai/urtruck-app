@@ -112,7 +112,7 @@ function MainTabs({ route }) {
   //   Водитель (4): Грузы (Feed) · Рейсы (MyWork) · Очередь (Queue —
   //     инструмент границы, не дубль) · Сделки (Deals).
   //   Клиент (3): Грузы (MyWork) · Машины (Feed) · Сделки (Deals).
-  // BottomNav красит неон по роли: driver #00E676, client #FF8400.
+  // BottomNav красит неон по роли: driver #168A5B, client #FF8400.
   return (
     <Tab.Navigator
       screenOptions={{ headerShown: false }}

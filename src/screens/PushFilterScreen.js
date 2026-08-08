@@ -22,9 +22,9 @@ const NOTIF_CATEGORIES = [
 export default function PushFilterScreen({ navigation, route }) {
   const v1 = useV1Colors();
   const { role } = route.params || {};
-  // 5.4: driver-акцент = бренд-зелёный #00E676 (был индиго #4F46E5 —
+  // 5.4: driver-акцент = бренд-зелёный #168A5B (был индиго #4F46E5 —
   // рассинхрон с ролью). Клиент — янтарный.
-  const accent = role === 'driver' ? '#00E676' : '#FF8400';
+  const accent = role === 'driver' ? '#168A5B' : '#FF8400';
   const { t } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();

@@ -35,7 +35,7 @@ import { regAPI } from '../../utils/registration';
 import { formatCooldown } from '../../utils/formatCooldown';
 import { formatPhoneForDisplay, toAsciiDigits } from '../../utils/phone';
 
-const ACCENT = { main: '#22C55E', deep: '#16A34A', soft: 'rgba(34,197,94,0.12)' };
+const ACCENT = { main: '#168A5B', deep: '#16A34A', soft: 'rgba(34,197,94,0.12)' };
 
 export default function PremiumLoginScreen({ navigation }) {
   const { t } = useI18n();

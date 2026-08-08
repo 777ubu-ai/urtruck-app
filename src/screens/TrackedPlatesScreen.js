@@ -14,9 +14,9 @@ const BASE = `${API_BASE}/borders`;
 // Статус строки очереди: цвет + i18n-ключ. Синхронизирован с QueueScreen
 // (BOARD_STATUS / LOOKUP_STATUS_KEY) и с макетом «Мои номера в очереди».
 const ST = {
-  in_queue: { key: 'queue_lk_in_queue', color: '#2563EB' },
+  in_queue: { key: 'queue_lk_in_queue', color: '#168A5B' },
   called:   { key: 'queue_lk_called',   color: '#FF8400' },
-  crossed:  { key: 'queue_lk_crossed',  color: '#22C55E' },
+  crossed:  { key: 'queue_lk_crossed',  color: '#168A5B' },
   revoked:  { key: 'queue_lk_revoked',  color: '#EF4444' },
 };
 
@@ -24,7 +24,7 @@ export default function TrackedPlatesScreen({ navigation }) {
   const v1 = useV1Colors();
   const { theme } = useTheme();
   const { t } = useI18n();
-  const driver = v1.driver || '#00E676';
+  const driver = v1.driver || '#168A5B';
 
   const [token, setToken] = useState(undefined);   // undefined=loading, null=guest
   const [items, setItems] = useState([]);          // [{plate, status, checkpoint, queue_datetime, is_late, updated_at}]

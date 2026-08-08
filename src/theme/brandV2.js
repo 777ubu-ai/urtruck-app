@@ -26,9 +26,9 @@ export const brand = {
   logoAccent: '#FF8400', // "Truck" в логотипе
 
   // Primary CTA (зелёная кнопка "Продолжить")
-  primary: '#16A34A',
-  primaryHover: '#15803D',
-  primarySoft: '#DCFCE7',
+  primary: '#168A5B',
+  primaryHover: '#0F6B47',
+  primarySoft: '#E8F6EF',
 
   // Accent (оранжевый — используется точечно для иконок/маркеров)
   accent: '#FF8400',
@@ -41,7 +41,7 @@ export const brand = {
   divider: '#F1F5F9',
 
   // States
-  success: '#22C55E',
+  success: '#168A5B',
   warning: '#FF8400',
   error: '#EF4444',
   info: '#3B82F6',
@@ -49,7 +49,7 @@ export const brand = {
   // Map/illustration assist
   mapGray: '#E5E7EB',
   routeOrange: '#FF8400',
-  routeGreen: '#16A34A',
+  routeGreen: '#168A5B',
 };
 
 export const radius = {

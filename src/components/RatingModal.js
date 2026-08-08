@@ -88,7 +88,7 @@ export default function RatingModal({ visible, onClose, onSubmitted, targetId, t
   if (!visible) return null;
 
   const ratingLabels = ['', t('rating_label_1'), t('rating_label_2'), t('rating_label_3'), t('rating_label_4'), t('rating_label_5')];
-  const ratingColor = rating >= 4 ? '#22C55E' : rating >= 3 ? '#FF8400' : rating > 0 ? '#EF4444' : theme.textMuted;
+  const ratingColor = rating >= 4 ? '#168A5B' : rating >= 3 ? '#FF8400' : rating > 0 ? '#EF4444' : theme.textMuted;
 
   return (
     <Modal transparent visible={visible} animationType="none" onRequestClose={onClose}>

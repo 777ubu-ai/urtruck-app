@@ -3,7 +3,7 @@
 // Шаг 1 нового регистрационного потока: ввод телефона + согласие.
 // Заменяет старый RegScreen step=1 (WhatsApp + 5 progress dots).
 //
-// Дизайн: тёмный фон #0C0A09, role-aware акцент (driver=#22C55E,
+// Дизайн: тёмный фон #0C0A09, role-aware акцент (driver=#168A5B,
 // client=#FF8400), крупный заголовок, поле телефона +7 KZ-маска,
 // ConsentRow, single CTA «Получить код». НЕТ Apple/Google, НЕТ
 // "WhatsApp", НЕТ степ-баров «Личность/Документы/Транспорт/Готово».
@@ -30,7 +30,7 @@ import { formatCooldown } from '../../utils/formatCooldown';
 import { formatPhoneForDisplay, normalizePhoneInput, toAsciiDigits } from '../../utils/phone';
 
 const ACCENT = {
-  driver: { main: '#00E676', deep: '#00C766', soft: 'rgba(0,230,118,0.12)' },
+  driver: { main: '#168A5B', deep: '#00C766', soft: 'rgba(0,230,118,0.12)' },
   client: { main: '#FF8400', deep: '#E06D00', soft: 'rgba(255,132,0,0.12)' },
 };
 

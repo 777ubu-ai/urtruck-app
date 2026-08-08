@@ -40,7 +40,7 @@ export default function MyTripsScreen({ navigation, route }) {
   titleHero: { color: v1.text, fontSize: 19, fontWeight: '700', letterSpacing: -0.2 },
   titleSub: { color: v1.textMuted, fontSize: 12, marginTop: 1 },
   // Кнопка «Разместить рейс» (driver, §2.2.2). Текст чёрный — на изумруде
-  // #00E676 даёт AAA-контраст (источник истины — CLAUDE.md).
+  // #168A5B даёт AAA-контраст (источник истины — CLAUDE.md).
   // Дизайн 2026 v3 (03.08): outline вместо заливки — «+ Разместить груз» не
   // primary-CTA этой страницы (главное действие — тап по карточке груза).
   // Меньше 40px, тонкий контур, чтобы не «кричал» и не «для слепого».
@@ -52,7 +52,7 @@ export default function MyTripsScreen({ navigation, route }) {
   pgIcon: { fontSize: 44, marginBottom: 12 },
   pgTitle: { color: v1.text, fontSize: 20, fontWeight: '800', textAlign: 'center', marginBottom: 10 },
   pgText: { color: v1.textMuted, fontSize: 14, lineHeight: 21, textAlign: 'center', marginBottom: 22 },
-  pgBtn: { height: 52, borderRadius: 14, backgroundColor: '#00E676', alignItems: 'center', justifyContent: 'center', width: '100%' },
+  pgBtn: { height: 52, borderRadius: 14, backgroundColor: '#168A5B', alignItems: 'center', justifyContent: 'center', width: '100%' },
   pgBtnText: { color: '#0C0A09', fontSize: 16, fontWeight: '800' },
   pgCancel: { marginTop: 10, paddingVertical: 8 },
   pgCancelText: { color: v1.textMuted, fontSize: 13, fontWeight: '600' },
@@ -87,20 +87,20 @@ export default function MyTripsScreen({ navigation, route }) {
   // 27.07: кнопки действий сделки вылезали за карточку. Делаем их гибкими
   // (flexGrow/Shrink + minWidth) — в ряду с flexWrap они заполняют ширину и
   // аккуратно переносятся на след. строку, не вылезая за края.
-  acceptBtn: { backgroundColor: '#22C55E', borderRadius: radius.sm, paddingVertical: spacing.sm, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', flexGrow: 1, flexShrink: 1, minWidth: 130, maxWidth: '100%' },
+  acceptBtn: { backgroundColor: '#168A5B', borderRadius: radius.sm, paddingVertical: spacing.sm, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', flexGrow: 1, flexShrink: 1, minWidth: 130, maxWidth: '100%' },
   acceptBtnText: { color: '#FFF', ...typography.title, flexShrink: 1, textAlign: 'center' },
   // «Для перчаток и солнца»: крупная тап-цель (≥44pt) и читаемый текст.
   miniBtn: { borderWidth: 0, borderRadius: radius.sm, paddingVertical: 12, paddingHorizontal: 14, minHeight: 44, alignItems: 'center', justifyContent: 'center', flexGrow: 1, flexShrink: 1, minWidth: 110, maxWidth: '100%', backgroundColor: 'rgba(148,163,184,0.14)' },
   miniBtnText: { fontSize: 14, fontWeight: '700', flexShrink: 1, textAlign: 'center' },
   editBtn: { borderWidth: 0, borderRadius: 10, paddingVertical: 10, alignItems: 'center', marginTop: spacing.sm, backgroundColor: 'rgba(34,197,94,0.12)', maxWidth: '100%' },
-  editBtnText: { color: '#22C55E', fontSize: 12, fontWeight: '700', flexShrink: 1, textAlign: 'center' },
-  extendBtn: { flex: 1, backgroundColor: '#00E676', borderRadius: 10, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', minHeight: 40, maxWidth: '100%' },
+  editBtnText: { color: '#168A5B', fontSize: 12, fontWeight: '700', flexShrink: 1, textAlign: 'center' },
+  extendBtn: { flex: 1, backgroundColor: '#168A5B', borderRadius: 10, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', minHeight: 40, maxWidth: '100%' },
   extendBtnText: { color: '#0C0A09', fontSize: 13, fontWeight: '800', flexShrink: 1, textAlign: 'center' },
 
   }), [v1]);
   const { role } = route.params || {};
   const isDriver = role === 'driver';
-  const accent = isDriver ? '#22C55E' : '#FF8400';
+  const accent = isDriver ? '#168A5B' : '#FF8400';
   const { t, lang } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
@@ -334,7 +334,7 @@ export default function MyTripsScreen({ navigation, route }) {
     const desc = item.cargo_desc || '';
     const isCargo = !!item.cargo_desc;
     const badge = isCargo ? t('badge_cargo') : t('badge_trip');
-    const badgeColor = isCargo ? '#FF8400' : '#22C55E';
+    const badgeColor = isCargo ? '#FF8400' : '#168A5B';
     // Edit is allowed only for own ACTIVE trips. Backend will also block any
     // attempt with an accepted deal — but hiding the button is a much better
     // UX than letting the user tap → wait → see "edit denied".
@@ -358,7 +358,7 @@ export default function MyTripsScreen({ navigation, route }) {
             <Text style={[s.badgeText, { color: badgeColor }]}>{badge}</Text>
           </View>
           {/* Stage DS-1: статус не должен быть плоско-зелёным для всех состояний.
-              Раньше cancelled / draft / pending тоже рендерились #22C55E,
+              Раньше cancelled / draft / pending тоже рендерились #168A5B,
               что визуально врало пользователю (зелёное = "успешно"). Теперь
               цвет подбирается по item.status. */}
           {item._expired ? (
@@ -372,8 +372,8 @@ export default function MyTripsScreen({ navigation, route }) {
               if (st === 'cancelled') return '#94A3B8';        // серый
               if (st === 'draft' || st === 'pending') return '#FF8400'; // янтарный
               if (st === 'rejected' || st === 'expired') return '#EF4444'; // красный
-              if (st === 'completed' || st === 'delivered') return '#22C55E'; // зелёный
-              return '#22C55E'; // active по умолчанию — зелёный
+              if (st === 'completed' || st === 'delivered') return '#168A5B'; // зелёный
+              return '#168A5B'; // active по умолчанию — зелёный
             })() }]}>{formatStatus(item.status || 'active')}</Text>
           )}
         </View>
@@ -436,7 +436,7 @@ export default function MyTripsScreen({ navigation, route }) {
             }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Feather name="edit-3" size={14} color="#22C55E" />
+              <Feather name="edit-3" size={14} color="#168A5B" />
               <Text style={s.editBtnText}>{t('edit_btn')}</Text>
             </View>
           </TouchableOpacity>

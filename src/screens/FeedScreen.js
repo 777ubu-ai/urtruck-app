@@ -40,7 +40,7 @@ const ddmmToIso = (s) => {
 const TCOLORS = {
   // Brand v3: tent (default truck) maps to brand emerald. ref/izoterm keep
   // teal/cyan because those are *semantic* refrigeration cues, not UI blue.
-  tent: '#22C55E', ref: '#0891B2', platform: '#E06D00', auto: '#7C3AED', izoterm: '#059669',
+  tent: '#168A5B', ref: '#0891B2', platform: '#E06D00', auto: '#7C3AED', izoterm: '#059669',
   cont20: '#6366F1', cont40: '#4338CA', jumbo: '#EC4899', mega: '#DB2777',
   curtain: '#8B5CF6', lowloader: '#F97316', tanker: '#10B981', dumptruck: '#EAB308',
   grain: '#CA8A04', livestock: '#84CC16', logger: '#65A30D', hazmat: '#DC2626',
@@ -176,7 +176,7 @@ export default function FeedScreen({ navigation, route }) {
   fi: { borderRadius: 12, padding: 14, fontSize: 14, borderWidth: 1, marginBottom: 10 },
   frow: { flexDirection: 'row', gap: 8 },
   formLabel: { fontSize: 11, fontWeight: '600', letterSpacing: 0.5, marginBottom: 6, marginTop: 4, textTransform: 'uppercase' },
-  hintBox: { backgroundColor: '#22C55E15', borderRadius: 10, padding: 10, marginBottom: 12, borderWidth: 1, borderColor: '#22C55E30' },
+  hintBox: { backgroundColor: '#168A5B15', borderRadius: 10, padding: 10, marginBottom: 12, borderWidth: 1, borderColor: '#168A5B30' },
   hintText: { fontSize: 11, lineHeight: 16 },
   typeCard: { width: 88, paddingVertical: 12, paddingHorizontal: 8, borderRadius: 12, borderWidth: 1, alignItems: 'center', gap: 4 },
   typeCardText: { fontSize: 11, fontWeight: '600', textAlign: 'center' },

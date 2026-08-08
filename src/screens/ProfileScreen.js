@@ -78,12 +78,12 @@ const confirm = (title, msg, onOk, cancelLabel = 'Отмена', confirmLabel = 
 export default function ProfileScreen({ navigation, route }) {
   const { role } = route.params || {};
   const isDriver = role === 'driver';
-  // PR-D1 (build 18): driver-акцент мигрировал на изумрудный неон #00E676.
+  // PR-D1 (build 18): driver-акцент мигрировал на изумрудный неон #168A5B.
   // См. theme/designV1.js — этот цвет тяжёл для светлого фона, поэтому
-  // на белых кнопках текст рендерится чёрным (driverOnAccent). #22C55E
+  // на белых кнопках текст рендерится чёрным (driverOnAccent). #168A5B
   // ниже сохранён для семантических success-индикаторов (verified-tick,
   // загруженный документ) — там это «успех», а не бренд водителя.
-  const accent = isDriver ? '#00E676' : '#FF8400';
+  const accent = isDriver ? '#168A5B' : '#FF8400';
   const onAccent = isDriver ? '#0C0A09' : '#0C0A09';
   const { isDark, toggleTheme } = useTheme();
   // Stage 8: read tokens from the v1 hook so the screen lines up
@@ -251,7 +251,7 @@ export default function ProfileScreen({ navigation, route }) {
                 <Feather name="arrow-left" size={24} color={theme.text} />
               </TouchableOpacity>
             ) : null}
-            <GradientText style={s.title} colors={isDriver ? ['#00E676', '#00C766'] : ['#FF8400', '#EF4444']}>{t('profile')}</GradientText>
+            <GradientText style={s.title} colors={isDriver ? ['#168A5B', '#00C766'] : ['#FF8400', '#EF4444']}>{t('profile')}</GradientText>
           </View>
           <HelpButton accent={accent} />
         </View>
@@ -273,7 +273,7 @@ export default function ProfileScreen({ navigation, route }) {
                 {profile.display_name || profile.full_name || t('add_name')}
               </Text>
               {profile.is_verified ? (
-                <View style={[s.verifiedDot, { backgroundColor: '#22C55E' }]}>
+                <View style={[s.verifiedDot, { backgroundColor: '#168A5B' }]}>
                   <Feather name="check" size={10} color="#fff" />
                 </View>
               ) : null}

@@ -101,7 +101,7 @@ export default function ShareModal({
     { name: 'Telegram', icon: 'telegram', brand: true,  color: '#0088CC', onPress: handleTelegram },
     { name: 'WhatsApp', icon: 'whatsapp', brand: true,  color: '#25D366', onPress: handleWhatsApp },
     { name: 'WeChat',   icon: 'weixin',   brand: true,  color: '#07C160', onPress: handleWeChat },
-    { name: t('share_copy_link'), icon: 'link', brand: false, color: '#22C55E', onPress: copyLink },
+    { name: t('share_copy_link'), icon: 'link', brand: false, color: '#168A5B', onPress: copyLink },
   ];
 
   return (
@@ -113,7 +113,7 @@ export default function ShareModal({
 
           {/* Brand preview chip — confirms what's about to be sent */}
           <View style={[s.previewBox, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Text style={[s.previewLabel, { color: '#22C55E' }]}>UrTruck</Text>
+            <Text style={[s.previewLabel, { color: '#168A5B' }]}>UrTruck</Text>
             <Text style={[s.previewText, { color: theme.textSecondary }]} numberOfLines={6}>
               {fullShareText}
             </Text>

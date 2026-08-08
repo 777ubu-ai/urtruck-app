@@ -544,7 +544,7 @@ export default function EditProfileScreen({ navigation, route }) {
                 key={doc.kind}
                 style={[s.docRow, {
                   backgroundColor: v1.bg,
-                  borderColor: done ? '#22C55E' : v1.border,
+                  borderColor: done ? '#168A5B' : v1.border,
                 }]}
                 onPress={() => !uploading && pickAndUploadDoc(doc.kind)}
                 activeOpacity={0.85}
@@ -559,7 +559,7 @@ export default function EditProfileScreen({ navigation, route }) {
                 )}
                 <View style={{ flex: 1 }}>
                   <Text style={[s.docRowLabel, { color: v1.text }]}>{doc.label}</Text>
-                  <Text style={[s.docRowStatus, { color: done ? '#22C55E' : v1.textMuted }]}>
+                  <Text style={[s.docRowStatus, { color: done ? '#168A5B' : v1.textMuted }]}>
                     {uploading
                       ? '☁️ ' + (t('reg_uploading_short') || 'Загрузка...')
                       : done
