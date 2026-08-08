@@ -1,5 +1,5 @@
 // UrTruck Design System — DESIGN_SYSTEM.md compliant
-// Dark Premium: #0a0f1a bg, #168759 accent, glass cards
+// Light + Dark B2B palettes, shared green brand accent.
 // Fonts: Syne (headings), DM Sans (body)
 
 import { Platform } from 'react-native';
@@ -10,25 +10,25 @@ const FONT = {
 };
 
 export const darkTheme = {
-  bg: '#0a0f1a',
-  surface: '#111827',
-  surfaceAlt: '#1a2234',
-  card: 'rgba(255,255,255,0.04)',
-  cardBorder: 'rgba(255,255,255,0.08)',
-  cardHover: 'rgba(255,255,255,0.07)',
-  cardActive: 'rgba(34,197,94,0.05)',
-  cardActiveBorder: 'rgba(34,197,94,0.3)',
-  text: '#ffffff',
-  textSecondary: '#94a3b8',
-  textMuted: '#64748b',
-  textDisabled: '#475569',
-  border: 'rgba(255,255,255,0.08)',
-  overlay: 'rgba(10,15,26,0.85)',
+  bg: '#0F1512',
+  surface: '#151E19',
+  surfaceAlt: '#1B2620',
+  card: '#151E19',
+  cardBorder: '#2A3930',
+  cardHover: '#1B2620',
+  cardActive: '#203329',
+  cardActiveBorder: '#168759',
+  text: '#F3F7F4',
+  textSecondary: '#B7C3BB',
+  textMuted: '#9EAAA2',
+  textDisabled: '#7C8A81',
+  border: '#2A3930',
+  overlay: 'rgba(5,10,7,0.82)',
   // Compat aliases
-  bgElevated: '#111827',
-  cardElevated: '#1a2234',
-  textDim: '#475569',
-  shadow: 'rgba(0,0,0,0.6)',
+  bgElevated: '#151E19',
+  cardElevated: '#1B2620',
+  textDim: '#8F9C94',
+  shadow: 'rgba(0,0,0,0.65)',
   shadowLight: 'rgba(255,255,255,0.03)',
 };
 
@@ -92,10 +92,10 @@ export const colors = {
   online: '#168759',
 };
 
-// Design System styles helper — единая светлая B2B-тема (redesign 08.08.2026).
+// Static helpers retained for backwards compatibility. Theme-aware screens
+// should consume `theme` from ThemeContext/useV1Colors at render time.
 export const DS = {
   font: FONT,
-  // Glass card → светлая карточка
   glass: {
     backgroundColor: '#ffffff',
     borderWidth: 1,
@@ -110,7 +110,6 @@ export const DS = {
     borderRadius: 20,
     padding: 20,
   },
-  // Primary button
   btnPrimary: {
     backgroundColor: '#168759',
     borderRadius: 12,
@@ -124,7 +123,6 @@ export const DS = {
     fontWeight: '600',
     fontFamily: FONT.body,
   },
-  // Secondary button
   btnSecondary: {
     backgroundColor: '#f0f4f2',
     borderWidth: 1,
@@ -134,7 +132,6 @@ export const DS = {
     paddingHorizontal: 24,
     alignItems: 'center',
   },
-  // Input
   input: {
     backgroundColor: '#ffffff',
     borderWidth: 1,
@@ -146,7 +143,6 @@ export const DS = {
     fontSize: 15,
     fontFamily: FONT.body,
   },
-  // Badge
   badge: (color) => ({
     backgroundColor: (color === '#168759' || color === '#168759') ? 'rgba(22,135,89,0.12)'
       : color === '#FF8400' ? 'rgba(255,132,0,0.15)'
@@ -162,7 +158,6 @@ export const DS = {
     fontWeight: '600',
     fontFamily: FONT.body,
   }),
-  // Heading
   h1: { fontFamily: FONT.heading, fontSize: 24, fontWeight: '800', color: '#14221c' },
   h2: { fontFamily: FONT.heading, fontSize: 20, fontWeight: '700', color: '#14221c' },
   h3: { fontFamily: FONT.heading, fontSize: 16, fontWeight: '700', color: '#168759' },
@@ -170,7 +165,6 @@ export const DS = {
   body: { fontFamily: FONT.body, fontSize: 15, fontWeight: '400', color: '#617067' },
   small: { fontFamily: FONT.body, fontSize: 13, fontWeight: '400', color: '#617067' },
   label: { fontFamily: FONT.body, fontSize: 11, fontWeight: '400', color: '#7c8b82', letterSpacing: 1.5, textTransform: 'uppercase' },
-  // Tab bar
   tabBar: {
     backgroundColor: '#ffffff',
     borderTopWidth: 1,
