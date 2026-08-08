@@ -3,6 +3,10 @@
 .env.local
 .env.production
 .env.*.local
+.env.smoke
+.env.*
+!.env.example
+!backend/.env.example
 
 # Dependencies
 node_modules/
