@@ -168,12 +168,14 @@ jobs:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SERVER_PASS: ${{ secrets.SERVER_PASS }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
           REMOTE_DIR: ${{ secrets.REMOTE_DIR || '/home/ubuntu/urtruck-app' }}
           BACKEND_DIR: ${{ secrets.BACKEND_DIR || '/home/ubuntu/urtruck-security' }}
         run: |
           sudo apt-get install -y sshpass
           STAMP=$(date -u +%Y%m%d-%H%M%S)-${GITHUB_SHA::7}
-          sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" "
+          bash scripts/deploy-ssh.sh ssh "
             mkdir -p ~/urtruck-rollback/frontend ~/urtruck-rollback/backend
             [ -d '$REMOTE_DIR' ] && cp -a '$REMOTE_DIR' ~/urtruck-rollback/frontend/$STAMP || echo 'no existing frontend to back up'
             [ -d '$BACKEND_DIR' ] && cp -a '$BACKEND_DIR' ~/urtruck-rollback/backend/$STAMP || echo 'no existing backend to back up'
@@ -188,6 +190,8 @@ jobs:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SERVER_PASS: ${{ secrets.SERVER_PASS }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
           REMOTE_DIR: ${{ secrets.REMOTE_DIR || '/home/ubuntu/urtruck-app' }}
         run: |
           sudo apt-get install -y sshpass
@@ -197,9 +201,9 @@ jobs:
           # если у какого-то клиента где-то намертво закэширован старый
           # index.html со старым хешем, он тихо продолжает получать старый
           # JS вместо честного 404. Чистим старые ассеты перед заливкой новых.
-          sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" "rm -rf '$REMOTE_DIR/_expo'"
-          sshpass -p "$SERVER_PASS" scp -C -o StrictHostKeyChecking=no -r dist/* "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/"
-          sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" "chmod -R 755 $REMOTE_DIR"
+          bash scripts/deploy-ssh.sh ssh "rm -rf '$REMOTE_DIR/_expo'"
+          bash scripts/deploy-ssh.sh scp -C -r dist/* "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/"
+          bash scripts/deploy-ssh.sh ssh "chmod -R 755 $REMOTE_DIR"
 
       - name: Verify production filesystem (public-proof diagnostics)
         # 05.08.2026: "CI зелёный" не доказывает, что реальный urtruck.kz
@@ -212,9 +216,11 @@ jobs:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SERVER_PASS: ${{ secrets.SERVER_PASS }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
           REMOTE_DIR: ${{ secrets.REMOTE_DIR || '/home/ubuntu/urtruck-app' }}
         run: |
-          sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" "
+          bash scripts/deploy-ssh.sh ssh "
             echo '--- nginx -T | grep -A25 urtruck.kz (active config for this server_name) ---'
             (sudo -n nginx -T 2>/dev/null || nginx -T 2>/dev/null) | grep -B2 -A25 'server_name.*urtruck' || echo 'NOT FOUND in nginx -T (or no read permission — try sudo -n manually)'
             echo
@@ -240,10 +246,12 @@ jobs:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SERVER_PASS: ${{ secrets.SERVER_PASS }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
           BACKEND_DIR: ${{ secrets.BACKEND_DIR || '/home/ubuntu/urtruck-security' }}
         run: |
-          sshpass -p "$SERVER_PASS" scp -C -o StrictHostKeyChecking=no -r backend/* "$SERVER_USER@$SERVER_HOST:$BACKEND_DIR/"
-          sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" "source ~/.nvm/nvm.sh && pm2 restart urtruck-security-api"
+          bash scripts/deploy-ssh.sh scp -C -r backend/* "$SERVER_USER@$SERVER_HOST:$BACKEND_DIR/"
+          bash scripts/deploy-ssh.sh ssh "source ~/.nvm/nvm.sh && pm2 restart urtruck-security-api"
 
       # Email SMTP настраивается НАПРЯМУЮ в $BACKEND_DIR/.env на сервере
       # (провайдер выбирается там: Gmail SMTP / Resend / SES и т.д.). CI больше
