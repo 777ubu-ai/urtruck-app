@@ -9,7 +9,7 @@
 //                      пока backend-action не подключён — без фейков)
 //   - DealDocumentsPlaceholder — секция «Документы» (PR3, заглушка)
 //
-// Акцент роли: driver #168A5B / client #FF8400 (источник истины CLAUDE.md).
+// Акцент роли: driver #168759 / client #FF8400 (источник истины CLAUDE.md).
 
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
@@ -18,17 +18,17 @@ import { useI18n } from '../../utils/useI18n';
 import { useTheme } from '../../utils/ThemeContext';
 import { userFacingDealStatus } from '../../utils/dealStatusOrder';
 
-export const DRIVER_ACCENT = '#168A5B';
+export const DRIVER_ACCENT = '#168759';
 export const CLIENT_ACCENT = '#FF8400';
 export const accentFor = (role) => (role === 'driver' ? DRIVER_ACCENT : CLIENT_ACCENT);
 
 // Статус сделки → цвет (нейтральный fallback — серый).
 const DEAL_STATUS_COLOR = {
-  active: '#168A5B', confirmed: '#168A5B', accepted: '#168A5B',
-  in_progress: '#FF8400', at_border: '#168A5B',
+  active: '#168759', confirmed: '#168759', accepted: '#168759',
+  in_progress: '#FF8400', at_border: '#168759',
   pending: '#FF8400', draft: '#FF8400',
   cancelled: '#7C8B82', rejected: '#EF4444', dispute: '#EF4444',
-  completed: '#168A5B', delivered: '#168A5B',
+  completed: '#168759', delivered: '#168759',
 };
 
 // Перевод i18n_key из backend ("deal_event.bid_accepted") → плоский t()-ключ

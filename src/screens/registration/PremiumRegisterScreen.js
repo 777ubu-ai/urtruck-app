@@ -3,8 +3,8 @@
 // Шаг 1 нового регистрационного потока: ввод телефона + согласие.
 // Заменяет старый RegScreen step=1 (WhatsApp + 5 progress dots).
 //
-// Дизайн: тёмный фон #F6F8F7, role-aware акцент (driver=#168A5B,
-// client=#168A5B), крупный заголовок, поле телефона +7 KZ-маска,
+// Дизайн: тёмный фон #F6F8F7, role-aware акцент (driver=#168759,
+// client=#168759), крупный заголовок, поле телефона +7 KZ-маска,
 // ConsentRow, single CTA «Получить код». НЕТ Apple/Google, НЕТ
 // "WhatsApp", НЕТ степ-баров «Личность/Документы/Транспорт/Готово».
 
@@ -30,8 +30,8 @@ import { formatCooldown } from '../../utils/formatCooldown';
 import { formatPhoneForDisplay, normalizePhoneInput, toAsciiDigits } from '../../utils/phone';
 
 const ACCENT = {
-  driver: { main: '#168A5B', deep: '#0F6B47', soft: '#E8F6EF' },
-  client: { main: '#168A5B', deep: '#0F6B47', soft: '#E8F6EF' },
+  driver: { main: '#168759', deep: '#0F6B47', soft: '#E8F6EF' },
+  client: { main: '#168759', deep: '#0F6B47', soft: '#E8F6EF' },
 };
 
 export default function PremiumRegisterScreen({ navigation, route }) {
@@ -196,7 +196,7 @@ export default function PremiumRegisterScreen({ navigation, route }) {
                 { borderColor: error ? '#D64545' : (validPhone ? accent.main : '#E5ECE8') },
               ]}
               placeholder={t('prem_reg_phone_placeholder')}
-              placeholderTextColor="#9AA8A0"
+              placeholderTextColor="#6B7A71"
               keyboardType="phone-pad"
               // Stage 46 P0 fix: на web rn-web НЕ всегда транслирует
               // keyboardType="phone-pad" в HTML inputMode. Без явного

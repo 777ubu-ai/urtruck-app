@@ -29,8 +29,8 @@ import { saveProfile } from '../../utils/store';
 import { regAPI } from '../../utils/registration';
 
 const ACCENT = {
-  driver: { main: '#168A5B', deep: '#0F6B47', soft: '#E8F6EF' },
-  client: { main: '#168A5B', deep: '#0F6B47', soft: '#E8F6EF' },
+  driver: { main: '#168759', deep: '#0F6B47', soft: '#E8F6EF' },
+  client: { main: '#168759', deep: '#0F6B47', soft: '#E8F6EF' },
 };
 
 export default function PremiumProfileScreen({ navigation, route }) {
@@ -128,7 +128,7 @@ export default function PremiumProfileScreen({ navigation, route }) {
                 { borderColor: nameErr ? '#D64545' : (validName ? accent.main : '#E5ECE8') },
               ]}
               placeholder={t('prem_reg_profile_name_placeholder')}
-              placeholderTextColor="#9AA8A0"
+              placeholderTextColor="#6B7A71"
               autoFocus
               maxLength={64}
               testID="prem-reg-profile-name"
@@ -143,7 +143,7 @@ export default function PremiumProfileScreen({ navigation, route }) {
               onChangeText={setCity}
               style={[s.input, { borderColor: '#E5ECE8' }]}
               placeholder={t('prem_reg_profile_city_placeholder')}
-              placeholderTextColor="#9AA8A0"
+              placeholderTextColor="#6B7A71"
               maxLength={48}
               testID="prem-reg-profile-city"
             />

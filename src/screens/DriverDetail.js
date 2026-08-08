@@ -20,7 +20,7 @@ import SectionTitle from '../components/ui/v1/SectionTitle';
 import { PhotoGallery } from '../components/PhotoGallery';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
 
-const TCOLORS = { tent: '#168A5B', ref: '#16A34A', platform: '#E06D00', auto: '#7C3AED', izoterm: '#059669' };
+const TCOLORS = { tent: '#168759', ref: '#16A34A', platform: '#E06D00', auto: '#7C3AED', izoterm: '#059669' };
 const FLAGS = { KZ: '🇰🇿', UZ: '🇺🇿', RU: '🇷🇺', KG: '🇰🇬', CN: '🇨🇳' };
 const REPORT_REASONS = ['report_reason_fraud', 'report_reason_noshow', 'report_reason_rude', 'report_reason_other'];
 
@@ -108,7 +108,7 @@ export default function DriverDetail({ navigation, route }) {
       <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
         <Text style={{ color: theme.textMuted, fontSize: 14 }}>{t('incomplete_data')}</Text>
         <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: 16 }}>
-          <Text style={{ color: '#168A5B', fontSize: 14, fontWeight: '600' }}>← {t('back_short')}</Text>
+          <Text style={{ color: '#168759', fontSize: 14, fontWeight: '600' }}>← {t('back_short')}</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
@@ -182,7 +182,7 @@ export default function DriverDetail({ navigation, route }) {
             </Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            <Feather name="star" size={14} color="#FBBF24" />
+            <Feather name="star" size={14} color="#D97706" />
             <Text style={s.ratingText}>{driver.rating || '—'} <Text style={[s.reviewCount, { color: v1.textMuted }]}>({driver.reviews || 0})</Text></Text>
           </View>
           {/* Бейджи доверия (соц-механика 满帮): считаются из реальных данных */}
@@ -252,8 +252,8 @@ export default function DriverDetail({ navigation, route }) {
             label={`${t('reviews')} (${reviewsData?.summary?.count ?? 0})`}
             right={reviewsData?.summary?.count > 0 ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-                <Feather name="star" size={12} color="#FBBF24" />
-                <Text style={{ color: '#FBBF24', fontSize: 12, fontWeight: '800' }}>{reviewsData.summary.average}</Text>
+                <Feather name="star" size={12} color="#D97706" />
+                <Text style={{ color: '#D97706', fontSize: 12, fontWeight: '800' }}>{reviewsData.summary.average}</Text>
               </View>
             ) : (
               <Text style={{ color: v1.textDim, fontSize: 11 }}>{t('review_after_trip')}</Text>
@@ -271,15 +271,15 @@ export default function DriverDetail({ navigation, route }) {
                   <Text style={[s.reviewUser, { color: v1.text }]}>{user}</Text>
                   <View style={{ flexDirection: 'row', gap: 1 }}>
                     {Array.from({ length: Math.max(0, Math.min(5, parseInt(rating) || 0)) }).map((_, k) => (
-                      <Feather key={k} name="star" size={12} color="#FBBF24" />
+                      <Feather key={k} name="star" size={12} color="#D97706" />
                     ))}
                   </View>
                 </View>
                 {Array.isArray(r.tags) && r.tags.length > 0 ? (
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4, marginBottom: 2 }}>
                     {r.tags.map((tag) => (
-                      <View key={tag} style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: '#FBBF2418', borderWidth: 1, borderColor: '#FBBF24' }}>
-                        <Text style={{ fontSize: 10, fontWeight: '600', color: '#FBBF24' }}>{t(`rating_tag_${tag}`) || tag}</Text>
+                      <View key={tag} style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: '#D9770618', borderWidth: 1, borderColor: '#D97706' }}>
+                        <Text style={{ fontSize: 10, fontWeight: '600', color: '#D97706' }}>{t(`rating_tag_${tag}`) || tag}</Text>
                       </View>
                     ))}
                   </View>
@@ -383,7 +383,7 @@ const s = StyleSheet.create({
   name: { fontSize: 20, fontWeight: '800', marginBottom: 4 },
   verifyBadge: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, marginBottom: 6 },
   verifyText: { fontSize: 12, fontWeight: '600' },
-  ratingText: { color: '#FBBF24', fontSize: 14, fontWeight: '700' },
+  ratingText: { color: '#D97706', fontSize: 14, fontWeight: '700' },
   reviewCount: { fontWeight: '400' },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
   gridItem: { width: '50%', marginBottom: 10 },
@@ -392,7 +392,7 @@ const s = StyleSheet.create({
   review: { marginBottom: 10, paddingBottom: 10 },
   reviewHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
   reviewUser: { fontSize: 13, fontWeight: '600' },
-  reviewStars: { color: '#FBBF24', fontSize: 12 },
+  reviewStars: { color: '#D97706', fontSize: 12 },
   reviewText: { fontSize: 12 },
   reviewAgo: { fontSize: 11, marginTop: 3 },
   contactBtn: { borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 6 },

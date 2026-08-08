@@ -30,8 +30,8 @@ import { push } from '../../utils/push';
 import { formatCooldown } from '../../utils/formatCooldown';
 
 const ACCENT = {
-  driver: { main: '#168A5B', deep: '#0F6B47', soft: '#E8F6EF', glow: 'rgba(22,138,91,0.18)' },
-  client: { main: '#168A5B', deep: '#0F6B47', soft: '#E8F6EF', glow: 'rgba(22,138,91,0.18)' },
+  driver: { main: '#168759', deep: '#0F6B47', soft: '#E8F6EF', glow: 'rgba(22,135,89,0.18)' },
+  client: { main: '#168759', deep: '#0F6B47', soft: '#E8F6EF', glow: 'rgba(22,135,89,0.18)' },
 };
 
 const CODE_LEN = 4;
@@ -457,9 +457,9 @@ const s = StyleSheet.create({
   resendBtn: { paddingVertical: 6, paddingHorizontal: 12 },
   resendText: { fontSize: 14, fontWeight: '800' },
   changeBtn: { paddingVertical: 6, paddingHorizontal: 12 },
-  changeText: { color: '#9AA8A0', fontSize: 13, fontWeight: '600' },
+  changeText: { color: '#6B7A71', fontSize: 13, fontWeight: '600' },
   noCodeHint: {
-    color: '#9AA8A0',
+    color: '#6B7A71',
     fontSize: 12,
     fontWeight: '500',
     textAlign: 'center',

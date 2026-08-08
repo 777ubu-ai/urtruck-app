@@ -63,7 +63,7 @@ curl http://185.22.65.11:8001/api/v1/system/info   # статус OTP/face/stora
 - Другие API-модули: `chatAPI.js`, `notificationsAPI.js`, `reviews.js`, `registration.js`, `push.js`, `pushNotifications.js`, `security.js`.
 
 ### UI-слои
-- `src/utils/ThemeContext.js` — тёмная/светлая тема (по умолчанию тёмная — ночные рейсы).
+- `src/utils/ThemeContext.js` — редизайн 08.08.2026 (приказ владельца): приложение работает в ЕДИНОЙ светлой B2B-теме, `isDark` зафиксирован в `false`. Тёмная палитра сохранена в коде только для возможного отката.
 - `src/utils/AuthContext.js` — источник истины для `session`, `hasToken`, `hasRole`, `loading`.
 - `src/utils/i18n.js` + `useI18n.js` — 4 языка (RU/KK/ZH/EN), ~1575 ключей (симметрично по всем языкам). Все пользовательские тексты обязаны идти через `t(...)`.
 - `src/components/` — переиспользуемые компоненты (Toast, ShimmerButton, PressableScale, BidModal, RatingModal, ShareModal, VerificationGate, SecurityBadge, RouteMap и т.д.).
@@ -72,8 +72,8 @@ curl http://185.22.65.11:8001/api/v1/system/info   # статус OTP/face/stora
 - Только React Native, **никаких web-only API** (`document`, `window`, `localStorage`). Для веба используется `react-native-web`.
 - Стили — через `StyleSheet.create()`, не inline.
 - Каждый экран оборачивается в `SafeAreaView`.
-- Цвета: bg `#0C0A09`, card `#1C1917`, border `#292524`, text `#FAFAF9`; акценты driver `#00E676` (изумрудный неон, build 18 — ранее был `#2563EB`/`#22C55E`/`#4F46E5`), client `#F59E0B`; успех `#22C55E` (оставлен как semantic-success — галочки верификации, загруженные документы), рейтинг `#FBBF24`.
-- Текст поверх driver-кнопок (`backgroundColor: #00E676`) — `#0C0A09` (чёрный), НЕ `#fff`. Контраст белого на изумруде — 2.07:1 (WCAG fail), чёрного — 11.4:1 (AAA). Источник истины: `v1AccentFor('driver').onAccent` в `theme/designV1.js`.
+- Цвета (редизайн 08.08.2026, единая светлая зелёная B2B-тема): bg `#F6F8F7`, card `#FFFFFF`, border `#E5ECE8`, text `#14221C`, muted `#617067`; бренд-зелёный ОБЕИХ ролей `#168759` (WCAG: 4.52:1 с белым текстом), deep `#0F6B47`, тинт `#E8F6EF`; оранжевый `#FF8400`/`#F59E0B` — ТОЛЬКО фоны/плашки цены-ожидания-предупреждений, как ТЕКСТ на белом — `#E06D00`; error `#D64545`/`#EF4444`; info `#3478D4`; рейтинг `#D97706` (янтарь, 3.19:1); placeholder `#6B7A71`.
+- Текст поверх зелёных кнопок (`#168759`) — белый `#FFFFFF` (4.52:1, AA). Крупные CTA — на deep `#0F6B47` (6.5:1). Источник истины: `v1AccentFor(role)` в `theme/designV1.js` (в LIGHT обе роли дают один зелёный).
 - Типы кузовов: `tent`, `ref`, `platform`, `auto`, `izoterm` + свободное поле «другое».
 - Emoji вместо SVG-иконок (быстрее, меньше бандл).
 

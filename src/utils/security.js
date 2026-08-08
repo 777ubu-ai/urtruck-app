@@ -93,12 +93,12 @@ export const securityAPI = {
 export function driverTier(ctx = {}) {
   const { confirmed = false, trips = 0, rating = null } = ctx;
   if (confirmed && trips >= 10 && (rating == null || rating >= 4.7)) {
-    return { key: 'tier_pro',      color: '#22C55E', emoji: '🟢', pct: 100 };
+    return { key: 'tier_pro',      color: '#168759', emoji: '🟢', pct: 100 };
   }
   if (confirmed) {
     return { key: 'tier_verified', color: '#2563EB', emoji: '🔵', pct: 80 };
   }
-  return { key: 'tier_newbie',     color: '#FBBF24', emoji: '🟡', pct: 50 };
+  return { key: 'tier_newbie',     color: '#D97706', emoji: '🟡', pct: 50 };
 }
 
 // Число выполненных рейсов из списка сделок (my_deals) дашборда.
@@ -117,7 +117,7 @@ export function isDocsConfirmed(st) {
 }
 
 export const COLOR_UI = {
-  green: { bg: '#22C55E20', border: '#22C55E', text: '#22C55E', label: '🟢 Надёжный' },
+  green: { bg: '#16875920', border: '#168759', text: '#168759', label: '🟢 Надёжный' },
   yellow: { bg: '#FF840020', border: '#FF8400', text: '#FF8400', label: '🟡 Новичок' },
   red: { bg: '#EF444420', border: '#EF4444', text: '#EF4444', label: '🔴 Проблемы' },
   black: { bg: '#DC262640', border: '#DC2626', text: '#FCA5A5', label: '⛔ В чёрном списке' },

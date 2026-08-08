@@ -86,9 +86,9 @@ export default function CargoDetail({ navigation, route }) {
   gridValue: { fontSize: 13, fontWeight: '600', marginTop: 2 },
   priceBlock: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#E8F6EF', borderRadius: 16, padding: 18, borderWidth: 1, borderColor: '#C8D8CF', marginBottom: 16 },
   priceLabel: { color: '#0F6B47', fontSize: 11 },
-  priceValue: { color: '#168A5B', fontSize: 28, fontWeight: '900' },
+  priceValue: { color: '#168759', fontSize: 28, fontWeight: '900' },
   beta: { color: '#57534E', fontSize: 11 },
-  bidBtn: { backgroundColor: '#168A5B', borderRadius: 14, paddingHorizontal: 22, paddingVertical: 14 },
+  bidBtn: { backgroundColor: '#168759', borderRadius: 14, paddingHorizontal: 22, paddingVertical: 14 },
   bidBtnText: { color: '#fff', fontSize: 14, fontWeight: '800' },
   bidsTitle: { fontSize: 14, fontWeight: '700', marginBottom: 8 },
   // 27.07: было flexDirection:'row' → кнопки справа съедали ширину и имя/
@@ -98,20 +98,20 @@ export default function CargoDetail({ navigation, route }) {
   bidLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, marginRight: 8 },
   bidFlag: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   bidName: { fontSize: 13, fontWeight: '600' },
-  bidInfo: { color: '#FBBF24', fontSize: 11 },
+  bidInfo: { color: '#D97706', fontSize: 11 },
   // Сумма ставки ВОДИТЕЛЯ на груз клиента — зелёная (роль источника цены),
   // не оранжевая: та же карточка показывает и цену груза владельца
   // (priceValueV1, оранжевая), совпадение цвета читалось как одна цена
   // (05.08.2026, п.16 ТЗ).
   bidAmt: { color: '#00C766', fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'] },
-  confirmBanner: { backgroundColor: '#168A5B20', borderWidth: 1, borderColor: '#168A5B', borderRadius: 12, padding: 14, marginBottom: 12, alignItems: 'center' },
-  confirmText: { color: '#168A5B', fontSize: 14, fontWeight: '800' },
+  confirmBanner: { backgroundColor: '#16875920', borderWidth: 1, borderColor: '#168759', borderRadius: 12, padding: 14, marginBottom: 12, alignItems: 'center' },
+  confirmText: { color: '#168759', fontSize: 14, fontWeight: '800' },
   photoWrap: { borderRadius: 16, overflow: 'hidden', borderWidth: 1, marginBottom: 12, position: 'relative' },
   photo: { width: '100%', height: 200 },
   photoBadge: { position: 'absolute', top: 10, left: 10, backgroundColor: 'rgba(0,0,0,0.7)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
   photoBadgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
   // «Для перчаток и солнца»: крупные тап-цели (≥44pt) и читаемый текст.
-  acceptBtn: { backgroundColor: '#168A5B', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 12, minHeight: 44, justifyContent: 'center' },
+  acceptBtn: { backgroundColor: '#168759', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 12, minHeight: 44, justifyContent: 'center' },
   acceptBtnText: { color: '#fff', fontSize: 14, fontWeight: '800' },
   rejectBtn: { backgroundColor: 'rgba(239,68,68,0.10)', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, minHeight: 44, justifyContent: 'center', borderWidth: 0 },
   rejectBtnText: { color: '#EF4444', fontSize: 14, fontWeight: '700' },
@@ -122,7 +122,7 @@ export default function CargoDetail({ navigation, route }) {
   reviewTitle: { fontSize: 15, fontWeight: '700' },
   starsRow: { flexDirection: 'row', gap: 8 },
   reviewInput: { width: '100%', borderWidth: 1, borderRadius: 10, padding: 10, fontSize: 13 },
-  reviewSubmitBtn: { backgroundColor: '#168A5B', borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10 },
+  reviewSubmitBtn: { backgroundColor: '#168759', borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10 },
   reviewSubmitText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   dealBlock: { borderWidth: 1, borderRadius: 14, padding: 16, alignItems: 'center', gap: 10 },
   myBidCard: { padding: 14, borderRadius: 10, borderWidth: 2, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
@@ -135,11 +135,11 @@ export default function CargoDetail({ navigation, route }) {
   myBidBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, alignItems: 'center' },
   myBidBtnText: { fontSize: 14, fontWeight: '800' },
   dealStatusLabel: { fontSize: 15, fontWeight: '700' },
-  dealActionBtn: { backgroundColor: '#168A5B', borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10, minHeight: 44, alignItems: 'center', justifyContent: 'center', maxWidth: '100%', flexShrink: 1 },
+  dealActionBtn: { backgroundColor: '#168759', borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10, minHeight: 44, alignItems: 'center', justifyContent: 'center', maxWidth: '100%', flexShrink: 1 },
   // Ghost-стиль (обводка) для акцентных действий сделки — вместо сплошной заливки.
   dealActionGhost: { backgroundColor: 'transparent', borderWidth: 1.6 },
   dealActionText: { color: '#fff', fontSize: 13, fontWeight: '700', flexShrink: 1 },
-  chatBtn: { backgroundColor: '#168A5B', borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
+  chatBtn: { backgroundColor: '#168759', borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
   chatBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   // Дизайн 2026 v3 (03.08): «Удалить груз» — редкое действие, не должно
   // «кричать» красным контуром. Text-only серый, красным только при нажатии.
@@ -429,8 +429,8 @@ export default function CargoDetail({ navigation, route }) {
   const isDriverViewing = role === 'driver' || (driverId && driverId === myUserId);
   const v1Accent = v1AccentFor('client');
   // Кнопки сделки (чат/подтвердить/старт) — действия текущего зрителя, поэтому
-  // акцент роль-семантический: client → жёлтый #FF8400, driver → неон #168A5B.
-  // Раньше был хардкод #168A5B (зелёный) на всех поверхностях, в т.ч. клиентских.
+  // акцент роль-семантический: client → жёлтый #FF8400, driver → неон #168759.
+  // Раньше был хардкод #168759 (зелёный) на всех поверхностях, в т.ч. клиентских.
   const dealAccent = v1AccentFor(isDriverSide ? 'driver' : 'client');
   const insets = useSafeAreaInsets();
 
@@ -459,7 +459,7 @@ export default function CargoDetail({ navigation, route }) {
           <View style={s.routeRow}>
             <View style={[s.dot, { backgroundColor: '#EF4444' }]} /><Text style={[s.city, { color: v1.text }]}>{localizePlace(view.from, lang)}</Text>
             <View style={[s.line, { backgroundColor: v1.border }]} /><Feather name="truck" size={16} color={v1.textMuted} /><View style={[s.line, { backgroundColor: v1.border }]} />
-            <Text style={[s.city, { color: v1.text }]}>{localizePlace(view.to, lang)}</Text><View style={[s.dot, { backgroundColor: '#168A5B' }]} />
+            <Text style={[s.city, { color: v1.text }]}>{localizePlace(view.to, lang)}</Text><View style={[s.dot, { backgroundColor: '#168759' }]} />
           </View>
           <View style={s.grid}>
             {(() => {
@@ -563,16 +563,16 @@ export default function CargoDetail({ navigation, route }) {
           return (
             <View key={b.id} style={[s.bidCard, {
               backgroundColor: theme.card,
-              borderColor: b.status === 'accepted' ? '#168A5B'
+              borderColor: b.status === 'accepted' ? '#168759'
                 : b.status === 'rejected' ? '#EF444440'
                 : isCancelled ? '#78716C40'
                 : isCountered ? '#E06D00' /* purple — counter active */
-                : b.isMine ? '#168A5B60' : theme.border,
+                : b.isMine ? '#16875960' : theme.border,
               borderWidth: b.status === 'accepted' || isCountered || b.isMine ? 2 : 1,
               opacity: (b.status === 'rejected' || isCancelled) ? 0.55 : 1,
             }]}>
               <View style={s.bidLeft}>
-                <View style={[s.bidFlag, { backgroundColor: b.status === 'accepted' ? '#168A5B' : b.isMine ? '#168A5B' : theme.border }]}>
+                <View style={[s.bidFlag, { backgroundColor: b.status === 'accepted' ? '#168759' : b.isMine ? '#168759' : theme.border }]}>
                   <Text style={{ fontSize: 14 }}>{b.isMine ? '🫵' : b.status === 'accepted' ? '✅' : isCountered ? '🔁' : (FLAGS[b.co] || '🏳️')}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
@@ -594,11 +594,11 @@ export default function CargoDetail({ navigation, route }) {
                   ) : null}
                   {b.message ? <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 2 }}>{b.message}</Text> : null}
                   <Text style={[s.bidInfo, {
-                    color: b.status === 'accepted' ? '#168A5B'
+                    color: b.status === 'accepted' ? '#168759'
                       : b.status === 'rejected' ? '#EF4444'
                       : isCancelled ? '#78716C'
                       : isCountered ? '#E06D00'
-                      : '#FBBF24',
+                      : '#D97706',
                   }]}>
                     {b.status === 'accepted' ? '✅ ' + t('driver_chosen')
                       : b.status === 'rejected' ? '❌ ' + t('bid_rejected')
@@ -621,7 +621,7 @@ export default function CargoDetail({ navigation, route }) {
                     (48px) + деструктив (48px, контур). Иерархия: Принять →
                     Чат/Торг → Отклонить. Заменяет предыдущую «стену из 4
                     одинаковых кнопок». Savings-badge показывает выгоду цены.
-                    После accept — success-state (semantic green #168A5B,
+                    После accept — success-state (semantic green #168759,
                     отличный от driver-акцента). */}
                 {/* Дизайн 2026 v3 (приказ владельца 03.08, скриншоты): до
                     создания сделки — никакого чата. Иерархия — одна большая
@@ -1053,7 +1053,7 @@ export default function CargoDetail({ navigation, route }) {
       )}
       {dealStatus === 'delivered' && reviewSent && (
         <View style={{ paddingHorizontal: 16, paddingBottom: 8, alignItems: 'center' }}>
-          <Text style={{ color: '#168A5B', fontSize: 14, fontWeight: '600' }}>{t('thanks_for_review')}</Text>
+          <Text style={{ color: '#168759', fontSize: 14, fontWeight: '600' }}>{t('thanks_for_review')}</Text>
         </View>
       )}
       {/* Legacy "Open chat with driver" button removed: deal-block above
@@ -1095,7 +1095,7 @@ export default function CargoDetail({ navigation, route }) {
         initialMessage={editingBid?.message}
         // counter-режим открывает владелец-клиент → оранжевый акцент;
         // create/edit (водитель ставит) — зелёный по умолчанию.
-        accent={bidModalMode === 'counter' ? v1Accent.main : '#168A5B'}
+        accent={bidModalMode === 'counter' ? v1Accent.main : '#168759'}
         onAccent={bidModalMode === 'counter' ? v1Accent.onAccent : '#fff'}
       />
       <ShareModal

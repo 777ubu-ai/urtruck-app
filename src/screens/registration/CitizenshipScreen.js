@@ -26,7 +26,7 @@ export default function CitizenshipScreen({ navigation }) {
   const { t } = useI18n();
   const { theme } = useTheme();
   const v1 = useV1Colors();
-  const accent = '#168A5B';               // роль водителя — изумрудный неон
+  const accent = '#168759';               // роль водителя — изумрудный неон
   const [selected, setSelected] = useState(null);
   const [saving, setSaving] = useState(false);
 

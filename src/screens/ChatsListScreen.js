@@ -34,7 +34,7 @@ const ACTIVE_STATUSES = new Set(['accepted', 'in_progress', 'at_border', 'awaiti
 const COMPLETED_STATUSES = new Set(['completed', 'delivered', 'cancelled']);
 
 const STATUS_COLOR = {
-  accepted: '#168A5B', in_progress: '#FF8400',
+  accepted: '#168759', in_progress: '#FF8400',
   at_border: '#FF8400', awaiting_confirmation: '#FF8400',
   completed: '#94A3B8', delivered: '#94A3B8', cancelled: '#EF4444',
 };
@@ -463,8 +463,8 @@ export default function ChatsListScreen({ navigation, route }) {
   }, [rooms, query, pinnedIds, dealsMode, t, lang]);
 
   const STATUS_DOT_CHAT = {
-    accepted: '#168A5B', confirmed: '#168A5B',
-    in_progress: '#FF8400', at_border: '#168A5B',
+    accepted: '#168759', confirmed: '#168759',
+    in_progress: '#FF8400', at_border: '#168759',
     completed: '#94A3B8', delivered: '#94A3B8',
     cancelled: '#EF4444', rejected: '#EF4444', expired: '#94A3B8',
   };

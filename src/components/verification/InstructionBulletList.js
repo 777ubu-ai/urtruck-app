@@ -18,7 +18,7 @@ export default function InstructionBulletList({ items = [], style }) {
     <View style={[s.wrap, style]}>
       {items.map((it, idx) => (
         <View key={idx} style={s.row}>
-          <View style={[s.bullet, { backgroundColor: '#168A5B' }]} />
+          <View style={[s.bullet, { backgroundColor: '#168759' }]} />
           <Text style={[s.text, { color: theme.text }]}>{it}</Text>
         </View>
       ))}

@@ -21,19 +21,19 @@ export default function ReviewsScreen({ navigation, route }) {
   summary: { flexDirection: 'row', margin: 16, marginBottom: 0, padding: 18, borderRadius: 16, borderWidth: 1, gap: 20 },
   summaryLeft: { alignItems: 'center', justifyContent: 'center', minWidth: 80 },
   avgRating: { fontSize: 40, fontWeight: '900' },
-  avgStars: { color: '#FBBF24', fontSize: 14 },
+  avgStars: { color: '#D97706', fontSize: 14 },
   totalCount: { fontSize: 11, marginTop: 2 },
   summaryRight: { flex: 1, justifyContent: 'center', gap: 4 },
   barRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   barLabel: { fontSize: 11, fontWeight: '600', width: 16 },
   barBg: { flex: 1, height: 6, borderRadius: 3, overflow: 'hidden' },
-  barFill: { height: '100%', backgroundColor: '#FBBF24' },
+  barFill: { height: '100%', backgroundColor: '#D97706' },
   barCount: { fontSize: 11, width: 16, textAlign: 'right' },
   card: { borderRadius: 14, padding: 14, borderWidth: 1 },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
   reviewUser: { fontSize: 14, fontWeight: '700' },
   reviewRoute: { fontSize: 11, marginTop: 2 },
-  stars: { color: '#FBBF24', fontSize: 13 },
+  stars: { color: '#D97706', fontSize: 13 },
   starsEmpty: { fontSize: 13 },
   reviewAmount: { fontSize: 11, marginTop: 2 },
   reviewText: { fontSize: 13, lineHeight: 18, marginBottom: 6 },
@@ -85,8 +85,8 @@ export default function ReviewsScreen({ navigation, route }) {
         {Array.isArray(item.tags) && item.tags.length > 0 ? (
           <View style={s.tagsRow}>
             {item.tags.map((tag) => (
-              <View key={tag} style={[s.tag, { backgroundColor: '#FBBF2418', borderColor: '#FBBF24' }]}>
-                <Text style={[s.tagTxt, { color: '#FBBF24' }]}>{t(`rating_tag_${tag}`) || tag}</Text>
+              <View key={tag} style={[s.tag, { backgroundColor: '#D9770618', borderColor: '#D97706' }]}>
+                <Text style={[s.tagTxt, { color: '#D97706' }]}>{t(`rating_tag_${tag}`) || tag}</Text>
               </View>
             ))}
           </View>

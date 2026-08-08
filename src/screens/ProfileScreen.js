@@ -78,12 +78,12 @@ const confirm = (title, msg, onOk, cancelLabel = 'Отмена', confirmLabel = 
 export default function ProfileScreen({ navigation, route }) {
   const { role } = route.params || {};
   const isDriver = role === 'driver';
-  // PR-D1 (build 18): driver-акцент мигрировал на изумрудный неон #168A5B.
+  // PR-D1 (build 18): driver-акцент мигрировал на изумрудный неон #168759.
   // См. theme/designV1.js — этот цвет тяжёл для светлого фона, поэтому
-  // на белых кнопках текст рендерится чёрным (driverOnAccent). #168A5B
+  // на белых кнопках текст рендерится чёрным (driverOnAccent). #168759
   // ниже сохранён для семантических success-индикаторов (verified-tick,
   // загруженный документ) — там это «успех», а не бренд водителя.
-  const accent = isDriver ? '#168A5B' : '#FF8400';
+  const accent = isDriver ? '#168759' : '#FF8400';
   const onAccent = isDriver ? '#0C0A09' : '#0C0A09';
   const { isDark, toggleTheme } = useTheme();
   // Stage 8: read tokens from the v1 hook so the screen lines up
@@ -251,7 +251,7 @@ export default function ProfileScreen({ navigation, route }) {
                 <Feather name="arrow-left" size={24} color={theme.text} />
               </TouchableOpacity>
             ) : null}
-            <GradientText style={s.title} colors={isDriver ? ['#168A5B', '#00C766'] : ['#FF8400', '#EF4444']}>{t('profile')}</GradientText>
+            <GradientText style={s.title} colors={isDriver ? ['#168759', '#00C766'] : ['#FF8400', '#EF4444']}>{t('profile')}</GradientText>
           </View>
           <HelpButton accent={accent} />
         </View>
@@ -273,7 +273,7 @@ export default function ProfileScreen({ navigation, route }) {
                 {profile.display_name || profile.full_name || t('add_name')}
               </Text>
               {profile.is_verified ? (
-                <View style={[s.verifiedDot, { backgroundColor: '#168A5B' }]}>
+                <View style={[s.verifiedDot, { backgroundColor: '#168759' }]}>
                   <Feather name="check" size={10} color="#fff" />
                 </View>
               ) : null}
@@ -285,8 +285,8 @@ export default function ProfileScreen({ navigation, route }) {
               </Text>
               {isDriver && (profile.rating || profile.rating === 0) ? (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, marginLeft: 6 }}>
-                  <Feather name="star" size={12} color="#FBBF24" />
-                  <Text style={[s.ratingInline, { color: '#FBBF24' }]}>{profile.rating || 5.0}</Text>
+                  <Feather name="star" size={12} color="#D97706" />
+                  <Text style={[s.ratingInline, { color: '#D97706' }]}>{profile.rating || 5.0}</Text>
                 </View>
               ) : null}
             </View>

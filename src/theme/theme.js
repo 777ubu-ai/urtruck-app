@@ -17,7 +17,7 @@ export const colors = {
   text: '#14221C',
   textMuted: '#617067',
   textDim: '#7C8B82',
-  green: '#168A5B',
+  green: '#168759',
   greenDeep: '#0F6B47',
   greenMuted: '#E8F6EF',
   orange: '#FF8400',
@@ -25,7 +25,7 @@ export const colors = {
   red: '#EF4444',
   // Legacy aliases — point at brand emerald to neutralize stray imports.
   // Do NOT use in new code; prefer `tokens.colorPrimary` / `tokens.colorAccent`.
-  blue: '#168A5B',
+  blue: '#168759',
   blueMuted: '#E8F6EF',
 };
 

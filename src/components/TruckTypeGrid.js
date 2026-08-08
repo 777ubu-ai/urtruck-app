@@ -11,7 +11,7 @@ import TruckTypeIcon from './TruckTypeIcon';
 const PRIMARY = ['tent', 'ref', 'izoterm', 'cont20', 'cont40', 'platform', 'tanker', 'dumptruck'];
 const REST = TRUCK_KEYS.filter((k) => !PRIMARY.includes(k));
 
-export default function TruckTypeGrid({ value, onSelect, accent = '#168A5B' }) {
+export default function TruckTypeGrid({ value, onSelect, accent = '#168759' }) {
   const { t } = useI18n();
   const [showAll, setShowAll] = useState(false);
   const keys = showAll ? [...PRIMARY, ...REST] : PRIMARY;

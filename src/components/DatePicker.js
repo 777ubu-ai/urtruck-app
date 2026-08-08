@@ -76,8 +76,8 @@ export default function DatePicker({ value, onChange, onClose, placeholder = 'DD
               key={day}
               style={[
                 s.dayCell,
-                isSelected && { backgroundColor: '#168A5B' },
-                isToday && !isSelected && { borderWidth: 1.5, borderColor: '#168A5B' },
+                isSelected && { backgroundColor: '#168759' },
+                isToday && !isSelected && { borderWidth: 1.5, borderColor: '#168759' },
                 isPast && { opacity: 0.25 },
               ]}
               disabled={isPast}

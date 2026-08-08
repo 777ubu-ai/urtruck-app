@@ -138,7 +138,7 @@ export function VerificationGateSheet({ visible, action, currentLevel, requiredL
 
           <TouchableOpacity
             onPress={onProceed}
-            style={[s.waBtn, { backgroundColor: '#168A5B' }, Platform.OS === 'web' && {
+            style={[s.waBtn, { backgroundColor: '#168759' }, Platform.OS === 'web' && {
               boxShadow: '0 10px 26px rgba(34, 197, 94, 0.3)',
             }]}
             activeOpacity={0.9}

@@ -415,8 +415,8 @@ export default function TripDetail({ navigation, route }) {
             <Text style={[s.backText, { color: theme.text }]}>‹</Text>
           </TouchableOpacity>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Feather name="truck" size={20} color="#168A5B" />
-            <GradientText style={s.title} colors={['#168A5B', '#16A34A']}>{t('trip_title')}</GradientText>
+            <Feather name="truck" size={20} color="#168759" />
+            <GradientText style={s.title} colors={['#168759', '#16A34A']}>{t('trip_title')}</GradientText>
           </View>
         </View>
         {dealStatus ? renderDealBlock() : (
@@ -554,7 +554,7 @@ export default function TripDetail({ navigation, route }) {
             </View>
           ) : null}
           <View style={s.routeRow}>
-            <View style={[s.dot, { backgroundColor: '#168A5B' }]} />
+            <View style={[s.dot, { backgroundColor: '#168759' }]} />
             <Text style={[s.city, { color: theme.text }]}>{localizePlace(view.to, lang)}</Text>
           </View>
 
@@ -690,7 +690,7 @@ export default function TripDetail({ navigation, route }) {
           return (
             <View key={b.id} style={[s.ownerBidCard, {
               backgroundColor: v1.card,
-              borderColor: b.status === 'accepted' ? '#168A5B'
+              borderColor: b.status === 'accepted' ? '#168759'
                 : isCountered ? '#E06D00'
                 : v1.border,
               borderWidth: b.status === 'accepted' || isCountered ? 2 : 1,
@@ -705,7 +705,7 @@ export default function TripDetail({ navigation, route }) {
                   {b.message ? <Text style={{ color: v1.textMuted, fontSize: 11, marginTop: 2 }}>{b.message}</Text> : null}
                   <Text style={{
                     fontSize: 11, marginTop: 2,
-                    color: b.status === 'accepted' ? '#168A5B' : isCountered ? '#E06D00' : '#FBBF24',
+                    color: b.status === 'accepted' ? '#168759' : isCountered ? '#E06D00' : '#D97706',
                   }}>
                     {b.status === 'accepted' ? '✅ ' + t('bid_accepted')
                       : isCountered ? '🔁 ' + t('counter_sent_status')
@@ -910,7 +910,7 @@ export default function TripDetail({ navigation, route }) {
       ) : null}
       {dealStatus === 'delivered' && reviewSent ? (
         <View style={{ paddingHorizontal: 16, paddingBottom: 8, alignItems: 'center' }}>
-          <Text style={{ color: '#168A5B', fontSize: 14, fontWeight: '600' }}>{t('thanks_for_review')}</Text>
+          <Text style={{ color: '#168759', fontSize: 14, fontWeight: '600' }}>{t('thanks_for_review')}</Text>
         </View>
       ) : null}
 

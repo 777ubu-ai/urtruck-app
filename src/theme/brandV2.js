@@ -18,7 +18,7 @@ export const brand = {
   // Text
   textPrimary: '#14221C',   // navy — заголовки, основной текст
   textSecondary: '#617067', // подзаголовки, hints
-  textTertiary: '#9AA8A0',  // placeholder, disabled
+  textTertiary: '#6B7A71',  // placeholder, disabled
   textOnPrimary: '#FFFFFF', // на зелёной/оранжевой кнопке
 
   // Brand
@@ -26,7 +26,7 @@ export const brand = {
   logoAccent: '#FF8400', // "Truck" в логотипе
 
   // Primary CTA (зелёная кнопка "Продолжить")
-  primary: '#168A5B',
+  primary: '#168759',
   primaryHover: '#0F6B47',
   primarySoft: '#E8F6EF',
 
@@ -41,7 +41,7 @@ export const brand = {
   divider: '#EEF3F0',
 
   // States
-  success: '#168A5B',
+  success: '#168759',
   warning: '#FF8400',
   error: '#EF4444',
   info: '#3478D4',
@@ -49,7 +49,7 @@ export const brand = {
   // Map/illustration assist
   mapGray: '#E5E7EB',
   routeOrange: '#FF8400',
-  routeGreen: '#168A5B',
+  routeGreen: '#168759',
 };
 
 export const radius = {

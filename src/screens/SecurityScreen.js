@@ -90,7 +90,7 @@ export default function SecurityScreen({ navigation }) {
                 бага «повторная регистрация после верификации»). */}
             {(session?.user?.role !== 'client' && !confirmed) ? (
               <TouchableOpacity
-                style={[s.verifyBtn, { backgroundColor: '#168A5B' }]}
+                style={[s.verifyBtn, { backgroundColor: '#168759' }]}
                 onPress={() => navigation.navigate('Citizenship')}
                 testID="security-verify-docs"
               >

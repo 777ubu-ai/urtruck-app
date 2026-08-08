@@ -11,7 +11,7 @@ const BASE = API_BASE;
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 const TRUCK_ICONS = { tent: '🚚', ref: '🧊', platform: '🛻', tanker: '🛢️', auto: '🚗', van: '🚐' };
-const COLOR_BADGE = { green: '#168A5B', yellow: '#FF8400', red: '#EF4444' };
+const COLOR_BADGE = { green: '#168759', yellow: '#FF8400', red: '#EF4444' };
 
 export default function StatsScreen({ navigation }) {
   const v1 = useV1Colors();
@@ -74,9 +74,9 @@ export default function StatsScreen({ navigation }) {
                     <Text style={[s.badgeText, { color: col }]}>{d.security_score}</Text>
                   </View>
                   {d.rating_count > 0 && (
-                    <View style={[s.badge, { backgroundColor: '#FBBF2420', flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
-                      <Feather name="star" size={13} color="#FBBF24" />
-                      <Text style={[s.badgeText, { color: '#FBBF24' }]}>{d.rating_avg} ({d.rating_count})</Text>
+                    <View style={[s.badge, { backgroundColor: '#D9770620', flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
+                      <Feather name="star" size={13} color="#D97706" />
+                      <Text style={[s.badgeText, { color: '#D97706' }]}>{d.rating_avg} ({d.rating_count})</Text>
                     </View>
                   )}
                 </View>

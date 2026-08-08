@@ -168,7 +168,7 @@ const s = StyleSheet.create({
   devText: { color: '#7F1D1D', fontSize: 13, fontWeight: '700', marginTop: 2 },
   devTextSmall: { color: '#B91C1C', fontSize: 11, marginTop: 2, fontFamily: Platform.OS === 'web' ? 'ui-monospace, SFMono-Regular, Menlo, monospace' : undefined },
   btn: {
-    backgroundColor: '#168A5B',
+    backgroundColor: '#168759',
     paddingHorizontal: 28,
     paddingVertical: 14,
     borderRadius: 14,

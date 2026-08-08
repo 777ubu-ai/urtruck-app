@@ -35,7 +35,7 @@ import { regAPI } from '../../utils/registration';
 import { formatCooldown } from '../../utils/formatCooldown';
 import { formatPhoneForDisplay, toAsciiDigits } from '../../utils/phone';
 
-const ACCENT = { main: '#168A5B', deep: '#0F6B47', soft: '#E8F6EF' };
+const ACCENT = { main: '#168759', deep: '#0F6B47', soft: '#E8F6EF' };
 
 export default function PremiumLoginScreen({ navigation }) {
   const { t } = useI18n();
@@ -163,7 +163,7 @@ export default function PremiumLoginScreen({ navigation }) {
                 { borderColor: error ? '#D64545' : (validPhone ? accent.main : '#E5ECE8') },
               ]}
               placeholder={t('prem_reg_phone_placeholder')}
-              placeholderTextColor="#9AA8A0"
+              placeholderTextColor="#6B7A71"
               keyboardType="phone-pad"
               // Stage 46 P0 fix — см. PremiumRegisterScreen для контекста.
               // inputMode="tel" даёт numeric keypad на web независимо от

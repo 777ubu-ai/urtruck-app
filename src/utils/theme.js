@@ -1,5 +1,5 @@
 // UrTruck Design System — DESIGN_SYSTEM.md compliant
-// Dark Premium: #0a0f1a bg, #22c55e accent, glass cards
+// Dark Premium: #0a0f1a bg, #168759 accent, glass cards
 // Fonts: Syne (headings), DM Sans (body)
 
 import { Platform } from 'react-native';
@@ -40,7 +40,7 @@ export const lightTheme = {
   cardBorder: '#e5ece8',
   cardHover: '#f3fbf7',
   cardActive: '#e8f6ef',
-  cardActiveBorder: '#168a5b',
+  cardActiveBorder: '#168759',
   text: '#14221c',
   textSecondary: '#3f5047',
   textMuted: '#617067',
@@ -56,19 +56,19 @@ export const lightTheme = {
 
 // Design System accent colors
 export const accentColors = {
-  primary: '#168a5b',
+  primary: '#168759',
   primaryDark: '#0f6b47',
-  primaryGlow: 'rgba(22,138,91,0.18)',
+  primaryGlow: 'rgba(22,135,89,0.18)',
   blue: '#3b82f6',
   blueSoft: '#1e3a5f',
-  driver: '#168a5b',
-  client: '#168a5b',
-  browse: '#168a5b',
+  driver: '#168759',
+  client: '#168759',
+  browse: '#168759',
 };
 
 // Status colors
 export const statusColors = {
-  success:  { color: '#22c55e', bg: 'rgba(34,197,94,0.15)' },
+  success:  { color: '#168759', bg: 'rgba(34,197,94,0.15)' },
   warning:  { color: '#E06D00', bg: 'rgba(255,132,0,0.15)' },
   danger:   { color: '#ef4444', bg: 'rgba(239,68,68,0.15)' },
   info:     { color: '#3b82f6', bg: 'rgba(59,130,246,0.15)' },
@@ -76,20 +76,20 @@ export const statusColors = {
 
 // Scoring colors
 export const scoringColor = (score) =>
-  score >= 70 ? '#22c55e' : score >= 40 ? '#FF8400' : '#ef4444';
+  score >= 70 ? '#168759' : score >= 40 ? '#FF8400' : '#ef4444';
 
 // Truck type colors (all green-based for consistency)
 export const truckColors = {
-  tent: '#22c55e', ref: '#3b82f6', platform: '#FF8400',
+  tent: '#168759', ref: '#3b82f6', platform: '#FF8400',
   auto: '#a855f7', izoterm: '#06b6d4',
 };
 
 export const colors = {
-  success: '#22c55e',
+  success: '#168759',
   error: '#ef4444',
   warning: '#FF8400',
-  rating: '#eab308',
-  online: '#22c55e',
+  rating: '#D97706',
+  online: '#168759',
 };
 
 // Design System styles helper — единая светлая B2B-тема (redesign 08.08.2026).
@@ -112,7 +112,7 @@ export const DS = {
   },
   // Primary button
   btnPrimary: {
-    backgroundColor: '#168a5b',
+    backgroundColor: '#168759',
     borderRadius: 12,
     paddingVertical: 14,
     paddingHorizontal: 24,
@@ -148,7 +148,7 @@ export const DS = {
   },
   // Badge
   badge: (color) => ({
-    backgroundColor: (color === '#22c55e' || color === '#168a5b') ? 'rgba(22,138,91,0.12)'
+    backgroundColor: (color === '#168759' || color === '#168759') ? 'rgba(22,135,89,0.12)'
       : color === '#FF8400' ? 'rgba(255,132,0,0.15)'
       : color === '#ef4444' ? 'rgba(214,69,69,0.12)'
       : 'rgba(52,120,212,0.12)',
@@ -165,7 +165,7 @@ export const DS = {
   // Heading
   h1: { fontFamily: FONT.heading, fontSize: 24, fontWeight: '800', color: '#14221c' },
   h2: { fontFamily: FONT.heading, fontSize: 20, fontWeight: '700', color: '#14221c' },
-  h3: { fontFamily: FONT.heading, fontSize: 16, fontWeight: '700', color: '#168a5b' },
+  h3: { fontFamily: FONT.heading, fontSize: 16, fontWeight: '700', color: '#168759' },
   display: { fontFamily: FONT.heading, fontSize: 32, fontWeight: '800', color: '#14221c', letterSpacing: -1 },
   body: { fontFamily: FONT.body, fontSize: 15, fontWeight: '400', color: '#617067' },
   small: { fontFamily: FONT.body, fontSize: 13, fontWeight: '400', color: '#617067' },
@@ -179,6 +179,6 @@ export const DS = {
     paddingTop: 12,
     height: 80,
   },
-  tabActive: '#168a5b',
+  tabActive: '#168759',
   tabInactive: '#617067',
 };

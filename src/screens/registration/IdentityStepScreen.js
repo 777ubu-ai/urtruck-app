@@ -277,7 +277,7 @@ export default function IdentityStepScreen({ navigation }) {
               {idFront ? (
                 <Image source={{ uri: idFront }} style={s.photoThumb} resizeMode="cover" />
               ) : hasIdFront ? (
-                <><Feather name="check-circle" size={22} color="#168A5B" /><Text style={[s.photoText, { color: '#168A5B' }]}>{t('id_front_label')}</Text></>
+                <><Feather name="check-circle" size={22} color="#168759" /><Text style={[s.photoText, { color: '#168759' }]}>{t('id_front_label')}</Text></>
               ) : (
                 <><Feather name="credit-card" size={22} color={brand.textSecondary} /><Text style={s.photoText}>{t('id_front_label')}</Text></>
               )}
@@ -286,7 +286,7 @@ export default function IdentityStepScreen({ navigation }) {
               {idBack ? (
                 <Image source={{ uri: idBack }} style={s.photoThumb} resizeMode="cover" />
               ) : hasIdBack ? (
-                <><Feather name="check-circle" size={22} color="#168A5B" /><Text style={[s.photoText, { color: '#168A5B' }]}>{t('id_back_label')}</Text></>
+                <><Feather name="check-circle" size={22} color="#168759" /><Text style={[s.photoText, { color: '#168759' }]}>{t('id_back_label')}</Text></>
               ) : (
                 <><Feather name="credit-card" size={22} color={brand.textSecondary} /><Text style={s.photoText}>{t('id_back_label')}</Text></>
               )}
