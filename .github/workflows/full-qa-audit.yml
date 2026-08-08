@@ -33,6 +33,9 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/backend
           APP_ENV: test
+          # CGR-модули требуют salt при feature-флаге (по умолчанию on),
+          # иначе cgr/*-тесты падают на import. CI-значение, не секрет.
+          CGR_IIN_SALT: ci-test-salt-not-a-secret
         run: |
           set -euo pipefail
           python -m compileall -q backend
