@@ -25,15 +25,37 @@ from services import storage_service
 _warned_no_secret = False
 
 
+def signing_key_configured() -> bool:
+    """True, если задан непустой секрет подписи (FILE_SIGNING_KEY или
+    URTRUCK_API_SECRET через env — НЕ модульная константа config.API_SECRET,
+    которую os.getenv не видит)."""
+    return bool(os.getenv("FILE_SIGNING_KEY") or os.getenv("URTRUCK_API_SECRET"))
+
+
 def _secret() -> bytes:
-    """Секрет подписи. FILE_SIGNING_KEY → URTRUCK_API_SECRET → пусто (+warn)."""
+    """Секрет подписи. FILE_SIGNING_KEY → URTRUCK_API_SECRET.
+
+    P0-3 (08.08.2026): fail-closed. Пустой ключ → HMAC-SHA256 по публично
+    известному алгоритму `{key}|{exp}` вычисляется кем угодно, TTL подписанных
+    ссылок на приватные документы (паспорта/права/накладные) становится
+    фикцией. В production пустой ключ — release-блокер: вместо тихой раздачи
+    подделываемых ссылок отказываемся подписывать/проверять (лучше 500, чем
+    вечно валидная ссылка). Вне production — прежнее поведение с warning,
+    чтобы dev/локальные тесты не требовали секрет."""
     global _warned_no_secret
     key = os.getenv("FILE_SIGNING_KEY") or os.getenv("URTRUCK_API_SECRET") or ""
-    if not key and not _warned_no_secret:
-        print("[file_signing] ВНИМАНИЕ: FILE_SIGNING_KEY/URTRUCK_API_SECRET не "
-              "заданы — подписи файлов небезопасны. Задайте FILE_SIGNING_KEY.",
-              flush=True)
-        _warned_no_secret = True
+    if not key:
+        if (os.getenv("URTRUCK_ENV") or "").lower() == "production":
+            raise RuntimeError(
+                "FILE_SIGNING_KEY (или URTRUCK_API_SECRET) не задан в production — "
+                "подписи файлов небезопасны (пустой HMAC-ключ подделывается). "
+                "Сгенерируйте секрет и задайте FILE_SIGNING_KEY в окружении сервера."
+            )
+        if not _warned_no_secret:
+            print("[file_signing] ВНИМАНИЕ: FILE_SIGNING_KEY/URTRUCK_API_SECRET не "
+                  "заданы — подписи файлов небезопасны (dev-режим). Задайте "
+                  "FILE_SIGNING_KEY.", flush=True)
+            _warned_no_secret = True
     return key.encode("utf-8")
 
 

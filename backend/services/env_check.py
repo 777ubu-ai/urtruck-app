@@ -103,6 +103,18 @@ def collect_issues() -> List[str]:
     if (os.getenv("URTRUCK_ADMIN_TOKEN") or "demo-admin-change-me") == "demo-admin-change-me":
         issues.append("API: URTRUCK_ADMIN_TOKEN still the demo default — set a real token.")
 
+    # P0-3: file-signing secret. Empty key => HMAC over a public algorithm with
+    # an empty key => anyone can forge signed URLs to private documents
+    # (passports / licences / waybills) and TTL becomes meaningless.
+    if not (os.getenv("FILE_SIGNING_KEY") or os.getenv("URTRUCK_API_SECRET")):
+        issues.append(
+            "Files: FILE_SIGNING_KEY (or URTRUCK_API_SECRET) is empty — signed "
+            "document URLs are forgeable and TTL is meaningless. Generate a strong "
+            "random secret: python -c \"import secrets;print(secrets.token_urlsafe(48))\" "
+            "and set FILE_SIGNING_KEY in the server environment. In production the "
+            "backend refuses to sign/verify without it (fail-closed)."
+        )
+
     # CORS — production should not allow http://localhost or wildcard.
     cors = os.getenv("CORS_ORIGINS", "")
     if "*" in cors.split(","):
