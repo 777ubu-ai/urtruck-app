@@ -36,6 +36,16 @@ check('at_border -> cancelled', pickDealStatus('at_border', 'cancelled'), 'cance
 check('completed stale-> cancelled (BLOCKED, this is the point 6 rule)', pickDealStatus('completed', 'cancelled'), 'completed');
 check('delivered stale-> cancelled (BLOCKED)', pickDealStatus('delivered', 'cancelled'), 'delivered');
 
+// P0-1 (08.08.2026): delivered → completed — единственный допустимый шаг
+// вперёд из delivered (грузоотправитель подтверждает получение). Раньше
+// completed и delivered имели равный ранг И delivered был терминальным →
+// UI застревал на delivered и не показывал завершение сделки.
+check('delivered -> completed (shipper confirms receipt)', pickDealStatus('delivered', 'completed'), 'completed');
+check('completed stale-> in_progress (BLOCKED, completed terminal)', pickDealStatus('completed', 'in_progress'), 'completed');
+check('completed -> completed (idempotent)', pickDealStatus('completed', 'completed'), 'completed');
+// delivered ignores any non-completed next (stale replay / rollback attempt).
+check('delivered stale-> at_border (BLOCKED)', pickDealStatus('delivered', 'at_border'), 'delivered');
+
 // Once cancelled, a deal is also closed — no status resurrects it.
 check('cancelled stale-> in_progress (blocked)', pickDealStatus('cancelled', 'in_progress'), 'cancelled');
 check('cancelled -> cancelled (idempotent)', pickDealStatus('cancelled', 'cancelled'), 'cancelled');
@@ -47,7 +57,7 @@ check('null -> cancelled (first load)', pickDealStatus(null, 'cancelled'), 'canc
 // Map readiness for awaiting_confirmation/completed — no NaN/undefined ranks.
 check('rank map has awaiting_confirmation', typeof DEAL_STATUS_RANK.awaiting_confirmation, 'number');
 check('rank map has completed', typeof DEAL_STATUS_RANK.completed, 'number');
-check('completed ranks with delivered', DEAL_STATUS_RANK.completed === DEAL_STATUS_RANK.delivered, true);
+check('completed ranks ABOVE delivered (P0-1: equal rank made UI stuck)', DEAL_STATUS_RANK.completed > DEAL_STATUS_RANK.delivered, true);
 check('awaiting_confirmation between at_border and delivered',
   DEAL_STATUS_RANK.at_border < DEAL_STATUS_RANK.awaiting_confirmation && DEAL_STATUS_RANK.awaiting_confirmation < DEAL_STATUS_RANK.delivered,
   true);

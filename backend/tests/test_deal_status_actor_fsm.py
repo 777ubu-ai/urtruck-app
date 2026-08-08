@@ -326,6 +326,109 @@ def test_concurrent_conflicting_patch_does_not_give_two_false_200():
     assert conflicts_ok == 15
 
 
+# ───────── P0-1 (08.08.2026): delivered → completed (подтверждение получения) ─────────
+# Регресс на release-блокер: фронт слал `completed`, а FSM его не знала
+# (delivered терминальный) → грузоотправитель получал 409 на «Подтвердить
+# получение» и сделку невозможно было закрыть. Тесты фиксируют канонический
+# контракт: delivered ставит ТОЛЬКО водитель, completed — ТОЛЬКО
+# грузоотправитель и ТОЛЬКО после delivered.
+
+def test_shipper_can_complete_after_delivered():
+    d = seed_deal("delivered", from_country="KZ", to_country="KZ")
+    r = patch_status(d, "completed", SHIPPER)
+    assert r.status_code == 200, r.text
+    assert deal_status(d) == "completed"
+
+
+def test_driver_cannot_complete():
+    """Водитель довозит (delivered), но подтвердить ПОЛУЧЕНИЕ не может."""
+    d = seed_deal("delivered", from_country="KZ", to_country="KZ")
+    r = patch_status(d, "completed", DRIVER)
+    assert r.status_code == 403, r.text
+    assert r.json()["detail"]["error"] == "ACTION_NOT_ALLOWED_FOR_ROLE"
+    assert deal_status(d) == "delivered"
+
+
+def test_shipper_cannot_complete_before_delivered():
+    """completed достижим только из delivered — не из in_progress/at_border."""
+    for start in ("accepted", "in_progress", "at_border"):
+        d = seed_deal(start, from_country="CN", to_country="KZ")
+        r = patch_status(d, "completed", SHIPPER)
+        assert r.status_code == 409, f"{start}->completed должен быть 409: {r.text}"
+        assert r.json()["detail"]["error"] == "INVALID_STATUS_TRANSITION"
+        assert deal_status(d) == start
+
+
+def test_repeated_completed_is_idempotent():
+    d = seed_deal("delivered", from_country="KZ", to_country="KZ")
+    r1 = patch_status(d, "completed", SHIPPER)
+    assert r1.status_code == 200, r1.text
+    r2 = patch_status(d, "completed", SHIPPER)
+    assert r2.status_code == 200, r2.text  # идемпотентный повтор — не 409
+    assert r2.json() == {"ok": True, "status": "completed"}
+    assert deal_status(d) == "completed"
+
+
+def test_completed_is_terminal():
+    """Из completed нельзя откатиться ни в рабочий статус, ни в cancelled."""
+    d = seed_deal("delivered", from_country="KZ", to_country="KZ")
+    assert patch_status(d, "completed", SHIPPER).status_code == 200
+    r = patch_status(d, "in_progress", DRIVER)
+    assert r.status_code == 409, r.text
+    assert deal_status(d) == "completed"
+    r2 = patch_status(d, "cancelled", SHIPPER)
+    assert r2.status_code == 409, r2.text
+    assert deal_status(d) == "completed"
+
+
+def test_completed_emits_timeline_event():
+    d = seed_deal("delivered", from_country="KZ", to_country="KZ")
+    assert patch_status(d, "completed", SHIPPER).status_code == 200
+    from database.db import get_conn
+    with get_conn() as c:
+        ev = c.execute(
+            "SELECT payload_json FROM deal_events WHERE deal_id = ? AND event_type = 'deal.status_changed' "
+            "ORDER BY created_at DESC LIMIT 1",
+            (d,),
+        ).fetchone()
+    assert ev is not None, "completed не породил deal_event в timeline"
+    import json as _json
+    payload = _json.loads(ev["payload_json"])
+    assert payload.get("status") == "completed"
+    assert payload.get("old_status") == "delivered"
+
+
+def test_concurrent_completed_taps_no_corruption():
+    """Двойной тап «Подтвердить получение» — ровно один 200, второй 409,
+    итоговый статус completed без порчи."""
+    import threading
+    d = seed_deal("delivered", from_country="KZ", to_country="KZ")
+    results = {}
+
+    def _do(key):
+        as_user(SHIPPER)
+        r = client.patch(f"/api/v1/market/deals/{d}/status", params={"new_status": "completed"})
+        results[key] = r.status_code
+
+    t1 = threading.Thread(target=_do, args=("A",))
+    t2 = threading.Thread(target=_do, args=("B",))
+    t1.start(); t2.start(); t1.join(); t2.join()
+    # оба могут вернуть 200, если второй попал уже как идемпотентный повтор
+    # (status уже completed → noop), но НИКОГДА не должно быть порчи статуса
+    assert deal_status(d) == "completed", results
+    assert set(results.values()) <= {200, 409}, results
+
+
+def test_driver_cannot_deliver_then_self_complete():
+    """Комбинированный: водитель довёз, но сам закрыть сделку не может —
+    только грузоотправитель. Гарантия разделения ролей end-to-end."""
+    d = seed_deal("in_progress", from_country="KZ", to_country="KZ")
+    assert patch_status(d, "delivered", DRIVER).status_code == 200
+    assert patch_status(d, "completed", DRIVER).status_code == 403
+    assert patch_status(d, "completed", SHIPPER).status_code == 200
+    assert deal_status(d) == "completed"
+
+
 if __name__ == "__main__":
     fails = 0
     for fn in [test_shipper_cannot_start_trip, test_shipper_cannot_set_at_border,
@@ -340,7 +443,15 @@ if __name__ == "__main__":
                test_unknown_status_400, test_cancel_allowed_for_both_parties_from_accepted,
                test_cancel_mid_transit_allowed_both_and_audited,
                test_trip_status_endpoint_cannot_bypass_fsm_or_country_guard,
-               test_concurrent_conflicting_patch_does_not_give_two_false_200]:
+               test_concurrent_conflicting_patch_does_not_give_two_false_200,
+               test_shipper_can_complete_after_delivered,
+               test_driver_cannot_complete,
+               test_shipper_cannot_complete_before_delivered,
+               test_repeated_completed_is_idempotent,
+               test_completed_is_terminal,
+               test_completed_emits_timeline_event,
+               test_concurrent_completed_taps_no_corruption,
+               test_driver_cannot_deliver_then_self_complete]:
         try:
             fn(); print(f"  ✅ {fn.__name__}")
         except Exception as e:

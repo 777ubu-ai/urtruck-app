@@ -2639,20 +2639,34 @@ _DRIVER_ONLY_TRANSITIONS = {
     ("at_border", "delivered"),
 }
 
+#: Аудит remediation (08.08.2026, P0-1): подтверждение ПОЛУЧЕНИЯ груза —
+#: только грузоотправитель, и только ПОСЛЕ того как водитель отметил
+#: delivered. Раньше фронт слал `completed`, а FSM его не знала (delivered
+#: был терминальным) → грузоотправитель получал 409 на «Подтвердить
+#: получение», и ни одна сделка не могла быть закрыта. Водитель НЕ может сам
+#: перевести сделку в completed, грузоотправитель НЕ может ставить delivered.
+_SHIPPER_ONLY_TRANSITIONS = {
+    ("delivered", "completed"),
+}
+
 # Разрешённые переходы. Раньше валидации не было — двойной тап или
 # рассинхрон фронта мог перескочить accepted → delivered, минуя «в пути»/
 # «на границе». Отмена доступна из любого рабочего статуса; at_border можно
 # пропустить (внутренние рейсы без границы) — accepted → delivered нельзя.
+# delivered → completed: водитель отметил доставку, грузоотправитель
+# подтверждает получение (терминальный статус сделки).
 _DEAL_FLOW = {
     "accepted":    {"in_progress", "cancelled"},
     "in_progress": {"at_border", "delivered", "cancelled"},
     "at_border":   {"delivered", "cancelled"},
-    "delivered":   set(),
+    "delivered":   {"completed"},
+    "completed":   set(),
     "cancelled":   set(),
 }
 _DEAL_STATUS_LABELS = {
     "in_progress": "🚛 Рейс начался", "at_border": "🛂 На границе",
-    "delivered": "✅ Доставлен", "cancelled": "❌ Отменено",
+    "delivered": "✅ Доставлен", "completed": "🤝 Получение подтверждено",
+    "cancelled": "❌ Отменено",
 }
 
 
@@ -2701,6 +2715,15 @@ def _transition_deal(c, deal: dict, new_status: str, actor_uid: str, request_id:
             raise DealTransitionError(403, {
                 "error": "ACTION_NOT_ALLOWED_FOR_ROLE",
                 "message": "Этот статус может установить только водитель по сделке",
+            })
+    # P0-1: подтверждение получения (delivered → completed) — только
+    # грузоотправитель. Водитель довозит и ставит delivered; закрывает
+    # сделку получатель.
+    if (cur_status, new_status) in _SHIPPER_ONLY_TRANSITIONS:
+        if not deal.get("shipper_id") or actor_uid != deal["shipper_id"]:
+            raise DealTransitionError(403, {
+                "error": "ACTION_NOT_ALLOWED_FOR_ROLE",
+                "message": "Подтвердить получение может только грузоотправитель по сделке",
             })
     route = c.execute(
         "SELECT COALESCE(c.from_country, t.from_country) AS from_country, "
@@ -2762,7 +2785,7 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
     # Этап-хаб заказа: добавлен промежуточный статус at_border («На границе») —
     # ключевой для коридора Китай↔КЗ. Порядок: accepted → in_progress →
     # at_border → delivered (cancelled — из любого рабочего).
-    VALID = ["accepted", "in_progress", "at_border", "delivered", "cancelled"]
+    VALID = ["accepted", "in_progress", "at_border", "delivered", "completed", "cancelled"]
     if new_status not in VALID:
         raise HTTPException(status_code=400, detail={
             "error": "INVALID_STATUS",
@@ -2792,7 +2815,7 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
     # сумма в валюте груза/рейса, deep-link на /deals/{id}.
     try:
         other_id = deal["driver_id"] if uid == deal["shipper_id"] else deal["shipper_id"]
-        labels = {"in_progress": "🚛 Рейс начался", "at_border": "🛂 На границе", "delivered": "✅ Доставлен", "cancelled": "❌ Отменено"}
+        labels = {"in_progress": "🚛 Рейс начался", "at_border": "🛂 На границе", "delivered": "✅ Доставлен", "completed": "🤝 Получение подтверждено", "cancelled": "❌ Отменено"}
         if new_status in labels:
             cur = "USD"
             with get_conn() as c2:
@@ -2846,6 +2869,7 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
             "in_progress": "🚛 Рейс начался",
             "at_border": "🛂 Груз на границе",
             "delivered": "✅ Груз доставлен",
+            "completed": "🤝 Получение подтверждено — сделка закрыта",
             "cancelled": "❌ Сделка отменена",
         }
         if new_status in chat_labels and deal.get("chat_room_id"):
