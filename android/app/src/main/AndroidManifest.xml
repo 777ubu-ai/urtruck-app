@@ -1,6 +1,16 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
   <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
   <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+  <!-- P0-7 (08.08.2026): фоновое отслеживание машины во время активного рейса.
+       Без BACKGROUND_LOCATION + FOREGROUND_SERVICE_LOCATION вызов startForeground
+       для сервиса типа location на Android 14+ (targetSdk 36) кидает
+       SecurityException → краш при старте рейса. app.json их объявляет, но при
+       bare-workflow (ios/ и android/ закоммичены) prebuild не запускается и
+       секция android.permissions игнорируется — поэтому прописываем в манифест
+       напрямую. -->
+  <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
   <uses-permission android:name="android.permission.CAMERA"/>
   <uses-permission android:name="android.permission.INTERNET"/>
   <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>

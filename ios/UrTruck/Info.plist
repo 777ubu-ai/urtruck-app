@@ -50,9 +50,9 @@
     <key>NSCameraUsageDescription</key>
     <string>UrTruck использует камеру для селфи и фото документов</string>
     <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-    <string>Allow $(PRODUCT_NAME) to access your location</string>
+    <string>UrTruck передаёт позицию машины грузоотправителю во время активного рейса, чтобы он видел, где груз. Работает только пока есть сделка в пути.</string>
     <key>NSLocationAlwaysUsageDescription</key>
-    <string>Allow $(PRODUCT_NAME) to access your location</string>
+    <string>UrTruck передаёт позицию машины грузоотправителю во время активного рейса, чтобы он видел, где груз. Работает только пока есть сделка в пути.</string>
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>UrTruck показывает грузоотправителю, где сейчас находится его груз во время перевозки</string>
     <key>NSMicrophoneUsageDescription</key>
@@ -62,6 +62,7 @@
     <key>UIBackgroundModes</key>
     <array>
       <string>remote-notification</string>
+      <string>location</string>
     </array>
     <key>UILaunchStoryboardName</key>
     <string>SplashScreen</string>
