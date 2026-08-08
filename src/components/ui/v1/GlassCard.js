@@ -26,7 +26,7 @@ const s = StyleSheet.create({
   card: {
     borderWidth: 1,
     borderRadius: v1Radius.card,
-    padding: 14,
-    marginBottom: 10,
+    padding: 16,
+    marginBottom: 12,
   },
 });

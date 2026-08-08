@@ -72,8 +72,8 @@ const ICONS = {
 // CLAUDE.md: driver #00E676 изумруд, client #FF8400 янтарь). Текст поверх
 // «+»-кнопки — чёрный (#0C0A09): на изумруде/янтаре даёт AAA-контраст.
 const ROLE_ACCENT = {
-  driver: { main: '#00E676', soft: 'rgba(0,230,118,0.14)' },
-  client: { main: '#FF8400', soft: 'rgba(255,132,0,0.16)' },
+  driver: { main: '#168A5B', soft: '#E8F6EF' },
+  client: { main: '#168A5B', soft: '#E8F6EF' },
 };
 
 // H1-фикс: безусловная сверка бейджа на иконке приложения с серверным
@@ -223,8 +223,8 @@ export default function BottomNav({ state, navigation }) {
   // Industrial Luxury: глубокая графитовая подложка (почти чёрная на тёмной
   // теме), скруглённый плавающий бар с тонкой границей и неоновой тенью под
   // активным табом.
-  const barBg = isDark ? '#14110F' : '#FFFFFF';
-  const barBorder = isDark ? 'rgba(255,255,255,0.06)' : colors.border;
+  const barBg = isDark ? '#111827' : '#FFFFFF';
+  const barBorder = isDark ? 'rgba(255,255,255,0.08)' : '#E5ECE8';
 
   return (
     <View style={[s.wrap, { paddingBottom: bottomPad }]} pointerEvents="box-none" testID="bottom-nav">

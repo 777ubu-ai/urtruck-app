@@ -12,7 +12,7 @@ export default function PrimaryButton({ label, onPress, loading, disabled, accen
   // тоже слабый, переводим на чёрный — 8.6:1.
   const isDriver = accent !== 'cargo';
   const color = isDriver ? v1Colors.driver : v1Colors.cargoOwner;
-  const textColor = isDriver ? v1Colors.driverOnAccent : '#0C0A09';
+  const textColor = v1Colors.driverOnAccent;
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -28,13 +28,13 @@ export default function PrimaryButton({ label, onPress, loading, disabled, accen
 
 const s = StyleSheet.create({
   btn: {
-    height: 54,
+    height: 48,
     borderRadius: v1Radius.button,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowOpacity: 0.35,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 2 },
   },
   // color теперь устанавливается inline (зависит от accent)
   text: { ...v1Typography.button, color: undefined },

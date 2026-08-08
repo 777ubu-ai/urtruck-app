@@ -54,39 +54,38 @@ const DARK = {
 const LIGHT = {
   // Light surfaces aligned with `lightTheme` in src/utils/theme.js so the
   // legacy v3 screens and the v1 onboarding surfaces share one light look.
-  bg: '#F1F5F9',
+  bg: '#F6F8F7',
   bgDeep: '#FFFFFF',
   surface: '#FFFFFF',
-  surfaceLift: '#F8FAFC',
-  surfaceMuted: '#E2E8F0',
+  surfaceLift: '#F3FBF7',
+  surfaceMuted: '#F0F4F2',
 
-  border: '#CBD5E1',
-  borderStrong: '#94A3B8',
+  border: '#E5ECE8',
+  borderStrong: '#C8D8CF',
 
   // PR-D1 (build 18): на светлом фоне сам неон #00E676 нечитаем,
   // но мы используем его как fill кнопок/иконок, а текст поверх — чёрный
   // (driverOnAccent). Soft/glow подкручены, чтобы и на белой подложке
   // халогенный шлейф выглядел как зелёная подсветка, а не серая муть.
-  driver: '#00E676',
-  driverDeep: '#00C766',
-  driverGlow: 'rgba(0,230,118,0.35)',
-  driverSoft: 'rgba(0,230,118,0.16)',
-  driverOnAccent: '#0C0A09',
+  driver: '#168A5B',
+  driverDeep: '#0F6B47',
+  driverGlow: 'rgba(22,138,91,0.18)',
+  driverSoft: '#E8F6EF',
+  driverOnAccent: '#FFFFFF',
 
-  cargoOwner: '#FF8400',
-  cargoOwnerDeep: '#E06D00',
-  cargoOwnerGlow: 'rgba(255,132,0,0.35)',
-  cargoOwnerSoft: 'rgba(255,132,0,0.12)',
+  cargoOwner: '#168A5B',
+  cargoOwnerDeep: '#0F6B47',
+  cargoOwnerGlow: 'rgba(22,138,91,0.18)',
+  cargoOwnerSoft: '#E8F6EF',
 
-  text: '#0F172A',
-  textMuted: '#475569',
-  // Этап 5.1: было #94A3B8 (2.56:1 на белом — провал). #64748B ≈ 4.8:1.
-  textDim: '#64748B',
-  placeholder: '#94A3B8',
+  text: '#14221C',
+  textMuted: '#617067',
+  textDim: '#7C8B82',
+  placeholder: '#9AA8A0',
 
-  error: '#DC2626',
-  success: '#16A34A',
-  warning: '#E06D00',
+  error: '#D64545',
+  success: '#168A5B',
+  warning: '#F59E0B',
 };
 
 // Frozen dark export — keeps every existing `StyleSheet.create({ … })`
@@ -100,10 +99,10 @@ export const useV1Colors = () => {
 };
 
 export const v1Radius = {
-  field: 14,           // input rows
-  card: 18,            // glass cards / containers
+  field: 12,
+  card: 16,
   pill: 999,           // role tabs / role badges
-  button: 16,          // primary CTAs (close to pill but with corners visible)
+  button: 12,
 };
 
 export const v1Spacing = {
@@ -113,19 +112,19 @@ export const v1Spacing = {
   lg: 18,
   xl: 24,
   xxl: 32,
-  screenPad: 22,
+  screenPad: 16,
 };
 
 export const v1Typography = {
-  hero:    { fontSize: 32, fontWeight: '900', letterSpacing: -1, color: v1Colors.text },
-  brand:   { fontSize: 28, fontWeight: '900', letterSpacing: -0.5, color: v1Colors.text },
-  h1:      { fontSize: 26, fontWeight: '800', letterSpacing: -0.5, color: v1Colors.text },
-  h2:      { fontSize: 20, fontWeight: '800', color: v1Colors.text },
-  body:    { fontSize: 14, fontWeight: '500', color: v1Colors.text },
-  bodyMd:  { fontSize: 13, fontWeight: '500', color: v1Colors.textMuted },
+  hero:    { fontSize: 28, fontWeight: '800', letterSpacing: -0.5, color: v1Colors.text },
+  brand:   { fontSize: 24, fontWeight: '800', letterSpacing: -0.4, color: v1Colors.text },
+  h1:      { fontSize: 24, fontWeight: '700', letterSpacing: -0.3, color: v1Colors.text },
+  h2:      { fontSize: 20, fontWeight: '700', color: v1Colors.text },
+  body:    { fontSize: 15, fontWeight: '400', color: v1Colors.text },
+  bodyMd:  { fontSize: 14, fontWeight: '400', color: v1Colors.textMuted },
   caption: { fontSize: 12, fontWeight: '500', color: v1Colors.textMuted },
-  small:   { fontSize: 11, fontWeight: '600', letterSpacing: 0.5, color: v1Colors.textDim },
-  button:  { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
+  small:   { fontSize: 11, fontWeight: '600', letterSpacing: 0.2, color: v1Colors.textDim },
+  button:  { fontSize: 15, fontWeight: '600', color: '#FFFFFF' },
 };
 
 export const v1Shadow = {
@@ -142,4 +141,4 @@ export const v1AccentFor = (role) =>
     // client onAccent = тёмный (#0C0A09): белый на янтарном #FF8400 давал
     // контраст ~2:1 (WCAG fail). Чёрный — ~11:1 (AAA), премиальнее. Симметрично
     // водительскому black-on-green.
-    : { main: v1Colors.cargoOwner, deep: v1Colors.cargoOwnerDeep, glow: v1Colors.cargoOwnerGlow, soft: v1Colors.cargoOwnerSoft, onAccent: '#0C0A09' };
+    : { main: v1Colors.cargoOwner, deep: v1Colors.cargoOwnerDeep, glow: v1Colors.cargoOwnerGlow, soft: v1Colors.cargoOwnerSoft, onAccent: v1Colors.driverOnAccent };

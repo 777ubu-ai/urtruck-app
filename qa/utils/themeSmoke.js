@@ -62,10 +62,10 @@ const tokensSrc = fs.readFileSync(DESIGN_V1, 'utf8');
 if (!/export const useV1Colors/.test(tokensSrc)) {
   failures.push('designV1.js missing `useV1Colors` export');
 }
-if (!/const LIGHT = \{[\s\S]*?bg:\s*'#F1F5F9'/.test(tokensSrc)) {
+if (!/const LIGHT = \{[\s\S]*?bg:\s*'#F6F8F7'/.test(tokensSrc)) {
   failures.push('designV1.js LIGHT.bg is not a non-black light value');
 }
-if (!/const LIGHT = \{[\s\S]*?text:\s*'#0F172A'/.test(tokensSrc)) {
+if (!/const LIGHT = \{[\s\S]*?text:\s*'#14221C'/.test(tokensSrc)) {
   failures.push('designV1.js LIGHT.text is not a dark on-light value');
 }
 

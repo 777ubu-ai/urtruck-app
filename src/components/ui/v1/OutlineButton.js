@@ -32,7 +32,7 @@ export default function OutlineButton({ label, icon, onPress, disabled, subtle, 
 
 const s = StyleSheet.create({
   btn: {
-    height: 50,
+    height: 48,
     borderRadius: v1Radius.button,
     flexDirection: 'row',
     alignItems: 'center',
@@ -41,5 +41,5 @@ const s = StyleSheet.create({
     paddingHorizontal: 16,
   },
   icon: { fontSize: 18 },
-  text: { ...v1Typography.body, fontWeight: '700' },
+  text: { ...v1Typography.body, fontWeight: '600' },
 });

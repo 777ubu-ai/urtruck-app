@@ -9,24 +9,24 @@
 //   brand emerald / graphite so existing imports keep compiling.
 
 export const colors = {
-  background: '#070B12',
-  surface: '#111827',
-  surface2: '#172033',
-  border: '#263244',
+  background: '#F6F8F7',
+  surface: '#FFFFFF',
+  surface2: '#F0F4F2',
+  border: '#E5ECE8',
   graphiteHi: '#334155',           // neutral interactive (replaces sky/cyan)
-  text: '#F8FAFC',
-  textMuted: '#94A3B8',
-  textDim: '#64748B',
-  green: '#22C55E',
-  greenDeep: '#16A34A',
-  greenMuted: 'rgba(34,197,94,0.12)',
+  text: '#14221C',
+  textMuted: '#617067',
+  textDim: '#7C8B82',
+  green: '#168A5B',
+  greenDeep: '#0F6B47',
+  greenMuted: '#E8F6EF',
   orange: '#FF8400',
   orangeMuted: 'rgba(255,132,0,0.12)',
   red: '#EF4444',
   // Legacy aliases — point at brand emerald to neutralize stray imports.
   // Do NOT use in new code; prefer `tokens.colorPrimary` / `tokens.colorAccent`.
-  blue: '#22C55E',
-  blueMuted: 'rgba(34,197,94,0.12)',
+  blue: '#168A5B',
+  blueMuted: '#E8F6EF',
 };
 
 // Canonical theme tokens for new code.

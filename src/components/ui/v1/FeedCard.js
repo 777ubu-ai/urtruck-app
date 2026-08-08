@@ -231,14 +231,14 @@ export default function FeedCard({
 const s = StyleSheet.create({
   card: {
     borderWidth: 1,
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 8,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
     shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1,
   },
   // Компактный вид: меньше отступов и зазор между карточками, чтобы на экран
   // помещалось 5-6 строк вместо 2 крупных.
-  cardCompact: { padding: 11, marginBottom: 7 },
+  cardCompact: { padding: 12, marginBottom: 8 },
   routeCompact: { fontSize: 14 },
   metaCompact: { fontSize: 12, fontWeight: '600', marginTop: 4 },
   topRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 8 },
@@ -247,11 +247,11 @@ const s = StyleSheet.create({
   icon: { fontSize: 22 },
   // Крупнее для читаемости на солнце (Этап 5.5/5.2): маршрут и цена —
   // главные цифры на карточке; убираем 9/10px как нижний предел.
-  route: { fontSize: 14, fontWeight: '700' },
-  subtitle: { fontSize: 13, marginTop: 2 },
+  route: { fontSize: 16, fontWeight: '700' },
+  subtitle: { fontSize: 14, marginTop: 4 },
   statusPill: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, borderWidth: 1 },
   statusText: { fontSize: 11, fontWeight: '900', letterSpacing: 0.5 },
-  price: { fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  price: { fontSize: 20, fontWeight: '700', fontVariant: ['tabular-nums'] },
   priceCaption: { fontSize: 11, marginTop: 1 },
   metaRow: {
     flexDirection: 'row', flexWrap: 'wrap', gap: 8,
@@ -268,6 +268,6 @@ const s = StyleSheet.create({
   metaValue: { fontSize: 13, fontWeight: '700' },
   responses: { fontSize: 11, marginBottom: 8 },
   bottomRow: { flexDirection: 'row', gap: 8, marginTop: 6 },
-  btn: { flex: 1, paddingVertical: 10, borderRadius: 12, alignItems: 'center', borderWidth: 0 },
-  btnText: { fontSize: 13, fontWeight: '700' },
+  btn: { flex: 1, minHeight: 44, paddingVertical: 10, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 0 },
+  btnText: { fontSize: 14, fontWeight: '600' },
 });
