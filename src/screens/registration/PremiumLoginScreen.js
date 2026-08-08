@@ -35,7 +35,7 @@ import { regAPI } from '../../utils/registration';
 import { formatCooldown } from '../../utils/formatCooldown';
 import { formatPhoneForDisplay, toAsciiDigits } from '../../utils/phone';
 
-const ACCENT = { main: '#22C55E', deep: '#16A34A', soft: 'rgba(34,197,94,0.12)' };
+const ACCENT = { main: '#168759', deep: '#0F6B47', soft: '#E8F6EF' };
 
 export default function PremiumLoginScreen({ navigation }) {
   const { t } = useI18n();
@@ -160,10 +160,10 @@ export default function PremiumLoginScreen({ navigation }) {
               onChangeText={onChangePhone}
               style={[
                 s.input,
-                { borderColor: error ? '#EF4444' : (validPhone ? accent.main : '#292524') },
+                { borderColor: error ? '#D64545' : (validPhone ? accent.main : '#E5ECE8') },
               ]}
               placeholder={t('prem_reg_phone_placeholder')}
-              placeholderTextColor="#5A6068"
+              placeholderTextColor="#6B7A71"
               keyboardType="phone-pad"
               // Stage 46 P0 fix — см. PremiumRegisterScreen для контекста.
               // inputMode="tel" даёт numeric keypad на web независимо от
@@ -237,7 +237,7 @@ export default function PremiumLoginScreen({ navigation }) {
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#0C0A09' },
+  safe: { flex: 1, backgroundColor: '#F6F8F7' },
   flex: { flex: 1 },
   scroll: { flexGrow: 1, paddingHorizontal: 22, paddingBottom: 24 },
 
@@ -251,10 +251,10 @@ const s = StyleSheet.create({
   backBtn: {
     width: 36, height: 36, borderRadius: 18,
     alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(20,34,28,0.04)',
+    borderWidth: 1, borderColor: 'rgba(20,34,28,0.10)',
   },
-  backIcon: { color: '#F5F5F5', fontSize: 20, fontWeight: '700', lineHeight: 22 },
+  backIcon: { color: '#14221C', fontSize: 20, fontWeight: '700', lineHeight: 22 },
   tag: {
     paddingHorizontal: 12, paddingVertical: 6,
     borderRadius: 999, borderWidth: 1,
@@ -262,14 +262,14 @@ const s = StyleSheet.create({
   tagText: { fontSize: 12, fontWeight: '800', letterSpacing: 0.2 },
 
   brandRow: { marginBottom: 24 },
-  brand: { color: '#F5F5F5', fontSize: 28, fontWeight: '900', letterSpacing: -0.5 },
+  brand: { color: '#14221C', fontSize: 28, fontWeight: '900', letterSpacing: -0.5 },
 
-  title: { color: '#F5F5F5', fontSize: 26, fontWeight: '800', letterSpacing: -0.5, marginBottom: 8 },
-  subtitle: { color: '#9CA3AF', fontSize: 14, fontWeight: '500', lineHeight: 20, marginBottom: 28 },
+  title: { color: '#14221C', fontSize: 26, fontWeight: '800', letterSpacing: -0.5, marginBottom: 8 },
+  subtitle: { color: '#617067', fontSize: 14, fontWeight: '500', lineHeight: 20, marginBottom: 28 },
 
   fieldBlock: { marginBottom: 4 },
   label: {
-    color: '#9CA3AF',
+    color: '#617067',
     fontSize: 12,
     fontWeight: '700',
     letterSpacing: 0.5,
@@ -277,18 +277,18 @@ const s = StyleSheet.create({
     marginBottom: 8,
   },
   input: {
-    backgroundColor: '#0F1418',
-    borderColor: '#292524',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E5ECE8',
     borderWidth: 1,
     borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 16,
-    color: '#F5F5F5',
+    color: '#14221C',
     fontSize: 18,
     fontWeight: '700',
     letterSpacing: 0.5,
   },
-  err: { color: '#EF4444', fontSize: 12, fontWeight: '600', marginTop: 6 },
+  err: { color: '#D64545', fontSize: 12, fontWeight: '600', marginTop: 6 },
 
   cta: {
     height: 54,
@@ -300,7 +300,7 @@ const s = StyleSheet.create({
   ctaText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
 
   linkRow: { alignItems: 'center', marginTop: 20, paddingVertical: 8 },
-  linkMuted: { color: '#9CA3AF', fontSize: 13, fontWeight: '500' },
+  linkMuted: { color: '#617067', fontSize: 13, fontWeight: '500' },
   linkText: { fontWeight: '800' },
   ctaLoadingRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
@@ -311,8 +311,8 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(255,132,0,0.35)',
     alignItems: 'center',
   },
-  cooldownTitle: { color: '#F5F5F5', fontSize: 14, fontWeight: '800', marginBottom: 4, textAlign: 'center' },
-  cooldownBody: { color: '#9CA3AF', fontSize: 13, fontWeight: '500', textAlign: 'center', marginBottom: 12 },
+  cooldownTitle: { color: '#14221C', fontSize: 14, fontWeight: '800', marginBottom: 4, textAlign: 'center' },
+  cooldownBody: { color: '#617067', fontSize: 13, fontWeight: '500', textAlign: 'center', marginBottom: 12 },
   cooldownBtn: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 12, borderWidth: 1.5 },
   cooldownBtnText: { fontSize: 14, fontWeight: '800' },
 });

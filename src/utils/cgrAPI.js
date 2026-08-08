@@ -86,8 +86,8 @@ export function cgrBookingUrl() {
 
 export function checkpointStatusColor(status) {
   // 'ok' | 'stale' | 'unavailable' | 'legacy_mock'
-  if (status === 'ok') return '#22C55E';
-  if (status === 'stale') return '#FBBF24';
+  if (status === 'ok') return '#168759';
+  if (status === 'stale') return '#D97706';
   if (status === 'legacy_mock') return '#94A3B8';
   return '#EF4444'; // unavailable
 }

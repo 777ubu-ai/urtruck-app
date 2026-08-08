@@ -168,7 +168,7 @@ export default function FeedCard({
             </View>
           ) : null}
           {priceText ? (
-            <Text style={[s.price, { color: '#FF8400', marginTop: status ? 6 : 0 }]} numberOfLines={1}>
+            <Text style={[s.price, { color: '#E06D00', marginTop: status ? 6 : 0 }]} numberOfLines={1}>
               {priceText}
             </Text>
           ) : null}

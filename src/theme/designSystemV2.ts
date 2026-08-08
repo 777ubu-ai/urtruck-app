@@ -33,24 +33,24 @@ export const colors = {
   borderStrong: '#C8D8CF',         // hover/focus
 
   // Акценты
-  accent:        '#168A5B',        // основной UrTruck-зелёный
+  accent:        '#168759',        // основной UrTruck-зелёный
   accentHover:   '#0F6B47',        // pressed
   accentSoft:    '#E8F6EF',        // светлый фон с акцентом
-  accentGradient: ['#168A5B', '#0F6B47'] as const,
+  accentGradient: ['#168759', '#0F6B47'] as const,
 
   // Состояния
-  success:    '#168A5B',
+  success:    '#168759',
   warning:    '#F59E0B',
   error:      '#D64545',
   info:       '#3B82F6',
   inactive:   '#CBD5E1',
 
   // Статусы (для cargo/trip/bid карточек)
-  statusActive:    '#168A5B',
+  statusActive:    '#168759',
   statusInProgress:'#2878D6',
   statusPending:   '#F59E0B',
-  statusCompleted: '#168A5B',
-  statusDelivered: '#168A5B',
+  statusCompleted: '#168759',
+  statusDelivered: '#168759',
   statusCancelled: '#718078',      // серый, не зелёный!
   statusRejected:  '#D64545',
   statusExpired:   '#718078',

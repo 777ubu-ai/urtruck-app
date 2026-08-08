@@ -15,15 +15,15 @@ const PLATE_KEY = 'ur_queue_plate';
 
 const BASE = `${API_BASE}/borders`;
 
-const STATUS_COLORS = { green: '#22C55E', yellow: '#FF8400', red: '#EF4444' };
+const STATUS_COLORS = { green: '#168759', yellow: '#FF8400', red: '#EF4444' };
 // Метки статуса локализованы через t() в рендере (statusLabel) — раньше были
 // хардкод-RU и протекали в ZH/EN/KZ.
 const STATUS_KEY = { green: 'queue_status_free', yellow: 'queue_status_moderate', red: 'queue_status_busy' };
 // Статусы строк табло (номер в очереди): цвет + i18n-ключ.
 const BOARD_STATUS = {
-  in_queue: { key: 'queue_lk_in_queue', color: '#2563EB' },
-  called:   { key: 'queue_lk_called',   color: '#FF8400' },
-  crossed:  { key: 'queue_lk_crossed',  color: '#22C55E' },
+  in_queue: { key: 'queue_lk_in_queue', color: '#168759' },
+  called:   { key: 'queue_lk_called',   color: '#E06D00' },
+  crossed:  { key: 'queue_lk_crossed',  color: '#168759' },
   revoked:  { key: 'queue_lk_revoked',  color: '#EF4444' },
 };
 
@@ -237,7 +237,7 @@ export default function QueueScreen({ navigation, route }) {
           <Text style={[s.headerTitle, { color: theme.text }]} testID="queue-title">{t('border_queues_title')}</Text>
           <View style={{ width: 44 }} />
         </View>
-        <ActivityIndicator color="#1A5C3C" style={{ marginTop: 60 }} />
+        <ActivityIndicator color="#168759" style={{ marginTop: 60 }} />
       </SafeAreaView>
     );
   }
@@ -274,7 +274,7 @@ export default function QueueScreen({ navigation, route }) {
 
         {/* Трек 1: раскрыть полное табло пункта (номера + статус). */}
         <TouchableOpacity style={s.boardToggle} onPress={() => openBoard(b.name)} testID="queue-board-toggle">
-          <Text style={[s.boardToggleText, { color: v1.driver || '#00E676' }]}>
+          <Text style={[s.boardToggleText, { color: v1.driver || '#168759' }]}>
             {boardFor === b.name ? `▲ ${t('queue_board_hide')}` : `▼ ${t('queue_board_show')}`}
           </Text>
         </TouchableOpacity>
@@ -437,12 +437,12 @@ export default function QueueScreen({ navigation, route }) {
               бронь места нужна регистрация (крючок привлечения). */}
           {verState !== 'approved' ? (
             <TouchableOpacity
-              style={[s.regBanner, { borderColor: v1.driver || '#00E676', backgroundColor: (v1.driver || '#00E676') + '14' }]}
+              style={[s.regBanner, { borderColor: v1.driver || '#168759', backgroundColor: (v1.driver || '#168759') + '14' }]}
               onPress={() => navigation.navigate('Citizenship')}
               testID="queue-reg-banner"
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
-                <Feather name="unlock" size={15} color={v1.driver || '#00E676'} />
+                <Feather name="unlock" size={15} color={v1.driver || '#168759'} />
                 <Text style={[s.regBannerText, { color: theme.text }]}>{t('queue_register_to_book')}</Text>
               </View>
               <Text style={[s.cgrLinkChevron, { color: theme.textMuted }]}>›</Text>
@@ -452,12 +452,12 @@ export default function QueueScreen({ navigation, route }) {
           {/* Свободнее всего в Китай (ядро бизнеса) */}
           {freest ? (
             <TouchableOpacity
-              style={[s.freestCard, { borderColor: '#22C55E' }]}
+              style={[s.freestCard, { borderColor: '#168759' }]}
               onPress={() => setSelectedCountry('CN')}
               testID="queue-freest"
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                <Feather name="star" size={14} color="#22C55E" />
+                <Feather name="star" size={14} color="#168759" />
                 <Text style={[s.freestLabel, { marginBottom: 0 }]}>{t('queue_hub_freest')} 🇨🇳</Text>
               </View>
               <Text style={[s.freestName, { color: theme.text }]}>
@@ -468,7 +468,7 @@ export default function QueueScreen({ navigation, route }) {
 
           {/* Выбор страны */}
           <Text style={[s.sectionTitle, { color: theme.textMuted }]}>{t('queue_select_country')}</Text>
-          {loading && borders.length === 0 && <ActivityIndicator color="#1A5C3C" style={{ marginTop: 20 }} />}
+          {loading && borders.length === 0 && <ActivityIndicator color="#168759" style={{ marginTop: 20 }} />}
           {COUNTRIES.map(c => {
             const list = byCountry(c.k);
             if (list.length === 0) return null;
@@ -540,12 +540,12 @@ const s = StyleSheet.create({
   gateIcon: { fontSize: 48, marginBottom: 16 },
   gateTitle: { fontSize: 20, fontWeight: '800', textAlign: 'center', marginBottom: 10 },
   gateText: { fontSize: 14, lineHeight: 21, textAlign: 'center', marginBottom: 24 },
-  gateBtn: { height: 52, borderRadius: 14, backgroundColor: '#1A5C3C', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, minWidth: 220 },
+  gateBtn: { height: 52, borderRadius: 14, backgroundColor: '#168759', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, minWidth: 220 },
   gateBtnText: { color: '#FFF', fontSize: 16, fontWeight: '800' },
   gateSecondary: { marginTop: 12, paddingVertical: 8 },
   gateSecondaryText: { fontSize: 13, fontWeight: '600' },
-  cgrLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginHorizontal: 16, marginBottom: 8, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: '#1A5C3C', backgroundColor: 'rgba(26,92,60,0.08)' },
-  cgrLinkText: { fontSize: 14, fontWeight: '700', color: '#1A5C3C' },
+  cgrLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginHorizontal: 16, marginBottom: 8, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: '#168759', backgroundColor: 'rgba(26,92,60,0.08)' },
+  cgrLinkText: { fontSize: 14, fontWeight: '700', color: '#168759' },
   cgrLinkChevron: { fontSize: 20, fontWeight: '300' },
   lookupBox: { marginHorizontal: 16, marginBottom: 8, padding: 12, borderRadius: 10, borderWidth: 1 },
   trackRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 },
@@ -555,7 +555,7 @@ const s = StyleSheet.create({
   bookingsHeader: { flexDirection: 'row', alignItems: 'center' },
   bookingsTitle: { fontSize: 15, fontWeight: '800' },
   bookingsHint: { fontSize: 11, marginTop: 3 },
-  addBookingBtn: { backgroundColor: '#1A5C3C', borderRadius: 9, paddingHorizontal: 12, paddingVertical: 9 },
+  addBookingBtn: { backgroundColor: '#168759', borderRadius: 9, paddingHorizontal: 12, paddingVertical: 9 },
   addBookingBtnText: { color: '#FFF', fontSize: 12, fontWeight: '800' },
   emptyBooking: { fontSize: 12, lineHeight: 18, marginTop: 12 },
   bookingRow: { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, paddingTop: 10, marginTop: 10 },
@@ -568,7 +568,7 @@ const s = StyleSheet.create({
   modalHint: { fontSize: 13, lineHeight: 19, marginBottom: 14 },
   modalInput: { height: 48, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, marginBottom: 10 },
   bookingError: { color: '#DC2626', fontSize: 12, marginBottom: 8 },
-  modalPrimary: { height: 48, borderRadius: 10, backgroundColor: '#1A5C3C', alignItems: 'center', justifyContent: 'center', marginTop: 4 },
+  modalPrimary: { height: 48, borderRadius: 10, backgroundColor: '#168759', alignItems: 'center', justifyContent: 'center', marginTop: 4 },
   modalPrimaryText: { color: '#FFF', fontSize: 14, fontWeight: '800' },
   modalSecondary: { alignItems: 'center', paddingVertical: 12 },
   modalSecondaryText: { fontSize: 13, fontWeight: '700' },
@@ -579,13 +579,13 @@ const s = StyleSheet.create({
   lookupLabel: { fontSize: 12, fontWeight: '600', marginBottom: 8 },
   lookupRow: { flexDirection: 'row', gap: 8 },
   lookupInput: { flex: 1, height: 44, borderRadius: 10, borderWidth: 1, paddingHorizontal: 12, fontSize: 15, fontWeight: '700' },
-  lookupBtn: { height: 44, paddingHorizontal: 18, borderRadius: 10, backgroundColor: '#1A5C3C', alignItems: 'center', justifyContent: 'center' },
+  lookupBtn: { height: 44, paddingHorizontal: 18, borderRadius: 10, backgroundColor: '#168759', alignItems: 'center', justifyContent: 'center' },
   lookupBtnText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
   lookupFound: { marginTop: 10 },
   lookupResult: { fontSize: 14, fontWeight: '700', marginTop: 10 },
   lookupSub: { fontSize: 12, marginTop: 3 },
   freestCard: { borderWidth: 1, borderRadius: 10, padding: 14, marginBottom: 16, backgroundColor: 'rgba(34,197,94,0.08)' },
-  freestLabel: { fontSize: 12, fontWeight: '700', color: '#22C55E', marginBottom: 4 },
+  freestLabel: { fontSize: 12, fontWeight: '700', color: '#168759', marginBottom: 4 },
   freestName: { fontSize: 14, fontWeight: '700' },
   sectionTitle: { fontSize: 12, fontWeight: '700', letterSpacing: 0.5, marginBottom: 10, textTransform: 'uppercase' },
   countryCard: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 8 },
@@ -596,7 +596,7 @@ const s = StyleSheet.create({
   detailNum: { fontSize: 20, fontWeight: '800', letterSpacing: -0.2 },
   detailLabel: { fontSize: 11 },
   detailWait: { fontSize: 12 },
-  bookBtn: { marginTop: 12, height: 44, borderRadius: 10, backgroundColor: '#1A5C3C', alignItems: 'center', justifyContent: 'center' },
+  bookBtn: { marginTop: 12, height: 44, borderRadius: 10, backgroundColor: '#168759', alignItems: 'center', justifyContent: 'center' },
   bookBtnText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
   boardToggle: { marginTop: 10, paddingVertical: 8, minHeight: 40, justifyContent: 'center' },
   boardToggleText: { fontSize: 13, fontWeight: '700' },

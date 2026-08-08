@@ -265,7 +265,7 @@ export default function EditTripScreen({ navigation, route }) {
             {['KZT', 'USD', 'RUB', 'CNY'].map(k => (
               <TouchableOpacity
                 key={k}
-                style={[s.currChip, { backgroundColor: theme.card, borderColor: theme.border }, currency === k && { backgroundColor: '#22C55E', borderColor: '#22C55E' }]}
+                style={[s.currChip, { backgroundColor: theme.card, borderColor: theme.border }, currency === k && { backgroundColor: '#168759', borderColor: '#168759' }]}
                 onPress={() => setCurrency(k)}
               >
                 <Text style={[s.currChipText, { color: theme.textSecondary }, currency === k && { color: '#fff' }]}>{CURRENCY_SYMBOLS[k]} {k}</Text>
@@ -352,7 +352,7 @@ const s = StyleSheet.create({
   typeCardText: { fontSize: 11, fontWeight: '600' },
   previewCard: { borderRadius: 14, padding: 16, borderWidth: 1, marginTop: 18, alignItems: 'center' },
   previewLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, marginBottom: 6 },
-  previewPrice: { color: '#22C55E', fontSize: 26, fontWeight: '900' },
-  saveBtn: { backgroundColor: '#22C55E', borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 18 },
+  previewPrice: { color: '#168759', fontSize: 26, fontWeight: '900' },
+  saveBtn: { backgroundColor: '#168759', borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 18 },
   saveBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
 });

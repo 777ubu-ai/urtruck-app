@@ -55,7 +55,7 @@ const openLegal = (url) => {
 export default function ConsentRow({ checked, onChange, accent, testID = 'consent-row' }) {
   const v1 = useV1Colors();
   const { t } = useI18n();
-  const tone = accent || v1.driver || '#22C55E';
+  const tone = accent || v1.driver || '#168759';
 
   return (
     <View style={s.wrap} testID={testID}>

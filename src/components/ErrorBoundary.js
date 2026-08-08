@@ -146,14 +146,14 @@ export default class ErrorBoundary extends React.Component {
 const s = StyleSheet.create({
   container: {
     flexGrow: 1,
-    backgroundColor: '#0a0f1a',
+    backgroundColor: '#F6F8F7',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 30,
   },
   emoji: { fontSize: 56, marginBottom: 16 },
-  title: { color: '#F0F4F0', fontSize: 22, fontWeight: '800', marginBottom: 10, textAlign: 'center' },
-  body: { color: '#78716C', fontSize: 14, textAlign: 'center', marginBottom: 16 },
+  title: { color: '#14221C', fontSize: 22, fontWeight: '800', marginBottom: 10, textAlign: 'center' },
+  body: { color: '#617067', fontSize: 14, textAlign: 'center', marginBottom: 16 },
   devBlock: {
     backgroundColor: 'rgba(220, 38, 38, 0.08)',
     borderColor: '#7F1D1D',
@@ -164,11 +164,11 @@ const s = StyleSheet.create({
     width: '100%',
     maxWidth: 520,
   },
-  devLabel: { color: '#FCA5A5', fontSize: 11, fontWeight: '800', marginTop: 6, letterSpacing: 0.4 },
-  devText: { color: '#FECACA', fontSize: 13, fontWeight: '700', marginTop: 2 },
-  devTextSmall: { color: '#FCA5A5', fontSize: 11, marginTop: 2, fontFamily: Platform.OS === 'web' ? 'ui-monospace, SFMono-Regular, Menlo, monospace' : undefined },
+  devLabel: { color: '#B91C1C', fontSize: 11, fontWeight: '800', marginTop: 6, letterSpacing: 0.4 },
+  devText: { color: '#7F1D1D', fontSize: 13, fontWeight: '700', marginTop: 2 },
+  devTextSmall: { color: '#B91C1C', fontSize: 11, marginTop: 2, fontFamily: Platform.OS === 'web' ? 'ui-monospace, SFMono-Regular, Menlo, monospace' : undefined },
   btn: {
-    backgroundColor: '#1A5C3C',
+    backgroundColor: '#168759',
     paddingHorizontal: 28,
     paddingVertical: 14,
     borderRadius: 14,

@@ -96,7 +96,7 @@ export default function ChatScreen({ navigation, route }) {
   msgRowMe: { alignItems: 'flex-end' },
   senderLabel: { fontSize: 11, marginBottom: 3, marginLeft: 6, color: v1.textMuted },
   // B2B deal chat: компактнее и спокойнее (не consumer/WhatsApp). Меньше
-  // padding/radius/maxWidth; outgoing — спокойный изумруд (не ядовитый #00E676).
+  // padding/radius/maxWidth; outgoing — спокойный изумруд (не ядовитый #168759).
   bubble: { maxWidth: '72%', paddingHorizontal: 11, paddingVertical: 7, borderRadius: 12 },
   bubbleMe: { backgroundColor: '#15512F', borderBottomRightRadius: 4 },
   bubbleThem: {
@@ -112,10 +112,10 @@ export default function ChatScreen({ navigation, route }) {
   msgTimeMe: { color: 'rgba(234,251,241,0.55)' },
   systemMsgRow: { alignItems: 'center', marginVertical: 6 },
   systemMsgPill: {
-    backgroundColor: 'rgba(148,163,184,0.18)', borderRadius: 12,
+    backgroundColor: 'rgba(124,139,130,0.14)', borderRadius: 12,
     paddingHorizontal: 14, paddingVertical: 6, maxWidth: '80%',
   },
-  systemMsgText: { color: '#94A3B8', fontSize: 13, fontWeight: '600', textAlign: 'center' },
+  systemMsgText: { color: '#617067', fontSize: 13, fontWeight: '600', textAlign: 'center' },
   // Плашка «идёт запись» над инпутом: красная точка + таймер + подсказка.
   recBanner: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
@@ -962,7 +962,7 @@ export default function ChatScreen({ navigation, route }) {
     // Без push-receipt у нас нет промежуточного «delivered», поэтому
     // не имитируем WhatsApp. Read — emerald (бренд), sent — приглушённый.
     const statusIcon = isMe ? (item.is_read ? '✓✓' : '✓') : '';
-    const statusColor = isMe ? (item.is_read ? '#22C55E' : 'rgba(255,255,255,0.4)') : '';
+    const statusColor = isMe ? (item.is_read ? '#168759' : 'rgba(255,255,255,0.4)') : '';
 
     const tr = translations[item.id];
     const showingTranslation = tr && !tr.showOriginal;
@@ -1063,8 +1063,8 @@ export default function ChatScreen({ navigation, route }) {
             <Text style={s.partnerName} numberOfLines={1} testID="chat-partner-name">{prettifyPartnerName(resolvedPartner?.name, resolvedPartner?.id, t)}</Text>
             {partnerOnline ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#22C55E' }} />
-                <Text style={{ color: '#22C55E', fontSize: 11, fontWeight: '700' }}>{t('chat_online')}</Text>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#168759' }} />
+                <Text style={{ color: '#168759', fontSize: 11, fontWeight: '700' }}>{t('chat_online')}</Text>
               </View>
             ) : null}
           </View>
@@ -1074,8 +1074,8 @@ export default function ChatScreen({ navigation, route }) {
               (WhatsApp-упрощение 04.08.2026). */}
           {partnerTyping
             ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Feather name="edit-3" size={12} color="#22C55E" />
-                <Text style={[s.online, { color: '#22C55E' }]}>{t('chat_typing')}</Text>
+                <Feather name="edit-3" size={12} color="#168759" />
+                <Text style={[s.online, { color: '#168759' }]}>{t('chat_typing')}</Text>
               </View>
             : ((resolvedPartner?.role === 'driver' || resolvedPartner?.role === 'client')
                 ? <Text style={[s.online, { color: '#A8A29E' }]}>{t(resolvedPartner.role)}</Text>

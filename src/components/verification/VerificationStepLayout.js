@@ -51,7 +51,7 @@ export default function VerificationStepLayout({
           <View style={s.iconBtn} />
         )}
         <View style={[s.progressTrack, { backgroundColor: v1.border }]}>
-          <View style={[s.progressFill, { width: `${pct}%`, backgroundColor: '#00A86B' }]} />
+          <View style={[s.progressFill, { width: `${pct}%`, backgroundColor: '#168759' }]} />
         </View>
         <Text style={[s.stepLabel, { color: v1.textMuted }]}>
           {t('verification_step_n_of_m').replace('{n}', String(step || 0)).replace('{m}', String(total || 0))}

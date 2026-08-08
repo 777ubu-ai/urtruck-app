@@ -7,7 +7,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 
-const SUCCESS_GREEN = '#22C55E';
+const SUCCESS_GREEN = '#168759';
 const SUCCESS_BG = 'rgba(34, 197, 94, 0.14)';
 
 export default function PriceSavingsBadge({ listingPrice, bidPrice, currency = 'USD' }) {

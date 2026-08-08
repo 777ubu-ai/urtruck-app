@@ -40,7 +40,7 @@ const ddmmToIso = (s) => {
 const TCOLORS = {
   // Brand v3: tent (default truck) maps to brand emerald. ref/izoterm keep
   // teal/cyan because those are *semantic* refrigeration cues, not UI blue.
-  tent: '#22C55E', ref: '#0891B2', platform: '#E06D00', auto: '#7C3AED', izoterm: '#059669',
+  tent: '#168759', ref: '#0891B2', platform: '#E06D00', auto: '#7C3AED', izoterm: '#059669',
   cont20: '#6366F1', cont40: '#4338CA', jumbo: '#EC4899', mega: '#DB2777',
   curtain: '#8B5CF6', lowloader: '#F97316', tanker: '#10B981', dumptruck: '#EAB308',
   grain: '#CA8A04', livestock: '#84CC16', logger: '#65A30D', hazmat: '#DC2626',
@@ -150,17 +150,17 @@ export default function FeedScreen({ navigation, route }) {
   filterActions: { flexDirection: 'row', gap: 10, marginTop: 24 },
   filterActionBtn: { flex: 1, borderRadius: 10, paddingVertical: 14, alignItems: 'center' },
   filterActionText: { fontSize: 13, fontWeight: '700' },
-  card: { borderRadius: 14, padding: 16, borderWidth: 1, borderColor: '#263244', backgroundColor: '#111827' },
+  card: { borderRadius: 14, padding: 16, borderWidth: 1, borderColor: v1.border, backgroundColor: v1.surface },
   cardRow: { flexDirection: 'row', alignItems: 'flex-start' },
-  route: { fontSize: 17, fontWeight: '700', marginBottom: 5, letterSpacing: -0.2, color: '#F8FAFC' },
+  route: { fontSize: 17, fontWeight: '700', marginBottom: 5, letterSpacing: -0.2, color: v1.text },
   cargoName: { fontSize: 12, marginBottom: 8 },
   badges: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
   badge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 16, fontSize: 11, fontWeight: '700', overflow: 'hidden' },
-  price: { color: '#22C55E', fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
+  price: { color: '#168759', fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
   bidsCount: { fontSize: 11, marginTop: 2 },
   driverName: { fontSize: 16, fontWeight: '700' },
-  rating: { color: '#FBBF24', fontSize: 12, fontWeight: '700', marginVertical: 4 },
-  tripBadge: { position: 'absolute', top: -1, right: 12, backgroundColor: '#22C55E', paddingHorizontal: 10, paddingVertical: 3, borderBottomLeftRadius: 8, borderBottomRightRadius: 8 },
+  rating: { color: '#D97706', fontSize: 12, fontWeight: '700', marginVertical: 4 },
+  tripBadge: { position: 'absolute', top: -1, right: 12, backgroundColor: '#168759', paddingHorizontal: 10, paddingVertical: 3, borderBottomLeftRadius: 8, borderBottomRightRadius: 8 },
   tripBadgeText: { color: '#fff', fontSize: 11, fontWeight: '900', letterSpacing: 0.5 },
   mineBadge: { position: 'absolute', top: -1, right: 12, paddingHorizontal: 10, paddingVertical: 3, borderBottomLeftRadius: 8, borderBottomRightRadius: 8 },
   mineBadgeText: { color: '#0C0A09', fontSize: 11, fontWeight: '900', letterSpacing: 0.5 },
@@ -176,7 +176,7 @@ export default function FeedScreen({ navigation, route }) {
   fi: { borderRadius: 12, padding: 14, fontSize: 14, borderWidth: 1, marginBottom: 10 },
   frow: { flexDirection: 'row', gap: 8 },
   formLabel: { fontSize: 11, fontWeight: '600', letterSpacing: 0.5, marginBottom: 6, marginTop: 4, textTransform: 'uppercase' },
-  hintBox: { backgroundColor: '#22C55E15', borderRadius: 10, padding: 10, marginBottom: 12, borderWidth: 1, borderColor: '#22C55E30' },
+  hintBox: { backgroundColor: '#16875915', borderRadius: 10, padding: 10, marginBottom: 12, borderWidth: 1, borderColor: '#16875930' },
   hintText: { fontSize: 11, lineHeight: 16 },
   typeCard: { width: 88, paddingVertical: 12, paddingHorizontal: 8, borderRadius: 12, borderWidth: 1, alignItems: 'center', gap: 4 },
   typeCardText: { fontSize: 11, fontWeight: '600', textAlign: 'center' },
@@ -205,7 +205,7 @@ export default function FeedScreen({ navigation, route }) {
   const role = sessionRole || route.params?.role || 'client';
   const isDriver = role === 'driver';
   // Brand v3: driver = emerald, client = orange. No blue.
-  const accent = isDriver ? '#22C55E' : '#FF8400';
+  const accent = '#168759'; // redesign: единый зелёный для обеих ролей
   const { t, lang } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
@@ -924,7 +924,7 @@ export default function FeedScreen({ navigation, route }) {
             </View>
           )}
           {minRating > 0 && (
-            <View style={[s.activeChip, { backgroundColor: '#FBBF24' }]}>
+            <View style={[s.activeChip, { backgroundColor: '#D97706' }]}>
               <Text style={[s.activeChipText, { color: '#0C0A09' }]}>⭐ {minRating}+</Text>
               <TouchableOpacity onPress={() => setMinRating(0)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                 <Text style={[s.activeChipClose, { color: '#0C0A09' }]}>✕</Text>
@@ -932,7 +932,7 @@ export default function FeedScreen({ navigation, route }) {
             </View>
           )}
           {sortBy !== 'newest' && (
-            <View style={[s.activeChip, { backgroundColor: sortBy === 'rating' ? '#FBBF24' : accent }]}>
+            <View style={[s.activeChip, { backgroundColor: sortBy === 'rating' ? '#D97706' : accent }]}>
               <Text style={[s.activeChipText, { color: '#0C0A09' }]}>
                 {sortBy === 'price-asc' ? t('filter_price_asc') : sortBy === 'price-desc' ? t('filter_price_desc') : t('filter_rating_sort')}
               </Text>
@@ -1037,7 +1037,7 @@ export default function FeedScreen({ navigation, route }) {
               {[{ k: 0, l: t('filter_all') }, { k: 3, l: '3+' }, { k: 4, l: '4+' }, { k: 5, l: '5' }].map(opt => (
                 <TouchableOpacity
                   key={opt.k}
-                  style={[s.filterPill, { backgroundColor: theme.card, borderColor: theme.border }, minRating === opt.k && { backgroundColor: '#FBBF24', borderColor: '#FBBF24' }]}
+                  style={[s.filterPill, { backgroundColor: theme.card, borderColor: theme.border }, minRating === opt.k && { backgroundColor: '#D97706', borderColor: '#D97706' }]}
                   onPress={() => setMinRating(opt.k)}
                 >
                   <Text style={[s.filterPillText, { color: theme.textSecondary }, minRating === opt.k && { color: '#0C0A09' }]}>

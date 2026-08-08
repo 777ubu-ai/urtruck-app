@@ -202,7 +202,7 @@ export default function CargoRuqsatInfoScreen({ navigation, route }) {
         <TouchableOpacity
           onPress={onSubmitBooking}
           disabled={submitting || bookingNumber.trim().length < 3}
-          style={[s.cta, { backgroundColor: '#22C55E', marginTop: 12, opacity: submitting || bookingNumber.trim().length < 3 ? 0.5 : 1 }]}
+          style={[s.cta, { backgroundColor: '#168759', marginTop: 12, opacity: submitting || bookingNumber.trim().length < 3 ? 0.5 : 1 }]}
           activeOpacity={0.85}
         >
           {submitting ? (

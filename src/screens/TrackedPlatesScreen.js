@@ -14,9 +14,9 @@ const BASE = `${API_BASE}/borders`;
 // Статус строки очереди: цвет + i18n-ключ. Синхронизирован с QueueScreen
 // (BOARD_STATUS / LOOKUP_STATUS_KEY) и с макетом «Мои номера в очереди».
 const ST = {
-  in_queue: { key: 'queue_lk_in_queue', color: '#2563EB' },
-  called:   { key: 'queue_lk_called',   color: '#FF8400' },
-  crossed:  { key: 'queue_lk_crossed',  color: '#22C55E' },
+  in_queue: { key: 'queue_lk_in_queue', color: '#168759' },
+  called:   { key: 'queue_lk_called',   color: '#E06D00' },
+  crossed:  { key: 'queue_lk_crossed',  color: '#168759' },
   revoked:  { key: 'queue_lk_revoked',  color: '#EF4444' },
 };
 
@@ -24,7 +24,7 @@ export default function TrackedPlatesScreen({ navigation }) {
   const v1 = useV1Colors();
   const { theme } = useTheme();
   const { t } = useI18n();
-  const driver = v1.driver || '#00E676';
+  const driver = v1.driver || '#168759';
 
   const [token, setToken] = useState(undefined);   // undefined=loading, null=guest
   const [items, setItems] = useState([]);          // [{plate, status, checkpoint, queue_datetime, is_late, updated_at}]
@@ -186,8 +186,8 @@ export default function TrackedPlatesScreen({ navigation }) {
 
                 {called ? (
                   <View style={[s.callMsg, { backgroundColor: col + '1A', borderColor: col + '4D', flexDirection: 'row', alignItems: 'center', gap: 6 }]}>
-                    <Feather name="truck" size={15} color="#FCD34D" />
-                    <Text style={[s.callMsgText, { color: '#FCD34D' }]}>{t('queue_lk_called')}</Text>
+                    <Feather name="truck" size={15} color="#B45309" />
+                    <Text style={[s.callMsgText, { color: '#B45309' }]}>{t('queue_lk_called')}</Text>
                   </View>
                 ) : null}
 

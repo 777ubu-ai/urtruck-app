@@ -32,7 +32,7 @@ const FX_FLAGS = { KZT: '🇰🇿', CNY: '🇨🇳', RUB: '🇷🇺' };
 export default function WalletScreen({ route }) {
   const v1 = useV1Colors();
   const { role } = route.params || {};
-  const accent = role === 'driver' ? '#22C55E' : '#FF8400';
+  const accent = role === 'driver' ? '#168759' : '#FF8400';
   const { t } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
@@ -82,13 +82,13 @@ export default function WalletScreen({ route }) {
   return (
     <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
       <ScrollView contentContainerStyle={{ padding: 16 }}>
-        <GradientText style={s.title} colors={['#22C55E', '#16A34A']}>{t('wallet')}</GradientText>
+        <GradientText style={s.title} colors={['#168759', '#16A34A']}>{t('wallet')}</GradientText>
 
         {/* Честная карточка: бесплатный пилот, без фейкового «∞» баланса и
             без кнопки-пустышки Premium (раньше $20/mo → просто тост). */}
         <View style={[s.balanceCard, { backgroundColor: theme.card, borderColor: accent + '30' }]}>
           <View style={[s.betaBadge, { flexDirection: 'row', alignItems: 'center', gap: 6 }]}>
-            <Feather name="gift" size={14} color="#22C55E" />
+            <Feather name="gift" size={14} color="#168759" />
             <Text style={s.betaBadgeText}>{t('wallet_beta_title')}</Text>
           </View>
           <Text style={[s.balanceNote, { color: theme.textMuted, marginTop: 10, textAlign: 'center', lineHeight: 19 }]}>
@@ -165,14 +165,14 @@ export default function WalletScreen({ route }) {
             </View>
             {transactions.map((tx, i) => (
               <View key={tx.id} style={[s.txRow, i < transactions.length - 1 && { borderBottomWidth: 1, borderBottomColor: theme.border }]}>
-                <View style={[s.txIcon, { backgroundColor: tx.amount > 0 ? '#22C55E20' : '#EF444420' }]}>
+                <View style={[s.txIcon, { backgroundColor: tx.amount > 0 ? '#16875920' : '#EF444420' }]}>
                   <Text style={{ fontSize: 16 }}>{TYPE_ICONS[tx.type] || '·'}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={[s.txDesc, { color: theme.text }]} numberOfLines={1}>{tx.desc}</Text>
                   <Text style={[s.txDate, { color: theme.textMuted }]}>{tx.date}</Text>
                 </View>
-                <Text style={[s.txAmount, { color: tx.amount > 0 ? '#22C55E' : '#EF4444' }]}>
+                <Text style={[s.txAmount, { color: tx.amount > 0 ? '#168759' : '#EF4444' }]}>
                   {tx.amount > 0 ? '+' : ''}{SYMBOLS[currency]}{conv(Math.abs(tx.amount))}
                 </Text>
               </View>
@@ -188,8 +188,8 @@ const s = StyleSheet.create({
   container: { flex: 1 },
   title: { fontSize: 22, fontWeight: '900', marginBottom: 14 },
   balanceCard: { borderRadius: 20, padding: 28, borderWidth: 1, alignItems: 'center', marginBottom: 14 },
-  betaBadge: { backgroundColor: '#22C55E15', paddingHorizontal: 14, paddingVertical: 5, borderRadius: 12, marginBottom: 10 },
-  betaBadgeText: { color: '#22C55E', fontSize: 12, fontWeight: '600' },
+  betaBadge: { backgroundColor: '#16875915', paddingHorizontal: 14, paddingVertical: 5, borderRadius: 12, marginBottom: 10 },
+  betaBadgeText: { color: '#168759', fontSize: 12, fontWeight: '600' },
   balanceValue: { fontSize: 48, fontWeight: '900' },
   balanceNote: { fontSize: 12, marginTop: 4 },
   section: { borderRadius: 16, padding: 16, borderWidth: 1, marginBottom: 12 },

@@ -214,7 +214,7 @@ const p = StyleSheet.create({
   removeBtnText: { color: '#fff', fontSize: 12, fontWeight: '900' },
   mainBadge: {
     position: 'absolute', bottom: 4, left: 4,
-    backgroundColor: '#FBBF24', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6,
+    backgroundColor: '#D97706', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6,
   },
   mainBadgeText: { color: '#0C0A09', fontSize: 11, fontWeight: '900' },
   addBtn: {

@@ -7,7 +7,7 @@ import { TouchableOpacity, Text, ActivityIndicator, StyleSheet, View } from 'rea
 import { v1AccentFor } from '../../../theme/designV1';
 import { SAFE_BUTTON_STYLE, SAFE_ROW_STYLE, SAFE_ICON_STYLE, SAFE_LABEL_STYLE, safeFontSize } from './safeButtonStyles';
 
-const SUCCESS_GREEN = '#22C55E';
+const SUCCESS_GREEN = '#168759';
 const SUCCESS_ON = '#FFFFFF';
 
 export default function PrimaryCTA({

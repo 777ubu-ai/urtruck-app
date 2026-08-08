@@ -15,8 +15,8 @@
 // могла не успеть пройти цикл unregister+reload. Бамп v9 — не признак того,
 // что где-то был не тот код, а дополнительная гарантия форсированного
 // сброса на всякий случай.
-const CACHE = 'urtruck-v9-market';
-const STATIC_CACHE = 'urtruck-static-v9';
+const CACHE = 'urtruck-v10-market';
+const STATIC_CACHE = 'urtruck-static-v10';
 
 self.addEventListener('install', (e) => {
   // Сразу активируем новый SW без ожидания закрытия вкладок

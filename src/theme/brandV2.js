@@ -4,7 +4,7 @@
 // экранам (OnboardingV2 / CountryPickerSheet / PhoneV2). Старые экраны
 // (designV1, dark theme) живут отдельно — этот файл их не трогает.
 //
-// Owner ТЗ от 2026-05-13: белый фон, navy текст, оранжевый акцент
+// Owner ТЗ от 2026-05-13: белый фон, тёмный зелёно-графитовый текст (redesign 08.08.2026: slate-нейтрали заменены на зелёно-серые ТЗ), оранжевый акцент
 // в логотипе, GREEN primary CTA (как в inDrive — зелёная кнопка
 // "Продолжить"). Outline secondary CTA — navy border + navy text.
 
@@ -12,23 +12,23 @@ export const brand = {
   // Backgrounds
   bg: '#FFFFFF',
   surface: '#FFFFFF',
-  surfaceMuted: '#F4F6FA',
-  surfaceSoft: '#F8FAFC',
+  surfaceMuted: '#F0F4F2',
+  surfaceSoft: '#F6F8F7',
 
   // Text
-  textPrimary: '#0F172A',   // navy — заголовки, основной текст
-  textSecondary: '#64748B', // подзаголовки, hints
-  textTertiary: '#94A3B8',  // placeholder, disabled
+  textPrimary: '#14221C',   // navy — заголовки, основной текст
+  textSecondary: '#617067', // подзаголовки, hints
+  textTertiary: '#6B7A71',  // placeholder, disabled
   textOnPrimary: '#FFFFFF', // на зелёной/оранжевой кнопке
 
   // Brand
-  logoDark: '#0F172A',  // "Ur" в логотипе
+  logoDark: '#14221C',  // "Ur" в логотипе
   logoAccent: '#FF8400', // "Truck" в логотипе
 
   // Primary CTA (зелёная кнопка "Продолжить")
-  primary: '#16A34A',
-  primaryHover: '#15803D',
-  primarySoft: '#DCFCE7',
+  primary: '#168759',
+  primaryHover: '#0F6B47',
+  primarySoft: '#E8F6EF',
 
   // Accent (оранжевый — используется точечно для иконок/маркеров)
   accent: '#FF8400',
@@ -36,20 +36,20 @@ export const brand = {
   accentSoft: '#FEF3C7',
 
   // Borders / dividers
-  border: '#E2E8F0',
-  borderStrong: '#CBD5E1',
-  divider: '#F1F5F9',
+  border: '#E5ECE8',
+  borderStrong: '#C8D8CF',
+  divider: '#EEF3F0',
 
   // States
-  success: '#22C55E',
+  success: '#168759',
   warning: '#FF8400',
   error: '#EF4444',
-  info: '#3B82F6',
+  info: '#3478D4',
 
   // Map/illustration assist
   mapGray: '#E5E7EB',
   routeOrange: '#FF8400',
-  routeGreen: '#16A34A',
+  routeGreen: '#168759',
 };
 
 export const radius = {

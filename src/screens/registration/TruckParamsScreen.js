@@ -56,7 +56,7 @@ const VEHICLE_COLORS = [
   { key: 'gray', hex: '#6B7280' },
   { key: 'silver', hex: '#C0C5CE' },
   { key: 'red', hex: '#DC2626' },
-  { key: 'blue', hex: '#2563EB' },
+  { key: 'blue', hex: '#168759' },
   { key: 'green', hex: '#16A34A' },
   { key: 'yellow', hex: '#EAB308' },
   { key: 'other', hex: null },

@@ -9,7 +9,7 @@
 //                      пока backend-action не подключён — без фейков)
 //   - DealDocumentsPlaceholder — секция «Документы» (PR3, заглушка)
 //
-// Акцент роли: driver #00E676 / client #FF8400 (источник истины CLAUDE.md).
+// Акцент роли: driver #168759 / client #FF8400 (источник истины CLAUDE.md).
 
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
@@ -18,17 +18,17 @@ import { useI18n } from '../../utils/useI18n';
 import { useTheme } from '../../utils/ThemeContext';
 import { userFacingDealStatus } from '../../utils/dealStatusOrder';
 
-export const DRIVER_ACCENT = '#00E676';
+export const DRIVER_ACCENT = '#168759';
 export const CLIENT_ACCENT = '#FF8400';
 export const accentFor = (role) => (role === 'driver' ? DRIVER_ACCENT : CLIENT_ACCENT);
 
 // Статус сделки → цвет (нейтральный fallback — серый).
 const DEAL_STATUS_COLOR = {
-  active: '#22C55E', confirmed: '#22C55E', accepted: '#22C55E',
-  in_progress: '#FF8400', at_border: '#2563EB',
+  active: '#168759', confirmed: '#168759', accepted: '#168759',
+  in_progress: '#FF8400', at_border: '#168759',
   pending: '#FF8400', draft: '#FF8400',
-  cancelled: '#94A3B8', rejected: '#EF4444', dispute: '#EF4444',
-  completed: '#22C55E', delivered: '#22C55E',
+  cancelled: '#7C8B82', rejected: '#EF4444', dispute: '#EF4444',
+  completed: '#168759', delivered: '#168759',
 };
 
 // Перевод i18n_key из backend ("deal_event.bid_accepted") → плоский t()-ключ
@@ -69,7 +69,7 @@ export function DealRoomCard({ deal, role }) {
   // показываем пользователю отдельным шагом, карточка сворачивает его в
   // «В работе» (текст и цвет) — реальный deal.status при этом не меняется.
   const displayStatus = userFacingDealStatus(status);
-  const stColor = DEAL_STATUS_COLOR[displayStatus] || '#94A3B8';
+  const stColor = DEAL_STATUS_COLOR[displayStatus] || '#7C8B82';
   // H-1: статус сделки русским словом через i18n; фолбэк на сырой статус для
   // немаппленных значений (confirmed/draft/dispute — нет ключа status_*).
   const stKey = 'status_' + displayStatus;

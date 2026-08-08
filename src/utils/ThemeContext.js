@@ -46,7 +46,15 @@ export const ThemeProvider = ({ children }) => {
     storage.set(KEY, mode);
   };
 
-  const isDark = themeMode === 'dark' || (themeMode === 'auto' && systemDark);
+  // Redesign 08.08.2026 (owner spec): UrTruck переходит на ЕДИНУЮ светлую
+  // B2B-тему (#F6F8F7 / зелёный #168759). Тёмная палитра и плитинг режима
+  // сохранены для возможного отката, но эффективно приложение всегда светлое —
+  // isDark зафиксирован в false, чтобы useV1Colors()/lightTheme отдавали
+  // светлый зелёный на всех экранах. Чтобы вернуть переключатель тем, снять
+  // форс ниже и вернуть вычисление из themeMode/systemDark.
+  const isDark = false;
+  // eslint-disable-next-line no-unused-vars
+  const _isDarkFromMode = themeMode === 'dark' || (themeMode === 'auto' && systemDark);
 
   // Обратная совместимость
   const toggleTheme = () => setThemeMode(isDark ? 'light' : 'dark');

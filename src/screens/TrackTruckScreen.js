@@ -108,7 +108,7 @@ export default function TrackTruckScreen({ navigation, route }) {
             </View>
             <View style={[s.statDiv, { backgroundColor: theme.border }]} />
             <View style={s.stat}>
-              <Text style={[s.statNum, { color: moving ? '#22C55E' : theme.textMuted }]}>{(!isStale && speedKmh != null) ? speedKmh : '—'}</Text>
+              <Text style={[s.statNum, { color: moving ? '#168759' : theme.textMuted }]}>{(!isStale && speedKmh != null) ? speedKmh : '—'}</Text>
               <Text style={[s.statLbl, { color: theme.textMuted }]}>{t('track_speed_label')} · {t('kmh_short')}</Text>
             </View>
             <View style={[s.statDiv, { backgroundColor: theme.border }]} />
@@ -128,7 +128,7 @@ export default function TrackTruckScreen({ navigation, route }) {
           <View style={s.subRow}>
             {nearBorder && !isStale ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Feather name="flag" size={12} color="#2563EB" />
+                <Feather name="flag" size={12} color="#168759" />
                 <Text style={[s.badgeBorder]}>{t('track_near_border')}</Text>
               </View>
             ) : <View />}
@@ -159,7 +159,7 @@ const s = StyleSheet.create({
   statLbl: { fontSize: 10.5, fontWeight: '700', marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.3, textAlign: 'center' },
   statDiv: { width: 1, height: 34 },
   subRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, marginBottom: 8, minHeight: 18 },
-  badgeBorder: { color: '#2563EB', fontSize: 12, fontWeight: '800' },
+  badgeBorder: { color: '#168759', fontSize: 12, fontWeight: '800' },
   updated: { fontSize: 11, textAlign: 'right', flex: 1 },
   staleBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, marginTop: 8, paddingHorizontal: 12, paddingVertical: 9, borderWidth: 1, borderRadius: 12 },
   staleText: { flex: 1, fontSize: 12, color: '#F59E0B', fontWeight: '600', lineHeight: 16 },
