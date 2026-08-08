@@ -3,8 +3,8 @@
 // Шаг 1 нового регистрационного потока: ввод телефона + согласие.
 // Заменяет старый RegScreen step=1 (WhatsApp + 5 progress dots).
 //
-// Дизайн: тёмный фон #0C0A09, role-aware акцент (driver=#168A5B,
-// client=#FF8400), крупный заголовок, поле телефона +7 KZ-маска,
+// Дизайн: тёмный фон #F6F8F7, role-aware акцент (driver=#168A5B,
+// client=#168A5B), крупный заголовок, поле телефона +7 KZ-маска,
 // ConsentRow, single CTA «Получить код». НЕТ Apple/Google, НЕТ
 // "WhatsApp", НЕТ степ-баров «Личность/Документы/Транспорт/Готово».
 
@@ -30,8 +30,8 @@ import { formatCooldown } from '../../utils/formatCooldown';
 import { formatPhoneForDisplay, normalizePhoneInput, toAsciiDigits } from '../../utils/phone';
 
 const ACCENT = {
-  driver: { main: '#168A5B', deep: '#00C766', soft: 'rgba(0,230,118,0.12)' },
-  client: { main: '#FF8400', deep: '#E06D00', soft: 'rgba(255,132,0,0.12)' },
+  driver: { main: '#168A5B', deep: '#0F6B47', soft: '#E8F6EF' },
+  client: { main: '#168A5B', deep: '#0F6B47', soft: '#E8F6EF' },
 };
 
 export default function PremiumRegisterScreen({ navigation, route }) {
@@ -193,10 +193,10 @@ export default function PremiumRegisterScreen({ navigation, route }) {
               onChangeText={onChangePhone}
               style={[
                 s.input,
-                { borderColor: error ? '#EF4444' : (validPhone ? accent.main : '#292524') },
+                { borderColor: error ? '#D64545' : (validPhone ? accent.main : '#E5ECE8') },
               ]}
               placeholder={t('prem_reg_phone_placeholder')}
-              placeholderTextColor="#5A6068"
+              placeholderTextColor="#9AA8A0"
               keyboardType="phone-pad"
               // Stage 46 P0 fix: на web rn-web НЕ всегда транслирует
               // keyboardType="phone-pad" в HTML inputMode. Без явного
@@ -288,7 +288,7 @@ export default function PremiumRegisterScreen({ navigation, route }) {
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#0C0A09' },
+  safe: { flex: 1, backgroundColor: '#F6F8F7' },
   flex: { flex: 1 },
   scroll: { flexGrow: 1, paddingHorizontal: 22, paddingBottom: 24 },
 
@@ -302,10 +302,10 @@ const s = StyleSheet.create({
   backBtn: {
     width: 36, height: 36, borderRadius: 18,
     alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(20,34,28,0.04)',
+    borderWidth: 1, borderColor: 'rgba(20,34,28,0.10)',
   },
-  backIcon: { color: '#F5F5F5', fontSize: 20, fontWeight: '700', lineHeight: 22 },
+  backIcon: { color: '#14221C', fontSize: 20, fontWeight: '700', lineHeight: 22 },
   roleBadge: {
     paddingHorizontal: 12, paddingVertical: 6,
     borderRadius: 999, borderWidth: 1,
@@ -314,21 +314,21 @@ const s = StyleSheet.create({
 
   brandRow: { marginBottom: 24 },
   brand: {
-    color: '#F5F5F5',
+    color: '#14221C',
     fontSize: 28,
     fontWeight: '900',
     letterSpacing: -0.5,
   },
 
   title: {
-    color: '#F5F5F5',
+    color: '#14221C',
     fontSize: 26,
     fontWeight: '800',
     letterSpacing: -0.5,
     marginBottom: 8,
   },
   subtitle: {
-    color: '#9CA3AF',
+    color: '#617067',
     fontSize: 14,
     fontWeight: '500',
     lineHeight: 20,
@@ -337,7 +337,7 @@ const s = StyleSheet.create({
 
   fieldBlock: { marginBottom: 4 },
   label: {
-    color: '#9CA3AF',
+    color: '#617067',
     fontSize: 12,
     fontWeight: '700',
     letterSpacing: 0.5,
@@ -345,19 +345,19 @@ const s = StyleSheet.create({
     marginBottom: 8,
   },
   input: {
-    backgroundColor: '#0F1418',
-    borderColor: '#292524',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E5ECE8',
     borderWidth: 1,
     borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 16,
-    color: '#F5F5F5',
+    color: '#14221C',
     fontSize: 18,
     fontWeight: '700',
     letterSpacing: 0.5,
   },
   err: {
-    color: '#EF4444',
+    color: '#D64545',
     fontSize: 12,
     fontWeight: '600',
     marginTop: 6,
@@ -387,14 +387,14 @@ const s = StyleSheet.create({
     alignItems: 'center',
   },
   cooldownTitle: {
-    color: '#F5F5F5',
+    color: '#14221C',
     fontSize: 14,
     fontWeight: '800',
     marginBottom: 4,
     textAlign: 'center',
   },
   cooldownBody: {
-    color: '#9CA3AF',
+    color: '#617067',
     fontSize: 13,
     fontWeight: '500',
     textAlign: 'center',
@@ -415,6 +415,6 @@ const s = StyleSheet.create({
     marginTop: 20,
     paddingVertical: 8,
   },
-  loginMuted: { color: '#9CA3AF', fontSize: 13, fontWeight: '500' },
+  loginMuted: { color: '#617067', fontSize: 13, fontWeight: '500' },
   loginLink: { fontWeight: '800' },
 });

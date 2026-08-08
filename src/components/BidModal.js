@@ -332,6 +332,6 @@ const s = StyleSheet.create({
   messageInput: { borderWidth: 1, borderRadius: 12, padding: 12, fontSize: 14, marginBottom: 14 },
   errorText: { color: '#EF4444', fontSize: 13, textAlign: 'center', marginBottom: 10 },
   submitBtn: { backgroundColor: '#168A5B', borderRadius: 14, paddingVertical: 16, alignItems: 'center' },
-  submitBtnDisabled: { backgroundColor: '#292524' },
+  submitBtnDisabled: { backgroundColor: '#E5ECE8' },
   submitBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
 });

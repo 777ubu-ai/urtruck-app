@@ -186,8 +186,8 @@ export default function TrackedPlatesScreen({ navigation }) {
 
                 {called ? (
                   <View style={[s.callMsg, { backgroundColor: col + '1A', borderColor: col + '4D', flexDirection: 'row', alignItems: 'center', gap: 6 }]}>
-                    <Feather name="truck" size={15} color="#FCD34D" />
-                    <Text style={[s.callMsgText, { color: '#FCD34D' }]}>{t('queue_lk_called')}</Text>
+                    <Feather name="truck" size={15} color="#B45309" />
+                    <Text style={[s.callMsgText, { color: '#B45309' }]}>{t('queue_lk_called')}</Text>
                   </View>
                 ) : null}
 

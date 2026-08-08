@@ -164,9 +164,9 @@ const s = StyleSheet.create({
     width: '100%',
     maxWidth: 520,
   },
-  devLabel: { color: '#FCA5A5', fontSize: 11, fontWeight: '800', marginTop: 6, letterSpacing: 0.4 },
-  devText: { color: '#FECACA', fontSize: 13, fontWeight: '700', marginTop: 2 },
-  devTextSmall: { color: '#FCA5A5', fontSize: 11, marginTop: 2, fontFamily: Platform.OS === 'web' ? 'ui-monospace, SFMono-Regular, Menlo, monospace' : undefined },
+  devLabel: { color: '#B91C1C', fontSize: 11, fontWeight: '800', marginTop: 6, letterSpacing: 0.4 },
+  devText: { color: '#7F1D1D', fontSize: 13, fontWeight: '700', marginTop: 2 },
+  devTextSmall: { color: '#B91C1C', fontSize: 11, marginTop: 2, fontFamily: Platform.OS === 'web' ? 'ui-monospace, SFMono-Regular, Menlo, monospace' : undefined },
   btn: {
     backgroundColor: '#168A5B',
     paddingHorizontal: 28,

@@ -30,8 +30,8 @@ import { push } from '../../utils/push';
 import { formatCooldown } from '../../utils/formatCooldown';
 
 const ACCENT = {
-  driver: { main: '#168A5B', deep: '#00C766', soft: 'rgba(0,230,118,0.12)', glow: 'rgba(0,230,118,0.35)' },
-  client: { main: '#FF8400', deep: '#E06D00', soft: 'rgba(255,132,0,0.12)', glow: 'rgba(255,132,0,0.35)' },
+  driver: { main: '#168A5B', deep: '#0F6B47', soft: '#E8F6EF', glow: 'rgba(22,138,91,0.18)' },
+  client: { main: '#168A5B', deep: '#0F6B47', soft: '#E8F6EF', glow: 'rgba(22,138,91,0.18)' },
 };
 
 const CODE_LEN = 4;
@@ -258,7 +258,7 @@ export default function PremiumOtpScreen({ navigation, route }) {
                         shadowOpacity: 0.6,
                         shadowRadius: 12,
                       },
-                      error && { borderColor: '#EF4444' },
+                      error && { borderColor: '#D64545' },
                     ]}
                     testID={`prem-reg-otp-input-${i}`}
                   >
@@ -353,7 +353,7 @@ export default function PremiumOtpScreen({ navigation, route }) {
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#0C0A09' },
+  safe: { flex: 1, backgroundColor: '#F6F8F7' },
   flex: { flex: 1 },
   scroll: { flexGrow: 1, paddingHorizontal: 22, paddingBottom: 24 },
 
@@ -367,10 +367,10 @@ const s = StyleSheet.create({
   backBtn: {
     width: 36, height: 36, borderRadius: 18,
     alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(20,34,28,0.04)',
+    borderWidth: 1, borderColor: 'rgba(20,34,28,0.10)',
   },
-  backIcon: { color: '#F5F5F5', fontSize: 20, fontWeight: '700', lineHeight: 22 },
+  backIcon: { color: '#14221C', fontSize: 20, fontWeight: '700', lineHeight: 22 },
   roleBadge: {
     paddingHorizontal: 12, paddingVertical: 6,
     borderRadius: 999, borderWidth: 1,
@@ -378,20 +378,20 @@ const s = StyleSheet.create({
   roleBadgeText: { fontSize: 12, fontWeight: '800' },
 
   title: {
-    color: '#F5F5F5',
+    color: '#14221C',
     fontSize: 26,
     fontWeight: '800',
     letterSpacing: -0.5,
     marginBottom: 8,
   },
   subtitle: {
-    color: '#9CA3AF',
+    color: '#617067',
     fontSize: 14,
     fontWeight: '500',
     lineHeight: 22,
     marginBottom: 28,
   },
-  phoneNum: { color: '#F5F5F5', fontWeight: '800' },
+  phoneNum: { color: '#14221C', fontWeight: '800' },
 
   cellsRow: {
     flexDirection: 'row',
@@ -403,14 +403,14 @@ const s = StyleSheet.create({
     flex: 1,
     height: 64,
     borderRadius: 14,
-    backgroundColor: '#0F1418',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1.5,
-    borderColor: '#292524',
+    borderColor: '#E5ECE8',
     alignItems: 'center',
     justifyContent: 'center',
   },
   cellText: {
-    color: '#F5F5F5',
+    color: '#14221C',
     fontSize: 28,
     fontWeight: '900',
   },
@@ -422,7 +422,7 @@ const s = StyleSheet.create({
   },
 
   err: {
-    color: '#EF4444',
+    color: '#D64545',
     fontSize: 13,
     fontWeight: '600',
     marginTop: 8,
@@ -453,13 +453,13 @@ const s = StyleSheet.create({
     marginTop: 18,
     gap: 12,
   },
-  timer: { color: '#9CA3AF', fontSize: 13, fontWeight: '600' },
+  timer: { color: '#617067', fontSize: 13, fontWeight: '600' },
   resendBtn: { paddingVertical: 6, paddingHorizontal: 12 },
   resendText: { fontSize: 14, fontWeight: '800' },
   changeBtn: { paddingVertical: 6, paddingHorizontal: 12 },
-  changeText: { color: '#5A6068', fontSize: 13, fontWeight: '600' },
+  changeText: { color: '#9AA8A0', fontSize: 13, fontWeight: '600' },
   noCodeHint: {
-    color: '#5A6068',
+    color: '#9AA8A0',
     fontSize: 12,
     fontWeight: '500',
     textAlign: 'center',

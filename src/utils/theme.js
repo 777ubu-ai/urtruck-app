@@ -92,27 +92,27 @@ export const colors = {
   online: '#22c55e',
 };
 
-// Design System styles helper
+// Design System styles helper — единая светлая B2B-тема (redesign 08.08.2026).
 export const DS = {
   font: FONT,
-  // Glass card
+  // Glass card → светлая карточка
   glass: {
-    backgroundColor: 'rgba(255,255,255,0.04)',
+    backgroundColor: '#ffffff',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: '#e5ece8',
     borderRadius: 16,
     padding: 16,
   },
   glassHero: {
-    backgroundColor: 'rgba(255,255,255,0.04)',
+    backgroundColor: '#ffffff',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: '#e5ece8',
     borderRadius: 20,
     padding: 20,
   },
   // Primary button
   btnPrimary: {
-    backgroundColor: '#22c55e',
+    backgroundColor: '#168a5b',
     borderRadius: 12,
     paddingVertical: 14,
     paddingHorizontal: 24,
@@ -126,9 +126,9 @@ export const DS = {
   },
   // Secondary button
   btnSecondary: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: '#f0f4f2',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: '#e5ece8',
     borderRadius: 12,
     paddingVertical: 14,
     paddingHorizontal: 24,
@@ -136,22 +136,22 @@ export const DS = {
   },
   // Input
   input: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: '#ffffff',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: '#e5ece8',
     borderRadius: 12,
     paddingVertical: 14,
     paddingHorizontal: 16,
-    color: '#ffffff',
+    color: '#14221c',
     fontSize: 15,
     fontFamily: FONT.body,
   },
   // Badge
   badge: (color) => ({
-    backgroundColor: color === '#22c55e' ? 'rgba(34,197,94,0.15)'
+    backgroundColor: (color === '#22c55e' || color === '#168a5b') ? 'rgba(22,138,91,0.12)'
       : color === '#FF8400' ? 'rgba(255,132,0,0.15)'
-      : color === '#ef4444' ? 'rgba(239,68,68,0.15)'
-      : 'rgba(59,130,246,0.15)',
+      : color === '#ef4444' ? 'rgba(214,69,69,0.12)'
+      : 'rgba(52,120,212,0.12)',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 20,
@@ -163,22 +163,22 @@ export const DS = {
     fontFamily: FONT.body,
   }),
   // Heading
-  h1: { fontFamily: FONT.heading, fontSize: 24, fontWeight: '800', color: '#ffffff' },
-  h2: { fontFamily: FONT.heading, fontSize: 20, fontWeight: '700', color: '#ffffff' },
-  h3: { fontFamily: FONT.heading, fontSize: 16, fontWeight: '700', color: '#22c55e' },
-  display: { fontFamily: FONT.heading, fontSize: 32, fontWeight: '800', color: '#ffffff', letterSpacing: -1 },
-  body: { fontFamily: FONT.body, fontSize: 15, fontWeight: '400', color: '#94a3b8' },
-  small: { fontFamily: FONT.body, fontSize: 13, fontWeight: '400', color: '#94a3b8' },
-  label: { fontFamily: FONT.body, fontSize: 11, fontWeight: '400', color: '#64748b', letterSpacing: 1.5, textTransform: 'uppercase' },
+  h1: { fontFamily: FONT.heading, fontSize: 24, fontWeight: '800', color: '#14221c' },
+  h2: { fontFamily: FONT.heading, fontSize: 20, fontWeight: '700', color: '#14221c' },
+  h3: { fontFamily: FONT.heading, fontSize: 16, fontWeight: '700', color: '#168a5b' },
+  display: { fontFamily: FONT.heading, fontSize: 32, fontWeight: '800', color: '#14221c', letterSpacing: -1 },
+  body: { fontFamily: FONT.body, fontSize: 15, fontWeight: '400', color: '#617067' },
+  small: { fontFamily: FONT.body, fontSize: 13, fontWeight: '400', color: '#617067' },
+  label: { fontFamily: FONT.body, fontSize: 11, fontWeight: '400', color: '#7c8b82', letterSpacing: 1.5, textTransform: 'uppercase' },
   // Tab bar
   tabBar: {
-    backgroundColor: 'rgba(10,15,26,0.95)',
+    backgroundColor: '#ffffff',
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.08)',
+    borderTopColor: '#e5ece8',
     paddingBottom: 20,
     paddingTop: 12,
     height: 80,
   },
-  tabActive: '#22c55e',
-  tabInactive: '#475569',
+  tabActive: '#168a5b',
+  tabInactive: '#617067',
 };

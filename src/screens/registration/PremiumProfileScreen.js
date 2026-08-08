@@ -29,8 +29,8 @@ import { saveProfile } from '../../utils/store';
 import { regAPI } from '../../utils/registration';
 
 const ACCENT = {
-  driver: { main: '#168A5B', deep: '#00C766', soft: 'rgba(0,230,118,0.12)' },
-  client: { main: '#FF8400', deep: '#E06D00', soft: 'rgba(255,132,0,0.12)' },
+  driver: { main: '#168A5B', deep: '#0F6B47', soft: '#E8F6EF' },
+  client: { main: '#168A5B', deep: '#0F6B47', soft: '#E8F6EF' },
 };
 
 export default function PremiumProfileScreen({ navigation, route }) {
@@ -125,10 +125,10 @@ export default function PremiumProfileScreen({ navigation, route }) {
               onChangeText={(v) => { setName(v); setNameErr(''); }}
               style={[
                 s.input,
-                { borderColor: nameErr ? '#EF4444' : (validName ? accent.main : '#292524') },
+                { borderColor: nameErr ? '#D64545' : (validName ? accent.main : '#E5ECE8') },
               ]}
               placeholder={t('prem_reg_profile_name_placeholder')}
-              placeholderTextColor="#5A6068"
+              placeholderTextColor="#9AA8A0"
               autoFocus
               maxLength={64}
               testID="prem-reg-profile-name"
@@ -141,9 +141,9 @@ export default function PremiumProfileScreen({ navigation, route }) {
             <TextInput
               value={city}
               onChangeText={setCity}
-              style={[s.input, { borderColor: '#292524' }]}
+              style={[s.input, { borderColor: '#E5ECE8' }]}
               placeholder={t('prem_reg_profile_city_placeholder')}
-              placeholderTextColor="#5A6068"
+              placeholderTextColor="#9AA8A0"
               maxLength={48}
               testID="prem-reg-profile-city"
             />
@@ -182,7 +182,7 @@ export default function PremiumProfileScreen({ navigation, route }) {
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#0C0A09' },
+  safe: { flex: 1, backgroundColor: '#F6F8F7' },
   flex: { flex: 1 },
   scroll: { flexGrow: 1, paddingHorizontal: 22, paddingBottom: 24 },
 
@@ -200,14 +200,14 @@ const s = StyleSheet.create({
   roleBadgeText: { fontSize: 12, fontWeight: '800' },
 
   title: {
-    color: '#F5F5F5',
+    color: '#14221C',
     fontSize: 26,
     fontWeight: '800',
     letterSpacing: -0.5,
     marginBottom: 8,
   },
   subtitle: {
-    color: '#9CA3AF',
+    color: '#617067',
     fontSize: 14,
     fontWeight: '500',
     lineHeight: 20,
@@ -216,7 +216,7 @@ const s = StyleSheet.create({
 
   fieldBlock: { marginBottom: 16 },
   label: {
-    color: '#9CA3AF',
+    color: '#617067',
     fontSize: 12,
     fontWeight: '700',
     letterSpacing: 0.5,
@@ -224,18 +224,18 @@ const s = StyleSheet.create({
     marginBottom: 8,
   },
   input: {
-    backgroundColor: '#0F1418',
-    borderColor: '#292524',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E5ECE8',
     borderWidth: 1,
     borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 16,
-    color: '#F5F5F5',
+    color: '#14221C',
     fontSize: 16,
     fontWeight: '600',
   },
   err: {
-    color: '#EF4444',
+    color: '#D64545',
     fontSize: 12,
     fontWeight: '600',
     marginTop: 6,
@@ -255,5 +255,5 @@ const s = StyleSheet.create({
     marginTop: 14,
     paddingVertical: 12,
   },
-  skipText: { color: '#9CA3AF', fontSize: 14, fontWeight: '600' },
+  skipText: { color: '#617067', fontSize: 14, fontWeight: '600' },
 });

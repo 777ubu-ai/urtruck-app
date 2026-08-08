@@ -5,7 +5,7 @@ import { useV1Colors } from '../../theme/designV1';
 import { useTheme } from '../../utils/ThemeContext';
 import { useI18n } from '../../utils/useI18n';
 
-export default function VerificationProgress({ done, total, accent = '#00A86B' }) {
+export default function VerificationProgress({ done, total, accent = '#168A5B' }) {
   const v1 = useV1Colors();
   const { theme } = useTheme();
   const { t } = useI18n();

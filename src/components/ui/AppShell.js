@@ -28,7 +28,7 @@ const s = StyleSheet.create({
   },
   webOuter: {
     flex: 1,
-    backgroundColor: '#040608',
+    backgroundColor: '#F6F8F7',
     alignItems: 'center',
     minHeight: '100vh',
   },

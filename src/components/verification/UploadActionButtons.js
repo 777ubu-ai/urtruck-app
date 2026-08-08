@@ -31,7 +31,7 @@ export default function UploadActionButtons({
         onPress={onCamera}
         disabled={busy}
         activeOpacity={0.85}
-        style={[s.primary, { backgroundColor: '#00A86B', opacity: busy ? 0.5 : 1 }]}
+        style={[s.primary, { backgroundColor: '#168A5B', opacity: busy ? 0.5 : 1 }]}
         testID={`${testIDPrefix}-camera`}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
