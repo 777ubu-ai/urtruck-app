@@ -35,7 +35,8 @@
     "qa:center:web": "npm run build:web && playwright test --config qa/playwright.mobile.config.js",
     "qa:center:maestro:smoke": "maestro test qa/maestro/smoke-suite.yaml --format junit --output qa/artifacts/maestro-smoke.xml",
     "postinstall": "patch-package",
-    "qa:release-version": "node qa/utils/releaseVersionSmoke.js"
+    "qa:release-version": "node qa/utils/releaseVersionSmoke.js",
+    "qa:prodsmoke": "bash qa/utils/productionSmoke.sh"
   },
   "dependencies": {
     "@expo/metro-runtime": "~4.0.1",
