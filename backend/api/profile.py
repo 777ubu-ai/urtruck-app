@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional, List
 
@@ -23,10 +23,31 @@ profile_router = APIRouter()
 # (SQLite не имеет нативного array type).
 # *_url — public URL'ы из Supabase Storage, не сами файлы.
 
+def _normalize_phone(v):
+    """Оставляет + и цифры. None → None."""
+    if v is None:
+        return None
+    return "".join(ch for ch in str(v) if ch.isdigit() or ch == "+").strip()
+
+
+def _is_real_phone(v):
+    """True для похожего на настоящий номер (≥10 цифр). Email-как-phone
+    (email в колонке phone у email-signup) не проходит — в нём нет 10 цифр."""
+    if not v:
+        return False
+    digits = "".join(ch for ch in str(v) if ch.isdigit())
+    return len(digits) >= 10
+
+
 class UpdateProfileIn(BaseModel):
     name: Optional[str] = None
     city: Optional[str] = None
     about: Optional[str] = None
+    # P1 email-phone (08.08.2026): при регистрации по e-mail телефон
+    # обязателен для ОБЕИХ ролей (для shipper — ещё и имя). Онбординг-экран
+    # завершения шлёт role → это триггер enforcement (см. update_profile).
+    phone: Optional[str] = None
+    role: Optional[str] = None
     # PRO fields
     legal_form: Optional[str] = Field(None, description="individual | ip | too")
     china_experience_years: Optional[int] = None
@@ -164,6 +185,49 @@ def update_profile(body: UpdateProfileIn, user=Depends(require_level(1))):
             updates["messenger_type"] = mt
     if body.messenger_id is not None:
         updates["messenger_id"] = body.messenger_id.strip()
+
+    # P1 email-phone contract (08.08.2026): требование продукта — при
+    # регистрации по e-mail номер телефона ОБЯЗАТЕЛЕН для обеих ролей; для
+    # shipper (client) обязательны имя + телефон, для driver — телефон.
+    # Триггер — наличие body.role (экран завершения онбординга/выбор роли).
+    # Phone-signup не ломается: у таких аккаунтов в колонке phone уже лежит
+    # реальный номер, контракт проходит и без body.phone.
+    if body.role is not None:
+        role_norm = body.role.strip().lower()
+        if role_norm == "shipper":
+            role_norm = "client"
+        if role_norm not in ("driver", "client"):
+            raise HTTPException(status_code=400, detail={
+                "error": "INVALID_ROLE", "message": "role должен быть driver|client"})
+
+        current = reg_dal.get_driver(user["id"]) or {}
+        # телефон: из тела (если валидный) либо уже сохранённый реальный
+        body_phone = _normalize_phone(body.phone) if body.phone is not None else None
+        stored_phone = current.get("phone")
+        effective_phone = body_phone or (stored_phone if _is_real_phone(stored_phone) else None)
+        if not effective_phone:
+            raise HTTPException(status_code=400, detail={
+                "error": "PHONE_REQUIRED",
+                "message": "Для завершения регистрации укажите номер телефона"})
+        # имя: обязательно для shipper (client)
+        effective_name = (updates.get("full_name")
+                          or (body.name.strip() if body.name else None)
+                          or (current.get("full_name") or "").strip() or None)
+        if role_norm == "client" and not effective_name:
+            raise HTTPException(status_code=400, detail={
+                "error": "NAME_REQUIRED",
+                "message": "Грузоотправитель обязан указать имя"})
+
+        updates["role"] = role_norm
+        if body_phone:
+            updates["phone"] = body_phone
+    elif body.phone is not None:
+        # телефон без role — просто валидируем и сохраняем (нельзя записать мусор)
+        p = _normalize_phone(body.phone)
+        if not _is_real_phone(p):
+            raise HTTPException(status_code=400, detail={
+                "error": "INVALID_PHONE", "message": "Некорректный номер телефона"})
+        updates["phone"] = p
 
     if not updates:
         return {"ok": True, "detail": "Нечего обновлять"}

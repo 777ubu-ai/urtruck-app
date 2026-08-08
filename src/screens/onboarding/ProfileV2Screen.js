@@ -36,23 +36,35 @@ import { useAuth } from '../../utils/AuthContext';
 import { regAPI } from '../../utils/registration';
 import { brand, radius, typography } from '../../theme/brandV2';
 
-export default function ProfileV2Screen({ navigation }) {
+export default function ProfileV2Screen({ navigation, route }) {
   const { t } = useI18n();
   const { session } = useAuth();
   const role = session?.user?.role || 'driver';
 
+  // P1 email-phone (08.08.2026): при регистрации по e-mail телефон
+  // обязателен для обеих ролей. Идентификатор входа приходит в
+  // route.params.phone; для email-канала это e-mail (содержит '@') —
+  // тогда показываем обязательное поле телефона.
+  const signupId = route?.params?.phone || '';
+  const isEmailSignup = /@/.test(signupId);
+
   const [name, setName] = useState('');
   const [city, setCity] = useState('');
+  const [phone, setPhone] = useState('');
   const [nameFocused, setNameFocused] = useState(false);
   const [cityFocused, setCityFocused] = useState(false);
+  const [phoneFocused, setPhoneFocused] = useState(false);
   const [errors, setErrors] = useState({});
   const [busy, setBusy] = useState(false);
   const [serverError, setServerError] = useState('');
+
+  const phoneDigits = phone.replace(/\D/g, '');
 
   const validate = () => {
     const e = {};
     if (name.trim().length < 2) e.name = t('profile_v2_err_name');
     if (city.trim().length < 2) e.city = t('profile_v2_err_city');
+    if (isEmailSignup && phoneDigits.length < 10) e.phone = t('prem_reg_phone_invalid');
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -63,19 +75,34 @@ export default function ProfileV2Screen({ navigation }) {
     setBusy(true);
     setServerError('');
     try {
-      await regAPI.updateProfile({ name: name.trim(), city: city.trim() });
+      // role шлём всегда → backend применяет контракт (phone обязателен для
+      // обеих ролей, name — для shipper). phone добавляем при email-signup.
+      const payload = { name: name.trim(), city: city.trim(), role };
+      if (isEmailSignup) payload.phone = phone.trim();
+      await regAPI.updateProfile(payload);
       navigation.reset({
         index: 0,
         routes: [{ name: 'Main', params: { role } }],
       });
     } catch (e) {
-      setServerError(t('profile_v2_save_failed'));
+      // Бэкенд может вернуть PHONE_REQUIRED/NAME_REQUIRED — показываем причину.
+      const code = e?.detail?.error || e?.error;
+      if (code === 'PHONE_REQUIRED' || code === 'INVALID_PHONE') {
+        setErrors((prev) => ({ ...prev, phone: t('prem_reg_phone_invalid') }));
+      } else if (code === 'NAME_REQUIRED') {
+        setErrors((prev) => ({ ...prev, name: t('profile_v2_err_name') }));
+      } else {
+        setServerError(t('profile_v2_save_failed'));
+      }
     } finally {
       setBusy(false);
     }
   };
 
-  const formValid = name.trim().length >= 2 && city.trim().length >= 2;
+  const formValid =
+    name.trim().length >= 2 &&
+    city.trim().length >= 2 &&
+    (!isEmailSignup || phoneDigits.length >= 10);
 
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']} testID="profile-v2-screen">
@@ -147,6 +174,33 @@ export default function ProfileV2Screen({ navigation }) {
             />
             {errors.city ? <Text style={s.errText}>{errors.city}</Text> : null}
           </View>
+
+          {/* Phone — обязателен при регистрации по e-mail (P1, обе роли) */}
+          {isEmailSignup ? (
+            <View style={s.field}>
+              <Text style={s.label}>{t('prem_reg_phone_label')}</Text>
+              <TextInput
+                value={phone}
+                onChangeText={(v) => {
+                  setPhone(v);
+                  if (errors.phone) setErrors({ ...errors, phone: null });
+                }}
+                onFocus={() => setPhoneFocused(true)}
+                onBlur={() => setPhoneFocused(false)}
+                placeholder={t('prem_reg_phone_placeholder')}
+                placeholderTextColor={brand.textTertiary}
+                keyboardType="phone-pad"
+                textContentType="telephoneNumber"
+                style={[
+                  s.input,
+                  phoneFocused && s.inputFocused,
+                  errors.phone && s.inputError,
+                ]}
+                testID="profile-v2-phone"
+              />
+              {errors.phone ? <Text style={s.errText}>{errors.phone}</Text> : null}
+            </View>
+          ) : null}
 
           {serverError ? <Text style={s.serverError}>{serverError}</Text> : null}
 
