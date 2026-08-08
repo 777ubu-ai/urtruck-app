@@ -5,6 +5,20 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# P1-17 (08.08.2026): без concurrency два пуша в main подряд → два
+# параллельных прогона, каждый делает `rm -rf $REMOTE_DIR/_expo` + scp на
+# живой прод. Второй rm-rf мог снести бандлы, на которые уже указывает
+# index.html первого. cancel-in-progress:false — не убиваем идущий деплой
+# на середине scp (частичная выкладка хуже, чем очередь), а ставим
+# следующий в очередь за ним.
+concurrency:
+  group: urtruck-production-deploy
+  cancel-in-progress: false
+
+# Явно ограничиваем токен: job делает ssh на прод, write-права ему не нужны.
+permissions:
+  contents: read
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest

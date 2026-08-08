@@ -60,7 +60,7 @@ jobs:
             set -e
             echo "::endgroup::"
             if [ "$rc" -ne 0 ]; then failed=$((failed + 1)); fi
-          done < <(find backend/tests -maxdepth 1 -type f -name 'test_*.py' | sort)
+          done < <(find backend/tests -type f -name 'test_*.py' -not -path '*/__pycache__/*' | sort)
           printf '{"modules":%s,"failed_modules":%s}\n' "$count" "$failed" > qa-artifacts/backend-summary.json
           test "$count" -gt 0
           test "$failed" -eq 0
