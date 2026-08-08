@@ -63,7 +63,7 @@ export default function StickyCTABar({ accent, primary, secondary, children }) {
                 testID={primary.testID}
               >
                 <Text
-                  style={[s.btnText, { color: '#0A0A0A' }]}
+                  style={[s.btnText, { color: '#FFFFFF' }]}
                   numberOfLines={2}
                   ellipsizeMode="tail"
                 >

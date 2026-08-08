@@ -44,7 +44,7 @@ export default function SegmentTabs({ items = [], value, onChange, accent, varia
               style={[s.label, {
                 color: underline
                   ? (active ? activeAccent : colors.textMuted)
-                  : (active ? '#0A0A0A' : colors.textMuted),
+                  : (active ? '#FFFFFF' : colors.textMuted),
                 fontSize, letterSpacing,
               }]}
               numberOfLines={1}
@@ -64,10 +64,10 @@ export default function SegmentTabs({ items = [], value, onChange, accent, varia
 // и жирный 13pt текст — pill'ы толстые. Теперь 6pt padding, шрифт 12,
 // gap 6 — плотный ряд табов.
 const s = StyleSheet.create({
-  row: { flexDirection: 'row', gap: 6, marginBottom: 10 },
+  row: { flexDirection: 'row', gap: 8, marginBottom: 12 },
   tab: {
-    flex: 1, paddingVertical: 6,
-    borderRadius: 8, borderWidth: 1,
+    flex: 1, minHeight: 44, paddingVertical: 8,
+    borderRadius: 10, borderWidth: 1,
     alignItems: 'center', justifyContent: 'center',
   },
   label: { fontSize: 12, fontWeight: '700' },
