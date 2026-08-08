@@ -21,4 +21,11 @@ assert.ok(fs.existsSync('backend/migrations/supabase_pro_documents_private.sql')
 assert.ok(/supabase_pro_documents_private\.sql/.test(src),
   'proDocs.js должен ссылаться на миграцию приватности (документированная зависимость)');
 
-console.log('pro-docs contract OK: signed-URL helper + path return + migration prepared (bucket private = EXTERNAL, не заявляем DONE)');
+// forward-compatible резолвер показа (URL legacy / signed для path).
+assert.ok(/export async function resolveProDocDisplayUrl/.test(src),
+  'proDocs.js должен экспортировать resolveProDocDisplayUrl для перехода на private bucket');
+const refSrc = fs.readFileSync('src/utils/proDocsRef.js', 'utf8');
+assert.ok(/export function classifyProDocRef/.test(refSrc),
+  'proDocsRef.js должен экспортировать чистый classifyProDocRef (тестируемый без supabase)');
+
+console.log('pro-docs contract OK: signed-URL helper + resolver + path return + migration prepared (bucket private = EXTERNAL, не заявляем DONE)');

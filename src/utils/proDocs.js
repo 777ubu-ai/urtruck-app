@@ -19,6 +19,7 @@
 import { supabase } from '../config/supabase';
 import { compressImage } from './imageCompress';
 import { regAPI } from './registration';
+import { classifyProDocRef } from './proDocsRef';
 
 const BUCKET = 'pro-documents';
 
@@ -128,4 +129,26 @@ export async function createSignedProDocUrl(path, ttlSec = 3600) {
   } catch (e) {
     return { ok: false, detail: e?.message || String(e) };
   }
+}
+
+/**
+ * Item 2 (08.08.2026): forward-compatible резолв ссылки для ПОКАЗА
+ * PRO-документа. Работает и сейчас (bucket public, legacy URL), и после
+ * перевода bucket в private (значение = storage path → signed URL):
+ *   * пусто → { ok:false };
+ *   * готовый URL (http/https/data/file) → возвращаем как есть (legacy);
+ *   * storage path → createSignedUrl.
+ * Read-сайты (EditProfileScreen и пр.) переключатся на этот резолвер
+ * одним шагом после применения политики приватности — без разветвления
+ * логики на каждом экране.
+ *
+ * @param {string} stored — значение из профиля (URL или path)
+ * @param {number} [ttlSec=3600]
+ * @returns {Promise<{ ok: boolean, url?: string, detail?: string }>}
+ */
+export async function resolveProDocDisplayUrl(stored, ttlSec = 3600) {
+  const kind = classifyProDocRef(stored);
+  if (kind === 'empty') return { ok: false, detail: 'empty' };
+  if (kind === 'url') return { ok: true, url: stored };
+  return createSignedProDocUrl(stored, ttlSec);
 }

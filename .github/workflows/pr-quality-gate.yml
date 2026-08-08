@@ -72,6 +72,10 @@ jobs:
           node --experimental-loader ./tests/frontend/loader.mjs --test tests/frontend/test_storage_remove_by_prefix.mjs
           node --experimental-loader ./tests/frontend/loader.mjs --test tests/frontend/test_outbox_user_ownership.mjs
           node --experimental-loader ./tests/frontend/loader.mjs --test tests/frontend/test_currency_normalization.mjs
+      - name: Pure unit tests (deal FSM order, pro-doc ref)
+        # P0-1/Item2 (08.08.2026): раньше tests/unit/* не гонялись CI вообще.
+        run: |
+          for f in tests/unit/*.mjs; do echo "· $f"; node "$f"; done
       - name: i18n smoke
         run: npm run qa:i18n
       - name: UX smoke
