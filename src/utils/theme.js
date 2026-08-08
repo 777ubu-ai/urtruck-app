@@ -33,37 +33,37 @@ export const darkTheme = {
 };
 
 export const lightTheme = {
-  bg: '#f1f5f9',
+  bg: '#f6f8f7',
   surface: '#ffffff',
-  surfaceAlt: '#e8ecf1',
+  surfaceAlt: '#f0f4f2',
   card: '#ffffff',
-  cardBorder: '#cbd5e1',
-  cardHover: '#f1f5f9',
-  cardActive: 'rgba(34,197,94,0.08)',
-  cardActiveBorder: 'rgba(34,197,94,0.4)',
-  text: '#0f172a',
-  textSecondary: '#334155',
-  textMuted: '#64748b',
-  textDisabled: '#94a3b8',
-  border: '#cbd5e1',
+  cardBorder: '#e5ece8',
+  cardHover: '#f3fbf7',
+  cardActive: '#e8f6ef',
+  cardActiveBorder: '#168a5b',
+  text: '#14221c',
+  textSecondary: '#3f5047',
+  textMuted: '#617067',
+  textDisabled: '#9aa8a0',
+  border: '#e5ece8',
   overlay: 'rgba(0,0,0,0.4)',
   bgElevated: '#ffffff',
-  cardElevated: '#f1f5f9',
-  textDim: '#64748b',
+  cardElevated: '#f3fbf7',
+  textDim: '#7c8b82',
   shadow: 'rgba(0,0,0,0.12)',
   shadowLight: 'rgba(0,0,0,0.06)',
 };
 
 // Design System accent colors
 export const accentColors = {
-  primary: '#22c55e',
-  primaryDark: '#16a34a',
-  primaryGlow: 'rgba(34,197,94,0.2)',
+  primary: '#168a5b',
+  primaryDark: '#0f6b47',
+  primaryGlow: 'rgba(22,138,91,0.18)',
   blue: '#3b82f6',
   blueSoft: '#1e3a5f',
-  driver: '#22c55e',
-  client: '#22c55e',
-  browse: '#22c55e',
+  driver: '#168a5b',
+  client: '#168a5b',
+  browse: '#168a5b',
 };
 
 // Status colors
