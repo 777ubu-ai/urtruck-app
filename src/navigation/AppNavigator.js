@@ -235,6 +235,13 @@ export default function AppNavigator() {
               регистрации маршрута navigate('Profile') у гостя не срабатывал. */}
           <Stack.Screen name="Profile" component={ProfileScreen} />
           <Stack.Screen name="CargoDetail" component={CargoDetail} />
+          {/* P1-10 (08.08.2026): TripDetail (карточка машины) отсутствовал в
+              гостевом стеке — гость-клиент тапал машину в ленте, navigate
+              ('TripDetail') не находил маршрут и МОЛЧА ничего не делал.
+              Добавлен симметрично CargoDetail: просмотр карточки разрешён
+              гостю каноном («лента + просмотр карточек + чат»); действия
+              внутри (ставка/чат) уже гейтятся по session. */}
+          <Stack.Screen name="TripDetail" component={TripDetail} />
           <Stack.Screen name="DriverDetail" component={DriverDetail} />
           <Stack.Screen name="Chat" component={ChatScreen} />
         </>
