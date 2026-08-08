@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Appearance } from 'react-native';
+import { Appearance, Platform } from 'react-native';
 import { darkTheme, lightTheme } from './theme';
 import { storage } from './storage';
 
@@ -13,7 +13,6 @@ const ThemeContext = createContext({
 
 const KEY = 'ur_theme';
 
-// Детектит системную тему
 function detectSystemDark() {
   try {
     const sys = Appearance.getColorScheme();
@@ -23,41 +22,70 @@ function detectSystemDark() {
   }
 }
 
+function initialThemeMode() {
+  // Web localStorage is synchronous: read it before first render to avoid a
+  // light-theme flash when the user explicitly selected dark mode earlier.
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    try {
+      const saved = window.localStorage.getItem(KEY);
+      if (saved === 'light' || saved === 'dark' || saved === 'auto') return saved;
+    } catch {}
+  }
+  return 'auto';
+}
+
 export const ThemeProvider = ({ children }) => {
-  const [themeMode, setThemeModeState] = useState('auto');
+  const [themeMode, setThemeModeState] = useState(initialThemeMode);
   const [systemDark, setSystemDark] = useState(detectSystemDark());
 
   useEffect(() => {
+    let mounted = true;
     (async () => {
       const saved = await storage.get(KEY);
-      if (saved === 'light' || saved === 'dark' || saved === 'auto') {
+      if (mounted && (saved === 'light' || saved === 'dark' || saved === 'auto')) {
         setThemeModeState(saved);
       }
     })();
-    // Слушаем системные изменения
+
     const sub = Appearance.addChangeListener?.(({ colorScheme }) => {
       setSystemDark(colorScheme === 'dark');
     });
-    return () => sub?.remove?.();
+    return () => {
+      mounted = false;
+      sub?.remove?.();
+    };
   }, []);
 
   const setThemeMode = (mode) => {
+    if (mode !== 'light' && mode !== 'dark' && mode !== 'auto') return;
     setThemeModeState(mode);
     storage.set(KEY, mode);
   };
 
-  // Redesign 08.08.2026 (owner spec): UrTruck переходит на ЕДИНУЮ светлую
-  // B2B-тему (#F6F8F7 / зелёный #168759). Тёмная палитра и плитинг режима
-  // сохранены для возможного отката, но эффективно приложение всегда светлое —
-  // isDark зафиксирован в false, чтобы useV1Colors()/lightTheme отдавали
-  // светлый зелёный на всех экранах. Чтобы вернуть переключатель тем, снять
-  // форс ниже и вернуть вычисление из themeMode/systemDark.
-  const isDark = false;
-  // eslint-disable-next-line no-unused-vars
-  const _isDarkFromMode = themeMode === 'dark' || (themeMode === 'auto' && systemDark);
+  // The redesign keeps LIGHT as the default visual language, but the user's
+  // explicit theme choice must work. Manual light/dark wins over the OS;
+  // system changes are followed only while themeMode === 'auto'.
+  const isDark = themeMode === 'dark' || (themeMode === 'auto' && systemDark);
 
-  // Обратная совместимость
   const toggleTheme = () => setThemeMode(isDark ? 'light' : 'dark');
+
+  // Keep the web/PWA shell in sync with the resolved theme as well, so Safari
+  // and installed PWAs do not retain a light browser chrome around dark UI.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const resolved = isDark ? 'dark' : 'light';
+    const root = document.documentElement;
+    root?.setAttribute?.('data-theme', resolved);
+    if (root?.style) root.style.colorScheme = resolved;
+
+    let meta = document.querySelector('meta[name="theme-color"]');
+    if (!meta && document.head) {
+      meta = document.createElement('meta');
+      meta.setAttribute('name', 'theme-color');
+      document.head.appendChild(meta);
+    }
+    meta?.setAttribute('content', isDark ? darkTheme.bg : lightTheme.bg);
+  }, [isDark]);
 
   return (
     <ThemeContext.Provider value={{
