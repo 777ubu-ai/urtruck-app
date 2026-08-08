@@ -9,7 +9,8 @@ from collections import defaultdict
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fastapi import APIRouter, Request, Response
+import secrets
+from fastapi import APIRouter, Request, Response, Header, HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 
 metrics_router = APIRouter()
@@ -162,8 +163,16 @@ async def log_client_error(request: Request):
 
 
 @metrics_router.get("/api/v1/errors/recent")
-def recent_errors(authorization: str = None):
-    # Базовая проверка — только с токеном (не публичный)
+def recent_errors(authorization: str = Header(default=None)):
+    # B7/P0-7 (08.08.2026): раньше `authorization: str = None` без Header(...)
+    # FastAPI трактовал как QUERY-параметр (не заголовок), а тело функции не
+    # проверяло его вовсе — эндпоинт анонимно отдавал stack-трейсы, URL и IP
+    # клиентов. Теперь требуем admin-токен из окружения (constant-time).
+    import os
+    expected = os.getenv("URTRUCK_ADMIN_TOKEN") or ""
+    provided = (authorization or "").replace("Bearer ", "").strip()
+    if not expected or not provided or not secrets.compare_digest(provided, expected):
+        raise HTTPException(status_code=401, detail="admin token required")
     return {"errors": _client_errors[-20:]}
 
 

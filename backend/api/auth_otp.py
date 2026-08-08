@@ -21,6 +21,7 @@ from database import registration_dal as reg_dal
 from services import otp_service
 from services.whatsapp_service import generate_code
 from api.rate_limit import limit_otp_send
+from config import IS_PRODUCTION as _IS_PRODUCTION
 
 # Переиспользуем логику verify — это тот же код, что и в wa_verify в registration.py.
 from api.registration import wa_verify, VerifyCodeRequest
@@ -84,8 +85,9 @@ def send_otp(req: SendOtpRequest, request: Request):
         "beta": result.get("beta", False),
         "fallback": result.get("fallback", False),
         "original_channel": result.get("original_channel"),
-        # Код возвращаем только в MOCK/BETA — в реальной отправке его нет.
-        "code": result.get("code") if (result.get("mock") or result.get("beta")) else None,
+        # Код возвращаем только в MOCK/BETA И только вне production (P1-14):
+        # в production ответ не содержит код никогда, даже при mock-деградации.
+        "code": (result.get("code") if (result.get("mock") or result.get("beta")) else None) if not _IS_PRODUCTION else None,
         "deeplink": result.get("deeplink"),
         "attempts": result.get("attempts"),
         "error": result.get("error"),

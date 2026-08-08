@@ -17,6 +17,7 @@ API_SECRET = os.getenv("URTRUCK_API_SECRET", "urtruck-security-demo-2026")
 #     (env_check.py дополнительно ругается, если включить вручную).
 #   * dev / preview / unset → BETA_MODE=true (тестеры заходят с 0000).
 URTRUCK_ENV = os.getenv("URTRUCK_ENV", "").lower()
+IS_PRODUCTION = URTRUCK_ENV == "production"
 _beta_default = "false" if URTRUCK_ENV == "production" else "true"
 BETA_MODE = os.getenv("BETA_MODE", _beta_default).lower() in ("1", "true", "yes")
 BETA_OTP_CODE = os.getenv("BETA_OTP_CODE", "0000")

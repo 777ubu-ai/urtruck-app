@@ -19,7 +19,7 @@ from ocr.document_reader import extract_passport_data
 from biometrics.liveness import check_liveness, face_match
 from scoring.engine import calculate_score
 from database import db
-from config import BETA_MODE, BETA_OTP_CODE, REVIEWER_DEMO_EMAIL, REVIEWER_DEMO_CODE
+from config import BETA_MODE, BETA_OTP_CODE, REVIEWER_DEMO_EMAIL, REVIEWER_DEMO_CODE, IS_PRODUCTION
 import logging
 
 reg_router = APIRouter()
@@ -214,7 +214,11 @@ def wa_send(req: SendCodeRequest, request: Request = None):
         "channel": result.get("channel", req.channel),
         "mock": is_mock,
         "beta": is_beta,
-        "code": result.get("code") if (is_mock or is_beta) else None,
+        # P1-14 (08.08.2026): в production код НИКОГДА не возвращается в
+        # ответе, даже если канал деградировал в mock (истёк WA-токен и т.п.)
+        # — иначе fail-open: любой смог бы получить чужой код анонимным
+        # запросом. Код в ответе — только dev/preview.
+        "code": (result.get("code") if (is_mock or is_beta) else None) if not IS_PRODUCTION else None,
         "deeplink": result.get("deeplink"),
     }
     if not really_sent:
