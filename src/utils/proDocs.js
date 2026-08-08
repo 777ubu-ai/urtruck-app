@@ -66,6 +66,14 @@ export async function uploadProDoc({ userId, kind, uri, onProgress }) {
       return { ok: false, detail: upErr.message || 'upload_failed' };
     }
 
+    // Item 2 (08.08.2026): bucket pro-documents должен стать private (см.
+    // backend/migrations/supabase_pro_documents_private.sql). Пока политика
+    // не применена в Supabase — bucket public-read, поэтому getPublicUrl
+    // сохраняем как рабочий путь. Одновременно возвращаем storage `path`:
+    // после перевода bucket в private вызывающий код переключится на
+    // createSignedProDocUrl(path) при показе (signed-URL истекает, поэтому
+    // хранить в профиле нужно path, а не готовый URL). Это подготовка
+    // перехода без слома текущего потока.
     const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path);
     const url = pub?.publicUrl;
     if (!url) return { ok: false, detail: 'no_public_url' };
@@ -87,8 +95,8 @@ export async function uploadProDoc({ userId, kind, uri, onProgress }) {
     } catch (syncErr) {
       syncWarn = syncErr?.message || 'sync_failed';
     }
-
-    return { ok: true, url, field, syncWarn };
+    // path возвращаем additively (не ломая url) — для перехода на private bucket
+    return { ok: true, url, path, field, syncWarn };
   } catch (e) {
     return { ok: false, detail: e?.message || String(e) };
   }
@@ -96,3 +104,28 @@ export async function uploadProDoc({ userId, kind, uri, onProgress }) {
 
 export const PRO_DOC_KINDS = Object.keys(KIND_TO_FIELD);
 export const PRO_DOC_FIELDS = Object.values(KIND_TO_FIELD);
+
+/**
+ * Item 2 (08.08.2026): выдать временную signed-ссылку на PRO-документ из
+ * private bucket. Использовать при показе ПОСЛЕ применения политики
+ * приватности (backend/migrations/supabase_pro_documents_private.sql) —
+ * тогда read-сайты хранят storage `path` и резолвят свежий URL здесь.
+ * Пока bucket public — код продолжает работать на getPublicUrl (см.
+ * uploadProDoc). Готово к переключению без слома текущего потока.
+ *
+ * @param {string} path — storage-ключ '{user_id}/{kind}_{ts}.jpg'
+ * @param {number} [ttlSec=3600] — срок жизни ссылки
+ * @returns {Promise<{ ok: boolean, url?: string, detail?: string }>}
+ */
+export async function createSignedProDocUrl(path, ttlSec = 3600) {
+  if (!path) return { ok: false, detail: 'no_path' };
+  try {
+    const { data, error } = await supabase.storage
+      .from(BUCKET)
+      .createSignedUrl(path, ttlSec);
+    if (error) return { ok: false, detail: error.message || 'sign_failed' };
+    return { ok: true, url: data?.signedUrl };
+  } catch (e) {
+    return { ok: false, detail: e?.message || String(e) };
+  }
+}
