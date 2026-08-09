@@ -67,6 +67,25 @@ jobs:
           # Inject manifest + PWA meta
           if '<link rel="manifest"' not in html:
               html = html.replace('</head>', '<link rel="manifest" href="/manifest.json" />\n</head>')
+          # No-flash theme boot (P1 theme fix 2026-08): применяем сохранённую
+          # тему (ur_theme) СИНХРОННО в <head> ДО загрузки JS-бандла, чтобы
+          # cold-start в тёмной теме не мигал белым. Ручной выбор в приоритете,
+          # 'system'/'auto' → prefers-color-scheme. Держим #0F1512/#F6F8F7 в
+          # синхроне с DARK/LIGHT bg (designV1.js) и ThemeContext.applyWebChrome.
+          early_theme = '''<script>
+          (function(){try{
+            var t=localStorage.getItem('ur_theme');
+            var dark = t==='dark' || ((!t||t==='system'||t==='auto') && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+            var bg = dark ? '#0F1512' : '#F6F8F7';
+            document.documentElement.setAttribute('data-theme', dark?'dark':'light');
+            document.documentElement.style.backgroundColor = bg;
+            var m=document.querySelector('meta[name="theme-color"]');
+            if(!m){m=document.createElement('meta');m.setAttribute('name','theme-color');document.head.appendChild(m);}
+            m.setAttribute('content', bg);
+          }catch(e){}})();
+          </script>'''
+          if 'ur_theme' not in html:
+              html = html.replace('</head>', early_theme + '\n</head>')
           # 05.08.2026 (Фаза A выкладка): CI-путь раньше не форсировал сброс
           # старого service-worker кэша (в отличие от deploy.sh) — Safari/PWA
           # мог показывать старый бандл до собственного цикла обновления SW.
@@ -123,8 +142,8 @@ jobs:
               "short_name": "UrTruck",
               "start_url": "/",
               "display": "standalone",
-              "background_color": "#0B0F1A",
-              "theme_color": "#0B0F1A",
+              "background_color": "#F6F8F7",
+              "theme_color": "#F6F8F7",
           }
           with open('dist/manifest.json', 'w') as f:
               json.dump(manifest, f)

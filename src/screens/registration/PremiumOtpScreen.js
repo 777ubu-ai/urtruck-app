@@ -23,6 +23,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
+import { useV1Colors } from '../../theme/designV1';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../utils/AuthContext';
 import { regAPI } from '../../utils/registration';
@@ -46,6 +47,8 @@ const maskPhone = (raw) => {
 };
 
 export default function PremiumOtpScreen({ navigation, route }) {
+  const c = useV1Colors();
+  const s = React.useMemo(() => makeStyles(c), [c]);
   const { t } = useI18n();
   const { toast } = useToast();
   const { signIn, setRole, refreshLevel } = useAuth();
@@ -58,7 +61,7 @@ export default function PremiumOtpScreen({ navigation, route }) {
   const initialMockCode = route?.params?.mockCode || null;
   // Login screen — нейтральный зелёный (driver-glow), он же accent для
   // авторизации без выбора роли. В register-режиме — role-based.
-  const accent = mode === 'login' ? ACCENT.driver : ACCENT[role];
+  const accent = { main: c.driver, deep: c.driverDeep, soft: c.driverSoft, glow: c.driverGlow, onAccent: c.driverOnAccent };
 
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
@@ -352,8 +355,8 @@ export default function PremiumOtpScreen({ navigation, route }) {
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F6F8F7' },
+const makeStyles = (c) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   flex: { flex: 1 },
   scroll: { flexGrow: 1, paddingHorizontal: 22, paddingBottom: 24 },
 
@@ -367,10 +370,10 @@ const s = StyleSheet.create({
   backBtn: {
     width: 36, height: 36, borderRadius: 18,
     alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(20,34,28,0.04)',
-    borderWidth: 1, borderColor: 'rgba(20,34,28,0.10)',
+    backgroundColor: c.surfaceMuted,
+    borderWidth: 1, borderColor: c.border,
   },
-  backIcon: { color: '#14221C', fontSize: 20, fontWeight: '700', lineHeight: 22 },
+  backIcon: { color: c.text, fontSize: 20, fontWeight: '700', lineHeight: 22 },
   roleBadge: {
     paddingHorizontal: 12, paddingVertical: 6,
     borderRadius: 999, borderWidth: 1,
@@ -378,20 +381,20 @@ const s = StyleSheet.create({
   roleBadgeText: { fontSize: 12, fontWeight: '800' },
 
   title: {
-    color: '#14221C',
+    color: c.text,
     fontSize: 26,
     fontWeight: '800',
     letterSpacing: -0.5,
     marginBottom: 8,
   },
   subtitle: {
-    color: '#617067',
+    color: c.textMuted,
     fontSize: 14,
     fontWeight: '500',
     lineHeight: 22,
     marginBottom: 28,
   },
-  phoneNum: { color: '#14221C', fontWeight: '800' },
+  phoneNum: { color: c.text, fontWeight: '800' },
 
   cellsRow: {
     flexDirection: 'row',
@@ -403,14 +406,14 @@ const s = StyleSheet.create({
     flex: 1,
     height: 64,
     borderRadius: 14,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: c.surface,
     borderWidth: 1.5,
-    borderColor: '#E5ECE8',
+    borderColor: c.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   cellText: {
-    color: '#14221C',
+    color: c.text,
     fontSize: 28,
     fontWeight: '900',
   },
@@ -453,13 +456,13 @@ const s = StyleSheet.create({
     marginTop: 18,
     gap: 12,
   },
-  timer: { color: '#617067', fontSize: 13, fontWeight: '600' },
+  timer: { color: c.textMuted, fontSize: 13, fontWeight: '600' },
   resendBtn: { paddingVertical: 6, paddingHorizontal: 12 },
   resendText: { fontSize: 14, fontWeight: '800' },
   changeBtn: { paddingVertical: 6, paddingHorizontal: 12 },
-  changeText: { color: '#6B7A71', fontSize: 13, fontWeight: '600' },
+  changeText: { color: c.placeholder, fontSize: 13, fontWeight: '600' },
   noCodeHint: {
-    color: '#6B7A71',
+    color: c.placeholder,
     fontSize: 12,
     fontWeight: '500',
     textAlign: 'center',

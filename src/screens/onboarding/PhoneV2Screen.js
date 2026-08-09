@@ -29,7 +29,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
 import { regAPI } from '../../utils/registration';
-import { brand, radius, space, typography } from '../../theme/brandV2';
+import { brand, useBrand, radius, space, typography } from '../../theme/brandV2';
 import { DEFAULT_COUNTRY } from '../../utils/countries';
 import { WEB_URL } from '../../config/env';
 
@@ -65,6 +65,8 @@ const formatLocalPhone = (digits) => {
 };
 
 export default function PhoneV2Screen({ navigation, route }) {
+  const _b = useBrand();
+  const s = React.useMemo(() => makeStyles(_b), [_b]);
   const { t } = useI18n();
   // 'phone' | 'email' — email сделан каналом входа ПО УМОЛЧАНИЮ: работает
   // глобально (вкл. Китай) и не зависит от доставки SMS, которая надёжна
@@ -329,7 +331,7 @@ export default function PhoneV2Screen({ navigation, route }) {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (brand) => StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: brand.bg,

@@ -30,6 +30,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../../utils/useI18n';
+import { useV1Colors } from '../../theme/designV1';
 import { useToast } from '../../components/Toast';
 import { regAPI } from '../../utils/registration';
 import { formatCooldown } from '../../utils/formatCooldown';
@@ -38,9 +39,11 @@ import { formatPhoneForDisplay, toAsciiDigits } from '../../utils/phone';
 const ACCENT = { main: '#168759', deep: '#0F6B47', soft: '#E8F6EF' };
 
 export default function PremiumLoginScreen({ navigation }) {
+  const c = useV1Colors();
+  const s = React.useMemo(() => makeStyles(c), [c]);
   const { t } = useI18n();
   const { toast } = useToast();
-  const accent = ACCENT;
+  const accent = { main: c.driver, deep: c.driverDeep, soft: c.driverSoft, glow: c.driverGlow, onAccent: c.driverOnAccent };
 
   const [phone, setPhone] = useState('+7');
   const [loading, setLoading] = useState(false);
@@ -160,10 +163,10 @@ export default function PremiumLoginScreen({ navigation }) {
               onChangeText={onChangePhone}
               style={[
                 s.input,
-                { borderColor: error ? '#D64545' : (validPhone ? accent.main : '#E5ECE8') },
+                { borderColor: error ? '#D64545' : (validPhone ? accent.main : c.border) },
               ]}
               placeholder={t('prem_reg_phone_placeholder')}
-              placeholderTextColor="#6B7A71"
+              placeholderTextColor={c.placeholder}
               keyboardType="phone-pad"
               // Stage 46 P0 fix — см. PremiumRegisterScreen для контекста.
               // inputMode="tel" даёт numeric keypad на web независимо от
@@ -236,8 +239,8 @@ export default function PremiumLoginScreen({ navigation }) {
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F6F8F7' },
+const makeStyles = (c) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   flex: { flex: 1 },
   scroll: { flexGrow: 1, paddingHorizontal: 22, paddingBottom: 24 },
 
@@ -251,10 +254,10 @@ const s = StyleSheet.create({
   backBtn: {
     width: 36, height: 36, borderRadius: 18,
     alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(20,34,28,0.04)',
-    borderWidth: 1, borderColor: 'rgba(20,34,28,0.10)',
+    backgroundColor: c.surfaceMuted,
+    borderWidth: 1, borderColor: c.border,
   },
-  backIcon: { color: '#14221C', fontSize: 20, fontWeight: '700', lineHeight: 22 },
+  backIcon: { color: c.text, fontSize: 20, fontWeight: '700', lineHeight: 22 },
   tag: {
     paddingHorizontal: 12, paddingVertical: 6,
     borderRadius: 999, borderWidth: 1,
@@ -262,14 +265,14 @@ const s = StyleSheet.create({
   tagText: { fontSize: 12, fontWeight: '800', letterSpacing: 0.2 },
 
   brandRow: { marginBottom: 24 },
-  brand: { color: '#14221C', fontSize: 28, fontWeight: '900', letterSpacing: -0.5 },
+  brand: { color: c.text, fontSize: 28, fontWeight: '900', letterSpacing: -0.5 },
 
-  title: { color: '#14221C', fontSize: 26, fontWeight: '800', letterSpacing: -0.5, marginBottom: 8 },
-  subtitle: { color: '#617067', fontSize: 14, fontWeight: '500', lineHeight: 20, marginBottom: 28 },
+  title: { color: c.text, fontSize: 26, fontWeight: '800', letterSpacing: -0.5, marginBottom: 8 },
+  subtitle: { color: c.textMuted, fontSize: 14, fontWeight: '500', lineHeight: 20, marginBottom: 28 },
 
   fieldBlock: { marginBottom: 4 },
   label: {
-    color: '#617067',
+    color: c.textMuted,
     fontSize: 12,
     fontWeight: '700',
     letterSpacing: 0.5,
@@ -277,13 +280,13 @@ const s = StyleSheet.create({
     marginBottom: 8,
   },
   input: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E5ECE8',
+    backgroundColor: c.surface,
+    borderColor: c.border,
     borderWidth: 1,
     borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 16,
-    color: '#14221C',
+    color: c.text,
     fontSize: 18,
     fontWeight: '700',
     letterSpacing: 0.5,
@@ -300,7 +303,7 @@ const s = StyleSheet.create({
   ctaText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
 
   linkRow: { alignItems: 'center', marginTop: 20, paddingVertical: 8 },
-  linkMuted: { color: '#617067', fontSize: 13, fontWeight: '500' },
+  linkMuted: { color: c.textMuted, fontSize: 13, fontWeight: '500' },
   linkText: { fontWeight: '800' },
   ctaLoadingRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
@@ -311,8 +314,8 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(255,132,0,0.35)',
     alignItems: 'center',
   },
-  cooldownTitle: { color: '#14221C', fontSize: 14, fontWeight: '800', marginBottom: 4, textAlign: 'center' },
-  cooldownBody: { color: '#617067', fontSize: 13, fontWeight: '500', textAlign: 'center', marginBottom: 12 },
+  cooldownTitle: { color: c.text, fontSize: 14, fontWeight: '800', marginBottom: 4, textAlign: 'center' },
+  cooldownBody: { color: c.textMuted, fontSize: 13, fontWeight: '500', textAlign: 'center', marginBottom: 12 },
   cooldownBtn: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 12, borderWidth: 1.5 },
   cooldownBtnText: { fontSize: 14, fontWeight: '800' },
 });

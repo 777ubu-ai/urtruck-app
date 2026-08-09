@@ -40,7 +40,7 @@ import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../utils/AuthContext';
-import { brand, radius, typography } from '../../theme/brandV2';
+import { brand, useBrand, radius, typography } from '../../theme/brandV2';
 
 // QA-only safety gate. The block below renders ONLY when three conditions
 // hold together:
@@ -130,7 +130,7 @@ const HeroWindow = ({ source, imageAspect, win }) => {
 // duplicate. Когда дизайнер пришлёт hero-only PNG (без logo внутри),
 // SlideLogo восстановится здесь.
 
-const Slide = ({ source, imageAspect, win, title, subtitle }) => (
+const Slide = ({ s, source, imageAspect, win, title, subtitle }) => (
   <View style={s.slide}>
     <HeroWindow source={source} imageAspect={imageAspect} win={win} />
     <View style={s.captionBlock}>
@@ -148,7 +148,7 @@ const Slide = ({ source, imageAspect, win, title, subtitle }) => (
 // никаких новых auth-методов, никакого автоматического verified-статуса —
 // всё, что мы получаем, берётся из ответа backend'а. Не показывается в
 // production (см. QA_HOOK_ALLOWED выше).
-const QaLoginHook = () => {
+const QaLoginHook = ({ s }) => {
   const { signIn, setRole, refreshLevel } = useAuth();
   const [token, setToken] = useState('');
   const [busy, setBusy] = useState(false);
@@ -208,6 +208,8 @@ const QaLoginHook = () => {
 };
 
 export default function OnboardingV2Screen({ navigation }) {
+  const _b = useBrand();
+  const s = React.useMemo(() => makeStyles(_b), [_b]);
   const { t } = useI18n();
   const { toast } = useToast();
   const { ensureGuest } = useAuth();
@@ -260,6 +262,7 @@ export default function OnboardingV2Screen({ navigation }) {
       >
         <View style={{ width: SCREEN_W }}>
           <Slide
+            s={s}
             source={HERO_SLIDE_1}
             imageAspect={ASPECT_S1}
             win={WINDOW_S1}
@@ -269,6 +272,7 @@ export default function OnboardingV2Screen({ navigation }) {
         </View>
         <View style={{ width: SCREEN_W }}>
           <Slide
+            s={s}
             source={HERO_SLIDE_2}
             imageAspect={ASPECT_S2}
             win={WINDOW_S2}
@@ -278,6 +282,7 @@ export default function OnboardingV2Screen({ navigation }) {
         </View>
         <View style={{ width: SCREEN_W }}>
           <Slide
+            s={s}
             source={HERO_SLIDE_3}
             imageAspect={ASPECT_S3}
             win={WINDOW_S3}
@@ -344,13 +349,13 @@ export default function OnboardingV2Screen({ navigation }) {
           <Text style={s.consentLink}>{t('onb_v2_consent_privacy')}</Text>
         </Text>
 
-        {QA_HOOK_ALLOWED ? <QaLoginHook /> : null}
+        {QA_HOOK_ALLOWED ? <QaLoginHook s={s} /> : null}
       </View>
     </SafeAreaView>
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (brand) => StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: brand.bg,

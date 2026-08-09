@@ -23,6 +23,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
+import { useV1Colors } from '../../theme/designV1';
 import { useToast } from '../../components/Toast';
 import { regAPI } from '../../utils/registration';
 import ConsentRow from '../../components/ConsentRow';
@@ -35,10 +36,12 @@ const ACCENT = {
 };
 
 export default function PremiumRegisterScreen({ navigation, route }) {
+  const c = useV1Colors();
+  const s = React.useMemo(() => makeStyles(c), [c]);
   const { t } = useI18n();
   const { toast } = useToast();
   const role = route?.params?.role === 'client' ? 'client' : 'driver';
-  const accent = ACCENT[role];
+  const accent = { main: c.driver, deep: c.driverDeep, soft: c.driverSoft, glow: c.driverGlow, onAccent: c.driverOnAccent };
 
   const [phone, setPhone] = useState('+7');
   const [consent, setConsent] = useState(false);
@@ -193,10 +196,10 @@ export default function PremiumRegisterScreen({ navigation, route }) {
               onChangeText={onChangePhone}
               style={[
                 s.input,
-                { borderColor: error ? '#D64545' : (validPhone ? accent.main : '#E5ECE8') },
+                { borderColor: error ? '#D64545' : (validPhone ? accent.main : c.border) },
               ]}
               placeholder={t('prem_reg_phone_placeholder')}
-              placeholderTextColor="#6B7A71"
+              placeholderTextColor={c.placeholder}
               keyboardType="phone-pad"
               // Stage 46 P0 fix: на web rn-web НЕ всегда транслирует
               // keyboardType="phone-pad" в HTML inputMode. Без явного
@@ -287,8 +290,8 @@ export default function PremiumRegisterScreen({ navigation, route }) {
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F6F8F7' },
+const makeStyles = (c) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   flex: { flex: 1 },
   scroll: { flexGrow: 1, paddingHorizontal: 22, paddingBottom: 24 },
 
@@ -302,10 +305,10 @@ const s = StyleSheet.create({
   backBtn: {
     width: 36, height: 36, borderRadius: 18,
     alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(20,34,28,0.04)',
-    borderWidth: 1, borderColor: 'rgba(20,34,28,0.10)',
+    backgroundColor: c.surfaceMuted,
+    borderWidth: 1, borderColor: c.border,
   },
-  backIcon: { color: '#14221C', fontSize: 20, fontWeight: '700', lineHeight: 22 },
+  backIcon: { color: c.text, fontSize: 20, fontWeight: '700', lineHeight: 22 },
   roleBadge: {
     paddingHorizontal: 12, paddingVertical: 6,
     borderRadius: 999, borderWidth: 1,
@@ -314,21 +317,21 @@ const s = StyleSheet.create({
 
   brandRow: { marginBottom: 24 },
   brand: {
-    color: '#14221C',
+    color: c.text,
     fontSize: 28,
     fontWeight: '900',
     letterSpacing: -0.5,
   },
 
   title: {
-    color: '#14221C',
+    color: c.text,
     fontSize: 26,
     fontWeight: '800',
     letterSpacing: -0.5,
     marginBottom: 8,
   },
   subtitle: {
-    color: '#617067',
+    color: c.textMuted,
     fontSize: 14,
     fontWeight: '500',
     lineHeight: 20,
@@ -337,7 +340,7 @@ const s = StyleSheet.create({
 
   fieldBlock: { marginBottom: 4 },
   label: {
-    color: '#617067',
+    color: c.textMuted,
     fontSize: 12,
     fontWeight: '700',
     letterSpacing: 0.5,
@@ -345,13 +348,13 @@ const s = StyleSheet.create({
     marginBottom: 8,
   },
   input: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E5ECE8',
+    backgroundColor: c.surface,
+    borderColor: c.border,
     borderWidth: 1,
     borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 16,
-    color: '#14221C',
+    color: c.text,
     fontSize: 18,
     fontWeight: '700',
     letterSpacing: 0.5,
@@ -387,14 +390,14 @@ const s = StyleSheet.create({
     alignItems: 'center',
   },
   cooldownTitle: {
-    color: '#14221C',
+    color: c.text,
     fontSize: 14,
     fontWeight: '800',
     marginBottom: 4,
     textAlign: 'center',
   },
   cooldownBody: {
-    color: '#617067',
+    color: c.textMuted,
     fontSize: 13,
     fontWeight: '500',
     textAlign: 'center',
@@ -415,6 +418,6 @@ const s = StyleSheet.create({
     marginTop: 20,
     paddingVertical: 8,
   },
-  loginMuted: { color: '#617067', fontSize: 13, fontWeight: '500' },
+  loginMuted: { color: c.textMuted, fontSize: 13, fontWeight: '500' },
   loginLink: { fontWeight: '800' },
 });

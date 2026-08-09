@@ -63,7 +63,7 @@ curl http://185.22.65.11:8001/api/v1/system/info   # статус OTP/face/stora
 - Другие API-модули: `chatAPI.js`, `notificationsAPI.js`, `reviews.js`, `registration.js`, `push.js`, `pushNotifications.js`, `security.js`.
 
 ### UI-слои
-- `src/utils/ThemeContext.js` — редизайн 08.08.2026 (приказ владельца): приложение работает в ЕДИНОЙ светлой B2B-теме, `isDark` зафиксирован в `false`. Тёмная палитра сохранена в коде только для возможного отката.
+- `src/utils/ThemeContext.js` — РАБОЧИЙ переключатель light/dark (P1-фикс 08-2026). `themeMode` = `'system'|'light'|'dark'` (ручной выбор в приоритете над OS, `resolveTheme()` — чистая, юнит-тестируется в `tests/unit/themeResolve.test.mjs`), персист в `storage['ur_theme']`, синхронный no-flash boot в `<head>` (deploy.yml) + `data-theme`/`meta[theme-color]`. Экраны берут цвета через `useV1Colors()` (designV1) / `useTheme()` / `useBrand()` (brandV2) — реагируют в рантайме. Обе палитры WCAG-чистые (`qa/utils/themeContrastSmoke.js`). DARK-канон: bg `#0F1512`, surface `#151E19`, text `#F3F7F4`, зелёный CTA `#168759`+белый (4.52:1), accent-текст `#2FBE7E`.
 - `src/utils/AuthContext.js` — источник истины для `session`, `hasToken`, `hasRole`, `loading`.
 - `src/utils/i18n.js` + `useI18n.js` — 4 языка (RU/KK/ZH/EN), ~1575 ключей (симметрично по всем языкам). Все пользовательские тексты обязаны идти через `t(...)`.
 - `src/components/` — переиспользуемые компоненты (Toast, ShimmerButton, PressableScale, BidModal, RatingModal, ShareModal, VerificationGate, SecurityBadge, RouteMap и т.д.).
