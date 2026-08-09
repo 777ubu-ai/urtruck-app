@@ -485,7 +485,7 @@ export default function CreateCargoScreen({ navigation, route }) {
         loading={submitting}
         accent="cargo"
         testID="cargo-submit-button"
-        style={{ marginTop: v1Spacing.sm, height: 44, borderRadius: 10 }}
+        style={{ marginTop: v1Spacing.sm, minHeight: 52, borderRadius: 14 }}
       />
       {/* «Сохранить черновик» убран (2026-06-13): кнопка только тостила
           feature_coming_soon — мёртвое действие на экране публикации. Вернём,
@@ -493,4 +493,3 @@ export default function CreateCargoScreen({ navigation, route }) {
     </Screen>
   );
 }
-

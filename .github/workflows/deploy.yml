@@ -73,7 +73,7 @@ jobs:
           # Тот же приём, что в deploy.sh: localStorage-версия проверяется
           # синхронно при загрузке, при несовпадении — чистим caches API,
           # снимаем регистрацию SW и делаем один принудительный reload.
-          # Версия кэша (v10-market) совпадает с CACHE/STATIC_CACHE в
+          # Версия кэша (v12-market) совпадает с CACHE/STATIC_CACHE в
           # sw-template.js — держать в одном шаге при следующем бампе.
           # v8 (05.08.2026): предыдущий баг класса — V бампался один раз
           # (v6→v7 в 158b612), а все ПОСЛЕДУЮЩИЕ деплои того же дня оставляли
@@ -87,7 +87,7 @@ jobs:
           # сработает.
           bootstrap = '''<script>
           (async()=>{
-            const V='v10-market';
+            const V='v12-market';
             const cur=localStorage.getItem('ur_sw_v');
             if(cur!==V){
               if('caches' in window){const ks=await caches.keys();await Promise.all(ks.map(k=>caches.delete(k)))}
@@ -98,7 +98,7 @@ jobs:
             }
             if('serviceWorker' in navigator){
               try{
-                const reg=await navigator.serviceWorker.register('/sw.js?v=10');
+                const reg=await navigator.serviceWorker.register('/sw.js?v=12');
                 if(reg.waiting){reg.waiting.postMessage({type:'SKIP_WAITING'})}
                 reg.addEventListener('updatefound',()=>{
                   const nw=reg.installing;

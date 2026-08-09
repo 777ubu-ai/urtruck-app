@@ -6,7 +6,7 @@ import { useV1Colors, v1Radius, v1Typography } from '../../../theme/designV1';
 export default function PrimaryButton({ label, onPress, loading, disabled, accent = 'driver', style, testID }) {
   const colors = useV1Colors();
   const color = accent === 'cargo' ? colors.cargoOwner : colors.driver;
-  const textColor = colors.driverOnAccent;
+  const textColor = color;
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -15,9 +15,8 @@ export default function PrimaryButton({ label, onPress, loading, disabled, accen
       accessibilityRole="button"
       testID={testID}
       style={[s.btn, {
-        backgroundColor: color,
+        backgroundColor: colors.surface,
         borderColor: color,
-        shadowColor: color,
         opacity: disabled ? 0.48 : 1,
       }, style]}
     >
@@ -34,10 +33,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowOpacity: 0.16,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 3,
+    // Один современный стиль с кнопками действий: белый фон, цветной контур.
   },
   text: { ...v1Typography.button, color: undefined, fontSize: 15, fontWeight: '700', letterSpacing: 0.15 },
 });

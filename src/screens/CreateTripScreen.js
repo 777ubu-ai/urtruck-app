@@ -371,7 +371,7 @@ export default function CreateTripScreen({ navigation, route }) {
         loading={submitting}
         accent="driver"
         testID="trip-submit-button"
-        style={{ marginTop: v1Spacing.sm, height: 44, borderRadius: 10 }}
+        style={{ marginTop: v1Spacing.sm, minHeight: 52, borderRadius: 14 }}
       />
 
       {/* Draft link — backend doesn't accept status='draft' yet, so this is
@@ -382,4 +382,3 @@ export default function CreateTripScreen({ navigation, route }) {
     </Screen>
   );
 }
-

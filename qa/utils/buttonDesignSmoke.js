@@ -16,14 +16,14 @@ const cargo = read('src/screens/CargoDetail.js');
 const trip = read('src/screens/TripDetail.js');
 
 expect(primary, "maxWidth: 520", 'PrimaryCTA must stay readable on wide screens');
-expect(primary, "minHeight: 48", 'PrimaryCTA tap target must be at least 48px');
+expect(primary, "minHeight: 52", 'PrimaryCTA must use the standard 52px action height');
 expect(primary, "fullWidth = false", 'PrimaryCTA must explicitly opt into unlimited width');
 expect(primary, "alignSelf: 'center'", 'PrimaryCTA must be centered on wide screens');
 expect(secondary, "maxWidth: 420", 'SecondaryButton must stay compact on wide screens');
-expect(secondary, "minHeight: 48", 'SecondaryButton tap target must be at least 48px');
+expect(secondary, "minHeight: 52", 'SecondaryButton must use the standard 52px action height');
 expect(secondary, "fullWidth = false", 'SecondaryButton must explicitly opt into full width');
 expect(destructive, "maxWidth: 420", 'DestructiveButton must stay compact on wide screens');
-expect(destructive, "minHeight: 44", 'DestructiveButton tap target must be at least 44px');
+expect(destructive, "minHeight: 52", 'DestructiveButton must use the standard 52px action height');
 expect(primary, 'accessibilityRole="button"', 'PrimaryCTA must expose the button role');
 expect(primary, 'accessibilityState={{ disabled: isDisabled, busy: loading }}', 'PrimaryCTA must expose disabled and busy states');
 expect(secondary, 'accessibilityLabel={label}', 'SecondaryButton must expose its visible label');

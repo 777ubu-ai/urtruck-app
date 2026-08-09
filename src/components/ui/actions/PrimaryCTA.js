@@ -4,11 +4,16 @@
 
 import React from 'react';
 import { TouchableOpacity, Text, ActivityIndicator, StyleSheet, View } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 import { v1AccentFor } from '../../../theme/designV1';
+import { useTheme } from '../../../utils/ThemeContext';
 import { SAFE_BUTTON_STYLE, SAFE_ROW_STYLE, SAFE_ICON_STYLE, SAFE_LABEL_STYLE, safeFontSize } from './safeButtonStyles';
 
-const SUCCESS_GREEN = '#168759';
-const SUCCESS_ON = '#FFFFFF';
+const ICONS = {
+  '✓': 'check',
+  '💬': 'message-circle',
+  '📞': 'phone',
+};
 
 export default function PrimaryCTA({
   label,
@@ -24,8 +29,8 @@ export default function PrimaryCTA({
   numberOfLines = 1,
 }) {
   const accent = v1AccentFor(role);
-  const bg = success ? SUCCESS_GREEN : accent.main;
-  const fg = success ? SUCCESS_ON : accent.onAccent;
+  const { theme } = useTheme();
+  const fg = accent.main;
   const isDisabled = disabled || loading || success;
 
   return (
@@ -33,7 +38,11 @@ export default function PrimaryCTA({
       style={[
         s.btn,
         fullWidth ? s.fullWidth : s.responsiveWidth,
-        { backgroundColor: bg, opacity: (disabled && !success) || loading ? 0.55 : 1 },
+        {
+          backgroundColor: theme.card,
+          borderColor: accent.main,
+          opacity: (disabled && !success) || loading ? 0.55 : 1,
+        },
         style,
       ]}
       onPress={success ? undefined : onPress}
@@ -49,7 +58,7 @@ export default function PrimaryCTA({
         <ActivityIndicator color={fg} size="small" />
       ) : (
         <View style={s.row}>
-          {icon ? <Text style={[s.icon, { color: fg }]}>{icon}</Text> : null}
+          {icon ? <Feather name={ICONS[icon] || icon} size={20} color={fg} style={s.icon} /> : null}
           <Text style={[s.label, { color: fg }]} numberOfLines={numberOfLines} ellipsizeMode="tail">{label}</Text>
         </View>
       )}
@@ -60,16 +69,13 @@ export default function PrimaryCTA({
 const s = StyleSheet.create({
   btn: {
     ...SAFE_BUTTON_STYLE,
-    minHeight: 48,
-    borderRadius: 12,
+    minHeight: 52,
+    borderRadius: 14,
+    borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 16,
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
+    // Белая кнопка с аккуратным контуром: без тяжёлой заливки и теней.
   },
   responsiveWidth: {
     width: '100%',
@@ -81,6 +87,6 @@ const s = StyleSheet.create({
     alignSelf: 'stretch',
   },
   row: { ...SAFE_ROW_STYLE, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
-  icon: { ...SAFE_ICON_STYLE, fontSize: safeFontSize(14), fontWeight: '700' },
-  label: { ...SAFE_LABEL_STYLE, fontSize: safeFontSize(14), fontWeight: '800', textAlign: 'center' },
+  icon: { ...SAFE_ICON_STYLE },
+  label: { ...SAFE_LABEL_STYLE, fontSize: safeFontSize(16), fontWeight: '700', textAlign: 'center' },
 });

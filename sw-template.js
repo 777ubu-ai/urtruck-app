@@ -3,8 +3,8 @@
 // v11 (09.08.2026): theme-switch release. Every frontend release that must
 // reach already-installed PWA clients bumps the cache epoch so the new bundle
 // cannot remain hidden behind an older service-worker cache.
-const CACHE = 'urtruck-v11-market';
-const STATIC_CACHE = 'urtruck-static-v11';
+const CACHE = 'urtruck-v12-market';
+const STATIC_CACHE = 'urtruck-static-v12';
 
 self.addEventListener('install', (e) => {
   // Сразу активируем новый SW без ожидания закрытия вкладок

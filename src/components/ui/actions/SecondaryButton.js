@@ -3,9 +3,17 @@
 
 import React from 'react';
 import { TouchableOpacity, Text, StyleSheet, View } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 import { v1AccentFor } from '../../../theme/designV1';
 import { useTheme } from '../../../utils/ThemeContext';
 import { SAFE_BUTTON_STYLE, SAFE_ROW_STYLE, SAFE_ICON_STYLE, SAFE_LABEL_STYLE, safeFontSize } from './safeButtonStyles';
+
+const ICONS = {
+  '🔁': 'repeat',
+  '✏️': 'edit-2',
+  '💬': 'message-circle',
+  '📞': 'phone',
+};
 
 export default function SecondaryButton({
   label,
@@ -25,7 +33,7 @@ export default function SecondaryButton({
       style={[
         s.btn,
         fullWidth ? s.fullWidth : s.compact,
-        { borderColor: theme.border, opacity: disabled ? 0.55 : 1 },
+        { backgroundColor: theme.card, borderColor: accent.main, opacity: disabled ? 0.55 : 1 },
         style,
       ]}
       onPress={onPress}
@@ -38,8 +46,8 @@ export default function SecondaryButton({
       hitSlop={4}
     >
       <View style={s.row}>
-        {icon ? <Text style={[s.icon, { color: accent.main }]}>{icon}</Text> : null}
-        <Text style={[s.label, { color: theme.text }]} numberOfLines={numberOfLines} ellipsizeMode="tail">{label}</Text>
+        {icon ? <Feather name={ICONS[icon] || icon} size={20} color={accent.main} style={s.icon} /> : null}
+        <Text style={[s.label, { color: accent.main }]} numberOfLines={numberOfLines} ellipsizeMode="tail">{label}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -48,10 +56,10 @@ export default function SecondaryButton({
 const s = StyleSheet.create({
   btn: {
     ...SAFE_BUTTON_STYLE,
-    height: 48,
-    minHeight: 48,
-    borderRadius: 12,
-    borderWidth: 1,
+    height: 52,
+    minHeight: 52,
+    borderRadius: 14,
+    borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 18,
@@ -71,6 +79,6 @@ const s = StyleSheet.create({
     flexShrink: 1,
   },
   row: { ...SAFE_ROW_STYLE, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
-  icon: { ...SAFE_ICON_STYLE, fontSize: safeFontSize(16) },
-  label: { ...SAFE_LABEL_STYLE, fontSize: safeFontSize(14), fontWeight: '700', textAlign: 'center' },
+  icon: { ...SAFE_ICON_STYLE },
+  label: { ...SAFE_LABEL_STYLE, fontSize: safeFontSize(16), fontWeight: '700', textAlign: 'center' },
 });

@@ -5,9 +5,16 @@
 
 import React from 'react';
 import { TouchableOpacity, Text, ActivityIndicator, StyleSheet, View } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
+import { useTheme } from '../../../utils/ThemeContext';
 import { SAFE_BUTTON_STYLE, SAFE_ROW_STYLE, SAFE_ICON_STYLE, SAFE_LABEL_STYLE, safeFontSize } from './safeButtonStyles';
 
 const RED = '#EF4444';
+const ICONS = {
+  '✕': 'x',
+  '↩': 'corner-up-left',
+  '⊘': 'trash-2',
+};
 
 export default function DestructiveButton({
   label,
@@ -21,12 +28,13 @@ export default function DestructiveButton({
   fullWidth = false,
 }) {
   const isDisabled = disabled || loading;
+  const { theme } = useTheme();
   return (
     <TouchableOpacity
       style={[
         s.btn,
         fullWidth ? s.fullWidth : s.compact,
-        { borderColor: RED, opacity: isDisabled ? 0.55 : 1 },
+        { backgroundColor: theme.card, borderColor: RED, opacity: isDisabled ? 0.55 : 1 },
         style,
       ]}
       onPress={onPress}
@@ -42,7 +50,7 @@ export default function DestructiveButton({
         <ActivityIndicator color={RED} size="small" />
       ) : (
         <View style={s.row}>
-          {icon ? <Text style={[s.icon, { color: RED }]}>{icon}</Text> : null}
+          {icon ? <Feather name={ICONS[icon] || icon} size={20} color={RED} style={s.icon} /> : null}
           <Text style={[s.label, { color: RED }]} numberOfLines={numberOfLines} ellipsizeMode="tail">{label}</Text>
         </View>
       )}
@@ -53,10 +61,10 @@ export default function DestructiveButton({
 const s = StyleSheet.create({
   btn: {
     ...SAFE_BUTTON_STYLE,
-    height: 44,
-    minHeight: 44,
-    borderRadius: 10,
-    borderWidth: 1,
+    height: 52,
+    minHeight: 52,
+    borderRadius: 14,
+    borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 14,
@@ -76,6 +84,6 @@ const s = StyleSheet.create({
     flexShrink: 1,
   },
   row: { ...SAFE_ROW_STYLE, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
-  icon: { ...SAFE_ICON_STYLE, fontSize: safeFontSize(12), fontWeight: '700' },
-  label: { ...SAFE_LABEL_STYLE, fontSize: safeFontSize(13), fontWeight: '700', textAlign: 'center' },
+  icon: { ...SAFE_ICON_STYLE },
+  label: { ...SAFE_LABEL_STYLE, fontSize: safeFontSize(16), fontWeight: '700', textAlign: 'center' },
 });
