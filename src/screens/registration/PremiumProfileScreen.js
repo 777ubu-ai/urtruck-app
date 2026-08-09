@@ -23,6 +23,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
+import { useV1Colors } from '../../theme/designV1';
 import { useAuth } from '../../utils/AuthContext';
 import { useToast } from '../../components/Toast';
 import { saveProfile } from '../../utils/store';
@@ -34,11 +35,13 @@ const ACCENT = {
 };
 
 export default function PremiumProfileScreen({ navigation, route }) {
+  const c = useV1Colors();
+  const s = React.useMemo(() => makeStyles(c), [c]);
   const { t } = useI18n();
   const { session, setRole, refreshLevel } = useAuth();
   const { toast } = useToast();
   const role = route?.params?.role === 'client' ? 'client' : 'driver';
-  const accent = ACCENT[role];
+  const accent = { main: c.driver, deep: c.driverDeep, soft: c.driverSoft, glow: c.driverGlow, onAccent: c.driverOnAccent };
   const phone = route?.params?.phone || session?.user?.phone || '';
 
   const [name, setName] = useState('');
@@ -125,10 +128,10 @@ export default function PremiumProfileScreen({ navigation, route }) {
               onChangeText={(v) => { setName(v); setNameErr(''); }}
               style={[
                 s.input,
-                { borderColor: nameErr ? '#D64545' : (validName ? accent.main : '#E5ECE8') },
+                { borderColor: nameErr ? '#D64545' : (validName ? accent.main : c.border) },
               ]}
               placeholder={t('prem_reg_profile_name_placeholder')}
-              placeholderTextColor="#6B7A71"
+              placeholderTextColor={c.placeholder}
               autoFocus
               maxLength={64}
               testID="prem-reg-profile-name"
@@ -141,9 +144,9 @@ export default function PremiumProfileScreen({ navigation, route }) {
             <TextInput
               value={city}
               onChangeText={setCity}
-              style={[s.input, { borderColor: '#E5ECE8' }]}
+              style={[s.input, { borderColor: c.border }]}
               placeholder={t('prem_reg_profile_city_placeholder')}
-              placeholderTextColor="#6B7A71"
+              placeholderTextColor={c.placeholder}
               maxLength={48}
               testID="prem-reg-profile-city"
             />
@@ -181,8 +184,8 @@ export default function PremiumProfileScreen({ navigation, route }) {
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F6F8F7' },
+const makeStyles = (c) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   flex: { flex: 1 },
   scroll: { flexGrow: 1, paddingHorizontal: 22, paddingBottom: 24 },
 
@@ -200,14 +203,14 @@ const s = StyleSheet.create({
   roleBadgeText: { fontSize: 12, fontWeight: '800' },
 
   title: {
-    color: '#14221C',
+    color: c.text,
     fontSize: 26,
     fontWeight: '800',
     letterSpacing: -0.5,
     marginBottom: 8,
   },
   subtitle: {
-    color: '#617067',
+    color: c.textMuted,
     fontSize: 14,
     fontWeight: '500',
     lineHeight: 20,
@@ -216,7 +219,7 @@ const s = StyleSheet.create({
 
   fieldBlock: { marginBottom: 16 },
   label: {
-    color: '#617067',
+    color: c.textMuted,
     fontSize: 12,
     fontWeight: '700',
     letterSpacing: 0.5,
@@ -224,13 +227,13 @@ const s = StyleSheet.create({
     marginBottom: 8,
   },
   input: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E5ECE8',
+    backgroundColor: c.surface,
+    borderColor: c.border,
     borderWidth: 1,
     borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 16,
-    color: '#14221C',
+    color: c.text,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -255,5 +258,5 @@ const s = StyleSheet.create({
     marginTop: 14,
     paddingVertical: 12,
   },
-  skipText: { color: '#617067', fontSize: 14, fontWeight: '600' },
+  skipText: { color: c.textMuted, fontSize: 14, fontWeight: '600' },
 });

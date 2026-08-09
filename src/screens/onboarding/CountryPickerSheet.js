@@ -23,10 +23,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
-import { brand, radius, space, typography } from '../../theme/brandV2';
+import { brand, useBrand, radius, space, typography } from '../../theme/brandV2';
 import { COUNTRIES, POPULAR_ISO, searchCountries } from '../../utils/countries';
 
-const Row = ({ country, onPress }) => (
+const Row = ({ s, country, onPress }) => (
   <Pressable
     onPress={onPress}
     style={({ pressed }) => [
@@ -43,6 +43,8 @@ const Row = ({ country, onPress }) => (
 );
 
 export default function CountryPickerSheet({ navigation, route }) {
+  const _b = useBrand();
+  const s = React.useMemo(() => makeStyles(_b), [_b]);
   const { t } = useI18n();
   const [query, setQuery] = useState('');
   const onSelect = route?.params?.onSelect;
@@ -127,7 +129,7 @@ export default function CountryPickerSheet({ navigation, route }) {
           item.type === 'header' ? (
             <Text style={s.sectionTitle}>{item.title}</Text>
           ) : (
-            <Row country={item.country} onPress={() => handlePick(item.country)} />
+            <Row s={s} country={item.country} onPress={() => handlePick(item.country)} />
           )
         }
         ItemSeparatorComponent={null}
@@ -143,7 +145,7 @@ export default function CountryPickerSheet({ navigation, route }) {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (brand) => StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: brand.bg,

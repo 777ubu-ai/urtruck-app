@@ -8,7 +8,7 @@
 // в логотипе, GREEN primary CTA (как в inDrive — зелёная кнопка
 // "Продолжить"). Outline secondary CTA — navy border + navy text.
 
-export const brand = {
+const brandLight = {
   // Backgrounds
   bg: '#FFFFFF',
   surface: '#FFFFFF',
@@ -83,4 +83,66 @@ export const typography = {
   button: { fontSize: 17, lineHeight: 22, fontWeight: '700' },
 };
 
-export default { brand, radius, space, typography };
+// DARK-вариант brand-токенов (redesign 2026-08). Синхронизирован с DARK в
+// designV1.js (единый канон тёмной темы). WCAG прогнан в scratchpad/dark2.js.
+export const brandDark = {
+  bg: '#0F1512',
+  surface: '#151E19',
+  surfaceMuted: '#202C25',
+  surfaceSoft: '#1B2620',
+
+  textPrimary: '#F3F7F4',
+  textSecondary: '#B7C3BB',
+  textTertiary: '#9EAAA2',
+  textOnPrimary: '#FFFFFF',
+
+  logoDark: '#F3F7F4',   // «Ur» на тёмном фоне — светлый
+  logoAccent: '#FF9A3D',
+
+  primary: '#168759',
+  primaryHover: '#0F6B47',
+  primarySoft: 'rgba(47,190,126,0.14)',
+
+  accent: '#FF9A3D',
+  accentHover: '#E06D00',
+  accentSoft: 'rgba(255,154,61,0.16)',
+
+  border: '#2A3930',
+  borderStrong: '#3A4C41',
+  divider: '#202C25',
+
+  success: '#63D69A',
+  warning: '#F5B75B',
+  error: '#FF7B7B',
+  info: '#5BA3F5',
+
+  mapGray: '#2A3930',
+  routeOrange: '#FF9A3D',
+  routeGreen: '#63D69A',
+};
+
+// Модульный флаг текущей темы. Обновляется синхронно в useBrand() во время
+// render экрана — ДО render дочерних компонентов, поэтому Proxy ниже отдаёт
+// правильные значения и во вложенных helper-компонентах.
+let _isDark = false;
+
+// Theme-aware hook — возвращает КОНКРЕТНЫЙ набор токенов (для makeStyles) и
+// побочно фиксирует _isDark для Proxy. Ленивый require ThemeContext, чтобы
+// избежать циклической зависимости на уровне модуля.
+export const useBrand = () => {
+  // eslint-disable-next-line global-require
+  const { useTheme } = require('../utils/ThemeContext');
+  const { isDark } = useTheme();
+  _isDark = isDark;
+  return isDark ? brandDark : brandLight;
+};
+
+// Theme-reactive Proxy: любой `brand.xxx` (inline JSX, helper-компоненты)
+// резолвится в текущую палитру на момент доступа (в render). Статические
+// module-level StyleSheet.create БЛОКИ так не оживают — их обязательно
+// оборачивать в makeStyles(brand) и вызывать с useBrand() в render.
+export const brand = new Proxy({}, {
+  get: (_t, prop) => (_isDark ? brandDark : brandLight)[prop],
+});
+
+export default { brand, brandLight, brandDark, useBrand, radius, space, typography };

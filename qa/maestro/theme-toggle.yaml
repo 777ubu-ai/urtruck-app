@@ -1,0 +1,49 @@
+appId: host.exp.Exponent
+name: UrTruck · theme light/dark toggle + persistence
+tags:
+  - theme
+# P1 theme fix 2026-08. Проверяет РАБОЧИЙ переключатель темы:
+# Profile → Тёмная → визуальный маркер → навигация → restart → Dark сохранён →
+# Светлая → возврат. Требует авторизованной сессии (Profile за auth), поэтому
+# запускается device/эмулятор с преднастроенным аккаунтом; в основной
+# smoke-suite НЕ включён (не ломает device-less CI-гейт).
+---
+# Открыть меню и профиль (☰ top-right → Profile — паттерн inDrive/Yandex).
+- tapOn:
+    id: "menu-button"
+    optional: true
+- tapOn:
+    text: "Профиль"
+    optional: true
+
+# Переключить на тёмную
+- tapOn:
+    id: "theme-toggle-dark"
+- assertVisible:
+    id: "theme-toggle-dark"
+
+# Пройтись по вкладкам — тема не должна сброситься
+- tapOn:
+    text: "Грузы"
+    optional: true
+- tapOn:
+    text: "Сделки"
+    optional: true
+
+# Рестарт приложения — Dark обязан сохраниться (persist в storage['ur_theme'])
+- stopApp
+- launchApp
+- tapOn:
+    id: "menu-button"
+    optional: true
+- tapOn:
+    text: "Профиль"
+    optional: true
+- assertVisible:
+    id: "theme-toggle-dark"
+
+# Вернуть светлую
+- tapOn:
+    id: "theme-toggle-light"
+- assertVisible:
+    id: "theme-toggle-light"

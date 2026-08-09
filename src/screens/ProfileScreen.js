@@ -419,6 +419,10 @@ export default function ProfileScreen({ navigation, route }) {
             <Text style={[s.settingLabel, { color: theme.text }]}>{t('theme_label')}</Text>
             <View style={{ flexDirection: 'row', gap: 6 }}>
               <TouchableOpacity
+                testID="theme-toggle-light"
+                accessibilityRole="button"
+                accessibilityState={{ selected: !isDark }}
+                accessibilityLabel={t('theme_light')}
                 style={[s.themeBtn, { backgroundColor: isDark ? 'transparent' : accent, borderColor: isDark ? theme.border : accent }]}
                 onPress={() => { if (isDark) toggleTheme(); }}
               >
@@ -428,6 +432,10 @@ export default function ProfileScreen({ navigation, route }) {
                 </View>
               </TouchableOpacity>
               <TouchableOpacity
+                testID="theme-toggle-dark"
+                accessibilityRole="button"
+                accessibilityState={{ selected: isDark }}
+                accessibilityLabel={t('theme_dark')}
                 style={[s.themeBtn, { backgroundColor: isDark ? accent : 'transparent', borderColor: isDark ? accent : theme.border }]}
                 onPress={() => { if (!isDark) toggleTheme(); }}
               >

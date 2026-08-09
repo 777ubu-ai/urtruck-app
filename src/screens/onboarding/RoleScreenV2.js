@@ -22,9 +22,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
 import { useAuth } from '../../utils/AuthContext';
-import { brand, radius, typography } from '../../theme/brandV2';
+import { brand, useBrand, radius, typography } from '../../theme/brandV2';
 
 const RoleCard = ({
+  s,
   icon, iconColor, title, description, selected, onPress, testID,
 }) => (
   <Pressable
@@ -57,6 +58,8 @@ const RoleCard = ({
 );
 
 export default function RoleScreenV2({ navigation, route }) {
+  const _b = useBrand();
+  const s = React.useMemo(() => makeStyles(_b), [_b]);
   const { t } = useI18n();
   const { setRole } = useAuth();
   const phone = route?.params?.phone;
@@ -87,6 +90,7 @@ export default function RoleScreenV2({ navigation, route }) {
 
         <View style={s.cardsCol}>
           <RoleCard
+            s={s}
             icon="truck"
             iconColor={brand.textPrimary}
             title={t('role_v2_driver')}
@@ -96,6 +100,7 @@ export default function RoleScreenV2({ navigation, route }) {
             testID="role-v2-driver"
           />
           <RoleCard
+            s={s}
             icon="package"
             iconColor={brand.accent}
             title={t('role_v2_client')}
@@ -126,7 +131,7 @@ export default function RoleScreenV2({ navigation, route }) {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (brand) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: brand.bg },
   header: {
     flexDirection: 'row',
