@@ -6,11 +6,9 @@ mock OTP / mock storage / default admin password. Real users would
 either get OTP codes only the operator can see (logs) or upload
 photos to a local FS that disappears on the next deploy.
 
-This guard is best-effort: it logs a clear list of missing /
-unsafe values at startup and (when `URTRUCK_FAIL_ON_BAD_ENV=1`)
-raises so the process supervisor refuses to bring the service up.
-PM2 / systemd / docker-compose will surface the failure instead of
-quietly running in mock mode.
+The guard refuses an unsafe production configuration at startup, so
+the process supervisor surfaces the problem instead of quietly running
+with mock or insecure user-data settings.
 
 Outside production (env not set, or set to `development` /
 `preview`) the guard only logs warnings — local dev shouldn't
@@ -20,6 +18,8 @@ from __future__ import annotations
 
 import os
 from typing import List
+
+from services.qa_token_guard import is_compromised_qa_agent_token
 
 
 def _is_unsafe_password(value: str) -> bool:
@@ -56,6 +56,16 @@ def collect_issues() -> List[str]:
         issues.append(
             "BETA_MODE: enabled in production env — universal OTP code (BETA_OTP_CODE) "
             "would let anyone log in with any phone. Unset BETA_MODE or set BETA_MODE=false."
+        )
+
+    # Documents and chat attachments use a different HMAC key from the API
+    # secret. Reusing an API key widens the blast radius; an absent/short key
+    # previously resulted in HMAC signatures made with an empty string.
+    signing_key = os.getenv("FILE_SIGNING_KEY", "")
+    if len(signing_key.encode("utf-8")) < 32:
+        issues.append(
+            "Files: FILE_SIGNING_KEY is missing or shorter than 32 bytes. "
+            "Generate a separate key with `openssl rand -hex 32`."
         )
 
     # Stage 22: Mobizon-specific config sanity. If SMS_PROVIDER says
@@ -103,6 +113,12 @@ def collect_issues() -> List[str]:
     if (os.getenv("URTRUCK_ADMIN_TOKEN") or "demo-admin-change-me") == "demo-admin-change-me":
         issues.append("API: URTRUCK_ADMIN_TOKEN still the demo default — set a real token.")
 
+    # A Maestro runner accidentally committed this privileged QA endpoint key.
+    # The source contains only its SHA-256 fingerprint; the old value must be
+    # replaced in the server secret store before the app can boot safely.
+    if is_compromised_qa_agent_token(os.getenv("QA_AGENT_TOKEN")):
+        issues.append("QA: QA_AGENT_TOKEN is compromised — rotate it in the secret store.")
+
     # CORS — production should not allow http://localhost or wildcard.
     cors = os.getenv("CORS_ORIGINS", "")
     if "*" in cors.split(","):
@@ -112,14 +128,11 @@ def collect_issues() -> List[str]:
 
 
 def enforce_production_env() -> None:
-    """Call from FastAPI startup. Logs warnings; raises on `URTRUCK_FAIL_ON_BAD_ENV=1`.
-
-    The guard only blocks the app when the operator explicitly
-    opts in (the env var) — this keeps existing single-server
-    deployments running while making the misconfiguration loud
-    in logs and in a `/healthz` style check.
-    """
-    env = (os.getenv("URTRUCK_ENV") or "").lower()
+    """Block startup when a production environment is unsafe."""
+    # An omitted environment name is production for a deployed service. This
+    # avoids the dangerous historical behaviour where forgetting one variable
+    # silently selected permissive development defaults on a public server.
+    env = (os.getenv("URTRUCK_ENV") or os.getenv("ENV") or "production").lower()
     if env != "production":
         # Don't fail dev / preview boots; just trace what's mock.
         provider = (os.getenv("STORAGE_PROVIDER") or "local").lower()
@@ -136,9 +149,11 @@ def enforce_production_env() -> None:
     for i in issues:
         print(f"  - {i}", flush=True)
 
-    if os.getenv("URTRUCK_FAIL_ON_BAD_ENV") == "1":
+    # In production the listed problems expose authentication or users' files;
+    # do not allow a deployment to continue merely because an optional flag
+    # was forgotten. Dev/preview is intentionally unaffected above.
+    if issues:
         raise RuntimeError(
-            "Refusing to start in production with bad config. "
-            "See [env-check] log lines above. Unset URTRUCK_FAIL_ON_BAD_ENV "
-            "to start anyway (not recommended)."
+            "Refusing to start in production with unsafe configuration. "
+            "See [env-check] log lines above and configure the missing values."
         )

@@ -28,6 +28,7 @@ import os
 
 # До любого импорта config/db/chat — единый DB_PATH на оба файла.
 os.environ["DB_PATH"] = "/tmp/urtruck_tests_badge_suite.db"
+os.environ.setdefault("FILE_SIGNING_KEY", "test-file-signing-key-32-bytes-minimum")
 
 from pathlib import Path
 import pytest

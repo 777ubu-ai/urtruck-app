@@ -19,7 +19,7 @@
     <key>CFBundlePackageType</key>
     <string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.5</string>
+    <string>1.0.6</string>
     <key>CFBundleSignature</key>
     <string>????</string>
     <key>CFBundleURLTypes</key>
@@ -33,7 +33,7 @@
       </dict>
     </array>
     <key>CFBundleVersion</key>
-    <string>2</string>
+    <string>3</string>
     <key>ITSAppUsesNonExemptEncryption</key>
     <false/>
     <key>LSMinimumSystemVersion</key>
@@ -50,9 +50,9 @@
     <key>NSCameraUsageDescription</key>
     <string>UrTruck использует камеру для селфи и фото документов</string>
     <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-    <string>Allow $(PRODUCT_NAME) to access your location</string>
+    <string>UrTruck передаёт позицию машины грузоотправителю только во время активного рейса, чтобы он видел, где находится груз.</string>
     <key>NSLocationAlwaysUsageDescription</key>
-    <string>Allow $(PRODUCT_NAME) to access your location</string>
+    <string>UrTruck передаёт позицию машины грузоотправителю только во время активного рейса, чтобы он видел, где находится груз.</string>
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>UrTruck показывает грузоотправителю, где сейчас находится его груз во время перевозки</string>
     <key>NSMicrophoneUsageDescription</key>
@@ -62,6 +62,7 @@
     <key>UIBackgroundModes</key>
     <array>
       <string>remote-notification</string>
+      <string>location</string>
     </array>
     <key>UILaunchStoryboardName</key>
     <string>SplashScreen</string>

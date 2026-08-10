@@ -775,13 +775,15 @@ def update_cargo(cargo_id: str, body: CargoPatchIn, user=Depends(require_level(1
 # открывается в браузере), TTL 7 дней. Секрет — как у file_signing.
 import hmac as _wb_hmac
 import hashlib as _wb_hashlib
-import os as _wb_os
 import time as _wb_time
 from fastapi.responses import HTMLResponse
+from services import file_signing as _wb_file_signing
 
 
 def _wb_secret() -> bytes:
-    return (_wb_os.getenv("FILE_SIGNING_KEY") or _wb_os.getenv("URTRUCK_API_SECRET") or "").encode("utf-8")
+    # Waybill links are private documents too. They deliberately use the
+    # dedicated file-signing key and never fall back to a generic API secret.
+    return _wb_file_signing._secret()
 
 
 def _wb_sig(deal_id: str, exp: int) -> str:
@@ -845,13 +847,21 @@ def waybill_link(deal_id: str, user=Depends(require_level(1))):
     if user["id"] not in (d["shipper_id"], d["driver_id"]):
         raise HTTPException(status_code=403)
     exp = int(_wb_time.time()) + 7 * 24 * 3600
-    return {"exp": exp, "sig": _wb_sig(deal_id, exp)}
+    try:
+        sig = _wb_sig(deal_id, exp)
+    except _wb_file_signing.FileSigningConfigurationError:
+        raise HTTPException(status_code=503, detail="Подпись документов не настроена")
+    return {"exp": exp, "sig": sig}
 
 
 @mp_router.get("/deals/{deal_id}/waybill")
 def waybill_html(deal_id: str, exp: int = 0, sig: str = ""):
     """Печатная накладная (HTML). Доступ по подписи exp+sig (TTL)."""
-    if not exp or exp < _wb_time.time() or not _wb_hmac.compare_digest(sig or "", _wb_sig(deal_id, exp)):
+    try:
+        signature_valid = bool(exp) and _wb_hmac.compare_digest(sig or "", _wb_sig(deal_id, exp))
+    except _wb_file_signing.FileSigningConfigurationError:
+        raise HTTPException(status_code=503, detail="Подпись документов не настроена")
+    if not exp or exp < _wb_time.time() or not signature_valid:
         raise HTTPException(status_code=403, detail="Ссылка недействительна или истекла")
     with get_conn() as c:
         d = c.execute("SELECT * FROM deals WHERE id = ?", (deal_id,)).fetchone()

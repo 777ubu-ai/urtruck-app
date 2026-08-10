@@ -3,6 +3,9 @@
 .env.local
 .env.production
 .env.*.local
+# Backend environment variants may contain real operator credentials.
+backend/.env.*
+!backend/.env.example
 
 # Dependencies
 node_modules/

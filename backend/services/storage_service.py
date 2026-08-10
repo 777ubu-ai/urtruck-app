@@ -1,4 +1,4 @@
-"""Storage service — локальный FS (default) + Supabase/S3 (optional).
+"""Storage service — приватный Supabase/S3 + локальный FS только для dev.
 
 Provider выбирается через env STORAGE_PROVIDER=local|supabase|s3.
 """
@@ -12,6 +12,8 @@ from typing import Optional
 import httpx
 
 PROVIDER = os.getenv("STORAGE_PROVIDER", "local")
+_RUNTIME_ENV = (os.getenv("URTRUCK_ENV") or os.getenv("ENV") or "production").strip().lower()
+_PROD = _RUNTIME_ENV == "production"
 
 # Local. Production keeps the existing server path. Tests, CI and local
 # development use a writable temporary directory unless explicitly configured.
@@ -87,12 +89,25 @@ def _save_s3(data: bytes, key: str) -> str:
 
 
 def save_image(data: bytes, category: str, ext: str = "jpg") -> str:
-    """Сохраняет изображение и возвращает публичный URL."""
+    """Сохраняет файл и возвращает ссылку.
+
+    In production a missing remote-storage configuration must never silently
+    fall back to the VPS disk. That fallback makes users believe documents are
+    durable when they can disappear with the next server replacement.
+    """
     key = _gen_key(category, ext)
-    if PROVIDER == "supabase" and SUPABASE_URL and SUPABASE_KEY:
+    if PROVIDER == "supabase":
+        if not (SUPABASE_URL and SUPABASE_KEY):
+            raise RuntimeError("Supabase Storage is not configured")
         return _save_supabase(data, key)
-    if PROVIDER == "s3" and S3_BUCKET:
+    if PROVIDER == "s3":
+        if not S3_BUCKET:
+            raise RuntimeError("S3 Storage is not configured")
         return _save_s3(data, key)
+    if PROVIDER != "local":
+        raise RuntimeError(f"Unsupported storage provider: {PROVIDER}")
+    if _PROD:
+        raise RuntimeError("Local storage is disabled in production")
     return _save_local(data, key)
 
 
