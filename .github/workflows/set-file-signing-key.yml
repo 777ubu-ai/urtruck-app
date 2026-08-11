@@ -1,0 +1,77 @@
+name: Set FILE_SIGNING_KEY (one-shot, prod)
+
+# ⚠️ ОДНОРАЗОВЫЙ workflow для закрытия главного merge-blocker (FILE_SIGNING_KEY).
+# Запускается ТОЛЬКО вручную (workflow_dispatch) — никакого авто-триггера.
+#
+# Threat model:
+#   * Секрет ГЕНЕРИРУЕТСЯ НА СЕРВЕРЕ (scripts/remote_set_signing_key.sh) —
+#     значение НЕ транзитит через runner, не попадает в logs/artifacts/Secrets.
+#   * Идемпотентно БЕЗ перезаписи существующего непустого ключа; дедуп пустой/
+#     дублей → ровно 1 строка (count-проверка). Backup c правами, атомарный mv,
+#     trap-очистка temp.
+#   * Health fail-closed (curl --fail + таймауты + PM2 online proof + crash-loop
+#     повтор). Никаких `curl -s | head`.
+#   * Значение секрета нигде не выводится (guard qa:signkey это проверяет).
+#   * Общий scripts/deploy-ssh.sh — тот же контур доступа, что и обычный деплой.
+#
+# ПОРЯДОК: запускать ДО деплоя PR #169 (fail-closed код), чтобы к моменту
+# выкладки ключ уже был на сервере. Health совместим с ТЕКУЩИМ прод-кодом
+# (system/info существует и до #169).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: urtruck-production-maintenance
+  cancel-in-progress: false
+
+jobs:
+  set-signing-key:
+    runs-on: ubuntu-latest
+    # production environment: если на нём настроены required reviewers —
+    # job ждёт approval перед prod-мутацией. Иначе ссылка безвредна.
+    environment: production
+    timeout-minutes: 12
+    env:
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_PASS: ${{ secrets.SERVER_PASS }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
+      BACKEND_DIR: ${{ secrets.BACKEND_DIR || '/home/ubuntu/urtruck-security' }}
+      PM2_PROC: urtruck-security-api
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install sshpass (fallback transport)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sshpass
+
+      - name: Set FILE_SIGNING_KEY on server (generated remotely, never printed)
+        run: |
+          set -euo pipefail
+          bash scripts/deploy-ssh.sh scp scripts/remote_set_signing_key.sh "$SERVER_USER@$SERVER_HOST:/tmp/urtruck_set_key.sh"
+          bash scripts/deploy-ssh.sh ssh "bash /tmp/urtruck_set_key.sh '$BACKEND_DIR'; rc=\$?; rm -f /tmp/urtruck_set_key.sh; exit \$rc"
+
+      - name: Controlled restart + fail-closed health + PM2 online
+        run: |
+          set -euo pipefail
+          bash scripts/deploy-ssh.sh scp scripts/remote_health_check.sh "$SERVER_USER@$SERVER_HOST:/tmp/urtruck_health.sh"
+          bash scripts/deploy-ssh.sh ssh "bash /tmp/urtruck_health.sh '$PM2_PROC'; rc=\$?; rm -f /tmp/urtruck_health.sh; exit \$rc"
+
+      - name: Verify signing readiness on server (NO secret output)
+        run: |
+          set -euo pipefail
+          bash scripts/deploy-ssh.sh scp scripts/signing_smoke.py "$SERVER_USER@$SERVER_HOST:/tmp/urtruck_signing_smoke.py"
+          bash scripts/deploy-ssh.sh scp scripts/remote_signing_verify.sh "$SERVER_USER@$SERVER_HOST:/tmp/urtruck_verify.sh"
+          bash scripts/deploy-ssh.sh ssh "bash /tmp/urtruck_verify.sh '$BACKEND_DIR'; rc=\$?; rm -f /tmp/urtruck_verify.sh; exit \$rc"
+
+      - name: Readiness note
+        run: |
+          echo "GREEN = FILE_SIGNING_KEY_COUNT=1 + PM2_STATUS=online + HEALTH=pass + SIGNING_SMOKE=ok."
+          echo "Значение секрета нигде не выводилось (генерируется и остаётся на сервере)."
