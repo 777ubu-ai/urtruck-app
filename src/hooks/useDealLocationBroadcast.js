@@ -1,9 +1,7 @@
-// useDealLocationBroadcast — водитель шлёт свою гео-позицию по активным
-// сделкам (задача B). Только нативно, только пока приложение в foreground,
-// только при наличии сделок «в работе». Фоновый GPS (когда приложение
-// закрыто) — отдельная итерация (expo-task-manager); сейчас обновляем,
-// пока водитель в приложении.
-import { useEffect, useRef } from 'react';
+// useDealLocationBroadcast — GPS передаётся только по сделкам, которые
+// водитель ЯВНО разрешил на сервере. Статус «сделка в работе» сам по себе
+// никогда не включает GPS.
+import { useEffect, useRef, useState } from 'react';
 import { Platform, AppState } from 'react-native';
 import { marketAPI } from '../utils/marketAPI';
 import { setActiveDealIds, startBackgroundTracking, stopBackgroundTracking } from '../utils/backgroundLocation';
@@ -12,11 +10,32 @@ const INTERVAL_MS = 25000;
 
 export function useDealLocationBroadcast(activeDealIds) {
   const idsRef = useRef([]);
-  idsRef.current = Array.isArray(activeDealIds) ? activeDealIds : [];
-  const key = idsRef.current.join(',');
+  const [permittedIds, setPermittedIds] = useState([]);
+  const candidateKey = (Array.isArray(activeDealIds) ? activeDealIds : []).join(',');
 
-  // Фоновый трекинг: список сделок кладём в storage (фоновая таска читает
-  // его сама), есть сделки → стартуем background updates, нет → стоп.
+  // Source of truth is /tracking/active, not the local deal list. Polling
+  // keeps a declined/stopped request from sending even if the app is still
+  // open, and starts promptly after a driver accepts from the deal chat.
+  useEffect(() => {
+    if (Platform.OS === 'web' || !candidateKey) {
+      setPermittedIds([]);
+      return undefined;
+    }
+    let alive = true;
+    const refresh = async () => {
+      const r = await marketAPI.activeTrackingDeals();
+      if (alive) setPermittedIds(Array.isArray(r?.deal_ids) ? r.deal_ids : []);
+    };
+    refresh();
+    const iv = setInterval(refresh, 15000);
+    return () => { alive = false; clearInterval(iv); };
+  }, [candidateKey]);
+
+  idsRef.current = permittedIds;
+  const key = permittedIds.join(',');
+
+  // Фоновый трекинг: список только разрешённых сделок кладём в storage.
+  // Empty list immediately stops the OS task after decline/stop/completion.
   useEffect(() => {
     if (Platform.OS === 'web') return;
     setActiveDealIds(idsRef.current);

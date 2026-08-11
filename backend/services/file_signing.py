@@ -89,12 +89,25 @@ def sign(url_or_key: Optional[str], ttl: int = 86400) -> Optional[str]:
     Значения, которые НЕ являются локальным storage (пусто, http/https
     supabase/s3, data:/file: URI, произвольные строки), возвращаются БЕЗ
     изменений — чтобы случайно не испортить внешние ссылки/вложения."""
+    # Supabase objects stay private too.  The stored `supabase://` reference
+    # is opaque; a short-lived URL is minted only inside an already-authorized
+    # endpoint (profile, chat or admin).  Do not change arbitrary http(s)
+    # values, because legacy external links are not our storage.
+    if storage_service.is_private_remote_ref(url_or_key):
+        return storage_service.create_signed_url(url_or_key, ttl)
     if not is_local_storage_path(url_or_key):
         return url_or_key
     key = extract_key(url_or_key)
     if not key:
         return url_or_key
-    exp = int(time.time()) + int(ttl)
+    # The chat polls its history every few seconds. Previously each response
+    # contained a new `?exp=…&sig=…`, so React Native treated one unchanged
+    # photo as a new source and visibly reloaded it. Keep the private signed
+    # URL stable in a short time window while preserving at least the requested
+    # TTL. The object itself remains inaccessible without this signature.
+    now = int(time.time())
+    window = min(900, max(60, int(ttl)))
+    exp = ((now + int(ttl) + window - 1) // window) * window
     sig = _compute_sig(key, exp)
     base = storage_service.LOCAL_PUBLIC_BASE.rstrip("/")
     return f"{base}/{key}?exp={exp}&sig={sig}"

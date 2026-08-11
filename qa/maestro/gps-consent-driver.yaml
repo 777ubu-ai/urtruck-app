@@ -1,0 +1,33 @@
+# GPS consent, device B — driver sees the request and decides.
+# Run after gps-consent-shipper.yaml on a separate logged-in device. The
+# platform permission sheet is a required assertion, not something to deny or
+# suppress as it was in the old automatic-GPS flow.
+appId: host.exp.Exponent
+name: gps-consent-driver
+tags: [gps, consent, driver, release]
+env:
+  MAESTRO_ACTOR: serik
+---
+- runFlow: _lib/qa-login.yaml
+- tapOn: { id: "bottom-nav-deals" }
+- waitForAnimationToEnd
+- tapOn: { id: "deals-seg-chats" }
+- extendedWaitUntil:
+    visible: { id: "deal-room-list-card" }
+    timeout: 15000
+- tapOn: { id: "deal-room-list-card", index: 0 }
+- extendedWaitUntil:
+    visible: { id: "deal-tracking-driver-request" }
+    timeout: 15000
+- takeScreenshot: GPS_03_driver_consent_request
+- tapOn: { id: "deal-tracking-allow" }
+# iOS/Android permission sheet: grant foreground + Always/background location.
+- extendedWaitUntil:
+    visible: { id: "deal-action-start-delivery" }
+    timeout: 20000
+- takeScreenshot: GPS_04_driver_tracking_ready_before_pickup
+- tapOn: { id: "deal-action-start-delivery" }
+- extendedWaitUntil:
+    notVisible: { id: "deal-tracking-stop" }
+    timeout: 15000
+- takeScreenshot: GPS_05_driver_tracking_locked_in_transit

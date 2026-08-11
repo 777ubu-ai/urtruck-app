@@ -78,16 +78,15 @@ function MainTabs({ route }) {
     return unsub;
   }, []);
 
-  // Авто-трансляция геопозиции водителя по активным сделкам — на уровне
-  // всего приложения (любой экран, пока приложение открыто), а не только
-  // «Мои рейсы». Водитель ничего не нажимает: как только сделка «в работе»,
-  // его позиция уходит на сервер (после разового разрешения на локацию).
-  // Клиент видит машину на «Где машина».
+  // Передача позиции живёт на уровне всего приложения, но сервер разрешает
+  // её только после согласия и фактического забора груза. До in_progress
+  // водитель не появляется на карте; после — сделка не может быть тихо
+  // исключена клиентским экраном.
   const [inWorkDealIds, setInWorkDealIds] = useState([]);
   useEffect(() => {
     if (!isDriver) { setInWorkDealIds([]); return; }
     let alive = true;
-    const IN_WORK = ['accepted', 'in_progress', 'at_border'];
+    const IN_WORK = ['in_progress', 'at_border'];
     const fetchIds = async () => {
       try {
         const d = await marketAPI.myDashboard();
@@ -99,7 +98,7 @@ function MainTabs({ route }) {
       } catch { /* тихо */ }
     };
     fetchIds();
-    const iv = setInterval(fetchIds, 60000);
+    const iv = setInterval(fetchIds, 15000);
     return () => { alive = false; clearInterval(iv); };
   }, [isDriver]);
   useDealLocationBroadcast(inWorkDealIds);

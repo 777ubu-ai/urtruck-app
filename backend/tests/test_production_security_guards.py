@@ -46,6 +46,25 @@ def test_local_storage_is_not_a_production_fallback(monkeypatch):
         raise AssertionError("production upload must not fall back to the VPS disk")
 
 
+def test_private_supabase_reference_is_signed_not_public(monkeypatch):
+    monkeypatch.setattr(storage_service, "SUPABASE_URL", "https://project.supabase.co")
+    monkeypatch.setattr(storage_service, "SUPABASE_KEY", "service-key")
+    monkeypatch.setattr(storage_service, "SUPABASE_BUCKET", "urtruck-docs")
+
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"signedURL": "/object/sign/urtruck-docs/licenses/a.jpg?token=short-lived"}
+
+    monkeypatch.setattr(storage_service.httpx, "post", lambda *_args, **_kwargs: Response())
+    ref = "supabase://urtruck-docs/licenses/a.jpg"
+    signed = file_signing.sign(ref, ttl=300)
+    assert signed == "https://project.supabase.co/storage/v1/object/sign/urtruck-docs/licenses/a.jpg?token=short-lived"
+    assert "/object/public/" not in signed
+
+
 def test_operator_routes_do_not_expose_metrics_or_error_logs_anonymously():
     app = FastAPI()
     app.include_router(metrics_router)

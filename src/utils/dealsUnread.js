@@ -41,6 +41,9 @@ export function computeDealsUnread(dashboard) {
   let total = 0;
   for (const d of dashboard.my_deals || []) {
     if (ACTIVE_DEAL_STATUSES.has(d.status)) total += d.unread_count || 0;
+    // System messages do not increment chat unread. A pending GPS request is
+    // still an action the driver must see in the Deals badge.
+    if (d.tracking_action_required) total += 1;
   }
   for (const b of dashboard.my_bids || []) {
     if (isBidActionable(b, { asOwner: false })) total += 1;

@@ -477,8 +477,8 @@ export default function CargoDetail({ navigation, route }) {
               items.push([t('truckType'), view.cargoType]);
               items.push([t('pickupDate'), c.pickupDate ? formatDateForDisplay(c.pickupDate) : dash]);
               if (stats) {
-                items.push([t('distance'), stats.km + ' км']);
-                items.push([t('delivery_time'), '~' + stats.days + ' дн.']);
+                items.push([t('distance'), `${stats.km} ${t('km_short')}`]);
+                items.push([t('delivery_time'), `~${stats.days} ${t('days_short')}`]);
               }
               return items.map(([l, v]) => (
                 <View key={l} style={s.gridItem}><Text style={[s.gridLabel, { color: v1.textMuted }]}>{l}</Text><Text style={[s.gridValue, { color: v1.text }]}>{v}</Text></View>
@@ -1108,4 +1108,3 @@ export default function CargoDetail({ navigation, route }) {
     </SafeAreaView>
   );
 }
-

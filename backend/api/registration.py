@@ -464,10 +464,10 @@ async def upload_selfie(
     # Сохраняем фото в persistent storage
     data = await file.read()
     selfie_url = storage.save_image(data, "selfies")
-    selfie_path = storage.get_local_path(selfie_url)
-
-    # Liveness
-    live = check_liveness(selfie_path)
+    # Liveness.  With Supabase the file is materialized in a short-lived temp
+    # path for the verifier and removed immediately afterwards.
+    with storage.materialize_for_processing(selfie_url) as selfie_path:
+        live = check_liveness(selfie_path)
     if not live.get("liveness_passed"):
         raise HTTPException(
             status_code=400,
@@ -632,10 +632,9 @@ async def upload_license(
     """Фото водительских прав → OCR (KZ/RU/CN/UZ шаблоны)."""
     data = await file.read()
     license_url = storage.save_image(data, "licenses")
-    path = storage.get_local_path(license_url)
-
     from ocr.license_reader import extract_license_data
-    lic = extract_license_data(path)  # license_reader пока без ui_lang — Step 2
+    with storage.materialize_for_processing(license_url) as path:
+        lic = extract_license_data(path)  # license_reader пока без ui_lang — Step 2
     license_data = {
         "license_number": lic.get("license_number"),
         "categories": lic.get("categories", []),
@@ -657,16 +656,17 @@ async def upload_license(
     driver_rec = reg_dal.get_driver(driver_id)
     selfie_url = driver_rec.get("selfie_url") if driver_rec else None
     if selfie_url:
-        selfie_local = storage.get_local_path(selfie_url)
-        if selfie_local:
-            try:
-                face_match_result = face_match(selfie_local, path)
-                if face_match_result.get("error"):
-                    raise RuntimeError(face_match_result["error"])
-            except Exception as e:
-                print(f"[Face match] Ошибка сравнения лиц: {e}")
-                face_match_result = {"match": None, "score": 0, "status": "manual_review_required", "error": str(e)}
-                manual_review = True
+        with storage.materialize_for_processing(selfie_url) as selfie_local:
+            if selfie_local:
+                with storage.materialize_for_processing(license_url) as license_local:
+                    try:
+                        face_match_result = face_match(selfie_local, license_local)
+                        if face_match_result.get("error"):
+                            raise RuntimeError(face_match_result["error"])
+                    except Exception as e:
+                        print(f"[Face match] Ошибка сравнения лиц: {e}")
+                        face_match_result = {"match": None, "score": 0, "status": "manual_review_required", "error": str(e)}
+                        manual_review = True
 
     update = {
         "license_url": license_url,
@@ -704,9 +704,8 @@ async def upload_passport(
     """Фото техпаспорта → Tesseract OCR (RU/KZ/CN/UZ/EN)."""
     raw = await file.read()
     passport_url = storage.save_image(raw, "passports")
-    path = storage.get_local_path(passport_url)
-
-    data = extract_passport_data(path, ui_lang=lang)
+    with storage.materialize_for_processing(passport_url) as path:
+        data = extract_passport_data(path, ui_lang=lang)
     ocr_result = {
         "plate_number": data.get("plate_number"),
         "vin": data.get("vin"),

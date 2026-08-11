@@ -6,8 +6,9 @@ import os
 import re
 import tempfile
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Optional
+from typing import Iterator, Optional
 
 import httpx
 
@@ -30,6 +31,7 @@ LOCAL_PUBLIC_BASE = os.getenv("STORAGE_LOCAL_PUBLIC_BASE", "/security/storage")
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
 SUPABASE_BUCKET = os.getenv("SUPABASE_BUCKET", "urtruck-docs")
+_SUPABASE_REF_PREFIX = "supabase://"
 
 # S3
 S3_BUCKET = os.getenv("S3_BUCKET", "")
@@ -75,7 +77,95 @@ def _save_supabase(data: bytes, key: str) -> str:
     }
     r = httpx.post(url, headers=headers, content=data, timeout=30.0)
     r.raise_for_status()
-    return f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_BUCKET}/{key}"
+    # The bucket is deliberately private.  Persisting a public URL here would
+    # either expose a document (if the bucket were changed accidentally) or
+    # make the file unreadable.  The API signs this opaque reference only
+    # after it has checked the caller's access to the document/conversation.
+    return f"{_SUPABASE_REF_PREFIX}{SUPABASE_BUCKET}/{key}"
+
+
+def _split_supabase_ref(value: Optional[str]) -> Optional[tuple[str, str]]:
+    """Parse only a canonical private Supabase object reference.
+
+    Old public URLs are intentionally not accepted: treating arbitrary URLs
+    as trusted storage references could turn this service into an SSRF proxy.
+    """
+    if not value or not str(value).startswith(_SUPABASE_REF_PREFIX):
+        return None
+    rest = str(value)[len(_SUPABASE_REF_PREFIX):]
+    bucket, sep, key = rest.partition("/")
+    if not sep or not bucket or not key or ".." in key.split("/"):
+        return None
+    if bucket != SUPABASE_BUCKET:
+        return None
+    return bucket, key
+
+
+def is_private_remote_ref(value: Optional[str]) -> bool:
+    """Whether value is an internal private Supabase object reference."""
+    return _split_supabase_ref(value) is not None
+
+
+def create_signed_url(value: Optional[str], ttl: int = 3600) -> Optional[str]:
+    """Create a short-lived URL for a private Supabase object.
+
+    This function must run only after the caller's route-level authorization.
+    The service key stays on the backend and bypasses Storage RLS; it must
+    never be shipped to the mobile/web application.
+    """
+    parsed = _split_supabase_ref(value)
+    if not parsed:
+        return value
+    if not (SUPABASE_URL and SUPABASE_KEY):
+        raise RuntimeError("Supabase Storage is not configured")
+    bucket, key = parsed
+    ttl_seconds = max(60, min(int(ttl), 7 * 24 * 60 * 60))
+    r = httpx.post(
+        f"{SUPABASE_URL}/storage/v1/object/sign/{bucket}/{key}",
+        headers={"Authorization": f"Bearer {SUPABASE_KEY}"},
+        json={"expiresIn": ttl_seconds},
+        timeout=15.0,
+    )
+    r.raise_for_status()
+    payload = r.json()
+    signed = payload.get("signedURL") or payload.get("signedUrl")
+    if not signed:
+        raise RuntimeError("Supabase did not return a signed object URL")
+    return signed if str(signed).startswith("http") else f"{SUPABASE_URL}/storage/v1{signed}"
+
+
+@contextmanager
+def materialize_for_processing(value: Optional[str], suffix: str = ".jpg") -> Iterator[Optional[str]]:
+    """Yield a short-lived local path for OCR/liveness, then delete it.
+
+    Verification libraries consume filesystem paths.  For private remote
+    storage we download with the backend service key into a restrictive temp
+    file and erase it immediately after the check; documents never become
+    public just to make OCR work.
+    """
+    parsed = _split_supabase_ref(value)
+    if not parsed:
+        yield get_local_path(value or "")
+        return
+    if not (SUPABASE_URL and SUPABASE_KEY):
+        raise RuntimeError("Supabase Storage is not configured")
+    bucket, key = parsed
+    r = httpx.get(
+        f"{SUPABASE_URL}/storage/v1/object/{bucket}/{key}",
+        headers={"Authorization": f"Bearer {SUPABASE_KEY}"},
+        timeout=30.0,
+    )
+    r.raise_for_status()
+    fd, path = tempfile.mkstemp(prefix="urtruck-verify-", suffix=suffix)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(r.content)
+        yield path
+    finally:
+        try:
+            os.unlink(path)
+        except FileNotFoundError:
+            pass
 
 
 def _save_s3(data: bytes, key: str) -> str:

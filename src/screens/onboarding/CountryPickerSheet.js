@@ -24,9 +24,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
 import { brand, useBrand, radius, space, typography } from '../../theme/brandV2';
-import { COUNTRIES, POPULAR_ISO, searchCountries } from '../../utils/countries';
+import { COUNTRIES, POPULAR_ISO } from '../../utils/countries';
 
-const Row = ({ s, country, onPress }) => (
+const Row = ({ s, country, label, onPress }) => (
   <Pressable
     onPress={onPress}
     style={({ pressed }) => [
@@ -36,7 +36,7 @@ const Row = ({ s, country, onPress }) => (
     testID={`country-row-${country.iso}`}
   >
     <Text style={s.flag}>{country.flag}</Text>
-    <Text style={s.countryName}>{country.name}</Text>
+    <Text style={s.countryName}>{label}</Text>
     <Text style={s.dial}>+{country.dial}</Text>
     <Feather name="chevron-right" size={18} color={brand.textTertiary} />
   </Pressable>
@@ -45,11 +45,28 @@ const Row = ({ s, country, onPress }) => (
 export default function CountryPickerSheet({ navigation, route }) {
   const _b = useBrand();
   const s = React.useMemo(() => makeStyles(_b), [_b]);
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [query, setQuery] = useState('');
   const onSelect = route?.params?.onSelect;
 
-  const filtered = useMemo(() => searchCountries(query), [query]);
+  const countryLabel = React.useCallback((country) => {
+    const translated = t(`country_${country.iso}`);
+    return translated && translated !== `country_${country.iso}` ? translated : country.name;
+  }, [t, lang]);
+
+  // Search against both the visible translation and the canonical name, so a
+  // Chinese driver can find 中国 while an operator can still enter "China".
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return COUNTRIES;
+    const qDigits = q.replace(/[^\d]/g, '');
+    return COUNTRIES.filter((country) =>
+      countryLabel(country).toLowerCase().includes(q)
+      || country.name.toLowerCase().includes(q)
+      || country.iso.toLowerCase().includes(q)
+      || (!!qDigits && country.dial.startsWith(qDigits))
+    );
+  }, [query, countryLabel]);
 
   // Когда юзер ищет — показываем плоский список без секций.
   const isSearching = query.trim().length > 0;
@@ -60,9 +77,9 @@ export default function CountryPickerSheet({ navigation, route }) {
   );
   const others = useMemo(
     () => [...COUNTRIES.filter((c) => !POPULAR_ISO.includes(c.iso))].sort((a, b) =>
-      a.name.localeCompare(b.name, 'ru'),
+      countryLabel(a).localeCompare(countryLabel(b), lang === 'ZH' ? 'zh-CN' : lang === 'KK' ? 'kk-KZ' : lang === 'EN' ? 'en-US' : 'ru-RU'),
     ),
-    [],
+    [countryLabel, lang],
   );
 
   const handlePick = (country) => {
@@ -129,7 +146,7 @@ export default function CountryPickerSheet({ navigation, route }) {
           item.type === 'header' ? (
             <Text style={s.sectionTitle}>{item.title}</Text>
           ) : (
-            <Row s={s} country={item.country} onPress={() => handlePick(item.country)} />
+            <Row s={s} country={item.country} label={countryLabel(item.country)} onPress={() => handlePick(item.country)} />
           )
         }
         ItemSeparatorComponent={null}
