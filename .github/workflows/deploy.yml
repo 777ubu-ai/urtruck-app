@@ -240,6 +240,90 @@ jobs:
             ls -la '$REMOTE_DIR/_expo/static/js/web/' 2>/dev/null | grep '\.js$'
           "
 
+      - name: Bootstrap secure backend environment (server-only)
+        # Security hardening made the API correctly refuse to start without a
+        # remote Storage key and a separate file-signing key.  Keep all secret
+        # values out of the repository and the browser: this step can only
+        # copy an already configured GitHub secret to the server, or preserve
+        # / migrate a legacy server-only variable.  It never prints a value.
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PASS: ${{ secrets.SERVER_PASS }}
+          BACKEND_DIR: ${{ secrets.BACKEND_DIR || '/home/ubuntu/urtruck-security' }}
+          # Optional.  If this GitHub Secret is absent, a pre-existing server
+          # key (including legacy SUPABASE_SERVICE_ROLE_KEY/SUPABASE_KEY) is
+          # used.  An absent key fails closed before PM2 is restarted.
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y sshpass
+          umask 077
+          BOOTSTRAP_FILE="$(mktemp)"
+          trap 'rm -f "$BOOTSTRAP_FILE"' EXIT
+          # A temporary 0600 file avoids placing the secret in an SSH command
+          # line.  The remote copy is removed immediately after it is read.
+          printf 'SUPABASE_SERVICE_KEY=%s\n' "$SUPABASE_SERVICE_KEY" > "$BOOTSTRAP_FILE"
+          REMOTE_BOOTSTRAP="/tmp/urtruck-env-bootstrap-${GITHUB_RUN_ID}"
+          sshpass -p "$SERVER_PASS" scp -q -o StrictHostKeyChecking=no "$BOOTSTRAP_FILE" "$SERVER_USER@$SERVER_HOST:$REMOTE_BOOTSTRAP"
+          sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
+            "BACKEND_DIR='$BACKEND_DIR' REMOTE_BOOTSTRAP='$REMOTE_BOOTSTRAP' bash -s" <<'REMOTE'
+          set -euo pipefail
+          umask 077
+          trap 'rm -f "$REMOTE_BOOTSTRAP"' EXIT
+          ENV_FILE="$BACKEND_DIR/.env"
+          test -f "$ENV_FILE" || { echo '::error::Backend .env is missing on the server'; exit 1; }
+
+          get_env() {
+            local key="$1" file="$2"
+            sed -n "s/^${key}=//p" "$file" | tail -n 1
+          }
+          set_env() {
+            local key="$1" value="$2" tmp
+            test -n "$value" || return 0
+            tmp="$(mktemp "${ENV_FILE}.tmp.XXXXXX")"
+            awk -v key="$key" -v value="$value" '
+              BEGIN { found = 0 }
+              index($0, key "=") == 1 { print key "=" value; found = 1; next }
+              { print }
+              END { if (!found) print key "=" value }
+            ' "$ENV_FILE" > "$tmp"
+            chmod 600 "$tmp"
+            mv "$tmp" "$ENV_FILE"
+          }
+
+          # Do not replace a configured production value.  If this server used
+          # an older variable name, migrate it once without revealing it.
+          current_key="$(get_env SUPABASE_SERVICE_KEY "$ENV_FILE")"
+          if [ -z "$current_key" ]; then
+            legacy_key="$(get_env SUPABASE_SERVICE_ROLE_KEY "$ENV_FILE")"
+            [ -n "$legacy_key" ] || legacy_key="$(get_env SUPABASE_KEY "$ENV_FILE")"
+            incoming_key="$(get_env SUPABASE_SERVICE_KEY "$REMOTE_BOOTSTRAP")"
+            set_env SUPABASE_SERVICE_KEY "${legacy_key:-$incoming_key}"
+          fi
+          rm -f "$REMOTE_BOOTSTRAP"
+
+          # The public API URL is not a secret.  Preserve an existing value;
+          # use the URL already compiled into the UrTruck client only if the
+          # server had none.
+          [ -n "$(get_env SUPABASE_URL "$ENV_FILE")" ] || set_env SUPABASE_URL 'https://hchmnocoxjvtgdamcmmi.supabase.co'
+          set_env STORAGE_PROVIDER 'supabase'
+          [ -n "$(get_env SUPABASE_BUCKET "$ENV_FILE")" ] || set_env SUPABASE_BUCKET 'urtruck-docs'
+
+          # These keys are independent from Supabase and are generated on the
+          # server once.  They never leave the server or enter Git history.
+          [ "$(printf %s "$(get_env FILE_SIGNING_KEY "$ENV_FILE")" | wc -c)" -ge 32 ] || set_env FILE_SIGNING_KEY "$(openssl rand -hex 32)"
+          [ -n "$(get_env QA_AGENT_TOKEN "$ENV_FILE")" ] || set_env QA_AGENT_TOKEN "$(openssl rand -hex 32)"
+
+          # Fail closed before the new backend is copied/restarted.  Only
+          # presence/length is reported; values are never logged.
+          test -n "$(get_env SUPABASE_SERVICE_KEY "$ENV_FILE")" || { echo '::error::SUPABASE_SERVICE_KEY is absent both on server and in GitHub Secrets'; exit 1; }
+          test -n "$(get_env SUPABASE_URL "$ENV_FILE")" || { echo '::error::SUPABASE_URL is missing'; exit 1; }
+          test -n "$(get_env SUPABASE_BUCKET "$ENV_FILE")" || { echo '::error::SUPABASE_BUCKET is missing'; exit 1; }
+          [ "$(printf %s "$(get_env FILE_SIGNING_KEY "$ENV_FILE")" | wc -c)" -ge 32 ] || { echo '::error::FILE_SIGNING_KEY is too short'; exit 1; }
+          echo '✅ Secure backend environment is configured (secret values withheld)'
+          REMOTE
+
       - name: Deploy backend
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
