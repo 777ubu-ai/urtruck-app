@@ -56,9 +56,7 @@
         "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_BACKGROUND_LOCATION",
-        "android.permission.FOREGROUND_SERVICE",
-        "android.permission.FOREGROUND_SERVICE_LOCATION"
+        "android.permission.FOREGROUND_SERVICE"
       ]
     },
     "plugins": [
@@ -87,9 +85,8 @@
         "expo-location",
         {
           "locationWhenInUsePermission": "UrTruck показывает грузоотправителю, где сейчас находится его груз во время перевозки",
-          "locationAlwaysAndWhenInUsePermission": "UrTruck передаёт позицию машины грузоотправителю только во время активного рейса, чтобы он видел, где находится груз.",
-          "isIosBackgroundLocationEnabled": true,
-          "isAndroidBackgroundLocationEnabled": true
+          "isIosBackgroundLocationEnabled": false,
+          "isAndroidBackgroundLocationEnabled": false
         }
       ]
     ],
