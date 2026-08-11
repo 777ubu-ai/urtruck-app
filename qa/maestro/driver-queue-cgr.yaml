@@ -1,40 +1,37 @@
-# driver-queue-cgr — Поток А: экран «Очередь» (хаб CGR) approved-водителем (serik).
-# Гейт: только driver + approved (verification_level>=3). Хаб: страны →
-# переходы → бронь на CarGoRuqsat. Плюс поиск своей фуры по госномеру.
+# driver-queue-cgr — новый operational dashboard «Граница».
+# Проверяет: вкладка → dashboard → поиск госномера → страна CN → КПП → детали.
 appId: host.exp.Exponent
-name: driver-queue-cgr
-tags: [driver, cgr, queue]
+name: driver-border-cgr
+tags: [driver, cgr, border]
 env:
   MAESTRO_ACTOR: serik
 ---
 - runFlow: _lib/qa-login.yaml
-# Водитель: вкладка Queue (bottom-nav-queue есть только у driver)
 - assertVisible: { id: "bottom-nav-queue" }
 - tapOn: { id: "bottom-nav-queue" }
 - waitForAnimationToEnd
 - extendedWaitUntil:
     visible: { id: "queue-title" }
     timeout: 12000
-- takeScreenshot: D0_queue_hub
-# Approved-водитель видит хаб (не гейт): карточки стран
-- assertVisible: { id: "queue-country-CN" }
-- assertNotVisible: { id: "queue-gate" }
-# Поиск своей фуры по госномеру
-- tapOn: { id: "queue-plate-input" }
+- takeScreenshot: D0_border_dashboard
+# Главная ценность — страны и честные live/no-data состояния.
+- assertVisible: { id: "border-country-CN" }
+# Поиск своей машины по публичному CGR-реестру.
+- tapOn: { id: "border-plate-input" }
 - inputText: "777ABC01"
-- tapOn: { id: "queue-plate-search" }
+- tapOn: { id: "border-plate-check" }
 - waitForAnimationToEnd
-- takeScreenshot: D1_plate_lookup_result
-# Переход в страну CN → список погранпереходов
-- tapOn: { id: "queue-country-CN" }
+- takeScreenshot: D1_border_plate_lookup
+# Китай → список КПП.
+- tapOn: { id: "border-country-CN" }
 - waitForAnimationToEnd
 - extendedWaitUntil:
-    visible: { id: "queue-checkpoint-card" }
+    visible: { id: "border-crossing-card" }
     timeout: 8000
-- takeScreenshot: D2_checkpoints_CN
-- assertVisible: { id: "queue-checkpoint-card" }
-- assertVisible: { id: "queue-back" }
-# Бронь на CarGoRuqsat (внешний портал)
-- tapOn: { id: "queue-book-cgr" }
+- takeScreenshot: D2_border_crossings_CN
+- tapOn: { id: "border-crossing-card", index: 0 }
 - waitForAnimationToEnd
-- takeScreenshot: D3_book_cgr_tapped
+- extendedWaitUntil:
+    visible: { id: "border-crossing-detail" }
+    timeout: 8000
+- takeScreenshot: D3_border_crossing_detail
