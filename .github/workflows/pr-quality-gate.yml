@@ -36,6 +36,7 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/backend
           APP_ENV: test
+          CGR_IIN_SALT: ci-test-salt-not-a-secret
         run: |
           set -euo pipefail
           count=0
@@ -52,7 +53,7 @@ jobs:
                 python "$test_file"
             fi
             echo "::endgroup::"
-          done < <(find backend/tests -maxdepth 1 -type f -name 'test_*.py' | sort)
+          done < <(find backend/tests -type f -name 'test_*.py' -not -path '*/__pycache__/*' | sort)
           test "$count" -gt 0
 
   frontend-quality:
@@ -72,6 +73,8 @@ jobs:
           node --experimental-loader ./tests/frontend/loader.mjs --test tests/frontend/test_storage_remove_by_prefix.mjs
           node --experimental-loader ./tests/frontend/loader.mjs --test tests/frontend/test_outbox_user_ownership.mjs
           node --experimental-loader ./tests/frontend/loader.mjs --test tests/frontend/test_currency_normalization.mjs
+      - name: Deploy SSH security guard
+        run: node qa/utils/deploySshSecurityGuard.js
       - name: i18n smoke
         run: npm run qa:i18n
       - name: UX smoke
