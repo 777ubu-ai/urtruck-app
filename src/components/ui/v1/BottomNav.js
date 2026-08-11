@@ -198,7 +198,7 @@ export default function BottomNav({ state, navigation }) {
   const labelOf = (name) => {
     if (name === 'Feed')    return isDriver ? t('tab_feed') : t('tab_feed_client');
     if (name === 'MyWork')  return isDriver ? t('tab_my_work_driver') : t('tab_my_work_client');
-    if (name === 'Queue')   return t('tab_queue');
+    if (name === 'Queue')   return t('tab_border');
     if (name === 'Chats')   return t('tab_chats');
     if (name === 'Deals')   return t('tab_deals');
     return name;
