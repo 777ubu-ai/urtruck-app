@@ -1,0 +1,64 @@
+name: Production Performance Diagnosis
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: urtruck-production-maintenance
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    name: Measure proxy, web and API latency
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Install SSH client
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+
+      - name: Collect safe server performance evidence
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PASS: ${{ secrets.SERVER_PASS }}
+        run: |
+          set -euo pipefail
+          test -n "$SERVER_HOST"
+          test -n "$SERVER_USER"
+          test -n "$SERVER_PASS"
+          sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo '=== UTC / uptime ==='
+          date -u +%Y-%m-%dT%H:%M:%SZ
+          uptime
+          echo
+          echo '=== CPU / memory ==='
+          free -h || true
+          nproc || true
+          echo
+          echo '=== disk ==='
+          df -hT || true
+          command -v iostat >/dev/null && iostat -xz 1 3 || true
+          echo
+          echo '=== expensive processes (no environment variables) ==='
+          ps -eo pid,ppid,pcpu,pmem,stat,etime,args --sort=-pcpu | head -25 || true
+          echo
+          echo '=== PM2 process list ==='
+          pm2 list || true
+          echo
+          echo '=== listeners ==='
+          ss -ltnp | grep -E ':(80|443|8001|8080)\b' || true
+          echo
+          echo '=== local time-to-first-byte ==='
+          for target in \
+            'http://127.0.0.1:8080/' \
+            'http://127.0.0.1:8001/health' \
+            'http://127.0.0.1:8001/api/version'; do
+            curl -sS -o /dev/null --max-time 15 \
+              -w "$target code=%{http_code} connect=%{time_connect}s ttfb=%{time_starttransfer}s total=%{time_total}s\\n" \
+              "$target" || true
+          done
+          REMOTE

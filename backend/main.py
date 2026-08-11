@@ -79,7 +79,6 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest
 
@@ -124,14 +123,16 @@ from services import storage_service
 
 import os
 
-# В production: docs выключены, доступны только через /admin (с паролем)
+# API schema can enumerate sensitive internal endpoints. It is available only
+# outside production; operators use the authenticated admin panel instead.
+_IS_PRODUCTION = (os.getenv("URTRUCK_ENV") or os.getenv("ENV") or "production").strip().lower() == "production"
 app = FastAPI(
     title="UrTruck Security API",
     version="2.0",
     description="Регистрация водителей, Scoring, Blacklist, OCR, Reviews, Push, Borders, QR, Documents",
-    docs_url="/docs",
-    redoc_url="/redoc",
-    openapi_url="/openapi.json",
+    docs_url=None if _IS_PRODUCTION else "/docs",
+    redoc_url=None if _IS_PRODUCTION else "/redoc",
+    openapi_url=None if _IS_PRODUCTION else "/openapi.json",
 )
 
 ALLOWED_ORIGINS = os.getenv(
@@ -212,9 +213,8 @@ if storage_service.PROVIDER == "local":
 
 @app.on_event("startup")
 def startup():
-    # Stage 21 prod hardening: log a clear list of mock/missing
-    # values when running with URTRUCK_ENV=production. Refuses to
-    # boot when URTRUCK_FAIL_ON_BAD_ENV=1 is also set.
+    # Production guard: never start with mock, default, or unsafe settings
+    # for authentication and users' documents.
     try:
         from services.env_check import enforce_production_env
         enforce_production_env()
@@ -332,9 +332,7 @@ def root():
     return {
         "service": "UrTruck Security",
         "version": "1.0",
-        "docs": "/docs",
         "api": "/api/v1",
-        "admin": "/admin",
     }
 
 

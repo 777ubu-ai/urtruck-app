@@ -14,7 +14,7 @@ _DEFAULT_API_KEY = "demo-api-key-change-me"
 _DEFAULT_ADMIN_TOKEN = "demo-admin-change-me"
 API_KEY = os.getenv("URTRUCK_API_KEY", _DEFAULT_API_KEY)
 ADMIN_TOKEN = os.getenv("URTRUCK_ADMIN_TOKEN", _DEFAULT_ADMIN_TOKEN)
-_IS_PROD = os.getenv("URTRUCK_ENV", "").strip().lower() == "production"
+_IS_PROD = (os.getenv("URTRUCK_ENV") or os.getenv("ENV") or "production").strip().lower() == "production"
 
 
 def _block_default_in_prod(kind: str, value: str, default: str):

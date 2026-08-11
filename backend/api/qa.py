@@ -31,6 +31,7 @@ from pydantic import BaseModel
 
 from database.db import get_conn, new_id
 from database import registration_dal as reg_dal
+from services.qa_token_guard import is_compromised_qa_agent_token
 
 qa_router = APIRouter()
 
@@ -68,6 +69,10 @@ def _require_agent_token(provided: Optional[str]) -> None:
     expected = os.getenv("QA_AGENT_TOKEN")
     if not expected:
         raise HTTPException(status_code=503, detail="QA agent endpoint not configured (QA_AGENT_TOKEN unset)")
+    if is_compromised_qa_agent_token(expected):
+        # The former value was committed in a Maestro runner.  Refuse it even
+        # if an operator has not restarted with a rotated secret yet.
+        raise HTTPException(status_code=503, detail="QA agent endpoint disabled until QA_AGENT_TOKEN is rotated")
     if not provided or provided != expected:
         raise HTTPException(status_code=403, detail="Invalid X-QA-Agent-Token")
 

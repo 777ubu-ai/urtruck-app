@@ -25,6 +25,7 @@ import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 
 import Feather from '@expo/vector-icons/Feather';
 import { useV1Colors, v1Radius } from '../theme/designV1';
 import { useI18n } from '../utils/useI18n';
+import { localizePlace } from '../utils/places';
 import {
   COUNTRIES, COUNTRY_ORDER, POINT_TYPES, POINTS,
   searchPoints, formatPoint, pointsForCountry,
@@ -319,7 +320,7 @@ export default function RoutePointPicker({
 }
 
 function PointRow({ p, v1, s, onPick }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const country = COUNTRIES[p.country] || {};
   const partnerCountry = p.partnerCountry ? COUNTRIES[p.partnerCountry] : null;
   const cName = p.country ? localisedCountryName(t, p.country, country.name || p.country) : '';
@@ -331,7 +332,7 @@ function PointRow({ p, v1, s, onPick }) {
       </Text>
       <View style={{ flex: 1 }}>
         <Text style={[s.rowName, { color: v1.text }]} numberOfLines={1}>
-          {p.name}
+          {localizePlace(p.name, lang)}
         </Text>
         <Text style={[s.rowMeta, { color: v1.textMuted }]} numberOfLines={1}>
           {cName}

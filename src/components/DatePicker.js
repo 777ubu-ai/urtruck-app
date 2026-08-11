@@ -4,14 +4,33 @@ import Feather from '@expo/vector-icons/Feather';
 import { useTheme } from '../utils/ThemeContext';
 import { useI18n } from '../utils/useI18n';
 
-const MONTHS = {
-  RU: ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'],
-  EN: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+const CALENDAR_LABELS = {
+  RU: {
+    months: ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'],
+    weekdays: ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'],
+    title: (month, year) => `${month} ${year}`,
+  },
+  KK: {
+    months: ['Қаңтар', 'Ақпан', 'Наурыз', 'Сәуір', 'Мамыр', 'Маусым', 'Шілде', 'Тамыз', 'Қыркүйек', 'Қазан', 'Қараша', 'Желтоқсан'],
+    weekdays: ['Дс', 'Сс', 'Ср', 'Бс', 'Жм', 'Сб', 'Жс'],
+    title: (month, year) => `${month} ${year}`,
+  },
+  ZH: {
+    months: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
+    weekdays: ['一', '二', '三', '四', '五', '六', '日'],
+    title: (month, year) => `${year}年${month}`,
+  },
+  EN: {
+    months: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+    weekdays: ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'],
+    title: (month, year) => `${month} ${year}`,
+  },
 };
 
 export default function DatePicker({ value, onChange, onClose, placeholder = 'DD.MM.YYYY', style, min, max, defaultOpen = false }) {
   const { theme } = useTheme();
-  const { t } = useI18n();
+  const { lang } = useI18n();
+  const labels = CALENDAR_LABELS[lang] || CALENDAR_LABELS.EN;
   const [showPicker, setShowPicker] = useState(defaultOpen === true);
   const dismiss = () => { setShowPicker(false); onClose && onClose(); };
 
@@ -49,7 +68,7 @@ export default function DatePicker({ value, onChange, onClose, placeholder = 'DD
           <Text style={[s.navArrow, { color: theme.text }]}>‹</Text>
         </TouchableOpacity>
         <Text style={[s.calTitle, { color: theme.text }]}>
-          {MONTHS.EN[viewMonth]} {viewYear}
+          {labels.title(labels.months[viewMonth], viewYear)}
         </Text>
         <TouchableOpacity onPress={() => {
           if (viewMonth === 11) { setViewMonth(0); setViewYear(viewYear + 1); }
@@ -59,7 +78,7 @@ export default function DatePicker({ value, onChange, onClose, placeholder = 'DD
         </TouchableOpacity>
       </View>
       <View style={s.weekRow}>
-        {['Mo','Tu','We','Th','Fr','Sa','Su'].map(d => (
+        {labels.weekdays.map(d => (
           <Text key={d} style={[s.weekDay, { color: theme.textMuted }]}>{d}</Text>
         ))}
       </View>

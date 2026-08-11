@@ -25,7 +25,7 @@ ADMIN_PASS = os.getenv("URTRUCK_ADMIN_PASS", _ADMIN_PASS_DEFAULT)
 # QA-аудит P0: дефолтный пароль закоммичен в репо. В production-окружении
 # (URTRUCK_ENV=production) админка с дефолтным паролем закрыта наглухо —
 # нужно явно задать URTRUCK_ADMIN_PASS. Dev/preview работают как раньше.
-_IS_PROD = os.getenv("URTRUCK_ENV", "").strip().lower() == "production"
+_IS_PROD = (os.getenv("URTRUCK_ENV") or os.getenv("ENV") or "production").strip().lower() == "production"
 
 
 def check_admin(credentials: HTTPBasicCredentials = Depends(security)):

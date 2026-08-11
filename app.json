@@ -2,7 +2,7 @@
   "expo": {
     "name": "UrTruck",
     "slug": "urtruck",
-    "version": "1.0.5",
+    "version": "1.0.6",
     "orientation": "portrait",
     "scheme": "urtruck",
     "platforms": [
@@ -24,7 +24,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.urtruck.app",
-      "buildNumber": "2",
+      "buildNumber": "3",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "UrTruck использует микрофон для записи голосовых сообщений в чате",
         "NSCameraUsageDescription": "UrTruck использует камеру для селфи и фото документов",
@@ -43,7 +43,7 @@
     },
     "android": {
       "package": "com.urtruck.app",
-      "versionCode": 2,
+      "versionCode": 8,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0a0f1a"
@@ -86,7 +86,10 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "UrTruck показывает грузоотправителю, где сейчас находится его груз во время перевозки"
+          "locationWhenInUsePermission": "UrTruck показывает грузоотправителю, где сейчас находится его груз во время перевозки",
+          "locationAlwaysAndWhenInUsePermission": "UrTruck передаёт позицию машины грузоотправителю только во время активного рейса, чтобы он видел, где находится груз.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true
         }
       ]
     ],

@@ -7,6 +7,15 @@ import { authedFetch } from './authEvents';  // QA-аудит P1-6: 401 → auth
 const BASE = `${API_BASE}/market`;
 
 const TOKEN_KEY = 'ur_reg_token';
+// Several mounted screens (BottomNav, Deals, Chats, Profile) need the same
+// dashboard. Without a shared in-flight promise they all hit /market/my at
+// once, multiplying its joins and SQLite reads into the 4–6s slowdown seen
+// in production. A very short cache preserves fresh logistics data while
+// collapsing those duplicate requests to one.
+const DASHBOARD_CACHE_MS = 3000;
+let dashboardCache = null;
+let dashboardCacheAt = 0;
+let dashboardInFlight = null;
 
 async function headers() {
   const token = await storage.get(TOKEN_KEY);
@@ -170,6 +179,50 @@ export const marketAPI = {
       if (!r.ok) return { ok: false, has_location: false, status: r.status };
       return r.json();
     } catch { return { ok: false, has_location: false }; }
+  },
+  // GPS deals — consent lives on the server. These methods intentionally do
+  // not touch the legacy in-memory store: a reinstated app must never resume
+  // tracking just because an old local flag says so.
+  async getDealTracking(dealId) {
+    try {
+      const r = await authedFetch(`${BASE}/deals/${dealId}/tracking`, { headers: await headers() });
+      const d = await r.json().catch(() => ({}));
+      return r.ok ? d : { ok: false, tracking: { status: 'not_requested' }, status: r.status };
+    } catch { return { ok: false, tracking: { status: 'not_requested' } }; }
+  },
+  async requestDealTracking(dealId) {
+    try {
+      const r = await authedFetch(`${BASE}/deals/${dealId}/tracking/request`, {
+        method: 'POST', headers: await headers(),
+      });
+      const d = await r.json().catch(() => ({}));
+      return r.ok ? d : { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
+    } catch { return { ok: false, detail: 'network_error' }; }
+  },
+  async respondDealTracking(dealId, decision) {
+    try {
+      const r = await authedFetch(`${BASE}/deals/${dealId}/tracking/respond`, {
+        method: 'POST', headers: await headers(), body: JSON.stringify({ decision }),
+      });
+      const d = await r.json().catch(() => ({}));
+      return r.ok ? d : { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
+    } catch { return { ok: false, detail: 'network_error' }; }
+  },
+  async stopDealTracking(dealId) {
+    try {
+      const r = await authedFetch(`${BASE}/deals/${dealId}/tracking/stop`, {
+        method: 'POST', headers: await headers(),
+      });
+      const d = await r.json().catch(() => ({}));
+      return r.ok ? d : { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
+    } catch { return { ok: false, detail: 'network_error' }; }
+  },
+  async activeTrackingDeals() {
+    try {
+      const r = await authedFetch(`${BASE}/tracking/active`, { headers: await headers() });
+      const d = await r.json().catch(() => ({}));
+      return r.ok ? d : { ok: false, deal_ids: [] };
+    } catch { return { ok: false, deal_ids: [] }; }
   },
 
   // Задача A: правка своего активного груза (цена/описание/вес/объём).
@@ -407,27 +460,42 @@ export const marketAPI = {
   },
 
   // ─── My Dashboard ───
-  async myDashboard() {
+  async myDashboard({ force = false } = {}) {
     const empty = { my_trips: [], my_cargos: [], my_bids: [], incoming_bids: [], my_deals: [] };
-    try {
-      // Skip /market/my if no token (guest) — avoids 401/500
-      const h = await headers();
-      if (!h.Authorization) {
-        return { ...empty, authRequired: true, skipped: true };
-      }
-      const r = await authedFetch(`${BASE}/my`, { headers: h });
-      const d = await r.json().catch(() => ({}));
-      if (r.status === 401 || r.status === 403) {
-        return { ...empty, authRequired: true };
-      }
-      if (!r.ok) {
-        console.warn('[myDashboard] server error:', r.status);
+    if (!force && dashboardCache && (Date.now() - dashboardCacheAt) < DASHBOARD_CACHE_MS) {
+      return dashboardCache;
+    }
+    if (!force && dashboardInFlight) return dashboardInFlight;
+    const load = async () => {
+      try {
+        // Skip /market/my if no token (guest) — avoids 401/500
+        const h = await headers();
+        if (!h.Authorization) {
+          return { ...empty, authRequired: true, skipped: true };
+        }
+        const r = await authedFetch(`${BASE}/my`, { headers: h });
+        const d = await r.json().catch(() => ({}));
+        if (r.status === 401 || r.status === 403) {
+          return { ...empty, authRequired: true };
+        }
+        if (!r.ok) {
+          console.warn('[myDashboard] server error:', r.status);
+          return { ...empty, serverError: true };
+        }
+        return { ...empty, ...d };
+      } catch (e) {
+        console.warn('[myDashboard] fetch error:', e.message);
         return { ...empty, serverError: true };
       }
-      return { ...empty, ...d };
-    } catch (e) {
-      console.warn('[myDashboard] fetch error:', e.message);
-      return { ...empty, serverError: true };
+    };
+    dashboardInFlight = load();
+    try {
+      const result = await dashboardInFlight;
+      dashboardCache = result;
+      dashboardCacheAt = Date.now();
+      return result;
+    } finally {
+      dashboardInFlight = null;
     }
   },
 

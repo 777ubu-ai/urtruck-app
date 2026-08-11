@@ -51,6 +51,12 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
   // Выбранная страна для режима «страна → города». null = обычный список
   // (популярные/недавние/страны). Тап по стране раскрывает её города.
   const [country, setCountry] = useState(null);
+  const countryLabel = (code) => {
+    const translated = t(`country_${code}`);
+    return translated && translated !== `country_${code}`
+      ? translated
+      : (COUNTRIES[code]?.name || code || '');
+  };
 
   useEffect(() => {
     if (!visible) return;
@@ -140,7 +146,7 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={s.name} numberOfLines={1}>{localizePlace(p.name, lang)}</Text>
           <Text style={s.sub} numberOfLines={1}>
-            {p.custom ? t('loc_custom_hint') : (localizePlace(country.name || p.country || '', lang) + (p.type === 'border' ? ' · ' + t('loc_borders') : ''))}
+            {p.custom ? t('loc_custom_hint') : (countryLabel(p.country) + (p.type === 'border' ? ' · ' + t('loc_borders') : ''))}
           </Text>
         </View>
         {showHeart && !p.custom ? (
@@ -218,7 +224,7 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
                 <View style={s.lead}><Text style={s.leadText}>‹</Text></View>
                 <View style={{ flex: 1 }}>
                   <Text style={s.name}>{t('loc_all_countries')}</Text>
-                  <Text style={s.sub} numberOfLines={1}>{localizePlace(COUNTRIES[country]?.name || '', lang)}</Text>
+                  <Text style={s.sub} numberOfLines={1}>{countryLabel(country)}</Text>
                 </View>
               </TouchableOpacity>
               <View style={s.divider} />
@@ -246,7 +252,7 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
                 <TouchableOpacity key={`country:${code}`} style={s.row} onPress={() => setCountry(code)} activeOpacity={0.7} testID={`loc-country-${code}`}>
                   <View style={s.lead}><Text style={s.leadText}>{COUNTRIES[code]?.flag || '🌐'}</Text></View>
                   <View style={{ flex: 1 }}>
-                    <Text style={s.name} numberOfLines={1}>{localizePlace(COUNTRIES[code]?.name || code, lang)}</Text>
+                    <Text style={s.name} numberOfLines={1}>{countryLabel(code)}</Text>
                   </View>
                   <Text style={s.chev}>›</Text>
                 </TouchableOpacity>

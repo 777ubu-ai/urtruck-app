@@ -31,6 +31,7 @@ import BidModal from '../components/BidModal';
 import DealAttachments from '../components/deal/DealAttachments';
 import { pickDealStatus, userFacingDealStatus } from '../utils/dealStatusOrder';
 import { openContactPartner } from '../utils/contactPartner';
+import { ensureBackgroundLocationPermission } from '../utils/backgroundLocation';
 
 // HOT-006: реальная запись/воспроизведение для web (PWA deploy).
 // На нативе (Expo Go) expo-av не установлен — тост "скоро".
@@ -44,6 +45,28 @@ const IS_WEB = Platform.OS === 'web';
 // на нативе. Та же причина ломала воспроизведение голосовых на iOS.
 const resolveAttachment = (u) =>
   (u && typeof u === 'string' && u.startsWith('/')) ? `${SERVER_URL}${u}` : u;
+
+// Server audit messages are stored once in the shared deal timeline.  Keep the
+// stored event immutable, but render known system events in the viewer's
+// language instead of showing Russian text to a Chinese or English driver.
+const SYSTEM_TEXT_KEYS = {
+  '🚛 Рейс начался': 'system_trip_started',
+  '🛂 На границе': 'system_trip_at_border',
+  '🛂 Груз на границе': 'system_trip_at_border',
+  '✅ Доставлен': 'system_trip_delivered',
+  '✅ Груз доставлен': 'system_trip_delivered',
+  '❌ Отменено': 'system_deal_cancelled',
+  '❌ Сделка отменена': 'system_deal_cancelled',
+  '📍 Грузоотправитель запросил GPS-отслеживание. Водитель должен подтвердить его в приложении.': 'system_tracking_requested',
+  '✅ Водитель разрешил GPS-отслеживание. Местоположение будет видно только участникам этой сделки.': 'system_tracking_approved',
+  'ℹ️ Водитель не разрешил GPS-отслеживание по этой сделке.': 'system_tracking_declined',
+  '🔒 Водитель отменил GPS-отслеживание до забора груза.': 'system_tracking_stopped',
+};
+
+const localizeSystemMessage = (text, translate) => {
+  const key = SYSTEM_TEXT_KEYS[String(text || '')];
+  return key ? translate(key) : text;
+};
 
 // Stage 52: photo и voice upload в Support Chat не реализованы end-to-end (P0-1, Bug-B).
 // Скрываем кнопки до отдельного PR с multipart upload endpoint.
@@ -84,14 +107,22 @@ export default function ChatScreen({ navigation, route }) {
   acceptOkTxt: { color: '#0C0A09', fontSize: 12, fontWeight: '900' },
   // Компактный статус перевозки (05.08.2026) — заменяет горизонтальную шкалу.
   statusRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  statusRowLabel: { color: v1.textMuted, fontSize: 12, fontWeight: '600' },
-  statusRowValue: { fontSize: 13, fontWeight: '800' },
+  statusRowLabel: { color: v1.textMuted, fontSize: 12, fontWeight: '600', flex: 1, minWidth: 0 },
+  statusRowValue: { fontSize: 13, fontWeight: '800', flexShrink: 1, textAlign: 'right' },
   dealNextBtn: { borderRadius: 12, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', minHeight: 48, marginBottom: 8 },
   dealNextBtnText: { color: '#0C0A09', fontSize: 15, fontWeight: '800' },
   dealCancelBtn: { borderRadius: 12, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 8, backgroundColor: 'rgba(239,68,68,0.10)' },
   dealCancelBtnText: { color: '#EF4444', fontSize: 13, fontWeight: '700' },
   dealTrackBtn: { borderRadius: 12, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 8, borderWidth: 1, borderColor: v1.border, backgroundColor: v1.surface },
   dealTrackBtnText: { color: v1.text, fontSize: 13, fontWeight: '700' },
+  trackingCard: { borderRadius: 12, borderWidth: 1, borderColor: v1.border, backgroundColor: v1.surface, padding: 12, marginBottom: 8, gap: 8 },
+  trackingTitle: { color: v1.text, fontSize: 13, fontWeight: '900' },
+  trackingHint: { color: v1.textMuted, fontSize: 12, lineHeight: 17 },
+  trackingRow: { flexDirection: 'row', gap: 8 },
+  trackingAllow: { flex: 1, minHeight: 42, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: v1Colors.driver },
+  trackingDecline: { flex: 1, minHeight: 42, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: v1.border },
+  trackingAllowText: { color: '#0C0A09', fontSize: 13, fontWeight: '900' },
+  trackingDeclineText: { color: v1.text, fontSize: 13, fontWeight: '800' },
   msgRow: { marginBottom: 10 },
   msgRowMe: { alignItems: 'flex-end' },
   senderLabel: { fontSize: 11, marginBottom: 3, marginLeft: 6, color: v1.textMuted },
@@ -160,6 +191,8 @@ export default function ChatScreen({ navigation, route }) {
   },
   attachLabel: { fontSize: 11, color: v1.textMuted, fontWeight: '600' },
   photoMsg: { width: 200, height: 150, borderRadius: 12 },
+  photoFailed: { width: 200, height: 150, borderRadius: 12, alignItems: 'center', justifyContent: 'center', gap: 7, backgroundColor: v1.surface, borderWidth: 1, borderColor: v1.border },
+  photoFailedText: { color: v1.textMuted, fontSize: 12, fontWeight: '700' },
   // C2: fullscreen-viewer вложения
   fullBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', alignItems: 'center', justifyContent: 'center' },
   fullImage: { width: '100%', height: '100%' },
@@ -194,6 +227,9 @@ export default function ChatScreen({ navigation, route }) {
   // C2 (device-баг): вложение-фото не открывалось на весь экран. Тап по
   // фото-пузырю кладёт сюда абсолютный URL → показываем fullscreen-viewer.
   const [fullImage, setFullImage] = useState(null);
+  // Server-signed URLs are kept stable between chat polls. This fallback is
+  // only for a real timeout/expired link: never leave a blank green bubble.
+  const [failedPhotos, setFailedPhotos] = useState({});
   // Сохранить открытое фото. Web: новая вкладка (там «Сохранить в фото» долгим
   // тапом — программно из PWA в Галерею нельзя). Native: системный Share-лист.
   const saveFullImage = async () => {
@@ -246,6 +282,8 @@ export default function ChatScreen({ navigation, route }) {
   // при dealId — иначе старый чат выглядит как раньше.
   const [deal, setDeal] = useState(null);
   const [dealEvents, setDealEvents] = useState([]);
+  const [tracking, setTracking] = useState({ status: 'not_requested' });
+  const [trackingLoading, setTrackingLoading] = useState(false);
   // issue #4: когда в Chat пришёл только roomId (из карточки заказа/ставки),
   // partner в route может быть пустым → заголовок показывал «Собеседник».
   // Подтягиваем реального собеседника из enriched /chat/rooms по roomId.
@@ -272,6 +310,10 @@ export default function ChatScreen({ navigation, route }) {
     return () => { alive = false; };
   }, [deal?.currency, bargainCargoId]);
   const flatListRef = useRef(null);
+  // A signed Supabase/local URL may be reissued on every history poll. Keep
+  // the first valid URL per immutable message id so an already shown image is
+  // not remounted and flashed every three seconds.
+  const attachmentUrlCache = useRef(new Map());
   // HOT-006: refs для MediaRecorder (web)
   const mediaRecorderRef = useRef(null);
   const mediaStreamRef = useRef(null);
@@ -314,12 +356,21 @@ export default function ChatScreen({ navigation, route }) {
             : ((myId && m.sender_id === myId) ||
                (partner?.id && m.sender_id !== partner.id));
         const isSystemMsg = m.sender_id === 'system';
+        const attachmentKind = m.is_voice ? 'voice' : 'photo';
+        const attachmentCacheKey = `${attachmentKind}:${m.id}`;
+        const issuedAttachmentUrl = resolveAttachment(m.photo_url);
+        let stableAttachmentUrl = issuedAttachmentUrl;
+        if (issuedAttachmentUrl) {
+          stableAttachmentUrl = attachmentUrlCache.current.get(attachmentCacheKey) || issuedAttachmentUrl;
+          attachmentUrlCache.current.set(attachmentCacheKey, stableAttachmentUrl);
+        }
         return {
           id: String(m.id), from: isSystemMsg ? 'system' : (fromMe ? 'me' : 'them'),
           // Голосовое хранит аудио-ключ в том же поле photo_url (подписанном
           // сервером) — не путать с фото: isPhoto только когда НЕ voice.
-          text: m.text, isPhoto: !!m.photo_url && !m.is_voice, photoUri: resolveAttachment(m.photo_url),
-          isVoice: !!m.is_voice, voiceUrl: m.is_voice ? resolveAttachment(m.photo_url) : undefined,
+          text: isSystemMsg ? localizeSystemMessage(m.text, t) : m.text,
+          isPhoto: !!m.photo_url && !m.is_voice, photoUri: stableAttachmentUrl,
+          isVoice: !!m.is_voice, voiceUrl: m.is_voice ? stableAttachmentUrl : undefined,
           duration: m.voice_duration || 0,
           time: fmtMsgTime(m.created_at),
           is_read: !!m.is_read,
@@ -515,6 +566,12 @@ export default function ChatScreen({ navigation, route }) {
   // не откатывается назад, completed/delivered/cancelled не «отменяются
   // задним числом»), плюс seq-guard от гонок параллельных запросов.
   const dealFetchSeq = useRef(0);
+  const refreshTracking = () => {
+    if (!dealId) return;
+    marketAPI.getDealTracking(dealId)
+      .then((r) => { if (r?.tracking) setTracking(r.tracking); })
+      .catch(() => {});
+  };
   const refreshDeal = () => {
     if (!dealId) return;
     const seq = ++dealFetchSeq.current;
@@ -547,15 +604,77 @@ export default function ChatScreen({ navigation, route }) {
       cargo_desc: p.cargoDesc, cargo_id: p.cargoId, amount: p.amount, plate: p.plate,
     });
     refreshDeal();
+    refreshTracking();
     chatAPI.dealTimeline(dealId)
       .then(r => setDealEvents(Array.isArray(r?.events) ? r.events : []))
       .catch(() => {});
     // Периодический refetch (как в CargoDetail/TripDetail) — вторая сторона
     // могла продвинуть статус (Начать/На границе/Доставлено), пока этот
     // экран открыт; без поллинга статус тут не обновится сам.
-    const iv = setInterval(refreshDeal, 15000);
+    const iv = setInterval(() => { refreshDeal(); refreshTracking(); }, 15000);
     return () => clearInterval(iv);
   }, [dealId]);
+
+  const requestTracking = async () => {
+    if (!dealId || trackingLoading) return;
+    setTrackingLoading(true);
+    try {
+      const r = await marketAPI.requestDealTracking(dealId);
+      if (!r?.ok) throw new Error(r?.detail || 'request_failed');
+      setTracking(r.tracking || { status: 'pending' });
+      toast(t('track_pending'), 'success');
+    } catch (e) {
+      toast(e?.message || t('update_failed'), 'error');
+    } finally {
+      setTrackingLoading(false);
+    }
+  };
+
+  const respondTracking = async (decision) => {
+    if (!dealId || trackingLoading) return;
+    // Background GPS is a native feature. Never present a web/PWA approval as
+    // if it would keep sending after the browser is closed.
+    if (decision === 'approve') {
+      if (Platform.OS === 'web') {
+        toast(t('track_native_required'), 'error');
+        return;
+      }
+      setTrackingLoading(true);
+      const permission = await ensureBackgroundLocationPermission();
+      if (!permission.ok) {
+        setTrackingLoading(false);
+        toast(t('track_permission_needed'), 'error');
+        return;
+      }
+    } else {
+      setTrackingLoading(true);
+    }
+    try {
+      const r = await marketAPI.respondDealTracking(dealId, decision);
+      if (!r?.ok) throw new Error(r?.detail || 'response_failed');
+      setTracking(r.tracking || { status: decision === 'approve' ? 'active' : 'declined' });
+      toast(decision === 'approve' ? t('track_active') : t('track_declined'), 'success');
+    } catch (e) {
+      toast(e?.message || t('update_failed'), 'error');
+    } finally {
+      setTrackingLoading(false);
+    }
+  };
+
+  const stopTracking = async () => {
+    if (!dealId || trackingLoading) return;
+    setTrackingLoading(true);
+    try {
+      const r = await marketAPI.stopDealTracking(dealId);
+      if (!r?.ok) throw new Error(r?.detail || 'stop_failed');
+      setTracking(r.tracking || { status: 'stopped' });
+      toast(t('track_stopped'), 'success');
+    } catch (e) {
+      toast(e?.message || t('update_failed'), 'error');
+    } finally {
+      setTrackingLoading(false);
+    }
+  };
 
   // Пуш о сделке ведёт в Chat только с dealId (без roomId). Чтобы
   // подгрузились и сообщения, а не только карточка сделки, — находим
@@ -925,9 +1044,28 @@ export default function ChatScreen({ navigation, route }) {
           ) : null}
           <View style={[s.bubble, isMe ? s.bubbleMe : s.bubbleThem, { padding: 4 }]}>
             {/* C2: тап открывает фото на весь экран (fullscreen-viewer ниже). */}
-            <Pressable onPress={() => item.photoUri && setFullImage(item.photoUri)} testID="chat-photo-msg">
-              <Image source={{ uri: item.photoUri }} style={s.photoMsg} />
-            </Pressable>
+            {failedPhotos[item.id] ? (
+              <TouchableOpacity
+                style={s.photoFailed}
+                onPress={() => {
+                  attachmentUrlCache.current.delete(`photo:${item.id}`);
+                  setFailedPhotos((prev) => { const next = { ...prev }; delete next[item.id]; return next; });
+                  loadMessages(roomId);
+                }}
+                testID="chat-photo-retry"
+              >
+                <Feather name="image" size={24} color={v1.textMuted} />
+                <Text style={s.photoFailedText}>{t('chat_photo_retry')}</Text>
+              </TouchableOpacity>
+            ) : (
+              <Pressable onPress={() => item.photoUri && setFullImage(item.photoUri)} testID="chat-photo-msg">
+                <Image
+                  source={{ uri: item.photoUri }}
+                  style={s.photoMsg}
+                  onError={() => setFailedPhotos((prev) => ({ ...prev, [item.id]: true }))}
+                />
+              </Pressable>
+            )}
             <Text style={[s.msgTime, isMe ? s.msgTimeMe : { color: v1.textMuted }, { marginTop: 4, marginRight: 4 }]}>{item.time}</Text>
           </View>
         </View>
@@ -1107,7 +1245,7 @@ export default function ChatScreen({ navigation, route }) {
           {deal?.status && deal.status !== 'cancelled' ? (
             <View style={s.statusRow} testID="chat-deal-status-compact">
               <Text style={s.statusRowLabel}>{t('trip_current_status')}</Text>
-              <Text style={[s.statusRowValue, { color: v1Accent.main }]}>{formatStatus(userFacingDealStatus(deal.status))}</Text>
+              <Text style={[s.statusRowValue, { color: v1Accent.main }]} numberOfLines={1}>{formatStatus(userFacingDealStatus(deal.status))}</Text>
             </View>
           ) : null}
           {(() => {
@@ -1183,19 +1321,57 @@ export default function ChatScreen({ navigation, route }) {
               <Text style={s.dealCancelBtnText}>⊘ {t('cancel_deal')}</Text>
             </TouchableOpacity>
           ) : null}
-          {isShipperSide && dealId && ['accepted', 'in_progress'].includes(deal?.status) ? (
-            <TouchableOpacity
-              testID="deal-track-truck"
-              style={s.dealTrackBtn}
-              onPress={() => navigation.navigate('TrackTruck', {
-                dealId, from: deal?.from_city, to: deal?.to_city,
-              })}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="map-pin" size={14} color={v1.text} />
-                <Text style={s.dealTrackBtnText}>{t('track_truck_btn')}</Text>
-              </View>
-            </TouchableOpacity>
+          {dealId && ['accepted', 'in_progress', 'at_border', 'delivered'].includes(deal?.status) ? (
+            <>
+              {isShipperSide && deal?.status !== 'delivered' && ['not_requested', 'declined', 'stopped'].includes(tracking?.status || 'not_requested') ? (
+                <TouchableOpacity testID="deal-request-tracking" style={s.dealTrackBtn}
+                  disabled={trackingLoading} onPress={requestTracking}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Feather name="navigation" size={14} color={v1.text} />
+                    <Text style={s.dealTrackBtnText}>{trackingLoading ? '…' : t('track_request')}</Text>
+                  </View>
+                </TouchableOpacity>
+              ) : null}
+              {isShipperSide && tracking?.status === 'pending' ? (
+                <View testID="deal-tracking-pending" style={s.trackingCard}>
+                  <Text style={s.trackingTitle}>{t('track_request_title')}</Text>
+                  <Text style={s.trackingHint}>{t('track_pending')}</Text>
+                </View>
+              ) : null}
+              {isShipperSide && tracking?.status === 'active' ? (
+                <TouchableOpacity testID="deal-track-truck" style={s.dealTrackBtn}
+                  onPress={() => navigation.navigate('TrackTruck', {
+                    dealId, from: deal?.from_city, to: deal?.to_city,
+                  })}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Feather name="map-pin" size={14} color={v1.text} />
+                    <Text style={s.dealTrackBtnText}>{t('track_truck_btn')}</Text>
+                  </View>
+                </TouchableOpacity>
+              ) : null}
+              {!isShipperSide && tracking?.status === 'pending' ? (
+                <View testID="deal-tracking-driver-request" style={s.trackingCard}>
+                  <Text style={s.trackingTitle}>{t('track_request_title')}</Text>
+                  <Text style={s.trackingHint}>{t('track_driver_consent')}</Text>
+                  <View style={s.trackingRow}>
+                    <TouchableOpacity testID="deal-tracking-decline" style={s.trackingDecline}
+                      disabled={trackingLoading} onPress={() => respondTracking('decline')}>
+                      <Text style={s.trackingDeclineText}>{t('decline_btn')}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity testID="deal-tracking-allow" style={[s.trackingAllow, { opacity: trackingLoading ? 0.65 : 1 }]}
+                      disabled={trackingLoading} onPress={() => respondTracking('approve')}>
+                      <Text style={s.trackingAllowText}>{trackingLoading ? '…' : t('allow_btn')}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : null}
+              {!isShipperSide && deal?.status === 'accepted' && tracking?.status === 'active' ? (
+                <TouchableOpacity testID="deal-tracking-stop" style={s.dealTrackBtn}
+                  disabled={trackingLoading} onPress={stopTracking}>
+                  <Text style={s.dealTrackBtnText}>{trackingLoading ? '…' : t('track_stop_gps')}</Text>
+                </TouchableOpacity>
+              ) : null}
+            </>
           ) : null}
           {dealEvents.length > 0 ? (
             <View testID="deal-timeline">
@@ -1384,4 +1560,3 @@ export default function ChatScreen({ navigation, route }) {
     </SafeAreaView>
   );
 }
-

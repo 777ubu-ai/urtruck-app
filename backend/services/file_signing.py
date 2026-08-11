@@ -10,9 +10,10 @@
 админу под Basic Auth). В БД хранится сырой путь без подписи. Кастомный роут
 `GET /storage/{path}` (см. main.py) проверяет exp+sig и отдаёт файл, иначе 403.
 
-Секрет: env `FILE_SIGNING_KEY`, fallback `URTRUCK_API_SECRET`. Не хардкодим —
-если оба пусты, подпись формально работает (пустой ключ), но это небезопасно:
-логируем предупреждение один раз, чтобы это было заметно в проде.
+Секрет: только env `FILE_SIGNING_KEY`. Без отдельного ключа сервис работает
+в fail-closed режиме: новые подписанные ссылки не создаются, а существующие
+не проходят проверку. Нельзя использовать общий API-секрет и тем более
+пустую строку как ключ подписи документов.
 """
 import hashlib
 import hmac
@@ -22,19 +23,24 @@ from typing import Optional
 
 from services import storage_service
 
-_warned_no_secret = False
+class FileSigningConfigurationError(RuntimeError):
+    """Подписывание файлов запрещено, пока не задан отдельный сильный ключ."""
+
+
+def is_configured() -> bool:
+    """Есть ли отдельный ключ для HMAC-подписей файлов."""
+    # HMAC technically permits short keys, but a production key shorter than
+    # 32 bytes is not an acceptable replacement for a randomly generated one.
+    return len(os.getenv("FILE_SIGNING_KEY", "").encode("utf-8")) >= 32
 
 
 def _secret() -> bytes:
-    """Секрет подписи. FILE_SIGNING_KEY → URTRUCK_API_SECRET → пусто (+warn)."""
-    global _warned_no_secret
-    key = os.getenv("FILE_SIGNING_KEY") or os.getenv("URTRUCK_API_SECRET") or ""
-    if not key and not _warned_no_secret:
-        print("[file_signing] ВНИМАНИЕ: FILE_SIGNING_KEY/URTRUCK_API_SECRET не "
-              "заданы — подписи файлов небезопасны. Задайте FILE_SIGNING_KEY.",
-              flush=True)
-        _warned_no_secret = True
-    return key.encode("utf-8")
+    """Возвращает отдельный ключ или останавливает операцию безопасно."""
+    if not is_configured():
+        raise FileSigningConfigurationError(
+            "FILE_SIGNING_KEY is required and must be at least 32 bytes"
+        )
+    return os.environ["FILE_SIGNING_KEY"].encode("utf-8")
 
 
 def _storage_prefixes():
@@ -83,12 +89,25 @@ def sign(url_or_key: Optional[str], ttl: int = 86400) -> Optional[str]:
     Значения, которые НЕ являются локальным storage (пусто, http/https
     supabase/s3, data:/file: URI, произвольные строки), возвращаются БЕЗ
     изменений — чтобы случайно не испортить внешние ссылки/вложения."""
+    # Supabase objects stay private too.  The stored `supabase://` reference
+    # is opaque; a short-lived URL is minted only inside an already-authorized
+    # endpoint (profile, chat or admin).  Do not change arbitrary http(s)
+    # values, because legacy external links are not our storage.
+    if storage_service.is_private_remote_ref(url_or_key):
+        return storage_service.create_signed_url(url_or_key, ttl)
     if not is_local_storage_path(url_or_key):
         return url_or_key
     key = extract_key(url_or_key)
     if not key:
         return url_or_key
-    exp = int(time.time()) + int(ttl)
+    # The chat polls its history every few seconds. Previously each response
+    # contained a new `?exp=…&sig=…`, so React Native treated one unchanged
+    # photo as a new source and visibly reloaded it. Keep the private signed
+    # URL stable in a short time window while preserving at least the requested
+    # TTL. The object itself remains inaccessible without this signature.
+    now = int(time.time())
+    window = min(900, max(60, int(ttl)))
+    exp = ((now + int(ttl) + window - 1) // window) * window
     sig = _compute_sig(key, exp)
     base = storage_service.LOCAL_PUBLIC_BASE.rstrip("/")
     return f"{base}/{key}?exp={exp}&sig={sig}"
@@ -104,5 +123,8 @@ def verify(key: str, exp, sig: Optional[str]) -> bool:
         return False
     if exp_i < int(time.time()):
         return False
-    expected = _compute_sig(str(key), exp_i)
+    try:
+        expected = _compute_sig(str(key), exp_i)
+    except FileSigningConfigurationError:
+        return False
     return hmac.compare_digest(expected, str(sig))

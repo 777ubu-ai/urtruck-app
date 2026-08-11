@@ -1,0 +1,26 @@
+# GPS consent, device A — shipper starts the request.
+# Prerequisite: a QA deal in "Везут" exists between Boris (client) and Serik
+# (driver). This intentionally does NOT auto-approve GPS.
+appId: host.exp.Exponent
+name: gps-consent-shipper
+tags: [gps, consent, shipper, release]
+env:
+  MAESTRO_ACTOR: boris
+---
+- runFlow: _lib/qa-login.yaml
+- tapOn: { id: "bottom-nav-mywork" }
+- waitForAnimationToEnd
+- tapOn: { id: "my-work-tab-enroute" }
+- extendedWaitUntil:
+    visible: { id: "my-order-card" }
+    timeout: 15000
+- tapOn: { id: "my-order-card", index: 0 }
+- extendedWaitUntil:
+    visible: { id: "deal-request-tracking" }
+    timeout: 15000
+- takeScreenshot: GPS_01_shipper_before_request
+- tapOn: { id: "deal-request-tracking" }
+- extendedWaitUntil:
+    visible: { id: "deal-tracking-pending" }
+    timeout: 10000
+- takeScreenshot: GPS_02_shipper_pending_driver_consent

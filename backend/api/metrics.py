@@ -9,8 +9,9 @@ from collections import defaultdict
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Depends, Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
+from api.admin import check_admin
 
 metrics_router = APIRouter()
 
@@ -64,7 +65,7 @@ class MetricsMiddleware(BaseHTTPMiddleware):
 
 
 @metrics_router.get("/metrics")
-def prometheus_metrics():
+def prometheus_metrics(_admin: str = Depends(check_admin)):
     """Prometheus text format."""
     lines = []
     lines.append("# HELP urtruck_requests_total Total HTTP requests")
@@ -162,8 +163,9 @@ async def log_client_error(request: Request):
 
 
 @metrics_router.get("/api/v1/errors/recent")
-def recent_errors(authorization: str = None):
-    # Базовая проверка — только с токеном (не публичный)
+def recent_errors(_admin: str = Depends(check_admin)):
+    # Client stacks and URLs may contain sensitive operational information.
+    # This is intentionally visible only to an authenticated operator.
     return {"errors": _client_errors[-20:]}
 
 

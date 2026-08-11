@@ -1,0 +1,17 @@
+# GPS consent, device A — after driver approval, the shipper sees the live map.
+appId: host.exp.Exponent
+name: gps-consent-shipper-map
+tags: [gps, consent, shipper, release]
+env:
+  MAESTRO_ACTOR: boris
+---
+- runFlow: _lib/qa-login.yaml
+- tapOn: { id: "bottom-nav-mywork" }
+- waitForAnimationToEnd
+- tapOn: { id: "my-work-tab-enroute" }
+- tapOn: { id: "my-order-card", index: 0 }
+- extendedWaitUntil:
+    visible: { id: "deal-track-truck" }
+    timeout: 20000
+- tapOn: { id: "deal-track-truck" }
+- takeScreenshot: GPS_06_shipper_live_map_locked_route

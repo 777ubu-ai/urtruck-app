@@ -229,7 +229,7 @@ export default function ChatsListScreen({ navigation, route }) {
     const deals = [...activeDeals, ...completedDeals].map((it) => ({
       _kind: 'deal',
       _sortAt: it.last_message_at || it.updated_at || it.created_at || '',
-      _unread: it.unread_count || 0,
+      _unread: (it.unread_count || 0) + (it.tracking_action_required ? 1 : 0),
       _data: it,
     }));
     const closedBids = closedBidsData.map((it) => ({
@@ -358,11 +358,14 @@ export default function ChatsListScreen({ navigation, route }) {
   };
 
   // ═══ Рендер: карточка сделки (единый список, компактный статус) ═══
-  const renderDealCard = ({ item: deal }) => {
+  const renderDealCard = ({ item: deal, unread: suppliedUnread }) => {
     const statusColor = STATUS_COLOR[deal.status] || '#94A3B8';
     const statusLabel = compactStatusLabel(deal.status, t);
     const cur = deal.currency || 'USD';
-    const unread = deal.unread_count || 0;
+    const trackingActionRequired = !!deal.tracking_action_required;
+    const unread = suppliedUnread == null
+      ? (deal.unread_count || 0) + (trackingActionRequired ? 1 : 0)
+      : suppliedUnread;
     const time = relTime(deal.last_message_at || deal.updated_at);
     // Партнёр — противоположная роль: клиенту показываем водителя и наоборот.
     const partnerName = role === 'client'
@@ -374,13 +377,15 @@ export default function ChatsListScreen({ navigation, route }) {
         key={deal.id}
         testID="deals-deal-card"
         style={[s.card, { backgroundColor: theme.card, borderColor: theme.border, opacity: deal.status === 'cancelled' ? 0.65 : 1 }]}
-        onPress={() => {
-          if (deal.cargo_id) {
-            navigation.navigate('CargoDetail', { cargoId: deal.cargo_id, dealId: deal.id, role });
-          } else if (deal.trip_id) {
-            navigation.navigate('TripDetail', { tripId: deal.trip_id, dealId: deal.id, role });
-          }
-        }}
+        // The deal itself is the operational entry point.  GPS consent and
+        // the protected conversation live in the Deal Room; opening a cargo
+        // detail here hid the driver's action after a GPS push.
+        onPress={() => navigation.navigate('Chat', {
+          dealId: deal.id,
+          roomId: deal.chat_room_id || null,
+          partner: { id: role === 'client' ? deal.driver_id : deal.shipper_id, name: partnerName },
+          role,
+        })}
         activeOpacity={0.7}
       >
         <View style={[s.avatar, { backgroundColor: statusColor + '15' }]}>
@@ -414,6 +419,13 @@ export default function ChatsListScreen({ navigation, route }) {
             <View style={[s.statusDot, { backgroundColor: statusColor }]} />
             <Text style={[s.statusPillText, { color: statusColor }]}>{statusLabel}</Text>
           </View>
+          {trackingActionRequired ? (
+            <View style={s.trackingAction} testID="deal-tracking-action-required">
+              <Feather name="navigation" size={13} color="#E06D00" />
+              <Text style={s.trackingActionText}>{t('tracking_action_required')}</Text>
+              <Feather name="chevron-right" size={15} color="#E06D00" />
+            </View>
+          ) : null}
           {/* Строка 4: Последнее сообщение    Цена */}
           <View style={s.row}>
             {deal.last_message ? (
@@ -559,7 +571,7 @@ export default function ChatsListScreen({ navigation, route }) {
     if (item._kind === 'closedBid') {
       return renderBidCard({ item: item._data, unread: 0 });
     }
-    return renderDealCard({ item: item._data });
+    return renderDealCard({ item: item._data, unread: item._unread });
   };
 
   const renderDealsContent = () => {
@@ -694,6 +706,8 @@ const s = StyleSheet.create({
   statusPill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, marginTop: 3, flexShrink: 0 },
   statusDot: { width: 7, height: 7, borderRadius: 4 },
   statusPillText: { fontSize: 12, fontWeight: '600' },
+  trackingAction: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: '#FF840066', backgroundColor: '#FF840015', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6, marginTop: 6, alignSelf: 'flex-start' },
+  trackingActionText: { color: '#E06D00', fontSize: 12, fontWeight: '800' },
   // Бейджи
   badge: { minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center' },
   badgeTxt: { color: '#fff', fontSize: 12, fontWeight: '800' },

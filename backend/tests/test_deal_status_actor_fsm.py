@@ -101,6 +101,15 @@ def deal_status(deal_id):
         return c.execute("SELECT status FROM deals WHERE id = ?", (deal_id,)).fetchone()["status"]
 
 
+def approve_tracking(deal_id):
+    """Create the required shipper request + explicit driver consent."""
+    as_user(SHIPPER)
+    assert client.post(f"/api/v1/market/deals/{deal_id}/tracking/request").status_code == 200
+    as_user(DRIVER)
+    response = client.post(f"/api/v1/market/deals/{deal_id}/tracking/respond", json={"decision": "approve"})
+    assert response.status_code == 200, response.text
+
+
 # ───────────────────────── роль ─────────────────────────
 
 def test_shipper_cannot_start_trip():
@@ -127,9 +136,18 @@ def test_shipper_cannot_set_delivered():
 
 def test_driver_can_start_trip():
     d = seed_deal("accepted")
+    approve_tracking(d)
     r = patch_status(d, "in_progress", DRIVER)
     assert r.status_code == 200, r.text
     assert deal_status(d) == "in_progress"
+
+
+def test_driver_cannot_start_trip_without_tracking_consent():
+    d = seed_deal("accepted")
+    r = patch_status(d, "in_progress", DRIVER)
+    assert r.status_code == 409, r.text
+    assert r.json()["detail"]["error"] == "TRACKING_REQUIRED_BEFORE_PICKUP"
+    assert deal_status(d) == "accepted"
 
 
 def test_driver_can_set_at_border_for_international():
@@ -326,10 +344,60 @@ def test_concurrent_conflicting_patch_does_not_give_two_false_200():
     assert conflicts_ok == 15
 
 
+def test_gps_is_locked_after_pickup_and_last_point_is_preserved():
+    """GPS needs shipper request + driver consent; after pickup the driver
+    cannot stop it or erase the last verified point."""
+    deal_id = seed_deal("accepted", from_country="KZ", to_country="KZ")
+
+    as_user(SHIPPER)
+    request = client.post(f"/api/v1/market/deals/{deal_id}/tracking/request")
+    assert request.status_code == 200, request.text
+    assert request.json()["tracking"]["status"] == "pending"
+
+    # A pending request is not consent and the truck is not yet in transit.
+    as_user(DRIVER)
+    blocked = client.post(f"/api/v1/market/deals/{deal_id}/location", json={"lat": 43.2, "lng": 76.9})
+    assert blocked.status_code == 409, blocked.text
+    approved = client.post(f"/api/v1/market/deals/{deal_id}/tracking/respond", json={"decision": "approve"})
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["tracking"]["status"] == "active"
+
+    pickup = client.patch(f"/api/v1/market/deals/{deal_id}/status", params={"new_status": "in_progress"})
+    assert pickup.status_code == 200, pickup.text
+    sent = client.post(f"/api/v1/market/deals/{deal_id}/location", json={"lat": 43.2, "lng": 76.9})
+    assert sent.status_code == 200, sent.text
+    as_user(SHIPPER)
+    visible = client.get(f"/api/v1/market/deals/{deal_id}/location")
+    assert visible.status_code == 200 and visible.json()["has_location"] is True
+
+    as_user(DRIVER)
+    stopped = client.post(f"/api/v1/market/deals/{deal_id}/tracking/stop")
+    assert stopped.status_code == 409, stopped.text
+    delivered = client.patch(f"/api/v1/market/deals/{deal_id}/status", params={"new_status": "delivered"})
+    assert delivered.status_code == 200, delivered.text
+    as_user(SHIPPER)
+    preserved = client.get(f"/api/v1/market/deals/{deal_id}/location")
+    assert preserved.status_code == 200
+    assert preserved.json()["has_location"] is True
+    assert preserved.json()["deal_status"] == "delivered"
+
+
+def test_gps_roles_are_strict():
+    deal_id = seed_deal("accepted")
+    as_user(DRIVER)
+    assert client.post(f"/api/v1/market/deals/{deal_id}/tracking/request").status_code == 403
+    as_user(SHIPPER)
+    assert client.post(f"/api/v1/market/deals/{deal_id}/tracking/request").status_code == 200
+    assert client.post(f"/api/v1/market/deals/{deal_id}/tracking/respond", json={"decision": "approve"}).status_code == 403
+    as_user(STRANGER)
+    assert client.get(f"/api/v1/market/deals/{deal_id}/tracking").status_code == 403
+
+
 if __name__ == "__main__":
     fails = 0
     for fn in [test_shipper_cannot_start_trip, test_shipper_cannot_set_at_border,
                test_shipper_cannot_set_delivered, test_driver_can_start_trip,
+               test_driver_cannot_start_trip_without_tracking_consent,
                test_driver_can_set_at_border_for_international,
                test_driver_cannot_set_at_border_for_domestic,
                test_driver_can_deliver_domestic_directly_from_in_progress,
@@ -340,7 +408,9 @@ if __name__ == "__main__":
                test_unknown_status_400, test_cancel_allowed_for_both_parties_from_accepted,
                test_cancel_mid_transit_allowed_both_and_audited,
                test_trip_status_endpoint_cannot_bypass_fsm_or_country_guard,
-               test_concurrent_conflicting_patch_does_not_give_two_false_200]:
+               test_concurrent_conflicting_patch_does_not_give_two_false_200,
+               test_gps_is_locked_after_pickup_and_last_point_is_preserved,
+               test_gps_roles_are_strict]:
         try:
             fn(); print(f"  ✅ {fn.__name__}")
         except Exception as e:

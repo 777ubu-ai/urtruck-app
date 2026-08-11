@@ -92,7 +92,7 @@ def generate_ttn(trip_id: str, user=Depends(require_level(1))):
 
 
 @docs_router.get("/ttn/{trip_id}/pdf")
-def download_ttn_pdf(trip_id: str):
+def download_ttn_pdf(trip_id: str, user=Depends(require_level(1))):
     """PDF версия ТТН; без WeasyPrint возвращает печатный HTML."""
     trip = {"id": trip_id, "from": "Алматы", "to": "Астана", "cargo": "Товары", "tons": 20, "m3": 82, "type": "tent", "price": 1500}
     driver = {"full_name": "—", "phone": "—", "iin": "—"}
