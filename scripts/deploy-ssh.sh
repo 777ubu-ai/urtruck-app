@@ -1,70 +1,81 @@
 #!/usr/bin/env bash
-# STEP 4 (08.08.2026): централизованный резолвер SSH-аутентификации деплоя.
+# Centralized SSH/SCP transport for UrTruck deploy/admin workflows.
 #
-# Убирает разбросанную по deploy.yml зависимость от sshpass/SERVER_PASS/
-# StrictHostKeyChecking=no в ОДНО место и делает переход на dedicated deploy
-# key opt-in БЕЗ риска сломать прод:
-#   * если задан секрет SERVER_SSH_KEY → key-режим с ПИННИНГОМ host-key
-#     (known_hosts из SERVER_SSH_KNOWN_HOSTS, иначе ssh-keyscan), StrictHostKeyChecking=yes;
-#   * если SERVER_SSH_KEY пуст → FALLBACK на текущий sshpass-путь БАЙТ-В-БАЙТ
-#     (поведение сегодня не меняется, пока владелец не заведёт ключ).
+# Preferred mode:
+#   SERVER_SSH_KEY + SERVER_SSH_KNOWN_HOSTS
+#   - private key is written to a 0600 runner temp file
+#   - host key MUST be supplied out-of-band and is pinned
+#   - StrictHostKeyChecking=yes
 #
-# Секреты нигде не печатаются. Проверка построения команд без сервера:
-#   DRY_RUN=1 SERVER_HOST=h SERVER_USER=u SERVER_PASS=p scripts/deploy-ssh.sh ssh "echo hi"
-#   DRY_RUN=1 SERVER_HOST=h SERVER_USER=u SERVER_SSH_KEY=k scripts/deploy-ssh.sh ssh "echo hi"
+# Legacy compatibility mode:
+#   SERVER_PASS only
+#   - retained temporarily for repositories/servers that have not completed
+#     the key migration yet
+#   - never selected when SERVER_SSH_KEY is present
 #
-# Использование:
-#   scripts/deploy-ssh.sh ssh "<remote command>"
-#   scripts/deploy-ssh.sh scp <scp-args...>     # напр. -r dist/* user@host:/path
+# SECURITY: key mode deliberately does NOT run ssh-keyscan at deploy time.
+# A host key learned over the same untrusted network would not be a pin and
+# would not protect against MITM. Obtain/verify the fingerprint independently
+# and store the resulting known_hosts line in SERVER_SSH_KNOWN_HOSTS.
 set -euo pipefail
 
 : "${SERVER_HOST:?SERVER_HOST required}"
 : "${SERVER_USER:?SERVER_USER required}"
 
 _tmp="${RUNNER_TEMP:-/tmp}"
-_keyfile="$_tmp/urtruck_deploy_key"
-_known="$_tmp/urtruck_known_hosts"
+_keyfile="$_tmp/urtruck_deploy_key_${GITHUB_RUN_ID:-$$}"
+_known="$_tmp/urtruck_known_hosts_${GITHUB_RUN_ID:-$$}"
+
+cleanup() {
+  rm -f "$_keyfile" "$_known"
+}
+trap cleanup EXIT INT TERM
 
 if [ -n "${SERVER_SSH_KEY:-}" ]; then
   MODE=key
-  if [ "${DRY_RUN:-0}" != "1" ] && [ ! -f "$_keyfile" ]; then
+  : "${SERVER_SSH_KNOWN_HOSTS:?SERVER_SSH_KNOWN_HOSTS required when SERVER_SSH_KEY is set}"
+
+  if [ "${DRY_RUN:-0}" != "1" ]; then
     umask 077
     printf '%s\n' "$SERVER_SSH_KEY" > "$_keyfile"
-    chmod 600 "$_keyfile"
-    if [ -n "${SERVER_SSH_KNOWN_HOSTS:-}" ]; then
-      printf '%s\n' "$SERVER_SSH_KNOWN_HOSTS" > "$_known"
-    else
-      ssh-keyscan -H "$SERVER_HOST" > "$_known" 2>/dev/null || true
-    fi
+    printf '%s\n' "$SERVER_SSH_KNOWN_HOSTS" > "$_known"
+    chmod 600 "$_keyfile" "$_known"
+    test -s "$_keyfile"
+    test -s "$_known"
   fi
-  SSH_AUTH=(ssh -i "$_keyfile" -o "UserKnownHostsFile=$_known" -o StrictHostKeyChecking=yes)
-  SCP_AUTH=(scp -i "$_keyfile" -o "UserKnownHostsFile=$_known" -o StrictHostKeyChecking=yes)
+
+  SSH_AUTH=(ssh -i "$_keyfile" -o IdentitiesOnly=yes -o "UserKnownHostsFile=$_known" -o StrictHostKeyChecking=yes)
+  SCP_AUTH=(scp -i "$_keyfile" -o IdentitiesOnly=yes -o "UserKnownHostsFile=$_known" -o StrictHostKeyChecking=yes)
 else
   MODE=pass
-  : "${SERVER_PASS:?SERVER_PASS required in password mode}"
-  # ВАЖНО: строка ниже воспроизводит текущий deploy.yml байт-в-байт.
+  : "${SERVER_PASS:?SERVER_PASS required when SERVER_SSH_KEY is not configured}"
   SSH_AUTH=(sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no)
   SCP_AUTH=(sshpass -p "$SERVER_PASS" scp -o StrictHostKeyChecking=no)
 fi
 
-sub="${1:?subcommand required: ssh|scp}"; shift || true
+sub="${1:?subcommand required: ssh|scp}"
+shift || true
+
+if [ "${DRY_RUN:-0}" = "1" ]; then
+  # Never print secret material in dry-run output.
+  printf 'MODE=%s SUBCOMMAND=%s HOST=%s@%s\n' "$MODE" "$sub" "$SERVER_USER" "$SERVER_HOST"
+  exit 0
+fi
 
 case "$sub" in
   ssh)
-    if [ "${DRY_RUN:-0}" = "1" ]; then
-      printf 'MODE=%s\n' "$MODE"
-      printf '%q ' "${SSH_AUTH[@]}" "$SERVER_USER@$SERVER_HOST" "$@"; echo
-      exit 0
-    fi
-    exec "${SSH_AUTH[@]}" "$SERVER_USER@$SERVER_HOST" "$@"
+    set +e
+    "${SSH_AUTH[@]}" "$SERVER_USER@$SERVER_HOST" "$@"
+    rc=$?
+    set -e
+    exit "$rc"
     ;;
   scp)
-    if [ "${DRY_RUN:-0}" = "1" ]; then
-      printf 'MODE=%s\n' "$MODE"
-      printf '%q ' "${SCP_AUTH[@]}" "$@"; echo
-      exit 0
-    fi
-    exec "${SCP_AUTH[@]}" "$@"
+    set +e
+    "${SCP_AUTH[@]}" "$@"
+    rc=$?
+    set -e
+    exit "$rc"
     ;;
   *)
     echo "unknown subcommand: $sub (expected ssh|scp)" >&2
