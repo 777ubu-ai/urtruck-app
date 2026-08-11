@@ -98,6 +98,124 @@ def _load_color(q: int | None) -> str:
     return "red"
 
 
+def _load_status(q: int | None) -> str:
+    """Border-dashboard v1: понятный статус загрузки по реальной длине очереди.
+    Вокабуляр: free / moderate / busy / very_busy / no_data.
+    'closed' и 'stale' определяются отдельно (freshness/is_active), не по числу."""
+    if q is None:
+        return "no_data"
+    if q <= 15:
+        return "free"
+    if q <= 40:
+        return "moderate"
+    if q <= 80:
+        return "busy"
+    return "very_busy"
+
+
+def _crossing_from_checkpoint(c: dict) -> dict:
+    """Единая карточка КПП для dashboard из checkpoint+scoreboard.
+    freshness: 'ok'|'stale'|'unavailable' (из build_scoreboard_response).
+    Если данные не свежие (не 'ok') — очередь/статус НЕ выдаём как текущие."""
+    q = c["directions"]["in"]["queue_length"]
+    fresh = c.get("status")  # ok|stale|unavailable
+    if fresh == "ok":
+        load_status = _load_status(q)
+        shown_q = q
+    elif fresh == "stale":
+        load_status = "stale"
+        shown_q = None
+    else:
+        load_status = "no_data"
+        shown_q = None
+    return {
+        "id": c["code"],
+        "code": c["code"],
+        "name": c["name_ru"],
+        "name_en": c.get("name_en"),
+        "name_kz": c.get("name_kz"),
+        "name_cn": c.get("name_cn"),
+        "country": c.get("country_to"),
+        "trucks_in_queue": shown_q,
+        "load_status": load_status,      # free|moderate|busy|very_busy|no_data|stale
+        "freshness": fresh,              # ok|stale|unavailable
+        "estimated_wait_hours": None,    # CGR public-list не даёт ETA
+        "updated_at": c.get("last_updated"),
+        "source_type": "official",       # CGR = официальный реестр CarGoRuqsat
+    }
+
+
+def _cgr_enabled() -> bool:
+    try:
+        from cgr.settings import cgr_settings
+        return bool(cgr_settings.feature_enabled)
+    except Exception:
+        return False
+
+
+@borders_router.get("/best")
+def best_crossing(country: str = ""):
+    """Border-dashboard v1: лучший переход СЕЙЧАС по реальным данным.
+    Строго: только свежие (freshness=='ok') КПП с известной длиной очереди;
+    stale / no_data / неактивные исключаются. Сортировка queue ASC. Если
+    надёжных данных нет — best=null (UI не показывает блок; НЕ выдумываем)."""
+    if not _cgr_enabled():
+        return {"best": None, "reason": "source_unavailable"}
+    from cgr import scoreboard_service
+    board = scoreboard_service.build_scoreboard_response()
+    code = (country or "").upper()
+    candidates = []
+    for c in board["checkpoints"]:
+        if code and code not in ("", "ALL") and c.get("country_to") != code:
+            continue
+        if c.get("status") != "ok":
+            continue  # stale/unavailable исключаем
+        q = c["directions"]["in"]["queue_length"]
+        if q is None:
+            continue  # no_data исключаем
+        candidates.append((q, c))
+    if not candidates:
+        return {"best": None, "reason": "no_reliable_data"}
+    candidates.sort(key=lambda t: t[0])
+    return {"best": _crossing_from_checkpoint(candidates[0][1]), "source_type": "official"}
+
+
+@borders_router.get("/countries")
+def list_countries():
+    """Border-dashboard v1: страны + агрегат статусов КПП по реальным данным.
+    Возвращает по каждой стране: всего КПП, счётчики free/moderate/busy/
+    very_busy/no_data (только по свежим), самое свежее updated_at."""
+    if not _cgr_enabled():
+        # legacy: только количество переходов, без статусов (нет реальных данных)
+        from services.border_service import BORDERS
+        agg: dict[str, int] = {}
+        for b in BORDERS:
+            cc = b.get("country_to") or b.get("country") or "XX"
+            agg[cc] = agg.get(cc, 0) + 1
+        return {"countries": [{"country": k, "crossings": v, "has_live_data": False,
+                               "free": 0, "moderate": 0, "busy": 0, "very_busy": 0,
+                               "no_data": v, "updated_at": None} for k, v in sorted(agg.items())]}
+    from cgr import scoreboard_service
+    board = scoreboard_service.build_scoreboard_response()
+    by_country: dict[str, dict] = {}
+    for c in board["checkpoints"]:
+        cc = c.get("country_to") or "XX"
+        d = by_country.setdefault(cc, {"country": cc, "crossings": 0, "has_live_data": True,
+                                       "free": 0, "moderate": 0, "busy": 0, "very_busy": 0,
+                                       "no_data": 0, "updated_at": None})
+        d["crossings"] += 1
+        card = _crossing_from_checkpoint(c)
+        st = card["load_status"]
+        if st in ("free", "moderate", "busy", "very_busy"):
+            d[st] += 1
+        else:
+            d["no_data"] += 1  # stale тоже считаем как «нет актуальных»
+        u = card["updated_at"]
+        if u and (d["updated_at"] is None or u > d["updated_at"]):
+            d["updated_at"] = u
+    return {"countries": [by_country[k] for k in sorted(by_country)]}
+
+
 @borders_router.get("/lookup")
 async def lookup_by_plate(plate: str = ""):
     """Статус машины в электронной очереди по госномеру (ГРНЗ).
