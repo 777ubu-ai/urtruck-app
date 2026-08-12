@@ -281,11 +281,9 @@ export default function ChatsListScreen({ navigation, route }) {
                   {cnt} {t('deals_offers_count')}
                 </Text>
               </View>
-              {unread > 0 ? (
-                <View style={[s.badge, { backgroundColor: '#D64545' }]}>
-                  <Text style={s.badgeTxt}>{unread > 9 ? '9+' : unread}</Text>
-                </View>
-              ) : null}
+              {/* Счётчик предложения уже показан во вкладке и в BottomNav.
+                  Третья одинаковая цифра внутри карточки только создавала
+                  визуальный шум и выглядела как ещё одно событие. */}
             </View>
             <Text style={[s.price, { color: theme.text }]} numberOfLines={1} ellipsizeMode="tail">
               {minPrice ? `${t('deals_offers_from')} ${formatPrice(minPrice, cur, t)}` : ''}
@@ -340,11 +338,8 @@ export default function ChatsListScreen({ navigation, route }) {
                 <View style={[s.statusDot, { backgroundColor: statusColor }]} />
                 <Text style={[s.statusPillText, { color: statusColor }]}>{label}</Text>
               </View>
-              {unread > 0 ? (
-                <View style={[s.badge, { backgroundColor: statusColor }]}>
-                  <Text style={s.badgeTxt}>{unread > 9 ? '9+' : unread}</Text>
-                </View>
-              ) : null}
+              {/* Для предложения оставляем один статус-пилл; общий непрочитанный
+                  счётчик живёт на вкладке «Сделки». */}
             </View>
             <Text style={[s.price, { color: theme.text }]} numberOfLines={1} ellipsizeMode="tail">
               {formatPrice(bid.amount, cur, t)}
