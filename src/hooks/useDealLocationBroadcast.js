@@ -1,6 +1,6 @@
-// useDealLocationBroadcast — GPS передаётся только по сделкам, которые
-// водитель ЯВНО разрешил на сервере. Статус «сделка в работе» сам по себе
-// никогда не включает GPS.
+// useDealLocationBroadcast — «Начать рейс» автоматически включает GPS на
+// сервере. Хук передаёт координаты только для активных рейсов и прекращает
+// передачу сразу после доставки/отмены.
 import { useEffect, useRef, useState } from 'react';
 import { Platform, AppState } from 'react-native';
 import { marketAPI } from '../utils/marketAPI';
@@ -14,10 +14,10 @@ export function useDealLocationBroadcast(activeDealIds) {
   const candidateKey = (Array.isArray(activeDealIds) ? activeDealIds : []).join(',');
 
   // Source of truth is /tracking/active, not the local deal list. Polling
-  // keeps a declined/stopped request from sending even if the app is still
-  // open, and starts promptly after a driver accepts from the deal chat.
+  // starts promptly after «Начать рейс» and returns an empty list immediately
+  // after delivery/cancellation.
   useEffect(() => {
-    if (Platform.OS === 'web' || !candidateKey) {
+    if (!candidateKey) {
       setPermittedIds([]);
       return undefined;
     }
@@ -44,7 +44,6 @@ export function useDealLocationBroadcast(activeDealIds) {
   }, [key]);
 
   useEffect(() => {
-    if (Platform.OS === 'web') return;            // в вебе геолокации нет
     if (!idsRef.current.length) return;
 
     let Location = null;

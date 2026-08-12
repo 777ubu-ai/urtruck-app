@@ -1,5 +1,6 @@
 // SegmentTabs — pill row used on My Trips / My Cargoes (11 / 12).
-// Items: [{ key, label, count? }]. Active tab is filled with the role accent.
+// Items: [{ key, label, count?, attentionCount? }]. `count` is the total;
+// `attentionCount` is a small notification badge for new/actionable items.
 
 import React from 'react';
 import { View, TouchableOpacity, Text, StyleSheet } from 'react-native';
@@ -40,19 +41,26 @@ export default function SegmentTabs({ items = [], value, onChange, accent, varia
                 : { backgroundColor: 'transparent', borderColor: colors.border },
             ]}
           >
-            <Text
-              style={[s.label, {
-                color: underline
-                  ? (active ? activeAccent : colors.textMuted)
-                  : (active ? '#FFFFFF' : colors.textMuted),
-                fontSize, letterSpacing,
-              }]}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.85}
-            >
-              {it.label}{it.count != null ? ` · ${it.count}` : ''}
-            </Text>
+            <View style={s.labelRow}>
+              <Text
+                style={[s.label, {
+                  color: underline
+                    ? (active ? activeAccent : colors.textMuted)
+                    : (active ? '#FFFFFF' : colors.textMuted),
+                  fontSize, letterSpacing,
+                }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.8}
+              >
+                {it.label}{it.count != null ? ` · ${it.count}` : ''}
+              </Text>
+              {(it.attentionCount || 0) > 0 ? (
+                <View style={s.attentionBadge} testID={`${it.testID || it.key}-attention`}>
+                  <Text style={s.attentionText}>{it.attentionCount > 9 ? '9+' : it.attentionCount}</Text>
+                </View>
+              ) : null}
+            </View>
           </TouchableOpacity>
         );
       })}
@@ -70,5 +78,8 @@ const s = StyleSheet.create({
     borderRadius: 10, borderWidth: 1,
     alignItems: 'center', justifyContent: 'center',
   },
-  label: { fontSize: 12, fontWeight: '700' },
+  label: { fontSize: 12, fontWeight: '700', flexShrink: 1, minWidth: 0 },
+  labelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, maxWidth: '100%' },
+  attentionBadge: { minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', backgroundColor: '#D64545' },
+  attentionText: { color: '#FFFFFF', fontSize: 10, fontWeight: '900' },
 });

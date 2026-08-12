@@ -34,8 +34,8 @@ const ACTIVE_STATUSES = new Set(['accepted', 'in_progress', 'at_border', 'awaiti
 const COMPLETED_STATUSES = new Set(['completed', 'delivered', 'cancelled']);
 
 const STATUS_COLOR = {
-  accepted: '#168759', in_progress: '#FF8400',
-  at_border: '#FF8400', awaiting_confirmation: '#FF8400',
+  accepted: '#168759', in_progress: '#3478D4',
+  at_border: '#3478D4', awaiting_confirmation: '#3478D4',
   completed: '#94A3B8', delivered: '#94A3B8', cancelled: '#EF4444',
 };
 // Компактный статус карточки: in_progress/at_border/awaiting_confirmation
@@ -255,8 +255,8 @@ export default function ChatsListScreen({ navigation, route }) {
         onPress={() => navigation.navigate('CargoDetail', { cargoId: cargo.id, role })}
         activeOpacity={0.7}
       >
-        <View style={[s.avatar, { backgroundColor: '#FF840015' }]}>
-          <Feather name="package" size={18} color="#FF8400" />
+        <View style={[s.avatar, { backgroundColor: '#F0F3F1' }]}>
+          <Feather name="package" size={18} color="#617067" />
         </View>
         <View style={{ flex: 1 }}>
           <View style={s.row}>
@@ -275,14 +275,14 @@ export default function ChatsListScreen({ navigation, route }) {
           ) : null}
           <View style={s.row}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 }}>
-              <View style={[s.statusPill, { backgroundColor: '#FF840015' }]}>
-                <View style={[s.statusDot, { backgroundColor: '#FF8400' }]} />
-                <Text style={[s.statusPillText, { color: '#E06D00' }]}>
+              <View style={[s.statusPill, { backgroundColor: '#F0F3F1' }]}>
+                <View style={[s.statusDot, { backgroundColor: '#7C8B82' }]} />
+                <Text style={[s.statusPillText, { color: '#617067' }]}>
                   {cnt} {t('deals_offers_count')}
                 </Text>
               </View>
               {unread > 0 ? (
-                <View style={[s.badge, { backgroundColor: '#FF8400' }]}>
+                <View style={[s.badge, { backgroundColor: '#D64545' }]}>
                   <Text style={s.badgeTxt}>{unread > 9 ? '9+' : unread}</Text>
                 </View>
               ) : null}
@@ -309,7 +309,7 @@ export default function ChatsListScreen({ navigation, route }) {
       : isCountered
         ? t('deals_offer_bargain')
         : (bid._incoming ? t('deals_offer_new') : t('deals_offer_waiting'));
-    const statusColor = isClosed ? '#94A3B8' : isCountered ? '#A855F7' : '#FF8400';
+    const statusColor = isClosed ? '#94A3B8' : isCountered ? '#3478D4' : '#617067';
     return (
       <TouchableOpacity
         key={bid.id}
@@ -409,7 +409,7 @@ export default function ChatsListScreen({ navigation, route }) {
               {countryFlag(deal.from_country)} {localizePlace(deal.from_city || '—', lang)} → {countryFlag(deal.to_country)} {localizePlace(deal.to_city || '—', lang)}
             </Text>
             {unread > 0 ? (
-              <View style={[s.badge, { backgroundColor: '#FF8400' }]}>
+              <View style={[s.badge, { backgroundColor: '#D64545' }]}>
                 <Text style={s.badgeTxt}>{unread > 9 ? '9+' : unread}</Text>
               </View>
             ) : null}
@@ -421,9 +421,9 @@ export default function ChatsListScreen({ navigation, route }) {
           </View>
           {trackingActionRequired ? (
             <View style={s.trackingAction} testID="deal-tracking-action-required">
-              <Feather name="navigation" size={13} color="#E06D00" />
+              <Feather name="navigation" size={13} color="#3478D4" />
               <Text style={s.trackingActionText}>{t('tracking_action_required')}</Text>
-              <Feather name="chevron-right" size={15} color="#E06D00" />
+              <Feather name="chevron-right" size={15} color="#3478D4" />
             </View>
           ) : null}
           {/* Строка 4: Последнее сообщение    Цена */}
@@ -476,7 +476,7 @@ export default function ChatsListScreen({ navigation, route }) {
 
   const STATUS_DOT_CHAT = {
     accepted: '#168759', confirmed: '#168759',
-    in_progress: '#FF8400', at_border: '#168759',
+    in_progress: '#3478D4', at_border: '#3478D4',
     completed: '#94A3B8', delivered: '#94A3B8',
     cancelled: '#EF4444', rejected: '#EF4444', expired: '#94A3B8',
   };
@@ -546,7 +546,7 @@ export default function ChatsListScreen({ navigation, route }) {
             </View>
           ) : null}
           {unread > 0 ? (
-            <View style={[s.badge, { backgroundColor: '#FF8400' }]} testID="deal-room-list-unread">
+            <View style={[s.badge, { backgroundColor: '#D64545' }]} testID="deal-room-list-unread">
               <Text style={s.badgeTxt}>{unread > 9 ? '9+' : unread}</Text>
             </View>
           ) : null}
@@ -556,10 +556,16 @@ export default function ChatsListScreen({ navigation, route }) {
   };
 
   const dealTabs = useMemo(() => ([
-    { key: 'offers', label: t('deals_tab_offers'), count: offersData.length, testID: 'deals-tab-offers' },
-    { key: 'active', label: t('deals_tab_active'), count: activeDeals.length, testID: 'deals-tab-active' },
+    { key: 'offers', label: t('deals_tab_offers'), count: offersData.length,
+      attentionCount: offersData.reduce((sum, item) => sum + (role === 'client'
+        ? ((item.active_bids_count || 0) > 0 ? 1 : 0)
+        : (isBidActionable(item, { asOwner: !!item._incoming }) ? 1 : 0)), 0),
+      testID: 'deals-tab-offers' },
+    { key: 'active', label: t('deals_tab_active'), count: activeDeals.length,
+      attentionCount: activeDeals.reduce((sum, item) => sum + (item.unread_count || 0) + (item.tracking_action_required ? 1 : 0), 0),
+      testID: 'deals-tab-active' },
     { key: 'completed', label: t('deals_tab_completed'), count: completedDeals.length + closedBidsData.length, testID: 'deals-tab-completed' },
-  ]), [t, offersData.length, activeDeals.length, completedDeals.length, closedBidsData.length]);
+  ]), [t, role, offersData, activeDeals, completedDeals.length, closedBidsData.length]);
 
   // Одинаковый путь для обеих ролей: Предложения → В работе → Завершённые.
   const renderUnifiedDealItem = ({ item }) => {
@@ -661,7 +667,7 @@ export default function ChatsListScreen({ navigation, route }) {
           renderSectionHeader={({ section }) => (
             <View style={s.sectionRow}>
               {section.key === 'pinned' ? <Feather name="map-pin" size={13} color={theme.textMuted} /> : null}
-              {section.key === 'unread' ? <View style={[s.sectionDot2, { backgroundColor: '#FF8400' }]} /> : null}
+              {section.key === 'unread' ? <View style={[s.sectionDot2, { backgroundColor: '#D64545' }]} /> : null}
               <Text style={[s.sectionLabel, { color: theme.textMuted }]}>
                 {section.key === 'pinned' ? t('section_pinned')
                  : section.key === 'unread' ? `${t('section_new')} (${section.count})`
@@ -706,8 +712,8 @@ const s = StyleSheet.create({
   statusPill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, marginTop: 3, flexShrink: 0 },
   statusDot: { width: 7, height: 7, borderRadius: 4 },
   statusPillText: { fontSize: 12, fontWeight: '600' },
-  trackingAction: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: '#FF840066', backgroundColor: '#FF840015', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6, marginTop: 6, alignSelf: 'flex-start' },
-  trackingActionText: { color: '#E06D00', fontSize: 12, fontWeight: '800' },
+  trackingAction: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: '#3478D455', backgroundColor: '#3478D412', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6, marginTop: 6, alignSelf: 'flex-start' },
+  trackingActionText: { color: '#3478D4', fontSize: 12, fontWeight: '800' },
   // Бейджи
   badge: { minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center' },
   badgeTxt: { color: '#fff', fontSize: 12, fontWeight: '800' },

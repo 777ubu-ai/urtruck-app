@@ -52,12 +52,9 @@ export function systemEventText(t, ev) {
   return raw || t('chat_system_event');
 }
 
-// DealStatusTimeline (горизонтальная шкала Принят/В работе/На границе/
-// Завершён) удалена 05.08.2026 (п.9 ТЗ) — нигде не импортировалась после
-// того, как CargoDetail.js/TripDetail.js/ChatScreen.js перешли на
-// компактную строку «Текущий статус» + одну кнопку действия; вместе с ней
-// ушёл единственный источник слова «На границе» как отдельного видимого
-// пользователю шага (п.8 ТЗ).
+// The horizontal timeline remains removed; the compact current-status row
+// and one next-action button now expose the required border step without
+// bringing the crowded stepper back.
 
 export function DealRoomCard({ deal, role }) {
   const { t } = useI18n();
@@ -65,9 +62,8 @@ export function DealRoomCard({ deal, role }) {
   const accent = accentFor(role);
   if (!deal) return null;
   const status = deal.status || 'active';
-  // userFacingDealStatus (05.08.2026, п.8 ТЗ): «На границе» временно не
-  // показываем пользователю отдельным шагом, карточка сворачивает его в
-  // «В работе» (текст и цвет) — реальный deal.status при этом не меняется.
+  // Display status follows the backend FSM, including the required border
+  // step for international routes.
   const displayStatus = userFacingDealStatus(status);
   const stColor = DEAL_STATUS_COLOR[displayStatus] || '#7C8B82';
   // H-1: статус сделки русским словом через i18n; фолбэк на сырой статус для

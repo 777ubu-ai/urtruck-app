@@ -16,7 +16,7 @@ import { localizePlace } from '../utils/places';
 import { getLanguage } from '../utils/i18n';
 
 export default function TrackTruckScreen({ navigation, route }) {
-  const { dealId, from, to, driverName } = route.params || {};
+  const { dealId, from, to, driverName, driverOnline = false } = route.params || {};
   const { t } = useI18n();
   const { theme } = useTheme();
   const [loc, setLoc] = useState(null);
@@ -78,6 +78,7 @@ export default function TrackTruckScreen({ navigation, route }) {
       : `https://maps.google.com/?q=${lat},${lng}`;
     Linking.openURL(url).catch(() => {});
   };
+  const openDriverChat = () => navigation.goBack();
 
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: theme.bg }]} edges={['top']}>
@@ -135,14 +136,48 @@ export default function TrackTruckScreen({ navigation, route }) {
             <Text style={[s.updated, { color: theme.textDim }]}>{fmtAgo(agoMin)}</Text>
           </View>
           <TruckMap lat={lat} lng={lng} title={driverName || t('track_truck_marker')} />
-          <TouchableOpacity style={[s.cta, { backgroundColor: '#FF8400' }]} onPress={openExternal} testID="track-open-maps">
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Feather name="compass" size={16} color="#0C0A09" />
-              <Text style={s.ctaText}>{t('track_truck_open_maps')}</Text>
-            </View>
-          </TouchableOpacity>
         </View>
       )}
+
+      <View style={[s.driverCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+        <View style={s.driverIdentity}>
+          <View style={s.driverAvatar}>
+            <Feather name="user" size={20} color="#0F6B47" />
+          </View>
+          <View style={s.driverText}>
+            <Text style={[s.driverName, { color: theme.text }]} numberOfLines={1}>
+              {driverName || t('role_driver')}
+            </Text>
+            <View style={s.presenceRow}>
+              {driverOnline ? <View style={s.onlineDot} /> : null}
+              <Text style={[s.driverStatus, { color: driverOnline ? '#168759' : theme.textMuted }]}>
+                {driverOnline ? t('chat_online') : t('role_driver')}
+              </Text>
+            </View>
+          </View>
+        </View>
+        <View style={s.contactRow}>
+          <TouchableOpacity
+            style={s.messageBtn}
+            onPress={openDriverChat}
+            testID="track-message-driver"
+            accessibilityLabel={t('write_driver')}
+          >
+            <Feather name="message-circle" size={18} color="#FFFFFF" />
+            <Text style={s.messageBtnText}>{t('write_driver')}</Text>
+          </TouchableOpacity>
+          {loc ? (
+            <TouchableOpacity
+              style={[s.mapsBtn, { borderColor: theme.border, backgroundColor: theme.bg }]}
+              onPress={openExternal}
+              testID="track-open-maps"
+              accessibilityLabel={t('track_truck_open_maps')}
+            >
+              <Feather name="navigation" size={19} color={theme.text} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      </View>
     </SafeAreaView>
   );
 }
@@ -166,6 +201,16 @@ const s = StyleSheet.create({
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 8 },
   emptyTitle: { fontSize: 18, fontWeight: '800', textAlign: 'center', marginTop: 8 },
   emptyDesc: { fontSize: 13, textAlign: 'center', lineHeight: 19 },
-  cta: { position: 'absolute', left: 16, right: 16, bottom: 24, height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  ctaText: { color: '#0C0A09', fontSize: 16, fontWeight: '800' },
+  driverCard: { marginHorizontal: 12, marginTop: 8, marginBottom: 10, padding: 12, borderWidth: 1, borderRadius: 16, gap: 10 },
+  driverIdentity: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  driverAvatar: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: '#E8F6EF' },
+  driverText: { flex: 1, minWidth: 0 },
+  driverName: { fontSize: 15, fontWeight: '800' },
+  presenceRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
+  onlineDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#168759' },
+  driverStatus: { fontSize: 11, fontWeight: '700' },
+  contactRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  messageBtn: { flex: 1, height: 48, borderRadius: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#0F6B47' },
+  messageBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  mapsBtn: { width: 48, height: 48, borderRadius: 13, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
 });

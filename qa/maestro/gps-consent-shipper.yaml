@@ -1,6 +1,5 @@
-# GPS consent, device A — shipper starts the request.
-# Prerequisite: a QA deal in "Везут" exists between Boris (client) and Serik
-# (driver). This intentionally does NOT auto-approve GPS.
+# Active-trip GPS, device A — after the driver starts the trip, the shipper
+# immediately gets the live-map action without requesting GPS separately.
 appId: host.exp.Exponent
 name: gps-consent-shipper
 tags: [gps, consent, shipper, release]
@@ -16,11 +15,8 @@ env:
     timeout: 15000
 - tapOn: { id: "my-order-card", index: 0 }
 - extendedWaitUntil:
-    visible: { id: "deal-request-tracking" }
+    visible: { id: "deal-track-truck" }
     timeout: 15000
-- takeScreenshot: GPS_01_shipper_before_request
-- tapOn: { id: "deal-request-tracking" }
-- extendedWaitUntil:
-    visible: { id: "deal-tracking-pending" }
-    timeout: 10000
-- takeScreenshot: GPS_02_shipper_pending_driver_consent
+- takeScreenshot: GPS_05_shipper_tracking_available
+- tapOn: { id: "deal-track-truck" }
+- takeScreenshot: GPS_06_shipper_live_map

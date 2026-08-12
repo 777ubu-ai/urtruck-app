@@ -5,7 +5,7 @@
 //
 // Pure-JS unit test, no RN/Metro needed — run directly with node:
 //   node tests/unit/dealStatusOrder.test.mjs
-import { pickDealStatus, DEAL_STATUS_RANK } from '../../src/utils/dealStatusOrder.js';
+import { pickDealStatus, userFacingDealStatus, DEAL_STATUS_RANK } from '../../src/utils/dealStatusOrder.js';
 
 let failed = 0;
 function check(desc, actual, expected) {
@@ -43,6 +43,7 @@ check('cancelled -> cancelled (idempotent)', pickDealStatus('cancelled', 'cancel
 // First load: no prior status, always accept the server's answer.
 check('null -> at_border (first load)', pickDealStatus(null, 'at_border'), 'at_border');
 check('null -> cancelled (first load)', pickDealStatus(null, 'cancelled'), 'cancelled');
+check('at_border remains visible to the user', userFacingDealStatus('at_border'), 'at_border');
 
 // Map readiness for awaiting_confirmation/completed — no NaN/undefined ranks.
 check('rank map has awaiting_confirmation', typeof DEAL_STATUS_RANK.awaiting_confirmation, 'number');

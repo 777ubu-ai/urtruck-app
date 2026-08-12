@@ -14,4 +14,12 @@ env:
     visible: { id: "deal-track-truck" }
     timeout: 20000
 - tapOn: { id: "deal-track-truck" }
+- extendedWaitUntil:
+    visible: { id: "track-message-driver" }
+    timeout: 10000
 - takeScreenshot: GPS_06_shipper_live_map_locked_route
+- tapOn: { id: "track-message-driver" }
+- extendedWaitUntil:
+    visible: { id: "chat-partner-name" }
+    timeout: 10000
+- takeScreenshot: GPS_07_shipper_returned_to_driver_chat

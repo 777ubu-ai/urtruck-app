@@ -1,9 +1,4 @@
-/* GPS consent contract — fast static gate for CI.
- *
- * The full behaviour is covered by backend API tests on the Python runner;
- * this check prevents a future UI change from quietly returning to automatic
- * tracking based only on a deal's logistics status.
- */
+/* Active-trip GPS contract — fast static gate for CI. */
 import fs from 'node:fs';
 
 const read = (p) => fs.readFileSync(new URL(`../../${p}`, import.meta.url), 'utf8');
@@ -17,18 +12,15 @@ const must = (source, needle, label) => {
   console.log(`  ✓ ${label}`);
 };
 
-must(api, '@mp_router.post("/deals/{deal_id}/tracking/request")', 'shipper request endpoint');
-must(api, '@mp_router.post("/deals/{deal_id}/tracking/respond")', 'driver consent endpoint');
-must(api, '@mp_router.post("/deals/{deal_id}/tracking/stop")', 'pre-pickup withdrawal endpoint');
 must(api, 'tracking.get("status") != "active"', 'location upload blocked without active consent');
-must(api, 'TRACKING_REQUIRED_BEFORE_PICKUP', 'pickup blocked without tracking consent');
-must(api, 'tracking_locked_at_pickup', 'pickup locks GPS evidence');
+must(api, 'tracking_started_with_trip', 'start trip activates tracking atomically');
 must(api, 'completed_at=CURRENT_TIMESTAMP', 'delivery retains tracking record');
 must(hook, 'marketAPI.activeTrackingDeals()', 'background task takes server-approved IDs');
-must(screen, 'deal-request-tracking', 'shipper request control');
-must(screen, 'deal-tracking-allow', 'driver approval control');
-must(screen, 'ensureBackgroundLocationPermission()', 'OS permission before server approval');
-must(screen, "deal?.status === 'accepted' && tracking?.status === 'active'", 'driver stop control is pre-pickup only');
+must(screen, 'deal-action-start-delivery', 'single visible start trip control');
+must(screen, 'ensureBackgroundLocationPermission()', 'OS permission is requested inside start trip');
+if (screen.includes('deal-tracking-driver-request') || screen.includes('deal-action-allow-gps-start')) {
+  throw new Error('GPS consent contract still exposes a separate driver action');
+}
 must(client, 'activeTrackingDeals()', 'mobile API client retrieves active permissions');
 
 console.log('\n[gps-consent] OK');

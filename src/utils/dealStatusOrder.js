@@ -53,16 +53,9 @@ export function pickDealStatus(prev, next) {
   return nextRank >= prevRank ? next : prev;
 }
 
-// userFacingDealStatus — ТОЛЬКО для текста статуса, который видит
-// пользователь (05.08.2026, п.8 ТЗ): «На границе» временно убрана из
-// словаря — обычному водителю/грузовладельцу этот шаг не несёт действия
-// (граница проходится сама, следующая КНОПКА всё равно «Доставлен»), а
-// лишняя стадия в и без того длинном списке статусов только запутывает.
-// Реальный deal.status на бэкенде (_FLOW в marketplace.py) НЕ меняется —
-// это чисто витринная свёртка: at_border показывается как «В работе»,
-// кнопка следующего действия (mark_arrived → «Доставлен») остаётся верной
-// для настоящего технического статуса, никакого рассинхрона между тем,
-// что видно, и тем, что реально произойдёт по нажатию.
+// Display status intentionally mirrors the backend FSM. International trips
+// require the visible at_border step; hiding it previously left the driver
+// with a delivery button that the server correctly rejected.
 export function userFacingDealStatus(status) {
-  return status === 'at_border' ? 'in_progress' : status;
+  return status;
 }
