@@ -43,6 +43,7 @@ verification_gate.require_level = fake_require_level
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from database import db as ddb
+from database.db import get_conn
 
 ddb.init_db()
 
