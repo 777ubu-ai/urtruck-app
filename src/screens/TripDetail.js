@@ -537,7 +537,14 @@ export default function TripDetail({ navigation, route }) {
 
         {/* Маршрут на карте */}
         <View style={{ marginBottom: 10, borderRadius: v1Radius.card, overflow: 'hidden' }}>
-          <RouteMap from={trip.from} to={trip.to} transit={trip.transit} height={180} />
+          <RouteMap
+            from={trip.from}
+            to={trip.to}
+            transit={trip.transit}
+            dealId={dealId}
+            dealStatus={dealStatus}
+            driverName={trip.driverName}
+          />
         </View>
 
         {/* Информация о рейсе */}
@@ -1063,7 +1070,7 @@ export default function TripDetail({ navigation, route }) {
       <ShareModal
         visible={shareModal}
         onClose={() => setShareModal(false)}
-        shareText={buildTripShareText({ ...trip, truckTypeLabel: view.truckType }, `${WEB_URL || 'https://urtruck.kz'}/trip/${trip.id}`)}
+        shareText={buildTripShareText({ ...trip, truckTypeLabel: view.truckType }, `${WEB_URL || 'https://urtruck.kz'}/trip/${trip.id}`, lang)}
         url={`${WEB_URL || 'https://urtruck.kz'}/trip/${trip.id}`}
       />
       {/* Stage 17: RatingModal removed alongside the inline
@@ -1074,4 +1081,3 @@ export default function TripDetail({ navigation, route }) {
     </SafeAreaView>
   );
 }
-

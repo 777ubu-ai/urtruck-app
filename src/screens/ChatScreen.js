@@ -30,7 +30,7 @@ import BargainCard from '../components/deal/BargainCard';
 import BidModal from '../components/BidModal';
 import DealAttachments from '../components/deal/DealAttachments';
 import { pickDealStatus, userFacingDealStatus } from '../utils/dealStatusOrder';
-import { ensureBackgroundLocationPermission } from '../utils/backgroundLocation';
+import { ensureBackgroundLocationPermission, getCurrentLocationPayload } from '../utils/backgroundLocation';
 
 // HOT-006: реальная запись/воспроизведение для web (PWA deploy).
 // На нативе (Expo Go) expo-av не установлен — тост "скоро".
@@ -63,7 +63,12 @@ const SYSTEM_TEXT_KEYS = {
 };
 
 const localizeSystemMessage = (text, translate) => {
-  const key = SYSTEM_TEXT_KEYS[String(text || '')];
+  const raw = String(text || '');
+  const key = SYSTEM_TEXT_KEYS[raw];
+  if (/^🤝\s*Сделка создана(?:\s*·\s*(.+))?$/.test(raw)) {
+    const amount = raw.match(/^🤝\s*Сделка создана(?:\s*·\s*(.+))?$/)?.[1];
+    return `🤝 ${translate('deal_created')}${amount ? ` · ${amount}` : ''}`;
+  }
   return key ? translate(key) : text;
 };
 
@@ -694,10 +699,12 @@ export default function ChatScreen({ navigation, route }) {
   // компактный «Текущий статус / Следующий шаг» там), без своей кнопки.
   const [statusLoading, setStatusLoading] = useState(false);
   const changeDealStatus = async (newStatus) => {
-    if (!dealId || statusLoading) return;
+    if (!dealId || statusLoading) return null;
+    let result = null;
     setStatusLoading(true);
     try {
       const r = await marketAPI.updateDealStatus(dealId, newStatus);
+      result = r;
       if (r.ok) {
         // «Статус обновлён» больше не показываем (05.08.2026, п.10 ТЗ):
         // компактная строка статуса и кнопка следующего действия меняются
@@ -722,6 +729,7 @@ export default function ChatScreen({ navigation, route }) {
         .catch(() => {});
     }
     setStatusLoading(false);
+    return result;
   };
   const isShipperSide = role === 'client' || role === 'shipper';
 
@@ -738,7 +746,11 @@ export default function ChatScreen({ navigation, route }) {
       toast(t('track_permission_needed'), 'error');
       return;
     }
-    await changeDealStatus('in_progress');
+    const result = await changeDealStatus('in_progress');
+    if (result?.ok) {
+      const firstPoint = await getCurrentLocationPayload();
+      if (firstPoint) await marketAPI.sendDealLocation(dealId, firstPoint);
+    }
   };
 
   // QA-аудит P0 (silent message loss): раньше все три send-пути были под

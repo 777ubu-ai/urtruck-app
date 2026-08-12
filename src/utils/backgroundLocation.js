@@ -104,6 +104,28 @@ export async function ensureBackgroundLocationPermission() {
   }
 }
 
+// Первая точка не должна ждать следующего 15/25-секундного poll. Вызывается
+// сразу после успешного перехода сделки в in_progress; далее постоянную
+// передачу продолжает useDealLocationBroadcast.
+export async function getCurrentLocationPayload() {
+  let locationModule = Location;
+  if (!locationModule) {
+    try { locationModule = await import('expo-location'); }
+    catch { return null; }
+  }
+  try {
+    const pos = await locationModule.getCurrentPositionAsync({ accuracy: locationModule.Accuracy.Balanced });
+    const c = pos?.coords;
+    if (!c || !Number.isFinite(c.latitude) || !Number.isFinite(c.longitude)) return null;
+    return {
+      lat: c.latitude,
+      lng: c.longitude,
+      heading: c.heading != null && c.heading >= 0 ? c.heading : null,
+      speed: c.speed != null && c.speed >= 0 ? c.speed : null,
+    };
+  } catch { return null; }
+}
+
 // Стартовать фоновый трекинг (если есть сделки и есть разрешение «Всегда»).
 export async function startBackgroundTracking() {
   const permission = await ensureBackgroundLocationPermission();

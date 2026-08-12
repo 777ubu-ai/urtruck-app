@@ -17,6 +17,7 @@ import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
 import { useTheme } from '../../utils/ThemeContext';
 import { userFacingDealStatus } from '../../utils/dealStatusOrder';
+import { localizeCargoName, localizePlace } from '../../utils/places';
 
 export const DRIVER_ACCENT = '#168759';
 export const CLIENT_ACCENT = '#FF8400';
@@ -57,7 +58,7 @@ export function systemEventText(t, ev) {
 // bringing the crowded stepper back.
 
 export function DealRoomCard({ deal, role }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { theme } = useTheme();
   const accent = accentFor(role);
   if (!deal) return null;
@@ -70,7 +71,10 @@ export function DealRoomCard({ deal, role }) {
   // немаппленных значений (confirmed/draft/dispute — нет ключа status_*).
   const stKey = 'status_' + displayStatus;
   const stLabel = t(stKey) !== stKey ? t(stKey) : displayStatus;
-  const route = [deal.from_city, deal.to_city].filter(Boolean).join(' → ') || '—';
+  const route = [deal.from_city, deal.to_city]
+    .filter(Boolean)
+    .map((place) => localizePlace(place, lang))
+    .join(' → ') || '—';
 
   const Field = ({ icon, label, value }) => (
     <View style={s.field}>
@@ -89,7 +93,7 @@ export function DealRoomCard({ deal, role }) {
           <Text style={[s.statusText, { color: stColor }]}>{t('chat_deal_card_status')}: {stLabel}</Text>
         </View>
       </View>
-      <Field icon="package" label={t('chat_deal_card_cargo')} value={deal.cargo_desc || deal.cargo_id || '—'} />
+      <Field icon="package" label={t('chat_deal_card_cargo')} value={localizeCargoName(deal.cargo_desc, lang) || deal.cargo_id || '—'} />
       <Field icon="dollar-sign" label={t('chat_deal_card_price')} value={
         deal.amount != null
           ? (deal.currency ? `${deal.amount} ${deal.currency}` : `${deal.amount}`)
