@@ -8,7 +8,7 @@
 //   - таска BG_LOCATION_TASK определяется на верхнем уровне модуля (импорт
 //     из App.js) — требование TaskManager;
 //   - start/stop дергается из useDealLocationBroadcast: сервер добавляет
-//     сделку только после согласия и забора груза; завершение рейса стопит
+//     сделку вместе с нажатием «Начать рейс»; завершение рейса стопит
 //     новые обновления, но не удаляет зафиксированную последнюю точку.
 // Требует build 38+ (native): в Expo Go/web тихо не работает (guard'ы).
 import { Platform } from 'react-native';
@@ -69,17 +69,35 @@ export async function setActiveDealIds(ids) {
   try { await storage.set(BG_DEALS_KEY, JSON.stringify(ids || [])); } catch {}
 }
 
-// Ask the operating system before the driver confirms the server-side GPS
-// request. This makes "Allow" truthful: no deal becomes active if iOS/Android
-// has denied background access. The actual task is still started only after
-// the server returns status=active.
+// Ask the operating system inside the single «Начать рейс» action. No deal
+// becomes active if iOS/Android has denied location access. The actual task
+// starts only after the server returns status=active.
 export async function ensureBackgroundLocationPermission() {
-  if (!TaskManager || !Location) return { ok: false, reason: 'unsupported' };
+  // Web/PWA and the current Android release can still provide truthful
+  // foreground tracking while UrTruck is open. Android background permission
+  // is intentionally absent from the manifest until Google Play approves the
+  // declaration (see CLAUDE.md); do not turn a usable foreground permission
+  // into a dead-end error for the driver.
+  let locationModule = Location;
+  if (!locationModule) {
+    try { locationModule = await import('expo-location'); }
+    catch { return { ok: false, reason: 'unsupported' }; }
+  }
   try {
-    const fg = await Location.requestForegroundPermissionsAsync();
+    const fg = await locationModule.requestForegroundPermissionsAsync();
     if (fg.status !== 'granted') return { ok: false, reason: 'fg_denied' };
-    const bg = await Location.requestBackgroundPermissionsAsync();
-    if (bg.status !== 'granted') return { ok: false, reason: 'bg_denied' };
+    if (Platform.OS === 'web') return { ok: true, foregroundOnly: true };
+    let bg;
+    try {
+      bg = await locationModule.requestBackgroundPermissionsAsync();
+    } catch (e) {
+      if (Platform.OS === 'android') return { ok: true, foregroundOnly: true };
+      throw e;
+    }
+    if (bg.status !== 'granted') {
+      if (Platform.OS === 'android') return { ok: true, foregroundOnly: true };
+      return { ok: false, reason: 'bg_denied' };
+    }
     return { ok: true };
   } catch (e) {
     return { ok: false, reason: String(e && e.message) };
@@ -90,6 +108,9 @@ export async function ensureBackgroundLocationPermission() {
 export async function startBackgroundTracking() {
   const permission = await ensureBackgroundLocationPermission();
   if (!permission.ok) return permission;
+  if (permission.foregroundOnly) {
+    return { ok: false, reason: 'background_unavailable', foregroundOnly: true };
+  }
   try {
     const started = await Location.hasStartedLocationUpdatesAsync(BG_LOCATION_TASK).catch(() => false);
     if (started) return { ok: true, already: true };

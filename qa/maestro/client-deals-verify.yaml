@@ -7,7 +7,7 @@ env:
   MAESTRO_ACTOR: boris
 ---
 - runFlow: _lib/qa-login.yaml
-# ── Везут: F7/F8 + F9 (запрос GPS, а не автоматическое слежение) ──
+# ── Везут: F7/F8 + F9 (карта доступна автоматически после старта) ──
 - tapOn: { id: "bottom-nav-mywork" }
 - waitForAnimationToEnd
 - tapOn: { id: "my-work-tab-enroute" }
@@ -23,11 +23,11 @@ env:
 - waitForAnimationToEnd
 - takeScreenshot: 92_deal_detail_F7_F8
 - scrollUntilVisible:
-    element: { id: "deal-request-tracking" }
+    element: { id: "deal-track-truck" }
     direction: DOWN
     visibilityPercentage: 40
     timeout: 8000
-- takeScreenshot: 93_tracking_request_F9
+- takeScreenshot: 93_live_tracking_F9
 # ── F10: правка груза не обнуляет цену ──
 - tapOn: { id: "bottom-nav-mywork" }
 - waitForAnimationToEnd

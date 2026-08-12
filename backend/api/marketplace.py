@@ -2758,16 +2758,6 @@ def _transition_deal(c, deal: dict, new_status: str, actor_uid: str, request_id:
                 "error": "ACTION_NOT_ALLOWED_FOR_ROLE",
                 "message": "Этот статус может установить только водитель по сделке",
             })
-    # GPS is voluntary only before pickup. The pickup action locks the
-    # previously granted consent for this deal: a monitored shipment cannot
-    # then be silently removed from the map by the driver's app.
-    if cur_status == "accepted" and new_status == "in_progress":
-        tracking = _tracking_payload(c, deal_id)
-        if tracking.get("status") != "active":
-            raise DealTransitionError(409, {
-                "error": "TRACKING_REQUIRED_BEFORE_PICKUP",
-                "message": "Перед началом рейса водитель должен подтвердить GPS-отслеживание по запросу грузоотправителя",
-            })
     route = c.execute(
         "SELECT COALESCE(c.from_country, t.from_country) AS from_country, "
         "COALESCE(c.to_country, t.to_country) AS to_country "
@@ -2810,13 +2800,21 @@ def _transition_deal(c, deal: dict, new_status: str, actor_uid: str, request_id:
             "message": "Статус сделки уже изменён другим запросом — обновите и попробуйте снова",
         })
     if cur_status == "accepted" and new_status == "in_progress":
+        # «Начать рейс» — единое действие водителя: вместе со статусом
+        # сервер включает отслеживание. Отдельного запроса грузоотправителя
+        # и отдельного GPS-согласия в продуктовой логике больше нет.
+        c.execute("DELETE FROM deal_locations WHERE deal_id = ?", (deal_id,))
         c.execute(
-            "UPDATE deal_tracking SET locked_at=COALESCE(locked_at, CURRENT_TIMESTAMP), "
-            "updated_at=CURRENT_TIMESTAMP WHERE deal_id=? AND status='active'",
-            (deal_id,),
+            "INSERT INTO deal_tracking "
+            "(deal_id, status, requested_by, requested_at, responded_at, stopped_at, locked_at, completed_at, updated_at) "
+            "VALUES (?, 'active', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL, CURRENT_TIMESTAMP, NULL, CURRENT_TIMESTAMP) "
+            "ON CONFLICT(deal_id) DO UPDATE SET status='active', requested_by=excluded.requested_by, "
+            "requested_at=CURRENT_TIMESTAMP, responded_at=CURRENT_TIMESTAMP, stopped_at=NULL, "
+            "locked_at=CURRENT_TIMESTAMP, completed_at=NULL, updated_at=CURRENT_TIMESTAMP",
+            (deal_id, actor_uid),
         )
         c.execute(
-            "INSERT INTO deal_tracking_events (deal_id, event_type, actor_id) VALUES (?, 'tracking_locked_at_pickup', ?)",
+            "INSERT INTO deal_tracking_events (deal_id, event_type, actor_id) VALUES (?, 'tracking_started_with_trip', ?)",
             (deal_id, actor_uid),
         )
     if new_status == "delivered" and deal.get("cargo_id"):
@@ -2950,7 +2948,7 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
     return {"ok": True, "status": new_status}
 
 
-# ═══ GPS сделки: запрос грузоотправителя → согласие водителя ═══
+# ═══ GPS сделки: автоматически на время активного рейса ═══
 
 _TRACKING_DEAL_STATUSES = ("accepted", "in_progress", "at_border")
 

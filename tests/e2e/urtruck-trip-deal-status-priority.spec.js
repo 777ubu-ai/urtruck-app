@@ -56,6 +56,7 @@ function makeDeal(status) {
     shipper_id: SHIPPER_ID, driver_id: DRIVER_ID,
     from_city: 'Almaty', to_city: 'Tashkent',
     from_country: 'KZ', to_country: 'UZ',
+    is_international: true, route_country_valid: true,
     amount: 5000, status, chat_room_id: CHAT_ID,
     created_at: '2026-08-01 10:00:00', updated_at: '2026-08-01 10:00:00',
   };
@@ -116,6 +117,9 @@ async function mockServer(page, { dealStatus }) {
   });
   await page.route('**/api/v1/market/deals/' + DEAL_ID, async route => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(makeDeal(dealStatus)) });
+  });
+  await page.route('**/api/v1/market/deals/' + DEAL_ID + '/tracking', async route => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, tracking: { status: 'active' } }) });
   });
   await page.route('**/api/v1/market/deals/*/status**', async route => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, status: dealStatus }) });
@@ -199,6 +203,9 @@ async function mockServerMutable(page, { initialStatus, statusChangeShouldFail =
   // getDeal always answers with the CURRENT authoritative status.
   await page.route('**/api/v1/market/deals/' + DEAL_ID, async route => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(makeDeal(box.status)) });
+  });
+  await page.route('**/api/v1/market/deals/' + DEAL_ID + '/tracking', async route => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, tracking: { status: 'active' } }) });
   });
   // The status-change endpoint either rejects (409, box unchanged — mirrors
   // the backend's real state-machine 409) or applies the new status.
@@ -298,18 +305,14 @@ test.describe('Trip status priority — deal.status over legacy tripState', () =
     expect(body).not.toContain('Статус рейса');
   });
 
-  test('at_border deal: collapsed to "В работе" (п.8 ТЗ), no legacy "Запланирован" leak', async ({ page }) => {
+  test('at_border deal: shows the required border stage, no legacy "Запланирован" leak', async ({ page }) => {
     await mockServer(page, { dealStatus: 'at_border' });
     await page.goto(BASE, { waitUntil: 'networkidle' });
     await enterAsDriver(page);
     await openDealCard(page);
 
-    // «На границе» временно убрана из пользовательского словаря
-    // (05.08.2026, п.8 ТЗ): at_border показывается пользователю как
-    // «В работе» — deal.status на бэкенде при этом остаётся at_border.
     const body = await page.locator('body').innerText();
-    expect(body).toContain('В работе');
-    expect(body).not.toContain('На границе');
+    expect(body).toContain('На границе');
     expect(body).not.toContain('Запланирован');
     expect(body).not.toContain('Статус рейса');
   });
@@ -388,16 +391,13 @@ test.describe('Deal status after a successful transition', () => {
     await page.waitForTimeout(1500); // await the successful PATCH + forced refetch
 
     expect(box.status).toBe('in_progress');
-    // The accepted-state action button must be gone; «На границе» временно
-    // убрана из словаря (05.08.2026, п.8 ТЗ) — backend допускает
-    // in_progress -> delivered напрямую на любом маршруте, поэтому даже на
-    // международном (KZ->UZ) следующее действие сразу «Доставлен», без
-    // промежуточной кнопки mark-at-border.
+    // The accepted-state action button must be gone. International routes
+    // must expose the border step required by the backend FSM.
     await expect(page.locator('[data-testid="deal-action-start-delivery"]')).toHaveCount(0);
-    await expect(page.locator('[data-testid="deal-action-mark-at-border"]')).toHaveCount(0);
-    await expect(page.locator('[data-testid="deal-action-mark-arrived"]')).toBeVisible();
+    await expect(page.locator('[data-testid="deal-action-mark-at-border"]')).toBeVisible();
+    await expect(page.locator('[data-testid="deal-action-mark-arrived"]')).toHaveCount(0);
     body = await page.locator('body').innerText();
-    expect(body).not.toContain('На границе');
+    expect(body).toContain('Прибыл на границу');
   });
 });
 
@@ -429,13 +429,8 @@ test.describe('Deal status survives navigating away and back', () => {
 
     await expect(page.locator('[data-testid="deal-action-mark-arrived"]')).toBeVisible();
     await expect(page.locator('[data-testid="deal-action-start-delivery"]')).toHaveCount(0);
-    // «На границе» временно убрана из словаря (05.08.2026, п.8 ТЗ) —
-    // status_at_border на дисплее сворачивается в «В работе», реальный
-    // deal.status на сервере (проверено выше через box.status в других
-    // тестах этого файла) при этом остаётся настоящим at_border.
     const body = await page.locator('body').innerText();
-    expect(body).toContain('В работе');
-    expect(body).not.toContain('На границе');
+    expect(body).toContain('На границе');
   });
 });
 

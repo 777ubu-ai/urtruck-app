@@ -136,18 +136,23 @@ def test_shipper_cannot_set_delivered():
 
 def test_driver_can_start_trip():
     d = seed_deal("accepted")
-    approve_tracking(d)
     r = patch_status(d, "in_progress", DRIVER)
     assert r.status_code == 200, r.text
     assert deal_status(d) == "in_progress"
 
 
-def test_driver_cannot_start_trip_without_tracking_consent():
+def test_start_trip_automatically_activates_tracking():
     d = seed_deal("accepted")
     r = patch_status(d, "in_progress", DRIVER)
-    assert r.status_code == 409, r.text
-    assert r.json()["detail"]["error"] == "TRACKING_REQUIRED_BEFORE_PICKUP"
-    assert deal_status(d) == "accepted"
+    assert r.status_code == 200, r.text
+    assert deal_status(d) == "in_progress"
+    with get_conn() as c:
+        tracking = c.execute(
+            "SELECT status, locked_at, completed_at FROM deal_tracking WHERE deal_id = ?", (d,)
+        ).fetchone()
+    assert tracking["status"] == "active"
+    assert tracking["locked_at"] is not None
+    assert tracking["completed_at"] is None
 
 
 def test_driver_can_set_at_border_for_international():
@@ -397,7 +402,7 @@ if __name__ == "__main__":
     fails = 0
     for fn in [test_shipper_cannot_start_trip, test_shipper_cannot_set_at_border,
                test_shipper_cannot_set_delivered, test_driver_can_start_trip,
-               test_driver_cannot_start_trip_without_tracking_consent,
+               test_start_trip_automatically_activates_tracking,
                test_driver_can_set_at_border_for_international,
                test_driver_cannot_set_at_border_for_domestic,
                test_driver_can_deliver_domestic_directly_from_in_progress,

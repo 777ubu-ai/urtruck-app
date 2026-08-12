@@ -180,9 +180,8 @@ export const marketAPI = {
       return r.json();
     } catch { return { ok: false, has_location: false }; }
   },
-  // GPS deals — consent lives on the server. These methods intentionally do
-  // not touch the legacy in-memory store: a reinstated app must never resume
-  // tracking just because an old local flag says so.
+  // Legacy GPS request endpoints remain for compatibility with older native
+  // builds. Current UI activates tracking only through «Начать рейс».
   async getDealTracking(dealId) {
     try {
       const r = await authedFetch(`${BASE}/deals/${dealId}/tracking`, { headers: await headers() });

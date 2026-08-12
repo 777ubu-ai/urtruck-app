@@ -30,7 +30,6 @@ import BargainCard from '../components/deal/BargainCard';
 import BidModal from '../components/BidModal';
 import DealAttachments from '../components/deal/DealAttachments';
 import { pickDealStatus, userFacingDealStatus } from '../utils/dealStatusOrder';
-import { openContactPartner } from '../utils/contactPartner';
 import { ensureBackgroundLocationPermission } from '../utils/backgroundLocation';
 
 // HOT-006: реальная запись/воспроизведение для web (PWA deploy).
@@ -110,7 +109,7 @@ export default function ChatScreen({ navigation, route }) {
   statusRowLabel: { color: v1.textMuted, fontSize: 12, fontWeight: '600', flex: 1, minWidth: 0 },
   statusRowValue: { fontSize: 13, fontWeight: '800', flexShrink: 1, textAlign: 'right' },
   dealNextBtn: { borderRadius: 12, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', minHeight: 48, marginBottom: 8 },
-  dealNextBtnText: { color: '#0C0A09', fontSize: 15, fontWeight: '800' },
+  dealNextBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
   dealCancelBtn: { borderRadius: 12, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 8, backgroundColor: 'rgba(239,68,68,0.10)' },
   dealCancelBtnText: { color: '#EF4444', fontSize: 13, fontWeight: '700' },
   dealTrackBtn: { borderRadius: 12, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 8, borderWidth: 1, borderColor: v1.border, backgroundColor: v1.surface },
@@ -208,7 +207,7 @@ export default function ChatScreen({ navigation, route }) {
   const { partner, role, cargoId, tripId, roomId: initialRoomId, dealId: dealIdParam, bidId } = route.params || {};
   // dealId — состояние: если чат открыт из «Чаты»/ставки (только roomId, без
   // dealId), достаём deal_id из комнаты, чтобы подгрузить сделку → появляются
-  // кнопка звонка, маршрут в шапке и карточка сделки при ЛЮБОМ входе.
+  // маршрут в шапке и карточка сделки при ЛЮБОМ входе.
   const [dealId, setDealId] = useState(dealIdParam || null);
   const { t } = useI18n();
   const { theme } = useTheme();
@@ -282,7 +281,6 @@ export default function ChatScreen({ navigation, route }) {
   // при dealId — иначе старый чат выглядит как раньше.
   const [deal, setDeal] = useState(null);
   const [dealEvents, setDealEvents] = useState([]);
-  const [tracking, setTracking] = useState({ status: 'not_requested' });
   const [trackingLoading, setTrackingLoading] = useState(false);
   // issue #4: когда в Chat пришёл только roomId (из карточки заказа/ставки),
   // partner в route может быть пустым → заголовок показывал «Собеседник».
@@ -566,12 +564,6 @@ export default function ChatScreen({ navigation, route }) {
   // не откатывается назад, completed/delivered/cancelled не «отменяются
   // задним числом»), плюс seq-guard от гонок параллельных запросов.
   const dealFetchSeq = useRef(0);
-  const refreshTracking = () => {
-    if (!dealId) return;
-    marketAPI.getDealTracking(dealId)
-      .then((r) => { if (r?.tracking) setTracking(r.tracking); })
-      .catch(() => {});
-  };
   const refreshDeal = () => {
     if (!dealId) return;
     const seq = ++dealFetchSeq.current;
@@ -585,6 +577,8 @@ export default function ChatScreen({ navigation, route }) {
           to_city: prev?.to_city || srv.to_city,
           from_country: prev?.from_country || srv.from_country,
           to_country: prev?.to_country || srv.to_country,
+          is_international: srv.is_international,
+          route_country_valid: srv.route_country_valid,
           cargo_desc: prev?.cargo_desc || srv.cargo_desc,
           cargo_id: prev?.cargo_id || srv.cargo_id,
           amount: prev?.amount != null ? prev.amount : srv.amount,
@@ -604,77 +598,15 @@ export default function ChatScreen({ navigation, route }) {
       cargo_desc: p.cargoDesc, cargo_id: p.cargoId, amount: p.amount, plate: p.plate,
     });
     refreshDeal();
-    refreshTracking();
     chatAPI.dealTimeline(dealId)
       .then(r => setDealEvents(Array.isArray(r?.events) ? r.events : []))
       .catch(() => {});
     // Периодический refetch (как в CargoDetail/TripDetail) — вторая сторона
     // могла продвинуть статус (Начать/На границе/Доставлено), пока этот
     // экран открыт; без поллинга статус тут не обновится сам.
-    const iv = setInterval(() => { refreshDeal(); refreshTracking(); }, 15000);
+    const iv = setInterval(refreshDeal, 15000);
     return () => clearInterval(iv);
   }, [dealId]);
-
-  const requestTracking = async () => {
-    if (!dealId || trackingLoading) return;
-    setTrackingLoading(true);
-    try {
-      const r = await marketAPI.requestDealTracking(dealId);
-      if (!r?.ok) throw new Error(r?.detail || 'request_failed');
-      setTracking(r.tracking || { status: 'pending' });
-      toast(t('track_pending'), 'success');
-    } catch (e) {
-      toast(e?.message || t('update_failed'), 'error');
-    } finally {
-      setTrackingLoading(false);
-    }
-  };
-
-  const respondTracking = async (decision) => {
-    if (!dealId || trackingLoading) return;
-    // Background GPS is a native feature. Never present a web/PWA approval as
-    // if it would keep sending after the browser is closed.
-    if (decision === 'approve') {
-      if (Platform.OS === 'web') {
-        toast(t('track_native_required'), 'error');
-        return;
-      }
-      setTrackingLoading(true);
-      const permission = await ensureBackgroundLocationPermission();
-      if (!permission.ok) {
-        setTrackingLoading(false);
-        toast(t('track_permission_needed'), 'error');
-        return;
-      }
-    } else {
-      setTrackingLoading(true);
-    }
-    try {
-      const r = await marketAPI.respondDealTracking(dealId, decision);
-      if (!r?.ok) throw new Error(r?.detail || 'response_failed');
-      setTracking(r.tracking || { status: decision === 'approve' ? 'active' : 'declined' });
-      toast(decision === 'approve' ? t('track_active') : t('track_declined'), 'success');
-    } catch (e) {
-      toast(e?.message || t('update_failed'), 'error');
-    } finally {
-      setTrackingLoading(false);
-    }
-  };
-
-  const stopTracking = async () => {
-    if (!dealId || trackingLoading) return;
-    setTrackingLoading(true);
-    try {
-      const r = await marketAPI.stopDealTracking(dealId);
-      if (!r?.ok) throw new Error(r?.detail || 'stop_failed');
-      setTracking(r.tracking || { status: 'stopped' });
-      toast(t('track_stopped'), 'success');
-    } catch (e) {
-      toast(e?.message || t('update_failed'), 'error');
-    } finally {
-      setTrackingLoading(false);
-    }
-  };
 
   // Пуш о сделке ведёт в Chat только с dealId (без roomId). Чтобы
   // подгрузились и сообщения, а не только карточка сделки, — находим
@@ -691,9 +623,7 @@ export default function ChatScreen({ navigation, route }) {
   }, [dealId, roomId]);
 
   // Обратный резолв: пришли только с roomId (вход из «Чаты»/ставки) — находим
-  // deal_id этой комнаты, чтобы подгрузить сделку (телефон → кнопка звонка,
-  // маршрут в шапке, карточка сделки). Без этого в реальном чате звонка не
-  // было, хотя сделка есть.
+  // deal_id этой комнаты, чтобы подгрузить маршрут и карточку сделки.
   useEffect(() => {
     if (!roomId || dealId) return;
     let cancelled = false;
@@ -795,6 +725,22 @@ export default function ChatScreen({ navigation, route }) {
   };
   const isShipperSide = role === 'client' || role === 'shipper';
 
+  // Для водителя это одно продуктовое действие: «Начать рейс». Запрос
+  // системного разрешения выполняется внутри нажатия, без отдельной карточки
+  // GPS в интерфейсе. Только после успешного разрешения сервер атомарно
+  // переводит сделку «В пути» и включает отслеживание.
+  const startTrip = async () => {
+    if (!dealId || statusLoading || trackingLoading) return;
+    setTrackingLoading(true);
+    const permission = await ensureBackgroundLocationPermission();
+    setTrackingLoading(false);
+    if (!permission.ok) {
+      toast(t('track_permission_needed'), 'error');
+      return;
+    }
+    await changeDealStatus('in_progress');
+  };
+
   // QA-аудит P0 (silent message loss): раньше все три send-пути были под
   // `if (partner?.id)` с route.params.partner — при входе в чат только по
   // roomId (карточка заказа/уведомление) partner пуст → optimistic-пузырь
@@ -844,11 +790,6 @@ export default function ChatScreen({ navigation, route }) {
 
   // WhatsApp-style: тап по 📷 предлагает Камеру или Галерею (на native).
   // На web камера ненадёжна — сразу галерея.
-  // Связь с партнёром: выбор WhatsApp/Telegram/звонок — вынесено в
-  // src/utils/contactPartner.js (05.08.2026, п.6/17 ТЗ), т.к. теперь нужна
-  // тем же способом и на CargoDetail/TripDetail (secondary-кнопка «Позвонить»).
-  const contactPartner = (rawPhone) => openContactPartner(rawPhone, t);
-
   // Отправить свою геопозицию как сообщение со ссылкой на карту (открывается в
   // Яндекс/Google Картах у собеседника). expo-location уже в проекте — работает
   // и в текущей сборке. Для веба используем navigator.geolocation.
@@ -1173,22 +1114,9 @@ export default function ChatScreen({ navigation, route }) {
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-      {/* WhatsApp-упрощение (04.08.2026): справа в шапке — только телефон,
-          когда он есть у сделки. Глобус автоперевода переехал в меню «+»
-          (реже нужен, чем звонок, и не должен жить в шапке рядом с именем). */}
       <BrandBarWithShare
         onBack={() => navigation.goBack()}
         accent={v1Accent.main}
-        rightSlot={deal?.counterparty_phone ? (
-          <TouchableOpacity
-            onPress={() => contactPartner(deal.counterparty_phone)}
-            style={s.iconBtn}
-            testID="chat-header-call-btn"
-            accessibilityLabel={t('call_partner')}
-          >
-            <Feather name="phone" size={18} color={v1Accent.main} />
-          </TouchableOpacity>
-        ) : undefined}
       />
       <View style={s.partnerStrip}>
         <View style={[s.partnerAvatar, { backgroundColor: v1Accent.soft, borderColor: v1Accent.main }]}>
@@ -1235,8 +1163,6 @@ export default function ChatScreen({ navigation, route }) {
       {dealId ? (
         <View style={{ paddingHorizontal: 12, paddingBottom: 6 }}>
           <DealRoomCard deal={deal} role={role} />
-          {/* Кнопка звонка переехала в шапку (chat-header-call-btn) —
-              WhatsApp-упрощение 04.08.2026, отдельная во весь экран убрана. */}
           {/* Статус перевозки (05.08.2026, п.9 ТЗ): вместо горизонтальной
               шкалы Принят/В работе/На границе/Завершён — компактный текст
               «Текущий статус / Следующий шаг» + ОДНА кнопка следующего
@@ -1258,6 +1184,10 @@ export default function ChatScreen({ navigation, route }) {
             if (role === 'driver') {
               if (deal.status === 'accepted') {
                 action = { key: 'in_progress', icon: 'truck', label: t('start_delivery') };
+              } else if (deal.status === 'in_progress' && deal.is_international === true) {
+                action = { key: 'at_border', icon: 'map-pin', label: t('mark_at_border') };
+              } else if (deal.status === 'in_progress' && deal.is_international == null) {
+                action = { key: 'clarify_route', icon: 'alert-circle', label: t('deal_clarify_route'), disabled: true };
               } else if (deal.status === 'in_progress' || deal.status === 'at_border') {
                 action = { key: 'delivered', icon: 'package', label: t('mark_arrived') };
               }
@@ -1270,13 +1200,21 @@ export default function ChatScreen({ navigation, route }) {
                 testID={
                   action.key === 'in_progress'
                     ? 'deal-action-start-delivery'
+                    : action.key === 'at_border'
+                      ? 'deal-action-mark-at-border'
+                    : action.key === 'clarify_route'
+                      ? 'deal-action-clarify-route'
                     : action.key === 'delivered'
                       ? 'deal-action-mark-arrived'
                       : 'deal-action-confirm-receipt'
                 }
-                style={[s.dealNextBtn, { backgroundColor: v1Accent.main, opacity: statusLoading ? 0.6 : 1 }]}
-                disabled={statusLoading}
+                style={[s.dealNextBtn, { backgroundColor: action.disabled ? v1.border : v1Accent.main, opacity: statusLoading || trackingLoading ? 0.6 : 1 }]}
+                disabled={statusLoading || trackingLoading || action.disabled}
                 onPress={async () => {
+                  if (action.key === 'in_progress') {
+                    await startTrip();
+                    return;
+                  }
                   let ok = true;
                   if (action.key === 'delivered' || action.key === 'completed') {
                     const message = action.key === 'delivered'
@@ -1297,8 +1235,8 @@ export default function ChatScreen({ navigation, route }) {
                 }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Feather name={action.icon} size={16} color="#0C0A09" />
-                  <Text style={s.dealNextBtnText}>{statusLoading ? '…' : action.label}</Text>
+                  <Feather name={action.icon} size={16} color={action.disabled ? v1.textMuted : '#FFFFFF'} />
+                  <Text style={[s.dealNextBtnText, action.disabled && { color: v1.textMuted }]}>{statusLoading || trackingLoading ? '…' : action.label}</Text>
                 </View>
               </TouchableOpacity>
             );
@@ -1323,25 +1261,12 @@ export default function ChatScreen({ navigation, route }) {
           ) : null}
           {dealId && ['accepted', 'in_progress', 'at_border', 'delivered'].includes(deal?.status) ? (
             <>
-              {isShipperSide && deal?.status !== 'delivered' && ['not_requested', 'declined', 'stopped'].includes(tracking?.status || 'not_requested') ? (
-                <TouchableOpacity testID="deal-request-tracking" style={s.dealTrackBtn}
-                  disabled={trackingLoading} onPress={requestTracking}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Feather name="navigation" size={14} color={v1.text} />
-                    <Text style={s.dealTrackBtnText}>{trackingLoading ? '…' : t('track_request')}</Text>
-                  </View>
-                </TouchableOpacity>
-              ) : null}
-              {isShipperSide && tracking?.status === 'pending' ? (
-                <View testID="deal-tracking-pending" style={s.trackingCard}>
-                  <Text style={s.trackingTitle}>{t('track_request_title')}</Text>
-                  <Text style={s.trackingHint}>{t('track_pending')}</Text>
-                </View>
-              ) : null}
-              {isShipperSide && tracking?.status === 'active' ? (
+              {isShipperSide && ['in_progress', 'at_border', 'delivered'].includes(deal?.status) ? (
                 <TouchableOpacity testID="deal-track-truck" style={s.dealTrackBtn}
                   onPress={() => navigation.navigate('TrackTruck', {
                     dealId, from: deal?.from_city, to: deal?.to_city,
+                    driverName: deal?.counterparty_name || resolvedPartner?.name,
+                    driverOnline: partnerOnline,
                   })}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                     <Feather name="map-pin" size={14} color={v1.text} />
@@ -1349,40 +1274,11 @@ export default function ChatScreen({ navigation, route }) {
                   </View>
                 </TouchableOpacity>
               ) : null}
-              {!isShipperSide && tracking?.status === 'pending' ? (
-                <View testID="deal-tracking-driver-request" style={s.trackingCard}>
-                  <Text style={s.trackingTitle}>{t('track_request_title')}</Text>
-                  <Text style={s.trackingHint}>{t('track_driver_consent')}</Text>
-                  <View style={s.trackingRow}>
-                    <TouchableOpacity testID="deal-tracking-decline" style={s.trackingDecline}
-                      disabled={trackingLoading} onPress={() => respondTracking('decline')}>
-                      <Text style={s.trackingDeclineText}>{t('decline_btn')}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity testID="deal-tracking-allow" style={[s.trackingAllow, { opacity: trackingLoading ? 0.65 : 1 }]}
-                      disabled={trackingLoading} onPress={() => respondTracking('approve')}>
-                      <Text style={s.trackingAllowText}>{trackingLoading ? '…' : t('allow_btn')}</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ) : null}
-              {!isShipperSide && deal?.status === 'accepted' && tracking?.status === 'active' ? (
-                <TouchableOpacity testID="deal-tracking-stop" style={s.dealTrackBtn}
-                  disabled={trackingLoading} onPress={stopTracking}>
-                  <Text style={s.dealTrackBtnText}>{trackingLoading ? '…' : t('track_stop_gps')}</Text>
-                </TouchableOpacity>
-              ) : null}
             </>
           ) : null}
           {dealEvents.length > 0 ? (
             <View testID="deal-timeline">
-              {/* «На границе» временно убрана из пользовательского словаря
-                  (05.08.2026, п.8 ТЗ) — событие о пересечении границы не
-                  несёт действия для пользователя (следующая кнопка всё
-                  равно «Доставлен»), поэтому не показываем его отдельной
-                  строкой в ленте событий сделки. deal.status на бэкенде
-                  при этом остаётся настоящим at_border. */}
               {dealEvents
-                .filter((ev) => ev?.payload?.status !== 'at_border')
                 .slice(-4)
                 .map((ev) => (
                   <SystemEventRow key={ev.id || ev.event_type} ev={ev} />
