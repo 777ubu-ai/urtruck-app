@@ -1101,7 +1101,7 @@ export default function CargoDetail({ navigation, route }) {
       <ShareModal
         visible={shareModal}
         onClose={() => setShareModal(false)}
-        shareText={buildCargoShareText(c, `${WEB_URL || 'https://urtruck.kz'}/cargo/${c.id}`)}
+        shareText={buildCargoShareText(c, `${WEB_URL || 'https://urtruck.kz'}/cargo/${c.id}`, lang)}
         url={`${WEB_URL || 'https://urtruck.kz'}/cargo/${c.id}`}
       />
       {Gate}
