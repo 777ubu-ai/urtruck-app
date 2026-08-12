@@ -1,9 +1,11 @@
 import React from 'react';
-import { View, Text, StyleSheet, Linking, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import { useTheme } from '../utils/ThemeContext';
 import { useI18n } from '../utils/useI18n';
 import { localizePlace } from '../utils/places';
+import { marketAPI } from '../utils/marketAPI';
+import TruckMap from './TruckMap';
 
 // Координаты основных городов [lat, lon]
 const CITIES = {
@@ -107,20 +109,37 @@ const haversine = (a, b) => {
   return Math.round(2 * R * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h)));
 };
 
-// RouteMap → «Плановый маршрут» (05.08.2026, п.18 ТЗ). Раньше здесь был
-// встроенный интерактивный Яндекс.Виджет с маркерами (в т.ч. заготовка под
-// «живой» фиолетовый маркер грузовика через liveCoord — параметр нигде не
-// передавался, но само наличие маркера в коде подразумевало трекинг,
-// которого нет). Никакого GPS-слежения в проекте не реализовано — честная
-// карточка: откуда/куда, прикидка расстояния и времени, кнопка «Открыть
-// маршрут» во внешней карте и явный текст «не отслеживается», без единой
-// заявки на реальное местоположение машины.
-export default function RouteMap({ from, to, transit }) {
+// RouteMap — единая карточка маршрута внутри UrTruck. До старта она показывает
+// план; после «Начать» сама подтягивает защищённую точку сделки и заменяет план
+// живой картой. Пользователь не уходит в Яндекс/Google Maps.
+export default function RouteMap({ from, to, transit, dealId, dealStatus, driverName }) {
   const { theme } = useTheme();
   const { t, lang } = useI18n();
+  const [location, setLocation] = React.useState(null);
+  const [locationLoading, setLocationLoading] = React.useState(false);
   const fromCoord = parseCity(from);
   const toCoord = parseCity(to);
   const transitCoord = transit ? parseCity(transit) : null;
+  const trackingActive = Boolean(dealId && ['in_progress', 'at_border', 'delivered'].includes(dealStatus));
+
+  React.useEffect(() => {
+    if (!trackingActive) {
+      setLocation(null);
+      setLocationLoading(false);
+      return undefined;
+    }
+    let alive = true;
+    const load = async () => {
+      setLocationLoading((current) => current || !location);
+      const result = await marketAPI.getDealLocation(dealId);
+      if (!alive) return;
+      if (result?.has_location && result.location) setLocation(result.location);
+      setLocationLoading(false);
+    };
+    load();
+    const interval = setInterval(load, 10000);
+    return () => { alive = false; clearInterval(interval); };
+  }, [dealId, trackingActive]);
 
   let km = null, days = null;
   if (fromCoord && toCoord) {
@@ -133,28 +152,15 @@ export default function RouteMap({ from, to, transit }) {
     days = Math.ceil(km / 600);
   }
 
-  // Открыть маршрут во внешней карте (rtext), а не текстовым поиском. Где
-  // есть координаты — берём их (точный маршрут); иначе отдаём чистое имя
-  // города — карта сама геокодит.
-  const openExternalRoute = () => {
-    const parts = [];
-    const push = (coord, raw) => {
-      if (coord) { parts.push(`${coord[0]},${coord[1]}`); return; }
-      const n = cleanName(raw);
-      if (n) parts.push(encodeURIComponent(n));
-    };
-    push(fromCoord, from);
-    if (transit) push(transitCoord, transit);
-    push(toCoord, to);
-    if (parts.length < 2) return;  // маршрут строим минимум из двух точек
-    Linking.openURL(`https://yandex.com/maps/?rtext=${parts.join('~')}&rtt=auto`);
-  };
+  const lat = location ? Number(location.lat) : null;
+  const lng = location ? Number(location.lng) : null;
+  const hasLivePoint = Number.isFinite(lat) && Number.isFinite(lng);
 
   return (
     <View style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]} testID="planned-route-card">
       <View style={s.headerRow}>
         <Feather name="map" size={14} color={theme.textMuted} />
-        <Text style={[s.title, { color: theme.textMuted }]}>{t('planned_route_title')}</Text>
+        <Text style={[s.title, { color: theme.textMuted }]}>{t(hasLivePoint ? 'live_route_title' : 'planned_route_title')}</Text>
       </View>
       <Text style={[s.route, { color: theme.text }]} numberOfLines={2}>
         {localizePlace(from, lang)}
@@ -167,14 +173,28 @@ export default function RouteMap({ from, to, transit }) {
           📏 ~{km} {t('km_short')}   ⏱ ~{days} {t('days_short')}
         </Text>
       ) : null}
-      <TouchableOpacity style={[s.openBtn, { borderColor: theme.border }]} onPress={openExternalRoute} testID="planned-route-open-btn">
-        <Feather name="external-link" size={13} color={theme.text} />
-        <Text style={[s.openBtnText, { color: theme.text }]}>{t('open_route_btn')}</Text>
-      </TouchableOpacity>
-      {/* Честный дисклеймер — GPS-трекинга в приложении сейчас нет. */}
+      {hasLivePoint ? (
+        <View style={s.liveMap} testID="trip-live-map">
+          <TruckMap lat={lat} lng={lng} title={driverName || t('track_truck_marker')} />
+        </View>
+      ) : locationLoading ? (
+        <View style={s.waitingMap} testID="trip-live-map-loading">
+          <ActivityIndicator color="#168759" />
+          <Text style={[s.waitingText, { color: theme.textMuted }]}>{t('track_truck_waiting')}</Text>
+        </View>
+      ) : (
+        <View style={[s.plannedMap, { backgroundColor: theme.bg }]} testID="trip-planned-map">
+          <View style={s.planLine} />
+          <View style={[s.planDot, s.planStart]} />
+          <View style={[s.planDot, s.planEnd]} />
+          <Feather name="truck" size={25} color="#0F6B47" />
+        </View>
+      )}
       <View style={s.disclaimerRow}>
-        <Feather name="map-pin" size={11} color={theme.textDim} />
-        <Text style={[s.disclaimer, { color: theme.textDim }]} numberOfLines={2}>{t('location_not_tracked')}</Text>
+        <Feather name={trackingActive ? 'navigation' : 'map-pin'} size={11} color={theme.textDim} />
+        <Text style={[s.disclaimer, { color: theme.textDim }]} numberOfLines={2}>
+          {hasLivePoint ? t('tracking_live_here') : trackingActive ? t('track_truck_waiting_desc') : t('tracking_starts_after_start')}
+        </Text>
       </View>
     </View>
   );
@@ -186,8 +206,14 @@ const s = StyleSheet.create({
   title: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' },
   route: { fontSize: 14, fontWeight: '700' },
   stats: { fontSize: 12, fontWeight: '600' },
-  openBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1, borderRadius: 10, paddingVertical: 10, alignSelf: 'stretch' },
-  openBtnText: { fontSize: 13, fontWeight: '700' },
+  liveMap: { height: 240, borderRadius: 12, overflow: 'hidden' },
+  waitingMap: { height: 180, alignItems: 'center', justifyContent: 'center', gap: 10 },
+  waitingText: { fontSize: 12, fontWeight: '700' },
+  plannedMap: { height: 150, borderRadius: 12, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  planLine: { position: 'absolute', width: '72%', height: 5, borderRadius: 3, backgroundColor: '#168759', transform: [{ rotate: '-12deg' }] },
+  planDot: { position: 'absolute', width: 14, height: 14, borderRadius: 7, backgroundColor: '#FFFFFF', borderWidth: 4 },
+  planStart: { left: '12%', bottom: '28%', borderColor: '#EF4444' },
+  planEnd: { right: '12%', top: '28%', borderColor: '#168759' },
   disclaimerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 5, marginTop: 2 },
   disclaimer: { fontSize: 11, flex: 1, flexShrink: 1 },
 });
