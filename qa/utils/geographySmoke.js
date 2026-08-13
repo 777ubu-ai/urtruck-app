@@ -15,6 +15,8 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..', '..');
 const GEO = path.join(ROOT, 'src', 'utils', 'geography.js');
 const PICKER = path.join(ROOT, 'src', 'components', 'RoutePointPicker.js');
+const PLACES = path.join(ROOT, 'src', 'utils', 'places.js');
+const CITIES = path.join(ROOT, 'src', 'utils', 'cities.js');
 
 const REQUIRED_COUNTRIES = [
   'CN', 'KZ', 'UZ', 'KG', 'RU', 'BY', 'TJ', 'TM',
@@ -113,9 +115,36 @@ if (!/localisedCountryName/.test(pickerSrc)) {
   failures.push('RoutePointPicker no longer uses localisedCountryName helper');
 }
 
+// 10. Every curated city visible in route pickers must have a ZH/EN
+// data translation. Interface labels alone are insufficient: otherwise a
+// Chinese user sees a translated card around an unreadable Russian route.
+const placesSrc = fs.readFileSync(PLACES, 'utf8');
+const citySrc = fs.readFileSync(CITIES, 'utf8');
+const translatedPlaces = new Set(
+  [...placesSrc.matchAll(/^\s*'([^']+)':\s*\{\s*zh:\s*'[^']+',\s*en:/gm)].map((m) => m[1]),
+);
+const curatedNames = new Set([
+  ...[...src.matchAll(/\bc\('[A-Z]+',\s*'([^']+)'/g)].map((m) => m[1]),
+  ...[...citySrc.matchAll(/\{ name: '([^']+)', country:/g)].map((m) => m[1]),
+]);
+const missingPlaceTranslations = [...curatedNames].filter((name) => !translatedPlaces.has(name)).sort();
+if (missingPlaceTranslations.length) {
+  failures.push(`ZH/EN place translations missing: ${missingPlaceTranslations.join(', ')}`);
+}
+
+// QueueScreen must use the same canonical language codes as useI18n.
+const queueSrc = fs.readFileSync(path.join(ROOT, 'src', 'screens', 'QueueScreen.js'), 'utf8');
+if (!/const COPY = \{[\s\S]*?\bKK:\s*\{[\s\S]*?\bZH:\s*\{/.test(queueSrc)) {
+  failures.push('QueueScreen COPY does not expose canonical KK/ZH locales');
+}
+if (/lang === '(?:KZ|CN)'/.test(queueSrc)) {
+  failures.push('QueueScreen still compares legacy KZ/CN language codes');
+}
+
 console.log(`[geo] required countries: ${REQUIRED_COUNTRIES.length}`);
 console.log(`[geo] required CN↔KZ border crossings: ${REQUIRED_BORDERS.length}`);
 console.log(`[geo] picker symbol checks: 5`);
+console.log(`[geo] translated curated places: ${curatedNames.size}`);
 
 if (failures.length) {
   console.log('\n[geo] FAIL:');

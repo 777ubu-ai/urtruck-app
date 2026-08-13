@@ -6,10 +6,10 @@ export default function PressableScale({ children, onPress, style, scaleTo = 0.9
   const scale = useRef(new Animated.Value(1)).current;
 
   const onPressIn = () => {
-    Animated.spring(scale, { toValue: scaleTo, useNativeDriver: true, friction: 8, tension: 120 }).start();
+    Animated.spring(scale, { toValue: scaleTo, useNativeDriver: false, friction: 8, tension: 120 }).start();
   };
   const onPressOut = () => {
-    Animated.spring(scale, { toValue: 1, useNativeDriver: true, friction: 6, tension: 80 }).start();
+    Animated.spring(scale, { toValue: 1, useNativeDriver: false, friction: 6, tension: 80 }).start();
   };
 
   return (

@@ -1,6 +1,5 @@
 // TruckMap (web) — react-native-maps на web не работает. Показываем спокойную
-// схематичную карту с живой точкой машины; точные координаты и переход в
-// системные карты остаются в TrackTruckScreen.
+// схематичную карту с живой точкой машины. Весь маршрут остаётся в UrTruck.
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';

@@ -6,6 +6,8 @@ const api = read('backend/api/marketplace.py');
 const hook = read('src/hooks/useDealLocationBroadcast.js');
 const screen = read('src/screens/ChatScreen.js');
 const client = read('src/utils/marketAPI.js');
+const tracker = read('src/screens/TrackTruckScreen.js');
+const routeMap = read('src/components/RouteMap.js');
 
 const must = (source, needle, label) => {
   if (!source.includes(needle)) throw new Error(`GPS consent contract missing: ${label}`);
@@ -22,5 +24,9 @@ if (screen.includes('deal-tracking-driver-request') || screen.includes('deal-act
   throw new Error('GPS consent contract still exposes a separate driver action');
 }
 must(client, 'activeTrackingDeals()', 'mobile API client retrieves active permissions');
+must(routeMap, '<TruckMap', 'trip renders the route map inside UrTruck');
+if (/maps\.google|maps\.apple|track-open-maps|Linking\.openURL/.test(tracker)) {
+  throw new Error('GPS contract still redirects tracking to an external map');
+}
 
 console.log('\n[gps-consent] OK');

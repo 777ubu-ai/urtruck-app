@@ -7,7 +7,7 @@ export default function ShimmerButton({ onPress, children, style, textStyle, col
 
   useEffect(() => {
     const loop = Animated.loop(
-      Animated.timing(shimmer, { toValue: 1, duration: 2200, useNativeDriver: true })
+      Animated.timing(shimmer, { toValue: 1, duration: 2200, useNativeDriver: false })
     );
     loop.start();
     return () => loop.stop();

@@ -8,8 +8,8 @@ export default function Skeleton({ width = '100%', height = 16, borderRadius = 8
 
   useEffect(() => {
     const loop = Animated.loop(Animated.sequence([
-      Animated.timing(opacity, { toValue: 1, duration: 800, useNativeDriver: true }),
-      Animated.timing(opacity, { toValue: 0.5, duration: 800, useNativeDriver: true }),
+      Animated.timing(opacity, { toValue: 1, duration: 800, useNativeDriver: false }),
+      Animated.timing(opacity, { toValue: 0.5, duration: 800, useNativeDriver: false }),
     ]));
     loop.start();
     return () => loop.stop();

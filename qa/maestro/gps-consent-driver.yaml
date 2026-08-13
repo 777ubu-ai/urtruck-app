@@ -10,7 +10,6 @@ env:
 - runFlow: _lib/qa-login.yaml
 - tapOn: { id: "bottom-nav-deals" }
 - waitForAnimationToEnd
-- tapOn: { id: "deals-seg-chats" }
 - extendedWaitUntil:
     visible: { id: "deal-room-list-card" }
     timeout: 15000

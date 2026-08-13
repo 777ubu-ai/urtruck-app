@@ -13,7 +13,7 @@ import { useVerificationGate } from '../components/VerificationGate';
 import { LEVELS, useAuth } from '../utils/AuthContext';
 import { SkeletonCard } from '../components/Skeleton';
 import { normalizeTrip, formatPrice, sanitizeForDisplay } from '../utils/normalizers';
-import { localizePlace } from '../utils/places';
+import { localizeCargoName, localizePlace } from '../utils/places';
 import { routeStats } from '../utils/geo';
 import { matchTruckTypes } from '../utils/truckSynonyms';
 import FeedCard from '../components/ui/v1/FeedCard';
@@ -207,6 +207,8 @@ export default function FeedScreen({ navigation, route }) {
   // Brand v3: driver = emerald, client = orange. No blue.
   const accent = '#168759'; // redesign: единый зелёный для обеих ролей
   const { t, lang } = useI18n();
+  const tonUnit = lang === 'ZH' ? '吨' : lang === 'EN' ? 't' : 'т';
+  const cubicMeterUnit = lang === 'ZH' ? '立方米' : 'м³';
   const { theme } = useTheme();
   const { toast } = useToast();
   const { requireLevel, Gate } = useVerificationGate();
@@ -650,11 +652,11 @@ export default function FeedScreen({ navigation, route }) {
     const perKmStr = perKm >= 10 ? String(Math.round(perKm)) : perKm.toFixed(1);
     const meta = [
       { label: t('departure'), value: item.pickup || t('pickup_date_tbd') },
-      km > 0 ? { label: t('distance'), value: `${km} км` } : null,
-      perKm > 0 ? { label: t('per_km_short'), value: `${perKmStr} ${item.currency || ''}/км` } : null,
+      km > 0 ? { label: t('distance'), value: `${km} ${t('km_short')}` } : null,
+      perKm > 0 ? { label: t('per_km_short'), value: `${perKmStr} ${item.currency || ''}/${t('km_short')}` } : null,
       (item.payment_type && item.payment_type !== 'any') ? { label: t('payment_type_label'), value: t('pay_' + item.payment_type) } : null,
-      item.tons > 0 ? { label: t('weight'), value: `${item.tons} т` } : null,
-      item.m3 > 0 ? { label: t('volume'), value: `${item.m3} м³` } : null,
+      item.tons > 0 ? { label: t('weight'), value: `${item.tons} ${tonUnit}` } : null,
+      item.m3 > 0 ? { label: t('volume'), value: `${item.m3} ${cubicMeterUnit}` } : null,
     ].filter(Boolean);
     // Stage 9: feed cards used to show two buttons that both ran the
     // same `openCargo`. The pair gave the user two different verbs
@@ -667,7 +669,7 @@ export default function FeedScreen({ navigation, route }) {
         variant="cargo"
         accent={isDriver ? 'driver' : 'cargo'}
         route={{ from: item.from, to: item.to, fromCountry: item.fromCountry, toCountry: item.toCountry }}
-        subtitle={sanitizeDesc(item.cargo)}
+        subtitle={localizeCargoName(sanitizeDesc(item.cargo), lang)}
         meta={meta}
         priceText={formatPrice(item.price, item.currency, t)}
         priceCaption={t('per_trip')}
@@ -708,8 +710,8 @@ export default function FeedScreen({ navigation, route }) {
     // Stage 17: same emoji-strip as cargo cards above.
     const meta = [
       item.tripDates ? { label: t('departure'), value: item.tripDates.split(' - ')[0] || item.tripDates } : null,
-      item.tons > 0 ? { label: t('weight'), value: `${item.tons} т` } : null,
-      item.m3 > 0 ? { label: t('volume'), value: `${item.m3} м³` } : null,
+      item.tons > 0 ? { label: t('weight'), value: `${item.tons} ${tonUnit}` } : null,
+      item.m3 > 0 ? { label: t('volume'), value: `${item.m3} ${cubicMeterUnit}` } : null,
     ].filter(Boolean);
     // Same single-button logic as cargo cards — the card itself is
     // tappable and opens the detail; the secondary verb is gone so
@@ -1139,4 +1141,3 @@ export default function FeedScreen({ navigation, route }) {
     </SafeAreaView>
   );
 }
-

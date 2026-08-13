@@ -80,7 +80,7 @@ const COPY = {
     live: 'Актуально',
     refresh: 'Обновить',
   },
-  KZ: {
+  KK: {
     title: 'Шекара',
     subtitle: 'Өткізу бекеттеріндегі кезек пен жағдай',
     checkQueue: 'Өз кезегіңізді тексеру',
@@ -116,7 +116,7 @@ const COPY = {
     countryLive: 'Current data available', countryNoData: 'No fresh data', allCrossings: 'Border crossings', lastValue: 'Last value',
     favoriteAdded: 'Favorite', favoriteAdd: 'Add favorite', openCgr: 'Open CarGoRuqsat', live: 'Live', refresh: 'Refresh',
   },
-  CN: {
+  ZH: {
     title: '边境', subtitle: '口岸排队与通行情况', checkQueue: '查询我的排队', platePlaceholder: '车牌号，例如 123ABC02', check: '查询',
     myVehicles: '我的车辆', addPlateHint: '在上方输入车牌号，系统会保存并持续更新。', bestNow: '当前最佳选择', favorites: '收藏口岸', where: '您要去哪里？',
     crossings: '个口岸', crossing: '口岸', vehicles: '辆车', free: '畅通', moderate: '一般', busy: '拥堵', very_busy: '严重拥堵',
@@ -129,11 +129,11 @@ const COPY = {
 };
 
 const COUNTRY = {
-  CN: { flag: '🇨🇳', RU: 'Китай', KZ: 'Қытай', EN: 'China', CN: '中国' },
-  RU: { flag: '🇷🇺', RU: 'Россия', KZ: 'Ресей', EN: 'Russia', CN: '俄罗斯' },
-  UZ: { flag: '🇺🇿', RU: 'Узбекистан', KZ: 'Өзбекстан', EN: 'Uzbekistan', CN: '乌兹别克斯坦' },
-  KG: { flag: '🇰🇬', RU: 'Кыргызстан', KZ: 'Қырғызстан', EN: 'Kyrgyzstan', CN: '吉尔吉斯斯坦' },
-  TM: { flag: '🇹🇲', RU: 'Туркменистан', KZ: 'Түрікменстан', EN: 'Turkmenistan', CN: '土库曼斯坦' },
+  CN: { flag: '🇨🇳', RU: 'Китай', KK: 'Қытай', EN: 'China', ZH: '中国' },
+  RU: { flag: '🇷🇺', RU: 'Россия', KK: 'Ресей', EN: 'Russia', ZH: '俄罗斯' },
+  UZ: { flag: '🇺🇿', RU: 'Узбекистан', KK: 'Өзбекстан', EN: 'Uzbekistan', ZH: '乌兹别克斯坦' },
+  KG: { flag: '🇰🇬', RU: 'Кыргызстан', KK: 'Қырғызстан', EN: 'Kyrgyzstan', ZH: '吉尔吉斯斯坦' },
+  TM: { flag: '🇹🇲', RU: 'Туркменистан', KK: 'Түрікменстан', EN: 'Turkmenistan', ZH: '土库曼斯坦' },
 };
 
 const STATUS_COLOR = {
@@ -175,10 +175,10 @@ function isStale(value) {
 function humanAge(value, lang) {
   const mins = ageMinutes(value);
   if (mins == null) return '—';
-  if (mins < 1) return lang === 'CN' ? '刚刚' : lang === 'EN' ? 'just now' : lang === 'KZ' ? 'жаңа ғана' : 'только что';
-  if (mins < 60) return lang === 'CN' ? `${mins}分钟前` : lang === 'EN' ? `${mins} min ago` : lang === 'KZ' ? `${mins} мин бұрын` : `${mins} мин назад`;
+  if (mins < 1) return lang === 'ZH' ? '刚刚' : lang === 'EN' ? 'just now' : lang === 'KK' ? 'жаңа ғана' : 'только что';
+  if (mins < 60) return lang === 'ZH' ? `${mins}分钟前` : lang === 'EN' ? `${mins} min ago` : lang === 'KK' ? `${mins} мин бұрын` : `${mins} мин назад`;
   const h = Math.floor(mins / 60);
-  return lang === 'CN' ? `${h}小时前` : lang === 'EN' ? `${h} h ago` : lang === 'KZ' ? `${h} сағ бұрын` : `${h} ч назад`;
+  return lang === 'ZH' ? `${h}小时前` : lang === 'EN' ? `${h} h ago` : lang === 'KK' ? `${h} сағ бұрын` : `${h} ч назад`;
 }
 
 async function fetchJson(url, options) {

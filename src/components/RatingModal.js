@@ -52,8 +52,8 @@ export default function RatingModal({ visible, onClose, onSubmitted, targetId, t
       slide.setValue(500); opacity.setValue(0);
       setRating(0); setText(''); setTags([]); setHover(0);
       Animated.parallel([
-        Animated.timing(slide, { toValue: 0, duration: 320, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-        Animated.timing(opacity, { toValue: 1, duration: 250, useNativeDriver: true }),
+        Animated.timing(slide, { toValue: 0, duration: 320, easing: Easing.out(Easing.cubic), useNativeDriver: false }),
+        Animated.timing(opacity, { toValue: 1, duration: 250, useNativeDriver: false }),
       ]).start();
     }
   }, [visible]);
