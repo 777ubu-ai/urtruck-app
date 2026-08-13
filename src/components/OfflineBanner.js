@@ -24,7 +24,7 @@ export default function OfflineBanner() {
   }, []);
 
   useEffect(() => {
-    Animated.timing(opacity, { toValue: online ? 0 : 1, duration: 240, useNativeDriver: true }).start();
+    Animated.timing(opacity, { toValue: online ? 0 : 1, duration: 240, useNativeDriver: false }).start();
   }, [online]);
 
   if (online) return null;

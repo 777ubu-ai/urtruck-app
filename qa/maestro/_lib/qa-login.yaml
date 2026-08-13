@@ -53,10 +53,13 @@ appId: host.exp.Exponent
 - runFlow:
     when:
       visible:
-        id: "bottom-nav-profile"
+        id: "bottom-nav-feed"
     commands:
       - tapOn:
-          id: "bottom-nav-profile"
+          id: "bottom-nav-feed"
+      - waitForAnimationToEnd
+      - tapOn:
+          id: "feed-menu-btn"
       - waitForAnimationToEnd
       - scrollUntilVisible:
           element:
@@ -103,10 +106,10 @@ appId: host.exp.Exponent
             - waitForAnimationToEnd
       - extendedWaitUntil:
           visible:
-            id: "bottom-nav-profile"
+            id: "bottom-nav-feed"
           timeout: 4000
           optional: true
 - extendedWaitUntil:
     visible:
-      id: "bottom-nav-profile"
+      id: "bottom-nav-feed"
     timeout: 15000

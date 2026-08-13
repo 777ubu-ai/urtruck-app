@@ -1,0 +1,18 @@
+appId: host.exp.Exponent
+name: client-3tabs
+tags: [smoke, client, release]
+env:
+  MAESTRO_ACTOR: boris
+---
+- runFlow: _lib/qa-login.yaml
+- assertVisible: { id: "bottom-nav-mywork" }
+- assertVisible: { id: "bottom-nav-feed" }
+- assertVisible: { id: "bottom-nav-deals" }
+- tapOn: { id: "bottom-nav-mywork" }
+- assertVisible: { id: "mywork-menu-btn" }
+- assertVisible: { id: "mytrips-place-cargo" }
+- tapOn: { id: "bottom-nav-feed" }
+- assertVisible: { id: "feed-menu-btn" }
+- tapOn: { id: "bottom-nav-deals" }
+- assertVisible: { id: "deal-room-list" }
+- assertVisible: { id: "chats-menu-btn" }

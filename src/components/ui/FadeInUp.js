@@ -10,8 +10,8 @@ export default function FadeInUp({ children, delay = 0, style }) {
   const ty = useRef(new Animated.Value(10)).current;
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(opacity, { toValue: 1, duration: 220, delay, useNativeDriver: true }),
-      Animated.timing(ty, { toValue: 0, duration: 220, delay, useNativeDriver: true }),
+      Animated.timing(opacity, { toValue: 1, duration: 220, delay, useNativeDriver: false }),
+      Animated.timing(ty, { toValue: 0, duration: 220, delay, useNativeDriver: false }),
     ]).start();
   }, []);
   return (
@@ -24,7 +24,7 @@ export default function FadeInUp({ children, delay = 0, style }) {
 export function PopIn({ children, style }) {
   const scale = useRef(new Animated.Value(0.5)).current;
   useEffect(() => {
-    Animated.spring(scale, { toValue: 1, friction: 5, tension: 140, useNativeDriver: true }).start();
+    Animated.spring(scale, { toValue: 1, friction: 5, tension: 140, useNativeDriver: false }).start();
   }, []);
   return (
     <Animated.View style={[style, { transform: [{ scale }] }]}>

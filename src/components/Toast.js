@@ -63,8 +63,8 @@ function ToastItem({ toast, onClose, index }) {
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(opacity, { toValue: 1, duration: 220, useNativeDriver: true }),
-      Animated.spring(translateY, { toValue: 0, useNativeDriver: true, friction: 6 }),
+      Animated.timing(opacity, { toValue: 1, duration: 220, useNativeDriver: false }),
+      Animated.spring(translateY, { toValue: 0, useNativeDriver: false, friction: 6 }),
     ]).start();
   }, []);
 

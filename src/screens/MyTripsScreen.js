@@ -102,6 +102,8 @@ export default function MyTripsScreen({ navigation, route }) {
   const isDriver = role === 'driver';
   const accent = isDriver ? '#168759' : '#FF8400';
   const { t, lang } = useI18n();
+  const tonUnit = lang === 'ZH' ? '吨' : lang === 'EN' ? 't' : 'т';
+  const cubicMeterUnit = lang === 'ZH' ? '立方米' : 'м³';
   const { theme } = useTheme();
   const { toast } = useToast();
 
@@ -389,20 +391,18 @@ export default function MyTripsScreen({ navigation, route }) {
               ? formatDateForDisplay(item.pickup_date || item.departure || item.created_at)
               : formatDateForDisplay(item.departure || item.created_at)}
           </Text>
-          {/* Вес/объём (05.08.2026, п.1/2 ТЗ) — cargo: weight_tons/volume_m3,
-              trip: capacity_tons/available_m3 (разные имена колонок бэкенда).
-              «т»/«м³» — как и в FeedScreen.js, хардкод без i18n (сложившаяся
-              конвенция для метрических единиц в этом проекте). */}
+          {/* Вес/объём: cargo и trip используют разные имена полей,
+              а единицы локализуются вместе с карточкой. */}
           {(isCargo ? item.weight_tons : item.capacity_tons) ? (
             <>
               <Text style={s.metaDot}>·</Text>
-              <Text style={[s.metaItem, { color: theme.textDim }]}>{isCargo ? item.weight_tons : item.capacity_tons} т</Text>
+              <Text style={[s.metaItem, { color: theme.textDim }]}>{isCargo ? item.weight_tons : item.capacity_tons} {tonUnit}</Text>
             </>
           ) : null}
           {(isCargo ? item.volume_m3 : item.available_m3) ? (
             <>
               <Text style={s.metaDot}>·</Text>
-              <Text style={[s.metaItem, { color: theme.textDim }]}>{isCargo ? item.volume_m3 : item.available_m3} м³</Text>
+              <Text style={[s.metaItem, { color: theme.textDim }]}>{isCargo ? item.volume_m3 : item.available_m3} {cubicMeterUnit}</Text>
             </>
           ) : null}
         </View>
@@ -715,4 +715,3 @@ export default function MyTripsScreen({ navigation, route }) {
     </SafeAreaView>
   );
 }
-

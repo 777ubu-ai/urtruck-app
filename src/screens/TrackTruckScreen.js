@@ -1,10 +1,9 @@
 // TrackTruckScreen — грузоотправитель видит, где сейчас машина (задача B).
 // Карта вынесена в TruckMap (native = react-native-maps/Apple Maps без
 // ключа; web = фолбэк). Позиция тянется поллингом GET
-// /market/deals/{id}/location раз в 15с. «Открыть в Картах» — системное
-// приложение карт по координатам.
+// /market/deals/{id}/location раз в 10с и остаётся внутри UrTruck.
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Linking, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../utils/useI18n';
@@ -70,13 +69,6 @@ export default function TrackTruckScreen({ navigation, route }) {
       : m < 1440 ? `${Math.floor(m / 60)} ${t('track_hour')}`
       : `${Math.floor(m / 1440)} ${t('track_day')}`;
     return `${t('track_updated')} ${unit} ${t('track_ago')}`;
-  };
-  const openExternal = () => {
-    if (lat == null) return;
-    const url = Platform.OS === 'ios'
-      ? `http://maps.apple.com/?ll=${lat},${lng}&q=${encodeURIComponent(driverName || 'UrTruck')}`
-      : `https://maps.google.com/?q=${lat},${lng}`;
-    Linking.openURL(url).catch(() => {});
   };
   const openDriverChat = () => navigation.goBack();
 
@@ -166,16 +158,6 @@ export default function TrackTruckScreen({ navigation, route }) {
             <Feather name="message-circle" size={18} color="#FFFFFF" />
             <Text style={s.messageBtnText}>{t('write_driver')}</Text>
           </TouchableOpacity>
-          {loc ? (
-            <TouchableOpacity
-              style={[s.mapsBtn, { borderColor: theme.border, backgroundColor: theme.bg }]}
-              onPress={openExternal}
-              testID="track-open-maps"
-              accessibilityLabel={t('track_truck_open_maps')}
-            >
-              <Feather name="navigation" size={19} color={theme.text} />
-            </TouchableOpacity>
-          ) : null}
         </View>
       </View>
     </SafeAreaView>
@@ -212,5 +194,4 @@ const s = StyleSheet.create({
   contactRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   messageBtn: { flex: 1, height: 48, borderRadius: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#0F6B47' },
   messageBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
-  mapsBtn: { width: 48, height: 48, borderRadius: 13, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
 });

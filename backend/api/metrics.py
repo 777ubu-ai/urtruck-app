@@ -17,7 +17,8 @@ metrics_router = APIRouter()
 
 # Counters
 _request_count = defaultdict(int)      # {method_path: count}
-_request_errors = defaultdict(int)     # {method_path: count}
+_request_errors = defaultdict(int)     # {method_path: 5xx count}
+_request_client_errors = defaultdict(int)  # {method_path: 4xx count}
 _request_duration = defaultdict(float) # {method_path: total_seconds}
 _startup_time = time.time()
 
@@ -58,8 +59,10 @@ class MetricsMiddleware(BaseHTTPMiddleware):
         method_key = f"{request.method}_{key}"
         _request_count[method_key] += 1
         _request_duration[method_key] += duration
-        if response.status_code >= 400:
+        if response.status_code >= 500:
             _request_errors[method_key] += 1
+        elif response.status_code >= 400:
+            _request_client_errors[method_key] += 1
 
         return response
 
@@ -73,10 +76,15 @@ def prometheus_metrics(_admin: str = Depends(check_admin)):
     for k, v in sorted(_request_count.items()):
         lines.append(f'urtruck_requests_total{{endpoint="{k}"}} {v}')
 
-    lines.append("# HELP urtruck_errors_total Total HTTP errors (4xx+5xx)")
+    lines.append("# HELP urtruck_errors_total Total HTTP server errors (5xx)")
     lines.append("# TYPE urtruck_errors_total counter")
     for k, v in sorted(_request_errors.items()):
         lines.append(f'urtruck_errors_total{{endpoint="{k}"}} {v}')
+
+    lines.append("# HELP urtruck_client_errors_total Total HTTP client responses (4xx)")
+    lines.append("# TYPE urtruck_client_errors_total counter")
+    for k, v in sorted(_request_client_errors.items()):
+        lines.append(f'urtruck_client_errors_total{{endpoint="{k}"}} {v}')
 
     lines.append("# HELP urtruck_duration_seconds_total Total request duration")
     lines.append("# TYPE urtruck_duration_seconds_total counter")
@@ -175,11 +183,14 @@ def health_detailed():
     uptime = time.time() - _startup_time
     total_req = sum(_request_count.values())
     total_err = sum(_request_errors.values())
+    total_client_err = sum(_request_client_errors.values())
     return {
         "status": "ok",
         "uptime_hours": round(uptime / 3600, 1),
         "total_requests": total_req,
         "total_errors": total_err,
         "error_rate": f"{(total_err / max(total_req, 1)) * 100:.1f}%",
+        "total_client_errors": total_client_err,
+        "client_error_rate": f"{(total_client_err / max(total_req, 1)) * 100:.1f}%",
         "top_endpoints": dict(sorted(_request_count.items(), key=lambda x: -x[1])[:5]),
     }

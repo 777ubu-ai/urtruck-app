@@ -98,7 +98,9 @@ export default function ProfileScreen({ navigation, route }) {
     card: v1.surface,
     textSecondary: v1.textMuted,
   };
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
+  const tonUnit = lang === 'ZH' ? '吨' : lang === 'EN' ? 't' : 'т';
+  const cubicMeterUnit = lang === 'ZH' ? '立方米' : 'м³';
   const { session, signOut, verificationLevel } = useAuth();
   const [profile, setProfile] = useState(getProfile(session?.user?.id) || {});
   const [lang, setLang] = useState(getLanguage());
@@ -189,8 +191,8 @@ export default function ProfileScreen({ navigation, route }) {
   const specsLine = isDriver
     ? [
         t(profile.truckType || 'tent'),
-        profile.capacity_tons != null && profile.capacity_tons !== '' ? `${profile.capacity_tons} т` : null,
-        profile.available_m3 != null && profile.available_m3 !== '' ? `${profile.available_m3} м³` : null,
+        profile.capacity_tons != null && profile.capacity_tons !== '' ? `${profile.capacity_tons} ${tonUnit}` : null,
+        profile.available_m3 != null && profile.available_m3 !== '' ? `${profile.available_m3} ${cubicMeterUnit}` : null,
       ].filter(Boolean).join(' · ')
     : [
         // company_type показываем ТОЛЬКО если реально заполнен. Раньше стоял
