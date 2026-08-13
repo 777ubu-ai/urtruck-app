@@ -98,9 +98,9 @@ export default function ProfileScreen({ navigation, route }) {
     card: v1.surface,
     textSecondary: v1.textMuted,
   };
-  const { t, lang } = useI18n();
-  const tonUnit = lang === 'ZH' ? '吨' : lang === 'EN' ? 't' : 'т';
-  const cubicMeterUnit = lang === 'ZH' ? '立方米' : 'м³';
+  const { t, lang: uiLang } = useI18n();
+  const tonUnit = uiLang === 'ZH' ? '吨' : uiLang === 'EN' ? 't' : 'т';
+  const cubicMeterUnit = uiLang === 'ZH' ? '立方米' : 'м³';
   const { session, signOut, verificationLevel } = useAuth();
   const [profile, setProfile] = useState(getProfile(session?.user?.id) || {});
   const [lang, setLang] = useState(getLanguage());
