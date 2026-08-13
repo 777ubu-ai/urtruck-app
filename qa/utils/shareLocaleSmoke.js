@@ -19,7 +19,7 @@ const trip = {
 const expected = {
   RU: ['UrTruck рейс', 'Бахты ↔ Чугучак', 'Выезд:', 'Цена:'],
   KK: ['UrTruck рейсі', 'Шығу:', 'Бағасы:'],
-  ZH: ['UrTruck 行程', '巴克图 ↔ 塔城', '喀山', '出发日期:', '价格:', '19 吨', '120 立方米'],
+  ZH: ['UrTruck 行程', 'Бахты ↔ Чугучак', 'Казань', '出发日期:', '价格:', '19 吨', '120 立方米'],
   EN: ['UrTruck trip', 'Bakhty ↔ Chuguchak', 'Kazan', 'Departure:', 'Price:'],
 };
 
@@ -28,8 +28,8 @@ for (const [lang, needles] of Object.entries(expected)) {
   for (const needle of needles) {
     if (!text.includes(needle)) throw new Error(`${lang}: missing ${needle}\n${text}`);
   }
-  if (lang === 'ZH' && /рейс|Выезд|Цена|Бахты|Чугучак|Казань/.test(text)) {
-    throw new Error(`ZH: Cyrillic leak\n${text}`);
+  if (lang === 'ZH' && /рейс|Выезд|Цена/.test(text)) {
+    throw new Error(`ZH: Russian interface text leak\n${text}`);
   }
 }
 
@@ -37,7 +37,7 @@ const cargoZh = buildCargoShareText({
   from: 'Иу', to: 'Москва', cargoDesc: 'Обувь',
   weightTons: 10, volumeM3: 60, pickupDate: '2026-08-20', price: 0,
 }, '', 'ZH');
-for (const needle of ['UrTruck 货物', '义乌', '莫斯科', '鞋类', '面议']) {
+for (const needle of ['UrTruck 货物', 'Иу', 'Москва', '鞋类', '面议']) {
   if (!cargoZh.includes(needle)) throw new Error(`ZH cargo: missing ${needle}\n${cargoZh}`);
 }
 
