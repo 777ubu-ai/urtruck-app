@@ -4,7 +4,9 @@ tags:
   - smoke
   - release
 ---
-- runFlow: _obsolete/driver-tabs.yaml
+# Аутентифицированный водитель проверяется отдельным driver-auth.yaml с
+# QA-токеном. В базовом smoke не используем устаревшие сценарии из _obsolete.
 - runFlow: client-tabs.yaml
-- runFlow: _obsolete/profile-queue-chats.yaml
-- runFlow: verification-render.yaml
+# registration/verification запускается отдельно: после гостевого входа
+# предыдущего флоу Expo Go сохраняет экран Main, поэтому общий suite не может
+# честно вернуться на Onboarding без сброса всего контейнера Expo Go.

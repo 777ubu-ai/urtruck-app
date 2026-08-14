@@ -30,7 +30,9 @@ jobs:
         run: npm ci
 
       - name: Build web
-        run: npx expo export --platform web
+        run: npm run build:web
+        env:
+          EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
 
       - name: Bundle size guard
         # Страж размера JS-бандла: для КЗ/Китая с медленным интернетом важно,
