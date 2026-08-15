@@ -5,6 +5,8 @@ import fs from 'node:fs';
 const src = fs.readFileSync('src/screens/ChatScreen.js', 'utf8');
 const trackSrc = fs.readFileSync('src/screens/TrackTruckScreen.js', 'utf8');
 const statusSrc = fs.readFileSync('src/utils/dealStatusOrder.js', 'utf8');
+const tripSrc = fs.readFileSync('src/screens/TripDetail.js', 'utf8');
+const cargoSrc = fs.readFileSync('src/screens/CargoDetail.js', 'utf8');
 
 test('shipper cannot mark an in-progress trip delivered', () => {
   assert.doesNotMatch(src, /isShipperSide\s*&&\s*\(deal\.status === 'in_progress'/);
@@ -36,6 +38,11 @@ test('delivered may advance to completed only after shipper receipt', () => {
   assert.match(statusSrc, /prev === 'delivered' && next === 'completed'/);
 });
 
+
+test('completed keeps the post-delivery review form visible', () => {
+  assert.match(tripSrc, /dealStatus === 'delivered' \|\| dealStatus === 'completed'/);
+  assert.match(cargoSrc, /dealStatus === 'delivered' \|\| dealStatus === 'completed'/);
+});
 
 test('live map returns to deal chat instead of exposing a call action', () => {
   assert.match(trackSrc, /testID="track-message-driver"/);
