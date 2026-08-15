@@ -11,6 +11,31 @@ const path = require('path');
 
 const AGENTS_DIR = path.resolve(__dirname, 'agents');
 const captureAll = process.env.QA_CAPTURE_ALL === '1';
+const includeProductionSmoke = process.env.QA_INCLUDE_PRODUCTION_SMOKE === '1';
+
+const projects = [
+  { name: 'bargain',         testMatch: /bargain\.flow\.spec\.js$/ },
+  { name: 'serik',           testMatch: /serik\.driver\.spec\.js$/ },
+  { name: 'boris',           testMatch: /boris\.shipper\.spec\.js$/, dependencies: ['serik'] },
+  { name: 'cargo-currency',  testMatch: /cargo\.currency\.spec\.js$/ },
+  { name: 'preview-gate',    testMatch: /preview\.gate\.spec\.js$/ },
+  { name: 'ui-smoke',        testMatch: /ui\.smoke\.spec\.js$/ },
+  // The production entry flow is OnboardingV2 -> PhoneV2 -> OtpV2 ->
+  // RoleV2. The old premium/RoleScreen specs below used to exercise a
+  // gallery-only legacy stack and started timing out once OnboardingV2
+  // became the real initial route. Keep one release contract on the live
+  // flow instead of treating removed UI as a product regression.
+  { name: 'onboarding-v2',   testMatch: /onboarding\.v2\.release\.spec\.js$/ },
+  { name: 'cargo-desc',      testMatch: /cargo\.description\.spec\.js$/ },
+  { name: 'trip-clicks',         testMatch: /trip\.detail\.clicks\.spec\.js$/ },
+  { name: 'shipper-trip-crash',  testMatch: /shipper\.trip\.crash\.spec\.js$/ },
+  { name: 'auditor',             testMatch: /auditor\.full\.spec\.js$/,
+    dependencies: ['serik', 'boris', 'cargo-currency', 'preview-gate', 'ui-smoke', 'trip-clicks', 'shipper-trip-crash'] },
+];
+
+if (includeProductionSmoke) {
+  projects.push({ name: 'production-smoke', testMatch: /production\.smoke\.spec\.js$/ });
+}
 
 module.exports = defineConfig({
   testDir: AGENTS_DIR,
@@ -29,24 +54,5 @@ module.exports = defineConfig({
     locale: 'ru-RU',
     timezoneId: 'Asia/Almaty',
   },
-  projects: [
-    { name: 'bargain',         testMatch: /bargain\.flow\.spec\.js$/ },
-    { name: 'serik',           testMatch: /serik\.driver\.spec\.js$/ },
-    { name: 'boris',           testMatch: /boris\.shipper\.spec\.js$/, dependencies: ['serik'] },
-    { name: 'cargo-currency',  testMatch: /cargo\.currency\.spec\.js$/ },
-    { name: 'preview-gate',    testMatch: /preview\.gate\.spec\.js$/ },
-    { name: 'ui-smoke',        testMatch: /ui\.smoke\.spec\.js$/ },
-    // The production entry flow is OnboardingV2 -> PhoneV2 -> OtpV2 ->
-    // RoleV2. The old premium/RoleScreen specs below used to exercise a
-    // gallery-only legacy stack and started timing out once OnboardingV2
-    // became the real initial route. Keep one release contract on the live
-    // flow instead of treating removed UI as a product regression.
-    { name: 'onboarding-v2',   testMatch: /onboarding\.v2\.release\.spec\.js$/ },
-    { name: 'production-smoke', testMatch: /production\.smoke\.spec\.js$/ },
-    { name: 'cargo-desc',      testMatch: /cargo\.description\.spec\.js$/ },
-    { name: 'trip-clicks',         testMatch: /trip\.detail\.clicks\.spec\.js$/ },
-    { name: 'shipper-trip-crash',  testMatch: /shipper\.trip\.crash\.spec\.js$/ },
-    { name: 'auditor',             testMatch: /auditor\.full\.spec\.js$/,
-      dependencies: ['serik', 'boris', 'cargo-currency', 'preview-gate', 'ui-smoke', 'trip-clicks', 'shipper-trip-crash'] },
-  ],
+  projects,
 });
