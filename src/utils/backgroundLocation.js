@@ -117,6 +117,23 @@ export async function ensureBackgroundLocationPermission() {
   // is intentionally absent from the manifest until Google Play approves the
   // declaration (see CLAUDE.md); do not turn a usable foreground permission
   // into a dead-end error for the driver.
+  if (Platform.OS === 'web') {
+    try {
+      if (typeof navigator === 'undefined' || !navigator.geolocation) {
+        return { ok: false, reason: 'unsupported' };
+      }
+      await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: false,
+          timeout: 10000,
+          maximumAge: 60000,
+        });
+      });
+      return { ok: true, foregroundOnly: true, mode: 'foreground_only' };
+    } catch (e) {
+      return { ok: false, reason: e?.code === 1 ? 'fg_denied' : 'unavailable' };
+    }
+  }
   let locationModule = Location;
   if (!locationModule) {
     try { locationModule = await import('expo-location'); }
@@ -149,6 +166,21 @@ export async function ensureBackgroundLocationPermission() {
 // сразу после успешного перехода сделки в in_progress; далее постоянную
 // передачу продолжает useDealLocationBroadcast.
 export async function getCurrentLocationPayload() {
+  if (Platform.OS === 'web') {
+    try {
+      if (typeof navigator === 'undefined' || !navigator.geolocation) return null;
+      const pos = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: false,
+          timeout: 10000,
+          maximumAge: 60000,
+        });
+      });
+      return normalizeLocationPayload(pos);
+    } catch {
+      return null;
+    }
+  }
   let locationModule = Location;
   if (!locationModule) {
     try { locationModule = await import('expo-location'); }

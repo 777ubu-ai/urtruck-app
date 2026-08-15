@@ -208,6 +208,9 @@ async function mockServerMutable(page, { initialStatus, statusChangeShouldFail =
   await page.route('**/api/v1/market/deals/' + DEAL_ID + '/tracking', async route => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, tracking: { status: 'active' } }) });
   });
+  await page.route('**/api/v1/market/deals/' + DEAL_ID + '/location', async route => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, tracking_status: 'active' }) });
+  });
   // The status-change endpoint either rejects (409, box unchanged — mirrors
   // the backend's real state-machine 409) or applies the new status.
   await page.route('**/api/v1/market/deals/*/status**', async route => {
@@ -380,6 +383,31 @@ test.describe('Deal status after a successful transition', () => {
   test('accepted -> in_progress: "Начать" replaced by the next action', async ({ page, context }) => {
     await context.grantPermissions(['geolocation'], { origin: new URL(BASE).origin });
     await context.setGeolocation({ latitude: 43.238949, longitude: 76.889709 });
+    await page.addInitScript(() => {
+      const position = {
+        coords: {
+          latitude: 43.238949,
+          longitude: 76.889709,
+          accuracy: 12,
+          altitude: null,
+          altitudeAccuracy: null,
+          heading: null,
+          speed: null,
+        },
+        timestamp: Date.now(),
+      };
+      Object.defineProperty(navigator, 'geolocation', {
+        configurable: true,
+        value: {
+          getCurrentPosition: (success) => success({ ...position, timestamp: Date.now() }),
+          watchPosition: (success) => {
+            success({ ...position, timestamp: Date.now() });
+            return 1;
+          },
+          clearWatch: () => {},
+        },
+      });
+    });
     const box = await mockServerMutable(page, { initialStatus: 'accepted', statusChangeShouldFail: false });
     await page.goto(BASE, { waitUntil: 'networkidle' });
     await enterAsDriver(page);
