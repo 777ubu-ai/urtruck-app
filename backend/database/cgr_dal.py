@@ -12,6 +12,7 @@ registration_dal.py / reviews_dal.py / consent_dal.py.
 """
 import hashlib
 import json
+import re
 import sqlite3
 import sys
 from contextlib import contextmanager
@@ -33,7 +34,76 @@ def init_cgr_schema() -> None:
     Path(config.DB_PATH).parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(config.DB_PATH) as conn:
         conn.executescript(_SCHEMA_PATH.read_text(encoding="utf-8"))
+        migrate_legacy_identity_values(conn, "cgr_booking_status", "urtruck_user_id")
         conn.commit()
+
+
+_TOKEN_SHAPED = re.compile(r"^[A-Za-z0-9_-]{40,128}$")
+_IDENTITY_COLUMNS = {
+    ("cgr_booking_status", "urtruck_user_id"),
+    ("queue_watches", "user_id"),
+}
+
+
+def is_token_shaped_identity(value: str) -> bool:
+    return bool(isinstance(value, str) and _TOKEN_SHAPED.fullmatch(value))
+
+
+def migrate_legacy_identity_values(conn: sqlite3.Connection, table: str, column: str) -> dict:
+    """Replace legacy bearer-as-identity values without ever logging tokens.
+
+    Exact values still present in ``reg_sessions`` are mapped to their stable
+    driver ID (expired sessions are safe to map; they still cannot authorize).
+    Token-shaped orphan values, including revoked sessions whose mapping no
+    longer exists, are replaced by a non-secret deterministic quarantine ID.
+    The migration is idempotent and skips databases where auth tables have not
+    been initialized yet.
+    """
+    if (table, column) not in _IDENTITY_COLUMNS:
+        raise ValueError("unsupported identity migration target")
+    tables = {
+        row[0] for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()
+    }
+    if table not in tables or "reg_sessions" not in tables or "drivers_registration" not in tables:
+        return {"mapped": 0, "quarantined": 0}
+    rows = conn.execute(f"SELECT DISTINCT {column} FROM {table}").fetchall()
+    mapped = quarantined = 0
+    for row in rows:
+        value = row[0]
+        if not isinstance(value, str) or not _TOKEN_SHAPED.fullmatch(value):
+            continue
+        owner = conn.execute(
+            "SELECT s.driver_id FROM reg_sessions s "
+            "JOIN drivers_registration d ON d.id=s.driver_id WHERE s.token=?",
+            (value,),
+        ).fetchone()
+        if owner:
+            replacement = owner[0]
+        else:
+            replacement = "legacy-orphan-" + hashlib.sha256(value.encode("utf-8")).hexdigest()[:24]
+        try:
+            conn.execute(
+                f"UPDATE {table} SET {column}=? WHERE {column}=?",
+                (replacement, value),
+            )
+        except sqlite3.IntegrityError:
+            # Two historical sessions of one driver may have created the same
+            # booking/watch. Preserve the row without retaining either bearer;
+            # the deterministic quarantine identity cannot authorize access.
+            replacement = "legacy-orphan-" + hashlib.sha256(value.encode("utf-8")).hexdigest()[:24]
+            conn.execute(
+                f"UPDATE {table} SET {column}=? WHERE {column}=?",
+                (replacement, value),
+            )
+            quarantined += 1
+            continue
+        if owner:
+            mapped += 1
+        else:
+            quarantined += 1
+    return {"mapped": mapped, "quarantined": quarantined}
 
 
 def _parse_legacy_countries(s: str) -> tuple[str, str]:
@@ -258,6 +328,8 @@ def create_booking(
     cgr_booking_number: str,
     checkpoint_code: str | None = None,
 ) -> int:
+    if not urtruck_user_id or is_token_shaped_identity(urtruck_user_id):
+        raise ValueError("stable user identity required")
     with _conn() as c:
         cur = c.execute(
             """
@@ -274,6 +346,38 @@ def get_booking(booking_id: int) -> dict | None:
     with _conn() as c:
         r = c.execute("SELECT * FROM cgr_booking_status WHERE id = ?", (booking_id,)).fetchone()
         return dict(r) if r else None
+
+
+def get_booking_for_user(booking_id: int, user_id: str) -> dict | None:
+    """Owner-filtered lookup avoids loading another user's CGR row at API level."""
+    with _conn() as c:
+        r = c.execute(
+            "SELECT * FROM cgr_booking_status WHERE id=? AND urtruck_user_id=?",
+            (booking_id, user_id),
+        ).fetchone()
+        return dict(r) if r else None
+
+
+def get_active_bookings_for_user(user_id: str) -> list[dict]:
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT * FROM cgr_booking_status WHERE urtruck_user_id=? "
+            "AND status IN ('pending', 'verified', 'active')",
+            (user_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def trip_driver_id(trip_id: str) -> str | None:
+    """Return stable trip owner identity; absent table/trip fails closed."""
+    if not trip_id:
+        return None
+    try:
+        with _conn() as c:
+            row = c.execute("SELECT driver_id FROM trips WHERE id=?", (trip_id,)).fetchone()
+            return row["driver_id"] if row else None
+    except sqlite3.OperationalError:
+        return None
 
 
 def get_active_bookings() -> list[dict]:

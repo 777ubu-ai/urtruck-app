@@ -23,6 +23,8 @@ def init_schema():
                 PRIMARY KEY (user_id, plate)
             )
         """)
+        from database import cgr_dal
+        cgr_dal.migrate_legacy_identity_values(c, "queue_watches", "user_id")
 
 
 def _norm(p: str) -> str:
@@ -31,8 +33,9 @@ def _norm(p: str) -> str:
 
 
 def add_watch(user_id: str, plate: str) -> bool:
+    from database import cgr_dal
     p = _norm(plate)
-    if not user_id or len(p) < 3:
+    if not user_id or cgr_dal.is_token_shaped_identity(user_id) or len(p) < 3:
         return False
     with get_conn() as c:
         c.execute(

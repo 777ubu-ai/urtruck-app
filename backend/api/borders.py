@@ -16,10 +16,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from services.border_service import get_all_borders, get_border, search_borders, get_borders_grouped
+from api.verification_gate import get_user
+from database import registration_dal as reg_dal
 
 logger = logging.getLogger("api.borders")
 
@@ -27,19 +29,22 @@ borders_router = APIRouter()
 
 
 # ----------------------------------------------------------------
-# Auth helper — общий стиль с другими эндпоинтами UrTruck.
-# user_id вытаскивается из Bearer-токена (ur_reg_token). На время
-# отсутствия централизованного auth-helper используем минимальный stub.
-# TODO: заменить на единый Depends() когда такой появится.
+# Auth helper — тот же verified session contract, что marketplace/profile.
 # ----------------------------------------------------------------
-def _current_user_id(authorization: str = Header(default="")) -> str:
-    if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authorization required")
-    token = authorization.split(" ", 1)[1].strip()
-    if not token:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Empty token")
-    # TODO: верификация токена и извлечение user_id из БД registration_dal
-    return token  # для MVP используем токен как user_id (как в legacy registration flow)
+def _current_user_id(user: dict = Depends(get_user)) -> str:
+    """Return only the stable user ID resolved from a live reg_session."""
+    user_id = user.get("id") if isinstance(user, dict) else None
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session")
+    return str(user_id)
+
+
+def _require_driver(user_id: str) -> None:
+    user = reg_dal.get_driver(user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session")
+    if user.get("role") != "driver":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Driver role required")
 
 
 # ----------------------------------------------------------------
@@ -263,6 +268,11 @@ class CreateBookingBody(BaseModel):
 
 @borders_router.post("/bookings", status_code=status.HTTP_201_CREATED)
 def create_booking(body: CreateBookingBody, user_id: str = Depends(_current_user_id)):
+    _require_driver(user_id)
+    from database import cgr_dal
+    if body.trip_id and cgr_dal.trip_driver_id(body.trip_id) != user_id:
+        # 404 avoids disclosing whether another driver's trip exists.
+        raise HTTPException(status_code=404, detail="Trip not found")
     try:
         from cgr import booking_service
     except Exception as e:
@@ -298,19 +308,14 @@ def create_booking(body: CreateBookingBody, user_id: str = Depends(_current_user
 @borders_router.get("/bookings/active")
 def get_my_active_bookings(user_id: str = Depends(_current_user_id)):
     from database import cgr_dal
-    all_active = cgr_dal.get_active_bookings()
-    mine = [b for b in all_active if b["urtruck_user_id"] == user_id]
-    return {"bookings": mine}
+    return {"bookings": cgr_dal.get_active_bookings_for_user(user_id)}
 
 
 @borders_router.get("/bookings/{booking_id}")
 def get_booking(booking_id: int, user_id: str = Depends(_current_user_id)):
     from database import cgr_dal
-    b = cgr_dal.get_booking(booking_id)
+    b = cgr_dal.get_booking_for_user(booking_id, user_id)
     if not b:
-        raise HTTPException(status_code=404, detail="Booking not found")
-    if b["urtruck_user_id"] != user_id:
-        # Privacy: чужие брони не отдаём (раздел 6.5 чеклиста)
         raise HTTPException(status_code=404, detail="Booking not found")
     return b
 
@@ -369,6 +374,7 @@ class WatchIn(BaseModel):
 @borders_router.post("/watch")
 def add_queue_watch(body: WatchIn, user_id: str = Depends(_current_user_id)):
     """Следить за своим номером → пуш при смене статуса в очереди CGR."""
+    _require_driver(user_id)
     from cgr import queue_watch
     ok = queue_watch.add_watch(user_id, body.plate)
     if not ok:
@@ -378,6 +384,7 @@ def add_queue_watch(body: WatchIn, user_id: str = Depends(_current_user_id)):
 
 @borders_router.delete("/watch")
 def remove_queue_watch(plate: str, user_id: str = Depends(_current_user_id)):
+    _require_driver(user_id)
     from cgr import queue_watch
     queue_watch.remove_watch(user_id, plate)
     return {"ok": True}
@@ -385,6 +392,7 @@ def remove_queue_watch(plate: str, user_id: str = Depends(_current_user_id)):
 
 @borders_router.get("/watch")
 def list_queue_watches(user_id: str = Depends(_current_user_id)):
+    _require_driver(user_id)
     from cgr import queue_watch
     return {"watches": queue_watch.list_watches(user_id)}
 
