@@ -1,19 +1,18 @@
 """Pydantic модели API."""
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional
 
 
 class CheckFullRequest(BaseModel):
-    user_id: str
-    phone: Optional[str] = None
-    plate: Optional[str] = None
-    name: Optional[str] = None
-    vehicle_year: Optional[int] = None
-    has_insurance: bool = True
-    experience_years: Optional[int] = None
-    completed_trips: int = 0
-    positive_reviews: int = 0
-    negative_reviews: int = 0
+    """Запрос на серверный пересчёт скоринга.
+
+    Все факторы скоринга берутся только из доверенных серверных данных. Для
+    обычного пользователя ``user_id`` можно не передавать (будет использован
+    id сессии) или передать только собственный id. Явная цель предназначена
+    для административного запуска.
+    """
+    model_config = ConfigDict(extra="forbid")
+    user_id: Optional[str] = None
 
 
 class CheckQuickRequest(BaseModel):

@@ -1,4 +1,6 @@
 """API маршруты UrTruck Security — все endpoints кроме public требуют авторизацию."""
+import json
+import sqlite3
 import sys
 import tempfile
 from pathlib import Path
@@ -19,8 +21,98 @@ from scoring.weights import apply_penalties_and_bonuses
 from blacklist import manager as blacklist_mgr
 from ocr.document_reader import extract_passport_data
 from database import db
+from database import registration_dal as reg_dal
+from database.db import get_conn
 
 router = APIRouter()
+
+_PRIVILEGED_SCORING_ROLES = {"admin", "support"}
+
+
+def _resolve_verification_subject(user: dict, requested_user_id: str | None) -> str:
+    """Привязывает user-scoped pipeline к проверенной сессии.
+
+    Обычный пользователь может работать только со своими данными. Admin и
+    support могут явно выбрать существующего пользователя для модерации.
+    Внутренние registration/scheduler jobs вызывают scoring engine напрямую и
+    не зависят от этого HTTP-контракта.
+    """
+    actor_id = user["id"]
+    subject_id = requested_user_id or actor_id
+    if subject_id == actor_id:
+        return actor_id
+    if user.get("role") not in _PRIVILEGED_SCORING_ROLES:
+        raise HTTPException(status_code=403, detail="Доступ только к своей верификации")
+    if not reg_dal.get_driver(subject_id):
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    return subject_id
+
+
+def _completed_trips(user_id: str) -> int:
+    """Считает завершённые рейсы из БД; отсутствие legacy-схемы = 0."""
+    try:
+        with get_conn() as c:
+            row = c.execute(
+                "SELECT COUNT(*) AS n FROM deals "
+                "WHERE driver_id = ? AND status IN ('delivered', 'completed')",
+                (user_id,),
+            ).fetchone()
+            return int(row["n"] if row else 0)
+    except sqlite3.OperationalError:
+        return 0
+
+
+def _server_scoring_components(user_id: str) -> dict:
+    """Формирует компоненты только из серверного профиля/сделок/отзывов."""
+    from verification.vehicle_checker import check_vehicle, check_financial, check_identity
+
+    driver = reg_dal.get_driver(user_id)
+    if not driver:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    phone = driver.get("phone")
+    plate = driver.get("vehicle_plate")
+    vehicle = check_vehicle(
+        plate or "",
+        year=driver.get("vehicle_year"),
+        has_insurance=bool(driver.get("cmr_insurance_url")),
+    )
+    financial = check_financial(user_id)
+    identity = check_identity(
+        user_id,
+        plate_verified=bool(driver.get("passport_verified")),
+        selfie_verified=bool(driver.get("face_verified")),
+    )
+
+    mentions = db.get_mentions(phone=phone, plate=plate) if phone or plate else []
+    negative = sum(1 for mention in mentions if mention.get("sentiment") == "negative")
+    positive = sum(1 for mention in mentions if mention.get("sentiment") == "positive")
+    social = max(0, min(100, 70 - negative * 15 + positive * 5))
+
+    license_ocr = {}
+    try:
+        license_ocr = json.loads(driver.get("license_ocr") or "{}")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        license_ocr = {}
+    if not isinstance(license_ocr, dict):
+        license_ocr = {}
+    try:
+        experience_years = max(0, int(license_ocr.get("experience_years") or 0))
+    except (TypeError, ValueError):
+        experience_years = 0
+    completed_trips = _completed_trips(user_id)
+
+    return {
+        "identity": identity["score"],
+        # reputation намеренно не передаётся: engine получает её из reviews DAL.
+        "social": social,
+        "experience": min(100, 30 + experience_years * 7 + completed_trips * 2),
+        "vehicle": vehicle["score"],
+        "financial": financial["score"],
+        "bonus": min(100, completed_trips * 5),
+        "phone": phone,
+        "plate": plate,
+    }
 
 
 @router.get("/")
@@ -58,43 +150,9 @@ def stats(user=Depends(require_level(1))):
 
 @router.post("/check/full", response_model=ScoreResponse)
 def check_full(req: CheckFullRequest, user=Depends(require_level(1))):
-    """Полная проверка водителя — скоринг по 6 компонентам."""
-    # Компоненты
-    from verification.vehicle_checker import check_vehicle, check_financial, check_identity
-    vehicle = check_vehicle(req.plate or "", year=req.vehicle_year, has_insurance=req.has_insurance)
-    financial = check_financial(req.user_id)
-    identity = check_identity(req.user_id, plate_verified=bool(req.plate), selfie_verified=False)
-
-    # Репутация по telegram упоминаниям
-    mentions = db.get_mentions(phone=req.phone, plate=req.plate)
-    negative = sum(1 for m in mentions if m.get("sentiment") == "negative")
-    positive = sum(1 for m in mentions if m.get("sentiment") == "positive")
-    social = max(0, 70 - negative * 15 + positive * 5)
-
-    # Репутация = реальная оценка пользователей
-    reputation = 50 + (req.positive_reviews * 5) - (req.negative_reviews * 10)
-    reputation = max(0, min(100, reputation))
-
-    # Опыт
-    exp_years = req.experience_years or 1
-    experience = min(100, 30 + exp_years * 7 + req.completed_trips * 2)
-
-    # Бонус
-    bonus = min(100, req.completed_trips * 5)
-
-    components = {
-        "identity": identity["score"],
-        "reputation": reputation,
-        "social": social,
-        "experience": experience,
-        "vehicle": vehicle["score"],
-        "financial": financial["score"],
-        "bonus": bonus,
-        "phone": req.phone,
-        "plate": req.plate,
-    }
-    result = calculate_score(req.user_id, components)
-    return result
+    """Полная проверка: self-only либо явный admin/support target."""
+    subject_id = _resolve_verification_subject(user, req.user_id)
+    return calculate_score(subject_id, _server_scoring_components(subject_id))
 
 
 @router.post("/check/quick")
@@ -106,23 +164,26 @@ def check_quick(req: CheckQuickRequest, user=Depends(require_level(1))):
 @router.get("/score/{user_id}")
 def get_score(user_id: str, user=Depends(require_level(1))):
     """Получить текущий скоринг водителя."""
-    score = db.get_score(user_id)
+    subject_id = _resolve_verification_subject(user, user_id)
+    score = db.get_score(subject_id)
     if not score:
-        return {"user_id": user_id, "total_score": 50, "color_code": "yellow",
+        return {"user_id": subject_id, "total_score": 50, "color_code": "yellow",
                 "message": "Водитель не проверен"}
     score["color_label"] = label_from_color(score["color_code"])
     return score
 
 
 @router.post("/ocr/passport", response_model=OCRResponse)
-async def ocr_passport(file: UploadFile = File(...), user_id: str = Query(...), user=Depends(require_level(1))):
+async def ocr_passport(file: UploadFile = File(...), user_id: str | None = Query(default=None),
+                       user=Depends(require_level(1))):
     """OCR техпаспорта — извлекает марку, номер, VIN, год."""
+    subject_id = _resolve_verification_subject(user, user_id)
     with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
         tmp.write(await file.read())
         tmp_path = tmp.name
     result = extract_passport_data(tmp_path)
     if result.get("success"):
-        db.save_ocr(user_id, "tech_passport", result, result.get("confidence", 0.0))
+        db.save_ocr(subject_id, "tech_passport", result, result.get("confidence", 0.0))
     return result
 
 
@@ -208,15 +269,17 @@ def gov_check(req: CheckQuickRequest, user=Depends(require_level(1))):
 
 
 @router.post("/biometric/liveness")
-async def biometric_liveness(file: UploadFile = File(...), user_id: str = Query(...), user=Depends(require_level(1))):
+async def biometric_liveness(file: UploadFile = File(...), user_id: str | None = Query(default=None),
+                             user=Depends(require_level(1))):
     """Liveness check — проверка что на фото живой человек."""
+    subject_id = _resolve_verification_subject(user, user_id)
     import tempfile
     from biometrics.liveness import check_liveness
     with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
         tmp.write(await file.read())
         tmp_path = tmp.name
     r = check_liveness(tmp_path)
-    db.log_verification(user_id, "biometric", "liveness",
+    db.log_verification(subject_id, "biometric", "liveness",
                          "pass" if r.get("liveness_passed") else "fail",
                          r, 10 if r.get("liveness_passed") else -5)
     return r
@@ -224,8 +287,10 @@ async def biometric_liveness(file: UploadFile = File(...), user_id: str = Query(
 
 @router.post("/biometric/face_match")
 async def biometric_face_match(selfie: UploadFile = File(...), document: UploadFile = File(...),
-                                user_id: str = Query(...), user=Depends(require_level(1))):
+                                user_id: str | None = Query(default=None),
+                                user=Depends(require_level(1))):
     """Сверка лица на селфи с фото документа."""
+    subject_id = _resolve_verification_subject(user, user_id)
     import tempfile
     from biometrics.liveness import face_match
     p1 = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
@@ -233,7 +298,7 @@ async def biometric_face_match(selfie: UploadFile = File(...), document: UploadF
     p1.write(await selfie.read()); p1.close()
     p2.write(await document.read()); p2.close()
     r = face_match(p1.name, p2.name)
-    db.log_verification(user_id, "biometric", "face_match",
+    db.log_verification(subject_id, "biometric", "face_match",
                          "pass" if r.get("match") else "fail",
                          r, 15 if r.get("match") else -10)
     return r
