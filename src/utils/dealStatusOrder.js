@@ -5,18 +5,15 @@
 // после более свежего.
 //
 // Актуальные значения deals.status на бэкенде (backend/api/marketplace.py,
-// update_deal_status/_FLOW): accepted → in_progress → at_border → delivered,
-// cancelled — из любого рабочего статуса. 'awaiting_confirmation' и
-// 'completed' бэкендом как deal.status пока не эмитятся (только в
-// защитных SQL-проверках/cargos.status), но уже используются как
-// легитимные значения в фильтрах UI (ChatsListScreen) — карта готова
-// принять их без падения already now, до того как бэкенд начнёт их слать.
+// update_deal_status/_FLOW): accepted → in_progress → at_border → delivered → completed,
+// cancelled — из любого рабочего статуса. completed наступает после
+// подтверждения получения грузоотправителем.
 export const DEAL_STATUS_RANK = {
   accepted: 1,
   in_progress: 2,
   at_border: 3,
   awaiting_confirmation: 4,
-  delivered: 5,
+  delivered: 4,
   completed: 5,
 };
 
@@ -46,6 +43,9 @@ export function pickDealStatus(prev, next) {
   if (!next) return prev;
   if (!prev) return next;
   if (prev === next) return next;
+  // delivered — финальный этап водителя, но грузоотправитель ещё может
+  // подтвердить получение и перевести сделку в completed.
+  if (prev === 'delivered' && next === 'completed') return next;
   if (FINISHED_STATUSES.has(prev)) return prev;
   if (FINISHED_STATUSES.has(next)) return next;
   const prevRank = DEAL_STATUS_RANK[prev] ?? 0;
