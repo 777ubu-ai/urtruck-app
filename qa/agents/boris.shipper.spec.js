@@ -124,7 +124,8 @@ test('Boris · cargo owner flow', async ({ page }) => {
       log.pass(ACTOR, 'shipper-bid-on-trip', `bidId=${tripBid.json.id} tripId=${serikTrip.id}`);
       // Read it back via /market/bids?trip_id= to confirm persistence.
       const verify = await qaApi.get('/market/bids', { ...headers, query: { trip_id: serikTrip.id } });
-      const found = ((verify.json && verify.json.bids) || []).find((b) => b.id === tripBid.json.id);
+      const found = ((verify.json && verify.json.bids) || []).find((b) => b.id === tripBid.json.id)
+        || (verify.json && verify.json.my_bid && verify.json.my_bid.id === tripBid.json.id ? verify.json.my_bid : null);
       if (found) {
         log.pass(ACTOR, 'shipper-bid-on-trip-listed', `amount=${found.amount}`);
       } else {

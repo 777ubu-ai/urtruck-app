@@ -100,11 +100,22 @@ function saveStableTokens(obj) {
   fs.writeFileSync(STABLE_FILE, JSON.stringify(obj, null, 2));
 }
 
-// Probe a cached token by hitting /register/me. If 200, the token is good.
+// Probe a cached token by hitting /register/me. If 200, return the current
+// authoritative profile so ensureActor can reject stale guest-fallback tokens
+// that no longer satisfy the production marketplace contract.
 async function probeToken(token) {
-  if (!token) return false;
+  if (!token) return null;
   const r = await get('/register/me', { token });
-  return r.ok;
+  return r.ok ? (r.json || {}) : null;
+}
+
+function tokenMatchesRequestedRole(profile, role) {
+  if (!role) return true;
+  if (!profile) return false;
+  if (role === 'driver') return profile.role === 'driver' && profile.phone_verified === true;
+  if (role === 'client' || role === 'shipper') return ['client', 'shipper'].includes(profile.role);
+  if (role === 'auditor') return profile.role === 'auditor';
+  return profile.role === role;
 }
 
 // Result shape mirrors ensureGuest so call sites stay the same. Adds:
@@ -117,7 +128,8 @@ async function ensureActor(actorName, opts = {}) {
 
   // 1. Reuse cached stable token if it still authenticates.
   if (cached && cached.token) {
-    if (await probeToken(cached.token)) {
+    const profile = await probeToken(cached.token);
+    if (tokenMatchesRequestedRole(profile, role)) {
       return { token: cached.token, userId: cached.userId, source: 'cache', warning: null };
     }
   }
@@ -149,7 +161,7 @@ async function ensureActor(actorName, opts = {}) {
     let json = null; try { json = text ? JSON.parse(text) : null; } catch {}
     if (res.ok && json && json.token) {
       const out = { token: json.token, userId: json.user_id, source: 'qa-endpoint', warning: null };
-      cache[actorName] = { token: out.token, userId: out.userId, savedAt: new Date().toISOString() };
+      cache[actorName] = { token: out.token, userId: out.userId, role, source: out.source, savedAt: new Date().toISOString() };
       saveStableTokens(cache);
       return out;
     }
@@ -164,7 +176,7 @@ async function ensureActor(actorName, opts = {}) {
   // Auditor can downgrade any 429 here from P0 product to P1 infra.
   const g = await ensureGuest(actorName);
   if (g.token) {
-    cache[actorName] = { token: g.token, userId: g.userId, savedAt: new Date().toISOString(), source: 'guest-fallback' };
+    cache[actorName] = { token: g.token, userId: g.userId, role: null, savedAt: new Date().toISOString(), source: 'guest-fallback' };
     saveStableTokens(cache);
   }
   return {

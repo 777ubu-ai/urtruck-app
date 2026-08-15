@@ -6,6 +6,7 @@
 const { QA_TAG } = require('./qaConfig');
 
 const tag = () => QA_TAG;
+const daysFromNow = (days) => new Date(Date.now() + days * 864e5).toISOString().slice(0, 10);
 
 // Trip published by Serik (driver QA). Matches the acceptance fixture from
 // the user's task: Алматы → Москва, fixed price 12000 USD, tent.
@@ -19,8 +20,10 @@ function serikTripPayload(overrides = {}) {
     available_m3: 82,
     price: 12000,
     currency: 'USD',
-    departure: '2026-05-06',
-    arrival: '2026-05-08',
+    // Даты держим будущими: backend справедливо отклоняет активные рейсы
+    // с протухшим departure/arrival, а RC lane должен быть живым в любой день.
+    departure: daysFromNow(10),
+    arrival: daysFromNow(12),
     ...overrides,
   };
 }
@@ -41,7 +44,7 @@ function borisCargoPayload(overrides = {}) {
     currency: 'USD',
     // Дата загрузки — динамически +14 дней (бэкенд отклоняет дату в прошлом;
     // раньше был захардкоженный день, который со временем протух).
-    pickup_date: new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10),
+    pickup_date: daysFromNow(14),
     photos: [],
     ...overrides,
   };
@@ -68,6 +71,7 @@ function serikTripEditPayload(overrides = {}) {
 
 module.exports = {
   tag,
+  daysFromNow,
   serikTripPayload,
   borisCargoPayload,
   serikBidPayload,

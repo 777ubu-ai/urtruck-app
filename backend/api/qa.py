@@ -48,9 +48,9 @@ QA_TAG_PREFIX = "[ar-"
 # anything matching is hidden from list_trips. The bracketed [ar-...] marker
 # the agents inject elsewhere stays the canonical QA fingerprint.
 QA_ACTORS = {
-    "serik":   {"id": "agent-serik",   "phone": "agent-serik",   "full_name": "Serik (driver agent)",     "role": "driver"},
-    "boris":   {"id": "agent-boris",   "phone": "agent-boris",   "full_name": "Boris (shipper agent)",    "role": "client"},
-    "auditor": {"id": "agent-auditor", "phone": "agent-auditor", "full_name": "Auditor (supervisor agent)", "role": "auditor"},
+    "serik":   {"id": "agent-serik",   "phone": "+77000000001", "full_name": "Serik (driver agent)",     "role": "driver"},
+    "boris":   {"id": "agent-boris",   "phone": "+77000000002", "full_name": "Boris (shipper agent)",    "role": "client"},
+    "auditor": {"id": "agent-auditor", "phone": "+77000000003", "full_name": "Auditor (supervisor agent)", "role": "auditor"},
 }
 
 
@@ -106,17 +106,23 @@ def ensure_actor(body: EnsureActorIn, x_qa_agent_token: Optional[str] = Header(N
             # Create stable row. status='approved' so the actor can act on
             # all marketplace endpoints without going through verification.
             c.execute(
-                "INSERT INTO drivers_registration (id, phone, full_name, role, status, verification_level, current_step) "
-                "VALUES (?, ?, ?, ?, 'approved', 3, 0)",
+                "INSERT INTO drivers_registration "
+                "(id, phone, whatsapp_verified, phone_verified, full_name, role, status, verification_level, current_step) "
+                "VALUES (?, ?, 1, 1, ?, ?, 'approved', 3, 0)",
                 (spec["id"], spec["phone"], spec["full_name"], role),
             )
-        elif (row["full_name"] or "").lower() != spec["full_name"].lower():
+        else:
             # Older deployments saved e.g. "Serik (driver QA)" — that string
             # contains "qa" and gets hidden by the public-feed dirty filter.
-            # Keep the row, just rename it to the current spec.
+            # Keep the row, but normalize all authoritative actor fields so
+            # the QA endpoint mirrors the production marketplace contract:
+            # driver actions require role=driver and an OTP-verified phone.
             c.execute(
-                "UPDATE drivers_registration SET full_name = ? WHERE id = ?",
-                (spec["full_name"], spec["id"]),
+                "UPDATE drivers_registration "
+                "SET phone = ?, whatsapp_verified = 1, phone_verified = 1, "
+                "full_name = ?, role = ?, status = 'approved', verification_level = 3 "
+                "WHERE id = ?",
+                (spec["phone"], spec["full_name"], role, spec["id"]),
             )
 
     # Always issue a fresh session — old tokens may have expired (30d TTL).
