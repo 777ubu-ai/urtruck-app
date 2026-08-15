@@ -40,8 +40,8 @@ test('delivered may advance to completed only after shipper receipt', () => {
 
 
 test('completed keeps the post-delivery review form visible', () => {
-  assert.match(tripSrc, /dealStatus === 'delivered' \|\| dealStatus === 'completed'/);
-  assert.match(cargoSrc, /dealStatus === 'delivered' \|\| dealStatus === 'completed'/);
+  assert.match(tripSrc, /dealStatus === 'completed' && !reviewSent/);
+  assert.match(cargoSrc, /dealStatus === 'completed' && !reviewSent/);
 });
 
 test('live map returns to deal chat instead of exposing a call action', () => {
