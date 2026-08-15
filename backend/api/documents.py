@@ -62,6 +62,8 @@ def _load_document_context(reference_id: str, user_id: str) -> dict:
             raise HTTPException(status_code=404, detail="Принятая сделка не найдена")
 
         deal = _row_dict(deal_row)
+        if deal.get("status") in ("cancelled", "rejected"):
+            raise HTTPException(status_code=409, detail="Документы недоступны для отменённой сделки")
         if user_id not in (deal.get("shipper_id"), deal.get("driver_id")):
             raise HTTPException(status_code=403, detail="Документ доступен только участникам сделки")
 
