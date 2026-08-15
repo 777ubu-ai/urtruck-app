@@ -68,15 +68,41 @@ def _native_tokens(user_id: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def _event_key(data: Optional[dict]) -> Optional[str]:
+    value = (data or {}).get("event_key")
+    return str(value).strip()[:240] if value and str(value).strip() else None
+
+
+def _already_delivered(user_id: str, event_key: Optional[str]) -> bool:
+    """Return True only for a previously successful delivery.
+
+    A transient provider failure must remain retryable. The unique event key
+    is supplied by the server-side state transition, never by the client.
+    """
+    if not user_id or not event_key:
+        return False
+    try:
+        with get_conn() as c:
+            row = c.execute(
+                "SELECT 1 FROM push_log WHERE user_id = ? AND event_key = ? "
+                "AND (COALESCE(web_sent, 0) > 0 OR COALESCE(native_sent, 0) > 0) LIMIT 1",
+                (user_id, event_key),
+            ).fetchone()
+        return bool(row)
+    except Exception:
+        return False
+
+
 def _log(user_id: Optional[str], kind: str, title: str, body: str,
          data: dict, web_sent: int, native_sent: int, error: str = None):
+    event_key = _event_key(data)
     try:
         with get_conn() as c:
             c.execute(
-                "INSERT INTO push_log (user_id, kind, title, body, data_json, web_sent, native_sent, error) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO push_log (user_id, kind, title, body, data_json, web_sent, native_sent, error, event_key) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (user_id, kind, title, body, json.dumps(data, ensure_ascii=False),
-                 web_sent, native_sent, error),
+                 web_sent, native_sent, error, event_key),
             )
     except Exception as e:
         # Never raise — push logging is observability, not part of the request
@@ -289,6 +315,13 @@ def send(user_id: str, title: str, body: str,
 
     data = data or {}
     data = {**data, "kind": kind, "url": url}
+
+    # Retries of the same server-side transition must not create duplicate
+    # notifications on a user's devices. Without an event_key, preserve the
+    # legacy behavior for independent messages.
+    event_key = _event_key(data)
+    if _already_delivered(user_id, event_key):
+        return {"web": 0, "native": 0, "total": 0, "deduped": True}
 
     badge = _compute_recipient_badge(user_id)
 
