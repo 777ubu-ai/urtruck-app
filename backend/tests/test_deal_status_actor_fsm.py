@@ -276,11 +276,17 @@ def test_driver_cannot_confirm_delivery():
 
 
 def test_reviews_require_shipper_receipt_confirmation():
+    # Use a unique pair because this module intentionally accumulates deals
+    # in one SQLite session and has_deal_between checks any completed deal.
+    shipper = "review-gate-shipper-fsm"
+    driver = "review-gate-driver-fsm"
     d = seed_deal("delivered", from_country="KZ", to_country="KZ")
-    assert reviews_dal.has_deal_between(SHIPPER, DRIVER) is False
-    completed = patch_status(d, "completed", SHIPPER)
+    with get_conn() as c:
+        c.execute("UPDATE deals SET shipper_id = ?, driver_id = ? WHERE id = ?", (shipper, driver, d))
+    assert reviews_dal.has_deal_between(shipper, driver) is False
+    completed = patch_status(d, "completed", shipper)
     assert completed.status_code == 200, completed.text
-    assert reviews_dal.has_deal_between(SHIPPER, DRIVER) is True
+    assert reviews_dal.has_deal_between(shipper, driver) is True
 
 
 def test_unknown_status_400():
