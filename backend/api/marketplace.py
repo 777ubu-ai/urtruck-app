@@ -2706,6 +2706,10 @@ _DEAL_FLOW = {
     "delivered":   set(),
     "cancelled":   set(),
 }
+# Статусы, устанавливаемые только водителем. Это проверяется даже для
+# идемпотентного повтора: участник не должен получать успешный ответ на
+# попытку подтвердить водительский этап чужим действием.
+_DRIVER_ONLY_STATUSES = {new_status for _, new_status in _DRIVER_ONLY_TRANSITIONS}
 _DEAL_STATUS_LABELS = {
     "in_progress": "🚛 Рейс начался", "at_border": "🛂 На границе",
     "delivered": "✅ Доставлен", "cancelled": "❌ Отменено",
@@ -2741,6 +2745,16 @@ def _transition_deal(c, deal: dict, new_status: str, actor_uid: str, request_id:
     """
     deal_id = deal["id"]
     cur_status = deal.get("status") or "accepted"
+    # P0-2: actor-aware FSM. "cancelled" продуктово разрешена ОБЕИМ сторонам
+    # из любого рабочего статуса. Водительские статусы проверяются ДО
+    # идемпотентного fast-path: повторный запрос грузоотправителя на уже
+    # установленный in_progress/at_border/delivered не должен возвращать 200.
+    if new_status in _DRIVER_ONLY_STATUSES:
+        if not deal.get("driver_id") or actor_uid != deal["driver_id"]:
+            raise DealTransitionError(403, {
+                "error": "ACTION_NOT_ALLOWED_FOR_ROLE",
+                "message": "Этот статус может установить только водитель по сделке",
+            })
     if new_status == cur_status:
         return None  # идемпотентно, без шума — уведомление не создаём
     allowed = _DEAL_FLOW.get(cur_status)
@@ -2749,15 +2763,6 @@ def _transition_deal(c, deal: dict, new_status: str, actor_uid: str, request_id:
             "error": "INVALID_STATUS_TRANSITION",
             "message": f"Недопустимый переход: {cur_status} → {new_status}",
         })
-    # P0-2: actor-aware FSM. "cancelled" продуктово разрешена ОБЕИМ сторонам
-    # из любого рабочего статуса (так уже вело себя приложение — см.
-    # комментарий у _DRIVER_ONLY_TRANSITIONS выше).
-    if (cur_status, new_status) in _DRIVER_ONLY_TRANSITIONS:
-        if not deal.get("driver_id") or actor_uid != deal["driver_id"]:
-            raise DealTransitionError(403, {
-                "error": "ACTION_NOT_ALLOWED_FOR_ROLE",
-                "message": "Этот статус может установить только водитель по сделке",
-            })
     route = c.execute(
         "SELECT COALESCE(c.from_country, t.from_country) AS from_country, "
         "COALESCE(c.to_country, t.to_country) AS to_country "
