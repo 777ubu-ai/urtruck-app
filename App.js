@@ -9,7 +9,7 @@ import { ToastProvider } from './src/components/Toast';
 import OfflineBanner from './src/components/OfflineBanner';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import AppNavigator from './src/navigation/AppNavigator';
-import { flushOutbox } from './src/utils/outbox';
+import { bindOutboxSession, flushOutbox, invalidateOutboxSession } from './src/utils/outbox';
 // Фоновый GPS: сам импорт регистрирует TaskManager-таску (обязательно на
 // верхнем уровне, до маунта) — старт/стоп управляется из broadcast-хука.
 import './src/utils/backgroundLocation';
@@ -222,13 +222,26 @@ function AppInner() {
   // приложения в active (сеть могла восстановиться). Раньше flush был привязан
   // только к открытому ChatScreen → неотправленный текст застревал, пока юзер
   // не переоткроет тот же чат. Backend идемпотентен по client_msg_id — дублей нет.
+  const sessionUserId = session?.user?.id || null;
   useEffect(() => {
-    if (!hasToken) return;
-    const doFlush = () => { flushOutbox((p) => chatAPI.send(p)).catch(() => {}); };
+    const boundUserId = hasToken ? bindOutboxSession(sessionUserId) : null;
+    if (!boundUserId) {
+      invalidateOutboxSession();
+      return;
+    }
+    const doFlush = () => {
+      flushOutbox((payload, guard) => {
+        if (!guard.isCurrent()) throw new Error('OUTBOX_SESSION_CHANGED');
+        return chatAPI.send(payload);
+      }, boundUserId).catch(() => {});
+    };
     doFlush();
     const sub = AppState.addEventListener('change', (s) => { if (s === 'active') doFlush(); });
-    return () => sub?.remove?.();
-  }, [hasToken]);
+    return () => {
+      sub?.remove?.();
+      invalidateOutboxSession(boundUserId);
+    };
+  }, [hasToken, sessionUserId]);
 
   // P5: пере-регистрация push-токена на запуске для уже залогиненного юзера.
   // Раньше autoRegister звался только сразу после OTP — при ротации Expo-токена

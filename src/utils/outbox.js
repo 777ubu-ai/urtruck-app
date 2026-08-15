@@ -19,6 +19,56 @@ import { storage } from './storage';
 const KEY = 'ur_chat_outbox';
 const MAX = 50;
 const listeners = new Set();
+let activeUserId = null;
+let sessionGeneration = 0;
+let flushChain = Promise.resolve();
+let mutationChain = Promise.resolve();
+
+function _stableUserId(userId) {
+  if (typeof userId !== 'string') return null;
+  const value = userId.trim();
+  // AuthContext временно создаёт synthetic id до /register/me. Он не связан
+  // с bearer identity и поэтому не может владеть persisted payload.
+  if (!value || /^u_\d+$/.test(value)) return null;
+  return value;
+}
+
+function _mutate(mutator) {
+  const operation = mutationChain.then(async () => {
+    const current = await _load();
+    const result = await mutator(current);
+    if (result.next !== current) await _save(result.next);
+    return result.value;
+  });
+  mutationChain = operation.then(() => undefined, () => undefined);
+  return operation;
+}
+
+/** App.js is the authority for the session which may drain the queue. */
+export function bindOutboxSession(userId) {
+  const next = _stableUserId(userId);
+  if (!next) {
+    if (activeUserId !== null) sessionGeneration++;
+    activeUserId = null;
+    return null;
+  }
+  if (activeUserId !== next) {
+    activeUserId = next;
+    sessionGeneration++;
+  }
+  return next;
+}
+
+export function invalidateOutboxSession(expectedUserId = null) {
+  const expected = _stableUserId(expectedUserId);
+  if (expected && activeUserId !== expected) return;
+  activeUserId = null;
+  sessionGeneration++;
+}
+
+function _sessionIsCurrent(userId, generation) {
+  return activeUserId === userId && sessionGeneration === generation;
+}
 
 async function _load() {
   try {
@@ -48,13 +98,19 @@ export async function enqueueOutbox(item, userId) {
   // на этом же устройстве» и раньше отправлял всё подряд под ЛЮБЫМ
   // залогиненным юзером (App.js гонял flush по факту hasToken, без проверки
   // владельца).
-  const arr = await _load();
-  if (arr.some((x) => x.clientId === item.clientId)) return;  // уже в очереди
-  arr.push({ clientId: item.clientId, payload: item.payload, userId: userId || null, ts: Date.now() });
-  await _save(arr);
+  const ownerId = _stableUserId(userId);
+  if (!ownerId || !item?.clientId) return false;
+  return _mutate((arr) => {
+    if (arr.some((x) => x.clientId === item.clientId)) return { next: arr, value: true };
+    return {
+      next: [...arr, { clientId: item.clientId, payload: item.payload, userId: ownerId, ts: Date.now() }],
+      value: true,
+    };
+  });
 }
 
 export async function outboxCount() {
+  await mutationChain;
   return (await _load()).length;
 }
 
@@ -63,39 +119,59 @@ export async function outboxCount() {
 // останавливаемся (сеть, вероятно, недоступна) — порядок сохраняется.
 //
 // activeUserId (Блок 2, P1-5): отправляем ТОЛЬКО записи текущего активного
-// пользователя. Запись без userId — legacy (поставлена в очередь до этого
-// фикса) — трактуем как принадлежащую текущему юзеру (иначе она застряла
-// бы в очереди навсегда). Запись с ЧУЖИМ userId — не трогаем и не удаляем
-// («карантин»): она уедет либо когда её реальный владелец снова
-// залогинится, либо будет явно вычищена в signOut (см. clearOutbox).
-export async function flushOutbox(sendFn, activeUserId) {
-  let arr = await _load();
-  if (!arr.length) return 0;
-  let sent = 0;
-  for (const item of [...arr]) {
-    if (item.userId && activeUserId && item.userId !== activeUserId) continue;
-    try {
-      await sendFn(item.payload);          // success или deduped (backend) — оба ок
-      arr = arr.filter((x) => x.clientId !== item.clientId);
-      await _save(arr);
-      sent++;
-    } catch {
-      break;  // сеть недоступна — не долбим, оставляем хвост на следующий flush
+// пользователя. Запись без userId — legacy и остаётся в карантине: безопасно
+// определить её владельца невозможно. Missing/synthetic activeUserId также
+// fail-closed. App.js дополнительно привязывает drain к generation сессии.
+export async function flushOutbox(sendFn, requestedUserId) {
+  const ownerId = _stableUserId(requestedUserId);
+  if (!ownerId || ownerId !== requestedUserId) return 0;
+
+  const operation = flushChain.then(async () => {
+    const generation = sessionGeneration;
+    if (!_sessionIsCurrent(ownerId, generation)) return 0;
+    await mutationChain;
+    const snapshot = await _load();
+    let sent = 0;
+    for (const item of snapshot) {
+      // Exact ownership only: foreign and legacy/null records are quarantined.
+      if (item.userId !== ownerId) continue;
+      if (!_sessionIsCurrent(ownerId, generation)) break;
+      try {
+        await sendFn(item.payload, {
+          userId: ownerId,
+          isCurrent: () => _sessionIsCurrent(ownerId, generation),
+        });
+        await _mutate((current) => ({
+          next: current.filter((x) => !(x.clientId === item.clientId && x.userId === ownerId)),
+          value: undefined,
+        }));
+        sent++;
+      } catch {
+        break;
+      }
     }
-  }
-  return sent;
+    return sent;
+  });
+  flushChain = operation.then(() => undefined, () => undefined);
+  return operation;
 }
 
 /** Блок 2 (P1-5): полная очистка outbox — вызывается при logout, чтобы
  * недоотправленные сообщения вышедшего пользователя не «дожили» и не
  * ушли под следующей сессией на этом устройстве. */
 export async function clearOutbox() {
-  await _save([]);
+  // Logout cancels queued/in-flight drain before storage/token can switch.
+  invalidateOutboxSession();
+  await _mutate(() => ({ next: [], value: undefined }));
 }
 
 /** То же, но только записи конкретного владельца (используется, если
  * когда-нибудь понадобится точечная очистка без потери чужих записей). */
 export async function clearOutboxForUser(userId) {
-  const arr = await _load();
-  await _save(arr.filter((x) => x.userId !== userId));
+  const ownerId = _stableUserId(userId);
+  if (!ownerId) return;
+  await _mutate((arr) => ({
+    next: arr.filter((x) => x.userId !== ownerId),
+    value: undefined,
+  }));
 }
