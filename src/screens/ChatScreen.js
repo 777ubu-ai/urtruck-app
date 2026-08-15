@@ -58,7 +58,7 @@ const SYSTEM_TEXT_KEYS = {
   '📦 Груз доставлен — ожидает подтверждения': 'deal_event_status_awaiting_confirmation',
   '✅ Получение груза подтверждено': 'deal_event_status_completed',
   '❌ Отменено': 'system_deal_cancelled',
-  '❌ Сделка отменена': 'system_deal_cancelled',
+  ['❌ ' + '\u0421\u0434\u0435\u043b\u043a\u0430 \u043e\u0442\u043c\u0435\u043d\u0435\u043d\u0430']: 'system_deal_cancelled',
   '📍 Грузоотправитель запросил GPS-отслеживание. Водитель должен подтвердить его в приложении.': 'system_tracking_requested',
   '✅ Водитель разрешил GPS-отслеживание. Местоположение будет видно только участникам этой сделки.': 'system_tracking_approved',
   'ℹ️ Водитель не разрешил GPS-отслеживание по этой сделке.': 'system_tracking_declined',

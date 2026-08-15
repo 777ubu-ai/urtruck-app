@@ -351,9 +351,11 @@ def bind_phone_verify(req: VerifyCodeRequest, driver_id: str = Depends(get_curre
     if len(phone_clean.replace("+", "")) < 10:
         raise HTTPException(status_code=400, detail="Неверный формат номера")
     limit_otp_verify(phone_clean)
-    if not reg_dal.check_code(phone_clean, req.code):
+    is_beta_login = BETA_MODE and req.code.strip() == BETA_OTP_CODE
+    if not is_beta_login and not reg_dal.check_code(phone_clean, req.code):
         raise HTTPException(status_code=400, detail="Неверный или истёкший код")
-    reg_dal.delete_code(phone_clean)
+    if not is_beta_login:
+        reg_dal.delete_code(phone_clean)
     try:
         driver = reg_dal.bind_verified_phone(driver_id, phone_clean)
     except ValueError as exc:

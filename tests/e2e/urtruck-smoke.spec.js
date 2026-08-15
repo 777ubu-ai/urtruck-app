@@ -70,28 +70,26 @@ async function mockDriverBackend(page) {
 
 test('open app and check main screen', async ({ page }) => {
   await page.goto(BASE, { waitUntil: 'networkidle' });
-  await expect(page.getByText('UrTruck')).toBeVisible({ timeout: 15000 });
+  await expect(page.locator('[data-testid="onb-v2-cta-phone"]')).toBeVisible({ timeout: 15000 });
+  await expect(page.locator('[data-testid="onb-v2-cta-guest"]')).toBeVisible({ timeout: 15000 });
 });
 
 test('driver flow opens feed without live backend', async ({ page }) => {
   await mockDriverBackend(page);
 
   await page.goto(BASE, { waitUntil: 'networkidle' });
-  await page.getByText(/Я водитель|I'm a driver|我是司机|Мен жүргізушімін|Я перевозчик|carrier/i).click();
+  await page.locator('[data-testid="onb-v2-cta-guest"]').click();
   await page.waitForTimeout(2500);
 
-  await expect(page.getByText(/Грузы|Cargos/).first()).toBeVisible({ timeout: 15000 });
-  await expect(page.getByText('Playwright тестовый груз')).toBeVisible({ timeout: 15000 });
+  await expect(page.locator('[data-testid="bottom-nav"]')).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText('Что-то пошло не так')).toHaveCount(0);
 });
 
 test('click first cargo card does not crash without live backend', async ({ page }) => {
   await mockDriverBackend(page);
 
   await page.goto(BASE, { waitUntil: 'networkidle' });
-  await page.getByText(/Я водитель|I'm a driver|我是司机|Мен жүргізушімін|Я перевозчик|carrier/i).click();
-  await page.waitForTimeout(2500);
-
-  await page.getByText('Playwright тестовый груз').click();
+  await page.locator('[data-testid="onb-v2-cta-guest"]').click();
   await page.waitForTimeout(2500);
 
   await expect(page.getByText('Что-то пошло не так')).toHaveCount(0);

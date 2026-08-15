@@ -286,9 +286,9 @@ export default function TripDetail({ navigation, route }) {
   const myBidStatusLabel = React.useMemo(() => {
     if (!myActiveBid) return '';
     switch (myActiveBid.status) {
-      case 'countered': return t('my_bid_status_countered') || 'Водитель предложил встречную цену';
+      case 'countered': return t('my_bid_status_countered') || 'Counter-offer received';
       case 'pending':
-      default:          return t('my_bid_status_pending')   || 'Ожидает ответа водителя';
+      default:          return t('my_bid_status_pending')   || 'Waiting for response';
     }
   }, [myActiveBid, t]);
 

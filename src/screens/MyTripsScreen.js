@@ -131,6 +131,7 @@ export default function MyTripsScreen({ navigation, route }) {
   // Название сохранено ради минимального диффа — общий «id занятой операции»
   // (republish/продление); ставки (bid) переехали в «Сделки».
   const [busyBidId, setBusyBidId] = useState(null);
+  const [republishedIds, setRepublishedIds] = useState(new Set());
   const [extending, setExtending] = useState(null);  // Модель А: продление одним тапом
 
   // «Ещё актуально» — сбрасывает дату на сегодня, публикация снова живёт
@@ -309,8 +310,9 @@ export default function MyTripsScreen({ navigation, route }) {
   // даты. «Истёкшая» относится только к публикации, которая так и осталась
   // активной/черновиком и просто не нашла сделку вовремя.
   const isOpenPublicationStatus = (it) => !it.status || it.status === 'active' || it.status === 'draft';
-  const myItemsActive = myItemsRaw.filter((it) => isOpenPublicationStatus(it) && !isExpiredItem(it));
-  const myItemsUnpublished = myItemsRaw.filter((it) => it.status === 'unpublished');
+  const wasRepublished = (it) => republishedIds.has(String(it.id));
+  const myItemsActive = myItemsRaw.filter((it) => (wasRepublished(it) || isOpenPublicationStatus(it)) && !isExpiredItem(it));
+  const myItemsUnpublished = myItemsRaw.filter((it) => it.status === 'unpublished' && !wasRepublished(it));
   // Отменённые/отклонённые ОБЪЯВЛЕНИЯ (не сделки/ставки — те в «Сделках»).
   const myItemsClosed = myItemsRaw.filter((it) => it.status === 'cancelled' || it.status === 'rejected');
   const myItemsExpired = myItemsRaw.filter((it) => isOpenPublicationStatus(it) && isExpiredItem(it));
@@ -524,8 +526,28 @@ export default function MyTripsScreen({ navigation, route }) {
         ? await marketAPI.republishCargo(item.id)
         : await marketAPI.republishTrip(item.id);
       if (r.ok) {
+        // После ACK от сервера сразу убираем карточку из архива локально.
+        // load() всё равно перечитает source of truth, но web E2E и живой UX не
+        // должны видеть старый "unpublished" между toast и сетевым refresh.
+        const key = isCargo ? 'my_cargos' : 'my_trips';
+        setData(prev => {
+          if (!prev || !Array.isArray(prev[key])) return prev;
+          return {
+            ...prev,
+            [key]: prev[key].map((it) => (
+              String(it.id) === String(item.id)
+                ? { ...it, status: 'active', unpublished_at: null, _kind: undefined }
+                : it
+            )),
+          };
+        });
+        setRepublishedIds(prev => {
+          const next = new Set(prev);
+          next.add(String(item.id));
+          return next;
+        });
         toast('✅ ' + t('republish'), 'success');
-        load();
+        await load();
       } else {
         toast(r.detail || t('send_error'), 'error');
       }

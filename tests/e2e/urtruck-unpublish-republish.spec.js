@@ -44,9 +44,6 @@ async function mockServer(page) {
   await page.route('**/api/v1/market/cargos**', async route => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ cargos: [], total: 0 }) });
   });
-  await page.route('**/api/v1/market/trips**', async route => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ trips: [makeTrip(box.status)], total: 1 }) });
-  });
   await page.route('**/api/v1/market/drivers**', async route => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ drivers: [] }) });
   });
@@ -65,6 +62,14 @@ async function mockServer(page) {
   await page.route('**/api/v1/market/trips/*/republish', async route => {
     box.status = 'active';
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, status: 'active' }) });
+  });
+  await page.route('**/api/v1/market/trips**', async route => {
+    if (route.request().url().includes('/republish')) {
+      box.status = 'active';
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, status: 'active' }) });
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ trips: [makeTrip(box.status)], total: 1 }) });
   });
   await page.route('**/api/v1/notifications/unread**', async route => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ unread: 0 }) });
@@ -116,11 +121,10 @@ test.describe('Unpublished card -> republish -> back to active', () => {
     const republishBtn = page.locator('[data-testid="republish-btn"]');
     await expect(republishBtn).toBeVisible();
     await republishBtn.click();
-    await page.waitForTimeout(1500); // await republish PATCH + load() refetch
-
-    // Архив no longer shows the card (still on the archive view).
-    body = await page.locator('body').innerText();
-    expect(body).not.toContain('Снято с публикации');
+    // Архив no longer shows the card (still on the archive view). React state
+    // update happens after the server ACK/toast, so wait for the user-visible
+    // condition instead of sampling body text on the same tick.
+    await expect(page.locator('body')).not.toContainText('Снято с публикации', { timeout: 5000 });
 
     // Back to the active list — the trip is there now (active status).
     await page.locator('[data-testid="my-work-archive-toggle"]').click();

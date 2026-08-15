@@ -275,20 +275,16 @@ test.describe('Chat layout QA', () => {
         body: JSON.stringify({ my_cargos: [], my_trips: [], my_bids: [], incoming_bids: [], my_deals: [] }) });
     });
 
+    await page.addInitScript(() => {
+      localStorage.clear();
+      sessionStorage.clear();
+      localStorage.setItem('ur_reg_token', 'pw-tok');
+      localStorage.setItem('ur_session', JSON.stringify({ user: { id: 'me-user-id', role: 'driver' } }));
+    });
     await page.goto(BASE + '/?v=chat-layout-mock', { waitUntil: 'networkidle' });
-    await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
-    await page.reload({ waitUntil: 'networkidle' });
-
-    const roleBtn = page.getByText(
-      /Я водитель|I'm a driver|我是司机|Мен жүргізушімін|Я перевозчик|carrier/i,
-    ).first();
-    await roleBtn.waitFor({ timeout: 10_000 });
-    await roleBtn.click();
     await page.waitForTimeout(2500);
 
-    await page.getByText(/Профиль|Profile|个人资料/i).first().click();
-    await page.waitForTimeout(1200);
-    await page.getByText(/Чаты|Chats|聊天|Чаттар/i).first().click();
+    await page.locator('[data-testid="bottom-nav-chats"]').click();
     await page.waitForTimeout(1500);
     await page.getByText(/Шипер Серик/).first().click();
     await page.waitForTimeout(2500);
@@ -304,44 +300,22 @@ test.describe('Chat layout QA', () => {
     const peerOccurrences = (body.match(/Шипер Серик/g) || []).length;
     expect(peerOccurrences, 'partner name occurs ≥2 (header + sender label)').toBeGreaterThanOrEqual(2);
 
-    // 3. Bubble alignment via bounding boxes.
-    //    Distinguish own vs incoming using the asymmetric border-radius
-    //    that ChatScreen styles set on bubbles:
-    //      bubbleMe   → borderBottomRightRadius: 4
-    //      bubbleThem → borderBottomLeftRadius: 4
-    //    Any other div has all four corners equal — filtered out.
-    const alignment = await page.evaluate(() => {
-      const vw = window.innerWidth;
-      const all = Array.from(document.querySelectorAll('div'));
-      const own = [], them = [];
-      for (const el of all) {
-        const cs = getComputedStyle(el);
-        const tlr = parseFloat(cs.borderTopLeftRadius)     || 0;
-        const trr = parseFloat(cs.borderTopRightRadius)    || 0;
-        const blr = parseFloat(cs.borderBottomLeftRadius)  || 0;
-        const brr = parseFloat(cs.borderBottomRightRadius) || 0;
-        // bubbleMe: top corners=18, bottomRight=4
-        const isOwn = tlr >= 14 && trr >= 14 && brr <= 6 && blr >= 14;
-        // bubbleThem: top corners=18, bottomLeft=4
-        const isThem = tlr >= 14 && trr >= 14 && blr <= 6 && brr >= 14;
-        if (!isOwn && !isThem) continue;
-        const rect = el.getBoundingClientRect();
-        if (rect.width < 40 || rect.height < 16) continue;
-        const cx = rect.left + rect.width / 2;
-        if (isOwn) own.push(cx);
-        else them.push(cx);
-      }
-      return { vw, own, them };
-    });
-
-    // The mock seeds exactly 2 own + 2 incoming messages; assert the bundle
-    // detected all four. Regression guard against the previous bug where
-    // session.user.id race made every message render as "them" (own=0).
-    expect(alignment.own.length, 'expected ≥2 own (right) bubbles').toBeGreaterThanOrEqual(2);
-    expect(alignment.them.length, 'expected ≥2 incoming (left) bubbles').toBeGreaterThanOrEqual(2);
-    const half = alignment.vw / 2;
-    expect(alignment.own.every(x => x > half), 'own bubbles on right side').toBeTruthy();
-    expect(alignment.them.every(x => x < half), 'incoming bubbles on left side').toBeTruthy();
+    // 3. Bubble alignment via visible message text bounding boxes. This is
+    // more stable than probing generated RN-web border-radius CSS.
+    const vw = page.viewportSize()?.width || 390;
+    const half = vw / 2;
+    const ownTexts = ['Принял, выезжаю.', 'Понял, жду адрес.'];
+    const themTexts = ['Добрый день, груз готов.', 'Адрес уточню в чате.'];
+    for (const text of ownTexts) {
+      const box = await page.getByText(text, { exact: true }).first().boundingBox();
+      expect(box, `own message visible: ${text}`).toBeTruthy();
+      expect(box.x + box.width / 2, `own message on right: ${text}`).toBeGreaterThan(half);
+    }
+    for (const text of themTexts) {
+      const box = await page.getByText(text, { exact: true }).first().boundingBox();
+      expect(box, `incoming message visible: ${text}`).toBeTruthy();
+      expect(box.x + box.width / 2, `incoming message on left: ${text}`).toBeLessThan(half);
+    }
 
     // Sender label must appear for incoming bubbles. Mock partner is "Шипер
     // Серик" — it occurs in the header (1) and above each incoming bubble.

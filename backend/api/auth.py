@@ -46,5 +46,6 @@ def require_admin(request: Request):
 
 def optional_api_key(request: Request) -> bool:
     """Опциональная проверка — возвращает True если ключ валидный."""
+    _block_default_in_prod("URTRUCK_API_KEY", API_KEY, _DEFAULT_API_KEY)
     key = request.headers.get("X-API-Key") or request.query_params.get("api_key")
     return bool(key and secrets.compare_digest(key, API_KEY))

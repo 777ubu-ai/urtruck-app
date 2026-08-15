@@ -13,8 +13,8 @@
  *   progression buttons (Начать перевозку/На границе/Груз доставлен/
  *   Подтвердить получение) — three independent places acting on the same
  *   deal.status. DealStatusTimeline (the horizontal stepper) is gone from
- *   both CargoDetail and TripDetail, replaced by a compact "Текущий статус /
- *   Следующий шаг" text; the action buttons now live ONLY in ChatScreen
+ *   both CargoDetail and TripDetail, replaced by a compact "Текущий статус"
+ *   block; the action buttons now live ONLY in ChatScreen
  *   (the deal's conversation) — reached via the unified «Сделки» list
  *   (ChatsListScreen dealsMode), not via MyTripsScreen tabs (which no longer
  *   have deal-derived tabs at all — see MyTripsScreen.js commit history).
@@ -23,6 +23,7 @@
  * Live:  E2E_BASE_URL=https://urtruck.kz   npx playwright test tests/e2e/urtruck-trip-deal-status-priority.spec.js
  */
 const { test, expect } = require('@playwright/test');
+const H = require('./helpers/webflow');
 
 const BASE = (process.env.E2E_BASE_URL || 'https://urtruck.kz') + '/?v=trip-deal-status';
 
@@ -255,21 +256,17 @@ async function mockServerMutable(page, { initialStatus, statusChangeShouldFail =
 // AuthContext resolves hasToken/session/hasRole from /register/me (mocked
 // above to return role:'driver'), landing straight on the driver tab bar.
 async function enterAsDriver(page) {
-  await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
-  await page.evaluate(() => localStorage.setItem('ur_reg_token', 'pw-tok-tds'));
-  await page.reload({ waitUntil: 'networkidle' });
+  await H.emailLogin(page, `tds-${Date.now()}@urtruck.kz`, 'driver', { name: 'PW Driver', city: 'Almaty' });
   await page.waitForTimeout(3000);
 }
 
-// 05.08.2026: deals no longer live under MyTripsScreen tabs (that screen is
-// pure listing management now — active/draft/expired + archive, no deal
-// content at all). Every deal is one row in the unified «Сделки» list
-// (ChatsListScreen dealsMode) — open it from there.
+// RC2: deals no longer live under MyTripsScreen tabs. Driver has a dedicated
+// Chats tab, and each accepted deal appears there as a protected deal room.
 async function openDealCard(page) {
-  const deals = page.locator('[data-testid="bottom-nav-deals"]');
+  const deals = page.locator('[data-testid="bottom-nav-chats"], [data-testid="bottom-nav-deals"]').first();
   await deals.click();
   await page.waitForTimeout(1200);
-  const card = page.locator('[data-testid="deals-deal-card"]').first();
+  const card = page.locator('[data-testid="deal-room-list-card"], [data-testid="deals-deal-card"]').first();
   await expect(card).toBeVisible({ timeout: 10000 });
   await card.click();
   await page.waitForTimeout(2000);
@@ -278,6 +275,9 @@ async function openDealCard(page) {
 // The status-progression action buttons (05.08.2026) live only inside the
 // deal's conversation now — open it via TripDetail's "💬 Чат" link.
 async function openDealChat(page) {
+  if (await page.getByText('Текущий статус').first().isVisible().catch(() => false)) {
+    return;
+  }
   const chatLink = page.locator('[data-testid="deal-order-chat"]').first();
   await expect(chatLink).toBeVisible({ timeout: 10000 });
   await chatLink.click();
@@ -296,8 +296,8 @@ test.describe('Trip status priority — deal.status over legacy tripState', () =
     const body = await page.locator('body').innerText();
     // Compact status block (replaces the old DealStatusTimeline stepper,
     // 05.08.2026) must be present and reflect in_progress via its
-    // "Следующий шаг" next-step hint.
-    expect(body).toContain('Следующий шаг');
+    // compact authoritative status block.
+    expect(body).toContain('Текущий статус');
     // Legacy tripState timeline must be gone: it always renders "Запланирован"
     // for a real server trip (trip_state is never persisted), and showing it
     // next to an in_progress deal is exactly the bug being regression-tested.
@@ -377,7 +377,9 @@ test.describe('Deal status after a rejected (409) transition', () => {
 test.describe('Deal status after a successful transition', () => {
   test.use({ locale: 'ru-RU', timezoneId: 'Asia/Almaty' });
 
-  test('accepted -> in_progress: "Начать" replaced by the next action', async ({ page }) => {
+  test('accepted -> in_progress: "Начать" replaced by the next action', async ({ page, context }) => {
+    await context.grantPermissions(['geolocation'], { origin: new URL(BASE).origin });
+    await context.setGeolocation({ latitude: 43.238949, longitude: 76.889709 });
     const box = await mockServerMutable(page, { initialStatus: 'accepted', statusChangeShouldFail: false });
     await page.goto(BASE, { waitUntil: 'networkidle' });
     await enterAsDriver(page);
@@ -454,7 +456,7 @@ test.describe('Compact deal status on a narrow screen', () => {
 
     const body = await page.locator('body').innerText();
     expect(body).toContain('В работе');
-    expect(body).toContain('Следующий шаг');
+    expect(body).toContain('Текущий статус');
 
     expect(consoleErrors, `console errors: ${consoleErrors.join(' | ')}`).toHaveLength(0);
   });

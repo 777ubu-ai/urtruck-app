@@ -148,13 +148,11 @@ async function mockBackend(page) {
 
 async function enterAsDriver(page) {
   await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
+  await page.evaluate(() => {
+    localStorage.setItem('ur_reg_token', 'pw-tok-locale');
+    localStorage.setItem('ur_session', JSON.stringify({ user: { id: 'pw-d', role: 'driver' } }));
+  });
   await page.reload({ waitUntil: 'networkidle' });
-  // After clearing storage we land on RoleScreen, where the driver card title
-  // is `role_driver_title`. The "carrier" alt covers Onboarding when the app
-  // happens to start there instead.
-  const btn = page.getByText(/Я водитель|I'm a driver|我是司机|Мен жүргізушімін|Я перевозчик|carrier/i).first();
-  await btn.waitFor({ timeout: 10000 });
-  await btn.click();
   await page.waitForTimeout(2000);
 }
 
@@ -179,9 +177,9 @@ test.describe('RU locale', () => {
     await enterAsDriver(page);
 
     await expect(page.getByText('Грузы').first()).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText('Опубликовать маршрут').first()).toBeVisible();
-    await expect(page.getByText('Моя работа').first()).toBeVisible();
-    await expect(page.getByText('Профиль').first()).toBeVisible();
+    await expect(page.locator('[data-testid="bottom-nav-mywork"]')).toBeVisible();
+    await expect(page.locator('[data-testid="bottom-nav-chats"]')).toBeVisible();
+    await expect(page.locator('[data-testid="bottom-nav-profile"]')).toBeVisible();
 
     const filterBtn = page.locator('[style*="filterBtn"], button').filter({ hasText: '⚙' }).first();
     if (await filterBtn.isVisible().catch(() => false)) {
@@ -193,7 +191,7 @@ test.describe('RU locale', () => {
       expect(body).toContain('Применить');
     }
 
-    await page.getByText('Профиль').first().click();
+    await page.locator('[data-testid="bottom-nav-profile"]').click();
     await page.waitForTimeout(1500);
     const profileBody = await bodyText(page);
     expect(profileBody).toContain('Тема');
@@ -212,7 +210,7 @@ test.describe('EN locale', () => {
     await enterAsDriver(page);
 
     await expect(page.getByText('Cargos').first()).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText('My work').first()).toBeVisible();
+    await expect(page.getByText('Trips').first()).toBeVisible();
     await expect(page.getByText('Profile').first()).toBeVisible();
 
     const feedBody = await bodyText(page);
@@ -225,7 +223,7 @@ test.describe('EN locale', () => {
     await enterAsDriver(page);
 
     // Profile tab
-    await page.getByText('Profile').first().click();
+    await page.locator('[data-testid="bottom-nav-profile"]').click();
     await page.waitForTimeout(1500);
     const profileBody = await bodyText(page);
     assertNoRussian(profileBody, 'EN profile');
@@ -234,7 +232,7 @@ test.describe('EN locale', () => {
     expect(profileBody).toContain('Dark');
 
     // Chats — click on the menu row containing 'Chats'
-    await page.getByText('Chats', { exact: false }).first().click().catch(() => {});
+    await page.locator('[data-testid="bottom-nav-chats"]').click().catch(() => {});
     await page.waitForTimeout(1500);
     const chatsBody = await bodyText(page);
     assertNoRussian(chatsBody, 'EN chats');
@@ -269,7 +267,7 @@ test.describe('EN locale', () => {
     await page.goto(BASE, { waitUntil: 'networkidle' });
     await enterAsDriver(page);
 
-    await page.getByText('Test cargo').first().click().catch(() => {});
+    await page.locator('[data-testid="cargo-card"]').first().click().catch(() => {});
     await page.waitForTimeout(2000);
     const detailBody = await bodyText(page);
     assertNoRussian(detailBody, 'EN cargo detail');
@@ -280,7 +278,7 @@ test.describe('EN locale', () => {
     await page.goto(BASE, { waitUntil: 'networkidle' });
     await enterAsDriver(page);
 
-    await page.getByText('My work').first().click();
+    await page.locator('[data-testid="bottom-nav-mywork"]').click();
     await page.waitForTimeout(1500);
     const workBody = await bodyText(page);
     assertNoRussian(workBody, 'EN my work');
@@ -297,7 +295,7 @@ test.describe('CN locale', () => {
     await enterAsDriver(page);
 
     await expect(page.getByText('货物').first()).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText('我的工作').first()).toBeVisible();
+    await expect(page.getByText('行程').first()).toBeVisible();
     await expect(page.getByText('个人资料').first()).toBeVisible();
 
     const feedBody = await bodyText(page);
@@ -309,14 +307,14 @@ test.describe('CN locale', () => {
     await page.goto(BASE, { waitUntil: 'networkidle' });
     await enterAsDriver(page);
 
-    await page.getByText('个人资料').first().click();
+    await page.locator('[data-testid="bottom-nav-profile"]').click();
     await page.waitForTimeout(1500);
     const profileBody = await bodyText(page);
     assertNoRussian(profileBody, 'CN profile');
     expect(profileBody).toContain('主题');
 
     // Chats
-    await page.getByText('聊天', { exact: false }).first().click().catch(() => {});
+    await page.locator('[data-testid="bottom-nav-chats"]').click().catch(() => {});
     await page.waitForTimeout(1500);
     const chatsBody = await bodyText(page);
     assertNoRussian(chatsBody, 'CN chats');
@@ -350,7 +348,7 @@ test.describe('CN locale', () => {
     await page.goto(BASE, { waitUntil: 'networkidle' });
     await enterAsDriver(page);
 
-    await page.getByText('我的工作').first().click();
+    await page.locator('[data-testid="bottom-nav-mywork"]').click();
     await page.waitForTimeout(1500);
     const workBody = await bodyText(page);
     assertNoRussian(workBody, 'CN my work');
@@ -367,7 +365,7 @@ test.describe('KZ locale', () => {
     await enterAsDriver(page);
 
     await expect(page.getByText('Жүктер').first()).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText('Менің жұмысым').first()).toBeVisible();
+    await expect(page.getByText('Рейстер').first()).toBeVisible();
 
     const feedBody = await bodyText(page);
     assertNoRussian(feedBody, 'KZ feed', KZ_DISTINCT_RU);
@@ -378,7 +376,7 @@ test.describe('KZ locale', () => {
     await page.goto(BASE, { waitUntil: 'networkidle' });
     await enterAsDriver(page);
 
-    await page.getByText('Профиль').first().click();
+    await page.locator('[data-testid="bottom-nav-profile"]').click();
     await page.waitForTimeout(1500);
     const profileBody = await bodyText(page);
     expect(profileBody).toContain('Жарық');
@@ -386,7 +384,7 @@ test.describe('KZ locale', () => {
     assertNoRussian(profileBody, 'KZ profile', KZ_DISTINCT_RU);
 
     // Chats
-    await page.getByText('Чаттар', { exact: false }).first().click().catch(() => {});
+    await page.locator('[data-testid="bottom-nav-chats"]').click().catch(() => {});
     await page.waitForTimeout(1500);
     const chatsBody = await bodyText(page);
     assertNoRussian(chatsBody, 'KZ chats', KZ_DISTINCT_RU);

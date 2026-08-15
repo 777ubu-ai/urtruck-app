@@ -168,7 +168,7 @@ test.describe.serial('D. Клиент — регрессия + кросс-рол
     // Публикация груза через API (форма с пикерами драйвится хрупко; создаём
     // данные напрямую, затем проверяем отражение в UI).
     const res = await H.apiCreateCargo(request, clientToken, {
-      cargo_desc: 'QA Груз ₸', price: 420000, currency: 'KZT',
+      cargo_desc: 'QA Груз ₸', price: 420000, currency: 'KZT', pickup_date: '2026-09-20',
     });
     expect(res.status).toBeLessThan(300);
     cargoId = res.body.id || res.body.cargo_id || (res.body.cargo && res.body.cargo.id);
@@ -209,11 +209,14 @@ test.describe.serial('D. Клиент — регрессия + кросс-рол
     expect(bodyText).toContain('₸');
     expect(bodyText).toContain('400 000'); // сумма ставки видна
     expect(bodyText).not.toMatch(/\$\s?4[0-9]{5}/); // нет «$420000/$400000»
+    await page.locator(tid('deals-cargo-offer')).first().click();
+    await page.waitForTimeout(1500);
 
     // BUG-1 (исправлен, AuthContext id-синк): владелец-email теперь видит
     // owner-view. Принимаем ставку через UI по testID bid-accept.
     const accept = page.locator(tid('bid-accept')).first();
     await accept.waitFor({ state: 'visible', timeout: 10000 });
+    page.once('dialog', (dialog) => dialog.accept());
     await accept.click();
     await page.waitForTimeout(2000);
     await shot(page, 'D2_02_after_accept_ui');

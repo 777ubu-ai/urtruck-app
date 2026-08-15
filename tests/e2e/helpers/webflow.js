@@ -43,6 +43,17 @@ async function passOtpAndOnboard(page, role, { name = 'QA Tester', city = 'Ал�
     // Карточка роли только ВЫБИРАЕТ (setSelected); дальше — CTA «Продолжить».
     await page.locator(tid(role === 'driver' ? 'role-v2-driver' : 'role-v2-client')).click();
     await page.locator(tid('role-v2-cta')).click();
+    if (role === 'driver') {
+      const driverPhone = page.locator(tid('phone-v2-input'));
+      if (await driverPhone.waitFor({ state: 'visible', timeout: 8000 }).then(() => true).catch(() => false)) {
+        await driverPhone.fill(`777${Date.now().toString().slice(-7)}`);
+        await expect(page.locator(tid('phone-v2-cta'))).toBeEnabled();
+        await page.locator(tid('phone-v2-cta')).click();
+        await page.locator(tid('otp-v2-cells')).waitFor({ state: 'visible', timeout: 15000 });
+        await page.locator(tid('otp-v2-cells')).click();
+        await page.locator(tid('otp-v2-input')).fill(BETA_CODE);
+      }
+    }
     // ProfileV2 (имя/город) может быть пропущен: как только выставлена роль,
     // AppNavigator реактивно переключается на Main (ProfileV2 живёт в pre-auth
     // стеке). Поэтому ждём ЛИБО ProfileV2, ЛИБО сразу Main.
@@ -75,6 +86,7 @@ async function emailLogin(page, email, role, opts = {}) {
 // Полный UI-вход по телефону (channel=phone, дефолтная страна +7).
 async function phoneLogin(page, localDigits, role, opts = {}) {
   await gotoPhoneScreen(page);
+  await page.locator(tid('auth-tab-phone')).click();
   // режим phone — по умолчанию; вводим локальную часть номера.
   const input = page.locator(tid('phone-v2-input'));
   await input.click();
@@ -94,6 +106,19 @@ async function apiEmailToken(request, email, role) {
     data: { email, code: BETA_CODE },
   });
   const body = await r.json();
+  if (body.token && role === 'driver') {
+    const phone = `+777${Date.now().toString().slice(-8)}`;
+    await request.post(`${API}/register/phone/bind/verify`, {
+      headers: { Authorization: `Bearer ${body.token}` },
+      data: { phone, code: BETA_CODE },
+    });
+  }
+  if (body.token && (role === 'client' || role === 'driver')) {
+    await request.post(`${API}/register/role`, {
+      headers: { Authorization: `Bearer ${body.token}` },
+      data: { role },
+    });
+  }
   return body.token;
 }
 
@@ -101,7 +126,7 @@ async function apiCreateCargo(request, token, overrides = {}) {
   const payload = {
     from_city: 'Алматы', to_city: 'Урумчи', cargo_desc: 'Стройматериалы',
     cargo_type: 'tent', weight_tons: 20, volume_m3: 40,
-    price: 420000, currency: 'KZT', pickup_date: '2026-07-20',
+    price: 420000, currency: 'KZT', pickup_date: '2026-09-20',
     ...overrides,
   };
   const r = await request.post(`${API}/market/cargos`, {

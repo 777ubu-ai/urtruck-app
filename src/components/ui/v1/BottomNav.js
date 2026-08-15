@@ -66,6 +66,7 @@ const ICONS = {
   Queue:   { driver: 'map-pin', client: 'map-pin' },
   Chats:   { driver: 'message-circle', client: 'message-circle' },
   Deals:   { driver: 'handshake', client: 'handshake' },
+  Profile: { driver: 'user', client: 'user' },
 };
 
 // Industrial Luxury: неоновый акцент зависит от роли (источник истины —
@@ -201,6 +202,7 @@ export default function BottomNav({ state, navigation }) {
     if (name === 'Queue')   return t('tab_border');
     if (name === 'Chats')   return t('tab_chats');
     if (name === 'Deals')   return t('tab_deals');
+    if (name === 'Profile') return t('tab_profile');
     return name;
   };
 

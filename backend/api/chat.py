@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from database.db import get_conn, new_id
+from database.registration_dal import init_registration_schema
 from database import deal_room_dal as deal_rooms
 from api.verification_gate import require_level
 from services import file_signing
@@ -139,6 +140,10 @@ def _ensure_columns(c):
 
 
 def _init():
+    # Fresh runtime DBs initialise chat at import time, before main.startup()
+    # reaches db.init_db().  Support/system chat users live in
+    # drivers_registration, so ensure the registration schema exists here too.
+    init_registration_schema()
     schema = Path(__file__).resolve().parent.parent / "database" / "chat_schema.sql"
     if schema.exists():
         with get_conn() as c:

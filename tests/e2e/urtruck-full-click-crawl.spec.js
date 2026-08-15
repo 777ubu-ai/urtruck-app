@@ -13,6 +13,7 @@
  *   E2E_BASE_URL=https://urtruck.kz npx playwright test tests/e2e/urtruck-full-click-crawl.spec.js
  */
 const { test, expect } = require('@playwright/test');
+const H = require('./helpers/webflow');
 
 const BASE = (process.env.E2E_BASE_URL || 'https://urtruck.kz').replace(/\/$/, '');
 
@@ -32,6 +33,9 @@ const CONSOLE_IGNORE = [
   // these correctly, so these messages are not real product bugs.
   /Failed to load resource.*404 \(File not found\)/i,
   /Failed to load resource.*501 \(Unsupported method/i,
+  // Expected, handled API conflicts (for example idempotent role/profile setup)
+  // are not crashes and are already covered by HTTP 5xx collection below.
+  /Failed to load resource: the server responded with a status of 409 \(Conflict\)/i,
 ];
 const NETWORK_IGNORE_PATHS = [
   /\/sw\.js$/, /favicon/, /\/manifest\.json$/,
@@ -96,14 +100,7 @@ async function safeClickByText(page, regex, { timeout = 4000 } = {}) {
 }
 
 async function enterAsRole(page, role = 'driver') {
-  await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
-  await page.reload({ waitUntil: 'networkidle' });
-  const re = role === 'driver'
-    ? /Я водитель|I'm a driver|我是司机|Мен жүргізушімін|Я перевозчик|carrier/i
-    : /Я грузовладелец|Я грузоотправитель|shipper|货主|жүк иесі/i;
-  const btn = page.getByText(re).first();
-  await btn.waitFor({ timeout: 10000 });
-  await btn.click();
+  await H.emailLogin(page, `crawl-${role}-${Date.now()}@urtruck.kz`, role, { name: 'QA Crawl', city: 'Алматы' });
   await page.waitForTimeout(2000);
 }
 
@@ -247,7 +244,7 @@ test.describe('Full app click crawl (safe / non-destructive)', () => {
     // 6b. Reviews
     const reviewsLink = page.getByText(/Мои отзывы|My reviews|All reviews|评价|Менің пікірлерім/i).first();
     if (await reviewsLink.isVisible().catch(() => false)) {
-      await reviewsLink.click();
+      await reviewsLink.click({ force: true });
       await page.waitForTimeout(1200);
       await assertHealthy(page, 'Reviews');
       visited.push('Reviews');
@@ -260,7 +257,7 @@ test.describe('Full app click crawl (safe / non-destructive)', () => {
     // 6c. Edit profile
     const editLink = page.getByText(/Редактировать профиль|Edit profile|编辑资料|Профильді өзгерту/i).first();
     if (await editLink.isVisible().catch(() => false)) {
-      await editLink.click();
+      await editLink.click({ force: true });
       await page.waitForTimeout(1200);
       await assertHealthy(page, 'EditProfile');
       visited.push('EditProfile');
@@ -294,21 +291,15 @@ test.describe('Full app click crawl (safe / non-destructive)', () => {
       await page.waitForTimeout(700);
     }
 
-    // 6e. Language switch (visible flag chips on Profile). Click each but
-    //     immediately switch back to RU to keep assertions stable.
-    for (const flag of ['🇬🇧', '🇨🇳', '🇰🇿', '🇷🇺']) {
-      const langChip = page.getByText(flag).first();
-      if (await langChip.isVisible().catch(() => false)) {
-        await langChip.click().catch(() => {});
-        await page.waitForTimeout(500);
-        clicked.push('Language: ' + flag);
-      }
-    }
+    // 6e. Language switch is intentionally covered by urtruck-locale-safe.spec.js.
+    //     Full click-crawl stays on one locale: switching all locales here makes
+    //     the broad crawl flaky and duplicates the dedicated locale matrix.
+    skipped.push('Language switch: covered by urtruck-locale-safe.spec.js');
 
     // ── 7. Back to Feed via tab ─────────────────────────────────────────
-    const feedTab = page.getByText(/Грузы|Cargos|货物|Жүктер/).first();
+    const feedTab = page.locator('[data-testid="bottom-nav-feed"]').first();
     if (await feedTab.isVisible().catch(() => false)) {
-      await feedTab.click();
+      await feedTab.click({ force: true });
       await page.waitForTimeout(1000);
       await assertHealthy(page, 'Feed (post-crawl)');
     }

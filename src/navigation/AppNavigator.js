@@ -63,8 +63,9 @@ import ProfileV2Screen from '../screens/onboarding/ProfileV2Screen';
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
-// (Стаб центральной «+»-вкладки удалён 26.07.2026: у клиента размещение груза
-// переехало кнопкой внутрь «Мои грузы», вкладки Publish больше нет.)
+function PublishTabStub() {
+  return null;
+}
 
 function MainTabs({ route }) {
   const { session } = useAuth();
@@ -102,14 +103,14 @@ function MainTabs({ route }) {
   }, [isDriver]);
   useDealLocationBroadcast(inWorkDealIds);
 
-  // Канон таб-баров (приказ владельца 2026-07-26, обе волны).
-  // Обе роли живут по одной логике: «Сделки» = единый инбокс (ставки сверху,
-  // переписки ниже; торг и чат — ВНУТРИ комнаты сделки). Отдельных вкладок
-  // «Чаты» и «Разместить» нет ни у кого: чат внутри сделки, размещение —
-  // кнопкой внутри «моего меню» (Рейсы/Грузы, §2.2.2).
-  //   Водитель (4): Грузы (Feed) · Рейсы (MyWork) · Очередь (Queue —
-  //     инструмент границы, не дубль) · Сделки (Deals).
-  //   Клиент (3): Грузы (MyWork) · Машины (Feed) · Сделки (Deals).
+  // Канон таб-баров UrTruck: водитель всегда имеет 5 вкладок:
+  // Feed / MyWork / Queue / Chats / Profile. Chat нельзя прятать в Profile;
+  // Queue — отдельная обычная центральная вкладка; Publish не должен
+  // становиться driver-вкладкой.
+  //   Водитель (5): Грузы (Feed) · Рейсы (MyWork) · Граница (Queue) ·
+  //     Чаты (Chats) · Профиль (Profile).
+  //   Клиент (5): Грузы (MyWork) · Машины (Feed) · Publish · Сделки (Deals) ·
+  //     Профиль (Profile).
   // BottomNav красит неон по роли: driver #168759, client #FF8400.
   return (
     <Tab.Navigator
@@ -126,18 +127,16 @@ function MainTabs({ route }) {
           <Tab.Screen name="Feed" component={FeedScreen} initialParams={{ role }} />
           <Tab.Screen name="MyWork" component={MyTripsScreen} initialParams={{ role }} />
           <Tab.Screen name="Queue" component={QueueScreen} initialParams={{ role }} />
-          {/* «Сделки» (26.07.2026, волна 2 — водитель зеркалит клиента):
-              ChatsListScreen в dealsMode — сверху мои ставки в работе
-              (pending/countered), ниже все переписки. Отдельная вкладка
-              «Чаты» убрана: чат живёт внутри комнаты сделки. «Очередь»
-              остаётся — это инструмент границы, а не дубль сделок. */}
-          <Tab.Screen name="Deals" component={ChatsListScreen} initialParams={{ role }} />
+          <Tab.Screen name="Chats" component={ChatsListScreen} initialParams={{ role, chatsOnly: true }} />
+          <Tab.Screen name="Profile" component={ProfileScreen} initialParams={{ role }} />
         </>
       ) : (
         <>
           <Tab.Screen name="MyWork" component={MyTripsScreen} initialParams={{ role }} />
           <Tab.Screen name="Feed" component={FeedScreen} initialParams={{ role }} />
+          <Tab.Screen name="Publish" component={PublishTabStub} initialParams={{ role }} />
           <Tab.Screen name="Deals" component={ChatsListScreen} initialParams={{ role }} />
+          <Tab.Screen name="Profile" component={ProfileScreen} initialParams={{ role }} />
         </>
       )}
     </Tab.Navigator>
