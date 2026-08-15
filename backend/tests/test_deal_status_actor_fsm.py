@@ -67,7 +67,14 @@ STRANGER = "test-stranger-fsm"
 
 
 def as_user(uid: str):
-    _current_user.set({"id": uid, "full_name": uid, "phone": "+70000000000", "verification_level": 1})
+    _current_user.set({
+        "id": uid,
+        "full_name": uid,
+        "phone": "+77000000000",
+        "phone_verified": 1,
+        "role": "driver" if uid == DRIVER else "client",
+        "verification_level": 1,
+    })
 
 
 def seed_deal(status="accepted", from_country=None, to_country=None, amount=3000):

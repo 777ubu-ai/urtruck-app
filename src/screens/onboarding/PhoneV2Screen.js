@@ -71,7 +71,8 @@ export default function PhoneV2Screen({ navigation, route }) {
   // 'phone' | 'email' — email сделан каналом входа ПО УМОЛЧАНИЮ: работает
   // глобально (вкл. Китай) и не зависит от доставки SMS, которая надёжна
   // только для номеров КЗ. Телефон остаётся доступен вкладкой (и как контакт).
-  const [mode, setMode] = useState('email');
+  const isDriverPhone = route?.params?.purpose === 'driver_phone';
+  const [mode, setMode] = useState(isDriverPhone ? 'phone' : 'email');
   const [country, setCountry] = useState(DEFAULT_COUNTRY);
   const [localDigits, setLocalDigits] = useState('');
   const [email, setEmail] = useState('');
@@ -102,6 +103,7 @@ export default function PhoneV2Screen({ navigation, route }) {
   };
 
   const switchMode = (next) => {
+    if (isDriverPhone) return;
     if (next === mode) return;
     setMode(next);
     setError(null);
@@ -129,6 +131,9 @@ export default function PhoneV2Screen({ navigation, route }) {
           channel: 'email',
           email: cleanEmail,
           mockCode: (r && r.mock) ? r.code : null,
+          purpose: route?.params?.purpose,
+          role,
+          resumeScreen: route?.params?.resumeScreen,
         });
         return;
       }
@@ -144,6 +149,9 @@ export default function PhoneV2Screen({ navigation, route }) {
         channel: 'phone',
         phone: fullPhone,
         mockCode: (r && (r.mock || r.beta)) ? r.code : null,
+        purpose: route?.params?.purpose,
+        role,
+        resumeScreen: route?.params?.resumeScreen,
       });
     } catch (e) {
       setError(t('phone_v2_send_failed'));
@@ -181,13 +189,13 @@ export default function PhoneV2Screen({ navigation, route }) {
             <Text style={{ color: brand.logoAccent }}>Truck</Text>
           </Text>
 
-          <Text style={s.title}>{t('phone_v2_title')}</Text>
-          <Text style={s.subtitle}>{t('phone_v2_subtitle')}</Text>
+          <Text style={s.title}>{t(isDriverPhone ? 'driver_phone_title' : 'phone_v2_title')}</Text>
+          <Text style={s.subtitle}>{t(isDriverPhone ? 'driver_phone_subtitle' : 'phone_v2_subtitle')}</Text>
 
           {/* Переключатель канала входа: Email (по умолчанию) / Телефон.
               Email слева и активен по умолчанию — основной канал для всех,
               включая иностранцев без казахстанского номера. */}
-          <View style={s.segment} testID="auth-channel-segment">
+          {!isDriverPhone && <View style={s.segment} testID="auth-channel-segment">
             <TouchableOpacity
               onPress={() => switchMode('email')}
               activeOpacity={0.8}
@@ -208,7 +216,7 @@ export default function PhoneV2Screen({ navigation, route }) {
                 {t('auth_tab_phone')}
               </Text>
             </TouchableOpacity>
-          </View>
+          </View>}
 
           {mode === 'email' ? (
             <View style={[s.inputRow, error && { borderColor: brand.error }]}>
@@ -296,7 +304,9 @@ export default function PhoneV2Screen({ navigation, route }) {
           <View style={s.infoBlock}>
             <Feather name="shield" size={14} color={brand.textSecondary} />
             <Text style={s.infoText}>
-              {mode === 'email' ? t('email_v2_send_hint') : t('phone_v2_send_hint')}
+              {isDriverPhone
+                ? t('driver_phone_send_hint')
+                : (mode === 'email' ? t('email_v2_send_hint') : t('phone_v2_send_hint'))}
             </Text>
           </View>
         </View>

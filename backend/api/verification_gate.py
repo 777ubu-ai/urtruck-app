@@ -44,6 +44,20 @@ def require_level(min_level: int):
     def dependency(authorization: str = Header(None)) -> dict:
         driver = _extract_driver(authorization)
         current = driver.get("verification_level", 0) or 0
+        # A role=driver account is never operational on email identity alone.
+        # Role/phone remediation endpoints use get_current_driver directly, so
+        # a blocked account can still bind its number and recover.
+        if driver.get("role") == "driver" and not reg_dal.has_verified_phone(driver):
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "error": "phone_verification_required",
+                    "current_level": current,
+                    "required_level": 1,
+                    "required_name": "phone_verified",
+                    "hint": "Для работы водителем подтвердите номер телефона",
+                },
+            )
         if current < min_level and not BETA_MODE:
             # 403 с payload который фронт использует для показа VerificationGate
             raise HTTPException(

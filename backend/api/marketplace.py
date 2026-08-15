@@ -15,6 +15,7 @@ from typing import Optional, List
 
 from database.db import get_conn, new_id
 from api.verification_gate import require_level, get_user, _extract_driver
+from database import registration_dal as reg_dal
 from api.push import send_to_user
 from services import file_signing as _cargo_file_signing
 from services import storage_service as _cargo_storage
@@ -36,6 +37,14 @@ def _sign_cargo_photos(photos):
     return out
 
 mp_router = APIRouter()
+
+
+def _require_operational_driver(user: dict) -> None:
+    if user.get("role") != "driver" or not reg_dal.has_verified_phone(user):
+        raise HTTPException(status_code=403, detail={
+            "error": "operational_driver_required",
+            "message": "Нужны роль водителя и подтверждённый номер телефона",
+        })
 
 
 def _maybe_user(authorization: Optional[str]) -> Optional[dict]:
@@ -977,6 +986,7 @@ def extend_cargo(cargo_id: str, user=Depends(require_level(1))):
 
 @mp_router.post("/trips/{trip_id}/extend")
 def extend_trip(trip_id: str, user=Depends(require_level(1))):
+    _require_operational_driver(user)
     new_date = datetime.utcnow().date().isoformat()
     with get_conn() as c:
         row = c.execute("SELECT driver_id, status FROM trips WHERE id = ?", (trip_id,)).fetchone()
@@ -993,6 +1003,7 @@ def extend_trip(trip_id: str, user=Depends(require_level(1))):
 @mp_router.patch("/trips/{trip_id}/unpublish")
 def unpublish_trip(trip_id: str, user=Depends(require_level(1))):
     """Снять рейс с публикации. Ставит status=unpublished, отклоняет pending-ставки."""
+    _require_operational_driver(user)
     with get_conn() as c:
         row = c.execute("SELECT driver_id, status FROM trips WHERE id = ?", (trip_id,)).fetchone()
         if not row:
@@ -1029,6 +1040,7 @@ def unpublish_trip(trip_id: str, user=Depends(require_level(1))):
 @mp_router.patch("/trips/{trip_id}/republish")
 def republish_trip(trip_id: str, user=Depends(require_level(1))):
     """Опубликовать снова снятый рейс. Обновляет дату выезда на сегодня."""
+    _require_operational_driver(user)
     with get_conn() as c:
         row = c.execute("SELECT driver_id, status FROM trips WHERE id = ?", (trip_id,)).fetchone()
         if not row:
@@ -1068,6 +1080,7 @@ def republish_cargo(cargo_id: str, user=Depends(require_level(1))):
 
 @mp_router.post("/trips")
 def create_trip(body: TripIn, user=Depends(require_level(1))):
+    _require_operational_driver(user)
     if not body.from_city or not body.to_city:
         raise HTTPException(status_code=400, detail="Укажите маршрут: откуда и куда")
     # Stage 52 / P1-8: дата выезда не может быть в прошлом.
@@ -1105,6 +1118,7 @@ def update_trip(trip_id: str, body: TripPatchIn, user=Depends(require_level(1)))
       provided, currency in whitelist, price >= 0)
     - Returns the updated row
     """
+    _require_operational_driver(user)
     with get_conn() as c:
         row = c.execute("SELECT * FROM trips WHERE id = ?", (trip_id,)).fetchone()
         if not row:
@@ -1366,6 +1380,8 @@ def create_bid(body: BidIn, user=Depends(require_level(1))):
     # Через REST API напрямую (или скомпрометированный клиент) можно было
     # засорить таблицу bids нулевыми ставками. Тип int в pydantic ловит
     # non-numeric, но не <= 0.
+    if body.cargo_id:
+        _require_operational_driver(user)
     if body.amount is None or body.amount <= 0:
         raise HTTPException(status_code=400, detail="amount должен быть > 0")
 
@@ -1828,6 +1844,7 @@ def update_trip_status(trip_id: str, new_status: str, user=Depends(require_level
     совместимость — фронт этот эндпоинт не вызывает, см. аудит) — просто
     пропускается, с явным логом, а не тихо.
     """
+    _require_operational_driver(user)
     VALID = ["active", "booked", "in_transit", "delivered", "cancelled"]
     if new_status not in VALID:
         raise HTTPException(status_code=400, detail=f"Допустимые статусы: {', '.join(VALID)}")

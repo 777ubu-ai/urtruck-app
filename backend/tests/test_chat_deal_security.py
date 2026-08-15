@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import sys
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -53,6 +54,9 @@ def _clean_state():
 
 
 def _user(phone: str, role: str) -> tuple[str, str]:
+    # Model a real phone-authenticated account, not the old email-in-phone shortcut.
+    if "@" in phone:
+        phone = "+7" + str(int(hashlib.sha256(phone.encode()).hexdigest()[:12], 16))[-10:].zfill(10)
     user = reg_dal.get_or_create_driver(phone)
     reg_dal.update_driver(user["id"], {"role": role, "verification_level": 1})
     return user["id"], reg_dal.create_session(user["id"])

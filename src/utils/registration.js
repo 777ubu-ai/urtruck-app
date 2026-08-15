@@ -209,6 +209,48 @@ export const regAPI = {
     return data;
   },
 
+  async bindPhone(phone, code) {
+    const token = await this.getToken();
+    if (!token) return { ok: false, status: 401, error: 'no_token' };
+    const r = await fetch(`${BASE}/phone/bind/verify`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ phone, code }),
+    });
+    const data = await r.json().catch(() => ({}));
+    const detail = data?.detail;
+    return {
+      ...data,
+      ok: r.ok && data?.ok !== false,
+      status: r.status,
+      error: detail?.error || (!r.ok ? normalizeDetail(detail, 'phone_bind_failed') : null),
+    };
+  },
+
+  async selectRole(role) {
+    const token = await this.getToken();
+    if (!token) return { ok: false, status: 401, error: 'no_token' };
+    const r = await fetch(`${BASE}/role`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ role }),
+    });
+    const data = await r.json().catch(() => ({}));
+    const detail = data?.detail;
+    return {
+      ...data,
+      ok: r.ok && data?.ok !== false,
+      status: r.status,
+      error: detail?.error || (!r.ok ? normalizeDetail(detail, 'role_save_failed') : null),
+    };
+  },
+
   // App Store Guideline 5.1.1(v): удаление аккаунта прямо в приложении.
   // Обезличивает данные на сервере и отзывает сессию. Best-effort по сети,
   // но сам факт удаления клиент подтверждает по res.ok.

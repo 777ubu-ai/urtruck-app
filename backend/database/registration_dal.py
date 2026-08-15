@@ -19,6 +19,9 @@ def _migrate(c):
         ("manual_review_reason", "TEXT"),
         ("verification_level", "INTEGER DEFAULT 0"),
         ("role", "TEXT DEFAULT 'guest'"),
+        ("phone_verified", "INTEGER DEFAULT 0"),
+        ("email", "TEXT"),
+        ("email_verified", "INTEGER DEFAULT 0"),
         ("is_demo", "INTEGER DEFAULT 0"),
         ("city", "TEXT"),
         ("about", "TEXT"),
@@ -61,6 +64,20 @@ def _migrate(c):
     for name, ddl in additions:
         if name not in cols:
             c.execute(f"ALTER TABLE drivers_registration ADD COLUMN {name} {ddl}")
+    # Legacy email auth stored the email address in `phone` and marked
+    # whatsapp_verified=1. Split the identities without granting phone trust.
+    c.execute(
+        "UPDATE drivers_registration SET email=phone, email_verified=1, phone=NULL, phone_verified=0 "
+        "WHERE phone LIKE '%@%' AND (email IS NULL OR email='')"
+    )
+    c.execute(
+        "UPDATE drivers_registration SET phone_verified=1 "
+        "WHERE whatsapp_verified=1 AND phone IS NOT NULL AND phone NOT LIKE '%@%'"
+    )
+    c.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_reg_email "
+        "ON drivers_registration(email) WHERE email IS NOT NULL AND email != ''"
+    )
 
 
 def _migrate_unique_iin(c):
@@ -362,7 +379,7 @@ def get_or_create_driver(phone: str, upgrade_guest_id: str = None) -> dict:
             if existing:
                 c.execute(
                     "UPDATE drivers_registration SET phone = ?, whatsapp_verified = 1, "
-                    "verification_level = MAX(verification_level, 1), current_step = 2 "
+                    "phone_verified = 1, verification_level = MAX(verification_level, 1), current_step = 2 "
                     "WHERE id = ?",
                     (phone, upgrade_guest_id),
                 )
@@ -372,12 +389,88 @@ def get_or_create_driver(phone: str, upgrade_guest_id: str = None) -> dict:
         # Новый пользователь
         did = new_id()
         c.execute(
-            "INSERT INTO drivers_registration (id, phone, whatsapp_verified, verification_level, current_step) "
-            "VALUES (?, ?, 1, 1, 2)",
+            "INSERT INTO drivers_registration (id, phone, whatsapp_verified, phone_verified, verification_level, current_step) "
+            "VALUES (?, ?, 1, 1, 1, 2)",
             (did, phone),
         )
         row = c.execute("SELECT * FROM drivers_registration WHERE id = ?", (did,)).fetchone()
         return dict(row)
+
+
+def get_or_create_email_user(email: str, upgrade_guest_id: str = None) -> dict:
+    """Email identity never implies that a telephone number was verified."""
+    with get_conn() as c:
+        row = c.execute("SELECT * FROM drivers_registration WHERE email = ?", (email,)).fetchone()
+        if row:
+            return dict(row)
+        if upgrade_guest_id:
+            existing = c.execute(
+                "SELECT * FROM drivers_registration WHERE id=? AND role='guest'",
+                (upgrade_guest_id,),
+            ).fetchone()
+            if existing:
+                c.execute(
+                    "UPDATE drivers_registration SET phone=NULL, email=?, email_verified=1, "
+                    "verification_level=MAX(verification_level,1), current_step=2 WHERE id=?",
+                    (email, upgrade_guest_id),
+                )
+                return dict(c.execute(
+                    "SELECT * FROM drivers_registration WHERE id=?", (upgrade_guest_id,)
+                ).fetchone())
+        did = new_id()
+        c.execute(
+            "INSERT INTO drivers_registration "
+            "(id, email, email_verified, phone_verified, verification_level, current_step, role) "
+            "VALUES (?, ?, 1, 0, 1, 2, 'guest')",
+            (did, email),
+        )
+        return dict(c.execute("SELECT * FROM drivers_registration WHERE id=?", (did,)).fetchone())
+
+
+def has_verified_phone(driver: dict | None) -> bool:
+    phone = str((driver or {}).get("phone") or "").strip()
+    digits = "".join(ch for ch in phone if ch.isdigit())
+    return bool((driver or {}).get("phone_verified") and "@" not in phone and len(digits) >= 10)
+
+
+def bind_verified_phone(driver_id: str, phone: str) -> dict:
+    with get_conn() as c:
+        c.execute("BEGIN IMMEDIATE")
+        account = c.execute(
+            "SELECT id FROM drivers_registration WHERE id=?", (driver_id,)
+        ).fetchone()
+        if not account:
+            raise ValueError("USER_NOT_FOUND")
+        collision = c.execute(
+            "SELECT id FROM drivers_registration WHERE phone=? AND id!=?", (phone, driver_id)
+        ).fetchone()
+        if collision:
+            raise ValueError("PHONE_ALREADY_IN_USE")
+        c.execute(
+            "UPDATE drivers_registration SET phone=?, phone_verified=1, whatsapp_verified=1, "
+            "verification_level=MAX(verification_level,1), updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (phone, driver_id),
+        )
+        row = c.execute("SELECT * FROM drivers_registration WHERE id=?", (driver_id,)).fetchone()
+        return dict(row)
+
+
+def set_user_role(driver_id: str, role: str) -> dict:
+    if role not in {"client", "driver"}:
+        raise ValueError("INVALID_ROLE")
+    with get_conn() as c:
+        row = c.execute("SELECT * FROM drivers_registration WHERE id=?", (driver_id,)).fetchone()
+        if not row:
+            raise ValueError("USER_NOT_FOUND")
+        user = dict(row)
+        if role == "driver" and not has_verified_phone(user):
+            raise ValueError("PHONE_VERIFICATION_REQUIRED")
+        c.execute(
+            "UPDATE drivers_registration SET role=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (role, driver_id),
+        )
+        user["role"] = role
+        return user
 
 
 def get_driver(driver_id: str) -> dict | None:
@@ -511,6 +604,12 @@ def delete_account(driver_id: str) -> bool:
             sets.append("role = 'deleted'")
         if "verification_level" in cols:
             sets.append("verification_level = 0")
+        if "phone_verified" in cols:
+            sets.append("phone_verified = 0")
+        if "email_verified" in cols:
+            sets.append("email_verified = 0")
+        if "whatsapp_verified" in cols:
+            sets.append("whatsapp_verified = 0")
         if "manual_review_required" in cols:
             sets.append("manual_review_required = 0")
         if "updated_at" in cols:

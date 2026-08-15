@@ -5,6 +5,9 @@ CREATE TABLE IF NOT EXISTS drivers_registration (
   id TEXT PRIMARY KEY,
   phone TEXT UNIQUE,                     -- NULL для guest (level 0)
   whatsapp_verified INTEGER DEFAULT 0,
+  phone_verified INTEGER DEFAULT 0,      -- только OTP реального номера, не email
+  email TEXT,
+  email_verified INTEGER DEFAULT 0,
 
   -- Lazy registration: уровень доверия 0..3
   -- 0 = guest (anonymous, just browsing)

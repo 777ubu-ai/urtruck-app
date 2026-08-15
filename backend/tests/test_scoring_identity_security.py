@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import sys
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -51,6 +52,10 @@ def _clean_state():
 
 
 def _user(phone: str, role: str = "driver", **updates) -> tuple[str, str]:
+    # These are authenticated phone users; descriptive e-mail-like labels were
+    # historically passed directly as `phone`, which no longer grants phone trust.
+    if "@" in phone:
+        phone = "+7" + str(int(hashlib.sha256(phone.encode()).hexdigest()[:12], 16))[-10:].zfill(10)
     user = reg_dal.get_or_create_driver(phone)
     reg_dal.update_driver(user["id"], {"role": role, "verification_level": 1, **updates})
     return user["id"], reg_dal.create_session(user["id"])

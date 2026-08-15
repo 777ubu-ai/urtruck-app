@@ -94,7 +94,20 @@ export default function PremiumProfileScreen({ navigation, route }) {
     } else {
       setLoading(true);
     }
-    setRole(role);
+    const roleResult = await regAPI.selectRole(role);
+    if (!roleResult.ok && role === 'driver' && roleResult.error === 'phone_verification_required') {
+      setLoading(false);
+      navigation.navigate('PhoneV2', {
+        purpose: 'driver_phone', role: 'driver', resumeScreen: 'RegProfile',
+      });
+      return;
+    }
+    if (!roleResult.ok) {
+      setLoading(false);
+      toast(t('role_v2_save_failed'), 'error', 4000);
+      return;
+    }
+    setRole(roleResult.role);
     navigation.reset({ index: 0, routes: [{ name: 'Main', params: { role } }] });
   };
 

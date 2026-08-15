@@ -45,6 +45,10 @@ class VerifyCodeRequest(BaseModel):
     guest_token: Optional[str] = None  # для апгрейда гостя → phone-пользователя
 
 
+class RoleRequest(BaseModel):
+    role: str
+
+
 class DigitalIDRequest(BaseModel):
     iin: str
     full_name: str
@@ -139,6 +143,9 @@ def get_me(driver_id: str = Depends(get_current_driver)):
     return {
         "id": driver["id"],
         "phone": driver.get("phone"),
+        "email": driver.get("email"),
+        "phone_verified": reg_dal.has_verified_phone(driver),
+        "email_verified": bool(driver.get("email_verified")),
         "verification_level": driver.get("verification_level", 0) or 0,
         "role": driver.get("role", "guest"),
         "full_name": driver.get("full_name"),
@@ -306,7 +313,7 @@ def email_verify(req: EmailVerifyRequest, request: Request = None):
             raise HTTPException(status_code=400, detail="Неверный или истёкший код")
         reg_dal.delete_code(email)
     guest_id = reg_dal.get_driver_by_token(req.guest_token) if req.guest_token else None
-    driver = reg_dal.get_or_create_driver(email, upgrade_guest_id=guest_id)
+    driver = reg_dal.get_or_create_email_user(email, upgrade_guest_id=guest_id)
     # BETA-only провижн тестового профиля. В production BETA_MODE всегда false,
     # а reviewer проходит обычную регистрацию без privilege escalation.
     if is_beta_login:
@@ -315,8 +322,6 @@ def email_verify(req: EmailVerifyRequest, request: Request = None):
             updates["full_name"] = "Тестер"
         if (driver.get("verification_level") or 0) < 2:
             updates["verification_level"] = 2
-        if driver.get("role") in (None, "guest"):
-            updates["role"] = "driver"
         if not driver.get("security_score"):
             updates["security_score"] = 75
             updates["security_color"] = "green"
@@ -333,6 +338,58 @@ def email_verify(req: EmailVerifyRequest, request: Request = None):
         "email": email,
         "current_step": driver.get("current_step") or "done",
         "verification_level": driver.get("verification_level", 1) or 1,
+        "role": driver.get("role") or "guest",
+        "phone_verified": reg_dal.has_verified_phone(driver),
+    }
+
+
+@reg_router.post("/phone/bind/verify")
+def bind_phone_verify(req: VerifyCodeRequest, driver_id: str = Depends(get_current_driver)):
+    """Bind a real OTP-verified phone to the current email/session account."""
+    phone = req.phone.strip()
+    phone_clean = "".join(ch for ch in phone if ch.isdigit() or ch == "+")
+    if len(phone_clean.replace("+", "")) < 10:
+        raise HTTPException(status_code=400, detail="Неверный формат номера")
+    limit_otp_verify(phone_clean)
+    if not reg_dal.check_code(phone_clean, req.code):
+        raise HTTPException(status_code=400, detail="Неверный или истёкший код")
+    reg_dal.delete_code(phone_clean)
+    try:
+        driver = reg_dal.bind_verified_phone(driver_id, phone_clean)
+    except ValueError as exc:
+        if str(exc) == "PHONE_ALREADY_IN_USE":
+            raise HTTPException(status_code=409, detail={
+                "error": "phone_already_in_use",
+                "message": "Этот номер уже привязан к другому аккаунту",
+            })
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    return {
+        "ok": True,
+        "phone": driver.get("phone"),
+        "phone_verified": True,
+        "role": driver.get("role") or "guest",
+    }
+
+
+@reg_router.post("/role")
+def select_role(req: RoleRequest, driver_id: str = Depends(get_current_driver)):
+    """Persist the current user's operational role after server validation."""
+    role = (req.role or "").strip().lower()
+    if role not in {"client", "driver"}:
+        raise HTTPException(status_code=422, detail={"error": "invalid_role"})
+    try:
+        user = reg_dal.set_user_role(driver_id, role)
+    except ValueError as exc:
+        if str(exc) == "PHONE_VERIFICATION_REQUIRED":
+            raise HTTPException(status_code=409, detail={
+                "error": "phone_verification_required",
+                "message": "Для работы водителем подтвердите номер телефона",
+            })
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    return {
+        "ok": True,
+        "role": user["role"],
+        "phone_verified": reg_dal.has_verified_phone(user),
     }
 
 
@@ -423,6 +480,7 @@ def wa_verify(req: VerifyCodeRequest, request: Request = None):
         "driver_id": driver["id"],
         "user_id": driver["id"],
         "phone": driver["phone"],
+        "phone_verified": reg_dal.has_verified_phone(driver),
         "current_step": driver.get("current_step") or "done",
         "verification_level": driver.get("verification_level", 1) or 1,
         "role": driver.get("role", "client"),

@@ -22,6 +22,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
 import { useAuth } from '../../utils/AuthContext';
+import { regAPI } from '../../utils/registration';
 import { brand, useBrand, radius, typography } from '../../theme/brandV2';
 
 const RoleCard = ({
@@ -64,11 +65,34 @@ export default function RoleScreenV2({ navigation, route }) {
   const { setRole } = useAuth();
   const phone = route?.params?.phone;
   const [selected, setSelected] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
 
-  const onContinue = () => {
-    if (!selected) return;
-    setRole(selected);
-    navigation.navigate('ProfileV2', { phone, role: selected });
+  const onContinue = async () => {
+    if (!selected || busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      const result = await regAPI.selectRole(selected);
+      if (!result.ok && selected === 'driver' && result.error === 'phone_verification_required') {
+        navigation.navigate('PhoneV2', {
+          purpose: 'driver_phone',
+          role: 'driver',
+          resumeScreen: 'ProfileV2',
+        });
+        return;
+      }
+      if (!result.ok) {
+        setError(t('role_v2_save_failed'));
+        return;
+      }
+      setRole(result.role);
+      navigation.navigate('ProfileV2', { phone, role: result.role });
+    } catch {
+      setError(t('role_v2_save_failed'));
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -110,12 +134,13 @@ export default function RoleScreenV2({ navigation, route }) {
             testID="role-v2-client"
           />
         </View>
+        {error ? <Text style={s.error}>{error}</Text> : null}
       </View>
 
       <View style={s.ctaWrap}>
         <Pressable
           onPress={onContinue}
-          disabled={!selected}
+          disabled={!selected || busy}
           accessibilityRole="button"
           testID="role-v2-cta"
           style={({ pressed }) => [
@@ -158,6 +183,7 @@ const makeStyles = (brand) => StyleSheet.create({
     color: brand.textSecondary,
     marginBottom: 24,
   },
+  error: { ...typography.bodySmall, color: brand.error, marginTop: 16 },
   cardsCol: {
     gap: 14,
   },

@@ -27,6 +27,7 @@ import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../utils/useI18n';
 import { useAuth } from '../utils/AuthContext';
 import LanguageSwitcher from '../components/LanguageSwitcher';
+import { regAPI } from '../utils/registration';
 import { brand, radius, typography } from '../theme/brandV2';
 
 const RoleCard = ({
@@ -93,7 +94,15 @@ export default function RoleScreen({ navigation }) {
     try {
       if (session && session.user && session.user.id) {
         setBusy(role);
-        setRole(role);
+        const result = await regAPI.selectRole(role);
+        if (!result.ok && role === 'driver' && result.error === 'phone_verification_required') {
+          navigation.navigate('PhoneV2', {
+            purpose: 'driver_phone', role: 'driver', resumeScreen: 'ProfileV2',
+          });
+          return;
+        }
+        if (!result.ok) throw new Error(result.error || 'role_save_failed');
+        setRole(result.role);
         navigation.reset({ index: 0, routes: [{ name: 'Main', params: { role } }] });
         return;
       }

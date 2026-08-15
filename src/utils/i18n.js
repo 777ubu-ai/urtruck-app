@@ -1370,6 +1370,10 @@ const translations = {
     phone_v2_cta: 'Продолжить',
     phone_v2_send_hint: 'Мы отправим SMS с кодом\nдля входа или регистрации',
     phone_v2_send_failed: 'Не удалось отправить код. Попробуйте ещё раз.',
+    driver_phone_title: 'Подтвердите номер телефона',
+    driver_phone_subtitle: 'Номер обязателен для работы водителем и связи по сделкам',
+    driver_phone_send_hint: 'Мы отправим SMS с кодом подтверждения номера',
+    role_v2_save_failed: 'Не удалось сохранить роль. Попробуйте ещё раз.',
 
     // ─── Email-вход (канал для Китая + резерв) ────────────────────
     auth_tab_phone: 'Телефон',
@@ -3150,6 +3154,10 @@ const translations = {
     phone_v2_cta: 'Жалғастыру',
     phone_v2_send_hint: 'Кіру немесе тіркелу үшін\nSMS-код жібереміз',
     phone_v2_send_failed: 'Кодты жіберу мүмкін болмады. Қайта көріңіз.',
+    driver_phone_title: 'Телефон нөмірін растаңыз',
+    driver_phone_subtitle: 'Жүргізуші болып жұмыс істеу және мәмілелер бойынша байланыс үшін нөмір міндетті',
+    driver_phone_send_hint: 'Телефон нөмірін растау үшін SMS-код жібереміз',
+    role_v2_save_failed: 'Рөлді сақтау мүмкін болмады. Қайта көріңіз.',
 
     // ─── Email-кіру (Қытайға арналған канал + резерв) ─────────────
     auth_tab_phone: 'Телефон',
@@ -4905,6 +4913,10 @@ const translations = {
     phone_v2_cta: '继续',
     phone_v2_send_hint: '我们将发送 SMS 验证码\n用于登录或注册',
     phone_v2_send_failed: '发送验证码失败,请重试。',
+    driver_phone_title: '验证司机手机号',
+    driver_phone_subtitle: '司机接单和交易联系必须验证手机号',
+    driver_phone_send_hint: '我们将发送短信验证码以验证手机号',
+    role_v2_save_failed: '无法保存角色，请重试。',
 
     // ─── 邮箱登录(中国渠道 + 备用) ──────────────────────────────
     auth_tab_phone: '手机',
@@ -6639,6 +6651,10 @@ const translations = {
     phone_v2_cta: 'Continue',
     phone_v2_send_hint: "We'll send an SMS code\nto sign in or sign up",
     phone_v2_send_failed: 'Failed to send code. Please try again.',
+    driver_phone_title: 'Verify your driver phone',
+    driver_phone_subtitle: 'A verified phone is required to work as a driver and communicate on deals',
+    driver_phone_send_hint: "We'll send an SMS code to verify your phone number",
+    role_v2_save_failed: 'Could not save your role. Please try again.',
 
     // ─── Email sign-in (channel for China + fallback) ─────────────
     auth_tab_phone: 'Phone',

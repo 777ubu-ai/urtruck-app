@@ -85,6 +85,7 @@ export default function OtpV2Screen({ navigation, route }) {
   // Единый идентификатор для verify/signIn (телефон или e-mail).
   const identifier = isEmail ? emailAddr : phone;
   const initialMockCode = route?.params?.mockCode || null;
+  const isDriverPhone = route?.params?.purpose === 'driver_phone';
 
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
@@ -152,6 +153,30 @@ export default function OtpV2Screen({ navigation, route }) {
     setLoading(true);
     setError('');
     try {
+      if (isDriverPhone) {
+        const bound = await regAPI.bindPhone(phone, c);
+        if (!bound.ok) {
+          setError(t('otp_v2_wrong'));
+          setCode('');
+          return;
+        }
+        const selected = await regAPI.selectRole('driver');
+        if (!selected.ok) {
+          setError(t('role_v2_save_failed'));
+          setCode('');
+          return;
+        }
+        setRole('driver');
+        await refreshLevel?.().catch(() => {});
+        navigation.reset({
+          index: 0,
+          routes: [{
+            name: route?.params?.resumeScreen || 'ProfileV2',
+            params: { phone, role: 'driver' },
+          }],
+        });
+        return;
+      }
       const r = isEmail
         ? await regAPI.verifyEmailCode(identifier, c)
         : await regAPI.verifyCode(identifier, c);
