@@ -214,7 +214,7 @@ def test_skip_steps_gives_409():
     assert r.status_code == 409, r.text
     assert r.json()["detail"]["error"] == "INVALID_STATUS_TRANSITION"
     assert deal_status(d) == "accepted"
-\n
+
 def test_shipper_cannot_repeat_driver_only_statuses():
     """Идемпотентность не должна превращаться в обход actor-FSM: даже если
     статус уже установлен, грузоотправитель не может повторно подтвердить
