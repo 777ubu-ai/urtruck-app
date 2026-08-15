@@ -172,3 +172,9 @@ background/terminated tracking, push-полный цикл, TTN/PDF с productio
 - Реальный native Maestro: `maestro test qa/maestro/smoke-suite.yaml --format junit --output qa/artifacts/maestro-real/ios-smoke.xml`: exit 0, 1/1 flow passed на `iPhone 17` (iOS 26.4), 18 секунд. Лог и JUnit: `qa/artifacts/maestro-real/ios-smoke.log`, `qa/artifacts/maestro-real/ios-smoke.xml`; итоговый экран: `qa/artifacts/maestro-real/ios-after-maestro.png`.
 - Для реального native execution `appId` в `qa/maestro/smoke-suite.yaml`, `qa/maestro/client-tabs.yaml`, `qa/maestro/driver-auth.yaml` и `qa/maestro/_lib/qa-login.yaml` исправлен с Expo Go (`host.exp.Exponent`) на `com.urtruck.app`.
 - Native Yandex MapKit всё ещё **BLOCKED**: `src/components/TruckMap.native.js` импортирует `react-native-maps`; Yandex официально не поддерживает React Native без собственного bridge. Android/iOS MapKit SDK, native key wiring и карта Yandex в runtime не заявляются готовыми.
+
+## Итог для HEAD `0257736`
+
+- Финальный commit этой проверки: `02577368cd739025896d666ea908464cc47d0e60` в ветке `codex/yandex-maps`; `main` и production не изменялись.
+- GitHub Actions run `31874373269` для этого HEAD: API/backend `94987781227` PASS; Design/FSM/UX `94987781317` PASS; Maestro contract `94987781233` PASS; Playwright desktop `94987781256` PASS; Playwright mobile `94987781208` PASS.
+- Несмотря на зелёный web/backend/contract CI и реальный локальный iOS smoke PASS, общий статус остаётся **BLOCKED** до native Yandex MapKit (Android/iOS) и полноценного authenticated driver/client Maestro с безопасными QA fixtures.
