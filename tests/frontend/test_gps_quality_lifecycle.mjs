@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { classifyDealLocation, normalizeLocationPayload } from '../../src/utils/gpsQuality.js';
+import { formatUrTruckLocationMessage, parseUrTruckLocationMessage } from '../../src/utils/chatLocation.js';
 
 const now = Date.parse('2026-08-15T12:00:00.000Z');
 const valid = normalizeLocationPayload({
@@ -44,6 +45,7 @@ const track = read('src/screens/TrackTruckScreen.js');
 const route = read('src/components/RouteMap.js');
 const webMap = read('src/components/TruckMap.web.js');
 const chat = read('src/screens/ChatScreen.js');
+const chatLocation = read('src/utils/chatLocation.js');
 const appJson = JSON.parse(read('app.json'));
 const manifest = read('android/app/src/main/AndroidManifest.xml');
 const i18n = read('src/utils/i18n.js');
@@ -63,7 +65,14 @@ assert.doesNotMatch(webMap, /roadOne|routeLine|startDot/);
 assert.match(webMap, /track_coordinate_only/);
 assert.doesNotMatch(webMap, /Linking|openURL|https?:\/\//);
 assert.doesNotMatch(chat, /https:\/\/yandex\.ru\/maps\/\?pt=/);
-assert.match(chat, /Number\(latitude\)\.toFixed\(6\)/);
+assert.match(chat, /formatUrTruckLocationMessage\(t\('chat_location_msg'\), latitude, longitude\)/);
+assert.doesNotMatch(chatLocation, /Linking|openURL|https?:\/\//);
+const sharedLocation = formatUrTruckLocationMessage('Location', 43.2, 76.9);
+assert.equal(sharedLocation, '📍 Location: 43.200000, 76.900000');
+assert.deepEqual(parseUrTruckLocationMessage(sharedLocation), { latitude: 43.2, longitude: 76.9 });
+for (const [latitude, longitude] of [[NaN, 76], [Infinity, 76], [91, 76], [43, 181]]) {
+  assert.equal(formatUrTruckLocationMessage('Location', latitude, longitude), null);
+}
 assert.equal(appJson.expo.plugins.find((x) => Array.isArray(x) && x[0] === 'expo-location')[1].isAndroidBackgroundLocationEnabled, false);
 assert.doesNotMatch(manifest, /ACCESS_BACKGROUND_LOCATION|FOREGROUND_SERVICE_LOCATION/);
 for (const key of ['track_last_known', 'track_offline_title', 'track_offline', 'track_coordinate_only', 'track_location_unavailable', 'track_location_rejected']) {
