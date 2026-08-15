@@ -6,6 +6,7 @@ import { useI18n } from '../utils/useI18n';
 import { localizePlace } from '../utils/places';
 import { marketAPI } from '../utils/marketAPI';
 import TruckMap from './TruckMap';
+import { classifyDealLocation } from '../utils/gpsQuality';
 
 // Координаты основных городов [lat, lon]
 const CITIES = {
@@ -116,14 +117,17 @@ export default function RouteMap({ from, to, transit, dealId, dealStatus, driver
   const { theme } = useTheme();
   const { t, lang } = useI18n();
   const [location, setLocation] = React.useState(null);
+  const [locationQuality, setLocationQuality] = React.useState({ hasPoint: false, isLive: false, isStale: false, freshness: 'missing' });
+  const [locationOffline, setLocationOffline] = React.useState(false);
   const [locationLoading, setLocationLoading] = React.useState(false);
   const fromCoord = parseCity(from);
   const toCoord = parseCity(to);
   const transitCoord = transit ? parseCity(transit) : null;
   const trackingActive = Boolean(dealId && ['in_progress', 'at_border'].includes(dealStatus));
+  const trackingReadable = Boolean(dealId && ['in_progress', 'at_border', 'awaiting_confirmation', 'completed'].includes(dealStatus));
 
   React.useEffect(() => {
-    if (!trackingActive) {
+    if (!trackingReadable) {
       setLocation(null);
       setLocationLoading(false);
       return undefined;
@@ -133,13 +137,21 @@ export default function RouteMap({ from, to, transit, dealId, dealStatus, driver
       setLocationLoading((current) => current || !location);
       const result = await marketAPI.getDealLocation(dealId);
       if (!alive) return;
-      if (result?.has_location && result.location) setLocation(result.location);
+      if (!result?.ok) {
+        setLocationOffline(!!result?.offline);
+        setLocationLoading(false);
+        return;
+      }
+      setLocationOffline(false);
+      const quality = classifyDealLocation(result);
+      setLocationQuality(quality);
+      setLocation(quality.hasPoint ? result.location : null);
       setLocationLoading(false);
     };
     load();
     const interval = setInterval(load, 10000);
     return () => { alive = false; clearInterval(interval); };
-  }, [dealId, trackingActive]);
+  }, [dealId, trackingReadable]);
 
   let km = null, days = null;
   if (fromCoord && toCoord) {
@@ -154,13 +166,16 @@ export default function RouteMap({ from, to, transit, dealId, dealStatus, driver
 
   const lat = location ? Number(location.lat) : null;
   const lng = location ? Number(location.lng) : null;
-  const hasLivePoint = Number.isFinite(lat) && Number.isFinite(lng);
+  const hasPoint = Number.isFinite(lat) && Number.isFinite(lng);
+  const hasLivePoint = hasPoint && locationQuality.isLive;
 
   return (
     <View style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]} testID="planned-route-card">
       <View style={s.headerRow}>
         <Feather name="map" size={14} color={theme.textMuted} />
-        <Text style={[s.title, { color: theme.textMuted }]}>{t(hasLivePoint ? 'live_route_title' : 'planned_route_title')}</Text>
+        <Text style={[s.title, { color: theme.textMuted }]}>
+          {t(hasLivePoint ? 'live_route_title' : hasPoint ? 'track_last_known' : 'planned_route_title')}
+        </Text>
       </View>
       <Text style={[s.route, { color: theme.text }]} numberOfLines={2}>
         {localizePlace(from, lang)}
@@ -173,9 +188,9 @@ export default function RouteMap({ from, to, transit, dealId, dealStatus, driver
           📏 ~{km} {t('km_short')}   ⏱ ~{days} {t('days_short')}
         </Text>
       ) : null}
-      {hasLivePoint ? (
+      {hasPoint ? (
         <View style={s.liveMap} testID="trip-live-map">
-          <TruckMap lat={lat} lng={lng} title={driverName || t('track_truck_marker')} />
+          <TruckMap lat={lat} lng={lng} title={driverName || t('track_truck_marker')} stale={!hasLivePoint} />
         </View>
       ) : locationLoading ? (
         <View style={s.waitingMap} testID="trip-live-map-loading">
@@ -193,7 +208,13 @@ export default function RouteMap({ from, to, transit, dealId, dealStatus, driver
       <View style={s.disclaimerRow}>
         <Feather name={trackingActive ? 'navigation' : 'map-pin'} size={11} color={theme.textDim} />
         <Text style={[s.disclaimer, { color: theme.textDim }]} numberOfLines={2}>
-          {hasLivePoint ? t('tracking_live_here') : trackingActive ? t('track_truck_waiting_desc') : t('tracking_starts_after_start')}
+          {locationOffline
+            ? t('track_offline')
+            : hasLivePoint
+              ? t('tracking_live_here')
+              : hasPoint
+                ? t('track_last_known')
+                : trackingActive ? t('track_truck_waiting_desc') : t('tracking_starts_after_start')}
         </Text>
       </View>
     </View>

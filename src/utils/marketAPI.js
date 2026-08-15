@@ -170,15 +170,16 @@ export const marketAPI = {
         method: 'POST', headers: await headers(),
         body: JSON.stringify(coords),
       });
-      return r.ok ? r.json() : { ok: false, status: r.status };
-    } catch { return { ok: false }; }
+      const data = await r.json().catch(() => ({}));
+      return r.ok ? data : { ok: false, status: r.status, detail: normalizeDetail(data.detail, r.status) };
+    } catch { return { ok: false, offline: true, detail: 'network_error' }; }
   },
   async getDealLocation(dealId) {
     try {
       const r = await authedFetch(`${BASE}/deals/${dealId}/location`, { headers: await headers() });
       if (!r.ok) return { ok: false, has_location: false, status: r.status };
       return r.json();
-    } catch { return { ok: false, has_location: false }; }
+    } catch { return { ok: false, has_location: false, offline: true }; }
   },
   // Legacy GPS request endpoints remain for compatibility with older native
   // builds. Current UI activates tracking only through «Начать рейс».
@@ -221,7 +222,7 @@ export const marketAPI = {
       const r = await authedFetch(`${BASE}/tracking/active`, { headers: await headers() });
       const d = await r.json().catch(() => ({}));
       return r.ok ? d : { ok: false, deal_ids: [] };
-    } catch { return { ok: false, deal_ids: [] }; }
+    } catch { return { ok: false, deal_ids: [], offline: true }; }
   },
 
   // Задача A: правка своего активного груза (цена/описание/вес/объём).

@@ -12,6 +12,7 @@ Exit != 0 на любой ошибке. Совместим с pytest.
 import contextvars
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 TEST_DB = os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_deal_fsm.db")
@@ -411,7 +412,9 @@ def test_gps_is_locked_after_pickup_and_last_point_is_preserved():
 
     # A pending request is not consent and the truck is not yet in transit.
     as_user(DRIVER)
-    blocked = client.post(f"/api/v1/market/deals/{deal_id}/location", json={"lat": 43.2, "lng": 76.9})
+    blocked = client.post(f"/api/v1/market/deals/{deal_id}/location", json={
+        "lat": 43.2, "lng": 76.9, "captured_at": datetime.now(timezone.utc).isoformat(),
+    })
     assert blocked.status_code == 409, blocked.text
     approved = client.post(f"/api/v1/market/deals/{deal_id}/tracking/respond", json={"decision": "approve"})
     assert approved.status_code == 200, approved.text
@@ -419,7 +422,9 @@ def test_gps_is_locked_after_pickup_and_last_point_is_preserved():
 
     pickup = client.patch(f"/api/v1/market/deals/{deal_id}/status", params={"new_status": "in_progress"})
     assert pickup.status_code == 200, pickup.text
-    sent = client.post(f"/api/v1/market/deals/{deal_id}/location", json={"lat": 43.2, "lng": 76.9})
+    sent = client.post(f"/api/v1/market/deals/{deal_id}/location", json={
+        "lat": 43.2, "lng": 76.9, "captured_at": datetime.now(timezone.utc).isoformat(),
+    })
     assert sent.status_code == 200, sent.text
     as_user(SHIPPER)
     visible = client.get(f"/api/v1/market/deals/{deal_id}/location")

@@ -748,10 +748,18 @@ export default function ChatScreen({ navigation, route }) {
       toast(t('track_permission_needed'), 'error');
       return;
     }
+    if (permission.foregroundOnly) {
+      toast(t('track_foreground_notice'), 'info', 5000);
+    }
     const result = await changeDealStatus('in_progress');
     if (result?.ok) {
       const firstPoint = await getCurrentLocationPayload();
-      if (firstPoint) await marketAPI.sendDealLocation(dealId, firstPoint);
+      if (!firstPoint) {
+        toast(t('track_location_unavailable'), 'error');
+        return;
+      }
+      const sent = await marketAPI.sendDealLocation(dealId, firstPoint);
+      if (!sent?.ok) toast(t(sent?.offline ? 'no_connection' : 'track_location_rejected'), 'error');
     }
   };
 
@@ -804,9 +812,9 @@ export default function ChatScreen({ navigation, route }) {
 
   // WhatsApp-style: тап по 📷 предлагает Камеру или Галерею (на native).
   // На web камера ненадёжна — сразу галерея.
-  // Отправить свою геопозицию как сообщение со ссылкой на карту (открывается в
-  // Яндекс/Google Картах у собеседника). expo-location уже в проекте — работает
-  // и в текущей сборке. Для веба используем navigator.geolocation.
+  // Отправить свою геопозицию как точные координаты внутри deal chat. Не
+  // создаём внешнюю Yandex/Google ссылку: основной tracking flow не должен
+  // выбрасывать участника сделки из UrTruck.
   const sendLocation = async () => {
     try {
       let latitude, longitude;
@@ -821,8 +829,7 @@ export default function ChatScreen({ navigation, route }) {
         const pos = await Location.getCurrentPositionAsync({});
         ({ latitude, longitude } = pos.coords);
       }
-      const link = `https://yandex.ru/maps/?pt=${longitude},${latitude}&z=15&l=map`;
-      sendMessage(`📍 ${t('chat_location_msg')}: ${link}`);
+      sendMessage(`📍 ${t('chat_location_msg')}: ${Number(latitude).toFixed(6)}, ${Number(longitude).toFixed(6)}`);
     } catch { toast(t('location_denied'), 'error'); }
   };
 

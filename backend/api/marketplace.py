@@ -5,7 +5,8 @@
 import sys
 import json
 import re
-from datetime import datetime, timedelta
+import math
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -347,9 +348,24 @@ def _init():
                 lng        REAL NOT NULL,
                 heading    REAL,
                 speed      REAL,
+                accuracy   REAL,
+                captured_at TEXT,
+                received_at TEXT,
                 updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        location_cols = {r["name"] for r in c.execute("PRAGMA table_info(deal_locations)").fetchall()}
+        for col, ddl in [
+            ("accuracy", "ALTER TABLE deal_locations ADD COLUMN accuracy REAL"),
+            ("captured_at", "ALTER TABLE deal_locations ADD COLUMN captured_at TEXT"),
+            ("received_at", "ALTER TABLE deal_locations ADD COLUMN received_at TEXT"),
+        ]:
+            if col not in location_cols:
+                c.execute(ddl)
+        c.execute(
+            "UPDATE deal_locations SET captured_at=COALESCE(captured_at, updated_at), "
+            "received_at=COALESCE(received_at, updated_at)"
+        )
         # GPS — это не автоматическая функция сделки. Грузоотправитель
         # запрашивает отслеживание, водитель явно подтверждает его, и только
         # тогда приложение имеет право посылать координаты. Одна строка на
@@ -3193,6 +3209,59 @@ class DealLocationIn(BaseModel):
     lng: float
     heading: Optional[float] = None
     speed: Optional[float] = None
+    accuracy: Optional[float] = None
+    captured_at: datetime
+
+
+_GPS_MAX_CAPTURE_AGE = timedelta(minutes=10)
+_GPS_MAX_FUTURE_SKEW = timedelta(minutes=2)
+_GPS_LIVE_AFTER = timedelta(minutes=3)
+_GPS_MAX_SPEED_MPS = 70.0
+
+
+def _gps_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _gps_parse_stored(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return _gps_utc(datetime.fromisoformat(str(value).replace("Z", "+00:00")))
+    except (TypeError, ValueError):
+        return None
+
+
+def _gps_distance_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    radius = 6_371_000.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp = math.radians(lat2 - lat1)
+    dl = math.radians(lng2 - lng1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * radius * math.atan2(math.sqrt(a), math.sqrt(max(0.0, 1 - a)))
+
+
+def _validate_gps_payload(body: DealLocationIn, now: datetime) -> datetime:
+    numeric = (("lat", body.lat), ("lng", body.lng), ("heading", body.heading),
+               ("speed", body.speed), ("accuracy", body.accuracy))
+    if any(value is not None and not math.isfinite(value) for _, value in numeric):
+        raise HTTPException(status_code=422, detail={"error": "GPS_NON_FINITE"})
+    if not -90 <= body.lat <= 90 or not -180 <= body.lng <= 180:
+        raise HTTPException(status_code=422, detail={"error": "GPS_COORDINATES_OUT_OF_RANGE"})
+    if body.heading is not None and not 0 <= body.heading <= 360:
+        raise HTTPException(status_code=422, detail={"error": "GPS_HEADING_OUT_OF_RANGE"})
+    if body.speed is not None and not 0 <= body.speed <= _GPS_MAX_SPEED_MPS:
+        raise HTTPException(status_code=422, detail={"error": "GPS_SPEED_OUT_OF_RANGE"})
+    if body.accuracy is not None and not 0 <= body.accuracy <= 5000:
+        raise HTTPException(status_code=422, detail={"error": "GPS_ACCURACY_OUT_OF_RANGE"})
+    captured = _gps_utc(body.captured_at)
+    if captured < now - _GPS_MAX_CAPTURE_AGE:
+        raise HTTPException(status_code=422, detail={"error": "GPS_CAPTURE_STALE"})
+    if captured > now + _GPS_MAX_FUTURE_SKEW:
+        raise HTTPException(status_code=422, detail={"error": "GPS_CAPTURE_IN_FUTURE"})
+    return captured
 
 
 @mp_router.post("/deals/{deal_id}/location")
@@ -3200,6 +3269,9 @@ def update_deal_location(deal_id: str, body: DealLocationIn, user=Depends(requir
     """Водитель сделки шлёт свою гео-позицию. Только driver сделки и только
     только после забора груза (in_progress/at_border)."""
     with get_conn() as c:
+        # Serialize validate-and-upsert so two concurrent device callbacks
+        # cannot both pass ordering/jump checks against the same old point.
+        c.execute("BEGIN IMMEDIATE")
         d = c.execute("SELECT driver_id, status FROM deals WHERE id = ?", (deal_id,)).fetchone()
         if not d:
             raise HTTPException(status_code=404, detail="Сделка не найдена")
@@ -3210,18 +3282,43 @@ def update_deal_location(deal_id: str, body: DealLocationIn, user=Depends(requir
         tracking = _tracking_payload(c, deal_id)
         if tracking.get("status") != "active":
             raise HTTPException(status_code=409, detail="GPS не разрешён водителем для этой сделки")
-        c.execute(
-            "INSERT INTO deal_locations (deal_id, lat, lng, heading, speed, updated_at) "
-            "VALUES (?,?,?,?,?,CURRENT_TIMESTAMP) "
-            "ON CONFLICT(deal_id) DO UPDATE SET lat=excluded.lat, lng=excluded.lng, "
-            "heading=excluded.heading, speed=excluded.speed, updated_at=CURRENT_TIMESTAMP",
-            (deal_id, body.lat, body.lng, body.heading, body.speed),
-        )
-        c.execute(
-            "UPDATE deal_tracking SET last_signal_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE deal_id=?",
+        received = datetime.now(timezone.utc)
+        captured = _validate_gps_payload(body, received)
+        captured_iso = captured.isoformat().replace("+00:00", "Z")
+        received_iso = received.isoformat().replace("+00:00", "Z")
+        previous = c.execute(
+            "SELECT lat, lng, accuracy, captured_at FROM deal_locations WHERE deal_id=?",
             (deal_id,),
+        ).fetchone()
+        if previous:
+            previous_capture = _gps_parse_stored(previous["captured_at"])
+            if previous_capture and captured <= previous_capture:
+                raise HTTPException(status_code=409, detail={"error": "GPS_OUT_OF_ORDER"})
+            if previous_capture:
+                elapsed = max(0.001, (captured - previous_capture).total_seconds())
+                distance = _gps_distance_m(previous["lat"], previous["lng"], body.lat, body.lng)
+                accuracy_allowance = float(previous["accuracy"] or 0) + float(body.accuracy or 0)
+                allowed = max(2000.0, elapsed * _GPS_MAX_SPEED_MPS + accuracy_allowance)
+                if distance > allowed:
+                    raise HTTPException(status_code=422, detail={
+                        "error": "GPS_IMPOSSIBLE_JUMP",
+                        "distance_m": round(distance),
+                        "allowed_m": round(allowed),
+                    })
+        c.execute(
+            "INSERT INTO deal_locations (deal_id, lat, lng, heading, speed, accuracy, captured_at, received_at, updated_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?) "
+            "ON CONFLICT(deal_id) DO UPDATE SET lat=excluded.lat, lng=excluded.lng, "
+            "heading=excluded.heading, speed=excluded.speed, accuracy=excluded.accuracy, "
+            "captured_at=excluded.captured_at, received_at=excluded.received_at, updated_at=excluded.updated_at",
+            (deal_id, body.lat, body.lng, body.heading, body.speed, body.accuracy,
+             captured_iso, received_iso, received_iso),
         )
-    return {"ok": True}
+        c.execute(
+            "UPDATE deal_tracking SET last_signal_at=?, updated_at=? WHERE deal_id=?",
+            (received_iso, received_iso, deal_id),
+        )
+    return {"ok": True, "captured_at": captured_iso, "received_at": received_iso}
 
 
 @mp_router.get("/deals/{deal_id}/location")
@@ -3242,11 +3339,39 @@ def get_deal_location(deal_id: str, user=Depends(require_level(1))):
             tracking_status == "stopped" and tracking.get("locked_at") is not None
         )
         if not can_show_last:
-            return {"ok": True, "has_location": False, "tracking_status": tracking.get("status", "not_requested")}
+            return {
+                "ok": True, "has_location": False, "is_live": False,
+                "freshness": "missing", "tracking_status": tracking.get("status", "not_requested"),
+                "deal_status": d["status"],
+            }
         loc = c.execute(
-            "SELECT lat, lng, heading, speed, updated_at FROM deal_locations WHERE deal_id = ?",
+            "SELECT lat, lng, heading, speed, accuracy, captured_at, received_at, updated_at "
+            "FROM deal_locations WHERE deal_id = ?",
             (deal_id,),
         ).fetchone()
     if not loc:
-        return {"ok": True, "has_location": False, "tracking_status": tracking_status, "deal_status": d["status"]}
-    return {"ok": True, "has_location": True, "location": dict(loc), "tracking_status": tracking_status, "deal_status": d["status"]}
+        return {
+            "ok": True, "has_location": False, "is_live": False,
+            "freshness": "missing", "tracking_status": tracking_status, "deal_status": d["status"],
+        }
+    location = dict(loc)
+    received = _gps_parse_stored(location.get("received_at") or location.get("updated_at"))
+    age_seconds = max(0, int((datetime.now(timezone.utc) - received).total_seconds())) if received else None
+    terminal = d["status"] in ("awaiting_confirmation", "completed", "cancelled")
+    is_live = bool(
+        not terminal and d["status"] in ("in_progress", "at_border")
+        and tracking_status == "active" and age_seconds is not None
+        and age_seconds <= int(_GPS_LIVE_AFTER.total_seconds())
+    )
+    freshness = "live" if is_live else ("stopped" if terminal or tracking_status == "stopped" else "stale")
+    return {
+        "ok": True,
+        "has_location": True,
+        "location": location,
+        "tracking_status": tracking_status,
+        "deal_status": d["status"],
+        "is_live": is_live,
+        "freshness": freshness,
+        "age_seconds": age_seconds,
+        "stale_after_seconds": int(_GPS_LIVE_AFTER.total_seconds()),
+    }

@@ -13,12 +13,15 @@ import TruckMap from '../components/TruckMap';
 import { parseCity, distance as geoDistance, isNearBorder } from '../utils/geo';
 import { localizePlace } from '../utils/places';
 import { getLanguage } from '../utils/i18n';
+import { classifyDealLocation } from '../utils/gpsQuality';
 
 export default function TrackTruckScreen({ navigation, route }) {
   const { dealId, from, to, driverName, driverOnline = false } = route.params || {};
   const { t } = useI18n();
   const { theme } = useTheme();
   const [loc, setLoc] = useState(null);
+  const [quality, setQuality] = useState({ hasPoint: false, isLive: false, isStale: false, ageSeconds: null, freshness: 'missing' });
+  const [offline, setOffline] = useState(false);
   const [loading, setLoading] = useState(true);
   const mounted = useRef(true);
 
@@ -27,7 +30,14 @@ export default function TrackTruckScreen({ navigation, route }) {
     const r = await marketAPI.getDealLocation(dealId);
     if (!mounted.current) return;
     setLoading(false);
-    if (r && r.has_location && r.location) setLoc(r.location);
+    if (!r?.ok) {
+      setOffline(!!r?.offline);
+      return;
+    }
+    setOffline(false);
+    const nextQuality = classifyDealLocation(r);
+    setQuality(nextQuality);
+    setLoc(nextQuality.hasPoint ? r.location : null);
   }, [dealId]);
 
   useEffect(() => {
@@ -47,16 +57,11 @@ export default function TrackTruckScreen({ navigation, route }) {
   const kmLeftRaw = (destCoord && driverCoord) ? geoDistance(driverCoord, destCoord) : null;
   const kmLeft = (kmLeftRaw != null && !Number.isNaN(kmLeftRaw)) ? Math.round(kmLeftRaw) : null;
   const speedKmh = (loc && loc.speed != null && loc.speed >= 0) ? Math.round(loc.speed * 3.6) : null;
-  const agoMin = (() => {
-    if (!loc || !loc.updated_at) return null;
-    const ts = Date.parse(String(loc.updated_at).replace(' ', 'T') + (String(loc.updated_at).endsWith('Z') ? '' : 'Z'));
-    if (Number.isNaN(ts)) return null;
-    return Math.max(0, Math.round((Date.now() - ts) / 60000));
-  })();
+  const agoMin = quality.ageSeconds == null ? null : Math.max(0, Math.round(quality.ageSeconds / 60));
   // Точка «свежая» только если обновлялась недавно (≤ 30 мин). Иначе это старая
   // отметка (водитель ещё не выехал / давно не выходил на связь) — НЕ показываем
   // её как живое движение и не выдумываем скорость/ETA из протухших данных.
-  const isStale = agoMin == null || agoMin > 30;
+  const isStale = !quality.isLive;
   const moving = speedKmh != null && speedKmh >= 5 && !isStale;
   const etaMin = (kmLeft != null && moving) ? Math.round((kmLeft / speedKmh) * 60) : null;
   const nearBorder = driverCoord ? isNearBorder(lat, lng) : false;
@@ -87,9 +92,9 @@ export default function TrackTruckScreen({ navigation, route }) {
         <ActivityIndicator style={{ marginTop: 48 }} color={theme.text} />
       ) : !loc ? (
         <View style={s.empty}>
-          <Feather name="navigation" size={44} color={theme.textMuted} />
-          <Text style={[s.emptyTitle, { color: theme.text }]}>{t('track_truck_waiting')}</Text>
-          <Text style={[s.emptyDesc, { color: theme.textMuted }]}>{t('track_truck_waiting_desc')}</Text>
+          <Feather name={offline ? 'wifi-off' : 'navigation'} size={44} color={offline ? '#D64545' : theme.textMuted} />
+          <Text style={[s.emptyTitle, { color: theme.text }]}>{offline ? t('track_offline_title') : t('track_truck_waiting')}</Text>
+          <Text style={[s.emptyDesc, { color: theme.textMuted }]}>{offline ? t('track_offline') : t('track_truck_waiting_desc')}</Text>
         </View>
       ) : (
         <View style={{ flex: 1 }}>
@@ -115,7 +120,15 @@ export default function TrackTruckScreen({ navigation, route }) {
           {isStale ? (
             <View style={[s.staleBanner, { backgroundColor: 'rgba(245,158,11,0.12)', borderColor: '#F59E0B' }]}>
               <Feather name="clock" size={13} color="#F59E0B" />
-              <Text style={s.staleText} numberOfLines={2}>{t('track_stale')}</Text>
+              <Text style={s.staleText} numberOfLines={2}>
+                {quality.terminal || quality.freshness === 'stopped' ? t('track_last_known') : t('track_stale')}
+              </Text>
+            </View>
+          ) : null}
+          {offline ? (
+            <View style={[s.staleBanner, { backgroundColor: 'rgba(214,69,69,0.10)', borderColor: '#D64545' }]}>
+              <Feather name="wifi-off" size={13} color="#D64545" />
+              <Text style={[s.staleText, { color: '#D64545' }]}>{t('track_offline')}</Text>
             </View>
           ) : null}
           <View style={s.subRow}>
@@ -127,7 +140,7 @@ export default function TrackTruckScreen({ navigation, route }) {
             ) : <View />}
             <Text style={[s.updated, { color: theme.textDim }]}>{fmtAgo(agoMin)}</Text>
           </View>
-          <TruckMap lat={lat} lng={lng} title={driverName || t('track_truck_marker')} />
+          <TruckMap lat={lat} lng={lng} title={driverName || t('track_truck_marker')} stale={isStale} />
         </View>
       )}
 

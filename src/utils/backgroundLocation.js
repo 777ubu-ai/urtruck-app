@@ -15,10 +15,26 @@ import { Platform } from 'react-native';
 import { storage } from './storage';
 import { t } from './i18n';
 import { API_BASE } from '../config/env';
+import { normalizeLocationPayload } from './gpsQuality';
 
 export const BG_LOCATION_TASK = 'urtruck-deal-location';
 const BG_DEALS_KEY = 'ur_bg_deal_ids';
 const TOKEN_KEY = 'ur_reg_token';
+const BG_STATE_KEY = 'ur_location_broadcast_state';
+
+let broadcastState = {
+  mode: 'idle', lastSentAt: null, error: null, offline: false, terminal: false,
+};
+
+async function updateBroadcastState(patch) {
+  broadcastState = { ...broadcastState, ...patch };
+  try { await storage.set(BG_STATE_KEY, JSON.stringify(broadcastState)); } catch {}
+  return broadcastState;
+}
+
+export function getLocationBroadcastState() {
+  return { ...broadcastState };
+}
 
 let TaskManager = null;
 let Location = null;
@@ -30,26 +46,47 @@ try {
 } catch { /* модули недоступны (web/старый билд) — фоновый режим просто выключен */ }
 
 // Отправка позиции по всем активным сделкам (общая для фона и форграунда).
-export async function pushLocationToDeals(coords) {
+export async function pushLocationToDeals(position) {
   try {
     const [rawIds, token] = await Promise.all([
       storage.get(BG_DEALS_KEY), storage.get(TOKEN_KEY),
     ]);
     const ids = rawIds ? JSON.parse(rawIds) : [];
-    if (!Array.isArray(ids) || !ids.length || !token) return;
-    const payload = JSON.stringify({
-      lat: coords.latitude, lng: coords.longitude,
-      heading: coords.heading != null && coords.heading >= 0 ? coords.heading : null,
-      speed: coords.speed != null && coords.speed >= 0 ? coords.speed : null,
-    });
-    await Promise.all(ids.map((id) =>
-      fetch(`${API_BASE}/market/deals/${id}/location`, {
+    if (!Array.isArray(ids) || !ids.length || !token) {
+      await updateBroadcastState({ mode: 'idle', terminal: true, error: null, offline: false });
+      return { ok: false, sent: 0, reason: 'inactive' };
+    }
+    const normalized = normalizeLocationPayload(position);
+    if (!normalized) {
+      await updateBroadcastState({ error: 'invalid_location', offline: false });
+      return { ok: false, sent: 0, reason: 'invalid_location' };
+    }
+    const payload = JSON.stringify(normalized);
+    const results = await Promise.all(ids.map(async (id) => {
+      try {
+        const response = await fetch(`${API_BASE}/market/deals/${id}/location`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: payload,
-      }).catch(() => {})
-    ));
-  } catch { /* фон не должен падать */ }
+        });
+        return { ok: response.ok, status: response.status };
+      } catch {
+        return { ok: false, offline: true };
+      }
+    }));
+    const sent = results.filter((r) => r.ok).length;
+    const offline = results.some((r) => r.offline);
+    const error = sent === ids.length ? null : (offline ? 'offline' : 'server_rejected');
+    await updateBroadcastState({
+      mode: Platform.OS === 'android' || Platform.OS === 'web' ? 'foreground_only' : broadcastState.mode,
+      lastSentAt: sent ? new Date().toISOString() : broadcastState.lastSentAt,
+      error, offline, terminal: false,
+    });
+    return { ok: sent === ids.length, sent, total: ids.length, offline, error };
+  } catch {
+    await updateBroadcastState({ error: 'offline', offline: true });
+    return { ok: false, sent: 0, offline: true, error: 'offline' };
+  }
 }
 
 // Регистрация фоновой таски — ВЫЗЫВАЕТСЯ НА ВЕРХНЕМ УРОВНЕ (import в App.js).
@@ -59,14 +96,16 @@ if (TaskManager) {
       if (error || !data) return;
       const { locations } = data;
       const last = locations && locations[locations.length - 1];
-      if (last && last.coords) await pushLocationToDeals(last.coords);
+      if (last && last.coords) await pushLocationToDeals(last);
     });
   } catch { /* повторная регистрация при hot-reload — ок */ }
 }
 
 // Сохранить список активных сделок для фоновой таски.
 export async function setActiveDealIds(ids) {
-  try { await storage.set(BG_DEALS_KEY, JSON.stringify(ids || [])); } catch {}
+  const safeIds = Array.isArray(ids) ? ids.filter(Boolean) : [];
+  try { await storage.set(BG_DEALS_KEY, JSON.stringify(safeIds)); } catch {}
+  if (!safeIds.length) await updateBroadcastState({ mode: 'terminal', terminal: true, error: null, offline: false });
 }
 
 // Ask the operating system inside the single «Начать рейс» action. No deal
@@ -86,7 +125,9 @@ export async function ensureBackgroundLocationPermission() {
   try {
     const fg = await locationModule.requestForegroundPermissionsAsync();
     if (fg.status !== 'granted') return { ok: false, reason: 'fg_denied' };
-    if (Platform.OS === 'web') return { ok: true, foregroundOnly: true };
+    if (Platform.OS === 'web' || Platform.OS === 'android') {
+      return { ok: true, foregroundOnly: true, mode: 'foreground_only' };
+    }
     let bg;
     try {
       bg = await locationModule.requestBackgroundPermissionsAsync();
@@ -115,14 +156,7 @@ export async function getCurrentLocationPayload() {
   }
   try {
     const pos = await locationModule.getCurrentPositionAsync({ accuracy: locationModule.Accuracy.Balanced });
-    const c = pos?.coords;
-    if (!c || !Number.isFinite(c.latitude) || !Number.isFinite(c.longitude)) return null;
-    return {
-      lat: c.latitude,
-      lng: c.longitude,
-      heading: c.heading != null && c.heading >= 0 ? c.heading : null,
-      speed: c.speed != null && c.speed >= 0 ? c.speed : null,
-    };
+    return normalizeLocationPayload(pos);
   } catch { return null; }
 }
 
@@ -131,11 +165,12 @@ export async function startBackgroundTracking() {
   const permission = await ensureBackgroundLocationPermission();
   if (!permission.ok) return permission;
   if (permission.foregroundOnly) {
-    return { ok: false, reason: 'background_unavailable', foregroundOnly: true };
+    await updateBroadcastState({ mode: 'foreground_only', terminal: false, error: null, offline: false });
+    return { ok: true, active: true, mode: 'foreground_only', foregroundOnly: true };
   }
   try {
     const started = await Location.hasStartedLocationUpdatesAsync(BG_LOCATION_TASK).catch(() => false);
-    if (started) return { ok: true, already: true };
+    if (started) return { ok: true, already: true, mode: 'background' };
     await Location.startLocationUpdatesAsync(BG_LOCATION_TASK, {
       accuracy: Location.Accuracy.Balanced,
       timeInterval: 60000,            // раз в минуту в фоне — достаточно и бережно к батарее
@@ -147,7 +182,8 @@ export async function startBackgroundTracking() {
         notificationBody: t('bg_location_body'),
       },
     });
-    return { ok: true };
+    await updateBroadcastState({ mode: 'background', terminal: false, error: null, offline: false });
+    return { ok: true, mode: 'background' };
   } catch (e) {
     return { ok: false, reason: String(e && e.message) };
   }
