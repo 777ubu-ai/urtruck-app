@@ -19,6 +19,7 @@ import { PhotoPicker } from '../components/PhotoGallery';
 import {v1Colors, useV1Colors, v1Radius, v1Spacing, v1Typography, v1AccentFor} from '../theme/designV1';
 import { TRUCK_KEYS } from '../utils/truckConstants';
 import TruckTypeGrid from '../components/TruckTypeGrid';
+import { useDiscardChangesGuard } from '../hooks/useDiscardChangesGuard';
 
 // PR-C1: backend cargos schema (marketplace_schema.sql) и CargoIn
 // pydantic-модель (api/marketplace.py:222) НЕ имеют поля comment/note.
@@ -93,9 +94,6 @@ export default function CreateCargoScreen({ navigation, route }) {
   photoChevron: { fontSize: 15, fontWeight: '900' },
   infoBox: { borderWidth: 1, borderRadius: 10, padding: 12, marginTop: v1Spacing.sm, marginBottom: v1Spacing.md },
   infoText: { fontSize: 12, fontWeight: '600', lineHeight: 17 },
-  draftRow: { alignItems: 'center', marginTop: v1Spacing.md, paddingVertical: 8 },
-  draftText: { fontSize: 13, fontWeight: '700' },
-
   }), [v1]);
   const role = route?.params?.role || 'client';
   const accent = v1AccentFor('client');
@@ -135,6 +133,12 @@ export default function CreateCargoScreen({ navigation, route }) {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
   const [showPhotos, setShowPhotos] = useState(false);
+
+  const hasChanges = Boolean(
+    from || to || cargoDesc || pickupDate || tons || m3 || price || paymentType
+    || photos.length || fromPoint || toPoint || currencyTouched,
+  );
+  const markSafeToLeave = useDiscardChangesGuard({ navigation, hasChanges, t });
 
   const submit = async () => {
     if (submitting) return;
@@ -216,6 +220,7 @@ export default function CreateCargoScreen({ navigation, route }) {
           status: 'active',
           created_at: new Date().toISOString(),
         };
+        markSafeToLeave();
         navigation.replace('MyTripsList', { role, initialTab: 'searching', justCreatedCargo: justCreated });
       } else {
         toast(r.detail || t('send_error'), 'error');

@@ -79,6 +79,8 @@ const COPY = {
     openCgr: 'Открыть CarGoRuqsat',
     live: 'Актуально',
     refresh: 'Обновить',
+    lookup_in_queue: 'В очереди', lookup_called: 'Вызван на проезд',
+    lookup_crossed: 'Граница пройдена', lookup_revoked: 'Запись отменена',
   },
   KK: {
     title: 'Шекара',
@@ -102,6 +104,8 @@ const COPY = {
     tracking: 'Бақылау қосылды', remove: 'Жою', details: 'Толығырақ', back: 'Артқа',
     countryLive: 'Өзекті деректер бар', countryNoData: 'Жаңа дерек жоқ', allCrossings: 'Өткізу бекеттері',
     lastValue: 'Соңғы мән', favoriteAdded: 'Таңдаулыда', favoriteAdd: 'Таңдаулыға', openCgr: 'CarGoRuqsat ашу', live: 'Өзекті', refresh: 'Жаңарту',
+    lookup_in_queue: 'Кезекте', lookup_called: 'Өтуге шақырылды',
+    lookup_crossed: 'Шекарадан өтті', lookup_revoked: 'Жазбаның күші жойылды',
   },
   EN: {
     title: 'Border', subtitle: 'Queues and checkpoint conditions', checkQueue: 'Check your queue',
@@ -115,6 +119,7 @@ const COPY = {
     status: 'Status', checkpoint: 'Checkpoint', queueStatus: 'Queue status', queueTime: 'Queue time', tracking: 'Tracking enabled', remove: 'Remove', details: 'Details', back: 'Back',
     countryLive: 'Current data available', countryNoData: 'No fresh data', allCrossings: 'Border crossings', lastValue: 'Last value',
     favoriteAdded: 'Favorite', favoriteAdd: 'Add favorite', openCgr: 'Open CarGoRuqsat', live: 'Live', refresh: 'Refresh',
+    lookup_in_queue: 'In queue', lookup_called: 'Called to cross', lookup_crossed: 'Border crossed', lookup_revoked: 'Entry revoked',
   },
   ZH: {
     title: '边境', subtitle: '口岸排队与通行情况', checkQueue: '查询我的排队', platePlaceholder: '车牌号，例如 123ABC02', check: '查询',
@@ -125,6 +130,7 @@ const COPY = {
     activeNotFound: '未找到该车牌的有效排队', lookupError: '无法更新数据', status: '状态', checkpoint: '口岸', queueStatus: '排队状态', queueTime: '排队时间',
     tracking: '已开启跟踪', remove: '删除', details: '详情', back: '返回', countryLive: '有实时数据', countryNoData: '暂无新数据', allCrossings: '边境口岸',
     lastValue: '最近数值', favoriteAdded: '已收藏', favoriteAdd: '收藏', openCgr: '打开 CarGoRuqsat', live: '实时', refresh: '刷新',
+    lookup_in_queue: '排队中', lookup_called: '已叫号通行', lookup_crossed: '已过境', lookup_revoked: '记录已撤销',
   },
 };
 
@@ -223,10 +229,15 @@ function normalizeCrossing(raw) {
   };
 }
 
-function StatusPill({ status, text, compact = false }) {
+function StatusPill({ status, text, compact = false, accessibilityLabel }) {
   const color = STATUS_COLOR[status] || STATUS_COLOR.no_data;
   return (
-    <View style={[styles.pill, compact && styles.pillCompact, { backgroundColor: `${color}16` }]}>
+    <View
+      style={[styles.pill, compact && styles.pillCompact, { backgroundColor: `${color}16` }]}
+      accessible
+      accessibilityRole="text"
+      accessibilityLabel={accessibilityLabel || text}
+    >
       <View style={[styles.dot, { backgroundColor: color }]} />
       <Text style={[styles.pillText, { color }]} numberOfLines={1}>{text}</Text>
     </View>
@@ -266,6 +277,7 @@ export default function QueueScreen({ navigation, route }) {
   }, [lang]);
 
   const statusText = useCallback((status) => L[status] || L.no_data, [L]);
+  const lookupStatusText = useCallback((status) => L[`lookup_${status}`] || L.no_data, [L]);
   const sourceText = useCallback((source) => L[source] || (source ? String(source).toUpperCase() : L.sourceUnavailable), [L]);
 
   const saveFavorites = useCallback(async (next) => {
@@ -469,7 +481,7 @@ export default function QueueScreen({ navigation, route }) {
           </TouchableOpacity>
         </View>
         <View style={styles.statusQueueRow}>
-          <StatusPill status={crossing.load_status} text={statusText(crossing.load_status)} compact />
+          <StatusPill status={crossing.load_status} text={statusText(crossing.load_status)} accessibilityLabel={`${L.queueStatus}: ${statusText(crossing.load_status)}`} compact />
           {renderQueueValue(crossing)}
         </View>
         <View style={styles.metaRow}>
@@ -492,7 +504,9 @@ export default function QueueScreen({ navigation, route }) {
           {state && !state.error && state.found === false ? <Text style={[styles.meta, { color: theme.textMuted }]}>{L.activeNotFound}</Text> : null}
           {state?.found ? (
             <>
-              <Text style={[styles.vehicleStatus, { color }]}>{state.status_raw || state.status || L.status}</Text>
+              <Text style={[styles.vehicleStatus, { color }]} accessibilityLabel={`${L.queueStatus}: ${lookupStatusText(state.status)}`}>
+                {lookupStatusText(state.status)}
+              </Text>
               {state.checkpoint ? <Text style={[styles.meta, { color: theme.textMuted }]}>{state.checkpoint}</Text> : null}
             </>
           ) : null}
@@ -554,7 +568,12 @@ export default function QueueScreen({ navigation, route }) {
                 <View style={styles.resultTop}>
                   <Text style={[styles.plate, { color: theme.text }]}>{lookup.plate || normalizePlate(plate)}</Text>
                   <View style={[styles.lookupStatus, { backgroundColor: `${LOOKUP_STATUS_COLOR[lookup.status] || '#6B7280'}16` }]}> 
-                    <Text style={[styles.lookupStatusText, { color: LOOKUP_STATUS_COLOR[lookup.status] || theme.textMuted }]}>{lookup.status_raw || lookup.status}</Text>
+                    <Text
+                      style={[styles.lookupStatusText, { color: LOOKUP_STATUS_COLOR[lookup.status] || theme.textMuted }]}
+                      accessibilityLabel={`${L.queueStatus}: ${lookupStatusText(lookup.status)}`}
+                    >
+                      {lookupStatusText(lookup.status)}
+                    </Text>
                   </View>
                 </View>
                 {lookup.checkpoint ? <Text style={[styles.meta, { color: theme.textMuted }]}>{L.checkpoint}: {lookup.checkpoint}</Text> : null}
@@ -658,7 +677,7 @@ export default function QueueScreen({ navigation, route }) {
           </TouchableOpacity>
         </View>
         <View style={[styles.detailCard, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-crossing-detail">
-          <StatusPill status={c.load_status} text={statusText(c.load_status)} />
+          <StatusPill status={c.load_status} text={statusText(c.load_status)} accessibilityLabel={`${L.queueStatus}: ${statusText(c.load_status)}`} />
           <View style={styles.detailQueue}>{renderQueueValue(c, true)}</View>
           <View style={[styles.separator, { backgroundColor: theme.border }]} />
           <View style={styles.detailField}><Text style={[styles.detailLabel, { color: theme.textMuted }]}>{L.updated}</Text><Text style={[styles.detailValue, { color: theme.text }]}>{humanAge(c.updated_at, lang)}</Text></View>

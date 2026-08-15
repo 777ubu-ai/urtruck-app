@@ -12,7 +12,6 @@ import { useFocusEffect } from '@react-navigation/native';
 import Feather from '@expo/vector-icons/Feather';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useI18n } from '../utils/useI18n';
-import { formatStatus } from '../utils/i18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useV1Colors } from '../theme/designV1';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
@@ -32,6 +31,7 @@ import { userFacingDealStatus } from '../utils/dealStatusOrder';
 const ROLE_LABEL = { driver: 'role_driver', client: 'role_client', support: 'role_support' };
 const ACTIVE_STATUSES = new Set(['accepted', 'in_progress', 'at_border', 'awaiting_confirmation', 'delivered']);
 const COMPLETED_STATUSES = new Set(['completed', 'cancelled']);
+const DATE_LOCALE = { RU: 'ru-RU', KK: 'kk-KZ', ZH: 'zh-CN', EN: 'en-US' };
 
 const STATUS_COLOR = {
   accepted: '#168759', in_progress: '#3478D4',
@@ -48,7 +48,7 @@ const compactStatusLabel = (status, t) => {
   if (status === 'awaiting_confirmation' || status === 'delivered') return t('status_awaiting_confirmation');
   if (status === 'completed') return t('status_completed');
   if (status === 'cancelled') return t('status_cancelled');
-  return formatStatus(status);
+  return t('status_unknown');
 };
 
 export default function ChatsListScreen({ navigation, route }) {
@@ -96,7 +96,11 @@ export default function ChatsListScreen({ navigation, route }) {
 
   const relTime = (raw) => {
     if (!raw) return '';
-    const d = new Date(String(raw).replace(' ', 'T') + (String(raw).includes('Z') ? '' : 'Z'));
+    const value = String(raw);
+    const normalized = /Z$|[+-]\d\d:?\d\d$/.test(value)
+      ? value.replace(' ', 'T')
+      : `${value.replace(' ', 'T')}Z`;
+    const d = new Date(normalized);
     if (isNaN(d)) return '';
     const min = Math.max(0, Math.round((Date.now() - d.getTime()) / 60000));
     if (min < 1) return t('time_now');
@@ -105,7 +109,7 @@ export default function ChatsListScreen({ navigation, route }) {
     if (h < 24) return `${h} ${t('time_hour')}`;
     const dd = Math.round(h / 24);
     if (dd === 1) return t('time_yesterday');
-    return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+    return d.toLocaleDateString(DATE_LOCALE[lang] || DATE_LOCALE.RU, { day: '2-digit', month: '2-digit' });
   };
 
   // ═══ Загрузка ═══
@@ -318,6 +322,8 @@ export default function ChatsListScreen({ navigation, route }) {
       <TouchableOpacity
         key={bid.id}
         testID="deals-driver-bid"
+        accessibilityRole="button"
+        accessibilityLabel={`${label}. ${localizePlace(bid.cargo_from || bid.trip_from || '—', lang)} → ${localizePlace(bid.cargo_to || bid.trip_to || '—', lang)}`}
         style={[s.card, { backgroundColor: theme.card, borderColor: theme.border, opacity: isClosed ? 0.65 : 1 }]}
         onPress={() => {
           if (bid.cargo_id) navigation.navigate('CargoDetail', { cargoId: bid.cargo_id, bidId: bid.id, role });
@@ -377,6 +383,8 @@ export default function ChatsListScreen({ navigation, route }) {
       <TouchableOpacity
         key={deal.id}
         testID="deals-deal-card"
+        accessibilityRole="button"
+        accessibilityLabel={`${partnerName}. ${statusLabel}. ${localizePlace(deal.from_city || '—', lang)} → ${localizePlace(deal.to_city || '—', lang)}`}
         style={[s.card, { backgroundColor: theme.card, borderColor: theme.border, opacity: deal.status === 'cancelled' ? 0.65 : 1 }]}
         // The deal itself is the operational entry point.  GPS consent and
         // the protected conversation live in the Deal Room; opening a cargo
@@ -491,12 +499,15 @@ export default function ChatsListScreen({ navigation, route }) {
     const infoStr = [routeStr, cargoStr].filter(Boolean).join(' · ');
     const bidStr = item.bid_amount != null ? `${item.bid_amount}${item.bid_currency ? ' ' + item.bid_currency : ''}` : null;
     const dealStatus = item.deal_status || null;
+    const dealStatusLabel = dealStatus ? compactStatusLabel(userFacingDealStatus(dealStatus), t) : null;
     const urgent = item.is_dispute || item.priority === 'urgent' || item.priority === 'support';
     const unread = item.unread_count ?? item.unread ?? 0;
-    const time = (item.last_message_at || item.last_at || '').slice(11, 16);
+    const time = relTime(item.last_message_at || item.last_at);
     return (
       <TouchableOpacity
         testID="deal-room-list-card"
+        accessibilityRole="button"
+        accessibilityLabel={[partnerName, dealStatusLabel, item.last_message].filter(Boolean).join('. ')}
         style={[s.card, { backgroundColor: theme.card, borderColor: isPinned ? accent + '66' : theme.border }]}
         onPress={() => {
           navigation.navigate('Chat', { partner: { id: item.partner_id || item.id, name: partnerName }, roomId: item.id, dealId: item.deal_id, role });
@@ -527,7 +538,7 @@ export default function ChatsListScreen({ navigation, route }) {
               {dealStatus ? (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                   <View style={[s.statusDot, { backgroundColor: STATUS_DOT_CHAT[dealStatus] || '#94A3B8' }]} />
-                  <Text style={{ fontSize: 10, color: theme.textDim }}>{formatStatus(userFacingDealStatus(dealStatus))}</Text>
+                  <Text style={{ fontSize: 10, color: theme.textDim }}>{dealStatusLabel}</Text>
                 </View>
               ) : null}
             </View>

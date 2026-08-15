@@ -9,7 +9,8 @@
 //                      пока backend-action не подключён — без фейков)
 //   - DealDocumentsPlaceholder — секция «Документы» (PR3, заглушка)
 //
-// Акцент роли: driver #168759 / client #FF8400 (источник истины CLAUDE.md).
+// Акценты берём из единой design-v1 палитры, без локальных
+// «денежных» оранжевых констант.
 
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
@@ -18,18 +19,17 @@ import { useI18n } from '../../utils/useI18n';
 import { useTheme } from '../../utils/ThemeContext';
 import { userFacingDealStatus } from '../../utils/dealStatusOrder';
 import { localizeCargoName, localizePlace } from '../../utils/places';
+import { useV1Colors, v1Colors } from '../../theme/designV1';
 
-export const DRIVER_ACCENT = '#168759';
-export const CLIENT_ACCENT = '#FF8400';
+export const DRIVER_ACCENT = v1Colors.driver;
+export const CLIENT_ACCENT = v1Colors.cargoOwner;
 export const accentFor = (role) => (role === 'driver' ? DRIVER_ACCENT : CLIENT_ACCENT);
 
-// Статус сделки → цвет (нейтральный fallback — серый).
-const DEAL_STATUS_COLOR = {
-  active: '#168759', confirmed: '#168759', accepted: '#168759',
-  in_progress: '#FF8400', at_border: '#168759', awaiting_confirmation: '#3478D4',
-  pending: '#FF8400', draft: '#FF8400',
-  cancelled: '#7C8B82', rejected: '#EF4444', dispute: '#EF4444',
-  completed: '#168759', delivered: '#3478D4',
+const dealStatusColor = (status, palette) => {
+  if (['active', 'confirmed', 'accepted', 'in_progress', 'at_border', 'completed'].includes(status)) return palette.success;
+  if (['awaiting_confirmation', 'delivered', 'pending'].includes(status)) return palette.warning;
+  if (['rejected', 'dispute'].includes(status)) return palette.error;
+  return palette.textDim;
 };
 
 // Перевод i18n_key из backend ("deal_event.bid_accepted") → плоский t()-ключ
@@ -60,13 +60,14 @@ export function systemEventText(t, ev) {
 export function DealRoomCard({ deal, role }) {
   const { t, lang } = useI18n();
   const { theme } = useTheme();
-  const accent = accentFor(role);
+  const v1 = useV1Colors();
+  const accent = role === 'driver' ? v1.driver : v1.cargoOwner;
   if (!deal) return null;
   const status = deal.status || 'active';
   // Display status follows the backend FSM, including the required border
   // step for international routes.
   const displayStatus = userFacingDealStatus(status);
-  const stColor = DEAL_STATUS_COLOR[displayStatus] || '#7C8B82';
+  const stColor = dealStatusColor(displayStatus, v1);
   // H-1: статус сделки русским словом через i18n; фолбэк на сырой статус для
   // немаппленных значений (confirmed/draft/dispute — нет ключа status_*).
   const stKey = 'status_' + displayStatus;
@@ -85,7 +86,12 @@ export function DealRoomCard({ deal, role }) {
   );
 
   return (
-    <View style={[s.card, { backgroundColor: theme.card, borderColor: theme.border, borderLeftColor: accent }]} testID="deal-room-card">
+    <View
+      style={[s.card, { backgroundColor: theme.card, borderColor: theme.border, borderLeftColor: accent }]}
+      accessible
+      accessibilityLabel={`${route}. ${t('chat_deal_card_status')}: ${stLabel}`}
+      testID="deal-room-card"
+    >
       <View style={s.cardTop}>
         <Text style={[s.route, { color: theme.text }]} numberOfLines={1}>{route}</Text>
         <View style={[s.statusBadge, { backgroundColor: stColor + '22' }]}>
@@ -120,7 +126,8 @@ export function SystemEventRow({ ev }) {
 export function DealQuickActions({ role, onOfferPrice, onAcceptBid, onSendDocument, onCallSupport }) {
   const { t } = useI18n();
   const { theme } = useTheme();
-  const accent = accentFor(role);
+  const v1 = useV1Colors();
+  const accent = role === 'driver' ? v1.driver : v1.cargoOwner;
   // Недоступные в текущем состоянии действия НЕ показываем вовсе (раньше висели
   // серыми «мёртвыми» кнопками — владелец справедливо принял их за баг). Кнопка
   // рендерится только когда есть реальный обработчик.
@@ -130,6 +137,8 @@ export function DealQuickActions({ role, onOfferPrice, onAcceptBid, onSendDocume
       <TouchableOpacity
         style={[s.qa, { borderColor: theme.border }]}
         onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={label}
         testID={`deal-qa-${icon}`}
       >
         <Feather name={icon} size={16} color={accent} />

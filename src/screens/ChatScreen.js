@@ -31,6 +31,7 @@ import BidModal from '../components/BidModal';
 import DealAttachments from '../components/deal/DealAttachments';
 import { pickDealStatus, userFacingDealStatus } from '../utils/dealStatusOrder';
 import { ensureBackgroundLocationPermission, getCurrentLocationPayload } from '../utils/backgroundLocation';
+import { formatUrTruckLocationMessage, parseUrTruckLocationMessage } from '../utils/chatLocation';
 
 // HOT-006: реальная запись/воспроизведение для web (PWA deploy).
 // На нативе (Expo Go) expo-av не установлен — тост "скоро".
@@ -143,6 +144,10 @@ export default function ChatScreen({ navigation, route }) {
   },
   msgText: { fontSize: 14, lineHeight: 19 },
   msgTextMe: { color: '#EAFBF1' },
+  locationCard: { gap: 5, minWidth: 190 },
+  locationTitle: { fontSize: 13, fontWeight: '800' },
+  locationCoords: { fontSize: 13, fontVariant: ['tabular-nums'] },
+  locationHint: { fontSize: 10, lineHeight: 14 },
   translated: { marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)' },
   translatedText: { color: 'rgba(255,255,255,0.55)', fontSize: 11, fontStyle: 'italic' },
   msgTime: { color: v1.textMuted, fontSize: 11, textAlign: 'right', marginTop: 3 },
@@ -829,7 +834,9 @@ export default function ChatScreen({ navigation, route }) {
         const pos = await Location.getCurrentPositionAsync({});
         ({ latitude, longitude } = pos.coords);
       }
-      sendMessage(`📍 ${t('chat_location_msg')}: ${Number(latitude).toFixed(6)}, ${Number(longitude).toFixed(6)}`);
+      const message = formatUrTruckLocationMessage(t('chat_location_msg'), latitude, longitude);
+      if (!message) throw new Error('invalid_location');
+      sendMessage(message);
     } catch { toast(t('location_denied'), 'error'); }
   };
 
@@ -1066,6 +1073,7 @@ export default function ChatScreen({ navigation, route }) {
 
     const tr = translations[item.id];
     const showingTranslation = tr && !tr.showOriginal;
+    const sharedLocation = parseUrTruckLocationMessage(item.text);
 
     return (
       <View style={[s.msgRow, isMe && s.msgRowMe]}>
@@ -1073,10 +1081,30 @@ export default function ChatScreen({ navigation, route }) {
           <Text style={[s.senderLabel, { color: theme.textMuted }]}>{partner.name}</Text>
         ) : null}
         <View style={[s.bubble, isMe ? s.bubbleMe : s.bubbleThem]}>
-          <Text style={[s.msgText, isMe ? s.msgTextMe : { color: v1.text }]}>
-            {showingTranslation ? tr.text : item.text}
-          </Text>
-          {!isMe && item.id && (
+          {sharedLocation ? (
+            <View
+              style={s.locationCard}
+              accessible
+              accessibilityLabel={`${t('chat_location_in_app')}. ${sharedLocation.latitude.toFixed(6)}, ${sharedLocation.longitude.toFixed(6)}`}
+              testID="chat-location-coordinate-card"
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="map-pin" size={14} color={isMe ? '#EAFBF1' : v1.text} />
+                <Text style={[s.locationTitle, { color: isMe ? '#EAFBF1' : v1.text }]}>{t('chat_location_in_app')}</Text>
+              </View>
+              <Text selectable style={[s.locationCoords, { color: isMe ? '#EAFBF1' : v1.text }]}>
+                {sharedLocation.latitude.toFixed(6)}, {sharedLocation.longitude.toFixed(6)}
+              </Text>
+              <Text style={[s.locationHint, { color: isMe ? 'rgba(234,251,241,0.7)' : v1.textMuted }]}>
+                {t('chat_location_privacy_note')}
+              </Text>
+            </View>
+          ) : (
+            <Text style={[s.msgText, isMe ? s.msgTextMe : { color: v1.text }]}>
+              {showingTranslation ? tr.text : item.text}
+            </Text>
+          )}
+          {!sharedLocation && !isMe && item.id && (
             <TouchableOpacity
               style={{ marginTop: 4 }}
               onPress={async () => {

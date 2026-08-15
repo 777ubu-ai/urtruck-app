@@ -17,6 +17,7 @@ import LocationPickerModal from '../components/LocationPickerModal';
 import DatePicker from '../components/DatePicker';
 import {v1Colors, useV1Colors, v1Radius, v1Spacing, v1Typography, v1AccentFor} from '../theme/designV1';
 import TruckTypeGrid from '../components/TruckTypeGrid';
+import { useDiscardChangesGuard } from '../hooks/useDiscardChangesGuard';
 
 // CreateTripScreen — design v1, screen 09. Driver publishes a route.
 //
@@ -26,9 +27,6 @@ import TruckTypeGrid from '../components/TruckTypeGrid';
 //   - validation order matches the old `submitTrip` (toast first error)
 //   - on success → navigate('MyTripsList', { initialTab:'my', justCreatedTrip })
 //
-// "Сохранить как черновик" is a visual stub for now: backend has no
-// status='draft', so the link is disabled with a hint to keep filling.
-
 // Pilot currencies (Stage 5 / rev. 3): RUB / USD / KZT / CNY only.
 // Removed: UZS / KGS / EUR / AED. Mirrors CreateCargoScreen.
 const CURRENCY_OPTIONS = [
@@ -77,9 +75,6 @@ export default function CreateTripScreen({ navigation, route }) {
     padding: 12, marginTop: v1Spacing.sm, marginBottom: v1Spacing.md,
   },
   infoText: { fontSize: 12, fontWeight: '600', lineHeight: 17 },
-  draftRow: { alignItems: 'center', marginTop: v1Spacing.md, paddingVertical: 8 },
-  draftText: { fontSize: 13, fontWeight: '700' },
-
   }), [v1]);
   const role = route?.params?.role || 'driver';
   const accent = v1AccentFor('driver');
@@ -115,6 +110,12 @@ export default function CreateTripScreen({ navigation, route }) {
   const [showArrivalPicker, setShowArrivalPicker] = useState(false);
   const [showTruckPicker, setShowTruckPicker] = useState(false);
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
+
+  const hasChanges = Boolean(
+    from || to || transit || departure || arrival || truckType || tons || m3 || price
+    || fromPoint || toPoint,
+  );
+  const markSafeToLeave = useDiscardChangesGuard({ navigation, hasChanges, t });
 
   const submit = async () => {
     if (submitting) return;
@@ -170,6 +171,7 @@ export default function CreateTripScreen({ navigation, route }) {
       if (r.ok || r.id) {
         toast('✓ ' + t('trip_published'), 'success', 4000);
         const justCreated = { id: r.id, ...payload, status: 'active', created_at: new Date().toISOString() };
+        markSafeToLeave();
         navigation.replace('MyTripsList', { role, initialTab: 'my', justCreatedTrip: justCreated });
       } else {
         toast(r.detail || t('send_error'), 'error');
@@ -374,11 +376,6 @@ export default function CreateTripScreen({ navigation, route }) {
         style={{ marginTop: v1Spacing.sm, minHeight: 52, borderRadius: 14 }}
       />
 
-      {/* Draft link — backend doesn't accept status='draft' yet, so this is
-          a visual placeholder per the macro. */}
-      <TouchableOpacity onPress={() => toast(t('feature_coming_soon'), 'info', 2500)} style={s.draftRow} activeOpacity={0.7}>
-        <Text style={[s.draftText, { color: accent.main }]}>{t('create_route_save_draft')}</Text>
-      </TouchableOpacity>
     </Screen>
   );
 }
