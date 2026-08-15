@@ -44,7 +44,6 @@ def _load_document_context(reference_id: str, user_id: str) -> dict:
                    c.weight_tons AS cargo_weight_tons,
                    c.volume_m3 AS cargo_volume_m3,
                    c.currency AS cargo_currency,
-                   c.transit AS cargo_transit,
                    t.truck_type AS trip_truck_type,
                    t.capacity_tons AS trip_capacity_tons,
                    t.available_m3 AS trip_available_m3,
