@@ -11,7 +11,6 @@ import { Platform } from 'react-native';
 import { useVerificationGate } from '../components/VerificationGate';
 import { LEVELS } from '../utils/AuthContext';
 import { reviewsAPI } from '../utils/reviews';
-import RatingModal from '../components/RatingModal';
 import { marketAPI } from '../utils/marketAPI';
 import { API_BASE } from '../config/env';
 import {v1Colors, useV1Colors, v1Radius, v1AccentFor} from '../theme/designV1';
@@ -33,7 +32,6 @@ export default function DriverDetail({ navigation, route }) {
   const { requireLevel, Gate } = useVerificationGate();
   const [shareModal, setShareModal] = useState(false);
   const [contactOpened, setContactOpened] = useState(false);
-  const [rateModal, setRateModal] = useState(false);
   const [reviewsData, setReviewsData] = useState(null);
   const [serverProfile, setServerProfile] = useState(null);
   const [reportModal, setReportModal] = useState(false);
@@ -358,14 +356,6 @@ export default function DriverDetail({ navigation, route }) {
         </Pressable>
       </Modal>
       <ShareModal visible={shareModal} onClose={() => setShareModal(false)} shareText={'UrTruck: ' + driver.name + ', ' + t(tt) + (driver.m3 ? ` ${driver.m3} м³` : '')} phone={driver.phone} driverId={driver.id} />
-      <RatingModal
-        visible={rateModal}
-        onClose={() => setRateModal(false)}
-        targetId={driver.id}
-        targetRole="driver"
-        targetName={driver.name}
-        onSubmitted={() => reviewsAPI.forTarget(driver.id).then(setReviewsData).catch(() => {})}
-      />
       {Gate}
     </SafeAreaView>
   );

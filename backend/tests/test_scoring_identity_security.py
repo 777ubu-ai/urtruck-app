@@ -114,7 +114,7 @@ def test_self_scoring_uses_server_profile_deals_and_reviews():
     with get_conn() as c:
         c.execute(
             "INSERT INTO deals(id, bid_id, shipper_id, driver_id, from_city, to_city, amount, status) "
-            "VALUES ('sec003-deal', 'sec003-bid', ?, ?, 'A', 'B', 100, 'delivered')",
+                "VALUES ('sec003-deal', 'sec003-bid', ?, ?, 'A', 'B', 100, 'completed')",
             (shipper_id, driver_id),
         )
         c.execute(

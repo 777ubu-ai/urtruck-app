@@ -1,4 +1,5 @@
 """API отзывов."""
+import sqlite3
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -10,12 +11,12 @@ from typing import List, Optional
 from database import reviews_dal
 from api.verification_gate import require_level
 from api.rate_limit import limit_review_create
-from config import BETA_MODE
 
 reviews_router = APIRouter()
 
 
 class ReviewIn(BaseModel):
+    deal_id: str = Field(..., min_length=1)
     trip_id: Optional[str] = None
     target_id: str
     target_role: str = Field(..., pattern="^(driver|client)$")
@@ -33,34 +34,39 @@ def create_review(body: ReviewIn, user=Depends(require_level(1))):
     # I3 (anti-fraud): не чаще 10 отзывов в час на пользователя.
     limit_review_create(user["id"])
 
-    # I3: отзыв разрешён только реальному контрагенту — между author и target
-    # должна быть НЕотменённая сделка. Раньше с trip_id=None любой мог оставить
-    # неограниченно отзывов на кого угодно и накрутить рейтинг.
-    # Проверка включена ВСЕГДА (раньше BETA_MODE её обходил, что позволяло
-    # накрутку рейтинга ещё до запуска). Легальный флоу отзыва идёт через
-    # реальную доставленную сделку → has_deal_between=True, проверка проходит.
-    if not reviews_dal.has_deal_between(user["id"], body.target_id):
+    deal = reviews_dal.get_reviewable_deal(
+        deal_id=body.deal_id,
+        author_id=user["id"],
+        target_id=body.target_id,
+        trip_id=body.trip_id,
+    )
+    if not deal:
         raise HTTPException(
             status_code=403,
-            detail="Оставить отзыв можно только после совместной сделки",
+            detail="Отзыв доступен только участнику конкретной завершённой сделки",
         )
 
-    if body.trip_id and reviews_dal.has_already_reviewed(user["id"], body.trip_id):
-        raise HTTPException(status_code=409, detail="Вы уже оставили отзыв по этому рейсу")
-    # Дедуп по паре, когда рейс не указан (trip_id=None) — иначе спам отзывами.
-    if not body.trip_id and reviews_dal.has_reviewed_target(user["id"], body.target_id):
-        raise HTTPException(status_code=409, detail="Вы уже оставили отзыв этому пользователю")
+    expected_role = "driver" if body.target_id == deal["driver_id"] else "client"
+    if body.target_role != expected_role:
+        raise HTTPException(status_code=422, detail="Роль получателя не соответствует сделке")
+    if reviews_dal.has_already_reviewed(user["id"], body.deal_id):
+        raise HTTPException(status_code=409, detail="Вы уже оставили отзыв по этой сделке")
 
-    rid = reviews_dal.add_review(
-        trip_id=body.trip_id,
-        author_id=user["id"],
-        author_role=user.get("role", "client"),
-        target_id=body.target_id,
-        target_role=body.target_role,
-        rating=body.rating,
-        text=body.text,
-        tags=body.tags,
-    )
+    author_role = "client" if user["id"] == deal["shipper_id"] else "driver"
+    try:
+        rid = reviews_dal.add_review(
+            deal_id=body.deal_id,
+            trip_id=deal.get("trip_id"),
+            author_id=user["id"],
+            author_role=author_role,
+            target_id=body.target_id,
+            target_role=expected_role,
+            rating=body.rating,
+            text=body.text,
+            tags=body.tags,
+        )
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code=409, detail="Вы уже оставили отзыв по этой сделке")
     # Push получателю отзыва
     try:
         from api.push import send_to_user

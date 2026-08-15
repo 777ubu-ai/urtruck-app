@@ -30,7 +30,7 @@ const TAGS_BY_ROLE = {
   ],
 };
 
-export default function RatingModal({ visible, onClose, onSubmitted, targetId, targetRole, targetName, tripId }) {
+export default function RatingModal({ visible, onClose, onSubmitted, targetId, targetRole, targetName, dealId, tripId }) {
   const { theme, isDark } = useTheme();
   const { toast } = useToast();
   const { t } = useI18n();
@@ -69,7 +69,7 @@ export default function RatingModal({ visible, onClose, onSubmitted, targetId, t
     setLoading(true);
     try {
       const r = await reviewsAPI.create({
-        tripId, targetId, targetRole, rating, text: text.trim() || null, tags,
+        dealId, tripId, targetId, targetRole, rating, text: text.trim() || null, tags,
       });
       if (r.ok) {
         toast(`✓ ${t('rating_thanks')}`, 'success');

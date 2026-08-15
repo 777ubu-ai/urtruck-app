@@ -54,7 +54,7 @@ def _completed_trips(user_id: str) -> int:
         with get_conn() as c:
             row = c.execute(
                 "SELECT COUNT(*) AS n FROM deals "
-                "WHERE driver_id = ? AND status IN ('delivered', 'completed')",
+                "WHERE driver_id = ? AND status = 'completed'",
                 (user_id,),
             ).fetchone()
             return int(row["n"] if row else 0)

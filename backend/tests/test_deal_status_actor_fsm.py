@@ -1,11 +1,9 @@
 """Блок 3 аудита (P0-2): смена статуса сделки — раньше ЛЮБОЙ участник
 (shipper ИЛИ driver) мог поставить любой разрешённый по FSM статус, включая
-`in_progress`/`at_border`/`delivered` — то есть грузовладелец мог сам себе
-подтвердить «Доставлено» без единого действия водителя. Теперь эти 4
-перехода (accepted→in_progress, in_progress→at_border, in_progress→delivered,
-at_border→delivered) разрешены ТОЛЬКО driver_id; `cancelled` — обеим сторонам
-(продуктовое решение зафиксировано в комментарии у _DRIVER_ONLY_TRANSITIONS
-в api/marketplace.py — сохраняем текущее поведение TripDetail.js).
+`in_progress`/`at_border`/`delivered`. Каноническая цепочка теперь разделяет
+факт доставки и подтверждение: водитель переводит сделку в
+`awaiting_confirmation`, а только грузоотправитель — в `completed`.
+`cancelled` разрешён обеим сторонам до терминального завершения.
 
 Run from backend/:
     DB_PATH=/tmp/urtruck_test_deal_fsm.db python -m tests.test_deal_status_actor_fsm
@@ -175,7 +173,14 @@ def test_driver_can_deliver_domestic_directly_from_in_progress():
     d = seed_deal("in_progress", from_country="KZ", to_country="KZ")
     r = patch_status(d, "delivered", DRIVER)
     assert r.status_code == 200, r.text
-    assert deal_status(d) == "delivered"
+    assert r.json()["status"] == "awaiting_confirmation"
+    assert deal_status(d) == "awaiting_confirmation"
+    with get_conn() as c:
+        cargo_status = c.execute(
+            "SELECT c.status FROM cargos c JOIN deals d ON d.cargo_id = c.id WHERE d.id = ?",
+            (d,),
+        ).fetchone()["status"]
+    assert cargo_status == "taken"
 
 
 def test_driver_cannot_deliver_international_without_border():
@@ -190,7 +195,44 @@ def test_driver_can_deliver_international_from_at_border():
     d = seed_deal("at_border", from_country="CN", to_country="KZ")
     r = patch_status(d, "delivered", DRIVER)
     assert r.status_code == 200, r.text
-    assert deal_status(d) == "delivered"
+    assert r.json()["status"] == "awaiting_confirmation"
+    assert deal_status(d) == "awaiting_confirmation"
+
+
+def test_only_shipper_confirms_completed_after_driver_delivery():
+    d = seed_deal("awaiting_confirmation", from_country="KZ", to_country="KZ")
+    as_user(DRIVER)
+    visible_to_driver = client.get(f"/api/v1/market/deals/{d}")
+    assert visible_to_driver.status_code == 200, visible_to_driver.text
+    assert visible_to_driver.json()["status"] == "awaiting_confirmation"
+
+    denied = patch_status(d, "completed", DRIVER)
+    assert denied.status_code == 403, denied.text
+    assert deal_status(d) == "awaiting_confirmation"
+
+    confirmed = patch_status(d, "completed", SHIPPER)
+    assert confirmed.status_code == 200, confirmed.text
+    assert confirmed.json() == {"ok": True, "status": "completed"}
+    assert deal_status(d) == "completed"
+    with get_conn() as c:
+        cargo_status = c.execute(
+            "SELECT c.status FROM cargos c JOIN deals d ON d.cargo_id = c.id WHERE d.id = ?",
+            (d,),
+        ).fetchone()["status"]
+    assert cargo_status == "completed"
+
+
+def test_actor_guard_applies_before_idempotent_replay():
+    waiting = seed_deal("awaiting_confirmation", from_country="KZ", to_country="KZ")
+    assert patch_status(waiting, "delivered", DRIVER).status_code == 200
+    wrong_actor = patch_status(waiting, "awaiting_confirmation", SHIPPER)
+    assert wrong_actor.status_code == 403, wrong_actor.text
+
+    completed = seed_deal("completed", from_country="KZ", to_country="KZ")
+    assert patch_status(completed, "completed", DRIVER).status_code == 403
+    shipper_replay = patch_status(completed, "completed", SHIPPER)
+    assert shipper_replay.status_code == 200, shipper_replay.text
+    assert deal_status(completed) == "completed"
 
 
 def test_stranger_gets_403():
@@ -217,13 +259,13 @@ def test_skip_steps_gives_409():
 
 
 def test_terminal_status_does_not_change():
-    d = seed_deal("delivered", from_country="KZ", to_country="KZ")
+    d = seed_deal("completed", from_country="KZ", to_country="KZ")
     r = patch_status(d, "in_progress", DRIVER)
     assert r.status_code == 409, r.text
-    assert deal_status(d) == "delivered"
+    assert deal_status(d) == "completed"
     r2 = patch_status(d, "cancelled", SHIPPER)
     assert r2.status_code == 409, r2.text
-    assert deal_status(d) == "delivered"
+    assert deal_status(d) == "completed"
 
 
 def test_unknown_status_400():
@@ -342,10 +384,10 @@ def test_concurrent_conflicting_patch_does_not_give_two_false_200():
         two_hundreds = codes.count(200)
         assert two_hundreds <= 1, f"два конкурентных запроса получили 200 одновременно: {results}"
         if results["A"][0] == 200:
-            assert final == "delivered", f"A получил 200, но в БД {final!r}"
+            assert final == "awaiting_confirmation", f"A получил 200, но в БД {final!r}"
         if results["B"][0] == 200:
             assert final == "cancelled", f"B получил 200, но в БД {final!r}"
-        assert final in ("delivered", "cancelled"), f"неожиданный финальный статус: {final}"
+        assert final in ("awaiting_confirmation", "cancelled"), f"неожиданный финальный статус: {final}"
         conflicts_ok += 1
     assert conflicts_ok == 15
 
@@ -385,7 +427,14 @@ def test_gps_is_locked_after_pickup_and_last_point_is_preserved():
     preserved = client.get(f"/api/v1/market/deals/{deal_id}/location")
     assert preserved.status_code == 200
     assert preserved.json()["has_location"] is True
-    assert preserved.json()["deal_status"] == "delivered"
+    assert preserved.json()["tracking_status"] == "stopped"
+    assert preserved.json()["deal_status"] == "awaiting_confirmation"
+    with get_conn() as c:
+        tracking = c.execute(
+            "SELECT status, completed_at FROM deal_tracking WHERE deal_id = ?", (deal_id,)
+        ).fetchone()
+    assert tracking["status"] == "stopped"
+    assert tracking["completed_at"] is not None
 
 
 def test_gps_roles_are_strict():
@@ -409,6 +458,8 @@ if __name__ == "__main__":
                test_driver_can_deliver_domestic_directly_from_in_progress,
                test_driver_cannot_deliver_international_without_border,
                test_driver_can_deliver_international_from_at_border,
+               test_only_shipper_confirms_completed_after_driver_delivery,
+               test_actor_guard_applies_before_idempotent_replay,
                test_stranger_gets_403, test_repeat_status_is_idempotent_noop,
                test_skip_steps_gives_409, test_terminal_status_does_not_change,
                test_unknown_status_400, test_cancel_allowed_for_both_parties_from_accepted,

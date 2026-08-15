@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS deals (
   to_city TEXT NOT NULL,
   amount INTEGER NOT NULL,        -- согласованная цена $
 
-  status TEXT DEFAULT 'accepted', -- accepted | in_progress | delivered | cancelled
+  status TEXT DEFAULT 'accepted', -- accepted | in_progress | at_border | awaiting_confirmation | completed | cancelled
   chat_room_id TEXT,              -- привязанная комната чата
 
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,

@@ -104,7 +104,7 @@ export function driverTier(ctx = {}) {
 // Число выполненных рейсов из списка сделок (my_deals) дашборда.
 export function countCompletedTrips(deals) {
   if (!Array.isArray(deals)) return 0;
-  return deals.filter((d) => d && (d.status === 'delivered' || d.status === 'completed')).length;
+  return deals.filter((d) => d?.status === 'completed').length;
 }
 
 // Признак «верификация пройдена» → уровень «Проверенный». В бете живого

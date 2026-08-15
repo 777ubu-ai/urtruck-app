@@ -16,7 +16,9 @@ const must = (source, needle, label) => {
 
 must(api, 'tracking.get("status") != "active"', 'location upload blocked without active consent');
 must(api, 'tracking_started_with_trip', 'start trip activates tracking atomically');
-must(api, 'completed_at=CURRENT_TIMESTAMP', 'delivery retains tracking record');
+must(api, "status='stopped', stopped_at=COALESCE(stopped_at, CURRENT_TIMESTAMP)", 'delivery stops live tracking');
+must(api, 'completed_at=COALESCE(completed_at, CURRENT_TIMESTAMP)', 'delivery retains tracking record');
+must(api, 'tracking_status == "stopped" and tracking.get("locked_at") is not None', 'stopped tracking exposes only the preserved last point');
 must(hook, 'marketAPI.activeTrackingDeals()', 'background task takes server-approved IDs');
 must(screen, 'deal-action-start-delivery', 'single visible start trip control');
 must(screen, 'ensureBackgroundLocationPermission()', 'OS permission is requested inside start trip');

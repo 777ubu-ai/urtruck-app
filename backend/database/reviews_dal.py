@@ -11,19 +11,48 @@ def init_reviews_schema():
     schema = Path(__file__).resolve().parent / "reviews_schema.sql"
     with get_conn() as c:
         c.executescript(schema.read_text(encoding="utf-8"))
+        columns = {row["name"] for row in c.execute("PRAGMA table_info(reviews)").fetchall()}
+        if "deal_id" not in columns:
+            c.execute("ALTER TABLE reviews ADD COLUMN deal_id TEXT")
+        c.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_reviews_deal_author "
+            "ON reviews(deal_id, author_id) WHERE deal_id IS NOT NULL"
+        )
         c.commit()
 
 
-def add_review(*, trip_id, author_id, author_role, target_id, target_role, rating, text=None, tags=None):
+def add_review(*, deal_id, trip_id, author_id, author_role, target_id, target_role,
+               rating, text=None, tags=None):
     rid = new_id()
     with get_conn() as c:
         c.execute(
-            "INSERT INTO reviews (id, trip_id, author_id, author_role, target_id, target_role, rating, text, tags) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (rid, trip_id, author_id, author_role, target_id, target_role,
+            "INSERT INTO reviews (id, deal_id, trip_id, author_id, author_role, target_id, target_role, rating, text, tags) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (rid, deal_id, trip_id, author_id, author_role, target_id, target_role,
              max(1, min(5, int(rating))), text, json.dumps(tags or [], ensure_ascii=False)),
         )
     return rid
+
+
+def get_reviewable_deal(*, deal_id: str, author_id: str, target_id: str,
+                        trip_id: str | None = None) -> dict | None:
+    """Resolve one exact completed deal and derive both actors server-side."""
+    with get_conn() as c:
+        row = c.execute("SELECT * FROM deals WHERE id = ?", (deal_id,)).fetchone()
+    if not row:
+        return None
+    deal = dict(row)
+    if deal.get("status") != "completed":
+        return None
+    parties = {deal.get("shipper_id"), deal.get("driver_id")}
+    if author_id not in parties or target_id not in parties or author_id == target_id:
+        return None
+    expected_target = deal["driver_id"] if author_id == deal["shipper_id"] else deal["shipper_id"]
+    if target_id != expected_target:
+        return None
+    if trip_id is not None and trip_id != deal.get("trip_id"):
+        return None
+    return deal
 
 
 def get_reviews_for(target_id: str, limit: int = 50) -> list:
@@ -73,35 +102,10 @@ def get_rating_summary(target_id: str) -> dict:
     }
 
 
-def has_already_reviewed(author_id: str, trip_id: str) -> bool:
+def has_already_reviewed(author_id: str, deal_id: str) -> bool:
     with get_conn() as c:
         row = c.execute(
-            "SELECT 1 FROM reviews WHERE author_id = ? AND trip_id = ? LIMIT 1",
-            (author_id, trip_id),
-        ).fetchone()
-    return bool(row)
-
-
-def has_deal_between(user_a: str, user_b: str) -> bool:
-    """True, если между двумя пользователями есть НЕотменённая сделка (в любую
-    сторону). Отзыв разрешаем только реальному контрагенту — защита от накрутки
-    рейтинга (I3): раньше с trip_id=None можно было спамить отзывами на любого."""
-    with get_conn() as c:
-        row = c.execute(
-            "SELECT 1 FROM deals WHERE status != 'cancelled' AND "
-            "((shipper_id = ? AND driver_id = ?) OR (shipper_id = ? AND driver_id = ?)) "
-            "LIMIT 1",
-            (user_a, user_b, user_b, user_a),
-        ).fetchone()
-    return bool(row)
-
-
-def has_reviewed_target(author_id: str, target_id: str) -> bool:
-    """True, если author уже оставлял отзыв на target. Дедуп по паре для случая
-    trip_id=None (иначе один пользователь мог оставить неограниченно отзывов)."""
-    with get_conn() as c:
-        row = c.execute(
-            "SELECT 1 FROM reviews WHERE author_id = ? AND target_id = ? LIMIT 1",
-            (author_id, target_id),
+            "SELECT 1 FROM reviews WHERE author_id = ? AND deal_id = ? LIMIT 1",
+            (author_id, deal_id),
         ).fetchone()
     return bool(row)

@@ -17,13 +17,13 @@ function check(desc, actual, expected) {
 // Forward progress always applies.
 check('accepted -> in_progress', pickDealStatus('accepted', 'in_progress'), 'in_progress');
 check('in_progress -> at_border', pickDealStatus('in_progress', 'at_border'), 'at_border');
-check('at_border -> delivered', pickDealStatus('at_border', 'delivered'), 'delivered');
 check('at_border -> awaiting_confirmation', pickDealStatus('at_border', 'awaiting_confirmation'), 'awaiting_confirmation');
-check('awaiting_confirmation -> delivered', pickDealStatus('awaiting_confirmation', 'delivered'), 'delivered');
+check('awaiting_confirmation -> completed', pickDealStatus('awaiting_confirmation', 'completed'), 'completed');
+check('legacy delivered normalizes to awaiting_confirmation', userFacingDealStatus('delivered'), 'awaiting_confirmation');
 
 // Stale/out-of-order responses must never roll the status backward.
 check('at_border stale-> accepted (blocked)', pickDealStatus('at_border', 'accepted'), 'at_border');
-check('delivered stale-> in_progress (blocked)', pickDealStatus('delivered', 'in_progress'), 'delivered');
+check('awaiting_confirmation stale-> in_progress (blocked)', pickDealStatus('awaiting_confirmation', 'in_progress'), 'awaiting_confirmation');
 check('in_progress stale-> accepted (blocked)', pickDealStatus('in_progress', 'accepted'), 'in_progress');
 
 // cancelled is reachable from any WORKING status.
@@ -34,7 +34,7 @@ check('at_border -> cancelled', pickDealStatus('at_border', 'cancelled'), 'cance
 // The exact rule the owner asked to verify: cancelled must NOT unconditionally
 // roll back an already-finished (completed/delivered) deal.
 check('completed stale-> cancelled (BLOCKED, this is the point 6 rule)', pickDealStatus('completed', 'cancelled'), 'completed');
-check('delivered stale-> cancelled (BLOCKED)', pickDealStatus('delivered', 'cancelled'), 'delivered');
+check('awaiting_confirmation -> cancelled remains allowed before shipper confirmation', pickDealStatus('awaiting_confirmation', 'cancelled'), 'cancelled');
 
 // Once cancelled, a deal is also closed — no status resurrects it.
 check('cancelled stale-> in_progress (blocked)', pickDealStatus('cancelled', 'in_progress'), 'cancelled');
@@ -48,9 +48,9 @@ check('at_border remains visible to the user', userFacingDealStatus('at_border')
 // Map readiness for awaiting_confirmation/completed — no NaN/undefined ranks.
 check('rank map has awaiting_confirmation', typeof DEAL_STATUS_RANK.awaiting_confirmation, 'number');
 check('rank map has completed', typeof DEAL_STATUS_RANK.completed, 'number');
-check('completed ranks with delivered', DEAL_STATUS_RANK.completed === DEAL_STATUS_RANK.delivered, true);
-check('awaiting_confirmation between at_border and delivered',
-  DEAL_STATUS_RANK.at_border < DEAL_STATUS_RANK.awaiting_confirmation && DEAL_STATUS_RANK.awaiting_confirmation < DEAL_STATUS_RANK.delivered,
+check('legacy delivered ranks with awaiting_confirmation', DEAL_STATUS_RANK.delivered === DEAL_STATUS_RANK.awaiting_confirmation, true);
+check('awaiting_confirmation between at_border and completed',
+  DEAL_STATUS_RANK.at_border < DEAL_STATUS_RANK.awaiting_confirmation && DEAL_STATUS_RANK.awaiting_confirmation < DEAL_STATUS_RANK.completed,
   true);
 
 console.log(failed === 0 ? '\nAll pickDealStatus tests passed.' : `\n${failed} FAILED`);

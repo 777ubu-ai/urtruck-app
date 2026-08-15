@@ -54,6 +54,8 @@ const SYSTEM_TEXT_KEYS = {
   '🛂 Груз на границе': 'system_trip_at_border',
   '✅ Доставлен': 'system_trip_delivered',
   '✅ Груз доставлен': 'system_trip_delivered',
+  '📦 Груз доставлен — ожидает подтверждения': 'deal_event_status_awaiting_confirmation',
+  '✅ Получение груза подтверждено': 'deal_event_status_completed',
   '❌ Отменено': 'system_deal_cancelled',
   '❌ Сделка отменена': 'system_deal_cancelled',
   '📍 Грузоотправитель запросил GPS-отслеживание. Водитель должен подтвердить его в приложении.': 'system_tracking_requested',
@@ -1189,8 +1191,8 @@ export default function ChatScreen({ navigation, route }) {
           {(() => {
             // RC1: строгая ролевая FSM. Водитель начинает рейс и отмечает
             // фактическую доставку; грузоотправитель может только подтвердить
-            // получение ПОСЛЕ статуса delivered. Никаких переходов
-            // in_progress -> delivered со стороны грузоотправителя.
+            // получение ПОСЛЕ awaiting_confirmation. Никаких переходов
+            // in_progress -> completed со стороны грузоотправителя.
             if (!deal?.status || deal.status === 'cancelled' || deal.status === 'completed') return null;
             let action = null;
             if (role === 'driver') {
@@ -1203,7 +1205,7 @@ export default function ChatScreen({ navigation, route }) {
               } else if (deal.status === 'in_progress' || deal.status === 'at_border') {
                 action = { key: 'delivered', icon: 'package', label: t('mark_arrived') };
               }
-            } else if (isShipperSide && deal.status === 'delivered') {
+            } else if (isShipperSide && ['awaiting_confirmation', 'delivered'].includes(deal.status)) {
               action = { key: 'completed', icon: 'check-circle', label: t('confirm_delivery') };
             }
             if (!action) return null;
@@ -1253,6 +1255,11 @@ export default function ChatScreen({ navigation, route }) {
               </TouchableOpacity>
             );
           })()}
+          {role === 'driver' && ['awaiting_confirmation', 'delivered'].includes(deal?.status) ? (
+            <Text style={[s.statusRowLabel, { marginBottom: 8 }]} testID="deal-awaiting-shipper-confirmation">
+              {t('driver_next_step_awaiting_confirmation')}
+            </Text>
+          ) : null}
           {deal?.status === 'accepted' ? (
             <TouchableOpacity
               testID="deal-cancel-btn"
@@ -1271,9 +1278,9 @@ export default function ChatScreen({ navigation, route }) {
               <Text style={s.dealCancelBtnText}>⊘ {t('cancel_deal')}</Text>
             </TouchableOpacity>
           ) : null}
-          {dealId && ['accepted', 'in_progress', 'at_border', 'delivered'].includes(deal?.status) ? (
+          {dealId && ['accepted', 'in_progress', 'at_border', 'awaiting_confirmation', 'delivered'].includes(deal?.status) ? (
             <>
-              {isShipperSide && ['in_progress', 'at_border', 'delivered'].includes(deal?.status) ? (
+              {isShipperSide && ['in_progress', 'at_border', 'awaiting_confirmation', 'delivered'].includes(deal?.status) ? (
                 <TouchableOpacity testID="deal-track-truck" style={s.dealTrackBtn}
                   onPress={() => navigation.navigate('TrackTruck', {
                     dealId, from: deal?.from_city, to: deal?.to_city,

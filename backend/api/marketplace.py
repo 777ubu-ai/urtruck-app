@@ -171,10 +171,10 @@ def _deal_country_guard(cur_status: str, new_status: str, from_country: Optional
     `services.geo_normalize` (ISO-2 + известные RU/EN названия и ISO-3) —
     раньше здесь была грубая эвристика `len<=4 and isalpha()`, пропускавшая
     любой алфавитный мусор ("XX"/"ZZ") как «международный». Действует только
-    на in_progress → {at_border, delivered} — cancelled и остальные переходы
+    на in_progress → {at_border, awaiting_confirmation} — cancelled и остальные переходы
     существующей state machine не трогает.
     """
-    if cur_status != "in_progress" or new_status not in ("at_border", "delivered"):
+    if cur_status != "in_progress" or new_status not in ("at_border", "awaiting_confirmation"):
         return
     intl, code = is_international_route(from_country, to_country)
     if intl is None:
@@ -190,7 +190,7 @@ def _deal_country_guard(cur_status: str, new_status: str, from_country: Optional
             "error": "ROUTE_NOT_INTERNATIONAL",
             "message": "Внутренний рейс не проходит через границу",
         })
-    if intl and new_status == "delivered":
+    if intl and new_status == "awaiting_confirmation":
         raise HTTPException(status_code=409, detail={
             "error": "ROUTE_REQUIRES_BORDER_STEP",
             "message": "Международный рейс должен пройти этап «На границе»",
@@ -388,6 +388,10 @@ def _init():
     # One-time migration: picked_up → in_progress (status removed from code).
     with get_conn() as c:
         c.execute("UPDATE deals SET status = 'in_progress' WHERE status = 'picked_up'")
+        # Legacy `delivered` meant both "driver arrived" and "deal closed".
+        # Preserve the physical delivery fact but require the shipper's final
+        # confirmation before the deal becomes reviewable/terminal.
+        c.execute("UPDATE deals SET status = 'awaiting_confirmation' WHERE status = 'delivered'")
         c.commit()
 
 _init()
@@ -1837,7 +1841,7 @@ def update_trip_status(trip_id: str, new_status: str, user=Depends(require_level
         _TRIP_TO_DEAL = {"in_transit": "in_progress", "delivered": "delivered", "cancelled": "cancelled"}
         if new_status in _TRIP_TO_DEAL:
             deal_row = c.execute(
-                "SELECT * FROM deals WHERE trip_id = ? AND status NOT IN ('delivered','cancelled')",
+                "SELECT * FROM deals WHERE trip_id = ? AND status NOT IN ('awaiting_confirmation','completed','cancelled')",
                 (trip_id,),
             ).fetchone()
             if deal_row:
@@ -2649,27 +2653,33 @@ def get_deal(deal_id: str, user=Depends(require_level(1))):
 #: подтвердить "Начал рейс"/"На границе"/"Доставлено" без единого действия
 #: водителя. cancelled НЕ входит сюда намеренно — см. комментарий ниже про
 #: отмену.
-_DRIVER_ONLY_TRANSITIONS = {
-    ("accepted", "in_progress"),
-    ("in_progress", "at_border"),
-    ("in_progress", "delivered"),
-    ("at_border", "delivered"),
-}
+_DRIVER_STATUS_TARGETS = {"in_progress", "at_border", "awaiting_confirmation"}
+_SHIPPER_STATUS_TARGETS = {"completed"}
+
+
+def _canonical_deal_status(status: str) -> str:
+    # Backward-compatible wire alias: old clients still send `delivered` for
+    # the driver's "cargo handed over" action. The authoritative persisted
+    # state is waiting for the shipper, not terminal completion.
+    return "awaiting_confirmation" if status == "delivered" else status
 
 # Разрешённые переходы. Раньше валидации не было — двойной тап или
-# рассинхрон фронта мог перескочить accepted → delivered, минуя «в пути»/
-# «на границе». Отмена доступна из любого рабочего статуса; at_border можно
-# пропустить (внутренние рейсы без границы) — accepted → delivered нельзя.
+# рассинхрон фронта мог перескочить accepted → awaiting_confirmation, минуя
+# «в пути»/«на границе». Отмена доступна из любого рабочего статуса;
+# at_border можно пропустить для внутреннего рейса, но accepted → delivery
+# acknowledgement запрещён.
 _DEAL_FLOW = {
     "accepted":    {"in_progress", "cancelled"},
-    "in_progress": {"at_border", "delivered", "cancelled"},
-    "at_border":   {"delivered", "cancelled"},
-    "delivered":   set(),
+    "in_progress": {"at_border", "awaiting_confirmation", "cancelled"},
+    "at_border":   {"awaiting_confirmation", "cancelled"},
+    "awaiting_confirmation": {"completed"},
+    "completed":   set(),
     "cancelled":   set(),
 }
 _DEAL_STATUS_LABELS = {
     "in_progress": "🚛 Рейс начался", "at_border": "🛂 На границе",
-    "delivered": "✅ Доставлен", "cancelled": "❌ Отменено",
+    "awaiting_confirmation": "📦 Доставлено — ожидает подтверждения",
+    "completed": "✅ Получение подтверждено", "cancelled": "❌ Отменено",
 }
 
 
@@ -2701,24 +2711,37 @@ def _transition_deal(c, deal: dict, new_status: str, actor_uid: str, request_id:
     переход не понадобился (идемпотентный повтор).
     """
     deal_id = deal["id"]
-    cur_status = deal.get("status") or "accepted"
-    if new_status == cur_status:
-        return None  # идемпотентно, без шума — уведомление не создаём
-    allowed = _DEAL_FLOW.get(cur_status)
-    if allowed is not None and new_status not in allowed:
-        raise DealTransitionError(409, {
-            "error": "INVALID_STATUS_TRANSITION",
-            "message": f"Недопустимый переход: {cur_status} → {new_status}",
-        })
-    # P0-2: actor-aware FSM. "cancelled" продуктово разрешена ОБЕИМ сторонам
-    # из любого рабочего статуса (так уже вело себя приложение — см.
-    # комментарий у _DRIVER_ONLY_TRANSITIONS выше).
-    if (cur_status, new_status) in _DRIVER_ONLY_TRANSITIONS:
+    stored_status = deal.get("status") or "accepted"
+    cur_status = _canonical_deal_status(stored_status)
+    new_status = _canonical_deal_status(new_status)
+    # Actor guard precedes idempotency: a wrong actor never receives a false
+    # success for an action that belongs to the other side.
+    if new_status in _DRIVER_STATUS_TARGETS:
         if not deal.get("driver_id") or actor_uid != deal["driver_id"]:
             raise DealTransitionError(403, {
                 "error": "ACTION_NOT_ALLOWED_FOR_ROLE",
                 "message": "Этот статус может установить только водитель по сделке",
             })
+    if new_status in _SHIPPER_STATUS_TARGETS:
+        if not deal.get("shipper_id") or actor_uid != deal["shipper_id"]:
+            raise DealTransitionError(403, {
+                "error": "ACTION_NOT_ALLOWED_FOR_ROLE",
+                "message": "Получение груза может подтвердить только грузоотправитель",
+            })
+    if new_status == cur_status:
+        # Normalize a legacy row without emitting duplicate timeline/push.
+        if stored_status != cur_status:
+            c.execute(
+                "UPDATE deals SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND status=?",
+                (cur_status, deal_id, stored_status),
+            )
+        return None
+    allowed = _DEAL_FLOW.get(cur_status)
+    if allowed is None or new_status not in allowed:
+        raise DealTransitionError(409, {
+            "error": "INVALID_STATUS_TRANSITION",
+            "message": f"Недопустимый переход: {cur_status} → {new_status}",
+        })
     route = c.execute(
         "SELECT COALESCE(c.from_country, t.from_country) AS from_country, "
         "COALESCE(c.to_country, t.to_country) AS to_country "
@@ -2753,7 +2776,7 @@ def _transition_deal(c, deal: dict, new_status: str, actor_uid: str, request_id:
     # а не тихо перезаписываем чужой уже закоммиченный результат.
     cur = c.execute(
         "UPDATE deals SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = ?",
-        (new_status, deal_id, cur_status),
+        (new_status, deal_id, stored_status),
     )
     if cur.rowcount == 0:
         raise DealTransitionError(409, {
@@ -2778,20 +2801,26 @@ def _transition_deal(c, deal: dict, new_status: str, actor_uid: str, request_id:
             "INSERT INTO deal_tracking_events (deal_id, event_type, actor_id) VALUES (?, 'tracking_started_with_trip', ?)",
             (deal_id, actor_uid),
         )
-    if new_status == "delivered" and deal.get("cargo_id"):
+    if new_status == "completed" and deal.get("cargo_id"):
         c.execute("UPDATE cargos SET status = 'completed' WHERE id = ?", (deal["cargo_id"],))
     elif new_status == "cancelled" and deal.get("cargo_id"):
         c.execute("UPDATE cargos SET status = 'active', taken_by = NULL WHERE id = ?", (deal["cargo_id"],))
-    _DEAL_TO_TRIP = {"in_progress": "in_transit", "at_border": "in_transit", "delivered": "delivered", "cancelled": "cancelled"}
+    _DEAL_TO_TRIP = {
+        "in_progress": "in_transit", "at_border": "in_transit",
+        "awaiting_confirmation": "delivered", "completed": "delivered",
+        "cancelled": "cancelled",
+    }
     if deal.get("trip_id") and new_status in _DEAL_TO_TRIP:
         c.execute("UPDATE trips SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                    (_DEAL_TO_TRIP[new_status], deal["trip_id"]))
     # Once cargo is picked up, GPS evidence belongs to the deal. Delivery or
     # an in-transit cancellation stops new updates but never deletes the last
     # point or consent record. A pre-pickup cancellation stays private.
-    if new_status in ("delivered", "cancelled"):
+    if new_status in ("awaiting_confirmation", "completed", "cancelled"):
         c.execute(
-            "UPDATE deal_tracking SET completed_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP "
+            "UPDATE deal_tracking SET status='stopped', stopped_at=COALESCE(stopped_at, CURRENT_TIMESTAMP), "
+            "completed_at=COALESCE(completed_at, CURRENT_TIMESTAMP), "
+            "updated_at=CURRENT_TIMESTAMP "
             "WHERE deal_id = ? AND locked_at IS NOT NULL",
             (deal_id,),
         )
@@ -2807,8 +2836,10 @@ def _transition_deal(c, deal: dict, new_status: str, actor_uid: str, request_id:
 def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level(1))):
     # Этап-хаб заказа: добавлен промежуточный статус at_border («На границе») —
     # ключевой для коридора Китай↔КЗ. Порядок: accepted → in_progress →
-    # at_border → delivered (cancelled — из любого рабочего).
-    VALID = ["accepted", "in_progress", "at_border", "delivered", "cancelled"]
+    # at_border → awaiting_confirmation → completed. `delivered` from old
+    # clients is accepted only as a wire alias for awaiting_confirmation.
+    new_status = _canonical_deal_status(new_status)
+    VALID = ["accepted", "in_progress", "at_border", "awaiting_confirmation", "completed", "cancelled"]
     if new_status not in VALID:
         raise HTTPException(status_code=400, detail={
             "error": "INVALID_STATUS",
@@ -2838,7 +2869,11 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
     # сумма в валюте груза/рейса, deep-link на /deals/{id}.
     try:
         other_id = deal["driver_id"] if uid == deal["shipper_id"] else deal["shipper_id"]
-        labels = {"in_progress": "🚛 Рейс начался", "at_border": "🛂 На границе", "delivered": "✅ Доставлен", "cancelled": "❌ Отменено"}
+        labels = {
+            "in_progress": "🚛 Рейс начался", "at_border": "🛂 На границе",
+            "awaiting_confirmation": "📦 Доставлено — ожидает подтверждения",
+            "completed": "✅ Получение подтверждено", "cancelled": "❌ Отменено",
+        }
         if new_status in labels:
             cur = "USD"
             with get_conn() as c2:
@@ -2891,7 +2926,8 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
         chat_labels = {
             "in_progress": "🚛 Рейс начался",
             "at_border": "🛂 Груз на границе",
-            "delivered": "✅ Груз доставлен",
+            "awaiting_confirmation": "📦 Груз доставлен — ожидает подтверждения",
+            "completed": "✅ Получение груза подтверждено",
             "cancelled": "❌ Сделка отменена",
         }
         if new_status in chat_labels and deal.get("chat_room_id"):
@@ -3114,7 +3150,9 @@ def stop_deal_tracking(deal_id: str, user=Depends(require_level(1))):
         if deal["driver_id"] != user["id"]:
             raise HTTPException(status_code=403, detail="Остановить GPS может только водитель")
         current = _tracking_payload(c, deal_id)
-        if current.get("locked_at") or deal.get("status") in ("in_progress", "at_border", "delivered"):
+        if current.get("locked_at") or deal.get("status") in (
+            "in_progress", "at_border", "awaiting_confirmation", "completed", "delivered",
+        ):
             raise HTTPException(status_code=409, detail="После забора груза GPS-отслеживание фиксируется в сделке и отключается только через поддержку")
         if current.get("status") != "active":
             return {"ok": True, "tracking": current, "already_stopped": True}
@@ -3180,12 +3218,18 @@ def get_deal_location(deal_id: str, user=Depends(require_level(1))):
         if user["id"] not in (d["shipper_id"], d["driver_id"]):
             raise HTTPException(status_code=403, detail="Нет доступа к сделке")
         tracking = _tracking_payload(c, deal_id)
-        if tracking.get("status") != "active":
+        tracking_status = tracking.get("status", "not_requested")
+        # After delivery, preserve the last verified point for both deal
+        # participants, but label it stopped (never pretend stale data is live).
+        can_show_last = tracking_status == "active" or (
+            tracking_status == "stopped" and tracking.get("locked_at") is not None
+        )
+        if not can_show_last:
             return {"ok": True, "has_location": False, "tracking_status": tracking.get("status", "not_requested")}
         loc = c.execute(
             "SELECT lat, lng, heading, speed, updated_at FROM deal_locations WHERE deal_id = ?",
             (deal_id,),
         ).fetchone()
     if not loc:
-        return {"ok": True, "has_location": False, "tracking_status": "active", "deal_status": d["status"]}
-    return {"ok": True, "has_location": True, "location": dict(loc), "tracking_status": "active", "deal_status": d["status"]}
+        return {"ok": True, "has_location": False, "tracking_status": tracking_status, "deal_status": d["status"]}
+    return {"ok": True, "has_location": True, "location": dict(loc), "tracking_status": tracking_status, "deal_status": d["status"]}

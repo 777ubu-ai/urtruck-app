@@ -120,7 +120,7 @@ export default function RouteMap({ from, to, transit, dealId, dealStatus, driver
   const fromCoord = parseCity(from);
   const toCoord = parseCity(to);
   const transitCoord = transit ? parseCity(transit) : null;
-  const trackingActive = Boolean(dealId && ['in_progress', 'at_border', 'delivered'].includes(dealStatus));
+  const trackingActive = Boolean(dealId && ['in_progress', 'at_border'].includes(dealStatus));
 
   React.useEffect(() => {
     if (!trackingActive) {

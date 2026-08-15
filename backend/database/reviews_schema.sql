@@ -2,6 +2,7 @@
 
 CREATE TABLE IF NOT EXISTS reviews (
   id TEXT PRIMARY KEY,
+  deal_id TEXT,                          -- authoritative completed deal
   trip_id TEXT,                          -- связь с рейсом (опционально)
   author_id TEXT NOT NULL,               -- кто оставил
   author_role TEXT NOT NULL,             -- driver | client

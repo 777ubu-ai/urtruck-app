@@ -30,8 +30,8 @@ import { isBidActionable } from '../utils/dealsUnread';
 import { userFacingDealStatus } from '../utils/dealStatusOrder';
 
 const ROLE_LABEL = { driver: 'role_driver', client: 'role_client', support: 'role_support' };
-const ACTIVE_STATUSES = new Set(['accepted', 'in_progress', 'at_border', 'awaiting_confirmation']);
-const COMPLETED_STATUSES = new Set(['completed', 'delivered', 'cancelled']);
+const ACTIVE_STATUSES = new Set(['accepted', 'in_progress', 'at_border', 'awaiting_confirmation', 'delivered']);
+const COMPLETED_STATUSES = new Set(['completed', 'cancelled']);
 
 const STATUS_COLOR = {
   accepted: '#168759', in_progress: '#3478D4',
@@ -44,8 +44,9 @@ const STATUS_COLOR = {
 // на 4 языках (status_*), новых строк не добавляем.
 const compactStatusLabel = (status, t) => {
   if (status === 'accepted') return t('status_accepted');
-  if (status === 'in_progress' || status === 'at_border' || status === 'awaiting_confirmation') return t('status_in_progress');
-  if (status === 'completed' || status === 'delivered') return t('status_delivered');
+  if (status === 'in_progress' || status === 'at_border') return t('status_in_progress');
+  if (status === 'awaiting_confirmation' || status === 'delivered') return t('status_awaiting_confirmation');
+  if (status === 'completed') return t('status_completed');
   if (status === 'cancelled') return t('status_cancelled');
   return formatStatus(status);
 };

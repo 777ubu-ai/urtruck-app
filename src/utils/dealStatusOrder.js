@@ -5,26 +5,23 @@
 // после более свежего.
 //
 // Актуальные значения deals.status на бэкенде (backend/api/marketplace.py,
-// update_deal_status/_FLOW): accepted → in_progress → at_border → delivered,
-// cancelled — из любого рабочего статуса. 'awaiting_confirmation' и
-// 'completed' бэкендом как deal.status пока не эмитятся (только в
-// защитных SQL-проверках/cargos.status), но уже используются как
-// легитимные значения в фильтрах UI (ChatsListScreen) — карта готова
-// принять их без падения already now, до того как бэкенд начнёт их слать.
+// update_deal_status/_FLOW): accepted → in_progress → at_border →
+// awaiting_confirmation → completed. `delivered` — legacy wire/storage alias
+// ожидания подтверждения, а не terminal completion.
 export const DEAL_STATUS_RANK = {
   accepted: 1,
   in_progress: 2,
   at_border: 3,
   awaiting_confirmation: 4,
-  delivered: 5,
+  delivered: 4,
   completed: 5,
 };
 
 // Статусы, из которых сделка больше никуда не двигается. cancelled сюда
 // тоже входит, но трактуется отдельно (см. pickDealStatus): в отличие от
-// delivered/completed, cancelled достижим из любого РАБОЧЕГО статуса, а не
+// completed, cancelled достижим из любого РАБОЧЕГО статуса, а не
 // только «сверху» по рангу.
-const FINISHED_STATUSES = new Set(['delivered', 'completed', 'cancelled']);
+const FINISHED_STATUSES = new Set(['completed', 'cancelled']);
 
 /**
  * Решает, какой статус показать: текущий (prev) или только что полученный
@@ -32,7 +29,7 @@ const FINISHED_STATUSES = new Set(['delivered', 'completed', 'cancelled']);
  *
  * Правила:
  *  - нет предыдущего значения (первая загрузка) — всегда берём next;
- *  - prev уже финальный (delivered/completed/cancelled) — сделка закрыта,
+ *  - prev уже финальный (completed/cancelled) — сделка закрыта,
  *    более никакой статус (включая cancelled) её не переоткрывает и не
  *    «отменяет задним числом» уже доставленный груз (05.08, п.6: cancelled
  *    не должен безусловно откатывать completed);
@@ -57,5 +54,5 @@ export function pickDealStatus(prev, next) {
 // require the visible at_border step; hiding it previously left the driver
 // with a delivery button that the server correctly rejected.
 export function userFacingDealStatus(status) {
-  return status;
+  return status === 'delivered' ? 'awaiting_confirmation' : status;
 }

@@ -7,7 +7,7 @@ const trackSrc = fs.readFileSync('src/screens/TrackTruckScreen.js', 'utf8');
 
 test('shipper cannot mark an in-progress trip delivered', () => {
   assert.doesNotMatch(src, /isShipperSide\s*&&\s*\(deal\.status === 'in_progress'/);
-  assert.match(src, /isShipperSide\s*&&\s*deal\.status === 'delivered'/);
+  assert.match(src, /isShipperSide\s*&&\s*\['awaiting_confirmation', 'delivered'\]\.includes\(deal\.status\)/);
   assert.match(src, /action = \{ key: 'completed'/);
 });
 

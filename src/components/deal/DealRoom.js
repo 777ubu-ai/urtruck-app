@@ -26,10 +26,10 @@ export const accentFor = (role) => (role === 'driver' ? DRIVER_ACCENT : CLIENT_A
 // Статус сделки → цвет (нейтральный fallback — серый).
 const DEAL_STATUS_COLOR = {
   active: '#168759', confirmed: '#168759', accepted: '#168759',
-  in_progress: '#FF8400', at_border: '#168759',
+  in_progress: '#FF8400', at_border: '#168759', awaiting_confirmation: '#3478D4',
   pending: '#FF8400', draft: '#FF8400',
   cancelled: '#7C8B82', rejected: '#EF4444', dispute: '#EF4444',
-  completed: '#168759', delivered: '#168759',
+  completed: '#168759', delivered: '#3478D4',
 };
 
 // Перевод i18n_key из backend ("deal_event.bid_accepted") → плоский t()-ключ

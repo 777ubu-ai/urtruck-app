@@ -29,9 +29,11 @@ def _ensure_full_schema():
     from database import db as dbm
     from database import registration_dal
     from database import cgr_dal
+    from database import reviews_dal
 
     dbm.init_db()
     registration_dal.init_registration_schema()
+    reviews_dal.init_reviews_schema()
     # CGR tables are part of the production startup schema and must be restored
     # here as well after the harness removes the DB following test collection.
     cgr_dal.init_cgr_schema()

@@ -443,7 +443,7 @@ export default function TripDetail({ navigation, route }) {
             <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '600' }}>{t('trip_current_status')}</Text>
             <Text style={{ color: theme.text, fontSize: 13, fontWeight: '800' }}>{formatStatus(userFacingDealStatus(dealStatus))}</Text>
           </View>
-          {(dealStatus === 'accepted' || dealStatus === 'in_progress' || dealStatus === 'at_border') && (
+          {(['accepted', 'in_progress', 'at_border', 'awaiting_confirmation', 'delivered'].includes(dealStatus)) && (
             <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 6, textAlign: 'center' }}>
               {dealStatus === 'in_progress' && !hasKnownRoute ? t('clarify_route') : (
                 <>
@@ -451,8 +451,12 @@ export default function TripDetail({ navigation, route }) {
                     isDriverSide
                       ? (dealStatus === 'accepted' ? t('driver_next_step_accepted')
                          : dealStatus === 'in_progress' ? t('driver_next_step_in_progress')
-                         : t('driver_next_step_at_border'))
-                      : (dealStatus === 'accepted' ? t('shipper_next_step_accepted') : t('shipper_next_step_in_progress'))
+                         : dealStatus === 'at_border' ? t('driver_next_step_at_border')
+                         : t('driver_next_step_awaiting_confirmation'))
+                      : (dealStatus === 'accepted' ? t('shipper_next_step_accepted')
+                         : (dealStatus === 'awaiting_confirmation' || dealStatus === 'delivered')
+                           ? t('shipper_next_step_awaiting_confirmation')
+                           : t('shipper_next_step_in_progress'))
                   }
                 </>
               )}
@@ -871,7 +875,7 @@ export default function TripDetail({ navigation, route }) {
       {/* Отзыв после доставки. Trip-сделка не проходит через CargoDetail,
           поэтому без этого блока участникам trip-сделки было негде оценить
           друг друга. Клиент оценивает водителя, водитель — клиента. */}
-      {dealStatus === 'delivered' && !reviewSent && (isShipper ? (driverId || trip.driverId) : shipperId) ? (
+      {dealStatus === 'completed' && !reviewSent && (isShipper ? (driverId || trip.driverId) : shipperId) ? (
         <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
           <View style={[s.reviewBlock, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <Text style={[s.reviewTitle, { color: theme.text }]}>{isShipper ? t('rate_driver') : t('rate_shipper')}</Text>
@@ -896,12 +900,15 @@ export default function TripDetail({ navigation, route }) {
               onPress={async () => {
                 setReviewLoading(true);
                 try {
-                  await reviewsAPI.create({
+                  const review = await reviewsAPI.create({
+                    dealId,
+                    tripId: trip.id,
                     targetId: isShipper ? (driverId || trip.driverId) : shipperId,
                     targetRole: isShipper ? 'driver' : 'client',
                     rating: reviewRating,
                     text: reviewText.trim() || null,
                   });
+                  if (!review?.ok) throw new Error(review?.detail || 'REVIEW_REJECTED');
                   setReviewSent(true);
                   toast(t('thanks_for_review'), 'success');
                 } catch {
@@ -915,7 +922,7 @@ export default function TripDetail({ navigation, route }) {
           </View>
         </View>
       ) : null}
-      {dealStatus === 'delivered' && reviewSent ? (
+      {dealStatus === 'completed' && reviewSent ? (
         <View style={{ paddingHorizontal: 16, paddingBottom: 8, alignItems: 'center' }}>
           <Text style={{ color: '#168759', fontSize: 14, fontWeight: '600' }}>{t('thanks_for_review')}</Text>
         </View>
