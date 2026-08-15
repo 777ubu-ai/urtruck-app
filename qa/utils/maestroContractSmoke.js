@@ -4,11 +4,12 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..', '..');
 const MAESTRO = path.join(ROOT, 'qa', 'maestro');
 const ENTRY = path.join(MAESTRO, 'smoke-suite.yaml');
+// Current release navigation deliberately has these tab ids:
+// driver: bottom-nav-feed/mywork/queue/chats/profile
+// client: bottom-nav-mywork/feed/publish/deals/profile
+// The old "deals segment for chats" flow is obsolete; do not reject the
+// real current tab ids here or the guard blocks the release smoke itself.
 const forbidden = [
-  'bottom-nav-chats',
-  'bottom-nav-chats-badge',
-  'bottom-nav-profile',
-  'bottom-nav-publish',
   'deals-seg-chats',
 ];
 
