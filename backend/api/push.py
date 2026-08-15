@@ -100,6 +100,13 @@ def _migrate_ownership_columns():
             )
         """)
         c.execute("CREATE INDEX IF NOT EXISTS idx_push_audit_token ON push_token_audit(token_masked)")
+        push_log_cols = {r["name"] for r in c.execute("PRAGMA table_info(push_log)").fetchall()}
+        if "event_key" not in push_log_cols:
+            try:
+                c.execute("ALTER TABLE push_log ADD COLUMN event_key TEXT")
+            except Exception:
+                pass
+        c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_push_log_event_key ON push_log(user_id, event_key) WHERE event_key IS NOT NULL")
         c.commit()
 
 
