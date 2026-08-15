@@ -44,6 +44,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from database import db as ddb
 from database.db import get_conn
+from database import reviews_dal
 
 ddb.init_db()
 
@@ -274,6 +275,14 @@ def test_driver_cannot_confirm_delivery():
     assert deal_status(d) == "delivered"
 
 
+def test_reviews_require_shipper_receipt_confirmation():
+    d = seed_deal("delivered", from_country="KZ", to_country="KZ")
+    assert reviews_dal.has_deal_between(SHIPPER, DRIVER) is False
+    completed = patch_status(d, "completed", SHIPPER)
+    assert completed.status_code == 200, completed.text
+    assert reviews_dal.has_deal_between(SHIPPER, DRIVER) is True
+
+
 def test_unknown_status_400():
     d = seed_deal("accepted")
     r = patch_status(d, "banana", DRIVER)
@@ -461,6 +470,7 @@ if __name__ == "__main__":
                test_skip_steps_gives_409, test_terminal_status_does_not_change,
                test_shipper_confirms_delivery_and_completed_is_terminal,
                test_driver_cannot_confirm_delivery,
+               test_reviews_require_shipper_receipt_confirmation,
                test_unknown_status_400, test_cancel_allowed_for_both_parties_from_accepted,
                test_cancel_mid_transit_allowed_both_and_audited,
                test_trip_status_endpoint_cannot_bypass_fsm_or_country_guard,
