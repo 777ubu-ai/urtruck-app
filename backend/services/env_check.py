@@ -57,7 +57,10 @@ def collect_issues() -> List[str]:
     sms_real = sms_provider != "mock" and (
         os.getenv("MOBIZON_API_KEY") or os.getenv("TWILIO_ACCOUNT_SID")
     )
-    tg_real = bool(os.getenv("TELEGRAM_BOT_TOKEN"))
+    tg_token = bool(os.getenv("TELEGRAM_BOT_TOKEN"))
+    tg_secret = (os.getenv("TELEGRAM_WEBHOOK_SECRET") or "").strip()
+    tg_polling = (os.getenv("TELEGRAM_POLLING_ENABLED") or "").lower() in ("1", "true", "yes")
+    tg_real = bool(tg_token and (len(tg_secret) >= 32 or tg_polling))
     email_real = bool(
         os.getenv("EMAIL_SMTP_HOST")
         and os.getenv("EMAIL_SMTP_USER")

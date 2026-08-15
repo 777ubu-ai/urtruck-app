@@ -1,40 +1,36 @@
-"""Telegram Bot Webhook — автоподтверждение /start verify_XXXX.
-
-Когда юзер жмёт deep link t.me/UrTruckBot?start=verify_1234 →
-Telegram отправляет сюда webhook с текстом /start verify_1234.
-Мы извлекаем код, проверяем в verification_codes, подтверждаем.
-
-Настройка (после получения TELEGRAM_BOT_TOKEN):
-  curl "https://api.telegram.org/bot{TOKEN}/setWebhook?url=https://urtruck.kz/security/api/v1/telegram/webhook"
-"""
+"""Authenticated Telegram webhook for the SEC-005 bound OTP flow."""
 import sys
 import os
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import hmac
 import json
 from fastapi import APIRouter, Request, HTTPException
 import httpx
 
-from database import registration_dal as reg_dal
+from services import telegram_otp
 
 tg_webhook_router = APIRouter()
 
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-
-
-def _send_message(chat_id: int, text: str):
-    if not BOT_TOKEN:
-        print(f"[TG-bot MOCK] → {chat_id}: {text}")
-        return
+def _send_message(chat_id: int, text: str, **kwargs):
+    token = (os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
+    if not token:
+        return False
+    payload = {"chat_id": chat_id, "text": text}
+    if kwargs.get("reply_markup") is not None:
+        payload["reply_markup"] = kwargs["reply_markup"]
     try:
         httpx.post(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-            json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json=payload,
             timeout=10.0,
         )
-    except Exception as e:
-        print(f"[TG-bot] sendMessage failed: {e}")
+        return True
+    except Exception:
+        # Exception strings may contain the bot-token URL. Never log them.
+        print("[TG-bot] sendMessage failed", flush=True)
+        return False
 
 
 def _verify_telegram_signature(secret_token: str) -> bool:
@@ -43,10 +39,9 @@ def _verify_telegram_signature(secret_token: str) -> bool:
     Telegram при setWebhook?secret_token=X отправляет этот же X в заголовке —
     сверяем побайтово.
     """
-    import hmac
-    expected = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
-    if not expected:
-        return True  # secret не настроен — пропускаем (dev/polling mode)
+    expected = (os.getenv("TELEGRAM_WEBHOOK_SECRET") or "").strip()
+    if len(expected) < telegram_otp.WEBHOOK_SECRET_MIN_LENGTH:
+        return False
     if not secret_token:
         return False  # secret задан, а заголовка нет — отказ
     return hmac.compare_digest(secret_token, expected)
@@ -55,6 +50,8 @@ def _verify_telegram_signature(secret_token: str) -> bool:
 @tg_webhook_router.post("/webhook")
 async def telegram_webhook(request: Request):
     """Принимает Telegram Bot Update с проверкой подписи."""
+    if not telegram_otp.webhook_configured():
+        raise HTTPException(status_code=503, detail="Telegram webhook disabled")
     sig = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
     if not _verify_telegram_signature(sig):
         raise HTTPException(status_code=403, detail="Invalid Telegram signature")
@@ -65,72 +62,14 @@ async def telegram_webhook(request: Request):
     except Exception:
         return {"ok": False}
 
-    message = body.get("message", {})
-    text = message.get("text", "")
-    chat_id = message.get("chat", {}).get("id")
-    from_user = message.get("from", {})
-
-    if not chat_id:
-        return {"ok": True}
-
-    # /start verify_XXXX
-    if text.startswith("/start verify_"):
-        code = text.replace("/start verify_", "").strip()
-        if not code:
-            _send_message(chat_id, "❌ Код не указан. Попробуйте ещё раз.")
-            return {"ok": True}
-
-        # Ищем код в verification_codes
-        from database.db import get_conn
-        with get_conn() as c:
-            row = c.execute(
-                "SELECT phone FROM verification_codes WHERE code = ?", (code,)
-            ).fetchone()
-
-        if not row:
-            _send_message(chat_id, "❌ Код не найден или истёк. Запросите новый в приложении.")
-            return {"ok": True}
-
-        phone = row["phone"]
-        # НЕ удаляем код — отправляем юзеру, он введёт в приложении
-        _send_message(
-            chat_id,
-            f"🔐 *Ваш код подтверждения:*\n\n"
-            f"```\n{code}\n```\n\n"
-            f"Введите этот код в приложении UrTruck.\n"
-            f"Код действителен 5 минут.\n\n"
-            f"_Никому не сообщайте этот код!_"
-        )
-        return {"ok": True}
-
-    # /start (без кода)
-    elif text.startswith("/start"):
-        _send_message(
-            chat_id,
-            f"👋 Добро пожаловать в *UrTruck Bot*!\n\n"
-            f"Этот бот используется для подтверждения номера телефона.\n"
-            f"Перейдите в приложение и выберите «Telegram» в способах входа.\n\n"
-            f"🌍 urtruck.kz"
-        )
-        return {"ok": True}
-
-    # /help
-    elif text.startswith("/help"):
-        _send_message(
-            chat_id,
-            "ℹ️ *UrTruck Bot*\n\n"
-            "Используется для OTP-подтверждения.\n"
-            "Просто нажмите на ссылку в приложении — код подтвердится автоматически.\n\n"
-            "Поддержка: 777ubu@gmail.com · WhatsApp +7 747 917 11 18"
-        )
-        return {"ok": True}
-
-    return {"ok": True}
+    message = body.get("message") or body.get("edited_message") or {}
+    status = telegram_otp.handle_message(message, _send_message)
+    return {"ok": True, "status": status}
 
 
 @tg_webhook_router.get("/webhook/info")
 def webhook_info():
     return {
-        "bot_token_set": bool(BOT_TOKEN),
-        "mode": "MOCK" if not BOT_TOKEN else "REAL",
+        "enabled": telegram_otp.webhook_configured(),
+        "mode": "REAL" if telegram_otp.webhook_configured() else "DISABLED",
     }

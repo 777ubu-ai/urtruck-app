@@ -280,8 +280,8 @@ def startup():
     print(f"[startup] TELEGRAM_BOT_TOKEN = {'SET' if os.getenv('TELEGRAM_BOT_TOKEN') else 'EMPTY'}", flush=True)
     try:
         from services.telegram_bot import start_bot
-        start_bot()
-        print("[startup] TG bot started OK", flush=True)
+        started = start_bot()
+        print(f"[startup] TG polling {'started' if started else 'disabled'}", flush=True)
     except Exception as e:
         import traceback
         print(f"[startup] TG bot FAILED: {e}", flush=True)

@@ -6,7 +6,6 @@
 """
 import os
 import random
-import urllib.parse
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -20,6 +19,7 @@ from services import whatsapp as wa
 from services import sms_mobizon
 # Email OTP (SMTP) — канал для Китая и резерв. MOCK если нет SMTP-реквизитов.
 from services import email_service
+from services import telegram_otp
 
 # BETA bypass
 try:
@@ -57,7 +57,7 @@ SMS_MOCK = SMS_PROVIDER == "mock" or not _sms_real_configured()
 # Telegram
 TG_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TG_BOT_USERNAME = os.getenv("TELEGRAM_BOT_USERNAME", "UrTruckbot")
-TG_MOCK = not TG_BOT_TOKEN
+TG_MOCK = not telegram_otp.delivery_configured()
 
 
 def generate_code() -> str:
@@ -117,23 +117,18 @@ def send_sms(phone: str, code: str) -> dict:
 
 
 # ---------- Telegram ----------
-def telegram_deeplink(code: str) -> str:
-    """Deep link на бот — юзер откроет @UrTruckBot с preseed командой.
-    Сценарий: юзер жмёт ссылку → Telegram → /start <code> → бот отвечает подтверждением.
-    """
-    payload = urllib.parse.quote(f"verify_{code}")
-    return f"https://t.me/{TG_BOT_USERNAME}?start={payload}"
-
-
 def send_telegram(phone: str, code: str) -> dict:
-    """В MOCK режиме возвращаем код и deep link — юзер открывает бот, вводит код.
-    В production с ботом можно дополнительно посылать уведомление админу.
+    """Create a high-entropy phone-bound Telegram challenge.
+
+    Missing webhook/polling secrets disable this channel. Neither the OTP nor
+    the phone is written to logs or embedded in the deep link.
     """
-    link = telegram_deeplink(code)
-    if TG_MOCK:
-        print(f"[OTP·TG MOCK] {phone}: {code} → {link}")
-        return {"sent": True, "mock": True, "channel": "telegram", "code": code, "deeplink": link}
-    # При реальном боте можно логировать запрос или сделать ping админ-чату
+    if not telegram_otp.delivery_configured():
+        return {"sent": False, "mock": False, "channel": "telegram", "error": "telegram_not_configured"}
+    try:
+        link = telegram_otp.create_challenge(phone, code)
+    except Exception:
+        return {"sent": False, "mock": False, "channel": "telegram", "error": "telegram_challenge_failed"}
     return {"sent": True, "mock": False, "channel": "telegram", "deeplink": link}
 
 
@@ -218,7 +213,7 @@ def info() -> dict:
         "whatsapp": wa.info(),
         "sms": sms_block,
         "telegram": {
-            "mode": "MOCK" if TG_MOCK else "REAL",
+            "mode": "REAL" if telegram_otp.delivery_configured() else "DISABLED",
             "bot": TG_BOT_USERNAME,
         },
         "email": email_service.info(),

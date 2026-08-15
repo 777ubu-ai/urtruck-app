@@ -66,6 +66,31 @@ CREATE TABLE IF NOT EXISTS verification_codes (
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
+-- SEC-005: Telegram получает только high-entropy challenge, никогда сам OTP.
+-- Challenge привязывается к private Telegram actor/chat, затем атомарно
+-- поглощается только после проверки self-contact с тем же номером телефона.
+CREATE TABLE IF NOT EXISTS telegram_otp_challenges (
+  token_hash TEXT PRIMARY KEY,
+  phone TEXT NOT NULL,
+  otp_digest TEXT NOT NULL,
+  telegram_user_id TEXT,
+  telegram_chat_id TEXT,
+  state TEXT NOT NULL DEFAULT 'pending',
+  attempts INTEGER NOT NULL DEFAULT 0,
+  expires_at TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  bound_at TEXT,
+  consumed_at TEXT
+);
+
+-- Persistent limiter shared by all API workers using the same project DB.
+CREATE TABLE IF NOT EXISTS telegram_otp_rate_limits (
+  scope_hash TEXT PRIMARY KEY,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  window_started TEXT NOT NULL,
+  blocked_until TEXT
+);
+
 -- Сессии (токены)
 CREATE TABLE IF NOT EXISTS reg_sessions (
   token TEXT PRIMARY KEY,
@@ -77,3 +102,5 @@ CREATE TABLE IF NOT EXISTS reg_sessions (
 CREATE INDEX IF NOT EXISTS idx_reg_phone ON drivers_registration(phone);
 CREATE INDEX IF NOT EXISTS idx_reg_status ON drivers_registration(status);
 CREATE INDEX IF NOT EXISTS idx_reg_step ON drivers_registration(current_step);
+CREATE INDEX IF NOT EXISTS idx_tg_otp_phone_state ON telegram_otp_challenges(phone, state);
+CREATE INDEX IF NOT EXISTS idx_tg_otp_actor_state ON telegram_otp_challenges(telegram_user_id, telegram_chat_id, state);

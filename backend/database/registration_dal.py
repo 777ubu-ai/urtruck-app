@@ -1,6 +1,8 @@
 """DAL для регистрации водителей."""
 import json
 import secrets
+import hashlib
+import hmac
 from datetime import datetime, timedelta
 from pathlib import Path
 import sys
@@ -163,6 +165,183 @@ def check_code(phone: str, code: str) -> bool:
 def delete_code(phone: str):
     with get_conn() as c:
         c.execute("DELETE FROM verification_codes WHERE phone = ?", (phone,))
+
+
+# ---------- SEC-005: Telegram OTP challenge binding ----------
+def telegram_token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def telegram_otp_digest(code: str) -> str:
+    return hashlib.sha256(code.encode("utf-8")).hexdigest()
+
+
+def create_telegram_challenge(phone: str, code: str, token: str, ttl_seconds: int = 300) -> None:
+    """Persist only a hash of the high-entropy deep-link token.
+
+    A new issuance supersedes every unfinished Telegram challenge for this
+    phone so an old link can never reveal a newly issued OTP.
+    """
+    now = datetime.utcnow()
+    expires = (now + timedelta(seconds=ttl_seconds)).isoformat()
+    token_hash = telegram_token_hash(token)
+    with get_conn() as c:
+        c.execute("BEGIN IMMEDIATE")
+        c.execute(
+            "UPDATE telegram_otp_challenges SET state='superseded' "
+            "WHERE phone=? AND state IN ('pending', 'awaiting_contact')",
+            (phone,),
+        )
+        c.execute(
+            "INSERT INTO telegram_otp_challenges "
+            "(token_hash, phone, otp_digest, expires_at) VALUES (?, ?, ?, ?)",
+            (token_hash, phone, telegram_otp_digest(code), expires),
+        )
+
+
+def bind_telegram_challenge(token: str, telegram_user_id: str, telegram_chat_id: str) -> str:
+    """Atomically bind a pending token to exactly one private Telegram actor."""
+    token_hash = telegram_token_hash(token)
+    now = datetime.utcnow().isoformat()
+    with get_conn() as c:
+        c.execute("BEGIN IMMEDIATE")
+        row = c.execute(
+            "SELECT state, expires_at, attempts FROM telegram_otp_challenges WHERE token_hash=?",
+            (token_hash,),
+        ).fetchone()
+        if not row:
+            return "invalid"
+        if row["expires_at"] < now:
+            c.execute(
+                "UPDATE telegram_otp_challenges SET state='expired' WHERE token_hash=?",
+                (token_hash,),
+            )
+            return "expired"
+        if row["state"] != "pending":
+            return "replayed"
+        if int(row["attempts"] or 0) >= 5:
+            c.execute(
+                "UPDATE telegram_otp_challenges SET state='blocked' WHERE token_hash=?",
+                (token_hash,),
+            )
+            return "blocked"
+        cur = c.execute(
+            "UPDATE telegram_otp_challenges SET state='awaiting_contact', "
+            "telegram_user_id=?, telegram_chat_id=?, bound_at=? "
+            "WHERE token_hash=? AND state='pending'",
+            (str(telegram_user_id), str(telegram_chat_id), now, token_hash),
+        )
+        return "bound" if cur.rowcount == 1 else "replayed"
+
+
+def consume_telegram_challenge(
+    telegram_user_id: str,
+    telegram_chat_id: str,
+    contact_phone: str,
+) -> tuple[str, str | None]:
+    """Validate actor/chat/phone/expiry and atomically consume the challenge.
+
+    Returns ``(status, otp)``. The OTP is returned only once and only after
+    every binding check passes. It remains in ``verification_codes`` for the
+    app's existing OTP verification endpoint.
+    """
+    now = datetime.utcnow().isoformat()
+    actor = str(telegram_user_id)
+    chat = str(telegram_chat_id)
+    with get_conn() as c:
+        c.execute("BEGIN IMMEDIATE")
+        row = c.execute(
+            "SELECT * FROM telegram_otp_challenges "
+            "WHERE telegram_user_id=? AND telegram_chat_id=? "
+            "AND state='awaiting_contact' ORDER BY created_at DESC LIMIT 1",
+            (actor, chat),
+        ).fetchone()
+        if not row:
+            return "invalid", None
+        token_hash = row["token_hash"]
+        if row["expires_at"] < now:
+            c.execute(
+                "UPDATE telegram_otp_challenges SET state='expired' WHERE token_hash=?",
+                (token_hash,),
+            )
+            return "expired", None
+        attempts = int(row["attempts"] or 0)
+        if attempts >= 5:
+            c.execute(
+                "UPDATE telegram_otp_challenges SET state='blocked' WHERE token_hash=?",
+                (token_hash,),
+            )
+            return "blocked", None
+        if not hmac.compare_digest(row["phone"], contact_phone):
+            next_attempt = attempts + 1
+            state = "blocked" if next_attempt >= 5 else "awaiting_contact"
+            c.execute(
+                "UPDATE telegram_otp_challenges SET attempts=?, state=? WHERE token_hash=?",
+                (next_attempt, state, token_hash),
+            )
+            return "phone_mismatch", None
+
+        otp = c.execute(
+            "SELECT code, expires_at, attempts FROM verification_codes WHERE phone=?",
+            (row["phone"],),
+        ).fetchone()
+        if not otp or otp["expires_at"] < now or int(otp["attempts"] or 0) >= 5:
+            c.execute(
+                "UPDATE telegram_otp_challenges SET state='expired' WHERE token_hash=?",
+                (token_hash,),
+            )
+            return "expired", None
+        if not hmac.compare_digest(telegram_otp_digest(otp["code"]), row["otp_digest"]):
+            c.execute(
+                "UPDATE telegram_otp_challenges SET state='superseded' WHERE token_hash=?",
+                (token_hash,),
+            )
+            return "superseded", None
+        cur = c.execute(
+            "UPDATE telegram_otp_challenges SET state='consumed', consumed_at=? "
+            "WHERE token_hash=? AND state='awaiting_contact'",
+            (now, token_hash),
+        )
+        if cur.rowcount != 1:
+            return "replayed", None
+        return "consumed", otp["code"]
+
+
+def allow_telegram_attempt(scope_hash: str, max_attempts: int = 5, window_seconds: int = 600) -> bool:
+    """Persistent, atomic limiter shared by all local API/polling workers."""
+    now_dt = datetime.utcnow()
+    now = now_dt.isoformat()
+    window_start = (now_dt - timedelta(seconds=window_seconds)).isoformat()
+    blocked_until = (now_dt + timedelta(seconds=window_seconds)).isoformat()
+    with get_conn() as c:
+        c.execute("BEGIN IMMEDIATE")
+        row = c.execute(
+            "SELECT attempts, window_started, blocked_until FROM telegram_otp_rate_limits "
+            "WHERE scope_hash=?",
+            (scope_hash,),
+        ).fetchone()
+        if row and row["blocked_until"] and row["blocked_until"] > now:
+            return False
+        if not row or row["window_started"] < window_start:
+            c.execute(
+                "INSERT INTO telegram_otp_rate_limits(scope_hash, attempts, window_started, blocked_until) "
+                "VALUES (?, 1, ?, NULL) ON CONFLICT(scope_hash) DO UPDATE SET "
+                "attempts=1, window_started=excluded.window_started, blocked_until=NULL",
+                (scope_hash, now),
+            )
+            return True
+        attempts = int(row["attempts"] or 0)
+        if attempts >= max_attempts:
+            c.execute(
+                "UPDATE telegram_otp_rate_limits SET blocked_until=? WHERE scope_hash=?",
+                (blocked_until, scope_hash),
+            )
+            return False
+        c.execute(
+            "UPDATE telegram_otp_rate_limits SET attempts=attempts+1 WHERE scope_hash=?",
+            (scope_hash,),
+        )
+        return True
 
 
 # ---------- Driver Registration ----------
