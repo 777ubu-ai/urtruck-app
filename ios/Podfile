@@ -52,6 +52,42 @@ target 'UrTruck' do
       :ccache_enabled => podfile_properties['apple.ccacheEnabled'] == 'true',
     )
 
+    fmt_base_h = File.join(__dir__, 'Pods', 'fmt', 'include', 'fmt', 'base.h')
+    if File.exist?(fmt_base_h)
+      fmt_source = File.read(fmt_base_h)
+      expected_fmt_version = '#define FMT_VERSION 110002'
+      unless fmt_source.include?(expected_fmt_version)
+        raise "Unexpected fmt version in #{fmt_base_h}; refusing to patch"
+      end
+
+      fmt_apple_clang_21_guard = <<~'CPP'
+      #elif defined(__apple_build_version__) && __apple_build_version__ < 14000029L
+      #  define FMT_USE_CONSTEVAL 0  // consteval is broken in Apple clang < 14.
+      #elif defined(__apple_build_version__) && __apple_build_version__ >= 21000000L
+      #  define FMT_USE_CONSTEVAL 0  // Xcode 26 / Apple clang 21 fmt 11.0.2 compatibility.
+      #elif FMT_MSC_VERSION && FMT_MSC_VERSION < 1929
+      #  define FMT_USE_CONSTEVAL 0  // consteval is broken in MSVC VS2019 < 16.10.
+      CPP
+
+      unless fmt_source.include?(fmt_apple_clang_21_guard)
+        fmt_consteval_guard = <<~'CPP'
+      #elif defined(__apple_build_version__) && __apple_build_version__ < 14000029L
+      #  define FMT_USE_CONSTEVAL 0  // consteval is broken in Apple clang < 14.
+      #elif FMT_MSC_VERSION && FMT_MSC_VERSION < 1929
+      #  define FMT_USE_CONSTEVAL 0  // consteval is broken in MSVC VS2019 < 16.10.
+      CPP
+        unless fmt_source.scan(fmt_consteval_guard).length == 1
+          raise "Unexpected fmt consteval guard in #{fmt_base_h}; refusing to patch"
+        end
+
+        File.chmod(0o644, fmt_base_h)
+        File.write(fmt_base_h, fmt_source.sub(fmt_consteval_guard, fmt_apple_clang_21_guard))
+        Pod::UI.puts('Applied fmt 11.0.2 Apple Clang 21 consteval compatibility patch')
+      end
+    else
+      raise "fmt base header not found at #{fmt_base_h}; refusing to continue"
+    end
+
     # This is necessary for Xcode 14, because it signs resource bundles by default
     # when building for devices.
     installer.target_installation_results.pod_target_installation_results
