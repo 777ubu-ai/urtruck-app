@@ -51,11 +51,25 @@ def _ids():
     return o, d
 
 
+
+def _mk_accepted_deal(cargo, owner, driver, room):
+    deal_id = "deal_" + uuid.uuid4().hex[:8]
+    with get_conn() as c:
+        c.execute(
+            "INSERT INTO deals (id, cargo_id, trip_id, bid_id, shipper_id, driver_id, "
+            "from_city, to_city, amount, status, chat_room_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (deal_id, cargo, None, "bid_" + uuid.uuid4().hex[:8], owner, driver,
+             "Almaty", "Astana", 1000, "accepted", room),
+        )
+    return deal_id
+
+
 def test_inv1_send_increments_recipient_not_sender():
     """INV-1: send(a→b) поднимает unread b, не трогает unread a (H6/H7)."""
     o, d = _ids()
     cargo = "cg_" + uuid.uuid4().hex[:6]
     room = get_or_create_deal_room(cargo, o, d)
+    _mk_accepted_deal(cargo, o, d, room)
     before_o = unread_count(user=_u(o))["unread"]
     before_d = unread_count(user=_u(d))["unread"]
     send_message(SendMessageIn(room_id=room, text="hello"), user=_u(d))  # водитель → владелец
@@ -70,6 +84,7 @@ def test_inv2_badge_matches_unread():
     o, d = _ids()
     cargo = "cg_" + uuid.uuid4().hex[:6]
     room = get_or_create_deal_room(cargo, o, d)
+    _mk_accepted_deal(cargo, o, d, room)
     send_message(SendMessageIn(room_id=room, text="m1"), user=_u(d))
     send_message(SendMessageIn(room_id=room, text="m2"), user=_u(d))
     assert push_sender._compute_recipient_badge(o) == unread_count(user=_u(o))["unread"]
@@ -78,8 +93,12 @@ def test_inv2_badge_matches_unread():
 def test_inv3_read_marks_only_opened_room():
     """INV-3: get_messages помечает прочитанной ТОЛЬКО открытую комнату (H5)."""
     o, d = _ids()
-    room_a = get_or_create_deal_room("cgA_" + uuid.uuid4().hex[:6], o, d)
-    room_b = get_or_create_deal_room("cgB_" + uuid.uuid4().hex[:6], o, d)
+    cargo_a = "cgA_" + uuid.uuid4().hex[:6]
+    room_a = get_or_create_deal_room(cargo_a, o, d)
+    _mk_accepted_deal(cargo_a, o, d, room_a)
+    cargo_b = "cgB_" + uuid.uuid4().hex[:6]
+    room_b = get_or_create_deal_room(cargo_b, o, d)
+    _mk_accepted_deal(cargo_b, o, d, room_b)
     send_message(SendMessageIn(room_id=room_a, text="a1"), user=_u(d))
     send_message(SendMessageIn(room_id=room_b, text="b1"), user=_u(d))
     assert unread_count(user=_u(o))["unread"] == 2
@@ -91,8 +110,12 @@ def test_inv3_read_marks_only_opened_room():
 def test_inv4_multiroom_decrements_per_room():
     """INV-4: после чтения одной из двух — остаётся ровно N оставшихся, не 0 и не всё (H5)."""
     o, d = _ids()
-    room_a = get_or_create_deal_room("cgA_" + uuid.uuid4().hex[:6], o, d)
-    room_b = get_or_create_deal_room("cgB_" + uuid.uuid4().hex[:6], o, d)
+    cargo_a = "cgA_" + uuid.uuid4().hex[:6]
+    room_a = get_or_create_deal_room(cargo_a, o, d)
+    _mk_accepted_deal(cargo_a, o, d, room_a)
+    cargo_b = "cgB_" + uuid.uuid4().hex[:6]
+    room_b = get_or_create_deal_room(cargo_b, o, d)
+    _mk_accepted_deal(cargo_b, o, d, room_b)
     send_message(SendMessageIn(room_id=room_a, text="a1"), user=_u(d))
     send_message(SendMessageIn(room_id=room_a, text="a2"), user=_u(d))
     send_message(SendMessageIn(room_id=room_b, text="b1"), user=_u(d))
@@ -108,6 +131,7 @@ def test_inv5_own_messages_never_counted():
     o, d = _ids()
     cargo = "cg_" + uuid.uuid4().hex[:6]
     room = get_or_create_deal_room(cargo, o, d)
+    _mk_accepted_deal(cargo, o, d, room)
     for i in range(5):
         send_message(SendMessageIn(room_id=room, text=f"own-{i}"), user=_u(d))
     assert unread_count(user=_u(d))["unread"] == 0   # сам себе не накрутил
@@ -123,6 +147,7 @@ def test_inv6_only_chat_kind_sets_badge():
     o, d = _ids()
     cargo = "cg_" + uuid.uuid4().hex[:6]
     room = get_or_create_deal_room(cargo, o, d)
+    _mk_accepted_deal(cargo, o, d, room)
     send_message(SendMessageIn(room_id=room, text="x"), user=_u(d))  # у o есть 1 непрочитанное
 
     captured = {}
@@ -156,6 +181,7 @@ def test_inv7_idempotent_client_msg_id():
     o, d = _ids()
     cargo = "cg_" + uuid.uuid4().hex[:6]
     room = get_or_create_deal_room(cargo, o, d)
+    _mk_accepted_deal(cargo, o, d, room)
     cmid = "cm_" + uuid.uuid4().hex[:8]
     send_message(SendMessageIn(room_id=room, text="dup", client_msg_id=cmid), user=_u(d))
     send_message(SendMessageIn(room_id=room, text="dup", client_msg_id=cmid), user=_u(d))
@@ -168,6 +194,7 @@ def test_mine_flag_regression():
     o, d = _ids()
     cargo = "cg_" + uuid.uuid4().hex[:6]
     room = get_or_create_deal_room(cargo, o, d)
+    _mk_accepted_deal(cargo, o, d, room)
     send_message(SendMessageIn(room_id=room, text="from-driver"), user=_u(d))
     send_message(SendMessageIn(room_id=room, text="from-owner"), user=_u(o))
     # глазами водителя: своё — mine=True, чужое — mine=False
