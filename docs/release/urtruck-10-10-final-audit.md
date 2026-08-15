@@ -150,3 +150,14 @@ Desktop job выполнил 25 тестов, но 9 legacy tests ждут уд�
 background/terminated tracking, push-полный цикл, TTN/PDF с production data
 и Android/iOS native MapKit: для них отсутствуют безопасные тестовые
 учётные данные, активный MapKit режим и совместимый native toolchain.
+
+## iOS runtime-проверка 2026-08-15
+
+- Ветка: `codex/yandex-maps`, исходный commit проверки: `6d43262b65e1bdf3ee9eb4e7eb230f153e38d922`.
+- Устройство: iOS Simulator `iPhone 17`, UDID
+  `3D4F6F4A-86D7-4125-BC8D-B74D9C88C35F`.
+- `npm ci --no-audit --no-fund`: exit 0; `pod install --deployment`: exit 0.
+- `xcodebuild -workspace ios/UrTruck.xcworkspace -scheme UrTruck -configuration Debug -sdk iphonesimulator -destination 'platform=iOS Simulator,id=3D4F6F4A-86D7-4125-BC8D-B74D9C88C35F' -derivedDataPath /tmp/urtruck-ios-derived build`: exit 65. Компиляция останавливается на `fmt` (consteval errors) с Xcode 26.6; лог: `qa/artifacts/ios-real/xcodebuild.log`.
+- Попытка Expo Go: установлен Expo Go SDK 57, проект использует Expo SDK 52; приложение отклонено как несовместимое до загрузки UrTruck.
+- Реальный Maestro smoke на том же симуляторе: `maestro test qa/maestro/smoke-suite.yaml --format junit --output qa/artifacts/maestro-real/ios-smoke.xml`: exit 1 (`"UrTruck" is visible` не выполнено), JUnit и лог сохранены в `qa/artifacts/maestro-real/`.
+- Итог: **BLOCKED**. Нативный iOS runtime и native Yandex MapKit не подтверждены; текущий `TruckMap.native.js` по-прежнему использует `react-native-maps`.
