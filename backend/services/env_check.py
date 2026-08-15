@@ -10,9 +10,10 @@ The guard refuses an unsafe production configuration at startup, so
 the process supervisor surfaces the problem instead of quietly running
 with mock or insecure user-data settings.
 
-Outside production (env not set, or set to `development` /
-`preview`) the guard only logs warnings — local dev shouldn't
-require a real WhatsApp account.
+Outside production (explicitly set to `development` / `preview` /
+`test`) the guard only logs warnings — local dev shouldn't require a
+real WhatsApp account. Missing or unknown environment names fail closed
+as production.
 """
 from __future__ import annotations
 
@@ -20,6 +21,7 @@ import os
 from typing import List
 
 from services.qa_token_guard import is_compromised_qa_agent_token
+from config import VALID_RUNTIME_ENVIRONMENTS
 
 
 def _is_unsafe_password(value: str) -> bool:
@@ -33,6 +35,21 @@ def collect_issues() -> List[str]:
     """Return a list of human-readable production-config problems."""
     issues: List[str] = []
 
+    raw_env = (os.getenv("URTRUCK_ENV") or os.getenv("ENV") or "production").strip().lower()
+    if raw_env not in VALID_RUNTIME_ENVIRONMENTS:
+        issues.append(
+            f"Environment: unsupported runtime name {raw_env!r}; fail-closed mode is production. "
+            f"Use one of: {', '.join(sorted(VALID_RUNTIME_ENVIRONMENTS))}."
+        )
+
+    # SEC-001: fixed reviewer credentials were removed from the auth path.
+    # Treat stale production variables as a configuration error so operators do
+    # not assume the old bypass still exists or accidentally reintroduce it.
+    if os.getenv("REVIEWER_DEMO_EMAIL") or os.getenv("REVIEWER_DEMO_CODE"):
+        issues.append(
+            "Auth: legacy REVIEWER_DEMO_* credentials are forbidden; App Review must use normal email OTP."
+        )
+
     # OTP — at least one real channel must be configured.
     wa_token = os.getenv("WHATSAPP_TOKEN") or os.getenv("WHATSAPP_ACCESS_TOKEN")
     wa_phone = os.getenv("WHATSAPP_PHONE_ID") or os.getenv("WHATSAPP_PHONE_NUMBER_ID")
@@ -41,11 +58,17 @@ def collect_issues() -> List[str]:
         os.getenv("MOBIZON_API_KEY") or os.getenv("TWILIO_ACCOUNT_SID")
     )
     tg_real = bool(os.getenv("TELEGRAM_BOT_TOKEN"))
-    if not (wa_token and wa_phone) and not sms_real and not tg_real:
+    email_real = bool(
+        os.getenv("EMAIL_SMTP_HOST")
+        and os.getenv("EMAIL_SMTP_USER")
+        and os.getenv("EMAIL_SMTP_PASSWORD")
+    )
+    if not (wa_token and wa_phone) and not sms_real and not tg_real and not email_real:
         issues.append(
-            "OTP: no real channel configured (WhatsApp / SMS / Telegram all in MOCK). "
+            "OTP: no real channel configured (WhatsApp / SMS / Telegram / Email all in MOCK). "
             "Real users will not receive codes. Set WHATSAPP_TOKEN+WHATSAPP_PHONE_ID, "
-            "or SMS_PROVIDER=mobizon|twilio with credentials, or TELEGRAM_BOT_TOKEN."
+            "SMS_PROVIDER=mobizon|twilio with credentials, TELEGRAM_BOT_TOKEN, "
+            "or EMAIL_SMTP_HOST+EMAIL_SMTP_USER+EMAIL_SMTP_PASSWORD."
         )
 
     # Stage 22: BETA_MODE in production is a security hole — anyone
@@ -132,7 +155,11 @@ def enforce_production_env() -> None:
     # An omitted environment name is production for a deployed service. This
     # avoids the dangerous historical behaviour where forgetting one variable
     # silently selected permissive development defaults on a public server.
-    env = (os.getenv("URTRUCK_ENV") or os.getenv("ENV") or "production").lower()
+    raw_env = (os.getenv("URTRUCK_ENV") or os.getenv("ENV") or "production").strip().lower()
+    # A typo must never route startup through the permissive non-production
+    # branch. Treat unsupported names exactly like production, then let
+    # collect_issues() report the invalid value alongside other unsafe config.
+    env = raw_env if raw_env in VALID_RUNTIME_ENVIRONMENTS else "production"
     if env != "production":
         # Don't fail dev / preview boots; just trace what's mock.
         provider = (os.getenv("STORAGE_PROVIDER") or "local").lower()

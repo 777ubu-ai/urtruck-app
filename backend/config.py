@@ -9,14 +9,33 @@ API_PORT = 8001  # Отдельный порт (не 8080 — там фронт�
 #
 # Stage 22 fix: до v69 дефолт был "true". Любой production-деплой,
 # в котором забыли поставить BETA_MODE=false, пропускал универсальный
-# код 0000 для каждого номера — security incident. Теперь дефолт
-# завязан на URTRUCK_ENV:
-#   * URTRUCK_ENV=production → BETA_MODE=false по дефолту
-#     (env_check.py дополнительно ругается, если включить вручную).
-#   * dev / preview / unset → BETA_MODE=true (тестеры заходят с 0000).
-URTRUCK_ENV = (os.getenv("URTRUCK_ENV") or os.getenv("ENV") or "production").lower()
-_beta_default = "false" if URTRUCK_ENV == "production" else "true"
-BETA_MODE = os.getenv("BETA_MODE", _beta_default).lower() in ("1", "true", "yes")
+# код 0000 для каждого номера — security incident.
+#
+# SEC-001: runtime mode теперь fail-closed. Опечатка вроде "prodution" не
+# должна превращать неизвестную среду в permissive dev и включать BETA bypass.
+# Даже явно заданный BETA_MODE=true игнорируется в production/unknown env;
+# env_check.py отдельно блокирует такую production-конфигурацию при startup.
+VALID_RUNTIME_ENVIRONMENTS = frozenset({"production", "development", "preview", "test"})
+
+
+def resolve_auth_runtime(environment: str | None, beta_value: str | None) -> tuple[str, bool, bool]:
+    """Return (effective_env, env_is_valid, beta_enabled) without side effects."""
+    raw_env = (environment or "production").strip().lower() or "production"
+    env_is_valid = raw_env in VALID_RUNTIME_ENVIRONMENTS
+    effective_env = raw_env if env_is_valid else "production"
+    if beta_value is None or not str(beta_value).strip():
+        beta_requested = effective_env != "production"
+    else:
+        beta_requested = str(beta_value).strip().lower() in ("1", "true", "yes")
+    beta_enabled = bool(env_is_valid and effective_env != "production" and beta_requested)
+    return effective_env, env_is_valid, beta_enabled
+
+
+_raw_runtime_env = os.getenv("URTRUCK_ENV") or os.getenv("ENV")
+URTRUCK_ENV, URTRUCK_ENV_VALID, BETA_MODE = resolve_auth_runtime(
+    _raw_runtime_env,
+    os.getenv("BETA_MODE"),
+)
 BETA_OTP_CODE = os.getenv("BETA_OTP_CODE", "0000")
 
 # Ставки: конфиденциальный режим (InDrive-модель) под будущую монетизацию.
@@ -26,15 +45,6 @@ BETA_OTP_CODE = os.getenv("BETA_OTP_CODE", "0000")
 # (это security, не зависит от флага). Решение владельца 2026-07: открыть,
 # закрытый режим не удалять — спрятать за выключатель.
 BIDS_CONFIDENTIAL = os.getenv("BIDS_CONFIDENTIAL", "false").lower() in ("1", "true", "yes")
-
-# App Store / Google Play review — демо-вход для ревьюера (Guideline 2.1a).
-# Фиксированный email + код принимаются ТОЛЬКО для этого одного адреса —
-# это НЕ глобальный BETA_MODE (тот отключён на проде). Даёт ревьюеру доступ ко
-# всем функциям без реального OTP. Аккаунт обычный (не админ, чужие данные
-# по-прежнему защищены owner-check/IDOR-фиксами). Значения можно переопределить
-# в .env; код 4-значный, чтобы влезал в OTP-поле приложения (не 0000).
-REVIEWER_DEMO_EMAIL = os.getenv("REVIEWER_DEMO_EMAIL", "appreview@urtruck.kz").strip().lower()
-REVIEWER_DEMO_CODE = os.getenv("REVIEWER_DEMO_CODE", "1975")
 
 # Database
 # На сервере DB лежит в /home/ubuntu/urtruck/backend/database/security.db

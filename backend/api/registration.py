@@ -19,7 +19,7 @@ from ocr.document_reader import extract_passport_data
 from biometrics.liveness import check_liveness, face_match
 from scoring.engine import calculate_score
 from database import db
-from config import BETA_MODE, BETA_OTP_CODE, REVIEWER_DEMO_EMAIL, REVIEWER_DEMO_CODE
+from config import BETA_MODE, BETA_OTP_CODE
 import logging
 
 reg_router = APIRouter()
@@ -272,23 +272,24 @@ def email_send(req: EmailSendRequest, request: Request = None):
         raise HTTPException(status_code=400, detail="Неверный формат e-mail")
     if not bool(req.consent):
         raise HTTPException(status_code=400, detail="Для регистрации необходимо принять условия сервиса.")
-    # App Review демо-вход: для ревьюерского адреса реальное письмо не шлём —
-    # код фиксированный (REVIEWER_DEMO_CODE), ревьюер вводит его сразу. Это
-    # гарантирует, что экран ввода кода откроется независимо от состояния SMTP.
-    if REVIEWER_DEMO_EMAIL and email == REVIEWER_DEMO_EMAIL:
-        return {"sent": True, "channel": "email", "mock": False, "code": None, "error": None}
     limit_otp_send(email)
     code = generate_code()
     reg_dal.save_code(email, code)
     result = otp_service.send_otp(email, code, channel="email")
     is_mock = bool(result.get("mock"))
     delivered = bool(result.get("sent")) and not result.get("error")
+    # SEC-001: production-like runtime must never expose a mock OTP or leave a
+    # usable code in DB when delivery did not happen. App Review uses the same
+    # real, expiring, one-time email OTP flow as every other account.
+    if not BETA_MODE and (is_mock or not delivered):
+        reg_dal.delete_code(email)
+        raise HTTPException(status_code=503, detail="Email OTP временно недоступен")
     return {
-        "sent": delivered or is_mock,
+        "sent": delivered,
         "channel": "email",
-        "mock": is_mock,
-        "code": result.get("code") if is_mock else None,
-        "error": None if (delivered or is_mock) else (result.get("error") or "delivery_failed"),
+        "mock": False,
+        "code": None,
+        "error": None,
     }
 
 
@@ -298,24 +299,20 @@ def email_verify(req: EmailVerifyRequest, request: Request = None):
     if not _valid_email(email):
         raise HTTPException(status_code=400, detail="Неверный e-mail")
     limit_otp_verify(email)
-    # Ревьюерский демо-вход (Guideline 2.1a): фиксированный код принимается
-    # ТОЛЬКО для REVIEWER_DEMO_EMAIL. Не зависит от BETA_MODE (тот на проде off).
-    is_reviewer = bool(REVIEWER_DEMO_EMAIL) and email == REVIEWER_DEMO_EMAIL and req.code.strip() == REVIEWER_DEMO_CODE
     # BETA bypass — для тестеров, когда включён BETA_MODE (на проде выключен).
     is_beta_login = BETA_MODE and req.code.strip() == BETA_OTP_CODE
-    if not (is_beta_login or is_reviewer):
+    if not is_beta_login:
         if not reg_dal.check_code(email, req.code):
             raise HTTPException(status_code=400, detail="Неверный или истёкший код")
         reg_dal.delete_code(email)
     guest_id = reg_dal.get_driver_by_token(req.guest_token) if req.guest_token else None
     driver = reg_dal.get_or_create_driver(email, upgrade_guest_id=guest_id)
-    # Демо-аккаунт для ревью (или beta) — провижн полного доступа, чтобы
-    # ревьюер видел ВСЕ функции (лента, ставки, чат, очередь) без прохождения
-    # верификации документов.
-    if is_reviewer or is_beta_login:
+    # BETA-only провижн тестового профиля. В production BETA_MODE всегда false,
+    # а reviewer проходит обычную регистрацию без privilege escalation.
+    if is_beta_login:
         updates = {}
         if not driver.get("full_name"):
-            updates["full_name"] = "App Review Demo" if is_reviewer else "Тестер"
+            updates["full_name"] = "Тестер"
         if (driver.get("verification_level") or 0) < 2:
             updates["verification_level"] = 2
         if driver.get("role") in (None, "guest"):
