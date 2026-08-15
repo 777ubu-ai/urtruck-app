@@ -455,6 +455,12 @@ def my_rooms(user=Depends(require_level(1))):
     # если данных в БД нет — null, без выдумок. Доступ уже ограничен выше
     # (WHERE participant_1/2 = uid), поэтому JOIN'ы не раскрывают чужие комнаты.
     _enrich_rooms_with_deal_context(rooms, uid)
+    # P0 privacy: legacy/pre-accept deal rooms must not even appear in the
+    # conversation list. Support remains visible without a deal context.
+    rooms = [
+        r for r in rooms
+        if r.get("is_support") or r.get("deal_status") in _DEAL_CHAT_STATUSES
+    ]
     return {"rooms": rooms}
 
 
