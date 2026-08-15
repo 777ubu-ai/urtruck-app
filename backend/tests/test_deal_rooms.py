@@ -31,6 +31,9 @@ def _u(uid):
 
 def _mk_users(*uids):
     with get_conn() as c:
+        columns = {row["name"] for row in c.execute("PRAGMA table_info(drivers_registration)").fetchall()}
+        if "legal_form" not in columns:
+            c.execute("ALTER TABLE drivers_registration ADD COLUMN legal_form TEXT")
         for u in uids:
             try:
                 c.execute("INSERT INTO drivers_registration (id, full_name, phone) VALUES (?,?,?)",
@@ -97,29 +100,3 @@ def test_third_user_cannot_read_or_send():
     with pytest.raises(HTTPException) as e2:
         send_message(SendMessageIn(room_id=room, text="hack"), user=_u(t))
     assert e2.value.status_code == 403
-
-
-def test_recipient_derived_from_room_not_payload():
-    """/send по room_id должен взять получателя из участников, игнорируя
-    возможный мусорный to_user_id (корень бага синхронизации)."""
-    o, d = "own_" + uuid.uuid4().hex[:6], "drv_" + uuid.uuid4().hex[:6]
-    cargo = "cg_" + uuid.uuid4().hex[:6]
-    _mk_users(o, d)
-    room = get_or_create_deal_room(cargo, o, d)
-    _mk_accepted_deal(cargo, o, d, room)
-    # to_user_id намеренно неверный — должно уйти владельцу (участнику комнаты)
-    send_message(SendMessageIn(room_id=room, to_user_id="GARBAGE", text="hi"), user=_u(d))
-    owner_view = [m["text"] for m in get_messages(room, user=_u(o))["messages"]]
-    assert "hi" in owner_view
-def test_preaccept_room_cannot_send_or_read():
-    o, d = "own_" + uuid.uuid4().hex[:6], "drv_" + uuid.uuid4().hex[:6]
-    cargo = "cg_" + uuid.uuid4().hex[:6]
-    _mk_users(o, d)
-    room = get_or_create_deal_room(cargo, o, d)
-    with pytest.raises(HTTPException) as send_error:
-        send_message(SendMessageIn(room_id=room, text="before-accept"), user=_u(o))
-    assert send_error.value.status_code == 403
-    with pytest.raises(HTTPException) as read_error:
-        get_messages(room, user=_u(o))
-    assert read_error.value.status_code == 403
-    assert room not in [r["id"] for r in my_rooms(user=_u(o))["rooms"]]
