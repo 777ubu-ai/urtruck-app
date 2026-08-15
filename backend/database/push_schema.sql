@@ -39,8 +39,11 @@ CREATE TABLE IF NOT EXISTS push_log (
   web_sent INTEGER DEFAULT 0,
   native_sent INTEGER DEFAULT 0,
   error TEXT,
+  event_key TEXT,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_push_log_user ON push_log(user_id);
 CREATE INDEX IF NOT EXISTS idx_push_log_kind ON push_log(kind);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_push_log_event_key ON push_log(user_id, event_key) WHERE event_key IS NOT NULL;
