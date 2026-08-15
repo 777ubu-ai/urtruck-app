@@ -4,7 +4,7 @@
 // independent public-API checks, scans for forbidden production strings,
 // and writes the final qa-report-{timestamp}.{md,json} pair.
 
-const { test } = require('@playwright/test');
+const { test, expect } = require('@playwright/test');
 const fs = require('fs');
 const path = require('path');
 const { BASE_URL, ACTORS, FORBIDDEN_PROD_STRINGS, QA_TAG } = require('../utils/qaConfig');
@@ -119,4 +119,7 @@ test('Auditor · supervisor checks', async ({ page }) => {
   console.log(`[QA REPORT] ${jsonPath}`);
   console.log(`[QA SUMMARY] P0=${finalState.counts.P0} P1=${finalState.counts.P1} P2=${finalState.counts.P2} pass=${finalState.counts.pass}`);
   console.log(`[QA NEXT  ] ${finalState.nextFix}`);
+
+  expect(finalState.counts.P0, `QA report contains P0 issues: ${finalState.nextFix}`).toBe(0);
+  expect(finalState.counts.P1, `QA report contains P1 issues: ${finalState.nextFix}`).toBe(0);
 });
