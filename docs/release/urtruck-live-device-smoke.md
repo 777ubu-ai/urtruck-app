@@ -6,7 +6,7 @@
 
 ## 1. Что проверяем
 
-Интеграционная ветка: **`claude/youthful-cerf-barf3`** (актуальный remote HEAD).
+Интеграционная ветка: **`agent/comprehensive-10-10-audit-20260815`** (PR #187, актуальный head проверяется перед smoke).
 Основной flow:
 
 ```
@@ -26,7 +26,7 @@ Plus progressive gates: Queue (locked до approved), «Разместить р�
 
 ```bash
 cd /path/to/urtruck-app
-git checkout claude/youthful-cerf-barf3 && git pull
+git checkout agent/comprehensive-10-10-audit-20260815 && git pull
 cd backend
 pip install -r requirements.txt        # только при первом запуске
 uvicorn main:app --host 0.0.0.0 --port 8001
@@ -52,7 +52,7 @@ scripts/smoke_registration_endpoints.sh http://<LAN-IP>:8001/api/v1
 ## 5. Frontend на iPhone (Terminal 3)
 
 ```bash
-git checkout claude/youthful-cerf-barf3 && git pull
+git checkout agent/comprehensive-10-10-audit-20260815 && git pull
 EXPO_PUBLIC_API_URL=http://<LAN-IP>:8001 npx expo start
 # iPhone → Expo Go → scan QR
 ```
