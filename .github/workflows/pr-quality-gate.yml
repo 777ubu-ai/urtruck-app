@@ -75,6 +75,12 @@ jobs:
           node --experimental-loader ./tests/frontend/loader.mjs --test tests/frontend/test_currency_normalization.mjs
       - name: Deploy SSH security guard
         run: node qa/utils/deploySshSecurityGuard.js
+      - name: Secret scan guard
+        run: npm run qa:secrets
+      - name: Dependency audit
+        run: npm audit --audit-level=high
+      - name: Expo Doctor
+        run: npx expo-doctor --verbose
       - name: Border dashboard contract
         run: node qa/utils/borderDashboardSmoke.js
       - name: i18n smoke

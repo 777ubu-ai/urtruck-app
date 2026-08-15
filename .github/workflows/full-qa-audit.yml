@@ -178,6 +178,11 @@ jobs:
         run: npm ci
       - name: Run QA Center checks
         run: npm run qa:center:quick
+      - name: Release dependency and secret gates
+        run: |
+          npm run qa:secrets
+          npm audit --audit-level=high
+          npx expo-doctor --verbose
       - name: Run frontend unit regressions
         run: |
           node --experimental-loader ./tests/frontend/loader.mjs --test tests/frontend/*.mjs
