@@ -244,6 +244,36 @@ def test_terminal_status_does_not_change():
     assert deal_status(d) == "delivered"
 
 
+def test_shipper_confirms_delivery_and_completed_is_terminal():
+    """После доставки только грузоотправитель подтверждает получение.
+    Повтор подтверждения идемпотентен, водитель не может выполнить его
+    вместо получателя, а completed нельзя отменить или переоткрыть."""
+    d = seed_deal("delivered", from_country="KZ", to_country="KZ")
+    confirmed = patch_status(d, "completed", SHIPPER)
+    assert confirmed.status_code == 200, confirmed.text
+    assert deal_status(d) == "completed"
+
+    repeated = patch_status(d, "completed", SHIPPER)
+    assert repeated.status_code == 200, repeated.text
+    assert repeated.json() == {"ok": True, "status": "completed"}
+
+    driver_attempt = patch_status(d, "completed", DRIVER)
+    assert driver_attempt.status_code == 403, driver_attempt.text
+    assert deal_status(d) == "completed"
+
+    cancelled = patch_status(d, "cancelled", SHIPPER)
+    assert cancelled.status_code == 409, cancelled.text
+    assert deal_status(d) == "completed"
+
+
+def test_driver_cannot_confirm_delivery():
+    d = seed_deal("delivered", from_country="KZ", to_country="KZ")
+    r = patch_status(d, "completed", DRIVER)
+    assert r.status_code == 403, r.text
+    assert r.json()["detail"]["error"] == "ACTION_NOT_ALLOWED_FOR_ROLE"
+    assert deal_status(d) == "delivered"
+
+
 def test_unknown_status_400():
     d = seed_deal("accepted")
     r = patch_status(d, "banana", DRIVER)
@@ -429,6 +459,8 @@ if __name__ == "__main__":
                test_driver_can_deliver_international_from_at_border,
                test_stranger_gets_403, test_repeat_status_is_idempotent_noop,
                test_skip_steps_gives_409, test_terminal_status_does_not_change,
+               test_shipper_confirms_delivery_and_completed_is_terminal,
+               test_driver_cannot_confirm_delivery,
                test_unknown_status_400, test_cancel_allowed_for_both_parties_from_accepted,
                test_cancel_mid_transit_allowed_both_and_audited,
                test_trip_status_endpoint_cannot_bypass_fsm_or_country_guard,
