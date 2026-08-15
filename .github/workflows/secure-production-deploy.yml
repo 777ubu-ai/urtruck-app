@@ -26,7 +26,6 @@ jobs:
       DEPLOY_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
       SERVER_HOST: ${{ secrets.SERVER_HOST }}
       SERVER_USER: ${{ secrets.SERVER_USER }}
-      SERVER_PASS: ${{ secrets.SERVER_PASS }}
       SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
       SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
       REMOTE_DIR: ${{ secrets.REMOTE_DIR || '/home/ubuntu/urtruck-app' }}
@@ -66,22 +65,20 @@ jobs:
           test -s dist/index.html
           test -s dist/build-info.json
 
-      - name: Install SSH transport dependency
+      - name: Verify SSH client
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq sshpass
+          set -euo pipefail
+          command -v ssh
+          command -v scp
 
       - name: Secure SSH preflight
         run: |
           set -euo pipefail
           test -n "$SERVER_HOST"
           test -n "$SERVER_USER"
-          if [ -n "${SERVER_SSH_KEY:-}" ]; then
-            test -n "${SERVER_SSH_KNOWN_HOSTS:-}" || { echo '::error::SERVER_SSH_KNOWN_HOSTS is required with SERVER_SSH_KEY'; exit 1; }
-            echo 'SSH_MODE=key+pinned-known-hosts'
-          else
-            echo 'SSH_MODE=legacy-password-fallback'
-          fi
+          test -n "${SERVER_SSH_KEY:-}" || { echo '::error::SERVER_SSH_KEY is required'; exit 1; }
+          test -n "${SERVER_SSH_KNOWN_HOSTS:-}" || { echo '::error::SERVER_SSH_KNOWN_HOSTS is required'; exit 1; }
+          echo 'SSH_MODE=key+pinned-known-hosts'
           bash scripts/deploy-ssh.sh ssh "echo SSH_TRANSPORT=ok"
 
       - name: Backup current production

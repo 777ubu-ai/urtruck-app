@@ -21,14 +21,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - name: Install SSH client
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify SSH client
+        run: |
+          set -euo pipefail
+          command -v ssh
+          command -v scp
 
       - name: Create and verify production backup
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
-          SERVER_PASS: ${{ secrets.SERVER_PASS }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
           REMOTE_DIR: ${{ secrets.REMOTE_DIR || '/home/ubuntu/urtruck-app' }}
           BACKEND_DIR: ${{ secrets.BACKEND_DIR || '/home/ubuntu/urtruck-security' }}
           BACKUP_NOTE: ${{ inputs.note }}
@@ -36,12 +43,10 @@ jobs:
           set -euo pipefail
           test -n "$SERVER_HOST"
           test -n "$SERVER_USER"
-          test -n "$SERVER_PASS"
+          test -n "$SERVER_SSH_KEY"
+          test -n "$SERVER_SSH_KNOWN_HOSTS"
 
-          sshpass -p "$SERVER_PASS" ssh \
-            -o StrictHostKeyChecking=no \
-            -o ServerAliveInterval=20 \
-            "$SERVER_USER@$SERVER_HOST" \
+          bash scripts/deploy-ssh.sh ssh \
             "REMOTE_DIR='$REMOTE_DIR' BACKEND_DIR='$BACKEND_DIR' BACKUP_NOTE='$BACKUP_NOTE' bash -s" <<'REMOTE'
           set -euo pipefail
           umask 077

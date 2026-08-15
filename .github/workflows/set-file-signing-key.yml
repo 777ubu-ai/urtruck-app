@@ -38,7 +38,6 @@ jobs:
     env:
       SERVER_HOST: ${{ secrets.SERVER_HOST }}
       SERVER_USER: ${{ secrets.SERVER_USER }}
-      SERVER_PASS: ${{ secrets.SERVER_PASS }}
       SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
       SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
       BACKEND_DIR: ${{ secrets.BACKEND_DIR || '/home/ubuntu/urtruck-security' }}
@@ -47,10 +46,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install sshpass (fallback transport)
+      - name: Verify SSH client
         run: |
-          sudo apt-get update
-          sudo apt-get install -y sshpass
+          set -euo pipefail
+          command -v ssh
+          command -v scp
 
       - name: Set FILE_SIGNING_KEY on server (generated remotely, never printed)
         run: |

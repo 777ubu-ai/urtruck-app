@@ -1,17 +1,11 @@
 #!/usr/bin/env bash
 # Centralized SSH/SCP transport for UrTruck deploy/admin workflows.
 #
-# Preferred mode:
+# Required mode:
 #   SERVER_SSH_KEY + SERVER_SSH_KNOWN_HOSTS
 #   - private key is written to a 0600 runner temp file
 #   - host key MUST be supplied out-of-band and is pinned
 #   - StrictHostKeyChecking=yes
-#
-# Legacy compatibility mode:
-#   SERVER_PASS only
-#   - retained temporarily for repositories/servers that have not completed
-#     the key migration yet
-#   - never selected when SERVER_SSH_KEY is present
 #
 # SECURITY: key mode deliberately does NOT run ssh-keyscan at deploy time.
 # A host key learned over the same untrusted network would not be a pin and
@@ -31,27 +25,21 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-if [ -n "${SERVER_SSH_KEY:-}" ]; then
-  MODE=key
-  : "${SERVER_SSH_KNOWN_HOSTS:?SERVER_SSH_KNOWN_HOSTS required when SERVER_SSH_KEY is set}"
+MODE=key
+: "${SERVER_SSH_KEY:?SERVER_SSH_KEY required}"
+: "${SERVER_SSH_KNOWN_HOSTS:?SERVER_SSH_KNOWN_HOSTS required}"
 
-  if [ "${DRY_RUN:-0}" != "1" ]; then
-    umask 077
-    printf '%s\n' "$SERVER_SSH_KEY" > "$_keyfile"
-    printf '%s\n' "$SERVER_SSH_KNOWN_HOSTS" > "$_known"
-    chmod 600 "$_keyfile" "$_known"
-    test -s "$_keyfile"
-    test -s "$_known"
-  fi
-
-  SSH_AUTH=(ssh -i "$_keyfile" -o IdentitiesOnly=yes -o "UserKnownHostsFile=$_known" -o StrictHostKeyChecking=yes)
-  SCP_AUTH=(scp -i "$_keyfile" -o IdentitiesOnly=yes -o "UserKnownHostsFile=$_known" -o StrictHostKeyChecking=yes)
-else
-  MODE=pass
-  : "${SERVER_PASS:?SERVER_PASS required when SERVER_SSH_KEY is not configured}"
-  SSH_AUTH=(sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no)
-  SCP_AUTH=(sshpass -p "$SERVER_PASS" scp -o StrictHostKeyChecking=no)
+if [ "${DRY_RUN:-0}" != "1" ]; then
+  umask 077
+  printf '%s\n' "$SERVER_SSH_KEY" > "$_keyfile"
+  printf '%s\n' "$SERVER_SSH_KNOWN_HOSTS" > "$_known"
+  chmod 600 "$_keyfile" "$_known"
+  test -s "$_keyfile"
+  test -s "$_known"
 fi
+
+SSH_AUTH=(ssh -i "$_keyfile" -o IdentitiesOnly=yes -o "UserKnownHostsFile=$_known" -o StrictHostKeyChecking=yes)
+SCP_AUTH=(scp -i "$_keyfile" -o IdentitiesOnly=yes -o "UserKnownHostsFile=$_known" -o StrictHostKeyChecking=yes)
 
 sub="${1:?subcommand required: ssh|scp}"
 shift || true
