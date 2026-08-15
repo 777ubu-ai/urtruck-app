@@ -3004,23 +3004,45 @@ def _tracking_system_message(deal: dict, text: str) -> None:
 
 
 def _tracking_notify(user_id: str, title: str, body: str, deal_id: str, kind: str) -> None:
-    """Create in-app + native/web push after the DB transaction is committed."""
+    """Create in-app + push exactly once for one server-side GPS transition."""
+    # Use the transition timestamp as the idempotency component. A later,
+    # explicit GPS request updates requested_at/responded_at/stopped_at and gets
+    # a new key; a retry of the same transition keeps the old key.
+    stamp = None
+    try:
+        with get_conn() as c:
+            row = c.execute(
+                "SELECT requested_at, responded_at, stopped_at, updated_at "
+                "FROM deal_tracking WHERE deal_id = ?",
+                (deal_id,),
+            ).fetchone()
+        if row:
+            field = {
+                "tracking_request": "requested_at",
+                "tracking_approved": "responded_at",
+                "tracking_declined": "responded_at",
+                "tracking_stopped": "stopped_at",
+            }.get(kind, "updated_at")
+            stamp = row[field] if field in row.keys() else row["updated_at"]
+    except Exception:
+        pass
+    event_key = f"gps:{deal_id}:{kind}:{stamp or 'unknown'}"
     try:
         from api.notifications import create_notification
-        # The callers invoke this only for a real state transition (the
-        # repeated-pending / repeated-stopped paths return before here). Do
-        # not reuse a permanent key by deal: a later, explicit re-request
-        # must create a fresh notification for the driver.
-        # A tap must open the exact Deal Room with the consent controls, not a
-        # general list where the driver has to guess where to continue.
-        create_notification(user_id, kind, title, body, "📍", url=f"/deals/{deal_id}?action=tracking")
+        create_notification(
+            user_id, kind, title, body, "📍",
+            url=f"/deals/{deal_id}?action=tracking",
+            event_key=event_key,
+        )
     except Exception:
         pass
     try:
         from services import push_sender
-        push_sender.send(user_id, title, body, kind=kind,
-                         data={"deal_id": deal_id, "action": "tracking"},
-                         url=f"/deals/{deal_id}?action=tracking")
+        push_sender.send(
+            user_id, title, body, kind=kind,
+            data={"deal_id": deal_id, "action": "tracking", "event_key": event_key},
+            url=f"/deals/{deal_id}?action=tracking",
+        )
     except Exception:
         pass
 
