@@ -2875,15 +2875,15 @@ class DealLocationIn(BaseModel):
 @mp_router.post("/deals/{deal_id}/location")
 def update_deal_location(deal_id: str, body: DealLocationIn, user=Depends(require_level(1))):
     """Водитель сделки шлёт свою гео-позицию. Только driver сделки и только
-    пока сделка в работе (accepted/in_progress/at_border)."""
+    после начала рейса (in_progress/at_border)."""
     with get_conn() as c:
         d = c.execute("SELECT driver_id, status FROM deals WHERE id = ?", (deal_id,)).fetchone()
         if not d:
             raise HTTPException(status_code=404, detail="Сделка не найдена")
         if d["driver_id"] != user["id"]:
             raise HTTPException(status_code=403, detail="Геопозицию отправляет только водитель сделки")
-        if d["status"] not in ("accepted", "in_progress", "at_border"):
-            raise HTTPException(status_code=409, detail="Сделка не в работе")
+        if d["status"] not in ("in_progress", "at_border"):
+            raise HTTPException(status_code=409, detail="Трекинг доступен после начала рейса")
         c.execute(
             "INSERT INTO deal_locations (deal_id, lat, lng, heading, speed, updated_at) "
             "VALUES (?,?,?,?,?,CURRENT_TIMESTAMP) "

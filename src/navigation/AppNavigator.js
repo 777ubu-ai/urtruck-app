@@ -87,7 +87,10 @@ function MainTabs({ route }) {
   useEffect(() => {
     if (!isDriver) { setInWorkDealIds([]); return; }
     let alive = true;
-    const IN_WORK = ['accepted', 'in_progress', 'at_border'];
+    // Трекинг начинается только после действия водителя «Начать рейс».
+    // Принятая сделка ещё не означает, что машина выехала: передавать
+    // координаты в accepted было бы преждевременно и нарушало приватность.
+    const IN_WORK = ['in_progress', 'at_border'];
     const fetchIds = async () => {
       try {
         const d = await marketAPI.myDashboard();

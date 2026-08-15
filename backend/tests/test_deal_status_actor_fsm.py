@@ -132,6 +132,31 @@ def test_driver_can_start_trip():
     assert deal_status(d) == "in_progress"
 
 
+def test_location_is_rejected_before_trip_start():
+    """GPS нельзя начать до перехода accepted → in_progress.
+
+    Это серверная граница приватности: проверка в UI недостаточна, потому что
+    запрос может быть отправлен напрямую или старой версией приложения.
+    """
+    d = seed_deal("accepted")
+    as_user(DRIVER)
+    r = client.post(
+        f"/api/v1/market/deals/{d}/location",
+        json={"lat": 43.2389, "lng": 76.8897},
+    )
+    assert r.status_code == 409, r.text
+
+
+def test_driver_can_send_location_after_trip_start():
+    d = seed_deal("in_progress")
+    as_user(DRIVER)
+    r = client.post(
+        f"/api/v1/market/deals/{d}/location",
+        json={"lat": 43.2389, "lng": 76.8897},
+    )
+    assert r.status_code == 200, r.text
+
+
 def test_driver_can_set_at_border_for_international():
     d = seed_deal("in_progress", from_country="CN", to_country="KZ")
     r = patch_status(d, "at_border", DRIVER)

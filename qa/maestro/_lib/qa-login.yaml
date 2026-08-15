@@ -35,40 +35,11 @@ appId: host.exp.Exponent
       - tapOn:
           point: "50%,10%"
       - waitForAnimationToEnd
-# If a previous flow left an active session on Main, force-logout through the
-# dev-only QA logout button (skips the iOS Alert dialog). This guarantees
-# qa-debug-submit is reachable for the actor we are about to log in as.
-#
-# ⚠️ НАДЁЖНОСТЬ (проверено на прогоне 2026-07): эта logout-ветка хрупкая в
-# Expo Go — кнопка qa-debug-logout внизу Profile перекрывается нижней
-# навигацией, и tap по её центру иногда попадает в средний таб (Queue),
-# из-за чего сессия не сбрасывается. Токен теперь в SecureStore (Keychain),
-# поэтому очистка AsyncStorage сессию НЕ убирает. Надёжный рецепт чистого
-# прогона — сбросить Keychain перед запуском, чтобы вход шёл по простому пути
-# (эта ветка вообще не срабатывает):
+# Флоу намеренно требует чистый Keychain перед запуском. После входа в Main
+# нет отдельной вкладки Profile, поэтому прежний dev-only logout нельзя
+# считать надёжным способом вернуть форму QA-входа. Рецепт чистого прогона:
 #     xcrun simctl terminate booted host.exp.Exponent
 #     xcrun simctl keychain booted reset
-# TODO: приподнять qa-debug-logout над таб-баром (paddingBottom в ProfileScreen
-# dev-блоке) — тогда ветка станет стабильной без внешнего reset.
-- runFlow:
-    when:
-      visible:
-        id: "bottom-nav-profile"
-    commands:
-      - tapOn:
-          id: "bottom-nav-profile"
-      - waitForAnimationToEnd
-      - scrollUntilVisible:
-          element:
-            id: "qa-debug-logout"
-          direction: DOWN
-          timeout: 8000
-      - tapOn:
-          id: "qa-debug-logout"
-      - extendedWaitUntil:
-          visible:
-            id: "qa-debug-submit"
-          timeout: 15000
 - extendedWaitUntil:
     visible:
       id: "qa-debug-submit"
@@ -103,10 +74,10 @@ appId: host.exp.Exponent
             - waitForAnimationToEnd
       - extendedWaitUntil:
           visible:
-            id: "bottom-nav-profile"
+            id: "bottom-nav-deals"
           timeout: 4000
           optional: true
 - extendedWaitUntil:
     visible:
-      id: "bottom-nav-profile"
+      id: "bottom-nav-deals"
     timeout: 15000

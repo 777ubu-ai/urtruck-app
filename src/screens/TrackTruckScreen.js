@@ -4,7 +4,7 @@
 // /market/deals/{id}/location раз в 15с. «Открыть в Картах» — системное
 // приложение карт по координатам.
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Linking, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../utils/useI18n';
@@ -71,14 +71,6 @@ export default function TrackTruckScreen({ navigation, route }) {
       : `${Math.floor(m / 1440)} ${t('track_day')}`;
     return `${t('track_updated')} ${unit} ${t('track_ago')}`;
   };
-  const openExternal = () => {
-    if (lat == null) return;
-    const url = Platform.OS === 'ios'
-      ? `http://maps.apple.com/?ll=${lat},${lng}&q=${encodeURIComponent(driverName || 'UrTruck')}`
-      : `https://maps.google.com/?q=${lat},${lng}`;
-    Linking.openURL(url).catch(() => {});
-  };
-
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: theme.bg }]} edges={['top']}>
       <View style={s.header}>
@@ -135,12 +127,6 @@ export default function TrackTruckScreen({ navigation, route }) {
             <Text style={[s.updated, { color: theme.textDim }]}>{fmtAgo(agoMin)}</Text>
           </View>
           <TruckMap lat={lat} lng={lng} title={driverName || t('track_truck_marker')} />
-          <TouchableOpacity style={[s.cta, { backgroundColor: '#FF8400' }]} onPress={openExternal} testID="track-open-maps">
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Feather name="compass" size={16} color="#0C0A09" />
-              <Text style={s.ctaText}>{t('track_truck_open_maps')}</Text>
-            </View>
-          </TouchableOpacity>
         </View>
       )}
     </SafeAreaView>
@@ -166,6 +152,4 @@ const s = StyleSheet.create({
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 8 },
   emptyTitle: { fontSize: 18, fontWeight: '800', textAlign: 'center', marginTop: 8 },
   emptyDesc: { fontSize: 13, textAlign: 'center', lineHeight: 19 },
-  cta: { position: 'absolute', left: 16, right: 16, bottom: 24, height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  ctaText: { color: '#0C0A09', fontSize: 16, fontWeight: '800' },
 });
