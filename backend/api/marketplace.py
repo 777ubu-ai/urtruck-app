@@ -351,6 +351,8 @@ def _init():
                 accuracy   REAL,
                 captured_at TEXT,
                 received_at TEXT,
+                timestamp_quality TEXT NOT NULL DEFAULT 'pre_contract_unknown',
+                is_legacy INTEGER NOT NULL DEFAULT 1,
                 retention_expires_at TEXT,
                 updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
@@ -360,6 +362,8 @@ def _init():
             ("accuracy", "ALTER TABLE deal_locations ADD COLUMN accuracy REAL"),
             ("captured_at", "ALTER TABLE deal_locations ADD COLUMN captured_at TEXT"),
             ("received_at", "ALTER TABLE deal_locations ADD COLUMN received_at TEXT"),
+            ("timestamp_quality", "ALTER TABLE deal_locations ADD COLUMN timestamp_quality TEXT NOT NULL DEFAULT 'pre_contract_unknown'"),
+            ("is_legacy", "ALTER TABLE deal_locations ADD COLUMN is_legacy INTEGER NOT NULL DEFAULT 1"),
             ("retention_expires_at", "ALTER TABLE deal_locations ADD COLUMN retention_expires_at TEXT"),
         ]:
             if col not in location_cols:
@@ -368,12 +372,32 @@ def _init():
             "UPDATE deal_locations SET captured_at=COALESCE(captured_at, updated_at), "
             "received_at=COALESCE(received_at, updated_at)"
         )
+        # Existing rows predate the capture-time contract. They remain visible
+        # as last-known data, but cannot become "live" until a strict client
+        # sends a fresh client-captured timestamp.
+        c.execute(
+            "UPDATE deal_locations SET timestamp_quality=COALESCE(timestamp_quality, 'pre_contract_unknown'), "
+            "is_legacy=COALESCE(is_legacy, 1)"
+        )
         # Legacy rows have NULL retention and are preserved. Only rows that
         # were explicitly assigned a lifecycle expiry are purged at startup.
         c.execute(
             "DELETE FROM deal_locations WHERE retention_expires_at IS NOT NULL "
             "AND retention_expires_at <= CURRENT_TIMESTAMP"
         )
+        # Privacy-safe aggregate adoption metric. It intentionally contains no
+        # user/deal identifiers and no coordinates.
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS gps_ingest_metrics (
+                day TEXT NOT NULL,
+                app_version TEXT NOT NULL,
+                contract TEXT NOT NULL,
+                timestamp_quality TEXT NOT NULL,
+                accepted_count INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY(day, app_version, contract, timestamp_quality)
+            )
+        """)
         # GPS — это не автоматическая функция сделки. Грузоотправитель
         # запрашивает отслеживание, водитель явно подтверждает его, и только
         # тогда приложение имеет право посылать координаты. Одна строка на
@@ -3247,13 +3271,19 @@ class DealLocationIn(BaseModel):
     heading: Optional[float] = None
     speed: Optional[float] = None
     accuracy: Optional[float] = None
-    captured_at: datetime
+    captured_at: Optional[datetime] = None
 
 
 _GPS_MAX_CAPTURE_AGE = timedelta(minutes=10)
 _GPS_MAX_FUTURE_SKEW = timedelta(minutes=2)
 _GPS_LIVE_AFTER = timedelta(minutes=3)
 _GPS_MAX_SPEED_MPS = 70.0
+_GPS_LEGACY_CONTRACT = "legacy-v0"
+_GPS_STRICT_CONTRACT = "captured-at-v1"
+_GPS_LEGACY_ALLOWED_VERSIONS = frozenset({"1.0.2", "1.0.3", "1.0.4", "1.0.5"})
+_GPS_METRIC_KNOWN_VERSIONS = _GPS_LEGACY_ALLOWED_VERSIONS | {"1.0.6"}
+_GPS_LEGACY_COMPAT_UNTIL = datetime(2026, 9, 15, tzinfo=timezone.utc)
+_GPS_LEGACY_POINT_RETENTION = timedelta(hours=24)
 
 
 def _gps_utc(value: datetime) -> datetime:
@@ -3280,7 +3310,7 @@ def _gps_distance_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float
     return 2 * radius * math.atan2(math.sqrt(a), math.sqrt(max(0.0, 1 - a)))
 
 
-def _validate_gps_payload(body: DealLocationIn, now: datetime) -> datetime:
+def _validate_gps_numeric(body: DealLocationIn) -> None:
     numeric = (("lat", body.lat), ("lng", body.lng), ("heading", body.heading),
                ("speed", body.speed), ("accuracy", body.accuracy))
     if any(value is not None and not math.isfinite(value) for _, value in numeric):
@@ -3293,7 +3323,10 @@ def _validate_gps_payload(body: DealLocationIn, now: datetime) -> datetime:
         raise HTTPException(status_code=422, detail={"error": "GPS_SPEED_OUT_OF_RANGE"})
     if body.accuracy is not None and not 0 <= body.accuracy <= 5000:
         raise HTTPException(status_code=422, detail={"error": "GPS_ACCURACY_OUT_OF_RANGE"})
-    captured = _gps_utc(body.captured_at)
+
+
+def _validate_gps_capture(captured: datetime, now: datetime) -> datetime:
+    captured = _gps_utc(captured)
     if captured < now - _GPS_MAX_CAPTURE_AGE:
         raise HTTPException(status_code=422, detail={"error": "GPS_CAPTURE_STALE"})
     if captured > now + _GPS_MAX_FUTURE_SKEW:
@@ -3301,8 +3334,45 @@ def _validate_gps_payload(body: DealLocationIn, now: datetime) -> datetime:
     return captured
 
 
+def _resolve_gps_timestamp(body: DealLocationIn, received: datetime,
+                           contract: str | None, app_version: str | None):
+    """Return capture time and quality without weakening strict clients."""
+    if body.captured_at is not None:
+        return _validate_gps_capture(body.captured_at, received), "client_captured", False
+    version = str(app_version or "").strip()
+    if contract != _GPS_LEGACY_CONTRACT:
+        raise HTTPException(status_code=422, detail={"error": "GPS_CAPTURE_REQUIRED"})
+    if version not in _GPS_LEGACY_ALLOWED_VERSIONS:
+        raise HTTPException(status_code=422, detail={"error": "GPS_LEGACY_VERSION_DENIED"})
+    if received >= _GPS_LEGACY_COMPAT_UNTIL:
+        raise HTTPException(status_code=410, detail={"error": "GPS_LEGACY_COMPAT_EXPIRED"})
+    return received, "server_received_legacy", True
+
+
+def _record_gps_ingest_metric(c, received: datetime, app_version: str | None,
+                              contract: str | None, timestamp_quality: str) -> None:
+    # Bound cardinality and never persist arbitrary headers.
+    version = str(app_version or "unknown").strip()
+    if version not in _GPS_METRIC_KNOWN_VERSIONS:
+        version = "other" if version != "unknown" else "unknown"
+    contract_value = contract if contract in (_GPS_STRICT_CONTRACT, _GPS_LEGACY_CONTRACT) else "unmarked"
+    c.execute(
+        "INSERT INTO gps_ingest_metrics(day,app_version,contract,timestamp_quality,accepted_count,updated_at) "
+        "VALUES (?,?,?,?,1,CURRENT_TIMESTAMP) "
+        "ON CONFLICT(day,app_version,contract,timestamp_quality) DO UPDATE SET "
+        "accepted_count=accepted_count+1, updated_at=CURRENT_TIMESTAMP",
+        (received.date().isoformat(), version, contract_value, timestamp_quality),
+    )
+
+
 @mp_router.post("/deals/{deal_id}/location")
-def update_deal_location(deal_id: str, body: DealLocationIn, user=Depends(require_level(1))):
+def update_deal_location(
+    deal_id: str,
+    body: DealLocationIn,
+    gps_contract: Optional[str] = Header(None, alias="X-UrTruck-GPS-Contract"),
+    app_version: Optional[str] = Header(None, alias="X-UrTruck-App-Version"),
+    user=Depends(require_level(1)),
+):
     """Водитель сделки шлёт свою гео-позицию. Только driver сделки и только
     только после забора груза (in_progress/at_border)."""
     with get_conn() as c:
@@ -3320,19 +3390,32 @@ def update_deal_location(deal_id: str, body: DealLocationIn, user=Depends(requir
         if tracking.get("status") != "active":
             raise HTTPException(status_code=409, detail="GPS не разрешён водителем для этой сделки")
         received = datetime.now(timezone.utc)
-        captured = _validate_gps_payload(body, received)
+        _validate_gps_numeric(body)
+        captured, timestamp_quality, is_legacy = _resolve_gps_timestamp(
+            body, received, gps_contract, app_version,
+        )
         captured_iso = captured.isoformat().replace("+00:00", "Z")
         received_iso = received.isoformat().replace("+00:00", "Z")
+        retention_iso = (
+            (received + _GPS_LEGACY_POINT_RETENTION).isoformat().replace("+00:00", "Z")
+            if is_legacy else None
+        )
         previous = c.execute(
-            "SELECT lat, lng, accuracy, captured_at FROM deal_locations WHERE deal_id=?",
+            "SELECT lat, lng, accuracy, captured_at, received_at, is_legacy "
+            "FROM deal_locations WHERE deal_id=?",
             (deal_id,),
         ).fetchone()
         if previous:
             previous_capture = _gps_parse_stored(previous["captured_at"])
-            if previous_capture and captured <= previous_capture:
+            upgrading_legacy = bool(previous["is_legacy"]) and not is_legacy
+            if previous_capture and captured <= previous_capture and not upgrading_legacy:
                 raise HTTPException(status_code=409, detail={"error": "GPS_OUT_OF_ORDER"})
             if previous_capture:
-                elapsed = max(0.001, (captured - previous_capture).total_seconds())
+                previous_order = (
+                    _gps_parse_stored(previous["received_at"]) if upgrading_legacy else previous_capture
+                ) or previous_capture
+                current_order = received if upgrading_legacy else captured
+                elapsed = max(0.001, (current_order - previous_order).total_seconds())
                 distance = _gps_distance_m(previous["lat"], previous["lng"], body.lat, body.lng)
                 accuracy_allowance = float(previous["accuracy"] or 0) + float(body.accuracy or 0)
                 allowed = max(2000.0, elapsed * _GPS_MAX_SPEED_MPS + accuracy_allowance)
@@ -3343,20 +3426,25 @@ def update_deal_location(deal_id: str, body: DealLocationIn, user=Depends(requir
                         "allowed_m": round(allowed),
                     })
         c.execute(
-            "INSERT INTO deal_locations (deal_id, lat, lng, heading, speed, accuracy, captured_at, received_at, retention_expires_at, updated_at) "
-            "VALUES (?,?,?,?,?,?,?,?,NULL,?) "
+            "INSERT INTO deal_locations (deal_id, lat, lng, heading, speed, accuracy, captured_at, received_at, timestamp_quality, is_legacy, retention_expires_at, updated_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?) "
             "ON CONFLICT(deal_id) DO UPDATE SET lat=excluded.lat, lng=excluded.lng, "
             "heading=excluded.heading, speed=excluded.speed, accuracy=excluded.accuracy, "
             "captured_at=excluded.captured_at, received_at=excluded.received_at, "
-            "retention_expires_at=NULL, updated_at=excluded.updated_at",
+            "timestamp_quality=excluded.timestamp_quality, is_legacy=excluded.is_legacy, "
+            "retention_expires_at=excluded.retention_expires_at, updated_at=excluded.updated_at",
             (deal_id, body.lat, body.lng, body.heading, body.speed, body.accuracy,
-             captured_iso, received_iso, received_iso),
+             captured_iso, received_iso, timestamp_quality, int(is_legacy), retention_iso, received_iso),
         )
         c.execute(
             "UPDATE deal_tracking SET last_signal_at=?, updated_at=? WHERE deal_id=?",
             (received_iso, received_iso, deal_id),
         )
-    return {"ok": True, "captured_at": captured_iso, "received_at": received_iso}
+        _record_gps_ingest_metric(c, received, app_version, gps_contract, timestamp_quality)
+    return {
+        "ok": True, "captured_at": captured_iso, "received_at": received_iso,
+        "timestamp_quality": timestamp_quality, "is_legacy": is_legacy,
+    }
 
 
 @mp_router.get("/deals/{deal_id}/location")
@@ -3383,7 +3471,7 @@ def get_deal_location(deal_id: str, user=Depends(require_level(1))):
                 "deal_status": d["status"],
             }
         loc = c.execute(
-            "SELECT lat, lng, heading, speed, accuracy, captured_at, received_at, retention_expires_at, updated_at "
+            "SELECT lat, lng, heading, speed, accuracy, captured_at, received_at, timestamp_quality, is_legacy, retention_expires_at, updated_at "
             "FROM deal_locations WHERE deal_id = ? AND "
             "(retention_expires_at IS NULL OR retention_expires_at > CURRENT_TIMESTAMP)",
             (deal_id,),
@@ -3394,12 +3482,14 @@ def get_deal_location(deal_id: str, user=Depends(require_level(1))):
             "freshness": "missing", "tracking_status": tracking_status, "deal_status": d["status"],
         }
     location = dict(loc)
+    location["is_legacy"] = bool(location.get("is_legacy"))
     received = _gps_parse_stored(location.get("received_at") or location.get("updated_at"))
     age_seconds = max(0, int((datetime.now(timezone.utc) - received).total_seconds())) if received else None
     terminal = d["status"] in ("awaiting_confirmation", "completed", "cancelled")
     is_live = bool(
         not terminal and d["status"] in ("in_progress", "at_border")
         and tracking_status == "active" and age_seconds is not None
+        and location.get("timestamp_quality") == "client_captured" and not location.get("is_legacy")
         and age_seconds <= int(_GPS_LIVE_AFTER.total_seconds())
     )
     freshness = "live" if is_live else ("stopped" if terminal or tracking_status == "stopped" else "stale")

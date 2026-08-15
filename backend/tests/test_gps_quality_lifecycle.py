@@ -14,6 +14,7 @@ os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_gps_quality.db")
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+import api.marketplace as marketplace
 from api.marketplace import mp_router, _init
 from database import db, registration_dal as reg_dal
 from database.db import get_conn
@@ -27,7 +28,7 @@ client = TestClient(app)
 def _clean():
     db.init_db(); reg_dal.init_registration_schema(); _init()
     with get_conn() as c:
-        for table in ("deal_locations", "deal_tracking", "deals", "cargos", "reg_sessions", "drivers_registration"):
+        for table in ("gps_ingest_metrics", "deal_locations", "deal_tracking", "deals", "cargos", "reg_sessions", "drivers_registration"):
             c.execute(f"DELETE FROM {table}")
 
 
@@ -97,6 +98,151 @@ def test_capture_timestamp_is_mandatory():
     assert response.status_code == 422
     with get_conn() as c:
         assert c.execute("SELECT COUNT(*) AS n FROM deal_locations").fetchone()["n"] == 0
+
+
+@pytest.mark.parametrize("headers", [
+    {},
+    {"X-UrTruck-GPS-Contract": "legacy-v0"},
+    {"X-UrTruck-GPS-Contract": "legacy-v0", "X-UrTruck-App-Version": "1.0.6"},
+    {"X-UrTruck-GPS-Contract": "captured-at-v1", "X-UrTruck-App-Version": "1.0.6"},
+])
+def test_missing_capture_requires_exact_legacy_marker_and_allowlisted_version(headers):
+    auth = _seed()["driver"]
+    response = client.post(
+        "/api/v1/market/deals/gps-deal/location",
+        headers={**auth, **headers}, json={"lat": 43.2, "lng": 76.9},
+    )
+    assert response.status_code == 422
+    with get_conn() as c:
+        assert c.execute("SELECT COUNT(*) AS n FROM deal_locations").fetchone()["n"] == 0
+
+
+def test_explicit_legacy_point_is_server_timestamped_observable_short_lived_and_not_live(monkeypatch):
+    monkeypatch.setattr(marketplace, "_GPS_LEGACY_COMPAT_UNTIL", datetime.now(timezone.utc) + timedelta(days=1))
+    auth = _seed()
+    sent = client.post(
+        "/api/v1/market/deals/gps-deal/location",
+        headers={
+            **auth["driver"],
+            "X-UrTruck-GPS-Contract": "legacy-v0",
+            "X-UrTruck-App-Version": "1.0.5",
+        },
+        json={"lat": 43.2, "lng": 76.9},
+    )
+    assert sent.status_code == 200, sent.text
+    assert sent.json()["captured_at"] == sent.json()["received_at"]
+    assert sent.json()["timestamp_quality"] == "server_received_legacy"
+    assert sent.json()["is_legacy"] is True
+    read = client.get("/api/v1/market/deals/gps-deal/location", headers=auth["shipper"])
+    assert read.status_code == 200
+    assert read.json()["is_live"] is False
+    assert read.json()["freshness"] == "stale"
+    assert read.json()["location"]["is_legacy"] is True
+    repeated = client.post(
+        "/api/v1/market/deals/gps-deal/location",
+        headers={
+            **auth["driver"],
+            "X-UrTruck-GPS-Contract": "legacy-v0",
+            "X-UrTruck-App-Version": "1.0.5",
+        },
+        json={"lat": 43.2, "lng": 76.9},
+    )
+    assert repeated.status_code == 200
+    with get_conn() as c:
+        row = c.execute(
+            "SELECT timestamp_quality,is_legacy,retention_expires_at FROM deal_locations WHERE deal_id='gps-deal'"
+        ).fetchone()
+        metric = c.execute("SELECT * FROM gps_ingest_metrics").fetchone()
+        metric_columns = {r["name"] for r in c.execute("PRAGMA table_info(gps_ingest_metrics)")}
+    assert row["timestamp_quality"] == "server_received_legacy" and row["is_legacy"] == 1
+    expiry = datetime.fromisoformat(row["retention_expires_at"].replace("Z", "+00:00"))
+    assert timedelta(hours=23) < expiry - datetime.now(timezone.utc) <= timedelta(hours=24)
+    assert metric["app_version"] == "1.0.5" and metric["accepted_count"] == 2
+    assert not ({"user_id", "deal_id", "lat", "lng"} & metric_columns)
+
+
+def test_legacy_compatibility_expires_fail_closed(monkeypatch):
+    monkeypatch.setattr(marketplace, "_GPS_LEGACY_COMPAT_UNTIL", datetime.now(timezone.utc) - timedelta(seconds=1))
+    auth = _seed()["driver"]
+    response = client.post(
+        "/api/v1/market/deals/gps-deal/location",
+        headers={
+            **auth,
+            "X-UrTruck-GPS-Contract": "legacy-v0",
+            "X-UrTruck-App-Version": "1.0.5",
+        },
+        json={"lat": 43.2, "lng": 76.9},
+    )
+    assert response.status_code == 410
+    assert response.json()["detail"]["error"] == "GPS_LEGACY_COMPAT_EXPIRED"
+
+
+def test_legacy_point_can_upgrade_to_strict_without_ordering_deadlock(monkeypatch):
+    monkeypatch.setattr(marketplace, "_GPS_LEGACY_COMPAT_UNTIL", datetime.now(timezone.utc) + timedelta(days=1))
+    auth = _seed()
+    legacy = client.post(
+        "/api/v1/market/deals/gps-deal/location",
+        headers={
+            **auth["driver"],
+            "X-UrTruck-GPS-Contract": "legacy-v0",
+            "X-UrTruck-App-Version": "1.0.5",
+        },
+        json={"lat": 43.2, "lng": 76.9},
+    )
+    assert legacy.status_code == 200
+    strict = client.post(
+        "/api/v1/market/deals/gps-deal/location",
+        headers={
+            **auth["driver"],
+            "X-UrTruck-GPS-Contract": "captured-at-v1",
+            "X-UrTruck-App-Version": "1.0.6",
+        },
+        json={"lat": 43.2, "lng": 76.9, "captured_at": _iso(-5)},
+    )
+    assert strict.status_code == 200, strict.text
+    assert strict.json()["timestamp_quality"] == "client_captured"
+    read = client.get("/api/v1/market/deals/gps-deal/location", headers=auth["shipper"])
+    assert read.json()["is_live"] is True
+    assert read.json()["location"]["is_legacy"] is False
+    assert read.json()["location"]["retention_expires_at"] is None
+
+
+def test_malformed_capture_and_non_driver_legacy_request_do_not_write(monkeypatch):
+    monkeypatch.setattr(marketplace, "_GPS_LEGACY_COMPAT_UNTIL", datetime.now(timezone.utc) + timedelta(days=1))
+    auth = _seed()
+    malformed = client.post(
+        "/api/v1/market/deals/gps-deal/location", headers=auth["driver"],
+        json={"lat": 43.2, "lng": 76.9, "captured_at": "not-a-timestamp"},
+    )
+    forbidden = client.post(
+        "/api/v1/market/deals/gps-deal/location",
+        headers={
+            **auth["shipper"],
+            "X-UrTruck-GPS-Contract": "legacy-v0",
+            "X-UrTruck-App-Version": "1.0.5",
+        },
+        json={"lat": 43.2, "lng": 76.9},
+    )
+    assert malformed.status_code == 422
+    assert forbidden.status_code == 403
+    with get_conn() as c:
+        assert c.execute("SELECT COUNT(*) AS n FROM deal_locations").fetchone()["n"] == 0
+        assert c.execute("SELECT COUNT(*) AS n FROM gps_ingest_metrics").fetchone()["n"] == 0
+
+
+def test_pre_contract_row_is_never_reported_live():
+    auth = _seed()
+    now = _iso()
+    with get_conn() as c:
+        c.execute(
+            "INSERT INTO deal_locations(deal_id,lat,lng,captured_at,received_at,updated_at) VALUES(?,?,?,?,?,?)",
+            ("gps-deal", 43.2, 76.9, now, now, now),
+        )
+    read = client.get("/api/v1/market/deals/gps-deal/location", headers=auth["shipper"])
+    assert read.status_code == 200
+    assert read.json()["is_live"] is False
+    assert read.json()["freshness"] == "stale"
+    assert read.json()["location"]["timestamp_quality"] == "pre_contract_unknown"
 
 
 def test_valid_point_persists_capture_and_receive_timestamps():

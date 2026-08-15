@@ -16,6 +16,8 @@ for (const coords of [
   { latitude: NaN, longitude: 76 }, { latitude: Infinity, longitude: 76 },
   { latitude: 91, longitude: 76 }, { latitude: 43, longitude: 181 },
 ]) assert.equal(normalizeLocationPayload({ coords }, now), null);
+assert.equal(normalizeLocationPayload({ timestamp: NaN, coords: { latitude: 43, longitude: 76 } }, now), null);
+assert.equal(normalizeLocationPayload({ timestamp: Number.MAX_VALUE, coords: { latitude: 43, longitude: 76 } }, now), null);
 
 const sanitized = normalizeLocationPayload({
   timestamp: now,
@@ -31,6 +33,12 @@ const liveResponse = {
 };
 assert.equal(classifyDealLocation(liveResponse, now).isLive, true);
 assert.equal(classifyDealLocation({ ...liveResponse, age_seconds: 181 }, now).isLive, false);
+const legacyTimestamp = classifyDealLocation({
+  ...liveResponse,
+  location: { ...liveResponse.location, timestamp_quality: 'server_received_legacy', is_legacy: true },
+}, now);
+assert.equal(legacyTimestamp.isLive, false);
+assert.equal(legacyTimestamp.isLegacy, true);
 const terminal = classifyDealLocation({
   ...liveResponse, deal_status: 'awaiting_confirmation', freshness: 'stopped',
 }, now);
@@ -46,6 +54,7 @@ const route = read('src/components/RouteMap.js');
 const webMap = read('src/components/TruckMap.web.js');
 const chat = read('src/screens/ChatScreen.js');
 const chatLocation = read('src/utils/chatLocation.js');
+const marketApi = read('src/utils/marketAPI.js');
 const appJson = JSON.parse(read('app.json'));
 const manifest = read('android/app/src/main/AndroidManifest.xml');
 const i18n = read('src/utils/i18n.js');
@@ -67,6 +76,8 @@ assert.doesNotMatch(webMap, /Linking|openURL|https?:\/\//);
 assert.doesNotMatch(chat, /https:\/\/yandex\.ru\/maps\/\?pt=/);
 assert.match(chat, /formatUrTruckLocationMessage\(t\('chat_location_msg'\), latitude, longitude\)/);
 assert.doesNotMatch(chatLocation, /Linking|openURL|https?:\/\//);
+assert.match(marketApi, /X-UrTruck-GPS-Contract'\] = 'captured-at-v1'/);
+assert.match(marketApi, /X-UrTruck-App-Version'\] = String\(APP_VERSION\)/);
 const sharedLocation = formatUrTruckLocationMessage('Location', 43.2, 76.9);
 assert.equal(sharedLocation, '📍 Location: 43.200000, 76.900000');
 assert.deepEqual(parseUrTruckLocationMessage(sharedLocation), { latitude: 43.2, longitude: 76.9 });

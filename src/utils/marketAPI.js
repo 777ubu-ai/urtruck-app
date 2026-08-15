@@ -3,10 +3,12 @@ import { Platform } from 'react-native';
 import { storage } from './storage';
 import { API_BASE } from '../config/env';
 import { authedFetch } from './authEvents';  // QA-аудит P1-6: 401 → auth:expired
+import Constants from 'expo-constants';
 
 const BASE = `${API_BASE}/market`;
 
 const TOKEN_KEY = 'ur_reg_token';
+const APP_VERSION = Constants?.nativeAppVersion || Constants?.expoConfig?.version || 'unknown';
 // Several mounted screens (BottomNav, Deals, Chats, Profile) need the same
 // dashboard. Without a shared in-flight promise they all hit /market/my at
 // once, multiplying its joins and SQLite reads into the 4–6s slowdown seen
@@ -166,8 +168,11 @@ export const marketAPI = {
   // Задача B: гео-позиция машины по сделке.
   async sendDealLocation(dealId, coords) {
     try {
+      const requestHeaders = await headers();
+      requestHeaders['X-UrTruck-GPS-Contract'] = 'captured-at-v1';
+      requestHeaders['X-UrTruck-App-Version'] = String(APP_VERSION);
       const r = await authedFetch(`${BASE}/deals/${dealId}/location`, {
-        method: 'POST', headers: await headers(),
+        method: 'POST', headers: requestHeaders,
         body: JSON.stringify(coords),
       });
       const data = await r.json().catch(() => ({}));

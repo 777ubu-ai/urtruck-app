@@ -16,15 +16,18 @@ export function normalizeLocationPayload(position, now = Date.now()) {
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
     return null;
   }
-  const capturedMs = Number(position?.timestamp ?? position?.capturedAt ?? now);
-  const safeCapturedMs = Number.isFinite(capturedMs) ? capturedMs : now;
+  const rawCaptured = position?.timestamp ?? position?.capturedAt;
+  const capturedMs = rawCaptured == null ? Number(now) : Number(rawCaptured);
+  if (!Number.isFinite(capturedMs)) return null;
+  const capturedDate = new Date(capturedMs);
+  if (!Number.isFinite(capturedDate.getTime())) return null;
   return {
     lat,
     lng,
     heading: optionalBounded(coords.heading, 0, 360),
     speed: optionalBounded(coords.speed, 0, GPS_MAX_SPEED_MPS),
     accuracy: optionalBounded(coords.accuracy, 0, 5000),
-    captured_at: new Date(safeCapturedMs).toISOString(),
+    captured_at: capturedDate.toISOString(),
   };
 }
 
@@ -34,6 +37,10 @@ export function classifyDealLocation(response, now = Date.now()) {
   const lng = Number(location?.lng);
   const hasPoint = Boolean(response?.has_location && Number.isFinite(lat) && Number.isFinite(lng));
   const terminal = ['awaiting_confirmation', 'completed', 'cancelled'].includes(response?.deal_status);
+  const timestampQuality = location?.timestamp_quality || null;
+  const isLegacy = location?.is_legacy === true || timestampQuality === 'server_received_legacy'
+    || timestampQuality === 'pre_contract_unknown';
+  const timestampTrusted = timestampQuality == null || (timestampQuality === 'client_captured' && !isLegacy);
   const serverAge = Number(response?.age_seconds);
   let ageSeconds = Number.isFinite(serverAge) ? Math.max(0, serverAge) : null;
   if (ageSeconds == null && location) {
@@ -43,6 +50,7 @@ export function classifyDealLocation(response, now = Date.now()) {
   }
   const isLive = Boolean(
     hasPoint && response?.is_live === true && !terminal
+    && timestampTrusted
     && response?.tracking_status === 'active'
     && ageSeconds != null && ageSeconds <= GPS_LIVE_MAX_AGE_SECONDS
   );
@@ -51,6 +59,8 @@ export function classifyDealLocation(response, now = Date.now()) {
     isLive,
     isStale: hasPoint && !isLive,
     terminal,
+    isLegacy,
+    timestampQuality,
     ageSeconds,
     freshness: isLive ? 'live' : (response?.freshness || (hasPoint ? 'stale' : 'missing')),
   };
