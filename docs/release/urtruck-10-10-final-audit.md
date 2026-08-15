@@ -185,6 +185,10 @@ background/terminated tracking, push-полный цикл, TTN/PDF с productio
 текущей рабочей ветке добавлен отдельный Expo Modules bridge
 `modules/urtruck-yandex-map`:
 
+Фактический commit этой проверки: `2d9a53f` (полный SHA доступен через
+`git rev-parse HEAD`); ветка `codex/yandex-maps`. Изменения не вливались в
+`main` и не публиковались в production.
+
 - iOS: `UrTruckYandexMapModule.swift` + pod `YandexMapsMobile 4.42.0-lite`;
 - Android: `UrTruckYandexMapModule.kt` + dependency
   `com.yandex.android:maps.mobile:4.42.0-lite`;
