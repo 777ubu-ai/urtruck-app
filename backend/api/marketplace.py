@@ -2694,6 +2694,10 @@ _DRIVER_ONLY_TRANSITIONS = {
     ("in_progress", "delivered"),
     ("at_border", "delivered"),
 }
+# Только грузоотправитель подтверждает фактическое получение после
+# отметки водителя «Доставлен». Повтор этого статуса тоже не должен
+# маскировать попытку водителя завершить сделку от имени клиента.
+_SHIPPER_ONLY_STATUSES = {"completed"}
 
 # Разрешённые переходы. Раньше валидации не было — двойной тап или
 # рассинхрон фронта мог перескочить accepted → delivered, минуя «в пути»/
@@ -2703,7 +2707,8 @@ _DEAL_FLOW = {
     "accepted":    {"in_progress", "cancelled"},
     "in_progress": {"at_border", "delivered", "cancelled"},
     "at_border":   {"delivered", "cancelled"},
-    "delivered":   set(),
+    "delivered":   {"completed"},
+    "completed":   set(),
     "cancelled":   set(),
 }
 # Статусы, устанавливаемые только водителем. Это проверяется даже для
@@ -2712,7 +2717,8 @@ _DEAL_FLOW = {
 _DRIVER_ONLY_STATUSES = {new_status for _, new_status in _DRIVER_ONLY_TRANSITIONS}
 _DEAL_STATUS_LABELS = {
     "in_progress": "🚛 Рейс начался", "at_border": "🛂 На границе",
-    "delivered": "✅ Доставлен", "cancelled": "❌ Отменено",
+    "delivered": "✅ Доставлен", "completed": "✅ Получение подтверждено",
+    "cancelled": "❌ Отменено",
 }
 
 
@@ -2754,6 +2760,12 @@ def _transition_deal(c, deal: dict, new_status: str, actor_uid: str, request_id:
             raise DealTransitionError(403, {
                 "error": "ACTION_NOT_ALLOWED_FOR_ROLE",
                 "message": "Этот статус может установить только водитель по сделке",
+            })
+    if new_status in _SHIPPER_ONLY_STATUSES:
+        if not deal.get("shipper_id") or actor_uid != deal["shipper_id"]:
+            raise DealTransitionError(403, {
+                "error": "ACTION_NOT_ALLOWED_FOR_ROLE",
+                "message": "Подтвердить получение может только грузоотправитель по сделке",
             })
     if new_status == cur_status:
         return None  # идемпотентно, без шума — уведомление не создаём
@@ -2826,7 +2838,7 @@ def _transition_deal(c, deal: dict, new_status: str, actor_uid: str, request_id:
         c.execute("UPDATE cargos SET status = 'completed' WHERE id = ?", (deal["cargo_id"],))
     elif new_status == "cancelled" and deal.get("cargo_id"):
         c.execute("UPDATE cargos SET status = 'active', taken_by = NULL WHERE id = ?", (deal["cargo_id"],))
-    _DEAL_TO_TRIP = {"in_progress": "in_transit", "at_border": "in_transit", "delivered": "delivered", "cancelled": "cancelled"}
+    _DEAL_TO_TRIP = {"in_progress": "in_transit", "at_border": "in_transit", "delivered": "delivered", "completed": "delivered", "cancelled": "cancelled"}
     if deal.get("trip_id") and new_status in _DEAL_TO_TRIP:
         c.execute("UPDATE trips SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                    (_DEAL_TO_TRIP[new_status], deal["trip_id"]))
@@ -2852,7 +2864,7 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
     # Этап-хаб заказа: добавлен промежуточный статус at_border («На границе») —
     # ключевой для коридора Китай↔КЗ. Порядок: accepted → in_progress →
     # at_border → delivered (cancelled — из любого рабочего).
-    VALID = ["accepted", "in_progress", "at_border", "delivered", "cancelled"]
+    VALID = ["accepted", "in_progress", "at_border", "delivered", "completed", "cancelled"]
     if new_status not in VALID:
         raise HTTPException(status_code=400, detail={
             "error": "INVALID_STATUS",
@@ -2882,7 +2894,7 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
     # сумма в валюте груза/рейса, deep-link на /deals/{id}.
     try:
         other_id = deal["driver_id"] if uid == deal["shipper_id"] else deal["shipper_id"]
-        labels = {"in_progress": "🚛 Рейс начался", "at_border": "🛂 На границе", "delivered": "✅ Доставлен", "cancelled": "❌ Отменено"}
+        labels = {"in_progress": "🚛 Рейс начался", "at_border": "🛂 На границе", "delivered": "✅ Доставлен", "completed": "✅ Получение подтверждено", "cancelled": "❌ Отменено"}
         if new_status in labels:
             cur = "USD"
             with get_conn() as c2:
@@ -2936,6 +2948,7 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
             "in_progress": "🚛 Рейс начался",
             "at_border": "🛂 Груз на границе",
             "delivered": "✅ Груз доставлен",
+            "completed": "✅ Получение подтверждено",
             "cancelled": "❌ Сделка отменена",
         }
         if new_status in chat_labels and deal.get("chat_room_id"):
