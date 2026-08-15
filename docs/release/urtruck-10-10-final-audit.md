@@ -178,3 +178,51 @@ background/terminated tracking, push-полный цикл, TTN/PDF с productio
 - Финальный commit этой проверки: `02577368cd739025896d666ea908464cc47d0e60` в ветке `codex/yandex-maps`; `main` и production не изменялись.
 - GitHub Actions run `31874373269` для этого HEAD: API/backend `94987781227` PASS; Design/FSM/UX `94987781317` PASS; Maestro contract `94987781233` PASS; Playwright desktop `94987781256` PASS; Playwright mobile `94987781208` PASS.
 - Несмотря на зелёный web/backend/contract CI и реальный локальный iOS smoke PASS, общий статус остаётся **BLOCKED** до native Yandex MapKit (Android/iOS) и полноценного authenticated driver/client Maestro с безопасными QA fixtures.
+
+## Native Yandex MapKit bridge — проверка текущего HEAD (2026-08-15)
+
+Этот раздел supersedes устаревшие утверждения выше о `react-native-maps`. В
+текущей рабочей ветке добавлен отдельный Expo Modules bridge
+`modules/urtruck-yandex-map`:
+
+- iOS: `UrTruckYandexMapModule.swift` + pod `YandexMapsMobile 4.42.0-lite`;
+- Android: `UrTruckYandexMapModule.kt` + dependency
+  `com.yandex.android:maps.mobile:4.42.0-lite`;
+- JS wrapper: `modules/urtruck-yandex-map/src/UrTruckYandexMapView.tsx`;
+- `src/components/TruckMap.native.js` использует только этот bridge и честный
+  fallback при отсутствии ключа/ошибке SDK; внешние карты не открываются;
+- API key читается только из `YANDEX_MAPKIT_API_KEY` в `app.config.js`, его
+  значение в логи, исходники и отчёт не выводилось.
+
+| Область | Точная команда | Runtime | Результат | Артефакт |
+|---|---|---|---|---|
+| CocoaPods | `cd ios && pod install --deployment` | macOS, CocoaPods 1.16.2 | PASS | `qa/artifacts/ios-real/pod-install-yandex-deployment.log` |
+| iOS build | `xcodebuild -workspace ios/UrTruck.xcworkspace -scheme UrTruck -configuration Debug -sdk iphonesimulator -destination 'platform=iOS Simulator,id=3D4F6F4A-86D7-4125-BC8D-B74D9C88C35F' -derivedDataPath /tmp/urtruck-ios-derived-yandex -skipMacroValidation -collect-test-diagnostics never` | iPhone 17 Simulator, iOS 26.4 | PASS (`** BUILD SUCCEEDED **`) | `qa/artifacts/ios-real/xcodebuild-yandex-rerun.log` |
+| iOS install/launch | `xcrun simctl install ...` + `xcrun simctl launch ... com.urtruck.app` | iPhone 17 Simulator | PASS; onboarding открыт | `qa/artifacts/ios-real/urtruck-runtime.png` |
+| Android build | `JAVA_HOME=...openjdk@17... cd android && ./gradlew assembleDebug --no-daemon` | Android SDK, JDK 17 | PASS (`BUILD SUCCESSFUL`) | `qa/artifacts/android-yandex/gradle-assemble-debug-global-kotlin-pin.log` |
+| Android install/launch | `adb -s emulator-5554 install -r android/app/build/outputs/apk/debug/app-debug.apk` + `am start .../.MainActivity` | AVD `urwork_test`, `emulator-5554` | PASS; onboarding открыт | `qa/artifacts/android-yandex/urtruck-runtime.png` |
+| Maestro smoke iOS | `maestro test --udid 3D4F6F4A-86D7-4125-BC8D-B74D9C88C35F --test-output-dir qa/artifacts/maestro-real/ios-rerun qa/maestro/smoke-suite.yaml --format junit --output qa/artifacts/maestro-real/ios/smoke-suite-rerun.xml` | iPhone 17 Simulator | PASS, 1/1 | `qa/artifacts/maestro-real/ios/smoke-suite-rerun.xml`, `qa/artifacts/maestro-real/ios-rerun/screenshots/` |
+| Maestro client iOS | `maestro test --udid 3D4F6F4A-86D7-4125-BC8D-B74D9C88C35F --test-output-dir qa/artifacts/maestro-real/ios/client-tabs qa/maestro/client-tabs.yaml --format junit --output qa/artifacts/maestro-real/ios/client-tabs.xml` | iPhone 17 Simulator | PASS, 1/1 | `qa/artifacts/maestro-real/ios/client-tabs.xml`, `qa/artifacts/maestro-real/ios/client-tabs/screenshots/` |
+| Maestro smoke Android | `maestro test --udid emulator-5554 --test-output-dir qa/artifacts/maestro-real/android/smoke-suite qa/maestro/smoke-suite.yaml --format junit --output qa/artifacts/maestro-real/android/smoke-suite-rerun.xml` | AVD `urwork_test` | PASS, 1/1 | `qa/artifacts/maestro-real/android/smoke-suite-rerun.xml` |
+| Maestro client Android | `maestro test --udid emulator-5554 --test-output-dir qa/artifacts/maestro-real/android/client-tabs qa/maestro/client-tabs.yaml --format junit --output qa/artifacts/maestro-real/android/client-tabs.xml` | AVD `urwork_test` | PASS, 1/1 | `qa/artifacts/maestro-real/android/client-tabs.xml` |
+| Maestro driver iOS/Android | `maestro test ... qa/maestro/driver-auth.yaml --format junit ...` | iPhone 17 / AVD | BLOCKED before app flow: `MAESTRO_QA_AGENT_TOKEN` отсутствует | `qa/artifacts/maestro-real/ios/driver-auth.xml`, `qa/artifacts/maestro-real/android/driver-auth-rerun.xml` |
+| Web build | `npm run build:web` | local static export | PASS; без ключа сохранён fallback | `qa/artifacts/web-build-yandex.log` |
+
+Дополнительные проверки: `python3 -m compileall -q backend` — PASS; `node
+--check app.config.js` — PASS. Backend pytest не запускается в текущем окружении:
+`ModuleNotFoundError: No module named 'fastapi'` (лог
+`qa/artifacts/backend-deal-fsm-yandex.log`).
+
+Фактические блокеры остаются:
+
+1. В локальной среде отсутствует `YANDEX_MAPKIT_API_KEY` (проверено только
+   наличием/отсутствием, значение не раскрывалось). Поэтому нативный bridge
+   собран, но фактическое отображение Yandex MapKit, marker, zoom и GPS на
+   устройстве не доказано; приложение показывает честный fallback.
+2. Для driver-auth нужен безопасный тестовый `MAESTRO_QA_AGENT_TOKEN` и
+   локальный QA backend. Токен не создавался и не вводился.
+3. Реальный GPS/push lifecycle, background tracking и iOS/Android MapKit с
+   валидным ключом не проверены на устройстве.
+
+Итоговый статус текущей проверки: **BLOCKED**. `main` и production не
+изменялись; платное подключение и внешняя публикация не выполнялись.

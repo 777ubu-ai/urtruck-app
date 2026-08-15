@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["UrTruckYandexMapModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.urtruckyandexmap.UrTruckYandexMapModule"]
+  }
+}

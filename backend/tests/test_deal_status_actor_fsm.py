@@ -157,6 +157,22 @@ def test_driver_can_send_location_after_trip_start():
     assert r.status_code == 200, r.text
 
 
+def test_location_read_is_hidden_before_trip_start_even_if_stale_row_exists():
+    """Старая GPS-точка не должна раскрываться до in_progress."""
+    d = seed_deal("accepted")
+    from database.db import get_conn
+    with get_conn() as c:
+        c.execute(
+            "INSERT INTO deal_locations (deal_id, lat, lng, speed) VALUES (?,?,?,?)",
+            (d, 43.2389, 76.8897, 0),
+        )
+    as_user(SHIPPER)
+    r = client.get(f"/api/v1/market/deals/{d}/location")
+    assert r.status_code == 200, r.text
+    assert r.json()["has_location"] is False
+    assert r.json()["tracking_enabled"] is False
+
+
 def test_driver_can_set_at_border_for_international():
     d = seed_deal("in_progress", from_country="CN", to_country="KZ")
     r = patch_status(d, "at_border", DRIVER)

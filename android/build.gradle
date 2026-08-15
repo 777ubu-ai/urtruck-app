@@ -3,7 +3,9 @@
 buildscript {
     ext {
         buildToolsVersion = findProperty('android.buildToolsVersion') ?: '36.0.0'
-        minSdkVersion = Integer.parseInt(findProperty('android.minSdkVersion') ?: '24')
+        // Yandex MapKit 4.42 requires API 26+; keep the requirement explicit
+        // rather than overriding the manifest merger with an unsafe override.
+        minSdkVersion = Integer.parseInt(findProperty('android.minSdkVersion') ?: '26')
         // Google Play: с 31.08.2026 требуется targetSdk >= 36 (Android 16).
         compileSdkVersion = Integer.parseInt(findProperty('android.compileSdkVersion') ?: '36')
         targetSdkVersion = Integer.parseInt(findProperty('android.targetSdkVersion') ?: '36')
@@ -25,6 +27,17 @@ buildscript {
 apply plugin: "com.facebook.react.rootproject"
 
 allprojects {
+    // Yandex MapKit 4.42 brings WorkManager/Kotlin 2.1 transitively. Expo
+    // SDK 52 is built with Kotlin 1.9, so keep the compatible versions for
+    // the whole graph instead of upgrading the Expo toolchain.
+    configurations.configureEach {
+        resolutionStrategy.force(
+            'androidx.work:work-runtime:2.7.1',
+            'org.jetbrains.kotlin:kotlin-stdlib:1.9.25',
+            'org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.25',
+            'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.25'
+        )
+    }
     repositories {
         maven {
             // All of React Native (JS, Obj-C sources, Android binaries) is installed from npm

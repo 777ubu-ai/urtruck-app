@@ -11,11 +11,9 @@ tags:
 # поэтому ни Publish, ни Profile отдельными вкладками больше не являются.
 - launchApp
 - extendedWaitUntil:
-    visible: "UrTruck"
+    visible:
+      id: "onb-v2-cta-phone"
     timeout: 15000
-- tapOn:
-    text: "UrTruck"
-    index: 0
 - extendedWaitUntil:
     visible:
       text: "Смотреть грузы|Continue"

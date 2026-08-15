@@ -1,8 +1,7 @@
 // TrackTruckScreen — грузоотправитель видит, где сейчас машина (задача B).
-// Карта вынесена в TruckMap (native = react-native-maps/Apple Maps без
-// ключа; web = фолбэк). Позиция тянется поллингом GET
-// /market/deals/{id}/location раз в 15с. «Открыть в Картах» — системное
-// приложение карт по координатам.
+// Карта вынесена в TruckMap (native = Yandex MapKit без внешнего приложения,
+// web = Yandex JS API). Позиция тянется поллингом GET
+// /market/deals/{id}/location раз в 15с.
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';

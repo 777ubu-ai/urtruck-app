@@ -2897,17 +2897,24 @@ def update_deal_location(deal_id: str, body: DealLocationIn, user=Depends(requir
 @mp_router.get("/deals/{deal_id}/location")
 def get_deal_location(deal_id: str, user=Depends(require_level(1))):
     """Участник сделки (грузоотправитель или водитель) читает последнюю
-    позицию машины. has_location=false, если водитель ещё не слал гео."""
+    позицию машины только после старта рейса.
+
+    Даже если в базе осталась старая точка, accepted/cancelled сделки не
+    должны раскрывать её через API: GPS становится доступен с in_progress и
+    остаётся доступен на at_border.
+    """
     with get_conn() as c:
-        d = c.execute("SELECT shipper_id, driver_id FROM deals WHERE id = ?", (deal_id,)).fetchone()
+        d = c.execute("SELECT shipper_id, driver_id, status FROM deals WHERE id = ?", (deal_id,)).fetchone()
         if not d:
             raise HTTPException(status_code=404, detail="Сделка не найдена")
         if user["id"] not in (d["shipper_id"], d["driver_id"]):
             raise HTTPException(status_code=403, detail="Нет доступа к сделке")
+        if d["status"] not in ("in_progress", "at_border"):
+            return {"ok": True, "has_location": False, "tracking_enabled": False, "status": d["status"]}
         loc = c.execute(
             "SELECT lat, lng, heading, speed, updated_at FROM deal_locations WHERE deal_id = ?",
             (deal_id,),
         ).fetchone()
     if not loc:
-        return {"ok": True, "has_location": False}
-    return {"ok": True, "has_location": True, "location": dict(loc)}
+        return {"ok": True, "has_location": False, "tracking_enabled": True, "status": d["status"]}
+    return {"ok": True, "has_location": True, "tracking_enabled": True, "status": d["status"], "location": dict(loc)}
