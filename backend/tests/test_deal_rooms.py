@@ -21,7 +21,7 @@ dbm.init_db()
 registration_dal.init_registration_schema()
 
 from database.db import get_conn
-from api.chat import get_or_create_deal_room, send_message, get_messages, SendMessageIn
+from api.chat import get_or_create_deal_room, send_message, get_messages, my_rooms, SendMessageIn
 from fastapi import HTTPException
 
 
@@ -122,3 +122,4 @@ def test_preaccept_room_cannot_send_or_read():
     with pytest.raises(HTTPException) as read_error:
         get_messages(room, user=_u(o))
     assert read_error.value.status_code == 403
+    assert room not in [r["id"] for r in my_rooms(user=_u(o))["rooms"]]
