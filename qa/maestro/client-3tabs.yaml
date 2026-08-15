@@ -1,18 +1,41 @@
 appId: com.urtruck.app
-name: client-3tabs
+name: client-5tabs
 tags: [smoke, client, release]
 env:
   MAESTRO_ACTOR: boris
 ---
-- runFlow: _lib/qa-login.yaml
+- runFlow: _lib/qa-login-boris.yaml
 - assertVisible: { id: "bottom-nav-mywork" }
 - assertVisible: { id: "bottom-nav-feed" }
+- assertVisible: { id: "bottom-nav-publish" }
 - assertVisible: { id: "bottom-nav-deals" }
+- assertVisible: { id: "bottom-nav-profile" }
 - tapOn: { id: "bottom-nav-mywork" }
+- waitForAnimationToEnd
 - assertVisible: { id: "mywork-menu-btn" }
 - assertVisible: { id: "mytrips-place-cargo" }
 - tapOn: { id: "bottom-nav-feed" }
+- waitForAnimationToEnd
 - assertVisible: { id: "feed-menu-btn" }
+- tapOn: { id: "bottom-nav-publish" }
+- waitForAnimationToEnd
+- assertVisible: { id: "cargo-desc-input" }
+- tapOn:
+    point: "7%,13%"
+- waitForAnimationToEnd
+- assertVisible: { id: "bottom-nav-deals" }
 - tapOn: { id: "bottom-nav-deals" }
+- waitForAnimationToEnd
 - assertVisible: { id: "deal-room-list" }
 - assertVisible: { id: "chats-menu-btn" }
+- tapOn: { id: "bottom-nav-profile" }
+- waitForAnimationToEnd
+- assertVisible: { id: "profile-my-reviews" }
+- scrollUntilVisible:
+    element:
+      id: "qa-debug-logout"
+    direction: DOWN
+    timeout: 8000
+- tapOn:
+    id: "qa-debug-logout"
+- waitForAnimationToEnd

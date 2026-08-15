@@ -10,6 +10,7 @@
 # client-only Publish, etc.) will surface actor mismatches if any.
 appId: com.urtruck.app
 ---
+- clearState
 - launchApp
 - extendedWaitUntil:
     visible: "UrTruck"
@@ -34,6 +35,13 @@ appId: com.urtruck.app
     commands:
       - tapOn:
           point: "50%,10%"
+      - waitForAnimationToEnd
+- runFlow:
+    when:
+      visible: "Open debugger to view warnings."
+    commands:
+      - tapOn:
+          point: "94%,89%"
       - waitForAnimationToEnd
 # If a previous flow left an active session on Main, force-logout through the
 # dev-only QA logout button (skips the iOS Alert dialog). This guarantees
@@ -70,24 +78,54 @@ appId: com.urtruck.app
           id: "qa-debug-logout"
       - extendedWaitUntil:
           visible:
-            id: "qa-debug-submit"
+            id: "qa-debug-block"
           timeout: 15000
 - extendedWaitUntil:
     visible:
-      id: "qa-debug-submit"
+      id: "qa-debug-block"
     timeout: 10000
-- runScript: ensure-actor.js
-- tapOn:
-    id: "qa-debug-token"
-- inputText: ${output.token}
-# hideKeyboard флейкует на Maestro 2.6 + iOS 26 («Couldn't hide the keyboard»).
-# Детерминированно сбрасываем клавиатуру тапом по верхней нейтральной зоне
-# (шапка онбординга, не интерактивная), затем сабмитим токен.
-- tapOn:
-    point: "50%,12%"
-- waitForAnimationToEnd
-- tapOn:
-    id: "qa-debug-submit"
+- runFlow:
+    when:
+      visible:
+        id: "qa-debug-${MAESTRO_ACTOR}"
+    commands:
+      - tapOn:
+          id: "qa-debug-${MAESTRO_ACTOR}"
+      - repeat:
+          times: 6
+          commands:
+            - runFlow:
+                when:
+                  visible: "Deny"
+                commands:
+                  - tapOn: "Deny"
+                  - waitForAnimationToEnd
+            - extendedWaitUntil:
+                visible:
+                  id: "bottom-nav-feed"
+                timeout: 4000
+                optional: true
+      - extendedWaitUntil:
+          visible:
+            id: "bottom-nav-feed"
+          timeout: 15000
+- runFlow:
+    when:
+      visible:
+        id: "qa-debug-token"
+    commands:
+      - runScript: ensure-actor.js
+      - tapOn:
+          id: "qa-debug-token"
+      - inputText: "${output.token}"
+      # hideKeyboard флейкует на Maestro 2.6 + iOS 26 («Couldn't hide the keyboard»).
+      # Детерминированно сбрасываем клавиатуру тапом по верхней нейтральной зоне
+      # (шапка онбординга, не интерактивная), затем сабмитим токен.
+      - tapOn:
+          point: "50%,12%"
+      - waitForAnimationToEnd
+      - tapOn:
+          id: "qa-debug-submit"
 # Водитель (serik): после входа приложение запрашивает ФОНОВУЮ локацию, и Expo Go
 # показывает свой JS-диалог «Experience needs permissions for locationBackground»
 # поверх Main (RN Modal → перекрывает bottom-nav в accessibility-дереве). Диалог
@@ -113,3 +151,14 @@ appId: com.urtruck.app
     visible:
       id: "bottom-nav-feed"
     timeout: 15000
+- extendedWaitUntil:
+    visible: "Open debugger to view warnings."
+    timeout: 5000
+    optional: true
+- runFlow:
+    when:
+      visible: "Open debugger to view warnings."
+    commands:
+      - tapOn:
+          point: "94%,89%"
+      - waitForAnimationToEnd

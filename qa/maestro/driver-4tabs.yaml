@@ -1,20 +1,44 @@
 appId: com.urtruck.app
-name: driver-4tabs
+name: driver-5tabs
 tags: [smoke, driver, release]
 env:
   MAESTRO_ACTOR: serik
 ---
-- runFlow: _lib/qa-login.yaml
+- runFlow: _lib/qa-login-serik.yaml
 - assertVisible: { id: "bottom-nav-feed" }
 - assertVisible: { id: "bottom-nav-mywork" }
 - assertVisible: { id: "bottom-nav-queue" }
-- assertVisible: { id: "bottom-nav-deals" }
+- assertVisible: { id: "bottom-nav-chats" }
+- assertVisible: { id: "bottom-nav-profile" }
 - tapOn: { id: "bottom-nav-feed" }
+- waitForAnimationToEnd
 - assertVisible: { id: "feed-menu-btn" }
 - tapOn: { id: "bottom-nav-mywork" }
+- waitForAnimationToEnd
+- runFlow:
+    when:
+      visible:
+        id: "feed-menu-btn"
+    commands:
+      - tapOn:
+          point: "31%,92%"
+      - waitForAnimationToEnd
 - assertVisible: { id: "mywork-menu-btn" }
 - tapOn: { id: "bottom-nav-queue" }
+- waitForAnimationToEnd
 - assertVisible: { id: "queue-title" }
-- tapOn: { id: "bottom-nav-deals" }
+- tapOn: { id: "bottom-nav-chats" }
+- waitForAnimationToEnd
 - assertVisible: { id: "deal-room-list" }
 - assertVisible: { id: "chats-menu-btn" }
+- tapOn: { id: "bottom-nav-profile" }
+- waitForAnimationToEnd
+- assertVisible: { id: "profile-my-status" }
+- scrollUntilVisible:
+    element:
+      id: "qa-debug-logout"
+    direction: DOWN
+    timeout: 8000
+- tapOn:
+    id: "qa-debug-logout"
+- waitForAnimationToEnd

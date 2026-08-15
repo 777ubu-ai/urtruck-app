@@ -1,0 +1,49 @@
+appId: com.urtruck.app
+---
+- clearState
+- launchApp
+- extendedWaitUntil:
+    visible: "UrTruck"
+    timeout: 15000
+- tapOn:
+    text: "UrTruck"
+    index: 0
+- extendedWaitUntil:
+    visible:
+      text: "Смотреть грузы|Continue|Профиль|Грузы"
+    timeout: 120000
+- runFlow:
+    when:
+      visible: "Open debugger to view warnings."
+    commands:
+      - tapOn:
+          point: "94%,89%"
+      - waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "qa-debug-block"
+    timeout: 10000
+- tapOn:
+    id: "qa-debug-serik"
+- repeat:
+    times: 6
+    commands:
+      - runFlow:
+          when:
+            visible: "Deny"
+          commands:
+            - tapOn: "Deny"
+            - waitForAnimationToEnd
+      - extendedWaitUntil:
+          visible:
+            id: "bottom-nav-feed"
+          timeout: 4000
+          optional: true
+- extendedWaitUntil:
+    visible:
+      id: "bottom-nav-feed"
+    timeout: 15000
+- extendedWaitUntil:
+    visible:
+      id: "bottom-nav-queue"
+    timeout: 20000

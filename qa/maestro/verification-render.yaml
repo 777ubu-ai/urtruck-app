@@ -16,31 +16,17 @@ tags:
     index: 0
 - extendedWaitUntil:
     visible:
-      text: "Продолжить по номеру|Continue"
-    timeout: 60000
-- runFlow:
-    when:
-      visible: "Continue"
-    commands:
-      - tapOn:
-          point: "50%,10%"
-      - waitForAnimationToEnd
-- runFlow:
-    when:
-      visible: "Reload"
-    commands:
-      - tapOn:
-          point: "50%,10%"
-      - waitForAnimationToEnd
-- extendedWaitUntil:
-    visible:
       id: "onb-v2-cta-phone"
-    timeout: 10000
+    timeout: 60000
 - tapOn:
     id: "onb-v2-cta-phone"
 - waitForAnimationToEnd:
     timeout: 4000
 - takeScreenshot: 01_auth_phone_screen
+- tapOn:
+    id: "auth-tab-phone"
+- waitForAnimationToEnd:
+    timeout: 2000
 - assertVisible:
     id: "phone-v2-input"
 - assertVisible:

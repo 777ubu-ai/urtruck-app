@@ -153,9 +153,14 @@ const QaLoginHook = ({ s }) => {
   const [token, setToken] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const autoSubmitted = useRef(false);
+  const actorTokens = {
+    serik: process.env.EXPO_PUBLIC_QA_SERIK_TOKEN || '',
+    boris: process.env.EXPO_PUBLIC_QA_BORIS_TOKEN || '',
+  };
 
-  const onSubmit = async () => {
-    const value = (token || '').trim();
+  const onSubmit = async (overrideToken = null) => {
+    const value = (overrideToken || token || '').trim();
     if (!value) {
       setErr('token required');
       return;
@@ -171,37 +176,77 @@ const QaLoginHook = ({ s }) => {
       const role = me?.role && me.role !== 'guest' ? me.role : 'client';
       setRole(role);
     } catch (e) {
+      autoSubmitted.current = false;
       setErr('login failed');
     } finally {
       setBusy(false);
-      setToken('');
+      if (!overrideToken) setToken('');
     }
   };
+
+  React.useEffect(() => {
+    const value = (token || '').trim();
+    if (busy || autoSubmitted.current || value.length < 20) return undefined;
+    autoSubmitted.current = true;
+    const timer = setTimeout(() => {
+      onSubmit();
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [busy, token]);
 
   return (
     <View style={s.qaBlock} testID="qa-debug-block">
       <Text style={s.qaLabel}>QA login (dev only)</Text>
-      <TextInput
-        style={s.qaInput}
-        value={token}
-        onChangeText={setToken}
-        placeholder="paste actor token"
-        placeholderTextColor={brand.textSecondary}
-        autoCapitalize="none"
-        autoCorrect={false}
-        secureTextEntry={false}
-        testID="qa-debug-token"
-        accessibilityLabel="QA debug token"
-      />
-      <Pressable
-        onPress={onSubmit}
-        disabled={busy}
-        style={[s.qaSubmit, busy && { opacity: 0.5 }]}
-        testID="qa-debug-submit"
-        accessibilityLabel="QA debug submit"
-      >
-        <Text style={s.qaSubmitText}>{busy ? '…' : 'QA login'}</Text>
-      </Pressable>
+      {(actorTokens.serik || actorTokens.boris) ? (
+        <View style={s.qaActorRow}>
+          {actorTokens.serik ? (
+            <Pressable
+              onPress={() => onSubmit(actorTokens.serik)}
+              disabled={busy}
+              style={[s.qaActorBtn, busy && { opacity: 0.5 }]}
+              testID="qa-debug-serik"
+              accessibilityLabel="QA debug login serik"
+            >
+              <Text style={s.qaSubmitText}>serik</Text>
+            </Pressable>
+          ) : null}
+          {actorTokens.boris ? (
+            <Pressable
+              onPress={() => onSubmit(actorTokens.boris)}
+              disabled={busy}
+              style={[s.qaActorBtn, busy && { opacity: 0.5 }]}
+              testID="qa-debug-boris"
+              accessibilityLabel="QA debug login boris"
+            >
+              <Text style={s.qaSubmitText}>boris</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : (
+        <View style={s.qaRow}>
+          <TextInput
+            style={s.qaInput}
+            value={token}
+            onChangeText={setToken}
+            placeholder="paste actor token"
+            placeholderTextColor={brand.textSecondary}
+            autoCapitalize="none"
+            autoCorrect={false}
+            secureTextEntry={false}
+            testID="qa-debug-token"
+            accessibilityLabel="QA debug token"
+          />
+          <Pressable
+            onPress={onSubmit}
+            disabled={busy}
+            style={[s.qaSubmit, busy && { opacity: 0.5 }]}
+            testID="qa-debug-submit"
+            accessibilityLabel="QA debug submit"
+          >
+            <Text style={s.qaSubmitText}>{busy ? '…' : 'QA login'}</Text>
+          </Pressable>
+        </View>
+      )}
       {err ? <Text style={s.qaErr} testID="qa-debug-error">{err}</Text> : null}
     </View>
   );
@@ -313,6 +358,8 @@ export default function OnboardingV2Screen({ navigation }) {
           opacity 0.85 как visual feedback. zIndex/elevation на
           ctaWrap страхует от чего-либо absolutely-positioned поверх. */}
       <View style={s.ctaWrap} pointerEvents="box-none">
+        {QA_HOOK_ALLOWED ? <QaLoginHook s={s} /> : null}
+
         <Pressable
           onPress={goPhone}
           accessibilityRole="button"
@@ -349,7 +396,6 @@ export default function OnboardingV2Screen({ navigation }) {
           <Text style={s.consentLink}>{t('onb_v2_consent_privacy')}</Text>
         </Text>
 
-        {QA_HOOK_ALLOWED ? <QaLoginHook s={s} /> : null}
       </View>
     </SafeAreaView>
   );
@@ -463,11 +509,11 @@ const makeStyles = (brand) => StyleSheet.create({
     fontWeight: '600',
   },
   qaBlock: {
-    marginTop: 10,
-    paddingTop: 10,
+    marginTop: 8,
+    paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: brand.borderStrong,
-    gap: 6,
+    gap: 5,
   },
   qaLabel: {
     fontSize: 11,
@@ -476,7 +522,8 @@ const makeStyles = (brand) => StyleSheet.create({
     fontWeight: '600',
   },
   qaInput: {
-    height: 36,
+    height: 34,
+    flex: 1,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: brand.borderStrong,
@@ -485,8 +532,28 @@ const makeStyles = (brand) => StyleSheet.create({
     color: brand.textPrimary,
     fontSize: 12,
   },
+  qaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   qaSubmit: {
-    height: 36,
+    height: 34,
+    minWidth: 88,
+    paddingHorizontal: 10,
+    borderRadius: radius.md,
+    backgroundColor: brand.borderStrong,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qaActorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  qaActorBtn: {
+    height: 30,
+    flex: 1,
     borderRadius: radius.md,
     backgroundColor: brand.borderStrong,
     alignItems: 'center',

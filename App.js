@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { Platform, AppState } from 'react-native';
+import { Platform, AppState, LogBox } from 'react-native';
 import { NavigationContainer, DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ThemeProvider, useTheme } from './src/utils/ThemeContext';
@@ -16,6 +16,10 @@ import './src/utils/backgroundLocation';
 import { chatAPI } from './src/utils/chatAPI';
 import { push } from './src/utils/push';
 import * as Sentry from '@sentry/react-native';
+
+if (typeof __DEV__ !== 'undefined' && __DEV__ && process.env.EXPO_PUBLIC_QA_HOOKS === '1') {
+  LogBox.ignoreAllLogs(true);
+}
 
 // Глобально убираем браузерную синюю обводку фокуса (outline) с полей ввода и
 // нажимаемых элементов на web/PWA. react-native-web рендерит TextInput как
