@@ -4,7 +4,7 @@
 - Ветка: `codex/yandex-maps`
 - Исходный commit: `3387029fb01c2e305ecbe083aacf086bf4327a4c`
 - База: `510bdc394265b2520d989ca7ab566e8d0157df0a` (`origin/main` merge-base)
-- Итоговый статус: **READY WITH BLOCKERS**
+- Итоговый статус: **NOT READY**
 
 ## Исправленные дефекты
 
@@ -40,6 +40,7 @@
 | UX/static | `npm run qa:ux` | PASS |
 | Production web build | `CI=true npm run build:web` | PASS; без локального JS-key ожидаемо использован fallback карты |
 | Playwright mobile | `npm run qa:center:web` | PASS, 36 passed; HTML `qa/playwright-report/mobile/index.html` |
+| Playwright desktop CI | GitHub Actions run `31867547753` | FAIL: 25 passed, 9 legacy scenarios failed |
 | Maestro YAML/reference contract | Ruby `YAML.load_stream` всех flows | PASS |
 | Maestro iOS execution | `maestro test --platform ios --device ... qa/maestro/driver-auth.yaml` | BLOCKED; JUnit `qa/artifacts/maestro-driver-auth-after-audit.xml` |
 | Android debug build | `android/gradlew assembleDebug --no-daemon` | BLOCKED, environment Java 26 / Gradle 8.10 incompatibility |
@@ -50,6 +51,17 @@
 auth-dependency и DB state между независимыми историческими test-модулями.
 Поддерживаемый CI-режим запускает модули изолированно; он выше прошёл. Это
 зафиксированная проблема тестового harness, не скрытый продуктовый PASS.
+
+GitHub Actions для commit `58512b14d352ec2ac9f28efc2adda34a55742111`
+завершился с одним failing job: `Playwright desktop visual audit`.
+`API and backend regression`, `Design, FSM and UX gate`, `Maestro mobile
+scenarios and release contract` и `Playwright mobile visual audit` прошли.
+Desktop job выполнил 25 тестов, но 9 legacy tests ждут удалённый стартовый
+`RoleScreen` и его `role-lang-switch`/`role-driver`; текущий первый экран —
+`OnboardingV2`. Это подтверждённый **test bug**. Сценарии нельзя просто
+исключить: их нужно перенести на testID Onboarding V2 и затем повторить CI.
+Артефакт desktop job: `full-qa-playwright-desktop-58512b14…` в run
+`31867547753`.
 
 ## Безопасность, роли, FSM и документы
 
