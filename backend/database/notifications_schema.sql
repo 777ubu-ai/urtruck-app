@@ -6,6 +6,9 @@ CREATE TABLE IF NOT EXISTS notifications (
   body TEXT,
   icon TEXT DEFAULT '🔔',
   url TEXT DEFAULT '/',
+  event_key TEXT,
+  event_type TEXT,
+  event_payload_json TEXT,
   is_read INTEGER DEFAULT 0,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );

@@ -1,4 +1,5 @@
 """InApp Notifications API — история уведомлений с колокольчиком."""
+import json
 import sys
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -21,7 +22,7 @@ def _init():
 
 
 def _migrate_event_key():
-    """Add an optional deduplication key for repeatable notification jobs."""
+    """Add dedupe and locale-neutral semantic event metadata."""
     with get_conn() as c:
         cols = {r["name"] for r in c.execute("PRAGMA table_info(notifications)").fetchall()}
         if "event_key" not in cols:
@@ -29,6 +30,15 @@ def _migrate_event_key():
                 c.execute("ALTER TABLE notifications ADD COLUMN event_key TEXT")
             except Exception:
                 pass
+        for name, ddl in (
+            ("event_type", "ALTER TABLE notifications ADD COLUMN event_type TEXT"),
+            ("event_payload_json", "ALTER TABLE notifications ADD COLUMN event_payload_json TEXT"),
+        ):
+            if name not in cols:
+                try:
+                    c.execute(ddl)
+                except Exception:
+                    pass
         c.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_notif_event_key "
             "ON notifications(user_id, event_key) WHERE event_key IS NOT NULL"
@@ -40,20 +50,29 @@ _init()
 
 
 def create_notification(user_id: str, type: str, title: str, body: str = "", icon: str = "🔔",
-                        url: str = "/", event_key: str = None):
-    """Create an in-app notification; event_key makes repeatable jobs idempotent."""
+                        url: str = "/", event_key: str = None,
+                        semantic_type: str = None, semantic_payload: dict = None):
+    """Create a notification with legacy fallback copy and semantic metadata.
+
+    ``event_key`` remains the idempotency key. ``semantic_type`` is a stable,
+    locale-neutral event identifier rendered by the client in its own locale.
+    Payload must contain server-derived display facts, never arbitrary client
+    text.
+    """
+    payload_json = json.dumps(semantic_payload or {}, ensure_ascii=False, separators=(",", ":")) if semantic_type else None
     with get_conn() as c:
         if event_key:
             c.execute(
-                "INSERT INTO notifications (user_id, type, title, body, icon, url, event_key) "
-                "VALUES (?,?,?,?,?,?,?) "
+                "INSERT INTO notifications (user_id, type, title, body, icon, url, event_key, event_type, event_payload_json) "
+                "VALUES (?,?,?,?,?,?,?,?,?) "
                 "ON CONFLICT(user_id, event_key) WHERE event_key IS NOT NULL DO NOTHING",
-                (user_id, type, title, body, icon, url, event_key),
+                (user_id, type, title, body, icon, url, event_key, semantic_type, payload_json),
             )
         else:
             c.execute(
-                "INSERT INTO notifications (user_id, type, title, body, icon, url) VALUES (?,?,?,?,?,?)",
-                (user_id, type, title, body, icon, url),
+                "INSERT INTO notifications (user_id, type, title, body, icon, url, event_type, event_payload_json) "
+                "VALUES (?,?,?,?,?,?,?,?)",
+                (user_id, type, title, body, icon, url, semantic_type, payload_json),
             )
 
 
@@ -112,7 +131,18 @@ def list_notifications(limit: int = 50, user=Depends(require_level(1))):
             "SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",
             (user["id"], limit),
         ).fetchall()
-    return {"notifications": [dict(r) for r in rows]}
+    notifications = []
+    for row in rows:
+        item = dict(row)
+        raw_payload = item.pop("event_payload_json", None)
+        if item.get("event_type"):
+            try:
+                parsed = json.loads(raw_payload or "{}")
+                item["event_payload"] = parsed if isinstance(parsed, dict) else {}
+            except (TypeError, ValueError, json.JSONDecodeError):
+                item["event_payload"] = {}
+        notifications.append(item)
+    return {"notifications": notifications}
 
 
 @notif_router.get("/unread")

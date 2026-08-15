@@ -126,6 +126,7 @@ export default function MyTripsScreen({ navigation, route }) {
   const mounted = useMountedRef();  // QA-аудит P1-8
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(!justCreatedTrip && !justCreatedCargo);
+  const [loadError, setLoadError] = useState(null);
   const [editCargo, setEditCargo] = useState(null);  // задача A: правка своего груза
   // Название сохранено ради минимального диффа — общий «id занятой операции»
   // (republish/продление); ставки (bid) переехали в «Сделки».
@@ -201,19 +202,26 @@ export default function MyTripsScreen({ navigation, route }) {
           const trips = await marketAPI.listTrips({});
           if (!mounted.current) return;  // QA-аудит P1-8: экран размонтирован
           setData({ my_trips: trips.trips || [], my_cargos: [], my_bids: [], incoming_bids: [], my_deals: [], authRequired: true });
+          setLoadError(null);
         } else {
           if (!mounted.current) return;
           setData({ my_trips: [], my_cargos: [], my_bids: [], incoming_bids: [], my_deals: [], authRequired: true });
+          setLoadError(null);
         }
       } else {
         let d = await marketAPI.myDashboard();
         if (d.serverError && isDriver) {
           try { const trips = await marketAPI.listTrips({}); d = { ...d, my_trips: (trips.trips || []) }; } catch {}
         }
+        if (d.serverError) throw new Error('dashboard_unavailable');
         if (!mounted.current) return;
         setData(d);
+        setLoadError(null);
       }
-    } catch (e) { console.warn('[MyTrips] load error:', e.message); }
+    } catch (e) {
+      console.warn('[MyTrips] load error:', e.message);
+      if (mounted.current) setLoadError(e?.message || 'dashboard_unavailable');
+    }
     if (mounted.current) setLoading(false);
   };
 
@@ -583,6 +591,9 @@ export default function MyTripsScreen({ navigation, route }) {
   );
 
   const renderEmpty = () => {
+    if (loadError) {
+      return <EmptyState title={t('load_error')} description={t('load_error_retry_desc')} actionLabel={t('retry')} onAction={load} />;
+    }
     if (data?.authRequired) {
       return <EmptyState title={t('gate_login')} description={t('gate_login_desc')} actionLabel={t('gate_enter')} onAction={() => navigation.navigate('Role')} />;
     }
@@ -668,6 +679,11 @@ export default function MyTripsScreen({ navigation, route }) {
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
         ListEmptyComponent={renderEmpty()}
+        ListHeaderComponent={loadError && listData.length ? (
+          <TouchableOpacity onPress={load} style={{ paddingVertical: 12 }} testID="my-work-retry-banner">
+            <Text style={{ color: v1.error || '#D64545', textAlign: 'center', fontWeight: '700' }}>{t('load_error_retry_desc')}</Text>
+          </TouchableOpacity>
+        ) : null}
       />
 
       <EditCargoModal

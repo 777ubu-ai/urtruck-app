@@ -13,10 +13,33 @@ async function headers() {
   };
 }
 
+async function request(path = '', options = {}) {
+  let response;
+  try {
+    response = await fetch(`${BASE}${path}`, {
+      ...options,
+      headers: await headers(),
+    });
+  } catch (error) {
+    const failure = new Error('notifications_network_error');
+    failure.code = 'network';
+    failure.cause = error;
+    throw failure;
+  }
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const failure = new Error('notifications_server_error');
+    failure.code = 'server';
+    failure.status = response.status;
+    failure.detail = data?.detail;
+    throw failure;
+  }
+  return data;
+}
+
 export const notificationsAPI = {
   async list(limit = 50) {
-    const r = await fetch(`${BASE}?limit=${limit}`, { headers: await headers() });
-    return r.json();
+    return request(`?limit=${encodeURIComponent(limit)}`);
   },
 
   async unread() {
@@ -33,12 +56,10 @@ export const notificationsAPI = {
   },
 
   async readAll() {
-    const r = await fetch(`${BASE}/read-all`, { method: 'POST', headers: await headers() });
-    return r.json();
+    return request('/read-all', { method: 'POST' });
   },
 
   async read(id) {
-    const r = await fetch(`${BASE}/read/${id}`, { method: 'POST', headers: await headers() });
-    return r.json();
+    return request(`/read/${encodeURIComponent(id)}`, { method: 'POST' });
   },
 };

@@ -161,7 +161,7 @@ def test_05_push_audit_table_and_index_exist():
 
 
 def test_06_notification_event_key_added_without_data_loss():
-    assert "event_key" in _columns("notifications")
+    assert {"event_key", "event_type", "event_payload_json"} <= _columns("notifications")
     with get_conn() as c:
         row = c.execute("SELECT * FROM notifications WHERE title='Legacy notification'").fetchone()
     assert row is not None

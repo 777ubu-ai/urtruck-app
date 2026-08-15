@@ -64,6 +64,7 @@ export default function ChatsListScreen({ navigation, route }) {
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState(null);
   const [query, setQuery] = useState('');
   // Решение владельца (05.08.2026, п.3): максимум 2 компактных фильтра —
   // Все / Непрочитанные. Шторка с кузовом/датой убрана целиком.
@@ -111,7 +112,8 @@ export default function ChatsListScreen({ navigation, route }) {
   const load = useCallback(async () => {
     try {
       if (dealsMode) {
-        const d = await marketAPI.myDashboard().catch(() => null);
+        const d = await marketAPI.myDashboard({ force: true });
+        if (d?.serverError) throw new Error('dashboard_unavailable');
         if (d) {
           setMyCargos(d.my_cargos || []);
           setMyTrips(d.my_trips || []);
@@ -125,10 +127,13 @@ export default function ChatsListScreen({ navigation, route }) {
         }
       } else {
         const data = await chatAPI.rooms();
+        if (data?.ok === false || !Array.isArray(data?.rooms)) throw new Error('chat_unavailable');
         setRooms(data.rooms || []);
       }
+      setLoadError(null);
     } catch (e) {
       console.warn('chats load failed', e);
+      setLoadError(e?.message || 'chat_unavailable');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -609,7 +614,7 @@ export default function ChatsListScreen({ navigation, route }) {
         renderItem={renderUnifiedDealItem}
         contentContainerStyle={{ padding: 12, paddingBottom: 24 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accent} />}
-        ListEmptyComponent={<Text style={[s.empty, { color: theme.textMuted }]}>{emptyText}</Text>}
+        ListEmptyComponent={loadError ? null : <Text style={[s.empty, { color: theme.textMuted }]}>{emptyText}</Text>}
       />
     );
   };
@@ -651,6 +656,13 @@ export default function ChatsListScreen({ navigation, route }) {
         </View>
       ) : null}
 
+      {loadError && !loading ? (
+        <TouchableOpacity onPress={onRefresh} style={s.errorBanner} testID="chats-error-banner">
+          <Feather name="alert-circle" size={16} color="#D64545" />
+          <Text style={[s.errorBannerText, { color: theme.text }]}>{t('load_error_retry_desc')}</Text>
+        </TouchableOpacity>
+      ) : null}
+
       {loading ? (
         <ActivityIndicator color={accent} style={{ marginTop: 40 }} />
       ) : dealsMode ? (
@@ -674,7 +686,7 @@ export default function ChatsListScreen({ navigation, route }) {
           stickySectionHeadersEnabled={false}
           contentContainerStyle={{ padding: 12, paddingBottom: 24 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accent} />}
-          ListEmptyComponent={<Text style={[s.empty, { color: theme.textMuted }]}>{query ? t('chat_no_results') : t('chats_empty')}</Text>}
+          ListEmptyComponent={loadError ? null : <Text style={[s.empty, { color: theme.textMuted }]}>{query ? t('chat_no_results') : t('chats_empty')}</Text>}
         />
       )}
 
@@ -721,4 +733,6 @@ const s = StyleSheet.create({
   flag: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8 },
   flagTxt: { fontSize: 11, fontWeight: '900', color: '#EF4444' },
   empty: { textAlign: 'center', marginTop: 40, fontSize: 14 },
+  errorBanner: { marginHorizontal: 12, marginBottom: 8, minHeight: 44, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, backgroundColor: '#FDECEC', flexDirection: 'row', alignItems: 'center', gap: 8 },
+  errorBannerText: { flex: 1, fontSize: 12, lineHeight: 17 },
 });

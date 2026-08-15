@@ -9,6 +9,7 @@ import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import { useAuth } from '../utils/AuthContext';
 import { useI18n } from '../utils/useI18n';
 import { getLanguage } from '../utils/i18n';
+import { localizeNotification } from '../utils/notificationEvents';
 import Feather from '@expo/vector-icons/Feather';
 
 // issue #7: localized time вместо сырого UTC-слайса "2026-06-11T08:30".
@@ -96,6 +97,7 @@ export default function NotificationsScreen({ navigation }) {
   const { toast } = useToast();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const accent = v1AccentFor(role);
 
   const load = async () => {
@@ -103,16 +105,24 @@ export default function NotificationsScreen({ navigation }) {
     try {
       const d = await notificationsAPI.list(50);
       setItems(d.notifications || []);
-    } catch {}
-    setLoading(false);
+      setLoadError(null);
+    } catch (error) {
+      setLoadError(error?.code || 'server');
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { load(); }, []);
 
   const markAllRead = async () => {
-    await notificationsAPI.readAll();
-    toast(`✓ ${t('notif_all_read')}`, 'success');
-    load();
+    try {
+      await notificationsAPI.readAll();
+      toast(`✓ ${t('notif_all_read')}`, 'success');
+      load();
+    } catch {
+      toast(t('load_error'), 'error');
+    }
   };
 
   // PR-C1: после mark-read открываем целевой экран по item.url.
@@ -180,8 +190,9 @@ export default function NotificationsScreen({ navigation }) {
 
   const renderItem = ({ item }) => {
     const isUnread = !item.is_read;
-    const cleanTitle = cleanNotifText(item.title);
-    const cleanBody = cleanNotifText(item.body);
+    const localized = localizeNotification(item, t);
+    const cleanTitle = cleanNotifText(localized.title);
+    const cleanBody = cleanNotifText(localized.body);
     return (
       <TouchableOpacity
         style={[s.card, isUnread && { borderColor: accent.main }]}
@@ -224,11 +235,21 @@ export default function NotificationsScreen({ navigation }) {
         renderItem={renderItem}
         contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={accent.main} />}
+        ListHeaderComponent={loadError && items.length ? (
+          <TouchableOpacity onPress={load} style={{ minHeight: 44, padding: 12, marginBottom: 8, borderRadius: 10, backgroundColor: '#FDECEC' }} testID="notifications-error-banner">
+            <Text style={{ color: v1.text, textAlign: 'center' }}>{t('load_error_retry_desc')}</Text>
+          </TouchableOpacity>
+        ) : null}
         ListEmptyComponent={
           !loading ? (
             <View style={{ alignItems: 'center', paddingVertical: 60 }}>
-              <Feather name="bell" size={48} color={v1.textMuted} style={{ marginBottom: 10 }} />
-              <Text style={{ color: v1.textMuted }}>{t('notifications_empty')}</Text>
+              <Feather name={loadError ? 'alert-circle' : 'bell'} size={48} color={loadError ? '#D64545' : v1.textMuted} style={{ marginBottom: 10 }} />
+              <Text style={{ color: v1.textMuted }}>{t(loadError ? 'notifications_load_error' : 'notifications_empty')}</Text>
+              {loadError ? (
+                <TouchableOpacity onPress={load} style={{ marginTop: 16, padding: 12 }} testID="notifications-retry">
+                  <Text style={{ color: accent.main, fontWeight: '700' }}>{t('retry')}</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           ) : null
         }
@@ -236,4 +257,3 @@ export default function NotificationsScreen({ navigation }) {
     </SafeAreaView>
   );
 }
-

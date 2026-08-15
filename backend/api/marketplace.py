@@ -2169,14 +2169,19 @@ def accept_bid(bid_id: str, user=Depends(require_level(1))):
     else:
         deal_url = f"/deals/{result['deal_id']}"
     title = "✅ Ставка принята!"
-    text = f"Ваше предложение {_money(bid['amount'], _cur)} принято! Сделка создана."
+    accepted_money = _money(bid["amount"], _cur)
+    text = f"Ваше предложение {accepted_money} принято! Сделка создана."
+    semantic = {"event_type": "bid.accepted", "event_payload": {"amount": accepted_money}}
     try:
-        send_to_user(bid["bidder_id"], title, text, url=deal_url)
+        send_to_user(bid["bidder_id"], title, text, url=deal_url, kind="bid_accepted", data=semantic)
     except Exception:
         pass
     try:
         from api.notifications import create_notification
-        create_notification(bid["bidder_id"], "bid_accepted", title, text, "✅", url=deal_url)
+        create_notification(
+            bid["bidder_id"], "bid_accepted", title, text, "✅", url=deal_url,
+            semantic_type="bid.accepted", semantic_payload=semantic["event_payload"],
+        )
     except Exception:
         pass
 
@@ -2493,12 +2498,16 @@ def accept_counter(bid_id: str, user=Depends(require_level(1))):
         (bid["bidder_id"], "✅ Сделка создана", f"Цена: {money}"),
     )
     for uid_, title_, text_ in recipients:
+        semantic = {"event_type": "deal.created", "event_payload": {"amount": money}}
         try:
-            send_to_user(uid_, title_, text_, url=deal_url)
+            send_to_user(uid_, title_, text_, url=deal_url, kind="deal_created", data=semantic)
         except Exception:
             pass
         try:
-            create_notification(uid_, "deal_created", title_, text_, "✅", url=deal_url)
+            create_notification(
+                uid_, "deal_created", title_, text_, "✅", url=deal_url,
+                semantic_type="deal.created", semantic_payload=semantic["event_payload"],
+            )
         except Exception:
             pass
 
@@ -2924,13 +2933,24 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
                 deal_url = f"/trips/{deal['trip_id']}"
             else:
                 deal_url = f"/deals/{deal_id}"
+            semantic_payload = {
+                "status": new_status,
+                "from_city": deal["from_city"],
+                "to_city": deal["to_city"],
+                "amount": _money(deal["amount"], cur),
+            }
+            semantic = {"event_type": "deal.status_changed", "event_payload": semantic_payload}
             try:
-                send_to_user(other_id, labels[new_status], body_txt, url=deal_url)
+                send_to_user(other_id, labels[new_status], body_txt, url=deal_url,
+                             kind="deal_status", data=semantic)
             except Exception:
                 pass
             try:
                 from api.notifications import create_notification
-                create_notification(other_id, "deal_status", labels[new_status], body_txt, "🚛", url=deal_url)
+                create_notification(
+                    other_id, "deal_status", labels[new_status], body_txt, "🚛", url=deal_url,
+                    semantic_type="deal.status_changed", semantic_payload=semantic_payload,
+                )
             except Exception:
                 pass
     except Exception:
