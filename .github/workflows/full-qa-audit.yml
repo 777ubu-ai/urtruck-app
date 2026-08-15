@@ -93,10 +93,10 @@ jobs:
         with:
           node-version: '20'
           cache: npm
-      - name: Install dependencies and Chromium
+      - name: Install dependencies and Playwright browsers
         run: |
           npm ci
-          npx playwright install --with-deps chromium
+          npx playwright install --with-deps chromium webkit
       - name: Build production web app
         env:
           CI: 'true'

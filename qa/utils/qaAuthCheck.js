@@ -29,7 +29,7 @@ function readAgentToken() {
   console.log(`[qa-auth-check] api=${API_BASE}`);
   const { token, from } = readAgentToken();
   if (!token) {
-    console.log('[qa-auth-check] ⚠️ QA_AGENT_TOKEN not set — actors will fall back to /register/guest (rate-limited)');
+    console.log('[qa-auth-check] ⚠️ QA_AGENT_TOKEN not set — role-aware QA actors are BLOCKED; guest fallback is only allowed for non-role smoke checks');
   } else {
     console.log(`[qa-auth-check] QA_AGENT_TOKEN present (from ${from})`);
   }

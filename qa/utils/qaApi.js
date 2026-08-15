@@ -113,7 +113,7 @@ function tokenMatchesRequestedRole(profile, role) {
   if (!role) return true;
   if (!profile) return false;
   if (role === 'driver') return profile.role === 'driver' && profile.phone_verified === true;
-  if (role === 'client' || role === 'shipper') return ['client', 'shipper'].includes(profile.role);
+  if (role === 'client' || role === 'shipper') return ['client', 'shipper'].includes(profile.role) && profile.phone_verified === true;
   if (role === 'auditor') return profile.role === 'auditor';
   return profile.role === role;
 }
@@ -155,7 +155,9 @@ async function ensureActor(actorName, opts = {}) {
       if (disp) opts2.dispatcher = disp;
       res = await fetch(`${API_BASE}/qa/ensure-actor`, opts2);
     } catch (e) {
-      return { token: null, error: `network error contacting /qa/ensure-actor: ${e && e.message}`, source: 'qa-endpoint', warning: 'falling back to guest' };
+      const message = `network error contacting /qa/ensure-actor: ${e && e.message}`;
+      if (role) return { token: null, error: `${message}; role '${role}' requires QA_AGENT_TOKEN`, source: 'qa-endpoint', warning: null };
+      return { token: null, error: message, source: 'qa-endpoint', warning: 'falling back to guest' };
     }
     const text = await res.text();
     let json = null; try { json = text ? JSON.parse(text) : null; } catch {}
@@ -169,7 +171,28 @@ async function ensureActor(actorName, opts = {}) {
       // Endpoint exists but rejected us — surface so the caller can decide.
       return { token: null, error: `qa/ensure-actor → ${res.status} ${text.slice(0, 200)}`, source: 'qa-endpoint', warning: null };
     }
-    // 503/404 → endpoint not configured / not deployed yet → silently fall back
+    // 503/404 → endpoint not configured / not deployed yet.  Role-aware flows
+    // must not silently degrade to guest: production marketplace gates require
+    // server-authoritative phone/role state, and a guest fallback creates noisy
+    // "verification_required" failures that look like product regressions.
+    if (role) {
+      return {
+        token: null,
+        error: `QA actor endpoint unavailable (${res.status}); role '${role}' requires QA_AGENT_TOKEN`,
+        source: 'qa-endpoint',
+        warning: null,
+      };
+    }
+    // Non-role smoke checks may still use public guest mode.
+  }
+
+  if (role && !agentToken) {
+    return {
+      token: null,
+      error: `QA_AGENT_TOKEN not set; role '${role}' requires /qa/ensure-actor`,
+      source: 'qa-endpoint',
+      warning: null,
+    };
   }
 
   // 3. Fallback to public /register/guest with a clear warning so the

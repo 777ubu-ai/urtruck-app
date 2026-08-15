@@ -28,7 +28,7 @@ module.exports = defineConfig({
     },
     {
       name: 'mobile-safari',
-      use: { ...devices['iPhone 13'], browserName: 'chromium', ...baseUse },
+      use: { ...devices['iPhone 13'], browserName: 'webkit', ...baseUse },
     },
   ],
 });
