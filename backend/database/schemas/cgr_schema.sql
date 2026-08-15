@@ -53,6 +53,16 @@ CREATE TABLE IF NOT EXISTS cgr_scoreboard (
 CREATE INDEX IF NOT EXISTS idx_cgr_scoreboard_lookup
     ON cgr_scoreboard(checkpoint_code, direction, fetched_at DESC);
 
+-- Persistent public-endpoint limiter. Only a SHA-256 scope hash is stored;
+-- raw IP addresses, User-Agent values and plates never enter this table.
+CREATE TABLE IF NOT EXISTS cgr_public_rate_limits (
+    scope_hash TEXT NOT NULL,
+    window_bucket INTEGER NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (scope_hash, window_bucket)
+);
+
 -- ----------------------------------------------------------------
 -- Брони водителей UrTruck — привязка к рейсам и кэш статусов с CGR.
 -- ----------------------------------------------------------------

@@ -80,6 +80,7 @@ def test_init_cgr_schema_creates_all_tables(temp_db):
         "cgr_blocklist",
         "cgr_blocklist_matches",
         "cgr_push_throttle",
+        "cgr_public_rate_limits",
     }
     assert expected.issubset(tables), f"Missing: {expected - tables}"
 
@@ -116,3 +117,25 @@ def test_should_send_push_throttle(temp_db):
     assert cgr_dal.should_send_push(bid, "queue_changed") is False  # throttled
     # Другой kind — не throttled
     assert cgr_dal.should_send_push(bid, "activated") is True
+
+
+def test_public_rate_limit_is_atomic_and_stores_only_digest(temp_db):
+    from database import cgr_dal
+    cgr_dal.init_cgr_schema()
+    digest = "a" * 64
+    assert cgr_dal.consume_public_rate_limit(digest, 2, 60) is True
+    assert cgr_dal.consume_public_rate_limit(digest, 2, 60) is True
+    assert cgr_dal.consume_public_rate_limit(digest, 2, 60) is False
+    with sqlite3.connect(temp_db) as conn:
+        row = conn.execute("SELECT scope_hash,attempts FROM cgr_public_rate_limits").fetchone()
+    assert row == (digest, 2)
+
+
+def test_public_rate_limit_scopes_are_isolated(temp_db):
+    from database import cgr_dal
+    cgr_dal.init_cgr_schema()
+    first = "1" * 64
+    second = "2" * 64
+    assert cgr_dal.consume_public_rate_limit(first, 1, 60) is True
+    assert cgr_dal.consume_public_rate_limit(first, 1, 60) is False
+    assert cgr_dal.consume_public_rate_limit(second, 1, 60) is True

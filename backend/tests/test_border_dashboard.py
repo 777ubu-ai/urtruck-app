@@ -93,6 +93,16 @@ def test_best_no_data_returns_null_not_fake():
     assert r.json()["best"] is None
 
 
+def test_legacy_list_does_not_expose_stale_queue_as_live():
+    r = client.get("/api/v1/borders", params={"country": "RU"})
+    assert r.status_code == 200, r.text
+    row = next(item for item in r.json()["borders"] if item["id"] == "t_stale")
+    assert row["freshness"] == "stale"
+    assert row["trucks_in_queue"] is None
+    assert row["updated_at"] is not None
+    assert row["source_type"] == "official"
+
+
 if __name__ == "__main__":
     setup_data()
     tests = [
@@ -100,6 +110,7 @@ if __name__ == "__main__":
         test_best_excludes_stale_even_if_smallest_queue,
         test_countries_aggregate_honest,
         test_best_no_data_returns_null_not_fake,
+        test_legacy_list_does_not_expose_stale_queue_as_live,
     ]
     fails = 0
     for fn in tests:

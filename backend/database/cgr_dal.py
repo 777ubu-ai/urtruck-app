@@ -15,6 +15,7 @@ import json
 import re
 import sqlite3
 import sys
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterable
@@ -317,6 +318,33 @@ def get_latest_scoreboard() -> list[dict]:
     """
     with _conn() as c:
         return [dict(r) for r in c.execute(sql).fetchall()]
+
+
+def consume_public_rate_limit(scope_hash: str, max_requests: int, window_sec: int = 60) -> bool:
+    """Atomically consume one public CGR request without storing raw identity."""
+    if not scope_hash or max_requests < 1 or window_sec < 1:
+        return False
+    bucket = int(time.time() // window_sec)
+    with _conn() as c:
+        c.execute("BEGIN IMMEDIATE")
+        c.execute(
+            "DELETE FROM cgr_public_rate_limits WHERE window_bucket < ?",
+            (bucket - 2,),
+        )
+        row = c.execute(
+            "SELECT attempts FROM cgr_public_rate_limits WHERE scope_hash=? AND window_bucket=?",
+            (scope_hash, bucket),
+        ).fetchone()
+        if row and int(row["attempts"]) >= max_requests:
+            return False
+        c.execute(
+            "INSERT INTO cgr_public_rate_limits(scope_hash,window_bucket,attempts,updated_at) "
+            "VALUES(?,?,1,CURRENT_TIMESTAMP) "
+            "ON CONFLICT(scope_hash,window_bucket) DO UPDATE SET "
+            "attempts=attempts+1, updated_at=CURRENT_TIMESTAMP",
+            (scope_hash, bucket),
+        )
+        return True
 
 
 # ----------------------------------------------------------------

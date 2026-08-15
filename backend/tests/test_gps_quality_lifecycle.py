@@ -27,7 +27,7 @@ client = TestClient(app)
 def _clean():
     db.init_db(); reg_dal.init_registration_schema(); _init()
     with get_conn() as c:
-        for table in ("deal_locations", "deal_tracking", "deals", "reg_sessions", "drivers_registration"):
+        for table in ("deal_locations", "deal_tracking", "deals", "cargos", "reg_sessions", "drivers_registration"):
             c.execute(f"DELETE FROM {table}")
 
 
@@ -38,8 +38,13 @@ def _seed(status="in_progress"):
     reg_dal.update_driver(driver["id"], {"role": "driver", "verification_level": 1})
     with get_conn() as c:
         c.execute(
-            "INSERT INTO deals(id,bid_id,shipper_id,driver_id,from_city,to_city,amount,status) "
-            "VALUES ('gps-deal','gps-bid',?,?, 'Алматы','Астана',1000,?)",
+            "INSERT INTO cargos(id,owner_id,from_city,to_city,cargo_desc,from_country,to_country) "
+            "VALUES ('gps-cargo',?,'Алматы','Урумчи','Тестовый груз','KZ','CN')",
+            (shipper["id"],),
+        )
+        c.execute(
+            "INSERT INTO deals(id,bid_id,cargo_id,shipper_id,driver_id,from_city,to_city,amount,status) "
+            "VALUES ('gps-deal','gps-bid','gps-cargo',?,?,'Алматы','Урумчи',1000,?)",
             (shipper["id"], driver["id"], status),
         )
         c.execute(
@@ -148,9 +153,16 @@ def test_terminal_last_point_is_retained_but_never_live_and_ingestion_stops():
     auth = _seed()
     assert client.post("/api/v1/market/deals/gps-deal/location", headers=auth["driver"],
                        json={"lat": 43.2, "lng": 76.9, "captured_at": _iso(-10)}).status_code == 200
-    with get_conn() as c:
-        c.execute("UPDATE deals SET status='awaiting_confirmation' WHERE id='gps-deal'")
-        c.execute("UPDATE deal_tracking SET status='stopped', stopped_at=CURRENT_TIMESTAMP WHERE deal_id='gps-deal'")
+    at_border = client.patch(
+        "/api/v1/market/deals/gps-deal/status?new_status=at_border",
+        headers=auth["driver"],
+    )
+    assert at_border.status_code == 200, at_border.text
+    delivered = client.patch(
+        "/api/v1/market/deals/gps-deal/status?new_status=awaiting_confirmation",
+        headers=auth["driver"],
+    )
+    assert delivered.status_code == 200, delivered.text
     blocked = client.post("/api/v1/market/deals/gps-deal/location", headers=auth["driver"],
                           json={"lat": 43.21, "lng": 76.91, "captured_at": _iso()})
     read = client.get("/api/v1/market/deals/gps-deal/location", headers=auth["shipper"])
@@ -159,6 +171,62 @@ def test_terminal_last_point_is_retained_but_never_live_and_ingestion_stops():
     assert read.json()["has_location"] is True
     assert read.json()["is_live"] is False
     assert read.json()["freshness"] == "stopped"
+    with get_conn() as c:
+        row = c.execute(
+            "SELECT retention_expires_at FROM deal_locations WHERE deal_id='gps-deal'"
+        ).fetchone()
+    expiry_raw = row["retention_expires_at"]
+    assert expiry_raw is not None
+    expiry = datetime.fromisoformat(expiry_raw).replace(tzinfo=timezone.utc)
+    assert timedelta(days=29) < expiry - datetime.now(timezone.utc) <= timedelta(days=30)
+    completed = client.patch(
+        "/api/v1/market/deals/gps-deal/status?new_status=completed",
+        headers=auth["shipper"],
+    )
+    assert completed.status_code == 200, completed.text
+    with get_conn() as c:
+        after = c.execute(
+            "SELECT retention_expires_at FROM deal_locations WHERE deal_id='gps-deal'"
+        ).fetchone()["retention_expires_at"]
+    assert after == expiry_raw, "terminal confirmation must not extend GPS retention"
+
+
+def test_at_border_does_not_start_retention_window():
+    auth = _seed()
+    assert client.post(
+        "/api/v1/market/deals/gps-deal/location", headers=auth["driver"],
+        json={"lat": 43.2, "lng": 76.9, "captured_at": _iso(-10)},
+    ).status_code == 200
+    moved = client.patch(
+        "/api/v1/market/deals/gps-deal/status?new_status=at_border",
+        headers=auth["driver"],
+    )
+    assert moved.status_code == 200, moved.text
+    with get_conn() as c:
+        expiry = c.execute(
+            "SELECT retention_expires_at FROM deal_locations WHERE deal_id='gps-deal'"
+        ).fetchone()["retention_expires_at"]
+    assert expiry is None
+
+
+def test_expired_terminal_location_is_not_returned_and_startup_purges_it():
+    auth = _seed()
+    assert client.post(
+        "/api/v1/market/deals/gps-deal/location", headers=auth["driver"],
+        json={"lat": 43.2, "lng": 76.9, "captured_at": _iso(-10)},
+    ).status_code == 200
+    with get_conn() as c:
+        c.execute("UPDATE deals SET status='awaiting_confirmation' WHERE id='gps-deal'")
+        c.execute("UPDATE deal_tracking SET status='stopped' WHERE deal_id='gps-deal'")
+        c.execute(
+            "UPDATE deal_locations SET retention_expires_at='2000-01-01 00:00:00' WHERE deal_id='gps-deal'"
+        )
+    hidden = client.get("/api/v1/market/deals/gps-deal/location", headers=auth["shipper"])
+    assert hidden.status_code == 200
+    assert hidden.json()["has_location"] is False
+    _init()
+    with get_conn() as c:
+        assert c.execute("SELECT COUNT(*) AS n FROM deal_locations WHERE deal_id='gps-deal'").fetchone()["n"] == 0
 
 
 def test_old_received_point_is_stale_not_live():

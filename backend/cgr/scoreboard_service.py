@@ -190,6 +190,7 @@ def build_scoreboard_response() -> dict:
     stale_threshold = timedelta(minutes=60)
 
     out = []
+    source_times = []
     for cp in checkpoints:
         in_row = latest_idx.get((cp["code"], "IN"))
         out_row = latest_idx.get((cp["code"], "OUT"))
@@ -203,6 +204,8 @@ def build_scoreboard_response() -> dict:
                     t = None
                 if t and (most_recent is None or t > most_recent):
                     most_recent = t
+        if most_recent:
+            source_times.append(most_recent)
 
         if most_recent is None:
             status = "unavailable"
@@ -220,16 +223,30 @@ def build_scoreboard_response() -> dict:
             "country_to": cp["country_to"],
             "directions": {
                 "in": {
-                    "queue_length": in_row["queue_length"] if in_row else None,
-                    "estimated_wait_minutes": in_row["estimated_wait_minutes"] if in_row else None,
+                    "queue_length": in_row["queue_length"] if in_row and status == "ok" else None,
+                    "last_known_queue_length": in_row["queue_length"] if in_row else None,
+                    "estimated_wait_minutes": in_row["estimated_wait_minutes"] if in_row and status == "ok" else None,
                 },
                 "out": {
-                    "queue_length": out_row["queue_length"] if out_row else None,
-                    "estimated_wait_minutes": out_row["estimated_wait_minutes"] if out_row else None,
+                    "queue_length": out_row["queue_length"] if out_row and status == "ok" else None,
+                    "last_known_queue_length": out_row["queue_length"] if out_row else None,
+                    "estimated_wait_minutes": out_row["estimated_wait_minutes"] if out_row and status == "ok" else None,
                 },
             },
             "status": status,
             "last_updated": most_recent.isoformat() if most_recent else None,
         })
 
-    return {"fetched_at": now.isoformat(), "checkpoints": out}
+    source_updated = max(source_times).isoformat() if source_times else None
+    statuses = {row["status"] for row in out}
+    source_status = "live" if "ok" in statuses else ("stale" if "stale" in statuses else "unavailable")
+    return {
+        # Keep fetched_at for old clients, but make it the real upstream data
+        # timestamp. generated_at is when this response was assembled.
+        "fetched_at": source_updated,
+        "generated_at": now.isoformat(),
+        "source_updated_at": source_updated,
+        "source_type": "official",
+        "source_status": source_status,
+        "checkpoints": out,
+    }

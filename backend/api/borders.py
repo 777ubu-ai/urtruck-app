@@ -11,12 +11,14 @@
   GET  /api/v1/borders/{border_id}          — детали одного ПП (legacy)
 """
 import logging
+import hashlib
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from services.border_service import get_all_borders, get_border, search_borders, get_borders_grouped
@@ -26,6 +28,28 @@ from database import registration_dal as reg_dal
 logger = logging.getLogger("api.borders")
 
 borders_router = APIRouter()
+
+
+def _mask_plate(value: str | None) -> str | None:
+    normalized = "".join(ch for ch in str(value or "").upper() if ch.isalnum())
+    if not normalized:
+        return None
+    visible = normalized[-2:] if len(normalized) > 2 else normalized[-1:]
+    return f"***{visible}"
+
+
+def _limit_public_cgr(request: Request, scope: str, max_requests: int) -> None:
+    """Persistent per-client limit; database receives only a SHA-256 digest."""
+    peer = request.client.host if request.client else "unknown"
+    agent = request.headers.get("user-agent", "")[:160]
+    digest = hashlib.sha256(f"{scope}|{peer}|{agent}".encode("utf-8")).hexdigest()
+    from database import cgr_dal
+    if not cgr_dal.consume_public_rate_limit(digest, max_requests=max_requests, window_sec=60):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many CGR requests",
+            headers={"Retry-After": "60"},
+        )
 
 
 # ----------------------------------------------------------------
@@ -51,38 +75,29 @@ def _require_driver(user_id: str) -> None:
 # CGR scoreboard (TZ §3.1) — конкретный путь ДО /{border_id}
 # ----------------------------------------------------------------
 @borders_router.get("/scoreboard")
-def get_scoreboard():
+def get_scoreboard(request: Request):
     """Live-табло загруженности с CGR.
 
-    Если CGR_FEATURE_ENABLED=true и данные свежие — отдаём из cgr_scoreboard.
-    Если данных нет / устарели — фолбэк на legacy mock с пометкой status='stale'.
+    Если CGR_FEATURE_ENABLED=true — отдаём только официальный cgr_scoreboard.
+    Disabled/unavailable никогда не подменяется legacy/mock числами.
     """
     try:
         from cgr.settings import cgr_settings
     except Exception:
-        cgr_settings = None  # CGR ещё не подключён — отдаём legacy
+        cgr_settings = None
 
     if cgr_settings is None or not cgr_settings.feature_enabled:
-        # Фолбэк: legacy mock
-        legacy = search_borders(None)
         return {
+            "enabled": False,
             "fetched_at": None,
-            "checkpoints": [
-                {
-                    "code": b["id"],
-                    "name_ru": b["name"],
-                    "name_en": b.get("name_en"),
-                    "country_to": b["countries"].split("↔")[-1] if "↔" in b.get("countries", "") else "",
-                    "directions": {
-                        "in": {"queue_length": b.get("trucks_in_queue"), "estimated_wait_minutes": int(b.get("estimated_wait_hours", 0) * 60)},
-                        "out": {"queue_length": None, "estimated_wait_minutes": None},
-                    },
-                    "status": "legacy_mock",
-                    "last_updated": b.get("updated_at"),
-                }
-                for b in legacy
-            ],
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "source_updated_at": None,
+            "source_type": "official",
+            "source_status": "disabled",
+            "checkpoints": [],
         }
+
+    _limit_public_cgr(request, "scoreboard", max_requests=120)
 
     from cgr import scoreboard_service
     return scoreboard_service.build_scoreboard_response()
@@ -222,7 +237,7 @@ def list_countries():
 
 
 @borders_router.get("/lookup")
-async def lookup_by_plate(plate: str = ""):
+async def lookup_by_plate(request: Request, plate: str = ""):
     """Статус машины в электронной очереди по госномеру (ГРНЗ).
 
     Публичные данные CGR (без авторизации, без чужих ПДн). Водитель вводит
@@ -236,8 +251,21 @@ async def lookup_by_plate(plate: str = ""):
         from cgr.settings import cgr_settings
         if not cgr_settings.feature_enabled:
             raise HTTPException(status_code=503, detail="CGR feature disabled")
+        _limit_public_cgr(request, "lookup", max_requests=10)
         from cgr import booking_service
-        return await booking_service.lookup_by_plate(plate)
+        result = await booking_service.lookup_by_plate(plate)
+        # The caller already knows the searched plate. Do not echo a stable
+        # public identifier or raw upstream status text back to scrapers.
+        result = dict(result or {})
+        result["plate"] = _mask_plate(plate)
+        result.pop("status_raw", None)
+        result["source_type"] = "official"
+        # CGR lookup response has no publication timestamp. Record when we
+        # fetched it, but never present response time as source_updated_at.
+        result["source_updated_at"] = None
+        result["source_fetched_at"] = datetime.now(timezone.utc).isoformat()
+        result["generated_at"] = datetime.now(timezone.utc).isoformat()
+        return result
     except HTTPException:
         raise
     except Exception as e:  # noqa: BLE001 — наружу не светим CGR-детали
@@ -347,7 +375,8 @@ def list_borders(country: str = ""):
     for c in board["checkpoints"]:
         if code and code not in ("ALL",) and c.get("country_to") != code:
             continue
-        q = c["directions"]["in"]["queue_length"]
+        card = _crossing_from_checkpoint(c)
+        q = card["trucks_in_queue"]
         out.append({
             "id": c["code"],
             "name": c["name_ru"],
@@ -360,6 +389,8 @@ def list_borders(country: str = ""):
             "status": _load_color(q),
             "updated_at": c.get("last_updated"),
             "source": "cgr",
+            "source_type": "official",
+            "freshness": card["freshness"],
         })
     # самые загруженные сверху — водителю это важнее всего
     out.sort(key=lambda b: -(b["trucks_in_queue"] or 0))
@@ -406,16 +437,19 @@ _BOARD_TTL = 60
 
 
 @borders_router.get("/board")
-async def get_board(checkpoint: str = "", status: str = ""):
+async def get_board(request: Request, checkpoint: str = "", status: str = ""):
     """Полное онлайн-табло CGR: строки очереди (ГРНЗ + статус + слот времени)
     по пунктам пропуска. ПУБЛИЧНО (данные public-list, без авторизации).
     Фильтр: checkpoint (подстрока названия), status."""
     try:
         from cgr.settings import cgr_settings
         if not cgr_settings.feature_enabled:
-            return {"rows": [], "enabled": False}
+            return {"rows": [], "enabled": False, "source_type": "official",
+                    "source_status": "disabled", "source_updated_at": None}
     except Exception:
-        return {"rows": [], "enabled": False}
+        return {"rows": [], "enabled": False, "source_type": "official", "source_status": "disabled", "source_updated_at": None}
+
+    _limit_public_cgr(request, "board", max_requests=30)
 
     key = ((checkpoint or "").strip().lower(), (status or "").strip())
     now = _time.time()
@@ -430,20 +464,26 @@ async def get_board(checkpoint: str = "", status: str = ""):
         out = {
             "rows": [{
                 "checkpoint": r.get("checkpoint"),
-                "plate": r.get("plate"),
+                "plate": _mask_plate(r.get("plate")),
                 "queue_datetime": r.get("queue_datetime"),
                 "status": r["status"]["code"],
                 "is_late": r["status"]["is_late"],
-                "status_raw": r["status"]["raw"],
             } for r in rows],
             "enabled": True,
+            "source_type": "official",
+            "source_status": "live",
+            "source_updated_at": None,
+            "source_fetched_at": datetime.now(timezone.utc).isoformat(),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
         }
         out["count"] = len(out["rows"])
         _BOARD_CACHE[key] = (now, out)
         return out
     except Exception as e:
         logger.exception("board failed: %s", e)
-        return {"rows": [], "enabled": True, "error": True}
+        return {"rows": [], "enabled": True, "error": True, "source_type": "official",
+                "source_status": "unavailable", "source_updated_at": None,
+                "source_fetched_at": None, "generated_at": datetime.now(timezone.utc).isoformat()}
 
 
 @borders_router.get("/{border_id}")

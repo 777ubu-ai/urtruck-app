@@ -351,6 +351,7 @@ def _init():
                 accuracy   REAL,
                 captured_at TEXT,
                 received_at TEXT,
+                retention_expires_at TEXT,
                 updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -359,12 +360,19 @@ def _init():
             ("accuracy", "ALTER TABLE deal_locations ADD COLUMN accuracy REAL"),
             ("captured_at", "ALTER TABLE deal_locations ADD COLUMN captured_at TEXT"),
             ("received_at", "ALTER TABLE deal_locations ADD COLUMN received_at TEXT"),
+            ("retention_expires_at", "ALTER TABLE deal_locations ADD COLUMN retention_expires_at TEXT"),
         ]:
             if col not in location_cols:
                 c.execute(ddl)
         c.execute(
             "UPDATE deal_locations SET captured_at=COALESCE(captured_at, updated_at), "
             "received_at=COALESCE(received_at, updated_at)"
+        )
+        # Legacy rows have NULL retention and are preserved. Only rows that
+        # were explicitly assigned a lifecycle expiry are purged at startup.
+        c.execute(
+            "DELETE FROM deal_locations WHERE retention_expires_at IS NOT NULL "
+            "AND retention_expires_at <= CURRENT_TIMESTAMP"
         )
         # GPS — это не автоматическая функция сделки. Грузоотправитель
         # запрашивает отслеживание, водитель явно подтверждает его, и только
@@ -2868,6 +2876,15 @@ def _transition_deal(c, deal: dict, new_status: str, actor_uid: str, request_id:
         )
         if cur_status == "accepted":
             c.execute("DELETE FROM deal_locations WHERE deal_id = ?", (deal_id,))
+        else:
+            # Keep the last delivery point for dispute/audit UX, but never
+            # indefinitely. Thirty days is explicit, server-enforced and does
+            # not extend on repeated terminal transitions.
+            c.execute(
+                "UPDATE deal_locations SET retention_expires_at="
+                "COALESCE(retention_expires_at, datetime('now','+30 days')) WHERE deal_id=?",
+                (deal_id,),
+            )
     event_payload = {"status": new_status, "old_status": cur_status, "request_id": request_id}
     if new_status == "cancelled" and cur_status in ("in_progress", "at_border"):
         event_payload["mid_transit_cancel"] = True
@@ -3326,11 +3343,12 @@ def update_deal_location(deal_id: str, body: DealLocationIn, user=Depends(requir
                         "allowed_m": round(allowed),
                     })
         c.execute(
-            "INSERT INTO deal_locations (deal_id, lat, lng, heading, speed, accuracy, captured_at, received_at, updated_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?) "
+            "INSERT INTO deal_locations (deal_id, lat, lng, heading, speed, accuracy, captured_at, received_at, retention_expires_at, updated_at) "
+            "VALUES (?,?,?,?,?,?,?,?,NULL,?) "
             "ON CONFLICT(deal_id) DO UPDATE SET lat=excluded.lat, lng=excluded.lng, "
             "heading=excluded.heading, speed=excluded.speed, accuracy=excluded.accuracy, "
-            "captured_at=excluded.captured_at, received_at=excluded.received_at, updated_at=excluded.updated_at",
+            "captured_at=excluded.captured_at, received_at=excluded.received_at, "
+            "retention_expires_at=NULL, updated_at=excluded.updated_at",
             (deal_id, body.lat, body.lng, body.heading, body.speed, body.accuracy,
              captured_iso, received_iso, received_iso),
         )
@@ -3365,8 +3383,9 @@ def get_deal_location(deal_id: str, user=Depends(require_level(1))):
                 "deal_status": d["status"],
             }
         loc = c.execute(
-            "SELECT lat, lng, heading, speed, accuracy, captured_at, received_at, updated_at "
-            "FROM deal_locations WHERE deal_id = ?",
+            "SELECT lat, lng, heading, speed, accuracy, captured_at, received_at, retention_expires_at, updated_at "
+            "FROM deal_locations WHERE deal_id = ? AND "
+            "(retention_expires_at IS NULL OR retention_expires_at > CURRENT_TIMESTAMP)",
             (deal_id,),
         ).fetchone()
     if not loc:
