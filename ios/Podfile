@@ -52,6 +52,18 @@ target 'UrTruck' do
       :ccache_enabled => podfile_properties['apple.ccacheEnabled'] == 'true',
     )
 
+    # Xcode 26.6 rejects fmt 11's FMT_STRING consteval checks when this
+    # transitive pod inherits React Native's C++20 setting. Keep the
+    # application and React Native on their existing standard, but compile
+    # fmt itself as C++17; this is the smallest scoped compatibility fix.
+    installer.pods_project.targets.each do |pod_target|
+      next unless pod_target.name == 'fmt'
+
+      pod_target.build_configurations.each do |build_config|
+        build_config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++17'
+      end
+    end
+
     # This is necessary for Xcode 14, because it signs resource bundles by default
     # when building for devices.
     installer.target_installation_results.pod_target_installation_results

@@ -161,3 +161,14 @@ background/terminated tracking, push-полный цикл, TTN/PDF с productio
 - Попытка Expo Go: установлен Expo Go SDK 57, проект использует Expo SDK 52; приложение отклонено как несовместимое до загрузки UrTruck.
 - Реальный Maestro smoke на том же симуляторе: `maestro test qa/maestro/smoke-suite.yaml --format junit --output qa/artifacts/maestro-real/ios-smoke.xml`: exit 1 (`"UrTruck" is visible` не выполнено), JUnit и лог сохранены в `qa/artifacts/maestro-real/`.
 - Итог: **BLOCKED**. Нативный iOS runtime и native Yandex MapKit не подтверждены; текущий `TruckMap.native.js` по-прежнему использует `react-native-maps`.
+
+## Повторная iOS-проверка после минимального fmt workaround 2026-08-15
+
+- Toolchain: Expo `~52.0.46`, React Native `0.76.9`, CocoaPods `1.16.2`, Xcode `26.6` (Xcode 26.2 на рабочем Mac отсутствует; он задан только как EAS CI image в `eas.json`).
+- Точная причина исходного exit 65: `ios/Pods/fmt/include/fmt/format-inl.h` (`FMT_STRING` на строках 59, 60, 1387, 1391, 1394) — `call to consteval function ... is not a constant expression` при C++20.
+- Исправление: `ios/Podfile` ограничивает только target `fmt` стандартом `c++17`; Expo/RN и остальные pods не обновлялись. `pod install --deployment`: exit 0; лог: `qa/artifacts/ios-real/pod-install-deployment.log`.
+- Сборка: `xcodebuild -workspace ios/UrTruck.xcworkspace -scheme UrTruck -configuration Debug -sdk iphonesimulator -destination 'platform=iOS Simulator,id=3D4F6F4A-86D7-4125-BC8D-B74D9C88C35F' -derivedDataPath /tmp/urtruck-ios-derived-fmt17 -skipMacroValidation -collect-test-diagnostics never`: exit 0 (`** BUILD SUCCEEDED **`); полный лог: `qa/artifacts/ios-real/xcodebuild-fmt17.log`.
+- Установка/запуск: `xcrun simctl install 3D4F6F4A-86D7-4125-BC8D-B74D9C88C35F /tmp/urtruck-ios-derived-fmt17/Build/Products/Debug-iphonesimulator/UrTruck.app` и `xcrun simctl launch ... com.urtruck.app`: exit 0. Screenshots: `qa/artifacts/ios-real/urtruck-ios-launched.png`, `qa/artifacts/ios-real/urtruck-ios-onboarding.png`.
+- Реальный native Maestro: `maestro test qa/maestro/smoke-suite.yaml --format junit --output qa/artifacts/maestro-real/ios-smoke.xml`: exit 0, 1/1 flow passed на `iPhone 17` (iOS 26.4), 18 секунд. Лог и JUnit: `qa/artifacts/maestro-real/ios-smoke.log`, `qa/artifacts/maestro-real/ios-smoke.xml`; итоговый экран: `qa/artifacts/maestro-real/ios-after-maestro.png`.
+- Для реального native execution `appId` в `qa/maestro/smoke-suite.yaml`, `qa/maestro/client-tabs.yaml`, `qa/maestro/driver-auth.yaml` и `qa/maestro/_lib/qa-login.yaml` исправлен с Expo Go (`host.exp.Exponent`) на `com.urtruck.app`.
+- Native Yandex MapKit всё ещё **BLOCKED**: `src/components/TruckMap.native.js` импортирует `react-native-maps`; Yandex официально не поддерживает React Native без собственного bridge. Android/iOS MapKit SDK, native key wiring и карта Yandex в runtime не заявляются готовыми.

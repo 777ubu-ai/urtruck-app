@@ -8,7 +8,7 @@
 # came back to Main, we skip the QA login and let the caller proceed with the
 # already-loaded session. The caller's per-flow assertions (driver-only tabs,
 # client-only Publish, etc.) will surface actor mismatches if any.
-appId: host.exp.Exponent
+appId: com.urtruck.app
 ---
 - launchApp
 - extendedWaitUntil:
