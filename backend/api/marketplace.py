@@ -1903,28 +1903,23 @@ def driver_profile(driver_id: str):
     return d
 
 
-def _ensure_chat_room_inline(c, user_a: str, user_b: str, cargo_id, trip_id, bid_id=None) -> str:
-    """Variant B: КАНОНИЧЕСКАЯ комната сделки на открытом conn (в транзакции
-    вызывающего, без отдельного write-lock). Ключ = deal_key (cargo/trip +
-    отсортированная пара) — паритет с api.chat. user_b трактуется как владелец
-    (cargo owner / driver рейса), user_a — откликнувшийся (bidder)."""
-    p1, p2 = sorted([user_a, user_b])
-    if cargo_id:
-        dk = f"c:{cargo_id}:{p1}:{p2}"
-    elif trip_id:
-        dk = f"t:{trip_id}:{p1}:{p2}"
-    else:
-        dk = f"p:{p1}:{p2}"
+def _ensure_chat_room_inline(c, shipper_id: str, driver_id: str, cargo_id,
+                             trip_id, bid_id: str, deal_id: str) -> str:
+    """Создаёт commercial room только внутри transaction принятия сделки.
+
+    deal-specific key не переиспользует legacy/pre-deal room той же пары и не
+    смешивает историю двух сделок по одному cargo/trip.
+    """
+    p1, p2 = sorted([shipper_id, driver_id])
+    dk = f"d:{deal_id}"
     row = c.execute("SELECT id FROM chat_rooms WHERE deal_key = ?", (dk,)).fetchone()
     if row:
-        if bid_id:
-            c.execute("UPDATE chat_rooms SET bid_id = COALESCE(bid_id, ?) WHERE id = ?", (bid_id, row["id"]))
         return row["id"]
     rid = new_id()
     c.execute(
         "INSERT INTO chat_rooms (id, participant_1, participant_2, owner_id, bidder_id, bid_id, cargo_id, trip_id, deal_key) "
         "VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(deal_key) DO NOTHING",
-        (rid, p1, p2, user_b, user_a, bid_id, cargo_id, trip_id, dk),
+        (rid, p1, p2, shipper_id, driver_id, bid_id, cargo_id, trip_id, dk),
     )
     row = c.execute("SELECT id FROM chat_rooms WHERE deal_key = ?", (dk,)).fetchone()
     return row["id"] if row else rid
@@ -1962,31 +1957,6 @@ def _notify_rejected_siblings(rejected_siblings):
                     create_notification(sib["bidder_id"], "bid_rejected", title, text, "❌", url=url)
                 except Exception:
                     pass
-            # P3-fix: след в чате проигравшего биддера — но только если комната
-            # УЖЕ существует (торг/контр её создавали). Пустую не плодим.
-            try:
-                with get_conn() as _cc2:
-                    owner_id = _cargo_or_trip_owner_id(_cc2, sib)
-                    if owner_id:
-                        _p1, _p2 = sorted([sib["bidder_id"], owner_id])
-                        if sib.get("cargo_id"):
-                            _dk = f"c:{sib['cargo_id']}:{_p1}:{_p2}"
-                        elif sib.get("trip_id"):
-                            _dk = f"t:{sib['trip_id']}:{_p1}:{_p2}"
-                        else:
-                            _dk = f"p:{_p1}:{_p2}"
-                        _rr = _cc2.execute("SELECT id FROM chat_rooms WHERE deal_key = ?", (_dk,)).fetchone()
-                        if _rr:
-                            _cc2.execute(
-                                "INSERT INTO chat_messages (room_id, sender_id, text) VALUES (?,?,?)",
-                                (_rr["id"], "system", title),
-                            )
-                            _cc2.execute(
-                                "UPDATE chat_rooms SET last_message = ?, last_at = CURRENT_TIMESTAMP WHERE id = ?",
-                                (title[:50], _rr["id"]),
-                            )
-            except Exception:
-                pass
         except Exception:
             pass
 
@@ -2064,11 +2034,11 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount: int):
     for _sib in rejected_siblings:
         _record_price_event(c, _sib["id"], user["id"], "owner", _sib.get("amount"), "rejected", None)
 
-    chat_room_id = _ensure_chat_room_inline(
-        c, shipper_id, driver_id, bid.get("cargo_id"), bid.get("trip_id")
-    )
-
     deal_id = new_id()
+    chat_room_id = _ensure_chat_room_inline(
+        c, shipper_id, driver_id, bid.get("cargo_id"), bid.get("trip_id"),
+        bid_id, deal_id,
+    )
     c.execute(
         """
         INSERT INTO deals (id, cargo_id, trip_id, bid_id, shipper_id, driver_id,
@@ -2360,13 +2330,6 @@ def reject_bid(bid_id: str, user=Depends(require_level(1))):
     title = "❌ Ставка отклонена"
     with get_conn() as _cc:
         _cur = _bid_currency(_cc, bid)
-        try:
-            _rr = _ensure_chat_room_inline(
-                _cc, bid["bidder_id"], _cargo_or_trip_owner_id(_cc, bid),
-                bid.get("cargo_id"), bid.get("trip_id"), bid_id,
-            )
-        except Exception:
-            _rr = None
     # «Дом заказа»: биддер попадает в карточку СВОЕЙ ставки (груз/рейс),
     # а не в чат — там сразу видно, что ставка отклонена, и можно поставить
     # новую или уйти. Чат — фолбэк, если по какой-то причине нет id.
@@ -2374,8 +2337,6 @@ def reject_bid(bid_id: str, user=Depends(require_level(1))):
         back_url = f"/cargos/{bid['cargo_id']}"
     elif bid.get("trip_id"):
         back_url = f"/trips/{bid['trip_id']}"
-    elif _rr:
-        back_url = f"/chats/{_rr}"
     else:
         back_url = "/"
     body_text = f"Ваше предложение {_money(bid['amount'], _cur)} отклонено"
@@ -2975,18 +2936,14 @@ def _tracking_system_message(deal: dict, text: str) -> None:
         with get_conn() as c:
             room_id = deal.get("chat_room_id")
             # Some legacy deals were created before chat_room_id was filled.
-            # Do not silently lose a GPS request: recover the existing private
-            # room between the same two participants and repair the link.
+            # Never adopt a pair/context room supplied before acceptance. Create
+            # a deal-specific room and repair the link in one transaction.
             if not room_id:
-                room = c.execute(
-                    "SELECT id FROM chat_rooms WHERE "
-                    "((participant_1=? AND participant_2=?) OR (participant_1=? AND participant_2=?)) "
-                    "AND (cargo_id=? OR trip_id=?) ORDER BY last_at DESC LIMIT 1",
-                    (deal.get("shipper_id"), deal.get("driver_id"),
-                     deal.get("driver_id"), deal.get("shipper_id"),
-                     deal.get("cargo_id"), deal.get("trip_id")),
-                ).fetchone()
-                room_id = room["id"] if room else None
+                room_id = _ensure_chat_room_inline(
+                    c, deal.get("shipper_id"), deal.get("driver_id"),
+                    deal.get("cargo_id"), deal.get("trip_id"),
+                    deal.get("bid_id"), deal.get("id"),
+                )
                 if room_id:
                     c.execute("UPDATE deals SET chat_room_id=COALESCE(chat_room_id, ?) WHERE id=?", (room_id, deal.get("id")))
             if not room_id:

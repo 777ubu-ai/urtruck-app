@@ -20,6 +20,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from database.db import get_conn, new_id
 
 _SCHEMA_PATH = Path(__file__).resolve().parent / "schemas" / "deal_room_schema.sql"
+SUPPORT_ID = "urtruck-support-bot"
+ACTIVE_CHAT_DEAL_STATUSES = {
+    "accepted", "in_progress", "at_border", "awaiting_confirmation",
+}
 
 # Базовые типы системных событий сделки + их i18n-ключи (фронт переводит
 # RU/KZ/UZ/ZH по ключу + payload, НЕ хранится готовый русский текст).
@@ -57,13 +61,29 @@ def backfill_participants() -> int:
         for r in rooms:
             room_id = r["id"]
             # роли по deals, связанным с этой комнатой
-            deal = c.execute(
-                "SELECT driver_id, shipper_id FROM deals WHERE chat_room_id = ? LIMIT 1",
+            deals = c.execute(
+                "SELECT id, driver_id, shipper_id, bid_id, cargo_id, trip_id "
+                "FROM deals WHERE chat_room_id = ? ORDER BY created_at",
                 (room_id,),
-            ).fetchone()
+            ).fetchall()
+            deal = deals[0] if len(deals) == 1 else None
             driver_id = deal["driver_id"] if deal else None
             shipper_id = deal["shipper_id"] if deal else None
-            for uid in (r["participant_1"], r["participant_2"]):
+            # Старые accepted-room создавались без bid_id/role metadata.
+            # Синхронизируем только однозначно связанную комнату; orphan и
+            # reused-room (несколько deals) остаются quarantined и не проходят
+            # get_room_access ниже.
+            if deal and driver_id and shipper_id:
+                p1, p2 = sorted([driver_id, shipper_id])
+                c.execute(
+                    "UPDATE chat_rooms SET participant_1=?, participant_2=?, "
+                    "owner_id=?, bidder_id=?, bid_id=?, cargo_id=?, trip_id=? WHERE id=?",
+                    (p1, p2, shipper_id, driver_id, deal["bid_id"],
+                     deal["cargo_id"], deal["trip_id"], room_id),
+                )
+            else:
+                p1, p2 = r["participant_1"], r["participant_2"]
+            for uid in (p1, p2):
                 if not uid:
                     continue
                 role = "member"
@@ -71,7 +91,7 @@ def backfill_participants() -> int:
                     role = "driver"
                 elif uid == shipper_id:
                     role = "client"
-                elif uid == "urtruck-support-bot":
+                elif uid == SUPPORT_ID:
                     role = "support"
                 cur = c.execute(
                     """
@@ -86,24 +106,76 @@ def backfill_participants() -> int:
 
 
 # ----------------------------------------------------------------
-# Access helpers (role-based) — единый источник правды доступа.
+# Access helpers — единый источник правды deal/support isolation.
 # ----------------------------------------------------------------
-def is_participant(conversation_id: str, user_id: str) -> bool:
-    """Участник ли пользователь беседы. Проверяем НОВУЮ таблицу participants,
-    с fallback на старую chat_rooms (на случай комнат без backfill)."""
+def _room_access_on_conn(c, conversation_id: str, user_id: str,
+                         require_active: bool = False) -> dict | None:
+    """Return verified room/deal context or None, never trusting membership rows.
+
+    Commercial rooms must map one-to-one to a server-created deal and exactly
+    match its participants and cargo/trip/bid context. Support is the only
+    room type without a deal and uses a dedicated pair-only allowlist.
+    """
+    room_row = c.execute("SELECT * FROM chat_rooms WHERE id = ?", (conversation_id,)).fetchone()
+    if not room_row:
+        return None
+    room = dict(room_row)
+    participants = {room.get("participant_1"), room.get("participant_2")}
+    if user_id not in participants or len(participants) != 2 or None in participants:
+        return None
+
+    deals = c.execute(
+        "SELECT * FROM deals WHERE chat_room_id = ? ORDER BY created_at",
+        (conversation_id,),
+    ).fetchall()
+    if not deals:
+        other_id = room["participant_2"] if room["participant_1"] == user_id else room["participant_1"]
+        expected_key = "p:" + ":".join(sorted([user_id, other_id]))
+        support_room = (
+            SUPPORT_ID in participants
+            and room.get("deal_key") == expected_key
+            and not any(room.get(field) for field in (
+                "owner_id", "bidder_id", "bid_id", "cargo_id", "trip_id",
+            ))
+        )
+        if not support_room:
+            return None
+        return {"room": room, "deal": None, "recipient_id": other_id, "is_support": True}
+
+    # One room cannot join histories from two deals, even for the same pair.
+    if len(deals) != 1:
+        return None
+    deal = dict(deals[0])
+    deal_participants = {deal.get("shipper_id"), deal.get("driver_id")}
+    if participants != deal_participants or user_id not in deal_participants:
+        return None
+    if (
+        room.get("cargo_id") != deal.get("cargo_id")
+        or room.get("trip_id") != deal.get("trip_id")
+        or room.get("bid_id") != deal.get("bid_id")
+    ):
+        return None
+    if require_active and deal.get("status") not in ACTIVE_CHAT_DEAL_STATUSES:
+        return None
+    recipient_id = deal["driver_id"] if user_id == deal["shipper_id"] else deal["shipper_id"]
+    return {"room": room, "deal": deal, "recipient_id": recipient_id, "is_support": False}
+
+
+def get_room_access(conversation_id: str, user_id: str,
+                    require_active: bool = False, conn=None) -> dict | None:
+    if conn is not None:
+        return _room_access_on_conn(conn, conversation_id, user_id, require_active)
     with get_conn() as c:
-        r = c.execute(
-            "SELECT 1 FROM conversation_participants "
-            "WHERE conversation_id = ? AND user_id = ? AND is_active = 1",
-            (conversation_id, user_id),
-        ).fetchone()
-        if r:
-            return True
-        room = c.execute(
-            "SELECT participant_1, participant_2 FROM chat_rooms WHERE id = ?",
-            (conversation_id,),
-        ).fetchone()
-        return bool(room and user_id in (room["participant_1"], room["participant_2"]))
+        return _room_access_on_conn(c, conversation_id, user_id, require_active)
+
+
+def is_participant(conversation_id: str, user_id: str) -> bool:
+    """Only a verified deal participant or exact support-room member."""
+    return get_room_access(conversation_id, user_id) is not None
+
+
+def is_active_participant(conversation_id: str, user_id: str) -> bool:
+    return get_room_access(conversation_id, user_id, require_active=True) is not None
 
 
 def room_exists(conversation_id: str) -> bool:
@@ -135,6 +207,8 @@ def list_conversations(user_id: str) -> list[dict]:
         out = []
         for r in rows:
             d = dict(r)
+            if not _room_access_on_conn(c, d["id"], user_id):
+                continue
             parts = c.execute(
                 "SELECT user_id, role FROM conversation_participants WHERE conversation_id = ? AND is_active = 1",
                 (d["id"],),

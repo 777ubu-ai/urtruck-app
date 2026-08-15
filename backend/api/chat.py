@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from database.db import get_conn, new_id
+from database import deal_room_dal as deal_rooms
 from api.verification_gate import require_level
 from services import file_signing
 from services import storage_service as storage
@@ -225,22 +226,31 @@ def _upsert_room(c, p1, p2, deal_key, owner_id, bidder_id, bid_id, cargo_id, tri
 
 
 def get_or_create_deal_room(cargo_id, owner_id: str, bidder_id: str, bid_id=None, trip_id=None) -> str:
-    """КАНОНИЧЕСКАЯ комната сделки (Variant B). Идемпотентно: один и тот же
-    (cargo+owner+bidder) → один room_id; разные cargo той же пары → разные.
-    Обе роли получают один room_id (ключ = контекст + отсортированная пара)."""
-    p1, p2 = sorted([owner_id, bidder_id])
-    dk = _deal_key(cargo_id, trip_id, p1, p2)
+    """Возвращает только уже созданную accepted-deal room.
+
+    Создание commercial room принадлежит atomic accept transaction в
+    marketplace.py. Этот compatibility helper больше не создаёт комнаты из
+    caller-supplied participant/context.
+    """
     with get_conn() as c:
-        return _upsert_room(c, p1, p2, dk, owner_id, bidder_id, bid_id, cargo_id, trip_id)
+        row = c.execute(
+            "SELECT d.chat_room_id FROM deals d WHERE d.cargo_id IS ? AND d.trip_id IS ? "
+            "AND d.shipper_id IN (?, ?) AND d.driver_id IN (?, ?) "
+            "AND d.chat_room_id IS NOT NULL ORDER BY d.created_at DESC LIMIT 1",
+            (cargo_id, trip_id, owner_id, bidder_id, owner_id, bidder_id),
+        ).fetchone()
+        if not row or not deal_rooms.get_room_access(row["chat_room_id"], owner_id, conn=c):
+            raise HTTPException(status_code=409, detail="Чат доступен только после принятия сделки")
+        return row["chat_room_id"]
 
 
-def _get_or_create_room(user1: str, user2: str, cargo_id: str = None, trip_id: str = None) -> str:
-    """Совместимость: поддержка/общий чат и легаси-вызовы по паре пользователей.
-    Роли не заданы — комната ключуется по deal_key (cargo/trip/пара)."""
+def _get_or_create_support_room(c, user1: str, user2: str) -> str:
+    """Единственный non-deal room: exact allowlisted UrTruck Support pair."""
+    if deal_rooms.SUPPORT_ID not in (user1, user2) or user1 == user2:
+        raise HTTPException(status_code=403, detail="Произвольный чат до сделки запрещён")
     p1, p2 = sorted([user1, user2])
-    dk = _deal_key(cargo_id, trip_id, p1, p2)
-    with get_conn() as c:
-        return _upsert_room(c, p1, p2, dk, None, None, None, cargo_id, trip_id)
+    dk = _deal_key(None, None, p1, p2)
+    return _upsert_room(c, p1, p2, dk, None, None, None, None, None)
 
 
 # Инициализация схемы/миграции — после определения всех helpers (выше),
@@ -269,29 +279,45 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
         raise HTTPException(status_code=400, detail="text или photo_url обязателен")
     _LAST_SEEN[user["id"]] = _time.time()   # активность для «онлайн»
 
-    # Variant B: комната и получатель. Предпочтительно room_id (каноническая
-    # комната) — получателя берём из участников, а НЕ из присланного to_user_id
-    # (фронт мог не успеть его дорезолвить → раньше уходило в чужую комнату).
-    room_bid = None
-    room_cargo = body.cargo_id
-    if body.room_id:
-        with get_conn() as c:
-            room = c.execute("SELECT * FROM chat_rooms WHERE id = ?", (body.room_id,)).fetchone()
-        if not room:
-            raise HTTPException(status_code=404, detail="Комната не найдена")
-        if user["id"] not in (room["participant_1"], room["participant_2"]):
-            raise HTTPException(status_code=403, detail="Вы не участник этого чата")
-        room_id = room["id"]
-        recipient_id = room["participant_2"] if room["participant_1"] == user["id"] else room["participant_1"]
-        room_cargo = room["cargo_id"]
-        room_bid = room["bid_id"]
-    elif body.to_user_id:
-        room_id = _get_or_create_room(user["id"], body.to_user_id, body.cargo_id, body.trip_id)
-        recipient_id = body.to_user_id
-    else:
-        raise HTTPException(status_code=400, detail="room_id или to_user_id обязателен")
-
+    # BEGIN IMMEDIATE serializes deal cancellation/status transition with the
+    # access check and message insert: no TOCTOU window where an active deal
+    # becomes inactive between authorization and write.
     with get_conn() as c:
+        c.execute("BEGIN IMMEDIATE")
+        if body.room_id:
+            if not c.execute("SELECT 1 FROM chat_rooms WHERE id = ?", (body.room_id,)).fetchone():
+                raise HTTPException(status_code=404, detail="Комната не найдена")
+            access = deal_rooms.get_room_access(
+                body.room_id, user["id"], require_active=True, conn=c,
+            )
+            if not access:
+                raise HTTPException(status_code=403, detail="Нет активной сделки для этого чата")
+            room = access["room"]
+            deal = access["deal"]
+            room_id = room["id"]
+            recipient_id = access["recipient_id"]
+            if body.to_user_id and body.to_user_id != recipient_id:
+                raise HTTPException(status_code=409, detail="Получатель не соответствует комнате")
+            if body.cargo_id is not None and body.cargo_id != (deal or {}).get("cargo_id"):
+                raise HTTPException(status_code=409, detail="cargo_id не соответствует сделке")
+            if body.trip_id is not None and body.trip_id != (deal or {}).get("trip_id"):
+                raise HTTPException(status_code=409, detail="trip_id не соответствует сделке")
+            room_cargo = (deal or {}).get("cargo_id")
+            room_bid = (deal or {}).get("bid_id")
+        elif body.to_user_id:
+            # to_user_id никогда не создаёт commercial room. Единственное
+            # исключение — изолированный support context без cargo/trip.
+            if body.to_user_id != deal_rooms.SUPPORT_ID:
+                raise HTTPException(status_code=403, detail="Чат доступен только после принятия сделки")
+            if body.cargo_id is not None or body.trip_id is not None:
+                raise HTTPException(status_code=409, detail="Поддержка не принимает commercial context")
+            room_id = _get_or_create_support_room(c, user["id"], body.to_user_id)
+            recipient_id = body.to_user_id
+            room_cargo = None
+            room_bid = None
+        else:
+            raise HTTPException(status_code=400, detail="room_id или to_user_id обязателен")
+
         # QA-аудит P1-3: дедуп ретраев из офлайн-очереди. Если сообщение с
         # этим client_msg_id уже записано (предыдущая попытка дошла, но ответ
         # не вернулся) — не вставляем второй раз и не шлём повторный push.
@@ -367,6 +393,10 @@ def my_rooms(user=Depends(require_level(1))):
             WHERE r.participant_1 = ? OR r.participant_2 = ?
             ORDER BY r.last_at DESC LIMIT 50
         """, (uid, uid, uid)).fetchall()
+        # Legacy/pre-accept rooms may still exist on disk. They are quarantined
+        # from every listing unless linked one-to-one to a real deal or exact
+        # support allowlist context.
+        rows = [r for r in rows if deal_rooms.get_room_access(r["id"], uid, conn=c)]
 
     rooms = []
     for r in rows:
@@ -566,12 +596,13 @@ def _enrich_rooms_with_deal_context(rooms: list, uid: str) -> None:
 def get_messages(room_id: str, limit: int = 100, offset: int = 0, user=Depends(require_level(1))):
     uid = user["id"]
     with get_conn() as c:
-        # Проверка что юзер участник
-        room = c.execute("SELECT * FROM chat_rooms WHERE id = ?", (room_id,)).fetchone()
-        if not room:
+        room_row = c.execute("SELECT * FROM chat_rooms WHERE id = ?", (room_id,)).fetchone()
+        if not room_row:
             raise HTTPException(status_code=404)
-        if uid not in (room["participant_1"], room["participant_2"]):
-            raise HTTPException(status_code=403, detail="Вы не участник этого чата")
+        access = deal_rooms.get_room_access(room_id, uid, conn=c)
+        if not access:
+            raise HTTPException(status_code=403, detail="Нет доступа к комнате сделки")
+        room = access["room"]
 
         # P3: tiebreak по id. created_at имеет посекундную точность (TEXT
         # CURRENT_TIMESTAMP) — два сообщения в одну секунду могли переставиться
@@ -646,12 +677,20 @@ def unread_count(user=Depends(require_level(1))):
     # см. services/push_sender._compute_recipient_badge (тот же фильтр).
     uid = user["id"]
     with get_conn() as c:
-        row = c.execute("""
-            SELECT COUNT(*) as cnt FROM chat_messages m
-            JOIN chat_rooms r ON m.room_id = r.id
-            WHERE (r.participant_1 = ? OR r.participant_2 = ?)
-              AND m.sender_id != ? AND m.sender_id != 'system' AND m.is_read = 0
-        """, (uid, uid, uid)).fetchone()
+        candidates = c.execute(
+            "SELECT id FROM chat_rooms WHERE participant_1=? OR participant_2=?",
+            (uid, uid),
+        ).fetchall()
+        room_ids = [r["id"] for r in candidates
+                    if deal_rooms.get_room_access(r["id"], uid, conn=c)]
+        if not room_ids:
+            return {"unread": 0}
+        placeholders = ",".join("?" for _ in room_ids)
+        row = c.execute(
+            f"SELECT COUNT(*) AS cnt FROM chat_messages WHERE room_id IN ({placeholders}) "
+            "AND sender_id != ? AND sender_id != 'system' AND is_read = 0",
+            (*room_ids, uid),
+        ).fetchone()
     return {"unread": row["cnt"] if row else 0}
 
 
@@ -718,9 +757,7 @@ class TypingIn(BaseModel):
 @chat_router.post("/typing")
 def typing_ping(body: TypingIn, user=Depends(require_level(1))):
     uid = user["id"]
-    with get_conn() as c:
-        room = c.execute("SELECT participant_1, participant_2 FROM chat_rooms WHERE id = ?", (body.room_id,)).fetchone()
-    if not room or uid not in (room["participant_1"], room["participant_2"]):
+    if not deal_rooms.is_active_participant(body.room_id, uid):
         raise HTTPException(status_code=403)
     _TYPING[(body.room_id, uid)] = _time.time()
     # мусор постепенно вычищаем, чтобы dict не рос бесконечно
@@ -751,8 +788,7 @@ def translate_message(body: TranslateIn, user=Depends(require_level(1))):
         msg = c.execute("SELECT * FROM chat_messages WHERE id = ?", (body.message_id,)).fetchone()
         if not msg:
             raise HTTPException(status_code=404, detail="Сообщение не найдено")
-        room = c.execute("SELECT * FROM chat_rooms WHERE id = ?", (msg["room_id"],)).fetchone()
-        if not room or user["id"] not in (room["participant_1"], room["participant_2"]):
+        if not deal_rooms.get_room_access(msg["room_id"], user["id"], conn=c):
             raise HTTPException(status_code=403)
 
         # Проверяем кэш

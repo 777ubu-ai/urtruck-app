@@ -28,7 +28,7 @@ def test_attachment_notifies_the_other_participant(monkeypatch):
     """A successfully uploaded document must notify the opposite room user."""
     sent = []
     monkeypatch.setattr(deal_room.dr, "room_exists", lambda _room_id: True)
-    monkeypatch.setattr(deal_room.dr, "is_participant", lambda _room_id, _user_id: True)
+    monkeypatch.setattr(deal_room.dr, "is_active_participant", lambda _room_id, _user_id: True)
     monkeypatch.setattr(deal_room.storage_service, "save_image", lambda *_args, **_kwargs: "/storage/document.pdf")
     monkeypatch.setattr(
         deal_room.dr,

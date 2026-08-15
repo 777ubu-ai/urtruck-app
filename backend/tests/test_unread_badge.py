@@ -21,8 +21,12 @@ dbm.init_db()
 registration_dal.init_registration_schema()
 
 from database.db import get_conn
+with get_conn() as _schema_conn:
+    _schema_conn.executescript(
+        (Path(__file__).resolve().parent.parent / "database" / "deals_schema.sql").read_text(encoding="utf-8")
+    )
 from api.chat import (
-    get_or_create_deal_room, send_message, get_messages,
+    send_message, get_messages,
     unread_count, SendMessageIn,
 )
 from services import push_sender
@@ -51,11 +55,30 @@ def _ids():
     return o, d
 
 
+def _accepted_room(cargo_id: str, owner_id: str, driver_id: str) -> str:
+    deal_id = "deal_" + uuid.uuid4().hex[:10]
+    room_id = "room_" + uuid.uuid4().hex[:10]
+    bid_id = "bid_" + uuid.uuid4().hex[:10]
+    p1, p2 = sorted([owner_id, driver_id])
+    with get_conn() as c:
+        c.execute(
+            "INSERT INTO chat_rooms(id,participant_1,participant_2,owner_id,bidder_id,bid_id,cargo_id,deal_key) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (room_id, p1, p2, owner_id, driver_id, bid_id, cargo_id, f"d:{deal_id}"),
+        )
+        c.execute(
+            "INSERT INTO deals(id,cargo_id,bid_id,shipper_id,driver_id,from_city,to_city,amount,status,chat_room_id) "
+            "VALUES (?,?,?,?,?,'A','B',1,'accepted',?)",
+            (deal_id, cargo_id, bid_id, owner_id, driver_id, room_id),
+        )
+    return room_id
+
+
 def test_inv1_send_increments_recipient_not_sender():
     """INV-1: send(a→b) поднимает unread b, не трогает unread a (H6/H7)."""
     o, d = _ids()
     cargo = "cg_" + uuid.uuid4().hex[:6]
-    room = get_or_create_deal_room(cargo, o, d)
+    room = _accepted_room(cargo, o, d)
     before_o = unread_count(user=_u(o))["unread"]
     before_d = unread_count(user=_u(d))["unread"]
     send_message(SendMessageIn(room_id=room, text="hello"), user=_u(d))  # водитель → владелец
@@ -69,7 +92,7 @@ def test_inv2_badge_matches_unread():
     """INV-2: _compute_recipient_badge(b) == unread_count(b) — C1-бэк и C2-источник совпадают."""
     o, d = _ids()
     cargo = "cg_" + uuid.uuid4().hex[:6]
-    room = get_or_create_deal_room(cargo, o, d)
+    room = _accepted_room(cargo, o, d)
     send_message(SendMessageIn(room_id=room, text="m1"), user=_u(d))
     send_message(SendMessageIn(room_id=room, text="m2"), user=_u(d))
     assert push_sender._compute_recipient_badge(o) == unread_count(user=_u(o))["unread"]
@@ -78,8 +101,8 @@ def test_inv2_badge_matches_unread():
 def test_inv3_read_marks_only_opened_room():
     """INV-3: get_messages помечает прочитанной ТОЛЬКО открытую комнату (H5)."""
     o, d = _ids()
-    room_a = get_or_create_deal_room("cgA_" + uuid.uuid4().hex[:6], o, d)
-    room_b = get_or_create_deal_room("cgB_" + uuid.uuid4().hex[:6], o, d)
+    room_a = _accepted_room("cgA_" + uuid.uuid4().hex[:6], o, d)
+    room_b = _accepted_room("cgB_" + uuid.uuid4().hex[:6], o, d)
     send_message(SendMessageIn(room_id=room_a, text="a1"), user=_u(d))
     send_message(SendMessageIn(room_id=room_b, text="b1"), user=_u(d))
     assert unread_count(user=_u(o))["unread"] == 2
@@ -91,8 +114,8 @@ def test_inv3_read_marks_only_opened_room():
 def test_inv4_multiroom_decrements_per_room():
     """INV-4: после чтения одной из двух — остаётся ровно N оставшихся, не 0 и не всё (H5)."""
     o, d = _ids()
-    room_a = get_or_create_deal_room("cgA_" + uuid.uuid4().hex[:6], o, d)
-    room_b = get_or_create_deal_room("cgB_" + uuid.uuid4().hex[:6], o, d)
+    room_a = _accepted_room("cgA_" + uuid.uuid4().hex[:6], o, d)
+    room_b = _accepted_room("cgB_" + uuid.uuid4().hex[:6], o, d)
     send_message(SendMessageIn(room_id=room_a, text="a1"), user=_u(d))
     send_message(SendMessageIn(room_id=room_a, text="a2"), user=_u(d))
     send_message(SendMessageIn(room_id=room_b, text="b1"), user=_u(d))
@@ -107,7 +130,7 @@ def test_inv5_own_messages_never_counted():
     """INV-5: своё сообщение (sender_id==uid) не входит в unread (H6)."""
     o, d = _ids()
     cargo = "cg_" + uuid.uuid4().hex[:6]
-    room = get_or_create_deal_room(cargo, o, d)
+    room = _accepted_room(cargo, o, d)
     for i in range(5):
         send_message(SendMessageIn(room_id=room, text=f"own-{i}"), user=_u(d))
     assert unread_count(user=_u(d))["unread"] == 0   # сам себе не накрутил
@@ -122,7 +145,7 @@ def test_inv6_only_chat_kind_sets_badge():
     """
     o, d = _ids()
     cargo = "cg_" + uuid.uuid4().hex[:6]
-    room = get_or_create_deal_room(cargo, o, d)
+    room = _accepted_room(cargo, o, d)
     send_message(SendMessageIn(room_id=room, text="x"), user=_u(d))  # у o есть 1 непрочитанное
 
     captured = {}
@@ -155,7 +178,7 @@ def test_inv7_idempotent_client_msg_id():
     """INV-7: повторный send с тем же client_msg_id не даёт +2 (дедуп)."""
     o, d = _ids()
     cargo = "cg_" + uuid.uuid4().hex[:6]
-    room = get_or_create_deal_room(cargo, o, d)
+    room = _accepted_room(cargo, o, d)
     cmid = "cm_" + uuid.uuid4().hex[:8]
     send_message(SendMessageIn(room_id=room, text="dup", client_msg_id=cmid), user=_u(d))
     send_message(SendMessageIn(room_id=room, text="dup", client_msg_id=cmid), user=_u(d))
@@ -167,7 +190,7 @@ def test_mine_flag_regression():
     """Регресс фикса чат-эхо (85cb3c8): get_messages помечает mine по uid."""
     o, d = _ids()
     cargo = "cg_" + uuid.uuid4().hex[:6]
-    room = get_or_create_deal_room(cargo, o, d)
+    room = _accepted_room(cargo, o, d)
     send_message(SendMessageIn(room_id=room, text="from-driver"), user=_u(d))
     send_message(SendMessageIn(room_id=room, text="from-owner"), user=_u(o))
     # глазами водителя: своё — mine=True, чужое — mine=False

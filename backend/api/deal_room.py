@@ -130,8 +130,8 @@ async def upload_attachment(
     создаётся только после реального сохранения файла."""
     if not dr.room_exists(conversation_id):
         raise HTTPException(status_code=404, detail="Беседа не найдена")
-    if not dr.is_participant(conversation_id, user["id"]):
-        raise HTTPException(status_code=403, detail="Вы не участник этой беседы")
+    if not dr.is_active_participant(conversation_id, user["id"]):
+        raise HTTPException(status_code=403, detail="Нет активной сделки для загрузки")
 
     raw = await file.read()
     if not raw:
