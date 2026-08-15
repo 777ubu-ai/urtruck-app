@@ -214,6 +214,24 @@ def test_skip_steps_gives_409():
     assert r.status_code == 409, r.text
     assert r.json()["detail"]["error"] == "INVALID_STATUS_TRANSITION"
     assert deal_status(d) == "accepted"
+\n
+def test_shipper_cannot_repeat_driver_only_statuses():
+    """Идемпотентность не должна превращаться в обход actor-FSM: даже если
+    статус уже установлен, грузоотправитель не может повторно подтвердить
+    водительский этап и получить успешный ответ."""
+    cases = [
+        ("in_progress", "KZ", "KZ"),
+        ("at_border", "CN", "KZ"),
+        ("delivered", "KZ", "KZ"),
+    ]
+    for status, from_country, to_country in cases:
+        d = seed_deal(status, from_country=from_country, to_country=to_country)
+        r = patch_status(d, status, SHIPPER)
+        assert r.status_code == 403, f"{status}: {r.status_code} {r.text}"
+        assert r.json()["detail"]["error"] == "ACTION_NOT_ALLOWED_FOR_ROLE"
+        assert deal_status(d) == status
+
+
 
 
 def test_terminal_status_does_not_change():
