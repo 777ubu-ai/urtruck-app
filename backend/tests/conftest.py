@@ -13,14 +13,53 @@ Harness унифицирует DB_PATH до import тест-модулей и п
 получал ложный `no such table: border_checkpoints`.
 """
 import os
+import sys
 
 # До любого импорта config/db/chat — единый DB_PATH на все test modules.
 os.environ["DB_PATH"] = "/tmp/urtruck_tests_badge_suite.db"
 os.environ.setdefault("FILE_SIGNING_KEY", "test-file-signing-key-32-bytes-minimum")
 os.environ.setdefault("CGR_IIN_SALT", "pytest-harness-salt-not-a-secret")
+os.environ.setdefault("CGR_FEATURE_ENABLED", "true")
 
 from pathlib import Path
 import pytest
+
+# Route dependencies FastAPI фиксирует в момент импорта router. Несколько
+# legacy-модулей раньше по очереди подменяли verification_gate.require_level
+# своими ContextVar, поэтому единый pytest process зависел от порядка
+# collection. Устанавливаем один hybrid dependency до импорта test modules:
+# без test actor он использует настоящий bearer auth.
+from tests.marketplace_harness import clear_test_actor, install_hybrid_auth
+from cgr import settings as _canonical_cgr_settings
+
+install_hybrid_auth()
+
+# Импортировать auth-protected routers под единым dependency до того, как
+# legacy test modules смогут изменить module attribute require_level.
+from api import chat, deal_room, documents, marketplace, notifications, profile, reviews, routes, saved_searches  # noqa: E402,F401
+
+
+@pytest.fixture(autouse=True)
+def _isolate_marketplace_actor():
+    clear_test_actor()
+    # Некоторые unit tests намеренно удаляют/reimport cgr.* для проверки env.
+    # После них динамические imports API должны снова видеть один канонический
+    # settings object, иначе следующий integration test получает случайный
+    # feature_enabled от последнего unit case.
+    sys.modules["cgr.settings"] = _canonical_cgr_settings
+    try:
+        from api import borders
+        borders._BOARD_CACHE.clear()
+    except Exception:
+        pass
+    yield
+    clear_test_actor()
+    sys.modules["cgr.settings"] = _canonical_cgr_settings
+    try:
+        from api import borders
+        borders._BOARD_CACHE.clear()
+    except Exception:
+        pass
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -39,11 +78,9 @@ def _ensure_full_schema():
     cgr_dal.init_cgr_schema()
     cgr_dal.seed_border_checkpoints_from_legacy()
 
-    import api.chat as chat
     chat._init()
     import api.push as push_api
     push_api._init_schema()
-    import api.marketplace as marketplace
     marketplace._init()
     import api.notifications as notifications
     notifications._init()

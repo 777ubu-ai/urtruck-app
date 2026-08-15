@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from api import verification_gate
+from tests.marketplace_harness import set_test_actor
 
 _current_user = contextvars.ContextVar("user", default=None)
 
@@ -68,14 +69,8 @@ STRANGER = "test-stranger-fsm"
 
 
 def as_user(uid: str):
-    _current_user.set({
-        "id": uid,
-        "full_name": uid,
-        "phone": "+77000000000",
-        "phone_verified": 1,
-        "role": "driver" if uid == DRIVER else "client",
-        "verification_level": 1,
-    })
+    actor = set_test_actor(uid, role="driver" if uid == DRIVER else "client")
+    _current_user.set(actor)
 
 
 def seed_deal(status="accepted", from_country=None, to_country=None, amount=3000):

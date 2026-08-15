@@ -27,6 +27,7 @@ sys.path.insert(0, str(ROOT))
 
 # Патчим require_level ДО импорта marketplace (как в test_bid_actions).
 from api import verification_gate
+from tests.marketplace_harness import set_test_actor
 
 _current_user = contextvars.ContextVar("user", default=None)
 
@@ -69,7 +70,8 @@ CLIENT_ID = "test-client-dash"
 DRIVER_ID = "test-driver-dash"
 
 def as_user(uid):
-    _current_user.set({"id": uid, "full_name": uid, "phone": "+70000000000", "verification_level": 1})
+    actor = set_test_actor(uid, role="driver" if uid == DRIVER_ID else "client")
+    _current_user.set(actor)
 
 def _seed_deal_with_message(text: str | None):
     """Создаёт cargo(client) → bid(driver) → accept → deal + chat_room.

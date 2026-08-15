@@ -21,6 +21,7 @@ sys.path.insert(0, str(ROOT))
 
 # Patch require_level BEFORE marketplace is imported.
 from api import verification_gate
+from tests.marketplace_harness import set_test_actor
 
 _current_user = contextvars.ContextVar("user", default=None)
 
@@ -69,7 +70,9 @@ client = TestClient(app)
 
 def as_user(uid: str, full_name: str = "Test User", phone: str = "+70000000000"):
     """Switch the active fake user for require_level."""
-    _current_user.set({"id": uid, "full_name": full_name, "phone": phone, "verification_level": 1})
+    role = "client" if any(part in uid for part in ("owner", "client", "empty-user")) else "driver"
+    actor = set_test_actor(uid, role=role, full_name=full_name)
+    _current_user.set(actor)
 
 
 def seed_cargo(owner_id: str, price: int = 3000) -> str:

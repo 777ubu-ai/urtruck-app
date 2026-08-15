@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from api import verification_gate
+from tests.marketplace_harness import set_test_actor
 
 _current_user = contextvars.ContextVar("review_user", default=None)
 
@@ -54,7 +55,8 @@ STRANGER = "review-stranger"
 
 
 def as_user(uid):
-    _current_user.set({"id": uid, "verification_level": 1})
+    actor = set_test_actor(uid, role="driver" if uid == DRIVER else "client")
+    _current_user.set(actor)
 
 
 def seed_deal(status="completed", *, shipper=SHIPPER, driver=DRIVER, trip_id=None):

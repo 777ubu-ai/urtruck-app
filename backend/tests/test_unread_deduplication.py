@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from api import verification_gate
+from tests.marketplace_harness import set_test_actor
 
 _current_user = contextvars.ContextVar("user", default=None)
 
@@ -72,12 +73,8 @@ TOKENS = {CLIENT_ID: CLIENT_TOKEN, DRIVER_ID: DRIVER_TOKEN}
 
 
 def as_user(uid: str):
-    _current_user.set({
-        "id": uid,
-        "full_name": uid,
-        "phone": "+70000000000",
-        "verification_level": 1,
-    })
+    actor = set_test_actor(uid, role="driver" if uid == DRIVER_ID else "client")
+    _current_user.set(actor)
 
 
 def fake_maybe_user(authorization):
