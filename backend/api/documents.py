@@ -30,7 +30,7 @@ def _row_dict(row):
 
 
 def _load_document_context(reference_id: str, user_id: str) -> dict:
-    """Resolve a document to one accepted deal and authorize its participants."""
+    """Resolve an active accepted deal and authorize its participants."""
     reference_id = str(reference_id or "").strip()
     if not reference_id:
         raise HTTPException(status_code=400, detail="Идентификатор сделки не указан")
@@ -51,7 +51,8 @@ def _load_document_context(reference_id: str, user_id: str) -> dict:
             FROM deals d
             LEFT JOIN cargos c ON c.id = d.cargo_id
             LEFT JOIN trips t ON t.id = d.trip_id
-            WHERE d.id = ? OR d.trip_id = ?
+            WHERE d.status IN ('accepted', 'in_progress', 'at_border', 'delivered', 'completed')
+              AND (d.id = ? OR d.trip_id = ?)
             ORDER BY CASE WHEN d.id = ? THEN 0 ELSE 1 END, d.created_at DESC
             LIMIT 1
             """,
