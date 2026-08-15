@@ -230,3 +230,12 @@ background/terminated tracking, push-полный цикл, TTN/PDF с productio
 
 Итоговый статус текущей проверки: **BLOCKED**. `main` и production не
 изменялись; платное подключение и внешняя публикация не выполнялись.
+
+### GitHub Actions для кодового commit
+
+Для кодового commit `0b00f8006d3a4fedac7ee98dbe53a149e1f1d6c4` вручную
+запущен workflow [31878273265](https://github.com/777ubu-ai/urtruck-app/actions/runs/31878273265).
+Все jobs завершились `success`: API/backend, Design/FSM/UX, Maestro contract,
+Playwright desktop и Playwright mobile. Этот workflow не выполняет native
+Maestro на устройстве и не проверяет Yandex MapKit runtime; соответствующие
+блокеры выше остаются.
