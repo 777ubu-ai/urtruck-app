@@ -243,6 +243,43 @@ def _get_or_create_room(user1: str, user2: str, cargo_id: str = None, trip_id: s
         return _upsert_room(c, p1, p2, dk, None, None, None, cargo_id, trip_id)
 
 
+# Deal chat is private until a bid is accepted. Support is separate.
+_DEAL_CHAT_STATUSES = ("accepted", "in_progress", "at_border", "delivered", "completed")
+
+
+def _assert_chat_is_accepted(sender_id: str, recipient_id: str, *, room_id=None, cargo_id=None, trip_id=None):
+    if recipient_id == SUPPORT_ID:
+        return
+    if recipient_id == VOLODYA_ID and ENABLE_DEMO_CHAT:
+        return
+    if not any((room_id, cargo_id, trip_id)):
+        raise HTTPException(status_code=403, detail="Чат по сделке доступен после принятия предложения")
+
+    filters = []
+    params = []
+    if room_id:
+        filters.append("d.chat_room_id = ?")
+        params.append(room_id)
+    if cargo_id:
+        filters.append("d.cargo_id = ?")
+        params.append(cargo_id)
+    if trip_id:
+        filters.append("d.trip_id = ?")
+        params.append(trip_id)
+
+    with get_conn() as c:
+        row = c.execute(
+            "SELECT 1 FROM deals d "
+            "WHERE d.status IN (?, ?, ?, ?, ?) "
+            "AND ((d.shipper_id = ? AND d.driver_id = ?) "
+            "OR (d.shipper_id = ? AND d.driver_id = ?)) "
+            "AND (" + " OR ".join(filters) + ") LIMIT 1",
+            (*_DEAL_CHAT_STATUSES, sender_id, recipient_id, recipient_id, sender_id, *params),
+        ).fetchone()
+    if not row:
+        raise HTTPException(status_code=403, detail="Чат сделки доступен только после принятия предложения")
+
+
 # Инициализация схемы/миграции — после определения всех helpers (выше),
 # т.к. _init() вызывает _migrate_canonical_rooms.
 _init()
@@ -285,9 +322,16 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
         recipient_id = room["participant_2"] if room["participant_1"] == user["id"] else room["participant_1"]
         room_cargo = room["cargo_id"]
         room_bid = room["bid_id"]
+        _assert_chat_is_accepted(
+            user["id"], recipient_id, room_id=room_id,
+            cargo_id=room["cargo_id"], trip_id=room["trip_id"],
+        )
     elif body.to_user_id:
-        room_id = _get_or_create_room(user["id"], body.to_user_id, body.cargo_id, body.trip_id)
         recipient_id = body.to_user_id
+        _assert_chat_is_accepted(
+            user["id"], recipient_id, cargo_id=body.cargo_id, trip_id=body.trip_id,
+        )
+        room_id = _get_or_create_room(user["id"], recipient_id, body.cargo_id, body.trip_id)
     else:
         raise HTTPException(status_code=400, detail="room_id или to_user_id обязателен")
 
@@ -572,6 +616,11 @@ def get_messages(room_id: str, limit: int = 100, offset: int = 0, user=Depends(r
             raise HTTPException(status_code=404)
         if uid not in (room["participant_1"], room["participant_2"]):
             raise HTTPException(status_code=403, detail="Вы не участник этого чата")
+        partner_id = room["participant_2"] if room["participant_1"] == uid else room["participant_1"]
+        _assert_chat_is_accepted(
+            uid, partner_id, room_id=room_id,
+            cargo_id=room["cargo_id"], trip_id=room["trip_id"],
+        )
 
         # P3: tiebreak по id. created_at имеет посекундную точность (TEXT
         # CURRENT_TIMESTAMP) — два сообщения в одну секунду могли переставиться
