@@ -1,3 +1,4 @@
+# Triggered after strict gate identified remaining catalog leaks.
 name: ZH Gate Fixes
 on:
   push:
@@ -39,7 +40,7 @@ jobs:
           # Remove the last observed Russian fallback in the trip bid card.
           rep('src/screens/TripDetail.js', "{t('my_bid_label') || 'Моя ставка'}", "{t('my_bid_label')}")
 
-          # The behavior fixtures already prove ZH works. The old source-string
+          # Behavior fixtures already prove ZH works. The previous source-string
           # substring assertion falsely matched the correct condition
           # `l !== 'zh' && l !== 'en'` and is therefore removed.
           rep('qa/utils/zhLocalizationSmoke.js', "  assert(!places.localizePlace.toString().includes(\"l !== 'en'\"), 'localizePlace still blocks ZH localization');\n", '')
