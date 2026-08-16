@@ -1,0 +1,83 @@
+name: UrTruck Yandex Map Finalizer
+
+on:
+  workflow_run:
+    workflows: ["UrTruck Deploy"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  inject-yandex-map:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Prepare protected Yandex script snippet
+        env:
+          YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${YANDEX_MAPS_JS_API_KEY:-}" ]; then
+            echo "::error::YANDEX_MAPS_JS_API_KEY GitHub secret is missing"
+            exit 1
+          fi
+          umask 077
+          python3 - <<'PY'
+          import os
+          from urllib.parse import quote
+          key = quote(os.environ['YANDEX_MAPS_JS_API_KEY'].strip(), safe='')
+          snippet = (
+              '<script>window.__URTRUCK_YANDEX_MAPS_CONFIGURED__=true;</script>\n'
+              f'<script src="https://api-maps.yandex.ru/v3/?apikey={key}&lang=ru_RU" defer></script>'
+          )
+          with open('/tmp/urtruck-yandex-head.html', 'w', encoding='utf-8') as f:
+              f.write(snippet)
+          PY
+          chmod 600 /tmp/urtruck-yandex-head.html
+          echo "Yandex Maps snippet prepared (key withheld)."
+
+      - name: Inject Yandex Maps into deployed UrTruck HTML
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PASS: ${{ secrets.SERVER_PASS }}
+          REMOTE_DIR: ${{ secrets.REMOTE_DIR || '/home/ubuntu/urtruck-app' }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq sshpass
+          REMOTE_SNIPPET="/tmp/urtruck-yandex-head-${GITHUB_RUN_ID}.html"
+          sshpass -p "$SERVER_PASS" scp -q -o StrictHostKeyChecking=no \
+            /tmp/urtruck-yandex-head.html "$SERVER_USER@$SERVER_HOST:$REMOTE_SNIPPET"
+          sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
+            "REMOTE_DIR='$REMOTE_DIR' REMOTE_SNIPPET='$REMOTE_SNIPPET' python3 -" <<'PY'
+          import os
+          from pathlib import Path
+
+          index = Path(os.environ['REMOTE_DIR']) / 'index.html'
+          snippet_path = Path(os.environ['REMOTE_SNIPPET'])
+          html = index.read_text(encoding='utf-8')
+          snippet = snippet_path.read_text(encoding='utf-8')
+          if 'api-maps.yandex.ru/v3/' not in html:
+              if '</head>' not in html:
+                  raise SystemExit('index.html has no </head>')
+              html = html.replace('</head>', snippet + '\n</head>', 1)
+              index.write_text(html, encoding='utf-8')
+          snippet_path.unlink(missing_ok=True)
+          PY
+          sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
+            "grep -q 'api-maps.yandex.ru/v3/' '$REMOTE_DIR/index.html' && grep -q 'lang=ru_RU' '$REMOTE_DIR/index.html'"
+          echo "Yandex Maps script is present in the deployed index (key withheld)."
+
+      - name: Verify public production serves Yandex Maps
+        env:
+          PUBLIC_BASE_URL: ${{ secrets.PUBLIC_BASE_URL || 'https://urtruck.kz' }}
+        run: |
+          set -euo pipefail
+          body="$(curl -fsS --max-time 15 "$PUBLIC_BASE_URL/?yandex-map-check=${GITHUB_RUN_ID}")"
+          echo "$body" | grep -q 'api-maps.yandex.ru/v3/'
+          echo "$body" | grep -q 'lang=ru_RU'
+          echo "✅ Public UrTruck HTML serves Yandex Maps JS API v3 with ru_RU localization."
