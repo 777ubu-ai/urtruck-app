@@ -5,6 +5,8 @@
 // here in one place.
 
 import { formatDateForDisplay } from './dateInput';
+import { getLanguage } from './i18n';
+import { localizeCargoName } from './places';
 
 const pick = (...vals) => {
   for (const v of vals) {
@@ -50,10 +52,17 @@ export const formatPrice = (amount, currency, t) => {
   const sym = CURRENCY_SYMBOLS[cur];
   const numeric = Number(amount);
   if (!Number.isFinite(numeric) || numeric <= 0) {
-    return t ? t('payment_negotiable') : 'По договорённости';
+    return t ? t('payment_negotiable') : 'Negotiable';
   }
   const n = String(Math.round(numeric)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   return cur === 'UZS' || cur === 'KGS' ? `${n} ${sym}` : `${sym}${n}`;
+};
+
+const displayUnits = () => {
+  const lang = getLanguage();
+  if (lang === 'ZH') return { ton: '吨', volume: '立方米' };
+  if (lang === 'EN') return { ton: 't', volume: 'm³' };
+  return { ton: 'т', volume: 'м³' };
 };
 
 export const normalizeTrip = (raw) => {
@@ -90,11 +99,14 @@ export const normalizeCargo = (raw) => {
   const photos = Array.isArray(photosRaw)
     ? photosRaw.filter((p) => typeof p === 'string' && p.length > 0)
     : (typeof photosRaw === 'string' && photosRaw.length > 0 ? [photosRaw] : []);
+  const rawCargoDesc = pick(raw.cargo_desc, raw.cargoDesc, raw.cargo, raw.description);
   return {
     id: raw.id || raw.cargo_id || null,
     from: pick(raw.from_city, raw.from, raw.fromCity),
     to: pick(raw.to_city, raw.to, raw.toCity),
-    cargoDesc: pick(raw.cargo_desc, raw.cargoDesc, raw.cargo, raw.description),
+    // Known system categories are localized at presentation normalization.
+    // Free-form user descriptions are returned unchanged by localizeCargoName.
+    cargoDesc: localizeCargoName(rawCargoDesc, getLanguage()),
     cargoType: pick(raw.cargo_type, raw.cargoType, raw.type),
     weightTons: raw.weight_tons ?? raw.weightTons ?? raw.tons ?? null,
     volumeM3: raw.volume_m3 ?? raw.volumeM3 ?? raw.m3 ?? null,
@@ -114,10 +126,11 @@ export const normalizeCargo = (raw) => {
 };
 
 export const cargoDisplay = (cargo, t) => {
-  const dash = (t && t('not_specified')) || 'Не указано';
+  const dash = (t && t('not_specified')) || 'Not specified';
   const typeLabel = cargo?.cargoType ? (t ? t(cargo.cargoType) : cargo.cargoType) : null;
-  const weight = cargo?.weightTons > 0 ? `${cargo.weightTons} т` : dash;
-  const volume = cargo?.volumeM3 > 0 ? `${cargo.volumeM3} м³` : dash;
+  const units = displayUnits();
+  const weight = cargo?.weightTons > 0 ? `${cargo.weightTons} ${units.ton}` : dash;
+  const volume = cargo?.volumeM3 > 0 ? `${cargo.volumeM3} ${units.volume}` : dash;
   return {
     from: sanitizeForDisplay(cargo?.from) || dash,
     to: sanitizeForDisplay(cargo?.to) || dash,
@@ -132,8 +145,9 @@ export const cargoDisplay = (cargo, t) => {
 };
 
 export const tripDisplay = (trip, t) => {
-  const dash = (t && t('not_specified')) || 'Не указано';
+  const dash = (t && t('not_specified')) || 'Not specified';
   const truck = trip?.truckType ? (t ? t(trip.truckType) : trip.truckType) : dash;
+  const units = displayUnits();
   return {
     from: sanitizeForDisplay(trip?.from) || dash,
     to: sanitizeForDisplay(trip?.to) || dash,
@@ -141,8 +155,8 @@ export const tripDisplay = (trip, t) => {
     departure: trip?.departure ? formatDateForDisplay(trip.departure) : dash,
     arrival: trip?.arrival ? formatDateForDisplay(trip.arrival) : dash,
     truckType: truck && truck !== trip?.truckType ? truck : (trip?.truckType || dash),
-    capacityTons: trip?.capacityTons != null ? `${trip.capacityTons} т` : dash,
-    availableM3: trip?.availableM3 != null ? `${trip.availableM3} м³` : dash,
+    capacityTons: trip?.capacityTons != null ? `${trip.capacityTons} ${units.ton}` : dash,
+    availableM3: trip?.availableM3 != null ? `${trip.availableM3} ${units.volume}` : dash,
     price: formatPrice(trip?.price, trip?.currency, t),
     driverName: sanitizeForDisplay(trip?.driverName) || dash,
   };
