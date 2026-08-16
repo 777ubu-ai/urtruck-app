@@ -48,7 +48,6 @@ for (const t of ['city', 'border', 'terminal']) {
 
 // 3. Borders — must appear inside POINTS
 for (const name of REQUIRED_BORDERS) {
-  // Russian text — escape for regex by literal contains
   if (!src.includes(name)) failures.push(`border '${name}' missing from POINTS`);
 }
 
@@ -61,10 +60,7 @@ for (const sym of ['COUNTRIES', 'POINT_TYPES', 'searchPoints', 'formatPoint', 'p
   if (!new RegExp(`\\b${sym}\\b`).test(pickerSrc)) failures.push(`RoutePointPicker doesn't reference ${sym}`);
 }
 
-// 6. EN aliases for the most-used logistics nodes — the picker
-// supports search across aliases, so the absence of an English
-// alias means a foreign user can't find the entry by typing
-// "Khorgos" / "Malaszewicze" / "Alashankou".
+// 6. EN aliases for the most-used logistics nodes.
 const REQUIRED_ALIASES = {
   Хоргос: 'Khorgos',
   Алашанькоу: 'Alashankou',
@@ -72,15 +68,11 @@ const REQUIRED_ALIASES = {
   Малашевичи: 'Malaszewicze',
 };
 for (const [name, alias] of Object.entries(REQUIRED_ALIASES)) {
-  // Find the line containing the name and verify the alias appears
-  // on the same line (each entry is one line).
   const linePattern = new RegExp(`'${name}'[^\\n]*?'${alias}'`);
-  if (!linePattern.test(src)) {
-    failures.push(`'${name}' missing English alias '${alias}'`);
-  }
+  if (!linePattern.test(src)) failures.push(`'${name}' missing English alias '${alias}'`);
 }
 
-// 7. Picker free-text fallback inherits country (Stage 7 finalisation).
+// 7. Picker free-text fallback inherits country.
 if (!/inferCountryFromQuery/.test(pickerSrc)) {
   failures.push('RoutePointPicker free-text fallback no longer infers country');
 }
@@ -88,15 +80,11 @@ if (/onChange\?\.\(trimmed,\s*\{\s*name:\s*trimmed,\s*country:\s*'XX'/.test(pick
   failures.push('RoutePointPicker still hard-codes country=XX in free-text fallback');
 }
 
-// 8. Stage 8: every required country has a localised name in all
-// four enabled languages. The picker reads `country_<CODE>` so a
-// missing entry would fall back to the Russian-only `COUNTRIES`
-// table — visible regression for EN/KK/ZH users.
+// 8. Every required country has a localised name in all enabled languages.
 const I18N_PATH = path.join(ROOT, 'src', 'utils', 'i18n.js');
 const i18nSrc = fs.readFileSync(I18N_PATH, 'utf8');
 for (const code of REQUIRED_COUNTRIES) {
   for (const lang of ['RU', 'EN', 'KK', 'ZH']) {
-    // Scope check to the language block to avoid cross-block matches
     const blockMatch = new RegExp(`\\n  ${lang}: \\{[\\s\\S]*?\\n\\},`, 'm').exec(i18nSrc);
     if (!blockMatch) {
       failures.push(`i18n block ${lang} not found`);
@@ -109,15 +97,12 @@ for (const code of REQUIRED_COUNTRIES) {
   }
 }
 
-// 9. Picker uses localisedCountryName (Stage 8) rather than the bare
-// COUNTRIES[code].name in the JSX it renders.
+// 9. Picker uses localisedCountryName rather than the bare registry name.
 if (!/localisedCountryName/.test(pickerSrc)) {
   failures.push('RoutePointPicker no longer uses localisedCountryName helper');
 }
 
-// 10. Every curated city visible in route pickers must have a ZH/EN
-// data translation. Interface labels alone are insufficient: otherwise a
-// Chinese user sees a translated card around an unreadable Russian route.
+// 10. Every curated city visible in route pickers must have a ZH/EN translation.
 const placesSrc = fs.readFileSync(PLACES, 'utf8');
 const citySrc = fs.readFileSync(CITIES, 'utf8');
 const translatedPlaces = new Set(
@@ -132,8 +117,10 @@ if (missingPlaceTranslations.length) {
   failures.push(`ZH/EN place translations missing: ${missingPlaceTranslations.join(', ')}`);
 }
 
-// QueueScreen must use the same canonical language codes as useI18n.
-const queueSrc = fs.readFileSync(path.join(ROOT, 'src', 'screens', 'QueueScreen.js'), 'utf8');
+// Border UI must use the same canonical language codes as useI18n.
+// QueueScreen.js is intentionally a tiny compatibility wrapper now; the
+// actual driver-first implementation lives in QueueScreenCarousel.js.
+const queueSrc = fs.readFileSync(path.join(ROOT, 'src', 'screens', 'QueueScreenCarousel.js'), 'utf8');
 if (!/const COPY = \{[\s\S]*?\bKK:\s*\{[\s\S]*?\bZH:\s*\{/.test(queueSrc)) {
   failures.push('QueueScreen COPY does not expose canonical KK/ZH locales');
 }
