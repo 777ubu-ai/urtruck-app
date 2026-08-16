@@ -11,6 +11,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          python3 -m pip install -q beautifulsoup4
           UA='UrTruck/1.0 (+https://urtruck.kz; partner-integration)'
           PUB='https://cgr.qoldau.kz/ru/registry/public-list?flStatus=Pending'
           CP='https://cgr.qoldau.kz/ru/registry/checkpoint/list'
@@ -42,9 +43,12 @@ jobs:
               name=inp.get('name'); val=inp.get('value'); ident=inp.get('id')
               if any(k in str(name).lower()+str(ident).lower() for k in ['available','booking','time','start','end','limit']):
                   print(inp.name,'name=',name,'id=',ident,'value=',val)
-          print('\n--- detail scripts/url clues ---')
+          print('\n--- detail script src ---')
+          for sc in s.find_all('script',src=True): print(sc['src'])
+          print('\n--- inline clues ---')
           html=open('/tmp/det.html',encoding='utf-8').read()
-          for m in re.findall(r'[^"\']*(?:chart|stat|load|limit|booking|available)[^"\']*', html, re.I):
-              m=' '.join(m.split())
-              if len(m)<400 and ('/' in m or 'url' in m.lower() or 'data' in m.lower()): print(m[:380])
+          for line in html.splitlines():
+              low=line.lower()
+              if any(k in low for k in ['chart','series','limit','booking','available','statistic']) and len(line)<900:
+                  print(' '.join(line.split())[:850])
           PY
