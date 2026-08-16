@@ -7,37 +7,34 @@ jobs:
   discover:
     runs-on: ubuntu-latest
     steps:
-      - name: Probe CGR export and filters
+      - name: Probe CGR scoreboard filters
         shell: bash
         run: |
           set -euo pipefail
           python3 -m pip install -q beautifulsoup4
           UA='UrTruck/1.0 (+https://urtruck.kz; partner-integration)'
-          for spec in \
-            'pub|https://cgr.qoldau.kz/ru/registry/public-list?flStatus=Pending' \
-            'pubexcel|https://cgr.qoldau.kz/ru/registry/public-list?flStatus=Pending&presentation=excel' \
-            'wa|https://cgr.qoldau.kz/ru/registry/wa-history/list?flStatus=Active' \
-            'waexcel|https://cgr.qoldau.kz/ru/registry/wa-history/list?flStatus=Active&presentation=excel'; do
-            name=${spec%%|*}; url=${spec#*|}
-            echo "=== $name ==="
-            curl -fsSL -A "$UA" -D "/tmp/$name.h" "$url" -o "/tmp/$name.dat"
-            grep -Ei 'content-type|content-length|content-disposition' "/tmp/$name.h" | tail -5 || true
-            wc -c "/tmp/$name.dat"
-            grep -ao '<tr' "/tmp/$name.dat" | wc -l || true
-          done
           python3 - <<'PY'
+          import subprocess, re
           from bs4 import BeautifulSoup
-          import re
-          for fn in ['pub','wa']:
-              raw=open('/tmp/'+fn+'.dat','rb').read().decode('utf-8','ignore')
-              s=BeautifulSoup(raw,'html.parser')
-              print('\n---',fn,'filter inputs ---')
-              for inp in s.find_all('input'):
-                  name=inp.get('name') or ''
-                  ident=inp.get('id') or ''
-                  if name.startswith('fl') or ident.startswith('fl'):
-                      print(inp.name,'name=',name,'id=',ident,'value=',inp.get('value'),'data-ref=',inp.get('data-ref-name'))
-              text=s.get_text(' ',strip=True)
-              m=re.search(r'Всего записей\s*([0-9\s\u00a0]+)',text)
-              print('TOTAL=',m.group(1).strip() if m else 'NONE')
+          cps={
+            'Бахты - Покиту':'224749863825000000',
+            'Достык - Алашанькоу':'215778822067000000',
+            'Калжат - Дулаты':'222979531669000000',
+            'Нур Жолы - Хоргос':'222978891854000000',
+          }
+          ua='UrTruck/1.0 (+https://urtruck.kz; partner-integration)'
+          for name,cid in cps.items():
+              for base in ['scoreboard','public-list']:
+                  url=f'https://cgr.qoldau.kz/ru/registry/{base}?flCheckpoint={cid}&flStatus=Pending'
+                  raw=subprocess.check_output(['curl','-fsSL','-A',ua,url]).decode('utf-8','ignore')
+                  s=BeautifulSoup(raw,'html.parser')
+                  text=s.get_text(' ',strip=True)
+                  m=re.search(r'Всего записей\s*([0-9\s\u00a0]+)',text)
+                  table=s.find('table')
+                  rows=[]
+                  if table:
+                      for tr in table.find_all('tr')[1:]:
+                          cells=[td.get_text(' ',strip=True) for td in tr.find_all('td')]
+                          if cells: rows.append(cells)
+                  print(name,'|',base,'| total=',m.group(1).strip() if m else 'NONE','| rows=',len(rows),'| first=',rows[:2])
           PY
