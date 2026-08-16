@@ -1,11 +1,10 @@
 name: UrTruck Yandex Map Finalizer
 
 on:
-  # Both production writers can replace index.html. The secure deploy can fail
-  # after its frontend copy already succeeded, so we must finalize after every
-  # completed secure-deploy attempt, not only after a green conclusion.
+  # Secure Production Deploy is the only production writer. Finalize only after
+  # that writer completes, never between the release gate and the real deploy.
   workflow_run:
-    workflows: ["UrTruck Deploy", "UrTruck Secure Production Deploy"]
+    workflows: ["UrTruck Secure Production Deploy"]
     types: [completed]
 
 permissions:
@@ -17,7 +16,7 @@ concurrency:
 
 jobs:
   inject-yandex-map:
-    if: ${{ github.event.workflow_run.head_branch == 'main' && (github.event.workflow_run.name == 'UrTruck Secure Production Deploy' || github.event.workflow_run.conclusion == 'success') }}
+    if: ${{ github.event.workflow_run.head_branch == 'main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -106,6 +105,6 @@ jobs:
           body="$(curl -fsS --max-time 15 "$PUBLIC_BASE_URL/?yandex-map-check=${GITHUB_RUN_ID}")"
           echo "$body" | grep -q 'api-maps.yandex.ru/v3/'
           echo "$body" | grep -q 'lang=ru_RU'
-          info="$(curl -fsS --max-time 15 "$PUBLIC_BASE_URL/build-info.json")"
+          info="$(curl -fsS --max-time 15 "$PUBLIC_BASE_URL/build-info.json?yandex-map-check=${GITHUB_RUN_ID}")"
           echo "$info" | grep -Fq "\"commit\":\"$DEPLOY_SHA\""
           echo "✅ Public UrTruck serves Yandex Maps JS API v3 (ru_RU) on the expected production commit."
