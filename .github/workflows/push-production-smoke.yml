@@ -1,0 +1,43 @@
+name: Push Production Smoke
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  push-production-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Wait until production serves this commit
+        env:
+          PUBLIC_BASE_URL: https://urtruck.kz
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            info=$(curl -fsS --max-time 10 "$PUBLIC_BASE_URL/build-info.json" || true)
+            if echo "$info" | grep -q "\"${GITHUB_SHA}\""; then
+              echo "production build: $info"
+              exit 0
+            fi
+            echo "waiting for production deploy ($i/60)"
+            sleep 10
+          done
+          echo "::error::production never served ${GITHUB_SHA}"
+          exit 1
+
+      - name: Verify push registration diagnostics
+        env:
+          PUBLIC_BASE_URL: https://urtruck.kz
+        run: |
+          set -euo pipefail
+          info=$(curl -fsS --max-time 15 "$PUBLIC_BASE_URL/security/api/v1/push/info")
+          echo "push-info: $info"
+          echo "$info" | grep -q '"registrations"' || { echo '::error::push registrations diagnostics missing'; exit 1; }
+          echo "$info" | grep -q '"native_active"' || { echo '::error::native registration count missing'; exit 1; }
+          echo "$info" | grep -q '"native_android"' || { echo '::error::android registration count missing'; exit 1; }
+          echo "$info" | grep -q '"native_ios"' || { echo '::error::ios registration count missing'; exit 1; }
+          echo "✅ production push diagnostics available"
