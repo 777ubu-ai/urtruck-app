@@ -86,51 +86,45 @@ jobs:
           </script>'''
           if 'ur_theme' not in html:
               html = html.replace('</head>', early_theme + '\n</head>')
-          # 05.08.2026 (Фаза A выкладка): CI-путь раньше не форсировал сброс
-          # старого service-worker кэша (в отличие от deploy.sh) — Safari/PWA
-          # мог показывать старый бандл до собственного цикла обновления SW.
-          # Тот же приём, что в deploy.sh: localStorage-версия проверяется
-          # синхронно при загрузке, при несовпадении — чистим caches API,
-          # снимаем регистрацию SW и делаем один принудительный reload.
-          # Версия кэша (v13-market) совпадает с CACHE/STATIC_CACHE в
-          # sw-template.js — держать в одном шаге при следующем бампе.
-          # v8 (05.08.2026): предыдущий баг класса — V бампался один раз
-          # (v6→v7 в 158b612), а все ПОСЛЕДУЮЩИЕ деплои того же дня оставляли
-          # V неизменным. localStorage у уже посетивших клиентов совпадал →
-          # ветка force-clear не срабатывала, sw.js был побайтово тем же
-          # файлом → браузер не видел повода переустанавливать воркер →
-          # телефоны с уже выставленным ur_sw_v='v7-market' не подхватывали
-          # более поздние коммиты того дня. Правило на будущее: КАЖДЫЙ деплой,
-          # меняющий фронтенд-код, обязан бампать V здесь синхронно с
-          # sw-template.js — иначе force-clear для уже посетивших клиентов не
-          # сработает.
-          bootstrap = '''<script>
-          (async()=>{
-            const V='v13-market';
+
+          # Cache epoch has ONE source of truth: sw-template.js.
+          # This prevents a release from shipping CACHE=v16 while the HTML bootstrap
+          # still says v13, which can leave an already-open Safari/PWA client on an
+          # older JS bundle.  Every SW epoch bump now propagates automatically to the
+          # bootstrap localStorage guard and the registration URL.
+          with open('sw-template.js', 'r') as f:
+              sw_source = f.read()
+          epoch_match = re.search(r"const CACHE = 'urtruck-v(\d+)-market'", sw_source)
+          if not epoch_match:
+              raise RuntimeError('Cannot derive PWA cache epoch from sw-template.js')
+          sw_epoch = epoch_match.group(1)
+          bootstrap = f'''<script>
+          (async()=>{{
+            const V='v{sw_epoch}-market';
             const cur=localStorage.getItem('ur_sw_v');
-            if(cur!==V){
-              if('caches' in window){const ks=await caches.keys();await Promise.all(ks.map(k=>caches.delete(k)))}
-              if('serviceWorker' in navigator){const regs=await navigator.serviceWorker.getRegistrations();await Promise.all(regs.map(r=>r.unregister()))}
+            if(cur!==V){{
+              if('caches' in window){{const ks=await caches.keys();await Promise.all(ks.map(k=>caches.delete(k)))}}
+              if('serviceWorker' in navigator){{const regs=await navigator.serviceWorker.getRegistrations();await Promise.all(regs.map(r=>r.unregister()))}}
               localStorage.setItem('ur_sw_v',V);
               location.reload();
               return;
-            }
-            if('serviceWorker' in navigator){
-              try{
-                const reg=await navigator.serviceWorker.register('/sw.js?v=13');
-                if(reg.waiting){reg.waiting.postMessage({type:'SKIP_WAITING'})}
-                reg.addEventListener('updatefound',()=>{
+            }}
+            if('serviceWorker' in navigator){{
+              try{{
+                const reg=await navigator.serviceWorker.register('/sw.js?v={sw_epoch}');
+                if(reg.waiting){{reg.waiting.postMessage({{type:'SKIP_WAITING'}})}}
+                reg.addEventListener('updatefound',()=>{{
                   const nw=reg.installing;
-                  nw&&nw.addEventListener('statechange',()=>{
-                    if(nw.state==='installed'&&navigator.serviceWorker.controller){
-                      nw.postMessage({type:'SKIP_WAITING'});
+                  nw&&nw.addEventListener('statechange',()=>{{
+                    if(nw.state==='installed'&&navigator.serviceWorker.controller){{
+                      nw.postMessage({{type:'SKIP_WAITING'}});
                       setTimeout(()=>location.reload(),300)
-                    }
-                  })
-                })
-              }catch(e){}
-            }
-          })();
+                    }}
+                  }})
+                }})
+              }}catch(e){{}}
+            }}
+          }})();
           </script>'''
           if 'ur_sw_v' not in html:
               html = html.replace('</body>', bootstrap + '\n</body>')
