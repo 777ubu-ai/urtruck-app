@@ -132,13 +132,15 @@ export const cargoDisplay = (cargo, t, lang = 'RU') => {
   const dash = (t && t('not_specified')) || 'Not specified';
   const typeLabel = cargo?.cargoType ? (t ? t(cargo.cargoType) : cargo.cargoType) : null;
   const units = displayUnits(lang);
+  const weight = cargo?.weightTons > 0 ? `${cargo.weightTons} ${units.ton}` : dash;
+  const volume = cargo?.volumeM3 > 0 ? `${cargo.volumeM3} ${units.volume}` : dash;
   return {
     from: sanitizeForDisplay(cargo?.from) || dash,
     to: sanitizeForDisplay(cargo?.to) || dash,
     cargoDesc: sanitizeForDisplay(cargo?.cargoDesc) || dash,
     cargoType: typeLabel && typeLabel !== cargo?.cargoType ? typeLabel : (cargo?.cargoType || dash),
-    weight: cargo?.weightTons > 0 ? `${cargo.weightTons} ${units.ton}` : dash,
-    volume: cargo?.volumeM3 > 0 ? `${cargo.volumeM3} ${units.volume}` : dash,
+    weight,
+    volume,
     price: formatPrice(cargo?.price, cargo?.currency, t),
     pickupDate: cargo?.pickupDate ? cargo.pickupDate : dash,
     ownerName: sanitizeForDisplay(cargo?.ownerName) || dash,
