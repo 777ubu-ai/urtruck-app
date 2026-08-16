@@ -1,0 +1,28 @@
+name: TEMP CGR filter discovery
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe CGR public filter
+        shell: bash
+        run: |
+          set -euo pipefail
+          UA='UrTruck/1.0 (+https://urtruck.kz; partner-integration)'
+          BASE='https://cgr.qoldau.kz/ru/registry/public-list'
+          curl -fsSL -A "$UA" "$BASE" -o /tmp/base.html
+          echo '--- form flStatus context ---'
+          grep -o -E '.{0,160}flStatus.{0,300}' /tmp/base.html | head -20 || true
+          echo '--- Pending option context ---'
+          grep -o -E '.{0,160}Pending.{0,300}' /tmp/base.html | head -20 || true
+          for q in 'flStatus=Pending' 'flStatus%5B%5D=Pending' 'flStatus=Pending&presentation=custom-list'; do
+            echo "=== $q ==="
+            curl -fsSL -A "$UA" "$BASE?$q" -o /tmp/x.html
+            grep -o -E 'Всего записей[^<]{0,80}' /tmp/x.html | head -1 || true
+            echo -n 'rows='; grep -o '<tr' /tmp/x.html | wc -l
+            echo -n 'in_queue='; grep -o 'В очереди' /tmp/x.html | wc -l
+            echo -n 'crossed='; grep -o 'Перес' /tmp/x.html | wc -l
+          done
