@@ -13,7 +13,6 @@ import { prettifyPartnerName, partnerInitial } from '../utils/displayName';
 import { chatAPI } from '../utils/chatAPI';
 import { marketAPI } from '../utils/marketAPI';
 import { formatPrice } from '../utils/normalizers';
-import { localizePlace } from '../utils/places';
 import { SERVER_URL } from '../config/env';
 import { notifyChatRead } from '../utils/unreadEvents';
 import { refreshAppIconBadge } from '../utils/appBadge';
@@ -800,19 +799,16 @@ export default function ChatScreen({ navigation, route }) {
     }
   };
 
-  const openDriverRoute = async () => {
-    const from = localizePlace(deal?.from_city || '', getLanguage());
-    const to = localizePlace(deal?.to_city || '', getLanguage());
-    if (!to || to === '—') {
-      toast(t('clarify_route'), 'error');
-      return;
-    }
-    const fromQ = encodeURIComponent(from || '');
-    const toQ = encodeURIComponent(to);
-    const url = fromQ
-      ? `https://yandex.ru/maps/?rtext=${fromQ}~${toQ}&rtt=auto`
-      : `https://yandex.ru/maps/?text=${toQ}`;
-    Linking.openURL(url).catch(() => toast(t('send_error'), 'error'));
+  const openDealMap = () => {
+    if (!dealId) return;
+    navigation.navigate('TrackTruck', {
+      dealId,
+      from: deal?.from_city,
+      to: deal?.to_city,
+      driverName: deal?.counterparty_name || resolvedPartner?.name,
+      driverOnline: partnerOnline,
+      viewerRole: role,
+    });
   };
 
   // QA-аудит P0 (silent message loss): раньше все три send-пути были под
@@ -1324,7 +1320,7 @@ export default function ChatScreen({ navigation, route }) {
             <TouchableOpacity
               testID="deal-open-driver-route"
               style={s.driverRouteBtn}
-              onPress={openDriverRoute}
+              onPress={openDealMap}
               accessibilityLabel={t('open_route_btn')}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -1350,11 +1346,7 @@ export default function ChatScreen({ navigation, route }) {
             <>
               {isShipperSide && ['in_progress', 'at_border', 'delivered'].includes(deal?.status) ? (
                 <TouchableOpacity testID="deal-track-truck" style={s.dealMapCard}
-                  onPress={() => navigation.navigate('TrackTruck', {
-                    dealId, from: deal?.from_city, to: deal?.to_city,
-                    driverName: deal?.counterparty_name || resolvedPartner?.name,
-                    driverOnline: partnerOnline,
-                  })}>
+                  onPress={openDealMap}>
                   {hasMapPreviewPoint ? (
                     <>
                       <TruckMap
@@ -1362,15 +1354,15 @@ export default function ChatScreen({ navigation, route }) {
                         lng={mapPreviewLng}
                         title={deal?.counterparty_name || resolvedPartner?.name || t('track_truck_marker')}
                       />
-                      <View style={s.dealMapOverlayTop} pointerEvents="none">
+                      <View style={s.dealMapOverlayTop} pointerEvents="box-none">
                         <View style={s.dealMapPill}>
                           <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#168759' }} />
                           <Text style={s.dealMapPillText} numberOfLines={1}>{t('live_route_title')}</Text>
                         </View>
-                        <View style={s.dealMapOpenPill}>
+                        <TouchableOpacity style={s.dealMapOpenPill} onPress={openDealMap} accessibilityLabel={t('track_truck_btn')}>
                           <Feather name="maximize-2" size={12} color={v1.text} />
                           <Text style={s.dealMapOpenText}>{t('track_truck_btn')}</Text>
-                        </View>
+                        </TouchableOpacity>
                       </View>
                       <View style={s.dealMapFooter} pointerEvents="none">
                         <Text style={s.dealMapFooterText} numberOfLines={1}>{mapUpdatedText}</Text>
@@ -1381,10 +1373,10 @@ export default function ChatScreen({ navigation, route }) {
                       <Feather name="navigation" size={34} color={v1.textMuted} />
                       <Text style={s.dealMapEmptyTitle}>{dealLocation.loading ? '…' : t('track_truck_waiting')}</Text>
                       <Text style={s.dealMapEmptyDesc}>{t('tracking_starts_after_start')}</Text>
-                      <View style={s.dealMapOpenPill}>
+                      <TouchableOpacity style={s.dealMapOpenPill} onPress={openDealMap} accessibilityLabel={t('track_truck_btn')}>
                         <Feather name="maximize-2" size={12} color={v1.text} />
                         <Text style={s.dealMapOpenText}>{t('track_truck_btn')}</Text>
-                      </View>
+                      </TouchableOpacity>
                     </View>
                   )}
                 </TouchableOpacity>
