@@ -53,7 +53,16 @@ const asPoint = (p) => {
   return Number.isFinite(lat) && Number.isFinite(lng) ? [lat, lng] : null;
 };
 
-export default function TruckMap({ lat, lng, title, routePoints = [], planned = false }) {
+export default function TruckMap({
+  lat,
+  lng,
+  title,
+  routePoints = [],
+  planned = false,
+  plannedTitle = 'Route',
+  plannedHint = 'GPS will appear automatically',
+  liveTitle = 'Live location',
+}) {
   const hostRef = React.useRef(null);
   const mapRef = React.useRef(null);
   const objectsRef = React.useRef([]);
@@ -156,18 +165,19 @@ export default function TruckMap({ lat, lng, title, routePoints = [], planned = 
   if (failed) {
     return (
       <View style={s.fallback}>
-        <Text style={s.fallbackTitle}>UrTruck Map</Text>
-        <Text style={s.fallbackText}>{title || (planned ? 'Маршрут сделки' : 'Карта временно недоступна')}</Text>
+        <Text style={s.fallbackTitle}>{planned ? plannedTitle : liveTitle}</Text>
+        <Text style={s.fallbackText}>{title || plannedHint}</Text>
       </View>
     );
   }
 
+  const showPlanned = planned && !livePoint;
   return (
     <View style={s.shell}>
       <View ref={hostRef} style={s.map} testID="truck-map-web" />
       <View pointerEvents="none" style={s.badge}>
-        <Text style={s.badgeTitle}>{planned && !livePoint ? 'Маршрут сделки' : 'Машина на маршруте'}</Text>
-        <Text style={s.badgeText}>{planned && !livePoint ? 'GPS появится здесь автоматически' : (title || 'UrTruck')}</Text>
+        <Text style={s.badgeTitle}>{showPlanned ? plannedTitle : liveTitle}</Text>
+        <Text style={s.badgeText}>{showPlanned ? plannedHint : (title || liveTitle)}</Text>
       </View>
     </View>
   );
