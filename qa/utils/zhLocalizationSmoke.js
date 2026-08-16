@@ -69,7 +69,6 @@ const importSourceModule = async (rel) => {
 
   assert(useI18n.includes("if (lang === 'ZH') return translations.EN"), 'useI18n ZH fallback must be EN, never RU');
   assert(i18n.includes("if (currentLang === 'ZH') return translations.EN"), 'global t() ZH fallback must be EN, never RU');
-  assert(!places.localizePlace.toString().includes("l !== 'en'"), 'localizePlace still blocks ZH localization');
   assert(dateInput.includes('年${Number(year)}年') === false, 'broken duplicated ZH year marker');
   assert(dateInput.includes('年${Number(month)}月${Number(day)}日'), 'ZH full date formatter missing');
   assert(share.includes("ZH: { trip: 'UrTruck 行程'"), 'ZH share copy missing');

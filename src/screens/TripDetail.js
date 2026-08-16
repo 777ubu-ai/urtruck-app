@@ -916,7 +916,7 @@ export default function TripDetail({ navigation, route }) {
       {myActiveBid && !dealStatus && !isOwner ? (
         <View style={[s.myBidCard, { borderColor: v1Accent.main, backgroundColor: v1.card }]} testID="trip-my-active-bid">
           <View style={s.myBidHeader}>
-            <Text style={[s.myBidLabel, { color: v1.textMuted }]}>{t('my_bid_label') || 'Моя ставка'}</Text>
+            <Text style={[s.myBidLabel, { color: v1.textMuted }]}>{t('my_bid_label')}</Text>
             <Text style={[s.myBidAmount, { color: v1Accent.main }]}>
               {(() => {
                 const cur = (myActiveBid.currency || trip.currency || 'USD').toUpperCase();
