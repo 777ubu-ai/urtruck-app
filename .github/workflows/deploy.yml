@@ -62,6 +62,7 @@ jobs:
           set -euo pipefail
           node tests/frontend/test_yandex_map_primary.mjs
           node tests/frontend/test_deal_room_auto_map.mjs
+          node tests/frontend/test_shipper_inprogress_auto_map.mjs
 
       - name: Release gate passed
         run: echo "URTRUCK_RELEASE_GATE=success"
