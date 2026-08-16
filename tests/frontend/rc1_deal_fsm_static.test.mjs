@@ -4,6 +4,8 @@ import fs from 'node:fs';
 
 const src = fs.readFileSync('src/screens/ChatScreen.js', 'utf8');
 const trackSrc = fs.readFileSync('src/screens/TrackTruckScreen.js', 'utf8');
+const webMapSrc = fs.readFileSync('src/components/TruckMap.web.js', 'utf8');
+const geoSrc = fs.readFileSync('src/utils/geo.js', 'utf8');
 
 test('shipper cannot mark an in-progress trip delivered', () => {
   assert.doesNotMatch(src, /isShipperSide\s*&&\s*\(deal\.status === 'in_progress'/);
@@ -58,4 +60,20 @@ test('driver opens the internal deal map without leaving UrTruck', () => {
   assert.match(src, /navigation\.navigate\('TrackTruck'/);
   assert.match(src, /viewerRole: role/);
   assert.doesNotMatch(trackSrc, /Linking\.openURL/);
+});
+
+test('deal route map is visible before first GPS point', () => {
+  assert.match(trackSrc, /testID="track-planned-map"/);
+  assert.match(trackSrc, /parseRouteCities/);
+  assert.match(trackSrc, /routePoints=\{routePoints\}/);
+  assert.match(trackSrc, /plannedTitle=\{t\('planned_route_title'\)\}/);
+  assert.doesNotMatch(trackSrc, /: !loc \? \(\s*<View style=\{s\.empty\}>/s);
+});
+
+test('web deal map uses a real in-app basemap and the Bakhty-Chuguchak route is resolvable', () => {
+  assert.match(webMapSrc, /tile\.openstreetmap\.org/);
+  assert.match(webMapSrc, /L\.polyline\(route/);
+  assert.match(webMapSrc, /OpenStreetMap contributors/);
+  assert.match(geoSrc, /'Бахты': \[46\.7500, 82\.7000\]/);
+  assert.match(geoSrc, /'Чугучак': \[46\.7450, 82\.9860\]/);
 });
