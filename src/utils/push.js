@@ -71,11 +71,19 @@ export const push = {
     return Notification.permission; // 'default' | 'granted' | 'denied'
   },
 
-  async subscribe() {
+  async subscribe(options = {}) {
     if (!this.isSupported()) return { ok: false, reason: 'unsupported' };
 
-    // 1. Permission
+    // 1. Permission. Browser permission requests are user-gesture sensitive.
+    // App bootstrap must never call requestPermission() automatically: Huawei/
+    // Chromium-class browsers can ignore/block that prompt and the driver then
+    // never gets a bound web subscription. The explicit UI CTA passes
+    // requestPermission:true; background repair only re-binds granted access.
+    const requestPermission = options?.requestPermission === true;
     let perm = Notification.permission;
+    if (perm === 'default' && !requestPermission) {
+      return { ok: false, reason: 'permission_required' };
+    }
     if (perm === 'default') perm = await Notification.requestPermission();
     await storage.set(PUSH_ASKED, '1');
     if (perm !== 'granted') return { ok: false, reason: 'denied' };
@@ -347,7 +355,7 @@ export const push = {
 
   // ── Единый автозапуск: web.subscribe() если PWA, иначе registerNative() ──
   async autoRegister() {
-    if (this.isSupported()) return this.subscribe();
+    if (this.isSupported()) return this.subscribe({ requestPermission: false });
     if (this.isNative()) return this.registerNative();
     return { ok: false, reason: 'unsupported' };
   },

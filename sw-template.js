@@ -1,10 +1,10 @@
-// UrTruck Service Worker · v17 — network-first для HTML/JS, cache-first для статики,
+// UrTruck Service Worker · v18 — network-first для HTML/JS, cache-first для статики,
 // API never cached (otherwise stale demo cards survive deploys).
 // v16 (16.08.2026): full Chinese-localization release. Every frontend release that must
 // reach already-installed PWA clients bumps the cache epoch so the new bundle
 // cannot remain hidden behind an older service-worker cache.
-const CACHE = 'urtruck-v17-market';
-const STATIC_CACHE = 'urtruck-static-v17';
+const CACHE = 'urtruck-v18-market';
+const STATIC_CACHE = 'urtruck-static-v18';
 
 self.addEventListener('install', (e) => {
   self.skipWaiting();

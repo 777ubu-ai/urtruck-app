@@ -7,6 +7,7 @@ import { ThemeProvider, useTheme } from './src/utils/ThemeContext';
 import { AuthProvider, useAuth } from './src/utils/AuthContext';
 import { ToastProvider } from './src/components/Toast';
 import OfflineBanner from './src/components/OfflineBanner';
+import PushPermissionBanner from './src/components/PushPermissionBanner';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import AppNavigator from './src/navigation/AppNavigator';
 import { flushOutbox } from './src/utils/outbox';
@@ -256,6 +257,7 @@ function AppInner() {
     <SafeAreaProvider>
       <ToastProvider>
         <OfflineBanner />
+        <PushPermissionBanner enabled={hasToken} />
         <NavigationContainer
           ref={navRef}
           theme={navTheme}
