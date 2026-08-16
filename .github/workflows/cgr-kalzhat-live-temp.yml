@@ -1,0 +1,40 @@
+name: TEMP Kalzhat live inspect
+on:
+  push:
+    branches: [agent/fix-cgr-live-data-20260816]
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect current Kalzhat load data
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install -q beautifulsoup4
+          UA='UrTruck/1.0 (+https://urtruck.kz; partner-integration)'
+          curl -fsSL -A "$UA" 'https://cgr.qoldau.kz/ru/registry/checkpoint/list/222979531669000000/view' -o /tmp/k.html
+          curl -fsSL -A "$UA" 'https://cgr.qoldau.kz/ru/start' -o /tmp/start.html
+          python3 - <<'PY'
+          from bs4 import BeautifulSoup
+          import json,re
+          for fn in ['/tmp/k.html','/tmp/start.html']:
+              raw=open(fn,encoding='utf-8').read(); s=BeautifulSoup(raw,'html.parser')
+              print('\n===',fn,'===')
+              print('len',len(raw))
+              for h in s.find_all(['h3','h4','h5']):
+                  txt=' '.join(h.get_text(' ',strip=True).split())
+                  if 'Загруженность' in txt:
+                      print('HEADING',txt)
+                      p=h.parent
+                      print('PARENT_HTML',str(p)[:12000])
+              for el in s.find_all(True):
+                  attrs={k:v for k,v in el.attrs.items() if k.startswith('data-')}
+                  hay=(str(attrs)+' '+str(el.get('class',''))).lower()
+                  if attrs and any(k in hay for k in ['load','stat','square','chart','series']):
+                      print('DATA',el.name,attrs)
+              for inp in s.find_all('input'):
+                  if inp.get('value'):
+                      prev=' '.join(inp.parent.get_text(' ',strip=True).split()) if inp.parent else ''
+                      if 'доступ' in prev.lower() or 'брон' in prev.lower():
+                          print('BOOKING_INPUT',inp.attrs,'CTX',prev[:400])
+          PY
