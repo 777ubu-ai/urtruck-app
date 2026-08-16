@@ -5,6 +5,7 @@ const wrapper = fs.readFileSync('src/screens/QueueScreen.js', 'utf8');
 const screen = fs.readFileSync('src/screens/QueueScreenLazy.js', 'utf8');
 const lazyApi = fs.readFileSync('backend/api/borders_lazy.py', 'utf8');
 const detailService = fs.readFileSync('backend/cgr/checkpoint_detail_service.py', 'utf8');
+const scheduler = fs.readFileSync('backend/scheduler/cgr_jobs.py', 'utf8');
 const apiInit = fs.readFileSync('backend/api/__init__.py', 'utf8');
 const nav = fs.readFileSync('src/components/ui/v1/BottomNav.js', 'utf8');
 const i18n = fs.readFileSync('src/utils/i18n.js', 'utf8');
@@ -38,9 +39,13 @@ assert.ok(detailService.includes('nearest_premium'), 'Premium booking availabili
 assert.ok(detailService.includes('waiting_area_supported": False'), 'Unsupported per-checkpoint waiting-area count must not be fabricated');
 assert.ok(apiInit.includes('_borders_router.routes[0:0]'), 'Specific lazy routes must precede legacy /{border_id} matcher');
 
+assert.ok(!scheduler.includes('id="cgr_scoreboard"'), 'Periodic all-checkpoint scoreboard polling must be disabled');
+assert.ok(!scheduler.includes('scoreboard_service.fetch_and_store()'), 'Bootstrap must not fetch live data for every checkpoint');
+assert.ok(scheduler.includes('seed_checkpoints_from_cgr()'), 'Backend may seed lightweight checkpoint catalogue once');
+
 assert.ok(nav.includes("t('tab_border')"), 'Bottom navigation must label Queue route as Border');
 for (const marker of ["tab_border: 'Граница'", "tab_border: 'Шекара'", "tab_border: '边境'", "tab_border: 'Border'"]) {
   assert.ok(i18n.includes(marker), `Missing i18n marker: ${marker}`);
 }
 
-console.log('border dashboard smoke OK: local catalogue + tap-to-load CGR + booking calendar + 5m cache');
+console.log('border dashboard smoke OK: local catalogue + tap-to-load CGR + booking calendar + 5m cache + no background fan-out');
