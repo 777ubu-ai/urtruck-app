@@ -21,6 +21,7 @@ from database import cgr_dal
 
 from .client import cgr_client
 from .exceptions import CGRParseError
+from . import checkpoint_catalog_service
 
 _CACHE_TTL_SEC = 5 * 60
 _cache: dict[str, tuple[float, dict]] = {}
@@ -64,31 +65,8 @@ def _checkpoint_links(page: str) -> dict[str, str]:
 
 
 async def _resolve_external_id(cp: dict) -> str:
-    code = str(cp["code"])
-    if code in _external_id_cache:
-        return _external_id_cache[code]
-
-    name = str(cp.get("name_ru") or "")
-    if name in _KNOWN_IDS:
-        external_id = _KNOWN_IDS[name]
-        _external_id_cache[code] = external_id
-        return external_id
-
-    stored = cp.get("cgr_external_id")
-    if stored:
-        external_id = str(stored)
-        _external_id_cache[code] = external_id
-        return external_id
-
-    country = str(cp.get("country_to") or "").upper()
-    country_filter = _COUNTRY_FILTER.get(country)
-    page = await cgr_client.fetch_checkpoint_list(country_code=country_filter)
-    links = _checkpoint_links(page)
-    external_id = links.get(name)
-    if not external_id:
-        raise CGRParseError(f"CGR checkpoint id not found for {name}")
-    _external_id_cache[code] = external_id
-    return external_id
+    """Resolve the exact public CGR checkpoint id from the complete directory."""
+    return await checkpoint_catalog_service.resolve_external_id(cp)
 
 
 def _parse_total_records(page: str) -> int:

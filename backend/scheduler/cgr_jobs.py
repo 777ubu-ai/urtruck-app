@@ -43,10 +43,10 @@ async def _bootstrap_job():
     Do NOT fetch current queue/booking data here. Those are loaded per checkpoint
     after an explicit driver tap and cached by checkpoint_detail_service.
     """
-    from cgr import scoreboard_service
+    from cgr import checkpoint_catalog_service
     try:
-        seeded = await scoreboard_service.seed_checkpoints_from_cgr()
-        logger.info("cgr.scheduler: bootstrap catalog seeded=%s (live fetch deferred until tap)", seeded)
+        seeded = await checkpoint_catalog_service.seed_full_catalog()
+        logger.info("cgr.scheduler: full catalog seeded=%s (live fetch deferred until tap)", seeded)
     except Exception:
         logger.exception("cgr.scheduler: bootstrap crashed")
 

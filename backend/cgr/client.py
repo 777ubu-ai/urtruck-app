@@ -84,14 +84,25 @@ class CGRClient:
         return r
 
     # --- High-level helpers (Поток А, публичные реестры) ---
-    async def fetch_checkpoint_list(self, country_code: str | None = None) -> str:
+    async def fetch_checkpoint_list(
+        self,
+        country_code: str | None = None,
+        page: int = 1,
+    ) -> str:
         """Справочник погранпереходов /ru/registry/checkpoint/list (HTML).
 
-        country_code — значение фильтра flBorderCountry (x045=Китай, x181=Россия,
-        x225=Узбекистан, x109=Кыргызстан, x210=Туркменистан) для авторитетной
-        привязки страны-соседа.
+        CGR paginates the directory (currently 4 pages / 51 records), so callers
+        must explicitly walk ``p`` until no new checkpoint rows appear.
+
+        ``country_code`` is the optional ``flBorderCountry`` reference value
+        (x045=China, x181=Russia, x225=Uzbekistan, x109=Kyrgyzstan,
+        x210=Turkmenistan).  The authoritative full-catalogue seed intentionally
+        does not depend on those filters; it reads the country shown on each
+        checkpoint card instead.
         """
-        params = {"flBorderCountry": country_code} if country_code else None
+        params: dict[str, Any] = {"p": max(1, int(page))}
+        if country_code:
+            params["flBorderCountry"] = country_code
         r = await self.get("/ru/registry/checkpoint/list", params=params)
         return r.text
 

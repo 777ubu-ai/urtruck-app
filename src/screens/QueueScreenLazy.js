@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Linking,
@@ -21,7 +21,7 @@ import { storage } from '../utils/storage';
 const BASE = `${API_BASE}/borders`;
 const FAVORITES_KEY = 'ur_border_favorites_v2';
 const DEFAULT_COUNTRY = 'CN';
-const COUNTRY_ORDER = ['CN', 'KG', 'RU', 'UZ', 'TM'];
+const COUNTRY_ORDER = ['CN', 'KG', 'RU', 'UZ', 'TM', 'CASPIAN'];
 
 const COUNTRY = {
   CN: { flag: '🇨🇳', RU: 'Китай', KK: 'Қытай', EN: 'China', ZH: '中国' },
@@ -29,6 +29,7 @@ const COUNTRY = {
   RU: { flag: '🇷🇺', RU: 'Россия', KK: 'Ресей', EN: 'Russia', ZH: '俄罗斯' },
   UZ: { flag: '🇺🇿', RU: 'Узбекистан', KK: 'Өзбекстан', EN: 'Uzbekistan', ZH: '乌兹别克斯坦' },
   TM: { flag: '🇹🇲', RU: 'Туркменистан', KK: 'Түрікменстан', EN: 'Turkmenistan', ZH: '土库曼斯坦' },
+  CASPIAN: { flag: '⚓️', RU: 'Каспий', KK: 'Каспий', EN: 'Caspian', ZH: '里海' },
 };
 
 const COPY = {
@@ -138,6 +139,8 @@ export default function QueueScreenLazy({ navigation, route }) {
   const [plate, setPlate] = useState('');
   const [lookup, setLookup] = useState(null);
   const [lookupLoading, setLookupLoading] = useState(false);
+  const checkpointCarouselRef = useRef(null);
+  const checkpointCarouselX = useRef(0);
 
   const countryName = useCallback((code) => {
     const meta = COUNTRY[code] || { flag: '🌐', RU: code, KK: code, EN: code, ZH: code };
@@ -199,6 +202,14 @@ export default function QueueScreenLazy({ navigation, route }) {
     setSelectedCountry(code);
     setSelectedId(null);
     setLiveError('');
+    checkpointCarouselX.current = 0;
+    checkpointCarouselRef.current?.scrollTo({ x: 0, animated: false });
+  }, []);
+
+  const scrollCheckpointCarousel = useCallback(() => {
+    const nextX = checkpointCarouselX.current + 300;
+    checkpointCarouselRef.current?.scrollTo({ x: nextX, animated: true });
+    checkpointCarouselX.current = nextX;
   }, []);
 
   const toggleFavorite = useCallback(async () => {
@@ -260,13 +271,23 @@ export default function QueueScreenLazy({ navigation, route }) {
             <Text style={[styles.sectionTitle, { color: theme.text }]}>{L.choose}</Text>
             <Text style={[styles.hint, { color: theme.textDim }]}>{L.hint}</Text>
           </View>
-          <Feather name="chevrons-right" size={19} color={theme.textDim} />
+          <TouchableOpacity onPress={scrollCheckpointCarousel} style={styles.carouselNext} accessibilityLabel={L.hint} testID="border-checkpoint-next">
+            <Feather name="chevrons-right" size={21} color="#168759" />
+          </TouchableOpacity>
         </View>
 
         {catalogLoading ? (
           <View style={styles.center}><ActivityIndicator color="#168759" /></View>
         ) : (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carousel} testID="border-checkpoint-carousel">
+          <ScrollView
+            ref={checkpointCarouselRef}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.carousel}
+            onScroll={(event) => { checkpointCarouselX.current = event.nativeEvent.contentOffset.x; }}
+            scrollEventThrottle={16}
+            testID="border-checkpoint-carousel"
+          >
             {visible.map((cp) => {
               const active = String(selectedId) === String(cp.id);
               const loaded = liveById[String(cp.id)];
@@ -444,6 +465,7 @@ const styles = StyleSheet.create({
   countryChip: { minHeight: 38, borderWidth: 1, borderRadius: 20, paddingHorizontal: 13, alignItems: 'center', justifyContent: 'center' },
   countryText: { fontSize: 13, fontWeight: '700' },
   selectorHead: { flexDirection: 'row', alignItems: 'center', marginTop: 18, marginBottom: 10 },
+  carouselNext: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EAF8F1' },
   sectionTitle: { fontSize: 17, fontWeight: '850' },
   sectionTitleSmall: { fontSize: 15, fontWeight: '850' },
   hint: { fontSize: 12, lineHeight: 17, marginTop: 3, paddingRight: 12 },
