@@ -17,6 +17,8 @@ import GradientText from '../components/GradientText';
 import HelpButton from '../components/HelpButton';
 import { API_BASE } from '../config/env';
 import { IS_BETA } from '../config/supabase';
+import AppConfirmModal from '../components/ui/AppConfirmModal';
+import { localizePlace } from '../utils/places';
 
 const LANGS = [
   { code: 'RU', flag: '🇷🇺', name: 'Русский' },
@@ -59,22 +61,6 @@ const APP_VERSION_LABEL = (() => {
   }
 })();
 
-// Stage 26: confirm() теперь принимает локализованные кнопки и
-// нормальный message (раньше message был жёстко "?", а cancel был
-// "✕"). Все три параметра title/msg/labels должны проходить через
-// i18n, помойте, без литералов.
-const confirm = (title, msg, onOk, cancelLabel = 'Отмена', confirmLabel = 'OK') => {
-  if (Platform.OS === 'web') {
-    if (typeof window === 'undefined' || !window.confirm) { onOk(); return; }
-    if (window.confirm(title + (msg ? '\n\n' + msg : ''))) onOk();
-  } else {
-    Alert.alert(title, msg || '', [
-      { text: cancelLabel, style: 'cancel' },
-      { text: confirmLabel, onPress: onOk },
-    ]);
-  }
-};
-
 export default function ProfileScreen({ navigation, route }) {
   const { role } = route.params || {};
   const isDriver = role === 'driver';
@@ -104,6 +90,9 @@ export default function ProfileScreen({ navigation, route }) {
   const { session, signOut, verificationLevel } = useAuth();
   const [profile, setProfile] = useState(getProfile(session?.user?.id) || {});
   const [lang, setLang] = useState(getLanguage());
+  const [confirmDialog, setConfirmDialog] = useState(null);
+  const askConfirm = useCallback((title, message = '', confirmLabel = t('confirm')) => new Promise((resolve) => setConfirmDialog({ title, message, confirmLabel, resolve })), [t]);
+  const settleConfirm = useCallback((answer) => { setConfirmDialog((current) => { current?.resolve?.(answer); return null; }); }, []);
 
   // HOT-001: Подтягиваем имя/город с сервера при КАЖДОМ открытии (focus).
   // Так изменения из EditProfile сразу видны после goBack().
@@ -199,7 +188,7 @@ export default function ProfileScreen({ navigation, route }) {
         // дефолт 'importer' → у каждого клиента висел ложный «Прямой импортёр»,
         // хотя поле нигде не сохраняется (решение владельца 2026-06-13: убрать).
         profile.company_type ? t(profile.company_type) : null,
-        profile.city,
+        localizePlace(profile.city, uiLang),
       ].filter(Boolean).join(' · ');
 
   const phoneRoleLine = `${session?.user?.phone || ''} · ${isDriver ? t('role_driver') : t('role_shipper')}`;
@@ -548,24 +537,17 @@ export default function ProfileScreen({ navigation, route }) {
 
         <TouchableOpacity
           style={s.logoutBtn}
-          onPress={() => confirm(
-            t('logout_title') || t('logout'),
-            t('logout_message'),
-            async () => {
-              // signOut() (async) чистит session+hasToken → AppNavigator
-              // реактивно переключает на неавторизованный стек. Прежний
-              // navigation.reset({OnboardingV2}) бил в маршрут, которого нет в
-              // authenticated-стеке → красный тост «RESET not handled». Убран.
-              try { await signOut(); } catch {}
-            },
-            t('cancel') || 'Отмена',
-            t('logout_confirm') || t('logout'),
-          )}
+          onPress={async () => {
+            const ok = await askConfirm(t('logout_title') || t('logout'), t('logout_message'), t('logout_confirm') || t('logout'));
+            if (!ok) return;
+            try { await signOut(); } catch {}
+          }}
           testID="profile-logout"
         >
           <Text style={s.logoutText}>{t('logout')}</Text>
         </TouchableOpacity>
       </ScrollView>
+      <AppConfirmModal visible={!!confirmDialog} title={confirmDialog?.title} message={confirmDialog?.message} cancelLabel={t('cancel')} confirmLabel={confirmDialog?.confirmLabel || t('confirm')} onCancel={() => settleConfirm(false)} onConfirm={() => settleConfirm(true)} testID="profile-confirm-modal" />
     </SafeAreaView>
   );
 }

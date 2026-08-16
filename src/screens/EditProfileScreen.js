@@ -14,6 +14,8 @@ import { useDraft, clearDraft } from '../utils/useDraft';
 import { regAPI } from '../utils/registration';
 import { uploadProDoc } from '../utils/proDocs';
 import {v1Colors, useV1Colors, v1Spacing, v1Typography, v1AccentFor, v1Radius} from '../theme/designV1';
+import AppConfirmModal from '../components/ui/AppConfirmModal';
+import { localizePlace } from '../utils/places';
 
 const BORDERS = ['Нур Жолы', 'Калжат', 'Достык', 'Бахты', 'Майкапчагай', 'Хоргос'];
 
@@ -96,10 +98,13 @@ export default function EditProfileScreen({ navigation, route }) {
   const isDriver = role === 'driver';
   const accent = v1AccentFor(role);
   const accentKey = isDriver ? 'driver' : 'cargo';
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { session, signOut } = useAuth();
   const { toast } = useToast();
   const [deleting, setDeleting] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState(null);
+  const askConfirm = (title, message = '', confirmLabel = t('confirm'), destructive = false) => new Promise((resolve) => setConfirmDialog({ title, message, confirmLabel, destructive, resolve }));
+  const settleConfirm = (answer) => { setConfirmDialog((current) => { current?.resolve?.(answer); return null; }); };
 
   const userId = session?.user?.id;
   const profile = getProfile(userId) || {};
@@ -314,20 +319,9 @@ export default function EditProfileScreen({ navigation, route }) {
     }
   };
 
-  const confirmDeleteAccount = () => {
-    const title = t('delete_account_title') || 'Удалить аккаунт?';
-    const msg = t('delete_account_confirm') ||
-      'Все ваши данные будут удалены безвозвратно. Это действие нельзя отменить.';
-    if (Platform.OS === 'web') {
-      if (typeof window !== 'undefined' && window.confirm(`${title}\n\n${msg}`)) {
-        doDeleteAccount();
-      }
-      return;
-    }
-    Alert.alert(title, msg, [
-      { text: t('cancel') || 'Отмена', style: 'cancel' },
-      { text: t('delete_account_btn') || 'Удалить', style: 'destructive', onPress: doDeleteAccount },
-    ]);
+  const confirmDeleteAccount = async () => {
+    const ok = await askConfirm(t('delete_account_title'), t('delete_account_confirm'), t('delete_account_btn'), true);
+    if (ok) doDeleteAccount();
   };
 
   return (
@@ -510,7 +504,7 @@ export default function EditProfileScreen({ navigation, route }) {
                     onPress={() => toggleBorder(b)}
                     activeOpacity={0.7}
                   >
-                    <Text style={[s.borderChipText, { color: active ? accent.main : v1.textMuted }]}>{b}</Text>
+                    <Text style={[s.borderChipText, { color: active ? accent.main : v1.textMuted }]}>{localizePlace(b, lang)}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -607,6 +601,7 @@ export default function EditProfileScreen({ navigation, route }) {
           <Text style={s.deleteText}>{t('delete_account_action') || 'Удалить аккаунт'}</Text>
         )}
       </TouchableOpacity>
+      <AppConfirmModal visible={!!confirmDialog} title={confirmDialog?.title} message={confirmDialog?.message} cancelLabel={t('cancel')} confirmLabel={confirmDialog?.confirmLabel || t('confirm')} destructive={!!confirmDialog?.destructive} onCancel={() => settleConfirm(false)} onConfirm={() => settleConfirm(true)} testID="edit-profile-confirm-modal" />
     </Screen>
   );
 }
