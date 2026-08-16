@@ -1,0 +1,58 @@
+name: TEMP lazy CGR production verify
+on:
+  push:
+    branches: [agent/lazy-cgr-checkpoint-details-20260816]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify production lazy Border API
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://urtruck.kz'
+          echo '--- build ---'
+          build=$(curl -fsS --max-time 20 "$BASE/build-info.json")
+          echo "$build"
+          echo "$build" | grep -q '5409228ae15a01b5aa6d2136c46275a1fc2fd673'
+
+          echo '--- catalog ---'
+          curl -fsS --max-time 20 "$BASE/security/api/v1/borders/catalog" -o /tmp/catalog.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/catalog.json'))
+          print('lazy=', d.get('lazy'), 'cgr_requests=', d.get('cgr_requests'), 'count=', len(d.get('checkpoints',[])))
+          if d.get('lazy') is not True: raise SystemExit('catalog is not lazy')
+          if d.get('cgr_requests') != 0: raise SystemExit('catalog unexpectedly contacted CGR')
+          rows=d.get('checkpoints',[])
+          k=next((x for x in rows if 'Калжат' in (x.get('name') or '') and 'Дулаты' in (x.get('name') or '')), None)
+          if not k: raise SystemExit('Kalzhat checkpoint not found in production catalog')
+          print('Kalzhat catalog row:', k)
+          open('/tmp/kalzhat_code','w').write(str(k['code']))
+          PY
+
+          CODE=$(cat /tmp/kalzhat_code)
+          echo "--- Kalzhat live first: $CODE ---"
+          curl -fsS --max-time 35 "$BASE/security/api/v1/borders/live/$CODE?force=true" -o /tmp/live1.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/live1.json'))
+          print(json.dumps({k:d.get(k) for k in ['name','nearest_booking','nearest_booking_free','nearest_premium_booking','nearest_premium_free','current_board_count','daily_capacity','source_updated_at','cache_hit','cache_ttl_sec']}, ensure_ascii=False))
+          if d.get('source_type') != 'official': raise SystemExit('not official source')
+          if not d.get('booking_calendar'): raise SystemExit('booking calendar missing')
+          if d.get('daily_capacity') is None: raise SystemExit('daily capacity missing')
+          if d.get('nearest_booking') is None: raise SystemExit('nearest booking missing')
+          if d.get('nearest_booking_free') is None: raise SystemExit('nearest booking free slots missing')
+          PY
+
+          echo '--- Kalzhat live second (cache expected) ---'
+          curl -fsS --max-time 20 "$BASE/security/api/v1/borders/live/$CODE" -o /tmp/live2.json
+          python3 - <<'PY'
+          import json
+          a=json.load(open('/tmp/live1.json')); b=json.load(open('/tmp/live2.json'))
+          print('cache_hit=', b.get('cache_hit'), 'nearest=', b.get('nearest_booking'), 'free=', b.get('nearest_booking_free'))
+          if b.get('cache_hit') is not True: raise SystemExit('second call did not hit cache')
+          for k in ['nearest_booking','nearest_booking_free','current_board_count','daily_capacity']:
+              if a.get(k) != b.get(k): raise SystemExit(f'cache changed {k}: {a.get(k)} != {b.get(k)}')
+          print('PRODUCTION LAZY CGR VERIFY PASS')
+          PY
