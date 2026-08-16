@@ -531,6 +531,7 @@ export default function TripDetail({ navigation, route }) {
             dealId={dealId}
             dealStatus={dealStatus}
             driverName={trip.driverName}
+            role={role === 'client' || role === 'shipper' ? 'shipper' : 'driver'}
           />
         </View>
 
