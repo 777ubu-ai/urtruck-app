@@ -5,17 +5,22 @@ on:
     branches: [main]
   workflow_dispatch:
 
-jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest
-    # Stage 10: bumped from 15 → 30. The two earlier 25379847358
-    # runs were cancelled by the workflow timer at the 15-minute mark
-    # while scp was still uploading. Health-check window itself can
-    # consume up to ~150s on a cold uvicorn restart, which only
-    # leaves ~12 minutes for the two scp uploads — too tight on slow
-    # GitHub-runner ↔ server links.
-    timeout-minutes: 30
+# IMPORTANT: this workflow is now the production RELEASE GATE only.
+# The actual production writer is UrTruck Secure Production Deploy, which
+# starts via workflow_run after this gate succeeds. Keeping one writer removes
+# the race where two workflows copied different index.html/build-info files to
+# the same server and production intermittently served an older commit.
+concurrency:
+  group: urtruck-production-release
+  cancel-in-progress: false
 
+permissions:
+  contents: read
+
+jobs:
+  release-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,420 +34,33 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build web
-        run: npx expo export --platform web
-
-      - name: Bundle size guard
-        # Страж размера JS-бандла: для КЗ/Китая с медленным интернетом важно,
-        # чтобы приложение не разбухало незаметно (кто-то залил тяжёлую
-        # картинку/шрифт). Порог 12 МБ на самый большой JS-чанк — сейчас
-        # ~2.7 МБ, запас большой; предупреждаем, а не валим деплой.
-        run: |
-          MAXKB=12000
-          BIG=$(find dist/_expo/static/js -name '*.js' -printf '%s %p\n' 2>/dev/null | sort -rn | head -1)
-          SZ=$(echo "$BIG" | awk '{print int($1/1024)}')
-          echo "Крупнейший JS-чанк: ${SZ} КБ ($(echo "$BIG" | awk '{print $2}'))"
-          if [ "${SZ:-0}" -gt "$MAXKB" ]; then
-            echo "::warning::JS-бандл ${SZ} КБ превысил порог ${MAXKB} КБ — проверьте, не залили ли тяжёлый ассет."
-          fi
-
-      - name: Post-process (SW + manifest)
-        run: |
-          cp sw-template.js dist/sw.js
-          # Версия приложения в корень статики → https://urtruck.kz/.version.
-          # expo export не копирует корневой .version, поэтому кладём вручную,
-          # иначе номер сборки на сайте не обновляется после деплоя.
-          cp .version dist/.version
-          # Дубль версии в НЕ-dotfile: nginx на сервере отдаёт /.version → 403
-          # (deny на точечные файлы), поэтому проверяемый по HTTP путь — /version.txt.
-          cp .version dist/version.txt
-          # Legal pages (privacy/terms/support) — статические HTML вне SPA.
-          # Нужны для App Store / Google Play (рабочий URL политики).
-          mkdir -p dist/legal
-          cp web/legal/*.html dist/legal/
-          python3 <<'PY'
-          import re, json
-          with open('dist/index.html', 'r') as f:
-              html = f.read()
-          # Inject manifest + PWA meta
-          if '<link rel="manifest"' not in html:
-              html = html.replace('</head>', '<link rel="manifest" href="/manifest.json" />\n</head>')
-          # No-flash theme boot (P1 theme fix 2026-08): применяем сохранённую
-          # тему (ur_theme) СИНХРОННО в <head> ДО загрузки JS-бандла, чтобы
-          # cold-start в тёмной теме не мигал белым. Ручной выбор в приоритете,
-          # 'system'/'auto' → prefers-color-scheme. Держим #0F1512/#F6F8F7 в
-          # синхроне с DARK/LIGHT bg (designV1.js) и ThemeContext.applyWebChrome.
-          early_theme = '''<script>
-          (function(){try{
-            var t=localStorage.getItem('ur_theme');
-            var dark = t==='dark' || ((!t||t==='system'||t==='auto') && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
-            var bg = dark ? '#0F1512' : '#F6F8F7';
-            document.documentElement.setAttribute('data-theme', dark?'dark':'light');
-            document.documentElement.style.backgroundColor = bg;
-            var m=document.querySelector('meta[name="theme-color"]');
-            if(!m){m=document.createElement('meta');m.setAttribute('name','theme-color');document.head.appendChild(m);}
-            m.setAttribute('content', bg);
-          }catch(e){}})();
-          </script>'''
-          if 'ur_theme' not in html:
-              html = html.replace('</head>', early_theme + '\n</head>')
-
-          # Cache epoch has ONE source of truth: sw-template.js.
-          # This prevents a release from shipping CACHE=v16 while the HTML bootstrap
-          # still says v13, which can leave an already-open Safari/PWA client on an
-          # older JS bundle.  Every SW epoch bump now propagates automatically to the
-          # bootstrap localStorage guard and the registration URL.
-          with open('sw-template.js', 'r') as f:
-              sw_source = f.read()
-          epoch_match = re.search(r"const CACHE = 'urtruck-v(\d+)-market'", sw_source)
-          if not epoch_match:
-              raise RuntimeError('Cannot derive PWA cache epoch from sw-template.js')
-          sw_epoch = epoch_match.group(1)
-          bootstrap = f'''<script>
-          (async()=>{{
-            const V='v{sw_epoch}-market';
-            const cur=localStorage.getItem('ur_sw_v');
-            if(cur!==V){{
-              if('caches' in window){{const ks=await caches.keys();await Promise.all(ks.map(k=>caches.delete(k)))}}
-              if('serviceWorker' in navigator){{const regs=await navigator.serviceWorker.getRegistrations();await Promise.all(regs.map(r=>r.unregister()))}}
-              localStorage.setItem('ur_sw_v',V);
-              location.reload();
-              return;
-            }}
-            if('serviceWorker' in navigator){{
-              try{{
-                const reg=await navigator.serviceWorker.register('/sw.js?v={sw_epoch}');
-                if(reg.waiting){{reg.waiting.postMessage({{type:'SKIP_WAITING'}})}}
-                reg.addEventListener('updatefound',()=>{{
-                  const nw=reg.installing;
-                  nw&&nw.addEventListener('statechange',()=>{{
-                    if(nw.state==='installed'&&navigator.serviceWorker.controller){{
-                      nw.postMessage({{type:'SKIP_WAITING'}});
-                      setTimeout(()=>location.reload(),300)
-                    }}
-                  }})
-                }})
-              }}catch(e){{}}
-            }}
-          }})();
-          </script>'''
-          if 'ur_sw_v' not in html:
-              html = html.replace('</body>', bootstrap + '\n</body>')
-          with open('dist/index.html', 'w') as f:
-              f.write(html)
-          # Manifest
-          manifest = {
-              "name": "UrTruck · FTL Market",
-              "short_name": "UrTruck",
-              "start_url": "/",
-              "display": "standalone",
-              "background_color": "#F6F8F7",
-              "theme_color": "#F6F8F7",
-          }
-          with open('dist/manifest.json', 'w') as f:
-              json.dump(manifest, f)
-          PY
-
-      - name: Build-info marker (public commit proof)
-        # 05.08.2026: раньше не было способа публично доказать, какой именно
-        # коммит реально отдаёт production — только "CI зелёный" (что НЕ
-        # доказывает раскатку на клиенты, см. следующий шаг). /build-info.json
-        # публично проверяем в Health check и должны проверять руками при
-        # любом подозрении на устаревшую версию.
-        run: |
-          BUILT_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          cat > dist/build-info.json <<JSON
-          {"commit":"${GITHUB_SHA}","short":"${GITHUB_SHA::7}","built_at":"${BUILT_AT}","version":$(cat .version)}
-          JSON
-          cat dist/build-info.json
-
-      - name: Backup current production (rollback safety)
-        # 05.08.2026 (Фаза A выкладка): раньше CI-путь ничего не бэкапил перед
-        # перезаписью REMOTE_DIR/BACKEND_DIR — откатиться можно было только
-        # деплоем предыдущего коммита заново. Кладём таймстемп-копию ВНЕ
-        # web-корня (nginx её не отдаёт — не "доступна пользователям"),
-        # только для быстрого восстановления руками при необходимости.
-        # Не валим деплой, если бэкапить нечего (первый прогон и т.п.).
+      - name: Verify required Yandex Maps secret exists
         env:
-          SERVER_HOST: ${{ secrets.SERVER_HOST }}
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-          SERVER_PASS: ${{ secrets.SERVER_PASS }}
-          REMOTE_DIR: ${{ secrets.REMOTE_DIR || '/home/ubuntu/urtruck-app' }}
-          BACKEND_DIR: ${{ secrets.BACKEND_DIR || '/home/ubuntu/urtruck-security' }}
-        run: |
-          sudo apt-get install -y sshpass
-          STAMP=$(date -u +%Y%m%d-%H%M%S)-${GITHUB_SHA::7}
-          sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" "
-            mkdir -p ~/urtruck-rollback/frontend ~/urtruck-rollback/backend
-            [ -d '$REMOTE_DIR' ] && cp -a '$REMOTE_DIR' ~/urtruck-rollback/frontend/$STAMP || echo 'no existing frontend to back up'
-            [ -d '$BACKEND_DIR' ] && cp -a '$BACKEND_DIR' ~/urtruck-rollback/backend/$STAMP || echo 'no existing backend to back up'
-            cd ~/urtruck-rollback/frontend && ls -dt */ 2>/dev/null | tail -n +11 | xargs -r rm -rf
-            cd ~/urtruck-rollback/backend && ls -dt */ 2>/dev/null | tail -n +11 | xargs -r rm -rf
-            echo \"Backed up as $STAMP (kept last 10)\"
-          "
-          echo "ROLLBACK_STAMP=$STAMP" >> "$GITHUB_ENV"
-
-      - name: Deploy to server
-        env:
-          SERVER_HOST: ${{ secrets.SERVER_HOST }}
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-          SERVER_PASS: ${{ secrets.SERVER_PASS }}
-          REMOTE_DIR: ${{ secrets.REMOTE_DIR || '/home/ubuntu/urtruck-app' }}
-        run: |
-          sudo apt-get install -y sshpass
-          # 05.08.2026: expo export хеширует имена JS-чанков по контенту —
-          # каждый деплой добавляет НОВЫЙ файл, но scp -r никогда не удаляет
-          # старые. Годы простоя копятся orphan-бандлы в _expo/static/js/web/;
-          # если у какого-то клиента где-то намертво закэширован старый
-          # index.html со старым хешем, он тихо продолжает получать старый
-          # JS вместо честного 404. Чистим старые ассеты перед заливкой новых.
-          sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" "rm -rf '$REMOTE_DIR/_expo'"
-          sshpass -p "$SERVER_PASS" scp -C -o StrictHostKeyChecking=no -r dist/* "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/"
-          sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" "chmod -R 755 $REMOTE_DIR"
-
-      - name: Verify production filesystem (public-proof diagnostics)
-        # 05.08.2026: "CI зелёный" не доказывает, что реальный urtruck.kz
-        # отдаёт этот код — nginx мог смотреть в другую директорию, root мог
-        # быть не там, куда льёт scp. Печатаем РЕАЛЬНОЕ состояние сервера
-        # (какой root у активного server_name, что реально лежит на диске и
-        # с какими mtime) в лог этого джоба — читать через get_job_logs, не
-        # со слов CI-статуса.
-        env:
-          SERVER_HOST: ${{ secrets.SERVER_HOST }}
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-          SERVER_PASS: ${{ secrets.SERVER_PASS }}
-          REMOTE_DIR: ${{ secrets.REMOTE_DIR || '/home/ubuntu/urtruck-app' }}
-        run: |
-          sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" "
-            echo '--- nginx -T | grep -A25 urtruck.kz (active config for this server_name) ---'
-            (sudo -n nginx -T 2>/dev/null || nginx -T 2>/dev/null) | grep -B2 -A25 'server_name.*urtruck' || echo 'NOT FOUND in nginx -T (or no read permission — try sudo -n manually)'
-            echo
-            echo '--- readlink -f \$REMOTE_DIR (real path, resolves symlinks) ---'
-            readlink -f '$REMOTE_DIR'
-            echo
-            echo '--- ls -la \$REMOTE_DIR (top level, mtimes) ---'
-            ls -la '$REMOTE_DIR'
-            echo
-            echo '--- index.html mtime + bundle filenames referenced ---'
-            stat -c '%y %n' '$REMOTE_DIR/index.html'
-            grep -oE '_expo/static/js/web/index-[a-f0-9]+\.js' '$REMOTE_DIR/index.html'
-            echo
-            echo '--- build-info.json on disk ---'
-            cat '$REMOTE_DIR/build-info.json' 2>/dev/null || echo 'MISSING'
-            echo
-            echo '--- how many JS bundle files actually on disk (orphan check) ---'
-            ls -la '$REMOTE_DIR/_expo/static/js/web/' 2>/dev/null | grep '\.js$'
-          "
-
-      - name: Bootstrap secure backend environment (server-only)
-        # Security hardening made the API correctly refuse to start without a
-        # remote Storage key and a separate file-signing key.  Keep all secret
-        # values out of the repository and the browser: this step can only
-        # copy an already configured GitHub secret to the server, or preserve
-        # / migrate a legacy server-only variable.  It never prints a value.
-        env:
-          SERVER_HOST: ${{ secrets.SERVER_HOST }}
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-          SERVER_PASS: ${{ secrets.SERVER_PASS }}
-          BACKEND_DIR: ${{ secrets.BACKEND_DIR || '/home/ubuntu/urtruck-security' }}
-          # Optional.  If this GitHub Secret is absent, a pre-existing server
-          # key (including legacy SUPABASE_SERVICE_ROLE_KEY/SUPABASE_KEY) is
-          # used.  An absent key fails closed before PM2 is restarted.
-          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
         run: |
           set -euo pipefail
-          sudo apt-get install -y sshpass
-          umask 077
-          BOOTSTRAP_FILE="$(mktemp)"
-          trap 'rm -f "$BOOTSTRAP_FILE"' EXIT
-          # A temporary 0600 file avoids placing the secret in an SSH command
-          # line.  The remote copy is removed immediately after it is read.
-          printf 'SUPABASE_SERVICE_KEY=%s\n' "$SUPABASE_SERVICE_KEY" > "$BOOTSTRAP_FILE"
-          REMOTE_BOOTSTRAP="/tmp/urtruck-env-bootstrap-${GITHUB_RUN_ID}"
-          sshpass -p "$SERVER_PASS" scp -q -o StrictHostKeyChecking=no "$BOOTSTRAP_FILE" "$SERVER_USER@$SERVER_HOST:$REMOTE_BOOTSTRAP"
-          sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
-            "BACKEND_DIR='$BACKEND_DIR' REMOTE_BOOTSTRAP='$REMOTE_BOOTSTRAP' bash -s" <<'REMOTE'
+          test -n "${YANDEX_MAPS_JS_API_KEY:-}" || {
+            echo "::error::YANDEX_MAPS_JS_API_KEY is required for the UrTruck production map"
+            exit 1
+          }
+          echo "YANDEX_MAPS_SECRET=ok"
+
+      - name: Build production web with Yandex Maps
+        env:
+          EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
+        run: |
           set -euo pipefail
-          umask 077
-          trap 'rm -f "$REMOTE_BOOTSTRAP"' EXIT
-          ENV_FILE="$BACKEND_DIR/.env"
-          test -f "$ENV_FILE" || { echo '::error::Backend .env is missing on the server'; exit 1; }
+          npm run build:web
+          test -s dist/index.html
+          grep -q 'api-maps.yandex.ru/v3/' dist/index.html
+          grep -q 'lang=ru_RU' dist/index.html
+          echo "YANDEX_WEB_BUILD=ok"
 
-          get_env() {
-            local key="$1" file="$2"
-            sed -n "s/^${key}=//p" "$file" | tail -n 1
-          }
-          set_env() {
-            local key="$1" value="$2" tmp
-            test -n "$value" || return 0
-            tmp="$(mktemp "${ENV_FILE}.tmp.XXXXXX")"
-            awk -v key="$key" -v value="$value" '
-              BEGIN { found = 0 }
-              index($0, key "=") == 1 { print key "=" value; found = 1; next }
-              { print }
-              END { if (!found) print key "=" value }
-            ' "$ENV_FILE" > "$tmp"
-            chmod 600 "$tmp"
-            mv "$tmp" "$ENV_FILE"
-          }
-
-          # Do not replace a configured production value.  If this server used
-          # an older variable name, migrate it once without revealing it.
-          current_key="$(get_env SUPABASE_SERVICE_KEY "$ENV_FILE")"
-          if [ -z "$current_key" ]; then
-            legacy_key="$(get_env SUPABASE_SERVICE_ROLE_KEY "$ENV_FILE")"
-            [ -n "$legacy_key" ] || legacy_key="$(get_env SUPABASE_KEY "$ENV_FILE")"
-            incoming_key="$(get_env SUPABASE_SERVICE_KEY "$REMOTE_BOOTSTRAP")"
-            set_env SUPABASE_SERVICE_KEY "${legacy_key:-$incoming_key}"
-          fi
-          rm -f "$REMOTE_BOOTSTRAP"
-
-          # The public API URL is not a secret.  Preserve an existing value;
-          # use the URL already compiled into the UrTruck client only if the
-          # server had none.
-          [ -n "$(get_env SUPABASE_URL "$ENV_FILE")" ] || set_env SUPABASE_URL 'https://hchmnocoxjvtgdamcmmi.supabase.co'
-          set_env STORAGE_PROVIDER 'supabase'
-          [ -n "$(get_env SUPABASE_BUCKET "$ENV_FILE")" ] || set_env SUPABASE_BUCKET 'urtruck-docs'
-
-          # These keys are independent from Supabase and are generated on the
-          # server once.  They never leave the server or enter Git history.
-          [ "$(printf %s "$(get_env FILE_SIGNING_KEY "$ENV_FILE")" | wc -c)" -ge 32 ] || set_env FILE_SIGNING_KEY "$(openssl rand -hex 32)"
-          [ -n "$(get_env QA_AGENT_TOKEN "$ENV_FILE")" ] || set_env QA_AGENT_TOKEN "$(openssl rand -hex 32)"
-
-          # Fail closed before the new backend is copied/restarted.  Only
-          # presence/length is reported; values are never logged.
-          test -n "$(get_env SUPABASE_SERVICE_KEY "$ENV_FILE")" || { echo '::error::SUPABASE_SERVICE_KEY is absent both on server and in GitHub Secrets'; exit 1; }
-          test -n "$(get_env SUPABASE_URL "$ENV_FILE")" || { echo '::error::SUPABASE_URL is missing'; exit 1; }
-          test -n "$(get_env SUPABASE_BUCKET "$ENV_FILE")" || { echo '::error::SUPABASE_BUCKET is missing'; exit 1; }
-          [ "$(printf %s "$(get_env FILE_SIGNING_KEY "$ENV_FILE")" | wc -c)" -ge 32 ] || { echo '::error::FILE_SIGNING_KEY is too short'; exit 1; }
-          echo '✅ Secure backend environment is configured (secret values withheld)'
-          REMOTE
-
-      - name: Deploy backend
-        env:
-          SERVER_HOST: ${{ secrets.SERVER_HOST }}
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-          SERVER_PASS: ${{ secrets.SERVER_PASS }}
-          BACKEND_DIR: ${{ secrets.BACKEND_DIR || '/home/ubuntu/urtruck-security' }}
+      - name: Map regression contracts
         run: |
-          sshpass -p "$SERVER_PASS" scp -C -o StrictHostKeyChecking=no -r backend/* "$SERVER_USER@$SERVER_HOST:$BACKEND_DIR/"
-          sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" "source ~/.nvm/nvm.sh && pm2 restart urtruck-security-api"
+          set -euo pipefail
+          node --test tests/frontend/test_track_truck_embedded_map.mjs 2>/dev/null || \
+            node tests/frontend/test_track_truck_embedded_map.mjs
 
-      # Email SMTP настраивается НАПРЯМУЮ в $BACKEND_DIR/.env на сервере
-      # (провайдер выбирается там: Gmail SMTP / Resend / SES и т.д.). CI больше
-      # НЕ перезаписывает email-креды автоматически — раньше этот шаг вписывал
-      # Resend-ключ и затирал ручную Gmail-настройку при каждом деплое. Теперь
-      # email-конфиг — единственный источник истины в серверном .env.
-      - name: Email SMTP note (managed on server .env)
-        run: echo "Email SMTP управляется в BACKEND_DIR/.env на сервере; CI его не трогает (см. комментарий в workflow)."
-
-      - name: Health check
-        env:
-          # Public domain served by nginx, which proxies / → :8080 (web)
-          # and /security/* → :8001 (backend). The runner can't reach the
-          # private :8001 port directly (firewall), so we go through the
-          # public domain. Override with secret PUBLIC_BASE_URL if needed.
-          PUBLIC_BASE_URL: ${{ secrets.PUBLIC_BASE_URL || 'https://urtruck.kz' }}
-        run: |
-          set -e
-          # PM2 restart on a 0.7s shell + uvicorn warmup with face_recognition
-          # / dlib / opencv imports takes a while on the pilot box. Give the
-          # backend an unconditional warm-up window before probing, then up
-          # to ~2 minutes of retries (24 × 5s) for the JSON to come up.
-          echo "Waiting 25s for PM2 + nginx + python imports to settle…"
-          sleep 25
-
-          # --- Frontend: public bundle must serve a non-empty HTML ---
-          ok=0
-          for i in $(seq 1 12); do
-            body=$(curl -sS --max-time 10 "$PUBLIC_BASE_URL/" || true)
-            case "$body" in
-              *"<html"*|*"<!DOCTYPE"*|*"<!doctype"*) ok=1; break;;
-            esac
-            echo "frontend probe $i — empty/error, retrying"
-            sleep 5
-          done
-          if [ "$ok" != "1" ]; then
-            echo "::error::Frontend did not serve HTML at $PUBLIC_BASE_URL/"
-            exit 1
-          fi
-          echo "✅ Frontend OK"
-
-          # --- build-info.json must be publicly reachable and match this run's commit ---
-          # Единственная публичная (не только серверная) проверка "какой
-          # коммит реально отдаёт production" — curl с внешней стороны, как
-          # видит его пользователь, а не то, что лежит на диске сервера.
-          info=$(curl -fsS --max-time 10 "$PUBLIC_BASE_URL/build-info.json" || true)
-          echo "build-info.json: $info"
-          if ! echo "$info" | grep -q "\"${GITHUB_SHA}\""; then
-            echo "::error::/build-info.json does not contain this run's commit ${GITHUB_SHA} — production is NOT serving this build"
-            exit 1
-          fi
-          echo "✅ build-info.json OK — public commit matches ${GITHUB_SHA::7}"
-
-          # --- Backend: /security/api/v1/system/info must return JSON with otp field ---
-          ok=0
-          for i in $(seq 1 24); do
-            body=$(curl -fsS --max-time 10 "$PUBLIC_BASE_URL/security/api/v1/system/info" || true)
-            if echo "$body" | grep -q '"otp"'; then ok=1; break; fi
-            echo "backend probe $i — no otp field, retrying"
-            sleep 5
-          done
-          if [ "$ok" != "1" ]; then
-            echo "::error::Backend system/info did not return expected JSON at $PUBLIC_BASE_URL/security/api/v1/system/info"
-            exit 1
-          fi
-          echo "✅ Backend system/info OK"
-
-          # --- Marketplace cargos must return JSON with cargos field ---
-          ok=0
-          for i in $(seq 1 6); do
-            body=$(curl -fsS --max-time 10 "$PUBLIC_BASE_URL/security/api/v1/market/cargos?status=active&limit=1" || true)
-            if echo "$body" | grep -q '"cargos"'; then ok=1; break; fi
-            echo "cargos probe $i — missing 'cargos' field, retrying"
-            sleep 5
-          done
-          if [ "$ok" != "1" ]; then
-            echo "::error::cargos endpoint missing 'cargos' field"; exit 1
-          fi
-          echo "✅ Cargos list OK"
-
-          # --- Marketplace trips must return JSON with trips field ---
-          ok=0
-          for i in $(seq 1 6); do
-            body=$(curl -fsS --max-time 10 "$PUBLIC_BASE_URL/security/api/v1/market/trips?status=active&limit=1" || true)
-            if echo "$body" | grep -q '"trips"'; then ok=1; break; fi
-            echo "trips probe $i — missing 'trips' field, retrying"
-            sleep 5
-          done
-          if [ "$ok" != "1" ]; then
-            echo "::error::trips endpoint missing 'trips' field"; exit 1
-          fi
-          echo "✅ Trips list OK"
-
-          # --- Registration endpoints must EXIST after backend deploy ---
-          # Известный blind spot: фронт может уехать, а backend остаться
-          # старым → нужные роуты регистрации вернут 404. Проверяем, что
-          # они присутствуют (401/403/405/422 = роут есть; 404 = старый
-          # backend). Запросы пустые, без auth/секретов/PII.
-          REG_BASE="$PUBLIC_BASE_URL/security/api/v1"
-          reg_check() {
-            # $1 = method, $2 = path
-            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 -X "$1" "$REG_BASE$2" || true)
-            if [ "$code" = "404" ] || [ "$code" = "000" ]; then
-              echo "::error::registration route $2 returned $code (missing — backend not deployed?)"
-              return 1
-            fi
-            echo "✅ $2 ($code)"
-          }
-          reg_ok=1
-          reg_check POST  "/register/photo"             || reg_ok=0
-          reg_check POST  "/register/license-selfie"    || reg_ok=0
-          reg_check POST  "/register/vehicle-photo"     || reg_ok=0
-          reg_check POST  "/register/cabin-photo"       || reg_ok=0
-          reg_check POST  "/driver/registration/submit" || reg_ok=0
-          if [ "$reg_ok" != "1" ]; then
-            echo "::error::Registration endpoints missing after deploy — backend deploy incomplete"
-            exit 1
-          fi
-          echo "✅ Registration endpoints OK"
+      - name: Release gate passed
+        run: echo "URTRUCK_RELEASE_GATE=success"

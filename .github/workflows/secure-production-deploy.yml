@@ -1,9 +1,8 @@
 name: UrTruck Secure Production Deploy
 
 on:
-  # The legacy deploy still runs on pushes to main. This recovery deploy starts
-  # only after it finishes, so both workflows never race while we migrate the
-  # transport to the pinned SSH-key path.
+  # UrTruck Deploy is the release gate. Production is written only here and
+  # only after that gate succeeds, preventing competing frontend/backend copies.
   workflow_run:
     workflows: ["UrTruck Deploy"]
     types: [completed]
@@ -13,12 +12,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: urtruck-production-maintenance
+  group: urtruck-production-release
   cancel-in-progress: false
 
 jobs:
   deploy:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.head_branch == 'main'
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.conclusion == 'success') }}
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 35
@@ -36,7 +35,7 @@ jobs:
       PM2_PROC: urtruck-security-api
 
     steps:
-      - name: Checkout exact main commit that triggered deploy
+      - name: Checkout exact main commit that passed release gate
         uses: actions/checkout@v4
         with:
           ref: ${{ env.DEPLOY_SHA }}
@@ -50,8 +49,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build production web bundle
-        run: npm run build:web
+      - name: Build production web bundle with Yandex Maps
+        env:
+          EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY:-}" || {
+            echo "::error::YANDEX_MAPS_JS_API_KEY is required for production"
+            exit 1
+          }
+          npm run build:web
+          test -s dist/index.html
+          grep -q 'api-maps.yandex.ru/v3/' dist/index.html
+          grep -q 'lang=ru_RU' dist/index.html
+          echo 'YANDEX_WEB_BUILD=ok'
 
       - name: Prepare production PWA and build marker
         run: |
@@ -65,6 +76,7 @@ jobs:
             "$DEPLOY_SHA" "${DEPLOY_SHA::7}" "$BUILT_AT" "$(cat .version)" > dist/build-info.json
           test -s dist/index.html
           test -s dist/build-info.json
+          grep -q 'api-maps.yandex.ru/v3/' dist/index.html
 
       - name: Install SSH transport dependency
         run: |
@@ -95,7 +107,7 @@ jobs:
           set -euo pipefail
           bash scripts/deploy-ssh.sh ssh "rm -rf '$REMOTE_DIR/_expo'"
           bash scripts/deploy-ssh.sh scp -C -r dist/* "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/"
-          bash scripts/deploy-ssh.sh ssh "chmod -R 755 '$REMOTE_DIR'; test -s '$REMOTE_DIR/index.html'; test -s '$REMOTE_DIR/build-info.json'; echo FRONTEND_FILES=ok"
+          bash scripts/deploy-ssh.sh ssh "chmod -R 755 '$REMOTE_DIR'; test -s '$REMOTE_DIR/index.html'; test -s '$REMOTE_DIR/build-info.json'; grep -q 'api-maps.yandex.ru/v3/' '$REMOTE_DIR/index.html'; echo FRONTEND_FILES=ok"
 
       - name: Bootstrap secure server-only environment
         run: |
@@ -128,9 +140,14 @@ jobs:
           set -euo pipefail
           echo 'Waiting for nginx/browser-facing paths to settle...'
           sleep 10
-          info=$(curl --fail --silent --show-error --connect-timeout 5 --max-time 15 "$PUBLIC_BASE_URL/build-info.json")
+          info=$(curl --fail --silent --show-error --connect-timeout 5 --max-time 15 "$PUBLIC_BASE_URL/build-info.json?sha=${DEPLOY_SHA}")
           printf '%s\n' "$info" | grep -Fq "\"commit\":\"$DEPLOY_SHA\""
           echo "PRODUCTION_SHA=${DEPLOY_SHA::7}"
+
+          html=$(curl --fail --silent --show-error --connect-timeout 5 --max-time 15 "$PUBLIC_BASE_URL/?release=${DEPLOY_SHA}")
+          printf '%s\n' "$html" | grep -q 'api-maps.yandex.ru/v3/'
+          printf '%s\n' "$html" | grep -q 'lang=ru_RU'
+          echo 'YANDEX_MAP_PUBLIC=ok'
 
           system=$(curl --fail --silent --show-error --connect-timeout 5 --max-time 15 "$PUBLIC_BASE_URL/security/api/v1/system/info")
           printf '%s\n' "$system" | grep -q '"otp"'
