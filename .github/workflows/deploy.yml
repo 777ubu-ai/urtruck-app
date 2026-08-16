@@ -51,6 +51,7 @@ jobs:
         run: |
           set -euo pipefail
           npm run build:web
+          node scripts/injectYandexMaps.mjs
           test -s dist/index.html
           grep -q 'api-maps.yandex.ru/v3/' dist/index.html
           grep -q 'lang=ru_RU' dist/index.html
