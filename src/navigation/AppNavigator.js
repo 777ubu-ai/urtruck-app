@@ -23,6 +23,7 @@ import IdentityStepScreen from '../screens/registration/IdentityStepScreen';
 import CitizenshipScreen from '../screens/registration/CitizenshipScreen';
 import PremiumLoginScreen from '../screens/registration/PremiumLoginScreen';
 import FeedScreen from '../screens/FeedScreen';
+import CargoFeedScreen from '../screens/CargoFeedScreen';
 import CargoDetail from '../screens/CargoDetail';
 import TrackTruckScreen from '../screens/TrackTruckScreen';
 import DriverDetail from '../screens/DriverDetail';
@@ -123,7 +124,7 @@ function MainTabs({ route }) {
     >
       {isDriver ? (
         <>
-          <Tab.Screen name="Feed" component={FeedScreen} initialParams={{ role }} />
+          <Tab.Screen name="Feed" component={CargoFeedScreen} initialParams={{ role }} />
           <Tab.Screen name="MyWork" component={MyTripsScreen} initialParams={{ role }} />
           <Tab.Screen name="Queue" component={QueueScreen} initialParams={{ role }} />
           {/* «Сделки» (26.07.2026, волна 2 — водитель зеркалит клиента):
