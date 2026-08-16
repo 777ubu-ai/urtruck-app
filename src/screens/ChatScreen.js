@@ -29,6 +29,7 @@ import { DealRoomCard, SystemEventRow, DealQuickActions } from '../components/de
 import BargainCard from '../components/deal/BargainCard';
 import BidModal from '../components/BidModal';
 import DealAttachments from '../components/deal/DealAttachments';
+import TruckMap from '../components/TruckMap';
 import { pickDealStatus, userFacingDealStatus } from '../utils/dealStatusOrder';
 import { ensureBackgroundLocationPermission, getCurrentLocationPayload } from '../utils/backgroundLocation';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
@@ -82,6 +83,8 @@ const CHAT_PHOTO_ENABLED = true;
 // send с photoUrl=ключ), получатель играет по подписанному URL. Финальная
 // проверка записи/воспроизведения — на реальном устройстве.
 const CHAT_VOICE_ENABLED = true;
+const TRACKING_STATUSES = ['in_progress', 'at_border', 'delivered'];
+const DRIVER_ROUTE_STATUSES = ['accepted', 'in_progress', 'at_border', 'delivered'];
 
 export default function ChatScreen({ navigation, route }) {
   const v1 = useV1Colors();
@@ -116,10 +119,23 @@ export default function ChatScreen({ navigation, route }) {
   statusRowValue: { fontSize: 13, fontWeight: '800', flexShrink: 1, textAlign: 'right' },
   dealNextBtn: { borderRadius: 12, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', minHeight: 48, marginBottom: 8 },
   dealNextBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  driverRouteBtn: { borderRadius: 12, paddingVertical: 11, alignItems: 'center', justifyContent: 'center', minHeight: 46, marginBottom: 8, borderWidth: 1, borderColor: v1.border, backgroundColor: v1.surface },
+  driverRouteBtnText: { color: v1.text, fontSize: 14, fontWeight: '800' },
   dealCancelBtn: { borderRadius: 12, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 8, backgroundColor: 'rgba(239,68,68,0.10)' },
   dealCancelBtnText: { color: '#EF4444', fontSize: 13, fontWeight: '700' },
   dealTrackBtn: { borderRadius: 12, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 8, borderWidth: 1, borderColor: v1.border, backgroundColor: v1.surface },
   dealTrackBtnText: { color: v1.text, fontSize: 13, fontWeight: '700' },
+  dealMapCard: { height: 205, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: v1.border, backgroundColor: '#EAF1ED', marginBottom: 8 },
+  dealMapEmpty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18, gap: 7 },
+  dealMapEmptyTitle: { color: v1.text, fontSize: 15, fontWeight: '900', textAlign: 'center' },
+  dealMapEmptyDesc: { color: v1.textMuted, fontSize: 12, lineHeight: 17, textAlign: 'center' },
+  dealMapOverlayTop: { position: 'absolute', top: 10, left: 10, right: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  dealMapPill: { flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: '64%', paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.94)', borderWidth: 1, borderColor: v1.border },
+  dealMapPillText: { color: v1.text, fontSize: 12, fontWeight: '900' },
+  dealMapOpenPill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.94)', borderWidth: 1, borderColor: v1.border },
+  dealMapOpenText: { color: v1.text, fontSize: 12, fontWeight: '800' },
+  dealMapFooter: { position: 'absolute', left: 10, right: 10, bottom: 10, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.94)', borderWidth: 1, borderColor: v1.border },
+  dealMapFooterText: { color: v1.textMuted, fontSize: 11, fontWeight: '700' },
   trackingCard: { borderRadius: 12, borderWidth: 1, borderColor: v1.border, backgroundColor: v1.surface, padding: 12, marginBottom: 8, gap: 8 },
   trackingTitle: { color: v1.text, fontSize: 13, fontWeight: '900' },
   trackingHint: { color: v1.textMuted, fontSize: 12, lineHeight: 17 },
@@ -211,6 +227,7 @@ export default function ChatScreen({ navigation, route }) {
 
   }), [v1]);
   const { partner, role, cargoId, tripId, roomId: initialRoomId, dealId: dealIdParam, bidId } = route.params || {};
+  const isShipperSide = role === 'client' || role === 'shipper';
   // dealId — состояние: если чат открыт из «Чаты»/ставки (только roomId, без
   // dealId), достаём deal_id из комнаты, чтобы подгрузить сделку → появляются
   // маршрут в шапке и карточка сделки при ЛЮБОМ входе.
@@ -288,6 +305,7 @@ export default function ChatScreen({ navigation, route }) {
   const [deal, setDeal] = useState(null);
   const [dealEvents, setDealEvents] = useState([]);
   const [trackingLoading, setTrackingLoading] = useState(false);
+  const [dealLocation, setDealLocation] = useState({ loading: false, loc: null });
   // issue #4: когда в Chat пришёл только roomId (из карточки заказа/ставки),
   // partner в route может быть пустым → заголовок показывал «Собеседник».
   // Подтягиваем реального собеседника из enriched /chat/rooms по roomId.
@@ -641,6 +659,26 @@ export default function ChatScreen({ navigation, route }) {
     return () => { cancelled = true; };
   }, [roomId, dealId]);
 
+  useEffect(() => {
+    if (!dealId || !isShipperSide || !TRACKING_STATUSES.includes(deal?.status)) {
+      setDealLocation({ loading: false, loc: null });
+      return;
+    }
+    let cancelled = false;
+    const loadDealLocation = async () => {
+      setDealLocation((prev) => ({ ...prev, loading: !prev.loc }));
+      const r = await marketAPI.getDealLocation(dealId);
+      if (cancelled) return;
+      setDealLocation({
+        loading: false,
+        loc: r?.has_location && r.location ? r.location : null,
+      });
+    };
+    loadDealLocation();
+    const iv = setInterval(loadDealLocation, 10000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [dealId, isShipperSide, deal?.status]);
+
   const onCallSupport = async () => {
     try {
       await chatAPI.supportEscalate({ conversationId: roomId || null, reason: 'chat_cta' });
@@ -739,8 +777,6 @@ export default function ChatScreen({ navigation, route }) {
     setStatusLoading(false);
     return result;
   };
-  const isShipperSide = role === 'client' || role === 'shipper';
-
   // Для водителя это одно продуктовое действие: «Начать рейс». Запрос
   // системного разрешения выполняется внутри нажатия, без отдельной карточки
   // GPS в интерфейсе. Только после успешного разрешения сервер атомарно
@@ -757,8 +793,26 @@ export default function ChatScreen({ navigation, route }) {
     const result = await changeDealStatus('in_progress');
     if (result?.ok) {
       const firstPoint = await getCurrentLocationPayload();
-      if (firstPoint) await marketAPI.sendDealLocation(dealId, firstPoint);
+      if (firstPoint) {
+        await marketAPI.sendDealLocation(dealId, firstPoint);
+        setDealLocation({ loading: false, loc: firstPoint });
+      }
     }
+  };
+
+  const openDriverRoute = async () => {
+    const from = localizePlace(deal?.from_city || '', getLanguage());
+    const to = localizePlace(deal?.to_city || '', getLanguage());
+    if (!to || to === '—') {
+      toast(t('clarify_route'), 'error');
+      return;
+    }
+    const fromQ = encodeURIComponent(from || '');
+    const toQ = encodeURIComponent(to);
+    const url = fromQ
+      ? `https://yandex.ru/maps/?rtext=${fromQ}~${toQ}&rtt=auto`
+      : `https://yandex.ru/maps/?text=${toQ}`;
+    Linking.openURL(url).catch(() => toast(t('send_error'), 'error'));
   };
 
   // QA-аудит P0 (silent message loss): раньше все три send-пути были под
@@ -1120,6 +1174,20 @@ export default function ChatScreen({ navigation, route }) {
   // v1: emerald accent regardless of role for the chat header (it's a
   // 1:1 conversation, no role-driven asymmetry to encode visually).
   const v1Accent = v1AccentFor(role === 'client' || role === 'shipper' ? 'client' : 'driver');
+  const mapPreviewLoc = dealLocation.loc;
+  const mapPreviewLat = mapPreviewLoc ? Number(mapPreviewLoc.lat ?? mapPreviewLoc.latitude) : null;
+  const mapPreviewLng = mapPreviewLoc ? Number(mapPreviewLoc.lng ?? mapPreviewLoc.longitude) : null;
+  const hasMapPreviewPoint =
+    mapPreviewLat != null && mapPreviewLng != null &&
+    !Number.isNaN(mapPreviewLat) && !Number.isNaN(mapPreviewLng);
+  const mapUpdatedText = (() => {
+    if (!mapPreviewLoc?.updated_at) return t('tracking_live_here');
+    const ts = Date.parse(String(mapPreviewLoc.updated_at).replace(' ', 'T') + (String(mapPreviewLoc.updated_at).endsWith('Z') ? '' : 'Z'));
+    if (Number.isNaN(ts)) return t('tracking_live_here');
+    const min = Math.max(0, Math.round((Date.now() - ts) / 60000));
+    if (min === 0) return t('track_updated_now');
+    return `${t('track_updated')} ${min} ${t('track_min')} ${t('track_ago')}`;
+  })();
 
   return (
     <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top', 'bottom']}>
@@ -1252,6 +1320,19 @@ export default function ChatScreen({ navigation, route }) {
               </TouchableOpacity>
             );
           })()}
+          {role === 'driver' && DRIVER_ROUTE_STATUSES.includes(deal?.status) ? (
+            <TouchableOpacity
+              testID="deal-open-driver-route"
+              style={s.driverRouteBtn}
+              onPress={openDriverRoute}
+              accessibilityLabel={t('open_route_btn')}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="navigation" size={15} color={v1.text} />
+                <Text style={s.driverRouteBtnText}>{t('open_route_btn')}</Text>
+              </View>
+            </TouchableOpacity>
+          ) : null}
           {deal?.status === 'accepted' ? (
             <TouchableOpacity
               testID="deal-cancel-btn"
@@ -1268,16 +1349,44 @@ export default function ChatScreen({ navigation, route }) {
           {dealId && ['accepted', 'in_progress', 'at_border', 'delivered'].includes(deal?.status) ? (
             <>
               {isShipperSide && ['in_progress', 'at_border', 'delivered'].includes(deal?.status) ? (
-                <TouchableOpacity testID="deal-track-truck" style={s.dealTrackBtn}
+                <TouchableOpacity testID="deal-track-truck" style={s.dealMapCard}
                   onPress={() => navigation.navigate('TrackTruck', {
                     dealId, from: deal?.from_city, to: deal?.to_city,
                     driverName: deal?.counterparty_name || resolvedPartner?.name,
                     driverOnline: partnerOnline,
                   })}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Feather name="map-pin" size={14} color={v1.text} />
-                    <Text style={s.dealTrackBtnText}>{t('track_truck_btn')}</Text>
-                  </View>
+                  {hasMapPreviewPoint ? (
+                    <>
+                      <TruckMap
+                        lat={mapPreviewLat}
+                        lng={mapPreviewLng}
+                        title={deal?.counterparty_name || resolvedPartner?.name || t('track_truck_marker')}
+                      />
+                      <View style={s.dealMapOverlayTop} pointerEvents="none">
+                        <View style={s.dealMapPill}>
+                          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#168759' }} />
+                          <Text style={s.dealMapPillText} numberOfLines={1}>{t('live_route_title')}</Text>
+                        </View>
+                        <View style={s.dealMapOpenPill}>
+                          <Feather name="maximize-2" size={12} color={v1.text} />
+                          <Text style={s.dealMapOpenText}>{t('track_truck_btn')}</Text>
+                        </View>
+                      </View>
+                      <View style={s.dealMapFooter} pointerEvents="none">
+                        <Text style={s.dealMapFooterText} numberOfLines={1}>{mapUpdatedText}</Text>
+                      </View>
+                    </>
+                  ) : (
+                    <View style={s.dealMapEmpty}>
+                      <Feather name="navigation" size={34} color={v1.textMuted} />
+                      <Text style={s.dealMapEmptyTitle}>{dealLocation.loading ? '…' : t('track_truck_waiting')}</Text>
+                      <Text style={s.dealMapEmptyDesc}>{t('tracking_starts_after_start')}</Text>
+                      <View style={s.dealMapOpenPill}>
+                        <Feather name="maximize-2" size={12} color={v1.text} />
+                        <Text style={s.dealMapOpenText}>{t('track_truck_btn')}</Text>
+                      </View>
+                    </View>
+                  )}
                 </TouchableOpacity>
               ) : null}
             </>
