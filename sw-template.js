@@ -1,13 +1,12 @@
-// UrTruck Service Worker · v14 — network-first для HTML/JS, cache-first для статики,
+// UrTruck Service Worker · v15 — network-first для HTML/JS, cache-first для статики,
 // API never cached (otherwise stale demo cards survive deploys).
-// v14 (16.08.2026): approved cargo-feed release. Every frontend release that must
+// v15 (16.08.2026): compact cargo-feed release. Every frontend release that must
 // reach already-installed PWA clients bumps the cache epoch so the new bundle
 // cannot remain hidden behind an older service-worker cache.
-const CACHE = 'urtruck-v14-market';
-const STATIC_CACHE = 'urtruck-static-v14';
+const CACHE = 'urtruck-v15-market';
+const STATIC_CACHE = 'urtruck-static-v15';
 
 self.addEventListener('install', (e) => {
-  // Сразу активируем новый SW без ожидания закрытия вкладок
   self.skipWaiting();
 });
 
@@ -29,13 +28,8 @@ self.addEventListener('fetch', (e) => {
   if (request.method !== 'GET') return;
 
   const url = new URL(request.url);
-
-  // Any backend API call — always network, never cached. Without this,
-  // /api/v1/market/trips and similar JSON responses fall into the cache-first
-  // branch below and stale entries keep being served after backend cleanup.
   if (url.pathname.startsWith('/security/api/') || url.pathname.startsWith('/api/')) return;
 
-  // HTML и JS — network-first (чтобы обновлялся bundle без залипания)
   if (isHTMLorJS(url)) {
     e.respondWith(
       fetch(request)
@@ -51,7 +45,6 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // Картинки/шрифты/прочая статика — cache-first (быстро)
   e.respondWith(
     caches.match(request).then(cached => cached || fetch(request).then(r => {
       if (r && r.status === 200 && r.type === 'basic') {
@@ -63,7 +56,6 @@ self.addEventListener('fetch', (e) => {
   );
 });
 
-// Push notifications
 self.addEventListener('push', (event) => {
   let data = { title: 'UrTruck', body: 'Новое уведомление', icon: '/manifest.json' };
   try {

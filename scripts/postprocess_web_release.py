@@ -29,10 +29,10 @@ early_theme = r'''<script>
 if "ur_theme" not in html:
     html = html.replace("</head>", early_theme + "\n</head>")
 
-# Keep the epoch aligned with the current production SW. This script is deploy
-# infrastructure only; feature releases still bump the epoch when required.
-SW_EPOCH = os.environ.get("URTRUCK_SW_EPOCH", "v13-market")
-SW_QUERY = os.environ.get("URTRUCK_SW_QUERY", "13")
+# Keep the epoch aligned with the current production SW. Feature releases
+# bump the defaults here together with sw-template.js.
+SW_EPOCH = os.environ.get("URTRUCK_SW_EPOCH", "v15-market")
+SW_QUERY = os.environ.get("URTRUCK_SW_QUERY", "15")
 bootstrap = f'''<script>
 (async()=>{{
   const V={json.dumps(SW_EPOCH)};
