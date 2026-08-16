@@ -31,6 +31,7 @@ import BidModal from '../components/BidModal';
 import DealAttachments from '../components/deal/DealAttachments';
 import { pickDealStatus, userFacingDealStatus } from '../utils/dealStatusOrder';
 import { ensureBackgroundLocationPermission, getCurrentLocationPayload } from '../utils/backgroundLocation';
+import AppConfirmModal from '../components/ui/AppConfirmModal';
 
 // HOT-006: реальная запись/воспроизведение для web (PWA deploy).
 // На нативе (Expo Go) expo-av не установлен — тост "скоро".
@@ -670,6 +671,13 @@ export default function ChatScreen({ navigation, route }) {
   // принята. Confirm → реальный вызов /market/bids/{id}/accept (пишет immutable
   // deal.bid_accepted). После успеха — обновляем deal-статус и timeline.
   const [acceptConfirm, setAcceptConfirm] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState(null);
+  const askConfirm = React.useCallback((title, message = '', confirmLabel = t('confirm'), destructive = false) => (
+    new Promise((resolve) => setConfirmDialog({ title, message, confirmLabel, destructive, resolve }))
+  ), [t]);
+  const settleConfirm = React.useCallback((answer) => {
+    setConfirmDialog((current) => { current?.resolve?.(answer); return null; });
+  }, []);
   const [accepting, setAccepting] = useState(false);
   const canAcceptBid = !!bidId && deal && deal.status !== 'accepted' && deal.status !== 'confirmed';
   const doAcceptBid = async () => {
@@ -1230,18 +1238,9 @@ export default function ChatScreen({ navigation, route }) {
                   let ok = true;
                   if (action.key === 'delivered' || action.key === 'completed') {
                     const message = action.key === 'delivered'
-                      ? (t('confirm_mark_delivered') || 'Подтвердите, что груз действительно доставлен и передан получателю.')
-                      : (t('confirm_receipt') || 'Подтвердите, что груз получен. После этого сделка будет завершена.');
-                    ok = Platform.OS === 'web'
-                      ? (typeof window !== 'undefined' && window.confirm(message))
-                      : await new Promise((res) => Alert.alert(
-                          action.label,
-                          message,
-                          [
-                            { text: t('cancel'), style: 'cancel', onPress: () => res(false) },
-                            { text: action.label, onPress: () => res(true) },
-                          ],
-                        ));
+                      ? t('confirm_mark_delivered')
+                      : t('confirm_receipt');
+                    ok = await askConfirm(action.label, message, action.label);
                   }
                   if (ok) changeDealStatus(action.key);
                 }}
@@ -1259,12 +1258,7 @@ export default function ChatScreen({ navigation, route }) {
               style={[s.dealCancelBtn, { opacity: statusLoading ? 0.6 : 1 }]}
               disabled={statusLoading}
               onPress={async () => {
-                const ok = Platform.OS === 'web'
-                  ? (typeof window !== 'undefined' && window.confirm(t('cancel_deal_confirm')))
-                  : await new Promise((res) => Alert.alert(t('cancel_deal_confirm'), '', [
-                      { text: t('cancel'), style: 'cancel', onPress: () => res(false) },
-                      { text: 'OK', onPress: () => res(true) },
-                    ]));
+                const ok = await askConfirm(t('cancel_deal_confirm'), '', t('cancel_deal'), true);
                 if (ok) changeDealStatus('cancelled');
               }}
             >
@@ -1422,6 +1416,18 @@ export default function ChatScreen({ navigation, route }) {
         </View>
       )}
       </KeyboardAvoidingView>
+
+      <AppConfirmModal
+        visible={!!confirmDialog}
+        title={confirmDialog?.title}
+        message={confirmDialog?.message}
+        cancelLabel={t('cancel')}
+        confirmLabel={confirmDialog?.confirmLabel || t('confirm')}
+        destructive={!!confirmDialog?.destructive}
+        onCancel={() => settleConfirm(false)}
+        onConfirm={() => settleConfirm(true)}
+        testID="chat-confirm-modal"
+      />
 
       {/* C2: fullscreen-просмотр вложения-фото. Тап по фото открывает; тап по
           фону или крестику — закрывает. Подписанный URL уже абсолютный

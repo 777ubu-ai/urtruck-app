@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { t as baseT, getLanguage, subscribeToLanguage } from './i18n';
+import translations, { getLanguage, subscribeToLanguage } from './i18n';
 
 // RC1 confirmation copy reuses already-translated production keys instead of
 // introducing untranslated strings in one critical flow. Keeping aliases here
@@ -9,7 +9,19 @@ const KEY_ALIASES = {
   confirm_receipt: 'confirm_delivery',
 };
 
-const t = (key, ...args) => baseT(KEY_ALIASES[key] || key, ...args);
+/**
+ * UI-safe translator. Critical rule: Chinese UI must never silently fall back
+ * to Russian. Missing ZH keys use EN as emergency fallback; QA still treats
+ * any missing key on critical screens as a defect.
+ */
+const translate = (key) => {
+  const resolvedKey = KEY_ALIASES[key] || key;
+  const lang = getLanguage();
+  const own = translations[lang]?.[resolvedKey];
+  if (own) return own;
+  if (lang === 'ZH') return translations.EN?.[resolvedKey] || resolvedKey;
+  return translations.RU?.[resolvedKey] || translations.EN?.[resolvedKey] || resolvedKey;
+};
 
 // Хук для реактивного обновления текстов при смене языка
 export const useI18n = () => {
@@ -20,5 +32,5 @@ export const useI18n = () => {
     return () => unsub();
   }, []);
 
-  return { t, lang };
+  return { t: translate, lang };
 };

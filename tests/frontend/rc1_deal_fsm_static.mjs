@@ -16,7 +16,10 @@ test('driver delivery and shipper receipt are separate confirmed actions', () =>
   assert.match(src, /action = \{ key: 'delivered'/);
   assert.match(src, /deal-action-mark-arrived/);
   assert.match(src, /deal-action-confirm-receipt/);
-  assert.match(src, /window\.confirm\(message\)/);
+  assert.match(src, /const askConfirm = React\.useCallback/);
+  assert.match(src, /<AppConfirmModal/);
+  assert.match(src, /testID="chat-confirm-modal"/);
+  assert.doesNotMatch(src, /window\.confirm\(/);
 });
 
 test('start trip is the only driver action and starts location internally', () => {

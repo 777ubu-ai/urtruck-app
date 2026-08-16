@@ -4017,7 +4017,7 @@ const translations = {
     shop: '网店',
     finishReg: '完成注册',
     docsChecking: '文件将在24小时内审核',
-    tent: '帆布', ref: '冷藏', platform: '平板', auto: '轿运', izoterm: '保温',
+    tent: '篷布车', ref: '冷藏', platform: '平板', auto: '轿运', izoterm: '保温',
     cont20: '20尺集装箱', cont40: '40尺集装箱', jumbo: '加长', mega: '超大',
     curtain: '窗帘式', lowloader: '低平板', tanker: '罐车', dumptruck: '自卸',
     grain: '粮食车', livestock: '牲畜车', logger: '木材车', hazmat: 'ADR危险',
@@ -7423,7 +7423,8 @@ export const subscribeToLanguage = (cb) => {
 export const t = (key) => {
   const lang = translations[currentLang];
   if (lang && lang[key]) return lang[key];
-  return translations.RU[key] || key;
+  if (currentLang === 'ZH') return translations.EN[key] || key;
+  return translations.RU[key] || translations.EN[key] || key;
 };
 
 // Склонение для русского: 1 ставка, 2 ставки, 5 ставок
@@ -7452,10 +7453,27 @@ export const formatStatus = (status) => {
   return val !== key ? val : t('status_unknown');
 };
 
+const LEGACY_ZH_TRUCK_TYPES = {
+  'Тент': '篷布车',
+  'Фура': '大型货车',
+  'Рефрижератор': '冷藏车',
+  'Изотерм': '保温车',
+  'Бортовой': '栏板车',
+  'Площадка': '平板车',
+  'Автовоз': '汽车运输车',
+  'Цистерна': '罐车',
+  "Контейнер 20'": '20尺集装箱',
+  "Контейнер 40'": '40尺集装箱',
+  'Контейнер 20′': '20尺集装箱',
+  'Контейнер 40′': '40尺集装箱',
+};
+
 export const formatTruckType = (type) => {
   if (!type) return t('cargo_type_unknown');
   const val = t(type);
-  return val !== type ? val : type;
+  if (val !== type) return val;
+  if (currentLang === 'ZH') return LEGACY_ZH_TRUCK_TYPES[String(type).trim()] || translations.EN[type] || t('cargo_type_unknown');
+  return type;
 };
 
 export const formatCargoType = (type) => {

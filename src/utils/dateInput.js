@@ -1,3 +1,5 @@
+import { getLanguage } from './i18n';
+
 // Автоформат даты: 15042026 → 15.04.2026
 export const formatDate = (input) => {
   const digits = (input || '').replace(/\D/g, '').slice(0, 8);
@@ -31,14 +33,22 @@ export const normalizeDateInput = (s) => {
   return null;
 };
 
-// Форматирование даты для UI: "YYYY-MM-DD" → "DD.MM.YYYY".
-// Принимает также "DD.MM.YYYY" — возвращает как есть.
+const renderDisplayDate = (year, month, day) => {
+  if (getLanguage() === 'ZH') {
+    return `${Number(year)}年${Number(month)}月${Number(day)}日`;
+  }
+  return `${String(day).padStart(2, '0')}.${String(month).padStart(2, '0')}.${year}`;
+};
+
+// Форматирование даты для UI с учётом выбранного языка UrTruck.
+// ZH: 2026年8月14日; остальные локали сохраняют DD.MM.YYYY.
+// Используется только presentation layer; API по-прежнему хранит ISO YYYY-MM-DD.
 export const formatDateForDisplay = (s) => {
   if (!s) return '';
   const v = String(s).trim();
-  let m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v);  // тоже срезает T... если ISO-time
-  if (m) return `${m[3]}.${m[2]}.${m[1]}`;
+  let m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v); // тоже срезает T... у ISO-time
+  if (m) return renderDisplayDate(m[1], m[2], m[3]);
   m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(v);
-  if (m) return `${m[1].padStart(2, '0')}.${m[2].padStart(2, '0')}.${m[3]}`;
+  if (m) return renderDisplayDate(m[3], m[2], m[1]);
   return v;
 };

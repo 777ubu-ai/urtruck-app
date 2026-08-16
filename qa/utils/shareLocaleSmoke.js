@@ -17,10 +17,10 @@ const trip = {
 };
 
 const expected = {
-  RU: ['UrTruck рейс', 'Бахты ↔ Чугучак', 'Выезд:', 'Цена:'],
-  KK: ['UrTruck рейсі', 'Шығу:', 'Бағасы:'],
-  ZH: ['UrTruck 行程', 'Бахты ↔ Чугучак', 'Казань', '出发日期:', '价格:', '19 吨', '120 立方米'],
-  EN: ['UrTruck trip', 'Bakhty ↔ Chuguchak', 'Kazan', 'Departure:', 'Price:'],
+  RU: ['UrTruck рейс', 'Бахты ↔ Чугучак', 'Казань', 'Выезд:', 'Цена:', '7 500 USD'],
+  KK: ['UrTruck рейсі', 'Шығу:', 'Бағасы:', '7 500 USD'],
+  ZH: ['UrTruck 行程', '巴克图 ↔ 塔城', '喀山', '篷布车', '出发日期: 2026年8月16日', '运费: 7 500 USD', '19 吨', '120 立方米'],
+  EN: ['UrTruck trip', 'Bakhty ↔ Chuguchak', 'Kazan', 'Departure:', 'Price:', '7 500 USD'],
 };
 
 for (const [lang, needles] of Object.entries(expected)) {
@@ -28,8 +28,8 @@ for (const [lang, needles] of Object.entries(expected)) {
   for (const needle of needles) {
     if (!text.includes(needle)) throw new Error(`${lang}: missing ${needle}\n${text}`);
   }
-  if (lang === 'ZH' && /рейс|Выезд|Цена/.test(text)) {
-    throw new Error(`ZH: Russian interface text leak\n${text}`);
+  if (lang === 'ZH' && /[А-Яа-яЁё]/.test(text)) {
+    throw new Error(`ZH: Cyrillic system text leak\n${text}`);
   }
 }
 
@@ -37,9 +37,10 @@ const cargoZh = buildCargoShareText({
   from: 'Иу', to: 'Москва', cargoDesc: 'Обувь',
   weightTons: 10, volumeM3: 60, pickupDate: '2026-08-20', price: 0,
 }, '', 'ZH');
-for (const needle of ['UrTruck 货物', 'Иу', 'Москва', '鞋类', '面议']) {
+for (const needle of ['UrTruck 货物', '义乌', '莫斯科', '鞋类', '装货日期: 2026年8月20日', '10 吨', '60 立方米', '运费: 面议']) {
   if (!cargoZh.includes(needle)) throw new Error(`ZH cargo: missing ${needle}\n${cargoZh}`);
 }
+if (/[А-Яа-яЁё]/.test(cargoZh)) throw new Error(`ZH cargo Cyrillic system leak\n${cargoZh}`);
 
 const root = path.resolve(__dirname, '../..');
 const routeMap = fs.readFileSync(path.join(root, 'src/components/RouteMap.js'), 'utf8');
@@ -55,4 +56,4 @@ for (const needle of ['getCurrentLocationPayload', "translate('deal_created')", 
   if (!chat.includes(needle)) throw new Error(`Chat GPS/i18n contract missing: ${needle}`);
 }
 
-console.log('✓ Share locale RU/KK/ZH/EN + in-app live map contract');
+console.log('✓ Share locale RU/KK/ZH/EN + Chinese routes + in-app live map contract');

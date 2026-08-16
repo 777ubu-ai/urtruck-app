@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
+import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { useI18n } from '../utils/useI18n';
@@ -164,23 +165,25 @@ function CargoCard({ item, lang, copy, saved, onToggleSaved, onPress, compact })
             <View style={styles.routeLine}>
               <View style={styles.placeInline}>
                 {!!fromFlag && <Text style={[styles.flag, compact && styles.flagCompact]}>{fromFlag}</Text>}
-                <Text style={[styles.routeCity, compact && styles.routeCityCompact]} numberOfLines={2}>{from}</Text>
+                <Text style={[styles.routeCity, compact && styles.routeCityCompact]} numberOfLines={1}>{from}</Text>
               </View>
               <Feather name="arrow-right" size={compact ? 18 : 20} color={TEXT} style={styles.routeArrow} />
               <View style={styles.placeInline}>
                 {!!toFlag && <Text style={[styles.flag, compact && styles.flagCompact]}>{toFlag}</Text>}
-                <Text style={[styles.routeCity, compact && styles.routeCityCompact]} numberOfLines={2}>{to}</Text>
+                <Text style={[styles.routeCity, compact && styles.routeCityCompact]} numberOfLines={1}>{to}</Text>
               </View>
             </View>
+          </View>
+        </View>
+
+        <View style={[styles.cargoPriceRow, compact && styles.cargoPriceRowCompact]}>
+          <View style={[styles.infoRow, styles.cargoInfoRow, compact && styles.infoRowCompact]}>
+            <Feather name="package" size={compact ? 15 : 17} color={TEXT_SECONDARY} />
+            <Text style={[styles.infoText, compact && styles.infoTextCompact]} numberOfLines={1}>{cargo}</Text>
           </View>
           <Text style={[styles.price, compact && styles.priceCompact]} numberOfLines={1} testID={`cargo-card-price-${item.id}`}>
             {formatMoney(item.price, item.currency, copy)}
           </Text>
-        </View>
-
-        <View style={[styles.infoRow, compact && styles.infoRowCompact]}>
-          <Feather name="package" size={compact ? 15 : 17} color={TEXT_SECONDARY} />
-          <Text style={[styles.infoText, compact && styles.infoTextCompact]} numberOfLines={1}>{cargo}</Text>
         </View>
         <View style={[styles.infoRow, compact && styles.infoRowCompact]}>
           <Feather name="truck" size={compact ? 15 : 17} color={TEXT_SECONDARY} />
@@ -197,12 +200,16 @@ function CargoCard({ item, lang, copy, saved, onToggleSaved, onPress, compact })
       <Pressable
         onPress={(e) => { e?.stopPropagation?.(); onToggleSaved(); }}
         hitSlop={10}
-        style={[styles.bookmarkBtn, compact && styles.bookmarkBtnCompact]}
+        style={[styles.bookmarkBtn, compact && styles.bookmarkBtnCompact, saved && styles.bookmarkBtnSaved]}
         testID={`cargo-card-bookmark-${item.id}`}
         accessibilityRole="button"
         accessibilityLabel={saved ? 'Remove bookmark' : 'Save cargo'}
       >
-        <Feather name="bookmark" size={compact ? 18 : 21} color={saved ? ACCENT : TEXT_SECONDARY} fill={saved ? ACCENT : 'transparent'} />
+        {saved ? (
+          <FontAwesome5 name="bookmark" size={compact ? 18 : 21} color={ACCENT} solid />
+        ) : (
+          <Feather name="bookmark" size={compact ? 18 : 21} color={TEXT_SECONDARY} />
+        )}
       </Pressable>
     </TouchableOpacity>
   );
@@ -593,24 +600,28 @@ const styles = StyleSheet.create({
   cardBody: { flex: 1 },
   cardBodyCompact: { paddingLeft: 13, paddingRight: 13, paddingTop: 11, paddingBottom: 9 },
   cardBodyExpanded: { paddingLeft: 15, paddingRight: 16, paddingTop: 14, paddingBottom: 13 },
-  cardTopRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 8 },
-  cardTopRowCompact: { marginBottom: 5 },
-  routeWrap: { flex: 1, minWidth: 0, paddingRight: 2 },
-  routeLine: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', columnGap: 6, rowGap: 2 },
-  placeInline: { flexDirection: 'row', alignItems: 'center', gap: 5, minWidth: 0, flexShrink: 1 },
+  cardTopRow: { marginBottom: 8 },
+  cardTopRowCompact: { marginBottom: 6 },
+  routeWrap: { width: '100%', minWidth: 0 },
+  routeLine: { flexDirection: 'row', alignItems: 'center', flexWrap: 'nowrap', gap: 6, width: '100%' },
+  placeInline: { flexDirection: 'row', alignItems: 'center', gap: 5, minWidth: 0, flexShrink: 1, maxWidth: '44%' },
   routeCity: { fontSize: 18, lineHeight: 22, fontWeight: '700', letterSpacing: -0.25, color: TEXT, flexShrink: 1 },
   routeCityCompact: { fontSize: 16, lineHeight: 20 },
   routeArrow: { marginHorizontal: 0, flexShrink: 0 },
   flag: { fontSize: 20, lineHeight: 22 },
   flagCompact: { fontSize: 18, lineHeight: 20 },
-  price: { maxWidth: '39%', flexShrink: 0, textAlign: 'right', fontSize: 21, lineHeight: 25, fontWeight: '700', letterSpacing: -0.3, color: TEXT },
-  priceCompact: { fontSize: 19, lineHeight: 22, maxWidth: '38%' },
+  cargoPriceRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 23 },
+  cargoPriceRowCompact: { minHeight: 20 },
+  cargoInfoRow: { flex: 1, minWidth: 0, paddingRight: 0 },
+  price: { maxWidth: '38%', flexShrink: 0, textAlign: 'right', fontSize: 20, lineHeight: 24, fontWeight: '700', letterSpacing: -0.2, color: TEXT },
+  priceCompact: { fontSize: 18, lineHeight: 21, maxWidth: '37%' },
   infoRow: { minHeight: 23, flexDirection: 'row', alignItems: 'center', gap: 8, paddingRight: 42 },
   infoRowCompact: { minHeight: 20, gap: 7, paddingRight: 38 },
   infoText: { flex: 1, fontSize: 14, lineHeight: 19, fontWeight: '400', color: '#39443F' },
   infoTextCompact: { fontSize: 12.5, lineHeight: 17 },
   bookmarkBtn: { position: 'absolute', right: 12, bottom: 9, width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  bookmarkBtnCompact: { right: 9, bottom: 6, width: 38, height: 38 },
+  bookmarkBtnCompact: { right: 9, bottom: 6, width: 40, height: 40 },
+  bookmarkBtnSaved: { backgroundColor: ACCENT_SOFT },
   emptyWrap: { alignItems: 'center', justifyContent: 'center', paddingVertical: 65, gap: 11 },
   emptyTitle: { fontSize: 14, lineHeight: 20, color: TEXT_MUTED, textAlign: 'center' },
   retryBtn: { marginTop: 5, minHeight: 44, borderRadius: 22, paddingHorizontal: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: ACCENT_SOFT },

@@ -31,8 +31,8 @@ if "ur_theme" not in html:
 
 # Keep the epoch aligned with the current production SW. Feature releases
 # bump the defaults here together with sw-template.js.
-SW_EPOCH = os.environ.get("URTRUCK_SW_EPOCH", "v15-market")
-SW_QUERY = os.environ.get("URTRUCK_SW_QUERY", "15")
+SW_EPOCH = os.environ.get("URTRUCK_SW_EPOCH", "v16-market")
+SW_QUERY = os.environ.get("URTRUCK_SW_QUERY", "16")
 bootstrap = f'''<script>
 (async()=>{{
   const V={json.dumps(SW_EPOCH)};

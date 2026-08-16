@@ -104,7 +104,19 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
     finally { setGeoLoading(false); }
   };
 
-  const hits = query.trim().length >= 1 ? searchPoints(query, {}) : null;
+  const hits = useMemo(() => {
+    const q = query.trim().toLocaleLowerCase();
+    if (!q) return null;
+    const primary = searchPoints(query, {});
+    const localized = POINTS.filter((p) => {
+      const zh = String(localizePlace(p.name, 'ZH') || '').toLocaleLowerCase();
+      const en = String(localizePlace(p.name, 'EN') || '').toLocaleLowerCase();
+      return zh.includes(q) || en.includes(q);
+    });
+    const unique = new Map();
+    [...primary, ...localized].forEach((p) => unique.set(pointKey(p), p));
+    return [...unique.values()].slice(0, 60);
+  }, [query]);
 
   const s = useMemo(() => StyleSheet.create({
     safe: { flex: 1, backgroundColor: v1.bg },

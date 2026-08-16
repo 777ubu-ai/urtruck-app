@@ -1,15 +1,11 @@
-// Словарь городов и погранпереходов для локализации маршрутов.
+// Централизованный словарь городов, погранпереходов и системных категорий.
 //
-// Названия городов лежат в базе свободным текстом по-русски («Хоргос»,
-// «Ташкент», «Нур Жолы ↔ Хоргос»). Ярлыки интерфейса переводит t(), а вот
-// эти данные — нет. Здесь мы переводим ИЗВЕСТНЫЕ города на язык интерфейса
-// мгновенно и оффлайн. Имена собственные (водители) и произвольный текст
-// не трогаем — только совпадения по справочнику.
-//
-// Ключ — русское каноническое имя. В маршрутах китайской версии сохраняем
-// русское написание: это исходное название точки, по которому участники
-// сделки сверяют маршрут. Китайский перевод остаётся в справочнике для
-// английской локали и для будущих подписей/поиска, но не подменяет маршрут.
+// Legacy production-данные местами хранят точки маршрута свободным текстом
+// по-русски и даже с emoji-флагом внутри строки. Presentation layer обязан
+// нормализовать такие значения перед показом. С 16.08.2026 продуктовая
+// политика однозначна: при locale=ZH известные города/переходы показываются
+// на китайском; при EN — на английском. Пользовательский свободный текст,
+// которого нет в справочнике, не переводится автоматически.
 
 const DICT = {
   // ─── Казахстан ───
@@ -59,15 +55,15 @@ const DICT = {
   'Чунцин':            { zh: '重庆', en: 'Chongqing' },
   'Тяньцзинь':         { zh: '天津', en: 'Tianjin' },
   'Чжэнчжоу':          { zh: '郑州', en: 'Zhengzhou' },
-  'Сиань':              { zh: '西安', en: "Xi'an" },
+  'Сиань':             { zh: '西安', en: "Xi'an" },
   'Кашгар':            { zh: '喀什', en: 'Kashgar' },
-  'Маньчжурия':         { zh: '满洲里', en: 'Manzhouli' },
-  'Манчжурия':          { zh: '满洲里', en: 'Manzhouli' },
+  'Маньчжурия':        { zh: '满洲里', en: 'Manzhouli' },
+  'Манчжурия':         { zh: '满洲里', en: 'Manzhouli' },
   'Ланьчжоу':          { zh: '兰州', en: 'Lanzhou' },
   'Иньчуань':          { zh: '银川', en: 'Yinchuan' },
   'Хух-Хото':          { zh: '呼和浩特', en: 'Hohhot' },
   'Нинбо':             { zh: '宁波', en: 'Ningbo' },
-  'Циньхуандао':      { zh: '秦皇岛', en: 'Qinhuangdao' },
+  'Циньхуандао':       { zh: '秦皇岛', en: 'Qinhuangdao' },
   // ─── Россия ───
   'Москва':            { zh: '莫斯科', en: 'Moscow' },
   'Санкт-Петербург':   { zh: '圣彼得堡', en: 'Saint Petersburg' },
@@ -110,8 +106,8 @@ const DICT = {
   'Худжанд':           { zh: '苦盏', en: 'Khujand' },
   'Куляб':             { zh: '库洛布', en: 'Kulob' },
   'Ашхабад':           { zh: '阿什哈巴德', en: 'Ashgabat' },
-  'Туркменабад':      { zh: '土库曼纳巴德', en: 'Turkmenabat' },
-  'Туркменбаши':      { zh: '土库曼巴希', en: 'Turkmenbashi' },
+  'Туркменабад':       { zh: '土库曼纳巴德', en: 'Turkmenabat' },
+  'Туркменбаши':       { zh: '土库曼巴希', en: 'Turkmenbashi' },
   // ─── Беларусь / Турция / ЕС / ОАЭ ───
   'Минск':             { zh: '明斯克', en: 'Minsk' },
   'Брест':             { zh: '布列斯特', en: 'Brest' },
@@ -122,14 +118,14 @@ const DICT = {
   'Батуми':            { zh: '巴统', en: 'Batumi' },
   'Поти':              { zh: '波季', en: 'Poti' },
   'Баку':              { zh: '巴库', en: 'Baku' },
-  'Гянджа':           { zh: '甘贾', en: 'Ganja' },
-  'Измир':            { zh: '伊兹密尔', en: 'Izmir' },
-  'Мерсин':           { zh: '梅尔辛', en: 'Mersin' },
-  'Ризе':             { zh: '里泽', en: 'Rize' },
+  'Гянджа':            { zh: '甘贾', en: 'Ganja' },
+  'Измир':             { zh: '伊兹密尔', en: 'Izmir' },
+  'Мерсин':            { zh: '梅尔辛', en: 'Mersin' },
+  'Ризе':              { zh: '里泽', en: 'Rize' },
   'Гамбург':           { zh: '汉堡', en: 'Hamburg' },
   'Берлин':            { zh: '柏林', en: 'Berlin' },
   'Мюнхен':            { zh: '慕尼黑', en: 'Munich' },
-  'Франкфурт':        { zh: '法兰克福', en: 'Frankfurt' },
+  'Франкфурт':         { zh: '法兰克福', en: 'Frankfurt' },
   'Варшава':           { zh: '华沙', en: 'Warsaw' },
   'Дуйсбург':          { zh: '杜伊斯堡', en: 'Duisburg' },
   'Роттердам':         { zh: '鹿特丹', en: 'Rotterdam' },
@@ -141,34 +137,52 @@ const DICT = {
   'Будапешт':          { zh: '布达佩斯', en: 'Budapest' },
   'Гданьск':           { zh: '格但斯克', en: 'Gdansk' },
   'Познань':           { zh: '波兹南', en: 'Poznan' },
-  'Малашевичи':       { zh: '马拉舍维奇', en: 'Malaszewicze' },
-  'Вильнюс':          { zh: '维尔纽斯', en: 'Vilnius' },
-  'Каунас':           { zh: '考纳斯', en: 'Kaunas' },
-  'Клайпеда':         { zh: '克莱佩达', en: 'Klaipeda' },
-  'Рига':             { zh: '里加', en: 'Riga' },
-  'Лиепая':          { zh: '利耶帕亚', en: 'Liepaja' },
-  'Таллин':          { zh: '塔林', en: 'Tallinn' },
-  'Бухарест':        { zh: '布加勒斯特', en: 'Bucharest' },
-  'Констанца':        { zh: '康斯坦察', en: 'Constanta' },
-  'Братислава':       { zh: '布拉迪斯拉发', en: 'Bratislava' },
-  'Кошице':          { zh: '科希策', en: 'Kosice' },
-  'София':           { zh: '索非亚', en: 'Sofia' },
-  'Варна':           { zh: '瓦尔纳', en: 'Varna' },
-  'Афины':           { zh: '雅典', en: 'Athens' },
-  'Пирей':           { zh: '比雷埃夫斯', en: 'Piraeus' },
-  'Салоники':        { zh: '塞萨洛尼基', en: 'Thessaloniki' },
-  'Талдыкорган':      { zh: '塔尔迪库尔干', en: 'Taldykorgan' },
-  'Қарасу':           { zh: '卡拉苏', en: 'Karasu' },
-  'Тегеран':          { zh: '德黑兰', en: 'Tehran' },
+  'Малашевичи':        { zh: '马拉舍维奇', en: 'Malaszewicze' },
+  'Малашевичи (терминал)': { zh: '马拉舍维奇（终端）', en: 'Malaszewicze terminal' },
+  'Хелм (Chelm)':       { zh: '海乌姆（Chelm）', en: 'Chelm' },
+  'Каунасский ТКЛ':     { zh: '考纳斯运输物流中心', en: 'Kaunas transport logistics centre' },
+  'СЭЗ Хоргос-Восточные ворота': { zh: '霍尔果斯-东方大门经济特区', en: 'Khorgos - Eastern Gate SEZ' },
+  'Сухой порт Урумчи':  { zh: '乌鲁木齐陆港', en: 'Urumqi dry port' },
+  'Порт Поти':          { zh: '波季港', en: 'Port of Poti' },
+  'Порт Мерсин':        { zh: '梅尔辛港', en: 'Port of Mersin' },
+  'Вильнюс':           { zh: '维尔纽斯', en: 'Vilnius' },
+  'Каунас':            { zh: '考纳斯', en: 'Kaunas' },
+  'Клайпеда':          { zh: '克莱佩达', en: 'Klaipeda' },
+  'Рига':              { zh: '里加', en: 'Riga' },
+  'Лиепая':            { zh: '利耶帕亚', en: 'Liepaja' },
+  'Таллин':            { zh: '塔林', en: 'Tallinn' },
+  'Бухарест':          { zh: '布加勒斯特', en: 'Bucharest' },
+  'Констанца':         { zh: '康斯坦察', en: 'Constanta' },
+  'Братислава':        { zh: '布拉迪斯拉发', en: 'Bratislava' },
+  'Кошице':            { zh: '科希策', en: 'Kosice' },
+  'София':             { zh: '索非亚', en: 'Sofia' },
+  'Варна':             { zh: '瓦尔纳', en: 'Varna' },
+  'Афины':             { zh: '雅典', en: 'Athens' },
+  'Пирей':             { zh: '比雷埃夫斯', en: 'Piraeus' },
+  'Салоники':          { zh: '塞萨洛尼基', en: 'Thessaloniki' },
+  'Талдыкорган':       { zh: '塔尔迪库尔干', en: 'Taldykorgan' },
+  'Қарасу':            { zh: '卡拉苏', en: 'Karasu' },
+  'Тегеран':           { zh: '德黑兰', en: 'Tehran' },
   'Дубай':             { zh: '迪拜', en: 'Dubai' },
-  // ─── Составные названия переходов (целым ключом — с дефисом внутри) ───
   'Алашанькоу-сухой порт': { zh: '阿拉山口陆港', en: 'Alashankou dry port' },
 };
 
-// Стрелочные разделители в составных названиях («Нур Жолы ↔ Хоргос»).
-// Дефис СЮДА не входит намеренно — иначе «Ростов-на-Дону» распадётся;
-// дефисные названия ищем целым ключом.
 const ARROW_RE = /([↔→←⇄]+)/;
+const FLAG_PAIR_RE = /[\u{1F1E6}-\u{1F1FF}]{2}/gu;
+
+/**
+ * Удаляет legacy-декорации из значения точки маршрута. Флаг — отдельная
+ * UI-сущность и не должен жить внутри city string. Для ZH/EN это также
+ * предотвращает «Иу, 🇨🇳 + ещё один 🇨🇳» при отдельном countryFlag().
+ */
+export function cleanPlaceName(raw) {
+  if (!raw) return raw;
+  return String(raw)
+    .replace(FLAG_PAIR_RE, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\s*,\s*$/, '')
+    .trim();
+}
 
 function localizeHead(head, lang) {
   const key = head.trim();
@@ -185,31 +199,23 @@ function localizeHead(head, lang) {
 }
 
 /**
- * Локализует свободный текст места на язык интерфейса по справочнику.
- * Известные города заменяются, флаги/эмодзи/страна и неизвестный текст
- * сохраняются как есть. Для ru/kk/zh возвращаем исходную строку: в китайском
- * интерфейсе города и переходы показываем в исходном русском написании.
- *
- * @param {string} raw  — «Нур Жолы ↔ Хоргос, 🇰🇿»
- * @param {string} lang — 'ru' | 'kk' | 'zh' | 'en'
+ * Локализует известные города/переходы. ZH и EN обязательно получают
+ * словарное название. Для RU/KK сохраняется исходная строка.
  */
 export function localizePlace(raw, lang) {
-  // getLanguage()/useI18n отдают код в ВЕРХНЕМ регистре (RU/KK/ZH/EN),
-  // а словарь — по 'en'. Нормализуем код перед обращением к словарю.
   const l = String(lang || '').toLowerCase();
-  if (!raw || l !== 'en') return raw;
-  const s = String(raw);
-  const ci = s.indexOf(',');           // отделяем «, 🇰🇿» / «, страна»
-  const head = ci >= 0 ? s.slice(0, ci) : s;
-  const tail = ci >= 0 ? s.slice(ci) : '';
-  return localizeHead(head, l) + tail;
+  if (!raw) return raw;
+  if (l !== 'zh' && l !== 'en') return raw;
+  const clean = cleanPlaceName(raw);
+  return localizeHead(clean, l);
 }
 
-// ─── Типы груза (для перевода «Обувь» и т.п. на карточках) ───
-// Ключ — русское название из BASE_CARGO_TYPES (src/utils/cargoTypes.js).
-// Кастомные (свободный текст, набранные пользователем) не переводятся.
+// ─── Типы груза ───
 const CARGO_DICT = {
   'Одежда и текстиль':            { zh: '服装纺织品',   en: 'Clothing & textiles' },
+  'Одежда':                       { zh: '服装',        en: 'Clothing' },
+  'Текстиль':                     { zh: '纺织品',      en: 'Textiles' },
+  'Текстиль и одежда':            { zh: '纺织品和服装', en: 'Textiles & clothing' },
   'Обувь':                        { zh: '鞋类',        en: 'Footwear' },
   'Электроника':                  { zh: '电子产品',     en: 'Electronics' },
   'Бытовая техника':              { zh: '家用电器',     en: 'Home appliances' },
@@ -220,6 +226,7 @@ const CARGO_DICT = {
   'Шины и диски':                 { zh: '轮胎轮毂',     en: 'Tires & wheels' },
   'Автомобили':                   { zh: '汽车',        en: 'Cars' },
   'Стройматериалы':               { zh: '建筑材料',     en: 'Construction materials' },
+  'Строительные материалы':       { zh: '建筑材料',     en: 'Construction materials' },
   'Металл и арматура':            { zh: '金属钢筋',     en: 'Metal & rebar' },
   'Трубы':                        { zh: '管材',        en: 'Pipes' },
   'Цемент':                       { zh: '水泥',        en: 'Cement' },
@@ -238,6 +245,7 @@ const CARGO_DICT = {
   'Книги и канцелярия':           { zh: '图书文具',     en: 'Books & stationery' },
   'Бумажная продукция':           { zh: '纸制品',      en: 'Paper products' },
   'Химия (бытовая)':              { zh: '日化用品',     en: 'Household chemicals' },
+  'Бытовая химия':                { zh: '日化用品',     en: 'Household chemicals' },
   'Удобрения':                    { zh: '化肥',        en: 'Fertilizers' },
   'Сельхоз техника':              { zh: '农业机械',     en: 'Agricultural machinery' },
   'Оборудование промышленное':    { zh: '工业设备',     en: 'Industrial equipment' },
@@ -248,22 +256,35 @@ const CARGO_DICT = {
   'Лом металла':                  { zh: '废金属',      en: 'Scrap metal' },
   'Бумага для принтера':          { zh: '打印纸',      en: 'Printer paper' },
   'Упаковка':                     { zh: '包装',        en: 'Packaging' },
-  'Мотоциклы':                  { zh: '摩托车',      en: 'Motorcycles' },
-  'Металлическая посуда':       { zh: '金属餐具',    en: 'Metal tableware' },
-  'Посуда металлическая':       { zh: '金属餐具',    en: 'Metal tableware' },
-  'Холодильники':                { zh: '冰箱',        en: 'Refrigerators' },
-  'Детские стулья':              { zh: '儿童椅',      en: "Children's chairs" },
+  'Мотоциклы':                    { zh: '摩托车',      en: 'Motorcycles' },
+  'Металлическая посуда':         { zh: '金属餐具',    en: 'Metal tableware' },
+  'Посуда металлическая':         { zh: '金属餐具',    en: 'Metal tableware' },
+  'Холодильники':                 { zh: '冰箱',        en: 'Refrigerators' },
+  'Детские стулья':               { zh: '儿童椅',      en: "Children's chairs" },
 };
 
-/**
- * Локализует известный тип груза на язык интерфейса. Кастомный (свободный
- * пользовательский текст) и ru/kk возвращаются как есть.
- */
+const CARGO_INDEX = Object.fromEntries(
+  Object.entries(CARGO_DICT).map(([key, value]) => [key.toLocaleLowerCase('ru-RU'), value]),
+);
+
 export function localizeCargoName(raw, lang) {
   const l = String(lang || '').toLowerCase();
   if (!raw || (l !== 'zh' && l !== 'en')) return raw;
-  const e = CARGO_DICT[String(raw).trim()];
+  const key = String(raw).trim();
+  const e = CARGO_DICT[key] || CARGO_INDEX[key.toLocaleLowerCase('ru-RU')];
   return (e && e[l]) ? e[l] : raw;
 }
+
+export const hasPlaceTranslation = (raw, lang = 'ZH') => {
+  const l = String(lang || '').toLowerCase();
+  const clean = cleanPlaceName(raw);
+  if (!clean) return false;
+  if (ARROW_RE.test(clean)) {
+    return clean.split(ARROW_RE)
+      .filter((part) => !ARROW_RE.test(part) && part.trim())
+      .every((part) => Boolean(DICT[part.trim()]?.[l]));
+  }
+  return Boolean(DICT[clean]?.[l]);
+};
 
 export { DICT, CARGO_DICT };

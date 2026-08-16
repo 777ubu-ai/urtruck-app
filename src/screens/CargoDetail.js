@@ -45,6 +45,7 @@ import PrimaryCTA from '../components/ui/actions/PrimaryCTA';
 import SecondaryButton from '../components/ui/actions/SecondaryButton';
 import DestructiveButton from '../components/ui/actions/DestructiveButton';
 import PriceSavingsBadge from '../components/deal/PriceSavingsBadge';
+import AppConfirmModal from '../components/ui/AppConfirmModal';
 
 const FLAGS = { KZ: '🇰🇿', UZ: '🇺🇿', RU: '🇷🇺', KG: '🇰🇬', CN: '🇨🇳', TJ: '🇹🇯', TR: '🇹🇷', TM: '🇹🇲', MN: '🇲🇳', DE: '🇩🇪', FR: '🇫🇷' };
 
@@ -148,11 +149,9 @@ export default function CargoDetail({ navigation, route }) {
 
   }), [v1]);
   const { cargo: paramCargo, cargoId, role, dealId: routeDealId } = route.params || {};
-  // Canonical cargo: never reach into raw fields directly. The pre-pilot
-  // mixed shapes (server snake_case, FeedScreen camelCase, store.js demo)
-  // all flow through normalizeCargo so renders never blow up on null.
-  const cargo = normalizeCargo(paramCargo) || {};
+  // Canonical cargo: locale is explicit so normalizers stay pure and Node-testable.
   const { t, lang } = useI18n();
+  const cargo = normalizeCargo(paramCargo, lang) || {};
   const { theme } = useTheme();
   const { toast } = useToast();
   const { requireLevel, Gate } = useVerificationGate();
@@ -170,6 +169,7 @@ export default function CargoDetail({ navigation, route }) {
   const [bidsConfidential, setBidsConfidential] = useState(false);
   const [editingBid, setEditingBid] = useState(null);
   const [shareModal, setShareModal] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState(null);
   const [bids, setBids] = useState([]);
   const [fullCargo, setFullCargo] = useState(null);
   // `c` collapses (server fetch || nav params) to one canonical shape so all
@@ -192,6 +192,15 @@ export default function CargoDetail({ navigation, route }) {
   const [reviewSent, setReviewSent] = useState(false);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [acceptedDriverId, setAcceptedDriverId] = useState(null);
+  const askConfirm = useCallback((title, message = '', confirmLabel = t('confirm'), destructive = false) => (
+    new Promise((resolve) => setConfirmDialog({ title, message, confirmLabel, destructive, resolve }))
+  ), [t]);
+  const settleConfirm = useCallback((answer) => {
+    setConfirmDialog((current) => {
+      current?.resolve?.(answer);
+      return null;
+    });
+  }, []);
   // Live canonical cargo (server overrides params when available).
   // PR-C2 (P0-5 bid actions invisible): backend's GET /cargos/{id}
   // returns owner_id but no isMine flag (it doesn't know the caller).
@@ -204,7 +213,7 @@ export default function CargoDetail({ navigation, route }) {
   // where the screen was opened with explicit isMine.
   const c = (() => {
     if (!fullCargo) return cargo;
-    const normalized = normalizeCargo(fullCargo);
+    const normalized = normalizeCargo(fullCargo, lang);
     const fromParam = cargo && cargo.isMine;
     const fromServer = myUserId && fullCargo.owner_id === myUserId;
     // owner_id нужен для прямого чата с грузовладельцем (кнопка внизу).
@@ -386,11 +395,9 @@ export default function CargoDetail({ navigation, route }) {
       toast('🗑 ' + t('cargo_deleted'), 'info');
       navigation.goBack();
     };
-    if (Platform.OS === 'web') {
-      if (window.confirm(t('delete_cargo_q'))) doDel();
-    } else {
-      Alert.alert(t('delete_cargo_q'), '', [{ text: t('cancel') }, { text: t('delete'), style: 'destructive', onPress: doDel }]);
-    }
+    askConfirm(t('delete_cargo_q'), '', t('delete'), true).then((ok) => {
+      if (ok) doDel();
+    });
   };
 
   // changeDealStatus удалён (05.08.2026): кнопки статуса переехали в
@@ -402,7 +409,7 @@ export default function CargoDetail({ navigation, route }) {
     loadBids();
   };
 
-  const view = cargoDisplay(c, t);
+  const view = cargoDisplay(c, t, lang);
   // Если по грузу есть ПРИНЯТАЯ ставка — в блоке цены показываем СУММУ СДЕЛКИ,
   // а не цену объявления. Раньше заголовок висел «$12 000» (листинг), хотя
   // сделка принята за $12 100 — на одном экране две разные цены путали.
@@ -414,9 +421,9 @@ export default function CargoDetail({ navigation, route }) {
   const myBidStatusLabel = React.useMemo(() => {
     if (!myPendingBid) return '';
     switch (myPendingBid.status) {
-      case 'countered': return t('my_bid_status_countered') || 'Клиент предложил встречную цену';
+      case 'countered': return t('my_bid_status_countered');
       case 'pending':
-      default:          return t('my_bid_status_pending')   || 'Ожидает ответа клиента';
+      default:          return t('my_bid_status_pending');
     }
   }, [myPendingBid, t]);
   const safePhotos = (c.photos || []).filter(p => typeof p === 'string' && !p.startsWith('data:') && p.length < 1000);
@@ -642,15 +649,7 @@ export default function CargoDetail({ navigation, route }) {
                       onPress={async () => {
                         const sum = formatPrice(b.amount, c.currency);
                         const msg = t('accept_bid_confirm').replace('{sum}', sum);
-                        const ok = Platform.OS === 'web'
-                          ? (typeof window !== 'undefined' && window.confirm(msg))
-                          : await new Promise((res) => Alert.alert(
-                              t('accept_bid_confirm_title'), msg,
-                              [
-                                { text: t('cancel'), style: 'cancel', onPress: () => res(false) },
-                                { text: t('accept_bid_btn'), onPress: () => res(true) },
-                              ],
-                            ));
+                        const ok = await askConfirm(t('accept_bid_confirm_title'), msg, t('accept_bid_btn'));
                         if (!ok) return;
                         setAccepting(b.id);
                         try {
@@ -726,15 +725,7 @@ export default function CargoDetail({ navigation, route }) {
                           // Confirm сначала — под капотом два вызова, дороже отменить нельзя.
                           const sum = formatPrice(b.amount, c.currency);
                           const msg = t('accept_bid_confirm').replace('{sum}', sum);
-                          const ok = Platform.OS === 'web'
-                            ? (typeof window !== 'undefined' && window.confirm(msg))
-                            : await new Promise((res) => Alert.alert(
-                                t('accept_bid_confirm_title'), msg,
-                                [
-                                  { text: t('cancel'), style: 'cancel', onPress: () => res(false) },
-                                  { text: t('accept_bid_btn'), onPress: () => res(true) },
-                                ],
-                              ));
+                          const ok = await askConfirm(t('accept_bid_confirm_title'), msg, t('accept_bid_btn'));
                           if (!ok) return;
                           setAccepting(b.id);
                           try {
@@ -823,15 +814,7 @@ export default function CargoDetail({ navigation, route }) {
                       loading={cancelling === b.id}
                       disabled={!!cancelling}
                       onPress={async () => {
-                        const ok = Platform.OS === 'web'
-                          ? (typeof window !== 'undefined' && window.confirm(t('cancel_bid_confirm')))
-                          : await new Promise((res) => Alert.alert(
-                              t('cancel_bid_confirm'), '',
-                              [
-                                { text: t('cancel'), style: 'cancel', onPress: () => res(false) },
-                                { text: t('cancel_bid'), style: 'destructive', onPress: () => res(true) },
-                              ],
-                            ));
+                        const ok = await askConfirm(t('cancel_bid_confirm'), '', t('withdraw_bid_link'), true);
                         if (!ok) return;
                         setCancelling(b.id);
                         try {
@@ -868,7 +851,7 @@ export default function CargoDetail({ navigation, route }) {
               тоже оранжевым) читались как одна (05.08.2026, п.16 ТЗ). */}
           <View style={[s.myBidCard, { borderColor: dealAccent.main, backgroundColor: theme.card }]} testID="cargo-my-active-bid">
             <View style={s.myBidHeader}>
-              <Text style={[s.myBidLabel, { color: theme.textMuted }]}>{t('my_bid_label') || 'Моя ставка'}</Text>
+              <Text style={[s.myBidLabel, { color: theme.textMuted }]}>{t('my_bid_label')}</Text>
               <Text style={[s.myBidAmount, { color: dealAccent.main }]}>{formatPrice(myPendingBid.amount, c.currency)}</Text>
             </View>
             <Text style={[s.myBidStatus, { color: theme.text }]}>{myBidStatusLabel}</Text>
@@ -910,7 +893,7 @@ export default function CargoDetail({ navigation, route }) {
                 <SecondaryButton
                   testID="cargo-my-bid-edit"
                   role="driver"
-                  label={t('edit_bid') || 'Изменить'}
+                  label={t('edit_bid')}
                   onPress={() => { setEditingBid(myPendingBid); setBidModalMode('edit'); setBidModal(true); }}
                   disabled={cancelling === myPendingBid.id}
                 />
@@ -920,15 +903,7 @@ export default function CargoDetail({ navigation, route }) {
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   style={{ alignSelf: 'center', marginTop: 6, opacity: cancelling === myPendingBid.id ? 0.5 : 1 }}
                   onPress={async () => {
-                    const ok = Platform.OS === 'web'
-                      ? (typeof window !== 'undefined' && window.confirm(t('cancel_bid_confirm')))
-                      : await new Promise((res) => Alert.alert(
-                          t('cancel_bid_confirm'), '',
-                          [
-                            { text: t('cancel'), style: 'cancel', onPress: () => res(false) },
-                            { text: t('cancel_bid'), style: 'destructive', onPress: () => res(true) },
-                          ],
-                        ));
+                    const ok = await askConfirm(t('cancel_bid_confirm'), '', t('withdraw_bid_link'), true);
                     if (!ok) return;
                     setCancelling(myPendingBid.id);
                     try {
@@ -1103,6 +1078,17 @@ export default function CargoDetail({ navigation, route }) {
         onClose={() => setShareModal(false)}
         shareText={buildCargoShareText(c, `${WEB_URL || 'https://urtruck.kz'}/cargo/${c.id}`, lang)}
         url={`${WEB_URL || 'https://urtruck.kz'}/cargo/${c.id}`}
+      />
+      <AppConfirmModal
+        visible={!!confirmDialog}
+        title={confirmDialog?.title}
+        message={confirmDialog?.message}
+        cancelLabel={t('cancel')}
+        confirmLabel={confirmDialog?.confirmLabel || t('confirm')}
+        destructive={!!confirmDialog?.destructive}
+        onCancel={() => settleConfirm(false)}
+        onConfirm={() => settleConfirm(true)}
+        testID="cargo-confirm-modal"
       />
       {Gate}
     </SafeAreaView>
