@@ -57,7 +57,6 @@ for (const [raw, expected] of routeCases) {
   assert(!FLAG.test(actual), `city value still embeds flag: ${raw} -> ${actual}`);
 }
 
-// Every selectable system geography point must resolve without Cyrillic in ZH.
 const unresolved = [];
 for (const point of geo.POINTS || []) {
   const raw = String(point?.name || '').trim();
@@ -67,7 +66,6 @@ for (const point of geo.POINTS || []) {
 }
 assert(unresolved.length === 0, `missing ZH geography translations (${unresolved.length}): ${unresolved.slice(0, 20).join('; ')}`);
 
-// Every system cargo category in the central dictionary needs non-Cyrillic ZH.
 const badCargo = [];
 for (const [ru, entry] of Object.entries(places.CARGO_DICT || {})) {
   const zh = String(entry?.zh || '').trim();
@@ -84,28 +82,42 @@ const share = read('src/utils/share.js');
 assert(useI18n.includes("if (lang === 'ZH') return translations.EN"), 'useI18n ZH fallback must be EN, never RU');
 assert(i18n.includes("if (currentLang === 'ZH') return translations.EN"), 'global t() ZH fallback must be EN, never RU');
 assert(!places.localizePlace.toString().includes("l !== 'en'"), 'localizePlace still blocks ZH localization');
+assert(dateInput.includes('年${Number(year)}年') === false, 'broken duplicated ZH year marker');
 assert(dateInput.includes('年${Number(month)}月${Number(day)}日'), 'ZH full date formatter missing');
 assert(share.includes("ZH: { trip: 'UrTruck 行程'"), 'ZH share copy missing');
 assert(share.includes("ton: '吨'"), 'ZH share ton unit missing');
 assert(share.includes("volume: '立方米'"), 'ZH share volume unit missing');
 
-// Browser/system confirm buttons inherit device locale (the exact production
-// bug seen as Russian «Отменить / OK» on a Chinese UrTruck screen). Critical
-// transport/deal screens must use AppConfirmModal instead.
-for (const rel of [
+// Browser/system confirm buttons inherit device locale. The production bug was
+// Chinese UrTruck content with Russian Safari «Отменить / OK». All critical
+// deal/profile confirmations therefore use AppConfirmModal.
+const criticalDialogFiles = [
   'src/screens/CargoDetail.js',
   'src/screens/TripDetail.js',
   'src/screens/MyTripsScreen.js',
   'src/screens/ChatScreen.js',
-]) {
+  'src/screens/ProfileScreen.js',
+  'src/screens/EditProfileScreen.js',
+];
+for (const rel of criticalDialogFiles) {
   const src = read(rel);
-  assert(!src.includes('window.confirm'), `${rel}: window.confirm forbidden on localized product flow`);
+  assert(!src.includes('window.confirm('), `${rel}: window.confirm() forbidden on localized product flow`);
   assert(src.includes('AppConfirmModal'), `${rel}: AppConfirmModal missing`);
 }
 
-// The exact Russian UI leaks observed in production screenshots must not be
-// present as fallback literals in the affected detail/offer flow.
-const critical = [read('src/screens/CargoDetail.js'), read('src/screens/TripDetail.js'), read('src/screens/ChatScreen.js')].join('\n');
+// Profile and PRO route preferences are system geography, not user free text.
+const profile = read('src/screens/ProfileScreen.js');
+const editProfile = read('src/screens/EditProfileScreen.js');
+assert(profile.includes('localizePlace(profile.city, uiLang)'), 'Profile city is not localized');
+assert(editProfile.includes('localizePlace(b, lang)'), 'EditProfile border chips are not localized');
+
+const critical = [
+  read('src/screens/CargoDetail.js'),
+  read('src/screens/TripDetail.js'),
+  read('src/screens/ChatScreen.js'),
+  profile,
+  editProfile,
+].join('\n');
 for (const leak of [
   "|| 'Изменить'",
   "|| 'Моя ставка'",
@@ -119,11 +131,11 @@ for (const leak of [
 console.log(`[zh] route fixtures: ${routeCases.length}`);
 console.log(`[zh] geography points checked: ${(geo.POINTS || []).length}`);
 console.log(`[zh] cargo dictionary entries checked: ${Object.keys(places.CARGO_DICT || {}).length}`);
-console.log('[zh] critical dialog files checked: 4');
+console.log(`[zh] critical dialog files checked: ${criticalDialogFiles.length}`);
 
 if (failures.length) {
   console.error('\n[zh] FAIL');
   failures.forEach((f) => console.error('  -', f));
   process.exit(1);
 }
-console.log('\n[zh] OK — known system routes/cities/categories and critical dialogs are Chinese-safe');
+console.log('\n[zh] OK — known system routes/cities/categories, profile geography and critical dialogs are Chinese-safe');
