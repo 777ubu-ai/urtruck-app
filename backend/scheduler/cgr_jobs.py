@@ -1,34 +1,22 @@
-"""APScheduler-задачи для CGR-интеграции.
+"""APScheduler jobs for CGR integration.
 
-Использует AsyncIOScheduler (async-friendly) — отдельный от существующего
-BackgroundScheduler в scheduler/jobs.py, чтобы не путать sync/async код.
+Driver-facing checkpoint data is intentionally lazy: the Border screen loads a
+local catalogue, and CGR is contacted only after a driver taps a checkpoint.
+Therefore there is no periodic all-checkpoint scoreboard crawl here.
 
-Запускается из main.py @app.on_event("startup") если CGR_FEATURE_ENABLED=true.
-Останавливается на shutdown.
-
-Расписание (TZ §8 + раздел 3 чеклиста):
-  - scoreboard fetch: каждые CGR_SCOREBOARD_INTERVAL_MIN (default 5)
-  - booking poll:     каждые CGR_BOOKING_POLL_INTERVAL_MIN (default 15)
-  - blocklist refresh: cron CGR_BLOCKLIST_CRON (default '0 3 * * *')
+Background jobs kept here are user-specific or operational:
+- active booking poll;
+- queue-watch push alerts;
+- one-time checkpoint catalogue seed on backend start.
 """
 import logging
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 logger = logging.getLogger("cgr.scheduler")
 
 _scheduler: AsyncIOScheduler | None = None
-
-
-async def _scoreboard_job():
-    from cgr import scoreboard_service
-    try:
-        result = await scoreboard_service.fetch_and_store()
-        logger.info("cgr.scheduler: scoreboard_job: %s", result)
-    except Exception:
-        logger.exception("cgr.scheduler: scoreboard_job crashed")
 
 
 async def _booking_poll_job():
@@ -50,28 +38,21 @@ async def _queue_watch_job():
 
 
 async def _bootstrap_job():
-    """Разовый старт: засеять справочник переходов из CGR и сразу собрать
-    первое табло, чтобы данные были доступны не дожидаясь первого интервала."""
+    """Seed only the lightweight checkpoint catalogue.
+
+    Do NOT fetch current queue/booking data here. Those are loaded per checkpoint
+    after an explicit driver tap and cached by checkpoint_detail_service.
+    """
     from cgr import scoreboard_service
     try:
         seeded = await scoreboard_service.seed_checkpoints_from_cgr()
-        result = await scoreboard_service.fetch_and_store()
-        logger.info("cgr.scheduler: bootstrap seeded=%s fetch=%s", seeded, result)
+        logger.info("cgr.scheduler: bootstrap catalog seeded=%s (live fetch deferred until tap)", seeded)
     except Exception:
         logger.exception("cgr.scheduler: bootstrap crashed")
 
 
-async def _blocklist_job():
-    from cgr import blocklist_service
-    try:
-        result = await blocklist_service.refresh_blocklist()
-        logger.info("cgr.scheduler: blocklist_job: %s", result)
-    except Exception:
-        logger.exception("cgr.scheduler: blocklist_job crashed")
-
-
 def start() -> AsyncIOScheduler | None:
-    """Идемпотентный старт. Возвращает scheduler если стартанул, None если выключен."""
+    """Idempotent scheduler start."""
     global _scheduler
 
     try:
@@ -88,7 +69,6 @@ def start() -> AsyncIOScheduler | None:
         logger.warning("cgr.scheduler: already running, skip")
         return _scheduler
 
-    # Таблица watch'ей для пуш-алерта «очередь подошла».
     try:
         from cgr import queue_watch
         queue_watch.init_schema()
@@ -106,15 +86,6 @@ def start() -> AsyncIOScheduler | None:
         misfire_grace_time=300,
     )
     s.add_job(
-        _scoreboard_job,
-        IntervalTrigger(minutes=cgr_settings.scoreboard_interval_min),
-        id="cgr_scoreboard",
-        name="CGR scoreboard fetch",
-        max_instances=1,
-        coalesce=True,
-        misfire_grace_time=120,
-    )
-    s.add_job(
         _booking_poll_job,
         IntervalTrigger(minutes=cgr_settings.booking_poll_interval_min),
         id="cgr_booking_poll",
@@ -123,26 +94,23 @@ def start() -> AsyncIOScheduler | None:
         coalesce=True,
         misfire_grace_time=300,
     )
-    # Blocklist-job НЕ регистрируем: parse_blocklist_page ещё не реализован
-    # (этап разведки 1.4, PII). Иначе cron в 03:00 падал бы каждый день.
-    # Вернуть после реализации парсера блок-листа.
 
-    # Разовый bootstrap почти сразу после старта (сид справочника + первое табло).
+    # Blocklist refresh stays disabled until its PII parser is implemented.
+
     from datetime import datetime, timedelta, timezone
     s.add_job(
         _bootstrap_job,
         "date",
         run_date=datetime.now(timezone.utc) + timedelta(seconds=5),
         id="cgr_bootstrap",
-        name="CGR bootstrap seed+fetch",
+        name="CGR checkpoint catalogue seed",
         max_instances=1,
     )
 
     s.start()
     _scheduler = s
     logger.info(
-        "cgr.scheduler: started — scoreboard every %dm, bookings every %dm (blocklist disabled until parser ready)",
-        cgr_settings.scoreboard_interval_min,
+        "cgr.scheduler: started — lazy checkpoint live data; bookings every %dm; queue-watch every 10m",
         cgr_settings.booking_poll_interval_min,
     )
     return s

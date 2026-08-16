@@ -1,1 +1,1 @@
-export { default } from './QueueScreenCarousel';
+export { default } from './QueueScreenLazy';
