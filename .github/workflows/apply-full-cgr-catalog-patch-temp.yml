@@ -1,0 +1,88 @@
+name: TEMP apply full CGR catalogue patch
+on:
+  push:
+    branches: [agent/full-cgr-checkpoint-catalog-20260816]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/full-cgr-checkpoint-catalog-20260816
+          fetch-depth: 0
+      - name: Patch resolver, scheduler and carousel controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p=Path(path); s=p.read_text(encoding='utf-8')
+              if old not in s:
+                  raise SystemExit(f'marker not found in {path}: {old[:90]!r}')
+              s=s.replace(old,new,1)
+              p.write_text(s,encoding='utf-8')
+
+          # Lazy detail resolver: use the full paginated directory service.
+          path='backend/cgr/checkpoint_detail_service.py'
+          replace_once(path,
+              'from .exceptions import CGRParseError\n',
+              'from .exceptions import CGRParseError\nfrom . import checkpoint_catalog_service\n')
+          p=Path(path); s=p.read_text(encoding='utf-8')
+          start=s.index('async def _resolve_external_id(cp: dict) -> str:\n')
+          end=s.index('\n\ndef _parse_total_records', start)
+          replacement='''async def _resolve_external_id(cp: dict) -> str:\n    """Resolve the exact public CGR checkpoint id from the complete directory."""\n    return await checkpoint_catalog_service.resolve_external_id(cp)\n'''
+          s=s[:start]+replacement+s[end:]
+          p.write_text(s,encoding='utf-8')
+
+          # Startup seed: all directory pages, no live data fan-out.
+          path='backend/scheduler/cgr_jobs.py'
+          replace_once(path,
+              '    from cgr import scoreboard_service\n    try:\n        seeded = await scoreboard_service.seed_checkpoints_from_cgr()\n',
+              '    from cgr import checkpoint_catalog_service\n    try:\n        seeded = await checkpoint_catalog_service.seed_full_catalog()\n')
+          replace_once(path,
+              '        logger.info("cgr.scheduler: bootstrap catalog seeded=%s (live fetch deferred until tap)", seeded)\n',
+              '        logger.info("cgr.scheduler: full catalog seeded=%s (live fetch deferred until tap)", seeded)\n')
+
+          # Driver UI: complete country set + an actually clickable carousel arrow.
+          path='src/screens/QueueScreenLazy.js'
+          replace_once(path,
+              "import React, { useCallback, useEffect, useMemo, useState } from 'react';",
+              "import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';")
+          replace_once(path,
+              "const COUNTRY_ORDER = ['CN', 'KG', 'RU', 'UZ', 'TM'];",
+              "const COUNTRY_ORDER = ['CN', 'KG', 'RU', 'UZ', 'TM', 'CASPIAN'];")
+          replace_once(path,
+              "  TM: { flag: '🇹🇲', RU: 'Туркменистан', KK: 'Түрікменстан', EN: 'Turkmenistan', ZH: '土库曼斯坦' },\n};",
+              "  TM: { flag: '🇹🇲', RU: 'Туркменистан', KK: 'Түрікменстан', EN: 'Turkmenistan', ZH: '土库曼斯坦' },\n  CASPIAN: { flag: '⚓️', RU: 'Каспий', KK: 'Каспий', EN: 'Caspian', ZH: '里海' },\n};")
+          replace_once(path,
+              "  const [lookupLoading, setLookupLoading] = useState(false);\n",
+              "  const [lookupLoading, setLookupLoading] = useState(false);\n  const checkpointCarouselRef = useRef(null);\n  const checkpointCarouselX = useRef(0);\n")
+          replace_once(path,
+              "  const selectCountry = useCallback((code) => {\n    setSelectedCountry(code);\n    setSelectedId(null);\n    setLiveError('');\n  }, []);\n",
+              "  const selectCountry = useCallback((code) => {\n    setSelectedCountry(code);\n    setSelectedId(null);\n    setLiveError('');\n    checkpointCarouselX.current = 0;\n    checkpointCarouselRef.current?.scrollTo({ x: 0, animated: false });\n  }, []);\n\n  const scrollCheckpointCarousel = useCallback(() => {\n    const nextX = checkpointCarouselX.current + 300;\n    checkpointCarouselRef.current?.scrollTo({ x: nextX, animated: true });\n    checkpointCarouselX.current = nextX;\n  }, []);\n")
+          replace_once(path,
+              '          <Feather name="chevrons-right" size={19} color={theme.textDim} />\n',
+              '          <TouchableOpacity onPress={scrollCheckpointCarousel} style={styles.carouselNext} accessibilityLabel={L.hint} testID="border-checkpoint-next">\n            <Feather name="chevrons-right" size={21} color="#168759" />\n          </TouchableOpacity>\n')
+          replace_once(path,
+              '          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carousel} testID="border-checkpoint-carousel">\n',
+              '          <ScrollView\n            ref={checkpointCarouselRef}\n            horizontal\n            showsHorizontalScrollIndicator={false}\n            contentContainerStyle={styles.carousel}\n            onScroll={(event) => { checkpointCarouselX.current = event.nativeEvent.contentOffset.x; }}\n            scrollEventThrottle={16}\n            testID="border-checkpoint-carousel"\n          >\n')
+          replace_once(path,
+              "  selectorHead: { flexDirection: 'row', alignItems: 'center', marginTop: 18, marginBottom: 10 },\n",
+              "  selectorHead: { flexDirection: 'row', alignItems: 'center', marginTop: 18, marginBottom: 10 },\n  carouselNext: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EAF8F1' },\n")
+          PY
+          git diff --check
+          git status --short
+      - name: Commit patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add backend/cgr/checkpoint_detail_service.py backend/scheduler/cgr_jobs.py src/screens/QueueScreenLazy.js
+          git commit -m 'fix: expose all CGR checkpoints in driver carousel'
+          git push origin HEAD:agent/full-cgr-checkpoint-catalog-20260816
