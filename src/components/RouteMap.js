@@ -109,10 +109,183 @@ const haversine = (a, b) => {
   return Math.round(2 * R * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h)));
 };
 
+const copy = {
+  ru: {
+    shipperTitle: 'Машина едет к вам',
+    driverTitle: 'Следующая точка',
+    now: 'Сейчас',
+    toDelivery: 'До доставки',
+    eta: 'Прибытие',
+    status: 'Статус',
+    driver: 'Водитель',
+    inTransit: 'в пути',
+    nextPoint: 'Следующая точка',
+    queue: 'Очередь',
+    weather: 'Погода',
+    speed: 'Скорость',
+    toDestination: 'До пункта',
+    borderUnknown: 'нет данных',
+    weatherPending: 'подключим HERE',
+    near: 'рядом с',
+    routeActive: 'на маршруте',
+    careful: 'Данные погоды и очереди появятся после подключения HERE API',
+    km: 'км',
+    kmh: 'км/ч',
+    stopped: '—',
+    day: 'дн',
+    hour: 'ч',
+  },
+  en: {
+    shipperTitle: 'Truck is coming to you',
+    driverTitle: 'Next point',
+    now: 'Now',
+    toDelivery: 'To delivery',
+    eta: 'Arrival',
+    status: 'Status',
+    driver: 'Driver',
+    inTransit: 'in transit',
+    nextPoint: 'Next point',
+    queue: 'Queue',
+    weather: 'Weather',
+    speed: 'Speed',
+    toDestination: 'To destination',
+    borderUnknown: 'no data',
+    weatherPending: 'HERE pending',
+    near: 'near',
+    routeActive: 'on route',
+    careful: 'Weather and border queue data will appear after HERE API integration',
+    km: 'km',
+    kmh: 'km/h',
+    stopped: '—',
+    day: 'd',
+    hour: 'h',
+  },
+  kk: {
+    shipperTitle: 'Көлік сізге келе жатыр',
+    driverTitle: 'Келесі нүкте',
+    now: 'Қазір',
+    toDelivery: 'Жеткізуге дейін',
+    eta: 'Келуі',
+    status: 'Мәртебе',
+    driver: 'Жүргізуші',
+    inTransit: 'жолда',
+    nextPoint: 'Келесі нүкте',
+    queue: 'Кезек',
+    weather: 'Ауа райы',
+    speed: 'Жылдамдық',
+    toDestination: 'Пунктке дейін',
+    borderUnknown: 'дерек жоқ',
+    weatherPending: 'HERE қосылады',
+    near: 'маңында',
+    routeActive: 'маршрутта',
+    careful: 'Ауа райы мен шекара кезегі HERE API қосылғаннан кейін шығады',
+    km: 'км',
+    kmh: 'км/сағ',
+    stopped: '—',
+    day: 'күн',
+    hour: 'сағ',
+  },
+  zh: {
+    shipperTitle: '车辆正在驶向您',
+    driverTitle: '下一站',
+    now: '当前位置',
+    toDelivery: '距送达',
+    eta: '预计到达',
+    status: '状态',
+    driver: '司机',
+    inTransit: '运输中',
+    nextPoint: '下一站',
+    queue: '排队',
+    weather: '天气',
+    speed: '速度',
+    toDestination: '距目的地',
+    borderUnknown: '暂无数据',
+    weatherPending: 'HERE 待接入',
+    near: '靠近',
+    routeActive: '路线中',
+    careful: '接入 HERE API 后将显示天气和口岸排队数据',
+    km: '公里',
+    kmh: '公里/小时',
+    stopped: '—',
+    day: '天',
+    hour: '小时',
+  },
+};
+
+const getCopy = (lang) => copy[lang] || copy.ru;
+
+const formatDuration = (hours, words) => {
+  if (!Number.isFinite(hours) || hours <= 0) return words.stopped;
+  const whole = Math.ceil(hours);
+  const days = Math.floor(whole / 24);
+  const restHours = whole % 24;
+  if (days > 0) return `${days} ${words.day} ${restHours} ${words.hour}`;
+  return `${restHours || 1} ${words.hour}`;
+};
+
+const formatKm = (value, words) => (Number.isFinite(value) ? `${Math.max(0, Math.round(value))} ${words.km}` : words.stopped);
+const formatSpeed = (value, words) => (Number.isFinite(value) && value > 0 ? `${Math.round(value)} ${words.kmh}` : words.stopped);
+
+function InfoRow({ icon, label, value, accent, muted }) {
+  return (
+    <View style={s.infoRow}>
+      <View style={s.infoIcon}>
+        <Feather name={icon} size={14} color={accent ? '#0F6B47' : '#617067'} />
+      </View>
+      <Text style={s.infoLabel} numberOfLines={1}>{label}</Text>
+      <Text style={[s.infoValue, muted ? s.infoMuted : null, accent ? s.infoAccent : null]} numberOfLines={1}>{value}</Text>
+    </View>
+  );
+}
+
+function RoleRoutePanel({ role, from, to, transit, location, fromCoord, toCoord, transitCoord, driverName, lang }) {
+  const words = getCopy(lang);
+  const isDriver = role === 'driver';
+  const lat = Number(location?.lat);
+  const lng = Number(location?.lng);
+  const driverCoord = Number.isFinite(lat) && Number.isFinite(lng) ? [lat, lng] : null;
+  const targetCoord = isDriver ? (transitCoord || toCoord) : toCoord;
+  const kmLeft = driverCoord && targetCoord ? Math.round(haversine(driverCoord, targetCoord) * 1.25) : null;
+  const speedKmh = Number.isFinite(Number(location?.speed)) ? Number(location.speed) * 3.6 : null;
+  const etaHours = Number.isFinite(speedKmh) && speedKmh >= 5 && kmLeft != null ? kmLeft / speedKmh : null;
+  const currentPlace = transit
+    ? `${words.near} ${localizePlace(transit, lang)}`
+    : words.routeActive;
+  const nextPoint = localizePlace(transit || to || from, lang);
+
+  if (isDriver) {
+    return (
+      <View style={s.rolePanel} testID="driver-route-panel">
+        <Text style={s.panelTitle}>{words.driverTitle}</Text>
+        <InfoRow icon="map-pin" label={words.nextPoint} value={nextPoint} accent />
+        <InfoRow icon="navigation" label={words.toDestination} value={formatKm(kmLeft, words)} />
+        <InfoRow icon="users" label={words.queue} value={words.borderUnknown} muted />
+        <InfoRow icon="cloud-snow" label={words.weather} value={words.weatherPending} muted />
+        <InfoRow icon="activity" label={words.speed} value={formatSpeed(speedKmh, words)} />
+        <View style={s.warningStrip}>
+          <Feather name="alert-triangle" size={13} color="#B45309" />
+          <Text style={s.warningText} numberOfLines={2}>{words.careful}</Text>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={s.rolePanel} testID="shipper-route-panel">
+      <Text style={s.panelTitle}>{words.shipperTitle}</Text>
+      <InfoRow icon="map-pin" label={words.now} value={currentPlace} accent />
+      <InfoRow icon="navigation" label={words.toDelivery} value={formatKm(kmLeft, words)} />
+      <InfoRow icon="clock" label={words.eta} value={formatDuration(etaHours, words)} />
+      <InfoRow icon="truck" label={words.status} value={words.inTransit} accent />
+      <InfoRow icon="user" label={words.driver} value={driverName || words.driver} />
+    </View>
+  );
+}
+
 // RouteMap — единая карточка маршрута внутри UrTruck. До старта она показывает
 // план; после «Начать» сама подтягивает защищённую точку сделки и заменяет план
 // живой картой. Пользователь не уходит в Яндекс/Google Maps.
-export default function RouteMap({ from, to, transit, dealId, dealStatus, driverName }) {
+export default function RouteMap({ from, to, transit, dealId, dealStatus, driverName, role = 'shipper' }) {
   const { theme } = useTheme();
   const { t, lang } = useI18n();
   const [location, setLocation] = React.useState(null);
@@ -174,8 +347,22 @@ export default function RouteMap({ from, to, transit, dealId, dealStatus, driver
         </Text>
       ) : null}
       {hasLivePoint ? (
-        <View style={s.liveMap} testID="trip-live-map">
-          <TruckMap lat={lat} lng={lng} title={driverName || t('track_truck_marker')} />
+        <View style={s.liveBlock} testID="trip-live-map">
+          <View style={s.liveMap}>
+            <TruckMap lat={lat} lng={lng} title={driverName || t('track_truck_marker')} />
+          </View>
+          <RoleRoutePanel
+            role={role}
+            from={from}
+            to={to}
+            transit={transit}
+            location={location}
+            fromCoord={fromCoord}
+            toCoord={toCoord}
+            transitCoord={transitCoord}
+            driverName={driverName}
+            lang={lang}
+          />
         </View>
       ) : locationLoading ? (
         <View style={s.waitingMap} testID="trip-live-map-loading">
@@ -206,7 +393,18 @@ const s = StyleSheet.create({
   title: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' },
   route: { fontSize: 14, fontWeight: '700' },
   stats: { fontSize: 12, fontWeight: '600' },
-  liveMap: { height: 240, borderRadius: 12, overflow: 'hidden' },
+  liveBlock: { borderRadius: 14, overflow: 'hidden', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E5ECE8' },
+  liveMap: { height: 260, overflow: 'hidden' },
+  rolePanel: { paddingHorizontal: 13, paddingTop: 12, paddingBottom: 13, backgroundColor: '#FFFFFF' },
+  panelTitle: { color: '#14221C', fontSize: 17, fontWeight: '900', marginBottom: 8 },
+  infoRow: { minHeight: 32, flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#EEF3F0' },
+  infoIcon: { width: 28, alignItems: 'flex-start' },
+  infoLabel: { flex: 0.9, color: '#617067', fontSize: 12, fontWeight: '700' },
+  infoValue: { flex: 1.2, color: '#14221C', fontSize: 13, fontWeight: '800', textAlign: 'right' },
+  infoMuted: { color: '#8A9790' },
+  infoAccent: { color: '#0F6B47' },
+  warningStrip: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 9, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, backgroundColor: '#FFF7ED', borderWidth: 1, borderColor: '#FED7AA' },
+  warningText: { flex: 1, color: '#B45309', fontSize: 11, fontWeight: '700' },
   waitingMap: { height: 180, alignItems: 'center', justifyContent: 'center', gap: 10 },
   waitingText: { fontSize: 12, fontWeight: '700' },
   plannedMap: { height: 150, borderRadius: 12, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
