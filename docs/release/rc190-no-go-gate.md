@@ -2,7 +2,7 @@
 
 Дата: 2026-08-16
 Branch: `agent/urtruck-fix-security-freeze-20260815`
-HEAD: `f88f012bfc49b770a7517de10f02acda9e1233cc`
+Latest reviewed HEAD before docs gate: `f88f012bfc49b770a7517de10f02acda9e1233cc`
 PR: #190
 
 ## Verdict
@@ -15,10 +15,10 @@ PR остаётся draft/review-only. Merge в `main` и production deploy за
 
 - PR #190 открыт и находится в draft.
 - PR технически mergeable, но это не release approval.
-- Branch ahead of `main` на 29 commits, без behind.
+- Branch ahead of `main` на 29 commits, без behind на момент проверки.
 - Изменений много: 148 files, включая backend, security, GPS, iOS Pods, workflows, QA, Playwright, Maestro, frontend, package-lock.
 
-## CI / GitHub Actions
+## CI / GitHub Actions по `f88f012`
 
 ### PASS
 
@@ -34,19 +34,33 @@ PR остаётся draft/review-only. Merge в `main` и production deploy за
 - Full QA Audit / Playwright desktop visual audit: FAIL на шаге `Run desktop Playwright suite`.
 - Full QA Audit / Design, FSM and UX gate: FAIL на шаге `Release dependency and secret gates`.
 
+## Dependency experiment performed
+
+Проверен package-only override:
+
+```json
+"image-size": "2.0.3"
+```
+
+Результат: **FAIL**.
+
+Причина: без синхронного обновления `package-lock.json` GitHub Actions падает уже на `Install dependencies`. Поэтому package-only override был отменён отдельным commit, чтобы не оставлять ветку в ещё более сломанном состоянии.
+
+Вывод: исправление `image-size` должно выполняться через нормальный `npm install` / lockfile regeneration в локальном Codex/worktree или через полноценный dependency update pipeline, а не ручным изменением только `package.json`.
+
 ## Главные release blockers
 
 ### 1. Dependency audit / `image-size`
 
 `package-lock.json` содержит `image-size@1.2.1`, транзитивно через `metro@0.81.5` (`metro` требует `image-size: ^1.0.2`).
 
-Из внешних advisory/NVD: `image-size` versions `1.1.0 <= 1.2.1` и `2.0.0 <= 2.0.2` affected; рекомендуемый fixed version — `2.0.3+`.
+Из advisory/NVD: `image-size` versions `1.1.0 <= 1.2.1` и `2.0.0 <= 2.0.2` affected; fixed version indicated as `2.0.3+` in NVD/VulnCheck records.
 
 Нельзя делать `npm audit fix --force`, если он downgrade/ломает React Native/Expo/Metro.
 
 Нужно одно из двух:
 
-1. Safe remediation: доказанный override/resolution на безопасную версию, с `npm ci`, audit, Web build, Android, iOS, Playwright regression.
+1. Safe remediation: доказанный override/resolution на безопасную версию с синхронным `package-lock.json`, затем `npm ci`, audit, Web build, Android, iOS, Playwright regression.
 2. Documented accepted risk: доказать, что `image-size` используется только Metro/build-time и не reachable от production user input. Это не “fixed”, а accepted build-time dependency risk с upgrade ticket.
 
 ### 2. Desktop Playwright visual audit
