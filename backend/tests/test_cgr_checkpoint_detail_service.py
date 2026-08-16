@@ -4,6 +4,8 @@ from datetime import date
 from pathlib import Path
 
 os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_cgr_lazy.db")
+os.environ.setdefault("CGR_FEATURE_ENABLED", "true")
+os.environ.setdefault("CGR_IIN_SALT", "test-lazy-cgr-salt")
 Path(os.environ["DB_PATH"]).unlink(missing_ok=True)
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
