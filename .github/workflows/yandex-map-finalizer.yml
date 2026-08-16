@@ -1,10 +1,9 @@
 name: UrTruck Yandex Map Finalizer
 
 on:
-  # The legacy deploy and the secure recovery deploy both replace index.html.
-  # Re-apply the protected Yandex loader after each successful production write;
-  # the second run (after Secure Production Deploy) guarantees the final public
-  # filesystem still contains Yandex Maps rather than the raw Expo bundle.
+  # Both production writers can replace index.html. The secure deploy can fail
+  # after its frontend copy already succeeded, so we must finalize after every
+  # completed secure-deploy attempt, not only after a green conclusion.
   workflow_run:
     workflows: ["UrTruck Deploy", "UrTruck Secure Production Deploy"]
     types: [completed]
@@ -18,7 +17,7 @@ concurrency:
 
 jobs:
   inject-yandex-map:
-    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
+    if: ${{ github.event.workflow_run.head_branch == 'main' && (github.event.workflow_run.name == 'UrTruck Secure Production Deploy' || github.event.workflow_run.conclusion == 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
