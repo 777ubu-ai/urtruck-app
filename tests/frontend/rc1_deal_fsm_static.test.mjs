@@ -33,7 +33,7 @@ test('start trip is the only driver action and starts location internally', () =
 });
 
 test('live map returns to deal chat instead of exposing a call action', () => {
-  assert.match(trackSrc, /testID="track-message-driver"/);
+  assert.match(trackSrc, /testID=\{isDriverViewer \? 'track-back-to-chat' : 'track-message-driver'\}/);
   assert.match(trackSrc, /t\('write_driver'\)/);
   assert.match(trackSrc, /navigation\.goBack\(\)/);
   assert.doesNotMatch(trackSrc, /name="phone"/);
@@ -49,11 +49,13 @@ test('shipper sees tracking preview inside the deal chat', () => {
   assert.match(src, /t\('tracking_starts_after_start'\)/);
 });
 
-test('driver can open an external navigator without moving shipper tracking outside UrTruck', () => {
+test('driver opens the internal deal map without leaving UrTruck', () => {
   assert.match(src, /const DRIVER_ROUTE_STATUSES = \['accepted', 'in_progress', 'at_border', 'delivered'\]/);
-  assert.match(src, /const openDriverRoute = async/);
+  assert.match(src, /const openDealMap = \(\) =>/);
   assert.match(src, /testID="deal-open-driver-route"/);
   assert.match(src, /t\('open_route_btn'\)/);
-  assert.match(src, /https:\/\/yandex\.ru\/maps\/\?rtext=/);
+  assert.doesNotMatch(src, /https:\/\/yandex\.ru\/maps\/\?rtext=/);
+  assert.match(src, /navigation\.navigate\('TrackTruck'/);
+  assert.match(src, /viewerRole: role/);
   assert.doesNotMatch(trackSrc, /Linking\.openURL/);
 });
