@@ -31,7 +31,9 @@ def test_catalog_is_specific_route_and_network_free_contract():
     data = response.json()
     assert data["lazy"] is True
     assert data["cgr_requests"] == 0
-    assert any(x["name"] == "Калжат - Дулаты" for x in data["checkpoints"])
+    assert isinstance(data["checkpoints"], list)
+    assert data["checkpoints"], "catalog may use DB seed or local legacy fallback, but must not be empty"
+    assert all({"id", "name", "country"}.issubset(row) for row in data["checkpoints"])
 
 
 def test_live_route_registered_before_legacy_dynamic_route():
