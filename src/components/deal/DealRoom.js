@@ -12,12 +12,14 @@
 // Акцент роли: driver #168759 / client #FF8400 (источник истины CLAUDE.md).
 
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { Platform, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
 import { useTheme } from '../../utils/ThemeContext';
 import { userFacingDealStatus } from '../../utils/dealStatusOrder';
 import { localizeCargoName, localizePlace } from '../../utils/places';
+import { parseRouteCities } from '../../utils/geo';
+import TruckMap from '../TruckMap';
 
 export const DRIVER_ACCENT = '#168759';
 export const CLIENT_ACCENT = '#FF8400';
@@ -31,6 +33,8 @@ const DEAL_STATUS_COLOR = {
   cancelled: '#7C8B82', rejected: '#EF4444', dispute: '#EF4444',
   completed: '#168759', delivered: '#168759',
 };
+
+const DRIVER_MAP_STATUSES = ['accepted', 'in_progress', 'at_border', 'delivered'];
 
 // Перевод i18n_key из backend ("deal_event.bid_accepted") → плоский t()-ключ
 // ("deal_event_bid_accepted"). Фронт переводит по ключу + payload, fallback —
@@ -71,10 +75,28 @@ export function DealRoomCard({ deal, role }) {
   // немаппленных значений (confirmed/draft/dispute — нет ключа status_*).
   const stKey = 'status_' + displayStatus;
   const stLabel = t(stKey) !== stKey ? t(stKey) : displayStatus;
+  const rawRoute = [deal.from_city, deal.to_city].filter(Boolean).join(' → ');
+  const routePoints = parseRouteCities(rawRoute);
   const route = [deal.from_city, deal.to_city]
     .filter(Boolean)
     .map((place) => localizePlace(place, lang))
     .join(' → ') || '—';
+
+  // Product rule: once a deal exists, the route is visible without an extra
+  // "Где машина" / "Открыть маршрут" action. On web/PWA the Yandex map is
+  // embedded immediately in the deal. For the shipper the existing live-GPS
+  // card takes over after the trip starts; for the driver the planned route
+  // remains visible throughout the active trip.
+  const showAutomaticRouteMap = Platform.OS === 'web'
+    && routePoints.length >= 2
+    && (status === 'accepted' || (role === 'driver' && DRIVER_MAP_STATUSES.includes(status)));
+
+  const language = String(lang || 'ru').toLowerCase();
+  const mapCopy = language.startsWith('zh')
+    ? { title: '计划路线', hint: '行程开始后，车辆位置会自动显示', live: '车辆位置' }
+    : language.startsWith('en')
+      ? { title: 'Planned route', hint: 'Truck location will appear automatically after trip start', live: 'Truck location' }
+      : { title: 'Плановый маршрут', hint: 'После начала рейса машина появится автоматически', live: 'Машина на маршруте' };
 
   const Field = ({ icon, label, value }) => (
     <View style={s.field}>
@@ -100,6 +122,17 @@ export function DealRoomCard({ deal, role }) {
           : '—'
       } />
       {deal.plate ? <Field icon="truck" label={t('chat_deal_card_plate')} value={deal.plate} /> : null}
+      {showAutomaticRouteMap ? (
+        <View style={[s.autoMap, { borderColor: theme.border }]} testID="deal-automatic-route-map">
+          <TruckMap
+            routePoints={routePoints}
+            planned
+            plannedTitle={mapCopy.title}
+            plannedHint={mapCopy.hint}
+            liveTitle={mapCopy.live}
+          />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -171,6 +204,7 @@ const s = StyleSheet.create({
   field: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   fieldLabel: { fontSize: 12 },
   fieldValue: { fontSize: 12, fontWeight: '700', flex: 1, textAlign: 'right' },
+  autoMap: { height: 250, marginTop: 8, borderWidth: 1, borderRadius: 14, overflow: 'hidden', backgroundColor: '#EAF1ED' },
   sysRow: { alignItems: 'center', marginVertical: 6 },
   sysPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, maxWidth: '90%' },
   sysText: { fontSize: 11, fontWeight: '600', textAlign: 'center' },
