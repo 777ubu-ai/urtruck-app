@@ -1,0 +1,33 @@
+name: Preserve Normalizer UX Contract
+on:
+  push:
+    branches: [fix/zh-localization-10of10-20260816]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[ux-normalizer]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/zh-localization-10of10-20260816
+          fetch-depth: 0
+      - name: Preserve split field source contract
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          p=Path('src/utils/normalizers.js')
+          s=p.read_text()
+          old="""  const units = displayUnits(lang);\n  return {\n    from: sanitizeForDisplay(cargo?.from) || dash,\n    to: sanitizeForDisplay(cargo?.to) || dash,\n    cargoDesc: sanitizeForDisplay(cargo?.cargoDesc) || dash,\n    cargoType: typeLabel && typeLabel !== cargo?.cargoType ? typeLabel : (cargo?.cargoType || dash),\n    weight: cargo?.weightTons > 0 ? `${cargo.weightTons} ${units.ton}` : dash,\n    volume: cargo?.volumeM3 > 0 ? `${cargo.volumeM3} ${units.volume}` : dash,"""
+          new="""  const units = displayUnits(lang);\n  const weight = cargo?.weightTons > 0 ? `${cargo.weightTons} ${units.ton}` : dash;\n  const volume = cargo?.volumeM3 > 0 ? `${cargo.volumeM3} ${units.volume}` : dash;\n  return {\n    from: sanitizeForDisplay(cargo?.from) || dash,\n    to: sanitizeForDisplay(cargo?.to) || dash,\n    cargoDesc: sanitizeForDisplay(cargo?.cargoDesc) || dash,\n    cargoType: typeLabel && typeLabel !== cargo?.cargoType ? typeLabel : (cargo?.cargoType || dash),\n    weight,\n    volume,"""
+          if s.count(old)!=1: raise SystemExit(f'expected one cargoDisplay shape, got {s.count(old)}')
+          p.write_text(s.replace(old,new))
+          PY
+      - name: Commit
+        run: |
+          git config user.name "UrTruck QA Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add src/utils/normalizers.js
+          git commit -m "fix(qa): preserve split cargoDisplay fields [ux-normalizer]"
+          git push origin HEAD:fix/zh-localization-10of10-20260816
