@@ -1,0 +1,44 @@
+name: ZH Release Epoch Patch
+
+on:
+  push:
+    branches: [fix/zh-localization-10of10-20260816]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[zh-release-epoch]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/zh-localization-10of10-20260816
+          fetch-depth: 0
+      - name: Patch production deploy epoch
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('.github/workflows/deploy.yml')
+          s=p.read_text()
+          pairs=[
+            ("Версия кэша (v13-market)", "Версия кэша (v16-market)"),
+            ("const V='v13-market';", "const V='v16-market';"),
+            ("register('/sw.js?v=13')", "register('/sw.js?v=16')"),
+          ]
+          for old,new in pairs:
+            if old not in s:
+              raise SystemExit(f'missing deploy epoch marker: {old}')
+            s=s.replace(old,new)
+          p.write_text(s)
+          PY
+          grep -q "const V='v16-market'" .github/workflows/deploy.yml
+          grep -q "sw.js?v=16" .github/workflows/deploy.yml
+      - name: Commit
+        run: |
+          git config user.name "UrTruck QA Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add .github/workflows/deploy.yml
+          git commit -m "chore(release): sync production cache epoch v16 [zh-release-epoch]"
+          git push origin HEAD:fix/zh-localization-10of10-20260816
