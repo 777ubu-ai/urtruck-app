@@ -2,7 +2,7 @@
 
 Дата: 2026-08-16
 Branch: `agent/urtruck-fix-security-freeze-20260815`
-Latest reviewed HEAD before docs gate: `f88f012bfc49b770a7517de10f02acda9e1233cc`
+Latest reviewed remote HEAD before this update: `ade94022b164f2d29bb160ad1b6359a4020d174e`
 PR: #190
 
 ## Verdict
@@ -15,18 +15,18 @@ PR остаётся draft/review-only. Merge в `main` и production deploy за
 
 - PR #190 открыт и находится в draft.
 - PR технически mergeable, но это не release approval.
-- Branch ahead of `main` на 29 commits, без behind на момент проверки.
-- Изменений много: 148 files, включая backend, security, GPS, iOS Pods, workflows, QA, Playwright, Maestro, frontend, package-lock.
+- Branch ahead of `main`, без behind на момент проверки.
+- Изменений много: backend, security, GPS, iOS Pods, workflows, QA, Playwright, Maestro, frontend, package-lock.
 
-## CI / GitHub Actions по `f88f012`
+## CI / GitHub Actions по remote branch
 
 ### PASS
 
-- QA Center quick gate: PASS.
-- QA Center Maestro flow contract: PASS по YAML/contract validation.
-- Backend tests в PR Quality Gate: PASS.
-- API and backend regression в Full QA Audit: PASS.
-- Playwright mobile visual audit: PASS.
+- QA Center quick gate ранее проходил на `f88f012`.
+- QA Center Maestro flow contract проходил по YAML/contract validation.
+- Backend tests в PR Quality Gate проходили.
+- API and backend regression в Full QA Audit проходил.
+- Playwright mobile visual audit проходил.
 
 ### FAIL / BLOCKER
 
@@ -34,84 +34,176 @@ PR остаётся draft/review-only. Merge в `main` и production deploy за
 - Full QA Audit / Playwright desktop visual audit: FAIL на шаге `Run desktop Playwright suite`.
 - Full QA Audit / Design, FSM and UX gate: FAIL на шаге `Release dependency and secret gates`.
 
-## Dependency experiment performed
+## Local Codex report received after dependency remediation attempt
 
-Проверен package-only override:
+Local worktree: `/private/tmp/urtruck-fix.8Gf2a1`
 
-```json
-"image-size": "2.0.3"
+User/Codex report states:
+
+- `npm install`: ran without `--force`.
+- `npm ci`: ran.
+- `npm audit --audit-level=high`: still FAIL.
+- Remaining high advisories: `GHSA-w3rx-r6r6-pgpr`, `GHSA-5p2g-fcmc-qvqq` through `image-size`.
+- `npm audit fix` still proposes only `--force`, with breaking `react-native@0.72.17`; do not apply.
+- Local `package.json` experiment used override `image-size: 2.0.2`.
+- `npm view image-size versions` reported max available version `2.0.2`; `2.0.3+` is not available on npm.
+- `npm ci` installed `image-size@2.0.2`, but web export fails with `TypeError: getImageSize is not a function`.
+- `npm run qa:center:quick`: falls at `build:web` due to the same `getImageSize` mismatch.
+- `npm run build:web`: FAIL, same `getImageSize` mismatch.
+- `npm run qa:full`: FAIL with `P0=9 P1=5 P2=16 pass=13`, main failures in `ensure-actor` layer.
+- `npm run qa:auditor`: FAIL with `P0=4` in `agent-currency`, `agent-serik`, `agent-boris` ensure-actor.
+- `npm run qa:secrets`, `qa:i18n`, `qa:ux`, `qa:trip-status`, `qa:gps-consent`: PASS.
+- Backend suite: `324 passed`.
+- `npm run android`: environment/device FAIL, no Android connected device/emulator.
+- `npm run ios`: FAIL Code 65, missing `node_modules/react-native/React/Fabric/RCTThirdPartyFabricComponentsProvider.mm`.
+- `npm run qa:center:maestro:smoke`: FAIL, `qa-debug-block is visible`.
+
+## Dependency conclusion as of this update
+
+The earlier documented `image-size@2.0.3+` remediation path is **not currently actionable** because the local npm registry query reports no `2.0.3+` release.
+
+`image-size@2.0.2` is also **not a safe drop-in remediation** for this stack because Expo/Metro export fails with:
+
+```text
+TypeError: getImageSize is not a function
 ```
 
-Результат: **FAIL**.
+This indicates an API/export contract mismatch with Metro/Expo usage, not just a lockfile problem.
 
-Причина: без синхронного обновления `package-lock.json` GitHub Actions падает уже на `Install dependencies`. Поэтому package-only override был отменён отдельным commit, чтобы не оставлять ветку в ещё более сломанном состоянии.
+Therefore, do not apply a naive package override to `image-size@2.0.2` unless Metro/Expo code is proven compatible or patched with full regression.
 
-Вывод: исправление `image-size` должно выполняться через нормальный `npm install` / lockfile regeneration в локальном Codex/worktree или через полноценный dependency update pipeline, а не ручным изменением только `package.json`.
+## Required next dependency path
 
-## Главные release blockers
+One of these must be completed before release:
 
-### 1. Dependency audit / `image-size`
+### A. Safe compatibility patch
 
-`package-lock.json` содержит `image-size@1.2.1`, транзитивно через `metro@0.81.5` (`metro` требует `image-size: ^1.0.2`).
+Create a version-scoped, tracked compatibility patch that lets Metro continue to call the expected image-size API while using the safest available implementation/version. Requirements:
 
-Из advisory/NVD: `image-size` versions `1.1.0 <= 1.2.1` и `2.0.0 <= 2.0.2` affected; fixed version indicated as `2.0.3+` in NVD/VulnCheck records.
+- No `npm audit fix --force`.
+- No React Native downgrade.
+- No global Metro/RN upgrade without Expo compatibility proof.
+- Reproducible via `npm ci`.
+- `npm run build:web` must PASS.
+- `npm audit --audit-level=high` outcome must be documented.
+- If audit still flags because no fixed version exists, see B.
 
-Нельзя делать `npm audit fix --force`, если он downgrade/ломает React Native/Expo/Metro.
+### B. Documented accepted build-time dependency risk
 
-Нужно одно из двух:
+If no patched package exists on npm and the package is only reachable through Metro build-time asset processing, document this as accepted build-time dependency risk, not fixed. Requirements:
 
-1. Safe remediation: доказанный override/resolution на безопасную версию с синхронным `package-lock.json`, затем `npm ci`, audit, Web build, Android, iOS, Playwright regression.
-2. Documented accepted risk: доказать, что `image-size` используется только Metro/build-time и не reachable от production user input. Это не “fixed”, а accepted build-time dependency risk с upgrade ticket.
+- Prove no UrTruck production backend/mobile/web runtime path imports `image-size`.
+- Prove it is introduced through Metro build tooling only.
+- Prove user-uploaded production files do not reach Metro.
+- Keep `image-size` at the Metro-compatible version if override breaks export.
+- Add an upgrade/removal ticket for Metro/RN/Expo when upstream publishes a compatible fix.
+- Tom must independently verify reachability analysis.
 
-### 2. Desktop Playwright visual audit
+## Other current blockers from latest local report
 
-Full QA Audit показывает FAIL на desktop Playwright suite. Нужно открыть HTML/report/log artifacts и исправить реальные failures либо обновить устаревший тест только после проверки product contract.
+### 1. Auditor / ensure-actor P0
 
-### 3. Design/FSM/UX release gate
+`qa:full` and `qa:auditor` show P0 ensure-actor failures for `agent-currency`, `agent-serik`, `agent-boris`.
 
-Full QA Audit показывает FAIL на `Release dependency and secret gates`. Нужно выяснить точную причину. Пока gate красный — release NO-GO.
+Do not weaken actor checks. Fix root cause:
 
-### 4. iOS simulator/device
+- stale QA agent setup;
+- missing seeded actor;
+- role/session mismatch;
+- old test assumptions;
+- or real regression.
 
-iOS build/runtime evidence всё ещё должен быть подтверждён на актуальном HEAD после dependency decisions. Pods-only PASS не считается iOS PASS.
+### 2. Web build
 
-### 5. Maestro runtime/device
+`npm run build:web` is currently blocked by `image-size@2.0.2` API mismatch. Restore a Metro-compatible dependency state or implement a proven compatibility patch.
 
-GitHub сейчас подтверждает YAML/contract validation, но это не полноценный runtime Maestro на устройстве/симуляторе. Release требует runtime evidence.
+### 3. iOS build
+
+`npm run ios` fails Code 65 because `node_modules/react-native/React/Fabric/RCTThirdPartyFabricComponentsProvider.mm` is missing.
+
+This is a separate blocker from the previous fmt/Xcode issue. Investigate whether it is caused by:
+
+- broken/incomplete `npm install` state;
+- React Native codegen not generated;
+- Pods/project referencing a generated file that does not exist;
+- stale native project file;
+- lockfile/dependency mismatch.
+
+### 4. Maestro runtime
+
+`qa:center:maestro:smoke` fails because `qa-debug-block` is visible. This is runtime evidence of an app/test-state problem, not a YAML contract PASS.
+
+### 5. Android runtime
+
+Android is not verified because no connected device/emulator was available. This is environment BLOCKED, not PASS.
 
 ### 6. Production-smoke
 
-Production-smoke intentionally отделён от local QA и должен запускаться только после deployment expected commit. Сейчас production-smoke на expected deployed SHA не пройден.
+Production-smoke intentionally отделён от local QA and must run only after deployment of the expected SHA.
 
 ### 7. Yandex MapKit approval/key
 
-В PR/GitHub нет доказательства, что Яндекс выдал approval или что production MapKit ключ активен и ограничен для Android package / iOS bundle / web domain. Нужно подтверждение из Yandex кабинета или владельца.
+No GitHub evidence confirms Yandex approval or active restricted production MapKit keys. Need external confirmation from Yandex dashboard or owner.
 
-## Что нельзя делать
+## What is currently PASS
 
-- Не merge #190.
-- Не deploy production.
-- Не переводить PR из draft в ready.
-- Не игнорировать `npm audit` без reachability analysis.
-- Не делать `npm audit fix --force`.
-- Не ослаблять security ради зелёного CI.
-- Не считать Maestro YAML validation полноценным device QA.
+- Backend tests: `324 passed` from local report.
+- Standalone smoke scripts from local report:
+  - `qa:secrets`
+  - `qa:i18n`
+  - `qa:ux`
+  - `qa:trip-status`
+  - `qa:gps-consent`
+- GitHub PR remains draft and not merged.
 
-## Следующий порядок работ
+## What cannot be called PASS
 
-1. Закрыть dependency audit корректно: safe override/remediation или documented accepted build-time risk.
-2. Исправить desktop Playwright failure.
-3. Исправить Design/FSM/UX release gate.
-4. Повторить PR Quality Gate и Full QA Audit до PASS.
-5. Получить iOS simulator build/install/launch evidence.
-6. Получить Android/iOS runtime smoke evidence.
-7. Запустить Maestro runtime.
-8. Проверить GPS/map/docs/chat/push/CGR на final candidate.
-9. Получить Tom pre-production `GO`.
-10. Только потом обсуждать merge/deploy.
+- Dependency security.
+- Web build on the local dependency experiment.
+- Full `qa:full`.
+- Auditor.
+- iOS build.
+- Android runtime.
+- Maestro runtime.
+- Production-smoke.
+- Yandex approval.
+- Tom final GO.
+
+## What cannot be done
+
+- Do not merge #190.
+- Do not deploy production.
+- Do not mark Ready for review.
+- Do not run `npm audit fix --force`.
+- Do not accept `image-size@2.0.2` while it breaks Web export.
+- Do not mark Maestro YAML validation as runtime PASS.
+- Do not mark Android as PASS without device/emulator evidence.
+- Do not claim Yandex approval without dashboard/email evidence.
+
+## Next safe execution order
+
+1. Revert local `image-size@2.0.2` override if it is still present and still breaks Web export, or replace it with a proven compatibility patch.
+2. Restore `npm ci` + `npm run build:web` PASS.
+3. Decide dependency security path: compatibility patch or accepted build-time dependency risk with reachability proof.
+4. Fix `ensure-actor` P0 in `qa:full`/`qa:auditor` without weakening actor security.
+5. Fix Maestro runtime `qa-debug-block` failure.
+6. Fix iOS missing Fabric generated file / codegen/native project issue.
+7. Re-run local gates:
+   - `npm ci`
+   - `npm audit --audit-level=high` or documented accepted risk gate
+   - `npm run qa:center:quick`
+   - `npm run qa:full`
+   - `npm run build:web`
+   - backend tests
+   - iOS build/install/launch
+   - Android emulator/device
+   - Maestro runtime
+8. Push final fixed branch.
+9. Wait for GitHub Actions.
+10. Tom pre-production GO only after all release blockers are closed.
 
 ## Current release statement
 
-UrTruck RC #190 ещё не готов к release.
+UrTruck RC #190 is still **NO-GO**.
 
-Технически PR mergeable, но release-wise он **NO-GO** до закрытия всех blockers выше.
+The latest local attempt proved that naive `image-size@2.0.2` override is not viable because it breaks Expo/Metro web export. The next solution must either be a real compatibility patch or a documented build-time accepted-risk decision with independent reachability verification.
