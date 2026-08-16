@@ -1,0 +1,73 @@
+name: Patch shipper in-progress auto map
+
+on:
+  push:
+    branches: [fix/shipper-inprogress-auto-map-20260816]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[auto-map-patched]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/shipper-inprogress-auto-map-20260816
+          fetch-depth: 0
+
+      - name: Apply deterministic ChatScreen patch
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('src/screens/ChatScreen.js')
+          s = p.read_text(encoding='utf-8')
+
+          import_anchor = "import { ensureBackgroundLocationPermission, getCurrentLocationPayload } from '../utils/backgroundLocation';\n"
+          import_line = "import { parseRouteCities } from '../utils/geo';\n"
+          if import_line not in s:
+              assert import_anchor in s, 'geo import anchor missing'
+              s = s.replace(import_anchor, import_anchor + import_line, 1)
+
+          map_vars_anchor = """  const mapUpdatedText = (() => {\n    if (!mapPreviewLoc?.updated_at) return t('tracking_live_here');\n    const ts = Date.parse(String(mapPreviewLoc.updated_at).replace(' ', 'T') + (String(mapPreviewLoc.updated_at).endsWith('Z') ? '' : 'Z'));\n    if (Number.isNaN(ts)) return t('tracking_live_here');\n    const min = Math.max(0, Math.round((Date.now() - ts) / 60000));\n    if (min === 0) return t('track_updated_now');\n    return `${t('track_updated')} ${min} ${t('track_min')} ${t('track_ago')}`;\n  })();\n"""
+          map_vars = map_vars_anchor + """  const dealRoutePoints = parseRouteCities([deal?.from_city, deal?.to_city].filter(Boolean).join(' → '));\n  const mapLanguage = String(getLanguage() || 'ru').toLowerCase();\n  const plannedMapCopy = mapLanguage.startsWith('zh')\n    ? { title: '计划路线', hint: '行程开始后，车辆位置会自动显示', live: '车辆位置' }\n    : mapLanguage.startsWith('en')\n      ? { title: 'Planned route', hint: 'Truck location will appear automatically after trip start', live: 'Truck location' }\n      : { title: 'Плановый маршрут', hint: 'После начала рейса машина появится автоматически', live: 'Машина на маршруте' };\n"""
+          if 'const dealRoutePoints = parseRouteCities' not in s:
+              assert map_vars_anchor in s, 'map variables anchor missing'
+              s = s.replace(map_vars_anchor, map_vars, 1)
+
+          pattern = re.compile(r'''              \{isShipperSide && \['in_progress', 'at_border', 'delivered'\]\.includes\(deal\?\.status\) \? \(\n                <TouchableOpacity testID="deal-track-truck" style=\{s\.dealMapCard\}\n                  onPress=\{openDealMap\}>\n.*?\n                </TouchableOpacity>\n              \) : null\}''', re.S)
+          replacement = '''              {isShipperSide && ['in_progress', 'at_border', 'delivered'].includes(deal?.status) ? (\n                <TouchableOpacity testID="deal-track-truck" style={s.dealMapCard}\n                  onPress={openDealMap}>\n                  {hasMapPreviewPoint || (IS_WEB && dealRoutePoints.length >= 2) ? (\n                    <>\n                      <TruckMap\n                        lat={hasMapPreviewPoint ? mapPreviewLat : undefined}\n                        lng={hasMapPreviewPoint ? mapPreviewLng : undefined}\n                        title={hasMapPreviewPoint ? (deal?.counterparty_name || resolvedPartner?.name || t('track_truck_marker')) : undefined}\n                        routePoints={dealRoutePoints}\n                        planned={!hasMapPreviewPoint}\n                        plannedTitle={plannedMapCopy.title}\n                        plannedHint={plannedMapCopy.hint}\n                        liveTitle={plannedMapCopy.live}\n                      />\n                      <View style={s.dealMapOverlayTop} pointerEvents="box-none">\n                        {hasMapPreviewPoint ? (\n                          <View style={s.dealMapPill}>\n                            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#168759' }} />\n                            <Text style={s.dealMapPillText} numberOfLines={1}>{t('live_route_title')}</Text>\n                          </View>\n                        ) : <View />}\n                        <TouchableOpacity style={s.dealMapOpenPill} onPress={openDealMap} accessibilityLabel={t('track_truck_btn')}>\n                          <Feather name="maximize-2" size={12} color={v1.text} />\n                          <Text style={s.dealMapOpenText}>{t('track_truck_btn')}</Text>\n                        </TouchableOpacity>\n                      </View>\n                      {hasMapPreviewPoint ? (\n                        <View style={s.dealMapFooter} pointerEvents="none">\n                          <Text style={s.dealMapFooterText} numberOfLines={1}>{mapUpdatedText}</Text>\n                        </View>\n                      ) : null}\n                    </>\n                  ) : (\n                    <View style={s.dealMapEmpty}>\n                      <Feather name="navigation" size={34} color={v1.textMuted} />\n                      <Text style={s.dealMapEmptyTitle}>{dealLocation.loading ? '…' : t('track_truck_waiting')}</Text>\n                      <Text style={s.dealMapEmptyDesc}>{t('tracking_starts_after_start')}</Text>\n                    </View>\n                  )}\n                </TouchableOpacity>\n              ) : null}'''
+          s, count = pattern.subn(replacement, s, count=1)
+          assert count == 1, f'shipper tracking block matches={count}, expected 1'
+
+          p.write_text(s, encoding='utf-8')
+          PY
+
+      - name: Add map contract
+        run: |
+          cat > tests/frontend/test_shipper_inprogress_auto_map.mjs <<'EOF'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          const s = readFileSync('src/screens/ChatScreen.js', 'utf8');
+          assert.match(s, /parseRouteCities/, 'ChatScreen must derive route coordinates');
+          assert.match(s, /IS_WEB && dealRoutePoints\.length >= 2/, 'web shipper must see planned map without GPS');
+          assert.match(s, /planned=\{!hasMapPreviewPoint\}/, 'planned state must be explicit when GPS is absent');
+          assert.match(s, /routePoints=\{dealRoutePoints\}/, 'planned and live map must share deal route');
+          assert.doesNotMatch(s, /deal-track-truck[\s\S]{0,2200}track_truck_waiting[\s\S]{0,500}track_truck_btn/, 'no-GPS web path must not require opening a waiting screen');
+          console.log('shipper in-progress automatic map contract: PASS');
+          EOF
+          node tests/frontend/test_shipper_inprogress_auto_map.mjs
+          node tests/frontend/test_yandex_map_primary.mjs
+          node tests/frontend/test_deal_room_auto_map.mjs
+
+      - name: Remove temporary workflow and commit patch
+        run: |
+          rm -f .github/workflows/patch-shipper-auto-map.yml
+          git config user.name 'UrTruck Release Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add src/screens/ChatScreen.js tests/frontend/test_shipper_inprogress_auto_map.mjs .github/workflows/patch-shipper-auto-map.yml
+          git commit -m 'fix(map): shipper sees planned route before GPS [auto-map-patched]'
+          git push origin HEAD:fix/shipper-inprogress-auto-map-20260816
