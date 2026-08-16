@@ -42,7 +42,7 @@ export const formatPrice = (amount, currency, t) => {
   const sym = CURRENCY_SYMBOLS[cur];
   const numeric = Number(amount);
   if (!Number.isFinite(numeric) || numeric <= 0) {
-    return t ? t('payment_negotiable') : 'Negotiable';
+    return t ? t('payment_negotiable') : 'По договорённости';
   }
   const n = String(Math.round(numeric)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   return cur === 'UZS' || cur === 'KGS' ? `${n} ${sym}` : `${sym}${n}`;
