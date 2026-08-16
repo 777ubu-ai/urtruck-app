@@ -18,6 +18,7 @@ import { useMountedRef } from '../hooks/useMountedRef';
 import FadeInUp from '../components/ui/FadeInUp';
 import Feather from '@expo/vector-icons/Feather';
 import { countryFlag } from '../utils/countryFlags';
+import AppConfirmModal from '../components/ui/AppConfirmModal';
 
 export default function MyTripsScreen({ navigation, route }) {
   const v1 = useV1Colors();
@@ -152,6 +153,7 @@ export default function MyTripsScreen({ navigation, route }) {
   // при approved, иначе показываем gate-модалку → 5-шаговая проверка.
   const [verState, setVerState] = useState('loading');
   const [pubGateVisible, setPubGateVisible] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState(null);
 
   useEffect(() => {
     if (!isDriver) { setVerState('approved'); return; } // у клиента кнопки размещения рейса нет
@@ -180,16 +182,11 @@ export default function MyTripsScreen({ navigation, route }) {
     else setPubGateVisible(true);
   };
 
-  const confirmAction = async (msg) => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.confirm) {
-      return window.confirm(msg);
-    }
-    return new Promise(resolve => {
-      Alert.alert(msg, '', [
-        { text: t('cancel'), onPress: () => resolve(false) },
-        { text: 'OK', onPress: () => resolve(true) },
-      ]);
-    });
+  const confirmAction = async (msg, confirmLabel = t('confirm'), destructive = false) => (
+    new Promise((resolve) => setConfirmDialog({ msg, confirmLabel, destructive, resolve }))
+  );
+  const settleConfirm = (answer) => {
+    setConfirmDialog((current) => { current?.resolve?.(answer); return null; });
   };
 
   const load = async () => {
@@ -678,6 +675,16 @@ export default function MyTripsScreen({ navigation, route }) {
       />
 
       {/* Progressive verification gate для размещения рейса (driver). */}
+      <AppConfirmModal
+        visible={!!confirmDialog}
+        title={confirmDialog?.msg}
+        cancelLabel={t('cancel')}
+        confirmLabel={confirmDialog?.confirmLabel || t('confirm')}
+        destructive={!!confirmDialog?.destructive}
+        onCancel={() => settleConfirm(false)}
+        onConfirm={() => settleConfirm(true)}
+        testID="my-trips-confirm-modal"
+      />
       <Modal visible={pubGateVisible} transparent animationType="fade" onRequestClose={() => setPubGateVisible(false)}>
         <View style={s.pgBackdrop}>
           <View style={s.pgCard} testID="trips-publish-gate">

@@ -29,6 +29,7 @@ import PrimaryCTA from '../components/ui/actions/PrimaryCTA';
 import SecondaryButton from '../components/ui/actions/SecondaryButton';
 import DestructiveButton from '../components/ui/actions/DestructiveButton';
 import PriceSavingsBadge from '../components/deal/PriceSavingsBadge';
+import AppConfirmModal from '../components/ui/AppConfirmModal';
 import { reviewsAPI } from '../utils/reviews';
 import { pickDealStatus, userFacingDealStatus } from '../utils/dealStatusOrder';
 import { openContactPartner } from '../utils/contactPartner';
@@ -161,6 +162,13 @@ export default function TripDetail({ navigation, route }) {
   // сделал ставку (жалоба 28.07). Чат — только после accept (deal создан).
   const [myActiveBid, setMyActiveBid] = React.useState(null);
   const [cancelling, setCancelling] = React.useState(false);
+  const [confirmDialog, setConfirmDialog] = React.useState(null);
+  const askConfirm = React.useCallback((title, message = '', confirmLabel = t('confirm'), destructive = false) => (
+    new Promise((resolve) => setConfirmDialog({ title, message, confirmLabel, destructive, resolve }))
+  ), [t]);
+  const settleConfirm = React.useCallback((answer) => {
+    setConfirmDialog((current) => { current?.resolve?.(answer); return null; });
+  }, []);
 
   // Same authoritative-role logic as CargoDetail: route.params.role wins,
   // id-based comparison is a fallback for direct entry without a role hint.
@@ -286,9 +294,9 @@ export default function TripDetail({ navigation, route }) {
   const myBidStatusLabel = React.useMemo(() => {
     if (!myActiveBid) return '';
     switch (myActiveBid.status) {
-      case 'countered': return t('my_bid_status_countered') || 'Водитель предложил встречную цену';
+      case 'countered': return t('my_bid_status_countered');
       case 'pending':
-      default:          return t('my_bid_status_pending')   || 'Ожидает ответа водителя';
+      default:          return t('my_bid_status_pending');
     }
   }, [myActiveBid, t]);
 
@@ -299,16 +307,8 @@ export default function TripDetail({ navigation, route }) {
   const acceptCounter = React.useCallback(async () => {
     if (!myActiveBid || counterActing) return;
     const sum = formatPrice(myActiveBid.counterAmount, myActiveBid.currency || trip.currency);
-    const msg = (t('accept_bid_confirm') || 'Принять предложение за {sum}?').replace('{sum}', sum);
-    const ok = Platform.OS === 'web'
-      ? (typeof window !== 'undefined' && window.confirm(msg))
-      : await new Promise((res) => Alert.alert(
-          t('accept_counter') || 'Принять', msg,
-          [
-            { text: t('cancel'), style: 'cancel', onPress: () => res(false) },
-            { text: t('accept_counter') || 'Принять', onPress: () => res(true) },
-          ],
-        ));
+    const msg = t('accept_bid_confirm').replace('{sum}', sum);
+    const ok = await askConfirm(t('accept_counter'), msg, t('accept_counter'));
     if (!ok) return;
     setCounterActing(true);
     try {
@@ -369,15 +369,7 @@ export default function TripDetail({ navigation, route }) {
     // Принятие создаёт сделку — подтверждаем на обеих платформах.
     const sum = formatPrice(bid.amount, bid.currency || trip.currency);
     const msg = t('accept_bid_confirm').replace('{sum}', sum);
-    const ok = Platform.OS === 'web'
-      ? (typeof window !== 'undefined' && window.confirm(msg))
-      : await new Promise((res) => Alert.alert(
-          t('accept_bid_confirm_title') || t('accept_bid_btn'), msg,
-          [
-            { text: t('cancel'), style: 'cancel', onPress: () => res(false) },
-            { text: t('accept_bid_btn'), onPress: () => res(true) },
-          ],
-        ));
+    const ok = await askConfirm(t('accept_bid_confirm_title'), msg, t('accept_bid_btn'));
     if (!ok) return;
     setAccepting(bid.id);
     try {
@@ -501,17 +493,12 @@ export default function TripDetail({ navigation, route }) {
         toast('🗑 ' + t('trip_deleted_toast'), 'info');
         navigation.goBack();
       } else {
-        toast(res.detail || 'Ошибка', 'error');
+        toast(t('update_failed'), 'error');
       }
     };
-    if (Platform.OS === 'web') {
-      if (window.confirm(t('trip_delete_q'))) confirmDelete();
-    } else {
-      Alert.alert(t('trip_delete_q'), '', [
-        { text: t('cancel') },
-        { text: t('trip_delete'), style: 'destructive', onPress: confirmDelete },
-      ]);
-    }
+    askConfirm(t('trip_delete_q'), '', t('trip_delete'), true).then((ok) => {
+      if (ok) confirmDelete();
+    });
   };
 
   const isOwner = trip.isMine || trip.driverId === myUserId || trip.driverName === 'Вы' || trip.driverName === 'You';
@@ -984,7 +971,7 @@ export default function TripDetail({ navigation, route }) {
             <SecondaryButton
               testID="trip-my-bid-edit"
               role="client"
-              label={t('edit_bid') || 'Изменить'}
+              label={t('edit_bid')}
               onPress={() => setBidModal(true)}
               disabled={cancelling}
             />
@@ -994,15 +981,7 @@ export default function TripDetail({ navigation, route }) {
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               style={{ alignSelf: 'center', marginTop: 6, opacity: cancelling ? 0.5 : 1 }}
               onPress={async () => {
-                const ok = Platform.OS === 'web'
-                  ? (typeof window !== 'undefined' && window.confirm(t('cancel_bid_confirm')))
-                  : await new Promise((res) => Alert.alert(
-                      t('cancel_bid_confirm'), '',
-                      [
-                        { text: t('cancel'), style: 'cancel', onPress: () => res(false) },
-                        { text: t('cancel_bid'), style: 'destructive', onPress: () => res(true) },
-                      ],
-                    ));
+                const ok = await askConfirm(t('cancel_bid_confirm'), '', t('withdraw_bid_link'), true);
                 if (!ok) return;
                 setCancelling(true);
                 try {
@@ -1067,6 +1046,17 @@ export default function TripDetail({ navigation, route }) {
       />
 
 
+      <AppConfirmModal
+        visible={!!confirmDialog}
+        title={confirmDialog?.title}
+        message={confirmDialog?.message}
+        cancelLabel={t('cancel')}
+        confirmLabel={confirmDialog?.confirmLabel || t('confirm')}
+        destructive={!!confirmDialog?.destructive}
+        onCancel={() => settleConfirm(false)}
+        onConfirm={() => settleConfirm(true)}
+        testID="trip-confirm-modal"
+      />
       <ShareModal
         visible={shareModal}
         onClose={() => setShareModal(false)}
