@@ -1,49 +1,46 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 
-const screen = fs.readFileSync('src/screens/QueueScreenCarousel.js', 'utf8');
-const api = fs.readFileSync('backend/api/borders.py', 'utf8');
-const scoreboard = fs.readFileSync('backend/cgr/scoreboard_service.py', 'utf8');
+const wrapper = fs.readFileSync('src/screens/QueueScreen.js', 'utf8');
+const screen = fs.readFileSync('src/screens/QueueScreenLazy.js', 'utf8');
+const lazyApi = fs.readFileSync('backend/api/borders_lazy.py', 'utf8');
+const detailService = fs.readFileSync('backend/cgr/checkpoint_detail_service.py', 'utf8');
+const apiInit = fs.readFileSync('backend/api/__init__.py', 'utf8');
 const nav = fs.readFileSync('src/components/ui/v1/BottomNav.js', 'utf8');
 const i18n = fs.readFileSync('src/utils/i18n.js', 'utf8');
 
-assert.ok(screen.includes('`${BASE}/best`'), 'Border home must use /borders/best');
-assert.ok(screen.includes('`${BASE}/countries`'), 'Border home must use /borders/countries');
-assert.ok(screen.includes("source === 'cgr' || source === 'official'"), 'Only CGR/official source may be rendered as current');
-assert.ok(screen.includes("status = 'stale'"), 'Stale state must be explicit');
-assert.ok(screen.includes("status = 'no_data'"), 'No-data state must be explicit');
-assert.ok(!/trucks_in_queue\s*\?\?\s*0/.test(screen), 'null queue must never silently become 0');
-assert.ok(screen.includes('rawQueue == null'), 'null and real zero must be distinguished');
-assert.ok(screen.includes('border-crossing-detail'), 'Crossing detail proof id required');
-assert.ok(screen.includes('border-country-${code}'), 'Country filters required');
+assert.ok(wrapper.includes("./QueueScreenLazy"), 'Border route must use lazy screen');
+assert.ok(screen.includes('`${BASE}/catalog`'), 'Initial Border load must use lightweight /catalog');
+assert.ok(screen.includes('`${BASE}/live/${encodeURIComponent(checkpoint.id)}'), 'Checkpoint tap must use per-checkpoint /live endpoint');
+assert.ok(!screen.includes('`${BASE}/best`'), 'Initial screen must not fan out through /best');
+assert.ok(!screen.includes('`${BASE}/countries`'), 'Initial screen must not load live country aggregates');
+assert.ok(!screen.includes('`${BASE}?country=`'), 'Initial screen must not load live data for all checkpoints');
 assert.ok(screen.includes('border-checkpoint-carousel'), 'Horizontal checkpoint carousel required');
 assert.ok(screen.includes('border-checkpoint-chip'), 'Checkpoint tap cards required');
+assert.ok(screen.includes('border-lazy-prompt'), 'Driver must be prompted to tap before live CGR loading');
+assert.ok(screen.includes('border-live-loading'), 'Selected checkpoint must show a CGR loading state');
 assert.ok(screen.includes('border-selected-card'), 'Selected checkpoint live card required');
-assert.ok(screen.includes('nearestBooking'), 'Nearest booking metric required');
-assert.ok(screen.includes('waitingArea'), 'Waiting-area metric required');
-assert.ok(screen.includes('dailyLimit'), 'Daily-capacity metric required');
-assert.ok(screen.includes('ur_border_favorites_v1'), 'Favorites persistence required');
-assert.ok(screen.includes('ur_border_saved_plates_v1'), 'Saved vehicle persistence required');
+assert.ok(screen.includes('border-booking-calendar'), 'Booking availability calendar required');
+assert.ok(screen.includes('nearest_booking_free'), 'Nearest free slot count required');
+assert.ok(screen.includes('current_board_count'), 'Operational online-board count must remain distinct from booking availability');
+assert.ok(screen.includes('daily_capacity'), 'Daily capacity metric required');
+assert.ok(screen.includes('?force=true'), 'Manual refresh must bypass backend cache for selected checkpoint only');
 
-assert.ok(api.includes('@borders_router.get("/best")'), 'Backend /best endpoint required');
-assert.ok(api.includes('@borders_router.get("/countries")'), 'Backend /countries endpoint required');
-assert.ok(api.includes('if q is None:'), 'Backend must distinguish no-data from zero');
-assert.ok(api.includes('if c.get("status") != "ok"'), 'Best crossing must exclude stale/unavailable records');
-assert.ok(api.includes('"best": None'), 'Best endpoint must return null instead of fake fallback');
-
-// Current queue must come from CGR's per-checkpoint online scoreboard.  The
-// old implementation crawled only the first 80 pages of the 20k+ booking
-// registry and then wrote 0 for every unseen checkpoint.
-assert.ok(scoreboard.includes('"/ru/registry/scoreboard"'), 'Current queue must use official CGR online scoreboard');
-assert.ok(scoreboard.includes('"flCheckpoint"'), 'Current queue must be filtered by exact CGR checkpoint id');
-assert.ok(scoreboard.includes('"flStatus": "Pending"'), 'Current queue must use Pending status');
-assert.ok(!scoreboard.includes('totals.get(name, 0)'), 'Missing/truncated CGR data must never become a fake zero');
-assert.ok(scoreboard.includes('CGR total-records marker not found'), 'CGR parser must fail closed when total marker is missing');
-assert.ok(scoreboard.includes('daily_capacity'), 'Public CGR daily capacity must reach the card model');
+assert.ok(lazyApi.includes('@lazy_border_router.get("/catalog")'), 'Lazy catalogue endpoint required');
+assert.ok(lazyApi.includes('@lazy_border_router.get("/live/{code}")'), 'Lazy live checkpoint endpoint required');
+assert.ok(lazyApi.includes('cgr_requests": 0'), 'Catalogue must explicitly remain network-free');
+assert.ok(detailService.includes('_CACHE_TTL_SEC = 5 * 60'), 'Five-minute checkpoint cache required');
+assert.ok(detailService.includes('asyncio.gather('), 'Selected checkpoint detail and board should load concurrently');
+assert.ok(detailService.includes('"/ru/registry/scoreboard"'), 'Current board count must use official CGR scoreboard');
+assert.ok(detailService.includes('f"/ru/registry/checkpoint/list/{external_id}/view"'), 'Booking grid and limits must use exact checkpoint detail page');
+assert.ok(detailService.includes('nearest_standard'), 'Nearest standard booking must be parsed');
+assert.ok(detailService.includes('nearest_premium'), 'Premium booking availability must remain separately visible');
+assert.ok(detailService.includes('waiting_area_supported": False'), 'Unsupported per-checkpoint waiting-area count must not be fabricated');
+assert.ok(apiInit.includes('_borders_router.routes[0:0]'), 'Specific lazy routes must precede legacy /{border_id} matcher');
 
 assert.ok(nav.includes("t('tab_border')"), 'Bottom navigation must label Queue route as Border');
 for (const marker of ["tab_border: 'Граница'", "tab_border: 'Шекара'", "tab_border: '边境'", "tab_border: 'Border'"]) {
   assert.ok(i18n.includes(marker), `Missing i18n marker: ${marker}`);
 }
 
-console.log('border dashboard smoke OK: exact CGR scoreboard + fail-closed queue + compact driver carousel');
+console.log('border dashboard smoke OK: local catalogue + tap-to-load CGR + booking calendar + 5m cache');
