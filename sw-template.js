@@ -1,10 +1,10 @@
-// UrTruck Service Worker · v11 — network-first для HTML/JS, cache-first для статики,
+// UrTruck Service Worker · v14 — network-first для HTML/JS, cache-first для статики,
 // API never cached (otherwise stale demo cards survive deploys).
-// v11 (09.08.2026): theme-switch release. Every frontend release that must
+// v14 (16.08.2026): approved cargo-feed release. Every frontend release that must
 // reach already-installed PWA clients bumps the cache epoch so the new bundle
 // cannot remain hidden behind an older service-worker cache.
-const CACHE = 'urtruck-v13-market';
-const STATIC_CACHE = 'urtruck-static-v13';
+const CACHE = 'urtruck-v14-market';
+const STATIC_CACHE = 'urtruck-static-v14';
 
 self.addEventListener('install', (e) => {
   // Сразу активируем новый SW без ожидания закрытия вкладок
