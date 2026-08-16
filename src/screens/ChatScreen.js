@@ -31,6 +31,7 @@ import DealAttachments from '../components/deal/DealAttachments';
 import TruckMap from '../components/TruckMap';
 import { pickDealStatus, userFacingDealStatus } from '../utils/dealStatusOrder';
 import { ensureBackgroundLocationPermission, getCurrentLocationPayload } from '../utils/backgroundLocation';
+import { parseRouteCities } from '../utils/geo';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
 
 // HOT-006: реальная запись/воспроизведение для web (PWA deploy).
@@ -1184,6 +1185,13 @@ export default function ChatScreen({ navigation, route }) {
     if (min === 0) return t('track_updated_now');
     return `${t('track_updated')} ${min} ${t('track_min')} ${t('track_ago')}`;
   })();
+  const dealRoutePoints = parseRouteCities([deal?.from_city, deal?.to_city].filter(Boolean).join(' → '));
+  const mapLanguage = String(getLanguage() || 'ru').toLowerCase();
+  const plannedMapCopy = mapLanguage.startsWith('zh')
+    ? { title: '计划路线', hint: '行程开始后，车辆位置会自动显示', live: '车辆位置' }
+    : mapLanguage.startsWith('en')
+      ? { title: 'Planned route', hint: 'Truck location will appear automatically after trip start', live: 'Truck location' }
+      : { title: 'Плановый маршрут', hint: 'После начала рейса машина появится автоматически', live: 'Машина на маршруте' };
 
   return (
     <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top', 'bottom']}>
@@ -1347,36 +1355,41 @@ export default function ChatScreen({ navigation, route }) {
               {isShipperSide && ['in_progress', 'at_border', 'delivered'].includes(deal?.status) ? (
                 <TouchableOpacity testID="deal-track-truck" style={s.dealMapCard}
                   onPress={openDealMap}>
-                  {hasMapPreviewPoint ? (
+                  {hasMapPreviewPoint || (IS_WEB && dealRoutePoints.length >= 2) ? (
                     <>
                       <TruckMap
-                        lat={mapPreviewLat}
-                        lng={mapPreviewLng}
-                        title={deal?.counterparty_name || resolvedPartner?.name || t('track_truck_marker')}
+                        lat={hasMapPreviewPoint ? mapPreviewLat : undefined}
+                        lng={hasMapPreviewPoint ? mapPreviewLng : undefined}
+                        title={hasMapPreviewPoint ? (deal?.counterparty_name || resolvedPartner?.name || t('track_truck_marker')) : undefined}
+                        routePoints={dealRoutePoints}
+                        planned={!hasMapPreviewPoint}
+                        plannedTitle={plannedMapCopy.title}
+                        plannedHint={plannedMapCopy.hint}
+                        liveTitle={plannedMapCopy.live}
                       />
                       <View style={s.dealMapOverlayTop} pointerEvents="box-none">
-                        <View style={s.dealMapPill}>
-                          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#168759' }} />
-                          <Text style={s.dealMapPillText} numberOfLines={1}>{t('live_route_title')}</Text>
-                        </View>
+                        {hasMapPreviewPoint ? (
+                          <View style={s.dealMapPill}>
+                            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#168759' }} />
+                            <Text style={s.dealMapPillText} numberOfLines={1}>{t('live_route_title')}</Text>
+                          </View>
+                        ) : <View />}
                         <TouchableOpacity style={s.dealMapOpenPill} onPress={openDealMap} accessibilityLabel={t('track_truck_btn')}>
                           <Feather name="maximize-2" size={12} color={v1.text} />
                           <Text style={s.dealMapOpenText}>{t('track_truck_btn')}</Text>
                         </TouchableOpacity>
                       </View>
-                      <View style={s.dealMapFooter} pointerEvents="none">
-                        <Text style={s.dealMapFooterText} numberOfLines={1}>{mapUpdatedText}</Text>
-                      </View>
+                      {hasMapPreviewPoint ? (
+                        <View style={s.dealMapFooter} pointerEvents="none">
+                          <Text style={s.dealMapFooterText} numberOfLines={1}>{mapUpdatedText}</Text>
+                        </View>
+                      ) : null}
                     </>
                   ) : (
                     <View style={s.dealMapEmpty}>
                       <Feather name="navigation" size={34} color={v1.textMuted} />
                       <Text style={s.dealMapEmptyTitle}>{dealLocation.loading ? '…' : t('track_truck_waiting')}</Text>
                       <Text style={s.dealMapEmptyDesc}>{t('tracking_starts_after_start')}</Text>
-                      <TouchableOpacity style={s.dealMapOpenPill} onPress={openDealMap} accessibilityLabel={t('track_truck_btn')}>
-                        <Feather name="maximize-2" size={12} color={v1.text} />
-                        <Text style={s.dealMapOpenText}>{t('track_truck_btn')}</Text>
-                      </TouchableOpacity>
                     </View>
                   )}
                 </TouchableOpacity>
