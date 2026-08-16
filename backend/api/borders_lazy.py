@@ -3,8 +3,8 @@
 /catalog is DB-only and intentionally cheap.
 /live/{code} contacts CGR only after the driver taps a checkpoint.
 
-CGR modules are imported inside handlers so importing the API package does not
-force CGR settings/network dependencies during unrelated backend tests.
+CGR modules are imported only inside /live so opening the Border screen does
+not initialize or contact CGR at all.
 """
 from fastapi import APIRouter, HTTPException, Query
 
@@ -13,14 +13,39 @@ lazy_border_router = APIRouter()
 
 @lazy_border_router.get("/catalog")
 def border_catalog(country: str = ""):
-    """Lightweight checkpoint catalogue. No CGR/network requests here."""
-    from cgr import checkpoint_detail_service
+    """Lightweight checkpoint catalogue. No CGR imports or network requests."""
+    from database import cgr_dal
+
+    all_rows = [
+        {
+            "id": cp["code"],
+            "code": cp["code"],
+            "name": cp["name_ru"],
+            "country": cp.get("country_to"),
+        }
+        for cp in cgr_dal.get_all_checkpoints(active_only=True)
+    ]
+
+    # Safe local fallback for a brand-new DB before the one-time CGR catalogue
+    # seed completes. Still no CGR/network access on screen open.
+    if not all_rows:
+        from services.border_service import BORDERS
+        all_rows = [
+            {
+                "id": b["id"],
+                "code": b["id"],
+                "name": b["name"],
+                "country": b.get("country_to") or b.get("country") or (
+                    b.get("countries", "").split("↔")[-1] if "↔" in b.get("countries", "") else None
+                ),
+            }
+            for b in BORDERS
+        ]
 
     code = (country or "").strip().upper()
-    all_rows = checkpoint_detail_service.catalog()
-    rows = all_rows
-    if code and code != "ALL":
-        rows = [row for row in all_rows if str(row.get("country") or "").upper() == code]
+    rows = all_rows if not code or code == "ALL" else [
+        row for row in all_rows if str(row.get("country") or "").upper() == code
+    ]
     countries: dict[str, int] = {}
     for row in all_rows:
         cc = str(row.get("country") or "XX").upper()
