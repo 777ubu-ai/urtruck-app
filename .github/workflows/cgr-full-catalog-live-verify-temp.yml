@@ -1,0 +1,57 @@
+name: TEMP CGR full catalogue live verify
+on:
+  push:
+    branches: [agent/full-cgr-checkpoint-catalog-20260816]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      DB_PATH: /tmp/urtruck-cgr-full-live.db
+      CGR_FEATURE_ENABLED: 'true'
+      CGR_IIN_SALT: temp-live-verify-salt
+      PYTHONPATH: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install minimum deps
+        run: pip install -q httpx==0.27.2 beautifulsoup4==4.12.3 lxml==5.3.0 pydantic==2.9.2 pydantic-settings==2.5.2
+      - name: Verify all official checkpoint pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f "$DB_PATH"
+          python3 - <<'PY'
+          import asyncio, json
+          from database import db as ddb, cgr_dal
+          from cgr import checkpoint_catalog_service as svc
+          from cgr.client import cgr_client
+
+          ddb.init_db(); cgr_dal.init_cgr_schema()
+          result=asyncio.run(svc.seed_full_catalog())
+          print('FULL_CATALOG', json.dumps(result, ensure_ascii=False, sort_keys=True))
+          rows=cgr_dal.get_all_checkpoints(active_only=True)
+          by={}
+          for r in rows:
+              by.setdefault(r['country_to'], []).append(r['name_ru'])
+          for country in sorted(by):
+              print(country, len(by[country]), ' | '.join(by[country]))
+          assert result['records'] >= 51, result
+          assert result['pages'] >= 4, result
+          assert len(by.get('RU',[])) >= 30, by
+          assert len(by.get('UZ',[])) >= 7, by
+          assert len(by.get('KG',[])) >= 7, by
+          assert len(by.get('CN',[])) >= 5, by
+          assert len(by.get('TM',[])) >= 1, by
+          assert any('Шарбакты' in n for n in by['RU'])
+          assert any('Целинный' in n for n in by['UZ'])
+          assert any('Порт Курык' == n for n in by.get('CASPIAN',[]))
+          for needle in ['Шарбакты', 'Целинный']:
+              cp=next(r for r in rows if needle in r['name_ru'])
+              ext=asyncio.run(svc.resolve_external_id(cp))
+              print('RESOLVED', cp['name_ru'], ext)
+              assert ext.isdigit()
+          asyncio.run(cgr_client.close())
+          print('FULL CGR CATALOG LIVE VERIFY PASS')
+          PY
