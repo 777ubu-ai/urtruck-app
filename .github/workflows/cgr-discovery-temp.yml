@@ -7,22 +7,44 @@ jobs:
   discover:
     runs-on: ubuntu-latest
     steps:
-      - name: Probe CGR public filter
+      - name: Probe CGR current HTML
         shell: bash
         run: |
           set -euo pipefail
           UA='UrTruck/1.0 (+https://urtruck.kz; partner-integration)'
-          BASE='https://cgr.qoldau.kz/ru/registry/public-list'
-          curl -fsSL -A "$UA" "$BASE" -o /tmp/base.html
-          echo '--- form flStatus context ---'
-          grep -o -E '.{0,160}flStatus.{0,300}' /tmp/base.html | head -20 || true
-          echo '--- Pending option context ---'
-          grep -o -E '.{0,160}Pending.{0,300}' /tmp/base.html | head -20 || true
-          for q in 'flStatus=Pending' 'flStatus%5B%5D=Pending' 'flStatus=Pending&presentation=custom-list'; do
-            echo "=== $q ==="
-            curl -fsSL -A "$UA" "$BASE?$q" -o /tmp/x.html
-            grep -o -E 'Всего записей[^<]{0,80}' /tmp/x.html | head -1 || true
-            echo -n 'rows='; grep -o '<tr' /tmp/x.html | wc -l
-            echo -n 'in_queue='; grep -o 'В очереди' /tmp/x.html | wc -l
-            echo -n 'crossed='; grep -o 'Перес' /tmp/x.html | wc -l
-          done
+          PUB='https://cgr.qoldau.kz/ru/registry/public-list?flStatus=Pending'
+          CP='https://cgr.qoldau.kz/ru/registry/checkpoint/list'
+          DET='https://cgr.qoldau.kz/ru/registry/checkpoint/list/222979531669000000/view'
+          WA='https://cgr.qoldau.kz/ru/registry/wa-history/list?flStatus=Active'
+          curl -fsSL -A "$UA" "$PUB" -o /tmp/pub.html
+          curl -fsSL -A "$UA" "$CP" -o /tmp/cp.html
+          curl -fsSL -A "$UA" "$DET" -o /tmp/det.html
+          curl -fsSL -A "$UA" "$WA" -o /tmp/wa.html
+          python3 - <<'PY'
+          from bs4 import BeautifulSoup
+          import re
+          for fn in ['pub','wa']:
+              s=BeautifulSoup(open('/tmp/'+fn+'.html',encoding='utf-8').read(),'html.parser')
+              print('\n---',fn,'tables',len(s.find_all('table')),'---')
+              for i,t in enumerate(s.find_all('table')):
+                  heads=[x.get_text(' ',strip=True) for x in t.find_all('th')]
+                  rows=t.find_all('tr')
+                  print(i,'heads=',heads[:10],'rows=',len(rows))
+          s=BeautifulSoup(open('/tmp/cp.html',encoding='utf-8').read(),'html.parser')
+          print('\n--- checkpoint links ---')
+          for a in s.find_all('a',href=True):
+              txt=a.get_text(' ',strip=True)
+              if ' - ' in txt and '/registry/checkpoint/list/' in a['href']:
+                  print(txt,'=>',a['href'])
+          s=BeautifulSoup(open('/tmp/det.html',encoding='utf-8').read(),'html.parser')
+          print('\n--- detail inputs around booking ---')
+          for inp in s.find_all(['input','select']):
+              name=inp.get('name'); val=inp.get('value'); ident=inp.get('id')
+              if any(k in str(name).lower()+str(ident).lower() for k in ['available','booking','time','start','end','limit']):
+                  print(inp.name,'name=',name,'id=',ident,'value=',val)
+          print('\n--- detail scripts/url clues ---')
+          html=open('/tmp/det.html',encoding='utf-8').read()
+          for m in re.findall(r'[^"\']*(?:chart|stat|load|limit|booking|available)[^"\']*', html, re.I):
+              m=' '.join(m.split())
+              if len(m)<400 and ('/' in m or 'url' in m.lower() or 'data' in m.lower()): print(m[:380])
+          PY
