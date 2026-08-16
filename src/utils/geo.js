@@ -9,6 +9,11 @@ export const CITIES = {
   'Костанай': [53.2189, 63.6356], 'Кызылорда': [44.8488, 65.4823],
   'Уральск': [51.2333, 51.3667], 'Актау': [43.6500, 51.1800],
   'Хоргос': [44.2113, 80.4137], 'Достык': [45.2333, 82.6500],
+  // Казахстан ↔ Китай, восточный коридор. Нужны для карты сделки даже до
+  // первой GPS-точки водителя (например «Бахты ↔ Чугучак → Алматы»).
+  'Бахты': [46.7500, 82.7000], 'Bakhty': [46.7500, 82.7000],
+  'Чугучак': [46.7450, 82.9860], 'Chuguchak': [46.7450, 82.9860],
+  'Тачэн': [46.7450, 82.9860], 'Tacheng': [46.7450, 82.9860],
   'Москва': [55.7558, 37.6176], 'Moscow': [55.7558, 37.6176],
   'Санкт-Петербург': [59.9311, 30.3609], 'СПб': [59.9311, 30.3609],
   'Новосибирск': [55.0084, 82.9357], 'Екатеринбург': [56.8431, 60.6454],
@@ -30,11 +35,41 @@ export const CITIES = {
   'Варшава': [52.2297, 21.0122], 'Дубай': [25.2048, 55.2708],
 };
 
-// Парсит "Москва, 🇷🇺" → "Москва"
+const cleanRouteToken = (value) => String(value || '')
+  .split(',')[0]
+  .replace(/[📍🚩]/g, '')
+  .trim();
+
+// Парсит как простое название («Москва, 🇷🇺»), так и составной узел
+// («Бахты ↔ Чугучак»). Для одиночного результата берём первую известную точку.
 export const parseCity = (str) => {
   if (!str) return null;
-  const name = str.split(',')[0].trim();
+  const tokens = String(str)
+    .split(/[↔→—–]/)
+    .map(cleanRouteToken)
+    .filter(Boolean);
+  for (const name of tokens) {
+    if (CITIES[name]) return CITIES[name];
+  }
+  const name = cleanRouteToken(str);
   return CITIES[name] || null;
+};
+
+// Возвращает все известные точки из составной строки маршрута в порядке
+// следования. Используется картой до появления реальной GPS-точки.
+export const parseRouteCities = (str) => {
+  if (!str) return [];
+  const seen = new Set();
+  const out = [];
+  for (const token of String(str).split(/[↔→—–]/).map(cleanRouteToken).filter(Boolean)) {
+    const coord = CITIES[token];
+    if (!coord) continue;
+    const key = coord.join(',');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(coord);
+  }
+  return out;
 };
 
 // Расстояние по формуле Haversine (км по большому кругу)
@@ -71,6 +106,7 @@ export const routeStats = (fromStr, toStr, transitStr) => {
 export const BORDER_CITIES = {
   'Хоргос': [44.2113, 80.4137],
   'Достык': [45.2333, 82.6500],
+  'Бахты': [46.7500, 82.7000],
 };
 
 export const isNearBorder = (lat, lon, radiusKm = 5) => {
