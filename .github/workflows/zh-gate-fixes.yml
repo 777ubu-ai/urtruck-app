@@ -1,0 +1,53 @@
+name: ZH Gate Fixes
+on:
+  push:
+    branches: [fix/zh-localization-10of10-20260816]
+permissions:
+  contents: write
+jobs:
+  fix:
+    if: ${{ !contains(github.event.head_commit.message, '[zh-gate-fix]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/zh-localization-10of10-20260816
+          fetch-depth: 0
+      - name: Fix remaining ZH gate findings
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          def rep(path, old, new, n=1):
+              p=Path(path); s=p.read_text(); c=s.count(old)
+              if c != n: raise SystemExit(f'{path}: expected {n}, got {c}: {old[:100]}')
+              p.write_text(s.replace(old,new))
+
+          # Seven logistics points found by the strict 113-point geography audit.
+          p='src/utils/places.js'
+          marker="  'Малашевичи':        { zh: '马拉舍维奇', en: 'Malaszewicze' },"
+          addition="""  'Малашевичи':        { zh: '马拉舍维奇', en: 'Malaszewicze' },
+  'Малашевичи (терминал)': { zh: '马拉舍维奇（终端）', en: 'Malaszewicze terminal' },
+  'Хелм (Chelm)':       { zh: '海乌姆（Chelm）', en: 'Chelm' },
+  'Каунасский ТКЛ':     { zh: '考纳斯运输物流中心', en: 'Kaunas transport logistics centre' },
+  'СЭЗ Хоргос-Восточные ворота': { zh: '霍尔果斯-东方大门经济特区', en: 'Khorgos - Eastern Gate SEZ' },
+  'Сухой порт Урумчи':  { zh: '乌鲁木齐陆港', en: 'Urumqi dry port' },
+  'Порт Поти':          { zh: '波季港', en: 'Port of Poti' },
+  'Порт Мерсин':        { zh: '梅尔辛港', en: 'Port of Mersin' },"""
+          rep(p, marker, addition)
+
+          # Remove the last observed Russian fallback in the trip bid card.
+          rep('src/screens/TripDetail.js', "{t('my_bid_label') || 'Моя ставка'}", "{t('my_bid_label')}")
+
+          # The behavior fixtures already prove ZH works. The old source-string
+          # substring assertion falsely matched the correct condition
+          # `l !== 'zh' && l !== 'en'` and is therefore removed.
+          rep('qa/utils/zhLocalizationSmoke.js', "  assert(!places.localizePlace.toString().includes(\"l !== 'en'\"), 'localizePlace still blocks ZH localization');\n", '')
+          PY
+      - name: Commit
+        run: |
+          git config user.name "UrTruck QA Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add src/utils/places.js src/screens/TripDetail.js qa/utils/zhLocalizationSmoke.js
+          git commit -m "fix(i18n): close remaining ZH geography leaks [zh-gate-fix]"
+          git push origin HEAD:fix/zh-localization-10of10-20260816
