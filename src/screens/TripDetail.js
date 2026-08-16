@@ -482,7 +482,7 @@ export default function TripDetail({ navigation, route }) {
   }
 
   const stats = routeStats(trip.from, trip.to, trip.transit);
-  const view = tripDisplay(trip, t);
+  const view = tripDisplay(trip, t, lang);
   // Принятая ставка → в блоке цены показываем сумму сделки, не листинг.
   const acceptedBid = bids.find(b => b.status === 'accepted');
 

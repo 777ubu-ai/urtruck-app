@@ -149,11 +149,9 @@ export default function CargoDetail({ navigation, route }) {
 
   }), [v1]);
   const { cargo: paramCargo, cargoId, role, dealId: routeDealId } = route.params || {};
-  // Canonical cargo: never reach into raw fields directly. The pre-pilot
-  // mixed shapes (server snake_case, FeedScreen camelCase, store.js demo)
-  // all flow through normalizeCargo so renders never blow up on null.
-  const cargo = normalizeCargo(paramCargo) || {};
+  // Canonical cargo: locale is explicit so normalizers stay pure and Node-testable.
   const { t, lang } = useI18n();
+  const cargo = normalizeCargo(paramCargo, lang) || {};
   const { theme } = useTheme();
   const { toast } = useToast();
   const { requireLevel, Gate } = useVerificationGate();
@@ -215,7 +213,7 @@ export default function CargoDetail({ navigation, route }) {
   // where the screen was opened with explicit isMine.
   const c = (() => {
     if (!fullCargo) return cargo;
-    const normalized = normalizeCargo(fullCargo);
+    const normalized = normalizeCargo(fullCargo, lang);
     const fromParam = cargo && cargo.isMine;
     const fromServer = myUserId && fullCargo.owner_id === myUserId;
     // owner_id нужен для прямого чата с грузовладельцем (кнопка внизу).
@@ -411,7 +409,7 @@ export default function CargoDetail({ navigation, route }) {
     loadBids();
   };
 
-  const view = cargoDisplay(c, t);
+  const view = cargoDisplay(c, t, lang);
   // Если по грузу есть ПРИНЯТАЯ ставка — в блоке цены показываем СУММУ СДЕЛКИ,
   // а не цену объявления. Раньше заголовок висел «$12 000» (листинг), хотя
   // сделка принята за $12 100 — на одном экране две разные цены путали.
