@@ -1,10 +1,10 @@
-// UrTruck Service Worker · v15 — network-first для HTML/JS, cache-first для статики,
+// UrTruck Service Worker · v16 — network-first для HTML/JS, cache-first для статики,
 // API never cached (otherwise stale demo cards survive deploys).
-// v15 (16.08.2026): compact cargo-feed release. Every frontend release that must
+// v16 (16.08.2026): full Chinese-localization release. Every frontend release that must
 // reach already-installed PWA clients bumps the cache epoch so the new bundle
 // cannot remain hidden behind an older service-worker cache.
-const CACHE = 'urtruck-v15-market';
-const STATIC_CACHE = 'urtruck-static-v15';
+const CACHE = 'urtruck-v16-market';
+const STATIC_CACHE = 'urtruck-static-v16';
 
 self.addEventListener('install', (e) => {
   self.skipWaiting();
@@ -57,7 +57,7 @@ self.addEventListener('fetch', (e) => {
 });
 
 self.addEventListener('push', (event) => {
-  let data = { title: 'UrTruck', body: 'Новое уведомление', icon: '/manifest.json' };
+  let data = { title: 'UrTruck', body: 'New notification', icon: '/manifest.json' };
   try {
     if (event.data) data = { ...data, ...event.data.json() };
   } catch {}
