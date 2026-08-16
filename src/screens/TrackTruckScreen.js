@@ -15,12 +15,13 @@ import { localizePlace } from '../utils/places';
 import { getLanguage } from '../utils/i18n';
 
 export default function TrackTruckScreen({ navigation, route }) {
-  const { dealId, from, to, driverName, driverOnline = false } = route.params || {};
+  const { dealId, from, to, driverName, driverOnline = false, viewerRole } = route.params || {};
   const { t } = useI18n();
   const { theme } = useTheme();
   const [loc, setLoc] = useState(null);
   const [loading, setLoading] = useState(true);
   const mounted = useRef(true);
+  const isDriverViewer = viewerRole === 'driver';
 
   const load = useCallback(async () => {
     if (!dealId) { setLoading(false); return; }
@@ -138,12 +139,12 @@ export default function TrackTruckScreen({ navigation, route }) {
           </View>
           <View style={s.driverText}>
             <Text style={[s.driverName, { color: theme.text }]} numberOfLines={1}>
-              {driverName || t('role_driver')}
+              {driverName || t(isDriverViewer ? 'role_shipper' : 'role_driver')}
             </Text>
             <View style={s.presenceRow}>
               {driverOnline ? <View style={s.onlineDot} /> : null}
               <Text style={[s.driverStatus, { color: driverOnline ? '#168759' : theme.textMuted }]}>
-                {driverOnline ? t('chat_online') : t('role_driver')}
+                {driverOnline ? t('chat_online') : t(isDriverViewer ? 'role_shipper' : 'role_driver')}
               </Text>
             </View>
           </View>
@@ -152,11 +153,11 @@ export default function TrackTruckScreen({ navigation, route }) {
           <TouchableOpacity
             style={s.messageBtn}
             onPress={openDriverChat}
-            testID="track-message-driver"
-            accessibilityLabel={t('write_driver')}
+            testID={isDriverViewer ? 'track-back-to-chat' : 'track-message-driver'}
+            accessibilityLabel={isDriverViewer ? t('back') : t('write_driver')}
           >
-            <Feather name="message-circle" size={18} color="#FFFFFF" />
-            <Text style={s.messageBtnText}>{t('write_driver')}</Text>
+            <Feather name={isDriverViewer ? 'arrow-left' : 'message-circle'} size={18} color="#FFFFFF" />
+            <Text style={s.messageBtnText}>{isDriverViewer ? t('back') : t('write_driver')}</Text>
           </TouchableOpacity>
         </View>
       </View>
