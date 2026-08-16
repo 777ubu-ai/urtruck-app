@@ -205,8 +205,11 @@ function localizeHead(head, lang) {
 export function localizePlace(raw, lang) {
   const l = String(lang || '').toLowerCase();
   if (!raw) return raw;
-  if (l !== 'zh' && l !== 'en') return raw;
+  // Always remove legacy presentation decorations first. RU/KK previously
+  // returned raw DB text, so a city stored as "Иу, 🇨🇳" plus countryFlag(CN)
+  // rendered two flags for the same point. Flags are a UI entity, never data.
   const clean = cleanPlaceName(raw);
+  if (l !== 'zh' && l !== 'en') return clean;
   return localizeHead(clean, l);
 }
 

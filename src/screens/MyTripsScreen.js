@@ -69,7 +69,7 @@ export default function MyTripsScreen({ navigation, route }) {
   badge: { paddingHorizontal: 6, paddingVertical: 1, borderRadius: 5 },
   badgeText: { fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
   statusLabel: { fontSize: 11 },
-  route: { fontSize: 14, fontWeight: '700', marginBottom: 2 },
+  route: { fontSize: 16, lineHeight: 20, fontWeight: '700', marginBottom: 4, letterSpacing: -0.15 },
   desc: { fontSize: 12, marginBottom: 2 },
   cardMeta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 },
   metaItem: { fontSize: 11 },
@@ -77,7 +77,7 @@ export default function MyTripsScreen({ navigation, route }) {
   cardBottom: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   // Цена: было 24pt жирный оранжевый — крик. Теперь 16pt, тёмный текст,
   // оранжевый ушёл в мелкий label «$» перед суммой.
-  price: { fontSize: 16, fontWeight: '700', color: '#E06D00', fontVariant: ['tabular-nums'], flexShrink: 1 },
+  price: { fontSize: 18, lineHeight: 22, fontWeight: '700', color: v1.text, fontVariant: ['tabular-nums'], flexShrink: 1 },
   bidsLabel: { ...typography.caption, flex: 1 },
   // Дизайн 2026 v3: плашка «N предложений» — outline вместо заливки,
   // компактнее (меньше 32px), шрифт 12. Не «кричит».

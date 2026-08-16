@@ -175,8 +175,17 @@ def _send_expo(tokens: list[str], title: str, body: str, data: dict, badge: Opti
         for i, tk in enumerate(tickets):
             if isinstance(tk, dict) and tk.get("status") == "error":
                 err = (tk.get("details") or {}).get("error")
-                if err in ("DeviceNotRegistered", "InvalidCredentials"):
+                # DeviceNotRegistered is token-specific and may be safely
+                # deactivated. InvalidCredentials is an APNs/FCM/Expo app
+                # credential failure: deactivating the driver token here
+                # destroys a valid registration and prevents recovery after
+                # credentials are fixed. Keep it active and make it visible.
+                if err == "DeviceNotRegistered":
                     dead.append(tokens[i])
+                else:
+                    log.error("expo ticket error token=%s error=%s message=%s",
+                              (tokens[i][:4] + "..." + tokens[i][-4:]) if tokens[i] else "-",
+                              err or "unknown", tk.get("message") or "")
         if dead:
             # Блок 1 (P0-1 модель): деактивируем, а не удаляем — см. комментарий
             # в _send_web выше.
@@ -319,11 +328,32 @@ def broadcast(user_ids: list[str], title: str, body: str,
 
 
 def info() -> dict:
+    # Safe production diagnostics: counts only, never raw endpoints/tokens or
+    # user ids. This lets release QA distinguish "sender is broken" from
+    # "driver never registered a token" without exposing private data.
+    counts = {"web_active": 0, "native_active": 0, "native_ios": 0, "native_android": 0}
+    try:
+        with get_conn() as c:
+            counts["web_active"] = int(c.execute(
+                "SELECT COUNT(*) FROM push_subscriptions WHERE active = 1 OR active IS NULL"
+            ).fetchone()[0])
+            counts["native_active"] = int(c.execute(
+                "SELECT COUNT(*) FROM push_tokens_native WHERE active = 1 OR active IS NULL"
+            ).fetchone()[0])
+            counts["native_ios"] = int(c.execute(
+                "SELECT COUNT(*) FROM push_tokens_native WHERE (active = 1 OR active IS NULL) AND platform = 'ios'"
+            ).fetchone()[0])
+            counts["native_android"] = int(c.execute(
+                "SELECT COUNT(*) FROM push_tokens_native WHERE (active = 1 OR active IS NULL) AND platform = 'android'"
+            ).fetchone()[0])
+    except Exception as e:
+        log.warning("push diagnostics count failed: %s", e)
     return {
-        "web": {"mode": "MOCK" if PUSH_MOCK_WEB else "REAL", "vapid_public": VAPID_PUBLIC or None,
+        "web": {"mode": "MOCK" if PUSH_MOCK_WEB else "REAL", "vapid_public": bool(VAPID_PUBLIC),
                 "subject": VAPID_SUBJECT},
         "native": {
-            "expo": {"endpoint": EXPO_ENDPOINT, "token_set": bool(EXPO_TOKEN)},
+            "expo": {"endpoint": EXPO_ENDPOINT, "access_token_set": bool(EXPO_TOKEN)},
             "fcm": {"mode": "MOCK" if FCM_MOCK else "REAL"},
         },
+        "registrations": counts,
     }
