@@ -1,0 +1,57 @@
+name: TEMP production full CGR catalogue verify
+on:
+  push:
+    branches: [agent/full-cgr-checkpoint-catalog-20260816]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify deployed Border catalogue and late-page checkpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://urtruck.kz'
+          echo '--- build ---'
+          curl -fsS --max-time 20 "$BASE/build-info.json" -o /tmp/build.json
+          cat /tmp/build.json; echo
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/build.json'))
+          assert d.get('commit') == '4b225a0ccd42315047a1e96ec9fe74c269c569a9', d
+          PY
+
+          echo '--- catalogue ---'
+          curl -fsS --max-time 20 "$BASE/security/api/v1/borders/catalog" -o /tmp/catalog.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/catalog.json'))
+          rows=d.get('checkpoints',[])
+          by={}
+          for r in rows: by[r.get('country')] = by.get(r.get('country'),0)+1
+          print('lazy=',d.get('lazy'),'cgr_requests=',d.get('cgr_requests'),'count=',len(rows),'countries=',by)
+          assert d.get('lazy') is True
+          assert d.get('cgr_requests') == 0
+          assert len(rows) == 51, len(rows)
+          expected={'RU':30,'UZ':7,'KG':7,'CN':5,'TM':1,'CASPIAN':1}
+          assert by == expected, (by, expected)
+          names={r.get('name'):r for r in rows}
+          for name in ['Шарбакты - Кулунда','Целинный - Ок Олтин','Порт Курык']:
+              assert name in names, name
+              print('FOUND',name,names[name])
+          open('/tmp/ru_code','w').write(str(names['Шарбакты - Кулунда']['code']))
+          open('/tmp/uz_code','w').write(str(names['Целинный - Ок Олтин']['code']))
+          PY
+
+          for f in ru_code uz_code; do
+            CODE=$(cat /tmp/$f)
+            echo "--- live $CODE ---"
+            curl -fsS --max-time 35 "$BASE/security/api/v1/borders/live/$CODE?force=true" -o /tmp/live.json
+            python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/live.json'))
+          print(json.dumps({k:d.get(k) for k in ['name','country','current_board_count','daily_capacity','nearest_booking','nearest_booking_free','source_type','cache_hit']},ensure_ascii=False))
+          assert d.get('source_type') == 'official', d
+          assert d.get('name'), d
+          PY
+          done
+          echo 'PRODUCTION FULL CGR CATALOG VERIFY PASS'
