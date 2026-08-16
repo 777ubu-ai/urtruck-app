@@ -60,8 +60,7 @@ jobs:
       - name: Map regression contracts
         run: |
           set -euo pipefail
-          node --test tests/frontend/test_track_truck_embedded_map.mjs 2>/dev/null || \
-            node tests/frontend/test_track_truck_embedded_map.mjs
+          node tests/frontend/test_yandex_map_primary.mjs
           node tests/frontend/test_deal_room_auto_map.mjs
 
       - name: Release gate passed
