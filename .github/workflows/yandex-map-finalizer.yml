@@ -1,20 +1,42 @@
 name: UrTruck Yandex Map Finalizer
 
 on:
+  # The legacy deploy and the secure recovery deploy both replace index.html.
+  # Re-apply the protected Yandex loader after each successful production write;
+  # the second run (after Secure Production Deploy) guarantees the final public
+  # filesystem still contains Yandex Maps rather than the raw Expo bundle.
   workflow_run:
-    workflows: ["UrTruck Deploy"]
+    workflows: ["UrTruck Deploy", "UrTruck Secure Production Deploy"]
     types: [completed]
 
 permissions:
   contents: read
 
+concurrency:
+  group: urtruck-yandex-map-finalizer
+  cancel-in-progress: false
+
 jobs:
   inject-yandex-map:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_PASS: ${{ secrets.SERVER_PASS }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
+      REMOTE_DIR: ${{ secrets.REMOTE_DIR || '/home/ubuntu/urtruck-app' }}
+      PUBLIC_BASE_URL: ${{ secrets.PUBLIC_BASE_URL || 'https://urtruck.kz' }}
 
     steps:
+      - name: Checkout exact production commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+
       - name: Prepare protected Yandex script snippet
         env:
           YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
@@ -39,20 +61,27 @@ jobs:
           chmod 600 /tmp/urtruck-yandex-head.html
           echo "Yandex Maps snippet prepared (key withheld)."
 
-      - name: Inject Yandex Maps into deployed UrTruck HTML
-        env:
-          SERVER_HOST: ${{ secrets.SERVER_HOST }}
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-          SERVER_PASS: ${{ secrets.SERVER_PASS }}
-          REMOTE_DIR: ${{ secrets.REMOTE_DIR || '/home/ubuntu/urtruck-app' }}
+      - name: Install SSH transport dependency
         run: |
-          set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y -qq sshpass
+
+      - name: Secure SSH preflight
+        run: |
+          set -euo pipefail
+          test -n "$SERVER_HOST"
+          test -n "$SERVER_USER"
+          if [ -n "${SERVER_SSH_KEY:-}" ]; then
+            test -n "${SERVER_SSH_KNOWN_HOSTS:-}" || { echo '::error::SERVER_SSH_KNOWN_HOSTS is required with SERVER_SSH_KEY'; exit 1; }
+          fi
+          bash scripts/deploy-ssh.sh ssh "echo YANDEX_SSH_TRANSPORT=ok"
+
+      - name: Inject Yandex Maps into deployed UrTruck HTML
+        run: |
+          set -euo pipefail
           REMOTE_SNIPPET="/tmp/urtruck-yandex-head-${GITHUB_RUN_ID}.html"
-          sshpass -p "$SERVER_PASS" scp -q -o StrictHostKeyChecking=no \
-            /tmp/urtruck-yandex-head.html "$SERVER_USER@$SERVER_HOST:$REMOTE_SNIPPET"
-          sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
+          bash scripts/deploy-ssh.sh scp /tmp/urtruck-yandex-head.html "$SERVER_USER@$SERVER_HOST:$REMOTE_SNIPPET"
+          bash scripts/deploy-ssh.sh ssh \
             "REMOTE_DIR='$REMOTE_DIR' REMOTE_SNIPPET='$REMOTE_SNIPPET' python3 -" <<'PY'
           import os
           from pathlib import Path
@@ -68,16 +97,16 @@ jobs:
               index.write_text(html, encoding='utf-8')
           snippet_path.unlink(missing_ok=True)
           PY
-          sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
+          bash scripts/deploy-ssh.sh ssh \
             "grep -q 'api-maps.yandex.ru/v3/' '$REMOTE_DIR/index.html' && grep -q 'lang=ru_RU' '$REMOTE_DIR/index.html'"
           echo "Yandex Maps script is present in the deployed index (key withheld)."
 
       - name: Verify public production serves Yandex Maps
-        env:
-          PUBLIC_BASE_URL: ${{ secrets.PUBLIC_BASE_URL || 'https://urtruck.kz' }}
         run: |
           set -euo pipefail
           body="$(curl -fsS --max-time 15 "$PUBLIC_BASE_URL/?yandex-map-check=${GITHUB_RUN_ID}")"
           echo "$body" | grep -q 'api-maps.yandex.ru/v3/'
           echo "$body" | grep -q 'lang=ru_RU'
-          echo "✅ Public UrTruck HTML serves Yandex Maps JS API v3 with ru_RU localization."
+          info="$(curl -fsS --max-time 15 "$PUBLIC_BASE_URL/build-info.json")"
+          echo "$info" | grep -Fq "\"commit\":\"$DEPLOY_SHA\""
+          echo "✅ Public UrTruck serves Yandex Maps JS API v3 (ru_RU) on the expected production commit."
