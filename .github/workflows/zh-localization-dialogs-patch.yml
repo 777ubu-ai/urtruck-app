@@ -1,0 +1,81 @@
+name: ZH Dialog Localization Patch
+
+on:
+  push:
+    branches: [fix/zh-localization-10of10-20260816]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[zh-dialog-patch]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/zh-localization-10of10-20260816
+          fetch-depth: 0
+
+      - name: Patch critical confirmations
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          def rep(path, old, new, n=1):
+              p=Path(path); s=p.read_text(); c=s.count(old)
+              if c != n: raise SystemExit(f'{path}: expected {n}, got {c}: {old[:80]}')
+              p.write_text(s.replace(old,new))
+
+          # ── MyTripsScreen: browser/OS language must not own dialog buttons.
+          p='src/screens/MyTripsScreen.js'
+          rep(p, "import { countryFlag } from '../utils/countryFlags';", "import { countryFlag } from '../utils/countryFlags';\nimport AppConfirmModal from '../components/ui/AppConfirmModal';")
+          rep(p, "const [pubGateVisible, setPubGateVisible] = useState(false);", "const [pubGateVisible, setPubGateVisible] = useState(false);\n  const [confirmDialog, setConfirmDialog] = useState(null);")
+          rep(p, """  const confirmAction = async (msg) => {\n    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.confirm) {\n      return window.confirm(msg);\n    }\n    return new Promise(resolve => {\n      Alert.alert(msg, '', [\n        { text: t('cancel'), onPress: () => resolve(false) },\n        { text: 'OK', onPress: () => resolve(true) },\n      ]);\n    });\n  };""", """  const confirmAction = async (msg, confirmLabel = t('confirm'), destructive = false) => (\n    new Promise((resolve) => setConfirmDialog({ msg, confirmLabel, destructive, resolve }))\n  );\n  const settleConfirm = (answer) => {\n    setConfirmDialog((current) => { current?.resolve?.(answer); return null; });\n  };""")
+          rep(p, """      <Modal\n        visible={pubGateVisible}""", """      <AppConfirmModal\n        visible={!!confirmDialog}\n        title={confirmDialog?.msg}\n        cancelLabel={t('cancel')}\n        confirmLabel={confirmDialog?.confirmLabel || t('confirm')}\n        destructive={!!confirmDialog?.destructive}\n        onCancel={() => settleConfirm(false)}\n        onConfirm={() => settleConfirm(true)}\n        testID=\"my-trips-confirm-modal\"\n      />\n      <Modal\n        visible={pubGateVisible}""")
+
+          # ── TripDetail: all deal/bid/destructive confirms use app locale.
+          p='src/screens/TripDetail.js'
+          rep(p, "import PriceSavingsBadge from '../components/deal/PriceSavingsBadge';", "import PriceSavingsBadge from '../components/deal/PriceSavingsBadge';\nimport AppConfirmModal from '../components/ui/AppConfirmModal';")
+          rep(p, "const [cancelling, setCancelling] = React.useState(false);", """const [cancelling, setCancelling] = React.useState(false);\n  const [confirmDialog, setConfirmDialog] = React.useState(null);\n  const askConfirm = React.useCallback((title, message = '', confirmLabel = t('confirm'), destructive = false) => (\n    new Promise((resolve) => setConfirmDialog({ title, message, confirmLabel, destructive, resolve }))\n  ), [t]);\n  const settleConfirm = React.useCallback((answer) => {\n    setConfirmDialog((current) => { current?.resolve?.(answer); return null; });\n  }, []);""")
+          rep(p, "case 'countered': return t('my_bid_status_countered') || 'Водитель предложил встречную цену';", "case 'countered': return t('my_bid_status_countered');")
+          rep(p, "default:          return t('my_bid_status_pending')   || 'Ожидает ответа водителя';", "default:          return t('my_bid_status_pending');")
+          rep(p, "const msg = (t('accept_bid_confirm') || 'Принять предложение за {sum}?').replace('{sum}', sum);", "const msg = t('accept_bid_confirm').replace('{sum}', sum);")
+          old="""    const ok = Platform.OS === 'web'\n      ? (typeof window !== 'undefined' && window.confirm(msg))\n      : await new Promise((res) => Alert.alert(\n          t('accept_counter') || 'Принять', msg,\n          [\n            { text: t('cancel'), style: 'cancel', onPress: () => res(false) },\n            { text: t('accept_counter') || 'Принять', onPress: () => res(true) },\n          ],\n        ));"""
+          rep(p, old, "    const ok = await askConfirm(t('accept_counter'), msg, t('accept_counter'));")
+          old="""    const ok = Platform.OS === 'web'\n      ? (typeof window !== 'undefined' && window.confirm(msg))\n      : await new Promise((res) => Alert.alert(\n          t('accept_bid_confirm_title') || t('accept_bid_btn'), msg,\n          [\n            { text: t('cancel'), style: 'cancel', onPress: () => res(false) },\n            { text: t('accept_bid_btn'), onPress: () => res(true) },\n          ],\n        ));"""
+          rep(p, old, "    const ok = await askConfirm(t('accept_bid_confirm_title'), msg, t('accept_bid_btn'));")
+          old="""    if (Platform.OS === 'web') {\n      if (window.confirm(t('trip_delete_q'))) confirmDelete();\n    } else {\n      Alert.alert(t('trip_delete_q'), '', [\n        { text: t('cancel') },\n        { text: t('trip_delete'), style: 'destructive', onPress: confirmDelete },\n      ]);\n    }"""
+          rep(p, old, """    askConfirm(t('trip_delete_q'), '', t('trip_delete'), true).then((ok) => {\n      if (ok) confirmDelete();\n    });""")
+          rep(p, "toast(res.detail || 'Ошибка', 'error');", "toast(t('update_failed'), 'error');")
+          rep(p, "label={t('edit_bid') || 'Изменить'}", "label={t('edit_bid')}")
+          old="""                const ok = Platform.OS === 'web'\n                  ? (typeof window !== 'undefined' && window.confirm(t('cancel_bid_confirm')))\n                  : await new Promise((res) => Alert.alert(\n                      t('cancel_bid_confirm'), '',\n                      [\n                        { text: t('cancel'), style: 'cancel', onPress: () => res(false) },\n                        { text: t('cancel_bid'), style: 'destructive', onPress: () => res(true) },\n                      ],\n                    ));"""
+          rep(p, old, "                const ok = await askConfirm(t('cancel_bid_confirm'), '', t('withdraw_bid_link'), true);")
+          rep(p, """      <ShareModal\n        visible={shareModal}""", """      <AppConfirmModal\n        visible={!!confirmDialog}\n        title={confirmDialog?.title}\n        message={confirmDialog?.message}\n        cancelLabel={t('cancel')}\n        confirmLabel={confirmDialog?.confirmLabel || t('confirm')}\n        destructive={!!confirmDialog?.destructive}\n        onCancel={() => settleConfirm(false)}\n        onConfirm={() => settleConfirm(true)}\n        testID=\"trip-confirm-modal\"\n      />\n      <ShareModal\n        visible={shareModal}""")
+
+          # ── ChatScreen: deal status and cancellation are safety-critical.
+          p='src/screens/ChatScreen.js'
+          rep(p, "import { ensureBackgroundLocationPermission, getCurrentLocationPayload } from '../utils/backgroundLocation';", "import { ensureBackgroundLocationPermission, getCurrentLocationPayload } from '../utils/backgroundLocation';\nimport AppConfirmModal from '../components/ui/AppConfirmModal';")
+          rep(p, "const [acceptConfirm, setAcceptConfirm] = useState(false);", """const [acceptConfirm, setAcceptConfirm] = useState(false);\n  const [confirmDialog, setConfirmDialog] = useState(null);\n  const askConfirm = React.useCallback((title, message = '', confirmLabel = t('confirm'), destructive = false) => (\n    new Promise((resolve) => setConfirmDialog({ title, message, confirmLabel, destructive, resolve }))\n  ), [t]);\n  const settleConfirm = React.useCallback((answer) => {\n    setConfirmDialog((current) => { current?.resolve?.(answer); return null; });\n  }, []);""")
+          rep(p, "? (t('confirm_mark_delivered') || 'Подтвердите, что груз действительно доставлен и передан получателю.')", "? t('confirm_mark_delivered')")
+          rep(p, ": (t('confirm_receipt') || 'Подтвердите, что груз получен. После этого сделка будет завершена.');", ": t('confirm_receipt');")
+          old="""                    ok = Platform.OS === 'web'\n                      ? (typeof window !== 'undefined' && window.confirm(message))\n                      : await new Promise((res) => Alert.alert(\n                          action.label,\n                          message,\n                          [\n                            { text: t('cancel'), style: 'cancel', onPress: () => res(false) },\n                            { text: action.label, onPress: () => res(true) },\n                          ],\n                        ));"""
+          rep(p, old, "                    ok = await askConfirm(action.label, message, action.label);")
+          old="""                const ok = Platform.OS === 'web'\n                  ? (typeof window !== 'undefined' && window.confirm(t('cancel_deal_confirm')))\n                  : await new Promise((res) => Alert.alert(t('cancel_deal_confirm'), '', [\n                      { text: t('cancel'), style: 'cancel', onPress: () => res(false) },\n                      { text: 'OK', onPress: () => res(true) },\n                    ]));"""
+          rep(p, old, "                const ok = await askConfirm(t('cancel_deal_confirm'), '', t('cancel_deal'), true);")
+          rep(p, """      {/* C2: fullscreen-просмотр вложения-фото.""", """      <AppConfirmModal\n        visible={!!confirmDialog}\n        title={confirmDialog?.title}\n        message={confirmDialog?.message}\n        cancelLabel={t('cancel')}\n        confirmLabel={confirmDialog?.confirmLabel || t('confirm')}\n        destructive={!!confirmDialog?.destructive}\n        onCancel={() => settleConfirm(false)}\n        onConfirm={() => settleConfirm(true)}\n        testID=\"chat-confirm-modal\"\n      />\n\n      {/* C2: fullscreen-просмотр вложения-фото.""")
+
+          # Hard gate for the three critical workflow screens.
+          for f in ['src/screens/MyTripsScreen.js','src/screens/TripDetail.js','src/screens/ChatScreen.js']:
+              s=Path(f).read_text()
+              if 'window.confirm' in s:
+                  raise SystemExit(f'{f}: window.confirm remains')
+          PY
+
+      - name: Commit dialog patch
+        run: |
+          git config user.name "UrTruck QA Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add src/screens/MyTripsScreen.js src/screens/TripDetail.js src/screens/ChatScreen.js
+          git commit -m "fix(i18n): localize critical confirmations [zh-dialog-patch]"
+          git push origin HEAD:fix/zh-localization-10of10-20260816
