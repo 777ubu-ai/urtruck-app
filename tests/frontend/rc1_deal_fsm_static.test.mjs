@@ -39,3 +39,21 @@ test('live map returns to deal chat instead of exposing a call action', () => {
   assert.doesNotMatch(trackSrc, /name="phone"/);
   assert.doesNotMatch(src, /chat-header-call-btn/);
 });
+
+test('shipper sees tracking preview inside the deal chat', () => {
+  assert.match(src, /import TruckMap from '\.\.\/components\/TruckMap'/);
+  assert.match(src, /const TRACKING_STATUSES = \['in_progress', 'at_border', 'delivered'\]/);
+  assert.match(src, /marketAPI\.getDealLocation\(dealId\)/);
+  assert.match(src, /testID="deal-track-truck" style=\{s\.dealMapCard\}/);
+  assert.match(src, /<TruckMap[\s\S]*lat=\{mapPreviewLat\}[\s\S]*lng=\{mapPreviewLng\}/);
+  assert.match(src, /t\('tracking_starts_after_start'\)/);
+});
+
+test('driver can open an external navigator without moving shipper tracking outside UrTruck', () => {
+  assert.match(src, /const DRIVER_ROUTE_STATUSES = \['accepted', 'in_progress', 'at_border', 'delivered'\]/);
+  assert.match(src, /const openDriverRoute = async/);
+  assert.match(src, /testID="deal-open-driver-route"/);
+  assert.match(src, /t\('open_route_btn'\)/);
+  assert.match(src, /https:\/\/yandex\.ru\/maps\/\?rtext=/);
+  assert.doesNotMatch(trackSrc, /Linking\.openURL/);
+});
