@@ -1,11 +1,7 @@
-// Canonical shape mappers for marketplace objects. The server returns
-// snake_case (`from_city`, `truck_type`, `driver_name`), while older code paths
-// pass camelCase or mixed shapes. Detail screens must not branch on every
-// field — they consume the canonical shape and the empty-field fallback lives
-// here in one place.
+// Canonical shape mappers for marketplace objects. Keep this module PURE:
+// frontend Node regression tests import it without React Native. Locale is an
+// explicit optional argument; runtime language/storage must not leak here.
 
-import { formatDateForDisplay } from './dateInput';
-import { getLanguage } from './i18n';
 import { localizeCargoName } from './places';
 
 const pick = (...vals) => {
@@ -22,17 +18,11 @@ export const sanitizeForDisplay = (s) => {
   if (s === null || s === undefined) return s;
   const str = String(s);
   if (!str) return str;
-  return str
-    .replace(PUBLIC_TRASH, ' ')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
+  return str.replace(PUBLIC_TRASH, ' ').replace(/\s{2,}/g, ' ').trim();
 };
 
 export const CURRENCY_SYMBOLS = { USD: '$', KZT: '₸', RUB: '₽', CNY: '¥', UZS: 'сўм', KGS: 'сом' };
 
-// Legacy data contains ISO codes, symbols and several textual aliases. Keep a
-// single canonical ISO currency everywhere so list/detail/bid screens cannot
-// disagree because one path received "₸" and another received "KZT".
 const CURRENCY_ALIASES = {
   '$': 'USD', US$: 'USD', USD: 'USD', DOLLAR: 'USD', DOLLARS: 'USD',
   '₸': 'KZT', KZT: 'KZT', ТГ: 'KZT', ТЕНГЕ: 'KZT', TENGE: 'KZT',
@@ -58,11 +48,26 @@ export const formatPrice = (amount, currency, t) => {
   return cur === 'UZS' || cur === 'KGS' ? `${n} ${sym}` : `${sym}${n}`;
 };
 
-const displayUnits = () => {
-  const lang = getLanguage();
-  if (lang === 'ZH') return { ton: '吨', volume: '立方米' };
-  if (lang === 'EN') return { ton: 't', volume: 'm³' };
+const displayUnits = (lang = 'RU') => {
+  const locale = String(lang || 'RU').toUpperCase();
+  if (locale === 'ZH') return { ton: '吨', volume: '立方米' };
+  if (locale === 'EN') return { ton: 't', volume: 'm³' };
   return { ton: 'т', volume: 'м³' };
+};
+
+const displayDate = (value, lang = 'RU') => {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  let m = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+  if (!m) {
+    const dmy = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(raw);
+    if (!dmy) return raw;
+    m = [dmy[0], dmy[3], dmy[2].padStart(2, '0'), dmy[1].padStart(2, '0')];
+  }
+  if (String(lang).toUpperCase() === 'ZH') {
+    return `${Number(m[1])}年${Number(m[2])}月${Number(m[3])}日`;
+  }
+  return `${m[3]}.${m[2]}.${m[1]}`;
 };
 
 export const normalizeTrip = (raw) => {
@@ -93,7 +98,7 @@ export const normalizeTrip = (raw) => {
   };
 };
 
-export const normalizeCargo = (raw) => {
+export const normalizeCargo = (raw, lang = 'RU') => {
   if (!raw) return null;
   const photosRaw = raw.photos || raw.photo || [];
   const photos = Array.isArray(photosRaw)
@@ -104,9 +109,7 @@ export const normalizeCargo = (raw) => {
     id: raw.id || raw.cargo_id || null,
     from: pick(raw.from_city, raw.from, raw.fromCity),
     to: pick(raw.to_city, raw.to, raw.toCity),
-    // Known system categories are localized at presentation normalization.
-    // Free-form user descriptions are returned unchanged by localizeCargoName.
-    cargoDesc: localizeCargoName(rawCargoDesc, getLanguage()),
+    cargoDesc: localizeCargoName(rawCargoDesc, lang),
     cargoType: pick(raw.cargo_type, raw.cargoType, raw.type),
     weightTons: raw.weight_tons ?? raw.weightTons ?? raw.tons ?? null,
     volumeM3: raw.volume_m3 ?? raw.volumeM3 ?? raw.m3 ?? null,
@@ -125,35 +128,33 @@ export const normalizeCargo = (raw) => {
   };
 };
 
-export const cargoDisplay = (cargo, t) => {
+export const cargoDisplay = (cargo, t, lang = 'RU') => {
   const dash = (t && t('not_specified')) || 'Not specified';
   const typeLabel = cargo?.cargoType ? (t ? t(cargo.cargoType) : cargo.cargoType) : null;
-  const units = displayUnits();
-  const weight = cargo?.weightTons > 0 ? `${cargo.weightTons} ${units.ton}` : dash;
-  const volume = cargo?.volumeM3 > 0 ? `${cargo.volumeM3} ${units.volume}` : dash;
+  const units = displayUnits(lang);
   return {
     from: sanitizeForDisplay(cargo?.from) || dash,
     to: sanitizeForDisplay(cargo?.to) || dash,
     cargoDesc: sanitizeForDisplay(cargo?.cargoDesc) || dash,
     cargoType: typeLabel && typeLabel !== cargo?.cargoType ? typeLabel : (cargo?.cargoType || dash),
-    weight,
-    volume,
+    weight: cargo?.weightTons > 0 ? `${cargo.weightTons} ${units.ton}` : dash,
+    volume: cargo?.volumeM3 > 0 ? `${cargo.volumeM3} ${units.volume}` : dash,
     price: formatPrice(cargo?.price, cargo?.currency, t),
     pickupDate: cargo?.pickupDate ? cargo.pickupDate : dash,
     ownerName: sanitizeForDisplay(cargo?.ownerName) || dash,
   };
 };
 
-export const tripDisplay = (trip, t) => {
+export const tripDisplay = (trip, t, lang = 'RU') => {
   const dash = (t && t('not_specified')) || 'Not specified';
   const truck = trip?.truckType ? (t ? t(trip.truckType) : trip.truckType) : dash;
-  const units = displayUnits();
+  const units = displayUnits(lang);
   return {
     from: sanitizeForDisplay(trip?.from) || dash,
     to: sanitizeForDisplay(trip?.to) || dash,
     transit: sanitizeForDisplay(trip?.transit) || '',
-    departure: trip?.departure ? formatDateForDisplay(trip.departure) : dash,
-    arrival: trip?.arrival ? formatDateForDisplay(trip.arrival) : dash,
+    departure: trip?.departure ? displayDate(trip.departure, lang) : dash,
+    arrival: trip?.arrival ? displayDate(trip.arrival, lang) : dash,
     truckType: truck && truck !== trip?.truckType ? truck : (trip?.truckType || dash),
     capacityTons: trip?.capacityTons != null ? `${trip.capacityTons} ${units.ton}` : dash,
     availableM3: trip?.availableM3 != null ? `${trip.availableM3} ${units.volume}` : dash,
