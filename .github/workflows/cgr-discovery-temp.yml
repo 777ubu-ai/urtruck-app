@@ -7,35 +7,37 @@ jobs:
   discover:
     runs-on: ubuntu-latest
     steps:
-      - name: Probe CGR current HTML
+      - name: Probe CGR export and filters
         shell: bash
         run: |
           set -euo pipefail
           python3 -m pip install -q beautifulsoup4
           UA='UrTruck/1.0 (+https://urtruck.kz; partner-integration)'
-          curl -fsSL -A "$UA" 'https://cgr.qoldau.kz/ru/registry/public-list?flStatus=Pending' -o /tmp/pub.html
-          curl -fsSL -A "$UA" 'https://cgr.qoldau.kz/ru/registry/wa-history/list?flStatus=Active' -o /tmp/wa.html
-          curl -fsSL -A "$UA" 'https://cgr.qoldau.kz/ru/registry/checkpoint/list/222979531669000000/view' -o /tmp/det.html
+          for spec in \
+            'pub|https://cgr.qoldau.kz/ru/registry/public-list?flStatus=Pending' \
+            'pubexcel|https://cgr.qoldau.kz/ru/registry/public-list?flStatus=Pending&presentation=excel' \
+            'wa|https://cgr.qoldau.kz/ru/registry/wa-history/list?flStatus=Active' \
+            'waexcel|https://cgr.qoldau.kz/ru/registry/wa-history/list?flStatus=Active&presentation=excel'; do
+            name=${spec%%|*}; url=${spec#*|}
+            echo "=== $name ==="
+            curl -fsSL -A "$UA" -D "/tmp/$name.h" "$url" -o "/tmp/$name.dat"
+            grep -Ei 'content-type|content-length|content-disposition' "/tmp/$name.h" | tail -5 || true
+            wc -c "/tmp/$name.dat"
+            grep -ao '<tr' "/tmp/$name.dat" | wc -l || true
+          done
           python3 - <<'PY'
           from bs4 import BeautifulSoup
           import re
           for fn in ['pub','wa']:
-              s=BeautifulSoup(open('/tmp/'+fn+'.html',encoding='utf-8').read(),'html.parser')
-              print('\n---',fn,'selects ---')
-              for sel in s.find_all('select'):
-                  opts=[(o.get('value'),o.get_text(' ',strip=True)) for o in sel.find_all('option')]
-                  print('select',sel.get('name'),sel.get('id'),'options',opts[:20])
-              print('record text:', [x.strip() for x in s.stripped_strings if 'Всего записей' in x][:3])
-          s=BeautifulSoup(open('/tmp/det.html',encoding='utf-8').read(),'html.parser')
-          print('\n--- chart-ish elements ---')
-          for el in s.find_all(True):
-              attrs=' '.join(f'{k}={v}' for k,v in el.attrs.items())
-              hay=(str(el.get('class',''))+' '+attrs).lower()
-              if any(k in hay for k in ['chart','apex','series','statistic','loading']):
-                  print(el.name,attrs[:1000])
-          print('\n--- data attrs ---')
-          for el in s.find_all(True):
-              data={k:v for k,v in el.attrs.items() if k.startswith('data-')}
-              if data and any(k in str(data).lower() for k in ['chart','stat','load','series','url','ajax']):
-                  print(el.name,data)
+              raw=open('/tmp/'+fn+'.dat','rb').read().decode('utf-8','ignore')
+              s=BeautifulSoup(raw,'html.parser')
+              print('\n---',fn,'filter inputs ---')
+              for inp in s.find_all('input'):
+                  name=inp.get('name') or ''
+                  ident=inp.get('id') or ''
+                  if name.startswith('fl') or ident.startswith('fl'):
+                      print(inp.name,'name=',name,'id=',ident,'value=',inp.get('value'),'data-ref=',inp.get('data-ref-name'))
+              text=s.get_text(' ',strip=True)
+              m=re.search(r'Всего записей\s*([0-9\s\u00a0]+)',text)
+              print('TOTAL=',m.group(1).strip() if m else 'NONE')
           PY
