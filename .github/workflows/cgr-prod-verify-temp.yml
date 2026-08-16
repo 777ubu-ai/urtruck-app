@@ -1,0 +1,46 @@
+name: TEMP CGR production verify
+on:
+  push:
+    branches: [agent/fix-cgr-live-data-20260816]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify production CGR API
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://urtruck.kz'
+          echo '--- build ---'
+          curl -fsS --max-time 15 "$BASE/build-info.json"
+          echo
+          echo '--- CN borders ---'
+          curl -fsS --max-time 20 "$BASE/security/api/v1/borders?country=CN" -o /tmp/borders.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/borders.json'))
+          rows=d.get('borders',[])
+          print('count=',len(rows))
+          for r in rows:
+              print(r.get('name'), 'queue=',r.get('trucks_in_queue'), 'capacity=',r.get('daily_capacity'), 'updated=',r.get('updated_at'), 'source=',r.get('source_type') or r.get('source'))
+          targets={r.get('name'):r for r in rows}
+          n=targets.get('Нур Жолы - Хоргос')
+          if not n:
+              raise SystemExit('Nurs checkpoint missing')
+          if n.get('trucks_in_queue') is None:
+              raise SystemExit('Nurs current queue still missing')
+          if n.get('daily_capacity') != 700:
+              raise SystemExit(f"Nurs capacity unexpected: {n.get('daily_capacity')}")
+          if all(r.get('trucks_in_queue') in (0,None) for r in rows):
+              raise SystemExit('All China checkpoints are still zero/no-data')
+          print('PRODUCTION CGR VERIFY PASS')
+          PY
+          echo '--- scoreboard ---'
+          curl -fsS --max-time 20 "$BASE/security/api/v1/borders/scoreboard" -o /tmp/score.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/score.json'))
+          for r in d.get('checkpoints',[]):
+              if r.get('country_to')=='CN':
+                  print(r.get('name_ru'), r.get('directions',{}).get('in',{}).get('queue_length'), r.get('daily_capacity'), r.get('status'))
+          PY
