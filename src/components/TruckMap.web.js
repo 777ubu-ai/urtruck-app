@@ -17,7 +17,7 @@ const asPoint = (p) => {
 
 const pointKey = (point) => point ? `${point[0]}:${point[1]}` : 'none';
 
-function YandexMap({ livePoint, plannedPoints }) {
+function YandexMap({ livePoint, plannedPoints, onRouteSummary }) {
   const hostRef = React.useRef(null);
   const mapRef = React.useRef(null);
   const retryTimerRef = React.useRef(null);
@@ -103,10 +103,25 @@ function YandexMap({ livePoint, plannedPoints }) {
     const requestId = ++routeRequestRef.current;
 
     map.geoObjects.removeAll();
+    onRouteSummary?.(null);
+
+    // До старта рейса считаем весь маршрут. После появления GPS считаем
+    // именно остаток от текущей машины до конечной точки — это то, что нужно
+    // грузоотправителю и водителю в реальном рейсе.
+    const destination = plannedPoints.length ? plannedPoints[plannedPoints.length - 1] : null;
+    const routingPoints = livePoint && destination
+      ? [livePoint, destination]
+      : plannedPoints;
+
+    const emitSummary = (summary) => {
+      if (cancelled || requestId !== routeRequestRef.current) return;
+      onRouteSummary?.(summary);
+    };
 
     const addStraightFallback = () => {
-      if (cancelled || requestId !== routeRequestRef.current || plannedPoints.length < 2) return;
-      const fallback = new api.Polyline(plannedPoints, {}, {
+      emitSummary(null);
+      if (cancelled || requestId !== routeRequestRef.current || routingPoints.length < 2) return;
+      const fallback = new api.Polyline(routingPoints, {}, {
         strokeColor: '#168759',
         strokeWidth: 4,
         strokeStyle: 'dash',
@@ -117,9 +132,9 @@ function YandexMap({ livePoint, plannedPoints }) {
       if (bounds) map.setBounds(bounds, { checkZoomRange: true, zoomMargin: 44 });
     };
 
-    if (plannedPoints.length >= 2 && api.multiRouter?.MultiRoute) {
+    if (routingPoints.length >= 2 && api.multiRouter?.MultiRoute) {
       const multiRoute = new api.multiRouter.MultiRoute({
-        referencePoints: plannedPoints,
+        referencePoints: routingPoints,
         params: {
           routingMode: 'auto',
           results: 1,
@@ -133,6 +148,25 @@ function YandexMap({ livePoint, plannedPoints }) {
         routeStrokeColor: '#9DB9AC',
         routeStrokeWidth: 4,
         pinVisible: false,
+      });
+      multiRoute.model?.events?.add?.('requestsuccess', () => {
+        try {
+          const activeRoute = multiRoute.getActiveRoute?.();
+          const distance = activeRoute?.properties?.get?.('distance');
+          const duration = activeRoute?.properties?.get?.('duration');
+          if (!distance?.text || !duration?.text) {
+            emitSummary(null);
+            return;
+          }
+          emitSummary({
+            distanceText: String(distance.text),
+            durationText: String(duration.text),
+            blocked: Boolean(activeRoute?.properties?.get?.('blocked')),
+            isRemaining: Boolean(livePoint),
+          });
+        } catch {
+          emitSummary(null);
+        }
       });
       multiRoute.model?.events?.add?.('requestfail', addStraightFallback);
       map.geoObjects.add(multiRoute);
@@ -160,13 +194,13 @@ function YandexMap({ livePoint, plannedPoints }) {
       map.geoObjects.add(live);
     }
 
-    if (plannedPoints.length < 2) {
+    if (routingPoints.length < 2) {
       const bounds = map.geoObjects.getBounds();
       if (bounds) map.setBounds(bounds, { checkZoomRange: true, zoomMargin: 44 });
     }
 
     return () => { cancelled = true; };
-  }, [status, pointKey(livePoint), JSON.stringify(plannedPoints)]);
+  }, [status, pointKey(livePoint), JSON.stringify(plannedPoints), onRouteSummary]);
 
   return (
     <View style={s.shell}>
@@ -196,6 +230,7 @@ export default function TruckMap({
   plannedHint = 'GPS водителя появится автоматически',
   liveTitle = 'Машина на маршруте',
   showBadge = true,
+  onRouteSummary,
 }) {
   const livePoint = asPoint([lat, lng]);
   const plannedPoints = (routePoints || []).map(asPoint).filter(Boolean);
@@ -205,7 +240,7 @@ export default function TruckMap({
   return (
     <View style={s.shell}>
       {configured ? (
-        <YandexMap livePoint={livePoint} plannedPoints={plannedPoints} />
+        <YandexMap livePoint={livePoint} plannedPoints={plannedPoints} onRouteSummary={onRouteSummary} />
       ) : (
         <View style={s.loading} testID="truck-map-yandex-not-configured">
           <Text style={s.errorTitle}>Яндекс Карта не подключена</Text>

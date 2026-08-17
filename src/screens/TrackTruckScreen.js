@@ -18,6 +18,7 @@ export default function TrackTruckScreen({ navigation, route }) {
   const { theme } = useTheme();
   const [loc, setLoc] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [routeSummary, setRouteSummary] = useState(null);
   const mounted = useRef(true);
 
   const load = useCallback(async () => {
@@ -48,6 +49,12 @@ export default function TrackTruckScreen({ navigation, route }) {
       return true;
     });
   }, [from, to]);
+
+  const handleRouteSummary = useCallback((summary) => {
+    if (!mounted.current) return;
+    setRouteSummary(summary || null);
+  }, []);
+
   const agoMin = (() => {
     if (!loc || !loc.updated_at) return null;
     const ts = Date.parse(String(loc.updated_at).replace(' ', 'T') + (String(loc.updated_at).endsWith('Z') ? '' : 'Z'));
@@ -88,13 +95,40 @@ export default function TrackTruckScreen({ navigation, route }) {
             plannedHint={t('tracking_starts_after_start')}
             liveTitle={t('live_route_title')}
             showBadge={false}
+            onRouteSummary={handleRouteSummary}
           />
+
           {loc ? (
-            <View style={[s.liveMini, { backgroundColor: theme.card, borderColor: theme.border }]} pointerEvents="none">
+            <View
+              style={[
+                s.liveMini,
+                { backgroundColor: theme.card, borderColor: theme.border },
+                routeSummary ? s.liveMiniWithMetrics : null,
+              ]}
+              pointerEvents="none"
+            >
               <View style={s.liveMiniDot} />
               <Text style={[s.liveMiniText, { color: theme.text }]} numberOfLines={1}>
                 {fmtAgo(agoMin) || t('track_updated_now')}
               </Text>
+            </View>
+          ) : null}
+
+          {routeSummary ? (
+            <View
+              style={[s.routeMetrics, { backgroundColor: theme.card, borderColor: theme.border }]}
+              testID="track-route-metrics"
+              pointerEvents="none"
+            >
+              <View style={s.metricBlock}>
+                <Text style={[s.metricLabel, { color: theme.textMuted }]}>{t('distance')}</Text>
+                <Text style={[s.metricValue, { color: theme.text }]} numberOfLines={1}>{routeSummary.distanceText}</Text>
+              </View>
+              <View style={[s.metricDiv, { backgroundColor: theme.border }]} />
+              <View style={s.metricBlock}>
+                <Text style={[s.metricLabel, { color: theme.textMuted }]}>{t('delivery_time')}</Text>
+                <Text style={[s.metricValue, { color: theme.text }]} numberOfLines={1}>{routeSummary.durationText}</Text>
+              </View>
             </View>
           ) : null}
         </View>
@@ -112,8 +146,31 @@ const s = StyleSheet.create({
   route: { fontSize: 13, textAlign: 'center', paddingBottom: 8, paddingHorizontal: 16 },
   cleanMapWrap: { flex: 1, marginHorizontal: 0, marginBottom: 0, borderRadius: 0, overflow: 'hidden', position: 'relative' },
   liveMini: { position: 'absolute', left: 12, bottom: 12, flexDirection: 'row', alignItems: 'center', gap: 7, maxWidth: '72%', paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderRadius: 999 },
+  liveMiniWithMetrics: { bottom: 94 },
   liveMiniDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#168759' },
   liveMiniText: { fontSize: 11.5, fontWeight: '800' },
+  routeMetrics: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    bottom: 14,
+    minHeight: 68,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    shadowColor: '#000000',
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 4,
+  },
+  metricBlock: { flex: 1, minWidth: 0 },
+  metricLabel: { fontSize: 10.5, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.35, marginBottom: 3 },
+  metricValue: { fontSize: 18, fontWeight: '900' },
+  metricDiv: { width: 1, alignSelf: 'stretch', marginHorizontal: 14 },
   planBanner: { flexDirection: 'row', alignItems: 'center', gap: 9, borderWidth: 1, borderRadius: 13, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 8 },
   planTitle: { fontSize: 13, fontWeight: '850' },
   planHint: { fontSize: 11.5, lineHeight: 16, marginTop: 2 },

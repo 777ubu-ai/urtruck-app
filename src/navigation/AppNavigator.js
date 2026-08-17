@@ -24,10 +24,10 @@ import CitizenshipScreen from '../screens/registration/CitizenshipScreen';
 import PremiumLoginScreen from '../screens/registration/PremiumLoginScreen';
 import FeedScreen from '../screens/FeedScreen';
 import CargoFeedScreen from '../screens/CargoFeedScreen';
-import CargoDetail from '../screens/CargoDetail';
+import CargoDetailV2 from '../screens/CargoDetailV2';
 import TrackTruckScreen from '../screens/TrackTruckScreen';
 import DriverDetail from '../screens/DriverDetail';
-import ChatScreen from '../screens/ChatScreen';
+import ChatScreenV2 from '../screens/ChatScreenV2';
 import WalletScreen from '../screens/WalletScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import ReviewsScreen from '../screens/ReviewsScreen';
@@ -45,7 +45,7 @@ import StatsScreen from '../screens/StatsScreen';
 import EditProfileScreen from '../screens/EditProfileScreen';
 import CargoRuqsatInfoScreen from '../screens/CargoRuqsatInfoScreen';
 import SecurityScreen from '../screens/SecurityScreen';
-import TripDetail from '../screens/TripDetail';
+import TripDetailV2 from '../screens/TripDetailV2';
 import EditTripScreen from '../screens/EditTripScreen';
 import CreateTripScreen from '../screens/CreateTripScreen';
 import CreateCargoScreen from '../screens/CreateCargoScreen';
@@ -186,14 +186,14 @@ export default function AppNavigator() {
         <Stack.Screen name="RegProfile" component={PremiumProfileScreen} />
         <Stack.Screen name="Main" component={MainTabs} />
         <Stack.Screen name="Profile" component={ProfileScreen} />
-        <Stack.Screen name="CargoDetail" component={CargoDetail} />
+        <Stack.Screen name="CargoDetail" component={CargoDetailV2} />
         <Stack.Screen name="DriverDetail" component={DriverDetail} />
-        <Stack.Screen name="Chat" component={ChatScreen} />
+        <Stack.Screen name="Chat" component={ChatScreenV2} />
         <Stack.Screen name="ChatsList" component={ChatsListScreen} />
         <Stack.Screen name="MyTripsList" component={MyTripsScreen} />
         <Stack.Screen name="EditProfile" component={EditProfileScreen} />
         <Stack.Screen name="CargoRuqsatInfo" component={CargoRuqsatInfoScreen} />
-        <Stack.Screen name="TripDetail" component={TripDetail} />
+        <Stack.Screen name="TripDetail" component={TripDetailV2} />
         <Stack.Screen name="EditTrip" component={EditTripScreen} />
         <Stack.Screen name="CreateTrip" component={CreateTripScreen} />
         <Stack.Screen name="CreateCargo" component={CreateCargoScreen} />
@@ -233,10 +233,10 @@ export default function AppNavigator() {
               ограниченный вид с приглашением зарегистрироваться. Без этой
               регистрации маршрута navigate('Profile') у гостя не срабатывал. */}
           <Stack.Screen name="Profile" component={ProfileScreen} />
-          <Stack.Screen name="CargoDetail" component={CargoDetail} />
-          <Stack.Screen name="TripDetail" component={TripDetail} />
+          <Stack.Screen name="CargoDetail" component={CargoDetailV2} />
+          <Stack.Screen name="TripDetail" component={TripDetailV2} />
           <Stack.Screen name="DriverDetail" component={DriverDetail} />
-          <Stack.Screen name="Chat" component={ChatScreen} />
+          <Stack.Screen name="Chat" component={ChatScreenV2} />
         </>
       ) : (
         // Полностью в приложении
@@ -245,9 +245,9 @@ export default function AppNavigator() {
           {/* Профиль теперь открывается из ☰ (top-right) как отдельный экран
               стека, а не как вкладка таб-бара (её занял «Дела»). */}
           <Stack.Screen name="Profile" component={ProfileScreen} />
-          <Stack.Screen name="CargoDetail" component={CargoDetail} />
+          <Stack.Screen name="CargoDetail" component={CargoDetailV2} />
           <Stack.Screen name="DriverDetail" component={DriverDetail} />
-          <Stack.Screen name="Chat" component={ChatScreen} />
+          <Stack.Screen name="Chat" component={ChatScreenV2} />
           <Stack.Screen name="Reviews" component={ReviewsScreen} />
           <Stack.Screen name="Favorites" component={FavoritesScreen} />
           <Stack.Screen name="ChatsList" component={ChatsListScreen} />
@@ -263,7 +263,7 @@ export default function AppNavigator() {
           <Stack.Screen name="EditProfile" component={EditProfileScreen} />
           <Stack.Screen name="CargoRuqsatInfo" component={CargoRuqsatInfoScreen} />
           <Stack.Screen name="Security" component={SecurityScreen} />
-          <Stack.Screen name="TripDetail" component={TripDetail} />
+          <Stack.Screen name="TripDetail" component={TripDetailV2} />
           <Stack.Screen name="EditTrip" component={EditTripScreen} />
           <Stack.Screen name="CreateTrip" component={CreateTripScreen} />
           <Stack.Screen name="CreateCargo" component={CreateCargoScreen} />
