@@ -1,12 +1,8 @@
-// TruckMap (web/PWA) — Yandex Maps is the primary embedded provider.
-// With a Router API key, the planned truck route follows real roads. OpenStreetMap
-// remains only a safety fallback so a deal never gets a blank map.
+// TruckMap (web/PWA) — Yandex Maps only.
+// UrTruck must never silently fall back to a different map provider: if Yandex
+// is unavailable we show a clean in-app state instead of rendering Leaflet/OSM.
 import React from 'react';
 import { View, Text, StyleSheet, findNodeHandle } from 'react-native';
-
-const LEAFLET_JS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-const LEAFLET_CSS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-let leafletPromise;
 
 const DEFAULT_TRUCK = {
   weight: 40,
@@ -82,18 +78,31 @@ async function fetchYandexTruckRoute(api, plannedPoints) {
   }
 }
 
-function YandexMap({ livePoint, plannedPoints, title, onFailure }) {
+function YandexMap({ livePoint, plannedPoints }) {
   const hostRef = React.useRef(null);
   const mapRef = React.useRef(null);
   const apiRef = React.useRef(null);
   const objectsRef = React.useRef([]);
   const routeRequestRef = React.useRef(0);
-  const [ready, setReady] = React.useState(false);
+  const retryTimerRef = React.useRef(null);
+  const [status, setStatus] = React.useState('loading');
+  const [mountAttempt, setMountAttempt] = React.useState(0);
 
   React.useEffect(() => {
     let cancelled = false;
     let timer = null;
     let attempts = 0;
+
+    const fail = () => {
+      if (cancelled) return;
+      setStatus('error');
+      retryTimerRef.current = setTimeout(() => {
+        if (!cancelled) {
+          setStatus('loading');
+          setMountAttempt((n) => n + 1);
+        }
+      }, 5000);
+    };
 
     const start = async () => {
       const api = globalThis.ymaps3;
@@ -103,15 +112,17 @@ function YandexMap({ livePoint, plannedPoints, title, onFailure }) {
       const host = directHost && typeof directHost === 'object' && directHost.nodeType === 1
         ? directHost
         : (legacyHost && typeof legacyHost === 'object' && legacyHost.nodeType === 1 ? legacyHost : null);
+
       if (!api || !host) {
         attempts += 1;
         if (attempts >= 200) {
-          if (!cancelled) onFailure();
+          fail();
           return;
         }
         timer = setTimeout(start, 100);
         return;
       }
+
       try {
         await api.ready;
         if (cancelled) return;
@@ -125,9 +136,9 @@ function YandexMap({ livePoint, plannedPoints, title, onFailure }) {
         }, [new YMapDefaultSchemeLayer({ theme: 'light' }), new YMapDefaultFeaturesLayer({})]);
         mapRef.current = map;
         apiRef.current = { root: api, YMapFeature, YMapMarker };
-        setReady(true);
+        setStatus('ready');
       } catch {
-        if (!cancelled) onFailure();
+        fail();
       }
     };
 
@@ -135,18 +146,19 @@ function YandexMap({ livePoint, plannedPoints, title, onFailure }) {
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
       routeRequestRef.current += 1;
       mapRef.current?.destroy?.();
       mapRef.current = null;
       apiRef.current = null;
       objectsRef.current = [];
     };
-  }, []);
+  }, [mountAttempt]);
 
   React.useEffect(() => {
     const map = mapRef.current;
     const api = apiRef.current;
-    if (!ready || !map || !api) return undefined;
+    if (status !== 'ready' || !map || !api) return undefined;
     let cancelled = false;
     const requestId = ++routeRequestRef.current;
 
@@ -203,93 +215,24 @@ function YandexMap({ livePoint, plannedPoints, title, onFailure }) {
 
     render();
     return () => { cancelled = true; };
-  }, [ready, pointKey(livePoint), JSON.stringify(plannedPoints)]);
+  }, [status, pointKey(livePoint), JSON.stringify(plannedPoints)]);
 
   return (
     <View style={s.shell}>
       <View ref={hostRef} style={s.map} testID="truck-map-yandex-web" />
-      {!ready ? (
-        <View pointerEvents="none" style={s.loading}>
+      {status === 'loading' ? (
+        <View pointerEvents="none" style={s.loading} testID="truck-map-yandex-loading">
           <Text style={s.loadingText}>Загружаем Яндекс Карту…</Text>
+        </View>
+      ) : null}
+      {status === 'error' ? (
+        <View pointerEvents="none" style={s.loading} testID="truck-map-yandex-error">
+          <Text style={s.errorTitle}>Яндекс Карта временно недоступна</Text>
+          <Text style={s.loadingText}>Повторяем подключение автоматически…</Text>
         </View>
       ) : null}
     </View>
   );
-}
-
-const loadLeaflet = () => {
-  if (typeof window === 'undefined' || typeof document === 'undefined') return Promise.reject(new Error('browser_required'));
-  if (window.L?.map) return Promise.resolve(window.L);
-  if (leafletPromise) return leafletPromise;
-  leafletPromise = new Promise((resolve, reject) => {
-    if (!document.querySelector(`link[href="${LEAFLET_CSS}"]`)) {
-      const link = document.createElement('link');
-      link.rel = 'stylesheet'; link.href = LEAFLET_CSS; document.head.appendChild(link);
-    }
-    const existing = document.querySelector(`script[src="${LEAFLET_JS}"]`);
-    if (existing) {
-      if (window.L?.map) return resolve(window.L);
-      existing.addEventListener('load', () => resolve(window.L), { once: true });
-      existing.addEventListener('error', reject, { once: true });
-      return;
-    }
-    const script = document.createElement('script');
-    script.src = LEAFLET_JS; script.async = true;
-    script.onload = () => resolve(window.L); script.onerror = reject;
-    document.head.appendChild(script);
-  });
-  return leafletPromise;
-};
-
-function OpenStreetMapFallback({ livePoint, plannedPoints, title }) {
-  const hostRef = React.useRef(null);
-  const mapRef = React.useRef(null);
-  const objectsRef = React.useRef([]);
-  const [ready, setReady] = React.useState(false);
-
-  React.useEffect(() => {
-    let alive = true;
-    let resizeObserver;
-    loadLeaflet().then((L) => {
-      if (!alive || !hostRef.current) return;
-      const points = livePoint ? [...plannedPoints, livePoint] : plannedPoints;
-      const initial = points[0] || [43.2389, 76.8897];
-      const map = L.map(hostRef.current, { zoomControl: true, attributionControl: true, preferCanvas: true })
-        .setView(initial, points.length > 1 ? 6 : 10);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19, attribution: '&copy; OpenStreetMap contributors',
-      }).addTo(map);
-      mapRef.current = map;
-      setReady(true);
-      if (window.ResizeObserver) {
-        resizeObserver = new ResizeObserver(() => map.invalidateSize(false));
-        resizeObserver.observe(hostRef.current);
-      }
-      setTimeout(() => map.invalidateSize(false), 50);
-    }).catch(() => {});
-    return () => {
-      alive = false; resizeObserver?.disconnect?.(); mapRef.current?.remove?.(); mapRef.current = null; objectsRef.current = [];
-    };
-  }, []);
-
-  React.useEffect(() => {
-    const map = mapRef.current;
-    const L = typeof window !== 'undefined' ? window.L : null;
-    if (!ready || !map || !L) return;
-    for (const obj of objectsRef.current) try { map.removeLayer(obj); } catch { /* noop */ }
-    objectsRef.current = [];
-    if (plannedPoints.length >= 2) objectsRef.current.push(L.polyline(plannedPoints, { color: '#168759', weight: 5, opacity: 0.85, dashArray: '10 8' }).addTo(map));
-    plannedPoints.forEach((point) => objectsRef.current.push(L.circleMarker(point, { radius: 6, color: '#168759', weight: 3, fillColor: '#fff', fillOpacity: 1 }).addTo(map)));
-    if (livePoint) {
-      const live = L.circleMarker(livePoint, { radius: 10, color: '#fff', weight: 4, fillColor: '#0F6B47', fillOpacity: 1 }).addTo(map);
-      if (title) live.bindTooltip(title, { direction: 'top', offset: [0, -8] });
-      objectsRef.current.push(live);
-    }
-    const points = livePoint ? [...plannedPoints, livePoint] : plannedPoints;
-    if (points.length >= 2) map.fitBounds(points, { padding: [28, 28], maxZoom: 11 });
-  }, [ready, pointKey(livePoint), JSON.stringify(plannedPoints), title]);
-
-  return <View ref={hostRef} style={s.map} testID="truck-map-osm-fallback" />;
 }
 
 export default function TruckMap({
@@ -306,15 +249,17 @@ export default function TruckMap({
   const livePoint = asPoint([lat, lng]);
   const plannedPoints = (routePoints || []).map(asPoint).filter(Boolean);
   const configured = typeof globalThis !== 'undefined' && globalThis.__URTRUCK_YANDEX_MAPS_CONFIGURED__ === true;
-  const [useFallback, setUseFallback] = React.useState(!configured);
   const showPlanned = planned && !livePoint;
 
   return (
     <View style={s.shell}>
-      {useFallback ? (
-        <OpenStreetMapFallback livePoint={livePoint} plannedPoints={plannedPoints} title={title} />
+      {configured ? (
+        <YandexMap livePoint={livePoint} plannedPoints={plannedPoints} />
       ) : (
-        <YandexMap livePoint={livePoint} plannedPoints={plannedPoints} title={title} onFailure={() => setUseFallback(true)} />
+        <View style={s.loading} testID="truck-map-yandex-not-configured">
+          <Text style={s.errorTitle}>Яндекс Карта не подключена</Text>
+          <Text style={s.loadingText}>Карта не будет заменена другим провайдером.</Text>
+        </View>
       )}
       {showBadge ? (
         <View pointerEvents="none" style={s.badge}>
@@ -329,8 +274,9 @@ export default function TruckMap({
 const s = StyleSheet.create({
   shell: { flex: 1, minHeight: 240, overflow: 'hidden', position: 'relative', backgroundColor: '#EAF1ED' },
   map: { ...StyleSheet.absoluteFillObject },
-  loading: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EEF2EF' },
-  loadingText: { color: '#617067', fontSize: 12, fontWeight: '700' },
+  loading: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EEF2EF', paddingHorizontal: 24 },
+  loadingText: { color: '#617067', fontSize: 12, fontWeight: '700', textAlign: 'center' },
+  errorTitle: { color: '#14221C', fontSize: 14, fontWeight: '900', textAlign: 'center', marginBottom: 6 },
   badge: {
     position: 'absolute', left: 12, top: 12, maxWidth: '72%', paddingHorizontal: 11, paddingVertical: 8,
     borderRadius: 11, backgroundColor: 'rgba(255,255,255,0.94)', borderWidth: 1, borderColor: '#DDE5E0',
