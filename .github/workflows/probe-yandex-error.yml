@@ -1,0 +1,41 @@
+name: Probe Yandex loader error
+
+on:
+  push:
+    branches: [fix/map-clean-route-yandex-runtime-20260817]
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    if: "!contains(github.event.head_commit.message, '[loader-error-probed]')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/map-clean-route-yandex-runtime-20260817
+          fetch-depth: 0
+      - name: Read safe loader error fields
+        env:
+          KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
+        run: |
+          set -euo pipefail
+          URL="https://api-maps.yandex.ru/v3/?apikey=${KEY}&lang=ru_RU"
+          curl -L -sS --max-time 20 -H 'Referer: https://urtruck.kz/' -o /tmp/yandex.json "$URL" || true
+          python3 - <<'PY'
+          import json
+          try: d=json.load(open('/tmp/yandex.json'))
+          except Exception: print('YANDEX_ERROR=non-json'); raise SystemExit
+          allowed={k:d.get(k) for k in ('statusCode','status','error','message','code') if k in d}
+          print('YANDEX_ERROR_SAFE='+json.dumps(allowed,ensure_ascii=False))
+          PY
+      - name: Remove probe workflow
+        if: always()
+        run: |
+          git config user.name "UrTruck Release Bot"
+          git config user.email "actions@users.noreply.github.com"
+          rm .github/workflows/probe-yandex-error.yml
+          git add .github/workflows/probe-yandex-error.yml
+          git commit -m "chore(map): loader error probed [loader-error-probed]" || true
+          git push origin HEAD:fix/map-clean-route-yandex-runtime-20260817
