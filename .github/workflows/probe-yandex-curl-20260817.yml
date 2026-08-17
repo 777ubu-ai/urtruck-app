@@ -1,0 +1,26 @@
+name: Probe Yandex curl 20260817
+on:
+  push:
+    branches: [probe/yandex-live-error-20260817]
+jobs:
+  curl-probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect production Yandex loader
+        run: |
+          set -euo pipefail
+          curl -fsS 'https://urtruck.kz/?probe=yandex-curl' -o /tmp/index.html
+          python3 - <<'PY' > /tmp/yandex-url
+          import re
+          s=open('/tmp/index.html',encoding='utf-8',errors='ignore').read()
+          m=re.search(r'https://api-maps\.yandex\.ru/v3/\?[^"\']+',s)
+          if not m: raise SystemExit('YANDEX_SCRIPT=missing')
+          print(m.group(0))
+          PY
+          code=$(curl -sS -L --max-time 30 -H 'Referer: https://urtruck.kz/' -D /tmp/headers -o /tmp/body -w '%{http_code}' "$(cat /tmp/yandex-url)" || true)
+          echo "YANDEX_HTTP=$code"
+          echo '--- HEADERS ---'
+          sed -n '1,60p' /tmp/headers | sed -E 's/(set-cookie:).*/\1 [redacted]/I'
+          echo '--- BODY ---'
+          head -c 2000 /tmp/body || true
+          echo
