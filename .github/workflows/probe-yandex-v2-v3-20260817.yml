@@ -1,0 +1,29 @@
+name: Probe Yandex JS v2/v3 20260817
+on:
+  push:
+    branches: [probe/yandex-v2-v3-20260817]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Compare Yandex JS API v2.1 and v3 with production key
+        env:
+          KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, subprocess, urllib.parse, json
+          key=(os.environ.get('KEY') or '').strip()
+          for name,base in [('v2_1','https://api-maps.yandex.ru/2.1/'),('v3','https://api-maps.yandex.ru/v3/')]:
+              url=base+'?apikey='+urllib.parse.quote(key,safe='')+'&lang=ru_RU'
+              p=subprocess.run(['curl','-sS','-L','--max-time','20','-H','Referer: https://urtruck.kz/','-o',f'/tmp/{name}.body','-w','%{http_code}',url],capture_output=True,text=True)
+              code=p.stdout.strip()
+              body=open(f'/tmp/{name}.body','rb').read(500).decode('utf-8','replace')
+              msg=''
+              if body.startswith('{'):
+                  try: msg=json.loads(body).get('message','')
+                  except Exception: pass
+              print(f'{name.upper()}_HTTP={code} MESSAGE={msg}')
+          PY
