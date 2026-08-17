@@ -44,22 +44,21 @@ jobs:
             exit 1
           }
 
-          # JS API v3 requires a key that is valid for JavaScript API and has
-          # HTTP Referer restrictions configured. Do not publish a bundle that
-          # only contains a non-empty but rejected key.
+          # The active UrTruck key is a valid JavaScript API 2.1 key. Validate
+          # the exact endpoint production loads instead of rejecting it against v3.
           python3 - <<'PY' > /tmp/yandex-url
           import os, urllib.parse
           key=os.environ['YANDEX_MAPS_JS_API_KEY'].strip()
-          print('https://api-maps.yandex.ru/v3/?apikey='+urllib.parse.quote(key,safe='')+'&lang=ru_RU')
+          print('https://api-maps.yandex.ru/2.1/?apikey='+urllib.parse.quote(key,safe='')+'&lang=ru_RU')
           PY
           code=$(curl -sS -L --max-time 20 -H 'Referer: https://urtruck.kz/' -o /tmp/yandex-body -w '%{http_code}' "$(cat /tmp/yandex-url)" || true)
           body=$(head -c 300 /tmp/yandex-body 2>/dev/null || true)
           if [ "$code" = "403" ] && printf '%s' "$body" | grep -qi 'Invalid api key'; then
-            echo "::error::YANDEX_MAPS_JS_API_KEY is rejected by Yandex JS API (Invalid api key). Check the JavaScript API key value and HTTP Referer restriction for https://urtruck.kz"
+            echo "::error::YANDEX_MAPS_JS_API_KEY is rejected by Yandex JavaScript API 2.1"
             exit 1
           fi
           if [ "$code" = "200" ]; then
-            echo "YANDEX_MAPS_SECRET=accepted"
+            echo "YANDEX_MAPS_SECRET=accepted-v2.1"
           elif [ "$code" = "429" ]; then
             echo "::warning::Yandex validation endpoint is rate-limited from the CI runner; key was not rejected as invalid in this check"
           else
@@ -74,7 +73,7 @@ jobs:
           npm run build:web
           node scripts/injectYandexMaps.mjs
           test -s dist/index.html
-          grep -q 'api-maps.yandex.ru/v3/' dist/index.html
+          grep -q 'api-maps.yandex.ru/2.1/' dist/index.html
           grep -q 'lang=ru_RU' dist/index.html
           echo "YANDEX_WEB_BUILD=ok"
 
@@ -82,6 +81,7 @@ jobs:
         run: |
           set -euo pipefail
           node tests/frontend/test_yandex_map_primary.mjs
+          node tests/frontend/test_yandex_road_route.mjs
           node tests/frontend/test_deal_room_auto_map.mjs
           node tests/frontend/test_shipper_inprogress_auto_map.mjs
 

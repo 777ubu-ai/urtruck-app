@@ -61,7 +61,7 @@ jobs:
           npm run build:web
           node scripts/injectYandexMaps.mjs
           test -s dist/index.html
-          grep -q 'api-maps.yandex.ru/v3/' dist/index.html
+          grep -q 'api-maps.yandex.ru/2.1/' dist/index.html
           grep -q 'lang=ru_RU' dist/index.html
           echo 'YANDEX_WEB_BUILD=ok'
 
@@ -77,7 +77,7 @@ jobs:
             "$DEPLOY_SHA" "${DEPLOY_SHA::7}" "$BUILT_AT" "$(cat .version)" > dist/build-info.json
           test -s dist/index.html
           test -s dist/build-info.json
-          grep -q 'api-maps.yandex.ru/v3/' dist/index.html
+          grep -q 'api-maps.yandex.ru/2.1/' dist/index.html
 
       - name: Install SSH transport dependency
         run: |
@@ -108,7 +108,7 @@ jobs:
           set -euo pipefail
           bash scripts/deploy-ssh.sh ssh "rm -rf '$REMOTE_DIR/_expo'"
           bash scripts/deploy-ssh.sh scp -C -r dist/* "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/"
-          bash scripts/deploy-ssh.sh ssh "chmod -R 755 '$REMOTE_DIR'; test -s '$REMOTE_DIR/index.html'; test -s '$REMOTE_DIR/build-info.json'; grep -q 'api-maps.yandex.ru/v3/' '$REMOTE_DIR/index.html'; echo FRONTEND_FILES=ok"
+          bash scripts/deploy-ssh.sh ssh "chmod -R 755 '$REMOTE_DIR'; test -s '$REMOTE_DIR/index.html'; test -s '$REMOTE_DIR/build-info.json'; grep -q 'api-maps.yandex.ru/2.1/' '$REMOTE_DIR/index.html'; echo FRONTEND_FILES=ok"
 
       - name: Bootstrap secure server-only environment
         run: |
@@ -146,7 +146,7 @@ jobs:
           echo "PRODUCTION_SHA=${DEPLOY_SHA::7}"
 
           html=$(curl --fail --silent --show-error --connect-timeout 5 --max-time 15 "$PUBLIC_BASE_URL/?release=${DEPLOY_SHA}")
-          printf '%s\n' "$html" | grep -q 'api-maps.yandex.ru/v3/'
+          printf '%s\n' "$html" | grep -q 'api-maps.yandex.ru/2.1/'
           printf '%s\n' "$html" | grep -q 'lang=ru_RU'
           echo 'YANDEX_MAP_PUBLIC=ok'
 

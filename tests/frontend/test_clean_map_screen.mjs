@@ -10,5 +10,6 @@ assert.match(map, /const \[status, setStatus\] = React\.useState\('loading'\)/, 
 assert.match(map, /setStatus\('error'\)[\s\S]*setMountAttempt\(\(n\) => n \+ 1\)/, 'Yandex map must retry automatically after runtime failure');
 assert.match(map, /truck-map-yandex-not-configured/, 'missing Yandex configuration must have an explicit in-app state');
 assert.doesNotMatch(map, /tile\.openstreetmap\.org|OpenStreetMapFallback|truck-map-osm-fallback|useFallback/, 'another provider must never replace Yandex');
-assert.match(map, /mode: 'vector'/, 'Yandex must use vector mode');
+assert.match(map, /new api\.Map/);
+assert.match(map, /api\.multiRouter\.MultiRoute/);
 console.log('clean Yandex-only map screen contract: PASS');

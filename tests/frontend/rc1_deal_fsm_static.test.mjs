@@ -70,10 +70,10 @@ test('deal route map is visible before first GPS point', () => {
   assert.doesNotMatch(trackSrc, /: !loc \? \(\s*<View style=\{s\.empty\}>/s);
 });
 
-test('web deal map uses Yandex only and resolves Bakhty-Chuguchak', () => {
-  assert.match(webMapSrc, /globalThis\.ymaps3/);
-  assert.match(webMapSrc, /new api\.YMapFeature/);
-  assert.match(webMapSrc, /type: 'LineString'/);
+test('web deal map uses Yandex JS API 2.1 only and resolves Bakhty-Chuguchak', () => {
+  assert.match(webMapSrc, /globalThis\.ymaps/);
+  assert.match(webMapSrc, /new api\.Map/);
+  assert.match(webMapSrc, /api\.multiRouter\.MultiRoute/);
   assert.match(webMapSrc, /testID="truck-map-yandex-web"/);
   assert.doesNotMatch(webMapSrc, /tile\.openstreetmap\.org|unpkg\.com\/leaflet|OpenStreetMapFallback|truck-map-osm-fallback|useFallback|LEAFLET_JS/);
   assert.match(webMapSrc, /truck-map-yandex-error/);
