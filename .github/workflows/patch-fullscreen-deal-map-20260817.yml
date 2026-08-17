@@ -1,0 +1,93 @@
+name: Patch fullscreen deal map 20260817
+on:
+  push:
+    branches: [fix/fullscreen-deal-map-chat-20260817]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/fullscreen-deal-map-chat-20260817
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Refactor deal chat map into fullscreen screen
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          # 1) DealRoomCard: no embedded map. Deal/chat stays compact; map belongs to TrackTruckScreen.
+          p = Path('src/components/deal/DealRoom.js')
+          s = p.read_text()
+          old = """  const showAutomaticRouteMap = Platform.OS === 'web'\n    && routePoints.length >= 2\n    && (status === 'accepted' || (role === 'driver' && DRIVER_MAP_STATUSES.includes(status)));"""
+          if old not in s:
+              raise SystemExit('DealRoom automatic-map marker not found')
+          s = s.replace(old, "  const showAutomaticRouteMap = false; // Full-screen map only: keep chat/deal card compact.")
+          p.write_text(s)
+
+          # 2) ChatScreen: remove the second inline/live map and replace it with a compact full-screen map CTA.
+          p = Path('src/screens/ChatScreen.js')
+          s = p.read_text()
+          start_marker = "          {dealId && ['accepted', 'in_progress', 'at_border', 'delivered'].includes(deal?.status) ? ("
+          end_marker = "          {dealEvents.length > 0 ? ("
+          start = s.find(start_marker)
+          if start < 0:
+              raise SystemExit('ChatScreen map block start not found')
+          end = s.find(end_marker, start)
+          if end < 0:
+              raise SystemExit('ChatScreen map block end not found')
+          replacement = """          {dealId && ['accepted', 'in_progress', 'at_border', 'delivered'].includes(deal?.status) && isShipperSide ? (\n            <TouchableOpacity\n              testID=\"deal-track-truck\"\n              style={s.driverRouteBtn}\n              onPress={openDealMap}\n              accessibilityLabel={t('track_truck_btn')}\n            >\n              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>\n                <Feather name=\"map\" size={15} color={v1.text} />\n                <Text style={s.driverRouteBtnText}>{t('track_truck_btn')}</Text>\n              </View>\n            </TouchableOpacity>\n          ) : null}\n"""
+          s = s[:start] + replacement + s[end:]
+
+          # Stop hidden background GPS polling in chat: tracking is fetched only while full-screen map is open.
+          effect_start = "  useEffect(() => {\n    if (!dealId || !isShipperSide || !TRACKING_STATUSES.includes(deal?.status)) {"
+          effect_end = "  }, [dealId, isShipperSide, deal?.status]);\n"
+          a = s.find(effect_start)
+          if a >= 0:
+              b = s.find(effect_end, a)
+              if b < 0:
+                  raise SystemExit('ChatScreen tracking effect end not found')
+              b += len(effect_end)
+              s = s[:a] + "  // Live GPS polling is intentionally owned by TrackTruckScreen only.\n" + s[b:]
+          p.write_text(s)
+
+          # 3) TrackTruckScreen: map is truly edge-to-edge below the compact header/route.
+          p = Path('src/screens/TrackTruckScreen.js')
+          s = p.read_text()
+          old_style = "  cleanMapWrap: { flex: 1, marginHorizontal: 12, marginBottom: 12, borderRadius: 18, overflow: 'hidden', position: 'relative' },"
+          new_style = "  cleanMapWrap: { flex: 1, marginHorizontal: 0, marginBottom: 0, borderRadius: 0, overflow: 'hidden', position: 'relative' },"
+          if old_style not in s:
+              raise SystemExit('TrackTruckScreen cleanMapWrap style not found')
+          s = s.replace(old_style, new_style)
+          s = s.replace("  route: { fontSize: 13, textAlign: 'center', marginBottom: 8, paddingHorizontal: 16 },", "  route: { fontSize: 13, textAlign: 'center', paddingBottom: 8, paddingHorizontal: 16 },")
+          p.write_text(s)
+
+          # 4) Regression contracts: embedded deal-chat maps are forbidden; full-screen TrackTruck owns the map.
+          Path('tests/frontend/test_deal_room_auto_map.mjs').write_text("""import assert from 'node:assert/strict';\nimport { readFileSync } from 'node:fs';\n\nconst dealRoom = readFileSync('src/components/deal/DealRoom.js', 'utf8');\nconst chat = readFileSync('src/screens/ChatScreen.js', 'utf8');\nconst track = readFileSync('src/screens/TrackTruckScreen.js', 'utf8');\n\nassert.match(dealRoom, /const showAutomaticRouteMap = false/, 'DealRoomCard must not embed the route map inside chat');\nassert.match(chat, /navigation\.navigate\('TrackTruck'/, 'Deal chat must open the dedicated TrackTruck screen');\nassert.match(chat, /testID=\"deal-open-driver-route\"/, 'Driver must have a full-screen route CTA');\nassert.match(chat, /testID=\"deal-track-truck\"/, 'Shipper must have a full-screen tracking CTA');\nassert.match(track, /<TruckMap/, 'TrackTruckScreen must own the actual map');\nassert.match(track, /cleanMapWrap: \{ flex: 1, marginHorizontal: 0, marginBottom: 0, borderRadius: 0/, 'TrackTruck map must be edge-to-edge');\n\nconsole.log('deal room fullscreen map contract: PASS');\n""")
+
+          Path('tests/frontend/test_shipper_inprogress_auto_map.mjs').write_text("""import assert from 'node:assert/strict';\nimport { readFileSync } from 'node:fs';\nconst chat = readFileSync('src/screens/ChatScreen.js', 'utf8');\nconst track = readFileSync('src/screens/TrackTruckScreen.js', 'utf8');\n\nassert.match(chat, /testID=\"deal-track-truck\"[\\s\\S]{0,600}onPress=\{openDealMap\}/, 'Shipper tracking CTA must open full-screen map');\nassert.doesNotMatch(chat, /testID=\"deal-track-truck\"[\\s\\S]{0,2500}<TruckMap/, 'Shipper chat must not embed live/planned TruckMap');\nassert.match(track, /const iv = setInterval\(load, 10000\)/, 'Live GPS polling must happen on the dedicated map screen');\nassert.match(track, /routePoints=\{routePoints\}/, 'Full-screen map must always receive the planned route');\nassert.match(track, /planned=\{!loc\}/, 'Before first GPS point the full-screen screen must show planned route');\nconsole.log('shipper fullscreen tracking contract: PASS');\n""")
+          PY
+
+      - name: Validate refactor
+        run: |
+          set -euo pipefail
+          npm ci
+          node tests/frontend/test_deal_room_auto_map.mjs
+          node tests/frontend/test_shipper_inprogress_auto_map.mjs
+          node tests/frontend/test_yandex_map_primary.mjs
+          npm run build:web
+
+      - name: Commit refactor and remove one-shot workflow
+        run: |
+          set -euo pipefail
+          git config user.name 'UrTruck Release Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          rm .github/workflows/patch-fullscreen-deal-map-20260817.yml
+          git add src/components/deal/DealRoom.js src/screens/ChatScreen.js src/screens/TrackTruckScreen.js tests/frontend/test_deal_room_auto_map.mjs tests/frontend/test_shipper_inprogress_auto_map.mjs .github/workflows/patch-fullscreen-deal-map-20260817.yml
+          git commit -m 'fix(chat): move deal tracking map to fullscreen'
+          git push origin HEAD:fix/fullscreen-deal-map-chat-20260817
