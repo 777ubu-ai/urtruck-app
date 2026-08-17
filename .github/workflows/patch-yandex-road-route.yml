@@ -1,0 +1,101 @@
+name: Validate Yandex road route patch
+
+on:
+  push:
+    branches: [fix-yandex-road-route-clean-chat-20260817]
+    paths: ['.github/workflows/patch-yandex-road-route.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix-yandex-road-route-clean-chat-20260817
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Clean map overlays and wire Router secret
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          chat = Path('src/screens/ChatScreen.js')
+          s = chat.read_text()
+          needle = "                        liveTitle={plannedMapCopy.live}\n                      />"
+          repl = "                        liveTitle={plannedMapCopy.live}\n                        showBadge={false}\n                      />"
+          if needle in s:
+              s = s.replace(needle, repl, 1)
+          elif 'showBadge={false}' not in s:
+              raise SystemExit('ChatScreen TruckMap call not found')
+          s = s.replace("dealMapOverlayTop: { position: 'absolute'", "dealMapOverlayTop: { display: 'none', position: 'absolute'", 1)
+          s = s.replace("dealMapFooter: { position: 'absolute'", "dealMapFooter: { display: 'none', position: 'absolute'", 1)
+          chat.write_text(s)
+
+          wf = Path('.github/workflows/secure-production-deploy.yml')
+          y = wf.read_text()
+          old = "          EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}\n"
+          new = old + "          EXPO_PUBLIC_YANDEX_ROUTER_API_KEY: ${{ secrets.YANDEX_ROUTER_API_KEY }}\n"
+          if 'EXPO_PUBLIC_YANDEX_ROUTER_API_KEY' not in y:
+              if old not in y:
+                  raise SystemExit('secure deploy Yandex env not found')
+              y = y.replace(old, new, 1)
+          wf.write_text(y)
+
+          test = Path('tests/frontend/test_yandex_road_route.mjs')
+          test.write_text("""import test from 'node:test';
+          import assert from 'node:assert/strict';
+          import fs from 'node:fs';
+
+          const mapSrc = fs.readFileSync('src/components/TruckMap.web.js', 'utf8');
+          const injectSrc = fs.readFileSync('scripts/injectYandexMaps.mjs', 'utf8');
+          const chatSrc = fs.readFileSync('src/screens/ChatScreen.js', 'utf8');
+          const deploySrc = fs.readFileSync('.github/workflows/secure-production-deploy.yml', 'utf8');
+
+          test('Yandex map asks Router API for a real truck road route', () => {
+            assert.match(mapSrc, /api\.route\(\{/);
+            assert.match(mapSrc, /type: 'truck'/);
+            assert.match(mapSrc, /DEFAULT_TRUCK/);
+            assert.match(mapSrc, /toRoute\?\.\(\)/);
+          });
+
+          test('Router API key is injected only from production environment', () => {
+            assert.match(injectSrc, /EXPO_PUBLIC_YANDEX_ROUTER_API_KEY/);
+            assert.match(injectSrc, /__URTRUCK_YANDEX_ROUTER_API_KEY__/);
+            assert.match(deploySrc, /YANDEX_ROUTER_API_KEY/);
+          });
+
+          test('deal chat map has no duplicate planned-route card overlay', () => {
+            assert.match(chatSrc, /showBadge=\{false\}/);
+            assert.match(chatSrc, /dealMapOverlayTop: \{ display: 'none'/);
+            assert.match(chatSrc, /dealMapFooter: \{ display: 'none'/);
+          });
+          """)
+          PY
+
+      - name: Install and validate
+        run: |
+          set -euo pipefail
+          npm ci
+          node --test tests/frontend/test_yandex_map_primary.mjs tests/frontend/test_clean_map_screen.mjs tests/frontend/test_yandex_road_route.mjs
+          npm run build:web
+          EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY=dummy-js-key EXPO_PUBLIC_YANDEX_ROUTER_API_KEY=dummy-router-key node scripts/injectYandexMaps.mjs
+          grep -q '__URTRUCK_YANDEX_ROUTER_API_KEY__' dist/index.html
+          grep -q 'api-maps.yandex.ru/v3/' dist/index.html
+
+      - name: Commit validated patch
+        run: |
+          set -euo pipefail
+          git config user.name "UrTruck Release Bot"
+          git config user.email "actions@users.noreply.github.com"
+          rm .github/workflows/patch-yandex-road-route.yml
+          git add src/components/TruckMap.web.js src/screens/ChatScreen.js scripts/injectYandexMaps.mjs .github/workflows/secure-production-deploy.yml tests/frontend/test_yandex_road_route.mjs .github/workflows/patch-yandex-road-route.yml
+          git commit -m "feat(map): Yandex truck routes and clean deal map [validated]"
+          git push origin HEAD:fix-yandex-road-route-clean-chat-20260817
