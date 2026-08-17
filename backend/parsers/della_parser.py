@@ -119,22 +119,22 @@ def run_parse():
         )
         count += 1
 
-    # Real search (graceful — не падаем если Della/ATI недоступны)
-    try:
-        real = _search_della("претензия перевозчик")
-        for c in real[:5]:
-            existing = db.blacklist_check(phone=c.get("phone"), plate=c.get("plate"))
-            if not existing and (c.get("phone") or c.get("plate")):
-                db.blacklist_add(
-                    phone=c.get("phone"), plate=c.get("plate"),
-                    name=c.get("name"), reason=c["reason"],
-                    source="della", severity="medium",
-                )
-                count += 1
-    except Exception as e:
-        print(f"  [della_parser] Real search failed: {e}")
-
-    print(f"  [della_parser] Added {count} complaints from Della/ATI")
+    # P0-9 (08.08.2026): УБРАН авто-занос в blacklist результатов слепого
+    # regex-скрейпинга Della. Раньше run_parse() на каждом старте вытаскивал
+    # `re.findall(r'\+?[78]\d{10}')` — ЛЮБОЙ телефон со страницы — и склеивал
+    # его с i-м текстовым блоком по индексу (совпадение случайное), после
+    # чего db.blacklist_add() навсегда блокировал живых людей и обнулял их
+    # скоринг в 0/black. Автоматизированная клевета на непроверенных данных.
+    #
+    # Разделение источников доверия:
+    #   raw observation  → search_driver()/_search_della() (только ЧТЕНИЕ,
+    #                       для показа админу как «упоминания», не блок);
+    #   verified fraud   → ручное решение админа через /admin/blacklist;
+    #   automatic block  → ТОЛЬКО из проверенного источника (gov/CGR), не из
+    #                       веб-скрейпинга.
+    # Никакой scraped-телефон больше не становится основанием для блокировки
+    # автоматически.
+    print(f"  [della_parser] Seeded {count} demo complaints (real-scrape auto-block disabled — see P0-9)")
     return count
 
 

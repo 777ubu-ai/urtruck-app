@@ -282,8 +282,74 @@ def no_bids_notify_job():
     print(f"[{now.isoformat()}] no-bids-notify: sent={sent}")
 
 
+# P0-8 (08.08.2026): раньше start_scheduler() вызывался ТОЛЬКО из
+# `if __name__ == "__main__"` (ручной запуск модуля), а FastAPI-startup его
+# не звал → в production не работали ЧАСОВЫЕ БЭКАПЫ БД, продуктовые пуши
+# (reminders/expired/no-bids) и месячная переоценка скоринга. Теперь
+# scheduler стартует из main.py startup, но безопасно:
+#   * модульный синглтон (_scheduler) — повторный вызов не плодит джобы;
+#   * файловый lock (fcntl) — если процессов/воркеров вдруг станет >1,
+#     scheduler поднимет ТОЛЬКО тот, кто захватил lock (остальные — no-op),
+#     иначе бэкап/пуши дублировались бы N раз;
+#   * max_instances=1 + coalesce=True — наложение долгих джоб не копится;
+#   * per-job try/except уже внутри каждой job-функции (краш одной не роняет
+#     ни процесс, ни остальные).
+# Отключается через URTRUCK_ENABLE_SCHEDULER=0 (например для отдельного
+# worker-процесса, если инфраструктура переедет на несколько воркеров и
+# scheduler вынесут в один из них явно).
+_scheduler = None
+_lock_fh = None
+
+
+def _acquire_singleton_lock():
+    """Best-effort межпроцессный lock. True — мы владелец (стартуем
+    scheduler), False — другой процесс уже держит lock (пропускаем).
+    На платформах без fcntl (например Windows) деградирует к «владелец»
+    (модульный синглтон всё равно защищает в пределах процесса)."""
+    global _lock_fh
+    import os
+    import tempfile
+    lock_path = os.getenv("URTRUCK_SCHEDULER_LOCK") or os.path.join(
+        tempfile.gettempdir(), "urtruck-scheduler.lock")
+    try:
+        import fcntl
+    except ImportError:
+        return True
+    try:
+        _lock_fh = open(lock_path, "w")
+        fcntl.flock(_lock_fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        _lock_fh.write(str(os.getpid()))
+        _lock_fh.flush()
+        return True
+    except (OSError, IOError):
+        if _lock_fh:
+            try:
+                _lock_fh.close()
+            except Exception:
+                pass
+            _lock_fh = None
+        return False
+
+
 def start_scheduler():
-    sched = BackgroundScheduler()
+    """Идемпотентный безопасный старт. Возвращает scheduler, либо None если
+    выключен/не захвачен lock/уже запущен."""
+    global _scheduler
+    import os
+    if os.getenv("URTRUCK_ENABLE_SCHEDULER", "1").lower() in ("0", "false", "no"):
+        print("[scheduler] disabled via URTRUCK_ENABLE_SCHEDULER=0")
+        return None
+    if _scheduler is not None:
+        print("[scheduler] already running, skip")
+        return _scheduler
+    if not _acquire_singleton_lock():
+        print("[scheduler] another process holds the singleton lock, skip")
+        return None
+    sched = BackgroundScheduler(job_defaults={
+        "max_instances": 1,   # не запускать джобу, если предыдущий прогон ещё идёт
+        "coalesce": True,      # пропущенные тики схлопнуть в один
+        "misfire_grace_time": 3600,
+    })
     # Парсинг каждые 6 часов
     sched.add_job(parse_telegram_job, IntervalTrigger(hours=6), id="telegram_parse")
     # Переоценка 1-го числа каждого месяца в 03:00
@@ -298,8 +364,26 @@ def start_scheduler():
     # дедуп по data_json удерживает один пуш на публикацию.
     sched.add_job(no_bids_notify_job, IntervalTrigger(hours=3), id="no_bids_notify")
     sched.start()
+    _scheduler = sched
     print("Scheduler started: TG-parse 6h, rescore monthly, DB backup hourly, reminders 10:00 Almaty, no-bids 3h")
     return sched
+
+
+def stop_scheduler():
+    """Корректная остановка (FastAPI shutdown)."""
+    global _scheduler, _lock_fh
+    if _scheduler is not None:
+        try:
+            _scheduler.shutdown(wait=False)
+        except Exception:
+            pass
+        _scheduler = None
+    if _lock_fh is not None:
+        try:
+            _lock_fh.close()
+        except Exception:
+            pass
+        _lock_fh = None
 
 
 if __name__ == "__main__":

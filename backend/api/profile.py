@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel, Field
 from typing import Optional, List
 
@@ -21,12 +21,24 @@ profile_router = APIRouter()
 #
 # favorite_borders — массив, сериализуем в JSON-строку
 # (SQLite не имеет нативного array type).
-# *_url — public URL'ы из Supabase Storage, не сами файлы.
+# *_url are opaque private storage references; signed URLs are created only on authorized reads.
+
+def _normalize_phone(v):
+    if v is None:
+        return None
+    return "".join(ch for ch in str(v) if ch.isdigit() or ch == "+").strip()
+
+def _is_real_phone(v):
+    if not v:
+        return False
+    return len("".join(ch for ch in str(v) if ch.isdigit())) >= 10
 
 class UpdateProfileIn(BaseModel):
     name: Optional[str] = None
     city: Optional[str] = None
     about: Optional[str] = None
+    phone: Optional[str] = None
+    role: Optional[str] = None
     # PRO fields
     legal_form: Optional[str] = Field(None, description="individual | ip | too")
     china_experience_years: Optional[int] = None
@@ -79,6 +91,34 @@ def _parse_borders(raw):
         return v if isinstance(v, list) else []
     except (ValueError, TypeError):
         return []
+
+
+_PRO_DOC_FIELD = {
+    "passport_intl": "passport_intl_url",
+    "tir": "tir_book_url",
+    "cmr": "cmr_insurance_url",
+}
+_PRO_DOC_MIME = {"image/jpeg", "image/png", "image/webp"}
+_PRO_DOC_MAX = 10 * 1024 * 1024
+
+@profile_router.post("/me/pro-documents/{kind}")
+async def upload_pro_document(kind: str, file: UploadFile = File(...), user=Depends(require_level(1))):
+    field = _PRO_DOC_FIELD.get((kind or "").strip().lower())
+    if not field:
+        raise HTTPException(status_code=400, detail={"error": "INVALID_DOCUMENT_KIND"})
+    mime = (file.content_type or "").lower()
+    if mime not in _PRO_DOC_MIME:
+        raise HTTPException(status_code=415, detail={"error": "UNSUPPORTED_FILE_TYPE"})
+    data = await file.read(_PRO_DOC_MAX + 1)
+    if not data:
+        raise HTTPException(status_code=400, detail={"error": "EMPTY_FILE"})
+    if len(data) > _PRO_DOC_MAX:
+        raise HTTPException(status_code=413, detail={"error": "FILE_TOO_LARGE"})
+    from services import storage_service
+    ext = "png" if mime == "image/png" else ("webp" if mime == "image/webp" else "jpg")
+    ref = storage_service.save_image(data, f"pro-{kind}-{user['id']}", ext=ext)
+    reg_dal.update_driver(user["id"], {field: ref})
+    return {"ok": True, "field": field, "url": file_signing.sign(ref, ttl=3600)}
 
 
 @profile_router.get("/me")
@@ -164,6 +204,32 @@ def update_profile(body: UpdateProfileIn, user=Depends(require_level(1))):
             updates["messenger_type"] = mt
     if body.messenger_id is not None:
         updates["messenger_id"] = body.messenger_id.strip()
+
+    if body.role is not None:
+        role_norm = body.role.strip().lower()
+        if role_norm == "shipper":
+            role_norm = "client"
+        if role_norm not in ("driver", "client"):
+            raise HTTPException(status_code=400, detail={"error": "INVALID_ROLE", "message": "role должен быть driver|client"})
+        current = reg_dal.get_driver(user["id"]) or {}
+        body_phone = _normalize_phone(body.phone) if body.phone is not None else None
+        stored_phone = current.get("phone")
+        effective_phone = body_phone or (stored_phone if _is_real_phone(stored_phone) else None)
+        if not effective_phone:
+            raise HTTPException(status_code=400, detail={"error": "PHONE_REQUIRED", "message": "Для завершения регистрации укажите номер телефона"})
+        effective_name = updates.get("full_name") or (current.get("full_name") or "").strip() or None
+        if role_norm == "client" and not effective_name:
+            raise HTTPException(status_code=400, detail={"error": "NAME_REQUIRED", "message": "Грузоотправитель обязан указать имя"})
+        updates["role"] = role_norm
+        if body_phone:
+            if not _is_real_phone(body_phone):
+                raise HTTPException(status_code=400, detail={"error": "INVALID_PHONE", "message": "Некорректный номер телефона"})
+            updates["phone"] = body_phone
+    elif body.phone is not None:
+        normalized = _normalize_phone(body.phone)
+        if not _is_real_phone(normalized):
+            raise HTTPException(status_code=400, detail={"error": "INVALID_PHONE", "message": "Некорректный номер телефона"})
+        updates["phone"] = normalized
 
     if not updates:
         return {"ok": True, "detail": "Нечего обновлять"}

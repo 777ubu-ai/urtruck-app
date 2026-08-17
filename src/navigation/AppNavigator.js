@@ -234,6 +234,7 @@ export default function AppNavigator() {
               регистрации маршрута navigate('Profile') у гостя не срабатывал. */}
           <Stack.Screen name="Profile" component={ProfileScreen} />
           <Stack.Screen name="CargoDetail" component={CargoDetail} />
+          <Stack.Screen name="TripDetail" component={TripDetail} />
           <Stack.Screen name="DriverDetail" component={DriverDetail} />
           <Stack.Screen name="Chat" component={ChatScreen} />
         </>
