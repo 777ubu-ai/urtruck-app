@@ -5,7 +5,7 @@ import fs from 'node:fs';
 const mapSrc = fs.readFileSync('src/components/TruckMap.web.js', 'utf8');
 const injectSrc = fs.readFileSync('scripts/injectYandexMaps.mjs', 'utf8');
 
-test('web deal map uses embedded Yandex Maps as primary provider', () => {
+test('web deal map uses embedded Yandex Maps as the only provider', () => {
   assert.match(mapSrc, /globalThis\.ymaps3/);
   assert.match(mapSrc, /new api\.YMapFeature/);
   assert.match(mapSrc, /type: 'LineString'/);
@@ -20,8 +20,8 @@ test('production injector loads Yandex JS API v3 in Russian', () => {
   assert.match(injectSrc, /__URTRUCK_YANDEX_MAPS_CONFIGURED__/);
 });
 
-test('OpenStreetMap remains a failure fallback, not the primary provider', () => {
-  assert.match(mapSrc, /OpenStreetMapFallback/);
-  assert.match(mapSrc, /truck-map-osm-fallback/);
-  assert.match(mapSrc, /useFallback/);
+test('no alternate web map provider can execute', () => {
+  assert.doesNotMatch(mapSrc, /LEAFLET_JS|LEAFLET_CSS|unpkg\.com\/leaflet|tile\.openstreetmap\.org|OpenStreetMapFallback|truck-map-osm-fallback|useFallback|\.tileLayer\(/);
+  assert.match(mapSrc, /truck-map-yandex-error/);
+  assert.match(mapSrc, /Карта не будет заменена другим провайдером/);
 });

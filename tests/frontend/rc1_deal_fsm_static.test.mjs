@@ -70,14 +70,13 @@ test('deal route map is visible before first GPS point', () => {
   assert.doesNotMatch(trackSrc, /: !loc \? \(\s*<View style=\{s\.empty\}>/s);
 });
 
-test('web deal map uses Yandex as primary, keeps OSM fallback, and resolves Bakhty-Chuguchak', () => {
+test('web deal map uses Yandex only and resolves Bakhty-Chuguchak', () => {
   assert.match(webMapSrc, /globalThis\.ymaps3/);
   assert.match(webMapSrc, /new api\.YMapFeature/);
   assert.match(webMapSrc, /type: 'LineString'/);
   assert.match(webMapSrc, /testID="truck-map-yandex-web"/);
-  assert.match(webMapSrc, /tile\.openstreetmap\.org/);
-  assert.match(webMapSrc, /L\.polyline\(plannedPoints/);
-  assert.match(webMapSrc, /OpenStreetMap contributors/);
+  assert.doesNotMatch(webMapSrc, /tile\.openstreetmap\.org|unpkg\.com\/leaflet|OpenStreetMapFallback|truck-map-osm-fallback|useFallback|LEAFLET_JS/);
+  assert.match(webMapSrc, /truck-map-yandex-error/);
   assert.match(geoSrc, /'Бахты': \[46\.7500, 82\.7000\]/);
   assert.match(geoSrc, /'Чугучак': \[46\.7450, 82\.9860\]/);
 });

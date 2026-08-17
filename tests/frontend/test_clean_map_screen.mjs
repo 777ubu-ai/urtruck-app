@@ -6,7 +6,9 @@ assert.match(screen, /showBadge=\{false\}/, 'full map screen must hide duplicate
 assert.match(screen, /lat=\{loc \? lat : undefined\}/, 'planned route must not fake a live vehicle coordinate');
 assert.doesNotMatch(screen, /<View style=\{\[s\.planBanner/, 'full map screen must not show duplicate planned-route banner');
 assert.doesNotMatch(screen, /<View style=\{\[s\.driverCard/, 'full map screen must not duplicate counterparty card');
-assert.match(map, /const \[ready, setReady\] = React\.useState\(false\);[\s\S]*function OpenStreetMapFallback/, 'map module keeps readiness state');
-assert.match(map, /setReady\(true\);[\s\S]*if \(!ready \|\| !map \|\| !L\) return;/, 'OSM fallback must redraw route after async map init');
+assert.match(map, /const \[status, setStatus\] = React\.useState\('loading'\)/, 'Yandex map must expose explicit runtime readiness state');
+assert.match(map, /setStatus\('error'\)[\s\S]*setMountAttempt\(\(n\) => n \+ 1\)/, 'Yandex map must retry automatically after runtime failure');
+assert.match(map, /truck-map-yandex-not-configured/, 'missing Yandex configuration must have an explicit in-app state');
+assert.doesNotMatch(map, /tile\.openstreetmap\.org|OpenStreetMapFallback|truck-map-osm-fallback|useFallback/, 'another provider must never replace Yandex');
 assert.match(map, /mode: 'vector'/, 'Yandex must use vector mode');
-console.log('clean Yandex map screen contract: PASS');
+console.log('clean Yandex-only map screen contract: PASS');

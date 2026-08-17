@@ -3,7 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 const key = process.env.EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY?.trim();
 const routerKey = process.env.EXPO_PUBLIC_YANDEX_ROUTER_API_KEY?.trim();
 if (!key) {
-  console.log('Yandex Maps: YANDEX_MAPS_JS_API_KEY is not configured; web keeps the OpenStreetMap fallback.');
+  console.log('Yandex Maps: YANDEX_MAPS_JS_API_KEY is not configured; no web map provider will be injected.');
   process.exit(0);
 }
 
