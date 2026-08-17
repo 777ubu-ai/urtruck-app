@@ -34,21 +34,23 @@ test('start trip is the only driver action and starts location internally', () =
   assert.match(src, /changeDealStatus\('in_progress'\)/);
 });
 
-test('live map returns to deal chat instead of exposing a call action', () => {
-  assert.match(trackSrc, /testID=\{isDriverViewer \? 'track-back-to-chat' : 'track-message-driver'\}/);
-  assert.match(trackSrc, /t\('write_driver'\)/);
+test('clean live map returns to deal chat without exposing a call action', () => {
   assert.match(trackSrc, /navigation\.goBack\(\)/);
-  assert.doesNotMatch(trackSrc, /name="phone"/);
+  assert.match(trackSrc, /<TruckMap[\s\S]*showBadge=\{false\}/);
+  assert.doesNotMatch(trackSrc, /track-message-driver|write_driver|name="phone"/);
   assert.doesNotMatch(src, /chat-header-call-btn/);
 });
 
-test('shipper sees tracking preview inside the deal chat', () => {
+test('shipper sees planned route in chat before GPS and live position afterwards', () => {
   assert.match(src, /import TruckMap from '\.\.\/components\/TruckMap'/);
   assert.match(src, /const TRACKING_STATUSES = \['in_progress', 'at_border', 'delivered'\]/);
   assert.match(src, /marketAPI\.getDealLocation\(dealId\)/);
   assert.match(src, /testID="deal-track-truck" style=\{s\.dealMapCard\}/);
-  assert.match(src, /<TruckMap[\s\S]*lat=\{mapPreviewLat\}[\s\S]*lng=\{mapPreviewLng\}/);
-  assert.match(src, /t\('tracking_starts_after_start'\)/);
+  assert.match(src, /lat=\{hasMapPreviewPoint \? mapPreviewLat : undefined\}/);
+  assert.match(src, /lng=\{hasMapPreviewPoint \? mapPreviewLng : undefined\}/);
+  assert.match(src, /routePoints=\{dealRoutePoints\}/);
+  assert.match(src, /planned=\{!hasMapPreviewPoint\}/);
+  assert.match(src, /showBadge=\{false\}/);
 });
 
 test('driver opens the internal deal map without leaving UrTruck', () => {
@@ -63,10 +65,11 @@ test('driver opens the internal deal map without leaving UrTruck', () => {
 });
 
 test('deal route map is visible before first GPS point', () => {
-  assert.match(trackSrc, /testID="track-planned-map"/);
+  assert.match(trackSrc, /testID=\{loc \? "track-live-map" : "track-planned-map"\}/);
   assert.match(trackSrc, /parseRouteCities/);
   assert.match(trackSrc, /routePoints=\{routePoints\}/);
-  assert.match(trackSrc, /plannedTitle=\{t\('planned_route_title'\)\}/);
+  assert.match(trackSrc, /planned=\{!loc\}/);
+  assert.match(trackSrc, /showBadge=\{false\}/);
   assert.doesNotMatch(trackSrc, /: !loc \? \(\s*<View style=\{s\.empty\}>/s);
 });
 
