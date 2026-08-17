@@ -1,12 +1,24 @@
 // TruckMap (web/PWA) — Yandex Maps is the primary embedded provider.
-// The build injects JS API v3 only when the production Yandex key is present.
-// OpenStreetMap/Leaflet stays as a safety fallback so a deal never gets a blank map.
+// With a Router API key, the planned truck route follows real roads. OpenStreetMap
+// remains only a safety fallback so a deal never gets a blank map.
 import React from 'react';
 import { View, Text, StyleSheet, findNodeHandle } from 'react-native';
 
 const LEAFLET_JS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
 const LEAFLET_CSS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
 let leafletPromise;
+
+const DEFAULT_TRUCK = {
+  weight: 40,
+  maxWeight: 40,
+  axleWeight: 10,
+  payload: 20,
+  height: 4,
+  width: 2.5,
+  length: 16,
+  ecoClass: 4,
+  hasTrailer: true,
+};
 
 const asPoint = (p) => {
   if (Array.isArray(p) && p.length >= 2) {
@@ -20,6 +32,7 @@ const asPoint = (p) => {
 };
 
 const toYandex = ([lat, lng]) => [lng, lat];
+const pointKey = (point) => point ? `${point[0]}:${point[1]}` : 'none';
 
 const yandexBounds = (points) => {
   if (!points.length) return null;
@@ -49,11 +62,32 @@ const makeDot = (kind = 'route') => {
   return el;
 };
 
+async function fetchYandexTruckRoute(api, plannedPoints) {
+  if (!api?.route || plannedPoints.length < 2) return null;
+  const routerKey = globalThis.__URTRUCK_YANDEX_ROUTER_API_KEY__;
+  if (!routerKey) return null;
+
+  try {
+    api.getDefaultConfig?.().setApikeys?.({ router: routerKey });
+    const routes = await api.route({
+      points: plannedPoints.map(toYandex),
+      type: 'truck',
+      bounds: true,
+      truck: DEFAULT_TRUCK,
+    });
+    const route = routes?.[0]?.toRoute?.();
+    return route?.geometry?.coordinates?.length ? route : null;
+  } catch {
+    return null;
+  }
+}
+
 function YandexMap({ livePoint, plannedPoints, title, onFailure }) {
   const hostRef = React.useRef(null);
   const mapRef = React.useRef(null);
   const apiRef = React.useRef(null);
   const objectsRef = React.useRef([]);
+  const routeRequestRef = React.useRef(0);
   const [ready, setReady] = React.useState(false);
 
   React.useEffect(() => {
@@ -90,7 +124,7 @@ function YandexMap({ livePoint, plannedPoints, title, onFailure }) {
           mode: 'vector',
         }, [new YMapDefaultSchemeLayer({ theme: 'light' }), new YMapDefaultFeaturesLayer({})]);
         mapRef.current = map;
-        apiRef.current = { YMapFeature, YMapMarker };
+        apiRef.current = { root: api, YMapFeature, YMapMarker };
         setReady(true);
       } catch {
         if (!cancelled) onFailure();
@@ -101,6 +135,7 @@ function YandexMap({ livePoint, plannedPoints, title, onFailure }) {
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
+      routeRequestRef.current += 1;
       mapRef.current?.destroy?.();
       mapRef.current = null;
       apiRef.current = null;
@@ -111,43 +146,64 @@ function YandexMap({ livePoint, plannedPoints, title, onFailure }) {
   React.useEffect(() => {
     const map = mapRef.current;
     const api = apiRef.current;
-    if (!ready || !map || !api) return;
+    if (!ready || !map || !api) return undefined;
+    let cancelled = false;
+    const requestId = ++routeRequestRef.current;
 
-    for (const child of objectsRef.current) {
-      try { map.removeChild(child); } catch { /* already removed */ }
-    }
-    objectsRef.current = [];
+    const render = async () => {
+      for (const child of objectsRef.current) {
+        try { map.removeChild(child); } catch { /* already removed */ }
+      }
+      objectsRef.current = [];
 
-    const route = plannedPoints.map(toYandex);
-    if (route.length >= 2) {
-      const line = new api.YMapFeature({
-        geometry: { type: 'LineString', coordinates: route },
-        style: { stroke: [{ color: '#168759', width: 5 }] },
+      const routePoints = plannedPoints.map(toYandex);
+      const roadRoute = await fetchYandexTruckRoute(api.root, plannedPoints);
+      if (cancelled || requestId !== routeRequestRef.current) return;
+
+      if (roadRoute) {
+        const line = new api.YMapFeature({
+          ...roadRoute,
+          style: { stroke: [{ color: '#168759', width: 6 }] },
+        });
+        map.addChild(line);
+        objectsRef.current.push(line);
+      } else if (routePoints.length >= 2) {
+        const line = new api.YMapFeature({
+          geometry: { type: 'LineString', coordinates: routePoints },
+          style: { stroke: [{ color: '#168759', width: 5, dash: [10, 8] }] },
+        });
+        map.addChild(line);
+        objectsRef.current.push(line);
+      }
+
+      routePoints.forEach((coordinates) => {
+        const marker = new api.YMapMarker({ coordinates }, makeDot('route'));
+        map.addChild(marker);
+        objectsRef.current.push(marker);
       });
-      map.addChild(line);
-      objectsRef.current.push(line);
-    }
 
-    route.forEach((coordinates) => {
-      const marker = new api.YMapMarker({ coordinates }, makeDot('route'));
-      map.addChild(marker);
-      objectsRef.current.push(marker);
-    });
+      if (livePoint) {
+        const live = new api.YMapMarker({ coordinates: toYandex(livePoint) }, makeDot('live'));
+        map.addChild(live);
+        objectsRef.current.push(live);
+      }
 
-    if (livePoint) {
-      const live = new api.YMapMarker({ coordinates: toYandex(livePoint) }, makeDot('live'));
-      map.addChild(live);
-      objectsRef.current.push(live);
-    }
+      if (roadRoute?.properties?.bounds) {
+        map.setLocation({ bounds: roadRoute.properties.bounds, duration: 300 });
+        return;
+      }
+      const points = livePoint ? [...plannedPoints, livePoint] : plannedPoints;
+      const bounds = yandexBounds(points);
+      if (bounds && points.length >= 2) {
+        map.setLocation({ bounds, duration: 250 });
+      } else if (points.length === 1) {
+        map.setLocation({ center: toYandex(points[0]), zoom: 10, duration: 250 });
+      }
+    };
 
-    const points = livePoint ? [...plannedPoints, livePoint] : plannedPoints;
-    const bounds = yandexBounds(points);
-    if (bounds && points.length >= 2) {
-      map.setLocation({ bounds, duration: 250 });
-    } else if (points.length === 1) {
-      map.setLocation({ center: toYandex(points[0]), zoom: 10, duration: 250 });
-    }
-  }, [ready, latKey(livePoint), JSON.stringify(plannedPoints)]);
+    render();
+    return () => { cancelled = true; };
+  }, [ready, pointKey(livePoint), JSON.stringify(plannedPoints)]);
 
   return (
     <View style={s.shell}>
@@ -160,8 +216,6 @@ function YandexMap({ livePoint, plannedPoints, title, onFailure }) {
     </View>
   );
 }
-
-const latKey = (point) => point ? `${point[0]}:${point[1]}` : 'none';
 
 const loadLeaflet = () => {
   if (typeof window === 'undefined' || typeof document === 'undefined') return Promise.reject(new Error('browser_required'));
@@ -224,7 +278,7 @@ function OpenStreetMapFallback({ livePoint, plannedPoints, title }) {
     if (!ready || !map || !L) return;
     for (const obj of objectsRef.current) try { map.removeLayer(obj); } catch { /* noop */ }
     objectsRef.current = [];
-    if (plannedPoints.length >= 2) objectsRef.current.push(L.polyline(plannedPoints, { color: '#168759', weight: 5, opacity: 0.85 }).addTo(map));
+    if (plannedPoints.length >= 2) objectsRef.current.push(L.polyline(plannedPoints, { color: '#168759', weight: 5, opacity: 0.85, dashArray: '10 8' }).addTo(map));
     plannedPoints.forEach((point) => objectsRef.current.push(L.circleMarker(point, { radius: 6, color: '#168759', weight: 3, fillColor: '#fff', fillOpacity: 1 }).addTo(map)));
     if (livePoint) {
       const live = L.circleMarker(livePoint, { radius: 10, color: '#fff', weight: 4, fillColor: '#0F6B47', fillOpacity: 1 }).addTo(map);
@@ -233,7 +287,7 @@ function OpenStreetMapFallback({ livePoint, plannedPoints, title }) {
     }
     const points = livePoint ? [...plannedPoints, livePoint] : plannedPoints;
     if (points.length >= 2) map.fitBounds(points, { padding: [28, 28], maxZoom: 11 });
-  }, [ready, latKey(livePoint), JSON.stringify(plannedPoints), title]);
+  }, [ready, pointKey(livePoint), JSON.stringify(plannedPoints), title]);
 
   return <View ref={hostRef} style={s.map} testID="truck-map-osm-fallback" />;
 }
