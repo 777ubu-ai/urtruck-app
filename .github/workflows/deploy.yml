@@ -34,7 +34,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Verify required Yandex Maps secret exists
+      - name: Verify required Yandex Maps secret exists and is accepted
         env:
           YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
         run: |
@@ -43,7 +43,28 @@ jobs:
             echo "::error::YANDEX_MAPS_JS_API_KEY is required for the UrTruck production map"
             exit 1
           }
-          echo "YANDEX_MAPS_SECRET=ok"
+
+          # JS API v3 requires a key that is valid for JavaScript API and has
+          # HTTP Referer restrictions configured. Do not publish a bundle that
+          # only contains a non-empty but rejected key.
+          python3 - <<'PY' > /tmp/yandex-url
+          import os, urllib.parse
+          key=os.environ['YANDEX_MAPS_JS_API_KEY'].strip()
+          print('https://api-maps.yandex.ru/v3/?apikey='+urllib.parse.quote(key,safe='')+'&lang=ru_RU')
+          PY
+          code=$(curl -sS -L --max-time 20 -H 'Referer: https://urtruck.kz/' -o /tmp/yandex-body -w '%{http_code}' "$(cat /tmp/yandex-url)" || true)
+          body=$(head -c 300 /tmp/yandex-body 2>/dev/null || true)
+          if [ "$code" = "403" ] && printf '%s' "$body" | grep -qi 'Invalid api key'; then
+            echo "::error::YANDEX_MAPS_JS_API_KEY is rejected by Yandex JS API (Invalid api key). Check the JavaScript API key value and HTTP Referer restriction for https://urtruck.kz"
+            exit 1
+          fi
+          if [ "$code" = "200" ]; then
+            echo "YANDEX_MAPS_SECRET=accepted"
+          elif [ "$code" = "429" ]; then
+            echo "::warning::Yandex validation endpoint is rate-limited from the CI runner; key was not rejected as invalid in this check"
+          else
+            echo "::warning::Yandex key validation returned HTTP $code; production browser smoke remains authoritative"
+          fi
 
       - name: Build production web with Yandex Maps
         env:
