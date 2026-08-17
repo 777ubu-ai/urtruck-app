@@ -19,8 +19,10 @@ test('Router API key is supported by the production injector', () => {
   assert.match(injectSrc, /__URTRUCK_YANDEX_ROUTER_CONFIGURED__/);
 });
 
-test('deal chat map has no duplicate planned-route card overlay', () => {
-  assert.match(chatSrc, /showBadge=\{false\}/);
-  assert.match(chatSrc, /dealMapOverlayTop: \{ display: 'none'/);
-  assert.match(chatSrc, /dealMapFooter: \{ display: 'none'/);
+test('deal chat delegates map rendering to fullscreen tracking without duplicate overlay', () => {
+  assert.match(chatSrc, /testID="deal-track-truck"/);
+  assert.match(chatSrc, /navigation\.navigate\('TrackTruck'/);
+  assert.match(chatSrc, /onPress=\{openDealMap\}/);
+  assert.doesNotMatch(chatSrc, /marketAPI\.getDealLocation\(dealId\)/);
+  assert.doesNotMatch(chatSrc, /<TruckMap[\s\S]*routePoints=/);
 });

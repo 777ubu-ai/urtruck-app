@@ -659,25 +659,7 @@ export default function ChatScreen({ navigation, route }) {
     return () => { cancelled = true; };
   }, [roomId, dealId]);
 
-  useEffect(() => {
-    if (!dealId || !isShipperSide || !TRACKING_STATUSES.includes(deal?.status)) {
-      setDealLocation({ loading: false, loc: null });
-      return;
-    }
-    let cancelled = false;
-    const loadDealLocation = async () => {
-      setDealLocation((prev) => ({ ...prev, loading: !prev.loc }));
-      const r = await marketAPI.getDealLocation(dealId);
-      if (cancelled) return;
-      setDealLocation({
-        loading: false,
-        loc: r?.has_location && r.location ? r.location : null,
-      });
-    };
-    loadDealLocation();
-    const iv = setInterval(loadDealLocation, 10000);
-    return () => { cancelled = true; clearInterval(iv); };
-  }, [dealId, isShipperSide, deal?.status]);
+  // Live GPS polling is intentionally owned by TrackTruckScreen only.
 
   const onCallSupport = async () => {
     try {
@@ -1350,52 +1332,18 @@ export default function ChatScreen({ navigation, route }) {
               <Text style={s.dealCancelBtnText}>⊘ {t('cancel_deal')}</Text>
             </TouchableOpacity>
           ) : null}
-          {dealId && ['accepted', 'in_progress', 'at_border', 'delivered'].includes(deal?.status) ? (
-            <>
-              {isShipperSide && ['in_progress', 'at_border', 'delivered'].includes(deal?.status) ? (
-                <TouchableOpacity testID="deal-track-truck" style={s.dealMapCard}
-                  onPress={openDealMap}>
-                  {hasMapPreviewPoint || (IS_WEB && dealRoutePoints.length >= 2) ? (
-                    <>
-                      <TruckMap
-                        lat={hasMapPreviewPoint ? mapPreviewLat : undefined}
-                        lng={hasMapPreviewPoint ? mapPreviewLng : undefined}
-                        title={hasMapPreviewPoint ? (deal?.counterparty_name || resolvedPartner?.name || t('track_truck_marker')) : undefined}
-                        routePoints={dealRoutePoints}
-                        planned={!hasMapPreviewPoint}
-                        plannedTitle={plannedMapCopy.title}
-                        plannedHint={plannedMapCopy.hint}
-                        liveTitle={plannedMapCopy.live}
-                        showBadge={false}
-                      />
-                      <View style={s.dealMapOverlayTop} pointerEvents="box-none">
-                        {hasMapPreviewPoint ? (
-                          <View style={s.dealMapPill}>
-                            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#168759' }} />
-                            <Text style={s.dealMapPillText} numberOfLines={1}>{t('live_route_title')}</Text>
-                          </View>
-                        ) : <View />}
-                        <TouchableOpacity style={s.dealMapOpenPill} onPress={openDealMap} accessibilityLabel={t('track_truck_btn')}>
-                          <Feather name="maximize-2" size={12} color={v1.text} />
-                          <Text style={s.dealMapOpenText}>{t('track_truck_btn')}</Text>
-                        </TouchableOpacity>
-                      </View>
-                      {hasMapPreviewPoint ? (
-                        <View style={s.dealMapFooter} pointerEvents="none">
-                          <Text style={s.dealMapFooterText} numberOfLines={1}>{mapUpdatedText}</Text>
-                        </View>
-                      ) : null}
-                    </>
-                  ) : (
-                    <View style={s.dealMapEmpty}>
-                      <Feather name="navigation" size={34} color={v1.textMuted} />
-                      <Text style={s.dealMapEmptyTitle}>{dealLocation.loading ? '…' : t('track_truck_waiting')}</Text>
-                      <Text style={s.dealMapEmptyDesc}>{t('tracking_starts_after_start')}</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              ) : null}
-            </>
+          {dealId && ['accepted', 'in_progress', 'at_border', 'delivered'].includes(deal?.status) && isShipperSide ? (
+            <TouchableOpacity
+              testID="deal-track-truck"
+              style={s.driverRouteBtn}
+              onPress={openDealMap}
+              accessibilityLabel={t('track_truck_btn')}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="map" size={15} color={v1.text} />
+                <Text style={s.driverRouteBtnText}>{t('track_truck_btn')}</Text>
+              </View>
+            </TouchableOpacity>
           ) : null}
           {dealEvents.length > 0 ? (
             <View testID="deal-timeline">

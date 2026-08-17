@@ -41,16 +41,13 @@ test('clean live map returns to deal chat without exposing a call action', () =>
   assert.doesNotMatch(src, /chat-header-call-btn/);
 });
 
-test('shipper sees planned route in chat before GPS and live position afterwards', () => {
-  assert.match(src, /import TruckMap from '\.\.\/components\/TruckMap'/);
-  assert.match(src, /const TRACKING_STATUSES = \['in_progress', 'at_border', 'delivered'\]/);
-  assert.match(src, /marketAPI\.getDealLocation\(dealId\)/);
-  assert.match(src, /testID="deal-track-truck" style=\{s\.dealMapCard\}/);
-  assert.match(src, /lat=\{hasMapPreviewPoint \? mapPreviewLat : undefined\}/);
-  assert.match(src, /lng=\{hasMapPreviewPoint \? mapPreviewLng : undefined\}/);
-  assert.match(src, /routePoints=\{dealRoutePoints\}/);
-  assert.match(src, /planned=\{!hasMapPreviewPoint\}/);
-  assert.match(src, /showBadge=\{false\}/);
+test('shipper opens fullscreen tracking instead of embedding a live map in chat', () => {
+  assert.match(src, /testID="deal-track-truck"/);
+  assert.match(src, /onPress=\{openDealMap\}/);
+  assert.match(src, /navigation\.navigate\('TrackTruck'/);
+  assert.match(src, /viewerRole: role/);
+  assert.doesNotMatch(src, /marketAPI\.getDealLocation\(dealId\)/);
+  assert.doesNotMatch(src, /<TruckMap[\s\S]*testID="deal-track-truck"/);
 });
 
 test('driver opens the internal deal map without leaving UrTruck', () => {
