@@ -129,12 +129,12 @@ export default function ChatScreen({ navigation, route }) {
   dealMapEmpty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18, gap: 7 },
   dealMapEmptyTitle: { color: v1.text, fontSize: 15, fontWeight: '900', textAlign: 'center' },
   dealMapEmptyDesc: { color: v1.textMuted, fontSize: 12, lineHeight: 17, textAlign: 'center' },
-  dealMapOverlayTop: { position: 'absolute', top: 10, left: 10, right: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  dealMapOverlayTop: { display: 'none', position: 'absolute', top: 10, left: 10, right: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   dealMapPill: { flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: '64%', paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.94)', borderWidth: 1, borderColor: v1.border },
   dealMapPillText: { color: v1.text, fontSize: 12, fontWeight: '900' },
   dealMapOpenPill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.94)', borderWidth: 1, borderColor: v1.border },
   dealMapOpenText: { color: v1.text, fontSize: 12, fontWeight: '800' },
-  dealMapFooter: { position: 'absolute', left: 10, right: 10, bottom: 10, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.94)', borderWidth: 1, borderColor: v1.border },
+  dealMapFooter: { display: 'none', position: 'absolute', left: 10, right: 10, bottom: 10, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.94)', borderWidth: 1, borderColor: v1.border },
   dealMapFooterText: { color: v1.textMuted, fontSize: 11, fontWeight: '700' },
   trackingCard: { borderRadius: 12, borderWidth: 1, borderColor: v1.border, backgroundColor: v1.surface, padding: 12, marginBottom: 8, gap: 8 },
   trackingTitle: { color: v1.text, fontSize: 13, fontWeight: '900' },
@@ -1366,6 +1366,7 @@ export default function ChatScreen({ navigation, route }) {
                         plannedTitle={plannedMapCopy.title}
                         plannedHint={plannedMapCopy.hint}
                         liveTitle={plannedMapCopy.live}
+                        showBadge={false}
                       />
                       <View style={s.dealMapOverlayTop} pointerEvents="box-none">
                         {hasMapPreviewPoint ? (
