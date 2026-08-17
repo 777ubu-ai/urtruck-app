@@ -1,0 +1,29 @@
+name: Probe Yandex mapkit vs js 20260817
+on:
+  push:
+    branches: [probe/yandex-live-error-20260817]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    env:
+      JS: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
+      MK: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
+    steps:
+      - name: Compare API responses safely
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, subprocess, urllib.parse
+          for name in ['JS','MK']:
+              key=(os.environ.get(name) or '').strip()
+              url='https://api-maps.yandex.ru/v3/?apikey='+urllib.parse.quote(key,safe='')+'&lang=ru_RU'
+              p=subprocess.run(['curl','-sS','-L','--max-time','20','-H','Referer: https://urtruck.kz/','-D',f'/tmp/{name}.h','-o',f'/tmp/{name}.b','-w','%{http_code}',url],capture_output=True,text=True)
+              print(name+'_HTTP='+p.stdout.strip())
+              print(name+'_BODY='+open(f'/tmp/{name}.b','rb').read(1000).decode('utf-8','replace'))
+              print(name+'_HEADERS_START')
+              for line in open(f'/tmp/{name}.h',encoding='utf-8',errors='ignore').read().splitlines():
+                  l=line.lower()
+                  if l.startswith(('http/','content-type:','retry-after:','x-','date:')):
+                      print(line)
+              print(name+'_HEADERS_END')
+          PY
