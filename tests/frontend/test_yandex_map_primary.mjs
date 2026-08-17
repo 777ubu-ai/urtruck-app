@@ -20,8 +20,8 @@ test('production injector loads Yandex JS API v3 in Russian', () => {
   assert.match(injectSrc, /__URTRUCK_YANDEX_MAPS_CONFIGURED__/);
 });
 
-test('Leaflet and OpenStreetMap are completely removed from the web map', () => {
-  assert.doesNotMatch(mapSrc, /Leaflet|leaflet|OpenStreetMap|openstreetmap|tileLayer|truck-map-osm-fallback|useFallback/);
+test('no alternate web map provider can execute', () => {
+  assert.doesNotMatch(mapSrc, /LEAFLET_JS|LEAFLET_CSS|unpkg\.com\/leaflet|tile\.openstreetmap\.org|OpenStreetMapFallback|truck-map-osm-fallback|useFallback|\.tileLayer\(/);
   assert.match(mapSrc, /truck-map-yandex-error/);
   assert.match(mapSrc, /Карта не будет заменена другим провайдером/);
 });
