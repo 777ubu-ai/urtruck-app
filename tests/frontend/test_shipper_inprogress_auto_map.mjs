@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-const s = readFileSync('src/screens/ChatScreen.js', 'utf8');
-assert.match(s, /parseRouteCities/, 'ChatScreen must derive route coordinates');
-assert.match(s, /IS_WEB && dealRoutePoints\.length >= 2/, 'web shipper must see planned map without GPS');
-assert.match(s, /planned=\{!hasMapPreviewPoint\}/, 'planned state must be explicit when GPS is absent');
-assert.match(s, /routePoints=\{dealRoutePoints\}/, 'planned and live map must share deal route');
-assert.doesNotMatch(s, /deal-track-truck[\s\S]{0,2200}track_truck_waiting[\s\S]{0,500}track_truck_btn/, 'no-GPS web path must not require opening a waiting screen');
-console.log('shipper in-progress automatic map contract: PASS');
+const chat = readFileSync('src/screens/ChatScreen.js', 'utf8');
+const track = readFileSync('src/screens/TrackTruckScreen.js', 'utf8');
+
+assert.match(chat, /testID="deal-track-truck"[\s\S]{0,600}onPress=\{openDealMap\}/, 'Shipper tracking CTA must open full-screen map');
+assert.doesNotMatch(chat, /testID="deal-track-truck"[\s\S]{0,2500}<TruckMap/, 'Shipper chat must not embed live/planned TruckMap');
+assert.match(track, /const iv = setInterval\(load, 10000\)/, 'Live GPS polling must happen on the dedicated map screen');
+assert.match(track, /routePoints=\{routePoints\}/, 'Full-screen map must always receive the planned route');
+assert.match(track, /planned=\{!loc\}/, 'Before first GPS point the full-screen screen must show planned route');
+console.log('shipper fullscreen tracking contract: PASS');

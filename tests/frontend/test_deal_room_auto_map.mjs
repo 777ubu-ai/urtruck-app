@@ -1,13 +1,15 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const source = readFileSync('src/components/deal/DealRoom.js', 'utf8');
+const dealRoom = readFileSync('src/components/deal/DealRoom.js', 'utf8');
+const chat = readFileSync('src/screens/ChatScreen.js', 'utf8');
+const track = readFileSync('src/screens/TrackTruckScreen.js', 'utf8');
 
-assert.match(source, /import TruckMap from '\.\.\/TruckMap'/, 'DealRoom must embed TruckMap');
-assert.match(source, /parseRouteCities\(rawRoute\)/, 'DealRoom must derive planned route points from the deal route');
-assert.match(source, /status === 'accepted'/, 'Accepted deals must expose the map automatically');
-assert.match(source, /role === 'driver'.*DRIVER_MAP_STATUSES\.includes\(status\)/s, 'Driver must keep the route map through active trip statuses');
-assert.match(source, /testID="deal-automatic-route-map"/, 'Automatic map needs a stable QA selector');
-assert.match(source, /plannedTitle=\{mapCopy\.title\}/, 'Planned map must provide localized map copy');
+assert.match(dealRoom, /const showAutomaticRouteMap = false/, 'DealRoomCard must not embed the route map inside chat');
+assert.match(chat, /navigation\.navigate\('TrackTruck'/, 'Deal chat must open the dedicated TrackTruck screen');
+assert.match(chat, /testID="deal-open-driver-route"/, 'Driver must have a full-screen route CTA');
+assert.match(chat, /testID="deal-track-truck"/, 'Shipper must have a full-screen tracking CTA');
+assert.match(track, /<TruckMap/, 'TrackTruckScreen must own the actual map');
+assert.match(track, /cleanMapWrap: \{ flex: 1, marginHorizontal: 0, marginBottom: 0, borderRadius: 0/, 'TrackTruck map must be edge-to-edge');
 
-console.log('deal room automatic map contract: PASS');
+console.log('deal room fullscreen map contract: PASS');

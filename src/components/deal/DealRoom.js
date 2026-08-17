@@ -87,9 +87,7 @@ export function DealRoomCard({ deal, role }) {
   // embedded immediately in the deal. For the shipper the existing live-GPS
   // card takes over after the trip starts; for the driver the planned route
   // remains visible throughout the active trip.
-  const showAutomaticRouteMap = Platform.OS === 'web'
-    && routePoints.length >= 2
-    && (status === 'accepted' || (role === 'driver' && DRIVER_MAP_STATUSES.includes(status)));
+  const showAutomaticRouteMap = false; // Full-screen map only: keep chat/deal card compact.
 
   const language = String(lang || 'ru').toLowerCase();
   const mapCopy = language.startsWith('zh')
