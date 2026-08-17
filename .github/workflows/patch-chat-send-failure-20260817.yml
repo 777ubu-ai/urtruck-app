@@ -1,0 +1,64 @@
+name: Patch chat send failure UX 20260817
+on:
+  push:
+    branches: [fix/fullscreen-deal-map-chat-20260817]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/fullscreen-deal-map-chat-20260817
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Keep failed messages visible and retryable inline
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/screens/ChatScreen.js')
+          s=p.read_text()
+
+          style_old="""  msgTimeMe: { color: 'rgba(234,251,241,0.55)' },\n  systemMsgRow:"""
+          style_new="""  msgTimeMe: { color: 'rgba(234,251,241,0.55)' },\n  msgSendFailed: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5, paddingHorizontal: 6, paddingVertical: 4, borderRadius: 8, backgroundColor: 'rgba(239,68,68,0.10)' },\n  msgSendFailedText: { color: '#EF4444', fontSize: 11, fontWeight: '700', maxWidth: 240 },\n  msgQueuedText: { color: v1.textMuted, fontSize: 10, fontWeight: '600', marginTop: 4, textAlign: 'right' },\n  systemMsgRow:"""
+          if style_old not in s: raise SystemExit('style marker missing')
+          s=s.replace(style_old,style_new)
+
+          catch_old="""      if (e?.isNetwork) {\n        await enqueueOutbox({ clientId, payload }, session?.user?.id);\n        toast(t('chat_queued'), 'info', 2500);\n      } else {\n        toast(t('chat_send_failed'), 'error');\n      }\n    }\n  };\n\n  // WhatsApp-style:"""
+          catch_new="""      if (e?.isNetwork) {\n        await enqueueOutbox({ clientId, payload }, session?.user?.id);\n        // Message stays visible in the conversation. Do not cover the map/header\n        // with a large toast for an error that belongs to this exact bubble.\n        setMessages(prev => prev.map(m => m.id === clientId ? { ...m, _queued: true, _retryPayload: payload } : m));\n      } else {\n        setMessages(prev => prev.map(m => m.id === clientId ? { ...m, _failed: true, _retryPayload: payload } : m));\n      }\n    }\n  };\n\n  const retryMessage = async (item) => {\n    const payload = item?._retryPayload;\n    if (!payload || !item?.id) return;\n    setMessages(prev => prev.map(m => m.id === item.id ? { ...m, _failed: false, _queued: false } : m));\n    try {\n      const r = await chatAPI.send(payload);\n      if (r?.room_id) setRoomId(r.room_id);\n      // Keep optimistic bubble until regular polling replaces it with the\n      // server message; client_msg_id makes this retry idempotent.\n    } catch (e) {\n      if (e?.isNetwork) {\n        await enqueueOutbox({ clientId: item.id, payload }, session?.user?.id);\n        setMessages(prev => prev.map(m => m.id === item.id ? { ...m, _queued: true, _retryPayload: payload } : m));\n      } else {\n        setMessages(prev => prev.map(m => m.id === item.id ? { ...m, _failed: true, _retryPayload: payload } : m));\n      }\n    }\n  };\n\n  // WhatsApp-style:"""
+          if catch_old not in s: raise SystemExit('send catch marker missing')
+          s=s.replace(catch_old,catch_new)
+
+          render_old="""        </View>\n      </View>\n    );\n  };\n\n  return ("""
+          render_new="""        </View>\n        {isMe && item._failed ? (\n          <TouchableOpacity style={s.msgSendFailed} onPress={() => retryMessage(item)} testID=\"chat-message-retry\">\n            <Feather name=\"refresh-cw\" size={11} color=\"#EF4444\" />\n            <Text style={s.msgSendFailedText} numberOfLines={2}>{t('chat_send_failed')}</Text>\n          </TouchableOpacity>\n        ) : null}\n        {isMe && item._queued ? <Text style={s.msgQueuedText}>{t('chat_queued')}</Text> : null}\n      </View>\n    );\n  };\n\n  return ("""
+          # This must target the final text-message render only; use rfind before return.
+          pos=s.rfind(render_old)
+          if pos < 0: raise SystemExit('message render end marker missing')
+          s=s[:pos]+s[pos:].replace(render_old,render_new,1)
+          p.write_text(s)
+
+          test=Path('tests/frontend/test_chat_send_failure_inline.mjs')
+          test.write_text("""import assert from 'node:assert/strict';\nimport { readFileSync } from 'node:fs';\nconst chat = readFileSync('src/screens/ChatScreen.js','utf8');\nassert.match(chat, /_failed: true, _retryPayload: payload/, 'HTTP send failure must stay attached to its bubble');\nassert.match(chat, /_queued: true, _retryPayload: payload/, 'network failure must keep a queued bubble');\nassert.match(chat, /testID=\"chat-message-retry\"/, 'failed message must expose inline retry');\nassert.match(chat, /const retryMessage = async/, 'failed message retry must be implemented');\nassert.doesNotMatch(chat, /else \{\\s*toast\(t\('chat_send_failed'\), 'error'\);\\s*\}/, 'text send failure must not use a large global toast');\nconsole.log('chat inline send failure contract: PASS');\n""")
+          PY
+      - name: Validate
+        run: |
+          set -euo pipefail
+          npm ci
+          node tests/frontend/test_chat_send_failure_inline.mjs
+          node tests/frontend/test_map_chat_integration.mjs
+          node tests/frontend/test_deal_room_auto_map.mjs
+          node tests/frontend/test_shipper_inprogress_auto_map.mjs
+          npm run build:web
+      - name: Commit and remove one-shot workflow
+        run: |
+          set -euo pipefail
+          git config user.name 'UrTruck Release Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          rm .github/workflows/patch-chat-send-failure-20260817.yml
+          git add src/screens/ChatScreen.js tests/frontend/test_chat_send_failure_inline.mjs .github/workflows/patch-chat-send-failure-20260817.yml
+          git commit -m 'fix(chat): keep failed messages visible and retryable'
+          git push origin HEAD:fix/fullscreen-deal-map-chat-20260817
