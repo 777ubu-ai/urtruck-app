@@ -8,7 +8,10 @@ const chatSrc = fs.readFileSync('src/screens/ChatScreen.js', 'utf8');
 
 test('Yandex map asks JS API 2.1 multirouter for a real driving road route', () => {
   assert.match(mapSrc, /api\.multiRouter\.MultiRoute/);
-  assert.match(mapSrc, /referencePoints: plannedPoints/);
+  assert.match(mapSrc, /referencePoints: routingPoints/);
+  assert.match(mapSrc, /const routingPoints = livePoint && destination/);
+  assert.match(mapSrc, /\? \[livePoint, destination\]/);
+  assert.match(mapSrc, /: plannedPoints/);
   assert.match(mapSrc, /routingMode: 'auto'/);
   assert.match(mapSrc, /boundsAutoApply: true/);
   assert.match(mapSrc, /routeActiveStrokeColor: '#168759'/);
