@@ -88,6 +88,9 @@ export default function RouteMap({ from, to, transit, dealId, dealStatus, driver
           title={driverName || t('track_truck_marker')}
           routePoints={routePoints}
           planned={!hasLivePoint}
+          plannedTitle={t('planned_route_title')}
+          plannedHint={t('tracking_starts_after_start')}
+          liveTitle={t('live_route_title')}
           showBadge={false}
           onRouteSummary={handleSummary}
         />
