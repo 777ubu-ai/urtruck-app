@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const workspace = fs.readFileSync('src/screens/DealWorkspaceScreen.js', 'utf8');
-const router = fs.readFileSync('src/screens/ChatScreenV2.js', 'utf8');
+const chatRouter = fs.readFileSync('src/screens/ChatScreenV2.js', 'utf8');
+const tripRouter = fs.readFileSync('src/screens/TripDetailV2.js', 'utf8');
+const cargoRouter = fs.readFileSync('src/screens/CargoDetailV2.js', 'utf8');
 const nav = fs.readFileSync('src/navigation/AppNavigator.js', 'utf8');
 const brand = fs.readFileSync('src/components/ui/v1/BrandBarWithShare.js', 'utf8');
 const webMap = fs.readFileSync('src/components/TruckMap.web.js', 'utf8');
@@ -11,9 +13,22 @@ const webMap = fs.readFileSync('src/components/TruckMap.web.js', 'utf8');
 test('accepted deal chat is routed into the map-first workspace', () => {
   assert.match(nav, /import ChatScreenV2 from '\.\.\/screens\/ChatScreenV2'/);
   assert.match(nav, /name="Chat" component=\{ChatScreenV2\}/);
-  assert.match(router, /room\?\.deal_id/);
-  assert.match(router, /<DealWorkspaceScreen/);
-  assert.match(router, /<ChatScreen/);
+  assert.match(chatRouter, /room\?\.deal_id/);
+  assert.match(chatRouter, /<DealWorkspaceScreen/);
+  assert.match(chatRouter, /<ChatScreen/);
+});
+
+test('active cargo and trip details are routed into the same deal workspace', () => {
+  assert.match(nav, /import CargoDetailV2 from '\.\.\/screens\/CargoDetailV2'/);
+  assert.match(nav, /import TripDetailV2 from '\.\.\/screens\/TripDetailV2'/);
+  assert.match(nav, /name="CargoDetail" component=\{CargoDetailV2\}/);
+  assert.match(nav, /name="TripDetail" component=\{TripDetailV2\}/);
+  assert.match(cargoRouter, /ACTIVE\.has\(item\.status\)/);
+  assert.match(cargoRouter, /item\.cargo_id/);
+  assert.match(cargoRouter, /<DealWorkspaceScreen/);
+  assert.match(tripRouter, /ACTIVE\.has\(item\.status\)/);
+  assert.match(tripRouter, /item\.trip_id/);
+  assert.match(tripRouter, /<DealWorkspaceScreen/);
 });
 
 test('deal workspace has compact header and no repeated UrTruck brand bar', () => {
