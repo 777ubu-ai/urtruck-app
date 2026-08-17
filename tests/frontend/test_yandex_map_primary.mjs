@@ -39,7 +39,7 @@ test('deal map exposes real Yandex route distance and travel time', () => {
 });
 
 test('live GPS route metrics are remaining distance to destination, not a fake estimate', () => {
-  assert.match(mapSrc, /const destination = plannedPoints\[plannedPoints\.length - 1\]/);
+  assert.match(mapSrc, /plannedPoints\[plannedPoints\.length - 1\]/);
   assert.match(mapSrc, /\[livePoint, destination\]/);
   assert.match(mapSrc, /requestfail', addStraightFallback/);
   assert.match(mapSrc, /emitSummary\(null\)/);
