@@ -22,11 +22,10 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Clean map overlays and wire Router secret
+      - name: Remove duplicate map overlays in deal chat
         run: |
           python3 - <<'PY'
           from pathlib import Path
-
           chat = Path('src/screens/ChatScreen.js')
           s = chat.read_text()
           needle = "                        liveTitle={plannedMapCopy.live}\n                      />"
@@ -38,20 +37,6 @@ jobs:
           s = s.replace("dealMapOverlayTop: { position: 'absolute'", "dealMapOverlayTop: { display: 'none', position: 'absolute'", 1)
           s = s.replace("dealMapFooter: { position: 'absolute'", "dealMapFooter: { display: 'none', position: 'absolute'", 1)
           chat.write_text(s)
-
-          wf = Path('.github/workflows/secure-production-deploy.yml')
-          lines = wf.read_text().splitlines()
-          if not any('EXPO_PUBLIC_YANDEX_ROUTER_API_KEY:' in line for line in lines):
-              out = []
-              inserted = False
-              for line in lines:
-                  out.append(line)
-                  if 'EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY:' in line and not inserted:
-                      out.append("          EXPO_PUBLIC_YANDEX_ROUTER_API_KEY: $" + "{{ secrets.YANDEX_ROUTER_API_KEY }}")
-                      inserted = True
-              if not inserted:
-                  raise SystemExit('secure deploy Yandex env not found')
-              wf.write_text('\n'.join(out) + '\n')
           PY
 
       - name: Install and validate
@@ -62,14 +47,12 @@ jobs:
           npm run build:web
           EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY=dummy-js-key EXPO_PUBLIC_YANDEX_ROUTER_API_KEY=dummy-router-key node scripts/injectYandexMaps.mjs
           grep -q '__URTRUCK_YANDEX_ROUTER_API_KEY__' dist/index.html
-          grep -q 'api-maps.yandex.ru/v3/' dist/index.html
 
-      - name: Commit validated patch
+      - name: Commit deal-map cleanup
         run: |
           set -euo pipefail
           git config user.name "UrTruck Release Bot"
           git config user.email "actions@users.noreply.github.com"
-          rm .github/workflows/patch-yandex-road-route.yml
-          git add src/components/TruckMap.web.js src/screens/ChatScreen.js scripts/injectYandexMaps.mjs .github/workflows/secure-production-deploy.yml tests/frontend/test_yandex_road_route.mjs .github/workflows/patch-yandex-road-route.yml
-          git commit -m "feat(map): Yandex truck routes and clean deal map [validated]"
+          git add src/screens/ChatScreen.js
+          git commit -m "fix(map): remove duplicate deal-map overlays"
           git push origin HEAD:fix-yandex-road-route-clean-chat-20260817
