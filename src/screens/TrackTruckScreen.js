@@ -4,23 +4,21 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import { marketAPI } from '../utils/marketAPI';
 import TruckMap from '../components/TruckMap';
-import { parseCity, parseRouteCities, distance as geoDistance, isNearBorder } from '../utils/geo';
+import { parseRouteCities } from '../utils/geo';
 import { localizePlace } from '../utils/places';
 import { getLanguage } from '../utils/i18n';
 
 export default function TrackTruckScreen({ navigation, route }) {
-  const { dealId, from, to, driverName, driverOnline = false, viewerRole } = route.params || {};
+  const { dealId, from, to, driverName } = route.params || {};
   const { t } = useI18n();
   const { theme } = useTheme();
   const [loc, setLoc] = useState(null);
   const [loading, setLoading] = useState(true);
   const mounted = useRef(true);
-  const isDriverViewer = viewerRole === 'driver';
 
   const load = useCallback(async () => {
     if (!dealId) { setLoading(false); return; }
@@ -50,24 +48,12 @@ export default function TrackTruckScreen({ navigation, route }) {
       return true;
     });
   }, [from, to]);
-  const fallbackStart = routePoints[0] || parseCity(from) || parseCity(to);
-
-  const destCoord = parseCity(to);
-  const driverCoord = (lat != null && lng != null && !Number.isNaN(lat) && !Number.isNaN(lng)) ? [lat, lng] : null;
-  const kmLeftRaw = (destCoord && driverCoord) ? geoDistance(driverCoord, destCoord) : null;
-  const kmLeft = (kmLeftRaw != null && !Number.isNaN(kmLeftRaw)) ? Math.round(kmLeftRaw) : null;
-  const speedKmh = (loc && loc.speed != null && loc.speed >= 0) ? Math.round(loc.speed * 3.6) : null;
   const agoMin = (() => {
     if (!loc || !loc.updated_at) return null;
     const ts = Date.parse(String(loc.updated_at).replace(' ', 'T') + (String(loc.updated_at).endsWith('Z') ? '' : 'Z'));
     if (Number.isNaN(ts)) return null;
     return Math.max(0, Math.round((Date.now() - ts) / 60000));
   })();
-  const isStale = agoMin == null || agoMin > 30;
-  const moving = speedKmh != null && speedKmh >= 5 && !isStale;
-  const etaMin = (kmLeft != null && moving) ? Math.round((kmLeft / speedKmh) * 60) : null;
-  const nearBorder = driverCoord ? isNearBorder(lat, lng) : false;
-  const fmtEta = (m) => (m == null ? '—' : m < 60 ? `${m} ${t('track_min')}` : `${Math.floor(m / 60)} ${t('track_hour')} ${m % 60} ${t('track_min')}`);
   const fmtAgo = (m) => {
     if (m == null) return '';
     if (m === 0) return t('track_updated_now');
@@ -76,7 +62,6 @@ export default function TrackTruckScreen({ navigation, route }) {
       : `${Math.floor(m / 1440)} ${t('track_day')}`;
     return `${t('track_updated')} ${unit} ${t('track_ago')}`;
   };
-  const openDriverChat = () => navigation.goBack();
 
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: theme.bg }]} edges={['top']}>
@@ -115,7 +100,6 @@ export default function TrackTruckScreen({ navigation, route }) {
         </View>
       )}
 
-      </View>
     </SafeAreaView>
   );
 }
