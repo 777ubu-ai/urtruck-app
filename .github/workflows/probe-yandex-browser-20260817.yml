@@ -1,0 +1,58 @@
+name: Probe Yandex browser runtime 20260817
+on:
+  push:
+    branches: [probe/yandex-runtime-20260817]
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: probe/yandex-runtime-20260817
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install browser probe dependencies
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Verify Yandex JS initializes in a real browser
+        run: |
+          node - <<'NODE'
+          const { chromium } = require('playwright');
+          (async () => {
+            const browser = await chromium.launch({headless:true});
+            const page = await browser.newPage();
+            const failures = [];
+            page.on('response', r => {
+              if (r.url().includes('api-maps.yandex.ru/v3/')) console.log('YANDEX_SCRIPT_HTTP='+r.status());
+            });
+            page.on('requestfailed', r => {
+              if (r.url().includes('yandex')) failures.push(String(r.failure()?.errorText || 'requestfailed'));
+            });
+            await page.goto('https://urtruck.kz/?probe=yandex-browser', {waitUntil:'domcontentloaded', timeout:30000});
+            let ready = false;
+            for (let i=0;i<6;i++) {
+              await page.waitForTimeout(5000);
+              ready = await page.evaluate(() => Boolean(globalThis.ymaps3));
+              console.log(`YANDEX_GLOBAL_ATTEMPT_${i+1}=${ready}`);
+              if (ready) break;
+            }
+            console.log('YANDEX_BROWSER_READY='+ready);
+            if (failures.length) console.log('YANDEX_BROWSER_FAILURES='+JSON.stringify(failures.slice(0,3)));
+            await browser.close();
+            if (!ready) process.exit(2);
+          })().catch(e => { console.error(e); process.exit(3); });
+          NODE
+      - name: Remove one-shot probe
+        if: always()
+        run: |
+          git config user.name 'UrTruck Release Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          rm .github/workflows/probe-yandex-browser-20260817.yml
+          git add .github/workflows/probe-yandex-browser-20260817.yml
+          git commit -m 'chore(map): remove Yandex browser probe [skip ci]' || true
+          git push origin HEAD:probe/yandex-runtime-20260817
