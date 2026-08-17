@@ -91,102 +91,30 @@ export default function TrackTruckScreen({ navigation, route }) {
 
       {loading ? (
         <ActivityIndicator style={{ marginTop: 48 }} color={theme.text} />
-      ) : !loc ? (
-        <View style={s.plannedWrap} testID="track-planned-map">
-          <View style={[s.planBanner, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Feather name="map" size={16} color="#168759" />
-            <View style={{ flex: 1 }}>
-              <Text style={[s.planTitle, { color: theme.text }]}>{t('planned_route_title')}</Text>
-              <Text style={[s.planHint, { color: theme.textMuted }]}>{t('tracking_starts_after_start')}</Text>
-            </View>
-          </View>
-          <View style={s.plannedMap}>
-            <TruckMap
-              lat={fallbackStart?.[0]}
-              lng={fallbackStart?.[1]}
-              title={driverName || t('track_truck_marker')}
-              routePoints={routePoints}
-              planned
-              plannedTitle={t('planned_route_title')}
-              plannedHint={t('tracking_starts_after_start')}
-              liveTitle={t('live_route_title')}
-            />
-          </View>
-        </View>
       ) : (
-        <View style={{ flex: 1 }}>
-          <View style={[s.stats, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <View style={s.stat}>
-              <Text style={[s.statNum, { color: theme.text }]}>{kmLeft != null ? kmLeft : '—'}</Text>
-              <Text style={[s.statLbl, { color: theme.textMuted }]}>{t('track_left')} · {t('km_short')}</Text>
-            </View>
-            <View style={[s.statDiv, { backgroundColor: theme.border }]} />
-            <View style={s.stat}>
-              <Text style={[s.statNum, { color: moving ? '#168759' : theme.textMuted }]}>{(!isStale && speedKmh != null) ? speedKmh : '—'}</Text>
-              <Text style={[s.statLbl, { color: theme.textMuted }]}>{t('track_speed_label')} · {t('kmh_short')}</Text>
-            </View>
-            <View style={[s.statDiv, { backgroundColor: theme.border }]} />
-            <View style={s.stat}>
-              <Text style={[s.statNum, { color: theme.text, fontSize: 15 }]}>{moving ? fmtEta(etaMin) : t('track_stopped')}</Text>
-              <Text style={[s.statLbl, { color: theme.textMuted }]}>{t('track_eta_label')}</Text>
-            </View>
-          </View>
-          {isStale ? (
-            <View style={[s.staleBanner, { backgroundColor: 'rgba(245,158,11,0.12)', borderColor: '#F59E0B' }]}>
-              <Feather name="clock" size={13} color="#F59E0B" />
-              <Text style={s.staleText} numberOfLines={2}>{t('track_stale')}</Text>
-            </View>
-          ) : null}
-          <View style={s.subRow}>
-            {nearBorder && !isStale ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Feather name="flag" size={12} color="#168759" />
-                <Text style={[s.badgeBorder]}>{t('track_near_border')}</Text>
-              </View>
-            ) : <View />}
-            <Text style={[s.updated, { color: theme.textDim }]}>{fmtAgo(agoMin)}</Text>
-          </View>
+        <View style={s.cleanMapWrap} testID={loc ? "track-live-map" : "track-planned-map"}>
           <TruckMap
-            lat={lat}
-            lng={lng}
-            title={driverName || t('track_truck_marker')}
+            lat={loc ? lat : undefined}
+            lng={loc ? lng : undefined}
+            title={loc ? (driverName || t('track_truck_marker')) : undefined}
             routePoints={routePoints}
-            planned={false}
+            planned={!loc}
             plannedTitle={t('planned_route_title')}
             plannedHint={t('tracking_starts_after_start')}
             liveTitle={t('live_route_title')}
+            showBadge={false}
           />
+          {loc ? (
+            <View style={[s.liveMini, { backgroundColor: theme.card, borderColor: theme.border }]} pointerEvents="none">
+              <View style={s.liveMiniDot} />
+              <Text style={[s.liveMiniText, { color: theme.text }]} numberOfLines={1}>
+                {fmtAgo(agoMin) || t('track_updated_now')}
+              </Text>
+            </View>
+          ) : null}
         </View>
       )}
 
-      <View style={[s.driverCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-        <View style={s.driverIdentity}>
-          <View style={s.driverAvatar}>
-            <Feather name="user" size={20} color="#0F6B47" />
-          </View>
-          <View style={s.driverText}>
-            <Text style={[s.driverName, { color: theme.text }]} numberOfLines={1}>
-              {driverName || t(isDriverViewer ? 'role_shipper' : 'role_driver')}
-            </Text>
-            <View style={s.presenceRow}>
-              {driverOnline ? <View style={s.onlineDot} /> : null}
-              <Text style={[s.driverStatus, { color: driverOnline ? '#168759' : theme.textMuted }]}>
-                {driverOnline ? t('chat_online') : t(isDriverViewer ? 'role_shipper' : 'role_driver')}
-              </Text>
-            </View>
-          </View>
-        </View>
-        <View style={s.contactRow}>
-          <TouchableOpacity
-            style={s.messageBtn}
-            onPress={openDriverChat}
-            testID={isDriverViewer ? 'track-back-to-chat' : 'track-message-driver'}
-            accessibilityLabel={isDriverViewer ? t('back') : t('write_driver')}
-          >
-            <Feather name={isDriverViewer ? 'arrow-left' : 'message-circle'} size={18} color="#FFFFFF" />
-            <Text style={s.messageBtnText}>{isDriverViewer ? t('back') : t('write_driver')}</Text>
-          </TouchableOpacity>
-        </View>
       </View>
     </SafeAreaView>
   );
@@ -198,7 +126,10 @@ const s = StyleSheet.create({
   back: { fontSize: 30, fontWeight: '300', width: 24 },
   title: { fontSize: 18, fontWeight: '800', flex: 1, textAlign: 'center' },
   route: { fontSize: 13, textAlign: 'center', marginBottom: 8, paddingHorizontal: 16 },
-  plannedWrap: { flex: 1, paddingHorizontal: 12, paddingBottom: 4 },
+  cleanMapWrap: { flex: 1, marginHorizontal: 12, marginBottom: 12, borderRadius: 18, overflow: 'hidden', position: 'relative' },
+  liveMini: { position: 'absolute', left: 12, bottom: 12, flexDirection: 'row', alignItems: 'center', gap: 7, maxWidth: '72%', paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderRadius: 999 },
+  liveMiniDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#168759' },
+  liveMiniText: { fontSize: 11.5, fontWeight: '800' },
   planBanner: { flexDirection: 'row', alignItems: 'center', gap: 9, borderWidth: 1, borderRadius: 13, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 8 },
   planTitle: { fontSize: 13, fontWeight: '850' },
   planHint: { fontSize: 11.5, lineHeight: 16, marginTop: 2 },

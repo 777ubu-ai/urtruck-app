@@ -63,10 +63,15 @@ function YandexMap({ livePoint, plannedPoints, title, onFailure }) {
 
     const start = async () => {
       const api = globalThis.ymaps3;
-      const host = findNodeHandle(hostRef.current) || hostRef.current;
+      const directHost = hostRef.current;
+      let legacyHost = null;
+      try { legacyHost = findNodeHandle(hostRef.current); } catch { /* no-op */ }
+      const host = directHost && typeof directHost === 'object' && directHost.nodeType === 1
+        ? directHost
+        : (legacyHost && typeof legacyHost === 'object' && legacyHost.nodeType === 1 ? legacyHost : null);
       if (!api || !host) {
         attempts += 1;
-        if (attempts >= 80) {
+        if (attempts >= 200) {
           if (!cancelled) onFailure();
           return;
         }
@@ -82,8 +87,8 @@ function YandexMap({ livePoint, plannedPoints, title, onFailure }) {
         const map = new YMap(host, {
           location: { center: initial, zoom: points.length > 1 ? 6 : 10 },
           showScaleInCopyrights: true,
-          theme: 'light',
-        }, [new YMapDefaultSchemeLayer({}), new YMapDefaultFeaturesLayer({})]);
+          mode: 'vector',
+        }, [new YMapDefaultSchemeLayer({ theme: 'light' }), new YMapDefaultFeaturesLayer({})]);
         mapRef.current = map;
         apiRef.current = { YMapFeature, YMapMarker };
         setReady(true);
@@ -186,6 +191,7 @@ function OpenStreetMapFallback({ livePoint, plannedPoints, title }) {
   const hostRef = React.useRef(null);
   const mapRef = React.useRef(null);
   const objectsRef = React.useRef([]);
+  const [ready, setReady] = React.useState(false);
 
   React.useEffect(() => {
     let alive = true;
@@ -200,6 +206,7 @@ function OpenStreetMapFallback({ livePoint, plannedPoints, title }) {
         maxZoom: 19, attribution: '&copy; OpenStreetMap contributors',
       }).addTo(map);
       mapRef.current = map;
+      setReady(true);
       if (window.ResizeObserver) {
         resizeObserver = new ResizeObserver(() => map.invalidateSize(false));
         resizeObserver.observe(hostRef.current);
@@ -214,7 +221,7 @@ function OpenStreetMapFallback({ livePoint, plannedPoints, title }) {
   React.useEffect(() => {
     const map = mapRef.current;
     const L = typeof window !== 'undefined' ? window.L : null;
-    if (!map || !L) return;
+    if (!ready || !map || !L) return;
     for (const obj of objectsRef.current) try { map.removeLayer(obj); } catch { /* noop */ }
     objectsRef.current = [];
     if (plannedPoints.length >= 2) objectsRef.current.push(L.polyline(plannedPoints, { color: '#168759', weight: 5, opacity: 0.85 }).addTo(map));
@@ -226,7 +233,7 @@ function OpenStreetMapFallback({ livePoint, plannedPoints, title }) {
     }
     const points = livePoint ? [...plannedPoints, livePoint] : plannedPoints;
     if (points.length >= 2) map.fitBounds(points, { padding: [28, 28], maxZoom: 11 });
-  }, [latKey(livePoint), JSON.stringify(plannedPoints), title]);
+  }, [ready, latKey(livePoint), JSON.stringify(plannedPoints), title]);
 
   return <View ref={hostRef} style={s.map} testID="truck-map-osm-fallback" />;
 }
@@ -240,6 +247,7 @@ export default function TruckMap({
   plannedTitle = 'Маршрут',
   plannedHint = 'GPS водителя появится автоматически',
   liveTitle = 'Машина на маршруте',
+  showBadge = true,
 }) {
   const livePoint = asPoint([lat, lng]);
   const plannedPoints = (routePoints || []).map(asPoint).filter(Boolean);
@@ -254,10 +262,12 @@ export default function TruckMap({
       ) : (
         <YandexMap livePoint={livePoint} plannedPoints={plannedPoints} title={title} onFailure={() => setUseFallback(true)} />
       )}
-      <View pointerEvents="none" style={s.badge}>
-        <Text style={s.badgeTitle}>{showPlanned ? plannedTitle : liveTitle}</Text>
-        <Text style={s.badgeText}>{showPlanned ? plannedHint : (title || liveTitle)}</Text>
-      </View>
+      {showBadge ? (
+        <View pointerEvents="none" style={s.badge}>
+          <Text style={s.badgeTitle}>{showPlanned ? plannedTitle : liveTitle}</Text>
+          <Text style={s.badgeText}>{showPlanned ? plannedHint : (title || liveTitle)}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
