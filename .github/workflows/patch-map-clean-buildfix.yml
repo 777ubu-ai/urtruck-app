@@ -1,0 +1,57 @@
+name: Validate clean map build fix
+
+on:
+  push:
+    branches: [fix/map-clean-route-yandex-runtime-20260817]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: "!contains(github.event.head_commit.message, '[map-clean-build-ok]')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/map-clean-route-yandex-runtime-20260817
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Fix closing tag and remove dead full-screen map code
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/screens/TrackTruckScreen.js')
+          s = p.read_text()
+          s = s.replace('\n      </View>\n    </SafeAreaView>', '\n    </SafeAreaView>', 1)
+          # Imports/variables below belonged to the removed bulky stats/counterparty cards.
+          s = s.replace("import Feather from '@expo/vector-icons/Feather';\n", '')
+          s = s.replace("import { parseCity, parseRouteCities, distance as geoDistance, isNearBorder } from '../utils/geo';", "import { parseRouteCities } from '../utils/geo';")
+          s = s.replace("  const { dealId, from, to, driverName, driverOnline = false, viewerRole } = route.params || {};", "  const { dealId, from, to, driverName } = route.params || {};")
+          s = s.replace("  const isDriverViewer = viewerRole === 'driver';\n", '')
+          a = s.index('  const fallbackStart =')
+          b = s.index('  const agoMin =', a)
+          s = s[:a] + s[b:]
+          s = s.replace("  const isStale = agoMin == null || agoMin > 30;\n  const moving = speedKmh != null && speedKmh >= 5 && !isStale;\n  const etaMin = (kmLeft != null && moving) ? Math.round((kmLeft / speedKmh) * 60) : null;\n  const nearBorder = driverCoord ? isNearBorder(lat, lng) : false;\n  const fmtEta = (m) => (m == null ? '—' : m < 60 ? `${m} ${t('track_min')}` : `${Math.floor(m / 60)} ${t('track_hour')} ${m % 60} ${t('track_min')}`);\n", '')
+          s = s.replace("  const openDriverChat = () => navigation.goBack();\n", '')
+          p.write_text(s)
+          PY
+      - name: Install and validate
+        run: |
+          npm ci
+          node tests/frontend/test_yandex_map_primary.mjs
+          node tests/frontend/test_deal_room_auto_map.mjs
+          node tests/frontend/test_shipper_inprogress_auto_map.mjs
+          node tests/frontend/test_clean_map_screen.mjs
+          npm run build:web
+      - name: Commit validated patch
+        run: |
+          git config user.name "UrTruck Release Bot"
+          git config user.email "actions@users.noreply.github.com"
+          rm .github/workflows/patch-map-clean-buildfix.yml
+          git add src/screens/TrackTruckScreen.js .github/workflows/patch-map-clean-buildfix.yml
+          git commit -m "fix(map): validate clean Yandex map screen [map-clean-build-ok]"
+          git push origin HEAD:fix/map-clean-route-yandex-runtime-20260817
