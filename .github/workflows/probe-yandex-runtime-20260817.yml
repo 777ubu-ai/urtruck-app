@@ -1,0 +1,52 @@
+name: Probe Yandex runtime 20260817
+on:
+  push:
+    branches: [probe/yandex-runtime-20260817]
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: probe/yandex-runtime-20260817
+          fetch-depth: 0
+      - name: Verify production commit and Yandex loader
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 20 'https://urtruck.kz/build-info.json?probe=yandex-runtime' -o /tmp/build.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/build.json'))
+          print('PRODUCTION_COMMIT='+str(d.get('commit','')))
+          PY
+          curl -fsS --max-time 20 'https://urtruck.kz/?probe=yandex-runtime' -o /tmp/index.html
+          python3 - <<'PY' > /tmp/yandex-url
+          import re
+          s=open('/tmp/index.html',encoding='utf-8',errors='ignore').read()
+          m=re.search(r'https://api-maps\.yandex\.ru/v3/\?[^"\']+',s)
+          if not m: raise SystemExit('YANDEX_SCRIPT=missing')
+          print(m.group(0))
+          PY
+          code=$(curl -L -sS --max-time 20 -H 'Referer: https://urtruck.kz/' -o /tmp/loader.out -w '%{http_code}' "$(cat /tmp/yandex-url)" || true)
+          echo "YANDEX_LOADER_HTTP=$code"
+          python3 - <<'PY'
+          import json
+          try:
+              d=json.load(open('/tmp/loader.out'))
+          except Exception:
+              print('YANDEX_LOADER_BODY=javascript-or-non-json')
+              raise SystemExit
+          safe={k:d.get(k) for k in ('statusCode','error','message') if k in d}
+          print('YANDEX_LOADER_SAFE='+json.dumps(safe,ensure_ascii=False))
+          PY
+      - name: Remove one-shot probe
+        if: always()
+        run: |
+          git config user.name 'UrTruck Release Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          rm .github/workflows/probe-yandex-runtime-20260817.yml
+          git add .github/workflows/probe-yandex-runtime-20260817.yml
+          git commit -m 'chore(map): remove Yandex runtime probe [skip ci]' || true
+          git push origin HEAD:probe/yandex-runtime-20260817
