@@ -285,7 +285,7 @@ export const regAPI = {
     if (!token) return { ok: false, detail: 'no_token' };
 
     const allowed = [
-      'name', 'city', 'about',
+      'name', 'city', 'about', 'phone', 'role',
       'legal_form', 'china_experience_years', 'favorite_borders',
       'emergency_contact',
       'passport_intl_url', 'tir_book_url', 'cmr_insurance_url',
@@ -304,6 +304,24 @@ export const regAPI = {
         'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify(body),
+    });
+    let data = {};
+    try { data = await r.json(); } catch {}
+    return { ok: r.ok, ...data };
+  },
+
+  async uploadProDoc(kind, uri, onProgress) {
+    const token = await this.getToken();
+    if (!token) return { ok: false, detail: 'no_token' };
+    onProgress?.('compressing');
+    const compressedUri = await compressImage(uri, { preset: 'document' });
+    onProgress?.('uploading');
+    const form = new FormData();
+    await appendImageFile(form, compressedUri, `${kind}.jpg`);
+    const r = await fetch(`${API_BASE}/users/me/pro-documents/${encodeURIComponent(kind)}`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: form,
     });
     let data = {};
     try { data = await r.json(); } catch {}

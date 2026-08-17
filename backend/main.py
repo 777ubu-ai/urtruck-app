@@ -286,12 +286,17 @@ def startup():
         import traceback
         print(f"[startup] TG bot FAILED: {e}", flush=True)
         traceback.print_exc()
-    # Парсинг Della/ATI при старте
+    # Background jobs (backup, reminders, parser). Singleton/lock protected.
     try:
-        from parsers.della_parser import run_parse as della_parse
-        della_parse()
+        from scheduler.jobs import start_scheduler
+        background_scheduler = start_scheduler()
+        if background_scheduler is not None:
+            print("[startup] generic scheduler started", flush=True)
+        else:
+            print("[startup] generic scheduler skipped/owned by another process", flush=True)
     except Exception as e:
-        print(f"Della parse failed: {e}")
+        print(f"[startup] generic scheduler FAILED (continuing): {e}", flush=True)
+
     # CGR scheduler (AsyncIOScheduler, separate from existing BackgroundScheduler).
     # Стартует только если CGR_FEATURE_ENABLED=true И CGR_IIN_SALT задан.
     try:
@@ -315,6 +320,11 @@ def startup():
 @app.on_event("shutdown")
 async def shutdown():
     """Корректная остановка CGR-scheduler и httpx-клиента."""
+    try:
+        from scheduler.jobs import stop_scheduler
+        stop_scheduler()
+    except Exception as e:
+        print(f"[shutdown] stop_scheduler failed: {e}", flush=True)
     try:
         from scheduler import cgr_jobs
         cgr_jobs.stop()

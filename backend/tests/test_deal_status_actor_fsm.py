@@ -399,6 +399,45 @@ def test_gps_roles_are_strict():
     assert client.get(f"/api/v1/market/deals/{deal_id}/tracking").status_code == 403
 
 
+# delivered -> completed: only shipper confirms receipt.
+def test_shipper_can_complete_after_delivered():
+    d = seed_deal("delivered", from_country="KZ", to_country="KZ")
+    r = patch_status(d, "completed", SHIPPER)
+    assert r.status_code == 200, r.text
+    assert deal_status(d) == "completed"
+
+def test_driver_cannot_complete():
+    d = seed_deal("delivered", from_country="KZ", to_country="KZ")
+    r = patch_status(d, "completed", DRIVER)
+    assert r.status_code == 403, r.text
+    assert deal_status(d) == "delivered"
+
+def test_shipper_cannot_complete_before_delivered():
+    d = seed_deal("in_progress", from_country="KZ", to_country="KZ")
+    r = patch_status(d, "completed", SHIPPER)
+    assert r.status_code == 409, r.text
+    assert deal_status(d) == "in_progress"
+
+def test_repeated_completed_is_idempotent():
+    d = seed_deal("delivered", from_country="KZ", to_country="KZ")
+    assert patch_status(d, "completed", SHIPPER).status_code == 200
+    r = patch_status(d, "completed", SHIPPER)
+    assert r.status_code == 200, r.text
+    assert deal_status(d) == "completed"
+
+def test_completed_is_terminal():
+    d = seed_deal("delivered", from_country="KZ", to_country="KZ")
+    assert patch_status(d, "completed", SHIPPER).status_code == 200
+    assert patch_status(d, "in_progress", DRIVER).status_code == 409
+    assert patch_status(d, "cancelled", SHIPPER).status_code == 409
+
+def test_driver_cannot_deliver_then_self_complete():
+    d = seed_deal("in_progress", from_country="KZ", to_country="KZ")
+    assert patch_status(d, "delivered", DRIVER).status_code == 200
+    assert patch_status(d, "completed", DRIVER).status_code == 403
+    assert patch_status(d, "completed", SHIPPER).status_code == 200
+
+
 if __name__ == "__main__":
     fails = 0
     for fn in [test_shipper_cannot_start_trip, test_shipper_cannot_set_at_border,
