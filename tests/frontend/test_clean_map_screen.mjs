@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+const screen = readFileSync('src/screens/TrackTruckScreen.js', 'utf8');
+const map = readFileSync('src/components/TruckMap.web.js', 'utf8');
+assert.match(screen, /showBadge=\{false\}/, 'full map screen must hide duplicate map badge');
+assert.match(screen, /lat=\{loc \? lat : undefined\}/, 'planned route must not fake a live vehicle coordinate');
+assert.doesNotMatch(screen, /<View style=\{\[s\.planBanner/, 'full map screen must not show duplicate planned-route banner');
+assert.doesNotMatch(screen, /<View style=\{\[s\.driverCard/, 'full map screen must not duplicate counterparty card');
+assert.match(map, /const \[ready, setReady\] = React\.useState\(false\);[\s\S]*function OpenStreetMapFallback/, 'map module keeps readiness state');
+assert.match(map, /setReady\(true\);[\s\S]*if \(!ready \|\| !map \|\| !L\) return;/, 'OSM fallback must redraw route after async map init');
+assert.match(map, /mode: 'vector'/, 'Yandex must use vector mode');
+console.log('clean Yandex map screen contract: PASS');
