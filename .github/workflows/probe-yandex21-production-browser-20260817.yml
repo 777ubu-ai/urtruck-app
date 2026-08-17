@@ -1,0 +1,81 @@
+name: Probe Yandex 2.1 production browser 20260817
+on:
+  push:
+    branches: [probe/yandex21-production-browser-20260817]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Verify production Yandex loader and real map instance
+        run: |
+          node - <<'NODE'
+          const { chromium } = require('playwright');
+          const EXPECTED = '410811b0ec584decff0c852ced84165a09dedc8b';
+          (async () => {
+            const browser = await chromium.launch({headless: true});
+            const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+            const yandexResponses = [];
+            const forbidden = [];
+            page.on('response', r => {
+              if (r.url().includes('api-maps.yandex.ru/2.1/')) yandexResponses.push(r.status());
+            });
+            page.on('request', r => {
+              const u = r.url().toLowerCase();
+              if (u.includes('openstreetmap') || u.includes('leaflet')) forbidden.push(u);
+            });
+            const buildResp = await page.request.get('https://urtruck.kz/build-info.json?probe=yandex21-browser');
+            if (!buildResp.ok()) throw new Error('build-info HTTP '+buildResp.status());
+            const build = await buildResp.json();
+            console.log('PRODUCTION_SHA='+build.commit);
+            if (build.commit !== EXPECTED) throw new Error(`stale production ${build.commit}`);
+
+            await page.goto('https://urtruck.kz/?probe=yandex21-browser', {waitUntil:'domcontentloaded', timeout:30000});
+            await page.waitForFunction(() => !!globalThis.ymaps, null, {timeout:30000});
+            console.log('YANDEX_GLOBAL=ready');
+            console.log('YANDEX_LOADER_STATUSES='+JSON.stringify(yandexResponses));
+            if (!yandexResponses.some(s => s === 200)) throw new Error('Yandex 2.1 loader did not return 200');
+
+            const mapState = await page.evaluate(async () => {
+              const host = document.createElement('div');
+              host.id = 'urtruck-yandex-production-probe';
+              Object.assign(host.style, {position:'fixed',left:'0',top:'0',width:'390px',height:'500px',zIndex:'999999',background:'#fff'});
+              document.body.appendChild(host);
+              await new Promise((resolve, reject) => {
+                let done = false;
+                const timer = setTimeout(() => { if (!done) reject(new Error('ymaps.ready timeout')); }, 15000);
+                ymaps.ready(() => { done = true; clearTimeout(timer); resolve(); });
+              });
+              const map = new ymaps.Map(host, {center:[43.2389,76.8897],zoom:7,controls:['zoomControl']});
+              globalThis.__URTRUCK_PROBE_MAP__ = map;
+              await new Promise(r => setTimeout(r, 5000));
+              return {
+                childCount: host.childElementCount,
+                ymapsNodes: host.querySelectorAll('[class*="ymaps-"]').length,
+                text: host.innerText.slice(0,200),
+              };
+            });
+            console.log('YANDEX_MAP_STATE='+JSON.stringify(mapState));
+            console.log('FORBIDDEN_PROVIDER_REQUESTS='+forbidden.length);
+            if (mapState.childCount < 1 || mapState.ymapsNodes < 1) throw new Error('Yandex map DOM did not render');
+            if (forbidden.length) throw new Error('Leaflet/OpenStreetMap request detected');
+            await page.screenshot({path:'yandex21-production-proof.png', fullPage:false});
+            await browser.close();
+            console.log('YANDEX_PRODUCTION_BROWSER=PASS');
+          })().catch(e => { console.error('PROBE_ERROR='+e.stack); process.exit(1); });
+          NODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: yandex21-production-browser-proof
+          path: yandex21-production-proof.png
+          if-no-files-found: ignore
