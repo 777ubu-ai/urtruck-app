@@ -5,8 +5,10 @@ import fs from 'node:fs';
 const mapSrc = fs.readFileSync('src/components/TruckMap.web.js', 'utf8');
 const trackSrc = fs.readFileSync('src/screens/TrackTruckScreen.js', 'utf8');
 const injectSrc = fs.readFileSync('scripts/injectYandexMaps.mjs', 'utf8');
+const routerSrc = fs.readFileSync('backend/api/routing.py', 'utf8');
+const finalizerSrc = fs.readFileSync('.github/workflows/yandex-map-finalizer.yml', 'utf8');
 
-test('web deal map uses embedded Yandex Maps as the only provider', () => {
+test('web deal map uses embedded Yandex Maps as the visual provider', () => {
   assert.match(mapSrc, /globalThis\.ymaps/);
   assert.match(mapSrc, /new api\.Map/);
   assert.match(mapSrc, /new api\.Placemark/);
@@ -23,26 +25,35 @@ test('production injector loads supported Yandex JS API 2.1 in Russian', () => {
   assert.doesNotMatch(injectSrc, /api-maps\.yandex\.ru\/v3/);
 });
 
-test('no alternate web map provider can execute', () => {
+test('finalizer is verification-only, requires successful deploy, and cannot re-inject v3', () => {
+  assert.match(finalizerSrc, /workflow_run\.conclusion == 'success'/);
+  assert.match(finalizerSrc, /verification-only/);
+  assert.match(finalizerSrc, /api-maps\.yandex\.ru\/2\.1/);
+  assert.doesNotMatch(finalizerSrc, /src="https:\/\/api-maps\.yandex\.ru\/v3/);
+  assert.doesNotMatch(finalizerSrc, /index\.write_text/);
+});
+
+test('no alternate web map renderer can execute', () => {
   assert.doesNotMatch(mapSrc, /LEAFLET_JS|LEAFLET_CSS|unpkg\.com\/leaflet|tile\.openstreetmap\.org|OpenStreetMapFallback|truck-map-osm-fallback|useFallback|\.tileLayer\(/);
   assert.match(mapSrc, /truck-map-yandex-error/);
   assert.match(mapSrc, /Карта не будет заменена другим провайдером/);
 });
 
-test('deal map exposes real Yandex route distance and travel time', () => {
-  assert.match(mapSrc, /multiRoute\.getActiveRoute/);
-  assert.match(mapSrc, /properties\?\.get\?\.\('distance'\)/);
-  assert.match(mapSrc, /properties\?\.get\?\.\('duration'\)/);
-  assert.match(mapSrc, /distanceText/);
-  assert.match(mapSrc, /durationText/);
-  assert.match(mapSrc, /onRouteSummary/);
+test('KZ/RU route geometry and metrics come from Yandex Router API first', () => {
+  assert.match(routerSrc, /api\.routing\.yandex\.net\/v2\/route/);
+  assert.match(routerSrc, /for mode in \("truck", "driving"\)/);
+  assert.match(routerSrc, /step\.get\("length"\)/);
+  assert.match(routerSrc, /step\.get\("duration"\)/);
+  assert.match(routerSrc, /step\.get\("polyline"\)/);
+  assert.match(mapSrc, /distanceTextFromMeters/);
+  assert.match(mapSrc, /durationTextFromSeconds/);
 });
 
-test('live GPS route metrics are remaining distance to destination, not a fake estimate', () => {
+test('live GPS route metrics use current point to destination', () => {
   assert.match(mapSrc, /plannedPoints\[plannedPoints\.length - 1\]/);
-  assert.match(mapSrc, /\[livePoint, destination\]/);
-  assert.match(mapSrc, /requestfail', addStraightFallback/);
-  assert.match(mapSrc, /emitSummary\(null\)/);
+  assert.match(mapSrc, /livePoint && destination \? \[livePoint, destination\] : plannedPoints/);
+  assert.match(mapSrc, /routingAPI\.roadRoute\(effectivePoints\)/);
+  assert.match(mapSrc, /truck-map-road-route-unavailable/);
 });
 
 test('tracking screen renders distance and delivery time card over the map', () => {
