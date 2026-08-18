@@ -19,7 +19,10 @@ from api.verification_gate import get_user
 
 routing_router = APIRouter(tags=["routing"])
 
-_ORS_URL = "https://api.openrouteservice.org/v2/directions/driving-hgv/geojson"
+# HeiGIT announced api.openrouteservice.org shutdown for 2026-08-24.
+# Use the replacement URL now so UrTruck does not ship a route service that
+# is scheduled to disappear days after release.
+_ORS_URL = "https://api.heigit.org/openrouteservice/v2/directions/driving-hgv/geojson"
 _CACHE_TTL_SECONDS = 15 * 60
 _CACHE_MAX_ITEMS = 256
 _route_cache: dict[str, tuple[float, dict]] = {}
@@ -82,8 +85,6 @@ def _downsample(points: list[list[float]], limit: int = 5000) -> list[list[float
 
 
 def _ors_options(vehicle: Optional[VehicleSpec]) -> dict:
-    # openrouteservice HGV works without explicit dimensions. When UrTruck has
-    # them, send them so the engine can respect road restrictions.
     if not vehicle:
         return {"vehicle_type": "hgv"}
     restrictions = {}
@@ -106,8 +107,7 @@ def _ors_options(vehicle: Optional[VehicleSpec]) -> dict:
 async def _request_ors(body: RoadRouteRequest, api_key: str) -> dict:
     # ORS expects [longitude, latitude]; UrTruck/Yandex components use
     # [latitude, longitude]. Convert only at the provider boundary.
-    # Do NOT request alternative distance units: ORS default summary is
-    # distance in metres and duration in seconds, which is our API contract.
+    # Default ORS summary is distance in metres and duration in seconds.
     coordinates = [[p.lng, p.lat] for p in body.points]
     request_body = {
         "coordinates": coordinates,
