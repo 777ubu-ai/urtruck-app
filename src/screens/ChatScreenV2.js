@@ -2,13 +2,12 @@ import React from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ChatScreen from './ChatScreen';
-import DealWorkspaceScreen from './DealWorkspaceScreen';
+import DealWorkspaceScreen from './DealWorkspaceScreenV2';
 import { chatAPI } from '../utils/chatAPI';
 import { useV1Colors } from '../theme/designV1';
 
-// Accepted deal rooms use the new map-first workspace. Support/general/pre-deal
-// conversations keep the mature legacy ChatScreen, so this change does not
-// regress non-deal chat functionality.
+// Accepted deal rooms use the three-zone map-first workspace. Support/general/
+// pre-deal conversations keep the mature legacy ChatScreen.
 export default function ChatScreenV2(props) {
   const { route } = props;
   const params = route?.params || {};
