@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Bootstrap production backend environment without printing secret values.
 # Usage: remote_bootstrap_secure_env.sh BACKEND_DIR [REMOTE_BOOTSTRAP_FILE]
-# REMOTE_BOOTSTRAP_FILE may contain SUPABASE_SERVICE_KEY=... copied with mode 600.
+# REMOTE_BOOTSTRAP_FILE may contain server-only secrets copied with mode 600.
 set -euo pipefail
 umask 077
 
@@ -34,8 +34,9 @@ set_env() {
   tmp=""
 }
 
-# Migrate/preserve the existing server-only service key. A GitHub secret may be
-# supplied through a temporary 0600 file, but is never echoed or put in argv.
+# Migrate/preserve the existing server-only Supabase service key. A GitHub
+# secret may be supplied through a temporary 0600 file, but is never echoed or
+# put in argv.
 current_service="$(get_env SUPABASE_SERVICE_KEY "$ENV_FILE")"
 if [ -z "$current_service" ]; then
   legacy_service="$(get_env SUPABASE_SERVICE_ROLE_KEY "$ENV_FILE")"
@@ -47,6 +48,15 @@ if [ -z "$current_service" ]; then
   set_env SUPABASE_SERVICE_KEY "${legacy_service:-$incoming_service}"
 fi
 
+# Global road routing key is also server-only. If deploy supplies a newer
+# GitHub secret, replace the old value atomically. If not, preserve an existing
+# production value so deployments never erase a manually provisioned key.
+incoming_routing=""
+if [ -n "$REMOTE_BOOTSTRAP" ] && [ -f "$REMOTE_BOOTSTRAP" ]; then
+  incoming_routing="$(get_env OPENROUTESERVICE_API_KEY "$REMOTE_BOOTSTRAP")"
+fi
+[ -z "$incoming_routing" ] || set_env OPENROUTESERVICE_API_KEY "$incoming_routing"
+
 # Current UrTruck production Supabase project (public project URL, not a secret).
 [ -n "$(get_env SUPABASE_URL "$ENV_FILE")" ] || set_env SUPABASE_URL 'https://hchmnocoxjvtgdamcmmi.supabase.co'
 set_env STORAGE_PROVIDER 'supabase'
@@ -56,18 +66,22 @@ set_env STORAGE_PROVIDER 'supabase'
 file_key="$(get_env FILE_SIGNING_KEY "$ENV_FILE")"
 [ "$(printf %s "$file_key" | wc -c)" -ge 32 ] || set_env FILE_SIGNING_KEY "$(openssl rand -hex 32)"
 [ -n "$(get_env QA_AGENT_TOKEN "$ENV_FILE")" ] || set_env QA_AGENT_TOKEN "$(openssl rand -hex 32)"
-unset file_key current_service legacy_service incoming_service
+unset file_key current_service legacy_service incoming_service incoming_routing
 
 # Fail closed before backend deployment/restart. Only presence is reported.
 test -n "$(get_env SUPABASE_SERVICE_KEY "$ENV_FILE")" || { echo 'ERROR: SUPABASE_SERVICE_KEY missing'; exit 1; }
 test -n "$(get_env SUPABASE_URL "$ENV_FILE")" || { echo 'ERROR: SUPABASE_URL missing'; exit 1; }
 test -n "$(get_env SUPABASE_BUCKET "$ENV_FILE")" || { echo 'ERROR: SUPABASE_BUCKET missing'; exit 1; }
+test -n "$(get_env OPENROUTESERVICE_API_KEY "$ENV_FILE")" || { echo 'ERROR: OPENROUTESERVICE_API_KEY missing'; exit 1; }
 [ "$(printf %s "$(get_env FILE_SIGNING_KEY "$ENV_FILE")" | wc -c)" -ge 32 ] || { echo 'ERROR: FILE_SIGNING_KEY invalid'; exit 1; }
 
 cnt="$(grep -cE '^FILE_SIGNING_KEY=' "$ENV_FILE" || true)"
 [ "$cnt" = "1" ] || { echo "ERROR: FILE_SIGNING_KEY_COUNT=$cnt"; exit 1; }
+routing_cnt="$(grep -cE '^OPENROUTESERVICE_API_KEY=' "$ENV_FILE" || true)"
+[ "$routing_cnt" = "1" ] || { echo "ERROR: OPENROUTESERVICE_API_KEY_COUNT=$routing_cnt"; exit 1; }
 chmod 600 "$ENV_FILE" 2>/dev/null || true
 
 echo 'SECURE_ENV=ready'
 echo 'STORAGE_PROVIDER=supabase'
 echo 'FILE_SIGNING_KEY_PRESENT=yes'
+echo 'GLOBAL_ROUTING_KEY_PRESENT=yes'
