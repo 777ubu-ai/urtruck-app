@@ -1,8 +1,6 @@
 name: UrTruck Secure Production Deploy
 
 on:
-  # UrTruck Deploy is the release gate. Production is written only here and
-  # only after that gate succeeds, preventing competing frontend/backend copies.
   workflow_run:
     workflows: ["UrTruck Deploy"]
     types: [completed]
@@ -32,6 +30,7 @@ jobs:
       BACKEND_DIR: ${{ secrets.BACKEND_DIR || '/home/ubuntu/urtruck-security' }}
       PUBLIC_BASE_URL: ${{ secrets.PUBLIC_BASE_URL || 'https://urtruck.kz' }}
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      OPENROUTESERVICE_API_KEY: ${{ secrets.OPENROUTESERVICE_API_KEY }}
       PM2_PROC: urtruck-security-api
 
     steps:
@@ -117,6 +116,9 @@ jobs:
           BOOTSTRAP_FILE=$(mktemp)
           trap 'rm -f "$BOOTSTRAP_FILE"' EXIT
           printf 'SUPABASE_SERVICE_KEY=%s\n' "$SUPABASE_SERVICE_KEY" > "$BOOTSTRAP_FILE"
+          if [ -n "${OPENROUTESERVICE_API_KEY:-}" ]; then
+            printf 'OPENROUTESERVICE_API_KEY=%s\n' "$OPENROUTESERVICE_API_KEY" >> "$BOOTSTRAP_FILE"
+          fi
           REMOTE_BOOTSTRAP="/tmp/urtruck-secure-env-${GITHUB_RUN_ID}"
           bash scripts/deploy-ssh.sh scp "$BOOTSTRAP_FILE" "$SERVER_USER@$SERVER_HOST:$REMOTE_BOOTSTRAP"
           bash scripts/deploy-ssh.sh scp scripts/remote_bootstrap_secure_env.sh "$SERVER_USER@$SERVER_HOST:/tmp/urtruck_bootstrap_env.sh"
@@ -128,6 +130,11 @@ jobs:
           bash scripts/deploy-ssh.sh scp -C -r backend/* "$SERVER_USER@$SERVER_HOST:$BACKEND_DIR/"
           bash scripts/deploy-ssh.sh scp scripts/remote_health_check.sh "$SERVER_USER@$SERVER_HOST:/tmp/urtruck_health.sh"
           bash scripts/deploy-ssh.sh ssh "chmod 700 /tmp/urtruck_health.sh; bash /tmp/urtruck_health.sh '$PM2_PROC'; rc=\$?; rm -f /tmp/urtruck_health.sh; exit \$rc"
+
+      - name: Verify global routing is configured
+        run: |
+          set -euo pipefail
+          bash scripts/deploy-ssh.sh ssh "grep -q '^OPENROUTESERVICE_API_KEY=.' '$BACKEND_DIR/.env' || { echo GLOBAL_ROUTING_KEY=missing; exit 1; }; echo GLOBAL_ROUTING_KEY=ready"
 
       - name: Verify document signing on production server
         run: |
@@ -159,5 +166,12 @@ jobs:
           trips=$(curl --fail --silent --show-error --connect-timeout 5 --max-time 15 "$PUBLIC_BASE_URL/security/api/v1/market/trips?status=active&limit=1")
           printf '%s\n' "$trips" | grep -q '"trips"'
           echo 'MARKET_API=ok'
+
+          route_guard=$(curl --silent --output /dev/null --write-out '%{http_code}' --connect-timeout 5 --max-time 15 -X POST \
+            -H 'Content-Type: application/json' \
+            -d '{"points":[{"lat":23.1291,"lng":113.2644},{"lat":51.1694,"lng":71.4491}]}' \
+            "$PUBLIC_BASE_URL/security/api/v1/routing/road-route")
+          test "$route_guard" = "401" || test "$route_guard" = "403"
+          echo 'GLOBAL_ROUTING_ENDPOINT=guarded'
 
           echo 'SECURE_PRODUCTION_DEPLOY=success'
