@@ -6,19 +6,22 @@ const feed = fs.readFileSync('src/components/ui/v1/FeedCard.js', 'utf8');
 const places = fs.readFileSync('src/utils/places.js', 'utf8');
 const myTrips = fs.readFileSync('src/screens/MyTripsScreen.js', 'utf8');
 
-// 2026-08-19: было `name="bookmark"` — внесено авто-коммитом
-// urtruck-release-bot 9e4f83f (16.08.2026, "unify shipper cards"), который
-// заменил исходное сердце (❤️/🤍) на Feather-флажок. Это и есть первопричина
-// прод-бага с владельческих скриншотов (2026-08-18): иконка сохранения на
-// карточке ленты — флажок, а в «Избранном» (FavoritesScreen) — сердце,
-// визуальная несогласованность. Тест ниже раньше закреплял именно баг;
-// теперь закрепляет исправление (сердце везде, см. PR fix/favorites-cargo-and-icons-20260818).
-test('unified marketplace save action uses the approved heart icon and calm price colour', () => {
+// 2026-08-19: короткая инверсия туда-сюда на этой строке — задокументировано,
+// чтобы никто не откатил обратно без явного нового решения владельца.
+// urtruck-release-bot 9e4f83f (16.08.2026, "unify shipper cards") поменял
+// исходное сердце (❤️/🤍) на Feather-флажок (bookmark) — это БЫЛО
+// правильным направлением. В тот же день это ошибочно "исправили" обратно
+// на сердце, решив, что несоответствие с FavoritesScreen (который один
+// использовал сердце) нужно устранить в другую сторону. Владелец явно
+// подтвердил (голосом, по прод-скриншоту): канон — ФЛАЖОК, не сердце.
+// FavoritesScreen тоже переведён на bookmark отдельно. Тест закрепляет
+// финальное, owner-подтверждённое состояние.
+test('unified marketplace save action uses the approved bookmark icon and calm price colour', () => {
   assert.doesNotMatch(feed, /❤️|🤍/); // Feather-иконка, не emoji
-  assert.match(feed, /name="heart"/);
+  assert.match(feed, /name="bookmark"/);
   assert.match(feed, /fill=\{favActive \? SAVE : 'transparent'\}/);
   assert.match(feed, /accessibilityLabel=\{favActive \? t\('in_favorites'\) : t\('add_to_favorites'\)\}/);
-  assert.doesNotMatch(feed, /name="bookmark"/);
+  assert.doesNotMatch(feed, /name="heart"/);
   assert.doesNotMatch(feed, /color: '#E06D00'/);
 });
 

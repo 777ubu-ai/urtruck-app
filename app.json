@@ -2,7 +2,7 @@
   "expo": {
     "name": "UrTruck",
     "slug": "urtruck",
-    "version": "1.0.6",
+    "version": "1.0.7",
     "orientation": "portrait",
     "scheme": "urtruck",
     "platforms": [
@@ -24,7 +24,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.urtruck.app",
-      "buildNumber": "3",
+      "buildNumber": "4",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "UrTruck использует микрофон для записи голосовых сообщений в чате",
         "NSCameraUsageDescription": "UrTruck использует камеру для селфи и фото документов",
