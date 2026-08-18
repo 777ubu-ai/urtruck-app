@@ -1,1 +1,1 @@
-export { default } from './QueueScreenLazy';
+export { default } from './QueueScreenLazyV2';
