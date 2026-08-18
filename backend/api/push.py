@@ -100,6 +100,19 @@ def _migrate_ownership_columns():
             )
         """)
         c.execute("CREATE INDEX IF NOT EXISTS idx_push_audit_token ON push_token_audit(token_masked)")
+        # PR#187 reconciliation: на legacy-БД (без event_key) добавляем колонку
+        # ПЕРЕД созданием уникального индекса — иначе индекс по несуществующей
+        # колонке падает. Тот же порядок, что и в notifications._migrate_event_key.
+        try:
+            push_log_cols = {r["name"] for r in c.execute("PRAGMA table_info(push_log)").fetchall()}
+            if "event_key" not in push_log_cols:
+                try:
+                    c.execute("ALTER TABLE push_log ADD COLUMN event_key TEXT")
+                except Exception:
+                    pass
+            c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_push_log_event_key ON push_log(user_id, event_key) WHERE event_key IS NOT NULL")
+        except Exception:
+            pass
         c.commit()
 
 

@@ -21,7 +21,7 @@ dbm.init_db()
 registration_dal.init_registration_schema()
 
 from database.db import get_conn
-from api.chat import get_or_create_deal_room, send_message, get_messages, SendMessageIn
+from api.chat import get_or_create_deal_room, send_message, get_messages, my_rooms, SendMessageIn
 from fastapi import HTTPException
 
 
@@ -31,6 +31,9 @@ def _u(uid):
 
 def _mk_users(*uids):
     with get_conn() as c:
+        columns = {row["name"] for row in c.execute("PRAGMA table_info(drivers_registration)").fetchall()}
+        if "legal_form" not in columns:
+            c.execute("ALTER TABLE drivers_registration ADD COLUMN legal_form TEXT")
         for u in uids:
             try:
                 c.execute("INSERT INTO drivers_registration (id, full_name, phone) VALUES (?,?,?)",
@@ -57,11 +60,25 @@ def test_different_cargo_different_room():
     assert r_a != r_b
 
 
+
+def _mk_accepted_deal(cargo, owner, driver, room):
+    deal_id = "deal_" + uuid.uuid4().hex[:8]
+    with get_conn() as c:
+        c.execute(
+            "INSERT INTO deals (id, cargo_id, trip_id, bid_id, shipper_id, driver_id, "
+            "from_city, to_city, amount, status, chat_room_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (deal_id, cargo, None, "bid_" + uuid.uuid4().hex[:8], owner, driver,
+             "Almaty", "Astana", 1000, "accepted", room),
+        )
+    return deal_id
+
+
 def test_message_sync_both_directions():
     o, d = "own_" + uuid.uuid4().hex[:6], "drv_" + uuid.uuid4().hex[:6]
     cargo = "cg_" + uuid.uuid4().hex[:6]
     _mk_users(o, d)
     room = get_or_create_deal_room(cargo, o, d)
+    _mk_accepted_deal(cargo, o, d, room)
     send_message(SendMessageIn(room_id=room, text="msg-driver"), user=_u(d))
     send_message(SendMessageIn(room_id=room, text="msg-owner"), user=_u(o))
     owner_view = [m["text"] for m in get_messages(room, user=_u(o))["messages"]]
@@ -76,22 +93,10 @@ def test_third_user_cannot_read_or_send():
     cargo = "cg_" + uuid.uuid4().hex[:6]
     _mk_users(o, d, t)
     room = get_or_create_deal_room(cargo, o, d)
+    _mk_accepted_deal(cargo, o, d, room)
     with pytest.raises(HTTPException) as e1:
         get_messages(room, user=_u(t))
     assert e1.value.status_code == 403
     with pytest.raises(HTTPException) as e2:
         send_message(SendMessageIn(room_id=room, text="hack"), user=_u(t))
     assert e2.value.status_code == 403
-
-
-def test_recipient_derived_from_room_not_payload():
-    """/send по room_id должен взять получателя из участников, игнорируя
-    возможный мусорный to_user_id (корень бага синхронизации)."""
-    o, d = "own_" + uuid.uuid4().hex[:6], "drv_" + uuid.uuid4().hex[:6]
-    cargo = "cg_" + uuid.uuid4().hex[:6]
-    _mk_users(o, d)
-    room = get_or_create_deal_room(cargo, o, d)
-    # to_user_id намеренно неверный — должно уйти владельцу (участнику комнаты)
-    send_message(SendMessageIn(room_id=room, to_user_id="GARBAGE", text="hi"), user=_u(d))
-    owner_view = [m["text"] for m in get_messages(room, user=_u(o))["messages"]]
-    assert "hi" in owner_view

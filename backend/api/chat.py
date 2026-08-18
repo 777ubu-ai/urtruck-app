@@ -263,6 +263,42 @@ class SendMessageIn(BaseModel):
     lang: Optional[str] = None           # QA-аудит P2-8: язык для авто-ответа поддержки
 
 
+# PR#187 reconciliation (security): приватный чат сделки доступен ТОЛЬКО после
+# принятия предложения. До accept комнаты сделки быть не должно, а прямой
+# `to_user_id`-путь раньше позволял открыть переписку с любым пользователем
+# без сделки (pre-accept IDOR + инфляция бейджа непрочитанных). Support и
+# демо-Володя — исключения. Статусы совпадают с активной/успешной частью FSM
+# marketplace (_DEAL_FLOW), включая awaiting_confirmation; cancelled/rejected
+# намеренно закрывают доступ к комнате.
+_DEAL_CHAT_STATUSES = ("accepted", "in_progress", "at_border", "awaiting_confirmation", "delivered", "completed")
+
+
+def _assert_chat_is_accepted(sender_id, recipient_id, *, room_id=None, cargo_id=None, trip_id=None):
+    if recipient_id == SUPPORT_ID:
+        return
+    if recipient_id == VOLODYA_ID and ENABLE_DEMO_CHAT:
+        return
+    if not any((room_id, cargo_id, trip_id)):
+        raise HTTPException(status_code=403, detail="Чат сделки доступен только после принятия предложения")
+    filters, params = [], []
+    if room_id:
+        filters.append("d.chat_room_id = ?"); params.append(room_id)
+    if cargo_id:
+        filters.append("d.cargo_id = ?"); params.append(cargo_id)
+    if trip_id:
+        filters.append("d.trip_id = ?"); params.append(trip_id)
+    placeholders = ",".join("?" for _ in _DEAL_CHAT_STATUSES)
+    with get_conn() as c:
+        row = c.execute(
+            f"SELECT 1 FROM deals d WHERE d.status IN ({placeholders}) "
+            "AND ((d.shipper_id = ? AND d.driver_id = ?) OR (d.shipper_id = ? AND d.driver_id = ?)) "
+            "AND (" + " OR ".join(filters) + ") LIMIT 1",
+            (*_DEAL_CHAT_STATUSES, sender_id, recipient_id, recipient_id, sender_id, *params),
+        ).fetchone()
+    if not row:
+        raise HTTPException(status_code=403, detail="Чат сделки доступен только после принятия предложения")
+
+
 @chat_router.post("/send")
 def send_message(body: SendMessageIn, user=Depends(require_level(1))):
     if not body.text and not body.photo_url:
@@ -285,9 +321,16 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
         recipient_id = room["participant_2"] if room["participant_1"] == user["id"] else room["participant_1"]
         room_cargo = room["cargo_id"]
         room_bid = room["bid_id"]
+        # PR#187: приватный чат только по принятой сделке.
+        _assert_chat_is_accepted(user["id"], recipient_id, room_id=room_id,
+                                 cargo_id=room["cargo_id"], trip_id=room["trip_id"])
     elif body.to_user_id:
-        room_id = _get_or_create_room(user["id"], body.to_user_id, body.cargo_id, body.trip_id)
         recipient_id = body.to_user_id
+        # PR#187: сначала проверяем сделку, ТОЛЬКО потом создаём комнату,
+        # иначе pre-accept комната появлялась бы даже при отказе.
+        _assert_chat_is_accepted(user["id"], recipient_id,
+                                 cargo_id=body.cargo_id, trip_id=body.trip_id)
+        room_id = _get_or_create_room(user["id"], body.to_user_id, body.cargo_id, body.trip_id)
     else:
         raise HTTPException(status_code=400, detail="room_id или to_user_id обязателен")
 
@@ -411,6 +454,10 @@ def my_rooms(user=Depends(require_level(1))):
     # если данных в БД нет — null, без выдумок. Доступ уже ограничен выше
     # (WHERE participant_1/2 = uid), поэтому JOIN'ы не раскрывают чужие комнаты.
     _enrich_rooms_with_deal_context(rooms, uid)
+    # PR#187: не показываем комнаты до принятия сделки (pre-accept/отклонённые/
+    # отменённые). Support всегда виден. deal_status/is_support проставлены
+    # обогащением выше.
+    rooms = [r for r in rooms if r.get("is_support") or r.get("deal_status") in _DEAL_CHAT_STATUSES]
     return {"rooms": rooms}
 
 
@@ -565,14 +612,19 @@ def _enrich_rooms_with_deal_context(rooms: list, uid: str) -> None:
 @chat_router.get("/messages/{room_id}")
 def get_messages(room_id: str, limit: int = 100, offset: int = 0, user=Depends(require_level(1))):
     uid = user["id"]
+    # Проверка участия + PR#187-гейт приватности — в отдельном соединении,
+    # закрытом до основного (без вложенных get_conn под UPDATE ниже).
     with get_conn() as c:
-        # Проверка что юзер участник
         room = c.execute("SELECT * FROM chat_rooms WHERE id = ?", (room_id,)).fetchone()
-        if not room:
-            raise HTTPException(status_code=404)
-        if uid not in (room["participant_1"], room["participant_2"]):
-            raise HTTPException(status_code=403, detail="Вы не участник этого чата")
-
+    if not room:
+        raise HTTPException(status_code=404)
+    if uid not in (room["participant_1"], room["participant_2"]):
+        raise HTTPException(status_code=403, detail="Вы не участник этого чата")
+    partner_id = room["participant_2"] if room["participant_1"] == uid else room["participant_1"]
+    # PR#187: читать переписку сделки можно только по принятой сделке.
+    _assert_chat_is_accepted(uid, partner_id, room_id=room_id,
+                             cargo_id=room["cargo_id"], trip_id=room["trip_id"])
+    with get_conn() as c:
         # P3: tiebreak по id. created_at имеет посекундную точность (TEXT
         # CURRENT_TIMESTAMP) — два сообщения в одну секунду могли переставиться
         # местами. Автоинкрементный id даёт детерминированный порядок.

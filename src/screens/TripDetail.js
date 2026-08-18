@@ -858,7 +858,7 @@ export default function TripDetail({ navigation, route }) {
       {/* Отзыв после доставки. Trip-сделка не проходит через CargoDetail,
           поэтому без этого блока участникам trip-сделки было негде оценить
           друг друга. Клиент оценивает водителя, водитель — клиента. */}
-      {dealStatus === 'delivered' && !reviewSent && (isShipper ? (driverId || trip.driverId) : shipperId) ? (
+      {dealStatus === 'completed' && !reviewSent && (isShipper ? (driverId || trip.driverId) : shipperId) ? (
         <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
           <View style={[s.reviewBlock, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <Text style={[s.reviewTitle, { color: theme.text }]}>{isShipper ? t('rate_driver') : t('rate_shipper')}</Text>
@@ -902,7 +902,7 @@ export default function TripDetail({ navigation, route }) {
           </View>
         </View>
       ) : null}
-      {dealStatus === 'delivered' && reviewSent ? (
+      {dealStatus === 'completed' && reviewSent ? (
         <View style={{ paddingHorizontal: 16, paddingBottom: 8, alignItems: 'center' }}>
           <Text style={{ color: '#168759', fontSize: 14, fontWeight: '600' }}>{t('thanks_for_review')}</Text>
         </View>

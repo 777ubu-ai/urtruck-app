@@ -884,11 +884,15 @@ def _party_contact(c, uid, deal):
 def waybill_link(deal_id: str, user=Depends(require_level(1))):
     """Подписанная ссылка на накладную — только участнику сделки."""
     with get_conn() as c:
-        d = c.execute("SELECT shipper_id, driver_id FROM deals WHERE id = ?", (deal_id,)).fetchone()
+        d = c.execute("SELECT shipper_id, driver_id, status FROM deals WHERE id = ?", (deal_id,)).fetchone()
     if not d:
         raise HTTPException(status_code=404, detail="Сделка не найдена")
     if user["id"] not in (d["shipper_id"], d["driver_id"]):
         raise HTTPException(status_code=403)
+    # PR#187 reconciliation (security): накладная недоступна по отменённой/
+    # отклонённой сделке (документы только по активной/успешной сделке).
+    if d["status"] in ("cancelled", "rejected"):
+        raise HTTPException(status_code=409, detail="Документы недоступны для отменённой сделки")
     exp = int(_wb_time.time()) + 7 * 24 * 3600
     try:
         sig = _wb_sig(deal_id, exp)
@@ -911,6 +915,9 @@ def waybill_html(deal_id: str, exp: int = 0, sig: str = ""):
         if not d:
             raise HTTPException(status_code=404)
         d = dict(d)
+        # PR#187: не рендерим накладную по отменённой/отклонённой сделке.
+        if d.get("status") in ("cancelled", "rejected"):
+            raise HTTPException(status_code=409, detail="Документы недоступны для отменённой сделки")
         cargo = {}
         if d.get("cargo_id"):
             r = c.execute("SELECT cargo_desc, cargo_type, weight_tons, volume_m3, currency, pickup_date FROM cargos WHERE id = ?", (d["cargo_id"],)).fetchone()
