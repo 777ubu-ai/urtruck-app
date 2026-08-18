@@ -6,6 +6,7 @@ import { Linking, Platform } from 'react-native';
 import { storage } from './storage';
 import { t } from './i18n';
 import { API_BASE } from '../config/env';
+import { requestLocationPermissionThroughDisclosure } from './locationPermissionCoordinator';
 
 export const BG_LOCATION_TASK = 'urtruck-deal-location';
 const BG_DEALS_KEY = 'ur_bg_deal_ids';
@@ -177,10 +178,18 @@ export async function openLocationSettings() {
   }
 }
 
-// Compatibility entry point used by iOS/older callers. On native Android this
-// is STRICT: foreground-only is not enough for an active long-haul trip.
-// The Deal Workspace displays disclosure before calling this function.
+// Compatibility entry point used by start-trip actions.
+// Android native MUST go through the registered visible disclosure host.
+// This means an old/hidden screen can no longer pop a background permission
+// dialog without the Google Play prominent disclosure.
 export async function ensureBackgroundLocationPermission() {
+  const current = await getBackgroundLocationPermissionState();
+  if (current.ok) return { ok: true, foregroundOnly: !!current.foregroundOnly };
+
+  if (Platform.OS === 'android') {
+    return requestLocationPermissionThroughDisclosure({ source: 'start_trip' });
+  }
+
   const fg = await requestForegroundLocationPermission();
   if (!fg.ok) return fg;
   if (Platform.OS === 'web') return { ok: true, foregroundOnly: true };
