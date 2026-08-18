@@ -2,7 +2,7 @@
 // Documents are no longer a separate workspace tab: the chat "+" menu
 // triggers this component, exactly where users expect attachments to live.
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Platform, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Platform, Alert, Linking } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import Feather from '@expo/vector-icons/Feather';
@@ -27,6 +27,13 @@ function attachmentLabel(t, a) {
   if (readable && !/^[a-f0-9]{24,}$/i.test(String(readable))) return String(readable);
   const isDoc = a?.kind === 'document' || a?.mime_type === 'application/pdf';
   return isDoc ? t('attachment_document') : t('attachment_photo');
+}
+
+function formatBytes(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  if (n < 1024 * 1024) return `${Math.max(1, Math.round(n / 1024))} KB`;
+  return `${(n / (1024 * 1024)).toFixed(n >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
 }
 
 export default function DealAttachments({
@@ -132,6 +139,12 @@ export default function DealAttachments({
     runUpload(item);
   }, [runUpload]);
 
+  const openAttachment = useCallback(async (item) => {
+    const url = item?.url || item?.signed_url || item?.download_url;
+    if (!url) return;
+    try { await Linking.openURL(url); } catch { /* signed link may have expired; next load refreshes it */ }
+  }, []);
+
   const prevTrigger = React.useRef(attachTrigger);
   useEffect(() => {
     if (attachTrigger > prevTrigger.current) onAttach();
@@ -147,24 +160,33 @@ export default function DealAttachments({
   const isEmpty = server.length === 0 && local.length === 0;
   if ((compact || inline) && isEmpty) return null;
 
-  const Row = ({ icon, label, statusKey, statusColor, spinning, onRetryPress }) => (
-    <View style={[s.row, inline && [s.inlineRow, { backgroundColor: theme.card, borderColor: theme.border }]]}>
-      <View style={[s.fileIcon, { backgroundColor: '#E9F6EF' }]}>
-        <Feather name={icon} size={16} color="#168759" />
-      </View>
-      <View style={s.fileText}>
-        <Text style={[s.name, { color: theme.text }]} numberOfLines={1}>{label}</Text>
-        {statusKey ? <Text style={[s.status, { color: statusColor }]}>{t(statusKey)}</Text> : null}
-      </View>
-      {spinning ? <ActivityIndicator size="small" color="#168759" /> : null}
-      {onRetryPress ? (
-        <TouchableOpacity onPress={onRetryPress} testID="attach-retry" style={s.retryBtn}>
-          <Feather name="refresh-cw" size={14} color={accent} />
-          <Text style={[s.retryTxt, { color: accent }]}>{t('chat_attach_retry')}</Text>
-        </TouchableOpacity>
-      ) : null}
-    </View>
-  );
+  const Row = ({ icon, label, sublabel, statusKey, statusColor, spinning, onRetryPress, onOpen }) => {
+    const Wrapper = onOpen ? TouchableOpacity : View;
+    return (
+      <Wrapper
+        onPress={onOpen}
+        activeOpacity={onOpen ? 0.72 : 1}
+        style={[s.row, inline && [s.inlineRow, { backgroundColor: theme.card, borderColor: theme.border }]]}
+        testID={onOpen ? 'deal-attachment-open' : undefined}
+      >
+        <View style={[s.fileIcon, { backgroundColor: '#E9F6EF' }]}>
+          <Feather name={icon} size={16} color="#168759" />
+        </View>
+        <View style={s.fileText}>
+          <Text style={[s.name, { color: theme.text }]} numberOfLines={1}>{label}</Text>
+          {sublabel ? <Text style={[s.size, { color: theme.textMuted }]}>{sublabel}</Text> : null}
+          {statusKey ? <Text style={[s.status, { color: statusColor }]}>{t(statusKey)}</Text> : null}
+        </View>
+        {spinning ? <ActivityIndicator size="small" color="#168759" /> : null}
+        {onRetryPress ? (
+          <TouchableOpacity onPress={onRetryPress} testID="attach-retry" style={s.retryBtn}>
+            <Feather name="refresh-cw" size={14} color={accent} />
+            <Text style={[s.retryTxt, { color: accent }]}>{t('chat_attach_retry')}</Text>
+          </TouchableOpacity>
+        ) : onOpen ? <Feather name="chevron-right" size={17} color={theme.textMuted} /> : null}
+      </Wrapper>
+    );
+  };
 
   return (
     <View
@@ -200,8 +222,10 @@ export default function DealAttachments({
                 key={a.id}
                 icon={a.kind === 'document' ? 'file-text' : 'image'}
                 label={attachmentLabel(t, a)}
+                sublabel={formatBytes(a.size_bytes)}
                 statusKey={meta.key}
                 statusColor={meta.color}
+                onOpen={a.url ? () => openAttachment(a) : null}
               />
             );
           })}
@@ -238,6 +262,7 @@ const s = StyleSheet.create({
   fileIcon: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   fileText: { flex: 1, minWidth: 0 },
   name: { fontSize: 12.5, fontWeight: '750' },
+  size: { fontSize: 10.5, fontWeight: '650', marginTop: 1 },
   status: { fontSize: 10.5, fontWeight: '800', marginTop: 2 },
   retryBtn: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   retryTxt: { fontSize: 11, fontWeight: '800' },
