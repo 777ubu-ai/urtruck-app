@@ -9,9 +9,10 @@ const attachments = fs.readFileSync('src/components/deal/DealAttachments.js', 'u
 test('active ProfileV2 requires shipper name country and phone', () => {
   assert.match(profile, /const isShipper = role === 'client'/);
   assert.match(profile, /validName && validCountry && validPhone/);
-  assert.match(profile, /profile-v2-country/);
-  assert.match(profile, /profile-v2-phone/);
-  assert.match(profile, /profile-v2-company/);
+  assert.match(profile, /<Field id="country"/);
+  assert.match(profile, /<Field id="phone"/);
+  assert.match(profile, /<Field id="company"/);
+  assert.match(profile, /testID=\{`profile-v2-\$\{id\}`\}/);
   assert.match(profile, /payload\.country = country\.trim\(\)/);
   assert.match(profile, /payload\.company_name = company\.trim\(\)/);
   assert.match(profile, /COUNTRY_REQUIRED/);
