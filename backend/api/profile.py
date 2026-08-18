@@ -14,15 +14,6 @@ from services import file_signing
 
 profile_router = APIRouter()
 
-# PR-D1: PRO-поля водителя (Fast-Track + PRO согласно
-# driver_onboarding.md §2). Хранятся в той же таблице
-# drivers_registration через ALTER TABLE add-if-missing —
-# отдельная таблица оверкилл для 7 колонок.
-#
-# favorite_borders — массив, сериализуем в JSON-строку
-# (SQLite не имеет нативного array type).
-# *_url are opaque private storage references; signed URLs are created only on authorized reads.
-
 def _normalize_phone(v):
     if v is None:
         return None
@@ -33,13 +24,15 @@ def _is_real_phone(v):
         return False
     return len("".join(ch for ch in str(v) if ch.isdigit())) >= 10
 
+def _is_real_country(v):
+    return bool(v and len(str(v).strip()) >= 2)
+
 class UpdateProfileIn(BaseModel):
     name: Optional[str] = None
     city: Optional[str] = None
     about: Optional[str] = None
     phone: Optional[str] = None
     role: Optional[str] = None
-    # PRO fields
     legal_form: Optional[str] = Field(None, description="individual | ip | too")
     china_experience_years: Optional[int] = None
     favorite_borders: Optional[List[str]] = None
@@ -47,39 +40,30 @@ class UpdateProfileIn(BaseModel):
     passport_intl_url: Optional[str] = None
     tir_book_url: Optional[str] = None
     cmr_insurance_url: Optional[str] = None
-    # Профиль грузоотправителя (междунар.): компания, БИН/ИНН, страна и
-    # предпочтительный мессенджер + ID (WeChat/WhatsApp/Telegram/Viber).
     company_name: Optional[str] = None
     bin_inn: Optional[str] = None
     country: Optional[str] = None
     messenger_type: Optional[str] = Field(None, description="wechat|whatsapp|telegram|viber")
     messenger_id: Optional[str] = None
 
-
-# Колонки, добавляемые на лету в drivers_registration
 PRO_COLUMNS = [
     "city", "about",
     "legal_form", "china_experience_years",
     "favorite_borders", "emergency_contact",
     "passport_intl_url", "tir_book_url", "cmr_insurance_url",
-    # профиль грузоотправителя
     "company_name", "bin_inn", "country", "messenger_type", "messenger_id",
 ]
 
-
 def _ensure_columns():
-    """ALTER TABLE add-if-missing — идемпотентно. SQLite не умеет
-    IF NOT EXISTS для колонок, поэтому проверяем через PRAGMA."""
+    """ALTER TABLE add-if-missing — идемпотентно."""
     from database.db import get_conn
     with get_conn() as c:
         cols = {r["name"] for r in c.execute("PRAGMA table_info(drivers_registration)").fetchall()}
         for col in PRO_COLUMNS:
             if col not in cols:
-                # china_experience_years — целое, остальное TEXT
                 col_type = "INTEGER" if col == "china_experience_years" else "TEXT"
                 c.execute(f"ALTER TABLE drivers_registration ADD COLUMN {col} {col_type}")
         c.commit()
-
 
 def _parse_borders(raw):
     if not raw:
@@ -87,11 +71,10 @@ def _parse_borders(raw):
     if isinstance(raw, list):
         return raw
     try:
-        v = json.loads(raw)
-        return v if isinstance(v, list) else []
+        value = json.loads(raw)
+        return value if isinstance(value, list) else []
     except (ValueError, TypeError):
         return []
-
 
 _PRO_DOC_FIELD = {
     "passport_intl": "passport_intl_url",
@@ -120,10 +103,10 @@ async def upload_pro_document(kind: str, file: UploadFile = File(...), user=Depe
     reg_dal.update_driver(user["id"], {field: ref})
     return {"ok": True, "field": field, "url": file_signing.sign(ref, ttl=3600)}
 
-
 @profile_router.get("/me")
 def get_profile(user=Depends(require_level(1))):
     """Полный профиль текущего юзера."""
+    _ensure_columns()
     d = reg_dal.get_driver(user["id"])
     if not d:
         return user
@@ -142,28 +125,24 @@ def get_profile(user=Depends(require_level(1))):
         "security_color": d.get("security_color"),
         "status": d.get("status"),
         "created_at": d.get("created_at"),
-        # PR-D1: PRO-поля
         "legal_form": d.get("legal_form"),
         "china_experience_years": d.get("china_experience_years"),
         "favorite_borders": _parse_borders(d.get("favorite_borders")),
         "emergency_contact": d.get("emergency_contact"),
-        # профиль грузоотправителя
         "company_name": d.get("company_name"),
         "bin_inn": d.get("bin_inn"),
         "country": d.get("country"),
         "messenger_type": d.get("messenger_type"),
         "messenger_id": d.get("messenger_id"),
-        # Документы отдаём владельцу подписанной ссылкой (?exp&sig) — публичного
-        # доступа к storage больше нет. В БД хранится сырой путь, подпись только тут.
         "passport_intl_url": file_signing.sign(d.get("passport_intl_url")),
         "tir_book_url": file_signing.sign(d.get("tir_book_url")),
         "cmr_insurance_url": file_signing.sign(d.get("cmr_insurance_url")),
     }
 
-
 @profile_router.patch("/me")
 def update_profile(body: UpdateProfileIn, user=Depends(require_level(1))):
-    """Обновить имя/город/описание + PRO-поля."""
+    """Обновить профиль. Для грузоотправителя имя, страна и телефон обязательны."""
+    _ensure_columns()
     updates = {}
     if body.name is not None:
         updates["full_name"] = body.name.strip()
@@ -172,15 +151,12 @@ def update_profile(body: UpdateProfileIn, user=Depends(require_level(1))):
     if body.about is not None:
         updates["about"] = body.about.strip()
     if body.legal_form is not None:
-        # whitelist чтобы не ловить мусор от клиента
         lf = body.legal_form.strip()
         if lf in {"individual", "ip", "too"}:
             updates["legal_form"] = lf
     if body.china_experience_years is not None:
-        # clamp 0..50 — больше 50 лет водительского стажа в Китае не бывает
         updates["china_experience_years"] = max(0, min(50, int(body.china_experience_years)))
     if body.favorite_borders is not None:
-        # массив → JSON-строка; trim каждое имя
         clean = [str(x).strip() for x in body.favorite_borders if str(x).strip()]
         updates["favorite_borders"] = json.dumps(clean, ensure_ascii=False)
     if body.emergency_contact is not None:
@@ -191,7 +167,6 @@ def update_profile(body: UpdateProfileIn, user=Depends(require_level(1))):
         updates["tir_book_url"] = body.tir_book_url.strip()
     if body.cmr_insurance_url is not None:
         updates["cmr_insurance_url"] = body.cmr_insurance_url.strip()
-    # Профиль грузоотправителя
     if body.company_name is not None:
         updates["company_name"] = body.company_name.strip()
     if body.bin_inn is not None:
@@ -211,15 +186,22 @@ def update_profile(body: UpdateProfileIn, user=Depends(require_level(1))):
             role_norm = "client"
         if role_norm not in ("driver", "client"):
             raise HTTPException(status_code=400, detail={"error": "INVALID_ROLE", "message": "role должен быть driver|client"})
+
         current = reg_dal.get_driver(user["id"]) or {}
         body_phone = _normalize_phone(body.phone) if body.phone is not None else None
         stored_phone = current.get("phone")
         effective_phone = body_phone or (stored_phone if _is_real_phone(stored_phone) else None)
         if not effective_phone:
             raise HTTPException(status_code=400, detail={"error": "PHONE_REQUIRED", "message": "Для завершения регистрации укажите номер телефона"})
+
         effective_name = updates.get("full_name") or (current.get("full_name") or "").strip() or None
         if role_norm == "client" and not effective_name:
             raise HTTPException(status_code=400, detail={"error": "NAME_REQUIRED", "message": "Грузоотправитель обязан указать имя"})
+
+        effective_country = updates.get("country") or (current.get("country") or "").strip() or None
+        if role_norm == "client" and not _is_real_country(effective_country):
+            raise HTTPException(status_code=400, detail={"error": "COUNTRY_REQUIRED", "message": "Грузоотправитель обязан указать страну"})
+
         updates["role"] = role_norm
         if body_phone:
             if not _is_real_phone(body_phone):
@@ -234,7 +216,5 @@ def update_profile(body: UpdateProfileIn, user=Depends(require_level(1))):
     if not updates:
         return {"ok": True, "detail": "Нечего обновлять"}
 
-    _ensure_columns()
     reg_dal.update_driver(user["id"], updates)
     return {"ok": True}
-
