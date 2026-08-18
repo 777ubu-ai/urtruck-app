@@ -1,8 +1,13 @@
-"""Server-side global road routing for routes outside Yandex routing coverage.
+"""Server-side road routing for UrTruck.
 
-The map itself remains Yandex. This endpoint only returns road geometry +
-summary so UrTruck can render a real international route (e.g. China → KZ)
-without exposing a third-party routing key to browsers/mobile clients.
+Visual map stays Yandex. Road geometry is calculated server-side so web/native
+clients receive one trusted polyline + distance/duration without exposing
+provider keys.
+
+Policy:
+- KZ/RU/CIS: Yandex Router API, mode=truck (primary).
+- China / unsupported Yandex corridors: global HGV provider fallback.
+- Never fabricate road distance/ETA from a straight line.
 """
 from __future__ import annotations
 
@@ -19,9 +24,7 @@ from api.verification_gate import get_user
 
 routing_router = APIRouter(tags=["routing"])
 
-# HeiGIT announced api.openrouteservice.org shutdown for 2026-08-24.
-# Use the replacement URL now so UrTruck does not ship a route service that
-# is scheduled to disappear days after release.
+_YANDEX_URL = "https://api.routing.yandex.net/v2/route"
 _ORS_URL = "https://api.heigit.org/openrouteservice/v2/directions/driving-hgv/geojson"
 _CACHE_TTL_SECONDS = 15 * 60
 _CACHE_MAX_ITEMS = 256
@@ -39,6 +42,7 @@ class VehicleSpec(BaseModel):
     length_m: Optional[float] = Field(default=None, gt=0, le=40)
     weight_t: Optional[float] = Field(default=None, gt=0, le=100)
     axle_load_t: Optional[float] = Field(default=None, gt=0, le=30)
+    has_trailer: Optional[bool] = None
 
 
 class RoadRouteRequest(BaseModel):
@@ -53,7 +57,7 @@ def _cache_key(body: RoadRouteRequest) -> str:
         return point_key
     return (
         f"{point_key}|h={vehicle.height_m}|w={vehicle.width_m}|l={vehicle.length_m}"
-        f"|wt={vehicle.weight_t}|ax={vehicle.axle_load_t}"
+        f"|wt={vehicle.weight_t}|ax={vehicle.axle_load_t}|tr={vehicle.has_trailer}"
     )
 
 
@@ -76,12 +80,110 @@ def _cache_put(key: str, payload: dict) -> None:
 
 
 def _downsample(points: list[list[float]], limit: int = 5000) -> list[list[float]]:
-    """Keep route shape while protecting mobile/web payload size."""
     if len(points) <= limit:
         return points
     step = max(1, math.ceil((len(points) - 2) / (limit - 2)))
     sampled = [points[0], *points[1:-1:step], points[-1]]
     return sampled[:limit - 1] + [points[-1]] if len(sampled) > limit else sampled
+
+
+def _append_polyline(target: list[list[float]], points) -> None:
+    for raw in points or []:
+        if not isinstance(raw, (list, tuple)) or len(raw) < 2:
+            continue
+        lat = float(raw[0])
+        lng = float(raw[1])
+        if not (math.isfinite(lat) and math.isfinite(lng)):
+            continue
+        point = [lat, lng]
+        if target and abs(target[-1][0] - lat) < 1e-7 and abs(target[-1][1] - lng) < 1e-7:
+            continue
+        target.append(point)
+
+
+def _looks_like_china_corridor(points: List[RoutePoint]) -> bool:
+    # Practical UrTruck corridor detector. Guangzhou/Urumqi/China legs are
+    # outside Yandex Router API coverage; KZ/RU routes (Almaty↔Moscow etc.)
+    # stay on Yandex. This is deliberately conservative around East KZ.
+    for p in points:
+        if p.lng >= 90 and 18 <= p.lat <= 55:
+            return True
+        if p.lng >= 105 and p.lat < 45:
+            return True
+    return False
+
+
+def _yandex_params(body: RoadRouteRequest, api_key: str) -> dict:
+    params = {
+        "waypoints": "|".join(f"{p.lat},{p.lng}" for p in body.points),
+        "mode": "truck",
+        "traffic": "disabled",
+        "apikey": api_key,
+    }
+    vehicle = body.vehicle
+    if vehicle:
+        if vehicle.weight_t is not None:
+            params["weight"] = vehicle.weight_t
+        if vehicle.axle_load_t is not None:
+            params["axle_weight"] = vehicle.axle_load_t
+        if vehicle.height_m is not None:
+            params["height"] = vehicle.height_m
+        if vehicle.width_m is not None:
+            params["width"] = vehicle.width_m
+        if vehicle.length_m is not None:
+            params["length"] = vehicle.length_m
+        if vehicle.has_trailer is not None:
+            params["has_trailer"] = "true" if vehicle.has_trailer else "false"
+    return params
+
+
+async def _request_yandex(body: RoadRouteRequest, api_key: str) -> dict:
+    timeout = httpx.Timeout(25.0, connect=7.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        response = await client.get(_YANDEX_URL, params=_yandex_params(body, api_key))
+
+    if response.status_code >= 400:
+        detail = "yandex_router_failed"
+        try:
+            data = response.json()
+            errors = data.get("errors")
+            if isinstance(errors, list) and errors:
+                detail = str(errors[0])
+        except Exception:
+            pass
+        raise RuntimeError(f"yandex_router_http_{response.status_code}: {detail}")
+
+    try:
+        data = response.json()
+        route = data.get("route") or {}
+        legs = route.get("legs") or []
+        geometry: list[list[float]] = []
+        distance_m = 0.0
+        duration_s = 0.0
+        if not legs:
+            raise ValueError("no legs")
+        for leg in legs:
+            if leg.get("status") not in (None, "OK"):
+                raise ValueError(f"leg status {leg.get('status')}")
+            for step in leg.get("steps") or []:
+                distance_m += float(step.get("length") or 0)
+                duration_s += float(step.get("duration") or 0)
+                _append_polyline(geometry, (step.get("polyline") or {}).get("points") or [])
+    except Exception as exc:
+        raise RuntimeError("yandex_router_invalid_response") from exc
+
+    if len(geometry) < 2 or distance_m <= 0 or duration_s <= 0:
+        raise RuntimeError("yandex_router_empty_route")
+
+    return {
+        "ok": True,
+        "provider": "yandex",
+        "profile": "truck",
+        "distance_m": round(distance_m),
+        "duration_s": round(duration_s),
+        "geometry": _downsample(geometry),
+        "cached": False,
+    }
 
 
 def _ors_options(vehicle: Optional[VehicleSpec]) -> dict:
@@ -105,9 +207,6 @@ def _ors_options(vehicle: Optional[VehicleSpec]) -> dict:
 
 
 async def _request_ors(body: RoadRouteRequest, api_key: str) -> dict:
-    # ORS expects [longitude, latitude]; UrTruck/Yandex components use
-    # [latitude, longitude]. Convert only at the provider boundary.
-    # Default ORS summary is distance in metres and duration in seconds.
     coordinates = [[p.lng, p.lat] for p in body.points]
     request_body = {
         "coordinates": coordinates,
@@ -121,7 +220,7 @@ async def _request_ors(body: RoadRouteRequest, api_key: str) -> dict:
         "Content-Type": "application/json",
         "Accept": "application/geo+json, application/json",
     }
-    timeout = httpx.Timeout(20.0, connect=7.0)
+    timeout = httpx.Timeout(25.0, connect=7.0)
     async with httpx.AsyncClient(timeout=timeout) as client:
         response = await client.post(_ORS_URL, headers=headers, json=request_body)
 
@@ -129,27 +228,28 @@ async def _request_ors(body: RoadRouteRequest, api_key: str) -> dict:
         detail = "global_router_failed"
         try:
             data = response.json()
-            detail = data.get("error", {}).get("message") or data.get("error") or detail
+            err = data.get("error")
+            if isinstance(err, dict):
+                detail = err.get("message") or detail
+            elif err:
+                detail = str(err)
         except Exception:
             pass
-        raise HTTPException(status_code=502, detail=f"routing_provider_error: {detail}")
+        raise RuntimeError(f"global_router_http_{response.status_code}: {detail}")
 
     try:
         data = response.json()
         feature = (data.get("features") or [])[0]
-        props = feature.get("properties") or {}
-        summary = props.get("summary") or {}
+        summary = (feature.get("properties") or {}).get("summary") or {}
         raw_geometry = ((feature.get("geometry") or {}).get("coordinates") or [])
-        if len(raw_geometry) < 2:
-            raise ValueError("empty geometry")
         geometry = _downsample([[float(lat), float(lng)] for lng, lat in raw_geometry])
         distance_m = float(summary.get("distance"))
         duration_s = float(summary.get("duration"))
     except Exception as exc:
-        raise HTTPException(status_code=502, detail="routing_provider_invalid_response") from exc
+        raise RuntimeError("global_router_invalid_response") from exc
 
-    if not math.isfinite(distance_m) or distance_m <= 0 or not math.isfinite(duration_s) or duration_s <= 0:
-        raise HTTPException(status_code=502, detail="routing_provider_invalid_summary")
+    if len(geometry) < 2 or distance_m <= 0 or duration_s <= 0:
+        raise RuntimeError("global_router_empty_route")
 
     return {
         "ok": True,
@@ -164,20 +264,41 @@ async def _request_ors(body: RoadRouteRequest, api_key: str) -> dict:
 
 @routing_router.post("/road-route")
 async def build_road_route(body: RoadRouteRequest, _user=Depends(get_user)):
-    """Return a real road polyline for authenticated UrTruck users.
-
-    The provider key is server-only. We intentionally fail closed when it is
-    missing: a straight line must never be presented as a real road route.
-    """
-    api_key = (os.getenv("OPENROUTESERVICE_API_KEY") or os.getenv("ORS_API_KEY") or "").strip()
-    if not api_key:
-        raise HTTPException(status_code=503, detail="global_routing_not_configured")
-
+    """Return a trusted road polyline + metrics for authenticated users."""
     key = _cache_key(body)
     cached = _cache_get(key)
     if cached:
         return cached
 
-    payload = await _request_ors(body, api_key)
-    _cache_put(key, payload)
-    return payload
+    yandex_key = (os.getenv("YANDEX_ROUTER_API_KEY") or "").strip()
+    ors_key = (os.getenv("OPENROUTESERVICE_API_KEY") or os.getenv("ORS_API_KEY") or "").strip()
+    prefer_global = _looks_like_china_corridor(body.points)
+    errors: list[str] = []
+
+    if prefer_global and ors_key:
+        try:
+            payload = await _request_ors(body, ors_key)
+            _cache_put(key, payload)
+            return payload
+        except Exception as exc:
+            errors.append(str(exc))
+
+    if yandex_key:
+        try:
+            payload = await _request_yandex(body, yandex_key)
+            _cache_put(key, payload)
+            return payload
+        except Exception as exc:
+            errors.append(str(exc))
+
+    if ors_key:
+        try:
+            payload = await _request_ors(body, ors_key)
+            _cache_put(key, payload)
+            return payload
+        except Exception as exc:
+            errors.append(str(exc))
+
+    if not yandex_key and not ors_key:
+        raise HTTPException(status_code=503, detail="road_routing_not_configured")
+    raise HTTPException(status_code=502, detail="road_route_unavailable")
