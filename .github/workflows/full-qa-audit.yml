@@ -110,9 +110,14 @@ jobs:
           E2E_BASE_URL: http://127.0.0.1:4173
           QA_BASE_URL: http://127.0.0.1:4173
           QA_CAPTURE_ALL: '1'
-          PRODUCTION_EXPECTED_COMMIT: ${{ github.event.pull_request.base.sha || github.sha }}
         run: |
           mkdir -p qa-artifacts/playwright
+          # A PR is tested against a synthetic merge ref. Production, however,
+          # must equal the actual current `main`, not the stale base SHA stored
+          # when a long-lived PR was first opened.
+          export PRODUCTION_EXPECTED_COMMIT="$(git ls-remote origin refs/heads/main | awk '{print $1}')"
+          test -n "$PRODUCTION_EXPECTED_COMMIT"
+          echo "production smoke expects current main: $PRODUCTION_EXPECTED_COMMIT"
           set +e
           timeout --signal=TERM --kill-after=30s "${{ matrix.limit }}" \
             npx playwright test --config "${{ matrix.config }}"

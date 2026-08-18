@@ -1,19 +1,8 @@
-// DealAttachments — рабочая секция вложений Deal Chat (PR3 media foundation).
-// Заменяет DealDocumentsPlaceholder. Industrial Luxury, dark premium.
-//
-// Foundation:
-//   - список вложений (GET /chat/conversations/{id}/attachments);
-//   - кнопка «Прикрепить» → expo-image-picker → compressImage (document preset
-//     1600/0.8 по §5 мастер-ТЗ) → POST attachments;
-//   - upload-статусы: queued/uploading/uploaded/failed/retrying (локальный
-//     state до подтверждения сервером, без потери при ошибке);
-//   - retry для failed (без дублей: переиспользуем тот же optimistic id);
-//   - НЕТ fake-uploaded: запись появляется в списке только после ответа сервера.
-//
-// Доступ к файлам закрыт на бэке (только участники) — фронт лишь рендерит.
-
+// DealAttachments — private deal files rendered inline with the chat.
+// Documents are no longer a separate workspace tab: the chat "+" menu
+// triggers this component, exactly where users expect attachments to live.
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Platform, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Platform, Alert, Linking } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import Feather from '@expo/vector-icons/Feather';
@@ -25,33 +14,41 @@ import { accentFor } from './DealRoom';
 
 const STATUS_META = {
   queued:    { icon: 'clock',        color: '#7C8B82', key: 'chat_attach_status_queued' },
-  uploading: { icon: 'upload-cloud', color: '#E06D00', key: 'chat_attach_status_uploading' },
+  uploading: { icon: 'upload-cloud', color: '#168759', key: 'chat_attach_status_uploading' },
   uploaded:  { icon: 'check-circle', color: '#168759', key: 'chat_attach_status_uploaded' },
   failed:    { icon: 'alert-circle', color: '#EF4444', key: 'chat_attach_status_failed' },
-  retrying:  { icon: 'refresh-cw',   color: '#E06D00', key: 'chat_attach_status_retrying' },
+  retrying:  { icon: 'refresh-cw',   color: '#168759', key: 'chat_attach_status_retrying' },
 };
 
 let _localSeq = 0;
 
-// Человекочитаемый label вложения (PR3.1): не показываем технический hash.
-// PDF/document → «Документ»; image/photo → «Фото». Полный url/hash остаётся
-// в данных (a.url), просто не выводится в UI.
 function attachmentLabel(t, a) {
-  const isDoc = a.kind === 'document' || a.mime_type === 'application/pdf';
+  const readable = a?.original_name || a?.filename || a?.file_name || a?.name;
+  if (readable && !/^[a-f0-9]{24,}$/i.test(String(readable))) return String(readable);
+  const isDoc = a?.kind === 'document' || a?.mime_type === 'application/pdf';
   return isDoc ? t('attachment_document') : t('attachment_photo');
 }
 
-// compact (UX 26.07): кнопка «Прикрепить» скрыта (действие живёт в «+»-меню
-// чата, см. attachTrigger), а при пустом списке блок не рендерится вовсе.
-// attachTrigger: внешний тик — инкремент запускает onAttach() (пикер файла).
-export default function DealAttachments({ conversationId, role = 'driver', compact = false, attachTrigger = 0 }) {
+function formatBytes(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  if (n < 1024 * 1024) return `${Math.max(1, Math.round(n / 1024))} KB`;
+  return `${(n / (1024 * 1024)).toFixed(n >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
+}
+
+export default function DealAttachments({
+  conversationId,
+  role = 'driver',
+  compact = false,
+  inline = false,
+  attachTrigger = 0,
+  documentTrigger = 0,
+}) {
   const { t } = useI18n();
   const { theme } = useTheme();
   const accent = accentFor(role);
-  // server-вложения + локальные (в процессе/failed) — локальные хранятся по
-  // localId, чтобы retry не плодил дубли.
   const [server, setServer] = useState([]);
-  const [local, setLocal] = useState([]);   // { localId, name, status }
+  const [local, setLocal] = useState([]);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -59,143 +56,191 @@ export default function DealAttachments({ conversationId, role = 'driver', compa
     try {
       const r = await chatAPI.listAttachments(conversationId);
       setServer(Array.isArray(r?.attachments) ? r.attachments : []);
-    } catch { /* нет доступа/сети — список пуст, не падаем */ }
+    } catch { /* private list remains unchanged on a transient error */ }
   }, [conversationId]);
 
   useEffect(() => { load(); }, [load]);
 
-  // Полный путь загрузки одного вложения с прохождением статусов.
   const runUpload = useCallback(async (item) => {
     const { localId, uri, name, isPdf, mime } = item;
     const setStatus = (status) =>
       setLocal((prev) => prev.map((x) => (x.localId === localId ? { ...x, status } : x)));
     try {
       setStatus('uploading');
-      // PDF/файл грузим как есть (без сжатия в JPEG — иначе документ ломался).
-      // Фото — сжимаем пресетом document.
       const payload = isPdf
         ? { uri, kind: 'document', name, type: mime || 'application/pdf' }
-        : { uri: await compressImage(uri, { preset: 'document' }), kind: 'document', name, type: 'image/jpeg' };
+        : { uri: await compressImage(uri, { preset: 'document' }), kind: 'document', name, type: mime || 'image/jpeg' };
       await chatAPI.uploadAttachment(conversationId, payload);
       setLocal((prev) => prev.filter((x) => x.localId !== localId));
       await load();
     } catch {
-      setStatus('failed');   // сообщение не теряется — остаётся с retry
+      setStatus('failed');
     }
   }, [conversationId, load]);
 
-  const queueUpload = (item) => {
+  const queueUpload = useCallback((item) => {
     setLocal((prev) => [...prev, { ...item, status: 'queued' }]);
     runUpload(item);
-  };
+  }, [runUpload]);
 
-  // Фото из галереи (сжимаем).
-  const pickImage = async () => {
+  const pickImage = useCallback(async () => {
+    if (!conversationId) return;
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (perm.status !== 'granted') return;
     const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 1 });
     if (res.canceled || !res.assets?.[0]?.uri) return;
+    const asset = res.assets[0];
     const localId = `att_${Date.now()}_${_localSeq++}`;
-    queueUpload({ localId, uri: res.assets[0].uri, name: `doc_${localId}.jpg`, isPdf: false });
-  };
+    queueUpload({
+      localId,
+      uri: asset.uri,
+      name: asset.fileName || `photo_${localId}.jpg`,
+      isPdf: false,
+      mime: asset.mimeType || 'image/jpeg',
+    });
+  }, [conversationId, queueUpload]);
 
-  // Файл-документ (PDF и пр.) через системный файловый менеджер.
-  const pickDocument = async () => {
+  const pickDocument = useCallback(async () => {
+    if (!conversationId) return;
     const res = await DocumentPicker.getDocumentAsync({ type: ['application/pdf', 'image/*'], copyToCacheDirectory: true });
     const file = res?.assets?.[0];
     if (!file?.uri) return;
     const localId = `att_${Date.now()}_${_localSeq++}`;
     const isPdf = (file.mimeType || '').includes('pdf') || /\.pdf$/i.test(file.name || '');
-    queueUpload({ localId, uri: file.uri, name: file.name || `doc_${localId}.pdf`, isPdf, mime: file.mimeType });
-  };
+    queueUpload({
+      localId,
+      uri: file.uri,
+      name: file.name || `document_${localId}.${isPdf ? 'pdf' : 'jpg'}`,
+      isPdf,
+      mime: file.mimeType,
+    });
+  }, [conversationId, queueUpload]);
 
-  const onAttach = async () => {
-    if (busy) return;
+  const onAttach = useCallback(async () => {
+    if (busy || !conversationId) return;
     setBusy(true);
     try {
-      if (Platform.OS === 'web') { await pickDocument(); return; }
-      Alert.alert(t('chat_documents_title'), '', [
-        { text: '📄 ' + t('attachment_document'), onPress: pickDocument },
-        { text: '🖼 ' + t('gallery'), onPress: pickImage },
-        { text: t('cancel'), style: 'cancel' },
-      ]);
+      if (Platform.OS === 'web') {
+        await pickDocument();
+      } else {
+        Alert.alert(t('chat_documents_title'), '', [
+          { text: '📄 ' + t('attachment_document'), onPress: pickDocument },
+          { text: '🖼 ' + t('gallery'), onPress: pickImage },
+          { text: t('cancel'), style: 'cancel' },
+        ]);
+      }
     } finally {
       setBusy(false);
     }
-  };
+  }, [busy, conversationId, pickDocument, pickImage, t]);
 
-  const onRetry = (item) => {
+  const onRetry = useCallback((item) => {
     setLocal((prev) => prev.map((x) => (x.localId === item.localId ? { ...x, status: 'retrying' } : x)));
-    runUpload(item);   // тот же localId → без дубля
-  };
+    runUpload(item);
+  }, [runUpload]);
 
-  // Внешний запуск пикера из «+»-меню чата (первый рендер не триггерит).
+  const openAttachment = useCallback(async (item) => {
+    const url = item?.url || item?.signed_url || item?.download_url;
+    if (!url) return;
+    try { await Linking.openURL(url); } catch { /* signed link may have expired; next load refreshes it */ }
+  }, []);
+
   const prevTrigger = React.useRef(attachTrigger);
   useEffect(() => {
     if (attachTrigger > prevTrigger.current) onAttach();
     prevTrigger.current = attachTrigger;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [attachTrigger]);
+  }, [attachTrigger, onAttach]);
+
+  const prevDocumentTrigger = React.useRef(documentTrigger);
+  useEffect(() => {
+    if (documentTrigger > prevDocumentTrigger.current) pickDocument();
+    prevDocumentTrigger.current = documentTrigger;
+  }, [documentTrigger, pickDocument]);
 
   const isEmpty = server.length === 0 && local.length === 0;
-  if (compact && isEmpty) return null;
+  if ((compact || inline) && isEmpty) return null;
 
-  const Row = ({ icon, label, statusKey, statusColor, onRetryPress }) => (
-    <View style={s.row}>
-      <Feather name={icon} size={14} color={theme.textMuted} />
-      <Text style={[s.name, { color: theme.text }]} numberOfLines={1}>{label}</Text>
-      {statusKey ? (
-        <Text style={[s.status, { color: statusColor }]}>{t(statusKey)}</Text>
-      ) : null}
-      {onRetryPress ? (
-        <TouchableOpacity onPress={onRetryPress} testID="attach-retry" style={s.retryBtn}>
-          <Feather name="refresh-cw" size={13} color={accent} />
-          <Text style={[s.retryTxt, { color: accent }]}>{t('chat_attach_retry')}</Text>
-        </TouchableOpacity>
-      ) : null}
-    </View>
-  );
+  const Row = ({ icon, label, sublabel, statusKey, statusColor, spinning, onRetryPress, onOpen }) => {
+    const Wrapper = onOpen ? TouchableOpacity : View;
+    return (
+      <Wrapper
+        onPress={onOpen}
+        activeOpacity={onOpen ? 0.72 : 1}
+        style={[s.row, inline && [s.inlineRow, { backgroundColor: theme.card, borderColor: theme.border }]]}
+        testID={onOpen ? 'deal-attachment-open' : undefined}
+      >
+        <View style={[s.fileIcon, { backgroundColor: '#E9F6EF' }]}>
+          <Feather name={icon} size={16} color="#168759" />
+        </View>
+        <View style={s.fileText}>
+          <Text style={[s.name, { color: theme.text }]} numberOfLines={1}>{label}</Text>
+          {sublabel ? <Text style={[s.size, { color: theme.textMuted }]}>{sublabel}</Text> : null}
+          {statusKey ? <Text style={[s.status, { color: statusColor }]}>{t(statusKey)}</Text> : null}
+        </View>
+        {spinning ? <ActivityIndicator size="small" color="#168759" /> : null}
+        {onRetryPress ? (
+          <TouchableOpacity onPress={onRetryPress} testID="attach-retry" style={s.retryBtn}>
+            <Feather name="refresh-cw" size={14} color={accent} />
+            <Text style={[s.retryTxt, { color: accent }]}>{t('chat_attach_retry')}</Text>
+          </TouchableOpacity>
+        ) : onOpen ? <Feather name="chevron-right" size={17} color={theme.textMuted} /> : null}
+      </Wrapper>
+    );
+  };
 
   return (
-    <View style={[s.box, { borderColor: theme.border }]} testID="deal-attachments">
-      <View style={s.head}>
-        <Feather name="folder" size={14} color={theme.textMuted} />
-        <Text style={[s.title, { color: theme.text }]}>{t('chat_documents_title')}</Text>
-        {!compact ? (
-          <TouchableOpacity
-            onPress={onAttach}
-            disabled={busy}
-            style={[s.attachBtn, { borderColor: accent, opacity: busy ? 0.5 : 1 }]}
-            testID="attach-add"
-          >
-            {busy ? <ActivityIndicator size="small" color={accent} />
-                  : <Feather name="paperclip" size={13} color={accent} />}
-            <Text style={[s.attachTxt, { color: accent }]}>{t('chat_attach_add')}</Text>
-          </TouchableOpacity>
-        ) : null}
-      </View>
+    <View
+      style={inline ? s.inlineBox : [s.box, { borderColor: theme.border }]}
+      testID={inline ? 'deal-inline-attachments' : 'deal-attachments'}
+    >
+      {!inline ? (
+        <View style={s.head}>
+          <Feather name="paperclip" size={14} color={theme.textMuted} />
+          <Text style={[s.title, { color: theme.text }]}>{t('chat_documents_title')}</Text>
+          {!compact ? (
+            <TouchableOpacity
+              onPress={onAttach}
+              disabled={busy}
+              style={[s.attachBtn, { borderColor: accent, opacity: busy ? 0.5 : 1 }]}
+              testID="attach-add"
+            >
+              {busy ? <ActivityIndicator size="small" color={accent} /> : <Feather name="plus" size={14} color={accent} />}
+              <Text style={[s.attachTxt, { color: accent }]}>{t('chat_attach_add')}</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      ) : null}
 
       {isEmpty ? (
         <Text style={[s.empty, { color: theme.textMuted }]}>{t('chat_attach_empty')}</Text>
       ) : (
-        <View style={{ gap: 4 }}>
+        <View style={{ gap: 6 }}>
           {server.map((a) => {
             const meta = STATUS_META[a.upload_status] || STATUS_META.uploaded;
             return (
-              <Row key={a.id}
+              <Row
+                key={a.id}
                 icon={a.kind === 'document' ? 'file-text' : 'image'}
                 label={attachmentLabel(t, a)}
-                statusKey={meta.key} statusColor={meta.color} />
+                sublabel={formatBytes(a.size_bytes)}
+                statusKey={meta.key}
+                statusColor={meta.color}
+                onOpen={a.url ? () => openAttachment(a) : null}
+              />
             );
           })}
-          {local.map((l) => {
-            const meta = STATUS_META[l.status] || STATUS_META.queued;
+          {local.map((item) => {
+            const meta = STATUS_META[item.status] || STATUS_META.queued;
             return (
-              <Row key={l.localId}
-                icon="file-text"
-                label={t('attachment_document')}
-                statusKey={meta.key} statusColor={meta.color}
-                onRetryPress={l.status === 'failed' ? () => onRetry(l) : null} />
+              <Row
+                key={item.localId}
+                icon={item.isPdf ? 'file-text' : 'image'}
+                label={item.name || attachmentLabel(t, item)}
+                statusKey={meta.key}
+                statusColor={meta.color}
+                spinning={item.status === 'uploading' || item.status === 'retrying'}
+                onRetryPress={item.status === 'failed' ? () => onRetry(item) : null}
+              />
             );
           })}
         </View>
@@ -205,15 +250,20 @@ export default function DealAttachments({ conversationId, role = 'driver', compa
 }
 
 const s = StyleSheet.create({
-  box: { borderWidth: 1, borderStyle: 'dashed', borderRadius: 10, padding: 10, marginBottom: 8, gap: 6 },
+  box: { borderWidth: 1, borderRadius: 12, padding: 10, marginBottom: 8, gap: 7 },
+  inlineBox: { paddingHorizontal: 12, paddingVertical: 7, gap: 6 },
   head: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   title: { fontSize: 12, fontWeight: '800', flex: 1 },
   attachBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
   attachTxt: { fontSize: 11, fontWeight: '800' },
   empty: { fontSize: 11 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  name: { fontSize: 11, flex: 1 },
-  status: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44 },
+  inlineRow: { minHeight: 54, borderWidth: 1, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 7 },
+  fileIcon: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  fileText: { flex: 1, minWidth: 0 },
+  name: { fontSize: 12.5, fontWeight: '750' },
+  size: { fontSize: 10.5, fontWeight: '650', marginTop: 1 },
+  status: { fontSize: 10.5, fontWeight: '800', marginTop: 2 },
   retryBtn: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   retryTxt: { fontSize: 11, fontWeight: '800' },
 });

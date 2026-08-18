@@ -1,15 +1,9 @@
-"""P1 email-phone (08.08.2026): требование продукта — при регистрации по
-e-mail телефон обязателен для ОБЕИХ ролей; shipper (client) обязан указать
-имя + телефон, driver — телефон. Phone-signup не ломается.
+"""P1 email-phone / shipper identity contract.
 
-Контракт enforced в PATCH /users/me при наличии role (экран завершения
-онбординга). Тесты:
-  * email-signup driver без phone → 400 PHONE_REQUIRED
-  * email-signup shipper c phone, без name → 400 NAME_REQUIRED
-  * email-signup shipper c name+phone → 200
-  * email-signup driver c валидным phone → 200
-  * phone-signup driver (реальный phone уже в БД) → 200 (не сломан)
-  * невалидный phone без role → 400 INVALID_PHONE
+Current product rule:
+- email signup requires phone for both roles;
+- shipper (client) requires name + country + phone;
+- driver requires phone (and the active ProfileV2 also collects driver name/city).
 
 Run from backend/:
     DB_PATH=/tmp/urtruck_test_emailphone.db python -m tests.test_email_phone_contract
@@ -56,8 +50,6 @@ client = TestClient(app)
 
 
 def seed(identifier):
-    """Создаёт аккаунт (email-signup: identifier=email → в колонке phone email;
-    phone-signup: identifier=реальный номер)."""
     d = reg_dal.get_or_create_driver(identifier)
     return d["id"]
 
@@ -81,18 +73,27 @@ def test_email_driver_without_phone_rejected():
 def test_email_shipper_without_name_rejected():
     uid = seed("shipper1@example.com")
     as_user(uid)
-    r = patch_me({"role": "client", "phone": "+7 701 123 45 67"})
+    r = patch_me({"role": "client", "country": "Китай", "phone": "+7 701 123 45 67"})
     assert r.status_code == 400, r.text
     assert r.json()["detail"]["error"] == "NAME_REQUIRED"
 
 
-def test_email_shipper_with_name_and_phone_ok():
+def test_email_shipper_without_country_rejected():
+    uid = seed("shipper-country@example.com")
+    as_user(uid)
+    r = patch_me({"role": "client", "name": "Boris Zhang", "phone": "+8613800000000"})
+    assert r.status_code == 400, r.text
+    assert r.json()["detail"]["error"] == "COUNTRY_REQUIRED"
+
+
+def test_email_shipper_with_name_country_and_phone_ok():
     uid = seed("shipper2@example.com")
     as_user(uid)
-    r = patch_me({"role": "client", "name": "ООО Ромашка", "phone": "+77011234567"})
+    r = patch_me({"role": "client", "name": "ООО Ромашка", "country": "Китай", "phone": "+77011234567"})
     assert r.status_code == 200, r.text
     d = reg_dal.get_driver(uid)
     assert d["role"] == "client"
+    assert d["country"] == "Китай"
     assert "".join(ch for ch in d["phone"] if ch.isdigit()).endswith("77011234567")
 
 
@@ -105,7 +106,6 @@ def test_email_driver_with_phone_ok():
 
 
 def test_phone_signup_driver_not_broken():
-    """Phone-signup: в колонке phone уже реальный номер → role без body.phone проходит."""
     uid = seed("+77015550001")
     as_user(uid)
     r = patch_me({"role": "driver"})
@@ -113,10 +113,9 @@ def test_phone_signup_driver_not_broken():
     assert reg_dal.get_driver(uid)["role"] == "driver"
 
 
-def test_shipper_reuses_existing_name_and_phone():
-    """Если имя и реальный телефон уже сохранены — повторный role-commit проходит."""
+def test_shipper_reuses_existing_name_country_and_phone():
     uid = seed("+77015550002")
-    reg_dal.update_driver(uid, {"full_name": "Уже Есть"})
+    reg_dal.update_driver(uid, {"full_name": "Уже Есть", "country": "Казахстан"})
     as_user(uid)
     r = patch_me({"role": "client"})
     assert r.status_code == 200, r.text
@@ -125,20 +124,23 @@ def test_shipper_reuses_existing_name_and_phone():
 def test_invalid_phone_without_role_rejected():
     uid = seed("driver3@example.com")
     as_user(uid)
-    r = patch_me({"phone": "123"})  # слишком короткий
+    r = patch_me({"phone": "123"})
     assert r.status_code == 400, r.text
     assert r.json()["detail"]["error"] == "INVALID_PHONE"
 
 
 if __name__ == "__main__":
     fails = 0
-    for fn in [test_email_driver_without_phone_rejected,
-               test_email_shipper_without_name_rejected,
-               test_email_shipper_with_name_and_phone_ok,
-               test_email_driver_with_phone_ok,
-               test_phone_signup_driver_not_broken,
-               test_shipper_reuses_existing_name_and_phone,
-               test_invalid_phone_without_role_rejected]:
+    for fn in [
+        test_email_driver_without_phone_rejected,
+        test_email_shipper_without_name_rejected,
+        test_email_shipper_without_country_rejected,
+        test_email_shipper_with_name_country_and_phone_ok,
+        test_email_driver_with_phone_ok,
+        test_phone_signup_driver_not_broken,
+        test_shipper_reuses_existing_name_country_and_phone,
+        test_invalid_phone_without_role_rejected,
+    ]:
         try:
             fn(); print(f"  ✅ {fn.__name__}")
         except Exception as e:
