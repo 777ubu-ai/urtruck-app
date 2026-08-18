@@ -2,7 +2,7 @@
   "expo": {
     "name": "UrTruck",
     "slug": "urtruck",
-    "version": "1.0.6",
+    "version": "1.0.7",
     "orientation": "portrait",
     "scheme": "urtruck",
     "platforms": [
@@ -43,7 +43,7 @@
     },
     "android": {
       "package": "com.urtruck.app",
-      "versionCode": 8,
+      "versionCode": 9,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0a0f1a"
