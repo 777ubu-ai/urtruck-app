@@ -203,12 +203,12 @@ function CargoCard({ item, lang, copy, saved, onToggleSaved, onPress, compact })
         style={[styles.bookmarkBtn, compact && styles.bookmarkBtnCompact, saved && styles.bookmarkBtnSaved]}
         testID={`cargo-card-bookmark-${item.id}`}
         accessibilityRole="button"
-        accessibilityLabel={saved ? 'Remove from favorites' : 'Save cargo to favorites'}
+        accessibilityLabel={saved ? 'Remove bookmark' : 'Save cargo'}
       >
         {saved ? (
-          <FontAwesome5 name="heart" size={compact ? 18 : 21} color={ACCENT} solid />
+          <FontAwesome5 name="bookmark" size={compact ? 18 : 21} color={ACCENT} solid />
         ) : (
-          <Feather name="heart" size={compact ? 18 : 21} color={TEXT_SECONDARY} />
+          <Feather name="bookmark" size={compact ? 18 : 21} color={TEXT_SECONDARY} />
         )}
       </Pressable>
     </TouchableOpacity>

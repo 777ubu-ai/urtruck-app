@@ -84,6 +84,11 @@ jobs:
           node tests/frontend/test_yandex_road_route.mjs
           node tests/frontend/test_deal_room_auto_map.mjs
           node tests/frontend/test_shipper_inprogress_auto_map.mjs
+          node tests/frontend/test_single_yandex_map_writer.mjs
+          test -z "$(grep -l 'api-maps\.yandex\.ru/v3/' dist/index.html || true)" || {
+            echo "::error::dist/index.html contains a Yandex Maps v3 script — app code only supports v2.1 (see 2026-08-19 map-routing incident)"
+            exit 1
+          }
 
       - name: Release gate passed
         run: echo "URTRUCK_RELEASE_GATE=success"

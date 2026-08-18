@@ -134,7 +134,7 @@ export default function FeedCard({
                 accessibilityLabel={favActive ? t('in_favorites') : t('add_to_favorites')}
               >
                 <Feather
-                  name="heart"
+                  name="bookmark"
                   size={20}
                   color={favActive ? SAVE : colors.textMuted}
                   fill={favActive ? SAVE : 'transparent'}

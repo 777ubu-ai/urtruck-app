@@ -1,10 +1,18 @@
 // favoritesContractSmoke — статический regression-guard для бага с
 // прод-скриншотов владельца (2026-08-18): «сохраняю груз/водителя — в
-// Избранном пусто» + флажок вместо сердечка + не видно отзывов на карточке.
+// Избранном пусто» + не видно отзывов на карточке.
+//
+// 2026-08-19 owner-корректировка: канонiчная иконка избранного —
+// ФЛАЖОК (bookmark), НЕ сердце. Первая версия этого фикса ошибочно
+// поменяла карточки на сердце (решив, что несоответствие нужно
+// разрешить в сторону FavoritesScreen); владелец явно подтвердил
+// обратное направление — флажок везде, включая FavoritesScreen
+// (который до этого один использовал сердце — вот и была визуальная
+// нестыковка). Не возвращать heart без нового явного подтверждения.
 //
 // Три первопричины, три группы проверок (см. PR/CHANGELOG для деталей):
-//   1. Иконка избранного — сердце (heart), а не bookmark, в обоих местах,
-//      где пользователь сохраняет (карточка водителя И карточка груза).
+//   1. Иконка избранного — флажок (bookmark) везде, где пользователь
+//      сохраняет (карточка водителя, карточка груза, FavoritesScreen).
 //   2. FavoritesScreen обязан запрашивать ВСЕ типы одним запросом
 //      (favList('') — backend уже поддерживал это, фронт не пользовался)
 //      и уметь открыть/удалить оба типа (driver → DriverDetail,
@@ -21,13 +29,13 @@ const feedScreen = fs.readFileSync('src/screens/FeedScreen.js', 'utf8');
 const cargoFeed = fs.readFileSync('src/screens/CargoFeedScreen.js', 'utf8');
 const favScreen = fs.readFileSync('src/screens/FavoritesScreen.js', 'utf8');
 
-// ─── 1. Иконка: сердце, не флажок ───────────────────────────────────────
-assert.ok(/name="heart"/.test(feedCard), 'FeedCard (карточка водителя в ленте клиента) должна использовать сердце');
-assert.ok(!/name="bookmark"/.test(feedCard), 'FeedCard не должен содержать флажок (bookmark) как иконку избранного');
-assert.ok(/name="heart"/.test(cargoFeed), 'CargoFeedScreen (карточка груза в ленте водителя) должна использовать сердце');
-assert.ok(!/name="bookmark"/.test(cargoFeed), 'CargoFeedScreen не должен содержать флажок (bookmark) как иконку избранного');
-assert.ok(/name="heart".*solid/.test(favScreen) || /FontAwesome5 name="heart"/.test(favScreen),
-  'FavoritesScreen должен использовать то же сердце, что и карточки (визуальная консистентность)');
+// ─── 1. Иконка: флажок везде (owner-подтверждено 2026-08-19) ────────────
+assert.ok(/name="bookmark"/.test(feedCard), 'FeedCard (карточка водителя в ленте клиента) должна использовать флажок (bookmark)');
+assert.ok(!/name="heart"/.test(feedCard), 'FeedCard не должен содержать сердце как иконку избранного');
+assert.ok(/name="bookmark"/.test(cargoFeed), 'CargoFeedScreen (карточка груза в ленте водителя) должна использовать флажок (bookmark)');
+assert.ok(!/name="heart"/.test(cargoFeed), 'CargoFeedScreen не должен содержать сердце как иконку избранного');
+assert.ok(/FontAwesome5 name="bookmark"/.test(favScreen),
+  'FavoritesScreen должен использовать тот же флажок, что и карточки (визуальная консистентность)');
 
 // Accessibility: лейбл обязан отличаться по состоянию (не статичная строка).
 assert.ok(/accessibilityLabel=\{favActive \? t\('in_favorites'\) : t\('add_to_favorites'\)\}/.test(feedCard),
@@ -67,4 +75,4 @@ assert.ok(/reviews: d\.reviews_count \|\| 0/.test(feedScreen),
 assert.ok(/favBusyRef/.test(feedScreen), 'FeedScreen.toggleFav обязан игнорировать повторный тап, пока запрос в полёте');
 assert.ok(/savedBusyRef/.test(cargoFeed), 'CargoFeedScreen.toggleSaved обязан игнорировать повторный тап, пока запрос в полёте');
 
-console.log('favorites contract OK: heart-иконка везде, favList(\'\') покрывает оба типа, отзывы рендерятся, busy-guard на месте');
+console.log('favorites contract OK: bookmark-иконка везде, favList(\'\') покрывает оба типа, отзывы рендерятся, busy-guard на месте');

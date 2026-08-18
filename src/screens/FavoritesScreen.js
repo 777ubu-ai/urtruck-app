@@ -117,7 +117,7 @@ export default function FavoritesScreen({ navigation, route }) {
           accessibilityLabel={t('favorites_remove') || 'Remove from favorites'}
           style={s.heartBtn}
         >
-          <FontAwesome5 name="heart" size={18} color={v1.driver} solid />
+          <FontAwesome5 name="bookmark" size={18} color={v1.driver} solid />
         </TouchableOpacity>
       </TouchableOpacity>
     );
