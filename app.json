@@ -43,7 +43,7 @@
     },
     "android": {
       "package": "com.urtruck.app",
-      "versionCode": 8,
+      "versionCode": 9,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0a0f1a"
