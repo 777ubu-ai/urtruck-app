@@ -1,6 +1,9 @@
 // useDealLocationBroadcast — «Начать рейс» автоматически включает GPS на
 // сервере. Хук передаёт координаты только для активных рейсов и прекращает
 // передачу сразу после доставки/отмены.
+//
+// Google Play contract: this hook NEVER opens a permission prompt. Permission
+// is requested only from the explicit Deal Workspace disclosure flow.
 import { useEffect, useRef, useState } from 'react';
 import { Platform, AppState } from 'react-native';
 import { marketAPI } from '../utils/marketAPI';
@@ -34,8 +37,8 @@ export function useDealLocationBroadcast(activeDealIds) {
   idsRef.current = permittedIds;
   const key = permittedIds.join(',');
 
-  // Фоновый трекинг: список только разрешённых сделок кладём в storage.
-  // Empty list immediately stops the OS task after decline/stop/completion.
+  // Store only server-approved deals. startBackgroundTracking checks existing
+  // OS grants and cannot request anything by itself.
   useEffect(() => {
     if (Platform.OS === 'web') return;
     setActiveDealIds(idsRef.current);
@@ -68,7 +71,7 @@ export function useDealLocationBroadcast(activeDealIds) {
     (async () => {
       try {
         Location = await import('expo-location');
-        const { status } = await Location.requestForegroundPermissionsAsync();
+        const { status } = await Location.getForegroundPermissionsAsync();
         granted = status === 'granted';
         if (!granted || !mounted) return;
         push();
