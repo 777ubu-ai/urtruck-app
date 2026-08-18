@@ -544,3 +544,53 @@ def admin_cleanup_stale_listings(dry_run: bool = True, user: str = Depends(check
         "trips_skipped_has_bids_or_deals": trip_skip,
         "by": user,
     }
+
+
+# 2026-08-19: избранное «Cvbbb Zcvvvb» на скриншоте owner'а — root cause
+# НЕ баг фаворитов. Это тот же список из 3 известных внутренних тест/dev-
+# аккаунтов, что owner уже подтвердил 2026-07-30 (см. CHANGELOG 2.0.7/2.0.10
+# и TEST_DRIVER_IDS_2026_07_30 в истории этого файла) — реальные,
+# OTP-верифицированные строки в drivers_registration, чьи рейсы и дубли
+# чат-комнат уже вычищены отдельными одноразовыми эндпоинтами. Тогда
+# забыли про favorites: кто-то (реальный клиент или сам owner при тестах)
+# успел добавить эти карточки в избранное ДО чистки, запись пережила её и
+# продолжает показывать мусорное имя. Это НЕ orphaned-запись (сам driver_id
+# всё ещё существует) и НЕ сломанный join (favorites.item_data — снэпшот
+# на момент сохранения, без live-join, поэтому экран не падает даже если
+# бы сущность исчезла) — просто забытая ссылка на подтверждённо-тестовый
+# аккаунт. Тот же безопасный паттерн: dry_run=true по умолчанию, скоуп
+# жёстко ограничен 3 ID, не общая чистка избранного.
+KNOWN_TEST_ACCOUNT_IDS_2026_08_19 = [
+    "3da5d039-15df-4b0f-a119-e8ec08b4c971",  # Cvbbb Zcvvvb
+    "ebde25aa-822c-4703-9568-ce916d06e3fe",  # Ali Li
+    "bce99dd4-f144-485e-a55c-187d9942a587",  # Жиенгалиев Миржан
+]
+
+
+@admin_router.post("/cleanup-known-test-favorites-2026-08-19")
+def admin_cleanup_known_test_favorites(dry_run: bool = True, user: str = Depends(check_admin)):
+    from database.db import get_conn
+
+    placeholders = ",".join("?" * len(KNOWN_TEST_ACCOUNT_IDS_2026_08_19))
+    with get_conn() as c:
+        rows = c.execute(
+            f"SELECT id, user_id, item_type, item_id, item_data FROM favorites "
+            f"WHERE item_type = 'driver' AND item_id IN ({placeholders})",
+            KNOWN_TEST_ACCOUNT_IDS_2026_08_19,
+        ).fetchall()
+        found = [{"id": r["id"], "user_id": r["user_id"], "item_id": r["item_id"], "item_data": r["item_data"]} for r in rows]
+
+        if not dry_run and found:
+            c.execute(
+                f"DELETE FROM favorites WHERE item_type = 'driver' AND item_id IN ({placeholders})",
+                KNOWN_TEST_ACCOUNT_IDS_2026_08_19,
+            )
+
+    return {
+        "dry_run": dry_run,
+        "favorites_deleted": len(found) if not dry_run else 0,
+        "favorites_would_delete": len(found),
+        "matched": found,
+        "scope": KNOWN_TEST_ACCOUNT_IDS_2026_08_19,
+        "by": user,
+    }

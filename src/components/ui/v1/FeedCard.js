@@ -131,6 +131,7 @@ export default function FeedCard({
                 testID="feed-fav"
                 accessibilityRole="button"
                 accessibilityState={{ selected: !!favActive }}
+                accessibilityLabel={favActive ? t('in_favorites') : t('add_to_favorites')}
               >
                 <Feather
                   name="heart"

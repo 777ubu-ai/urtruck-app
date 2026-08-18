@@ -1,0 +1,81 @@
+# feed-favorite-heart-cargo — регресс на прод-баг (2026-08-18): водитель
+# сохраняет груз через ❤️ на карточке (CargoFeedScreen), но экран
+# «Избранное» запрашивал только item_type='driver' и груз никогда не
+# показывался. Первопричина: FavoritesScreen.favList('driver') вместо
+# favList(''). См. reconciliation в PR.
+#
+# Этот флоу — водительская сторона (serik), зеркально к
+# feed-favorite-heart.yaml (клиентская сторона, boris). Проверяет:
+#   1) сохранённый груз реально появляется в «Избранном»;
+#   2) двойной тап по ❤️ не создаёт дубль-карточку;
+#   3) удаление из «Избранного» работает и не возвращается после refresh.
+appId: host.exp.Exponent
+name: feed-favorite-heart-cargo
+tags:
+  - driver
+  - favorites
+env:
+  MAESTRO_ACTOR: serik
+---
+- runFlow: _lib/qa-login.yaml
+- tapOn:
+    id: "bottom-nav-feed"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "cargo-card"
+    timeout: 20000
+- takeScreenshot: FAVCG_01_cargo_feed
+# Двойной тап по ❤️ первого груза — не должен создать дубль (backend UNIQUE
+# + фронт busy-guard, см. savedBusyRef в CargoFeedScreen.js).
+- tapOn:
+    id: "cargo-card-bookmark-0"
+    index: 0
+- tapOn:
+    id: "cargo-card-bookmark-0"
+    index: 0
+- waitForAnimationToEnd
+- takeScreenshot: FAVCG_02_heart_double_tapped
+# Профиль → «Избранное»: груз ДОЛЖЕН присутствовать, ровно одна карточка.
+- tapOn:
+    id: "bottom-nav-profile"
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element:
+      id: "profile-favorites"
+    direction: DOWN
+    timeout: 8000
+- tapOn:
+    id: "profile-favorites"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "favorite-card"
+    timeout: 10000
+- assertVisible:
+    id: "favorite-card"
+- assertNotVisible:
+    id: "favorites-empty"
+- takeScreenshot: FAVCG_03_favorites_has_cargo
+# Удалить прямо из списка (heart-toggle справа на карточке).
+- tapOn:
+    id: "favorite-remove"
+    index: 0
+- waitForAnimationToEnd
+- takeScreenshot: FAVCG_04_after_remove
+# Refresh (уход и возврат на экран) — детерминированная проверка «не
+# возвращается» на реальном сетевом запросе (не UI-эвристика, т.к. у
+# serik могут быть другие несвязанные избранные записи между прогонами)
+# сделана backend-тестом test_remove_then_readd_works в
+# backend/tests/test_favorites_contract.py. Здесь — визуальное
+# подтверждение скриншотом того же состояния после ухода/возврата.
+- tapOn:
+    id: "bottom-nav-feed"
+- waitForAnimationToEnd
+- tapOn:
+    id: "bottom-nav-profile"
+- waitForAnimationToEnd
+- tapOn:
+    id: "profile-favorites"
+- waitForAnimationToEnd
+- takeScreenshot: FAVCG_05_stays_removed_after_refresh

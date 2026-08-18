@@ -240,6 +240,8 @@ export default function CargoFeedScreen({ navigation }) {
   const [dateTo, setDateTo] = useState('');
   const [sortBy, setSortBy] = useState('newest');
   const [savedIds, setSavedIds] = useState(() => new Set());
+  // Защита от двойного тапа по ❤️ — см. аналогичный favBusyRef в FeedScreen.js.
+  const savedBusyRef = React.useRef(new Set());
   const [compact, setCompact] = useState(true);
 
   useEffect(() => {
@@ -325,6 +327,8 @@ export default function CargoFeedScreen({ navigation }) {
     const ok = await requireLevel(LEVELS.PHONE, 'favorite_cargo', 'driver');
     if (!ok) return;
     const id = String(item.id);
+    if (savedBusyRef.current.has(id)) return;
+    savedBusyRef.current.add(id);
     const had = savedIds.has(id);
     setSavedIds((prev) => {
       const next = new Set(prev);
@@ -353,6 +357,8 @@ export default function CargoFeedScreen({ navigation }) {
         return next;
       });
       toast(t('send_error'), 'error');
+    } finally {
+      savedBusyRef.current.delete(id);
     }
   };
 
