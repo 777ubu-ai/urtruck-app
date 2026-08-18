@@ -1,8 +1,9 @@
 import React from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ChatScreen from './ChatScreen';
 import DealWorkspaceScreen from './DealWorkspaceScreenV2';
+import DealLocationPermissionGate from '../components/deal/DealLocationPermissionGate';
 import { chatAPI } from '../utils/chatAPI';
 import { getDealCounterpartyProfile, compactCounterpartyName } from '../utils/dealCounterpartyAPI';
 import { useV1Colors } from '../theme/designV1';
@@ -70,7 +71,15 @@ export default function ChatScreenV2(props) {
         partner: resolvedPartner || params.partner || null,
       },
     };
-    return <DealWorkspaceScreen {...props} route={nextRoute} />;
+    return (
+      <DealLocationPermissionGate
+        dealId={resolvedDealId}
+        role={params.role}
+        initialStatus={params.dealStatus}
+      >
+        <DealWorkspaceScreen {...props} route={nextRoute} />
+      </DealLocationPermissionGate>
+    );
   }
 
   return <ChatScreen {...props} />;
