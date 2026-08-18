@@ -1,10 +1,10 @@
 // TruckMap (native) — embedded map with planned route + live truck point.
-// Web/PWA uses Yandex JS API and can expose real road distance/ETA. Native
-// never fabricates road metrics: it renders the route context and live GPS,
-// while route summary remains null until the native Yandex routing layer is
-// connected.
+// Road geometry can be supplied by UrTruck's authenticated global routing
+// backend so international corridors remain real roads instead of straight
+// lines. The visual map provider stays inside UrTruck.
 import React from 'react';
 import MapView, { Marker, Polyline } from 'react-native-maps';
+import { routingAPI } from '../utils/routingAPI';
 
 const asPoint = (value) => {
   if (Array.isArray(value) && value.length >= 2) {
@@ -17,14 +17,87 @@ const asPoint = (value) => {
   return Number.isFinite(latitude) && Number.isFinite(longitude) ? { latitude, longitude } : null;
 };
 
-export default function TruckMap({ lat, lng, title, routePoints = [], onRouteSummary }) {
+const toPair = (point) => point ? [point.latitude, point.longitude] : null;
+const routeKey = (points) => (points || []).map((point) => `${Number(point?.[0]).toFixed(3)}:${Number(point?.[1]).toFixed(3)}`).join('|');
+const needsGlobalRoadRouting = (points) => (points || []).some((point) => {
+  const lat = Number(point?.[0]);
+  const lng = Number(point?.[1]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  return (lng > 85 && lat < 55) || (lat < 35 && lng > 70);
+});
+
+const distanceTextFromMeters = (value) => {
+  const meters = Number(value);
+  if (!Number.isFinite(meters) || meters <= 0) return null;
+  const km = meters / 1000;
+  const rounded = km >= 100 ? Math.round(km) : Math.round(km * 10) / 10;
+  return `${String(rounded).replace('.', ',')} км`;
+};
+
+const durationTextFromSeconds = (value) => {
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+  const totalMinutes = Math.max(1, Math.round(seconds / 60));
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  if (days > 0) return hours > 0 ? `${days} д ${hours} ч` : `${days} д`;
+  if (hours > 0) return minutes > 0 ? `${hours} ч ${minutes} мин` : `${hours} ч`;
+  return `${minutes} мин`;
+};
+
+export default function TruckMap({ lat, lng, title, routePoints = [], externalRoute = null, onRouteSummary }) {
   const live = asPoint([lat, lng]);
   const planned = React.useMemo(() => (routePoints || []).map(asPoint).filter(Boolean), [routePoints]);
-  const all = React.useMemo(() => [...planned, ...(live ? [live] : [])], [planned, live?.latitude, live?.longitude]);
+  const destination = planned.length ? planned[planned.length - 1] : null;
+  const effectivePairs = React.useMemo(() => {
+    const pairs = live && destination ? [toPair(live), toPair(destination)] : planned.map(toPair);
+    return pairs.filter(Boolean);
+  }, [live?.latitude, live?.longitude, destination?.latitude, destination?.longitude, planned.length]);
+  const globalNeeded = needsGlobalRoadRouting(effectivePairs);
+  const effectiveKey = routeKey(effectivePairs);
+  const [autoExternalRoute, setAutoExternalRoute] = React.useState(null);
 
   React.useEffect(() => {
-    onRouteSummary?.(null);
-  }, [onRouteSummary, live?.latitude, live?.longitude, planned.length]);
+    let cancelled = false;
+    if (!globalNeeded || effectivePairs.length < 2 || externalRoute) {
+      setAutoExternalRoute(null);
+      return () => { cancelled = true; };
+    }
+    routingAPI.roadRoute(effectivePairs).then((result) => {
+      if (cancelled) return;
+      if (result?.ok && Array.isArray(result.geometry) && result.geometry.length >= 2) {
+        setAutoExternalRoute({ ...result, routeKey: effectiveKey });
+      } else {
+        setAutoExternalRoute(null);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [globalNeeded, effectiveKey, externalRoute]);
+
+  const resolvedExternalRoute = externalRoute || autoExternalRoute;
+  const external = React.useMemo(
+    () => (resolvedExternalRoute?.geometry || []).map(asPoint).filter(Boolean),
+    [resolvedExternalRoute?.routeKey],
+  );
+  const road = external.length >= 2 ? external : planned;
+  const all = React.useMemo(() => [...road, ...(live ? [live] : [])], [road, live?.latitude, live?.longitude]);
+
+  React.useEffect(() => {
+    const distanceText = distanceTextFromMeters(resolvedExternalRoute?.distance_m);
+    const durationText = durationTextFromSeconds(resolvedExternalRoute?.duration_s);
+    if (external.length >= 2 && distanceText && durationText) {
+      onRouteSummary?.({
+        distanceText,
+        durationText,
+        blocked: false,
+        isRemaining: Boolean(live),
+        provider: resolvedExternalRoute?.provider || 'global',
+      });
+    } else {
+      onRouteSummary?.(null);
+    }
+  }, [onRouteSummary, resolvedExternalRoute?.routeKey, resolvedExternalRoute?.distance_m, resolvedExternalRoute?.duration_s, live?.latitude, live?.longitude, external.length]);
 
   const region = React.useMemo(() => {
     const points = all.length ? all : [{ latitude: 43.2389, longitude: 76.8897 }];
@@ -44,8 +117,13 @@ export default function TruckMap({ lat, lng, title, routePoints = [], onRouteSum
 
   return (
     <MapView style={{ flex: 1 }} initialRegion={region}>
-      {planned.length >= 2 ? (
-        <Polyline coordinates={planned} strokeColor="#168759" strokeWidth={4} lineDashPattern={[8, 6]} />
+      {road.length >= 2 ? (
+        <Polyline
+          coordinates={road}
+          strokeColor="#168759"
+          strokeWidth={external.length >= 2 ? 6 : 4}
+          lineDashPattern={external.length >= 2 ? undefined : [8, 6]}
+        />
       ) : null}
       {planned.map((point, index) => (
         <Marker

@@ -13,6 +13,7 @@ from api.models import (
     ScoreResponse, OCRResponse,
 )
 from api.verification_gate import require_level, get_user, require_admin
+from api.routing import routing_router
 from scoring.engine import calculate_score, quick_check
 from scoring.color_code import color_from_score, label_from_color
 from scoring.weights import apply_penalties_and_bonuses
@@ -21,6 +22,7 @@ from ocr.document_reader import extract_passport_data
 from database import db
 
 router = APIRouter()
+router.include_router(routing_router, prefix="/routing")
 
 
 @router.get("/")
@@ -59,29 +61,19 @@ def stats(user=Depends(require_level(1))):
 @router.post("/check/full", response_model=ScoreResponse)
 def check_full(req: CheckFullRequest, user=Depends(require_level(1))):
     """Полная проверка водителя — скоринг по 6 компонентам."""
-    # Компоненты
     from verification.vehicle_checker import check_vehicle, check_financial, check_identity
     vehicle = check_vehicle(req.plate or "", year=req.vehicle_year, has_insurance=req.has_insurance)
     financial = check_financial(req.user_id)
     identity = check_identity(req.user_id, plate_verified=bool(req.plate), selfie_verified=False)
-
-    # Репутация по telegram упоминаниям
     mentions = db.get_mentions(phone=req.phone, plate=req.plate)
     negative = sum(1 for m in mentions if m.get("sentiment") == "negative")
     positive = sum(1 for m in mentions if m.get("sentiment") == "positive")
     social = max(0, 70 - negative * 15 + positive * 5)
-
-    # Репутация = реальная оценка пользователей
     reputation = 50 + (req.positive_reviews * 5) - (req.negative_reviews * 10)
     reputation = max(0, min(100, reputation))
-
-    # Опыт
     exp_years = req.experience_years or 1
     experience = min(100, 30 + exp_years * 7 + req.completed_trips * 2)
-
-    # Бонус
     bonus = min(100, req.completed_trips * 5)
-
     components = {
         "identity": identity["score"],
         "reputation": reputation,
@@ -99,13 +91,11 @@ def check_full(req: CheckFullRequest, user=Depends(require_level(1))):
 
 @router.post("/check/quick")
 def check_quick(req: CheckQuickRequest, user=Depends(require_level(1))):
-    """Быстрая проверка только по blacklist + Telegram."""
     return quick_check(phone=req.phone, plate=req.plate, name=req.name)
 
 
 @router.get("/score/{user_id}")
 def get_score(user_id: str, user=Depends(require_level(1))):
-    """Получить текущий скоринг водителя."""
     score = db.get_score(user_id)
     if not score:
         return {"user_id": user_id, "total_score": 50, "color_code": "yellow",
@@ -116,7 +106,6 @@ def get_score(user_id: str, user=Depends(require_level(1))):
 
 @router.post("/ocr/passport", response_model=OCRResponse)
 async def ocr_passport(file: UploadFile = File(...), user_id: str = Query(...), user=Depends(require_level(1))):
-    """OCR техпаспорта — извлекает марку, номер, VIN, год."""
     with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
         tmp.write(await file.read())
         tmp_path = tmp.name
@@ -165,16 +154,6 @@ def mentions(phone: str = None, plate: str = None, user=Depends(require_level(1)
 
 @router.post("/report/driver")
 def report_driver(req: BlacklistAddRequest, user=Depends(require_level(1))):
-    """Пользовательская жалоба на водителя.
-
-    I2 (anti-abuse): раньше жалоба СРАЗУ писалась в активный blacklist
-    (source=user_report), а blacklist_check при регистрации блокирует по
-    совпадению телефона/номера. То есть любой залогиненный юзер мог заранее
-    «зачернить» телефон конкурента/жертвы и заблокировать ему регистрацию.
-    Теперь жалоба идёт ТОЛЬКО в модерационную очередь (alerts) — попадёт в
-    blacklist лишь после ручного решения модератора через /blacklist/add
-    (require_admin). Плюс rate-limit 5/час на пользователя.
-    """
     from api.rate_limit import limit_report_create
     limit_report_create(user["id"])
     db.add_alert(
@@ -188,13 +167,6 @@ def report_driver(req: BlacklistAddRequest, user=Depends(require_level(1))):
 
 @router.get("/verification/{user_id}/history")
 def verification_history(user_id: str, user=Depends(require_level(1))):
-    """История всех проверок водителя.
-
-    I1 (IDOR): раньше любой залогиненный юзер мог прочитать историю
-    верификации/биометрии ЛЮБОГО водителя по id (в логах — результаты
-    liveness/face_match, score_impact). Теперь доступ только к своей истории
-    или для роли admin/support.
-    """
     if user_id != user["id"] and user.get("role") not in ("admin", "support"):
         raise HTTPException(status_code=403, detail="Доступ только к своей истории проверок")
     return {"logs": db.get_logs(user_id, limit=50)}
@@ -202,14 +174,12 @@ def verification_history(user_id: str, user=Depends(require_level(1))):
 
 @router.post("/gov/check")
 def gov_check(req: CheckQuickRequest, user=Depends(require_level(1))):
-    """Трансграничная проверка по 5 странам СНГ."""
     from verification.gov_checkers import cross_check_all
     return cross_check_all(phone=req.phone, plate=req.plate)
 
 
 @router.post("/biometric/liveness")
 async def biometric_liveness(file: UploadFile = File(...), user_id: str = Query(...), user=Depends(require_level(1))):
-    """Liveness check — проверка что на фото живой человек."""
     import tempfile
     from biometrics.liveness import check_liveness
     with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
@@ -225,7 +195,6 @@ async def biometric_liveness(file: UploadFile = File(...), user_id: str = Query(
 @router.post("/biometric/face_match")
 async def biometric_face_match(selfie: UploadFile = File(...), document: UploadFile = File(...),
                                 user_id: str = Query(...), user=Depends(require_level(1))):
-    """Сверка лица на селфи с фото документа."""
     import tempfile
     from biometrics.liveness import face_match
     p1 = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
@@ -241,7 +210,6 @@ async def biometric_face_match(selfie: UploadFile = File(...), document: UploadF
 
 @router.post("/parsers/whatsapp_screenshot")
 async def whatsapp_screenshot(file: UploadFile = File(...), user=Depends(require_level(1))):
-    """Импорт скриншота WhatsApp чата — OCR + анализ."""
     import tempfile
     from parsers.whatsapp_monitor import process_screenshot
     with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
@@ -252,7 +220,6 @@ async def whatsapp_screenshot(file: UploadFile = File(...), user=Depends(require
 
 @router.get("/gov/{country}")
 def gov_single(country: str, phone: str = None, plate: str = None, user=Depends(require_level(1))):
-    """Проверка по конкретной стране: kz/ru/uz/kg/tj."""
     from verification import gov_checkers
     fn = {
         "kz": gov_checkers.check_kz, "ru": gov_checkers.check_ru,
