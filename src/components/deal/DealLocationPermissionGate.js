@@ -12,6 +12,7 @@ import {
 } from '../../utils/backgroundLocation';
 import { registerLocationPermissionRequestHandler } from '../../utils/locationPermissionCoordinator';
 import { useI18n } from '../../utils/useI18n';
+import { useAuth } from '../../utils/AuthContext';
 
 const COPY = {
   RU: { label: 'Геолокация для рейса', allow: 'Разрешить', granted: 'Геолокация разрешена' },
@@ -22,8 +23,10 @@ const COPY = {
 
 export default function DealLocationPermissionGate({ dealId, role, initialStatus, children }) {
   const { lang } = useI18n();
+  const { session } = useAuth();
   const ui = COPY[lang] || COPY.RU;
-  const isDriver = role === 'driver';
+  const effectiveRole = role || session?.user?.role || null;
+  const isDriver = effectiveRole === 'driver';
   const [dealStatus, setDealStatus] = React.useState(initialStatus || null);
   const [permission, setPermission] = React.useState(null);
   const [modalVisible, setModalVisible] = React.useState(false);
@@ -68,7 +71,7 @@ export default function DealLocationPermissionGate({ dealId, role, initialStatus
     return () => { alive = false; clearInterval(timer); };
   }, [dealId, isDriver]);
 
-  const beginDisclosure = React.useCallback(async (context = {}) => {
+  const beginDisclosure = React.useCallback(async () => {
     if (Platform.OS !== 'android') return { ok: false, reason: 'android_only' };
     const current = await refreshPermission();
     if (current?.ok) return { ok: true };
@@ -167,7 +170,7 @@ export default function DealLocationPermissionGate({ dealId, role, initialStatus
           {!granted ? (
             <TouchableOpacity
               style={s.allowButton}
-              onPress={() => { beginDisclosure({ source: 'permission_bar' }); }}
+              onPress={() => { beginDisclosure(); }}
               testID="deal-background-location-allow"
               accessibilityRole="button"
               accessibilityLabel={ui.allow}
