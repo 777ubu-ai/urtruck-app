@@ -1,6 +1,6 @@
-// TruckMap (web/PWA) — Yandex Maps only.
-// Production uses JavaScript API 2.1 because the active UrTruck Yandex key is
-// accepted by 2.1 while Yandex rejects the same key on the v3 loader.
+// TruckMap (web/PWA) — Yandex is the visual map. Road geometry may come
+// either from Yandex MultiRoute (supported regions) or from UrTruck's
+// server-side global routing endpoint for corridors Yandex cannot route.
 import React from 'react';
 import { View, Text, StyleSheet, findNodeHandle } from 'react-native';
 
@@ -17,7 +17,27 @@ const asPoint = (p) => {
 
 const pointKey = (point) => point ? `${point[0]}:${point[1]}` : 'none';
 
-function YandexMap({ livePoint, plannedPoints, onRouteSummary }) {
+const distanceTextFromMeters = (value) => {
+  const meters = Number(value);
+  if (!Number.isFinite(meters) || meters <= 0) return null;
+  const km = meters / 1000;
+  const rounded = km >= 100 ? Math.round(km) : Math.round(km * 10) / 10;
+  return `${String(rounded).replace('.', ',')} км`;
+};
+
+const durationTextFromSeconds = (value) => {
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+  const totalMinutes = Math.max(1, Math.round(seconds / 60));
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  if (days > 0) return hours > 0 ? `${days} д ${hours} ч` : `${days} д`;
+  if (hours > 0) return minutes > 0 ? `${hours} ч ${minutes} мин` : `${hours} ч`;
+  return `${minutes} мин`;
+};
+
+function YandexMap({ livePoint, plannedPoints, externalRoute, onRouteSummary }) {
   const hostRef = React.useRef(null);
   const mapRef = React.useRef(null);
   const retryTimerRef = React.useRef(null);
@@ -105,9 +125,6 @@ function YandexMap({ livePoint, plannedPoints, onRouteSummary }) {
     map.geoObjects.removeAll();
     onRouteSummary?.(null);
 
-    // До старта рейса считаем весь маршрут. После появления GPS считаем
-    // именно остаток от текущей машины до конечной точки — это то, что нужно
-    // грузоотправителю и водителю в реальном рейсе.
     const destination = plannedPoints.length ? plannedPoints[plannedPoints.length - 1] : null;
     const routingPoints = livePoint && destination
       ? [livePoint, destination]
@@ -117,6 +134,63 @@ function YandexMap({ livePoint, plannedPoints, onRouteSummary }) {
       if (cancelled || requestId !== routeRequestRef.current) return;
       onRouteSummary?.(summary);
     };
+
+    const addMarkers = () => {
+      plannedPoints.forEach((coordinates, index) => {
+        const marker = new api.Placemark(coordinates, {
+          hintContent: index === 0 ? 'Старт' : (index === plannedPoints.length - 1 ? 'Назначение' : 'Точка маршрута'),
+        }, {
+          preset: 'islands#greenCircleDotIcon',
+        });
+        map.geoObjects.add(marker);
+      });
+
+      if (livePoint) {
+        const live = new api.Placemark(livePoint, {
+          iconContent: '🚚',
+          hintContent: 'Машина',
+        }, {
+          preset: 'islands#greenStretchyIcon',
+          zIndex: 1000,
+        });
+        map.geoObjects.add(live);
+      }
+    };
+
+    const fitBounds = () => {
+      const bounds = map.geoObjects.getBounds();
+      if (bounds) map.setBounds(bounds, { checkZoomRange: true, zoomMargin: 44 });
+    };
+
+    // Global route geometry is returned by UrTruck backend and rendered on
+    // the same Yandex map. It is a real road polyline, not a fake straight
+    // line. This path is used for China/international corridors outside
+    // Yandex routing coverage.
+    const externalGeometry = (externalRoute?.geometry || []).map(asPoint).filter(Boolean);
+    if (externalGeometry.length >= 2) {
+      const road = new api.Polyline(externalGeometry, {}, {
+        strokeColor: '#168759',
+        strokeWidth: 6,
+        strokeStyle: 'solid',
+        opacity: 0.95,
+      });
+      map.geoObjects.add(road);
+      addMarkers();
+      fitBounds();
+
+      const distanceText = distanceTextFromMeters(externalRoute?.distance_m);
+      const durationText = durationTextFromSeconds(externalRoute?.duration_s);
+      if (distanceText && durationText) {
+        emitSummary({
+          distanceText,
+          durationText,
+          blocked: false,
+          isRemaining: Boolean(livePoint),
+          provider: externalRoute?.provider || 'global',
+        });
+      }
+      return () => { cancelled = true; };
+    }
 
     const addStraightFallback = () => {
       emitSummary(null);
@@ -128,8 +202,8 @@ function YandexMap({ livePoint, plannedPoints, onRouteSummary }) {
         opacity: 0.8,
       });
       map.geoObjects.add(fallback);
-      const bounds = map.geoObjects.getBounds();
-      if (bounds) map.setBounds(bounds, { checkZoomRange: true, zoomMargin: 44 });
+      addMarkers();
+      fitBounds();
     };
 
     if (routingPoints.length >= 2 && api.multiRouter?.MultiRoute) {
@@ -163,6 +237,7 @@ function YandexMap({ livePoint, plannedPoints, onRouteSummary }) {
             durationText: String(duration.text),
             blocked: Boolean(activeRoute?.properties?.get?.('blocked')),
             isRemaining: Boolean(livePoint),
+            provider: 'yandex',
           });
         } catch {
           emitSummary(null);
@@ -170,37 +245,15 @@ function YandexMap({ livePoint, plannedPoints, onRouteSummary }) {
       });
       multiRoute.model?.events?.add?.('requestfail', addStraightFallback);
       map.geoObjects.add(multiRoute);
+      addMarkers();
     } else {
       addStraightFallback();
     }
 
-    plannedPoints.forEach((coordinates, index) => {
-      const marker = new api.Placemark(coordinates, {
-        hintContent: index === 0 ? 'Старт' : (index === plannedPoints.length - 1 ? 'Назначение' : 'Точка маршрута'),
-      }, {
-        preset: 'islands#greenCircleDotIcon',
-      });
-      map.geoObjects.add(marker);
-    });
-
-    if (livePoint) {
-      const live = new api.Placemark(livePoint, {
-        iconContent: '🚚',
-        hintContent: 'Машина',
-      }, {
-        preset: 'islands#greenStretchyIcon',
-        zIndex: 1000,
-      });
-      map.geoObjects.add(live);
-    }
-
-    if (routingPoints.length < 2) {
-      const bounds = map.geoObjects.getBounds();
-      if (bounds) map.setBounds(bounds, { checkZoomRange: true, zoomMargin: 44 });
-    }
+    if (routingPoints.length < 2) fitBounds();
 
     return () => { cancelled = true; };
-  }, [status, pointKey(livePoint), JSON.stringify(plannedPoints), onRouteSummary]);
+  }, [status, pointKey(livePoint), JSON.stringify(plannedPoints), externalRoute?.routeKey, externalRoute?.distance_m, externalRoute?.duration_s, onRouteSummary]);
 
   return (
     <View style={s.shell}>
@@ -225,6 +278,7 @@ export default function TruckMap({
   lng,
   title,
   routePoints = [],
+  externalRoute = null,
   planned = false,
   plannedTitle = 'Маршрут',
   plannedHint = 'GPS водителя появится автоматически',
@@ -240,7 +294,12 @@ export default function TruckMap({
   return (
     <View style={s.shell}>
       {configured ? (
-        <YandexMap livePoint={livePoint} plannedPoints={plannedPoints} onRouteSummary={onRouteSummary} />
+        <YandexMap
+          livePoint={livePoint}
+          plannedPoints={plannedPoints}
+          externalRoute={externalRoute}
+          onRouteSummary={onRouteSummary}
+        />
       ) : (
         <View style={s.loading} testID="truck-map-yandex-not-configured">
           <Text style={s.errorTitle}>Яндекс Карта не подключена</Text>
