@@ -5,7 +5,10 @@ clients receive one trusted polyline + distance/duration without exposing
 provider keys.
 
 Policy:
-- KZ/RU/CIS: Yandex Router API, mode=truck (primary).
+- KZ/RU/CIS: Yandex Router API, truck first.
+- If a city-level destination cannot be reached in truck mode (for example a
+  restricted city centre), retry Yandex driving mode to keep a real road plan;
+  precise truck restrictions take over once a precise address/vehicle is known.
 - China / unsupported Yandex corridors: global HGV provider fallback.
 - Never fabricate road distance/ETA from a straight line.
 """
@@ -102,9 +105,6 @@ def _append_polyline(target: list[list[float]], points) -> None:
 
 
 def _looks_like_china_corridor(points: List[RoutePoint]) -> bool:
-    # Practical UrTruck corridor detector. Guangzhou/Urumqi/China legs are
-    # outside Yandex Router API coverage; KZ/RU routes (Almaty↔Moscow etc.)
-    # stay on Yandex. This is deliberately conservative around East KZ.
     for p in points:
         if p.lng >= 90 and 18 <= p.lat <= 55:
             return True
@@ -113,15 +113,15 @@ def _looks_like_china_corridor(points: List[RoutePoint]) -> bool:
     return False
 
 
-def _yandex_params(body: RoadRouteRequest, api_key: str) -> dict:
+def _yandex_params(body: RoadRouteRequest, api_key: str, mode: str = "truck") -> dict:
     params = {
         "waypoints": "|".join(f"{p.lat},{p.lng}" for p in body.points),
-        "mode": "truck",
+        "mode": mode,
         "traffic": "disabled",
         "apikey": api_key,
     }
     vehicle = body.vehicle
-    if vehicle:
+    if mode == "truck" and vehicle:
         if vehicle.weight_t is not None:
             params["weight"] = vehicle.weight_t
         if vehicle.axle_load_t is not None:
@@ -137,13 +137,44 @@ def _yandex_params(body: RoadRouteRequest, api_key: str) -> dict:
     return params
 
 
-async def _request_yandex(body: RoadRouteRequest, api_key: str) -> dict:
+def _parse_yandex_route(data: dict, mode: str) -> dict:
+    route = data.get("route") or {}
+    legs = route.get("legs") or []
+    if not legs:
+        raise RuntimeError(f"yandex_{mode}_no_legs")
+
+    geometry: list[list[float]] = []
+    distance_m = 0.0
+    duration_s = 0.0
+    for leg in legs:
+        if leg.get("status") != "OK":
+            raise RuntimeError(f"yandex_{mode}_leg_{leg.get('status') or 'FAIL'}")
+        for step in leg.get("steps") or []:
+            distance_m += float(step.get("length") or 0)
+            duration_s += float(step.get("duration") or 0)
+            _append_polyline(geometry, (step.get("polyline") or {}).get("points") or [])
+
+    if len(geometry) < 2 or distance_m <= 0 or duration_s <= 0:
+        raise RuntimeError(f"yandex_{mode}_empty_route")
+
+    return {
+        "ok": True,
+        "provider": "yandex",
+        "profile": mode,
+        "distance_m": round(distance_m),
+        "duration_s": round(duration_s),
+        "geometry": _downsample(geometry),
+        "cached": False,
+    }
+
+
+async def _request_yandex_mode(body: RoadRouteRequest, api_key: str, mode: str) -> dict:
     timeout = httpx.Timeout(25.0, connect=7.0)
     async with httpx.AsyncClient(timeout=timeout) as client:
-        response = await client.get(_YANDEX_URL, params=_yandex_params(body, api_key))
+        response = await client.get(_YANDEX_URL, params=_yandex_params(body, api_key, mode))
 
     if response.status_code >= 400:
-        detail = "yandex_router_failed"
+        detail = "router_failed"
         try:
             data = response.json()
             errors = data.get("errors")
@@ -151,39 +182,29 @@ async def _request_yandex(body: RoadRouteRequest, api_key: str) -> dict:
                 detail = str(errors[0])
         except Exception:
             pass
-        raise RuntimeError(f"yandex_router_http_{response.status_code}: {detail}")
+        raise RuntimeError(f"yandex_{mode}_http_{response.status_code}: {detail}")
 
     try:
-        data = response.json()
-        route = data.get("route") or {}
-        legs = route.get("legs") or []
-        geometry: list[list[float]] = []
-        distance_m = 0.0
-        duration_s = 0.0
-        if not legs:
-            raise ValueError("no legs")
-        for leg in legs:
-            if leg.get("status") not in (None, "OK"):
-                raise ValueError(f"leg status {leg.get('status')}")
-            for step in leg.get("steps") or []:
-                distance_m += float(step.get("length") or 0)
-                duration_s += float(step.get("duration") or 0)
-                _append_polyline(geometry, (step.get("polyline") or {}).get("points") or [])
+        return _parse_yandex_route(response.json(), mode)
+    except RuntimeError:
+        raise
     except Exception as exc:
-        raise RuntimeError("yandex_router_invalid_response") from exc
+        raise RuntimeError(f"yandex_{mode}_invalid_response") from exc
 
-    if len(geometry) < 2 or distance_m <= 0 or duration_s <= 0:
-        raise RuntimeError("yandex_router_empty_route")
 
-    return {
-        "ok": True,
-        "provider": "yandex",
-        "profile": "truck",
-        "distance_m": round(distance_m),
-        "duration_s": round(duration_s),
-        "geometry": _downsample(geometry),
-        "cached": False,
-    }
+async def _request_yandex(body: RoadRouteRequest, api_key: str) -> dict:
+    """Truck route first; driving is a real-road city-level fallback.
+
+    The fallback is intentionally not presented as truck-restriction-aware;
+    `profile` tells clients/tests which route was returned.
+    """
+    errors = []
+    for mode in ("truck", "driving"):
+        try:
+            return await _request_yandex_mode(body, api_key, mode)
+        except Exception as exc:
+            errors.append(str(exc))
+    raise RuntimeError("; ".join(errors) or "yandex_route_unavailable")
 
 
 def _ors_options(vehicle: Optional[VehicleSpec]) -> dict:
@@ -264,7 +285,6 @@ async def _request_ors(body: RoadRouteRequest, api_key: str) -> dict:
 
 @routing_router.post("/road-route")
 async def build_road_route(body: RoadRouteRequest, _user=Depends(get_user)):
-    """Return a trusted road polyline + metrics for authenticated users."""
     key = _cache_key(body)
     cached = _cache_get(key)
     if cached:
@@ -273,31 +293,30 @@ async def build_road_route(body: RoadRouteRequest, _user=Depends(get_user)):
     yandex_key = (os.getenv("YANDEX_ROUTER_API_KEY") or "").strip()
     ors_key = (os.getenv("OPENROUTESERVICE_API_KEY") or os.getenv("ORS_API_KEY") or "").strip()
     prefer_global = _looks_like_china_corridor(body.points)
-    errors: list[str] = []
 
     if prefer_global and ors_key:
         try:
             payload = await _request_ors(body, ors_key)
             _cache_put(key, payload)
             return payload
-        except Exception as exc:
-            errors.append(str(exc))
+        except Exception:
+            pass
 
     if yandex_key:
         try:
             payload = await _request_yandex(body, yandex_key)
             _cache_put(key, payload)
             return payload
-        except Exception as exc:
-            errors.append(str(exc))
+        except Exception:
+            pass
 
     if ors_key:
         try:
             payload = await _request_ors(body, ors_key)
             _cache_put(key, payload)
             return payload
-        except Exception as exc:
-            errors.append(str(exc))
+        except Exception:
+            pass
 
     if not yandex_key and not ors_key:
         raise HTTPException(status_code=503, detail="road_routing_not_configured")
