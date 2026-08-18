@@ -1,6 +1,8 @@
-// TruckMap (web/PWA) — Yandex is the visual map. Road geometry may come
-// either from Yandex MultiRoute (supported regions) or from UrTruck's
-// server-side global routing endpoint for corridors Yandex cannot route.
+// TruckMap (web/PWA) — Yandex remains the visual map.
+// Preferred road geometry/metrics come from UrTruck backend:
+//   KZ/RU/CIS -> Yandex Router API mode=truck
+//   unsupported China corridors -> global HGV fallback.
+// Browser never receives provider secrets.
 import React from 'react';
 import { View, Text, StyleSheet, findNodeHandle } from 'react-native';
 import { routingAPI } from '../utils/routingAPI';
@@ -17,18 +19,9 @@ const asPoint = (p) => {
 };
 
 const pointKey = (point) => point ? `${point[0]}:${point[1]}` : 'none';
-const routeKey = (points) => (points || []).map((point) => `${Number(point?.[0]).toFixed(3)}:${Number(point?.[1]).toFixed(3)}`).join('|');
-
-// Yandex's routing product does not cover mainland China. We keep Yandex as
-// the visual map, but request a server-side global HGV route whenever a route
-// clearly reaches the China/SE-Asia side of UrTruck's corridors. The server
-// key never appears in the browser.
-const needsGlobalRoadRouting = (points) => (points || []).some((point) => {
-  const lat = Number(point?.[0]);
-  const lng = Number(point?.[1]);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
-  return (lng > 85 && lat < 55) || (lat < 35 && lng > 70);
-});
+const routeKey = (points) => (points || [])
+  .map((point) => `${Number(point?.[0]).toFixed(4)}:${Number(point?.[1]).toFixed(4)}`)
+  .join('|');
 
 const distanceTextFromMeters = (value) => {
   const meters = Number(value);
@@ -50,13 +43,14 @@ const durationTextFromSeconds = (value) => {
   return `${minutes} мин`;
 };
 
-function YandexMap({ livePoint, plannedPoints, externalRoute, onRouteSummary }) {
+function YandexMap({ livePoint, plannedPoints, serverRoute, onRouteSummary }) {
   const hostRef = React.useRef(null);
   const mapRef = React.useRef(null);
   const retryTimerRef = React.useRef(null);
   const routeRequestRef = React.useRef(0);
   const [status, setStatus] = React.useState('loading');
   const [mountAttempt, setMountAttempt] = React.useState(0);
+  const [fallbackActive, setFallbackActive] = React.useState(false);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -85,10 +79,7 @@ function YandexMap({ livePoint, plannedPoints, externalRoute, onRouteSummary }) 
 
       if (!api || !host) {
         attempts += 1;
-        if (attempts >= 200) {
-          fail();
-          return;
-        }
+        if (attempts >= 200) { fail(); return; }
         timer = setTimeout(start, 100);
         return;
       }
@@ -103,18 +94,12 @@ function YandexMap({ livePoint, plannedPoints, externalRoute, onRouteSummary }) 
               center: initial,
               zoom: points.length > 1 ? 5 : 10,
               controls: ['zoomControl', 'fullscreenControl'],
-            }, {
-              suppressMapOpenBlock: true,
-            });
+            }, { suppressMapOpenBlock: true });
             mapRef.current = map;
             setStatus('ready');
-          } catch {
-            fail();
-          }
+          } catch { fail(); }
         });
-      } catch {
-        fail();
-      }
+      } catch { fail(); }
     };
 
     start();
@@ -132,16 +117,15 @@ function YandexMap({ livePoint, plannedPoints, externalRoute, onRouteSummary }) 
     const map = mapRef.current;
     const api = globalThis.ymaps;
     if (status !== 'ready' || !map || !api) return undefined;
+
     let cancelled = false;
     const requestId = ++routeRequestRef.current;
-
     map.geoObjects.removeAll();
     onRouteSummary?.(null);
+    setFallbackActive(false);
 
     const destination = plannedPoints.length ? plannedPoints[plannedPoints.length - 1] : null;
-    const routingPoints = livePoint && destination
-      ? [livePoint, destination]
-      : plannedPoints;
+    const routingPoints = livePoint && destination ? [livePoint, destination] : plannedPoints;
 
     const emitSummary = (summary) => {
       if (cancelled || requestId !== routeRequestRef.current) return;
@@ -150,23 +134,14 @@ function YandexMap({ livePoint, plannedPoints, externalRoute, onRouteSummary }) 
 
     const addMarkers = () => {
       plannedPoints.forEach((coordinates, index) => {
-        const marker = new api.Placemark(coordinates, {
+        map.geoObjects.add(new api.Placemark(coordinates, {
           hintContent: index === 0 ? 'Старт' : (index === plannedPoints.length - 1 ? 'Назначение' : 'Точка маршрута'),
-        }, {
-          preset: 'islands#greenCircleDotIcon',
-        });
-        map.geoObjects.add(marker);
+        }, { preset: 'islands#greenCircleDotIcon' }));
       });
-
       if (livePoint) {
-        const live = new api.Placemark(livePoint, {
-          iconContent: '🚚',
-          hintContent: 'Машина',
-        }, {
-          preset: 'islands#greenStretchyIcon',
-          zIndex: 1000,
-        });
-        map.geoObjects.add(live);
+        map.geoObjects.add(new api.Placemark(livePoint, {
+          iconContent: '🚚', hintContent: 'Машина',
+        }, { preset: 'islands#greenStretchyIcon', zIndex: 1000 }));
       }
     };
 
@@ -175,42 +150,38 @@ function YandexMap({ livePoint, plannedPoints, externalRoute, onRouteSummary }) 
       if (bounds) map.setBounds(bounds, { checkZoomRange: true, zoomMargin: 44 });
     };
 
-    const externalGeometry = (externalRoute?.geometry || []).map(asPoint).filter(Boolean);
-    if (externalGeometry.length >= 2) {
-      const road = new api.Polyline(externalGeometry, {}, {
-        strokeColor: '#168759',
-        strokeWidth: 6,
-        strokeStyle: 'solid',
-        opacity: 0.95,
-      });
-      map.geoObjects.add(road);
+    // 1) Trusted server route: real road geometry + authoritative metrics.
+    const geometry = (serverRoute?.geometry || []).map(asPoint).filter(Boolean);
+    if (geometry.length >= 2) {
+      map.geoObjects.add(new api.Polyline(geometry, {}, {
+        strokeColor: '#168759', strokeWidth: 6, strokeStyle: 'solid', opacity: 0.96,
+      }));
       addMarkers();
       fitBounds();
-
-      const distanceText = distanceTextFromMeters(externalRoute?.distance_m);
-      const durationText = durationTextFromSeconds(externalRoute?.duration_s);
+      const distanceText = distanceTextFromMeters(serverRoute?.distance_m);
+      const durationText = durationTextFromSeconds(serverRoute?.duration_s);
       if (distanceText && durationText) {
         emitSummary({
           distanceText,
           durationText,
           blocked: false,
           isRemaining: Boolean(livePoint),
-          provider: externalRoute?.provider || 'global',
+          provider: serverRoute?.provider || 'server-road',
         });
       }
       return () => { cancelled = true; };
     }
 
-    const addStraightFallback = () => {
+    // 2) JS MultiRoute remains a compatibility fallback. If it fails, the
+    // direction line is deliberately gray/dashed and explicitly labelled —
+    // never presented as a real road route.
+    const addDirectionFallback = () => {
       emitSummary(null);
+      setFallbackActive(true);
       if (cancelled || requestId !== routeRequestRef.current || routingPoints.length < 2) return;
-      const fallback = new api.Polyline(routingPoints, {}, {
-        strokeColor: '#168759',
-        strokeWidth: 4,
-        strokeStyle: 'dash',
-        opacity: 0.8,
-      });
-      map.geoObjects.add(fallback);
+      map.geoObjects.add(new api.Polyline(routingPoints, {}, {
+        strokeColor: '#6B7B73', strokeWidth: 3, strokeStyle: 'dash', opacity: 0.58,
+      }));
       addMarkers();
       fitBounds();
     };
@@ -218,11 +189,7 @@ function YandexMap({ livePoint, plannedPoints, externalRoute, onRouteSummary }) 
     if (routingPoints.length >= 2 && api.multiRouter?.MultiRoute) {
       const multiRoute = new api.multiRouter.MultiRoute({
         referencePoints: routingPoints,
-        params: {
-          routingMode: 'auto',
-          results: 1,
-          avoidTrafficJams: false,
-        },
+        params: { routingMode: 'auto', results: 1, avoidTrafficJams: false },
       }, {
         boundsAutoApply: true,
         wayPointVisible: true,
@@ -237,32 +204,27 @@ function YandexMap({ livePoint, plannedPoints, externalRoute, onRouteSummary }) 
           const activeRoute = multiRoute.getActiveRoute?.();
           const distance = activeRoute?.properties?.get?.('distance');
           const duration = activeRoute?.properties?.get?.('duration');
-          if (!distance?.text || !duration?.text) {
-            emitSummary(null);
-            return;
-          }
+          if (!distance?.text || !duration?.text) { addDirectionFallback(); return; }
+          setFallbackActive(false);
           emitSummary({
             distanceText: String(distance.text),
             durationText: String(duration.text),
             blocked: Boolean(activeRoute?.properties?.get?.('blocked')),
             isRemaining: Boolean(livePoint),
-            provider: 'yandex',
+            provider: 'yandex-js',
           });
-        } catch {
-          emitSummary(null);
-        }
+        } catch { addDirectionFallback(); }
       });
-      multiRoute.model?.events?.add?.('requestfail', addStraightFallback);
+      multiRoute.model?.events?.add?.('requestfail', addDirectionFallback);
       map.geoObjects.add(multiRoute);
       addMarkers();
     } else {
-      addStraightFallback();
+      addDirectionFallback();
     }
 
     if (routingPoints.length < 2) fitBounds();
-
     return () => { cancelled = true; };
-  }, [status, pointKey(livePoint), JSON.stringify(plannedPoints), externalRoute?.routeKey, externalRoute?.distance_m, externalRoute?.duration_s, onRouteSummary]);
+  }, [status, pointKey(livePoint), JSON.stringify(plannedPoints), serverRoute?.routeKey, serverRoute?.distance_m, serverRoute?.duration_s, onRouteSummary]);
 
   return (
     <View style={s.shell}>
@@ -276,6 +238,11 @@ function YandexMap({ livePoint, plannedPoints, externalRoute, onRouteSummary }) 
         <View pointerEvents="none" style={s.loading} testID="truck-map-yandex-error">
           <Text style={s.errorTitle}>Яндекс Карта временно недоступна</Text>
           <Text style={s.loadingText}>Повторяем подключение автоматически…</Text>
+        </View>
+      ) : null}
+      {fallbackActive ? (
+        <View pointerEvents="none" style={s.routeState} testID="truck-map-road-route-unavailable">
+          <Text style={s.routeStateText}>Маршрут по дороге временно недоступен</Text>
         </View>
       ) : null}
     </View>
@@ -304,38 +271,31 @@ export default function TruckMap({
     () => (livePoint && destination ? [livePoint, destination] : plannedPoints),
     [pointKey(livePoint), JSON.stringify(plannedPoints)],
   );
-  const globalNeeded = needsGlobalRoadRouting(effectivePoints);
   const effectiveKey = routeKey(effectivePoints);
-  const [autoExternalRoute, setAutoExternalRoute] = React.useState(null);
-  const [globalLoading, setGlobalLoading] = React.useState(false);
-  const [globalError, setGlobalError] = React.useState(null);
+  const [serverRoute, setServerRoute] = React.useState(null);
+  const [serverLoading, setServerLoading] = React.useState(false);
 
   React.useEffect(() => {
     let cancelled = false;
-    if (!globalNeeded || effectivePoints.length < 2 || externalRoute) {
-      setAutoExternalRoute(null);
-      setGlobalLoading(false);
-      setGlobalError(null);
+    if (externalRoute || effectivePoints.length < 2) {
+      setServerRoute(null);
+      setServerLoading(false);
       return () => { cancelled = true; };
     }
-
-    setGlobalLoading(true);
-    setGlobalError(null);
+    setServerLoading(true);
     routingAPI.roadRoute(effectivePoints).then((result) => {
       if (cancelled) return;
-      setGlobalLoading(false);
+      setServerLoading(false);
       if (result?.ok && Array.isArray(result.geometry) && result.geometry.length >= 2) {
-        setAutoExternalRoute({ ...result, routeKey: effectiveKey });
-        setGlobalError(null);
+        setServerRoute({ ...result, routeKey: effectiveKey });
       } else {
-        setAutoExternalRoute(null);
-        setGlobalError(result?.detail || 'routing_failed');
+        setServerRoute(null);
       }
     });
     return () => { cancelled = true; };
-  }, [globalNeeded, effectiveKey, externalRoute]);
+  }, [effectiveKey, externalRoute]);
 
-  const resolvedExternalRoute = externalRoute || autoExternalRoute;
+  const resolvedRoute = externalRoute || serverRoute;
 
   return (
     <View style={s.shell}>
@@ -343,7 +303,7 @@ export default function TruckMap({
         <YandexMap
           livePoint={livePoint}
           plannedPoints={plannedPoints}
-          externalRoute={resolvedExternalRoute}
+          serverRoute={resolvedRoute}
           onRouteSummary={onRouteSummary}
         />
       ) : (
@@ -352,14 +312,9 @@ export default function TruckMap({
           <Text style={s.loadingText}>Карта не будет заменена другим провайдером.</Text>
         </View>
       )}
-      {globalNeeded && globalLoading ? (
-        <View pointerEvents="none" style={s.routeState} testID="truck-map-global-routing-loading">
+      {serverLoading ? (
+        <View pointerEvents="none" style={s.routeState} testID="truck-map-road-routing-loading">
           <Text style={s.routeStateText}>Строим маршрут по дороге…</Text>
-        </View>
-      ) : null}
-      {globalNeeded && globalError ? (
-        <View pointerEvents="none" style={s.routeState} testID="truck-map-global-routing-error">
-          <Text style={s.routeStateText}>Маршрут по дороге временно недоступен</Text>
         </View>
       ) : null}
       {showBadge ? (
@@ -379,9 +334,9 @@ const s = StyleSheet.create({
   loadingText: { color: '#617067', fontSize: 12, fontWeight: '700', textAlign: 'center' },
   errorTitle: { color: '#14221C', fontSize: 14, fontWeight: '900', textAlign: 'center', marginBottom: 6 },
   routeState: {
-    position: 'absolute', left: 12, bottom: 12, maxWidth: '76%',
+    position: 'absolute', left: 12, bottom: 12, maxWidth: '82%',
     paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.94)', borderWidth: 1, borderColor: '#DDE5E0',
+    backgroundColor: 'rgba(255,255,255,0.95)', borderWidth: 1, borderColor: '#DDE5E0',
   },
   routeStateText: { color: '#3F4E46', fontSize: 11.5, fontWeight: '800' },
   badge: {
