@@ -9,7 +9,7 @@ from __future__ import annotations
 import math
 import os
 import time
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
@@ -106,13 +106,14 @@ def _ors_options(vehicle: Optional[VehicleSpec]) -> dict:
 async def _request_ors(body: RoadRouteRequest, api_key: str) -> dict:
     # ORS expects [longitude, latitude]; UrTruck/Yandex components use
     # [latitude, longitude]. Convert only at the provider boundary.
+    # Do NOT request alternative distance units: ORS default summary is
+    # distance in metres and duration in seconds, which is our API contract.
     coordinates = [[p.lng, p.lat] for p in body.points]
     request_body = {
         "coordinates": coordinates,
         "preference": "recommended",
         "instructions": False,
         "geometry": True,
-        "units": "km",
         "options": _ors_options(body.vehicle),
     }
     headers = {
