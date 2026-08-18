@@ -139,6 +139,55 @@ def get_profile(user=Depends(require_level(1))):
         "cmr_insurance_url": file_signing.sign(d.get("cmr_insurance_url")),
     }
 
+@profile_router.get("/counterparty/{other_user_id}")
+def get_counterparty_profile(other_user_id: str, user=Depends(require_level(1))):
+    """Safe identity card for the other participant of a real deal.
+
+    This is deliberately NOT a public arbitrary-user profile endpoint. The
+    requester must share a deal with `other_user_id`; phone, documents, BIN/INN,
+    messenger ids and other private data are not returned.
+    """
+    _ensure_columns()
+    uid = user["id"]
+    if not other_user_id or other_user_id == uid:
+        raise HTTPException(status_code=400, detail={"error": "INVALID_COUNTERPARTY"})
+    from database.db import get_conn
+    with get_conn() as c:
+        relation = c.execute(
+            """
+            SELECT id FROM deals
+            WHERE (shipper_id = ? AND driver_id = ?)
+               OR (shipper_id = ? AND driver_id = ?)
+            ORDER BY created_at DESC LIMIT 1
+            """,
+            (uid, other_user_id, other_user_id, uid),
+        ).fetchone()
+        if not relation:
+            raise HTTPException(status_code=403, detail={"error": "COUNTERPARTY_FORBIDDEN"})
+        row = c.execute(
+            """
+            SELECT id, full_name, role, city, country, company_name,
+                   vehicle_type, vehicle_brand, vehicle_plate, verification_level
+            FROM drivers_registration WHERE id = ?
+            """,
+            (other_user_id,),
+        ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail={"error": "COUNTERPARTY_NOT_FOUND"})
+    d = dict(row)
+    return {
+        "id": d.get("id"),
+        "name": d.get("full_name") or "",
+        "role": d.get("role") or "",
+        "city": d.get("city") or "",
+        "country": d.get("country") or "",
+        "company_name": d.get("company_name") or "",
+        "vehicle_type": d.get("vehicle_type") or "",
+        "vehicle_brand": d.get("vehicle_brand") or "",
+        "vehicle_plate": d.get("vehicle_plate") or "",
+        "verified": int(d.get("verification_level") or 0) >= 1,
+    }
+
 @profile_router.patch("/me")
 def update_profile(body: UpdateProfileIn, user=Depends(require_level(1))):
     """Обновить профиль. Для грузоотправителя имя, страна и телефон обязательны."""
