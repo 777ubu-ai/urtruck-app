@@ -1,11 +1,10 @@
 import { Platform } from 'react-native';
 import { storage } from './storage';
 import { API_BASE } from '../config/env';
-import { authedFetch } from './authEvents';  // QA-аудит P1-6: 401 → auth:expired
-import { getLanguage } from './i18n';        // QA-аудит P2-8: язык для авто-ответа поддержки
+import { authedFetch } from './authEvents';
+import { getLanguage } from './i18n';
 
 const BASE = `${API_BASE}/chat`;
-
 const TOKEN_KEY = 'ur_reg_token';
 
 async function headers() {
@@ -16,34 +15,41 @@ async function headers() {
   };
 }
 
+function attachmentError(message, { status = null, detail = null, isNetwork = false } = {}) {
+  const error = new Error(message || detail || 'attachment upload failed');
+  error.status = status;
+  error.detail = detail || message || null;
+  error.isNetwork = Boolean(isNetwork);
+  return error;
+}
+
+function mimeFromName(name, fallback = 'application/octet-stream') {
+  const value = String(name || '').toLowerCase();
+  if (value.endsWith('.pdf')) return 'application/pdf';
+  if (value.endsWith('.png')) return 'image/png';
+  if (value.endsWith('.jpg') || value.endsWith('.jpeg')) return 'image/jpeg';
+  return fallback;
+}
+
 export const chatAPI = {
   async send({ roomId, toUserId, text, photoUrl, isVoice, voiceDuration, cargoId, tripId, clientMsgId }) {
-    // C3 (device-баг «ложное нет сети»): различаем СЕТЕВОЙ сбой (fetch
-    // reject/таймаут — запрос не дошёл) и HTTP-ошибку (сервер ОТВЕТИЛ 4xx/5xx —
-    // сеть в порядке). Раньше оба случая бросали одинаковый Error, и ChatScreen
-    // показывал «Нет сети» даже на серверную ошибку + гонял её в бесконечный
-    // ретрай outbox. Помечаем ошибку флагами isNetwork / status.
     let r;
     try {
       r = await authedFetch(`${BASE}/send`, {
         method: 'POST', headers: await headers(),
         body: JSON.stringify({
-          // Variant B: room_id — приоритетный путь (бэк берёт получателя из
-          // участников комнаты, исключая гонку резолва собеседника на фронте).
           room_id: roomId || null,
           to_user_id: toUserId, text, photo_url: photoUrl,
           is_voice: isVoice || false, voice_duration: voiceDuration,
           cargo_id: cargoId, trip_id: tripId,
-          client_msg_id: clientMsgId,  // QA-аудит P1-3: идемпотентность
-          lang: getLanguage(),         // QA-аудит P2-8: локализация авто-ответа поддержки
+          client_msg_id: clientMsgId,
+          lang: getLanguage(),
         }),
       });
     } catch (e) {
-      // fetch отклонён — реальный сетевой сбой/таймаут (запрос не дошёл).
       const err = new Error('network'); err.isNetwork = true; throw err;
     }
     if (!r.ok) {
-      // Сервер ответил ошибкой — это НЕ «нет сети».
       const err = new Error(`send failed ${r.status}`); err.status = r.status; throw err;
     }
     return r.json();
@@ -60,13 +66,6 @@ export const chatAPI = {
   },
 
   async unread() {
-    // Stage 28/29: short-circuit ДО fetch'а для guest-сессий.
-    // Раньше проверяли только наличие Authorization header'а, но
-    // гость тоже имеет token (из ensureGuest()), просто без
-    // verification_level. Теперь дополнительно проверяем
-    // ur_verification_level в storage — если < 1 (гость), не
-    // обращаемся к защищённому endpoint'у, чтобы browser console
-    // не спамил `Failed to load resource: 403`.
     const h = await headers();
     if (!h.Authorization) return { unread: 0 };
     const lvl = parseInt((await storage.get('ur_verification_level')) || '0', 10);
@@ -84,8 +83,6 @@ export const chatAPI = {
     return r.json();
   },
 
-  // --- Deal Room (PR #60 backend foundation) ---
-  // Новые эндпоинты. Старые send/rooms/messages/unread/translate не трогаются.
   async conversations() {
     const r = await authedFetch(`${BASE}/conversations`, { headers: await headers() });
     return r.json();
@@ -104,9 +101,6 @@ export const chatAPI = {
     return r.json();
   },
 
-  // --- Smart actions (PR4) ---
-  // Принять ставку. Использует существующий marketplace-эндпоинт
-  // /market/bids/{bidId}/accept (он же пишет immutable deal.bid_accepted).
   async acceptBid(bidId) {
     const r = await authedFetch(`${API_BASE}/market/bids/${bidId}/accept`, {
       method: 'POST', headers: await headers(),
@@ -116,7 +110,6 @@ export const chatAPI = {
     return data;
   },
 
-  // --- Attachments (PR3 media foundation) ---
   async listAttachments(conversationId) {
     const r = await authedFetch(`${API_BASE}/chat/conversations/${conversationId}/attachments`, {
       headers: await headers(),
@@ -124,11 +117,6 @@ export const chatAPI = {
     return r.json();
   },
 
-  // Загрузка вложения. uri — локальный путь после сжатия (compressImage).
-  // multipart/form-data: НЕ ставим Content-Type вручную (boundary задаёт fetch).
-  // 4.3: загрузка фото сообщения в storage → { photo_key }. Native-safe
-  // multipart (на web — blob, на native — {uri,name,type}, иначе RN шлёт
-  // битый blob). Ключ идёт в chat.send как photo_url; сервер подпишет на чтении.
   async uploadChatPhoto(uri) {
     const token = await storage.get(TOKEN_KEY);
     const form = new FormData();
@@ -147,8 +135,6 @@ export const chatAPI = {
     return r.json();
   },
 
-  // Голосовое: аудио → storage, возвращает { voice_key }. Сообщение шлётся
-  // затем через send({ isVoice, voiceDuration, photoUrl: voice_key }).
   async uploadChatVoice(uri) {
     const token = await storage.get(TOKEN_KEY);
     const form = new FormData();
@@ -169,7 +155,6 @@ export const chatAPI = {
     return r.json();
   },
 
-  // «Печатает…»: лёгкий пинг (fire-and-forget), партнёр увидит индикатор.
   async typing(roomId) {
     if (!roomId) return;
     try {
@@ -177,31 +162,74 @@ export const chatAPI = {
         method: 'POST', headers: await headers(),
         body: JSON.stringify({ room_id: roomId }),
       });
-    } catch { /* не мешаем набору текста */ }
+    } catch { /* typing must never block composer */ }
   },
 
-  async uploadAttachment(conversationId, { uri, kind = 'document', name = 'file.jpg', type = 'image/jpeg' } = {}) {
+  async uploadAttachment(
+    conversationId,
+    {
+      uri,
+      kind = 'document',
+      name = 'file.bin',
+      type = null,
+      clientUploadId = null,
+    } = {},
+  ) {
+    if (!conversationId || !uri) {
+      throw attachmentError('attachment input missing');
+    }
+
     const token = await storage.get(TOKEN_KEY);
     const form = new FormData();
-    // React Native cannot reliably fetch file:// / content:// URIs into a
-    // Blob. Use the native multipart descriptor there; web still needs Blob.
+    const requestedType = type || mimeFromName(name);
+
+    // Safari/PWA may expose a selected PDF as Blob with empty/octet-stream
+    // MIME. Re-wrap the bytes using the picker-provided/extension-derived MIME
+    // so multipart metadata is useful, while backend magic bytes remain the
+    // source of truth. Native keeps the RN {uri,name,type} contract.
     if (Platform.OS === 'web') {
-      const blob = await fetch(uri).then((res) => {
-        if (!res.ok) throw new Error(`document read failed ${res.status}`);
-        return res.blob();
-      });
-      form.append('file', blob, name);
+      let blob;
+      try {
+        const read = await fetch(uri);
+        if (!read.ok) throw attachmentError(`document read failed ${read.status}`, { status: read.status });
+        blob = await read.blob();
+      } catch (error) {
+        if (error?.status) throw error;
+        throw attachmentError('document read failed', { detail: error?.message || 'document read failed' });
+      }
+      const finalType = requestedType && requestedType !== 'application/octet-stream'
+        ? requestedType
+        : (blob.type || mimeFromName(name));
+      const part = typeof File !== 'undefined'
+        ? new File([blob], name, { type: finalType || 'application/octet-stream' })
+        : new Blob([blob], { type: finalType || 'application/octet-stream' });
+      form.append('file', part, name);
     } else {
-      form.append('file', { uri, name, type });
+      form.append('file', {
+        uri,
+        name,
+        type: requestedType || 'application/octet-stream',
+      });
     }
     form.append('kind', kind);
-    const r = await authedFetch(`${API_BASE}/chat/conversations/${conversationId}/attachments`, {
-      method: 'POST',
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      body: form,
-    });
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(data?.detail || `upload failed ${r.status}`);
+    if (clientUploadId) form.append('client_upload_id', String(clientUploadId));
+
+    let response;
+    try {
+      response = await authedFetch(`${API_BASE}/chat/conversations/${conversationId}/attachments`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
+    } catch (error) {
+      throw attachmentError('network', { isNetwork: true, detail: error?.message || 'network' });
+    }
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const detail = typeof data?.detail === 'string' ? data.detail : `upload failed ${response.status}`;
+      throw attachmentError(detail, { status: response.status, detail });
+    }
     return data;
   },
 };
