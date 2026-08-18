@@ -21,7 +21,7 @@ export default function FeedCard({
   subtitle,
   meta = [],
   priceText,
-  priceCaption, // kept for API compatibility; intentionally not rendered
+  priceCaption, // маленькая подпись под ценой/рейтингом (напр. кол-во отзывов)
   status,
   responses,
   bottomLeft,
@@ -112,9 +112,16 @@ export default function FeedCard({
           </View>
           <View style={s.valueRight}>
             {priceText ? (
-              <Text style={[s.price, compact && s.priceCompact, { color: colors.text }]} numberOfLines={1}>
-                {priceText}
-              </Text>
+              <View style={s.priceCol}>
+                <Text style={[s.price, compact && s.priceCompact, { color: colors.text }]} numberOfLines={1}>
+                  {priceText}
+                </Text>
+                {priceCaption ? (
+                  <Text style={[s.priceCaption, { color: colors.textDim }]} numberOfLines={1}>
+                    {priceCaption}
+                  </Text>
+                ) : null}
+              </View>
             ) : null}
             {onToggleFav ? (
               <TouchableOpacity
@@ -124,9 +131,10 @@ export default function FeedCard({
                 testID="feed-fav"
                 accessibilityRole="button"
                 accessibilityState={{ selected: !!favActive }}
+                accessibilityLabel={favActive ? t('in_favorites') : t('add_to_favorites')}
               >
                 <Feather
-                  name="bookmark"
+                  name="heart"
                   size={20}
                   color={favActive ? SAVE : colors.textMuted}
                   fill={favActive ? SAVE : 'transparent'}
@@ -210,8 +218,10 @@ const s = StyleSheet.create({
   valueRight: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 8 },
   statusPill: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, borderWidth: 1, backgroundColor: 'transparent' },
   statusText: { fontSize: 11, fontWeight: '800', letterSpacing: 0.3 },
+  priceCol: { alignItems: 'flex-end' },
   price: { fontSize: 20, lineHeight: 24, fontWeight: '700', fontVariant: ['tabular-nums'] },
   priceCompact: { fontSize: 18, lineHeight: 22 },
+  priceCaption: { fontSize: 11, lineHeight: 14, marginTop: 1 },
   bookmarkBtn: { width: 44, height: 44, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   bookmarkBtnActive: { backgroundColor: SAVE_SOFT },
   responses: { fontSize: 11, marginTop: 2, marginBottom: 6 },

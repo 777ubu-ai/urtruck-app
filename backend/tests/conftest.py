@@ -45,6 +45,13 @@ def _ensure_full_schema():
     marketplace._init()
     import api.notifications as notifications
     notifications._init()
+    # favorites (driver+cargo избранное) — тот же класс бага, что и у CGR
+    # выше: _init() модульного уровня выполняется при import ВО ВРЕМЯ
+    # коллекции, а этот fixture затем удаляет файл БД и пересоздаёт общие
+    # схемы — без повторного вызова здесь `favorites` таблицы бы не было
+    # при полном прогоне suite (только при изолированном запуске одного файла).
+    import api.favorites as favorites
+    favorites._init()
 
     # deal_events immutable timeline schema used by status-FSM tests.
     _deal_room_schema = Path(__file__).resolve().parent.parent / "database" / "schemas" / "deal_room_schema.sql"

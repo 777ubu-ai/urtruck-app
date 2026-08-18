@@ -230,6 +230,11 @@ export default function FeedScreen({ navigation, route }) {
   const [loadError, setLoadError] = useState(false);
   // Избранные перевозчики (клиент) — id водителей. Быстрое сохранение из ленты.
   const [favIds, setFavIds] = useState(() => new Set());
+  // Защита от двойного тапа: пока запрос по конкретному id в полёте, повторный
+  // тап игнорируется — иначе быстрый add+remove гонка могла оставить сервер в
+  // непредсказуемом финальном состоянии (в БД дублей нет за счёт UNIQUE, но
+  // порядок ответов add/remove не гарантирован).
+  const favBusyRef = React.useRef(new Set());
   // activeFilter is the chip that's currently expanded into a bottom-sheet.
   // null → no sheet open. One sheet at a time, scoped to its own state slice.
   const [activeFilter, setActiveFilter] = useState(null); // 'dir' | 'date' | 'body' | 'price' | null
@@ -391,7 +396,8 @@ export default function FeedScreen({ navigation, route }) {
   });
   const toggleFav = async (item) => {
     const id = item.driverId || item.id;
-    if (!id) return;
+    if (!id || favBusyRef.current.has(id)) return;
+    favBusyRef.current.add(id);
     const has = favIds.has(id);
     setFavIds((prev) => {
       const next = new Set(prev);
@@ -409,6 +415,8 @@ export default function FeedScreen({ navigation, route }) {
     } catch {
       rollback(id, has);
       toast(t('send_error'), 'error');
+    } finally {
+      favBusyRef.current.delete(id);
     }
   };
 

@@ -1,7 +1,13 @@
-// FavoritesScreen — сохранённые перевозчики (и грузы) пользователя.
+// FavoritesScreen — сохранённые перевозчики И грузы пользователя.
 // Данные персистятся на сервере (/api/v1/favorites) — переживают
-// перезапуск приложения. Раньше «избранное» жило в памяти и было
-// нигде не показано.
+// перезапуск приложения.
+//
+// Fix (08-2026): раньше экран запрашивал ТОЛЬКО favList('driver') — грузы,
+// сохранённые водителем через ❤️ на карточке груза (item_type='cargo'),
+// реально писались в БД, но никогда сюда не попадали («сохраняю — а там
+// пусто»). Теперь грузим все типы разом и рендерим по item_type.
+// Иконка действия унифицирована с флоу «избранное» — сердце (не флажок),
+// см. src/components/ui/v1/FeedCard.js и src/screens/CargoFeedScreen.js.
 
 import React, { useState, useCallback } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, RefreshControl } from 'react-native';
@@ -10,48 +16,109 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useI18n } from '../utils/useI18n';
 import { useV1Colors } from '../theme/designV1';
 import { marketAPI } from '../utils/marketAPI';
+import { formatPrice } from '../utils/normalizers';
+import { localizePlace } from '../utils/places';
+import { useToast } from '../components/Toast';
 import BrandHeader from '../components/ui/v1/BrandHeader';
 import Feather from '@expo/vector-icons/Feather';
+import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 
 export default function FavoritesScreen({ navigation, route }) {
   const v1 = useV1Colors();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
+  const { toast } = useToast();
   const role = route?.params?.role;
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [removingId, setRemovingId] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const r = await marketAPI.favList('driver');
+    // Без item_type — backend /api/v1/favorites отдаёт ВСЕ сохранённые
+    // карточки (и водителей, и грузы) одним списком, отсортированным по дате.
+    const r = await marketAPI.favList('');
     setItems(Array.isArray(r?.favorites) ? r.favorites : []);
     setLoading(false);
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  const openDriver = (fav) => {
+  const openItem = (fav) => {
     const d = fav.item_data || {};
+    if (fav.item_type === 'cargo') {
+      navigation.navigate('CargoDetail', {
+        cargo: { ...d, id: fav.item_id },
+        cargoId: fav.item_id,
+        role,
+      });
+      return;
+    }
+    // driver (и legacy-записи без item_type)
     navigation.navigate('DriverDetail', {
       driver: { id: fav.item_id, name: d.name, type: d.type, plate_truck: d.plate, _server: true, _isDriver: true },
       role,
     });
   };
 
+  const removeItem = async (fav) => {
+    const id = String(fav.item_id);
+    setRemovingId(id);
+    setItems((prev) => prev.filter((it) => String(it.item_id) !== id || it.item_type !== fav.item_type));
+    try {
+      const r = await marketAPI.favRemove(fav.item_type, fav.item_id);
+      if (!r || r.ok !== true) throw new Error('remove_failed');
+    } catch {
+      // Не удалось на сервере — откатываем и сообщаем, чтобы список не
+      // расходился с реальным состоянием (тот же принцип, что и toggleFav
+      // на карточках ленты).
+      load();
+      try { toast(t('favorites_remove_failed'), 'error'); } catch {}
+    } finally {
+      setRemovingId(null);
+    }
+  };
+
   const renderItem = ({ item }) => {
     const d = item.item_data || {};
+    const isCargo = item.item_type === 'cargo';
     return (
       <TouchableOpacity
         style={[s.card, { backgroundColor: v1.card, borderColor: v1.border }]}
-        onPress={() => openDriver(item)}
+        onPress={() => openItem(item)}
         activeOpacity={0.8}
         testID="favorite-card"
       >
-        <Feather name="heart" size={20} color={v1.driver} style={s.heart} />
-        <View style={{ flex: 1 }}>
-          <Text style={[s.name, { color: v1.text }]} numberOfLines={1}>{d.name || t('anonymous')}</Text>
-          {d.type ? <Text style={[s.sub, { color: v1.textMuted }]} numberOfLines={1}>{t(d.type)}{d.plate ? ` · ${d.plate}` : ''}</Text> : null}
+        <View style={[s.typeIcon, { backgroundColor: v1.surfaceMuted }]}>
+          <Feather name={isCargo ? 'package' : 'truck'} size={18} color={v1.textMuted} />
         </View>
-        <Text style={[s.chevron, { color: v1.textMuted }]}>›</Text>
+        <View style={{ flex: 1 }}>
+          {isCargo ? (
+            <>
+              <Text style={[s.name, { color: v1.text }]} numberOfLines={1}>
+                {localizePlace(d.from, lang) || t('not_specified')} → {localizePlace(d.to, lang) || t('not_specified')}
+              </Text>
+              <Text style={[s.sub, { color: v1.textMuted }]} numberOfLines={1}>
+                {formatPrice(d.price, d.currency, t)}{d.type ? ` · ${t(d.type)}` : ''}
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text style={[s.name, { color: v1.text }]} numberOfLines={1}>{d.name || t('anonymous')}</Text>
+              {d.type ? <Text style={[s.sub, { color: v1.textMuted }]} numberOfLines={1}>{t(d.type)}{d.plate ? ` · ${d.plate}` : ''}</Text> : null}
+            </>
+          )}
+        </View>
+        <TouchableOpacity
+          onPress={(e) => { e?.stopPropagation?.(); removeItem(item); }}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          disabled={removingId === String(item.item_id)}
+          testID="favorite-remove"
+          accessibilityRole="button"
+          accessibilityLabel={t('favorites_remove') || 'Remove from favorites'}
+          style={s.heartBtn}
+        >
+          <FontAwesome5 name="heart" size={18} color={v1.driver} solid />
+        </TouchableOpacity>
       </TouchableOpacity>
     );
   };
@@ -65,7 +132,7 @@ export default function FavoritesScreen({ navigation, route }) {
       ) : (
         <FlatList
           data={items}
-          keyExtractor={(it) => String(it.id || it.item_id)}
+          keyExtractor={(it) => `${it.item_type || 'driver'}_${it.id || it.item_id}`}
           renderItem={renderItem}
           contentContainerStyle={{ padding: 16, paddingTop: 8 }}
           refreshControl={<RefreshControl refreshing={false} onRefresh={load} tintColor={v1.textMuted} />}
@@ -86,8 +153,8 @@ const s = StyleSheet.create({
   center: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
   emptyText: { fontSize: 14, textAlign: 'center', paddingHorizontal: 30 },
   card: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderWidth: 1, borderRadius: 14, marginBottom: 10, minHeight: 60 },
-  heart: { width: 22 },
+  typeIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   name: { fontSize: 15, fontWeight: '700' },
   sub: { fontSize: 12, marginTop: 2 },
-  chevron: { fontSize: 22, fontWeight: '300' },
+  heartBtn: { padding: 4 },
 });

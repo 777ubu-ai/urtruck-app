@@ -203,12 +203,12 @@ function CargoCard({ item, lang, copy, saved, onToggleSaved, onPress, compact })
         style={[styles.bookmarkBtn, compact && styles.bookmarkBtnCompact, saved && styles.bookmarkBtnSaved]}
         testID={`cargo-card-bookmark-${item.id}`}
         accessibilityRole="button"
-        accessibilityLabel={saved ? 'Remove bookmark' : 'Save cargo'}
+        accessibilityLabel={saved ? 'Remove from favorites' : 'Save cargo to favorites'}
       >
         {saved ? (
-          <FontAwesome5 name="bookmark" size={compact ? 18 : 21} color={ACCENT} solid />
+          <FontAwesome5 name="heart" size={compact ? 18 : 21} color={ACCENT} solid />
         ) : (
-          <Feather name="bookmark" size={compact ? 18 : 21} color={TEXT_SECONDARY} />
+          <Feather name="heart" size={compact ? 18 : 21} color={TEXT_SECONDARY} />
         )}
       </Pressable>
     </TouchableOpacity>
@@ -240,6 +240,8 @@ export default function CargoFeedScreen({ navigation }) {
   const [dateTo, setDateTo] = useState('');
   const [sortBy, setSortBy] = useState('newest');
   const [savedIds, setSavedIds] = useState(() => new Set());
+  // Защита от двойного тапа по ❤️ — см. аналогичный favBusyRef в FeedScreen.js.
+  const savedBusyRef = React.useRef(new Set());
   const [compact, setCompact] = useState(true);
 
   useEffect(() => {
@@ -325,6 +327,8 @@ export default function CargoFeedScreen({ navigation }) {
     const ok = await requireLevel(LEVELS.PHONE, 'favorite_cargo', 'driver');
     if (!ok) return;
     const id = String(item.id);
+    if (savedBusyRef.current.has(id)) return;
+    savedBusyRef.current.add(id);
     const had = savedIds.has(id);
     setSavedIds((prev) => {
       const next = new Set(prev);
@@ -353,6 +357,8 @@ export default function CargoFeedScreen({ navigation }) {
         return next;
       });
       toast(t('send_error'), 'error');
+    } finally {
+      savedBusyRef.current.delete(id);
     }
   };
 

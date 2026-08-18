@@ -186,6 +186,7 @@ export default function AppNavigator() {
         <Stack.Screen name="RegProfile" component={PremiumProfileScreen} />
         <Stack.Screen name="Main" component={MainTabs} />
         <Stack.Screen name="Profile" component={ProfileScreen} />
+        <Stack.Screen name="Favorites" component={FavoritesScreen} />
         <Stack.Screen name="CargoDetail" component={CargoDetailV2} />
         <Stack.Screen name="DriverDetail" component={DriverDetail} />
         <Stack.Screen name="Chat" component={ChatScreenV2} />
