@@ -2,7 +2,7 @@ import React from 'react';
 import { ActivityIndicator, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import TripDetail from './TripDetail';
-import DealWorkspaceScreen from './DealWorkspaceScreen';
+import DealWorkspaceScreen from './DealWorkspaceScreenV2';
 import { marketAPI } from '../utils/marketAPI';
 import { chatAPI } from '../utils/chatAPI';
 import { useV1Colors } from '../theme/designV1';
