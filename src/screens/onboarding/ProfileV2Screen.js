@@ -52,7 +52,7 @@ export default function ProfileV2Screen({ navigation, route }) {
   const { t, lang } = useI18n();
   const ui = COPY[lang] || COPY.RU;
   const { session } = useAuth();
-  const role = session?.user?.role || 'driver';
+  const role = route?.params?.role || session?.user?.role || 'driver';
   const isShipper = role === 'client';
 
   const signupId = route?.params?.phone || session?.user?.phone || '';
