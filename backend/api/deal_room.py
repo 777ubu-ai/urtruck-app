@@ -17,7 +17,7 @@ from database import deal_room_dal as dr
 from services import storage_service
 from services import file_signing
 from api.push import send_to_user
-from database.db import get_conn
+from database.db import get_conn, new_id
 
 _MAX_ATTACH_BYTES = 12 * 1024 * 1024
 _ALLOWED = {
@@ -88,6 +88,79 @@ def _existing_attachment(conversation_id: str, uploader_id: str, client_upload_i
             (conversation_id, uploader_id, client_upload_id),
         ).fetchone()
     return dict(row) if row else None
+
+
+def _reserve_attachment(
+    *,
+    conversation_id: str,
+    uploader_id: str,
+    client_upload_id: str,
+    message_id: Optional[str],
+    kind: str,
+    mime_type: str,
+    size_bytes: int,
+    original_name: str,
+) -> tuple[dict, bool]:
+    """Atomically reserve a client upload id before remote storage.
+
+    Returns (row, created). A second concurrent retry cannot reserve the same
+    id, therefore only one request is allowed to write the remote object.
+    """
+    attachment_id = new_id()
+    with get_conn() as c:
+        cur = c.execute(
+            """
+            INSERT OR IGNORE INTO message_attachments
+                (id, message_id, conversation_id, uploader_id, kind, url,
+                 mime_type, size_bytes, original_name, client_upload_id, upload_status)
+            VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, 'uploading')
+            """,
+            (
+                attachment_id,
+                message_id,
+                conversation_id,
+                uploader_id,
+                kind,
+                mime_type,
+                size_bytes,
+                original_name,
+                client_upload_id,
+            ),
+        )
+        if cur.rowcount:
+            row = c.execute("SELECT * FROM message_attachments WHERE id = ?", (attachment_id,)).fetchone()
+            return dict(row), True
+        row = c.execute(
+            """
+            SELECT * FROM message_attachments
+            WHERE conversation_id = ? AND uploader_id = ? AND client_upload_id = ?
+            LIMIT 1
+            """,
+            (conversation_id, uploader_id, client_upload_id),
+        ).fetchone()
+        if not row:
+            raise RuntimeError("attachment reservation lost")
+        return dict(row), False
+
+
+def _delete_attachment_reservation(attachment_id: str) -> None:
+    with get_conn() as c:
+        c.execute(
+            "DELETE FROM message_attachments WHERE id = ? AND upload_status = 'uploading' AND url IS NULL",
+            (attachment_id,),
+        )
+
+
+def _complete_attachment_reservation(attachment_id: str, url: str) -> dict:
+    with get_conn() as c:
+        c.execute(
+            "UPDATE message_attachments SET url = ?, upload_status = 'uploaded' WHERE id = ?",
+            (url, attachment_id),
+        )
+        row = c.execute("SELECT * FROM message_attachments WHERE id = ?", (attachment_id,)).fetchone()
+    if not row:
+        raise RuntimeError("attachment reservation disappeared")
+    return dict(row)
 
 
 def _sign_attachment(att: dict | None):
@@ -170,9 +243,9 @@ async def upload_attachment(
 ):
     """Upload a private deal attachment with magic-byte MIME validation.
 
-    `client_upload_id` makes Retry idempotent: if the server stored the file but
-    the response was lost, the next retry returns the same attachment instead
-    of writing a duplicate.
+    `client_upload_id` makes Retry idempotent. The id is reserved in SQLite
+    before writing to remote storage, so double taps cannot create duplicate
+    durable objects/messages in the normal application flow.
     """
     if not dr.room_exists(conversation_id):
         raise HTTPException(status_code=404, detail="Беседа не найдена")
@@ -183,7 +256,9 @@ async def upload_attachment(
     normalized_client_id = (client_upload_id or "").strip()[:120] or None
     existing = _existing_attachment(conversation_id, user["id"], normalized_client_id)
     if existing:
-        return {"attachment": _sign_attachment(existing), "deduplicated": True}
+        if existing.get("url") and existing.get("upload_status") == "uploaded":
+            return {"attachment": _sign_attachment(existing), "deduplicated": True}
+        raise HTTPException(status_code=409, detail="Файл уже загружается")
 
     raw = await file.read()
     if not raw:
@@ -207,6 +282,23 @@ async def upload_attachment(
     resolved_kind = kind if kind in dr.ATTACH_KINDS else detected_kind
     original_name = _safe_original_name(file.filename, ext)
 
+    reservation = None
+    if normalized_client_id:
+        reservation, created = _reserve_attachment(
+            conversation_id=conversation_id,
+            uploader_id=user["id"],
+            client_upload_id=normalized_client_id,
+            message_id=message_id,
+            kind=resolved_kind,
+            mime_type=mime,
+            size_bytes=len(raw),
+            original_name=original_name,
+        )
+        if not created:
+            if reservation.get("url") and reservation.get("upload_status") == "uploaded":
+                return {"attachment": _sign_attachment(reservation), "deduplicated": True}
+            raise HTTPException(status_code=409, detail="Файл уже загружается")
+
     try:
         url = storage_service.save_file(
             raw,
@@ -215,32 +307,31 @@ async def upload_attachment(
             content_type=mime,
         )
     except Exception as exc:
+        if reservation:
+            _delete_attachment_reservation(reservation["id"])
         print(
             f"[attachment-storage] failed room={conversation_id} mime={mime} bytes={len(raw)} error={type(exc).__name__}",
             flush=True,
         )
         raise HTTPException(status_code=502, detail="Не удалось сохранить файл") from exc
 
-    att = dr.create_attachment(
-        conversation_id=conversation_id,
-        uploader_id=user["id"],
-        kind=resolved_kind,
-        url=url,
-        mime_type=mime,
-        size_bytes=len(raw),
-        upload_status="uploaded",
-        message_id=message_id,
-    )
-    # The current DAL remains backward-compatible. Persist the new metadata in
-    # the same transaction boundary after its insert; the unique idempotency
-    # index protects concurrent retries.
-    with get_conn() as c:
-        c.execute(
-            "UPDATE message_attachments SET original_name = ?, client_upload_id = ? WHERE id = ?",
-            (original_name, normalized_client_id, att["id"]),
+    if reservation:
+        att = _complete_attachment_reservation(reservation["id"], url)
+    else:
+        att = dr.create_attachment(
+            conversation_id=conversation_id,
+            uploader_id=user["id"],
+            kind=resolved_kind,
+            url=url,
+            mime_type=mime,
+            size_bytes=len(raw),
+            upload_status="uploaded",
+            message_id=message_id,
         )
-        row = c.execute("SELECT * FROM message_attachments WHERE id = ?", (att["id"],)).fetchone()
-        att = dict(row) if row else att
+        with get_conn() as c:
+            c.execute("UPDATE message_attachments SET original_name = ? WHERE id = ?", (original_name, att["id"]))
+            row = c.execute("SELECT * FROM message_attachments WHERE id = ?", (att["id"],)).fetchone()
+            att = dict(row) if row else att
 
     att = _sign_attachment(att)
 
