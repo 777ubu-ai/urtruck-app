@@ -3,6 +3,7 @@
 // server-side global routing endpoint for corridors Yandex cannot route.
 import React from 'react';
 import { View, Text, StyleSheet, findNodeHandle } from 'react-native';
+import { routingAPI } from '../utils/routingAPI';
 
 const asPoint = (p) => {
   if (Array.isArray(p) && p.length >= 2) {
@@ -16,6 +17,18 @@ const asPoint = (p) => {
 };
 
 const pointKey = (point) => point ? `${point[0]}:${point[1]}` : 'none';
+const routeKey = (points) => (points || []).map((point) => `${Number(point?.[0]).toFixed(3)}:${Number(point?.[1]).toFixed(3)}`).join('|');
+
+// Yandex's routing product does not cover mainland China. We keep Yandex as
+// the visual map, but request a server-side global HGV route whenever a route
+// clearly reaches the China/SE-Asia side of UrTruck's corridors. The server
+// key never appears in the browser.
+const needsGlobalRoadRouting = (points) => (points || []).some((point) => {
+  const lat = Number(point?.[0]);
+  const lng = Number(point?.[1]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  return (lng > 85 && lat < 55) || (lat < 35 && lng > 70);
+});
 
 const distanceTextFromMeters = (value) => {
   const meters = Number(value);
@@ -162,10 +175,6 @@ function YandexMap({ livePoint, plannedPoints, externalRoute, onRouteSummary }) 
       if (bounds) map.setBounds(bounds, { checkZoomRange: true, zoomMargin: 44 });
     };
 
-    // Global route geometry is returned by UrTruck backend and rendered on
-    // the same Yandex map. It is a real road polyline, not a fake straight
-    // line. This path is used for China/international corridors outside
-    // Yandex routing coverage.
     const externalGeometry = (externalRoute?.geometry || []).map(asPoint).filter(Boolean);
     if (externalGeometry.length >= 2) {
       const road = new api.Polyline(externalGeometry, {}, {
@@ -287,9 +296,46 @@ export default function TruckMap({
   onRouteSummary,
 }) {
   const livePoint = asPoint([lat, lng]);
-  const plannedPoints = (routePoints || []).map(asPoint).filter(Boolean);
+  const plannedPoints = React.useMemo(() => (routePoints || []).map(asPoint).filter(Boolean), [routePoints]);
   const configured = typeof globalThis !== 'undefined' && globalThis.__URTRUCK_YANDEX_MAPS_CONFIGURED__ === true;
   const showPlanned = planned && !livePoint;
+  const destination = plannedPoints.length ? plannedPoints[plannedPoints.length - 1] : null;
+  const effectivePoints = React.useMemo(
+    () => (livePoint && destination ? [livePoint, destination] : plannedPoints),
+    [pointKey(livePoint), JSON.stringify(plannedPoints)],
+  );
+  const globalNeeded = needsGlobalRoadRouting(effectivePoints);
+  const effectiveKey = routeKey(effectivePoints);
+  const [autoExternalRoute, setAutoExternalRoute] = React.useState(null);
+  const [globalLoading, setGlobalLoading] = React.useState(false);
+  const [globalError, setGlobalError] = React.useState(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    if (!globalNeeded || effectivePoints.length < 2 || externalRoute) {
+      setAutoExternalRoute(null);
+      setGlobalLoading(false);
+      setGlobalError(null);
+      return () => { cancelled = true; };
+    }
+
+    setGlobalLoading(true);
+    setGlobalError(null);
+    routingAPI.roadRoute(effectivePoints).then((result) => {
+      if (cancelled) return;
+      setGlobalLoading(false);
+      if (result?.ok && Array.isArray(result.geometry) && result.geometry.length >= 2) {
+        setAutoExternalRoute({ ...result, routeKey: effectiveKey });
+        setGlobalError(null);
+      } else {
+        setAutoExternalRoute(null);
+        setGlobalError(result?.detail || 'routing_failed');
+      }
+    });
+    return () => { cancelled = true; };
+  }, [globalNeeded, effectiveKey, externalRoute]);
+
+  const resolvedExternalRoute = externalRoute || autoExternalRoute;
 
   return (
     <View style={s.shell}>
@@ -297,7 +343,7 @@ export default function TruckMap({
         <YandexMap
           livePoint={livePoint}
           plannedPoints={plannedPoints}
-          externalRoute={externalRoute}
+          externalRoute={resolvedExternalRoute}
           onRouteSummary={onRouteSummary}
         />
       ) : (
@@ -306,6 +352,16 @@ export default function TruckMap({
           <Text style={s.loadingText}>Карта не будет заменена другим провайдером.</Text>
         </View>
       )}
+      {globalNeeded && globalLoading ? (
+        <View pointerEvents="none" style={s.routeState} testID="truck-map-global-routing-loading">
+          <Text style={s.routeStateText}>Строим маршрут по дороге…</Text>
+        </View>
+      ) : null}
+      {globalNeeded && globalError ? (
+        <View pointerEvents="none" style={s.routeState} testID="truck-map-global-routing-error">
+          <Text style={s.routeStateText}>Маршрут по дороге временно недоступен</Text>
+        </View>
+      ) : null}
       {showBadge ? (
         <View pointerEvents="none" style={s.badge}>
           <Text style={s.badgeTitle}>{showPlanned ? plannedTitle : liveTitle}</Text>
@@ -322,6 +378,12 @@ const s = StyleSheet.create({
   loading: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EEF2EF', paddingHorizontal: 24 },
   loadingText: { color: '#617067', fontSize: 12, fontWeight: '700', textAlign: 'center' },
   errorTitle: { color: '#14221C', fontSize: 14, fontWeight: '900', textAlign: 'center', marginBottom: 6 },
+  routeState: {
+    position: 'absolute', left: 12, bottom: 12, maxWidth: '76%',
+    paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.94)', borderWidth: 1, borderColor: '#DDE5E0',
+  },
+  routeStateText: { color: '#3F4E46', fontSize: 11.5, fontWeight: '800' },
   badge: {
     position: 'absolute', left: 12, top: 12, maxWidth: '72%', paddingHorizontal: 11, paddingVertical: 8,
     borderRadius: 11, backgroundColor: 'rgba(255,255,255,0.94)', borderWidth: 1, borderColor: '#DDE5E0',
