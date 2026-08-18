@@ -1,17 +1,8 @@
-// backgroundLocation — фоновый GPS-трекинг водителя по активным сделкам
-// (expo-task-manager + expo-location). Позиция уходит на сервер, даже когда
-// приложение свёрнуто/закрыто iOS'ом в фон — клиент видит «Где машина» 24/7.
-//
-// Как устроено:
-//   - активные deal_id и токен кладутся в storage (фоновая таска не имеет
-//     доступа к React-состоянию);
-//   - таска BG_LOCATION_TASK определяется на верхнем уровне модуля (импорт
-//     из App.js) — требование TaskManager;
-//   - start/stop дергается из useDealLocationBroadcast: сервер добавляет
-//     сделку вместе с нажатием «Начать рейс»; завершение рейса стопит
-//     новые обновления, но не удаляет зафиксированную последнюю точку.
-// Требует build 38+ (native): в Expo Go/web тихо не работает (guard'ы).
-import { Platform } from 'react-native';
+// backgroundLocation — фоновый GPS-трекинг водителя по активным сделкам.
+// ВАЖНО для Google Play: системные permission prompts НЕ должны появляться
+// из фонового hook'а. Их запускает только явный пользовательский flow после
+// prominent disclosure на экране сделки.
+import { Linking, Platform } from 'react-native';
 import { storage } from './storage';
 import { t } from './i18n';
 import { API_BASE } from '../config/env';
@@ -27,9 +18,20 @@ try {
     TaskManager = require('expo-task-manager');
     Location = require('expo-location');
   }
-} catch { /* модули недоступны (web/старый билд) — фоновый режим просто выключен */ }
+} catch { /* old/dev build: feature reports unsupported instead of crashing */ }
 
-// Отправка позиции по всем активным сделкам (общая для фона и форграунда).
+async function resolveLocationModule() {
+  if (Location) return Location;
+  try {
+    const module = await import('expo-location');
+    Location = module;
+    return module;
+  } catch {
+    return null;
+  }
+}
+
+// Send coordinates only for server-approved active deal IDs.
 export async function pushLocationToDeals(coords) {
   try {
     const [rawIds, token] = await Promise.all([
@@ -38,7 +40,8 @@ export async function pushLocationToDeals(coords) {
     const ids = rawIds ? JSON.parse(rawIds) : [];
     if (!Array.isArray(ids) || !ids.length || !token) return;
     const payload = JSON.stringify({
-      lat: coords.latitude, lng: coords.longitude,
+      lat: coords.latitude,
+      lng: coords.longitude,
       heading: coords.heading != null && coords.heading >= 0 ? coords.heading : null,
       speed: coords.speed != null && coords.speed >= 0 ? coords.speed : null,
     });
@@ -49,10 +52,9 @@ export async function pushLocationToDeals(coords) {
         body: payload,
       }).catch(() => {})
     ));
-  } catch { /* фон не должен падать */ }
+  } catch { /* background task must never crash the app */ }
 }
 
-// Регистрация фоновой таски — ВЫЗЫВАЕТСЯ НА ВЕРХНЕМ УРОВНЕ (import в App.js).
 if (TaskManager) {
   try {
     TaskManager.defineTask(BG_LOCATION_TASK, async ({ data, error }) => {
@@ -61,58 +63,135 @@ if (TaskManager) {
       const last = locations && locations[locations.length - 1];
       if (last && last.coords) await pushLocationToDeals(last.coords);
     });
-  } catch { /* повторная регистрация при hot-reload — ок */ }
+  } catch { /* duplicate definition during hot reload is safe */ }
 }
 
-// Сохранить список активных сделок для фоновой таски.
 export async function setActiveDealIds(ids) {
   try { await storage.set(BG_DEALS_KEY, JSON.stringify(ids || [])); } catch {}
 }
 
-// Ask the operating system inside the single «Начать рейс» action. No deal
-// becomes active if iOS/Android has denied location access. The actual task
-// starts only after the server returns status=active.
-export async function ensureBackgroundLocationPermission() {
-  // Web/PWA and the current Android release can still provide truthful
-  // foreground tracking while UrTruck is open. Android background permission
-  // is intentionally absent from the manifest until Google Play approves the
-  // declaration (see CLAUDE.md); do not turn a usable foreground permission
-  // into a dead-end error for the driver.
-  let locationModule = Location;
+export async function getBackgroundLocationPermissionState() {
+  const locationModule = await resolveLocationModule();
   if (!locationModule) {
-    try { locationModule = await import('expo-location'); }
-    catch { return { ok: false, reason: 'unsupported' }; }
+    return {
+      supported: false,
+      platform: Platform.OS,
+      foreground: 'unavailable',
+      background: 'unavailable',
+      ok: false,
+      reason: 'unsupported',
+    };
   }
+
   try {
-    const fg = await locationModule.requestForegroundPermissionsAsync();
-    if (fg.status !== 'granted') return { ok: false, reason: 'fg_denied' };
-    if (Platform.OS === 'web') return { ok: true, foregroundOnly: true };
-    let bg;
-    try {
-      bg = await locationModule.requestBackgroundPermissionsAsync();
-    } catch (e) {
-      if (Platform.OS === 'android') return { ok: true, foregroundOnly: true };
-      throw e;
+    const fg = await locationModule.getForegroundPermissionsAsync();
+    if (Platform.OS === 'web') {
+      return {
+        supported: true,
+        platform: 'web',
+        foreground: fg.status,
+        foregroundCanAskAgain: fg.canAskAgain !== false,
+        background: 'not_applicable',
+        backgroundCanAskAgain: false,
+        ok: fg.status === 'granted',
+        foregroundOnly: true,
+      };
     }
-    if (bg.status !== 'granted') {
-      if (Platform.OS === 'android') return { ok: true, foregroundOnly: true };
-      return { ok: false, reason: 'bg_denied' };
-    }
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, reason: String(e && e.message) };
+
+    const bg = await locationModule.getBackgroundPermissionsAsync();
+    return {
+      supported: true,
+      platform: Platform.OS,
+      foreground: fg.status,
+      foregroundCanAskAgain: fg.canAskAgain !== false,
+      background: bg.status,
+      backgroundCanAskAgain: bg.canAskAgain !== false,
+      ok: fg.status === 'granted' && bg.status === 'granted',
+      foregroundOnly: false,
+    };
+  } catch (error) {
+    return {
+      supported: true,
+      platform: Platform.OS,
+      foreground: 'unknown',
+      background: 'unknown',
+      ok: false,
+      reason: String(error?.message || error || 'permission_state_failed'),
+    };
   }
 }
 
-// Первая точка не должна ждать следующего 15/25-секундного poll. Вызывается
-// сразу после успешного перехода сделки в in_progress; далее постоянную
-// передачу продолжает useDealLocationBroadcast.
-export async function getCurrentLocationPayload() {
-  let locationModule = Location;
-  if (!locationModule) {
-    try { locationModule = await import('expo-location'); }
-    catch { return null; }
+// Step 1: foreground permission. Call only after the in-app disclosure.
+export async function requestForegroundLocationPermission() {
+  const locationModule = await resolveLocationModule();
+  if (!locationModule) return { ok: false, reason: 'unsupported' };
+  try {
+    const current = await locationModule.getForegroundPermissionsAsync();
+    if (current.status === 'granted') return { ok: true, status: 'granted' };
+    const result = await locationModule.requestForegroundPermissionsAsync();
+    if (result.status === 'granted') return { ok: true, status: 'granted' };
+    return {
+      ok: false,
+      status: result.status,
+      canAskAgain: result.canAskAgain !== false,
+      reason: result.canAskAgain === false ? 'settings_required' : 'fg_denied',
+    };
+  } catch (error) {
+    return { ok: false, reason: String(error?.message || error || 'fg_permission_failed') };
   }
+}
+
+// Step 2: background permission. On Android 11+ Expo may open the system app
+// settings screen; that is expected and must happen only after our educational
+// disclosure screen has explained why "Allow all the time" is needed.
+export async function requestBackgroundLocationPermission() {
+  if (Platform.OS === 'web') return { ok: true, foregroundOnly: true };
+  const locationModule = await resolveLocationModule();
+  if (!locationModule) return { ok: false, reason: 'unsupported' };
+  try {
+    const fg = await locationModule.getForegroundPermissionsAsync();
+    if (fg.status !== 'granted') return { ok: false, reason: 'foreground_required' };
+
+    const current = await locationModule.getBackgroundPermissionsAsync();
+    if (current.status === 'granted') return { ok: true, status: 'granted' };
+
+    const result = await locationModule.requestBackgroundPermissionsAsync();
+    if (result.status === 'granted') return { ok: true, status: 'granted' };
+    return {
+      ok: false,
+      status: result.status,
+      canAskAgain: result.canAskAgain !== false,
+      reason: result.canAskAgain === false ? 'settings_required' : 'bg_denied',
+    };
+  } catch (error) {
+    return { ok: false, reason: String(error?.message || error || 'bg_permission_failed') };
+  }
+}
+
+export async function openLocationSettings() {
+  try {
+    await Linking.openSettings();
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, reason: String(error?.message || error || 'settings_failed') };
+  }
+}
+
+// Compatibility entry point used by iOS/older callers. On native Android this
+// is STRICT: foreground-only is not enough for an active long-haul trip.
+// The Deal Workspace displays disclosure before calling this function.
+export async function ensureBackgroundLocationPermission() {
+  const fg = await requestForegroundLocationPermission();
+  if (!fg.ok) return fg;
+  if (Platform.OS === 'web') return { ok: true, foregroundOnly: true };
+  const bg = await requestBackgroundLocationPermission();
+  if (!bg.ok) return bg;
+  return { ok: true, foregroundOnly: false };
+}
+
+export async function getCurrentLocationPayload() {
+  const locationModule = await resolveLocationModule();
+  if (!locationModule) return null;
   try {
     const pos = await locationModule.getCurrentPositionAsync({ accuracy: locationModule.Accuracy.Balanced });
     const c = pos?.coords;
@@ -126,30 +205,40 @@ export async function getCurrentLocationPayload() {
   } catch { return null; }
 }
 
-// Стартовать фоновый трекинг (если есть сделки и есть разрешение «Всегда»).
+// Background hook may call this after the deal becomes active. It MUST NOT
+// trigger a permission dialog by itself. If permission was revoked, stop and
+// return a state the UI can surface on next foreground resume.
 export async function startBackgroundTracking() {
-  const permission = await ensureBackgroundLocationPermission();
-  if (!permission.ok) return permission;
-  if (permission.foregroundOnly) {
-    return { ok: false, reason: 'background_unavailable', foregroundOnly: true };
+  if (Platform.OS === 'web') return { ok: false, reason: 'background_unavailable', foregroundOnly: true };
+  const locationModule = await resolveLocationModule();
+  if (!locationModule) return { ok: false, reason: 'unsupported' };
+
+  const permission = await getBackgroundLocationPermissionState();
+  if (!permission.ok) {
+    return {
+      ok: false,
+      reason: permission.background === 'granted' ? 'foreground_unavailable' : 'background_unavailable',
+      permission,
+    };
   }
+
   try {
-    const started = await Location.hasStartedLocationUpdatesAsync(BG_LOCATION_TASK).catch(() => false);
+    const started = await locationModule.hasStartedLocationUpdatesAsync(BG_LOCATION_TASK).catch(() => false);
     if (started) return { ok: true, already: true };
-    await Location.startLocationUpdatesAsync(BG_LOCATION_TASK, {
-      accuracy: Location.Accuracy.Balanced,
-      timeInterval: 60000,            // раз в минуту в фоне — достаточно и бережно к батарее
-      distanceInterval: 400,          // или каждые 400 м
+    await locationModule.startLocationUpdatesAsync(BG_LOCATION_TASK, {
+      accuracy: locationModule.Accuracy.Balanced,
+      timeInterval: 60000,
+      distanceInterval: 400,
       pausesUpdatesAutomatically: true,
-      showsBackgroundLocationIndicator: true,   // честная синяя плашка iOS
+      showsBackgroundLocationIndicator: true,
       foregroundService: {
         notificationTitle: t('bg_location_title'),
         notificationBody: t('bg_location_body'),
       },
     });
     return { ok: true };
-  } catch (e) {
-    return { ok: false, reason: String(e && e.message) };
+  } catch (error) {
+    return { ok: false, reason: String(error?.message || error || 'background_start_failed') };
   }
 }
 
