@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const mapSrc = fs.readFileSync('src/components/TruckMap.web.js', 'utf8');
+const geoSrc = fs.readFileSync('src/utils/geo.js', 'utf8');
 const injectSrc = fs.readFileSync('scripts/injectYandexMaps.mjs', 'utf8');
 const chatSrc = fs.readFileSync('src/screens/ChatScreen.js', 'utf8');
 
@@ -15,6 +16,14 @@ test('Yandex map asks JS API 2.1 multirouter for a real driving road route', () 
   assert.match(mapSrc, /routingMode: 'auto'/);
   assert.match(mapSrc, /boundsAutoApply: true/);
   assert.match(mapSrc, /routeActiveStrokeColor: '#168759'/);
+});
+
+test('Bakhty-Tacheng checkpoint is routed from the Kazakhstan road anchor, not as a cross-border detour', () => {
+  assert.match(geoSrc, /'Бахты': \[46\.679365, 82\.776816\]/);
+  assert.match(geoSrc, /'Чугучак': \[46\.739131, 82\.983797\]/);
+  assert.match(geoSrc, /isBakhtyTachengBorderPair/);
+  assert.match(geoSrc, /return \[CITIES\['Бахты'\]\]/);
+  assert.match(geoSrc, /Yandex MultiRoute/);
 });
 
 test('production injector uses the JavaScript API key without a paid Router API dependency', () => {
