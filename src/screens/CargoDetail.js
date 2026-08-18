@@ -980,7 +980,7 @@ export default function CargoDetail({ navigation, route }) {
           </View>
         </View>
       )}
-      {dealStatus === 'delivered' && !reviewSent && (isShipper ? acceptedDriverId : shipperId) && (
+      {dealStatus === 'completed' && !reviewSent && (isShipper ? acceptedDriverId : shipperId) && (
         <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
           <View style={[s.reviewBlock, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <Text style={[s.reviewTitle, { color: theme.text }]}>{isShipper ? t('rate_driver') : t('rate_shipper')}</Text>
@@ -1026,7 +1026,7 @@ export default function CargoDetail({ navigation, route }) {
           </View>
         </View>
       )}
-      {dealStatus === 'delivered' && reviewSent && (
+      {dealStatus === 'completed' && reviewSent && (
         <View style={{ paddingHorizontal: 16, paddingBottom: 8, alignItems: 'center' }}>
           <Text style={{ color: '#168759', fontSize: 14, fontWeight: '600' }}>{t('thanks_for_review')}</Text>
         </View>

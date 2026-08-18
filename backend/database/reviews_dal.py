@@ -88,7 +88,7 @@ def has_deal_between(user_a: str, user_b: str) -> bool:
     рейтинга (I3): раньше с trip_id=None можно было спамить отзывами на любого."""
     with get_conn() as c:
         row = c.execute(
-            "SELECT 1 FROM deals WHERE status != 'cancelled' AND "
+            "SELECT 1 FROM deals WHERE status = 'completed' AND "
             "((shipper_id = ? AND driver_id = ?) OR (shipper_id = ? AND driver_id = ?)) "
             "LIMIT 1",
             (user_a, user_b, user_b, user_a),

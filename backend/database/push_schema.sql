@@ -39,8 +39,13 @@ CREATE TABLE IF NOT EXISTS push_log (
   web_sent INTEGER DEFAULT 0,
   native_sent INTEGER DEFAULT 0,
   error TEXT,
+  event_key TEXT,                          -- PR#187: дедуп доставок по ключу перехода
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_push_log_user ON push_log(user_id);
 CREATE INDEX IF NOT EXISTS idx_push_log_kind ON push_log(kind);
+-- PR#187: уникальный индекс дедупа НЕ создаём здесь — на legacy-БД (push_log
+-- без event_key) он падал бы «no such column». Индекс создаётся в
+-- api/push._migrate_ownership_columns СТРОГО после ADD COLUMN event_key
+-- (работает и на fresh, и на legacy). См. также notifications._migrate_event_key.
