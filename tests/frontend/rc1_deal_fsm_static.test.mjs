@@ -77,6 +77,8 @@ test('web deal map uses Yandex JS API 2.1 only and resolves Bakhty-Chuguchak', (
   assert.match(webMapSrc, /testID="truck-map-yandex-web"/);
   assert.doesNotMatch(webMapSrc, /tile\.openstreetmap\.org|unpkg\.com\/leaflet|OpenStreetMapFallback|truck-map-osm-fallback|useFallback|LEAFLET_JS/);
   assert.match(webMapSrc, /truck-map-yandex-error/);
-  assert.match(geoSrc, /'Бахты': \[46\.7500, 82\.7000\]/);
-  assert.match(geoSrc, /'Чугучак': \[46\.7450, 82\.9860\]/);
+  assert.match(geoSrc, /'Бахты': \[46\.679365, 82\.776816\]/);
+  assert.match(geoSrc, /'Чугучак': \[46\.739131, 82\.983797\]/);
+  assert.match(geoSrc, /isBakhtyTachengBorderPair/);
+  assert.match(geoSrc, /return \[CITIES\['Бахты'\]\]/);
 });
