@@ -5,6 +5,7 @@ import TripDetail from './TripDetail';
 import DealWorkspaceScreen from './DealWorkspaceScreenV2';
 import { marketAPI } from '../utils/marketAPI';
 import { chatAPI } from '../utils/chatAPI';
+import { getDealCounterpartyProfile, compactCounterpartyName } from '../utils/dealCounterpartyAPI';
 import { useV1Colors } from '../theme/designV1';
 
 const ACTIVE = new Set(['accepted', 'in_progress', 'at_border', 'delivered']);
@@ -14,12 +15,12 @@ export default function TripDetailV2(props) {
   const params = route?.params || {};
   const colors = useV1Colors();
   const tripId = params.tripId || params.trip?.id || null;
-  const [target, setTarget] = React.useState(() => params.dealId ? { dealId: params.dealId, roomId: params.roomId || null } : null);
-  const [checked, setChecked] = React.useState(Boolean(params.dealId));
+  const [target, setTarget] = React.useState(() => params.dealId ? { dealId: params.dealId, roomId: params.roomId || null, partner: params.partner || null } : null);
+  const [checked, setChecked] = React.useState(Boolean(params.dealId && params.partner));
 
   React.useEffect(() => {
-    if (params.dealId) {
-      setTarget({ dealId: params.dealId, roomId: params.roomId || null });
+    if (!tripId && params.dealId) {
+      setTarget({ dealId: params.dealId, roomId: params.roomId || null, partner: params.partner || null });
       setChecked(true);
       return undefined;
     }
@@ -28,17 +29,28 @@ export default function TripDetailV2(props) {
     (async () => {
       try {
         const dashboard = await marketAPI.myDashboard();
-        const deal = (dashboard?.my_deals || []).find((item) =>
-          String(item.trip_id || '') === String(tripId) && ACTIVE.has(item.status)
-        );
+        const deal = params.dealId
+          ? (dashboard?.my_deals || []).find((item) => String(item.id) === String(params.dealId))
+          : (dashboard?.my_deals || []).find((item) => String(item.trip_id || '') === String(tripId) && ACTIVE.has(item.status));
         if (!deal || cancelled) { if (!cancelled) setChecked(true); return; }
-        let roomId = null;
+        let room = null;
         try {
           const rooms = await chatAPI.rooms();
-          roomId = (rooms?.rooms || []).find((room) => room.deal_id === deal.id)?.id || null;
+          room = (rooms?.rooms || []).find((item) => item.deal_id === deal.id) || null;
         } catch { /* DealWorkspace can resolve the room itself. */ }
+        let partner = params.partner || null;
+        if (room?.partner_id) {
+          const profile = await getDealCounterpartyProfile(room.partner_id).catch(() => null);
+          partner = {
+            ...(partner || {}),
+            id: room.partner_id,
+            role: room.partner_role || profile?.role || partner?.role || null,
+            name: compactCounterpartyName(profile, room.partner_name || partner?.name || ''),
+            profile,
+          };
+        }
         if (!cancelled) {
-          setTarget({ dealId: deal.id, roomId });
+          setTarget({ dealId: deal.id, roomId: room?.id || params.roomId || null, partner });
           setChecked(true);
         }
       } catch {
@@ -46,7 +58,7 @@ export default function TripDetailV2(props) {
       }
     })();
     return () => { cancelled = true; };
-  }, [params.dealId, params.roomId, tripId]);
+  }, [params.dealId, params.roomId, params.partner, tripId]);
 
   if (!checked) {
     return (
@@ -66,6 +78,7 @@ export default function TripDetailV2(props) {
             ...params,
             dealId: target.dealId,
             roomId: target.roomId,
+            partner: target.partner || params.partner || null,
             tripId,
           },
         }}
