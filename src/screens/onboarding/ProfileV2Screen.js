@@ -1,22 +1,7 @@
-// ProfileV2Screen — light-style generic profile (RC2 auth-flow).
-//
-// Reference: docs/design/rc2-auth-flow/02-profile-light-reference.png
-//   Title "Расскажите о себе"
-//   "Эти данные будут видны партнёрам в ваших объявлениях"
-//   Field "Как вас представить партнёру?" → input "Имя или название компании"
-//   Field "Город" → input "Например, Алматы"
-//   Green CTA "Продолжить"
-//   NO role-pill сверху до выбора роли (per owner-instruction)
-//   NO skip / "войти позже" (per owner-instruction)
-//
-// Generic profile = name + city only. Без role-specific полей
-// (truck_type / capacity / company / usual_cargo). Эти детали
-// собираются позже при публикации первого груза/рейса.
-//
-// Бизнес-логика: regAPI.updateProfile({name, city}), затем reset Main
-// с роль из session (предполагается что RoleV2 уже её установил
-// через AuthContext.setRole перед этим экраном).
-
+// ProfileV2Screen — active RC2 profile step.
+// Shipper identity is intentionally explicit: a driver must know who the
+// customer is before accepting real cargo. Name + country + phone are required;
+// company and city remain optional for a shipper.
 import React, { useState } from 'react';
 import {
   View,
@@ -36,44 +21,85 @@ import { useAuth } from '../../utils/AuthContext';
 import { regAPI } from '../../utils/registration';
 import { brand, useBrand, radius, typography } from '../../theme/brandV2';
 
+const COPY = {
+  RU: {
+    countryLabel: 'Страна *', countryPlaceholder: 'Например, Китай', countryError: 'Укажите страну',
+    companyLabel: 'Компания', companyPlaceholder: 'Название компании (необязательно)',
+    phoneRequiredLabel: 'Телефон *', shipperHint: 'Имя, страна и телефон будут видны партнёру по сделке.',
+  },
+  EN: {
+    countryLabel: 'Country *', countryPlaceholder: 'For example, China', countryError: 'Enter your country',
+    companyLabel: 'Company', companyPlaceholder: 'Company name (optional)',
+    phoneRequiredLabel: 'Phone *', shipperHint: 'Your name, country and phone identify you to the deal partner.',
+  },
+  ZH: {
+    countryLabel: '国家 *', countryPlaceholder: '例如：中国', countryError: '请输入国家',
+    companyLabel: '公司', companyPlaceholder: '公司名称（选填）',
+    phoneRequiredLabel: '手机号 *', shipperHint: '姓名、国家和手机号会向交易伙伴显示。',
+  },
+  KK: {
+    countryLabel: 'Ел *', countryPlaceholder: 'Мысалы, Қытай', countryError: 'Елді көрсетіңіз',
+    companyLabel: 'Компания', companyPlaceholder: 'Компания атауы (міндетті емес)',
+    phoneRequiredLabel: 'Телефон *', shipperHint: 'Атыңыз, еліңіз және телефоныңыз мәміле серіктесіне көрінеді.',
+  },
+};
+
+const digitsOnly = (value) => String(value || '').replace(/\D/g, '');
+
 export default function ProfileV2Screen({ navigation, route }) {
   const _b = useBrand();
   const s = React.useMemo(() => makeStyles(_b), [_b]);
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
+  const ui = COPY[lang] || COPY.RU;
   const { session } = useAuth();
   const role = session?.user?.role || 'driver';
+  const isShipper = role === 'client';
 
-  const signupId = route?.params?.phone || '';
+  const signupId = route?.params?.phone || session?.user?.phone || '';
   const isEmailSignup = /@/.test(signupId);
+  const initialPhone = isEmailSignup ? '' : signupId;
 
   const [name, setName] = useState('');
   const [city, setCity] = useState('');
-  const [phone, setPhone] = useState('');
-  const [nameFocused, setNameFocused] = useState(false);
-  const [cityFocused, setCityFocused] = useState(false);
-  const [phoneFocused, setPhoneFocused] = useState(false);
+  const [country, setCountry] = useState('');
+  const [company, setCompany] = useState('');
+  const [phone, setPhone] = useState(initialPhone);
+  const [focused, setFocused] = useState('');
   const [errors, setErrors] = useState({});
   const [busy, setBusy] = useState(false);
   const [serverError, setServerError] = useState('');
-  const phoneDigits = phone.replace(/\D/g, '');
+
+  const validName = name.trim().length >= 2;
+  const validCity = city.trim().length >= 2;
+  const validCountry = country.trim().length >= 2;
+  const validPhone = digitsOnly(phone).length >= 10;
 
   const validate = () => {
-    const e = {};
-    if (name.trim().length < 2) e.name = t('profile_v2_err_name');
-    if (city.trim().length < 2) e.city = t('profile_v2_err_city');
-    if (isEmailSignup && phoneDigits.length < 10) e.phone = t('prem_reg_phone_invalid');
-    setErrors(e);
-    return Object.keys(e).length === 0;
+    const next = {};
+    if (!validName) next.name = t('profile_v2_err_name');
+    if (!isShipper && !validCity) next.city = t('profile_v2_err_city');
+    if (isShipper && !validCountry) next.country = ui.countryError;
+    if ((isShipper || isEmailSignup) && !validPhone) next.phone = t('prem_reg_phone_invalid');
+    setErrors(next);
+    return Object.keys(next).length === 0;
   };
 
   const onContinue = async () => {
-    if (busy) return;
-    if (!validate()) return;
+    if (busy || !validate()) return;
     setBusy(true);
     setServerError('');
     try {
-      const payload = { name: name.trim(), city: city.trim(), role };
-      if (isEmailSignup) payload.phone = phone.trim();
+      const payload = {
+        name: name.trim(),
+        city: city.trim(),
+        role,
+      };
+      if (isShipper) {
+        payload.country = country.trim();
+        payload.company_name = company.trim();
+      }
+      if (validPhone) payload.phone = phone.trim();
+
       const saved = await regAPI.updateProfile(payload);
       if (!saved?.ok) {
         const detail = saved?.detail;
@@ -86,111 +112,76 @@ export default function ProfileV2Screen({ navigation, route }) {
           setErrors((prev) => ({ ...prev, name: t('profile_v2_err_name') }));
           return;
         }
+        if (code === 'COUNTRY_REQUIRED') {
+          setErrors((prev) => ({ ...prev, country: ui.countryError }));
+          return;
+        }
         throw new Error(typeof detail === 'string' ? detail : 'profile_save_failed');
       }
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Main', params: { role } }],
-      });
-    } catch (e) {
+      navigation.reset({ index: 0, routes: [{ name: 'Main', params: { role } }] });
+    } catch {
       setServerError(t('profile_v2_save_failed'));
     } finally {
       setBusy(false);
     }
   };
 
-  const formValid = name.trim().length >= 2 && city.trim().length >= 2 && (!isEmailSignup || phoneDigits.length >= 10);
+  const formValid = isShipper
+    ? validName && validCountry && validPhone
+    : validName && validCity && (!isEmailSignup || validPhone);
+
+  const Field = ({ id, label, value, onChange, placeholder, keyboardType, inputMode, autoCapitalize = 'sentences', requiredError }) => (
+    <View style={s.field}>
+      <Text style={s.label}>{label}</Text>
+      <TextInput
+        value={value}
+        onChangeText={(next) => {
+          onChange(next);
+          if (errors[id]) setErrors((prev) => ({ ...prev, [id]: null }));
+        }}
+        onFocus={() => setFocused(id)}
+        onBlur={() => setFocused('')}
+        placeholder={placeholder}
+        placeholderTextColor={brand.textTertiary}
+        keyboardType={keyboardType}
+        inputMode={inputMode}
+        textContentType={id === 'phone' ? 'telephoneNumber' : undefined}
+        autoCapitalize={autoCapitalize}
+        style={[s.input, focused === id && s.inputFocused, errors[id] && s.inputError]}
+        testID={`profile-v2-${id}`}
+      />
+      {errors[id] ? <Text style={s.errText}>{errors[id] || requiredError}</Text> : null}
+    </View>
+  );
 
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']} testID="profile-v2-screen">
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={{ flex: 1 }}
-      >
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <View style={s.header}>
-          <Pressable
-            onPress={() => navigation.goBack()}
-            style={({ pressed }) => [s.backBtn, pressed && { opacity: 0.6 }]}
-            testID="profile-v2-back"
-            accessibilityRole="button"
-          >
+          <Pressable onPress={() => navigation.goBack()} style={({ pressed }) => [s.backBtn, pressed && { opacity: 0.6 }]} testID="profile-v2-back" accessibilityRole="button">
             <Feather name="arrow-left" size={22} color={brand.textPrimary} />
           </Pressable>
         </View>
 
-        <ScrollView
-          contentContainerStyle={s.scroll}
-          keyboardShouldPersistTaps="handled"
-        >
+        <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
           <Text style={s.title}>{t('profile_v2_title')}</Text>
-          <Text style={s.subtitle}>{t('profile_v2_subtitle')}</Text>
+          <Text style={s.subtitle}>{isShipper ? ui.shipperHint : t('profile_v2_subtitle')}</Text>
 
-          {/* Name */}
-          <View style={s.field}>
-            <Text style={s.label}>{t('profile_v2_name_label')}</Text>
-            <TextInput
-              value={name}
-              onChangeText={(v) => {
-                setName(v);
-                if (errors.name) setErrors({ ...errors, name: null });
-              }}
-              onFocus={() => setNameFocused(true)}
-              onBlur={() => setNameFocused(false)}
-              placeholder={t('profile_v2_name_placeholder')}
-              placeholderTextColor={brand.textTertiary}
-              style={[
-                s.input,
-                nameFocused && s.inputFocused,
-                errors.name && s.inputError,
-              ]}
-              autoCapitalize="words"
-              testID="profile-v2-name"
-            />
-            {errors.name ? <Text style={s.errText}>{errors.name}</Text> : null}
-          </View>
+          <Field id="name" label={`${t('profile_v2_name_label')} *`} value={name} onChange={setName} placeholder={t('profile_v2_name_placeholder')} autoCapitalize="words" />
 
-          {/* City */}
-          <View style={s.field}>
-            <Text style={s.label}>{t('profile_v2_city_label')}</Text>
-            <TextInput
-              value={city}
-              onChangeText={(v) => {
-                setCity(v);
-                if (errors.city) setErrors({ ...errors, city: null });
-              }}
-              onFocus={() => setCityFocused(true)}
-              onBlur={() => setCityFocused(false)}
-              placeholder={t('profile_v2_city_placeholder')}
-              placeholderTextColor={brand.textTertiary}
-              style={[
-                s.input,
-                cityFocused && s.inputFocused,
-                errors.city && s.inputError,
-              ]}
-              testID="profile-v2-city"
-            />
-            {errors.city ? <Text style={s.errText}>{errors.city}</Text> : null}
-          </View>
-
-          {isEmailSignup ? (
-            <View style={s.field}>
-              <Text style={s.label}>{t('prem_reg_phone_label')}</Text>
-              <TextInput
-                value={phone}
-                onChangeText={(v) => { setPhone(v); if (errors.phone) setErrors({ ...errors, phone: null }); }}
-                onFocus={() => setPhoneFocused(true)}
-                onBlur={() => setPhoneFocused(false)}
-                placeholder={t('prem_reg_phone_placeholder')}
-                placeholderTextColor={brand.textTertiary}
-                keyboardType="phone-pad"
-                inputMode="tel"
-                textContentType="telephoneNumber"
-                style={[s.input, phoneFocused && s.inputFocused, errors.phone && s.inputError]}
-                testID="profile-v2-phone"
-              />
-              {errors.phone ? <Text style={s.errText}>{errors.phone}</Text> : null}
-            </View>
-          ) : null}
+          {isShipper ? (
+            <>
+              <Field id="country" label={ui.countryLabel} value={country} onChange={setCountry} placeholder={ui.countryPlaceholder} autoCapitalize="words" />
+              <Field id="phone" label={ui.phoneRequiredLabel} value={phone} onChange={setPhone} placeholder={t('prem_reg_phone_placeholder')} keyboardType="phone-pad" inputMode="tel" autoCapitalize="none" />
+              <Field id="company" label={ui.companyLabel} value={company} onChange={setCompany} placeholder={ui.companyPlaceholder} autoCapitalize="words" />
+              <Field id="city" label={t('profile_v2_city_label')} value={city} onChange={setCity} placeholder={t('profile_v2_city_placeholder')} autoCapitalize="words" />
+            </>
+          ) : (
+            <>
+              <Field id="city" label={`${t('profile_v2_city_label')} *`} value={city} onChange={setCity} placeholder={t('profile_v2_city_placeholder')} autoCapitalize="words" />
+              {isEmailSignup ? <Field id="phone" label={ui.phoneRequiredLabel} value={phone} onChange={setPhone} placeholder={t('prem_reg_phone_placeholder')} keyboardType="phone-pad" inputMode="tel" autoCapitalize="none" /> : null}
+            </>
+          )}
 
           {serverError ? <Text style={s.serverError}>{serverError}</Text> : null}
 
@@ -199,17 +190,9 @@ export default function ProfileV2Screen({ navigation, route }) {
             disabled={busy || !formValid}
             accessibilityRole="button"
             testID="profile-v2-cta"
-            style={({ pressed }) => [
-              s.ctaPrimary,
-              { backgroundColor: formValid ? brand.primary : brand.borderStrong },
-              pressed && formValid && { opacity: 0.85 },
-            ]}
+            style={({ pressed }) => [s.ctaPrimary, { backgroundColor: formValid ? brand.primary : brand.borderStrong }, pressed && formValid && { opacity: 0.85 }]}
           >
-            {busy ? (
-              <ActivityIndicator color="#FFF" />
-            ) : (
-              <Text style={s.ctaPrimaryText}>{t('profile_v2_continue')}</Text>
-            )}
+            {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={s.ctaPrimaryText}>{t('profile_v2_continue')}</Text>}
           </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -219,77 +202,18 @@ export default function ProfileV2Screen({ navigation, route }) {
 
 const makeStyles = (brand) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: brand.bg },
-  header: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingTop: 4,
-    paddingBottom: 4,
-  },
-  backBtn: {
-    width: 40, height: 40,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  scroll: {
-    paddingHorizontal: 24,
-    paddingTop: 8,
-    paddingBottom: 32,
-  },
-  title: {
-    ...typography.h1,
-    color: brand.textPrimary,
-    marginBottom: 8,
-  },
-  subtitle: {
-    ...typography.body,
-    color: brand.textSecondary,
-    marginBottom: 24,
-  },
-  field: {
-    marginBottom: 18,
-  },
-  label: {
-    ...typography.bodySmall,
-    color: brand.textPrimary,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  input: {
-    minHeight: 56,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: brand.border,
-    backgroundColor: brand.surface,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    ...typography.bodyLarge,
-    color: brand.textPrimary,
-  },
-  inputFocused: {
-    borderColor: brand.primary,
-  },
-  inputError: {
-    borderColor: brand.error,
-  },
-  errText: {
-    ...typography.caption,
-    color: brand.error,
-    marginTop: 6,
-  },
-  serverError: {
-    ...typography.bodySmall,
-    color: brand.error,
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  ctaPrimary: {
-    height: 56,
-    borderRadius: radius.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 8,
-  },
-  ctaPrimaryText: {
-    ...typography.button,
-    color: brand.textOnPrimary,
-  },
+  header: { flexDirection: 'row', paddingHorizontal: 16, paddingTop: 4, paddingBottom: 4 },
+  backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  scroll: { paddingHorizontal: 24, paddingTop: 8, paddingBottom: 32 },
+  title: { ...typography.h1, color: brand.textPrimary, marginBottom: 8 },
+  subtitle: { ...typography.body, color: brand.textSecondary, marginBottom: 24 },
+  field: { marginBottom: 18 },
+  label: { ...typography.bodySmall, color: brand.textPrimary, fontWeight: '600', marginBottom: 8 },
+  input: { minHeight: 56, borderRadius: radius.md, borderWidth: 1, borderColor: brand.border, backgroundColor: brand.surface, paddingHorizontal: 16, paddingVertical: 14, ...typography.bodyLarge, color: brand.textPrimary },
+  inputFocused: { borderColor: brand.primary },
+  inputError: { borderColor: brand.error },
+  errText: { ...typography.caption, color: brand.error, marginTop: 6 },
+  serverError: { ...typography.bodySmall, color: brand.error, textAlign: 'center', marginBottom: 8 },
+  ctaPrimary: { height: 56, borderRadius: radius.lg, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
+  ctaPrimaryText: { ...typography.button, color: brand.textOnPrimary },
 });
