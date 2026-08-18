@@ -4,6 +4,7 @@
 // lines. The visual map provider stays inside UrTruck.
 import React from 'react';
 import MapView, { Marker, Polyline } from 'react-native-maps';
+import { routingAPI } from '../utils/routingAPI';
 
 const asPoint = (value) => {
   if (Array.isArray(value) && value.length >= 2) {
@@ -15,6 +16,15 @@ const asPoint = (value) => {
   const longitude = Number(value?.lng ?? value?.longitude);
   return Number.isFinite(latitude) && Number.isFinite(longitude) ? { latitude, longitude } : null;
 };
+
+const toPair = (point) => point ? [point.latitude, point.longitude] : null;
+const routeKey = (points) => (points || []).map((point) => `${Number(point?.[0]).toFixed(3)}:${Number(point?.[1]).toFixed(3)}`).join('|');
+const needsGlobalRoadRouting = (points) => (points || []).some((point) => {
+  const lat = Number(point?.[0]);
+  const lng = Number(point?.[1]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  return (lng > 85 && lat < 55) || (lat < 35 && lng > 70);
+});
 
 const distanceTextFromMeters = (value) => {
   const meters = Number(value);
@@ -39,25 +49,55 @@ const durationTextFromSeconds = (value) => {
 export default function TruckMap({ lat, lng, title, routePoints = [], externalRoute = null, onRouteSummary }) {
   const live = asPoint([lat, lng]);
   const planned = React.useMemo(() => (routePoints || []).map(asPoint).filter(Boolean), [routePoints]);
-  const external = React.useMemo(() => (externalRoute?.geometry || []).map(asPoint).filter(Boolean), [externalRoute?.routeKey]);
+  const destination = planned.length ? planned[planned.length - 1] : null;
+  const effectivePairs = React.useMemo(() => {
+    const pairs = live && destination ? [toPair(live), toPair(destination)] : planned.map(toPair);
+    return pairs.filter(Boolean);
+  }, [live?.latitude, live?.longitude, destination?.latitude, destination?.longitude, planned.length]);
+  const globalNeeded = needsGlobalRoadRouting(effectivePairs);
+  const effectiveKey = routeKey(effectivePairs);
+  const [autoExternalRoute, setAutoExternalRoute] = React.useState(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    if (!globalNeeded || effectivePairs.length < 2 || externalRoute) {
+      setAutoExternalRoute(null);
+      return () => { cancelled = true; };
+    }
+    routingAPI.roadRoute(effectivePairs).then((result) => {
+      if (cancelled) return;
+      if (result?.ok && Array.isArray(result.geometry) && result.geometry.length >= 2) {
+        setAutoExternalRoute({ ...result, routeKey: effectiveKey });
+      } else {
+        setAutoExternalRoute(null);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [globalNeeded, effectiveKey, externalRoute]);
+
+  const resolvedExternalRoute = externalRoute || autoExternalRoute;
+  const external = React.useMemo(
+    () => (resolvedExternalRoute?.geometry || []).map(asPoint).filter(Boolean),
+    [resolvedExternalRoute?.routeKey],
+  );
   const road = external.length >= 2 ? external : planned;
   const all = React.useMemo(() => [...road, ...(live ? [live] : [])], [road, live?.latitude, live?.longitude]);
 
   React.useEffect(() => {
-    const distanceText = distanceTextFromMeters(externalRoute?.distance_m);
-    const durationText = durationTextFromSeconds(externalRoute?.duration_s);
+    const distanceText = distanceTextFromMeters(resolvedExternalRoute?.distance_m);
+    const durationText = durationTextFromSeconds(resolvedExternalRoute?.duration_s);
     if (external.length >= 2 && distanceText && durationText) {
       onRouteSummary?.({
         distanceText,
         durationText,
         blocked: false,
         isRemaining: Boolean(live),
-        provider: externalRoute?.provider || 'global',
+        provider: resolvedExternalRoute?.provider || 'global',
       });
     } else {
       onRouteSummary?.(null);
     }
-  }, [onRouteSummary, externalRoute?.routeKey, externalRoute?.distance_m, externalRoute?.duration_s, live?.latitude, live?.longitude, external.length]);
+  }, [onRouteSummary, resolvedExternalRoute?.routeKey, resolvedExternalRoute?.distance_m, resolvedExternalRoute?.duration_s, live?.latitude, live?.longitude, external.length]);
 
   const region = React.useMemo(() => {
     const points = all.length ? all : [{ latitude: 43.2389, longitude: 76.8897 }];
