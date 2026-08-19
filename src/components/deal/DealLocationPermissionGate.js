@@ -11,14 +11,15 @@ import { registerLocationPermissionRequestHandler } from '../../utils/locationPe
 import { useI18n } from '../../utils/useI18n';
 import { useAuth } from '../../utils/AuthContext';
 
-// This component is intentionally an invisible permission host.
-// The only normal Android entry point is the driver's explicit "Start trip"
-// action in DealWorkspaceScreenV2. There is no proactive permission banner.
+// Invisible permission/consent host for the real deal workspace.
+// The driver's explicit "Start trip" action is the only normal entry point.
+// Android and web show the same per-trip disclosure; there is no proactive banner.
 export default function DealLocationPermissionGate({ role, children }) {
   const { lang } = useI18n();
   const { session } = useAuth();
   const effectiveRole = role || session?.user?.role || null;
   const isDriver = effectiveRole === 'driver';
+  const supportsTripDisclosure = Platform.OS === 'android' || Platform.OS === 'web';
   const [modalVisible, setModalVisible] = React.useState(false);
   const [modalMode, setModalMode] = React.useState('disclosure');
   const [busy, setBusy] = React.useState(false);
@@ -32,9 +33,9 @@ export default function DealLocationPermissionGate({ role, children }) {
   }, []);
 
   const refreshPermission = React.useCallback(async () => {
-    if (Platform.OS !== 'android') return null;
+    if (!supportsTripDisclosure) return null;
     return getBackgroundLocationPermissionState();
-  }, []);
+  }, [supportsTripDisclosure]);
 
   React.useEffect(() => {
     mounted.current = true;
@@ -45,11 +46,10 @@ export default function DealLocationPermissionGate({ role, children }) {
   }, [resolvePending]);
 
   const beginDisclosure = React.useCallback(async () => {
-    if (Platform.OS !== 'android') return { ok: false, reason: 'android_only' };
-    const current = await refreshPermission();
-    if (current?.ok) return { ok: true, foregroundService: true };
+    if (!supportsTripDisclosure) return { ok: false, reason: 'disclosure_not_supported' };
 
-    // Deduplicate repeated Start-trip taps while the disclosure is already open.
+    // Per-trip consent is intentional: show the approved disclosure for every
+    // new Start-trip action even when OS location permission was granted earlier.
     if (pendingResolve.current) return { ok: false, reason: 'permission_flow_busy' };
 
     return new Promise((resolve) => {
@@ -57,12 +57,18 @@ export default function DealLocationPermissionGate({ role, children }) {
       setModalMode('disclosure');
       setModalVisible(true);
     });
-  }, [refreshPermission]);
+  }, [supportsTripDisclosure]);
 
   React.useEffect(() => {
-    if (Platform.OS !== 'android' || !isDriver) return undefined;
+    if (!supportsTripDisclosure || !isDriver) return undefined;
     return registerLocationPermissionRequestHandler(beginDisclosure);
-  }, [beginDisclosure, isDriver]);
+  }, [beginDisclosure, isDriver, supportsTripDisclosure]);
+
+  const successPayload = React.useCallback(() => ({
+    ok: true,
+    foregroundOnly: true,
+    foregroundService: Platform.OS === 'android',
+  }), []);
 
   const completeIfGranted = React.useCallback(async () => {
     if (!pendingResolve.current) return false;
@@ -72,11 +78,11 @@ export default function DealLocationPermissionGate({ role, children }) {
     if (state?.ok) {
       setModalVisible(false);
       setModalMode('disclosure');
-      resolvePending({ ok: true, foregroundService: true });
+      resolvePending(successPayload());
       return true;
     }
     return false;
-  }, [refreshPermission, resolvePending]);
+  }, [refreshPermission, resolvePending, successPayload]);
 
   const continueDisclosure = React.useCallback(async () => {
     if (busy) return;
@@ -95,13 +101,14 @@ export default function DealLocationPermissionGate({ role, children }) {
 
     // Android active-trip tracking uses a location foreground service.
     // ACCESS_BACKGROUND_LOCATION / "Allow all the time" is intentionally absent.
+    // Web uses the same disclosure but only browser foreground location access.
     const state = await refreshPermission();
     setModalVisible(false);
     setModalMode('disclosure');
     resolvePending(state?.ok
-      ? { ok: true, foregroundService: true }
+      ? successPayload()
       : { ok: false, reason: 'fg_state_mismatch' });
-  }, [busy, refreshPermission, resolvePending]);
+  }, [busy, refreshPermission, resolvePending, successPayload]);
 
   const cancelDisclosure = React.useCallback(() => {
     if (busy) return;
@@ -111,7 +118,7 @@ export default function DealLocationPermissionGate({ role, children }) {
   }, [busy, resolvePending]);
 
   const openSettings = React.useCallback(async () => {
-    if (busy) return;
+    if (busy || Platform.OS === 'web') return;
     setBusy(true);
     await openLocationSettings();
     setBusy(false);

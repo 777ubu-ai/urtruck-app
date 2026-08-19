@@ -6,29 +6,40 @@ const read = (path) => fs.readFileSync(path, 'utf8');
 const gate = read('src/components/deal/DealLocationPermissionGate.js');
 const disclosure = read('src/components/deal/BackgroundLocationDisclosureModal.js');
 const tracker = read('src/utils/backgroundLocation.js');
+const settingsHelper = read('src/utils/locationSettings.js');
 const hook = read('src/hooks/useDealLocationBroadcast.js');
 const workspace = read('src/screens/DealWorkspaceScreenV2.js');
 const chat = read('src/screens/ChatScreenV2.js');
 const manifest = read('android/app/src/main/AndroidManifest.xml');
 const app = JSON.parse(read('app.json')).expo;
 
-test('trip disclosure explains Android foreground-service tracking without all-time permission', () => {
-  assert.match(disclosure, /Геолокация во время рейса/);
-  assert.match(disclosure, /foreground-service активного рейса/);
-  assert.match(disclosure, /Передача геолокации прекращается после завершения или отмены рейса/);
+test('trip disclosure matches the approved Track trip screen and foreground-service behavior', () => {
+  assert.match(disclosure, /Отслеживать рейс/);
+  assert.match(disclosure, /Во время активного рейса UrTruck передаёт местоположение автомобиля грузоотправителю/);
+  assert.match(disclosure, /приложение свёрнуто или экран выключен/);
+  assert.match(disclosure, /системный сервис активного рейса/);
+  assert.match(disclosure, /Передача прекращается после завершения или отмены рейса/);
   assert.match(disclosure, /Разрешить и начать рейс/);
+  assert.match(disclosure, /Не сейчас/);
   assert.doesNotMatch(disclosure, /когда приложение закрыто или не используется/);
-  assert.match(disclosure, /не просит доступ «Разрешить всегда»/);
+  assert.match(disclosure, /Доступ «Разрешить всегда» не требуется/);
   assert.match(disclosure, /testID="background-location-disclosure"/);
   assert.match(disclosure, /testID="background-location-disclosure-continue"/);
 });
 
-test('accepted Android driver has no proactive location permission control', () => {
+test('accepted driver has no proactive location permission control', () => {
   assert.doesNotMatch(gate, /deal-background-location-bar/);
   assert.doesNotMatch(gate, /deal-background-location-allow/);
   assert.doesNotMatch(gate, /dealStatus === 'accepted'/);
   assert.match(gate, /effectiveRole === 'driver'/);
   assert.match(gate, /registerLocationPermissionRequestHandler\(beginDisclosure\)/);
+});
+
+test('Android and web use the same per-trip disclosure from Start trip', () => {
+  assert.match(gate, /Platform\.OS === 'android' \|\| Platform\.OS === 'web'/);
+  assert.match(tracker, /Platform\.OS === 'android' \|\| Platform\.OS === 'web'/);
+  assert.match(gate, /Per-trip consent is intentional/);
+  assert.match(tracker, /requestLocationPermissionThroughDisclosure\(\{ source: 'start_trip' \}\)/);
 });
 
 test('Android permission sequence is Start trip disclosure then foreground only', () => {
@@ -37,9 +48,19 @@ test('Android permission sequence is Start trip disclosure then foreground only'
   assert.ok(disclosureIndex >= 0 && foregroundIndex >= 0);
   assert.ok(disclosureIndex < foregroundIndex, 'disclosure must be wired before foreground permission');
   assert.doesNotMatch(gate, /requestBackgroundLocationPermission/);
-  assert.match(gate, /foregroundService: true/);
+  assert.match(gate, /foregroundService: Platform\.OS === 'android'/);
   assert.match(gate, /openLocationSettings\(\)/);
   assert.match(disclosure, /background-location-open-settings/);
+});
+
+test('web denied recovery never offers or calls native app settings', () => {
+  assert.match(disclosure, /canOpenNativeSettings = Platform\.OS !== 'web'/);
+  assert.match(disclosure, /Откройте настройки сайта в браузере/);
+  assert.match(disclosure, /background-location-check-again/);
+  assert.match(gate, /busy \|\| Platform\.OS === 'web'/);
+  assert.match(settingsHelper, /Platform\.OS === 'web'[\s\S]*web_settings_manual/);
+  assert.match(settingsHelper, /typeof Linking\?\.openSettings !== 'function'/);
+  assert.match(tracker, /export \{ openLocationSettings \} from '\.\/locationSettings'/);
 });
 
 test('start trip cannot enter in_progress before permission succeeds', () => {
