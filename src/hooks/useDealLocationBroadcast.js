@@ -3,7 +3,9 @@
 // передачу сразу после доставки/отмены.
 //
 // Google Play contract: this hook NEVER opens a permission prompt. Permission
-// is requested only from the explicit Deal Workspace disclosure flow.
+// is requested only from the explicit Deal Workspace disclosure flow. Android
+// location foreground service is started only while the app is visible; once
+// started, the OS service keeps the active-trip task alive when minimized.
 import { useEffect, useRef, useState } from 'react';
 import { Platform, AppState } from 'react-native';
 import { marketAPI } from '../utils/marketAPI';
@@ -38,12 +40,34 @@ export function useDealLocationBroadcast(activeDealIds) {
   const key = permittedIds.join(',');
 
   // Store only server-approved deals. startBackgroundTracking checks existing
-  // OS grants and cannot request anything by itself.
+  // OS grants and cannot request anything by itself. On Android 14+ a location
+  // foreground service must be started while the app is visible, so a delayed
+  // server response never causes an illegal background service start.
   useEffect(() => {
-    if (Platform.OS === 'web') return;
-    setActiveDealIds(idsRef.current);
-    if (idsRef.current.length) startBackgroundTracking();
-    else stopBackgroundTracking();
+    if (Platform.OS === 'web') return undefined;
+
+    let alive = true;
+    const syncTracking = async () => {
+      const ids = idsRef.current;
+      await setActiveDealIds(ids);
+      if (!alive) return;
+      if (!ids.length) {
+        await stopBackgroundTracking();
+        return;
+      }
+      if (Platform.OS === 'android' && AppState.currentState !== 'active') return;
+      await startBackgroundTracking();
+    };
+
+    syncTracking();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active' && idsRef.current.length) syncTracking();
+    });
+
+    return () => {
+      alive = false;
+      sub?.remove?.();
+    };
   }, [key]);
 
   useEffect(() => {

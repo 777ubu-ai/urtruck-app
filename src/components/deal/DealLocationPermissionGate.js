@@ -7,7 +7,6 @@ import { marketAPI } from '../../utils/marketAPI';
 import {
   getBackgroundLocationPermissionState,
   openLocationSettings,
-  requestBackgroundLocationPermission,
   requestForegroundLocationPermission,
 } from '../../utils/backgroundLocation';
 import { registerLocationPermissionRequestHandler } from '../../utils/locationPermissionCoordinator';
@@ -98,7 +97,7 @@ export default function DealLocationPermissionGate({ dealId, role, initialStatus
     if (state?.ok) {
       setModalVisible(false);
       setModalMode('disclosure');
-      resolvePending({ ok: true });
+      resolvePending({ ok: true, foregroundService: true });
       return true;
     }
     return false;
@@ -108,8 +107,9 @@ export default function DealLocationPermissionGate({ dealId, role, initialStatus
     if (busy) return;
     setBusy(true);
     const foreground = await requestForegroundLocationPermission();
+    setBusy(false);
+
     if (!foreground.ok) {
-      setBusy(false);
       if (foreground.reason === 'settings_required') setModalMode('settings');
       else {
         setModalVisible(false);
@@ -118,18 +118,14 @@ export default function DealLocationPermissionGate({ dealId, role, initialStatus
       return;
     }
 
-    const background = await requestBackgroundLocationPermission();
-    setBusy(false);
-    if (background.ok) {
-      const state = await refreshPermission();
-      setModalVisible(false);
-      resolvePending(state?.ok ? { ok: true } : { ok: false, reason: 'bg_state_mismatch' });
-      return;
-    }
-
-    // Android 11+ commonly requires the app settings page for "Allow all the
-    // time". Keep the explanation visible and give the user a direct action.
-    setModalMode('settings');
+    // Android active-trip tracking uses a user-visible location foreground
+    // service. It intentionally does not request ACCESS_BACKGROUND_LOCATION.
+    const state = await refreshPermission();
+    setModalVisible(false);
+    setModalMode('disclosure');
+    resolvePending(state?.ok
+      ? { ok: true, foregroundService: true }
+      : { ok: false, reason: 'fg_state_mismatch' });
   }, [busy, refreshPermission, resolvePending]);
 
   const cancelDisclosure = React.useCallback(() => {
