@@ -2,6 +2,7 @@
 // Android: пользователь явно запускает рейс, после чего координаты продолжают
 // передаваться через location foreground service с постоянным уведомлением.
 // ACCESS_BACKGROUND_LOCATION намеренно не используется и не запрашивается.
+// Web показывает тот же per-trip disclosure перед browser location permission.
 // iOS сохраняет отдельный background-location flow.
 import { Linking, Platform } from 'react-native';
 import { storage } from './storage';
@@ -206,9 +207,14 @@ export async function openLocationSettings() {
 }
 
 // Compatibility entry point used by start-trip actions.
-// Android MUST go through the registered visible disclosure host and receives
-// only foreground location permission. iOS retains foreground + background.
+// Android and web MUST go through the registered visible per-trip disclosure
+// host. Android then receives foreground location only; iOS retains its own
+// foreground + background flow.
 export async function ensureBackgroundLocationPermission() {
+  if (Platform.OS === 'android' || Platform.OS === 'web') {
+    return requestLocationPermissionThroughDisclosure({ source: 'start_trip' });
+  }
+
   const current = await getBackgroundLocationPermissionState();
   if (current.ok) return {
     ok: true,
@@ -216,13 +222,8 @@ export async function ensureBackgroundLocationPermission() {
     foregroundService: !!current.foregroundService,
   };
 
-  if (Platform.OS === 'android') {
-    return requestLocationPermissionThroughDisclosure({ source: 'start_trip' });
-  }
-
   const fg = await requestForegroundLocationPermission();
   if (!fg.ok) return fg;
-  if (Platform.OS === 'web') return { ok: true, foregroundOnly: true };
   const bg = await requestBackgroundLocationPermission();
   if (!bg.ok) return bg;
   return { ok: true, foregroundOnly: false };
