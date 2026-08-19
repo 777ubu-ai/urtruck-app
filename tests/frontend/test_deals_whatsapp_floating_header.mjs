@@ -57,5 +57,9 @@ test('actionable counts remain computed for offer and active deal attention', ()
   assert.match(deals, /const offerAttentionCount = useMemo/);
   assert.match(deals, /isBidActionable/);
   assert.match(deals, /const activeAttentionCount = useMemo/);
-  assert.match(deals, /tracking_action_required \? 1 : 0/);
+  assert.match(
+    deals,
+    /item\.tracking_action_required \|\| \(role === 'client' && item\.status === 'delivered'\)/,
+  );
+  assert.match(deals, /const attentionRequired = needsReceiptConfirmation \|\| trackingActionRequired/);
 });
