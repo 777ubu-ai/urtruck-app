@@ -50,6 +50,10 @@ on:
           - inProgress
           - halted
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   build-and-submit:
     name: Build AAB and upload to Play
@@ -146,3 +150,28 @@ jobs:
           tracks: ${{ inputs.track || 'internal' }}
           status: ${{ inputs.status || 'completed' }}
           inAppUpdatePriority: 2
+
+      - name: Record Google Play release evidence
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESULT: ${{ job.status }}
+          TRACK: ${{ inputs.track || 'internal' }}
+          RELEASE_STATUS: ${{ inputs.status || 'completed' }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          version_code="${URTRUCK_VERSION_CODE:-unknown}"
+          body=$(cat <<EOF
+          ### Google Play upload — ${RESULT^^}
+          - sha: \`${GITHUB_SHA}\`
+          - workflow: \`Deploy Android to Google Play\`
+          - run: ${RUN_URL}
+          - result: \`${RESULT}\`
+          - package: \`com.urtruck.app\`
+          - track: \`${TRACK}\`
+          - release status: \`${RELEASE_STATUS}\`
+          - versionCode: \`${version_code}\`
+          EOF
+          )
+          gh api "repos/${GITHUB_REPOSITORY}/issues/247/comments" -f body="$body"
