@@ -7,6 +7,7 @@ const src = fs.readFileSync('src/screens/CargoFeedScreen.js', 'utf8');
 test('cargo feed removes heavy brand/title chrome and keeps only compact menu above list', () => {
   assert.match(src, /testID="cargo-feed-minimal-header"/);
   assert.match(src, /testID="feed-menu-btn"/);
+  assert.match(src, /topBar: \{[\s\S]*?minHeight: 48/);
   assert.doesNotMatch(src, /<Text style=\{styles\.brand\}>UrTruck<\/Text>/);
   assert.doesNotMatch(src, /styles\.titleRow/);
   assert.doesNotMatch(src, /testID="feed-view-toggle"/);
@@ -23,6 +24,7 @@ test('route selector and all filter chips scroll away with cargo list like a mes
   assert.match(src, /filterPill\('price'/);
   assert.match(src, /testID="cargo-filter-favorites"/);
   assert.doesNotMatch(src, /stickyHeaderIndices/);
+  assert.doesNotMatch(src, /position:\s*['"]sticky['"]/);
 });
 
 test('favorites quick filter uses the same saved cargo ids as card bookmarks', () => {
