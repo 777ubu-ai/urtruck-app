@@ -26,12 +26,19 @@ test('trip disclosure matches the approved Track trip screen and foreground-serv
   assert.match(disclosure, /testID="background-location-disclosure-continue"/);
 });
 
-test('accepted Android driver has no proactive location permission control', () => {
+test('accepted driver has no proactive location permission control', () => {
   assert.doesNotMatch(gate, /deal-background-location-bar/);
   assert.doesNotMatch(gate, /deal-background-location-allow/);
   assert.doesNotMatch(gate, /dealStatus === 'accepted'/);
   assert.match(gate, /effectiveRole === 'driver'/);
   assert.match(gate, /registerLocationPermissionRequestHandler\(beginDisclosure\)/);
+});
+
+test('Android and web use the same per-trip disclosure from Start trip', () => {
+  assert.match(gate, /Platform\.OS === 'android' \|\| Platform\.OS === 'web'/);
+  assert.match(tracker, /Platform\.OS === 'android' \|\| Platform\.OS === 'web'/);
+  assert.match(gate, /Per-trip consent is intentional/);
+  assert.match(tracker, /requestLocationPermissionThroughDisclosure\(\{ source: 'start_trip' \}\)/);
 });
 
 test('Android permission sequence is Start trip disclosure then foreground only', () => {
@@ -40,7 +47,7 @@ test('Android permission sequence is Start trip disclosure then foreground only'
   assert.ok(disclosureIndex >= 0 && foregroundIndex >= 0);
   assert.ok(disclosureIndex < foregroundIndex, 'disclosure must be wired before foreground permission');
   assert.doesNotMatch(gate, /requestBackgroundLocationPermission/);
-  assert.match(gate, /foregroundService: true/);
+  assert.match(gate, /foregroundService: Platform\.OS === 'android'/);
   assert.match(gate, /openLocationSettings\(\)/);
   assert.match(disclosure, /background-location-open-settings/);
 });
