@@ -10,9 +10,15 @@ const COPY = {
     stop: 'Передача прекращается после завершения или отмены рейса.',
     continue: 'Разрешить и начать рейс',
     notNow: 'Не сейчас',
-    settingsTitle: 'Разрешите геолокацию для рейса',
-    settingsBody: 'Чтобы начать рейс и передавать положение машины, разрешите UrTruck доступ к местоположению в настройках приложения.',
-    settingsHint: Platform.OS === 'android' ? 'Включите обычный доступ к местоположению для UrTruck. Доступ «Разрешить всегда» не требуется.' : 'В настройках разрешите доступ к геолокации.',
+    settingsTitle: Platform.OS === 'web' ? 'Разрешите геолокацию в браузере' : 'Разрешите геолокацию для рейса',
+    settingsBody: Platform.OS === 'web'
+      ? 'Чтобы начать рейс, разрешите UrTruck доступ к местоположению для этого сайта в настройках браузера.'
+      : 'Чтобы начать рейс и передавать положение машины, разрешите UrTruck доступ к местоположению в настройках приложения.',
+    settingsHint: Platform.OS === 'android'
+      ? 'Включите обычный доступ к местоположению для UrTruck. Доступ «Разрешить всегда» не требуется.'
+      : Platform.OS === 'web'
+        ? 'Откройте настройки сайта в браузере, разрешите «Местоположение», вернитесь в UrTruck и нажмите «Проверить ещё раз».'
+        : 'В настройках разрешите доступ к геолокации.',
     openSettings: 'Открыть настройки',
     checkAgain: 'Проверить ещё раз',
   },
@@ -23,9 +29,15 @@ const COPY = {
     stop: 'Location sharing stops when the trip is completed or cancelled.',
     continue: 'Allow and start trip',
     notNow: 'Not now',
-    settingsTitle: 'Allow trip location',
-    settingsBody: 'To start the trip and share the vehicle position, allow UrTruck to access location in the app settings.',
-    settingsHint: Platform.OS === 'android' ? 'Enable normal location access for UrTruck. “Allow all the time” is not required.' : 'Allow location access in settings.',
+    settingsTitle: Platform.OS === 'web' ? 'Allow location in your browser' : 'Allow trip location',
+    settingsBody: Platform.OS === 'web'
+      ? 'To start the trip, allow location access for this site in your browser settings.'
+      : 'To start the trip and share the vehicle position, allow UrTruck to access location in the app settings.',
+    settingsHint: Platform.OS === 'android'
+      ? 'Enable normal location access for UrTruck. “Allow all the time” is not required.'
+      : Platform.OS === 'web'
+        ? 'Open this site’s browser permissions, allow Location, return to UrTruck, then tap “Check again”.'
+        : 'Allow location access in settings.',
     openSettings: 'Open settings',
     checkAgain: 'Check again',
   },
@@ -36,9 +48,15 @@ const COPY = {
     stop: '运输完成或取消后将停止共享位置。',
     continue: '允许并开始运输',
     notNow: '暂不',
-    settingsTitle: '允许运输位置权限',
-    settingsBody: '为了开始运输并共享车辆位置，请在应用设置中允许 UrTruck 使用位置。',
-    settingsHint: Platform.OS === 'android' ? '请为 UrTruck 开启普通位置权限，无需“始终允许”。' : '请在设置中允许位置访问。',
+    settingsTitle: Platform.OS === 'web' ? '请在浏览器中允许位置权限' : '允许运输位置权限',
+    settingsBody: Platform.OS === 'web'
+      ? '要开始运输，请在浏览器的网站权限中允许 UrTruck 使用位置。'
+      : '为了开始运输并共享车辆位置，请在应用设置中允许 UrTruck 使用位置。',
+    settingsHint: Platform.OS === 'android'
+      ? '请为 UrTruck 开启普通位置权限，无需“始终允许”。'
+      : Platform.OS === 'web'
+        ? '打开浏览器的网站权限，允许“位置”，返回 UrTruck 后点击“再次检查”。'
+        : '请在设置中允许位置访问。',
     openSettings: '打开设置',
     checkAgain: '再次检查',
   },
@@ -49,9 +67,15 @@ const COPY = {
     stop: 'Рейс аяқталған немесе тоқтатылған кезде геолокация беру тоқтайды.',
     continue: 'Рұқсат беру және рейсті бастау',
     notNow: 'Қазір емес',
-    settingsTitle: 'Рейс геолокациясына рұқсат беріңіз',
-    settingsBody: 'Рейсті бастау және көліктің орнын беру үшін қолданба баптауларында UrTruck-қа геолокацияға рұқсат беріңіз.',
-    settingsHint: Platform.OS === 'android' ? 'UrTruck үшін қалыпты геолокация рұқсатын қосыңыз. «Әрқашан рұқсат беру» қажет емес.' : 'Баптауларда геолокацияға рұқсат беріңіз.',
+    settingsTitle: Platform.OS === 'web' ? 'Браузерде геолокацияға рұқсат беріңіз' : 'Рейс геолокациясына рұқсат беріңіз',
+    settingsBody: Platform.OS === 'web'
+      ? 'Рейсті бастау үшін браузердегі осы сайттың геолокация рұқсатын қосыңыз.'
+      : 'Рейсті бастау және көліктің орнын беру үшін қолданба баптауларында UrTruck-қа геолокацияға рұқсат беріңіз.',
+    settingsHint: Platform.OS === 'android'
+      ? 'UrTruck үшін қалыпты геолокация рұқсатын қосыңыз. «Әрқашан рұқсат беру» қажет емес.'
+      : Platform.OS === 'web'
+        ? 'Браузердегі сайт рұқсаттарын ашып, геолокацияны қосыңыз, UrTruck-қа оралып «Қайта тексеру» батырмасын басыңыз.'
+        : 'Баптауларда геолокацияға рұқсат беріңіз.',
     openSettings: 'Баптауларды ашу',
     checkAgain: 'Қайта тексеру',
   },
@@ -60,7 +84,7 @@ const COPY = {
 function InfoRow({ icon, iconColor, iconBackground, children }) {
   return (
     <View style={s.infoRow}>
-      <View style={[s.infoIcon, { backgroundColor: iconBackground }]}> 
+      <View style={[s.infoIcon, { backgroundColor: iconBackground }]}>
         <Feather name={icon} size={19} color={iconColor} />
       </View>
       <Text style={s.infoText}>{children}</Text>
@@ -80,6 +104,7 @@ export default function BackgroundLocationDisclosureModal({
 }) {
   const ui = COPY[lang] || COPY.RU;
   const settingsMode = mode === 'settings';
+  const canOpenNativeSettings = Platform.OS !== 'web';
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
@@ -97,17 +122,19 @@ export default function BackgroundLocationDisclosureModal({
               <InfoRow icon="settings" iconColor="#1264E6" iconBackground="#EDF4FF">
                 {ui.settingsHint}
               </InfoRow>
+              {canOpenNativeSettings ? (
+                <TouchableOpacity
+                  style={[s.primary, busy && s.disabled]}
+                  onPress={onOpenSettings}
+                  disabled={busy}
+                  testID="background-location-open-settings"
+                >
+                  <Feather name="settings" size={19} color="#FFFFFF" />
+                  <Text style={s.primaryText}>{ui.openSettings}</Text>
+                </TouchableOpacity>
+              ) : null}
               <TouchableOpacity
-                style={[s.primary, busy && s.disabled]}
-                onPress={onOpenSettings}
-                disabled={busy}
-                testID="background-location-open-settings"
-              >
-                <Feather name="settings" size={19} color="#FFFFFF" />
-                <Text style={s.primaryText}>{ui.openSettings}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={s.secondary}
+                style={[s.secondary, !canOpenNativeSettings && s.webCheckAgain]}
                 onPress={onCheckAgain}
                 disabled={busy}
                 testID="background-location-check-again"
@@ -260,6 +287,7 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 18,
   },
+  webCheckAgain: { marginTop: 26 },
   secondaryText: {
     color: '#111820',
     fontSize: 16,
