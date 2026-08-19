@@ -49,11 +49,20 @@ test('China remains hybrid and provider keys never reach browser/mobile client',
   assert.match(backend, /Depends\(get_user\)/);
 });
 
-test('production deploy validates optional server Router without blocking embedded Yandex JS road routing', () => {
+test('production deploy treats server Yandex Router as optional and never blocks on it', () => {
+  // 2026-08-19: this used to require a hard-fail preflight
+  // ("Preflight Yandex Router before touching production") that exited 1
+  // (and skipped the whole deploy, including the plain web MultiRoute
+  // fallback and unrelated backend fixes) whenever YANDEX_ROUTER_API_KEY
+  // was missing/rejected. Fixed to a soft preflight that warns and
+  // continues — the paid server router is a quality upgrade, not a
+  // release gate; the free client-side Yandex MultiRoute fallback (see
+  // 'straight direction fallback cannot masquerade as the real road
+  // route' above) must still ship.
   assert.match(deploy, /YANDEX_ROUTER_API_KEY: \$\{\{ secrets\.YANDEX_ROUTER_API_KEY \}\}/);
   assert.match(deploy, /Preflight optional server-side Yandex Router/);
-  assert.match(deploy, /python3 scripts\/yandex_router_smoke\.py/);
   assert.match(deploy, /SELECTED_YANDEX_ROUTER_API_KEY/);
-  assert.match(deploy, /web\/PWA will use embedded Yandex JS API 2\.1 MultiRoute/);
+  assert.match(deploy, /YANDEX_ROUTER_API_KEY is not configured; web\/PWA will use embedded Yandex JS API 2\.1 MultiRoute\. Production deploy continues\./);
+  assert.doesNotMatch(deploy, /Preflight Yandex Router before touching production/);
   assert.match(deploy, /ROAD_ROUTING_ENDPOINT=guarded/);
 });

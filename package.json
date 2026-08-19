@@ -16,7 +16,6 @@
     "qa:boris": "playwright test --config qa/playwright.config.js qa/agents/boris.shipper.spec.js",
     "qa:auditor": "playwright test --config qa/playwright.config.js qa/agents/auditor.full.spec.js",
     "qa:full": "playwright test --config qa/playwright.config.js",
-    "qa:production-smoke": "QA_INCLUDE_PRODUCTION_SMOKE=1 playwright test --config qa/playwright.config.js --project=production-smoke",
     "qa:cleanup": "node qa/utils/qaCleanup.js",
     "qa:auth-check": "node qa/utils/qaAuthCheck.js",
     "qa:trip-details": "playwright test --config qa/playwright.config.js qa/agents/trip.detail.clicks.spec.js",
