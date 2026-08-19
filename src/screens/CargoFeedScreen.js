@@ -23,12 +23,10 @@ import { countryFlag } from '../utils/countryFlags';
 import { useToast } from '../components/Toast';
 import { useVerificationGate } from '../components/VerificationGate';
 import { SkeletonCard } from '../components/Skeleton';
-import LanguageSwitcher from '../components/LanguageSwitcher';
 import BottomSheet from '../components/ui/v1/BottomSheet';
 import DatePicker from '../components/DatePicker';
 import LocationPickerModal from '../components/LocationPickerModal';
 import { TRUCK_KEYS } from '../utils/truckConstants';
-import { storage } from '../utils/storage';
 
 const ACCENT = '#34936B';
 const ACCENT_SOFT = '#EAF5EF';
@@ -40,10 +38,22 @@ const TEXT_MUTED = '#808A85';
 const BORDER = '#E5EAE7';
 
 const COPY = {
-  RU: { loading: 'Погрузка', negotiated: 'По договорённости', loadError: 'Не удалось загрузить грузы', empty: 'Подходящих грузов пока нет', retry: 'Повторить' },
-  EN: { loading: 'Loading', negotiated: 'By agreement', loadError: 'Could not load cargoes', empty: 'No matching cargoes yet', retry: 'Retry' },
-  ZH: { loading: '装货', negotiated: '面议', loadError: '无法加载货物', empty: '暂时没有合适的货物', retry: '重试' },
-  KK: { loading: 'Тиеу', negotiated: 'Келісім бойынша', loadError: 'Жүктерді жүктеу мүмкін болмады', empty: 'Сәйкес жүк әзірге жоқ', retry: 'Қайталау' },
+  RU: {
+    loading: 'Погрузка', negotiated: 'По договорённости', loadError: 'Не удалось загрузить грузы',
+    empty: 'Подходящих грузов пока нет', retry: 'Повторить', favorites: 'Избранное',
+  },
+  EN: {
+    loading: 'Loading', negotiated: 'By agreement', loadError: 'Could not load cargoes',
+    empty: 'No matching cargoes yet', retry: 'Retry', favorites: 'Favorites',
+  },
+  ZH: {
+    loading: '装货', negotiated: '面议', loadError: '无法加载货物',
+    empty: '暂时没有合适的货物', retry: '重试', favorites: '收藏',
+  },
+  KK: {
+    loading: 'Тиеу', negotiated: 'Келісім бойынша', loadError: 'Жүктерді жүктеу мүмкін болмады',
+    empty: 'Сәйкес жүк әзірге жоқ', retry: 'Қайталау', favorites: 'Таңдаулы',
+  },
 };
 
 const MONTHS = {
@@ -134,7 +144,7 @@ const normalizeCargo = (c, myUserId) => {
   };
 };
 
-function CargoCard({ item, lang, copy, saved, onToggleSaved, onPress, compact }) {
+function CargoCard({ item, lang, copy, saved, onToggleSaved, onPress }) {
   const from = localizePlace(item.from, lang) || '—';
   const to = localizePlace(item.to, lang) || '—';
   const cargo = localizeCargoName(item.cargo, lang) || '—';
@@ -154,44 +164,44 @@ function CargoCard({ item, lang, copy, saved, onToggleSaved, onPress, compact })
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={0.88}
-      style={[styles.card, compact ? styles.cardCompact : styles.cardExpanded]}
+      style={styles.card}
       testID={`cargo-card-${item.id}`}
       accessibilityRole="button"
     >
       <View style={styles.greenRail} />
-      <View style={[styles.cardBody, compact ? styles.cardBodyCompact : styles.cardBodyExpanded]}>
-        <View style={[styles.cardTopRow, compact && styles.cardTopRowCompact]}>
+      <View style={styles.cardBody}>
+        <View style={styles.cardTopRow}>
           <View style={styles.routeWrap} testID={`cargo-card-route-${item.id}`}>
             <View style={styles.routeLine}>
               <View style={styles.placeInline}>
-                {!!fromFlag && <Text style={[styles.flag, compact && styles.flagCompact]}>{fromFlag}</Text>}
-                <Text style={[styles.routeCity, compact && styles.routeCityCompact]} numberOfLines={1}>{from}</Text>
+                {!!fromFlag && <Text style={styles.flag}>{fromFlag}</Text>}
+                <Text style={styles.routeCity} numberOfLines={1}>{from}</Text>
               </View>
-              <Feather name="arrow-right" size={compact ? 18 : 20} color={TEXT} style={styles.routeArrow} />
+              <Feather name="arrow-right" size={18} color={TEXT} style={styles.routeArrow} />
               <View style={styles.placeInline}>
-                {!!toFlag && <Text style={[styles.flag, compact && styles.flagCompact]}>{toFlag}</Text>}
-                <Text style={[styles.routeCity, compact && styles.routeCityCompact]} numberOfLines={1}>{to}</Text>
+                {!!toFlag && <Text style={styles.flag}>{toFlag}</Text>}
+                <Text style={styles.routeCity} numberOfLines={1}>{to}</Text>
               </View>
             </View>
           </View>
         </View>
 
-        <View style={[styles.cargoPriceRow, compact && styles.cargoPriceRowCompact]}>
-          <View style={[styles.infoRow, styles.cargoInfoRow, compact && styles.infoRowCompact]}>
-            <Feather name="package" size={compact ? 15 : 17} color={TEXT_SECONDARY} />
-            <Text style={[styles.infoText, compact && styles.infoTextCompact]} numberOfLines={1}>{cargo}</Text>
+        <View style={styles.cargoPriceRow}>
+          <View style={[styles.infoRow, styles.cargoInfoRow]}>
+            <Feather name="package" size={15} color={TEXT_SECONDARY} />
+            <Text style={styles.infoText} numberOfLines={1}>{cargo}</Text>
           </View>
-          <Text style={[styles.price, compact && styles.priceCompact]} numberOfLines={1} testID={`cargo-card-price-${item.id}`}>
+          <Text style={styles.price} numberOfLines={1} testID={`cargo-card-price-${item.id}`}>
             {formatMoney(item.price, item.currency, copy)}
           </Text>
         </View>
-        <View style={[styles.infoRow, compact && styles.infoRowCompact]}>
-          <Feather name="truck" size={compact ? 15 : 17} color={TEXT_SECONDARY} />
-          <Text style={[styles.infoText, compact && styles.infoTextCompact]} numberOfLines={1}>{specs || formatTruckType(item.type)}</Text>
+        <View style={styles.infoRow}>
+          <Feather name="truck" size={15} color={TEXT_SECONDARY} />
+          <Text style={styles.infoText} numberOfLines={1}>{specs || formatTruckType(item.type)}</Text>
         </View>
-        <View style={[styles.infoRow, compact && styles.infoRowCompact]}>
-          <Feather name="calendar" size={compact ? 15 : 17} color={TEXT_SECONDARY} />
-          <Text style={[styles.infoText, compact && styles.infoTextCompact]} numberOfLines={1}>
+        <View style={styles.infoRow}>
+          <Feather name="calendar" size={15} color={TEXT_SECONDARY} />
+          <Text style={styles.infoText} numberOfLines={1}>
             {copy.loading}: {formatPickupDate(item.pickup, lang)}
           </Text>
         </View>
@@ -200,15 +210,15 @@ function CargoCard({ item, lang, copy, saved, onToggleSaved, onPress, compact })
       <Pressable
         onPress={(e) => { e?.stopPropagation?.(); onToggleSaved(); }}
         hitSlop={10}
-        style={[styles.bookmarkBtn, compact && styles.bookmarkBtnCompact, saved && styles.bookmarkBtnSaved]}
+        style={[styles.bookmarkBtn, saved && styles.bookmarkBtnSaved]}
         testID={`cargo-card-bookmark-${item.id}`}
         accessibilityRole="button"
         accessibilityLabel={saved ? 'Remove bookmark' : 'Save cargo'}
       >
         {saved ? (
-          <FontAwesome5 name="bookmark" size={compact ? 18 : 21} color={ACCENT} solid />
+          <FontAwesome5 name="bookmark" size={18} color={ACCENT} solid />
         ) : (
-          <Feather name="bookmark" size={compact ? 18 : 21} color={TEXT_SECONDARY} />
+          <Feather name="bookmark" size={18} color={TEXT_SECONDARY} />
         )}
       </Pressable>
     </TouchableOpacity>
@@ -221,7 +231,6 @@ export default function CargoFeedScreen({ navigation }) {
   const { toast } = useToast();
   const { requireLevel, Gate } = useVerificationGate();
   const myUserId = session?.user?.id;
-  const isGuest = !session?.user?.role;
   const role = 'driver';
   const copy = COPY[lang] || COPY.RU;
 
@@ -240,21 +249,8 @@ export default function CargoFeedScreen({ navigation }) {
   const [dateTo, setDateTo] = useState('');
   const [sortBy, setSortBy] = useState('newest');
   const [savedIds, setSavedIds] = useState(() => new Set());
-  // Защита от двойного тапа по ❤️ — см. аналогичный favBusyRef в FeedScreen.js.
+  const [savedOnly, setSavedOnly] = useState(false);
   const savedBusyRef = React.useRef(new Set());
-  const [compact, setCompact] = useState(true);
-
-  useEffect(() => {
-    storage.get('ur_feed_compact').then((value) => {
-      if (value === '0' || value === '1') setCompact(value === '1');
-    }).catch(() => {});
-  }, []);
-
-  const toggleCompact = () => setCompact((current) => {
-    const next = !current;
-    storage.set('ur_feed_compact', next ? '1' : '0').catch(() => {});
-    return next;
-  });
 
   const loadSaved = useCallback(async () => {
     if (!myUserId) {
@@ -304,13 +300,14 @@ export default function CargoFeedScreen({ navigation }) {
       const pickup = toIso(item.pickup);
       if (dateStart && pickup && pickup < dateStart) return false;
       if (dateEnd && pickup && pickup > dateEnd) return false;
+      if (savedOnly && !savedIds.has(String(item.id))) return false;
       return true;
     });
     if (sortBy === 'price-asc') data = [...data].sort((a, b) => a.price - b.price);
     if (sortBy === 'price-desc') data = [...data].sort((a, b) => b.price - a.price);
     if (sortBy === 'newest') data = [...data].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
     return data;
-  }, [items, dateFrom, dateTo, sortBy]);
+  }, [items, dateFrom, dateTo, sortBy, savedOnly, savedIds]);
 
   const openCargo = async (item) => {
     const ok = await requireLevel(LEVELS.PHONE, 'open_detail', 'driver');
@@ -362,6 +359,14 @@ export default function CargoFeedScreen({ navigation }) {
     }
   };
 
+  const toggleSavedOnly = async () => {
+    if (!myUserId) {
+      const ok = await requireLevel(LEVELS.PHONE, 'favorite_cargo', 'driver');
+      if (!ok) return;
+    }
+    setSavedOnly((value) => !value);
+  };
+
   const onRefresh = () => {
     if (refreshing) return;
     setRefreshing(true);
@@ -374,46 +379,17 @@ export default function CargoFeedScreen({ navigation }) {
       style={[styles.filterPill, active && styles.filterPillActive]}
       onPress={() => setActiveFilter(key)}
       testID={`cargo-filter-${key}`}
+      accessibilityRole="button"
     >
       <Feather name={icon} size={16} color={active ? ACCENT : TEXT_SECONDARY} />
-      <Text style={[styles.filterPillText, active && { color: ACCENT }]}>{label}</Text>
+      <Text style={[styles.filterPillText, active && styles.filterPillTextActive]}>{label}</Text>
       <Feather name="chevron-down" size={15} color={TEXT_SECONDARY} />
     </TouchableOpacity>
   );
 
-  return (
-    <SafeAreaView style={styles.container} edges={['top']} testID="cargo-screen">
-      <View style={styles.brandBar}>
-        {isGuest ? <LanguageSwitcher testID="feed-lang-switch" compact /> : <View style={{ width: 44 }} />}
-        <Text style={styles.brand}>UrTruck</Text>
-        <TouchableOpacity
-          onPress={() => navigation.navigate('Profile', { role })}
-          style={styles.menuBtn}
-          hitSlop={8}
-          testID="feed-menu-btn"
-          accessibilityLabel={t('tab_profile')}
-        >
-          <Feather name="menu" size={26} color={TEXT} />
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.titleRow}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.title}>{t('cargos')}</Text>
-          <Text style={styles.subtitle}>{t('feed_driver_subtitle')}</Text>
-        </View>
-        <TouchableOpacity
-          onPress={toggleCompact}
-          style={styles.viewToggle}
-          hitSlop={8}
-          testID="feed-view-toggle"
-          accessibilityLabel={compact ? t('feed_view_large') : t('feed_view_compact')}
-        >
-          <Feather name={compact ? 'grid' : 'list'} size={20} color={TEXT_SECONDARY} />
-        </TouchableOpacity>
-      </View>
-
-      <View style={[styles.routeSelector, (dirFrom || dirTo) && { borderColor: ACCENT }]} testID="feed-route-selector">
+  const feedControls = (
+    <View style={styles.feedControls} testID="cargo-feed-scroll-controls">
+      <View style={[styles.routeSelector, (dirFrom || dirTo) && styles.routeSelectorActive]} testID="feed-route-selector">
         <TouchableOpacity style={styles.routeHalf} onPress={() => setShowDirFromPicker(true)} testID="feed-route-from">
           <View style={styles.routeLabelRow}>
             <Feather name="map-pin" size={14} color={TEXT_MUTED} />
@@ -449,38 +425,66 @@ export default function CargoFeedScreen({ navigation }) {
         {filterPill('date', t('filter_date'), 'calendar', !!(dateFrom || dateTo))}
         {filterPill('body', t('filter_body'), 'truck', !!filterType)}
         {filterPill('price', t('filter_price'), 'dollar-sign', sortBy !== 'newest')}
+        <TouchableOpacity
+          style={[styles.filterPill, styles.favoritesPill, savedOnly && styles.favoritesPillActive]}
+          onPress={toggleSavedOnly}
+          testID="cargo-filter-favorites"
+          accessibilityRole="button"
+          accessibilityState={{ selected: savedOnly }}
+        >
+          <Feather name="star" size={17} color={ACCENT} />
+          <Text style={[styles.filterPillText, styles.favoritesText]}>{copy.favorites}</Text>
+          {savedIds.size > 0 ? <Text style={styles.favoritesCount}>{savedIds.size}</Text> : null}
+        </TouchableOpacity>
       </ScrollView>
+    </View>
+  );
 
-      {loading ? (
-        <View style={styles.loadingWrap}>
-          {[0, 1, 2, 3, 4].map((i) => <SkeletonCard key={i} />)}
-        </View>
-      ) : (
-        <FlatList
-          style={styles.list}
-          data={visibleItems}
-          keyExtractor={(item) => String(item.id)}
-          renderItem={({ item }) => (
-            <CargoCard
-              item={item}
-              lang={lang}
-              copy={copy}
-              saved={savedIds.has(String(item.id))}
-              onToggleSaved={() => toggleSaved(item)}
-              onPress={() => openCargo(item)}
-              compact={compact}
-            />
-          )}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={ACCENT} />}
-          onEndReachedThreshold={0.5}
-          onEndReached={() => {
-            if (!loading && items.length >= pageLimit) setPageLimit((p) => p + 50);
-          }}
-          ListEmptyComponent={
+  return (
+    <SafeAreaView style={styles.container} edges={['top']} testID="cargo-screen">
+      <View style={styles.topBar} testID="cargo-feed-minimal-header">
+        <TouchableOpacity
+          onPress={() => navigation.navigate('Profile', { role })}
+          style={styles.menuBtn}
+          hitSlop={8}
+          testID="feed-menu-btn"
+          accessibilityLabel={t('tab_profile')}
+        >
+          <Feather name="menu" size={27} color={TEXT} />
+        </TouchableOpacity>
+      </View>
+
+      <FlatList
+        style={styles.list}
+        data={loading ? [] : visibleItems}
+        keyExtractor={(item) => String(item.id)}
+        renderItem={({ item }) => (
+          <CargoCard
+            item={item}
+            lang={lang}
+            copy={copy}
+            saved={savedIds.has(String(item.id))}
+            onToggleSaved={() => toggleSaved(item)}
+            onPress={() => openCargo(item)}
+          />
+        )}
+        ListHeaderComponent={feedControls}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={ACCENT} />}
+        onEndReachedThreshold={0.5}
+        onEndReached={() => {
+          if (!loading && !savedOnly && items.length >= pageLimit) setPageLimit((p) => p + 50);
+        }}
+        ListEmptyComponent={
+          loading ? (
+            <View style={styles.loadingWrap}>
+              {[0, 1, 2, 3, 4].map((i) => <SkeletonCard key={i} />)}
+            </View>
+          ) : (
             <View style={styles.emptyWrap}>
-              <Feather name={error ? 'alert-circle' : 'package'} size={32} color={TEXT_MUTED} />
+              <Feather name={error ? 'alert-circle' : savedOnly ? 'star' : 'package'} size={32} color={TEXT_MUTED} />
               <Text style={styles.emptyTitle}>{error ? copy.loadError : copy.empty}</Text>
               {error ? (
                 <TouchableOpacity style={styles.retryBtn} onPress={load} testID="cargo-retry">
@@ -488,9 +492,9 @@ export default function CargoFeedScreen({ navigation }) {
                 </TouchableOpacity>
               ) : null}
             </View>
-          }
-        />
-      )}
+          )
+        }
+      />
 
       <LocationPickerModal
         visible={showDirFromPicker}
@@ -557,7 +561,7 @@ export default function CargoFeedScreen({ navigation }) {
             style={[styles.sortRow, sortBy === key && styles.sortRowActive]}
             onPress={() => setSortBy(key)}
           >
-            <Text style={[styles.sortText, sortBy === key && { color: ACCENT }]}>{label}</Text>
+            <Text style={[styles.sortText, sortBy === key && styles.sortTextActive]}>{label}</Text>
             {sortBy === key ? <Feather name="check" size={18} color={ACCENT} /> : null}
           </TouchableOpacity>
         ))}
@@ -578,57 +582,103 @@ export default function CargoFeedScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: PAGE_BG },
-  brandBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 24, paddingTop: 6, paddingBottom: 4 },
-  brand: { flex: 1, textAlign: 'center', fontSize: 28, lineHeight: 34, fontWeight: '800', letterSpacing: -0.8, color: TEXT },
+  topBar: {
+    minHeight: 48,
+    paddingHorizontal: 18,
+    paddingTop: 2,
+    paddingBottom: 2,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    backgroundColor: PAGE_BG,
+  },
   menuBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  titleRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 24, paddingTop: 5, paddingBottom: 10, gap: 12 },
-  title: { fontSize: 27, lineHeight: 32, fontWeight: '700', letterSpacing: -0.4, color: TEXT },
-  subtitle: { marginTop: 2, fontSize: 13, lineHeight: 18, fontWeight: '400', color: TEXT_MUTED },
-  viewToggle: { width: 45, height: 45, borderRadius: 14, borderWidth: 1, borderColor: BORDER, backgroundColor: SURFACE, alignItems: 'center', justifyContent: 'center' },
-  routeSelector: { flexDirection: 'row', alignItems: 'center', minHeight: 88, marginHorizontal: 24, marginBottom: 10, paddingHorizontal: 15, paddingVertical: 12, borderRadius: 19, borderWidth: 1, borderColor: BORDER, backgroundColor: SURFACE, shadowColor: '#14211C', shadowOpacity: 0.03, shadowRadius: 10, shadowOffset: { width: 0, height: 2 }, elevation: 1, gap: 10 },
+  feedControls: { paddingTop: 4, paddingBottom: 4 },
+  routeSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 78,
+    marginHorizontal: 24,
+    marginBottom: 8,
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    borderRadius: 19,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: SURFACE,
+    shadowColor: '#14211C',
+    shadowOpacity: 0.03,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
+    gap: 10,
+  },
+  routeSelectorActive: { borderColor: ACCENT },
   routeHalf: { flex: 1, minWidth: 0 },
-  routeLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 },
+  routeLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 3 },
   routeLabel: { fontSize: 12, lineHeight: 16, fontWeight: '600', color: TEXT_SECONDARY },
   routeValue: { fontSize: 16, lineHeight: 21, fontWeight: '700', color: TEXT },
   placeholder: { color: '#727D77' },
-  filtersScroll: { flexGrow: 0, minHeight: 60, maxHeight: 60, marginBottom: 4 },
+  filtersScroll: { flexGrow: 0, minHeight: 58, maxHeight: 58 },
   filters: { paddingHorizontal: 24, paddingVertical: 5, gap: 9, alignItems: 'center' },
-  filterPill: { height: 48, paddingHorizontal: 15, borderRadius: 24, borderWidth: 1, borderColor: BORDER, backgroundColor: SURFACE, flexDirection: 'row', alignItems: 'center', gap: 7, shadowColor: '#14211C', shadowOpacity: 0.025, shadowRadius: 7, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
+  filterPill: {
+    height: 46,
+    paddingHorizontal: 14,
+    borderRadius: 23,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: SURFACE,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    shadowColor: '#14211C',
+    shadowOpacity: 0.025,
+    shadowRadius: 7,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
+  },
   filterPillActive: { borderColor: '#BFDCCF', backgroundColor: '#FAFDFC' },
   filterPillText: { fontSize: 14, fontWeight: '600', color: TEXT_SECONDARY },
+  filterPillTextActive: { color: ACCENT },
+  favoritesPill: { borderColor: '#CAE2D7', backgroundColor: '#F5FBF8' },
+  favoritesPillActive: { borderColor: '#A6D2BE', backgroundColor: ACCENT_SOFT },
+  favoritesText: { color: ACCENT },
+  favoritesCount: { fontSize: 13, lineHeight: 18, fontWeight: '600', color: '#6B8C7C' },
   list: { flex: 1 },
-  loadingWrap: { flex: 1, paddingHorizontal: 24, paddingTop: 5 },
-  listContent: { paddingHorizontal: 24, paddingTop: 5, paddingBottom: 28 },
-  card: { marginBottom: 8, borderRadius: 18, borderWidth: 1, borderColor: BORDER, backgroundColor: SURFACE, overflow: 'hidden', shadowColor: '#15211C', shadowOpacity: 0.035, shadowRadius: 10, shadowOffset: { width: 0, height: 2 }, elevation: 1, flexDirection: 'row' },
-  cardCompact: { minHeight: 120 },
-  cardExpanded: { minHeight: 145 },
+  listContent: { paddingTop: 0, paddingBottom: 28 },
+  loadingWrap: { paddingHorizontal: 24, paddingTop: 5 },
+  card: {
+    minHeight: 120,
+    marginHorizontal: 24,
+    marginBottom: 8,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: SURFACE,
+    overflow: 'hidden',
+    shadowColor: '#15211C',
+    shadowOpacity: 0.035,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
+    flexDirection: 'row',
+  },
   greenRail: { width: 4, backgroundColor: '#3A9972' },
-  cardBody: { flex: 1 },
-  cardBodyCompact: { paddingLeft: 13, paddingRight: 13, paddingTop: 11, paddingBottom: 9 },
-  cardBodyExpanded: { paddingLeft: 15, paddingRight: 16, paddingTop: 14, paddingBottom: 13 },
-  cardTopRow: { marginBottom: 8 },
-  cardTopRowCompact: { marginBottom: 6 },
+  cardBody: { flex: 1, paddingLeft: 13, paddingRight: 13, paddingTop: 11, paddingBottom: 9 },
+  cardTopRow: { marginBottom: 6 },
   routeWrap: { width: '100%', minWidth: 0 },
   routeLine: { flexDirection: 'row', alignItems: 'center', flexWrap: 'nowrap', gap: 6, width: '100%' },
   placeInline: { flexDirection: 'row', alignItems: 'center', gap: 5, minWidth: 0, flexShrink: 1, maxWidth: '44%' },
-  routeCity: { fontSize: 18, lineHeight: 22, fontWeight: '700', letterSpacing: -0.25, color: TEXT, flexShrink: 1 },
-  routeCityCompact: { fontSize: 16, lineHeight: 20 },
+  routeCity: { fontSize: 16, lineHeight: 20, fontWeight: '700', letterSpacing: -0.25, color: TEXT, flexShrink: 1 },
   routeArrow: { marginHorizontal: 0, flexShrink: 0 },
-  flag: { fontSize: 20, lineHeight: 22 },
-  flagCompact: { fontSize: 18, lineHeight: 20 },
-  cargoPriceRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 23 },
-  cargoPriceRowCompact: { minHeight: 20 },
+  flag: { fontSize: 18, lineHeight: 20 },
+  cargoPriceRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 20 },
   cargoInfoRow: { flex: 1, minWidth: 0, paddingRight: 0 },
-  price: { maxWidth: '38%', flexShrink: 0, textAlign: 'right', fontSize: 20, lineHeight: 24, fontWeight: '700', letterSpacing: -0.2, color: TEXT },
-  priceCompact: { fontSize: 18, lineHeight: 21, maxWidth: '37%' },
-  infoRow: { minHeight: 23, flexDirection: 'row', alignItems: 'center', gap: 8, paddingRight: 42 },
-  infoRowCompact: { minHeight: 20, gap: 7, paddingRight: 38 },
-  infoText: { flex: 1, fontSize: 14, lineHeight: 19, fontWeight: '400', color: '#39443F' },
-  infoTextCompact: { fontSize: 12.5, lineHeight: 17 },
-  bookmarkBtn: { position: 'absolute', right: 12, bottom: 9, width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  bookmarkBtnCompact: { right: 9, bottom: 6, width: 40, height: 40 },
+  price: { maxWidth: '37%', flexShrink: 0, textAlign: 'right', fontSize: 18, lineHeight: 21, fontWeight: '700', letterSpacing: -0.2, color: TEXT },
+  infoRow: { minHeight: 20, flexDirection: 'row', alignItems: 'center', gap: 7, paddingRight: 38 },
+  infoText: { flex: 1, fontSize: 12.5, lineHeight: 17, fontWeight: '400', color: '#39443F' },
+  bookmarkBtn: { position: 'absolute', right: 9, bottom: 6, width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   bookmarkBtnSaved: { backgroundColor: ACCENT_SOFT },
-  emptyWrap: { alignItems: 'center', justifyContent: 'center', paddingVertical: 65, gap: 11 },
+  emptyWrap: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 65, gap: 11 },
   emptyTitle: { fontSize: 14, lineHeight: 20, color: TEXT_MUTED, textAlign: 'center' },
   retryBtn: { marginTop: 5, minHeight: 44, borderRadius: 22, paddingHorizontal: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: ACCENT_SOFT },
   retryText: { fontSize: 14, fontWeight: '700', color: ACCENT },
@@ -646,4 +696,5 @@ const styles = StyleSheet.create({
   sortRow: { minHeight: 50, paddingHorizontal: 14, borderRadius: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7, borderWidth: 1, borderColor: BORDER, backgroundColor: SURFACE },
   sortRowActive: { borderColor: '#BFDCCF', backgroundColor: '#FAFDFC' },
   sortText: { fontSize: 14, fontWeight: '600', color: TEXT_SECONDARY },
+  sortTextActive: { color: ACCENT },
 });
