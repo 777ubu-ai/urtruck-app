@@ -6,6 +6,7 @@ const read = (path) => fs.readFileSync(path, 'utf8');
 const gate = read('src/components/deal/DealLocationPermissionGate.js');
 const disclosure = read('src/components/deal/BackgroundLocationDisclosureModal.js');
 const tracker = read('src/utils/backgroundLocation.js');
+const settingsHelper = read('src/utils/locationSettings.js');
 const hook = read('src/hooks/useDealLocationBroadcast.js');
 const workspace = read('src/screens/DealWorkspaceScreenV2.js');
 const chat = read('src/screens/ChatScreenV2.js');
@@ -57,8 +58,9 @@ test('web denied recovery never offers or calls native app settings', () => {
   assert.match(disclosure, /Откройте настройки сайта в браузере/);
   assert.match(disclosure, /background-location-check-again/);
   assert.match(gate, /busy \|\| Platform\.OS === 'web'/);
-  assert.match(tracker, /Platform\.OS === 'web'[\s\S]*web_settings_manual/);
-  assert.match(tracker, /typeof Linking\?\.openSettings !== 'function'/);
+  assert.match(settingsHelper, /Platform\.OS === 'web'[\s\S]*web_settings_manual/);
+  assert.match(settingsHelper, /typeof Linking\?\.openSettings !== 'function'/);
+  assert.match(tracker, /export \{ openLocationSettings \} from '\.\/locationSettings'/);
 });
 
 test('start trip cannot enter in_progress before permission succeeds', () => {
