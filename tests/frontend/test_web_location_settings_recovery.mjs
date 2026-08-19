@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Platform, Linking } from 'react-native';
-import { openLocationSettings } from '../../src/utils/backgroundLocation.js';
+import { openLocationSettings } from '../../src/utils/locationSettings.js';
 
 test('web settings recovery fails closed without calling native Linking.openSettings', async () => {
   const original = Platform.OS;
