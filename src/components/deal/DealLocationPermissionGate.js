@@ -118,7 +118,7 @@ export default function DealLocationPermissionGate({ role, children }) {
   }, [busy, resolvePending]);
 
   const openSettings = React.useCallback(async () => {
-    if (busy) return;
+    if (busy || Platform.OS === 'web') return;
     setBusy(true);
     await openLocationSettings();
     setBusy(false);
