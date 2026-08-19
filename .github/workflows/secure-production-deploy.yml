@@ -30,6 +30,8 @@ jobs:
       BACKEND_DIR: ${{ secrets.BACKEND_DIR || '/home/ubuntu/urtruck-security' }}
       PUBLIC_BASE_URL: ${{ secrets.PUBLIC_BASE_URL || 'https://urtruck.kz' }}
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
+      YANDEX_ROUTER_API_KEY: ${{ secrets.YANDEX_ROUTER_API_KEY }}
       OPENROUTESERVICE_API_KEY: ${{ secrets.OPENROUTESERVICE_API_KEY }}
       PM2_PROC: urtruck-security-api
 
@@ -78,6 +80,19 @@ jobs:
           test -s dist/build-info.json
           grep -q 'api-maps.yandex.ru/2.1/' dist/index.html
 
+      - name: Preflight Yandex Router before touching production
+        run: |
+          set -euo pipefail
+          ROUTER_KEY="${YANDEX_ROUTER_API_KEY:-${YANDEX_MAPS_JS_API_KEY:-}}"
+          test -n "$ROUTER_KEY" || {
+            echo '::error::YANDEX_ROUTER_API_KEY is required; the existing Yandex JS key is also empty'
+            exit 1
+          }
+          export YANDEX_ROUTER_API_KEY="$ROUTER_KEY"
+          python3 scripts/yandex_router_smoke.py
+          # Persist the already-proven key for the later server bootstrap step.
+          printf 'SELECTED_YANDEX_ROUTER_API_KEY=%s\n' "$ROUTER_KEY" >> "$GITHUB_ENV"
+
       - name: Install SSH transport dependency
         run: |
           sudo apt-get update -qq
@@ -116,6 +131,7 @@ jobs:
           BOOTSTRAP_FILE=$(mktemp)
           trap 'rm -f "$BOOTSTRAP_FILE"' EXIT
           printf 'SUPABASE_SERVICE_KEY=%s\n' "$SUPABASE_SERVICE_KEY" > "$BOOTSTRAP_FILE"
+          printf 'YANDEX_ROUTER_API_KEY=%s\n' "$SELECTED_YANDEX_ROUTER_API_KEY" >> "$BOOTSTRAP_FILE"
           if [ -n "${OPENROUTESERVICE_API_KEY:-}" ]; then
             printf 'OPENROUTESERVICE_API_KEY=%s\n' "$OPENROUTESERVICE_API_KEY" >> "$BOOTSTRAP_FILE"
           fi
@@ -131,10 +147,11 @@ jobs:
           bash scripts/deploy-ssh.sh scp scripts/remote_health_check.sh "$SERVER_USER@$SERVER_HOST:/tmp/urtruck_health.sh"
           bash scripts/deploy-ssh.sh ssh "chmod 700 /tmp/urtruck_health.sh; bash /tmp/urtruck_health.sh '$PM2_PROC'; rc=\$?; rm -f /tmp/urtruck_health.sh; exit \$rc"
 
-      - name: Verify global routing is configured
+      - name: Verify Yandex Router from production server
         run: |
           set -euo pipefail
-          bash scripts/deploy-ssh.sh ssh "grep -q '^OPENROUTESERVICE_API_KEY=.' '$BACKEND_DIR/.env' || { echo GLOBAL_ROUTING_KEY=missing; exit 1; }; echo GLOBAL_ROUTING_KEY=ready"
+          bash scripts/deploy-ssh.sh scp scripts/yandex_router_smoke.py "$SERVER_USER@$SERVER_HOST:/tmp/urtruck_yandex_router_smoke.py"
+          bash scripts/deploy-ssh.sh ssh "python3 /tmp/urtruck_yandex_router_smoke.py '$BACKEND_DIR/.env'; rc=\$?; rm -f /tmp/urtruck_yandex_router_smoke.py; exit \$rc"
 
       - name: Verify document signing on production server
         run: |
@@ -169,9 +186,9 @@ jobs:
 
           route_guard=$(curl --silent --output /dev/null --write-out '%{http_code}' --connect-timeout 5 --max-time 15 -X POST \
             -H 'Content-Type: application/json' \
-            -d '{"points":[{"lat":23.1291,"lng":113.2644},{"lat":51.1694,"lng":71.4491}]}' \
+            -d '{"points":[{"lat":43.238949,"lng":76.889709},{"lat":55.755864,"lng":37.617698}]}' \
             "$PUBLIC_BASE_URL/security/api/v1/routing/road-route")
           test "$route_guard" = "401" || test "$route_guard" = "403"
-          echo 'GLOBAL_ROUTING_ENDPOINT=guarded'
+          echo 'ROAD_ROUTING_ENDPOINT=guarded'
 
           echo 'SECURE_PRODUCTION_DEPLOY=success'

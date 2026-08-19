@@ -11,17 +11,33 @@ class _Row(dict):
 
 
 class _Connection:
+    """Route fetch results by statement — upload_attachment() now runs a
+    PRAGMA probe, a post-insert SELECT of the attachment row, and a
+    chat_rooms participants lookup, all through the same connection."""
+
     def __enter__(self):
         return self
 
     def __exit__(self, *_args):
         return False
 
-    def execute(self, _sql, _params):
+    def execute(self, sql, _params=None):
+        self._last_sql = sql
         return self
 
     def fetchone(self):
-        return _Row(participant_1="driver-1", participant_2="shipper-1")
+        sql = getattr(self, "_last_sql", "")
+        if "chat_rooms" in sql:
+            return _Row(participant_1="driver-1", participant_2="shipper-1")
+        if "message_attachments" in sql:
+            return _Row(id="attachment-1", url="/storage/document.pdf")
+        return None
+
+    def fetchall(self):
+        # _ensure_attachment_columns() only probes PRAGMA table_info(); an
+        # empty result makes it (harmlessly, against this mock) attempt the
+        # idempotent ALTER/CREATE INDEX statements, all no-ops here.
+        return []
 
 
 def test_attachment_notifies_the_other_participant(monkeypatch):
@@ -29,7 +45,7 @@ def test_attachment_notifies_the_other_participant(monkeypatch):
     sent = []
     monkeypatch.setattr(deal_room.dr, "room_exists", lambda _room_id: True)
     monkeypatch.setattr(deal_room.dr, "is_participant", lambda _room_id, _user_id: True)
-    monkeypatch.setattr(deal_room.storage_service, "save_image", lambda *_args, **_kwargs: "/storage/document.pdf")
+    monkeypatch.setattr(deal_room.storage_service, "save_file", lambda *_args, **_kwargs: "/storage/document.pdf")
     monkeypatch.setattr(
         deal_room.dr,
         "create_attachment",
@@ -46,6 +62,7 @@ def test_attachment_notifies_the_other_participant(monkeypatch):
             conversation_id="room-1",
             file=upload,
             kind="document",
+            client_upload_id=None,
             user={"id": "driver-1"},
         )
     )

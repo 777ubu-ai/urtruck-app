@@ -16,8 +16,6 @@ PROVIDER = os.getenv("STORAGE_PROVIDER", "local")
 _RUNTIME_ENV = (os.getenv("URTRUCK_ENV") or os.getenv("ENV") or "production").strip().lower()
 _PROD = _RUNTIME_ENV == "production"
 
-# Local. Production keeps the existing server path. Tests, CI and local
-# development use a writable temporary directory unless explicitly configured.
 _env = os.getenv("ENV", os.getenv("APP_ENV", "production")).strip().lower()
 _default_root = (
     Path(tempfile.gettempdir()) / "urtruck-storage"
@@ -27,13 +25,11 @@ _default_root = (
 LOCAL_ROOT = Path(os.getenv("STORAGE_LOCAL_ROOT", str(_default_root))).expanduser()
 LOCAL_PUBLIC_BASE = os.getenv("STORAGE_LOCAL_PUBLIC_BASE", "/security/storage")
 
-# Supabase
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
 SUPABASE_BUCKET = os.getenv("SUPABASE_BUCKET", "urtruck-docs")
 _SUPABASE_REF_PREFIX = "supabase://"
 
-# S3
 S3_BUCKET = os.getenv("S3_BUCKET", "")
 S3_REGION = os.getenv("S3_REGION", "eu-central-1")
 
@@ -52,7 +48,6 @@ def _safe_ext(value: str) -> str:
 
 
 def _gen_key(category: str, ext: str = "jpg") -> str:
-    """Generate a storage key without allowing caller-controlled path parts."""
     return f"{_safe_segment(category, 'uploads')}/{uuid.uuid4().hex}.{_safe_ext(ext)}"
 
 
@@ -68,28 +63,19 @@ def _save_local(data: bytes, key: str) -> str:
     return f"{LOCAL_PUBLIC_BASE}/{key}"
 
 
-def _save_supabase(data: bytes, key: str) -> str:
+def _save_supabase(data: bytes, key: str, content_type: str) -> str:
     url = f"{SUPABASE_URL}/storage/v1/object/{SUPABASE_BUCKET}/{key}"
     headers = {
         "Authorization": f"Bearer {SUPABASE_KEY}",
-        "Content-Type": "image/jpeg",
+        "Content-Type": content_type or "application/octet-stream",
         "x-upsert": "true",
     }
     r = httpx.post(url, headers=headers, content=data, timeout=30.0)
     r.raise_for_status()
-    # The bucket is deliberately private.  Persisting a public URL here would
-    # either expose a document (if the bucket were changed accidentally) or
-    # make the file unreadable.  The API signs this opaque reference only
-    # after it has checked the caller's access to the document/conversation.
     return f"{_SUPABASE_REF_PREFIX}{SUPABASE_BUCKET}/{key}"
 
 
 def _split_supabase_ref(value: Optional[str]) -> Optional[tuple[str, str]]:
-    """Parse only a canonical private Supabase object reference.
-
-    Old public URLs are intentionally not accepted: treating arbitrary URLs
-    as trusted storage references could turn this service into an SSRF proxy.
-    """
     if not value or not str(value).startswith(_SUPABASE_REF_PREFIX):
         return None
     rest = str(value)[len(_SUPABASE_REF_PREFIX):]
@@ -102,17 +88,10 @@ def _split_supabase_ref(value: Optional[str]) -> Optional[tuple[str, str]]:
 
 
 def is_private_remote_ref(value: Optional[str]) -> bool:
-    """Whether value is an internal private Supabase object reference."""
     return _split_supabase_ref(value) is not None
 
 
 def create_signed_url(value: Optional[str], ttl: int = 3600) -> Optional[str]:
-    """Create a short-lived URL for a private Supabase object.
-
-    This function must run only after the caller's route-level authorization.
-    The service key stays on the backend and bypasses Storage RLS; it must
-    never be shipped to the mobile/web application.
-    """
     parsed = _split_supabase_ref(value)
     if not parsed:
         return value
@@ -136,13 +115,6 @@ def create_signed_url(value: Optional[str], ttl: int = 3600) -> Optional[str]:
 
 @contextmanager
 def materialize_for_processing(value: Optional[str], suffix: str = ".jpg") -> Iterator[Optional[str]]:
-    """Yield a short-lived local path for OCR/liveness, then delete it.
-
-    Verification libraries consume filesystem paths.  For private remote
-    storage we download with the backend service key into a restrictive temp
-    file and erase it immediately after the check; documents never become
-    public just to make OCR work.
-    """
     parsed = _split_supabase_ref(value)
     if not parsed:
         yield get_local_path(value or "")
@@ -168,32 +140,42 @@ def materialize_for_processing(value: Optional[str], suffix: str = ".jpg") -> It
             pass
 
 
-def _save_s3(data: bytes, key: str) -> str:
+def _save_s3(data: bytes, key: str, content_type: str) -> str:
     try:
         import boto3
     except ImportError:
         raise RuntimeError("boto3 не установлен — добавь в requirements.txt")
     s3 = boto3.client("s3", region_name=S3_REGION)
-    s3.put_object(Bucket=S3_BUCKET, Key=key, Body=data, ContentType="image/jpeg")
+    s3.put_object(
+        Bucket=S3_BUCKET,
+        Key=key,
+        Body=data,
+        ContentType=content_type or "application/octet-stream",
+    )
     return f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{key}"
 
 
-def save_image(data: bytes, category: str, ext: str = "jpg") -> str:
-    """Сохраняет файл и возвращает ссылку.
+def save_file(
+    data: bytes,
+    category: str,
+    *,
+    ext: str = "bin",
+    content_type: str = "application/octet-stream",
+) -> str:
+    """Store arbitrary validated bytes while preserving their real MIME type.
 
-    In production a missing remote-storage configuration must never silently
-    fall back to the VPS disk. That fallback makes users believe documents are
-    durable when they can disappear with the next server replacement.
+    Callers must validate file content before this function. This service owns
+    only durable/private storage and must not silently relabel a PDF as JPEG.
     """
     key = _gen_key(category, ext)
     if PROVIDER == "supabase":
         if not (SUPABASE_URL and SUPABASE_KEY):
             raise RuntimeError("Supabase Storage is not configured")
-        return _save_supabase(data, key)
+        return _save_supabase(data, key, content_type)
     if PROVIDER == "s3":
         if not S3_BUCKET:
             raise RuntimeError("S3 Storage is not configured")
-        return _save_s3(data, key)
+        return _save_s3(data, key, content_type)
     if PROVIDER != "local":
         raise RuntimeError(f"Unsupported storage provider: {PROVIDER}")
     if _PROD:
@@ -201,13 +183,13 @@ def save_image(data: bytes, category: str, ext: str = "jpg") -> str:
     return _save_local(data, key)
 
 
-def get_local_path(url_or_path: str) -> Optional[str]:
-    """Преобразует public URL обратно в локальный путь (для OCR/liveness).
+def save_image(data: bytes, category: str, ext: str = "jpg") -> str:
+    """Backward-compatible image helper."""
+    mime = "image/png" if str(ext).lower().lstrip('.') == "png" else "image/jpeg"
+    return save_file(data, category, ext=ext, content_type=mime)
 
-    Public storage URLs are untrusted input. Resolve them and require the
-    result to remain inside LOCAL_ROOT so encoded/explicit ``..`` segments
-    cannot expose arbitrary server files.
-    """
+
+def get_local_path(url_or_path: str) -> Optional[str]:
     if not url_or_path:
         return None
     if url_or_path.startswith(LOCAL_PUBLIC_BASE):

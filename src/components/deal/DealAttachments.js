@@ -1,6 +1,5 @@
 // DealAttachments — private deal files rendered inline with the chat.
-// Documents are no longer a separate workspace tab: the chat "+" menu
-// triggers this component, exactly where users expect attachments to live.
+// Documents are sent from the chat "+" menu, messenger-style.
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Platform, Alert, Linking } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -36,6 +35,17 @@ function formatBytes(value) {
   return `${(n / (1024 * 1024)).toFixed(n >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
 }
 
+function normalizeUploadError(error) {
+  if (error?.isNetwork) return { code: 'network', status: null };
+  const status = Number(error?.status) || null;
+  if (status === 413) return { code: 'too_large', status };
+  if (status === 415) return { code: 'unsupported', status };
+  if (status === 401 || status === 403) return { code: 'forbidden', status };
+  if (status === 409) return { code: 'already_uploading', status };
+  if (status >= 500) return { code: 'server', status };
+  return { code: 'failed', status };
+}
+
 export default function DealAttachments({
   conversationId,
   role = 'driver',
@@ -63,24 +73,30 @@ export default function DealAttachments({
 
   const runUpload = useCallback(async (item) => {
     const { localId, uri, name, isPdf, mime } = item;
-    const setStatus = (status) =>
-      setLocal((prev) => prev.map((x) => (x.localId === localId ? { ...x, status } : x)));
+    const patchLocal = (patch) =>
+      setLocal((prev) => prev.map((x) => (x.localId === localId ? { ...x, ...patch } : x)));
     try {
-      setStatus('uploading');
-      const payload = isPdf
-        ? { uri, kind: 'document', name, type: mime || 'application/pdf' }
-        : { uri: await compressImage(uri, { preset: 'document' }), kind: 'document', name, type: mime || 'image/jpeg' };
+      patchLocal({ status: item.status === 'retrying' ? 'retrying' : 'uploading', error: null });
+      const uploadUri = isPdf ? uri : await compressImage(uri, { preset: 'document' });
+      const payload = {
+        uri: uploadUri,
+        kind: 'document',
+        name,
+        type: mime || (isPdf ? 'application/pdf' : 'image/jpeg'),
+        // Stable across Retry. Backend uses it as an idempotency key.
+        clientUploadId: localId,
+      };
       await chatAPI.uploadAttachment(conversationId, payload);
       setLocal((prev) => prev.filter((x) => x.localId !== localId));
       await load();
-    } catch {
-      setStatus('failed');
+    } catch (error) {
+      patchLocal({ status: 'failed', error: normalizeUploadError(error) });
     }
   }, [conversationId, load]);
 
   const queueUpload = useCallback((item) => {
-    setLocal((prev) => [...prev, { ...item, status: 'queued' }]);
-    runUpload(item);
+    setLocal((prev) => [...prev, { ...item, status: 'queued', error: null }]);
+    runUpload({ ...item, status: 'queued' });
   }, [runUpload]);
 
   const pickImage = useCallback(async () => {
@@ -97,22 +113,31 @@ export default function DealAttachments({
       name: asset.fileName || `photo_${localId}.jpg`,
       isPdf: false,
       mime: asset.mimeType || 'image/jpeg',
+      size: asset.fileSize || null,
     });
   }, [conversationId, queueUpload]);
 
   const pickDocument = useCallback(async () => {
     if (!conversationId) return;
-    const res = await DocumentPicker.getDocumentAsync({ type: ['application/pdf', 'image/*'], copyToCacheDirectory: true });
+    const res = await DocumentPicker.getDocumentAsync({
+      type: ['application/pdf', 'image/*'],
+      copyToCacheDirectory: true,
+      multiple: false,
+    });
+    if (res?.canceled) return;
     const file = res?.assets?.[0];
     if (!file?.uri) return;
     const localId = `att_${Date.now()}_${_localSeq++}`;
-    const isPdf = (file.mimeType || '').includes('pdf') || /\.pdf$/i.test(file.name || '');
+    const isPdf = (file.mimeType || '').toLowerCase().includes('pdf') || /\.pdf$/i.test(file.name || '');
     queueUpload({
       localId,
       uri: file.uri,
       name: file.name || `document_${localId}.${isPdf ? 'pdf' : 'jpg'}`,
       isPdf,
-      mime: file.mimeType,
+      // Safari may report application/octet-stream. Backend validates magic
+      // bytes; chatAPI re-wraps a .pdf as application/pdf for multipart.
+      mime: isPdf ? 'application/pdf' : (file.mimeType || 'image/jpeg'),
+      size: file.size || null,
     });
   }, [conversationId, queueUpload]);
 
@@ -135,14 +160,16 @@ export default function DealAttachments({
   }, [busy, conversationId, pickDocument, pickImage, t]);
 
   const onRetry = useCallback((item) => {
-    setLocal((prev) => prev.map((x) => (x.localId === item.localId ? { ...x, status: 'retrying' } : x)));
-    runUpload(item);
+    if (item.status === 'uploading' || item.status === 'retrying') return;
+    const retryItem = { ...item, status: 'retrying', error: null };
+    setLocal((prev) => prev.map((x) => (x.localId === item.localId ? retryItem : x)));
+    runUpload(retryItem);
   }, [runUpload]);
 
   const openAttachment = useCallback(async (item) => {
     const url = item?.url || item?.signed_url || item?.download_url;
     if (!url) return;
-    try { await Linking.openURL(url); } catch { /* signed link may have expired; next load refreshes it */ }
+    try { await Linking.openURL(url); } catch { /* next load refreshes signed URL */ }
   }, []);
 
   const prevTrigger = React.useRef(attachTrigger);
@@ -236,6 +263,7 @@ export default function DealAttachments({
                 key={item.localId}
                 icon={item.isPdf ? 'file-text' : 'image'}
                 label={item.name || attachmentLabel(t, item)}
+                sublabel={formatBytes(item.size)}
                 statusKey={meta.key}
                 statusColor={meta.color}
                 spinning={item.status === 'uploading' || item.status === 'retrying'}

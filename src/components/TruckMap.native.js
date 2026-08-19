@@ -1,7 +1,5 @@
 // TruckMap (native) — embedded map with planned route + live truck point.
-// Road geometry can be supplied by UrTruck's authenticated global routing
-// backend so international corridors remain real roads instead of straight
-// lines. The visual map provider stays inside UrTruck.
+// Preferred road geometry/metrics come from the authenticated UrTruck backend.
 import React from 'react';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import { routingAPI } from '../utils/routingAPI';
@@ -18,13 +16,9 @@ const asPoint = (value) => {
 };
 
 const toPair = (point) => point ? [point.latitude, point.longitude] : null;
-const routeKey = (points) => (points || []).map((point) => `${Number(point?.[0]).toFixed(3)}:${Number(point?.[1]).toFixed(3)}`).join('|');
-const needsGlobalRoadRouting = (points) => (points || []).some((point) => {
-  const lat = Number(point?.[0]);
-  const lng = Number(point?.[1]);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
-  return (lng > 85 && lat < 55) || (lat < 35 && lng > 70);
-});
+const routeKey = (points) => (points || [])
+  .map((point) => `${Number(point?.[0]).toFixed(4)}:${Number(point?.[1]).toFixed(4)}`)
+  .join('|');
 
 const distanceTextFromMeters = (value) => {
   const meters = Number(value);
@@ -54,50 +48,49 @@ export default function TruckMap({ lat, lng, title, routePoints = [], externalRo
     const pairs = live && destination ? [toPair(live), toPair(destination)] : planned.map(toPair);
     return pairs.filter(Boolean);
   }, [live?.latitude, live?.longitude, destination?.latitude, destination?.longitude, planned.length]);
-  const globalNeeded = needsGlobalRoadRouting(effectivePairs);
   const effectiveKey = routeKey(effectivePairs);
-  const [autoExternalRoute, setAutoExternalRoute] = React.useState(null);
+  const [serverRoute, setServerRoute] = React.useState(null);
 
   React.useEffect(() => {
     let cancelled = false;
-    if (!globalNeeded || effectivePairs.length < 2 || externalRoute) {
-      setAutoExternalRoute(null);
+    if (externalRoute || effectivePairs.length < 2) {
+      setServerRoute(null);
       return () => { cancelled = true; };
     }
     routingAPI.roadRoute(effectivePairs).then((result) => {
       if (cancelled) return;
       if (result?.ok && Array.isArray(result.geometry) && result.geometry.length >= 2) {
-        setAutoExternalRoute({ ...result, routeKey: effectiveKey });
+        setServerRoute({ ...result, routeKey: effectiveKey });
       } else {
-        setAutoExternalRoute(null);
+        setServerRoute(null);
       }
     });
     return () => { cancelled = true; };
-  }, [globalNeeded, effectiveKey, externalRoute]);
+  }, [effectiveKey, externalRoute]);
 
-  const resolvedExternalRoute = externalRoute || autoExternalRoute;
-  const external = React.useMemo(
-    () => (resolvedExternalRoute?.geometry || []).map(asPoint).filter(Boolean),
-    [resolvedExternalRoute?.routeKey],
+  const resolvedRoute = externalRoute || serverRoute;
+  const roadGeometry = React.useMemo(
+    () => (resolvedRoute?.geometry || []).map(asPoint).filter(Boolean),
+    [resolvedRoute?.routeKey],
   );
-  const road = external.length >= 2 ? external : planned;
+  const road = roadGeometry.length >= 2 ? roadGeometry : planned;
   const all = React.useMemo(() => [...road, ...(live ? [live] : [])], [road, live?.latitude, live?.longitude]);
 
   React.useEffect(() => {
-    const distanceText = distanceTextFromMeters(resolvedExternalRoute?.distance_m);
-    const durationText = durationTextFromSeconds(resolvedExternalRoute?.duration_s);
-    if (external.length >= 2 && distanceText && durationText) {
+    const distanceText = distanceTextFromMeters(resolvedRoute?.distance_m);
+    const durationText = durationTextFromSeconds(resolvedRoute?.duration_s);
+    if (roadGeometry.length >= 2 && distanceText && durationText) {
       onRouteSummary?.({
         distanceText,
         durationText,
         blocked: false,
         isRemaining: Boolean(live),
-        provider: resolvedExternalRoute?.provider || 'global',
+        provider: resolvedRoute?.provider || 'server-road',
       });
     } else {
       onRouteSummary?.(null);
     }
-  }, [onRouteSummary, resolvedExternalRoute?.routeKey, resolvedExternalRoute?.distance_m, resolvedExternalRoute?.duration_s, live?.latitude, live?.longitude, external.length]);
+  }, [onRouteSummary, resolvedRoute?.routeKey, resolvedRoute?.distance_m, resolvedRoute?.duration_s, live?.latitude, live?.longitude, roadGeometry.length]);
 
   const region = React.useMemo(() => {
     const points = all.length ? all : [{ latitude: 43.2389, longitude: 76.8897 }];
@@ -120,9 +113,9 @@ export default function TruckMap({ lat, lng, title, routePoints = [], externalRo
       {road.length >= 2 ? (
         <Polyline
           coordinates={road}
-          strokeColor="#168759"
-          strokeWidth={external.length >= 2 ? 6 : 4}
-          lineDashPattern={external.length >= 2 ? undefined : [8, 6]}
+          strokeColor={roadGeometry.length >= 2 ? '#168759' : '#6B7B73'}
+          strokeWidth={roadGeometry.length >= 2 ? 6 : 3}
+          lineDashPattern={roadGeometry.length >= 2 ? undefined : [8, 6]}
         />
       ) : null}
       {planned.map((point, index) => (
