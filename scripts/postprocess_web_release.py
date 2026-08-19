@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 
 DIST = Path("dist")
 INDEX = DIST / "index.html"
+SW_TEMPLATE = Path("sw-template.js")
 
 html = INDEX.read_text(encoding="utf-8")
 
@@ -29,10 +31,25 @@ early_theme = r'''<script>
 if "ur_theme" not in html:
     html = html.replace("</head>", early_theme + "\n</head>")
 
-# Keep the epoch aligned with the current production SW. Feature releases
-# bump the defaults here together with sw-template.js.
-SW_EPOCH = os.environ.get("URTRUCK_SW_EPOCH", "v16-market")
-SW_QUERY = os.environ.get("URTRUCK_SW_QUERY", "16")
+# 2026-08-19: was a hardcoded "v16-market" / "16" default, never overridden
+# by any deploy path (deploy.sh or CI) — every single release kept writing
+# the SAME epoch into index.html even after sw-template.js's own CACHE name
+# moved on to v18. A returning visitor whose localStorage already had
+# ur_sw_v="v16-market" from ANY earlier deploy never saw the force-refresh
+# fire again: cur !== V was permanently false, so new bundles stayed
+# invisible behind a stale Service Worker until the browser's own
+# (unreliable, non-immediate) native SW update heartbeat happened to catch
+# up. Derive the epoch FROM sw-template.js's actual cache name instead of a
+# second, independently-hand-bumped literal, so the two can never drift
+# apart again — this is what actually forces every deploy to bust the
+# cache for existing visitors, not just first-time ones.
+_sw_source = SW_TEMPLATE.read_text(encoding="utf-8")
+_match = re.search(r"CACHE\s*=\s*'urtruck-(v\d+)-market'", _sw_source)
+if not _match:
+    raise SystemExit(f"could not find CACHE = 'urtruck-vN-market' in {SW_TEMPLATE}")
+_detected_version = _match.group(1)  # e.g. "v18"
+SW_EPOCH = os.environ.get("URTRUCK_SW_EPOCH", f"{_detected_version}-market")
+SW_QUERY = os.environ.get("URTRUCK_SW_QUERY", _detected_version.lstrip("v"))
 bootstrap = f'''<script>
 (async()=>{{
   const V={json.dumps(SW_EPOCH)};
