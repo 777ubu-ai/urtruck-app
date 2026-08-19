@@ -1,7 +1,6 @@
-// test_vehicle_weight_routing — regression-guard for the P1 flagged by the
-// owner's independent release review on PR #239 (2026-08-19), then
-// re-flagged on re-review after the first fix attempt got the semantics
-// wrong:
+// test_vehicle_weight_routing — regression-guard for the P1 flagged on
+// PR #239 (2026-08-19), fixed and re-flagged twice by independent review
+// before the semantics were actually right:
 //
 //   Round 1 review: "реальный TruckMap.web.js всё ещё вызывает
 //   routingAPI.roadRoute(effectivePoints) без объекта vehicle, хотя клиент
@@ -11,31 +10,32 @@
 //   Round 2 review (after the vehicle object was threaded through, using
 //   `{ weight_t: capacityTons }`): "По официальной Yandex Router API
 //   семантике weight = фактическая масса автомобиля, а максимальная
-//   грузоподъёмность имеет отдельный параметр payload. trip_capacity_tons
-//   — грузоподъёмность, а не фактическая масса тягача/автопоезда...
-//   Подставлять эти значения в weight нельзя: это может занижать/
-//   искажать весовые ограничения маршрута."
+//   грузоподъёмность имеет отдельный параметр payload... Подставлять эти
+//   значения в weight нельзя: это может занижать/искажать весовые
+//   ограничения маршрута."
+//
+//   Round 3 review (after weight_t/payload_t were split, but
+//   capacityTons still fell back to deal.cargo_weight_tons when no trip
+//   was linked): "Yandex payload = maximum vehicle load capacity, а не
+//   фактическая масса текущего груза... cargo_weight_tons нельзя
+//   подставлять в payload."
 //
 // Full height/width/length/axle_load data still does not exist anywhere in
-// the schema — drivers_registration only has vehicle_type +
-// vehicle_capacity_kg (adding the rest is a Graphify-gated
-// registration-schema change needing explicit owner sign-off, out of
-// scope here). What DOES already exist and is now threaded through
-// CORRECTLY — as `payload_t`, never `weight_t` — is cargo weight_tons and
-// trip capacity_tons:
+// the schema (Graphify-gated registration-schema change, out of scope).
+// What's threaded through now, correctly:
 //
 //   TripDetail.trip.capacityTons ──────────────┐
 //                                               v
-//   ChatScreen deal.trip_capacity_tons/  ──> RouteMap/TrackTruckScreen
-//   cargo_weight_tons (from backend            builds {payload_t} ──> TruckMap
-//   get_deal() enrichment)                                          .roadRoute(points, vehicle)
-//                                                                    (backend maps payload_t -> Yandex
-//                                                                     `payload` param, NEVER `weight`)
+//   ChatScreen deal.trip_capacity_tons   ──> RouteMap/TrackTruckScreen
+//   (NO cargo_weight_tons fallback —          builds {payload_t} ──> TruckMap
+//   see round-3 test below)                                        .roadRoute(points, vehicle)
+//                                                                   (backend maps payload_t -> Yandex
+//                                                                    `payload` param, NEVER `weight`)
 //
 // It does not claim this closes full HGV dimension-awareness — only that
-// the weight the app already knows about now reaches the router under the
-// correct parameter name, instead of masquerading as the vehicle's actual
-// full mass.
+// the one number the app reliably knows (a trip's real payload capacity)
+// now reaches the router under the correct parameter name, and nothing
+// else masquerades as vehicle data.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -60,10 +60,17 @@ test('TripDetail feeds the already-collected trip capacity into RouteMap (no new
   assert.match(tripDetail, /<RouteMap[\s\S]{0,300}capacityTons=\{trip\.capacityTons\}/);
 });
 
-test('ChatScreen threads the deal\'s known weight into TrackTruck navigation params', () => {
+test('ChatScreen threads only the trip\'s real payload capacity into TrackTruck navigation params — no cargo-weight fallback', () => {
   assert.match(chatScreen, /cargo_weight_tons: prev\?\.cargo_weight_tons \?\? srv\.cargo_weight_tons/);
   assert.match(chatScreen, /trip_capacity_tons: prev\?\.trip_capacity_tons \?\? srv\.trip_capacity_tons/);
-  assert.match(chatScreen, /capacityTons: deal\?\.trip_capacity_tons \?\? deal\?\.cargo_weight_tons \?\? null/);
+  // 2nd independent re-review (2026-08-19): capacityTons used to fall back
+  // to deal.cargo_weight_tons when no trip was linked yet. Yandex `payload`
+  // means the vehicle's maximum load capacity, not the mass of one
+  // specific cargo — cargo_weight_tons measures the latter, so it must
+  // NOT feed vehicle.payload_t. Source is strictly trip_capacity_tons now;
+  // no data beats wrong data here.
+  assert.match(chatScreen, /capacityTons: deal\?\.trip_capacity_tons \?\? null,/);
+  assert.doesNotMatch(chatScreen, /capacityTons:[^\n]*cargo_weight_tons/);
 });
 
 test('TrackTruckScreen builds a vehicle spec (payload_t, not weight_t) from the navigated capacityTons and passes it to TruckMap', () => {
