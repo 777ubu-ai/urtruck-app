@@ -17,10 +17,11 @@ test('route selector and all filter chips scroll away with cargo list like a mes
   assert.match(src, /const feedControls = \(/);
   assert.match(src, /ListHeaderComponent=\{feedControls\}/);
   assert.match(src, /testID="feed-route-selector"/);
-  assert.match(src, /cargo-filter-date/);
-  assert.match(src, /cargo-filter-body/);
-  assert.match(src, /cargo-filter-price/);
-  assert.match(src, /cargo-filter-favorites/);
+  assert.match(src, /testID=\{`cargo-filter-\$\{key\}`\}/);
+  assert.match(src, /filterPill\('date'/);
+  assert.match(src, /filterPill\('body'/);
+  assert.match(src, /filterPill\('price'/);
+  assert.match(src, /testID="cargo-filter-favorites"/);
   assert.doesNotMatch(src, /stickyHeaderIndices/);
 });
 
