@@ -144,7 +144,7 @@ def blacklist_add(phone: str = None, plate: str = None, name: str = None,
     with get_conn() as c:
         bid = new_id()
         c.execute(
-            "INSERT INTO blacklist (id, phone, plate_number, full_name, reason, source, severity) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO blacklist (id, phone, plate_number, full_name, reason, source, severity) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (bid, phone, plate, name, reason, source, severity)
         )
         row = c.execute("SELECT * FROM blacklist WHERE id = ?", (bid,)).fetchone()
@@ -153,17 +153,15 @@ def blacklist_add(phone: str = None, plate: str = None, name: str = None,
 
 def blacklist_check(phone: str = None, plate: str = None, name: str = None) -> list:
     with get_conn() as c:
-        q = "SELECT * FROM blacklist WHERE is_active = 1 AND ("
-        conds, params = [], []
+        q = "SELECT * FROM telegram_mentions WHERE 1=1"
+        params = []
         if phone:
-            conds.append("phone = ?"); params.append(phone)
+            q += " AND mentioned_phone = ?"; params.append(phone)
         if plate:
-            conds.append("plate_number = ?"); params.append(plate)
-        if name:
-            conds.append("full_name = ?"); params.append(name)
-        if not conds:
+            q += " AND mentioned_plate = ?"; params.append(plate)
+        if not phone and not plate:
             return []
-        q += " OR ".join(conds) + ")"
+        q += " ORDER BY created_at DESC LIMIT 100"
         rows = c.execute(q, params).fetchall()
         return [dict(r) for r in rows]
 
@@ -173,8 +171,9 @@ def log_verification(user_id: str, check_type: str, check_source: str,
                       result: str, details: dict = None, score_impact: int = 0):
     with get_conn() as c:
         c.execute(
-            "INSERT INTO verification_logs (id, user_id, check_type, check_source, result, details, score_impact) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (new_id(), user_id, check_type, check_source, result, details, score_impact)
+            "INSERT INTO verification_logs (id, user_id, check_type, check_source, result, details, score_impact) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (new_id(), user_id, check_type, check_source, result,
+             json.dumps(details) if details else None, score_impact)
         )
 
 
