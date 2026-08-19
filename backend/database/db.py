@@ -45,46 +45,36 @@ def _apply_pragmas(conn: sqlite3.Connection) -> None:
 
 
 def _maybe_expire_marketplace(conn: sqlite3.Connection) -> None:
-    """Run marketplace expiry opportunistically before API DB work.
+    """Expire stale marketplace state before a request can read/accept it.
 
-    A pure cron/scheduler implementation leaves a race window where an expired
-    offer can still be read or accepted. Running the cleanup at most once per
-    minute on the normal DB connection makes the *first* request after a
-    deadline repair state before that request reads it. If the marketplace
-    schema is not initialised yet (early startup/security-only tests), this is
-    a no-op.
+    Runs at most once per process-minute and only after marketplace tables
+    exist. This makes the first DB-backed request after a deadline repair the
+    state before that same request sees it, without depending on a cron tick.
     """
     global _MARKET_EXPIRY_LAST_RUN
     now_monotonic = time.monotonic()
     if now_monotonic - _MARKET_EXPIRY_LAST_RUN < _MARKET_EXPIRY_INTERVAL_SECONDS:
         return
     try:
-        has_bids = conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='bids' LIMIT 1"
-        ).fetchone()
-        has_cargos = conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='cargos' LIMIT 1"
-        ).fetchone()
-        has_trips = conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='trips' LIMIT 1"
-        ).fetchone()
-        has_deals = conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='deals' LIMIT 1"
-        ).fetchone()
-        if not (has_bids and has_cargos and has_trips and has_deals):
-            return
+        required = ("bids", "cargos", "trips", "deals")
+        for table in required:
+            exists = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1",
+                (table,),
+            ).fetchone()
+            if not exists:
+                return
 
-        # Lazy import avoids a module cycle: services.bid_expiry uses get_conn
-        # only for its standalone/scheduler entry point, while this path calls
-        # its connection-local implementation directly.
+        # Lazy import avoids a module cycle: bid_expiry imports get_conn only
+        # for its standalone entry point; this path reuses the current conn.
         from datetime import datetime
         from services.bid_expiry import _expire_with_conn
 
         _expire_with_conn(conn, datetime.utcnow())
         _MARKET_EXPIRY_LAST_RUN = now_monotonic
     except Exception as exc:
-        # Expiry is housekeeping; a failure must never take login/security/API
-        # down. Do not advance last-run so the next connection retries.
+        # Housekeeping may retry on the next connection; it must never take a
+        # login/security/API request down.
         print(f"[market-expiry] opportunistic cleanup failed: {exc}", flush=True)
 
 
@@ -144,7 +134,7 @@ def blacklist_add(phone: str = None, plate: str = None, name: str = None,
     with get_conn() as c:
         bid = new_id()
         c.execute(
-            "INSERT INTO blacklist (id, phone, plate_number, full_name, reason, source, severity) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO blacklist (id, phone, plate_number, full_name, reason, source, severity) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (bid, phone, plate, name, reason, source, severity)
         )
         row = c.execute("SELECT * FROM blacklist WHERE id = ?", (bid,)).fetchone()
@@ -153,15 +143,17 @@ def blacklist_add(phone: str = None, plate: str = None, name: str = None,
 
 def blacklist_check(phone: str = None, plate: str = None, name: str = None) -> list:
     with get_conn() as c:
-        q = "SELECT * FROM telegram_mentions WHERE 1=1"
-        params = []
+        q = "SELECT * FROM blacklist WHERE is_active = 1 AND ("
+        conds, params = [], []
         if phone:
-            q += " AND mentioned_phone = ?"; params.append(phone)
+            conds.append("phone = ?"); params.append(phone)
         if plate:
-            q += " AND mentioned_plate = ?"; params.append(plate)
-        if not phone and not plate:
+            conds.append("plate_number = ?"); params.append(plate)
+        if name:
+            conds.append("full_name = ?"); params.append(name)
+        if not conds:
             return []
-        q += " ORDER BY created_at DESC LIMIT 100"
+        q += " OR ".join(conds) + ")"
         rows = c.execute(q, params).fetchall()
         return [dict(r) for r in rows]
 
