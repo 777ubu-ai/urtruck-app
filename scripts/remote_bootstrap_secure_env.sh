@@ -43,9 +43,10 @@ if [ -z "$current_service" ]; then
   set_env SUPABASE_SERVICE_KEY "${legacy_service:-$incoming_service}"
 fi
 
-# Yandex Router is the authoritative KZ/RU/CIS road router. It must remain
-# server-only. Deploy may rotate it through a temporary 0600 bootstrap file;
-# otherwise an already provisioned production value is preserved.
+# Server-side route providers are optional enhancements for web/PWA because
+# the embedded Yandex JS API 2.1 MultiRoute remains the real-road fallback.
+# If a valid server key is supplied, preserve/rotate it. Never erase an
+# already provisioned production key merely because a deploy omitted it.
 incoming_yandex_router=""
 incoming_global_router=""
 if [ -n "$REMOTE_BOOTSTRAP" ] && [ -f "$REMOTE_BOOTSTRAP" ]; then
@@ -53,7 +54,6 @@ if [ -n "$REMOTE_BOOTSTRAP" ] && [ -f "$REMOTE_BOOTSTRAP" ]; then
   incoming_global_router="$(get_env OPENROUTESERVICE_API_KEY "$REMOTE_BOOTSTRAP")"
 fi
 [ -z "$incoming_yandex_router" ] || set_env YANDEX_ROUTER_API_KEY "$incoming_yandex_router"
-# China/global fallback is optional; never erase an existing server value.
 [ -z "$incoming_global_router" ] || set_env OPENROUTESERVICE_API_KEY "$incoming_global_router"
 
 [ -n "$(get_env SUPABASE_URL "$ENV_FILE")" ] || set_env SUPABASE_URL 'https://hchmnocoxjvtgdamcmmi.supabase.co'
@@ -65,24 +65,28 @@ file_key="$(get_env FILE_SIGNING_KEY "$ENV_FILE")"
 [ -n "$(get_env QA_AGENT_TOKEN "$ENV_FILE")" ] || set_env QA_AGENT_TOKEN "$(openssl rand -hex 32)"
 unset file_key current_service legacy_service incoming_service incoming_yandex_router incoming_global_router
 
-# Fail closed before backend restart. KZ/RU road routing is a release-critical
-# feature, therefore production must have a Yandex Router API key.
+# Fail closed only on secrets that are required to keep production/private
+# storage safe. Routing provider absence must not freeze all frontend releases;
+# web/PWA continues with Yandex JS API 2.1 MultiRoute.
 test -n "$(get_env SUPABASE_SERVICE_KEY "$ENV_FILE")" || { echo 'ERROR: SUPABASE_SERVICE_KEY missing'; exit 1; }
 test -n "$(get_env SUPABASE_URL "$ENV_FILE")" || { echo 'ERROR: SUPABASE_URL missing'; exit 1; }
 test -n "$(get_env SUPABASE_BUCKET "$ENV_FILE")" || { echo 'ERROR: SUPABASE_BUCKET missing'; exit 1; }
-test -n "$(get_env YANDEX_ROUTER_API_KEY "$ENV_FILE")" || { echo 'ERROR: YANDEX_ROUTER_API_KEY missing'; exit 1; }
 [ "$(printf %s "$(get_env FILE_SIGNING_KEY "$ENV_FILE")" | wc -c)" -ge 32 ] || { echo 'ERROR: FILE_SIGNING_KEY invalid'; exit 1; }
 
 cnt="$(grep -cE '^FILE_SIGNING_KEY=' "$ENV_FILE" || true)"
 [ "$cnt" = "1" ] || { echo "ERROR: FILE_SIGNING_KEY_COUNT=$cnt"; exit 1; }
 yandex_cnt="$(grep -cE '^YANDEX_ROUTER_API_KEY=' "$ENV_FILE" || true)"
-[ "$yandex_cnt" = "1" ] || { echo "ERROR: YANDEX_ROUTER_API_KEY_COUNT=$yandex_cnt"; exit 1; }
+[ "$yandex_cnt" -le 1 ] || { echo "ERROR: YANDEX_ROUTER_API_KEY_COUNT=$yandex_cnt"; exit 1; }
 chmod 600 "$ENV_FILE" 2>/dev/null || true
 
 echo 'SECURE_ENV=ready'
 echo 'STORAGE_PROVIDER=supabase'
 echo 'FILE_SIGNING_KEY_PRESENT=yes'
-echo 'YANDEX_ROUTER_KEY_PRESENT=yes'
+if [ -n "$(get_env YANDEX_ROUTER_API_KEY "$ENV_FILE")" ]; then
+  echo 'YANDEX_ROUTER_KEY_PRESENT=yes'
+else
+  echo 'YANDEX_ROUTER_KEY_PRESENT=no'
+fi
 if [ -n "$(get_env OPENROUTESERVICE_API_KEY "$ENV_FILE")" ]; then
   echo 'GLOBAL_ROUTING_FALLBACK_PRESENT=yes'
 else

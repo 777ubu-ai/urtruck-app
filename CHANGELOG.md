@@ -6,6 +6,19 @@
 Нативные билды (App Store / Google Play) версионируются отдельно в `app.json`
 (`version` / `buildNumber` / `versionCode`) и в этот файл не попадают.
 
+## [2.1.2] - 2026-08-19
+### Ops note
+- Retrigger деплоя после мержа PR #234 (реальный маршрут по дорогам
+  KZ/RU через Yandex Router API + надёжные PDF-вложения). Прошлый
+  прогон `UrTruck Secure Production Deploy` упал на новом шаге
+  «Preflight Yandex Router before touching production» — `401
+  Unauthorized` от `api.routing.yandex.net`, потому что `YANDEX_ROUTER_API_KEY`
+  в тот момент был пуст, и CI подставлял вместо него `YANDEX_MAPS_JS_API_KEY`
+  (другой продукт Yandex, не подходит для Router API). Владелец подтвердил,
+  что `YANDEX_ROUTER_API_KEY` уже добавлен в GitHub Secrets — этот коммит
+  просто перезапускает пайплайн (у используемой интеграции нет прав
+  `workflow_dispatch`/`rerun_failed_jobs` напрямую).
+
 ## [2.1.1] - 2026-08-19
 ### Fixed
 - **Иконка избранного — откат обратно на флажок (bookmark).** Запись
