@@ -49,14 +49,17 @@ mustNot(tracker.split('export async function startBackgroundTracking()')[1] || '
 must(coordinator, 'registerLocationPermissionRequestHandler', 'visible deal screen can register disclosure host');
 must(coordinator, 'disclosure_host_unavailable', 'hidden/legacy screens fail closed without disclosure host');
 
-// Prominent disclosure explains the foreground-service behavior and active-trip
-// lifetime without claiming all-time/background permission.
-must(disclosure, 'Геолокация во время рейса', 'prominent disclosure has clear feature title');
-must(disclosure, 'foreground-service активного рейса', 'disclosure explains Android active-trip foreground service');
-must(disclosure, 'Передача геолокации прекращается после завершения или отмены рейса', 'disclosure explains when tracking stops');
+// Prominent disclosure matches the approved "Track trip" visual and explains
+// minimized/screen-off active-trip tracking plus the exact stop condition.
+must(disclosure, 'Отслеживать рейс', 'prominent disclosure uses the approved feature title');
+must(disclosure, 'Во время активного рейса UrTruck передаёт местоположение автомобиля грузоотправителю', 'disclosure explains why location is shared');
+must(disclosure, 'приложение свёрнуто или экран выключен', 'disclosure explains minimized and screen-off behavior');
+must(disclosure, 'системный сервис активного рейса', 'disclosure explains active-trip system service');
+must(disclosure, 'Передача прекращается после завершения или отмены рейса', 'disclosure explains when tracking stops');
 must(disclosure, 'Разрешить и начать рейс', 'primary disclosure action matches the user intent');
+must(disclosure, 'Не сейчас', 'secondary disclosure action is explicit');
 mustNot(disclosure, 'когда приложение закрыто или не используется', 'disclosure does not claim closed-app background access');
-must(disclosure, 'не просит доступ «Разрешить всегда»', 'disclosure states all-time location is not requested');
+must(disclosure, 'Доступ «Разрешить всегда» не требуется', 'settings recovery keeps all-time location out of scope');
 must(disclosure, 'background-location-disclosure-continue', 'disclosure has explicit start-trip consent action');
 must(disclosure, 'background-location-open-settings', 'foreground permission recovery path is visible');
 
