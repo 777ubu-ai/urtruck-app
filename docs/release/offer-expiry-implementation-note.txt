@@ -1,1 +1,0 @@
-Implementation note: backend DB access performs opportunistic expiry at most once per process-minute before normal API work, so stale state is repaired before the first read/action after the deadline. This avoids relying only on scheduler timing.
