@@ -5,6 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -95,6 +96,41 @@ def test_ors_weight_restriction_ignores_payload_t_when_full_mass_unknown():
     assert options_with_weight["profile_params"]["restrictions"]["weight"] == 23.0
 
 
+def test_realistic_duration_leaves_single_day_trips_unchanged():
+    """Owner report (2026-08-19, live production): '3978 км за 2 дня 5 часов
+    не реально, ещё и границы проезжать' — raw provider duration is pure
+    nonstop driving time. A trip that fits within one legal driving day
+    (<= 9h) needs no adjustment."""
+    assert routing._realistic_duration_s(8 * 3600) == 8 * 3600
+    assert routing._realistic_duration_s(9 * 3600) == 9 * 3600
+
+
+def test_realistic_duration_adds_mandatory_rest_for_multi_day_trips():
+    # Exactly the Almaty-Moscow production case that prompted the report:
+    # 191702s (~53.25h) raw nonstop driving.
+    result = routing._realistic_duration_s(191702)
+    assert result == 461702  # +75h rest (5 rest nights * 15h) on top of raw driving
+    assert result / 3600 == pytest.approx(128.25, abs=0.01)  # ~5d 8h, not 2d 5h
+
+    # Just over the daily cap (10h raw) needs one rest period, not a full
+    # extra day tacked on blindly.
+    assert routing._realistic_duration_s(10 * 3600) == 25 * 3600
+
+
+def test_apply_realistic_duration_preserves_raw_driving_time_separately():
+    payload = {"duration_s": 191702, "distance_m": 3978256, "ok": True}
+    result = routing._apply_realistic_duration(payload)
+    assert result["driving_duration_s"] == 191702
+    assert result["duration_s"] == 461702
+    assert result["distance_m"] == 3978256  # untouched
+
+
+def test_apply_realistic_duration_is_a_noop_without_a_duration():
+    payload = {"ok": False, "detail": "road_route_unavailable"}
+    result = routing._apply_realistic_duration(payload)
+    assert "driving_duration_s" not in result
+
+
 def test_almaty_moscow_uses_yandex_first_and_caches(monkeypatch):
     os.environ["YANDEX_ROUTER_API_KEY"] = "yandex-test-key"
     calls = []
@@ -124,7 +160,11 @@ def test_almaty_moscow_uses_yandex_first_and_caches(monkeypatch):
     data = response.json()
     assert data["provider"] == "yandex"
     assert data["distance_m"] == 4123000
-    assert data["duration_s"] == 219600
+    # 219600s (61h) raw nonstop driving is not a realistic single-driver
+    # ETA — duration_s is adjusted for mandatory daily rest (see
+    # _realistic_duration_s), raw value preserved separately.
+    assert data["driving_duration_s"] == 219600
+    assert data["duration_s"] == 543600
     assert len(data["geometry"]) == 3
     assert len(calls) == 1
 
@@ -134,6 +174,7 @@ def test_almaty_moscow_uses_yandex_first_and_caches(monkeypatch):
     )
     assert response2.status_code == 200
     assert response2.json()["cached"] is True
+    assert response2.json()["duration_s"] == 543600
     assert len(calls) == 1
 
 
