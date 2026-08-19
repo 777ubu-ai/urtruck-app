@@ -52,6 +52,15 @@ test('Android permission sequence is Start trip disclosure then foreground only'
   assert.match(disclosure, /background-location-open-settings/);
 });
 
+test('web denied recovery never offers or calls native app settings', () => {
+  assert.match(disclosure, /canOpenNativeSettings = Platform\.OS !== 'web'/);
+  assert.match(disclosure, /Откройте настройки сайта в браузере/);
+  assert.match(disclosure, /background-location-check-again/);
+  assert.match(gate, /busy \|\| Platform\.OS === 'web'/);
+  assert.match(tracker, /Platform\.OS === 'web'[\s\S]*web_settings_manual/);
+  assert.match(tracker, /typeof Linking\?\.openSettings !== 'function'/);
+});
+
 test('start trip cannot enter in_progress before permission succeeds', () => {
   const permissionIndex = workspace.indexOf('ensureBackgroundLocationPermission()');
   const statusIndex = workspace.indexOf("changeDealStatus('in_progress')");
