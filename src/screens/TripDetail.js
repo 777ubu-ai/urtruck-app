@@ -531,6 +531,7 @@ export default function TripDetail({ navigation, route }) {
             dealId={dealId}
             dealStatus={dealStatus}
             driverName={trip.driverName}
+            capacityTons={trip.capacityTons}
           />
         </View>
 

@@ -13,7 +13,7 @@ import { localizePlace } from '../utils/places';
 import { getLanguage } from '../utils/i18n';
 
 export default function TrackTruckScreen({ navigation, route }) {
-  const { dealId, from, to, driverName } = route.params || {};
+  const { dealId, from, to, driverName, capacityTons } = route.params || {};
   const { t } = useI18n();
   const { theme } = useTheme();
   const [loc, setLoc] = useState(null);
@@ -54,6 +54,15 @@ export default function TrackTruckScreen({ navigation, route }) {
     if (!mounted.current) return;
     setRouteSummary(summary || null);
   }, []);
+
+  // 2026-08-19 (P1, независимый release review): capacityTons приходит из
+  // ChatScreen.openDealMap() (deal.trip_capacity_tons / cargo_weight_tons —
+  // уже существующие данные рейса/груза). Полные габариты тягача анкета не
+  // собирает — см. комментарий в TruckMap.web.js.
+  const vehicle = React.useMemo(() => {
+    const tons = Number(capacityTons);
+    return Number.isFinite(tons) && tons > 0 ? { weight_t: tons } : null;
+  }, [capacityTons]);
 
   const agoMin = (() => {
     if (!loc || !loc.updated_at) return null;
@@ -96,6 +105,7 @@ export default function TrackTruckScreen({ navigation, route }) {
             liveTitle={t('live_route_title')}
             showBadge={false}
             onRouteSummary={handleRouteSummary}
+            vehicle={vehicle}
           />
 
           {loc ? (

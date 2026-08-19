@@ -24,12 +24,23 @@ const dedupePoints = (points) => {
 // looked authoritative even when no road route existed. Now the map delegates
 // route geometry and distance/duration to TruckMap (Yandex MultiRoute on web)
 // and hides metrics when the provider cannot return a real road result.
-export default function RouteMap({ from, to, transit, dealId, dealStatus, driverName }) {
+export default function RouteMap({ from, to, transit, dealId, dealStatus, driverName, capacityTons }) {
   const { theme } = useTheme();
   const { t, lang } = useI18n();
   const [location, setLocation] = React.useState(null);
   const [locationLoading, setLocationLoading] = React.useState(false);
   const [routeSummary, setRouteSummary] = React.useState(null);
+
+  // 2026-08-19 (P1, независимый release review): грузоподъёмность рейса —
+  // единственные реальные данные о машине, которые уже собираются в анкете
+  // (vehicle_capacity_kg) и доступны на этом экране. Полных габаритов
+  // (высота/ширина/длина/осевая нагрузка) анкета не собирает — это
+  // отдельная, Graphify-gated задача (изменение backend registration).
+  // Пока прокидываем то, что реально есть, вместо null.
+  const vehicle = React.useMemo(() => {
+    const tons = Number(capacityTons);
+    return Number.isFinite(tons) && tons > 0 ? { weight_t: tons } : null;
+  }, [capacityTons]);
 
   const trackingActive = Boolean(dealId && ['in_progress', 'at_border', 'delivered'].includes(dealStatus));
   const routePoints = React.useMemo(() => dedupePoints([
@@ -93,6 +104,7 @@ export default function RouteMap({ from, to, transit, dealId, dealStatus, driver
           liveTitle={t('live_route_title')}
           showBadge={false}
           onRouteSummary={handleSummary}
+          vehicle={vehicle}
         />
         {locationLoading && trackingActive && !hasLivePoint ? (
           <View style={s.loadingPill} pointerEvents="none">

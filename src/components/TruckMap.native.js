@@ -40,7 +40,13 @@ const durationTextFromSeconds = (value) => {
   return `${minutes} мин`;
 };
 
-export default function TruckMap({ lat, lng, title, routePoints = [], externalRoute = null, onRouteSummary }) {
+export default function TruckMap({
+  lat, lng, title, routePoints = [], externalRoute = null, onRouteSummary,
+  // 2026-08-19 (P1, независимый release review): см. комментарий в
+  // TruckMap.web.js — partial vehicle.weight_t из уже собранной
+  // грузоподъёмности, полные габариты пока не собираются в анкете.
+  vehicle = null,
+}) {
   const live = asPoint([lat, lng]);
   const planned = React.useMemo(() => (routePoints || []).map(asPoint).filter(Boolean), [routePoints]);
   const destination = planned.length ? planned[planned.length - 1] : null;
@@ -49,6 +55,7 @@ export default function TruckMap({ lat, lng, title, routePoints = [], externalRo
     return pairs.filter(Boolean);
   }, [live?.latitude, live?.longitude, destination?.latitude, destination?.longitude, planned.length]);
   const effectiveKey = routeKey(effectivePairs);
+  const vehicleKey = vehicle ? JSON.stringify(vehicle) : '';
   const [serverRoute, setServerRoute] = React.useState(null);
 
   React.useEffect(() => {
@@ -57,7 +64,7 @@ export default function TruckMap({ lat, lng, title, routePoints = [], externalRo
       setServerRoute(null);
       return () => { cancelled = true; };
     }
-    routingAPI.roadRoute(effectivePairs).then((result) => {
+    routingAPI.roadRoute(effectivePairs, vehicle).then((result) => {
       if (cancelled) return;
       if (result?.ok && Array.isArray(result.geometry) && result.geometry.length >= 2) {
         setServerRoute({ ...result, routeKey: effectiveKey });
@@ -66,7 +73,7 @@ export default function TruckMap({ lat, lng, title, routePoints = [], externalRo
       }
     });
     return () => { cancelled = true; };
-  }, [effectiveKey, externalRoute]);
+  }, [effectiveKey, externalRoute, vehicleKey]);
 
   const resolvedRoute = externalRoute || serverRoute;
   const roadGeometry = React.useMemo(

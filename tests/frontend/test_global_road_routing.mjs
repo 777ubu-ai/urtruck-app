@@ -9,10 +9,20 @@ const backend = fs.readFileSync('backend/api/routing.py', 'utf8');
 const deploy = fs.readFileSync('.github/workflows/secure-production-deploy.yml', 'utf8');
 
 test('every deal route requests authenticated server road geometry, including Almaty-Moscow', () => {
-  assert.match(webMap, /routingAPI\.roadRoute\(effectivePoints\)/);
-  assert.match(nativeMap, /routingAPI\.roadRoute\(effectivePairs\)/);
+  // 2026-08-19 (P1, независимый release review): roadRoute() теперь также
+  // получает vehicle (partial VehicleSpec из уже собранной грузоподъёмности
+  // рейса/груза) — второй аргумент, а не пустой вызов.
+  assert.match(webMap, /routingAPI\.roadRoute\(effectivePoints, vehicle\)/);
+  assert.match(nativeMap, /routingAPI\.roadRoute\(effectivePairs, vehicle\)/);
   assert.match(webMap, /truck-map-road-routing-loading/);
   assert.match(webMap, /Маршрут по дороге временно недоступен/);
+});
+
+test('TruckMap accepts a vehicle spec and threads it into the server routing request on both platforms', () => {
+  assert.match(webMap, /vehicle = null,/);
+  assert.match(nativeMap, /vehicle = null,/);
+  assert.match(webMap, /vehicleKey = vehicle \? JSON\.stringify\(vehicle\) : ''/);
+  assert.match(nativeMap, /vehicleKey = vehicle \? JSON\.stringify\(vehicle\) : ''/);
 });
 
 test('trusted server geometry is a solid green road on the Yandex web map', () => {

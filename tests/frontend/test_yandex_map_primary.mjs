@@ -52,7 +52,7 @@ test('KZ/RU route geometry and metrics come from Yandex Router API first', () =>
 test('live GPS route metrics use current point to destination', () => {
   assert.match(mapSrc, /plannedPoints\[plannedPoints\.length - 1\]/);
   assert.match(mapSrc, /livePoint && destination \? \[livePoint, destination\] : plannedPoints/);
-  assert.match(mapSrc, /routingAPI\.roadRoute\(effectivePoints\)/);
+  assert.match(mapSrc, /routingAPI\.roadRoute\(effectivePoints, vehicle\)/);
   assert.match(mapSrc, /truck-map-road-route-unavailable/);
 });
 
