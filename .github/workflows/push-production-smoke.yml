@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
   push-production-smoke:
@@ -41,3 +42,22 @@ jobs:
           echo "$info" | grep -q '"native_android"' || { echo '::error::android registration count missing'; exit 1; }
           echo "$info" | grep -q '"native_ios"' || { echo '::error::ios registration count missing'; exit 1; }
           echo "✅ production push diagnostics available"
+
+      - name: Record production release evidence
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESULT: ${{ job.status }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          body=$(cat <<EOF
+          ### Production smoke — ${RESULT^^}
+          - sha: \`${GITHUB_SHA}\`
+          - workflow: \`Push Production Smoke\`
+          - run: ${RUN_URL}
+          - result: \`${RESULT}\`
+          - checked: exact production \`build-info.json\` SHA + push registration diagnostics
+          EOF
+          )
+          gh api "repos/${GITHUB_REPOSITORY}/issues/247/comments" -f body="$body"
