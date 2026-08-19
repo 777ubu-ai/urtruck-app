@@ -44,17 +44,82 @@ def _apply_pragmas(conn: sqlite3.Connection) -> None:
         pass
 
 
+def _market_expiry_due(conn: sqlite3.Connection) -> bool:
+    """Cheap request-time guard for deadlines that can be evaluated in SQL.
+
+    The full Python cleanup is throttled for performance, but a bid that turns
+    48h old or an ISO-dated listing that rolls into the past must not be
+    actionable during that throttle window. These LIMIT-1 probes close that
+    race; the periodic full scan remains the fallback for legacy DD.MM.YYYY
+    dates and any data anomaly the SQL fast-path does not express.
+    """
+    active_deals = "'accepted','in_progress','at_border','awaiting_confirmation','delivered'"
+
+    bid_due = conn.execute(
+        """
+        SELECT 1
+        FROM bids b
+        LEFT JOIN cargos c ON c.id=b.cargo_id
+        LEFT JOIN trips t ON t.id=b.trip_id
+        WHERE b.status IN ('pending','countered')
+          AND (
+            datetime(COALESCE(NULLIF(b.updated_at,''), b.created_at), '+48 hours') <= CURRENT_TIMESTAMP
+            OR (b.cargo_id IS NOT NULL AND (
+                 c.id IS NULL OR c.status <> 'active'
+                 OR (c.pickup_date GLOB '????-??-??*' AND substr(c.pickup_date,1,10) < date('now'))
+            ))
+            OR (b.trip_id IS NOT NULL AND (
+                 t.id IS NULL OR t.status <> 'active'
+                 OR (t.departure GLOB '????-??-??*' AND substr(t.departure,1,10) < date('now'))
+            ))
+          )
+        LIMIT 1
+        """
+    ).fetchone()
+    if bid_due:
+        return True
+
+    cargo_due = conn.execute(
+        f"""
+        SELECT 1 FROM cargos c
+        WHERE c.status='active'
+          AND c.pickup_date GLOB '????-??-??*'
+          AND substr(c.pickup_date,1,10) < date('now')
+          AND NOT EXISTS (
+            SELECT 1 FROM deals d
+            WHERE d.cargo_id=c.id AND d.status IN ({active_deals})
+          )
+        LIMIT 1
+        """
+    ).fetchone()
+    if cargo_due:
+        return True
+
+    trip_due = conn.execute(
+        f"""
+        SELECT 1 FROM trips t
+        WHERE t.status='active'
+          AND t.departure GLOB '????-??-??*'
+          AND substr(t.departure,1,10) < date('now')
+          AND NOT EXISTS (
+            SELECT 1 FROM deals d
+            WHERE d.trip_id=t.id AND d.status IN ({active_deals})
+          )
+        LIMIT 1
+        """
+    ).fetchone()
+    return bool(trip_due)
+
+
 def _maybe_expire_marketplace(conn: sqlite3.Connection) -> None:
     """Expire stale marketplace state before a request can read/accept it.
 
-    Runs at most once per process-minute and only after marketplace tables
-    exist. This makes the first DB-backed request after a deadline repair the
-    state before that same request sees it, without depending on a cron tick.
+    Full cleanup runs at least once per process-minute. Between full scans a
+    cheap due probe bypasses the throttle the moment a 48h/ISO-date deadline
+    has passed, so a stale offer cannot be accepted in the timing gap.
     """
     global _MARKET_EXPIRY_LAST_RUN
     now_monotonic = time.monotonic()
-    if now_monotonic - _MARKET_EXPIRY_LAST_RUN < _MARKET_EXPIRY_INTERVAL_SECONDS:
-        return
     try:
         required = ("bids", "cargos", "trips", "deals")
         for table in required:
@@ -65,12 +130,22 @@ def _maybe_expire_marketplace(conn: sqlite3.Connection) -> None:
             if not exists:
                 return
 
+        interval_elapsed = (
+            now_monotonic - _MARKET_EXPIRY_LAST_RUN >= _MARKET_EXPIRY_INTERVAL_SECONDS
+        )
+        if not interval_elapsed and not _market_expiry_due(conn):
+            return
+
         # Lazy import avoids a module cycle: bid_expiry imports get_conn only
         # for its standalone entry point; this path reuses the current conn.
         from datetime import datetime
         from services.bid_expiry import _expire_with_conn
 
         _expire_with_conn(conn, datetime.utcnow())
+        # Make housekeeping durable independently of the caller's later work;
+        # otherwise an unrelated API exception could roll expiry back while
+        # advancing the throttle clock.
+        conn.commit()
         _MARKET_EXPIRY_LAST_RUN = now_monotonic
     except Exception as exc:
         # Housekeeping may retry on the next connection; it must never take a
