@@ -198,6 +198,12 @@ export async function requestBackgroundLocationPermission() {
 }
 
 export async function openLocationSettings() {
+  if (Platform.OS === 'web') {
+    return { ok: false, reason: 'web_settings_manual' };
+  }
+  if (typeof Linking?.openSettings !== 'function') {
+    return { ok: false, reason: 'settings_unsupported' };
+  }
   try {
     await Linking.openSettings();
     return { ok: true };
