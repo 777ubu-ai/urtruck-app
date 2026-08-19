@@ -9,5 +9,13 @@
 // падает, но ничего и не сохраняется). Заявляем себя native-платформой,
 // чтобы storage.js использовал AsyncStorage-путь → уходит в наш мок
 // (mocks/async-storage.mjs), который реально хранит данные in-memory.
-export const Platform = { OS: 'android', select: (obj) => obj.android ?? obj.native ?? obj.default };
-export default { Platform };
+export const Platform = { OS: 'android', select: (obj) => obj[Platform.OS] ?? obj.native ?? obj.default };
+
+let openSettingsCalls = 0;
+export const Linking = {
+  openSettings: async () => { openSettingsCalls += 1; },
+  __getOpenSettingsCalls: () => openSettingsCalls,
+  __resetOpenSettingsCalls: () => { openSettingsCalls = 0; },
+};
+
+export default { Platform, Linking };
