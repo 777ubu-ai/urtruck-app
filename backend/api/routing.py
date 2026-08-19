@@ -306,6 +306,46 @@ async def _request_ors(body: RoadRouteRequest, api_key: str) -> dict:
     }
 
 
+# 2026-08-19 (owner, live production report: "3978 км за 2 дня 5 часов не
+# реально, ещё и границы проезжать") — Yandex/ORS duration_s is pure
+# nonstop driving time. For a multi-day international route that is
+# neither legal nor physically sustainable for one commercial driver:
+# КЗ/РФ international cargo drivers operate under driving-hour limits
+# close to the AETR standard other CIS carriers also follow in practice —
+# roughly 9h of driving per day before mandatory rest. Presenting the raw
+# nonstop figure as "time in transit" overpromises delivery speed to both
+# sides of a deal. Convert it into a realistic calendar-time estimate:
+# every day beyond the first adds the mandatory rest hours (24 minus the
+# daily driving cap) on top of that day's actual driving.
+#
+# Border-crossing wait time is intentionally NOT modeled here — this repo
+# has no reliable live border-wait data source wired into this endpoint
+# (see the separate borders/queues domain), and a made-up fixed number
+# would just be a different kind of dishonest estimate. This is a lower
+# bound on realistic delivery time, not an upper one.
+_MAX_DRIVING_HOURS_PER_DAY = 9
+
+
+def _realistic_duration_s(raw_duration_s: float) -> float:
+    if not raw_duration_s or raw_duration_s <= 0:
+        return raw_duration_s
+    raw_hours = raw_duration_s / 3600
+    driving_days = math.ceil(raw_hours / _MAX_DRIVING_HOURS_PER_DAY)
+    if driving_days <= 1:
+        return raw_duration_s  # fits in one legal driving day, no adjustment
+    rest_hours = (driving_days - 1) * (24 - _MAX_DRIVING_HOURS_PER_DAY)
+    return raw_duration_s + rest_hours * 3600
+
+
+def _apply_realistic_duration(payload: dict) -> dict:
+    raw = payload.get("duration_s")
+    if not isinstance(raw, (int, float)) or raw <= 0:
+        return payload
+    payload["driving_duration_s"] = round(raw)
+    payload["duration_s"] = round(_realistic_duration_s(raw))
+    return payload
+
+
 @routing_router.post("/road-route")
 async def build_road_route(body: RoadRouteRequest, _user=Depends(get_user)):
     key = _cache_key(body)
@@ -319,7 +359,7 @@ async def build_road_route(body: RoadRouteRequest, _user=Depends(get_user)):
 
     if prefer_global and ors_key:
         try:
-            payload = await _request_ors(body, ors_key)
+            payload = _apply_realistic_duration(await _request_ors(body, ors_key))
             _cache_put(key, payload)
             return payload
         except Exception:
@@ -327,7 +367,7 @@ async def build_road_route(body: RoadRouteRequest, _user=Depends(get_user)):
 
     if yandex_key:
         try:
-            payload = await _request_yandex(body, yandex_key)
+            payload = _apply_realistic_duration(await _request_yandex(body, yandex_key))
             _cache_put(key, payload)
             return payload
         except Exception:
@@ -335,7 +375,7 @@ async def build_road_route(body: RoadRouteRequest, _user=Depends(get_user)):
 
     if ors_key:
         try:
-            payload = await _request_ors(body, ors_key)
+            payload = _apply_realistic_duration(await _request_ors(body, ors_key))
             _cache_put(key, payload)
             return payload
         except Exception:
