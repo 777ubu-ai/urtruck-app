@@ -12,13 +12,16 @@ const chat = read('src/screens/ChatScreenV2.js');
 const manifest = read('android/app/src/main/AndroidManifest.xml');
 const app = JSON.parse(read('app.json')).expo;
 
-test('trip disclosure explains Android foreground-service tracking without all-time permission', () => {
-  assert.match(disclosure, /Геолокация во время рейса/);
-  assert.match(disclosure, /foreground-service активного рейса/);
-  assert.match(disclosure, /Передача геолокации прекращается после завершения или отмены рейса/);
+test('trip disclosure matches the approved Track trip screen and foreground-service behavior', () => {
+  assert.match(disclosure, /Отслеживать рейс/);
+  assert.match(disclosure, /Во время активного рейса UrTruck передаёт местоположение автомобиля грузоотправителю/);
+  assert.match(disclosure, /приложение свёрнуто или экран выключен/);
+  assert.match(disclosure, /системный сервис активного рейса/);
+  assert.match(disclosure, /Передача прекращается после завершения или отмены рейса/);
   assert.match(disclosure, /Разрешить и начать рейс/);
+  assert.match(disclosure, /Не сейчас/);
   assert.doesNotMatch(disclosure, /когда приложение закрыто или не используется/);
-  assert.match(disclosure, /не просит доступ «Разрешить всегда»/);
+  assert.match(disclosure, /Доступ «Разрешить всегда» не требуется/);
   assert.match(disclosure, /testID="background-location-disclosure"/);
   assert.match(disclosure, /testID="background-location-disclosure-continue"/);
 });
