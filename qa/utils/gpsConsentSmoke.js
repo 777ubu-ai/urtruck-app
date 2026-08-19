@@ -37,9 +37,9 @@ mustNot(hook, 'requestForegroundPermissionsAsync()', 'background hook does not r
 mustNot(hook, 'requestBackgroundPermissionsAsync()', 'background hook does not request background permission');
 must(hook, "AppState.currentState !== 'active'", 'Android service never starts while app is already backgrounded');
 
-// Android Start trip is the single permission trigger. The visible deal screen
-// hosts one disclosure, followed by foreground location only.
-must(tracker, "Platform.OS === 'android'", 'Android has an explicit permission branch');
+// Start trip is the single permission trigger. Android and web use the same
+// per-trip disclosure; Android then requests foreground location only.
+must(tracker, "Platform.OS === 'android' || Platform.OS === 'web'", 'Android and web route Start trip through the disclosure coordinator');
 must(tracker, "requestLocationPermissionThroughDisclosure({ source: 'start_trip' })", 'Start trip requests permission through disclosure coordinator');
 must(tracker, 'getBackgroundLocationPermissionState()', 'location service checks existing grants');
 must(tracker, "background: 'not_required_foreground_service'", 'Android permission state marks background permission unnecessary');
@@ -63,9 +63,11 @@ must(disclosure, 'Доступ «Разрешить всегда» не треб
 must(disclosure, 'background-location-disclosure-continue', 'disclosure has explicit start-trip consent action');
 must(disclosure, 'background-location-open-settings', 'foreground permission recovery path is visible');
 
-// No proactive Android permission card exists. Permission is requested only by
-// the Start-trip action through the registered disclosure host.
+// No proactive permission card exists. The same visible modal is available to
+// driver Start-trip actions on Android and web, including production web QA.
 must(gate, "effectiveRole === 'driver'", 'disclosure host is driver-only');
+must(gate, "Platform.OS === 'android' || Platform.OS === 'web'", 'disclosure host supports Android and web');
+must(gate, 'Per-trip consent is intentional', 'approved modal is shown for every new trip start');
 must(gate, 'registerLocationPermissionRequestHandler(beginDisclosure)', 'driver deal screen registers Start-trip disclosure handler');
 must(gate, 'requestForegroundLocationPermission()', 'foreground permission is requested after disclosure');
 mustNot(gate, 'requestBackgroundLocationPermission', 'Android deal gate never requests background permission');
@@ -119,4 +121,4 @@ console.log('  ✓ expo-location Android foreground service mode enabled, backgr
 
 must(routeMap, '<TruckMap', 'trip renders embedded route map inside UrTruck');
 
-console.log('\n[gps-consent] OK — Start-trip-only Android foreground-location contract');
+console.log('\n[gps-consent] OK — Start-trip disclosure + Android foreground-location contract');
