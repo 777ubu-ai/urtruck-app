@@ -49,10 +49,11 @@ test('China remains hybrid and provider keys never reach browser/mobile client',
   assert.match(backend, /Depends\(get_user\)/);
 });
 
-test('production deploy proves Yandex truck routing before touching production', () => {
+test('production deploy validates optional server Router without blocking embedded Yandex JS road routing', () => {
   assert.match(deploy, /YANDEX_ROUTER_API_KEY: \$\{\{ secrets\.YANDEX_ROUTER_API_KEY \}\}/);
-  assert.match(deploy, /Preflight Yandex Router before touching production/);
+  assert.match(deploy, /Preflight optional server-side Yandex Router/);
   assert.match(deploy, /python3 scripts\/yandex_router_smoke\.py/);
   assert.match(deploy, /SELECTED_YANDEX_ROUTER_API_KEY/);
+  assert.match(deploy, /web\/PWA will use embedded Yandex JS API 2\.1 MultiRoute/);
   assert.match(deploy, /ROAD_ROUTING_ENDPOINT=guarded/);
 });
