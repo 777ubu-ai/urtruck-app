@@ -21,6 +21,7 @@ import { localizeCargoName, localizePlace } from '../utils/places';
 import { countryFlag } from '../utils/countryFlags';
 import { accentFor } from '../components/deal/DealRoom';
 import { isBidActionable } from '../utils/dealsUnread';
+import { formatBidRemaining, isBidFresh } from '../utils/bidExpiry';
 
 const PAGE_BG = '#F7F9F7';
 const SURFACE = '#FFFFFF';
@@ -269,9 +270,9 @@ export default function DealsScreen({ navigation, route }) {
     }
 
     return [
-      ...myBids.filter((bid) => OPEN_BID_STATUSES.has(bid.status)),
+      ...myBids.filter((bid) => OPEN_BID_STATUSES.has(bid.status) && isBidFresh(bid)),
       ...incomingBids
-        .filter((bid) => bid.trip_id && OPEN_BID_STATUSES.has(bid.status))
+        .filter((bid) => bid.trip_id && OPEN_BID_STATUSES.has(bid.status) && isBidFresh(bid))
         .map((bid) => ({ ...bid, _incoming: true })),
     ].sort((a, b) => {
       const ta = parseServerDate(a.updated_at || a.created_at)?.getTime() || 0;
@@ -444,16 +445,23 @@ export default function DealsScreen({ navigation, route }) {
     if (kind === 'bid') {
       const isCountered = data.status === 'countered';
       const isClosed = CLOSED_BID_STATUSES.has(data.status);
-      const statusLabel = isClosed
-        ? t('status_cancelled')
-        : isCountered
-          ? t('deals_offer_bargain')
-          : (data._incoming ? t('deals_offer_new') : t('deals_offer_waiting'));
+      const statusLabel = data.status === 'expired'
+        ? t('status_expired')
+        : data.status === 'rejected'
+          ? t('status_rejected')
+          : data.status === 'cancelled'
+            ? t('status_cancelled')
+            : isCountered
+              ? t('deals_offer_bargain')
+              : (data._incoming ? t('deals_offer_new') : t('deals_offer_waiting'));
       const statusColor = isClosed ? ARCHIVE : isCountered ? INFO : WAITING;
       const amount = priceText(data.amount, data.currency || 'USD');
       const price = isCountered && data.counter_amount
         ? `${amount} → ${priceText(data.counter_amount, data.currency || 'USD')}`
         : amount;
+      const cardTime = isClosed
+        ? relTime(data.updated_at || data.created_at)
+        : formatBidRemaining(data, lang);
       return (
         <CompactDealCard
           testID="deals-driver-bid"
@@ -461,7 +469,7 @@ export default function DealsScreen({ navigation, route }) {
           price={price}
           statusLabel={statusLabel}
           statusColor={statusColor}
-          time={relTime(data.updated_at || data.created_at)}
+          time={cardTime}
           dimmed={isClosed}
           unread={!isClosed && isBidActionable(data, { asOwner: !!data._incoming }) ? 1 : 0}
           onPress={() => openBid(data)}
