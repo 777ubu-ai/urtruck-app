@@ -55,13 +55,17 @@ export default function TrackTruckScreen({ navigation, route }) {
     setRouteSummary(summary || null);
   }, []);
 
-  // 2026-08-19 (P1, независимый release review): capacityTons приходит из
-  // ChatScreen.openDealMap() (deal.trip_capacity_tons / cargo_weight_tons —
-  // уже существующие данные рейса/груза). Полные габариты тягача анкета не
-  // собирает — см. комментарий в TruckMap.web.js.
+  // 2026-08-19 (P1 re-review, независимый merge-block): capacityTons
+  // приходит из ChatScreen.openDealMap() (deal.trip_capacity_tons /
+  // cargo_weight_tons — уже существующие данные рейса/груза). Это
+  // payload_t (грузоподъёмность), НЕ weight_t (фактическая полная масса
+  // автомобиля) — Yandex Router API различает эти параметры, подставлять
+  // одно вместо другого нельзя (искажает весовые ограничения маршрута).
+  // Полные габариты тягача анкета не собирает — см. комментарий в
+  // TruckMap.web.js.
   const vehicle = React.useMemo(() => {
     const tons = Number(capacityTons);
-    return Number.isFinite(tons) && tons > 0 ? { weight_t: tons } : null;
+    return Number.isFinite(tons) && tons > 0 ? { payload_t: tons } : null;
   }, [capacityTons]);
 
   const agoMin = (() => {

@@ -56,6 +56,45 @@ def test_yandex_truck_params_include_real_vehicle_restrictions():
     assert params["waypoints"].startswith("43.2389,76.8897|")
 
 
+def test_payload_t_maps_to_yandex_payload_param_not_weight():
+    """Round-2 independent re-review on PR #239 (2026-08-19): weight_t and
+    payload_t are DIFFERENT quantities per Yandex Router API semantics —
+    weight = actual full vehicle mass, payload = mass of goods carried.
+    trip capacity / cargo weight is payload-shaped data, never a real full
+    vehicle mass, so it must reach Yandex as `payload`, never `weight`."""
+    body = routing.RoadRouteRequest(
+        points=[routing.RoutePoint(lat=43.2389, lng=76.8897), routing.RoutePoint(lat=55.7558, lng=37.6176)],
+        vehicle=routing.VehicleSpec(payload_t=18.5),
+    )
+    params = routing._yandex_params(body, "secret", "truck")
+    assert params["payload"] == 18.5
+    assert "weight" not in params
+
+
+def test_weight_t_and_payload_t_both_present_map_to_distinct_yandex_params():
+    body = routing.RoadRouteRequest(
+        points=[routing.RoutePoint(lat=43.2389, lng=76.8897), routing.RoutePoint(lat=55.7558, lng=37.6176)],
+        vehicle=routing.VehicleSpec(weight_t=23.0, payload_t=18.5),
+    )
+    params = routing._yandex_params(body, "secret", "truck")
+    assert params["weight"] == 23.0
+    assert params["payload"] == 18.5
+
+
+def test_ors_weight_restriction_ignores_payload_t_when_full_mass_unknown():
+    """Same round-2 requirement, applied to the OpenRouteService fallback:
+    ORS's restrictions.weight also means the vehicle's actual full mass, so
+    a payload-only VehicleSpec must not produce a weight restriction —
+    doing so would misrepresent the real weight limit a road/bridge
+    enforces."""
+    options = routing._ors_options(routing.VehicleSpec(payload_t=18.5))
+    restrictions = options.get("profile_params", {}).get("restrictions", {})
+    assert "weight" not in restrictions
+
+    options_with_weight = routing._ors_options(routing.VehicleSpec(weight_t=23.0, payload_t=18.5))
+    assert options_with_weight["profile_params"]["restrictions"]["weight"] == 23.0
+
+
 def test_almaty_moscow_uses_yandex_first_and_caches(monkeypatch):
     os.environ["YANDEX_ROUTER_API_KEY"] = "yandex-test-key"
     calls = []

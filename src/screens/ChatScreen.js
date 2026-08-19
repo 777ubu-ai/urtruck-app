@@ -610,9 +610,10 @@ export default function ChatScreen({ navigation, route }) {
           plate: prev?.plate || srv.plate,
           counterparty_phone: srv.counterparty_phone || prev?.counterparty_phone,
           counterparty_name: srv.counterparty_name || prev?.counterparty_name,
-          // 2026-08-19 (P1, независимый release review): вес груза/
+          // 2026-08-19 (P1 re-review, независимый merge-block): вес груза/
           // грузоподъёмность рейса — для TrackTruck → TruckMap.roadRoute()
-          // vehicle.weight_t (см. openDealMap ниже).
+          // vehicle.payload_t (НЕ weight_t — это грузоподъёмность, не
+          // фактическая полная масса автомобиля, см. openDealMap ниже).
           cargo_weight_tons: prev?.cargo_weight_tons ?? srv.cargo_weight_tons,
           trip_capacity_tons: prev?.trip_capacity_tons ?? srv.trip_capacity_tons,
         }));
@@ -796,11 +797,14 @@ export default function ChatScreen({ navigation, route }) {
       driverName: deal?.counterparty_name || resolvedPartner?.name,
       driverOnline: partnerOnline,
       viewerRole: role,
-      // 2026-08-19 (P1, независимый release review): грузоподъёмность
-      // рейса приоритетнее веса груза (это масса самого тягача+прицепа,
-      // которую видит дорожный контроль), вес груза — fallback, когда
-      // рейс ещё не привязан. Оба поля — уже существующие данные анкеты/
+      // 2026-08-19 (P1 re-review, независимый merge-block): грузоподъёмность
+      // рейса приоритетнее веса груза как более общая величина (известна и
+      // до появления конкретного груза), вес груза — fallback, когда рейс
+      // ещё не привязан. Оба поля — уже существующие данные анкеты/
       // публикации (capacity_tons/weight_tons), не новый сбор данных.
+      // ВАЖНО: это грузоподъёмность/масса ГРУЗА (payload), а НЕ масса
+      // самого тягача+прицепа — TrackTruckScreen передаёт это в
+      // TruckMap как vehicle.payload_t, не vehicle.weight_t (см. там).
       capacityTons: deal?.trip_capacity_tons ?? deal?.cargo_weight_tons ?? null,
     });
   };

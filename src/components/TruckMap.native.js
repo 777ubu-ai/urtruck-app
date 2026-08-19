@@ -42,9 +42,9 @@ const durationTextFromSeconds = (value) => {
 
 export default function TruckMap({
   lat, lng, title, routePoints = [], externalRoute = null, onRouteSummary,
-  // 2026-08-19 (P1, независимый release review): см. комментарий в
-  // TruckMap.web.js — partial vehicle.weight_t из уже собранной
-  // грузоподъёмности, полные габариты пока не собираются в анкете.
+  // 2026-08-19 (P1 re-review, независимый merge-block): см. комментарий в
+  // TruckMap.web.js — partial vehicle.payload_t (НЕ weight_t) из уже
+  // собранной грузоподъёмности, полные габариты пока не собираются в анкете.
   vehicle = null,
 }) {
   const live = asPoint([lat, lng]);

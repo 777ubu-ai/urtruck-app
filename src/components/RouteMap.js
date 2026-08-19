@@ -31,15 +31,19 @@ export default function RouteMap({ from, to, transit, dealId, dealStatus, driver
   const [locationLoading, setLocationLoading] = React.useState(false);
   const [routeSummary, setRouteSummary] = React.useState(null);
 
-  // 2026-08-19 (P1, независимый release review): грузоподъёмность рейса —
+  // 2026-08-19 (P1, независимый re-review PR #239): грузоподъёмность рейса —
   // единственные реальные данные о машине, которые уже собираются в анкете
   // (vehicle_capacity_kg) и доступны на этом экране. Полных габаритов
   // (высота/ширина/длина/осевая нагрузка) анкета не собирает — это
   // отдельная, Graphify-gated задача (изменение backend registration).
-  // Пока прокидываем то, что реально есть, вместо null.
+  // ВАЖНО: это payload_t (грузоподъёмность/масса перевозимого груза), а
+  // НЕ weight_t (фактическая полная масса тягача+прицепа+груза) — Yandex
+  // Router API различает эти параметры (weight vs payload). Мы нигде не
+  // собираем фактическую полную массу автомобиля, поэтому weight_t
+  // оставляем null — искажать весовые ограничения маршрута нельзя.
   const vehicle = React.useMemo(() => {
     const tons = Number(capacityTons);
-    return Number.isFinite(tons) && tons > 0 ? { weight_t: tons } : null;
+    return Number.isFinite(tons) && tons > 0 ? { payload_t: tons } : null;
   }, [capacityTons]);
 
   const trackingActive = Boolean(dealId && ['in_progress', 'at_border', 'delivered'].includes(dealStatus));

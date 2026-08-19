@@ -261,15 +261,17 @@ export default function TruckMap({
   liveTitle = 'Машина на маршруте',
   showBadge = true,
   onRouteSummary,
-  // 2026-08-19 (P1, independent release review): реальные габариты/вес не
-  // собираются нигде в анкете регистрации (только vehicle_type +
+  // 2026-08-19 (P1 re-review, независимый merge-block): реальные габариты
+  // не собираются нигде в анкете регистрации (только vehicle_type +
   // vehicle_capacity_kg), поэтому полный VehicleSpec backend'а
   // (height/width/length/axle_load) пока не заполним честно. Но
   // грузоподъёмность (capacityTons рейса / weightTons груза) УЖЕ
   // собирается и лежит рядом на тех же экранах — прокидываем её как
-  // partial vehicle.weight_t, чтобы Yandex Router API хотя бы учитывал
-  // вес конкретной машины/груза при построении маршрута, а не игнорировал
-  // ограничения по массе полностью.
+  // partial vehicle.payload_t (грузоподъёмность), чтобы Yandex Router API
+  // хотя бы учитывал вес перевозимого груза. Это НЕ vehicle.weight_t —
+  // тот параметр означает фактическую полную массу автомобиля, которую
+  // мы нигде не собираем; подставлять туда capacityTons исказило бы
+  // весовые ограничения маршрута (P1 re-review, было исправлено).
   vehicle = null,
 }) {
   const livePoint = asPoint([lat, lng]);
