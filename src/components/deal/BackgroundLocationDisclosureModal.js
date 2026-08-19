@@ -7,7 +7,12 @@ const COPY = {
     title: 'Геолокация во время рейса',
     body: 'UrTruck собирает данные о местоположении водителя во время активного рейса, в том числе в фоновом режиме и когда приложение закрыто или не используется, чтобы грузоотправитель мог видеть текущее положение машины и ход доставки.',
     note: 'Данные местоположения используются только во время активного рейса. Передача прекращается после завершения или отмены рейса.',
-    continue: 'Продолжить',
+    // 2026-08-19: Google Play prominent-disclosure guidance explicitly asks
+    // for explicit consent language ("Agree"-style), not ambiguous "Continue"/
+    // "Got it" — "Продолжить" read as too soft. "Разрешить" states plainly
+    // what the tap does (grants location access), matching what the very
+    // next system dialog will ask.
+    continue: 'Разрешить',
     notNow: 'Не сейчас',
     settingsTitle: 'Разрешите работу геолокации в фоне',
     settingsBody: 'Чтобы UrTruck продолжал передавать положение машины во время активного рейса, разрешите доступ к местоположению в настройках приложения.',
@@ -19,7 +24,7 @@ const COPY = {
     title: 'Location during a trip',
     body: 'UrTruck collects the driver’s location during an active trip, including in the background and when the app is closed or not in use, so the shipper can see the vehicle’s current position and delivery progress.',
     note: 'Location data is used only during an active trip. Sharing stops when the trip is completed or cancelled.',
-    continue: 'Continue',
+    continue: 'Allow',
     notNow: 'Not now',
     settingsTitle: 'Allow background location',
     settingsBody: 'To keep sharing the vehicle position during an active trip, allow location access in the app settings.',
@@ -31,7 +36,7 @@ const COPY = {
     title: '运输期间的位置权限',
     body: 'UrTruck 会在运输进行期间收集司机的位置数据，包括应用在后台运行、关闭或未使用时，以便货主查看车辆当前位置和运输进度。',
     note: '位置数据仅在运输进行期间使用。运输完成或取消后将停止共享位置。',
-    continue: '继续',
+    continue: '允许',
     notNow: '暂不',
     settingsTitle: '允许后台位置权限',
     settingsBody: '为了在运输期间持续共享车辆位置，请在应用设置中允许位置访问。',
@@ -43,7 +48,7 @@ const COPY = {
     title: 'Рейс кезіндегі геолокация',
     body: 'UrTruck белсенді рейс кезінде жүргізушінің орналасқан жері туралы деректерді, соның ішінде қолданба фонда, жабық немесе пайдаланылмай тұрған кезде де жинайды. Бұл жүк иесіне көліктің орнын және жеткізу барысын көруге мүмкіндік береді.',
     note: 'Геолокация тек белсенді рейс кезінде пайдаланылады. Рейс аяқталған немесе тоқтатылған кезде дерек беру тоқтайды.',
-    continue: 'Жалғастыру',
+    continue: 'Рұқсат беру',
     notNow: 'Қазір емес',
     settingsTitle: 'Фондық геолокацияға рұқсат беріңіз',
     settingsBody: 'Белсенді рейс кезінде көліктің орнын беруді жалғастыру үшін қолданба баптауларында геолокацияға рұқсат беріңіз.',
