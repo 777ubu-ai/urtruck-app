@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { Platform, Linking } from 'react-native';
 import { openLocationSettings } from '../../src/utils/locationSettings.js';
 
+// Keep this regression on the pure settings helper: importing the full
+// background-location service here would pull Expo runtime modules into the
+// plain-Node frontend suite and test infrastructure instead of the recovery rule.
 test('web settings recovery fails closed without calling native Linking.openSettings', async () => {
   const original = Platform.OS;
   try {
