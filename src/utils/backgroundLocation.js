@@ -1,7 +1,8 @@
-// backgroundLocation — фоновый GPS-трекинг водителя по активным сделкам.
-// ВАЖНО для Google Play: системные permission prompts НЕ должны появляться
-// из фонового hook'а. Их запускает только явный пользовательский flow после
-// prominent disclosure на экране сделки.
+// backgroundLocation — GPS-трекинг водителя по активным сделкам.
+// Android: пользователь явно запускает рейс, после чего координаты продолжают
+// передаваться через location foreground service с постоянным уведомлением.
+// ACCESS_BACKGROUND_LOCATION намеренно не используется и не запрашивается.
+// iOS сохраняет отдельный background-location flow.
 import { Linking, Platform } from 'react-native';
 import { storage } from './storage';
 import { t } from './i18n';
@@ -99,6 +100,24 @@ export async function getBackgroundLocationPermissionState() {
       };
     }
 
+    // Android active-trip tracking is a user-visible location foreground
+    // service. Foreground location permission is sufficient; the app does not
+    // declare or request ACCESS_BACKGROUND_LOCATION.
+    if (Platform.OS === 'android') {
+      return {
+        supported: true,
+        platform: 'android',
+        foreground: fg.status,
+        foregroundCanAskAgain: fg.canAskAgain !== false,
+        background: 'not_required_foreground_service',
+        backgroundCanAskAgain: false,
+        ok: fg.status === 'granted',
+        foregroundOnly: true,
+        foregroundService: true,
+      };
+    }
+
+    // iOS keeps the existing always/background grant for active-trip updates.
     const bg = await locationModule.getBackgroundPermissionsAsync();
     return {
       supported: true,
@@ -122,7 +141,8 @@ export async function getBackgroundLocationPermissionState() {
   }
 }
 
-// Step 1: foreground permission. Call only after the in-app disclosure.
+// Foreground permission is the only Android runtime location permission UrTruck
+// requests. Call only after the in-app disclosure and an explicit user tap.
 export async function requestForegroundLocationPermission() {
   const locationModule = await resolveLocationModule();
   if (!locationModule) return { ok: false, reason: 'unsupported' };
@@ -142,11 +162,18 @@ export async function requestForegroundLocationPermission() {
   }
 }
 
-// Step 2: background permission. On Android 11+ Expo may open the system app
-// settings screen; that is expected and must happen only after our educational
-// disclosure screen has explained why "Allow all the time" is needed.
+// Compatibility API. Android deliberately does not ask for background
+// permission; its active-trip location task runs as a foreground service.
+// iOS still needs the background grant for its background location mode.
 export async function requestBackgroundLocationPermission() {
   if (Platform.OS === 'web') return { ok: true, foregroundOnly: true };
+  if (Platform.OS === 'android') {
+    const current = await getBackgroundLocationPermissionState();
+    return current.ok
+      ? { ok: true, foregroundOnly: true, foregroundService: true, backgroundNotRequired: true }
+      : { ok: false, reason: 'foreground_required', permission: current };
+  }
+
   const locationModule = await resolveLocationModule();
   if (!locationModule) return { ok: false, reason: 'unsupported' };
   try {
@@ -179,12 +206,15 @@ export async function openLocationSettings() {
 }
 
 // Compatibility entry point used by start-trip actions.
-// Android native MUST go through the registered visible disclosure host.
-// This means an old/hidden screen can no longer pop a background permission
-// dialog without the Google Play prominent disclosure.
+// Android MUST go through the registered visible disclosure host and receives
+// only foreground location permission. iOS retains foreground + background.
 export async function ensureBackgroundLocationPermission() {
   const current = await getBackgroundLocationPermissionState();
-  if (current.ok) return { ok: true, foregroundOnly: !!current.foregroundOnly };
+  if (current.ok) return {
+    ok: true,
+    foregroundOnly: !!current.foregroundOnly,
+    foregroundService: !!current.foregroundService,
+  };
 
   if (Platform.OS === 'android') {
     return requestLocationPermissionThroughDisclosure({ source: 'start_trip' });
@@ -215,8 +245,8 @@ export async function getCurrentLocationPayload() {
 }
 
 // Background hook may call this after the deal becomes active. It MUST NOT
-// trigger a permission dialog by itself. If permission was revoked, stop and
-// return a state the UI can surface on next foreground resume.
+// trigger a permission dialog by itself. On Android it starts only the visible
+// foreground service and therefore needs foreground location permission only.
 export async function startBackgroundTracking() {
   if (Platform.OS === 'web') return { ok: false, reason: 'background_unavailable', foregroundOnly: true };
   const locationModule = await resolveLocationModule();
@@ -226,7 +256,7 @@ export async function startBackgroundTracking() {
   if (!permission.ok) {
     return {
       ok: false,
-      reason: permission.background === 'granted' ? 'foreground_unavailable' : 'background_unavailable',
+      reason: Platform.OS === 'android' ? 'foreground_unavailable' : 'background_unavailable',
       permission,
     };
   }
@@ -245,7 +275,7 @@ export async function startBackgroundTracking() {
         notificationBody: t('bg_location_body'),
       },
     });
-    return { ok: true };
+    return { ok: true, foregroundService: Platform.OS === 'android' };
   } catch (error) {
     return { ok: false, reason: String(error?.message || error || 'background_start_failed') };
   }
