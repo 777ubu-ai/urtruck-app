@@ -2,6 +2,7 @@
 import sqlite3
 import json
 import uuid
+import time
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -19,6 +20,8 @@ def init_db():
 
 
 _WAL_INITIALIZED = False
+_MARKET_EXPIRY_LAST_RUN = 0.0
+_MARKET_EXPIRY_INTERVAL_SECONDS = 60.0
 
 
 def _apply_pragmas(conn: sqlite3.Connection) -> None:
@@ -41,6 +44,50 @@ def _apply_pragmas(conn: sqlite3.Connection) -> None:
         pass
 
 
+def _maybe_expire_marketplace(conn: sqlite3.Connection) -> None:
+    """Run marketplace expiry opportunistically before API DB work.
+
+    A pure cron/scheduler implementation leaves a race window where an expired
+    offer can still be read or accepted. Running the cleanup at most once per
+    minute on the normal DB connection makes the *first* request after a
+    deadline repair state before that request reads it. If the marketplace
+    schema is not initialised yet (early startup/security-only tests), this is
+    a no-op.
+    """
+    global _MARKET_EXPIRY_LAST_RUN
+    now_monotonic = time.monotonic()
+    if now_monotonic - _MARKET_EXPIRY_LAST_RUN < _MARKET_EXPIRY_INTERVAL_SECONDS:
+        return
+    try:
+        has_bids = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='bids' LIMIT 1"
+        ).fetchone()
+        has_cargos = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='cargos' LIMIT 1"
+        ).fetchone()
+        has_trips = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='trips' LIMIT 1"
+        ).fetchone()
+        has_deals = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='deals' LIMIT 1"
+        ).fetchone()
+        if not (has_bids and has_cargos and has_trips and has_deals):
+            return
+
+        # Lazy import avoids a module cycle: services.bid_expiry uses get_conn
+        # only for its standalone/scheduler entry point, while this path calls
+        # its connection-local implementation directly.
+        from datetime import datetime
+        from services.bid_expiry import _expire_with_conn
+
+        _expire_with_conn(conn, datetime.utcnow())
+        _MARKET_EXPIRY_LAST_RUN = now_monotonic
+    except Exception as exc:
+        # Expiry is housekeeping; a failure must never take login/security/API
+        # down. Do not advance last-run so the next connection retries.
+        print(f"[market-expiry] opportunistic cleanup failed: {exc}", flush=True)
+
+
 @contextmanager
 def get_conn():
     # timeout=10s gives SQLite room to wait on a writer instead of immediately
@@ -49,6 +96,7 @@ def get_conn():
     conn = sqlite3.connect(config.DB_PATH, timeout=10.0)
     conn.row_factory = sqlite3.Row
     _apply_pragmas(conn)
+    _maybe_expire_marketplace(conn)
     try:
         yield conn
         conn.commit()
@@ -125,9 +173,8 @@ def log_verification(user_id: str, check_type: str, check_source: str,
                       result: str, details: dict = None, score_impact: int = 0):
     with get_conn() as c:
         c.execute(
-            "INSERT INTO verification_logs (id, user_id, check_type, check_source, result, details, score_impact) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (new_id(), user_id, check_type, check_source, result,
-             json.dumps(details) if details else None, score_impact)
+            "INSERT INTO verification_logs (id, user_id, check_type, check_source, result, details, score_impact) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (new_id(), user_id, check_type, check_source, result, details, score_impact)
         )
 
 
