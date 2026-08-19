@@ -4,11 +4,12 @@
 // ACCESS_BACKGROUND_LOCATION намеренно не используется и не запрашивается.
 // Web показывает тот же per-trip disclosure перед browser location permission.
 // iOS сохраняет отдельный background-location flow.
-import { Linking, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import { storage } from './storage';
 import { t } from './i18n';
 import { API_BASE } from '../config/env';
 import { requestLocationPermissionThroughDisclosure } from './locationPermissionCoordinator';
+export { openLocationSettings } from './locationSettings';
 
 export const BG_LOCATION_TASK = 'urtruck-deal-location';
 const BG_DEALS_KEY = 'ur_bg_deal_ids';
@@ -194,21 +195,6 @@ export async function requestBackgroundLocationPermission() {
     };
   } catch (error) {
     return { ok: false, reason: String(error?.message || error || 'bg_permission_failed') };
-  }
-}
-
-export async function openLocationSettings() {
-  if (Platform.OS === 'web') {
-    return { ok: false, reason: 'web_settings_manual' };
-  }
-  if (typeof Linking?.openSettings !== 'function') {
-    return { ok: false, reason: 'settings_unsupported' };
-  }
-  try {
-    await Linking.openSettings();
-    return { ok: true };
-  } catch (error) {
-    return { ok: false, reason: String(error?.message || error || 'settings_failed') };
   }
 }
 
