@@ -35,8 +35,11 @@ const INFO = '#3478D4';
 const ARCHIVE = '#7C8B82';
 const CANCELLED = '#A45A5A';
 
-const ACTIVE_STATUSES = new Set(['accepted', 'in_progress', 'at_border', 'awaiting_confirmation']);
-const ARCHIVE_DEAL_STATUSES = new Set(['completed', 'delivered', 'cancelled', 'rejected', 'expired']);
+// `delivered` is intentionally ACTIVE, not terminal. The driver has finished
+// delivery, but the shipper still must confirm receipt (`delivered -> completed`).
+// Only true terminal deal states belong in Archive.
+const ACTIVE_STATUSES = new Set(['accepted', 'in_progress', 'at_border', 'awaiting_confirmation', 'delivered']);
+const ARCHIVE_DEAL_STATUSES = new Set(['completed', 'cancelled', 'rejected', 'expired']);
 const OPEN_BID_STATUSES = new Set(['pending', 'countered']);
 const CLOSED_BID_STATUSES = new Set(['rejected', 'cancelled', 'expired']);
 
@@ -92,8 +95,10 @@ const dealStatus = (status, t) => {
   if (status === 'in_progress' || status === 'at_border') {
     return { label: t('status_in_progress'), color: ACCENT };
   }
-  if (status === 'awaiting_confirmation') return { label: t('status_delivered'), color: INFO };
-  if (status === 'completed' || status === 'delivered') {
+  if (status === 'awaiting_confirmation' || status === 'delivered') {
+    return { label: t('status_delivered'), color: INFO };
+  }
+  if (status === 'completed') {
     return { label: t('status_delivered'), color: ARCHIVE };
   }
   if (status === 'cancelled' || status === 'rejected') {
@@ -242,7 +247,7 @@ export default function DealsScreen({ navigation, route }) {
       return `${endpoint(item.from_country, item.from_city)} → ${endpoint(item.to_country, item.to_city)}`;
     }
     if (kind === 'bid') {
-      return `${endpoint(item.from_country, item.cargo_from || item.trip_from)} → ${endpoint(item.to_country, item.cargo_to || item.trip_to)}`;
+      return `${endpoint(item.from_country, item.cargo_from || item.trip_from)} → ${endpoint(item.to_country, item.trip_to || item.cargo_to)}`;
     }
     return `${endpoint(item.from_country, item.from_city)} → ${endpoint(item.to_country, item.to_city)}`;
   }, [endpoint, role]);
@@ -327,10 +332,12 @@ export default function DealsScreen({ navigation, route }) {
 
   const activeAttentionCount = useMemo(() => (
     activeDeals.reduce(
-      (sum, item) => sum + (item.unread_count || 0) + (item.tracking_action_required ? 1 : 0),
+      (sum, item) => sum + (item.unread_count || 0) + ((
+        item.tracking_action_required || (role === 'client' && item.status === 'delivered')
+      ) ? 1 : 0),
       0,
     )
-  ), [activeDeals]);
+  ), [activeDeals, role]);
 
   const baseItems = useMemo(() => {
     if (dealTab === 'offers') {
@@ -466,11 +473,17 @@ export default function DealsScreen({ navigation, route }) {
     const partnerName = role === 'client'
       ? (data.driver_name || t('role_driver'))
       : (data.shipper_name || t('role_client'));
-    const actionRequired = !!data.tracking_action_required;
-    const statusLabel = actionRequired ? t('tracking_action_required') : status.label;
-    const statusColor = actionRequired ? INFO : status.color;
+    const needsReceiptConfirmation = role === 'client' && data.status === 'delivered';
+    const trackingActionRequired = !!data.tracking_action_required;
+    const statusLabel = needsReceiptConfirmation
+      ? t('confirm_delivery')
+      : trackingActionRequired
+        ? t('tracking_action_required')
+        : status.label;
+    const statusColor = (needsReceiptConfirmation || trackingActionRequired) ? INFO : status.color;
     const meta = [partnerName, data.last_message].filter(Boolean).join(' · ');
-    const unread = (data.unread_count || 0) + (actionRequired ? 1 : 0);
+    const attentionRequired = needsReceiptConfirmation || trackingActionRequired;
+    const unread = (data.unread_count || 0) + (attentionRequired ? 1 : 0);
 
     return (
       <CompactDealCard
