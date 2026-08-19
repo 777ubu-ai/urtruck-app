@@ -43,7 +43,18 @@ class VehicleSpec(BaseModel):
     height_m: Optional[float] = Field(default=None, gt=0, le=6)
     width_m: Optional[float] = Field(default=None, gt=0, le=5)
     length_m: Optional[float] = Field(default=None, gt=0, le=40)
+    # 2026-08-19 (P1 re-review, независимый merge-block на PR #239): weight_t
+    # и payload_t — РАЗНЫЕ величины по семантике Yandex Router API, путать
+    # их нельзя. weight_t — фактическая полная масса автомобиля (тягач +
+    # прицеп + груз), уходит в параметр Yandex `weight`. payload_t —
+    # грузоподъёмность/масса перевозимого груза, уходит в отдельный
+    # параметр Yandex `payload`. У нас нигде не собирается фактическая
+    # полная масса тягача — только грузоподъёмность рейса
+    # (trips.capacity_tons) и вес конкретного груза (cargos.weight_tons).
+    # Раньше это ошибочно подставлялось в weight_t, что искажает весовые
+    # ограничения маршрута (заниженная оценка полной массы автомобиля).
     weight_t: Optional[float] = Field(default=None, gt=0, le=100)
+    payload_t: Optional[float] = Field(default=None, gt=0, le=100)
     axle_load_t: Optional[float] = Field(default=None, gt=0, le=30)
     has_trailer: Optional[bool] = None
 
@@ -60,7 +71,7 @@ def _cache_key(body: RoadRouteRequest) -> str:
         return point_key
     return (
         f"{point_key}|h={vehicle.height_m}|w={vehicle.width_m}|l={vehicle.length_m}"
-        f"|wt={vehicle.weight_t}|ax={vehicle.axle_load_t}|tr={vehicle.has_trailer}"
+        f"|wt={vehicle.weight_t}|pl={vehicle.payload_t}|ax={vehicle.axle_load_t}|tr={vehicle.has_trailer}"
     )
 
 
@@ -122,8 +133,13 @@ def _yandex_params(body: RoadRouteRequest, api_key: str, mode: str = "truck") ->
     }
     vehicle = body.vehicle
     if mode == "truck" and vehicle:
+        # weight = фактическая полная масса автомобиля, payload = масса
+        # только перевозимого груза — Yandex различает эти параметры,
+        # подставлять одно вместо другого нельзя (см. VehicleSpec).
         if vehicle.weight_t is not None:
             params["weight"] = vehicle.weight_t
+        if vehicle.payload_t is not None:
+            params["payload"] = vehicle.payload_t
         if vehicle.axle_load_t is not None:
             params["axle_weight"] = vehicle.axle_load_t
         if vehicle.height_m is not None:
@@ -217,6 +233,13 @@ def _ors_options(vehicle: Optional[VehicleSpec]) -> dict:
         restrictions["width"] = vehicle.width_m
     if vehicle.length_m is not None:
         restrictions["length"] = vehicle.length_m
+    # 2026-08-19 (P1 re-review): ORS's "weight" restriction means the
+    # vehicle's actual full weight, same as Yandex's `weight` param —
+    # deliberately reads ONLY vehicle.weight_t, never payload_t/cargo
+    # weight. We don't collect a truck's actual full mass anywhere, so
+    # this restriction stays unset until that data exists; do not derive
+    # it from payload capacity or cargo weight (would misrepresent the
+    # real weight limit a bridge/road enforces).
     if vehicle.weight_t is not None:
         restrictions["weight"] = vehicle.weight_t
     if vehicle.axle_load_t is not None:

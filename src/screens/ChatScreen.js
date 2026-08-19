@@ -610,6 +610,12 @@ export default function ChatScreen({ navigation, route }) {
           plate: prev?.plate || srv.plate,
           counterparty_phone: srv.counterparty_phone || prev?.counterparty_phone,
           counterparty_name: srv.counterparty_name || prev?.counterparty_name,
+          // 2026-08-19 (P1 re-review, независимый merge-block): вес груза/
+          // грузоподъёмность рейса — для TrackTruck → TruckMap.roadRoute()
+          // vehicle.payload_t (НЕ weight_t — это грузоподъёмность, не
+          // фактическая полная масса автомобиля, см. openDealMap ниже).
+          cargo_weight_tons: prev?.cargo_weight_tons ?? srv.cargo_weight_tons,
+          trip_capacity_tons: prev?.trip_capacity_tons ?? srv.trip_capacity_tons,
         }));
       })
       .catch(() => {});
@@ -791,6 +797,19 @@ export default function ChatScreen({ navigation, route }) {
       driverName: deal?.counterparty_name || resolvedPartner?.name,
       driverOnline: partnerOnline,
       viewerRole: role,
+      // 2026-08-19 (2-й независимый re-review, MERGE HOLD): раньше здесь был
+      // fallback на deal.cargo_weight_tons, когда trip_capacity_tons не
+      // известен. Review справедливо указал: по семантике Yandex Router
+      // API `payload` = максимальная грузоподъёмность автомобиля, а НЕ
+      // фактическая масса текущего груза — cargo_weight_tons измеряет
+      // именно второе. Использовать его как payload было бы новой
+      // семантической ошибкой того же рода, что уже правили один раз.
+      // Поэтому источник теперь строго один: trip_capacity_tons
+      // (грузоподъёмность конкретного тягача рейса) — если сделка ещё не
+      // привязана к рейсу, capacityTons остаётся null и vehicle.payload_t
+      // в TrackTruckScreen/RouteMap просто не выставляется (честное
+      // отсутствие данных лучше правдоподобно неверных).
+      capacityTons: deal?.trip_capacity_tons ?? null,
     });
   };
 

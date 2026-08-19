@@ -2629,24 +2629,33 @@ def get_deal(deal_id: str, user=Depends(require_level(1))):
         if uid not in (d["shipper_id"], d["driver_id"]):
             raise HTTPException(status_code=403)
         # Cargo enrichment — cargo_desc + currency for the "Ставка" line.
+        # 2026-08-19 (P1, независимый release review): + вес груза
+        # (weight_tons) — единственная реальная величина массы, которую
+        # можно отдать в TruckMap.roadRoute() как vehicle.weight_t, пока
+        # анкета регистрации не собирает высоту/ширину/длину/осевую
+        # нагрузку тягача (Graphify-gated отдельная задача).
         if d.get("cargo_id"):
             cr = c.execute(
-                "SELECT cargo_desc, currency, from_country, to_country FROM cargos WHERE id = ?", (d["cargo_id"],)
+                "SELECT cargo_desc, currency, from_country, to_country, weight_tons FROM cargos WHERE id = ?", (d["cargo_id"],)
             ).fetchone()
             if cr:
                 d.setdefault("cargo_desc", cr["cargo_desc"])
                 d.setdefault("currency", cr["currency"])
                 d.setdefault("from_country", cr["from_country"])
                 d.setdefault("to_country", cr["to_country"])
+                d.setdefault("cargo_weight_tons", cr["weight_tons"])
         # Trip enrichment — plate (госномер тягача) from drivers_registration
         # + from_country/to_country (нужны фронту для домашний/международный
         # рейс, чтобы решить какая кнопка следующего шага — «На границе» или
         # «Груз доставлен» напрямую, см. ChatScreen.js).
+        # + capacity_tons (грузоподъёмность рейса) — тот же P1 фикс, что и
+        # cargo_weight_tons выше.
         if d.get("trip_id"):
-            tr = c.execute("SELECT driver_id, from_country, to_country FROM trips WHERE id = ?", (d["trip_id"],)).fetchone()
+            tr = c.execute("SELECT driver_id, from_country, to_country, capacity_tons FROM trips WHERE id = ?", (d["trip_id"],)).fetchone()
             if tr:
                 d.setdefault("from_country", tr["from_country"])
                 d.setdefault("to_country", tr["to_country"])
+                d.setdefault("trip_capacity_tons", tr["capacity_tons"])
                 if tr["driver_id"]:
                     vp = c.execute("SELECT vehicle_plate FROM drivers_registration WHERE id = ?", (tr["driver_id"],)).fetchone()
                     if vp and vp["vehicle_plate"]:

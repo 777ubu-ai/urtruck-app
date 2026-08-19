@@ -261,6 +261,18 @@ export default function TruckMap({
   liveTitle = 'Машина на маршруте',
   showBadge = true,
   onRouteSummary,
+  // 2026-08-19 (P1 re-review, независимый merge-block): реальные габариты
+  // не собираются нигде в анкете регистрации (только vehicle_type +
+  // vehicle_capacity_kg), поэтому полный VehicleSpec backend'а
+  // (height/width/length/axle_load) пока не заполним честно. Но
+  // грузоподъёмность (capacityTons рейса / weightTons груза) УЖЕ
+  // собирается и лежит рядом на тех же экранах — прокидываем её как
+  // partial vehicle.payload_t (грузоподъёмность), чтобы Yandex Router API
+  // хотя бы учитывал вес перевозимого груза. Это НЕ vehicle.weight_t —
+  // тот параметр означает фактическую полную массу автомобиля, которую
+  // мы нигде не собираем; подставлять туда capacityTons исказило бы
+  // весовые ограничения маршрута (P1 re-review, было исправлено).
+  vehicle = null,
 }) {
   const livePoint = asPoint([lat, lng]);
   const plannedPoints = React.useMemo(() => (routePoints || []).map(asPoint).filter(Boolean), [routePoints]);
@@ -272,6 +284,7 @@ export default function TruckMap({
     [pointKey(livePoint), JSON.stringify(plannedPoints)],
   );
   const effectiveKey = routeKey(effectivePoints);
+  const vehicleKey = vehicle ? JSON.stringify(vehicle) : '';
   const [serverRoute, setServerRoute] = React.useState(null);
   const [serverLoading, setServerLoading] = React.useState(false);
 
@@ -283,7 +296,7 @@ export default function TruckMap({
       return () => { cancelled = true; };
     }
     setServerLoading(true);
-    routingAPI.roadRoute(effectivePoints).then((result) => {
+    routingAPI.roadRoute(effectivePoints, vehicle).then((result) => {
       if (cancelled) return;
       setServerLoading(false);
       if (result?.ok && Array.isArray(result.geometry) && result.geometry.length >= 2) {
@@ -293,7 +306,7 @@ export default function TruckMap({
       }
     });
     return () => { cancelled = true; };
-  }, [effectiveKey, externalRoute]);
+  }, [effectiveKey, externalRoute, vehicleKey]);
 
   const resolvedRoute = externalRoute || serverRoute;
 

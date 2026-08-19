@@ -9,7 +9,7 @@ const routerSrc = fs.readFileSync('backend/api/routing.py', 'utf8');
 const routingClient = fs.readFileSync('src/utils/routingAPI.js', 'utf8');
 
 test('Yandex web map renders trusted server road geometry and keeps JS MultiRoute as compatibility fallback', () => {
-  assert.match(mapSrc, /routingAPI\.roadRoute\(effectivePoints\)/);
+  assert.match(mapSrc, /routingAPI\.roadRoute\(effectivePoints, vehicle\)/);
   assert.match(mapSrc, /new api\.Polyline\(geometry/);
   assert.match(mapSrc, /strokeStyle: 'solid'/);
   assert.match(mapSrc, /api\.multiRouter\.MultiRoute/);
