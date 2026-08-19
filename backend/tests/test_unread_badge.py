@@ -21,11 +21,29 @@ dbm.init_db()
 registration_dal.init_registration_schema()
 
 from database.db import get_conn
+import api.chat as chat_module
 from api.chat import (
     get_or_create_deal_room, send_message, get_messages,
     unread_count, SendMessageIn,
 )
 from services import push_sender
+
+
+@pytest.fixture(autouse=True)
+def _isolate_chat_state_from_async_push(monkeypatch):
+    """Не даём send_message() запускать daemon push-потоки в этих unit-тестах.
+
+    api.push.send_to_user намеренно отправляет push в фоне. Без этой изоляции
+    поток из предыдущего теста может дожить до следующего кейса, попасть в его
+    временный mock push_sender._send_native и перезаписать captured badge.
+    Именно эта гонка давала 5 вместо 1 после test_inv5 (пять сообщений), хотя
+    unread/notification данные нового пользователя были корректны.
+
+    Здесь проверяется арифметика unread/badge, а сам push transport покрывается
+    отдельными push-тестами, поэтому фоновые отправки являются только шумом.
+    """
+    monkeypatch.setattr(chat_module, "send_to_user", lambda *args, **kwargs: 0)
+    yield
 
 
 def _u(uid):
@@ -49,7 +67,6 @@ def _ids():
     d = "drv_" + uuid.uuid4().hex[:6]
     _mk_users(o, d)
     return o, d
-
 
 
 def _mk_accepted_deal(cargo, owner, driver, room):

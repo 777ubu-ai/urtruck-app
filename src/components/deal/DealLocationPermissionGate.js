@@ -1,9 +1,7 @@
 import React from 'react';
-import { AppState, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import Feather from '@expo/vector-icons/Feather';
+import { AppState, Platform, StyleSheet, View } from 'react-native';
 
 import BackgroundLocationDisclosureModal from './BackgroundLocationDisclosureModal';
-import { marketAPI } from '../../utils/marketAPI';
 import {
   getBackgroundLocationPermissionState,
   openLocationSettings,
@@ -13,21 +11,14 @@ import { registerLocationPermissionRequestHandler } from '../../utils/locationPe
 import { useI18n } from '../../utils/useI18n';
 import { useAuth } from '../../utils/AuthContext';
 
-const COPY = {
-  RU: { label: 'Геолокация для рейса', allow: 'Разрешить', granted: 'Геолокация разрешена' },
-  EN: { label: 'Trip location', allow: 'Allow', granted: 'Location allowed' },
-  ZH: { label: '运输位置权限', allow: '允许', granted: '位置权限已允许' },
-  KK: { label: 'Рейс геолокациясы', allow: 'Рұқсат беру', granted: 'Геолокацияға рұқсат берілді' },
-};
-
-export default function DealLocationPermissionGate({ dealId, role, initialStatus, children }) {
+// This component is intentionally an invisible permission host.
+// The only normal Android entry point is the driver's explicit "Start trip"
+// action in DealWorkspaceScreenV2. There is no proactive permission banner.
+export default function DealLocationPermissionGate({ role, children }) {
   const { lang } = useI18n();
   const { session } = useAuth();
-  const ui = COPY[lang] || COPY.RU;
   const effectiveRole = role || session?.user?.role || null;
   const isDriver = effectiveRole === 'driver';
-  const [dealStatus, setDealStatus] = React.useState(initialStatus || null);
-  const [permission, setPermission] = React.useState(null);
   const [modalVisible, setModalVisible] = React.useState(false);
   const [modalMode, setModalMode] = React.useState('disclosure');
   const [busy, setBusy] = React.useState(false);
@@ -42,40 +33,23 @@ export default function DealLocationPermissionGate({ dealId, role, initialStatus
 
   const refreshPermission = React.useCallback(async () => {
     if (Platform.OS !== 'android') return null;
-    const state = await getBackgroundLocationPermissionState();
-    if (mounted.current) setPermission(state);
-    return state;
+    return getBackgroundLocationPermissionState();
   }, []);
 
   React.useEffect(() => {
     mounted.current = true;
-    if (Platform.OS === 'android' && isDriver) refreshPermission();
     return () => {
       mounted.current = false;
       resolvePending({ ok: false, reason: 'permission_host_unmounted' });
     };
-  }, [isDriver, refreshPermission, resolvePending]);
-
-  React.useEffect(() => {
-    if (!dealId || !isDriver) return undefined;
-    let alive = true;
-    const refreshDeal = async () => {
-      try {
-        const result = await marketAPI.getDeal(dealId);
-        if (alive && result?.status) setDealStatus(result.status);
-      } catch { /* keep last status */ }
-    };
-    refreshDeal();
-    const timer = setInterval(refreshDeal, 15000);
-    return () => { alive = false; clearInterval(timer); };
-  }, [dealId, isDriver]);
+  }, [resolvePending]);
 
   const beginDisclosure = React.useCallback(async () => {
     if (Platform.OS !== 'android') return { ok: false, reason: 'android_only' };
     const current = await refreshPermission();
-    if (current?.ok) return { ok: true };
+    if (current?.ok) return { ok: true, foregroundService: true };
 
-    // Deduplicate simultaneous taps (e.g. banner + Start trip).
+    // Deduplicate repeated Start-trip taps while the disclosure is already open.
     if (pendingResolve.current) return { ok: false, reason: 'permission_flow_busy' };
 
     return new Promise((resolve) => {
@@ -91,6 +65,7 @@ export default function DealLocationPermissionGate({ dealId, role, initialStatus
   }, [beginDisclosure, isDriver]);
 
   const completeIfGranted = React.useCallback(async () => {
+    if (!pendingResolve.current) return false;
     setBusy(true);
     const state = await refreshPermission();
     setBusy(false);
@@ -118,8 +93,8 @@ export default function DealLocationPermissionGate({ dealId, role, initialStatus
       return;
     }
 
-    // Android active-trip tracking uses a user-visible location foreground
-    // service. It intentionally does not request ACCESS_BACKGROUND_LOCATION.
+    // Android active-trip tracking uses a location foreground service.
+    // ACCESS_BACKGROUND_LOCATION / "Allow all the time" is intentionally absent.
     const state = await refreshPermission();
     setModalVisible(false);
     setModalMode('disclosure');
@@ -150,33 +125,9 @@ export default function DealLocationPermissionGate({ dealId, role, initialStatus
     return () => sub?.remove?.();
   }, [completeIfGranted]);
 
-  const showBar = Platform.OS === 'android' && isDriver && dealStatus === 'accepted';
-  const granted = permission?.ok === true;
-
   return (
     <View style={s.root}>
       <View style={s.content}>{children}</View>
-
-      {showBar ? (
-        <View style={s.bar} testID="deal-background-location-bar">
-          <View style={s.barIcon}><Feather name={granted ? 'check' : 'map-pin'} size={18} color="#168759" /></View>
-          <View style={s.barTextWrap}>
-            <Text style={s.barLabel}>{granted ? ui.granted : ui.label}</Text>
-          </View>
-          {!granted ? (
-            <TouchableOpacity
-              style={s.allowButton}
-              onPress={() => { beginDisclosure(); }}
-              testID="deal-background-location-allow"
-              accessibilityRole="button"
-              accessibilityLabel={ui.allow}
-            >
-              <Text style={s.allowText}>{ui.allow}</Text>
-            </TouchableOpacity>
-          ) : null}
-        </View>
-      ) : null}
-
       <BackgroundLocationDisclosureModal
         visible={modalVisible}
         lang={lang}
@@ -194,20 +145,4 @@ export default function DealLocationPermissionGate({ dealId, role, initialStatus
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#F7F9F8' },
   content: { flex: 1, minHeight: 0 },
-  bar: {
-    minHeight: 64,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: '#FFFFFF',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#DDE5E0',
-  },
-  barIcon: { width: 38, height: 38, borderRadius: 13, backgroundColor: '#E9F6EF', alignItems: 'center', justifyContent: 'center' },
-  barTextWrap: { flex: 1, minWidth: 0 },
-  barLabel: { fontSize: 13.5, fontWeight: '850', color: '#203029' },
-  allowButton: { minHeight: 40, paddingHorizontal: 15, borderRadius: 13, backgroundColor: '#168759', alignItems: 'center', justifyContent: 'center' },
-  allowText: { color: '#FFFFFF', fontSize: 13, fontWeight: '900' },
 });
