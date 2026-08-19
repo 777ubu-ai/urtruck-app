@@ -14,22 +14,24 @@ const app = JSON.parse(read('app.json')).expo;
 
 test('trip disclosure explains Android foreground-service tracking without all-time permission', () => {
   assert.match(disclosure, /Геолокация во время рейса/);
-  assert.match(disclosure, /системный сервис с постоянным уведомлением/);
+  assert.match(disclosure, /foreground-service активного рейса/);
   assert.match(disclosure, /Передача геолокации прекращается после завершения или отмены рейса/);
+  assert.match(disclosure, /Разрешить и начать рейс/);
   assert.doesNotMatch(disclosure, /когда приложение закрыто или не используется/);
   assert.match(disclosure, /не просит доступ «Разрешить всегда»/);
   assert.match(disclosure, /testID="background-location-disclosure"/);
   assert.match(disclosure, /testID="background-location-disclosure-continue"/);
 });
 
-test('accepted Android driver gets contextual location action, shipper does not', () => {
-  assert.match(gate, /Platform\.OS === 'android' && isDriver && dealStatus === 'accepted'/);
-  assert.match(gate, /testID="deal-background-location-bar"/);
-  assert.match(gate, /testID="deal-background-location-allow"/);
+test('accepted Android driver has no proactive location permission control', () => {
+  assert.doesNotMatch(gate, /deal-background-location-bar/);
+  assert.doesNotMatch(gate, /deal-background-location-allow/);
+  assert.doesNotMatch(gate, /dealStatus === 'accepted'/);
   assert.match(gate, /effectiveRole === 'driver'/);
+  assert.match(gate, /registerLocationPermissionRequestHandler\(beginDisclosure\)/);
 });
 
-test('Android permission sequence is disclosure then foreground only', () => {
+test('Android permission sequence is Start trip disclosure then foreground only', () => {
   const disclosureIndex = gate.indexOf("setModalMode('disclosure')");
   const foregroundIndex = gate.indexOf('requestForegroundLocationPermission()');
   assert.ok(disclosureIndex >= 0 && foregroundIndex >= 0);
@@ -46,7 +48,7 @@ test('start trip cannot enter in_progress before permission succeeds', () => {
   assert.ok(permissionIndex >= 0 && statusIndex >= 0);
   assert.ok(permissionIndex < statusIndex);
   assert.match(chat, /<DealLocationPermissionGate/);
-  assert.match(tracker, /requestLocationPermissionThroughDisclosure/);
+  assert.match(tracker, /requestLocationPermissionThroughDisclosure\(\{ source: 'start_trip' \}\)/);
 });
 
 test('background broadcaster never opens runtime permission prompts', () => {
