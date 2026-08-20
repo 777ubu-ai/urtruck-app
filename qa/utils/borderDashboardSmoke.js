@@ -10,6 +10,7 @@ const cgrClient = fs.readFileSync('backend/cgr/client.py', 'utf8');
 const scheduler = fs.readFileSync('backend/scheduler/cgr_jobs.py', 'utf8');
 const apiInit = fs.readFileSync('backend/api/__init__.py', 'utf8');
 const nav = fs.readFileSync('src/components/ui/v1/BottomNav.js', 'utf8');
+const appNavigator = fs.readFileSync('src/navigation/AppNavigator.js', 'utf8');
 const i18n = fs.readFileSync('src/utils/i18n.js', 'utf8');
 
 assert.ok(wrapper.includes("./QueueScreenLazy"), 'Border route must use lazy screen');
@@ -56,9 +57,12 @@ assert.ok(!scheduler.includes('id="cgr_scoreboard"'), 'Periodic all-checkpoint s
 assert.ok(!scheduler.includes('scoreboard_service.fetch_and_store()'), 'Bootstrap must not fetch live data for every checkpoint');
 assert.ok(scheduler.includes('checkpoint_catalog_service.seed_full_catalog()'), 'Backend must seed the complete lightweight paginated checkpoint catalogue once');
 
-assert.ok(nav.includes("t('tab_border')"), 'Bottom navigation must label Queue route as Border');
+// Border remains available as a stack tool, but Task 2 intentionally removes Queue/Border
+// from the four-item bottom navigation for both roles.
+assert.ok(!nav.includes('Queue: {'), 'Bottom navigation must not expose Queue/Border as a fifth tab');
+assert.ok(appNavigator.includes('<Stack.Screen name="Queue" component={QueueScreen}'), 'Border must remain reachable as a stack route');
 for (const marker of ["tab_border: 'Граница'", "tab_border: 'Шекара'", "tab_border: '边境'", "tab_border: 'Border'"]) {
   assert.ok(i18n.includes(marker), `Missing i18n marker: ${marker}`);
 }
 
-console.log('border dashboard smoke OK: full paginated CGR catalogue + tappable carousel + tap-to-load live data + 5m cache');
+console.log('border dashboard smoke OK: full paginated CGR catalogue + stack-only Border tool + tappable carousel + tap-to-load live data + 5m cache');
