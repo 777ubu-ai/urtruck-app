@@ -84,6 +84,7 @@ test('bottom sheet is vertical and supports collapsed expanded full states', () 
   assert.match(workspace, /'collapsed'/);
   assert.match(workspace, /'expanded'/);
   assert.match(workspace, /'full'/);
+  assert.match(workspace, /useState\('full'\)/);
   assert.match(workspace, /PanResponder\.create/);
   assert.match(workspace, /gesture\.dy/);
   assert.match(workspace, /keyboardWillShow|keyboardDidShow/);
@@ -101,8 +102,8 @@ test('chat has exactly two permanent sheet tabs: messages and statuses', () => {
 test('composer grows then scrolls, switches mic to send, and uses WhatsApp-like attachment menu', () => {
   assert.match(workspace, /multiline/);
   assert.match(workspace, /onContentSizeChange/);
-  assert.match(workspace, /Math\.min\(112/);
-  assert.match(workspace, /scrollEnabled=\{inputHeight >= 112\}/);
+  assert.match(workspace, /Math\.min\(84/);
+  assert.match(workspace, /scrollEnabled=\{inputHeight >= 84\}/);
   assert.match(workspace, /testID="deal-chat-send"/);
   assert.match(workspace, /testID="deal-chat-voice"/);
   assert.match(workspace, /testID="deal-chat-camera"/);
@@ -153,6 +154,9 @@ test('expanded map mode keeps a compact chat dock over the map', () => {
   assert.match(workspace, /const sheetBodyVisible = sheetState !== 'collapsed' \|\| mapExpanded/);
   assert.match(workspace, /mapExpanded \? 'chevron-down' : 'maximize-2'/);
   assert.match(workspace, /mapExpanded \? collapseMapToChat\(\)/);
+  assert.match(workspace, /const chatFullscreen = sheetTab === 'chat' && !mapExpanded && sheetState === 'full'/);
+  assert.match(workspace, /setSheet\('collapsed'\)/);
+  assert.match(workspace, /setSheet\('full'\)/);
 });
 
 test('statuses render a detailed vertical timeline instead of compact system chips', () => {

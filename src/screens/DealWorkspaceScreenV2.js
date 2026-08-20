@@ -199,14 +199,14 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [messages, setMessages] = React.useState([]);
   const [unreadCount, setUnreadCount] = React.useState(0);
   const [input, setInput] = React.useState('');
-  const [inputHeight, setInputHeight] = React.useState(44);
+  const [inputHeight, setInputHeight] = React.useState(38);
   const [timeline, setTimeline] = React.useState([]);
   const [location, setLocation] = React.useState(null);
   const [locationLoading, setLocationLoading] = React.useState(false);
   const [routeSummary, setRouteSummary] = React.useState(null);
   const [statusLoading, setStatusLoading] = React.useState(false);
   const [trackingLoading, setTrackingLoading] = React.useState(false);
-  const [sheetState, setSheetState] = React.useState('collapsed');
+  const [sheetState, setSheetState] = React.useState('full');
   const [sheetTab, setSheetTab] = React.useState('chat');
   const [mapExpanded, setMapExpanded] = React.useState(false);
   const [attachOpen, setAttachOpen] = React.useState(false);
@@ -228,13 +228,13 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const isShipper = !isDriver;
   const language = getLanguage();
 
-  const normalCollapsedHeight = 132 + Math.max(insets.bottom, 6);
+  const normalCollapsedHeight = 68 + Math.max(insets.bottom, 6);
   const compactCollapsedHeight = 76 + Math.max(insets.bottom, 6);
   const mapChatHeight = Math.min(330 + Math.max(insets.bottom, 6), Math.max(260, Math.round(window.height * 0.42)));
   const collapsedHeight = mapExpanded ? mapChatHeight : normalCollapsedHeight;
   const fullHeight = Math.max(collapsedHeight + 180, window.height - Math.max(insets.top, 10) - 112);
   const expandedHeight = Math.min(fullHeight - 8, Math.max(380, Math.round(window.height * 0.72)));
-  const sheetAnim = React.useRef(new Animated.Value(collapsedHeight)).current;
+  const sheetAnim = React.useRef(new Animated.Value(fullHeight)).current;
   const dragStart = React.useRef(collapsedHeight);
 
   const heightForState = React.useCallback((state) => {
@@ -245,7 +245,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
   const setSheet = React.useCallback((next) => {
     setSheetState(next);
-    if (next !== 'collapsed' && !mapExpanded) setMapExpanded(false);
+    if (next !== 'collapsed') setMapExpanded(false);
     Animated.spring(sheetAnim, {
       toValue: heightForState(next), damping: 24, stiffness: 220, mass: 0.9, useNativeDriver: false,
     }).start();
@@ -290,11 +290,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
   React.useEffect(() => {
     const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setSheet('full'));
-    const hide = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => {
-      if (sheetState === 'full') setSheet('expanded');
-    });
+    const hide = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => {});
     return () => { show.remove(); hide.remove(); };
-  }, [setSheet, sheetState]);
+  }, [setSheet]);
 
   React.useEffect(() => {
     if (!recording) { setRecordSecs(0); return undefined; }
@@ -677,6 +675,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
   const mapWorking = MAP_WORK_STATUSES.includes(visibleDealStatus);
   const showLiveMap = !TERMINAL_STATUSES.includes(visibleDealStatus) && visibleDealStatus !== 'delivered' && visibleDealStatus !== 'received' && mapWorking;
+  const chatFullscreen = sheetTab === 'chat' && !mapExpanded && sheetState === 'full';
   const inactiveTitle = visibleDealStatus === 'delivered'
     ? ui.tripDelivered
     : visibleDealStatus === 'received'
@@ -723,7 +722,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const collapseMapToChat = () => {
     setMapExpanded(false);
     setSheetTab('chat');
-    setSheet('expanded');
+    setSheet('full');
   };
 
   const showComingSoon = () => toast(ui.comingSoon, 'info', 1700);
@@ -832,16 +831,16 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
             </TouchableOpacity>
           ) : null}
 
-          {showLiveMap && updatedText ? (
+          {showLiveMap && mapExpanded && updatedText ? (
             <View style={[s.updatedPill, { backgroundColor: colors.surface, borderColor: colors.border }]} pointerEvents="none">
               <Feather name="refresh-cw" size={12} color="#168759" />
               <Text style={[s.updatedText, { color: colors.text }]}>{updatedText}</Text>
             </View>
-          ) : showLiveMap && locationLoading && trackingActive ? (
+          ) : showLiveMap && mapExpanded && locationLoading && trackingActive ? (
             <View style={[s.updatedPill, { backgroundColor: colors.surface, borderColor: colors.border }]} pointerEvents="none"><ActivityIndicator size="small" color="#168759" /></View>
           ) : null}
 
-          {showLiveMap && nextAction ? (
+          {showLiveMap && mapExpanded && nextAction ? (
             <TouchableOpacity
               style={[s.floatingAction, { backgroundColor: nextAction.disabled ? '#E4E8E5' : '#168759' }]}
               onPress={runNextAction}
@@ -853,7 +852,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
             </TouchableOpacity>
           ) : null}
 
-          {showLiveMap && routeSummary ? (
+          {showLiveMap && mapExpanded && routeSummary ? (
             <View style={[s.metricsCard, { bottom: collapsedHeight + 12, backgroundColor: colors.surface, borderColor: colors.border }]} testID="deal-route-metrics" pointerEvents="none">
               <View style={s.metricCell}>
                 <Text style={[s.metricLabel, { color: colors.textMuted }]}>{routeSummary.isRemaining ? ui.remaining : ui.distance}</Text>
@@ -869,11 +868,11 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         </View>
 
         <Animated.View style={[s.sheet, { height: sheetAnim, backgroundColor: colors.bg, borderColor: colors.border }]} testID={`deal-chat-sheet-${sheetState}`}>
-          <View {...panResponder.panHandlers} style={s.dragZone} testID="deal-chat-drag-handle">
+          {!chatFullscreen ? <View {...panResponder.panHandlers} style={s.dragZone} testID="deal-chat-drag-handle">
             <View style={s.dragHandle} />
-          </View>
+          </View> : null}
 
-          <View style={[s.sheetHeader, { borderBottomColor: colors.border }]}>
+          {!chatFullscreen ? <View style={[s.sheetHeader, { borderBottomColor: colors.border }]}>
             <TouchableOpacity style={s.sheetTitleTouch} onPress={expandChat} testID="deal-chat-toggle">
               <View style={s.chatIconBox}><Feather name={sheetTab === 'chat' ? 'message-circle' : 'activity'} size={18} color="#168759" /></View>
               <View style={s.sheetTitleText}>
@@ -891,11 +890,11 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
             <TouchableOpacity onPress={() => mapExpanded ? collapseMapToChat() : sheetState === 'collapsed' ? setSheet('expanded') : setSheet('collapsed')} style={s.collapseButton} testID="deal-chat-collapse">
               <Feather name={mapExpanded ? 'chevron-down' : sheetState === 'collapsed' ? 'chevron-up' : 'x'} size={20} color={colors.text} />
             </TouchableOpacity>
-          </View>
+          </View> : null}
 
           {sheetBodyVisible ? (
             <>
-              {!mapExpanded ? <View style={s.tabRow} testID="deal-sheet-two-tabs">
+              {!mapExpanded && !chatFullscreen ? <View style={s.tabRow} testID="deal-sheet-two-tabs">
                 {[['chat', ui.messages, 'message-circle'], ['status', ui.statuses, 'activity']].map(([key, label, icon]) => (
                   <TouchableOpacity key={key} style={[s.tab, sheetTab === key && s.tabActive]} onPress={() => showTab(key)} testID={`deal-sheet-tab-${key}`}>
                     <Feather name={icon} size={15} color={sheetTab === key ? '#168759' : colors.textMuted} />
@@ -938,6 +937,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                       scrollEventThrottle={80}
                       onContentSizeChange={() => { if (nearBottomRef.current && messages.length <= lastCountRef.current) listRef.current?.scrollToEnd?.({ animated: false }); }}
                       ListEmptyComponent={<Text style={[s.emptyText, { color: colors.textMuted }]}>{ui.noMessages}</Text>}
+                      ListFooterComponent={<DealAttachments conversationId={roomId} role={role} compact inline documentTrigger={documentTrigger} />}
                     />
                     {showJumpLatest ? (
                       <TouchableOpacity style={s.jumpLatest} onPress={jumpLatest} testID="deal-chat-jump-latest">
@@ -950,8 +950,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                   {recording ? (
                     <View style={s.recordBar}><View style={s.recordDot} /><Text style={s.recordText}>{ui.recording} 0:{String(recordSecs % 60).padStart(2, '0')}</Text></View>
                   ) : null}
-
-                  <DealAttachments conversationId={roomId} role={role} compact inline documentTrigger={documentTrigger} />
 
                   {attachOpen ? (
                     <View style={[s.attachMenu, { borderTopColor: colors.border }]} testID="deal-chat-attach-menu">
@@ -998,9 +996,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                       value={input}
                       onChangeText={(value) => { setInput(value); if (roomId) chatAPI.typing(roomId); }}
                       onFocus={() => { setAttachOpen(false); setSheet('full'); }}
-                      onContentSizeChange={(event) => setInputHeight(Math.max(44, Math.min(112, Math.ceil(event.nativeEvent.contentSize.height + 18))))}
+                      onContentSizeChange={(event) => setInputHeight(Math.max(38, Math.min(84, Math.ceil(event.nativeEvent.contentSize.height + 10))))}
                       multiline
-                      scrollEnabled={inputHeight >= 112}
+                      scrollEnabled={inputHeight >= 84}
                       style={[s.input, { height: inputHeight, color: colors.text, borderColor: colors.border, backgroundColor: colors.surface }]}
                       placeholder={isDriver ? ui.writeShipper : ui.write}
                       placeholderTextColor={colors.textMuted}
@@ -1109,7 +1107,7 @@ const s = StyleSheet.create({
   finishedGpsHint: { fontSize: 11, textAlign: 'center', lineHeight: 16, marginTop: 8, opacity: 0.82 },
   finishedAction: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 48, paddingHorizontal: 20, marginTop: 18, borderRadius: 16, backgroundColor: '#168759' },
   finishedActionText: { color: '#FFFFFF', fontSize: 14, fontWeight: '900' },
-  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, borderTopLeftRadius: 26, borderTopRightRadius: 26, borderWidth: 1, borderBottomWidth: 0, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 20, shadowOffset: { width: 0, height: -5 }, elevation: 12, zIndex: 30 },
+  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, borderTopLeftRadius: 22, borderTopRightRadius: 22, borderWidth: 1, borderBottomWidth: 0, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 20, shadowOffset: { width: 0, height: -5 }, elevation: 12, zIndex: 30 },
   dragZone: { height: 20, alignItems: 'center', justifyContent: 'center' },
   dragHandle: { width: 42, height: 5, borderRadius: 3, backgroundColor: '#C7CEC9' },
   sheetHeader: { minHeight: 62, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingBottom: 9, borderBottomWidth: StyleSheet.hairlineWidth },
@@ -1126,14 +1124,14 @@ const s = StyleSheet.create({
   tabActive: { backgroundColor: '#E9F6EF' },
   tabText: { fontSize: 12.5, fontWeight: '850' },
   chatBody: { flex: 1, position: 'relative' },
-  routeMapCard: { marginHorizontal: 14, marginTop: 8, marginBottom: 8, minHeight: 58, borderRadius: 16, borderWidth: 1, paddingHorizontal: 11, paddingVertical: 9, flexDirection: 'row', alignItems: 'center', gap: 10, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
+  routeMapCard: { marginHorizontal: 12, marginTop: 8, marginBottom: 6, minHeight: 52, borderRadius: 16, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 9, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
   routeMapIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#168759', alignItems: 'center', justifyContent: 'center' },
   routeMapText: { flex: 1, minWidth: 0 },
   routeMapTitle: { fontSize: 13.5, fontWeight: '900' },
   routeMapHint: { fontSize: 11.5, fontWeight: '650', marginTop: 2 },
   routeMapOpen: { color: '#168759', fontSize: 12, fontWeight: '900' },
   messageList: { flex: 1 },
-  messageContent: { paddingHorizontal: 14, paddingTop: 8, paddingBottom: 12 },
+  messageContent: { paddingHorizontal: 14, paddingTop: 6, paddingBottom: 10 },
   messageRow: { marginBottom: 10 },
   messageMine: { alignItems: 'flex-end' },
   messageThem: { alignItems: 'flex-start' },
@@ -1161,10 +1159,10 @@ const s = StyleSheet.create({
   attachIcon: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E0E8E3', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
   attachIconActive: { backgroundColor: '#168759', borderColor: '#168759' },
   attachLabel: { fontSize: 11.5, fontWeight: '850', textAlign: 'center' },
-  composer: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 12, paddingTop: 9, borderTopWidth: StyleSheet.hairlineWidth },
-  composerIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
-  input: { flex: 1, minHeight: 44, maxHeight: 112, borderRadius: 16, borderWidth: 1, paddingHorizontal: 13, paddingTop: 11, paddingBottom: 10, fontSize: 14.5, lineHeight: 19 },
-  sendButton: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: '#168759' },
+  composer: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 10, paddingTop: 7, borderTopWidth: StyleSheet.hairlineWidth },
+  composerIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  input: { flex: 1, minHeight: 38, maxHeight: 84, borderRadius: 20, borderWidth: 1, paddingHorizontal: 14, paddingTop: 8, paddingBottom: 7, fontSize: 14.5, lineHeight: 18 },
+  sendButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: '#168759' },
   recordingButton: { backgroundColor: '#EF4444' },
   panelBody: { flex: 1, paddingHorizontal: 12, paddingTop: 4, paddingBottom: 12 },
   cancelLink: { alignSelf: 'center', paddingHorizontal: 14, paddingVertical: 10, marginTop: 4 },
