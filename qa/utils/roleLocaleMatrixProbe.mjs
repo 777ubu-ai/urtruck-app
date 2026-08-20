@@ -80,10 +80,21 @@ const GALLERY_EXEMPT = [
   'Открывает экраны', 'Detail-экраны', 'без прохождения', 'не трогается',
   'mock-данными', 'открываются с', 'Visual Preview', 'QA · DESIGN',
 ];
+// Every language's own endonym is conventionally shown unlocalized in a
+// language picker (Русский / English / Қазақша / 中文 stay put regardless of
+// the current UI language) — that is correct product behaviour, not a leak.
+const LOCALE_LABEL_EXEMPT = ['Русский'];
+
+function stripExempt(text) {
+  let cleaned = text;
+  for (const ex of [...MOCK_EXEMPT, ...GALLERY_EXEMPT, ...LOCALE_LABEL_EXEMPT]) {
+    cleaned = cleaned.split(ex).join(' ');
+  }
+  return cleaned.replace(/\s+/g, ' ').trim();
+}
 
 function residualCyrillic(text) {
-  let cleaned = text;
-  for (const ex of [...MOCK_EXEMPT, ...GALLERY_EXEMPT]) cleaned = cleaned.split(ex).join(' ');
+  const cleaned = stripExempt(text);
   return [...new Set((cleaned.match(CYRILLIC_RUN) || []).map((s) => s.trim()))]
     .filter((s) => s.length > 3);
 }
@@ -179,15 +190,25 @@ for (const lang of LOCALES) {
           // produced a false failure on the sparse deal-chat screen. The real
           // test is divergence from the Russian rendering of the same screen:
           // identical text with no Kazakh letter == untranslated fallback.
+          // Compare with mock/gallery chrome stripped first — e.g. the QA
+          // preview's hardcoded 'Демо-собеседник' mock partner name renders
+          // byte-identical in every locale by design (it is fixture data, not
+          // system UI) and must not be scored as a missed translation.
           const ru = ruBaseline.get(`${role}/${label}`);
           const hasKazakhLetter = KAZAKH_ONLY.test(text);
-          const sameAsRussian = ru !== undefined && ru === text;
-          if (!hasKazakhLetter && sameAsRussian) {
-            ok = false;
-            note = 'identical to RU rendering and no Kazakh letter -> raw Russian fallback';
-          } else if (!hasKazakhLetter && ru === undefined) {
-            ok = false;
-            note = 'no Kazakh letter and no RU baseline to compare against';
+          const comparableText = stripExempt(text);
+          const comparableRu = ru !== undefined ? stripExempt(ru) : undefined;
+          if (!comparableText) {
+            note = 'only mock/gallery chrome visible, no localizable text captured';
+          } else {
+            const sameAsRussian = comparableRu !== undefined && comparableRu === comparableText;
+            if (!hasKazakhLetter && sameAsRussian) {
+              ok = false;
+              note = 'identical to RU rendering and no Kazakh letter -> raw Russian fallback';
+            } else if (!hasKazakhLetter && comparableRu === undefined) {
+              ok = false;
+              note = 'no Kazakh letter and no RU baseline to compare against';
+            }
           }
         } else if (lang === 'RU') {
           if (!/[А-Яа-я]/.test(text)) {

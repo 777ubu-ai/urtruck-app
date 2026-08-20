@@ -84,6 +84,29 @@ const COPY = {
   },
 };
 
+// The plate lookup (/borders/lookup) returns `status_raw` scraped verbatim
+// from CGR's public registry HTML — always Russian, e.g. "В очереди", "Вызван".
+// It also returns a fixed, finite `status` code (backend/cgr/parsers.py's
+// _STATUS_MAP) that the raw text was normalized into. Displaying status_raw
+// showed untranslatable Russian to every non-RU user; the code has a known,
+// enumerable set of values, so it can be mapped per locale like any other
+// enum instead of round-tripping CGR's scraped copy.
+const LOOKUP_STATUS = {
+  in_queue: { RU: 'В очереди', KK: 'Кезекте', EN: 'In queue', ZH: '排队中' },
+  called: { RU: 'Вызван', KK: 'Шақырылды', EN: 'Called', ZH: '已叫号' },
+  crossed: { RU: 'Пересёк границу', KK: 'Шекарадан өтті', EN: 'Crossed the border', ZH: '已过境' },
+  revoked: { RU: 'Бронь отозвана', KK: 'Брон қайтарылды', EN: 'Booking revoked', ZH: '预约已撤销' },
+  payment: { RU: 'Производится оплата', KK: 'Төлем жүргізілуде', EN: 'Payment in progress', ZH: '支付处理中' },
+  not_paid: { RU: 'Оплата не произведена', KK: 'Төлем жасалмады', EN: 'Not paid', ZH: '尚未支付' },
+  validating: { RU: 'Производится проверка', KK: 'Тексеру жүргізілуде', EN: 'Under review', ZH: '审核中' },
+  review_failed: { RU: 'Проверка провалена', KK: 'Тексеру сәтсіз аяқталды', EN: 'Review failed', ZH: '审核未通过' },
+  unknown: { RU: 'Статус уточняется', KK: 'Күйі нақтылануда', EN: 'Status pending', ZH: '状态待定' },
+};
+function lookupStatusLabel(code, lang) {
+  const entry = LOOKUP_STATUS[code] || LOOKUP_STATUS.unknown;
+  return entry[lang] || entry.RU;
+}
+
 function normalizePlate(value) { return String(value || '').trim().toUpperCase().replace(/\s+/g, ''); }
 function jsonArray(raw) { if (!raw) return []; try { const v = JSON.parse(raw); return Array.isArray(v) ? v : []; } catch { return []; } }
 async function fetchJson(url) {
@@ -355,7 +378,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
         <View style={[s.searchCard, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-plate-search">
           <Text style={[s.sectionTitle, { color: theme.text }]}>{L.checkQueue}</Text>
           <View style={s.searchRow}><View style={[s.inputWrap, { backgroundColor: v1.bg, borderColor: theme.border }]}><Feather name="truck" size={17} color={theme.textMuted} /><TextInput value={plate} onChangeText={(value) => { setPlate(value.toUpperCase()); setLookup(null); }} onSubmitEditing={searchPlate} placeholder={L.platePlaceholder} placeholderTextColor={theme.textDim} autoCapitalize="characters" autoCorrect={false} style={[s.input, { color: theme.text }]} testID="border-plate-input" /></View><TouchableOpacity onPress={searchPlate} disabled={normalizePlate(plate).length < 3 || lookupLoading} style={[s.checkButton, (normalizePlate(plate).length < 3 || lookupLoading) && s.disabled]} testID="border-plate-check">{lookupLoading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={s.checkText}>{L.check}</Text>}</TouchableOpacity></View>
-          {lookup ? <View style={[s.lookup, { borderTopColor: theme.border }]}>{lookup.error ? <Text style={[s.lookupText, { color: '#B42318' }]}>{L.lookupError}</Text> : lookup.found ? <><Text style={[s.lookupPlate, { color: theme.text }]}>{lookup.plate || normalizePlate(plate)}</Text>{lookup.status_raw || lookup.status ? <Text style={[s.lookupText, { color: theme.textMuted }]}>{L.status}: {lookup.status_raw || lookup.status}</Text> : null}{lookup.checkpoint ? <Text style={[s.lookupText, { color: theme.textMuted }]}>{L.checkpoint}: {lookup.checkpoint}</Text> : null}{lookup.queue_datetime ? <Text style={[s.lookupText, { color: theme.textMuted }]}>{L.queueTime}: {lookup.queue_datetime}</Text> : null}</> : <Text style={[s.lookupText, { color: theme.textMuted }]}>{L.notFound}</Text>}</View> : null}
+          {lookup ? <View style={[s.lookup, { borderTopColor: theme.border }]}>{lookup.error ? <Text style={[s.lookupText, { color: '#B42318' }]}>{L.lookupError}</Text> : lookup.found ? <><Text style={[s.lookupPlate, { color: theme.text }]}>{lookup.plate || normalizePlate(plate)}</Text>{lookup.status ? <Text style={[s.lookupText, { color: theme.textMuted }]}>{L.status}: {lookupStatusLabel(lookup.status, lang)}</Text> : null}{lookup.checkpoint ? <Text style={[s.lookupText, { color: theme.textMuted }]}>{L.checkpoint}: {localizeCheckpointName(lookup.checkpoint, lang)}</Text> : null}{lookup.queue_datetime ? <Text style={[s.lookupText, { color: theme.textMuted }]}>{L.queueTime}: {lookup.queue_datetime}</Text> : null}</> : <Text style={[s.lookupText, { color: theme.textMuted }]}>{L.notFound}</Text>}</View> : null}
         </View>
         <View style={{ height: 34 }} />
       </ScrollView>

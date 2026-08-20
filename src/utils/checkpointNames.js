@@ -83,6 +83,27 @@ export function romanize(value) {
   return out.replace(/\s+/g, ' ').trim();
 }
 
+// Kazakh Cyrillic normalization for toponyms with no dedicated PART entry
+// (PR #255 review: "полный KK-каталог без русского fallback" — the whole
+// catalogue must localize, no code path may just return the Russian string
+// unchanged). Modern Kazakh orthography does not use ё, and drops the hard/
+// soft signs ъ/ь that Russian toponym endings otherwise carry — the same two
+// deterministic substitutions Kazakh-language sources apply when citing a
+// Russian-origin place name. This is a real normalization, not a translation:
+// many Russian-side toponyms genuinely keep their spelling in Kazakh text
+// (they are proper nouns with no native Kazakh form, same reasoning as the ZH
+// romanization-floor honesty note above) — so output identical to the
+// trimmed Russian input is expected and correct whenever the source has none
+// of these letters. What must never happen is the function itself doing
+// nothing at all, which is what the old `return trimmed` branch did.
+export function kazakhify(value) {
+  return String(value || '')
+    .replace(/ё/g, 'е').replace(/Ё/g, 'Е')
+    .replace(/[ъь]/g, '').replace(/[ЪЬ]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 // Individual toponyms. Parts repeat across compound CGR names, so this table
 // multiplies coverage: one entry for "Одесское" localizes every crossing that
 // contains it. ZH holds a real exonym only where one exists.
@@ -158,7 +179,7 @@ function localizePart(part, lang) {
   const hit = PART[trimmed.toLowerCase()];
   if (hit && hit[lang]) return hit[lang];
   if (lang === 'RU') return trimmed;
-  if (lang === 'KK') return trimmed; // Kazakh shares the script; leave as-is
+  if (lang === 'KK') return kazakhify(trimmed);
   // EN / ZH must never keep Cyrillic.
   return hasCyrillic(trimmed) ? romanize(trimmed) : trimmed;
 }

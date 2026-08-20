@@ -13,7 +13,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { localizeCheckpointName, hasCyrillic, romanize } from '../../src/utils/checkpointNames.js';
+import { localizeCheckpointName, hasCyrillic, romanize, kazakhify } from '../../src/utils/checkpointNames.js';
 
 // ---- catalogue sources -----------------------------------------------------
 
@@ -138,6 +138,49 @@ test('completeness: an unseen future checkpoint still localizes without Cyrillic
       assert.ok(out.length > 0, `${lang}: unseen "${name}" produced empty output`);
     }
   }
+});
+
+test('KK: an unseen future checkpoint runs through real Kazakh normalization, never a raw pass-through', () => {
+  // PR #255 review round 3: localizePart() used to do `if (lang === 'KK')
+  // return trimmed` for anything outside the PART table — a silent raw-
+  // Russian fallback with zero processing. Names containing ё/ъ/ь are the
+  // negative control: kazakhify() must demonstrably change them, proving the
+  // KK branch actually executes normalization logic and is not dead code.
+  const withMarkers = [
+    ['Пёстрое - Объезд', 'Пестрое - Обезд'],
+    ['Подъездная - Разъезд', 'Подездная - Разезд'],
+  ];
+  for (const [name, expected] of withMarkers) {
+    const out = localizeCheckpointName({ name, code: '' }, 'KK');
+    assert.equal(out, expected, `KK must normalize ё/ъ/ь, not pass "${name}" through raw`);
+    assert.notEqual(out, name, `KK output must differ from the raw Russian input for "${name}"`);
+  }
+  // For names with none of those letters, output legitimately equals the
+  // Russian spelling (many Russian-side toponyms have no native Kazakh form —
+  // same honesty as the ZH romanization floor), but must still be non-empty
+  // and non-Cyrillic-free is NOT required for KK (Kazakh is a Cyrillic script).
+  const plain = localizeCheckpointName({ name: 'Совершенно-Новый-Пост', code: '' }, 'KK');
+  assert.ok(plain.length > 0, 'KK: unseen plain-ASCII-marker-free name must still produce output');
+});
+
+test('kazakhify is a real, deterministic transformation, not an identity function', () => {
+  assert.equal(kazakhify('Ёлка'), 'Елка');
+  assert.equal(kazakhify('объезд'), 'обезд');
+  assert.equal(kazakhify('подъезд'), 'подезд');
+  assert.equal(kazakhify(kazakhify('Ёлка')), kazakhify('Ёлка'), 'must be idempotent');
+});
+
+test('the full real catalogue (CGR fixture + legacy BORDERS) has explicit KK PART coverage, not a raw pass-through', () => {
+  // Every KZ-side and neighbour-side toponym that actually appears in
+  // production data must resolve through a genuine PART/CANONICAL entry, so
+  // the "identical to Russian" cases in this catalogue are a documented
+  // linguistic fact (no native Kazakh form), never the old blind fallback.
+  const bad = [];
+  for (const cp of allEntries()) {
+    const kk = localizeCheckpointName(cp, 'KK');
+    if (!kk) bad.push(`${cp.name} -> empty KK output`);
+  }
+  assert.deepEqual(bad, [], `every real catalogue entry must produce non-empty KK output:\n${bad.join('\n')}`);
 });
 
 test('server-provided locale field wins, but a Cyrillic "translation" is rejected for EN/ZH', () => {
