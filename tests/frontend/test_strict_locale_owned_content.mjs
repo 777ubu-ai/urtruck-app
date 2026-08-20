@@ -14,6 +14,7 @@ const createTrip = read('src/screens/CreateTripScreen.js');
 const workspace = read('src/screens/DealWorkspaceScreenV2.js');
 const queue = read('src/screens/QueueScreenLazy.js');
 const dealRoom = read('src/components/deal/DealRoom.js');
+const timeline = read('src/components/deal/DealStatusTimeline.js');
 const notifications = read('src/screens/NotificationsScreen.js');
 
 const cyrillic = /[\u0400-\u052F]/u;
@@ -67,6 +68,7 @@ test('deal workspace localizes dynamic cargo, body type, units and legacy system
   assert.match(workspace, /formatTruckType\(rawTruckType\)/);
   assert.match(workspace, /if \(lang === 'ZH'\) return `\$\{amount\} 吨`/);
   assert.match(workspace, /\[roomId, session\?\.user\?\.id, lang\]/);
+  assert.match(timeline, /localizePlace\(meta\.place, lang\)/);
 });
 
 test('border catalog and notifications localize server-owned legacy text', () => {
