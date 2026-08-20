@@ -432,7 +432,7 @@ export default function CargoFeedScreen({ navigation }) {
           accessibilityRole="button"
           accessibilityState={{ selected: savedOnly }}
         >
-          <Feather name="star" size={17} color={ACCENT} />
+          <Feather name="bookmark" size={17} color={ACCENT} />
           <Text style={[styles.filterPillText, styles.favoritesText]}>{copy.favorites}</Text>
           {savedIds.size > 0 ? <Text style={styles.favoritesCount}>{savedIds.size}</Text> : null}
         </TouchableOpacity>
@@ -484,7 +484,7 @@ export default function CargoFeedScreen({ navigation }) {
             </View>
           ) : (
             <View style={styles.emptyWrap}>
-              <Feather name={error ? 'alert-circle' : savedOnly ? 'star' : 'package'} size={32} color={TEXT_MUTED} />
+              <Feather name={error ? 'alert-circle' : savedOnly ? 'bookmark' : 'package'} size={32} color={TEXT_MUTED} />
               <Text style={styles.emptyTitle}>{error ? copy.loadError : copy.empty}</Text>
               {error ? (
                 <TouchableOpacity style={styles.retryBtn} onPress={load} testID="cargo-retry">

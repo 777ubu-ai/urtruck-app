@@ -216,14 +216,14 @@ def test_skip_steps_gives_409():
     assert deal_status(d) == "accepted"
 
 
-def test_terminal_status_does_not_change():
-    d = seed_deal("delivered", from_country="KZ", to_country="KZ")
+def test_completed_status_does_not_change():
+    d = seed_deal("completed", from_country="KZ", to_country="KZ")
     r = patch_status(d, "in_progress", DRIVER)
     assert r.status_code == 409, r.text
-    assert deal_status(d) == "delivered"
+    assert deal_status(d) == "completed"
     r2 = patch_status(d, "cancelled", SHIPPER)
     assert r2.status_code == 409, r2.text
-    assert deal_status(d) == "delivered"
+    assert deal_status(d) == "completed"
 
 
 def test_unknown_status_400():
@@ -399,63 +399,101 @@ def test_gps_roles_are_strict():
     assert client.get(f"/api/v1/market/deals/{deal_id}/tracking").status_code == 403
 
 
-# delivered -> completed: only shipper confirms receipt.
-def test_shipper_can_complete_after_delivered():
-    d = seed_deal("delivered", from_country="KZ", to_country="KZ")
-    r = patch_status(d, "completed", SHIPPER)
-    assert r.status_code == 200, r.text
-    assert deal_status(d) == "completed"
+# Canonical delivery confirmation: delivered -> received -> completed.
+def _cargo_status_for_deal(deal_id):
+    with get_conn() as c:
+        row = c.execute(
+            "SELECT c.status FROM cargos c JOIN deals d ON d.cargo_id = c.id WHERE d.id = ?",
+            (deal_id,),
+        ).fetchone()
+        return row["status"] if row else None
 
-def test_driver_cannot_complete():
+
+def _deal_event_count(deal_id):
+    with get_conn() as c:
+        return c.execute(
+            "SELECT COUNT(*) FROM deal_events WHERE deal_id = ? AND event_type = 'deal.status_changed'",
+            (deal_id,),
+        ).fetchone()[0]
+
+
+def test_shipper_can_confirm_received_after_delivered():
     d = seed_deal("delivered", from_country="KZ", to_country="KZ")
-    r = patch_status(d, "completed", DRIVER)
+    r = patch_status(d, "received", SHIPPER)
+    assert r.status_code == 200, r.text
+    assert deal_status(d) == "received"
+
+
+def test_driver_cannot_confirm_received():
+    d = seed_deal("delivered", from_country="KZ", to_country="KZ")
+    r = patch_status(d, "received", DRIVER)
     assert r.status_code == 403, r.text
     assert deal_status(d) == "delivered"
 
-def test_shipper_cannot_complete_before_delivered():
-    d = seed_deal("in_progress", from_country="KZ", to_country="KZ")
+
+def test_shipper_cannot_complete_without_received():
+    d = seed_deal("delivered", from_country="KZ", to_country="KZ")
     r = patch_status(d, "completed", SHIPPER)
     assert r.status_code == 409, r.text
-    assert deal_status(d) == "in_progress"
+    assert deal_status(d) == "delivered"
 
-def test_repeated_completed_is_idempotent():
-    d = seed_deal("delivered", from_country="KZ", to_country="KZ")
-    assert patch_status(d, "completed", SHIPPER).status_code == 200
+
+def test_shipper_can_complete_after_received():
+    d = seed_deal("received", from_country="KZ", to_country="KZ")
     r = patch_status(d, "completed", SHIPPER)
     assert r.status_code == 200, r.text
     assert deal_status(d) == "completed"
 
-def test_completed_is_terminal():
+
+def test_driver_cannot_complete_from_delivered_or_received():
+    d1 = seed_deal("delivered", from_country="KZ", to_country="KZ")
+    assert patch_status(d1, "completed", DRIVER).status_code == 409
+    assert deal_status(d1) == "delivered"
+    d2 = seed_deal("received", from_country="KZ", to_country="KZ")
+    assert patch_status(d2, "completed", DRIVER).status_code == 403
+    assert deal_status(d2) == "received"
+
+
+def test_repeated_received_is_idempotent_without_duplicate_event():
     d = seed_deal("delivered", from_country="KZ", to_country="KZ")
+    assert patch_status(d, "received", SHIPPER).status_code == 200
+    before = _deal_event_count(d)
+    r = patch_status(d, "received", SHIPPER)
+    after = _deal_event_count(d)
+    assert r.status_code == 200, r.text
+    assert r.json() == {"ok": True, "status": "received"}
+    assert after == before, f"idempotent repeat created event: {before} -> {after}"
+    assert deal_status(d) == "received"
+
+
+def test_legacy_awaiting_confirmation_maps_to_delivered_then_received():
+    d = seed_deal("awaiting_confirmation", from_country="KZ", to_country="KZ")
+    r = patch_status(d, "received", SHIPPER)
+    assert r.status_code == 200, r.text
+    assert deal_status(d) == "received"
+
+
+def test_cargo_is_not_completed_before_deal_completed():
+    d = seed_deal("in_progress", from_country="KZ", to_country="KZ")
+    assert _cargo_status_for_deal(d) == "taken"
+    assert patch_status(d, "delivered", DRIVER).status_code == 200
+    assert _cargo_status_for_deal(d) == "taken", "delivery must not finalize cargo"
+    assert patch_status(d, "received", SHIPPER).status_code == 200
+    assert _cargo_status_for_deal(d) == "taken", "receipt audit state must not finalize cargo yet"
     assert patch_status(d, "completed", SHIPPER).status_code == 200
+    assert _cargo_status_for_deal(d) == "completed"
+
+
+def test_completed_is_terminal():
+    d = seed_deal("completed", from_country="KZ", to_country="KZ")
     assert patch_status(d, "in_progress", DRIVER).status_code == 409
     assert patch_status(d, "cancelled", SHIPPER).status_code == 409
-
-def test_driver_cannot_deliver_then_self_complete():
-    d = seed_deal("in_progress", from_country="KZ", to_country="KZ")
-    assert patch_status(d, "delivered", DRIVER).status_code == 200
-    assert patch_status(d, "completed", DRIVER).status_code == 403
-    assert patch_status(d, "completed", SHIPPER).status_code == 200
 
 
 if __name__ == "__main__":
     fails = 0
-    for fn in [test_shipper_cannot_start_trip, test_shipper_cannot_set_at_border,
-               test_shipper_cannot_set_delivered, test_driver_can_start_trip,
-               test_start_trip_automatically_activates_tracking,
-               test_driver_can_set_at_border_for_international,
-               test_driver_cannot_set_at_border_for_domestic,
-               test_driver_can_deliver_domestic_directly_from_in_progress,
-               test_driver_cannot_deliver_international_without_border,
-               test_driver_can_deliver_international_from_at_border,
-               test_stranger_gets_403, test_repeat_status_is_idempotent_noop,
-               test_skip_steps_gives_409, test_terminal_status_does_not_change,
-               test_unknown_status_400, test_cancel_allowed_for_both_parties_from_accepted,
-               test_cancel_mid_transit_allowed_both_and_audited,
-               test_trip_status_endpoint_cannot_bypass_fsm_or_country_guard,
-               test_concurrent_conflicting_patch_does_not_give_two_false_200,
-               test_gps_is_locked_after_pickup_and_last_point_is_preserved,
-               test_gps_roles_are_strict]:
+    tests = [fn for name, fn in list(globals().items()) if name.startswith("test_") and callable(fn)]
+    for fn in tests:
         try:
             fn(); print(f"  ✅ {fn.__name__}")
         except Exception as e:

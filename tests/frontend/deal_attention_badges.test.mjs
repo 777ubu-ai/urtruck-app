@@ -11,14 +11,14 @@ test('deal inbox preserves actionable counters for offers and active deals', () 
   assert.match(deals, /activeDeals\.reduce/);
   assert.match(
     deals,
-    /item\.tracking_action_required \|\| \(role === 'client' && item\.status === 'delivered'\)/,
+    /item\.tracking_action_required \|\| \(role === 'client' && \(item\.status === 'delivered' \|\| item\.status === 'awaiting_confirmation'\)\)/,
   );
 });
 
 test('attention inside cards uses the distinct red unread badge', () => {
   assert.match(deals, /testID="deals-card-unread"/);
   assert.match(deals, /backgroundColor: '#D64545'/);
-  assert.match(deals, /const needsReceiptConfirmation = role === 'client' && data\.status === 'delivered'/);
+  assert.match(deals, /const needsReceiptConfirmation = role === 'client' && \(data\.status === 'delivered' \|\| data\.status === 'awaiting_confirmation'\)/);
   assert.match(deals, /const attentionRequired = needsReceiptConfirmation \|\| trackingActionRequired/);
 });
 

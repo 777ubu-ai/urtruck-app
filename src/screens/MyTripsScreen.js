@@ -369,7 +369,7 @@ export default function MyTripsScreen({ navigation, route }) {
             <Text style={[s.statusLabel, { color: (() => {
               const st = item.status || 'active';
               if (st === 'cancelled') return '#94A3B8';        // серый
-              if (st === 'draft' || st === 'pending') return '#FF8400'; // янтарный
+              if (st === 'draft' || st === 'pending') return '#64748B'; // neutral waiting
               if (st === 'rejected' || st === 'expired') return '#EF4444'; // красный
               if (st === 'completed' || st === 'delivered') return '#168759'; // зелёный
               return '#168759'; // active по умолчанию — зелёный
@@ -456,7 +456,7 @@ export default function MyTripsScreen({ navigation, route }) {
             </TouchableOpacity>
             <TouchableOpacity
               testID="extend-editdate-btn"
-              style={[s.editBtn, { borderColor: '#FF8400', marginTop: 0, paddingHorizontal: 14 }]}
+              style={[s.editBtn, { borderColor: v1Accent.main, marginTop: 0, paddingHorizontal: 14 }]}
               onPress={(e) => {
                 e.stopPropagation && e.stopPropagation();
                 if (isCargo) setEditCargo(item);
@@ -464,8 +464,8 @@ export default function MyTripsScreen({ navigation, route }) {
               }}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="calendar" size={14} color="#FF8400" />
-                <Text style={[s.editBtnText, { color: '#E06D00' }]}>{t('change_date')}</Text>
+                <Feather name="calendar" size={14} color={v1Accent.main} />
+                <Text style={[s.editBtnText, { color: v1Accent.main }]}>{t('change_date')}</Text>
               </View>
             </TouchableOpacity>
           </View>

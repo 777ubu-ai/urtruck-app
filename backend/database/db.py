@@ -53,7 +53,7 @@ def _market_expiry_due(conn: sqlite3.Connection) -> bool:
     race; the periodic full scan remains the fallback for legacy DD.MM.YYYY
     dates and any data anomaly the SQL fast-path does not express.
     """
-    active_deals = "'accepted','in_progress','at_border','awaiting_confirmation','delivered'"
+    active_deals = "'accepted','in_progress','at_border','awaiting_confirmation','delivered','received'"
 
     bid_due = conn.execute(
         """

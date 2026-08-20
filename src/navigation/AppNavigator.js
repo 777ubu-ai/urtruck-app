@@ -126,19 +126,15 @@ function MainTabs({ route }) {
         <>
           <Tab.Screen name="Feed" component={CargoFeedScreen} initialParams={{ role }} />
           <Tab.Screen name="MyWork" component={MyTripsScreen} initialParams={{ role }} />
-          <Tab.Screen name="Queue" component={QueueScreen} initialParams={{ role }} />
-          {/* «Сделки» (26.07.2026, волна 2 — водитель зеркалит клиента):
-              ChatsListScreen в dealsMode — сверху мои ставки в работе
-              (pending/countered), ниже все переписки. Отдельная вкладка
-              «Чаты» убрана: чат живёт внутри комнаты сделки. «Очередь»
-              остаётся — это инструмент границы, а не дубль сделок. */}
           <Tab.Screen name="Deals" component={ChatsListScreen} initialParams={{ role }} />
+          <Tab.Screen name="Profile" component={ProfileScreen} initialParams={{ role }} />
         </>
       ) : (
         <>
           <Tab.Screen name="MyWork" component={MyTripsScreen} initialParams={{ role }} />
           <Tab.Screen name="Feed" component={FeedScreen} initialParams={{ role }} />
           <Tab.Screen name="Deals" component={ChatsListScreen} initialParams={{ role }} />
+          <Tab.Screen name="Profile" component={ProfileScreen} initialParams={{ role }} />
         </>
       )}
     </Tab.Navigator>

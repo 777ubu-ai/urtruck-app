@@ -2698,6 +2698,19 @@ def get_deal(deal_id: str, user=Depends(require_level(1))):
     return d
 
 
+# Legacy rows created by older builds used awaiting_confirmation for the
+# same business meaning as delivered: the driver has delivered the cargo and
+# the shipper still needs to confirm receipt. Keep one canonical server FSM.
+_DEAL_STATUS_CANONICAL_MAP = {
+    "awaiting_confirmation": "delivered",
+}
+
+
+def _canonical_deal_status(status: str | None) -> str:
+    value = status or "accepted"
+    return _DEAL_STATUS_CANONICAL_MAP.get(value, value)
+
+
 #: Аудит Блок 3 (P0-2): переходы ВПЕРЁД по логистике сделки (не отмена)
 #: обязаны исполняться только водителем — раньше `uid in (shipper_id,
 #: driver_id)` пропускал ЛЮБУЮ из сторон, и грузовладелец мог сам себе
@@ -2711,9 +2724,11 @@ _DRIVER_ONLY_TRANSITIONS = {
     ("at_border", "delivered"),
 }
 
-# Receiving confirmation belongs exclusively to the cargo owner.
+# Receiving confirmation and final completion belong exclusively to the
+# cargo owner. `received` is an explicit audit state and must never be skipped.
 _SHIPPER_ONLY_TRANSITIONS = {
-    ("delivered", "completed"),
+    ("delivered", "received"),
+    ("received", "completed"),
 }
 
 # Разрешённые переходы. Раньше валидации не было — двойной тап или
@@ -2724,13 +2739,16 @@ _DEAL_FLOW = {
     "accepted":    {"in_progress", "cancelled"},
     "in_progress": {"at_border", "delivered", "cancelled"},
     "at_border":   {"delivered", "cancelled"},
-    "delivered":   {"completed"},
+    "delivered":   {"received"},
+    "received":    {"completed"},
     "completed":   set(),
     "cancelled":   set(),
 }
 _DEAL_STATUS_LABELS = {
     "in_progress": "🚛 Рейс начался", "at_border": "🛂 На границе",
-    "delivered": "✅ Доставлен", "completed": "🤝 Получение подтверждено",
+    "delivered": "✅ Доставлен — ожидается подтверждение получения",
+    "received": "✅ Получение подтверждено",
+    "completed": "🤝 Сделка завершена",
     "cancelled": "❌ Отменено",
 }
 
@@ -2763,8 +2781,9 @@ def _transition_deal(c, deal: dict, new_status: str, actor_uid: str, request_id:
     переход не понадобился (идемпотентный повтор).
     """
     deal_id = deal["id"]
-    cur_status = deal.get("status") or "accepted"
-    if new_status == cur_status:
+    raw_status = deal.get("status") or "accepted"
+    cur_status = _canonical_deal_status(raw_status)
+    if new_status == raw_status or new_status == cur_status:
         return None  # идемпотентно, без шума — уведомление не создаём
     allowed = _DEAL_FLOW.get(cur_status)
     if allowed is not None and new_status not in allowed:
@@ -2821,7 +2840,7 @@ def _transition_deal(c, deal: dict, new_status: str, actor_uid: str, request_id:
     # а не тихо перезаписываем чужой уже закоммиченный результат.
     cur = c.execute(
         "UPDATE deals SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = ?",
-        (new_status, deal_id, cur_status),
+        (new_status, deal_id, raw_status),
     )
     if cur.rowcount == 0:
         raise DealTransitionError(409, {
@@ -2846,11 +2865,20 @@ def _transition_deal(c, deal: dict, new_status: str, actor_uid: str, request_id:
             "INSERT INTO deal_tracking_events (deal_id, event_type, actor_id) VALUES (?, 'tracking_started_with_trip', ?)",
             (deal_id, actor_uid),
         )
-    if new_status == "delivered" and deal.get("cargo_id"):
+    # Delivery is not completion. Keep the cargo reserved/taken until the
+    # shipper has explicitly confirmed receipt and the deal is completed.
+    if new_status == "completed" and deal.get("cargo_id"):
         c.execute("UPDATE cargos SET status = 'completed' WHERE id = ?", (deal["cargo_id"],))
     elif new_status == "cancelled" and deal.get("cargo_id"):
         c.execute("UPDATE cargos SET status = 'active', taken_by = NULL WHERE id = ?", (deal["cargo_id"],))
-    _DEAL_TO_TRIP = {"in_progress": "in_transit", "at_border": "in_transit", "delivered": "delivered", "cancelled": "cancelled"}
+    _DEAL_TO_TRIP = {
+        "in_progress": "in_transit",
+        "at_border": "in_transit",
+        "delivered": "delivered",
+        "received": "delivered",
+        "completed": "completed",
+        "cancelled": "cancelled",
+    }
     if deal.get("trip_id") and new_status in _DEAL_TO_TRIP:
         c.execute("UPDATE trips SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                    (_DEAL_TO_TRIP[new_status], deal["trip_id"]))
@@ -2876,7 +2904,7 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
     # Этап-хаб заказа: добавлен промежуточный статус at_border («На границе») —
     # ключевой для коридора Китай↔КЗ. Порядок: accepted → in_progress →
     # at_border → delivered (cancelled — из любого рабочего).
-    VALID = ["accepted", "in_progress", "at_border", "delivered", "completed", "cancelled"]
+    VALID = ["accepted", "in_progress", "at_border", "delivered", "received", "completed", "cancelled"]
     if new_status not in VALID:
         raise HTTPException(status_code=400, detail={
             "error": "INVALID_STATUS",
@@ -2892,7 +2920,7 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
         deal = dict(row)
         if uid not in (deal["shipper_id"], deal["driver_id"]):
             raise HTTPException(status_code=403)
-        cur_status_before = deal.get("status") or "accepted"
+        cur_status_before = _canonical_deal_status(deal.get("status") or "accepted")
         try:
             event_payload = _transition_deal(c, deal, new_status, uid, request_id)
         except DealTransitionError as e:
@@ -2906,7 +2934,14 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
     # сумма в валюте груза/рейса, deep-link на /deals/{id}.
     try:
         other_id = deal["driver_id"] if uid == deal["shipper_id"] else deal["shipper_id"]
-        labels = {"in_progress": "🚛 Рейс начался", "at_border": "🛂 На границе", "delivered": "✅ Доставлен", "completed": "🤝 Получение подтверждено", "cancelled": "❌ Отменено"}
+        labels = {
+            "in_progress": "🚛 Рейс начался",
+            "at_border": "🛂 На границе",
+            "delivered": "✅ Доставлен — ожидается подтверждение получения",
+            "received": "✅ Получение подтверждено",
+            "completed": "🤝 Сделка завершена",
+            "cancelled": "❌ Отменено",
+        }
         if new_status in labels:
             cur = "USD"
             with get_conn() as c2:
@@ -2959,8 +2994,9 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
         chat_labels = {
             "in_progress": "🚛 Рейс начался",
             "at_border": "🛂 Груз на границе",
-            "delivered": "✅ Груз доставлен",
-            "completed": "🤝 Получение подтверждено — сделка закрыта",
+            "delivered": "✅ Груз доставлен — ожидается подтверждение получения",
+            "received": "✅ Получение груза подтверждено",
+            "completed": "🤝 Сделка завершена",
             "cancelled": "❌ Сделка отменена",
         }
         if new_status in chat_labels and deal.get("chat_room_id"):

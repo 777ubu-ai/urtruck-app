@@ -159,3 +159,15 @@ def test_expiry_is_idempotent_and_does_not_duplicate_audit_event():
 
     assert second["expired_bids"] == []
     assert conn.execute("SELECT COUNT(*) FROM price_events WHERE bid_id='b1' AND kind='expired'").fetchone()[0] == 1
+
+
+def test_received_deal_protects_parent_until_final_completion():
+    conn = _db()
+    conn.execute("INSERT INTO cargos VALUES ('received-cargo','active','2026-08-19',NULL,0)")
+    conn.execute("INSERT INTO deals VALUES ('received-deal','received-cargo',NULL,'received')")
+
+    result = expire_stale_marketplace(now=NOW, conn=conn)
+
+    assert result["expired_cargos"] == []
+    assert conn.execute("SELECT status FROM cargos WHERE id='received-cargo'").fetchone()[0] == "active"
+    assert conn.execute("SELECT status FROM deals WHERE id='received-deal'").fetchone()[0] == "received"
