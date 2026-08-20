@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
+// Release guard: delivered is an active waiting-for-shipper state, not completion.
 const workspace = fs.readFileSync('src/screens/DealWorkspaceScreenV2.js', 'utf8');
 const deals = fs.readFileSync('src/screens/DealsScreen.js', 'utf8');
 const i18n = fs.readFileSync('src/utils/i18n.js', 'utf8');
