@@ -2,7 +2,7 @@
 // frontend Node regression tests import it without React Native. Locale is an
 // explicit optional argument; runtime language/storage must not leak here.
 
-import { localizeCargoName } from './places';
+import { localizeCargoName, localizePlace } from './places';
 
 const pick = (...vals) => {
   for (const v of vals) {
@@ -42,7 +42,7 @@ export const formatPrice = (amount, currency, t) => {
   const sym = CURRENCY_SYMBOLS[cur];
   const numeric = Number(amount);
   if (!Number.isFinite(numeric) || numeric <= 0) {
-    return t ? t('payment_negotiable') : 'По договорённости';
+    return t ? t('payment_negotiable') : 'Not specified';
   }
   const n = String(Math.round(numeric)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   return cur === 'UZS' || cur === 'KGS' ? `${n} ${sym}` : `${sym}${n}`;
@@ -68,6 +68,31 @@ const displayDate = (value, lang = 'RU') => {
     return `${Number(m[1])}年${Number(m[2])}月${Number(m[3])}日`;
   }
   return `${m[3]}.${m[2]}.${m[1]}`;
+};
+
+const LEGACY_TRUCK_TYPE_KEYS = {
+  'Тент': 'tent',
+  'Фура': 'tent',
+  'Рефрижератор': 'ref',
+  'Изотерм': 'izoterm',
+  'Бортовой': 'open_truck',
+  'Площадка': 'platform',
+  'Автовоз': 'auto',
+  'Цистерна': 'tanker',
+  "Контейнер 20'": 'cont20',
+  "Контейнер 40'": 'cont40',
+  'Контейнер 20′': 'cont20',
+  'Контейнер 40′': 'cont40',
+};
+
+const localizedTypeLabel = (value, t, lang = 'RU') => {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const key = LEGACY_TRUCK_TYPE_KEYS[raw] || raw;
+  const translated = t ? t(key) : key;
+  if (translated && translated !== key) return translated;
+  const cargoLabel = localizeCargoName(raw, lang);
+  return cargoLabel || raw;
 };
 
 export const normalizeTrip = (raw) => {
@@ -130,34 +155,32 @@ export const normalizeCargo = (raw, lang = 'RU') => {
 
 export const cargoDisplay = (cargo, t, lang = 'RU') => {
   const dash = (t && t('not_specified')) || 'Not specified';
-  const typeLabel = cargo?.cargoType ? (t ? t(cargo.cargoType) : cargo.cargoType) : null;
   const units = displayUnits(lang);
   const weight = cargo?.weightTons > 0 ? `${cargo.weightTons} ${units.ton}` : dash;
   const volume = cargo?.volumeM3 > 0 ? `${cargo.volumeM3} ${units.volume}` : dash;
   return {
-    from: sanitizeForDisplay(cargo?.from) || dash,
-    to: sanitizeForDisplay(cargo?.to) || dash,
-    cargoDesc: sanitizeForDisplay(cargo?.cargoDesc) || dash,
-    cargoType: typeLabel && typeLabel !== cargo?.cargoType ? typeLabel : (cargo?.cargoType || dash),
+    from: localizePlace(sanitizeForDisplay(cargo?.from), lang) || dash,
+    to: localizePlace(sanitizeForDisplay(cargo?.to), lang) || dash,
+    cargoDesc: sanitizeForDisplay(localizeCargoName(cargo?.cargoDesc, lang)) || dash,
+    cargoType: cargo?.cargoType ? localizedTypeLabel(cargo.cargoType, t, lang) : dash,
     weight,
     volume,
     price: formatPrice(cargo?.price, cargo?.currency, t),
-    pickupDate: cargo?.pickupDate ? cargo.pickupDate : dash,
+    pickupDate: cargo?.pickupDate ? displayDate(cargo.pickupDate, lang) : dash,
     ownerName: sanitizeForDisplay(cargo?.ownerName) || dash,
   };
 };
 
 export const tripDisplay = (trip, t, lang = 'RU') => {
   const dash = (t && t('not_specified')) || 'Not specified';
-  const truck = trip?.truckType ? (t ? t(trip.truckType) : trip.truckType) : dash;
   const units = displayUnits(lang);
   return {
-    from: sanitizeForDisplay(trip?.from) || dash,
-    to: sanitizeForDisplay(trip?.to) || dash,
-    transit: sanitizeForDisplay(trip?.transit) || '',
+    from: localizePlace(sanitizeForDisplay(trip?.from), lang) || dash,
+    to: localizePlace(sanitizeForDisplay(trip?.to), lang) || dash,
+    transit: localizePlace(sanitizeForDisplay(trip?.transit), lang) || '',
     departure: trip?.departure ? displayDate(trip.departure, lang) : dash,
     arrival: trip?.arrival ? displayDate(trip.arrival, lang) : dash,
-    truckType: truck && truck !== trip?.truckType ? truck : (trip?.truckType || dash),
+    truckType: trip?.truckType ? localizedTypeLabel(trip.truckType, t, lang) : dash,
     capacityTons: trip?.capacityTons != null ? `${trip.capacityTons} ${units.ton}` : dash,
     availableM3: trip?.availableM3 != null ? `${trip.availableM3} ${units.volume}` : dash,
     price: formatPrice(trip?.price, trip?.currency, t),
