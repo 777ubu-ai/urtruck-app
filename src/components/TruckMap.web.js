@@ -6,6 +6,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, findNodeHandle } from 'react-native';
 import { routingAPI } from '../utils/routingAPI';
+import { useI18n } from '../utils/useI18n';
 
 const asPoint = (p) => {
   if (Array.isArray(p) && p.length >= 2) {
@@ -23,27 +24,33 @@ const routeKey = (points) => (points || [])
   .map((point) => `${Number(point?.[0]).toFixed(4)}:${Number(point?.[1]).toFixed(4)}`)
   .join('|');
 
-const distanceTextFromMeters = (value) => {
+// 2026-08-20 (App Store release audit, P0 locale leak): units were hardcoded
+// Russian and leaked into ZH/EN/KK UI. Uses existing km_short / track_* keys.
+const distanceTextFromMeters = (value, t) => {
   const meters = Number(value);
   if (!Number.isFinite(meters) || meters <= 0) return null;
   const km = meters / 1000;
   const rounded = km >= 100 ? Math.round(km) : Math.round(km * 10) / 10;
-  return `${String(rounded).replace('.', ',')} км`;
+  return `${String(rounded).replace('.', ',')} ${t('km_short')}`;
 };
 
-const durationTextFromSeconds = (value) => {
+const durationTextFromSeconds = (value, t) => {
   const seconds = Number(value);
   if (!Number.isFinite(seconds) || seconds <= 0) return null;
   const totalMinutes = Math.max(1, Math.round(seconds / 60));
   const days = Math.floor(totalMinutes / 1440);
   const hours = Math.floor((totalMinutes % 1440) / 60);
   const minutes = totalMinutes % 60;
-  if (days > 0) return hours > 0 ? `${days} д ${hours} ч` : `${days} д`;
-  if (hours > 0) return minutes > 0 ? `${hours} ч ${minutes} мин` : `${hours} ч`;
-  return `${minutes} мин`;
+  const d = t('track_day');
+  const h = t('track_hour');
+  const m = t('track_min');
+  if (days > 0) return hours > 0 ? `${days} ${d} ${hours} ${h}` : `${days} ${d}`;
+  if (hours > 0) return minutes > 0 ? `${hours} ${h} ${minutes} ${m}` : `${hours} ${h}`;
+  return `${minutes} ${m}`;
 };
 
 function YandexMap({ livePoint, plannedPoints, serverRoute, onRouteSummary }) {
+  const { t, lang } = useI18n();
   const hostRef = React.useRef(null);
   const mapRef = React.useRef(null);
   const retryTimerRef = React.useRef(null);
@@ -135,12 +142,14 @@ function YandexMap({ livePoint, plannedPoints, serverRoute, onRouteSummary }) {
     const addMarkers = () => {
       plannedPoints.forEach((coordinates, index) => {
         map.geoObjects.add(new api.Placemark(coordinates, {
-          hintContent: index === 0 ? 'Старт' : (index === plannedPoints.length - 1 ? 'Назначение' : 'Точка маршрута'),
+          hintContent: index === 0
+            ? t('map_point_start')
+            : (index === plannedPoints.length - 1 ? t('map_point_destination') : t('map_point_waypoint')),
         }, { preset: 'islands#greenCircleDotIcon' }));
       });
       if (livePoint) {
         map.geoObjects.add(new api.Placemark(livePoint, {
-          iconContent: '🚚', hintContent: 'Машина',
+          iconContent: '🚚', hintContent: t('track_truck_marker'),
         }, { preset: 'islands#greenStretchyIcon', zIndex: 1000 }));
       }
     };
@@ -158,8 +167,8 @@ function YandexMap({ livePoint, plannedPoints, serverRoute, onRouteSummary }) {
       }));
       addMarkers();
       fitBounds();
-      const distanceText = distanceTextFromMeters(serverRoute?.distance_m);
-      const durationText = durationTextFromSeconds(serverRoute?.duration_s);
+      const distanceText = distanceTextFromMeters(serverRoute?.distance_m, t);
+      const durationText = durationTextFromSeconds(serverRoute?.duration_s, t);
       if (distanceText && durationText) {
         emitSummary({
           distanceText,
@@ -224,7 +233,8 @@ function YandexMap({ livePoint, plannedPoints, serverRoute, onRouteSummary }) {
 
     if (routingPoints.length < 2) fitBounds();
     return () => { cancelled = true; };
-  }, [status, pointKey(livePoint), JSON.stringify(plannedPoints), serverRoute?.routeKey, serverRoute?.distance_m, serverRoute?.duration_s, onRouteSummary]);
+    // `lang` redraws markers/summary in the newly selected language.
+  }, [status, pointKey(livePoint), JSON.stringify(plannedPoints), serverRoute?.routeKey, serverRoute?.distance_m, serverRoute?.duration_s, onRouteSummary, lang, t]);
 
   return (
     <View style={s.shell}>
@@ -256,9 +266,10 @@ export default function TruckMap({
   routePoints = [],
   externalRoute = null,
   planned = false,
-  plannedTitle = 'Маршрут',
-  plannedHint = 'GPS водителя появится автоматически',
-  liveTitle = 'Машина на маршруте',
+  // Defaults resolve through i18n (were Russian literals until 2026-08-20).
+  plannedTitle = null,
+  plannedHint = null,
+  liveTitle = null,
   showBadge = true,
   onRouteSummary,
   // 2026-08-19 (P1 re-review, независимый merge-block): реальные габариты
@@ -274,6 +285,11 @@ export default function TruckMap({
   // весовые ограничения маршрута (P1 re-review, было исправлено).
   vehicle = null,
 }) {
+  const { t } = useI18n();
+  // Badge copy falls back to the localized default when the caller omits it.
+  const badgePlannedTitle = plannedTitle ?? t('planned_route_title');
+  const badgePlannedHint = plannedHint ?? t('tracking_starts_after_start');
+  const badgeLiveTitle = liveTitle ?? t('live_route_title');
   const livePoint = asPoint([lat, lng]);
   const plannedPoints = React.useMemo(() => (routePoints || []).map(asPoint).filter(Boolean), [routePoints]);
   const configured = typeof globalThis !== 'undefined' && globalThis.__URTRUCK_YANDEX_MAPS_CONFIGURED__ === true;
@@ -332,8 +348,8 @@ export default function TruckMap({
       ) : null}
       {showBadge ? (
         <View pointerEvents="none" style={s.badge}>
-          <Text style={s.badgeTitle}>{showPlanned ? plannedTitle : liveTitle}</Text>
-          <Text style={s.badgeText}>{showPlanned ? plannedHint : (title || liveTitle)}</Text>
+          <Text style={s.badgeTitle}>{showPlanned ? badgePlannedTitle : badgeLiveTitle}</Text>
+          <Text style={s.badgeText}>{showPlanned ? badgePlannedHint : (title || badgeLiveTitle)}</Text>
         </View>
       ) : null}
     </View>

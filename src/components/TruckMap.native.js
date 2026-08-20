@@ -3,6 +3,7 @@
 import React from 'react';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import { routingAPI } from '../utils/routingAPI';
+import { useI18n } from '../utils/useI18n';
 
 const asPoint = (value) => {
   if (Array.isArray(value) && value.length >= 2) {
@@ -20,24 +21,33 @@ const routeKey = (points) => (points || [])
   .map((point) => `${Number(point?.[0]).toFixed(4)}:${Number(point?.[1]).toFixed(4)}`)
   .join('|');
 
-const distanceTextFromMeters = (value) => {
+// 2026-08-20 (App Store release audit, P0 locale leak): distance/duration
+// units and map marker titles were hardcoded in Russian, so a ZH/EN/KK user
+// saw «км / д / ч / мин» and «Старт/Назначение/Точка маршрута/Машина» in the
+// map UI regardless of the selected language. Both formatters now take the
+// translator; units come from the existing km_short / track_day / track_hour
+// / track_min keys (present in all four languages).
+const distanceTextFromMeters = (value, t) => {
   const meters = Number(value);
   if (!Number.isFinite(meters) || meters <= 0) return null;
   const km = meters / 1000;
   const rounded = km >= 100 ? Math.round(km) : Math.round(km * 10) / 10;
-  return `${String(rounded).replace('.', ',')} км`;
+  return `${String(rounded).replace('.', ',')} ${t('km_short')}`;
 };
 
-const durationTextFromSeconds = (value) => {
+const durationTextFromSeconds = (value, t) => {
   const seconds = Number(value);
   if (!Number.isFinite(seconds) || seconds <= 0) return null;
   const totalMinutes = Math.max(1, Math.round(seconds / 60));
   const days = Math.floor(totalMinutes / 1440);
   const hours = Math.floor((totalMinutes % 1440) / 60);
   const minutes = totalMinutes % 60;
-  if (days > 0) return hours > 0 ? `${days} д ${hours} ч` : `${days} д`;
-  if (hours > 0) return minutes > 0 ? `${hours} ч ${minutes} мин` : `${hours} ч`;
-  return `${minutes} мин`;
+  const d = t('track_day');
+  const h = t('track_hour');
+  const m = t('track_min');
+  if (days > 0) return hours > 0 ? `${days} ${d} ${hours} ${h}` : `${days} ${d}`;
+  if (hours > 0) return minutes > 0 ? `${hours} ${h} ${minutes} ${m}` : `${hours} ${h}`;
+  return `${minutes} ${m}`;
 };
 
 export default function TruckMap({
@@ -47,6 +57,7 @@ export default function TruckMap({
   // собранной грузоподъёмности, полные габариты пока не собираются в анкете.
   vehicle = null,
 }) {
+  const { t, lang } = useI18n();
   const live = asPoint([lat, lng]);
   const planned = React.useMemo(() => (routePoints || []).map(asPoint).filter(Boolean), [routePoints]);
   const destination = planned.length ? planned[planned.length - 1] : null;
@@ -84,8 +95,8 @@ export default function TruckMap({
   const all = React.useMemo(() => [...road, ...(live ? [live] : [])], [road, live?.latitude, live?.longitude]);
 
   React.useEffect(() => {
-    const distanceText = distanceTextFromMeters(resolvedRoute?.distance_m);
-    const durationText = durationTextFromSeconds(resolvedRoute?.duration_s);
+    const distanceText = distanceTextFromMeters(resolvedRoute?.distance_m, t);
+    const durationText = durationTextFromSeconds(resolvedRoute?.duration_s, t);
     if (roadGeometry.length >= 2 && distanceText && durationText) {
       onRouteSummary?.({
         distanceText,
@@ -97,7 +108,9 @@ export default function TruckMap({
     } else {
       onRouteSummary?.(null);
     }
-  }, [onRouteSummary, resolvedRoute?.routeKey, resolvedRoute?.distance_m, resolvedRoute?.duration_s, live?.latitude, live?.longitude, roadGeometry.length]);
+    // `lang` is a dependency: the summary strings are localized, so switching
+    // language must re-emit them instead of leaving the previous locale's text.
+  }, [onRouteSummary, resolvedRoute?.routeKey, resolvedRoute?.distance_m, resolvedRoute?.duration_s, live?.latitude, live?.longitude, roadGeometry.length, lang, t]);
 
   const region = React.useMemo(() => {
     const points = all.length ? all : [{ latitude: 43.2389, longitude: 76.8897 }];
@@ -129,11 +142,13 @@ export default function TruckMap({
         <Marker
           key={`${point.latitude}:${point.longitude}:${index}`}
           coordinate={point}
-          title={index === 0 ? 'Старт' : (index === planned.length - 1 ? 'Назначение' : 'Точка маршрута')}
+          title={index === 0
+            ? t('map_point_start')
+            : (index === planned.length - 1 ? t('map_point_destination') : t('map_point_waypoint'))}
           pinColor="#168759"
         />
       ))}
-      {live ? <Marker coordinate={live} title={title || 'Машина'} /> : null}
+      {live ? <Marker coordinate={live} title={title || t('track_truck_marker')} /> : null}
     </MapView>
   );
 }

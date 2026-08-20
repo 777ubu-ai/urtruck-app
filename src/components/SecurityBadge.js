@@ -53,7 +53,7 @@ export default function SecurityBadge({ userId, phone, plate, compact = false })
     return (
       <View style={[s.wrapCompact, { backgroundColor: ui.bg, borderColor: ui.border }]}>
         <Text style={[s.scoreCompact, { color: ui.text }]}>{score.total_score}</Text>
-        <Text style={[s.labelCompact, { color: ui.text }]}>{ui.label.split(' ')[0]}</Text>
+        <Text style={[s.labelCompact, { color: ui.text }]}>{ui.emoji}</Text>
       </View>
     );
   }
@@ -62,7 +62,7 @@ export default function SecurityBadge({ userId, phone, plate, compact = false })
   return (
     <View style={[s.wrap, { backgroundColor: ui.bg, borderColor: ui.border }]}>
       <Text style={[s.score, { color: ui.text }]}>{score.total_score}<Text style={s.small}>/100</Text></Text>
-      <Text style={[s.label, { color: ui.text }]}>{ui.label}</Text>
+      <Text style={[s.label, { color: ui.text }]}>{`${ui.emoji} ${t(ui.labelKey)}`}</Text>
     </View>
   );
 }

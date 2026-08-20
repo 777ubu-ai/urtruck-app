@@ -53,7 +53,7 @@ export default function SecurityScreen({ navigation }) {
   const isBlack = rowColor === 'black' || score?.color_code === 'black';
   const tier = driverTier({ confirmed, trips, rating });
   const ui = isBlack
-    ? COLOR_UI.black
+    ? { ...COLOR_UI.black, label: `${COLOR_UI.black.emoji} ${t(COLOR_UI.black.labelKey)}` }
     : { bg: tier.color + '20', border: tier.color, text: tier.color, label: `${tier.emoji} ${t(tier.key)}` };
 
   return (

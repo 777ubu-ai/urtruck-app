@@ -116,9 +116,13 @@ export function isDocsConfirmed(st) {
   return st.status === 'approved' || Number(st.verification_level) >= 3;
 }
 
+// 2026-08-20 (App Store release audit, P1 locale leak): `label` used to hold a
+// hardcoded Russian string ('🟢 Надёжный', …) that SecurityBadge rendered
+// verbatim, so a ZH/EN/KK user saw Russian on driver profiles. Colors now carry
+// an emoji + an i18n key; the consumer composes the localized label.
 export const COLOR_UI = {
-  green: { bg: '#16875920', border: '#168759', text: '#168759', label: '🟢 Надёжный' },
-  yellow: { bg: '#FF840020', border: '#FF8400', text: '#FF8400', label: '🟡 Новичок' },
-  red: { bg: '#EF444420', border: '#EF4444', text: '#EF4444', label: '🔴 Проблемы' },
-  black: { bg: '#DC262640', border: '#DC2626', text: '#FCA5A5', label: '⛔ В чёрном списке' },
+  green: { bg: '#16875920', border: '#168759', text: '#168759', emoji: '🟢', labelKey: 'badge_reliable' },
+  yellow: { bg: '#FF840020', border: '#FF8400', text: '#FF8400', emoji: '🟡', labelKey: 'tier_newbie' },
+  red: { bg: '#EF444420', border: '#EF4444', text: '#EF4444', emoji: '🔴', labelKey: 'security_badge_problems' },
+  black: { bg: '#DC262640', border: '#DC2626', text: '#FCA5A5', emoji: '⛔', labelKey: 'blacklist' },
 };
