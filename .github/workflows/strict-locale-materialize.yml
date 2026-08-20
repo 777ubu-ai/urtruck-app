@@ -3,6 +3,8 @@ name: Strict Locale Materializer
 on:
   push:
     branches: [fix/strict-locale-no-russian-20260820]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: write
