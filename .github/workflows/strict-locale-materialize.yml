@@ -42,10 +42,15 @@ jobs:
 
           i18n = Path('src/utils/i18n.js')
           text = i18n.read_text(encoding='utf-8')
-          old_zh = "vdocs_techpass: '行驶证（СРТС）'"
-          if text.count(old_zh) != 1:
-              raise SystemExit(f'ZH vehicle-doc anchor mismatch: {text.count(old_zh)}')
-          i18n.write_text(text.replace(old_zh, "vdocs_techpass: '车辆行驶证'", 1), encoding='utf-8')
+          replacements = {
+              "vdocs_techpass: '行驶证（СРТС）'": "vdocs_techpass: '车辆行驶证'",
+              "vdocs_techpass: 'Vehicle registration (СРТС)'": "vdocs_techpass: 'Vehicle registration certificate'",
+          }
+          for old_value, new_value in replacements.items():
+              if text.count(old_value) != 1:
+                  raise SystemExit(f'i18n strict anchor mismatch: {old_value!r} count={text.count(old_value)}')
+              text = text.replace(old_value, new_value, 1)
+          i18n.write_text(text, encoding='utf-8')
           PY
           python3 scripts/strict_locale_materialize.py
 
