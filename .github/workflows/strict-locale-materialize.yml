@@ -29,7 +29,18 @@ jobs:
           cache: npm
 
       - name: Apply guarded locale fixes
-        run: python3 scripts/strict_locale_materialize.py
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('scripts/strict_locale_materialize.py')
+          s = p.read_text(encoding='utf-8')
+          old = '    "src/screens/QueueScreenLazy.js": ["\'Нажать\'"],'
+          new = '    "src/screens/QueueScreenLazy.js": ["? L.selected : \'Нажать\'"],'
+          if old not in s:
+              raise SystemExit('strict screenshot guard anchor missing')
+          p.write_text(s.replace(old, new, 1), encoding='utf-8')
+          PY
+          python3 scripts/strict_locale_materialize.py
 
       - name: Install dependencies
         run: npm ci
