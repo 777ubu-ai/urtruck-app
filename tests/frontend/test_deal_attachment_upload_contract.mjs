@@ -14,6 +14,20 @@ test('Safari/PWA PDF is rewrapped with the intended MIME before multipart upload
   assert.match(api, /form\.append\('file', part, name\)/);
 });
 
+test('deal document picker uploads office files as files, not compressed images', () => {
+  assert.match(ui, /application\/vnd\.ms-excel/);
+  assert.match(ui, /application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet/);
+  assert.match(ui, /text\/csv/);
+  assert.match(ui, /isOfficeDocument/);
+  assert.match(ui, /const uploadUri = isDocument \? uri : await compressImage/);
+  assert.match(api, /endsWith\('\.xlsx'\)/);
+  assert.match(api, /endsWith\('\.xls'\)/);
+  assert.match(api, /endsWith\('\.csv'\)/);
+  assert.match(backend, /application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet/);
+  assert.match(backend, /application\/vnd\.ms-excel/);
+  assert.match(backend, /text\/csv/);
+});
+
 test('attachment retry uses one stable client upload id and backend deduplicates it', () => {
   assert.match(ui, /clientUploadId: localId/);
   assert.match(ui, /const retryItem = \{ \.\.\.item, status: 'retrying'/);

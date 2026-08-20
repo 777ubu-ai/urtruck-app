@@ -24,6 +24,9 @@ _ALLOWED = {
     "image/jpeg": ("photo", "jpg"),
     "image/png": ("photo", "png"),
     "application/pdf": ("document", "pdf"),
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ("document", "xlsx"),
+    "application/vnd.ms-excel": ("document", "xls"),
+    "text/csv": ("document", "csv"),
 }
 _GENERIC_DECLARED_MIME = {
     "",
@@ -35,6 +38,8 @@ _DECLARED_ALIASES = {
     "image/jpg": "image/jpeg",
     "application/x-pdf": "application/pdf",
     "application/acrobat": "application/pdf",
+    "application/csv": "text/csv",
+    "text/comma-separated-values": "text/csv",
 }
 
 
@@ -45,6 +50,16 @@ def _sniff_mime(raw: bytes) -> str | None:
         return "image/png"
     if raw[:5] == b"%PDF-":
         return "application/pdf"
+    if raw[:4] == b"PK\x03\x04":
+        return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    if raw[:8] == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1":
+        return "application/vnd.ms-excel"
+    try:
+        sample = raw[:4096].decode("utf-8-sig")
+        if ("\n" in sample or "\r" in sample) and ("," in sample or ";" in sample or "\t" in sample):
+            return "text/csv"
+    except UnicodeDecodeError:
+        pass
     return None
 
 
@@ -268,7 +283,7 @@ async def upload_attachment(
 
     sniffed = _sniff_mime(raw)
     if sniffed is None or sniffed not in _ALLOWED:
-        raise HTTPException(status_code=415, detail="Неподдерживаемый тип файла (JPEG/PNG/PDF)")
+        raise HTTPException(status_code=415, detail="Неподдерживаемый тип файла (JPEG/PNG/PDF/XLS/XLSX/CSV)")
 
     declared = (file.content_type or "").split(";", 1)[0].strip().lower()
     declared = _DECLARED_ALIASES.get(declared, declared)

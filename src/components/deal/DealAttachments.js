@@ -28,6 +28,19 @@ function attachmentLabel(t, a) {
   return isDoc ? t('attachment_document') : t('attachment_photo');
 }
 
+function isOfficeDocument(name, mime) {
+  const lowerName = String(name || '').toLowerCase();
+  const lowerMime = String(mime || '').toLowerCase();
+  return lowerName.endsWith('.pdf')
+    || lowerName.endsWith('.xls')
+    || lowerName.endsWith('.xlsx')
+    || lowerName.endsWith('.csv')
+    || lowerMime.includes('pdf')
+    || lowerMime.includes('spreadsheet')
+    || lowerMime.includes('excel')
+    || lowerMime.includes('csv');
+}
+
 function formatBytes(value) {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return '';
@@ -72,17 +85,17 @@ export default function DealAttachments({
   useEffect(() => { load(); }, [load]);
 
   const runUpload = useCallback(async (item) => {
-    const { localId, uri, name, isPdf, mime } = item;
+    const { localId, uri, name, isDocument, mime } = item;
     const patchLocal = (patch) =>
       setLocal((prev) => prev.map((x) => (x.localId === localId ? { ...x, ...patch } : x)));
     try {
       patchLocal({ status: item.status === 'retrying' ? 'retrying' : 'uploading', error: null });
-      const uploadUri = isPdf ? uri : await compressImage(uri, { preset: 'document' });
+      const uploadUri = isDocument ? uri : await compressImage(uri, { preset: 'document' });
       const payload = {
         uri: uploadUri,
         kind: 'document',
         name,
-        type: mime || (isPdf ? 'application/pdf' : 'image/jpeg'),
+        type: mime || (isDocument ? undefined : 'image/jpeg'),
         // Stable across Retry. Backend uses it as an idempotency key.
         clientUploadId: localId,
       };
@@ -111,7 +124,7 @@ export default function DealAttachments({
       localId,
       uri: asset.uri,
       name: asset.fileName || `photo_${localId}.jpg`,
-      isPdf: false,
+      isDocument: false,
       mime: asset.mimeType || 'image/jpeg',
       size: asset.fileSize || null,
     });
@@ -120,7 +133,13 @@ export default function DealAttachments({
   const pickDocument = useCallback(async () => {
     if (!conversationId) return;
     const res = await DocumentPicker.getDocumentAsync({
-      type: ['application/pdf', 'image/*'],
+      type: [
+        'application/pdf',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'text/csv',
+        'image/*',
+      ],
       copyToCacheDirectory: true,
       multiple: false,
     });
@@ -128,15 +147,15 @@ export default function DealAttachments({
     const file = res?.assets?.[0];
     if (!file?.uri) return;
     const localId = `att_${Date.now()}_${_localSeq++}`;
-    const isPdf = (file.mimeType || '').toLowerCase().includes('pdf') || /\.pdf$/i.test(file.name || '');
+    const isDocument = isOfficeDocument(file.name, file.mimeType);
     queueUpload({
       localId,
       uri: file.uri,
-      name: file.name || `document_${localId}.${isPdf ? 'pdf' : 'jpg'}`,
-      isPdf,
+      name: file.name || `document_${localId}.${isDocument ? 'pdf' : 'jpg'}`,
+      isDocument,
       // Safari may report application/octet-stream. Backend validates magic
-      // bytes; chatAPI re-wraps a .pdf as application/pdf for multipart.
-      mime: isPdf ? 'application/pdf' : (file.mimeType || 'image/jpeg'),
+      // bytes; chatAPI re-wraps known document extensions for multipart.
+      mime: isDocument ? (file.mimeType || undefined) : (file.mimeType || 'image/jpeg'),
       size: file.size || null,
     });
   }, [conversationId, queueUpload]);
@@ -261,7 +280,7 @@ export default function DealAttachments({
             return (
               <Row
                 key={item.localId}
-                icon={item.isPdf ? 'file-text' : 'image'}
+                icon={item.isDocument ? 'file-text' : 'image'}
                 label={item.name || attachmentLabel(t, item)}
                 sublabel={formatBytes(item.size)}
                 statusKey={meta.key}

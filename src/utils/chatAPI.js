@@ -26,6 +26,9 @@ function attachmentError(message, { status = null, detail = null, isNetwork = fa
 function mimeFromName(name, fallback = 'application/octet-stream') {
   const value = String(name || '').toLowerCase();
   if (value.endsWith('.pdf')) return 'application/pdf';
+  if (value.endsWith('.xlsx')) return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  if (value.endsWith('.xls')) return 'application/vnd.ms-excel';
+  if (value.endsWith('.csv')) return 'text/csv';
   if (value.endsWith('.png')) return 'image/png';
   if (value.endsWith('.jpg') || value.endsWith('.jpeg')) return 'image/jpeg';
   return fallback;

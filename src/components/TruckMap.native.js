@@ -1,8 +1,10 @@
 // TruckMap (native) — embedded map with planned route + live truck point.
 // Preferred road geometry/metrics come from the authenticated UrTruck backend.
 import React from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Linking } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import { routingAPI } from '../utils/routingAPI';
+import { useI18n } from '../utils/useI18n';
 
 const asPoint = (value) => {
   if (Array.isArray(value) && value.length >= 2) {
@@ -19,6 +21,13 @@ const toPair = (point) => point ? [point.latitude, point.longitude] : null;
 const routeKey = (points) => (points || [])
   .map((point) => `${Number(point?.[0]).toFixed(4)}:${Number(point?.[1]).toFixed(4)}`)
   .join('|');
+
+const buildYandexRouteUrl = (points) => {
+  const safe = (points || []).filter(Boolean);
+  if (safe.length < 2) return null;
+  const rtext = safe.map((p) => `${p[0]},${p[1]}`).join('~');
+  return `https://yandex.ru/maps/?rtext=${encodeURIComponent(rtext)}&rtt=auto`;
+};
 
 const distanceTextFromMeters = (value) => {
   const meters = Number(value);
@@ -47,6 +56,7 @@ export default function TruckMap({
   // собранной грузоподъёмности, полные габариты пока не собираются в анкете.
   vehicle = null,
 }) {
+  const { t } = useI18n();
   const live = asPoint([lat, lng]);
   const planned = React.useMemo(() => (routePoints || []).map(asPoint).filter(Boolean), [routePoints]);
   const destination = planned.length ? planned[planned.length - 1] : null;
@@ -82,6 +92,10 @@ export default function TruckMap({
   );
   const road = roadGeometry.length >= 2 ? roadGeometry : planned;
   const all = React.useMemo(() => [...road, ...(live ? [live] : [])], [road, live?.latitude, live?.longitude]);
+  const routeUrl = React.useMemo(() => buildYandexRouteUrl(effectivePairs), [effectiveKey]);
+  const openRoute = React.useCallback(() => {
+    if (routeUrl) Linking.openURL(routeUrl).catch(() => {});
+  }, [routeUrl]);
 
   React.useEffect(() => {
     const distanceText = distanceTextFromMeters(resolvedRoute?.distance_m);
@@ -116,24 +130,42 @@ export default function TruckMap({
   }, [all]);
 
   return (
-    <MapView style={{ flex: 1 }} initialRegion={region}>
-      {road.length >= 2 ? (
-        <Polyline
-          coordinates={road}
-          strokeColor={roadGeometry.length >= 2 ? '#168759' : '#6B7B73'}
-          strokeWidth={roadGeometry.length >= 2 ? 6 : 3}
-          lineDashPattern={roadGeometry.length >= 2 ? undefined : [8, 6]}
-        />
+    <View style={s.shell}>
+      <MapView style={s.map} initialRegion={region}>
+        {road.length >= 2 ? (
+          <Polyline
+            coordinates={road}
+            strokeColor={roadGeometry.length >= 2 ? '#168759' : '#6B7B73'}
+            strokeWidth={roadGeometry.length >= 2 ? 6 : 3}
+            lineDashPattern={roadGeometry.length >= 2 ? undefined : [8, 6]}
+          />
+        ) : null}
+        {planned.map((point, index) => (
+          <Marker
+            key={`${point.latitude}:${point.longitude}:${index}`}
+            coordinate={point}
+            title={index === 0 ? t('map_point_start') : (index === planned.length - 1 ? t('map_point_destination') : t('map_point_waypoint'))}
+            pinColor="#168759"
+          />
+        ))}
+        {live ? <Marker coordinate={live} title={title || t('track_truck_marker')} /> : null}
+      </MapView>
+      {routeUrl ? (
+        <TouchableOpacity style={s.routeAction} onPress={openRoute} activeOpacity={0.84} testID="truck-map-route-action">
+          <Text style={s.routeActionText}>{t('route_action')}</Text>
+        </TouchableOpacity>
       ) : null}
-      {planned.map((point, index) => (
-        <Marker
-          key={`${point.latitude}:${point.longitude}:${index}`}
-          coordinate={point}
-          title={index === 0 ? 'Старт' : (index === planned.length - 1 ? 'Назначение' : 'Точка маршрута')}
-          pinColor="#168759"
-        />
-      ))}
-      {live ? <Marker coordinate={live} title={title || 'Машина'} /> : null}
-    </MapView>
+    </View>
   );
 }
+
+const s = StyleSheet.create({
+  shell: { flex: 1, position: 'relative' },
+  map: { flex: 1 },
+  routeAction: {
+    position: 'absolute', right: 12, bottom: 12, minHeight: 40, paddingHorizontal: 14,
+    borderRadius: 14, backgroundColor: '#168759', alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOpacity: 0.14, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4,
+  },
+  routeActionText: { color: '#FFFFFF', fontSize: 13, fontWeight: '900' },
+});

@@ -13,7 +13,9 @@ test('web deal map uses embedded Yandex Maps as the visual provider', () => {
   assert.match(mapSrc, /new api\.Map/);
   assert.match(mapSrc, /new api\.Placemark/);
   assert.match(mapSrc, /testID="truck-map-yandex-web"/);
-  assert.doesNotMatch(mapSrc, /Linking\.openURL|yandex\.ru\/maps/);
+  assert.match(mapSrc, /suppressMapOpenBlock: true/);
+  assert.match(mapSrc, /testID="truck-map-route-action"/);
+  assert.match(mapSrc, /buildYandexRouteUrl/);
 });
 
 test('production injector loads supported Yandex JS API 2.1 in Russian', () => {
