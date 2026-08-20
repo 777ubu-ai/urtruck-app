@@ -108,9 +108,9 @@ function MainTabs({ route }) {
   // переписки ниже; торг и чат — ВНУТРИ комнаты сделки). Отдельных вкладок
   // «Чаты» и «Разместить» нет ни у кого: чат внутри сделки, размещение —
   // кнопкой внутри «моего меню» (Рейсы/Грузы, §2.2.2).
-  //   Водитель (4): Грузы (Feed) · Рейсы (MyWork) · Очередь (Queue —
-  //     инструмент границы, не дубль) · Сделки (Deals).
-  //   Клиент (3): Грузы (MyWork) · Машины (Feed) · Сделки (Deals).
+  //   Обе роли (4): рабочий каталог · своя работа · Сделки · Граница.
+  //   Queue — электронная очередь/граница; Profile остаётся только в верхнем
+  //   меню и stack-навигации, чтобы не дублировать его в bottom bar.
   // BottomNav красит неон по роли: driver #168759, client #FF8400.
   return (
     <Tab.Navigator
@@ -127,14 +127,14 @@ function MainTabs({ route }) {
           <Tab.Screen name="Feed" component={CargoFeedScreen} initialParams={{ role }} />
           <Tab.Screen name="MyWork" component={MyTripsScreen} initialParams={{ role }} />
           <Tab.Screen name="Deals" component={ChatsListScreen} initialParams={{ role }} />
-          <Tab.Screen name="Profile" component={ProfileScreen} initialParams={{ role }} />
+          <Tab.Screen name="Queue" component={QueueScreen} initialParams={{ role }} />
         </>
       ) : (
         <>
           <Tab.Screen name="MyWork" component={MyTripsScreen} initialParams={{ role }} />
           <Tab.Screen name="Feed" component={FeedScreen} initialParams={{ role }} />
           <Tab.Screen name="Deals" component={ChatsListScreen} initialParams={{ role }} />
-          <Tab.Screen name="Profile" component={ProfileScreen} initialParams={{ role }} />
+          <Tab.Screen name="Queue" component={QueueScreen} initialParams={{ role }} />
         </>
       )}
     </Tab.Navigator>
