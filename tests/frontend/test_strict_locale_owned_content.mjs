@@ -45,6 +45,11 @@ test('translation fallback can never jump from non-RU locale to RU', () => {
   assert.doesNotMatch(i18n, /currentLang === 'RU' \|\| currentLang === 'KK'/);
 });
 
+test('generic cargo formatter uses canonical locale dictionary instead of raw Russian fallback', () => {
+  assert.match(i18n, /import \{ localizeCargoName \} from '\.\/places'/);
+  assert.match(i18n, /return localizeCargoName\(raw, currentLang\) \|\| raw/);
+});
+
 test('cargo suggestions render/search localized labels while preserving canonical value', () => {
   assert.match(cargoTypes, /searchCargoTypes = \(query, lang = 'RU'\)/);
   assert.match(cargoTypes, /localizeCargoName\(c\.name, lang\)/);
@@ -76,6 +81,8 @@ test('border catalog and notifications localize server-owned legacy text', () =>
   assert.match(queue, /localizeCheckpointName\(live\.name \|\| selected\.name, lang\)/);
   assert.match(queue, /active \? L\.selected : L\.open/);
   assert.doesNotMatch(queue, /\? L\.selected : 'Нажать'/);
+  assert.match(queue, /localizedQueueStatus\(lookup, L, lang\)/);
+  assert.doesNotMatch(queue, /\{lookup\.status_raw \|\| lookup\.status\}/);
   assert.match(notifications, /localizeSystemMessage\(cleanNotifText\(item\.title\), lang\)/);
 });
 

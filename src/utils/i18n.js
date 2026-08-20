@@ -1,3 +1,5 @@
+import { localizeCargoName } from './places';
+
 // Переводы UrTruck — RU / EN / KZ / CN
 // Все остальные языки (UZ / KG / DE / FR / TJ / GE / TM …) убраны из
 // пользовательского интерфейса; старые `ur_lang` значения для удалённых
@@ -7502,8 +7504,10 @@ export const formatTruckType = (type) => {
 
 export const formatCargoType = (type) => {
   if (!type) return t('cargo_type_unknown');
-  const val = t(type);
-  return val !== type ? val : type;
+  const raw = String(type).trim();
+  const val = t(raw);
+  if (val !== raw) return val;
+  return localizeCargoName(raw, currentLang) || raw;
 };
 
 export default translations;

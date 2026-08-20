@@ -46,6 +46,8 @@ const COPY = {
     platePlaceholder: 'Госномер, например 123ABC02', check: 'Проверить', notFound: 'Активная очередь не найдена',
     lookupError: 'Не удалось проверить номер', checkpoint: 'КПП', queueTime: 'Время очереди', status: 'Статус',
     cached: 'из кэша UrTruck', live: 'живые данные', selected: 'Выбрано', open: 'Нажать',
+    statusInQueue: 'В очереди', statusCalled: 'Вызван на КПП', statusCrossed: 'КПП пройден', statusRevoked: 'Пропуск отозван',
+    statusPayment: 'Ожидается оплата', statusNotPaid: 'Не оплачено', statusValidating: 'Проверяется', statusReviewFailed: 'Требуется проверка', statusUnknown: 'Статус неизвестен',
   },
   KK: {
     title: 'Шекара', subtitle: 'CGR нақты жүктемесі және қолжетімді бронь', where: 'Қайда барасыз?', all: 'Барлығы',
@@ -58,6 +60,8 @@ const COPY = {
     checkQueue: 'Өз кезегіңізді тексеру', platePlaceholder: 'Мемлекеттік нөмір, мысалы 123ABC02', check: 'Тексеру',
     notFound: 'Белсенді кезек табылмады', lookupError: 'Нөмірді тексеру мүмкін болмады', checkpoint: 'Бекет', queueTime: 'Кезек уақыты',
     status: 'Күйі', cached: 'UrTruck кэшінен', live: 'нақты дерек', selected: 'Таңдалды', open: 'Ашу',
+    statusInQueue: 'Кезекте', statusCalled: 'Өткізу бекетіне шақырылды', statusCrossed: 'Өткізу бекетінен өтті', statusRevoked: 'Рұқсат жойылды',
+    statusPayment: 'Төлем күтілуде', statusNotPaid: 'Төленбеген', statusValidating: 'Тексерілуде', statusReviewFailed: 'Қосымша тексеру қажет', statusUnknown: 'Күйі белгісіз',
   },
   EN: {
     title: 'Border', subtitle: 'Real CGR load and booking availability', where: 'Where are you going?', all: 'All',
@@ -69,6 +73,8 @@ const COPY = {
     favorite: 'Favorite', favorited: 'Favorited', sourceError: 'Could not load CGR data. Try again.', checkQueue: 'Check your queue',
     platePlaceholder: 'Plate number, e.g. 123ABC02', check: 'Check', notFound: 'No active queue found', lookupError: 'Could not check plate',
     checkpoint: 'Checkpoint', queueTime: 'Queue time', status: 'Status', cached: 'UrTruck cache', live: 'live data', selected: 'Selected', open: 'Open',
+    statusInQueue: 'In queue', statusCalled: 'Called to checkpoint', statusCrossed: 'Checkpoint crossed', statusRevoked: 'Pass revoked',
+    statusPayment: 'Payment pending', statusNotPaid: 'Not paid', statusValidating: 'Validating', statusReviewFailed: 'Review required', statusUnknown: 'Status unknown',
   },
   ZH: {
     title: '边境', subtitle: 'CGR 实时负载与预约空位', where: '您要去哪里？', all: '全部', choose: '选择口岸',
@@ -79,6 +85,8 @@ const COPY = {
     favorited: '已收藏', sourceError: '无法获取 CGR 数据，请重试。', checkQueue: '查询我的排队', platePlaceholder: '车牌号，例如 123ABC02',
     check: '查询', notFound: '未找到有效排队', lookupError: '无法查询车牌', checkpoint: '口岸', queueTime: '排队时间', status: '状态',
     cached: 'UrTruck 缓存', live: '实时数据', selected: '已选择', open: '查看',
+    statusInQueue: '排队中', statusCalled: '已叫号，请前往口岸', statusCrossed: '已通过口岸', statusRevoked: '通行许可已撤销',
+    statusPayment: '等待付款', statusNotPaid: '未付款', statusValidating: '审核中', statusReviewFailed: '需要复核', statusUnknown: '状态未知',
   },
 };
 
@@ -88,6 +96,23 @@ function localizeCheckpointName(raw, lang) {
   const parts = value.split(/\s+(?:-|–|—)\s+/).filter(Boolean);
   if (parts.length > 1) return parts.map((part) => localizePlace(part, lang)).join(' — ');
   return localizePlace(value, lang);
+}
+
+function localizedQueueStatus(lookup, L, lang) {
+  const code = String(lookup?.status || '').trim().toLowerCase();
+  const byCode = {
+    in_queue: L.statusInQueue,
+    called: L.statusCalled,
+    crossed: L.statusCrossed,
+    revoked: L.statusRevoked,
+    payment: L.statusPayment,
+    not_paid: L.statusNotPaid,
+    validating: L.statusValidating,
+    review_failed: L.statusReviewFailed,
+  };
+  if (byCode[code]) return byCode[code];
+  if (lang === 'RU' && lookup?.status_raw) return String(lookup.status_raw);
+  return L.statusUnknown;
 }
 
 function normalizePlate(value) {
@@ -449,7 +474,7 @@ export default function QueueScreenLazy({ navigation, route }) {
               {lookup.error ? <Text style={[styles.lookupText, { color: '#B42318' }]}>{L.lookupError}</Text> : lookup.found ? (
                 <>
                   <Text style={[styles.lookupPlate, { color: theme.text }]}>{lookup.plate || normalizePlate(plate)}</Text>
-                  {lookup.status_raw || lookup.status ? <Text style={[styles.lookupText, { color: theme.textMuted }]}>{L.status}: {lookup.status_raw || lookup.status}</Text> : null}
+                  {lookup.status_raw || lookup.status ? <Text style={[styles.lookupText, { color: theme.textMuted }]}>{L.status}: {localizedQueueStatus(lookup, L, lang)}</Text> : null}
                   {lookup.checkpoint ? <Text style={[styles.lookupText, { color: theme.textMuted }]}>{L.checkpoint}: {localizeCheckpointName(lookup.checkpoint, lang)}</Text> : null}
                   {lookup.queue_datetime ? <Text style={[styles.lookupText, { color: theme.textMuted }]}>{L.queueTime}: {lookup.queue_datetime}</Text> : null}
                 </>
