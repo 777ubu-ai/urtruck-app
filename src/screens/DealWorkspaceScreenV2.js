@@ -22,6 +22,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import Feather from '@expo/vector-icons/Feather';
 import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
 
 import TruckMap from '../components/TruckMap';
 import DealAttachments from '../components/deal/DealAttachments';
@@ -68,6 +69,7 @@ const COPY = {
     routeMap: 'Карта рейса', openMap: 'Открыть', mapCardHint: 'Груз на границе · открыть полностью',
     attachLocation: 'Местопол.', attachContact: 'Контакт', attachCatalog: 'Каталог', attachQuickReply: 'Быстрый ответ', attachCall: 'Звонок',
     audioCall: 'Аудиозвонок', videoCall: 'Видеозвонок', sendCallLink: 'Отправить ссылку на звонок', scheduleCall: 'Запланировать звонок', comingSoon: 'Скоро добавим',
+    locationMessage: 'Моя геолокация', callLinkMessage: 'Давайте созвонимся по этому рейсу. Я на связи.',
   },
   EN: {
     messages: 'Messages', statuses: 'Statuses', newMessages: 'new',
@@ -84,6 +86,7 @@ const COPY = {
     routeMap: 'Route map', openMap: 'Open', mapCardHint: 'Cargo at border · open full map',
     attachLocation: 'Location', attachContact: 'Contact', attachCatalog: 'Catalog', attachQuickReply: 'Quick reply', attachCall: 'Call',
     audioCall: 'Audio call', videoCall: 'Video call', sendCallLink: 'Send call link', scheduleCall: 'Schedule call', comingSoon: 'Coming soon',
+    locationMessage: 'My location', callLinkMessage: 'Let’s have a call about this trip. I am available.',
   },
   ZH: {
     messages: '消息', statuses: '状态', newMessages: '条新消息',
@@ -100,6 +103,7 @@ const COPY = {
     routeMap: '路线地图', openMap: '打开', mapCardHint: '货物在边境 · 打开完整地图',
     attachLocation: '位置', attachContact: '联系人', attachCatalog: '目录', attachQuickReply: '快捷回复', attachCall: '通话',
     audioCall: '语音通话', videoCall: '视频通话', sendCallLink: '发送通话链接', scheduleCall: '预约通话', comingSoon: '即将推出',
+    locationMessage: '我的位置', callLinkMessage: '我们就这趟运输通话吧。我在线。',
   },
   KK: {
     messages: 'Хабарламалар', statuses: 'Мәртебелер', newMessages: 'жаңа',
@@ -116,6 +120,7 @@ const COPY = {
     routeMap: 'Рейс картасы', openMap: 'Ашу', mapCardHint: 'Жүк шекарада · толық картаны ашу',
     attachLocation: 'Орын', attachContact: 'Байланыс', attachCatalog: 'Каталог', attachQuickReply: 'Жылдам жауап', attachCall: 'Қоңырау',
     audioCall: 'Аудио қоңырау', videoCall: 'Видео қоңырау', sendCallLink: 'Қоңырау сілтемесін жіберу', scheduleCall: 'Қоңырауды жоспарлау', comingSoon: 'Жақында қосамыз',
+    locationMessage: 'Менің геолокациям', callLinkMessage: 'Осы рейс бойынша қоңырау шалайық. Мен байланыстамын.',
   },
 };
 
@@ -520,22 +525,31 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   }, [nextAction, startTrip, askConfirm, t, changeDealStatus]);
 
   const recipientId = partner?.id || null;
-  const sendText = React.useCallback(async () => {
-    const body = input.trim();
-    if (!body || (!roomId && !recipientId)) return;
+  const sendChatPayload = React.useCallback(async ({ text: textBody = '', photoUrl = null, isVoice = false, voiceDuration = null, localMediaUrl = null }) => {
+    const body = String(textBody || '').trim();
+    if (!body && !photoUrl && !localMediaUrl) return false;
+    if (!roomId && !recipientId) {
+      toast(t('chat_send_failed'), 'error');
+      return false;
+    }
     const clientId = `c_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
     setMessages((items) => [...items, {
       id: clientId, mine: true, text: body,
+      photo: !!photoUrl && !isVoice,
+      voice: !!isVoice,
+      voiceDuration: voiceDuration || 0,
+      mediaUrl: localMediaUrl || null,
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), optimistic: true,
     }]);
     setInput('');
-    setInputHeight(44);
+    setInputHeight(38);
     setAttachOpen(false);
     nearBottomRef.current = true;
     setShowJumpLatest(false);
     setTimeout(() => listRef.current?.scrollToEnd?.({ animated: true }), 60);
     const payload = {
-      roomId, toUserId: recipientId, text: body,
+      roomId, toUserId: recipientId, text: body, photoUrl,
+      isVoice, voiceDuration,
       cargoId: deal?.cargo_id || params.cargoId || null,
       tripId: deal?.trip_id || params.tripId || null,
       clientMsgId: clientId,
@@ -544,16 +558,27 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       const result = await chatAPI.send(payload);
       if (result?.room_id && !roomId) setRoomId(result.room_id);
       setTimeout(loadMessages, 120);
+      return true;
     } catch (error) {
       if (error?.isNetwork) {
         await enqueueOutbox({ clientId, payload }, session?.user?.id);
         toast(t('chat_queued'), 'info', 2200);
-      } else toast(t('chat_send_failed'), 'error');
+        return true;
+      }
+      toast(t('chat_send_failed'), 'error');
+      return false;
     }
-  }, [input, roomId, recipientId, deal?.cargo_id, deal?.trip_id, params.cargoId, params.tripId, loadMessages, session?.user?.id, toast, t]);
+  }, [roomId, recipientId, deal?.cargo_id, deal?.trip_id, params.cargoId, params.tripId, loadMessages, session?.user?.id, toast, t]);
+
+  const sendText = React.useCallback(async () => {
+    const body = input.trim();
+    if (!body) return;
+    await sendChatPayload({ text: body });
+  }, [input, sendChatPayload]);
 
   const sendPhoto = React.useCallback(async (camera) => {
     try {
+      if (!roomId && !recipientId) { toast(t('chat_send_failed'), 'error'); return; }
       if (camera) {
         const permission = await ImagePicker.requestCameraPermissionsAsync();
         if (permission.status !== 'granted') return;
@@ -586,9 +611,40 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     } catch { toast(t('chat_send_failed'), 'error'); }
   }, [roomId, recipientId, deal?.cargo_id, deal?.trip_id, params.cargoId, params.tripId, loadMessages, toast, t]);
 
+  const sendLocation = React.useCallback(async () => {
+    try {
+      if (!roomId && !recipientId) { toast(t('chat_send_failed'), 'error'); return; }
+      let coords;
+      if (Platform.OS === 'web') {
+        coords = await new Promise((resolve, reject) => {
+          if (!navigator?.geolocation) { reject(new Error('geolocation')); return; }
+          navigator.geolocation.getCurrentPosition(
+            (position) => resolve(position.coords),
+            reject,
+            { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 },
+          );
+        });
+      } else {
+        const permission = await Location.requestForegroundPermissionsAsync();
+        if (permission.status !== 'granted') return;
+        const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        coords = position.coords;
+      }
+      const lat = Number(coords.latitude);
+      const lng = Number(coords.longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) throw new Error('coords');
+      const link = `https://yandex.ru/maps/?pt=${lng},${lat}&z=16&l=map`;
+      await sendChatPayload({ text: `📍 ${ui.locationMessage}: ${link}` });
+      setAttachOpen(false);
+    } catch {
+      toast(t('location_denied'), 'error');
+    }
+  }, [roomId, recipientId, sendChatPayload, toast, t, ui.locationMessage]);
+
   const toggleVoice = React.useCallback(async () => {
     if (!recording) {
       try {
+        if (!roomId && !recipientId) { toast(t('chat_send_failed'), 'error'); return; }
         const ok = await voice.startRecording();
         if (!ok) return;
         recordStartRef.current = Date.now();
@@ -603,15 +659,15 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       const duration = result.duration || Math.max(1, Math.round((Date.now() - recordStartRef.current) / 1000));
       const upload = await chatAPI.uploadChatVoice(result.uri);
       if (!upload?.voice_key) throw new Error('voice_upload');
-      await chatAPI.send({
-        roomId, toUserId: recipientId, text: `🎤 ${ui.voiceMessage}`, photoUrl: upload.voice_key,
-        isVoice: true, voiceDuration: duration,
-        cargoId: deal?.cargo_id || params.cargoId || null, tripId: deal?.trip_id || params.tripId || null,
-        clientMsgId: `c_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+      await sendChatPayload({
+        text: `🎤 ${ui.voiceMessage}`,
+        photoUrl: upload.voice_key,
+        localMediaUrl: result.uri,
+        isVoice: true,
+        voiceDuration: duration,
       });
-      setTimeout(loadMessages, 120);
     } catch { toast(t('chat_send_failed'), 'error'); }
-  }, [recording, roomId, recipientId, deal?.cargo_id, deal?.trip_id, params.cargoId, params.tripId, ui.voiceMessage, loadMessages, toast, t]);
+  }, [recording, roomId, recipientId, ui.voiceMessage, sendChatPayload, toast, t]);
 
   const renderMessage = React.useCallback(({ item }) => {
     if (item.system) return (
@@ -769,15 +825,15 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           {callMenuOpen ? (
             <View style={[s.callMenu, { backgroundColor: colors.surface, borderColor: colors.border }]} testID="deal-chat-call-menu">
               {[
-                [ui.audioCall, 'phone'],
-                [ui.videoCall, 'video'],
-                [ui.sendCallLink, 'link'],
-                [ui.scheduleCall, 'calendar'],
-              ].map(([label, icon], index) => (
+                [ui.audioCall, 'phone', showComingSoon],
+                [ui.videoCall, 'video', showComingSoon],
+                [ui.sendCallLink, 'link', () => sendChatPayload({ text: `📞 ${ui.callLinkMessage}` })],
+                [ui.scheduleCall, 'calendar', showComingSoon],
+              ].map(([label, icon, action], index) => (
                 <TouchableOpacity
                   key={label}
                   style={[s.callMenuItem, index < 3 && { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth }]}
-                  onPress={() => { setCallMenuOpen(false); showComingSoon(); }}
+                  onPress={() => { setCallMenuOpen(false); action?.(); }}
                 >
                   <Text style={[s.callMenuText, { color: colors.text }]}>{label}</Text>
                   <Feather name={icon} size={18} color={colors.text} />
@@ -948,7 +1004,16 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                   </View>
 
                   {recording ? (
-                    <View style={s.recordBar}><View style={s.recordDot} /><Text style={s.recordText}>{ui.recording} 0:{String(recordSecs % 60).padStart(2, '0')}</Text></View>
+                    <View style={s.recordBar} testID="deal-chat-voice-recording">
+                      <View style={s.recordDot} />
+                      <Text style={s.recordText}>{ui.recording}</Text>
+                      <View style={s.recordWave}>
+                        {[10, 18, 26, 14, 22, 30, 16, 24, 12, 20, 28, 14].map((height, index) => (
+                          <View key={`${height}-${index}`} style={[s.recordWaveBar, { height }]} />
+                        ))}
+                      </View>
+                      <Text style={s.recordTime}>0:{String(recordSecs % 60).padStart(2, '0')}</Text>
+                    </View>
                   ) : null}
 
                   {attachOpen ? (
@@ -965,7 +1030,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                         <View style={[s.attachIcon, { backgroundColor: '#FFFFFF' }]}><Feather name="file-text" size={23} color="#0879C8" /></View>
                         <Text style={[s.attachLabel, { color: colors.text }]}>{ui.attachDocument}</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity style={s.attachItem} onPress={openMapFromChat} testID="deal-chat-attach-location">
+                      <TouchableOpacity style={s.attachItem} onPress={sendLocation} testID="deal-chat-attach-location">
                         <View style={[s.attachIcon, s.attachIconActive]}><Feather name="map-pin" size={23} color="#FFFFFF" /></View>
                         <Text style={[s.attachLabel, { color: colors.text }]}>{ui.attachLocation}</Text>
                       </TouchableOpacity>
@@ -977,7 +1042,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                         <View style={[s.attachIcon, { backgroundColor: '#FFFFFF' }]}><Feather name="archive" size={23} color="#59615D" /></View>
                         <Text style={[s.attachLabel, { color: colors.text }]}>{ui.attachCatalog}</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity style={s.attachItem} onPress={showComingSoon}>
+                      <TouchableOpacity style={s.attachItem} onPress={() => sendChatPayload({ text: 'Здравствуйте. Напишите, пожалуйста, когда будет удобно.' })}>
                         <View style={[s.attachIcon, { backgroundColor: '#FFFFFF' }]}><Feather name="zap" size={23} color="#C98A1D" /></View>
                         <Text style={[s.attachLabel, { color: colors.text }]}>{ui.attachQuickReply}</Text>
                       </TouchableOpacity>
@@ -1151,9 +1216,12 @@ const s = StyleSheet.create({
   emptyText: { textAlign: 'center', marginTop: 24, fontSize: 13 },
   jumpLatest: { position: 'absolute', right: 14, bottom: 12, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#168759', paddingHorizontal: 11, height: 34, borderRadius: 17, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 8, elevation: 3 },
   jumpLatestText: { color: '#FFFFFF', fontSize: 11.5, fontWeight: '800' },
-  recordBar: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 15, paddingVertical: 7, backgroundColor: 'rgba(239,68,68,0.08)' },
+  recordBar: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 7, backgroundColor: 'rgba(22,135,89,0.08)', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#DDE8E1' },
   recordDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444' },
-  recordText: { color: '#B91C1C', fontSize: 12, fontWeight: '800' },
+  recordText: { color: '#168759', fontSize: 12, fontWeight: '850' },
+  recordWave: { flex: 1, height: 30, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3, paddingHorizontal: 8 },
+  recordWaveBar: { width: 3, borderRadius: 2, backgroundColor: '#168759', opacity: 0.72 },
+  recordTime: { color: '#59615D', fontSize: 12, fontWeight: '850', fontVariant: ['tabular-nums'] },
   attachMenu: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 18, borderTopWidth: StyleSheet.hairlineWidth, backgroundColor: '#FAFBFA', rowGap: 16 },
   attachItem: { width: '23%', minWidth: 68, alignItems: 'center', gap: 7 },
   attachIcon: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E0E8E3', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2 },

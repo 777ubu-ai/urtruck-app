@@ -118,6 +118,24 @@ test('composer grows then scrolls, switches mic to send, and uses WhatsApp-like 
   assert.match(attachments, /documentTrigger/);
 });
 
+test('deal chat attachment shortcuts perform useful logistics actions', () => {
+  assert.match(workspace, /import \* as Location from 'expo-location'/);
+  assert.match(workspace, /const sendLocation = React\.useCallback/);
+  assert.match(workspace, /navigator\.geolocation\.getCurrentPosition/);
+  assert.match(workspace, /Location\.getCurrentPositionAsync/);
+  assert.match(workspace, /onPress=\{sendLocation\} testID="deal-chat-attach-location"/);
+  assert.match(workspace, /sendChatPayload\(\{ text: `📞 \$\{ui\.callLinkMessage\}` \}\)/);
+  assert.match(workspace, /sendChatPayload\(\{ text: 'Здравствуйте\. Напишите, пожалуйста, когда будет удобно\.' \}\)/);
+});
+
+test('voice recording shows a messenger-style recording strip and sends through the shared payload path', () => {
+  assert.match(workspace, /testID="deal-chat-voice-recording"/);
+  assert.match(workspace, /recordWave/);
+  assert.match(workspace, /recordWaveBar/);
+  assert.match(workspace, /chatAPI\.uploadChatVoice/);
+  assert.match(workspace, /sendChatPayload\(\{\s*text: `🎤 \$\{ui\.voiceMessage\}`/);
+});
+
 test('chat history scroll does not yank user from old messages when new messages arrive', () => {
   assert.match(workspace, /nearBottomRef/);
   assert.match(workspace, /setShowJumpLatest\(true\)/);
