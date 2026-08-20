@@ -114,8 +114,8 @@ test('Xcode project bundles InfoPlist.strings as a localized resource', () => {
 
   // each locale file must be referenced with the right path
   for (const loc of LOCALES) {
-    assert.ok(pbx.includes(`path = "${loc}.lproj/InfoPlist.strings"`),
-      `pbxproj has no file reference for ${loc}.lproj/InfoPlist.strings`);
+    assert.ok(pbx.includes(`path = "UrTruck/${loc}.lproj/InfoPlist.strings"`),
+      `pbxproj has no file reference for UrTruck/${loc}.lproj/InfoPlist.strings`);
   }
 
   // knownRegions must list them, otherwise Xcode ignores the .lproj dirs
@@ -125,6 +125,32 @@ test('Xcode project bundles InfoPlist.strings as a localized resource', () => {
     assert.match(known[1], new RegExp(`\\b${loc},`), `knownRegions missing ${loc}`);
   }
   assert.match(known[1], /"zh-Hans",/, 'knownRegions missing zh-Hans');
+});
+
+test('every InfoPlist.strings PBXFileReference path resolves to a real file on disk', () => {
+  // Real EAS/Xcode build failure (2026-08-20, TestFlight RC run): "Build input
+  // file cannot be found: '/…/build/ios/ru.lproj/InfoPlist.strings'". The
+  // pbxproj wiring set path = "ru.lproj/InfoPlist.strings", which resolves
+  // relative to the PROJECT ROOT (ios/) because neither the UrTruck PBXGroup
+  // nor the InfoPlist.strings PBXVariantGroup declares its own `path` — every
+  // sibling resource in that same group (AppDelegate.h, Info.plist,
+  // PrivacyInfo.xcprivacy) carries an explicit `UrTruck/` prefix in its own
+  // `path` for exactly this reason. The string-match assertion above only
+  // proved the reference existed with *some* path; it never proved that path
+  // was resolvable, so it passed on the broken wiring. This test resolves
+  // every `path = "…"` for our 4 locale file refs against the real
+  // filesystem relative to `ios/`, the way Xcode itself does, so a
+  // regression here fails locally instead of only on a real macOS build.
+  const pbx = fs.readFileSync('ios/UrTruck.xcodeproj/project.pbxproj', 'utf8');
+  for (const loc of LOCALES) {
+    const m = pbx.match(new RegExp(`${loc.replace('-', '\\-')} \\*/ = \\{isa = PBXFileReference;[^}]*?path = "([^"]+)"`));
+    assert.ok(m, `no PBXFileReference path captured for ${loc}`);
+    const resolved = `ios/${m[1]}`;
+    assert.ok(fs.existsSync(resolved),
+      `${loc} PBXFileReference path "${m[1]}" does not resolve to a real file at ${resolved} ` +
+      `(Xcode resolves group-relative paths from the project root when the group itself has no ` +
+      `explicit "path", exactly the class of bug that broke the real EAS build)`);
+  }
 });
 
 test('pbxproj has no dangling or duplicate UUIDs after the edit', () => {

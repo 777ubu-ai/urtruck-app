@@ -20,10 +20,10 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		33B45B0061CA1E07F7E2694F /* ru */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ru; path = "ru.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
-		480BC46B97556CC44DD772B6 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = "en.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
-		8FA82F266C5E15D704B66306 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = zh-Hans; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
-		7FFF7E94ACC77DAD37E41C4C /* kk */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = kk; path = "kk.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		33B45B0061CA1E07F7E2694F /* ru */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ru; path = "UrTruck/ru.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		480BC46B97556CC44DD772B6 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = "UrTruck/en.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		8FA82F266C5E15D704B66306 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = zh-Hans; path = "UrTruck/zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		7FFF7E94ACC77DAD37E41C4C /* kk */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = kk; path = "UrTruck/kk.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		13B07F961A680F5B00A75B9A /* UrTruck.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = UrTruck.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FAF1A68108700A75B9A /* AppDelegate.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = AppDelegate.h; path = UrTruck/AppDelegate.h; sourceTree = "<group>"; };
 		13B07FB01A68108700A75B9A /* AppDelegate.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; name = AppDelegate.mm; path = UrTruck/AppDelegate.mm; sourceTree = "<group>"; };
