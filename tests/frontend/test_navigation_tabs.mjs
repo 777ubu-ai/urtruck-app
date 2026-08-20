@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
+// Owner-approved IA: Profile is top-menu/stack only; Border is the fourth tab.
 const navigator = fs.readFileSync('src/navigation/AppNavigator.js', 'utf8');
 const bottomNav = fs.readFileSync('src/components/ui/v1/BottomNav.js', 'utf8');
 const start = navigator.indexOf('function MainTabs');
