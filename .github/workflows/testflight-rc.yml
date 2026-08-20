@@ -1,0 +1,54 @@
+name: UrTruck TestFlight RC
+
+on:
+  push:
+    branches:
+      - release/appstore-final-audit-20260820
+    paths:
+      - .github/workflows/testflight-rc.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: urtruck-testflight-rc
+  cancel-in-progress: false
+
+jobs:
+  build-and-upload-testflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    steps:
+      - name: Checkout exact release candidate
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify release branch and Expo auth
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "SHA=$(git rev-parse HEAD)"
+          test "${GITHUB_REF_NAME}" = "release/appstore-final-audit-20260820"
+          test -n "${EXPO_TOKEN:-}"
+          npx eas-cli@latest whoami
+
+      - name: Show recent iOS EAS builds
+        run: npx eas-cli@latest build:list --platform ios --limit 10 --non-interactive
+
+      - name: Build production iOS RC in EAS
+        run: npx eas-cli@latest build --platform ios --profile production --non-interactive --wait
+
+      - name: Upload latest successful iOS build to TestFlight only
+        run: npx eas-cli@latest submit --platform ios --profile production --latest --non-interactive --wait
