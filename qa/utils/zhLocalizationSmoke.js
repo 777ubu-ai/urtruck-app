@@ -64,11 +64,11 @@ const importSourceModule = async (rel) => {
   assert(badCargo.length === 0, `missing ZH cargo translations (${badCargo.length}): ${badCargo.slice(0, 30).join('; ')}`);
 
   const screenshotCargo = [
-    ['Одежда и текстиль', '服装与纺织品'],
+    ['Одежда и текстиль', '服装纺织品'],
     ['Обувь', '鞋类'],
     ['Электроника', '电子产品'],
     ['Бытовая техника', '家用电器'],
-    ['Компьютеры и офисная техника', '电脑与办公设备'],
+    ['Компьютеры и офисная техника', '电脑办公设备'],
     ['Электросамокаты', '电动滑板车'],
   ];
   for (const [raw, expected] of screenshotCargo) {
