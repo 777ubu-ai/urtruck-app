@@ -57,14 +57,14 @@ const UNREAD_POLL_MS = 12000;
 // clipboard — MyWork (мои рейсы / мои грузы)
 // message-circle — чат
 // handshake — «Сделки» (весь путь договорённости: ставки → торг →
-//         сделка → статусы). Заменил вкладку профиля — профиль ушёл
-//         наверх под ☰. Рендерится через MaterialCommunityIcons (см. ниже),
-//         остальные — через Feather.
+//         сделка → статусы).
+// map-pin — «Граница»: электронная очередь и данные КПП.
+// Профиль остаётся наверху под ☰ и не дублируется в bottom bar.
 const ICONS = {
   Feed:    { driver: 'package', client: 'truck' },
   MyWork:  { driver: 'clipboard', client: 'clipboard' },
   Deals:   { driver: 'handshake', client: 'handshake' },
-  Profile: { driver: 'user', client: 'user' },
+  Queue:   { driver: 'map-pin', client: 'map-pin' },
 };
 
 // Industrial Luxury: неоновый акцент зависит от роли (источник истины —
@@ -198,7 +198,7 @@ export default function BottomNav({ state, navigation }) {
     if (name === 'Feed')    return isDriver ? t('tab_feed') : t('tab_feed_client');
     if (name === 'MyWork')  return isDriver ? t('tab_my_work_driver') : t('tab_my_work_client');
     if (name === 'Deals')   return t('tab_deals');
-    if (name === 'Profile') return t('tab_profile');
+    if (name === 'Queue')   return t('tab_border');
     return name;
   };
 

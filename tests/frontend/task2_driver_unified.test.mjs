@@ -11,15 +11,16 @@ const cargo = fs.readFileSync('src/screens/CargoDetailV2.js', 'utf8');
 const feed = fs.readFileSync('src/screens/CargoFeedScreen.js', 'utf8');
 const backend = fs.readFileSync('backend/api/marketplace.py', 'utf8');
 
-test('main tabs are four canonical tabs for both roles and Queue is not a bottom tab', () => {
+test('main tabs are four canonical tabs with Border and no Profile duplication', () => {
   const start = nav.indexOf('function MainTabs');
   const end = nav.indexOf('// Реактивная навигация', start);
   const tabs = nav.slice(start, end);
-  assert.doesNotMatch(tabs, /Tab\.Screen name="Queue"/);
+  assert.equal((tabs.match(/Tab\.Screen name="Queue"/g) || []).length, 2);
   assert.equal((tabs.match(/Tab\.Screen name="Deals"/g) || []).length, 2);
-  assert.equal((tabs.match(/Tab\.Screen name="Profile"/g) || []).length, 2);
-  assert.match(bottom, /Profile: \{ driver: 'user', client: 'user' \}/);
-  assert.doesNotMatch(bottom, /Queue:\s*\{/);
+  assert.equal((tabs.match(/Tab\.Screen name="Profile"/g) || []).length, 0);
+  assert.match(bottom, /Queue:\s*\{ driver: 'map-pin', client: 'map-pin' \}/);
+  assert.doesNotMatch(bottom, /Profile:\s*\{/);
+  assert.match(bottom, /name === 'Queue'\)\s+return t\('tab_border'\)/);
   assert.doesNotMatch(bottom, /route\.name === 'Publish'/);
 });
 
