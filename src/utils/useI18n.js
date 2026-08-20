@@ -19,8 +19,8 @@ const translate = (key) => {
   const lang = getLanguage();
   const own = translations[lang]?.[resolvedKey];
   if (own) return own;
-  if (lang === 'ZH') return translations.EN?.[resolvedKey] || resolvedKey;
-  return translations.RU?.[resolvedKey] || translations.EN?.[resolvedKey] || resolvedKey;
+    if (lang === 'ZH') return translations.EN?.[resolvedKey] || resolvedKey;
+    return translations.RU?.[resolvedKey] || translations.EN?.[resolvedKey] || resolvedKey;
 };
 
 // Хук для реактивного обновления текстов при смене языка
