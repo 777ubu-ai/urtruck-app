@@ -65,6 +65,9 @@ const COPY = {
     loadingDate: 'Загрузка', deliveryDate: 'Доставка', expandMap: 'Развернуть карту', collapseMap: 'Свернуть карту',
     tripFinished: 'Сделка завершена', tripDelivered: 'Груз доставлен', awaitingReceiptStatus: 'Ожидает подтверждения', tripAwaitingReceipt: 'Ожидаем подтверждения грузоотправителя', tripAwaitingReceiptHint: 'Водитель отметил груз как доставленный. Сделка завершится после подтверждения получения.', tripReceived: 'Получение подтверждено', mapFinishedHint: 'Live GPS для этого рейса больше не используется.',
     jumpLatest: 'Новые сообщения', closePhoto: 'Закрыть фото',
+    routeMap: 'Карта рейса', openMap: 'Открыть', mapCardHint: 'Груз на границе · открыть полностью',
+    attachLocation: 'Местопол.', attachContact: 'Контакт', attachCatalog: 'Каталог', attachQuickReply: 'Быстрый ответ', attachCall: 'Звонок',
+    audioCall: 'Аудиозвонок', videoCall: 'Видеозвонок', sendCallLink: 'Отправить ссылку на звонок', scheduleCall: 'Запланировать звонок', comingSoon: 'Скоро добавим',
   },
   EN: {
     messages: 'Messages', statuses: 'Statuses', newMessages: 'new',
@@ -78,6 +81,9 @@ const COPY = {
     loadingDate: 'Pickup', deliveryDate: 'Delivery', expandMap: 'Expand map', collapseMap: 'Collapse map',
     tripFinished: 'Deal completed', tripDelivered: 'Cargo delivered', awaitingReceiptStatus: 'Awaiting confirmation', tripAwaitingReceipt: 'Awaiting shipper confirmation', tripAwaitingReceiptHint: 'The driver marked the cargo as delivered. The deal is completed after receipt is confirmed.', tripReceived: 'Receipt confirmed', mapFinishedHint: 'Live GPS is no longer used for this trip.',
     jumpLatest: 'New messages', closePhoto: 'Close photo',
+    routeMap: 'Route map', openMap: 'Open', mapCardHint: 'Cargo at border · open full map',
+    attachLocation: 'Location', attachContact: 'Contact', attachCatalog: 'Catalog', attachQuickReply: 'Quick reply', attachCall: 'Call',
+    audioCall: 'Audio call', videoCall: 'Video call', sendCallLink: 'Send call link', scheduleCall: 'Schedule call', comingSoon: 'Coming soon',
   },
   ZH: {
     messages: '消息', statuses: '状态', newMessages: '条新消息',
@@ -91,6 +97,9 @@ const COPY = {
     loadingDate: '装货', deliveryDate: '送达', expandMap: '展开地图', collapseMap: '收起地图',
     tripFinished: '交易已完成', tripDelivered: '货物已送达', awaitingReceiptStatus: '等待确认', tripAwaitingReceipt: '等待货主确认收货', tripAwaitingReceiptHint: '司机已标记货物送达。货主确认收货后，交易才能完成。', tripReceived: '已确认收货', mapFinishedHint: '本次运输已停止实时 GPS。',
     jumpLatest: '新消息', closePhoto: '关闭照片',
+    routeMap: '路线地图', openMap: '打开', mapCardHint: '货物在边境 · 打开完整地图',
+    attachLocation: '位置', attachContact: '联系人', attachCatalog: '目录', attachQuickReply: '快捷回复', attachCall: '通话',
+    audioCall: '语音通话', videoCall: '视频通话', sendCallLink: '发送通话链接', scheduleCall: '预约通话', comingSoon: '即将推出',
   },
   KK: {
     messages: 'Хабарламалар', statuses: 'Мәртебелер', newMessages: 'жаңа',
@@ -104,6 +113,9 @@ const COPY = {
     loadingDate: 'Тиеу', deliveryDate: 'Жеткізу', expandMap: 'Картаны үлкейту', collapseMap: 'Картаны кішірейту',
     tripFinished: 'Мәміле аяқталды', tripDelivered: 'Жүк жеткізілді', awaitingReceiptStatus: 'Растауды күтуде', tripAwaitingReceipt: 'Жүк иесінің қабылдауды растауын күтеміз', tripAwaitingReceiptHint: 'Жүргізуші жүкті жеткізілді деп белгіледі. Жүк иесі қабылдауды растағаннан кейін мәміле аяқталады.', tripReceived: 'Қабылдау расталды', mapFinishedHint: 'Бұл рейсте live GPS енді қолданылмайды.',
     jumpLatest: 'Жаңа хабарламалар', closePhoto: 'Фотоны жабу',
+    routeMap: 'Рейс картасы', openMap: 'Ашу', mapCardHint: 'Жүк шекарада · толық картаны ашу',
+    attachLocation: 'Орын', attachContact: 'Байланыс', attachCatalog: 'Каталог', attachQuickReply: 'Жылдам жауап', attachCall: 'Қоңырау',
+    audioCall: 'Аудио қоңырау', videoCall: 'Видео қоңырау', sendCallLink: 'Қоңырау сілтемесін жіберу', scheduleCall: 'Қоңырауды жоспарлау', comingSoon: 'Жақында қосамыз',
   },
 };
 
@@ -198,6 +210,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [sheetTab, setSheetTab] = React.useState('chat');
   const [mapExpanded, setMapExpanded] = React.useState(false);
   const [attachOpen, setAttachOpen] = React.useState(false);
+  const [callMenuOpen, setCallMenuOpen] = React.useState(false);
   const [documentTrigger, setDocumentTrigger] = React.useState(0);
   const [recording, setRecording] = React.useState(false);
   const [recordSecs, setRecordSecs] = React.useState(0);
@@ -217,7 +230,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
   const normalCollapsedHeight = 132 + Math.max(insets.bottom, 6);
   const compactCollapsedHeight = 76 + Math.max(insets.bottom, 6);
-  const collapsedHeight = mapExpanded ? compactCollapsedHeight : normalCollapsedHeight;
+  const mapChatHeight = Math.min(330 + Math.max(insets.bottom, 6), Math.max(260, Math.round(window.height * 0.42)));
+  const collapsedHeight = mapExpanded ? mapChatHeight : normalCollapsedHeight;
   const fullHeight = Math.max(collapsedHeight + 180, window.height - Math.max(insets.top, 10) - 112);
   const expandedHeight = Math.min(fullHeight - 8, Math.max(380, Math.round(window.height * 0.72)));
   const sheetAnim = React.useRef(new Animated.Value(collapsedHeight)).current;
@@ -231,11 +245,11 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
   const setSheet = React.useCallback((next) => {
     setSheetState(next);
-    if (next !== 'collapsed') setMapExpanded(false);
+    if (next !== 'collapsed' && !mapExpanded) setMapExpanded(false);
     Animated.spring(sheetAnim, {
       toValue: heightForState(next), damping: 24, stiffness: 220, mass: 0.9, useNativeDriver: false,
     }).start();
-  }, [heightForState, sheetAnim]);
+  }, [heightForState, mapExpanded, sheetAnim]);
 
   React.useEffect(() => {
     Animated.spring(sheetAnim, {
@@ -670,6 +684,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       : ui.tripFinished;
   const inactiveSubtitle = visibleDealStatus === 'delivered' ? ui.tripAwaitingReceipt : '';
   const inactiveHint = visibleDealStatus === 'delivered' ? ui.tripAwaitingReceiptHint : '';
+  const sheetBodyVisible = sheetState !== 'collapsed' || mapExpanded;
 
   const showTab = (tab) => {
     setSheetTab(tab);
@@ -683,10 +698,35 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   };
 
   const toggleMap = () => {
-    setMapExpanded((value) => !value);
+    setMapExpanded((value) => {
+      const next = !value;
+      if (next) {
+        setSheetTab('chat');
+        setAttachOpen(false);
+        setCallMenuOpen(false);
+      }
+      return next;
+    });
     setSheetTab('chat');
     setSheet('collapsed');
   };
+
+  const openMapFromChat = () => {
+    if (!showLiveMap) return;
+    setMapExpanded(true);
+    setSheetTab('chat');
+    setAttachOpen(false);
+    setCallMenuOpen(false);
+    setSheet('collapsed');
+  };
+
+  const collapseMapToChat = () => {
+    setMapExpanded(false);
+    setSheetTab('chat');
+    setSheet('expanded');
+  };
+
+  const showComingSoon = () => toast(ui.comingSoon, 'info', 1700);
 
   const jumpLatest = () => {
     nearBottomRef.current = true;
@@ -719,6 +759,33 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
             {scheduleMeta ? <Text style={[s.metaSecondary, { color: colors.textMuted }]} numberOfLines={1}>{scheduleMeta}</Text> : null}
             <Text style={[s.partnerText, { color: colors.textMuted }]} numberOfLines={1}>{counterpartyMeta}</Text>
           </View>
+          <TouchableOpacity
+            onPress={() => { setAttachOpen(false); setCallMenuOpen((value) => !value); }}
+            style={[s.headerCallButton, { borderColor: colors.border, backgroundColor: colors.surface }]}
+            testID="deal-chat-call-menu-toggle"
+          >
+            <Feather name="phone" size={18} color={colors.text} />
+            <Feather name="chevron-down" size={14} color={colors.textMuted} />
+          </TouchableOpacity>
+          {callMenuOpen ? (
+            <View style={[s.callMenu, { backgroundColor: colors.surface, borderColor: colors.border }]} testID="deal-chat-call-menu">
+              {[
+                [ui.audioCall, 'phone'],
+                [ui.videoCall, 'video'],
+                [ui.sendCallLink, 'link'],
+                [ui.scheduleCall, 'calendar'],
+              ].map(([label, icon], index) => (
+                <TouchableOpacity
+                  key={label}
+                  style={[s.callMenuItem, index < 3 && { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth }]}
+                  onPress={() => { setCallMenuOpen(false); showComingSoon(); }}
+                >
+                  <Text style={[s.callMenuText, { color: colors.text }]}>{label}</Text>
+                  <Feather name={icon} size={18} color={colors.text} />
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : null}
         </View>
 
         <View style={s.mapArea} testID="deal-map-first-area">
@@ -760,8 +827,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           )}
 
           {showLiveMap ? (
-            <TouchableOpacity style={[s.mapExpand, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={toggleMap} testID="deal-map-expand-toggle" accessibilityLabel={mapExpanded ? ui.collapseMap : ui.expandMap}>
-              <Feather name={mapExpanded ? 'minimize-2' : 'maximize-2'} size={18} color={colors.text} />
+            <TouchableOpacity style={[s.mapExpand, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={mapExpanded ? collapseMapToChat : toggleMap} testID="deal-map-expand-toggle" accessibilityLabel={mapExpanded ? ui.collapseMap : ui.expandMap}>
+              <Feather name={mapExpanded ? 'chevron-down' : 'maximize-2'} size={18} color={colors.text} />
             </TouchableOpacity>
           ) : null}
 
@@ -814,32 +881,46 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                   <Text style={[s.sheetTitle, { color: colors.text }]}>{sheetTab === 'chat' ? ui.messages : ui.statuses}</Text>
                   {sheetTab === 'chat' && unreadCount > 0 ? <Text style={s.newCount}>{unreadCount} {ui.newMessages}</Text> : null}
                 </View>
-                {sheetState === 'collapsed' && sheetTab === 'chat' ? (
+                  {sheetState === 'collapsed' && !mapExpanded && sheetTab === 'chat' ? (
                   <Text style={[s.preview, { color: colors.textMuted }]} numberOfLines={mapExpanded ? 1 : 2}>
                     {latestMessage?.text || (latestMessage?.voice ? ui.voiceMessage : latestMessage?.photo ? ui.attachPhoto : ui.noMessages)}
                   </Text>
                 ) : null}
               </View>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => sheetState === 'collapsed' ? setSheet('expanded') : setSheet('collapsed')} style={s.collapseButton} testID="deal-chat-collapse">
-              <Feather name={sheetState === 'collapsed' ? 'chevron-up' : 'x'} size={20} color={colors.text} />
+            <TouchableOpacity onPress={() => mapExpanded ? collapseMapToChat() : sheetState === 'collapsed' ? setSheet('expanded') : setSheet('collapsed')} style={s.collapseButton} testID="deal-chat-collapse">
+              <Feather name={mapExpanded ? 'chevron-down' : sheetState === 'collapsed' ? 'chevron-up' : 'x'} size={20} color={colors.text} />
             </TouchableOpacity>
           </View>
 
-          {sheetState !== 'collapsed' ? (
+          {sheetBodyVisible ? (
             <>
-              <View style={s.tabRow} testID="deal-sheet-two-tabs">
+              {!mapExpanded ? <View style={s.tabRow} testID="deal-sheet-two-tabs">
                 {[['chat', ui.messages, 'message-circle'], ['status', ui.statuses, 'activity']].map(([key, label, icon]) => (
                   <TouchableOpacity key={key} style={[s.tab, sheetTab === key && s.tabActive]} onPress={() => showTab(key)} testID={`deal-sheet-tab-${key}`}>
                     <Feather name={icon} size={15} color={sheetTab === key ? '#168759' : colors.textMuted} />
                     <Text style={[s.tabText, { color: sheetTab === key ? '#168759' : colors.textMuted }]}>{label}</Text>
                   </TouchableOpacity>
                 ))}
-              </View>
+              </View> : null}
 
               {sheetTab === 'chat' ? (
                 <>
                   <View style={s.chatBody}>
+                    {showLiveMap && !mapExpanded ? (
+                      <TouchableOpacity
+                        style={[s.routeMapCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                        onPress={openMapFromChat}
+                        testID="deal-chat-open-route-map"
+                      >
+                        <View style={s.routeMapIcon}><Feather name="map" size={18} color="#FFFFFF" /></View>
+                        <View style={s.routeMapText}>
+                          <Text style={[s.routeMapTitle, { color: colors.text }]}>{ui.routeMap}</Text>
+                          <Text style={[s.routeMapHint, { color: colors.textMuted }]} numberOfLines={1}>{ui.mapCardHint}</Text>
+                        </View>
+                        <Text style={s.routeMapOpen}>{ui.openMap}</Text>
+                      </TouchableOpacity>
+                    ) : null}
                     <FlatList
                       ref={listRef}
                       data={messages}
@@ -874,24 +955,44 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
                   {attachOpen ? (
                     <View style={[s.attachMenu, { borderTopColor: colors.border }]} testID="deal-chat-attach-menu">
-                      <TouchableOpacity style={s.attachItem} onPress={() => sendPhoto(false)}>
-                        <View style={[s.attachIcon, { backgroundColor: '#E9F6EF' }]}><Feather name="image" size={21} color="#168759" /></View>
-                        <Text style={[s.attachLabel, { color: colors.text }]}>{ui.attachPhoto}</Text>
-                      </TouchableOpacity>
                       <TouchableOpacity style={s.attachItem} onPress={() => sendPhoto(true)}>
-                        <View style={[s.attachIcon, { backgroundColor: '#E9F6EF' }]}><Feather name="camera" size={21} color="#168759" /></View>
+                        <View style={[s.attachIcon, { backgroundColor: '#FFFFFF' }]}><Feather name="camera" size={23} color="#2D3430" /></View>
                         <Text style={[s.attachLabel, { color: colors.text }]}>{ui.attachCamera}</Text>
                       </TouchableOpacity>
+                      <TouchableOpacity style={s.attachItem} onPress={() => sendPhoto(false)}>
+                        <View style={[s.attachIcon, { backgroundColor: '#FFFFFF' }]}><Feather name="image" size={23} color="#0879C8" /></View>
+                        <Text style={[s.attachLabel, { color: colors.text }]}>{ui.attachPhoto}</Text>
+                      </TouchableOpacity>
                       <TouchableOpacity style={s.attachItem} onPress={() => { setAttachOpen(false); setDocumentTrigger((value) => value + 1); }} testID="deal-chat-attach-document">
-                        <View style={[s.attachIcon, { backgroundColor: '#E9F6EF' }]}><Feather name="file-text" size={21} color="#168759" /></View>
+                        <View style={[s.attachIcon, { backgroundColor: '#FFFFFF' }]}><Feather name="file-text" size={23} color="#0879C8" /></View>
                         <Text style={[s.attachLabel, { color: colors.text }]}>{ui.attachDocument}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={s.attachItem} onPress={openMapFromChat} testID="deal-chat-attach-location">
+                        <View style={[s.attachIcon, s.attachIconActive]}><Feather name="map-pin" size={23} color="#FFFFFF" /></View>
+                        <Text style={[s.attachLabel, { color: colors.text }]}>{ui.attachLocation}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={s.attachItem} onPress={showComingSoon}>
+                        <View style={[s.attachIcon, { backgroundColor: '#FFFFFF' }]}><Feather name="user" size={23} color="#59615D" /></View>
+                        <Text style={[s.attachLabel, { color: colors.text }]}>{ui.attachContact}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={s.attachItem} onPress={showComingSoon}>
+                        <View style={[s.attachIcon, { backgroundColor: '#FFFFFF' }]}><Feather name="archive" size={23} color="#59615D" /></View>
+                        <Text style={[s.attachLabel, { color: colors.text }]}>{ui.attachCatalog}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={s.attachItem} onPress={showComingSoon}>
+                        <View style={[s.attachIcon, { backgroundColor: '#FFFFFF' }]}><Feather name="zap" size={23} color="#C98A1D" /></View>
+                        <Text style={[s.attachLabel, { color: colors.text }]}>{ui.attachQuickReply}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={s.attachItem} onPress={() => { setAttachOpen(false); setCallMenuOpen(true); }} testID="deal-chat-attach-call">
+                        <View style={[s.attachIcon, { backgroundColor: '#FFFFFF' }]}><Feather name="phone" size={23} color="#168759" /></View>
+                        <Text style={[s.attachLabel, { color: colors.text }]}>{ui.attachCall}</Text>
                       </TouchableOpacity>
                     </View>
                   ) : null}
 
                   <View style={[s.composer, { borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, 8) }]} testID="deal-chat-composer">
                     <TouchableOpacity style={[s.composerIcon, { borderColor: colors.border, backgroundColor: colors.surface }]} onPress={() => setAttachOpen((value) => !value)} testID="deal-chat-attach">
-                      <Feather name="plus" size={21} color={colors.text} />
+                      {attachOpen ? <FontAwesome5 name="keyboard" size={17} color={colors.text} /> : <Feather name="plus" size={21} color={colors.text} />}
                     </TouchableOpacity>
                     <TextInput
                       value={input}
@@ -905,6 +1006,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                       placeholderTextColor={colors.textMuted}
                       testID="deal-chat-input"
                     />
+                    <TouchableOpacity style={[s.composerIcon, { borderColor: colors.border, backgroundColor: colors.surface }]} onPress={() => sendPhoto(true)} testID="deal-chat-camera">
+                      <Feather name="camera" size={20} color={colors.text} />
+                    </TouchableOpacity>
                     {input.trim() ? (
                       <TouchableOpacity style={s.sendButton} onPress={sendText} testID="deal-chat-send"><FontAwesome5 name="paper-plane" size={15} color="#FFFFFF" solid /></TouchableOpacity>
                     ) : (
@@ -968,7 +1072,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
 const s = StyleSheet.create({
   safe: { flex: 1 },
-  compactHeader: { minHeight: 118, flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 10, paddingTop: 8, paddingBottom: 9, borderBottomWidth: StyleSheet.hairlineWidth, zIndex: 20 },
+  compactHeader: { minHeight: 118, flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 10, paddingTop: 8, paddingBottom: 9, borderBottomWidth: StyleSheet.hairlineWidth, zIndex: 40 },
   backButton: { width: 42, height: 46, alignItems: 'center', justifyContent: 'center', marginTop: 6 },
   headerText: { flex: 1, minWidth: 0, paddingRight: 10 },
   routeHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 34 },
@@ -979,6 +1083,10 @@ const s = StyleSheet.create({
   metaPrimary: { fontSize: 12.7, fontWeight: '800', marginTop: 1 },
   metaSecondary: { fontSize: 11.5, fontWeight: '650', marginTop: 3 },
   partnerText: { fontSize: 11.5, fontWeight: '650', marginTop: 3 },
+  headerCallButton: { width: 48, height: 42, borderRadius: 16, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 2, marginTop: 8 },
+  callMenu: { position: 'absolute', top: 56, right: 10, width: 258, borderRadius: 14, borderWidth: 1, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 20, shadowOffset: { width: 0, height: 8 }, elevation: 14, zIndex: 60 },
+  callMenuItem: { minHeight: 52, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  callMenuText: { flex: 1, fontSize: 15, fontWeight: '650' },
   mapArea: { flex: 1, position: 'relative', overflow: 'hidden', backgroundColor: '#EAF1ED' },
   center: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', gap: 9 },
   loadingText: { fontSize: 13, fontWeight: '700' },
@@ -1018,6 +1126,12 @@ const s = StyleSheet.create({
   tabActive: { backgroundColor: '#E9F6EF' },
   tabText: { fontSize: 12.5, fontWeight: '850' },
   chatBody: { flex: 1, position: 'relative' },
+  routeMapCard: { marginHorizontal: 14, marginTop: 8, marginBottom: 8, minHeight: 58, borderRadius: 16, borderWidth: 1, paddingHorizontal: 11, paddingVertical: 9, flexDirection: 'row', alignItems: 'center', gap: 10, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
+  routeMapIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#168759', alignItems: 'center', justifyContent: 'center' },
+  routeMapText: { flex: 1, minWidth: 0 },
+  routeMapTitle: { fontSize: 13.5, fontWeight: '900' },
+  routeMapHint: { fontSize: 11.5, fontWeight: '650', marginTop: 2 },
+  routeMapOpen: { color: '#168759', fontSize: 12, fontWeight: '900' },
   messageList: { flex: 1 },
   messageContent: { paddingHorizontal: 14, paddingTop: 8, paddingBottom: 12 },
   messageRow: { marginBottom: 10 },
@@ -1042,10 +1156,11 @@ const s = StyleSheet.create({
   recordBar: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 15, paddingVertical: 7, backgroundColor: 'rgba(239,68,68,0.08)' },
   recordDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444' },
   recordText: { color: '#B91C1C', fontSize: 12, fontWeight: '800' },
-  attachMenu: { flexDirection: 'row', justifyContent: 'space-around', paddingHorizontal: 18, paddingVertical: 12, borderTopWidth: StyleSheet.hairlineWidth, backgroundColor: '#FAFBFA' },
-  attachItem: { minWidth: 86, alignItems: 'center', gap: 7 },
-  attachIcon: { width: 54, height: 54, borderRadius: 18, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E0E8E3', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
-  attachLabel: { fontSize: 12, fontWeight: '850' },
+  attachMenu: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 18, borderTopWidth: StyleSheet.hairlineWidth, backgroundColor: '#FAFBFA', rowGap: 16 },
+  attachItem: { width: '23%', minWidth: 68, alignItems: 'center', gap: 7 },
+  attachIcon: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E0E8E3', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
+  attachIconActive: { backgroundColor: '#168759', borderColor: '#168759' },
+  attachLabel: { fontSize: 11.5, fontWeight: '850', textAlign: 'center' },
   composer: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 12, paddingTop: 9, borderTopWidth: StyleSheet.hairlineWidth },
   composerIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   input: { flex: 1, minHeight: 44, maxHeight: 112, borderRadius: 16, borderWidth: 1, paddingHorizontal: 13, paddingTop: 11, paddingBottom: 10, fontSize: 14.5, lineHeight: 19 },

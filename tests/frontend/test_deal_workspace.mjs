@@ -54,6 +54,8 @@ test('deal workspace is map-first and has explicit map expand collapse control',
   assert.match(workspace, /routePoints=\{routePoints\}/);
   assert.match(workspace, /onRouteSummary=\{onRouteSummary\}/);
   assert.match(workspace, /testID="deal-map-expand-toggle"/);
+  assert.match(workspace, /testID="deal-chat-open-route-map"/);
+  assert.match(workspace, /collapseMapToChat/);
   assert.match(workspace, /setMapExpanded/);
   assert.doesNotMatch(workspace, /open_route_btn|Открыть маршрут|navigation\.navigate\('TrackTruck'/);
 });
@@ -103,9 +105,13 @@ test('composer grows then scrolls, switches mic to send, and uses WhatsApp-like 
   assert.match(workspace, /scrollEnabled=\{inputHeight >= 112\}/);
   assert.match(workspace, /testID="deal-chat-send"/);
   assert.match(workspace, /testID="deal-chat-voice"/);
+  assert.match(workspace, /testID="deal-chat-camera"/);
   assert.match(workspace, /sendPhoto\(false\)/);
   assert.match(workspace, /sendPhoto\(true\)/);
   assert.match(workspace, /testID="deal-chat-attach-document"/);
+  assert.match(workspace, /testID="deal-chat-attach-location"/);
+  assert.match(workspace, /testID="deal-chat-attach-call"/);
+  assert.match(workspace, /ui\.attachQuickReply/);
   assert.match(workspace, /documentTrigger/);
   assert.match(attachments, /testID=\{inline \? 'deal-inline-attachments'/);
   assert.match(attachments, /documentTrigger/);
@@ -127,10 +133,26 @@ test('chat photos open in an app-controlled full screen viewer', () => {
 });
 
 test('chat attachment menu uses the refreshed solid action styling', () => {
-  assert.match(workspace, /justifyContent: 'space-around'/);
-  assert.match(workspace, /width: 54, height: 54/);
-  assert.match(workspace, /backgroundColor: '#E9F6EF'/);
-  assert.match(workspace, /color="#168759"/);
+  assert.match(workspace, /flexWrap: 'wrap'/);
+  assert.match(workspace, /width: '23%'/);
+  assert.match(workspace, /width: 56, height: 56, borderRadius: 28/);
+  assert.match(workspace, /attachIconActive/);
+});
+
+test('deal chat exposes a WhatsApp-like call menu from the top right', () => {
+  assert.match(workspace, /testID="deal-chat-call-menu-toggle"/);
+  assert.match(workspace, /testID="deal-chat-call-menu"/);
+  assert.match(workspace, /ui\.audioCall/);
+  assert.match(workspace, /ui\.videoCall/);
+  assert.match(workspace, /ui\.sendCallLink/);
+  assert.match(workspace, /ui\.scheduleCall/);
+});
+
+test('expanded map mode keeps a compact chat dock over the map', () => {
+  assert.match(workspace, /const mapChatHeight/);
+  assert.match(workspace, /const sheetBodyVisible = sheetState !== 'collapsed' \|\| mapExpanded/);
+  assert.match(workspace, /mapExpanded \? 'chevron-down' : 'maximize-2'/);
+  assert.match(workspace, /mapExpanded \? collapseMapToChat\(\)/);
 });
 
 test('statuses render a detailed vertical timeline instead of compact system chips', () => {
