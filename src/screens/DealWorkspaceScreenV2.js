@@ -28,8 +28,8 @@ import AppConfirmModal from '../components/ui/AppConfirmModal';
 import { chatAPI } from '../utils/chatAPI';
 import { marketAPI } from '../utils/marketAPI';
 import { parseRouteCities } from '../utils/geo';
-import { localizePlace } from '../utils/places';
-import { getLanguage, formatStatus } from '../utils/i18n';
+import { localizeCargoName, localizePlace, localizeSystemMessage } from '../utils/places';
+import { getLanguage, formatStatus, formatTruckType } from '../utils/i18n';
 import { useI18n } from '../utils/useI18n';
 import { useAuth } from '../utils/AuthContext';
 import { useToast } from '../components/Toast';
@@ -148,10 +148,13 @@ const compactDate = (raw, lang) => {
   } catch { return `${match[3]}.${match[2]}`; }
 };
 
-const formatWeight = (value) => {
+const formatWeight = (value, lang) => {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return '';
-  return `${Number.isInteger(n) ? n : n.toFixed(1)} т`;
+  const amount = Number.isInteger(n) ? n : n.toFixed(1);
+  if (lang === 'ZH') return `${amount} 吨`;
+  if (lang === 'EN') return `${amount} t`;
+  return `${amount} т`;
 };
 
 export default function DealWorkspaceScreenV2({ navigation, route }) {
@@ -361,12 +364,13 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       const mapped = (result?.messages || []).map((message) => {
         const mine = typeof message.mine === 'boolean' ? message.mine : message.sender_id === session?.user?.id;
         const isVoice = !!message.is_voice;
+        const system = message.sender_id === 'system';
         return {
           id: String(message.id),
           clientMsgId: message.client_msg_id || null,
           mine,
-          system: message.sender_id === 'system',
-          text: message.text || '',
+          system,
+          text: system ? localizeSystemMessage(message.text || '', lang) : (message.text || ''),
           photo: !!message.photo_url && !isVoice,
           voice: isVoice,
           mediaUrl: resolveAttachment(message.photo_url),
@@ -385,7 +389,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       notifyChatRead();
       refreshAppIconBadge();
     } catch { /* preserve messages */ }
-  }, [roomId, session?.user?.id]);
+  }, [roomId, session?.user?.id, lang]);
 
   React.useEffect(() => {
     if (!roomId) return undefined;
@@ -624,10 +628,12 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const statusLabel = visibleDealStatus === 'delivered' ? ui.awaitingReceiptStatus : formatStatus(visibleDealStatus);
   const partnerName = text(partner?.name, deal?.counterparty_name, isDriver ? cargo?.owner_name : trip?.driver_display_name);
 
+  const rawCargoName = text(deal?.cargo_desc, cargo?.cargo_desc);
+  const rawTruckType = text(deal?.cargo_type, cargo?.cargo_type, deal?.truck_type, trip?.truck_type);
   const cargoMeta = [
-    text(deal?.cargo_desc, cargo?.cargo_desc),
-    formatWeight(text(deal?.weight_tons, cargo?.weight_tons)),
-    text(deal?.cargo_type, cargo?.cargo_type, deal?.truck_type, trip?.truck_type),
+    localizeCargoName(rawCargoName, lang) || rawCargoName,
+    formatWeight(text(deal?.weight_tons, cargo?.weight_tons), lang),
+    rawTruckType ? formatTruckType(rawTruckType) : null,
     deal?.amount != null ? formatPrice(deal.amount, deal.currency || cargo?.currency || trip?.currency || 'USD', t) : null,
   ].filter(Boolean).join(' · ');
 

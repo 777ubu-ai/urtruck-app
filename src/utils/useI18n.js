@@ -10,16 +10,16 @@ const KEY_ALIASES = {
 };
 
 /**
- * UI-safe translator. Critical rule: Chinese UI must never silently fall back
- * to Russian. Missing ZH keys use EN as emergency fallback; QA still treats
- * any missing key on critical screens as a defect.
+ * UI-safe translator. Critical rule: a non-Russian locale must never silently
+ * fall back to Russian. Missing non-RU keys use EN as an emergency fallback;
+ * QA still treats missing keys on critical screens as a defect.
  */
 const translate = (key) => {
   const resolvedKey = KEY_ALIASES[key] || key;
   const lang = getLanguage();
   const own = translations[lang]?.[resolvedKey];
   if (own) return own;
-  if (lang === 'ZH') return translations.EN?.[resolvedKey] || resolvedKey;
+  if (lang !== 'RU') return translations.EN?.[resolvedKey] || resolvedKey;
   return translations.RU?.[resolvedKey] || translations.EN?.[resolvedKey] || resolvedKey;
 };
 

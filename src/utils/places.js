@@ -167,6 +167,103 @@ const DICT = {
   'Алашанькоу-сухой порт': { zh: '阿拉山口陆港', en: 'Alashankou dry port' },
 };
 
+
+// Kazakh display aliases for canonical legacy values. Canonical DB strings may
+// remain Russian for backward compatibility, but UI must not leak RU when KK
+// is selected. Missing proper-name aliases fall back to the English canonical
+// transliteration rather than Russian.
+const KK_PLACE_DICT = {
+  'Алматы': 'Алматы', 'Астана': 'Астана', 'Нур-Султан': 'Астана',
+  'Шымкент': 'Шымкент', 'Караганда': 'Қарағанды', 'Актобе': 'Ақтөбе',
+  'Атырау': 'Атырау', 'Усть-Каменогорск': 'Өскемен', 'Павлодар': 'Павлодар',
+  'Семей': 'Семей', 'Тараз': 'Тараз', 'Костанай': 'Қостанай',
+  'Кызылорда': 'Қызылорда', 'Уральск': 'Орал', 'Актау': 'Ақтау',
+  'Петропавловск': 'Петропавл', 'Кокшетау': 'Көкшетау',
+  'Хоргос': 'Қорғас', 'Нур Жолы': 'Нұр Жолы', 'Нур жолы': 'Нұр Жолы',
+  'Достык': 'Достық', 'Алашанькоу': 'Алашанькоу', 'Майкапчагай': 'Майқапшағай',
+  'Зимунай': 'Зимунай', 'Джеминай': 'Жеминай', 'Бахты': 'Бақты',
+  'Тачэн': 'Тачэн', 'Чугучак': 'Шәуешек', 'Калжат': 'Қалжат',
+  'Дулаты': 'Дулаты', 'Покиту': 'Покиту',
+  'Иу': 'Иу', 'Гуанчжоу': 'Гуанчжоу', 'Шэньчжэнь': 'Шэньчжэнь',
+  'Пекин': 'Бейжің', 'Шанхай': 'Шанхай', 'Урумчи': 'Үрімші',
+  'Москва': 'Мәскеу', 'Санкт-Петербург': 'Санкт-Петербург',
+  'Новосибирск': 'Новосибирск', 'Екатеринбург': 'Екатеринбург',
+  'Казань': 'Қазан', 'Челябинск': 'Челябі', 'Самара': 'Самара',
+  'Омск': 'Омбы', 'Оренбург': 'Орынбор',
+  'Ташкент': 'Ташкент', 'Самарканд': 'Самарқанд', 'Бухара': 'Бұхара',
+  'Бишкек': 'Бішкек', 'Ош': 'Ош', 'Душанбе': 'Душанбе',
+  'Минск': 'Минск', 'Ереван': 'Ереван', 'Тбилиси': 'Тбилиси',
+  'Батуми': 'Батуми', 'Баку': 'Баку', 'Стамбул': 'Ыстанбұл',
+  'Анкара': 'Анкара', 'Берлин': 'Берлин', 'Варшава': 'Варшава',
+};
+
+const CARGO_KK = {
+  'Одежда и текстиль': 'Киім және тоқыма',
+  'Одежда': 'Киім',
+  'Текстиль': 'Тоқыма',
+  'Текстиль и одежда': 'Тоқыма және киім',
+  'Обувь': 'Аяқ киім',
+  'Электроника': 'Электроника',
+  'Бытовая техника': 'Тұрмыстық техника',
+  'Компьютеры и офисная техника': 'Компьютерлер және кеңсе техникасы',
+  'Электросамокаты': 'Электр самокаттары',
+  'LED-панели': 'LED-панельдер',
+  'Автозапчасти': 'Автобөлшектер',
+  'Шины и диски': 'Шиналар мен дискілер',
+  'Автомобили': 'Автомобильдер',
+  'Стройматериалы': 'Құрылыс материалдары',
+  'Строительные материалы': 'Құрылыс материалдары',
+  'Металл и арматура': 'Металл және арматура',
+  'Трубы': 'Құбырлар',
+  'Цемент': 'Цемент',
+  'Плитка керамическая': 'Керамикалық плитка',
+  'Мебель': 'Жиһаз',
+  'Продукты питания': 'Азық-түлік',
+  'Мясо говяжье': 'Сиыр еті',
+  'Овощи и фрукты': 'Көкөністер мен жемістер',
+  'Мёд': 'Бал',
+  'Зерно': 'Астық',
+  'Напитки': 'Сусындар',
+  'Медикаменты': 'Дәрі-дәрмек',
+  'Косметика': 'Косметика',
+  'Игрушки': 'Ойыншықтар',
+  'Спорттовары': 'Спорт тауарлары',
+  'Книги и канцелярия': 'Кітаптар мен кеңсе тауарлары',
+  'Бумажная продукция': 'Қағаз өнімдері',
+  'Химия (бытовая)': 'Тұрмыстық химия',
+  'Бытовая химия': 'Тұрмыстық химия',
+  'Удобрения': 'Тыңайтқыштар',
+  'Сельхоз техника': 'Ауыл шаруашылығы техникасы',
+  'Оборудование промышленное': 'Өнеркәсіптік жабдық',
+  'Товары для дома': 'Үйге арналған тауарлар',
+  'Посуда': 'Ыдыс-аяқ',
+  'Оптовые товары из Китая': 'Қытайдан көтерме тауарлар',
+  'Ткани рулонные': 'Рулонды маталар',
+  'Лом металла': 'Металл сынықтары',
+  'Бумага для принтера': 'Принтер қағазы',
+  'Упаковка': 'Қаптама',
+  'Мотоциклы': 'Мотоциклдер',
+  'Металлическая посуда': 'Металл ыдыс-аяқ',
+  'Посуда металлическая': 'Металл ыдыс-аяқ',
+  'Холодильники': 'Тоңазытқыштар',
+  'Детские стулья': 'Балалар орындықтары',
+};
+
+const SYSTEM_MESSAGE_DICT = {
+  '🤝 Сделка создана': { zh: '🤝 交易已创建', en: '🤝 Deal created', kk: '🤝 Мәміле құрылды' },
+  '🚛 Рейс начался': { zh: '🚛 运输已开始', en: '🚛 Trip started', kk: '🚛 Рейс басталды' },
+  '🛂 На границе': { zh: '🛂 在边境', en: '🛂 At the border', kk: '🛂 Шекарада' },
+  '🛂 Груз на границе': { zh: '🛂 货物在边境', en: '🛂 Cargo at the border', kk: '🛂 Жүк шекарада' },
+  '✅ Доставлен — ожидается подтверждение получения': { zh: '✅ 已送达 — 等待确认收货', en: '✅ Delivered — awaiting receipt confirmation', kk: '✅ Жеткізілді — қабылдауды растау күтілуде' },
+  '✅ Груз доставлен': { zh: '✅ 货物已送达', en: '✅ Cargo delivered', kk: '✅ Жүк жеткізілді' },
+  '✅ Груз доставлен — ожидается подтверждение получения': { zh: '✅ 货物已送达 — 等待确认收货', en: '✅ Cargo delivered — awaiting receipt confirmation', kk: '✅ Жүк жеткізілді — қабылдауды растау күтілуде' },
+  '✅ Получение подтверждено': { zh: '✅ 已确认收货', en: '✅ Receipt confirmed', kk: '✅ Қабылдау расталды' },
+  '✅ Получение груза подтверждено': { zh: '✅ 已确认收货', en: '✅ Cargo receipt confirmed', kk: '✅ Жүктің қабылдануы расталды' },
+  '🤝 Сделка завершена': { zh: '🤝 交易已完成', en: '🤝 Deal completed', kk: '🤝 Мәміле аяқталды' },
+  '❌ Отменено': { zh: '❌ 已取消', en: '❌ Cancelled', kk: '❌ Болдырылмады' },
+  '❌ Сделка отменена': { zh: '❌ 交易已取消', en: '❌ Deal cancelled', kk: '❌ Мәміле тоқтатылды' },
+};
+
 const ARROW_RE = /([↔→←⇄]+)/;
 const FLAG_PAIR_RE = /[\u{1F1E6}-\u{1F1FF}]{2}/gu;
 
@@ -184,15 +281,20 @@ export function cleanPlaceName(raw) {
     .trim();
 }
 
+function translatedPlace(key, lang) {
+  if (lang === 'kk') return KK_PLACE_DICT[key] || DICT[key]?.en || key;
+  return DICT[key]?.[lang] || key;
+}
+
 function localizeHead(head, lang) {
   const key = head.trim();
   const full = DICT[key];
-  if (full && full[lang]) return head.replace(key, full[lang]);
+  if (full) return head.replace(key, translatedPlace(key, lang));
   if (ARROW_RE.test(head)) {
     return head.split(ARROW_RE).map((part) => {
       const k = part.trim();
       const e = k && DICT[k];
-      return (e && e[lang]) ? part.replace(k, e[lang]) : part;
+      return e ? part.replace(k, translatedPlace(k, lang)) : part;
     }).join('');
   }
   return head;
@@ -209,7 +311,8 @@ export function localizePlace(raw, lang) {
   // returned raw DB text, so a city stored as "Иу, 🇨🇳" plus countryFlag(CN)
   // rendered two flags for the same point. Flags are a UI entity, never data.
   const clean = cleanPlaceName(raw);
-  if (l !== 'zh' && l !== 'en') return clean;
+  if (l === 'ru') return clean;
+  if (l !== 'zh' && l !== 'en' && l !== 'kk') return clean;
   return localizeHead(clean, l);
 }
 
@@ -272,10 +375,30 @@ const CARGO_INDEX = Object.fromEntries(
 
 export function localizeCargoName(raw, lang) {
   const l = String(lang || '').toLowerCase();
-  if (!raw || (l !== 'zh' && l !== 'en')) return raw;
+  if (!raw || l === 'ru') return raw;
   const key = String(raw).trim();
   const e = CARGO_DICT[key] || CARGO_INDEX[key.toLocaleLowerCase('ru-RU')];
-  return (e && e[l]) ? e[l] : raw;
+  if (l === 'kk') return CARGO_KK[key] || e?.en || raw;
+  if (l === 'zh' || l === 'en') return (e && e[l]) ? e[l] : raw;
+  return raw;
+}
+
+export function localizeSystemMessage(raw, lang) {
+  if (!raw) return raw;
+  const l = String(lang || '').toLowerCase();
+  if (l === 'ru') return raw;
+  const value = String(raw).trim();
+  const direct = SYSTEM_MESSAGE_DICT[value];
+  if (direct && direct[l]) return direct[l];
+
+  // Some old rows append an amount after the system phrase.
+  for (const [prefix, variants] of Object.entries(SYSTEM_MESSAGE_DICT)) {
+    if (value.startsWith(`${prefix} ·`) && variants[l]) {
+      return `${variants[l]}${value.slice(prefix.length)}`;
+    }
+  }
+  // Never machine-translate arbitrary participant text here.
+  return raw;
 }
 
 export const hasPlaceTranslation = (raw, lang = 'ZH') => {

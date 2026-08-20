@@ -94,7 +94,9 @@ export function DealRoomCard({ deal, role }) {
     ? { title: '计划路线', hint: '行程开始后，车辆位置会自动显示', live: '车辆位置' }
     : language.startsWith('en')
       ? { title: 'Planned route', hint: 'Truck location will appear automatically after trip start', live: 'Truck location' }
-      : { title: 'Плановый маршрут', hint: 'После начала рейса машина появится автоматически', live: 'Машина на маршруте' };
+      : language.startsWith('kk')
+        ? { title: 'Жоспарланған бағыт', hint: 'Рейс басталғаннан кейін көліктің орны автоматты түрде көрінеді', live: 'Көлік бағыты' }
+        : { title: 'Плановый маршрут', hint: 'После начала рейса машина появится автоматически', live: 'Машина на маршруте' };
 
   const Field = ({ icon, label, value }) => (
     <View style={s.field}>

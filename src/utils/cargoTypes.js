@@ -1,5 +1,6 @@
 // Типовые категории грузов + автосохранение кастомных
 import { storage } from './storage';
+import { localizeCargoName } from './places';
 
 export const BASE_CARGO_TYPES = [
   { name: 'Одежда и текстиль', icon: '👕', category: 'textile' },
@@ -71,20 +72,28 @@ export const addCustomCargoType = async (name) => {
   _listeners.forEach(cb => cb());
 };
 
-export const searchCargoTypes = (query) => {
+export const searchCargoTypes = (query, lang = 'RU') => {
   if (!query || query.length < 1) return BASE_CARGO_TYPES.slice(0, 8);
-  const q = query.toLowerCase().trim();
+  const q = query.toLocaleLowerCase().trim();
   const all = [..._custom, ...BASE_CARGO_TYPES];
-  const matches = all.filter(c => c.name.toLowerCase().includes(q));
+  const display = (c) => c.custom ? c.name : (localizeCargoName(c.name, lang) || c.name);
+  const matches = all.filter((c) => {
+    const canonical = c.name.toLocaleLowerCase();
+    const localized = String(display(c)).toLocaleLowerCase();
+    return canonical.includes(q) || localized.includes(q);
+  });
   matches.sort((a, b) => {
-    const aS = a.name.toLowerCase().startsWith(q);
-    const bS = b.name.toLowerCase().startsWith(q);
+    const aS = String(display(a)).toLocaleLowerCase().startsWith(q) || a.name.toLocaleLowerCase().startsWith(q);
+    const bS = String(display(b)).toLocaleLowerCase().startsWith(q) || b.name.toLocaleLowerCase().startsWith(q);
     if (aS && !bS) return -1;
     if (!aS && bS) return 1;
     return 0;
   });
   const result = matches.slice(0, 7);
-  if (!matches.some(c => c.name.toLowerCase() === q) && q.length >= 2) {
+  const exact = matches.some((c) =>
+    c.name.toLocaleLowerCase() === q || String(display(c)).toLocaleLowerCase() === q
+  );
+  if (!exact && q.length >= 2) {
     result.push({ name: query.trim(), icon: '➕', isCustom: true });
   }
   return result;

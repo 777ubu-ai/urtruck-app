@@ -9,6 +9,7 @@ import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import { useAuth } from '../utils/AuthContext';
 import { useI18n } from '../utils/useI18n';
 import { getLanguage } from '../utils/i18n';
+import { localizeSystemMessage } from '../utils/places';
 import Feather from '@expo/vector-icons/Feather';
 
 // issue #7: localized time вместо сырого UTC-слайса "2026-06-11T08:30".
@@ -72,7 +73,7 @@ export default function NotificationsScreen({ navigation }) {
   const { session } = useAuth();
   // Гость по умолчанию = client (оранжевый), как в остальном приложении.
   const role = session?.user?.role || 'client';
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const v1 = useV1Colors();
   const s = React.useMemo(() => StyleSheet.create({
 
@@ -180,8 +181,8 @@ export default function NotificationsScreen({ navigation }) {
 
   const renderItem = ({ item }) => {
     const isUnread = !item.is_read;
-    const cleanTitle = cleanNotifText(item.title);
-    const cleanBody = cleanNotifText(item.body);
+    const cleanTitle = localizeSystemMessage(cleanNotifText(item.title), lang);
+    const cleanBody = localizeSystemMessage(cleanNotifText(item.body), lang);
     return (
       <TouchableOpacity
         style={[s.card, isUnread && { borderColor: accent.main }]}

@@ -1,21 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
 import { useTheme } from '../utils/ThemeContext';
-import { t } from '../utils/i18n';
+import { useI18n } from '../utils/useI18n';
+import { localizeCargoName } from '../utils/places';
 import { searchCargoTypes, addCustomCargoType, subscribeToCargoTypes } from '../utils/cargoTypes';
 
 export default function CargoTypeInput({ value, onChange, placeholder, style, testID }) {
   const { theme } = useTheme();
+  const { t, lang } = useI18n();
   const [focused, setFocused] = useState(false);
-  const [query, setQuery] = useState(value || '');
+  const [query, setQuery] = useState(localizeCargoName(value, lang) || value || '');
   const [, setTick] = useState(0);
 
   // Stage 42: синхронизируем local query со внешним value, если родитель
   // его меняет (например после addCustomCargoType.pick).
-  useEffect(() => { setQuery(value || ''); }, [value]);
+  useEffect(() => { setQuery(localizeCargoName(value, lang) || value || ''); }, [value, lang]);
   useEffect(() => subscribeToCargoTypes(() => setTick(x => x + 1)), []);
 
-  const suggestions = focused ? searchCargoTypes(query) : [];
+  const suggestions = focused ? searchCargoTypes(query, lang) : [];
 
   const handleChange = (text) => {
     setQuery(text);
@@ -24,7 +26,7 @@ export default function CargoTypeInput({ value, onChange, placeholder, style, te
 
   const pick = (item) => {
     if (item.isCustom) addCustomCargoType(item.name);
-    setQuery(item.name);
+    setQuery(localizeCargoName(item.name, lang) || item.name);
     onChange(item.name);
     setFocused(false);
   };
@@ -56,7 +58,9 @@ export default function CargoTypeInput({ value, onChange, placeholder, style, te
             >
               <Text style={s.icon}>{c.icon || '📦'}</Text>
               <Text style={[s.name, { color: theme.text }]}>
-                {c.isCustom ? t('cargo_type_custom_label').replace('{name}', c.name) : c.name}
+                {c.isCustom
+                  ? t('cargo_type_custom_label').replace('{name}', c.name)
+                  : (localizeCargoName(c.name, lang) || c.name)}
               </Text>
             </TouchableOpacity>
           ))}
