@@ -67,4 +67,18 @@ jobs:
           echo "build_id=$BUILD_ID" >> "$GITHUB_OUTPUT"
 
       - name: Upload the exact verified build to TestFlight only
-        run: npx eas-cli@latest submit --platform ios --profile production --id "${{ steps.build.outputs.build_id }}" --non-interactive --wait
+        id: submit
+        shell: bash
+        run: |
+          set -o pipefail
+          set +e
+          npx eas-cli@latest submit --platform ios --profile production --id "${{ steps.build.outputs.build_id }}" --non-interactive --wait 2>&1 | tee submit.log
+          SUBMIT_EXIT=${PIPESTATUS[0]}
+          set -e
+          SUBMISSION_ID=$(grep -oE 'submissions/[a-f0-9-]+' submit.log | head -1 | cut -d/ -f2 || true)
+          echo "submission_id=$SUBMISSION_ID" >> "$GITHUB_OUTPUT"
+          exit "$SUBMIT_EXIT"
+
+      - name: Show exact Apple/EAS submission error on failure
+        if: failure() && steps.submit.outputs.submission_id != ''
+        run: npx eas-cli@latest submission:view "${{ steps.submit.outputs.submission_id }}" --json || true
