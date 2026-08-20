@@ -61,11 +61,10 @@ const UNREAD_POLL_MS = 12000;
 //         наверх под ☰. Рендерится через MaterialCommunityIcons (см. ниже),
 //         остальные — через Feather.
 const ICONS = {
-  Feed:    { driver: 'package',  client: 'truck' },
+  Feed:    { driver: 'package', client: 'truck' },
   MyWork:  { driver: 'clipboard', client: 'clipboard' },
-  Queue:   { driver: 'map-pin', client: 'map-pin' },
-  Chats:   { driver: 'message-circle', client: 'message-circle' },
   Deals:   { driver: 'handshake', client: 'handshake' },
+  Profile: { driver: 'user', client: 'user' },
 };
 
 // Industrial Luxury: неоновый акцент зависит от роли (источник истины —
@@ -198,17 +197,12 @@ export default function BottomNav({ state, navigation }) {
   const labelOf = (name) => {
     if (name === 'Feed')    return isDriver ? t('tab_feed') : t('tab_feed_client');
     if (name === 'MyWork')  return isDriver ? t('tab_my_work_driver') : t('tab_my_work_client');
-    if (name === 'Queue')   return t('tab_border');
-    if (name === 'Chats')   return t('tab_chats');
     if (name === 'Deals')   return t('tab_deals');
+    if (name === 'Profile') return t('tab_profile');
     return name;
   };
 
   const onPressTab = (route, isFocused) => {
-    if (route.name === 'Publish') {
-      navigation.navigate(isDriver ? 'CreateTrip' : 'CreateCargo', { role });
-      return;
-    }
     const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
     if (!isFocused && !event.defaultPrevented) {
       navigation.navigate(route.name, route.params);
@@ -231,27 +225,6 @@ export default function BottomNav({ state, navigation }) {
       <View style={[s.bar, { backgroundColor: barBg, borderColor: barBorder }]}>
         {state.routes.map((route, index) => {
           const isFocused = state.index === index;
-
-          // Клиентский «+»: приподнятая круглая кнопка-акцент с неоновым свечением.
-          if (route.name === 'Publish') {
-            return (
-              <View key={route.key} style={s.cell} pointerEvents="box-none">
-                <TouchableOpacity
-                  onPress={() => onPressTab(route, false)}
-                  activeOpacity={0.85}
-                  accessibilityRole="button"
-                  accessibilityLabel={t('bottom_nav_publish')}
-                  testID="bottom-nav-publish"
-                  style={[s.publishBtn, { backgroundColor: accent.main, shadowColor: accent.main }]}
-                >
-                  <Feather name="plus" size={26} color="#0C0A09" />
-                </TouchableOpacity>
-                <Text style={[s.publishLabel, { color: accent.main }]} numberOfLines={1}>
-                  {t('bottom_nav_publish')}
-                </Text>
-              </View>
-            );
-          }
 
           const iconKey = ICONS[route.name];
           const iconName = iconKey ? (isDriver ? iconKey.driver : iconKey.client) : 'circle';

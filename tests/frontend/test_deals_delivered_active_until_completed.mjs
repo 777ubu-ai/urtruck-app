@@ -4,29 +4,20 @@ import fs from 'node:fs';
 
 const deals = fs.readFileSync('src/screens/DealsScreen.js', 'utf8');
 
-test('delivered remains in In progress until shipper confirms receipt', () => {
-  assert.match(
-    deals,
-    /ACTIVE_STATUSES = new Set\(\['accepted', 'in_progress', 'at_border', 'awaiting_confirmation', 'delivered'\]\)/,
-  );
-  assert.match(
-    deals,
-    /ARCHIVE_DEAL_STATUSES = new Set\(\['completed', 'cancelled', 'rejected', 'expired'\]\)/,
-  );
-  assert.doesNotMatch(
-    deals,
-    /ARCHIVE_DEAL_STATUSES = new Set\([^\n]*'delivered'/,
-  );
+test('delivered and received remain active until final completed', () => {
+  assert.match(deals, /ACTIVE_STATUSES = new Set\(\['accepted', 'in_progress', 'at_border', 'awaiting_confirmation', 'delivered', 'received'\]\)/);
+  assert.match(deals, /ARCHIVE_DEAL_STATUSES = new Set\(\['completed', 'cancelled', 'rejected', 'expired'\]\)/);
+  assert.doesNotMatch(deals, /ARCHIVE_DEAL_STATUSES = new Set\([^\n]*'delivered'/);
+  assert.doesNotMatch(deals, /ARCHIVE_DEAL_STATUSES = new Set\([^\n]*'received'/);
 });
 
-test('shipper gets an explicit receipt-confirmation action for delivered deals', () => {
-  assert.match(deals, /const needsReceiptConfirmation = role === 'client' && data\.status === 'delivered'/);
+test('shipper gets receipt attention only while delivered or legacy awaiting confirmation', () => {
+  assert.match(deals, /needsReceiptConfirmation = role === 'client' && \(data\.status === 'delivered' \|\| data\.status === 'awaiting_confirmation'\)/);
   assert.match(deals, /needsReceiptConfirmation\s*\? t\('confirm_delivery'\)/);
   assert.match(deals, /attentionRequired = needsReceiptConfirmation \|\| trackingActionRequired/);
 });
 
-test('delivered is not dimmed as archive; only terminal deal statuses are dimmed', () => {
-  assert.match(deals, /dimmed=\{ARCHIVE_DEAL_STATUSES\.has\(data\.status\)\}/);
-  assert.match(deals, /status === 'awaiting_confirmation' \|\| status === 'delivered'/);
-  assert.match(deals, /status === 'completed'/);
+test('received and completed have distinct visual labels', () => {
+  assert.match(deals, /status === 'received'[\s\S]*status_received/);
+  assert.match(deals, /status === 'completed'[\s\S]*status_completed/);
 });

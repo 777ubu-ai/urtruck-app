@@ -8,7 +8,7 @@ import { chatAPI } from '../utils/chatAPI';
 import { getDealCounterpartyProfile, compactCounterpartyName } from '../utils/dealCounterpartyAPI';
 import { useV1Colors } from '../theme/designV1';
 
-const ACTIVE = new Set(['accepted', 'in_progress', 'at_border', 'delivered']);
+const ACTIVE = new Set(['accepted', 'in_progress', 'at_border', 'delivered', 'received']);
 
 export default function TripDetailV2(props) {
   const { route } = props;

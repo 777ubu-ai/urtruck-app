@@ -39,7 +39,7 @@ const CANCELLED = '#A45A5A';
 // `delivered` is intentionally ACTIVE, not terminal. The driver has finished
 // delivery, but the shipper still must confirm receipt (`delivered -> completed`).
 // Only true terminal deal states belong in Archive.
-const ACTIVE_STATUSES = new Set(['accepted', 'in_progress', 'at_border', 'awaiting_confirmation', 'delivered']);
+const ACTIVE_STATUSES = new Set(['accepted', 'in_progress', 'at_border', 'awaiting_confirmation', 'delivered', 'received']);
 const ARCHIVE_DEAL_STATUSES = new Set(['completed', 'cancelled', 'rejected', 'expired']);
 const OPEN_BID_STATUSES = new Set(['pending', 'countered']);
 const CLOSED_BID_STATUSES = new Set(['rejected', 'cancelled', 'expired']);
@@ -97,10 +97,13 @@ const dealStatus = (status, t) => {
     return { label: t('status_in_progress'), color: ACCENT };
   }
   if (status === 'awaiting_confirmation' || status === 'delivered') {
-    return { label: t('status_delivered'), color: INFO };
+    return { label: t('status_awaiting_receipt'), color: INFO };
+  }
+  if (status === 'received') {
+    return { label: t('status_received'), color: ACCENT };
   }
   if (status === 'completed') {
-    return { label: t('status_delivered'), color: ARCHIVE };
+    return { label: t('status_completed'), color: ARCHIVE };
   }
   if (status === 'cancelled' || status === 'rejected') {
     return { label: t('status_cancelled'), color: CANCELLED };
@@ -334,7 +337,7 @@ export default function DealsScreen({ navigation, route }) {
   const activeAttentionCount = useMemo(() => (
     activeDeals.reduce(
       (sum, item) => sum + (item.unread_count || 0) + ((
-        item.tracking_action_required || (role === 'client' && item.status === 'delivered')
+        item.tracking_action_required || (role === 'client' && (item.status === 'delivered' || item.status === 'awaiting_confirmation'))
       ) ? 1 : 0),
       0,
     )
@@ -481,7 +484,7 @@ export default function DealsScreen({ navigation, route }) {
     const partnerName = role === 'client'
       ? (data.driver_name || t('role_driver'))
       : (data.shipper_name || t('role_client'));
-    const needsReceiptConfirmation = role === 'client' && data.status === 'delivered';
+    const needsReceiptConfirmation = role === 'client' && (data.status === 'delivered' || data.status === 'awaiting_confirmation');
     const trackingActionRequired = !!data.tracking_action_required;
     const statusLabel = needsReceiptConfirmation
       ? t('confirm_delivery')

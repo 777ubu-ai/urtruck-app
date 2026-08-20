@@ -25,6 +25,7 @@ ACTIVE_DEAL_STATUSES = (
     "at_border",
     "awaiting_confirmation",
     "delivered",
+    "received",
 )
 
 

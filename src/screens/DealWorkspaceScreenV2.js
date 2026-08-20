@@ -36,6 +36,7 @@ import { useToast } from '../components/Toast';
 import { useV1Colors } from '../theme/designV1';
 import { formatPrice } from '../utils/normalizers';
 import { pickDealStatus, userFacingDealStatus } from '../utils/dealStatusOrder';
+import { getAvailableDealActions } from '../utils/dealActionResolver';
 import { ensureBackgroundLocationPermission, getCurrentLocationPayload } from '../utils/backgroundLocation';
 import { compressImage } from '../utils/imageCompress';
 import { voice } from '../utils/voiceRecorder';
@@ -60,7 +61,7 @@ const COPY = {
     recording: 'Идёт запись…', voiceMessage: 'Голосовое сообщение',
     cancelDeal: 'Отменить сделку', cancelDealConfirm: 'Отменить эту сделку?', loading: 'Загрузка сделки…',
     loadingDate: 'Загрузка', deliveryDate: 'Доставка', expandMap: 'Развернуть карту', collapseMap: 'Свернуть карту',
-    tripFinished: 'Рейс завершён', tripDelivered: 'Груз доставлен', mapFinishedHint: 'Live GPS для этого рейса больше не используется.',
+    tripFinished: 'Сделка завершена', tripDelivered: 'Груз доставлен', awaitingReceiptStatus: 'Ожидает подтверждения', tripAwaitingReceipt: 'Ожидаем подтверждения грузоотправителя', tripAwaitingReceiptHint: 'Водитель отметил груз как доставленный. Сделка завершится после подтверждения получения.', tripReceived: 'Получение подтверждено', mapFinishedHint: 'Live GPS для этого рейса больше не используется.',
     jumpLatest: 'Новые сообщения',
   },
   EN: {
@@ -73,7 +74,7 @@ const COPY = {
     recording: 'Recording…', voiceMessage: 'Voice message',
     cancelDeal: 'Cancel deal', cancelDealConfirm: 'Cancel this deal?', loading: 'Loading deal…',
     loadingDate: 'Pickup', deliveryDate: 'Delivery', expandMap: 'Expand map', collapseMap: 'Collapse map',
-    tripFinished: 'Trip completed', tripDelivered: 'Cargo delivered', mapFinishedHint: 'Live GPS is no longer used for this trip.',
+    tripFinished: 'Deal completed', tripDelivered: 'Cargo delivered', awaitingReceiptStatus: 'Awaiting confirmation', tripAwaitingReceipt: 'Awaiting shipper confirmation', tripAwaitingReceiptHint: 'The driver marked the cargo as delivered. The deal is completed after receipt is confirmed.', tripReceived: 'Receipt confirmed', mapFinishedHint: 'Live GPS is no longer used for this trip.',
     jumpLatest: 'New messages',
   },
   ZH: {
@@ -86,7 +87,7 @@ const COPY = {
     recording: '正在录音…', voiceMessage: '语音消息',
     cancelDeal: '取消交易', cancelDealConfirm: '确认取消这笔交易？', loading: '正在加载交易…',
     loadingDate: '装货', deliveryDate: '送达', expandMap: '展开地图', collapseMap: '收起地图',
-    tripFinished: '运输已完成', tripDelivered: '货物已送达', mapFinishedHint: '本次运输已停止实时 GPS。',
+    tripFinished: '交易已完成', tripDelivered: '货物已送达', awaitingReceiptStatus: '等待确认', tripAwaitingReceipt: '等待货主确认收货', tripAwaitingReceiptHint: '司机已标记货物送达。货主确认收货后，交易才能完成。', tripReceived: '已确认收货', mapFinishedHint: '本次运输已停止实时 GPS。',
     jumpLatest: '新消息',
   },
   KK: {
@@ -99,7 +100,7 @@ const COPY = {
     recording: 'Жазылып жатыр…', voiceMessage: 'Дауыстық хабарлама',
     cancelDeal: 'Мәмілені болдырмау', cancelDealConfirm: 'Осы мәмілені болдырмау керек пе?', loading: 'Мәміле жүктелуде…',
     loadingDate: 'Тиеу', deliveryDate: 'Жеткізу', expandMap: 'Картаны үлкейту', collapseMap: 'Картаны кішірейту',
-    tripFinished: 'Рейс аяқталды', tripDelivered: 'Жүк жеткізілді', mapFinishedHint: 'Бұл рейсте live GPS енді қолданылмайды.',
+    tripFinished: 'Мәміле аяқталды', tripDelivered: 'Жүк жеткізілді', awaitingReceiptStatus: 'Растауды күтуде', tripAwaitingReceipt: 'Жүк иесінің қабылдауды растауын күтеміз', tripAwaitingReceiptHint: 'Жүргізуші жүкті жеткізілді деп белгіледі. Жүк иесі қабылдауды растағаннан кейін мәміле аяқталады.', tripReceived: 'Қабылдау расталды', mapFinishedHint: 'Бұл рейсте live GPS енді қолданылмайды.',
     jumpLatest: 'Жаңа хабарламалар',
   },
 };
@@ -475,23 +476,25 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     }
   }, [dealId, trackingLoading, statusLoading, changeDealStatus, toast, t]);
 
-  const nextAction = React.useMemo(() => {
-    if (!deal?.status || deal.status === 'cancelled' || deal.status === 'completed') return null;
-    if (isDriver) {
-      if (deal.status === 'accepted') return { key: 'in_progress', label: t('start_delivery'), icon: 'truck' };
-      if (deal.status === 'in_progress' && deal.is_international === true) return { key: 'at_border', label: t('mark_at_border'), icon: 'map-pin' };
-      if (deal.status === 'in_progress' && deal.is_international == null) return { key: 'clarify', label: t('deal_clarify_route'), icon: 'alert-circle', disabled: true };
-      if (deal.status === 'in_progress' || deal.status === 'at_border') return { key: 'delivered', label: t('mark_arrived'), icon: 'package' };
-    }
-    if (isShipper && deal.status === 'delivered') return { key: 'completed', label: t('confirm_delivery'), icon: 'check-circle' };
-    return null;
-  }, [deal?.status, deal?.is_international, isDriver, isShipper, t]);
+  const nextAction = React.useMemo(() => (
+    getAvailableDealActions({
+      role,
+      status: deal?.status,
+      isInternational: deal?.is_international,
+      t,
+    })[0] || null
+  ), [role, deal?.status, deal?.is_international, t]);
 
   const runNextAction = React.useCallback(async () => {
     if (!nextAction || nextAction.disabled) return;
     if (nextAction.key === 'in_progress') { await startTrip(); return; }
-    if (nextAction.key === 'delivered' || nextAction.key === 'completed') {
-      const ok = await askConfirm(nextAction.label, nextAction.key === 'delivered' ? t('confirm_mark_delivered') : t('confirm_receipt'), nextAction.label);
+    if (['delivered', 'received', 'completed'].includes(nextAction.key)) {
+      const message = nextAction.key === 'delivered'
+        ? t('confirm_mark_delivered')
+        : nextAction.key === 'received'
+          ? t('confirm_receipt')
+          : t('confirm_complete_deal');
+      const ok = await askConfirm(nextAction.label, message, nextAction.label);
       if (!ok) return;
     }
     await changeDealStatus(nextAction.key);
@@ -617,7 +620,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const cargo = context.cargo || {};
   const trip = context.trip || {};
   const routeLabel = `${localizePlace(from, language)} → ${localizePlace(to, language)}`;
-  const statusLabel = formatStatus(userFacingDealStatus(deal?.status || 'accepted'));
+  const visibleDealStatus = userFacingDealStatus(deal?.status || 'accepted');
+  const statusLabel = visibleDealStatus === 'delivered' ? ui.awaitingReceiptStatus : formatStatus(visibleDealStatus);
   const partnerName = text(partner?.name, deal?.counterparty_name, isDriver ? cargo?.owner_name : trip?.driver_display_name);
 
   const cargoMeta = [
@@ -640,8 +644,15 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     isDriver ? text(cargo?.country, deal?.shipper_country) : text(deal?.plate, trip?.vehicle_plate),
   ].filter(Boolean).join(' · ');
 
-  const mapWorking = MAP_WORK_STATUSES.includes(deal?.status);
-  const showLiveMap = !TERMINAL_STATUSES.includes(deal?.status) && deal?.status !== 'delivered' && mapWorking;
+  const mapWorking = MAP_WORK_STATUSES.includes(visibleDealStatus);
+  const showLiveMap = !TERMINAL_STATUSES.includes(visibleDealStatus) && visibleDealStatus !== 'delivered' && visibleDealStatus !== 'received' && mapWorking;
+  const inactiveTitle = visibleDealStatus === 'delivered'
+    ? ui.tripDelivered
+    : visibleDealStatus === 'received'
+      ? ui.tripReceived
+      : ui.tripFinished;
+  const inactiveSubtitle = visibleDealStatus === 'delivered' ? ui.tripAwaitingReceipt : '';
+  const inactiveHint = visibleDealStatus === 'delivered' ? ui.tripAwaitingReceiptHint : '';
 
   const showTab = (tab) => {
     setSheetTab(tab);
@@ -705,12 +716,19 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
             />
           ) : (
             <View style={[s.finishedMap, { backgroundColor: colors.surface }]} testID="deal-inactive-map-summary">
-              <View style={s.finishedIcon}><Feather name={deal?.status === 'delivered' ? 'package' : 'check-circle'} size={28} color="#168759" /></View>
-              <Text style={[s.finishedTitle, { color: colors.text }]}>{deal?.status === 'delivered' ? ui.tripDelivered : ui.tripFinished}</Text>
+              <View style={s.finishedIcon}><Feather name={visibleDealStatus === 'delivered' ? 'package' : 'check-circle'} size={28} color="#168759" /></View>
+              <Text style={[s.finishedTitle, { color: colors.text }]}>{inactiveTitle}</Text>
               <Text style={[s.finishedRoute, { color: colors.text }]}>{routeLabel}</Text>
-              <Text style={[s.finishedHint, { color: colors.textMuted }]}>{ui.mapFinishedHint}</Text>
+              {inactiveSubtitle ? <Text style={[s.finishedSubtitle, { color: colors.text }]}>{inactiveSubtitle}</Text> : null}
+              {inactiveHint ? <Text style={[s.finishedHint, { color: colors.textMuted }]}>{inactiveHint}</Text> : null}
+              <Text style={[s.finishedGpsHint, { color: colors.textMuted }]}>{ui.mapFinishedHint}</Text>
               {nextAction ? (
-                <TouchableOpacity style={s.finishedAction} onPress={runNextAction} disabled={statusLoading || trackingLoading} testID="deal-action-confirm-receipt">
+                <TouchableOpacity
+                  style={s.finishedAction}
+                  onPress={runNextAction}
+                  disabled={statusLoading || trackingLoading}
+                  testID={nextAction.key === 'received' ? 'deal-action-confirm-receipt' : nextAction.key === 'completed' ? 'deal-action-complete' : 'deal-action-next'}
+                >
                   <Feather name={nextAction.icon} size={16} color="#FFFFFF" />
                   <Text style={s.finishedActionText}>{statusLoading ? '…' : nextAction.label}</Text>
                 </TouchableOpacity>
@@ -738,7 +756,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
               style={[s.floatingAction, { backgroundColor: nextAction.disabled ? '#E4E8E5' : '#168759' }]}
               onPress={runNextAction}
               disabled={nextAction.disabled || statusLoading || trackingLoading}
-              testID={nextAction.key === 'in_progress' ? 'deal-action-start-delivery' : nextAction.key === 'delivered' ? 'deal-action-mark-arrived' : 'deal-action-next'}
+              testID={nextAction.key === 'in_progress' ? 'deal-action-start-delivery' : nextAction.key === 'delivered' ? 'deal-action-mark-arrived' : nextAction.key === 'received' ? 'deal-action-confirm-receipt' : nextAction.key === 'completed' ? 'deal-action-complete' : 'deal-action-next'}
             >
               <Feather name={nextAction.icon} size={15} color={nextAction.disabled ? '#7C8B82' : '#FFFFFF'} />
               <Text style={[s.floatingActionText, { color: nextAction.disabled ? '#7C8B82' : '#FFFFFF' }]} numberOfLines={1}>{statusLoading || trackingLoading ? '…' : nextAction.label}</Text>
@@ -934,7 +952,9 @@ const s = StyleSheet.create({
   finishedIcon: { width: 58, height: 58, borderRadius: 20, backgroundColor: '#E9F6EF', alignItems: 'center', justifyContent: 'center' },
   finishedTitle: { fontSize: 20, fontWeight: '900', marginTop: 14 },
   finishedRoute: { fontSize: 14, fontWeight: '800', textAlign: 'center', marginTop: 6 },
-  finishedHint: { fontSize: 12, textAlign: 'center', lineHeight: 17, marginTop: 7 },
+  finishedSubtitle: { fontSize: 15, fontWeight: '800', textAlign: 'center', lineHeight: 20, marginTop: 13 },
+  finishedHint: { fontSize: 12, textAlign: 'center', lineHeight: 17, marginTop: 7, maxWidth: 420 },
+  finishedGpsHint: { fontSize: 11, textAlign: 'center', lineHeight: 16, marginTop: 8, opacity: 0.82 },
   finishedAction: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 48, paddingHorizontal: 20, marginTop: 18, borderRadius: 16, backgroundColor: '#168759' },
   finishedActionText: { color: '#FFFFFF', fontSize: 14, fontWeight: '900' },
   sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, borderTopLeftRadius: 26, borderTopRightRadius: 26, borderWidth: 1, borderBottomWidth: 0, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 20, shadowOffset: { width: 0, height: -5 }, elevation: 12, zIndex: 30 },

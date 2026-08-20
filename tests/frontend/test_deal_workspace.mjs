@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const workspace = fs.readFileSync('src/screens/DealWorkspaceScreenV2.js', 'utf8');
+const actionResolver = fs.readFileSync('src/utils/dealActionResolver.js', 'utf8');
 const chatRouter = fs.readFileSync('src/screens/ChatScreenV2.js', 'utf8');
 const tripRouter = fs.readFileSync('src/screens/TripDetailV2.js', 'utf8');
 const cargoRouter = fs.readFileSync('src/screens/CargoDetailV2.js', 'utf8');
@@ -72,7 +73,8 @@ test('distance and ETA remain real Yandex route properties and fail closed', () 
 test('live map only exists for active working trip states', () => {
   assert.match(workspace, /const LIVE_TRACKING_STATUSES = \['in_progress', 'at_border'\]/);
   assert.match(workspace, /const MAP_WORK_STATUSES = \['accepted', 'in_progress', 'at_border'\]/);
-  assert.match(workspace, /deal\?\.status !== 'delivered'/);
+  assert.match(workspace, /visibleDealStatus !== 'delivered'/);
+  assert.match(workspace, /visibleDealStatus !== 'received'/);
   assert.match(workspace, /testID="deal-inactive-map-summary"/);
 });
 
@@ -126,11 +128,14 @@ test('statuses render a detailed vertical timeline instead of compact system chi
   assert.doesNotMatch(workspace, /<SystemEventRow/);
 });
 
-test('deal status actions preserve role FSM and GPS starts with trip', () => {
-  assert.match(workspace, /deal\.status === 'accepted'.*in_progress/s);
-  assert.match(workspace, /deal\.status === 'in_progress' && deal\.is_international === true.*at_border/s);
-  assert.match(workspace, /deal\.status === 'in_progress' \|\| deal\.status === 'at_border'.*delivered/s);
-  assert.match(workspace, /isShipper && deal\.status === 'delivered'.*completed/s);
+test('deal status actions use the shared canonical role FSM and GPS starts with trip', () => {
+  assert.match(workspace, /getAvailableDealActions/);
+  assert.match(actionResolver, /current === 'accepted'/);
+  assert.match(actionResolver, /current === 'in_progress' && isInternational === true/);
+  assert.match(actionResolver, /key: 'at_border'/);
+  assert.match(actionResolver, /key: 'delivered'/);
+  assert.match(actionResolver, /current === 'delivered'[\s\S]*key: 'received'/);
+  assert.match(actionResolver, /current === 'received'[\s\S]*key: 'completed'/);
   assert.match(workspace, /ensureBackgroundLocationPermission/);
   assert.match(workspace, /marketAPI\.sendDealLocation/);
 });
