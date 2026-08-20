@@ -32,13 +32,20 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          p = Path('scripts/strict_locale_materialize.py')
-          s = p.read_text(encoding='utf-8')
+          script = Path('scripts/strict_locale_materialize.py')
+          s = script.read_text(encoding='utf-8')
           old = '    "src/screens/QueueScreenLazy.js": ["\'Нажать\'"],'
           new = '    "src/screens/QueueScreenLazy.js": ["? L.selected : \'Нажать\'"],'
           if old not in s:
               raise SystemExit('strict screenshot guard anchor missing')
-          p.write_text(s.replace(old, new, 1), encoding='utf-8')
+          script.write_text(s.replace(old, new, 1), encoding='utf-8')
+
+          i18n = Path('src/utils/i18n.js')
+          text = i18n.read_text(encoding='utf-8')
+          old_zh = "vdocs_techpass: '行驶证（СРТС）'"
+          if text.count(old_zh) != 1:
+              raise SystemExit(f'ZH vehicle-doc anchor mismatch: {text.count(old_zh)}')
+          i18n.write_text(text.replace(old_zh, "vdocs_techpass: '车辆行驶证'", 1), encoding='utf-8')
           PY
           python3 scripts/strict_locale_materialize.py
 
