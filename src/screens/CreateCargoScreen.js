@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../utils/useI18n';
+import { cleanPlaceName, localizePlace } from '../utils/places';
+import { countryFlag } from '../utils/countryFlags';
 import { useToast } from '../components/Toast';
 import { useAuth } from '../utils/AuthContext';
 import { marketAPI } from '../utils/marketAPI';
@@ -99,9 +101,16 @@ export default function CreateCargoScreen({ navigation, route }) {
   }), [v1]);
   const role = route?.params?.role || 'client';
   const accent = v1AccentFor('client');
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { toast } = useToast();
   const { session } = useAuth();
+
+  const displayRoutePoint = (raw, point) => {
+    const canonical = point?.name || cleanPlaceName(raw || '');
+    const localized = localizePlace(canonical, lang) || canonical;
+    const flag = point?.country ? countryFlag(point.country) : '';
+    return [localized, flag].filter(Boolean).join(', ');
+  };
 
   const [from, setFrom] = useState('');
   const [fromPoint, setFromPoint] = useState(null);   // structured point from RoutePointPicker
@@ -172,8 +181,8 @@ export default function CreateCargoScreen({ navigation, route }) {
     // fields (free-text fallback supplies country='XX' for orphans),
     // so the picker output can land directly without further shaping.
     const payload = {
-      from_city: from.trim(),
-      to_city: to.trim(),
+      from_city: fromPoint?.name || cleanPlaceName(from.trim()),
+      to_city: toPoint?.name || cleanPlaceName(to.trim()),
       cargo_desc: cargoDesc.trim(),
       cargo_type: truckType,
       weight_tons: parseFloat(tons) || 0,
@@ -238,7 +247,7 @@ export default function CreateCargoScreen({ navigation, route }) {
         variant="dropdown"
         featherIcon="map-pin"
         label={t('fromCountry')}
-        value={from}
+        value={displayRoutePoint(from, fromPoint)}
         placeholder={t('create_field_from_placeholder_cargo')}
         onPress={() => setShowFromPicker(true)}
       />
@@ -248,7 +257,7 @@ export default function CreateCargoScreen({ navigation, route }) {
         variant="dropdown"
         featherIcon="map-pin"
         label={t('toCountry')}
-        value={to}
+        value={displayRoutePoint(to, toPoint)}
         placeholder={t('create_field_to_placeholder_cargo')}
         onPress={() => setShowToPicker(true)}
       />

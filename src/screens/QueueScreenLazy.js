@@ -17,6 +17,7 @@ import { useV1Colors } from '../theme/designV1';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import { API_BASE } from '../config/env';
 import { storage } from '../utils/storage';
+import { localizePlace } from '../utils/places';
 
 const BASE = `${API_BASE}/borders`;
 const FAVORITES_KEY = 'ur_border_favorites_v2';
@@ -44,7 +45,7 @@ const COPY = {
     favorited: 'В избранном', sourceError: 'Не удалось получить данные CGR. Повторите.', checkQueue: 'Проверить свою очередь',
     platePlaceholder: 'Госномер, например 123ABC02', check: 'Проверить', notFound: 'Активная очередь не найдена',
     lookupError: 'Не удалось проверить номер', checkpoint: 'КПП', queueTime: 'Время очереди', status: 'Статус',
-    cached: 'из кэша UrTruck', live: 'живые данные', selected: 'Выбрано',
+    cached: 'из кэша UrTruck', live: 'живые данные', selected: 'Выбрано', open: 'Нажать',
   },
   KK: {
     title: 'Шекара', subtitle: 'CGR нақты жүктемесі және қолжетімді бронь', where: 'Қайда барасыз?', all: 'Барлығы',
@@ -56,7 +57,7 @@ const COPY = {
     details: 'CGR ашу', favorite: 'Таңдаулыға', favorited: 'Таңдаулыда', sourceError: 'CGR деректерін алу мүмкін болмады.',
     checkQueue: 'Өз кезегіңізді тексеру', platePlaceholder: 'Мемлекеттік нөмір, мысалы 123ABC02', check: 'Тексеру',
     notFound: 'Белсенді кезек табылмады', lookupError: 'Нөмірді тексеру мүмкін болмады', checkpoint: 'Бекет', queueTime: 'Кезек уақыты',
-    status: 'Күйі', cached: 'UrTruck кэшінен', live: 'нақты дерек', selected: 'Таңдалды',
+    status: 'Күйі', cached: 'UrTruck кэшінен', live: 'нақты дерек', selected: 'Таңдалды', open: 'Ашу',
   },
   EN: {
     title: 'Border', subtitle: 'Real CGR load and booking availability', where: 'Where are you going?', all: 'All',
@@ -67,7 +68,7 @@ const COPY = {
     calendar: 'Load calendar', noPlaces: 'No slots', dayOff: 'Day off', updated: 'CGR updated', refresh: 'Refresh', details: 'Open CGR',
     favorite: 'Favorite', favorited: 'Favorited', sourceError: 'Could not load CGR data. Try again.', checkQueue: 'Check your queue',
     platePlaceholder: 'Plate number, e.g. 123ABC02', check: 'Check', notFound: 'No active queue found', lookupError: 'Could not check plate',
-    checkpoint: 'Checkpoint', queueTime: 'Queue time', status: 'Status', cached: 'UrTruck cache', live: 'live data', selected: 'Selected',
+    checkpoint: 'Checkpoint', queueTime: 'Queue time', status: 'Status', cached: 'UrTruck cache', live: 'live data', selected: 'Selected', open: 'Open',
   },
   ZH: {
     title: '边境', subtitle: 'CGR 实时负载与预约空位', where: '您要去哪里？', all: '全部', choose: '选择口岸',
@@ -77,9 +78,17 @@ const COPY = {
     noPlaces: '无空位', dayOff: '休息日', updated: 'CGR 更新时间', refresh: '刷新', details: '打开 CGR', favorite: '收藏',
     favorited: '已收藏', sourceError: '无法获取 CGR 数据，请重试。', checkQueue: '查询我的排队', platePlaceholder: '车牌号，例如 123ABC02',
     check: '查询', notFound: '未找到有效排队', lookupError: '无法查询车牌', checkpoint: '口岸', queueTime: '排队时间', status: '状态',
-    cached: 'UrTruck 缓存', live: '实时数据', selected: '已选择',
+    cached: 'UrTruck 缓存', live: '实时数据', selected: '已选择', open: '查看',
   },
 };
+
+function localizeCheckpointName(raw, lang) {
+  const value = String(raw || '').trim();
+  if (!value) return value;
+  const parts = value.split(/\s+(?:-|–|—)\s+/).filter(Boolean);
+  if (parts.length > 1) return parts.map((part) => localizePlace(part, lang)).join(' — ');
+  return localizePlace(value, lang);
+}
 
 function normalizePlate(value) {
   return String(value || '').trim().toUpperCase().replace(/\s+/g, '');
@@ -176,9 +185,9 @@ export default function QueueScreenLazy({ navigation, route }) {
       const af = favorites.includes(String(a.id)) ? 0 : 1;
       const bf = favorites.includes(String(b.id)) ? 0 : 1;
       if (af !== bf) return af - bf;
-      return String(a.name || '').localeCompare(String(b.name || ''), 'ru');
+      return localizeCheckpointName(a.name, lang).localeCompare(localizeCheckpointName(b.name, lang));
     });
-  }, [catalog, selectedCountry, favorites]);
+  }, [catalog, selectedCountry, favorites, lang]);
 
   const selected = useMemo(() => catalog.find((c) => String(c.id) === String(selectedId)) || null, [catalog, selectedId]);
   const live = selectedId ? liveById[String(selectedId)] : null;
@@ -294,17 +303,17 @@ export default function QueueScreenLazy({ navigation, route }) {
               return (
                 <TouchableOpacity key={String(cp.id)} onPress={() => loadLive(cp)} activeOpacity={0.86} style={[styles.cpCard, { backgroundColor: theme.card, borderColor: active ? '#168759' : theme.border }, active && styles.cpCardActive]} testID="border-checkpoint-chip">
                   <View style={styles.cpTop}>
-                    <Text style={[styles.cpName, { color: theme.text }]} numberOfLines={1}>{String(cp.name || '').split(' - ')[0]}</Text>
+                    <Text style={[styles.cpName, { color: theme.text }]} numberOfLines={1}>{localizeCheckpointName(cp.name, lang).split(' — ')[0]}</Text>
                     {favorites.includes(String(cp.id)) ? <Feather name="star" size={14} color="#168759" fill="#168759" /> : null}
                   </View>
-                  <Text style={[styles.cpRoute, { color: theme.textDim }]} numberOfLines={1}>{cp.name}</Text>
+                  <Text style={[styles.cpRoute, { color: theme.textDim }]} numberOfLines={1}>{localizeCheckpointName(cp.name, lang)}</Text>
                   {loaded?.nearest_booking ? (
                     <View style={styles.cpLoadedRow}>
                       <Feather name="calendar" size={13} color="#168759" />
                       <Text style={styles.cpLoadedText}>{formatShortDate(loaded.nearest_booking, lang)}</Text>
                     </View>
                   ) : (
-                    <Text style={[styles.tapText, { color: active ? '#168759' : theme.textDim }]}>{active ? L.selected : 'Нажать'}</Text>
+                    <Text style={[styles.tapText, { color: active ? '#168759' : theme.textDim }]}>{active ? L.selected : L.open}</Text>
                   )}
                 </TouchableOpacity>
               );
@@ -338,7 +347,7 @@ export default function QueueScreenLazy({ navigation, route }) {
           <View style={[styles.liveCard, { backgroundColor: theme.card, borderColor: '#9FD8BD' }]} testID="border-selected-card">
             <View style={styles.liveHeader}>
               <View style={{ flex: 1, paddingRight: 8 }}>
-                <Text style={[styles.liveTitle, { color: theme.text }]}>{live.name || selected.name}</Text>
+                <Text style={[styles.liveTitle, { color: theme.text }]}>{localizeCheckpointName(live.name || selected.name, lang)}</Text>
                 <Text style={[styles.liveCountry, { color: theme.textMuted }]}>{selected.country ? countryName(selected.country) : ''}</Text>
               </View>
               <TouchableOpacity onPress={toggleFavorite} style={[styles.iconButton, { borderColor: theme.border }]} accessibilityLabel={favorites.includes(String(selectedId)) ? L.favorited : L.favorite}>
@@ -441,7 +450,7 @@ export default function QueueScreenLazy({ navigation, route }) {
                 <>
                   <Text style={[styles.lookupPlate, { color: theme.text }]}>{lookup.plate || normalizePlate(plate)}</Text>
                   {lookup.status_raw || lookup.status ? <Text style={[styles.lookupText, { color: theme.textMuted }]}>{L.status}: {lookup.status_raw || lookup.status}</Text> : null}
-                  {lookup.checkpoint ? <Text style={[styles.lookupText, { color: theme.textMuted }]}>{L.checkpoint}: {lookup.checkpoint}</Text> : null}
+                  {lookup.checkpoint ? <Text style={[styles.lookupText, { color: theme.textMuted }]}>{L.checkpoint}: {localizeCheckpointName(lookup.checkpoint, lang)}</Text> : null}
                   {lookup.queue_datetime ? <Text style={[styles.lookupText, { color: theme.textMuted }]}>{L.queueTime}: {lookup.queue_datetime}</Text> : null}
                 </>
               ) : <Text style={[styles.lookupText, { color: theme.textMuted }]}>{L.notFound}</Text>}

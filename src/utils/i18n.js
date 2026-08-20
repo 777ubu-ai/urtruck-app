@@ -5208,7 +5208,7 @@ const translations = {
     reg_help_rejected_a: '请打开注册表单，检查证件和照片。通常只需重拍模糊的照片或上传清晰的证件，然后重新提交。',
     reg_help_support_q: '联系客服',
     reg_help_support_a: '如果无法上传或状态未更新，请联系 UrTruck 客服，我们会协助您。',
-    vdocs_techpass: '行驶证（СРТС）',
+    vdocs_techpass: '车辆行驶证',
     vdocs_license: '驾驶证',
     vdocs_add_photo: '添加照片',
     vdocs_processing: '识别中…',
@@ -5355,7 +5355,7 @@ const translations = {
     cargoruqsat_page_title: '边境电子排队系统',
     cargoruqsat_page_status: '开发中 · 预计 2026 年推出',
     cargoruqsat_page_what_title: '这是什么?',
-    cargoruqsat_page_what_body: 'CarGoRuqsat 是哈萨克斯坦国家自动化电子排队系统,用于货车跨境通关。支持 50 多个边境口岸,包括 Достык-Алашанькоу、Нур Жолы-Хоргос、Калжат-Дулаты、Майкапчагай-Зимунай。',
+    cargoruqsat_page_what_body: 'CarGoRuqsat 是哈萨克斯坦国家自动化电子排队系统,用于货车跨境通关。支持 50 多个边境口岸,包括 多斯特克—阿拉山口、努尔饶勒—霍尔果斯、喀勒扎特—都拉塔、迈卡普恰盖—吉木乃。',
     cargoruqsat_page_benefits_title: '司机的优势?',
     cargoruqsat_page_benefits_body: '• 从 UrTruck 直接预约排队时段\n• 减少边境等待时间\n• 自动单据核验\n• 透明无腐败排队\n• 提前一小时推送通知',
     cargoruqsat_page_when_title: '何时上线?',
@@ -6943,7 +6943,7 @@ const translations = {
     reg_help_rejected_a: 'Open the registration form and check your documents and photos. Usually you just need to retake a blurry photo or upload a readable document, then submit again.',
     reg_help_support_q: 'Contact support',
     reg_help_support_a: 'If something will not upload or the status does not change, message UrTruck support and we will help.',
-    vdocs_techpass: 'Vehicle registration (СРТС)',
+    vdocs_techpass: 'Vehicle registration certificate',
     vdocs_license: 'Driver license',
     vdocs_add_photo: 'Add photo',
     vdocs_processing: 'Recognizing…',
@@ -7445,7 +7445,7 @@ export const subscribeToLanguage = (cb) => {
 export const t = (key) => {
   const lang = translations[currentLang];
   if (lang && lang[key]) return lang[key];
-  if (currentLang === 'ZH') return translations.EN[key] || key;
+  if (currentLang !== 'RU') return translations.EN[key] || key;
   return translations.RU[key] || translations.EN[key] || key;
 };
 
@@ -7463,7 +7463,7 @@ export const formatBids = (count) => {
   const n = count || 0;
   // Единая терминология: «предложение» (как в колоколе «Новое предложение» и
   // вкладке «Предложения»), а не «ставка» — одно слово во всём флоу сделки.
-  if (currentLang === 'RU' || currentLang === 'KK' || currentLang === 'KG') {
+  if (currentLang === 'RU') {
     return `${n} ${pluralRu(n, 'предложение', 'предложения', 'предложений')}`;
   }
   return `${n} ${t('bids')}`;
@@ -7475,27 +7475,29 @@ export const formatStatus = (status) => {
   return val !== key ? val : t('status_unknown');
 };
 
-const LEGACY_ZH_TRUCK_TYPES = {
-  'Тент': '篷布车',
-  'Фура': '大型货车',
-  'Рефрижератор': '冷藏车',
-  'Изотерм': '保温车',
-  'Бортовой': '栏板车',
-  'Площадка': '平板车',
-  'Автовоз': '汽车运输车',
-  'Цистерна': '罐车',
-  "Контейнер 20'": '20尺集装箱',
-  "Контейнер 40'": '40尺集装箱',
-  'Контейнер 20′': '20尺集装箱',
-  'Контейнер 40′': '40尺集装箱',
+const LEGACY_TRUCK_TYPE_KEYS = {
+  'Тент': 'tent',
+  'Фура': 'tent',
+  'Рефрижератор': 'ref',
+  'Изотерм': 'izoterm',
+  'Бортовой': 'open_truck',
+  'Площадка': 'platform',
+  'Автовоз': 'auto',
+  'Цистерна': 'tanker',
+  "Контейнер 20'": 'cont20',
+  "Контейнер 40'": 'cont40',
+  'Контейнер 20′': 'cont20',
+  'Контейнер 40′': 'cont40',
 };
 
 export const formatTruckType = (type) => {
   if (!type) return t('cargo_type_unknown');
-  const val = t(type);
-  if (val !== type) return val;
-  if (currentLang === 'ZH') return LEGACY_ZH_TRUCK_TYPES[String(type).trim()] || translations.EN[type] || t('cargo_type_unknown');
-  return type;
+  const raw = String(type).trim();
+  const val = t(raw);
+  if (val !== raw) return val;
+  const legacyKey = LEGACY_TRUCK_TYPE_KEYS[raw];
+  if (legacyKey) return t(legacyKey);
+  return currentLang === 'RU' ? raw : (translations.EN[raw] || t('cargo_type_unknown'));
 };
 
 export const formatCargoType = (type) => {

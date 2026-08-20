@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../utils/useI18n';
+import { cleanPlaceName, localizePlace } from '../utils/places';
+import { countryFlag } from '../utils/countryFlags';
 import { useToast } from '../components/Toast';
 import { useAuth } from '../utils/AuthContext';
 import { marketAPI } from '../utils/marketAPI';
@@ -83,9 +85,16 @@ export default function CreateTripScreen({ navigation, route }) {
   }), [v1]);
   const role = route?.params?.role || 'driver';
   const accent = v1AccentFor('driver');
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { toast } = useToast();
   const { session } = useAuth();
+
+  const displayRoutePoint = (raw, point) => {
+    const canonical = point?.name || cleanPlaceName(raw || '');
+    const localized = localizePlace(canonical, lang) || canonical;
+    const flag = point?.country ? countryFlag(point.country) : '';
+    return [localized, flag].filter(Boolean).join(', ');
+  };
 
   const [from, setFrom] = useState('');
   const [fromPoint, setFromPoint] = useState(null);
@@ -143,8 +152,8 @@ export default function CreateTripScreen({ navigation, route }) {
     setSubmitting(true);
     const priceNum = Math.max(0, parseInt(String(price || '').replace(/\s/g, ''), 10) || 0);
     const payload = {
-      from_city: from.trim(),
-      to_city: to.trim(),
+      from_city: fromPoint?.name || cleanPlaceName(from.trim()),
+      to_city: toPoint?.name || cleanPlaceName(to.trim()),
       transit: transit.trim() || null,
       truck_type: truckType,
       // Stage 7: stop silently injecting fake defaults (20t / 82m³).
@@ -193,7 +202,7 @@ export default function CreateTripScreen({ navigation, route }) {
         variant="dropdown"
         featherIcon="map-pin"
         label={t('signup_field_country')}
-        value={from}
+        value={displayRoutePoint(from, fromPoint)}
         placeholder={t('create_field_from_placeholder')}
         onPress={() => setShowFromPicker(true)}
       />
@@ -203,7 +212,7 @@ export default function CreateTripScreen({ navigation, route }) {
         variant="dropdown"
         featherIcon="map-pin"
         label={t('toCountry')}
-        value={to}
+        value={displayRoutePoint(to, toPoint)}
         placeholder={t('create_field_to_placeholder')}
         onPress={() => setShowToPicker(true)}
       />
