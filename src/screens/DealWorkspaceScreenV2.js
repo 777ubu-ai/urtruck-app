@@ -7,6 +7,7 @@ import {
   Image,
   Keyboard,
   KeyboardAvoidingView,
+  Modal,
   PanResponder,
   Platform,
   StyleSheet,
@@ -201,6 +202,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [recordSecs, setRecordSecs] = React.useState(0);
   const [confirmDialog, setConfirmDialog] = React.useState(null);
   const [showJumpLatest, setShowJumpLatest] = React.useState(false);
+  const [imagePreview, setImagePreview] = React.useState(null);
 
   const listRef = React.useRef(null);
   const mounted = React.useRef(true);
@@ -605,7 +607,15 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     return (
       <View style={[s.messageRow, item.mine ? s.messageMine : s.messageThem]}>
         <View style={[s.bubble, item.mine ? s.bubbleMine : s.bubbleThem, !item.mine && { borderColor: colors.border, backgroundColor: colors.surface }]}>
-          {item.photo && item.mediaUrl ? <Image source={{ uri: item.mediaUrl }} style={s.photo} /> : null}
+          {item.photo && item.mediaUrl ? (
+            <TouchableOpacity
+              activeOpacity={0.82}
+              onPress={() => setImagePreview({ uri: item.mediaUrl, time: item.time })}
+              testID="deal-chat-image-open"
+            >
+              <Image source={{ uri: item.mediaUrl }} style={s.photo} />
+            </TouchableOpacity>
+          ) : null}
           {item.voice ? (
             <TouchableOpacity onPress={() => item.mediaUrl && voice.play(item.mediaUrl)} style={s.voiceRow}>
               <Feather name="play" size={15} color={item.mine ? '#FFFFFF' : colors.text} />
@@ -856,17 +866,17 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                   <DealAttachments conversationId={roomId} role={role} compact inline documentTrigger={documentTrigger} />
 
                   {attachOpen ? (
-                    <View style={[s.attachMenu, { borderTopColor: colors.border }]} testID="deal-chat-attach-menu">
+                    <View style={[s.attachMenu, { borderTopColor: colors.border, backgroundColor: colors.bg }]} testID="deal-chat-attach-menu">
                       <TouchableOpacity style={s.attachItem} onPress={() => sendPhoto(false)}>
-                        <View style={[s.attachIcon, { backgroundColor: colors.surface }]}><Feather name="image" size={20} color={colors.text} /></View>
+                        <View style={s.attachIcon}><Feather name="image" size={20} color="#168759" /></View>
                         <Text style={[s.attachLabel, { color: colors.text }]}>{ui.attachPhoto}</Text>
                       </TouchableOpacity>
                       <TouchableOpacity style={s.attachItem} onPress={() => sendPhoto(true)}>
-                        <View style={[s.attachIcon, { backgroundColor: colors.surface }]}><Feather name="camera" size={20} color={colors.text} /></View>
+                        <View style={s.attachIcon}><Feather name="camera" size={20} color="#168759" /></View>
                         <Text style={[s.attachLabel, { color: colors.text }]}>{ui.attachCamera}</Text>
                       </TouchableOpacity>
                       <TouchableOpacity style={s.attachItem} onPress={() => { setAttachOpen(false); setDocumentTrigger((value) => value + 1); }} testID="deal-chat-attach-document">
-                        <View style={[s.attachIcon, { backgroundColor: colors.surface }]}><Feather name="file-text" size={20} color={colors.text} /></View>
+                        <View style={s.attachIcon}><Feather name="file-text" size={20} color="#168759" /></View>
                         <Text style={[s.attachLabel, { color: colors.text }]}>{ui.attachDocument}</Text>
                       </TouchableOpacity>
                     </View>
@@ -923,6 +933,16 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           onConfirm={() => settleConfirm(true)}
           testID="deal-workspace-confirm"
         />
+        <Modal visible={!!imagePreview} transparent animationType="fade" onRequestClose={() => setImagePreview(null)}>
+          <View style={s.imageViewer} testID="deal-chat-image-viewer">
+            <TouchableOpacity style={s.imageViewerClose} onPress={() => setImagePreview(null)} testID="deal-chat-image-close">
+              <Feather name="x" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+            {imagePreview?.uri ? (
+              <Image source={{ uri: imagePreview.uri }} style={s.imageViewerImage} resizeMode="contain" />
+            ) : null}
+          </View>
+        </Modal>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -993,6 +1013,9 @@ const s = StyleSheet.create({
   systemRow: { alignItems: 'center', marginVertical: 5 },
   systemText: { fontSize: 11.5, fontWeight: '650', paddingHorizontal: 10, paddingVertical: 5, backgroundColor: 'rgba(124,139,130,0.12)', borderRadius: 999 },
   photo: { width: 210, height: 150, borderRadius: 11, marginBottom: 4 },
+  imageViewer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.94)', alignItems: 'center', justifyContent: 'center' },
+  imageViewerImage: { width: '100%', height: '86%' },
+  imageViewerClose: { position: 'absolute', top: 46, right: 18, zIndex: 2, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.16)' },
   voiceRow: { minHeight: 28, flexDirection: 'row', alignItems: 'center', gap: 8 },
   emptyText: { textAlign: 'center', marginTop: 24, fontSize: 13 },
   jumpLatest: { position: 'absolute', right: 14, bottom: 12, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#168759', paddingHorizontal: 11, height: 34, borderRadius: 17, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 8, elevation: 3 },
@@ -1000,10 +1023,10 @@ const s = StyleSheet.create({
   recordBar: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 15, paddingVertical: 7, backgroundColor: 'rgba(239,68,68,0.08)' },
   recordDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444' },
   recordText: { color: '#B91C1C', fontSize: 12, fontWeight: '800' },
-  attachMenu: { flexDirection: 'row', paddingHorizontal: 14, paddingVertical: 10, borderTopWidth: StyleSheet.hairlineWidth },
-  attachItem: { width: 82, alignItems: 'center', gap: 5 },
-  attachIcon: { width: 46, height: 46, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
-  attachLabel: { fontSize: 11.5, fontWeight: '700' },
+  attachMenu: { flexDirection: 'row', paddingHorizontal: 14, paddingTop: 12, paddingBottom: 10, borderTopWidth: StyleSheet.hairlineWidth, gap: 10 },
+  attachItem: { flex: 1, minHeight: 74, alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: 18, backgroundColor: '#F5FAF7', borderWidth: 1, borderColor: '#DDEBE4' },
+  attachIcon: { width: 38, height: 38, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: '#E4F5EC' },
+  attachLabel: { fontSize: 11.5, fontWeight: '850' },
   composer: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 12, paddingTop: 9, borderTopWidth: StyleSheet.hairlineWidth },
   composerIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   input: { flex: 1, minHeight: 44, maxHeight: 112, borderRadius: 16, borderWidth: 1, paddingHorizontal: 13, paddingTop: 11, paddingBottom: 10, fontSize: 14.5, lineHeight: 19 },

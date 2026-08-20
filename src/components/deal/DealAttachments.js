@@ -24,7 +24,7 @@ let _localSeq = 0;
 function attachmentLabel(t, a) {
   const readable = a?.original_name || a?.filename || a?.file_name || a?.name;
   if (readable && !/^[a-f0-9]{24,}$/i.test(String(readable))) return String(readable);
-  const isDoc = a?.kind === 'document' || a?.mime_type === 'application/pdf';
+  const isDoc = a?.kind === 'document' || !String(a?.mime_type || '').startsWith('image/');
   return isDoc ? t('attachment_document') : t('attachment_photo');
 }
 
@@ -44,6 +44,20 @@ function normalizeUploadError(error) {
   if (status === 409) return { code: 'already_uploading', status };
   if (status >= 500) return { code: 'server', status };
   return { code: 'failed', status };
+}
+
+function isImageAttachment(a) {
+  return a?.kind === 'photo' || String(a?.mime_type || '').startsWith('image/');
+}
+
+function documentPickerTypes() {
+  return [
+    'application/pdf',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'text/csv',
+    'image/*',
+  ];
 }
 
 export default function DealAttachments({
@@ -72,17 +86,17 @@ export default function DealAttachments({
   useEffect(() => { load(); }, [load]);
 
   const runUpload = useCallback(async (item) => {
-    const { localId, uri, name, isPdf, mime } = item;
+    const { localId, uri, name, isImage, mime } = item;
     const patchLocal = (patch) =>
       setLocal((prev) => prev.map((x) => (x.localId === localId ? { ...x, ...patch } : x)));
     try {
       patchLocal({ status: item.status === 'retrying' ? 'retrying' : 'uploading', error: null });
-      const uploadUri = isPdf ? uri : await compressImage(uri, { preset: 'document' });
+      const uploadUri = isImage ? await compressImage(uri, { preset: 'document' }) : uri;
       const payload = {
         uri: uploadUri,
         kind: 'document',
         name,
-        type: mime || (isPdf ? 'application/pdf' : 'image/jpeg'),
+        type: mime || 'application/octet-stream',
         // Stable across Retry. Backend uses it as an idempotency key.
         clientUploadId: localId,
       };
@@ -111,7 +125,7 @@ export default function DealAttachments({
       localId,
       uri: asset.uri,
       name: asset.fileName || `photo_${localId}.jpg`,
-      isPdf: false,
+      isImage: true,
       mime: asset.mimeType || 'image/jpeg',
       size: asset.fileSize || null,
     });
@@ -120,7 +134,7 @@ export default function DealAttachments({
   const pickDocument = useCallback(async () => {
     if (!conversationId) return;
     const res = await DocumentPicker.getDocumentAsync({
-      type: ['application/pdf', 'image/*'],
+      type: documentPickerTypes(),
       copyToCacheDirectory: true,
       multiple: false,
     });
@@ -128,15 +142,16 @@ export default function DealAttachments({
     const file = res?.assets?.[0];
     if (!file?.uri) return;
     const localId = `att_${Date.now()}_${_localSeq++}`;
-    const isPdf = (file.mimeType || '').toLowerCase().includes('pdf') || /\.pdf$/i.test(file.name || '');
+    const mime = file.mimeType || '';
+    const isImage = String(mime).startsWith('image/') || /\.(png|jpe?g)$/i.test(file.name || '');
     queueUpload({
       localId,
       uri: file.uri,
-      name: file.name || `document_${localId}.${isPdf ? 'pdf' : 'jpg'}`,
-      isPdf,
+      name: file.name || `document_${localId}`,
+      isImage,
       // Safari may report application/octet-stream. Backend validates magic
-      // bytes; chatAPI re-wraps a .pdf as application/pdf for multipart.
-      mime: isPdf ? 'application/pdf' : (file.mimeType || 'image/jpeg'),
+      // bytes; chatAPI re-wraps known extensions with a useful MIME.
+      mime: file.mimeType || null,
       size: file.size || null,
     });
   }, [conversationId, queueUpload]);
@@ -247,7 +262,7 @@ export default function DealAttachments({
             return (
               <Row
                 key={a.id}
-                icon={a.kind === 'document' ? 'file-text' : 'image'}
+                icon={isImageAttachment(a) ? 'image' : 'file-text'}
                 label={attachmentLabel(t, a)}
                 sublabel={formatBytes(a.size_bytes)}
                 statusKey={meta.key}
@@ -261,7 +276,7 @@ export default function DealAttachments({
             return (
               <Row
                 key={item.localId}
-                icon={item.isPdf ? 'file-text' : 'image'}
+                icon={item.isImage ? 'image' : 'file-text'}
                 label={item.name || attachmentLabel(t, item)}
                 sublabel={formatBytes(item.size)}
                 statusKey={meta.key}

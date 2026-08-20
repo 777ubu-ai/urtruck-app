@@ -14,6 +14,21 @@ test('Safari/PWA PDF is rewrapped with the intended MIME before multipart upload
   assert.match(api, /form\.append\('file', part, name\)/);
 });
 
+test('deal document picker and backend support PDF plus Excel/CSV attachments', () => {
+  for (const mime of [
+    'application/pdf',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'text/csv',
+  ]) {
+    assert.match(api, new RegExp(mime.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.match(ui, new RegExp(mime.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.match(backend, new RegExp(mime.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  }
+  assert.match(backend, /raw\[:8\] == b"\\xd0\\xcf\\x11\\xe0\\xa1\\xb1\\x1a\\xe1"/);
+  assert.match(backend, /raw\[:4\] == b"PK\\x03\\x04"/);
+});
+
 test('attachment retry uses one stable client upload id and backend deduplicates it', () => {
   assert.match(ui, /clientUploadId: localId/);
   assert.match(ui, /const retryItem = \{ \.\.\.item, status: 'retrying'/);
@@ -41,4 +56,15 @@ test('HTTP attachment failures are not mislabeled as a network failure', () => {
   assert.match(api, /error\.isNetwork = Boolean\(isNetwork\)/);
   assert.match(api, /if \(!response\.ok\)/);
   assert.match(api, /throw attachmentError\(detail, \{ status: response\.status, detail \}\)/);
+});
+
+test('chat images open in a fullscreen viewer from both deal workspaces', () => {
+  const v1 = fs.readFileSync('src/screens/DealWorkspaceScreen.js', 'utf8');
+  const v2 = fs.readFileSync('src/screens/DealWorkspaceScreenV2.js', 'utf8');
+  for (const src of [v1, v2]) {
+    assert.match(src, /testID="deal-chat-image-open"/);
+    assert.match(src, /testID="deal-chat-image-viewer"/);
+    assert.match(src, /resizeMode="contain"/);
+    assert.match(src, /setImagePreview/);
+  }
 });

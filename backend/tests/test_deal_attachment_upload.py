@@ -34,6 +34,18 @@ def test_pdf_magic_bytes_are_authoritative():
     assert deal_room._sniff_mime(b"not-a-supported-file") is None
 
 
+def test_excel_and_csv_magic_bytes_are_authoritative():
+    assert deal_room._sniff_mime(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\x00" * 32) == "application/vnd.ms-excel"
+    xlsx = (
+        b"PK\x03\x04"
+        + b"[Content_Types].xml"
+        + b"\x00" * 32
+        + b"xl/workbook.xml"
+    )
+    assert deal_room._sniff_mime(xlsx) == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    assert deal_room._sniff_mime("name,price\nA,10\n".encode("utf-8")) == "text/csv"
+
+
 def test_unicode_filename_is_preserved_without_paths_or_controls():
     result = deal_room._safe_original_name("../../Платежное_поручение_№10 (2).pdf\x00", "pdf")
     assert result == "Платежное_поручение_№10 (2).pdf"
