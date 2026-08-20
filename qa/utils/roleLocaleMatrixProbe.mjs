@@ -71,9 +71,14 @@ const MOCK_EXEMPT = [
   'Boris', 'preview',
 ];
 // The gallery's own dev chrome.
+// Belt-and-braces: even with ancestor-aware visibility, exempt the gallery's
+// own copy by whole phrases (fragment-based exemption previously left
+// "открываются с" behind and fired on every screen).
 const GALLERY_EXEMPT = [
+  'Открывает экраны UrTruck Design v1 без прохождения OTP/auth-flow.',
+  'Detail-экраны открываются с mock-данными — backend не трогается.',
   'Открывает экраны', 'Detail-экраны', 'без прохождения', 'не трогается',
-  'mock-данными', 'Visual Preview',
+  'mock-данными', 'открываются с', 'Visual Preview', 'QA · DESIGN',
 ];
 
 function residualCyrillic(text) {
@@ -83,6 +88,12 @@ function residualCyrillic(text) {
     .filter((s) => s.length > 3);
 }
 
+// React Navigation on web keeps the previous screen mounted behind the pushed
+// one, so the QA gallery's own Russian chrome stays in the DOM. Checking only
+// the text node's immediate parent let that chrome through and produced 46
+// false "Cyrillic leak" hits on the first run. Visibility must be
+// ancestor-aware, and aria-hidden subtrees (how RN Web marks inactive screens)
+// must be skipped outright.
 async function visibleText(page) {
   return page.evaluate(() => {
     const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
@@ -92,8 +103,23 @@ async function visibleText(page) {
       const el = n.parentElement;
       if (!el) continue;
       if (['SCRIPT', 'STYLE', 'NOSCRIPT'].includes(el.tagName)) continue;
-      const cs = window.getComputedStyle(el);
-      if (cs.display === 'none' || cs.visibility === 'hidden') continue;
+      // ancestor-aware: display/visibility/opacity of the whole chain
+      if (typeof el.checkVisibility === 'function') {
+        if (!el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) continue;
+      } else {
+        let hidden = false;
+        for (let a = el; a && a !== document.body; a = a.parentElement) {
+          const cs = window.getComputedStyle(a);
+          if (cs.display === 'none' || cs.visibility === 'hidden' || cs.opacity === '0') { hidden = true; break; }
+        }
+        if (hidden) continue;
+      }
+      // inactive navigation screens
+      let ariaHidden = false;
+      for (let a = el; a && a !== document.body; a = a.parentElement) {
+        if (a.getAttribute && a.getAttribute('aria-hidden') === 'true') { ariaHidden = true; break; }
+      }
+      if (ariaHidden) continue;
       const s = (n.textContent || '').trim();
       if (s) out.push(s);
     }
@@ -103,6 +129,9 @@ async function visibleText(page) {
 
 const results = [];
 const failures = [];
+// RU rendering per screen, captured on the RU pass (RU is first in LOCALES) so
+// the KK pass can prove it is not a verbatim Russian fallback.
+const ruBaseline = new Map();
 fs.mkdirSync(ART, { recursive: true });
 
 const browser = await chromium.launch();
@@ -145,9 +174,20 @@ for (const lang of LOCALES) {
             note = 'Cyrillic: ' + leaks.slice(0, 6).join(' / ');
           }
         } else if (lang === 'KK') {
-          if (!KAZAKH_ONLY.test(text)) {
+          // The review asks to "fail on raw-Russian fallback". A short Kazakh
+          // string can legitimately contain no ӘҒҚҢӨҰҮҺІ, so requiring one
+          // produced a false failure on the sparse deal-chat screen. The real
+          // test is divergence from the Russian rendering of the same screen:
+          // identical text with no Kazakh letter == untranslated fallback.
+          const ru = ruBaseline.get(`${role}/${label}`);
+          const hasKazakhLetter = KAZAKH_ONLY.test(text);
+          const sameAsRussian = ru !== undefined && ru === text;
+          if (!hasKazakhLetter && sameAsRussian) {
             ok = false;
-            note = 'no Kazakh-specific letter (raw Russian fallback?)';
+            note = 'identical to RU rendering and no Kazakh letter -> raw Russian fallback';
+          } else if (!hasKazakhLetter && ru === undefined) {
+            ok = false;
+            note = 'no Kazakh letter and no RU baseline to compare against';
           }
         } else if (lang === 'RU') {
           if (!/[А-Яа-я]/.test(text)) {
@@ -160,6 +200,7 @@ for (const lang of LOCALES) {
         note = 'no visible text rendered';
       }
 
+      if (lang === 'RU' && text) ruBaseline.set(`${role}/${label}`, text);
       results.push({ lang, role, label, ok, note });
       if (!ok) failures.push(`${lang} ${role}/${label}: ${note}`);
       await ctx.close();
