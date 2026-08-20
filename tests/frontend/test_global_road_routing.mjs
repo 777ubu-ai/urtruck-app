@@ -6,6 +6,7 @@ const webMap = fs.readFileSync('src/components/TruckMap.web.js', 'utf8');
 const nativeMap = fs.readFileSync('src/components/TruckMap.native.js', 'utf8');
 const client = fs.readFileSync('src/utils/routingAPI.js', 'utf8');
 const backend = fs.readFileSync('backend/api/routing.py', 'utf8');
+const i18n = fs.readFileSync('src/utils/i18n.js', 'utf8');
 const deploy = fs.readFileSync('.github/workflows/secure-production-deploy.yml', 'utf8');
 
 test('every deal route requests authenticated server road geometry, including Almaty-Moscow', () => {
@@ -15,7 +16,11 @@ test('every deal route requests authenticated server road geometry, including Al
   assert.match(webMap, /routingAPI\.roadRoute\(effectivePoints, vehicle\)/);
   assert.match(nativeMap, /routingAPI\.roadRoute\(effectivePairs, vehicle\)/);
   assert.match(webMap, /truck-map-road-routing-loading/);
-  assert.match(webMap, /Маршрут по дороге временно недоступен/);
+  // 2026-08-20 (#254): the label moved from a Russian literal to an i18n key
+  // (it leaked Russian into ZH/EN/KK). Intent is unchanged — the dashed
+  // fallback must still be explicitly labelled as "no real road route".
+  assert.match(webMap, /t\('map_road_route_unavailable'\)/);
+  assert.match(i18n, /map_road_route_unavailable: 'Маршрут по дороге временно недоступен'/);
 });
 
 test('TruckMap accepts a vehicle spec and threads it into the server routing request on both platforms', () => {

@@ -241,18 +241,18 @@ function YandexMap({ livePoint, plannedPoints, serverRoute, onRouteSummary }) {
       <View ref={hostRef} style={s.map} testID="truck-map-yandex-web" />
       {status === 'loading' ? (
         <View pointerEvents="none" style={s.loading} testID="truck-map-yandex-loading">
-          <Text style={s.loadingText}>Загружаем Яндекс Карту…</Text>
+          <Text style={s.loadingText}>{t('map_loading')}</Text>
         </View>
       ) : null}
       {status === 'error' ? (
         <View pointerEvents="none" style={s.loading} testID="truck-map-yandex-error">
-          <Text style={s.errorTitle}>Яндекс Карта временно недоступна</Text>
-          <Text style={s.loadingText}>Повторяем подключение автоматически…</Text>
+          <Text style={s.errorTitle}>{t('map_unavailable_title')}</Text>
+          <Text style={s.loadingText}>{t('map_reconnecting')}</Text>
         </View>
       ) : null}
       {fallbackActive ? (
         <View pointerEvents="none" style={s.routeState} testID="truck-map-road-route-unavailable">
-          <Text style={s.routeStateText}>Маршрут по дороге временно недоступен</Text>
+          <Text style={s.routeStateText}>{t('map_road_route_unavailable')}</Text>
         </View>
       ) : null}
     </View>
@@ -337,13 +337,13 @@ export default function TruckMap({
         />
       ) : (
         <View style={s.loading} testID="truck-map-yandex-not-configured">
-          <Text style={s.errorTitle}>Яндекс Карта не подключена</Text>
-          <Text style={s.loadingText}>Карта не будет заменена другим провайдером.</Text>
+          <Text style={s.errorTitle}>{t('map_not_configured_title')}</Text>
+          <Text style={s.loadingText}>{t('map_not_configured_hint')}</Text>
         </View>
       )}
       {serverLoading ? (
         <View pointerEvents="none" style={s.routeState} testID="truck-map-road-routing-loading">
-          <Text style={s.routeStateText}>Строим маршрут по дороге…</Text>
+          <Text style={s.routeStateText}>{t('map_building_route')}</Text>
         </View>
       ) : null}
       {showBadge ? (

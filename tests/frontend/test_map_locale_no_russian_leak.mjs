@@ -29,6 +29,27 @@ import fs from 'node:fs';
 const CYRILLIC = /[А-яЁё]/;
 // crude JS string-literal matcher, good enough for these small files
 const LITERAL = /(['"`])((?:(?!\1)[^\\]|\\.)*?)\1/gs;
+// JSX text node: >text< with no tags/expressions inside. The first version of
+// this guard only checked string literals and therefore MISSED
+// `<Text>Загружаем Яндекс Карту…</Text>` in TruckMap.web.js — seven such nodes
+// were still leaking Russian after the literal-only fix. Both shapes are
+// checked now.
+const JSX_TEXT = />([^<>{}]*[А-яЁё][^<>{}]*)</g;
+
+function cyrillicJsxText(file) {
+  const src = fs.readFileSync(file, 'utf8');
+  const out = [];
+  src.split('\n').forEach((line, i) => {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*')) return;
+    const code = line.replace(/\/\/.*$/, '');
+    for (const m of code.matchAll(JSX_TEXT)) {
+      const s = m[1].trim();
+      if (s.length > 1) out.push(`${file}:${i + 1}  ${s.slice(0, 60)}`);
+    }
+  });
+  return out;
+}
 
 function cyrillicLiterals(file) {
   const src = fs.readFileSync(file, 'utf8');
@@ -46,7 +67,7 @@ function cyrillicLiterals(file) {
 
 for (const file of ['src/components/TruckMap.native.js', 'src/components/TruckMap.web.js']) {
   test(`${file} renders no hardcoded Cyrillic strings`, () => {
-    const leaks = cyrillicLiterals(file);
+    const leaks = [...cyrillicLiterals(file), ...cyrillicJsxText(file)];
     assert.deepEqual(leaks, [], `hardcoded Russian would leak into ZH/EN/KK UI:\n${leaks.join('\n')}`);
   });
 
@@ -75,10 +96,26 @@ test('security COLOR_UI exposes i18n keys, not Russian labels', () => {
   assert.doesNotMatch(badge, /ui\.label\b/, 'SecurityBadge must not render a raw label string');
 });
 
+test('no component anywhere in src/ renders Cyrillic as a JSX text node', () => {
+  // Repo-wide guard. The literal-only scan used during the #254 audit reported
+  // TruckMap.web.js as clean while seven `<Text>Загружаем…</Text>` nodes were
+  // still leaking, so the whole tree is swept for that shape now. Any Russian
+  // baked directly into JSX bypasses t() and shows up in ZH/EN/KK UI.
+  const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const p = `${dir}/${e.name}`;
+    if (e.isDirectory()) return walk(p);
+    return e.isFile() && p.endsWith('.js') ? [p] : [];
+  });
+  const leaks = walk('src').flatMap(cyrillicJsxText);
+  assert.deepEqual(leaks, [], `Cyrillic JSX text nodes bypass i18n:\n${leaks.join('\n')}`);
+});
+
 test('every new map/security key exists in all four languages', () => {
   const i18n = fs.readFileSync('src/utils/i18n.js', 'utf8');
   for (const key of ['map_point_start', 'map_point_destination', 'map_point_waypoint',
-    'security_badge_problems']) {
+    'security_badge_problems', 'map_loading', 'map_unavailable_title', 'map_reconnecting',
+    'map_road_route_unavailable', 'map_not_configured_title', 'map_not_configured_hint',
+    'map_building_route']) {
     const count = [...i18n.matchAll(new RegExp(`^\\s+${key}:`, 'gm'))].length;
     assert.equal(count, 4, `${key} must be defined in RU/KK/ZH/EN (found ${count})`);
   }

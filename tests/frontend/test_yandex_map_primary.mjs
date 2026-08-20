@@ -7,6 +7,7 @@ const trackSrc = fs.readFileSync('src/screens/TrackTruckScreen.js', 'utf8');
 const injectSrc = fs.readFileSync('scripts/injectYandexMaps.mjs', 'utf8');
 const routerSrc = fs.readFileSync('backend/api/routing.py', 'utf8');
 const finalizerSrc = fs.readFileSync('.github/workflows/yandex-map-finalizer.yml', 'utf8');
+const i18nSrc = fs.readFileSync('src/utils/i18n.js', 'utf8');
 
 test('web deal map uses embedded Yandex Maps as the visual provider', () => {
   assert.match(mapSrc, /globalThis\.ymaps/);
@@ -36,7 +37,10 @@ test('finalizer is verification-only, requires successful deploy, and cannot re-
 test('no alternate web map renderer can execute', () => {
   assert.doesNotMatch(mapSrc, /LEAFLET_JS|LEAFLET_CSS|unpkg\.com\/leaflet|tile\.openstreetmap\.org|OpenStreetMapFallback|truck-map-osm-fallback|useFallback|\.tileLayer\(/);
   assert.match(mapSrc, /truck-map-yandex-error/);
-  assert.match(mapSrc, /Карта не будет заменена другим провайдером/);
+  // 2026-08-20 (#254): message localized; the guarantee it encodes ("we never
+  // silently swap in another map provider") is unchanged.
+  assert.match(mapSrc, /t\('map_not_configured_hint'\)/);
+  assert.match(i18nSrc, /map_not_configured_hint: 'Карта не будет заменена другим провайдером\.'/);
 });
 
 test('KZ/RU route geometry and metrics come from Yandex Router API first', () => {
