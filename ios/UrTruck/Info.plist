@@ -6,6 +6,15 @@
     <true/>
     <key>CFBundleDevelopmentRegion</key>
     <string>$(DEVELOPMENT_LANGUAGE)</string>
+    <key>CFBundleAllowMixedLocalizations</key>
+    <true/>
+    <key>CFBundleLocalizations</key>
+    <array>
+      <string>ru</string>
+      <string>en</string>
+      <string>zh-Hans</string>
+      <string>kk</string>
+    </array>
     <key>CFBundleDisplayName</key>
     <string>UrTruck</string>
     <key>CFBundleExecutable</key>

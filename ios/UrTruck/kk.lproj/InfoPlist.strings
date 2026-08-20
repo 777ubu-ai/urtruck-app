@@ -1,0 +1,7 @@
+/* UrTruck — iOS system permission dialogs (KK). See ru.lproj for context. */
+"NSCameraUsageDescription" = "UrTruck селфи және құжат фотосуреттері үшін камераны пайдаланады";
+"NSMicrophoneUsageDescription" = "UrTruck чатта дауыстық хабар жазу үшін микрофонды пайдаланады";
+"NSPhotoLibraryUsageDescription" = "UrTruck аватар, жүк және құжаттар үшін фотосуреттерді пайдаланады";
+"NSLocationWhenInUseUsageDescription" = "UrTruck тасымалдау кезінде жүк иесіне жүктің қазіргі орнын көрсетеді";
+"NSLocationAlwaysAndWhenInUseUsageDescription" = "UrTruck көліктің орнын жүк иесіне тек белсенді рейс кезінде береді, ол жүктің қай жерде екенін көру үшін.";
+"NSLocationAlwaysUsageDescription" = "UrTruck көліктің орнын жүк иесіне тек белсенді рейс кезінде береді, ол жүктің қай жерде екенін көру үшін.";

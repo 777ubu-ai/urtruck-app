@@ -1,0 +1,11 @@
+/* UrTruck — iOS system permission dialogs (RU).
+   Added 2026-08-20 for PR #255 review item A: Info.plist carried Russian-only
+   permission descriptions, so Apple's system dialogs showed Russian to ZH/EN/KK
+   users. Info.plist keeps the Russian strings as the base values; these .lproj
+   files localize them per system language. */
+"NSCameraUsageDescription" = "UrTruck использует камеру для селфи и фото документов";
+"NSMicrophoneUsageDescription" = "UrTruck использует микрофон для записи голосовых сообщений";
+"NSPhotoLibraryUsageDescription" = "UrTruck использует фото для аватара, груза и документов";
+"NSLocationWhenInUseUsageDescription" = "UrTruck показывает грузоотправителю, где сейчас находится его груз во время перевозки";
+"NSLocationAlwaysAndWhenInUseUsageDescription" = "UrTruck передаёт позицию машины грузоотправителю только во время активного рейса, чтобы он видел, где находится груз.";
+"NSLocationAlwaysUsageDescription" = "UrTruck передаёт позицию машины грузоотправителю только во время активного рейса, чтобы он видел, где находится груз.";

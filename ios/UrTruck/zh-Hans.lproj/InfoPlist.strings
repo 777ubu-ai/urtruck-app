@@ -1,0 +1,7 @@
+/* UrTruck — iOS system permission dialogs (ZH-Hans). See ru.lproj for context. */
+"NSCameraUsageDescription" = "UrTruck 使用相机拍摄自拍和证件照片";
+"NSMicrophoneUsageDescription" = "UrTruck 使用麦克风在聊天中录制语音消息";
+"NSPhotoLibraryUsageDescription" = "UrTruck 使用您的照片作为头像、货物和证件照片";
+"NSLocationWhenInUseUsageDescription" = "UrTruck 在运输过程中向货主显示货物当前位置";
+"NSLocationAlwaysAndWhenInUseUsageDescription" = "UrTruck 仅在运输进行期间向货主共享车辆位置，以便货主查看货物所在位置。";
+"NSLocationAlwaysUsageDescription" = "UrTruck 仅在运输进行期间向货主共享车辆位置，以便货主查看货物所在位置。";
