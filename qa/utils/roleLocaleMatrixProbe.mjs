@@ -90,6 +90,14 @@ function stripExempt(text) {
   for (const ex of [...MOCK_EXEMPT, ...GALLERY_EXEMPT, ...LOCALE_LABEL_EXEMPT]) {
     cleaned = cleaned.split(ex).join(' ');
   }
+  // Once a mock name like 'Демо-собеседник' is stripped out, its avatar
+  // initial ('Д', its own DOM text node, derived algorithmically from the
+  // name's first letter) is left behind as an orphan single-character
+  // token. It is never meaningful translatable content in any locale — real
+  // avatar initials come from a real counterparty's free-text name, which is
+  // itself exempt — so drop leftover 1-character segments between the '|'
+  // separators visibleText() joins nodes with.
+  cleaned = cleaned.split('|').map((seg) => seg.trim()).filter((seg) => seg.length > 1).join(' | ');
   return cleaned.replace(/\s+/g, ' ').trim();
 }
 
