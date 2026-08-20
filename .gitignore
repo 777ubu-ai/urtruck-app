@@ -61,6 +61,9 @@ test-results/
 playwright-report/
 blob-report/
 tests/e2e/*.png
+# Screenshots written at runtime by qa/agents/*.spec.js (onboarding-v2,
+# production-smoke). Generated output like the entries above — never tracked.
+qa-artifacts/
 
 # Design references (large PNG mockups — kept locally, not in git)
 design/UrTruck_New_Design_v1/*.png
