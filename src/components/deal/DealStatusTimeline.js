@@ -3,6 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 
 import { useI18n } from '../../utils/useI18n';
+import { localizePlace } from '../../utils/places';
 import { useV1Colors } from '../../theme/designV1';
 import { systemEventText } from './DealRoom';
 
@@ -108,6 +109,7 @@ export default function DealStatusTimeline({ events = [], fallbackStatus = '' })
         const meta = detailsFor(ev);
         const title = systemEventText(t, ev);
         const moment = formatMoment(ev, lang);
+        const localizedPlace = meta.place ? (localizePlace(meta.place, lang) || meta.place) : '';
         const last = index === events.length - 1;
         return (
           <View key={String(ev?.id || `${key}-${index}`)} style={s.item} testID="deal-status-timeline-item">
@@ -121,10 +123,10 @@ export default function DealStatusTimeline({ events = [], fallbackStatus = '' })
             <View style={[s.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <Text style={[s.title, { color: colors.text }]}>{title}</Text>
               {moment ? <Text style={[s.moment, { color: colors.textMuted }]}>{moment}</Text> : null}
-              {meta.place ? (
+              {localizedPlace ? (
                 <View style={s.metaRow}>
                   <Feather name="map-pin" size={13} color="#168759" />
-                  <Text style={[s.metaText, { color: colors.text }]}>{meta.place}</Text>
+                  <Text style={[s.metaText, { color: colors.text }]}>{localizedPlace}</Text>
                 </View>
               ) : null}
               {meta.actor ? (
