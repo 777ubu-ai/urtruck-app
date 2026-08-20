@@ -118,6 +118,21 @@ test('chat history scroll does not yank user from old messages when new messages
   assert.match(workspace, /contentOffset/);
 });
 
+test('chat photos open in an app-controlled full screen viewer', () => {
+  assert.match(workspace, /Modal/);
+  assert.match(workspace, /photoViewer/);
+  assert.match(workspace, /testID="deal-chat-photo-open"/);
+  assert.match(workspace, /testID="deal-chat-photo-viewer"/);
+  assert.match(workspace, /resizeMode="contain"/);
+});
+
+test('chat attachment menu uses the refreshed solid action styling', () => {
+  assert.match(workspace, /justifyContent: 'space-around'/);
+  assert.match(workspace, /width: 54, height: 54/);
+  assert.match(workspace, /backgroundColor: '#E9F6EF'/);
+  assert.match(workspace, /color="#168759"/);
+});
+
 test('statuses render a detailed vertical timeline instead of compact system chips', () => {
   assert.match(workspace, /<DealStatusTimeline/);
   assert.match(workspace, /testID="deal-status-panel"/);

@@ -172,6 +172,7 @@ export const chatAPI = {
     conversationId,
     {
       uri,
+      fileObject = null,
       kind = 'document',
       name = 'file.bin',
       type = null,
@@ -193,9 +194,13 @@ export const chatAPI = {
     if (Platform.OS === 'web') {
       let blob;
       try {
-        const read = await fetch(uri);
-        if (!read.ok) throw attachmentError(`document read failed ${read.status}`, { status: read.status });
-        blob = await read.blob();
+        if (fileObject && typeof Blob !== 'undefined' && fileObject instanceof Blob) {
+          blob = fileObject;
+        } else {
+          const read = await fetch(uri);
+          if (!read.ok) throw attachmentError(`document read failed ${read.status}`, { status: read.status });
+          blob = await read.blob();
+        }
       } catch (error) {
         if (error?.status) throw error;
         throw attachmentError('document read failed', { detail: error?.message || 'document read failed' });

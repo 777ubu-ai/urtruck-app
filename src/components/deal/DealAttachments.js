@@ -85,7 +85,7 @@ export default function DealAttachments({
   useEffect(() => { load(); }, [load]);
 
   const runUpload = useCallback(async (item) => {
-    const { localId, uri, name, isDocument, mime } = item;
+    const { localId, uri, fileObject, name, isDocument, mime } = item;
     const patchLocal = (patch) =>
       setLocal((prev) => prev.map((x) => (x.localId === localId ? { ...x, ...patch } : x)));
     try {
@@ -93,6 +93,7 @@ export default function DealAttachments({
       const uploadUri = isDocument ? uri : await compressImage(uri, { preset: 'document' });
       const payload = {
         uri: uploadUri,
+        fileObject: isDocument ? fileObject : null,
         kind: 'document',
         name,
         type: mime || (isDocument ? undefined : 'image/jpeg'),
@@ -151,6 +152,7 @@ export default function DealAttachments({
     queueUpload({
       localId,
       uri: file.uri,
+      fileObject: file.file || null,
       name: file.name || `document_${localId}.${isDocument ? 'pdf' : 'jpg'}`,
       isDocument,
       // Safari may report application/octet-stream. Backend validates magic

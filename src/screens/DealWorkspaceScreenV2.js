@@ -7,8 +7,10 @@ import {
   Image,
   Keyboard,
   KeyboardAvoidingView,
+  Modal,
   PanResponder,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
@@ -62,7 +64,7 @@ const COPY = {
     cancelDeal: 'Отменить сделку', cancelDealConfirm: 'Отменить эту сделку?', loading: 'Загрузка сделки…',
     loadingDate: 'Загрузка', deliveryDate: 'Доставка', expandMap: 'Развернуть карту', collapseMap: 'Свернуть карту',
     tripFinished: 'Сделка завершена', tripDelivered: 'Груз доставлен', awaitingReceiptStatus: 'Ожидает подтверждения', tripAwaitingReceipt: 'Ожидаем подтверждения грузоотправителя', tripAwaitingReceiptHint: 'Водитель отметил груз как доставленный. Сделка завершится после подтверждения получения.', tripReceived: 'Получение подтверждено', mapFinishedHint: 'Live GPS для этого рейса больше не используется.',
-    jumpLatest: 'Новые сообщения',
+    jumpLatest: 'Новые сообщения', closePhoto: 'Закрыть фото',
   },
   EN: {
     messages: 'Messages', statuses: 'Statuses', newMessages: 'new',
@@ -75,7 +77,7 @@ const COPY = {
     cancelDeal: 'Cancel deal', cancelDealConfirm: 'Cancel this deal?', loading: 'Loading deal…',
     loadingDate: 'Pickup', deliveryDate: 'Delivery', expandMap: 'Expand map', collapseMap: 'Collapse map',
     tripFinished: 'Deal completed', tripDelivered: 'Cargo delivered', awaitingReceiptStatus: 'Awaiting confirmation', tripAwaitingReceipt: 'Awaiting shipper confirmation', tripAwaitingReceiptHint: 'The driver marked the cargo as delivered. The deal is completed after receipt is confirmed.', tripReceived: 'Receipt confirmed', mapFinishedHint: 'Live GPS is no longer used for this trip.',
-    jumpLatest: 'New messages',
+    jumpLatest: 'New messages', closePhoto: 'Close photo',
   },
   ZH: {
     messages: '消息', statuses: '状态', newMessages: '条新消息',
@@ -88,7 +90,7 @@ const COPY = {
     cancelDeal: '取消交易', cancelDealConfirm: '确认取消这笔交易？', loading: '正在加载交易…',
     loadingDate: '装货', deliveryDate: '送达', expandMap: '展开地图', collapseMap: '收起地图',
     tripFinished: '交易已完成', tripDelivered: '货物已送达', awaitingReceiptStatus: '等待确认', tripAwaitingReceipt: '等待货主确认收货', tripAwaitingReceiptHint: '司机已标记货物送达。货主确认收货后，交易才能完成。', tripReceived: '已确认收货', mapFinishedHint: '本次运输已停止实时 GPS。',
-    jumpLatest: '新消息',
+    jumpLatest: '新消息', closePhoto: '关闭照片',
   },
   KK: {
     messages: 'Хабарламалар', statuses: 'Мәртебелер', newMessages: 'жаңа',
@@ -101,7 +103,7 @@ const COPY = {
     cancelDeal: 'Мәмілені болдырмау', cancelDealConfirm: 'Осы мәмілені болдырмау керек пе?', loading: 'Мәміле жүктелуде…',
     loadingDate: 'Тиеу', deliveryDate: 'Жеткізу', expandMap: 'Картаны үлкейту', collapseMap: 'Картаны кішірейту',
     tripFinished: 'Мәміле аяқталды', tripDelivered: 'Жүк жеткізілді', awaitingReceiptStatus: 'Растауды күтуде', tripAwaitingReceipt: 'Жүк иесінің қабылдауды растауын күтеміз', tripAwaitingReceiptHint: 'Жүргізуші жүкті жеткізілді деп белгіледі. Жүк иесі қабылдауды растағаннан кейін мәміле аяқталады.', tripReceived: 'Қабылдау расталды', mapFinishedHint: 'Бұл рейсте live GPS енді қолданылмайды.',
-    jumpLatest: 'Жаңа хабарламалар',
+    jumpLatest: 'Жаңа хабарламалар', closePhoto: 'Фотоны жабу',
   },
 };
 
@@ -201,6 +203,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [recordSecs, setRecordSecs] = React.useState(0);
   const [confirmDialog, setConfirmDialog] = React.useState(null);
   const [showJumpLatest, setShowJumpLatest] = React.useState(false);
+  const [photoViewer, setPhotoViewer] = React.useState(null);
 
   const listRef = React.useRef(null);
   const mounted = React.useRef(true);
@@ -605,7 +608,15 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     return (
       <View style={[s.messageRow, item.mine ? s.messageMine : s.messageThem]}>
         <View style={[s.bubble, item.mine ? s.bubbleMine : s.bubbleThem, !item.mine && { borderColor: colors.border, backgroundColor: colors.surface }]}>
-          {item.photo && item.mediaUrl ? <Image source={{ uri: item.mediaUrl }} style={s.photo} /> : null}
+          {item.photo && item.mediaUrl ? (
+            <Pressable
+              onPress={() => setPhotoViewer({ uri: item.mediaUrl, mine: item.mine, time: item.time })}
+              style={s.photoPress}
+              testID="deal-chat-photo-open"
+            >
+              <Image source={{ uri: item.mediaUrl }} style={s.photo} resizeMode="cover" />
+            </Pressable>
+          ) : null}
           {item.voice ? (
             <TouchableOpacity onPress={() => item.mediaUrl && voice.play(item.mediaUrl)} style={s.voiceRow}>
               <Feather name="play" size={15} color={item.mine ? '#FFFFFF' : colors.text} />
@@ -681,6 +692,12 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     nearBottomRef.current = true;
     setShowJumpLatest(false);
     listRef.current?.scrollToEnd?.({ animated: true });
+  };
+
+  const expandChat = () => {
+    if (sheetState === 'collapsed') setSheet('expanded');
+    else if (sheetState === 'expanded') setSheet('full');
+    else setSheet('collapsed');
   };
 
   return (
@@ -790,7 +807,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           </View>
 
           <View style={[s.sheetHeader, { borderBottomColor: colors.border }]}>
-            <TouchableOpacity style={s.sheetTitleTouch} onPress={() => sheetState === 'collapsed' ? setSheet('expanded') : setSheet('collapsed')} testID="deal-chat-toggle">
+            <TouchableOpacity style={s.sheetTitleTouch} onPress={expandChat} testID="deal-chat-toggle">
               <View style={s.chatIconBox}><Feather name={sheetTab === 'chat' ? 'message-circle' : 'activity'} size={18} color="#168759" /></View>
               <View style={s.sheetTitleText}>
                 <View style={s.sheetTitleRow}>
@@ -838,7 +855,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                         if (nearBottom && showJumpLatest) setShowJumpLatest(false);
                       }}
                       scrollEventThrottle={80}
-                      onContentSizeChange={() => { if (nearBottomRef.current) listRef.current?.scrollToEnd?.({ animated: false }); }}
+                      onContentSizeChange={() => { if (nearBottomRef.current && messages.length <= lastCountRef.current) listRef.current?.scrollToEnd?.({ animated: false }); }}
                       ListEmptyComponent={<Text style={[s.emptyText, { color: colors.textMuted }]}>{ui.noMessages}</Text>}
                     />
                     {showJumpLatest ? (
@@ -858,15 +875,15 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                   {attachOpen ? (
                     <View style={[s.attachMenu, { borderTopColor: colors.border }]} testID="deal-chat-attach-menu">
                       <TouchableOpacity style={s.attachItem} onPress={() => sendPhoto(false)}>
-                        <View style={[s.attachIcon, { backgroundColor: colors.surface }]}><Feather name="image" size={20} color={colors.text} /></View>
+                        <View style={[s.attachIcon, { backgroundColor: '#E9F6EF' }]}><Feather name="image" size={21} color="#168759" /></View>
                         <Text style={[s.attachLabel, { color: colors.text }]}>{ui.attachPhoto}</Text>
                       </TouchableOpacity>
                       <TouchableOpacity style={s.attachItem} onPress={() => sendPhoto(true)}>
-                        <View style={[s.attachIcon, { backgroundColor: colors.surface }]}><Feather name="camera" size={20} color={colors.text} /></View>
+                        <View style={[s.attachIcon, { backgroundColor: '#E9F6EF' }]}><Feather name="camera" size={21} color="#168759" /></View>
                         <Text style={[s.attachLabel, { color: colors.text }]}>{ui.attachCamera}</Text>
                       </TouchableOpacity>
                       <TouchableOpacity style={s.attachItem} onPress={() => { setAttachOpen(false); setDocumentTrigger((value) => value + 1); }} testID="deal-chat-attach-document">
-                        <View style={[s.attachIcon, { backgroundColor: colors.surface }]}><Feather name="file-text" size={20} color={colors.text} /></View>
+                        <View style={[s.attachIcon, { backgroundColor: '#E9F6EF' }]}><Feather name="file-text" size={21} color="#168759" /></View>
                         <Text style={[s.attachLabel, { color: colors.text }]}>{ui.attachDocument}</Text>
                       </TouchableOpacity>
                     </View>
@@ -923,6 +940,27 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           onConfirm={() => settleConfirm(true)}
           testID="deal-workspace-confirm"
         />
+
+        <Modal
+          visible={!!photoViewer}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setPhotoViewer(null)}
+          testID="deal-chat-photo-viewer"
+        >
+          <View style={s.photoViewer}>
+            <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setPhotoViewer(null)} />
+            <Image source={{ uri: photoViewer?.uri }} style={s.photoViewerImage} resizeMode="contain" />
+            <TouchableOpacity
+              style={s.photoViewerClose}
+              onPress={() => setPhotoViewer(null)}
+              accessibilityLabel={ui.closePhoto}
+              testID="deal-chat-photo-viewer-close"
+            >
+              <Feather name="x" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+        </Modal>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -992,7 +1030,11 @@ const s = StyleSheet.create({
   messageTime: { fontSize: 10.5, marginTop: 4, textAlign: 'right' },
   systemRow: { alignItems: 'center', marginVertical: 5 },
   systemText: { fontSize: 11.5, fontWeight: '650', paddingHorizontal: 10, paddingVertical: 5, backgroundColor: 'rgba(124,139,130,0.12)', borderRadius: 999 },
-  photo: { width: 210, height: 150, borderRadius: 11, marginBottom: 4 },
+  photoPress: { marginBottom: 4 },
+  photo: { width: 210, height: 150, borderRadius: 11 },
+  photoViewer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.94)', alignItems: 'center', justifyContent: 'center' },
+  photoViewerImage: { width: '100%', height: '100%' },
+  photoViewerClose: { position: 'absolute', top: 52, right: 18, width: 46, height: 46, borderRadius: 23, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
   voiceRow: { minHeight: 28, flexDirection: 'row', alignItems: 'center', gap: 8 },
   emptyText: { textAlign: 'center', marginTop: 24, fontSize: 13 },
   jumpLatest: { position: 'absolute', right: 14, bottom: 12, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#168759', paddingHorizontal: 11, height: 34, borderRadius: 17, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 8, elevation: 3 },
@@ -1000,10 +1042,10 @@ const s = StyleSheet.create({
   recordBar: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 15, paddingVertical: 7, backgroundColor: 'rgba(239,68,68,0.08)' },
   recordDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444' },
   recordText: { color: '#B91C1C', fontSize: 12, fontWeight: '800' },
-  attachMenu: { flexDirection: 'row', paddingHorizontal: 14, paddingVertical: 10, borderTopWidth: StyleSheet.hairlineWidth },
-  attachItem: { width: 82, alignItems: 'center', gap: 5 },
-  attachIcon: { width: 46, height: 46, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
-  attachLabel: { fontSize: 11.5, fontWeight: '700' },
+  attachMenu: { flexDirection: 'row', justifyContent: 'space-around', paddingHorizontal: 18, paddingVertical: 12, borderTopWidth: StyleSheet.hairlineWidth, backgroundColor: '#FAFBFA' },
+  attachItem: { minWidth: 86, alignItems: 'center', gap: 7 },
+  attachIcon: { width: 54, height: 54, borderRadius: 18, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E0E8E3', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
+  attachLabel: { fontSize: 12, fontWeight: '850' },
   composer: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 12, paddingTop: 9, borderTopWidth: StyleSheet.hairlineWidth },
   composerIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   input: { flex: 1, minHeight: 44, maxHeight: 112, borderRadius: 16, borderWidth: 1, paddingHorizontal: 13, paddingTop: 11, paddingBottom: 10, fontSize: 14.5, lineHeight: 19 },

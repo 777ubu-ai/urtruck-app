@@ -12,6 +12,8 @@ test('Safari/PWA PDF is rewrapped with the intended MIME before multipart upload
   assert.match(api, /mimeFromName\(name\)/);
   assert.match(api, /application\/pdf/);
   assert.match(api, /form\.append\('file', part, name\)/);
+  assert.match(api, /fileObject instanceof Blob/);
+  assert.match(ui, /fileObject: file\.file \|\| null/);
 });
 
 test('deal document picker uploads office files as files, not compressed images', () => {

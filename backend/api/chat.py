@@ -726,7 +726,13 @@ async def upload_chat_photo(file: UploadFile = File(...), user=Depends(require_l
         raise HTTPException(status_code=400, detail="Пустой файл")
     if len(data) > 8 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Файл слишком большой")
-    key = storage.save_image(data, "chat_photos")
+    if data[:3] == b"\xff\xd8\xff":
+        ext, content_type = "jpg", "image/jpeg"
+    elif data[:8] == b"\x89PNG\r\n\x1a\n":
+        ext, content_type = "png", "image/png"
+    else:
+        raise HTTPException(status_code=415, detail="Неподдерживаемый тип фото")
+    key = storage.save_file(data, "chat_photos", ext=ext, content_type=content_type)
     return {"photo_key": key}
 
 
@@ -747,7 +753,15 @@ async def upload_chat_voice(file: UploadFile = File(...), user=Depends(require_l
         if name.endswith("." + cand):
             ext = cand
             break
-    key = storage.save_image(data, "chat_voice", ext=ext)
+    audio_mime = {
+        "webm": "audio/webm",
+        "m4a": "audio/mp4",
+        "mp3": "audio/mpeg",
+        "aac": "audio/aac",
+        "ogg": "audio/ogg",
+        "wav": "audio/wav",
+    }.get(ext, "application/octet-stream")
+    key = storage.save_file(data, "chat_voice", ext=ext, content_type=audio_mime)
     return {"voice_key": key}
 
 
