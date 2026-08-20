@@ -16,11 +16,20 @@ def border_catalog(country: str = ""):
     """Lightweight checkpoint catalogue. No CGR imports or network requests."""
     from database import cgr_dal
 
+    # 2026-08-20 (PR #255 review): the catalogue used to expose only `name_ru`,
+    # so ZH/EN clients had nothing to render but Cyrillic. The table already has
+    # name_kz / name_cn / name_en columns, so pass them through — the client
+    # prefers an authoritative server translation and only falls back to its own
+    # canonical/romanized form when a column is still NULL for that checkpoint.
     all_rows = [
         {
             "id": cp["code"],
             "code": cp["code"],
             "name": cp["name_ru"],
+            "name_ru": cp["name_ru"],
+            "name_kk": cp.get("name_kz"),
+            "name_en": cp.get("name_en"),
+            "name_zh": cp.get("name_cn"),
             "country": cp.get("country_to"),
         }
         for cp in cgr_dal.get_all_checkpoints(active_only=True)
@@ -35,6 +44,10 @@ def border_catalog(country: str = ""):
                 "id": b["id"],
                 "code": b["id"],
                 "name": b["name"],
+                "name_ru": b["name"],
+                "name_kk": b.get("name_kz"),
+                "name_en": b.get("name_en"),
+                "name_zh": b.get("name_cn"),
                 "country": b.get("country_to") or b.get("country") or (
                     b.get("countries", "").split("↔")[-1] if "↔" in b.get("countries", "") else None
                 ),
