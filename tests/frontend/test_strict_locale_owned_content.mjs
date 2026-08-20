@@ -9,6 +9,7 @@ const i18n = read('src/utils/i18n.js');
 const hook = read('src/utils/useI18n.js');
 const cargoInput = read('src/components/CargoTypeInput.js');
 const cargoTypes = read('src/utils/cargoTypes.js');
+const normalizers = read('src/utils/normalizers.js');
 const createCargo = read('src/screens/CreateCargoScreen.js');
 const createTrip = read('src/screens/CreateTripScreen.js');
 const workspace = read('src/screens/DealWorkspaceScreenV2.js');
@@ -56,6 +57,15 @@ test('cargo suggestions render/search localized labels while preserving canonica
   assert.match(cargoInput, /searchCargoTypes\(query, lang\)/);
   assert.match(cargoInput, /localizeCargoName\(c\.name, lang\)/);
   assert.match(cargoInput, /onChange\(item\.name\)/);
+});
+
+test('shared marketplace display localizes routes, cargo names and legacy truck types', () => {
+  assert.match(normalizers, /import \{ localizeCargoName, localizePlace \} from '\.\/places'/);
+  assert.match(normalizers, /from: localizePlace\(sanitizeForDisplay\(cargo\?\.from\), lang\)/);
+  assert.match(normalizers, /to: localizePlace\(sanitizeForDisplay\(trip\?\.to\), lang\)/);
+  assert.match(normalizers, /LEGACY_TRUCK_TYPE_KEYS/);
+  assert.match(normalizers, /localizedTypeLabel\(trip\.truckType, t, lang\)/);
+  assert.match(normalizers, /localizeCargoName\(cargo\?\.cargoDesc, lang\)/);
 });
 
 test('create forms localize selected route point and persist clean canonical names', () => {
