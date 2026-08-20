@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 // UrTruck ZH release gate.
-// Product rule (16.08.2026): Chinese UI uses Chinese city/route names and
-// never falls back to Russian system copy. User-entered free text is outside
-// this static gate; system dictionaries, route catalogue and critical dialogs
-// are mandatory and fail CI when incomplete.
+// Product rule: Chinese UI uses Chinese system copy and known canonical
+// cities/categories; it must never fall back to Russian. User-entered free
+// text and legal participant names are intentionally preserved as entered.
 
 const fs = require('fs');
 const path = require('path');
@@ -38,6 +37,8 @@ const importSourceModule = async (rel) => {
     ['Самара', '萨马拉'],
     ['Ташкент', '塔什干'],
     ['Достык ↔ Алашанькоу', '多斯特克 ↔ 阿拉山口'],
+    ['Бахты', '巴克图'],
+    ['Калжат', '喀勒扎特'],
   ];
   for (const [raw, expected] of routeCases) {
     const actual = places.localizePlace(raw, 'ZH');
@@ -62,13 +63,39 @@ const importSourceModule = async (rel) => {
   }
   assert(badCargo.length === 0, `missing ZH cargo translations (${badCargo.length}): ${badCargo.slice(0, 30).join('; ')}`);
 
+  const screenshotCargo = [
+    ['Одежда и текстиль', '服装与纺织品'],
+    ['Обувь', '鞋类'],
+    ['Электроника', '电子产品'],
+    ['Бытовая техника', '家用电器'],
+    ['Компьютеры и офисная техника', '电脑与办公设备'],
+    ['Электросамокаты', '电动滑板车'],
+  ];
+  for (const [raw, expected] of screenshotCargo) {
+    const actual = places.localizeCargoName(raw, 'ZH');
+    assert(actual === expected, `screenshot cargo ${raw} -> ${actual}, expected ${expected}`);
+    assert(!CYR.test(String(actual)), `ZH cargo still contains Cyrillic: ${raw} -> ${actual}`);
+  }
+
+  const systemCases = [
+    ['🚛 Рейс начался', '🚛 运输已开始'],
+    ['✅ Груз доставлен', '✅ 货物已送达'],
+    ['✅ Получение груза подтверждено', '✅ 已确认收货'],
+    ['🤝 Сделка завершена', '🤝 交易已完成'],
+  ];
+  for (const [raw, expected] of systemCases) {
+    const actual = places.localizeSystemMessage(raw, 'ZH');
+    assert(actual === expected, `system message ${raw} -> ${actual}, expected ${expected}`);
+    assert(!CYR.test(String(actual)), `ZH system message still contains Cyrillic: ${raw} -> ${actual}`);
+  }
+
   const useI18n = read('src/utils/useI18n.js');
   const i18n = read('src/utils/i18n.js');
   const dateInput = read('src/utils/dateInput.js');
   const share = read('src/utils/share.js');
 
-  assert(useI18n.includes("if (lang === 'ZH') return translations.EN"), 'useI18n ZH fallback must be EN, never RU');
-  assert(i18n.includes("if (currentLang === 'ZH') return translations.EN"), 'global t() ZH fallback must be EN, never RU');
+  assert(useI18n.includes("if (lang !== 'RU') return translations.EN"), 'useI18n non-RU fallback must be EN, never RU');
+  assert(i18n.includes("if (currentLang !== 'RU') return translations.EN"), 'global t() non-RU fallback must be EN, never RU');
   assert(dateInput.includes('年${Number(year)}年') === false, 'broken duplicated ZH year marker');
   assert(dateInput.includes('年${Number(month)}月${Number(day)}日'), 'ZH full date formatter missing');
   assert(share.includes("ZH: { trip: 'UrTruck 行程'"), 'ZH share copy missing');
@@ -111,9 +138,21 @@ const importSourceModule = async (rel) => {
     assert(!critical.includes(leak), `critical ZH fallback leak remains: ${leak}`);
   }
 
+  const queue = read('src/screens/QueueScreenLazy.js');
+  const createCargo = read('src/screens/CreateCargoScreen.js');
+  const createTrip = read('src/screens/CreateTripScreen.js');
+  const workspace = read('src/screens/DealWorkspaceScreenV2.js');
+  assert(queue.includes('localizeCheckpointName(cp.name, lang)'), 'Border cards must localize checkpoint names');
+  assert(queue.includes('active ? L.selected : L.open'), 'Border card action must be locale copy, not hardcoded Russian');
+  assert(createCargo.includes('displayRoutePoint'), 'CreateCargo route point must be localized');
+  assert(createTrip.includes('displayRoutePoint'), 'CreateTrip route point must be localized');
+  assert(workspace.includes("localizeSystemMessage(message.text || '', lang)"), 'Deal system messages must localize historical Russian rows');
+
   console.log(`[zh] route fixtures: ${routeCases.length}`);
   console.log(`[zh] geography points checked: ${(geo.POINTS || []).length}`);
   console.log(`[zh] cargo dictionary entries checked: ${Object.keys(places.CARGO_DICT || {}).length}`);
+  console.log(`[zh] screenshot cargo fixtures: ${screenshotCargo.length}`);
+  console.log(`[zh] system-message fixtures: ${systemCases.length}`);
   console.log(`[zh] critical dialog files checked: ${criticalDialogFiles.length}`);
 
   if (failures.length) {
@@ -121,7 +160,7 @@ const importSourceModule = async (rel) => {
     failures.forEach((f) => console.error('  -', f));
     process.exit(1);
   }
-  console.log('\n[zh] OK — known system routes/cities/categories, profile geography and critical dialogs are Chinese-safe');
+  console.log('\n[zh] OK — known routes/categories/checkpoints/system events and critical dialogs are Chinese-safe');
 })().catch((error) => {
   console.error('[zh] loader/runtime failure:', error);
   process.exit(1);
