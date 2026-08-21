@@ -38,11 +38,14 @@ mustNot(hook, 'requestBackgroundPermissionsAsync()', 'background hook does not r
 must(hook, "AppState.currentState !== 'active'", 'Android service never starts while app is already backgrounded');
 
 // Start trip is the single permission trigger. Android and web use the same
-// per-trip disclosure; Android then requests foreground location only.
+// per-trip disclosure; Android then requests foreground permission first and
+// guides the user to enable Always/background access when Android stops at
+// "While using the app".
 must(tracker, "Platform.OS === 'android' || Platform.OS === 'web'", 'Android and web route Start trip through the disclosure coordinator');
 must(tracker, "requestLocationPermissionThroughDisclosure({ source: 'start_trip' })", 'Start trip requests permission through disclosure coordinator');
 must(tracker, 'getBackgroundLocationPermissionState()', 'location service checks existing grants');
-must(tracker, "background: 'not_required_foreground_service'", 'Android permission state marks background permission unnecessary');
+must(tracker, 'backgroundRequired: true', 'Android permission state requires background access for the trip service');
+must(tracker, "ok: fg.status === 'granted' && bg.status === 'granted'", 'Android permission state requires foreground and background grants');
 must(tracker, 'foregroundService:', 'active-trip updates use a location foreground service');
 mustNot(tracker.split('export async function startBackgroundTracking()')[1] || '', 'requestForegroundLocationPermission()', 'location service cannot ask foreground permission');
 mustNot(tracker.split('export async function startBackgroundTracking()')[1] || '', 'requestBackgroundLocationPermission()', 'location service cannot ask background permission');
@@ -58,8 +61,7 @@ must(disclosure, 'системный сервис активного рейса'
 must(disclosure, 'Передача прекращается после завершения или отмены рейса', 'disclosure explains when tracking stops');
 must(disclosure, 'Разрешить и начать рейс', 'primary disclosure action matches the user intent');
 must(disclosure, 'Не сейчас', 'secondary disclosure action is explicit');
-mustNot(disclosure, 'когда приложение закрыто или не используется', 'disclosure does not claim closed-app background access');
-must(disclosure, 'Доступ «Разрешить всегда» не требуется', 'settings recovery keeps all-time location out of scope');
+must(disclosure, 'Разрешить всегда', 'settings recovery explains the Always/background requirement');
 must(disclosure, 'background-location-disclosure-continue', 'disclosure has explicit start-trip consent action');
 must(disclosure, 'background-location-open-settings', 'foreground permission recovery path is visible');
 
@@ -70,7 +72,7 @@ must(gate, "Platform.OS === 'android' || Platform.OS === 'web'", 'disclosure hos
 must(gate, 'Per-trip consent is intentional', 'approved modal is shown for every new trip start');
 must(gate, 'registerLocationPermissionRequestHandler(beginDisclosure)', 'driver deal screen registers Start-trip disclosure handler');
 must(gate, 'requestForegroundLocationPermission()', 'foreground permission is requested after disclosure');
-mustNot(gate, 'requestBackgroundLocationPermission', 'Android deal gate never requests background permission');
+must(gate, 'requestBackgroundLocationPermission()', 'Android deal gate requests Always/background access after foreground permission');
 mustNot(gate, 'deal-background-location-bar', 'accepted deal has no proactive location permission bar');
 mustNot(gate, 'deal-background-location-allow', 'accepted deal has no separate Allow button');
 mustNot(gate, "dealStatus === 'accepted'", 'permission UI is not driven by a pre-trip status banner');
@@ -88,36 +90,33 @@ if (permissionIndex < 0 || statusIndex < 0 || permissionIndex > statusIndex) {
 }
 console.log('  ✓ start trip waits for permission before FSM transition');
 
-// Android declares only the minimum location scope used by the active-trip
-// foreground service. iOS background location remains configured separately.
+// Android declares the active-trip foreground service plus background location
+// required by the Play-reviewed flow. iOS background location remains configured separately.
 const permissions = app.android?.permissions || [];
 for (const required of [
   'android.permission.ACCESS_FINE_LOCATION',
   'android.permission.ACCESS_COARSE_LOCATION',
+  'android.permission.ACCESS_BACKGROUND_LOCATION',
   'android.permission.FOREGROUND_SERVICE',
   'android.permission.FOREGROUND_SERVICE_LOCATION',
 ]) {
   if (!permissions.includes(required)) throw new Error(`GPS consent contract missing Android permission: ${required}`);
   console.log(`  ✓ Android permission ${required}`);
 }
-if (permissions.includes('android.permission.ACCESS_BACKGROUND_LOCATION')) {
-  throw new Error('GPS consent contract violation: Android ACCESS_BACKGROUND_LOCATION must not be declared');
-}
-console.log('  ✓ Android ACCESS_BACKGROUND_LOCATION is not declared');
-mustNot(manifest, 'android.permission.ACCESS_BACKGROUND_LOCATION', 'native manifest omits Android background location permission');
+must(manifest, 'android.permission.ACCESS_BACKGROUND_LOCATION', 'native manifest keeps Android background location permission');
 must(manifest, 'android.permission.FOREGROUND_SERVICE_LOCATION', 'native manifest keeps location foreground-service permission');
 
 const locationPlugin = (app.plugins || []).find((entry) => Array.isArray(entry) && entry[0] === 'expo-location');
 if (locationPlugin?.[1]?.isAndroidForegroundServiceEnabled !== true) {
   throw new Error('GPS consent contract missing: expo-location Android foreground service mode');
 }
-if (locationPlugin?.[1]?.isAndroidBackgroundLocationEnabled !== false) {
-  throw new Error('GPS consent contract violation: expo-location Android background mode must be disabled');
+if (locationPlugin?.[1]?.isAndroidBackgroundLocationEnabled !== true) {
+  throw new Error('GPS consent contract missing: expo-location Android background mode');
 }
 if (locationPlugin?.[1]?.isIosBackgroundLocationEnabled !== true) {
   throw new Error('GPS consent contract missing: iOS background location mode');
 }
-console.log('  ✓ expo-location Android foreground service mode enabled, background mode disabled');
+console.log('  ✓ expo-location Android foreground/background location modes enabled');
 
 must(routeMap, '<TruckMap', 'trip renders embedded route map inside UrTruck');
 
