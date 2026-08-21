@@ -14,7 +14,9 @@ test('web deal map uses embedded Yandex Maps as the visual provider', () => {
   assert.match(mapSrc, /new api\.Map/);
   assert.match(mapSrc, /new api\.Placemark/);
   assert.match(mapSrc, /testID="truck-map-yandex-web"/);
+  assert.match(mapSrc, /suppressMapOpenBlock: true/);
   assert.match(mapSrc, /testID="truck-map-route-action"/);
+  assert.match(mapSrc, /buildYandexRouteUrl/);
   assert.match(mapSrc, /t\('route_action'\)/);
   assert.doesNotMatch(mapSrc, /Открыть в Яндекс Картах|yandex_maps_open/);
 });

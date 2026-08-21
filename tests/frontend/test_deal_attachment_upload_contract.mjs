@@ -12,6 +12,26 @@ test('Safari/PWA PDF is rewrapped with the intended MIME before multipart upload
   assert.match(api, /mimeFromName\(name\)/);
   assert.match(api, /application\/pdf/);
   assert.match(api, /form\.append\('file', part, name\)/);
+  assert.match(api, /fileObject instanceof Blob/);
+  assert.match(ui, /fileObject: file\.file \|\| null/);
+});
+
+test('deal document picker uploads office files as files, not compressed images', () => {
+  assert.match(ui, /application\/vnd\.ms-excel/);
+  assert.match(ui, /application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet/);
+  assert.match(ui, /text\/csv/);
+  assert.match(ui, /isOfficeDocument/);
+  // isImage (not isDocument) drives the compress-vs-passthrough gate — an
+  // XLSX/XLS/CSV picked via the shared document flow must never be routed
+  // through compressImage(), so the check is "is this a photo", not
+  // "is this specifically a recognized office document".
+  assert.match(ui, /const uploadUri = isImage \? await compressImage\(uri, \{ preset: 'document' \}\) : uri/);
+  assert.match(api, /endsWith\('\.xlsx'\)/);
+  assert.match(api, /endsWith\('\.xls'\)/);
+  assert.match(api, /endsWith\('\.csv'\)/);
+  assert.match(backend, /application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet/);
+  assert.match(backend, /application\/vnd\.ms-excel/);
+  assert.match(backend, /text\/csv/);
 });
 
 test('deal document picker and backend support PDF plus Excel/CSV attachments', () => {

@@ -326,6 +326,10 @@ export default function TruckMap({
   const vehicleKey = vehicle ? JSON.stringify(vehicle) : '';
   const [serverRoute, setServerRoute] = React.useState(null);
   const [serverLoading, setServerLoading] = React.useState(false);
+  const routeUrl = React.useMemo(() => buildYandexRouteUrl(effectivePoints), [effectiveKey]);
+  const openRoute = React.useCallback(() => {
+    if (routeUrl) Linking.openURL(routeUrl).catch(() => {});
+  }, [routeUrl]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -348,11 +352,6 @@ export default function TruckMap({
   }, [effectiveKey, externalRoute, vehicleKey]);
 
   const resolvedRoute = externalRoute || serverRoute;
-  const routeUrl = buildYandexRouteUrl(effectivePoints);
-  const openRoute = React.useCallback(() => {
-    if (!routeUrl) return;
-    Linking.openURL(routeUrl).catch(() => {});
-  }, [routeUrl]);
 
   return (
     <View style={s.shell}>
@@ -375,7 +374,7 @@ export default function TruckMap({
         </View>
       ) : null}
       {routeUrl ? (
-        <TouchableOpacity style={s.routeAction} onPress={openRoute} activeOpacity={0.82} testID="truck-map-route-action">
+        <TouchableOpacity style={s.routeAction} onPress={openRoute} activeOpacity={0.84} testID="truck-map-route-action">
           <Text style={s.routeActionText}>{t('route_action')}</Text>
         </TouchableOpacity>
       ) : null}
@@ -396,21 +395,21 @@ const s = StyleSheet.create({
   loadingText: { color: '#617067', fontSize: 12, fontWeight: '700', textAlign: 'center' },
   errorTitle: { color: '#14221C', fontSize: 14, fontWeight: '900', textAlign: 'center', marginBottom: 6 },
   routeState: {
-    position: 'absolute', left: 12, bottom: 12, maxWidth: '82%',
+    position: 'absolute', left: 12, bottom: 60, maxWidth: '82%',
     paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999,
     backgroundColor: 'rgba(255,255,255,0.95)', borderWidth: 1, borderColor: '#DDE5E0',
   },
   routeStateText: { color: '#3F4E46', fontSize: 11.5, fontWeight: '800' },
+  routeAction: {
+    position: 'absolute', right: 12, bottom: 12, minHeight: 40, paddingHorizontal: 14,
+    borderRadius: 14, backgroundColor: '#168759', alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOpacity: 0.14, shadowRadius: 10, shadowOffset: { width: 0, height: 4 },
+  },
+  routeActionText: { color: '#FFFFFF', fontSize: 13, fontWeight: '900' },
   badge: {
     position: 'absolute', left: 12, top: 12, maxWidth: '72%', paddingHorizontal: 11, paddingVertical: 8,
     borderRadius: 11, backgroundColor: 'rgba(255,255,255,0.94)', borderWidth: 1, borderColor: '#DDE5E0',
   },
   badgeTitle: { color: '#14221C', fontSize: 12, fontWeight: '900' },
   badgeText: { color: '#617067', fontSize: 10.5, fontWeight: '700', marginTop: 2 },
-  routeAction: {
-    position: 'absolute', right: 12, bottom: 12, minHeight: 40, paddingHorizontal: 14,
-    borderRadius: 14, backgroundColor: '#168759', alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#000', shadowOpacity: 0.14, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4,
-  },
-  routeActionText: { color: '#FFFFFF', fontSize: 13, fontWeight: '900' },
 });

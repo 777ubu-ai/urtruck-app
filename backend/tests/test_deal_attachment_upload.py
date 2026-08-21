@@ -31,6 +31,13 @@ def setup_function():
 def test_pdf_magic_bytes_are_authoritative():
     assert deal_room._sniff_mime(b"%PDF-1.7\nhello") == "application/pdf"
     assert deal_room._sniff_mime(b"\xff\xd8\xffhello") == "image/jpeg"
+    # A bare PK\x03\x04 with no OOXML spreadsheet part is not enough to call
+    # it xlsx — docx/pptx/plain .zip share the same 4-byte signature. See
+    # test_excel_and_csv_magic_bytes_are_authoritative below for the real,
+    # marker-bearing xlsx case that _does_ sniff positive.
+    assert deal_room._sniff_mime(b"PK\x03\x04hello") is None
+    assert deal_room._sniff_mime(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1hello") == "application/vnd.ms-excel"
+    assert deal_room._sniff_mime(b"name,price\nboots,8400\n") == "text/csv"
     assert deal_room._sniff_mime(b"not-a-supported-file") is None
 
 

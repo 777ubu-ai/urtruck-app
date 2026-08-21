@@ -34,7 +34,9 @@ const buildYandexRouteUrl = (points) => {
 // saw «км / д / ч / мин» and «Старт/Назначение/Точка маршрута/Машина» in the
 // map UI regardless of the selected language. Both formatters now take the
 // translator; units come from the existing km_short / track_day / track_hour
-// / track_min keys (present in all four languages).
+// / track_min keys (present in all four languages). Confirmed still absent
+// on main as of the 2026-08-21 merge (main's copy has no `t` parameter at
+// all) — this is a real fix being restored, not main's work being discarded.
 const distanceTextFromMeters = (value, t) => {
   const meters = Number(value);
   if (!Number.isFinite(meters) || meters <= 0) return null;
@@ -95,17 +97,16 @@ export default function TruckMap({
   }, [effectiveKey, externalRoute, vehicleKey]);
 
   const resolvedRoute = externalRoute || serverRoute;
-  const routeUrl = buildYandexRouteUrl(effectivePairs);
-  const openRoute = React.useCallback(() => {
-    if (!routeUrl) return;
-    Linking.openURL(routeUrl).catch(() => {});
-  }, [routeUrl]);
   const roadGeometry = React.useMemo(
     () => (resolvedRoute?.geometry || []).map(asPoint).filter(Boolean),
     [resolvedRoute?.routeKey],
   );
   const road = roadGeometry.length >= 2 ? roadGeometry : planned;
   const all = React.useMemo(() => [...road, ...(live ? [live] : [])], [road, live?.latitude, live?.longitude]);
+  const routeUrl = React.useMemo(() => buildYandexRouteUrl(effectivePairs), [effectiveKey]);
+  const openRoute = React.useCallback(() => {
+    if (routeUrl) Linking.openURL(routeUrl).catch(() => {});
+  }, [routeUrl]);
 
   React.useEffect(() => {
     const distanceText = distanceTextFromMeters(resolvedRoute?.distance_m, t);
@@ -156,16 +157,14 @@ export default function TruckMap({
           <Marker
             key={`${point.latitude}:${point.longitude}:${index}`}
             coordinate={point}
-            title={index === 0
-              ? t('map_point_start')
-              : (index === planned.length - 1 ? t('map_point_destination') : t('map_point_waypoint'))}
+            title={index === 0 ? t('map_point_start') : (index === planned.length - 1 ? t('map_point_destination') : t('map_point_waypoint'))}
             pinColor="#168759"
           />
         ))}
         {live ? <Marker coordinate={live} title={title || t('track_truck_marker')} /> : null}
       </MapView>
       {routeUrl ? (
-        <TouchableOpacity style={s.routeAction} onPress={openRoute} activeOpacity={0.82} testID="truck-map-route-action">
+        <TouchableOpacity style={s.routeAction} onPress={openRoute} activeOpacity={0.84} testID="truck-map-route-action">
           <Text style={s.routeActionText}>{t('route_action')}</Text>
         </TouchableOpacity>
       ) : null}

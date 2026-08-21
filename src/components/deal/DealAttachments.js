@@ -28,6 +28,19 @@ function attachmentLabel(t, a) {
   return isDoc ? t('attachment_document') : t('attachment_photo');
 }
 
+function isOfficeDocument(name, mime) {
+  const lowerName = String(name || '').toLowerCase();
+  const lowerMime = String(mime || '').toLowerCase();
+  return lowerName.endsWith('.pdf')
+    || lowerName.endsWith('.xls')
+    || lowerName.endsWith('.xlsx')
+    || lowerName.endsWith('.csv')
+    || lowerMime.includes('pdf')
+    || lowerMime.includes('spreadsheet')
+    || lowerMime.includes('excel')
+    || lowerMime.includes('csv');
+}
+
 function formatBytes(value) {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return '';
@@ -88,14 +101,22 @@ export default function DealAttachments({
   useEffect(() => { load(); }, [load]);
 
   const runUpload = useCallback(async (item) => {
-    const { localId, uri, name, isImage, mime } = item;
+    const { localId, uri, fileObject, name, isImage, mime } = item;
     const patchLocal = (patch) =>
       setLocal((prev) => prev.map((x) => (x.localId === localId ? { ...x, ...patch } : x)));
     try {
       patchLocal({ status: item.status === 'retrying' ? 'retrying' : 'uploading', error: null });
+      // isImage (not isDocument/isPdf) drives the compress-vs-passthrough
+      // branch: an XLSX/XLS/CSV routed through compressImage() would
+      // corrupt the file, so the gate must cover "is this a photo", not
+      // just "is this specifically a PDF" or "not a document".
       const uploadUri = isImage ? await compressImage(uri, { preset: 'document' }) : uri;
       const payload = {
         uri: uploadUri,
+        // fileObject (the raw web File, from DocumentPicker) only matters
+        // for non-image documents — images always go through compressImage
+        // above and are sent by uri.
+        fileObject: isImage ? null : (fileObject || null),
         kind: 'document',
         name,
         type: mime || 'application/octet-stream',
@@ -145,13 +166,12 @@ export default function DealAttachments({
     if (!file?.uri) return;
     const localId = `att_${Date.now()}_${_localSeq++}`;
     const kind = documentKindFromFile(file.mimeType, file.name);
-    // isImage (not isPdf) drives the compress-vs-passthrough branch in
-    // runUpload below — an XLSX/XLS/CSV routed through compressImage() would
-    // corrupt the file, so the gate must cover "is this a photo", not just
-    // "is this specifically a PDF".
     queueUpload({
       localId,
       uri: file.uri,
+      // The raw web File object (DocumentPicker sets this on web) — needed
+      // for non-image documents; runUpload only forwards it when !isImage.
+      fileObject: file.file || null,
       name: file.name || `document_${localId}.${kind.ext}`,
       isImage: kind.icon === 'image',
       // Safari may report application/octet-stream. Backend validates magic
