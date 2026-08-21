@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const workspace = fs.readFileSync('src/screens/DealWorkspaceScreenV2.js', 'utf8');
+const routeHost = fs.readFileSync('src/components/deal/DealWorkspaceRoute.js', 'utf8');
 const actionResolver = fs.readFileSync('src/utils/dealActionResolver.js', 'utf8');
 const chatRouter = fs.readFileSync('src/screens/ChatScreenV2.js', 'utf8');
 const tripRouter = fs.readFileSync('src/screens/TripDetailV2.js', 'utf8');
@@ -14,26 +15,31 @@ const timeline = fs.readFileSync('src/components/deal/DealStatusTimeline.js', 'u
 const profile = fs.readFileSync('src/screens/registration/PremiumProfileScreen.js', 'utf8');
 const profileApi = fs.readFileSync('backend/api/profile.py', 'utf8');
 
-test('accepted deal chat is routed into the three-zone map-first workspace', () => {
+test('accepted deal chat is routed into the canonical gated workspace', () => {
   assert.match(nav, /import ChatScreenV2 from '\.\.\/screens\/ChatScreenV2'/);
   assert.match(nav, /name="Chat" component=\{ChatScreenV2\}/);
   assert.match(chatRouter, /room\?\.deal_id/);
-  assert.match(chatRouter, /import DealWorkspaceScreen from '\.\/DealWorkspaceScreenV2'/);
-  assert.match(chatRouter, /<DealWorkspaceScreen/);
+  assert.match(chatRouter, /import DealWorkspaceRoute from '\.\.\/components\/deal\/DealWorkspaceRoute'/);
+  assert.match(chatRouter, /<DealWorkspaceRoute/);
+  assert.doesNotMatch(chatRouter, /from '\.\/DealWorkspaceScreenV2'/);
+  assert.match(routeHost, /DealLocationPermissionGate/);
+  assert.match(routeHost, /DealWorkspaceScreenV2/);
   assert.match(chatRouter, /<ChatScreen/);
 });
 
-test('active cargo and trip details route into the same three-zone workspace', () => {
+test('active cargo and trip details route into the same canonical gated workspace', () => {
   assert.match(nav, /import CargoDetailV2 from '\.\.\/screens\/CargoDetailV2'/);
   assert.match(nav, /import TripDetailV2 from '\.\.\/screens\/TripDetailV2'/);
   assert.match(nav, /name="CargoDetail" component=\{CargoDetailV2\}/);
   assert.match(nav, /name="TripDetail" component=\{TripDetailV2\}/);
   assert.match(cargoRouter, /ACTIVE\.has\(item\.status\)/);
-  assert.match(cargoRouter, /import DealWorkspaceScreen from '\.\/DealWorkspaceScreenV2'/);
-  assert.match(cargoRouter, /<DealWorkspaceScreen/);
+  assert.match(cargoRouter, /import DealWorkspaceRoute from '\.\.\/components\/deal\/DealWorkspaceRoute'/);
+  assert.match(cargoRouter, /<DealWorkspaceRoute/);
+  assert.doesNotMatch(cargoRouter, /from '\.\/DealWorkspaceScreenV2'/);
   assert.match(tripRouter, /ACTIVE\.has\(item\.status\)/);
-  assert.match(tripRouter, /import DealWorkspaceScreen from '\.\/DealWorkspaceScreenV2'/);
-  assert.match(tripRouter, /<DealWorkspaceScreen/);
+  assert.match(tripRouter, /import DealWorkspaceRoute from '\.\.\/components\/deal\/DealWorkspaceRoute'/);
+  assert.match(tripRouter, /<DealWorkspaceRoute/);
+  assert.doesNotMatch(tripRouter, /from '\.\/DealWorkspaceScreenV2'/);
 });
 
 test('deal workspace has fixed compact information header and no repeated UrTruck brand bar', () => {
