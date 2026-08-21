@@ -110,11 +110,33 @@ jobs:
       # refreshed from this known-good source on every deploy so a Supabase
       # IP rotation self-heals within one cycle instead of going stale.
       - name: Resolve Supabase storage host from a known-good resolver
+        # 2026-08-21 P0 follow-up: the first production run of this step
+        # (run 32451207600, commit 1fd0191) proved the earlier "production
+        # box's ISP resolver only" theory wrong — this exact runner (a
+        # completely different network) ALSO fails to resolve
+        # hchmnocoxjvtgdamcmmi.supabase.co: socket.gaierror Name or service
+        # not known. Cross-checked from a third, independent network with
+        # the same result, while the supabase.co apex resolves fine. The
+        # Supabase MCP project list for this account shows NO project with
+        # ref hchmnocoxjvtgdamcmmi at all — only pymddxenwtjcbmrafvnc
+        # ("UrTruck", eu-central-1, ACTIVE_HEALTHY) does, which is the
+        # project src/config/supabase.js pointed at before commit 32116e1
+        # ("миграция на новый проект... SAKURA-Empire PRO") retargeted it to
+        # hchmnocoxjvtgdamcmmi on 2026-05-27. That project reference looks
+        # to no longer exist — not a DNS/resolver bug this deploy pipeline
+        # can work around. Until the correct live SUPABASE_URL is confirmed,
+        # this step must never hard-fail the deploy again like it just did
+        # (it aborted frontend+backend deploy entirely via cascading skips)
+        # — resolution failure here is now expected and non-fatal.
         run: |
-          set -euo pipefail
-          IP=$(python3 -c "import socket; print(socket.gethostbyname('hchmnocoxjvtgdamcmmi.supabase.co'))")
-          echo "Resolved hchmnocoxjvtgdamcmmi.supabase.co -> $IP (from the GitHub Actions runner)"
-          echo "SUPABASE_STORAGE_IP=$IP" >> "$GITHUB_ENV"
+          set -uo pipefail
+          IP="$(python3 -c "import socket; print(socket.gethostbyname('hchmnocoxjvtgdamcmmi.supabase.co'))" 2>/dev/null || true)"
+          if [ -n "$IP" ]; then
+            echo "Resolved hchmnocoxjvtgdamcmmi.supabase.co -> $IP (from the GitHub Actions runner)"
+            echo "SUPABASE_STORAGE_IP=$IP" >> "$GITHUB_ENV"
+          else
+            echo "::warning::hchmnocoxjvtgdamcmmi.supabase.co did not resolve from the GitHub Actions runner either — likely a stale/nonexistent Supabase project ref, not a production-box DNS issue. Skipping the /etc/hosts fallback; deploy continues."
+          fi
 
       - name: Install SSH transport dependency
         run: |
