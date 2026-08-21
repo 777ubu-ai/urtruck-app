@@ -120,36 +120,19 @@ curl http://185.22.65.11:8001/api/v1/system/info   # статус OTP/face/stora
 
 При правках следить, чтобы fallback на mock работал, когда credentials пустые.
 
-## Временно отключено: фоновая геолокация Android (с 2026-08-11)
+## Android GPS: background location активного рейса
 
-**Статус:** `ACCESS_BACKGROUND_LOCATION` и `FOREGROUND_SERVICE_LOCATION` убраны из
-`android/app/src/main/AndroidManifest.xml` и `app.json` (`android.permissions` +
-`isAndroidBackgroundLocationEnabled: false` в плагине `expo-location`).
+**Канон:** `docs/release/google-play-background-location.md`.
 
-**Почему:** коммит `893685f` (2026-08-10, «security: production hardening and QA
-token revocation») добавил эти разрешения для фонового GPS-трекинга водителя
-(`src/utils/backgroundLocation.js` — позиция уходит на сервер, даже когда
-приложение свёрнуто). Google Play классифицирует `ACCESS_BACKGROUND_LOCATION`
-как sensitive permission и **блокирует заливку ЛЮБОЙ сборки** (даже internal/
-alpha, не только production) в раздел «Тестирование и выпуск → Committing the
-Edit» с ошибкой `Your background location permission declaration needs to be
-updated`, пока в Play Console (Политика → App content → Sensitive app
-permissions → Background location) не заполнена и не **одобрена Google**
-форма-декларация — а это может занимать ~2 недели. Из-за этого все автозаливки
-CI (`deploy-play.yml`) с 2026-08-10 падали, включая ручные workflow_dispatch.
+UrTruck использует `expo-location` background task для GPS-контроля активного многодневного рейса. Актуальная Android-архитектура включает `ACCESS_BACKGROUND_LOCATION`, `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_LOCATION`, `isAndroidForegroundServiceEnabled: true` и `isAndroidBackgroundLocationEnabled: true`.
 
-**Что это значит:** на Android в текущих сборках фоновый GPS водителя (когда
-приложение свёрнуто/закрыто) **не работает** — `backgroundLocation.js` не
-трогали, он и так грациозно деградирует при отказе в разрешении (см. комментарий
-в файле), поэтому ничего не крашится, просто фича молча недоступна. Foreground-
-геолокация (открытое приложение, `ACCESS_FINE_LOCATION`) работает как обычно.
-iOS не трогали — там этого блокера нет.
+Permission-flow запускается только после явного действия водителя **«Начать рейс»**. До Android runtime permission показывается prominent disclosure UrTruck. После foreground grant приложение запрашивает background location / **«Разрешить всегда»**. `accepted → in_progress` запрещён до успешного permission-flow.
 
-**План:** вернуть разрешения (и `isAndroidBackgroundLocationEnabled: true`)
-**после** первого релиза приложения в Android Play Store — и только вместе с
-заранее одобренной формой-декларацией в Play Console, иначе заливки снова
-встанут. **Не включать эти разрешения обратно вслепую** — сначала свериться
-с этим разделом и статусом формы в Play Console.
+Все реальные входы в принятую сделку (`ChatScreenV2`, `CargoDetailV2`, `TripDetailV2` и будущие route-entry) обязаны использовать `src/components/deal/DealWorkspaceRoute.js`, который монтирует `DealLocationPermissionGate → DealWorkspaceScreenV2`. Другие screen-файлы не должны импортировать сырой `DealWorkspaceScreenV2` напрямую.
+
+Background hook не запрашивает permissions самостоятельно. Tracking останавливается после завершения/отмены. Не обещать работу после force-stop/termination: Expo/Android не гарантирует автоматический restart location task после завершения процесса.
+
+**Google Play:** перед выпуском AAB с `ACCESS_BACKGROUND_LOCATION` обязательны актуальные Background location declaration, FGS location declaration, privacy policy/store listing и Android demo-video, совпадающие с реальным flow. Не отключать/включать permissions отдельно от `app.json`, manifest, disclosure, QA и release-документации — это единый контракт.
 
 ## Сопутствующие документы (читать при крупных задачах)
 - `SECURITY_ARCHITECTURE.md` — детальная архитектура скоринга, blacklist, верификации (24 KB).

@@ -4,24 +4,28 @@ import fs from 'node:fs';
 
 const read = (path) => fs.readFileSync(path, 'utf8');
 const gate = read('src/components/deal/DealLocationPermissionGate.js');
+const routeHost = read('src/components/deal/DealWorkspaceRoute.js');
 const disclosure = read('src/components/deal/BackgroundLocationDisclosureModal.js');
 const tracker = read('src/utils/backgroundLocation.js');
 const settingsHelper = read('src/utils/locationSettings.js');
 const hook = read('src/hooks/useDealLocationBroadcast.js');
 const workspace = read('src/screens/DealWorkspaceScreenV2.js');
 const chat = read('src/screens/ChatScreenV2.js');
+const cargo = read('src/screens/CargoDetailV2.js');
+const trip = read('src/screens/TripDetailV2.js');
 const manifest = read('android/app/src/main/AndroidManifest.xml');
 const app = JSON.parse(read('app.json')).expo;
 
-test('trip disclosure matches the approved Track trip screen and always-location behavior', () => {
+test('trip disclosure matches Play background-location behavior', () => {
   assert.match(disclosure, /Отслеживать рейс/);
-  assert.match(disclosure, /Во время активного рейса UrTruck передаёт местоположение автомобиля грузоотправителю/);
-  assert.match(disclosure, /приложение свёрнуто или экран выключен/);
-  assert.match(disclosure, /системный сервис активного рейса/);
-  assert.match(disclosure, /Передача прекращается после завершения или отмены рейса/);
+  assert.match(disclosure, /собирает данные о местоположении автомобиля/);
+  assert.match(disclosure, /передаёт их грузоотправителю/);
+  assert.match(disclosure, /в фоновом режиме/);
+  assert.match(disclosure, /приложение свёрнуто или не отображается на экране/);
+  assert.match(disclosure, /Передача геолокации прекращается после завершения или отмены рейса/);
+  assert.match(disclosure, /Location sharing can continue in the background/);
   assert.match(disclosure, /Разрешить и начать рейс/);
   assert.match(disclosure, /Не сейчас/);
-  assert.doesNotMatch(disclosure, /когда приложение закрыто или не используется/);
   assert.match(disclosure, /Разрешить всегда/);
   assert.match(disclosure, /testID="background-location-disclosure"/);
   assert.match(disclosure, /testID="background-location-disclosure-continue"/);
@@ -33,6 +37,27 @@ test('accepted driver has no proactive location permission control', () => {
   assert.doesNotMatch(gate, /dealStatus === 'accepted'/);
   assert.match(gate, /effectiveRole === 'driver'/);
   assert.match(gate, /registerLocationPermissionRequestHandler\(beginDisclosure\)/);
+});
+
+test('all accepted-deal entry points use one canonical disclosure host', () => {
+  assert.match(routeHost, /DealLocationPermissionGate/);
+  assert.match(routeHost, /DealWorkspaceScreenV2/);
+  assert.match(routeHost, /<DealLocationPermissionGate role=\{params\.role\}>/);
+  for (const [name, source] of [
+    ['ChatScreenV2', chat],
+    ['CargoDetailV2', cargo],
+    ['TripDetailV2', trip],
+  ]) {
+    assert.match(source, /DealWorkspaceRoute/, `${name} must use canonical gated deal route`);
+    assert.doesNotMatch(source, /from ['"]\.\/DealWorkspaceScreenV2['"]/, `${name} must not bypass location host`);
+    assert.doesNotMatch(source, /DealLocationPermissionGate/, `${name} must not build a second ad-hoc permission host`);
+  }
+
+  const screenFiles = fs.readdirSync('src/screens').filter((name) => name.endsWith('.js') && name !== 'DealWorkspaceScreenV2.js');
+  for (const name of screenFiles) {
+    const source = read(`src/screens/${name}`);
+    assert.doesNotMatch(source, /from ['"]\.\/DealWorkspaceScreenV2['"]/, `${name} imports raw DealWorkspaceScreenV2`);
+  }
 });
 
 test('Android and web use the same per-trip disclosure from Start trip', () => {
@@ -68,7 +93,7 @@ test('start trip cannot enter in_progress before permission succeeds', () => {
   const statusIndex = workspace.indexOf("changeDealStatus('in_progress')");
   assert.ok(permissionIndex >= 0 && statusIndex >= 0);
   assert.ok(permissionIndex < statusIndex);
-  assert.match(chat, /<DealLocationPermissionGate/);
+  assert.match(routeHost, /<DealLocationPermissionGate/);
   assert.match(tracker, /requestLocationPermissionThroughDisclosure\(\{ source: 'start_trip' \}\)/);
 });
 

@@ -2,8 +2,9 @@ name: Deploy Android to Google Play
 
 # Триггеры:
 #   - push в main с изменениями в android/, app.json, package.json или src/**
-#     → автосборка .aab и заливка в internal-трек (без ревью Google, видно
-#       только тестерам — безопасно гонять на каждый push).
+#     → автосборка .aab и заливка в internal-трек для тестеров. Internal не
+#       публикует приложение массово, но Google Play всё равно валидирует AAB,
+#       permissions, versionCode и применимые policy declarations.
 #   - workflow_dispatch → ручной запуск с выбором трека (в т.ч. production).
 #
 # Требуемые секреты репозитория (Settings → Secrets and variables → Actions):
@@ -49,6 +50,12 @@ on:
           - completed
           - inProgress
           - halted
+
+# Play принимает только уникальные versionCode. Сериализация гарантирует, что
+# два push/manual запуска не дойдут до вычисления кода в одну секунду.
+concurrency:
+  group: google-play-${{ github.repository }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -110,11 +117,25 @@ jobs:
           fi
           echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/urtruck-upload-key.jks"
 
-      - name: Compute versionCode
-        # Монотонный versionCode: база 100 + порядковый номер запуска workflow,
-        # чтобы повторные автозаливки в internal-трек не конфликтовали друг с другом.
-        # (арифметика тут, а не в ${{ }} — GitHub Actions expressions не умеют "+")
-        run: echo "URTRUCK_VERSION_CODE=$((100 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+      - name: Compute collision-resistant versionCode
+        # Старый `100 + GITHUB_RUN_NUMBER` столкнулся с уже использованным
+        # versionCode=212. Run number локален конкретному workflow и может
+        # пересечься с историческими/manual кодами или сброситься при замене
+        # workflow. Новый код = число секунд с 2020-01-01 UTC. Он глобально
+        # растёт независимо от GitHub run number и остаётся < 2_100_000_000
+        # примерно до 2086 года. Concurrency выше сериализует Play jobs, поэтому
+        # повторный/manual запуск получает следующую секунду, а не тот же код.
+        run: |
+          set -euo pipefail
+          base_epoch=1577836800
+          now_epoch=$(date -u +%s)
+          version_code=$((now_epoch - base_epoch))
+          if [ "$version_code" -le 0 ] || [ "$version_code" -ge 2100000000 ]; then
+            echo "::error::Computed Android versionCode ${version_code} is outside Google Play range"
+            exit 1
+          fi
+          echo "URTRUCK_VERSION_CODE=${version_code}" >> "$GITHUB_ENV"
+          echo "Android versionCode=${version_code} (seconds since 2020-01-01 UTC)"
 
       - name: Build release AAB
         env:
@@ -128,6 +149,18 @@ jobs:
           cd android
           chmod +x gradlew
           ./gradlew bundleRelease --no-daemon --stacktrace --warning-mode=summary
+
+      - name: Verify built AAB identity and versionCode
+        run: |
+          set -euo pipefail
+          aab="android/app/build/outputs/bundle/release/app-release.aab"
+          test -f "$aab"
+          bundletool_jar="$RUNNER_TEMP/bundletool.jar"
+          curl -fsSL "https://github.com/google/bundletool/releases/download/1.18.1/bundletool-all-1.18.1.jar" -o "$bundletool_jar"
+          manifest_xml=$(java -jar "$bundletool_jar" dump manifest --bundle "$aab" --module base)
+          printf '%s\n' "$manifest_xml" | grep -q 'package="com.urtruck.app"'
+          printf '%s\n' "$manifest_xml" | grep -q "android:versionCode=\"${URTRUCK_VERSION_CODE}\""
+          echo "Verified com.urtruck.app versionCode=${URTRUCK_VERSION_CODE} inside AAB"
 
       - name: Remove keystore from runner
         if: always()
