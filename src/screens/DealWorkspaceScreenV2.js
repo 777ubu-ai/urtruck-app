@@ -1,15 +1,14 @@
 import React from 'react';
 import {
   ActivityIndicator,
-  Animated,
   AppState,
   FlatList,
   Image,
-  Keyboard,
   KeyboardAvoidingView,
+  Linking,
   Modal,
-  PanResponder,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
@@ -21,12 +20,12 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import Feather from '@expo/vector-icons/Feather';
 import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 
 import TruckMap from '../components/TruckMap';
-import DealAttachments from '../components/deal/DealAttachments';
 import DealStatusTimeline from '../components/deal/DealStatusTimeline';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
-import { chatAPI } from '../utils/chatAPI';
+import { chatAPI, documentKindFromFile } from '../utils/chatAPI';
 import { marketAPI } from '../utils/marketAPI';
 import { parseRouteCities } from '../utils/geo';
 import { localizeCargoName, localizePlace, localizeSystemMessage } from '../utils/places';
@@ -38,7 +37,11 @@ import { useV1Colors } from '../theme/designV1';
 import { formatPrice } from '../utils/normalizers';
 import { pickDealStatus, userFacingDealStatus } from '../utils/dealStatusOrder';
 import { getAvailableDealActions } from '../utils/dealActionResolver';
-import { ensureBackgroundLocationPermission, getCurrentLocationPayload } from '../utils/backgroundLocation';
+import {
+  ensureBackgroundLocationPermission,
+  getCurrentLocationPayload,
+  requestForegroundLocationPermission,
+} from '../utils/backgroundLocation';
 import { compressImage } from '../utils/imageCompress';
 import { voice } from '../utils/voiceRecorder';
 import { enqueueOutbox } from '../utils/outbox';
@@ -51,73 +54,107 @@ const LIVE_TRACKING_STATUSES = ['in_progress', 'at_border'];
 const MAP_WORK_STATUSES = ['accepted', 'in_progress', 'at_border'];
 const TERMINAL_STATUSES = ['completed', 'cancelled', 'rejected', 'expired'];
 
+// WhatsApp-style chat is the default view; the trip map is a deliberate,
+// button-triggered secondary view (PR #255 review: "map-first бардак" was the
+// prior design — chat must never be pushed off-screen by the map again).
+const VIEW_CHAT = 'chat';
+const VIEW_MAP = 'map';
+
+const DOC_ATTACH_TYPES = [
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+  'application/vnd.ms-excel', // .xls
+  'text/csv', 'text/comma-separated-values', 'application/csv', // .csv
+];
+
 const COPY = {
   RU: {
-    messages: 'Сообщения', statuses: 'Статусы', newMessages: 'новых',
+    messages: 'Сообщения',
     write: 'Написать водителю…', writeShipper: 'Написать грузоотправителю…',
     distance: 'Расстояние', remaining: 'Осталось', travelTime: 'Время', eta: 'ETA',
     updatedNow: 'Обновлено сейчас', updated: 'Обновлено', ago: 'назад', min: 'мин', hour: 'ч', day: 'д',
     cargo: 'Груз', driver: 'Водитель', shipper: 'Грузоотправитель',
     noMessages: 'Сообщений пока нет', attachPhoto: 'Фото', attachCamera: 'Камера', attachDocument: 'Документ',
+    attachLocation: 'Местопол.', attachQuickReply: 'Быстрый ответ', attachCall: 'Звонок',
+    callAudio: 'Аудиозвонок', callVideo: 'Видеозвонок', callSendLink: 'Отправить ссылку на звонок',
+    callSchedule: 'Запланировать звонок', comingSoon: 'Скоро добавим',
     recording: 'Идёт запись…', voiceMessage: 'Голосовое сообщение',
     cancelDeal: 'Отменить сделку', cancelDealConfirm: 'Отменить эту сделку?', loading: 'Загрузка сделки…',
-    loadingDate: 'Загрузка', deliveryDate: 'Доставка', expandMap: 'Развернуть карту', collapseMap: 'Свернуть карту',
+    loadingDate: 'Загрузка', deliveryDate: 'Доставка', collapseMap: 'Свернуть карту',
     tripFinished: 'Сделка завершена', tripDelivered: 'Груз доставлен', awaitingReceiptStatus: 'Ожидает подтверждения', tripAwaitingReceipt: 'Ожидаем подтверждения грузоотправителя', tripAwaitingReceiptHint: 'Водитель отметил груз как доставленный. Сделка завершится после подтверждения получения.', tripReceived: 'Получение подтверждено', mapFinishedHint: 'Live GPS для этого рейса больше не используется.',
-    jumpLatest: 'Новые сообщения',
+    jumpLatest: 'Новые сообщения', statuses: 'Статусы и история',
   },
   EN: {
-    messages: 'Messages', statuses: 'Statuses', newMessages: 'new',
+    messages: 'Messages',
     write: 'Message driver…', writeShipper: 'Message shipper…',
     distance: 'Distance', remaining: 'Remaining', travelTime: 'Time', eta: 'ETA',
     updatedNow: 'Updated now', updated: 'Updated', ago: 'ago', min: 'min', hour: 'h', day: 'd',
     cargo: 'Cargo', driver: 'Driver', shipper: 'Shipper',
     noMessages: 'No messages yet', attachPhoto: 'Photo', attachCamera: 'Camera', attachDocument: 'Document',
+    attachLocation: 'Location', attachQuickReply: 'Quick reply', attachCall: 'Call',
+    callAudio: 'Audio call', callVideo: 'Video call', callSendLink: 'Send call link',
+    callSchedule: 'Schedule a call', comingSoon: 'Coming soon',
     recording: 'Recording…', voiceMessage: 'Voice message',
     cancelDeal: 'Cancel deal', cancelDealConfirm: 'Cancel this deal?', loading: 'Loading deal…',
-    loadingDate: 'Pickup', deliveryDate: 'Delivery', expandMap: 'Expand map', collapseMap: 'Collapse map',
+    loadingDate: 'Pickup', deliveryDate: 'Delivery', collapseMap: 'Collapse map',
     tripFinished: 'Deal completed', tripDelivered: 'Cargo delivered', awaitingReceiptStatus: 'Awaiting confirmation', tripAwaitingReceipt: 'Awaiting shipper confirmation', tripAwaitingReceiptHint: 'The driver marked the cargo as delivered. The deal is completed after receipt is confirmed.', tripReceived: 'Receipt confirmed', mapFinishedHint: 'Live GPS is no longer used for this trip.',
-    jumpLatest: 'New messages',
+    jumpLatest: 'New messages', statuses: 'Status & history',
   },
   ZH: {
-    messages: '消息', statuses: '状态', newMessages: '条新消息',
+    messages: '消息',
     write: '给司机发消息…', writeShipper: '给货主发消息…',
     distance: '距离', remaining: '剩余', travelTime: '时间', eta: '预计时间',
     updatedNow: '刚刚更新', updated: '更新于', ago: '前', min: '分钟', hour: '小时', day: '天',
     cargo: '货物', driver: '司机', shipper: '货主',
     noMessages: '暂无消息', attachPhoto: '照片', attachCamera: '相机', attachDocument: '文件',
+    attachLocation: '位置', attachQuickReply: '快速回复', attachCall: '通话',
+    callAudio: '语音通话', callVideo: '视频通话', callSendLink: '发送通话链接',
+    callSchedule: '安排通话', comingSoon: '即将推出',
     recording: '正在录音…', voiceMessage: '语音消息',
     cancelDeal: '取消交易', cancelDealConfirm: '确认取消这笔交易？', loading: '正在加载交易…',
-    loadingDate: '装货', deliveryDate: '送达', expandMap: '展开地图', collapseMap: '收起地图',
+    loadingDate: '装货', deliveryDate: '送达', collapseMap: '收起地图',
     tripFinished: '交易已完成', tripDelivered: '货物已送达', awaitingReceiptStatus: '等待确认', tripAwaitingReceipt: '等待货主确认收货', tripAwaitingReceiptHint: '司机已标记货物送达。货主确认收货后，交易才能完成。', tripReceived: '已确认收货', mapFinishedHint: '本次运输已停止实时 GPS。',
-    jumpLatest: '新消息',
+    jumpLatest: '新消息', statuses: '状态与历史',
   },
   KK: {
-    messages: 'Хабарламалар', statuses: 'Мәртебелер', newMessages: 'жаңа',
+    messages: 'Хабарламалар',
     write: 'Жүргізушіге жазу…', writeShipper: 'Жүк иесіне жазу…',
     distance: 'Қашықтық', remaining: 'Қалды', travelTime: 'Уақыт', eta: 'ETA',
     updatedNow: 'Қазір жаңартылды', updated: 'Жаңартылды', ago: 'бұрын', min: 'мин', hour: 'сағ', day: 'күн',
     cargo: 'Жүк', driver: 'Жүргізуші', shipper: 'Жүк иесі',
     noMessages: 'Әзірге хабарлама жоқ', attachPhoto: 'Фото', attachCamera: 'Камера', attachDocument: 'Құжат',
+    attachLocation: 'Орналасу', attachQuickReply: 'Жылдам жауап', attachCall: 'Қоңырау',
+    callAudio: 'Аудиоқоңырау', callVideo: 'Бейнеқоңырау', callSendLink: 'Қоңырау сілтемесін жіберу',
+    callSchedule: 'Қоңырауды жоспарлау', comingSoon: 'Жақында қосамыз',
     recording: 'Жазылып жатыр…', voiceMessage: 'Дауыстық хабарлама',
     cancelDeal: 'Мәмілені болдырмау', cancelDealConfirm: 'Осы мәмілені болдырмау керек пе?', loading: 'Мәміле жүктелуде…',
-    loadingDate: 'Тиеу', deliveryDate: 'Жеткізу', expandMap: 'Картаны үлкейту', collapseMap: 'Картаны кішірейту',
+    loadingDate: 'Тиеу', deliveryDate: 'Жеткізу', collapseMap: 'Картаны жию',
     tripFinished: 'Мәміле аяқталды', tripDelivered: 'Жүк жеткізілді', awaitingReceiptStatus: 'Растауды күтуде', tripAwaitingReceipt: 'Жүк иесінің қабылдауды растауын күтеміз', tripAwaitingReceiptHint: 'Жүргізуші жүкті жеткізілді деп белгіледі. Жүк иесі қабылдауды растағаннан кейін мәміле аяқталады.', tripReceived: 'Қабылдау расталды', mapFinishedHint: 'Бұл рейсте live GPS енді қолданылмайды.',
-    jumpLatest: 'Жаңа хабарламалар',
+    jumpLatest: 'Жаңа хабарламалар', statuses: 'Мәртебе және тарих',
   },
 };
 
 const resolveAttachment = (value) =>
   value && typeof value === 'string' && value.startsWith('/') ? `${SERVER_URL}${value}` : value;
 
-const fmtMessageTime = (raw) => {
-  if (!raw) return '';
+// SQLite stores naive-UTC TEXT timestamps (no timezone suffix). Both
+// chat_messages.created_at and message_attachments.created_at use the same
+// CURRENT_TIMESTAMP format, so one normalizer covers formatting AND the
+// merge-sort that interleaves text/photo/voice messages with document
+// attachments into a single chronological feed.
+const parseServerDate = (raw) => {
+  if (!raw) return null;
   let value = String(raw);
   if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(value) && !/[zZ]|[+\-]\d{2}:?\d{2}$/.test(value)) {
     value = value.replace(' ', 'T') + 'Z';
   }
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(raw).slice(11, 16);
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const fmtMessageTime = (raw) => {
+  const date = parseServerDate(raw);
+  return date ? date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : String(raw || '').slice(11, 16);
 };
 
 const dedupePoints = (points) => {
@@ -158,6 +195,20 @@ const formatWeight = (value, lang) => {
   return `${amount} т`;
 };
 
+const formatBytes = (value) => {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  if (n < 1024 * 1024) return `${Math.max(1, Math.round(n / 1024))} KB`;
+  return `${(n / (1024 * 1024)).toFixed(n >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
+};
+
+const nowTime = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+const newClientId = (prefix = 'c') => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+
+// A CGR-style Yandex Maps deep link. Real, openable pin — not a promise of an
+// in-app live-location feature the "Местопол." button never claimed to be.
+const yandexMapsLink = (lat, lng) => `https://yandex.ru/maps/?pt=${lng},${lat}&z=16&l=map`;
+
 export default function DealWorkspaceScreenV2({ navigation, route }) {
   const { t, lang } = useI18n();
   const ui = COPY[lang] || COPY.RU;
@@ -193,73 +244,31 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [routeSummary, setRouteSummary] = React.useState(null);
   const [statusLoading, setStatusLoading] = React.useState(false);
   const [trackingLoading, setTrackingLoading] = React.useState(false);
-  const [sheetState, setSheetState] = React.useState('collapsed');
-  const [sheetTab, setSheetTab] = React.useState('chat');
-  const [mapExpanded, setMapExpanded] = React.useState(false);
+  const [viewMode, setViewMode] = React.useState(VIEW_CHAT);
   const [attachOpen, setAttachOpen] = React.useState(false);
-  const [documentTrigger, setDocumentTrigger] = React.useState(0);
+  const [callMenuOpen, setCallMenuOpen] = React.useState(false);
+  const [statusModalOpen, setStatusModalOpen] = React.useState(false);
   const [recording, setRecording] = React.useState(false);
   const [recordSecs, setRecordSecs] = React.useState(0);
   const [confirmDialog, setConfirmDialog] = React.useState(null);
   const [showJumpLatest, setShowJumpLatest] = React.useState(false);
-  const [imagePreview, setImagePreview] = React.useState(null);
+  const [fullImage, setFullImage] = React.useState(null);
+  const [locationSending, setLocationSending] = React.useState(false);
 
   const listRef = React.useRef(null);
   const mounted = React.useRef(true);
   const recordStartRef = React.useRef(0);
   const nearBottomRef = React.useRef(true);
   const lastCountRef = React.useRef(0);
+  // A signed attachment URL may be reissued on every 3s poll. Keep the first
+  // valid URL per immutable message/attachment id so an already-shown photo
+  // is never remounted/flashed (PR #255 review item 4: "не должно быть
+  // мигания фото при polling"; ported from the same fix in ChatScreen.js).
+  const attachmentUrlCache = React.useRef(new Map());
   const role = params.role || session?.user?.role || 'client';
   const isDriver = role === 'driver';
   const isShipper = !isDriver;
   const language = getLanguage();
-
-  const normalCollapsedHeight = 132 + Math.max(insets.bottom, 6);
-  const compactCollapsedHeight = 76 + Math.max(insets.bottom, 6);
-  const collapsedHeight = mapExpanded ? compactCollapsedHeight : normalCollapsedHeight;
-  const fullHeight = Math.max(collapsedHeight + 180, window.height - Math.max(insets.top, 10) - 112);
-  const expandedHeight = Math.min(fullHeight - 8, Math.max(380, Math.round(window.height * 0.72)));
-  const sheetAnim = React.useRef(new Animated.Value(collapsedHeight)).current;
-  const dragStart = React.useRef(collapsedHeight);
-
-  const heightForState = React.useCallback((state) => {
-    if (state === 'full') return fullHeight;
-    if (state === 'expanded') return expandedHeight;
-    return collapsedHeight;
-  }, [collapsedHeight, expandedHeight, fullHeight]);
-
-  const setSheet = React.useCallback((next) => {
-    setSheetState(next);
-    if (next !== 'collapsed') setMapExpanded(false);
-    Animated.spring(sheetAnim, {
-      toValue: heightForState(next), damping: 24, stiffness: 220, mass: 0.9, useNativeDriver: false,
-    }).start();
-  }, [heightForState, sheetAnim]);
-
-  React.useEffect(() => {
-    Animated.spring(sheetAnim, {
-      toValue: heightForState(sheetState), damping: 24, stiffness: 220, mass: 0.9, useNativeDriver: false,
-    }).start();
-  }, [window.height, insets.bottom, mapExpanded, sheetState, heightForState, sheetAnim]);
-
-  const panResponder = React.useMemo(() => PanResponder.create({
-    onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dy) > 5,
-    onPanResponderGrant: () => { dragStart.current = heightForState(sheetState); },
-    onPanResponderMove: (_, gesture) => {
-      const next = Math.max(collapsedHeight, Math.min(fullHeight, dragStart.current - gesture.dy));
-      sheetAnim.setValue(next);
-    },
-    onPanResponderRelease: (_, gesture) => {
-      const current = Math.max(collapsedHeight, Math.min(fullHeight, dragStart.current - gesture.dy));
-      if (gesture.vy > 0.9) { setSheet('collapsed'); return; }
-      if (gesture.vy < -0.9) { setSheet(current > expandedHeight ? 'full' : 'expanded'); return; }
-      const fullBoundary = (expandedHeight + fullHeight) / 2;
-      const expandedBoundary = (collapsedHeight + expandedHeight) / 2;
-      if (current >= fullBoundary) setSheet('full');
-      else if (current >= expandedBoundary) setSheet('expanded');
-      else setSheet('collapsed');
-    },
-  }), [collapsedHeight, expandedHeight, fullHeight, heightForState, setSheet, sheetState, sheetAnim]);
 
   const askConfirm = React.useCallback((title, message = '', confirmLabel = t('confirm'), destructive = false) => (
     new Promise((resolve) => setConfirmDialog({ title, message, confirmLabel, destructive, resolve }))
@@ -273,13 +282,15 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     return () => { mounted.current = false; try { voice.stop?.(); } catch {} };
   }, []);
 
-  React.useEffect(() => {
-    const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setSheet('full'));
-    const hide = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => {
-      if (sheetState === 'full') setSheet('expanded');
-    });
-    return () => { show.remove(); hide.remove(); };
-  }, [setSheet, sheetState]);
+  // Section 2: focusing the composer must close every overlay that could
+  // otherwise sit on top of it (attach menu, call menu). The map itself
+  // cannot be open while the composer is mounted — it only renders in
+  // viewMode === 'chat' — so this already satisfies "закрывать карту" by
+  // construction, not by an extra branch.
+  const onComposerFocus = React.useCallback(() => {
+    setAttachOpen(false);
+    setCallMenuOpen(false);
+  }, []);
 
   React.useEffect(() => {
     if (!recording) { setRecordSecs(0); return undefined; }
@@ -358,34 +369,80 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   }, [dealId]);
   React.useEffect(() => { refreshTimeline(); }, [refreshTimeline]);
 
+  // Documents render as ordinary bubbles in the same list as text/photo/voice
+  // (PR #255 review item 5: "не отдельной нижней панелью, а как обычное
+  // сообщение в ленте"). The backend keeps documents in message_attachments,
+  // separate from chat_messages, so each poll merges both by created_at —
+  // deliberately NOT a chat_messages schema change (see commit message).
   const loadMessages = React.useCallback(async () => {
     if (!roomId) return;
     try {
-      const result = await chatAPI.messages(roomId);
+      const [result, attachResult] = await Promise.all([
+        chatAPI.messages(roomId),
+        chatAPI.listAttachments(roomId).catch(() => ({ attachments: [] })),
+      ]);
       if (!mounted.current) return;
       const mapped = (result?.messages || []).map((message) => {
         const mine = typeof message.mine === 'boolean' ? message.mine : message.sender_id === session?.user?.id;
         const isVoice = !!message.is_voice;
         const system = message.sender_id === 'system';
+        const cacheKey = `${isVoice ? 'voice' : 'photo'}:${message.id}`;
+        const issuedUrl = resolveAttachment(message.photo_url);
+        let mediaUrl = issuedUrl;
+        if (issuedUrl) {
+          mediaUrl = attachmentUrlCache.current.get(cacheKey) || issuedUrl;
+          attachmentUrlCache.current.set(cacheKey, mediaUrl);
+        }
         return {
           id: String(message.id),
           clientMsgId: message.client_msg_id || null,
-          mine,
-          system,
+          mine, system,
           text: system ? localizeSystemMessage(message.text || '', lang) : (message.text || ''),
           photo: !!message.photo_url && !isVoice,
           voice: isVoice,
-          mediaUrl: resolveAttachment(message.photo_url),
+          mediaUrl,
           voiceDuration: Number(message.voice_duration || 0),
           time: fmtMessageTime(message.created_at),
+          createdAt: message.created_at,
           read: !!message.is_read,
         };
       });
+      const serverDocs = (attachResult?.attachments || [])
+        .filter((a) => a.kind === 'document')
+        .map((a) => {
+          const cacheKey = `doc:${a.id}`;
+          const issuedUrl = resolveAttachment(a.url);
+          let docUrl = issuedUrl;
+          if (issuedUrl) {
+            docUrl = attachmentUrlCache.current.get(cacheKey) || issuedUrl;
+            attachmentUrlCache.current.set(cacheKey, docUrl);
+          }
+          return {
+            id: `doc_${a.id}`,
+            clientUploadId: a.client_upload_id || null,
+            mine: a.uploader_id === session?.user?.id,
+            kind: 'document',
+            docName: a.original_name || a.id,
+            docSize: a.size_bytes,
+            docKind: documentKindFromFile(a.mime_type, a.original_name),
+            docUrl,
+            docStatus: 'uploaded',
+            time: fmtMessageTime(a.created_at),
+            createdAt: a.created_at,
+          };
+        });
+      const merged = [...mapped, ...serverDocs].sort((x, y) => {
+        const dx = parseServerDate(x.createdAt)?.getTime() || 0;
+        const dy = parseServerDate(y.createdAt)?.getTime() || 0;
+        return dx - dy;
+      });
       setMessages((previous) => {
-        const optimistic = previous.filter((item) => item.optimistic && !mapped.some((server) =>
-          server.clientMsgId === item.id || (server.mine && item.text && server.text === item.text)
-        ));
-        return [...mapped, ...optimistic];
+        const optimisticRemaining = previous.filter((item) => {
+          if (!item.optimistic) return false;
+          if (item.kind === 'document') return !serverDocs.some((d) => d.clientUploadId === item.id);
+          return !merged.some((server) => server.clientMsgId === item.id || (server.mine && item.text && server.text === item.text));
+        });
+        return [...merged, ...optimisticRemaining];
       });
       setUnreadCount(0);
       notifyChatRead();
@@ -441,11 +498,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const onRouteSummary = React.useCallback((summary) => setRouteSummary(summary || null), []);
 
   const updatedText = React.useMemo(() => {
-    if (!location?.updated_at) return null;
-    let raw = String(location.updated_at);
-    if (!/[zZ]|[+\-]\d{2}:?\d{2}$/.test(raw)) raw = raw.replace(' ', 'T') + 'Z';
-    const date = new Date(raw);
-    if (Number.isNaN(date.getTime())) return null;
+    const date = parseServerDate(location?.updated_at);
+    if (!date) return null;
     const minutes = Math.max(0, Math.round((Date.now() - date.getTime()) / 60000));
     if (minutes === 0) return ui.updatedNow;
     if (minutes < 60) return `${ui.updated} ${minutes} ${ui.min} ${ui.ago}`;
@@ -507,17 +561,18 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   }, [nextAction, startTrip, askConfirm, t, changeDealStatus]);
 
   const recipientId = partner?.id || null;
-  const sendText = React.useCallback(async () => {
-    const body = input.trim();
+
+  // Shared by the composer, quick-reply, and call-link — every "send a fixed
+  // string" action funnels through here so error handling (section 6) is
+  // written once. Returns the local optimistic id so callers can retry.
+  const sendRawText = React.useCallback(async (body) => {
     if (!body || (!roomId && !recipientId)) return;
-    const clientId = `c_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    const clientId = newClientId();
     setMessages((items) => [...items, {
-      id: clientId, mine: true, text: body,
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), optimistic: true,
+      id: clientId, mine: true, text: body, time: nowTime(), optimistic: true, sendStatus: 'sending',
     }]);
-    setInput('');
-    setInputHeight(44);
     setAttachOpen(false);
+    setCallMenuOpen(false);
     nearBottomRef.current = true;
     setShowJumpLatest(false);
     setTimeout(() => listRef.current?.scrollToEnd?.({ animated: true }), 60);
@@ -535,9 +590,64 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       if (error?.isNetwork) {
         await enqueueOutbox({ clientId, payload }, session?.user?.id);
         toast(t('chat_queued'), 'info', 2200);
-      } else toast(t('chat_send_failed'), 'error');
+        setMessages((items) => items.map((m) => (m.id === clientId ? { ...m, sendStatus: 'queued' } : m)));
+        return;
+      }
+      // Section 6: never silently drop the bubble — surface the real reason.
+      // 403 is a known, finite case (chat gated until deal accepted) so it
+      // gets a fully localized message; 400 varies per input and the owner
+      // explicitly asked to show backend detail for it (accepted trade-off:
+      // backend error strings are Russian-only, same as the rest of the API —
+      // see CLAUDE.md's known non-blocking findings).
+      const errorText = error?.status === 403
+        ? t('chat_error_403')
+        : error?.status === 400 && error?.detail
+          ? `${t('chat_error_prefix')}: ${error.detail}`
+          : t('chat_send_failed');
+      toast(errorText, 'error');
+      setMessages((items) => items.map((m) => (m.id === clientId ? { ...m, sendStatus: 'failed', sendError: errorText } : m)));
     }
-  }, [input, roomId, recipientId, deal?.cargo_id, deal?.trip_id, params.cargoId, params.tripId, loadMessages, session?.user?.id, toast, t]);
+  }, [roomId, recipientId, deal?.cargo_id, deal?.trip_id, params.cargoId, params.tripId, loadMessages, session?.user?.id, toast, t]);
+
+  const sendText = React.useCallback(() => {
+    const body = input.trim();
+    if (!body) return;
+    setInput('');
+    setInputHeight(44);
+    sendRawText(body);
+  }, [input, sendRawText]);
+
+  const retryFailedText = React.useCallback((item) => {
+    setMessages((items) => items.filter((m) => m.id !== item.id));
+    sendRawText(item.text);
+  }, [sendRawText]);
+
+  const sendQuickReply = React.useCallback(() => {
+    setAttachOpen(false);
+    sendRawText(t('deal_chat_quick_reply'));
+  }, [sendRawText, t]);
+
+  const sendCallLink = React.useCallback(() => {
+    setCallMenuOpen(false);
+    setAttachOpen(false);
+    sendRawText(t('deal_chat_call_link_text'));
+  }, [sendRawText, t]);
+
+  const sendLocation = React.useCallback(async () => {
+    setAttachOpen(false);
+    if (locationSending) return;
+    setLocationSending(true);
+    try {
+      const permission = await requestForegroundLocationPermission();
+      if (!permission.ok) { toast(t('location_denied'), 'error'); return; }
+      const point = await getCurrentLocationPayload();
+      if (!point) { toast(t('location_denied'), 'error'); return; }
+      const link = yandexMapsLink(point.lat, point.lng);
+      await sendRawText(`📍 ${t('deal_chat_my_location')}: ${link}`);
+    } finally {
+      if (mounted.current) setLocationSending(false);
+    }
+  }, [locationSending, sendRawText, toast, t]);
 
   const sendPhoto = React.useCallback(async (camera) => {
     try {
@@ -555,11 +665,12 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       const source = pick.assets[0].uri;
       let uri = source;
       try { uri = await compressImage(source, { maxSide: 1200, quality: 0.75 }); } catch {}
-      const clientId = `c_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+      const clientId = newClientId();
       setMessages((items) => [...items, {
         id: clientId, mine: true, text: '', photo: true, mediaUrl: uri,
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), optimistic: true,
+        time: nowTime(), optimistic: true,
       }]);
+      setAttachOpen(false);
       const upload = await chatAPI.uploadChatPhoto(uri);
       if (!upload?.photo_key) throw new Error('photo_upload');
       await chatAPI.send({
@@ -568,51 +679,154 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         tripId: deal?.trip_id || params.tripId || null,
         clientMsgId: clientId,
       });
-      setAttachOpen(false);
       setTimeout(loadMessages, 120);
-    } catch { toast(t('chat_send_failed'), 'error'); }
+    } catch (error) {
+      toast(error?.isNetwork ? t('no_connection') : t('chat_send_failed'), 'error');
+    }
   }, [roomId, recipientId, deal?.cargo_id, deal?.trip_id, params.cargoId, params.tripId, loadMessages, toast, t]);
+
+  // Documents: one clientUploadId drives both the initial attempt and any
+  // Retry, mirroring DealAttachments.js's idempotency pattern so a double
+  // tap on Retry cannot create a duplicate durable file server-side.
+  const uploadDocument = React.useCallback(async (docItem) => {
+    setMessages((items) => items.map((m) => (m.id === docItem.id ? { ...m, docStatus: 'uploading', docErrorText: null } : m)));
+    try {
+      await chatAPI.uploadAttachment(roomId, {
+        uri: docItem.docUri, kind: 'document', name: docItem.docName, type: docItem.docMime,
+        clientUploadId: docItem.id,
+      });
+      setTimeout(loadMessages, 120);
+    } catch (error) {
+      const key = error?.isNetwork ? 'doc_error_network'
+        : error?.status === 413 ? 'doc_error_too_large'
+          : error?.status === 415 ? 'doc_error_unsupported'
+            : (error?.status === 401 || error?.status === 403) ? 'doc_error_forbidden'
+              : error?.status >= 500 ? 'doc_error_server'
+                : 'doc_error_failed';
+      setMessages((items) => items.map((m) => (m.id === docItem.id ? { ...m, docStatus: 'failed', docErrorText: t(key) } : m)));
+    }
+  }, [roomId, loadMessages, t]);
+
+  const retryDocument = React.useCallback((item) => {
+    uploadDocument({ ...item, docStatus: 'retrying' });
+  }, [uploadDocument]);
+
+  const pickAndSendDocument = React.useCallback(async () => {
+    setAttachOpen(false);
+    if (!roomId) return;
+    const res = await DocumentPicker.getDocumentAsync({
+      type: DOC_ATTACH_TYPES,
+      copyToCacheDirectory: true,
+      multiple: false,
+    });
+    if (res?.canceled) return;
+    const file = res?.assets?.[0];
+    if (!file?.uri) return;
+    const kind = documentKindFromFile(file.mimeType, file.name);
+    const localId = newClientId('doc');
+    const docItem = {
+      id: localId, mine: true, kind: 'document', optimistic: true,
+      docName: file.name || `document.${kind.ext}`,
+      docSize: file.size || null,
+      docKind: kind,
+      docStatus: 'uploading',
+      docUri: file.uri,
+      docMime: kind.mime,
+      time: nowTime(),
+    };
+    setMessages((items) => [...items, docItem]);
+    await uploadDocument(docItem);
+  }, [roomId, uploadDocument]);
+
+  const cancelRecording = React.useCallback(async () => {
+    setRecording(false);
+    try { await voice.stopRecording(); } catch {}
+  }, []);
 
   const toggleVoice = React.useCallback(async () => {
     if (!recording) {
       try {
         const ok = await voice.startRecording();
-        if (!ok) return;
+        if (!ok) { toast(t('voice_error_record'), 'error'); return; }
         recordStartRef.current = Date.now();
         setRecording(true);
       } catch { toast(t('voice_permission'), 'warn'); }
       return;
     }
     setRecording(false);
+    let result;
     try {
-      const result = await voice.stopRecording();
-      if (!result?.uri) return;
-      const duration = result.duration || Math.max(1, Math.round((Date.now() - recordStartRef.current) / 1000));
-      const upload = await chatAPI.uploadChatVoice(result.uri);
-      if (!upload?.voice_key) throw new Error('voice_upload');
+      result = await voice.stopRecording();
+    } catch { toast(t('voice_error_record'), 'error'); return; }
+    if (!result?.uri) { toast(t('voice_error_record'), 'error'); return; }
+    const duration = result.duration || Math.max(1, Math.round((Date.now() - recordStartRef.current) / 1000));
+    let upload;
+    try {
+      upload = await chatAPI.uploadChatVoice(result.uri);
+    } catch (error) {
+      toast(error?.isNetwork ? t('no_connection') : t('voice_error_upload'), 'error');
+      return;
+    }
+    if (!upload?.voice_key) { toast(t('voice_error_upload'), 'error'); return; }
+    try {
       await chatAPI.send({
         roomId, toUserId: recipientId, text: `🎤 ${ui.voiceMessage}`, photoUrl: upload.voice_key,
         isVoice: true, voiceDuration: duration,
         cargoId: deal?.cargo_id || params.cargoId || null, tripId: deal?.trip_id || params.tripId || null,
-        clientMsgId: `c_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+        clientMsgId: newClientId(),
       });
       setTimeout(loadMessages, 120);
-    } catch { toast(t('chat_send_failed'), 'error'); }
+    } catch {
+      toast(t('voice_error_send'), 'error');
+    }
   }, [recording, roomId, recipientId, deal?.cargo_id, deal?.trip_id, params.cargoId, params.tripId, ui.voiceMessage, loadMessages, toast, t]);
 
   const renderMessage = React.useCallback(({ item }) => {
     if (item.system) return (
       <View style={s.systemRow}><Text style={[s.systemText, { color: colors.textMuted }]}>{item.text}</Text></View>
     );
+
+    if (item.kind === 'document') {
+      const meta = item.docKind || {};
+      const isBusy = item.docStatus === 'uploading' || item.docStatus === 'queued' || item.docStatus === 'retrying';
+      const isFailed = item.docStatus === 'failed';
+      return (
+        <View style={[s.messageRow, item.mine ? s.messageMine : s.messageThem]}>
+          <TouchableOpacity
+            activeOpacity={item.docUrl ? 0.72 : 1}
+            disabled={!item.docUrl}
+            onPress={() => item.docUrl && Linking.openURL(item.docUrl).catch(() => {})}
+            style={[s.docBubble, item.mine ? s.bubbleMine : s.bubbleThem, !item.mine && { borderColor: colors.border, backgroundColor: colors.surface }]}
+            testID="deal-chat-document-bubble"
+          >
+            <View style={[s.docIconBox, { backgroundColor: item.mine ? 'rgba(255,255,255,0.18)' : '#E9F6EF' }]}>
+              <Feather name={meta.icon || 'file'} size={20} color={item.mine ? '#FFFFFF' : '#168759'} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text numberOfLines={1} style={[s.docName, { color: item.mine ? '#FFFFFF' : colors.text }]}>{item.docName}</Text>
+              <Text numberOfLines={1} style={[s.docMeta, { color: isFailed ? (item.mine ? '#FFE1E1' : '#EF4444') : (item.mine ? 'rgba(255,255,255,0.75)' : colors.textMuted) }]}>
+                {isFailed
+                  ? (item.docErrorText || t('doc_error_failed'))
+                  : [formatBytes(item.docSize), isBusy ? t('chat_attach_status_uploading') : t('chat_attach_status_uploaded')].filter(Boolean).join(' · ')}
+              </Text>
+            </View>
+            {isBusy ? <ActivityIndicator size="small" color={item.mine ? '#FFFFFF' : '#168759'} /> : null}
+            {isFailed ? (
+              <TouchableOpacity onPress={() => retryDocument(item)} style={s.docRetryBtn} testID="deal-chat-document-retry">
+                <Feather name="refresh-cw" size={15} color={item.mine ? '#FFFFFF' : '#168759'} />
+              </TouchableOpacity>
+            ) : item.docUrl ? <Feather name="chevron-right" size={16} color={item.mine ? 'rgba(255,255,255,0.75)' : colors.textMuted} /> : null}
+          </TouchableOpacity>
+          <Text style={[s.messageTime, { color: colors.textMuted, textAlign: item.mine ? 'right' : 'left' }]}>{item.time}</Text>
+        </View>
+      );
+    }
+
     return (
       <View style={[s.messageRow, item.mine ? s.messageMine : s.messageThem]}>
         <View style={[s.bubble, item.mine ? s.bubbleMine : s.bubbleThem, !item.mine && { borderColor: colors.border, backgroundColor: colors.surface }]}>
           {item.photo && item.mediaUrl ? (
-            <TouchableOpacity
-              activeOpacity={0.82}
-              onPress={() => setImagePreview({ uri: item.mediaUrl, time: item.time })}
-              testID="deal-chat-image-open"
-            >
+            <TouchableOpacity onPress={() => setFullImage(item.mediaUrl)} testID="deal-chat-photo-bubble">
               <Image source={{ uri: item.mediaUrl }} style={s.photo} />
             </TouchableOpacity>
           ) : null}
@@ -626,11 +840,20 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           ) : item.text ? <Text style={[s.messageText, { color: item.mine ? '#FFFFFF' : colors.text }]}>{item.text}</Text> : null}
           <Text style={[s.messageTime, { color: item.mine ? 'rgba(255,255,255,0.68)' : colors.textMuted }]}>{item.time}</Text>
         </View>
+        {item.sendStatus === 'failed' ? (
+          <TouchableOpacity onPress={() => retryFailedText(item)} style={s.errorRow} testID="deal-chat-message-retry">
+            <Feather name="alert-circle" size={12} color="#EF4444" />
+            <Text style={s.errorText} numberOfLines={2}>{item.sendError || t('chat_send_failed')} · {t('chat_attach_retry')}</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
     );
-  }, [colors, ui.voiceMessage, t]);
+  }, [colors, ui.voiceMessage, t, retryDocument, retryFailedText]);
 
   const latestMessage = messages.length ? messages[messages.length - 1] : null;
+  const latestPreview = latestMessage
+    ? (latestMessage.kind === 'document' ? `📎 ${latestMessage.docName}` : latestMessage.text || (latestMessage.voice ? ui.voiceMessage : latestMessage.photo ? ui.attachPhoto : ''))
+    : ui.noMessages;
   const cargo = context.cargo || {};
   const trip = context.trip || {};
   const routeLabel = `${localizePlace(from, language)} → ${localizePlace(to, language)}`;
@@ -670,28 +893,36 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const inactiveSubtitle = visibleDealStatus === 'delivered' ? ui.tripAwaitingReceipt : '';
   const inactiveHint = visibleDealStatus === 'delivered' ? ui.tripAwaitingReceiptHint : '';
 
-  const showTab = (tab) => {
-    setSheetTab(tab);
-    setAttachOpen(false);
-    if (sheetState === 'collapsed') setSheet('expanded');
-  };
-
   const cancelDeal = async () => {
     const ok = await askConfirm(ui.cancelDeal, ui.cancelDealConfirm, ui.cancelDeal, true);
-    if (ok) await changeDealStatus('cancelled');
+    if (ok) { setStatusModalOpen(false); await changeDealStatus('cancelled'); }
   };
 
-  const toggleMap = () => {
-    setMapExpanded((value) => !value);
-    setSheetTab('chat');
-    setSheet('collapsed');
-  };
+  const openMap = () => { setAttachOpen(false); setCallMenuOpen(false); setViewMode(VIEW_MAP); };
+  const closeMap = () => setViewMode(VIEW_CHAT);
 
   const jumpLatest = () => {
     nearBottomRef.current = true;
     setShowJumpLatest(false);
     listRef.current?.scrollToEnd?.({ animated: true });
   };
+
+  const nextActionTestId = nextAction ? (
+    nextAction.key === 'in_progress' ? 'deal-action-start-delivery'
+      : nextAction.key === 'delivered' ? 'deal-action-mark-arrived'
+        : nextAction.key === 'received' ? 'deal-action-confirm-receipt'
+          : nextAction.key === 'completed' ? 'deal-action-complete'
+            : 'deal-action-next'
+  ) : null;
+
+  const PLUS_MENU = [
+    { key: 'photo', icon: 'image', label: ui.attachPhoto, onPress: () => sendPhoto(false) },
+    { key: 'camera', icon: 'camera', label: ui.attachCamera, onPress: () => sendPhoto(true) },
+    { key: 'document', icon: 'file-text', label: ui.attachDocument, onPress: pickAndSendDocument, testID: 'deal-chat-attach-document' },
+    { key: 'location', icon: 'map-pin', label: ui.attachLocation, onPress: sendLocation, busy: locationSending, testID: 'deal-chat-attach-location' },
+    { key: 'quick-reply', icon: 'zap', label: ui.attachQuickReply, onPress: sendQuickReply, testID: 'deal-chat-attach-quick-reply' },
+    { key: 'call', icon: 'phone', label: ui.attachCall, onPress: () => { setAttachOpen(false); setCallMenuOpen(true); }, testID: 'deal-chat-attach-call' },
+  ];
 
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={['top']} testID="deal-workspace-screen">
@@ -712,215 +943,289 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
             {scheduleMeta ? <Text style={[s.metaSecondary, { color: colors.textMuted }]} numberOfLines={1}>{scheduleMeta}</Text> : null}
             <Text style={[s.partnerText, { color: colors.textMuted }]} numberOfLines={1}>{counterpartyMeta}</Text>
           </View>
-        </View>
-
-        <View style={s.mapArea} testID="deal-map-first-area">
-          {dealLoading && !dealId ? (
-            <View style={[s.center, { backgroundColor: colors.bg }]}>
-              <ActivityIndicator color="#168759" />
-              <Text style={[s.loadingText, { color: colors.textMuted }]}>{ui.loading}</Text>
-            </View>
-          ) : showLiveMap ? (
-            <TruckMap
-              lat={hasLivePoint ? lat : undefined}
-              lng={hasLivePoint ? lng : undefined}
-              title={partnerName || t('track_truck_marker')}
-              routePoints={routePoints}
-              planned={!hasLivePoint}
-              showBadge={false}
-              onRouteSummary={onRouteSummary}
-            />
-          ) : (
-            <View style={[s.finishedMap, { backgroundColor: colors.surface }]} testID="deal-inactive-map-summary">
-              <View style={s.finishedIcon}><Feather name={visibleDealStatus === 'delivered' ? 'package' : 'check-circle'} size={28} color="#168759" /></View>
-              <Text style={[s.finishedTitle, { color: colors.text }]}>{inactiveTitle}</Text>
-              <Text style={[s.finishedRoute, { color: colors.text }]}>{routeLabel}</Text>
-              {inactiveSubtitle ? <Text style={[s.finishedSubtitle, { color: colors.text }]}>{inactiveSubtitle}</Text> : null}
-              {inactiveHint ? <Text style={[s.finishedHint, { color: colors.textMuted }]}>{inactiveHint}</Text> : null}
-              <Text style={[s.finishedGpsHint, { color: colors.textMuted }]}>{ui.mapFinishedHint}</Text>
-              {nextAction ? (
-                <TouchableOpacity
-                  style={s.finishedAction}
-                  onPress={runNextAction}
-                  disabled={statusLoading || trackingLoading}
-                  testID={nextAction.key === 'received' ? 'deal-action-confirm-receipt' : nextAction.key === 'completed' ? 'deal-action-complete' : 'deal-action-next'}
-                >
-                  <Feather name={nextAction.icon} size={16} color="#FFFFFF" />
-                  <Text style={s.finishedActionText}>{statusLoading ? '…' : nextAction.label}</Text>
-                </TouchableOpacity>
-              ) : null}
-            </View>
-          )}
-
-          {showLiveMap ? (
-            <TouchableOpacity style={[s.mapExpand, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={toggleMap} testID="deal-map-expand-toggle" accessibilityLabel={mapExpanded ? ui.collapseMap : ui.expandMap}>
-              <Feather name={mapExpanded ? 'minimize-2' : 'maximize-2'} size={18} color={colors.text} />
-            </TouchableOpacity>
-          ) : null}
-
-          {showLiveMap && updatedText ? (
-            <View style={[s.updatedPill, { backgroundColor: colors.surface, borderColor: colors.border }]} pointerEvents="none">
-              <Feather name="refresh-cw" size={12} color="#168759" />
-              <Text style={[s.updatedText, { color: colors.text }]}>{updatedText}</Text>
-            </View>
-          ) : showLiveMap && locationLoading && trackingActive ? (
-            <View style={[s.updatedPill, { backgroundColor: colors.surface, borderColor: colors.border }]} pointerEvents="none"><ActivityIndicator size="small" color="#168759" /></View>
-          ) : null}
-
-          {showLiveMap && nextAction ? (
+          <View style={s.headerActions}>
             <TouchableOpacity
-              style={[s.floatingAction, { backgroundColor: nextAction.disabled ? '#E4E8E5' : '#168759' }]}
-              onPress={runNextAction}
-              disabled={nextAction.disabled || statusLoading || trackingLoading}
-              testID={nextAction.key === 'in_progress' ? 'deal-action-start-delivery' : nextAction.key === 'delivered' ? 'deal-action-mark-arrived' : nextAction.key === 'received' ? 'deal-action-confirm-receipt' : nextAction.key === 'completed' ? 'deal-action-complete' : 'deal-action-next'}
+              onPress={() => setCallMenuOpen(true)}
+              style={[s.headerIconBtn, { borderColor: colors.border }]}
+              testID="deal-header-call"
+              accessibilityLabel={ui.attachCall}
             >
-              <Feather name={nextAction.icon} size={15} color={nextAction.disabled ? '#7C8B82' : '#FFFFFF'} />
-              <Text style={[s.floatingActionText, { color: nextAction.disabled ? '#7C8B82' : '#FFFFFF' }]} numberOfLines={1}>{statusLoading || trackingLoading ? '…' : nextAction.label}</Text>
+              <Feather name="phone" size={16} color={colors.text} />
             </TouchableOpacity>
-          ) : null}
-
-          {showLiveMap && routeSummary ? (
-            <View style={[s.metricsCard, { bottom: collapsedHeight + 12, backgroundColor: colors.surface, borderColor: colors.border }]} testID="deal-route-metrics" pointerEvents="none">
-              <View style={s.metricCell}>
-                <Text style={[s.metricLabel, { color: colors.textMuted }]}>{routeSummary.isRemaining ? ui.remaining : ui.distance}</Text>
-                <Text style={[s.metricValue, { color: colors.text }]} numberOfLines={1}>{routeSummary.distanceText}</Text>
-              </View>
-              <View style={[s.metricDivider, { backgroundColor: colors.border }]} />
-              <View style={s.metricCell}>
-                <Text style={[s.metricLabel, { color: colors.textMuted }]}>{routeSummary.isRemaining ? ui.eta : ui.travelTime}</Text>
-                <Text style={[s.metricValue, { color: colors.text }]} numberOfLines={1}>{routeSummary.durationText}</Text>
-              </View>
-            </View>
-          ) : null}
+            <TouchableOpacity
+              onPress={() => setStatusModalOpen(true)}
+              style={[s.headerIconBtn, { borderColor: colors.border }]}
+              testID="deal-status-open"
+              accessibilityLabel={ui.statuses}
+            >
+              <Feather name="clock" size={16} color={colors.text} />
+            </TouchableOpacity>
+          </View>
         </View>
 
-        <Animated.View style={[s.sheet, { height: sheetAnim, backgroundColor: colors.bg, borderColor: colors.border }]} testID={`deal-chat-sheet-${sheetState}`}>
-          <View {...panResponder.panHandlers} style={s.dragZone} testID="deal-chat-drag-handle">
-            <View style={s.dragHandle} />
-          </View>
-
-          <View style={[s.sheetHeader, { borderBottomColor: colors.border }]}>
-            <TouchableOpacity style={s.sheetTitleTouch} onPress={() => sheetState === 'collapsed' ? setSheet('expanded') : setSheet('collapsed')} testID="deal-chat-toggle">
-              <View style={s.chatIconBox}><Feather name={sheetTab === 'chat' ? 'message-circle' : 'activity'} size={18} color="#168759" /></View>
-              <View style={s.sheetTitleText}>
-                <View style={s.sheetTitleRow}>
-                  <Text style={[s.sheetTitle, { color: colors.text }]}>{sheetTab === 'chat' ? ui.messages : ui.statuses}</Text>
-                  {sheetTab === 'chat' && unreadCount > 0 ? <Text style={s.newCount}>{unreadCount} {ui.newMessages}</Text> : null}
-                </View>
-                {sheetState === 'collapsed' && sheetTab === 'chat' ? (
-                  <Text style={[s.preview, { color: colors.textMuted }]} numberOfLines={mapExpanded ? 1 : 2}>
-                    {latestMessage?.text || (latestMessage?.voice ? ui.voiceMessage : latestMessage?.photo ? ui.attachPhoto : ui.noMessages)}
-                  </Text>
-                ) : null}
+        {viewMode === VIEW_CHAT ? (
+          <View style={s.chatFullscreen} testID="deal-chat-fullscreen">
+            {dealLoading && !dealId ? (
+              <View style={[s.center, { backgroundColor: colors.bg }]}>
+                <ActivityIndicator color="#168759" />
+                <Text style={[s.loadingText, { color: colors.textMuted }]}>{ui.loading}</Text>
               </View>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => sheetState === 'collapsed' ? setSheet('expanded') : setSheet('collapsed')} style={s.collapseButton} testID="deal-chat-collapse">
-              <Feather name={sheetState === 'collapsed' ? 'chevron-up' : 'x'} size={20} color={colors.text} />
-            </TouchableOpacity>
-          </View>
-
-          {sheetState !== 'collapsed' ? (
-            <>
-              <View style={s.tabRow} testID="deal-sheet-two-tabs">
-                {[['chat', ui.messages, 'message-circle'], ['status', ui.statuses, 'activity']].map(([key, label, icon]) => (
-                  <TouchableOpacity key={key} style={[s.tab, sheetTab === key && s.tabActive]} onPress={() => showTab(key)} testID={`deal-sheet-tab-${key}`}>
-                    <Feather name={icon} size={15} color={sheetTab === key ? '#168759' : colors.textMuted} />
-                    <Text style={[s.tabText, { color: sheetTab === key ? '#168759' : colors.textMuted }]}>{label}</Text>
+            ) : (
+              <>
+                {nextAction ? (
+                  <TouchableOpacity
+                    style={[s.actionBar, { backgroundColor: nextAction.disabled ? '#E4E8E5' : '#168759' }]}
+                    onPress={runNextAction}
+                    disabled={nextAction.disabled || statusLoading || trackingLoading}
+                    testID={nextActionTestId}
+                  >
+                    <Feather name={nextAction.icon} size={16} color={nextAction.disabled ? '#7C8B82' : '#FFFFFF'} />
+                    <Text style={[s.actionBarText, { color: nextAction.disabled ? '#7C8B82' : '#FFFFFF' }]} numberOfLines={1}>
+                      {statusLoading || trackingLoading ? '…' : nextAction.label}
+                    </Text>
                   </TouchableOpacity>
-                ))}
-              </View>
+                ) : null}
 
-              {sheetTab === 'chat' ? (
-                <>
-                  <View style={s.chatBody}>
-                    <FlatList
-                      ref={listRef}
-                      data={messages}
-                      renderItem={renderMessage}
-                      keyExtractor={(item) => item.id}
-                      style={s.messageList}
-                      contentContainerStyle={s.messageContent}
-                      keyboardShouldPersistTaps="handled"
-                      onScroll={(event) => {
-                        const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-                        const nearBottom = contentSize.height - (contentOffset.y + layoutMeasurement.height) < 80;
-                        nearBottomRef.current = nearBottom;
-                        if (nearBottom && showJumpLatest) setShowJumpLatest(false);
-                      }}
-                      scrollEventThrottle={80}
-                      onContentSizeChange={() => { if (nearBottomRef.current) listRef.current?.scrollToEnd?.({ animated: false }); }}
-                      ListEmptyComponent={<Text style={[s.emptyText, { color: colors.textMuted }]}>{ui.noMessages}</Text>}
-                    />
-                    {showJumpLatest ? (
-                      <TouchableOpacity style={s.jumpLatest} onPress={jumpLatest} testID="deal-chat-jump-latest">
-                        <Feather name="arrow-down" size={14} color="#FFFFFF" />
-                        <Text style={s.jumpLatestText}>{ui.jumpLatest}</Text>
-                      </TouchableOpacity>
-                    ) : null}
-                  </View>
-
-                  {recording ? (
-                    <View style={s.recordBar}><View style={s.recordDot} /><Text style={s.recordText}>{ui.recording} 0:{String(recordSecs % 60).padStart(2, '0')}</Text></View>
-                  ) : null}
-
-                  <DealAttachments conversationId={roomId} role={role} compact inline documentTrigger={documentTrigger} />
-
-                  {attachOpen ? (
-                    <View style={[s.attachMenu, { borderTopColor: colors.border, backgroundColor: colors.bg }]} testID="deal-chat-attach-menu">
-                      <TouchableOpacity style={s.attachItem} onPress={() => sendPhoto(false)}>
-                        <View style={s.attachIcon}><Feather name="image" size={20} color="#168759" /></View>
-                        <Text style={[s.attachLabel, { color: colors.text }]}>{ui.attachPhoto}</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={s.attachItem} onPress={() => sendPhoto(true)}>
-                        <View style={s.attachIcon}><Feather name="camera" size={20} color="#168759" /></View>
-                        <Text style={[s.attachLabel, { color: colors.text }]}>{ui.attachCamera}</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={s.attachItem} onPress={() => { setAttachOpen(false); setDocumentTrigger((value) => value + 1); }} testID="deal-chat-attach-document">
-                        <View style={s.attachIcon}><Feather name="file-text" size={20} color="#168759" /></View>
-                        <Text style={[s.attachLabel, { color: colors.text }]}>{ui.attachDocument}</Text>
-                      </TouchableOpacity>
+                {dealId ? (
+                  <TouchableOpacity style={[s.mapCard, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={openMap} testID="deal-map-card-open">
+                    <View style={s.mapCardIcon}><Feather name="map" size={17} color="#168759" /></View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={[s.mapCardTitle, { color: colors.text }]}>{t('deal_map_card_title')}</Text>
+                      <Text style={[s.mapCardStatus, { color: colors.textMuted }]} numberOfLines={1}>{statusLabel}</Text>
                     </View>
-                  ) : null}
+                    <View style={s.mapCardOpenPill}>
+                      <Text style={s.mapCardOpenText}>{t('deal_map_card_open')}</Text>
+                      <Feather name="chevron-right" size={14} color="#168759" />
+                    </View>
+                  </TouchableOpacity>
+                ) : null}
 
-                  <View style={[s.composer, { borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, 8) }]} testID="deal-chat-composer">
-                    <TouchableOpacity style={[s.composerIcon, { borderColor: colors.border, backgroundColor: colors.surface }]} onPress={() => setAttachOpen((value) => !value)} testID="deal-chat-attach">
-                      <Feather name="plus" size={21} color={colors.text} />
-                    </TouchableOpacity>
-                    <TextInput
-                      value={input}
-                      onChangeText={(value) => { setInput(value); if (roomId) chatAPI.typing(roomId); }}
-                      onFocus={() => { setAttachOpen(false); setSheet('full'); }}
-                      onContentSizeChange={(event) => setInputHeight(Math.max(44, Math.min(112, Math.ceil(event.nativeEvent.contentSize.height + 18))))}
-                      multiline
-                      scrollEnabled={inputHeight >= 112}
-                      style={[s.input, { height: inputHeight, color: colors.text, borderColor: colors.border, backgroundColor: colors.surface }]}
-                      placeholder={isDriver ? ui.writeShipper : ui.write}
-                      placeholderTextColor={colors.textMuted}
-                      testID="deal-chat-input"
-                    />
-                    {input.trim() ? (
-                      <TouchableOpacity style={s.sendButton} onPress={sendText} testID="deal-chat-send"><FontAwesome5 name="paper-plane" size={15} color="#FFFFFF" solid /></TouchableOpacity>
-                    ) : (
-                      <TouchableOpacity style={[s.sendButton, recording && s.recordingButton]} onPress={toggleVoice} testID="deal-chat-voice"><Feather name={recording ? 'square' : 'mic'} size={18} color="#FFFFFF" /></TouchableOpacity>
-                    )}
-                  </View>
-                </>
-              ) : (
-                <View style={s.panelBody} testID="deal-status-panel">
+                <View style={s.chatBody}>
                   <FlatList
-                    data={[{ id: 'timeline' }]}
+                    ref={listRef}
+                    data={messages}
+                    renderItem={renderMessage}
                     keyExtractor={(item) => item.id}
-                    renderItem={() => <DealStatusTimeline events={timeline} fallbackStatus={statusLabel} />}
-                    contentContainerStyle={{ paddingBottom: 20 }}
+                    style={s.messageList}
+                    contentContainerStyle={s.messageContent}
+                    keyboardShouldPersistTaps="handled"
+                    onScroll={(event) => {
+                      const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+                      const nearBottom = contentSize.height - (contentOffset.y + layoutMeasurement.height) < 80;
+                      nearBottomRef.current = nearBottom;
+                      if (nearBottom && showJumpLatest) setShowJumpLatest(false);
+                    }}
+                    scrollEventThrottle={80}
+                    onContentSizeChange={() => { if (nearBottomRef.current) listRef.current?.scrollToEnd?.({ animated: false }); }}
+                    ListEmptyComponent={<Text style={[s.emptyText, { color: colors.textMuted }]}>{ui.noMessages}</Text>}
                   />
-                  {deal?.status === 'accepted' ? (
-                    <TouchableOpacity style={s.cancelLink} onPress={cancelDeal} testID="deal-cancel-link"><Text style={s.cancelLinkText}>{ui.cancelDeal}</Text></TouchableOpacity>
+                  {showJumpLatest ? (
+                    <TouchableOpacity style={s.jumpLatest} onPress={jumpLatest} testID="deal-chat-jump-latest">
+                      <Feather name="arrow-down" size={14} color="#FFFFFF" />
+                      <Text style={s.jumpLatestText}>{ui.jumpLatest}</Text>
+                    </TouchableOpacity>
                   ) : null}
+                </View>
+
+                {recording ? (
+                  <View style={s.recordBar} testID="deal-chat-recording-bar">
+                    <View style={s.recordDot} />
+                    <View style={s.recordWave} pointerEvents="none">
+                      {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+                        <View key={i} style={[s.recordWaveBar, { height: 5 + (i % 4) * 4 }]} />
+                      ))}
+                    </View>
+                    <Text style={s.recordText}>{ui.recording} 0:{String(recordSecs % 60).padStart(2, '0')}</Text>
+                    <TouchableOpacity onPress={cancelRecording} style={s.recordCancelBtn} testID="deal-chat-recording-cancel" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Feather name="trash-2" size={15} color="#B91C1C" />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={toggleVoice} style={s.recordStopBtn} testID="deal-chat-recording-stop">
+                      <Feather name="square" size={13} color="#FFFFFF" />
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
+
+                {attachOpen ? (
+                  <View style={[s.attachMenu, { borderTopColor: colors.border }]} testID="deal-chat-attach-menu">
+                    {PLUS_MENU.map((item) => (
+                      <TouchableOpacity key={item.key} style={s.attachItem} onPress={item.onPress} testID={item.testID} disabled={item.busy}>
+                        <View style={[s.attachIcon, { backgroundColor: colors.surface }]}>
+                          {item.busy ? <ActivityIndicator size="small" color="#168759" /> : <Feather name={item.icon} size={20} color={colors.text} />}
+                        </View>
+                        <Text style={[s.attachLabel, { color: colors.text }]} numberOfLines={1}>{item.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                ) : null}
+
+                <View style={[s.composer, { borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, 8) }]} testID="deal-chat-composer">
+                  <TouchableOpacity
+                    style={[s.composerIcon, { borderColor: colors.border, backgroundColor: colors.surface }]}
+                    onPress={() => { setAttachOpen((value) => !value); setCallMenuOpen(false); }}
+                    testID="deal-chat-attach"
+                  >
+                    <Feather name="plus" size={21} color={colors.text} />
+                  </TouchableOpacity>
+                  <TextInput
+                    value={input}
+                    onChangeText={(value) => { setInput(value); if (roomId) chatAPI.typing(roomId); }}
+                    onFocus={onComposerFocus}
+                    onContentSizeChange={(event) => setInputHeight(Math.max(44, Math.min(112, Math.ceil(event.nativeEvent.contentSize.height + 18))))}
+                    multiline
+                    scrollEnabled={inputHeight >= 112}
+                    style={[s.input, { height: inputHeight, color: colors.text, borderColor: colors.border, backgroundColor: colors.surface }]}
+                    placeholder={isDriver ? ui.writeShipper : ui.write}
+                    placeholderTextColor={colors.textMuted}
+                    testID="deal-chat-input"
+                  />
+                  <TouchableOpacity
+                    style={[s.composerIcon, { borderColor: colors.border, backgroundColor: colors.surface }]}
+                    onPress={() => sendPhoto(true)}
+                    testID="deal-chat-camera"
+                  >
+                    <Feather name="camera" size={19} color={colors.text} />
+                  </TouchableOpacity>
+                  {input.trim() ? (
+                    <TouchableOpacity style={s.sendButton} onPress={sendText} testID="deal-chat-send"><FontAwesome5 name="paper-plane" size={15} color="#FFFFFF" solid /></TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity style={[s.sendButton, recording && s.recordingButton]} onPress={toggleVoice} testID="deal-chat-voice"><Feather name={recording ? 'square' : 'mic'} size={18} color="#FFFFFF" /></TouchableOpacity>
+                  )}
+                </View>
+              </>
+            )}
+          </View>
+        ) : (
+          <View style={s.mapFullscreen} testID="deal-map-fullscreen">
+            <View style={s.mapArea} testID="deal-map-first-area">
+              {showLiveMap ? (
+                <TruckMap
+                  lat={hasLivePoint ? lat : undefined}
+                  lng={hasLivePoint ? lng : undefined}
+                  title={partnerName || t('track_truck_marker')}
+                  routePoints={routePoints}
+                  planned={!hasLivePoint}
+                  showBadge={false}
+                  onRouteSummary={onRouteSummary}
+                />
+              ) : (
+                <View style={[s.finishedMap, { backgroundColor: colors.surface }]} testID="deal-inactive-map-summary">
+                  <View style={s.finishedIcon}><Feather name={visibleDealStatus === 'delivered' ? 'package' : 'check-circle'} size={28} color="#168759" /></View>
+                  <Text style={[s.finishedTitle, { color: colors.text }]}>{inactiveTitle}</Text>
+                  <Text style={[s.finishedRoute, { color: colors.text }]}>{routeLabel}</Text>
+                  {inactiveSubtitle ? <Text style={[s.finishedSubtitle, { color: colors.text }]}>{inactiveSubtitle}</Text> : null}
+                  {inactiveHint ? <Text style={[s.finishedHint, { color: colors.textMuted }]}>{inactiveHint}</Text> : null}
+                  <Text style={[s.finishedGpsHint, { color: colors.textMuted }]}>{ui.mapFinishedHint}</Text>
                 </View>
               )}
-            </>
-          ) : null}
-        </Animated.View>
+
+              <TouchableOpacity style={[s.mapCollapse, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={closeMap} testID="deal-map-collapse">
+                <Feather name="minimize-2" size={17} color={colors.text} />
+                <Text style={[s.mapCollapseText, { color: colors.text }]}>{ui.collapseMap}</Text>
+              </TouchableOpacity>
+
+              {showLiveMap && updatedText ? (
+                <View style={[s.updatedPill, { backgroundColor: colors.surface, borderColor: colors.border }]} pointerEvents="none">
+                  <Feather name="refresh-cw" size={12} color="#168759" />
+                  <Text style={[s.updatedText, { color: colors.text }]}>{updatedText}</Text>
+                </View>
+              ) : showLiveMap && locationLoading && trackingActive ? (
+                <View style={[s.updatedPill, { backgroundColor: colors.surface, borderColor: colors.border }]} pointerEvents="none"><ActivityIndicator size="small" color="#168759" /></View>
+              ) : null}
+
+              {showLiveMap && routeSummary ? (
+                <View style={[s.metricsCard, { backgroundColor: colors.surface, borderColor: colors.border }]} testID="deal-route-metrics" pointerEvents="none">
+                  <View style={s.metricCell}>
+                    <Text style={[s.metricLabel, { color: colors.textMuted }]}>{routeSummary.isRemaining ? ui.remaining : ui.distance}</Text>
+                    <Text style={[s.metricValue, { color: colors.text }]} numberOfLines={1}>{routeSummary.distanceText}</Text>
+                  </View>
+                  <View style={[s.metricDivider, { backgroundColor: colors.border }]} />
+                  <View style={s.metricCell}>
+                    <Text style={[s.metricLabel, { color: colors.textMuted }]}>{routeSummary.isRemaining ? ui.eta : ui.travelTime}</Text>
+                    <Text style={[s.metricValue, { color: colors.text }]} numberOfLines={1}>{routeSummary.durationText}</Text>
+                  </View>
+                </View>
+              ) : null}
+            </View>
+
+            <TouchableOpacity style={[s.chatDock, { backgroundColor: colors.bg, borderColor: colors.border }]} onPress={closeMap} testID="deal-chat-dock">
+              <View style={[s.chatIconBox]}><Feather name="message-circle" size={18} color="#168759" /></View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <View style={s.sheetTitleRow}>
+                  <Text style={[s.sheetTitle, { color: colors.text }]}>{ui.messages}</Text>
+                  {unreadCount > 0 ? <Text style={s.newCount}>{unreadCount}</Text> : null}
+                </View>
+                <Text style={[s.preview, { color: colors.textMuted }]} numberOfLines={1}>{latestPreview}</Text>
+              </View>
+              <Feather name="chevron-up" size={18} color={colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Photo full-screen viewer — explicit close button, not a reliance on
+            the platform's own long-press "save image" menu (section 4). */}
+        <Modal visible={!!fullImage} transparent animationType="fade" onRequestClose={() => setFullImage(null)}>
+          <Pressable style={s.fullBackdrop} onPress={() => setFullImage(null)} testID="deal-chat-photo-fullscreen">
+            {fullImage ? <Image source={{ uri: fullImage }} style={s.fullImage} resizeMode="contain" /> : null}
+            <TouchableOpacity style={s.fullClose} onPress={() => setFullImage(null)} testID="deal-chat-photo-close" hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+              <Feather name="x" size={26} color="#fff" />
+            </TouchableOpacity>
+          </Pressable>
+        </Modal>
+
+        {/* Call menu — only "send call link" is real. Audio/video/schedule are
+            explicitly disabled with a "coming soon" label rather than looking
+            active (section 9: WebRTC calling does not exist yet). */}
+        <Modal visible={callMenuOpen} transparent animationType="fade" onRequestClose={() => setCallMenuOpen(false)}>
+          <Pressable style={s.modalBackdrop} onPress={() => setCallMenuOpen(false)}>
+            <Pressable style={[s.callMenuCard, { backgroundColor: colors.bg }]} onPress={() => {}} testID="deal-call-menu">
+              {[
+                { key: 'audio', icon: 'phone', label: ui.callAudio, disabled: true },
+                { key: 'video', icon: 'video', label: ui.callVideo, disabled: true },
+                { key: 'link', icon: 'link', label: ui.callSendLink, disabled: false, onPress: sendCallLink, testID: 'deal-call-send-link' },
+                { key: 'schedule', icon: 'calendar', label: ui.callSchedule, disabled: true },
+              ].map((item) => (
+                <TouchableOpacity
+                  key={item.key}
+                  onPress={item.onPress}
+                  disabled={item.disabled}
+                  style={[s.callMenuRow, { borderBottomColor: colors.border }]}
+                  testID={item.testID}
+                >
+                  <Feather name={item.icon} size={18} color={item.disabled ? colors.textMuted : '#168759'} />
+                  <Text style={[s.callMenuLabel, { color: item.disabled ? colors.textMuted : colors.text }]}>{item.label}</Text>
+                  {item.disabled ? (
+                    <View style={s.comingSoonPill}><Text style={s.comingSoonText}>{ui.comingSoon}</Text></View>
+                  ) : null}
+                </TouchableOpacity>
+              ))}
+            </Pressable>
+          </Pressable>
+        </Modal>
+
+        {/* Status/history — a single icon-triggered modal instead of a
+            permanent second tab (section 12: no redundant tabs when chat is
+            already fullscreen). */}
+        <Modal visible={statusModalOpen} transparent animationType="slide" onRequestClose={() => setStatusModalOpen(false)}>
+          <Pressable style={s.modalBackdrop} onPress={() => setStatusModalOpen(false)}>
+            <Pressable style={[s.statusModalCard, { backgroundColor: colors.bg, maxHeight: window.height * 0.75 }]} onPress={() => {}} testID="deal-status-panel">
+              <View style={s.statusModalHeader}>
+                <Text style={[s.sheetTitle, { color: colors.text }]}>{ui.statuses}</Text>
+                <TouchableOpacity onPress={() => setStatusModalOpen(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                  <Feather name="x" size={20} color={colors.text} />
+                </TouchableOpacity>
+              </View>
+              <FlatList
+                data={[{ id: 'timeline' }]}
+                keyExtractor={(item) => item.id}
+                renderItem={() => <DealStatusTimeline events={timeline} fallbackStatus={statusLabel} />}
+                contentContainerStyle={{ paddingBottom: 12 }}
+              />
+              {deal?.status === 'accepted' ? (
+                <TouchableOpacity style={s.cancelLink} onPress={cancelDeal} testID="deal-cancel-link"><Text style={s.cancelLinkText}>{ui.cancelDeal}</Text></TouchableOpacity>
+              ) : null}
+            </Pressable>
+          </Pressable>
+        </Modal>
 
         <AppConfirmModal
           visible={!!confirmDialog}
@@ -933,16 +1238,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           onConfirm={() => settleConfirm(true)}
           testID="deal-workspace-confirm"
         />
-        <Modal visible={!!imagePreview} transparent animationType="fade" onRequestClose={() => setImagePreview(null)}>
-          <View style={s.imageViewer} testID="deal-chat-image-viewer">
-            <TouchableOpacity style={s.imageViewerClose} onPress={() => setImagePreview(null)} testID="deal-chat-image-close">
-              <Feather name="x" size={24} color="#FFFFFF" />
-            </TouchableOpacity>
-            {imagePreview?.uri ? (
-              <Image source={{ uri: imagePreview.uri }} style={s.imageViewerImage} resizeMode="contain" />
-            ) : null}
-          </View>
-        </Modal>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -952,7 +1247,9 @@ const s = StyleSheet.create({
   safe: { flex: 1 },
   compactHeader: { minHeight: 118, flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 10, paddingTop: 8, paddingBottom: 9, borderBottomWidth: StyleSheet.hairlineWidth, zIndex: 20 },
   backButton: { width: 42, height: 46, alignItems: 'center', justifyContent: 'center', marginTop: 6 },
-  headerText: { flex: 1, minWidth: 0, paddingRight: 10 },
+  headerText: { flex: 1, minWidth: 0, paddingRight: 8 },
+  headerActions: { flexDirection: 'row', gap: 8, marginTop: 6 },
+  headerIconBtn: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   routeHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 34 },
   routeTitle: { flex: 1, fontSize: 19, fontWeight: '900', letterSpacing: -0.35 },
   statusPill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999, backgroundColor: '#E9F6EF' },
@@ -961,47 +1258,24 @@ const s = StyleSheet.create({
   metaPrimary: { fontSize: 12.7, fontWeight: '800', marginTop: 1 },
   metaSecondary: { fontSize: 11.5, fontWeight: '650', marginTop: 3 },
   partnerText: { fontSize: 11.5, fontWeight: '650', marginTop: 3 },
-  mapArea: { flex: 1, position: 'relative', overflow: 'hidden', backgroundColor: '#EAF1ED' },
-  center: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', gap: 9 },
+
+  chatFullscreen: { flex: 1 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 9 },
   loadingText: { fontSize: 13, fontWeight: '700' },
-  updatedPill: { position: 'absolute', left: 12, top: 12, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999, borderWidth: 1 },
-  updatedText: { fontSize: 11.5, fontWeight: '800' },
-  mapExpand: { position: 'absolute', right: 12, bottom: 14, width: 44, height: 44, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 3, zIndex: 8 },
-  floatingAction: { position: 'absolute', right: 12, top: 12, maxWidth: '58%', minHeight: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 12, borderRadius: 999, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 3 },
-  floatingActionText: { fontSize: 12.5, fontWeight: '900', flexShrink: 1 },
-  metricsCard: { position: 'absolute', left: 12, right: 66, minHeight: 68, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 9, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 4 },
-  metricCell: { flex: 1, minWidth: 0 },
-  metricLabel: { fontSize: 10.5, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.35, marginBottom: 3 },
-  metricValue: { fontSize: 18, fontWeight: '900' },
-  metricDivider: { width: 1, alignSelf: 'stretch', marginHorizontal: 14 },
-  finishedMap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 },
-  finishedIcon: { width: 58, height: 58, borderRadius: 20, backgroundColor: '#E9F6EF', alignItems: 'center', justifyContent: 'center' },
-  finishedTitle: { fontSize: 20, fontWeight: '900', marginTop: 14 },
-  finishedRoute: { fontSize: 14, fontWeight: '800', textAlign: 'center', marginTop: 6 },
-  finishedSubtitle: { fontSize: 15, fontWeight: '800', textAlign: 'center', lineHeight: 20, marginTop: 13 },
-  finishedHint: { fontSize: 12, textAlign: 'center', lineHeight: 17, marginTop: 7, maxWidth: 420 },
-  finishedGpsHint: { fontSize: 11, textAlign: 'center', lineHeight: 16, marginTop: 8, opacity: 0.82 },
-  finishedAction: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 48, paddingHorizontal: 20, marginTop: 18, borderRadius: 16, backgroundColor: '#168759' },
-  finishedActionText: { color: '#FFFFFF', fontSize: 14, fontWeight: '900' },
-  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, borderTopLeftRadius: 26, borderTopRightRadius: 26, borderWidth: 1, borderBottomWidth: 0, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 20, shadowOffset: { width: 0, height: -5 }, elevation: 12, zIndex: 30 },
-  dragZone: { height: 20, alignItems: 'center', justifyContent: 'center' },
-  dragHandle: { width: 42, height: 5, borderRadius: 3, backgroundColor: '#C7CEC9' },
-  sheetHeader: { minHeight: 62, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingBottom: 9, borderBottomWidth: StyleSheet.hairlineWidth },
-  sheetTitleTouch: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  chatIconBox: { width: 38, height: 38, borderRadius: 13, backgroundColor: '#E9F6EF', alignItems: 'center', justifyContent: 'center' },
-  sheetTitleText: { flex: 1, minWidth: 0 },
-  sheetTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  sheetTitle: { fontSize: 16, fontWeight: '900' },
-  newCount: { color: '#168759', fontSize: 12, fontWeight: '800' },
-  preview: { fontSize: 12.5, lineHeight: 17, marginTop: 2, paddingRight: 6 },
-  collapseButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  tabRow: { height: 48, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, gap: 8 },
-  tab: { flex: 1, minHeight: 36, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 13 },
-  tabActive: { backgroundColor: '#E9F6EF' },
-  tabText: { fontSize: 12.5, fontWeight: '850' },
+
+  actionBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 44, marginHorizontal: 12, marginTop: 10, borderRadius: 14 },
+  actionBarText: { fontSize: 13.5, fontWeight: '900', flexShrink: 1 },
+
+  mapCard: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 12, marginTop: 10, borderWidth: 1, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 10 },
+  mapCardIcon: { width: 38, height: 38, borderRadius: 13, backgroundColor: '#E9F6EF', alignItems: 'center', justifyContent: 'center' },
+  mapCardTitle: { fontSize: 13.5, fontWeight: '850' },
+  mapCardStatus: { fontSize: 11.5, fontWeight: '650', marginTop: 2 },
+  mapCardOpenPill: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  mapCardOpenText: { color: '#168759', fontSize: 12.5, fontWeight: '850' },
+
   chatBody: { flex: 1, position: 'relative' },
   messageList: { flex: 1 },
-  messageContent: { paddingHorizontal: 14, paddingTop: 8, paddingBottom: 12 },
+  messageContent: { paddingHorizontal: 14, paddingTop: 10, paddingBottom: 12 },
   messageRow: { marginBottom: 10 },
   messageMine: { alignItems: 'flex-end' },
   messageThem: { alignItems: 'flex-start' },
@@ -1013,26 +1287,78 @@ const s = StyleSheet.create({
   systemRow: { alignItems: 'center', marginVertical: 5 },
   systemText: { fontSize: 11.5, fontWeight: '650', paddingHorizontal: 10, paddingVertical: 5, backgroundColor: 'rgba(124,139,130,0.12)', borderRadius: 999 },
   photo: { width: 210, height: 150, borderRadius: 11, marginBottom: 4 },
-  imageViewer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.94)', alignItems: 'center', justifyContent: 'center' },
-  imageViewerImage: { width: '100%', height: '86%' },
-  imageViewerClose: { position: 'absolute', top: 46, right: 18, zIndex: 2, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.16)' },
   voiceRow: { minHeight: 28, flexDirection: 'row', alignItems: 'center', gap: 8 },
   emptyText: { textAlign: 'center', marginTop: 24, fontSize: 13 },
   jumpLatest: { position: 'absolute', right: 14, bottom: 12, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#168759', paddingHorizontal: 11, height: 34, borderRadius: 17, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 8, elevation: 3 },
   jumpLatestText: { color: '#FFFFFF', fontSize: 11.5, fontWeight: '800' },
-  recordBar: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 15, paddingVertical: 7, backgroundColor: 'rgba(239,68,68,0.08)' },
+
+  errorRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3, maxWidth: '84%' },
+  errorText: { color: '#EF4444', fontSize: 11, fontWeight: '700', flexShrink: 1 },
+
+  docBubble: { maxWidth: '84%', minWidth: 220, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 16, paddingHorizontal: 11, paddingVertical: 9 },
+  docIconBox: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  docName: { fontSize: 13, fontWeight: '800' },
+  docMeta: { fontSize: 11, fontWeight: '650', marginTop: 2 },
+  docRetryBtn: { padding: 4 },
+
+  recordBar: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 15, paddingVertical: 8, backgroundColor: 'rgba(239,68,68,0.08)' },
   recordDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444' },
-  recordText: { color: '#B91C1C', fontSize: 12, fontWeight: '800' },
-  attachMenu: { flexDirection: 'row', paddingHorizontal: 14, paddingTop: 12, paddingBottom: 10, borderTopWidth: StyleSheet.hairlineWidth, gap: 10 },
-  attachItem: { flex: 1, minHeight: 74, alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: 18, backgroundColor: '#F5FAF7', borderWidth: 1, borderColor: '#DDEBE4' },
-  attachIcon: { width: 38, height: 38, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: '#E4F5EC' },
-  attachLabel: { fontSize: 11.5, fontWeight: '850' },
-  composer: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 12, paddingTop: 9, borderTopWidth: StyleSheet.hairlineWidth },
-  composerIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  recordWave: { flexDirection: 'row', alignItems: 'center', gap: 2, height: 20 },
+  recordWaveBar: { width: 2.5, borderRadius: 2, backgroundColor: '#EF4444', opacity: 0.55 },
+  recordText: { color: '#B91C1C', fontSize: 12, fontWeight: '800', flex: 1 },
+  recordCancelBtn: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  recordStopBtn: { width: 30, height: 30, borderRadius: 15, backgroundColor: '#EF4444', alignItems: 'center', justifyContent: 'center' },
+
+  attachMenu: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 10, paddingVertical: 10, borderTopWidth: StyleSheet.hairlineWidth },
+  attachItem: { width: '25%', alignItems: 'center', gap: 5, paddingVertical: 6 },
+  attachIcon: { width: 46, height: 46, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  attachLabel: { fontSize: 10.5, fontWeight: '700', textAlign: 'center' },
+
+  composer: { flexDirection: 'row', alignItems: 'flex-end', gap: 7, paddingHorizontal: 10, paddingTop: 9, borderTopWidth: StyleSheet.hairlineWidth },
+  composerIcon: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   input: { flex: 1, minHeight: 44, maxHeight: 112, borderRadius: 16, borderWidth: 1, paddingHorizontal: 13, paddingTop: 11, paddingBottom: 10, fontSize: 14.5, lineHeight: 19 },
-  sendButton: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: '#168759' },
+  sendButton: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: '#168759' },
   recordingButton: { backgroundColor: '#EF4444' },
-  panelBody: { flex: 1, paddingHorizontal: 12, paddingTop: 4, paddingBottom: 12 },
-  cancelLink: { alignSelf: 'center', paddingHorizontal: 14, paddingVertical: 10, marginTop: 4 },
+
+  mapFullscreen: { flex: 1 },
+  mapArea: { flex: 1, position: 'relative', overflow: 'hidden', backgroundColor: '#EAF1ED' },
+  updatedPill: { position: 'absolute', left: 12, top: 12, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999, borderWidth: 1 },
+  updatedText: { fontSize: 11.5, fontWeight: '800' },
+  mapCollapse: { position: 'absolute', right: 12, top: 12, flexDirection: 'row', alignItems: 'center', gap: 6, height: 40, paddingHorizontal: 13, borderRadius: 20, borderWidth: 1, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 3, zIndex: 8 },
+  mapCollapseText: { fontSize: 12.5, fontWeight: '800' },
+  metricsCard: { position: 'absolute', left: 12, right: 12, bottom: 12, minHeight: 68, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 9, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 4 },
+  metricCell: { flex: 1, minWidth: 0 },
+  metricLabel: { fontSize: 10.5, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.35, marginBottom: 3 },
+  metricValue: { fontSize: 18, fontWeight: '900' },
+  metricDivider: { width: 1, alignSelf: 'stretch', marginHorizontal: 14 },
+  finishedMap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 },
+  finishedIcon: { width: 58, height: 58, borderRadius: 20, backgroundColor: '#E9F6EF', alignItems: 'center', justifyContent: 'center' },
+  finishedTitle: { fontSize: 20, fontWeight: '900', marginTop: 14 },
+  finishedRoute: { fontSize: 14, fontWeight: '800', textAlign: 'center', marginTop: 6 },
+  finishedSubtitle: { fontSize: 15, fontWeight: '800', textAlign: 'center', lineHeight: 20, marginTop: 13 },
+  finishedHint: { fontSize: 12, textAlign: 'center', lineHeight: 17, marginTop: 7, maxWidth: 420 },
+  finishedGpsHint: { fontSize: 11, textAlign: 'center', lineHeight: 16, marginTop: 8, opacity: 0.82 },
+
+  chatDock: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 66, paddingHorizontal: 14, borderTopWidth: 1 },
+  chatIconBox: { width: 38, height: 38, borderRadius: 13, backgroundColor: '#E9F6EF', alignItems: 'center', justifyContent: 'center' },
+  sheetTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sheetTitle: { fontSize: 16, fontWeight: '900' },
+  newCount: { color: '#168759', fontSize: 12, fontWeight: '800' },
+  preview: { fontSize: 12.5, lineHeight: 17, marginTop: 2 },
+
+  fullBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', alignItems: 'center', justifyContent: 'center' },
+  fullImage: { width: '100%', height: '80%' },
+  fullClose: { position: 'absolute', top: 44, right: 20, width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center' },
+
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  callMenuCard: { borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingTop: 8, paddingBottom: 24 },
+  callMenuRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 54, paddingHorizontal: 18, borderBottomWidth: StyleSheet.hairlineWidth },
+  callMenuLabel: { flex: 1, fontSize: 14.5, fontWeight: '750' },
+  comingSoonPill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: 'rgba(124,139,130,0.14)' },
+  comingSoonText: { fontSize: 10, fontWeight: '800', color: '#7C8B82' },
+
+  statusModalCard: { borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 14, paddingTop: 14 },
+  statusModalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  cancelLink: { alignSelf: 'center', paddingHorizontal: 14, paddingVertical: 10, marginTop: 4, marginBottom: 8 },
   cancelLinkText: { color: '#EF4444', fontSize: 12.5, fontWeight: '750' },
 });

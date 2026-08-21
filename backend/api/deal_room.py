@@ -20,13 +20,16 @@ from api.push import send_to_user
 from database.db import get_conn, new_id
 
 _MAX_ATTACH_BYTES = 12 * 1024 * 1024
+_XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+_XLS_MIME = "application/vnd.ms-excel"
+_CSV_MIME = "text/csv"
 _ALLOWED = {
     "image/jpeg": ("photo", "jpg"),
     "image/png": ("photo", "png"),
     "application/pdf": ("document", "pdf"),
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ("document", "xlsx"),
-    "application/vnd.ms-excel": ("document", "xls"),
-    "text/csv": ("document", "csv"),
+    _XLSX_MIME: ("document", "xlsx"),
+    _XLS_MIME: ("document", "xls"),
+    _CSV_MIME: ("document", "csv"),
 }
 _GENERIC_DECLARED_MIME = {
     "",
@@ -38,13 +41,49 @@ _DECLARED_ALIASES = {
     "image/jpg": "image/jpeg",
     "application/x-pdf": "application/pdf",
     "application/acrobat": "application/pdf",
-    "application/vnd.ms-office": "application/vnd.ms-excel",
-    "application/xls": "application/vnd.ms-excel",
-    "application/x-excel": "application/vnd.ms-excel",
-    "application/msexcel": "application/vnd.ms-excel",
-    "application/csv": "text/csv",
-    "text/comma-separated-values": "text/csv",
+    "application/vnd.ms-office": _XLS_MIME,
+    "application/xls": _XLS_MIME,
+    "application/x-excel": _XLS_MIME,
+    "application/msexcel": _XLS_MIME,
+    "application/x-msexcel": _XLS_MIME,
+    "application/csv": _CSV_MIME,
+    "text/comma-separated-values": _CSV_MIME,
+    "text/x-csv": _CSV_MIME,
 }
+# xlsx (and docx/pptx/any zip) all start with the same PK signature — a real
+# xlsx is a zip that additionally contains an OOXML spreadsheet part. Legacy
+# .xls is an OLE2 Compound File; that signature is unambiguous. CSV has no
+# magic bytes at all (it's plain text), so it can only be recognized by
+# "this isn't any known binary format and it decodes as text" — weaker than
+# the other checks by nature of the format, not an oversight.
+_ZIP_SIG = b"PK\x03\x04"
+_OLE2_SIG = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+
+
+def _looks_like_xlsx(raw: bytes) -> bool:
+    if raw[:4] != _ZIP_SIG:
+        return False
+    # A zip is xlsx only if it actually contains the OOXML spreadsheet parts,
+    # not just because it starts with PK (docx/pptx/plain .zip share that
+    # signature). Require BOTH the package manifest and a workbook part —
+    # either alone is not enough to rule out a same-signature docx/pptx.
+    head = raw[:8192]
+    body = raw[:200000]
+    return b"[Content_Types].xml" in head and (b"xl/workbook.xml" in body or b"xl/" in body)
+
+
+def _looks_like_text(raw: bytes) -> bool:
+    sample = raw[:8192]
+    if b"\x00" in sample:
+        return False
+    try:
+        text = sample.decode("utf-8")
+    except UnicodeDecodeError:
+        return False
+    # No CSV magic bytes exist. "Decodes as UTF-8" alone would misclassify
+    # any plain-text file (.txt, .json, source code) as a document upload —
+    # additionally require the newline + delimiter shape a real CSV has.
+    return "\n" in text and ("," in text or ";" in text or "\t" in text)
 
 
 def _sniff_mime(raw: bytes) -> str | None:
@@ -54,16 +93,17 @@ def _sniff_mime(raw: bytes) -> str | None:
         return "image/png"
     if raw[:5] == b"%PDF-":
         return "application/pdf"
-    if raw[:8] == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1":
-        return "application/vnd.ms-excel"
-    if raw[:4] == b"PK\x03\x04":
-        head = raw[:8192]
-        if b"[Content_Types].xml" in head and (b"xl/" in raw[:200000] or b"workbook" in raw[:200000]):
-            return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    if b"\x00" not in raw[:4096]:
-        sample = raw[:4096].decode("utf-8", errors="ignore")
-        if "\n" in sample and ("," in sample or ";" in sample or "\t" in sample):
-            return "text/csv"
+    if _looks_like_xlsx(raw):
+        return _XLSX_MIME
+    if raw[:8] == _OLE2_SIG:
+        # OLE2 covers legacy .xls/.doc/.ppt alike; only .xls is accepted here
+        # (declared-vs-sniffed cross-check below rejects a mislabeled .doc).
+        return _XLS_MIME
+    if _looks_like_text(raw):
+        # Text content plus a CSV-shaped declared MIME/extension (checked by
+        # the caller) is the honest floor here — there is nothing stronger
+        # to check for a format with no magic bytes at all.
+        return _CSV_MIME
     return None
 
 

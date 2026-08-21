@@ -10,7 +10,6 @@ const cargoRouter = fs.readFileSync('src/screens/CargoDetailV2.js', 'utf8');
 const nav = fs.readFileSync('src/navigation/AppNavigator.js', 'utf8');
 const brand = fs.readFileSync('src/components/ui/v1/BrandBarWithShare.js', 'utf8');
 const webMap = fs.readFileSync('src/components/TruckMap.web.js', 'utf8');
-const attachments = fs.readFileSync('src/components/deal/DealAttachments.js', 'utf8');
 const timeline = fs.readFileSync('src/components/deal/DealStatusTimeline.js', 'utf8');
 const profile = fs.readFileSync('src/screens/registration/PremiumProfileScreen.js', 'utf8');
 const profileApi = fs.readFileSync('backend/api/profile.py', 'utf8');
@@ -48,14 +47,34 @@ test('deal workspace has fixed compact information header and no repeated UrTruc
   assert.match(brand, /compact-child-header/);
 });
 
-test('deal workspace is map-first and has explicit map expand collapse control', () => {
+test('deal workspace is chat-first by default; the map is a deliberate, button-triggered secondary view', () => {
+  // PR #255 QA pass (2026-08-20): the prior map-first design was reverted —
+  // owner-confirmed "map-first бардак" must not come back. Chat renders
+  // fullscreen by default; the map only appears after an explicit tap on the
+  // "Карта рейса" card, and a visible control returns to chat from there.
+  assert.match(workspace, /const VIEW_CHAT = 'chat'/);
+  assert.match(workspace, /const VIEW_MAP = 'map'/);
+  assert.match(workspace, /useState\(VIEW_CHAT\)/, 'chat must be the default view, not the map');
+  assert.match(workspace, /testID="deal-chat-fullscreen"/);
+  assert.match(workspace, /testID="deal-map-card-open"/);
   assert.match(workspace, /testID="deal-map-first-area"/);
   assert.match(workspace, /<TruckMap/);
   assert.match(workspace, /routePoints=\{routePoints\}/);
   assert.match(workspace, /onRouteSummary=\{onRouteSummary\}/);
-  assert.match(workspace, /testID="deal-map-expand-toggle"/);
-  assert.match(workspace, /setMapExpanded/);
+  assert.match(workspace, /testID="deal-map-collapse"/);
+  assert.match(workspace, /setViewMode\(VIEW_CHAT\)/, 'the map view must have a way back to chat');
   assert.doesNotMatch(workspace, /open_route_btn|Открыть маршрут|navigation\.navigate\('TrackTruck'/);
+});
+
+test('the map is never mounted underneath the chat — chat and map are mutually exclusive views', () => {
+  // Isolate the chat-view JSX by its start/end testID markers rather than
+  // trying to balance parens with regex (fragile — the branch itself
+  // contains nested calls like Math.max(insets.bottom, 8)).
+  const chatStart = workspace.indexOf('testID="deal-chat-fullscreen"');
+  const mapStart = workspace.indexOf('testID="deal-map-fullscreen"');
+  assert.ok(chatStart >= 0 && mapStart > chatStart, 'could not locate the chat-view then map-view markers in order');
+  const chatBranch = workspace.slice(chatStart, mapStart);
+  assert.doesNotMatch(chatBranch, /<TruckMap/, 'the live map component must not render while in chat view');
 });
 
 test('distance and ETA remain real Yandex route properties and fail closed', () => {
@@ -78,37 +97,61 @@ test('live map only exists for active working trip states', () => {
   assert.match(workspace, /testID="deal-inactive-map-summary"/);
 });
 
-test('bottom sheet is vertical and supports collapsed expanded full states', () => {
-  assert.match(workspace, /'collapsed'/);
-  assert.match(workspace, /'expanded'/);
-  assert.match(workspace, /'full'/);
-  assert.match(workspace, /PanResponder\.create/);
-  assert.match(workspace, /gesture\.dy/);
-  assert.match(workspace, /keyboardWillShow|keyboardDidShow/);
-  assert.match(workspace, /setSheet\('full'\)/);
-  assert.match(workspace, /testID=\{`deal-chat-sheet-\$\{sheetState\}`\}/);
+test('no draggable multi-state bottom sheet remains — chat is a plain fullscreen view', () => {
+  // The old collapsed/expanded/full PanResponder sheet was the mechanism
+  // that let the map crowd out the chat. It is gone, not hidden.
+  assert.doesNotMatch(workspace, /PanResponder\.create/);
+  assert.doesNotMatch(workspace, /sheetState/);
+  assert.doesNotMatch(workspace, /setSheet\(/);
+  assert.doesNotMatch(workspace, /keyboardWillShow|keyboardDidShow/);
 });
 
-test('chat has exactly two permanent sheet tabs: messages and statuses', () => {
-  assert.match(workspace, /testID="deal-sheet-two-tabs"/);
-  assert.match(workspace, /\['chat', ui\.messages/);
-  assert.match(workspace, /\['status', ui\.statuses/);
-  assert.doesNotMatch(workspace, /deal-sheet-tab-docs|setSheetTab\('docs'\)/);
+test('chat has no permanent second tab — status/history lives behind one icon-triggered modal', () => {
+  // PR #255 QA pass: "убрать лишние tabs, если чат уже fullscreen" — chat is
+  // always fullscreen now, so a permanent Messages/Statuses tab row would be
+  // exactly the redundant chrome the review flagged (it also used to render
+  // "Сообщения" twice: once as the sheet title, once as the tab label).
+  assert.doesNotMatch(workspace, /testID="deal-sheet-two-tabs"/);
+  assert.doesNotMatch(workspace, /testID="deal-sheet-tab-/);
+  assert.match(workspace, /testID="deal-status-open"/);
+  assert.match(workspace, /testID="deal-status-panel"/);
+  assert.match(workspace, /setStatusModalOpen\(true\)/);
 });
 
-test('composer grows then scrolls, switches mic to send, and uses WhatsApp-like attachment menu', () => {
+test('composer grows then scrolls, switches mic to send, has a dedicated camera button, and uses a 2x4 WhatsApp-like attachment menu', () => {
   assert.match(workspace, /multiline/);
   assert.match(workspace, /onContentSizeChange/);
   assert.match(workspace, /Math\.min\(112/);
   assert.match(workspace, /scrollEnabled=\{inputHeight >= 112\}/);
   assert.match(workspace, /testID="deal-chat-send"/);
   assert.match(workspace, /testID="deal-chat-voice"/);
+  assert.match(workspace, /testID="deal-chat-camera"/);
   assert.match(workspace, /sendPhoto\(false\)/);
   assert.match(workspace, /sendPhoto\(true\)/);
-  assert.match(workspace, /testID="deal-chat-attach-document"/);
-  assert.match(workspace, /documentTrigger/);
-  assert.match(attachments, /testID=\{inline \? 'deal-inline-attachments'/);
-  assert.match(attachments, /documentTrigger/);
+  assert.match(workspace, /testID:\s*'deal-chat-attach-document'/);
+  assert.match(workspace, /testID:\s*'deal-chat-attach-location'/);
+  assert.match(workspace, /testID:\s*'deal-chat-attach-quick-reply'/);
+  assert.match(workspace, /testID:\s*'deal-chat-attach-call'/);
+  assert.match(workspace, /testID="deal-chat-attach-menu"/);
+  assert.match(workspace, /PLUS_MENU\.map/, 'attach menu must render all 6 tiles from one data-driven list, not 6 hand-written copies');
+  // Section 3: Контакт/Каталог have no working logic yet and must not exist
+  // as tiles at all (not even disabled) — a fake-active button is worse than
+  // no button.
+  assert.doesNotMatch(workspace, /attachContact|attachCatalog|ui\.contact\b|ui\.catalog\b/);
+});
+
+test('every plus-menu tile has a real handler — no decorative buttons', () => {
+  const menuBlock = workspace.match(/const PLUS_MENU = \[([\s\S]*?)\];/);
+  assert.ok(menuBlock, 'PLUS_MENU definition not found');
+  const items = menuBlock[1];
+  // Each tile object must carry an onPress that resolves to a real,
+  // in-file function reference, not a no-op.
+  const onPressMatches = [...items.matchAll(/onPress:\s*([^,}]+)/g)].map((m) => m[1].trim());
+  assert.equal(onPressMatches.length, 6, `expected 6 plus-menu tiles with onPress, found ${onPressMatches.length}`);
+  for (const handler of onPressMatches) {
+    assert.notEqual(handler, '() => {}', `plus-menu tile has a no-op handler: ${handler}`);
+    assert.notEqual(handler, 'null', `plus-menu tile has a null handler: ${handler}`);
+  }
 });
 
 test('chat history scroll does not yank user from old messages when new messages arrive', () => {

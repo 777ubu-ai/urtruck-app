@@ -34,6 +34,34 @@ function mimeFromName(name, fallback = 'application/octet-stream') {
   return fallback;
 }
 
+// Shared document classification for the chat "+" document flow — the same
+// PDF/XLSX/XLS/CSV set backend/api/deal_room.py accepts (kept in sync by
+// hand; tests/frontend/test_deal_attachment_upload_contract.mjs checks both
+// sides list the same MIME strings). Used by both DealAttachments.js
+// (ChatScreen.js's document panel) and DealWorkspaceScreenV2.js (inline
+// document bubbles), so a picked file classifies identically everywhere.
+export function documentKindFromFile(mimeType, name) {
+  const lower = String(name || '').toLowerCase();
+  const type = String(mimeType || '').toLowerCase();
+  if (type.includes('pdf') || lower.endsWith('.pdf')) {
+    return { ext: 'pdf', mime: 'application/pdf', icon: 'file-text' };
+  }
+  if (type.includes('spreadsheetml') || lower.endsWith('.xlsx')) {
+    return { ext: 'xlsx', mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', icon: 'grid' };
+  }
+  if (type.includes('ms-excel') || lower.endsWith('.xls')) {
+    return { ext: 'xls', mime: 'application/vnd.ms-excel', icon: 'grid' };
+  }
+  if (type.includes('csv') || lower.endsWith('.csv')) {
+    return { ext: 'csv', mime: 'text/csv', icon: 'grid' };
+  }
+  if (type.startsWith('image/') || /\.(jpe?g|png)$/.test(lower)) {
+    const ext = lower.endsWith('.png') ? 'png' : 'jpg';
+    return { ext, mime: type.startsWith('image/') ? type : `image/${ext === 'png' ? 'png' : 'jpeg'}`, icon: 'image' };
+  }
+  return { ext: 'bin', mime: mimeType || 'application/octet-stream', icon: 'file' };
+}
+
 export const chatAPI = {
   async send({ roomId, toUserId, text, photoUrl, isVoice, voiceDuration, cargoId, tripId, clientMsgId }) {
     let r;
@@ -53,7 +81,12 @@ export const chatAPI = {
       const err = new Error('network'); err.isNetwork = true; throw err;
     }
     if (!r.ok) {
-      const err = new Error(`send failed ${r.status}`); err.status = r.status; throw err;
+      const body = await r.json().catch(() => ({}));
+      const detail = typeof body?.detail === 'string' ? body.detail : null;
+      const err = new Error(detail || `send failed ${r.status}`);
+      err.status = r.status;
+      err.detail = detail;
+      throw err;
     }
     return r.json();
   },
@@ -129,12 +162,21 @@ export const chatAPI = {
     } else {
       form.append('file', { uri, name: 'chat.jpg', type: 'image/jpeg' });
     }
-    const r = await authedFetch(`${BASE}/photo`, {
-      method: 'POST',
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      body: form,
-    });
-    if (!r.ok) throw new Error(`chat photo upload failed ${r.status}`);
+    let r;
+    try {
+      r = await authedFetch(`${BASE}/photo`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
+    } catch (e) {
+      throw attachmentError('network', { isNetwork: true, detail: e?.message || 'network' });
+    }
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}));
+      const detail = typeof body?.detail === 'string' ? body.detail : `chat photo upload failed ${r.status}`;
+      throw attachmentError(detail, { status: r.status, detail });
+    }
     return r.json();
   },
 
@@ -149,12 +191,21 @@ export const chatAPI = {
       const ext = String(uri).split('.').pop() || 'm4a';
       form.append('file', { uri, name: `voice.${ext}`, type: `audio/${ext === 'm4a' ? 'mp4' : ext}` });
     }
-    const r = await authedFetch(`${BASE}/voice`, {
-      method: 'POST',
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      body: form,
-    });
-    if (!r.ok) throw new Error(`chat voice upload failed ${r.status}`);
+    let r;
+    try {
+      r = await authedFetch(`${BASE}/voice`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
+    } catch (e) {
+      throw attachmentError('network', { isNetwork: true, detail: e?.message || 'network' });
+    }
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}));
+      const detail = typeof body?.detail === 'string' ? body.detail : `chat voice upload failed ${r.status}`;
+      throw attachmentError(detail, { status: r.status, detail });
+    }
     return r.json();
   },
 

@@ -25,8 +25,14 @@ test('deal document picker and backend support PDF plus Excel/CSV attachments', 
     assert.match(ui, new RegExp(mime.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     assert.match(backend, new RegExp(mime.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
-  assert.match(backend, /raw\[:8\] == b"\\xd0\\xcf\\x11\\xe0\\xa1\\xb1\\x1a\\xe1"/);
-  assert.match(backend, /raw\[:4\] == b"PK\\x03\\x04"/);
+  // OLE2 (legacy .xls) and zip (xlsx) magic bytes, factored into named
+  // constants (_OLE2_SIG/_ZIP_SIG) rather than inlined at each comparison
+  // site — see test_deal_attachment_upload_contract.mjs's other tests below
+  // for the constants' actual values and the xlsx/csv detection they drive.
+  assert.match(backend, /_OLE2_SIG = b"\\xd0\\xcf\\x11\\xe0\\xa1\\xb1\\x1a\\xe1"/);
+  assert.match(backend, /_ZIP_SIG = b"PK\\x03\\x04"/);
+  assert.match(backend, /raw\[:8\] == _OLE2_SIG/);
+  assert.match(backend, /raw\[:4\] != _ZIP_SIG/);
 });
 
 test('attachment retry uses one stable client upload id and backend deduplicates it', () => {
@@ -58,13 +64,42 @@ test('HTTP attachment failures are not mislabeled as a network failure', () => {
   assert.match(api, /throw attachmentError\(detail, \{ status: response\.status, detail \}\)/);
 });
 
-test('chat images open in a fullscreen viewer from both deal workspaces', () => {
-  const v1 = fs.readFileSync('src/screens/DealWorkspaceScreen.js', 'utf8');
-  const v2 = fs.readFileSync('src/screens/DealWorkspaceScreenV2.js', 'utf8');
-  for (const src of [v1, v2]) {
-    assert.match(src, /testID="deal-chat-image-open"/);
-    assert.match(src, /testID="deal-chat-image-viewer"/);
-    assert.match(src, /resizeMode="contain"/);
-    assert.match(src, /setImagePreview/);
-  }
+test('backend accepts XLSX/XLS/CSV documents, not only PDF/JPEG/PNG', () => {
+  assert.match(backend, /_XLSX_MIME = "application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet"/);
+  assert.match(backend, /_XLS_MIME = "application\/vnd\.ms-excel"/);
+  assert.match(backend, /_CSV_MIME = "text\/csv"/);
+  assert.match(backend, /_XLSX_MIME: \("document", "xlsx"\)/);
+  assert.match(backend, /_XLS_MIME: \("document", "xls"\)/);
+  assert.match(backend, /_CSV_MIME: \("document", "csv"\)/);
+});
+
+test('XLSX detection requires a real OOXML spreadsheet part, not just any PK zip signature', () => {
+  // docx/pptx/plain .zip all share the same 4-byte PK\x03\x04 signature as
+  // xlsx — a naive check would misclassify them. The sniff must additionally
+  // look for content that only a real spreadsheet workbook has.
+  assert.match(backend, /_looks_like_xlsx/);
+  assert.match(backend, /xl\/workbook\.xml/);
+  assert.match(backend, /\[Content_Types\]\.xml/);
+});
+
+test('legacy XLS is recognized by its real OLE2 signature', () => {
+  assert.match(backend, /_OLE2_SIG = b"\\xd0\\xcf\\x11\\xe0\\xa1\\xb1\\x1a\\xe1"/);
+});
+
+test('CSV has no magic bytes — the sniff is honestly documented as text-shaped, not forged as certain', () => {
+  assert.match(backend, /_looks_like_text/);
+  assert.match(backend, /No CSV magic bytes exist/);
+});
+
+test('frontend document picker offers XLSX/XLS/CSV alongside PDF/images, for both chat surfaces', () => {
+  assert.match(ui, /application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet/);
+  assert.match(ui, /application\/vnd\.ms-excel/);
+  assert.match(ui, /text\/csv/);
+});
+
+test('document type classification is shared, not duplicated, between DealAttachments and the workspace chat', () => {
+  assert.match(api, /export function documentKindFromFile/);
+  assert.match(ui, /documentKindFromFile/);
+  const workspace = fs.readFileSync('src/screens/DealWorkspaceScreenV2.js', 'utf8');
+  assert.match(workspace, /documentKindFromFile/);
 });

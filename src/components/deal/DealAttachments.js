@@ -7,7 +7,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
 import { useTheme } from '../../utils/ThemeContext';
-import { chatAPI } from '../../utils/chatAPI';
+import { chatAPI, documentKindFromFile } from '../../utils/chatAPI';
 import { compressImage } from '../../utils/imageCompress';
 import { accentFor } from './DealRoom';
 
@@ -55,7 +55,9 @@ function documentPickerTypes() {
     'application/pdf',
     'application/vnd.ms-excel',
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'text/csv',
+    // Some pickers report CSV under a different declared MIME than
+    // text/csv — list every alias so the OS file picker doesn't grey it out.
+    'text/csv', 'text/comma-separated-values', 'application/csv',
     'image/*',
   ];
 }
@@ -142,16 +144,19 @@ export default function DealAttachments({
     const file = res?.assets?.[0];
     if (!file?.uri) return;
     const localId = `att_${Date.now()}_${_localSeq++}`;
-    const mime = file.mimeType || '';
-    const isImage = String(mime).startsWith('image/') || /\.(png|jpe?g)$/i.test(file.name || '');
+    const kind = documentKindFromFile(file.mimeType, file.name);
+    // isImage (not isPdf) drives the compress-vs-passthrough branch in
+    // runUpload below — an XLSX/XLS/CSV routed through compressImage() would
+    // corrupt the file, so the gate must cover "is this a photo", not just
+    // "is this specifically a PDF".
     queueUpload({
       localId,
       uri: file.uri,
-      name: file.name || `document_${localId}`,
-      isImage,
+      name: file.name || `document_${localId}.${kind.ext}`,
+      isImage: kind.icon === 'image',
       // Safari may report application/octet-stream. Backend validates magic
-      // bytes; chatAPI re-wraps known extensions with a useful MIME.
-      mime: file.mimeType || null,
+      // bytes; chatAPI re-wraps the picked type for multipart.
+      mime: kind.mime,
       size: file.size || null,
     });
   }, [conversationId, queueUpload]);
