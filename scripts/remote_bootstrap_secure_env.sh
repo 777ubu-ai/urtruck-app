@@ -33,14 +33,16 @@ set_env() {
 }
 
 current_service="$(get_env SUPABASE_SERVICE_KEY "$ENV_FILE")"
-if [ -z "$current_service" ]; then
-  legacy_service="$(get_env SUPABASE_SERVICE_ROLE_KEY "$ENV_FILE")"
-  [ -n "$legacy_service" ] || legacy_service="$(get_env SUPABASE_KEY "$ENV_FILE")"
-  incoming_service=""
-  if [ -n "$REMOTE_BOOTSTRAP" ] && [ -f "$REMOTE_BOOTSTRAP" ]; then
-    incoming_service="$(get_env SUPABASE_SERVICE_KEY "$REMOTE_BOOTSTRAP")"
-  fi
-  set_env SUPABASE_SERVICE_KEY "${legacy_service:-$incoming_service}"
+legacy_service="$(get_env SUPABASE_SERVICE_ROLE_KEY "$ENV_FILE")"
+[ -n "$legacy_service" ] || legacy_service="$(get_env SUPABASE_KEY "$ENV_FILE")"
+incoming_service=""
+if [ -n "$REMOTE_BOOTSTRAP" ] && [ -f "$REMOTE_BOOTSTRAP" ]; then
+  incoming_service="$(get_env SUPABASE_SERVICE_KEY "$REMOTE_BOOTSTRAP")"
+fi
+if [ -n "$incoming_service" ]; then
+  set_env SUPABASE_SERVICE_KEY "$incoming_service"
+elif [ -z "$current_service" ]; then
+  set_env SUPABASE_SERVICE_KEY "$legacy_service"
 fi
 
 # Server-side route providers are optional enhancements for web/PWA because
@@ -63,11 +65,7 @@ fi
 # stale value left by earlier deploys, not just fill in when empty —
 # otherwise a server whose .env already has the dead host would keep it
 # forever under the old "only if missing" logic.
-current_supabase_url="$(get_env SUPABASE_URL "$ENV_FILE")"
-if [ -z "$current_supabase_url" ] || [ "$current_supabase_url" = 'https://hchmnocoxjvtgdamcmmi.supabase.co' ]; then
-  set_env SUPABASE_URL 'https://pymddxenwtjcbmrafvnc.supabase.co'
-fi
-unset current_supabase_url
+set_env SUPABASE_URL 'https://pymddxenwtjcbmrafvnc.supabase.co'
 set_env STORAGE_PROVIDER 'supabase'
 [ -n "$(get_env SUPABASE_BUCKET "$ENV_FILE")" ] || set_env SUPABASE_BUCKET 'urtruck-docs'
 
