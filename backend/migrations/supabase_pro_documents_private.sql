@@ -3,8 +3,12 @@
 -- в private + owner-only доступ через Supabase Storage RLS.
 --
 -- ⚠️ EXTERNAL ACTION REQUIRED: применяется в Supabase (SQL Editor проекта
--- hchmnocoxjvtgdamcmmi ИЛИ через Management API с service_role). У агента нет
+-- pymddxenwtjcbmrafvnc ИЛИ через Management API с service_role). У агента нет
 -- доступа к консоли Supabase — файл подготовлен, применяет владелец.
+-- (2026-08-21: ссылка на проект исправлена — hchmnocoxjvtgdamcmmi, указанный
+-- здесь ранее, больше не резолвится нигде и не виден в списке проектов
+-- аккаунта; см. src/config/supabase.js. Bucket pro-documents в
+-- pymddxenwtjcbmrafvnc пока не создан — этот файл всё ещё не применён.)
 --
 -- Предпосылки:
 --   * путь объекта: "{user_id}/{kind}_{ts}.jpg" (см. src/utils/proDocs.js);
