@@ -2,7 +2,7 @@ import React from 'react';
 import { ActivityIndicator, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import TripDetail from './TripDetail';
-import DealWorkspaceScreen from './DealWorkspaceScreenV2';
+import DealWorkspaceRoute from '../components/deal/DealWorkspaceRoute';
 import { marketAPI } from '../utils/marketAPI';
 import { chatAPI } from '../utils/chatAPI';
 import { getDealCounterpartyProfile, compactCounterpartyName } from '../utils/dealCounterpartyAPI';
@@ -70,7 +70,7 @@ export default function TripDetailV2(props) {
 
   if (target?.dealId) {
     return (
-      <DealWorkspaceScreen
+      <DealWorkspaceRoute
         {...props}
         route={{
           ...route,
