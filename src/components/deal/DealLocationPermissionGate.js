@@ -5,6 +5,7 @@ import BackgroundLocationDisclosureModal from './BackgroundLocationDisclosureMod
 import {
   getBackgroundLocationPermissionState,
   openLocationSettings,
+  requestBackgroundLocationPermission,
   requestForegroundLocationPermission,
 } from '../../utils/backgroundLocation';
 import { registerLocationPermissionRequestHandler } from '../../utils/locationPermissionCoordinator';
@@ -66,8 +67,9 @@ export default function DealLocationPermissionGate({ role, children }) {
 
   const successPayload = React.useCallback(() => ({
     ok: true,
-    foregroundOnly: true,
+    foregroundOnly: Platform.OS !== 'android',
     foregroundService: Platform.OS === 'android',
+    backgroundRequired: Platform.OS === 'android',
   }), []);
 
   const completeIfGranted = React.useCallback(async () => {
@@ -99,15 +101,25 @@ export default function DealLocationPermissionGate({ role, children }) {
       return;
     }
 
-    // Android active-trip tracking uses a location foreground service.
-    // ACCESS_BACKGROUND_LOCATION / "Allow all the time" is intentionally absent.
-    // Web uses the same disclosure but only browser foreground location access.
-    const state = await refreshPermission();
+    let state = null;
+    if (Platform.OS === 'android') {
+      setBusy(true);
+      const background = await requestBackgroundLocationPermission();
+      setBusy(false);
+      if (!background.ok) {
+        setModalMode('settings');
+        return;
+      }
+      state = await refreshPermission();
+    } else {
+      state = await refreshPermission();
+    }
+
     setModalVisible(false);
     setModalMode('disclosure');
     resolvePending(state?.ok
       ? successPayload()
-      : { ok: false, reason: 'fg_state_mismatch' });
+      : { ok: false, reason: Platform.OS === 'android' ? 'bg_state_mismatch' : 'fg_state_mismatch' });
   }, [busy, refreshPermission, resolvePending, successPayload]);
 
   const cancelDisclosure = React.useCallback(() => {

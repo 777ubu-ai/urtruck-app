@@ -13,9 +13,9 @@ const COPY = {
     settingsTitle: Platform.OS === 'web' ? 'Разрешите геолокацию в браузере' : 'Разрешите геолокацию для рейса',
     settingsBody: Platform.OS === 'web'
       ? 'Чтобы начать рейс, разрешите UrTruck доступ к местоположению для этого сайта в настройках браузера.'
-      : 'Чтобы начать рейс и передавать положение машины, разрешите UrTruck доступ к местоположению в настройках приложения.',
+      : 'Чтобы начать рейс и передавать положение машины во время перевозки, разрешите UrTruck доступ к геолокации «Всегда».',
     settingsHint: Platform.OS === 'android'
-      ? 'Включите обычный доступ к местоположению для UrTruck. Доступ «Разрешить всегда» не требуется.'
+      ? 'Откройте настройки UrTruck → Разрешения → Геолокация → Разрешить всегда. На Android сначала может появиться «При использовании приложения» — выберите его, затем включите «Всегда» в настройках.'
       : Platform.OS === 'web'
         ? 'Откройте настройки сайта в браузере, разрешите «Местоположение», вернитесь в UrTruck и нажмите «Проверить ещё раз».'
         : 'В настройках разрешите доступ к геолокации.',
@@ -32,9 +32,9 @@ const COPY = {
     settingsTitle: Platform.OS === 'web' ? 'Allow location in your browser' : 'Allow trip location',
     settingsBody: Platform.OS === 'web'
       ? 'To start the trip, allow location access for this site in your browser settings.'
-      : 'To start the trip and share the vehicle position, allow UrTruck to access location in the app settings.',
+      : 'To start the trip and share the vehicle position during transport, allow UrTruck location access “all the time”.',
     settingsHint: Platform.OS === 'android'
-      ? 'Enable normal location access for UrTruck. “Allow all the time” is not required.'
+      ? 'Open UrTruck settings → Permissions → Location → Allow all the time. Android may first show “While using the app”; choose it, then enable “All the time” in settings.'
       : Platform.OS === 'web'
         ? 'Open this site’s browser permissions, allow Location, return to UrTruck, then tap “Check again”.'
         : 'Allow location access in settings.',
@@ -51,9 +51,9 @@ const COPY = {
     settingsTitle: Platform.OS === 'web' ? '请在浏览器中允许位置权限' : '允许运输位置权限',
     settingsBody: Platform.OS === 'web'
       ? '要开始运输，请在浏览器的网站权限中允许 UrTruck 使用位置。'
-      : '为了开始运输并共享车辆位置，请在应用设置中允许 UrTruck 使用位置。',
+      : '为了开始运输并在运输期间共享车辆位置，请允许 UrTruck 始终访问位置。',
     settingsHint: Platform.OS === 'android'
-      ? '请为 UrTruck 开启普通位置权限，无需“始终允许”。'
+      ? '打开 UrTruck 设置 → 权限 → 位置 → 始终允许。Android 可能先显示“使用应用期间”；请先选择它，再到设置中开启“始终允许”。'
       : Platform.OS === 'web'
         ? '打开浏览器的网站权限，允许“位置”，返回 UrTruck 后点击“再次检查”。'
         : '请在设置中允许位置访问。',
@@ -70,9 +70,9 @@ const COPY = {
     settingsTitle: Platform.OS === 'web' ? 'Браузерде геолокацияға рұқсат беріңіз' : 'Рейс геолокациясына рұқсат беріңіз',
     settingsBody: Platform.OS === 'web'
       ? 'Рейсті бастау үшін браузердегі осы сайттың геолокация рұқсатын қосыңыз.'
-      : 'Рейсті бастау және көліктің орнын беру үшін қолданба баптауларында UrTruck-қа геолокацияға рұқсат беріңіз.',
+      : 'Рейсті бастау және тасымал кезінде көліктің орнын беру үшін UrTruck-қа геолокацияға «Әрқашан» рұқсат беріңіз.',
     settingsHint: Platform.OS === 'android'
-      ? 'UrTruck үшін қалыпты геолокация рұқсатын қосыңыз. «Әрқашан рұқсат беру» қажет емес.'
+      ? 'UrTruck баптаулары → Рұқсаттар → Геолокация → Әрқашан рұқсат беру. Android алдымен «Қолдану кезінде» көрсетуі мүмкін; оны таңдап, кейін баптауда «Әрқашан» қосыңыз.'
       : Platform.OS === 'web'
         ? 'Браузердегі сайт рұқсаттарын ашып, геолокацияны қосыңыз, UrTruck-қа оралып «Қайта тексеру» батырмасын басыңыз.'
         : 'Баптауларда геолокацияға рұқсат беріңіз.',

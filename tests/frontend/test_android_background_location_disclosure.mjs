@@ -13,7 +13,7 @@ const chat = read('src/screens/ChatScreenV2.js');
 const manifest = read('android/app/src/main/AndroidManifest.xml');
 const app = JSON.parse(read('app.json')).expo;
 
-test('trip disclosure matches the approved Track trip screen and foreground-service behavior', () => {
+test('trip disclosure matches the approved Track trip screen and always-location behavior', () => {
   assert.match(disclosure, /Отслеживать рейс/);
   assert.match(disclosure, /Во время активного рейса UrTruck передаёт местоположение автомобиля грузоотправителю/);
   assert.match(disclosure, /приложение свёрнуто или экран выключен/);
@@ -22,7 +22,7 @@ test('trip disclosure matches the approved Track trip screen and foreground-serv
   assert.match(disclosure, /Разрешить и начать рейс/);
   assert.match(disclosure, /Не сейчас/);
   assert.doesNotMatch(disclosure, /когда приложение закрыто или не используется/);
-  assert.match(disclosure, /Доступ «Разрешить всегда» не требуется/);
+  assert.match(disclosure, /Разрешить всегда/);
   assert.match(disclosure, /testID="background-location-disclosure"/);
   assert.match(disclosure, /testID="background-location-disclosure-continue"/);
 });
@@ -42,12 +42,12 @@ test('Android and web use the same per-trip disclosure from Start trip', () => {
   assert.match(tracker, /requestLocationPermissionThroughDisclosure\(\{ source: 'start_trip' \}\)/);
 });
 
-test('Android permission sequence is Start trip disclosure then foreground only', () => {
+test('Android permission sequence is Start trip disclosure then foreground and always background', () => {
   const disclosureIndex = gate.indexOf("setModalMode('disclosure')");
   const foregroundIndex = gate.indexOf('requestForegroundLocationPermission()');
   assert.ok(disclosureIndex >= 0 && foregroundIndex >= 0);
   assert.ok(disclosureIndex < foregroundIndex, 'disclosure must be wired before foreground permission');
-  assert.doesNotMatch(gate, /requestBackgroundLocationPermission/);
+  assert.match(gate, /requestBackgroundLocationPermission\(\)/);
   assert.match(gate, /foregroundService: Platform\.OS === 'android'/);
   assert.match(gate, /openLocationSettings\(\)/);
   assert.match(disclosure, /background-location-open-settings/);
@@ -90,25 +90,26 @@ test('Android location foreground service starts only while app is visible', () 
   assert.match(hook, /startBackgroundTracking\(\)/);
 });
 
-test('Android config omits background location and keeps location foreground service', () => {
+test('Android config declares background location and keeps location foreground service', () => {
   assert.equal(app.android.versionCode, 9);
   assert.ok(app.android.permissions.includes('android.permission.ACCESS_FINE_LOCATION'));
   assert.ok(app.android.permissions.includes('android.permission.ACCESS_COARSE_LOCATION'));
   assert.ok(app.android.permissions.includes('android.permission.FOREGROUND_SERVICE'));
   assert.ok(app.android.permissions.includes('android.permission.FOREGROUND_SERVICE_LOCATION'));
-  assert.ok(!app.android.permissions.includes('android.permission.ACCESS_BACKGROUND_LOCATION'));
-  assert.doesNotMatch(manifest, /android\.permission\.ACCESS_BACKGROUND_LOCATION/);
+  assert.ok(app.android.permissions.includes('android.permission.ACCESS_BACKGROUND_LOCATION'));
+  assert.match(manifest, /android\.permission\.ACCESS_BACKGROUND_LOCATION/);
   assert.match(manifest, /android\.permission\.FOREGROUND_SERVICE_LOCATION/);
 
   const plugin = app.plugins.find((entry) => Array.isArray(entry) && entry[0] === 'expo-location');
   assert.equal(plugin?.[1]?.isAndroidForegroundServiceEnabled, true);
-  assert.equal(plugin?.[1]?.isAndroidBackgroundLocationEnabled, false);
+  assert.equal(plugin?.[1]?.isAndroidBackgroundLocationEnabled, true);
   assert.equal(plugin?.[1]?.isIosBackgroundLocationEnabled, true);
 });
 
-test('Android permission state treats foreground grant as sufficient for the trip service', () => {
+test('Android permission state requires foreground and background grants for the trip service', () => {
   assert.match(tracker, /Platform\.OS === 'android'/);
-  assert.match(tracker, /background: 'not_required_foreground_service'/);
-  assert.match(tracker, /ok: fg\.status === 'granted'/);
+  assert.match(tracker, /background: bg\.status/);
+  assert.match(tracker, /ok: fg\.status === 'granted' && bg\.status === 'granted'/);
+  assert.match(tracker, /backgroundRequired: true/);
   assert.match(tracker, /foregroundService: true/);
 });

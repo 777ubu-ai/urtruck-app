@@ -1,7 +1,7 @@
 // backgroundLocation — GPS-трекинг водителя по активным сделкам.
-// Android: пользователь явно запускает рейс, после чего координаты продолжают
-// передаваться через location foreground service с постоянным уведомлением.
-// ACCESS_BACKGROUND_LOCATION намеренно не используется и не запрашивается.
+// Android: пользователь явно запускает рейс, подтверждает disclosure, даёт
+// foreground permission, затем включает "Разрешить всегда" для активного
+// рейса. Координаты отправляются только по серверно-разрешённым сделкам.
 // Web показывает тот же per-trip disclosure перед browser location permission.
 // iOS сохраняет отдельный background-location flow.
 import { Platform } from 'react-native';
@@ -102,20 +102,24 @@ export async function getBackgroundLocationPermissionState() {
       };
     }
 
-    // Android active-trip tracking is a user-visible location foreground
-    // service. Foreground location permission is sufficient; the app does not
-    // declare or request ACCESS_BACKGROUND_LOCATION.
     if (Platform.OS === 'android') {
+      const bg = await locationModule.getBackgroundPermissionsAsync();
       return {
         supported: true,
         platform: 'android',
         foreground: fg.status,
         foregroundCanAskAgain: fg.canAskAgain !== false,
-        background: 'not_required_foreground_service',
-        backgroundCanAskAgain: false,
-        ok: fg.status === 'granted',
-        foregroundOnly: true,
+        background: bg.status,
+        backgroundCanAskAgain: bg.canAskAgain !== false,
+        ok: fg.status === 'granted' && bg.status === 'granted',
+        foregroundOnly: false,
         foregroundService: true,
+        backgroundRequired: true,
+        reason: fg.status !== 'granted'
+          ? 'foreground_required'
+          : bg.status !== 'granted'
+            ? 'background_required'
+            : undefined,
       };
     }
 
@@ -143,8 +147,9 @@ export async function getBackgroundLocationPermissionState() {
   }
 }
 
-// Foreground permission is the only Android runtime location permission UrTruck
-// requests. Call only after the in-app disclosure and an explicit user tap.
+// Foreground permission is requested only after the in-app disclosure and an
+// explicit user tap. Android then continues to the system background-location
+// flow/settings for "Allow all the time".
 export async function requestForegroundLocationPermission() {
   const locationModule = await resolveLocationModule();
   if (!locationModule) return { ok: false, reason: 'unsupported' };
@@ -164,17 +169,8 @@ export async function requestForegroundLocationPermission() {
   }
 }
 
-// Compatibility API. Android deliberately does not ask for background
-// permission; its active-trip location task runs as a foreground service.
-// iOS still needs the background grant for its background location mode.
 export async function requestBackgroundLocationPermission() {
   if (Platform.OS === 'web') return { ok: true, foregroundOnly: true };
-  if (Platform.OS === 'android') {
-    const current = await getBackgroundLocationPermissionState();
-    return current.ok
-      ? { ok: true, foregroundOnly: true, foregroundService: true, backgroundNotRequired: true }
-      : { ok: false, reason: 'foreground_required', permission: current };
-  }
 
   const locationModule = await resolveLocationModule();
   if (!locationModule) return { ok: false, reason: 'unsupported' };
@@ -183,15 +179,32 @@ export async function requestBackgroundLocationPermission() {
     if (fg.status !== 'granted') return { ok: false, reason: 'foreground_required' };
 
     const current = await locationModule.getBackgroundPermissionsAsync();
-    if (current.status === 'granted') return { ok: true, status: 'granted' };
+    if (current.status === 'granted') {
+      return {
+        ok: true,
+        status: 'granted',
+        foregroundOnly: false,
+        foregroundService: Platform.OS === 'android',
+        backgroundRequired: Platform.OS === 'android',
+      };
+    }
 
     const result = await locationModule.requestBackgroundPermissionsAsync();
-    if (result.status === 'granted') return { ok: true, status: 'granted' };
+    if (result.status === 'granted') {
+      return {
+        ok: true,
+        status: 'granted',
+        foregroundOnly: false,
+        foregroundService: Platform.OS === 'android',
+        backgroundRequired: Platform.OS === 'android',
+      };
+    }
     return {
       ok: false,
       status: result.status,
       canAskAgain: result.canAskAgain !== false,
-      reason: result.canAskAgain === false ? 'settings_required' : 'bg_denied',
+      requiresSettings: Platform.OS === 'android',
+      reason: result.canAskAgain === false || Platform.OS === 'android' ? 'settings_required' : 'bg_denied',
     };
   } catch (error) {
     return { ok: false, reason: String(error?.message || error || 'bg_permission_failed') };
@@ -200,7 +213,7 @@ export async function requestBackgroundLocationPermission() {
 
 // Compatibility entry point used by start-trip actions.
 // Android and web MUST go through the registered visible per-trip disclosure
-// host. Android then receives foreground location only; iOS retains its own
+// host. Android then requires "Allow all the time"; iOS keeps its own
 // foreground + background flow.
 export async function ensureBackgroundLocationPermission() {
   if (Platform.OS === 'android' || Platform.OS === 'web') {
@@ -238,8 +251,8 @@ export async function getCurrentLocationPayload() {
 }
 
 // Background hook may call this after the deal becomes active. It MUST NOT
-// trigger a permission dialog by itself. On Android it starts only the visible
-// foreground service and therefore needs foreground location permission only.
+// trigger a permission dialog by itself. On Android it starts the visible
+// foreground service only after foreground + background permissions are granted.
 export async function startBackgroundTracking() {
   if (Platform.OS === 'web') return { ok: false, reason: 'background_unavailable', foregroundOnly: true };
   const locationModule = await resolveLocationModule();
@@ -249,7 +262,7 @@ export async function startBackgroundTracking() {
   if (!permission.ok) {
     return {
       ok: false,
-      reason: Platform.OS === 'android' ? 'foreground_unavailable' : 'background_unavailable',
+      reason: 'background_unavailable',
       permission,
     };
   }
