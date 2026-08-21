@@ -2,13 +2,12 @@ import React from 'react';
 import { ActivityIndicator, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ChatScreen from './ChatScreen';
-import DealWorkspaceScreen from './DealWorkspaceScreenV2';
-import DealLocationPermissionGate from '../components/deal/DealLocationPermissionGate';
+import DealWorkspaceRoute from '../components/deal/DealWorkspaceRoute';
 import { chatAPI } from '../utils/chatAPI';
 import { getDealCounterpartyProfile, compactCounterpartyName } from '../utils/dealCounterpartyAPI';
 import { useV1Colors } from '../theme/designV1';
 
-// Accepted deal rooms use the three-zone map-first workspace. Support/general/
+// Accepted deal rooms use the canonical gated workspace route. Support/general/
 // pre-deal conversations keep the mature legacy ChatScreen.
 export default function ChatScreenV2(props) {
   const { route } = props;
@@ -71,15 +70,7 @@ export default function ChatScreenV2(props) {
         partner: resolvedPartner || params.partner || null,
       },
     };
-    return (
-      <DealLocationPermissionGate
-        dealId={resolvedDealId}
-        role={params.role}
-        initialStatus={params.dealStatus}
-      >
-        <DealWorkspaceScreen {...props} route={nextRoute} />
-      </DealLocationPermissionGate>
-    );
+    return <DealWorkspaceRoute {...props} route={nextRoute} />;
   }
 
   return <ChatScreen {...props} />;
