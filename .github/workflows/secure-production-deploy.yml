@@ -98,6 +98,24 @@ jobs:
             echo 'SELECTED_YANDEX_ROUTER_API_KEY=' >> "$GITHUB_ENV"
           fi
 
+      # 2026-08-21 P0: confirmed via scripts/dns_diagnose.sh that the
+      # production server's own ISP resolver (195.210.46.195/.132) fails to
+      # resolve this ONE Supabase project subdomain while resolving
+      # everything else fine (github.com, api.mobizon.kz, and even the
+      # supabase.co apex zone itself) — DNSSEC is off, so it isn't that
+      # either. The GitHub Actions runner has ordinary, unrelated DNS and
+      # resolves it without issue. Resolve it here, on a host we know works,
+      # so remote_bootstrap_secure_env.sh can pin a static /etc/hosts entry
+      # on the server as a safe, single-hostname, reversible workaround —
+      # refreshed from this known-good source on every deploy so a Supabase
+      # IP rotation self-heals within one cycle instead of going stale.
+      - name: Resolve Supabase storage host from a known-good resolver
+        run: |
+          set -euo pipefail
+          IP=$(python3 -c "import socket; print(socket.gethostbyname('hchmnocoxjvtgdamcmmi.supabase.co'))")
+          echo "Resolved hchmnocoxjvtgdamcmmi.supabase.co -> $IP (from the GitHub Actions runner)"
+          echo "SUPABASE_STORAGE_IP=$IP" >> "$GITHUB_ENV"
+
       - name: Install SSH transport dependency
         run: |
           sudo apt-get update -qq
@@ -141,6 +159,9 @@ jobs:
           fi
           if [ -n "${OPENROUTESERVICE_API_KEY:-}" ]; then
             printf 'OPENROUTESERVICE_API_KEY=%s\n' "$OPENROUTESERVICE_API_KEY" >> "$BOOTSTRAP_FILE"
+          fi
+          if [ -n "${SUPABASE_STORAGE_IP:-}" ]; then
+            printf 'SUPABASE_STORAGE_IP=%s\n' "$SUPABASE_STORAGE_IP" >> "$BOOTSTRAP_FILE"
           fi
           REMOTE_BOOTSTRAP="/tmp/urtruck-secure-env-${GITHUB_RUN_ID}"
           bash scripts/deploy-ssh.sh scp "$BOOTSTRAP_FILE" "$SERVER_USER@$SERVER_HOST:$REMOTE_BOOTSTRAP"

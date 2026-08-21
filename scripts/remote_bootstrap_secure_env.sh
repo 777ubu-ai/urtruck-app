@@ -79,6 +79,48 @@ yandex_cnt="$(grep -cE '^YANDEX_ROUTER_API_KEY=' "$ENV_FILE" || true)"
 [ "$yandex_cnt" -le 1 ] || { echo "ERROR: YANDEX_ROUTER_API_KEY_COUNT=$yandex_cnt"; exit 1; }
 chmod 600 "$ENV_FILE" 2>/dev/null || true
 
+# --- Supabase storage host DNS fallback ----------------------------------
+# 2026-08-21 P0: confirmed via scripts/dns_diagnose.sh that this box's own
+# ISP resolver (195.210.46.195/.132) fails to resolve the Supabase project
+# subdomain specifically — DNSSEC is off (ruled out), and the SAME resolver
+# correctly resolves unrelated domains (github.com, api.mobizon.kz) and even
+# the supabase.co apex zone itself. The failure is scoped to this one CNAME
+# chain, on this one resolver, outside anything this box's application
+# config controls. Pin a managed, clearly-marked /etc/hosts entry as a safe,
+# reversible, single-hostname workaround — refreshed from a known-good DNS
+# source (the GitHub Actions runner, see the workflow step that sets
+# SUPABASE_STORAGE_IP) on every deploy, so a Supabase IP rotation self-heals
+# within one deploy cycle instead of silently going stale.
+supabase_host="$(get_env SUPABASE_URL "$ENV_FILE" | sed -E 's#^https?://##; s#/.*$##')"
+incoming_storage_ip=""
+if [ -n "$REMOTE_BOOTSTRAP" ] && [ -f "$REMOTE_BOOTSTRAP" ]; then
+  incoming_storage_ip="$(get_env SUPABASE_STORAGE_IP "$REMOTE_BOOTSTRAP")"
+fi
+if [ -n "$incoming_storage_ip" ] && [ -n "$supabase_host" ]; then
+  if getent ahosts "$supabase_host" >/dev/null 2>&1; then
+    echo "SUPABASE_DNS_FALLBACK=not_needed"
+  else
+    MARK_BEGIN="# BEGIN urtruck-supabase-dns-fallback (managed by remote_bootstrap_secure_env.sh — safe to delete)"
+    MARK_END="# END urtruck-supabase-dns-fallback"
+    hosts_tmp="$(mktemp)"
+    awk -v b="$MARK_BEGIN" -v e="$MARK_END" '
+      $0==b {skip=1; next}
+      $0==e {skip=0; next}
+      !skip {print}
+    ' /etc/hosts > "$hosts_tmp"
+    printf '%s\n%s\t%s\n%s\n' "$MARK_BEGIN" "$incoming_storage_ip" "$supabase_host" "$MARK_END" >> "$hosts_tmp"
+    if [ "$(id -u)" = "0" ]; then
+      cp "$hosts_tmp" /etc/hosts && echo "SUPABASE_DNS_FALLBACK=applied:$incoming_storage_ip"
+    elif sudo -n cp "$hosts_tmp" /etc/hosts 2>/dev/null; then
+      echo "SUPABASE_DNS_FALLBACK=applied:$incoming_storage_ip"
+    else
+      echo "SUPABASE_DNS_FALLBACK=blocked:no-root-and-no-passwordless-sudo"
+    fi
+    rm -f "$hosts_tmp"
+  fi
+fi
+unset supabase_host incoming_storage_ip
+
 if command -v curl >/dev/null 2>&1; then
   supabase_url="$(get_env SUPABASE_URL "$ENV_FILE")"
   supabase_key="$(get_env SUPABASE_SERVICE_KEY "$ENV_FILE")"
