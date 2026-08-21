@@ -147,6 +147,20 @@ jobs:
           bash scripts/deploy-ssh.sh scp scripts/remote_bootstrap_secure_env.sh "$SERVER_USER@$SERVER_HOST:/tmp/urtruck_bootstrap_env.sh"
           bash scripts/deploy-ssh.sh ssh "chmod 700 /tmp/urtruck_bootstrap_env.sh; bash /tmp/urtruck_bootstrap_env.sh '$BACKEND_DIR' '$REMOTE_BOOTSTRAP'; rc=\$?; rm -f /tmp/urtruck_bootstrap_env.sh '$REMOTE_BOOTSTRAP'; exit \$rc"
 
+      # Diagnostic-only, never fails the deploy. Added 2026-08-21 (P0 voice/
+      # document upload investigation): the bucket-sync curl above has been
+      # failing with "Could not resolve host" for the Supabase hostname on
+      # this server across multiple consecutive deploys. This narrows down
+      # whether it's a system-resolver problem, Supabase-host-specific, or a
+      # total external-DNS outage on the box, so the real fix (not a guess)
+      # can be applied next.
+      - name: Diagnose Supabase DNS resolution on production server
+        run: |
+          set -uo pipefail
+          bash scripts/deploy-ssh.sh scp scripts/dns_diagnose.sh "$SERVER_USER@$SERVER_HOST:/tmp/urtruck_dns_diagnose.sh"
+          bash scripts/deploy-ssh.sh ssh "chmod 700 /tmp/urtruck_dns_diagnose.sh; bash /tmp/urtruck_dns_diagnose.sh hchmnocoxjvtgdamcmmi.supabase.co; rm -f /tmp/urtruck_dns_diagnose.sh"
+          true
+
       - name: Deploy backend and verify PM2 health
         run: |
           set -euo pipefail
