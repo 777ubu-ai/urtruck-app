@@ -180,13 +180,21 @@ export const chatAPI = {
     return r.json();
   },
 
-  async uploadChatVoice(uri) {
+  async uploadChatVoice(uri, { blob: providedBlob = null, type = null, name = null } = {}) {
     const token = await storage.get(TOKEN_KEY);
     const form = new FormData();
     if (Platform.OS === 'web') {
-      const blob = await fetch(uri).then((r) => r.blob());
-      const ext = (blob.type || '').includes('webm') ? 'webm' : 'm4a';
-      form.append('file', blob, `voice.${ext}`);
+      const blob = providedBlob || await fetch(uri).then((r) => r.blob());
+      const mime = type || blob.type || 'audio/webm';
+      const ext = mime.includes('ogg') ? 'ogg'
+        : mime.includes('wav') ? 'wav'
+          : mime.includes('mpeg') || mime.includes('mp3') ? 'mp3'
+            : mime.includes('mp4') || mime.includes('aac') ? 'm4a'
+              : 'webm';
+      const part = typeof File !== 'undefined'
+        ? new File([blob], name || `voice.${ext}`, { type: mime })
+        : new Blob([blob], { type: mime });
+      form.append('file', part, name || `voice.${ext}`);
     } else {
       const ext = String(uri).split('.').pop() || 'm4a';
       form.append('file', { uri, name: `voice.${ext}`, type: `audio/${ext === 'm4a' ? 'mp4' : ext}` });

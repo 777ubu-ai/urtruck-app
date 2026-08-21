@@ -761,7 +761,17 @@ async def upload_chat_voice(file: UploadFile = File(...), user=Depends(require_l
         "ogg": "audio/ogg",
         "wav": "audio/wav",
     }.get(ext, "application/octet-stream")
-    key = storage.save_file(data, "chat_voice", ext=ext, content_type=audio_mime)
+    try:
+        key = storage.save_file(data, "chat_voice", ext=ext, content_type=audio_mime)
+    except Exception as exc:
+        storage_status = getattr(exc, "status_code", None)
+        storage_detail = str(getattr(exc, "detail", "") or "")
+        print(
+            f"[voice-storage] failed mime={audio_mime} bytes={len(data)} error={type(exc).__name__} "
+            f"storage_status={storage_status} detail={storage_detail[:180]!r}",
+            flush=True,
+        )
+        raise HTTPException(status_code=502, detail="Не удалось сохранить голосовое") from exc
     return {"voice_key": key}
 
 

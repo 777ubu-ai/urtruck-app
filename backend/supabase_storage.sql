@@ -12,6 +12,9 @@ values (
   10485760,
   array[
     'image/jpeg', 'image/png', 'application/pdf',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'text/csv', 'text/comma-separated-values', 'application/csv',
     'audio/webm', 'audio/mp4', 'audio/mpeg', 'audio/aac',
     'audio/ogg', 'audio/wav'
   ]

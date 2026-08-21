@@ -37,6 +37,16 @@ _SAFE_SEGMENT_RE = re.compile(r"[^A-Za-z0-9_-]+")
 _SAFE_EXT_RE = re.compile(r"[^A-Za-z0-9]+")
 
 
+class StorageSaveError(RuntimeError):
+    """Raised when the configured durable storage rejects an object."""
+
+    def __init__(self, message: str, *, provider: str = "", status_code: int | None = None, detail: str = ""):
+        super().__init__(message)
+        self.provider = provider
+        self.status_code = status_code
+        self.detail = detail
+
+
 def _safe_segment(value: str, fallback: str) -> str:
     cleaned = _SAFE_SEGMENT_RE.sub("-", str(value or "").strip()).strip("-_")
     return cleaned[:64] or fallback
@@ -70,8 +80,19 @@ def _save_supabase(data: bytes, key: str, content_type: str) -> str:
         "Content-Type": content_type or "application/octet-stream",
         "x-upsert": "true",
     }
-    r = httpx.post(url, headers=headers, content=data, timeout=30.0)
-    r.raise_for_status()
+    try:
+        r = httpx.post(url, headers=headers, content=data, timeout=30.0)
+        r.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        body = exc.response.text[:500] if exc.response is not None else ""
+        raise StorageSaveError(
+            "Supabase Storage rejected the file",
+            provider="supabase",
+            status_code=exc.response.status_code if exc.response is not None else None,
+            detail=body,
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise StorageSaveError("Supabase Storage is unavailable", provider="supabase", detail=str(exc)) from exc
     return f"{_SUPABASE_REF_PREFIX}{SUPABASE_BUCKET}/{key}"
 
 
@@ -170,16 +191,16 @@ def save_file(
     key = _gen_key(category, ext)
     if PROVIDER == "supabase":
         if not (SUPABASE_URL and SUPABASE_KEY):
-            raise RuntimeError("Supabase Storage is not configured")
+            raise StorageSaveError("Supabase Storage is not configured", provider="supabase")
         return _save_supabase(data, key, content_type)
     if PROVIDER == "s3":
         if not S3_BUCKET:
-            raise RuntimeError("S3 Storage is not configured")
+            raise StorageSaveError("S3 Storage is not configured", provider="s3")
         return _save_s3(data, key, content_type)
     if PROVIDER != "local":
-        raise RuntimeError(f"Unsupported storage provider: {PROVIDER}")
+        raise StorageSaveError(f"Unsupported storage provider: {PROVIDER}", provider=PROVIDER)
     if _PROD:
-        raise RuntimeError("Local storage is disabled in production")
+        raise StorageSaveError("Local storage is disabled in production", provider="local")
     return _save_local(data, key)
 
 

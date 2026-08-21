@@ -118,7 +118,7 @@ test('chat has no permanent second tab — status/history lives behind one icon-
   assert.match(workspace, /setStatusModalOpen\(true\)/);
 });
 
-test('composer grows then scrolls, switches mic to send, has a dedicated camera button, and uses a 2x4 WhatsApp-like attachment menu', () => {
+test('composer grows then scrolls, switches mic to send, has a dedicated camera button, and uses a WhatsApp-like attachment menu', () => {
   assert.match(workspace, /multiline/);
   assert.match(workspace, /onContentSizeChange/);
   assert.match(workspace, /Math\.min\(112/);
@@ -133,7 +133,8 @@ test('composer grows then scrolls, switches mic to send, has a dedicated camera 
   assert.match(workspace, /testID:\s*'deal-chat-attach-quick-reply'/);
   assert.match(workspace, /testID:\s*'deal-chat-attach-call'/);
   assert.match(workspace, /testID="deal-chat-attach-menu"/);
-  assert.match(workspace, /PLUS_MENU\.map/, 'attach menu must render all 6 tiles from one data-driven list, not 6 hand-written copies');
+  assert.match(workspace, /PLUS_MENU\.map/, 'attach menu must render all tiles from one data-driven list, not hand-written copies');
+  assert.match(workspace, /key: 'translate'/, 'deal chat must keep the translation shortcut from the legacy chat');
   // Section 3: Контакт/Каталог have no working logic yet and must not exist
   // as tiles at all (not even disabled) — a fake-active button is worse than
   // no button.
@@ -147,7 +148,7 @@ test('every plus-menu tile has a real handler — no decorative buttons', () => 
   // Each tile object must carry an onPress that resolves to a real,
   // in-file function reference, not a no-op.
   const onPressMatches = [...items.matchAll(/onPress:\s*([^,}]+)/g)].map((m) => m[1].trim());
-  assert.equal(onPressMatches.length, 6, `expected 6 plus-menu tiles with onPress, found ${onPressMatches.length}`);
+  assert.equal(onPressMatches.length, 7, `expected 7 plus-menu tiles with onPress, found ${onPressMatches.length}`);
   for (const handler of onPressMatches) {
     assert.notEqual(handler, '() => {}', `plus-menu tile has a no-op handler: ${handler}`);
     assert.notEqual(handler, 'null', `plus-menu tile has a null handler: ${handler}`);

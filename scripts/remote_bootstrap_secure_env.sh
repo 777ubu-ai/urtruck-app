@@ -79,6 +79,34 @@ yandex_cnt="$(grep -cE '^YANDEX_ROUTER_API_KEY=' "$ENV_FILE" || true)"
 [ "$yandex_cnt" -le 1 ] || { echo "ERROR: YANDEX_ROUTER_API_KEY_COUNT=$yandex_cnt"; exit 1; }
 chmod 600 "$ENV_FILE" 2>/dev/null || true
 
+if command -v curl >/dev/null 2>&1; then
+  supabase_url="$(get_env SUPABASE_URL "$ENV_FILE")"
+  supabase_key="$(get_env SUPABASE_SERVICE_KEY "$ENV_FILE")"
+  supabase_bucket="$(get_env SUPABASE_BUCKET "$ENV_FILE")"
+  bucket_payload='{"public":false,"file_size_limit":10485760,"allowed_mime_types":["image/jpeg","image/png","application/pdf","application/vnd.ms-excel","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","text/csv","text/comma-separated-values","application/csv","audio/webm","audio/mp4","audio/mpeg","audio/aac","audio/ogg","audio/wav"]}'
+  bucket_code="$(curl -sS -o /tmp/urtruck_bucket_sync.out -w '%{http_code}' \
+    -X PUT "$supabase_url/storage/v1/bucket/$supabase_bucket" \
+    -H "Authorization: Bearer $supabase_key" \
+    -H "apikey: $supabase_key" \
+    -H "Content-Type: application/json" \
+    --data "$bucket_payload" || true)"
+  if [ "$bucket_code" = "404" ]; then
+    bucket_code="$(curl -sS -o /tmp/urtruck_bucket_sync.out -w '%{http_code}' \
+      -X POST "$supabase_url/storage/v1/bucket" \
+      -H "Authorization: Bearer $supabase_key" \
+      -H "apikey: $supabase_key" \
+      -H "Content-Type: application/json" \
+      --data "{\"id\":\"$supabase_bucket\",\"name\":\"$supabase_bucket\",${bucket_payload#\{}" || true)"
+  fi
+  if [ "$bucket_code" = "200" ] || [ "$bucket_code" = "201" ]; then
+    echo 'SUPABASE_BUCKET_SYNC=ok'
+  else
+    echo "SUPABASE_BUCKET_SYNC=failed:$bucket_code"
+  fi
+  rm -f /tmp/urtruck_bucket_sync.out
+  unset supabase_url supabase_key supabase_bucket bucket_payload bucket_code
+fi
+
 echo 'SECURE_ENV=ready'
 echo 'STORAGE_PROVIDER=supabase'
 echo 'FILE_SIGNING_KEY_PRESENT=yes'

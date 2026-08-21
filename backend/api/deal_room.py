@@ -368,8 +368,11 @@ async def upload_attachment(
     except Exception as exc:
         if reservation:
             _delete_attachment_reservation(reservation["id"])
+        storage_status = getattr(exc, "status_code", None)
+        storage_detail = str(getattr(exc, "detail", "") or "")
         print(
-            f"[attachment-storage] failed room={conversation_id} mime={mime} bytes={len(raw)} error={type(exc).__name__}",
+            f"[attachment-storage] failed room={conversation_id} mime={mime} bytes={len(raw)} "
+            f"error={type(exc).__name__} storage_status={storage_status} detail={storage_detail[:180]!r}",
             flush=True,
         )
         raise HTTPException(status_code=502, detail="Не удалось сохранить файл") from exc

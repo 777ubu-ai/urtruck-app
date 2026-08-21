@@ -75,7 +75,7 @@ const COPY = {
     updatedNow: 'Обновлено сейчас', updated: 'Обновлено', ago: 'назад', min: 'мин', hour: 'ч', day: 'д',
     cargo: 'Груз', driver: 'Водитель', shipper: 'Грузоотправитель',
     noMessages: 'Сообщений пока нет', attachPhoto: 'Фото', attachCamera: 'Камера', attachDocument: 'Документ',
-    attachLocation: 'Местопол.', attachQuickReply: 'Быстрый ответ', attachCall: 'Звонок',
+    attachLocation: 'Местопол.', attachQuickReply: 'Быстрый ответ', attachCall: 'Звонок', attachTranslate: 'Перевод',
     callAudio: 'Аудиозвонок', callVideo: 'Видеозвонок', callSendLink: 'Отправить ссылку на звонок',
     callSchedule: 'Запланировать звонок', comingSoon: 'Скоро добавим',
     recording: 'Идёт запись…', voiceMessage: 'Голосовое сообщение',
@@ -91,7 +91,7 @@ const COPY = {
     updatedNow: 'Updated now', updated: 'Updated', ago: 'ago', min: 'min', hour: 'h', day: 'd',
     cargo: 'Cargo', driver: 'Driver', shipper: 'Shipper',
     noMessages: 'No messages yet', attachPhoto: 'Photo', attachCamera: 'Camera', attachDocument: 'Document',
-    attachLocation: 'Location', attachQuickReply: 'Quick reply', attachCall: 'Call',
+    attachLocation: 'Location', attachQuickReply: 'Quick reply', attachCall: 'Call', attachTranslate: 'Translate',
     callAudio: 'Audio call', callVideo: 'Video call', callSendLink: 'Send call link',
     callSchedule: 'Schedule a call', comingSoon: 'Coming soon',
     recording: 'Recording…', voiceMessage: 'Voice message',
@@ -107,7 +107,7 @@ const COPY = {
     updatedNow: '刚刚更新', updated: '更新于', ago: '前', min: '分钟', hour: '小时', day: '天',
     cargo: '货物', driver: '司机', shipper: '货主',
     noMessages: '暂无消息', attachPhoto: '照片', attachCamera: '相机', attachDocument: '文件',
-    attachLocation: '位置', attachQuickReply: '快速回复', attachCall: '通话',
+    attachLocation: '位置', attachQuickReply: '快速回复', attachCall: '通话', attachTranslate: '翻译',
     callAudio: '语音通话', callVideo: '视频通话', callSendLink: '发送通话链接',
     callSchedule: '安排通话', comingSoon: '即将推出',
     recording: '正在录音…', voiceMessage: '语音消息',
@@ -123,7 +123,7 @@ const COPY = {
     updatedNow: 'Қазір жаңартылды', updated: 'Жаңартылды', ago: 'бұрын', min: 'мин', hour: 'сағ', day: 'күн',
     cargo: 'Жүк', driver: 'Жүргізуші', shipper: 'Жүк иесі',
     noMessages: 'Әзірге хабарлама жоқ', attachPhoto: 'Фото', attachCamera: 'Камера', attachDocument: 'Құжат',
-    attachLocation: 'Орналасу', attachQuickReply: 'Жылдам жауап', attachCall: 'Қоңырау',
+    attachLocation: 'Орналасу', attachQuickReply: 'Жылдам жауап', attachCall: 'Қоңырау', attachTranslate: 'Аудару',
     callAudio: 'Аудиоқоңырау', callVideo: 'Бейнеқоңырау', callSendLink: 'Қоңырау сілтемесін жіберу',
     callSchedule: 'Қоңырауды жоспарлау', comingSoon: 'Жақында қосамыз',
     recording: 'Жазылып жатыр…', voiceMessage: 'Дауыстық хабарлама',
@@ -254,6 +254,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [showJumpLatest, setShowJumpLatest] = React.useState(false);
   const [fullImage, setFullImage] = React.useState(null);
   const [locationSending, setLocationSending] = React.useState(false);
+  const [translations, setTranslations] = React.useState({});
+  const [translating, setTranslating] = React.useState(null);
+  const [autoTranslate, setAutoTranslate] = React.useState(false);
 
   const listRef = React.useRef(null);
   const mounted = React.useRef(true);
@@ -467,6 +470,27 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     lastCountRef.current = messages.length;
   }, [messages.length]);
 
+  React.useEffect(() => {
+    if (!autoTranslate) return undefined;
+    let cancelled = false;
+    const pending = messages.filter((m) => m?.id && !m.mine && !m.system && m.text && !m.photo && !m.voice && !translations[m.id]);
+    if (!pending.length) return undefined;
+    (async () => {
+      for (const item of pending.slice(0, 6)) {
+        try {
+          const result = await chatAPI.translate(item.id, getLanguage().toLowerCase());
+          if (!cancelled && result?.translated_text) {
+            setTranslations((prev) => (prev[item.id] ? prev : ({
+              ...prev,
+              [item.id]: { text: result.translated_text, provider: result.provider, showOriginal: false },
+            })));
+          }
+        } catch { /* translation is an assistive layer, never blocks chat */ }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [autoTranslate, messages, translations]);
+
   const trackingActive = Boolean(dealId && LIVE_TRACKING_STATUSES.includes(deal?.status));
   const refreshLocation = React.useCallback(async () => {
     if (!trackingActive || !dealId) {
@@ -633,6 +657,15 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     sendRawText(t('deal_chat_call_link_text'));
   }, [sendRawText, t]);
 
+  const toggleAutoTranslate = React.useCallback(() => {
+    setAttachOpen(false);
+    setAutoTranslate((current) => {
+      const next = !current;
+      toast(next ? t('autotranslate_on') : t('autotranslate_off'), 'info', 1800);
+      return next;
+    });
+  }, [toast, t]);
+
   const sendLocation = React.useCallback(async () => {
     setAttachOpen(false);
     if (locationSending) return;
@@ -762,7 +795,10 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     const duration = result.duration || Math.max(1, Math.round((Date.now() - recordStartRef.current) / 1000));
     let upload;
     try {
-      upload = await chatAPI.uploadChatVoice(result.uri);
+      upload = await chatAPI.uploadChatVoice(result.uri, {
+        blob: result.blob || null,
+        type: result.blob?.type || null,
+      });
     } catch (error) {
       toast(error?.isNetwork ? t('no_connection') : t('voice_error_upload'), 'error');
       return;
@@ -837,7 +873,48 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                 {ui.voiceMessage}{item.voiceDuration ? ` · ${item.voiceDuration}${t('unit_sec_short')}` : ''}
               </Text>
             </TouchableOpacity>
-          ) : item.text ? <Text style={[s.messageText, { color: item.mine ? '#FFFFFF' : colors.text }]}>{item.text}</Text> : null}
+          ) : item.text ? (
+            <>
+              <Text style={[s.messageText, { color: item.mine ? '#FFFFFF' : colors.text }]}>
+                {translations[item.id] && !translations[item.id].showOriginal ? translations[item.id].text : item.text}
+              </Text>
+              {!item.mine && !item.system ? (
+                <TouchableOpacity
+                  style={s.translateBtn}
+                  disabled={translating === item.id}
+                  onPress={async () => {
+                    const current = translations[item.id];
+                    if (current) {
+                      setTranslations((prev) => ({ ...prev, [item.id]: { ...current, showOriginal: !current.showOriginal } }));
+                      return;
+                    }
+                    setTranslating(item.id);
+                    try {
+                      const result = await chatAPI.translate(item.id, getLanguage().toLowerCase());
+                      if (result?.translated_text) {
+                        setTranslations((prev) => ({
+                          ...prev,
+                          [item.id]: { text: result.translated_text, provider: result.provider, showOriginal: false },
+                        }));
+                      } else {
+                        toast(t('translation_unavailable'), 'info');
+                      }
+                    } catch {
+                      toast(t('translation_unavailable'), 'info');
+                    } finally {
+                      setTranslating(null);
+                    }
+                  }}
+                  testID="deal-chat-message-translate"
+                >
+                  <Feather name="globe" size={11} color={item.mine ? 'rgba(255,255,255,0.65)' : colors.textMuted} />
+                  <Text style={[s.translateText, { color: item.mine ? 'rgba(255,255,255,0.68)' : colors.textMuted }]}>
+                    {translating === item.id ? '...' : translations[item.id] ? (translations[item.id].showOriginal ? t('hide_original') : t('show_original')) : t('translate')}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+            </>
+          ) : null}
           <Text style={[s.messageTime, { color: item.mine ? 'rgba(255,255,255,0.68)' : colors.textMuted }]}>{item.time}</Text>
         </View>
         {item.sendStatus === 'failed' ? (
@@ -848,7 +925,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         ) : null}
       </View>
     );
-  }, [colors, ui.voiceMessage, t, retryDocument, retryFailedText]);
+  }, [colors, ui.voiceMessage, translations, translating, t, toast, retryDocument, retryFailedText]);
 
   const latestMessage = messages.length ? messages[messages.length - 1] : null;
   const latestPreview = latestMessage
@@ -921,6 +998,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     { key: 'document', icon: 'file-text', label: ui.attachDocument, onPress: pickAndSendDocument, testID: 'deal-chat-attach-document' },
     { key: 'location', icon: 'map-pin', label: ui.attachLocation, onPress: sendLocation, busy: locationSending, testID: 'deal-chat-attach-location' },
     { key: 'quick-reply', icon: 'zap', label: ui.attachQuickReply, onPress: sendQuickReply, testID: 'deal-chat-attach-quick-reply' },
+    { key: 'translate', icon: 'globe', label: ui.attachTranslate, onPress: toggleAutoTranslate, testID: 'deal-chat-attach-translate' },
     { key: 'call', icon: 'phone', label: ui.attachCall, onPress: () => { setAttachOpen(false); setCallMenuOpen(true); }, testID: 'deal-chat-attach-call' },
   ];
 
@@ -1288,6 +1366,8 @@ const s = StyleSheet.create({
   systemText: { fontSize: 11.5, fontWeight: '650', paddingHorizontal: 10, paddingVertical: 5, backgroundColor: 'rgba(124,139,130,0.12)', borderRadius: 999 },
   photo: { width: 210, height: 150, borderRadius: 11, marginBottom: 4 },
   voiceRow: { minHeight: 28, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  translateBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
+  translateText: { fontSize: 11, fontWeight: '700' },
   emptyText: { textAlign: 'center', marginTop: 24, fontSize: 13 },
   jumpLatest: { position: 'absolute', right: 14, bottom: 12, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#168759', paddingHorizontal: 11, height: 34, borderRadius: 17, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 8, elevation: 3 },
   jumpLatestText: { color: '#FFFFFF', fontSize: 11.5, fontWeight: '800' },
@@ -1301,13 +1381,13 @@ const s = StyleSheet.create({
   docMeta: { fontSize: 11, fontWeight: '650', marginTop: 2 },
   docRetryBtn: { padding: 4 },
 
-  recordBar: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 15, paddingVertical: 8, backgroundColor: 'rgba(239,68,68,0.08)' },
-  recordDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444' },
-  recordWave: { flexDirection: 'row', alignItems: 'center', gap: 2, height: 20 },
-  recordWaveBar: { width: 2.5, borderRadius: 2, backgroundColor: '#EF4444', opacity: 0.55 },
-  recordText: { color: '#B91C1C', fontSize: 12, fontWeight: '800', flex: 1 },
-  recordCancelBtn: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
-  recordStopBtn: { width: 30, height: 30, borderRadius: 15, backgroundColor: '#EF4444', alignItems: 'center', justifyContent: 'center' },
+  recordBar: { flexDirection: 'row', alignItems: 'center', gap: 9, marginHorizontal: 10, marginBottom: 7, paddingHorizontal: 12, minHeight: 44, borderRadius: 22, backgroundColor: '#F4F7F5', borderWidth: 1, borderColor: '#DDE8E2' },
+  recordDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#168759' },
+  recordWave: { flexDirection: 'row', alignItems: 'center', gap: 2, height: 22 },
+  recordWaveBar: { width: 2.5, borderRadius: 2, backgroundColor: '#168759', opacity: 0.58 },
+  recordText: { color: '#15392B', fontSize: 12.5, fontWeight: '800', flex: 1 },
+  recordCancelBtn: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
+  recordStopBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#168759', alignItems: 'center', justifyContent: 'center' },
 
   attachMenu: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 10, paddingVertical: 10, borderTopWidth: StyleSheet.hairlineWidth },
   attachItem: { width: '25%', alignItems: 'center', gap: 5, paddingVertical: 6 },
@@ -1318,7 +1398,7 @@ const s = StyleSheet.create({
   composerIcon: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   input: { flex: 1, minHeight: 44, maxHeight: 112, borderRadius: 16, borderWidth: 1, paddingHorizontal: 13, paddingTop: 11, paddingBottom: 10, fontSize: 14.5, lineHeight: 19 },
   sendButton: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: '#168759' },
-  recordingButton: { backgroundColor: '#EF4444' },
+  recordingButton: { backgroundColor: '#168759' },
 
   mapFullscreen: { flex: 1 },
   mapArea: { flex: 1, position: 'relative', overflow: 'hidden', backgroundColor: '#EAF1ED' },
