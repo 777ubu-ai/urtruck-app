@@ -342,7 +342,7 @@ export default function CreateTripScreen({ navigation, route }) {
               variant="dropdown"
               featherIcon="dollar-sign"
               label={t('currency_label')}
-              value={`${(CURRENCY_OPTIONS.find((c) => c.k === currency) || {}).l || ''} ${currency}`}
+              value={currency}
               onPress={() => setShowCurrencyPicker((v) => !v)}
             />
           </View>
@@ -358,7 +358,7 @@ export default function CreateTripScreen({ navigation, route }) {
               onPress={() => { setCurrency(c.k); setShowCurrencyPicker(false); }}
               style={[s.currencyChip, currency === c.k ? { backgroundColor: accent.main, borderColor: accent.main } : { borderColor: v1.border }]}
             >
-              <Text style={[s.currencyText, { color: currency === c.k ? '#0A0A0A' : v1.textMuted }]}>{c.l} {c.k}</Text>
+              <Text style={[s.currencyText, { color: currency === c.k ? '#0A0A0A' : v1.textMuted }]}>{c.k}</Text>
             </TouchableOpacity>
           ))}
         </View>

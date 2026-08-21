@@ -66,6 +66,7 @@ export default function TruckMap({
   // TruckMap.web.js — partial vehicle.payload_t (НЕ weight_t) из уже
   // собранной грузоподъёмности, полные габариты пока не собираются в анкете.
   vehicle = null,
+  showRouteAction = true,
 }) {
   const { t, lang } = useI18n();
   const live = asPoint([lat, lng]);
@@ -163,7 +164,7 @@ export default function TruckMap({
         ))}
         {live ? <Marker coordinate={live} title={title || t('track_truck_marker')} /> : null}
       </MapView>
-      {routeUrl ? (
+      {showRouteAction && routeUrl ? (
         <TouchableOpacity style={s.routeAction} onPress={openRoute} activeOpacity={0.84} testID="truck-map-route-action">
           <Text style={s.routeActionText}>{t('route_action')}</Text>
         </TouchableOpacity>

@@ -45,7 +45,7 @@ const i18nLabel = (t, key, fallback) => {
 const POPULAR_NAMES = [
   'Алматы', 'Ташкент', 'Москва', 'Бишкек', 'Шымкент', 'Астана',
   'Урумчи', 'Иу', 'Санкт-Петербург', 'Хоргос',
-  'Нур Жолы ↔ Хоргос', 'Достык ↔ Алашанькоу',
+  'Хоргос → Нур Жолы', 'Алашанькоу → Достык',
 ];
 const POPULAR_POINTS = POPULAR_NAMES
   .map((n) => POINTS.find((p) => p.name === n))
@@ -325,6 +325,10 @@ function PointRow({ p, v1, s, onPick }) {
   const partnerCountry = p.partnerCountry ? COUNTRIES[p.partnerCountry] : null;
   const cName = p.country ? localisedCountryName(t, p.country, country.name || p.country) : '';
   const partnerName = p.partnerCountry ? localisedCountryName(t, p.partnerCountry, partnerCountry?.name || p.partnerCountry) : '';
+  const typeLabel = i18nLabel(t, 'point_type_border', 'Погранпереход').toLowerCase();
+  const displayName = p.type === 'border'
+    ? p.name.split('→').map((part) => localizePlace(part.trim(), lang)).join(' → ')
+    : localizePlace(p.name, lang);
   return (
     <TouchableOpacity onPress={onPick} style={s.row} testID={`route-point-${p.name}`}>
       <Text style={s.icon}>
@@ -332,11 +336,10 @@ function PointRow({ p, v1, s, onPick }) {
       </Text>
       <View style={{ flex: 1 }}>
         <Text style={[s.rowName, { color: v1.text }]} numberOfLines={1}>
-          {localizePlace(p.name, lang)}
+          {displayName}
         </Text>
         <Text style={[s.rowMeta, { color: v1.textMuted }]} numberOfLines={1}>
-          {cName}
-          {p.type === 'border' && partnerName ? ` ↔ ${partnerName}` : ''}
+          {p.type === 'border' && partnerName ? `${cName} → ${partnerName} · ${typeLabel}` : cName}
           {p.type === 'terminal' ? ` · ${i18nLabel(t, 'point_type_terminal', 'терминал').toLowerCase()}` : ''}
         </Text>
       </View>

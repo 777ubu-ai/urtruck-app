@@ -61,7 +61,7 @@ function InputRow({
         <FieldIcon featherIcon={featherIcon} icon={icon} color={colors.textMuted} />
         <View style={{ flex: 1 }}>
           <TextInput
-            style={[s.input, { color: colors.text }, !editable && { opacity: 0.7 }]}
+            style={[s.input, { color: colors.text }, value ? s.inputFilled : null, !editable && { opacity: 0.7 }]}
             value={value}
             onChangeText={onChangeText}
             placeholder={placeholder || ''}
@@ -110,7 +110,7 @@ function DropdownRow({ icon, featherIcon, label, value, onPress, placeholder, te
       >
         <FieldIcon featherIcon={featherIcon} icon={icon} color={colors.textMuted} />
         <View style={{ flex: 1 }}>
-          <Text style={[s.input, { color: value ? colors.text : colors.placeholder }]} numberOfLines={1}>
+          <Text style={[s.input, value ? s.inputFilled : null, { color: value ? colors.text : colors.placeholder }]} numberOfLines={1}>
             {value || placeholder || '—'}
           </Text>
         </View>
@@ -133,6 +133,7 @@ const s = StyleSheet.create({
   },
   icon: { fontSize: 16, width: 20, textAlign: 'center' },
   input: { fontSize: 16, fontWeight: '400', paddingVertical: 0, margin: 0 },
+  inputFilled: { fontWeight: '800' },
   eye: { fontSize: 16, paddingHorizontal: 4 },
   caret: { fontSize: 16, paddingHorizontal: 4 },
   errText: { fontSize: 11, marginTop: 4, marginLeft: 6 },

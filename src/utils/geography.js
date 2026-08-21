@@ -12,7 +12,7 @@
 //     foreign-side spelling so search finds them even when typed in
 //     a different language.
 //   * `partner` on a border crossing is the matching point on the
-//     other side. We use it both for visualisation ("Хоргос ↔ Алашанькоу")
+//     other side. We use it both for visualisation ("Хоргос → Нур Жолы")
 //     and for graph queries (eventual "find all KZ ↔ CN borders").
 //   * Backwards compatibility: the picker emits a free-form string
 //     formatted as "<name>, <flag>" so the existing backend that
@@ -84,13 +84,15 @@ const c = (country, name, aliases = []) => ({
   country, type: 'city', name, aliases,
 });
 
-// Helper for border crossings — the partner is the named point on the
-// other side, plus we record both anchor countries so a single record
-// shows up in pickers under either side.
-const b = (a, b, aLabel, bLabel) => ({
+// Helper for border crossings — first side is the foreign/loading side,
+// second side is Kazakhstan. The same record still shows in both country
+// buckets through partnerCountry, but the visible label follows the
+// working logistics direction into KZ.
+const b = (a, b, aLabel, bLabel, aliases = []) => ({
   country: a, type: 'border',
   name: aLabel,
   partnerCountry: b, partner: bLabel,
+  aliases,
 });
 
 // Helper for terminal/hub entries. Named `term` (not `t`) so the
@@ -143,12 +145,12 @@ export const POINTS = [
   c('KZ', 'Бахты',          ['Bakhty']),
   c('KZ', 'Майкапчагай',    ['Maykapshagay']),
   c('KZ', 'Калжат',         ['Kalzhat']),
-  // ── Border crossings China ↔ Kazakhstan (the strategic five) ────
-  b('KZ', 'CN', 'Нур Жолы ↔ Хоргос',     'Хоргос ↔ Нур Жолы'),
-  b('KZ', 'CN', 'Достык ↔ Алашанькоу',   'Алашанькоу ↔ Достык'),
-  b('KZ', 'CN', 'Бахты ↔ Чугучак',       'Чугучак ↔ Бахты'),
-  b('KZ', 'CN', 'Майкапчагай ↔ Зимунай', 'Зимунай ↔ Майкапчагай'),
-  b('KZ', 'CN', 'Калжат ↔ Дулаты',       'Дулаты ↔ Калжат'),
+  // ── Border crossings China → Kazakhstan (the strategic five) ────
+  b('CN', 'KZ', 'Хоргос → Нур Жолы',      'Нур Жолы',      ['Нур Жолы ↔ Хоргос', 'Хоргос ↔ Нур Жолы', 'Khorgos Nur Zholy']),
+  b('CN', 'KZ', 'Алашанькоу → Достык',    'Достык',        ['Достык ↔ Алашанькоу', 'Алашанькоу ↔ Достык', 'Alashankou Dostyk']),
+  b('CN', 'KZ', 'Чугучак → Бахты',        'Бахты',         ['Бахты ↔ Чугучак', 'Чугучак ↔ Бахты', 'Tacheng Bakhty']),
+  b('CN', 'KZ', 'Зимунай → Майкапчагай',  'Майкапчагай',   ['Майкапчагай ↔ Зимунай', 'Зимунай ↔ Майкапчагай', 'Jeminay Maykapshagay']),
+  b('CN', 'KZ', 'Дулаты → Калжат',        'Калжат',        ['Калжат ↔ Дулаты', 'Дулаты ↔ Калжат', 'Dulaty Kalzhat']),
   // ── Russia ─────────────────────────────────────────────────────────
   c('RU', 'Москва',          ['Moscow']),
   c('RU', 'Санкт-Петербург', ['Saint Petersburg', 'St Petersburg']),

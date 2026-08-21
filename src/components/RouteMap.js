@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import { useTheme } from '../utils/ThemeContext';
 import { useI18n } from '../utils/useI18n';
@@ -17,6 +17,15 @@ const dedupePoints = (points) => {
     seen.add(key);
     return true;
   });
+};
+
+const buildYandexRouteUrl = (points) => {
+  if (!Array.isArray(points) || points.length < 2) return null;
+  const valid = points
+    .filter((point) => Array.isArray(point) && Number.isFinite(Number(point[0])) && Number.isFinite(Number(point[1])))
+    .map(([lat, lon]) => `${Number(lon)},${Number(lat)}`);
+  if (valid.length < 2) return null;
+  return `https://yandex.kz/maps/?rtext=${valid.join('~')}&rtt=auto`;
 };
 
 // RouteMap — canonical embedded route card. The old implementation estimated
@@ -52,6 +61,11 @@ export default function RouteMap({ from, to, transit, dealId, dealStatus, driver
     ...(transit ? parseRouteCities(transit) : []),
     ...parseRouteCities(to),
   ]), [from, to, transit]);
+  const routePointsKey = React.useMemo(() => JSON.stringify(routePoints), [routePoints]);
+  const routeUrl = React.useMemo(() => buildYandexRouteUrl(routePoints), [routePointsKey]);
+  const openRoute = React.useCallback(() => {
+    if (routeUrl) Linking.openURL(routeUrl).catch(() => {});
+  }, [routeUrl]);
 
   React.useEffect(() => {
     if (!trackingActive) {
@@ -107,6 +121,7 @@ export default function RouteMap({ from, to, transit, dealId, dealStatus, driver
           plannedHint={t('tracking_starts_after_start')}
           liveTitle={t('live_route_title')}
           showBadge={false}
+          showRouteAction={false}
           onRouteSummary={handleSummary}
           vehicle={vehicle}
         />
@@ -130,6 +145,17 @@ export default function RouteMap({ from, to, transit, dealId, dealStatus, driver
           </View>
         </View>
       ) : null}
+      {routeUrl ? (
+        <TouchableOpacity
+          style={[s.routeButton, { borderTopColor: theme.border }]}
+          onPress={openRoute}
+          activeOpacity={0.86}
+          testID="route-map-bottom-action"
+        >
+          <Feather name="navigation" size={16} color="#FFFFFF" />
+          <Text style={s.routeButtonText}>{t('route_action')}</Text>
+        </TouchableOpacity>
+      ) : null}
     </View>
   );
 }
@@ -146,4 +172,14 @@ const s = StyleSheet.create({
   metricLabel: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.3 },
   metricValue: { fontSize: 16, fontWeight: '900', marginTop: 2 },
   metricDivider: { width: 1, alignSelf: 'stretch', marginHorizontal: 12 },
+  routeButton: {
+    minHeight: 48,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    backgroundColor: '#168759',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  routeButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '900' },
 });

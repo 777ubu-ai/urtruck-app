@@ -307,6 +307,7 @@ export default function TruckMap({
   // мы нигде не собираем; подставлять туда capacityTons исказило бы
   // весовые ограничения маршрута (P1 re-review, было исправлено).
   vehicle = null,
+  showRouteAction = true,
 }) {
   const { t } = useI18n();
   // Badge copy falls back to the localized default when the caller omits it.
@@ -373,7 +374,7 @@ export default function TruckMap({
           <Text style={s.routeStateText}>{t('map_building_route')}</Text>
         </View>
       ) : null}
-      {routeUrl ? (
+      {showRouteAction && routeUrl ? (
         <TouchableOpacity style={s.routeAction} onPress={openRoute} activeOpacity={0.84} testID="truck-map-route-action">
           <Text style={s.routeActionText}>{t('route_action')}</Text>
         </TouchableOpacity>
