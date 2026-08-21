@@ -16,6 +16,10 @@ const workspace = read('src/screens/DealWorkspaceScreenV2.js');
 const routeMap = read('src/components/RouteMap.js');
 const manifest = read('android/app/src/main/AndroidManifest.xml');
 const app = JSON.parse(read('app.json')).expo;
+const playDoc = read('docs/release/google-play-background-location.md');
+const agentsDoc = read('AGENTS.md');
+const claudeDoc = read('CLAUDE.md');
+const privacy = read('web/legal/privacy.html');
 
 const must = (source, needle, label) => {
   if (!source.includes(needle)) throw new Error(`GPS consent contract missing: ${label}`);
@@ -135,6 +139,22 @@ if (locationPlugin?.[1]?.isIosBackgroundLocationEnabled !== true) {
   throw new Error('GPS consent contract missing: iOS background location mode');
 }
 console.log('  ✓ expo-location Android foreground/background location modes enabled');
+
+// Product code, agent instructions, Play release docs, and public privacy policy
+// must all describe the SAME permission architecture. This catches the exact
+// contradiction that previously let code say "Always" while docs said "never".
+must(playDoc, 'ACCESS_BACKGROUND_LOCATION', 'Play release doc covers Android background permission');
+must(playDoc, 'isAndroidBackgroundLocationEnabled: true', 'Play release doc matches Expo Android config');
+must(playDoc, 'DealWorkspaceRoute.js', 'Play release doc names canonical gated route');
+mustNot(playDoc, 'не использует `ACCESS_BACKGROUND_LOCATION`', 'Play release doc does not claim background permission is absent');
+mustNot(playDoc, 'не содержит `ACCESS_BACKGROUND_LOCATION`', 'Play checklist does not require removing background permission');
+must(agentsDoc, 'Фоновая геолокация Android включена', 'AGENTS current GPS rule is enabled');
+mustNot(agentsDoc, 'Фоновая геолокация Android отключена', 'AGENTS has no obsolete disabled GPS rule');
+must(claudeDoc, 'Android GPS: background location активного рейса', 'CLAUDE current GPS rule is enabled');
+mustNot(claudeDoc, 'Временно отключено: фоновая геолокация Android', 'CLAUDE has no obsolete disabled GPS section');
+must(privacy, 'в фоновом режиме', 'public privacy policy discloses background location');
+must(privacy, 'только авторизованным участникам соответствующей сделки', 'privacy policy limits live location to deal participants');
+must(privacy, 'Геолокация не используется для рекламы', 'privacy policy rules out advertising use');
 
 must(routeMap, '<TruckMap', 'trip renders embedded route map inside UrTruck');
 
