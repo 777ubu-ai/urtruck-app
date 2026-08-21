@@ -98,46 +98,6 @@ jobs:
             echo 'SELECTED_YANDEX_ROUTER_API_KEY=' >> "$GITHUB_ENV"
           fi
 
-      # 2026-08-21 P0: confirmed via scripts/dns_diagnose.sh that the
-      # production server's own ISP resolver (195.210.46.195/.132) fails to
-      # resolve this ONE Supabase project subdomain while resolving
-      # everything else fine (github.com, api.mobizon.kz, and even the
-      # supabase.co apex zone itself) — DNSSEC is off, so it isn't that
-      # either. The GitHub Actions runner has ordinary, unrelated DNS and
-      # resolves it without issue. Resolve it here, on a host we know works,
-      # so remote_bootstrap_secure_env.sh can pin a static /etc/hosts entry
-      # on the server as a safe, single-hostname, reversible workaround —
-      # refreshed from this known-good source on every deploy so a Supabase
-      # IP rotation self-heals within one cycle instead of going stale.
-      - name: Resolve Supabase storage host from a known-good resolver
-        # 2026-08-21 P0 follow-up: the first production run of this step
-        # (run 32451207600, commit 1fd0191) proved the earlier "production
-        # box's ISP resolver only" theory wrong — this exact runner (a
-        # completely different network) ALSO fails to resolve
-        # hchmnocoxjvtgdamcmmi.supabase.co: socket.gaierror Name or service
-        # not known. Cross-checked from a third, independent network with
-        # the same result, while the supabase.co apex resolves fine. The
-        # Supabase MCP project list for this account shows NO project with
-        # ref hchmnocoxjvtgdamcmmi at all — only pymddxenwtjcbmrafvnc
-        # ("UrTruck", eu-central-1, ACTIVE_HEALTHY) does, which is the
-        # project src/config/supabase.js pointed at before commit 32116e1
-        # ("миграция на новый проект... SAKURA-Empire PRO") retargeted it to
-        # hchmnocoxjvtgdamcmmi on 2026-05-27. That project reference looks
-        # to no longer exist — not a DNS/resolver bug this deploy pipeline
-        # can work around. Until the correct live SUPABASE_URL is confirmed,
-        # this step must never hard-fail the deploy again like it just did
-        # (it aborted frontend+backend deploy entirely via cascading skips)
-        # — resolution failure here is now expected and non-fatal.
-        run: |
-          set -uo pipefail
-          IP="$(python3 -c "import socket; print(socket.gethostbyname('hchmnocoxjvtgdamcmmi.supabase.co'))" 2>/dev/null || true)"
-          if [ -n "$IP" ]; then
-            echo "Resolved hchmnocoxjvtgdamcmmi.supabase.co -> $IP (from the GitHub Actions runner)"
-            echo "SUPABASE_STORAGE_IP=$IP" >> "$GITHUB_ENV"
-          else
-            echo "::warning::hchmnocoxjvtgdamcmmi.supabase.co did not resolve from the GitHub Actions runner either — likely a stale/nonexistent Supabase project ref, not a production-box DNS issue. Skipping the /etc/hosts fallback; deploy continues."
-          fi
-
       - name: Install SSH transport dependency
         run: |
           sudo apt-get update -qq
@@ -182,27 +142,10 @@ jobs:
           if [ -n "${OPENROUTESERVICE_API_KEY:-}" ]; then
             printf 'OPENROUTESERVICE_API_KEY=%s\n' "$OPENROUTESERVICE_API_KEY" >> "$BOOTSTRAP_FILE"
           fi
-          if [ -n "${SUPABASE_STORAGE_IP:-}" ]; then
-            printf 'SUPABASE_STORAGE_IP=%s\n' "$SUPABASE_STORAGE_IP" >> "$BOOTSTRAP_FILE"
-          fi
           REMOTE_BOOTSTRAP="/tmp/urtruck-secure-env-${GITHUB_RUN_ID}"
           bash scripts/deploy-ssh.sh scp "$BOOTSTRAP_FILE" "$SERVER_USER@$SERVER_HOST:$REMOTE_BOOTSTRAP"
           bash scripts/deploy-ssh.sh scp scripts/remote_bootstrap_secure_env.sh "$SERVER_USER@$SERVER_HOST:/tmp/urtruck_bootstrap_env.sh"
           bash scripts/deploy-ssh.sh ssh "chmod 700 /tmp/urtruck_bootstrap_env.sh; bash /tmp/urtruck_bootstrap_env.sh '$BACKEND_DIR' '$REMOTE_BOOTSTRAP'; rc=\$?; rm -f /tmp/urtruck_bootstrap_env.sh '$REMOTE_BOOTSTRAP'; exit \$rc"
-
-      # Diagnostic-only, never fails the deploy. Added 2026-08-21 (P0 voice/
-      # document upload investigation): the bucket-sync curl above has been
-      # failing with "Could not resolve host" for the Supabase hostname on
-      # this server across multiple consecutive deploys. This narrows down
-      # whether it's a system-resolver problem, Supabase-host-specific, or a
-      # total external-DNS outage on the box, so the real fix (not a guess)
-      # can be applied next.
-      - name: Diagnose Supabase DNS resolution on production server
-        run: |
-          set -uo pipefail
-          bash scripts/deploy-ssh.sh scp scripts/dns_diagnose.sh "$SERVER_USER@$SERVER_HOST:/tmp/urtruck_dns_diagnose.sh"
-          bash scripts/deploy-ssh.sh ssh "chmod 700 /tmp/urtruck_dns_diagnose.sh; bash /tmp/urtruck_dns_diagnose.sh hchmnocoxjvtgdamcmmi.supabase.co; rm -f /tmp/urtruck_dns_diagnose.sh"
-          true
 
       - name: Deploy backend and verify PM2 health
         run: |
