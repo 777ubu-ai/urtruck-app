@@ -5,9 +5,9 @@ import Feather from '@expo/vector-icons/Feather';
 const COPY = {
   RU: {
     title: 'Отслеживать рейс',
-    intro: 'Во время активного рейса UrTruck передаёт местоположение автомобиля грузоотправителю, чтобы он видел движение груза на карте.',
-    background: 'Передача может продолжаться, когда приложение свёрнуто или экран выключен, через системный сервис активного рейса.',
-    stop: 'Передача прекращается после завершения или отмены рейса.',
+    intro: 'Во время активного рейса UrTruck собирает данные о местоположении автомобиля и передаёт их грузоотправителю, чтобы он видел движение груза на карте.',
+    background: 'Геолокация может продолжать передаваться в фоновом режиме, когда приложение свёрнуто или не отображается на экране, через системный сервис активного рейса.',
+    stop: 'Передача геолокации прекращается после завершения или отмены рейса.',
     continue: 'Разрешить и начать рейс',
     notNow: 'Не сейчас',
     settingsTitle: Platform.OS === 'web' ? 'Разрешите геолокацию в браузере' : 'Разрешите геолокацию для рейса',
@@ -24,8 +24,8 @@ const COPY = {
   },
   EN: {
     title: 'Track trip',
-    intro: 'During an active trip, UrTruck shares the vehicle location with the shipper so they can follow the cargo on the map.',
-    background: 'Sharing can continue while the app is minimized or the screen is off through the active-trip system service.',
+    intro: 'During an active trip, UrTruck collects the vehicle location data and shares it with the shipper so they can follow the cargo on the map.',
+    background: 'Location sharing can continue in the background when the app is minimized or not visible on screen through the active-trip system service.',
     stop: 'Location sharing stops when the trip is completed or cancelled.',
     continue: 'Allow and start trip',
     notNow: 'Not now',
@@ -43,8 +43,8 @@ const COPY = {
   },
   ZH: {
     title: '追踪运输',
-    intro: '运输进行期间，UrTruck 会向货主共享车辆位置，以便货主在地图上查看货物运输进度。',
-    background: '应用最小化或屏幕关闭后，可通过运输期间的系统服务继续共享位置。',
+    intro: '运输进行期间，UrTruck 会收集车辆位置数据并向货主共享，以便货主在地图上查看货物运输进度。',
+    background: '应用在后台运行、最小化或未显示在屏幕上时，可通过运输期间的系统服务继续共享位置。',
     stop: '运输完成或取消后将停止共享位置。',
     continue: '允许并开始运输',
     notNow: '暂不',
@@ -62,8 +62,8 @@ const COPY = {
   },
   KK: {
     title: 'Рейсті бақылау',
-    intro: 'Белсенді рейс кезінде UrTruck жүк иесі картадан жүктің қозғалысын көруі үшін көліктің геолокациясын береді.',
-    background: 'Қолданба жиналғанда немесе экран өшкенде, рейстің жүйелік қызметі арқылы геолокация беру жалғаса алады.',
+    intro: 'Белсенді рейс кезінде UrTruck көліктің геолокация деректерін жинап, жүк иесіне береді, сонда ол картадан жүктің қозғалысын көре алады.',
+    background: 'Қолданба фондық режимде, жиналған немесе экранда көрінбеген кезде де рейстің жүйелік қызметі арқылы геолокация беру жалғаса алады.',
     stop: 'Рейс аяқталған немесе тоқтатылған кезде геолокация беру тоқтайды.',
     continue: 'Рұқсат беру және рейсті бастау',
     notNow: 'Қазір емес',
