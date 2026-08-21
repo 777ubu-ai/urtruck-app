@@ -52,6 +52,26 @@ else
 fi
 
 echo ""
+echo "=== resolvectl query (verbose: shows DNSSEC validation status per record) ==="
+if command -v resolvectl >/dev/null 2>&1; then
+  resolvectl query "$HOST" 2>&1 || echo "FAILED"
+else
+  echo "(no resolvectl available)"
+fi
+
+echo ""
+echo "=== resolvectl status (per-link DNS servers + any domain routing rules) ==="
+if command -v resolvectl >/dev/null 2>&1; then
+  resolvectl status 2>&1 || echo "FAILED"
+else
+  echo "(no resolvectl available)"
+fi
+
+echo ""
+echo "=== control: does a DIFFERENT *.supabase.co host resolve? (isolates zone-wide vs this-name-only) ==="
+getent ahosts supabase.co 2>&1 || echo "FAILED"
+
+echo ""
 echo "=== outbound UDP/53 reachability to 8.8.8.8 (nc, 3s timeout) ==="
 if command -v nc >/dev/null 2>&1; then
   timeout 3 nc -zvu 8.8.8.8 53 2>&1 || echo "FAILED_OR_FILTERED"

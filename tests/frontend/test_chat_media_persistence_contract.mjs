@@ -148,3 +148,60 @@ test('the call menu is honest about what works: only "send call link" is enabled
   const disabledCount = [...menuBlock[0].matchAll(/disabled: true/g)].length;
   assert.equal(disabledCount, 3, `expected exactly 3 disabled call-menu items (audio/video/schedule), found ${disabledCount}`);
 });
+
+// P0 2026-08-21: production voice/document upload investigation. These pin
+// down the exact contract that must hold for a REAL browser MediaRecorder
+// Blob to reach the backend as a non-empty multipart file, so a regression
+// here (e.g. someone "simplifying" uploadChatVoice back to uri-only) fails
+// a fast static test instead of only showing up as a silent prod 400/502.
+test('web voice upload sends a real Blob/File in FormData, never an empty/placeholder part', () => {
+  // The caller (DealWorkspaceScreenV2.toggleVoice) must forward the actual
+  // recorder Blob, not just re-derive it by re-fetching the blob: URI —
+  // the URI can already be revoked/stale by the time upload runs.
+  assert.match(chatApi, /async uploadChatVoice\(uri, \{ blob: providedBlob = null, type = null, name = null \} = \{\}\)/);
+  assert.match(chatApi, /const blob = providedBlob \|\| await fetch\(uri\)\.then\(\(r\) => r\.blob\(\)\)/);
+  // The real MIME (from the recorder) drives both the file extension and the
+  // Content-Type sent to the server — never hardcoded to one format.
+  assert.match(chatApi, /const mime = type \|\| blob\.type \|\| 'audio\/webm'/);
+  assert.match(chatApi, /new File\(\[blob\], name \|\| `voice\.\$\{ext\}`, \{ type: mime \}\)/);
+  assert.match(chatApi, /form\.append\('file', part, name \|\| `voice\.\$\{ext\}`\)/);
+  // DealWorkspaceScreenV2 must actually pass the recorder's real blob/type
+  // through, not just the uri — otherwise the FormData contract above is
+  // dead code that nothing ever exercises.
+  assert.match(workspace, /blob: result\.blob \|\| null,/);
+  assert.match(workspace, /type: result\.blob\?\.type \|\| null,/);
+});
+
+test('voiceRecorder produces a real, non-empty web Blob before upload is attempted', () => {
+  const recorder = fs.readFileSync('src/utils/voiceRecorder.js', 'utf8');
+  // iOS Safari on a short recording can hand MediaRecorder zero data at
+  // stop() unless timesliced + explicitly flushed — both guards must exist.
+  assert.match(recorder, /this\._webRecorder\.start\(400\)/);
+  assert.match(recorder, /requestData\(\)/);
+  // A genuinely empty recording must fail loudly client-side (surfaces as
+  // voice_error_record), not silently upload a 0-byte file the backend
+  // would then reject anyway.
+  assert.match(recorder, /if \(!blob \|\| blob\.size === 0\) \{ resolve\(null\); return; \}/);
+});
+
+test('voice upload failures distinguish too-large, storage-rejected/unreachable, and generic causes, not one flat message', () => {
+  const fn = workspace.match(/upload = await chatAPI\.uploadChatVoice\(result\.uri, \{[\s\S]*?\n    \} catch \(error\) \{([\s\S]*?)\n    \}/);
+  assert.ok(fn, 'toggleVoice upload catch block not found');
+  assert.match(fn[1], /error\?\.status === 413 \? 'doc_error_too_large'/);
+  assert.match(fn[1], /error\?\.status >= 500 \? 'doc_error_server'/);
+  assert.match(fn[1], /'voice_error_upload'/);
+});
+
+test('backend distinguishes network/DNS failure reaching storage from storage actively rejecting the file', () => {
+  const storageService = fs.readFileSync('backend/services/storage_service.py', 'utf8');
+  // StorageSaveError.status_code is only set when the PROVIDER responded
+  // (an HTTPStatusError) — left None on a pure transport/DNS failure. Both
+  // the voice and document upload endpoints must read this distinction
+  // instead of collapsing every storage exception into one generic 502.
+  assert.match(storageService, /except httpx\.HTTPStatusError as exc:/);
+  assert.match(storageService, /except httpx\.HTTPError as exc:/);
+  assert.match(storageService, /raise StorageSaveError\("Supabase Storage is unavailable", provider="supabase", detail=str\(exc\)\) from exc/);
+  assert.match(chatPy, /\[voice-storage\] failed/);
+  const deal_room = fs.readFileSync('backend/api/deal_room.py', 'utf8');
+  assert.match(deal_room, /\[attachment-storage\] failed/);
+});

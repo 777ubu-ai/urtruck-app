@@ -375,7 +375,14 @@ async def upload_attachment(
             f"error={type(exc).__name__} storage_status={storage_status} detail={storage_detail[:180]!r}",
             flush=True,
         )
-        raise HTTPException(status_code=502, detail="Не удалось сохранить файл") from exc
+        # storage_status is None only when the provider never responded at all
+        # (DNS/connect/timeout — see storage_service._save_supabase's
+        # httpx.HTTPError branch) — a network problem reaching storage, not
+        # storage actively rejecting the file. Surface that distinction
+        # instead of collapsing both into one generic 502.
+        if storage_status is None:
+            raise HTTPException(status_code=503, detail="Хранилище недоступно (сеть)") from exc
+        raise HTTPException(status_code=502, detail="Хранилище отклонило файл") from exc
 
     if reservation:
         att = _complete_attachment_reservation(reservation["id"], url)

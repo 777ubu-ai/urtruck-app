@@ -800,7 +800,16 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         type: result.blob?.type || null,
       });
     } catch (error) {
-      toast(error?.isNetwork ? t('no_connection') : t('voice_error_upload'), 'error');
+      // Mirror uploadDocument's precise-cause mapping (P0 2026-08-21): the
+      // backend now distinguishes "storage unreachable" (503) from "storage
+      // rejected the file" (502) instead of one flat error, and 413 is real
+      // (voice/backend.py enforces a 10MB cap) — surface all of it instead of
+      // one generic message regardless of cause.
+      const key = error?.isNetwork ? null
+        : error?.status === 413 ? 'doc_error_too_large'
+          : error?.status >= 500 ? 'doc_error_server'
+            : 'voice_error_upload';
+      toast(key ? t(key) : t('no_connection'), 'error');
       return;
     }
     if (!upload?.voice_key) { toast(t('voice_error_upload'), 'error'); return; }
