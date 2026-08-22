@@ -73,6 +73,7 @@ export default function PhoneV2Screen({ navigation, route }) {
   const [error, setError] = useState(null);
   const finishingSocialRef = useRef(false);
   const role = route?.params?.role || null;
+  const routedSocialUrl = route?.params?.socialAuthUrl || null;
 
   const emailOk = isValidEmail(email);
   const anyBusy = emailBusy || !!socialBusy;
@@ -99,9 +100,6 @@ export default function PhoneV2Screen({ navigation, route }) {
       return;
     }
 
-    // Pass the verified email as signup identifier. ProfileV2 already treats
-    // identifiers containing @ as email/social signup and requires a real
-    // contact phone before completing the profile.
     navigation.reset({
       index: 0,
       routes: [{
@@ -126,8 +124,6 @@ export default function PhoneV2Screen({ navigation, route }) {
       if (!result?.token || !result?.email) throw new Error('social_auth_failed');
       await goAfterLogin(result, result.email, 'social');
     } catch (e) {
-      // Provider/config/network details stay out of normal production UI.
-      // The user can retry or fall back to email immediately.
       setError(t('no_connection'));
       try { toast(t('no_connection'), 'error', 2500); } catch {}
     } finally {
@@ -141,6 +137,12 @@ export default function PhoneV2Screen({ navigation, route }) {
       finishSocialUrl(url).catch(() => {});
     });
 
+    // OnboardingV2 passes the URL explicitly when OAuth cold-started the app.
+    // This avoids relying on a second getInitialURL() call retaining the URL.
+    if (routedSocialUrl) {
+      finishSocialUrl(routedSocialUrl).catch(() => {});
+    }
+
     Linking.getInitialURL()
       .then((url) => finishSocialUrl(url))
       .catch(() => {});
@@ -150,7 +152,7 @@ export default function PhoneV2Screen({ navigation, route }) {
     }
 
     return () => sub?.remove?.();
-  }, [finishSocialUrl]);
+  }, [finishSocialUrl, routedSocialUrl]);
 
   const onSocialPress = async (provider) => {
     if (anyBusy) return;
@@ -162,8 +164,6 @@ export default function PhoneV2Screen({ navigation, route }) {
       setError(t('no_connection'));
       try { toast(t('no_connection'), 'error', 2500); } catch {}
     } finally {
-      // On web the page navigates away; on native Linking.openURL resolves
-      // after opening the provider browser and the callback will own busy state.
       setSocialBusy(null);
     }
   };
@@ -356,179 +356,34 @@ export default function PhoneV2Screen({ navigation, route }) {
 }
 
 const makeStyles = (brand) => StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: brand.bg,
-  },
-  keyboard: {
-    flex: 1,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    minHeight: 48,
-    paddingHorizontal: 16,
-    paddingTop: 4,
-  },
-  backBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    paddingHorizontal: 20,
-    paddingBottom: 28,
-  },
-  form: {
-    width: '100%',
-    maxWidth: 560,
-    alignSelf: 'center',
-  },
-  logo: {
-    fontSize: 36,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-    textAlign: 'center',
-    marginTop: 20,
-    marginBottom: 30,
-  },
-  title: {
-    ...typography.h1,
-    color: brand.textPrimary,
-    textAlign: 'center',
-    marginBottom: 10,
-  },
-  subtitle: {
-    ...typography.body,
-    color: brand.textSecondary,
-    textAlign: 'center',
-    marginBottom: 22,
-  },
-  socialStack: {
-    gap: 12,
-  },
-  socialButton: {
-    height: 56,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: brand.border,
-    backgroundColor: brand.surface,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-  },
-  socialIconWrap: {
-    width: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  socialRightSpacer: {
-    width: 36,
-  },
-  socialText: {
-    flex: 1,
-    textAlign: 'center',
-    ...typography.button,
-    color: brand.textPrimary,
-  },
-  dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginVertical: 20,
-  },
-  dividerLine: {
-    flex: 1,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: brand.border,
-  },
-  dividerLabel: {
-    ...typography.caption,
-    color: brand.textSecondary,
-    fontWeight: '700',
-  },
-  inputRow: {
-    minHeight: 58,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: brand.border,
-    borderRadius: radius.lg,
-    backgroundColor: brand.surface,
-  },
-  inputError: {
-    borderColor: brand.error,
-  },
-  mailIcon: {
-    marginLeft: 14,
-    marginRight: 6,
-  },
-  emailInput: {
-    flex: 1,
-    minHeight: 56,
-    paddingHorizontal: 8,
-    paddingRight: 14,
-    ...typography.bodyLarge,
-    color: brand.textPrimary,
-  },
-  error: {
-    ...typography.bodySmall,
-    color: brand.error,
-    marginTop: 8,
-    textAlign: 'center',
-  },
-  ctaPrimary: {
-    height: 56,
-    borderRadius: radius.lg,
-    flexDirection: 'row',
-    gap: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 14,
-  },
-  ctaPrimaryText: {
-    ...typography.button,
-    color: brand.textOnPrimary,
-  },
-  infoBlock: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingTop: 14,
-  },
-  infoText: {
-    ...typography.caption,
-    color: brand.textSecondary,
-    textAlign: 'center',
-    flexShrink: 1,
-  },
-  consentBlock: {
-    width: '100%',
-    maxWidth: 560,
-    alignSelf: 'center',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: brand.border,
-    marginTop: 22,
-    paddingTop: 16,
-    paddingHorizontal: 10,
-    paddingBottom: 8,
-  },
-  consent: {
-    ...typography.caption,
-    color: brand.textSecondary,
-    textAlign: 'center',
-    lineHeight: 19,
-  },
-  consentLink: {
-    color: brand.textPrimary,
-    fontWeight: '700',
-    textDecorationLine: 'underline',
-  },
+  safe: { flex: 1, backgroundColor: brand.bg },
+  keyboard: { flex: 1 },
+  headerRow: { flexDirection: 'row', minHeight: 48, paddingHorizontal: 16, paddingTop: 4 },
+  backBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  scroll: { flex: 1 },
+  scrollContent: { flexGrow: 1, paddingHorizontal: 20, paddingBottom: 28 },
+  form: { width: '100%', maxWidth: 560, alignSelf: 'center' },
+  logo: { fontSize: 36, fontWeight: '800', letterSpacing: -0.5, textAlign: 'center', marginTop: 20, marginBottom: 30 },
+  title: { ...typography.h1, color: brand.textPrimary, textAlign: 'center', marginBottom: 10 },
+  subtitle: { ...typography.body, color: brand.textSecondary, textAlign: 'center', marginBottom: 22 },
+  socialStack: { gap: 12 },
+  socialButton: { height: 56, borderRadius: radius.lg, borderWidth: 1, borderColor: brand.border, backgroundColor: brand.surface, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16 },
+  socialIconWrap: { width: 36, alignItems: 'center', justifyContent: 'center' },
+  socialRightSpacer: { width: 36 },
+  socialText: { flex: 1, textAlign: 'center', ...typography.button, color: brand.textPrimary },
+  dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 20 },
+  dividerLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: brand.border },
+  dividerLabel: { ...typography.caption, color: brand.textSecondary, fontWeight: '700' },
+  inputRow: { minHeight: 58, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: brand.border, borderRadius: radius.lg, backgroundColor: brand.surface },
+  inputError: { borderColor: brand.error },
+  mailIcon: { marginLeft: 14, marginRight: 6 },
+  emailInput: { flex: 1, minHeight: 56, paddingHorizontal: 8, paddingRight: 14, ...typography.bodyLarge, color: brand.textPrimary },
+  error: { ...typography.bodySmall, color: brand.error, marginTop: 8, textAlign: 'center' },
+  ctaPrimary: { height: 56, borderRadius: radius.lg, flexDirection: 'row', gap: 10, alignItems: 'center', justifyContent: 'center', marginTop: 14 },
+  ctaPrimaryText: { ...typography.button, color: brand.textOnPrimary },
+  infoBlock: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'center', gap: 8, paddingHorizontal: 16, paddingTop: 14 },
+  infoText: { ...typography.caption, color: brand.textSecondary, textAlign: 'center', flexShrink: 1 },
+  consentBlock: { width: '100%', maxWidth: 560, alignSelf: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: brand.border, marginTop: 22, paddingTop: 16, paddingHorizontal: 10, paddingBottom: 8 },
+  consent: { ...typography.caption, color: brand.textSecondary, textAlign: 'center', lineHeight: 19 },
+  consentLink: { color: brand.textPrimary, fontWeight: '700', textDecorationLine: 'underline' },
 });
