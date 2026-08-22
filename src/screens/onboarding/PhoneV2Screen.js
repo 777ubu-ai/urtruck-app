@@ -45,6 +45,25 @@ import { WEB_URL } from '../../config/env';
 
 const LEGAL_BASE = WEB_URL || 'https://urtruck.kz';
 
+const SOCIAL_LABELS = {
+  RU: {
+    google: 'Продолжить с Google',
+    apple: 'Продолжить с Apple',
+  },
+  EN: {
+    google: 'Continue with Google',
+    apple: 'Continue with Apple',
+  },
+  ZH: {
+    google: '使用 Google 继续',
+    apple: '使用 Apple 继续',
+  },
+  KK: {
+    google: 'Google арқылы жалғастыру',
+    apple: 'Apple арқылы жалғастыру',
+  },
+};
+
 const openLegal = (path) => {
   const url = `${LEGAL_BASE}${path}`;
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
@@ -63,7 +82,7 @@ const isValidEmail = (value) => (
 export default function PhoneV2Screen({ navigation, route }) {
   const _b = useBrand();
   const s = React.useMemo(() => makeStyles(_b), [_b]);
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { toast } = useToast();
   const { signIn, setRole, refreshLevel } = useAuth();
 
@@ -137,8 +156,6 @@ export default function PhoneV2Screen({ navigation, route }) {
       finishSocialUrl(url).catch(() => {});
     });
 
-    // OnboardingV2 passes the URL explicitly when OAuth cold-started the app.
-    // This avoids relying on a second getInitialURL() call retaining the URL.
     if (routedSocialUrl) {
       finishSocialUrl(routedSocialUrl).catch(() => {});
     }
@@ -196,12 +213,13 @@ export default function PhoneV2Screen({ navigation, route }) {
 
   const SocialButton = ({ provider, icon, testID }) => {
     const loading = socialBusy === provider || socialBusy === 'callback';
+    const label = SOCIAL_LABELS[lang]?.[provider] || SOCIAL_LABELS.EN[provider];
     return (
       <Pressable
         onPress={() => onSocialPress(provider)}
         disabled={anyBusy}
         accessibilityRole="button"
-        accessibilityLabel={provider === 'apple' ? 'Apple' : 'Google'}
+        accessibilityLabel={label}
         testID={testID}
         style={({ pressed }) => [
           s.socialButton,
@@ -216,7 +234,7 @@ export default function PhoneV2Screen({ navigation, route }) {
             <FontAwesome name={icon} size={22} color={brand.textPrimary} />
           )}
         </View>
-        <Text style={s.socialText}>{provider === 'apple' ? 'Apple' : 'Google'}</Text>
+        <Text style={s.socialText}>{label}</Text>
         <View style={s.socialRightSpacer} />
       </Pressable>
     );
