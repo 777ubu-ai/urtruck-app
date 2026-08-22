@@ -67,39 +67,19 @@ const HERO_SLIDE_1 = require('../../../assets/onboarding/slide-1-hero.jpg');
 const HERO_SLIDE_2 = require('../../../assets/onboarding/slide-2-driver-1.jpg');
 const HERO_SLIDE_3 = require('../../../assets/onboarding/slide-2-driver-2.jpg');
 
-// PNG native aspects.
 const ASPECT_S1 = 853 / 1844;
 const ASPECT_S2 = 941 / 1672;
 const ASPECT_S3 = 853 / 1844;
 
-// Окно отображения: [from, to] от высоты PNG. Подобрано чтобы:
-//   - убрать сверху: status-bar + PNG-логотип «UrTruck» (рендерится
-//     отдельно native, меньшим размером)
-//   - убрать снизу: PNG-внутренние title/subtitle/dots/CTAs/оферта
-//     (рендерятся native через i18n)
-// Когда дизайнер пришлёт hero-only PNG (без UI): from=0, to=1.0.
-// RC2 top-artifacts fix (17 May): from-coords подняты ещё на 2%,
-// чтобы PNG-внутренний status bar (signal bars + battery + time
-// "05:00 4G 35%" на 0-4% высоты PNG) полностью ушёл за пределы
-// visible window. Раньше при from=0.03-0.04 нижний край status bar
-// "просачивался" мелкими чёрными точками/штрихами сверху экрана.
-// UrTruck logo (6-8% в PNG) остаётся целиком виден.
-const WINDOW_S1 = { from: 0.06, to: 0.50 };  // logo + карта + водитель + фура + склад
-const WINDOW_S2 = { from: 0.05, to: 0.55 };  // logo + cargo card + bid cards + $-badge
-const WINDOW_S3 = { from: 0.05, to: 0.50 };  // logo + driver + щит + driver-card + route bar
+const WINDOW_S1 = { from: 0.06, to: 0.50 };
+const WINDOW_S2 = { from: 0.05, to: 0.55 };
+const WINDOW_S3 = { from: 0.05, to: 0.50 };
 
 const HeroWindow = ({ source, imageAspect, win }) => {
-  // SCREEN_W — фактическая ширина слайда (carousel pagingEnabled).
-  // imgHeight = SCREEN_W / imageAspect — полная высота PNG при
-  // отображении на всю ширину экрана.
   const imgHeight = SCREEN_W / imageAspect;
   const visiblePct = win.to - win.from;
   const containerHeight = imgHeight * visiblePct;
   const topOffset = -win.from * imgHeight;
-  // pointerEvents="none" — иллюстрация декоративная, ни один её
-  // подэлемент не должен intercept'ить tap'ы. Это страхует CTA-
-  // кнопки снизу от любых RN-Web глюков с absolute-image над
-  // overflow:hidden parent'ом (issue PR #35 → #36).
   return (
     <View
       pointerEvents="none"
@@ -124,12 +104,6 @@ const HeroWindow = ({ source, imageAspect, win }) => {
   );
 };
 
-// SlideLogo (native compact) убран — текущие PNG уже содержат
-// собственный UrTruck logo внутри hero illustration (после window-crop
-// он остаётся видимым в верхней части). Native compact logo создавал
-// duplicate. Когда дизайнер пришлёт hero-only PNG (без logo внутри),
-// SlideLogo восстановится здесь.
-
 const Slide = ({ s, source, imageAspect, win, title, subtitle }) => (
   <View style={s.slide}>
     <HeroWindow source={source} imageAspect={imageAspect} win={win} />
@@ -142,12 +116,6 @@ const Slide = ({ s, source, imageAspect, win, title, subtitle }) => (
   </View>
 );
 
-// QaLoginHook — крошечный dev-only хук для Maestro: вставить актор-токен,
-// полученный через POST /api/v1/qa/ensure-actor (см. qa/maestro/_lib/
-// ensure-actor.sh). Зовём существующий `signIn` + `refreshLevel`;
-// никаких новых auth-методов, никакого автоматического verified-статуса —
-// всё, что мы получаем, берётся из ответа backend'а. Не показывается в
-// production (см. QA_HOOK_ALLOWED выше).
 const QaLoginHook = ({ s }) => {
   const { signIn, setRole, refreshLevel } = useAuth();
   const [token, setToken] = useState('');
@@ -163,9 +131,6 @@ const QaLoginHook = ({ s }) => {
     setErr('');
     setBusy(true);
     try {
-      // signIn сохраняет token в storage и выставляет hasToken=true.
-      // Phone-маркер "qa-actor" — это не E.164, в реальном UI отображаться
-      // не будет; реальная role/phone подгрузятся из /register/me ниже.
       await signIn('qa-actor', 3, value);
       const me = await refreshLevel().catch(() => null);
       const role = me?.role && me.role !== 'guest' ? me.role : 'client';
@@ -222,15 +187,11 @@ export default function OnboardingV2Screen({ navigation }) {
     if (next !== idx) setIdx(next);
   };
 
-  const goPhone = () => {
+  const goAuth = () => {
     navigation.navigate('PhoneV2');
   };
 
   const goGuest = async () => {
-    // A2: переходим в Main ТОЛЬКО если гостевая сессия реально создана.
-    // Раньше reset выполнялся даже при сбое ensureGuest → пользователь
-    // попадал в Main без токена и его выкидывало обратно на онбординг
-    // (выглядело как «кнопка не работает»). Теперь при сбое — toast.
     let ok = false;
     try {
       const data = await ensureGuest();
@@ -240,9 +201,6 @@ export default function OnboardingV2Screen({ navigation }) {
       toast(t('no_connection'), 'error');
       return;
     }
-    // Гость по умолчанию = грузовладелец (client, оранжевый бренд + лента
-    // «Машины»). Решение владельца: незалогиненный посетитель сайта видит
-    // оранжевую тему, как в приложении. Роль сменится на реальную после входа.
     navigation.reset({
       index: 0,
       routes: [{ name: 'Main', params: { role: 'client', guest: true } }],
@@ -292,7 +250,6 @@ export default function OnboardingV2Screen({ navigation }) {
         </View>
       </ScrollView>
 
-      {/* Paginator dots — dynamic */}
       <View style={s.dotsRow}>
         {[0, 1, 2].map((i) => (
           <View
@@ -307,16 +264,11 @@ export default function OnboardingV2Screen({ navigation }) {
         ))}
       </View>
 
-      {/* CTAs — native, единственная пара на экране.
-          Pressable (вместо TouchableOpacity) даёт более надёжный
-          tap handling на RN-Web. pressed-callback в style возвращает
-          opacity 0.85 как visual feedback. zIndex/elevation на
-          ctaWrap страхует от чего-либо absolutely-positioned поверх. */}
       <View style={s.ctaWrap} pointerEvents="box-none">
         <Pressable
-          onPress={goPhone}
+          onPress={goAuth}
           accessibilityRole="button"
-          accessibilityLabel={t('onb_v2_cta_phone')}
+          accessibilityLabel={t('phone_v2_title')}
           testID="onb-v2-cta-phone"
           style={({ pressed }) => [
             s.ctaPrimary,
@@ -324,7 +276,7 @@ export default function OnboardingV2Screen({ navigation }) {
             pressed && { opacity: 0.85 },
           ]}
         >
-          <Text style={s.ctaPrimaryText}>{t('onb_v2_cta_phone')}</Text>
+          <Text style={s.ctaPrimaryText}>{t('phone_v2_title')}</Text>
           <Feather name="arrow-right" size={20} color="#FFF" />
         </Pressable>
         <Pressable
@@ -363,19 +315,9 @@ const makeStyles = (brand) => StyleSheet.create({
   slide: {
     flex: 1,
     paddingHorizontal: 0,
-    // RC2 hero spacing fix (17 May): paddingTop сдвигает hero block
-    // вниз от реального iOS status bar — даёт breathing room сверху.
-    // PNG-внутренний логотип (теперь в visible window) не прилипает
-    // к notch'у. justifyContent='flex-start' оставляем дефолтным,
-    // чтобы illustration шла сразу после padding'а, а captionBlock
-    // снизу натурально следует за высотой HeroWindow.
-    // RC2 nudge-up (17 May): 16 → 6 по owner-фидбеку (hero был чуть
-    // слишком низко, оставалась пустая дырка сверху). 6pt — минимум
-    // breathing room от safe-area без визуального gap.
     paddingTop: 6,
     alignItems: 'stretch',
   },
-  // slideLogo style удалён вместе с SlideLogo компонентом (см. JSX выше).
   captionBlock: {
     paddingHorizontal: 24,
     paddingTop: 12,
@@ -406,10 +348,6 @@ const makeStyles = (brand) => StyleSheet.create({
   dot: {
     width: 6, height: 6, borderRadius: 3,
   },
-  // ctaWrap явно поднят над всем остальным: zIndex/elevation страхуют
-  // от любых absolute-overlay'ев слева от карусели. backgroundColor
-  // = brand.bg делает блок «непрозрачным» — если что-то под ним
-  // утечёт, оно не будет видно и не сможет получить tap.
   ctaWrap: {
     paddingHorizontal: 20,
     paddingTop: 2,
