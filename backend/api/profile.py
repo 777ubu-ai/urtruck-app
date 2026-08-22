@@ -20,9 +20,23 @@ def _normalize_phone(v):
     return "".join(ch for ch in str(v) if ch.isdigit() or ch == "+").strip()
 
 def _is_real_phone(v):
-    if not v:
+    """True only for a user-provided logistics contact number.
+
+    Email/social registrations intentionally carry a non-empty `auth_...`
+    placeholder in the legacy NOT-NULL/UNIQUE phone column until ProfileV2
+    collects the actual contact. Guest rows similarly use `guest_...`.
+    Those internal identifiers, email-shaped legacy values, or arbitrary long
+    strings must never satisfy the product's required-phone gate just because
+    they happen to contain >=10 digits.
+    """
+    raw = str(v or "").strip()
+    if not raw:
         return False
-    return len("".join(ch for ch in str(v) if ch.isdigit())) >= 10
+    lower = raw.lower()
+    if lower.startswith(("guest_", "auth_", "deleted_")) or "@" in raw:
+        return False
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    return 10 <= len(digits) <= 15
 
 def _is_real_country(v):
     return bool(v and len(str(v).strip()) >= 2)
@@ -110,9 +124,12 @@ def get_profile(user=Depends(require_level(1))):
     d = reg_dal.get_driver(user["id"])
     if not d:
         return user
+    stored_phone = d.get("phone")
     return {
         "id": d["id"],
-        "phone": d.get("phone"),
+        # Internal guest_/auth_ placeholders are implementation details and
+        # must never leak into ProfileV2 as if they were user contact data.
+        "phone": stored_phone if _is_real_phone(stored_phone) else None,
         "name": d.get("full_name") or "",
         "city": d.get("city") or "",
         "about": d.get("about") or "",
