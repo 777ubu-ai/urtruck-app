@@ -1,5 +1,5 @@
 import { Linking, Platform } from 'react-native';
-import { supabase } from '../config/supabase';
+import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from '../config/supabase';
 import { API_BASE } from '../config/env';
 import { storage } from './storage';
 
@@ -27,9 +27,6 @@ const readParams = (url) => {
 
 export const isSocialAuthCallback = (url) => {
   if (!url || typeof url !== 'string') return false;
-  // Never treat an arbitrary URL containing an access_token as our auth
-  // callback. Native callbacks must use UrTruck's dedicated scheme; web
-  // callbacks carry the explicit marker we add to redirectTo.
   return url.startsWith(NATIVE_REDIRECT) || url.includes('social_auth=1');
 };
 
@@ -42,9 +39,33 @@ const redirectUrl = () => {
 
 const providerLabel = (provider) => provider === 'apple' ? 'Apple' : 'Google';
 
+export async function getSocialProviderAvailability() {
+  try {
+    const response = await fetch(`${SUPABASE_URL}/auth/v1/settings`, {
+      headers: { apikey: SUPABASE_ANON_KEY },
+    });
+    if (!response.ok) throw new Error(`auth_settings_${response.status}`);
+    const settings = await response.json();
+    return {
+      google: settings?.external?.google === true,
+      apple: settings?.external?.apple === true,
+      checked: true,
+    };
+  } catch {
+    // Fail closed. A provider button must never open a broken OAuth flow just
+    // because provider readiness could not be proven.
+    return { google: false, apple: false, checked: false };
+  }
+}
+
 export async function startSocialAuth(provider) {
   if (!['google', 'apple'].includes(provider)) {
     throw new Error('unsupported_social_provider');
+  }
+
+  const availability = await getSocialProviderAvailability();
+  if (availability?.[provider] !== true) {
+    throw new Error('social_provider_unavailable');
   }
 
   const options = {
@@ -136,8 +157,5 @@ export async function completeSocialAuth(url) {
 }
 
 export async function clearSocialAuthSession() {
-  // Logout on this device must not sign the user's Google/Apple-backed
-  // Supabase session out on every other device. Supabase documents `local`
-  // as the correct scope for this behavior.
   try { await supabase.auth.signOut({ scope: 'local' }); } catch {}
 }
