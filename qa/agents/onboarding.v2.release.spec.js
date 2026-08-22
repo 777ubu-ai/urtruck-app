@@ -86,8 +86,9 @@ test('current email onboarding reaches role selection', async ({ page }) => {
 
   await page.getByTestId('onb-v2-cta-phone').click();
   await expect(page.getByTestId('email-v2-input')).toBeVisible();
-  await expect(page.getByTestId('auth-tab-email')).toBeVisible();
-  await capture(page, '02-email-entry-desktop');
+  await expect(page.getByTestId('auth-google')).toBeVisible();
+  await expect(page.getByTestId('auth-apple')).toBeVisible();
+  await capture(page, '02-social-email-entry-desktop');
 
   const submit = page.getByTestId('phone-v2-cta');
   await expect(submit).toBeDisabled();
@@ -108,16 +109,16 @@ test('current email onboarding reaches role selection', async ({ page }) => {
   await capture(page, '04-role-selection-desktop');
 });
 
-test('phone tab exposes a real telephone input and back navigation', async ({ page }) => {
+test('Google Apple and Email are the only visible login choices and back works', async ({ page }) => {
   await freshOnboarding(page);
   await page.getByTestId('onb-v2-cta-phone').click();
-  await page.getByTestId('auth-tab-phone').click();
 
-  const input = page.getByTestId('phone-v2-input');
-  await expect(input).toBeVisible();
-  expect(await input.getAttribute('inputmode')).toBe('tel');
-  expect(await input.getAttribute('autocomplete')).toMatch(/tel/);
-  await capture(page, '05-phone-entry-desktop');
+  await expect(page.getByTestId('auth-google')).toBeVisible();
+  await expect(page.getByTestId('auth-apple')).toBeVisible();
+  await expect(page.getByTestId('email-v2-input')).toBeVisible();
+  await expect(page.getByTestId('auth-tab-phone')).toHaveCount(0);
+  await expect(page.getByTestId('phone-v2-input')).toHaveCount(0);
+  await capture(page, '05-social-email-entry-desktop');
 
   await page.getByTestId('phone-v2-back').click();
   await expect(page.getByTestId('onb-v2-cta-phone')).toBeVisible();
