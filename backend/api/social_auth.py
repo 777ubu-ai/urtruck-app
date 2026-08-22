@@ -29,8 +29,6 @@ from database import registration_dal as reg_dal
 
 social_auth_router = APIRouter()
 
-# Both values are public client-side Supabase configuration, not service-role
-# credentials. Env overrides allow project rotation without a code release.
 SUPABASE_AUTH_URL = os.getenv(
     "SUPABASE_AUTH_URL",
     "https://pymddxenwtjcbmrafvnc.supabase.co",
@@ -123,20 +121,24 @@ def verify_social(req: SocialVerifyRequest, request: Request):
         reg_dal.update_driver(driver["id"], {"full_name": display_name[:160]})
         driver = reg_dal.get_driver(driver["id"]) or driver
 
-    # Legal evidence is part of the authentication transaction. If the audit
-    # cannot be persisted, fail closed and do not mint an UrTruck session.
     try:
         ip = request.client.host if request.client else None
         ua = request.headers.get("user-agent") or None
         consent_dal.record_consent(
-            phone=email,  # legacy TEXT column; contains auth identifier
+            phone=email,
             role=driver.get("role"),
             ip_address=ip,
             user_agent=ua,
             sms_provider=f"oauth:{provider}",
         )
         consent_dal.attach_user_after_verify(phone=email, user_id=driver["id"])
-    except Exception:
+    except Exception as exc:
+        # Safe operational evidence: exception class/message contains DB/schema
+        # diagnostics only; never include access_token/provider credentials.
+        print(
+            f"[social-auth] consent audit failed: {type(exc).__name__}: {exc}",
+            flush=True,
+        )
         raise HTTPException(
             status_code=503,
             detail="Не удалось сохранить подтверждение условий. Повторите вход.",
