@@ -140,6 +140,7 @@ jobs:
       - name: Build release AAB
         env:
           EXPO_PUBLIC_API_URL: https://urtruck.kz
+          EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
           ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_STORE_FILE: ${{ format('{0}/urtruck-upload-key.jks', runner.temp) }}
           ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
