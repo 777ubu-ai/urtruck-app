@@ -122,6 +122,10 @@ def verify_social(req: SocialVerifyRequest, request: Request):
         driver = reg_dal.get_driver(driver["id"]) or driver
 
     try:
+        # Startup normally creates this schema, but social auth is a security
+        # boundary and must stay fail-safe under isolated routers, recovery
+        # workers or partial startup. The DDL is idempotent.
+        consent_dal.init_consent_schema()
         ip = request.client.host if request.client else None
         ua = request.headers.get("user-agent") or None
         consent_dal.record_consent(
@@ -133,8 +137,6 @@ def verify_social(req: SocialVerifyRequest, request: Request):
         )
         consent_dal.attach_user_after_verify(phone=email, user_id=driver["id"])
     except Exception as exc:
-        # Safe operational evidence: exception class/message contains DB/schema
-        # diagnostics only; never include access_token/provider credentials.
         print(
             f"[social-auth] consent audit failed: {type(exc).__name__}: {exc}",
             flush=True,
