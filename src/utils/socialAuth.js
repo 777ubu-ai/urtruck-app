@@ -27,12 +27,10 @@ const readParams = (url) => {
 
 export const isSocialAuthCallback = (url) => {
   if (!url || typeof url !== 'string') return false;
-  return (
-    url.startsWith(NATIVE_REDIRECT) ||
-    url.includes('social_auth=1') ||
-    url.includes('#access_token=') ||
-    url.includes('?code=') && url.includes('social_auth')
-  );
+  // Never treat an arbitrary URL containing an access_token as our auth
+  // callback. Native callbacks must use UrTruck's dedicated scheme; web
+  // callbacks carry the explicit marker we add to redirectTo.
+  return url.startsWith(NATIVE_REDIRECT) || url.includes('social_auth=1');
 };
 
 const redirectUrl = () => {
@@ -54,9 +52,6 @@ export async function startSocialAuth(provider) {
     skipBrowserRedirect: Platform.OS !== 'web',
   };
 
-  // Google should always let the user choose an account instead of silently
-  // reusing the last browser account. Apple intentionally keeps its native
-  // account-selection behavior.
   if (provider === 'google') {
     options.queryParams = { prompt: 'select_account' };
   }
@@ -89,7 +84,7 @@ async function sessionFromCallback(url) {
   }
 
   // PKCE-safe fallback. The current client uses implicit flow, but supporting
-  // `code` here prevents a future Supabase flowType change from breaking login.
+  // `code` prevents a future Supabase flowType change from breaking login.
   const code = params.get('code');
   if (code) {
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
@@ -132,7 +127,10 @@ export async function completeSocialAuth(url) {
 
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
     try {
-      window.history.replaceState({}, '', `${window.location.pathname || '/'}${window.location.search.replace(/([?&])social_auth=1(&|$)/, '$1').replace(/[?&]$/, '')}`);
+      const cleanSearch = window.location.search
+        .replace(/([?&])social_auth=1(&|$)/, '$1')
+        .replace(/[?&]$/, '');
+      window.history.replaceState({}, '', `${window.location.pathname || '/'}${cleanSearch}`);
     } catch {}
   }
 
