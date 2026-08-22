@@ -83,8 +83,6 @@ async function sessionFromCallback(url) {
     return data?.session || null;
   }
 
-  // PKCE-safe fallback. The current client uses implicit flow, but supporting
-  // `code` prevents a future Supabase flowType change from breaking login.
   const code = params.get('code');
   if (code) {
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
@@ -138,5 +136,8 @@ export async function completeSocialAuth(url) {
 }
 
 export async function clearSocialAuthSession() {
-  try { await supabase.auth.signOut(); } catch {}
+  // Logout on this device must not sign the user's Google/Apple-backed
+  // Supabase session out on every other device. Supabase documents `local`
+  // as the correct scope for this behavior.
+  try { await supabase.auth.signOut({ scope: 'local' }); } catch {}
 }
