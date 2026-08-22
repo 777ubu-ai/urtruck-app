@@ -47,6 +47,16 @@ test('social OAuth supports only Google/Apple and returns through UrTruck deep l
 });
 
 
+test('social OAuth fails closed until Supabase confirms provider readiness', () => {
+  assert.match(socialAuth, /\/auth\/v1\/settings/);
+  assert.match(socialAuth, /settings\?\.external\?\.google === true/);
+  assert.match(socialAuth, /settings\?\.external\?\.apple === true/);
+  assert.match(socialAuth, /social_provider_unavailable/);
+  assert.match(supabaseClient, /export const SUPABASE_URL/);
+  assert.match(supabaseClient, /export const SUPABASE_ANON_KEY/);
+});
+
+
 test('cold-start and full-page OAuth callbacks are routed back into the auth screen', () => {
   assert.match(onboardingV2, /isSocialAuthCallback/);
   assert.match(onboardingV2, /Linking\.getInitialURL\(\)/);
