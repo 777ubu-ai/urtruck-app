@@ -55,6 +55,7 @@ test('production serves the merged build and public critical APIs', async ({ req
 test('production auth, deals, chat, documents and favorites routes are live and guarded', async ({ request }) => {
   const routes = [
     ['auth session', '/security/api/v1/register/me'],
+    ['social auth exchange', '/security/api/v1/register/social/verify'],
     ['deals', '/security/api/v1/market/deals'],
     ['chat', '/security/api/v1/chat/unread'],
     ['documents', '/security/api/v1/market/deals/qa-production-smoke/waybill'],
@@ -64,11 +65,12 @@ test('production auth, deals, chat, documents and favorites routes are live and 
   for (const [label, path] of routes) {
     const response = await expectHealthy(await request.get(`${PROD}${path}`), label);
     expect(response.status(), `${label} route is missing`).not.toBe(404);
-    expect([200, 401, 403, 422], `${label} returned unexpected status`).toContain(response.status());
+    // social exchange is POST-only, so GET may correctly return 405.
+    expect([200, 401, 403, 405, 422], `${label} returned unexpected status`).toContain(response.status());
   }
 });
 
-test('production onboarding renders and reaches both auth channels', async ({ page }) => {
+test('production onboarding renders Google Apple and Email auth choices', async ({ page }) => {
   fs.mkdirSync('qa-artifacts/production-smoke', { recursive: true });
   await page.goto(PROD, { waitUntil: 'domcontentloaded', timeout: 60000 });
   const start = page.getByTestId('onb-v2-cta-phone');
@@ -79,8 +81,10 @@ test('production onboarding renders and reaches both auth channels', async ({ pa
 
   await start.click();
   await expect(page.getByTestId('email-v2-input')).toBeVisible({ timeout: 15000 });
-  await expect(page.getByTestId('auth-tab-phone')).toBeVisible();
-  await page.getByTestId('auth-tab-phone').click();
-  await expect(page.getByTestId('phone-v2-input')).toHaveAttribute('inputmode', 'tel');
-  await page.screenshot({ path: 'qa-artifacts/production-smoke/02-live-auth-channels.png', fullPage: true });
+  await expect(page.getByTestId('auth-google')).toBeVisible();
+  await expect(page.getByTestId('auth-apple')).toBeVisible();
+  await expect(page.getByTestId('auth-tab-phone')).toHaveCount(0);
+  await expect(page.getByTestId('phone-v2-input')).toHaveCount(0);
+  await expect(page.getByTestId('auth-legal-consent')).toBeVisible();
+  await page.screenshot({ path: 'qa-artifacts/production-smoke/02-live-social-email-auth.png', fullPage: true });
 });
