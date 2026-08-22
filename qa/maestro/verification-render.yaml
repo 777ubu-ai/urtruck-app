@@ -4,9 +4,9 @@ tags:
   - smoke
   - registration
 ---
-# Identity/DOB/Help — за OTP-барьером. Без реальных SMS доходим только до
-# PhoneV2Screen (phone-v2-input). Если в этой сессии Identity уже достижим
-# (например, кто-то прошёл OTP вручную), флоу попробует проверить поля.
+# Identity/DOB/Help — за auth-барьером. Без реального Google/Apple/Email OTP
+# доходим до canonical auth entry и проверяем, что доступны Google, Apple,
+# Email и отсутствует удалённый телефонный login-tab.
 - launchApp
 - extendedWaitUntil:
     visible: "UrTruck"
@@ -16,7 +16,7 @@ tags:
     index: 0
 - extendedWaitUntil:
     visible:
-      text: "Продолжить по номеру|Continue"
+      text: "Вход или регистрация|Sign in|Continue"
     timeout: 60000
 - runFlow:
     when:
@@ -40,15 +40,20 @@ tags:
     id: "onb-v2-cta-phone"
 - waitForAnimationToEnd:
     timeout: 4000
-- takeScreenshot: 01_auth_phone_screen
+- takeScreenshot: 01_auth_social_email_screen
 - assertVisible:
-    id: "phone-v2-input"
+    id: "auth-google"
+- assertVisible:
+    id: "auth-apple"
+- assertVisible:
+    id: "email-v2-input"
 - assertVisible:
     id: "phone-v2-cta"
+- assertVisible:
+    id: "auth-legal-consent"
 
 # Опциональная ветка: если в текущей сессии Identity-step уже виден
-# (например, после ручного OTP), проверяем форму. Иначе тихо пропускаем —
-# это ожидаемо в Expo Go без реальных SMS.
+# (например, после ручного auth), проверяем форму. Иначе тихо пропускаем.
 - runFlow:
     when:
       visible:
