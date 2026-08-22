@@ -33,9 +33,12 @@ SUPABASE_AUTH_URL = os.getenv(
     "SUPABASE_AUTH_URL",
     "https://pymddxenwtjcbmrafvnc.supabase.co",
 ).rstrip("/")
-SUPABASE_AUTH_PUBLISHABLE_KEY = os.getenv(
-    "SUPABASE_AUTH_PUBLISHABLE_KEY",
-    "sb_publishable_XYvbU1xnueIzB9V7ZFL58A_VJjTvZ4M",
+# Use the same confirmed-live public anon key as the UrTruck frontend client.
+# This is intentionally NOT a service-role credential and cannot bypass RLS.
+# Env override keeps project/key rotation possible without a code release.
+SUPABASE_AUTH_ANON_KEY = os.getenv(
+    "SUPABASE_AUTH_ANON_KEY",
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5bWRkeGVud3RqY2JtcmFmdm5jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5OTk1NzMsImV4cCI6MjA5MTU3NTU3M30.hXS6gND9ChXeJ9MxGrsgfi1frOqsc-kQpwP5ZglcBQs",
 ).strip()
 
 _ALLOWED_PROVIDERS = {"google", "apple"}
@@ -56,7 +59,7 @@ def _verified_supabase_identity(access_token: str) -> tuple[dict, str]:
         response = httpx.get(
             f"{SUPABASE_AUTH_URL}/auth/v1/user",
             headers={
-                "apikey": SUPABASE_AUTH_PUBLISHABLE_KEY,
+                "apikey": SUPABASE_AUTH_ANON_KEY,
                 "Authorization": f"Bearer {token}",
             },
             timeout=8.0,
