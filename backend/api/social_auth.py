@@ -1,9 +1,9 @@
 """Google/Apple social-auth bridge for UrTruck.
 
-Supabase performs the OAuth handshake with Google/Apple.  UrTruck still owns
-its application session and authorization model: the mobile/web client sends
-the Supabase access token here, this endpoint validates it against Supabase
-Auth, derives the verified identity server-side, then issues the same
+Supabase performs the OAuth handshake with Google/Apple. UrTruck still owns
+its application session and authorization model: the client sends the
+Supabase access token here, this endpoint validates it against Supabase Auth,
+derives the verified identity server-side, then issues the same
 ``reg_sessions`` token used by email/phone login.
 
 Security invariants:
@@ -11,7 +11,8 @@ Security invariants:
 - accept only a live Supabase ``authenticated`` user;
 - allow only Google and Apple identities;
 - never log OAuth/Supabase access tokens;
-- explicit terms/privacy consent is required before issuing an UrTruck token.
+- explicit terms/privacy consent is required before issuing an UrTruck token;
+- if legal consent evidence cannot be persisted, do not issue a session.
 """
 from __future__ import annotations
 
@@ -29,8 +30,7 @@ from database import registration_dal as reg_dal
 social_auth_router = APIRouter()
 
 # Both values are public client-side Supabase configuration, not service-role
-# credentials.  Env overrides make project rotation possible without a code
-# release.  The publishable key cannot bypass RLS/admin permissions.
+# credentials. Env overrides allow project rotation without a code release.
 SUPABASE_AUTH_URL = os.getenv(
     "SUPABASE_AUTH_URL",
     "https://pymddxenwtjcbmrafvnc.supabase.co",
@@ -88,8 +88,6 @@ def _verified_supabase_identity(access_token: str) -> tuple[dict, str]:
     if not social:
         raise HTTPException(status_code=401, detail="Неподдерживаемый способ входа")
 
-    # Prefer the current/primary provider when it is one of the supported
-    # social identities; linked identities remain valid through the same user.
     provider = primary if primary in social else sorted(social)[0]
 
     email = (user.get("email") or "").strip().lower()
@@ -112,7 +110,7 @@ def verify_social(req: SocialVerifyRequest, request: Request):
     email = (user.get("email") or "").strip().lower()
 
     guest_id = reg_dal.get_driver_by_token(req.guest_token) if req.guest_token else None
-    driver = reg_dal.get_or_create_driver(email, upgrade_guest_id=guest_id)
+    driver = reg_dal.get_or_create_driver_by_email(email, upgrade_guest_id=guest_id)
 
     user_meta = user.get("user_metadata") or {}
     display_name = (
@@ -125,14 +123,13 @@ def verify_social(req: SocialVerifyRequest, request: Request):
         reg_dal.update_driver(driver["id"], {"full_name": display_name[:160]})
         driver = reg_dal.get_driver(driver["id"]) or driver
 
-    # Record the same legal consent evidence as OTP registration.  The legacy
-    # audit column is named `phone`, but is a generic TEXT identifier in
-    # practice (email auth already uses email as the registration identifier).
+    # Legal evidence is part of the authentication transaction. If the audit
+    # cannot be persisted, fail closed and do not mint an UrTruck session.
     try:
         ip = request.client.host if request.client else None
         ua = request.headers.get("user-agent") or None
         consent_dal.record_consent(
-            phone=email,
+            phone=email,  # legacy TEXT column; contains auth identifier
             role=driver.get("role"),
             ip_address=ip,
             user_agent=ua,
@@ -140,9 +137,10 @@ def verify_social(req: SocialVerifyRequest, request: Request):
         )
         consent_dal.attach_user_after_verify(phone=email, user_id=driver["id"])
     except Exception:
-        # Consent audit failure must not leak provider/token details; the
-        # existing OTP path also treats audit storage as best-effort.
-        pass
+        raise HTTPException(
+            status_code=503,
+            detail="Не удалось сохранить подтверждение условий. Повторите вход.",
+        )
 
     token = reg_dal.create_session(driver["id"])
     return {
