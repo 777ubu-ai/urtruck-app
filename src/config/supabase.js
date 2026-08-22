@@ -13,8 +13,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // MCP прямо перед откатом, anon key ниже — актуальный (не из истории git),
 // получен тем же MCP-запросом. В нём уже реально существует нужный
 // storage bucket urtruck-docs (создан 2026-08-10).
-const SUPABASE_URL = 'https://pymddxenwtjcbmrafvnc.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5bWRkeGVud3RqY2JtcmFmdm5jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5OTk1NzMsImV4cCI6MjA5MTU3NTU3M30.hXS6gND9ChXeJ9MxGrsgfi1frOqsc-kQpwP5ZglcBQs';
+export const SUPABASE_URL = 'https://pymddxenwtjcbmrafvnc.supabase.co';
+export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5bWRkeGVud3RqY2JtcmFmdm5jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5OTk1NzMsImV4cCI6MjA5MTU3NTU3M30.hXS6gND9ChXeJ9MxGrsgfi1frOqsc-kQpwP5ZglcBQs';
 
 // Beta период — всё бесплатно + универсальный OTP (см. backend BETA_MODE).
 // Контролируется EXPO_PUBLIC_IS_BETA. Default true.
