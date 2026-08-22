@@ -1,30 +1,12 @@
 // OnboardingV2Screen — inDrive-style welcome с 3 слайдами карусели.
 //
-// Stage RC2-window-crop (15 May):
-//   Owner-проверка PR #35: PNG-логотип UrTruck в crop'е был гигантским
-//   (~30% экрана), а сама иллюстрация (фура/cargo cards/driver+shield)
-//   была обрезана снизу. Корень — top-anchored crop показывал верхние
-//   X% PNG, включая логотип и status-bar, но НЕ всю illustration.
-//
-//   Window-crop (по обеим сторонам):
-//     - Каждый слайд показывает **окно** из PNG: [fromPct, toPct] от
-//       высоты файла. Сверху отрезаны status-bar + PNG-логотип
-//       (fromPct ≈ 0.08-0.12). Снизу отрезаны PNG title/subtitle/dots/
-//       CTAs/оферта (toPct ≈ 0.48-0.55).
-//     - Внутри окна остаётся ТОЛЬКО illustration (карта+водитель+фура+
-//       склад для slide 1, cargo card + bid cards + $-badge для slide
-//       2, driver+shield+driver-card+route bar для slide 3).
-//
-//   Native UrTruck logo рисуется отдельно, **небольшого** размера
-//   (fontSize 28 vs ~80 в PNG), брэнд остаётся консистентным, без
-//   доминирования. Title/subtitle/paginator/CTAs/consent — native
-//   через i18n.
-//
-//   Технически: container высота = (toPct - fromPct) * imgHeight,
-//   image position:absolute top:(-fromPct * imgHeight). overflow:hidden
-//   на container'е скрывает что вышло за границы.
+// OAuth cold-start invariant: Google/Apple can return after a full web reload
+// or after iOS/Android has killed the app. In both cases this onboarding screen
+// is the first unauthenticated route, so it must detect the dedicated social
+// callback and hand it to PhoneV2 instead of leaving the user at the welcome
+// carousel with an unconsumed provider token.
 
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -34,22 +16,17 @@ import {
   StyleSheet,
   Dimensions,
   TextInput,
+  Linking,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../utils/AuthContext';
+import { isSocialAuthCallback } from '../../utils/socialAuth';
 import { brand, useBrand, radius, typography } from '../../theme/brandV2';
 
-// QA-only safety gate. The block below renders ONLY when three conditions
-// hold together:
-//   1. __DEV__ is true (false in EAS production / TestFlight bundles);
-//   2. app is not standalone (covers ad-hoc/prod IPAs that ship __DEV__=true);
-//   3. explicit opt-in flag EXPO_PUBLIC_QA_HOOKS=1 — Maestro CI выставляет
-//      её через eas.json profile qa; на обычном dev-сервере / Expo Go у
-//      владельца её нет → блок не появляется. Раньше блок случайно вылезал
-//      на любой dev-сборке через веб-порт 8081 (скрин 28.07).
 const QA_HOOK_ALLOWED = (() => {
   if (typeof __DEV__ === 'undefined' || !__DEV__) return false;
   if (process.env.EXPO_PUBLIC_QA_HOOKS !== '1') return false;
@@ -83,11 +60,7 @@ const HeroWindow = ({ source, imageAspect, win }) => {
   return (
     <View
       pointerEvents="none"
-      style={{
-        width: '100%',
-        height: containerHeight,
-        overflow: 'hidden',
-      }}
+      style={{ width: '100%', height: containerHeight, overflow: 'hidden' }}
     >
       <Image
         source={source}
@@ -109,9 +82,7 @@ const Slide = ({ s, source, imageAspect, win, title, subtitle }) => (
     <HeroWindow source={source} imageAspect={imageAspect} win={win} />
     <View style={s.captionBlock}>
       <Text style={s.title}>{title}</Text>
-      <Text style={s.subtitle} numberOfLines={3}>
-        {subtitle}
-      </Text>
+      <Text style={s.subtitle} numberOfLines={3}>{subtitle}</Text>
     </View>
   </View>
 );
@@ -135,7 +106,7 @@ const QaLoginHook = ({ s }) => {
       const me = await refreshLevel().catch(() => null);
       const role = me?.role && me.role !== 'guest' ? me.role : 'client';
       setRole(role);
-    } catch (e) {
+    } catch {
       setErr('login failed');
     } finally {
       setBusy(false);
@@ -180,6 +151,30 @@ export default function OnboardingV2Screen({ navigation }) {
   const { ensureGuest } = useAuth();
   const scrollRef = useRef(null);
   const [idx, setIdx] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    let subscription = null;
+
+    const handoff = (url) => {
+      if (!active || !isSocialAuthCallback(url)) return;
+      navigation.navigate('PhoneV2', { socialAuthUrl: url });
+    };
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      handoff(window.location.href);
+    } else {
+      Linking.getInitialURL().then(handoff).catch(() => {});
+      // Defensive listener: normally PhoneV2 owns the live callback because
+      // OAuth starts there, but this protects navigation races/recovery.
+      subscription = Linking.addEventListener('url', ({ url }) => handoff(url));
+    }
+
+    return () => {
+      active = false;
+      subscription?.remove?.();
+    };
+  }, [navigation]);
 
   const onScroll = (e) => {
     const x = e.nativeEvent.contentOffset.x;
@@ -284,10 +279,7 @@ export default function OnboardingV2Screen({ navigation }) {
           accessibilityRole="button"
           accessibilityLabel={t('onb_v2_cta_guest')}
           testID="onb-v2-cta-guest"
-          style={({ pressed }) => [
-            s.ctaOutline,
-            pressed && { opacity: 0.85 },
-          ]}
+          style={({ pressed }) => [s.ctaOutline, pressed && { opacity: 0.85 }]}
         >
           <Feather name="package" size={18} color={brand.textPrimary} />
           <Text style={s.ctaOutlineText}>{t('onb_v2_cta_guest')}</Text>
@@ -308,136 +300,24 @@ export default function OnboardingV2Screen({ navigation }) {
 }
 
 const makeStyles = (brand) => StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: brand.bg,
-  },
-  slide: {
-    flex: 1,
-    paddingHorizontal: 0,
-    paddingTop: 6,
-    alignItems: 'stretch',
-  },
-  captionBlock: {
-    paddingHorizontal: 24,
-    paddingTop: 12,
-    paddingBottom: 4,
-    alignItems: 'center',
-  },
-  title: {
-    ...typography.h1,
-    color: brand.textPrimary,
-    textAlign: 'center',
-    marginBottom: 6,
-  },
-  subtitle: {
-    ...typography.body,
-    color: brand.textSecondary,
-    textAlign: 'center',
-    paddingHorizontal: 4,
-  },
-  dotsRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 10,
-    zIndex: 5,
-    elevation: 5,
-  },
-  dot: {
-    width: 6, height: 6, borderRadius: 3,
-  },
-  ctaWrap: {
-    paddingHorizontal: 20,
-    paddingTop: 2,
-    paddingBottom: 10,
-    backgroundColor: brand.bg,
-    zIndex: 10,
-    elevation: 10,
-  },
-  ctaPrimary: {
-    height: 56,
-    borderRadius: radius.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 24,
-  },
-  ctaPrimaryText: {
-    ...typography.button,
-    color: brand.textOnPrimary,
-    flex: 1,
-    textAlign: 'center',
-  },
-  ctaOutline: {
-    height: 56,
-    borderRadius: radius.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 24,
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: brand.borderStrong,
-    backgroundColor: brand.surface,
-  },
-  ctaOutlineText: {
-    ...typography.button,
-    color: brand.textPrimary,
-    flex: 1,
-    textAlign: 'center',
-    fontWeight: '700',
-  },
-  consent: {
-    fontSize: 12,
-    color: brand.textSecondary,
-    textAlign: 'center',
-    marginTop: 8,
-  },
-  consentLink: {
-    color: brand.textPrimary,
-    textDecorationLine: 'underline',
-    fontWeight: '600',
-  },
-  qaBlock: {
-    marginTop: 10,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: brand.borderStrong,
-    gap: 6,
-  },
-  qaLabel: {
-    fontSize: 11,
-    color: brand.textSecondary,
-    textAlign: 'center',
-    fontWeight: '600',
-  },
-  qaInput: {
-    height: 36,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: brand.borderStrong,
-    backgroundColor: brand.surface,
-    paddingHorizontal: 10,
-    color: brand.textPrimary,
-    fontSize: 12,
-  },
-  qaSubmit: {
-    height: 36,
-    borderRadius: radius.md,
-    backgroundColor: brand.borderStrong,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  qaSubmitText: {
-    color: brand.textPrimary,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  qaErr: {
-    fontSize: 11,
-    color: '#EF4444',
-    textAlign: 'center',
-  },
+  safe: { flex: 1, backgroundColor: brand.bg },
+  slide: { flex: 1, paddingHorizontal: 0, paddingTop: 6, alignItems: 'stretch' },
+  captionBlock: { paddingHorizontal: 24, paddingTop: 12, paddingBottom: 4, alignItems: 'center' },
+  title: { ...typography.h1, color: brand.textPrimary, textAlign: 'center', marginBottom: 6 },
+  subtitle: { ...typography.body, color: brand.textSecondary, textAlign: 'center', paddingHorizontal: 4 },
+  dotsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, marginBottom: 10, zIndex: 5, elevation: 5 },
+  dot: { width: 6, height: 6, borderRadius: 3 },
+  ctaWrap: { paddingHorizontal: 20, paddingTop: 2, paddingBottom: 10, backgroundColor: brand.bg, zIndex: 10, elevation: 10 },
+  ctaPrimary: { height: 56, borderRadius: radius.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24 },
+  ctaPrimaryText: { ...typography.button, color: brand.textOnPrimary, flex: 1, textAlign: 'center' },
+  ctaOutline: { height: 56, borderRadius: radius.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, marginTop: 8, borderWidth: 1, borderColor: brand.borderStrong, backgroundColor: brand.surface },
+  ctaOutlineText: { ...typography.button, color: brand.textPrimary, flex: 1, textAlign: 'center', fontWeight: '700' },
+  consent: { fontSize: 12, color: brand.textSecondary, textAlign: 'center', marginTop: 8 },
+  consentLink: { color: brand.textPrimary, textDecorationLine: 'underline', fontWeight: '600' },
+  qaBlock: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: brand.borderStrong, gap: 6 },
+  qaLabel: { fontSize: 11, color: brand.textSecondary, textAlign: 'center', fontWeight: '600' },
+  qaInput: { height: 36, borderRadius: radius.md, borderWidth: 1, borderColor: brand.borderStrong, backgroundColor: brand.surface, paddingHorizontal: 10, color: brand.textPrimary, fontSize: 12 },
+  qaSubmit: { height: 36, borderRadius: radius.md, backgroundColor: brand.borderStrong, alignItems: 'center', justifyContent: 'center' },
+  qaSubmitText: { color: brand.textPrimary, fontSize: 12, fontWeight: '700' },
+  qaErr: { fontSize: 11, color: '#EF4444', textAlign: 'center' },
 });
