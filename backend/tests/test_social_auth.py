@@ -103,6 +103,8 @@ def test_google_identity_creates_normal_urtruck_session(monkeypatch):
     assert reg_dal.get_driver_by_token(data["token"]) == data["user_id"]
     driver = reg_dal.get_driver(data["user_id"])
     assert driver["full_name"] == "Google User"
+    assert driver["email"] == "google.user@example.com"
+    assert driver["whatsapp_verified"] == 0
 
 
 def test_apple_private_relay_identity_is_supported(monkeypatch):
@@ -137,3 +139,30 @@ def test_guest_session_is_upgraded_not_duplicated(monkeypatch):
     r = post({"guest_token": guest_token})
     assert r.status_code == 200, r.text
     assert r.json()["user_id"] == guest["id"]
+
+
+def test_social_login_reuses_same_account_after_real_phone_saved(monkeypatch):
+    email = "stable.identity@example.com"
+    monkeypatch.setattr(
+        social_auth.httpx,
+        "get",
+        lambda *a, **k: FakeResponse(
+            200,
+            social_user(provider="google", email=email, name="Stable User"),
+        ),
+    )
+
+    first = post()
+    assert first.status_code == 200, first.text
+    first_id = first.json()["user_id"]
+
+    # ProfileV2 later replaces the placeholder phone with the real logistics
+    # contact. This used to destroy the only email lookup key.
+    reg_dal.update_driver(first_id, {"phone": "+77011234567"})
+
+    second = post()
+    assert second.status_code == 200, second.text
+    assert second.json()["user_id"] == first_id
+    driver = reg_dal.get_driver(first_id)
+    assert driver["email"] == email
+    assert driver["phone"] == "+77011234567"
