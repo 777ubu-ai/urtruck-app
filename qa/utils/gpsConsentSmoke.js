@@ -9,6 +9,7 @@ const coordinator = read('src/utils/locationPermissionCoordinator.js');
 const gate = read('src/components/deal/DealLocationPermissionGate.js');
 const routeHost = read('src/components/deal/DealWorkspaceRoute.js');
 const disclosure = read('src/components/deal/BackgroundLocationDisclosureModal.js');
+const nativeMap = read('src/components/TruckMap.native.js');
 const chatV2 = read('src/screens/ChatScreenV2.js');
 const cargoV2 = read('src/screens/CargoDetailV2.js');
 const tripV2 = read('src/screens/TripDetailV2.js');
@@ -30,26 +31,23 @@ const mustNot = (source, needle, label) => {
   console.log(`  ✓ ${label}`);
 };
 
-// Backend remains authoritative: no location upload without an active deal and
-// start-trip atomically activates the tracking permission record.
 must(api, 'tracking.get("status") != "active"', 'location upload blocked without active deal consent');
 must(api, 'tracking_started_with_trip', 'start trip activates tracking atomically');
 must(api, 'completed_at=CURRENT_TIMESTAMP', 'completion closes tracking record');
 
-// Background hooks are passive. They may read existing permission, but must
-// never surprise the user with a runtime permission dialog.
 must(hook, 'marketAPI.activeTrackingDeals()', 'location task takes server-approved IDs');
 must(hook, 'getForegroundPermissionsAsync()', 'foreground broadcaster only reads existing grant');
 mustNot(hook, 'requestForegroundPermissionsAsync()', 'background hook does not request foreground permission');
 mustNot(hook, 'requestBackgroundPermissionsAsync()', 'background hook does not request background permission');
 must(hook, "AppState.currentState !== 'active'", 'Android service never starts while app is already backgrounded');
 
-// Start trip is the single permission trigger. Android and web use the same
-// per-trip disclosure; Android then requests foreground permission first and
-// guides the user to enable Always/background access when Android stops at
-// "While using the app".
-must(tracker, "Platform.OS === 'android' || Platform.OS === 'web'", 'Android and web route Start trip through the disclosure coordinator');
-must(tracker, "requestLocationPermissionThroughDisclosure({ source: 'start_trip' })", 'Start trip requests permission through disclosure coordinator');
+// First Android map open is the prominent-disclosure trigger. Start trip keeps
+// the same coordinator as a fallback, but must reuse a successful consent/grant
+// from the current deal workspace instead of showing the modal twice.
+must(nativeMap, "requestLocationPermissionThroughDisclosure({ source: 'open_map' })", 'Android trip map requests disclosure before rendering');
+must(nativeMap, "permissionGate !== 'ready'", 'native map is blocked until disclosure succeeds');
+must(nativeMap, 'truck-map-location-consent-gate', 'native map has an explicit pre-map consent gate');
+must(tracker, "requestLocationPermissionThroughDisclosure({ source: 'start_trip' })", 'Start trip keeps disclosure fallback');
 must(tracker, 'getBackgroundLocationPermissionState()', 'location service checks existing grants');
 must(tracker, 'backgroundRequired: true', 'Android permission state requires background access for the trip service');
 must(tracker, "ok: fg.status === 'granted' && bg.status === 'granted'", 'Android permission state requires foreground and background grants');
@@ -57,40 +55,34 @@ must(tracker, 'foregroundService:', 'active-trip updates use a location foregrou
 mustNot(tracker.split('export async function startBackgroundTracking()')[1] || '', 'requestForegroundLocationPermission()', 'location service cannot ask foreground permission');
 mustNot(tracker.split('export async function startBackgroundTracking()')[1] || '', 'requestBackgroundLocationPermission()', 'location service cannot ask background permission');
 must(coordinator, 'registerLocationPermissionRequestHandler', 'visible deal screen can register disclosure host');
-must(coordinator, 'disclosure_host_unavailable', 'screens without a disclosure host fail closed');
+must(coordinator, 'waitForRequestHandler', 'coordinator closes parent/child mount race');
+must(coordinator, 'disclosure_host_unavailable', 'screens without a disclosure host are distinguishable');
 
-// Prominent disclosure explicitly explains collection, sharing, background use,
-// and the exact stop condition before Android runtime permission.
-must(disclosure, 'Отслеживать рейс', 'prominent disclosure uses the approved feature title');
-must(disclosure, 'собирает данные о местоположении автомобиля', 'disclosure says location data is collected');
-must(disclosure, 'передаёт их грузоотправителю', 'disclosure says who receives location data');
+must(disclosure, 'Разрешить GPS-отслеживание?', 'prominent disclosure has explicit GPS consent title');
+must(disclosure, 'точное местоположение автомобиля', 'disclosure says precise vehicle location is used');
+must(disclosure, 'передавать его грузоотправителю', 'disclosure says who receives location data');
 must(disclosure, 'в фоновом режиме', 'disclosure explicitly names background use');
-must(disclosure, 'приложение свёрнуто или не отображается на экране', 'disclosure explains minimized/not-visible behavior');
-must(disclosure, 'Передача геолокации прекращается после завершения или отмены рейса', 'disclosure explains when tracking stops');
-must(disclosure, 'Location sharing can continue in the background', 'English disclosure explicitly names background use');
-must(disclosure, 'Разрешить и начать рейс', 'primary disclosure action matches the user intent');
-must(disclosure, 'Не сейчас', 'secondary disclosure action is explicit');
-must(disclosure, 'Разрешить всегда', 'settings recovery explains the Always/background requirement');
-must(disclosure, 'background-location-disclosure-continue', 'disclosure has explicit start-trip consent action');
+must(disclosure, 'приложение свёрнуто', 'disclosure explains minimized behavior');
+must(disclosure, 'экран телефона выключен', 'disclosure explains screen-off behavior');
+must(disclosure, 'Передача GPS прекращается после завершения или отмены рейса', 'disclosure explains when tracking stops');
+must(disclosure, 'Location data is also used in the background', 'English disclosure explicitly names background use');
+must(disclosure, 'Согласен и продолжить', 'primary disclosure action is explicit consent');
+must(disclosure, 'Не согласен', 'secondary disclosure action is explicit refusal');
+must(disclosure, 'Разрешите геолокацию всегда', 'settings recovery explains Always/background requirement');
+must(disclosure, 'background-location-disclosure-continue', 'disclosure has explicit consent action');
 must(disclosure, 'background-location-open-settings', 'background permission settings path is visible');
 
-// No proactive permission card exists. The modal is registered only while a
-// driver is inside the canonical accepted-deal route.
-must(gate, "effectiveRole === 'driver'", 'disclosure host is driver-only');
+must(gate, "effectiveRole === 'driver'", 'deal host knows driver role');
 must(gate, "Platform.OS === 'android' || Platform.OS === 'web'", 'disclosure host supports Android and web');
-must(gate, 'Per-trip consent is intentional', 'approved modal is shown for every new trip start');
-must(gate, 'registerLocationPermissionRequestHandler(beginDisclosure)', 'driver deal screen registers Start-trip disclosure handler');
-must(gate, 'requestForegroundLocationPermission()', 'foreground permission is requested after disclosure');
-must(gate, 'requestBackgroundLocationPermission()', 'Android deal gate requests Always/background access after foreground permission');
-mustNot(gate, 'deal-background-location-bar', 'accepted deal has no proactive location permission bar');
-mustNot(gate, 'deal-background-location-allow', 'accepted deal has no separate Allow button');
-mustNot(gate, "dealStatus === 'accepted'", 'permission UI is not driven by a pre-trip status banner');
+must(gate, 'acceptedInThisWorkspace', 'successful map consent is reused for Start trip');
+must(gate, 'registerLocationPermissionRequestHandler(beginDisclosure)', 'canonical deal screen registers one disclosure handler');
+must(gate, 'requestForegroundLocationPermission()', 'foreground permission is requested only after disclosure');
+mustNot(gate, 'requestBackgroundLocationPermission()', 'Android gate does not auto-launch background permission request');
+must(gate, "setModalMode('settings')", 'Android moves to explicit settings step for Always permission');
 must(gate, 'openLocationSettings()', 'settings path exists for Android permission recovery');
+must(gate, 'AppState.addEventListener', 'return from Android settings rechecks permission');
 must(gate, "setModalMode('disclosure')", 'permission flow begins with in-app disclosure');
 
-// Every real accepted-deal entry point must use the same route host. This is
-// what prevents CargoDetail/TripDetail/deep navigation from reaching Start trip
-// with no registered permission handler.
 must(routeHost, 'DealLocationPermissionGate', 'canonical deal route owns the disclosure host');
 must(routeHost, 'DealWorkspaceScreenV2', 'canonical deal route renders the real workspace');
 for (const [source, label] of [
@@ -103,7 +95,6 @@ for (const [source, label] of [
   mustNot(source, 'DealLocationPermissionGate', `${label} cannot build an ad-hoc permission host`);
 }
 
-// Start trip must block the FSM transition until permission returns ok.
 must(workspace, 'ensureBackgroundLocationPermission()', 'start trip checks location permission');
 const permissionIndex = workspace.indexOf('ensureBackgroundLocationPermission()');
 const statusIndex = workspace.indexOf("changeDealStatus('in_progress')");
@@ -112,8 +103,6 @@ if (permissionIndex < 0 || statusIndex < 0 || permissionIndex > statusIndex) {
 }
 console.log('  ✓ start trip waits for permission before FSM transition');
 
-// Android declares the foreground service plus background location required by
-// Expo's background-location task. iOS background location remains configured separately.
 const permissions = app.android?.permissions || [];
 for (const required of [
   'android.permission.ACCESS_FINE_LOCATION',
@@ -129,20 +118,11 @@ must(manifest, 'android.permission.ACCESS_BACKGROUND_LOCATION', 'native manifest
 must(manifest, 'android.permission.FOREGROUND_SERVICE_LOCATION', 'native manifest keeps location foreground-service permission');
 
 const locationPlugin = (app.plugins || []).find((entry) => Array.isArray(entry) && entry[0] === 'expo-location');
-if (locationPlugin?.[1]?.isAndroidForegroundServiceEnabled !== true) {
-  throw new Error('GPS consent contract missing: expo-location Android foreground service mode');
-}
-if (locationPlugin?.[1]?.isAndroidBackgroundLocationEnabled !== true) {
-  throw new Error('GPS consent contract missing: expo-location Android background mode');
-}
-if (locationPlugin?.[1]?.isIosBackgroundLocationEnabled !== true) {
-  throw new Error('GPS consent contract missing: iOS background location mode');
-}
+if (locationPlugin?.[1]?.isAndroidForegroundServiceEnabled !== true) throw new Error('GPS consent contract missing: expo-location Android foreground service mode');
+if (locationPlugin?.[1]?.isAndroidBackgroundLocationEnabled !== true) throw new Error('GPS consent contract missing: expo-location Android background mode');
+if (locationPlugin?.[1]?.isIosBackgroundLocationEnabled !== true) throw new Error('GPS consent contract missing: iOS background location mode');
 console.log('  ✓ expo-location Android foreground/background location modes enabled');
 
-// Product code, agent instructions, Play release docs, and public privacy policy
-// must all describe the SAME permission architecture. This catches the exact
-// contradiction that previously let code say "Always" while docs said "never".
 must(playDoc, 'ACCESS_BACKGROUND_LOCATION', 'Play release doc covers Android background permission');
 must(playDoc, 'isAndroidBackgroundLocationEnabled: true', 'Play release doc matches Expo Android config');
 must(playDoc, 'DealWorkspaceRoute.js', 'Play release doc names canonical gated route');
@@ -158,4 +138,4 @@ must(privacy, 'Геолокация не используется для рек�
 
 must(routeMap, '<TruckMap', 'trip renders embedded route map inside UrTruck');
 
-console.log('\n[gps-consent] OK — canonical Start-trip disclosure + Android background-location contract');
+console.log('\n[gps-consent] OK — map-first prominent disclosure + Android background-location contract');
