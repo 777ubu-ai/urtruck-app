@@ -1,0 +1,4 @@
+appId: com.urtruck.app
+name: tap-allow-all-the-time
+---
+- tapOn: "Allow all the time"

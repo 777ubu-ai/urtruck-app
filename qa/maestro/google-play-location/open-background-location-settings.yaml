@@ -1,0 +1,23 @@
+appId: com.urtruck.app
+name: open-background-location-settings
+---
+- tapOn:
+    id: "background-location-open-settings"
+- extendedWaitUntil:
+    visible: "Permissions|Allow all the time|Location"
+    timeout: 30000
+- runFlow:
+    when:
+      visible: "Permissions"
+    commands:
+      - tapOn: "Permissions"
+      - waitForAnimationToEnd
+- runFlow:
+    when:
+      visible: "Location"
+    commands:
+      - tapOn: "Location"
+      - waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: "Allow all the time"
+    timeout: 30000

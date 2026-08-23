@@ -1,0 +1,8 @@
+appId: com.urtruck.app
+name: tap-disclosure-continue
+---
+- tapOn:
+    id: "background-location-disclosure-continue"
+- extendedWaitUntil:
+    visible: "While using the app"
+    timeout: 20000
