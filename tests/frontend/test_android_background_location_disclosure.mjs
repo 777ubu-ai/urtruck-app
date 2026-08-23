@@ -29,7 +29,7 @@ test('prominent disclosure matches Play background-location behavior', () => {
   assert.match(disclosure, /Location data is also used in the background/);
   assert.match(disclosure, /Согласен и продолжить/);
   assert.match(disclosure, /Не согласен/);
-  assert.match(disclosure, /Разрешить геолокацию всегда/);
+  assert.match(disclosure, /Разрешите геолокацию всегда/);
   assert.match(disclosure, /testID="background-location-disclosure"/);
   assert.match(disclosure, /testID="background-location-disclosure-continue"/);
 });
