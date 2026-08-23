@@ -22,7 +22,7 @@ permissions:
 jobs:
   record-evidence:
     name: Build standalone APK and record native Android proof
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     timeout-minutes: 120
     env:
       SOURCE_SHA: ${{ inputs.source_sha || '26c38a2350f4be3c3cc82b3fb58c31834f11c85e' }}
@@ -75,7 +75,9 @@ jobs:
 
       - name: Free runner disk space
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk || true
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk || true
+          fi
           df -h
 
       - name: Install npm dependencies
