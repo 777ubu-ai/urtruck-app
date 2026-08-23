@@ -1,10 +1,11 @@
 // TruckMap (native) — embedded map with planned route + live truck point.
 // Preferred road geometry/metrics come from the authenticated UrTruck backend.
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Linking } from 'react-native';
+import { Platform, View, Text, TouchableOpacity, StyleSheet, Linking } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { routingAPI } from '../utils/routingAPI';
 import { useI18n } from '../utils/useI18n';
+import { requestLocationPermissionThroughDisclosure } from '../utils/locationPermissionCoordinator';
 
 // Android embeds the same Yandex JavaScript API 2.1 visual provider as web.
 // The public browser key is injected by CI and is not stored in source.
@@ -48,14 +49,13 @@ const buildYandexRouteUrl = (points) => {
   return `https://yandex.ru/maps/?rtext=${encodeURIComponent(rtext)}&rtt=auto`;
 };
 
-// 2026-08-20 (App Store release audit, P0 locale leak): distance/duration
-// units and map marker titles were hardcoded in Russian, so a ZH/EN/KK user
-// saw «км / д / ч / мин» and «Старт/Назначение/Точка маршрута/Машина» in the
-// map UI regardless of the selected language. Both formatters now take the
-// translator; units come from the existing km_short / track_day / track_hour
-// / track_min keys (present in all four languages). Confirmed still absent
-// on main as of the 2026-08-21 merge (main's copy has no `t` parameter at
-// all) — this is a real fix being restored, not main's work being discarded.
+const MAP_PERMISSION_COPY = {
+  RU: { blocked: 'Для открытия карты рейса разрешите GPS-отслеживание.', retry: 'Разрешить GPS' },
+  EN: { blocked: 'Allow GPS tracking to open the trip map.', retry: 'Allow GPS' },
+  ZH: { blocked: '要打开运输地图，请允许 GPS 跟踪。', retry: '允许 GPS' },
+  KK: { blocked: 'Рейс картасын ашу үшін GPS бақылауға рұқсат беріңіз.', retry: 'GPS рұқсат беру' },
+};
+
 const distanceTextFromMeters = (value, t) => {
   const meters = Number(value);
   if (!Number.isFinite(meters) || meters <= 0) return null;
@@ -81,9 +81,6 @@ const durationTextFromSeconds = (value, t) => {
 
 export default function TruckMap({
   lat, lng, title, routePoints = [], externalRoute = null, onRouteSummary,
-  // 2026-08-19 (P1 re-review, независимый merge-block): см. комментарий в
-  // TruckMap.web.js — partial vehicle.payload_t (НЕ weight_t) из уже
-  // собранной грузоподъёмности, полные габариты пока не собираются в анкете.
   vehicle = null,
   showRouteAction = true,
 }) {
@@ -101,6 +98,25 @@ export default function TruckMap({
   const webViewRef = React.useRef(null);
   const [mapStatus, setMapStatus] = React.useState(YANDEX_MAPS_JS_API_KEY ? 'loading' : 'error');
   const [mapError, setMapError] = React.useState(YANDEX_MAPS_JS_API_KEY ? '' : 'Yandex Maps JS API key is not configured');
+  const [permissionGate, setPermissionGate] = React.useState(Platform.OS === 'android' ? 'checking' : 'ready');
+
+  const requestMapPermission = React.useCallback(async () => {
+    if (Platform.OS !== 'android') { setPermissionGate('ready'); return; }
+    setPermissionGate('checking');
+    const result = await requestLocationPermissionThroughDisclosure({ source: 'open_map' });
+    // A map outside the accepted-deal workspace has no GPS disclosure host and
+    // must keep working. Inside DealWorkspaceRoute the host always exists and
+    // drivers cannot render the map until consent + required grants succeed.
+    if (result?.ok || result?.reason === 'disclosure_host_unavailable') {
+      setPermissionGate('ready');
+    } else {
+      setPermissionGate('denied');
+    }
+  }, []);
+
+  React.useEffect(() => {
+    requestMapPermission();
+  }, [requestMapPermission]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -144,8 +160,6 @@ export default function TruckMap({
     } else {
       onRouteSummary?.(null);
     }
-    // `lang` is a dependency: the summary strings are localized, so switching
-    // language must re-emit them instead of leaving the previous locale's text.
   }, [onRouteSummary, resolvedRoute?.routeKey, resolvedRoute?.distance_m, resolvedRoute?.duration_s, live?.latitude, live?.longitude, roadGeometry.length, lang, t]);
 
   const mapPayload = React.useMemo(() => ({
@@ -156,8 +170,10 @@ export default function TruckMap({
   }), [live?.latitude, live?.longitude, planned, road, roadGeometry.length, title, lang, t]);
 
   React.useEffect(() => {
-    if (mapStatus === 'ready') webViewRef.current?.injectJavaScript(`window.urtruckUpdateMap(${JSON.stringify(mapPayload)});true;`);
-  }, [mapPayload, mapStatus]);
+    if (permissionGate === 'ready' && mapStatus === 'ready') {
+      webViewRef.current?.injectJavaScript(`window.urtruckUpdateMap(${JSON.stringify(mapPayload)});true;`);
+    }
+  }, [mapPayload, mapStatus, permissionGate]);
 
   const onMapMessage = React.useCallback((event) => {
     try {
@@ -167,6 +183,21 @@ export default function TruckMap({
       console.error('[TruckMap/Yandex]', detail); setMapError(detail); setMapStatus('error');
     } catch (error) { console.error('[TruckMap/Yandex] Invalid WebView message', error); }
   }, []);
+
+  const permissionCopy = MAP_PERMISSION_COPY[lang] || MAP_PERMISSION_COPY.RU;
+
+  if (permissionGate !== 'ready') {
+    return (
+      <View style={s.permissionGate} testID="truck-map-location-consent-gate">
+        <Text style={s.permissionTitle}>{permissionGate === 'checking' ? t('map_loading') : permissionCopy.blocked}</Text>
+        {permissionGate === 'denied' ? (
+          <TouchableOpacity style={s.permissionRetry} onPress={requestMapPermission} testID="truck-map-location-consent-retry">
+            <Text style={s.permissionRetryText}>{permissionCopy.retry}</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+    );
+  }
 
   return (
     <View style={s.shell}>
@@ -203,6 +234,10 @@ const s = StyleSheet.create({
   mapOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EEF3F0' },
   mapFallbackText: { color: '#617067', fontSize: 15, fontWeight: '700', textAlign: 'center' },
   mapDebugError: { marginTop: 8, color: '#9B2C2C', fontSize: 11, textAlign: 'center' },
+  permissionGate: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28, backgroundColor: '#EEF3F0' },
+  permissionTitle: { color: '#33443A', fontSize: 16, lineHeight: 23, fontWeight: '800', textAlign: 'center' },
+  permissionRetry: { marginTop: 18, minHeight: 48, paddingHorizontal: 22, borderRadius: 16, backgroundColor: '#168759', alignItems: 'center', justifyContent: 'center' },
+  permissionRetryText: { color: '#FFFFFF', fontSize: 15, fontWeight: '900' },
   routeAction: {
     position: 'absolute', right: 12, bottom: 12, minHeight: 40, paddingHorizontal: 14,
     borderRadius: 14, backgroundColor: '#168759', alignItems: 'center', justifyContent: 'center',
