@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
-      SOURCE_SHA: ${{ inputs.source_sha }}
+      SOURCE_SHA: ${{ inputs.source_sha || '26c38a2350f4be3c3cc82b3fb58c31834f11c85e' }}
       SOURCE_DIR: ${{ github.workspace }}/source
       ARTIFACT_DIR: ${{ github.workspace }}/source/qa/artifacts/google-play-background-location
       REVIEWER_EMAIL: appreview@urtruck.kz
