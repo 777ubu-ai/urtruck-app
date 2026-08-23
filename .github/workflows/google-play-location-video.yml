@@ -40,7 +40,7 @@ jobs:
       - name: Checkout exact app source SHA
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.source_sha }}
+          ref: ${{ inputs.source_sha || '26c38a2350f4be3c3cc82b3fb58c31834f11c85e' }}
           path: source
           fetch-depth: 1
 
