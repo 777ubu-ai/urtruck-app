@@ -1,0 +1,78 @@
+name: Configure Google and Apple Auth
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: urtruck-social-auth-config
+  cancel-in-progress: false
+
+jobs:
+  configure:
+    name: Configure Supabase Google + Apple providers
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_PROJECT_REF: pymddxenwtjcbmrafvnc
+      URTRUCK_SITE_URL: https://urtruck.kz
+      URTRUCK_WEB_SOCIAL_REDIRECT: https://urtruck.kz/?social_auth=1
+      URTRUCK_NATIVE_SOCIAL_REDIRECT: urtruck://auth-social
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+      GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+      APPLE_SERVICES_ID: ${{ secrets.APPLE_SERVICES_ID }}
+      APPLE_CLIENT_SECRET: ${{ secrets.APPLE_CLIENT_SECRET }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure providers without exposing secrets
+        run: bash scripts/configure_social_auth_providers.sh
+
+      - name: Verify public provider readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +x
+          anon_key="$(node - <<'NODE'
+          const fs = require('fs');
+          const src = fs.readFileSync('src/config/supabase.js', 'utf8');
+          const m = src.match(/SUPABASE_ANON_KEY\s*=\s*'([^']+)'/);
+          if (!m) process.exit(2);
+          process.stdout.write(m[1]);
+          NODE
+          )"
+          settings="$(curl -fsS \
+            -H "apikey: ${anon_key}" \
+            "https://${SUPABASE_PROJECT_REF}.supabase.co/auth/v1/settings")"
+          printf '%s' "$settings" | jq -e '.external.google == true' >/dev/null
+          printf '%s' "$settings" | jq -e '.external.apple == true' >/dev/null
+          echo 'PUBLIC_AUTH_SETTINGS=google+apple-ready'
+
+      - name: Verify OAuth authorize redirects
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +x
+          anon_key="$(node - <<'NODE'
+          const fs = require('fs');
+          const src = fs.readFileSync('src/config/supabase.js', 'utf8');
+          const m = src.match(/SUPABASE_ANON_KEY\s*=\s*'([^']+)'/);
+          if (!m) process.exit(2);
+          process.stdout.write(m[1]);
+          NODE
+          )"
+          base="https://${SUPABASE_PROJECT_REF}.supabase.co/auth/v1/authorize"
+          google_headers="$(curl -sS -o /dev/null -D - \
+            -H "apikey: ${anon_key}" \
+            "${base}?provider=google&redirect_to=https%3A%2F%2Furtruck.kz%2F%3Fsocial_auth%3D1")"
+          apple_headers="$(curl -sS -o /dev/null -D - \
+            -H "apikey: ${anon_key}" \
+            "${base}?provider=apple&redirect_to=https%3A%2F%2Furtruck.kz%2F%3Fsocial_auth%3D1")"
+          printf '%s\n' "$google_headers" | grep -i '^location:' | grep -qi 'accounts.google.com'
+          printf '%s\n' "$apple_headers" | grep -i '^location:' | grep -Eqi 'appleid\.apple\.com|apple\.com'
+          echo 'OAUTH_REDIRECTS=google+apple-ready'
