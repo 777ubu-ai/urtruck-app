@@ -13,6 +13,7 @@ const socialBackend = read('backend/api/social_auth.py');
 const backendMain = read('backend/main.py');
 const profileV2 = read('src/screens/onboarding/ProfileV2Screen.js');
 const supabaseClient = read('src/config/supabase.js');
+const appConfig = JSON.parse(read('app.json'));
 
 
 test('auth entry exposes Google + Apple + Email and no phone auth tab', () => {
@@ -54,6 +55,12 @@ test('social OAuth fails closed until Supabase confirms provider readiness', () 
   assert.match(socialAuth, /social_provider_unavailable/);
   assert.match(supabaseClient, /export const SUPABASE_URL/);
   assert.match(supabaseClient, /export const SUPABASE_ANON_KEY/);
+});
+
+
+test('iOS declares Sign in with Apple capability for App Store builds', () => {
+  assert.equal(appConfig?.expo?.ios?.bundleIdentifier, 'com.urtruck.app');
+  assert.equal(appConfig?.expo?.ios?.usesAppleSignIn, true);
 });
 
 
