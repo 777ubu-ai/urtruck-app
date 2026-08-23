@@ -74,7 +74,9 @@ jobs:
           node --experimental-loader ./tests/frontend/loader.mjs --test tests/frontend/test_outbox_user_ownership.mjs
           node --experimental-loader ./tests/frontend/loader.mjs --test tests/frontend/test_currency_normalization.mjs
       - name: Social auth and keyboard-safe onboarding contract
-        run: node --test tests/frontend/test_social_auth_onboarding.mjs
+        run: |
+          node --test tests/frontend/test_social_auth_onboarding.mjs
+          node --test tests/frontend/test_configure_social_auth_workflow.mjs
       - name: Deploy SSH security guard
         run: node qa/utils/deploySshSecurityGuard.js
       - name: Border dashboard contract
