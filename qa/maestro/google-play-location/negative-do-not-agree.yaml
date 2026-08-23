@@ -1,0 +1,48 @@
+appId: com.urtruck.app
+name: negative-do-not-agree
+---
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: "bottom-nav-deals"
+    timeout: 60000
+- tapOn:
+    id: "bottom-nav-deals"
+- waitForAnimationToEnd
+- runFlow:
+    when:
+      visible:
+        id: "deals-tab-active"
+    commands:
+      - tapOn:
+          id: "deals-tab-active"
+      - waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "deals-deal-card"
+    timeout: 30000
+- tapOn:
+    id: "deals-deal-card"
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: "deal-map-card-open"
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      id: "deal-map-card-open"
+    direction: DOWN
+    timeout: 15000
+- tapOn:
+    id: "deal-map-card-open"
+- extendedWaitUntil:
+    visible:
+      id: "background-location-disclosure"
+    timeout: 15000
+- tapOn:
+    id: "background-location-disclosure-cancel"
+- assertVisible:
+    id: "deal-map-card-open"
+- assertNotVisible:
+    id: "deal-map-fullscreen"
+- assertNotVisible: "While using the app"

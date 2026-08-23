@@ -1,0 +1,43 @@
+appId: com.urtruck.app
+name: login-reviewer-driver
+---
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: "onb-v2-cta-phone"
+    timeout: 90000
+- runFlow:
+    when:
+      visible:
+        id: "language-switcher"
+    commands:
+      - tapOn:
+          id: "language-switcher"
+      - tapOn:
+          id: "lang-en"
+      - waitForAnimationToEnd
+- tapOn:
+    id: "onb-v2-cta-phone"
+- extendedWaitUntil:
+    visible:
+      id: "email-v2-input"
+    timeout: 30000
+- tapOn:
+    id: "email-v2-input"
+- inputText: ${REVIEWER_EMAIL}
+- tapOn:
+    id: "phone-v2-cta"
+- extendedWaitUntil:
+    visible:
+      id: "otp-v2-input"
+    timeout: 30000
+- tapOn:
+    id: "otp-v2-input"
+- inputText: ${REVIEWER_CODE}
+- tapOn:
+    id: "otp-v2-cta"
+- extendedWaitUntil:
+    visible:
+      id: "bottom-nav-deals"
+    timeout: 90000
+

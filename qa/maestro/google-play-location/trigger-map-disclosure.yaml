@@ -1,0 +1,18 @@
+appId: com.urtruck.app
+name: trigger-map-disclosure
+---
+- scrollUntilVisible:
+    element:
+      id: "deal-map-card-open"
+    direction: DOWN
+    timeout: 15000
+- tapOn:
+    id: "deal-map-card-open"
+- extendedWaitUntil:
+    visible:
+      id: "background-location-disclosure"
+    timeout: 15000
+- assertVisible: "Allow GPS tracking?"
+- assertVisible: "Agree and continue"
+- assertVisible: "Do not agree"
+

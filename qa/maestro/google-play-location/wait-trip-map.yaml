@@ -1,0 +1,8 @@
+appId: com.urtruck.app
+name: wait-trip-map
+---
+- extendedWaitUntil:
+    visible:
+      id: "deal-map-fullscreen"
+    timeout: 30000
+

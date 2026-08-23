@@ -1,0 +1,151 @@
+name: Record Google Play Background Location Evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: "Exact app source SHA to build and record"
+        required: true
+        default: "26c38a2350f4be3c3cc82b3fb58c31834f11c85e"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  record-evidence:
+    name: Build standalone APK and record native Android proof
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      SOURCE_SHA: ${{ inputs.source_sha }}
+      SOURCE_DIR: ${{ github.workspace }}/source
+      ARTIFACT_DIR: ${{ github.workspace }}/source/qa/artifacts/google-play-background-location
+      REVIEWER_EMAIL: appreview@urtruck.kz
+      REVIEWER_CODE: "1975"
+
+    steps:
+      - name: Checkout automation branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout exact app source SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          path: source
+          fetch-depth: 1
+
+      - name: Verify checked out source SHA
+        run: |
+          set -euo pipefail
+          cd "$SOURCE_DIR"
+          actual_sha="$(git rev-parse HEAD)"
+          echo "SOURCE_SHA=$actual_sha"
+          test "$actual_sha" = "${SOURCE_SHA}"
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: source/package-lock.json
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK platform 36 / build-tools 36.0.0
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk || true
+          df -h
+
+      - name: Install npm dependencies
+        working-directory: source
+        run: |
+          npm ci --legacy-peer-deps --ignore-scripts \
+            || npm install --legacy-peer-deps --ignore-scripts --no-audit --no-fund
+
+      - name: Apply patches (if patches/ exists)
+        working-directory: source
+        run: |
+          if [ -d patches ] && [ "$(ls -A patches 2>/dev/null)" ]; then
+            npx patch-package
+          fi
+
+      - name: Decode upload keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/urtruck-upload-key.jks"
+
+      - name: Build standalone release APK
+        working-directory: source/android
+        env:
+          EXPO_PUBLIC_API_URL: https://urtruck.kz
+          EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
+          ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_STORE_FILE: ${{ format('{0}/urtruck-upload-key.jks', runner.temp) }}
+          ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace --warning-mode=summary
+
+      - name: Verify release APK identity
+        run: |
+          set -euo pipefail
+          apk="$SOURCE_DIR/android/app/build/outputs/apk/release/app-release.apk"
+          test -f "$apk"
+          aapt dump badging "$apk" | tee "$RUNNER_TEMP/aapt-badging.txt"
+          grep -q "package: name='com.urtruck.app'" "$RUNNER_TEMP/aapt-badging.txt"
+
+      - name: Install Maestro CLI
+        run: |
+          set -euo pipefail
+          curl -Ls "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+
+      - name: Boot Android emulator and record evidence
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          EXPO_PUBLIC_API_URL: https://urtruck.kz
+          REVIEWER_EMAIL: ${{ env.REVIEWER_EMAIL }}
+          REVIEWER_CODE: ${{ env.REVIEWER_CODE }}
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_7
+          disk-size: 8192M
+          ram-size: 4096M
+          heap-size: 1024M
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          disable-animations: false
+          script: |
+            set -euo pipefail
+            export PATH="$HOME/.maestro/bin:$PATH"
+            bash qa/scripts/google-play-background-location/run-ci-video.sh
+
+      - name: Upload Google Play evidence artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: google-play-background-location-evidence
+          path: source/qa/artifacts/google-play-background-location/
+          retention-days: 30
+          if-no-files-found: error
+
