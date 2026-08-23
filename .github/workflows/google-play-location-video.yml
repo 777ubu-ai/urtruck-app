@@ -117,7 +117,9 @@ jobs:
           set -euo pipefail
           apk="$SOURCE_DIR/android/app/build/outputs/apk/release/app-release.apk"
           test -f "$apk"
-          aapt dump badging "$apk" | tee "$RUNNER_TEMP/aapt-badging.txt"
+          aapt_bin="$(find "${ANDROID_SDK_ROOT}/build-tools" -type f -name aapt | sort | tail -n 1)"
+          test -n "$aapt_bin"
+          "$aapt_bin" dump badging "$apk" | tee "$RUNNER_TEMP/aapt-badging.txt"
           grep -q "package: name='com.urtruck.app'" "$RUNNER_TEMP/aapt-badging.txt"
 
       - name: Install Maestro CLI
@@ -148,7 +150,7 @@ jobs:
             bash qa/scripts/google-play-background-location/run-ci-video.sh
 
       - name: Upload Google Play evidence artifact
-        if: always()
+        if: ${{ always() && hashFiles('source/qa/artifacts/google-play-background-location/**') != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: google-play-background-location-evidence
