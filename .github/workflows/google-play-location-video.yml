@@ -1,6 +1,13 @@
 name: Record Google Play Background Location Evidence
 
 on:
+  push:
+    branches:
+      - ci/google-play-location-video
+    paths:
+      - ".github/workflows/google-play-location-video.yml"
+      - "qa/maestro/google-play-location/**"
+      - "qa/scripts/google-play-background-location/**"
   workflow_dispatch:
     inputs:
       source_sha:
@@ -148,4 +155,3 @@ jobs:
           path: source/qa/artifacts/google-play-background-location/
           retention-days: 30
           if-no-files-found: error
-
