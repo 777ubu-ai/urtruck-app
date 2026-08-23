@@ -6,6 +6,7 @@ import { WebView } from 'react-native-webview';
 import { routingAPI } from '../utils/routingAPI';
 import { useI18n } from '../utils/useI18n';
 import { requestLocationPermissionThroughDisclosure } from '../utils/locationPermissionCoordinator';
+import { getMapPermissionCopy } from '../utils/mapPermissionCopy';
 
 // Android embeds the same Yandex JavaScript API 2.1 visual provider as web.
 // The public browser key is injected by CI and is not stored in source.
@@ -47,13 +48,6 @@ const buildYandexRouteUrl = (points) => {
   if (safe.length < 2) return null;
   const rtext = safe.map((p) => `${p[0]},${p[1]}`).join('~');
   return `https://yandex.ru/maps/?rtext=${encodeURIComponent(rtext)}&rtt=auto`;
-};
-
-const MAP_PERMISSION_COPY = {
-  RU: { blocked: 'Для открытия карты рейса разрешите GPS-отслеживание.', retry: 'Разрешить GPS' },
-  EN: { blocked: 'Allow GPS tracking to open the trip map.', retry: 'Allow GPS' },
-  ZH: { blocked: '要打开运输地图，请允许 GPS 跟踪。', retry: '允许 GPS' },
-  KK: { blocked: 'Рейс картасын ашу үшін GPS бақылауға рұқсат беріңіз.', retry: 'GPS рұқсат беру' },
 };
 
 const distanceTextFromMeters = (value, t) => {
@@ -184,7 +178,7 @@ export default function TruckMap({
     } catch (error) { console.error('[TruckMap/Yandex] Invalid WebView message', error); }
   }, []);
 
-  const permissionCopy = MAP_PERMISSION_COPY[lang] || MAP_PERMISSION_COPY.RU;
+  const permissionCopy = getMapPermissionCopy(lang);
 
   if (permissionGate !== 'ready') {
     return (
