@@ -23,12 +23,111 @@ jobs:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
       GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_KEY_ID: ${{ secrets.APPLE_KEY_ID }}
       APPLE_SERVICES_ID: ${{ secrets.APPLE_SERVICES_ID }}
-      APPLE_CLIENT_SECRET: ${{ secrets.APPLE_CLIENT_SECRET }}
+      APPLE_PRIVATE_KEY_P8: ${{ secrets.APPLE_PRIVATE_KEY_P8 }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Validate required GitHub secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=0
+          required=(
+            SUPABASE_ACCESS_TOKEN
+            GOOGLE_OAUTH_CLIENT_ID
+            GOOGLE_OAUTH_CLIENT_SECRET
+            APPLE_TEAM_ID
+            APPLE_KEY_ID
+            APPLE_SERVICES_ID
+            APPLE_PRIVATE_KEY_P8
+          )
+          for key in "${required[@]}"; do
+            if [[ -z "${!key:-}" ]]; then
+              echo "ERROR: missing GitHub secret ${key}" >&2
+              missing=1
+            fi
+          done
+          if [[ "$missing" -ne 0 ]]; then
+            exit 1
+          fi
+
+      - name: Install Apple JWT dependencies
+        run: python3 -m pip install --quiet 'PyJWT==2.10.1' 'cryptography==45.0.6'
+
+      - name: Generate Apple client secret in runner memory
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +x
+          export RUNNER_TEMP_APPLE_KEY_PATH="$(mktemp "${RUNNER_TEMP}/apple-signin-key.XXXXXX.p8")"
+          export RUNNER_TEMP_APPLE_CLIENT_SECRET_PATH="$(mktemp "${RUNNER_TEMP}/apple-client-secret.XXXXXX.txt")"
+          chmod 600 "${RUNNER_TEMP_APPLE_KEY_PATH}" "${RUNNER_TEMP_APPLE_CLIENT_SECRET_PATH}"
+          cleanup() {
+            rm -f \
+              "${RUNNER_TEMP_APPLE_KEY_PATH}" \
+              "${RUNNER_TEMP_APPLE_CLIENT_SECRET_PATH}"
+          }
+          trap cleanup EXIT
+          python3 - <<'PY'
+          import datetime as dt
+          import os
+          import pathlib
+          import stat
+
+          import jwt
+
+          team_id = os.environ["APPLE_TEAM_ID"].strip()
+          key_id = os.environ["APPLE_KEY_ID"].strip()
+          services_id = os.environ["APPLE_SERVICES_ID"].strip()
+          private_key_raw = os.environ["APPLE_PRIVATE_KEY_P8"]
+          if not team_id or not key_id or not services_id or not private_key_raw.strip():
+              raise SystemExit("Apple signing material is empty")
+          private_key = private_key_raw.replace("\\n", "\n").strip() + "\n"
+          if "BEGIN PRIVATE KEY" not in private_key:
+              raise SystemExit("APPLE_PRIVATE_KEY_P8 does not look like a PEM private key")
+
+          key_path = pathlib.Path(os.environ["RUNNER_TEMP_APPLE_KEY_PATH"])
+          key_path.write_text(private_key, encoding="utf-8")
+          key_path.chmod(stat.S_IRUSR | stat.S_IWUSR)
+
+          now = dt.datetime.now(dt.timezone.utc)
+          exp = now + dt.timedelta(days=180)
+          token = jwt.encode(
+              {
+                  "iss": team_id,
+                  "sub": services_id,
+                  "aud": "https://appleid.apple.com",
+                  "iat": int(now.timestamp()),
+                  "exp": int(exp.timestamp()),
+              },
+              private_key,
+              algorithm="ES256",
+              headers={"kid": key_id},
+          )
+          if not token or token.count(".") != 2:
+              raise SystemExit("Generated Apple client secret is invalid")
+
+          token_path = pathlib.Path(os.environ["RUNNER_TEMP_APPLE_CLIENT_SECRET_PATH"])
+          token_path.write_text(token, encoding="utf-8")
+          token_path.chmod(stat.S_IRUSR | stat.S_IWUSR)
+
+          github_env = pathlib.Path(os.environ["GITHUB_ENV"])
+          with github_env.open("a", encoding="utf-8") as fh:
+              fh.write(f"APPLE_CLIENT_SECRET={token}\n")
+              fh.write(f"APPLE_CLIENT_SECRET_EXPIRES_AT={exp.date().isoformat()}\n")
+          PY
+          apple_client_secret="$(cat "${RUNNER_TEMP_APPLE_CLIENT_SECRET_PATH}")"
+          if [[ -z "${apple_client_secret}" ]]; then
+            echo "ERROR: generated Apple client secret is empty" >&2
+            exit 1
+          fi
+          echo "::add-mask::${APPLE_PRIVATE_KEY_P8}"
+          echo "::add-mask::${apple_client_secret}"
 
       - name: Configure providers without exposing secrets
         run: bash scripts/configure_social_auth_providers.sh
@@ -76,3 +175,15 @@ jobs:
           printf '%s\n' "$google_headers" | grep -i '^location:' | grep -qi 'accounts.google.com'
           printf '%s\n' "$apple_headers" | grep -i '^location:' | grep -Eqi 'appleid\.apple\.com|apple\.com'
           echo 'OAUTH_REDIRECTS=google+apple-ready'
+
+      - name: Workflow summary
+        shell: bash
+        run: |
+          {
+            echo '## Social Auth Ready'
+            echo ''
+            echo '- Google provider: enabled'
+            echo '- Apple provider: enabled'
+            echo "- Apple client secret expiry: ${APPLE_CLIENT_SECRET_EXPIRES_AT}"
+            echo '- Redirects: https://urtruck.kz/?social_auth=1 , urtruck://auth-social'
+          } >> "$GITHUB_STEP_SUMMARY"
