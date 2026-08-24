@@ -55,6 +55,18 @@ test('Google configuration is not blocked by missing Apple signing material', ()
   assert.ok(appleInstallIndex > googleConfigureIndex, 'Google must configure before optional Apple work');
 });
 
+test('live provider verification waits for Supabase auth config convergence', () => {
+  assert.match(workflow, /for attempt in \$\(seq 1 12\)/);
+  assert.match(workflow, /Google auth settings have not converged yet/);
+  assert.match(workflow, /Apple auth settings have not converged yet/);
+  assert.match(workflow, /sleep 5/);
+  assert.match(workflow, /external\.google == true/);
+  assert.match(workflow, /external\.apple == true/);
+  assert.match(workflow, /Google OAuth authorize redirect ready/);
+  assert.match(workflow, /Apple OAuth authorize redirect ready/);
+  assert.match(workflow, /accounts\.google\.com/);
+});
+
 test('secure handoff workflow masks generated Apple JWT before Apple provider configuration', () => {
   const maskIndex = workflow.indexOf('echo "::add-mask::${apple_client_secret}"');
   const configureIndex = workflow.indexOf('Configure Apple provider without exposing secrets');
