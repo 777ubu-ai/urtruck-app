@@ -10,6 +10,7 @@ const gate = read('src/components/deal/DealLocationPermissionGate.js');
 const routeHost = read('src/components/deal/DealWorkspaceRoute.js');
 const disclosure = read('src/components/deal/BackgroundLocationDisclosureModal.js');
 const nativeMap = read('src/components/TruckMap.native.js');
+const webMap = read('src/components/TruckMap.web.js');
 const chatV2 = read('src/screens/ChatScreenV2.js');
 const cargoV2 = read('src/screens/CargoDetailV2.js');
 const tripV2 = read('src/screens/TripDetailV2.js');
@@ -41,13 +42,17 @@ mustNot(hook, 'requestForegroundPermissionsAsync()', 'background hook does not r
 mustNot(hook, 'requestBackgroundPermissionsAsync()', 'background hook does not request background permission');
 must(hook, "AppState.currentState !== 'active'", 'Android service never starts while app is already backgrounded');
 
-// First Android map open is the prominent-disclosure trigger. Start trip keeps
-// the same coordinator as a fallback, but must reuse a successful consent/grant
-// from the current deal workspace instead of showing the modal twice.
-must(nativeMap, "requestLocationPermissionThroughDisclosure({ source: 'open_map' })", 'Android trip map requests disclosure before rendering');
-must(nativeMap, "permissionGate !== 'ready'", 'native map is blocked until disclosure succeeds');
-must(nativeMap, 'truck-map-location-consent-gate', 'native map has an explicit pre-map consent gate');
-must(tracker, "requestLocationPermissionThroughDisclosure({ source: 'start_trip' })", 'Start trip keeps disclosure fallback');
+// Viewing a route is independent from tracking permission. Only Start trip may
+// enter the disclosure/foreground/background permission sequence.
+must(nativeMap, 'truck-map-yandex-webview', 'Android route map remains embedded in UrTruck');
+mustNot(nativeMap, 'requestLocationPermissionThroughDisclosure', 'opening Android map cannot request tracking permission');
+mustNot(nativeMap, "source: 'open_map'", 'map-open is not a GPS consent trigger');
+mustNot(nativeMap, 'permissionGate', 'planned map is not hidden behind a GPS consent gate');
+mustNot(nativeMap, 'Linking.openURL', 'native route map cannot launch an external maps app');
+mustNot(webMap, 'Linking.openURL', 'web route map cannot launch an external maps app');
+mustNot(routeMap, 'Linking.openURL', 'route CTA cannot launch an external maps app');
+must(routeMap, 'route-map-fullscreen', 'route CTA has an in-app fullscreen map');
+must(tracker, "requestLocationPermissionThroughDisclosure({ source: 'start_trip' })", 'Start trip is the location disclosure trigger');
 must(tracker, 'getBackgroundLocationPermissionState()', 'location service checks existing grants');
 must(tracker, 'backgroundRequired: true', 'Android permission state requires background access for the trip service');
 must(tracker, "ok: fg.status === 'granted' && bg.status === 'granted'", 'Android permission state requires foreground and background grants');
@@ -74,7 +79,6 @@ must(disclosure, 'background-location-open-settings', 'background permission set
 
 must(gate, "effectiveRole === 'driver'", 'deal host knows driver role');
 must(gate, "Platform.OS === 'android' || Platform.OS === 'web'", 'disclosure host supports Android and web');
-must(gate, 'acceptedInThisWorkspace', 'successful map consent is reused for Start trip');
 must(gate, 'registerLocationPermissionRequestHandler(beginDisclosure)', 'canonical deal screen registers one disclosure handler');
 must(gate, 'requestForegroundLocationPermission()', 'foreground permission is requested only after disclosure');
 mustNot(gate, 'requestBackgroundLocationPermission()', 'Android gate does not auto-launch background permission request');
@@ -138,4 +142,4 @@ must(privacy, 'Геолокация не используется для рек�
 
 must(routeMap, '<TruckMap', 'trip renders embedded route map inside UrTruck');
 
-console.log('\n[gps-consent] OK — map-first prominent disclosure + Android background-location contract');
+console.log('\n[gps-consent] OK — Start-trip-only consent + embedded route + Android background-location contract');

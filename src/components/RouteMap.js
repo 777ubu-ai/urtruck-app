@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import { useTheme } from '../utils/ThemeContext';
 import { useI18n } from '../utils/useI18n';
@@ -19,26 +19,19 @@ const dedupePoints = (points) => {
   });
 };
 
-const buildYandexRouteUrl = (points) => {
-  if (!Array.isArray(points) || points.length < 2) return null;
-  const valid = points
-    .filter((point) => Array.isArray(point) && Number.isFinite(Number(point[0])) && Number.isFinite(Number(point[1])))
-    .map(([lat, lon]) => `${Number(lon)},${Number(lat)}`);
-  if (valid.length < 2) return null;
-  return `https://yandex.kz/maps/?rtext=${valid.join('~')}&rtt=auto`;
-};
-
 // RouteMap — canonical embedded route card. The old implementation estimated
 // distance with Haversine ×1.25 and invented ~600 km/day delivery times. That
 // looked authoritative even when no road route existed. Now the map delegates
-// route geometry and distance/duration to TruckMap (Yandex MultiRoute on web)
-// and hides metrics when the provider cannot return a real road result.
+// route geometry and distance/duration to TruckMap and hides metrics when the
+// provider cannot return a real road result. The route CTA opens the same map
+// full-screen inside UrTruck — it never deep-links to an external maps app.
 export default function RouteMap({ from, to, transit, dealId, dealStatus, driverName, capacityTons }) {
   const { theme } = useTheme();
   const { t, lang } = useI18n();
   const [location, setLocation] = React.useState(null);
   const [locationLoading, setLocationLoading] = React.useState(false);
   const [routeSummary, setRouteSummary] = React.useState(null);
+  const [routeOpen, setRouteOpen] = React.useState(false);
 
   // 2026-08-19 (P1, независимый re-review PR #239): грузоподъёмность рейса —
   // единственные реальные данные о машине, которые уже собираются в анкете
@@ -61,11 +54,6 @@ export default function RouteMap({ from, to, transit, dealId, dealStatus, driver
     ...(transit ? parseRouteCities(transit) : []),
     ...parseRouteCities(to),
   ]), [from, to, transit]);
-  const routePointsKey = React.useMemo(() => JSON.stringify(routePoints), [routePoints]);
-  const routeUrl = React.useMemo(() => buildYandexRouteUrl(routePoints), [routePointsKey]);
-  const openRoute = React.useCallback(() => {
-    if (routeUrl) Linking.openURL(routeUrl).catch(() => {});
-  }, [routeUrl]);
 
   React.useEffect(() => {
     if (!trackingActive) {
@@ -92,71 +80,110 @@ export default function RouteMap({ from, to, transit, dealId, dealStatus, driver
   const lat = location ? Number(location.lat) : null;
   const lng = location ? Number(location.lng) : null;
   const hasLivePoint = Number.isFinite(lat) && Number.isFinite(lng);
+  const hasRoute = routePoints.length >= 2;
   const handleSummary = React.useCallback((summary) => setRouteSummary(summary || null), []);
 
   return (
-    <View style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]} testID="planned-route-card">
-      <View style={s.headerRow}>
-        <Feather name="map" size={14} color={theme.textMuted} />
-        <Text style={[s.title, { color: theme.textMuted }]}>
-          {t(hasLivePoint ? 'live_route_title' : 'planned_route_title')}
+    <>
+      <View style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]} testID="planned-route-card">
+        <View style={s.headerRow}>
+          <Feather name="map" size={14} color={theme.textMuted} />
+          <Text style={[s.title, { color: theme.textMuted }]}>
+            {t(hasLivePoint ? 'live_route_title' : 'planned_route_title')}
+          </Text>
+        </View>
+
+        <Text style={[s.route, { color: theme.text }]} numberOfLines={2}>
+          {localizePlace(from, lang)}
+          {transit ? `  ·  ${t('trip_via')} ${localizePlace(transit, lang)}` : ''}
+          {'  →  '}
+          {localizePlace(to, lang)}
         </Text>
-      </View>
 
-      <Text style={[s.route, { color: theme.text }]} numberOfLines={2}>
-        {localizePlace(from, lang)}
-        {transit ? `  ·  ${t('trip_via')} ${localizePlace(transit, lang)}` : ''}
-        {'  →  '}
-        {localizePlace(to, lang)}
-      </Text>
+        <View style={s.mapWrap} testID={hasLivePoint ? 'trip-live-map' : 'trip-planned-map'}>
+          <TruckMap
+            lat={hasLivePoint ? lat : undefined}
+            lng={hasLivePoint ? lng : undefined}
+            title={driverName || t('track_truck_marker')}
+            routePoints={routePoints}
+            planned={!hasLivePoint}
+            plannedTitle={t('planned_route_title')}
+            plannedHint={t('tracking_starts_after_start')}
+            liveTitle={t('live_route_title')}
+            showBadge={false}
+            onRouteSummary={handleSummary}
+            vehicle={vehicle}
+          />
+          {locationLoading && trackingActive && !hasLivePoint ? (
+            <View style={s.loadingPill} pointerEvents="none">
+              <ActivityIndicator size="small" color="#168759" />
+            </View>
+          ) : null}
+        </View>
 
-      <View style={s.mapWrap} testID={hasLivePoint ? 'trip-live-map' : 'trip-planned-map'}>
-        <TruckMap
-          lat={hasLivePoint ? lat : undefined}
-          lng={hasLivePoint ? lng : undefined}
-          title={driverName || t('track_truck_marker')}
-          routePoints={routePoints}
-          planned={!hasLivePoint}
-          plannedTitle={t('planned_route_title')}
-          plannedHint={t('tracking_starts_after_start')}
-          liveTitle={t('live_route_title')}
-          showBadge={false}
-          showRouteAction={false}
-          onRouteSummary={handleSummary}
-          vehicle={vehicle}
-        />
-        {locationLoading && trackingActive && !hasLivePoint ? (
-          <View style={s.loadingPill} pointerEvents="none">
-            <ActivityIndicator size="small" color="#168759" />
+        {routeSummary ? (
+          <View style={[s.metrics, { borderTopColor: theme.border }]} testID="route-map-real-metrics">
+            <View style={s.metric}>
+              <Text style={[s.metricLabel, { color: theme.textMuted }]}>{t('distance')}</Text>
+              <Text style={[s.metricValue, { color: theme.text }]}>{routeSummary.distanceText}</Text>
+            </View>
+            <View style={[s.metricDivider, { backgroundColor: theme.border }]} />
+            <View style={s.metric}>
+              <Text style={[s.metricLabel, { color: theme.textMuted }]}>{t('delivery_time')}</Text>
+              <Text style={[s.metricValue, { color: theme.text }]}>{routeSummary.durationText}</Text>
+            </View>
           </View>
+        ) : null}
+        {hasRoute ? (
+          <TouchableOpacity
+            style={[s.routeButton, { borderTopColor: theme.border }]}
+            onPress={() => setRouteOpen(true)}
+            activeOpacity={0.86}
+            testID="route-map-bottom-action"
+          >
+            <Feather name="navigation" size={16} color="#FFFFFF" />
+            <Text style={s.routeButtonText}>{t('route_action')}</Text>
+          </TouchableOpacity>
         ) : null}
       </View>
 
-      {routeSummary ? (
-        <View style={[s.metrics, { borderTopColor: theme.border }]} testID="route-map-real-metrics">
-          <View style={s.metric}>
-            <Text style={[s.metricLabel, { color: theme.textMuted }]}>{t('distance')}</Text>
-            <Text style={[s.metricValue, { color: theme.text }]}>{routeSummary.distanceText}</Text>
+      <Modal
+        visible={routeOpen}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setRouteOpen(false)}
+        testID="route-map-fullscreen-modal"
+      >
+        <View style={[s.fullscreen, { backgroundColor: theme.bg }]} testID="route-map-fullscreen">
+          <View style={[s.fullscreenHeader, { borderBottomColor: theme.border, backgroundColor: theme.card }]}>
+            <View style={s.fullscreenTitleWrap}>
+              <Text style={[s.fullscreenTitle, { color: theme.text }]}>{t('route_action')}</Text>
+              <Text style={[s.fullscreenRoute, { color: theme.textMuted }]} numberOfLines={1}>
+                {localizePlace(from, lang)} → {localizePlace(to, lang)}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => setRouteOpen(false)}
+              style={[s.closeButton, { borderColor: theme.border }]}
+              accessibilityRole="button"
+              accessibilityLabel={t('close')}
+              testID="route-map-fullscreen-close"
+            >
+              <Feather name="x" size={22} color={theme.text} />
+            </TouchableOpacity>
           </View>
-          <View style={[s.metricDivider, { backgroundColor: theme.border }]} />
-          <View style={s.metric}>
-            <Text style={[s.metricLabel, { color: theme.textMuted }]}>{t('delivery_time')}</Text>
-            <Text style={[s.metricValue, { color: theme.text }]}>{routeSummary.durationText}</Text>
+          <View style={s.fullscreenMap}>
+            <TruckMap
+              lat={hasLivePoint ? lat : undefined}
+              lng={hasLivePoint ? lng : undefined}
+              title={driverName || t('track_truck_marker')}
+              routePoints={routePoints}
+              vehicle={vehicle}
+            />
           </View>
         </View>
-      ) : null}
-      {routeUrl ? (
-        <TouchableOpacity
-          style={[s.routeButton, { borderTopColor: theme.border }]}
-          onPress={openRoute}
-          activeOpacity={0.86}
-          testID="route-map-bottom-action"
-        >
-          <Feather name="navigation" size={16} color="#FFFFFF" />
-          <Text style={s.routeButtonText}>{t('route_action')}</Text>
-        </TouchableOpacity>
-      ) : null}
-    </View>
+      </Modal>
+    </>
   );
 }
 
@@ -182,4 +209,17 @@ const s = StyleSheet.create({
     gap: 8,
   },
   routeButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '900' },
+  fullscreen: { flex: 1 },
+  fullscreenHeader: {
+    minHeight: 76, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 12,
+  },
+  fullscreenTitleWrap: { flex: 1 },
+  fullscreenTitle: { fontSize: 18, fontWeight: '900' },
+  fullscreenRoute: { marginTop: 3, fontSize: 12.5, fontWeight: '700' },
+  closeButton: {
+    width: 44, height: 44, borderRadius: 22, borderWidth: 1,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  fullscreenMap: { flex: 1, backgroundColor: '#EAF1ED' },
 });

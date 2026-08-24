@@ -34,23 +34,22 @@ test('prominent disclosure matches Play background-location behavior', () => {
   assert.match(disclosure, /testID="background-location-disclosure-continue"/);
 });
 
-test('Android trip map is blocked until the in-app disclosure succeeds', () => {
-  assert.match(nativeMap, /requestLocationPermissionThroughDisclosure\(\{ source: 'open_map' \}\)/);
-  assert.match(nativeMap, /permissionGate !== 'ready'/);
-  assert.match(nativeMap, /truck-map-location-consent-gate/);
-  assert.match(nativeMap, /truck-map-location-consent-retry/);
-  const gateIndex = nativeMap.indexOf("if (permissionGate !== 'ready')");
-  const webViewIndex = nativeMap.indexOf('testID="truck-map-yandex-webview"');
-  assert.ok(gateIndex >= 0 && webViewIndex > gateIndex, 'native map WebView must render only after consent gate');
+test('Android trip map is viewable without starting the tracking permission flow', () => {
+  assert.doesNotMatch(nativeMap, /requestLocationPermissionThroughDisclosure/);
+  assert.doesNotMatch(nativeMap, /source: ['"]open_map['"]/);
+  assert.doesNotMatch(nativeMap, /permissionGate/);
+  assert.doesNotMatch(nativeMap, /truck-map-location-consent-gate/);
+  assert.doesNotMatch(nativeMap, /truck-map-location-consent-retry/);
+  assert.match(nativeMap, /testID="truck-map-yandex-webview"/);
 });
 
-test('canonical deal host handles both map-open consent and Start trip fallback', () => {
+test('canonical deal host handles Start trip consent only', () => {
   assert.match(gate, /effectiveRole === 'driver'/);
   assert.match(gate, /registerLocationPermissionRequestHandler\(beginDisclosure\)/);
-  assert.match(gate, /acceptedInThisWorkspace/);
   assert.match(gate, /if \(!isDriver\) return \{ ok: true, notRequired: true/);
   assert.match(tracker, /requestLocationPermissionThroughDisclosure\(\{ source: 'start_trip' \}\)/);
   assert.match(coordinator, /waitForRequestHandler/);
+  assert.doesNotMatch(nativeMap, /requestLocationPermissionThroughDisclosure/);
 });
 
 test('all accepted-deal entry points use one canonical disclosure host', () => {
@@ -95,13 +94,12 @@ test('web denied recovery never offers or calls native app settings', () => {
   assert.match(tracker, /export \{ openLocationSettings \} from '\.\/locationSettings'/);
 });
 
-test('start trip cannot enter in_progress before permission succeeds and does not duplicate accepted map consent', () => {
+test('Start trip cannot enter in_progress before permission succeeds', () => {
   const permissionIndex = workspace.indexOf('ensureBackgroundLocationPermission()');
   const statusIndex = workspace.indexOf("changeDealStatus('in_progress')");
   assert.ok(permissionIndex >= 0 && statusIndex >= 0);
   assert.ok(permissionIndex < statusIndex);
-  assert.match(gate, /acceptedInThisWorkspace\.current/);
-  assert.match(gate, /if \(state\?\.ok\) return successPayload\(\)/);
+  assert.match(tracker, /requestLocationPermissionThroughDisclosure\(\{ source: 'start_trip' \}\)/);
 });
 
 test('background broadcaster never opens runtime permission prompts', () => {

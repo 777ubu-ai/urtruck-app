@@ -1,15 +1,15 @@
 // TruckMap (native) — embedded map with planned route + live truck point.
 // Preferred road geometry/metrics come from the authenticated UrTruck backend.
 import React from 'react';
-import { Platform, View, Text, TouchableOpacity, StyleSheet, Linking } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { routingAPI } from '../utils/routingAPI';
 import { useI18n } from '../utils/useI18n';
-import { requestLocationPermissionThroughDisclosure } from '../utils/locationPermissionCoordinator';
-import { getMapPermissionCopy } from '../utils/mapPermissionCopy';
 
-// Android embeds the same Yandex JavaScript API 2.1 visual provider as web.
-// The public browser key is injected by CI and is not stored in source.
+// Native screens render the route inside UrTruck. Viewing a planned/live map
+// never requests the driver's GPS permission and never opens an external maps
+// app. Active-trip permission is owned exclusively by the Start trip action.
+// The browser key is injected by CI and is not stored in source.
 const YANDEX_MAPS_JS_API_KEY = String(process.env.EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY || '').trim();
 
 const buildYandexMapHtml = (apiKey) => `<!doctype html><html><head>
@@ -43,13 +43,6 @@ const routeKey = (points) => (points || [])
   .map((point) => `${Number(point?.[0]).toFixed(4)}:${Number(point?.[1]).toFixed(4)}`)
   .join('|');
 
-const buildYandexRouteUrl = (points) => {
-  const safe = (points || []).filter(Boolean);
-  if (safe.length < 2) return null;
-  const rtext = safe.map((p) => `${p[0]},${p[1]}`).join('~');
-  return `https://yandex.ru/maps/?rtext=${encodeURIComponent(rtext)}&rtt=auto`;
-};
-
 const distanceTextFromMeters = (value, t) => {
   const meters = Number(value);
   if (!Number.isFinite(meters) || meters <= 0) return null;
@@ -76,7 +69,6 @@ const durationTextFromSeconds = (value, t) => {
 export default function TruckMap({
   lat, lng, title, routePoints = [], externalRoute = null, onRouteSummary,
   vehicle = null,
-  showRouteAction = true,
 }) {
   const { t, lang } = useI18n();
   const live = asPoint([lat, lng]);
@@ -92,25 +84,6 @@ export default function TruckMap({
   const webViewRef = React.useRef(null);
   const [mapStatus, setMapStatus] = React.useState(YANDEX_MAPS_JS_API_KEY ? 'loading' : 'error');
   const [mapError, setMapError] = React.useState(YANDEX_MAPS_JS_API_KEY ? '' : 'Yandex Maps JS API key is not configured');
-  const [permissionGate, setPermissionGate] = React.useState(Platform.OS === 'android' ? 'checking' : 'ready');
-
-  const requestMapPermission = React.useCallback(async () => {
-    if (Platform.OS !== 'android') { setPermissionGate('ready'); return; }
-    setPermissionGate('checking');
-    const result = await requestLocationPermissionThroughDisclosure({ source: 'open_map' });
-    // A map outside the accepted-deal workspace has no GPS disclosure host and
-    // must keep working. Inside DealWorkspaceRoute the host always exists and
-    // drivers cannot render the map until consent + required grants succeed.
-    if (result?.ok || result?.reason === 'disclosure_host_unavailable') {
-      setPermissionGate('ready');
-    } else {
-      setPermissionGate('denied');
-    }
-  }, []);
-
-  React.useEffect(() => {
-    requestMapPermission();
-  }, [requestMapPermission]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -135,10 +108,6 @@ export default function TruckMap({
     [resolvedRoute?.routeKey],
   );
   const road = roadGeometry.length >= 2 ? roadGeometry : planned;
-  const routeUrl = React.useMemo(() => buildYandexRouteUrl(effectivePairs), [effectiveKey]);
-  const openRoute = React.useCallback(() => {
-    if (routeUrl) Linking.openURL(routeUrl).catch(() => {});
-  }, [routeUrl]);
 
   React.useEffect(() => {
     const distanceText = distanceTextFromMeters(resolvedRoute?.distance_m, t);
@@ -164,10 +133,10 @@ export default function TruckMap({
   }), [live?.latitude, live?.longitude, planned, road, roadGeometry.length, title, lang, t]);
 
   React.useEffect(() => {
-    if (permissionGate === 'ready' && mapStatus === 'ready') {
+    if (mapStatus === 'ready') {
       webViewRef.current?.injectJavaScript(`window.urtruckUpdateMap(${JSON.stringify(mapPayload)});true;`);
     }
-  }, [mapPayload, mapStatus, permissionGate]);
+  }, [mapPayload, mapStatus]);
 
   const onMapMessage = React.useCallback((event) => {
     try {
@@ -177,21 +146,6 @@ export default function TruckMap({
       console.error('[TruckMap/Yandex]', detail); setMapError(detail); setMapStatus('error');
     } catch (error) { console.error('[TruckMap/Yandex] Invalid WebView message', error); }
   }, []);
-
-  const permissionCopy = getMapPermissionCopy(lang);
-
-  if (permissionGate !== 'ready') {
-    return (
-      <View style={s.permissionGate} testID="truck-map-location-consent-gate">
-        <Text style={s.permissionTitle}>{permissionGate === 'checking' ? t('map_loading') : permissionCopy.blocked}</Text>
-        {permissionGate === 'denied' ? (
-          <TouchableOpacity style={s.permissionRetry} onPress={requestMapPermission} testID="truck-map-location-consent-retry">
-            <Text style={s.permissionRetryText}>{permissionCopy.retry}</Text>
-          </TouchableOpacity>
-        ) : null}
-      </View>
-    );
-  }
 
   return (
     <View style={s.shell}>
@@ -209,11 +163,6 @@ export default function TruckMap({
           {__DEV__ ? <Text style={s.mapDebugError}>{mapError}</Text> : null}
         </View>
       ) : null}
-      {showRouteAction && routeUrl ? (
-        <TouchableOpacity style={s.routeAction} onPress={openRoute} activeOpacity={0.84} testID="truck-map-route-action">
-          <Text style={s.routeActionText}>{t('route_action')}</Text>
-        </TouchableOpacity>
-      ) : null}
     </View>
   );
 }
@@ -228,14 +177,4 @@ const s = StyleSheet.create({
   mapOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EEF3F0' },
   mapFallbackText: { color: '#617067', fontSize: 15, fontWeight: '700', textAlign: 'center' },
   mapDebugError: { marginTop: 8, color: '#9B2C2C', fontSize: 11, textAlign: 'center' },
-  permissionGate: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28, backgroundColor: '#EEF3F0' },
-  permissionTitle: { color: '#33443A', fontSize: 16, lineHeight: 23, fontWeight: '800', textAlign: 'center' },
-  permissionRetry: { marginTop: 18, minHeight: 48, paddingHorizontal: 22, borderRadius: 16, backgroundColor: '#168759', alignItems: 'center', justifyContent: 'center' },
-  permissionRetryText: { color: '#FFFFFF', fontSize: 15, fontWeight: '900' },
-  routeAction: {
-    position: 'absolute', right: 12, bottom: 12, minHeight: 40, paddingHorizontal: 14,
-    borderRadius: 14, backgroundColor: '#168759', alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#000', shadowOpacity: 0.14, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4,
-  },
-  routeActionText: { color: '#FFFFFF', fontSize: 13, fontWeight: '900' },
 });

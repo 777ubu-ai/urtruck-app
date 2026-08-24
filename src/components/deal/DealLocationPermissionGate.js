@@ -11,10 +11,10 @@ import { registerLocationPermissionRequestHandler } from '../../utils/locationPe
 import { useI18n } from '../../utils/useI18n';
 import { useAuth } from '../../utils/AuthContext';
 
-// Canonical visible consent host for deal-map GPS and Start trip.
+// Canonical visible consent host for active-trip GPS.
 // Android must show UrTruck's prominent disclosure BEFORE any OS location
-// prompt. First map open is the preferred trigger; Start trip remains a safe
-// fallback for drivers who never opened the map.
+// prompt. The explicit driver action "Start trip" is the only product trigger;
+// opening/viewing the route map never requests tracking permission.
 export default function DealLocationPermissionGate({ role, children }) {
   const { lang } = useI18n();
   const { session } = useAuth();
@@ -57,13 +57,13 @@ export default function DealLocationPermissionGate({ role, children }) {
   const beginDisclosure = React.useCallback(async (context = {}) => {
     if (!supportsTripDisclosure) return { ok: false, reason: 'disclosure_not_supported' };
 
-    // Shippers may open the live map but never broadcast their own GPS.
+    // Shippers never broadcast their own GPS.
     if (!isDriver) return { ok: true, notRequired: true, source: context?.source || null };
 
     if (pendingResolve.current) return { ok: false, reason: 'permission_flow_busy' };
 
-    // Once the driver accepted this workspace's disclosure and Android still
-    // has the required grant, Start trip must not show a duplicate modal.
+    // Repeated Start trip taps in the same mounted workspace must not show a
+    // duplicate disclosure while the required Android grants remain valid.
     if (acceptedInThisWorkspace.current) {
       const state = await refreshPermission();
       if (state?.ok) return successPayload();
@@ -79,8 +79,8 @@ export default function DealLocationPermissionGate({ role, children }) {
 
   React.useEffect(() => {
     if (!supportsTripDisclosure) return undefined;
-    // Register for both deal roles: the map component can call one canonical
-    // coordinator. beginDisclosure passes shippers through without GPS prompts.
+    // One canonical coordinator is registered at the accepted-deal route.
+    // beginDisclosure passes shippers through without any GPS prompt.
     return registerLocationPermissionRequestHandler(beginDisclosure);
   }, [beginDisclosure, supportsTripDisclosure]);
 
