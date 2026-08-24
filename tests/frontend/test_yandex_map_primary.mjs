@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const mapSrc = fs.readFileSync('src/components/TruckMap.web.js', 'utf8');
+const routeMapSrc = fs.readFileSync('src/components/RouteMap.js', 'utf8');
 const trackSrc = fs.readFileSync('src/screens/TrackTruckScreen.js', 'utf8');
 const injectSrc = fs.readFileSync('scripts/injectYandexMaps.mjs', 'utf8');
 const routerSrc = fs.readFileSync('backend/api/routing.py', 'utf8');
@@ -15,10 +16,16 @@ test('web deal map uses embedded Yandex Maps as the visual provider', () => {
   assert.match(mapSrc, /new api\.Placemark/);
   assert.match(mapSrc, /testID="truck-map-yandex-web"/);
   assert.match(mapSrc, /suppressMapOpenBlock: true/);
-  assert.match(mapSrc, /testID="truck-map-route-action"/);
-  assert.match(mapSrc, /buildYandexRouteUrl/);
-  assert.match(mapSrc, /t\('route_action'\)/);
+  assert.doesNotMatch(mapSrc, /testID="truck-map-route-action"/);
+  assert.doesNotMatch(mapSrc, /buildYandexRouteUrl/);
+  assert.doesNotMatch(mapSrc, /Linking\.openURL/);
   assert.doesNotMatch(mapSrc, /Открыть в Яндекс Картах|yandex_maps_open/);
+
+  // Route expansion is owned by UrTruck, not by the provider surface.
+  assert.match(routeMapSrc, /testID="route-map-bottom-action"/);
+  assert.match(routeMapSrc, /testID="route-map-fullscreen"/);
+  assert.match(routeMapSrc, /setRouteOpen\(true\)/);
+  assert.doesNotMatch(routeMapSrc, /Linking\.openURL/);
 });
 
 test('production injector loads supported Yandex JS API 2.1 in Russian', () => {
