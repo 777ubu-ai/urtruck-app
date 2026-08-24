@@ -95,7 +95,19 @@ shot() {
 
 read_apk_metadata() {
   local badging="$ARTIFACT_DIR/aapt-badging.txt"
-  aapt dump badging "$APK_PATH" > "$badging"
+  local aapt_bin="${AAPT_BIN:-}"
+  if [[ -z "$aapt_bin" ]]; then
+    local sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+    if [[ -n "$sdk_root" ]]; then
+      aapt_bin="$(find "$sdk_root/build-tools" -type f -name aapt | sort | tail -n 1)"
+    fi
+  fi
+  if [[ -z "$aapt_bin" || ! -x "$aapt_bin" ]]; then
+    log "Unable to resolve aapt binary for APK metadata"
+    exit 1
+  fi
+
+  "$aapt_bin" dump badging "$APK_PATH" > "$badging"
   APP_VERSION="$(sed -n "s/.*versionName='\([^']*\)'.*/\1/p" "$badging" | head -n 1)"
   VERSION_CODE="$(sed -n "s/.*versionCode='\([^']*\)'.*/\1/p" "$badging" | head -n 1)"
 }
