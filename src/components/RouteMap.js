@@ -154,8 +154,8 @@ export default function RouteMap({ from, to, transit, dealId, dealStatus, driver
         onRequestClose={() => setRouteOpen(false)}
         testID="route-map-fullscreen-modal"
       >
-        <View style={[s.fullscreen, { backgroundColor: theme.background }]} testID="route-map-fullscreen">
-          <View style={[s.fullscreenHeader, { borderBottomColor: theme.border, backgroundColor: theme.card }]}> 
+        <View style={[s.fullscreen, { backgroundColor: theme.bg }]} testID="route-map-fullscreen">
+          <View style={[s.fullscreenHeader, { borderBottomColor: theme.border, backgroundColor: theme.card }]}>
             <View style={s.fullscreenTitleWrap}>
               <Text style={[s.fullscreenTitle, { color: theme.text }]}>{t('route_action')}</Text>
               <Text style={[s.fullscreenRoute, { color: theme.textMuted }]} numberOfLines={1}>
