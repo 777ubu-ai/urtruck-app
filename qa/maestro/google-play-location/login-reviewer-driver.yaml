@@ -25,6 +25,8 @@ name: login-reviewer-driver
 - tapOn:
     id: "email-v2-input"
 - inputText: ${REVIEWER_EMAIL}
+- hideKeyboard
+- waitForAnimationToEnd
 - tapOn:
     id: "phone-v2-cta"
 - extendedWaitUntil:
@@ -34,6 +36,8 @@ name: login-reviewer-driver
 - tapOn:
     id: "otp-v2-input"
 - inputText: ${REVIEWER_CODE}
+- hideKeyboard
+- waitForAnimationToEnd
 - tapOn:
     id: "otp-v2-cta"
 - extendedWaitUntil:
