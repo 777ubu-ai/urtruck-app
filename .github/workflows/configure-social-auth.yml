@@ -98,16 +98,43 @@ jobs:
           process.stdout.write(m[1]);
           NODE
           )"
-          settings="$(curl -fsS \
-            -H "apikey: ${anon_key}" \
-            "https://${SUPABASE_PROJECT_REF}.supabase.co/auth/v1/settings")"
-          printf '%s' "$settings" | jq -e '.external.google == true' >/dev/null
+
+          settings_url="https://${SUPABASE_PROJECT_REF}.supabase.co/auth/v1/settings"
+          google_ready=false
+          for attempt in $(seq 1 12); do
+            settings="$(curl -fsS -H "apikey: ${anon_key}" "$settings_url")"
+            if printf '%s' "$settings" | jq -e '.external.google == true' >/dev/null; then
+              google_ready=true
+              echo "Google provider visible in public auth settings on attempt ${attempt}"
+              break
+            fi
+            echo "Google auth settings have not converged yet (attempt ${attempt}/12)"
+            sleep 5
+          done
+          if [[ "$google_ready" != 'true' ]]; then
+            echo 'ERROR: Google provider did not become visible in public auth settings' >&2
+            exit 1
+          fi
 
           base="https://${SUPABASE_PROJECT_REF}.supabase.co/auth/v1/authorize"
-          google_headers="$(curl -sS -o /dev/null -D - \
-            -H "apikey: ${anon_key}" \
-            "${base}?provider=google&redirect_to=https%3A%2F%2Furtruck.kz%2F%3Fsocial_auth%3D1")"
-          printf '%s\n' "$google_headers" | grep -i '^location:' | grep -qi 'accounts.google.com'
+          google_redirect_ready=false
+          for attempt in $(seq 1 6); do
+            google_headers="$(curl -sS -o /dev/null -D - \
+              -H "apikey: ${anon_key}" \
+              "${base}?provider=google&redirect_to=https%3A%2F%2Furtruck.kz%2F%3Fsocial_auth%3D1")"
+            if printf '%s\n' "$google_headers" | grep -i '^location:' | grep -qi 'accounts.google.com'; then
+              google_redirect_ready=true
+              echo "Google OAuth authorize redirect ready on attempt ${attempt}"
+              break
+            fi
+            echo "Google OAuth redirect has not converged yet (attempt ${attempt}/6)"
+            sleep 3
+          done
+          if [[ "$google_redirect_ready" != 'true' ]]; then
+            echo 'ERROR: Google OAuth authorize endpoint did not redirect to accounts.google.com' >&2
+            exit 1
+          fi
+
           echo 'PUBLIC_AUTH_SETTINGS=google-ready'
           echo 'GOOGLE_OAUTH_REDIRECT=ready'
 
@@ -207,16 +234,43 @@ jobs:
           process.stdout.write(m[1]);
           NODE
           )"
-          settings="$(curl -fsS \
-            -H "apikey: ${anon_key}" \
-            "https://${SUPABASE_PROJECT_REF}.supabase.co/auth/v1/settings")"
-          printf '%s' "$settings" | jq -e '.external.apple == true' >/dev/null
+
+          settings_url="https://${SUPABASE_PROJECT_REF}.supabase.co/auth/v1/settings"
+          apple_ready=false
+          for attempt in $(seq 1 12); do
+            settings="$(curl -fsS -H "apikey: ${anon_key}" "$settings_url")"
+            if printf '%s' "$settings" | jq -e '.external.apple == true' >/dev/null; then
+              apple_ready=true
+              echo "Apple provider visible in public auth settings on attempt ${attempt}"
+              break
+            fi
+            echo "Apple auth settings have not converged yet (attempt ${attempt}/12)"
+            sleep 5
+          done
+          if [[ "$apple_ready" != 'true' ]]; then
+            echo 'ERROR: Apple provider did not become visible in public auth settings' >&2
+            exit 1
+          fi
 
           base="https://${SUPABASE_PROJECT_REF}.supabase.co/auth/v1/authorize"
-          apple_headers="$(curl -sS -o /dev/null -D - \
-            -H "apikey: ${anon_key}" \
-            "${base}?provider=apple&redirect_to=https%3A%2F%2Furtruck.kz%2F%3Fsocial_auth%3D1")"
-          printf '%s\n' "$apple_headers" | grep -i '^location:' | grep -Eqi 'appleid\.apple\.com|apple\.com'
+          apple_redirect_ready=false
+          for attempt in $(seq 1 6); do
+            apple_headers="$(curl -sS -o /dev/null -D - \
+              -H "apikey: ${anon_key}" \
+              "${base}?provider=apple&redirect_to=https%3A%2F%2Furtruck.kz%2F%3Fsocial_auth%3D1")"
+            if printf '%s\n' "$apple_headers" | grep -i '^location:' | grep -Eqi 'appleid\.apple\.com|apple\.com'; then
+              apple_redirect_ready=true
+              echo "Apple OAuth authorize redirect ready on attempt ${attempt}"
+              break
+            fi
+            echo "Apple OAuth redirect has not converged yet (attempt ${attempt}/6)"
+            sleep 3
+          done
+          if [[ "$apple_redirect_ready" != 'true' ]]; then
+            echo 'ERROR: Apple OAuth authorize endpoint did not redirect to Apple' >&2
+            exit 1
+          fi
+
           echo 'PUBLIC_AUTH_SETTINGS=apple-ready'
           echo 'APPLE_OAUTH_REDIRECT=ready'
 
