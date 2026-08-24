@@ -18,6 +18,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 concurrency:
   group: google-play-location-evidence-${{ github.ref }}
@@ -200,3 +201,32 @@ jobs:
           path: source/qa/artifacts/google-play-background-location/
           retention-days: 30
           if-no-files-found: error
+
+      - name: Record background-location evidence in release ledger
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          EVIDENCE_SOURCE_SHA: ${{ env.SOURCE_SHA }}
+          EVIDENCE_RESULT: ${{ job.status }}
+        with:
+          script: |
+            const sha = process.env.EVIDENCE_SOURCE_SHA || context.sha;
+            const result = (process.env.EVIDENCE_RESULT || 'unknown').toLowerCase();
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              `### Google Play background location evidence — ${result.toUpperCase()}`,
+              `- sha: \`${sha}\``,
+              `- workflow: \`Record Google Play Background Location Evidence\``,
+              `- run: ${runUrl}`,
+              `- result: \`${result}\``,
+              `- package under test: \`com.urtruck.app\``,
+              `- artifact: \`google-play-background-location-evidence\` (uploaded when evidence files exist)`,
+              `- source trigger: \`${context.eventName}\``,
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: 247,
+              body,
+            });
