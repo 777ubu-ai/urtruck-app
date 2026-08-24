@@ -1,7 +1,7 @@
 """Regression coverage for deal-chat access across the canonical deal FSM.
 
 The deal workspace remains active through ``received`` (receipt confirmed) until
-``completed``.  Chat authorization must therefore allow the same accepted /
+``completed``. Chat authorization must therefore allow the same accepted /
 successful statuses while still blocking pre-accept/terminal failure states.
 """
 import os
@@ -19,11 +19,12 @@ from database import db as ddb
 from database.db import get_conn, new_id
 
 # chat._init() expects the registration schema to exist; deals are normally
-# initialized by marketplace startup, so reproduce those production contracts
-# explicitly in this isolated DB before importing the chat module.
+# initialized by marketplace startup. Reproduce both production contracts in
+# this isolated DB before importing the chat module.
 ddb.init_db()
 with get_conn() as c:
-    c.executescript((ROOT / "database" / "deals_schema.sql").read_text(encoding="utf-8"))
+    for schema_name in ("registration_schema.sql", "deals_schema.sql"):
+        c.executescript((ROOT / "database" / schema_name).read_text(encoding="utf-8"))
 
 from api import chat
 
