@@ -26,15 +26,10 @@ name: negative-do-not-agree
     index: 0
 - extendedWaitUntil:
     visible:
-      id: "deal-map-card-open"
+      id: "deal-action-start-delivery"
     timeout: 30000
-- scrollUntilVisible:
-    element:
-      id: "deal-map-card-open"
-    direction: DOWN
-    timeout: 15000
 - tapOn:
-    id: "deal-map-card-open"
+    id: "deal-action-start-delivery"
 - extendedWaitUntil:
     visible:
       id: "background-location-disclosure"
@@ -42,7 +37,5 @@ name: negative-do-not-agree
 - tapOn:
     id: "background-location-disclosure-cancel"
 - assertVisible:
-    id: "deal-map-card-open"
-- assertNotVisible:
-    id: "deal-map-fullscreen"
+    id: "deal-action-start-delivery"
 - assertNotVisible: "While using the app"
