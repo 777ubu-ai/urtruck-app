@@ -185,9 +185,7 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -camera-back none -camera-front none
           disable-animations: false
           script: |
-            set -euo pipefail
-            export PATH="$HOME/.maestro/bin:$PATH"
-            bash qa/scripts/google-play-background-location/run-ci-video.sh
+            bash -lc 'set -euo pipefail; export PATH="$HOME/.maestro/bin:$PATH"; bash qa/scripts/google-play-background-location/run-ci-video.sh'
 
       - name: Remove keystore from runner
         if: always()
