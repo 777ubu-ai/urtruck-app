@@ -1,13 +1,12 @@
 appId: com.urtruck.app
-name: trigger-map-disclosure
+name: trigger-start-trip-disclosure
 ---
-- scrollUntilVisible:
-    element:
-      id: "deal-map-card-open"
-    direction: DOWN
-    timeout: 15000
+- extendedWaitUntil:
+    visible:
+      id: "deal-action-start-delivery"
+    timeout: 30000
 - tapOn:
-    id: "deal-map-card-open"
+    id: "deal-action-start-delivery"
 - extendedWaitUntil:
     visible:
       id: "background-location-disclosure"
