@@ -28,3 +28,25 @@ test('android emulator runner invokes bash explicitly before enabling pipefail',
     'runner script must not rely on /bin/sh supporting pipefail',
   );
 });
+
+test('background-location evidence always records exact run in release ledger', () => {
+  assert.match(
+    workflow,
+    /permissions:\s*\n\s*contents: read\s*\n\s*issues: write/,
+    'workflow must be allowed to write release evidence to the issue ledger',
+  );
+
+  const ledgerStep = workflow.match(
+    /- name: Record background-location evidence in release ledger[\s\S]*$/,
+  );
+  assert.ok(ledgerStep, 'release-ledger evidence step must exist');
+
+  const block = ledgerStep[0];
+  assert.match(block, /if: always\(\)/, 'ledger step must report both PASS and FAIL');
+  assert.match(block, /EVIDENCE_SOURCE_SHA: \$\{\{ env\.SOURCE_SHA \}\}/);
+  assert.match(block, /EVIDENCE_RESULT: \$\{\{ job\.status \}\}/);
+  assert.match(block, /context\.runId/, 'ledger entry must include the exact workflow run URL');
+  assert.match(block, /issue_number: 247/, 'release evidence must be written to issue #247');
+  assert.match(block, /google-play-background-location-evidence/);
+  assert.match(block, /com\.urtruck\.app/);
+});
