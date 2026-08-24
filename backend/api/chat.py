@@ -270,7 +270,7 @@ class SendMessageIn(BaseModel):
 # демо-Володя — исключения. Статусы совпадают с активной/успешной частью FSM
 # marketplace (_DEAL_FLOW), включая awaiting_confirmation; cancelled/rejected
 # намеренно закрывают доступ к комнате.
-_DEAL_CHAT_STATUSES = ("accepted", "in_progress", "at_border", "awaiting_confirmation", "delivered", "completed")
+_DEAL_CHAT_STATUSES = ("accepted", "in_progress", "at_border", "awaiting_confirmation", "delivered", "received", "completed")
 
 
 def _assert_chat_is_accepted(sender_id, recipient_id, *, room_id=None, cargo_id=None, trip_id=None):
