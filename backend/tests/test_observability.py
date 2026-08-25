@@ -14,20 +14,25 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_observability.db")
 os.environ.setdefault("ENV", "test")
 
+import pytest
 from fastapi.testclient import TestClient
-from main import app
-
-client = TestClient(app)
 
 
-def test_health_liveness():
+@pytest.fixture(scope="module")
+def client():
+    """Ленивый импорт main — не блокирует коллекцию pytest (#291)."""
+    from main import app
+    return TestClient(app)
+
+
+def test_health_liveness(client):
     """Liveness probe: /health всегда 200."""
     r = client.get("/health")
     assert r.status_code == 200
     assert r.json()["status"] == "ok"
 
 
-def test_health_ready():
+def test_health_ready(client):
     """/health/ready проверяет зависимости и включает version."""
     r = client.get("/health/ready")
     data = r.json()
@@ -37,7 +42,7 @@ def test_health_ready():
     assert "sqlite" in data["checks"]
 
 
-def test_correlation_id_generated():
+def test_correlation_id_generated(client):
     """Без входного X-Request-Id сервер генерирует свой."""
     r = client.get("/health")
     cid = r.headers.get("x-request-id")
@@ -45,13 +50,13 @@ def test_correlation_id_generated():
     assert len(cid) == 12
 
 
-def test_correlation_id_passthrough():
+def test_correlation_id_passthrough(client):
     """Входной X-Request-Id пробрасывается в ответ."""
     r = client.get("/health", headers={"X-Request-Id": "test-cid-abc"})
     assert r.headers.get("x-request-id") == "test-cid-abc"
 
 
-def test_system_info_includes_version():
+def test_system_info_includes_version(client):
     """/api/v1/system/info теперь включает version."""
     r = client.get("/api/v1/system/info")
     assert r.status_code == 200

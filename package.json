@@ -44,7 +44,10 @@
     "qa:keystore": "node qa/utils/noTrackedKeystoreSmoke.js",
     "qa:favorites": "node qa/utils/favoritesContractSmoke.js",
     "qa:locale-runtime": "node qa/utils/runtimeLocaleLeakProbe.mjs",
-    "qa:role-locale": "node qa/utils/roleLocaleMatrixProbe.mjs"
+    "qa:role-locale": "node qa/utils/roleLocaleMatrixProbe.mjs",
+    "qa:backend": "cd backend && bash scripts/run_tests_isolated.sh",
+    "qa:frontend-unit": "node --test tests/unit/themeResolve.test.mjs tests/unit/dealsUnread.test.mjs tests/unit/dealStatusOrder.test.mjs",
+    "qa:release": "npm run qa:backend && npm run qa:frontend-unit && npm run qa:center:quick"
   },
   "dependencies": {
     "@expo/metro-runtime": "~4.0.1",

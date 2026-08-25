@@ -7,14 +7,14 @@ from pathlib import Path
 
 import pytest
 
-from backend.cgr.parsers import (
+from cgr.parsers import (
     parse_public_list,
     parse_booking_lookup,
     parse_checkpoint_list,
     count_queue_by_checkpoint,
     normalize_status,
 )
-from backend.cgr.exceptions import CGRParseError
+from cgr.exceptions import CGRParseError
 
 FIX = Path(__file__).parent / "fixtures"
 
