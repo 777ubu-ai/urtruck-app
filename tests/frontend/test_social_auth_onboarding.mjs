@@ -12,6 +12,9 @@ const socialAuth = read('src/utils/socialAuth.js');
 const socialBackend = read('backend/api/social_auth.py');
 const backendMain = read('backend/main.py');
 const profileV2 = read('src/screens/onboarding/ProfileV2Screen.js');
+const otpV2 = read('src/screens/onboarding/OtpV2Screen.js');
+const registrationBackend = read('backend/api/registration.py');
+const regDal = read('backend/database/registration_dal.py');
 const supabaseClient = read('src/config/supabase.js');
 const appConfig = JSON.parse(read('app.json'));
 
@@ -96,3 +99,183 @@ test('phone remains a required logistics contact after email/social signup', () 
   assert.match(profileV2, /!validPhone/);
   assert.match(profileV2, /phoneRequiredLabel/);
 });
+
+
+// ─── P0 auth-fix 25.08.2026: real owner repro (Apple provider_unavailable
+// mislabeled as "Нет связи с сервером"; Google callback silently dropping
+// the user back on the Auth screen) ─────────────────────────────────────
+
+test('P0-B: provider_unavailable/config errors are a distinct code from network failure', () => {
+  assert.match(socialAuth, /NETWORK_UNAVAILABLE/);
+  assert.match(socialAuth, /PROVIDER_UNAVAILABLE/);
+  assert.match(socialAuth, /PROVIDER_CONFIG_INVALID/);
+  assert.match(socialAuth, /class SocialAuthError extends Error/);
+  // The exact bug: getSocialProviderAvailability distinguishes "could not
+  // reach Supabase" (checked:false) from "Supabase confirms disabled"
+  // (checked:true, provider:false) — startSocialAuth must branch on both.
+  assert.match(socialAuth, /if \(!availability\.checked\)/);
+  assert.match(socialAuth, /if \(availability\[provider\] !== true\)/);
+});
+
+test('P0-B: PhoneV2Screen maps SocialAuthError codes to distinct copy, never one generic message', () => {
+  assert.match(phoneV2, /socialErrorKey/);
+  assert.match(phoneV2, /AUTH_ERROR_CODES\.PROVIDER_UNAVAILABLE/);
+  assert.match(phoneV2, /AUTH_ERROR_CODES\.NETWORK_UNAVAILABLE/);
+  assert.match(phoneV2, /auth_error_provider_unavailable_apple/);
+  assert.match(phoneV2, /auth_error_provider_unavailable_google/);
+  assert.match(phoneV2, /auth_error_network/);
+});
+
+test('P1-C: social error state is independent from email error state', () => {
+  assert.match(phoneV2, /\[emailError, setEmailError\]/);
+  assert.match(phoneV2, /\[socialError, setSocialError\]/);
+  // Email input row must react only to emailError, never socialError.
+  assert.match(phoneV2, /s\.inputRow, emailError && s\.inputError/);
+  assert.doesNotMatch(phoneV2, /s\.inputRow,\s*(?:error|socialError)\s*&&\s*s\.inputError/);
+  // Social error text renders near the provider buttons, not the email row.
+  const socialBlockIdx = phoneV2.indexOf('testID="auth-social-error"');
+  const emailInputIdx = phoneV2.indexOf('testID="email-v2-input"');
+  assert.ok(socialBlockIdx > 0 && socialBlockIdx < emailInputIdx,
+    'social error block must render before the email input, not inside it');
+});
+
+test('P1-D: only the actively-pressed provider button shows a spinner', () => {
+  // Old bug: `socialBusy === provider || socialBusy === 'callback'` lit up
+  // BOTH Google and Apple during callback processing regardless of which
+  // one the user pressed.
+  assert.doesNotMatch(phoneV2, /socialBusy === 'callback'/);
+  assert.match(phoneV2, /const loading = socialBusy === provider;/);
+  // Pending provider survives the full-page web reload OAuth does.
+  assert.match(socialAuth, /PENDING_PROVIDER_KEY/);
+  assert.match(socialAuth, /export async function setPendingProvider/);
+  assert.match(socialAuth, /export async function getPendingProvider/);
+  assert.match(phoneV2, /getPendingProvider\(\)/);
+});
+
+test('P0-A: callback success path always resolves role and completes navigation before touching UI state', () => {
+  assert.match(phoneV2, /logAuthStage\('role_resolved'/);
+  assert.match(phoneV2, /logAuthStage\('navigation_complete'/);
+  // A failed backend verify (no token/email in response) must throw a typed
+  // error, not silently fall through to goAfterLogin with garbage data.
+  assert.match(phoneV2, /AUTH_ERROR_CODES\.BACKEND_VERIFY_FAILED,\s*'social_auth_failed'/);
+});
+
+test('P0-A: duplicate callback delivery is idempotent, not a fresh OAuth error', () => {
+  // The PKCE code is single-use; processing the SAME callback URL twice
+  // (StrictMode double-effect, a stale getInitialURL() resolving late) must
+  // no-op ONLY once the full chain already succeeded — NOT right after the
+  // Supabase exchange, or a transient backend-verify failure would
+  // permanently strand the user (owner review round 2, 25.08.2026: see
+  // test_social_auth_retry.mjs for the live behavioral proof).
+  assert.match(socialAuth, /exchangedCallbackKey/);
+  assert.match(socialAuth, /completedCallbackKey/);
+  assert.match(socialAuth, /if \(key && key === completedCallbackKey\)/);
+  // The completed mark must be set AFTER urtruck_session_saved, not before
+  // backend verify — otherwise a duplicate check at the top would wrongly
+  // no-op a retry of a failed verify.
+  const completedIdx = socialAuth.indexOf('completedCallbackKey = key');
+  const savedLogIdx = socialAuth.indexOf("logAuthStage('urtruck_session_saved'");
+  assert.ok(completedIdx > savedLogIdx && savedLogIdx > 0,
+    'completedCallbackKey must be set strictly after urtruck_session_saved');
+  assert.match(phoneV2, /Duplicate delivery of an already-processed callback/);
+});
+
+test('P0-A round 2: a failed backend verify does not permanently strand a retry', () => {
+  // sessionFromCallback must accept the callback key and reuse the
+  // already-exchanged Supabase session on retry, instead of re-consuming
+  // the one-shot PKCE code (which would fail with "invalid grant").
+  assert.match(socialAuth, /if \(key && key === exchangedCallbackKey\)/);
+  assert.match(socialAuth, /supabase\.auth\.getSession\(\)/);
+  // exchangedCallbackKey must be set on BOTH the token and code exchange
+  // branches, so either OAuth flavor is retry-safe.
+  const exchangeAssignments = (socialAuth.match(/exchangedCallbackKey = key/g) || []).length;
+  assert.ok(exchangeAssignments >= 2, `expected exchangedCallbackKey set on both session branches, found ${exchangeAssignments}`);
+});
+
+test('diagnostic AUTH_SOCIAL_STAGE instrumentation covers the full chain (no PII/tokens)', () => {
+  for (const stage of [
+    'provider_callback_received',
+    'supabase_session_ready',
+    'backend_verify_start',
+    'backend_verify_success',
+    'urtruck_session_saved',
+  ]) {
+    assert.ok(socialAuth.includes(`logAuthStage('${stage}'`), `missing stage: ${stage}`);
+  }
+  // Never allow a raw token/header into the diagnostic logger's payload.
+  assert.doesNotMatch(socialAuth, /logAuthStage\([^)]*access_token[^)]*\)/);
+  assert.doesNotMatch(socialAuth, /logAuthStage\([^)]*refresh_token[^)]*\)/);
+});
+
+test('i18n: social auth error copy exists symmetrically in all 4 languages', () => {
+  const i18n = read('src/utils/i18n.js');
+  const keys = [
+    'auth_error_network',
+    'auth_error_provider_unavailable_google',
+    'auth_error_provider_unavailable_apple',
+    'auth_error_oauth_cancelled',
+    'auth_error_callback_failed',
+    'auth_error_backend_verify_failed',
+    'auth_error_ambiguous_email',
+  ];
+  for (const lang of ['RU', 'KK', 'ZH', 'EN']) {
+    const blockMatch = new RegExp(`\\n  ${lang}: \\{[\\s\\S]*?\\n\\},\\n\\};`, 'm').test(i18n)
+      ? new RegExp(`\\n  ${lang}: \\{[\\s\\S]*?(?=\\n  [A-Z]{2}: \\{|\\n\\};)`, 'm').exec(i18n)
+      : null;
+    assert.ok(blockMatch, `i18n block ${lang} not found`);
+    const block = blockMatch[0];
+    for (const key of keys) {
+      assert.match(block, new RegExp(`${key}:\\s*'`), `${lang} missing key ${key}`);
+    }
+  }
+});
+
+// ─── Round 4 (25.08.2026): AMBIGUOUS_EMAIL_IDENTITY is a stable machine-
+// readable contract on both auth endpoints — no hardcoded Russian sentence
+// may reach a ZH/EN/KK client. ────────────────────────────────────────
+
+test('backend sends a structured machine code for ambiguous email identity, never a raw Russian sentence, on BOTH auth endpoints', () => {
+  for (const [name, src] of [
+    ['social_auth.py', socialBackend],
+    ['registration.py', registrationBackend],
+  ]) {
+    const block = src.split('except reg_dal.AmbiguousEmailIdentityError:')[1]?.split(/\n\s*(?:if|@|def)\s/)[0] || '';
+    assert.match(block, /"error":\s*"AMBIGUOUS_EMAIL_IDENTITY"/,
+      `${name}: ambiguous-identity handler must send a structured error code`);
+    assert.doesNotMatch(block, /detail=["'][^"']*[А-Яа-яЁё]/,
+      `${name}: detail must not be a raw Cyrillic string — the UI owns localized copy`);
+  }
+});
+
+test('AmbiguousEmailIdentityError carries a machine-readable shape (normalized_email + count), not just a message string', () => {
+  assert.match(regDal, /class AmbiguousEmailIdentityError\(Exception\)/);
+  assert.match(regDal, /self\.normalized_email = normalized_email/);
+  assert.match(regDal, /self\.count = count/);
+});
+
+test('frontend maps AMBIGUOUS_EMAIL_IDENTITY to its own error code and localized copy, not the generic backend-verify bucket', () => {
+  assert.match(socialAuth, /AMBIGUOUS_EMAIL_IDENTITY:\s*'AMBIGUOUS_EMAIL_IDENTITY'/);
+  // completeSocialAuth must actually read the backend's machine code from
+  // detail.error and re-throw it as its own SocialAuthError code, not
+  // silently fold it into BACKEND_VERIFY_FAILED.
+  assert.match(socialAuth, /data\?\.detail\?\.error/);
+  assert.match(socialAuth, /AUTH_ERROR_CODES\[machineCode\]/);
+  assert.match(phoneV2, /AUTH_ERROR_CODES\.AMBIGUOUS_EMAIL_IDENTITY/);
+  assert.match(phoneV2, /auth_error_ambiguous_email/);
+});
+
+test('email-OTP verify path (OtpV2Screen) also detects the machine code instead of showing "wrong code" for a correct-code identity conflict', () => {
+  // A CORRECT OTP code that hits an ambiguous-identity conflict is not a
+  // wrong-code error — showing otp_v2_wrong here would tell a user with
+  // the right code to keep retyping it forever.
+  assert.match(otpV2, /r\.detail\?\.error === 'AMBIGUOUS_EMAIL_IDENTITY'/);
+  assert.match(otpV2, /auth_error_ambiguous_email/);
+  // That branch must come before the generic wrong-code fallback so it is
+  // actually reachable.
+  const notTokenIdx = otpV2.indexOf('if (!r.token)');
+  const ambiguousIdx = otpV2.indexOf("AMBIGUOUS_EMAIL_IDENTITY");
+  const genericWrongIdx = otpV2.indexOf("t('otp_v2_wrong')", ambiguousIdx);
+  assert.ok(notTokenIdx >= 0 && ambiguousIdx > notTokenIdx && genericWrongIdx > ambiguousIdx,
+    'ambiguous-identity check must be inside the !r.token branch and precede the generic wrong-code fallback');
+});
+

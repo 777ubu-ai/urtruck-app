@@ -1413,6 +1413,18 @@ const translations = {
     email_v2_send_hint: 'Мы отправим код на почту\nдля входа или регистрации',
     email_v2_invalid: 'Неверный формат e-mail',
 
+    // ─── P0 auth-fix 25.08.2026: раздельная error taxonomy для social ─
+    // Раньше любая ошибка (network / provider unavailable / backend verify
+    // failed / OAuth cancelled) показывалась как «Нет связи с сервером» —
+    // это маскировало реальную причину и красило Email-поле при Apple-ошибке.
+    auth_error_network: 'Не удалось подключиться. Проверьте интернет и попробуйте снова.',
+    auth_error_provider_unavailable_google: 'Вход через Google временно недоступен. Используйте Apple или Email.',
+    auth_error_provider_unavailable_apple: 'Вход через Apple временно недоступен. Используйте Google или Email.',
+    auth_error_oauth_cancelled: 'Вход отменён.',
+    auth_error_callback_failed: 'Не удалось завершить вход. Попробуйте ещё раз.',
+    auth_error_backend_verify_failed: 'Не удалось войти. Попробуйте ещё раз или используйте Email.',
+    auth_error_ambiguous_email: 'С этим e-mail связано несколько аккаунтов. Обратитесь в поддержку.',
+
     // ─── RC2 auth-flow (OTP / Role / Profile) light-style ─────────
     otp_v2_title: 'Подтверждение',
     otp_v2_subtitle: 'Введите код из SMS',
@@ -3223,6 +3235,14 @@ const translations = {
     email_v2_send_hint: 'Кіру немесе тіркелу үшін\nпоштаға код жібереміз',
     email_v2_invalid: 'E-mail форматы қате',
 
+    auth_error_network: 'Қосылу мүмкін болмады. Интернетті тексеріп, қайта көріңіз.',
+    auth_error_provider_unavailable_google: 'Google арқылы кіру уақытша қолжетімсіз. Apple немесе Email қолданыңыз.',
+    auth_error_provider_unavailable_apple: 'Apple арқылы кіру уақытша қолжетімсіз. Google немесе Email қолданыңыз.',
+    auth_error_oauth_cancelled: 'Кіру болдырылмады.',
+    auth_error_callback_failed: 'Кіруді аяқтау мүмкін болмады. Қайта көріңіз.',
+    auth_error_backend_verify_failed: 'Кіру мүмкін болмады. Қайта көріңіз немесе Email қолданыңыз.',
+    auth_error_ambiguous_email: 'Бұл e-mail бірнеше аккаунтпен байланысты. Қолдау қызметіне хабарласыңыз.',
+
     // ─── RC2 auth-flow (KK) ────────────────────────────────────────
     otp_v2_title: 'Растау',
     otp_v2_subtitle: 'SMS кодын енгізіңіз',
@@ -5008,6 +5028,14 @@ const translations = {
     email_v2_send_hint: '我们将发送验证码到邮箱\n用于登录或注册',
     email_v2_invalid: '邮箱格式不正确',
 
+    auth_error_network: '无法连接,请检查网络后重试。',
+    auth_error_provider_unavailable_google: 'Google 登录暂时不可用,请使用 Apple 或邮箱。',
+    auth_error_provider_unavailable_apple: 'Apple 登录暂时不可用,请使用 Google 或邮箱。',
+    auth_error_oauth_cancelled: '已取消登录。',
+    auth_error_callback_failed: '登录未完成,请重试。',
+    auth_error_backend_verify_failed: '登录失败,请重试或使用邮箱。',
+    auth_error_ambiguous_email: '该邮箱关联多个账户,请联系客服。',
+
     // ─── RC2 auth-flow (ZH) ────────────────────────────────────────
     otp_v2_title: '验证',
     otp_v2_subtitle: '请输入短信中的验证码',
@@ -6771,6 +6799,14 @@ const translations = {
     email_v2_placeholder: 'you@example.com',
     email_v2_send_hint: "We'll send a code to your email\nto sign in or sign up",
     email_v2_invalid: 'Invalid e-mail format',
+
+    auth_error_network: 'Could not connect. Check your internet and try again.',
+    auth_error_provider_unavailable_google: 'Sign-in with Google is temporarily unavailable. Use Apple or Email.',
+    auth_error_provider_unavailable_apple: 'Sign-in with Apple is temporarily unavailable. Use Google or Email.',
+    auth_error_oauth_cancelled: 'Sign-in cancelled.',
+    auth_error_callback_failed: 'Could not finish signing in. Please try again.',
+    auth_error_backend_verify_failed: 'Could not sign in. Try again or use Email.',
+    auth_error_ambiguous_email: 'Multiple accounts are linked to this e-mail. Please contact support.',
 
     // ─── RC2 auth-flow (EN) ────────────────────────────────────────
     otp_v2_title: 'Verification',

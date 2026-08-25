@@ -111,7 +111,27 @@ def verify_social(req: SocialVerifyRequest, request: Request):
     email = (user.get("email") or "").strip().lower()
 
     guest_id = reg_dal.get_driver_by_token(req.guest_token) if req.guest_token else None
-    driver = reg_dal.get_or_create_driver_by_email(email, upgrade_guest_id=guest_id)
+    try:
+        driver = reg_dal.get_or_create_driver_by_email(email, upgrade_guest_id=guest_id)
+    except reg_dal.AmbiguousEmailIdentityError:
+        # Fail closed (security audit 25.08.2026): never guess which of
+        # several accounts sharing this canonical email is "the" one — no
+        # UrTruck session/token is issued for an ambiguous identity.
+        #
+        # Contract fix (owner review round 4, 25.08.2026): `detail` is a
+        # STABLE MACHINE-READABLE code, not a hardcoded Russian sentence —
+        # otherwise a ZH/EN/KK client renders raw Russian backend text, the
+        # exact mixed-language hole the P0-B error-taxonomy work closed for
+        # social OAuth errors. The UI owns the localized RU/ZH/EN/KK copy
+        # for this code; `message` here is English and log-facing only,
+        # never rendered verbatim to an end user.
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "AMBIGUOUS_EMAIL_IDENTITY",
+                "message": "Multiple accounts match this canonical email; refusing to guess.",
+            },
+        )
 
     user_meta = user.get("user_metadata") or {}
     display_name = (

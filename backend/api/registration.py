@@ -308,7 +308,23 @@ def email_verify(req: EmailVerifyRequest, request: Request = None):
             raise HTTPException(status_code=400, detail="Неверный или истёкший код")
         reg_dal.delete_code(email)
     guest_id = reg_dal.get_driver_by_token(req.guest_token) if req.guest_token else None
-    driver = reg_dal.get_or_create_driver(email, upgrade_guest_id=guest_id)
+    try:
+        driver = reg_dal.get_or_create_driver(email, upgrade_guest_id=guest_id)
+    except reg_dal.AmbiguousEmailIdentityError:
+        # Fail closed (security audit 25.08.2026, PR #298 round 3): never
+        # guess which of several accounts sharing this canonical email is
+        # "the" one — no UrTruck session/token is issued for an ambiguous
+        # identity, same invariant as the social-auth verify path.
+        #
+        # Contract fix (owner review round 4): STABLE MACHINE-READABLE code,
+        # not a hardcoded Russian sentence — the UI owns RU/ZH/EN/KK copy.
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "AMBIGUOUS_EMAIL_IDENTITY",
+                "message": "Multiple accounts match this canonical email; refusing to guess.",
+            },
+        )
     # Демо-аккаунт для ревью (или beta) — провижн полного доступа, чтобы
     # ревьюер видел ВСЕ функции (лента, ставки, чат, очередь) без прохождения
     # верификации документов.
