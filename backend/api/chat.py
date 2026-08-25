@@ -428,28 +428,30 @@ def my_rooms(user=Depends(require_level(1))):
         d["partner_name"] = None
         rooms.append(d)
 
-    # Дотягиваем имена
+    # Дотягиваем имена BATCH-запросом (Issue #290: N+1 → 1 query).
     # PR-C2 (P0-3 "Собеседник" → real name): backend fallback chain.
-    # До этого partner_name мог приходить null если у user'a full_name
-    # пустой в drivers_registration. Фронт показывал «Собеседник», что
-    # пользователю не понятно («кто это?»).
-    # Теперь: full_name → phone-tail (последние 4 цифры) → "Пользователь
-    # UrTruck". Frontend prettifyPartnerName ничего не подменяет если
-    # backend дал осмысленное значение.
+    # full_name → phone-tail (последние 4 цифры) → "Пользователь UrTruck".
     def _phone_tail(phone):
         if not phone or not isinstance(phone, str):
             return None
         digits = "".join(ch for ch in phone if ch.isdigit())
         return f"+{digits[-4:]}" if len(digits) >= 4 else None
-    with get_conn() as c:
-        for room in rooms:
-            p = c.execute("SELECT full_name, phone FROM drivers_registration WHERE id = ?", (room["partner_id"],)).fetchone()
-            if p:
+    partner_ids = list({r["partner_id"] for r in rooms if r.get("partner_id")})
+    name_map = {}
+    if partner_ids:
+        with get_conn() as c:
+            # SQLite поддерживает до 999 bind params — для 50 rooms это ок
+            placeholders = ",".join("?" * len(partner_ids))
+            rows = c.execute(
+                f"SELECT id, full_name, phone FROM drivers_registration WHERE id IN ({placeholders})",
+                partner_ids,
+            ).fetchall()
+            for p in rows:
                 full = (p["full_name"] or "").strip() if p["full_name"] else ""
                 tail = _phone_tail(p["phone"])
-                room["partner_name"] = full or tail or "Пользователь UrTruck"
-            else:
-                room["partner_name"] = "Пользователь UrTruck"
+                name_map[p["id"]] = full or tail or "Пользователь UrTruck"
+    for room in rooms:
+        room["partner_name"] = name_map.get(room.get("partner_id"), "Пользователь UrTruck")
     # Hide demo bot rooms in production. Old chat history is preserved on disk
     # — we just don't surface it through /rooms unless ENABLE_DEMO_CHAT=true.
     if not ENABLE_DEMO_CHAT:
@@ -470,171 +472,222 @@ def my_rooms(user=Depends(require_level(1))):
 def _enrich_rooms_with_deal_context(rooms: list, uid: str) -> None:
     """Дотягивает deal/cargo/partner/support контекст в каждую комнату in-place.
 
+    Issue #290: переписано с per-room N+1 (до ~7 queries × N rooms) на
+    batch-запросы (5-6 queries total, независимо от количества комнат).
+
     Источники: deals (по chat_room_id), cargos (маршрут/груз), drivers_registration
     (роль/госномер партнёра), support_escalations (статус поддержки). Все новые
     поля nullable — отсутствие данных => None, не fake.
     """
     if not rooms:
         return
+
+    # --- Шаг 0: defaults ---
+    for room in rooms:
+        room.setdefault("room_id", room.get("id"))
+        room.update({
+            "deal_id": None, "bid_id": None, "partner_company": None, "partner_role": None,
+            "route_from": None, "route_to": None, "route_label": None,
+            "cargo_title": None, "cargo_type": None, "cargo_weight": None,
+            "deal_status": None, "bid_amount": None, "bid_currency": None,
+            "vehicle_plate": None,
+            "unread_count": room.get("unread", 0),
+            "last_message_at": room.get("last_at"),
+            "support_status": None, "is_support": False,
+            "is_dispute": False, "priority": None,
+        })
+
+    room_ids = [r["id"] for r in rooms if r.get("id")]
+    if not room_ids:
+        return
+
+    def _ph(ids):
+        return ",".join("?" * len(ids))
+
     with get_conn() as c:
-        for room in rooms:
-            room_id = room.get("id")
-            partner_id = room.get("partner_id")
+        # --- Шаг 1: batch-загрузка deals по chat_room_id ---
+        _DEAL_COLS = "id, cargo_id, trip_id, bid_id, shipper_id, driver_id, from_city, to_city, amount, status, chat_room_id"
+        deal_rows = c.execute(
+            f"SELECT {_DEAL_COLS} FROM deals WHERE chat_room_id IN ({_ph(room_ids)}) "
+            "ORDER BY created_at DESC",
+            room_ids,
+        ).fetchall()
+        # Группируем: room_id → последняя (newest) deal
+        deals_by_room = {}
+        for dr in deal_rows:
+            rid = dr["chat_room_id"]
+            if rid not in deals_by_room:
+                deals_by_room[rid] = dict(dr)
 
-            # значения по умолчанию (контракт стабилен даже без сделки)
-            room.setdefault("room_id", room_id)
-            room.update({
-                "deal_id": None, "bid_id": None, "partner_company": None, "partner_role": None,
-                "route_from": None, "route_to": None, "route_label": None,
-                "cargo_title": None, "cargo_type": None, "cargo_weight": None,
-                "deal_status": None, "bid_amount": None, "bid_currency": None,
-                "vehicle_plate": None,
-                "unread_count": room.get("unread", 0),
-                "last_message_at": room.get("last_at"),
-                "support_status": None, "is_support": False,
-                "is_dispute": False, "priority": None,
-            })
-
-            # --- сделка по комнате ---
-            _DEAL_COLS = ("SELECT id, cargo_id, trip_id, bid_id, shipper_id, driver_id, "
-                          "from_city, to_city, amount, status FROM deals ")
+        # P1 legacy-recovery: для комнат без deals.chat_room_id пытаемся найти
+        # через cargo_id/trip_id + участников. Делаем это отдельным batch.
+        orphan_rooms = [r for r in rooms if r["id"] not in deals_by_room
+                        and (r.get("cargo_id") or r.get("trip_id"))]
+        for room in orphan_rooms:
             deal = c.execute(
-                _DEAL_COLS + "WHERE chat_room_id = ? ORDER BY created_at DESC LIMIT 1",
-                (room_id,),
+                f"SELECT {_DEAL_COLS} FROM deals "
+                "WHERE ((shipper_id = ? AND driver_id = ?) OR (shipper_id = ? AND driver_id = ?)) "
+                "AND ((cargo_id IS NOT NULL AND cargo_id = ?) OR (trip_id IS NOT NULL AND trip_id = ?)) "
+                "ORDER BY created_at DESC LIMIT 1",
+                (uid, room.get("partner_id"), room.get("partner_id"), uid,
+                 room.get("cargo_id"), room.get("trip_id")),
             ).fetchone()
-            # P1 (аудит 2026-08-21): часть legacy-сделок создана до того, как
-            # deals.chat_room_id стал заполняться (recovery-логика для них уже
-            # есть в marketplace._tracking_system_message). Для них deal_status
-            # оставался None → финальный фильтр в my_rooms() выбрасывал комнату
-            # из списка целиком, ХОТЯ _assert_chat_is_accepted такую комнату
-            # пропускает (он матчит ещё и по cargo_id/trip_id). Получалось:
-            # писать и читать можно, а найти комнату в «Сделках» нельзя.
-            # Ищем ту же сделку тем же способом и чиним связь на месте.
-            if not deal and (room.get("cargo_id") or room.get("trip_id")):
-                deal = c.execute(
-                    _DEAL_COLS +
-                    "WHERE ((shipper_id = ? AND driver_id = ?) OR (shipper_id = ? AND driver_id = ?)) "
-                    "AND ((cargo_id IS NOT NULL AND cargo_id = ?) OR (trip_id IS NOT NULL AND trip_id = ?)) "
-                    "ORDER BY created_at DESC LIMIT 1",
-                    (uid, partner_id, partner_id, uid,
-                     room.get("cargo_id"), room.get("trip_id")),
-                ).fetchone()
-                if deal:
-                    c.execute(
-                        "UPDATE deals SET chat_room_id = COALESCE(chat_room_id, ?) WHERE id = ?",
-                        (room_id, deal["id"]),
-                    )
             if deal:
                 deal = dict(deal)
-                room["deal_id"] = deal["id"]
-                room["bid_id"] = deal.get("bid_id")
-                room["deal_status"] = deal.get("status")
-                room["bid_amount"] = deal.get("amount")
-                room["route_from"] = deal.get("from_city")
-                room["route_to"] = deal.get("to_city")
-                if deal.get("from_city") and deal.get("to_city"):
-                    room["route_label"] = f"{deal['from_city']} → {deal['to_city']}"
-                # роль партнёра из сделки
-                if partner_id == deal.get("driver_id"):
-                    room["partner_role"] = "driver"
-                elif partner_id == deal.get("shipper_id"):
-                    room["partner_role"] = "client"
-                # груз + валюта из cargos
-                if deal.get("cargo_id"):
-                    cargo = c.execute(
-                        "SELECT cargo_desc, cargo_type, weight_tons, currency, "
-                        "from_city, to_city FROM cargos WHERE id = ?",
-                        (deal["cargo_id"],),
-                    ).fetchone()
-                    if cargo:
-                        cargo = dict(cargo)
-                        room["cargo_title"] = cargo.get("cargo_desc")
-                        room["cargo_type"] = cargo.get("cargo_type")
-                        room["cargo_weight"] = cargo.get("weight_tons")
-                        room["bid_currency"] = cargo.get("currency")
-                        if not room["route_label"] and cargo.get("from_city") and cargo.get("to_city"):
-                            room["route_from"] = cargo["from_city"]
-                            room["route_to"] = cargo["to_city"]
-                            room["route_label"] = f"{cargo['from_city']} → {cargo['to_city']}"
+                deals_by_room[room["id"]] = deal
+                c.execute(
+                    "UPDATE deals SET chat_room_id = COALESCE(chat_room_id, ?) WHERE id = ?",
+                    (room["id"], deal["id"]),
+                )
 
-            # --- fallback: нет сделки → данные из cargo/bid/trip комнаты ---
-            if not deal:
-                r_cargo_id = room.get("cargo_id")
-                r_bid_id = room.get("bid_id")
-                r_trip_id = room.get("trip_id")
-                if r_bid_id:
-                    bid_row = c.execute(
-                        "SELECT cargo_id, trip_id, amount, status FROM bids WHERE id = ?",
-                        (r_bid_id,),
-                    ).fetchone()
-                    if bid_row:
-                        bid_row = dict(bid_row)
-                        room["bid_id"] = r_bid_id
-                        room["bid_amount"] = bid_row.get("amount")
-                        if not r_cargo_id:
-                            r_cargo_id = bid_row.get("cargo_id")
-                        if not r_trip_id:
-                            r_trip_id = bid_row.get("trip_id")
-                if r_cargo_id:
-                    cargo = c.execute(
-                        "SELECT cargo_desc, cargo_type, weight_tons, currency, "
-                        "from_city, to_city FROM cargos WHERE id = ?",
-                        (r_cargo_id,),
-                    ).fetchone()
-                    if cargo:
-                        cargo = dict(cargo)
-                        room["cargo_title"] = cargo.get("cargo_desc")
-                        room["cargo_type"] = cargo.get("cargo_type")
-                        room["cargo_weight"] = cargo.get("weight_tons")
-                        room["bid_currency"] = cargo.get("currency")
-                        if not room["route_label"] and cargo.get("from_city") and cargo.get("to_city"):
-                            room["route_from"] = cargo["from_city"]
-                            room["route_to"] = cargo["to_city"]
-                            room["route_label"] = f"{cargo['from_city']} → {cargo['to_city']}"
-                if r_trip_id and not room["route_label"]:
-                    trip = c.execute(
-                        "SELECT from_city, to_city, driver_name FROM trips WHERE id = ?",
-                        (r_trip_id,),
-                    ).fetchone()
-                    if trip:
-                        trip = dict(trip)
-                        if trip.get("from_city") and trip.get("to_city"):
-                            room["route_from"] = trip["from_city"]
-                            room["route_to"] = trip["to_city"]
-                            room["route_label"] = f"{trip['from_city']} → {trip['to_city']}"
+        # --- Шаг 2: batch-загрузка cargos и trips ---
+        cargo_ids = set()
+        trip_ids = set()
+        bid_ids = set()
+        for d in deals_by_room.values():
+            if d.get("cargo_id"):
+                cargo_ids.add(d["cargo_id"])
+            if d.get("trip_id"):
+                trip_ids.add(d["trip_id"])
+        # Также из room-level fallback
+        for room in rooms:
+            if room["id"] not in deals_by_room:
+                if room.get("cargo_id"):
+                    cargo_ids.add(room["cargo_id"])
+                if room.get("trip_id"):
+                    trip_ids.add(room["trip_id"])
+                if room.get("bid_id"):
+                    bid_ids.add(room["bid_id"])
 
-            # --- support / роль партнёра-бота ---
-            if partner_id == SUPPORT_ID:
-                room["is_support"] = True
-                room["partner_role"] = "support"
+        cargo_map = {}
+        if cargo_ids:
+            cids = list(cargo_ids)
+            for cr in c.execute(
+                f"SELECT id, cargo_desc, cargo_type, weight_tons, currency, from_city, to_city "
+                f"FROM cargos WHERE id IN ({_ph(cids)})", cids
+            ).fetchall():
+                cargo_map[cr["id"]] = dict(cr)
 
-            # --- партнёр: компания/госномер/роль (если не из сделки) ---
-            if partner_id:
-                p = c.execute(
-                    "SELECT role, vehicle_plate, legal_form FROM drivers_registration WHERE id = ?",
-                    (partner_id,),
-                ).fetchone()
-                if p:
-                    p = dict(p)
-                    room["vehicle_plate"] = p.get("vehicle_plate")
-                    room["partner_company"] = p.get("legal_form")
-                    if not room["partner_role"] and p.get("role") in ("driver", "client", "support"):
-                        room["partner_role"] = p.get("role")
+        trip_map = {}
+        if trip_ids:
+            tids = list(trip_ids)
+            for tr in c.execute(
+                f"SELECT id, from_city, to_city, driver_name FROM trips WHERE id IN ({_ph(tids)})", tids
+            ).fetchall():
+                trip_map[tr["id"]] = dict(tr)
 
-            # --- эскалация в поддержку (таблица из PR #60, если есть) ---
-            try:
-                esc = c.execute(
-                    "SELECT status FROM support_escalations WHERE conversation_id = ? "
-                    "ORDER BY created_at DESC LIMIT 1",
-                    (room_id,),
-                ).fetchone()
-                if esc:
-                    room["support_status"] = esc["status"]
-                    if esc["status"] in ("open", "assigned"):
-                        room["priority"] = "support"
-            except Exception:
-                # таблицы может не быть на старых БД — не критично
-                pass
+        bid_map = {}
+        if bid_ids:
+            bids = list(bid_ids)
+            for br in c.execute(
+                f"SELECT id, cargo_id, trip_id, amount, status FROM bids WHERE id IN ({_ph(bids)})", bids
+            ).fetchall():
+                bid_map[br["id"]] = dict(br)
+
+        # --- Шаг 3: batch-загрузка partner registration ---
+        partner_ids = list({r["partner_id"] for r in rooms if r.get("partner_id")})
+        partner_map = {}
+        if partner_ids:
+            for pr in c.execute(
+                f"SELECT id, role, vehicle_plate, legal_form FROM drivers_registration "
+                f"WHERE id IN ({_ph(partner_ids)})", partner_ids
+            ).fetchall():
+                partner_map[pr["id"]] = dict(pr)
+
+        # --- Шаг 4: batch-загрузка support_escalations ---
+        esc_map = {}
+        try:
+            for er in c.execute(
+                f"SELECT conversation_id, status FROM support_escalations "
+                f"WHERE conversation_id IN ({_ph(room_ids)}) ORDER BY created_at DESC",
+                room_ids,
+            ).fetchall():
+                cid = er["conversation_id"]
+                if cid not in esc_map:
+                    esc_map[cid] = er["status"]
+        except Exception:
+            pass
+
+    # --- Шаг 5: соединяем всё вместе ---
+    for room in rooms:
+        room_id = room["id"]
+        partner_id = room.get("partner_id")
+        deal = deals_by_room.get(room_id)
+
+        if deal:
+            room["deal_id"] = deal["id"]
+            room["bid_id"] = deal.get("bid_id")
+            room["deal_status"] = deal.get("status")
+            room["bid_amount"] = deal.get("amount")
+            room["route_from"] = deal.get("from_city")
+            room["route_to"] = deal.get("to_city")
+            if deal.get("from_city") and deal.get("to_city"):
+                room["route_label"] = f"{deal['from_city']} → {deal['to_city']}"
+            if partner_id == deal.get("driver_id"):
+                room["partner_role"] = "driver"
+            elif partner_id == deal.get("shipper_id"):
+                room["partner_role"] = "client"
+            cargo = cargo_map.get(deal.get("cargo_id"))
+            if cargo:
+                room["cargo_title"] = cargo.get("cargo_desc")
+                room["cargo_type"] = cargo.get("cargo_type")
+                room["cargo_weight"] = cargo.get("weight_tons")
+                room["bid_currency"] = cargo.get("currency")
+                if not room["route_label"] and cargo.get("from_city") and cargo.get("to_city"):
+                    room["route_from"] = cargo["from_city"]
+                    room["route_to"] = cargo["to_city"]
+                    room["route_label"] = f"{cargo['from_city']} → {cargo['to_city']}"
+        else:
+            # fallback: нет deal → данные из room-level cargo/bid/trip
+            r_cargo_id = room.get("cargo_id")
+            r_bid_id = room.get("bid_id")
+            r_trip_id = room.get("trip_id")
+            if r_bid_id:
+                bid = bid_map.get(r_bid_id)
+                if bid:
+                    room["bid_id"] = r_bid_id
+                    room["bid_amount"] = bid.get("amount")
+                    if not r_cargo_id:
+                        r_cargo_id = bid.get("cargo_id")
+                    if not r_trip_id:
+                        r_trip_id = bid.get("trip_id")
+            if r_cargo_id:
+                cargo = cargo_map.get(r_cargo_id)
+                if cargo:
+                    room["cargo_title"] = cargo.get("cargo_desc")
+                    room["cargo_type"] = cargo.get("cargo_type")
+                    room["cargo_weight"] = cargo.get("weight_tons")
+                    room["bid_currency"] = cargo.get("currency")
+                    if not room["route_label"] and cargo.get("from_city") and cargo.get("to_city"):
+                        room["route_from"] = cargo["from_city"]
+                        room["route_to"] = cargo["to_city"]
+                        room["route_label"] = f"{cargo['from_city']} → {cargo['to_city']}"
+            if r_trip_id and not room.get("route_label"):
+                trip = trip_map.get(r_trip_id)
+                if trip and trip.get("from_city") and trip.get("to_city"):
+                    room["route_from"] = trip["from_city"]
+                    room["route_to"] = trip["to_city"]
+                    room["route_label"] = f"{trip['from_city']} → {trip['to_city']}"
+
+        # support
+        if partner_id == SUPPORT_ID:
+            room["is_support"] = True
+            room["partner_role"] = "support"
+
+        # partner meta
+        p = partner_map.get(partner_id)
+        if p:
+            room["vehicle_plate"] = p.get("vehicle_plate")
+            room["partner_company"] = p.get("legal_form")
+            if not room["partner_role"] and p.get("role") in ("driver", "client", "support"):
+                room["partner_role"] = p.get("role")
+
+        # escalation
+        esc_status = esc_map.get(room_id)
+        if esc_status:
+            room["support_status"] = esc_status
+            if esc_status in ("open", "assigned"):
+                room["priority"] = "support"
 
 
 @chat_router.get("/messages/{room_id}")
