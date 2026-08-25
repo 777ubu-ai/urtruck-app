@@ -28,8 +28,10 @@ async function gotoPhoneScreen(page) {
   await expect(page.locator(tid('auth-apple'))).toBeVisible();
 }
 
-// Ввести код на OtpV2 и, если новый юзер, выбрать роль + заполнить профиль.
-async function passOtpAndOnboard(page, role, { name = 'QA Tester', city = 'Алматы' } = {}) {
+// Ввести код на OtpV2 и, если новый юзер, пройти канонический профиль 2/2.
+// Короткий onboarding собирает только обязательные имя + телефон; город,
+// страна, компания и messenger остаются optional и на этом helper не нужны.
+async function passOtpAndOnboard(page, role, { name = 'QA Tester' } = {}) {
   const cells = page.locator(tid('otp-v2-cells'));
   await cells.waitFor({ state: 'visible', timeout: 15000 });
   await cells.click();
@@ -52,17 +54,10 @@ async function passOtpAndOnboard(page, role, { name = 'QA Tester', city = 'Ал�
     ]);
     if (await profile.isVisible().catch(() => false)) {
       await page.locator(tid('profile-v2-name')).fill(name);
-      await page.locator(tid('profile-v2-city')).fill(city);
-      // Email/social registration still requires the driver's real contact
-      // phone before profile completion. Shipper has the same requirement.
       const phone = page.locator(tid('profile-v2-phone'));
-      if (await phone.isVisible().catch(() => false)) {
-        await phone.fill('+77011234567');
-      }
-      const country = page.locator(tid('profile-v2-country'));
-      if (await country.isVisible().catch(() => false)) {
-        await country.fill('Казахстан');
-      }
+      await phone.waitFor({ state: 'visible', timeout: 8000 });
+      await phone.fill('+77011234567');
+      await expect(page.locator(tid('profile-v2-cta'))).toBeEnabled();
       await page.locator(tid('profile-v2-cta')).click();
     }
   }
