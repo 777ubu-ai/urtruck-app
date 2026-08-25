@@ -1,5 +1,6 @@
 // RoleScreenV2 — шаг 1 из 2 после подтверждённой auth-identity.
-// Канон: роль выбирается до заполнения обязательного контактного профиля.
+// Канон: роль выбирается до заполнения обязательного контактного профиля,
+// но попадает в AuthContext только ПОСЛЕ успешного сохранения ProfileV2.
 
 import React, { useState } from 'react';
 import {
@@ -11,7 +12,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
-import { useAuth } from '../../utils/AuthContext';
 import { useBrand, radius, typography } from '../../theme/brandV2';
 
 function StepIndicator({ s }) {
@@ -75,13 +75,11 @@ export default function RoleScreenV2({ navigation, route }) {
   const colors = useBrand();
   const s = React.useMemo(() => makeStyles(colors), [colors]);
   const { t } = useI18n();
-  const { setRole } = useAuth();
   const signupIdentity = route?.params?.phone || '';
   const [selected, setSelected] = useState(null);
 
   const onContinue = () => {
     if (!selected) return;
-    setRole(selected);
     navigation.navigate('ProfileV2', { phone: signupIdentity, role: selected });
   };
 
