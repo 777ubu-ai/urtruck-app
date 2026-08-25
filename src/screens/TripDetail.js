@@ -501,7 +501,9 @@ export default function TripDetail({ navigation, route }) {
     });
   };
 
-  const isOwner = trip.isMine || trip.driverId === myUserId || trip.driverName === 'Вы' || trip.driverName === 'You';
+  // #292: проверка «мой рейс» по всем 4 locale-вариантам «Вы» (бэкенд пока шлёт RU, но на будущее)
+  const YOU_VARIANTS = ['Вы', 'Сіз', '您', 'You'];
+  const isOwner = trip.isMine || trip.driverId === myUserId || YOU_VARIANTS.includes(trip.driverName);
 
   // v1 visual: emerald accent for trip-detail (driver supply); orange when
   // shipper opens it (client-side flow).
@@ -613,7 +615,9 @@ export default function TripDetail({ navigation, route }) {
           // заглушка (хвост телефона «+2244» или «Пользователь UrTruck»),
           // когда профиль не заполнен. Не выдаём это за настоящее имя.
           const rawDriverName = serverTrip?.driver_display_name || view.driverName || '';
-          const driverHasRealName = rawDriverName && !rawDriverName.startsWith('+') && rawDriverName !== 'Пользователь UrTruck';
+          // #292: бэкенд всегда шлёт RU-заглушку, но проверяем все 4 варианта на случай будущей локализации.
+          const FALLBACK_NAMES = ['Пользователь UrTruck', 'UrTruck қолданушысы', 'UrTruck 用户', 'UrTruck user'];
+          const driverHasRealName = rawDriverName && !rawDriverName.startsWith('+') && !FALLBACK_NAMES.includes(rawDriverName);
           const driverDisplayName = driverHasRealName ? rawDriverName : t('driver');
           return (
           <TouchableOpacity

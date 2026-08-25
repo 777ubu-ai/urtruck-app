@@ -1192,7 +1192,9 @@ export default function ChatScreen({ navigation, route }) {
     ? { title: '计划路线', hint: '行程开始后，车辆位置会自动显示', live: '车辆位置' }
     : mapLanguage.startsWith('en')
       ? { title: 'Planned route', hint: 'Truck location will appear automatically after trip start', live: 'Truck location' }
-      : { title: 'Плановый маршрут', hint: 'После начала рейса машина появится автоматически', live: 'Машина на маршруте' };
+      : mapLanguage.startsWith('kk')
+        ? { title: 'Жоспарланған бағыт', hint: 'Рейс басталғаннан кейін көлік автоматты түрде көрсетіледі', live: 'Көлік орны' }
+        : { title: 'Плановый маршрут', hint: 'После начала рейса машина появится автоматически', live: 'Машина на маршруте' };
 
   return (
     <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top', 'bottom']}>

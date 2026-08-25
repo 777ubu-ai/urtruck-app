@@ -46,7 +46,8 @@
     "qa:locale-runtime": "node qa/utils/runtimeLocaleLeakProbe.mjs",
     "qa:role-locale": "node qa/utils/roleLocaleMatrixProbe.mjs",
     "qa:backend": "cd backend && bash scripts/run_tests_isolated.sh",
-    "qa:frontend-unit": "node --test tests/unit/themeResolve.test.mjs tests/unit/dealsUnread.test.mjs tests/unit/dealStatusOrder.test.mjs",
+    "qa:i18n-keys": "node tests/unit/i18nKeys.test.mjs",
+    "qa:frontend-unit": "node --test tests/unit/themeResolve.test.mjs tests/unit/dealsUnread.test.mjs tests/unit/dealStatusOrder.test.mjs && node tests/unit/i18nKeys.test.mjs",
     "qa:release": "npm run qa:backend && npm run qa:frontend-unit && npm run qa:center:quick"
   },
   "dependencies": {

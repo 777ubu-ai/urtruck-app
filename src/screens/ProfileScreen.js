@@ -85,8 +85,8 @@ export default function ProfileScreen({ navigation, route }) {
     textSecondary: v1.textMuted,
   };
   const { t, lang: uiLang } = useI18n();
-  const tonUnit = uiLang === 'ZH' ? '吨' : uiLang === 'EN' ? 't' : 'т';
-  const cubicMeterUnit = uiLang === 'ZH' ? '立方米' : 'м³';
+  const tonUnit = uiLang === 'ZH' ? '吨' : uiLang === 'EN' ? 't' : uiLang === 'KK' ? 'т' : 'т';
+  const cubicMeterUnit = uiLang === 'ZH' ? '立方米' : uiLang === 'EN' ? 'm³' : 'м³';
   const { session, signOut, verificationLevel } = useAuth();
   const [profile, setProfile] = useState(getProfile(session?.user?.id) || {});
   const [lang, setLang] = useState(getLanguage());

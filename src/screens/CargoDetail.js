@@ -515,7 +515,9 @@ export default function CargoDetail({ navigation, route }) {
           // когда профиль не заполнен. В этом случае показываем нейтральное
           // «Грузоотправитель», а не псевдо-имя.
           const rawName = fullCargo.owner_name || '';
-          const hasRealName = rawName && !rawName.startsWith('+') && rawName !== 'Пользователь UrTruck';
+          // #292: бэкенд всегда шлёт RU-заглушку, но проверяем все 4 варианта на случай будущей локализации.
+          const FALLBACK_NAMES = ['Пользователь UrTruck', 'UrTruck қолданушысы', 'UrTruck 用户', 'UrTruck user'];
+          const hasRealName = rawName && !rawName.startsWith('+') && !FALLBACK_NAMES.includes(rawName);
           return (
             <GlassCard>
               <SectionTitle featherIcon="user" label={t('shipper_label')} />
