@@ -199,37 +199,77 @@ def _normalize_email(value: str) -> str:
     return str(value or "").strip().lower()
 
 
+class AmbiguousEmailIdentityError(Exception):
+    """Raised when a canonical login email resolves to MORE THAN ONE account.
+
+    Security audit 25.08.2026 (owner review, PR #298 round 3): _migrate_
+    email_identity() deliberately skips its UNIQUE(email) index when
+    historical duplicate canonical emails already exist, so it can never
+    block production startup. Before this fix, get_or_create_driver_by_email
+    then used `SELECT ... LIMIT 1` — meaning a verified Google/Apple/Email
+    identity could silently resolve to an ARBITRARY one of several accounts
+    sharing that canonical email, handing a UrTruck session for someone
+    else's account to whoever controls the colliding email. Fail closed
+    instead: never guess which of several matching accounts is "the" one.
+    """
+    def __init__(self, normalized_email: str, count: int):
+        self.normalized_email = normalized_email
+        self.count = count
+        super().__init__(f"ambiguous_email_identity: {count} accounts match this canonical email")
+
+
 def get_or_create_driver_by_email(email: str, upgrade_guest_id: str = None) -> dict:
-    """Find/create an account by stable login email, never by contact phone."""
+    """Find/create an account by stable login email, never by contact phone.
+
+    Raises AmbiguousEmailIdentityError (fail-closed, no row returned, no
+    caller should ever issue a session) if MORE THAN ONE existing account
+    matches this canonical email — across BOTH the `email` column and the
+    legacy phone-as-email path combined, since either alone under-counts a
+    real collision spanning both storage shapes.
+    """
     normalized = _normalize_email(email)
     if not normalized or "@" not in normalized:
         raise ValueError("invalid email identity")
 
     with get_conn() as c:
-        row = c.execute(
-            "SELECT * FROM drivers_registration WHERE lower(trim(email)) = ? LIMIT 1",
+        email_matches = c.execute(
+            "SELECT * FROM drivers_registration WHERE lower(trim(email)) = ?",
             (normalized,),
-        ).fetchone()
-        if row:
-            return dict(row)
+        ).fetchall()
 
         # Extra legacy safety if a row was created before the email migration
-        # and the migration has not yet run in this worker/process.
-        legacy = c.execute(
+        # and the migration has not yet run in this worker/process. Exclude
+        # rows already counted via the email column to avoid double-counting
+        # the same account under both paths.
+        legacy_matches = c.execute(
             "SELECT * FROM drivers_registration "
-            "WHERE lower(trim(phone)) = ? AND instr(phone, '@') > 1 LIMIT 1",
+            "WHERE lower(trim(phone)) = ? AND instr(phone, '@') > 1 "
+            "AND (email IS NULL OR trim(email) = '')",
             (normalized,),
-        ).fetchone()
-        if legacy:
-            c.execute(
-                "UPDATE drivers_registration SET email = ? WHERE id = ?",
-                (normalized, legacy["id"]),
-            )
-            row = c.execute(
-                "SELECT * FROM drivers_registration WHERE id = ?",
-                (legacy["id"],),
-            ).fetchone()
-            return dict(row)
+        ).fetchall()
+
+        by_id = {r["id"]: dict(r) for r in email_matches}
+        legacy_only_ids = set()
+        for r in legacy_matches:
+            if r["id"] not in by_id:
+                by_id[r["id"]] = dict(r)
+                legacy_only_ids.add(r["id"])
+
+        if len(by_id) > 1:
+            raise AmbiguousEmailIdentityError(normalized, len(by_id))
+
+        if len(by_id) == 1:
+            driver_id, row = next(iter(by_id.items()))
+            if driver_id in legacy_only_ids:
+                c.execute(
+                    "UPDATE drivers_registration SET email = ? WHERE id = ?",
+                    (normalized, driver_id),
+                )
+                row = dict(c.execute(
+                    "SELECT * FROM drivers_registration WHERE id = ?",
+                    (driver_id,),
+                ).fetchone())
+            return row
 
         if upgrade_guest_id:
             existing = c.execute(
