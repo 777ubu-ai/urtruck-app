@@ -38,9 +38,6 @@ def _is_real_phone(v):
     digits = "".join(ch for ch in raw if ch.isdigit())
     return 10 <= len(digits) <= 15
 
-def _is_real_country(v):
-    return bool(v and len(str(v).strip()) >= 2)
-
 class UpdateProfileIn(BaseModel):
     name: Optional[str] = None
     city: Optional[str] = None
@@ -57,7 +54,7 @@ class UpdateProfileIn(BaseModel):
     company_name: Optional[str] = None
     bin_inn: Optional[str] = None
     country: Optional[str] = None
-    messenger_type: Optional[str] = Field(None, description="wechat|whatsapp|telegram|viber")
+    messenger_type: Optional[str] = Field(None, description="wechat|whatsapp|telegram|viber|other")
     messenger_id: Optional[str] = None
 
 PRO_COLUMNS = [
@@ -207,7 +204,7 @@ def get_counterparty_profile(other_user_id: str, user=Depends(require_level(1)))
 
 @profile_router.patch("/me")
 def update_profile(body: UpdateProfileIn, user=Depends(require_level(1))):
-    """Обновить профиль. Для грузоотправителя имя, страна и телефон обязательны."""
+    """Обновить профиль. Имя и реальный телефон обязательны для обеих ролей."""
     _ensure_columns()
     updates = {}
     if body.name is not None:
@@ -241,7 +238,7 @@ def update_profile(body: UpdateProfileIn, user=Depends(require_level(1))):
         updates["country"] = body.country.strip()
     if body.messenger_type is not None:
         mt = body.messenger_type.strip().lower()
-        if mt in {"wechat", "whatsapp", "telegram", "viber", ""}:
+        if mt in {"wechat", "whatsapp", "telegram", "viber", "other", ""}:
             updates["messenger_type"] = mt
     if body.messenger_id is not None:
         updates["messenger_id"] = body.messenger_id.strip()
@@ -259,19 +256,15 @@ def update_profile(body: UpdateProfileIn, user=Depends(require_level(1))):
         effective_phone = body_phone or (stored_phone if _is_real_phone(stored_phone) else None)
         if not effective_phone:
             raise HTTPException(status_code=400, detail={"error": "PHONE_REQUIRED", "message": "Для завершения регистрации укажите номер телефона"})
+        if body_phone and not _is_real_phone(body_phone):
+            raise HTTPException(status_code=400, detail={"error": "INVALID_PHONE", "message": "Некорректный номер телефона"})
 
         effective_name = updates.get("full_name") or (current.get("full_name") or "").strip() or None
-        if role_norm == "client" and not effective_name:
-            raise HTTPException(status_code=400, detail={"error": "NAME_REQUIRED", "message": "Грузоотправитель обязан указать имя"})
-
-        effective_country = updates.get("country") or (current.get("country") or "").strip() or None
-        if role_norm == "client" and not _is_real_country(effective_country):
-            raise HTTPException(status_code=400, detail={"error": "COUNTRY_REQUIRED", "message": "Грузоотправитель обязан указать страну"})
+        if not effective_name:
+            raise HTTPException(status_code=400, detail={"error": "NAME_REQUIRED", "message": "Для завершения регистрации укажите имя"})
 
         updates["role"] = role_norm
         if body_phone:
-            if not _is_real_phone(body_phone):
-                raise HTTPException(status_code=400, detail={"error": "INVALID_PHONE", "message": "Некорректный номер телефона"})
             updates["phone"] = body_phone
     elif body.phone is not None:
         normalized = _normalize_phone(body.phone)
