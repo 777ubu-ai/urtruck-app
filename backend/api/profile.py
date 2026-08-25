@@ -238,8 +238,9 @@ def update_profile(body: UpdateProfileIn, user=Depends(require_level(1))):
         updates["country"] = body.country.strip()
     if body.messenger_type is not None:
         mt = body.messenger_type.strip().lower()
-        if mt in {"wechat", "whatsapp", "telegram", "viber", "other", ""}:
-            updates["messenger_type"] = mt
+        if mt not in {"wechat", "whatsapp", "telegram", "viber", "other", ""}:
+            raise HTTPException(status_code=400, detail={"error": "INVALID_MESSENGER_TYPE", "message": "Неподдерживаемый мессенджер"})
+        updates["messenger_type"] = mt
     if body.messenger_id is not None:
         updates["messenger_id"] = body.messenger_id.strip()
 
@@ -262,6 +263,21 @@ def update_profile(body: UpdateProfileIn, user=Depends(require_level(1))):
         effective_name = updates.get("full_name") or (current.get("full_name") or "").strip() or None
         if not effective_name:
             raise HTTPException(status_code=400, detail={"error": "NAME_REQUIRED", "message": "Для завершения регистрации укажите имя"})
+
+        # Messenger is optional, but once a channel is selected its address is
+        # required at the authoritative API boundary. This prevents old clients
+        # or direct API calls from storing e.g. `wechat` with an empty ID.
+        selected_messenger = updates.get("messenger_type")
+        if selected_messenger:
+            effective_messenger_id = updates.get("messenger_id") or (current.get("messenger_id") or "").strip()
+            if len(effective_messenger_id) < 2:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error": "MESSENGER_CONTACT_REQUIRED",
+                        "message": "Для выбранного мессенджера укажите контакт",
+                    },
+                )
 
         updates["role"] = role_norm
         if body_phone:
