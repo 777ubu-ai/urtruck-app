@@ -95,7 +95,9 @@ test('P1: GPS-сообщения согласия локализованы дл�
 
 test('P1: legacy-комната без chat_room_id восстанавливается по cargo_id/trip_id', () => {
   const fn = chatPy.split('def _enrich_rooms_with_deal_context(')[1].split('\n@')[0];
-  assert.match(fn, /if not deal and \(room\.get\("cargo_id"\) or room\.get\("trip_id"\)\)/,
+  // Issue #290 переписал per-room fallback на batch: orphan_rooms фильтрует
+  // комнаты без deal по cargo_id/trip_id, затем для каждой ищет deal в БД.
+  assert.match(fn, /not in deals_by_room[\s\S]*?r\.get\("cargo_id"\) or r\.get\("trip_id"\)/,
     'нет fallback-поиска сделки — комната исчезнет из /chat/rooms');
   assert.match(fn, /UPDATE deals SET chat_room_id = COALESCE/,
     'связь deal.chat_room_id не чинится на месте');
