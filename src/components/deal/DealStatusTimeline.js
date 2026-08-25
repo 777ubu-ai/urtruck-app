@@ -149,7 +149,7 @@ const s = StyleSheet.create({
   item: { flexDirection: 'row', alignItems: 'stretch', minHeight: 82 },
   rail: { width: 34, alignItems: 'center' },
   dot: { width: 28, height: 28, borderRadius: 14, borderWidth: 2, alignItems: 'center', justifyContent: 'center', zIndex: 2 },
-  line: { width: 2, flex: 1, minHeight: 52, backgroundColor: '#CFE9DB', marginVertical: -1 },
+  line: { width: 2, flex: 1, minHeight: 52, marginVertical: -1 },
   card: { flex: 1, borderWidth: 1, borderRadius: 15, paddingHorizontal: 13, paddingVertical: 11, marginBottom: 12 },
   title: { fontSize: 14, fontWeight: '900', lineHeight: 19 },
   moment: { fontSize: 11.5, fontWeight: '700', marginTop: 3, marginBottom: 7 },

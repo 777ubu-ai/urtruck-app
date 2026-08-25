@@ -73,7 +73,10 @@ export default function MyTripsScreen({ navigation, route }) {
   desc: { fontSize: 12, marginBottom: 2 },
   cardMeta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 },
   metaItem: { fontSize: 11 },
-  metaDot: { color: '#94A3B8', fontSize: 10 },
+  // P1 audit fix (25.08.2026): was hardcoded '#94A3B8' — a light-only grey
+  // dot separator that stayed light in dark mode. v1 is in scope for this
+  // whole makeStyles-style factory (see `price` below), so read it directly.
+  metaDot: { color: v1.textDim, fontSize: 10 },
   cardBottom: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   // Цена: было 24pt жирный оранжевый — крик. Теперь 16pt, тёмный текст,
   // оранжевый ушёл в мелкий label «$» перед суммой.
@@ -368,8 +371,8 @@ export default function MyTripsScreen({ navigation, route }) {
           ) : (
             <Text style={[s.statusLabel, { color: (() => {
               const st = item.status || 'active';
-              if (st === 'cancelled') return '#94A3B8';        // серый
-              if (st === 'draft' || st === 'pending') return '#64748B'; // neutral waiting
+              if (st === 'cancelled') return theme.textDisabled;        // серый (theme-reactive)
+              if (st === 'draft' || st === 'pending') return theme.textMuted; // neutral waiting (theme-reactive)
               if (st === 'rejected' || st === 'expired') return '#EF4444'; // красный
               if (st === 'completed' || st === 'delivered') return '#168759'; // зелёный
               return '#168759'; // active по умолчанию — зелёный
@@ -545,10 +548,10 @@ export default function MyTripsScreen({ navigation, route }) {
     return (
       <View style={[s.card, { backgroundColor: theme.card, borderColor: theme.border, opacity: 0.7 }]}>
         <View style={s.cardTop}>
-          <View style={[s.badge, { backgroundColor: '#94A3B820' }]}>
-            <Text style={[s.badgeText, { color: '#94A3B8' }]}>{isCargo ? t('badge_cargo') : t('badge_trip')}</Text>
+          <View style={[s.badge, { backgroundColor: theme.textDisabled + '20' }]}>
+            <Text style={[s.badgeText, { color: theme.textDisabled }]}>{isCargo ? t('badge_cargo') : t('badge_trip')}</Text>
           </View>
-          <Text style={[s.statusLabel, { color: '#94A3B8' }]}>{formatStatus(item.status || 'unpublished')}</Text>
+          <Text style={[s.statusLabel, { color: theme.textDisabled }]}>{formatStatus(item.status || 'unpublished')}</Text>
         </View>
         <Text style={[s.route, { color: theme.text }]}>{countryFlag(item.from_country)} {localizePlace(from, lang)} → {countryFlag(item.to_country)} {localizePlace(to, lang)}</Text>
         <View style={{ flexDirection: 'row', gap: 8, marginTop: spacing.sm }}>

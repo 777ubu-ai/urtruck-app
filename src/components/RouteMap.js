@@ -104,7 +104,7 @@ export default function RouteMap({ from, to, transit, dealId, dealStatus, driver
           {localizePlace(to, lang)}
         </Text>
 
-        <View style={s.mapWrap} testID={hasLivePoint ? 'trip-live-map' : 'trip-planned-map'}>
+        <View style={[s.mapWrap, { backgroundColor: theme.surfaceAlt }]} testID={hasLivePoint ? 'trip-live-map' : 'trip-planned-map'}>
           <TruckMap
             lat={hasLivePoint ? lat : undefined}
             lng={hasLivePoint ? lng : undefined}
@@ -176,7 +176,7 @@ export default function RouteMap({ from, to, transit, dealId, dealStatus, driver
               <Feather name="x" size={22} color={theme.text} />
             </TouchableOpacity>
           </View>
-          <View style={s.fullscreenMap}>
+          <View style={[s.fullscreenMap, { backgroundColor: theme.surfaceAlt }]}>
             <TruckMap
               lat={hasLivePoint ? lat : undefined}
               lng={hasLivePoint ? lng : undefined}
@@ -196,7 +196,9 @@ const s = StyleSheet.create({
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 12, paddingTop: 11 },
   title: { fontSize: 11.5, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.35 },
   route: { fontSize: 14, fontWeight: '800', paddingHorizontal: 12, paddingTop: 5, paddingBottom: 10 },
-  mapWrap: { height: 250, position: 'relative', overflow: 'hidden', backgroundColor: '#EAF1ED' },
+  // backgroundColor intentionally omitted — theme.surfaceAlt inline at the
+  // call site (P1 audit fix, 25.08.2026).
+  mapWrap: { height: 250, position: 'relative', overflow: 'hidden' },
   loadingPill: { position: 'absolute', top: 10, right: 10, width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.94)' },
   metrics: { minHeight: 62, flexDirection: 'row', alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 12, paddingVertical: 9 },
   metric: { flex: 1 },
@@ -225,5 +227,5 @@ const s = StyleSheet.create({
     width: 44, height: 44, borderRadius: 22, borderWidth: 1,
     alignItems: 'center', justifyContent: 'center',
   },
-  fullscreenMap: { flex: 1, backgroundColor: '#EAF1ED' },
+  fullscreenMap: { flex: 1 },
 });

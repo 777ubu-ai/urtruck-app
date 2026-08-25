@@ -118,6 +118,20 @@ const THEME_DEFINITION_FILES = new Set([
   // Left unconverted rather than wiring up an unreachable component.
   path.join(ROOT, 'src', 'components', 'ui', 'AppShell.js'),
   path.join(ROOT, 'src', 'components', 'ui', 'SectionCard.js'),
+  // Confirmed dead code (0 importers, master-audit 25.08.2026 + re-confirmed
+  // during the P1-007 fix pass): superseded by a "V2" screen or removed from
+  // the navigator, but not yet deleted from the tree.
+  path.join(ROOT, 'src', 'screens', 'DealWorkspaceScreen.js'), // superseded by DealWorkspaceScreenV2.js
+  path.join(ROOT, 'src', 'screens', 'QueueScreenLazy.js'), // superseded by QueueScreenLazyV2.js
+  path.join(ROOT, 'src', 'screens', 'QueueScreenCarousel.js'), // 0 importers
+  path.join(ROOT, 'src', 'screens', 'CargoDetail.js'), // superseded by CargoDetailV2.js (route "CargoDetail" now points at V2)
+]);
+// TruckTypeGrid.js's truck-type-picker cards are DELIBERATELY always white —
+// an explicit owner reference-design decision (see the file's own top-of-file
+// comment), not a missed theme hookup. This is the one legitimate exception
+// to the pale-surface heuristic below; every other hit is a real bug.
+const PALE_SURFACE_EXEMPT_FILES = new Set([
+  path.join(ROOT, 'src', 'components', 'TruckTypeGrid.js'),
 ]);
 const COLOR_PROP_HEX_RE = new RegExp(
   '\\b(backgroundColor|color|borderColor|borderTopColor|borderBottomColor|' +
@@ -158,9 +172,59 @@ for (const file of hardcodeTargets) {
   }
 }
 
+// 6. P1 audit fix (25.08.2026): section 5's exact-hex-match approach missed
+// `#E9F6EF` in DealWorkspaceScreenV2.js — a hand-typed near-miss of the real
+// soft-accent token (`theme.cardActive`/designV1's `driverSoft`, `#e8f6ef`/
+// `#E8F6EF`) that isn't byte-identical to anything in BANNED_LIGHT_HEX, so it
+// slipped straight through. That's the actual bug class: ANY hardcoded pale
+// surface (backgroundColor/borderColor) is suspect, not just exact matches to
+// today's known tokens — a future hand-typed pastel a shade off from the real
+// token would slip past section 5 the same way. This section is deliberately
+// NOT a blanket hex ban: it only inspects backgroundColor/border*Color
+// (never `color`, so icon/button-text/brand colors are untouched), and only
+// flags colors pale enough to read as a near-white/pastel *surface* — a
+// perceived-lightness threshold, not a fixed list. Saturated semantic colors
+// (success/warning/danger/brand accent) are not pale by construction and are
+// unaffected; translucent rgba() overlays (the codebase's established pattern
+// for theme-aware "frosted" surfaces, e.g. BottomNav.js) are a different,
+// already-legitimate mechanism and are not solid hex, so they're untouched
+// too. See PALE_SURFACE_EXEMPT_FILES above for the one deliberate exception.
+const PALE_SURFACE_PROP_RE = /\b(backgroundColor|borderColor|borderTopColor|borderBottomColor|borderLeftColor|borderRightColor)\s*:\s*['"](#[0-9a-fA-F]{6})['"]/g;
+const PALE_SURFACE_LIGHTNESS_THRESHOLD = 0.85; // calibrated: catches every
+  // known-real hit (#E9F6EF≈0.939 down to TruckTypeGrid's exempted border
+  // #E7E5E4≈0.899), well below pure white (1.0) and well above a card's
+  // typical light-theme surface tint (theme.js's own lightTheme.card/border
+  // sit around 0.90-0.94 too — which is exactly why files whose surfaces are
+  // GENUINELY meant to be a fixed pale color, like TruckTypeGrid.js, need an
+  // explicit exemption rather than a higher threshold: raising the threshold
+  // to dodge them would just let the next hand-typed near-miss back in).
+function perceivedLightness(hex) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return (r + g + b) / 3 / 255;
+}
+
+const paleSurfaceTargets = hardcodeTargets.filter((f) => !PALE_SURFACE_EXEMPT_FILES.has(f));
+let paleSurfaceHitCount = 0;
+for (const file of paleSurfaceTargets) {
+  const src = fs.readFileSync(file, 'utf8');
+  const rel = path.relative(ROOT, file);
+  const found = new Set();
+  for (const match of src.matchAll(PALE_SURFACE_PROP_RE)) {
+    const hex = match[2];
+    if (perceivedLightness(hex) > PALE_SURFACE_LIGHTNESS_THRESHOLD) found.add(`${match[1]}:${hex}`);
+  }
+  if (found.size) {
+    paleSurfaceHitCount += found.size;
+    failures.push(`${rel}: hardcoded pale surface ${[...found].join(', ')} — likely light-only; read the equivalent theme.*/colors.* token at the JSX call site instead of a literal hex`);
+  }
+}
+
 console.log(`[theme] frame components checked: ${FRAME_COMPONENTS.length}`);
 console.log(`[theme] screens checked: ${screenFiles.length}`);
 console.log(`[theme] hardcoded-light-hex scan: ${hardcodeTargets.length} files`);
+console.log(`[theme] pale-surface heuristic scan: ${paleSurfaceTargets.length} files`);
 console.log('[theme] ThemeContext runtime mode + persistence checked');
 console.log('[theme] LIGHT/DARK token sets checked');
 

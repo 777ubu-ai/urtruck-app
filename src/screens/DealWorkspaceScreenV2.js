@@ -852,7 +852,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
             style={[s.docBubble, item.mine ? s.bubbleMine : s.bubbleThem, !item.mine && { borderColor: colors.border, backgroundColor: colors.surface }]}
             testID="deal-chat-document-bubble"
           >
-            <View style={[s.docIconBox, { backgroundColor: item.mine ? 'rgba(255,255,255,0.18)' : '#E9F6EF' }]}>
+            <View style={[s.docIconBox, { backgroundColor: item.mine ? 'rgba(255,255,255,0.18)' : colors.driverSoft }]}>
               <Feather name={meta.icon || 'file'} size={20} color={item.mine ? '#FFFFFF' : '#168759'} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
@@ -1029,7 +1029,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           <View style={s.headerText}>
             <View style={s.routeHeaderRow}>
               <Text style={[s.routeTitle, { color: colors.text }]} numberOfLines={1}>{routeLabel}</Text>
-              <View style={s.statusPill}>
+              <View style={[s.statusPill, { backgroundColor: colors.driverSoft }]}>
                 <View style={s.statusDot} />
                 <Text style={s.statusPillText} numberOfLines={1}>{statusLabel}</Text>
               </View>
@@ -1083,7 +1083,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
                 {dealId ? (
                   <TouchableOpacity style={[s.mapCard, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={openMap} testID="deal-map-card-open">
-                    <View style={s.mapCardIcon}><Feather name="map" size={17} color="#168759" /></View>
+                    <View style={[s.mapCardIcon, { backgroundColor: colors.driverSoft }]}><Feather name="map" size={17} color="#168759" /></View>
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <Text style={[s.mapCardTitle, { color: colors.text }]}>{t('deal_map_card_title')}</Text>
                       <Text style={[s.mapCardStatus, { color: colors.textMuted }]} numberOfLines={1}>{statusLabel}</Text>
@@ -1204,7 +1204,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                 />
               ) : (
                 <View style={[s.finishedMap, { backgroundColor: colors.surface }]} testID="deal-inactive-map-summary">
-                  <View style={s.finishedIcon}><Feather name={visibleDealStatus === 'delivered' ? 'package' : 'check-circle'} size={28} color="#168759" /></View>
+                  <View style={[s.finishedIcon, { backgroundColor: colors.driverSoft }]}><Feather name={visibleDealStatus === 'delivered' ? 'package' : 'check-circle'} size={28} color="#168759" /></View>
                   <Text style={[s.finishedTitle, { color: colors.text }]}>{inactiveTitle}</Text>
                   <Text style={[s.finishedRoute, { color: colors.text }]}>{routeLabel}</Text>
                   {inactiveSubtitle ? <Text style={[s.finishedSubtitle, { color: colors.text }]}>{inactiveSubtitle}</Text> : null}
@@ -1243,7 +1243,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
             </View>
 
             <TouchableOpacity style={[s.chatDock, { backgroundColor: colors.bg, borderColor: colors.border }]} onPress={closeMap} testID="deal-chat-dock">
-              <View style={[s.chatIconBox]}><Feather name="message-circle" size={18} color="#168759" /></View>
+              <View style={[s.chatIconBox, { backgroundColor: colors.driverSoft }]}><Feather name="message-circle" size={18} color="#168759" /></View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <View style={s.sheetTitleRow}>
                   <Text style={[s.sheetTitle, { color: colors.text }]}>{ui.messages}</Text>
@@ -1347,7 +1347,11 @@ const s = StyleSheet.create({
   headerIconBtn: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   routeHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 34 },
   routeTitle: { flex: 1, fontSize: 19, fontWeight: '900', letterSpacing: -0.35 },
-  statusPill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999, backgroundColor: '#E9F6EF' },
+  // P1 audit fix (25.08.2026): backgroundColor intentionally omitted — comes
+  // from colors.driverSoft inline at the JSX call site so it follows theme
+  // instead of freezing to a light-only mint tint. Same for mapCardIcon,
+  // finishedIcon, chatIconBox below.
+  statusPill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999 },
   statusDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#168759' },
   statusPillText: { color: '#168759', fontSize: 11.5, fontWeight: '800', maxWidth: 104 },
   metaPrimary: { fontSize: 12.7, fontWeight: '800', marginTop: 1 },
@@ -1362,7 +1366,7 @@ const s = StyleSheet.create({
   actionBarText: { fontSize: 13.5, fontWeight: '900', flexShrink: 1 },
 
   mapCard: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 12, marginTop: 10, borderWidth: 1, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 10 },
-  mapCardIcon: { width: 38, height: 38, borderRadius: 13, backgroundColor: '#E9F6EF', alignItems: 'center', justifyContent: 'center' },
+  mapCardIcon: { width: 38, height: 38, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   mapCardTitle: { fontSize: 13.5, fontWeight: '850' },
   mapCardStatus: { fontSize: 11.5, fontWeight: '650', marginTop: 2 },
   mapCardOpenPill: { flexDirection: 'row', alignItems: 'center', gap: 2 },
@@ -1398,12 +1402,12 @@ const s = StyleSheet.create({
   docMeta: { fontSize: 11, fontWeight: '650', marginTop: 2 },
   docRetryBtn: { padding: 4 },
 
-  recordBar: { flexDirection: 'row', alignItems: 'center', gap: 9, marginHorizontal: 10, marginBottom: 7, paddingHorizontal: 12, minHeight: 44, borderRadius: 22, backgroundColor: '#F4F7F5', borderWidth: 1, borderColor: '#DDE8E2' },
+  recordBar: { flexDirection: 'row', alignItems: 'center', gap: 9, marginHorizontal: 10, marginBottom: 7, paddingHorizontal: 12, minHeight: 44, borderRadius: 22, borderWidth: 1 },
   recordDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#168759' },
   recordWave: { flexDirection: 'row', alignItems: 'center', gap: 2, height: 22 },
   recordWaveBar: { width: 2.5, borderRadius: 2, backgroundColor: '#168759', opacity: 0.58 },
   recordText: { color: '#15392B', fontSize: 12.5, fontWeight: '800', flex: 1 },
-  recordCancelBtn: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
+  recordCancelBtn: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
   recordStopBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#168759', alignItems: 'center', justifyContent: 'center' },
 
   attachMenu: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 10, paddingVertical: 10, borderTopWidth: StyleSheet.hairlineWidth },
@@ -1418,7 +1422,7 @@ const s = StyleSheet.create({
   recordingButton: { backgroundColor: '#168759' },
 
   mapFullscreen: { flex: 1 },
-  mapArea: { flex: 1, position: 'relative', overflow: 'hidden', backgroundColor: '#EAF1ED' },
+  mapArea: { flex: 1, position: 'relative', overflow: 'hidden' },
   updatedPill: { position: 'absolute', left: 12, top: 12, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999, borderWidth: 1 },
   updatedText: { fontSize: 11.5, fontWeight: '800' },
   mapCollapse: { position: 'absolute', right: 12, top: 12, flexDirection: 'row', alignItems: 'center', gap: 6, height: 40, paddingHorizontal: 13, borderRadius: 20, borderWidth: 1, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 3, zIndex: 8 },
@@ -1429,7 +1433,7 @@ const s = StyleSheet.create({
   metricValue: { fontSize: 18, fontWeight: '900' },
   metricDivider: { width: 1, alignSelf: 'stretch', marginHorizontal: 14 },
   finishedMap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 },
-  finishedIcon: { width: 58, height: 58, borderRadius: 20, backgroundColor: '#E9F6EF', alignItems: 'center', justifyContent: 'center' },
+  finishedIcon: { width: 58, height: 58, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   finishedTitle: { fontSize: 20, fontWeight: '900', marginTop: 14 },
   finishedRoute: { fontSize: 14, fontWeight: '800', textAlign: 'center', marginTop: 6 },
   finishedSubtitle: { fontSize: 15, fontWeight: '800', textAlign: 'center', lineHeight: 20, marginTop: 13 },
@@ -1437,7 +1441,7 @@ const s = StyleSheet.create({
   finishedGpsHint: { fontSize: 11, textAlign: 'center', lineHeight: 16, marginTop: 8, opacity: 0.82 },
 
   chatDock: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 66, paddingHorizontal: 14, borderTopWidth: 1 },
-  chatIconBox: { width: 38, height: 38, borderRadius: 13, backgroundColor: '#E9F6EF', alignItems: 'center', justifyContent: 'center' },
+  chatIconBox: { width: 38, height: 38, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   sheetTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   sheetTitle: { fontSize: 16, fontWeight: '900' },
   newCount: { color: '#168759', fontSize: 12, fontWeight: '800' },

@@ -239,7 +239,7 @@ export default function DealAttachments({
         style={[s.row, inline && [s.inlineRow, { backgroundColor: theme.card, borderColor: theme.border }]]}
         testID={onOpen ? 'deal-attachment-open' : undefined}
       >
-        <View style={[s.fileIcon, { backgroundColor: '#E9F6EF' }]}>
+        <View style={[s.fileIcon, { backgroundColor: theme.cardActive }]}>
           <Feather name={icon} size={16} color="#168759" />
         </View>
         <View style={s.fileText}>
