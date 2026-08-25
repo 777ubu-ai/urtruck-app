@@ -276,11 +276,15 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     const uid = session?.user?.id;
     if (uid && deal?.driver_id && uid === deal.driver_id) return 'driver';
     if (uid && deal?.shipper_id && uid === deal.shipper_id) return 'client';
-    // Fallback before deal loads (or when session is missing):
+    // #280 fail-closed: if deal is loaded but user matches neither participant,
+    // disable all deal actions (backend will 403 anyway). 'viewer' means
+    // read-only — no status buttons, no send, no bargain.
+    if (deal && (deal.driver_id || deal.shipper_id)) return 'viewer';
+    // Fallback ONLY before deal loads from server:
     return params.role || session?.user?.role || 'client';
   }, [session?.user?.id, deal?.driver_id, deal?.shipper_id, params.role, session?.user?.role]);
   const isDriver = role === 'driver';
-  const isShipper = !isDriver;
+  const isShipper = role === 'client';
   const language = getLanguage();
 
   const askConfirm = React.useCallback((title, message = '', confirmLabel = t('confirm'), destructive = false) => (

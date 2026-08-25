@@ -3002,6 +3002,21 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
             raise HTTPException(status_code=e.status_code, detail=e.detail)
         if event_payload is None:
             return {"ok": True, "status": new_status}  # идемпотентно
+        # #275 atomicity: immutable deal event MUST be written in the SAME
+        # transaction as the status change — a committed status cannot exist
+        # without its mandatory deal.status_changed event.
+        from database import deal_room_dal
+        actor_role = "client" if uid == deal["shipper_id"] else "driver"
+        deal_room_dal.create_deal_event(
+            "deal.status_changed",
+            actor_id=uid,
+            actor_role=actor_role,
+            deal_id=deal_id,
+            load_id=deal.get("cargo_id"),
+            trip_id=deal.get("trip_id"),
+            payload=event_payload,
+            conn=c,
+        )
         cur_status = cur_status_before
     # 🔴 fix: раньше смена статуса сделки (Начать перевозку / Я доехал / отмена)
     # слала ТОЛЬКО push и не создавала in-app уведомление → ведение сделки не
@@ -3045,25 +3060,8 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
                 pass
     except Exception:
         pass
-    # События сделки в immutable-timeline (не только push): смена статуса
-    # пишется в ленту, чтобы Deal Room показывал живую хронологию сделки,
-    # а не только принятие ставки.
-    try:
-        from database import deal_room_dal
-        actor_role = "client" if uid == deal["shipper_id"] else "driver"
-        # event_payload (old_status/request_id/mid_transit_cancel) уже
-        # посчитан в _transition_deal() выше — единая точка правды.
-        deal_room_dal.create_deal_event(
-            "deal.status_changed",
-            actor_id=uid,
-            actor_role=actor_role,
-            deal_id=deal_id,
-            load_id=deal.get("cargo_id"),
-            trip_id=deal.get("trip_id"),
-            payload=event_payload,
-        )
-    except Exception:
-        pass
+    # #275: deal event now written atomically inside the transaction above.
+    # Push/notification/chat message remain best-effort (outside transaction).
     # Системное сообщение в чат — чтобы оба участника видели смену статуса inline
     try:
         chat_labels = {

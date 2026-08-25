@@ -134,6 +134,28 @@ test('P1 (#280): роль в DealWorkspace определяется из deal.dr
     workspace.includes('React.useMemo'),
     'DealWorkspaceScreenV2: вычисление роли должно быть мемоизировано (useMemo)',
   );
+  // #280 fail-closed: when deal is loaded but user matches neither participant,
+  // the role MUST NOT fall back to params.role — it must become 'viewer'.
+  assert.match(workspace, /if \(deal && \(deal\.driver_id \|\| deal\.shipper_id\)\) return 'viewer'/,
+    'DealWorkspaceScreenV2: нет fail-closed viewer role при несовпадении uid с участниками сделки');
+  // isShipper must be explicit `role === 'client'`, not `!isDriver` —
+  // otherwise a viewer inherits shipper actions.
+  assert.match(workspace, /const isShipper = role === 'client'/,
+    'DealWorkspaceScreenV2: isShipper должен быть явной проверкой role===client, не !isDriver');
+});
+
+test('P1 (#275): deal.status_changed event атомарен с транзакцией update_deal_status', () => {
+  // create_deal_event MUST be called inside the same `with get_conn() as c:`
+  // transaction that runs _transition_deal, passing conn=c. A best-effort
+  // try/except outside the transaction allows committed status without event.
+  const fn = marketPy.split('@mp_router.patch("/deals/{deal_id}/status")')[1].split('\n@mp_router')[0];
+  // The event write must happen inside the `with get_conn() as c:` block
+  assert.match(fn, /create_deal_event\([\s\S]*?conn=c/,
+    'create_deal_event должен вызываться с conn=c внутри транзакции');
+  // Must NOT have a standalone try/except create_deal_event outside the transaction
+  const outsideBlock = fn.split('cur_status = cur_status_before')[1] || '';
+  assert.ok(!outsideBlock.includes('create_deal_event('),
+    'create_deal_event НЕ должен вызываться вне транзакции (best-effort try/except запрещён)');
 });
 
 test('P1 (#281): все deal-эндпоинты проверяют ownership (IDOR-контракт)', () => {
