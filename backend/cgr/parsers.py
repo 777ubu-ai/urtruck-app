@@ -14,6 +14,7 @@
 Блок-лист (/ru/information/blocked-users) — пока НЕ реализован (этап 1.4 PII).
 Операторский API cgr-api.qoldau.kz (Checkpoint/WaitingArea) — не для агрегатора.
 """
+import html as _html_mod
 import re
 from typing import Iterable
 
@@ -21,6 +22,23 @@ from bs4 import BeautifulSoup
 
 from .exceptions import CGRParseError
 from .schemas import BlocklistEntry
+
+
+def _sanitize_text(value: str, max_len: int = 500) -> str:
+    """#293: Sanitize scraped text — strip control chars, limit length.
+
+    BeautifulSoup's get_text() strips HTML tags but the remaining text could
+    still contain crafted payloads (XSS via innerHTML in an admin panel, or
+    future web consumer). We escape HTML entities and strip control characters
+    to guarantee the output is safe for any downstream consumer.
+    """
+    if not value:
+        return ""
+    # Strip control chars except newline/tab
+    cleaned = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", value)
+    # Escape HTML entities so <script>, <img onerror=...> etc. are inert
+    cleaned = _html_mod.escape(cleaned)
+    return cleaned[:max_len]
 
 
 # Маппинг человекочитаемых статусов CGR → наши коды.
@@ -75,10 +93,10 @@ def parse_public_list(html: str) -> list[dict]:
         tds = tr.find_all("td")
         if len(tds) < 4:
             continue
-        checkpoint = tds[0].get_text(" ", strip=True)
-        plate = tds[1].get_text(" ", strip=True)
-        when = tds[2].get_text(" ", strip=True)
-        status_raw = tds[3].get_text(" ", strip=True)
+        checkpoint = _sanitize_text(tds[0].get_text(" ", strip=True))
+        plate = tds[1].get_text(" ", strip=True)  # plate goes through _normalize_plate
+        when = _sanitize_text(tds[2].get_text(" ", strip=True), max_len=100)
+        status_raw = _sanitize_text(tds[3].get_text(" ", strip=True), max_len=200)
         if not checkpoint and not plate:
             continue
         rows.append({

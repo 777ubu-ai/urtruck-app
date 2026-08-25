@@ -135,6 +135,28 @@ function formatSourceTime(value) {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
+// #293: freshness indicator — relative age + color coding
+const FRESHNESS_LABELS = {
+  RU: { justNow: 'только что', minAgo: 'мин назад', hourAgo: 'ч назад', stale: 'устаревшие данные' },
+  KK: { justNow: 'жаңа ғана', minAgo: 'мин бұрын', hourAgo: 'сағ бұрын', stale: 'ескі деректер' },
+  EN: { justNow: 'just now', minAgo: 'min ago', hourAgo: 'h ago', stale: 'stale data' },
+  ZH: { justNow: '刚刚', minAgo: '分钟前', hourAgo: '小时前', stale: '数据过时' },
+};
+function freshnessInfo(value, lang) {
+  if (!value) return { text: '—', color: '#9CA3AF', isStale: true };
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return { text: value, color: '#9CA3AF', isStale: true };
+  const ageMs = Date.now() - date.getTime();
+  const ageMin = Math.floor(ageMs / 60000);
+  const labels = FRESHNESS_LABELS[lang] || FRESHNESS_LABELS.RU;
+  if (ageMin < 2) return { text: labels.justNow, color: '#16A34A', isStale: false };        // green — fresh
+  if (ageMin < 30) return { text: `${ageMin} ${labels.minAgo}`, color: '#16A34A', isStale: false }; // green
+  if (ageMin < 60) return { text: `${ageMin} ${labels.minAgo}`, color: '#F59E0B', isStale: false }; // orange — getting old
+  const ageH = Math.floor(ageMin / 60);
+  if (ageH < 3) return { text: `${ageH} ${labels.hourAgo}`, color: '#F59E0B', isStale: true };      // orange — stale
+  return { text: `${ageH} ${labels.hourAgo} · ${labels.stale}`, color: '#EF4444', isStale: true };   // red — very stale
+}
+
 // The nearest booking fields are also official backend data. Defensively merge
 // them into the horizontal calendar so the hero can never say "20 Sep" while
 // the carousel visually ends on "17 Sep" because an upstream grid omitted a row.
@@ -370,7 +392,14 @@ export default function QueueScreenLazyV2({ navigation, route }) {
               testID="border-booking-calendar"
             />
 
-            <View style={s.sourceRow}><Text style={[s.source, { color: theme.textDim }]}>{L.updated}: {formatSourceTime(live.source_updated_at || live.fetched_at)}</Text><TouchableOpacity onPress={() => loadLive(selected, true)} disabled={liveLoading} style={s.refreshButton}>{liveLoading ? <ActivityIndicator size="small" color="#168759" /> : <Feather name="refresh-cw" size={16} color="#168759" />}<Text style={s.refreshText}>{L.refresh}</Text></TouchableOpacity></View>
+            {(() => { const fi = freshnessInfo(live.source_updated_at || live.fetched_at, lang); return (
+            <View style={s.sourceRow}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, flex: 1 }}>
+                <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: fi.color }} />
+                <Text style={[s.source, { color: fi.color }]} numberOfLines={1}>{L.updated}: {fi.text} ({formatSourceTime(live.source_updated_at || live.fetched_at)})</Text>
+              </View>
+              <TouchableOpacity onPress={() => loadLive(selected, true)} disabled={liveLoading} style={s.refreshButton}>{liveLoading ? <ActivityIndicator size="small" color="#168759" /> : <Feather name="refresh-cw" size={16} color="#168759" />}<Text style={s.refreshText}>{L.refresh}</Text></TouchableOpacity>
+            </View>); })()}
             <TouchableOpacity onPress={() => Linking.openURL(live.official_url || 'https://cgr.qoldau.kz/ru/start').catch(() => {})} style={s.cgrButton}><Feather name="external-link" size={17} color="#FFFFFF" /><Text style={s.cgrButtonText}>{L.details}</Text></TouchableOpacity>
           </View>
         ) : null}

@@ -73,6 +73,9 @@ def parse_directory_page(page: str) -> list[CheckpointDirectoryEntry]:
         if external_id in seen:
             continue
         name = anchor.get_text(" ", strip=True)
+        # #293: sanitize scraped name — strip control chars, escape HTML entities
+        from .parsers import _sanitize_text
+        name = _sanitize_text(name, max_len=200)
         # Detail links are authoritative; do not require a dash because CGR
         # also has single-name checkpoints such as "Порт Курык".
         if not name:
