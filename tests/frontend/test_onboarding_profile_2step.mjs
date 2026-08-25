@@ -51,7 +51,8 @@ test('short onboarding keeps company optional and does not ask country/city/emai
   assert.doesNotMatch(profile, /id="country"/);
   assert.doesNotMatch(profile, /id="city"/);
   assert.doesNotMatch(profile, /id="email"/);
-  assert.doesNotMatch(profile, /TextInput[^>]+email/i);
+  assert.doesNotMatch(profile, /keyboardType="email-address"/);
+  assert.doesNotMatch(profile, /textContentType="emailAddress"/);
 });
 
 
