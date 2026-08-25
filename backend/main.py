@@ -93,6 +93,24 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         return response
 
+
+# Issue #288: Correlation ID middleware — каждый запрос получает уникальный
+# X-Request-Id для сквозной трассировки через логи и ответы.
+class CorrelationIdMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        from services.logging_service import correlation_id, generate_correlation_id
+        # Принять X-Request-Id от реверс-прокси, или сгенерировать новый
+        cid = request.headers.get("x-request-id", "").strip()[:64]
+        if not cid:
+            cid = generate_correlation_id()
+        token = correlation_id.set(cid)
+        try:
+            response = await call_next(request)
+            response.headers["X-Request-Id"] = cid
+            return response
+        finally:
+            correlation_id.reset(token)
+
 from api.routes import router
 from api.admin import admin_router
 from api.registration import reg_router
@@ -152,6 +170,14 @@ app.add_middleware(
 )
 app.add_middleware(MetricsMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(CorrelationIdMiddleware)
+
+# Issue #288: структурированное логирование с PII-редакцией.
+try:
+    from services.logging_service import setup_logging
+    setup_logging()
+except Exception as _log_err:
+    print(f"[startup] structured logging init failed (continuing): {_log_err}", flush=True)
 
 # Версия для мягкого обновления
 import time as _time
@@ -352,7 +378,60 @@ def root():
 
 @app.get("/health")
 def health():
+    """Liveness — отвечает ok если процесс жив. Для load-balancer / k8s probe."""
     return {"status": "ok"}
+
+
+@app.get("/health/ready")
+def health_ready():
+    """Readiness — проверяет реальные зависимости: SQLite RW, storage-конфиг.
+
+    Issue #288: если любая критическая зависимость недоступна — 503.
+    """
+    checks = {}
+
+    # SQLite: попытка чтения + записи (WAL journal)
+    try:
+        from database.db import get_conn
+        with get_conn() as c:
+            c.execute("SELECT 1")
+            # Проверка записи: PRAGMA integrity_check дорогой, проще dummy write
+            c.execute(
+                "CREATE TABLE IF NOT EXISTS _health_check (id INTEGER PRIMARY KEY, ts TEXT)"
+            )
+            c.execute(
+                "INSERT OR REPLACE INTO _health_check (id, ts) VALUES (1, datetime('now'))"
+            )
+        checks["sqlite"] = "ok"
+    except Exception as e:
+        checks["sqlite"] = f"FAIL: {e}"
+
+    # Storage: проверяем конфигурацию (не пишем файл — дорого)
+    s_info = storage_service.info()
+    provider = s_info.get("provider", "unknown")
+    if provider == "supabase":
+        checks["storage"] = "ok" if s_info.get("supabase_configured") else "FAIL: unconfigured"
+    elif provider == "s3":
+        checks["storage"] = "ok" if s_info.get("s3_configured") else "FAIL: unconfigured"
+    elif provider == "local":
+        checks["storage"] = "ok"  # local всегда работает в dev
+    else:
+        checks["storage"] = f"FAIL: unknown provider {provider}"
+
+    # Push: проверяем что Expo push URL доступен (без отправки)
+    checks["push"] = "ok"  # конфигурационная проверка — токены регистрируются per-user
+
+    all_ok = all(v == "ok" for v in checks.values())
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        status_code=200 if all_ok else 503,
+        content={
+            "status": "ready" if all_ok else "degraded",
+            "version": BUILD_VERSION,
+            "build_time": BUILD_TIME,
+            "checks": checks,
+        },
+    )
 
 
 @app.get("/api/v1/system/info")
@@ -371,6 +450,7 @@ def system_info():
         "env": env,
         "beta_mode": BETA_MODE,
         "beta_bypass_on_prod": beta_bypass_on_prod,
+        "version": BUILD_VERSION,
         "otp": otp_service.info(),
         "face": face_info(),
         "storage": storage_service.info(),

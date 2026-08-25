@@ -225,6 +225,51 @@ def get_local_path(url_or_path: str) -> Optional[str]:
     return url_or_path
 
 
+def delete_object(ref: Optional[str]) -> bool:
+    """Best-effort удаление объекта из storage. Возвращает True если удалено."""
+    if not ref:
+        return False
+
+    # Supabase
+    parsed = _split_supabase_ref(ref)
+    if parsed:
+        if not (SUPABASE_URL and SUPABASE_KEY):
+            return False
+        bucket, key = parsed
+        try:
+            r = httpx.delete(
+                f"{SUPABASE_URL}/storage/v1/object/{bucket}/{key}",
+                headers={"Authorization": f"Bearer {SUPABASE_KEY}"},
+                timeout=15.0,
+            )
+            return r.status_code in (200, 204, 404)
+        except Exception:
+            return False
+
+    # Local
+    if ref.startswith(LOCAL_PUBLIC_BASE):
+        path = get_local_path(ref)
+        if path:
+            try:
+                Path(path).unlink(missing_ok=True)
+                return True
+            except Exception:
+                return False
+
+    # S3 (best-effort)
+    if ref.startswith("https://") and ".s3." in ref and S3_BUCKET:
+        try:
+            import boto3
+            key = ref.split(f"{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/", 1)[-1]
+            s3 = boto3.client("s3", region_name=S3_REGION)
+            s3.delete_object(Bucket=S3_BUCKET, Key=key)
+            return True
+        except Exception:
+            return False
+
+    return False
+
+
 def info() -> dict:
     return {
         "provider": PROVIDER,

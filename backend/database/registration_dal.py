@@ -385,11 +385,88 @@ def get_driver_by_token(token: str) -> str | None:
 
 
 # ---------- Account deletion (App Store Guideline 5.1.1(v)) ----------
+
+# Storage URL-поля — при удалении аккаунта файлы удаляются из Storage.
+_STORAGE_URL_FIELDS = [
+    "personal_photo_url", "license_selfie_url", "passport_intl_url",
+    "tir_book_url", "cmr_insurance_url", "vehicle_photo_url",
+    "cabin_photo_url", "adr_cert_url", "avatar_url",
+    # Дополнительные URL-поля из schema (id_front/back, license/tech_back)
+    "id_front_url", "id_back_url", "tech_back_url", "license_back_url",
+]
+
+
+def _collect_storage_refs(c, driver_id: str) -> list[str]:
+    """Собрать все storage-ссылки пользователя для последующего удаления."""
+    refs: list[str] = []
+    cols = {r["name"] for r in c.execute(
+        "PRAGMA table_info(drivers_registration)"
+    ).fetchall()}
+    existing_fields = [f for f in _STORAGE_URL_FIELDS if f in cols]
+    if existing_fields:
+        row = c.execute(
+            f"SELECT {', '.join(existing_fields)} FROM drivers_registration WHERE id = ?",
+            (driver_id,),
+        ).fetchone()
+        if row:
+            for f in existing_fields:
+                val = row[f]
+                if val and isinstance(val, str) and val.strip():
+                    refs.append(val.strip())
+    # Фото из грузов/рейсов пользователя
+    try:
+        for tbl, owner_col in [("cargos", "owner_id"), ("trips", "driver_id")]:
+            for r in c.execute(
+                f"SELECT photos FROM {tbl} WHERE {owner_col} = ? AND photos IS NOT NULL",
+                (driver_id,),
+            ).fetchall():
+                if r["photos"]:
+                    import json
+                    try:
+                        photos = json.loads(r["photos"]) if isinstance(r["photos"], str) else r["photos"]
+                        if isinstance(photos, list):
+                            refs.extend(p for p in photos if isinstance(p, str) and p.strip())
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+    return refs
+
+
+def _cleanup_ancillary_data(c, driver_id: str) -> None:
+    """Обезличить/удалить побочные PII-данные (location, chat sender_name)."""
+    # Удалить GPS-координаты из deal_locations (PII: точное местоположение)
+    try:
+        c.execute("DELETE FROM deal_locations WHERE user_id = ?", (driver_id,))
+    except Exception:
+        pass
+    # Обезличить sender_name в chat_messages (чтобы в чате не светилось имя удалённого)
+    try:
+        c.execute(
+            "UPDATE chat_messages SET sender_name = 'Удалённый пользователь' "
+            "WHERE sender_id = ?",
+            (driver_id,),
+        )
+    except Exception:
+        pass
+    # Удалить записи из favorites
+    try:
+        c.execute("DELETE FROM favorites WHERE user_id = ?", (driver_id,))
+    except Exception:
+        pass
+    # Удалить saved_searches
+    try:
+        c.execute("DELETE FROM saved_searches WHERE user_id = ?", (driver_id,))
+    except Exception:
+        pass
+
+
 def delete_account(driver_id: str) -> bool:
     """Удаление аккаунта пользователем из приложения.
 
     Обезличивает PII и отзывает все сессии, но сохраняет техническую строку,
     чтобы связанные сделки/чаты не получили orphan foreign keys.
+    Удаляет storage-объекты (фото документов, аватар) best-effort.
     """
     with get_conn() as c:
         exists = c.execute(
@@ -399,6 +476,10 @@ def delete_account(driver_id: str) -> bool:
             c.execute("DELETE FROM reg_sessions WHERE driver_id = ?", (driver_id,))
             return False
 
+        # Шаг 1: собрать storage-ссылки ДО обезличивания (потом URL'ы будут NULL)
+        storage_refs = _collect_storage_refs(c, driver_id)
+
+        # Шаг 2: обезличить основную строку
         cols = {r["name"] for r in c.execute(
             "PRAGMA table_info(drivers_registration)"
         ).fetchall()}
@@ -410,6 +491,8 @@ def delete_account(driver_id: str) -> bool:
             "tir_book_url", "cmr_insurance_url", "vehicle_photo_url",
             "cabin_photo_url", "adr_cert_url", "draft_json", "avatar_url",
             "email",
+            # Issue #287: дополнительные URL-поля документов
+            "id_front_url", "id_back_url", "tech_back_url", "license_back_url",
         ]
         sets = []
         params = []
@@ -435,4 +518,20 @@ def delete_account(driver_id: str) -> bool:
             params,
         )
         c.execute("DELETE FROM reg_sessions WHERE driver_id = ?", (driver_id,))
-        return True
+
+        # Шаг 3: обезличить побочные PII-данные
+        _cleanup_ancillary_data(c, driver_id)
+
+    # Шаг 4: удалить storage-объекты ПОСЛЕ коммита транзакции (best-effort)
+    if storage_refs:
+        try:
+            from services.storage_service import delete_object
+            for ref in storage_refs:
+                try:
+                    delete_object(ref)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    return True
