@@ -5,6 +5,7 @@
 - реальный телефон обязателен для driver и client;
 - страна/город не блокируют завершение короткого onboarding;
 - компания и preferred messenger необязательны;
+- если messenger выбран, контакт обязателен;
 - messenger_type=other поддерживается.
 """
 
@@ -130,3 +131,48 @@ def test_whatsapp_contact_can_equal_primary_phone(monkeypatch):
     assert captured["values"]["phone"] == "+77011112233"
     assert captured["values"]["messenger_type"] == "whatsapp"
     assert captured["values"]["messenger_id"] == "+7 701 111 22 33"
+
+
+def test_selected_messenger_without_contact_is_rejected(monkeypatch):
+    monkeypatch.setattr(
+        profile.reg_dal,
+        "get_driver",
+        lambda _uid: {
+            "id": "user-1",
+            "phone": "auth_user-1",
+            "full_name": "",
+            "messenger_id": "",
+        },
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        profile.update_profile(
+            profile.UpdateProfileIn(
+                role="client",
+                name="Owner",
+                phone="+7 701 111 22 33",
+                messenger_type="wechat",
+                messenger_id="",
+            ),
+            user={"id": "user-1"},
+        )
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail["error"] == "MESSENGER_CONTACT_REQUIRED"
+
+
+def test_invalid_messenger_type_is_rejected(monkeypatch):
+    with pytest.raises(HTTPException) as exc:
+        profile.update_profile(
+            profile.UpdateProfileIn(
+                role="driver",
+                name="Owner",
+                phone="+7 701 111 22 33",
+                messenger_type="unknown-chat",
+                messenger_id="owner42",
+            ),
+            user={"id": "user-1"},
+        )
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail["error"] == "INVALID_MESSENGER_TYPE"
