@@ -95,9 +95,13 @@ test('backend social validation uses the same live Supabase project/key family a
 
 
 test('phone remains a required logistics contact after email/social signup', () => {
-  assert.match(profileV2, /isEmailSignup\s*=\s*\/@\//);
-  assert.match(profileV2, /!validPhone/);
-  assert.match(profileV2, /phoneRequiredLabel/);
+  assert.match(profileV2, /id="phone"/);
+  assert.match(profileV2, /const validPhone = isRealPhone\(phone\)/);
+  assert.match(profileV2, /const formValid = validName && validPhone && validMessenger/);
+  assert.match(profileV2, /if \(!validPhone\) next\.phone/);
+  // The new canonical flow requires a real phone for every role, not only
+  // conditionally for one signup method.
+  assert.doesNotMatch(profileV2, /isEmailSignup/);
 });
 
 
@@ -278,4 +282,3 @@ test('email-OTP verify path (OtpV2Screen) also detects the machine code instead 
   assert.ok(notTokenIdx >= 0 && ambiguousIdx > notTokenIdx && genericWrongIdx > ambiguousIdx,
     'ambiguous-identity check must be inside the !r.token branch and precede the generic wrong-code fallback');
 });
-
