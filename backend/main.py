@@ -377,6 +377,7 @@ def root():
 
 
 @app.get("/health")
+@app.get("/api/v1/health")
 def health():
     """Liveness — отвечает ok если процесс жив. Для load-balancer / k8s probe."""
     return {"status": "ok"}
