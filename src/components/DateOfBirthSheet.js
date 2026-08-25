@@ -5,12 +5,12 @@
 // корректный день для месяца/года, возраст 18–100, не в будущем.
 // Без новых зависимостей — обычные ScrollView-колонки.
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View, Text, Pressable, Modal, ScrollView, StyleSheet, Platform,
 } from 'react-native';
 import { useI18n } from '../utils/useI18n';
-import { brand, radius, typography } from '../theme/brandV2';
+import { brand, useBrand, radius, typography } from '../theme/brandV2';
 
 const pad2 = (n) => String(n).padStart(2, '0');
 const daysInMonth = (m, y) => new Date(y, m, 0).getDate(); // m: 1..12
@@ -25,6 +25,8 @@ function parseInitial(v) {
 }
 
 export default function DateOfBirthSheet({ visible, initial, onCancel, onConfirm }) {
+  const localBrand = useBrand();
+  const s = useMemo(() => makeStyles(localBrand), [localBrand]);
   const { t } = useI18n();
   const now = new Date();
   const maxYear = now.getFullYear() - 18;     // не моложе 18
@@ -115,7 +117,7 @@ export default function DateOfBirthSheet({ visible, initial, onCancel, onConfirm
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (brand) => StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.5)', justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: brand.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20,

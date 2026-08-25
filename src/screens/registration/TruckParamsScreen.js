@@ -35,7 +35,7 @@ import {
   searchTruckBrands,
   modelsForBrand,
 } from '../../utils/truckConstants';
-import { brand, radius, typography } from '../../theme/brandV2';
+import { brand, useBrand, radius, typography } from '../../theme/brandV2';
 
 // Канонический PRO-flow = 4 экрана: Identity → Selfie → VehicleDocs →
 // этот экран → submit. Финальный шаг 4/4 (PR-V3 добавил Identity+Selfie).
@@ -77,6 +77,8 @@ const parseNum = (s) => {
 };
 
 export default function TruckParamsScreen({ navigation, route }) {
+  const localBrand = useBrand();
+  const s = useMemo(() => makeStyles(localBrand), [localBrand]);
   const { t } = useI18n();
   const { toast } = useToast();
   const { refreshLevel } = useAuth();
@@ -513,7 +515,7 @@ export default function TruckParamsScreen({ navigation, route }) {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (brand) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: brand.bg },
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 8 },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },

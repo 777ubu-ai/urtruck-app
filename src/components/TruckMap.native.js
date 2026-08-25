@@ -5,6 +5,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { routingAPI } from '../utils/routingAPI';
 import { useI18n } from '../utils/useI18n';
+import { useTheme } from '../utils/ThemeContext';
 
 // Native screens render the route inside UrTruck. Viewing a planned/live map
 // never requests the driver's GPS permission and never opens an external maps
@@ -71,6 +72,8 @@ export default function TruckMap({
   vehicle = null,
 }) {
   const { t, lang } = useI18n();
+  const { theme } = useTheme();
+  const s = React.useMemo(() => makeStyles(theme), [theme]);
   const live = asPoint([lat, lng]);
   const planned = React.useMemo(() => (routePoints || []).map(asPoint).filter(Boolean), [routePoints]);
   const destination = planned.length ? planned[planned.length - 1] : null;
@@ -167,14 +170,18 @@ export default function TruckMap({
   );
 }
 
-const s = StyleSheet.create({
+// P1 theme-consistency: fallback/overlay surfaces follow ThemeContext. The
+// Yandex Maps WebView's own internal HTML background (a brief tile-load
+// flash, not a persistent surface) is out of scope — RN theme context can't
+// reach into that isolated WebView document.
+const makeStyles = (theme) => StyleSheet.create({
   shell: { flex: 1, position: 'relative' },
   map: { flex: 1 },
   mapFallback: {
     ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center',
-    paddingHorizontal: 24, backgroundColor: '#EEF3F0',
+    paddingHorizontal: 24, backgroundColor: theme.surfaceAlt,
   },
-  mapOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EEF3F0' },
-  mapFallbackText: { color: '#617067', fontSize: 15, fontWeight: '700', textAlign: 'center' },
+  mapOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.surfaceAlt },
+  mapFallbackText: { color: theme.textMuted, fontSize: 15, fontWeight: '700', textAlign: 'center' },
   mapDebugError: { marginTop: 8, color: '#9B2C2C', fontSize: 11, textAlign: 'center' },
 });

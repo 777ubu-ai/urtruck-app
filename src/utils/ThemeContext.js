@@ -3,7 +3,10 @@ import { Appearance, Platform } from 'react-native';
 import { darkTheme, lightTheme } from './theme';
 import { storage } from './storage';
 
-const ThemeContext = createContext({
+// Exported (not just useTheme()) so class components — which cannot call
+// hooks — can subscribe via `static contextType = ThemeContext` (see
+// ErrorBoundary.js, the one legitimate class-component consumer).
+export const ThemeContext = createContext({
   theme: lightTheme,
   isDark: false,
   themeMode: 'auto',  // 'auto' | 'light' | 'dark'

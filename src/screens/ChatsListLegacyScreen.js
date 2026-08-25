@@ -255,8 +255,8 @@ export default function ChatsListScreen({ navigation, route }) {
         onPress={() => navigation.navigate('CargoDetail', { cargoId: cargo.id, role })}
         activeOpacity={0.7}
       >
-        <View style={[s.avatar, { backgroundColor: '#F0F3F1' }]}>
-          <Feather name="package" size={18} color="#617067" />
+        <View style={[s.avatar, { backgroundColor: theme.surfaceAlt }]}>
+          <Feather name="package" size={18} color={theme.textMuted} />
         </View>
         <View style={{ flex: 1 }}>
           <View style={s.row}>
@@ -275,9 +275,9 @@ export default function ChatsListScreen({ navigation, route }) {
           ) : null}
           <View style={s.row}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 }}>
-              <View style={[s.statusPill, { backgroundColor: '#F0F3F1' }]}>
-                <View style={[s.statusDot, { backgroundColor: '#7C8B82' }]} />
-                <Text style={[s.statusPillText, { color: '#617067' }]}>
+              <View style={[s.statusPill, { backgroundColor: theme.surfaceAlt }]}>
+                <View style={[s.statusDot, { backgroundColor: theme.textDisabled }]} />
+                <Text style={[s.statusPillText, { color: theme.textMuted }]}>
                   {cnt} {t('deals_offers_count')}
                 </Text>
               </View>
@@ -307,7 +307,7 @@ export default function ChatsListScreen({ navigation, route }) {
       : isCountered
         ? t('deals_offer_bargain')
         : (bid._incoming ? t('deals_offer_new') : t('deals_offer_waiting'));
-    const statusColor = isClosed ? '#94A3B8' : isCountered ? '#3478D4' : '#617067';
+    const statusColor = isClosed ? theme.textDisabled : isCountered ? '#3478D4' : theme.textMuted;
     return (
       <TouchableOpacity
         key={bid.id}

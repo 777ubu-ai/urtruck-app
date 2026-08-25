@@ -1,8 +1,11 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import { push } from '../utils/push';
 import { useI18n } from '../utils/useI18n';
+import { useTheme } from '../utils/ThemeContext';
+
+const ACCENT = '#34936B';
 
 const COPY = {
   RU: {
@@ -37,6 +40,8 @@ const COPY = {
 
 export default function PushPermissionBanner({ enabled }) {
   const { lang } = useI18n();
+  const { theme } = useTheme();
+  const s = useMemo(() => makeStyles(theme), [theme]);
   const c = COPY[lang] || COPY.RU;
   const [permission, setPermission] = useState('loading');
   const [busy, setBusy] = useState(false);
@@ -74,7 +79,7 @@ export default function PushPermissionBanner({ enabled }) {
 
   return (
     <View style={s.wrap} testID="push-permission-banner">
-      <View style={s.icon}><Feather name="bell" size={18} color="#34936B" /></View>
+      <View style={s.icon}><Feather name="bell" size={18} color={ACCENT} /></View>
       <View style={s.copy}>
         <Text style={s.title}>{c.title}</Text>
         <Text style={s.body}>{denied ? c.denied : c.body}</Text>
@@ -91,7 +96,10 @@ export default function PushPermissionBanner({ enabled }) {
   );
 }
 
-const s = StyleSheet.create({
+// P1 theme-consistency: this banner is shown inside the Feed, which now
+// follows ThemeContext — a light-only card here was the "white form on a
+// dark screen" case explicitly called out in the audit.
+const makeStyles = (theme) => StyleSheet.create({
   wrap: {
     marginHorizontal: 16,
     marginTop: 6,
@@ -99,18 +107,18 @@ const s = StyleSheet.create({
     minHeight: 64,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#DDE9E2',
-    backgroundColor: '#F6FBF8',
+    borderColor: theme.border,
+    backgroundColor: theme.surfaceAlt,
     paddingHorizontal: 12,
     paddingVertical: 10,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
   },
-  icon: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#EAF5EF', alignItems: 'center', justifyContent: 'center' },
+  icon: { width: 34, height: 34, borderRadius: 17, backgroundColor: theme.cardActive, alignItems: 'center', justifyContent: 'center' },
   copy: { flex: 1, minWidth: 0 },
-  title: { color: '#17221E', fontSize: 13, lineHeight: 17, fontWeight: '700' },
-  body: { color: '#606B66', fontSize: 11.5, lineHeight: 15, marginTop: 2 },
-  action: { minHeight: 38, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: '#34936B', alignItems: 'center', justifyContent: 'center' },
-  actionText: { color: '#34936B', fontSize: 12, fontWeight: '700' },
+  title: { color: theme.text, fontSize: 13, lineHeight: 17, fontWeight: '700' },
+  body: { color: theme.textMuted, fontSize: 11.5, lineHeight: 15, marginTop: 2 },
+  action: { minHeight: 38, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: ACCENT, alignItems: 'center', justifyContent: 'center' },
+  actionText: { color: ACCENT, fontSize: 12, fontWeight: '700' },
 });

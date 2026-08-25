@@ -23,7 +23,10 @@ test('attention inside cards uses the distinct red unread badge', () => {
 });
 
 test('waiting offer cards use calm neutral colours', () => {
-  assert.match(deals, /const WAITING = '#617067'/);
-  assert.match(deals, /isCountered \? INFO : WAITING/);
+  // P1 theme-consistency (25.08.2026): WAITING was a hardcoded grey that
+  // happened to equal theme.textMuted's light-mode hex exactly — it now
+  // reads theme.textMuted at render time so Deals stays calm/neutral in
+  // dark mode too, instead of freezing to the light value.
+  assert.match(deals, /isCountered \? INFO : theme\.textMuted/);
   assert.doesNotMatch(deals, /name="dollar-sign"/);
 });

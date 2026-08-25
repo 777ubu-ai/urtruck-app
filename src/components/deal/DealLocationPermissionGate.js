@@ -10,6 +10,7 @@ import {
 import { registerLocationPermissionRequestHandler } from '../../utils/locationPermissionCoordinator';
 import { useI18n } from '../../utils/useI18n';
 import { useAuth } from '../../utils/AuthContext';
+import { useTheme } from '../../utils/ThemeContext';
 
 // Canonical visible consent host for active-trip GPS.
 // Android must show UrTruck's prominent disclosure BEFORE any OS location
@@ -18,6 +19,8 @@ import { useAuth } from '../../utils/AuthContext';
 export default function DealLocationPermissionGate({ role, children }) {
   const { lang } = useI18n();
   const { session } = useAuth();
+  const { theme } = useTheme();
+  const s = React.useMemo(() => makeStyles(theme), [theme]);
   const effectiveRole = role || session?.user?.role || null;
   const isDriver = effectiveRole === 'driver';
   const supportsTripDisclosure = Platform.OS === 'android' || Platform.OS === 'web';
@@ -184,7 +187,7 @@ export default function DealLocationPermissionGate({ role, children }) {
   );
 }
 
-const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#F7F9F8' },
+const makeStyles = (theme) => StyleSheet.create({
+  root: { flex: 1, backgroundColor: theme.bg },
   content: { flex: 1, minHeight: 0 },
 });

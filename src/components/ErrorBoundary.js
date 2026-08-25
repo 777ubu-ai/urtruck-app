@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Platform } from 'react-native';
 import { API_BASE } from '../config/env';
 import { t } from '../utils/i18n';
+import { ThemeContext } from '../utils/ThemeContext';
 
 // ErrorBoundary — last-resort crash catcher.
 //
@@ -43,6 +44,12 @@ function isDevSurface() {
 const ALWAYS_SHOW_STACK_ON_CRASH = true;
 
 export default class ErrorBoundary extends React.Component {
+  // P1 theme-consistency (25.08.2026): a crash screen rendered light-only
+  // regardless of theme is exactly the "light error screen inside dark UI"
+  // case the audit called out — this is a class component, so it subscribes
+  // via static contextType instead of useTheme().
+  static contextType = ThemeContext;
+
   constructor(props) {
     super(props);
     this.state = { hasError: false, error: null, info: null };
@@ -109,6 +116,10 @@ export default class ErrorBoundary extends React.Component {
     const msg = this.state.error?.message || String(this.state.error || 'unknown');
     const stack = (this.state.error?.stack || '').split('\n').slice(0, 8).join('\n');
     const comp = (this.state.info?.componentStack || '').split('\n').slice(0, 8).join('\n');
+    // this.context resolves to ThemeContext's default value (lightTheme)
+    // when no ThemeProvider is mounted above the boundary, so `.theme` is
+    // always defined.
+    const s = makeStyles(this.context.theme);
 
     return (
       <ScrollView contentContainerStyle={s.container} testID="error-boundary">
@@ -143,17 +154,21 @@ export default class ErrorBoundary extends React.Component {
   }
 }
 
-const s = StyleSheet.create({
+// P1 theme-consistency: the crash screen must follow the resolved theme too
+// — a stranded light screen after a crash is the worst possible moment for
+// a jarring light/dark mismatch. Dev-error-detail red stays a semantic
+// danger constant across both themes.
+const makeStyles = (theme) => StyleSheet.create({
   container: {
     flexGrow: 1,
-    backgroundColor: '#F6F8F7',
+    backgroundColor: theme.bg,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 30,
   },
   emoji: { fontSize: 56, marginBottom: 16 },
-  title: { color: '#14221C', fontSize: 22, fontWeight: '800', marginBottom: 10, textAlign: 'center' },
-  body: { color: '#617067', fontSize: 14, textAlign: 'center', marginBottom: 16 },
+  title: { color: theme.text, fontSize: 22, fontWeight: '800', marginBottom: 10, textAlign: 'center' },
+  body: { color: theme.textMuted, fontSize: 14, textAlign: 'center', marginBottom: 16 },
   devBlock: {
     backgroundColor: 'rgba(220, 38, 38, 0.08)',
     borderColor: '#7F1D1D',

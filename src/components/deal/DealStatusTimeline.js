@@ -114,10 +114,10 @@ export default function DealStatusTimeline({ events = [], fallbackStatus = '' })
         return (
           <View key={String(ev?.id || `${key}-${index}`)} style={s.item} testID="deal-status-timeline-item">
             <View style={s.rail}>
-              <View style={[s.dot, { borderColor: '#168759', backgroundColor: '#FFFFFF' }]}>
+              <View style={[s.dot, { borderColor: '#168759', backgroundColor: colors.surface }]}>
                 <Feather name={ICON_BY_EVENT[key] || 'circle'} size={12} color="#168759" />
               </View>
-              {!last ? <View style={s.line} /> : null}
+              {!last ? <View style={[s.line, { backgroundColor: 'rgba(22,135,89,0.35)' }]} /> : null}
             </View>
 
             <View style={[s.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>

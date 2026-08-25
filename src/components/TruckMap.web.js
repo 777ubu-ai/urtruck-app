@@ -7,6 +7,7 @@ import React from 'react';
 import { View, Text, StyleSheet, findNodeHandle } from 'react-native';
 import { routingAPI } from '../utils/routingAPI';
 import { useI18n } from '../utils/useI18n';
+import { useTheme } from '../utils/ThemeContext';
 
 const asPoint = (p) => {
   if (Array.isArray(p) && p.length >= 2) {
@@ -51,6 +52,8 @@ const durationTextFromSeconds = (value, t) => {
 
 function YandexMap({ livePoint, plannedPoints, serverRoute, onRouteSummary }) {
   const { t, lang } = useI18n();
+  const { theme, isDark } = useTheme();
+  const s = React.useMemo(() => makeStyles(theme, isDark), [theme, isDark]);
   const hostRef = React.useRef(null);
   const mapRef = React.useRef(null);
   const retryTimerRef = React.useRef(null);
@@ -302,6 +305,8 @@ export default function TruckMap({
   vehicle = null,
 }) {
   const { t } = useI18n();
+  const { theme, isDark } = useTheme();
+  const s = React.useMemo(() => makeStyles(theme, isDark), [theme, isDark]);
   // Badge copy falls back to the localized default when the caller omits it.
   const badgePlannedTitle = plannedTitle ?? t('planned_route_title');
   const badgePlannedHint = plannedHint ?? t('tracking_starts_after_start');
@@ -372,22 +377,26 @@ export default function TruckMap({
   );
 }
 
-const s = StyleSheet.create({
-  shell: { flex: 1, minHeight: 240, overflow: 'hidden', position: 'relative', backgroundColor: '#EAF1ED' },
+// P1 theme-consistency: overlay pills use a frosted translucent surface that
+// must flip with the theme (matches the BottomNav.js isDark-ternary
+// convention — theme.js has no translucent-surface token to derive an alpha
+// value from an opaque hex), everything else derives directly from `theme`.
+const makeStyles = (theme, isDark) => StyleSheet.create({
+  shell: { flex: 1, minHeight: 240, overflow: 'hidden', position: 'relative', backgroundColor: theme.surfaceAlt },
   map: { ...StyleSheet.absoluteFillObject },
-  loading: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EEF2EF', paddingHorizontal: 24 },
-  loadingText: { color: '#617067', fontSize: 12, fontWeight: '700', textAlign: 'center' },
-  errorTitle: { color: '#14221C', fontSize: 14, fontWeight: '900', textAlign: 'center', marginBottom: 6 },
+  loading: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.surfaceAlt, paddingHorizontal: 24 },
+  loadingText: { color: theme.textMuted, fontSize: 12, fontWeight: '700', textAlign: 'center' },
+  errorTitle: { color: theme.text, fontSize: 14, fontWeight: '900', textAlign: 'center', marginBottom: 6 },
   routeState: {
     position: 'absolute', left: 12, bottom: 60, maxWidth: '82%',
     paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.95)', borderWidth: 1, borderColor: '#DDE5E0',
+    backgroundColor: isDark ? 'rgba(21,30,25,0.92)' : 'rgba(255,255,255,0.95)', borderWidth: 1, borderColor: theme.border,
   },
-  routeStateText: { color: '#3F4E46', fontSize: 11.5, fontWeight: '800' },
+  routeStateText: { color: theme.textSecondary, fontSize: 11.5, fontWeight: '800' },
   badge: {
     position: 'absolute', left: 12, top: 12, maxWidth: '72%', paddingHorizontal: 11, paddingVertical: 8,
-    borderRadius: 11, backgroundColor: 'rgba(255,255,255,0.94)', borderWidth: 1, borderColor: '#DDE5E0',
+    borderRadius: 11, backgroundColor: isDark ? 'rgba(21,30,25,0.92)' : 'rgba(255,255,255,0.94)', borderWidth: 1, borderColor: theme.border,
   },
-  badgeTitle: { color: '#14221C', fontSize: 12, fontWeight: '900' },
-  badgeText: { color: '#617067', fontSize: 10.5, fontWeight: '700', marginTop: 2 },
+  badgeTitle: { color: theme.text, fontSize: 12, fontWeight: '900' },
+  badgeText: { color: theme.textMuted, fontSize: 10.5, fontWeight: '700', marginTop: 2 },
 });

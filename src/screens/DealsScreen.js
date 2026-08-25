@@ -22,18 +22,20 @@ import { countryFlag } from '../utils/countryFlags';
 import { accentFor } from '../components/deal/DealRoom';
 import { isBidActionable } from '../utils/dealsUnread';
 import { formatBidRemaining, isBidFresh } from '../utils/bidExpiry';
+import { useTheme } from '../utils/ThemeContext';
 
-const PAGE_BG = '#F7F9F7';
-const SURFACE = '#FFFFFF';
-const TEXT = '#17221E';
-const TEXT_SECONDARY = '#606B66';
-const TEXT_MUTED = '#808A85';
-const BORDER = '#E5EAE7';
+// P1 theme-consistency fix (25.08.2026): background/surface/text/border must
+// come from ThemeContext (see makeStyles(theme) below), never a hardcoded
+// light-only constant — otherwise Deals stays light while the rest of the
+// app follows dark mode. ACCENT/INFO/CANCELLED are genuine brand/status hues
+// (green/blue/red) and intentionally stay constant across both themes, same
+// as theme.js's statusColors convention. WAITING/ARCHIVE are NOT brand
+// colors — they were a neutral grey that happened to equal theme.textMuted/
+// theme.textDisabled exactly, i.e. hardcoded page text hiding as a "status
+// color". They're read from theme at each call site instead (see dealStatus()
+// and renderItem() below).
 const ACCENT = '#34936B';
-const ACCENT_SOFT = '#EAF5EF';
-const WAITING = '#617067';
 const INFO = '#3478D4';
-const ARCHIVE = '#7C8B82';
 const CANCELLED = '#A45A5A';
 
 // `delivered` is intentionally ACTIVE, not terminal. The driver has finished
@@ -91,7 +93,7 @@ const parseServerDate = (raw) => {
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
-const dealStatus = (status, t) => {
+const dealStatus = (status, t, theme) => {
   if (status === 'accepted') return { label: t('status_accepted'), color: ACCENT };
   if (status === 'in_progress' || status === 'at_border') {
     return { label: t('status_in_progress'), color: ACCENT };
@@ -103,16 +105,16 @@ const dealStatus = (status, t) => {
     return { label: t('status_received'), color: ACCENT };
   }
   if (status === 'completed') {
-    return { label: t('status_completed'), color: ARCHIVE };
+    return { label: t('status_completed'), color: theme.textDisabled };
   }
   if (status === 'cancelled' || status === 'rejected') {
     return { label: t('status_cancelled'), color: CANCELLED };
   }
-  if (status === 'expired') return { label: formatStatus(status), color: ARCHIVE };
-  return { label: formatStatus(status), color: ARCHIVE };
+  if (status === 'expired') return { label: formatStatus(status), color: theme.textDisabled };
+  return { label: formatStatus(status), color: theme.textDisabled };
 };
 
-function TabChip({ label, count, active, onPress, testID, compact = false, icon = null }) {
+function TabChip({ label, count, active, onPress, testID, compact = false, icon = null, s, theme }) {
   return (
     <TouchableOpacity
       testID={testID}
@@ -126,7 +128,7 @@ function TabChip({ label, count, active, onPress, testID, compact = false, icon 
         active && s.tabChipActive,
       ]}
     >
-      {icon ? <Feather name={icon} size={15} color={active ? ACCENT : TEXT_MUTED} /> : null}
+      {icon ? <Feather name={icon} size={15} color={active ? ACCENT : theme.textMuted} /> : null}
       <Text style={[s.tabChipText, active && s.tabChipTextActive]} numberOfLines={1}>
         {label}
       </Text>
@@ -146,6 +148,8 @@ function CompactDealCard({
   dimmed = false,
   onPress,
   testID,
+  s,
+  theme,
 }) {
   return (
     <TouchableOpacity
@@ -157,7 +161,7 @@ function CompactDealCard({
       <View style={s.cardTop}>
         <Text style={s.route} numberOfLines={1}>{routeLabel}</Text>
         {price ? <Text style={s.price} numberOfLines={1}>{price}</Text> : null}
-        <Feather name="chevron-right" size={17} color="#A0A9A4" />
+        <Feather name="chevron-right" size={17} color={theme.textMuted} />
       </View>
 
       <View style={s.cardMiddle}>
@@ -184,6 +188,8 @@ function CompactDealCard({
 
 export default function DealsScreen({ navigation, route }) {
   const { t, lang } = useI18n();
+  const { theme } = useTheme();
+  const s = useMemo(() => makeStyles(theme), [theme]);
   const role = route?.params?.role || 'client';
   const roleAccent = accentFor(role) || ACCENT;
   const copy = COPY[lang] || COPY.EN;
@@ -436,11 +442,13 @@ export default function DealsScreen({ navigation, route }) {
           routeLabel={routeFor(data, 'offer')}
           price={fromPrice}
           statusLabel={`${count} ${t('deals_offers_count')}`}
-          statusColor={WAITING}
+          statusColor={theme.textMuted}
           time={relTime(data.latest_bid_at || data.created_at)}
           meta={meta}
           unread={count > 0 ? 1 : 0}
           onPress={() => navigation.navigate('CargoDetail', { cargoId: data.id, role })}
+          s={s}
+          theme={theme}
         />
       );
     }
@@ -457,7 +465,7 @@ export default function DealsScreen({ navigation, route }) {
             : isCountered
               ? t('deals_offer_bargain')
               : (data._incoming ? t('deals_offer_new') : t('deals_offer_waiting'));
-      const statusColor = isClosed ? ARCHIVE : isCountered ? INFO : WAITING;
+      const statusColor = isClosed ? theme.textDisabled : isCountered ? INFO : theme.textMuted;
       const amount = priceText(data.amount, data.currency || 'USD');
       const price = isCountered && data.counter_amount
         ? `${amount} → ${priceText(data.counter_amount, data.currency || 'USD')}`
@@ -476,11 +484,13 @@ export default function DealsScreen({ navigation, route }) {
           dimmed={isClosed}
           unread={!isClosed && isBidActionable(data, { asOwner: !!data._incoming }) ? 1 : 0}
           onPress={() => openBid(data)}
+          s={s}
+          theme={theme}
         />
       );
     }
 
-    const status = dealStatus(data.status, t);
+    const status = dealStatus(data.status, t, theme);
     const partnerName = role === 'client'
       ? (data.driver_name || t('role_driver'))
       : (data.shipper_name || t('role_client'));
@@ -508,6 +518,8 @@ export default function DealsScreen({ navigation, route }) {
         unread={unread}
         dimmed={ARCHIVE_DEAL_STATUSES.has(data.status)}
         onPress={() => openDeal(data)}
+        s={s}
+        theme={theme}
       />
     );
   }, [
@@ -519,7 +531,9 @@ export default function DealsScreen({ navigation, route }) {
     relTime,
     role,
     routeFor,
+    s,
     t,
+    theme,
   ]);
 
   const emptyText = dealTab === 'active'
@@ -531,12 +545,12 @@ export default function DealsScreen({ navigation, route }) {
   const searchHeader = (
     <View style={s.scrollHeader} testID="deals-scroll-header">
       <View style={s.search}>
-        <Feather name="search" size={17} color={TEXT_MUTED} />
+        <Feather name="search" size={17} color={theme.textMuted} />
         <TextInput
           testID="deal-room-search"
           style={s.searchInput}
           placeholder={copy.search}
-          placeholderTextColor={TEXT_MUTED}
+          placeholderTextColor={theme.textMuted}
           value={query}
           onChangeText={setQuery}
           returnKeyType="search"
@@ -548,7 +562,7 @@ export default function DealsScreen({ navigation, route }) {
             accessibilityLabel="clear-search"
             style={s.clearSearch}
           >
-            <Feather name="x" size={16} color={TEXT_MUTED} />
+            <Feather name="x" size={16} color={theme.textMuted} />
           </TouchableOpacity>
         ) : null}
       </View>
@@ -557,7 +571,7 @@ export default function DealsScreen({ navigation, route }) {
 
   return (
     <SafeAreaView
-      style={[s.container, { backgroundColor: PAGE_BG }]}
+      style={s.container}
       edges={['top']}
       testID="deal-room-list"
     >
@@ -577,6 +591,8 @@ export default function DealsScreen({ navigation, route }) {
             count={offerCount}
             active={dealTab === 'offers'}
             onPress={() => setDealTab('offers')}
+            s={s}
+            theme={theme}
           />
           <TabChip
             testID="deals-tab-active"
@@ -584,6 +600,8 @@ export default function DealsScreen({ navigation, route }) {
             count={activeDeals.length}
             active={dealTab === 'active'}
             onPress={() => setDealTab('active')}
+            s={s}
+            theme={theme}
           />
           <TabChip
             testID="deals-tab-archive"
@@ -593,6 +611,8 @@ export default function DealsScreen({ navigation, route }) {
             onPress={() => setDealTab('archive')}
             compact
             icon="archive"
+            s={s}
+            theme={theme}
           />
         </View>
 
@@ -609,7 +629,7 @@ export default function DealsScreen({ navigation, route }) {
         <ActivityIndicator color={roleAccent} style={{ marginTop: 42 }} />
       ) : loadError && baseItems.length === 0 ? (
         <View style={s.errorState}>
-          <Feather name="wifi-off" size={23} color={TEXT_MUTED} />
+          <Feather name="wifi-off" size={23} color={theme.textMuted} />
           <Text style={s.errorText}>{copy.loadError}</Text>
           <TouchableOpacity testID="deals-retry" style={s.retryBtn} onPress={load}>
             <Text style={s.retryText}>{copy.retry}</Text>
@@ -642,14 +662,17 @@ export default function DealsScreen({ navigation, route }) {
   );
 }
 
-const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: PAGE_BG },
+// #P1 theme-consistency: every background/surface/text/border token below
+// comes from `theme` (ThemeContext) — nothing here may hardcode a light-only
+// hex value. Semantic colors (ACCENT/status/danger badge) stay constant.
+const makeStyles = (theme) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: theme.bg },
   fixedHeader: {
-    backgroundColor: PAGE_BG,
+    backgroundColor: theme.bg,
     paddingBottom: 5,
     borderBottomWidth: 1,
-    borderBottomColor: '#EDF0EE',
-    shadowColor: '#14211C',
+    borderBottomColor: theme.border,
+    shadowColor: theme.shadow,
     shadowOpacity: 0.025,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
@@ -678,13 +701,13 @@ const s = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 23,
     borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: SURFACE,
+    borderColor: theme.border,
+    backgroundColor: theme.surface,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 7,
-    shadowColor: '#14211C',
+    shadowColor: theme.shadow,
     shadowOpacity: 0.025,
     shadowRadius: 7,
     shadowOffset: { width: 0, height: 2 },
@@ -698,23 +721,23 @@ const s = StyleSheet.create({
     flexShrink: 1.3,
   },
   tabChipActive: {
-    borderColor: '#A6D2BE',
-    backgroundColor: ACCENT_SOFT,
+    borderColor: theme.cardActiveBorder,
+    backgroundColor: theme.cardActive,
   },
   tabChipText: {
-    color: TEXT_SECONDARY,
+    color: theme.textSecondary,
     fontSize: 14,
     fontWeight: '700',
     flexShrink: 1,
   },
   tabChipTextActive: { color: ACCENT },
   tabCount: {
-    color: '#7B8580',
+    color: theme.textMuted,
     fontSize: 12,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
   },
-  tabCountActive: { color: '#6B8C7C' },
+  tabCountActive: { color: ACCENT },
   attentionA11y: {
     position: 'absolute',
     width: 1,
@@ -727,19 +750,19 @@ const s = StyleSheet.create({
     paddingHorizontal: 18,
     paddingTop: 8,
     paddingBottom: 6,
-    backgroundColor: PAGE_BG,
+    backgroundColor: theme.bg,
   },
   search: {
     height: 44,
     borderRadius: 22,
     borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: SURFACE,
+    borderColor: theme.border,
+    backgroundColor: theme.surface,
     paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    shadowColor: '#14211C',
+    shadowColor: theme.shadow,
     shadowOpacity: 0.02,
     shadowRadius: 7,
     shadowOffset: { width: 0, height: 2 },
@@ -747,7 +770,7 @@ const s = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    color: TEXT,
+    color: theme.text,
     fontSize: 14,
     paddingVertical: 0,
   },
@@ -769,9 +792,9 @@ const s = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 17,
     borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: SURFACE,
-    shadowColor: '#15211C',
+    borderColor: theme.border,
+    backgroundColor: theme.surface,
+    shadowColor: theme.shadow,
     shadowOpacity: 0.03,
     shadowRadius: 9,
     shadowOffset: { width: 0, height: 2 },
@@ -787,7 +810,7 @@ const s = StyleSheet.create({
   route: {
     flex: 1,
     minWidth: 0,
-    color: TEXT,
+    color: theme.text,
     fontSize: 15,
     lineHeight: 20,
     fontWeight: '700',
@@ -796,7 +819,7 @@ const s = StyleSheet.create({
   price: {
     maxWidth: '37%',
     flexShrink: 0,
-    color: TEXT,
+    color: theme.text,
     fontSize: 15,
     lineHeight: 20,
     fontWeight: '800',
@@ -835,7 +858,7 @@ const s = StyleSheet.create({
     gap: 6,
   },
   time: {
-    color: TEXT_MUTED,
+    color: theme.textMuted,
     fontSize: 11,
     lineHeight: 16,
     fontVariant: ['tabular-nums'],
@@ -856,14 +879,14 @@ const s = StyleSheet.create({
   },
   meta: {
     marginTop: 6,
-    color: TEXT_MUTED,
+    color: theme.textMuted,
     fontSize: 12,
     lineHeight: 16,
   },
   emptyText: {
     marginTop: 58,
     paddingHorizontal: 24,
-    color: TEXT_MUTED,
+    color: theme.textMuted,
     textAlign: 'center',
     fontSize: 14,
     lineHeight: 20,
@@ -876,7 +899,7 @@ const s = StyleSheet.create({
     gap: 10,
   },
   errorText: {
-    color: TEXT_MUTED,
+    color: theme.textMuted,
     fontSize: 14,
     textAlign: 'center',
   },
@@ -885,7 +908,7 @@ const s = StyleSheet.create({
     marginTop: 4,
     paddingHorizontal: 22,
     borderRadius: 22,
-    backgroundColor: ACCENT_SOFT,
+    backgroundColor: theme.cardActive,
     alignItems: 'center',
     justifyContent: 'center',
   },

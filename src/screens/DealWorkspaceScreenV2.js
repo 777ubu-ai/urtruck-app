@@ -1069,13 +1069,13 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
               <>
                 {nextAction ? (
                   <TouchableOpacity
-                    style={[s.actionBar, { backgroundColor: nextAction.disabled ? '#E4E8E5' : '#168759' }]}
+                    style={[s.actionBar, { backgroundColor: nextAction.disabled ? colors.border : '#168759' }]}
                     onPress={runNextAction}
                     disabled={nextAction.disabled || statusLoading || trackingLoading}
                     testID={nextActionTestId}
                   >
-                    <Feather name={nextAction.icon} size={16} color={nextAction.disabled ? '#7C8B82' : '#FFFFFF'} />
-                    <Text style={[s.actionBarText, { color: nextAction.disabled ? '#7C8B82' : '#FFFFFF' }]} numberOfLines={1}>
+                    <Feather name={nextAction.icon} size={16} color={nextAction.disabled ? colors.textMuted : '#FFFFFF'} />
+                    <Text style={[s.actionBarText, { color: nextAction.disabled ? colors.textMuted : '#FFFFFF' }]} numberOfLines={1}>
                       {statusLoading || trackingLoading ? '…' : nextAction.label}
                     </Text>
                   </TouchableOpacity>
@@ -1123,15 +1123,15 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                 </View>
 
                 {recording ? (
-                  <View style={s.recordBar} testID="deal-chat-recording-bar">
+                  <View style={[s.recordBar, { backgroundColor: colors.surfaceMuted, borderColor: colors.border }]} testID="deal-chat-recording-bar">
                     <View style={s.recordDot} />
                     <View style={s.recordWave} pointerEvents="none">
                       {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
                         <View key={i} style={[s.recordWaveBar, { height: 5 + (i % 4) * 4 }]} />
                       ))}
                     </View>
-                    <Text style={s.recordText}>{ui.recording} 0:{String(recordSecs % 60).padStart(2, '0')}</Text>
-                    <TouchableOpacity onPress={cancelRecording} style={s.recordCancelBtn} testID="deal-chat-recording-cancel" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Text style={[s.recordText, { color: colors.text }]}>{ui.recording} 0:{String(recordSecs % 60).padStart(2, '0')}</Text>
+                    <TouchableOpacity onPress={cancelRecording} style={[s.recordCancelBtn, { backgroundColor: colors.surface }]} testID="deal-chat-recording-cancel" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                       <Feather name="trash-2" size={15} color="#B91C1C" />
                     </TouchableOpacity>
                     <TouchableOpacity onPress={toggleVoice} style={s.recordStopBtn} testID="deal-chat-recording-stop">
@@ -1191,7 +1191,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           </View>
         ) : (
           <View style={s.mapFullscreen} testID="deal-map-fullscreen">
-            <View style={s.mapArea} testID="deal-map-first-area">
+            <View style={[s.mapArea, { backgroundColor: colors.surfaceMuted }]} testID="deal-map-first-area">
               {showLiveMap ? (
                 <TruckMap
                   lat={hasLivePoint ? lat : undefined}
@@ -1289,7 +1289,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                   <Feather name={item.icon} size={18} color={item.disabled ? colors.textMuted : '#168759'} />
                   <Text style={[s.callMenuLabel, { color: item.disabled ? colors.textMuted : colors.text }]}>{item.label}</Text>
                   {item.disabled ? (
-                    <View style={s.comingSoonPill}><Text style={s.comingSoonText}>{ui.comingSoon}</Text></View>
+                    <View style={s.comingSoonPill}><Text style={[s.comingSoonText, { color: colors.textDim }]}>{ui.comingSoon}</Text></View>
                   ) : null}
                 </TouchableOpacity>
               ))}
@@ -1452,7 +1452,9 @@ const s = StyleSheet.create({
   callMenuRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 54, paddingHorizontal: 18, borderBottomWidth: StyleSheet.hairlineWidth },
   callMenuLabel: { flex: 1, fontSize: 14.5, fontWeight: '750' },
   comingSoonPill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: 'rgba(124,139,130,0.14)' },
-  comingSoonText: { fontSize: 10, fontWeight: '800', color: '#7C8B82' },
+  // color intentionally omitted — comes from `colors.textDim` inline at the
+  // JSX call site so it follows ThemeContext instead of freezing to light.
+  comingSoonText: { fontSize: 10, fontWeight: '800' },
 
   statusModalCard: { borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 14, paddingTop: 14 },
   statusModalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },

@@ -8,7 +8,7 @@
 // в /register/selfie (там серверная валидация + госреестр). ИИН/ФИО/дату в лог
 // не пишем; личное фото в репо не сохраняем.
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -33,7 +33,7 @@ import RegistrationHelpSheet from '../../components/RegistrationHelpSheet';
 import PhotoGuide from '../../components/PhotoGuide';
 import QaStepSkip from '../../components/dev/QaStepSkip';
 import DateOfBirthSheet from '../../components/DateOfBirthSheet';
-import { brand, radius, typography } from '../../theme/brandV2';
+import { brand, useBrand, radius, typography } from '../../theme/brandV2';
 
 const TOTAL_STEPS = 4;
 const STEP = 2;
@@ -49,6 +49,8 @@ const maskBirth = (v) => {
 };
 
 export default function IdentityStepScreen({ navigation }) {
+  const localBrand = useBrand();
+  const s = useMemo(() => makeStyles(localBrand), [localBrand]);
   const { t } = useI18n();
   const { toast } = useToast();
 
@@ -392,7 +394,7 @@ export default function IdentityStepScreen({ navigation }) {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (brand) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: brand.bg },
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 8 },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },

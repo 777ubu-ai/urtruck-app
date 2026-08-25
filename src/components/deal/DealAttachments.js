@@ -11,8 +11,11 @@ import { chatAPI, documentKindFromFile } from '../../utils/chatAPI';
 import { compressImage } from '../../utils/imageCompress';
 import { accentFor } from './DealRoom';
 
+// P1 theme-consistency: `queued`'s neutral grey has no `color` here on
+// purpose — it followed theme.textMuted/textDisabled at every call site
+// instead of freezing to one theme's exact muted-text hex.
 const STATUS_META = {
-  queued:    { icon: 'clock',        color: '#7C8B82', key: 'chat_attach_status_queued' },
+  queued:    { icon: 'clock',        color: null, key: 'chat_attach_status_queued' },
   uploading: { icon: 'upload-cloud', color: '#168759', key: 'chat_attach_status_uploading' },
   uploaded:  { icon: 'check-circle', color: '#168759', key: 'chat_attach_status_uploaded' },
   failed:    { icon: 'alert-circle', color: '#EF4444', key: 'chat_attach_status_failed' },
@@ -291,7 +294,7 @@ export default function DealAttachments({
                 label={attachmentLabel(t, a)}
                 sublabel={formatBytes(a.size_bytes)}
                 statusKey={meta.key}
-                statusColor={meta.color}
+                statusColor={meta.color || theme.textDisabled}
                 onOpen={a.url ? () => openAttachment(a) : null}
               />
             );
@@ -305,7 +308,7 @@ export default function DealAttachments({
                 label={item.name || attachmentLabel(t, item)}
                 sublabel={formatBytes(item.size)}
                 statusKey={meta.key}
-                statusColor={meta.color}
+                statusColor={meta.color || theme.textDisabled}
                 spinning={item.status === 'uploading' || item.status === 'retrying'}
                 onRetryPress={item.status === 'failed' ? () => onRetry(item) : null}
               />

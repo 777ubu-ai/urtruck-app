@@ -1,9 +1,16 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { colors, spacing, typography, radius } from '../../theme/theme';
+import { spacing, typography } from '../../theme/theme';
+import { useTheme } from '../../utils/ThemeContext';
 import PrimaryButton from './PrimaryButton';
 
+// P1 theme-consistency fix (25.08.2026): this is the shared empty-state
+// pattern (used by MyTripsScreen's "no trips"/"no cargos"/"auth required"
+// states, among others) — it must follow ThemeContext, not the static
+// (light-only) `colors` export from theme/theme.js.
 export default function EmptyState({ title, description, actionLabel, onAction }) {
+  const { theme } = useTheme();
+  const s = useMemo(() => makeStyles(theme), [theme]);
   return (
     <View style={s.container}>
       <View style={s.iconWrap}>
@@ -18,7 +25,7 @@ export default function EmptyState({ title, description, actionLabel, onAction }
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (theme) => StyleSheet.create({
   container: {
     alignItems: 'center',
     padding: spacing.xxl,
@@ -28,26 +35,26 @@ const s = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: colors.surface2,
+    backgroundColor: theme.surfaceAlt,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.lg,
   },
   icon: {
-    color: colors.textDim,
+    color: theme.textMuted,
     fontSize: 16,
     fontWeight: '700',
     letterSpacing: 2,
   },
   title: {
     ...typography.h2,
-    color: colors.text,
+    color: theme.text,
     textAlign: 'center',
     marginBottom: spacing.sm,
   },
   desc: {
     ...typography.body,
-    color: colors.textMuted,
+    color: theme.textMuted,
     textAlign: 'center',
     maxWidth: 280,
   },

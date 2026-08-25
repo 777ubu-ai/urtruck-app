@@ -123,7 +123,7 @@ export function DealRoomCard({ deal, role }) {
       } />
       {deal.plate ? <Field icon="truck" label={t('chat_deal_card_plate')} value={deal.plate} /> : null}
       {showAutomaticRouteMap ? (
-        <View style={[s.autoMap, { borderColor: theme.border }]} testID="deal-automatic-route-map">
+        <View style={[s.autoMap, { borderColor: theme.border, backgroundColor: theme.surfaceAlt }]} testID="deal-automatic-route-map">
           <TruckMap
             routePoints={routePoints}
             planned

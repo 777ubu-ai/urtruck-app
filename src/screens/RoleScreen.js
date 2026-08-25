@@ -14,7 +14,7 @@
 //   PNG role-screen-hero.png больше не используется. Файл оставлен
 //   в assets/ как legacy (на случай rollback), но импорта нет.
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -27,45 +27,49 @@ import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../utils/useI18n';
 import { useAuth } from '../utils/AuthContext';
 import LanguageSwitcher from '../components/LanguageSwitcher';
-import { brand, radius, typography } from '../theme/brandV2';
-
-const RoleCard = ({
-  icon,
-  iconColor,
-  title,
-  description,
-  onPress,
-  disabled,
-  testID,
-}) => (
-  <Pressable
-    onPress={onPress}
-    disabled={disabled}
-    testID={testID}
-    accessibilityRole="button"
-    accessibilityLabel={title}
-    style={({ pressed }) => [
-      styles.card,
-      pressed && { opacity: 0.85 },
-      disabled && { opacity: 0.5 },
-    ]}
-  >
-    <View style={[styles.cardIcon, { backgroundColor: brand.surfaceMuted }]}>
-      <Feather name={icon} size={26} color={iconColor} />
-    </View>
-    <View style={{ flex: 1 }}>
-      <Text style={styles.cardTitle}>{title}</Text>
-      <Text style={styles.cardDesc} numberOfLines={3}>
-        {description}
-      </Text>
-    </View>
-    <Feather name="chevron-right" size={20} color={brand.textTertiary} />
-  </Pressable>
-);
+import { brand, useBrand, radius, typography } from '../theme/brandV2';
 
 export default function RoleScreen({ navigation }) {
+  const localBrand = useBrand();
+  const styles = useMemo(() => makeStyles(localBrand), [localBrand]);
   const { t } = useI18n();
   const { setRole, session, ensureGuest } = useAuth();
+
+  // Локальная (была module-scope): нужен доступ к живым styles/localBrand,
+  // чтобы карточка реагировала на смену темы (P1 light/dark fix).
+  const RoleCard = ({
+    icon,
+    iconColor,
+    title,
+    description,
+    onPress,
+    disabled,
+    testID,
+  }) => (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      testID={testID}
+      accessibilityRole="button"
+      accessibilityLabel={title}
+      style={({ pressed }) => [
+        styles.card,
+        pressed && { opacity: 0.85 },
+        disabled && { opacity: 0.5 },
+      ]}
+    >
+      <View style={[styles.cardIcon, { backgroundColor: localBrand.surfaceMuted }]}>
+        <Feather name={icon} size={26} color={iconColor} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.cardTitle}>{title}</Text>
+        <Text style={styles.cardDesc} numberOfLines={3}>
+          {description}
+        </Text>
+      </View>
+      <Feather name="chevron-right" size={20} color={localBrand.textTertiary} />
+    </Pressable>
+  );
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState('');
 
@@ -206,7 +210,7 @@ export default function RoleScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (brand) => StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: brand.surfaceMuted,  // #F4F6FA

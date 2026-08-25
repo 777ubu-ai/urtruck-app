@@ -6,7 +6,7 @@
 // действия прав. Фото авто/салона вынесены в отдельный шаг VehiclePhotos
 // (PR-V9). raw OCR / номера документов в лог НЕ выводим.
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -29,7 +29,7 @@ import RegistrationCloseModal from '../../components/RegistrationCloseModal';
 import RegistrationHelpSheet from '../../components/RegistrationHelpSheet';
 import PhotoGuide from '../../components/PhotoGuide';
 import QaStepSkip from '../../components/dev/QaStepSkip';
-import { brand, radius, typography } from '../../theme/brandV2';
+import { brand, useBrand, radius, typography } from '../../theme/brandV2';
 
 const TOTAL_STEPS = 4;
 const STEP = 3;
@@ -63,6 +63,8 @@ const parseDate = (v) => {
 };
 
 export default function VehicleDocsScreen({ navigation }) {
+  const localBrand = useBrand();
+  const s = useMemo(() => makeStyles(localBrand), [localBrand]);
   const { t } = useI18n();
   const { toast } = useToast();
 
@@ -446,7 +448,7 @@ export default function VehicleDocsScreen({ navigation }) {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (brand) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: brand.bg },
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 8 },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },

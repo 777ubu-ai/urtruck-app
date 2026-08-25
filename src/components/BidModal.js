@@ -221,7 +221,7 @@ export default function BidModal({
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 8 }}
         >
-          <View style={s.handle} />
+          <View style={[s.handle, { backgroundColor: theme.textDisabled }]} />
           <Text style={[s.title, { color: theme.text }]}>{title}</Text>
           {!isPrefill && (
             // Показываем ЧЕСТНУЮ цену объявления, а не выдуманный «средний»
@@ -294,7 +294,7 @@ export default function BidModal({
 
           <TouchableOpacity
             testID="bid-submit"
-            style={[s.submitBtn, { backgroundColor: accent }, (!bid || loading || locked) && s.submitBtnDisabled]}
+            style={[s.submitBtn, { backgroundColor: accent }, (!bid || loading || locked) && { backgroundColor: theme.border }]}
             onPress={handleSubmit}
             disabled={!bid || loading || locked}
           >
@@ -332,6 +332,5 @@ const s = StyleSheet.create({
   messageInput: { borderWidth: 1, borderRadius: 12, padding: 12, fontSize: 14, marginBottom: 14 },
   errorText: { color: '#EF4444', fontSize: 13, textAlign: 'center', marginBottom: 10 },
   submitBtn: { backgroundColor: '#168759', borderRadius: 14, paddingVertical: 16, alignItems: 'center' },
-  submitBtnDisabled: { backgroundColor: '#E5ECE8' },
   submitBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
 });

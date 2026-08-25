@@ -9,7 +9,7 @@
 // единый срок — только 24–48 часов; формулировки UrTruck (грузы/рейсы/
 // водитель/авто), без passenger/taxi-лексики.
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   Text,
@@ -22,13 +22,15 @@ import {
   Alert,
 } from 'react-native';
 import { useI18n } from '../utils/useI18n';
-import { brand, radius, typography } from '../theme/brandV2';
+import { brand, useBrand, radius, typography } from '../theme/brandV2';
 
 // Тот же канал поддержки UrTruck, что и в HelpButton.js (не PII пользователя —
 // корпоративная линия поддержки, уже зашита в приложении).
 const SUPPORT_URL = 'https://wa.me/77479171118';
 
 export default function RegistrationHelpSheet({ visible, onClose }) {
+  const localBrand = useBrand();
+  const s = useMemo(() => makeStyles(localBrand), [localBrand]);
   const { t } = useI18n();
 
   const topics = [
@@ -77,7 +79,7 @@ export default function RegistrationHelpSheet({ visible, onClose }) {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (brand) => StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.5)', justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: brand.bg,

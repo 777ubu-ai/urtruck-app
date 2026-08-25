@@ -7,7 +7,7 @@
 // status 'done' только при backend key (no fake-success). Оба фото required.
 // Ключи персистятся server-side самими endpoint'ами; raw в лог не пишем.
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -27,12 +27,14 @@ import RegistrationCloseModal from '../../components/RegistrationCloseModal';
 import RegistrationHelpSheet from '../../components/RegistrationHelpSheet';
 import PhotoGuide from '../../components/PhotoGuide';
 import QaStepSkip from '../../components/dev/QaStepSkip';
-import { brand, radius, typography } from '../../theme/brandV2';
+import { brand, useBrand, radius, typography } from '../../theme/brandV2';
 
 const TOTAL_STEPS = 6;
 const STEP = 5;
 
 export default function VehiclePhotosScreen({ navigation, route }) {
+  const localBrand = useBrand();
+  const s = useMemo(() => makeStyles(localBrand), [localBrand]);
   const { t } = useI18n();
   const { toast } = useToast();
 
@@ -195,7 +197,7 @@ export default function VehiclePhotosScreen({ navigation, route }) {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (brand) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: brand.bg },
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 8 },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
