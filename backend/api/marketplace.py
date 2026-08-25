@@ -514,6 +514,17 @@ def create_cargo(body: CargoIn, user=Depends(require_level(1))):
     fc, fpt, fpn = _norm_route_triple(body.from_country, body.from_point_type, body.from_point_name)
     tc, tpt, tpn = _norm_route_triple(body.to_country, body.to_point_type, body.to_point_name)
     with get_conn() as c:
+        # Issue #286: защита от двойной публикации (double-tap / сетевой retry).
+        # Если тот же owner создал груз с тем же маршрутом и описанием за последние
+        # 30 секунд — возвращаем существующий вместо дубля.
+        dup = c.execute(
+            "SELECT id FROM cargos WHERE owner_id = ? AND from_city = ? AND to_city = ? "
+            "AND cargo_desc = ? AND status = 'active' "
+            "AND created_at > datetime('now', '-30 seconds') LIMIT 1",
+            (user["id"], body.from_city, body.to_city, body.cargo_desc),
+        ).fetchone()
+        if dup:
+            return {"ok": True, "id": dup["id"], "deduped": True}
         pay = body.payment_type if body.payment_type in ("cash", "cashless", "any") else None
         c.execute("""
             INSERT INTO cargos (id, owner_id, owner_phone, owner_name,
@@ -1083,6 +1094,15 @@ def create_trip(body: TripIn, user=Depends(require_level(1))):
     fc, fpt, fpn = _norm_route_triple(body.from_country, body.from_point_type, body.from_point_name)
     tc, tpt, tpn = _norm_route_triple(body.to_country, body.to_point_type, body.to_point_name)
     with get_conn() as c:
+        # Issue #286: защита от двойного рейса (double-tap / retry).
+        dup = c.execute(
+            "SELECT id FROM trips WHERE driver_id = ? AND from_city = ? AND to_city = ? "
+            "AND status = 'active' "
+            "AND created_at > datetime('now', '-30 seconds') LIMIT 1",
+            (user["id"], body.from_city, body.to_city),
+        ).fetchone()
+        if dup:
+            return {"ok": True, "id": dup["id"], "deduped": True}
         c.execute("""
             INSERT INTO trips (id, driver_id, driver_phone, driver_name,
               from_city, to_city, transit, truck_type,
@@ -1852,7 +1872,25 @@ def update_trip_status(trip_id: str, new_status: str, user=Depends(require_level
                 deal = dict(deal_row)
                 request_id = _uuid2.uuid4().hex[:12]
                 try:
-                    _transition_deal(c, deal, _TRIP_TO_DEAL[new_status], user["id"], request_id)
+                    event_payload = _transition_deal(c, deal, _TRIP_TO_DEAL[new_status], user["id"], request_id)
+                    # Issue #275: audit event — trip-path обязан писать deal_events
+                    # так же, как update_deal_status, иначе immutable timeline
+                    # содержит дыру (весь lifetime рейса без записей).
+                    if event_payload is not None:
+                        try:
+                            from database import deal_room_dal
+                            actor_role = "driver"  # trip-status меняет только водитель
+                            deal_room_dal.create_deal_event(
+                                "deal.status_changed",
+                                actor_id=user["id"],
+                                actor_role=actor_role,
+                                deal_id=deal["id"],
+                                load_id=deal.get("cargo_id"),
+                                trip_id=deal.get("trip_id"),
+                                payload=event_payload,
+                            )
+                        except Exception as ev_err:
+                            print(f"[deal-fsm] trip-path deal_event write err: {ev_err}", flush=True)
                 except DealTransitionError as e:
                     print(
                         f"[deal-fsm] update_trip_status: sync SKIPPED (legacy-путь не может обойти FSM) "
@@ -2806,7 +2844,14 @@ def _transition_deal(c, deal: dict, new_status: str, actor_uid: str, request_id:
     if new_status == raw_status or new_status == cur_status:
         return None  # идемпотентно, без шума — уведомление не создаём
     allowed = _DEAL_FLOW.get(cur_status)
-    if allowed is not None and new_status not in allowed:
+    if allowed is None:
+        # Fail-closed: неизвестный/повреждённый статус не может перейти никуда.
+        # Без этого guard'а любой cur_status вне _DEAL_FLOW обходил FSM целиком.
+        raise DealTransitionError(409, {
+            "error": "UNKNOWN_CURRENT_STATUS",
+            "message": f"Сделка в неизвестном статусе «{cur_status}» — переход невозможен",
+        })
+    if new_status not in allowed:
         raise DealTransitionError(409, {
             "error": "INVALID_STATUS_TRANSITION",
             "message": f"Недопустимый переход: {cur_status} → {new_status}",

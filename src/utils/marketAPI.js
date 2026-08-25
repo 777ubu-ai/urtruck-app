@@ -261,7 +261,9 @@ export const marketAPI = {
       method: 'POST', headers: await headers(),
       body: JSON.stringify(data),
     });
-    return r.json();
+    const d = await r.json();
+    if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
+    return d;
   },
 
   async listTrips({ status = 'active', fromCity = '', toCity = '', truckType = '', limit = 50 } = {}) {

@@ -225,11 +225,15 @@ function AppInner() {
   // не переоткроет тот же чат. Backend идемпотентен по client_msg_id — дублей нет.
   useEffect(() => {
     if (!hasToken) return;
-    const doFlush = () => { flushOutbox((p) => chatAPI.send(p)).catch(() => {}); };
+    // Issue #282: передаём activeUserId — без него flushOutbox пропускает
+    // записи с userId (все новые из DealWorkspaceScreenV2), и очередь
+    // никогда не опорожняется глобальным хуком.
+    const uid = session?.user?.id;
+    const doFlush = () => { flushOutbox((p) => chatAPI.send(p), uid).catch(() => {}); };
     doFlush();
     const sub = AppState.addEventListener('change', (s) => { if (s === 'active') doFlush(); });
     return () => sub?.remove?.();
-  }, [hasToken]);
+  }, [hasToken, session?.user?.id]);
 
   // P5: пере-регистрация push-токена на запуске для уже залогиненного юзера.
   // Раньше autoRegister звался только сразу после OTP — при ротации Expo-токена

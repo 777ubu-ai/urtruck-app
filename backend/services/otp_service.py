@@ -6,6 +6,7 @@
 """
 import os
 import random
+import secrets
 import urllib.parse
 import sys
 from pathlib import Path
@@ -61,7 +62,8 @@ TG_MOCK = not TG_BOT_TOKEN
 
 
 def generate_code() -> str:
-    return f"{random.randint(1000, 9999)}"
+    # Issue #285: secrets.randbelow вместо random.randint — CSPRNG, а не Mersenne Twister.
+    return f"{secrets.randbelow(9000) + 1000}"
 
 
 # ---------- WhatsApp ----------
