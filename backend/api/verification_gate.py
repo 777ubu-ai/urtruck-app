@@ -10,6 +10,12 @@ from fastapi import Depends, Header, HTTPException
 from database import registration_dal as reg_dal
 from config import BETA_MODE
 
+# #279: BETA_MODE может обходить ТОЛЬКО уровни до этого порога.
+# Уровень 3 (driver_verified: водительские документы) никогда не обходится
+# даже в dev/preview — это защита от создания «подтверждённых водителей»
+# без реальной верификации документов.
+_BETA_BYPASS_MAX_LEVEL = 2
+
 
 LEVEL_NAMES = {
     0: "guest",
@@ -44,7 +50,8 @@ def require_level(min_level: int):
     def dependency(authorization: str = Header(None)) -> dict:
         driver = _extract_driver(authorization)
         current = driver.get("verification_level", 0) or 0
-        if current < min_level and not BETA_MODE:
+        beta_can_bypass = BETA_MODE and min_level <= _BETA_BYPASS_MAX_LEVEL
+        if current < min_level and not beta_can_bypass:
             # 403 с payload который фронт использует для показа VerificationGate
             raise HTTPException(
                 status_code=403,

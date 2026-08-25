@@ -674,3 +674,36 @@ def test_pr_b_reject_bid_notif_has_back_url():
     n = rejected[0]
     expect(n["url"] == f"/cargos/{cargo_id}",
            f"rejected notif url=/cargos/{{id}} (got {n['url']})")
+
+
+# ── #279: bid creation contract ───────────────────────────────────────────
+
+def test_bid_rejects_both_null_ids():
+    """#279: ставка без cargo_id и trip_id → 400."""
+    as_user("driver-279-null")
+    r = client.post("/api/v1/market/bids", json={"amount": 5000})
+    assert r.status_code == 400, f"expected 400, got {r.status_code}"
+    assert "cargo_id" in r.json().get("detail", "")
+
+
+def test_bid_rejects_nonexistent_cargo():
+    """#279: ставка на несуществующий груз → 404."""
+    as_user("driver-279-ghost")
+    r = client.post("/api/v1/market/bids", json={"cargo_id": "ghost-cargo-999", "amount": 5000})
+    assert r.status_code == 404, f"expected 404, got {r.status_code}"
+
+
+def test_bid_rejects_nonexistent_trip():
+    """#279: ставка на несуществующий рейс → 404."""
+    as_user("driver-279-ghost2")
+    r = client.post("/api/v1/market/bids", json={"trip_id": "ghost-trip-999", "amount": 5000})
+    assert r.status_code == 404, f"expected 404, got {r.status_code}"
+
+
+def test_bid_ok_with_existing_cargo():
+    """#279: ставка на реальный груз проходит."""
+    owner = "owner-279-ok"
+    cargo_id = seed_cargo(owner_id=owner)
+    as_user("driver-279-ok")
+    r = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 3000})
+    assert r.status_code == 200, f"expected 200, got {r.status_code}: {r.text}"

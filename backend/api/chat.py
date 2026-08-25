@@ -743,9 +743,14 @@ def get_messages(room_id: str, limit: int = 100, offset: int = 0, user=Depends(r
     partner_typing = bool(ts and (_time.time() - ts) < _TYPING_TTL)
     # «Онлайн»: сам факт этого запроса — активность юзера. Партнёр онлайн,
     # если его активность моложе 90с (его же поллинг в чате — каждые 3с).
-    _LAST_SEEN[uid] = _time.time()
+    now = _time.time()
+    _LAST_SEEN[uid] = now
+    # #279: мягкая эвикция — удаляем записи >10 мин, чтобы dict не рос вечно
+    if len(_LAST_SEEN) > 500:
+        for k in [k for k, ts in _LAST_SEEN.items() if now - ts > 600]:
+            _LAST_SEEN.pop(k, None)
     seen = _LAST_SEEN.get(partner_id)
-    partner_online = bool(seen and (_time.time() - seen) < 90)
+    partner_online = bool(seen and (now - seen) < 90)
     return {"messages": messages, "room": dict(room),
             "partner_typing": partner_typing, "partner_online": partner_online}
 
@@ -863,16 +868,15 @@ async def upload_chat_voice(file: UploadFile = File(...), user=Depends(require_l
     return {"voice_key": key}
 
 
-# ── «Печатает…» ──────────────────────────────────────────────────────────
-# In-memory (один PM2-процесс): (room_id, user_id) → unix-ts последнего пинга.
-# Партнёр видит индикатор, если пинг был < TYPING_TTL секунд назад. Пинги
-# летят раз в ~2.5с пока пользователь набирает; отдельной таблицы не нужно.
+# ── «Печатает…» / «Онлайн» ────────────────────────────────────────────────
+# INVARIANT: process-local dicts — корректно работают ТОЛЬКО при одном
+# PM2-процессе (instances: 1). При переходе на cluster/multi-instance
+# перенести в Redis pub/sub (SETEX + SUBSCRIBE) ДО включения > 1 инстанса.
+# #279: задокументировано как single-process constraint.
 import time as _time
-_TYPING: dict = {}
+_TYPING: dict = {}              # (room_id, user_id) → unix-ts последнего пинга
 _TYPING_TTL = 6
-# «Онлайн»: user_id → unix-ts последней активности в чат-API (in-memory,
-# один PM2-процесс). Обновляется в get_messages/send.
-_LAST_SEEN: dict = {}
+_LAST_SEEN: dict = {}           # user_id → unix-ts последней активности
 
 
 class TypingIn(BaseModel):

@@ -1381,8 +1381,12 @@ def _record_price_event(c, bid_id, actor_id, actor_role, amount, kind, comment=N
 
 @mp_router.post("/bids")
 def create_bid(body: BidIn, user=Depends(require_level(1))):
-    # cargo_id или trip_id — хотя бы один (для серверных грузов)
-    # Если оба null — разрешаем (для demo/local грузов), ставка просто без привязки
+    # #279: ставка ОБЯЗАНА ссылаться на реальный груз или рейс. Без привязки
+    # accept создаст сделку без контрагента — fail-open. Ранее оба null
+    # разрешались «для demo/local», но _finalize_accept_inline уже блокирует
+    # accept без привязки (409), поэтому создавать такие ставки бессмысленно.
+    if not body.cargo_id and not body.trip_id:
+        raise HTTPException(status_code=400, detail="Укажите cargo_id или trip_id")
 
     # PR-B (P0-E): hard 400 на невалидный amount. Раньше backend принимал
     # 0 / отрицательные значения, защищён был только frontend (BidModal:61-64).
@@ -1407,11 +1411,15 @@ def create_bid(body: BidIn, user=Depends(require_level(1))):
         # None status (legacy-строки) не блокируем — только явный не-active.
         if body.cargo_id:
             cg = c.execute("SELECT status FROM cargos WHERE id = ?", (body.cargo_id,)).fetchone()
-            if cg and cg["status"] and cg["status"] != "active":
+            if not cg:
+                raise HTTPException(status_code=404, detail="Груз не найден")
+            if cg["status"] and cg["status"] != "active":
                 raise HTTPException(status_code=409, detail="Груз больше не доступен для ставок")
         if body.trip_id:
             tr = c.execute("SELECT status FROM trips WHERE id = ?", (body.trip_id,)).fetchone()
-            if tr and tr["status"] and tr["status"] != "active":
+            if not tr:
+                raise HTTPException(status_code=404, detail="Рейс не найден")
+            if tr["status"] and tr["status"] != "active":
                 raise HTTPException(status_code=409, detail="Рейс больше не доступен для ставок")
         # M1: дедуп — у одного автора не должно быть двух активных ставок на
         # тот же груз/рейс (для изменения цены есть PATCH /bids/{id}).
@@ -2054,8 +2062,10 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount: int):
         cargo = c.execute(
             "SELECT owner_id, from_city, to_city FROM cargos WHERE id = ?", (bid["cargo_id"],)
         ).fetchone()
-        if not cargo or cargo["owner_id"] != user["id"]:
-            raise HTTPException(status_code=403)
+        if not cargo:
+            raise HTTPException(status_code=404, detail="Груз не найден")
+        if cargo["owner_id"] != user["id"]:
+            raise HTTPException(status_code=403, detail="Только владелец груза может принять ставку")
         c.execute(
             "UPDATE cargos SET status = 'taken', taken_by = ? WHERE id = ?",
             (bid["bidder_id"], bid["cargo_id"]),
@@ -3191,7 +3201,14 @@ def list_active_driver_tracking(user=Depends(require_level(1))):
 @mp_router.post("/deals/{deal_id}/tracking/request")
 def request_deal_tracking(deal_id: str, user=Depends(require_level(1))):
     """Only the shipper may request GPS before pickup. A new request replaces
-    an old decline or pre-pickup stop, but can never reset a locked shipment."""
+    an old decline or pre-pickup stop, but can never reset a locked shipment.
+
+    #279 design note: these three endpoints (request/respond/stop) handle the
+    in-app consent between shipper and driver — separate from the OS-level
+    permission grant in the frontend Start Trip flow. A fresh request always
+    UPSERTS to 'pending', so a previous 'declined' state never permanently
+    blocks consent. Start Trip triggers the OS permission dialog first; only
+    after that succeeds does the frontend call /tracking/respond approve."""
     with get_conn() as c:
         row = c.execute("SELECT * FROM deals WHERE id = ?", (deal_id,)).fetchone()
         if not row:
