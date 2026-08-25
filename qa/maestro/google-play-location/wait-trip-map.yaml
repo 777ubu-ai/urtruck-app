@@ -1,0 +1,18 @@
+appId: com.urtruck.app
+name: wait-trip-map
+---
+- extendedWaitUntil:
+    visible:
+      id: "deal-map-card-open"
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      id: "deal-map-card-open"
+    direction: DOWN
+    timeout: 15000
+- tapOn:
+    id: "deal-map-card-open"
+- extendedWaitUntil:
+    visible:
+      id: "deal-map-fullscreen"
+    timeout: 30000

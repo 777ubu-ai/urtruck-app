@@ -2,8 +2,7 @@ import React from 'react';
 import { ActivityIndicator, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import CargoDetail from './CargoDetail';
-import DealWorkspaceScreen from './DealWorkspaceScreenV2';
-import DealLocationPermissionGate from '../components/deal/DealLocationPermissionGate';
+import DealWorkspaceRoute from '../components/deal/DealWorkspaceRoute';
 import { marketAPI } from '../utils/marketAPI';
 import { chatAPI } from '../utils/chatAPI';
 import { getDealCounterpartyProfile, compactCounterpartyName } from '../utils/dealCounterpartyAPI';
@@ -70,33 +69,20 @@ export default function CargoDetailV2(props) {
   }
 
   if (target?.dealId) {
-    // P1 (аудит 2026-08-21): раньше DealWorkspaceScreen рендерился здесь
-    // НАПРЯМУЮ, без DealLocationPermissionGate — а обработчик disclosure
-    // регистрируется именно гейтом (locationPermissionCoordinator, модульный
-    // singleton). При входе в сделку отсюда (MyTripsScreen/DealsScreen/
-    // NotificationsScreen/FeedScreen ведут прямо в CargoDetail) «Начать рейс»
-    // получал disclosure_host_unavailable → красный toast, disclosure не
-    // показывался, рейс не стартовал. Гейт обязан быть на КАЖДОМ входе.
     return (
-      <DealLocationPermissionGate
-        dealId={target.dealId}
-        role={params.role}
-        initialStatus={params.dealStatus}
-      >
-        <DealWorkspaceScreen
-          {...props}
-          route={{
-            ...route,
-            params: {
-              ...params,
-              dealId: target.dealId,
-              roomId: target.roomId,
-              partner: target.partner || params.partner || null,
-              cargoId,
-            },
-          }}
-        />
-      </DealLocationPermissionGate>
+      <DealWorkspaceRoute
+        {...props}
+        route={{
+          ...route,
+          params: {
+            ...params,
+            dealId: target.dealId,
+            roomId: target.roomId,
+            partner: target.partner || params.partner || null,
+            cargoId,
+          },
+        }}
+      />
     );
   }
 

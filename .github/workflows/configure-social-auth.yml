@@ -1,0 +1,291 @@
+name: Configure Google and Apple Auth
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/configure-social-auth.yml
+      - scripts/configure_social_auth_providers.sh
+      - tests/frontend/test_configure_social_auth_workflow.mjs
+
+permissions:
+  contents: read
+
+concurrency:
+  group: urtruck-social-auth-config
+  cancel-in-progress: false
+
+jobs:
+  configure:
+    name: Configure Supabase social auth providers
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_PROJECT_REF: pymddxenwtjcbmrafvnc
+      URTRUCK_SITE_URL: https://urtruck.kz
+      URTRUCK_WEB_SOCIAL_REDIRECT: https://urtruck.kz/?social_auth=1
+      URTRUCK_NATIVE_SOCIAL_REDIRECT: urtruck://auth-social
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+      GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET || secrets.GOOGLE_CAUTH_CLIENT_SECRET }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_KEY_ID: ${{ secrets.APPLE_KEY_ID }}
+      APPLE_SERVICES_ID: ${{ secrets.APPLE_SERVICES_ID || 'com.urtruck.app.auth' }}
+      APPLE_PRIVATE_KEY_P8: ${{ secrets.APPLE_PRIVATE_KEY_P8 }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Google secrets and detect Apple readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=0
+          required_google=(
+            SUPABASE_ACCESS_TOKEN
+            GOOGLE_OAUTH_CLIENT_ID
+            GOOGLE_OAUTH_CLIENT_SECRET
+          )
+          for key in "${required_google[@]}"; do
+            if [[ -z "${!key:-}" ]]; then
+              echo "ERROR: missing GitHub secret ${key}" >&2
+              missing=1
+            fi
+          done
+          if [[ "$missing" -ne 0 ]]; then
+            exit 1
+          fi
+
+          apple_missing=()
+          for key in APPLE_TEAM_ID APPLE_KEY_ID APPLE_PRIVATE_KEY_P8; do
+            if [[ -z "${!key:-}" ]]; then
+              apple_missing+=("$key")
+            fi
+          done
+          if [[ -z "${APPLE_SERVICES_ID:-}" ]]; then
+            apple_missing+=("APPLE_SERVICES_ID")
+          fi
+
+          if [[ "${#apple_missing[@]}" -eq 0 ]]; then
+            echo 'APPLE_CONFIG_READY=true' >> "$GITHUB_ENV"
+            echo 'APPLE_CONFIG_MISSING=' >> "$GITHUB_ENV"
+          else
+            missing_csv="$(IFS=,; echo "${apple_missing[*]}")"
+            echo 'APPLE_CONFIG_READY=false' >> "$GITHUB_ENV"
+            echo "APPLE_CONFIG_MISSING=${missing_csv}" >> "$GITHUB_ENV"
+            echo "Apple provider deferred; missing protected material: ${missing_csv}"
+          fi
+
+      - name: Configure Google provider without exposing secrets
+        shell: bash
+        env:
+          SOCIAL_AUTH_MODE: google
+        run: bash scripts/configure_social_auth_providers.sh
+
+      - name: Verify Google provider and web redirect
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +x
+          anon_key="$(node - <<'NODE'
+          const fs = require('fs');
+          const src = fs.readFileSync('src/config/supabase.js', 'utf8');
+          const m = src.match(/SUPABASE_ANON_KEY\s*=\s*'([^']+)'/);
+          if (!m) process.exit(2);
+          process.stdout.write(m[1]);
+          NODE
+          )"
+
+          settings_url="https://${SUPABASE_PROJECT_REF}.supabase.co/auth/v1/settings"
+          google_ready=false
+          for attempt in $(seq 1 12); do
+            settings="$(curl -fsS -H "apikey: ${anon_key}" "$settings_url")"
+            if printf '%s' "$settings" | jq -e '.external.google == true' >/dev/null; then
+              google_ready=true
+              echo "Google provider visible in public auth settings on attempt ${attempt}"
+              break
+            fi
+            echo "Google auth settings have not converged yet (attempt ${attempt}/12)"
+            sleep 5
+          done
+          if [[ "$google_ready" != 'true' ]]; then
+            echo 'ERROR: Google provider did not become visible in public auth settings' >&2
+            exit 1
+          fi
+
+          base="https://${SUPABASE_PROJECT_REF}.supabase.co/auth/v1/authorize"
+          google_redirect_ready=false
+          for attempt in $(seq 1 6); do
+            google_headers="$(curl -sS -o /dev/null -D - \
+              -H "apikey: ${anon_key}" \
+              "${base}?provider=google&redirect_to=https%3A%2F%2Furtruck.kz%2F%3Fsocial_auth%3D1")"
+            if printf '%s\n' "$google_headers" | grep -i '^location:' | grep -qi 'accounts.google.com'; then
+              google_redirect_ready=true
+              echo "Google OAuth authorize redirect ready on attempt ${attempt}"
+              break
+            fi
+            echo "Google OAuth redirect has not converged yet (attempt ${attempt}/6)"
+            sleep 3
+          done
+          if [[ "$google_redirect_ready" != 'true' ]]; then
+            echo 'ERROR: Google OAuth authorize endpoint did not redirect to accounts.google.com' >&2
+            exit 1
+          fi
+
+          echo 'PUBLIC_AUTH_SETTINGS=google-ready'
+          echo 'GOOGLE_OAUTH_REDIRECT=ready'
+
+      - name: Install Apple JWT dependencies
+        if: env.APPLE_CONFIG_READY == 'true'
+        run: python3 -m pip install --quiet 'PyJWT==2.10.1' 'cryptography==45.0.6'
+
+      - name: Generate Apple client secret in runner memory
+        if: env.APPLE_CONFIG_READY == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +x
+          export RUNNER_TEMP_APPLE_KEY_PATH="$(mktemp "${RUNNER_TEMP}/apple-signin-key.XXXXXX.p8")"
+          export RUNNER_TEMP_APPLE_CLIENT_SECRET_PATH="$(mktemp "${RUNNER_TEMP}/apple-client-secret.XXXXXX.txt")"
+          chmod 600 "${RUNNER_TEMP_APPLE_KEY_PATH}" "${RUNNER_TEMP_APPLE_CLIENT_SECRET_PATH}"
+          cleanup() {
+            rm -f \
+              "${RUNNER_TEMP_APPLE_KEY_PATH}" \
+              "${RUNNER_TEMP_APPLE_CLIENT_SECRET_PATH}"
+          }
+          trap cleanup EXIT
+          python3 - <<'PY'
+          import datetime as dt
+          import os
+          import pathlib
+          import stat
+
+          import jwt
+
+          team_id = os.environ["APPLE_TEAM_ID"].strip()
+          key_id = os.environ["APPLE_KEY_ID"].strip()
+          services_id = os.environ["APPLE_SERVICES_ID"].strip()
+          private_key_raw = os.environ["APPLE_PRIVATE_KEY_P8"]
+          if not team_id or not key_id or not services_id or not private_key_raw.strip():
+              raise SystemExit("Apple signing material is empty")
+          private_key = private_key_raw.replace("\\n", "\n").strip() + "\n"
+          if "BEGIN PRIVATE KEY" not in private_key:
+              raise SystemExit("APPLE_PRIVATE_KEY_P8 does not look like a PEM private key")
+
+          key_path = pathlib.Path(os.environ["RUNNER_TEMP_APPLE_KEY_PATH"])
+          key_path.write_text(private_key, encoding="utf-8")
+          key_path.chmod(stat.S_IRUSR | stat.S_IWUSR)
+
+          now = dt.datetime.now(dt.timezone.utc)
+          exp = now + dt.timedelta(days=180)
+          token = jwt.encode(
+              {
+                  "iss": team_id,
+                  "sub": services_id,
+                  "aud": "https://appleid.apple.com",
+                  "iat": int(now.timestamp()),
+                  "exp": int(exp.timestamp()),
+              },
+              private_key,
+              algorithm="ES256",
+              headers={"kid": key_id},
+          )
+          if not token or token.count(".") != 2:
+              raise SystemExit("Generated Apple client secret is invalid")
+
+          token_path = pathlib.Path(os.environ["RUNNER_TEMP_APPLE_CLIENT_SECRET_PATH"])
+          token_path.write_text(token, encoding="utf-8")
+          token_path.chmod(stat.S_IRUSR | stat.S_IWUSR)
+
+          github_env = pathlib.Path(os.environ["GITHUB_ENV"])
+          with github_env.open("a", encoding="utf-8") as fh:
+              fh.write(f"APPLE_CLIENT_SECRET={token}\n")
+              fh.write(f"APPLE_CLIENT_SECRET_EXPIRES_AT={exp.date().isoformat()}\n")
+          PY
+          apple_client_secret="$(cat "${RUNNER_TEMP_APPLE_CLIENT_SECRET_PATH}")"
+          if [[ -z "${apple_client_secret}" ]]; then
+            echo "ERROR: generated Apple client secret is empty" >&2
+            exit 1
+          fi
+          echo "::add-mask::${APPLE_PRIVATE_KEY_P8}"
+          echo "::add-mask::${apple_client_secret}"
+
+      - name: Configure Apple provider without exposing secrets
+        if: env.APPLE_CONFIG_READY == 'true'
+        shell: bash
+        env:
+          SOCIAL_AUTH_MODE: apple
+        run: bash scripts/configure_social_auth_providers.sh
+
+      - name: Verify Apple provider and web redirect
+        if: env.APPLE_CONFIG_READY == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +x
+          anon_key="$(node - <<'NODE'
+          const fs = require('fs');
+          const src = fs.readFileSync('src/config/supabase.js', 'utf8');
+          const m = src.match(/SUPABASE_ANON_KEY\s*=\s*'([^']+)'/);
+          if (!m) process.exit(2);
+          process.stdout.write(m[1]);
+          NODE
+          )"
+
+          settings_url="https://${SUPABASE_PROJECT_REF}.supabase.co/auth/v1/settings"
+          apple_ready=false
+          for attempt in $(seq 1 12); do
+            settings="$(curl -fsS -H "apikey: ${anon_key}" "$settings_url")"
+            if printf '%s' "$settings" | jq -e '.external.apple == true' >/dev/null; then
+              apple_ready=true
+              echo "Apple provider visible in public auth settings on attempt ${attempt}"
+              break
+            fi
+            echo "Apple auth settings have not converged yet (attempt ${attempt}/12)"
+            sleep 5
+          done
+          if [[ "$apple_ready" != 'true' ]]; then
+            echo 'ERROR: Apple provider did not become visible in public auth settings' >&2
+            exit 1
+          fi
+
+          base="https://${SUPABASE_PROJECT_REF}.supabase.co/auth/v1/authorize"
+          apple_redirect_ready=false
+          for attempt in $(seq 1 6); do
+            apple_headers="$(curl -sS -o /dev/null -D - \
+              -H "apikey: ${anon_key}" \
+              "${base}?provider=apple&redirect_to=https%3A%2F%2Furtruck.kz%2F%3Fsocial_auth%3D1")"
+            if printf '%s\n' "$apple_headers" | grep -i '^location:' | grep -Eqi 'appleid\.apple\.com|apple\.com'; then
+              apple_redirect_ready=true
+              echo "Apple OAuth authorize redirect ready on attempt ${attempt}"
+              break
+            fi
+            echo "Apple OAuth redirect has not converged yet (attempt ${attempt}/6)"
+            sleep 3
+          done
+          if [[ "$apple_redirect_ready" != 'true' ]]; then
+            echo 'ERROR: Apple OAuth authorize endpoint did not redirect to Apple' >&2
+            exit 1
+          fi
+
+          echo 'PUBLIC_AUTH_SETTINGS=apple-ready'
+          echo 'APPLE_OAUTH_REDIRECT=ready'
+
+      - name: Workflow summary
+        shell: bash
+        run: |
+          {
+            echo '## Social Auth Configuration'
+            echo ''
+            echo '- Google provider: enabled and redirect-verified'
+            if [[ "${APPLE_CONFIG_READY}" == 'true' ]]; then
+              echo '- Apple provider: enabled and redirect-verified'
+              echo "- Apple client secret expiry: ${APPLE_CLIENT_SECRET_EXPIRES_AT}"
+            else
+              echo "- Apple provider: deferred; missing protected material: ${APPLE_CONFIG_MISSING}"
+            fi
+            echo '- Redirects preserved: https://urtruck.kz/?social_auth=1 , urtruck://auth-social'
+          } >> "$GITHUB_STEP_SUMMARY"

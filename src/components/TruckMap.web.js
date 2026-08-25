@@ -2,9 +2,9 @@
 // Preferred road geometry/metrics come from UrTruck backend:
 //   KZ/RU/CIS -> Yandex Router API mode=truck
 //   unsupported China corridors -> global HGV fallback.
-// Browser never receives provider secrets.
+// Browser never receives provider secrets and the route stays inside UrTruck.
 import React from 'react';
-import { View, Text, StyleSheet, findNodeHandle, TouchableOpacity, Linking } from 'react-native';
+import { View, Text, StyleSheet, findNodeHandle } from 'react-native';
 import { routingAPI } from '../utils/routingAPI';
 import { useI18n } from '../utils/useI18n';
 
@@ -23,13 +23,6 @@ const pointKey = (point) => point ? `${point[0]}:${point[1]}` : 'none';
 const routeKey = (points) => (points || [])
   .map((point) => `${Number(point?.[0]).toFixed(4)}:${Number(point?.[1]).toFixed(4)}`)
   .join('|');
-
-const buildYandexRouteUrl = (points) => {
-  const safe = (points || []).filter(Boolean);
-  if (safe.length < 2) return null;
-  const rtext = safe.map((p) => `${p[0]},${p[1]}`).join('~');
-  return `https://yandex.ru/maps/?rtext=${encodeURIComponent(rtext)}&rtt=auto`;
-};
 
 // 2026-08-20 (App Store release audit, P0 locale leak): units were hardcoded
 // Russian and leaked into ZH/EN/KK UI. Uses existing km_short / track_* keys.
@@ -307,7 +300,6 @@ export default function TruckMap({
   // мы нигде не собираем; подставлять туда capacityTons исказило бы
   // весовые ограничения маршрута (P1 re-review, было исправлено).
   vehicle = null,
-  showRouteAction = true,
 }) {
   const { t } = useI18n();
   // Badge copy falls back to the localized default when the caller omits it.
@@ -327,10 +319,6 @@ export default function TruckMap({
   const vehicleKey = vehicle ? JSON.stringify(vehicle) : '';
   const [serverRoute, setServerRoute] = React.useState(null);
   const [serverLoading, setServerLoading] = React.useState(false);
-  const routeUrl = React.useMemo(() => buildYandexRouteUrl(effectivePoints), [effectiveKey]);
-  const openRoute = React.useCallback(() => {
-    if (routeUrl) Linking.openURL(routeUrl).catch(() => {});
-  }, [routeUrl]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -374,11 +362,6 @@ export default function TruckMap({
           <Text style={s.routeStateText}>{t('map_building_route')}</Text>
         </View>
       ) : null}
-      {showRouteAction && routeUrl ? (
-        <TouchableOpacity style={s.routeAction} onPress={openRoute} activeOpacity={0.84} testID="truck-map-route-action">
-          <Text style={s.routeActionText}>{t('route_action')}</Text>
-        </TouchableOpacity>
-      ) : null}
       {showBadge ? (
         <View pointerEvents="none" style={s.badge}>
           <Text style={s.badgeTitle}>{showPlanned ? badgePlannedTitle : badgeLiveTitle}</Text>
@@ -401,12 +384,6 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.95)', borderWidth: 1, borderColor: '#DDE5E0',
   },
   routeStateText: { color: '#3F4E46', fontSize: 11.5, fontWeight: '800' },
-  routeAction: {
-    position: 'absolute', right: 12, bottom: 12, minHeight: 40, paddingHorizontal: 14,
-    borderRadius: 14, backgroundColor: '#168759', alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#000', shadowOpacity: 0.14, shadowRadius: 10, shadowOffset: { width: 0, height: 4 },
-  },
-  routeActionText: { color: '#FFFFFF', fontSize: 13, fontWeight: '900' },
   badge: {
     position: 'absolute', left: 12, top: 12, maxWidth: '72%', paddingHorizontal: 11, paddingVertical: 8,
     borderRadius: 11, backgroundColor: 'rgba(255,255,255,0.94)', borderWidth: 1, borderColor: '#DDE5E0',

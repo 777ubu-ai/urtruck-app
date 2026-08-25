@@ -5,16 +5,16 @@ import BackgroundLocationDisclosureModal from './BackgroundLocationDisclosureMod
 import {
   getBackgroundLocationPermissionState,
   openLocationSettings,
-  requestBackgroundLocationPermission,
   requestForegroundLocationPermission,
 } from '../../utils/backgroundLocation';
 import { registerLocationPermissionRequestHandler } from '../../utils/locationPermissionCoordinator';
 import { useI18n } from '../../utils/useI18n';
 import { useAuth } from '../../utils/AuthContext';
 
-// Invisible permission/consent host for the real deal workspace.
-// The driver's explicit "Start trip" action is the only normal entry point.
-// Android and web show the same per-trip disclosure; there is no proactive banner.
+// Canonical visible consent host for active-trip GPS.
+// Android must show UrTruck's prominent disclosure BEFORE any OS location
+// prompt. The explicit driver action "Start trip" is the only product trigger;
+// opening/viewing the route map never requests tracking permission.
 export default function DealLocationPermissionGate({ role, children }) {
   const { lang } = useI18n();
   const { session } = useAuth();
@@ -26,6 +26,7 @@ export default function DealLocationPermissionGate({ role, children }) {
   const [busy, setBusy] = React.useState(false);
   const pendingResolve = React.useRef(null);
   const mounted = React.useRef(true);
+  const acceptedInThisWorkspace = React.useRef(false);
 
   const resolvePending = React.useCallback((result) => {
     const resolve = pendingResolve.current;
@@ -46,25 +47,6 @@ export default function DealLocationPermissionGate({ role, children }) {
     };
   }, [resolvePending]);
 
-  const beginDisclosure = React.useCallback(async () => {
-    if (!supportsTripDisclosure) return { ok: false, reason: 'disclosure_not_supported' };
-
-    // Per-trip consent is intentional: show the approved disclosure for every
-    // new Start-trip action even when OS location permission was granted earlier.
-    if (pendingResolve.current) return { ok: false, reason: 'permission_flow_busy' };
-
-    return new Promise((resolve) => {
-      pendingResolve.current = resolve;
-      setModalMode('disclosure');
-      setModalVisible(true);
-    });
-  }, [supportsTripDisclosure]);
-
-  React.useEffect(() => {
-    if (!supportsTripDisclosure || !isDriver) return undefined;
-    return registerLocationPermissionRequestHandler(beginDisclosure);
-  }, [beginDisclosure, isDriver, supportsTripDisclosure]);
-
   const successPayload = React.useCallback(() => ({
     ok: true,
     foregroundOnly: Platform.OS !== 'android',
@@ -72,12 +54,43 @@ export default function DealLocationPermissionGate({ role, children }) {
     backgroundRequired: Platform.OS === 'android',
   }), []);
 
+  const beginDisclosure = React.useCallback(async (context = {}) => {
+    if (!supportsTripDisclosure) return { ok: false, reason: 'disclosure_not_supported' };
+
+    // Shippers never broadcast their own GPS.
+    if (!isDriver) return { ok: true, notRequired: true, source: context?.source || null };
+
+    if (pendingResolve.current) return { ok: false, reason: 'permission_flow_busy' };
+
+    // Repeated Start trip taps in the same mounted workspace must not show a
+    // duplicate disclosure while the required Android grants remain valid.
+    if (acceptedInThisWorkspace.current) {
+      const state = await refreshPermission();
+      if (state?.ok) return successPayload();
+      acceptedInThisWorkspace.current = false;
+    }
+
+    return new Promise((resolve) => {
+      pendingResolve.current = resolve;
+      setModalMode('disclosure');
+      setModalVisible(true);
+    });
+  }, [isDriver, refreshPermission, successPayload, supportsTripDisclosure]);
+
+  React.useEffect(() => {
+    if (!supportsTripDisclosure) return undefined;
+    // One canonical coordinator is registered at the accepted-deal route.
+    // beginDisclosure passes shippers through without any GPS prompt.
+    return registerLocationPermissionRequestHandler(beginDisclosure);
+  }, [beginDisclosure, supportsTripDisclosure]);
+
   const completeIfGranted = React.useCallback(async () => {
     if (!pendingResolve.current) return false;
     setBusy(true);
     const state = await refreshPermission();
     setBusy(false);
     if (state?.ok) {
+      acceptedInThisWorkspace.current = true;
       setModalVisible(false);
       setModalMode('disclosure');
       resolvePending(successPayload());
@@ -101,25 +114,35 @@ export default function DealLocationPermissionGate({ role, children }) {
       return;
     }
 
-    let state = null;
+    // Android 11+ normally grants background access from the app settings
+    // screen. Do NOT auto-launch requestBackgroundPermissionsAsync here: on
+    // Xiaomi/MIUI this transition can kill the activity after the foreground
+    // dialog. Keep the UrTruck disclosure visible and let the driver explicitly
+    // tap "Open settings", then verify the grant on AppState resume.
     if (Platform.OS === 'android') {
-      setBusy(true);
-      const background = await requestBackgroundLocationPermission();
-      setBusy(false);
-      if (!background.ok) {
+      const state = await refreshPermission();
+      if (state?.ok) {
+        acceptedInThisWorkspace.current = true;
+        setModalVisible(false);
+        setModalMode('disclosure');
+        resolvePending(successPayload());
+      } else {
         setModalMode('settings');
-        return;
       }
-      state = await refreshPermission();
-    } else {
-      state = await refreshPermission();
+      return;
     }
 
-    setModalVisible(false);
-    setModalMode('disclosure');
-    resolvePending(state?.ok
-      ? successPayload()
-      : { ok: false, reason: Platform.OS === 'android' ? 'bg_state_mismatch' : 'fg_state_mismatch' });
+    const state = await refreshPermission();
+    if (state?.ok) {
+      acceptedInThisWorkspace.current = true;
+      setModalVisible(false);
+      setModalMode('disclosure');
+      resolvePending(successPayload());
+    } else {
+      setModalVisible(false);
+      setModalMode('disclosure');
+      resolvePending({ ok: false, reason: 'fg_state_mismatch' });
+    }
   }, [busy, refreshPermission, resolvePending, successPayload]);
 
   const cancelDisclosure = React.useCallback(() => {

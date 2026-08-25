@@ -88,6 +88,37 @@ def test_message_sync_both_directions():
     assert owner_view == driver_view    # одна и та же история
 
 
+def test_received_deal_keeps_room_visible_and_chat_usable_until_completion():
+    o, d = "own_" + uuid.uuid4().hex[:6], "drv_" + uuid.uuid4().hex[:6]
+    cargo = "cg_" + uuid.uuid4().hex[:6]
+    _mk_users(o, d)
+    room = get_or_create_deal_room(cargo, o, d)
+    deal_id = _mk_accepted_deal(cargo, o, d, room)
+
+    with get_conn() as c:
+        c.execute("UPDATE deals SET status='received' WHERE id=?", (deal_id,))
+
+    rooms = my_rooms(user=_u(o))["rooms"]
+    assert any(r["id"] == room and r["deal_status"] == "received" for r in rooms)
+
+    sent = send_message(
+        SendMessageIn(room_id=room, text="receipt-confirmed-chat", client_msg_id="received-regression"),
+        user=_u(o),
+    )
+    assert sent["ok"] is True
+    driver_view = [m["text"] for m in get_messages(room, user=_u(d))["messages"]]
+    assert "receipt-confirmed-chat" in driver_view
+
+    with get_conn() as c:
+        c.execute("UPDATE deals SET status='cancelled' WHERE id=?", (deal_id,))
+
+    hidden = my_rooms(user=_u(o))["rooms"]
+    assert all(r["id"] != room for r in hidden)
+    with pytest.raises(HTTPException) as blocked:
+        send_message(SendMessageIn(room_id=room, text="must-not-send"), user=_u(o))
+    assert blocked.value.status_code == 403
+
+
 def test_third_user_cannot_read_or_send():
     o, d, t = ("own_" + uuid.uuid4().hex[:6], "drv_" + uuid.uuid4().hex[:6], "thr_" + uuid.uuid4().hex[:6])
     cargo = "cg_" + uuid.uuid4().hex[:6]

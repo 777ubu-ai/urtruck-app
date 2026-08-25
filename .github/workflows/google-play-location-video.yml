@@ -1,0 +1,232 @@
+name: Record Google Play Background Location Evidence
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/google-play-location-video.yml"
+      - "qa/maestro/google-play-location/**"
+      - "qa/scripts/google-play-background-location/**"
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: "Exact app source SHA to build and record"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: google-play-location-evidence-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  record-evidence:
+    name: Build standalone APK and record native Android proof
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      SOURCE_DIR: ${{ github.workspace }}/source
+      ARTIFACT_DIR: ${{ github.workspace }}/source/qa/artifacts/google-play-background-location
+      REVIEWER_EMAIL: appreview@urtruck.kz
+      REVIEWER_CODE: "1975"
+
+    steps:
+      - name: Checkout automation branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve exact app source SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_sha="${{ inputs.source_sha }}"
+          if [[ -z "$source_sha" ]]; then
+            source_sha="${GITHUB_SHA}"
+          fi
+          echo "SOURCE_SHA=${source_sha}" >> "$GITHUB_ENV"
+
+      - name: Checkout exact app source SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          path: source
+          fetch-depth: 1
+
+      - name: Verify checked out source SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$SOURCE_DIR"
+          actual_sha="$(git rev-parse HEAD)"
+          echo "SOURCE_SHA=$actual_sha"
+          test "$actual_sha" = "${SOURCE_SHA}"
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: source/package-lock.json
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Enable KVM for Android emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+          ls -l /dev/kvm
+
+      - name: Install Android SDK platform 36 / build-tools 36.0.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Free runner disk space
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk || true
+          df -h
+
+      - name: Install npm dependencies
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --legacy-peer-deps --ignore-scripts \
+            || npm install --legacy-peer-deps --ignore-scripts --no-audit --no-fund
+
+      - name: Apply patches (if patches/ exists)
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -d patches ] && [ "$(ls -A patches 2>/dev/null)" ]; then
+            npx patch-package
+          fi
+
+      - name: Decode upload keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${ANDROID_KEYSTORE_BASE64:-}" || {
+            echo "::error::ANDROID_KEYSTORE_BASE64 is required"
+            exit 1
+          }
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/urtruck-upload-key.jks"
+
+      - name: Build standalone release APK
+        working-directory: source/android
+        env:
+          EXPO_PUBLIC_API_URL: https://urtruck.kz
+          EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
+          ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_STORE_FILE: ${{ format('{0}/urtruck-upload-key.jks', runner.temp) }}
+          ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace --warning-mode=summary
+
+      - name: Verify release APK identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="$SOURCE_DIR/android/app/build/outputs/apk/release/app-release.apk"
+          test -f "$apk"
+          aapt_bin="$(find "${ANDROID_SDK_ROOT}/build-tools" -type f -name aapt | sort | tail -n 1)"
+          test -n "$aapt_bin"
+          "$aapt_bin" dump badging "$apk" | tee "$RUNNER_TEMP/aapt-badging.txt"
+          grep -q "package: name='com.urtruck.app'" "$RUNNER_TEMP/aapt-badging.txt"
+
+      - name: Install Maestro CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -Ls "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+
+      - name: Boot Android emulator and record evidence
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          EXPO_PUBLIC_API_URL: https://urtruck.kz
+          REVIEWER_EMAIL: ${{ env.REVIEWER_EMAIL }}
+          REVIEWER_CODE: ${{ env.REVIEWER_CODE }}
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_7
+          disk-size: 8192M
+          ram-size: 4096M
+          heap-size: 1024M
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -camera-back none -camera-front none
+          disable-animations: false
+          script: |
+            bash -lc 'set -euo pipefail; export PATH="$HOME/.maestro/bin:$PATH"; bash qa/scripts/google-play-background-location/run-ci-video.sh'
+
+      - name: Remove keystore from runner
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/urtruck-upload-key.jks"
+
+      - name: Upload Google Play evidence artifact
+        if: ${{ always() && hashFiles('source/qa/artifacts/google-play-background-location/**') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: google-play-background-location-evidence
+          path: source/qa/artifacts/google-play-background-location/
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Record background-location evidence in release ledger
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          EVIDENCE_SOURCE_SHA: ${{ env.SOURCE_SHA }}
+          EVIDENCE_RESULT: ${{ job.status }}
+        with:
+          script: |
+            const sha = process.env.EVIDENCE_SOURCE_SHA || context.sha;
+            const result = (process.env.EVIDENCE_RESULT || 'unknown').toLowerCase();
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              `### Google Play background location evidence — ${result.toUpperCase()}`,
+              `- sha: \`${sha}\``,
+              `- workflow: \`Record Google Play Background Location Evidence\``,
+              `- run: ${runUrl}`,
+              `- result: \`${result}\``,
+              `- package under test: \`com.urtruck.app\``,
+              `- artifact: \`google-play-background-location-evidence\` (uploaded when evidence files exist)`,
+              `- source trigger: \`${context.eventName}\``,
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: 247,
+              body,
+            });

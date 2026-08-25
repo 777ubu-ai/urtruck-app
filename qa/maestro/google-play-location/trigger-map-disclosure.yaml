@@ -1,0 +1,16 @@
+appId: com.urtruck.app
+name: trigger-start-trip-disclosure
+---
+- extendedWaitUntil:
+    visible:
+      id: "deal-action-start-delivery"
+    timeout: 30000
+- tapOn:
+    id: "deal-action-start-delivery"
+- extendedWaitUntil:
+    visible:
+      id: "background-location-disclosure"
+    timeout: 15000
+- assertVisible: "Allow GPS tracking?"
+- assertVisible: "Agree and continue"
+- assertVisible: "Do not agree"

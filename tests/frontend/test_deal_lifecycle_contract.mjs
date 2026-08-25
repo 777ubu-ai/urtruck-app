@@ -101,15 +101,22 @@ test('P1: legacy-комната без chat_room_id восстанавливае
     'связь deal.chat_room_id не чинится на месте');
 });
 
-test('P1: DealLocationPermissionGate смонтирован на ВСЕХ трёх входах в сделку', () => {
+test('P1: все три входа в сделку идут через канонический DealWorkspaceRoute', () => {
+  // Апстрим (81d1ccc и раньше) закрыл этот дефект лучше, чем ad-hoc обёртка на
+  // каждом экране: один route-хост DealWorkspaceRoute владеет гейтом, а
+  // qa/utils/gpsConsentSmoke.js прямо ЗАПРЕЩАЕТ экранам импортировать
+  // DealWorkspaceScreenV2 или монтировать DealLocationPermissionGate вручную.
+  // Тест держит именно этот инвариант, чтобы новый вход в сделку нельзя было
+  // добавить в обход disclosure.
   for (const [name, src] of [
     ['ChatScreenV2', chatV2], ['CargoDetailV2', cargoV2], ['TripDetailV2', tripV2],
   ]) {
-    assert.match(src, /<DealLocationPermissionGate/,
-      `${name}: DealWorkspaceScreen рендерится без гейта — «Начать рейс» упадёт в disclosure_host_unavailable`);
-    const gateAt = src.indexOf('<DealLocationPermissionGate');
-    const wsAt = src.indexOf('<DealWorkspaceScreen');
-    assert.ok(gateAt >= 0 && wsAt > gateAt, `${name}: гейт должен оборачивать DealWorkspaceScreen`);
+    assert.match(src, /DealWorkspaceRoute/,
+      `${name}: вход в сделку минует канонический gated-route — «Начать рейс» упадёт в disclosure_host_unavailable`);
+    assert.ok(!src.includes("from './DealWorkspaceScreenV2'"),
+      `${name}: прямой импорт DealWorkspaceScreenV2 обходит гейт`);
+    assert.ok(!src.includes('DealLocationPermissionGate'),
+      `${name}: ad-hoc permission-host запрещён, гейт живёт в DealWorkspaceRoute`);
   }
 });
 

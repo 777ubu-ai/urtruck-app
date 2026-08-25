@@ -1,0 +1,30 @@
+appId: com.urtruck.app
+name: open-first-active-deal
+---
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: "bottom-nav-deals"
+    timeout: 60000
+- tapOn:
+    id: "bottom-nav-deals"
+- waitForAnimationToEnd
+- runFlow:
+    when:
+      visible:
+        id: "deals-tab-active"
+    commands:
+      - tapOn:
+          id: "deals-tab-active"
+      - waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "deals-deal-card"
+    timeout: 30000
+- tapOn:
+    id: "deals-deal-card"
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: "deal-map-card-open"
+    timeout: 30000

@@ -3,12 +3,13 @@
 -- Таблица регистрации (пошаговая)
 CREATE TABLE IF NOT EXISTS drivers_registration (
   id TEXT PRIMARY KEY,
-  phone TEXT UNIQUE,                     -- NULL для guest (level 0)
+  phone TEXT UNIQUE,                     -- контактный номер; login identity хранится отдельно
+  email TEXT,                            -- canonical Email/Google/Apple login identity
   whatsapp_verified INTEGER DEFAULT 0,
 
   -- Lazy registration: уровень доверия 0..3
   -- 0 = guest (anonymous, just browsing)
-  -- 1 = phone verified (OTP passed)
+  -- 1 = auth identity verified (phone/email/social)
   -- 2 = identity (IIN + selfie + liveness)
   -- 3 = full driver (license + vehicle passport + vehicle)
   verification_level INTEGER DEFAULT 0,
@@ -44,7 +45,7 @@ CREATE TABLE IF NOT EXISTS drivers_registration (
   status TEXT DEFAULT 'pending',       -- pending | under_review | approved | rejected | manual_review
   moderation_score REAL,               -- авто-модерация 0-1
   auto_approved INTEGER DEFAULT 0,
-  manual_review_required INTEGER DEFAULT 0,  -- падение face API → ручная проверка
+  manual_review_required INTEGER DEFAULT 0,
   manual_review_reason TEXT,
   rejected_reason TEXT,
 
@@ -57,7 +58,7 @@ CREATE TABLE IF NOT EXISTS drivers_registration (
   approved_at TEXT
 );
 
--- WhatsApp коды подтверждения (TTL 5 минут)
+-- OTP codes (legacy table name/column retained for backward compatibility).
 CREATE TABLE IF NOT EXISTS verification_codes (
   phone TEXT PRIMARY KEY,
   code TEXT NOT NULL,

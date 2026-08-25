@@ -4,18 +4,18 @@ import Feather from '@expo/vector-icons/Feather';
 
 const COPY = {
   RU: {
-    title: 'Отслеживать рейс',
-    intro: 'Во время активного рейса UrTruck передаёт местоположение автомобиля грузоотправителю, чтобы он видел движение груза на карте.',
-    background: 'Передача может продолжаться, когда приложение свёрнуто или экран выключен, через системный сервис активного рейса.',
-    stop: 'Передача прекращается после завершения или отмены рейса.',
-    continue: 'Разрешить и начать рейс',
-    notNow: 'Не сейчас',
-    settingsTitle: Platform.OS === 'web' ? 'Разрешите геолокацию в браузере' : 'Разрешите геолокацию для рейса',
+    title: 'Разрешить GPS-отслеживание?',
+    intro: 'UrTruck будет получать точное местоположение автомобиля во время активного рейса и передавать его грузоотправителю, чтобы он видел движение груза на карте.',
+    background: 'Данные о местоположении используются и в фоновом режиме — когда приложение свёрнуто, не отображается на экране или экран телефона выключен.',
+    stop: 'Передача GPS прекращается после завершения или отмены рейса.',
+    continue: 'Согласен и продолжить',
+    notNow: 'Не согласен',
+    settingsTitle: Platform.OS === 'web' ? 'Разрешите геолокацию в браузере' : 'Разрешите геолокацию всегда',
     settingsBody: Platform.OS === 'web'
-      ? 'Чтобы начать рейс, разрешите UrTruck доступ к местоположению для этого сайта в настройках браузера.'
-      : 'Чтобы начать рейс и передавать положение машины во время перевозки, разрешите UrTruck доступ к геолокации «Всегда».',
+      ? 'Чтобы открыть карту рейса, разрешите UrTruck доступ к местоположению для этого сайта в настройках браузера.'
+      : 'Android уже разрешил геолокацию при использовании приложения. Для GPS активного рейса теперь разрешите UrTruck доступ к местоположению «Всегда».',
     settingsHint: Platform.OS === 'android'
-      ? 'Откройте настройки UrTruck → Разрешения → Геолокация → Разрешить всегда. На Android сначала может появиться «При использовании приложения» — выберите его, затем включите «Всегда» в настройках.'
+      ? 'Нажмите «Открыть настройки» → Геолокация → Разрешить в любом режиме. Затем вернитесь в UrTruck.'
       : Platform.OS === 'web'
         ? 'Откройте настройки сайта в браузере, разрешите «Местоположение», вернитесь в UrTruck и нажмите «Проверить ещё раз».'
         : 'В настройках разрешите доступ к геолокации.',
@@ -23,18 +23,18 @@ const COPY = {
     checkAgain: 'Проверить ещё раз',
   },
   EN: {
-    title: 'Track trip',
-    intro: 'During an active trip, UrTruck shares the vehicle location with the shipper so they can follow the cargo on the map.',
-    background: 'Sharing can continue while the app is minimized or the screen is off through the active-trip system service.',
-    stop: 'Location sharing stops when the trip is completed or cancelled.',
-    continue: 'Allow and start trip',
-    notNow: 'Not now',
-    settingsTitle: Platform.OS === 'web' ? 'Allow location in your browser' : 'Allow trip location',
+    title: 'Allow GPS tracking?',
+    intro: 'During an active trip, UrTruck will access the vehicle’s precise location and share it with the shipper so they can follow the cargo on the map.',
+    background: 'Location data is also used in the background when the app is minimized, not visible on screen, or the phone screen is off.',
+    stop: 'GPS sharing stops when the trip is completed or cancelled.',
+    continue: 'Agree and continue',
+    notNow: 'Do not agree',
+    settingsTitle: Platform.OS === 'web' ? 'Allow location in your browser' : 'Allow location all the time',
     settingsBody: Platform.OS === 'web'
-      ? 'To start the trip, allow location access for this site in your browser settings.'
-      : 'To start the trip and share the vehicle position during transport, allow UrTruck location access “all the time”.',
+      ? 'To open the trip map, allow location access for this site in your browser settings.'
+      : 'Android has allowed location while using the app. For active-trip GPS, now allow UrTruck location access “all the time”.',
     settingsHint: Platform.OS === 'android'
-      ? 'Open UrTruck settings → Permissions → Location → Allow all the time. Android may first show “While using the app”; choose it, then enable “All the time” in settings.'
+      ? 'Tap “Open settings” → Location → Allow all the time, then return to UrTruck.'
       : Platform.OS === 'web'
         ? 'Open this site’s browser permissions, allow Location, return to UrTruck, then tap “Check again”.'
         : 'Allow location access in settings.',
@@ -42,18 +42,18 @@ const COPY = {
     checkAgain: 'Check again',
   },
   ZH: {
-    title: '追踪运输',
-    intro: '运输进行期间，UrTruck 会向货主共享车辆位置，以便货主在地图上查看货物运输进度。',
-    background: '应用最小化或屏幕关闭后，可通过运输期间的系统服务继续共享位置。',
-    stop: '运输完成或取消后将停止共享位置。',
-    continue: '允许并开始运输',
-    notNow: '暂不',
-    settingsTitle: Platform.OS === 'web' ? '请在浏览器中允许位置权限' : '允许运输位置权限',
+    title: '允许 GPS 跟踪吗？',
+    intro: '在运输进行期间，UrTruck 会获取车辆的精确位置并共享给货主，以便货主在地图上查看货物运输进度。',
+    background: '应用最小化、未显示在屏幕上或手机熄屏时，位置数据仍可能在后台使用。',
+    stop: '运输完成或取消后将停止共享 GPS。',
+    continue: '同意并继续',
+    notNow: '不同意',
+    settingsTitle: Platform.OS === 'web' ? '请在浏览器中允许位置权限' : '始终允许位置权限',
     settingsBody: Platform.OS === 'web'
-      ? '要开始运输，请在浏览器的网站权限中允许 UrTruck 使用位置。'
-      : '为了开始运输并在运输期间共享车辆位置，请允许 UrTruck 始终访问位置。',
+      ? '要打开运输地图，请在浏览器的网站权限中允许 UrTruck 使用位置。'
+      : 'Android 已允许“使用应用期间”访问位置。为了运输期间持续 GPS 跟踪，请继续允许 UrTruck “始终”访问位置。',
     settingsHint: Platform.OS === 'android'
-      ? '打开 UrTruck 设置 → 权限 → 位置 → 始终允许。Android 可能先显示“使用应用期间”；请先选择它，再到设置中开启“始终允许”。'
+      ? '点击“打开设置” → 位置 → 始终允许，然后返回 UrTruck。'
       : Platform.OS === 'web'
         ? '打开浏览器的网站权限，允许“位置”，返回 UrTruck 后点击“再次检查”。'
         : '请在设置中允许位置访问。',
@@ -61,18 +61,18 @@ const COPY = {
     checkAgain: '再次检查',
   },
   KK: {
-    title: 'Рейсті бақылау',
-    intro: 'Белсенді рейс кезінде UrTruck жүк иесі картадан жүктің қозғалысын көруі үшін көліктің геолокациясын береді.',
-    background: 'Қолданба жиналғанда немесе экран өшкенде, рейстің жүйелік қызметі арқылы геолокация беру жалғаса алады.',
-    stop: 'Рейс аяқталған немесе тоқтатылған кезде геолокация беру тоқтайды.',
-    continue: 'Рұқсат беру және рейсті бастау',
-    notNow: 'Қазір емес',
-    settingsTitle: Platform.OS === 'web' ? 'Браузерде геолокацияға рұқсат беріңіз' : 'Рейс геолокациясына рұқсат беріңіз',
+    title: 'GPS бақылауға рұқсат бересіз бе?',
+    intro: 'Белсенді рейс кезінде UrTruck көліктің нақты орналасқан жерін алып, жүк иесіне береді, сонда ол жүктің қозғалысын картадан көре алады.',
+    background: 'Қолданба жиналғанда, экранда көрінбегенде немесе телефон экраны өшкенде де геолокация деректері фондық режимде пайдаланылуы мүмкін.',
+    stop: 'Рейс аяқталған немесе тоқтатылған кезде GPS беру тоқтайды.',
+    continue: 'Келісемін және жалғастыру',
+    notNow: 'Келіспеймін',
+    settingsTitle: Platform.OS === 'web' ? 'Браузерде геолокацияға рұқсат беріңіз' : 'Геолокацияға әрқашан рұқсат беріңіз',
     settingsBody: Platform.OS === 'web'
-      ? 'Рейсті бастау үшін браузердегі осы сайттың геолокация рұқсатын қосыңыз.'
-      : 'Рейсті бастау және тасымал кезінде көліктің орнын беру үшін UrTruck-қа геолокацияға «Әрқашан» рұқсат беріңіз.',
+      ? 'Рейс картасын ашу үшін браузердегі осы сайттың геолокация рұқсатын қосыңыз.'
+      : 'Android қолданбаны пайдалану кезінде геолокацияға рұқсат берді. Белсенді рейстің GPS бақылауы үшін UrTruck-қа «Әрқашан» рұқсат беріңіз.',
     settingsHint: Platform.OS === 'android'
-      ? 'UrTruck баптаулары → Рұқсаттар → Геолокация → Әрқашан рұқсат беру. Android алдымен «Қолдану кезінде» көрсетуі мүмкін; оны таңдап, кейін баптауда «Әрқашан» қосыңыз.'
+      ? '«Баптауларды ашу» → Геолокация → Әрқашан рұқсат беру, содан кейін UrTruck-қа оралыңыз.'
       : Platform.OS === 'web'
         ? 'Браузердегі сайт рұқсаттарын ашып, геолокацияны қосыңыз, UrTruck-қа оралып «Қайта тексеру» батырмасын басыңыз.'
         : 'Баптауларда геолокацияға рұқсат беріңіз.',

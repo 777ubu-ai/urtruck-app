@@ -1,0 +1,10 @@
+appId: com.urtruck.app
+name: grant-foreground-and-wait-settings-cta
+---
+- tapOn: "While using the app"
+- extendedWaitUntil:
+    visible:
+      id: "background-location-open-settings"
+    timeout: 30000
+- assertVisible: "Allow location all the time"
+- assertVisible: "Open settings"

@@ -10,13 +10,20 @@ const createTrip = fs.readFileSync('src/screens/CreateTripScreen.js', 'utf8');
 const picker = fs.readFileSync('src/components/RoutePointPicker.js', 'utf8');
 const geography = fs.readFileSync('src/utils/geography.js', 'utf8');
 
-test('route card moves the route CTA below the map and suppresses the map overlay CTA', () => {
-  assert.match(routeMap, /showRouteAction=\{false\}/);
+test('route CTA opens a fullscreen map inside UrTruck and never deep-links externally', () => {
   assert.match(routeMap, /testID="route-map-bottom-action"/);
-  assert.match(webMap, /showRouteAction = true/);
-  assert.match(nativeMap, /showRouteAction = true/);
-  assert.match(webMap, /showRouteAction && routeUrl/);
-  assert.match(nativeMap, /showRouteAction && routeUrl/);
+  assert.match(routeMap, /<Modal[\s\S]*testID="route-map-fullscreen-modal"/);
+  assert.match(routeMap, /testID="route-map-fullscreen"/);
+  assert.match(routeMap, /testID="route-map-fullscreen-close"/);
+  assert.match(routeMap, /setRouteOpen\(true\)/);
+  assert.doesNotMatch(routeMap, /Linking\.openURL/);
+  assert.doesNotMatch(routeMap, /https:\/\/yandex\.(?:ru|kz)\/maps/);
+  assert.doesNotMatch(nativeMap, /Linking\.openURL/);
+  assert.doesNotMatch(webMap, /Linking\.openURL/);
+  assert.doesNotMatch(nativeMap, /https:\/\/yandex\.(?:ru|kz)\/maps/);
+  assert.doesNotMatch(webMap, /https:\/\/yandex\.(?:ru|kz)\/maps/);
+  assert.match(nativeMap, /testID="truck-map-yandex-webview"/);
+  assert.match(webMap, /testID="truck-map-yandex-web"/);
 });
 
 test('publish currency fields show one clear code, not duplicated symbol plus code', () => {
