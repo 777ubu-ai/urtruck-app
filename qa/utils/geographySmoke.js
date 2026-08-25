@@ -120,7 +120,7 @@ if (missingPlaceTranslations.length) {
 // Border UI must use the same canonical language codes as useI18n.
 // QueueScreen.js is intentionally a tiny compatibility wrapper now; the
 // actual driver-first implementation lives in QueueScreenCarousel.js.
-const queueSrc = fs.readFileSync(path.join(ROOT, 'src', 'screens', 'QueueScreenCarousel.js'), 'utf8');
+const queueSrc = fs.readFileSync(path.join(ROOT, 'src', 'screens', 'QueueScreenLazyV2.js'), 'utf8');
 if (!/const COPY = \{[\s\S]*?\bKK:\s*\{[\s\S]*?\bZH:\s*\{/.test(queueSrc)) {
   failures.push('QueueScreen COPY does not expose canonical KK/ZH locales');
 }

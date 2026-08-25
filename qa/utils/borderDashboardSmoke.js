@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import assert from 'node:assert/strict';
 
 const wrapper = fs.readFileSync('src/screens/QueueScreen.js', 'utf8');
-const screen = fs.readFileSync('src/screens/QueueScreenLazy.js', 'utf8');
+const screen = fs.readFileSync('src/screens/QueueScreenLazyV2.js', 'utf8');
 const lazyApi = fs.readFileSync('backend/api/borders_lazy.py', 'utf8');
 const detailService = fs.readFileSync('backend/cgr/checkpoint_detail_service.py', 'utf8');
 const catalogService = fs.readFileSync('backend/cgr/checkpoint_catalog_service.py', 'utf8');
@@ -22,7 +22,7 @@ assert.ok(!screen.includes('`${BASE}?country=`'), 'Initial screen must not load 
 assert.ok(screen.includes('border-checkpoint-carousel'), 'Horizontal checkpoint carousel required');
 assert.ok(screen.includes('border-checkpoint-chip'), 'Checkpoint tap cards required');
 assert.ok(screen.includes('border-checkpoint-next'), 'Visible carousel next control must be tappable');
-assert.ok(screen.includes('scrollCheckpointCarousel'), 'Carousel next control must move the checkpoint list');
+assert.ok(screen.includes('scrollTo({ x: next'), 'Carousel next control must move the checkpoint list');
 assert.ok(screen.includes("'CASPIAN'"), 'Caspian/Port Kuryk destination group must be supported');
 assert.ok(screen.includes('border-lazy-prompt'), 'Driver must be prompted to tap before live CGR loading');
 assert.ok(screen.includes('border-live-loading'), 'Selected checkpoint must show a CGR loading state');

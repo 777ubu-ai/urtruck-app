@@ -138,12 +138,12 @@ const importSourceModule = async (rel) => {
     assert(!critical.includes(leak), `critical ZH fallback leak remains: ${leak}`);
   }
 
-  const queue = read('src/screens/QueueScreenLazy.js');
+  const queue = read('src/screens/QueueScreenLazyV2.js');
   const createCargo = read('src/screens/CreateCargoScreen.js');
   const createTrip = read('src/screens/CreateTripScreen.js');
   const workspace = read('src/screens/DealWorkspaceScreenV2.js');
-  assert(queue.includes('localizeCheckpointName(cp.name, lang)'), 'Border cards must localize checkpoint names');
-  assert(queue.includes('active ? L.selected : L.open'), 'Border card action must be locale copy, not hardcoded Russian');
+  assert(queue.includes('localizeCheckpointName(checkpoint, lang)'), 'Border cards must localize checkpoint names');
+  assert(queue.includes('active ? L.selected : L.tapToOpen'), 'Border card action must be locale copy, not hardcoded Russian');
   assert(createCargo.includes('displayRoutePoint'), 'CreateCargo route point must be localized');
   assert(createTrip.includes('displayRoutePoint'), 'CreateTrip route point must be localized');
   assert(workspace.includes("localizeSystemMessage(message.text || '', lang)"), 'Deal system messages must localize historical Russian rows');
