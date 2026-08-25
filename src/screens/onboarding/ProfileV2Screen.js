@@ -36,6 +36,7 @@ const COPY = {
     messengerLabel: 'Предпочтительный мессенджер',
     messengerContact: 'Контакт в мессенджере',
     messengerPlaceholder: 'ID, логин или номер',
+    messengerRequired: 'Укажите контакт выбранного мессенджера',
     other: 'Другой',
     samePhone: 'Совпадает с основным телефоном',
     emailConfirmed: 'Email уже подтверждён и повторно не запрашивается',
@@ -54,6 +55,7 @@ const COPY = {
     messengerLabel: 'Preferred messenger',
     messengerContact: 'Messenger contact',
     messengerPlaceholder: 'ID, username or number',
+    messengerRequired: 'Enter a contact for the selected messenger',
     other: 'Other',
     samePhone: 'Same as primary phone',
     emailConfirmed: 'Email is already verified and is not requested again',
@@ -72,6 +74,7 @@ const COPY = {
     messengerLabel: '首选即时通讯',
     messengerContact: '即时通讯联系方式',
     messengerPlaceholder: 'ID、账号或手机号',
+    messengerRequired: '请输入所选即时通讯的联系方式',
     other: '其他',
     samePhone: '与主要手机号相同',
     emailConfirmed: '邮箱已验证，无需再次填写',
@@ -90,6 +93,7 @@ const COPY = {
     messengerLabel: 'Қалаулы мессенджер',
     messengerContact: 'Мессенджердегі байланыс',
     messengerPlaceholder: 'ID, логин немесе нөмір',
+    messengerRequired: 'Таңдалған мессенджердегі байланысты көрсетіңіз',
     other: 'Басқа',
     samePhone: 'Негізгі телефонмен бірдей',
     emailConfirmed: 'Email расталған, оны қайта енгізудің қажеті жоқ',
@@ -157,7 +161,7 @@ export default function ProfileV2Screen({ navigation, route }) {
   const s = useMemo(() => makeStyles(colors), [colors]);
   const { t, lang } = useI18n();
   const ui = COPY[lang] || COPY.RU;
-  const { session } = useAuth();
+  const { session, setRole } = useAuth();
   const role = route?.params?.role || session?.user?.role || 'driver';
 
   const signupIdentity = route?.params?.phone || session?.user?.phone || '';
@@ -180,20 +184,26 @@ export default function ProfileV2Screen({ navigation, route }) {
 
   const validName = name.trim().length >= 2;
   const validPhone = isRealPhone(phone);
-  const formValid = validName && validPhone;
+  const validMessenger = !messengerType
+    || (messengerType === 'whatsapp' && sameAsPhone && validPhone)
+    || messengerId.trim().length >= 2;
+  const formValid = validName && validPhone && validMessenger;
 
   const validate = () => {
     const next = {};
     if (!validName) next.name = t('profile_v2_err_name');
     if (!validPhone) next.phone = t('prem_reg_phone_invalid');
+    if (!validMessenger) next.messenger = ui.messengerRequired;
     setErrors(next);
     return Object.keys(next).length === 0;
   };
 
   const selectMessenger = (nextType) => {
-    setMessengerType((current) => (current === nextType ? '' : nextType));
+    const togglingOff = messengerType === nextType;
+    setMessengerType(togglingOff ? '' : nextType);
     setMessengerId('');
-    setSameAsPhone(nextType === 'whatsapp');
+    setSameAsPhone(!togglingOff && nextType === 'whatsapp');
+    if (errors.messenger) setErrors((prev) => ({ ...prev, messenger: null }));
   };
 
   const onContinue = async () => {
@@ -228,6 +238,12 @@ export default function ProfileV2Screen({ navigation, route }) {
         }
         throw new Error(typeof detail === 'string' ? detail : 'profile_save_failed');
       }
+
+      // Критический инвариант: AppNavigator считает session.user.role признаком
+      // завершённого onboarding. Поэтому записываем роль в AuthContext только
+      // ПОСЛЕ успешного PATCH /users/me; иначе при сетевой ошибке шага 2
+      // пользователь мог бы попасть в Main с незаполненным профилем.
+      setRole(role);
       navigation.reset({ index: 0, routes: [{ name: 'Main', params: { role } }] });
     } catch {
       setServerError(t('profile_v2_save_failed'));
@@ -350,7 +366,10 @@ export default function ProfileV2Screen({ navigation, route }) {
                 <Text style={s.samePhoneText}>{ui.samePhone}</Text>
                 <Switch
                   value={sameAsPhone}
-                  onValueChange={setSameAsPhone}
+                  onValueChange={(value) => {
+                    setSameAsPhone(value);
+                    if (errors.messenger) setErrors((prev) => ({ ...prev, messenger: null }));
+                  }}
                   trackColor={{ false: colors.borderStrong, true: colors.primary }}
                   thumbColor={colors.textOnPrimary}
                   ios_backgroundColor={colors.borderStrong}
