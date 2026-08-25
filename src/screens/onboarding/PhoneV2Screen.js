@@ -36,8 +36,13 @@ import { useToast } from '../../components/Toast';
 import { regAPI } from '../../utils/registration';
 import { push } from '../../utils/push';
 import {
+  AUTH_ERROR_CODES,
+  clearPendingProvider,
   completeSocialAuth,
+  getPendingProvider,
   isSocialAuthCallback,
+  logAuthStage,
+  SocialAuthError,
   startSocialAuth,
 } from '../../utils/socialAuth';
 import { brand, useBrand, radius, typography } from '../../theme/brandV2';
@@ -79,6 +84,31 @@ const isValidEmail = (value) => (
   /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test((value || '').trim())
 );
 
+// #P0-B: map the SocialAuthError taxonomy to user-facing copy. Never route
+// PROVIDER_UNAVAILABLE/OAUTH_CANCELLED/BACKEND_VERIFY_FAILED through the
+// generic network-error string — that conflation is the exact bug that made
+// a genuinely-disabled Apple provider look like a dead connection.
+const socialErrorKey = (err, provider) => {
+  const code = err instanceof SocialAuthError ? err.code : null;
+  switch (code) {
+    case AUTH_ERROR_CODES.PROVIDER_UNAVAILABLE:
+    case AUTH_ERROR_CODES.PROVIDER_CONFIG_INVALID:
+      return provider === 'apple'
+        ? 'auth_error_provider_unavailable_apple'
+        : 'auth_error_provider_unavailable_google';
+    case AUTH_ERROR_CODES.OAUTH_CANCELLED:
+      return 'auth_error_oauth_cancelled';
+    case AUTH_ERROR_CODES.OAUTH_CALLBACK_FAILED:
+    case AUTH_ERROR_CODES.SESSION_MISSING:
+      return 'auth_error_callback_failed';
+    case AUTH_ERROR_CODES.BACKEND_VERIFY_FAILED:
+      return 'auth_error_backend_verify_failed';
+    case AUTH_ERROR_CODES.NETWORK_UNAVAILABLE:
+    default:
+      return 'auth_error_network';
+  }
+};
+
 export default function PhoneV2Screen({ navigation, route }) {
   const _b = useBrand();
   const s = React.useMemo(() => makeStyles(_b), [_b]);
@@ -88,14 +118,30 @@ export default function PhoneV2Screen({ navigation, route }) {
 
   const [email, setEmail] = useState('');
   const [emailBusy, setEmailBusy] = useState(false);
-  const [socialBusy, setSocialBusy] = useState(null); // google | apple | callback
-  const [error, setError] = useState(null);
+  // #P1-D: socialBusy holds the SPECIFIC provider currently in flight
+  // ('google' | 'apple'), never a generic 'callback' — otherwise both
+  // buttons spin during callback processing regardless of which one the
+  // user actually pressed.
+  const [socialBusy, setSocialBusy] = useState(null);
+  // #P1-C: email and social errors are independent state. A social/OAuth
+  // failure must never paint the Email input red or show an email
+  // validation message, and vice versa.
+  const [emailError, setEmailError] = useState(null);
+  const [socialError, setSocialError] = useState(null);
   const finishingSocialRef = useRef(false);
   const role = route?.params?.role || null;
   const routedSocialUrl = route?.params?.socialAuthUrl || null;
 
   const emailOk = isValidEmail(email);
   const anyBusy = emailBusy || !!socialBusy;
+
+  // Hydrate which provider's callback we're resuming (survives the full
+  // page reload Google/Apple OAuth does on web — React state does not).
+  useEffect(() => {
+    let mounted = true;
+    getPendingProvider().then((p) => { if (mounted && p) setSocialBusy(p); }).catch(() => {});
+    return () => { mounted = false; };
+  }, []);
 
   const goAfterLogin = useCallback(async (result, identifier, channel) => {
     await signIn(identifier, result.verification_level || 1, result.token);
@@ -136,15 +182,27 @@ export default function PhoneV2Screen({ navigation, route }) {
   const finishSocialUrl = useCallback(async (url) => {
     if (!isSocialAuthCallback(url) || finishingSocialRef.current) return;
     finishingSocialRef.current = true;
-    setSocialBusy('callback');
-    setError(null);
+    const provider = (await getPendingProvider()) || 'google';
+    setSocialBusy(provider);
+    setSocialError(null);
     try {
       const result = await completeSocialAuth(url);
-      if (!result?.token || !result?.email) throw new Error('social_auth_failed');
+      if (!result) {
+        // Duplicate delivery of an already-processed callback — no-op, not
+        // an error (see socialAuth.js lastProcessedCallbackKey guard).
+        return;
+      }
+      if (!result?.token || !result?.email) {
+        throw new SocialAuthError(AUTH_ERROR_CODES.BACKEND_VERIFY_FAILED, 'social_auth_failed', { provider });
+      }
+      logAuthStage('role_resolved', { provider });
       await goAfterLogin(result, result.email, 'social');
+      logAuthStage('navigation_complete', { provider });
     } catch (e) {
-      setError(t('no_connection'));
-      try { toast(t('no_connection'), 'error', 2500); } catch {}
+      const key = socialErrorKey(e, provider);
+      setSocialError(t(key));
+      try { toast(t(key), 'error', 2500); } catch {}
+      await clearPendingProvider();
     } finally {
       setSocialBusy(null);
       finishingSocialRef.current = false;
@@ -173,22 +231,27 @@ export default function PhoneV2Screen({ navigation, route }) {
 
   const onSocialPress = async (provider) => {
     if (anyBusy) return;
-    setError(null);
+    setSocialError(null);
     setSocialBusy(provider);
     try {
       await startSocialAuth(provider);
+      // On web this line is reached right as the browser is navigating away
+      // to the OAuth provider — the socialBusy reset below is cosmetic (the
+      // page unloads next). On native, startSocialAuth already opened the
+      // provider via Linking.openURL and control returns to this screen.
     } catch (e) {
-      setError(t('no_connection'));
-      try { toast(t('no_connection'), 'error', 2500); } catch {}
-    } finally {
+      setSocialError(t(socialErrorKey(e, provider)));
+      try { toast(t(socialErrorKey(e, provider)), 'error', 2500); } catch {}
       setSocialBusy(null);
+      return;
     }
+    setSocialBusy(null);
   };
 
   const submitEmail = async () => {
     if (!emailOk || anyBusy) return;
     setEmailBusy(true);
-    setError(null);
+    setEmailError(null);
     try {
       const cleanEmail = email.trim().toLowerCase();
       const result = await regAPI.sendEmailCode(cleanEmail, {
@@ -196,7 +259,7 @@ export default function PhoneV2Screen({ navigation, route }) {
         role,
       });
       if (result?.sent === false && result?.error && !result?.cooldown) {
-        setError(t('phone_v2_send_failed'));
+        setEmailError(t('phone_v2_send_failed'));
         return;
       }
       navigation.navigate('OtpV2', {
@@ -205,14 +268,17 @@ export default function PhoneV2Screen({ navigation, route }) {
         mockCode: result?.mock ? result.code : null,
       });
     } catch {
-      setError(t('phone_v2_send_failed'));
+      setEmailError(t('phone_v2_send_failed'));
     } finally {
       setEmailBusy(false);
     }
   };
 
   const SocialButton = ({ provider, icon, testID }) => {
-    const loading = socialBusy === provider || socialBusy === 'callback';
+    // #P1-D: only the provider actually in flight shows a spinner. The
+    // other button stays disabled-but-idle (normal icon), never a second
+    // spinner.
+    const loading = socialBusy === provider;
     const label = SOCIAL_LABELS[lang]?.[provider] || SOCIAL_LABELS.EN[provider];
     return (
       <Pressable
@@ -282,13 +348,19 @@ export default function PhoneV2Screen({ navigation, route }) {
               <SocialButton provider="apple" icon="apple" testID="auth-apple" />
             </View>
 
+            {/* #P1-C: social error lives here, next to the buttons that
+                caused it — never inside the Email field's error state. */}
+            {socialError ? (
+              <Text style={s.socialErrorText} testID="auth-social-error">{socialError}</Text>
+            ) : null}
+
             <View style={s.dividerRow} accessibilityElementsHidden>
               <View style={s.dividerLine} />
               <Text style={s.dividerLabel}>{t('auth_tab_email')}</Text>
               <View style={s.dividerLine} />
             </View>
 
-            <View style={[s.inputRow, error && s.inputError]}>
+            <View style={[s.inputRow, emailError && s.inputError]}>
               <Feather
                 name="mail"
                 size={20}
@@ -299,7 +371,7 @@ export default function PhoneV2Screen({ navigation, route }) {
                 value={email}
                 onChangeText={(next) => {
                   setEmail(next);
-                  if (error) setError(null);
+                  if (emailError) setEmailError(null);
                 }}
                 placeholder={t('email_v2_placeholder')}
                 placeholderTextColor={brand.textTertiary}
@@ -316,7 +388,7 @@ export default function PhoneV2Screen({ navigation, route }) {
               />
             </View>
 
-            {error ? <Text style={s.error} testID="auth-v2-error">{error}</Text> : null}
+            {emailError ? <Text style={s.error} testID="auth-v2-error">{emailError}</Text> : null}
 
             <Pressable
               onPress={submitEmail}
@@ -389,6 +461,7 @@ const makeStyles = (brand) => StyleSheet.create({
   socialIconWrap: { width: 36, alignItems: 'center', justifyContent: 'center' },
   socialRightSpacer: { width: 36 },
   socialText: { flex: 1, textAlign: 'center', ...typography.button, color: brand.textPrimary },
+  socialErrorText: { ...typography.bodySmall, color: brand.error, marginTop: 10, textAlign: 'center' },
   dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 20 },
   dividerLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: brand.border },
   dividerLabel: { ...typography.caption, color: brand.textSecondary, fontWeight: '700' },

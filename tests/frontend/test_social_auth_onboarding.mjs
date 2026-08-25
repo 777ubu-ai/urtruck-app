@@ -96,3 +96,110 @@ test('phone remains a required logistics contact after email/social signup', () 
   assert.match(profileV2, /!validPhone/);
   assert.match(profileV2, /phoneRequiredLabel/);
 });
+
+
+// ─── P0 auth-fix 25.08.2026: real owner repro (Apple provider_unavailable
+// mislabeled as "Нет связи с сервером"; Google callback silently dropping
+// the user back on the Auth screen) ─────────────────────────────────────
+
+test('P0-B: provider_unavailable/config errors are a distinct code from network failure', () => {
+  assert.match(socialAuth, /NETWORK_UNAVAILABLE/);
+  assert.match(socialAuth, /PROVIDER_UNAVAILABLE/);
+  assert.match(socialAuth, /PROVIDER_CONFIG_INVALID/);
+  assert.match(socialAuth, /class SocialAuthError extends Error/);
+  // The exact bug: getSocialProviderAvailability distinguishes "could not
+  // reach Supabase" (checked:false) from "Supabase confirms disabled"
+  // (checked:true, provider:false) — startSocialAuth must branch on both.
+  assert.match(socialAuth, /if \(!availability\.checked\)/);
+  assert.match(socialAuth, /if \(availability\[provider\] !== true\)/);
+});
+
+test('P0-B: PhoneV2Screen maps SocialAuthError codes to distinct copy, never one generic message', () => {
+  assert.match(phoneV2, /socialErrorKey/);
+  assert.match(phoneV2, /AUTH_ERROR_CODES\.PROVIDER_UNAVAILABLE/);
+  assert.match(phoneV2, /AUTH_ERROR_CODES\.NETWORK_UNAVAILABLE/);
+  assert.match(phoneV2, /auth_error_provider_unavailable_apple/);
+  assert.match(phoneV2, /auth_error_provider_unavailable_google/);
+  assert.match(phoneV2, /auth_error_network/);
+});
+
+test('P1-C: social error state is independent from email error state', () => {
+  assert.match(phoneV2, /\[emailError, setEmailError\]/);
+  assert.match(phoneV2, /\[socialError, setSocialError\]/);
+  // Email input row must react only to emailError, never socialError.
+  assert.match(phoneV2, /s\.inputRow, emailError && s\.inputError/);
+  assert.doesNotMatch(phoneV2, /s\.inputRow,\s*(?:error|socialError)\s*&&\s*s\.inputError/);
+  // Social error text renders near the provider buttons, not the email row.
+  const socialBlockIdx = phoneV2.indexOf('testID="auth-social-error"');
+  const emailInputIdx = phoneV2.indexOf('testID="email-v2-input"');
+  assert.ok(socialBlockIdx > 0 && socialBlockIdx < emailInputIdx,
+    'social error block must render before the email input, not inside it');
+});
+
+test('P1-D: only the actively-pressed provider button shows a spinner', () => {
+  // Old bug: `socialBusy === provider || socialBusy === 'callback'` lit up
+  // BOTH Google and Apple during callback processing regardless of which
+  // one the user pressed.
+  assert.doesNotMatch(phoneV2, /socialBusy === 'callback'/);
+  assert.match(phoneV2, /const loading = socialBusy === provider;/);
+  // Pending provider survives the full-page web reload OAuth does.
+  assert.match(socialAuth, /PENDING_PROVIDER_KEY/);
+  assert.match(socialAuth, /export async function setPendingProvider/);
+  assert.match(socialAuth, /export async function getPendingProvider/);
+  assert.match(phoneV2, /getPendingProvider\(\)/);
+});
+
+test('P0-A: callback success path always resolves role and completes navigation before touching UI state', () => {
+  assert.match(phoneV2, /logAuthStage\('role_resolved'/);
+  assert.match(phoneV2, /logAuthStage\('navigation_complete'/);
+  // A failed backend verify (no token/email in response) must throw a typed
+  // error, not silently fall through to goAfterLogin with garbage data.
+  assert.match(phoneV2, /AUTH_ERROR_CODES\.BACKEND_VERIFY_FAILED,\s*'social_auth_failed'/);
+});
+
+test('P0-A: duplicate callback delivery is idempotent, not a fresh OAuth error', () => {
+  // The PKCE code is single-use; processing the SAME callback URL twice
+  // (StrictMode double-effect, a stale getInitialURL() resolving late) must
+  // no-op, not surface "invalid grant" as a user-facing failure.
+  assert.match(socialAuth, /lastProcessedCallbackKey/);
+  assert.match(socialAuth, /if \(key && key === lastProcessedCallbackKey\)/);
+  assert.match(phoneV2, /Duplicate delivery of an already-processed callback/);
+});
+
+test('diagnostic AUTH_SOCIAL_STAGE instrumentation covers the full chain (no PII/tokens)', () => {
+  for (const stage of [
+    'provider_callback_received',
+    'supabase_session_ready',
+    'backend_verify_start',
+    'backend_verify_success',
+    'urtruck_session_saved',
+  ]) {
+    assert.ok(socialAuth.includes(`logAuthStage('${stage}'`), `missing stage: ${stage}`);
+  }
+  // Never allow a raw token/header into the diagnostic logger's payload.
+  assert.doesNotMatch(socialAuth, /logAuthStage\([^)]*access_token[^)]*\)/);
+  assert.doesNotMatch(socialAuth, /logAuthStage\([^)]*refresh_token[^)]*\)/);
+});
+
+test('i18n: social auth error copy exists symmetrically in all 4 languages', () => {
+  const i18n = read('src/utils/i18n.js');
+  const keys = [
+    'auth_error_network',
+    'auth_error_provider_unavailable_google',
+    'auth_error_provider_unavailable_apple',
+    'auth_error_oauth_cancelled',
+    'auth_error_callback_failed',
+    'auth_error_backend_verify_failed',
+  ];
+  for (const lang of ['RU', 'KK', 'ZH', 'EN']) {
+    const blockMatch = new RegExp(`\\n  ${lang}: \\{[\\s\\S]*?\\n\\},\\n\\};`, 'm').test(i18n)
+      ? new RegExp(`\\n  ${lang}: \\{[\\s\\S]*?(?=\\n  [A-Z]{2}: \\{|\\n\\};)`, 'm').exec(i18n)
+      : null;
+    assert.ok(blockMatch, `i18n block ${lang} not found`);
+    const block = blockMatch[0];
+    for (const key of keys) {
+      assert.match(block, new RegExp(`${key}:\\s*'`), `${lang} missing key ${key}`);
+    }
+  }
+});
+
