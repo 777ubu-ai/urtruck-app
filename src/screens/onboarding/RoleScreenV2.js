@@ -14,7 +14,7 @@ import { useI18n } from '../../utils/useI18n';
 import { useAuth } from '../../utils/AuthContext';
 import { useBrand, radius, typography } from '../../theme/brandV2';
 
-function StepIndicator({ s, colors }) {
+function StepIndicator({ s }) {
   return (
     <View style={s.stepWrap} testID="role-v2-step">
       <View style={[s.stepDot, s.stepDotActive]}>
@@ -99,7 +99,7 @@ export default function RoleScreenV2({ navigation, route }) {
       </View>
 
       <View style={s.content}>
-        <StepIndicator s={s} colors={colors} />
+        <StepIndicator s={s} />
         <Text style={s.stepCaption}>1 / 2</Text>
 
         <Text style={s.title}>{t('role_v2_title')}</Text>
@@ -110,7 +110,7 @@ export default function RoleScreenV2({ navigation, route }) {
             s={s}
             colors={colors}
             icon="package"
-            title={t('role_v2_client')}
+            title={t('shipper_label')}
             description={t('role_v2_client_desc')}
             selected={selected === 'client'}
             onPress={() => setSelected('client')}
