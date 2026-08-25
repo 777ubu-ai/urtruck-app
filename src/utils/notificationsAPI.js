@@ -1,5 +1,8 @@
+// API client для уведомлений
+// #294: migrated to authedFetch for consistent 401 handling + request timeout.
 import { storage } from './storage';
 import { API_BASE } from '../config/env';
+import { authedFetch } from './authEvents';
 
 const BASE = `${API_BASE}/notifications`;
 
@@ -15,7 +18,8 @@ async function headers() {
 
 export const notificationsAPI = {
   async list(limit = 50) {
-    const r = await fetch(`${BASE}?limit=${limit}`, { headers: await headers() });
+    const r = await authedFetch(`${BASE}?limit=${limit}`, { headers: await headers() });
+    if (!r.ok) return { notifications: [] };
     return r.json();
   },
 
@@ -27,18 +31,20 @@ export const notificationsAPI = {
     if (!h.Authorization) return { unread: 0 };
     const lvl = parseInt((await storage.get('ur_verification_level')) || '0', 10);
     if (!lvl || lvl < 1) return { unread: 0 };
-    const r = await fetch(`${BASE}/unread`, { headers: h });
+    const r = await authedFetch(`${BASE}/unread`, { headers: h });
     if (!r.ok) return { unread: 0 };
     return r.json();
   },
 
   async readAll() {
-    const r = await fetch(`${BASE}/read-all`, { method: 'POST', headers: await headers() });
+    const r = await authedFetch(`${BASE}/read-all`, { method: 'POST', headers: await headers() });
+    if (!r.ok) return {};
     return r.json();
   },
 
   async read(id) {
-    const r = await fetch(`${BASE}/read/${id}`, { method: 'POST', headers: await headers() });
+    const r = await authedFetch(`${BASE}/read/${id}`, { method: 'POST', headers: await headers() });
+    if (!r.ok) return {};
     return r.json();
   },
 };

@@ -328,6 +328,7 @@ def list_queue_watches(user_id: str = Depends(_current_user_id)):
 
 _BOARD_CACHE: dict = {}
 _BOARD_TTL = 60
+_BOARD_CACHE_MAX = 200  # #293: prevent unbounded growth
 
 
 @borders_router.get("/board")
@@ -360,6 +361,16 @@ async def get_board(checkpoint: str = "", status: str = ""):
             "enabled": True,
         }
         out["count"] = len(out["rows"])
+        # #293: evict stale entries and enforce size cap
+        if len(_BOARD_CACHE) >= _BOARD_CACHE_MAX:
+            stale = [k for k, (ts, _) in _BOARD_CACHE.items() if now - ts >= _BOARD_TTL]
+            for k in stale:
+                del _BOARD_CACHE[k]
+            # Still over limit → drop oldest entries
+            if len(_BOARD_CACHE) >= _BOARD_CACHE_MAX:
+                by_age = sorted(_BOARD_CACHE, key=lambda k: _BOARD_CACHE[k][0])
+                for k in by_age[: len(_BOARD_CACHE) - _BOARD_CACHE_MAX + 1]:
+                    del _BOARD_CACHE[k]
         _BOARD_CACHE[key] = (now, out)
         return out
     except Exception as exc:

@@ -33,7 +33,6 @@ import ProfileScreen from '../screens/ProfileScreen';
 import ReviewsScreen from '../screens/ReviewsScreen';
 import FavoritesScreen from '../screens/FavoritesScreen';
 import ChatsListScreen from '../screens/ChatsListScreen';
-import ArchiveScreen from '../screens/ArchiveScreen';
 import MyTripsScreen from '../screens/MyTripsScreen';
 import BlacklistScreen from '../screens/BlacklistScreen';
 import EducationScreen from '../screens/EducationScreen';
@@ -248,7 +247,6 @@ export default function AppNavigator() {
           <Stack.Screen name="Reviews" component={ReviewsScreen} />
           <Stack.Screen name="Favorites" component={FavoritesScreen} />
           <Stack.Screen name="ChatsList" component={ChatsListScreen} />
-          <Stack.Screen name="Archive" component={ArchiveScreen} />
           <Stack.Screen name="MyTripsList" component={MyTripsScreen} />
           <Stack.Screen name="Blacklist" component={BlacklistScreen} />
           <Stack.Screen name="Education" component={EducationScreen} />

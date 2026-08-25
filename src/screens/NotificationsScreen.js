@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, FlatList, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { useToast } from '../components/Toast';
 import { notificationsAPI } from '../utils/notificationsAPI';
 import {v1Colors, useV1Colors, v1Radius, v1AccentFor} from '../theme/designV1';
@@ -97,18 +98,23 @@ export default function NotificationsScreen({ navigation }) {
   const { toast } = useToast();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const accent = v1AccentFor(role);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(false);
     try {
       const d = await notificationsAPI.list(50);
       setItems(d.notifications || []);
-    } catch {}
+    } catch {
+      setLoadError(true);
+    }
     setLoading(false);
-  };
+  }, []);
 
-  useEffect(() => { load(); }, []);
+  // #294: useFocusEffect — обновлять список при каждом возврате на экран
+  useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const markAllRead = async () => {
     await notificationsAPI.readAll();
@@ -227,10 +233,20 @@ export default function NotificationsScreen({ navigation }) {
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={accent.main} />}
         ListEmptyComponent={
           !loading ? (
-            <View style={{ alignItems: 'center', paddingVertical: 60 }}>
-              <Feather name="bell" size={48} color={v1.textMuted} style={{ marginBottom: 10 }} />
-              <Text style={{ color: v1.textMuted }}>{t('notifications_empty')}</Text>
-            </View>
+            loadError ? (
+              <View style={{ alignItems: 'center', paddingVertical: 60 }} testID="notif-error">
+                <Feather name="alert-circle" size={48} color="#EF4444" style={{ marginBottom: 10 }} />
+                <Text style={{ color: v1.textMuted }}>{t('load_error')}</Text>
+                <TouchableOpacity onPress={load} style={{ marginTop: 12, paddingVertical: 8, paddingHorizontal: 20, backgroundColor: accent.main, borderRadius: 10 }}>
+                  <Text style={{ color: '#fff', fontWeight: '700' }}>{t('reload')}</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={{ alignItems: 'center', paddingVertical: 60 }}>
+                <Feather name="bell" size={48} color={v1.textMuted} style={{ marginBottom: 10 }} />
+                <Text style={{ color: v1.textMuted }}>{t('notifications_empty')}</Text>
+              </View>
+            )
           ) : null
         }
       />

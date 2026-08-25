@@ -298,9 +298,15 @@ export default function EditProfileScreen({ navigation, route }) {
       serverOk = !!r.ok;
     } catch {}
     setSaving(false);
-    await clearDraft(draftKey);
-    toast(serverOk ? '✓ ' + t('saveSettings') : '✓ ' + t('saved_locally'), serverOk ? 'success' : 'warn');
-    navigation.goBack();
+    if (serverOk) {
+      await clearDraft(draftKey);
+      toast('✓ ' + t('saveSettings'), 'success');
+      navigation.goBack();
+    } else {
+      // #294: не уходить с экрана при ошибке сервера — пользователь теряет
+      // введённые данные. Черновик остаётся, можно повторить.
+      toast(t('profile_v2_save_failed'), 'error');
+    }
   };
 
   // App Store Guideline 5.1.1(v): удаление аккаунта из приложения.

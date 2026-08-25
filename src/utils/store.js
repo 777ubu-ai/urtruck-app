@@ -111,10 +111,6 @@ let chats = [];
 export const getChats = () => chats;
 export const markChatRead = (id) => { chats = chats.map(c => c.id === id ? { ...c, unread: 0, status: 'read' } : c); notify(); };
 
-// Production default: no fake archived deals. Real history comes from
-// /api/v1/market/deals (delivered status filter).
-let archive = [];
-export const getArchive = () => archive;
 
 // Чёрный список
 let blacklist = [];

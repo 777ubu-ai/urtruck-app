@@ -30,14 +30,20 @@ export default function FavoritesScreen({ navigation, route }) {
   const role = route?.params?.role;
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [removingId, setRemovingId] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    // Без item_type — backend /api/v1/favorites отдаёт ВСЕ сохранённые
-    // карточки (и водителей, и грузы) одним списком, отсортированным по дате.
-    const r = await marketAPI.favList('');
-    setItems(Array.isArray(r?.favorites) ? r.favorites : []);
+    setLoadError(false);
+    try {
+      // Без item_type — backend /api/v1/favorites отдаёт ВСЕ сохранённые
+      // карточки (и водителей, и грузы) одним списком, отсортированным по дате.
+      const r = await marketAPI.favList('');
+      setItems(Array.isArray(r?.favorites) ? r.favorites : []);
+    } catch {
+      setLoadError(true);
+    }
     setLoading(false);
   }, []);
 
@@ -135,12 +141,22 @@ export default function FavoritesScreen({ navigation, route }) {
           keyExtractor={(it) => `${it.item_type || 'driver'}_${it.id || it.item_id}`}
           renderItem={renderItem}
           contentContainerStyle={{ padding: 16, paddingTop: 8 }}
-          refreshControl={<RefreshControl refreshing={false} onRefresh={load} tintColor={v1.textMuted} />}
+          refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={v1.textMuted} />}
           ListEmptyComponent={
-            <View style={s.center} testID="favorites-empty">
-              <Text style={{ fontSize: 40, marginBottom: 10 }}>🤍</Text>
-              <Text style={[s.emptyText, { color: v1.textMuted }]}>{t('favorites_empty')}</Text>
-            </View>
+            loadError ? (
+              <View style={s.center} testID="favorites-error">
+                <Text style={{ fontSize: 40, marginBottom: 10 }}>⚠️</Text>
+                <Text style={[s.emptyText, { color: v1.textMuted }]}>{t('load_error')}</Text>
+                <TouchableOpacity onPress={load} style={{ marginTop: 12, paddingVertical: 8, paddingHorizontal: 20, backgroundColor: v1.driver, borderRadius: 10 }}>
+                  <Text style={{ color: '#fff', fontWeight: '700' }}>{t('reload')}</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={s.center} testID="favorites-empty">
+                <Text style={{ fontSize: 40, marginBottom: 10 }}>🤍</Text>
+                <Text style={[s.emptyText, { color: v1.textMuted }]}>{t('favorites_empty')}</Text>
+              </View>
+            )
           }
         />
       )}
