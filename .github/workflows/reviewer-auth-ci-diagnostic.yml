@@ -1,0 +1,182 @@
+name: Reviewer Auth CI Diagnostic
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/reviewer-auth-ci-diagnostic.yml"
+      - "qa/scripts/reviewer-auth-diagnostic/**"
+      - "qa/maestro/google-play-location/login-reviewer-driver.yaml"
+      - "qa/maestro/google-play-location/diag-marker-*.js"
+      - "tests/frontend/test_reviewer_auth_ci_diagnostic_workflow.mjs"
+      - "tests/frontend/test_reviewer_login_diagnostic_hooks.mjs"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: reviewer-auth-ci-diagnostic-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  diagnostic:
+    name: Exact APK reviewer login diagnostic
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      SOURCE_SHA: aaf8760da0fa4b8068db27a2d535aff938e593dc
+      APK_RUN_ID: "32864148744"
+      APK_ARTIFACT_ID: "9569835383"
+      APK_SHA256: 062842f31ec74f5b6cdb9cd841f5abe541d0d844de55315c61960a27812cad7b
+      PACKAGE: com.urtruck.app
+      SERIAL: emulator-5554
+      ARTIFACT_DIR: ${{ github.workspace }}/qa/artifacts/reviewer-auth-diagnostic
+      EMULATOR_PROFILE: pixel_7
+      EMULATOR_API: "34"
+      FLOW_PATH: qa/maestro/google-play-location/login-reviewer-driver.yaml
+
+    steps:
+      - name: Checkout automation branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout exact app source SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          path: source
+          fetch-depth: 1
+
+      - name: Verify checked out source SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd source
+          actual_sha="$(git rev-parse HEAD)"
+          test "$actual_sha" = "$SOURCE_SHA"
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Enable KVM for Android emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+          ls -l /dev/kvm
+
+      - name: Install Android SDK platform 36 / build-tools 36.0.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Install pinned mitmproxy and unzip helpers
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --user "mitmproxy==11.0.2"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          sudo apt-get update
+          sudo apt-get install -y unzip
+
+      - name: Install Maestro CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -Ls "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+
+      - name: Download exact APK artifact and verify SHA256
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR"
+          artifact_json="$RUNNER_TEMP/reviewer-artifact.json"
+          artifact_zip="$RUNNER_TEMP/reviewer-artifact.zip"
+          artifact_dir="$RUNNER_TEMP/reviewer-artifact"
+
+          gh api "repos/777ubu-ai/urtruck-app/actions/artifacts/${APK_ARTIFACT_ID}" > "$artifact_json"
+
+          python3 - "$artifact_json" "$APK_RUN_ID" <<'PY'
+          import json, sys
+          data = json.load(open(sys.argv[1], 'r', encoding='utf-8'))
+          run_id = str(data.get('workflow_run', {}).get('id', ''))
+          artifact_id = str(data.get('id', ''))
+          if artifact_id != "9569835383":
+              raise SystemExit(f"artifact id mismatch: {artifact_id}")
+          if run_id != sys.argv[2]:
+              raise SystemExit(f"artifact run mismatch: {run_id} != {sys.argv[2]}")
+          if data.get('expired'):
+              raise SystemExit('artifact is expired')
+          PY
+
+          gh api "repos/777ubu-ai/urtruck-app/actions/artifacts/${APK_ARTIFACT_ID}/zip" > "$artifact_zip"
+          mkdir -p "$artifact_dir"
+          unzip -q "$artifact_zip" -d "$artifact_dir"
+          apk_path="$(find "$artifact_dir" -type f -name 'UrTruck.apk' | head -n 1)"
+          test -n "$apk_path"
+          actual_sha="$(sha256sum "$apk_path" | awk '{print $1}')"
+          test "$actual_sha" = "$APK_SHA256"
+
+          aapt_bin="$(find "${ANDROID_SDK_ROOT}/build-tools" -type f -name aapt | sort | tail -n 1)"
+          test -n "$aapt_bin"
+          "$aapt_bin" dump badging "$apk_path" > "$ARTIFACT_DIR/apk-badging.txt"
+          grep -q "package: name='${PACKAGE}'" "$ARTIFACT_DIR/apk-badging.txt"
+          launchable_activity="$(sed -n "s/launchable-activity: name='\\([^']*\\)'.*/\\1/p" "$ARTIFACT_DIR/apk-badging.txt" | head -n 1)"
+          test -n "$launchable_activity"
+
+          cp "$artifact_json" "$ARTIFACT_DIR/artifact-metadata.json"
+          echo "APK_PATH=$apk_path" >> "$GITHUB_ENV"
+          echo "AAPT_BIN=$aapt_bin" >> "$GITHUB_ENV"
+          echo "LAUNCHABLE_ACTIVITY=$launchable_activity" >> "$GITHUB_ENV"
+
+      - name: Boot emulator and run reviewer diagnostic
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APK_PATH: ${{ env.APK_PATH }}
+          AAPT_BIN: ${{ env.AAPT_BIN }}
+          LAUNCHABLE_ACTIVITY: ${{ env.LAUNCHABLE_ACTIVITY }}
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_7
+          disk-size: 8192M
+          ram-size: 4096M
+          heap-size: 1024M
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -camera-back none -camera-front none
+          disable-animations: false
+          script: |
+            bash -lc 'set -euo pipefail; export PATH="$HOME/.maestro/bin:$HOME/.local/bin:$PATH"; bash qa/scripts/reviewer-auth-diagnostic/run-ci-diagnostic.sh'
+
+      - name: Upload reviewer diagnostic artifact
+        if: ${{ always() && hashFiles('qa/artifacts/reviewer-auth-diagnostic/**') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: reviewer-auth-ci-diagnostic
+          path: qa/artifacts/reviewer-auth-diagnostic/
+          retention-days: 30
+          if-no-files-found: error
