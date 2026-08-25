@@ -14,12 +14,20 @@ const NATIVE_REDIRECT = 'urtruck://auth-social';
 // both Google and Apple simultaneously (#P1-D), and so the error banner can
 // be attributed to the right provider (#P1-C).
 const PENDING_PROVIDER_KEY = 'ur_social_pending_provider';
-// Idempotency guard: the PKCE `code` Supabase issues is single-use. If the
-// same callback URL gets processed twice (StrictMode double-effect, a
-// stale getInitialURL() resolving after the sync web path already
-// finished), the second attempt must be a no-op, not a spurious
-// "invalid grant" surfaced as a fresh error.
-let lastProcessedCallbackKey = null;
+// Idempotency guard, round 2 (owner review 25.08.2026): the PKCE `code`
+// Supabase issues is single-use, but a transient failure AFTER the code was
+// already exchanged (backend 500, network blip) must stay retryable — it
+// must NOT permanently strand the user. Two separate marks, not one:
+//   exchangedCallbackKey — the one-shot code has been consumed with
+//     Supabase; a retry on the SAME url must reuse the resulting Supabase
+//     session (getSession()) instead of re-exchanging (which would fail
+//     with "invalid grant").
+//   completedCallbackKey — the FULL chain succeeded (backend verify +
+//     UrTruck token saved). Only this is a true no-op point for a
+//     duplicate delivery (double effect fire, a stale getInitialURL()
+//     resolving late after success already happened).
+let exchangedCallbackKey = null;
+let completedCallbackKey = null;
 
 /** Error taxonomy (#P0-B). Never collapse these into one generic message —
  * that is exactly the bug that made a genuine Apple provider_unavailable
@@ -184,7 +192,7 @@ export async function startSocialAuth(provider) {
   return data;
 }
 
-async function sessionFromCallback(url, meta) {
+async function sessionFromCallback(url, meta, key) {
   const params = readParams(url);
   const oauthError = params.get('error_description') || params.get('error');
   if (oauthError) {
@@ -195,6 +203,20 @@ async function sessionFromCallback(url, meta) {
       oauthError,
       meta,
     );
+  }
+
+  // Round 2 (owner review): if THIS callback's one-shot code/token was
+  // already exchanged with Supabase on a prior attempt (backend verify
+  // failed after a successful exchange), do not exchange it again — that
+  // would fail with "invalid grant" and turn a retryable backend blip into
+  // a dead end. Reuse the session Supabase already established and persisted.
+  if (key && key === exchangedCallbackKey) {
+    const { data, error } = await supabase.auth.getSession();
+    if (error || !data?.session) {
+      logAuthStage('provider_callback_failed', { ...meta, code: AUTH_ERROR_CODES.SESSION_MISSING });
+      throw new SocialAuthError(AUTH_ERROR_CODES.SESSION_MISSING, error?.message || 'social_session_missing_on_retry', meta);
+    }
+    return data.session;
   }
 
   const accessToken = params.get('access_token');
@@ -208,6 +230,7 @@ async function sessionFromCallback(url, meta) {
       logAuthStage('provider_callback_failed', { ...meta, code: AUTH_ERROR_CODES.OAUTH_CALLBACK_FAILED });
       throw new SocialAuthError(AUTH_ERROR_CODES.OAUTH_CALLBACK_FAILED, error.message, meta);
     }
+    if (key) exchangedCallbackKey = key;
     return data?.session || null;
   }
 
@@ -221,6 +244,7 @@ async function sessionFromCallback(url, meta) {
       logAuthStage('provider_callback_failed', { ...meta, code: AUTH_ERROR_CODES.OAUTH_CALLBACK_FAILED });
       throw new SocialAuthError(AUTH_ERROR_CODES.OAUTH_CALLBACK_FAILED, error.message, meta);
     }
+    if (key) exchangedCallbackKey = key;
     return data?.session || null;
   }
 
@@ -236,10 +260,11 @@ export async function completeSocialAuth(url) {
   if (!isSocialAuthCallback(url)) return null;
 
   const key = callbackKey(url);
-  if (key && key === lastProcessedCallbackKey) {
-    // Duplicate delivery of the SAME callback (double effect fire, stale
-    // getInitialURL() resolving late). The PKCE code is one-shot — do not
-    // re-exchange it, just no-op.
+  if (key && key === completedCallbackKey) {
+    // TRUE duplicate: this exact callback already ran the full chain to
+    // success (backend verify + UrTruck token saved). A late-arriving
+    // second delivery (double effect fire, stale getInitialURL()) is a
+    // pure no-op — never re-navigate, never re-save.
     return null;
   }
 
@@ -248,8 +273,10 @@ export async function completeSocialAuth(url) {
   const meta = { provider, correlationId };
 
   logAuthStage('provider_callback_received', meta);
-  const session = await sessionFromCallback(url, meta);
-  if (key) lastProcessedCallbackKey = key;
+  // sessionFromCallback reuses the already-exchanged Supabase session when
+  // `key` matches exchangedCallbackKey (a retry after a backend-verify
+  // failure) instead of re-consuming the one-shot PKCE code.
+  const session = await sessionFromCallback(url, meta, key);
 
   const accessToken = session?.access_token;
   if (!accessToken) {
@@ -288,6 +315,9 @@ export async function completeSocialAuth(url) {
   await storage.set(TOKEN_KEY, data.token);
   await storage.set(LEVEL_KEY, String(data.verification_level || 1));
   logAuthStage('urtruck_session_saved', meta);
+  // Only NOW is this callback truly, durably complete — mark it so a
+  // late-arriving duplicate delivery no-ops instead of re-navigating.
+  if (key) completedCallbackKey = key;
 
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
     try {

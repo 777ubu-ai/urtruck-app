@@ -160,10 +160,33 @@ test('P0-A: callback success path always resolves role and completes navigation 
 test('P0-A: duplicate callback delivery is idempotent, not a fresh OAuth error', () => {
   // The PKCE code is single-use; processing the SAME callback URL twice
   // (StrictMode double-effect, a stale getInitialURL() resolving late) must
-  // no-op, not surface "invalid grant" as a user-facing failure.
-  assert.match(socialAuth, /lastProcessedCallbackKey/);
-  assert.match(socialAuth, /if \(key && key === lastProcessedCallbackKey\)/);
+  // no-op ONLY once the full chain already succeeded — NOT right after the
+  // Supabase exchange, or a transient backend-verify failure would
+  // permanently strand the user (owner review round 2, 25.08.2026: see
+  // test_social_auth_retry.mjs for the live behavioral proof).
+  assert.match(socialAuth, /exchangedCallbackKey/);
+  assert.match(socialAuth, /completedCallbackKey/);
+  assert.match(socialAuth, /if \(key && key === completedCallbackKey\)/);
+  // The completed mark must be set AFTER urtruck_session_saved, not before
+  // backend verify — otherwise a duplicate check at the top would wrongly
+  // no-op a retry of a failed verify.
+  const completedIdx = socialAuth.indexOf('completedCallbackKey = key');
+  const savedLogIdx = socialAuth.indexOf("logAuthStage('urtruck_session_saved'");
+  assert.ok(completedIdx > savedLogIdx && savedLogIdx > 0,
+    'completedCallbackKey must be set strictly after urtruck_session_saved');
   assert.match(phoneV2, /Duplicate delivery of an already-processed callback/);
+});
+
+test('P0-A round 2: a failed backend verify does not permanently strand a retry', () => {
+  // sessionFromCallback must accept the callback key and reuse the
+  // already-exchanged Supabase session on retry, instead of re-consuming
+  // the one-shot PKCE code (which would fail with "invalid grant").
+  assert.match(socialAuth, /if \(key && key === exchangedCallbackKey\)/);
+  assert.match(socialAuth, /supabase\.auth\.getSession\(\)/);
+  // exchangedCallbackKey must be set on BOTH the token and code exchange
+  // branches, so either OAuth flavor is retry-safe.
+  const exchangeAssignments = (socialAuth.match(/exchangedCallbackKey = key/g) || []).length;
+  assert.ok(exchangeAssignments >= 2, `expected exchangedCallbackKey set on both session branches, found ${exchangeAssignments}`);
 });
 
 test('diagnostic AUTH_SOCIAL_STAGE instrumentation covers the full chain (no PII/tokens)', () => {
