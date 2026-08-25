@@ -268,7 +268,17 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   // is never remounted/flashed (PR #255 review item 4: "не должно быть
   // мигания фото при polling"; ported from the same fix in ChatScreen.js).
   const attachmentUrlCache = React.useRef(new Map());
-  const role = params.role || session?.user?.role || 'client';
+  // Issue #280: derive role from deal ownership, not navigation params.
+  // params.role is only a quick guess for the first render before the deal
+  // loads from the server — once we have deal.driver_id/shipper_id, the
+  // authoritative comparison to session.user.id wins.
+  const role = React.useMemo(() => {
+    const uid = session?.user?.id;
+    if (uid && deal?.driver_id && uid === deal.driver_id) return 'driver';
+    if (uid && deal?.shipper_id && uid === deal.shipper_id) return 'client';
+    // Fallback before deal loads (or when session is missing):
+    return params.role || session?.user?.role || 'client';
+  }, [session?.user?.id, deal?.driver_id, deal?.shipper_id, params.role, session?.user?.role]);
   const isDriver = role === 'driver';
   const isShipper = !isDriver;
   const language = getLanguage();

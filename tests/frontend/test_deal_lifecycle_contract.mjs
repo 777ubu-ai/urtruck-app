@@ -120,6 +120,44 @@ test('P1: все три входа в сделку идут через кано�
   }
 });
 
+test('P1 (#280): роль в DealWorkspace определяется из deal.driver_id/shipper_id, не из params', () => {
+  // Старый код: `const role = params.role || session?.user?.role || 'client';`
+  // — params.role приходит из навигации и может быть неверным (guest, stale).
+  // Новый код: useMemo сравнивает session.user.id с deal.driver_id/shipper_id.
+  assert.ok(
+    workspace.includes('deal?.driver_id') && workspace.includes('deal?.shipper_id'),
+    'DealWorkspaceScreenV2: роль должна выводиться из deal.driver_id/shipper_id, а не из params.role',
+  );
+  assert.ok(
+    workspace.includes('React.useMemo'),
+    'DealWorkspaceScreenV2: вычисление роли должно быть мемоизировано (useMemo)',
+  );
+});
+
+test('P1 (#281): все deal-эндпоинты проверяют ownership (IDOR-контракт)', () => {
+  // Каждый deal-endpoint с deal_id обязан проверять shipper_id/driver_id.
+  // Для путей с несколькими handlers (GET+POST) проверяем ВСЕ блоки.
+  const dealRoutes = [
+    '/deals/{deal_id}',
+    '/deals/{deal_id}/status',
+    '/deals/{deal_id}/tracking',
+    '/deals/{deal_id}/location',
+  ];
+  for (const route of dealRoutes) {
+    const escaped = route.replace(/[{}]/g, '\\$&');
+    // matchAll чтобы поймать все handlers с одинаковым путём (GET+POST)
+    const re = new RegExp(`@mp_router\\.[a-z]+\\("${escaped}"\\)[\\s\\S]*?(?=@mp_router|$)`, 'g');
+    const blocks = [...marketPy.matchAll(re)].map((m) => m[0]);
+    assert.ok(blocks.length > 0, `не найден handler для ${route}`);
+    for (const block of blocks) {
+      const hasOwnerCheck =
+        (block.includes('shipper_id') || block.includes('driver_id')) &&
+        (block.includes('not in (') || block.includes('!= user'));
+      assert.ok(hasOwnerCheck, `${route}: нет проверки ownership (shipper_id/driver_id)`);
+    }
+  }
+});
+
 test('P2: guard снятия с публикации знает про delivered/received', () => {
   const guards = [...marketPy.matchAll(/SELECT id FROM deals WHERE (?:cargo_id|trip_id) = \? AND status IN \(([^)]*)\)/g)];
   assert.equal(guards.length, 2, 'ожидалось два guard-запроса (cargo + trip)');

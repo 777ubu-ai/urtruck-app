@@ -9,7 +9,7 @@ from pathlib import Path
 from datetime import datetime
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response, HTMLResponse
 
 from api.verification_gate import require_level
@@ -74,6 +74,20 @@ def _ttn_html(trip: dict, driver: dict, client_name: str = "—") -> str:
 @docs_router.post("/ttn/{trip_id}")
 def generate_ttn(trip_id: str, user=Depends(require_level(1))):
     """Генерация ТТН по рейсу. Возвращает HTML (для печати через browser print)."""
+    # Issue #281 (IDOR): проверяем, что пользователь — участник рейса.
+    from database.db import get_conn
+    with get_conn() as c:
+        trip_row = c.execute("SELECT driver_id FROM trips WHERE id = ?", (trip_id,)).fetchone()
+        if trip_row:
+            deal = c.execute(
+                "SELECT shipper_id FROM deals WHERE trip_id = ? AND status NOT IN ('cancelled','rejected','expired') LIMIT 1",
+                (trip_id,),
+            ).fetchone()
+            allowed = {trip_row["driver_id"]}
+            if deal:
+                allowed.add(deal["shipper_id"])
+            if user["id"] not in allowed:
+                raise HTTPException(status_code=403, detail="Нет доступа к этому рейсу")
     # Для демо — создаём из user data
     from database import registration_dal as reg_dal
     driver = reg_dal.get_driver(user["id"]) or {}
@@ -94,6 +108,20 @@ def generate_ttn(trip_id: str, user=Depends(require_level(1))):
 @docs_router.get("/ttn/{trip_id}/pdf")
 def download_ttn_pdf(trip_id: str, user=Depends(require_level(1))):
     """PDF версия ТТН; без WeasyPrint возвращает печатный HTML."""
+    # Issue #281 (IDOR): проверяем, что пользователь — участник рейса.
+    from database.db import get_conn
+    with get_conn() as c:
+        trip_row = c.execute("SELECT driver_id FROM trips WHERE id = ?", (trip_id,)).fetchone()
+        if trip_row:
+            deal = c.execute(
+                "SELECT shipper_id FROM deals WHERE trip_id = ? AND status NOT IN ('cancelled','rejected','expired') LIMIT 1",
+                (trip_id,),
+            ).fetchone()
+            allowed = {trip_row["driver_id"]}
+            if deal:
+                allowed.add(deal["shipper_id"])
+            if user["id"] not in allowed:
+                raise HTTPException(status_code=403, detail="Нет доступа к этому рейсу")
     trip = {"id": trip_id, "from": "Алматы", "to": "Астана", "cargo": "Товары", "tons": 20, "m3": 82, "type": "tent", "price": 1500}
     driver = {"full_name": "—", "phone": "—", "iin": "—"}
     html = _ttn_html(trip, driver)

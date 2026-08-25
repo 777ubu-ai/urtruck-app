@@ -96,6 +96,10 @@ def check_quick(req: CheckQuickRequest, user=Depends(require_level(1))):
 
 @router.get("/score/{user_id}")
 def get_score(user_id: str, user=Depends(require_level(1))):
+    # Issue #281 (IDOR): раньше любой level-1 мог читать скоринг любого
+    # пользователя. Теперь — только свой или admin/support.
+    if user_id != user["id"] and user.get("role") not in ("admin", "support"):
+        raise HTTPException(status_code=403, detail="Доступ только к своему скорингу")
     score = db.get_score(user_id)
     if not score:
         return {"user_id": user_id, "total_score": 50, "color_code": "yellow",
@@ -106,6 +110,10 @@ def get_score(user_id: str, user=Depends(require_level(1))):
 
 @router.post("/ocr/passport", response_model=OCRResponse)
 async def ocr_passport(file: UploadFile = File(...), user_id: str = Query(...), user=Depends(require_level(1))):
+    # Issue #281 (IDOR): user_id из query приравниваем к авторизованному
+    # пользователю — нельзя записывать OCR-результат в чужой профиль.
+    if user_id != user["id"] and user.get("role") not in ("admin", "support"):
+        raise HTTPException(status_code=403, detail="OCR можно выполнить только для себя")
     with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
         tmp.write(await file.read())
         tmp_path = tmp.name
@@ -180,6 +188,10 @@ def gov_check(req: CheckQuickRequest, user=Depends(require_level(1))):
 
 @router.post("/biometric/liveness")
 async def biometric_liveness(file: UploadFile = File(...), user_id: str = Query(...), user=Depends(require_level(1))):
+    # Issue #281 (IDOR): проверка liveness пишется в чужой профиль если
+    # user_id ≠ authenticated. Закрываем.
+    if user_id != user["id"] and user.get("role") not in ("admin", "support"):
+        raise HTTPException(status_code=403, detail="Биометрию можно пройти только для себя")
     import tempfile
     from biometrics.liveness import check_liveness
     with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
@@ -195,6 +207,10 @@ async def biometric_liveness(file: UploadFile = File(...), user_id: str = Query(
 @router.post("/biometric/face_match")
 async def biometric_face_match(selfie: UploadFile = File(...), document: UploadFile = File(...),
                                 user_id: str = Query(...), user=Depends(require_level(1))):
+    # Issue #281 (IDOR): face_match пишется в чужой профиль если
+    # user_id ≠ authenticated. Закрываем.
+    if user_id != user["id"] and user.get("role") not in ("admin", "support"):
+        raise HTTPException(status_code=403, detail="Биометрию можно пройти только для себя")
     import tempfile
     from biometrics.liveness import face_match
     p1 = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
