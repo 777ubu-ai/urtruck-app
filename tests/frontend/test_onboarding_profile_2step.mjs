@@ -18,7 +18,16 @@ test('role selection is explicit step 1 of 2 and preserves Role -> Profile navig
   assert.match(role, /testID="role-v2-client"/);
   assert.match(role, /testID="role-v2-driver"/);
   assert.match(role, /navigation\.navigate\('ProfileV2'/);
-  assert.match(role, /setRole\(selected\)/);
+});
+
+
+test('role is not committed to AuthContext before required profile saves successfully', () => {
+  assert.doesNotMatch(role, /setRole\(/);
+  assert.match(profile, /const \{ session, setRole \} = useAuth\(\)/);
+  const savedCheck = profile.indexOf('if (!saved?.ok)');
+  const roleCommit = profile.indexOf('setRole(role)');
+  assert.ok(savedCheck >= 0, 'profile must check backend save result');
+  assert.ok(roleCommit > savedCheck, 'role may enter AuthContext only after successful profile save');
 });
 
 
@@ -27,7 +36,7 @@ test('profile step is step 2 of 2 with name and phone always required', () => {
   assert.match(profile, /<Text style=\{s\.stepCaption\}>2 \/ 2<\/Text>/);
   assert.match(profile, /id="name"/);
   assert.match(profile, /id="phone"/);
-  assert.match(profile, /const formValid = validName && validPhone/);
+  assert.match(profile, /const formValid = validName && validPhone && validMessenger/);
   assert.match(profile, /if \(!validName\) next\.name/);
   assert.match(profile, /if \(!validPhone\) next\.phone/);
   assert.doesNotMatch(profile, /validCountry/);
@@ -49,11 +58,13 @@ test('short onboarding keeps company optional and does not ask country/city/emai
 test('preferred messenger supports WhatsApp, WeChat, Telegram and Other', () => {
   for (const key of ['whatsapp', 'wechat', 'telegram', 'other']) {
     assert.match(profile, new RegExp(`key: '${key}'`));
-    assert.match(profile, new RegExp(`profile-v2-messenger-\\$\\{item\\.key\\}`));
   }
+  assert.match(profile, /testID=\{`profile-v2-messenger-\$\{item\.key\}`\}/);
   assert.match(profile, /messenger_type:\s*messengerType/);
   assert.match(profile, /messenger_id:\s*messengerType \? effectiveMessengerId : ''/);
   assert.match(profile, /messengerType === 'whatsapp' && sameAsPhone/);
+  assert.match(profile, /const validMessenger = !messengerType/);
+  assert.match(profile, /if \(!validMessenger\) next\.messenger/);
 });
 
 
