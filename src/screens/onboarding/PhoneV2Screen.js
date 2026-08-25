@@ -103,6 +103,8 @@ const socialErrorKey = (err, provider) => {
       return 'auth_error_callback_failed';
     case AUTH_ERROR_CODES.BACKEND_VERIFY_FAILED:
       return 'auth_error_backend_verify_failed';
+    case AUTH_ERROR_CODES.AMBIGUOUS_EMAIL_IDENTITY:
+      return 'auth_error_ambiguous_email';
     case AUTH_ERROR_CODES.NETWORK_UNAVAILABLE:
     default:
       return 'auth_error_network';

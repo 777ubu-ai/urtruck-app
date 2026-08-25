@@ -146,6 +146,14 @@ def test_social_verify_returns_409_and_no_token_on_duplicate_email(monkeypatch):
     assert r.status_code == 409, r.text
     body = r.json()
     assert "token" not in body or not body.get("token")
+    # Contract fix (owner review round 4): detail is a STABLE MACHINE-
+    # READABLE code, not hardcoded Russian text — a ZH/EN/KK client must
+    # never receive raw Russian to render verbatim.
+    detail = body.get("detail")
+    assert isinstance(detail, dict), f"detail must be a structured object, got {detail!r}"
+    assert detail.get("error") == "AMBIGUOUS_EMAIL_IDENTITY"
+    assert not any(ch in detail.get("message", "") for ch in "АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдеёжзийклмнопрстуфхцчшщъыьэюя"), \
+        "message must not contain raw Cyrillic — it is log-facing only, never rendered to an end user"
 
 
 def test_email_otp_verify_returns_409_and_no_token_on_duplicate_email(monkeypatch):
@@ -165,6 +173,11 @@ def test_email_otp_verify_returns_409_and_no_token_on_duplicate_email(monkeypatc
     assert r.status_code == 409, r.text
     body = r.json()
     assert "token" not in body or not body.get("token")
+    detail = body.get("detail")
+    assert isinstance(detail, dict), f"detail must be a structured object, got {detail!r}"
+    assert detail.get("error") == "AMBIGUOUS_EMAIL_IDENTITY"
+    assert not any(ch in detail.get("message", "") for ch in "АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдеёжзийклмнопрстуфхцчшщъыьэюя"), \
+        "message must not contain raw Cyrillic — it is log-facing only, never rendered to an end user"
 
 
 if __name__ == "__main__":

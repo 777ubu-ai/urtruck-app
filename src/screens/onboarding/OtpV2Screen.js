@@ -162,6 +162,17 @@ export default function OtpV2Screen({ navigation, route }) {
         return;
       }
       if (!r.token) {
+        // #round-4 contract fix: a correct OTP code can still legitimately
+        // fail identity resolution (duplicate canonical email → fail
+        // closed, no session). That is NOT "wrong code" — showing the
+        // generic otp_v2_wrong copy here would tell a user with the RIGHT
+        // code to keep retyping it forever. Detect the stable machine
+        // code and show its own, correctly-localized message instead.
+        if (r.detail?.error === 'AMBIGUOUS_EMAIL_IDENTITY') {
+          setError(t('auth_error_ambiguous_email'));
+          setCode('');
+          return;
+        }
         setError(t('otp_v2_wrong'));
         setCode('');
         return;

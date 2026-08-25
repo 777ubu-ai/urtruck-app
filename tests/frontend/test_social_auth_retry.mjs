@@ -149,3 +149,35 @@ test(
     assert.equal(result.token, 'urtruck-token-fresh');
   }),
 );
+
+test(
+  'round-4 contract: a backend AMBIGUOUS_EMAIL_IDENTITY machine code surfaces as its own SocialAuthError code, not a generic backend-verify failure',
+  withMocks(async (t) => {
+    // Distinct code — module-level completedCallbackKey state persists
+    // across tests in this file.
+    const url = 'https://urtruck.kz/?social_auth=1&code=ambiguous-email-code-999';
+    global.fetch = async (u) => {
+      if (String(u).includes('/register/social/verify')) {
+        return {
+          ok: false,
+          status: 409,
+          // Exact shape the backend now sends (owner review round 4): a
+          // stable machine-readable code, never a raw Russian sentence.
+          json: async () => ({
+            detail: {
+              error: 'AMBIGUOUS_EMAIL_IDENTITY',
+              message: 'Multiple accounts match this canonical email; refusing to guess.',
+            },
+          }),
+        };
+      }
+      throw new Error(`unexpected fetch in test: ${u}`);
+    };
+
+    await assert.rejects(
+      () => completeSocialAuth(url),
+      (err) => err.code === AUTH_ERROR_CODES.AMBIGUOUS_EMAIL_IDENTITY,
+      'AMBIGUOUS_EMAIL_IDENTITY from the backend must map to its own error code, not BACKEND_VERIFY_FAILED',
+    );
+  }),
+);

@@ -315,9 +315,15 @@ def email_verify(req: EmailVerifyRequest, request: Request = None):
         # guess which of several accounts sharing this canonical email is
         # "the" one — no UrTruck session/token is issued for an ambiguous
         # identity, same invariant as the social-auth verify path.
+        #
+        # Contract fix (owner review round 4): STABLE MACHINE-READABLE code,
+        # not a hardcoded Russian sentence — the UI owns RU/ZH/EN/KK copy.
         raise HTTPException(
             status_code=409,
-            detail="Найдено несколько аккаунтов с этим e-mail. Обратитесь в поддержку.",
+            detail={
+                "error": "AMBIGUOUS_EMAIL_IDENTITY",
+                "message": "Multiple accounts match this canonical email; refusing to guess.",
+            },
         )
     # Демо-аккаунт для ревью (или beta) — провижн полного доступа, чтобы
     # ревьюер видел ВСЕ функции (лента, ставки, чат, очередь) без прохождения

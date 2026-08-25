@@ -12,6 +12,9 @@ const socialAuth = read('src/utils/socialAuth.js');
 const socialBackend = read('backend/api/social_auth.py');
 const backendMain = read('backend/main.py');
 const profileV2 = read('src/screens/onboarding/ProfileV2Screen.js');
+const otpV2 = read('src/screens/onboarding/OtpV2Screen.js');
+const registrationBackend = read('backend/api/registration.py');
+const regDal = read('backend/database/registration_dal.py');
 const supabaseClient = read('src/config/supabase.js');
 const appConfig = JSON.parse(read('app.json'));
 
@@ -213,6 +216,7 @@ test('i18n: social auth error copy exists symmetrically in all 4 languages', () 
     'auth_error_oauth_cancelled',
     'auth_error_callback_failed',
     'auth_error_backend_verify_failed',
+    'auth_error_ambiguous_email',
   ];
   for (const lang of ['RU', 'KK', 'ZH', 'EN']) {
     const blockMatch = new RegExp(`\\n  ${lang}: \\{[\\s\\S]*?\\n\\},\\n\\};`, 'm').test(i18n)
@@ -224,5 +228,54 @@ test('i18n: social auth error copy exists symmetrically in all 4 languages', () 
       assert.match(block, new RegExp(`${key}:\\s*'`), `${lang} missing key ${key}`);
     }
   }
+});
+
+// ─── Round 4 (25.08.2026): AMBIGUOUS_EMAIL_IDENTITY is a stable machine-
+// readable contract on both auth endpoints — no hardcoded Russian sentence
+// may reach a ZH/EN/KK client. ────────────────────────────────────────
+
+test('backend sends a structured machine code for ambiguous email identity, never a raw Russian sentence, on BOTH auth endpoints', () => {
+  for (const [name, src] of [
+    ['social_auth.py', socialBackend],
+    ['registration.py', registrationBackend],
+  ]) {
+    const block = src.split('except reg_dal.AmbiguousEmailIdentityError:')[1]?.split(/\n\s*(?:if|@|def)\s/)[0] || '';
+    assert.match(block, /"error":\s*"AMBIGUOUS_EMAIL_IDENTITY"/,
+      `${name}: ambiguous-identity handler must send a structured error code`);
+    assert.doesNotMatch(block, /detail=["'][^"']*[А-Яа-яЁё]/,
+      `${name}: detail must not be a raw Cyrillic string — the UI owns localized copy`);
+  }
+});
+
+test('AmbiguousEmailIdentityError carries a machine-readable shape (normalized_email + count), not just a message string', () => {
+  assert.match(regDal, /class AmbiguousEmailIdentityError\(Exception\)/);
+  assert.match(regDal, /self\.normalized_email = normalized_email/);
+  assert.match(regDal, /self\.count = count/);
+});
+
+test('frontend maps AMBIGUOUS_EMAIL_IDENTITY to its own error code and localized copy, not the generic backend-verify bucket', () => {
+  assert.match(socialAuth, /AMBIGUOUS_EMAIL_IDENTITY:\s*'AMBIGUOUS_EMAIL_IDENTITY'/);
+  // completeSocialAuth must actually read the backend's machine code from
+  // detail.error and re-throw it as its own SocialAuthError code, not
+  // silently fold it into BACKEND_VERIFY_FAILED.
+  assert.match(socialAuth, /data\?\.detail\?\.error/);
+  assert.match(socialAuth, /AUTH_ERROR_CODES\[machineCode\]/);
+  assert.match(phoneV2, /AUTH_ERROR_CODES\.AMBIGUOUS_EMAIL_IDENTITY/);
+  assert.match(phoneV2, /auth_error_ambiguous_email/);
+});
+
+test('email-OTP verify path (OtpV2Screen) also detects the machine code instead of showing "wrong code" for a correct-code identity conflict', () => {
+  // A CORRECT OTP code that hits an ambiguous-identity conflict is not a
+  // wrong-code error — showing otp_v2_wrong here would tell a user with
+  // the right code to keep retyping it forever.
+  assert.match(otpV2, /r\.detail\?\.error === 'AMBIGUOUS_EMAIL_IDENTITY'/);
+  assert.match(otpV2, /auth_error_ambiguous_email/);
+  // That branch must come before the generic wrong-code fallback so it is
+  // actually reachable.
+  const notTokenIdx = otpV2.indexOf('if (!r.token)');
+  const ambiguousIdx = otpV2.indexOf("AMBIGUOUS_EMAIL_IDENTITY");
+  const genericWrongIdx = otpV2.indexOf("t('otp_v2_wrong')", ambiguousIdx);
+  assert.ok(notTokenIdx >= 0 && ambiguousIdx > notTokenIdx && genericWrongIdx > ambiguousIdx,
+    'ambiguous-identity check must be inside the !r.token branch and precede the generic wrong-code fallback');
 });
 

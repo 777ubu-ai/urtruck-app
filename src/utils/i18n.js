@@ -1423,6 +1423,7 @@ const translations = {
     auth_error_oauth_cancelled: 'Вход отменён.',
     auth_error_callback_failed: 'Не удалось завершить вход. Попробуйте ещё раз.',
     auth_error_backend_verify_failed: 'Не удалось войти. Попробуйте ещё раз или используйте Email.',
+    auth_error_ambiguous_email: 'С этим e-mail связано несколько аккаунтов. Обратитесь в поддержку.',
 
     // ─── RC2 auth-flow (OTP / Role / Profile) light-style ─────────
     otp_v2_title: 'Подтверждение',
@@ -3240,6 +3241,7 @@ const translations = {
     auth_error_oauth_cancelled: 'Кіру болдырылмады.',
     auth_error_callback_failed: 'Кіруді аяқтау мүмкін болмады. Қайта көріңіз.',
     auth_error_backend_verify_failed: 'Кіру мүмкін болмады. Қайта көріңіз немесе Email қолданыңыз.',
+    auth_error_ambiguous_email: 'Бұл e-mail бірнеше аккаунтпен байланысты. Қолдау қызметіне хабарласыңыз.',
 
     // ─── RC2 auth-flow (KK) ────────────────────────────────────────
     otp_v2_title: 'Растау',
@@ -5032,6 +5034,7 @@ const translations = {
     auth_error_oauth_cancelled: '已取消登录。',
     auth_error_callback_failed: '登录未完成,请重试。',
     auth_error_backend_verify_failed: '登录失败,请重试或使用邮箱。',
+    auth_error_ambiguous_email: '该邮箱关联多个账户,请联系客服。',
 
     // ─── RC2 auth-flow (ZH) ────────────────────────────────────────
     otp_v2_title: '验证',
@@ -6803,6 +6806,7 @@ const translations = {
     auth_error_oauth_cancelled: 'Sign-in cancelled.',
     auth_error_callback_failed: 'Could not finish signing in. Please try again.',
     auth_error_backend_verify_failed: 'Could not sign in. Try again or use Email.',
+    auth_error_ambiguous_email: 'Multiple accounts are linked to this e-mail. Please contact support.',
 
     // ─── RC2 auth-flow (EN) ────────────────────────────────────────
     otp_v2_title: 'Verification',

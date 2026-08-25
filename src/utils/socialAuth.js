@@ -40,6 +40,12 @@ export const AUTH_ERROR_CODES = {
   OAUTH_CALLBACK_FAILED: 'OAUTH_CALLBACK_FAILED',
   BACKEND_VERIFY_FAILED: 'BACKEND_VERIFY_FAILED',
   SESSION_MISSING: 'SESSION_MISSING',
+  // Backend account-identity fail-closed (round 3/4, 25.08.2026): the
+  // canonical email matched more than one account, so no session was
+  // issued. Distinct from a generic BACKEND_VERIFY_FAILED so the UI can
+  // show its own specific, correctly-localized copy instead of a raw
+  // backend string in the wrong language.
+  AMBIGUOUS_EMAIL_IDENTITY: 'AMBIGUOUS_EMAIL_IDENTITY',
 };
 
 export class SocialAuthError extends Error {
@@ -306,6 +312,17 @@ export async function completeSocialAuth(url) {
   let data = {};
   try { data = await response.json(); } catch {}
   if (!response.ok || !data?.token) {
+    // #round-4 contract: backend sends a STABLE MACHINE-READABLE code in
+    // detail.error for known failure classes (e.g. AMBIGUOUS_EMAIL_IDENTITY)
+    // — surface that as its own SocialAuthError code so the UI can show
+    // correctly-localized copy instead of falling through to the generic
+    // BACKEND_VERIFY_FAILED bucket (whose message is never shown raw, but
+    // whose SPECIFIC meaning would otherwise be lost).
+    const machineCode = typeof data?.detail === 'object' && data?.detail?.error;
+    if (machineCode && AUTH_ERROR_CODES[machineCode]) {
+      logAuthStage('backend_verify_failed', { ...meta, httpStatus: response.status, code: machineCode });
+      throw new SocialAuthError(AUTH_ERROR_CODES[machineCode], machineCode, { ...meta, httpStatus: response.status });
+    }
     logAuthStage('backend_verify_failed', { ...meta, httpStatus: response.status, code: AUTH_ERROR_CODES.BACKEND_VERIFY_FAILED });
     const detail = typeof data?.detail === 'string' ? data.detail : 'social_auth_failed';
     throw new SocialAuthError(AUTH_ERROR_CODES.BACKEND_VERIFY_FAILED, detail, { ...meta, httpStatus: response.status });
