@@ -501,7 +501,15 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     setLocationLoading(true);
     try {
       const result = await marketAPI.getDealLocation(dealId);
-      if (mounted.current && result?.has_location && result.location) setLocation(result.location);
+      if (!mounted.current) return;
+      if (result?.has_location && result.location) setLocation(result.location);
+      // P1 (аудит 2026-08-21): раньше ветки else не было — если сервер
+      // авторитетно отвечал has_location:false (водитель остановил трекинг,
+      // согласие отозвано, запись удалена), последняя точка навсегда
+      // оставалась на карте грузоотправителя со счётчиком «обновлено N минут
+      // назад». Гасим ТОЛЬКО по успешному ответу (result.ok === true):
+      // сетевая ошибка отдаёт ok:false и не должна стирать валидную позицию.
+      else if (result?.ok === true) setLocation(null);
     } finally {
       if (mounted.current) setLocationLoading(false);
     }

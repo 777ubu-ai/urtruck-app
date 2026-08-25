@@ -3,6 +3,7 @@ import { ActivityIndicator, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import TripDetail from './TripDetail';
 import DealWorkspaceScreen from './DealWorkspaceScreenV2';
+import DealLocationPermissionGate from '../components/deal/DealLocationPermissionGate';
 import { marketAPI } from '../utils/marketAPI';
 import { chatAPI } from '../utils/chatAPI';
 import { getDealCounterpartyProfile, compactCounterpartyName } from '../utils/dealCounterpartyAPI';
@@ -69,20 +70,30 @@ export default function TripDetailV2(props) {
   }
 
   if (target?.dealId) {
+    // P1 (аудит 2026-08-21): см. тот же комментарий в CargoDetailV2.js —
+    // без DealLocationPermissionGate «Начать рейс» из «Мои рейсы»/«Сделки»/
+    // уведомлений падал в disclosure_host_unavailable. Для водителя это был
+    // основной путь входа в сделку.
     return (
-      <DealWorkspaceScreen
-        {...props}
-        route={{
-          ...route,
-          params: {
-            ...params,
-            dealId: target.dealId,
-            roomId: target.roomId,
-            partner: target.partner || params.partner || null,
-            tripId,
-          },
-        }}
-      />
+      <DealLocationPermissionGate
+        dealId={target.dealId}
+        role={params.role}
+        initialStatus={params.dealStatus}
+      >
+        <DealWorkspaceScreen
+          {...props}
+          route={{
+            ...route,
+            params: {
+              ...params,
+              dealId: target.dealId,
+              roomId: target.roomId,
+              partner: target.partner || params.partner || null,
+              tripId,
+            },
+          }}
+        />
+      </DealLocationPermissionGate>
     );
   }
 

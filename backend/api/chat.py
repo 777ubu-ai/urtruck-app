@@ -270,7 +270,13 @@ class SendMessageIn(BaseModel):
 # демо-Володя — исключения. Статусы совпадают с активной/успешной частью FSM
 # marketplace (_DEAL_FLOW), включая awaiting_confirmation; cancelled/rejected
 # намеренно закрывают доступ к комнате.
-_DEAL_CHAT_STATUSES = ("accepted", "in_progress", "at_border", "awaiting_confirmation", "delivered", "completed")
+# P0 (аудит 2026-08-21): `received` здесь ОТСУТСТВОВАЛ, хотя в _DEAL_FLOW он
+# появился как обязательный аудит-шаг delivered → received → completed. Между
+# «Подтвердить получение» и «Завершить сделку» обе стороны получали 403 на
+# /chat/send и /chat/messages, а комната пропадала из /chat/rooms — переписка
+# умирала ровно на финальной сверке по деньгам и документам. Любое новое
+# состояние FSM обязано появляться и здесь, иначе чат молча отключается.
+_DEAL_CHAT_STATUSES = ("accepted", "in_progress", "at_border", "awaiting_confirmation", "delivered", "received", "completed")
 
 
 def _assert_chat_is_accepted(sender_id, recipient_id, *, room_id=None, cargo_id=None, trip_id=None):
@@ -490,12 +496,34 @@ def _enrich_rooms_with_deal_context(rooms: list, uid: str) -> None:
             })
 
             # --- сделка по комнате ---
+            _DEAL_COLS = ("SELECT id, cargo_id, trip_id, bid_id, shipper_id, driver_id, "
+                          "from_city, to_city, amount, status FROM deals ")
             deal = c.execute(
-                "SELECT id, cargo_id, trip_id, bid_id, shipper_id, driver_id, "
-                "from_city, to_city, amount, status FROM deals WHERE chat_room_id = ? "
-                "ORDER BY created_at DESC LIMIT 1",
+                _DEAL_COLS + "WHERE chat_room_id = ? ORDER BY created_at DESC LIMIT 1",
                 (room_id,),
             ).fetchone()
+            # P1 (аудит 2026-08-21): часть legacy-сделок создана до того, как
+            # deals.chat_room_id стал заполняться (recovery-логика для них уже
+            # есть в marketplace._tracking_system_message). Для них deal_status
+            # оставался None → финальный фильтр в my_rooms() выбрасывал комнату
+            # из списка целиком, ХОТЯ _assert_chat_is_accepted такую комнату
+            # пропускает (он матчит ещё и по cargo_id/trip_id). Получалось:
+            # писать и читать можно, а найти комнату в «Сделках» нельзя.
+            # Ищем ту же сделку тем же способом и чиним связь на месте.
+            if not deal and (room.get("cargo_id") or room.get("trip_id")):
+                deal = c.execute(
+                    _DEAL_COLS +
+                    "WHERE ((shipper_id = ? AND driver_id = ?) OR (shipper_id = ? AND driver_id = ?)) "
+                    "AND ((cargo_id IS NOT NULL AND cargo_id = ?) OR (trip_id IS NOT NULL AND trip_id = ?)) "
+                    "ORDER BY created_at DESC LIMIT 1",
+                    (uid, partner_id, partner_id, uid,
+                     room.get("cargo_id"), room.get("trip_id")),
+                ).fetchone()
+                if deal:
+                    c.execute(
+                        "UPDATE deals SET chat_room_id = COALESCE(chat_room_id, ?) WHERE id = ?",
+                        (room_id, deal["id"]),
+                    )
             if deal:
                 deal = dict(deal)
                 room["deal_id"] = deal["id"]

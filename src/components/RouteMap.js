@@ -80,6 +80,10 @@ export default function RouteMap({ from, to, transit, dealId, dealStatus, driver
         const result = await marketAPI.getDealLocation(dealId);
         if (!alive) return;
         if (result?.has_location && result.location) setLocation(result.location);
+        // P1 (аудит 2026-08-21): тот же фикс, что и в DealWorkspaceScreenV2 —
+        // авторитетный has_location:false обязан гасить устаревшую точку,
+        // сетевая ошибка (ok:false) — нет.
+        else if (result?.ok === true) setLocation(null);
       } finally {
         if (alive) setLocationLoading(false);
       }

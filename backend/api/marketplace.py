@@ -717,7 +717,7 @@ def unpublish_cargo(cargo_id: str, user=Depends(require_level(1))):
         if row["status"] not in (None, "active", "draft", "expired"):
             raise HTTPException(status_code=409, detail="Груз уже не активен")
         active_deal = c.execute(
-            "SELECT id FROM deals WHERE cargo_id = ? AND status IN ('accepted','in_progress','at_border','awaiting_confirmation') LIMIT 1",
+            "SELECT id FROM deals WHERE cargo_id = ? AND status IN ('accepted','in_progress','at_border','awaiting_confirmation','delivered','received') LIMIT 1",
             (cargo_id,)).fetchone()
         if active_deal:
             raise HTTPException(status_code=409, detail="Нельзя снять с публикации: перевозка уже началась")
@@ -1005,7 +1005,7 @@ def unpublish_trip(trip_id: str, user=Depends(require_level(1))):
         if row["status"] not in (None, "active", "draft", "expired"):
             raise HTTPException(status_code=409, detail="Рейс уже не активен")
         active_deal = c.execute(
-            "SELECT id FROM deals WHERE trip_id = ? AND status IN ('accepted','in_progress','at_border','awaiting_confirmation') LIMIT 1",
+            "SELECT id FROM deals WHERE trip_id = ? AND status IN ('accepted','in_progress','at_border','awaiting_confirmation','delivered','received') LIMIT 1",
             (trip_id,)).fetchone()
         if active_deal:
             raise HTTPException(status_code=409, detail="Нельзя снять с публикации: перевозка уже началась")
@@ -2028,16 +2028,36 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount: int):
         trip = c.execute(
             "SELECT driver_id, from_city, to_city FROM trips WHERE id = ?", (bid["trip_id"],)
         ).fetchone()
-        if trip:
-            from_city, to_city = trip["from_city"], trip["to_city"]
-            shipper_id = bid["bidder_id"]
-            driver_id = trip["driver_id"]
-            if trip["driver_id"] != user["id"]:
-                raise HTTPException(status_code=403)
-            c.execute(
-                "UPDATE trips SET status = 'booked', booked_by = ? WHERE id = ?",
-                (bid["bidder_id"], bid["trip_id"]),
-            )
+        # P0 (аудит 2026-08-21): раньше здесь был `if trip:` без else —
+        # ставка на несуществующий/удалённый рейс проваливалась мимо ВСЕЙ
+        # проверки владельца и доходила до создания сделки. Отсутствие
+        # объявления — это 404, а не «приму молча».
+        if not trip:
+            raise HTTPException(status_code=404, detail="Рейс не найден")
+        from_city, to_city = trip["from_city"], trip["to_city"]
+        shipper_id = bid["bidder_id"]
+        driver_id = trip["driver_id"]
+        if trip["driver_id"] != user["id"]:
+            raise HTTPException(status_code=403)
+        c.execute(
+            "UPDATE trips SET status = 'booked', booked_by = ? WHERE id = ?",
+            (bid["bidder_id"], bid["trip_id"]),
+        )
+
+    # P0 (аудит 2026-08-21, обход авторизации): вся проверка «я владелец
+    # объявления» жила ТОЛЬКО внутри двух `if` выше, а create_bid явно
+    # разрешает ставку без cargo_id и без trip_id (см. комментарий там же,
+    # «для demo/local грузов»). Реальный клиент такие ставки шлёт:
+    # BidModal.js → cargo_id: cargoId || null, trip_id: tripId || null.
+    # Итог: ЛЮБОЙ пользователь с level 1 мог принять ЧУЖУЮ непривязанную
+    # ставку, стать shipper_id в сделке с её автором и получить доступ в
+    # приватный чат + телефон контрагента (GET /deals/{id}.counterparty_phone).
+    # Fail-closed: нет объявления — нет владельца — принимать нечего.
+    if not bid.get("cargo_id") and not bid.get("trip_id"):
+        raise HTTPException(
+            status_code=409,
+            detail="Ставку без привязки к грузу или рейсу принять нельзя",
+        )
 
     # QA-аудит P0 (double-accept race): раньше WHERE id=? без guard —
     # два одновременных accept (двойной тап «Принять» или параллельный

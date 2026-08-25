@@ -22,7 +22,14 @@
 // непрочитанные сообщения — иначе бейдж растёт бесконечно на мёртвых
 // разговорах (ровно жалоба из п.4 ТЗ).
 
-export const ACTIVE_DEAL_STATUSES = new Set(['accepted', 'in_progress', 'at_border', 'awaiting_confirmation']);
+// P1 (аудит 2026-08-21): delivered и received здесь ОТСУТСТВОВАЛИ. Это ровно
+// те два состояния, где мяч на стороне грузоотправителя («Подтвердить
+// получение», затем «Завершить сделку»), и где водитель обычно и пишет —
+// бейдж «Сделки» обнулялся именно в момент передачи груза. Завершённые/
+// отменённые (completed/cancelled/rejected/expired) по-прежнему НЕ считаем.
+export const ACTIVE_DEAL_STATUSES = new Set([
+  'accepted', 'in_progress', 'at_border', 'awaiting_confirmation', 'delivered', 'received',
+]);
 
 // Направление хода в торге не требует myUserId/counter_by: бизнес-правило
 // BargainCard уже фиксирует его через сам статус —
