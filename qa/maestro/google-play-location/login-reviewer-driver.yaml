@@ -27,8 +27,10 @@ name: login-reviewer-driver
 - inputText: ${REVIEWER_EMAIL}
 - hideKeyboard
 - waitForAnimationToEnd
+- runScript: diag-marker-pre.js
 - tapOn:
     id: "phone-v2-cta"
+- runScript: diag-marker-after.js
 - extendedWaitUntil:
     visible:
       id: "otp-v2-input"
