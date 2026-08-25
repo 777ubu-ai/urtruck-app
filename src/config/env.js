@@ -76,9 +76,11 @@ export const WEB_URL = IS_WEB
   : (ENV_OVERRIDE || 'https://urtruck.kz').replace(/\/+$/, '');
 
 // Beta pricing flag — keeps premium features free during the
-// pilot. Toggling to false enables paywalls; coordinate with
-// product before flipping.
-export const IS_BETA = true;
+// pilot. Canonical source: supabase.js (overridable via
+// EXPO_PUBLIC_IS_BETA=false at build time). Re-export here for
+// backward compat — do NOT import from env.js in new code.
+// #289: ранее было hardcoded true без возможности отключить.
+import { IS_BETA } from './supabase';
 
 // Hard guard: if a production build somehow ended up with an
 // HTTP endpoint, fail loud at module-init so QA/the operator

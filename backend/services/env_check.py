@@ -119,6 +119,17 @@ def collect_issues() -> List[str]:
     if is_compromised_qa_agent_token(os.getenv("QA_AGENT_TOKEN")):
         issues.append("QA: QA_AGENT_TOKEN is compromised — rotate it in the secret store.")
 
+    # #289: Telegram parser — warn if demo mode would leak fake data
+    # (до фикса #289 DEMO_MESSAGES писались в БД каждые 6ч).
+    tg_api_id = os.getenv("TG_API_ID", "")
+    tg_api_hash = os.getenv("TG_API_HASH", "")
+    if not (tg_api_id and tg_api_hash):
+        issues.append(
+            "Telegram parser: TG_API_ID/TG_API_HASH not set — parser runs in DEMO mode. "
+            "This is safe (demo writes are gated behind SEED_DEMO_BLACKLIST), but real "
+            "Telegram channel monitoring is inactive."
+        )
+
     # CORS — production should not allow http://localhost or wildcard.
     cors = os.getenv("CORS_ORIGINS", "")
     if "*" in cors.split(","):

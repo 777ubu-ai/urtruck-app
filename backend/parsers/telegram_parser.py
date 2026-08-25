@@ -127,7 +127,15 @@ def run_real_parse():
 
 def run():
     if config.TELEGRAM_DEMO_MODE:
-        return run_demo_parse()
+        # Ревизия 25.08.2026 (#289): в DEMO-режиме НЕ вставляем фейковые
+        # записи в telegram_mentions / blacklist — это загрязняло production
+        # DB каждые 6ч (scheduler). Demo-парсинг полезен только для ручного
+        # CLI-тестирования, но НЕ для scheduled jobs.
+        import os
+        if os.getenv("SEED_DEMO_BLACKLIST", "false").strip().lower() in ("1", "true", "yes"):
+            return run_demo_parse()
+        print("  [telegram_parser] DEMO mode, skipping (set SEED_DEMO_BLACKLIST=true to run demo parse)")
+        return 0
     return run_real_parse()
 
 

@@ -140,47 +140,8 @@ let profiles = {};
 export const saveProfile = (userId, data) => { profiles[userId] = { ...(profiles[userId] || {}), ...data, updatedAt: Date.now() }; notify(); };
 export const getProfile = (userId) => profiles[userId] || null;
 
-// Live GPS-симуляция движения водителя
-let liveTracking = null;
-let liveInterval = null;
-
-export const startTracking = (tripId, fromCoord, toCoord, transitCoord) => {
-  if (liveInterval) clearInterval(liveInterval);
-  let progress = 0;
-  liveTracking = {
-    tripId, fromCoord, toCoord, transitCoord,
-    currentCoord: fromCoord, progress: 0, isActive: true, startTime: Date.now(),
-  };
-  liveInterval = setInterval(() => {
-    if (!liveTracking || !liveTracking.isActive) return;
-    progress += 0.01; // 1% в 5 секунд (для демо)
-    if (progress >= 1) progress = 1;
-    let coord;
-    if (transitCoord && progress < 0.5) {
-      const p = progress * 2;
-      coord = [fromCoord[0] + (transitCoord[0] - fromCoord[0]) * p, fromCoord[1] + (transitCoord[1] - fromCoord[1]) * p];
-    } else if (transitCoord) {
-      const p = (progress - 0.5) * 2;
-      coord = [transitCoord[0] + (toCoord[0] - transitCoord[0]) * p, transitCoord[1] + (toCoord[1] - transitCoord[1]) * p];
-    } else {
-      coord = [fromCoord[0] + (toCoord[0] - fromCoord[0]) * progress, fromCoord[1] + (toCoord[1] - fromCoord[1]) * progress];
-    }
-    liveTracking.currentCoord = coord;
-    liveTracking.progress = progress;
-    notify();
-    if (progress >= 1) stopTracking();
-  }, 5000);
-  notify();
-};
-
-export const stopTracking = () => {
-  if (liveInterval) clearInterval(liveInterval);
-  liveInterval = null;
-  if (liveTracking) liveTracking.isActive = false;
-  notify();
-};
-
-export const getTracking = () => liveTracking;
+// GPS-симуляция удалена (#289): мёртвый demo-код, реальный GPS через
+// expo-location background task + /api/v1/market/deals/{id}/location.
 
 // Production default: no fake notifications. Real notifications arrive via
 // /api/v1/notifications and addNotification() runtime calls.
