@@ -12,7 +12,7 @@ const nav = fs.readFileSync('src/navigation/AppNavigator.js', 'utf8');
 const brand = fs.readFileSync('src/components/ui/v1/BrandBarWithShare.js', 'utf8');
 const webMap = fs.readFileSync('src/components/TruckMap.web.js', 'utf8');
 const timeline = fs.readFileSync('src/components/deal/DealStatusTimeline.js', 'utf8');
-const profile = fs.readFileSync('src/screens/registration/PremiumProfileScreen.js', 'utf8');
+const profile = fs.readFileSync('src/screens/onboarding/ProfileV2Screen.js', 'utf8');
 const profileApi = fs.readFileSync('backend/api/profile.py', 'utf8');
 
 test('accepted deal chat is routed into the canonical gated workspace', () => {
@@ -190,14 +190,17 @@ test('deal status actions use the shared canonical role FSM and GPS starts with 
   assert.match(workspace, /marketAPI\.sendDealLocation/);
 });
 
-test('shipper registration requires name country and phone and cannot skip', () => {
-  assert.match(profile, /const isShipper = role === 'client'/);
-  assert.match(profile, /prem-reg-profile-country/);
-  assert.match(profile, /prem-reg-profile-phone/);
-  assert.match(profile, /prem-reg-profile-company/);
-  assert.match(profile, /const shipperReady = validName && validCountry && validPhone/);
-  assert.match(profile, /!isShipper \? \(/);
-  assert.match(profileApi, /COUNTRY_REQUIRED/);
+test('short onboarding requires name and phone for both roles and cannot skip', () => {
+  assert.match(profile, /id="name"/);
+  assert.match(profile, /id="phone"/);
+  assert.match(profile, /id="company"/);
+  assert.match(profile, /const formValid = validName && validPhone && validMessenger/);
+  assert.match(profile, /if \(!validName\) next\.name/);
+  assert.match(profile, /if \(!validPhone\) next\.phone/);
+  assert.match(profile, /setRole\(role\)/);
+  assert.doesNotMatch(profile, /id="country"/);
+  assert.doesNotMatch(profile, /id="city"/);
   assert.match(profileApi, /PHONE_REQUIRED/);
   assert.match(profileApi, /NAME_REQUIRED/);
+  assert.doesNotMatch(profileApi, /COUNTRY_REQUIRED/);
 });
