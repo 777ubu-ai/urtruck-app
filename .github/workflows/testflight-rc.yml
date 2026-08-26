@@ -10,6 +10,8 @@ name: UrTruck TestFlight RC
 # exactly the 3 files listed in b9d670c — this workflow-comment bump
 # exists only to satisfy the path-filtered push trigger, not to change
 # CI logic.
+# RC bump 2026-08-26 19:00Z: notifications deeplink release entrypoints
+# merged in a8669ac; comment-only trigger for exact TestFlight rebuild.
 on:
   push:
     branches:
