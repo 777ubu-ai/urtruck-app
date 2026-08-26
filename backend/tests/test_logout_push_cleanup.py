@@ -26,10 +26,12 @@ from database import registration_dal as reg_dal
 ddb.init_db()
 reg_dal.init_registration_schema()
 
+from api.registration import reg_router
 from api.push import push_router
 from services import push_sender
 
 app = FastAPI()
+app.include_router(reg_router, prefix="/api/v1/register")
 app.include_router(push_router, prefix="/api/v1/push")
 client = TestClient(app)
 
@@ -114,13 +116,53 @@ def test_deactivate_user_push_helper_used_by_delete_account_path():
     assert push_sender._native_tokens(uid) == []
 
 
+def test_register_logout_server_side_deactivates_push_and_frees_same_device_for_next_user():
+    uid_a, tok_a = _new_user_token()
+    uid_b, tok_b = _new_user_token()
+    device = "d-register-logout-switch-1"
+    tok_native_a = "ExponentPushToken[unit-test-register-logout-a]"
+    tok_native_b = "ExponentPushToken[unit-test-register-logout-b]"
+    endpoint_a = "https://fcm.googleapis.com/fcm/send/unit-test-register-logout-a"
+
+    r1 = client.post("/api/v1/push/register-native", json={"token": tok_native_a, "device_id": device}, headers=_auth(tok_a))
+    assert r1.status_code == 200, r1.text
+    r2 = client.post("/api/v1/push/subscribe", json={
+        "endpoint": endpoint_a, "keys": {"p256dh": "p", "auth": "a"}, "device_id": device,
+    }, headers=_auth(tok_a))
+    assert r2.status_code == 200, r2.text
+    assert len(push_sender._native_tokens(uid_a)) == 1
+    assert len(push_sender._web_subs(uid_a)) == 1
+
+    logout = client.post("/api/v1/register/logout", headers=_auth(tok_a))
+    assert logout.status_code == 200, logout.text
+    assert logout.json()["ok"] is True
+    assert logout.json()["revoked"] is True
+    assert push_sender._native_tokens(uid_a) == []
+    assert push_sender._web_subs(uid_a) == []
+
+    r3 = client.post("/api/v1/push/register-native", json={"token": tok_native_b, "device_id": device}, headers=_auth(tok_b))
+    assert r3.status_code == 200, r3.text
+    assert push_sender._native_tokens(uid_a) == []
+    assert [t["token"] for t in push_sender._native_tokens(uid_b)] == [tok_native_b]
+
+    from database.db import get_conn
+    with get_conn() as c:
+        old_row = c.execute("SELECT active, invalidated_reason FROM push_tokens_native WHERE token = ?", (tok_native_a,)).fetchone()
+        new_row = c.execute("SELECT user_id, active FROM push_tokens_native WHERE token = ?", (tok_native_b,)).fetchone()
+        old_web = c.execute("SELECT active, invalidated_reason FROM push_subscriptions WHERE endpoint = ?", (endpoint_a,)).fetchone()
+    assert old_row["active"] == 0 and old_row["invalidated_reason"] == "logout"
+    assert old_web["active"] == 0 and old_web["invalidated_reason"] == "logout"
+    assert new_row["user_id"] == uid_b and new_row["active"] == 1
+
+
 if __name__ == "__main__":
     fails = 0
     for fn in [test_logout_cleanup_deactivates_both_web_and_native,
                test_logout_cleanup_requires_auth,
                test_logout_cleanup_without_device_id_deactivates_all_devices,
                test_logout_cleanup_does_not_affect_other_users,
-               test_deactivate_user_push_helper_used_by_delete_account_path]:
+               test_deactivate_user_push_helper_used_by_delete_account_path,
+               test_register_logout_server_side_deactivates_push_and_frees_same_device_for_next_user]:
         try:
             fn(); print(f"  ✅ {fn.__name__}")
         except Exception as e:
