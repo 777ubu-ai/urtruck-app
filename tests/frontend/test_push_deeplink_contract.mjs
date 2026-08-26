@@ -7,6 +7,7 @@ const read = (path) => fs.readFileSync(path, 'utf8');
 const app = read('App.js');
 const push = read('src/utils/push.js');
 const appJson = JSON.parse(read('app.json'));
+const iosEntitlements = read('ios/UrTruck/UrTruck.entitlements');
 const aasa = JSON.parse(read('web/apple-app-site-association'));
 const wellKnownAasa = JSON.parse(read('web/.well-known/apple-app-site-association'));
 const assetlinks = JSON.parse(read('web/.well-known/assetlinks.json'));
@@ -61,14 +62,19 @@ test('native app listens to general url entrypoints in addition to push taps', (
   assert.match(app, /if \(url\) routeFromUrl\(url\);/);
 });
 
-test('ios and android release configs declare urtruck notifications app-link entrypoints', () => {
-  assert.deepEqual(appJson.expo.ios.associatedDomains, ['applinks:urtruck.kz']);
+test('ios TestFlight config keeps push deeplinks buildable until Associated Domains is enabled in Apple profile', () => {
+  assert.equal(appJson.expo.ios.associatedDomains, undefined);
+  assert.doesNotMatch(iosEntitlements, /com\.apple\.developer\.associated-domains/);
+  assert.match(iosEntitlements, /<key>aps-environment<\/key>\s*<string>production<\/string>/);
+});
+
+test('android release config declares urtruck notifications app-link entrypoint', () => {
   assert.equal(appJson.expo.android.intentFilters[0].data[0].scheme, 'https');
   assert.equal(appJson.expo.android.intentFilters[0].data[0].host, 'urtruck.kz');
   assert.equal(appJson.expo.android.intentFilters[0].data[0].pathPrefix, '/notifications');
 });
 
-test('release metadata files declare notifications universal-link ownership', () => {
+test('release metadata files declare notifications universal-link ownership for web/android and future iOS capability enablement', () => {
   const applePaths = aasa.applinks.details[0].paths;
   assert.ok(applePaths.includes('/notifications'));
   assert.ok(applePaths.includes('/notifications/*'));
