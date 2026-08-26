@@ -19,6 +19,13 @@ buildscript {
         classpath('com.android.tools.build:gradle')
         classpath('com.facebook.react:react-native-gradle-plugin')
         classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')
+        // P1 fix (26.08.2026): Android FCM push requires this plugin to turn
+        // app/google-services.json into real Firebase runtime config
+        // (google_app_id, gcm_defaultSenderId, ...). See
+        // docs/release/android-firebase-config.md. Applied conditionally in
+        // app/build.gradle — the classpath itself is always available so
+        // that conditional `apply plugin` doesn't fail to resolve.
+        classpath('com.google.gms:google-services:4.4.2')
     }
 }
 

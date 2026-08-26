@@ -82,6 +82,17 @@ credentials.json
 *.aab
 google-play-service-account.json
 
+# Android Firebase/FCM config — the real file (real UrTruck project, NOT the
+# accidentally-committed BizChat one removed in the same change that added
+# this line, see docs/release/android-firebase-config.md) is materialized
+# at build time by build-android-apk.yml / deploy-play.yml from the
+# ANDROID_GOOGLE_SERVICES_JSON_BASE64 repository secret. It must never be
+# committed — a committed file here is exactly the class of incident this
+# fix closes (a real credential, and worse, a silently WRONG one, sitting in
+# git history where nothing forces it to match the real project).
+/google-services.json
+/android/app/google-services.json
+
 # Claude Code harness runtime state (PID/timestamp, session-local — не версионируется)
 .claude/scheduled_tasks.lock
 
