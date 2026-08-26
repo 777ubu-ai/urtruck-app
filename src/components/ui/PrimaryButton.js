@@ -1,20 +1,30 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { TouchableOpacity, Text, ActivityIndicator, StyleSheet } from 'react-native';
-import { colors, radius, spacing, typography } from '../../theme/theme';
+import { radius, spacing, typography } from '../../theme/theme';
+import { useTheme } from '../../utils/ThemeContext';
+
+// P1 theme-consistency fix (25.08.2026): variant colors now derive from
+// ThemeContext instead of the static (light-only) `colors` export in
+// theme/theme.js. Brand green stays a semantic constant across both themes
+// (CLAUDE.md: "бренд-зелёный ОБЕИХ ролей #168759"); the soft-green
+// "secondary" surface and the "ghost" muted text/border must adapt, or a
+// ghost button on a dark screen renders invisible light-grey text.
+const GREEN = '#168759';
+const GREEN_DEEP = '#0F6B47';
 
 export default function PrimaryButton({
   label, onPress, variant = 'primary', loading = false, disabled = false, style,
 }) {
+  const { theme } = useTheme();
+  const s = useMemo(() => makeStyles(), []);
   const isDisabled = disabled || loading;
-  // Светлая тема: у secondary фон — зелёный тинт, текст — тёмно-зелёный.
-  // Белый текст на surface2 (#F0F4F2) был невидим после light-флипа.
-  const bg = variant === 'primary' ? colors.green
-    : variant === 'secondary' ? colors.greenMuted
+  const bg = variant === 'primary' ? GREEN
+    : variant === 'secondary' ? theme.cardActive
     : 'transparent';
-  const textColor = variant === 'ghost' ? colors.textMuted
-    : variant === 'secondary' ? colors.greenDeep
+  const textColor = variant === 'ghost' ? theme.textMuted
+    : variant === 'secondary' ? GREEN_DEEP
     : '#fff';
-  const borderColor = variant === 'ghost' ? colors.border : 'transparent';
+  const borderColor = variant === 'ghost' ? theme.border : 'transparent';
 
   return (
     <TouchableOpacity
@@ -32,7 +42,7 @@ export default function PrimaryButton({
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   btn: {
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.xl,

@@ -123,7 +123,7 @@ export function DealRoomCard({ deal, role }) {
       } />
       {deal.plate ? <Field icon="truck" label={t('chat_deal_card_plate')} value={deal.plate} /> : null}
       {showAutomaticRouteMap ? (
-        <View style={[s.autoMap, { borderColor: theme.border }]} testID="deal-automatic-route-map">
+        <View style={[s.autoMap, { borderColor: theme.border, backgroundColor: theme.surfaceAlt }]} testID="deal-automatic-route-map">
           <TruckMap
             routePoints={routePoints}
             planned
@@ -204,7 +204,7 @@ const s = StyleSheet.create({
   field: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   fieldLabel: { fontSize: 12 },
   fieldValue: { fontSize: 12, fontWeight: '700', flex: 1, textAlign: 'right' },
-  autoMap: { height: 250, marginTop: 8, borderWidth: 1, borderRadius: 14, overflow: 'hidden', backgroundColor: '#EAF1ED' },
+  autoMap: { height: 250, marginTop: 8, borderWidth: 1, borderRadius: 14, overflow: 'hidden' },
   sysRow: { alignItems: 'center', marginVertical: 6 },
   sysPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, maxWidth: '90%' },
   sysText: { fontSize: 11, fontWeight: '600', textAlign: 'center' },

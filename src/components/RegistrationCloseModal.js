@@ -7,12 +7,14 @@
 // здесь дописываем только несохранённые локальные поля. Если save упал —
 // НЕ выходим молча: показываем ошибку и остаёмся на экране.
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, Pressable, Modal, StyleSheet, ActivityIndicator } from 'react-native';
 import { useI18n } from '../utils/useI18n';
-import { brand, radius, typography } from '../theme/brandV2';
+import { brand, useBrand, radius, typography } from '../theme/brandV2';
 
 export default function RegistrationCloseModal({ visible, onCancel, onExit, saveDraft }) {
+  const localBrand = useBrand();
+  const s = useMemo(() => makeStyles(localBrand), [localBrand]);
   const { t } = useI18n();
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -59,7 +61,7 @@ export default function RegistrationCloseModal({ visible, onCancel, onExit, save
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (brand) => StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.5)', alignItems: 'center', justifyContent: 'center', padding: 28 },
   card: { width: '100%', maxWidth: 420, backgroundColor: brand.bg, borderRadius: radius.lg, padding: 20 },
   title: { ...typography.h1, fontSize: 20, lineHeight: 26, color: brand.textPrimary, marginBottom: 8 },

@@ -27,15 +27,13 @@ import BottomSheet from '../components/ui/v1/BottomSheet';
 import DatePicker from '../components/DatePicker';
 import LocationPickerModal from '../components/LocationPickerModal';
 import { TRUCK_KEYS } from '../utils/truckConstants';
+import { useTheme } from '../utils/ThemeContext';
 
+// P1 theme-consistency fix (25.08.2026): background/surface/text/border must
+// come from ThemeContext (see makeStyles(theme) below), never a hardcoded
+// light-only constant. ACCENT stays a semantic brand-accent constant across
+// both themes, same as theme.js's statusColors convention.
 const ACCENT = '#34936B';
-const ACCENT_SOFT = '#EAF5EF';
-const PAGE_BG = '#F7F9F7';
-const SURFACE = '#FFFFFF';
-const TEXT = '#17221E';
-const TEXT_SECONDARY = '#606B66';
-const TEXT_MUTED = '#808A85';
-const BORDER = '#E5EAE7';
 
 const COPY = {
   RU: {
@@ -144,7 +142,7 @@ const normalizeCargo = (c, myUserId) => {
   };
 };
 
-function CargoCard({ item, lang, copy, saved, onToggleSaved, onPress }) {
+function CargoCard({ item, lang, copy, saved, onToggleSaved, onPress, styles, theme }) {
   const from = localizePlace(item.from, lang) || '—';
   const to = localizePlace(item.to, lang) || '—';
   const cargo = localizeCargoName(item.cargo, lang) || '—';
@@ -177,7 +175,7 @@ function CargoCard({ item, lang, copy, saved, onToggleSaved, onPress }) {
                 {!!fromFlag && <Text style={styles.flag}>{fromFlag}</Text>}
                 <Text style={styles.routeCity} numberOfLines={1}>{from}</Text>
               </View>
-              <Feather name="arrow-right" size={18} color={TEXT} style={styles.routeArrow} />
+              <Feather name="arrow-right" size={18} color={theme.text} style={styles.routeArrow} />
               <View style={styles.placeInline}>
                 {!!toFlag && <Text style={styles.flag}>{toFlag}</Text>}
                 <Text style={styles.routeCity} numberOfLines={1}>{to}</Text>
@@ -188,7 +186,7 @@ function CargoCard({ item, lang, copy, saved, onToggleSaved, onPress }) {
 
         <View style={styles.cargoPriceRow}>
           <View style={[styles.infoRow, styles.cargoInfoRow]}>
-            <Feather name="package" size={15} color={TEXT_SECONDARY} />
+            <Feather name="package" size={15} color={theme.textSecondary} />
             <Text style={styles.infoText} numberOfLines={1}>{cargo}</Text>
           </View>
           <Text style={styles.price} numberOfLines={1} testID={`cargo-card-price-${item.id}`}>
@@ -196,11 +194,11 @@ function CargoCard({ item, lang, copy, saved, onToggleSaved, onPress }) {
           </Text>
         </View>
         <View style={styles.infoRow}>
-          <Feather name="truck" size={15} color={TEXT_SECONDARY} />
+          <Feather name="truck" size={15} color={theme.textSecondary} />
           <Text style={styles.infoText} numberOfLines={1}>{specs || formatTruckType(item.type)}</Text>
         </View>
         <View style={styles.infoRow}>
-          <Feather name="calendar" size={15} color={TEXT_SECONDARY} />
+          <Feather name="calendar" size={15} color={theme.textSecondary} />
           <Text style={styles.infoText} numberOfLines={1}>
             {copy.loading}: {formatPickupDate(item.pickup, lang)}
           </Text>
@@ -218,7 +216,7 @@ function CargoCard({ item, lang, copy, saved, onToggleSaved, onPress }) {
         {saved ? (
           <FontAwesome5 name="bookmark" size={18} color={ACCENT} solid />
         ) : (
-          <Feather name="bookmark" size={18} color={TEXT_SECONDARY} />
+          <Feather name="bookmark" size={18} color={theme.textSecondary} />
         )}
       </Pressable>
     </TouchableOpacity>
@@ -227,6 +225,8 @@ function CargoCard({ item, lang, copy, saved, onToggleSaved, onPress }) {
 
 export default function CargoFeedScreen({ navigation }) {
   const { t, lang } = useI18n();
+  const { theme } = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const { session } = useAuth();
   const { toast } = useToast();
   const { requireLevel, Gate } = useVerificationGate();
@@ -381,9 +381,9 @@ export default function CargoFeedScreen({ navigation }) {
       testID={`cargo-filter-${key}`}
       accessibilityRole="button"
     >
-      <Feather name={icon} size={16} color={active ? ACCENT : TEXT_SECONDARY} />
+      <Feather name={icon} size={16} color={active ? ACCENT : theme.textSecondary} />
       <Text style={[styles.filterPillText, active && styles.filterPillTextActive]}>{label}</Text>
-      <Feather name="chevron-down" size={15} color={TEXT_SECONDARY} />
+      <Feather name="chevron-down" size={15} color={theme.textSecondary} />
     </TouchableOpacity>
   );
 
@@ -392,7 +392,7 @@ export default function CargoFeedScreen({ navigation }) {
       <View style={[styles.routeSelector, (dirFrom || dirTo) && styles.routeSelectorActive]} testID="feed-route-selector">
         <TouchableOpacity style={styles.routeHalf} onPress={() => setShowDirFromPicker(true)} testID="feed-route-from">
           <View style={styles.routeLabelRow}>
-            <Feather name="map-pin" size={14} color={TEXT_MUTED} />
+            <Feather name="map-pin" size={14} color={theme.textMuted} />
             <Text style={styles.routeLabel}>{t('from')}</Text>
           </View>
           <Text style={[styles.routeValue, !dirFrom && styles.placeholder]} numberOfLines={1}>
@@ -402,7 +402,7 @@ export default function CargoFeedScreen({ navigation }) {
         <Feather name="arrow-right" size={24} color={ACCENT} />
         <TouchableOpacity style={styles.routeHalf} onPress={() => setShowDirToPicker(true)} testID="feed-route-to">
           <View style={styles.routeLabelRow}>
-            <Feather name="flag" size={14} color={TEXT_MUTED} />
+            <Feather name="flag" size={14} color={theme.textMuted} />
             <Text style={styles.routeLabel}>{t('to')}</Text>
           </View>
           <Text style={[styles.routeValue, !dirTo && styles.placeholder]} numberOfLines={1}>
@@ -411,7 +411,7 @@ export default function CargoFeedScreen({ navigation }) {
         </TouchableOpacity>
         {(dirFrom || dirTo) ? (
           <TouchableOpacity onPress={() => { setDirFrom(''); setDirTo(''); }} hitSlop={10} testID="feed-route-clear">
-            <Feather name="x" size={17} color={TEXT_MUTED} />
+            <Feather name="x" size={17} color={theme.textMuted} />
           </TouchableOpacity>
         ) : null}
       </View>
@@ -450,7 +450,7 @@ export default function CargoFeedScreen({ navigation }) {
           testID="feed-menu-btn"
           accessibilityLabel={t('tab_profile')}
         >
-          <Feather name="menu" size={27} color={TEXT} />
+          <Feather name="menu" size={27} color={theme.text} />
         </TouchableOpacity>
       </View>
 
@@ -466,6 +466,8 @@ export default function CargoFeedScreen({ navigation }) {
             saved={savedIds.has(String(item.id))}
             onToggleSaved={() => toggleSaved(item)}
             onPress={() => openCargo(item)}
+            styles={styles}
+            theme={theme}
           />
         )}
         ListHeaderComponent={feedControls}
@@ -484,7 +486,7 @@ export default function CargoFeedScreen({ navigation }) {
             </View>
           ) : (
             <View style={styles.emptyWrap}>
-              <Feather name={error ? 'alert-circle' : savedOnly ? 'bookmark' : 'package'} size={32} color={TEXT_MUTED} />
+              <Feather name={error ? 'alert-circle' : savedOnly ? 'bookmark' : 'package'} size={32} color={theme.textMuted} />
               <Text style={styles.emptyTitle}>{error ? copy.loadError : copy.empty}</Text>
               {error ? (
                 <TouchableOpacity style={styles.retryBtn} onPress={load} testID="cargo-retry">
@@ -580,8 +582,11 @@ export default function CargoFeedScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: PAGE_BG },
+// #P1 theme-consistency: every background/surface/text/border token below
+// comes from `theme` (ThemeContext) — nothing here may hardcode a
+// light-only hex value. ACCENT stays a semantic brand-accent constant.
+const makeStyles = (theme) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: theme.bg },
   topBar: {
     minHeight: 48,
     paddingHorizontal: 18,
@@ -589,7 +594,7 @@ const styles = StyleSheet.create({
     paddingBottom: 2,
     alignItems: 'flex-end',
     justifyContent: 'center',
-    backgroundColor: PAGE_BG,
+    backgroundColor: theme.bg,
   },
   menuBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   feedControls: { paddingTop: 4, paddingBottom: 4 },
@@ -603,9 +608,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 19,
     borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: SURFACE,
-    shadowColor: '#14211C',
+    borderColor: theme.border,
+    backgroundColor: theme.surface,
+    shadowColor: theme.shadow,
     shadowOpacity: 0.03,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 2 },
@@ -615,9 +620,9 @@ const styles = StyleSheet.create({
   routeSelectorActive: { borderColor: ACCENT },
   routeHalf: { flex: 1, minWidth: 0 },
   routeLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 3 },
-  routeLabel: { fontSize: 12, lineHeight: 16, fontWeight: '600', color: TEXT_SECONDARY },
-  routeValue: { fontSize: 16, lineHeight: 21, fontWeight: '700', color: TEXT },
-  placeholder: { color: '#727D77' },
+  routeLabel: { fontSize: 12, lineHeight: 16, fontWeight: '600', color: theme.textSecondary },
+  routeValue: { fontSize: 16, lineHeight: 21, fontWeight: '700', color: theme.text },
+  placeholder: { color: theme.textMuted },
   filtersScroll: { flexGrow: 0, minHeight: 58, maxHeight: 58 },
   filters: { paddingHorizontal: 24, paddingVertical: 5, gap: 9, alignItems: 'center' },
   filterPill: {
@@ -625,24 +630,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 23,
     borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: SURFACE,
+    borderColor: theme.border,
+    backgroundColor: theme.surface,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 7,
-    shadowColor: '#14211C',
+    shadowColor: theme.shadow,
     shadowOpacity: 0.025,
     shadowRadius: 7,
     shadowOffset: { width: 0, height: 2 },
     elevation: 1,
   },
-  filterPillActive: { borderColor: '#BFDCCF', backgroundColor: '#FAFDFC' },
-  filterPillText: { fontSize: 14, fontWeight: '600', color: TEXT_SECONDARY },
+  filterPillActive: { borderColor: theme.cardActiveBorder, backgroundColor: theme.cardActive },
+  filterPillText: { fontSize: 14, fontWeight: '600', color: theme.textSecondary },
   filterPillTextActive: { color: ACCENT },
-  favoritesPill: { borderColor: '#CAE2D7', backgroundColor: '#F5FBF8' },
-  favoritesPillActive: { borderColor: '#A6D2BE', backgroundColor: ACCENT_SOFT },
+  favoritesPill: { borderColor: theme.cardActiveBorder, backgroundColor: theme.cardActive },
+  favoritesPillActive: { borderColor: theme.cardActiveBorder, backgroundColor: theme.cardActive },
   favoritesText: { color: ACCENT },
-  favoritesCount: { fontSize: 13, lineHeight: 18, fontWeight: '600', color: '#6B8C7C' },
+  favoritesCount: { fontSize: 13, lineHeight: 18, fontWeight: '600', color: ACCENT },
   list: { flex: 1 },
   listContent: { paddingTop: 0, paddingBottom: 28 },
   loadingWrap: { paddingHorizontal: 24, paddingTop: 5 },
@@ -652,10 +657,10 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: SURFACE,
+    borderColor: theme.border,
+    backgroundColor: theme.surface,
     overflow: 'hidden',
-    shadowColor: '#15211C',
+    shadowColor: theme.shadow,
     shadowOpacity: 0.035,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 2 },
@@ -668,33 +673,33 @@ const styles = StyleSheet.create({
   routeWrap: { width: '100%', minWidth: 0 },
   routeLine: { flexDirection: 'row', alignItems: 'center', flexWrap: 'nowrap', gap: 6, width: '100%' },
   placeInline: { flexDirection: 'row', alignItems: 'center', gap: 5, minWidth: 0, flexShrink: 1, maxWidth: '44%' },
-  routeCity: { fontSize: 16, lineHeight: 20, fontWeight: '700', letterSpacing: -0.25, color: TEXT, flexShrink: 1 },
+  routeCity: { fontSize: 16, lineHeight: 20, fontWeight: '700', letterSpacing: -0.25, color: theme.text, flexShrink: 1 },
   routeArrow: { marginHorizontal: 0, flexShrink: 0 },
   flag: { fontSize: 18, lineHeight: 20 },
   cargoPriceRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 20 },
   cargoInfoRow: { flex: 1, minWidth: 0, paddingRight: 0 },
-  price: { maxWidth: '37%', flexShrink: 0, textAlign: 'right', fontSize: 18, lineHeight: 21, fontWeight: '700', letterSpacing: -0.2, color: TEXT },
+  price: { maxWidth: '37%', flexShrink: 0, textAlign: 'right', fontSize: 18, lineHeight: 21, fontWeight: '700', letterSpacing: -0.2, color: theme.text },
   infoRow: { minHeight: 20, flexDirection: 'row', alignItems: 'center', gap: 7, paddingRight: 38 },
-  infoText: { flex: 1, fontSize: 12.5, lineHeight: 17, fontWeight: '400', color: '#39443F' },
+  infoText: { flex: 1, fontSize: 12.5, lineHeight: 17, fontWeight: '400', color: theme.textSecondary },
   bookmarkBtn: { position: 'absolute', right: 9, bottom: 6, width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  bookmarkBtnSaved: { backgroundColor: ACCENT_SOFT },
+  bookmarkBtnSaved: { backgroundColor: theme.cardActive },
   emptyWrap: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 65, gap: 11 },
-  emptyTitle: { fontSize: 14, lineHeight: 20, color: TEXT_MUTED, textAlign: 'center' },
-  retryBtn: { marginTop: 5, minHeight: 44, borderRadius: 22, paddingHorizontal: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: ACCENT_SOFT },
+  emptyTitle: { fontSize: 14, lineHeight: 20, color: theme.textMuted, textAlign: 'center' },
+  retryBtn: { marginTop: 5, minHeight: 44, borderRadius: 22, paddingHorizontal: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.cardActive },
   retryText: { fontSize: 14, fontWeight: '700', color: ACCENT },
-  sheetLabel: { fontSize: 12, fontWeight: '700', color: TEXT_MUTED, marginBottom: 7 },
+  sheetLabel: { fontSize: 12, fontWeight: '700', color: theme.textMuted, marginBottom: 7 },
   sheetActions: { flexDirection: 'row', gap: 10, marginTop: 22, paddingBottom: 8 },
-  sheetSecondary: { flex: 1, minHeight: 46, borderRadius: 14, borderWidth: 1, borderColor: BORDER, backgroundColor: SURFACE, alignItems: 'center', justifyContent: 'center' },
-  sheetSecondaryText: { color: TEXT_SECONDARY, fontSize: 14, fontWeight: '700' },
+  sheetSecondary: { flex: 1, minHeight: 46, borderRadius: 14, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.surface, alignItems: 'center', justifyContent: 'center' },
+  sheetSecondaryText: { color: theme.textSecondary, fontSize: 14, fontWeight: '700' },
   sheetPrimary: { flex: 1, minHeight: 46, borderRadius: 14, backgroundColor: ACCENT, alignItems: 'center', justifyContent: 'center' },
   sheetPrimaryText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
   bodyGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  bodyChip: { minHeight: 40, paddingHorizontal: 13, borderRadius: 12, borderWidth: 1, borderColor: BORDER, backgroundColor: SURFACE, alignItems: 'center', justifyContent: 'center' },
-  bodyChipActive: { borderColor: '#BFDCCF', backgroundColor: ACCENT_SOFT },
-  bodyChipText: { color: TEXT_SECONDARY, fontSize: 13, fontWeight: '600' },
+  bodyChip: { minHeight: 40, paddingHorizontal: 13, borderRadius: 12, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.surface, alignItems: 'center', justifyContent: 'center' },
+  bodyChipActive: { borderColor: theme.cardActiveBorder, backgroundColor: theme.cardActive },
+  bodyChipText: { color: theme.textSecondary, fontSize: 13, fontWeight: '600' },
   bodyChipTextActive: { color: ACCENT },
-  sortRow: { minHeight: 50, paddingHorizontal: 14, borderRadius: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7, borderWidth: 1, borderColor: BORDER, backgroundColor: SURFACE },
-  sortRowActive: { borderColor: '#BFDCCF', backgroundColor: '#FAFDFC' },
-  sortText: { fontSize: 14, fontWeight: '600', color: TEXT_SECONDARY },
+  sortRow: { minHeight: 50, paddingHorizontal: 14, borderRadius: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.surface },
+  sortRowActive: { borderColor: theme.cardActiveBorder, backgroundColor: theme.cardActive },
+  sortText: { fontSize: 14, fontWeight: '600', color: theme.textSecondary },
   sortTextActive: { color: ACCENT },
 });

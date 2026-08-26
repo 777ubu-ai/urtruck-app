@@ -203,7 +203,6 @@ const s = StyleSheet.create({
   staleText: { flex: 1, fontSize: 12, color: '#F59E0B', fontWeight: '600', lineHeight: 16 },
   driverCard: { marginHorizontal: 12, marginTop: 8, marginBottom: 10, padding: 12, borderWidth: 1, borderRadius: 16, gap: 10 },
   driverIdentity: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  driverAvatar: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: '#E8F6EF' },
   driverText: { flex: 1, minWidth: 0 },
   driverName: { fontSize: 15, fontWeight: '800' },
   presenceRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },

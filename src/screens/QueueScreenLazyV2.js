@@ -297,7 +297,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
             const next = checkpointCarouselX.current + 300;
             checkpointCarouselRef.current?.scrollTo({ x: next, animated: true });
             checkpointCarouselX.current = next;
-          }} style={s.carouselNext} testID="border-checkpoint-next"><Feather name="chevrons-right" size={21} color="#168759" /></TouchableOpacity>
+          }} style={[s.carouselNext, { backgroundColor: 'rgba(22,135,89,0.12)' }]} testID="border-checkpoint-next"><Feather name="chevrons-right" size={21} color="#168759" /></TouchableOpacity>
         </View>
 
         {catalogLoading ? <View style={s.center}><ActivityIndicator color="#168759" /></View> : (
@@ -317,17 +317,17 @@ export default function QueueScreenLazyV2({ navigation, route }) {
         )}
 
         {!selected ? <View style={[s.promptCard, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-lazy-prompt"><Feather name="mouse-pointer" size={20} color="#168759" /><Text style={[s.promptText, { color: theme.textMuted }]}>{L.tap}</Text></View> : null}
-        {selected && liveLoading && !live ? <View style={[s.liveCard, { backgroundColor: theme.card, borderColor: '#A7DCC3' }]} testID="border-live-loading"><ActivityIndicator color="#168759" size="large" /><Text style={[s.loadingText, { color: theme.textMuted }]}>{L.loading}</Text></View> : null}
-        {selected && liveError ? <View style={[s.errorCard, { backgroundColor: theme.card }]}><Feather name="alert-circle" size={20} color="#B42318" /><Text style={[s.errorText, { color: theme.textMuted }]}>{liveError}</Text><TouchableOpacity onPress={() => loadLive(selected, true)}><Text style={s.retry}>{L.refresh}</Text></TouchableOpacity></View> : null}
+        {selected && liveLoading && !live ? <View style={[s.liveCard, { backgroundColor: theme.card, borderColor: 'rgba(22,135,89,0.45)' }]} testID="border-live-loading"><ActivityIndicator color="#168759" size="large" /><Text style={[s.loadingText, { color: theme.textMuted }]}>{L.loading}</Text></View> : null}
+        {selected && liveError ? <View style={[s.errorCard, { backgroundColor: theme.card, borderColor: 'rgba(239,68,68,0.35)' }]}><Feather name="alert-circle" size={20} color="#B42318" /><Text style={[s.errorText, { color: theme.textMuted }]}>{liveError}</Text><TouchableOpacity onPress={() => loadLive(selected, true)}><Text style={s.retry}>{L.refresh}</Text></TouchableOpacity></View> : null}
 
         {selected && live ? (
-          <View style={[s.liveCard, { backgroundColor: theme.card, borderColor: '#9FD8BD' }]} testID="border-selected-card">
+          <View style={[s.liveCard, { backgroundColor: theme.card, borderColor: 'rgba(22,135,89,0.45)' }]} testID="border-selected-card">
             <View style={s.liveHeader}>
               <View style={{ flex: 1, paddingRight: 8 }}><Text style={[s.liveTitle, { color: theme.text }]}>{localizeCheckpointName({ ...selected, name: live.name || selected.name }, lang)}</Text><Text style={[s.liveCountry, { color: theme.textMuted }]}>{selected.country ? countryName(selected.country) : ''}</Text></View>
               <TouchableOpacity onPress={toggleFavorite} style={[s.iconButton, { borderColor: theme.border }]}><Feather name="star" size={19} color="#168759" fill={favorites.includes(String(selectedId)) ? '#168759' : 'transparent'} /></TouchableOpacity>
             </View>
 
-            <View style={s.heroBooking}>
+            <View style={[s.heroBooking, { backgroundColor: 'rgba(22,135,89,0.10)' }]}>
               <Text style={[s.heroLabel, { color: theme.textMuted }]}>{L.nearest}</Text>
               <Text style={s.heroDate}>{nearestText}</Text>
               {live.nearest_booking_free != null ? <View style={s.freeBadge}><Text style={s.freeBadgeText}>{live.nearest_booking_free} {L.places} · {L.standard}</Text></View> : <Text style={[s.noBooking, { color: theme.textMuted }]}>{L.noStandard}</Text>}
@@ -352,7 +352,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
                 const hasStandard = standardFree > 0;
                 const hasPremium = !hasStandard && premiumFree > 0;
                 return (
-                  <View style={[s.dateCard, { borderColor: item.is_day_off ? theme.border : hasStandard ? '#70C49B' : hasPremium ? '#E4B35A' : '#E5B8B8', backgroundColor: item.is_day_off ? v1.bg : hasStandard ? '#F0FBF6' : hasPremium ? '#FFF8E8' : '#FFF7F7' }]} testID="border-booking-date-card">
+                  <View style={[s.dateCard, { borderColor: item.is_day_off ? theme.border : hasStandard ? 'rgba(22,135,89,0.45)' : hasPremium ? 'rgba(230,109,0,0.45)' : 'rgba(239,68,68,0.35)', backgroundColor: item.is_day_off ? v1.bg : hasStandard ? 'rgba(22,135,89,0.10)' : hasPremium ? 'rgba(230,109,0,0.12)' : 'rgba(239,68,68,0.08)' }]} testID="border-booking-date-card">
                     <Text style={[s.dateText, { color: theme.text }]}>{formatShortDate(item.date, lang)}</Text>
                     {item.is_day_off ? <Text style={[s.dateState, { color: theme.textDim }]}>{L.dayOff}</Text> : hasStandard ? <><Text style={s.dateFree}>{standardFree}</Text><Text style={[s.dateState, { color: '#168759' }]}>{L.standard}</Text></> : hasPremium ? <><Text style={s.datePremium}>{premiumFree}</Text><Text style={[s.dateState, { color: '#B7791F' }]}>{L.premium}</Text></> : <Text style={[s.dateState, { color: '#B42318' }]}>{L.noPlaces}</Text>}
                   </View>
@@ -400,7 +400,7 @@ const s = StyleSheet.create({
   sectionTitle: { fontSize: 17, fontWeight: '850' },
   sectionTitleSmall: { fontSize: 15, fontWeight: '850' },
   hint: { fontSize: 12, lineHeight: 17, marginTop: 3, paddingRight: 12 },
-  carouselNext: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EAF8F1' },
+  carouselNext: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
   carousel: { gap: 10, paddingRight: 28, paddingBottom: 4 },
   cpCard: { width: 140, minHeight: 94, borderWidth: 1, borderRadius: 16, padding: 12 },
   cpCardActive: { borderWidth: 2, padding: 11, shadowColor: '#168759', shadowOpacity: 0.09, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } },
@@ -418,7 +418,7 @@ const s = StyleSheet.create({
   liveTitle: { fontSize: 20, lineHeight: 25, fontWeight: '900' },
   liveCountry: { fontSize: 13, marginTop: 4 },
   iconButton: { width: 38, height: 38, borderWidth: 1, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  heroBooking: { backgroundColor: '#F2FBF6', borderRadius: 16, padding: 16, marginTop: 15, alignItems: 'flex-start' },
+  heroBooking: { borderRadius: 16, padding: 16, marginTop: 15, alignItems: 'flex-start' },
   heroLabel: { fontSize: 12.5, fontWeight: '750' },
   heroDate: { color: '#126C49', fontSize: 31, lineHeight: 37, fontWeight: '950', marginTop: 4 },
   freeBadge: { backgroundColor: '#168759', borderRadius: 10, paddingVertical: 6, paddingHorizontal: 10, marginTop: 9 },

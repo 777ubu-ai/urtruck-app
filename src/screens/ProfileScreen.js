@@ -516,7 +516,7 @@ export default function ProfileScreen({ navigation, route }) {
             testID="qa-debug-logout"
             accessibilityLabel="QA debug logout"
           >
-            <Text style={s.logoutText}>QA logout (dev only)</Text>
+            <Text style={[s.logoutText, { color: v1.textMuted }]}>QA logout (dev only)</Text>
           </TouchableOpacity>
         ) : null}
 
@@ -531,7 +531,7 @@ export default function ProfileScreen({ navigation, route }) {
             testID="qa-open-verification"
             accessibilityLabel="QA open verification"
           >
-            <Text style={s.logoutText}>QA verification (dev only)</Text>
+            <Text style={[s.logoutText, { color: v1.textMuted }]}>QA verification (dev only)</Text>
           </TouchableOpacity>
         ) : null}
 
@@ -544,7 +544,7 @@ export default function ProfileScreen({ navigation, route }) {
           }}
           testID="profile-logout"
         >
-          <Text style={s.logoutText}>{t('logout')}</Text>
+          <Text style={[s.logoutText, { color: v1.textMuted }]}>{t('logout')}</Text>
         </TouchableOpacity>
       </ScrollView>
       <AppConfirmModal visible={!!confirmDialog} title={confirmDialog?.title} message={confirmDialog?.message} cancelLabel={t('cancel')} confirmLabel={confirmDialog?.confirmLabel || t('confirm')} onCancel={() => settleConfirm(false)} onConfirm={() => settleConfirm(true)} testID="profile-confirm-modal" />

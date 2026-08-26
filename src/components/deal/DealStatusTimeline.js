@@ -114,10 +114,10 @@ export default function DealStatusTimeline({ events = [], fallbackStatus = '' })
         return (
           <View key={String(ev?.id || `${key}-${index}`)} style={s.item} testID="deal-status-timeline-item">
             <View style={s.rail}>
-              <View style={[s.dot, { borderColor: '#168759', backgroundColor: '#FFFFFF' }]}>
+              <View style={[s.dot, { borderColor: '#168759', backgroundColor: colors.surface }]}>
                 <Feather name={ICON_BY_EVENT[key] || 'circle'} size={12} color="#168759" />
               </View>
-              {!last ? <View style={s.line} /> : null}
+              {!last ? <View style={[s.line, { backgroundColor: 'rgba(22,135,89,0.35)' }]} /> : null}
             </View>
 
             <View style={[s.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -149,7 +149,7 @@ const s = StyleSheet.create({
   item: { flexDirection: 'row', alignItems: 'stretch', minHeight: 82 },
   rail: { width: 34, alignItems: 'center' },
   dot: { width: 28, height: 28, borderRadius: 14, borderWidth: 2, alignItems: 'center', justifyContent: 'center', zIndex: 2 },
-  line: { width: 2, flex: 1, minHeight: 52, backgroundColor: '#CFE9DB', marginVertical: -1 },
+  line: { width: 2, flex: 1, minHeight: 52, marginVertical: -1 },
   card: { flex: 1, borderWidth: 1, borderRadius: 15, paddingHorizontal: 13, paddingVertical: 11, marginBottom: 12 },
   title: { fontSize: 14, fontWeight: '900', lineHeight: 19 },
   moment: { fontSize: 11.5, fontWeight: '700', marginTop: 3, marginBottom: 7 },

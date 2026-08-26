@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
+import { useTheme } from '../../utils/ThemeContext';
 
 const COPY = {
   RU: {
@@ -82,6 +83,8 @@ const COPY = {
 };
 
 function InfoRow({ icon, iconColor, iconBackground, children }) {
+  const { theme } = useTheme();
+  const s = useMemo(() => makeStyles(theme), [theme]);
   return (
     <View style={s.infoRow}>
       <View style={[s.infoIcon, { backgroundColor: iconBackground }]}>
@@ -102,6 +105,8 @@ export default function BackgroundLocationDisclosureModal({
   onOpenSettings,
   onCheckAgain,
 }) {
+  const { theme } = useTheme();
+  const s = useMemo(() => makeStyles(theme), [theme]);
   const ui = COPY[lang] || COPY.RU;
   const settingsMode = mode === 'settings';
   const canOpenNativeSettings = Platform.OS !== 'web';
@@ -119,7 +124,7 @@ export default function BackgroundLocationDisclosureModal({
           {settingsMode ? (
             <>
               <Text style={s.intro}>{ui.settingsBody}</Text>
-              <InfoRow icon="settings" iconColor="#1264E6" iconBackground="#EDF4FF">
+              <InfoRow icon="settings" iconColor="#1264E6" iconBackground="rgba(18,100,230,0.12)">
                 {ui.settingsHint}
               </InfoRow>
               {canOpenNativeSettings ? (
@@ -147,10 +152,10 @@ export default function BackgroundLocationDisclosureModal({
               <Text style={s.intro}>{ui.intro}</Text>
 
               <View style={s.infoGroup}>
-                <InfoRow icon="crosshair" iconColor="#1264E6" iconBackground="#EDF4FF">
+                <InfoRow icon="crosshair" iconColor="#1264E6" iconBackground="rgba(18,100,230,0.12)">
                   {ui.background}
                 </InfoRow>
-                <InfoRow icon="shield" iconColor="#1DBB72" iconBackground="#ECFAF3">
+                <InfoRow icon="shield" iconColor="#1DBB72" iconBackground="rgba(29,187,114,0.14)">
                   {ui.stop}
                 </InfoRow>
               </View>
@@ -180,10 +185,15 @@ export default function BackgroundLocationDisclosureModal({
   );
 }
 
-const s = StyleSheet.create({
+// P1 theme-consistency: this modal is reachable mid deal-flow (Start trip),
+// so a light-only card here is exactly the "white modal on a dark screen"
+// case the audit called out. The blue primary CTA and its icon tints stay
+// semantic (this is the OS-location-permission color language on both iOS
+// and Android) — only surfaces/text/border follow ThemeContext.
+const makeStyles = (theme) => StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(9, 14, 20, 0.60)',
+    backgroundColor: theme.overlay,
     justifyContent: 'center',
     paddingHorizontal: 18,
   },
@@ -191,12 +201,12 @@ const s = StyleSheet.create({
     width: '100%',
     maxWidth: 520,
     alignSelf: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: theme.surface,
     borderRadius: 28,
     paddingHorizontal: 24,
     paddingTop: 30,
     paddingBottom: 20,
-    shadowColor: '#000000',
+    shadowColor: theme.shadow,
     shadowOpacity: 0.20,
     shadowRadius: 28,
     shadowOffset: { width: 0, height: 14 },
@@ -209,7 +219,7 @@ const s = StyleSheet.create({
     alignSelf: 'center',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F2F6FC',
+    backgroundColor: 'rgba(18,100,230,0.12)',
   },
   title: {
     marginTop: 22,
@@ -217,7 +227,7 @@ const s = StyleSheet.create({
     fontSize: 27,
     lineHeight: 33,
     fontWeight: '900',
-    color: '#10151D',
+    color: theme.text,
     letterSpacing: -0.35,
   },
   intro: {
@@ -225,7 +235,7 @@ const s = StyleSheet.create({
     fontSize: 16,
     lineHeight: 24,
     fontWeight: '500',
-    color: '#27313D',
+    color: theme.textSecondary,
   },
   infoGroup: {
     marginTop: 18,
@@ -250,7 +260,7 @@ const s = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     fontWeight: '500',
-    color: '#2B3440',
+    color: theme.textSecondary,
   },
   primary: {
     marginTop: 26,
@@ -281,15 +291,15 @@ const s = StyleSheet.create({
     marginTop: 12,
     borderRadius: 17,
     borderWidth: 1.5,
-    borderColor: '#D8DDE5',
-    backgroundColor: '#FFFFFF',
+    borderColor: theme.border,
+    backgroundColor: theme.surface,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 18,
   },
   webCheckAgain: { marginTop: 26 },
   secondaryText: {
-    color: '#111820',
+    color: theme.text,
     fontSize: 16,
     lineHeight: 21,
     fontWeight: '900',

@@ -7,14 +7,16 @@
 // «24–48 часов» (registration_review_time). UrTruck-формулировки: грузы/рейсы,
 // проверка водителя и транспорта (не «заказы пассажиров»).
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, Pressable, Modal, ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../utils/useI18n';
-import { brand, radius, typography } from '../theme/brandV2';
+import { brand, useBrand, radius, typography } from '../theme/brandV2';
 
 export default function RegistrationSubmittedScreen({ visible, onPrimary, onStatus }) {
+  const localBrand = useBrand();
+  const s = useMemo(() => makeStyles(localBrand), [localBrand]);
   const { t } = useI18n();
 
   const Block = ({ icon, title, text }) => (
@@ -69,7 +71,7 @@ export default function RegistrationSubmittedScreen({ visible, onPrimary, onStat
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (brand) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: brand.bg },
   content: { paddingHorizontal: 24, paddingTop: 24, paddingBottom: 24, alignItems: 'center' },
   check: { width: 88, height: 88, borderRadius: 44, backgroundColor: brand.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },

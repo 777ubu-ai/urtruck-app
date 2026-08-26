@@ -125,7 +125,7 @@ export default function ChatScreen({ navigation, route }) {
   dealCancelBtnText: { color: '#EF4444', fontSize: 13, fontWeight: '700' },
   dealTrackBtn: { borderRadius: 12, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 8, borderWidth: 1, borderColor: v1.border, backgroundColor: v1.surface },
   dealTrackBtnText: { color: v1.text, fontSize: 13, fontWeight: '700' },
-  dealMapCard: { height: 205, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: v1.border, backgroundColor: '#EAF1ED', marginBottom: 8 },
+  dealMapCard: { height: 205, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: v1.border, backgroundColor: v1.surfaceMuted, marginBottom: 8 },
   dealMapEmpty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18, gap: 7 },
   dealMapEmptyTitle: { color: v1.text, fontSize: 15, fontWeight: '900', textAlign: 'center' },
   dealMapEmptyDesc: { color: v1.textMuted, fontSize: 12, lineHeight: 17, textAlign: 'center' },
@@ -167,7 +167,7 @@ export default function ChatScreen({ navigation, route }) {
     backgroundColor: 'rgba(124,139,130,0.14)', borderRadius: 12,
     paddingHorizontal: 14, paddingVertical: 6, maxWidth: '80%',
   },
-  systemMsgText: { color: '#617067', fontSize: 13, fontWeight: '600', textAlign: 'center' },
+  systemMsgText: { color: v1.textMuted, fontSize: 13, fontWeight: '600', textAlign: 'center' },
   // Плашка «идёт запись» над инпутом: красная точка + таймер + подсказка.
   recBanner: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
