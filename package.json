@@ -44,7 +44,8 @@
     "qa:keystore": "node qa/utils/noTrackedKeystoreSmoke.js",
     "qa:favorites": "node qa/utils/favoritesContractSmoke.js",
     "qa:locale-runtime": "node qa/utils/runtimeLocaleLeakProbe.mjs",
-    "qa:role-locale": "node qa/utils/roleLocaleMatrixProbe.mjs"
+    "qa:role-locale": "node qa/utils/roleLocaleMatrixProbe.mjs",
+    "qa:protected-features": "node qa/utils/protectedFeatureGuard.mjs --run"
   },
   "dependencies": {
     "@expo/metro-runtime": "~4.0.1",

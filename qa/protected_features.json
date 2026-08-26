@@ -1,0 +1,173 @@
+{
+  "version": 1,
+  "policy": {
+    "name": "UrTruck protected feature regression gate",
+    "description": "If a PR touches a protected product area, CI must run the matching regression contracts before merge.",
+    "default_base_ref": "@{upstream}"
+  },
+  "features": [
+    {
+      "id": "map_gps",
+      "label": "Map and GPS",
+      "risk": "The trip map, in-app routing, Yandex bridge, or GPS permission flow can regress.",
+      "file_patterns": [
+        "^src/components/TruckMap\\.(native|web)\\.js$",
+        "^src/components/RouteMap\\.js$",
+        "^src/components/deal/DealLocationPermissionGate\\.js$",
+        "^src/components/deal/BackgroundLocationDisclosureModal\\.js$",
+        "^src/hooks/useDealLocationBroadcast\\.js$",
+        "^src/screens/(DealWorkspaceScreenV2|TrackTruckScreen|ChatScreen)\\.js$",
+        "^src/utils/(backgroundLocation|geo|locationPermissionCoordinator|locationSettings|routingAPI)\\.js$",
+        "^scripts/(injectYandexMaps\\.mjs|yandex_router_smoke\\.py)$",
+        "^\\.github/workflows/(deploy|secure-production-deploy|yandex-map-finalizer|testflight-rc)\\.yml$"
+      ],
+      "commands": [
+        "node --test tests/frontend/test_deal_room_auto_map.mjs tests/frontend/test_route_publish_polish.mjs tests/frontend/test_android_background_location_disclosure.mjs tests/frontend/test_yandex_map_primary.mjs tests/frontend/test_shipper_inprogress_auto_map.mjs tests/frontend/test_map_chat_integration.mjs tests/frontend/test_clean_map_screen.mjs",
+        "npm run qa:gps-consent"
+      ]
+    },
+    {
+      "id": "push_notifications",
+      "label": "Push and in-app notifications",
+      "risk": "Push registration, notification source-of-truth, ownership, dedupe, or deep-link routing can regress.",
+      "file_patterns": [
+        "^backend/api/(push|notifications|deal_room|marketplace)\\.py$",
+        "^backend/services/(push_sender|notifications).*\\.py$",
+        "^backend/database/(push|notifications|chat|marketplace).*\\.sql$",
+        "^src/utils/(push|pushNotifications|notificationsAPI|appBadge|useUnreadNotifications)\\.js$",
+        "^src/screens/(NotificationsScreen|DealsScreen|ChatsListScreen|DealWorkspaceScreenV2|ChatScreen)\\.js$",
+        "^\\.github/workflows/(build-android-apk|deploy-play|push-production-smoke|testflight-rc)\\.yml$"
+      ],
+      "commands": [
+        "PYTHONPATH=.:backend APP_ENV=test pytest backend/tests/test_push_token_security.py backend/tests/test_logout_push_cleanup.py backend/tests/test_push_anonymous_ownership_guard.py backend/tests/test_push_idempotency.py backend/tests/test_push_delivery_regressions.py backend/tests/test_notification_source_of_truth.py backend/tests/test_notification_path_matching.py backend/tests/test_attachment_push.py backend/tests/test_android_firebase_config_guard.py -q",
+        "node --test tests/frontend/test_release_polish_contracts.mjs tests/frontend/web_push_permission_gate.test.mjs"
+      ]
+    },
+    {
+      "id": "chat_media",
+      "label": "Deal chat, voice, photos, and documents",
+      "risk": "Chat ordering, optimistic bubbles, voice recording, media persistence, upload retry, or attachment access can regress.",
+      "file_patterns": [
+        "^backend/api/(chat|deal_room)\\.py$",
+        "^backend/services/(storage|file_signing).*\\.py$",
+        "^backend/database/chat_schema\\.sql$",
+        "^src/screens/(DealWorkspaceScreenV2|ChatScreen|ChatScreenV2|ChatsListScreen)\\.js$",
+        "^src/utils/(chatAPI|voiceRecorder|storage|outbox|activeRoom)\\.js$",
+        "^src/components/deal/(DealRoom|DealAttachments)\\.js$",
+        "^qa/maestro/voice-message-e2e\\.yaml$"
+      ],
+      "commands": [
+        "node --test tests/frontend/test_chat_media_persistence_contract.mjs tests/frontend/test_deal_attachment_upload_contract.mjs",
+        "PYTHONPATH=.:backend APP_ENV=test pytest backend/tests/test_deal_attachment_upload.py backend/tests/test_attachment_push.py backend/tests/test_deal_rooms.py -q"
+      ]
+    },
+    {
+      "id": "deal_fsm",
+      "label": "Deal lifecycle and actor FSM",
+      "risk": "A status transition, actor permission, duplicate event, or archive rule can regress.",
+      "file_patterns": [
+        "^backend/api/marketplace\\.py$",
+        "^backend/database/marketplace.*\\.sql$",
+        "^src/utils/(dealActionResolver|dealStatusOrder|marketAPI)\\.js$",
+        "^src/screens/(DealWorkspaceScreenV2|DealsScreen|MyTripsScreen|TripDetail|CargoDetail)\\.js$",
+        "^src/components/deal/(DealStatusTimeline|BargainCard)\\.js$"
+      ],
+      "commands": [
+        "node --test tests/frontend/test_deal_lifecycle_contract.mjs tests/frontend/rc1_deal_fsm_static.test.mjs tests/frontend/test_deals_delivered_active_until_completed.mjs",
+        "PYTHONPATH=.:backend APP_ENV=test pytest backend/tests/test_deal_status_actor_fsm.py backend/tests/test_deal_event_dedupe_trigger.py backend/tests/test_bid_actions.py -q"
+      ]
+    },
+    {
+      "id": "offer_expiration",
+      "label": "Offer expiration",
+      "risk": "Expired bids can remain actionable or be shown as active.",
+      "file_patterns": [
+        "^backend/api/marketplace\\.py$",
+        "^backend/database/marketplace.*\\.sql$",
+        "^backend/scheduler.*\\.py$",
+        "^src/utils/bidExpiry\\.js$",
+        "^src/screens/(DealsScreen|CargoDetail|TripDetail|DealWorkspaceScreenV2)\\.js$"
+      ],
+      "commands": [
+        "node --test tests/frontend/bid_expiry.test.mjs tests/frontend/deals_offer_expiry_contract.test.mjs",
+        "PYTHONPATH=.:backend APP_ENV=test pytest backend/tests/test_bid_expiry.py -q"
+      ]
+    },
+    {
+      "id": "counters_badges",
+      "label": "Unread counters and badges",
+      "risk": "Chat, deal, or notification counters can desync, double count, or leak between users.",
+      "file_patterns": [
+        "^backend/api/(chat|notifications|marketplace)\\.py$",
+        "^backend/database/(chat|notifications|marketplace).*\\.sql$",
+        "^src/utils/(dealsUnread|unreadEvents|useUnreadNotifications|notificationsAPI|appBadge|store)\\.js$",
+        "^src/screens/(DealsScreen|ChatsListScreen|NotificationsScreen|ProfileScreen|DealWorkspaceScreenV2)\\.js$",
+        "^src/components/ui/v1/BellBadge\\.js$"
+      ],
+      "commands": [
+        "node --test tests/frontend/deal_attention_badges.test.mjs tests/unit/dealsUnread.test.mjs tests/frontend/profile_notifications_theme_contract.test.mjs",
+        "PYTHONPATH=.:backend APP_ENV=test pytest backend/tests/test_unread_badge.py backend/tests/test_unread_deduplication.py -q"
+      ]
+    },
+    {
+      "id": "i18n_ru_zh_en",
+      "label": "RU/ZH/EN localization",
+      "risk": "Screens, errors, notifications, or map labels can mix languages or lose fallback coverage.",
+      "file_patterns": [
+        "^src/utils/(i18n|useI18n|countries|checkpointNames)\\.js$",
+        "^src/screens/.*\\.js$",
+        "^src/components/.*\\.js$",
+        "^backend/api/.*\\.py$",
+        "^qa/utils/(i18nSmoke|zhLocalizationSmoke|runtimeLocaleLeakProbe|roleLocaleMatrixProbe)\\.mjs$"
+      ],
+      "commands": [
+        "npm run qa:i18n",
+        "npm run qa:zh",
+        "node --test tests/frontend/test_strict_locale_owned_content.mjs tests/frontend/test_map_locale_no_russian_leak.mjs tests/frontend/test_ios_permission_localization.mjs"
+      ]
+    },
+    {
+      "id": "dark_mode",
+      "label": "Dark mode and theme tokens",
+      "risk": "Hardcoded colors can make text, cards, inputs, map shells, or bubbles unreadable in dark mode.",
+      "file_patterns": [
+        "^src/theme/.*\\.(js|ts)$",
+        "^src/utils/(ThemeContext|theme|themeResolve)\\.js$",
+        "^src/screens/.*\\.js$",
+        "^src/components/.*\\.js$",
+        "^tests/unit/themeResolve\\.test\\.mjs$",
+        "^qa/utils/(themeSmoke|themeContrastSmoke)\\.js$"
+      ],
+      "commands": [
+        "npm run qa:theme",
+        "npm run qa:theme-contrast",
+        "npm run qa:theme-unit",
+        "node --test tests/frontend/profile_notifications_theme_contract.test.mjs tests/frontend/test_onboarding_profile_2step.mjs"
+      ]
+    },
+    {
+      "id": "secrets_and_build_keys",
+      "label": "Secrets, signing, map keys, and Firebase config",
+      "risk": "A build can ship without required keys, with wrong Firebase config, or with tracked private secrets.",
+      "file_patterns": [
+        "^\\.github/workflows/.*\\.(yml|yaml)$",
+        "^qa/protected_features\\.json$",
+        "^qa/utils/protectedFeatureGuard\\.mjs$",
+        "^tests/frontend/test_protected_feature_guard\\.mjs$",
+        "^scripts/.*\\.(sh|py|mjs)$",
+        "^src/config/(env|supabase)\\.js$",
+        "^app\\.json$",
+        "^eas\\.json$",
+        "^android/.*$",
+        "^ios/.*$",
+        "^docs/release/.*$"
+      ],
+      "commands": [
+        "npm run qa:keystore",
+        "node --test tests/frontend/test_protected_feature_guard.mjs",
+        "node qa/utils/signingKeyWorkflowGuard.js",
+        "PYTHONPATH=.:backend APP_ENV=test pytest backend/tests/test_android_firebase_config_guard.py backend/tests/test_production_security_guards.py -q"
+      ]
+    }
+  ]
+}
