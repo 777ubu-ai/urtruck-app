@@ -94,8 +94,19 @@ def logout(authorization: str = Header(None)):
     невалидность токена не ошибка (logout всегда «успешен» для клиента)."""
     revoked = False
     if authorization and authorization.startswith("Bearer "):
+        raw_token = authorization.split(" ", 1)[1]
         try:
-            revoked = reg_dal.delete_session(authorization.split(" ", 1)[1])
+            # Блок 2 / DEFECT-2: logout обязан серверно деактивировать push
+            # даже если client-side /push/logout-cleanup не дошёл. Делаем это
+            # ДО revoke сессии, пока ещё можем безопасно определить владельца.
+            driver_id = reg_dal.get_driver_by_token(raw_token)
+            if driver_id:
+                try:
+                    from api.push import deactivate_user_push
+                    deactivate_user_push(driver_id, reason="logout")
+                except Exception:
+                    pass
+            revoked = reg_dal.delete_session(raw_token)
         except Exception:
             revoked = False
     return {"ok": True, "revoked": revoked}
