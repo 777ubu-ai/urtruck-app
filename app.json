@@ -26,9 +26,6 @@
       "bundleIdentifier": "com.urtruck.app",
       "buildNumber": "5",
       "usesAppleSignIn": true,
-      "associatedDomains": [
-        "applinks:urtruck.kz"
-      ],
       "infoPlist": {
         "NSMicrophoneUsageDescription": "UrTruck использует микрофон для записи голосовых сообщений в чате",
         "NSCameraUsageDescription": "UrTruck использует камеру для селфи и фото документов",
