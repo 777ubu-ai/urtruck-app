@@ -40,6 +40,26 @@ adb_s() {
   adb -s "$SERIAL" "$@"
 }
 
+log_matches() {
+  local pattern="$1"
+  local file="$2"
+  if command -v rg >/dev/null 2>&1; then
+    rg -N "$pattern" "$file"
+  else
+    grep -E "$pattern" "$file"
+  fi
+}
+
+log_contains() {
+  local pattern="$1"
+  local file="$2"
+  if command -v rg >/dev/null 2>&1; then
+    rg -q "$pattern" "$file"
+  else
+    grep -Eq "$pattern" "$file"
+  fi
+}
+
 cleanup() {
   set +e
   if [[ -n "${LOGCAT_PID:-}" ]]; then
@@ -67,7 +87,7 @@ wait_for_boot() {
 
 capture_logcat_slice() {
   local dest="$1"
-  if ! rg -N "($PACKAGE|ReactNativeJS|REVIEWER_DIAG|PhoneV2|OtpV2|email/send|register/email/send)" "$FULL_LOGCAT" > "$dest" 2>/dev/null; then
+  if ! log_matches "($PACKAGE|ReactNativeJS|REVIEWER_DIAG|PhoneV2|OtpV2|email/send|register/email/send)" "$FULL_LOGCAT" > "$dest" 2>/dev/null; then
     tail -n 400 "$FULL_LOGCAT" > "$dest" || true
   fi
 }
@@ -114,19 +134,25 @@ install_mitm_ca_if_possible() {
     return 1
   fi
 
-  if ! adb root >/dev/null 2>&1; then
+  if ! adb_s root >/dev/null 2>&1; then
     log "adb root unavailable"
     return 1
   fi
 
-  adb wait-for-device
-  adb remount >/dev/null 2>&1 || true
+  adb_s wait-for-device
+  if ! adb_s remount >/dev/null 2>&1; then
+    log "adb remount unavailable"
+    return 1
+  fi
   hash_name="$(openssl x509 -inform PEM -subject_hash_old -in "$cert" | head -n 1).0"
   cp "$cert" "$ARTIFACT_DIR/$hash_name"
-  adb push "$ARTIFACT_DIR/$hash_name" "/system/etc/security/cacerts/$hash_name" >/dev/null
-  adb shell chmod 644 "/system/etc/security/cacerts/$hash_name"
-  adb reboot
-  adb wait-for-device
+  if ! adb_s push "$ARTIFACT_DIR/$hash_name" "/system/etc/security/cacerts/$hash_name" >/dev/null; then
+    log "failed to install mitmproxy CA into system store"
+    return 1
+  fi
+  adb_s shell chmod 644 "/system/etc/security/cacerts/$hash_name"
+  adb_s reboot
+  adb_s wait-for-device
   wait_for_boot
   return 0
 }
@@ -196,7 +222,7 @@ summarize() {
   local post_xml="$CHECKPOINT_ROOT/tplus_350ms/ui.xml"
   local late_xml="$CHECKPOINT_ROOT/tplus_2500ms/ui.xml"
 
-  if [[ -f "$MITM_EVENTS_JSONL" ]] && rg -q '"kind": "request"' "$MITM_EVENTS_JSONL"; then
+  if [[ -f "$MITM_EVENTS_JSONL" ]] && log_contains '"kind": "request"' "$MITM_EVENTS_JSONL"; then
     email_send_called="YES"
   fi
 
@@ -217,10 +243,10 @@ PY
 )"
   fi
 
-  if [[ -f "$late_xml" ]] && rg -q 'resource-id="[^"]*otp-v2-screen"|content-desc="otp-v2-screen"|text="otp-v2-screen"' "$late_xml"; then
+  if [[ -f "$late_xml" ]] && log_contains 'resource-id="[^"]*otp-v2-screen"|content-desc="otp-v2-screen"|text="otp-v2-screen"' "$late_xml"; then
     otp_screen_mounted="YES"
   fi
-  if [[ -f "$late_xml" ]] && rg -q 'otp-v2-input' "$late_xml"; then
+  if [[ -f "$late_xml" ]] && log_contains 'otp-v2-input' "$late_xml"; then
     otp_input_present="YES"
   fi
 
@@ -303,7 +329,11 @@ MITM_CA_READY="NO"
 if install_mitm_ca_if_possible; then
   MITM_CA_READY="YES"
 fi
-configure_proxy || true
+if [[ "$MITM_CA_READY" == "YES" ]]; then
+  configure_proxy || true
+else
+  log "Skipping global proxy because mitmproxy CA is not trusted by the emulator"
+fi
 
 ADB_STABLE="NO"
 if [[ "$(run_adb_stability_probe)" == "YES" ]]; then
@@ -327,10 +357,10 @@ MAESTRO_PID=$!
 
 POST_TAP_CAPTURED="NO"
 while kill -0 "$MAESTRO_PID" >/dev/null 2>&1; do
-  if [[ ! -f "$CHECKPOINT_ROOT/pre_tap/screenshot.png" ]] && rg -q 'REVIEWER_DIAG_MARKER=pre_tap' "$MAESTRO_STDOUT" 2>/dev/null; then
+  if [[ ! -f "$CHECKPOINT_ROOT/pre_tap/screenshot.png" ]] && log_contains 'REVIEWER_DIAG_MARKER=pre_tap' "$MAESTRO_STDOUT" 2>/dev/null; then
     capture_checkpoint "pre_tap"
   fi
-  if [[ "$POST_TAP_CAPTURED" == "NO" ]] && rg -q 'REVIEWER_DIAG_MARKER=after_tap' "$MAESTRO_STDOUT" 2>/dev/null; then
+  if [[ "$POST_TAP_CAPTURED" == "NO" ]] && log_contains 'REVIEWER_DIAG_MARKER=after_tap' "$MAESTRO_STDOUT" 2>/dev/null; then
     sleep 0.35
     capture_checkpoint "tplus_350ms"
     sleep 2.15

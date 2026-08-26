@@ -29,4 +29,8 @@ test('reviewer auth CI diagnostic always uploads artifacts and runs the exact re
   assert.match(workflow, /if: \$\{\{ always\(\) && hashFiles\('qa\/artifacts\/reviewer-auth-diagnostic\/\*\*'\) != '' \}\}/);
   assert.match(workflow, /name: reviewer-auth-ci-diagnostic/);
   assert.match(workflow, /mitmproxy==11\.0\.2/);
+  assert.match(workflow, /sudo apt-get install -y unzip ripgrep/);
+  assert.match(workflow, /emulator-options: .* -writable-system/);
+  assert.match(diagnosticShell, /if command -v rg >\/dev\/null 2>&1;/);
+  assert.match(diagnosticShell, /Skipping global proxy because mitmproxy CA is not trusted by the emulator/);
 });
