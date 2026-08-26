@@ -1173,18 +1173,22 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                     placeholderTextColor={colors.textMuted}
                     testID="deal-chat-input"
                   />
-                  <TouchableOpacity
-                    style={[s.composerIcon, { borderColor: colors.border, backgroundColor: colors.surface }]}
-                    onPress={() => sendPhoto(true)}
-                    testID="deal-chat-camera"
-                  >
-                    <Feather name="camera" size={19} color={colors.text} />
-                  </TouchableOpacity>
-                  {input.trim() ? (
-                    <TouchableOpacity style={s.sendButton} onPress={sendText} testID="deal-chat-send"><FontAwesome5 name="paper-plane" size={15} color="#FFFFFF" solid /></TouchableOpacity>
-                  ) : (
-                    <TouchableOpacity style={[s.sendButton, recording && s.recordingButton]} onPress={toggleVoice} testID="deal-chat-voice"><Feather name={recording ? 'square' : 'mic'} size={18} color="#FFFFFF" /></TouchableOpacity>
-                  )}
+                  {!recording ? (
+                    <TouchableOpacity
+                      style={[s.composerIcon, { borderColor: colors.border, backgroundColor: colors.surface }]}
+                      onPress={() => sendPhoto(true)}
+                      testID="deal-chat-camera"
+                    >
+                      <Feather name="camera" size={19} color={colors.text} />
+                    </TouchableOpacity>
+                  ) : null}
+                  {!recording ? (
+                    input.trim() ? (
+                      <TouchableOpacity style={s.sendButton} onPress={sendText} testID="deal-chat-send"><FontAwesome5 name="paper-plane" size={15} color="#FFFFFF" solid /></TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity style={s.sendButton} onPress={toggleVoice} testID="deal-chat-voice"><Feather name="mic" size={18} color="#FFFFFF" /></TouchableOpacity>
+                    )
+                  ) : null}
                 </View>
               </>
             )}

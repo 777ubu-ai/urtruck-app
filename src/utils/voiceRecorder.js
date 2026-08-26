@@ -6,6 +6,8 @@ import { Platform } from 'react-native';
 
 let _recording = null;
 let _sound = null;
+let _playResolve = null;
+let _playToken = 0;
 
 export const voice = {
   // ─── Запись ───
@@ -56,8 +58,13 @@ export const voice = {
 
   // ─── Воспроизведение ───
   async play(uri) {
+    const token = ++_playToken;
     try {
       if (_sound) {
+        if (_playResolve) {
+          try { _playResolve(false); } catch {}
+          _playResolve = null;
+        }
         await _sound.unloadAsync();
         _sound = null;
       }
@@ -75,16 +82,29 @@ export const voice = {
       try {
         await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
       } catch { /* не критично — пытаемся играть в текущем режиме */ }
-      const { sound } = await Audio.Sound.createAsync({ uri }, { shouldPlay: true });
+      const { sound } = await Audio.Sound.createAsync({ uri }, { shouldPlay: false });
       _sound = sound;
-      await sound.playAsync();
-      sound.setOnPlaybackStatusUpdate((status) => {
-        if (status.didJustFinish) {
-          sound.unloadAsync();
-          _sound = null;
+      return await new Promise(async (resolve) => {
+        _playResolve = resolve;
+        sound.setOnPlaybackStatusUpdate((status) => {
+          if (token !== _playToken) return;
+          if (status.didJustFinish) {
+            sound.unloadAsync().catch(() => {});
+            if (_sound === sound) _sound = null;
+            if (_playResolve === resolve) _playResolve = null;
+            resolve(true);
+          }
+        });
+        try {
+          await sound.playAsync();
+        } catch (error) {
+          console.warn('[voice] native play start failed:', error);
+          try { await sound.unloadAsync(); } catch {}
+          if (_sound === sound) _sound = null;
+          if (_playResolve === resolve) _playResolve = null;
+          resolve(false);
         }
       });
-      return true;
     } catch (e) {
       console.warn('[voice] play failed:', e);
       return false;
@@ -92,6 +112,11 @@ export const voice = {
   },
 
   async stop() {
+    if (_playResolve) {
+      try { _playResolve(false); } catch {}
+      _playResolve = null;
+    }
+    _playToken += 1;
     if (_sound) {
       await _sound.stopAsync().catch(() => {});
       await _sound.unloadAsync().catch(() => {});

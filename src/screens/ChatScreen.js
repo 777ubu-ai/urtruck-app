@@ -341,6 +341,8 @@ export default function ChatScreen({ navigation, route }) {
   const mediaStreamRef = useRef(null);
   const mediaChunksRef = useRef([]);
   const recordStartRef = useRef(0);
+  const voiceTransitionRef = useRef(false);
+  const [playingVoiceId, setPlayingVoiceId] = useState(null);
 
   // G-1: время серверных сообщений приходит как naive-UTC (SQLite/FastAPI без
   // таймзоны). Раньше пузырь показывал сырой UTC-срез без сдвига → не совпадало
@@ -1021,7 +1023,21 @@ export default function ChatScreen({ navigation, route }) {
   const playVoice = async (id) => {
     const msg = messages.find(m => m.id === id);
     if (!msg?.voiceUrl) return;
-    setMessages(prev => prev.map(m => m.id === id ? { ...m, playing: true } : m));
+    if (voiceTransitionRef.current) return;
+    if (playingVoiceId === id) {
+      voiceTransitionRef.current = true;
+      try {
+        await voice.stop();
+      } finally {
+        setPlayingVoiceId(null);
+        setMessages(prev => prev.map(m => ({ ...m, playing: false })));
+        voiceTransitionRef.current = false;
+      }
+      return;
+    }
+    voiceTransitionRef.current = true;
+    setPlayingVoiceId(id);
+    setMessages(prev => prev.map(m => ({ ...m, playing: m.id === id })));
     try {
       const ok = await voice.play(msg.voiceUrl);
       if (!ok) toast(t('voice_play_fail'), 'warn');
@@ -1029,13 +1045,16 @@ export default function ChatScreen({ navigation, route }) {
       console.warn('[voice] play failed:', e);
       toast(t('voice_play_fail'), 'warn');
     } finally {
-      setMessages(prev => prev.map(m => m.id === id ? { ...m, playing: false } : m));
+      setPlayingVoiceId((current) => (current === id ? null : current));
+      setMessages(prev => prev.map(m => ({ ...m, playing: false })));
+      voiceTransitionRef.current = false;
     }
   };
 
   // Cleanup при размонтировании — отпускаем микрофон / звук
   useEffect(() => () => {
     try { voice.stop?.(); } catch {}
+    voiceTransitionRef.current = false;
   }, []);
 
   const renderMessage = ({ item }) => {

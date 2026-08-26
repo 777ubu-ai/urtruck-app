@@ -581,6 +581,11 @@ export default function DealWorkspaceScreen({ navigation, route }) {
     } catch { toast(t('chat_send_failed'), 'error'); }
   }, [recording, roomId, recipientId, deal?.cargo_id, deal?.trip_id, params.cargoId, params.tripId, ui.voiceMessage, loadMessages, toast, t]);
 
+  const cancelRecording = React.useCallback(async () => {
+    setRecording(false);
+    try { await voice.stopRecording(); } catch {}
+  }, []);
+
   const renderMessage = React.useCallback(({ item }) => {
     if (item.system) {
       return (
@@ -801,9 +806,15 @@ export default function DealWorkspaceScreen({ navigation, route }) {
                   />
 
                   {recording ? (
-                    <View style={s.recordBar}>
+                    <View style={s.recordBar} testID="deal-chat-recording-bar">
                       <View style={s.recordDot} />
                       <Text style={s.recordText}>{ui.recording} 0:{String(recordSecs % 60).padStart(2, '0')}</Text>
+                      <TouchableOpacity onPress={cancelRecording} style={s.recordCancelBtn} testID="deal-chat-recording-cancel">
+                        <Feather name="trash-2" size={15} color="#B91C1C" />
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={toggleVoice} style={s.recordStopBtn} testID="deal-chat-recording-stop">
+                        <Feather name="square" size={13} color="#FFFFFF" />
+                      </TouchableOpacity>
                     </View>
                   ) : null}
 
@@ -843,15 +854,15 @@ export default function DealWorkspaceScreen({ navigation, route }) {
                       placeholderTextColor={colors.textMuted}
                       testID="deal-chat-input"
                     />
-                    {input.trim() ? (
+                    {!recording && input.trim() ? (
                       <TouchableOpacity style={s.sendButton} onPress={sendText} testID="deal-chat-send">
                         <FontAwesome5 name="paper-plane" size={15} color="#FFFFFF" solid />
                       </TouchableOpacity>
-                    ) : (
-                      <TouchableOpacity style={[s.sendButton, recording && s.recordingButton]} onPress={toggleVoice} testID="deal-chat-voice">
-                        <Feather name={recording ? 'square' : 'mic'} size={18} color="#FFFFFF" />
+                    ) : !recording ? (
+                      <TouchableOpacity style={s.sendButton} onPress={toggleVoice} testID="deal-chat-voice">
+                        <Feather name="mic" size={18} color="#FFFFFF" />
                       </TouchableOpacity>
-                    )}
+                    ) : null}
                   </View>
                 </>
               ) : sheetTab === 'docs' ? (
@@ -976,7 +987,9 @@ const s = StyleSheet.create({
   emptyText: { textAlign: 'center', marginTop: 24, fontSize: 13 },
   recordBar: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 15, paddingVertical: 7, backgroundColor: 'rgba(239,68,68,0.08)' },
   recordDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444' },
-  recordText: { color: '#B91C1C', fontSize: 12, fontWeight: '800' },
+  recordText: { color: '#B91C1C', fontSize: 12, fontWeight: '800', flex: 1 },
+  recordCancelBtn: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
+  recordStopBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#168759', alignItems: 'center', justifyContent: 'center' },
   attachMenu: { flexDirection: 'row', paddingHorizontal: 14, paddingTop: 12, paddingBottom: 10, borderTopWidth: StyleSheet.hairlineWidth, gap: 10 },
   attachItem: { flex: 1, minHeight: 74, alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: 18, backgroundColor: '#F5FAF7', borderWidth: 1, borderColor: '#DDEBE4' },
   attachIcon: { width: 38, height: 38, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: '#E4F5EC' },

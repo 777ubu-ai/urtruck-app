@@ -8,6 +8,7 @@ import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useV1Colors } from '../theme/designV1';
 import { useAuth } from '../utils/AuthContext';
+import { useUnreadNotifications } from '../utils/useUnreadNotifications';
 import { getProfile, saveProfile } from '../utils/store';
 import { storage } from '../utils/storage';
 import { regAPI } from '../utils/registration';
@@ -21,11 +22,18 @@ import AppConfirmModal from '../components/ui/AppConfirmModal';
 import { localizePlace } from '../utils/places';
 
 const LANGS = [
-  { code: 'RU', flag: '🇷🇺', name: 'Русский' },
-  { code: 'EN', flag: '🇬🇧', name: 'English' },
-  { code: 'KK', flag: '🇰🇿', name: 'Қазақша' },
-  { code: 'ZH', flag: '🇨🇳', name: '中文' },
+  { code: 'RU', flag: '🇷🇺' },
+  { code: 'EN', flag: '🇬🇧' },
+  { code: 'KK', flag: '🇰🇿' },
+  { code: 'ZH', flag: '🇨🇳' },
 ];
+
+const LANGUAGE_LABELS = {
+  RU: { RU: 'Русский', EN: 'Английский', KK: 'Казахский', ZH: 'Китайский' },
+  EN: { RU: 'Russian', EN: 'English', KK: 'Kazakh', ZH: 'Chinese' },
+  KK: { RU: 'Орысша', EN: 'Ағылшын', KK: 'Қазақша', ZH: 'Қытайша' },
+  ZH: { RU: '俄语', EN: '英语', KK: '哈萨克语', ZH: '中文' },
+};
 
 // Same gate as OnboardingV2Screen — Maestro QA harness uses this to switch
 // between actors without driving the iOS Alert dialog.
@@ -71,7 +79,7 @@ export default function ProfileScreen({ navigation, route }) {
   // загруженный документ) — там это «успех», а не бренд водителя.
   const accent = isDriver ? '#168759' : '#FF8400';
   const onAccent = isDriver ? '#0C0A09' : '#0C0A09';
-  const { isDark, toggleTheme } = useTheme();
+  const { isDark, setThemeMode } = useTheme();
   // Stage 8: read tokens from the v1 hook so the screen lines up
   // with the rest of the app. The v1 palette doesn't expose a
   // separate secondary tier, so we map `textSecondary` onto
@@ -88,11 +96,16 @@ export default function ProfileScreen({ navigation, route }) {
   const tonUnit = uiLang === 'ZH' ? '吨' : uiLang === 'EN' ? 't' : 'т';
   const cubicMeterUnit = uiLang === 'ZH' ? '立方米' : 'м³';
   const { session, signOut, verificationLevel } = useAuth();
+  const unreadNotifications = useUnreadNotifications(!!session?.user?.id);
   const [profile, setProfile] = useState(getProfile(session?.user?.id) || {});
   const [lang, setLang] = useState(getLanguage());
   const [confirmDialog, setConfirmDialog] = useState(null);
   const askConfirm = useCallback((title, message = '', confirmLabel = t('confirm')) => new Promise((resolve) => setConfirmDialog({ title, message, confirmLabel, resolve })), [t]);
   const settleConfirm = useCallback((answer) => { setConfirmDialog((current) => { current?.resolve?.(answer); return null; }); }, []);
+  const localizedLangLabel = useCallback(
+    (code) => LANGUAGE_LABELS[uiLang]?.[code] || LANGUAGE_LABELS.RU[code] || code,
+    [uiLang],
+  );
 
   // HOT-001: Подтягиваем имя/город с сервера при КАЖДОМ открытии (focus).
   // Так изменения из EditProfile сразу видны после goBack().
@@ -164,6 +177,7 @@ export default function ProfileScreen({ navigation, route }) {
   // IA Phase 2: Chats — отдельная вкладка/путь (через сделку), НЕ дублируется
   // generic-рядом в Профиле. «Update app» убран из Профиля (см. ниже).
   const menuItems = [
+    { icon: 'bell', label: t('menu_notifications'), screen: 'Notifications', testID: 'profile-notifications', badgeCount: unreadNotifications },
     ...(isDriver ? [{ icon: 'shield', label: t('security_my_status'), sub: t('my_status_subtitle'), screen: 'Security', testID: 'profile-my-status' }] : []),
     { icon: 'star',          label: t('myReviews'),     screen: 'Reviews', testID: 'profile-my-reviews' },
     { icon: 'heart',         label: t('favorites_title'), screen: 'Favorites', testID: 'profile-favorites' },
@@ -396,6 +410,13 @@ export default function ProfileScreen({ navigation, route }) {
                   <Text style={[s.menuLabel, { color: theme.text }]}>{item.label}</Text>
                   {item.sub ? <Text style={[s.menuSub, { color: theme.textMuted }]}>{item.sub}</Text> : null}
                 </View>
+                {item.badgeCount > 0 ? (
+                  <View style={s.menuUnreadBadge} testID={`${item.testID}-badge`}>
+                    <Text style={s.menuUnreadText}>
+                      {item.badgeCount > 9 ? '9+' : item.badgeCount}
+                    </Text>
+                  </View>
+                ) : null}
                 <Feather name="chevron-right" size={18} color={theme.textMuted} />
               </TouchableOpacity>
             </React.Fragment>
@@ -415,7 +436,7 @@ export default function ProfileScreen({ navigation, route }) {
                 accessibilityState={{ selected: !isDark }}
                 accessibilityLabel={t('theme_light')}
                 style={[s.themeBtn, { backgroundColor: isDark ? 'transparent' : accent, borderColor: isDark ? theme.border : accent }]}
-                onPress={() => { if (isDark) toggleTheme(); }}
+                onPress={() => setThemeMode('light')}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                   <Feather name="sun" size={13} color={isDark ? theme.textMuted : onAccent} />
@@ -428,7 +449,7 @@ export default function ProfileScreen({ navigation, route }) {
                 accessibilityState={{ selected: isDark }}
                 accessibilityLabel={t('theme_dark')}
                 style={[s.themeBtn, { backgroundColor: isDark ? accent : 'transparent', borderColor: isDark ? accent : theme.border }]}
-                onPress={() => { if (!isDark) toggleTheme(); }}
+                onPress={() => setThemeMode('dark')}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                   <Feather name="moon" size={13} color={isDark ? onAccent : theme.textMuted} />
@@ -452,7 +473,7 @@ export default function ProfileScreen({ navigation, route }) {
                 >
                   <Text style={{ fontSize: 22 }}>{l.flag}</Text>
                   <Text style={[s.langCardText, { color: theme.textSecondary }, lang === l.code && { color: onAccent }]} numberOfLines={1}>
-                    {l.name}
+                    {localizedLangLabel(l.code)}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -628,6 +649,17 @@ const s = StyleSheet.create({
   menuIconWrap: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   menuLabel: { fontSize: 14, fontWeight: '600' },
   menuSub: { fontSize: 11, marginTop: 1 },
+  menuUnreadBadge: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    paddingHorizontal: 5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#D64545',
+    marginRight: 8,
+  },
+  menuUnreadText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
 
   // PR-C2 (compact settings)
   settingsCard: { borderRadius: 10, padding: 12, borderWidth: 1, marginBottom: 12 },

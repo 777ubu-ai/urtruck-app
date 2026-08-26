@@ -14,6 +14,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import Feather from "@expo/vector-icons/Feather";
 import { useI18n } from "../utils/useI18n";
 import { formatStatus } from "../utils/i18n";
+import { useV1Colors } from "../theme/designV1";
 import HeaderMenuButton from "../components/ui/v1/HeaderMenuButton";
 import { marketAPI } from "../utils/marketAPI";
 import { formatPrice } from "../utils/normalizers";
@@ -23,14 +24,7 @@ import { accentFor } from "../components/deal/DealRoom";
 import { isBidActionable } from "../utils/dealsUnread";
 import { formatBidRemaining, isBidFresh } from "../utils/bidExpiry";
 
-const PAGE_BG = "#F7F9F7";
-const SURFACE = "#FFFFFF";
-const TEXT = "#17221E";
-const TEXT_SECONDARY = "#606B66";
-const TEXT_MUTED = "#808A85";
-const BORDER = "#E5EAE7";
 const ACCENT = "#34936B";
-const ACCENT_SOFT = "#EAF5EF";
 const WAITING = "#617067";
 const INFO = "#3478D4";
 const ARCHIVE = "#7C8B82";
@@ -135,6 +129,8 @@ function TabChip({
   testID,
   compact = false,
   icon = null,
+  activeColor = ACCENT,
+  inactiveColor = WAITING,
 }) {
   return (
     <TouchableOpacity
@@ -146,7 +142,7 @@ function TabChip({
       style={[s.tabChip, compact && s.archiveChip, active && s.tabChipActive]}
     >
       {icon ? (
-        <Feather name={icon} size={15} color={active ? ACCENT : TEXT_MUTED} />
+        <Feather name={icon} size={15} color={active ? activeColor : inactiveColor} />
       ) : null}
       <Text
         style={[s.tabChipText, active && s.tabChipTextActive]}
@@ -228,9 +224,11 @@ function CompactDealCard({
 
 export default function DealsScreen({ navigation, route }) {
   const { t, lang } = useI18n();
+  const colors = useV1Colors();
   const role = route?.params?.role || "client";
   const roleAccent = accentFor(role) || ACCENT;
   const copy = COPY[lang] || COPY.EN;
+  const s = useMemo(() => createStyles(colors), [colors]);
 
   const [dealTab, setDealTab] = useState("offers");
   const [query, setQuery] = useState("");
@@ -696,12 +694,12 @@ export default function DealsScreen({ navigation, route }) {
   const searchHeader = (
     <View style={s.scrollHeader} testID="deals-scroll-header">
       <View style={s.search}>
-        <Feather name="search" size={17} color={TEXT_MUTED} />
+        <Feather name="search" size={17} color={colors.textDim} />
         <TextInput
           testID="deal-room-search"
           style={s.searchInput}
           placeholder={copy.search}
-          placeholderTextColor={TEXT_MUTED}
+          placeholderTextColor={colors.textDim}
           value={query}
           onChangeText={setQuery}
           returnKeyType="search"
@@ -713,7 +711,7 @@ export default function DealsScreen({ navigation, route }) {
             accessibilityLabel="clear-search"
             style={s.clearSearch}
           >
-            <Feather name="x" size={16} color={TEXT_MUTED} />
+            <Feather name="x" size={16} color={colors.textDim} />
           </TouchableOpacity>
         ) : null}
       </View>
@@ -721,11 +719,7 @@ export default function DealsScreen({ navigation, route }) {
   );
 
   return (
-    <SafeAreaView
-      style={[s.container, { backgroundColor: PAGE_BG }]}
-      edges={["top"]}
-      testID="deal-room-list"
-    >
+    <SafeAreaView style={s.container} edges={["top"]} testID="deal-room-list">
       <View style={s.fixedHeader} testID="deals-minimal-header">
         <View style={s.menuRow}>
           <HeaderMenuButton
@@ -743,6 +737,8 @@ export default function DealsScreen({ navigation, route }) {
             attentionCount={offerAttentionCount}
             active={dealTab === "offers"}
             onPress={() => setDealTab("offers")}
+            activeColor={colors.driver}
+            inactiveColor={colors.textDim}
           />
           <TabChip
             testID="deals-tab-active"
@@ -751,6 +747,8 @@ export default function DealsScreen({ navigation, route }) {
             attentionCount={activeAttentionCount}
             active={dealTab === "active"}
             onPress={() => setDealTab("active")}
+            activeColor={colors.driver}
+            inactiveColor={colors.textDim}
           />
           <TabChip
             testID="deals-tab-archive"
@@ -760,6 +758,8 @@ export default function DealsScreen({ navigation, route }) {
             onPress={() => setDealTab("archive")}
             compact
             icon="archive"
+            activeColor={colors.driver}
+            inactiveColor={colors.textDim}
           />
         </View>
 
@@ -776,7 +776,7 @@ export default function DealsScreen({ navigation, route }) {
         <ActivityIndicator color={roleAccent} style={{ marginTop: 42 }} />
       ) : loadError && baseItems.length === 0 ? (
         <View style={s.errorState}>
-          <Feather name="wifi-off" size={23} color={TEXT_MUTED} />
+          <Feather name="wifi-off" size={23} color={colors.textDim} />
           <Text style={s.errorText}>{copy.loadError}</Text>
           <TouchableOpacity
             testID="deals-retry"
@@ -813,13 +813,13 @@ export default function DealsScreen({ navigation, route }) {
   );
 }
 
-const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: PAGE_BG },
+const createStyles = (colors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.bg },
   fixedHeader: {
-    backgroundColor: PAGE_BG,
+    backgroundColor: colors.bg,
     paddingBottom: 5,
     borderBottomWidth: 1,
-    borderBottomColor: "#EDF0EE",
+    borderBottomColor: colors.border,
     shadowColor: "#14211C",
     shadowOpacity: 0.025,
     shadowRadius: 8,
@@ -849,8 +849,8 @@ const s = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 23,
     borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: SURFACE,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -869,23 +869,23 @@ const s = StyleSheet.create({
     flexShrink: 1.3,
   },
   tabChipActive: {
-    borderColor: "#A6D2BE",
-    backgroundColor: ACCENT_SOFT,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.driverSoft,
   },
   tabChipText: {
-    color: TEXT_SECONDARY,
+    color: colors.textMuted,
     fontSize: 14,
     fontWeight: "700",
     flexShrink: 1,
   },
-  tabChipTextActive: { color: ACCENT },
+  tabChipTextActive: { color: colors.driver },
   tabCount: {
-    color: "#7B8580",
+    color: colors.textDim,
     fontSize: 12,
     fontWeight: "700",
     fontVariant: ["tabular-nums"],
   },
-  tabCountActive: { color: "#6B8C7C" },
+  tabCountActive: { color: colors.driver },
   tabAttentionBadge: {
     minWidth: 18,
     height: 18,
@@ -912,14 +912,14 @@ const s = StyleSheet.create({
     paddingHorizontal: 18,
     paddingTop: 8,
     paddingBottom: 6,
-    backgroundColor: PAGE_BG,
+    backgroundColor: colors.bg,
   },
   search: {
     height: 44,
     borderRadius: 22,
     borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: SURFACE,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
     paddingHorizontal: 14,
     flexDirection: "row",
     alignItems: "center",
@@ -932,7 +932,7 @@ const s = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    color: TEXT,
+    color: colors.text,
     fontSize: 14,
     paddingVertical: 0,
   },
@@ -954,8 +954,8 @@ const s = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 17,
     borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: SURFACE,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
     shadowColor: "#15211C",
     shadowOpacity: 0.03,
     shadowRadius: 9,
@@ -972,7 +972,7 @@ const s = StyleSheet.create({
   route: {
     flex: 1,
     minWidth: 0,
-    color: TEXT,
+    color: colors.text,
     fontSize: 15,
     lineHeight: 20,
     fontWeight: "700",
@@ -981,7 +981,7 @@ const s = StyleSheet.create({
   price: {
     maxWidth: "37%",
     flexShrink: 0,
-    color: TEXT,
+    color: colors.text,
     fontSize: 15,
     lineHeight: 20,
     fontWeight: "800",
@@ -1018,12 +1018,15 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "flex-end",
     gap: 6,
+    minWidth: 54,
+    flexShrink: 0,
   },
   time: {
-    color: TEXT_MUTED,
+    color: colors.textDim,
     fontSize: 11,
     lineHeight: 16,
     fontVariant: ["tabular-nums"],
+    textAlign: "right",
   },
   unreadBadge: {
     minWidth: 21,
@@ -1041,14 +1044,14 @@ const s = StyleSheet.create({
   },
   meta: {
     marginTop: 6,
-    color: TEXT_MUTED,
+    color: colors.textMuted,
     fontSize: 12,
     lineHeight: 16,
   },
   emptyText: {
     marginTop: 58,
     paddingHorizontal: 24,
-    color: TEXT_MUTED,
+    color: colors.textMuted,
     textAlign: "center",
     fontSize: 14,
     lineHeight: 20,
@@ -1061,7 +1064,7 @@ const s = StyleSheet.create({
     gap: 10,
   },
   errorText: {
-    color: TEXT_MUTED,
+    color: colors.textMuted,
     fontSize: 14,
     textAlign: "center",
   },
@@ -1070,12 +1073,12 @@ const s = StyleSheet.create({
     marginTop: 4,
     paddingHorizontal: 22,
     borderRadius: 22,
-    backgroundColor: ACCENT_SOFT,
+    backgroundColor: colors.driverSoft,
     alignItems: "center",
     justifyContent: "center",
   },
   retryText: {
-    color: ACCENT,
+    color: colors.driver,
     fontSize: 14,
     fontWeight: "800",
   },
