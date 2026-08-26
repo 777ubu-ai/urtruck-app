@@ -25,6 +25,7 @@ MAESTRO_STDERR="$ARTIFACT_DIR/maestro.stderr.log"
 SUMMARY_JSON="$ARTIFACT_DIR/summary.json"
 SUMMARY_MD="$ARTIFACT_DIR/SUMMARY.md"
 CHECKPOINT_ROOT="$ARTIFACT_DIR/checkpoints"
+PREFLIGHT_TARGET_ID="${PREFLIGHT_TARGET_ID:-onb-v2-cta-phone}"
 
 mkdir -p "$ARTIFACT_DIR" "$CHECKPOINT_ROOT"
 : > "$MITM_EVENTS_JSONL"
@@ -58,6 +59,59 @@ log_contains() {
   else
     grep -Eq "$pattern" "$file"
   fi
+}
+
+ui_contains() {
+  local pattern="$1"
+  local file="$2"
+  grep -Eq "$pattern" "$file"
+}
+
+dump_ui() {
+  local dest="$1"
+  adb_s exec-out uiautomator dump /dev/tty > "$dest"
+}
+
+extract_text_bounds() {
+  local file="$1"
+  local text="$2"
+  python3 - "$file" "$text" <<'PY'
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+path, needle = sys.argv[1], sys.argv[2]
+tree = ET.parse(path)
+for node in tree.iter():
+    attrs = node.attrib
+    if attrs.get("text") == needle or attrs.get("content-desc") == needle:
+        bounds = attrs.get("bounds", "")
+        m = re.match(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", bounds)
+        if not m:
+            continue
+        x1, y1, x2, y2 = map(int, m.groups())
+        print(f"{(x1 + x2) // 2} {(y1 + y2) // 2}")
+        sys.exit(0)
+sys.exit(1)
+PY
+}
+
+tap_ui_text() {
+  local dump_file="$1"
+  local text="$2"
+  local coords
+  coords="$(extract_text_bounds "$dump_file" "$text")" || return 1
+  adb_s shell input tap ${coords}
+}
+
+detect_system_anr_dialog() {
+  local dump_file="$1"
+  ui_contains "Pixel Launcher isn't responding|Application Not Responding|isn't responding" "$dump_file"
+}
+
+ui_has_preflight_target() {
+  local dump_file="$1"
+  ui_contains "$PREFLIGHT_TARGET_ID" "$dump_file"
 }
 
 cleanup() {
@@ -98,15 +152,79 @@ capture_checkpoint() {
   mkdir -p "$dir"
 
   adb_s exec-out screencap -p > "$dir/screenshot.png" || true
-  adb_s exec-out uiautomator dump /dev/tty > "$dir/ui.xml" || true
+  dump_ui "$dir/ui.xml" || true
   adb_s shell dumpsys activity activities > "$dir/dumpsys-activity.txt" || true
+  adb_s shell dumpsys window windows > "$dir/dumpsys-window.txt" || true
   {
     echo "pid=$(adb_s shell pidof -s "$PACKAGE" 2>/dev/null | tr -d '\r' || true)"
     adb_s shell ps -A | grep "$PACKAGE" || true
   } > "$dir/process-state.txt"
+  {
+    echo "current_focus:"
+    adb_s shell dumpsys window windows | grep -E "mCurrentFocus|mFocusedApp" || true
+    echo
+    echo "resumed_activity:"
+    adb_s shell dumpsys activity activities | grep -E "ResumedActivity|topResumedActivity|mActivityComponent|packageName=com\\.urtruck\\.app" || true
+  } > "$dir/foreground-state.txt"
   capture_logcat_slice "$dir/logcat.txt"
   cp "$MAESTRO_STDOUT" "$dir/maestro.stdout.log" || true
   cp "$MAESTRO_STDERR" "$dir/maestro.stderr.log" || true
+}
+
+dismiss_system_anr_if_present() {
+  local name="$1"
+  local dir="$CHECKPOINT_ROOT/$name"
+  local dump_file="$dir/ui.xml"
+
+  mkdir -p "$dir"
+  adb_s exec-out screencap -p > "$dir/screenshot.png" || true
+  dump_ui "$dump_file" || true
+  adb_s shell dumpsys activity activities > "$dir/dumpsys-activity.txt" || true
+  adb_s shell dumpsys window windows > "$dir/dumpsys-window.txt" || true
+
+  if ! detect_system_anr_dialog "$dump_file"; then
+    return 1
+  fi
+
+  log "Detected system ANR dialog before reviewer flow"
+  if tap_ui_text "$dump_file" "Wait"; then
+    sleep 2
+    return 0
+  fi
+  if tap_ui_text "$dump_file" "Close app"; then
+    sleep 2
+    adb_s shell am start -W -n "$PACKAGE/$LAUNCHABLE_ACTIVITY" >/dev/null 2>&1 || true
+    sleep 2
+    return 0
+  fi
+  return 1
+}
+
+ensure_preflight_ready() {
+  local attempt
+  local dump_file
+
+  for attempt in 1 2 3; do
+    capture_checkpoint "preflight_attempt_${attempt}"
+    dump_file="$CHECKPOINT_ROOT/preflight_attempt_${attempt}/ui.xml"
+
+    if detect_system_anr_dialog "$dump_file"; then
+      dismiss_system_anr_if_present "preflight_anr_attempt_${attempt}" || true
+      capture_checkpoint "preflight_post_anr_attempt_${attempt}"
+      dump_file="$CHECKPOINT_ROOT/preflight_post_anr_attempt_${attempt}/ui.xml"
+    fi
+
+    if ui_has_preflight_target "$dump_file"; then
+      capture_checkpoint "preflight_ready"
+      return 0
+    fi
+
+    adb_s shell am start -W -n "$PACKAGE/$LAUNCHABLE_ACTIVITY" >/dev/null 2>&1 || true
+    sleep 2
+  done
+
+  capture_checkpoint "preflight_failed"
+  return 1
 }
 
 start_logcat() {
@@ -218,9 +336,22 @@ summarize() {
   local otp_input_present="NO"
   local first_breakpoint="UNKNOWN"
   local klass="UNKNOWN"
+  local preflight_ready_xml="$CHECKPOINT_ROOT/preflight_ready/ui.xml"
+  local preflight_failed_xml="$CHECKPOINT_ROOT/preflight_failed/ui.xml"
+  local preflight_anr="NO"
+  local preflight_target_visible="NO"
   local pre_xml="$CHECKPOINT_ROOT/pre_tap/ui.xml"
   local post_xml="$CHECKPOINT_ROOT/tplus_350ms/ui.xml"
   local late_xml="$CHECKPOINT_ROOT/tplus_2500ms/ui.xml"
+
+  if find "$CHECKPOINT_ROOT" -maxdepth 1 -type d -name 'preflight_anr_attempt_*' | grep -q .; then
+    preflight_anr="YES"
+  fi
+  if [[ -f "$preflight_ready_xml" ]] && ui_has_preflight_target "$preflight_ready_xml"; then
+    preflight_target_visible="YES"
+  elif [[ -f "$preflight_failed_xml" ]] && ui_has_preflight_target "$preflight_failed_xml"; then
+    preflight_target_visible="YES"
+  fi
 
   if [[ -f "$MITM_EVENTS_JSONL" ]] && log_contains '"kind": "request"' "$MITM_EVENTS_JSONL"; then
     email_send_called="YES"
@@ -254,13 +385,21 @@ PY
     navigation_fired="YES"
   fi
 
-  if [[ "$email_send_called" == "YES" || "$navigation_fired" == "YES" ]]; then
+  if [[ "$preflight_anr" == "YES" && "$preflight_target_visible" != "YES" ]]; then
+    first_breakpoint="system ANR dialog"
+    klass="ENVIRONMENT"
+  elif [[ "$preflight_target_visible" != "YES" ]]; then
+    first_breakpoint="preflight target visibility"
+    klass="HARNESS"
+  elif [[ "$email_send_called" == "YES" || "$navigation_fired" == "YES" ]]; then
     tap_handled="YES"
   elif [[ -f "$pre_xml" && -f "$post_xml" ]] && ! cmp -s "$pre_xml" "$post_xml"; then
     tap_handled="YES"
   fi
 
-  if [[ "$adb_stable" != "YES" ]]; then
+  if [[ "$first_breakpoint" != "UNKNOWN" ]]; then
+    :
+  elif [[ "$adb_stable" != "YES" ]]; then
     first_breakpoint="adb stability"
     klass="ENVIRONMENT"
   elif [[ "$apk_hash" != "PASS" ]]; then
@@ -349,6 +488,7 @@ verify_install_and_launch
 start_logcat
 
 capture_checkpoint "pre_install_launch"
+ensure_preflight_ready
 
 log "Running reviewer login Maestro flow"
 std_buf_cmd=(stdbuf -oL -eL maestro test "$FLOW_PATH" --device "$SERIAL" --format NOOP)
