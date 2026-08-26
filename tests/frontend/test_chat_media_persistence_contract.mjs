@@ -120,6 +120,16 @@ test('voice failures distinguish record vs upload vs send, each with its own mes
   assert.match(workspace, /t\('voice_error_send'\)/);
 });
 
+test('voice message is rendered optimistically before upload finishes, so the chat never waits on network before showing the bubble', () => {
+  assert.match(workspace, /const appendOptimisticVoice = React\.useCallback/);
+  assert.match(workspace, /sendStatus: 'uploading'/);
+  assert.match(workspace, /mediaUrl: uri/);
+  assert.match(workspace, /voice: true/);
+  assert.match(workspace, /const clientId = appendOptimisticVoice\(result\.uri, duration\)/);
+  assert.match(workspace, /clientMsgId: clientId,/);
+  assert.match(workspace, /item\.sendStatus === 'failed' && !item\.voice/);
+});
+
 test('the geolocation quick action requests foreground permission and sends a real openable map link', () => {
   assert.match(workspace, /const sendLocation = React\.useCallback/);
   assert.match(workspace, /requestForegroundLocationPermission/);

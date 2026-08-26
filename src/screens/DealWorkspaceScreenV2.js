@@ -654,6 +654,26 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     sendRawText(item.text);
   }, [sendRawText]);
 
+  const appendOptimisticVoice = React.useCallback((uri, duration) => {
+    const clientId = newClientId();
+    setMessages((items) => [...items, {
+      id: clientId,
+      clientMsgId: clientId,
+      mine: true,
+      text: `🎤 ${ui.voiceMessage}`,
+      voice: true,
+      mediaUrl: uri,
+      voiceDuration: duration,
+      time: nowTime(),
+      optimistic: true,
+      sendStatus: 'uploading',
+    }]);
+    nearBottomRef.current = true;
+    setShowJumpLatest(false);
+    setTimeout(() => listRef.current?.scrollToEnd?.({ animated: true }), 60);
+    return clientId;
+  }, [ui.voiceMessage]);
+
   const sendQuickReply = React.useCallback(() => {
     setAttachOpen(false);
     sendRawText(t('deal_chat_quick_reply'));
@@ -801,6 +821,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     } catch { toast(t('voice_error_record'), 'error'); return; }
     if (!result?.uri) { toast(t('voice_error_record'), 'error'); return; }
     const duration = result.duration || Math.max(1, Math.round((Date.now() - recordStartRef.current) / 1000));
+    const clientId = appendOptimisticVoice(result.uri, duration);
     let upload;
     try {
       upload = await chatAPI.uploadChatVoice(result.uri, {
@@ -817,22 +838,37 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         : error?.status === 413 ? 'doc_error_too_large'
           : error?.status >= 500 ? 'doc_error_server'
             : 'voice_error_upload';
+      setMessages((items) => items.map((m) => (
+        m.id === clientId
+          ? { ...m, sendStatus: 'failed', sendError: key ? t(key) : t('no_connection') }
+          : m
+      )));
       toast(key ? t(key) : t('no_connection'), 'error');
       return;
     }
     if (!upload?.voice_key) { toast(t('voice_error_upload'), 'error'); return; }
+    setMessages((items) => items.map((m) => (m.id === clientId ? { ...m, sendStatus: 'sending' } : m)));
+    const payload = {
+      roomId, toUserId: recipientId, text: `🎤 ${ui.voiceMessage}`, photoUrl: upload.voice_key,
+      isVoice: true, voiceDuration: duration,
+      cargoId: deal?.cargo_id || params.cargoId || null, tripId: deal?.trip_id || params.tripId || null,
+      clientMsgId: clientId,
+    };
     try {
-      await chatAPI.send({
-        roomId, toUserId: recipientId, text: `🎤 ${ui.voiceMessage}`, photoUrl: upload.voice_key,
-        isVoice: true, voiceDuration: duration,
-        cargoId: deal?.cargo_id || params.cargoId || null, tripId: deal?.trip_id || params.tripId || null,
-        clientMsgId: newClientId(),
-      });
+      const response = await chatAPI.send(payload);
+      if (response?.room_id && !roomId) setRoomId(response.room_id);
       setTimeout(loadMessages, 120);
-    } catch {
+    } catch (error) {
+      if (error?.isNetwork) {
+        await enqueueOutbox({ clientId, payload }, session?.user?.id);
+        toast(t('chat_queued'), 'info', 2200);
+        setMessages((items) => items.map((m) => (m.id === clientId ? { ...m, sendStatus: 'queued' } : m)));
+        return;
+      }
+      setMessages((items) => items.map((m) => (m.id === clientId ? { ...m, sendStatus: 'failed', sendError: t('voice_error_send') } : m)));
       toast(t('voice_error_send'), 'error');
     }
-  }, [recording, roomId, recipientId, deal?.cargo_id, deal?.trip_id, params.cargoId, params.tripId, ui.voiceMessage, loadMessages, toast, t]);
+  }, [recording, roomId, recipientId, deal?.cargo_id, deal?.trip_id, params.cargoId, params.tripId, ui.voiceMessage, loadMessages, toast, t, appendOptimisticVoice, session?.user?.id]);
 
   const renderMessage = React.useCallback(({ item }) => {
     if (item.system) return (
@@ -934,7 +970,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           ) : null}
           <Text style={[s.messageTime, { color: item.mine ? 'rgba(255,255,255,0.68)' : colors.textMuted }]}>{item.time}</Text>
         </View>
-        {item.sendStatus === 'failed' ? (
+        {item.sendStatus === 'failed' && !item.voice ? (
           <TouchableOpacity onPress={() => retryFailedText(item)} style={s.errorRow} testID="deal-chat-message-retry">
             <Feather name="alert-circle" size={12} color="#EF4444" />
             <Text style={s.errorText} numberOfLines={2}>{item.sendError || t('chat_send_failed')} · {t('chat_attach_retry')}</Text>

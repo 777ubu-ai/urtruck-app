@@ -2,6 +2,7 @@ name: UrTruck TestFlight RC
 
 # Push to this release branch is the canonical trigger for an exact
 # TestFlight candidate build and upload.
+# RC refresh 2026-08-26: voice optimistic-send + chat UX fixes.
 on:
   push:
     branches:

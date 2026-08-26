@@ -563,9 +563,21 @@ export default function DealWorkspaceScreen({ navigation, route }) {
       const result = await voice.stopRecording();
       if (!result?.uri) return;
       const duration = result.duration || Math.max(1, Math.round((Date.now() - recordStartRef.current) / 1000));
+      const clientId = `c_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+      setMessages((items) => [...items, {
+        id: clientId,
+        clientMsgId: clientId,
+        mine: true,
+        text: `🎤 ${ui.voiceMessage}`,
+        voice: true,
+        mediaUrl: result.uri,
+        voiceDuration: duration,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        optimistic: true,
+      }]);
+      setTimeout(() => listRef.current?.scrollToEnd?.({ animated: true }), 60);
       const upload = await chatAPI.uploadChatVoice(result.uri);
       if (!upload?.voice_key) throw new Error('voice_upload');
-      const clientId = `c_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
       await chatAPI.send({
         roomId,
         toUserId: recipientId,
