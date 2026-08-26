@@ -67,9 +67,32 @@ ui_contains() {
   grep -Eq "$pattern" "$file"
 }
 
+sanitize_ui_dump() {
+  local src="$1"
+  local dest="$2"
+  python3 - "$src" "$dest" <<'PY'
+from pathlib import Path
+import sys
+
+src = Path(sys.argv[1])
+dest = Path(sys.argv[2])
+text = src.read_text(encoding='utf-8', errors='replace')
+end_tag = '</hierarchy>'
+end_index = text.find(end_tag)
+if end_index == -1:
+    dest.write_text(text, encoding='utf-8')
+    sys.exit(0)
+dest.write_text(text[: end_index + len(end_tag)], encoding='utf-8')
+PY
+}
+
 dump_ui() {
   local dest="$1"
-  adb_s exec-out uiautomator dump /dev/tty > "$dest"
+  local raw_dump
+  raw_dump="$(mktemp)"
+  adb_s exec-out uiautomator dump /dev/tty > "$raw_dump"
+  sanitize_ui_dump "$raw_dump" "$dest"
+  rm -f "$raw_dump"
 }
 
 extract_text_bounds() {
