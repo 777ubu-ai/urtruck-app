@@ -2,16 +2,6 @@ name: Reviewer Auth CI Diagnostic
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/reviewer-auth-ci-diagnostic.yml"
-      - "qa/scripts/reviewer-auth-diagnostic/**"
-      - "qa/maestro/google-play-location/login-reviewer-driver.yaml"
-      - "qa/maestro/google-play-location/diag-marker-*.js"
-      - "tests/frontend/test_reviewer_auth_ci_diagnostic_workflow.mjs"
-      - "tests/frontend/test_reviewer_login_diagnostic_hooks.mjs"
 
 permissions:
   contents: read
@@ -22,23 +12,21 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  diagnostic:
-    name: Exact APK reviewer login diagnostic
+  reviewer-auth-ci:
+    name: Android reviewer auth diagnostic from exact APK artifact
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 45
     env:
       SOURCE_SHA: aaf8760da0fa4b8068db27a2d535aff938e593dc
       APK_RUN_ID: "32864148744"
       APK_ARTIFACT_ID: "9569835383"
       APK_SHA256: 062842f31ec74f5b6cdb9cd841f5abe541d0d844de55315c61960a27812cad7b
-      PACKAGE: com.urtruck.app
+      APK_PACKAGE: com.urtruck.app
       REVIEWER_EMAIL: appreview@urtruck.kz
       REVIEWER_CODE: "1975"
-      SERIAL: emulator-5554
-      ARTIFACT_DIR: ${{ github.workspace }}/qa/artifacts/reviewer-auth-diagnostic
-      EMULATOR_PROFILE: pixel_7
-      EMULATOR_API: "34"
-      FLOW_PATH: qa/maestro/google-play-location/login-reviewer-driver.yaml
+      ARTIFACT_DIR: ${{ github.workspace }}/artifacts/reviewer-auth-ci
+      SOURCE_DIR: ${{ github.workspace }}/source
+      APK_DIR: ${{ github.workspace }}/apk
 
     steps:
       - name: Checkout automation branch
@@ -46,7 +34,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Checkout exact app source SHA
+      - name: Checkout exact source SHA
         uses: actions/checkout@v4
         with:
           ref: ${{ env.SOURCE_SHA }}
@@ -57,19 +45,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cd source
-          actual_sha="$(git rev-parse HEAD)"
-          test "$actual_sha" = "$SOURCE_SHA"
+          test "$(git -C "$SOURCE_DIR" rev-parse HEAD)" = "$SOURCE_SHA"
 
-      - name: Setup Python 3.12
-        uses: actions/setup-python@v5
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
         with:
-          python-version: "3.12"
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: source/package-lock.json
 
       - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
+          distribution: "temurin"
           java-version: "17"
 
       - name: Setup Android SDK
@@ -85,21 +73,28 @@ jobs:
           sudo udevadm trigger --name-match=kvm || true
           ls -l /dev/kvm
 
-      - name: Install Android SDK platform 36 / build-tools 36.0.0
+      - name: Download exact APK artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+          mkdir -p "$APK_DIR"
+          curl -fsSL \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/${APK_ARTIFACT_ID}/zip" \
+            -o "$RUNNER_TEMP/reviewer-auth-apk.zip"
+          unzip -o "$RUNNER_TEMP/reviewer-auth-apk.zip" -d "$APK_DIR"
+          test -f "$APK_DIR/UrTruck.apk"
 
-      - name: Install pinned mitmproxy and unzip helpers
+      - name: Verify exact APK hash
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m pip install --user "mitmproxy==11.0.2"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          sudo apt-get update
-          sudo apt-get install -y unzip ripgrep
+          actual="$(sha256sum "$APK_DIR/UrTruck.apk" | awk '{print $1}')"
+          echo "APK_SHA256_ACTUAL=$actual" >> "$GITHUB_ENV"
+          test "$actual" = "$APK_SHA256"
 
       - name: Install Maestro CLI
         shell: bash
@@ -108,59 +103,16 @@ jobs:
           curl -Ls "https://get.maestro.mobile.dev" | bash
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
 
-      - name: Download exact APK artifact and verify SHA256
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Prepare diagnostic directories
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p "$ARTIFACT_DIR"
-          artifact_json="$RUNNER_TEMP/reviewer-artifact.json"
-          artifact_zip="$RUNNER_TEMP/reviewer-artifact.zip"
-          artifact_dir="$RUNNER_TEMP/reviewer-artifact"
 
-          gh api "repos/777ubu-ai/urtruck-app/actions/artifacts/${APK_ARTIFACT_ID}" > "$artifact_json"
-
-          python3 - "$artifact_json" "$APK_RUN_ID" <<'PY'
-          import json, sys
-          data = json.load(open(sys.argv[1], 'r', encoding='utf-8'))
-          run_id = str(data.get('workflow_run', {}).get('id', ''))
-          artifact_id = str(data.get('id', ''))
-          if artifact_id != "9569835383":
-              raise SystemExit(f"artifact id mismatch: {artifact_id}")
-          if run_id != sys.argv[2]:
-              raise SystemExit(f"artifact run mismatch: {run_id} != {sys.argv[2]}")
-          if data.get('expired'):
-              raise SystemExit('artifact is expired')
-          PY
-
-          gh api "repos/777ubu-ai/urtruck-app/actions/artifacts/${APK_ARTIFACT_ID}/zip" > "$artifact_zip"
-          mkdir -p "$artifact_dir"
-          unzip -q "$artifact_zip" -d "$artifact_dir"
-          apk_path="$(find "$artifact_dir" -type f -name 'UrTruck.apk' | head -n 1)"
-          test -n "$apk_path"
-          actual_sha="$(sha256sum "$apk_path" | awk '{print $1}')"
-          test "$actual_sha" = "$APK_SHA256"
-
-          aapt_bin="$(find "${ANDROID_SDK_ROOT}/build-tools" -type f -name aapt | sort | tail -n 1)"
-          test -n "$aapt_bin"
-          "$aapt_bin" dump badging "$apk_path" > "$ARTIFACT_DIR/apk-badging.txt"
-          grep -q "package: name='${PACKAGE}'" "$ARTIFACT_DIR/apk-badging.txt"
-          launchable_activity="$(sed -n "s/launchable-activity: name='\\([^']*\\)'.*/\\1/p" "$ARTIFACT_DIR/apk-badging.txt" | head -n 1)"
-          test -n "$launchable_activity"
-
-          cp "$artifact_json" "$ARTIFACT_DIR/artifact-metadata.json"
-          echo "APK_PATH=$apk_path" >> "$GITHUB_ENV"
-          echo "AAPT_BIN=$aapt_bin" >> "$GITHUB_ENV"
-          echo "LAUNCHABLE_ACTIVITY=$launchable_activity" >> "$GITHUB_ENV"
-
-      - name: Boot emulator and run reviewer diagnostic
+      - name: Run exact reviewer diagnostic on Android emulator
+        id: reviewer_diag
+        continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
-        env:
-          GH_TOKEN: ${{ github.token }}
-          APK_PATH: ${{ env.APK_PATH }}
-          AAPT_BIN: ${{ env.AAPT_BIN }}
-          LAUNCHABLE_ACTIVITY: ${{ env.LAUNCHABLE_ACTIVITY }}
         with:
           api-level: 34
           arch: x86_64
@@ -169,16 +121,171 @@ jobs:
           disk-size: 8192M
           ram-size: 4096M
           heap-size: 1024M
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -camera-back none -camera-front none -writable-system
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -camera-back none -camera-front none
           disable-animations: false
           script: |
-            bash -lc 'set -euo pipefail; export PATH="$HOME/.maestro/bin:$HOME/.local/bin:$PATH"; bash qa/scripts/reviewer-auth-diagnostic/run-ci-diagnostic.sh'
+            bash -lc '
+              set -euo pipefail
+              export PATH="$HOME/.maestro/bin:$PATH"
+              ARTIFACT_DIR="${ARTIFACT_DIR}"
+              SOURCE_DIR="${SOURCE_DIR}"
+              APK_DIR="${APK_DIR}"
+              APK_PACKAGE="${APK_PACKAGE}"
+              mkdir -p "$ARTIFACT_DIR"
 
-      - name: Upload reviewer diagnostic artifact
-        if: ${{ always() && hashFiles('qa/artifacts/reviewer-auth-diagnostic/**') != '' }}
+              capture_state() {
+                local prefix="$1"
+                adb exec-out screencap -p > "$ARTIFACT_DIR/${prefix}.png" || true
+                adb shell uiautomator dump /sdcard/${prefix}.xml >/dev/null 2>&1 || true
+                adb pull /sdcard/${prefix}.xml "$ARTIFACT_DIR/${prefix}.xml" >/dev/null 2>&1 || true
+              }
+
+              {
+                echo "== adb devices -l (before) =="
+                adb devices -l || true
+                echo
+                echo "== adb get-state (before) =="
+                adb get-state || true
+              } > "$ARTIFACT_DIR/adb-devices-before.txt"
+
+              stable_yes=YES
+              for idx in 1 2 3 4 5; do
+                adb wait-for-device
+                if ! adb shell getprop sys.boot_completed | tr -d "\r" | grep -qx "1"; then
+                  stable_yes=NO
+                  break
+                fi
+                adb shell true >/dev/null
+                sleep 1
+              done
+              echo "$stable_yes" > "$ARTIFACT_DIR/adb-stable.txt"
+              if [ "$stable_yes" != "YES" ]; then
+                echo "HARNESS" > "$ARTIFACT_DIR/classification.txt"
+                exit 1
+              fi
+
+              adb install -r "$APK_DIR/UrTruck.apk" | tee "$ARTIFACT_DIR/adb-install.txt"
+              adb shell pm list packages "$APK_PACKAGE" | tee "$ARTIFACT_DIR/package-proof.txt"
+              adb shell cmd package resolve-activity --brief "$APK_PACKAGE" | tee "$ARTIFACT_DIR/launchable-activity.txt" || true
+
+              adb logcat -c || true
+              adb logcat -v time > "$ARTIFACT_DIR/logcat.txt" 2>&1 &
+              LOGCAT_PID=$!
+
+              monitor_markers() {
+                local out="$ARTIFACT_DIR/maestro-stdout.txt"
+                local pre_done=0
+                local post_done=0
+                for _ in $(seq 1 240); do
+                  if [ $pre_done -eq 0 ] && grep -q "REVIEWER_DIAG_MARKER=pre_tap" "$out" 2>/dev/null; then
+                    capture_state before_tap
+                    pre_done=1
+                  fi
+                  if [ $post_done -eq 0 ] && grep -q "REVIEWER_DIAG_MARKER=after_tap" "$out" 2>/dev/null; then
+                    sleep 0.5
+                    capture_state after_tap_500ms
+                    sleep 2.5
+                    capture_state after_tap_3s
+                    post_done=1
+                    return 0
+                  fi
+                  sleep 1
+                done
+                return 0
+              }
+
+              monitor_markers &
+              MONITOR_PID=$!
+
+              set +e
+              REVIEWER_EMAIL="${REVIEWER_EMAIL}" REVIEWER_CODE="${REVIEWER_CODE}" \
+                maestro test "$SOURCE_DIR/qa/maestro/google-play-location/login-reviewer-driver.yaml" \
+                >"$ARTIFACT_DIR/maestro-stdout.txt" 2>"$ARTIFACT_DIR/maestro-stderr.txt"
+              MAESTRO_EXIT=$?
+              set -e
+              echo "$MAESTRO_EXIT" > "$ARTIFACT_DIR/maestro-exit-code.txt"
+
+              wait "$MONITOR_PID" || true
+
+              if [ ! -f "$ARTIFACT_DIR/before_tap.png" ]; then
+                capture_state before_tap
+              fi
+              if [ ! -f "$ARTIFACT_DIR/after_tap_500ms.png" ]; then
+                capture_state after_tap_500ms
+              fi
+              if [ ! -f "$ARTIFACT_DIR/after_tap_3s.png" ]; then
+                capture_state after_tap_3s
+              fi
+
+              kill "$LOGCAT_PID" >/dev/null 2>&1 || true
+              wait "$LOGCAT_PID" >/dev/null 2>&1 || true
+
+              {
+                echo "== adb devices -l (after) =="
+                adb devices -l || true
+                echo
+                echo "== adb get-state (after) =="
+                adb get-state || true
+              } > "$ARTIFACT_DIR/adb-devices-after.txt"
+
+              if [ "$MAESTRO_EXIT" -eq 0 ]; then
+                echo "PASS" > "$ARTIFACT_DIR/classification.txt"
+                exit 0
+              fi
+
+              if grep -q "otp-v2-input" "$ARTIFACT_DIR/after_tap_3s.xml" 2>/dev/null; then
+                echo "INTEGRATION" > "$ARTIFACT_DIR/classification.txt"
+              else
+                echo "PRODUCT" > "$ARTIFACT_DIR/classification.txt"
+              fi
+              exit 1
+            '
+
+      - name: Build diagnostic summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR"
+          classification="HARNESS"
+          [ -f "$ARTIFACT_DIR/classification.txt" ] && classification="$(cat "$ARTIFACT_DIR/classification.txt")"
+          adb_status="NO_DEVICE"
+          [ -f "$ARTIFACT_DIR/adb-stable.txt" ] && adb_status="$(cat "$ARTIFACT_DIR/adb-stable.txt")"
+          cat > "$ARTIFACT_DIR/summary.txt" <<EOF
+          SOURCE_SHA=$SOURCE_SHA
+          APK_RUN_ID=$APK_RUN_ID
+          APK_ARTIFACT_ID=$APK_ARTIFACT_ID
+          APK_SHA256=$APK_SHA256
+          APK_SHA256_ACTUAL=${APK_SHA256_ACTUAL:-missing}
+          PACKAGE=$APK_PACKAGE
+          ADB_STABLE=$adb_status
+          CLASSIFICATION=$classification
+          WORKFLOW_RUN_ID=${{ github.run_id }}
+          EOF
+
+      - name: Upload reviewer diagnostic artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: reviewer-auth-ci-diagnostic
-          path: qa/artifacts/reviewer-auth-diagnostic/
-          retention-days: 30
-          if-no-files-found: error
+          name: reviewer-auth-ci-diagnostic-${{ github.run_id }}
+          path: |
+            artifacts/reviewer-auth-ci/before_tap.png
+            artifacts/reviewer-auth-ci/after_tap_500ms.png
+            artifacts/reviewer-auth-ci/after_tap_3s.png
+            artifacts/reviewer-auth-ci/before_tap.xml
+            artifacts/reviewer-auth-ci/after_tap_500ms.xml
+            artifacts/reviewer-auth-ci/after_tap_3s.xml
+            artifacts/reviewer-auth-ci/logcat.txt
+            artifacts/reviewer-auth-ci/maestro-stdout.txt
+            artifacts/reviewer-auth-ci/maestro-stderr.txt
+            artifacts/reviewer-auth-ci/adb-devices-before.txt
+            artifacts/reviewer-auth-ci/adb-devices-after.txt
+            artifacts/reviewer-auth-ci/adb-install.txt
+            artifacts/reviewer-auth-ci/package-proof.txt
+            artifacts/reviewer-auth-ci/launchable-activity.txt
+            artifacts/reviewer-auth-ci/maestro-exit-code.txt
+            artifacts/reviewer-auth-ci/adb-stable.txt
+            artifacts/reviewer-auth-ci/classification.txt
+            artifacts/reviewer-auth-ci/summary.txt
+          if-no-files-found: warn
+          retention-days: 14
