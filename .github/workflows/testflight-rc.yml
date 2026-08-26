@@ -14,6 +14,8 @@ name: UrTruck TestFlight RC
 # merged in a8669ac; comment-only trigger for exact TestFlight rebuild.
 # RC diagnostic 2026-08-26 19:05Z: persist EAS build/submit logs on failure.
 # RC diagnostic 2026-08-26 19:20Z: publish EAS failure text to issue #262.
+# RC fallback 2026-08-26 19:30Z: rebuild after removing iOS Associated Domains
+# entitlement until Apple Developer profile enables that capability.
 on:
   push:
     branches:
