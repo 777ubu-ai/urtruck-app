@@ -14,10 +14,16 @@ name: Deploy Android to Google Play
 #   ANDROID_KEY_PASSWORD      — пароль ключа
 #   PLAY_SERVICE_ACCOUNT_JSON — содержимое JSON-ключа сервисного аккаунта
 #                               Google Play Console (Setup → API access)
+#   ANDROID_GOOGLE_SERVICES_JSON_BASE64 — `base64 -w0 google-services.json`
+#                               реального Firebase-проекта UrTruck
+#                               (com.urtruck.app). Без него Android push
+#                               (FCM) не работает — см.
+#                               docs/release/android-firebase-config.md.
 #
 # См. также android/app/build.gradle (signingConfigs.release читает
 # URTRUCK_UPLOAD_* project-properties, которые сюда прокидываются через
-# ORG_GRADLE_PROJECT_*).
+# ORG_GRADLE_PROJECT_*; google-services plugin применяется условно, см.
+# docs/release/android-firebase-config.md).
 
 on:
   push:
@@ -117,6 +123,25 @@ jobs:
           fi
           echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/urtruck-upload-key.jks"
 
+      - name: Materialize Android Firebase config (google-services.json)
+        # P1 fix (26.08.2026): этот workflow собирает AAB напрямую из
+        # закоммиченного android/ БЕЗ expo prebuild (сохраняет ручной
+        # signingConfigs.release), поэтому файл кладётся прямо в
+        # android/app/ — именно там его ищет Gradle google-services plugin,
+        # уже подключённый условно в android/build.gradle и
+        # android/app/build.gradle. См. docs/release/android-firebase-config.md.
+        env:
+          ANDROID_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.ANDROID_GOOGLE_SERVICES_JSON_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ANDROID_GOOGLE_SERVICES_JSON_BASE64:-}" ]; then
+            echo "::error::Секрет ANDROID_GOOGLE_SERVICES_JSON_BASE64 не задан — Android push (FCM) не будет работать в этой сборке. См. docs/release/android-firebase-config.md."
+            exit 1
+          fi
+          echo "$ANDROID_GOOGLE_SERVICES_JSON_BASE64" | base64 -d > android/app/google-services.json
+          python3 scripts/verify_android_firebase_config.py --check-source android/app/google-services.json
+          python3 scripts/verify_android_firebase_config.py --check-plugin android
+
       - name: Compute collision-resistant versionCode
         # Старый `100 + GITHUB_RUN_NUMBER` столкнулся с уже использованным
         # versionCode=212. Run number локален конкретному workflow и может
@@ -150,6 +175,9 @@ jobs:
           cd android
           chmod +x gradlew
           ./gradlew bundleRelease --no-daemon --stacktrace --warning-mode=summary
+
+      - name: Verify Firebase runtime resources in build output
+        run: python3 scripts/verify_android_firebase_config.py --check-resources android/app/build
 
       - name: Verify built AAB identity and versionCode
         run: |
