@@ -34,6 +34,9 @@ test('reviewer auth CI diagnostic always uploads artifacts and runs the exact re
   assert.match(workflow, /sudo apt-get install -y unzip ripgrep/);
   assert.match(workflow, /emulator-options: .* -writable-system/);
   assert.match(diagnosticShell, /if command -v rg >\/dev\/null 2>&1;/);
+  assert.match(diagnosticShell, /sanitize_ui_dump\(\)/);
+  assert.match(diagnosticShell, /end_tag = '<\/hierarchy>'/);
+  assert.match(diagnosticShell, /sanitize_ui_dump "\$raw_dump" "\$dest"/);
   assert.match(diagnosticShell, /Skipping global proxy because mitmproxy CA is not trusted by the emulator/);
   assert.match(diagnosticShell, /PREFLIGHT_TARGET_ID="\$\{PREFLIGHT_TARGET_ID:-onb-v2-cta-phone\}"/);
   assert.match(diagnosticShell, /Detected system ANR dialog before reviewer flow/);
