@@ -12,6 +12,7 @@ name: UrTruck TestFlight RC
 # CI logic.
 # RC bump 2026-08-26 19:00Z: notifications deeplink release entrypoints
 # merged in a8669ac; comment-only trigger for exact TestFlight rebuild.
+# RC diagnostic 2026-08-26 19:05Z: persist EAS build/submit logs on failure.
 on:
   push:
     branches:
@@ -70,8 +71,15 @@ jobs:
             echo "::error::YANDEX_MAPS_JS_API_KEY is required for iOS/TestFlight route map rendering."
             exit 1
           }
-          npx eas-cli@latest build --platform ios --profile production --non-interactive --wait --json > eas-build.json
-          cat eas-build.json
+          set +e
+          npx eas-cli@latest build --platform ios --profile production --non-interactive --wait --json > eas-build.json 2> eas-build.stderr
+          BUILD_EXIT=$?
+          set -e
+          cat eas-build.stderr >&2 || true
+          cat eas-build.json || true
+          if [ "$BUILD_EXIT" -ne 0 ]; then
+            exit "$BUILD_EXIT"
+          fi
           BUILD_ID=$(node -e "console.log(JSON.parse(require('fs').readFileSync('eas-build.json','utf8'))[0].id)")
           BUILD_COMMIT=$(node -e "console.log(JSON.parse(require('fs').readFileSync('eas-build.json','utf8'))[0].gitCommitHash)")
           HEAD_SHA=$(git rev-parse HEAD)
@@ -96,6 +104,17 @@ jobs:
           SUBMISSION_ID=$(grep -oE 'submissions/[a-f0-9-]+' submit.log | head -1 | cut -d/ -f2 || true)
           echo "submission_id=$SUBMISSION_ID" >> "$GITHUB_OUTPUT"
           exit "$SUBMIT_EXIT"
+
+      - name: Upload TestFlight RC diagnostic artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testflight-rc-diagnostics-${{ github.run_id }}
+          path: |
+            eas-build.json
+            eas-build.stderr
+            submit.log
+          if-no-files-found: ignore
 
       - name: Show exact Apple/EAS submission error on failure
         if: failure() && steps.submit.outputs.submission_id != ''
