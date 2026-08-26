@@ -50,8 +50,14 @@ jobs:
       - name: Build production iOS RC in EAS
         id: build
         shell: bash
+        env:
+          EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
         run: |
           set -euo pipefail
+          test -n "${EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY:-}" || {
+            echo "::error::YANDEX_MAPS_JS_API_KEY is required for iOS/TestFlight route map rendering."
+            exit 1
+          }
           npx eas-cli@latest build --platform ios --profile production --non-interactive --wait --json > eas-build.json
           cat eas-build.json
           BUILD_ID=$(node -e "console.log(JSON.parse(require('fs').readFileSync('eas-build.json','utf8'))[0].id)")
