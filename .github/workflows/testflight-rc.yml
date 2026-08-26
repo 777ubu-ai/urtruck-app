@@ -13,6 +13,7 @@ name: UrTruck TestFlight RC
 # RC bump 2026-08-26 19:00Z: notifications deeplink release entrypoints
 # merged in a8669ac; comment-only trigger for exact TestFlight rebuild.
 # RC diagnostic 2026-08-26 19:05Z: persist EAS build/submit logs on failure.
+# RC diagnostic 2026-08-26 19:20Z: publish EAS failure text to issue #262.
 on:
   push:
     branches:
@@ -22,6 +23,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 concurrency:
   group: urtruck-testflight-rc
@@ -115,6 +117,42 @@ jobs:
             eas-build.stderr
             submit.log
           if-no-files-found: ignore
+
+      - name: Publish TestFlight RC diagnostics to issue
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const read = (path) => fs.existsSync(path) ? fs.readFileSync(path, 'utf8').slice(0, 12000) : '(missing)';
+            const body = [
+              '## TestFlight RC failure diagnostics',
+              '',
+              `run: https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              `sha: ${context.sha}`,
+              `branch: ${context.ref}`,
+              '',
+              '### eas-build.stderr',
+              '```text',
+              read('eas-build.stderr'),
+              '```',
+              '',
+              '### eas-build.json',
+              '```json',
+              read('eas-build.json'),
+              '```',
+              '',
+              '### submit.log',
+              '```text',
+              read('submit.log'),
+              '```',
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: 262,
+              body,
+            });
 
       - name: Show exact Apple/EAS submission error on failure
         if: failure() && steps.submit.outputs.submission_id != ''
