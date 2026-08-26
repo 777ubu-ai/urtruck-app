@@ -56,13 +56,19 @@ CREATE TABLE IF NOT EXISTS bids (
   bidder_phone TEXT,
   amount INTEGER NOT NULL,            -- предложенная цена $
   message TEXT,
-  status TEXT DEFAULT 'pending',      -- pending | accepted | rejected | cancelled | countered
+  status TEXT DEFAULT 'pending',      -- pending | accepted | rejected | cancelled | countered | expired
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
   counter_amount INTEGER,             -- counter-offer от owner-а
   counter_message TEXT,
   counter_by TEXT,                    -- 'owner' (на будущее: 'driver' для встречного)
-  counter_at TEXT
+  counter_at TEXT,
+  -- Ставки не живут бесконечно. accept_bid и list_bids ленивo переводят
+  -- pending/countered в 'expired' по достижении этого момента (см.
+  -- backend/api/marketplace.py::_maybe_expire_bid). TTL по умолчанию
+  -- задаётся BID_TTL_HOURS (env, default 48ч); значение ставится в
+  -- момент создания ставки/контрофера, не пересчитывается при чтении.
+  expires_at TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_cargos_status ON cargos(status, created_at);

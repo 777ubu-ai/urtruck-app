@@ -416,12 +416,16 @@ export default function CargoDetail({ navigation, route }) {
   const acceptedBid = bids.find(b => b.status === 'accepted');
   // Моя активная (pending/countered) ставка на чужой груз — используется
   // для плашки «Моя ставка $X · Ожидает ответа», симметрично TripDetail.
-  const myPendingBid = bids.find(b => b.isMine && (b.status === 'pending' || b.status === 'countered'));
+  // P1 26.08.2026: включаем 'expired' в свой pendingBid-lookup, чтобы
+  // водитель видел ⏰ Истекло вместо тишины при рефреше карточки, если
+  // предложение истекло, пока экран был открыт.
+  const myPendingBid = bids.find(b => b.isMine && (b.status === 'pending' || b.status === 'countered' || b.status === 'expired'));
   const priceDisplay = acceptedBid ? formatPrice(acceptedBid.amount, c.currency) : view.price;
   const myBidStatusLabel = React.useMemo(() => {
     if (!myPendingBid) return '';
     switch (myPendingBid.status) {
       case 'countered': return t('my_bid_status_countered');
+      case 'expired':   return t('bid_expired');
       case 'pending':
       default:          return t('my_bid_status_pending');
     }
@@ -566,6 +570,12 @@ export default function CargoDetail({ navigation, route }) {
           const hasAccepted = bids.some(x => x.status === 'accepted');
           const isCancelled = b.status === 'cancelled';
           const isCountered = b.status === 'countered';
+          // P1 26.08.2026: bid expiration. Истёкшую ставку показываем в
+          // списке как rejected/cancelled — с приглушённой прозрачностью
+          // и явной подписью «⏰ Истекло». Accept-кнопка на pending не
+          // рендерится автоматически (b.status !== 'pending'), но здесь
+          // важно, чтобы владелец груза видел ПРИЧИНУ отсутствия кнопки.
+          const isExpired = b.status === 'expired';
           const isActive = b.status === 'pending' || isCountered;
           return (
             <View key={b.id} style={[s.bidCard, {
@@ -573,10 +583,11 @@ export default function CargoDetail({ navigation, route }) {
               borderColor: b.status === 'accepted' ? '#168759'
                 : b.status === 'rejected' ? '#EF444440'
                 : isCancelled ? '#78716C40'
+                : isExpired ? '#78716C40'
                 : isCountered ? '#E06D00' /* purple — counter active */
                 : b.isMine ? '#16875960' : theme.border,
               borderWidth: b.status === 'accepted' || isCountered || b.isMine ? 2 : 1,
-              opacity: (b.status === 'rejected' || isCancelled) ? 0.55 : 1,
+              opacity: (b.status === 'rejected' || isCancelled || isExpired) ? 0.55 : 1,
             }]}>
               <View style={s.bidLeft}>
                 <View style={[s.bidFlag, { backgroundColor: b.status === 'accepted' ? '#168759' : b.isMine ? '#168759' : theme.border }]}>
@@ -604,12 +615,14 @@ export default function CargoDetail({ navigation, route }) {
                     color: b.status === 'accepted' ? '#168759'
                       : b.status === 'rejected' ? '#EF4444'
                       : isCancelled ? '#78716C'
+                      : isExpired ? '#78716C'
                       : isCountered ? '#E06D00'
                       : '#D97706',
                   }]}>
                     {b.status === 'accepted' ? '✅ ' + t('driver_chosen')
                       : b.status === 'rejected' ? '❌ ' + t('bid_rejected')
                       : isCancelled ? '⊘ ' + t('bid_cancelled')
+                      : isExpired ? '⏰ ' + t('bid_expired')
                       : isCountered ? '🔁 ' + (c.isMine ? t('counter_sent_status') : t('bid_countered'))
                       : b.time}
                   </Text>

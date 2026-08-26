@@ -38,9 +38,17 @@ export default function BargainCard({ cargoId, tripId, myUserId, onOpenModal, on
     if (!d) { setLoaded(true); return; }
     setIsOwner(!!d.is_owner);
     // owner видит первую активную ставку по листингу; bidder — свою (my_bid).
+    // P1 26.08.2026: 'expired' считается «видимой» — карточка должна
+    // показать «⏰ Истекло», а не тихо исчезнуть. Порядок предпочтения:
+    // pending → countered → expired (свежее живое важнее старого мёртвого).
+    const VISIBLE = new Set(['pending', 'countered', 'expired']);
+    const pickActive = (arr) =>
+      arr.find((b) => b.status === 'pending')
+      || arr.find((b) => b.status === 'countered')
+      || arr.find((b) => b.status === 'expired');
     const active = d.is_owner
-      ? (d.bids || []).find((b) => b.status === 'pending' || b.status === 'countered')
-      : (d.my_bid && (d.my_bid.status === 'pending' || d.my_bid.status === 'countered') ? d.my_bid : null);
+      ? pickActive(d.bids || [])
+      : (d.my_bid && VISIBLE.has(d.my_bid.status) ? d.my_bid : null);
     setBid(active || null);
     if (active) {
       const e = await marketAPI.bidEvents(active.id).catch(() => ({ events: [] }));
@@ -83,10 +91,35 @@ export default function BargainCard({ cargoId, tripId, myUserId, onOpenModal, on
 
   // Текущая «на столе» сумма: у countered это counter_amount, иначе amount.
   const current = bid.status === 'countered' && bid.counter_amount ? bid.counter_amount : bid.amount;
+  const isExpired = bid.status === 'expired';
   const statusLabel =
-    bid.status === 'countered' ? t('bargain_countered')
+    isExpired ? t('bid_expired')
+    : bid.status === 'countered' ? t('bargain_countered')
     : bid.status === 'pending' ? (isOwner ? (t('bargain_incoming') || t('bargain_pending')) : t('bargain_pending'))
     : bid.status;
+
+  // TTL-индикатор для живых ставок (pending/countered). Показываем «истекает
+  // через 5ч 20мин». <60 мин красный, 1-3ч янтарь, >3ч серый. Для expired —
+  // отдельная плашка «⏰ Истекло» вместо TTL.
+  let ttlText = '';
+  let ttlWarn = false;
+  let ttlUrgent = false;
+  if (!isExpired && bid.expires_at) {
+    const expMs = Date.parse(bid.expires_at.replace(' ', 'T'));
+    if (Number.isFinite(expMs)) {
+      const leftMs = expMs - Date.now();
+      if (leftMs > 0) {
+        const totalMin = Math.round(leftMs / 60000);
+        const hours = Math.floor(totalMin / 60);
+        const mins = totalMin % 60;
+        ttlText = hours > 0
+          ? t('bid_expires_in_h_m').replace('{h}', String(hours)).replace('{m}', String(mins))
+          : t('bid_expires_in_m').replace('{m}', String(Math.max(1, mins)));
+        ttlUrgent = leftMs < 60 * 60 * 1000; // < 1ч
+        ttlWarn = !ttlUrgent && leftMs < 3 * 60 * 60 * 1000; // 1-3ч
+      }
+    }
+  }
 
   const s = styles(v1);
   const Chip = ({ label, onPress, primary, danger, tid }) => (
@@ -102,18 +135,39 @@ export default function BargainCard({ cargoId, tripId, myUserId, onOpenModal, on
   );
 
   return (
-    <View style={s.wrap} testID="bargain-card">
+    <View style={[s.wrap, isExpired && s.wrapExpired]} testID="bargain-card">
       <View style={s.row}>
-        <Text style={s.label}>{statusLabel}</Text>
-        <Text style={s.amount} testID="bargain-amount" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{money(current)}</Text>
+        <Text style={[s.label, isExpired && s.labelExpired]} testID="bargain-status-label">
+          {isExpired ? '⏰ ' : ''}{statusLabel}
+        </Text>
+        <Text style={[s.amount, isExpired && s.amountExpired]} testID="bargain-amount" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{money(current)}</Text>
       </View>
       {movement.length > 1 ? (
         <Text style={s.movement} testID="bargain-movement" numberOfLines={1}>
           {movement.map((a) => money(a)).join('  →  ')}
         </Text>
       ) : null}
+      {ttlText ? (
+        <Text
+          style={[
+            s.ttl,
+            ttlUrgent && s.ttlUrgent,
+            ttlWarn && s.ttlWarn,
+          ]}
+          testID="bargain-ttl"
+          numberOfLines={1}
+        >
+          {ttlText}
+        </Text>
+      ) : null}
 
       <View style={s.chips}>
+        {/* Expired: никаких чипов (accept/counter/reject) — принять уже нельзя.
+            Драйвер видит «⏰ Истекло» и решает: создать НОВОЕ предложение
+            через модалку (BargainCard не рулит созданием — это делает
+            CargoDetail/TripDetail/DealsScreen). */}
+        {isExpired ? null : (
+        <>
         {busy ? <ActivityIndicator color={v1.driver} style={{ marginRight: 8 }} /> : null}
         {isOwner && bid.status === 'pending' ? (
           <>
@@ -152,6 +206,8 @@ export default function BargainCard({ cargoId, tripId, myUserId, onOpenModal, on
         {(!isOwner && bid.status === 'pending') || (isOwner && bid.status === 'countered') ? (
           <Text style={s.waiting}>{t('bargain_waiting')}</Text>
         ) : null}
+        </>
+        )}
       </View>
     </View>
   );
@@ -159,10 +215,16 @@ export default function BargainCard({ cargoId, tripId, myUserId, onOpenModal, on
 
 const styles = (v1) => StyleSheet.create({
   wrap: { marginHorizontal: 12, marginTop: 10, padding: 14, borderRadius: v1Radius.field, backgroundColor: v1.surface, borderWidth: 1, borderColor: v1.driver },
+  wrapExpired: { borderColor: v1.border, opacity: 0.7 },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   label: { color: v1.textMuted, fontSize: 12, fontWeight: '700' },
+  labelExpired: { color: v1.textDim || v1.textMuted },
   amount: { color: v1.text, fontSize: 26, fontWeight: '900', letterSpacing: -0.5, flexShrink: 1 },
+  amountExpired: { color: v1.textMuted, textDecorationLine: 'line-through' },
   movement: { color: v1.textMuted, fontSize: 13, fontWeight: '700', marginTop: 4 },
+  ttl: { color: v1.textMuted, fontSize: 12, fontWeight: '700', marginTop: 6 },
+  ttlWarn: { color: '#D97706' }, // янтарь: 1-3ч до истечения
+  ttlUrgent: { color: '#EF4444' }, // красный: <1ч
   chips: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 12 },
   chip: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 20, borderWidth: 1, borderColor: v1.border, backgroundColor: v1.bgDeep },
   chipPrimary: { backgroundColor: v1.driver, borderColor: v1.driver },
