@@ -26,6 +26,9 @@
       "bundleIdentifier": "com.urtruck.app",
       "buildNumber": "5",
       "usesAppleSignIn": true,
+      "associatedDomains": [
+        "applinks:urtruck.kz"
+      ],
       "infoPlist": {
         "NSMicrophoneUsageDescription": "UrTruck использует микрофон для записи голосовых сообщений в чате",
         "NSCameraUsageDescription": "UrTruck использует камеру для селфи и фото документов",
@@ -46,6 +49,23 @@
       "package": "com.urtruck.app",
       "versionCode": 9,
       "googleServicesFile": "./google-services.json",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "urtruck.kz",
+              "pathPrefix": "/notifications"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0a0f1a"

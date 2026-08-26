@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { Platform, AppState } from 'react-native';
+import { Platform, AppState, Linking } from 'react-native';
 import { NavigationContainer, DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ThemeProvider, useTheme } from './src/utils/ThemeContext';
@@ -71,7 +71,19 @@ try {
 // свёрнуто или закрыто, и web service-worker postMessage для PWA.
 function parseNotifUrl(url) {
   if (!url || typeof url !== 'string') return null;
-  const cleaned = url.replace(/^https?:\/\/[^/]+/i, '').replace(/^\/+/, '');
+  let cleaned = url.trim();
+  try {
+    const parsed = new URL(cleaned);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      cleaned = `${parsed.pathname || ''}${parsed.search || ''}`;
+    } else if (parsed.protocol === 'urtruck:' || parsed.protocol === 'com.urtruck.app:') {
+      const hostPart = parsed.hostname ? `/${parsed.hostname}` : '';
+      cleaned = `${hostPart}${parsed.pathname || ''}${parsed.search || ''}`;
+    }
+  } catch {
+    // Relative url or malformed external payload — fall back to legacy cleanup.
+  }
+  cleaned = cleaned.replace(/^\/+/, '');
   if (!cleaned) return null;
   const [pathPart, queryPart = ''] = cleaned.split('?');
   const segments = pathPart.split('/').filter(Boolean);
@@ -192,6 +204,27 @@ function AppInner() {
     };
     navigator.serviceWorker?.addEventListener('message', handler);
     return () => navigator.serviceWorker?.removeEventListener('message', handler);
+  }, [authedForDeepLink]);
+
+  // App/universal links outside push taps: urtruck://notifications,
+  // https://urtruck.kz/notifications и другие поддержанные url должны
+  // открывать те же экраны, что и tap по push. Unknown/social-auth urls
+  // спокойно игнорируются parseNotifUrl/navigateFromUrl.
+  useEffect(() => {
+    if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
+    let active = true;
+    Linking.getInitialURL()
+      .then((url) => {
+        if (active && url) routeFromUrl(url);
+      })
+      .catch(() => {});
+    const sub = Linking.addEventListener('url', ({ url }) => {
+      if (url) routeFromUrl(url);
+    });
+    return () => {
+      active = false;
+      sub?.remove?.();
+    };
   }, [authedForDeepLink]);
 
   // Native (iOS/Android) — tap по пушу в фоне/закрытом приложении + cold start.
