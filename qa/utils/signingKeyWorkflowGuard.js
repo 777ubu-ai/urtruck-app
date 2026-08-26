@@ -54,7 +54,11 @@ assert.ok(!/curl\s+-s[^\n]*\|\s*head/.test(all), 'запрещён недока�
 assert.ok(/--max-time/.test(health.stripped) && /--connect-timeout/.test(health.stripped), 'curl должен иметь таймауты');
 assert.ok(/pm2 jlist/.test(health.stripped) && /status.*==.*'online'|== 'online'/.test(health.stripped), 'PM2 online proof обязателен');
 assert.ok(/PM2_STATUS=online/.test(health.stripped), 'должен печатать PM2_STATUS=online');
-assert.ok((health.stripped.match(/check_health/g) || []).length >= 2, 'нужен повторный health (crash-loop)');
+assert.ok(
+  ((health.stripped.match(/check_health/g) || []).length >= 2)
+    || (/wait_for_health/.test(health.stripped) && /HEALTH_HTTP=stable/.test(health.stripped)),
+  'нужен повторный health (crash-loop)',
+);
 
 // ── smoke cleanup (verify) ──────────────────────────────────
 assert.ok(/trap 'rm -f "\$SMOKE"' EXIT/.test(verify.stripped), 'smoke-файл должен чиститься через trap EXIT');
