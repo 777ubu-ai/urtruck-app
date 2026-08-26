@@ -2,6 +2,11 @@ name: Reviewer Auth CI Diagnostic
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - qa/reviewer-auth-github-runner-20260826
+    paths:
+      - .github/workflows/reviewer-auth-ci-diagnostic.yml
 
 permissions:
   contents: read
@@ -124,122 +129,117 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -camera-back none -camera-front none
           disable-animations: false
           script: |
-            bash -lc '
-              set -euo pipefail
-              export PATH="$HOME/.maestro/bin:$PATH"
-              ARTIFACT_DIR="${ARTIFACT_DIR}"
-              SOURCE_DIR="${SOURCE_DIR}"
-              APK_DIR="${APK_DIR}"
-              APK_PACKAGE="${APK_PACKAGE}"
-              mkdir -p "$ARTIFACT_DIR"
+            set -euo pipefail
+            export PATH="$HOME/.maestro/bin:$PATH"
+            mkdir -p "$ARTIFACT_DIR"
 
-              capture_state() {
-                local prefix="$1"
-                adb exec-out screencap -p > "$ARTIFACT_DIR/${prefix}.png" || true
-                adb shell uiautomator dump /sdcard/${prefix}.xml >/dev/null 2>&1 || true
-                adb pull /sdcard/${prefix}.xml "$ARTIFACT_DIR/${prefix}.xml" >/dev/null 2>&1 || true
-              }
+            capture_state() {
+              local prefix="$1"
+              adb exec-out screencap -p > "$ARTIFACT_DIR/${prefix}.png" || true
+              adb shell uiautomator dump "/sdcard/${prefix}.xml" >/dev/null 2>&1 || true
+              adb pull "/sdcard/${prefix}.xml" "$ARTIFACT_DIR/${prefix}.xml" >/dev/null 2>&1 || true
+            }
 
-              {
-                echo "== adb devices -l (before) =="
-                adb devices -l || true
-                echo
-                echo "== adb get-state (before) =="
-                adb get-state || true
-              } > "$ARTIFACT_DIR/adb-devices-before.txt"
+            {
+              echo "== adb devices -l (before) =="
+              adb devices -l || true
+              echo
+              echo "== adb get-state (before) =="
+              adb get-state || true
+            } > "$ARTIFACT_DIR/adb-devices-before.txt"
 
-              stable_yes=YES
-              for idx in 1 2 3 4 5; do
-                adb wait-for-device
-                if ! adb shell getprop sys.boot_completed | tr -d "\r" | grep -qx "1"; then
-                  stable_yes=NO
-                  break
+            stable_yes=YES
+            for idx in 1 2 3 4 5; do
+              if ! timeout 30 adb wait-for-device; then
+                stable_yes=NO_DEVICE
+                break
+              fi
+              if ! adb shell getprop sys.boot_completed | tr -d "\r" | grep -qx "1"; then
+                stable_yes=NO_BOOT
+                break
+              fi
+              if ! adb shell true >/dev/null 2>&1; then
+                stable_yes=NO_SHELL
+                break
+              fi
+              sleep 1
+            done
+
+            echo "$stable_yes" > "$ARTIFACT_DIR/adb-stable.txt"
+            if [ "$stable_yes" != "YES" ]; then
+              echo "HARNESS" > "$ARTIFACT_DIR/classification.txt"
+              exit 1
+            fi
+
+            adb install -r "$APK_DIR/UrTruck.apk" | tee "$ARTIFACT_DIR/adb-install.txt"
+            adb shell pm list packages "$APK_PACKAGE" | tee "$ARTIFACT_DIR/package-proof.txt"
+            adb shell cmd package resolve-activity --brief "$APK_PACKAGE" | tee "$ARTIFACT_DIR/launchable-activity.txt" || true
+
+            adb logcat -c || true
+            adb logcat -v time > "$ARTIFACT_DIR/logcat.txt" 2>&1 &
+            LOGCAT_PID=$!
+
+            monitor_markers() {
+              local out="$ARTIFACT_DIR/maestro-stdout.txt"
+              local pre_done=0
+              local post_done=0
+              for _ in $(seq 1 240); do
+                if [ "$pre_done" -eq 0 ] && grep -q "REVIEWER_DIAG_MARKER=pre_tap" "$out" 2>/dev/null; then
+                  capture_state before_tap
+                  pre_done=1
                 fi
-                adb shell true >/dev/null
+                if [ "$post_done" -eq 0 ] && grep -q "REVIEWER_DIAG_MARKER=after_tap" "$out" 2>/dev/null; then
+                  sleep 0.5
+                  capture_state after_tap_500ms
+                  sleep 2.5
+                  capture_state after_tap_3s
+                  post_done=1
+                  return 0
+                fi
                 sleep 1
               done
-              echo "$stable_yes" > "$ARTIFACT_DIR/adb-stable.txt"
-              if [ "$stable_yes" != "YES" ]; then
-                echo "HARNESS" > "$ARTIFACT_DIR/classification.txt"
-                exit 1
-              fi
+              return 0
+            }
 
-              adb install -r "$APK_DIR/UrTruck.apk" | tee "$ARTIFACT_DIR/adb-install.txt"
-              adb shell pm list packages "$APK_PACKAGE" | tee "$ARTIFACT_DIR/package-proof.txt"
-              adb shell cmd package resolve-activity --brief "$APK_PACKAGE" | tee "$ARTIFACT_DIR/launchable-activity.txt" || true
+            monitor_markers &
+            MONITOR_PID=$!
 
-              adb logcat -c || true
-              adb logcat -v time > "$ARTIFACT_DIR/logcat.txt" 2>&1 &
-              LOGCAT_PID=$!
+            set +e
+            REVIEWER_EMAIL="$REVIEWER_EMAIL" REVIEWER_CODE="$REVIEWER_CODE" \
+              maestro test "$SOURCE_DIR/qa/maestro/google-play-location/login-reviewer-driver.yaml" \
+              >"$ARTIFACT_DIR/maestro-stdout.txt" 2>"$ARTIFACT_DIR/maestro-stderr.txt"
+            MAESTRO_EXIT=$?
+            set -e
+            echo "$MAESTRO_EXIT" > "$ARTIFACT_DIR/maestro-exit-code.txt"
 
-              monitor_markers() {
-                local out="$ARTIFACT_DIR/maestro-stdout.txt"
-                local pre_done=0
-                local post_done=0
-                for _ in $(seq 1 240); do
-                  if [ $pre_done -eq 0 ] && grep -q "REVIEWER_DIAG_MARKER=pre_tap" "$out" 2>/dev/null; then
-                    capture_state before_tap
-                    pre_done=1
-                  fi
-                  if [ $post_done -eq 0 ] && grep -q "REVIEWER_DIAG_MARKER=after_tap" "$out" 2>/dev/null; then
-                    sleep 0.5
-                    capture_state after_tap_500ms
-                    sleep 2.5
-                    capture_state after_tap_3s
-                    post_done=1
-                    return 0
-                  fi
-                  sleep 1
-                done
-                return 0
-              }
+            wait "$MONITOR_PID" || true
 
-              monitor_markers &
-              MONITOR_PID=$!
+            [ -f "$ARTIFACT_DIR/before_tap.png" ] || capture_state before_tap
+            [ -f "$ARTIFACT_DIR/after_tap_500ms.png" ] || capture_state after_tap_500ms
+            [ -f "$ARTIFACT_DIR/after_tap_3s.png" ] || capture_state after_tap_3s
 
-              set +e
-              REVIEWER_EMAIL="${REVIEWER_EMAIL}" REVIEWER_CODE="${REVIEWER_CODE}" \
-                maestro test "$SOURCE_DIR/qa/maestro/google-play-location/login-reviewer-driver.yaml" \
-                >"$ARTIFACT_DIR/maestro-stdout.txt" 2>"$ARTIFACT_DIR/maestro-stderr.txt"
-              MAESTRO_EXIT=$?
-              set -e
-              echo "$MAESTRO_EXIT" > "$ARTIFACT_DIR/maestro-exit-code.txt"
+            kill "$LOGCAT_PID" >/dev/null 2>&1 || true
+            wait "$LOGCAT_PID" >/dev/null 2>&1 || true
 
-              wait "$MONITOR_PID" || true
+            {
+              echo "== adb devices -l (after) =="
+              adb devices -l || true
+              echo
+              echo "== adb get-state (after) =="
+              adb get-state || true
+            } > "$ARTIFACT_DIR/adb-devices-after.txt"
 
-              if [ ! -f "$ARTIFACT_DIR/before_tap.png" ]; then
-                capture_state before_tap
-              fi
-              if [ ! -f "$ARTIFACT_DIR/after_tap_500ms.png" ]; then
-                capture_state after_tap_500ms
-              fi
-              if [ ! -f "$ARTIFACT_DIR/after_tap_3s.png" ]; then
-                capture_state after_tap_3s
-              fi
+            if [ "$MAESTRO_EXIT" -eq 0 ]; then
+              echo "PASS" > "$ARTIFACT_DIR/classification.txt"
+              exit 0
+            fi
 
-              kill "$LOGCAT_PID" >/dev/null 2>&1 || true
-              wait "$LOGCAT_PID" >/dev/null 2>&1 || true
-
-              {
-                echo "== adb devices -l (after) =="
-                adb devices -l || true
-                echo
-                echo "== adb get-state (after) =="
-                adb get-state || true
-              } > "$ARTIFACT_DIR/adb-devices-after.txt"
-
-              if [ "$MAESTRO_EXIT" -eq 0 ]; then
-                echo "PASS" > "$ARTIFACT_DIR/classification.txt"
-                exit 0
-              fi
-
-              if grep -q "otp-v2-input" "$ARTIFACT_DIR/after_tap_3s.xml" 2>/dev/null; then
-                echo "INTEGRATION" > "$ARTIFACT_DIR/classification.txt"
-              else
-                echo "PRODUCT" > "$ARTIFACT_DIR/classification.txt"
-              fi
-              exit 1
-            '
+            if grep -q "otp-v2-input" "$ARTIFACT_DIR/after_tap_3s.xml" 2>/dev/null; then
+              echo "INTEGRATION" > "$ARTIFACT_DIR/classification.txt"
+            else
+              echo "PRODUCT" > "$ARTIFACT_DIR/classification.txt"
+            fi
+            exit 1
 
       - name: Build diagnostic summary
         if: always()
