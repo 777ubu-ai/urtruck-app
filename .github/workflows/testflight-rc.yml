@@ -3,6 +3,13 @@ name: UrTruck TestFlight RC
 # Push to this release branch is the canonical trigger for an exact
 # TestFlight candidate build and upload.
 # RC refresh 2026-08-26: voice optimistic-send + chat UX fixes.
+# RC bump 2026-08-26 15:00Z: voice crash hardening (fix branch merged) —
+# kill iOS "Only one Recording" native crash on rapid record/unmount,
+# fix drop-bubble on rapid double voice send, guard toggleVoice state
+# updates behind mounted.current after every await. Product diff is
+# exactly the 3 files listed in b9d670c — this workflow-comment bump
+# exists only to satisfy the path-filtered push trigger, not to change
+# CI logic.
 on:
   push:
     branches:
