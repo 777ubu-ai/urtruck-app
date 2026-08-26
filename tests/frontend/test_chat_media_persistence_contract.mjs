@@ -217,3 +217,50 @@ test('backend distinguishes network/DNS failure reaching storage from storage ac
   const deal_room = fs.readFileSync('backend/api/deal_room.py', 'utf8');
   assert.match(deal_room, /\[attachment-storage\] failed/);
 });
+
+// ─── P0 crash-hardening (26.08.2026) ────────────────────────────────────
+// The three regressions below cover known-real crash and drop-bubble
+// scenarios in the voice send path that surfaced after voice UX was made
+// optimistic on 820d8f7:
+//   1) Native iOS crash "Only one Recording object can be prepared at a
+//      given time" when the previous _recording wasn't fully unloaded
+//      (double-tap record, screen unmount mid-stopRecording, back-nav
+//      during upload). The recorder module must clear _recording BEFORE
+//      creating a new one, and null it out on start failure.
+//   2) Rapid double-send of voice messages: both optimistic bubbles have
+//      the exact same body («🎤 voiceMessage»). The generic text-equality
+//      merge-dedup collapses both when the first server reply arrives, and
+//      the second bubble disappears until the next poll. The voice branch
+//      must dedup only by clientMsgId.
+//   3) toggleVoice performs three sequential awaits (upload, send, and a
+//      timer). If the user leaves the screen between them, setMessages /
+//      toast / setRoomId run on an unmounted component. The handler must
+//      early-return via mounted.current before touching state.
+test('voice recorder clears any lingering _recording BEFORE createAsync (prevents iOS "Only one Recording" native crash on double-record)', () => {
+  const recorder = fs.readFileSync('src/utils/voiceRecorder.js', 'utf8');
+  assert.match(recorder, /if \(_recording\) \{\s*\n\s*try \{ await _recording\.stopAndUnloadAsync\(\); \} catch \{[^}]*\}\s*\n\s*_recording = null;\s*\n\s*\}/);
+  // The start-failure catch must also null out _recording so the NEXT tap
+  // starts from a clean state instead of tripping the same crash again.
+  assert.match(recorder, /} catch \(e\) \{\s*\n\s*console\.warn\('\[voice\] start failed:'[^]*?_recording = null;\s*\n\s*return false;\s*\n\s*\}/);
+});
+
+test('rapid double-send of voice messages does not collapse into one bubble (voice merge-dedup by clientMsgId only)', () => {
+  // The generic text-equality fallback matches EVERY same-text voice bubble
+  // and, because all voice bubbles share «🎤 voiceMessage», one server row
+  // would filter every optimistic voice bubble. The voice branch must dedup
+  // only by clientMsgId.
+  assert.match(workspace, /if \(item\.voice\) \{\s*\n\s*return !merged\.some\(\(server\) => server\.clientMsgId === item\.id\);\s*\n\s*\}/);
+});
+
+test('toggleVoice guards every state update after unmount (upload, send, network retry — none run setMessages/toast on an unmounted screen)', () => {
+  const fn = workspace.match(/const toggleVoice = React\.useCallback\(async \(\) => \{([\s\S]*?)\n  \}, \[[\s\S]*?appendOptimisticVoice[\s\S]*?\]\);/);
+  assert.ok(fn, 'toggleVoice body not found');
+  const body = fn[1];
+  // Every "recovery" point after an awaited call must check mounted.current
+  // before touching state. Count all mounted.current guards inside the
+  // handler — there must be at least six (upload error, upload empty-key,
+  // pre-payload sending, send success, send network fallback, send generic
+  // failure), matching the six awaits that follow user-visible state.
+  const guardCount = (body.match(/if \(!mounted\.current\) return;/g) || []).length;
+  assert.ok(guardCount >= 6, `expected >= 6 mounted.current early-returns in toggleVoice; got ${guardCount}`);
+});

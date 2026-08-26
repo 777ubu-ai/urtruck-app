@@ -443,6 +443,16 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         const optimisticRemaining = previous.filter((item) => {
           if (!item.optimistic) return false;
           if (item.kind === 'document') return !serverDocs.some((d) => d.clientUploadId === item.id);
+          // Voice optimistic bubbles ВСЕ имеют одинаковый text «🎤 voiceMessage».
+          // Fallback-сверка по (server.mine && server.text === item.text) для
+          // voice не подходит: одно серверное подтверждение отфильтрует ВСЕ
+          // оптимистичные голосовые пузыри разом — при быстрой отправке двух
+          // подряд второй пузырь исчезнет до следующего poll'а. Для voice
+          // сверяем ТОЛЬКО по clientMsgId; для остальных типов оставляем
+          // старый мягкий fallback ради back-compat со старыми payload'ами.
+          if (item.voice) {
+            return !merged.some((server) => server.clientMsgId === item.id);
+          }
           return !merged.some((server) => server.clientMsgId === item.id || (server.mine && item.text && server.text === item.text));
         });
         return [...merged, ...optimisticRemaining];
@@ -838,6 +848,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         : error?.status === 413 ? 'doc_error_too_large'
           : error?.status >= 500 ? 'doc_error_server'
             : 'voice_error_upload';
+      // P0 crash guard (26.08.2026): не обновляем state, если экран уже
+      // размонтирован — иначе setMessages/toast упадут на unmounted компонент.
+      if (!mounted.current) return;
       setMessages((items) => items.map((m) => (
         m.id === clientId
           ? { ...m, sendStatus: 'failed', sendError: key ? t(key) : t('no_connection') }
@@ -846,7 +859,12 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       toast(key ? t(key) : t('no_connection'), 'error');
       return;
     }
-    if (!upload?.voice_key) { toast(t('voice_error_upload'), 'error'); return; }
+    if (!upload?.voice_key) {
+      if (!mounted.current) return;
+      toast(t('voice_error_upload'), 'error');
+      return;
+    }
+    if (!mounted.current) return;
     setMessages((items) => items.map((m) => (m.id === clientId ? { ...m, sendStatus: 'sending' } : m)));
     const payload = {
       roomId, toUserId: recipientId, text: `🎤 ${ui.voiceMessage}`, photoUrl: upload.voice_key,
@@ -856,15 +874,18 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     };
     try {
       const response = await chatAPI.send(payload);
+      if (!mounted.current) return;
       if (response?.room_id && !roomId) setRoomId(response.room_id);
       setTimeout(loadMessages, 120);
     } catch (error) {
       if (error?.isNetwork) {
         await enqueueOutbox({ clientId, payload }, session?.user?.id);
+        if (!mounted.current) return;
         toast(t('chat_queued'), 'info', 2200);
         setMessages((items) => items.map((m) => (m.id === clientId ? { ...m, sendStatus: 'queued' } : m)));
         return;
       }
+      if (!mounted.current) return;
       setMessages((items) => items.map((m) => (m.id === clientId ? { ...m, sendStatus: 'failed', sendError: t('voice_error_send') } : m)));
       toast(t('voice_error_send'), 'error');
     }

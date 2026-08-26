@@ -25,6 +25,16 @@ export const voice = {
         console.warn('[voice] microphone permission not granted');
         return false;
       }
+      // P0 crash guard (26.08.2026): если предыдущая запись осталась не
+      // выгруженной (двойной тап record, unmount экрана в момент stopRecording,
+      // navigateBack во время загрузки), Audio.Recording.createAsync
+      // выбрасывает native "Only one Recording object can be prepared at a
+      // given time" — на iOS это фатальный NSInternalInconsistencyException.
+      // Гарантируем чистое состояние ДО createAsync.
+      if (_recording) {
+        try { await _recording.stopAndUnloadAsync(); } catch { /* уже мёртв */ }
+        _recording = null;
+      }
       await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
       const { recording } = await Audio.Recording.createAsync(
         Audio.RecordingOptionsPresets.HIGH_QUALITY
@@ -33,6 +43,9 @@ export const voice = {
       return true;
     } catch (e) {
       console.warn('[voice] start failed:', e);
+      // Не оставляем битую ссылку — при следующем tap стартуем с чистой
+      // сессии, а не с полу-инициализированной, которая уронит нативку.
+      _recording = null;
       return false;
     }
   },
