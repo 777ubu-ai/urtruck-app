@@ -32,6 +32,8 @@ jobs:
       APK_ARTIFACT_ID: "9569835383"
       APK_SHA256: 062842f31ec74f5b6cdb9cd841f5abe541d0d844de55315c61960a27812cad7b
       PACKAGE: com.urtruck.app
+      REVIEWER_EMAIL: appreview@urtruck.kz
+      REVIEWER_CODE: "1975"
       SERIAL: emulator-5554
       ARTIFACT_DIR: ${{ github.workspace }}/qa/artifacts/reviewer-auth-diagnostic
       EMULATOR_PROFILE: pixel_7

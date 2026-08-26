@@ -25,6 +25,8 @@ test('reviewer auth CI diagnostic pins the exact source sha, APK artifact identi
 test('reviewer auth CI diagnostic always uploads artifacts and runs the exact reviewer login flow', () => {
   assert.match(workflow, /permissions:\s*\n\s*contents: read\s*\n\s*actions: read/);
   assert.match(workflow, /FLOW_PATH: qa\/maestro\/google-play-location\/login-reviewer-driver\.yaml/);
+  assert.match(workflow, /REVIEWER_EMAIL: appreview@urtruck\.kz/);
+  assert.match(workflow, /REVIEWER_CODE: "1975"/);
   assert.match(diagnosticShell, /for attempt in 1 2 3 4 5;/);
   assert.match(workflow, /if: \$\{\{ always\(\) && hashFiles\('qa\/artifacts\/reviewer-auth-diagnostic\/\*\*'\) != '' \}\}/);
   assert.match(workflow, /name: reviewer-auth-ci-diagnostic/);
