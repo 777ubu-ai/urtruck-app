@@ -1,5 +1,7 @@
 name: UrTruck TestFlight RC
 
+# Push to this release branch is the canonical trigger for an exact
+# TestFlight candidate build and upload.
 on:
   push:
     branches:
