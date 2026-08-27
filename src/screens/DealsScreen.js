@@ -121,16 +121,16 @@ function TabChip({ label, count, active, onPress, testID, compact = false, icon 
       activeOpacity={0.72}
       onPress={onPress}
       style={[
-        s.tabChip,
-        compact && s.archiveChip,
-        active && s.tabChipActive,
+        styles.tabChip,
+        compact && styles.archiveChip,
+        active && styles.tabChipActive,
       ]}
     >
       {icon ? <Feather name={icon} size={15} color={active ? ACCENT : TEXT_MUTED} /> : null}
-      <Text style={[s.tabChipText, active && s.tabChipTextActive]} numberOfLines={1}>
+      <Text style={[styles.tabChipText, active && styles.tabChipTextActive]} numberOfLines={1}>
         {label}
       </Text>
-      <Text style={[s.tabCount, active && s.tabCountActive]}>{count}</Text>
+      <Text style={[styles.tabCount, active && styles.tabCountActive]}>{count}</Text>
     </TouchableOpacity>
   );
 }
@@ -152,32 +152,32 @@ function CompactDealCard({
       testID={testID}
       activeOpacity={0.72}
       onPress={onPress}
-      style={[s.card, dimmed && s.cardDimmed]}
+      style={[styles.card, dimmed && styles.cardDimmed]}
     >
-      <View style={s.cardTop}>
-        <Text style={s.route} numberOfLines={1}>{routeLabel}</Text>
-        {price ? <Text style={s.price} numberOfLines={1}>{price}</Text> : null}
+      <View style={styles.cardTop}>
+        <Text style={styles.route} numberOfLines={1}>{routeLabel}</Text>
+        {price ? <Text style={styles.price} numberOfLines={1}>{price}</Text> : null}
         <Feather name="chevron-right" size={17} color="#A0A9A4" />
       </View>
 
-      <View style={s.cardMiddle}>
-        <View style={[s.statusPill, { backgroundColor: `${statusColor}12` }]}>
-          <View style={[s.statusDot, { backgroundColor: statusColor }]} />
-          <Text style={[s.statusText, { color: statusColor }]} numberOfLines={1}>
+      <View style={styles.cardMiddle}>
+        <View style={[styles.statusPill, { backgroundColor: `${statusColor}12` }]}>
+          <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+          <Text style={[styles.statusText, { color: statusColor }]} numberOfLines={1}>
             {statusLabel}
           </Text>
         </View>
-        <View style={s.cardRightMeta}>
-          {time ? <Text style={s.time}>{time}</Text> : null}
+        <View style={styles.cardRightMeta}>
+          {time ? <Text style={styles.time}>{time}</Text> : null}
           {unread > 0 ? (
-            <View style={s.unreadBadge} testID="deals-card-unread">
-              <Text style={s.unreadText}>{unread > 9 ? '9+' : unread}</Text>
+            <View style={styles.unreadBadge} testID="deals-card-unread">
+              <Text style={styles.unreadText}>{unread > 9 ? '9+' : unread}</Text>
             </View>
           ) : null}
         </View>
       </View>
 
-      {meta ? <Text style={s.meta} numberOfLines={1}>{meta}</Text> : null}
+      {meta ? <Text style={styles.meta} numberOfLines={1}>{meta}</Text> : null}
     </TouchableOpacity>
   );
 }
@@ -529,12 +529,12 @@ export default function DealsScreen({ navigation, route }) {
       : copy.offersEmpty;
 
   const searchHeader = (
-    <View style={s.scrollHeader} testID="deals-scroll-header">
-      <View style={s.search}>
+    <View style={styles.scrollHeader} testID="deals-scroll-header">
+      <View style={styles.search}>
         <Feather name="search" size={17} color={TEXT_MUTED} />
         <TextInput
           testID="deal-room-search"
-          style={s.searchInput}
+          style={styles.searchInput}
           placeholder={copy.search}
           placeholderTextColor={TEXT_MUTED}
           value={query}
@@ -546,7 +546,7 @@ export default function DealsScreen({ navigation, route }) {
             onPress={() => setQuery('')}
             accessibilityRole="button"
             accessibilityLabel="clear-search"
-            style={s.clearSearch}
+            style={styles.clearSearch}
           >
             <Feather name="x" size={16} color={TEXT_MUTED} />
           </TouchableOpacity>
@@ -557,12 +557,12 @@ export default function DealsScreen({ navigation, route }) {
 
   return (
     <SafeAreaView
-      style={[s.container, { backgroundColor: PAGE_BG }]}
+      style={[styles.container, { backgroundColor: PAGE_BG }]}
       edges={['top']}
       testID="deal-room-list"
     >
-      <View style={s.fixedHeader} testID="deals-minimal-header">
-        <View style={s.menuRow}>
+      <View style={styles.fixedHeader} testID="deals-minimal-header">
+        <View style={styles.menuRow}>
           <HeaderMenuButton
             navigation={navigation}
             role={role}
@@ -570,7 +570,7 @@ export default function DealsScreen({ navigation, route }) {
           />
         </View>
 
-        <View style={s.tabsRow} testID="deals-primary-tabs">
+        <View style={styles.tabsRow} testID="deals-primary-tabs">
           <TabChip
             testID="deals-tab-offers"
             label={t('deals_tab_offers')}
@@ -597,8 +597,8 @@ export default function DealsScreen({ navigation, route }) {
         </View>
 
         {(offerAttentionCount > 0 || activeAttentionCount > 0) ? (
-          <View style={s.attentionA11y} testID="deals-attention-summary">
-            <Text style={s.attentionA11yText}>
+          <View style={styles.attentionA11y} testID="deals-attention-summary">
+            <Text style={styles.attentionA11yText}>
               {offerAttentionCount + activeAttentionCount}
             </Text>
           </View>
@@ -608,11 +608,11 @@ export default function DealsScreen({ navigation, route }) {
       {loading ? (
         <ActivityIndicator color={roleAccent} style={{ marginTop: 42 }} />
       ) : loadError && baseItems.length === 0 ? (
-        <View style={s.errorState}>
+        <View style={styles.errorState}>
           <Feather name="wifi-off" size={23} color={TEXT_MUTED} />
-          <Text style={s.errorText}>{copy.loadError}</Text>
-          <TouchableOpacity testID="deals-retry" style={s.retryBtn} onPress={load}>
-            <Text style={s.retryText}>{copy.retry}</Text>
+          <Text style={styles.errorText}>{copy.loadError}</Text>
+          <TouchableOpacity testID="deals-retry" style={styles.retryBtn} onPress={load}>
+            <Text style={styles.retryText}>{copy.retry}</Text>
           </TouchableOpacity>
         </View>
       ) : (
@@ -622,7 +622,7 @@ export default function DealsScreen({ navigation, route }) {
           keyExtractor={(item) => `${item.kind}-${item.data.id}`}
           renderItem={renderItem}
           ListHeaderComponent={searchHeader}
-          contentContainerStyle={s.listContent}
+          contentContainerStyle={styles.listContent}
           keyboardShouldPersistTaps="handled"
           refreshControl={(
             <RefreshControl
@@ -632,7 +632,7 @@ export default function DealsScreen({ navigation, route }) {
             />
           )}
           ListEmptyComponent={(
-            <Text style={s.emptyText}>
+            <Text style={styles.emptyText}>
               {query ? t('chat_no_results') : emptyText}
             </Text>
           )}
@@ -642,7 +642,7 @@ export default function DealsScreen({ navigation, route }) {
   );
 }
 
-const s = StyleSheet.create({
+const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: PAGE_BG },
   fixedHeader: {
     backgroundColor: PAGE_BG,
