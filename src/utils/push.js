@@ -184,9 +184,9 @@ export const push = {
    * (окно между logout и login на общем устройстве). Best-effort — сетевая
    * ошибка не должна блокировать сам logout.
    */
-  async logoutCleanup() {
+  async logoutCleanup(token = null) {
     try {
-      const authToken = await storage.get(TOKEN_KEY);
+      const authToken = token || await storage.get(TOKEN_KEY);
       if (!authToken) return { ok: false, reason: 'no_token' };
       const deviceId = await getOrCreateDeviceId();
       const resp = await fetch(`${BASE}/logout-cleanup`, {

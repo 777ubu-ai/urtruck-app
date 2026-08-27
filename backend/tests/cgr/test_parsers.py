@@ -3,18 +3,21 @@
 Фикстуры — настоящие SSR-страницы cgr.qoldau.kz. Если CGR сменит вёрстку,
 эти тесты упадут → сигнал обновить parsers.py + фикстуры.
 """
+import sys
 from pathlib import Path
 
 import pytest
 
-from backend.cgr.parsers import (
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from cgr.parsers import (
     parse_public_list,
     parse_booking_lookup,
     parse_checkpoint_list,
     count_queue_by_checkpoint,
     normalize_status,
 )
-from backend.cgr.exceptions import CGRParseError
+from cgr.exceptions import CGRParseError
 
 FIX = Path(__file__).parent / "fixtures"
 
