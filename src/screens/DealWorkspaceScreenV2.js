@@ -74,8 +74,9 @@ const COPY = {
     distance: 'Расстояние', remaining: 'Осталось', travelTime: 'Время', eta: 'ETA',
     updatedNow: 'Обновлено сейчас', updated: 'Обновлено', ago: 'назад', min: 'мин', hour: 'ч', day: 'д',
     cargo: 'Груз', driver: 'Водитель', shipper: 'Грузоотправитель',
-    noMessages: 'Сообщений пока нет', attachPhoto: 'Фото', attachCamera: 'Камера', attachDocument: 'Документ',
-    attachLocation: 'Местопол.', attachQuickReply: 'Быстрый ответ', attachCall: 'Звонок', attachTranslate: 'Перевод',
+    noMessages: 'Сообщений пока нет', attachPhoto: 'Фото', attachCamera: 'Камера', attachShare: 'Поделиться', attachDocument: 'Документ',
+    attachLocation: 'Локация', attachQuickReply: 'Ответ', attachCall: 'Звонок', attachTranslate: 'Перевод', attachContact: 'Контакт',
+    dealShareTitle: 'Рейс UrTruck', contactCardTitle: 'Контакт по рейсу',
     callAudio: 'Аудиозвонок', callVideo: 'Видеозвонок', callSendLink: 'Отправить ссылку на звонок',
     callSchedule: 'Запланировать звонок', comingSoon: 'Скоро добавим',
     recording: 'Идёт запись…', voiceMessage: 'Голосовое сообщение',
@@ -90,8 +91,9 @@ const COPY = {
     distance: 'Distance', remaining: 'Remaining', travelTime: 'Time', eta: 'ETA',
     updatedNow: 'Updated now', updated: 'Updated', ago: 'ago', min: 'min', hour: 'h', day: 'd',
     cargo: 'Cargo', driver: 'Driver', shipper: 'Shipper',
-    noMessages: 'No messages yet', attachPhoto: 'Photo', attachCamera: 'Camera', attachDocument: 'Document',
-    attachLocation: 'Location', attachQuickReply: 'Quick reply', attachCall: 'Call', attachTranslate: 'Translate',
+    noMessages: 'No messages yet', attachPhoto: 'Photo', attachCamera: 'Camera', attachShare: 'Share', attachDocument: 'Document',
+    attachLocation: 'Location', attachQuickReply: 'Reply', attachCall: 'Call', attachTranslate: 'Translate', attachContact: 'Contact',
+    dealShareTitle: 'UrTruck trip', contactCardTitle: 'Trip contact',
     callAudio: 'Audio call', callVideo: 'Video call', callSendLink: 'Send call link',
     callSchedule: 'Schedule a call', comingSoon: 'Coming soon',
     recording: 'Recording…', voiceMessage: 'Voice message',
@@ -106,8 +108,9 @@ const COPY = {
     distance: '距离', remaining: '剩余', travelTime: '时间', eta: '预计时间',
     updatedNow: '刚刚更新', updated: '更新于', ago: '前', min: '分钟', hour: '小时', day: '天',
     cargo: '货物', driver: '司机', shipper: '货主',
-    noMessages: '暂无消息', attachPhoto: '照片', attachCamera: '相机', attachDocument: '文件',
-    attachLocation: '位置', attachQuickReply: '快速回复', attachCall: '通话', attachTranslate: '翻译',
+    noMessages: '暂无消息', attachPhoto: '照片', attachCamera: '相机', attachShare: '分享', attachDocument: '文件',
+    attachLocation: '位置', attachQuickReply: '回复', attachCall: '通话', attachTranslate: '翻译', attachContact: '联系人',
+    dealShareTitle: 'UrTruck 运输', contactCardTitle: '运输联系人',
     callAudio: '语音通话', callVideo: '视频通话', callSendLink: '发送通话链接',
     callSchedule: '安排通话', comingSoon: '即将推出',
     recording: '正在录音…', voiceMessage: '语音消息',
@@ -122,8 +125,9 @@ const COPY = {
     distance: 'Қашықтық', remaining: 'Қалды', travelTime: 'Уақыт', eta: 'ETA',
     updatedNow: 'Қазір жаңартылды', updated: 'Жаңартылды', ago: 'бұрын', min: 'мин', hour: 'сағ', day: 'күн',
     cargo: 'Жүк', driver: 'Жүргізуші', shipper: 'Жүк иесі',
-    noMessages: 'Әзірге хабарлама жоқ', attachPhoto: 'Фото', attachCamera: 'Камера', attachDocument: 'Құжат',
-    attachLocation: 'Орналасу', attachQuickReply: 'Жылдам жауап', attachCall: 'Қоңырау', attachTranslate: 'Аудару',
+    noMessages: 'Әзірге хабарлама жоқ', attachPhoto: 'Фото', attachCamera: 'Камера', attachShare: 'Бөлісу', attachDocument: 'Құжат',
+    attachLocation: 'Локация', attachQuickReply: 'Жауап', attachCall: 'Қоңырау', attachTranslate: 'Аудару', attachContact: 'Контакт',
+    dealShareTitle: 'UrTruck рейсі', contactCardTitle: 'Рейс контакті',
     callAudio: 'Аудиоқоңырау', callVideo: 'Бейнеқоңырау', callSendLink: 'Қоңырау сілтемесін жіберу',
     callSchedule: 'Қоңырауды жоспарлау', comingSoon: 'Жақында қосамыз',
     recording: 'Жазылып жатыр…', voiceMessage: 'Дауыстық хабарлама',
@@ -237,7 +241,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [messages, setMessages] = React.useState([]);
   const [unreadCount, setUnreadCount] = React.useState(0);
   const [input, setInput] = React.useState('');
-  const [inputHeight, setInputHeight] = React.useState(44);
+  const [inputHeight, setInputHeight] = React.useState(40);
   const [timeline, setTimeline] = React.useState([]);
   const [location, setLocation] = React.useState(null);
   const [locationLoading, setLocationLoading] = React.useState(false);
@@ -645,7 +649,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     const body = input.trim();
     if (!body) return;
     setInput('');
-    setInputHeight(44);
+    setInputHeight(40);
     sendRawText(body);
   }, [input, sendRawText]);
 
@@ -726,6 +730,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     }
   }, [roomId, recipientId, deal?.cargo_id, deal?.trip_id, params.cargoId, params.tripId, loadMessages, toast, t]);
 
+  const sendGalleryPhoto = React.useCallback(() => sendPhoto(false), [sendPhoto]);
+  const sendCameraPhoto = React.useCallback(() => sendPhoto(true), [sendPhoto]);
+
   // Documents: one clientUploadId drives both the initial attempt and any
   // Retry, mirroring DealAttachments.js's idempotency pattern so a double
   // tap on Retry cannot create a duplicate durable file server-side.
@@ -787,6 +794,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const toggleVoice = React.useCallback(async () => {
     if (!recording) {
       try {
+        setAttachOpen(false);
+        setCallMenuOpen(false);
         const ok = await voice.startRecording();
         if (!ok) { toast(t('voice_error_record'), 'error'); return; }
         recordStartRef.current = Date.now();
@@ -995,6 +1004,36 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const openMap = () => { setAttachOpen(false); setCallMenuOpen(false); setViewMode(VIEW_MAP); };
   const closeMap = () => setViewMode(VIEW_CHAT);
 
+  const sendDealShare = React.useCallback(() => {
+    const parts = [
+      ui.dealShareTitle,
+      routeLabel,
+      cargoMeta,
+      scheduleMeta,
+      counterpartyMeta,
+    ].filter(Boolean);
+    sendRawText(parts.join('\n'));
+  }, [ui.dealShareTitle, routeLabel, cargoMeta, scheduleMeta, counterpartyMeta, sendRawText]);
+
+  const sendContactCard = React.useCallback(() => {
+    const parts = [
+      ui.contactCardTitle,
+      counterpartyMeta,
+      routeLabel,
+    ].filter(Boolean);
+    sendRawText(parts.join('\n'));
+  }, [ui.contactCardTitle, counterpartyMeta, routeLabel, sendRawText]);
+
+  const openCallMenu = React.useCallback(() => {
+    setAttachOpen(false);
+    setCallMenuOpen(true);
+  }, []);
+
+  const showEmojiComingSoon = React.useCallback(() => {
+    setAttachOpen(false);
+    toast(ui.comingSoon, 'info', 1500);
+  }, [toast, ui.comingSoon]);
+
   const jumpLatest = () => {
     nearBottomRef.current = true;
     setShowJumpLatest(false);
@@ -1010,13 +1049,14 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   ) : null;
 
   const PLUS_MENU = [
-    { key: 'photo', icon: 'image', label: ui.attachPhoto, onPress: () => sendPhoto(false) },
-    { key: 'camera', icon: 'camera', label: ui.attachCamera, onPress: () => sendPhoto(true) },
-    { key: 'document', icon: 'file-text', label: ui.attachDocument, onPress: pickAndSendDocument, testID: 'deal-chat-attach-document' },
-    { key: 'location', icon: 'map-pin', label: ui.attachLocation, onPress: sendLocation, busy: locationSending, testID: 'deal-chat-attach-location' },
-    { key: 'quick-reply', icon: 'zap', label: ui.attachQuickReply, onPress: sendQuickReply, testID: 'deal-chat-attach-quick-reply' },
-    { key: 'translate', icon: 'globe', label: ui.attachTranslate, onPress: toggleAutoTranslate, testID: 'deal-chat-attach-translate' },
-    { key: 'call', icon: 'phone', label: ui.attachCall, onPress: () => { setAttachOpen(false); setCallMenuOpen(true); }, testID: 'deal-chat-attach-call' },
+    { key: 'photo', icon: 'image', label: ui.attachPhoto, onPress: sendGalleryPhoto, testID: 'deal-chat-attach-photo' },
+    { key: 'camera', icon: 'camera', label: ui.attachCamera, onPress: sendCameraPhoto, testID: 'deal-chat-attach-camera' },
+    { key: 'share', icon: 'share', label: ui.attachShare, onPress: sendDealShare, testID: 'deal-chat-attach-share' },
+    { key: 'call', icon: 'phone-alt', label: ui.attachCall, onPress: openCallMenu, testID: 'deal-chat-attach-call' },
+    { key: 'location', icon: 'map-marker-alt', label: ui.attachLocation, onPress: sendLocation, busy: locationSending, testID: 'deal-chat-attach-location' },
+    { key: 'document', icon: 'file-alt', label: ui.attachDocument, onPress: pickAndSendDocument, testID: 'deal-chat-attach-document' },
+    { key: 'contact', icon: 'user-alt', label: ui.attachContact, onPress: sendContactCard, testID: 'deal-chat-attach-contact' },
+    { key: 'translate', icon: 'language', label: ui.attachTranslate, onPress: toggleAutoTranslate, testID: 'deal-chat-attach-translate' },
   ];
 
   return (
@@ -1140,52 +1180,65 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                   </View>
                 ) : null}
 
-                {attachOpen ? (
-                  <View style={[s.attachMenu, { borderTopColor: colors.border }]} testID="deal-chat-attach-menu">
-                    {PLUS_MENU.map((item) => (
-                      <TouchableOpacity key={item.key} style={s.attachItem} onPress={item.onPress} testID={item.testID} disabled={item.busy}>
-                        <View style={[s.attachIcon, { backgroundColor: colors.surface }]}>
-                          {item.busy ? <ActivityIndicator size="small" color="#168759" /> : <Feather name={item.icon} size={20} color={colors.text} />}
-                        </View>
-                        <Text style={[s.attachLabel, { color: colors.text }]} numberOfLines={1}>{item.label}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                ) : null}
-
-                <View style={[s.composer, { borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, 8) }]} testID="deal-chat-composer">
+                <View style={[s.composer, { borderTopColor: colors.border, paddingBottom: attachOpen ? 9 : Math.max(insets.bottom, 8) }]} testID="deal-chat-composer">
                   <TouchableOpacity
-                    style={[s.composerIcon, { borderColor: colors.border, backgroundColor: colors.surface }]}
-                    onPress={() => { setAttachOpen((value) => !value); setCallMenuOpen(false); }}
-                    testID="deal-chat-attach"
+                    style={s.composerCircle}
+                    onPress={toggleVoice}
+                    testID="deal-chat-voice"
                   >
-                    <Feather name="plus" size={21} color={colors.text} />
+                    <Feather name={recording ? 'square' : 'volume-2'} size={22} color="#202020" />
                   </TouchableOpacity>
-                  <TextInput
-                    value={input}
-                    onChangeText={(value) => { setInput(value); if (roomId) chatAPI.typing(roomId); }}
-                    onFocus={onComposerFocus}
-                    onContentSizeChange={(event) => setInputHeight(Math.max(44, Math.min(112, Math.ceil(event.nativeEvent.contentSize.height + 18))))}
-                    multiline
-                    scrollEnabled={inputHeight >= 112}
-                    style={[s.input, { height: inputHeight, color: colors.text, borderColor: colors.border, backgroundColor: colors.surface }]}
-                    placeholder={isDriver ? ui.writeShipper : ui.write}
-                    placeholderTextColor={colors.textMuted}
-                    testID="deal-chat-input"
-                  />
+                  <View style={s.inputShell}>
+                    <TextInput
+                      value={input}
+                      onChangeText={(value) => { setInput(value); if (roomId) chatAPI.typing(roomId); }}
+                      onFocus={onComposerFocus}
+                      onContentSizeChange={(event) => setInputHeight(Math.max(40, Math.min(96, Math.ceil(event.nativeEvent.contentSize.height + 14))))}
+                      multiline
+                      scrollEnabled={inputHeight >= 96}
+                      style={[s.input, { height: inputHeight, color: colors.text }]}
+                      placeholder={isDriver ? ui.writeShipper : ui.write}
+                      placeholderTextColor={colors.textMuted}
+                      testID="deal-chat-input"
+                    />
+                    <Feather name="mic" size={22} color="#777777" style={s.inputMic} pointerEvents="none" />
+                  </View>
                   <TouchableOpacity
-                    style={[s.composerIcon, { borderColor: colors.border, backgroundColor: colors.surface }]}
-                    onPress={() => sendPhoto(true)}
-                    testID="deal-chat-camera"
+                    style={s.composerCircle}
+                    onPress={showEmojiComingSoon}
+                    testID="deal-chat-emoji"
                   >
-                    <Feather name="camera" size={19} color={colors.text} />
+                    <Feather name="smile" size={26} color="#202020" />
                   </TouchableOpacity>
                   {input.trim() ? (
                     <TouchableOpacity style={s.sendButton} onPress={sendText} testID="deal-chat-send"><FontAwesome5 name="paper-plane" size={15} color="#FFFFFF" solid /></TouchableOpacity>
                   ) : (
-                    <TouchableOpacity style={[s.sendButton, recording && s.recordingButton]} onPress={toggleVoice} testID="deal-chat-voice"><Feather name={recording ? 'square' : 'mic'} size={18} color="#FFFFFF" /></TouchableOpacity>
+                    <TouchableOpacity
+                      style={s.composerCircle}
+                      onPress={() => { setAttachOpen((value) => !value); setCallMenuOpen(false); }}
+                      testID="deal-chat-attach"
+                    >
+                      <Feather name="plus" size={27} color="#202020" />
+                    </TouchableOpacity>
                   )}
                 </View>
+
+                {attachOpen ? (
+                  <View style={[s.attachMenu, { borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom + 18, 26) }]} testID="deal-chat-attach-menu">
+                    {PLUS_MENU.map((item) => (
+                      <TouchableOpacity key={item.key} style={s.attachItem} onPress={item.onPress} testID={item.testID} disabled={item.busy}>
+                        <View style={s.attachIcon}>
+                          {item.busy ? <ActivityIndicator size="small" color="#168759" /> : <FontAwesome5 name={item.icon} size={30} color="#686868" solid />}
+                        </View>
+                        <Text style={s.attachLabel} numberOfLines={1}>{item.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                    <View style={s.attachPager} pointerEvents="none">
+                      <View style={s.attachPagerDotActive} />
+                      <View style={s.attachPagerDot} />
+                    </View>
+                  </View>
+                ) : null}
               </>
             )}
           </View>
@@ -1406,15 +1459,20 @@ const s = StyleSheet.create({
   recordCancelBtn: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
   recordStopBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#168759', alignItems: 'center', justifyContent: 'center' },
 
-  attachMenu: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 10, paddingVertical: 10, borderTopWidth: StyleSheet.hairlineWidth },
-  attachItem: { width: '25%', alignItems: 'center', gap: 5, paddingVertical: 6 },
-  attachIcon: { width: 46, height: 46, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
-  attachLabel: { fontSize: 10.5, fontWeight: '700', textAlign: 'center' },
+  attachMenu: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', minHeight: 274, paddingHorizontal: 24, paddingTop: 24, backgroundColor: '#F4F4F4', borderTopWidth: StyleSheet.hairlineWidth },
+  attachItem: { width: '25%', alignItems: 'center', gap: 11, marginBottom: 24 },
+  attachIcon: { width: 64, height: 64, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
+  attachLabel: { color: '#737373', fontSize: 13.5, fontWeight: '400', textAlign: 'center' },
+  attachPager: { position: 'absolute', left: 0, right: 0, bottom: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 13 },
+  attachPagerDotActive: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#7A7A7A' },
+  attachPagerDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#E0E0E0' },
 
-  composer: { flexDirection: 'row', alignItems: 'flex-end', gap: 7, paddingHorizontal: 10, paddingTop: 9, borderTopWidth: StyleSheet.hairlineWidth },
-  composerIcon: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
-  input: { flex: 1, minHeight: 44, maxHeight: 112, borderRadius: 16, borderWidth: 1, paddingHorizontal: 13, paddingTop: 11, paddingBottom: 10, fontSize: 14.5, lineHeight: 19 },
-  sendButton: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: '#168759' },
+  composer: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingTop: 9, backgroundColor: '#F3F3F3', borderTopWidth: StyleSheet.hairlineWidth },
+  composerCircle: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F7F7F7', borderWidth: 2, borderColor: '#202020' },
+  inputShell: { flex: 1, minHeight: 40, maxHeight: 96, borderRadius: 6, backgroundColor: '#FFFFFF', justifyContent: 'center', position: 'relative' },
+  input: { minHeight: 40, maxHeight: 96, paddingLeft: 13, paddingRight: 42, paddingTop: 9, paddingBottom: 8, fontSize: 14.5, lineHeight: 19 },
+  inputMic: { position: 'absolute', right: 13, bottom: 8 },
+  sendButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: '#168759' },
   recordingButton: { backgroundColor: '#168759' },
 
   mapFullscreen: { flex: 1 },
