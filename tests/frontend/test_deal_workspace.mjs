@@ -72,6 +72,27 @@ test('deal workspace is chat-first by default; the map is a deliberate, button-t
   assert.doesNotMatch(workspace, /open_route_btn|Открыть маршрут|navigation\.navigate\('TrackTruck'/);
 });
 
+test('P0-2 (27.08.2026): a lightweight route preview is auto-visible in chat view, without mounting the live map', () => {
+  // Owner requirement: after accept, the map must be visible automatically
+  // inside the deal — not only reachable via an extra tap — while chat
+  // remains the default view (see the mutually-exclusive test above, which
+  // this test must NOT contradict). Solution: the mapCard itself gained a
+  // small always-rendered route strip (dots + line + route label), reusing
+  // only state already being polled regardless of viewMode (hasLivePoint/
+  // lat/lng, routeLabel) — no second live TruckMap instance, no new network
+  // calls while chat is open.
+  assert.match(workspace, /testID="deal-map-card-preview"/);
+  assert.match(workspace, /mapCardPreviewLine/);
+  assert.match(workspace, /mapCardPreviewDot/);
+  assert.match(workspace, /\{routeLabel\}/);
+  // The preview lives inside the SAME TouchableOpacity as deal-map-card-open
+  // — tapping anywhere on the card (preview included) still opens the full
+  // map, not a second, separate control.
+  const cardStart = workspace.indexOf('testID="deal-map-card-open"');
+  const previewStart = workspace.indexOf('testID="deal-map-card-preview"');
+  assert.ok(cardStart >= 0 && previewStart > cardStart, 'preview must be nested inside the map-card TouchableOpacity');
+});
+
 test('the map is never mounted underneath the chat — chat and map are mutually exclusive views', () => {
   // Isolate the chat-view JSX by its start/end testID markers rather than
   // trying to balance parens with regex (fragile — the branch itself

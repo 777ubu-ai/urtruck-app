@@ -1083,15 +1083,37 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
                 {dealId ? (
                   <TouchableOpacity style={[s.mapCard, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={openMap} testID="deal-map-card-open">
-                    <View style={s.mapCardIcon}><Feather name="map" size={17} color="#168759" /></View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={[s.mapCardTitle, { color: colors.text }]}>{t('deal_map_card_title')}</Text>
-                      <Text style={[s.mapCardStatus, { color: colors.textMuted }]} numberOfLines={1}>{statusLabel}</Text>
+                    <View style={s.mapCardHeaderRow}>
+                      <View style={s.mapCardIcon}><Feather name="map" size={17} color="#168759" /></View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={[s.mapCardTitle, { color: colors.text }]}>{t('deal_map_card_title')}</Text>
+                        <Text style={[s.mapCardStatus, { color: colors.textMuted }]} numberOfLines={1}>{statusLabel}</Text>
+                      </View>
+                      <View style={s.mapCardOpenPill}>
+                        <Text style={s.mapCardOpenText}>{t('deal_map_card_open')}</Text>
+                        <Feather name="chevron-right" size={14} color="#168759" />
+                      </View>
                     </View>
-                    <View style={s.mapCardOpenPill}>
-                      <Text style={s.mapCardOpenText}>{t('deal_map_card_open')}</Text>
-                      <Feather name="chevron-right" size={14} color="#168759" />
+                    {/* P0-2 (27.08.2026, владелец): карта должна быть видна
+                        автоматически в сделке, не только после тапа. Полный
+                        интерактивный TruckMap-компонент с живым GPS-поллингом
+                        (viewMode===VIEW_MAP ниже) НЕ дублируем сюда — второй
+                        живой Yandex-инстанс параллельно с чатом удвоил бы
+                        сетевые запросы/память без выгоды, пока чат открыт.
+                        Вместо этого — лёгкий статический route-preview (те
+                        же dot+line визуальные примитивы, что и
+                        TruckMap.web.js::StaticRouteFallback), который не
+                        требует Yandex JS и не полит ничего нового — lat/lng
+                        уже живут в состоянии экрана (line ~503/520,
+                        поллинг не завязан на viewMode). Тап по всей
+                        карточке по-прежнему разворачивает полную карту. */}
+                    <View style={s.mapCardPreview} testID="deal-map-card-preview" pointerEvents="none">
+                      <View style={s.mapCardPreviewLine} />
+                      <View style={s.mapCardPreviewDot} />
+                      {hasLivePoint ? <View style={[s.mapCardPreviewDot, s.mapCardPreviewDotLive]} /> : null}
+                      <View style={[s.mapCardPreviewDot, s.mapCardPreviewDotEnd]} />
                     </View>
+                    <Text style={[s.mapCardRoute, { color: colors.textMuted }]} numberOfLines={1}>{routeLabel}</Text>
                   </TouchableOpacity>
                 ) : null}
 
@@ -1361,12 +1383,21 @@ const s = StyleSheet.create({
   actionBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 44, marginHorizontal: 12, marginTop: 10, borderRadius: 14 },
   actionBarText: { fontSize: 13.5, fontWeight: '900', flexShrink: 1 },
 
-  mapCard: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 12, marginTop: 10, borderWidth: 1, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 10 },
+  mapCard: { marginHorizontal: 12, marginTop: 10, borderWidth: 1, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 10, gap: 8 },
+  mapCardHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   mapCardIcon: { width: 38, height: 38, borderRadius: 13, backgroundColor: '#E9F6EF', alignItems: 'center', justifyContent: 'center' },
   mapCardTitle: { fontSize: 13.5, fontWeight: '850' },
   mapCardStatus: { fontSize: 11.5, fontWeight: '650', marginTop: 2 },
   mapCardOpenPill: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   mapCardOpenText: { color: '#168759', fontSize: 12.5, fontWeight: '850' },
+  // P0-2 (27.08.2026): лёгкий auto-visible route preview — см. комментарий
+  // у JSX выше. Чисто декоративная полоса+точки, без карты/сети.
+  mapCardPreview: { height: 20, justifyContent: 'center', position: 'relative' },
+  mapCardPreviewLine: { position: 'absolute', left: 6, right: 6, top: '50%', height: 3, borderRadius: 1.5, backgroundColor: '#9DB9AC' },
+  mapCardPreviewDot: { position: 'absolute', left: 0, width: 12, height: 12, borderRadius: 6, backgroundColor: '#168759' },
+  mapCardPreviewDotLive: { left: '50%', marginLeft: -6, backgroundColor: '#F59E0B' },
+  mapCardPreviewDotEnd: { left: undefined, right: 0, backgroundColor: '#17221E' },
+  mapCardRoute: { fontSize: 11.5, fontWeight: '700' },
 
   chatBody: { flex: 1, position: 'relative' },
   messageList: { flex: 1 },

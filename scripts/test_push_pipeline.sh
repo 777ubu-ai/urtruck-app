@@ -42,9 +42,19 @@ body=$(curl -sS -m 20 "$BASE/push/public-key" 2>/dev/null)
 echo "     public-key: $(echo "$body" | head -c 120)"
 ok "public-key прочитан (VAPID web-push — информативно)"
 
-echo "T4 POST /push/register-native без auth → 401"
+echo "T4 POST /push/register-native без auth, короткий/битый токен → 400 (валидация)"
+# ИСПРАВЛЕНО 27.08.2026: /push/register-native НАМЕРЕННО принимает анонимные
+# запросы без auth — гостевой push (см. backend/api/push.py::register_native,
+# authorization: Optional[str] = Header(None), _optional_user_id) и
+# backend/tests/test_push_anonymous_ownership_guard.py, который явно
+# тестирует anonymous/invalid-session сценарии как часть контракта, а не
+# как дыру. Прежнее ожидание 401 было неверным описанием контракта — токен
+# "x" (длина 1) короче BUG-008 порога (len(tok) < 8) и получает 400
+# "Некорректный push-токен" ДО любой auth-проверки. Это правильное
+# поведение: анонимный guest с валидным Expo-токеном должен пройти 200,
+# анонимный guest с мусорным токеном — 400 по формату, а не 401 по auth.
 c=$(code -X POST "$BASE/push/register-native" -H 'Content-Type: application/json' -d '{"token":"x","platform":"ios","provider":"expo"}')
-[ "$c" = "401" ] && ok "no-auth register-native=$c" || bad "no-auth register-native=$c (ожидали 401)"
+[ "$c" = "400" ] && ok "no-auth malformed-token register-native=$c (валидация формата, не auth-гейт)" || bad "no-auth register-native=$c (ожидали 400 — гостевая регистрация разрешена по дизайну)"
 
 echo "T5 register-native с guest-токеном, невалидное тело → 4xx"
 GUEST=$(curl -sS -m 20 -X POST "$BASE/register/guest" 2>/dev/null)
