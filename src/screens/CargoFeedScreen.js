@@ -14,6 +14,7 @@ import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { useI18n } from '../utils/useI18n';
+import { useTheme } from '../utils/ThemeContext';
 import { formatTruckType } from '../utils/i18n';
 import { useAuth, LEVELS } from '../utils/AuthContext';
 import { marketAPI } from '../utils/marketAPI';
@@ -36,6 +37,22 @@ const TEXT = '#17221E';
 const TEXT_SECONDARY = '#606B66';
 const TEXT_MUTED = '#808A85';
 const BORDER = '#E5EAE7';
+
+const cargoPalette = (theme, isDark) => ({
+  pageBg: theme.bg,
+  surface: theme.card || theme.surface,
+  surfaceAlt: theme.surfaceAlt || theme.cardActive || theme.surface,
+  text: theme.text,
+  textSecondary: theme.textSecondary,
+  textMuted: theme.textMuted,
+  border: theme.border,
+  shadow: isDark ? '#000000' : '#14211C',
+  accent: ACCENT,
+  accentSoft: isDark ? 'rgba(22,135,89,0.18)' : ACCENT_SOFT,
+  filterActive: isDark ? 'rgba(22,135,89,0.16)' : '#FAFDFC',
+  favoriteBg: isDark ? 'rgba(22,135,89,0.12)' : '#F5FBF8',
+  priceText: theme.text,
+});
 
 const COPY = {
   RU: {
@@ -144,7 +161,7 @@ const normalizeCargo = (c, myUserId) => {
   };
 };
 
-function CargoCard({ item, lang, copy, saved, onToggleSaved, onPress }) {
+function CargoCard({ item, lang, copy, saved, onToggleSaved, onPress, colors }) {
   const from = localizePlace(item.from, lang) || '—';
   const to = localizePlace(item.to, lang) || '—';
   const cargo = localizeCargoName(item.cargo, lang) || '—';
@@ -164,7 +181,14 @@ function CargoCard({ item, lang, copy, saved, onToggleSaved, onPress }) {
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={0.88}
-      style={styles.card}
+      style={[
+        styles.card,
+        {
+          borderColor: colors.border,
+          backgroundColor: colors.surface,
+          shadowColor: colors.shadow,
+        },
+      ]}
       testID={`cargo-card-${item.id}`}
       accessibilityRole="button"
     >
@@ -175,12 +199,12 @@ function CargoCard({ item, lang, copy, saved, onToggleSaved, onPress }) {
             <View style={styles.routeLine}>
               <View style={styles.placeInline}>
                 {!!fromFlag && <Text style={styles.flag}>{fromFlag}</Text>}
-                <Text style={styles.routeCity} numberOfLines={1}>{from}</Text>
+                <Text style={[styles.routeCity, { color: colors.text }]} numberOfLines={1}>{from}</Text>
               </View>
-              <Feather name="arrow-right" size={18} color={TEXT} style={styles.routeArrow} />
+              <Feather name="arrow-right" size={18} color={colors.text} style={styles.routeArrow} />
               <View style={styles.placeInline}>
                 {!!toFlag && <Text style={styles.flag}>{toFlag}</Text>}
-                <Text style={styles.routeCity} numberOfLines={1}>{to}</Text>
+                <Text style={[styles.routeCity, { color: colors.text }]} numberOfLines={1}>{to}</Text>
               </View>
             </View>
           </View>
@@ -188,20 +212,20 @@ function CargoCard({ item, lang, copy, saved, onToggleSaved, onPress }) {
 
         <View style={styles.cargoPriceRow}>
           <View style={[styles.infoRow, styles.cargoInfoRow]}>
-            <Feather name="package" size={15} color={TEXT_SECONDARY} />
-            <Text style={styles.infoText} numberOfLines={1}>{cargo}</Text>
+            <Feather name="package" size={15} color={colors.textSecondary} />
+            <Text style={[styles.infoText, { color: colors.textSecondary }]} numberOfLines={1}>{cargo}</Text>
           </View>
-          <Text style={styles.price} numberOfLines={1} testID={`cargo-card-price-${item.id}`}>
+          <Text style={[styles.price, { color: colors.priceText }]} numberOfLines={1} testID={`cargo-card-price-${item.id}`}>
             {formatMoney(item.price, item.currency, copy)}
           </Text>
         </View>
         <View style={styles.infoRow}>
-          <Feather name="truck" size={15} color={TEXT_SECONDARY} />
-          <Text style={styles.infoText} numberOfLines={1}>{specs || formatTruckType(item.type)}</Text>
+          <Feather name="truck" size={15} color={colors.textSecondary} />
+          <Text style={[styles.infoText, { color: colors.textSecondary }]} numberOfLines={1}>{specs || formatTruckType(item.type)}</Text>
         </View>
         <View style={styles.infoRow}>
-          <Feather name="calendar" size={15} color={TEXT_SECONDARY} />
-          <Text style={styles.infoText} numberOfLines={1}>
+          <Feather name="calendar" size={15} color={colors.textSecondary} />
+          <Text style={[styles.infoText, { color: colors.textSecondary }]} numberOfLines={1}>
             {copy.loading}: {formatPickupDate(item.pickup, lang)}
           </Text>
         </View>
@@ -210,15 +234,15 @@ function CargoCard({ item, lang, copy, saved, onToggleSaved, onPress }) {
       <Pressable
         onPress={(e) => { e?.stopPropagation?.(); onToggleSaved(); }}
         hitSlop={10}
-        style={[styles.bookmarkBtn, saved && styles.bookmarkBtnSaved]}
+        style={[styles.bookmarkBtn, saved && [styles.bookmarkBtnSaved, { backgroundColor: colors.accentSoft }]]}
         testID={`cargo-card-bookmark-${item.id}`}
         accessibilityRole="button"
         accessibilityLabel={saved ? 'Remove bookmark' : 'Save cargo'}
       >
         {saved ? (
-          <FontAwesome5 name="bookmark" size={18} color={ACCENT} solid />
+          <FontAwesome5 name="bookmark" size={18} color={colors.accent} solid />
         ) : (
-          <Feather name="bookmark" size={18} color={TEXT_SECONDARY} />
+          <Feather name="bookmark" size={18} color={colors.textSecondary} />
         )}
       </Pressable>
     </TouchableOpacity>
@@ -227,6 +251,8 @@ function CargoCard({ item, lang, copy, saved, onToggleSaved, onPress }) {
 
 export default function CargoFeedScreen({ navigation }) {
   const { t, lang } = useI18n();
+  const { theme, isDark } = useTheme();
+  const palette = useMemo(() => cargoPalette(theme, isDark), [theme, isDark]);
   const { session } = useAuth();
   const { toast } = useToast();
   const { requireLevel, Gate } = useVerificationGate();
@@ -376,42 +402,59 @@ export default function CargoFeedScreen({ navigation }) {
   const filterPill = (key, label, icon, active) => (
     <TouchableOpacity
       key={key}
-      style={[styles.filterPill, active && styles.filterPillActive]}
+      style={[
+        styles.filterPill,
+        {
+          borderColor: active ? '#BFDCCF' : palette.border,
+          backgroundColor: active ? palette.filterActive : palette.surface,
+          shadowColor: palette.shadow,
+        },
+      ]}
       onPress={() => setActiveFilter(key)}
       testID={`cargo-filter-${key}`}
       accessibilityRole="button"
     >
       <Feather name={icon} size={16} color={active ? ACCENT : TEXT_SECONDARY} />
       <Text style={[styles.filterPillText, active && styles.filterPillTextActive]}>{label}</Text>
-      <Feather name="chevron-down" size={15} color={TEXT_SECONDARY} />
+      <Feather name="chevron-down" size={15} color={colors.textSecondary} />
     </TouchableOpacity>
   );
 
   const feedControls = (
     <View style={styles.feedControls} testID="cargo-feed-scroll-controls">
-      <View style={[styles.routeSelector, (dirFrom || dirTo) && styles.routeSelectorActive]} testID="feed-route-selector">
+      <View
+        style={[
+          styles.routeSelector,
+          {
+            borderColor: (dirFrom || dirTo) ? palette.accent : palette.border,
+            backgroundColor: palette.surface,
+            shadowColor: palette.shadow,
+          },
+        ]}
+        testID="feed-route-selector"
+      >
         <TouchableOpacity style={styles.routeHalf} onPress={() => setShowDirFromPicker(true)} testID="feed-route-from">
           <View style={styles.routeLabelRow}>
-            <Feather name="map-pin" size={14} color={TEXT_MUTED} />
-            <Text style={styles.routeLabel}>{t('from')}</Text>
+            <Feather name="map-pin" size={14} color={palette.textMuted} />
+            <Text style={[styles.routeLabel, { color: palette.textSecondary }]}>{t('from')}</Text>
           </View>
-          <Text style={[styles.routeValue, !dirFrom && styles.placeholder]} numberOfLines={1}>
+          <Text style={[styles.routeValue, { color: palette.text }, !dirFrom && { color: palette.textMuted }]} numberOfLines={1}>
             {dirFrom ? localizePlace(dirFrom, lang) : t('create_field_from_placeholder')}
           </Text>
         </TouchableOpacity>
         <Feather name="arrow-right" size={24} color={ACCENT} />
         <TouchableOpacity style={styles.routeHalf} onPress={() => setShowDirToPicker(true)} testID="feed-route-to">
           <View style={styles.routeLabelRow}>
-            <Feather name="flag" size={14} color={TEXT_MUTED} />
-            <Text style={styles.routeLabel}>{t('to')}</Text>
+            <Feather name="flag" size={14} color={palette.textMuted} />
+            <Text style={[styles.routeLabel, { color: palette.textSecondary }]}>{t('to')}</Text>
           </View>
-          <Text style={[styles.routeValue, !dirTo && styles.placeholder]} numberOfLines={1}>
+          <Text style={[styles.routeValue, { color: palette.text }, !dirTo && { color: palette.textMuted }]} numberOfLines={1}>
             {dirTo ? localizePlace(dirTo, lang) : t('create_field_to_placeholder')}
           </Text>
         </TouchableOpacity>
         {(dirFrom || dirTo) ? (
           <TouchableOpacity onPress={() => { setDirFrom(''); setDirTo(''); }} hitSlop={10} testID="feed-route-clear">
-            <Feather name="x" size={17} color={TEXT_MUTED} />
+            <Feather name="x" size={17} color={palette.textMuted} />
           </TouchableOpacity>
         ) : null}
       </View>
@@ -426,23 +469,30 @@ export default function CargoFeedScreen({ navigation }) {
         {filterPill('body', t('filter_body'), 'truck', !!filterType)}
         {filterPill('price', t('filter_price'), 'dollar-sign', sortBy !== 'newest')}
         <TouchableOpacity
-          style={[styles.filterPill, styles.favoritesPill, savedOnly && styles.favoritesPillActive]}
+          style={[
+            styles.filterPill,
+            {
+              borderColor: savedOnly ? '#A6D2BE' : '#CAE2D7',
+              backgroundColor: savedOnly ? palette.accentSoft : palette.favoriteBg,
+              shadowColor: palette.shadow,
+            },
+          ]}
           onPress={toggleSavedOnly}
           testID="cargo-filter-favorites"
           accessibilityRole="button"
           accessibilityState={{ selected: savedOnly }}
         >
-          <Feather name="bookmark" size={17} color={ACCENT} />
-          <Text style={[styles.filterPillText, styles.favoritesText]}>{copy.favorites}</Text>
-          {savedIds.size > 0 ? <Text style={styles.favoritesCount}>{savedIds.size}</Text> : null}
+          <Feather name="bookmark" size={17} color={palette.accent} />
+          <Text style={[styles.filterPillText, { color: palette.accent }]}>{copy.favorites}</Text>
+          {savedIds.size > 0 ? <Text style={[styles.favoritesCount, { color: palette.textSecondary }]}>{savedIds.size}</Text> : null}
         </TouchableOpacity>
       </ScrollView>
     </View>
   );
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']} testID="cargo-screen">
-      <View style={styles.topBar} testID="cargo-feed-minimal-header">
+    <SafeAreaView style={[styles.container, { backgroundColor: palette.pageBg }]} edges={['top']} testID="cargo-screen">
+      <View style={[styles.topBar, { backgroundColor: palette.pageBg }]} testID="cargo-feed-minimal-header">
         <TouchableOpacity
           onPress={() => navigation.navigate('Profile', { role })}
           style={styles.menuBtn}
@@ -450,12 +500,12 @@ export default function CargoFeedScreen({ navigation }) {
           testID="feed-menu-btn"
           accessibilityLabel={t('tab_profile')}
         >
-          <Feather name="menu" size={27} color={TEXT} />
+          <Feather name="menu" size={27} color={colors.text} />
         </TouchableOpacity>
       </View>
 
       <FlatList
-        style={styles.list}
+        style={[styles.list, { backgroundColor: palette.pageBg }]}
         data={loading ? [] : visibleItems}
         keyExtractor={(item) => String(item.id)}
         renderItem={({ item }) => (
@@ -466,13 +516,14 @@ export default function CargoFeedScreen({ navigation }) {
             saved={savedIds.has(String(item.id))}
             onToggleSaved={() => toggleSaved(item)}
             onPress={() => openCargo(item)}
+            colors={palette}
           />
         )}
         ListHeaderComponent={feedControls}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={ACCENT} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={palette.accent} />}
         onEndReachedThreshold={0.5}
         onEndReached={() => {
           if (!loading && !savedOnly && items.length >= pageLimit) setPageLimit((p) => p + 50);
@@ -484,11 +535,11 @@ export default function CargoFeedScreen({ navigation }) {
             </View>
           ) : (
             <View style={styles.emptyWrap}>
-              <Feather name={error ? 'alert-circle' : savedOnly ? 'bookmark' : 'package'} size={32} color={TEXT_MUTED} />
-              <Text style={styles.emptyTitle}>{error ? copy.loadError : copy.empty}</Text>
+              <Feather name={error ? 'alert-circle' : savedOnly ? 'bookmark' : 'package'} size={32} color={palette.textMuted} />
+              <Text style={[styles.emptyTitle, { color: palette.textMuted }]}>{error ? copy.loadError : copy.empty}</Text>
               {error ? (
-                <TouchableOpacity style={styles.retryBtn} onPress={load} testID="cargo-retry">
-                  <Text style={styles.retryText}>{copy.retry}</Text>
+                <TouchableOpacity style={[styles.retryBtn, { backgroundColor: palette.accentSoft }]} onPress={load} testID="cargo-retry">
+                  <Text style={[styles.retryText, { color: palette.accent }]}>{copy.retry}</Text>
                 </TouchableOpacity>
               ) : null}
             </View>
