@@ -49,6 +49,40 @@ const durationTextFromSeconds = (value, t) => {
   return `${minutes} ${m}`;
 };
 
+
+function StaticRouteFallback({ livePoint, plannedPoints, reason }) {
+  const { t } = useI18n();
+  const points = livePoint ? [livePoint, ...plannedPoints] : plannedPoints;
+  const safePoints = points.length >= 2 ? points : (points.length === 1 ? points : [[43.2389, 76.8897], [55.7558, 37.6173]]);
+  return (
+    <View style={s.staticMap} testID="truck-map-static-fallback">
+      <View style={s.staticRouteLine} />
+      <View style={s.staticPointsRow}>
+        {safePoints.slice(0, 4).map((point, index) => (
+          <View
+            // Coordinates are stable enough for route-point identity and avoid
+            // depending on city labels that may be unavailable in fallback mode.
+            key={`${point[0]}:${point[1]}:${index}`}
+            style={[
+              s.staticPoint,
+              index === 0 && s.staticPointStart,
+              index === safePoints.length - 1 && s.staticPointEnd,
+            ]}
+          >
+            <Text style={s.staticPointText}>
+              {index === 0 ? t('map_point_start') : (index === safePoints.length - 1 ? t('map_point_destination') : t('map_point_waypoint'))}
+            </Text>
+          </View>
+        ))}
+      </View>
+      <View style={s.staticNotice}>
+        <Text style={s.errorTitle}>{t('planned_route_title')}</Text>
+        <Text style={s.loadingText}>{reason || t('map_reconnecting')}</Text>
+      </View>
+    </View>
+  );
+}
+
 function YandexMap({ livePoint, plannedPoints, serverRoute, onRouteSummary }) {
   const { t, lang } = useI18n();
   const hostRef = React.useRef(null);
@@ -261,10 +295,11 @@ function YandexMap({ livePoint, plannedPoints, serverRoute, onRouteSummary }) {
         </View>
       ) : null}
       {status === 'error' ? (
-        <View pointerEvents="none" style={s.loading} testID="truck-map-yandex-error">
-          <Text style={s.errorTitle}>{t('map_unavailable_title')}</Text>
-          <Text style={s.loadingText}>{t('map_reconnecting')}</Text>
-        </View>
+        <StaticRouteFallback
+          livePoint={livePoint}
+          plannedPoints={plannedPoints}
+          reason={t('map_reconnecting')}
+        />
       ) : null}
       {fallbackActive ? (
         <View pointerEvents="none" style={s.routeState} testID="truck-map-road-route-unavailable">
@@ -352,10 +387,11 @@ export default function TruckMap({
           onRouteSummary={onRouteSummary}
         />
       ) : (
-        <View style={s.loading} testID="truck-map-yandex-not-configured">
-          <Text style={s.errorTitle}>{t('map_not_configured_title')}</Text>
-          <Text style={s.loadingText}>{t('map_not_configured_hint')}</Text>
-        </View>
+        <StaticRouteFallback
+          livePoint={livePoint}
+          plannedPoints={plannedPoints}
+          reason={t('map_not_configured_hint')}
+        />
       )}
       {serverLoading ? (
         <View pointerEvents="none" style={s.routeState} testID="truck-map-road-routing-loading">
@@ -378,6 +414,14 @@ const s = StyleSheet.create({
   loading: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EEF2EF', paddingHorizontal: 24 },
   loadingText: { color: '#617067', fontSize: 12, fontWeight: '700', textAlign: 'center' },
   errorTitle: { color: '#14221C', fontSize: 14, fontWeight: '900', textAlign: 'center', marginBottom: 6 },
+  staticMap: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', paddingHorizontal: 22, backgroundColor: '#EAF1ED' },
+  staticRouteLine: { position: 'absolute', left: 42, right: 42, top: '50%', height: 4, borderRadius: 2, backgroundColor: '#9DB9AC' },
+  staticPointsRow: { minHeight: 92, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  staticPoint: { minWidth: 54, minHeight: 54, borderRadius: 27, paddingHorizontal: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: '#9DB9AC' },
+  staticPointStart: { borderColor: '#168759' },
+  staticPointEnd: { borderColor: '#17221E' },
+  staticPointText: { color: '#17221E', fontSize: 10, fontWeight: '900', textAlign: 'center' },
+  staticNotice: { position: 'absolute', left: 18, right: 18, bottom: 18, paddingHorizontal: 14, paddingVertical: 11, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.94)', borderWidth: 1, borderColor: '#DDE5E0' },
   routeState: {
     position: 'absolute', left: 12, bottom: 60, maxWidth: '82%',
     paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999,
