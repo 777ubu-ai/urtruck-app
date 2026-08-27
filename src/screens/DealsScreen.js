@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../utils/useI18n';
+import { useTheme } from '../utils/ThemeContext';
 import { formatStatus } from '../utils/i18n';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import { marketAPI } from '../utils/marketAPI';
@@ -35,6 +36,23 @@ const WAITING = '#617067';
 const INFO = '#3478D4';
 const ARCHIVE = '#7C8B82';
 const CANCELLED = '#A45A5A';
+
+const dealsPalette = (theme, isDark) => ({
+  pageBg: theme.bg,
+  surface: theme.card || theme.surface,
+  surfaceAlt: theme.surfaceAlt || theme.cardActive || theme.surface,
+  text: theme.text,
+  textSecondary: theme.textSecondary,
+  textMuted: theme.textMuted,
+  border: theme.border,
+  headerBorder: isDark ? theme.border : '#EDF0EE',
+  shadow: isDark ? '#000000' : '#14211C',
+  accent: ACCENT,
+  accentSoft: isDark ? 'rgba(22,135,89,0.18)' : ACCENT_SOFT,
+  inactiveIcon: theme.textMuted,
+  chevron: isDark ? '#65746B' : '#A0A9A4',
+  dimOpacity: isDark ? 0.62 : 0.72,
+});
 
 // `delivered` is intentionally ACTIVE, not terminal. The driver has finished
 // delivery, but the shipper still must confirm receipt (`delivered -> completed`).
@@ -112,7 +130,7 @@ const dealStatus = (status, t) => {
   return { label: formatStatus(status), color: ARCHIVE };
 };
 
-function TabChip({ label, count, active, onPress, testID, compact = false, icon = null }) {
+function TabChip({ label, count, active, onPress, testID, compact = false, icon = null, colors }) {
   return (
     <TouchableOpacity
       testID={testID}
@@ -123,14 +141,21 @@ function TabChip({ label, count, active, onPress, testID, compact = false, icon 
       style={[
         styles.tabChip,
         compact && styles.archiveChip,
-        active && styles.tabChipActive,
+        {
+          borderColor: active ? '#A6D2BE' : colors.border,
+          backgroundColor: active ? colors.accentSoft : colors.surface,
+          shadowColor: colors.shadow,
+        },
       ]}
     >
-      {icon ? <Feather name={icon} size={15} color={active ? ACCENT : TEXT_MUTED} /> : null}
-      <Text style={[styles.tabChipText, active && styles.tabChipTextActive]} numberOfLines={1}>
+      {icon ? <Feather name={icon} size={15} color={active ? colors.accent : colors.inactiveIcon} /> : null}
+      <Text
+        style={[styles.tabChipText, { color: active ? colors.accent : colors.textSecondary }]}
+        numberOfLines={1}
+      >
         {label}
       </Text>
-      <Text style={[styles.tabCount, active && styles.tabCountActive]}>{count}</Text>
+      <Text style={[styles.tabCount, { color: active ? '#6B8C7C' : colors.textMuted }]}>{count}</Text>
     </TouchableOpacity>
   );
 }
@@ -146,18 +171,27 @@ function CompactDealCard({
   dimmed = false,
   onPress,
   testID,
+  colors,
 }) {
   return (
     <TouchableOpacity
       testID={testID}
       activeOpacity={0.72}
       onPress={onPress}
-      style={[styles.card, dimmed && styles.cardDimmed]}
+      style={[
+        styles.card,
+        {
+          borderColor: colors.border,
+          backgroundColor: colors.surface,
+          shadowColor: colors.shadow,
+          opacity: dimmed ? colors.dimOpacity : 1,
+        },
+      ]}
     >
       <View style={styles.cardTop}>
-        <Text style={styles.route} numberOfLines={1}>{routeLabel}</Text>
-        {price ? <Text style={styles.price} numberOfLines={1}>{price}</Text> : null}
-        <Feather name="chevron-right" size={17} color="#A0A9A4" />
+        <Text style={[styles.route, { color: colors.text }]} numberOfLines={1}>{routeLabel}</Text>
+        {price ? <Text style={[styles.price, { color: colors.text }]} numberOfLines={1}>{price}</Text> : null}
+        <Feather name="chevron-right" size={17} color={colors.chevron} />
       </View>
 
       <View style={styles.cardMiddle}>
@@ -168,7 +202,7 @@ function CompactDealCard({
           </Text>
         </View>
         <View style={styles.cardRightMeta}>
-          {time ? <Text style={styles.time}>{time}</Text> : null}
+          {time ? <Text style={[styles.time, { color: colors.textMuted }]}>{time}</Text> : null}
           {unread > 0 ? (
             <View style={styles.unreadBadge} testID="deals-card-unread">
               <Text style={styles.unreadText}>{unread > 9 ? '9+' : unread}</Text>
@@ -177,13 +211,15 @@ function CompactDealCard({
         </View>
       </View>
 
-      {meta ? <Text style={styles.meta} numberOfLines={1}>{meta}</Text> : null}
+      {meta ? <Text style={[styles.meta, { color: colors.textMuted }]} numberOfLines={1}>{meta}</Text> : null}
     </TouchableOpacity>
   );
 }
 
 export default function DealsScreen({ navigation, route }) {
   const { t, lang } = useI18n();
+  const { theme, isDark } = useTheme();
+  const palette = useMemo(() => dealsPalette(theme, isDark), [theme, isDark]);
   const role = route?.params?.role || 'client';
   const roleAccent = accentFor(role) || ACCENT;
   const copy = COPY[lang] || COPY.EN;
@@ -441,6 +477,7 @@ export default function DealsScreen({ navigation, route }) {
           meta={meta}
           unread={count > 0 ? 1 : 0}
           onPress={() => navigation.navigate('CargoDetail', { cargoId: data.id, role })}
+          colors={palette}
         />
       );
     }
@@ -476,6 +513,7 @@ export default function DealsScreen({ navigation, route }) {
           dimmed={isClosed}
           unread={!isClosed && isBidActionable(data, { asOwner: !!data._incoming }) ? 1 : 0}
           onPress={() => openBid(data)}
+          colors={palette}
         />
       );
     }
@@ -508,6 +546,7 @@ export default function DealsScreen({ navigation, route }) {
         unread={unread}
         dimmed={ARCHIVE_DEAL_STATUSES.has(data.status)}
         onPress={() => openDeal(data)}
+        colors={palette}
       />
     );
   }, [
@@ -520,6 +559,7 @@ export default function DealsScreen({ navigation, route }) {
     role,
     routeFor,
     t,
+    palette,
   ]);
 
   const emptyText = dealTab === 'active'
@@ -529,14 +569,14 @@ export default function DealsScreen({ navigation, route }) {
       : copy.offersEmpty;
 
   const searchHeader = (
-    <View style={styles.scrollHeader} testID="deals-scroll-header">
-      <View style={styles.search}>
-        <Feather name="search" size={17} color={TEXT_MUTED} />
+    <View style={[styles.scrollHeader, { backgroundColor: palette.pageBg }]} testID="deals-scroll-header">
+      <View style={[styles.search, { borderColor: palette.border, backgroundColor: palette.surface, shadowColor: palette.shadow }]}>
+        <Feather name="search" size={17} color={palette.textMuted} />
         <TextInput
           testID="deal-room-search"
-          style={styles.searchInput}
+          style={[styles.searchInput, { color: palette.text }]}
           placeholder={copy.search}
-          placeholderTextColor={TEXT_MUTED}
+          placeholderTextColor={palette.textMuted}
           value={query}
           onChangeText={setQuery}
           returnKeyType="search"
@@ -548,7 +588,7 @@ export default function DealsScreen({ navigation, route }) {
             accessibilityLabel="clear-search"
             style={styles.clearSearch}
           >
-            <Feather name="x" size={16} color={TEXT_MUTED} />
+            <Feather name="x" size={16} color={palette.textMuted} />
           </TouchableOpacity>
         ) : null}
       </View>
@@ -557,11 +597,21 @@ export default function DealsScreen({ navigation, route }) {
 
   return (
     <SafeAreaView
-      style={[styles.container, { backgroundColor: PAGE_BG }]}
+      style={[styles.container, { backgroundColor: palette.pageBg }]}
       edges={['top']}
       testID="deal-room-list"
     >
-      <View style={styles.fixedHeader} testID="deals-minimal-header">
+      <View
+        style={[
+          styles.fixedHeader,
+          {
+            backgroundColor: palette.pageBg,
+            borderBottomColor: palette.headerBorder,
+            shadowColor: palette.shadow,
+          },
+        ]}
+        testID="deals-minimal-header"
+      >
         <View style={styles.menuRow}>
           <HeaderMenuButton
             navigation={navigation}
@@ -577,6 +627,7 @@ export default function DealsScreen({ navigation, route }) {
             count={offerCount}
             active={dealTab === 'offers'}
             onPress={() => setDealTab('offers')}
+            colors={palette}
           />
           <TabChip
             testID="deals-tab-active"
@@ -584,6 +635,7 @@ export default function DealsScreen({ navigation, route }) {
             count={activeDeals.length}
             active={dealTab === 'active'}
             onPress={() => setDealTab('active')}
+            colors={palette}
           />
           <TabChip
             testID="deals-tab-archive"
@@ -593,6 +645,7 @@ export default function DealsScreen({ navigation, route }) {
             onPress={() => setDealTab('archive')}
             compact
             icon="archive"
+            colors={palette}
           />
         </View>
 
@@ -609,10 +662,10 @@ export default function DealsScreen({ navigation, route }) {
         <ActivityIndicator color={roleAccent} style={{ marginTop: 42 }} />
       ) : loadError && baseItems.length === 0 ? (
         <View style={styles.errorState}>
-          <Feather name="wifi-off" size={23} color={TEXT_MUTED} />
-          <Text style={styles.errorText}>{copy.loadError}</Text>
-          <TouchableOpacity testID="deals-retry" style={styles.retryBtn} onPress={load}>
-            <Text style={styles.retryText}>{copy.retry}</Text>
+          <Feather name="wifi-off" size={23} color={palette.textMuted} />
+          <Text style={[styles.errorText, { color: palette.textMuted }]}>{copy.loadError}</Text>
+          <TouchableOpacity testID="deals-retry" style={[styles.retryBtn, { backgroundColor: palette.accentSoft }]} onPress={load}>
+            <Text style={[styles.retryText, { color: palette.accent }]}>{copy.retry}</Text>
           </TouchableOpacity>
         </View>
       ) : (
@@ -632,7 +685,7 @@ export default function DealsScreen({ navigation, route }) {
             />
           )}
           ListEmptyComponent={(
-            <Text style={styles.emptyText}>
+            <Text style={[styles.emptyText, { color: palette.textMuted }]}>
               {query ? t('chat_no_results') : emptyText}
             </Text>
           )}
@@ -777,7 +830,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 1,
   },
-  cardDimmed: { opacity: 0.72 },
   cardTop: {
     minHeight: 23,
     flexDirection: 'row',
