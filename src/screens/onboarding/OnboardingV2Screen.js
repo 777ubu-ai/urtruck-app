@@ -44,13 +44,13 @@ const HERO_SLIDE_1 = require('../../../assets/onboarding/slide-1-hero.jpg');
 const HERO_SLIDE_2 = require('../../../assets/onboarding/slide-2-driver-1.jpg');
 const HERO_SLIDE_3 = require('../../../assets/onboarding/slide-2-driver-2.jpg');
 
-const ASPECT_S1 = 853 / 1844;
-const ASPECT_S2 = 941 / 1672;
-const ASPECT_S3 = 853 / 1844;
+const ASPECT_S1 = 709 / 650;
+const ASPECT_S2 = 709 / 650;
+const ASPECT_S3 = 709 / 700;
 
-const WINDOW_S1 = { from: 0.06, to: 0.50 };
-const WINDOW_S2 = { from: 0.05, to: 0.55 };
-const WINDOW_S3 = { from: 0.05, to: 0.50 };
+const WINDOW_S1 = { from: 0, to: 1 };
+const WINDOW_S2 = { from: 0, to: 1 };
+const WINDOW_S3 = { from: 0, to: 1 };
 
 const HeroWindow = ({ source, imageAspect, win }) => {
   const imgHeight = SCREEN_W / imageAspect;
@@ -258,66 +258,3 @@ export default function OnboardingV2Screen({ navigation }) {
           />
         ))}
       </View>
-
-      <View style={s.ctaWrap} pointerEvents="box-none">
-        <Pressable
-          onPress={goAuth}
-          accessibilityRole="button"
-          accessibilityLabel={t('phone_v2_title')}
-          testID="onb-v2-cta-phone"
-          style={({ pressed }) => [
-            s.ctaPrimary,
-            { backgroundColor: brand.primary },
-            pressed && { opacity: 0.85 },
-          ]}
-        >
-          <Text style={s.ctaPrimaryText}>{t('phone_v2_title')}</Text>
-          <Feather name="arrow-right" size={20} color="#FFF" />
-        </Pressable>
-        <Pressable
-          onPress={goGuest}
-          accessibilityRole="button"
-          accessibilityLabel={t('onb_v2_cta_guest')}
-          testID="onb-v2-cta-guest"
-          style={({ pressed }) => [s.ctaOutline, pressed && { opacity: 0.85 }]}
-        >
-          <Feather name="package" size={18} color={brand.textPrimary} />
-          <Text style={s.ctaOutlineText}>{t('onb_v2_cta_guest')}</Text>
-          <Feather name="arrow-right" size={18} color={brand.textPrimary} />
-        </Pressable>
-
-        <Text style={s.consent}>
-          {t('onb_v2_consent_prefix')}{' '}
-          <Text style={s.consentLink}>{t('onb_v2_consent_offer')}</Text>
-          {' '}{t('onb_v2_consent_and')}{' '}
-          <Text style={s.consentLink}>{t('onb_v2_consent_privacy')}</Text>
-        </Text>
-
-        {QA_HOOK_ALLOWED ? <QaLoginHook s={s} /> : null}
-      </View>
-    </SafeAreaView>
-  );
-}
-
-const makeStyles = (brand) => StyleSheet.create({
-  safe: { flex: 1, backgroundColor: brand.bg },
-  slide: { flex: 1, paddingHorizontal: 0, paddingTop: 6, alignItems: 'stretch' },
-  captionBlock: { paddingHorizontal: 24, paddingTop: 12, paddingBottom: 4, alignItems: 'center' },
-  title: { ...typography.h1, color: brand.textPrimary, textAlign: 'center', marginBottom: 6 },
-  subtitle: { ...typography.body, color: brand.textSecondary, textAlign: 'center', paddingHorizontal: 4 },
-  dotsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, marginBottom: 10, zIndex: 5, elevation: 5 },
-  dot: { width: 6, height: 6, borderRadius: 3 },
-  ctaWrap: { paddingHorizontal: 20, paddingTop: 2, paddingBottom: 10, backgroundColor: brand.bg, zIndex: 10, elevation: 10 },
-  ctaPrimary: { height: 56, borderRadius: radius.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24 },
-  ctaPrimaryText: { ...typography.button, color: brand.textOnPrimary, flex: 1, textAlign: 'center' },
-  ctaOutline: { height: 56, borderRadius: radius.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, marginTop: 8, borderWidth: 1, borderColor: brand.borderStrong, backgroundColor: brand.surface },
-  ctaOutlineText: { ...typography.button, color: brand.textPrimary, flex: 1, textAlign: 'center', fontWeight: '700' },
-  consent: { fontSize: 12, color: brand.textSecondary, textAlign: 'center', marginTop: 8 },
-  consentLink: { color: brand.textPrimary, textDecorationLine: 'underline', fontWeight: '600' },
-  qaBlock: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: brand.borderStrong, gap: 6 },
-  qaLabel: { fontSize: 11, color: brand.textSecondary, textAlign: 'center', fontWeight: '600' },
-  qaInput: { height: 36, borderRadius: radius.md, borderWidth: 1, borderColor: brand.borderStrong, backgroundColor: brand.surface, paddingHorizontal: 10, color: brand.textPrimary, fontSize: 12 },
-  qaSubmit: { height: 36, borderRadius: radius.md, backgroundColor: brand.borderStrong, alignItems: 'center', justifyContent: 'center' },
-  qaSubmitText: { color: brand.textPrimary, fontSize: 12, fontWeight: '700' },
-  qaErr: { fontSize: 11, color: '#EF4444', textAlign: 'center' },
-});
