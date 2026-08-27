@@ -47,9 +47,11 @@ test('finalizer is verification-only, requires successful deploy, and cannot re-
 
 test('no alternate web map renderer can execute', () => {
   assert.doesNotMatch(mapSrc, /LEAFLET_JS|LEAFLET_CSS|unpkg\.com\/leaflet|tile\.openstreetmap\.org|OpenStreetMapFallback|truck-map-osm-fallback|useFallback|\.tileLayer\(/);
-  assert.match(mapSrc, /truck-map-yandex-error/);
-  // 2026-08-20 (#254): message localized; the guarantee it encodes ("we never
-  // silently swap in another map provider") is unchanged.
+  assert.match(mapSrc, /function StaticRouteFallback/);
+  assert.match(mapSrc, /testID="truck-map-static-fallback"/);
+  assert.doesNotMatch(mapSrc, /testID="truck-map-yandex-not-configured"/);
+  // 2026-08-27: when Yandex JS is unavailable, UrTruck keeps the route visible
+  // as its own static fallback instead of swapping providers.
   assert.match(mapSrc, /t\('map_not_configured_hint'\)/);
   assert.match(i18nSrc, /map_not_configured_hint: 'Карта не будет заменена другим провайдером\.'/);
 });
