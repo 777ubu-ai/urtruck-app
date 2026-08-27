@@ -416,7 +416,7 @@ export default function CargoFeedScreen({ navigation }) {
     >
       <Feather name={icon} size={16} color={active ? ACCENT : TEXT_SECONDARY} />
       <Text style={[styles.filterPillText, active && styles.filterPillTextActive]}>{label}</Text>
-      <Feather name="chevron-down" size={15} color={colors.textSecondary} />
+      <Feather name="chevron-down" size={15} color={palette.textSecondary} />
     </TouchableOpacity>
   );
 
@@ -500,7 +500,7 @@ export default function CargoFeedScreen({ navigation }) {
           testID="feed-menu-btn"
           accessibilityLabel={t('tab_profile')}
         >
-          <Feather name="menu" size={27} color={colors.text} />
+          <Feather name="menu" size={27} color={palette.text} />
         </TouchableOpacity>
       </View>
 
