@@ -91,8 +91,14 @@ export default function ProfileScreen({ navigation, route }) {
   const [profile, setProfile] = useState(getProfile(session?.user?.id) || {});
   const [lang, setLang] = useState(getLanguage());
   const [confirmDialog, setConfirmDialog] = useState(null);
-  const askConfirm = useCallback((title, message = '', confirmLabel = t('confirm')) => new Promise((resolve) => setConfirmDialog({ title, message, confirmLabel, resolve })), [t]);
-  const settleConfirm = useCallback((answer) => { setConfirmDialog((current) => { current?.resolve?.(answer); return null; }); }, []);
+  const askConfirm = useCallback((title, message = '', confirmLabel = t('confirm')) => new Promise((resolve) => {
+    setConfirmDialog({ title, message, confirmLabel, resolve });
+  }), [t]);
+  const settleConfirm = useCallback((answer) => {
+    const resolve = confirmDialog?.resolve;
+    setConfirmDialog(null);
+    resolve?.(answer);
+  }, [confirmDialog]);
 
   // HOT-001: Подтягиваем имя/город с сервера при КАЖДОМ открытии (focus).
   // Так изменения из EditProfile сразу видны после goBack().
