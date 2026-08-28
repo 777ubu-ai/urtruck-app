@@ -57,13 +57,12 @@ test('deal workspace is chat-first by default; the map is a deliberate, button-t
   // PR #255 QA pass (2026-08-20): the prior map-first design was reverted —
   // owner-confirmed "map-first бардак" must not come back. Chat renders
   // fullscreen by default; the map only appears after an explicit tap on the
-  // "Карта рейса" card, and a visible control returns to chat from there.
+  // compact header map button, and a visible control returns to chat from there.
   assert.match(workspace, /const VIEW_CHAT = 'chat'/);
   assert.match(workspace, /const VIEW_MAP = 'map'/);
   assert.match(workspace, /useState\(VIEW_CHAT\)/, 'chat must be the default view, not the map');
   assert.match(workspace, /testID="deal-chat-fullscreen"/);
-  assert.match(workspace, /testID="deal-top-quick-actions"/);
-  assert.match(workspace, /testID="deal-map-card-open"/);
+  assert.match(workspace, /testID="deal-header-map"/);
   assert.match(workspace, /testID="deal-map-first-area"/);
   assert.match(workspace, /<TruckMap/);
   assert.match(workspace, /routePoints=\{routePoints\}/);
@@ -73,12 +72,16 @@ test('deal workspace is chat-first by default; the map is a deliberate, button-t
   assert.doesNotMatch(workspace, /open_route_btn|Открыть маршрут|navigation\.navigate\('TrackTruck'/);
 });
 
-test('deal workspace uses two compact top action buttons instead of tall map/status blocks', () => {
-  assert.match(workspace, /topQuickActions/);
-  assert.match(workspace, /quickActionMap/);
-  assert.match(workspace, /quickActionStatus/);
-  assert.match(workspace, /testID="deal-status-compact-open"/);
-  assert.match(workspace, /quickActionCard: \{ flex: 1, minHeight: 48/);
+test('deal workspace uses bright header action buttons instead of large map/status cards', () => {
+  assert.match(workspace, /testID="deal-header-map"/);
+  assert.match(workspace, /testID="deal-status-open"/);
+  assert.match(workspace, /headerIconBtn: \{/);
+  assert.match(workspace, /backgroundColor: '#168759'/);
+  assert.match(workspace, /width: 42/);
+  assert.doesNotMatch(workspace, /testID="deal-top-quick-actions"/);
+  assert.doesNotMatch(workspace, /testID="deal-map-card-open"/);
+  assert.doesNotMatch(workspace, /testID="deal-status-compact-open"/);
+  assert.doesNotMatch(workspace, /quickActionCard/);
   assert.doesNotMatch(workspace, /actionBar: \{/);
   assert.doesNotMatch(workspace, /mapCard: \{/);
 });
