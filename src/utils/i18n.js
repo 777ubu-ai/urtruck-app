@@ -1339,6 +1339,7 @@ const translations = {
     route_no_points_for_type: 'Для выбранной страны пока нет точек этого типа. Введите вручную ниже.',
     route_use_free_text: 'Использовать как есть',
     route_pick_country_first: 'Сначала выберите страну',
+    loc_whole_country: 'Вся страна',
 
     country_CN: 'Китай',
     country_KZ: 'Казахстан',
@@ -1914,6 +1915,10 @@ const translations = {
     pro_progress_items_many: 'пунктов',
     pro_become_btn: 'Получить статус PRO',
     pro_active_badge: 'PRO активен',
+    pro_inactive_badge: 'PRO не активен',
+    verification_passed_short: 'Проверка пройдена',
+    verification_failed_short: 'Проверка не пройдена',
+    done: 'Готово',
     pro_beta_note: 'В бета-периоде PRO бесплатен',
 
     pro_section_legal: 'Юридический статус',
@@ -3161,6 +3166,7 @@ const translations = {
     route_no_points_for_type: 'Таңдалған елде бұл түрдегі нүктелер әлі жоқ. Төменде қолмен енгізіңіз.',
     route_use_free_text: 'Енгізілген күйінде пайдалану',
     route_pick_country_first: 'Алдымен елді таңдаңыз',
+    loc_whole_country: 'Бүкіл ел',
 
     country_CN: 'Қытай',
     country_KZ: 'Қазақстан',
@@ -3725,6 +3731,10 @@ const translations = {
     pro_progress_items_many: 'тармақ',
     pro_become_btn: 'PRO мәртебесін алу',
     pro_active_badge: 'PRO белсенді',
+    pro_inactive_badge: 'PRO белсенді емес',
+    verification_passed_short: 'Тексеру өтті',
+    verification_failed_short: 'Тексеру өтпеді',
+    done: 'Дайын',
     pro_beta_note: 'Бета кезеңінде PRO тегін',
 
     pro_section_legal: 'Заңды мәртебе',
@@ -4954,6 +4964,7 @@ const translations = {
     route_no_points_for_type: '所选国家暂无此类型地点。请在下方手动输入。',
     route_use_free_text: '按输入使用',
     route_pick_country_first: '请先选择国家',
+    loc_whole_country: '全国',
 
     country_CN: '中国',
     country_KZ: '哈萨克斯坦',
@@ -5517,6 +5528,10 @@ const translations = {
     pro_progress_items_many: '项',
     pro_become_btn: '获取 PRO 状态',
     pro_active_badge: 'PRO 已激活',
+    pro_inactive_badge: 'PRO 未激活',
+    verification_passed_short: '审核已通过',
+    verification_failed_short: '审核未通过',
+    done: '完成',
     pro_beta_note: '内测期 PRO 免费',
 
     pro_section_legal: '法律身份',
@@ -6726,6 +6741,7 @@ const translations = {
     route_no_points_for_type: 'No points of this type for the selected country yet. Enter manually below.',
     route_use_free_text: 'Use as typed',
     route_pick_country_first: 'Select a country first',
+    loc_whole_country: 'Whole country',
 
     country_CN: 'China',
     country_KZ: 'Kazakhstan',
@@ -7288,6 +7304,10 @@ const translations = {
     pro_progress_items_many: 'items',
     pro_become_btn: 'Get PRO status',
     pro_active_badge: 'PRO active',
+    pro_inactive_badge: 'PRO inactive',
+    verification_passed_short: 'Verification passed',
+    verification_failed_short: 'Verification not passed',
+    done: 'Done',
     pro_beta_note: 'During beta PRO is free',
 
     pro_section_legal: 'Legal status',

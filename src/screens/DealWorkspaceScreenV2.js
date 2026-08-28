@@ -1070,6 +1070,12 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const routeLabel = `${localizePlace(from, language)} → ${localizePlace(to, language)}`;
   const visibleDealStatus = userFacingDealStatus(deal?.status || 'accepted');
   const statusLabel = visibleDealStatus === 'delivered' ? ui.awaitingReceiptStatus : formatStatus(visibleDealStatus);
+  const statusActionIcon =
+    visibleDealStatus === 'in_progress' ? 'truck'
+      : visibleDealStatus === 'at_border' ? 'map-pin'
+        : visibleDealStatus === 'delivered' ? 'package'
+          : visibleDealStatus === 'received' || visibleDealStatus === 'completed' ? 'check-circle'
+            : 'check-circle';
   const partnerName = text(partner?.name, deal?.counterparty_name, isDriver ? cargo?.owner_name : trip?.driver_display_name);
 
   const rawCargoName = text(deal?.cargo_desc, cargo?.cargo_desc);
@@ -1132,11 +1138,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     sendRawText(parts.join('\n'));
   }, [ui.contactCardTitle, counterpartyMeta, routeLabel, sendRawText]);
 
-  const openCallMenu = React.useCallback(() => {
-    setAttachOpen(false);
-    setCallMenuOpen(true);
-  }, []);
-
   const jumpLatest = () => {
     nearBottomRef.current = true;
     setShowJumpLatest(false);
@@ -1155,7 +1156,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     { key: 'photo', icon: 'image', label: ui.attachPhoto, onPress: sendGalleryPhoto, testID: 'deal-chat-attach-photo' },
     { key: 'camera', icon: 'camera', label: ui.attachCamera, onPress: sendCameraPhoto, testID: 'deal-chat-attach-camera' },
     { key: 'share', icon: 'share', label: ui.attachShare, onPress: sendDealShare, testID: 'deal-chat-attach-share' },
-    { key: 'call', icon: 'phone-alt', label: ui.attachCall, onPress: openCallMenu, testID: 'deal-chat-attach-call' },
+    { key: 'status', icon: 'tasks', label: ui.statuses, onPress: () => { setAttachOpen(false); setStatusModalOpen(true); }, testID: 'deal-chat-attach-status' },
     { key: 'location', icon: 'map-marker-alt', label: ui.attachLocation, onPress: sendLocation, busy: locationSending, testID: 'deal-chat-attach-location' },
     { key: 'document', icon: 'file-alt', label: ui.attachDocument, onPress: pickAndSendDocument, testID: 'deal-chat-attach-document' },
     { key: 'contact', icon: 'user-alt', label: ui.attachContact, onPress: sendContactCard, testID: 'deal-chat-attach-contact' },
@@ -1183,12 +1184,12 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           </View>
           <View style={s.headerActions}>
             <TouchableOpacity
-              onPress={() => setCallMenuOpen(true)}
+              onPress={openMap}
               style={[s.headerIconBtn, { borderColor: colors.border }]}
-              testID="deal-header-call"
-              accessibilityLabel={ui.attachCall}
+              testID="deal-header-map"
+              accessibilityLabel={t('deal_map_card_title')}
             >
-              <Feather name="phone" size={16} color={colors.text} />
+              <Feather name="map" size={16} color={colors.text} />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setStatusModalOpen(true)}
@@ -1196,7 +1197,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
               testID="deal-status-open"
               accessibilityLabel={ui.statuses}
             >
-              <Feather name="clock" size={16} color={colors.text} />
+              <Feather name={statusActionIcon} size={16} color={colors.text} />
             </TouchableOpacity>
           </View>
         </View>
@@ -1210,38 +1211,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
               </View>
             ) : (
               <>
-                {nextAction ? (
-                  <View style={s.topQuickActions} testID="deal-top-quick-actions">
-                    {dealId ? (
-                      <TouchableOpacity style={[s.quickActionCard, s.quickActionMap]} onPress={openMap} testID="deal-map-card-open">
-                        <View style={s.quickActionIconSoft}><Feather name="map" size={16} color="#168759" /></View>
-                        <View style={s.quickActionTextBlock}>
-                          <Text style={s.quickActionTitle}>{t('deal_map_card_title')}</Text>
-                          <Text style={s.quickActionSub} numberOfLines={1}>{t('deal_map_card_open')}</Text>
-                        </View>
-                      </TouchableOpacity>
-                    ) : null}
-                    <TouchableOpacity
-                      style={[
-                        s.quickActionCard,
-                        nextAction.disabled ? s.quickActionStatusDisabled : s.quickActionStatus,
-                      ]}
-                      onPress={runNextAction}
-                      disabled={nextAction.disabled || statusLoading || trackingLoading}
-                      testID={nextActionTestId}
-                    >
-                      <View style={s.quickActionIconGreen}>
-                        <Feather name={nextAction.icon} size={16} color="#FFFFFF" />
-                      </View>
-                      <View style={s.quickActionTextBlock}>
-                        <Text style={[s.quickActionTitle, s.quickActionTitleOnGreen]} numberOfLines={1}>
-                          {statusLoading || trackingLoading ? '…' : nextAction.label}
-                        </Text>
-                        <Text style={s.quickActionSubOnGreen} numberOfLines={1}>{statusLabel}</Text>
-                      </View>
-                    </TouchableOpacity>
-                  </View>
-                ) : dealId ? (
+                {dealId ? (
                   <View style={s.topQuickActions} testID="deal-top-quick-actions">
                     <TouchableOpacity style={[s.quickActionCard, s.quickActionMap]} onPress={openMap} testID="deal-map-card-open">
                       <View style={s.quickActionIconSoft}><Feather name="map" size={16} color="#168759" /></View>
@@ -1251,14 +1221,16 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                       </View>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[s.quickActionCard, s.quickActionHistory]}
+                      style={[s.quickActionCard, s.quickActionStatus]}
                       onPress={() => setStatusModalOpen(true)}
                       testID="deal-status-compact-open"
                     >
-                      <View style={s.quickActionIconSoft}><Feather name="clock" size={16} color="#168759" /></View>
+                      <View style={s.quickActionIconGreen}>
+                        <Feather name={statusActionIcon} size={16} color="#FFFFFF" />
+                      </View>
                       <View style={s.quickActionTextBlock}>
-                        <Text style={s.quickActionTitle} numberOfLines={1}>{ui.statuses}</Text>
-                        <Text style={s.quickActionSub} numberOfLines={1}>{statusLabel}</Text>
+                        <Text style={[s.quickActionTitle, s.quickActionTitleOnGreen]} numberOfLines={1}>{statusLabel}</Text>
+                        <Text style={s.quickActionSubOnGreen} numberOfLines={1}>{ui.statuses}</Text>
                       </View>
                     </TouchableOpacity>
                   </View>
@@ -1542,6 +1514,17 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                 renderItem={() => <DealStatusTimeline events={timeline} fallbackStatus={statusLabel} />}
                 contentContainerStyle={{ paddingBottom: 12 }}
               />
+              {nextAction ? (
+                <TouchableOpacity
+                  style={[s.statusNextBtn, { opacity: nextAction.disabled || statusLoading || trackingLoading ? 0.6 : 1 }]}
+                  onPress={runNextAction}
+                  disabled={nextAction.disabled || statusLoading || trackingLoading}
+                  testID={nextActionTestId || 'deal-status-next-action'}
+                >
+                  <Feather name={nextAction.icon} size={17} color="#FFFFFF" />
+                  <Text style={s.statusNextText}>{statusLoading || trackingLoading ? '…' : nextAction.label}</Text>
+                </TouchableOpacity>
+              ) : null}
               {deal?.status === 'accepted' ? (
                 <TouchableOpacity style={s.cancelLink} onPress={cancelDeal} testID="deal-cancel-link"><Text style={s.cancelLinkText}>{ui.cancelDeal}</Text></TouchableOpacity>
               ) : null}
@@ -1703,6 +1686,8 @@ const s = StyleSheet.create({
 
   statusModalCard: { borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 14, paddingTop: 14 },
   statusModalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  statusNextBtn: { minHeight: 50, borderRadius: 16, backgroundColor: '#168759', marginHorizontal: 2, marginBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  statusNextText: { color: '#FFFFFF', fontSize: 14, fontWeight: '900' },
   cancelLink: { alignSelf: 'center', paddingHorizontal: 14, paddingVertical: 10, marginTop: 4, marginBottom: 8 },
   cancelLinkText: { color: '#EF4444', fontSize: 12.5, fontWeight: '750' },
 });

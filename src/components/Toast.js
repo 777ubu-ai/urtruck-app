@@ -15,7 +15,7 @@ export const ToastProvider = ({ children }) => {
     setToasts(prev => prev.filter(t => t.id !== id));
   }, []);
 
-  const toast = useCallback((text, type = 'info', duration = 3000) => {
+  const toast = useCallback((text, type = 'info', duration = 3000, options = {}) => {
     // PR-C2 defence-in-depth: если кто-то случайно передал object вместо
     // string (например `error.detail` от FastAPI 403 verification_required),
     // не падаем с React error #31. Делаем JSON.stringify fallback.
@@ -35,7 +35,13 @@ export const ToastProvider = ({ children }) => {
       const limited = prev.length >= 3 ? prev.slice(1) : prev;
       const id = ++toastIdCounter;
       setTimeout(() => remove(id), duration);
-      return [...limited, { id, text: safeText, type }];
+      return [...limited, {
+        id,
+        text: safeText,
+        type,
+        actionLabel: options?.actionLabel,
+        onAction: typeof options?.onAction === 'function' ? options.onAction : null,
+      }];
     });
   }, [remove]);
 
@@ -73,6 +79,18 @@ function ToastItem({ toast, onClose, index }) {
     <Animated.View style={[s.toast, { backgroundColor: theme.card, borderColor: c.bg, opacity, transform: [{ translateY }], top: 60 + index * 70 }]}>
       <View style={[s.iconWrap, { backgroundColor: c.bg }]}><Text style={s.icon}>{c.icon}</Text></View>
       <Text style={[s.text, { color: theme.text }]} numberOfLines={3}>{toast.text}</Text>
+      {toast.actionLabel && toast.onAction ? (
+        <TouchableOpacity
+          onPress={() => {
+            try { toast.onAction(); } catch {}
+            onClose();
+          }}
+          style={[s.actionBtn, { borderColor: c.bg }]}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={[s.actionText, { color: c.bg }]}>{toast.actionLabel}</Text>
+        </TouchableOpacity>
+      ) : null}
       <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
         <Text style={[s.close, { color: theme.textMuted }]}>✕</Text>
       </TouchableOpacity>
@@ -106,5 +124,7 @@ const s = StyleSheet.create({
   iconWrap: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   icon: { color: '#fff', fontSize: 14, fontWeight: '900' },
   text: { flex: 1, fontSize: 13, fontWeight: '600' },
+  actionBtn: { minHeight: 30, paddingHorizontal: 10, borderRadius: 15, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  actionText: { fontSize: 12, fontWeight: '900' },
   close: { fontSize: 16, fontWeight: '700' },
 });
