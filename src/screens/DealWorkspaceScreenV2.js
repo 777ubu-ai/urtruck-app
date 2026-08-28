@@ -4,6 +4,7 @@ import {
   AppState,
   FlatList,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Linking,
   Modal,
@@ -253,6 +254,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [callMenuOpen, setCallMenuOpen] = React.useState(false);
   const [statusModalOpen, setStatusModalOpen] = React.useState(false);
   const [recording, setRecording] = React.useState(false);
+  const [composerFocused, setComposerFocused] = React.useState(false);
+  const [composerCollapsed, setComposerCollapsed] = React.useState(false);
   const [recordSecs, setRecordSecs] = React.useState(0);
   const [confirmDialog, setConfirmDialog] = React.useState(null);
   const [showJumpLatest, setShowJumpLatest] = React.useState(false);
@@ -263,6 +266,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [autoTranslate, setAutoTranslate] = React.useState(false);
 
   const listRef = React.useRef(null);
+  const inputRef = React.useRef(null);
   const mounted = React.useRef(true);
   const recordStartRef = React.useRef(0);
   const nearBottomRef = React.useRef(true);
@@ -297,7 +301,27 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const onComposerFocus = React.useCallback(() => {
     setAttachOpen(false);
     setCallMenuOpen(false);
+    setComposerFocused(true);
+    setComposerCollapsed(false);
   }, []);
+
+  const onComposerBlur = React.useCallback(() => {
+    setComposerFocused(false);
+  }, []);
+
+  const expandComposer = React.useCallback(() => {
+    setComposerCollapsed(false);
+  }, []);
+
+  const collapseComposer = React.useCallback(() => {
+    if (recording || input.trim()) return;
+    setAttachOpen(false);
+    setCallMenuOpen(false);
+    setComposerFocused(false);
+    setComposerCollapsed(true);
+    inputRef.current?.blur?.();
+    Keyboard.dismiss();
+  }, [input, recording]);
 
   React.useEffect(() => {
     if (!recording) { setRecordSecs(0); return undefined; }
@@ -650,6 +674,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     if (!body) return;
     setInput('');
     setInputHeight(40);
+    setComposerCollapsed(false);
     sendRawText(body);
   }, [input, sendRawText]);
 
@@ -680,6 +705,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
   const sendLocation = React.useCallback(async () => {
     setAttachOpen(false);
+    setComposerCollapsed(false);
     if (locationSending) return;
     setLocationSending(true);
     try {
@@ -696,6 +722,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
   const sendPhoto = React.useCallback(async (camera) => {
     try {
+      setComposerCollapsed(false);
       if (camera) {
         const permission = await ImagePicker.requestCameraPermissionsAsync();
         if (permission.status !== 'granted') return;
@@ -761,6 +788,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
   const pickAndSendDocument = React.useCallback(async () => {
     setAttachOpen(false);
+    setComposerCollapsed(false);
     if (!roomId) return;
     const res = await DocumentPicker.getDocumentAsync({
       type: DOC_ATTACH_TYPES,
@@ -796,6 +824,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       try {
         setAttachOpen(false);
         setCallMenuOpen(false);
+        setComposerCollapsed(false);
         const ok = await voice.startRecording();
         if (!ok) { toast(t('voice_error_record'), 'error'); return; }
         recordStartRef.current = Date.now();
@@ -810,6 +839,30 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     } catch { toast(t('voice_error_record'), 'error'); return; }
     if (!result?.uri) { toast(t('voice_error_record'), 'error'); return; }
     const duration = result.duration || Math.max(1, Math.round((Date.now() - recordStartRef.current) / 1000));
+    const clientId = newClientId('voice');
+    const voiceItem = {
+      id: clientId,
+      mine: true,
+      text: '',
+      voice: true,
+      mediaUrl: result.uri,
+      voiceDuration: duration,
+      time: nowTime(),
+      optimistic: true,
+      sendStatus: 'sending',
+      voiceUri: result.uri,
+      voiceBlob: result.blob || null,
+      voiceMime: result.blob?.type || null,
+    };
+    setMessages((items) => [...items, voiceItem]);
+    nearBottomRef.current = true;
+    setShowJumpLatest(false);
+    setTimeout(() => listRef.current?.scrollToEnd?.({ animated: true }), 40);
+
+    const failVoice = (message) => {
+      setMessages((items) => items.map((m) => (m.id === clientId ? { ...m, sendStatus: 'failed', sendError: message } : m)));
+    };
+
     let upload;
     try {
       upload = await chatAPI.uploadChatVoice(result.uri, {
@@ -826,22 +879,38 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         : error?.status === 413 ? 'doc_error_too_large'
           : error?.status >= 500 ? 'doc_error_server'
             : 'voice_error_upload';
-      toast(key ? t(key) : t('no_connection'), 'error');
+      const message = key ? t(key) : t('no_connection');
+      failVoice(message);
+      toast(message, 'error');
       return;
     }
-    if (!upload?.voice_key) { toast(t('voice_error_upload'), 'error'); return; }
+    if (!upload?.voice_key) {
+      const message = t('voice_error_upload');
+      failVoice(message);
+      toast(message, 'error');
+      return;
+    }
     try {
       await chatAPI.send({
         roomId, toUserId: recipientId, text: `🎤 ${ui.voiceMessage}`, photoUrl: upload.voice_key,
         isVoice: true, voiceDuration: duration,
         cargoId: deal?.cargo_id || params.cargoId || null, tripId: deal?.trip_id || params.tripId || null,
-        clientMsgId: newClientId(),
+        clientMsgId: clientId,
       });
+      setMessages((items) => items.map((m) => (m.id === clientId ? { ...m, sendStatus: 'sent' } : m)));
       setTimeout(loadMessages, 120);
     } catch {
-      toast(t('voice_error_send'), 'error');
+      const message = t('voice_error_send');
+      failVoice(message);
+      toast(message, 'error');
     }
   }, [recording, roomId, recipientId, deal?.cargo_id, deal?.trip_id, params.cargoId, params.tripId, ui.voiceMessage, loadMessages, toast, t]);
+
+  const toggleAttachMenu = React.useCallback(() => {
+    setComposerCollapsed(false);
+    setCallMenuOpen(false);
+    setAttachOpen((value) => !value);
+  }, []);
 
   const renderMessage = React.useCallback(({ item }) => {
     if (item.system) return (
@@ -898,6 +967,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
               <Text style={{ color: item.mine ? '#FFFFFF' : colors.text, fontWeight: '700' }}>
                 {ui.voiceMessage}{item.voiceDuration ? ` · ${item.voiceDuration}${t('unit_sec_short')}` : ''}
               </Text>
+              {item.sendStatus === 'sending' ? <ActivityIndicator size="small" color={item.mine ? '#FFFFFF' : '#168759'} /> : null}
             </TouchableOpacity>
           ) : item.text ? (
             <>
@@ -944,9 +1014,16 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           <Text style={[s.messageTime, { color: item.mine ? 'rgba(255,255,255,0.68)' : colors.textMuted }]}>{item.time}</Text>
         </View>
         {item.sendStatus === 'failed' ? (
-          <TouchableOpacity onPress={() => retryFailedText(item)} style={s.errorRow} testID="deal-chat-message-retry">
+          <TouchableOpacity
+            onPress={item.voice ? undefined : () => retryFailedText(item)}
+            disabled={!!item.voice}
+            style={s.errorRow}
+            testID={item.voice ? 'deal-chat-voice-error' : 'deal-chat-message-retry'}
+          >
             <Feather name="alert-circle" size={12} color="#EF4444" />
-            <Text style={s.errorText} numberOfLines={2}>{item.sendError || t('chat_send_failed')} · {t('chat_attach_retry')}</Text>
+            <Text style={s.errorText} numberOfLines={2}>
+              {item.sendError || t('chat_send_failed')}{item.voice ? '' : ` · ${t('chat_attach_retry')}`}
+            </Text>
           </TouchableOpacity>
         ) : null}
       </View>
@@ -1176,6 +1253,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                       nearBottomRef.current = nearBottom;
                       if (nearBottom && showJumpLatest) setShowJumpLatest(false);
                     }}
+                    onScrollBeginDrag={collapseComposer}
                     scrollEventThrottle={80}
                     onContentSizeChange={() => { if (nearBottomRef.current) listRef.current?.scrollToEnd?.({ animated: false }); }}
                     ListEmptyComponent={<Text style={[s.emptyText, { color: colors.textMuted }]}>{ui.noMessages}</Text>}
@@ -1200,25 +1278,46 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                     <TouchableOpacity onPress={cancelRecording} style={s.recordCancelBtn} testID="deal-chat-recording-cancel" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                       <Feather name="trash-2" size={15} color="#B91C1C" />
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={toggleVoice} style={s.recordStopBtn} testID="deal-chat-recording-stop">
-                      <Feather name="square" size={13} color="#FFFFFF" />
+                    <TouchableOpacity onPress={toggleVoice} style={s.recordSendBtn} testID="deal-chat-recording-send">
+                      <FontAwesome5 name="paper-plane" size={13} color="#FFFFFF" solid />
                     </TouchableOpacity>
                   </View>
                 ) : null}
 
-                <View style={[s.composer, { borderTopColor: colors.border, paddingBottom: attachOpen ? 9 : Math.max(insets.bottom, 8) }]} testID="deal-chat-composer">
+                {composerCollapsed && !recording ? (
                   <TouchableOpacity
-                    style={s.composerCircle}
+                    activeOpacity={0.75}
+                    style={[s.composerCollapsed, { borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, 6) }]}
+                    onPress={expandComposer}
+                    testID="deal-chat-composer-collapsed"
+                    accessibilityLabel={isDriver ? ui.writeShipper : ui.write}
+                  >
+                    <View style={s.composerCollapsedHandle} />
+                  </TouchableOpacity>
+                ) : (
+                <View
+                  style={[
+                    s.composer,
+                    composerFocused && s.composerFocused,
+                    { borderTopColor: colors.border, paddingBottom: attachOpen ? 9 : Math.max(insets.bottom, 8) },
+                  ]}
+                  testID="deal-chat-composer"
+                >
+                  <TouchableOpacity
+                    style={[s.composerCircle, recording && s.composerCircleDisabled]}
                     onPress={toggleVoice}
+                    disabled={recording}
                     testID="deal-chat-voice"
                   >
-                    <Feather name={recording ? 'square' : 'volume-2'} size={22} color="#202020" />
+                    <Feather name="volume-2" size={22} color={recording ? '#8A8A8A' : '#202020'} />
                   </TouchableOpacity>
                   <View style={s.inputShell}>
                     <TextInput
+                      ref={inputRef}
                       value={input}
                       onChangeText={(value) => { setInput(value); if (roomId) chatAPI.typing(roomId); }}
                       onFocus={onComposerFocus}
+                      onBlur={onComposerBlur}
                       onContentSizeChange={(event) => setInputHeight(Math.max(40, Math.min(96, Math.ceil(event.nativeEvent.contentSize.height + 14))))}
                       multiline
                       scrollEnabled={inputHeight >= 96}
@@ -1229,28 +1328,34 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                     />
                     <Feather name="mic" size={22} color="#777777" style={s.inputMic} pointerEvents="none" />
                   </View>
-                  <TouchableOpacity
-                    style={s.composerCircle}
-                    onPress={showEmojiComingSoon}
-                    testID="deal-chat-emoji"
-                  >
-                    <Feather name="smile" size={26} color="#202020" />
-                  </TouchableOpacity>
+                  {!composerFocused ? (
+                    <TouchableOpacity
+                      style={s.composerCircle}
+                      onPress={showEmojiComingSoon}
+                      testID="deal-chat-emoji"
+                    >
+                      <Feather name="smile" size={26} color="#202020" />
+                    </TouchableOpacity>
+                  ) : null}
                   {input.trim() ? (
                     <TouchableOpacity style={s.sendButton} onPress={sendText} testID="deal-chat-send"><FontAwesome5 name="paper-plane" size={15} color="#FFFFFF" solid /></TouchableOpacity>
                   ) : (
                     <TouchableOpacity
                       style={s.composerCircle}
-                      onPress={() => { setAttachOpen((value) => !value); setCallMenuOpen(false); }}
+                      onPress={toggleAttachMenu}
                       testID="deal-chat-attach"
                     >
                       <Feather name="plus" size={27} color="#202020" />
                     </TouchableOpacity>
                   )}
                 </View>
+                )}
 
                 {attachOpen ? (
                   <View style={[s.attachMenu, { borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom + 18, 26) }]} testID="deal-chat-attach-menu">
+                    <TouchableOpacity style={s.attachHandleHit} onPress={collapseComposer} testID="deal-chat-attach-collapse" activeOpacity={0.8}>
+                      <View style={s.attachHandle} />
+                    </TouchableOpacity>
                     {PLUS_MENU.map((item) => (
                       <TouchableOpacity key={item.key} style={s.attachItem} onPress={item.onPress} testID={item.testID} disabled={item.busy}>
                         <View style={s.attachIcon}>
@@ -1487,9 +1592,11 @@ const s = StyleSheet.create({
   recordWaveBar: { width: 2.5, borderRadius: 2, backgroundColor: '#168759', opacity: 0.58 },
   recordText: { color: '#15392B', fontSize: 12.5, fontWeight: '800', flex: 1 },
   recordCancelBtn: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
-  recordStopBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#168759', alignItems: 'center', justifyContent: 'center' },
+  recordSendBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#168759', alignItems: 'center', justifyContent: 'center' },
 
-  attachMenu: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', minHeight: 274, paddingHorizontal: 24, paddingTop: 24, backgroundColor: '#F4F4F4', borderTopWidth: StyleSheet.hairlineWidth },
+  attachMenu: { position: 'relative', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', minHeight: 252, paddingHorizontal: 24, paddingTop: 30, backgroundColor: '#F4F4F4', borderTopWidth: StyleSheet.hairlineWidth },
+  attachHandleHit: { position: 'absolute', top: 0, left: 0, right: 0, height: 28, alignItems: 'center', justifyContent: 'center', zIndex: 2 },
+  attachHandle: { width: 48, height: 5, borderRadius: 3, backgroundColor: '#D5D8DA' },
   attachItem: { width: '25%', alignItems: 'center', gap: 11, marginBottom: 24 },
   attachIcon: { width: 64, height: 64, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
   attachLabel: { color: '#737373', fontSize: 13.5, fontWeight: '400', textAlign: 'center' },
@@ -1498,7 +1605,11 @@ const s = StyleSheet.create({
   attachPagerDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#E0E0E0' },
 
   composer: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingTop: 9, backgroundColor: '#F3F3F3', borderTopWidth: StyleSheet.hairlineWidth },
+  composerFocused: { backgroundColor: '#F5F5F5' },
+  composerCollapsed: { minHeight: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F4F4F4', borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 7 },
+  composerCollapsedHandle: { width: 74, height: 5, borderRadius: 3, backgroundColor: '#CDD2D6' },
   composerCircle: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F7F7F7', borderWidth: 2, borderColor: '#202020' },
+  composerCircleDisabled: { borderColor: '#8A8A8A', opacity: 0.55 },
   inputShell: { flex: 1, minHeight: 40, maxHeight: 96, borderRadius: 6, backgroundColor: '#FFFFFF', justifyContent: 'center', position: 'relative' },
   input: { minHeight: 40, maxHeight: 96, paddingLeft: 13, paddingRight: 42, paddingTop: 9, paddingBottom: 8, fontSize: 14.5, lineHeight: 19 },
   inputMic: { position: 'absolute', right: 13, bottom: 8 },

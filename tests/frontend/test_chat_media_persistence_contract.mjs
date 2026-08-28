@@ -96,20 +96,38 @@ test('text send failures keep the real backend status/detail instead of one gene
 
 test('a failed text message keeps its optimistic bubble visible with a retry, never silently disappears', () => {
   assert.match(workspace, /sendStatus: 'failed', sendError: errorText/);
-  assert.match(workspace, /testID="deal-chat-message-retry"/);
+  assert.match(workspace, /'deal-chat-message-retry'/);
   assert.match(workspace, /const retryFailedText = React\.useCallback/);
   // The queued (offline/outbox) path must stay visually distinct from a hard
   // failure — a transient network gap is not "your message failed".
   assert.match(workspace, /sendStatus: 'queued'/);
 });
 
-test('voice recording shows a live indicator, timer, waveform, and both stop and cancel controls', () => {
+test('voice recording shows a live indicator, timer, waveform, and send/cancel controls', () => {
   assert.match(workspace, /testID="deal-chat-recording-bar"/);
   assert.match(workspace, /testID="deal-chat-recording-cancel"/);
-  assert.match(workspace, /testID="deal-chat-recording-stop"/);
+  assert.match(workspace, /testID="deal-chat-recording-send"/);
+  assert.match(workspace, /name="paper-plane"/);
+  assert.doesNotMatch(workspace, /testID="deal-chat-recording-stop"/);
   assert.match(workspace, /recordSecs % 60/);
   assert.match(workspace, /recordWaveBar/);
   assert.match(workspace, /const cancelRecording = React\.useCallback/);
+});
+
+test('voice send renders an optimistic bubble immediately before upload and reuses its clientMsgId', () => {
+  const fn = workspace.match(/const toggleVoice = React\.useCallback\(async \(\) => \{([\s\S]*?)\n  \}, \[/);
+  assert.ok(fn, 'toggleVoice definition not found');
+  const body = fn[1];
+  const optimisticIndex = body.indexOf("setMessages((items) => [...items, voiceItem])");
+  const uploadIndex = body.indexOf('chatAPI.uploadChatVoice');
+  assert.ok(optimisticIndex >= 0, 'voice optimistic bubble must be appended before network work');
+  assert.ok(uploadIndex > optimisticIndex, 'voice upload must happen after the local bubble is visible');
+  assert.match(body, /const clientId = newClientId\('voice'\)/);
+  assert.match(body, /sendStatus: 'sending'/);
+  assert.match(body, /clientMsgId: clientId/);
+  assert.match(workspace, /server\.clientMsgId === item\.id/);
+  assert.match(body, /sendStatus: 'failed', sendError: message/);
+  assert.match(workspace, /testID=\{item\.voice \? 'deal-chat-voice-error' : 'deal-chat-message-retry'\}/);
 });
 
 test('voice failures distinguish record vs upload vs send, each with its own message', () => {
