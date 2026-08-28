@@ -202,6 +202,21 @@ test('voiceRecorder produces a real, non-empty web Blob before upload is attempt
   assert.match(recorder, /if \(!blob \|\| blob\.size === 0\) \{ resolve\(null\); return; \}/);
 });
 
+test('voice playback is single-instance so repeated taps do not create echo', () => {
+  const recorder = fs.readFileSync('src/utils/voiceRecorder.js', 'utf8');
+  assert.match(workspace, /const playVoiceMessage = React\.useCallback/);
+  assert.match(workspace, /voice\.play\(item\.mediaUrl\)/);
+  assert.match(workspace, /toast\(t\('voice_play_fail'\), 'error'\)/);
+  assert.match(recorder, /let _webAudio = null/);
+  assert.match(recorder, /let _playingUri = null/);
+  assert.match(recorder, /let _playPromise = null/);
+  assert.match(recorder, /_playingUri === uri/);
+  assert.match(recorder, /!_webAudio\.paused && !_webAudio\.ended/);
+  assert.match(recorder, /return true/);
+  assert.match(recorder, /_webAudio\.pause\(\)/);
+  assert.match(recorder, /_playingUri = null/);
+});
+
 test('voice upload failures distinguish too-large, storage-rejected/unreachable, and generic causes, not one flat message', () => {
   const fn = workspace.match(/upload = await chatAPI\.uploadChatVoice\(result\.uri, \{[\s\S]*?\n    \} catch \(error\) \{([\s\S]*?)\n    \}/);
   assert.ok(fn, 'toggleVoice upload catch block not found');

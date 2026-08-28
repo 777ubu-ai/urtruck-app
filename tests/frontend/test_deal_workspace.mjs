@@ -177,6 +177,19 @@ test('composer collapses to a thin WhatsApp-style handle and avoids duplicate em
   assert.doesNotMatch(workspace, /keyboardWillShow|keyboardDidShow/);
 });
 
+test('emoji button opens a real bottom emoji picker instead of a coming-soon toast', () => {
+  assert.match(workspace, /const EMOJI_MENU = \[/);
+  assert.match(workspace, /const \[emojiOpen, setEmojiOpen\] = React\.useState\(false\)/);
+  assert.match(workspace, /const toggleEmojiMenu = React\.useCallback/);
+  assert.match(workspace, /const insertEmoji = React\.useCallback/);
+  assert.match(workspace, /testID="deal-chat-emoji-menu"/);
+  assert.match(workspace, /testID=\{`deal-chat-emoji-option-\$\{index\}`\}/);
+  assert.match(workspace, /setInput\(\(value\) => `\$\{value\}\$\{emoji\}`\)/);
+  assert.match(workspace, /onPress=\{toggleEmojiMenu\}/);
+  assert.doesNotMatch(workspace, /showEmojiComingSoon/);
+  assert.doesNotMatch(workspace, /toast\(ui\.comingSoon/);
+});
+
 test('every plus-menu tile has a real handler — no decorative buttons', () => {
   const menuBlock = workspace.match(/const PLUS_MENU = \[([\s\S]*?)\];/);
   assert.ok(menuBlock, 'PLUS_MENU definition not found');
