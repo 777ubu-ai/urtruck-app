@@ -1,24 +1,14 @@
 """Регрессия для двух фиксов предрелизного аудита (28.08.2026).
 
 1. self_bid_forbidden — владелец груза / водитель рейса не может ставить
-   ставку на собственный листинг (иначе проходит всю FSM сделки один,
-   shipper_id == driver_id: фиктивные сделки, накрутка рейтинга).
+   ставку на собственный листинг (иначе проходит всю FSM сделки один).
+2. telegram webhook fail-closed — активный бот на проде без секрета
+   отклоняет подпись (OTP-oracle закрыт).
 
-2. telegram webhook fail-closed — если бот активен на проде
-   (TELEGRAM_BOT_TOKEN задан) без TELEGRAM_WEBHOOK_SECRET, подпись
-   отклоняется, а не пропускается (OTP-oracle закрыт).
+CI-контракт: top-level `def test_*` (не класс) — иначе CI гоняет файл как
+скрипт без conftest и падает импорт api.chat. Схему БД поднимает conftest.
 """
-import os
 import uuid
-from pathlib import Path
-import sys
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_selfbid.db")
-
-from database import db as dbm
-dbm.init_db()
-from database.db import get_conn, new_id
 
 import contextvars
 from api import verification_gate
@@ -43,6 +33,7 @@ verification_gate.require_level = _fake_require_level
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from api.marketplace import mp_router
+from database.db import get_conn, new_id
 
 app = FastAPI()
 app.include_router(mp_router, prefix="/api/v1/market")
@@ -77,55 +68,62 @@ def _seed_trip(driver):
     return tid
 
 
-class TestSelfBidForbidden:
-    def test_owner_cannot_bid_own_cargo(self):
-        owner = "own-" + uuid.uuid4().hex[:6]
-        cid = _seed_cargo(owner)
-        _as(owner)
-        r = client.post("/api/v1/market/bids", json={"cargo_id": cid, "amount": 900})
-        assert r.status_code == 403, f"self-bid прошёл: {r.status_code} {r.text}"
-        assert "self_bid" in r.text
+# ── self-bid ────────────────────────────────────────────
 
-    def test_other_user_can_bid_cargo(self):
-        owner = "own2-" + uuid.uuid4().hex[:6]
-        cid = _seed_cargo(owner)
-        _as("driver-" + uuid.uuid4().hex[:6])
-        r = client.post("/api/v1/market/bids", json={"cargo_id": cid, "amount": 900})
-        assert r.status_code == 200, f"чужая ставка отклонена: {r.status_code} {r.text}"
-
-    def test_driver_cannot_bid_own_trip(self):
-        driver = "drv-" + uuid.uuid4().hex[:6]
-        tid = _seed_trip(driver)
-        _as(driver)
-        r = client.post("/api/v1/market/bids", json={"trip_id": tid, "amount": 900})
-        assert r.status_code == 403, f"self-bid на рейс прошёл: {r.status_code} {r.text}"
+def test_owner_cannot_bid_own_cargo():
+    owner = "own-" + uuid.uuid4().hex[:6]
+    cid = _seed_cargo(owner)
+    _as(owner)
+    r = client.post("/api/v1/market/bids", json={"cargo_id": cid, "amount": 900})
+    assert r.status_code == 403, f"self-bid прошёл: {r.status_code} {r.text}"
+    assert "self_bid" in r.text
 
 
-class TestTelegramWebhookGuard:
-    def _reload(self):
-        import importlib
-        from api import telegram_webhook as tw
-        importlib.reload(tw)
-        return tw
+def test_other_user_can_bid_cargo():
+    owner = "own2-" + uuid.uuid4().hex[:6]
+    cid = _seed_cargo(owner)
+    _as("driver-" + uuid.uuid4().hex[:6])
+    r = client.post("/api/v1/market/bids", json={"cargo_id": cid, "amount": 900})
+    assert r.status_code == 200, f"чужая ставка отклонена: {r.status_code} {r.text}"
 
-    def test_prod_active_bot_no_secret_fails_closed(self, monkeypatch):
-        monkeypatch.setenv("URTRUCK_ENV", "production")
-        monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "1234:fake")
-        monkeypatch.delenv("TELEGRAM_WEBHOOK_SECRET", raising=False)
-        tw = self._reload()
-        assert tw._verify_telegram_signature("") is False
-        assert tw._verify_telegram_signature("anything") is False
 
-    def test_dev_or_mock_bot_still_open(self, monkeypatch):
-        monkeypatch.setenv("URTRUCK_ENV", "production")
-        monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)  # MOCK: нет токена
-        monkeypatch.delenv("TELEGRAM_WEBHOOK_SECRET", raising=False)
-        tw = self._reload()
-        assert tw._verify_telegram_signature("") is True
+def test_driver_cannot_bid_own_trip():
+    driver = "drv-" + uuid.uuid4().hex[:6]
+    tid = _seed_trip(driver)
+    _as(driver)
+    r = client.post("/api/v1/market/bids", json={"trip_id": tid, "amount": 900})
+    assert r.status_code == 403, f"self-bid на рейс прошёл: {r.status_code} {r.text}"
 
-    def test_secret_set_still_enforced(self, monkeypatch):
-        monkeypatch.setenv("TELEGRAM_WEBHOOK_SECRET", "s3cr3t")
-        tw = self._reload()
-        assert tw._verify_telegram_signature("s3cr3t") is True
-        assert tw._verify_telegram_signature("wrong") is False
-        assert tw._verify_telegram_signature("") is False
+
+# ── telegram webhook fail-closed ────────────────────────
+
+def _reload_tw():
+    import importlib
+    from api import telegram_webhook as tw
+    importlib.reload(tw)
+    return tw
+
+
+def test_prod_active_bot_no_secret_fails_closed(monkeypatch):
+    monkeypatch.setenv("URTRUCK_ENV", "production")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "1234:fake")
+    monkeypatch.delenv("TELEGRAM_WEBHOOK_SECRET", raising=False)
+    tw = _reload_tw()
+    assert tw._verify_telegram_signature("") is False
+    assert tw._verify_telegram_signature("anything") is False
+
+
+def test_mock_bot_still_open(monkeypatch):
+    monkeypatch.setenv("URTRUCK_ENV", "production")
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)  # MOCK: нет токена
+    monkeypatch.delenv("TELEGRAM_WEBHOOK_SECRET", raising=False)
+    tw = _reload_tw()
+    assert tw._verify_telegram_signature("") is True
+
+
+def test_secret_set_still_enforced(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_WEBHOOK_SECRET", "s3cr3t")
+    tw = _reload_tw()
+    assert tw._verify_telegram_signature("s3cr3t") is True
+    assert tw._verify_telegram_signature("wrong") is False
+    assert tw._verify_telegram_signature("") is False
