@@ -54,9 +54,9 @@ import { SERVER_URL } from '../config/env';
 const LIVE_TRACKING_STATUSES = ['in_progress', 'at_border'];
 const MAP_WORK_STATUSES = ['accepted', 'in_progress', 'at_border'];
 const TERMINAL_STATUSES = ['completed', 'cancelled', 'rejected', 'expired'];
-const COMPOSER_INPUT_MIN_HEIGHT = 36;
-const COMPOSER_INPUT_MAX_HEIGHT = 84;
-const COMPOSER_INPUT_VERTICAL_PADDING = 10;
+const COMPOSER_INPUT_MIN_HEIGHT = 32;
+const COMPOSER_INPUT_MAX_HEIGHT = 74;
+const COMPOSER_INPUT_VERTICAL_PADDING = 8;
 
 // WhatsApp-style chat is the default view; the trip map is a deliberate,
 // button-triggered secondary view (PR #255 review: "map-first бардак" was the
@@ -1166,45 +1166,47 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     { key: 'translate', icon: 'language', label: ui.attachTranslate, onPress: toggleAutoTranslate, testID: 'deal-chat-attach-translate' },
   ];
 
+  const compactHeader = (
+    <View style={[s.compactHeader, { borderBottomColor: colors.border, backgroundColor: colors.bg }]} testID="deal-compact-header">
+      <TouchableOpacity onPress={() => navigation.goBack()} style={s.backButton} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} testID="deal-workspace-back">
+        <Feather name="chevron-left" size={28} color={colors.text} />
+      </TouchableOpacity>
+      <View style={s.headerText}>
+        <View style={s.routeHeaderRow}>
+          <Text style={[s.routeTitle, { color: colors.text }]} numberOfLines={1}>{routeLabel}</Text>
+          <View style={s.statusPill}>
+            <View style={s.statusDot} />
+            <Text style={s.statusPillText} numberOfLines={1}>{statusLabel}</Text>
+          </View>
+        </View>
+        {cargoMeta ? <Text style={[s.metaPrimary, { color: colors.text }]} numberOfLines={1}>{cargoMeta}</Text> : null}
+        {scheduleMeta ? <Text style={[s.metaSecondary, { color: colors.textMuted }]} numberOfLines={1}>{scheduleMeta}</Text> : null}
+        <Text style={[s.partnerText, { color: colors.textMuted }]} numberOfLines={1}>{counterpartyMeta}</Text>
+      </View>
+      <View style={s.headerActions}>
+        <TouchableOpacity
+          onPress={openMap}
+          style={s.headerIconBtn}
+          testID="deal-header-map"
+          accessibilityLabel={t('deal_map_card_title')}
+        >
+          <Feather name="map" size={22} color="#FFFFFF" />
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setStatusModalOpen(true)}
+          style={s.headerIconBtn}
+          testID="deal-status-open"
+          accessibilityLabel={ui.statuses}
+        >
+          <Feather name={statusActionIcon} size={22} color="#FFFFFF" />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={['top']} testID="deal-workspace-screen">
       <KeyboardAvoidingView style={s.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
-        <View style={[s.compactHeader, { borderBottomColor: colors.border, backgroundColor: colors.bg }]} testID="deal-compact-header">
-          <TouchableOpacity onPress={() => navigation.goBack()} style={s.backButton} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} testID="deal-workspace-back">
-            <Feather name="chevron-left" size={28} color={colors.text} />
-          </TouchableOpacity>
-          <View style={s.headerText}>
-            <View style={s.routeHeaderRow}>
-              <Text style={[s.routeTitle, { color: colors.text }]} numberOfLines={1}>{routeLabel}</Text>
-              <View style={s.statusPill}>
-                <View style={s.statusDot} />
-                <Text style={s.statusPillText} numberOfLines={1}>{statusLabel}</Text>
-              </View>
-            </View>
-            {cargoMeta ? <Text style={[s.metaPrimary, { color: colors.text }]} numberOfLines={1}>{cargoMeta}</Text> : null}
-            {scheduleMeta ? <Text style={[s.metaSecondary, { color: colors.textMuted }]} numberOfLines={1}>{scheduleMeta}</Text> : null}
-            <Text style={[s.partnerText, { color: colors.textMuted }]} numberOfLines={1}>{counterpartyMeta}</Text>
-          </View>
-          <View style={s.headerActions}>
-            <TouchableOpacity
-              onPress={openMap}
-              style={s.headerIconBtn}
-              testID="deal-header-map"
-              accessibilityLabel={t('deal_map_card_title')}
-            >
-              <Feather name="map" size={22} color="#FFFFFF" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setStatusModalOpen(true)}
-              style={s.headerIconBtn}
-              testID="deal-status-open"
-              accessibilityLabel={ui.statuses}
-            >
-              <Feather name={statusActionIcon} size={22} color="#FFFFFF" />
-            </TouchableOpacity>
-          </View>
-        </View>
-
         {viewMode === VIEW_CHAT ? (
           <View style={s.chatFullscreen} testID="deal-chat-fullscreen">
             {dealLoading && !dealId ? (
@@ -1222,6 +1224,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                     keyExtractor={(item) => item.id}
                     style={s.messageList}
                     contentContainerStyle={s.messageContent}
+                    ListHeaderComponent={compactHeader}
                     keyboardShouldPersistTaps="handled"
                     onScroll={(event) => {
                       const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
@@ -1305,11 +1308,10 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                       multiline
                       scrollEnabled={inputHeight >= COMPOSER_INPUT_MAX_HEIGHT}
                       style={[s.input, { height: inputHeight, color: colors.text }]}
-                      placeholder={isDriver ? ui.writeShipper : ui.write}
-                      placeholderTextColor={colors.textMuted}
+                      placeholder=""
+                      placeholderTextColor="transparent"
                       testID="deal-chat-input"
                     />
-                    <Feather name="mic" size={18} color="#777777" style={s.inputMic} pointerEvents="none" />
                   </View>
                   {!composerFocused ? (
                     <TouchableOpacity
@@ -1624,9 +1626,8 @@ const s = StyleSheet.create({
   composerCollapsedHandle: { width: 74, height: 5, borderRadius: 3, backgroundColor: '#CDD2D6' },
   composerCircle: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F7F7F7', borderWidth: 2, borderColor: '#202020' },
   composerCircleDisabled: { borderColor: '#8A8A8A', opacity: 0.55 },
-  inputShell: { flex: 1, minHeight: 36, maxHeight: 84, borderRadius: 18, backgroundColor: '#FFFFFF', justifyContent: 'center', position: 'relative' },
-  input: { minHeight: 36, maxHeight: 84, paddingLeft: 13, paddingRight: 38, paddingTop: 7, paddingBottom: 7, fontSize: 15, lineHeight: 20, textAlignVertical: 'top' },
-  inputMic: { position: 'absolute', right: 12, bottom: 9 },
+  inputShell: { flex: 1, minHeight: 32, maxHeight: 74, borderRadius: 16, backgroundColor: '#FFFFFF', justifyContent: 'center', position: 'relative' },
+  input: { minHeight: 32, maxHeight: 74, paddingLeft: 12, paddingRight: 12, paddingTop: 6, paddingBottom: 6, fontSize: 15, lineHeight: 20, textAlignVertical: 'top' },
   sendButton: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: '#168759' },
   recordingButton: { backgroundColor: '#168759' },
 
