@@ -1,9 +1,10 @@
 name: UrTruck TestFlight RC
 
 on:
+  workflow_dispatch:
   push:
     branches:
-      - release/appstore-final-audit-20260820
+      - main
     paths:
       - .github/workflows/testflight-rc.yml
 
@@ -40,7 +41,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "SHA=$(git rev-parse HEAD)"
-          test "${GITHUB_REF_NAME}" = "release/appstore-final-audit-20260820"
+          test "${GITHUB_REF_NAME}" = "main"
           test -n "${EXPO_TOKEN:-}"
           npx eas-cli@latest whoami
 
