@@ -20,7 +20,7 @@ from typing import Optional
 from database import registration_dal as reg_dal
 from services import otp_service
 from services.whatsapp_service import generate_code
-from api.rate_limit import limit_otp_send
+from api.rate_limit import limit_otp_send, limit_otp_send_ip
 from config import IS_PRODUCTION as _IS_PRODUCTION
 
 # Переиспользуем логику verify — это тот же код, что и в wa_verify в registration.py.
@@ -59,6 +59,7 @@ def send_otp(req: SendOtpRequest, request: Request):
         }
 
     limit_otp_send(phone)
+    limit_otp_send_ip(request.client.host if (request and request.client) else None)
 
     code = generate_code()
     reg_dal.save_code(phone, code)

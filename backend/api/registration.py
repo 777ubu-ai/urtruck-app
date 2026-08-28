@@ -14,7 +14,7 @@ from services.whatsapp_service import generate_code, send_whatsapp_code, MOCK_MO
 from services.iin_validator import validate_iin_kz, extract_birthdate_from_iin
 from services import storage_service as storage
 from services import otp_service
-from api.rate_limit import limit_otp_send, limit_otp_verify, limit_guest_create
+from api.rate_limit import limit_otp_send, limit_otp_send_ip, limit_otp_verify, limit_guest_create
 from ocr.document_reader import extract_passport_data
 from biometrics.liveness import check_liveness, face_match
 from scoring.engine import calculate_score
@@ -180,8 +180,9 @@ def wa_send(req: SendCodeRequest, request: Request = None):
             detail="Для регистрации необходимо принять условия сервиса.",
         )
 
-    # Rate limit — не чаще 1/мин на phone, 5/час
+    # Rate limit — не чаще 1/мин на phone, 5/час + анти-SMS-фрод по IP
     limit_otp_send(phone_clean)
+    limit_otp_send_ip(request.client.host if (request and request.client) else None)
 
     code = generate_code()
     reg_dal.save_code(phone_clean, code)
@@ -289,6 +290,7 @@ def email_send(req: EmailSendRequest, request: Request = None):
     if REVIEWER_DEMO_EMAIL and email == REVIEWER_DEMO_EMAIL:
         return {"sent": True, "channel": "email", "mock": False, "code": None, "error": None}
     limit_otp_send(email)
+    limit_otp_send_ip(request.client.host if (request and request.client) else None)
     code = generate_code()
     reg_dal.save_code(email, code)
     result = otp_service.send_otp(email, code, channel="email")

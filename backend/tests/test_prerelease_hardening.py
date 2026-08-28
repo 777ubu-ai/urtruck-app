@@ -33,6 +33,30 @@ class TestOtpEntropy:
             assert "random.randint" not in src, f"{mod.__name__} всё ещё на random"
 
 
+class TestOtpSendIpLimit:
+    def test_ip_limit_blocks_bulk_after_15(self):
+        from api import rate_limit
+        from fastapi import HTTPException
+        ip = "203.0.113." + uuid.uuid4().hex[:6]  # уникальный IP на тест
+        # 15 разрешено
+        for i in range(15):
+            rate_limit.limit_otp_send_ip(ip)
+        # 16-й — 429
+        raised = False
+        try:
+            rate_limit.limit_otp_send_ip(ip)
+        except HTTPException as e:
+            raised = e.status_code == 429
+        assert raised, "per-IP OTP лимит не сработал на 16-й отправке"
+
+    def test_unknown_ip_not_limited(self):
+        from api import rate_limit
+        # None и "unknown" не лимитируем — иначе легитимные запросы без client
+        for _ in range(50):
+            rate_limit.limit_otp_send_ip(None)
+            rate_limit.limit_otp_send_ip("unknown")
+
+
 class TestReviewerBypassGating:
     def test_default_code_disabled_in_production(self, monkeypatch):
         # Дефолт + прод → bypass запрещён
