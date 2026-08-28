@@ -45,6 +45,7 @@ import {
 } from '../utils/backgroundLocation';
 import { compressImage } from '../utils/imageCompress';
 import { voice } from '../utils/voiceRecorder';
+import VoiceMessageBubble from '../components/VoiceMessageBubble';
 import { enqueueOutbox } from '../utils/outbox';
 import { setActiveRoom } from '../utils/activeRoom';
 import { notifyChatRead } from '../utils/unreadEvents';
@@ -940,12 +941,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     setComposerCollapsed(false);
   }, []);
 
-  const playVoiceMessage = React.useCallback(async (item) => {
-    if (!item?.mediaUrl) return;
-    const ok = await voice.play(item.mediaUrl);
-    if (!ok) toast(t('voice_play_fail'), 'error');
-  }, [toast, t]);
-
   const renderMessage = React.useCallback(({ item }) => {
     if (item.system) return (
       <View style={s.systemRow}><Text style={[s.systemText, { color: colors.textMuted }]}>{item.text}</Text></View>
@@ -996,13 +991,16 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
             </TouchableOpacity>
           ) : null}
           {item.voice ? (
-            <TouchableOpacity onPress={() => playVoiceMessage(item)} style={s.voiceRow}>
-              <Feather name="play" size={15} color={item.mine ? '#FFFFFF' : colors.text} />
-              <Text style={{ color: item.mine ? '#FFFFFF' : colors.text, fontWeight: '700' }}>
-                {ui.voiceMessage}{item.voiceDuration ? ` · ${item.voiceDuration}${t('unit_sec_short')}` : ''}
-              </Text>
-              {item.sendStatus === 'sending' ? <ActivityIndicator size="small" color={item.mine ? '#FFFFFF' : '#168759'} /> : null}
-            </TouchableOpacity>
+            <VoiceMessageBubble
+              uri={item.mediaUrl}
+              fallbackDurationSec={item.voiceDuration}
+              mine={item.mine}
+              sending={item.sendStatus === 'sending'}
+              textColor={item.mine ? '#FFFFFF' : colors.text}
+              mutedColor={item.mine ? 'rgba(255,255,255,0.85)' : colors.textMuted}
+              onError={() => toast(t('voice_play_fail'), 'error')}
+              testID="deal-chat-voice-bubble"
+            />
           ) : item.text ? (
             <>
               <Text style={[s.messageText, { color: item.mine ? '#FFFFFF' : colors.text }]}>
@@ -1062,7 +1060,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         ) : null}
       </View>
     );
-  }, [colors, ui.voiceMessage, translations, translating, t, toast, retryDocument, retryFailedText, playVoiceMessage]);
+  }, [colors, translations, translating, t, toast, retryDocument, retryFailedText]);
 
   const latestMessage = messages.length ? messages[messages.length - 1] : null;
   const latestPreview = latestMessage

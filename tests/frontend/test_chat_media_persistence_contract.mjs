@@ -203,18 +203,56 @@ test('voiceRecorder produces a real, non-empty web Blob before upload is attempt
 });
 
 test('voice playback is single-instance so repeated taps do not create echo', () => {
+  // 28.08.2026: воспроизведение переехало из инлайн-обработчика экрана в
+  // переиспользуемый VoiceMessageBubble (WhatsApp-паритет: pause/seek/rate).
+  // Смысл теста тот же — ОДИН активный трек, повторный тап не даёт эхо.
   const recorder = fs.readFileSync('src/utils/voiceRecorder.js', 'utf8');
-  assert.match(workspace, /const playVoiceMessage = React\.useCallback/);
-  assert.match(workspace, /voice\.play\(item\.mediaUrl\)/);
+  const bubble = fs.readFileSync('src/components/VoiceMessageBubble.js', 'utf8');
+
+  // Экран отдаёт голосовое в бабл и по-прежнему показывает ошибку тостом.
+  assert.match(workspace, /<VoiceMessageBubble/);
+  assert.match(workspace, /uri=\{item\.mediaUrl\}/);
   assert.match(workspace, /toast\(t\('voice_play_fail'\), 'error'\)/);
+
+  // Повторный тап = toggle (пауза), а НЕ второй экземпляр воспроизведения.
+  assert.match(bubble, /voice\.toggle\(uri\)/);
+  assert.doesNotMatch(bubble, /voice\.play\(/, 'бабл не должен стартовать второй трек напрямую');
+
+  // Гарды единственного активного трека в плеере — без изменений.
   assert.match(recorder, /let _webAudio = null/);
   assert.match(recorder, /let _playingUri = null/);
   assert.match(recorder, /let _playPromise = null/);
   assert.match(recorder, /_playingUri === uri/);
   assert.match(recorder, /!_webAudio\.paused && !_webAudio\.ended/);
-  assert.match(recorder, /return true/);
   assert.match(recorder, /_webAudio\.pause\(\)/);
   assert.match(recorder, /_playingUri = null/);
+});
+
+test('voice bubble has WhatsApp-grade controls: pause, seek, rate, live progress', () => {
+  // Регрессия на заявку владельца 28.08.2026: «нажал — идёт без остановки,
+  // паузы нету». Раньше был статичный ▶ и play() без остановки.
+  const recorder = fs.readFileSync('src/utils/voiceRecorder.js', 'utf8');
+  const bubble = fs.readFileSync('src/components/VoiceMessageBubble.js', 'utf8');
+
+  // Плеер умеет всё, что нужно для WhatsApp-поведения.
+  for (const api of ['subscribe(listener)', 'async toggle(uri)', 'async pause()', 'async resume()', 'async seek(uri, positionMillis)', 'async setRate(rate)']) {
+    assert.ok(recorder.includes(api), `voiceRecorder должен экспортировать ${api}`);
+  }
+  // Живой прогресс: тик достаточно частый для плавной полосы.
+  assert.match(recorder, /progressUpdateIntervalMillis: 80/);
+  assert.match(recorder, /setInterval\(tick, 80\)/, 'web-плеер тоже должен тикать прогресс');
+  // По окончании — сброс в начало, кнопка снова play (не «залипает» в конце).
+  assert.match(recorder, /didJustFinish/);
+  assert.match(recorder, /isPlaying: false, positionMillis: 0/);
+
+  // UI: иконка реально переключается play↔pause, есть seek-полоса и скорость.
+  assert.match(bubble, /isPlaying \? 'pause' : 'play'/);
+  assert.match(bubble, /testID="voice-progress-track"/);
+  assert.match(bubble, /voice\.seek\?\.\(uri,/);
+  assert.match(bubble, /const RATES = \[1, 1\.5, 2\]/);
+  assert.match(bubble, /voice\.subscribe\?\./, 'бабл обязан подписываться на состояние плеера');
+  // Активен только тот бабл, чей трек играет — иначе все показывали бы pause.
+  assert.match(bubble, /state\.uri === uri/);
 });
 
 test('voice upload failures distinguish too-large, storage-rejected/unreachable, and generic causes, not one flat message', () => {
