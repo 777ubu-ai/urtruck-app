@@ -229,7 +229,6 @@ export default function DealsScreen({ navigation, route }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState(false);
-  const [myCargos, setMyCargos] = useState([]);
   const [allDeals, setAllDeals] = useState([]);
   const [incomingBids, setIncomingBids] = useState([]);
   const [myBids, setMyBids] = useState([]);
@@ -239,7 +238,6 @@ export default function DealsScreen({ navigation, route }) {
     try {
       const dashboard = await marketAPI.myDashboard();
       if (!dashboard) throw new Error('empty_dashboard');
-      setMyCargos(dashboard.my_cargos || []);
       setAllDeals(dashboard.my_deals || []);
       setIncomingBids(dashboard.incoming_bids || []);
       setMyBids(dashboard.my_bids || []);
@@ -283,9 +281,6 @@ export default function DealsScreen({ navigation, route }) {
   }, [lang]);
 
   const routeFor = useCallback((item, kind) => {
-    if (kind === 'offer' && role === 'client') {
-      return `${endpoint(item.from_country, item.from_city)} → ${endpoint(item.to_country, item.to_city)}`;
-    }
     if (kind === 'bid') {
       return `${endpoint(item.from_country, item.cargo_from || item.trip_from)} → ${endpoint(item.to_country, item.trip_to || item.cargo_to)}`;
     }
@@ -299,11 +294,12 @@ export default function DealsScreen({ navigation, route }) {
 
   const offersData = useMemo(() => {
     if (role === 'client') {
-      return myCargos
-        .filter((cargo) => (cargo.active_bids_count || 0) > 0 && cargo.status === 'active')
+      return incomingBids
+        .filter((bid) => bid.cargo_id && OPEN_BID_STATUSES.has(bid.status) && isBidFresh(bid))
+        .map((bid) => ({ ...bid, _incoming: true }))
         .sort((a, b) => {
-          const ta = parseServerDate(a.latest_bid_at || a.created_at)?.getTime() || 0;
-          const tb = parseServerDate(b.latest_bid_at || b.created_at)?.getTime() || 0;
+          const ta = parseServerDate(a.updated_at || a.created_at)?.getTime() || 0;
+          const tb = parseServerDate(b.updated_at || b.created_at)?.getTime() || 0;
           return tb - ta;
         });
     }
@@ -318,7 +314,7 @@ export default function DealsScreen({ navigation, route }) {
       const tb = parseServerDate(b.updated_at || b.created_at)?.getTime() || 0;
       return tb - ta;
     });
-  }, [role, myCargos, myBids, incomingBids]);
+  }, [role, myBids, incomingBids]);
 
   const closedBidsData = useMemo(() => {
     const rows = role === 'client'
@@ -356,19 +352,13 @@ export default function DealsScreen({ navigation, route }) {
       })
   ), [allDeals]);
 
-  const offerCount = useMemo(() => (
-    role === 'client'
-      ? offersData.reduce((sum, cargo) => sum + (cargo.active_bids_count || 0), 0)
-      : offersData.length
-  ), [role, offersData]);
+  const offerCount = offersData.length;
 
   const offerAttentionCount = useMemo(() => (
     offersData.reduce((sum, item) => sum + (
-      role === 'client'
-        ? ((item.active_bids_count || 0) > 0 ? 1 : 0)
-        : (isBidActionable(item, { asOwner: !!item._incoming }) ? 1 : 0)
+      isBidActionable(item, { asOwner: !!item._incoming }) ? 1 : 0
     ), 0)
-  ), [role, offersData]);
+  ), [offersData]);
 
   const activeAttentionCount = useMemo(() => (
     activeDeals.reduce(
@@ -382,9 +372,9 @@ export default function DealsScreen({ navigation, route }) {
   const baseItems = useMemo(() => {
     if (dealTab === 'offers') {
       return offersData.map((item) => ({
-        kind: role === 'client' ? 'offer' : 'bid',
+        kind: 'bid',
         data: item,
-        sortAt: item.latest_bid_at || item.updated_at || item.created_at || '',
+        sortAt: item.updated_at || item.created_at || '',
       }));
     }
     if (dealTab === 'active') {
@@ -420,6 +410,8 @@ export default function DealsScreen({ navigation, route }) {
         item.from_city,
         item.to_city,
         item.cargo_desc,
+        item.bidder_name,
+        item.message,
         item.driver_name,
         item.shipper_name,
         item.cargo_from,
@@ -460,28 +452,6 @@ export default function DealsScreen({ navigation, route }) {
   const renderItem = useCallback(({ item }) => {
     const { kind, data } = item;
 
-    if (kind === 'offer') {
-      const count = data.active_bids_count || 0;
-      const fromPrice = data.min_bid_price
-        ? `${t('deals_offers_from')} ${priceText(data.min_bid_price, data.currency || 'USD')}`
-        : '';
-      const meta = data.cargo_desc ? localizeCargoName(data.cargo_desc, lang) : '';
-      return (
-        <CompactDealCard
-          testID="deals-cargo-offer"
-          routeLabel={routeFor(data, 'offer')}
-          price={fromPrice}
-          statusLabel={`${count} ${t('deals_offers_count')}`}
-          statusColor={WAITING}
-          time={relTime(data.latest_bid_at || data.created_at)}
-          meta={meta}
-          unread={count > 0 ? 1 : 0}
-          onPress={() => navigation.navigate('CargoDetail', { cargoId: data.id, role })}
-          colors={palette}
-        />
-      );
-    }
-
     if (kind === 'bid') {
       const isCountered = data.status === 'countered';
       const isClosed = CLOSED_BID_STATUSES.has(data.status);
@@ -502,14 +472,20 @@ export default function DealsScreen({ navigation, route }) {
       const cardTime = isClosed
         ? relTime(data.updated_at || data.created_at)
         : formatBidRemaining(data, lang);
+      const isIncomingCargoOffer = role === 'client' && data._incoming && data.cargo_id;
+      const offerTitle = data.bidder_name || t('role_driver');
+      const offerRoute = routeFor(data, 'bid');
+      const offerCargo = data.cargo_desc ? localizeCargoName(data.cargo_desc, lang) : '';
+      const offerMeta = [offerRoute, offerCargo].filter(Boolean).join(' · ');
       return (
         <CompactDealCard
           testID="deals-driver-bid"
-          routeLabel={routeFor(data, 'bid')}
+          routeLabel={isIncomingCargoOffer ? offerTitle : routeFor(data, 'bid')}
           price={price}
           statusLabel={statusLabel}
           statusColor={statusColor}
-          time={cardTime}
+          time={isIncomingCargoOffer ? relTime(data.updated_at || data.created_at) : cardTime}
+          meta={isIncomingCargoOffer ? offerMeta : undefined}
           dimmed={isClosed}
           unread={!isClosed && isBidActionable(data, { asOwner: !!data._incoming }) ? 1 : 0}
           onPress={() => openBid(data)}
