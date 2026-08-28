@@ -44,6 +44,7 @@ import {
   logAuthStage,
   SocialAuthError,
   startSocialAuth,
+  takeBufferedSocialCallbackUrl,
 } from '../../utils/socialAuth';
 import { brand, useBrand, radius, typography } from '../../theme/brandV2';
 import { WEB_URL } from '../../config/env';
@@ -232,6 +233,14 @@ export default function PhoneV2Screen({ navigation, route }) {
 
     if (routedSocialUrl) {
       finishSocialUrl(routedSocialUrl).catch(() => {});
+    }
+
+    // P0 auth-fix 28.08.2026: callback, пойманный module-level слушателем
+    // App.js в «мёртвое окно» перезапуска (до монтирования экранов) — иначе
+    // терялся и требовал второго тапа по Google.
+    const buffered = takeBufferedSocialCallbackUrl();
+    if (buffered) {
+      finishSocialUrl(buffered).catch(() => {});
     }
 
     if (!initialUrlConsumedForProcess) {

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { Platform, AppState } from 'react-native';
+import { Platform, AppState, Linking } from 'react-native';
 import { NavigationContainer, DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ThemeProvider, useTheme } from './src/utils/ThemeContext';
@@ -14,6 +14,21 @@ import { flushOutbox } from './src/utils/outbox';
 // Фоновый GPS: сам импорт регистрирует TaskManager-таску (обязательно на
 // верхнем уровне, до маунта) — старт/стоп управляется из broadcast-хука.
 import './src/utils/backgroundLocation';
+import { captureSocialCallbackUrl } from './src/utils/socialAuth';
+
+// P0 auth-fix 28.08.2026 («двойной тап Google»): возврат из OAuth ловили
+// только СМОНТИРОВАННЫЕ экраны (PhoneV2/OnboardingV2). На native есть мёртвое
+// окно: приложение перезапускается после браузера Google (AuthContext.loading
+// → пустой экран → карусель), и 'url'-событие с callback приходит раньше, чем
+// хоть один экран подписался — терялось, пользователь падал на карусель и жал
+// Google второй раз. Подписка НА УРОВНЕ МОДУЛЯ (до маунта React, как
+// backgroundLocation выше) буферизует callback; OnboardingV2/PhoneV2 забирают
+// его при монтировании через takeBufferedSocialCallbackUrl().
+if (Platform.OS !== 'web') {
+  try {
+    Linking.addEventListener('url', ({ url }) => captureSocialCallbackUrl(url));
+  } catch {}
+}
 import { chatAPI } from './src/utils/chatAPI';
 import { push } from './src/utils/push';
 import * as Sentry from '@sentry/react-native';
