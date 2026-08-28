@@ -1185,19 +1185,19 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           <View style={s.headerActions}>
             <TouchableOpacity
               onPress={openMap}
-              style={[s.headerIconBtn, { borderColor: colors.border }]}
+              style={s.headerIconBtn}
               testID="deal-header-map"
               accessibilityLabel={t('deal_map_card_title')}
             >
-              <Feather name="map" size={16} color={colors.text} />
+              <Feather name="map" size={22} color="#FFFFFF" />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setStatusModalOpen(true)}
-              style={[s.headerIconBtn, { borderColor: colors.border }]}
+              style={s.headerIconBtn}
               testID="deal-status-open"
               accessibilityLabel={ui.statuses}
             >
-              <Feather name={statusActionIcon} size={16} color={colors.text} />
+              <Feather name={statusActionIcon} size={22} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
         </View>
@@ -1211,31 +1211,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
               </View>
             ) : (
               <>
-                {dealId ? (
-                  <View style={s.topQuickActions} testID="deal-top-quick-actions">
-                    <TouchableOpacity style={[s.quickActionCard, s.quickActionMap]} onPress={openMap} testID="deal-map-card-open">
-                      <View style={s.quickActionIconSoft}><Feather name="map" size={16} color="#168759" /></View>
-                      <View style={s.quickActionTextBlock}>
-                        <Text style={s.quickActionTitle}>{t('deal_map_card_title')}</Text>
-                        <Text style={s.quickActionSub} numberOfLines={1}>{t('deal_map_card_open')}</Text>
-                      </View>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[s.quickActionCard, s.quickActionStatus]}
-                      onPress={() => setStatusModalOpen(true)}
-                      testID="deal-status-compact-open"
-                    >
-                      <View style={s.quickActionIconGreen}>
-                        <Feather name={statusActionIcon} size={16} color="#FFFFFF" />
-                      </View>
-                      <View style={s.quickActionTextBlock}>
-                        <Text style={[s.quickActionTitle, s.quickActionTitleOnGreen]} numberOfLines={1}>{statusLabel}</Text>
-                        <Text style={s.quickActionSubOnGreen} numberOfLines={1}>{ui.statuses}</Text>
-                      </View>
-                    </TouchableOpacity>
-                  </View>
-                ) : null}
-
                 <View style={s.chatBody}>
                   <FlatList
                     ref={listRef}
@@ -1553,8 +1528,20 @@ const s = StyleSheet.create({
   compactHeader: { minHeight: 118, flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 10, paddingTop: 8, paddingBottom: 9, borderBottomWidth: StyleSheet.hairlineWidth, zIndex: 20 },
   backButton: { width: 42, height: 46, alignItems: 'center', justifyContent: 'center', marginTop: 6 },
   headerText: { flex: 1, minWidth: 0, paddingRight: 8 },
-  headerActions: { flexDirection: 'row', gap: 8, marginTop: 6 },
-  headerIconBtn: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  headerActions: { flexDirection: 'row', gap: 8, marginTop: 4 },
+  headerIconBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#168759',
+    shadowColor: '#0B2418',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
+  },
   routeHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 34 },
   routeTitle: { flex: 1, fontSize: 19, fontWeight: '900', letterSpacing: -0.35 },
   statusPill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999, backgroundColor: '#E9F6EF' },
@@ -1567,20 +1554,6 @@ const s = StyleSheet.create({
   chatFullscreen: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 9 },
   loadingText: { fontSize: 13, fontWeight: '700' },
-
-  topQuickActions: { flexDirection: 'row', gap: 9, paddingHorizontal: 12, paddingTop: 8, paddingBottom: 7 },
-  quickActionCard: { flex: 1, minHeight: 48, borderRadius: 15, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10 },
-  quickActionMap: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E0E7E3' },
-  quickActionHistory: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E0E7E3' },
-  quickActionStatus: { backgroundColor: '#168759' },
-  quickActionStatusDisabled: { backgroundColor: '#E4E8E5' },
-  quickActionIconSoft: { width: 30, height: 30, borderRadius: 10, backgroundColor: '#E9F6EF', alignItems: 'center', justifyContent: 'center' },
-  quickActionIconGreen: { width: 30, height: 30, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center' },
-  quickActionTextBlock: { flex: 1, minWidth: 0 },
-  quickActionTitle: { color: '#13231D', fontSize: 13.5, fontWeight: '900' },
-  quickActionTitleOnGreen: { color: '#FFFFFF' },
-  quickActionSub: { color: '#168759', fontSize: 11.2, fontWeight: '800', marginTop: 1 },
-  quickActionSubOnGreen: { color: 'rgba(255,255,255,0.75)', fontSize: 11.2, fontWeight: '800', marginTop: 1 },
 
   chatBody: { flex: 1, position: 'relative' },
   messageList: { flex: 1 },
