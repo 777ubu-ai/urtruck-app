@@ -561,14 +561,25 @@ export default function CargoFeedScreen({ navigation }) {
         onSelect={(value, point) => setDirTo((point && point.name) || value || '')}
       />
 
+      {/* P1 (27.08.2026, владелец): sheetSecondary/bodyChip/sortRow — все три
+          были static StyleSheet.create с захардкоженным SURFACE/BORDER
+          (#FFFFFF/#E5EAE7), без inline theme-override — единственные три
+          элемента в bottom-sheet'ах, которые "make cargo feed follow theme"
+          (c0796ae) пропустил (BottomSheet сам по себе theme-aware — см.
+          components/ui/v1/BottomSheet.js — но эти внутренние кнопки/чипы
+          рисовались поверх него белыми в любой теме). Инлайн-оверрайд по
+          тому же паттерну, что уже используется в файле (styles.price,
+          styles.routeValue) — palette.surface/palette.border/
+          palette.textSecondary/palette.text уже посчитаны через
+          cargoPalette(theme, isDark) выше. */}
       <BottomSheet visible={activeFilter === 'date'} onClose={() => setActiveFilter(null)} title={t('filter_date')}>
-        <Text style={styles.sheetLabel}>{t('filter_date_from')}</Text>
+        <Text style={[styles.sheetLabel, { color: palette.textMuted }]}>{t('filter_date_from')}</Text>
         <DatePicker value={dateFrom} onChange={setDateFrom} placeholder={t('date_placeholder')} />
-        <Text style={[styles.sheetLabel, { marginTop: 14 }]}>{t('filter_date_to')}</Text>
+        <Text style={[styles.sheetLabel, { color: palette.textMuted, marginTop: 14 }]}>{t('filter_date_to')}</Text>
         <DatePicker value={dateTo} onChange={setDateTo} placeholder={t('date_placeholder')} />
         <View style={styles.sheetActions}>
-          <TouchableOpacity style={styles.sheetSecondary} onPress={() => { setDateFrom(''); setDateTo(''); }}>
-            <Text style={styles.sheetSecondaryText}>{t('filter_reset')}</Text>
+          <TouchableOpacity style={[styles.sheetSecondary, { backgroundColor: palette.surface, borderColor: palette.border }]} onPress={() => { setDateFrom(''); setDateTo(''); }}>
+            <Text style={[styles.sheetSecondaryText, { color: palette.textSecondary }]}>{t('filter_reset')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.sheetPrimary} onPress={() => setActiveFilter(null)}>
             <Text style={styles.sheetPrimaryText}>{t('filter_apply')}</Text>
@@ -578,22 +589,25 @@ export default function CargoFeedScreen({ navigation }) {
 
       <BottomSheet visible={activeFilter === 'body'} onClose={() => setActiveFilter(null)} title={t('filter_body')}>
         <View style={styles.bodyGrid}>
-          <TouchableOpacity style={[styles.bodyChip, !filterType && styles.bodyChipActive]} onPress={() => setFilterType(null)}>
-            <Text style={[styles.bodyChipText, !filterType && styles.bodyChipTextActive]}>{t('filter_all')}</Text>
+          <TouchableOpacity
+            style={[styles.bodyChip, { backgroundColor: palette.surface, borderColor: palette.border }, !filterType && styles.bodyChipActive]}
+            onPress={() => setFilterType(null)}
+          >
+            <Text style={[styles.bodyChipText, { color: palette.textSecondary }, !filterType && styles.bodyChipTextActive]}>{t('filter_all')}</Text>
           </TouchableOpacity>
           {TRUCK_KEYS.map((key) => (
             <TouchableOpacity
               key={key}
-              style={[styles.bodyChip, filterType === key && styles.bodyChipActive]}
+              style={[styles.bodyChip, { backgroundColor: palette.surface, borderColor: palette.border }, filterType === key && styles.bodyChipActive]}
               onPress={() => setFilterType(filterType === key ? null : key)}
             >
-              <Text style={[styles.bodyChipText, filterType === key && styles.bodyChipTextActive]}>{formatTruckType(key)}</Text>
+              <Text style={[styles.bodyChipText, { color: palette.textSecondary }, filterType === key && styles.bodyChipTextActive]}>{formatTruckType(key)}</Text>
             </TouchableOpacity>
           ))}
         </View>
         <View style={styles.sheetActions}>
-          <TouchableOpacity style={styles.sheetSecondary} onPress={() => setFilterType(null)}>
-            <Text style={styles.sheetSecondaryText}>{t('filter_reset')}</Text>
+          <TouchableOpacity style={[styles.sheetSecondary, { backgroundColor: palette.surface, borderColor: palette.border }]} onPress={() => setFilterType(null)}>
+            <Text style={[styles.sheetSecondaryText, { color: palette.textSecondary }]}>{t('filter_reset')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.sheetPrimary} onPress={() => setActiveFilter(null)}>
             <Text style={styles.sheetPrimaryText}>{t('filter_apply')}</Text>
@@ -609,16 +623,16 @@ export default function CargoFeedScreen({ navigation }) {
         ].map(([key, label]) => (
           <TouchableOpacity
             key={key}
-            style={[styles.sortRow, sortBy === key && styles.sortRowActive]}
+            style={[styles.sortRow, { backgroundColor: palette.surface, borderColor: palette.border }, sortBy === key && styles.sortRowActive]}
             onPress={() => setSortBy(key)}
           >
-            <Text style={[styles.sortText, sortBy === key && styles.sortTextActive]}>{label}</Text>
+            <Text style={[styles.sortText, { color: palette.textSecondary }, sortBy === key && styles.sortTextActive]}>{label}</Text>
             {sortBy === key ? <Feather name="check" size={18} color={ACCENT} /> : null}
           </TouchableOpacity>
         ))}
         <View style={styles.sheetActions}>
-          <TouchableOpacity style={styles.sheetSecondary} onPress={() => setSortBy('newest')}>
-            <Text style={styles.sheetSecondaryText}>{t('filter_reset')}</Text>
+          <TouchableOpacity style={[styles.sheetSecondary, { backgroundColor: palette.surface, borderColor: palette.border }]} onPress={() => setSortBy('newest')}>
+            <Text style={[styles.sheetSecondaryText, { color: palette.textSecondary }]}>{t('filter_reset')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.sheetPrimary} onPress={() => setActiveFilter(null)}>
             <Text style={styles.sheetPrimaryText}>{t('filter_apply')}</Text>

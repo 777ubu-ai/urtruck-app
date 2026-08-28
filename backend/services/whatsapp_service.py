@@ -6,7 +6,7 @@
   - Включить MOCK_MODE = False
 """
 import os
-import random
+import secrets
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -19,8 +19,8 @@ MOCK_MODE = not (WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID)
 
 
 def generate_code() -> str:
-    """Генерирует 4-значный код."""
-    return f"{random.randint(1000, 9999)}"
+    """Генерирует 4-значный код (криптостойкий RNG — аудит 28.08.2026)."""
+    return f"{secrets.randbelow(9000) + 1000}"
 
 
 def send_whatsapp_code(phone: str, code: str) -> dict:

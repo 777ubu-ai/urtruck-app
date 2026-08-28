@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS cargos (
   pickup_date TEXT,
   photos TEXT,                        -- JSON array of URLs
 
-  status TEXT DEFAULT 'active',       -- active | taken | completed | cancelled
+  status TEXT DEFAULT 'active',       -- active | taken | completed | cancelled | unpublished | expired
   taken_by TEXT,                      -- driver_id кто взял
   bids_count INTEGER DEFAULT 0,
 

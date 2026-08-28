@@ -30,6 +30,15 @@ module.exports = defineConfig({
     timezoneId: 'Asia/Almaty',
   },
   projects: [
+    // Runtime-crash regression (P0-3) — own project + testDir so the mandatory
+    // Full QA desktop job runs it on every PR. Lives under tests/e2e/ but is
+    // wired here because full-qa-audit invokes this config (independent
+    // re-review 28.08.2026: previously it ran nowhere in CI).
+    {
+      name: 'runtime-crash-regression',
+      testDir: path.resolve(__dirname, '../tests/e2e'),
+      testMatch: /urtruck-runtime-crash-regression\.spec\.js$/,
+    },
     { name: 'bargain',         testMatch: /bargain\.flow\.spec\.js$/ },
     { name: 'serik',           testMatch: /serik\.driver\.spec\.js$/ },
     { name: 'boris',           testMatch: /boris\.shipper\.spec\.js$/, dependencies: ['serik'] },
