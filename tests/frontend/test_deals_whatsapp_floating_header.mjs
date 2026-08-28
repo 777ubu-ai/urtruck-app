@@ -13,14 +13,16 @@ test('Deals route is isolated from the legacy standalone chat list', () => {
   assert.match(legacy, /export default function ChatsListScreen/);
 });
 
-test('deal inbox keeps only menu + primary chips fixed while search scrolls away', () => {
+test('deal inbox scrolls menu, primary chips, and search away with the list', () => {
   assert.match(deals, /testID="deals-minimal-header"/);
   assert.match(deals, /testID="deals-primary-tabs"/);
   assert.match(deals, /testID="deals-tab-offers"/);
   assert.match(deals, /testID="deals-tab-active"/);
   assert.match(deals, /testID="deals-tab-archive"/);
-  assert.match(deals, /ListHeaderComponent=\{searchHeader\}/);
+  assert.match(deals, /const listHeader = \(/);
+  assert.match(deals, /ListHeaderComponent=\{listHeader\}/);
   assert.match(deals, /testID="deals-scroll-header"/);
+  assert.doesNotMatch(deals, /styles\.fixedHeader/);
   assert.doesNotMatch(deals, /stickyHeaderIndices/);
   assert.doesNotMatch(deals, /t\('tab_deals'\)/);
 });

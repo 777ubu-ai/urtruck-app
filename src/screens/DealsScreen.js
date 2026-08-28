@@ -544,29 +544,86 @@ export default function DealsScreen({ navigation, route }) {
       ? copy.archiveEmpty
       : copy.offersEmpty;
 
-  const searchHeader = (
-    <View style={[styles.scrollHeader, { backgroundColor: palette.pageBg }]} testID="deals-scroll-header">
-      <View style={[styles.search, { borderColor: palette.border, backgroundColor: palette.surface, shadowColor: palette.shadow }]}>
-        <Feather name="search" size={17} color={palette.textMuted} />
-        <TextInput
-          testID="deal-room-search"
-          style={[styles.searchInput, { color: palette.text }]}
-          placeholder={copy.search}
-          placeholderTextColor={palette.textMuted}
-          value={query}
-          onChangeText={setQuery}
-          returnKeyType="search"
+  const listHeader = (
+    <View
+      style={[
+        styles.scrollingHeader,
+        {
+          backgroundColor: palette.pageBg,
+          borderBottomColor: palette.headerBorder,
+          shadowColor: palette.shadow,
+        },
+      ]}
+      testID="deals-minimal-header"
+    >
+      <View style={styles.menuRow}>
+        <HeaderMenuButton
+          navigation={navigation}
+          role={role}
+          testID="deals-menu-btn"
         />
-        {query ? (
-          <TouchableOpacity
-            onPress={() => setQuery('')}
-            accessibilityRole="button"
-            accessibilityLabel="clear-search"
-            style={styles.clearSearch}
-          >
-            <Feather name="x" size={16} color={palette.textMuted} />
-          </TouchableOpacity>
-        ) : null}
+      </View>
+
+      <View style={styles.tabsRow} testID="deals-primary-tabs">
+        <TabChip
+          testID="deals-tab-offers"
+          label={t('deals_tab_offers')}
+          count={offerCount}
+          active={dealTab === 'offers'}
+          onPress={() => setDealTab('offers')}
+          colors={palette}
+        />
+        <TabChip
+          testID="deals-tab-active"
+          label={t('deals_tab_active')}
+          count={activeDeals.length}
+          active={dealTab === 'active'}
+          onPress={() => setDealTab('active')}
+          colors={palette}
+        />
+        <TabChip
+          testID="deals-tab-archive"
+          label={copy.archive}
+          count={archivedDeals.length + closedBidsData.length}
+          active={dealTab === 'archive'}
+          onPress={() => setDealTab('archive')}
+          compact
+          icon="archive"
+          colors={palette}
+        />
+      </View>
+
+      {(offerAttentionCount > 0 || activeAttentionCount > 0) ? (
+        <View style={styles.attentionA11y} testID="deals-attention-summary">
+          <Text style={styles.attentionA11yText}>
+            {offerAttentionCount + activeAttentionCount}
+          </Text>
+        </View>
+      ) : null}
+
+      <View style={[styles.scrollHeader, { backgroundColor: palette.pageBg }]} testID="deals-scroll-header">
+        <View style={[styles.search, { borderColor: palette.border, backgroundColor: palette.surface, shadowColor: palette.shadow }]}>
+          <Feather name="search" size={17} color={palette.textMuted} />
+          <TextInput
+            testID="deal-room-search"
+            style={[styles.searchInput, { color: palette.text }]}
+            placeholder={copy.search}
+            placeholderTextColor={palette.textMuted}
+            value={query}
+            onChangeText={setQuery}
+            returnKeyType="search"
+          />
+          {query ? (
+            <TouchableOpacity
+              onPress={() => setQuery('')}
+              accessibilityRole="button"
+              accessibilityLabel="clear-search"
+              style={styles.clearSearch}
+            >
+              <Feather name="x" size={16} color={palette.textMuted} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
       </View>
     </View>
   );
@@ -577,80 +634,29 @@ export default function DealsScreen({ navigation, route }) {
       edges={['top']}
       testID="deal-room-list"
     >
-      <View
-        style={[
-          styles.fixedHeader,
-          {
-            backgroundColor: palette.pageBg,
-            borderBottomColor: palette.headerBorder,
-            shadowColor: palette.shadow,
-          },
-        ]}
-        testID="deals-minimal-header"
-      >
-        <View style={styles.menuRow}>
-          <HeaderMenuButton
-            navigation={navigation}
-            role={role}
-            testID="deals-menu-btn"
-          />
-        </View>
-
-        <View style={styles.tabsRow} testID="deals-primary-tabs">
-          <TabChip
-            testID="deals-tab-offers"
-            label={t('deals_tab_offers')}
-            count={offerCount}
-            active={dealTab === 'offers'}
-            onPress={() => setDealTab('offers')}
-            colors={palette}
-          />
-          <TabChip
-            testID="deals-tab-active"
-            label={t('deals_tab_active')}
-            count={activeDeals.length}
-            active={dealTab === 'active'}
-            onPress={() => setDealTab('active')}
-            colors={palette}
-          />
-          <TabChip
-            testID="deals-tab-archive"
-            label={copy.archive}
-            count={archivedDeals.length + closedBidsData.length}
-            active={dealTab === 'archive'}
-            onPress={() => setDealTab('archive')}
-            compact
-            icon="archive"
-            colors={palette}
-          />
-        </View>
-
-        {(offerAttentionCount > 0 || activeAttentionCount > 0) ? (
-          <View style={styles.attentionA11y} testID="deals-attention-summary">
-            <Text style={styles.attentionA11yText}>
-              {offerAttentionCount + activeAttentionCount}
-            </Text>
-          </View>
-        ) : null}
-      </View>
-
       {loading ? (
-        <ActivityIndicator color={roleAccent} style={{ marginTop: 42 }} />
+        <>
+          {listHeader}
+          <ActivityIndicator color={roleAccent} style={{ marginTop: 42 }} />
+        </>
       ) : loadError && baseItems.length === 0 ? (
-        <View style={styles.errorState}>
-          <Feather name="wifi-off" size={23} color={palette.textMuted} />
-          <Text style={[styles.errorText, { color: palette.textMuted }]}>{copy.loadError}</Text>
-          <TouchableOpacity testID="deals-retry" style={[styles.retryBtn, { backgroundColor: palette.accentSoft }]} onPress={load}>
-            <Text style={[styles.retryText, { color: palette.accent }]}>{copy.retry}</Text>
-          </TouchableOpacity>
-        </View>
+        <>
+          {listHeader}
+          <View style={styles.errorState}>
+            <Feather name="wifi-off" size={23} color={palette.textMuted} />
+            <Text style={[styles.errorText, { color: palette.textMuted }]}>{copy.loadError}</Text>
+            <TouchableOpacity testID="deals-retry" style={[styles.retryBtn, { backgroundColor: palette.accentSoft }]} onPress={load}>
+              <Text style={[styles.retryText, { color: palette.accent }]}>{copy.retry}</Text>
+            </TouchableOpacity>
+          </View>
+        </>
       ) : (
         <FlatList
           testID="deals-list"
           data={visibleItems}
           keyExtractor={(item) => `${item.kind}-${item.data.id}`}
           renderItem={renderItem}
-          ListHeaderComponent={searchHeader}
+          ListHeaderComponent={listHeader}
           contentContainerStyle={styles.listContent}
           keyboardShouldPersistTaps="handled"
           refreshControl={(
@@ -673,28 +679,27 @@ export default function DealsScreen({ navigation, route }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: PAGE_BG },
-  fixedHeader: {
+  scrollingHeader: {
     backgroundColor: PAGE_BG,
-    paddingBottom: 5,
-    borderBottomWidth: 1,
+    paddingBottom: 0,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#EDF0EE',
     shadowColor: '#14211C',
     shadowOpacity: 0.025,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
     elevation: 1,
-    zIndex: 5,
   },
   menuRow: {
-    minHeight: 48,
+    minHeight: 38,
     paddingHorizontal: 18,
-    paddingTop: 2,
-    paddingBottom: 1,
+    paddingTop: 0,
+    paddingBottom: 0,
     alignItems: 'flex-end',
     justifyContent: 'center',
   },
   tabsRow: {
-    minHeight: 52,
+    minHeight: 48,
     paddingHorizontal: 18,
     paddingVertical: 3,
     flexDirection: 'row',
@@ -754,8 +759,8 @@ const styles = StyleSheet.create({
   attentionA11yText: { fontSize: 1 },
   scrollHeader: {
     paddingHorizontal: 18,
-    paddingTop: 8,
-    paddingBottom: 6,
+    paddingTop: 7,
+    paddingBottom: 10,
     backgroundColor: PAGE_BG,
   },
   search: {
@@ -788,7 +793,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingTop: 0,
-    paddingBottom: 28,
+    paddingBottom: 118,
   },
   card: {
     minHeight: 92,

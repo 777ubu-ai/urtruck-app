@@ -54,6 +54,9 @@ import { SERVER_URL } from '../config/env';
 const LIVE_TRACKING_STATUSES = ['in_progress', 'at_border'];
 const MAP_WORK_STATUSES = ['accepted', 'in_progress', 'at_border'];
 const TERMINAL_STATUSES = ['completed', 'cancelled', 'rejected', 'expired'];
+const COMPOSER_INPUT_MIN_HEIGHT = 36;
+const COMPOSER_INPUT_MAX_HEIGHT = 84;
+const COMPOSER_INPUT_VERTICAL_PADDING = 10;
 
 // WhatsApp-style chat is the default view; the trip map is a deliberate,
 // button-triggered secondary view (PR #255 review: "map-first бардак" was the
@@ -244,7 +247,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [messages, setMessages] = React.useState([]);
   const [unreadCount, setUnreadCount] = React.useState(0);
   const [input, setInput] = React.useState('');
-  const [inputHeight, setInputHeight] = React.useState(40);
+  const [inputHeight, setInputHeight] = React.useState(COMPOSER_INPUT_MIN_HEIGHT);
   const [timeline, setTimeline] = React.useState([]);
   const [location, setLocation] = React.useState(null);
   const [locationLoading, setLocationLoading] = React.useState(false);
@@ -1288,18 +1291,25 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                     <TextInput
                       ref={inputRef}
                       value={input}
-                      onChangeText={(value) => { setInput(value); if (roomId) chatAPI.typing(roomId); }}
+                      onChangeText={(value) => {
+                        setInput(value);
+                        if (!value) setInputHeight(COMPOSER_INPUT_MIN_HEIGHT);
+                        if (roomId) chatAPI.typing(roomId);
+                      }}
                       onFocus={onComposerFocus}
                       onBlur={onComposerBlur}
-                      onContentSizeChange={(event) => setInputHeight(Math.max(40, Math.min(96, Math.ceil(event.nativeEvent.contentSize.height + 14))))}
+                      onContentSizeChange={(event) => {
+                        const nextHeight = Math.ceil(event.nativeEvent.contentSize.height + COMPOSER_INPUT_VERTICAL_PADDING);
+                        setInputHeight(Math.max(COMPOSER_INPUT_MIN_HEIGHT, Math.min(COMPOSER_INPUT_MAX_HEIGHT, nextHeight)));
+                      }}
                       multiline
-                      scrollEnabled={inputHeight >= 96}
+                      scrollEnabled={inputHeight >= COMPOSER_INPUT_MAX_HEIGHT}
                       style={[s.input, { height: inputHeight, color: colors.text }]}
                       placeholder={isDriver ? ui.writeShipper : ui.write}
                       placeholderTextColor={colors.textMuted}
                       testID="deal-chat-input"
                     />
-                    <Feather name="mic" size={22} color="#777777" style={s.inputMic} pointerEvents="none" />
+                    <Feather name="mic" size={18} color="#777777" style={s.inputMic} pointerEvents="none" />
                   </View>
                   {!composerFocused ? (
                     <TouchableOpacity
@@ -1608,16 +1618,16 @@ const s = StyleSheet.create({
   emojiItem: { width: '12.5%', height: 42, alignItems: 'center', justifyContent: 'center' },
   emojiText: { fontSize: 26, lineHeight: 32 },
 
-  composer: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingTop: 9, backgroundColor: '#F3F3F3', borderTopWidth: StyleSheet.hairlineWidth },
+  composer: { minHeight: 52, flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 10, paddingTop: 6, backgroundColor: '#F3F3F3', borderTopWidth: StyleSheet.hairlineWidth },
   composerFocused: { backgroundColor: '#F5F5F5' },
   composerCollapsed: { minHeight: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F4F4F4', borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 7 },
   composerCollapsedHandle: { width: 74, height: 5, borderRadius: 3, backgroundColor: '#CDD2D6' },
-  composerCircle: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F7F7F7', borderWidth: 2, borderColor: '#202020' },
+  composerCircle: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F7F7F7', borderWidth: 2, borderColor: '#202020' },
   composerCircleDisabled: { borderColor: '#8A8A8A', opacity: 0.55 },
-  inputShell: { flex: 1, minHeight: 40, maxHeight: 96, borderRadius: 6, backgroundColor: '#FFFFFF', justifyContent: 'center', position: 'relative' },
-  input: { minHeight: 40, maxHeight: 96, paddingLeft: 13, paddingRight: 42, paddingTop: 9, paddingBottom: 8, fontSize: 14.5, lineHeight: 19 },
-  inputMic: { position: 'absolute', right: 13, bottom: 8 },
-  sendButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: '#168759' },
+  inputShell: { flex: 1, minHeight: 36, maxHeight: 84, borderRadius: 18, backgroundColor: '#FFFFFF', justifyContent: 'center', position: 'relative' },
+  input: { minHeight: 36, maxHeight: 84, paddingLeft: 13, paddingRight: 38, paddingTop: 7, paddingBottom: 7, fontSize: 15, lineHeight: 20, textAlignVertical: 'top' },
+  inputMic: { position: 'absolute', right: 12, bottom: 9 },
+  sendButton: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: '#168759' },
   recordingButton: { backgroundColor: '#168759' },
 
   mapFullscreen: { flex: 1 },
