@@ -50,6 +50,20 @@ import { WEB_URL } from '../../config/env';
 
 const LEGAL_BASE = WEB_URL || 'https://urtruck.kz';
 
+// BUG FIX (logout → мгновенный молчаливый повторный вход): Linking.
+// getInitialURL() отдаёт URL, которым процесс приложения был запущен
+// ХОЛОДНО — и это значение кешируется на весь срок жизни процесса, а не
+// текущего экрана. Раньше это дёргалось в useEffect каждый раз при
+// монтировании PhoneV2Screen — а этот экран монтируется заново при КАЖДОМ
+// logout (реактивный возврат в auth-стек). Если пользователь хоть раз
+// успешно прошёл Google/Apple OAuth за время жизни процесса, тот самый
+// callback-URL навсегда "застревал" как initial URL и на каждый
+// следующий logout тут же прогонялся заново как будто это свежий вход —
+// сразу молча логинил обратно, выход из аккаунта выглядел нерабочим.
+// Модульный (не per-mount) флаг гарантирует однократную обработку за весь
+// процесс — ровно то, для чего getInitialURL и предназначен.
+let initialUrlConsumedForProcess = false;
+
 const SOCIAL_LABELS = {
   RU: {
     google: 'Продолжить с Google',
@@ -220,9 +234,12 @@ export default function PhoneV2Screen({ navigation, route }) {
       finishSocialUrl(routedSocialUrl).catch(() => {});
     }
 
-    Linking.getInitialURL()
-      .then((url) => finishSocialUrl(url))
-      .catch(() => {});
+    if (!initialUrlConsumedForProcess) {
+      initialUrlConsumedForProcess = true;
+      Linking.getInitialURL()
+        .then((url) => finishSocialUrl(url))
+        .catch(() => {});
+    }
 
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       finishSocialUrl(window.location.href).catch(() => {});

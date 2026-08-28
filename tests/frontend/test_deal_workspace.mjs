@@ -57,12 +57,12 @@ test('deal workspace is chat-first by default; the map is a deliberate, button-t
   // PR #255 QA pass (2026-08-20): the prior map-first design was reverted —
   // owner-confirmed "map-first бардак" must not come back. Chat renders
   // fullscreen by default; the map only appears after an explicit tap on the
-  // "Карта рейса" card, and a visible control returns to chat from there.
+  // compact header map button, and a visible control returns to chat from there.
   assert.match(workspace, /const VIEW_CHAT = 'chat'/);
   assert.match(workspace, /const VIEW_MAP = 'map'/);
   assert.match(workspace, /useState\(VIEW_CHAT\)/, 'chat must be the default view, not the map');
   assert.match(workspace, /testID="deal-chat-fullscreen"/);
-  assert.match(workspace, /testID="deal-map-card-open"/);
+  assert.match(workspace, /testID="deal-header-map"/);
   assert.match(workspace, /testID="deal-map-first-area"/);
   assert.match(workspace, /<TruckMap/);
   assert.match(workspace, /routePoints=\{routePoints\}/);
@@ -72,25 +72,18 @@ test('deal workspace is chat-first by default; the map is a deliberate, button-t
   assert.doesNotMatch(workspace, /open_route_btn|Открыть маршрут|navigation\.navigate\('TrackTruck'/);
 });
 
-test('P0-2 (27.08.2026): a lightweight route preview is auto-visible in chat view, without mounting the live map', () => {
-  // Owner requirement: after accept, the map must be visible automatically
-  // inside the deal — not only reachable via an extra tap — while chat
-  // remains the default view (see the mutually-exclusive test above, which
-  // this test must NOT contradict). Solution: the mapCard itself gained a
-  // small always-rendered route strip (dots + line + route label), reusing
-  // only state already being polled regardless of viewMode (hasLivePoint/
-  // lat/lng, routeLabel) — no second live TruckMap instance, no new network
-  // calls while chat is open.
-  assert.match(workspace, /testID="deal-map-card-preview"/);
-  assert.match(workspace, /mapCardPreviewLine/);
-  assert.match(workspace, /mapCardPreviewDot/);
-  assert.match(workspace, /\{routeLabel\}/);
-  // The preview lives inside the SAME TouchableOpacity as deal-map-card-open
-  // — tapping anywhere on the card (preview included) still opens the full
-  // map, not a second, separate control.
-  const cardStart = workspace.indexOf('testID="deal-map-card-open"');
-  const previewStart = workspace.indexOf('testID="deal-map-card-preview"');
-  assert.ok(cardStart >= 0 && previewStart > cardStart, 'preview must be nested inside the map-card TouchableOpacity');
+test('deal workspace uses bright header action buttons instead of large map/status cards', () => {
+  assert.match(workspace, /testID="deal-header-map"/);
+  assert.match(workspace, /testID="deal-status-open"/);
+  assert.match(workspace, /headerIconBtn: \{/);
+  assert.match(workspace, /backgroundColor: '#168759'/);
+  assert.match(workspace, /width: 42/);
+  assert.doesNotMatch(workspace, /testID="deal-top-quick-actions"/);
+  assert.doesNotMatch(workspace, /testID="deal-map-card-open"/);
+  assert.doesNotMatch(workspace, /testID="deal-status-compact-open"/);
+  assert.doesNotMatch(workspace, /quickActionCard/);
+  assert.doesNotMatch(workspace, /actionBar: \{/);
+  assert.doesNotMatch(workspace, /mapCard: \{/);
 });
 
 test('the map is never mounted underneath the chat — chat and map are mutually exclusive views', () => {
@@ -145,27 +138,60 @@ test('chat has no permanent second tab — status/history lives behind one icon-
   assert.match(workspace, /setStatusModalOpen\(true\)/);
 });
 
-test('composer grows then scrolls, switches mic to send, has a dedicated camera button, and uses a WhatsApp-like attachment menu', () => {
+test('composer uses the approved WeChat-like bottom bar and attachment menu', () => {
   assert.match(workspace, /multiline/);
   assert.match(workspace, /onContentSizeChange/);
-  assert.match(workspace, /Math\.min\(112/);
-  assert.match(workspace, /scrollEnabled=\{inputHeight >= 112\}/);
+  assert.match(workspace, /Math\.min\(96/);
+  assert.match(workspace, /scrollEnabled=\{inputHeight >= 96\}/);
   assert.match(workspace, /testID="deal-chat-send"/);
   assert.match(workspace, /testID="deal-chat-voice"/);
-  assert.match(workspace, /testID="deal-chat-camera"/);
+  assert.match(workspace, /testID="deal-chat-emoji"/);
+  assert.match(workspace, /testID="deal-chat-attach"/);
+  assert.match(workspace, /inputShell/);
+  assert.match(workspace, /composerCircle/);
   assert.match(workspace, /sendPhoto\(false\)/);
   assert.match(workspace, /sendPhoto\(true\)/);
+  assert.match(workspace, /testID:\s*'deal-chat-attach-camera'/);
+  assert.match(workspace, /testID:\s*'deal-chat-attach-share'/);
   assert.match(workspace, /testID:\s*'deal-chat-attach-document'/);
   assert.match(workspace, /testID:\s*'deal-chat-attach-location'/);
-  assert.match(workspace, /testID:\s*'deal-chat-attach-quick-reply'/);
-  assert.match(workspace, /testID:\s*'deal-chat-attach-call'/);
+  assert.match(workspace, /testID:\s*'deal-chat-attach-contact'/);
+  assert.match(workspace, /testID:\s*'deal-chat-attach-status'/);
+  assert.doesNotMatch(workspace, /testID:\s*'deal-chat-attach-call'/);
   assert.match(workspace, /testID="deal-chat-attach-menu"/);
   assert.match(workspace, /PLUS_MENU\.map/, 'attach menu must render all tiles from one data-driven list, not hand-written copies');
   assert.match(workspace, /key: 'translate'/, 'deal chat must keep the translation shortcut from the legacy chat');
-  // Section 3: Контакт/Каталог have no working logic yet and must not exist
-  // as tiles at all (not even disabled) — a fake-active button is worse than
-  // no button.
-  assert.doesNotMatch(workspace, /attachContact|attachCatalog|ui\.contact\b|ui\.catalog\b/);
+  assert.match(workspace, /const sendDealShare = React\.useCallback/);
+  assert.match(workspace, /const sendContactCard = React\.useCallback/);
+  assert.match(workspace, /attachIcon: \{ width: 64, height: 64/);
+  assert.match(workspace, /backgroundColor: '#F4F4F4'/);
+});
+
+test('composer collapses to a thin WhatsApp-style handle and avoids duplicate emoji while typing', () => {
+  assert.match(workspace, /const \[composerFocused, setComposerFocused\] = React\.useState\(false\)/);
+  assert.match(workspace, /const \[composerCollapsed, setComposerCollapsed\] = React\.useState\(false\)/);
+  assert.match(workspace, /testID="deal-chat-composer-collapsed"/);
+  assert.match(workspace, /composerCollapsedHandle/);
+  assert.match(workspace, /\{!composerFocused \? \(/);
+  assert.match(workspace, /testID="deal-chat-attach-collapse"/);
+  assert.match(workspace, /attachHandle/);
+  assert.match(workspace, /onScrollBeginDrag=\{collapseComposer\}/);
+  assert.match(workspace, /Keyboard\.dismiss\(\)/);
+  assert.doesNotMatch(workspace, /Keyboard\.addListener/);
+  assert.doesNotMatch(workspace, /keyboardWillShow|keyboardDidShow/);
+});
+
+test('emoji button opens a real bottom emoji picker instead of a coming-soon toast', () => {
+  assert.match(workspace, /const EMOJI_MENU = \[/);
+  assert.match(workspace, /const \[emojiOpen, setEmojiOpen\] = React\.useState\(false\)/);
+  assert.match(workspace, /const toggleEmojiMenu = React\.useCallback/);
+  assert.match(workspace, /const insertEmoji = React\.useCallback/);
+  assert.match(workspace, /testID="deal-chat-emoji-menu"/);
+  assert.match(workspace, /testID=\{`deal-chat-emoji-option-\$\{index\}`\}/);
+  assert.match(workspace, /setInput\(\(value\) => `\$\{value\}\$\{emoji\}`\)/);
+  assert.match(workspace, /onPress=\{toggleEmojiMenu\}/);
+  assert.doesNotMatch(workspace, /showEmojiComingSoon/);
+  assert.doesNotMatch(workspace, /toast\(ui\.comingSoon/);
 });
 
 test('every plus-menu tile has a real handler — no decorative buttons', () => {
@@ -175,7 +201,7 @@ test('every plus-menu tile has a real handler — no decorative buttons', () => 
   // Each tile object must carry an onPress that resolves to a real,
   // in-file function reference, not a no-op.
   const onPressMatches = [...items.matchAll(/onPress:\s*([^,}]+)/g)].map((m) => m[1].trim());
-  assert.equal(onPressMatches.length, 7, `expected 7 plus-menu tiles with onPress, found ${onPressMatches.length}`);
+  assert.equal(onPressMatches.length, 8, `expected 8 plus-menu tiles with onPress, found ${onPressMatches.length}`);
   for (const handler of onPressMatches) {
     assert.notEqual(handler, '() => {}', `plus-menu tile has a no-op handler: ${handler}`);
     assert.notEqual(handler, 'null', `plus-menu tile has a null handler: ${handler}`);

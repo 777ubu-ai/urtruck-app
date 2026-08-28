@@ -6,6 +6,9 @@ import { Platform } from 'react-native';
 
 let _recording = null;
 let _sound = null;
+let _webAudio = null;
+let _playingUri = null;
+let _playPromise = null;
 
 export const voice = {
   // ─── Запись ───
@@ -56,13 +59,27 @@ export const voice = {
 
   // ─── Воспроизведение ───
   async play(uri) {
+    if (!uri) return false;
+    if (_playingUri === uri) {
+      if (Platform.OS === 'web' && _webAudio && !_webAudio.paused && !_webAudio.ended) return true;
+      if (_sound) {
+        try {
+          const status = await _sound.getStatusAsync();
+          if (status?.isLoaded && status.isPlaying) return true;
+        } catch { /* stale sound, fall through and recreate */ }
+      }
+      if (_playPromise) return _playPromise;
+    }
+
+    const run = (async () => {
+      if (Platform.OS === 'web') {
+        return this._playWeb(uri);
+      }
+
     try {
       if (_sound) {
         await _sound.unloadAsync();
         _sound = null;
-      }
-      if (Platform.OS === 'web') {
-        return this._playWeb(uri);
       }
       const { Audio } = require('expo-av');
       // C1 (device-баг): голосовое не проигрывалось у получателя на iOS.
@@ -77,11 +94,15 @@ export const voice = {
       } catch { /* не критично — пытаемся играть в текущем режиме */ }
       const { sound } = await Audio.Sound.createAsync({ uri }, { shouldPlay: true });
       _sound = sound;
+      _playingUri = uri;
       await sound.playAsync();
       sound.setOnPlaybackStatusUpdate((status) => {
         if (status.didJustFinish) {
           sound.unloadAsync();
-          _sound = null;
+          if (_sound === sound) {
+            _sound = null;
+            _playingUri = null;
+          }
         }
       });
       return true;
@@ -89,14 +110,29 @@ export const voice = {
       console.warn('[voice] play failed:', e);
       return false;
     }
+    })();
+
+    _playPromise = run;
+    try {
+      return await run;
+    } finally {
+      if (_playPromise === run) _playPromise = null;
+    }
   },
 
   async stop() {
+    if (_webAudio) {
+      _webAudio.pause();
+      _webAudio.src = '';
+      try { _webAudio.load?.(); } catch {}
+      _webAudio = null;
+    }
     if (_sound) {
       await _sound.stopAsync().catch(() => {});
       await _sound.unloadAsync().catch(() => {});
       _sound = null;
     }
+    _playingUri = null;
   },
 
   // ─── Web fallback (MediaRecorder) ───
@@ -153,10 +189,29 @@ export const voice = {
 
   _playWeb(uri) {
     return new Promise((resolve) => {
+      if (_webAudio && _playingUri === uri && !_webAudio.paused && !_webAudio.ended) {
+        resolve(true);
+        return;
+      }
+      if (_webAudio) {
+        _webAudio.pause();
+        _webAudio.src = '';
+        try { _webAudio.load?.(); } catch {}
+        _webAudio = null;
+      }
       const audio = new Audio(uri);
-      audio.onended = () => resolve(true);
-      audio.onerror = (e) => { console.warn('[voice] web play error:', e); resolve(false); };
-      audio.play().catch(() => resolve(false));
+      _webAudio = audio;
+      _playingUri = uri;
+      const cleanup = (ok) => {
+        if (_webAudio === audio) {
+          _webAudio = null;
+          _playingUri = null;
+        }
+        resolve(ok);
+      };
+      audio.onended = () => cleanup(true);
+      audio.onerror = (e) => { console.warn('[voice] web play error:', e); cleanup(false); };
+      audio.play().catch(() => cleanup(false));
     });
   },
 };

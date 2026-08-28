@@ -25,8 +25,9 @@ import { useMountedRef } from '../hooks/useMountedRef';
 import BottomSheet from '../components/ui/v1/BottomSheet';
 import DatePicker from '../components/DatePicker';
 import LocationPickerModal from '../components/LocationPickerModal';
-import { v1Colors, v1AccentFor, useV1Colors } from '../theme/designV1';
+import { v1Colors, useV1Colors } from '../theme/designV1';
 import { storage } from '../utils/storage';
+import { COUNTRIES as GEO_COUNTRIES } from '../utils/geography';
 
 // DD.MM.YYYY ↔ YYYY-MM-DD bridges. DatePicker stores DD.MM.YYYY
 // (matches CreateCargo / CreateTrip and the rest of the app); the
@@ -82,6 +83,10 @@ export default function FeedScreen({ navigation, route }) {
   const s = React.useMemo(() => StyleSheet.create({
 
   container: { flex: 1 },
+  feedHeader: { marginHorizontal: -16 },
+  feedListContent: { paddingHorizontal: 16, paddingBottom: 20, gap: 0 },
+  feedLoadingWrap: { paddingHorizontal: 0, paddingTop: 4 },
+  feedEmptyWrap: { padding: 40, alignItems: 'center' },
   // v1 brand bar (UrTruck + FTL pill + bell). Replaces the old `header`
   // gradient title, which combined too many call-sites and mixed brand
   // hierarchy with action CTA.
@@ -240,6 +245,8 @@ export default function FeedScreen({ navigation, route }) {
   const [activeFilter, setActiveFilter] = useState(null); // 'dir' | 'date' | 'body' | 'price' | null
   const [dirFrom, setDirFrom] = useState('');
   const [dirTo, setDirTo] = useState('');
+  const [dirFromCountry, setDirFromCountry] = useState('');
+  const [dirToCountry, setDirToCountry] = useState('');
   // Полноэкранный выбор города (как в CreateCargo) вместо тесной шторки со
   // свободным вводом — можно искать любой город/погранпереход, а не только
   // те, что уже попали в ленту.
@@ -542,9 +549,25 @@ export default function FeedScreen({ navigation, route }) {
       const q = dirFrom.toLowerCase().trim();
       data = data.filter(d => (d.from || '').toLowerCase().includes(q));
     }
+    if (dirFromCountry) {
+      const countryName = (GEO_COUNTRIES[dirFromCountry]?.name || '').toLowerCase();
+      data = data.filter(d => {
+        const fromCountry = String(d.fromCountry || d.from_country || '').toUpperCase();
+        const fromText = String(d.from || '').toLowerCase();
+        return fromCountry === dirFromCountry || (!!countryName && fromText.includes(countryName));
+      });
+    }
     if (dirTo.trim()) {
       const q = dirTo.toLowerCase().trim();
       data = data.filter(d => (d.to || '').toLowerCase().includes(q));
+    }
+    if (dirToCountry) {
+      const countryName = (GEO_COUNTRIES[dirToCountry]?.name || '').toLowerCase();
+      data = data.filter(d => {
+        const toCountry = String(d.toCountry || d.to_country || '').toUpperCase();
+        const toText = String(d.to || '').toLowerCase();
+        return toCountry === dirToCountry || (!!countryName && toText.includes(countryName));
+      });
     }
     // Date window — driver feed sees cargos.pickup_date, client feed
     // sees trips.departure (mapped earlier into d.pickup or d.departure
@@ -624,7 +647,7 @@ export default function FeedScreen({ navigation, route }) {
       return true;
     });
     return data;
-  }, [currentData, filterType, search, sortBy, minRating, dirFrom, dirTo, dateFrom, dateTo]);
+  }, [currentData, filterType, search, sortBy, minRating, dirFrom, dirTo, dirFromCountry, dirToCountry, dateFrom, dateTo]);
 
   // Form state and submit handlers for trip / cargo creation moved to
   // dedicated screens (CreateTripScreen / CreateCargoScreen). FeedScreen
@@ -749,7 +772,23 @@ export default function FeedScreen({ navigation, route }) {
   // sheet. Direction edits dirFrom/dirTo, Date edits dateFrom/dateTo, Body
   // edits filterType, Price edits sortBy.
   const accentColor = isDriver ? v1Colors.driver : v1Colors.cargoOwner;
-  const v1Accent = v1AccentFor(isDriver ? 'driver' : 'client');
+  const countryLabel = (code) => {
+    const translated = t(`country_${code}`);
+    return translated && translated !== `country_${code}` ? translated : (GEO_COUNTRIES[code]?.name || code || '');
+  };
+  const routeValue = (city, countryCode, placeholder) => {
+    if (city) return localizePlace(city, lang);
+    if (countryCode) return `${GEO_COUNTRIES[countryCode]?.flag || ''} ${countryLabel(countryCode)}`.trim();
+    return placeholder;
+  };
+  const selectDirFrom = (value, point) => {
+    setDirFrom(point?.countryOnly ? '' : ((point && point.name) || value || ''));
+    setDirFromCountry(point?.country && point.country !== 'XX' ? point.country : '');
+  };
+  const selectDirTo = (value, point) => {
+    setDirTo(point?.countryOnly ? '' : ((point && point.name) || value || ''));
+    setDirToCountry(point?.country && point.country !== 'XX' ? point.country : '');
+  };
   const chips = [
     // Stage 16: dropped per-chip emojis (🧭/📅/🚛/💰). Filter pills
     // now read as plain text + chevron — calmer strip, no four
@@ -761,45 +800,8 @@ export default function FeedScreen({ navigation, route }) {
     { key: 'price', label: t('filter_price'),     active: sortBy !== 'newest',        onPress: () => setActiveFilter('price') },
   ];
 
-  return (
-    <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
-      {/* Stage 16: brand bar simplified — UrTruck wordmark + bell only.
-          The green "FTL" pill that used to sit next to the wordmark
-          was the third bright emerald spot on a header that already
-          carries the bell badge ring; cutting it removes one of the
-          competing accents from the screen. */}
-      <View style={s.brandBar}>
-        {/* Stage 50: language switcher показывается ТОЛЬКО гостю —
-            зарегистрированный пользователь меняет язык в Profile.
-            Раньше pill был в шапке всегда и путал на рабочих экранах
-            (мешал бизнес-действиям с грузом). */}
-        {isGuest ? (
-          <LanguageSwitcher testID="feed-lang-switch" compact />
-        ) : (
-          <View style={{ width: 40 }} />
-        )}
-        <View style={s.brandRow}>
-          <Text style={[s.brandText, { color: v1.text }]}>UrTruck</Text>
-        </View>
-        {isGuest ? (
-          // Гость не имеет профиля; placeholder чтобы заголовок
-          // остался по центру.
-          <View style={{ width: 40 }} />
-        ) : (
-          // ☰ (top-right) → профиль и меню (как в inDrive / Yandex Go).
-          // Колокольчик уехал вниз в таб-бар как вкладка «Дела».
-          <TouchableOpacity
-            onPress={() => navigation.navigate('Profile', { role })}
-            style={s.menuBtn}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            testID="feed-menu-btn"
-            accessibilityLabel={t('tab_profile')}
-          >
-            <Feather name="menu" size={24} color={v1.text} />
-          </TouchableOpacity>
-        )}
-      </View>
-
+  const feedHeader = (
+    <View style={s.feedHeader}>
       {/* RC2 fix (14 May): гостевой toggle Грузы/Рейсы убран. Гость
           видит ленту по дефолтной роли (driver = lookup cargos), без
           segmented control. Переключение роли — через регистрацию
@@ -845,7 +847,7 @@ export default function FeedScreen({ navigation, route }) {
       {/* inDrive-стиль: крупный селектор «Откуда → Куда» — главный способ
           фильтра. Тап открывает шторку направления. Значения локализуются. */}
       <View
-        style={[s.routeSelector, { backgroundColor: v1.surface, borderColor: (dirFrom || dirTo) ? accentColor : v1.border }]}
+        style={[s.routeSelector, { backgroundColor: v1.surface, borderColor: (dirFrom || dirTo || dirFromCountry || dirToCountry) ? accentColor : v1.border }]}
         testID="feed-route-selector"
       >
         <TouchableOpacity
@@ -858,8 +860,8 @@ export default function FeedScreen({ navigation, route }) {
             <Feather name="map-pin" size={11} color={v1.textMuted} />
             <Text style={[s.routeSelLabel, { color: v1.textMuted }]}>{t('from')}</Text>
           </View>
-          <Text style={[s.routeSelValue, { color: dirFrom ? v1.text : v1.textMuted }]} numberOfLines={1}>
-            {dirFrom ? localizePlace(dirFrom, lang) : t('create_field_from_placeholder')}
+          <Text style={[s.routeSelValue, { color: (dirFrom || dirFromCountry) ? v1.text : v1.textMuted }]} numberOfLines={1}>
+            {routeValue(dirFrom, dirFromCountry, t('create_field_from_placeholder'))}
           </Text>
         </TouchableOpacity>
         <Feather name="arrow-right" size={16} color={accentColor} style={s.routeSelArrow} />
@@ -873,13 +875,13 @@ export default function FeedScreen({ navigation, route }) {
             <Feather name="flag" size={11} color={v1.textMuted} />
             <Text style={[s.routeSelLabel, { color: v1.textMuted }]}>{t('to')}</Text>
           </View>
-          <Text style={[s.routeSelValue, { color: dirTo ? v1.text : v1.textMuted }]} numberOfLines={1}>
-            {dirTo ? localizePlace(dirTo, lang) : t('create_field_to_placeholder')}
+          <Text style={[s.routeSelValue, { color: (dirTo || dirToCountry) ? v1.text : v1.textMuted }]} numberOfLines={1}>
+            {routeValue(dirTo, dirToCountry, t('create_field_to_placeholder'))}
           </Text>
         </TouchableOpacity>
-        {(dirFrom || dirTo) ? (
+        {(dirFrom || dirTo || dirFromCountry || dirToCountry) ? (
           <TouchableOpacity
-            onPress={() => { setDirFrom(''); setDirTo(''); }}
+            onPress={() => { setDirFrom(''); setDirTo(''); setDirFromCountry(''); setDirToCountry(''); }}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             style={s.routeSelClear}
             testID="feed-route-clear"
@@ -953,6 +955,106 @@ export default function FeedScreen({ navigation, route }) {
           )}
         </ScrollView>
       )}
+    </View>
+  );
+
+  return (
+    <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
+      {/* Stage 16: brand bar simplified — UrTruck wordmark + bell only.
+          The green "FTL" pill that used to sit next to the wordmark
+          was the third bright emerald spot on a header that already
+          carries the bell badge ring; cutting it removes one of the
+          competing accents from the screen. */}
+      <View style={s.brandBar}>
+        {/* Stage 50: language switcher показывается ТОЛЬКО гостю —
+            зарегистрированный пользователь меняет язык в Profile.
+            Раньше pill был в шапке всегда и путал на рабочих экранах
+            (мешал бизнес-действиям с грузом). */}
+        {isGuest ? (
+          <LanguageSwitcher testID="feed-lang-switch" compact />
+        ) : (
+          <View style={{ width: 40 }} />
+        )}
+        <View style={s.brandRow}>
+          <Text style={[s.brandText, { color: v1.text }]}>UrTruck</Text>
+        </View>
+        {isGuest ? (
+          // Гость не имеет профиля; placeholder чтобы заголовок
+          // остался по центру.
+          <View style={{ width: 40 }} />
+        ) : (
+          // ☰ (top-right) → профиль и меню (как в inDrive / Yandex Go).
+          // Колокольчик уехал вниз в таб-бар как вкладка «Дела».
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Profile', { role })}
+            style={s.menuBtn}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            testID="feed-menu-btn"
+            accessibilityLabel={t('tab_profile')}
+          >
+            <Feather name="menu" size={24} color={v1.text} />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      <FlatList
+        ref={listRef}
+        data={initialLoading ? [] : filteredData}
+        keyExtractor={(i, idx) => {
+          // Клиентская лента склеивает trips + drivers — у них могут совпасть
+          // числовые id из разных таблиц. Неймспейсим, чтобы не было дубль-ключей.
+          const ns = i.isTrip ? 't' : (i.isMine ? 'c' : 'd');
+          return `${ns}:${i.id ?? idx}`;
+        }}
+        renderItem={(args) => (isDriver || args.item.isMine) ? renderCargo(args) : renderDriver(args)}
+        ListHeaderComponent={feedHeader}
+        contentContainerStyle={s.feedListContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        onEndReachedThreshold={0.5}
+        onEndReached={() => {
+          // Догружаем следующую «страницу», только если сервер вернул
+          // полную страницу (значит есть ещё) — иначе не дёргаем.
+          if (!initialLoading && serverData.length >= pageLimit) {
+            setPageLimit((p) => p + 50);
+          }
+        }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accentColor} />}
+        ListFooterComponent={
+          !initialLoading && filteredData.length > 0 ? (
+            <View style={[s.footerNote, { borderColor: v1.border, backgroundColor: v1.surface }]} testID="feed-disclaimer">
+              <Text style={[s.footerNoteText, { color: v1.textMuted }]} numberOfLines={2}>
+                🛡  {isDriver ? t('feed_driver_disclaimer') : t('feed_client_disclaimer')}
+              </Text>
+            </View>
+          ) : null
+        }
+        ListEmptyComponent={
+          initialLoading ? (
+            <View style={s.feedLoadingWrap}>
+              {[0,1,2,3,4].map(i => <SkeletonCard key={i} />)}
+            </View>
+          ) : (
+            <View style={s.feedEmptyWrap}>
+              <Text style={{ fontSize: 48, marginBottom: 10 }}>{loadError ? '⚠️' : '🔍'}</Text>
+              <Text style={{ color: v1.textMuted, fontSize: 14, textAlign: 'center' }}>
+                {loadError ? t('feed_load_failed') :
+                 minRating > 0 ? `${minRating}★+: ${t('no_active_cargos')}` :
+                 filterType ? t('feed_filter_empty') :
+                 isDriver ? t('no_active_cargos') : t('no_active_trips')}
+              </Text>
+              {loadError && (
+                <TouchableOpacity
+                  style={[s.refreshBtn, { backgroundColor: accentColor }]}
+                  onPress={() => { setRefreshing(true); loadFromServer().finally(() => setRefreshing(false)); }}
+                >
+                  <Text style={{ color: '#0A0A0A', fontWeight: '800', fontSize: 14 }}>{t('refresh')}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )
+        }
+      />
 
       {/* Полноэкранный выбор города «Откуда/Куда» для фильтра ленты —
           тот же LocationPickerModal, что и на создании груза: поиск,
@@ -965,13 +1067,15 @@ export default function FeedScreen({ navigation, route }) {
         onClose={() => setShowDirFromPicker(false)}
         title={t('loc_from_title')}
         showGeo
-        onSelect={(v, point) => setDirFrom((point && point.name) || v || '')}
+        allowCountryOnly
+        onSelect={selectDirFrom}
       />
       <LocationPickerModal
         visible={showDirToPicker}
         onClose={() => setShowDirToPicker(false)}
         title={t('loc_to_title')}
-        onSelect={(v, point) => setDirTo((point && point.name) || v || '')}
+        allowCountryOnly
+        onSelect={selectDirTo}
       />
 
       {/* Date sheet — real calendar/date-picker for both ends of the
@@ -1087,63 +1191,6 @@ export default function FeedScreen({ navigation, route }) {
           </TouchableOpacity>
         </View>
       </BottomSheet>
-
-      {initialLoading ? (
-        <View style={{ padding: 16 }}>
-          {[0,1,2,3,4].map(i => <SkeletonCard key={i} />)}
-        </View>
-      ) : (
-        <FlatList
-          ref={listRef}
-          data={filteredData}
-          keyExtractor={(i, idx) => {
-            // Клиентская лента склеивает trips + drivers — у них могут совпасть
-            // числовые id из разных таблиц. Неймспейсим, чтобы не было дубль-ключей.
-            const ns = i.isTrip ? 't' : (i.isMine ? 'c' : 'd');
-            return `${ns}:${i.id ?? idx}`;
-          }}
-          renderItem={(args) => (isDriver || args.item.isMine) ? renderCargo(args) : renderDriver(args)}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 20, gap: 0 }}
-          showsVerticalScrollIndicator={false}
-          onEndReachedThreshold={0.5}
-          onEndReached={() => {
-            // Догружаем следующую «страницу», только если сервер вернул
-            // полную страницу (значит есть ещё) — иначе не дёргаем.
-            if (!initialLoading && serverData.length >= pageLimit) {
-              setPageLimit((p) => p + 50);
-            }
-          }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accentColor} />}
-          ListFooterComponent={
-            filteredData.length > 0 ? (
-              <View style={[s.footerNote, { borderColor: v1.border, backgroundColor: v1.surface }]} testID="feed-disclaimer">
-                <Text style={[s.footerNoteText, { color: v1.textMuted }]} numberOfLines={2}>
-                  🛡  {isDriver ? t('feed_driver_disclaimer') : t('feed_client_disclaimer')}
-                </Text>
-              </View>
-            ) : null
-          }
-          ListEmptyComponent={
-            <View style={{ padding: 40, alignItems: 'center' }}>
-              <Text style={{ fontSize: 48, marginBottom: 10 }}>{loadError ? '⚠️' : '🔍'}</Text>
-              <Text style={{ color: v1.textMuted, fontSize: 14, textAlign: 'center' }}>
-                {loadError ? t('feed_load_failed') :
-                 minRating > 0 ? `${minRating}★+: ${t('no_active_cargos')}` :
-                 filterType ? t('feed_filter_empty') :
-                 isDriver ? t('no_active_cargos') : t('no_active_trips')}
-              </Text>
-              {loadError && (
-                <TouchableOpacity
-                  style={[s.refreshBtn, { backgroundColor: accentColor }]}
-                  onPress={() => { setRefreshing(true); loadFromServer().finally(() => setRefreshing(false)); }}
-                >
-                  <Text style={{ color: '#0A0A0A', fontWeight: '800', fontSize: 14 }}>{t('refresh')}</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          }
-        />
-      )}
 
       {Gate}
     </SafeAreaView>

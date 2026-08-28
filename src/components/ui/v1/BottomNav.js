@@ -34,6 +34,7 @@ import { useV1Colors, v1AccentFor } from '../../../theme/designV1';
 import { useTheme } from '../../../utils/ThemeContext';
 import { useAuth } from '../../../utils/AuthContext';
 import { useI18n } from '../../../utils/useI18n';
+import { useToast } from '../../Toast';
 import { chatAPI } from '../../../utils/chatAPI';
 import { marketAPI } from '../../../utils/marketAPI';
 import { subscribeChatRead } from '../../../utils/unreadEvents';
@@ -96,6 +97,7 @@ export default function BottomNav({ state, navigation }) {
   const insets = useSafeAreaInsets();
   const { session, hasToken } = useAuth();
   const { t } = useI18n();
+  const { toast } = useToast();
   const role = session?.user?.role
     || state.routes[0]?.params?.role
     || 'client';
@@ -167,13 +169,30 @@ export default function BottomNav({ state, navigation }) {
   // (src/utils/dealsUnread.js) — бейдж таба и сумма по карточкам списка
   // теперь считаются идентично и не могут разойтись.
   const [dealsUnread, setDealsUnread] = useState(0);
+  const dealsUnreadRef = useRef(0);
+  const dealsUnreadReadyRef = useRef(false);
   useEffect(() => {
     let mounted = true;
-    if (!hasToken) { setDealsUnread(0); return; }
+    if (!hasToken) {
+      dealsUnreadRef.current = 0;
+      dealsUnreadReadyRef.current = false;
+      setDealsUnread(0);
+      return;
+    }
     const fetchDealsUnread = async () => {
       try {
         const d = await marketAPI.myDashboard();
-        if (mounted) setDealsUnread(computeDealsUnread(d));
+        const next = computeDealsUnread(d);
+        const prev = dealsUnreadRef.current || 0;
+        dealsUnreadRef.current = next;
+        if (mounted) setDealsUnread(next);
+        if (dealsUnreadReadyRef.current && next > prev) {
+          toast(`${t('tab_deals')}: новое событие`, 'info', 5500, {
+            actionLabel: t('open_action'),
+            onAction: () => navigation.navigate('Deals', state.routes.find((r) => r.name === 'Deals')?.params),
+          });
+        }
+        dealsUnreadReadyRef.current = true;
       } catch {
         // тихо — бейдж остаётся на предыдущем значении
       }
@@ -186,7 +205,7 @@ export default function BottomNav({ state, navigation }) {
     // Открытие чата сделки тоже гасит часть этого счётчика — пересчитать.
     const unsub = subscribeChatRead(fetchDealsUnread);
     return () => { mounted = false; clearInterval(iv); sub?.remove?.(); unsub?.(); };
-  }, [hasToken]);
+  }, [hasToken, navigation, state.routes, t, toast]);
 
   // Иконка приложения (C1) теперь синхронизируется внутри fetchUnread через
   // syncAppIconBadge() — безусловно на каждом fetch (mount/poll/AppState/
