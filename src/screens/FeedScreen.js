@@ -27,6 +27,7 @@ import DatePicker from '../components/DatePicker';
 import LocationPickerModal from '../components/LocationPickerModal';
 import { v1Colors, v1AccentFor, useV1Colors } from '../theme/designV1';
 import { storage } from '../utils/storage';
+import { COUNTRIES as GEO_COUNTRIES } from '../utils/geography';
 
 // DD.MM.YYYY ↔ YYYY-MM-DD bridges. DatePicker stores DD.MM.YYYY
 // (matches CreateCargo / CreateTrip and the rest of the app); the
@@ -240,6 +241,8 @@ export default function FeedScreen({ navigation, route }) {
   const [activeFilter, setActiveFilter] = useState(null); // 'dir' | 'date' | 'body' | 'price' | null
   const [dirFrom, setDirFrom] = useState('');
   const [dirTo, setDirTo] = useState('');
+  const [dirFromCountry, setDirFromCountry] = useState('');
+  const [dirToCountry, setDirToCountry] = useState('');
   // Полноэкранный выбор города (как в CreateCargo) вместо тесной шторки со
   // свободным вводом — можно искать любой город/погранпереход, а не только
   // те, что уже попали в ленту.
@@ -542,9 +545,25 @@ export default function FeedScreen({ navigation, route }) {
       const q = dirFrom.toLowerCase().trim();
       data = data.filter(d => (d.from || '').toLowerCase().includes(q));
     }
+    if (dirFromCountry) {
+      const countryName = (GEO_COUNTRIES[dirFromCountry]?.name || '').toLowerCase();
+      data = data.filter(d => {
+        const fromCountry = String(d.fromCountry || d.from_country || '').toUpperCase();
+        const fromText = String(d.from || '').toLowerCase();
+        return fromCountry === dirFromCountry || (!!countryName && fromText.includes(countryName));
+      });
+    }
     if (dirTo.trim()) {
       const q = dirTo.toLowerCase().trim();
       data = data.filter(d => (d.to || '').toLowerCase().includes(q));
+    }
+    if (dirToCountry) {
+      const countryName = (GEO_COUNTRIES[dirToCountry]?.name || '').toLowerCase();
+      data = data.filter(d => {
+        const toCountry = String(d.toCountry || d.to_country || '').toUpperCase();
+        const toText = String(d.to || '').toLowerCase();
+        return toCountry === dirToCountry || (!!countryName && toText.includes(countryName));
+      });
     }
     // Date window — driver feed sees cargos.pickup_date, client feed
     // sees trips.departure (mapped earlier into d.pickup or d.departure
@@ -624,7 +643,7 @@ export default function FeedScreen({ navigation, route }) {
       return true;
     });
     return data;
-  }, [currentData, filterType, search, sortBy, minRating, dirFrom, dirTo, dateFrom, dateTo]);
+  }, [currentData, filterType, search, sortBy, minRating, dirFrom, dirTo, dirFromCountry, dirToCountry, dateFrom, dateTo]);
 
   // Form state and submit handlers for trip / cargo creation moved to
   // dedicated screens (CreateTripScreen / CreateCargoScreen). FeedScreen
@@ -750,6 +769,23 @@ export default function FeedScreen({ navigation, route }) {
   // edits filterType, Price edits sortBy.
   const accentColor = isDriver ? v1Colors.driver : v1Colors.cargoOwner;
   const v1Accent = v1AccentFor(isDriver ? 'driver' : 'client');
+  const countryLabel = (code) => {
+    const translated = t(`country_${code}`);
+    return translated && translated !== `country_${code}` ? translated : (GEO_COUNTRIES[code]?.name || code || '');
+  };
+  const routeValue = (city, countryCode, placeholder) => {
+    if (city) return localizePlace(city, lang);
+    if (countryCode) return `${GEO_COUNTRIES[countryCode]?.flag || ''} ${countryLabel(countryCode)}`.trim();
+    return placeholder;
+  };
+  const selectDirFrom = (value, point) => {
+    setDirFrom(point?.countryOnly ? '' : ((point && point.name) || value || ''));
+    setDirFromCountry(point?.country && point.country !== 'XX' ? point.country : '');
+  };
+  const selectDirTo = (value, point) => {
+    setDirTo(point?.countryOnly ? '' : ((point && point.name) || value || ''));
+    setDirToCountry(point?.country && point.country !== 'XX' ? point.country : '');
+  };
   const chips = [
     // Stage 16: dropped per-chip emojis (🧭/📅/🚛/💰). Filter pills
     // now read as plain text + chevron — calmer strip, no four
@@ -845,7 +881,7 @@ export default function FeedScreen({ navigation, route }) {
       {/* inDrive-стиль: крупный селектор «Откуда → Куда» — главный способ
           фильтра. Тап открывает шторку направления. Значения локализуются. */}
       <View
-        style={[s.routeSelector, { backgroundColor: v1.surface, borderColor: (dirFrom || dirTo) ? accentColor : v1.border }]}
+        style={[s.routeSelector, { backgroundColor: v1.surface, borderColor: (dirFrom || dirTo || dirFromCountry || dirToCountry) ? accentColor : v1.border }]}
         testID="feed-route-selector"
       >
         <TouchableOpacity
@@ -858,8 +894,8 @@ export default function FeedScreen({ navigation, route }) {
             <Feather name="map-pin" size={11} color={v1.textMuted} />
             <Text style={[s.routeSelLabel, { color: v1.textMuted }]}>{t('from')}</Text>
           </View>
-          <Text style={[s.routeSelValue, { color: dirFrom ? v1.text : v1.textMuted }]} numberOfLines={1}>
-            {dirFrom ? localizePlace(dirFrom, lang) : t('create_field_from_placeholder')}
+          <Text style={[s.routeSelValue, { color: (dirFrom || dirFromCountry) ? v1.text : v1.textMuted }]} numberOfLines={1}>
+            {routeValue(dirFrom, dirFromCountry, t('create_field_from_placeholder'))}
           </Text>
         </TouchableOpacity>
         <Feather name="arrow-right" size={16} color={accentColor} style={s.routeSelArrow} />
@@ -873,13 +909,13 @@ export default function FeedScreen({ navigation, route }) {
             <Feather name="flag" size={11} color={v1.textMuted} />
             <Text style={[s.routeSelLabel, { color: v1.textMuted }]}>{t('to')}</Text>
           </View>
-          <Text style={[s.routeSelValue, { color: dirTo ? v1.text : v1.textMuted }]} numberOfLines={1}>
-            {dirTo ? localizePlace(dirTo, lang) : t('create_field_to_placeholder')}
+          <Text style={[s.routeSelValue, { color: (dirTo || dirToCountry) ? v1.text : v1.textMuted }]} numberOfLines={1}>
+            {routeValue(dirTo, dirToCountry, t('create_field_to_placeholder'))}
           </Text>
         </TouchableOpacity>
-        {(dirFrom || dirTo) ? (
+        {(dirFrom || dirTo || dirFromCountry || dirToCountry) ? (
           <TouchableOpacity
-            onPress={() => { setDirFrom(''); setDirTo(''); }}
+            onPress={() => { setDirFrom(''); setDirTo(''); setDirFromCountry(''); setDirToCountry(''); }}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             style={s.routeSelClear}
             testID="feed-route-clear"
@@ -965,13 +1001,15 @@ export default function FeedScreen({ navigation, route }) {
         onClose={() => setShowDirFromPicker(false)}
         title={t('loc_from_title')}
         showGeo
-        onSelect={(v, point) => setDirFrom((point && point.name) || v || '')}
+        allowCountryOnly
+        onSelect={selectDirFrom}
       />
       <LocationPickerModal
         visible={showDirToPicker}
         onClose={() => setShowDirToPicker(false)}
         title={t('loc_to_title')}
-        onSelect={(v, point) => setDirTo((point && point.name) || v || '')}
+        allowCountryOnly
+        onSelect={selectDirTo}
       />
 
       {/* Date sheet — real calendar/date-picker for both ends of the

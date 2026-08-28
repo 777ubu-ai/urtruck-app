@@ -41,7 +41,7 @@ const loadList = async (key) => {
   } catch { return []; }
 };
 
-export default function LocationPickerModal({ visible, onClose, onSelect, title, showGeo = false }) {
+export default function LocationPickerModal({ visible, onClose, onSelect, title, showGeo = false, allowCountryOnly = false }) {
   const v1 = useV1Colors();
   const { t, lang } = useI18n();
   const [query, setQuery] = useState('');
@@ -75,6 +75,12 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
     setRecent(next);
     storage.set(RECENT_KEY, JSON.stringify(next)).catch(() => {});
     onSelect?.(formatPoint(p), p);
+    onClose?.();
+  };
+
+  const pickCountry = (code) => {
+    const label = countryLabel(code);
+    onSelect?.(label, { name: label, country: code, type: 'country', countryOnly: true });
     onClose?.();
   };
 
@@ -240,6 +246,19 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
                 </View>
               </TouchableOpacity>
               <View style={s.divider} />
+              {allowCountryOnly ? (
+                <>
+                  <TouchableOpacity style={s.row} onPress={() => pickCountry(country)} activeOpacity={0.7} testID={`loc-country-only-${country}`}>
+                    <View style={[s.lead, s.geoLead]}><Feather name="globe" size={18} color={v1.driver} /></View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[s.name, { color: v1.driver }]}>{t('loc_whole_country')}</Text>
+                      <Text style={s.sub} numberOfLines={1}>{countryLabel(country)}</Text>
+                    </View>
+                    <Text style={s.chev}>›</Text>
+                  </TouchableOpacity>
+                  <View style={s.divider} />
+                </>
+              ) : null}
               {pointsForCountry(country).map((p, i) => <Row key={`cc:${pointKey(p)}:${i}`} p={p} />)}
             </>
           ) : (

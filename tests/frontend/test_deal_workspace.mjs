@@ -153,7 +153,8 @@ test('composer uses the approved WeChat-like bottom bar and attachment menu', ()
   assert.match(workspace, /testID:\s*'deal-chat-attach-document'/);
   assert.match(workspace, /testID:\s*'deal-chat-attach-location'/);
   assert.match(workspace, /testID:\s*'deal-chat-attach-contact'/);
-  assert.match(workspace, /testID:\s*'deal-chat-attach-call'/);
+  assert.match(workspace, /testID:\s*'deal-chat-attach-status'/);
+  assert.doesNotMatch(workspace, /testID:\s*'deal-chat-attach-call'/);
   assert.match(workspace, /testID="deal-chat-attach-menu"/);
   assert.match(workspace, /PLUS_MENU\.map/, 'attach menu must render all tiles from one data-driven list, not hand-written copies');
   assert.match(workspace, /key: 'translate'/, 'deal chat must keep the translation shortcut from the legacy chat');

@@ -217,6 +217,8 @@ export default function ProfileScreen({ navigation, route }) {
   const proPercent = Math.round((proFilled / proTotal) * 100);
   const proActive = isDriver && proFilled === proTotal;
   const proRemaining = proTotal - proFilled;
+  const proStatusTitle = proActive ? t('pro_active_badge') : t('pro_inactive_badge');
+  const verificationStatusText = profile.is_verified ? t('verification_passed_short') : t('verification_failed_short');
 
   // Русский плюрализатор для «N пункт/пункта/пунктов». Для остальных локалей
   // используем общий ключ items_many.
@@ -325,20 +327,25 @@ export default function ProfileScreen({ navigation, route }) {
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                   <Feather name="star" size={15} color={theme.text} />
                   <Text style={[s.proTitle, { color: theme.text }]}>
-                    {proActive ? t('pro_active_badge') : t('pro_progress_title')}
+                    {proStatusTitle}
                   </Text>
                 </View>
                 {proActive ? (
                   IS_BETA ? (
-                    <Text style={[s.proSub, { color: theme.textMuted }]}>{t('pro_beta_note')}</Text>
+                    <Text style={[s.proSub, { color: theme.textMuted }]}>{verificationStatusText} · {t('pro_beta_note')}</Text>
                   ) : null
                 ) : (
                   <Text style={[s.proSub, { color: theme.textMuted }]}>
-                    {t('pro_progress_remaining')} {proRemaining} {itemsWord(proRemaining)}
+                    {verificationStatusText} · {t('pro_progress_remaining')} {proRemaining} {itemsWord(proRemaining)}
                   </Text>
                 )}
               </View>
-              <Text style={[s.proPercent, { color: accent }]}>{proPercent}%</Text>
+              <View style={[s.proStatusBadge, { backgroundColor: proActive ? '#E9F6EF' : theme.bg, borderColor: proActive ? accent : theme.border }]}>
+                <Feather name={proActive ? 'check-circle' : 'alert-circle'} size={14} color={proActive ? accent : theme.textMuted} />
+                <Text style={[s.proStatusBadgeText, { color: proActive ? accent : theme.textMuted }]}>
+                  {proActive ? t('done') : `${proFilled}/${proTotal}`}
+                </Text>
+              </View>
             </View>
             <View style={[s.proTrack, { backgroundColor: theme.bg }]}>
               <View style={[s.proFill, { width: `${proPercent}%`, backgroundColor: accent }]} />
@@ -568,7 +575,8 @@ const s = StyleSheet.create({
   proHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
   proTitle: { fontSize: 14, fontWeight: '700' },
   proSub: { fontSize: 11, marginTop: 2 },
-  proPercent: { fontSize: 16, fontWeight: '800', letterSpacing: -0.2 },
+  proStatusBadge: { minHeight: 30, borderRadius: 15, borderWidth: 1, paddingHorizontal: 9, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  proStatusBadgeText: { fontSize: 12, fontWeight: '900' },
   proTrack: { height: 6, borderRadius: 3, overflow: 'hidden' },
   proFill: { height: '100%', borderRadius: 3 },
   proCta: {
