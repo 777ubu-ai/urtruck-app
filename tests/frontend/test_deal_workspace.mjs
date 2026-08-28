@@ -141,8 +141,10 @@ test('chat has no permanent second tab — status/history lives behind one icon-
 test('composer uses the approved WeChat-like bottom bar and attachment menu', () => {
   assert.match(workspace, /multiline/);
   assert.match(workspace, /onContentSizeChange/);
-  assert.match(workspace, /Math\.min\(96/);
-  assert.match(workspace, /scrollEnabled=\{inputHeight >= 96\}/);
+  assert.match(workspace, /COMPOSER_INPUT_MIN_HEIGHT = 36/);
+  assert.match(workspace, /COMPOSER_INPUT_MAX_HEIGHT = 84/);
+  assert.match(workspace, /Math\.min\(COMPOSER_INPUT_MAX_HEIGHT/);
+  assert.match(workspace, /scrollEnabled=\{inputHeight >= COMPOSER_INPUT_MAX_HEIGHT\}/);
   assert.match(workspace, /testID="deal-chat-send"/);
   assert.match(workspace, /testID="deal-chat-voice"/);
   assert.match(workspace, /testID="deal-chat-emoji"/);
@@ -165,6 +167,8 @@ test('composer uses the approved WeChat-like bottom bar and attachment menu', ()
   assert.match(workspace, /const sendContactCard = React\.useCallback/);
   assert.match(workspace, /attachIcon: \{ width: 64, height: 64/);
   assert.match(workspace, /backgroundColor: '#F4F4F4'/);
+  assert.match(workspace, /composer: \{ minHeight: 52, flexDirection: 'row', alignItems: 'flex-end'/);
+  assert.match(workspace, /inputShell: \{ flex: 1, minHeight: 36, maxHeight: 84/);
 });
 
 test('composer collapses to a thin WhatsApp-style handle and avoids duplicate emoji while typing', () => {
