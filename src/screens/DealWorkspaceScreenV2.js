@@ -1108,31 +1108,57 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
             ) : (
               <>
                 {nextAction ? (
-                  <TouchableOpacity
-                    style={[s.actionBar, { backgroundColor: nextAction.disabled ? '#E4E8E5' : '#168759' }]}
-                    onPress={runNextAction}
-                    disabled={nextAction.disabled || statusLoading || trackingLoading}
-                    testID={nextActionTestId}
-                  >
-                    <Feather name={nextAction.icon} size={16} color={nextAction.disabled ? '#7C8B82' : '#FFFFFF'} />
-                    <Text style={[s.actionBarText, { color: nextAction.disabled ? '#7C8B82' : '#FFFFFF' }]} numberOfLines={1}>
-                      {statusLoading || trackingLoading ? '…' : nextAction.label}
-                    </Text>
-                  </TouchableOpacity>
-                ) : null}
-
-                {dealId ? (
-                  <TouchableOpacity style={[s.mapCard, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={openMap} testID="deal-map-card-open">
-                    <View style={s.mapCardIcon}><Feather name="map" size={17} color="#168759" /></View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={[s.mapCardTitle, { color: colors.text }]}>{t('deal_map_card_title')}</Text>
-                      <Text style={[s.mapCardStatus, { color: colors.textMuted }]} numberOfLines={1}>{statusLabel}</Text>
-                    </View>
-                    <View style={s.mapCardOpenPill}>
-                      <Text style={s.mapCardOpenText}>{t('deal_map_card_open')}</Text>
-                      <Feather name="chevron-right" size={14} color="#168759" />
-                    </View>
-                  </TouchableOpacity>
+                  <View style={s.topQuickActions} testID="deal-top-quick-actions">
+                    {dealId ? (
+                      <TouchableOpacity style={[s.quickActionCard, s.quickActionMap]} onPress={openMap} testID="deal-map-card-open">
+                        <View style={s.quickActionIconSoft}><Feather name="map" size={16} color="#168759" /></View>
+                        <View style={s.quickActionTextBlock}>
+                          <Text style={s.quickActionTitle}>{t('deal_map_card_title')}</Text>
+                          <Text style={s.quickActionSub} numberOfLines={1}>{t('deal_map_card_open')}</Text>
+                        </View>
+                      </TouchableOpacity>
+                    ) : null}
+                    <TouchableOpacity
+                      style={[
+                        s.quickActionCard,
+                        nextAction.disabled ? s.quickActionStatusDisabled : s.quickActionStatus,
+                      ]}
+                      onPress={runNextAction}
+                      disabled={nextAction.disabled || statusLoading || trackingLoading}
+                      testID={nextActionTestId}
+                    >
+                      <View style={s.quickActionIconGreen}>
+                        <Feather name={nextAction.icon} size={16} color="#FFFFFF" />
+                      </View>
+                      <View style={s.quickActionTextBlock}>
+                        <Text style={[s.quickActionTitle, s.quickActionTitleOnGreen]} numberOfLines={1}>
+                          {statusLoading || trackingLoading ? '…' : nextAction.label}
+                        </Text>
+                        <Text style={s.quickActionSubOnGreen} numberOfLines={1}>{statusLabel}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  </View>
+                ) : dealId ? (
+                  <View style={s.topQuickActions} testID="deal-top-quick-actions">
+                    <TouchableOpacity style={[s.quickActionCard, s.quickActionMap]} onPress={openMap} testID="deal-map-card-open">
+                      <View style={s.quickActionIconSoft}><Feather name="map" size={16} color="#168759" /></View>
+                      <View style={s.quickActionTextBlock}>
+                        <Text style={s.quickActionTitle}>{t('deal_map_card_title')}</Text>
+                        <Text style={s.quickActionSub} numberOfLines={1}>{t('deal_map_card_open')}</Text>
+                      </View>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[s.quickActionCard, s.quickActionHistory]}
+                      onPress={() => setStatusModalOpen(true)}
+                      testID="deal-status-compact-open"
+                    >
+                      <View style={s.quickActionIconSoft}><Feather name="clock" size={16} color="#168759" /></View>
+                      <View style={s.quickActionTextBlock}>
+                        <Text style={s.quickActionTitle} numberOfLines={1}>{ui.statuses}</Text>
+                        <Text style={s.quickActionSub} numberOfLines={1}>{statusLabel}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  </View>
                 ) : null}
 
                 <View style={s.chatBody}>
@@ -1411,15 +1437,19 @@ const s = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 9 },
   loadingText: { fontSize: 13, fontWeight: '700' },
 
-  actionBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 44, marginHorizontal: 12, marginTop: 10, borderRadius: 14 },
-  actionBarText: { fontSize: 13.5, fontWeight: '900', flexShrink: 1 },
-
-  mapCard: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 12, marginTop: 10, borderWidth: 1, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 10 },
-  mapCardIcon: { width: 38, height: 38, borderRadius: 13, backgroundColor: '#E9F6EF', alignItems: 'center', justifyContent: 'center' },
-  mapCardTitle: { fontSize: 13.5, fontWeight: '850' },
-  mapCardStatus: { fontSize: 11.5, fontWeight: '650', marginTop: 2 },
-  mapCardOpenPill: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  mapCardOpenText: { color: '#168759', fontSize: 12.5, fontWeight: '850' },
+  topQuickActions: { flexDirection: 'row', gap: 9, paddingHorizontal: 12, paddingTop: 8, paddingBottom: 7 },
+  quickActionCard: { flex: 1, minHeight: 48, borderRadius: 15, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10 },
+  quickActionMap: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E0E7E3' },
+  quickActionHistory: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E0E7E3' },
+  quickActionStatus: { backgroundColor: '#168759' },
+  quickActionStatusDisabled: { backgroundColor: '#E4E8E5' },
+  quickActionIconSoft: { width: 30, height: 30, borderRadius: 10, backgroundColor: '#E9F6EF', alignItems: 'center', justifyContent: 'center' },
+  quickActionIconGreen: { width: 30, height: 30, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center' },
+  quickActionTextBlock: { flex: 1, minWidth: 0 },
+  quickActionTitle: { color: '#13231D', fontSize: 13.5, fontWeight: '900' },
+  quickActionTitleOnGreen: { color: '#FFFFFF' },
+  quickActionSub: { color: '#168759', fontSize: 11.2, fontWeight: '800', marginTop: 1 },
+  quickActionSubOnGreen: { color: 'rgba(255,255,255,0.75)', fontSize: 11.2, fontWeight: '800', marginTop: 1 },
 
   chatBody: { flex: 1, position: 'relative' },
   messageList: { flex: 1 },
