@@ -19,7 +19,7 @@ from ocr.document_reader import extract_passport_data
 from biometrics.liveness import check_liveness, face_match
 from scoring.engine import calculate_score
 from database import db
-from config import BETA_MODE, BETA_OTP_CODE, REVIEWER_DEMO_EMAIL, REVIEWER_DEMO_CODE, IS_PRODUCTION
+from config import BETA_MODE, BETA_OTP_CODE, REVIEWER_DEMO_EMAIL, REVIEWER_DEMO_CODE, REVIEWER_DEMO_CODE_IS_DEFAULT, IS_PRODUCTION
 import logging
 
 reg_router = APIRouter()
@@ -311,7 +311,13 @@ def email_verify(req: EmailVerifyRequest, request: Request = None):
     limit_otp_verify(email)
     # Ревьюерский демо-вход (Guideline 2.1a): фиксированный код принимается
     # ТОЛЬКО для REVIEWER_DEMO_EMAIL. Не зависит от BETA_MODE (тот на проде off).
-    is_reviewer = bool(REVIEWER_DEMO_EMAIL) and email == REVIEWER_DEMO_EMAIL and req.code.strip() == REVIEWER_DEMO_CODE
+    # Предрелизный аудит 28.08.2026 (P1-security): на проде bypass работает
+    # только если владелец ЯВНО переопределил код в .env — закоммиченный
+    # дефолт "1975" на проде не принимается (иначе это публичный бэкдор).
+    _reviewer_allowed_here = not (IS_PRODUCTION and REVIEWER_DEMO_CODE_IS_DEFAULT)
+    is_reviewer = (_reviewer_allowed_here and bool(REVIEWER_DEMO_EMAIL)
+                   and email == REVIEWER_DEMO_EMAIL
+                   and req.code.strip() == REVIEWER_DEMO_CODE)
     # BETA bypass — для тестеров, когда включён BETA_MODE (на проде выключен).
     is_beta_login = BETA_MODE and req.code.strip() == BETA_OTP_CODE
     if not (is_beta_login or is_reviewer):

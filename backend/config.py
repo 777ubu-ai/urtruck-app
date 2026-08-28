@@ -35,7 +35,15 @@ BIDS_CONFIDENTIAL = os.getenv("BIDS_CONFIDENTIAL", "false").lower() in ("1", "tr
 # по-прежнему защищены owner-check/IDOR-фиксами). Значения можно переопределить
 # в .env; код 4-значный, чтобы влезал в OTP-поле приложения (не 0000).
 REVIEWER_DEMO_EMAIL = os.getenv("REVIEWER_DEMO_EMAIL", "appreview@urtruck.kz").strip().lower()
-REVIEWER_DEMO_CODE = os.getenv("REVIEWER_DEMO_CODE", "1975")
+_REVIEWER_DEMO_CODE_DEFAULT = "1975"
+REVIEWER_DEMO_CODE = os.getenv("REVIEWER_DEMO_CODE", _REVIEWER_DEMO_CODE_DEFAULT)
+# Предрелизный аудит 28.08.2026 (P1-security): значение "1975" закоммичено в
+# репозиторий и в qa/scripts/* — это фактический бэкдор, если оставить его
+# живым на проде. Поэтому на проде демо-вход работает ТОЛЬКО когда владелец
+# ЯВНО переопределил код в серверном .env (REVIEWER_DEMO_CODE=<random>).
+# Пока код равен закоммиченному дефолту — на проде bypass отключён (fail-safe,
+# boot не блокируется; в dev/beta дефолт продолжает работать для ревью).
+REVIEWER_DEMO_CODE_IS_DEFAULT = (REVIEWER_DEMO_CODE == _REVIEWER_DEMO_CODE_DEFAULT)
 
 # Database
 # На сервере DB лежит в /home/ubuntu/urtruck/backend/database/security.db
