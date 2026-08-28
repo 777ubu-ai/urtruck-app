@@ -62,6 +62,7 @@ test('deal workspace is chat-first by default; the map is a deliberate, button-t
   assert.match(workspace, /const VIEW_MAP = 'map'/);
   assert.match(workspace, /useState\(VIEW_CHAT\)/, 'chat must be the default view, not the map');
   assert.match(workspace, /testID="deal-chat-fullscreen"/);
+  assert.match(workspace, /testID="deal-top-quick-actions"/);
   assert.match(workspace, /testID="deal-map-card-open"/);
   assert.match(workspace, /testID="deal-map-first-area"/);
   assert.match(workspace, /<TruckMap/);
@@ -70,6 +71,16 @@ test('deal workspace is chat-first by default; the map is a deliberate, button-t
   assert.match(workspace, /testID="deal-map-collapse"/);
   assert.match(workspace, /setViewMode\(VIEW_CHAT\)/, 'the map view must have a way back to chat');
   assert.doesNotMatch(workspace, /open_route_btn|Открыть маршрут|navigation\.navigate\('TrackTruck'/);
+});
+
+test('deal workspace uses two compact top action buttons instead of tall map/status blocks', () => {
+  assert.match(workspace, /topQuickActions/);
+  assert.match(workspace, /quickActionMap/);
+  assert.match(workspace, /quickActionStatus/);
+  assert.match(workspace, /testID="deal-status-compact-open"/);
+  assert.match(workspace, /quickActionCard: \{ flex: 1, minHeight: 48/);
+  assert.doesNotMatch(workspace, /actionBar: \{/);
+  assert.doesNotMatch(workspace, /mapCard: \{/);
 });
 
 test('the map is never mounted underneath the chat — chat and map are mutually exclusive views', () => {
