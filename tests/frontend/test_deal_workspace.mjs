@@ -163,6 +163,20 @@ test('composer uses the approved WeChat-like bottom bar and attachment menu', ()
   assert.match(workspace, /backgroundColor: '#F4F4F4'/);
 });
 
+test('composer collapses to a thin WhatsApp-style handle and avoids duplicate emoji while typing', () => {
+  assert.match(workspace, /const \[composerFocused, setComposerFocused\] = React\.useState\(false\)/);
+  assert.match(workspace, /const \[composerCollapsed, setComposerCollapsed\] = React\.useState\(false\)/);
+  assert.match(workspace, /testID="deal-chat-composer-collapsed"/);
+  assert.match(workspace, /composerCollapsedHandle/);
+  assert.match(workspace, /\{!composerFocused \? \(/);
+  assert.match(workspace, /testID="deal-chat-attach-collapse"/);
+  assert.match(workspace, /attachHandle/);
+  assert.match(workspace, /onScrollBeginDrag=\{collapseComposer\}/);
+  assert.match(workspace, /Keyboard\.dismiss\(\)/);
+  assert.doesNotMatch(workspace, /Keyboard\.addListener/);
+  assert.doesNotMatch(workspace, /keyboardWillShow|keyboardDidShow/);
+});
+
 test('every plus-menu tile has a real handler — no decorative buttons', () => {
   const menuBlock = workspace.match(/const PLUS_MENU = \[([\s\S]*?)\];/);
   assert.ok(menuBlock, 'PLUS_MENU definition not found');
