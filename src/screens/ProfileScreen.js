@@ -69,7 +69,6 @@ export default function ProfileScreen({ navigation, route }) {
   // на белых кнопках текст рендерится чёрным (driverOnAccent). #168759
   // ниже сохранён для семантических success-индикаторов (verified-tick,
   // загруженный документ) — там это «успех», а не бренд водителя.
-  const accent = isDriver ? '#168759' : '#FF8400';
   const onAccent = isDriver ? '#0C0A09' : '#0C0A09';
   const { isDark, toggleTheme } = useTheme();
   // Stage 8: read tokens from the v1 hook so the screen lines up
@@ -79,6 +78,10 @@ export default function ProfileScreen({ navigation, route }) {
   // styles below. Cloned so we don't mutate the shared frozen-style
   // object the hook returns.
   const v1 = useV1Colors();
+  // Решение владельца 28.08.2026: клиент остаётся оранжевым, но цвет берётся
+  // из палитры (v1.clientBrand). Прежний хардкод #FF8400 как иконка/текст на
+  // белом давал 2.46:1 — нечитаемо; LIGHT-токен #C25700 = 4.51:1.
+  const accent = isDriver ? v1.driver : v1.clientBrand;
   const theme = {
     ...v1,
     card: v1.surface,

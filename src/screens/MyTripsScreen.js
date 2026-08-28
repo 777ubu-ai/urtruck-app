@@ -101,7 +101,12 @@ export default function MyTripsScreen({ navigation, route }) {
   }), [v1]);
   const { role } = route.params || {};
   const isDriver = role === 'driver';
-  const accent = isDriver ? '#168759' : '#FF8400';
+  // Решение владельца 28.08.2026: оранжевый остаётся фирменным цветом
+  // грузоотправителя, но берётся из палитры (v1.clientBrand), а не
+  // хардкодом #FF8400 — тот давал с белым текстом 2.46:1 (провал AA):
+  // у водителя кнопка «Принять» читалась, у клиента нет. В LIGHT токен
+  // = #C25700 (4.51:1), в DARK остаётся яркий #FF8400 (6.94:1).
+  const accent = isDriver ? v1.driver : v1.clientBrand;
   const { t, lang } = useI18n();
   const tonUnit = lang === 'ZH' ? '吨' : lang === 'EN' ? 't' : 'т';
   const cubicMeterUnit = lang === 'ZH' ? '立方米' : 'м³';
@@ -591,31 +596,14 @@ export default function MyTripsScreen({ navigation, route }) {
     return <EmptyState title={t('no_archive_yet')} description={t('no_archive_desc')} />;
   };
 
-  return (
-    <SafeAreaView testID="my-work-screen" style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']}>
-      {/* Stage 16: brand bar — UrTruck wordmark + bell only.
-          Stripped the green FTL pill (same change in BrandHeader /
-          BrandBarWithShare / FeedScreen). */}
-      <View style={s.brandBar}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Text style={[s.backIcon, { color: v1Accent.main }]}>‹</Text>
-        </TouchableOpacity>
-        <View style={s.brandRow}>
-          <Text style={s.brandText}>UrTruck</Text>
-        </View>
-        {/* ☰ (top-right) → профиль и меню. Колокольчик уехал вниз в
-            таб-бар как вкладка «Сделки» (единый инбокс живой работы). */}
-        <TouchableOpacity
-          onPress={() => navigation.navigate('Profile', { role })}
-          style={s.menuBtn}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          testID="mywork-menu-btn"
-          accessibilityLabel={t('tab_profile')}
-        >
-          <Feather name="menu" size={24} color={v1.text} />
-        </TouchableOpacity>
-      </View>
-
+  // Уезжающая шапка (решение владельца 28.08.2026): заголовок, кнопка
+  // размещения и переключатель «Архив» переехали в ListHeaderComponent —
+  // уезжают вместе со списком, как в ленте (CargoFeedScreen.feedControls) и
+  // в «Сделках» (DealsScreen.listHeader). Фиксированной сверху остаётся
+  // только брендовая полоса с ☰ — ровно как в ленте. Одинаково для обеих
+  // ролей: блок общий, роль меняет лишь подписи и обработчики.
+  const listHeader = (
+    <>
       <View style={s.titleBlock}>
         <Text style={s.titleHero}>{isDriver ? t('my_trips_title') : t('my_cargos_title')}</Text>
         <Text style={s.titleSub}>{isDriver ? t('my_trips_subtitle') : t('my_cargos_subtitle')}</Text>
@@ -657,11 +645,39 @@ export default function MyTripsScreen({ navigation, route }) {
           </TouchableOpacity>
         )}
       </View>
+    </>
+  );
+
+  return (
+    <SafeAreaView testID="my-work-screen" style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']}>
+      {/* Stage 16: brand bar — UrTruck wordmark + bell only.
+          Stripped the green FTL pill (same change in BrandHeader /
+          BrandBarWithShare / FeedScreen). */}
+      <View style={s.brandBar}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Text style={[s.backIcon, { color: v1Accent.main }]}>‹</Text>
+        </TouchableOpacity>
+        <View style={s.brandRow}>
+          <Text style={s.brandText}>UrTruck</Text>
+        </View>
+        {/* ☰ (top-right) → профиль и меню. Колокольчик уехал вниз в
+            таб-бар как вкладка «Сделки» (единый инбокс живой работы). */}
+        <TouchableOpacity
+          onPress={() => navigation.navigate('Profile', { role })}
+          style={s.menuBtn}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          testID="mywork-menu-btn"
+          accessibilityLabel={t('tab_profile')}
+        >
+          <Feather name="menu" size={24} color={v1.text} />
+        </TouchableOpacity>
+      </View>
 
       <FlatList
         data={listData}
         keyExtractor={(i, idx) => (i._kind ? i._kind + ':' : '') + (i.id ?? idx)}
         renderItem={listRender}
+        ListHeaderComponent={listHeader}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
         ListEmptyComponent={renderEmpty()}

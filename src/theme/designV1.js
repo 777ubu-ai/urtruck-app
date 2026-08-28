@@ -28,6 +28,15 @@ const DARK = {
   cargoOwnerGlow: 'rgba(22,135,89,0.30)',
   cargoOwnerSoft: 'rgba(22,135,89,0.18)',
 
+  // Фирменный оранжевый грузоотправителя (решение владельца 28.08.2026:
+  // клиент остаётся оранжевым, но должен быть ЧИТАЕМЫМ). В DARK яркий
+  // #FF8400 на surface #151E19 даёт 6.94:1 — берём его как есть.
+  // clientBrand — интерактив (кнопки/иконки/текст), clientBrandFill —
+  // декоративные подложки/плашки.
+  clientBrand: '#FF8400',
+  clientBrandOnAccent: '#14221C',
+  clientBrandFill: 'rgba(255,132,0,0.18)',
+
   text: '#F3F7F4',
   textMuted: '#B7C3BB',
   textDim: '#9EAAA2',
@@ -58,6 +67,14 @@ const LIGHT = {
   cargoOwnerDeep: '#0F6B47',
   cargoOwnerGlow: 'rgba(22,135,89,0.18)',
   cargoOwnerSoft: '#E8F6EF',
+
+  // Фирменный оранжевый грузоотправителя, LIGHT. Прежний #FF8400 давал с
+  // белым текстом 2.46:1 (провал AA) — у водителя кнопка читалась, у клиента
+  // нет. #C25700 = 4.51:1 с белым и как иконка/текст на белом. Яркий #FF8400
+  // остаётся ТОЛЬКО декоративной подложкой (clientBrandFill).
+  clientBrand: '#C25700',
+  clientBrandOnAccent: '#FFFFFF',
+  clientBrandFill: '#FFF1E3',
 
   text: '#14221C',
   textMuted: '#617067',
