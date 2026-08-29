@@ -19,9 +19,10 @@ const supabaseClient = read('src/config/supabase.js');
 const appConfig = JSON.parse(read('app.json'));
 
 
-test('auth entry exposes Google + Apple + Email and no phone auth tab', () => {
+test('auth entry exposes Google + Email while Apple is hidden for build 18', () => {
   assert.match(phoneV2, /testID="auth-google"/);
-  assert.match(phoneV2, /testID="auth-apple"/);
+  assert.match(phoneV2, /const SHOW_APPLE_AUTH = false/);
+  assert.match(phoneV2, /SHOW_APPLE_AUTH \? <SocialButton provider="apple"/);
   assert.match(phoneV2, /testID="email-v2-input"/);
   assert.doesNotMatch(phoneV2, /testID="auth-tab-phone"/);
   assert.doesNotMatch(phoneV2, /DEFAULT_COUNTRY/);

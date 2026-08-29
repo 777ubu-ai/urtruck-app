@@ -175,15 +175,15 @@ test('composer uses the approved WeChat-like bottom bar and attachment menu', ()
   assert.doesNotMatch(workspace, /style=\{s\.inputMic\}/);
 });
 
-test('composer collapses to a thin WhatsApp-style handle and avoids duplicate emoji while typing', () => {
+test('composer stays visible while scrolling and avoids duplicate emoji while typing', () => {
   assert.match(workspace, /const \[composerFocused, setComposerFocused\] = React\.useState\(false\)/);
-  assert.match(workspace, /const \[composerCollapsed, setComposerCollapsed\] = React\.useState\(false\)/);
-  assert.match(workspace, /testID="deal-chat-composer-collapsed"/);
-  assert.match(workspace, /composerCollapsedHandle/);
+  assert.doesNotMatch(workspace, /const \[composerCollapsed, setComposerCollapsed\] = React\.useState\(false\)/);
+  assert.doesNotMatch(workspace, /testID="deal-chat-composer-collapsed"/);
+  assert.doesNotMatch(workspace, /composerCollapsedHandle/);
   assert.match(workspace, /\{!composerFocused \? \(/);
   assert.match(workspace, /testID="deal-chat-attach-collapse"/);
   assert.match(workspace, /attachHandle/);
-  assert.match(workspace, /onScrollBeginDrag=\{collapseComposer\}/);
+  assert.doesNotMatch(workspace, /onScrollBeginDrag=\{collapseComposer\}/);
   assert.match(workspace, /Keyboard\.dismiss\(\)/);
   assert.doesNotMatch(workspace, /Keyboard\.addListener/);
   assert.doesNotMatch(workspace, /keyboardWillShow|keyboardDidShow/);

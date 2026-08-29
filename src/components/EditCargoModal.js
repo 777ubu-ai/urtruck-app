@@ -6,6 +6,7 @@ import {
   Modal, View, Text, TextInput, TouchableOpacity, Pressable,
   StyleSheet, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useToast } from './Toast';
@@ -19,6 +20,10 @@ import { formatDateForDisplay, normalizeDateInput } from '../utils/dateInput';
 const PAY_KEYS = ['cashless', 'cash', 'any'];
 
 export default function EditCargoModal({ visible, cargo, onClose, onSaved }) {
+  // P0-hotfix 28.08.2026 (§3): клавиатура на iOS перекрывала поле цены/
+  // кнопку «Сохранить» — форма длинная (7 полей), у sheet статичный
+  // maxHeight:'88%' и нижний padding БЕЗ учёта safe-area/клавиатуры.
+  const insets = useSafeAreaInsets();
   const { t } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
@@ -90,11 +95,28 @@ export default function EditCargoModal({ visible, cargo, onClose, onSaved }) {
 
   return (
     <Modal transparent visible={visible} animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        // §3: явный offset=0 — sheet раскрыт в transparent fullscreen Modal
+        // без своего header/nav-bar над KeyboardAvoidingView, компенсировать
+        // дополнительно нечего.
+        keyboardVerticalOffset={0}
+      >
         <Pressable style={[s.backdrop, { backgroundColor: theme.overlay || 'rgba(0,0,0,0.5)' }]} onPress={onClose}>
           <Pressable style={[s.sheet, { backgroundColor: theme.cardElevated || theme.card }]} onPress={(e) => e.stopPropagation()}>
             <View style={[s.handle, { backgroundColor: theme.border }]} />
-            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              contentInsetAdjustmentBehavior="automatic"
+              // §3: щедрый нижний паддинг с учётом safe-area — гарантирует, что
+              // «Сохранить» дотягивается скроллом ДАЖЕ если KeyboardAvoidingView
+              // на iOS внутри transparent Modal ошибётся с высотой клавиатуры
+              // (задокументированная особенность RN: padding-режим не всегда
+              // корректно измеряет клавиатуру внутри transparent-модалок).
+              contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) + 48 }}
+            >
               <Text style={[s.title, { color: theme.text }]}>{t('edit_cargo_title')}</Text>
 
               <Text style={[s.label, { color: theme.textMuted }]}>{t('edit_cargo_price')} ({curSym})</Text>

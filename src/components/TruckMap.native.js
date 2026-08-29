@@ -82,8 +82,16 @@ export default function TruckMap({
   const vehicleKey = vehicle ? JSON.stringify(vehicle) : '';
   const [serverRoute, setServerRoute] = React.useState(null);
   const webViewRef = React.useRef(null);
-  const [mapStatus, setMapStatus] = React.useState(YANDEX_MAPS_JS_API_KEY ? 'loading' : 'error');
-  const [mapError, setMapError] = React.useState(YANDEX_MAPS_JS_API_KEY ? '' : 'Yandex Maps JS API key is not configured');
+  // P0-hotfix 28.08.2026 (TestFlight build 17, §5): раньше ЛЮБАЯ причина —
+  // отсутствующий ключ, обрыв сети, HTTP-ошибка, поломка Yandex JS API —
+  // схлопывалась в один статус 'error' с общим текстом «Карта недоступна».
+  // Теперь состояния различимы: 'provider_not_configured' (ключ не задан на
+  // билд-тайме — реальная причина в TestFlight build 17, см. отчёт),
+  // 'network_error' (WebView не достучался до сети/Yandex), 'unknown_error'
+  // (сам Yandex JS API вернул ошибку инициализации). В __DEV__ дополнительно
+  // печатается техническая причина для отладки.
+  const [mapStatus, setMapStatus] = React.useState(YANDEX_MAPS_JS_API_KEY ? 'loading' : 'provider_not_configured');
+  const [mapError, setMapError] = React.useState(YANDEX_MAPS_JS_API_KEY ? '' : 'Yandex Maps JS API key is not configured (EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY missing at build time)');
 
   React.useEffect(() => {
     let cancelled = false;
@@ -143,23 +151,53 @@ export default function TruckMap({
       const message = JSON.parse(event.nativeEvent.data);
       if (message.type === 'ready') { setMapStatus('ready'); setMapError(''); return; }
       const detail = `${message.type}: ${message.detail || 'unknown Yandex Maps error'}`;
-      console.error('[TruckMap/Yandex]', detail); setMapError(detail); setMapStatus('error');
+      console.error('[TruckMap/Yandex]', detail);
+      setMapError(detail);
+      // 'api-error' — сам скрипт api-maps.yandex.ru не загрузился (обычно
+      // сеть/CDN недоступны); остальные ('init-error', 'update-error',
+      // 'js-error') — Yandex API загрузился, но упал изнутри — это уже не
+      // сетевая, а неопознанная ошибка провайдера.
+      setMapStatus(message.type === 'api-error' ? 'network_error' : 'unknown_error');
     } catch (error) { console.error('[TruckMap/Yandex] Invalid WebView message', error); }
   }, []);
 
+  // P0-hotfix 28.08.2026 (§5): нет ни живой точки, ни ≥2 плановых координат —
+  // грузить WebView незачем, честно показываем причину вместо пустой карты.
+  const hasNothingToShow = !live && planned.length < 2;
+
+  // P0-hotfix 28.08.2026 (§2/§4): раньше WebView оставался СМОНТИРОВАННЫМ
+  // под fallback-текстом при любой ошибке (условие рендера зависело только
+  // от наличия ключа, не от mapStatus) — сломанный WKWebView со своим
+  // gesture recognizer'ом мог продолжать перехватывать тачи поверх видимого
+  // текста (кандидат в первопричину «X не реагирует», §4) и оставался живым
+  // native-компонентом без веской причины (кандидат в нестабильность при
+  // резких жестах, §2 — не подтверждено device-логом, но это правильный
+  // defensive fix независимо от подтверждения). Теперь WebView монтируется
+  // ТОЛЬКО пока карта реально грузится/показана; в любом fallback-состоянии
+  // он полностью размонтирован — на его месте ничего не может перехватывать
+  // тачи.
+  const webViewMounted = !hasNothingToShow && !!YANDEX_MAPS_JS_API_KEY
+    && (mapStatus === 'loading' || mapStatus === 'ready');
+
   return (
     <View style={s.shell}>
-      {YANDEX_MAPS_JS_API_KEY ? <WebView ref={webViewRef} style={s.map}
+      {hasNothingToShow ? (
+        <View style={s.mapFallback} testID="truck-map-native-unavailable-no_route_coordinates">
+          <Text style={s.mapFallbackText}>{t('map_no_route_coordinates')}</Text>
+        </View>
+      ) : webViewMounted ? <WebView ref={webViewRef} style={s.map}
         source={{ html: buildYandexMapHtml(YANDEX_MAPS_JS_API_KEY), baseUrl: 'https://urtruck.kz' }}
         originWhitelist={['https://*']} javaScriptEnabled domStorageEnabled mixedContentMode="never"
         onMessage={onMapMessage}
-        onError={(event) => { const detail = event.nativeEvent?.description || 'WebView network error'; console.error('[TruckMap/Yandex]', detail); setMapError(detail); setMapStatus('error'); }}
-        onHttpError={(event) => { const detail = `HTTP ${event.nativeEvent?.statusCode || 'error'}`; console.error('[TruckMap/Yandex]', detail, event.nativeEvent?.url); setMapError(detail); setMapStatus('error'); }}
+        onError={(event) => { const detail = event.nativeEvent?.description || 'WebView network error'; console.error('[TruckMap/Yandex]', detail); setMapError(detail); setMapStatus('network_error'); }}
+        onHttpError={(event) => { const detail = `HTTP ${event.nativeEvent?.statusCode || 'error'}`; console.error('[TruckMap/Yandex]', detail, event.nativeEvent?.url); setMapError(detail); setMapStatus('network_error'); }}
         testID="truck-map-yandex-webview" /> : null}
-      {mapStatus === 'loading' ? <View style={s.mapOverlay} pointerEvents="none"><Text style={s.mapFallbackText}>{t('map_loading')}</Text></View> : null}
-      {mapStatus === 'error' ? (
-        <View style={s.mapFallback} testID="truck-map-native-unavailable">
-          <Text style={s.mapFallbackText}>{t('map_unavailable')}</Text>
+      {mapStatus === 'loading' && !hasNothingToShow ? <View style={s.mapOverlay} pointerEvents="none"><Text style={s.mapFallbackText}>{t('map_loading')}</Text></View> : null}
+      {!hasNothingToShow && (mapStatus === 'provider_not_configured' || mapStatus === 'network_error' || mapStatus === 'unknown_error') ? (
+        <View style={s.mapFallback} testID={`truck-map-native-unavailable-${mapStatus}`}>
+          <Text style={s.mapFallbackText}>
+            {t(mapStatus === 'network_error' ? 'map_network_error' : 'map_unavailable')}
+          </Text>
           {__DEV__ ? <Text style={s.mapDebugError}>{mapError}</Text> : null}
         </View>
       ) : null}

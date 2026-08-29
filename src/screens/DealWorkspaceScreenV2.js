@@ -261,7 +261,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [statusModalOpen, setStatusModalOpen] = React.useState(false);
   const [recording, setRecording] = React.useState(false);
   const [composerFocused, setComposerFocused] = React.useState(false);
-  const [composerCollapsed, setComposerCollapsed] = React.useState(false);
   const [emojiOpen, setEmojiOpen] = React.useState(false);
   const [recordSecs, setRecordSecs] = React.useState(0);
   const [confirmDialog, setConfirmDialog] = React.useState(null);
@@ -310,15 +309,10 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     setCallMenuOpen(false);
     setEmojiOpen(false);
     setComposerFocused(true);
-    setComposerCollapsed(false);
   }, []);
 
   const onComposerBlur = React.useCallback(() => {
     setComposerFocused(false);
-  }, []);
-
-  const expandComposer = React.useCallback(() => {
-    setComposerCollapsed(false);
   }, []);
 
   const collapseComposer = React.useCallback(() => {
@@ -327,7 +321,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     setAttachOpen(false);
     setCallMenuOpen(false);
     setComposerFocused(false);
-    setComposerCollapsed(true);
     inputRef.current?.blur?.();
     Keyboard.dismiss();
   }, [input, recording]);
@@ -684,7 +677,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     if (!body) return;
     setInput('');
     setInputHeight(40);
-    setComposerCollapsed(false);
     setEmojiOpen(false);
     sendRawText(body);
   }, [input, sendRawText]);
@@ -716,7 +708,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
   const sendLocation = React.useCallback(async () => {
     setAttachOpen(false);
-    setComposerCollapsed(false);
     if (locationSending) return;
     setLocationSending(true);
     try {
@@ -733,7 +724,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
   const sendPhoto = React.useCallback(async (camera) => {
     try {
-      setComposerCollapsed(false);
       if (camera) {
         const permission = await ImagePicker.requestCameraPermissionsAsync();
         if (permission.status !== 'granted') return;
@@ -800,7 +790,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const pickAndSendDocument = React.useCallback(async () => {
     setAttachOpen(false);
     setEmojiOpen(false);
-    setComposerCollapsed(false);
     if (!roomId) return;
     const res = await DocumentPicker.getDocumentAsync({
       type: DOC_ATTACH_TYPES,
@@ -837,7 +826,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         setAttachOpen(false);
         setCallMenuOpen(false);
         setEmojiOpen(false);
-        setComposerCollapsed(false);
         const ok = await voice.startRecording();
         if (!ok) { toast(t('voice_error_record'), 'error'); return; }
         recordStartRef.current = Date.now();
@@ -920,14 +908,12 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   }, [recording, roomId, recipientId, deal?.cargo_id, deal?.trip_id, params.cargoId, params.tripId, ui.voiceMessage, loadMessages, toast, t]);
 
   const toggleAttachMenu = React.useCallback(() => {
-    setComposerCollapsed(false);
     setCallMenuOpen(false);
     setEmojiOpen(false);
     setAttachOpen((value) => !value);
   }, []);
 
   const toggleEmojiMenu = React.useCallback(() => {
-    setComposerCollapsed(false);
     setAttachOpen(false);
     setCallMenuOpen(false);
     setComposerFocused(false);
@@ -938,7 +924,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
   const insertEmoji = React.useCallback((emoji) => {
     setInput((value) => `${value}${emoji}`);
-    setComposerCollapsed(false);
   }, []);
 
   const renderMessage = React.useCallback(({ item }) => {
@@ -1230,7 +1215,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                       nearBottomRef.current = nearBottom;
                       if (nearBottom && showJumpLatest) setShowJumpLatest(false);
                     }}
-                    onScrollBeginDrag={collapseComposer}
                     scrollEventThrottle={80}
                     onContentSizeChange={() => { if (nearBottomRef.current) listRef.current?.scrollToEnd?.({ animated: false }); }}
                     ListEmptyComponent={<Text style={[s.emptyText, { color: colors.textMuted }]}>{ui.noMessages}</Text>}
@@ -1261,17 +1245,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                   </View>
                 ) : null}
 
-                {composerCollapsed && !recording ? (
-                  <TouchableOpacity
-                    activeOpacity={0.75}
-                    style={[s.composerCollapsed, { borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, 6) }]}
-                    onPress={expandComposer}
-                    testID="deal-chat-composer-collapsed"
-                    accessibilityLabel={isDriver ? ui.writeShipper : ui.write}
-                  >
-                    <View style={s.composerCollapsedHandle} />
-                  </TouchableOpacity>
-                ) : (
                 <View
                   style={[
                     s.composer,
@@ -1332,7 +1305,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                     </TouchableOpacity>
                   )}
                 </View>
-                )}
 
                 {emojiOpen ? (
                   <View style={[s.emojiMenu, { borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom + 14, 22) }]} testID="deal-chat-emoji-menu">
@@ -1620,8 +1592,6 @@ const s = StyleSheet.create({
 
   composer: { minHeight: 52, flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 10, paddingTop: 6, backgroundColor: '#F3F3F3', borderTopWidth: StyleSheet.hairlineWidth },
   composerFocused: { backgroundColor: '#F5F5F5' },
-  composerCollapsed: { minHeight: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F4F4F4', borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 7 },
-  composerCollapsedHandle: { width: 74, height: 5, borderRadius: 3, backgroundColor: '#CDD2D6' },
   composerCircle: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F7F7F7', borderWidth: 2, borderColor: '#202020' },
   composerCircleDisabled: { borderColor: '#8A8A8A', opacity: 0.55 },
   inputShell: { flex: 1, minHeight: 32, maxHeight: 74, borderRadius: 16, backgroundColor: '#FFFFFF', justifyContent: 'center', position: 'relative' },

@@ -156,6 +156,49 @@ function MessengerOption({ item, selected, onPress, s, colors, ui }) {
   );
 }
 
+function ProfileField({
+  id,
+  label,
+  value,
+  onChange,
+  placeholder,
+  keyboardType,
+  inputMode,
+  autoCapitalize = 'sentences',
+  s,
+  colors,
+  focused,
+  setFocused,
+  errors,
+  setErrors,
+}) {
+  return (
+    <View style={s.field}>
+      <Text style={s.label}>{label}</Text>
+      <TextInput
+        value={value}
+        onChangeText={(next) => {
+          onChange(next);
+          if (errors[id]) setErrors((prev) => ({ ...prev, [id]: null }));
+        }}
+        onFocus={() => setFocused(id)}
+        onBlur={() => setFocused('')}
+        placeholder={placeholder}
+        placeholderTextColor={colors.textTertiary}
+        keyboardType={keyboardType}
+        inputMode={inputMode}
+        textContentType={id === 'phone' ? 'telephoneNumber' : 'none'}
+        autoComplete={id === 'phone' ? 'tel' : 'off'}
+        autoCorrect={false}
+        autoCapitalize={autoCapitalize}
+        style={[s.input, focused === id && s.inputFocused, errors[id] && s.inputError]}
+        testID={`profile-v2-${id}`}
+      />
+      {errors[id] ? <Text style={s.errText}>{errors[id]}</Text> : null}
+    </View>
+  );
+}
+
 export default function ProfileV2Screen({ navigation, route }) {
   const colors = useBrand();
   const s = useMemo(() => makeStyles(colors), [colors]);
@@ -252,39 +295,6 @@ export default function ProfileV2Screen({ navigation, route }) {
     }
   };
 
-  const Field = ({
-    id,
-    label,
-    value,
-    onChange,
-    placeholder,
-    keyboardType,
-    inputMode,
-    autoCapitalize = 'sentences',
-  }) => (
-    <View style={s.field}>
-      <Text style={s.label}>{label}</Text>
-      <TextInput
-        value={value}
-        onChangeText={(next) => {
-          onChange(next);
-          if (errors[id]) setErrors((prev) => ({ ...prev, [id]: null }));
-        }}
-        onFocus={() => setFocused(id)}
-        onBlur={() => setFocused('')}
-        placeholder={placeholder}
-        placeholderTextColor={colors.textTertiary}
-        keyboardType={keyboardType}
-        inputMode={inputMode}
-        textContentType={id === 'phone' ? 'telephoneNumber' : undefined}
-        autoCapitalize={autoCapitalize}
-        style={[s.input, focused === id && s.inputFocused, errors[id] && s.inputError]}
-        testID={`profile-v2-${id}`}
-      />
-      {errors[id] ? <Text style={s.errText}>{errors[id]}</Text> : null}
-    </View>
-  );
-
   const showMessengerContact = Boolean(messengerType)
     && !(messengerType === 'whatsapp' && sameAsPhone);
 
@@ -315,16 +325,22 @@ export default function ProfileV2Screen({ navigation, route }) {
           <Text style={s.title}>{ui.title}</Text>
           <Text style={s.subtitle}>{ui.subtitle}</Text>
 
-          <Field
+          <ProfileField
             id="name"
             label={ui.nameLabel}
             value={name}
             onChange={setName}
             placeholder={ui.namePlaceholder}
             autoCapitalize="words"
+            s={s}
+            colors={colors}
+            focused={focused}
+            setFocused={setFocused}
+            errors={errors}
+            setErrors={setErrors}
           />
 
-          <Field
+          <ProfileField
             id="phone"
             label={ui.phoneLabel}
             value={phone}
@@ -333,15 +349,27 @@ export default function ProfileV2Screen({ navigation, route }) {
             keyboardType="phone-pad"
             inputMode="tel"
             autoCapitalize="none"
+            s={s}
+            colors={colors}
+            focused={focused}
+            setFocused={setFocused}
+            errors={errors}
+            setErrors={setErrors}
           />
 
-          <Field
+          <ProfileField
             id="company"
             label={ui.companyLabel}
             value={company}
             onChange={setCompany}
             placeholder={ui.companyPlaceholder}
             autoCapitalize="words"
+            s={s}
+            colors={colors}
+            focused={focused}
+            setFocused={setFocused}
+            errors={errors}
+            setErrors={setErrors}
           />
           <Text style={s.helperText}>{ui.companyHint}</Text>
 
@@ -379,14 +407,20 @@ export default function ProfileV2Screen({ navigation, route }) {
             ) : null}
 
             {showMessengerContact ? (
-              <Field
-                id="messenger"
-                label={ui.messengerContact}
-                value={messengerId}
-                onChange={setMessengerId}
-                placeholder={ui.messengerPlaceholder}
-                autoCapitalize="none"
-              />
+            <ProfileField
+              id="messenger"
+              label={ui.messengerContact}
+              value={messengerId}
+              onChange={setMessengerId}
+              placeholder={ui.messengerPlaceholder}
+              autoCapitalize="none"
+              s={s}
+              colors={colors}
+              focused={focused}
+              setFocused={setFocused}
+              errors={errors}
+              setErrors={setErrors}
+            />
             ) : null}
           </View>
 

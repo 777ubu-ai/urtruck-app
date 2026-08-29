@@ -3,6 +3,8 @@ import { View, Text, TouchableOpacity, StyleSheet, FlatList, RefreshControl } fr
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useToast } from '../components/Toast';
 import { notificationsAPI } from '../utils/notificationsAPI';
+import { notifyNotifRead } from '../utils/unreadEvents';
+import { refreshAppIconBadge } from '../utils/appBadge';
 import {v1Colors, useV1Colors, v1Radius, v1AccentFor} from '../theme/designV1';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
@@ -114,6 +116,12 @@ export default function NotificationsScreen({ navigation }) {
     await notificationsAPI.readAll();
     toast(`✓ ${t('notif_all_read')}`, 'success');
     load();
+    // P0-hotfix 28.08.2026: без этих двух вызовов badge на вкладке «Сделки»
+    // и на иконке приложения обновлялся только на следующем 12-сек poll'е
+    // (useUnreadNotifications) — пользователь мог прочитать все уведомления
+    // здесь и всё ещё видеть старую цифру на иконке ещё несколько секунд.
+    notifyNotifRead();
+    refreshAppIconBadge();
   };
 
   // PR-C1: после mark-read открываем целевой экран по item.url.
@@ -125,6 +133,8 @@ export default function NotificationsScreen({ navigation }) {
     const isUnread = !item.is_read;
     if (isUnread) {
       try { await notificationsAPI.read(item.id); } catch {}
+      notifyNotifRead();
+      refreshAppIconBadge();
     }
     setItems(prev => prev.map(i => i.id === item.id ? { ...i, is_read: 1 } : i));
     const parsed = parseNotifUrl(item.url);

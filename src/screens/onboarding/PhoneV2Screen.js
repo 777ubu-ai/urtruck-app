@@ -50,6 +50,7 @@ import { brand, useBrand, radius, typography } from '../../theme/brandV2';
 import { WEB_URL } from '../../config/env';
 
 const LEGAL_BASE = WEB_URL || 'https://urtruck.kz';
+const SHOW_APPLE_AUTH = false;
 
 // BUG FIX (logout → мгновенный молчаливый повторный вход): Linking.
 // getInitialURL() отдаёт URL, которым процесс приложения был запущен
@@ -373,7 +374,7 @@ export default function PhoneV2Screen({ navigation, route }) {
 
             <View style={s.socialStack} testID="auth-social-providers">
               <SocialButton provider="google" icon="google" testID="auth-google" />
-              <SocialButton provider="apple" icon="apple" testID="auth-apple" />
+              {SHOW_APPLE_AUTH ? <SocialButton provider="apple" icon="apple" testID="auth-apple" /> : null}
             </View>
 
             {/* #P1-C: social error lives here, next to the buttons that

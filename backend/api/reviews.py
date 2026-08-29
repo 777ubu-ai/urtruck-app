@@ -62,17 +62,22 @@ def create_review(body: ReviewIn, user=Depends(require_level(1))):
         tags=body.tags,
     )
     # Push получателю отзыва
+    emoji = '⭐' * body.rating
+    review_title = f"Новый отзыв {emoji}"
+    review_body = body.text[:80] if body.text else f"Оценка {body.rating} из 5"
     try:
         from api.push import send_to_user
-        emoji = '⭐' * body.rating
-        send_to_user(
-            body.target_id,
-            f"Новый отзыв {emoji}",
-            body.text[:80] if body.text else f"Оценка {body.rating} из 5",
-            url="/profile",
-        )
+        send_to_user(body.target_id, review_title, review_body, url="/profile")
     except Exception as e:
         print(f"[push] review failed: {e}")
+    # P0-hotfix 28.08.2026: push шёл без записи в notifications — badge на
+    # иконке рос, но список внутри приложения оставался пустым (тот же
+    # разрыв, что для saved_searches ниже — единая первопричина §1).
+    try:
+        from api.notifications import create_notification
+        create_notification(body.target_id, "review", review_title, review_body, "⭐", url="/profile")
+    except Exception as e:
+        print(f"[notif] review failed: {e}")
     return {"id": rid, "ok": True}
 
 
