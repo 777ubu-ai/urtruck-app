@@ -7,15 +7,17 @@ import { chatAPI } from '../utils/chatAPI';
 import { getDealCounterpartyProfile, compactCounterpartyName } from '../utils/dealCounterpartyAPI';
 import { useV1Colors } from '../theme/designV1';
 
-// Accepted deal rooms use the canonical gated workspace route. Support/general/
-// pre-deal conversations keep the mature legacy ChatScreen.
+// Accepted deal rooms use the canonical gated workspace route. Support/general
+// conversations may keep the mature legacy ChatScreen, but a partner/profile
+// entry must never create or expose a pre-deal chat.
 export default function ChatScreenV2(props) {
-  const { route } = props;
+  const { route, navigation } = props;
   const params = route?.params || {};
   const colors = useV1Colors();
   const [resolvedDealId, setResolvedDealId] = React.useState(params.dealId || null);
   const [resolvedPartner, setResolvedPartner] = React.useState(params.partner || null);
   const [checked, setChecked] = React.useState(Boolean(params.dealId && params.partner));
+  const [blockedPartnerEntry, setBlockedPartnerEntry] = React.useState(false);
 
   React.useEffect(() => {
     const roomId = params.roomId;
@@ -27,6 +29,7 @@ export default function ChatScreenV2(props) {
     if (!roomId && !partnerId) {
       setResolvedDealId(params.dealId || null);
       setResolvedPartner(params.partner || null);
+      setBlockedPartnerEntry(false);
       setChecked(true);
       return undefined;
     }
@@ -60,6 +63,13 @@ export default function ChatScreenV2(props) {
             profile,
           };
         }
+
+        // Profile/contact is not a support chat. If there is no deal-linked
+        // room, fail closed and return the user to Deals instead of exposing
+        // the legacy pre-deal messenger. This matches the product rule that
+        // chat exists only after an accepted offer.
+        const partnerOnlyWithoutDeal = Boolean(partnerId && !roomId && !nextDealId);
+        setBlockedPartnerEntry(partnerOnlyWithoutDeal);
         setResolvedDealId(nextDealId);
         setResolvedPartner(nextPartner);
       } finally {
@@ -69,7 +79,12 @@ export default function ChatScreenV2(props) {
     return () => { cancelled = true; };
   }, [params.dealId, params.roomId, params.partner, params.partner?.id]);
 
-  if (!checked) {
+  React.useEffect(() => {
+    if (!blockedPartnerEntry) return;
+    navigation.navigate('Deals', { role: params.role });
+  }, [blockedPartnerEntry, navigation, params.role]);
+
+  if (!checked || blockedPartnerEntry) {
     return (
       <SafeAreaView style={[s.loading, { backgroundColor: colors.bg }]} edges={['top']}>
         <ActivityIndicator color="#168759" />
