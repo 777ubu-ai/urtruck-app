@@ -33,10 +33,18 @@ test('waiting offer cards use calm neutral colours', () => {
 test('deal top tabs fit narrow phones and show counts as badges', () => {
   assert.match(deals, /styles\.tabCountBadge/);
   assert.match(deals, /count > 99 \? '99\+' : count/);
+  assert.match(deals, /tabOffersLabel: 'Предложения'/);
+  assert.match(deals, /tabActiveLabel: 'В работе'/);
+  assert.match(deals, /tabArchiveLabel: 'Архив'/);
+  assert.match(deals, /label=\{copy\.tabOffersLabel\}/);
+  assert.match(deals, /label=\{copy\.tabActiveLabel\}/);
+  assert.match(deals, /styles\.tabChipLabelRow/);
+  assert.match(deals, /flexDirection:\s*'column'/);
   assert.match(deals, /adjustsFontSizeToFit/);
-  assert.match(deals, /minimumFontScale=\{0\.72\}/);
+  assert.match(deals, /minimumFontScale=\{0\.62\}/);
   assert.match(deals, /tabChip:\s*\{[\s\S]*flex:\s*1/);
-  assert.match(deals, /tabChipText:\s*\{[\s\S]*fontSize:\s*12\.5/);
+  assert.match(deals, /tabChipText:\s*\{[\s\S]*fontSize:\s*11/);
+  assert.match(deals, /tabChipText:\s*\{[\s\S]*flexGrow:\s*1/);
 });
 
 test('existing bid action names the edited price, not a vague edit action', () => {

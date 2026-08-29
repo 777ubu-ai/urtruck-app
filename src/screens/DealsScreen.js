@@ -65,6 +65,9 @@ const CLOSED_BID_STATUSES = new Set(['rejected', 'cancelled', 'expired']);
 const COPY = {
   RU: {
     archive: 'Архив',
+    tabOffersLabel: 'Предложения',
+    tabActiveLabel: 'В работе',
+    tabArchiveLabel: 'Архив',
     search: 'Поиск: водитель, маршрут, груз',
     loadError: 'Не удалось загрузить сделки',
     retry: 'Повторить',
@@ -74,6 +77,9 @@ const COPY = {
   },
   EN: {
     archive: 'Archive',
+    tabOffersLabel: 'Offers',
+    tabActiveLabel: 'In work',
+    tabArchiveLabel: 'Archive',
     search: 'Search: driver, route, cargo',
     loadError: 'Could not load deals',
     retry: 'Retry',
@@ -83,6 +89,9 @@ const COPY = {
   },
   ZH: {
     archive: '归档',
+    tabOffersLabel: '报价',
+    tabActiveLabel: '进行中',
+    tabArchiveLabel: '归档',
     search: '搜索：司机、路线、货物',
     loadError: '无法加载交易',
     retry: '重试',
@@ -92,6 +101,9 @@ const COPY = {
   },
   KK: {
     archive: 'Мұрағат',
+    tabOffersLabel: 'Ұсыныстар',
+    tabActiveLabel: 'Жұмыста',
+    tabArchiveLabel: 'Мұрағат',
     search: 'Іздеу: жүргізуші, бағыт, жүк',
     loadError: 'Мәмілелерді жүктеу мүмкін болмады',
     retry: 'Қайталау',
@@ -147,15 +159,17 @@ function TabChip({ label, count, active, onPress, testID, icon = null, colors })
         },
       ]}
     >
-      {icon ? <Feather name={icon} size={15} color={active ? colors.accent : colors.inactiveIcon} /> : null}
-      <Text
-        style={[styles.tabChipText, { color: active ? colors.accent : colors.textSecondary }]}
-        numberOfLines={1}
-        adjustsFontSizeToFit
-        minimumFontScale={0.72}
-      >
-        {label}
-      </Text>
+      <View style={styles.tabChipLabelRow}>
+        {icon ? <Feather name={icon} size={13} color={active ? colors.accent : colors.inactiveIcon} /> : null}
+        <Text
+          style={[styles.tabChipText, { color: active ? colors.accent : colors.textSecondary }]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.62}
+        >
+          {label}
+        </Text>
+      </View>
       <View style={[styles.tabCountBadge, { backgroundColor: active ? colors.surface : colors.surfaceAlt, borderColor: active ? '#B9DACB' : colors.border }]}>
         <Text
           style={[styles.tabCount, { color: active ? colors.accent : colors.textMuted }]}
@@ -577,7 +591,7 @@ export default function DealsScreen({ navigation, route }) {
       <View style={styles.tabsRow} testID="deals-primary-tabs">
         <TabChip
           testID="deals-tab-offers"
-          label={t('deals_tab_offers')}
+          label={copy.tabOffersLabel}
           count={offerCount}
           active={dealTab === 'offers'}
           onPress={() => setDealTab('offers')}
@@ -585,7 +599,7 @@ export default function DealsScreen({ navigation, route }) {
         />
         <TabChip
           testID="deals-tab-active"
-          label={t('deals_tab_active')}
+          label={copy.tabActiveLabel}
           count={activeDeals.length}
           active={dealTab === 'active'}
           onPress={() => setDealTab('active')}
@@ -593,7 +607,7 @@ export default function DealsScreen({ navigation, route }) {
         />
         <TabChip
           testID="deals-tab-archive"
-          label={copy.archive}
+          label={copy.tabArchiveLabel}
           count={archivedDeals.length + closedBidsData.length}
           active={dealTab === 'archive'}
           onPress={() => setDealTab('archive')}
@@ -708,7 +722,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   tabsRow: {
-    minHeight: 44,
+    minHeight: 52,
     paddingHorizontal: 18,
     paddingVertical: 2,
     flexDirection: 'row',
@@ -718,16 +732,17 @@ const styles = StyleSheet.create({
   tabChip: {
     flex: 1,
     minWidth: 0,
-    height: 42,
-    paddingHorizontal: 8,
+    height: 50,
+    paddingHorizontal: 6,
+    paddingVertical: 5,
     borderRadius: 18,
     borderWidth: 1,
     borderColor: BORDER,
     backgroundColor: SURFACE,
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 5,
+    gap: 3,
     shadowColor: '#14211C',
     shadowOpacity: 0.025,
     shadowRadius: 7,
@@ -739,21 +754,30 @@ const styles = StyleSheet.create({
     borderColor: '#A6D2BE',
     backgroundColor: ACCENT_SOFT,
   },
+  tabChipLabelRow: {
+    width: '100%',
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+  },
   tabChipText: {
     color: TEXT_SECONDARY,
-    fontSize: 12.5,
-    lineHeight: 15,
+    fontSize: 11,
+    lineHeight: 13,
     fontWeight: '800',
     flexShrink: 1,
+    flexGrow: 1,
     minWidth: 0,
     textAlign: 'center',
   },
   tabChipTextActive: { color: ACCENT },
   tabCountBadge: {
-    minWidth: 22,
-    height: 18,
-    paddingHorizontal: 5,
-    borderRadius: 9,
+    minWidth: 24,
+    height: 16,
+    paddingHorizontal: 6,
+    borderRadius: 8,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
