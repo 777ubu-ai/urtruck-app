@@ -26,26 +26,26 @@ const COPY = {
   RU: {
     country: 'Страна *', countryPlaceholder: 'Например, Китай', countryRequired: 'Укажите страну',
     phone: 'Телефон *', phonePlaceholder: '+86 138 0000 0000', phoneRequired: 'Укажите действующий номер телефона',
-    company: 'Компания', companyPlaceholder: 'Название компании (необязательно)',
-    requiredHint: 'Имя, страна и телефон обязательны для грузоотправителя.',
+    company: 'Компания / ИП *', companyPlaceholder: 'Название компании или ИП', companyRequired: 'Укажите компанию или ИП',
+    requiredHint: 'Имя, страна, телефон и компания обязательны для грузоотправителя.',
   },
   EN: {
     country: 'Country *', countryPlaceholder: 'For example, China', countryRequired: 'Enter your country',
     phone: 'Phone *', phonePlaceholder: '+86 138 0000 0000', phoneRequired: 'Enter a valid phone number',
-    company: 'Company', companyPlaceholder: 'Company name (optional)',
-    requiredHint: 'Name, country and phone are required for a shipper.',
+    company: 'Company / business *', companyPlaceholder: 'Company or sole trader name', companyRequired: 'Enter company or business name',
+    requiredHint: 'Name, country, phone and company are required for a shipper.',
   },
   ZH: {
     country: '国家 *', countryPlaceholder: '例如：中国', countryRequired: '请输入国家',
     phone: '手机号 *', phonePlaceholder: '+86 138 0000 0000', phoneRequired: '请输入有效手机号',
-    company: '公司', companyPlaceholder: '公司名称（选填）',
-    requiredHint: '货主必须填写姓名、国家和手机号。',
+    company: '公司 / 个体经营 *', companyPlaceholder: '公司或个体经营名称', companyRequired: '请输入公司或个体经营名称',
+    requiredHint: '货主必须填写姓名、国家、手机号和公司。',
   },
   KK: {
     country: 'Ел *', countryPlaceholder: 'Мысалы, Қытай', countryRequired: 'Елді көрсетіңіз',
     phone: 'Телефон *', phonePlaceholder: '+86 138 0000 0000', phoneRequired: 'Жарамды телефон нөмірін енгізіңіз',
-    company: 'Компания', companyPlaceholder: 'Компания атауы (міндетті емес)',
-    requiredHint: 'Жүк иесіне аты, елі және телефоны міндетті.',
+    company: 'Компания / ЖК *', companyPlaceholder: 'Компания немесе ЖК атауы', companyRequired: 'Компания немесе ЖК атауын көрсетіңіз',
+    requiredHint: 'Жүк иесіне аты, елі, телефоны және компаниясы міндетті.',
   },
 };
 
@@ -74,8 +74,10 @@ export default function PremiumProfileScreen({ navigation, route }) {
   const validName = name.trim().length >= 2;
   const validCountry = country.trim().length >= 2;
   const validPhone = digits(phone).length >= 10;
-  const shipperReady = validName && validCountry && validPhone;
-  const ready = isShipper ? shipperReady : validName;
+  const validCompany = company.trim().length >= 2;
+  const driverReady = validName && validPhone && validCompany;
+  const shipperReady = validName && validCountry && validPhone && validCompany;
+  const ready = isShipper ? shipperReady : driverReady;
 
   const enterApp = async (withProfile) => {
     if (loading) return;
@@ -85,7 +87,8 @@ export default function PremiumProfileScreen({ navigation, route }) {
       const nextErrors = {};
       if (!validName) nextErrors.name = t('prem_reg_profile_name_short');
       if (isShipper && !validCountry) nextErrors.country = ui.countryRequired;
-      if (isShipper && !validPhone) nextErrors.phone = ui.phoneRequired;
+      if (!validPhone) nextErrors.phone = ui.phoneRequired;
+      if (!validCompany) nextErrors.company = ui.companyRequired;
       if (Object.keys(nextErrors).length) {
         setErrors(nextErrors);
         return;
@@ -117,7 +120,8 @@ export default function PremiumProfileScreen({ navigation, route }) {
           city: trimmedCity,
           phone: trimmedPhone || initialPhone || undefined,
           role,
-          ...(isShipper ? { country: trimmedCountry, company_name: trimmedCompany } : {}),
+          company_name: trimmedCompany,
+          ...(isShipper ? { country: trimmedCountry } : {}),
         });
       } catch {
         response = null;
@@ -158,7 +162,7 @@ export default function PremiumProfileScreen({ navigation, route }) {
           <Text style={s.subtitle}>{isShipper ? ui.requiredHint : t('prem_reg_profile_subtitle')}</Text>
 
           <View style={s.fieldBlock}>
-            <Text style={s.label}>{t('prem_reg_profile_name_label')}{isShipper ? ' *' : ''}</Text>
+            <Text style={s.label}>{t('prem_reg_profile_name_label')} *</Text>
             <TextInput
               value={name}
               onChangeText={(value) => { setName(value); setErrors((prev) => ({ ...prev, name: '' })); }}
@@ -189,36 +193,43 @@ export default function PremiumProfileScreen({ navigation, route }) {
                 {errors.country ? <Text style={s.err}>{errors.country}</Text> : null}
               </View>
 
-              <View style={s.fieldBlock}>
-                <Text style={s.label}>{ui.phone}</Text>
-                <TextInput
-                  value={phone}
-                  onChangeText={(value) => { setPhone(value); setErrors((prev) => ({ ...prev, phone: '' })); }}
-                  style={[s.input, { borderColor: errors.phone ? '#D64545' : (validPhone ? accent.main : c.border) }]}
-                  placeholder={ui.phonePlaceholder}
-                  placeholderTextColor={c.placeholder}
-                  keyboardType="phone-pad"
-                  inputMode="tel"
-                  maxLength={24}
-                  testID="prem-reg-profile-phone"
-                />
-                {errors.phone ? <Text style={s.err}>{errors.phone}</Text> : null}
-              </View>
-
-              <View style={s.fieldBlock}>
-                <Text style={s.label}>{ui.company}</Text>
-                <TextInput
-                  value={company}
-                  onChangeText={setCompany}
-                  style={[s.input, { borderColor: c.border }]}
-                  placeholder={ui.companyPlaceholder}
-                  placeholderTextColor={c.placeholder}
-                  maxLength={96}
-                  testID="prem-reg-profile-company"
-                />
-              </View>
             </>
           ) : null}
+
+          <View style={s.fieldBlock}>
+            <Text style={s.label}>{ui.phone}</Text>
+            <TextInput
+              value={phone}
+              onChangeText={(value) => { setPhone(value); setErrors((prev) => ({ ...prev, phone: '' })); }}
+              style={[s.input, { borderColor: errors.phone ? '#D64545' : (validPhone ? accent.main : c.border) }]}
+              placeholder={ui.phonePlaceholder}
+              placeholderTextColor={c.placeholder}
+              keyboardType="phone-pad"
+              inputMode="tel"
+              maxLength={24}
+              textContentType="telephoneNumber"
+              autoComplete="tel"
+              testID="prem-reg-profile-phone"
+            />
+            {errors.phone ? <Text style={s.err}>{errors.phone}</Text> : null}
+          </View>
+
+          <View style={s.fieldBlock}>
+            <Text style={s.label}>{ui.company}</Text>
+            <TextInput
+              value={company}
+              onChangeText={(value) => { setCompany(value); setErrors((prev) => ({ ...prev, company: '' })); }}
+              style={[s.input, { borderColor: errors.company ? '#D64545' : (validCompany ? accent.main : c.border) }]}
+              placeholder={ui.companyPlaceholder}
+              placeholderTextColor={c.placeholder}
+              maxLength={96}
+              textContentType="none"
+              autoComplete="off"
+              autoCorrect={false}
+              testID="prem-reg-profile-company"
+            />
+            {errors.company ? <Text style={s.err}>{errors.company}</Text> : null}
+          </View>
 
           <View style={s.fieldBlock}>
             <Text style={s.label}>{t('prem_reg_profile_city_label')}</Text>

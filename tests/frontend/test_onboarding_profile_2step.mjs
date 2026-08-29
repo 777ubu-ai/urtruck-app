@@ -104,3 +104,19 @@ test('privacy contract does not expose phone or messenger in counterparty respon
   assert.doesNotMatch(block, /"phone"\s*:/);
   assert.doesNotMatch(block, /"messenger_id"\s*:/);
 });
+
+
+test('legacy RegProfile also requires phone and company before entering app', () => {
+  const legacy = read('src/screens/registration/PremiumProfileScreen.js');
+  assert.match(legacy, /company: 'Компания \/ ИП \*'/);
+  assert.match(legacy, /companyRequired: 'Укажите компанию или ИП'/);
+  assert.match(legacy, /const validCompany = company\.trim\(\)\.length >= 2/);
+  assert.match(legacy, /const driverReady = validName && validPhone && validCompany/);
+  assert.match(legacy, /const shipperReady = validName && validCountry && validPhone && validCompany/);
+  assert.match(legacy, /if \(!validPhone\) nextErrors\.phone/);
+  assert.match(legacy, /if \(!validCompany\) nextErrors\.company/);
+  assert.match(legacy, /company_name: trimmedCompany/);
+  assert.match(legacy, /testID="prem-reg-profile-phone"/);
+  assert.match(legacy, /testID="prem-reg-profile-company"/);
+  assert.doesNotMatch(legacy, /Название компании \(необязательно\)/);
+});
