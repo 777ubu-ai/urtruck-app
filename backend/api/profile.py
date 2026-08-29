@@ -204,7 +204,7 @@ def get_counterparty_profile(other_user_id: str, user=Depends(require_level(1)))
 
 @profile_router.patch("/me")
 def update_profile(body: UpdateProfileIn, user=Depends(require_level(1))):
-    """Обновить профиль. Имя и реальный телефон обязательны для обеих ролей."""
+    """Обновить профиль. Имя, телефон и компания обязательны для обеих ролей."""
     _ensure_columns()
     updates = {}
     if body.name is not None:
@@ -263,6 +263,10 @@ def update_profile(body: UpdateProfileIn, user=Depends(require_level(1))):
         effective_name = updates.get("full_name") or (current.get("full_name") or "").strip() or None
         if not effective_name:
             raise HTTPException(status_code=400, detail={"error": "NAME_REQUIRED", "message": "Для завершения регистрации укажите имя"})
+
+        effective_company = updates.get("company_name") or (current.get("company_name") or "").strip() or None
+        if not effective_company or len(effective_company) < 2:
+            raise HTTPException(status_code=400, detail={"error": "COMPANY_REQUIRED", "message": "Для завершения регистрации укажите компанию или ИП"})
 
         # Messenger is optional, but once a channel is selected its address is
         # required at the authoritative API boundary. This prevents old clients

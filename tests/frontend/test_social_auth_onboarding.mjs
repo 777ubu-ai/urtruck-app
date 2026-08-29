@@ -95,11 +95,14 @@ test('backend social validation uses the same live Supabase project/key family a
 });
 
 
-test('phone remains a required logistics contact after email/social signup', () => {
+test('phone and company remain required logistics contacts after email/social signup', () => {
   assert.match(profileV2, /id="phone"/);
+  assert.match(profileV2, /id="company"/);
   assert.match(profileV2, /const validPhone = isRealPhone\(phone\)/);
-  assert.match(profileV2, /const formValid = validName && validPhone && validMessenger/);
+  assert.match(profileV2, /const validCompany = company\.trim\(\)\.length >= 2/);
+  assert.match(profileV2, /const formValid = validName && validPhone && validCompany && validMessenger/);
   assert.match(profileV2, /if \(!validPhone\) next\.phone/);
+  assert.match(profileV2, /if \(!validCompany\) next\.company/);
   // The new canonical flow requires a real phone for every role, not only
   // conditionally for one signup method.
   assert.doesNotMatch(profileV2, /isEmailSignup/);

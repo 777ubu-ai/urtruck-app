@@ -231,7 +231,7 @@ export default function BottomNav({ state, navigation }) {
   // Use the bigger of native safe-area inset and a small base pad (web
   // and emulators sometimes report 0 even when the home indicator visually
   // overlaps the bar).
-  const bottomPad = Math.max(insets.bottom, 8);
+  const bottomPad = Math.max(insets.bottom, 6);
 
   // Industrial Luxury: глубокая графитовая подложка (почти чёрная на тёмной
   // теме), скруглённый плавающий бар с тонкой границей и неоновой тенью под
@@ -325,58 +325,58 @@ export default function BottomNav({ state, navigation }) {
 }
 
 const PILL_H = 34;
-const LABEL_H = 14;
+const LABEL_H = 13;
 
 const s = StyleSheet.create({
   // Прозрачная обёртка несёт safe-area отступ снизу и боковые поля,
   // чтобы бар «парил» над контентом.
   wrap: {
     paddingHorizontal: 12,
-    paddingTop: 6,
+    paddingTop: 4,
     backgroundColor: 'transparent',
   },
   bar: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-    paddingHorizontal: 8,
-    paddingTop: 8,
-    paddingBottom: 6,
-    borderRadius: 26,
+    paddingHorizontal: 7,
+    paddingTop: 7,
+    paddingBottom: 5,
+    borderRadius: 24,
     borderWidth: 1,
     // Тень-подъём всего бара (graphite premium).
     shadowColor: '#000',
     shadowOpacity: 0.35,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 12,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 9,
   },
   cell: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'flex-start',
     paddingHorizontal: 2,
-    minHeight: PILL_H + LABEL_H + 4,
+    minHeight: PILL_H + LABEL_H + 3,
   },
   // «Таблетка» под иконкой — фон+неоновая тень появляются только у активного.
   pill: {
     height: PILL_H,
-    minWidth: 52,
+    minWidth: 46,
     borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     shadowOpacity: 0.55,
-    shadowRadius: 12,
+    shadowRadius: 9,
     shadowOffset: { width: 0, height: 0 },
     elevation: 6,
   },
   label: {
     height: LABEL_H,
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: '700',
-    letterSpacing: 0.2,
-    marginTop: 3,
+    letterSpacing: 0,
+    marginTop: 2,
     textAlign: 'center',
     includeFontPadding: false,
   },

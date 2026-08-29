@@ -130,7 +130,7 @@ const dealStatus = (status, t) => {
   return { label: formatStatus(status), color: ARCHIVE };
 };
 
-function TabChip({ label, count, active, onPress, testID, compact = false, icon = null, colors }) {
+function TabChip({ label, count, active, onPress, testID, icon = null, colors }) {
   return (
     <TouchableOpacity
       testID={testID}
@@ -140,7 +140,6 @@ function TabChip({ label, count, active, onPress, testID, compact = false, icon 
       onPress={onPress}
       style={[
         styles.tabChip,
-        compact && styles.archiveChip,
         {
           borderColor: active ? '#A6D2BE' : colors.border,
           backgroundColor: active ? colors.accentSoft : colors.surface,
@@ -152,10 +151,21 @@ function TabChip({ label, count, active, onPress, testID, compact = false, icon 
       <Text
         style={[styles.tabChipText, { color: active ? colors.accent : colors.textSecondary }]}
         numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.72}
       >
         {label}
       </Text>
-      <Text style={[styles.tabCount, { color: active ? '#6B8C7C' : colors.textMuted }]}>{count}</Text>
+      <View style={[styles.tabCountBadge, { backgroundColor: active ? colors.surface : colors.surfaceAlt, borderColor: active ? '#B9DACB' : colors.border }]}>
+        <Text
+          style={[styles.tabCount, { color: active ? colors.accent : colors.textMuted }]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.75}
+        >
+          {count > 99 ? '99+' : count}
+        </Text>
+      </View>
     </TouchableOpacity>
   );
 }
@@ -587,7 +597,6 @@ export default function DealsScreen({ navigation, route }) {
           count={archivedDeals.length + closedBidsData.length}
           active={dealTab === 'archive'}
           onPress={() => setDealTab('archive')}
-          compact
           icon="archive"
           colors={palette}
         />
@@ -699,37 +708,32 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   tabsRow: {
-    minHeight: 48,
+    minHeight: 44,
     paddingHorizontal: 18,
-    paddingVertical: 3,
+    paddingVertical: 2,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   tabChip: {
+    flex: 1,
     minWidth: 0,
-    height: 46,
-    paddingHorizontal: 14,
-    borderRadius: 23,
+    height: 42,
+    paddingHorizontal: 8,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: BORDER,
     backgroundColor: SURFACE,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 7,
+    gap: 5,
     shadowColor: '#14211C',
     shadowOpacity: 0.025,
     shadowRadius: 7,
     shadowOffset: { width: 0, height: 2 },
     elevation: 1,
-    flexShrink: 1,
-  },
-  archiveChip: {
-    height: 42,
-    borderRadius: 21,
-    paddingHorizontal: 11,
-    flexShrink: 1.3,
+    overflow: 'hidden',
   },
   tabChipActive: {
     borderColor: '#A6D2BE',
@@ -737,15 +741,29 @@ const styles = StyleSheet.create({
   },
   tabChipText: {
     color: TEXT_SECONDARY,
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 12.5,
+    lineHeight: 15,
+    fontWeight: '800',
     flexShrink: 1,
+    minWidth: 0,
+    textAlign: 'center',
   },
   tabChipTextActive: { color: ACCENT },
+  tabCountBadge: {
+    minWidth: 22,
+    height: 18,
+    paddingHorizontal: 5,
+    borderRadius: 9,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
   tabCount: {
     color: '#7B8580',
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 10.5,
+    lineHeight: 12,
+    fontWeight: '900',
     fontVariant: ['tabular-nums'],
   },
   tabCountActive: { color: '#6B8C7C' },

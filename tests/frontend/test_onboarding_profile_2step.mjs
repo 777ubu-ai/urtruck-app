@@ -31,23 +31,28 @@ test('role is not committed to AuthContext before required profile saves success
 });
 
 
-test('profile step is step 2 of 2 with name and phone always required', () => {
+test('profile step is step 2 of 2 with name, phone and company always required', () => {
   assert.match(profile, /testID="profile-v2-step"/);
   assert.match(profile, /<Text style=\{s\.stepCaption\}>2 \/ 2<\/Text>/);
   assert.match(profile, /id="name"/);
   assert.match(profile, /id="phone"/);
-  assert.match(profile, /const formValid = validName && validPhone && validMessenger/);
+  assert.match(profile, /id="company"/);
+  assert.match(profile, /const validCompany = company\.trim\(\)\.length >= 2/);
+  assert.match(profile, /const formValid = validName && validPhone && validCompany && validMessenger/);
   assert.match(profile, /if \(!validName\) next\.name/);
   assert.match(profile, /if \(!validPhone\) next\.phone/);
+  assert.match(profile, /if \(!validCompany\) next\.company/);
   assert.doesNotMatch(profile, /validCountry/);
   assert.doesNotMatch(profile, /validCity/);
   assert.doesNotMatch(profile, /COUNTRY_REQUIRED/);
 });
 
 
-test('short onboarding keeps company optional and does not ask country/city/email again', () => {
+test('short onboarding requires company and does not ask country/city/email again', () => {
   assert.match(profile, /id="company"/);
   assert.match(profile, /company_name:\s*company\.trim\(\)/);
+  assert.match(profile, /companyLabel: 'Компания \/ ИП \*'/);
+  assert.doesNotMatch(profile, /Название компании \(необязательно\)/);
   assert.doesNotMatch(profile, /id="country"/);
   assert.doesNotMatch(profile, /id="city"/);
   assert.doesNotMatch(profile, /id="email"/);
@@ -79,11 +84,13 @@ test('profile uses runtime brand theme instead of a fixed light page palette', (
 });
 
 
-test('backend onboarding contract requires name+phone for both roles but not country', () => {
+test('backend onboarding contract requires name+phone+company for both roles but not country', () => {
   assert.match(backend, /if not effective_phone:/);
   assert.match(backend, /"error": "PHONE_REQUIRED"/);
   assert.match(backend, /if not effective_name:/);
   assert.match(backend, /"error": "NAME_REQUIRED"/);
+  assert.match(backend, /if not effective_company/);
+  assert.match(backend, /"error": "COMPANY_REQUIRED"/);
   assert.doesNotMatch(backend, /COUNTRY_REQUIRED/);
   assert.match(backend, /"other"/);
 });

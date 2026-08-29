@@ -245,17 +245,20 @@ test('deal status actions use the shared canonical role FSM and GPS starts with 
   assert.match(workspace, /marketAPI\.sendDealLocation/);
 });
 
-test('short onboarding requires name and phone for both roles and cannot skip', () => {
+test('short onboarding requires name, phone and company for both roles and cannot skip', () => {
   assert.match(profile, /id="name"/);
   assert.match(profile, /id="phone"/);
   assert.match(profile, /id="company"/);
-  assert.match(profile, /const formValid = validName && validPhone && validMessenger/);
+  assert.match(profile, /const validCompany = company\.trim\(\)\.length >= 2/);
+  assert.match(profile, /const formValid = validName && validPhone && validCompany && validMessenger/);
   assert.match(profile, /if \(!validName\) next\.name/);
   assert.match(profile, /if \(!validPhone\) next\.phone/);
+  assert.match(profile, /if \(!validCompany\) next\.company/);
   assert.match(profile, /setRole\(role\)/);
   assert.doesNotMatch(profile, /id="country"/);
   assert.doesNotMatch(profile, /id="city"/);
   assert.match(profileApi, /PHONE_REQUIRED/);
   assert.match(profileApi, /NAME_REQUIRED/);
+  assert.match(profileApi, /COMPANY_REQUIRED/);
   assert.doesNotMatch(profileApi, /COUNTRY_REQUIRED/);
 });

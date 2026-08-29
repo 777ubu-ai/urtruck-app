@@ -1,6 +1,6 @@
 // ProfileV2Screen — шаг 2 из 2 после выбора роли.
-// Канон onboarding: имя + основной телефон обязательны для обеих ролей;
-// компания и preferred messenger — необязательные контактные данные.
+// Канон onboarding: имя + основной телефон + компания обязательны для обеих
+// ролей; preferred messenger — необязательные контактные данные.
 // Email принадлежит auth-identity и повторно у пользователя не спрашивается.
 
 import React, { useMemo, useState } from 'react';
@@ -30,9 +30,10 @@ const COPY = {
     nameLabel: 'Имя / контактное лицо *',
     namePlaceholder: 'Например, Иван Петров',
     phoneLabel: 'Основной телефон *',
-    companyLabel: 'Компания / ИП',
-    companyPlaceholder: 'Название компании (необязательно)',
-    companyHint: 'Для компании — название, для частного лица можно оставить пустым',
+    companyLabel: 'Компания / ИП *',
+    companyPlaceholder: 'Название компании или ИП',
+    companyHint: 'Обязательно для порядка в сделках и документах',
+    companyRequired: 'Укажите компанию или ИП',
     messengerLabel: 'Предпочтительный мессенджер',
     messengerContact: 'Контакт в мессенджере',
     messengerPlaceholder: 'ID, логин или номер',
@@ -49,9 +50,10 @@ const COPY = {
     nameLabel: 'Name / contact person *',
     namePlaceholder: 'For example, Alex Morgan',
     phoneLabel: 'Primary phone *',
-    companyLabel: 'Company / business',
-    companyPlaceholder: 'Company name (optional)',
-    companyHint: 'For a company, enter its name; individuals can leave this blank',
+    companyLabel: 'Company / business *',
+    companyPlaceholder: 'Company or sole trader name',
+    companyHint: 'Required to keep deals and documents clean',
+    companyRequired: 'Enter company or business name',
     messengerLabel: 'Preferred messenger',
     messengerContact: 'Messenger contact',
     messengerPlaceholder: 'ID, username or number',
@@ -68,9 +70,10 @@ const COPY = {
     nameLabel: '姓名 / 联系人 *',
     namePlaceholder: '例如：张伟',
     phoneLabel: '主要手机号 *',
-    companyLabel: '公司 / 个体经营',
-    companyPlaceholder: '公司名称（选填）',
-    companyHint: '公司用户填写公司名称，个人用户可留空',
+    companyLabel: '公司 / 个体经营 *',
+    companyPlaceholder: '公司或个体经营名称',
+    companyHint: '交易和文件中必须填写',
+    companyRequired: '请输入公司或个体经营名称',
     messengerLabel: '首选即时通讯',
     messengerContact: '即时通讯联系方式',
     messengerPlaceholder: 'ID、账号或手机号',
@@ -87,9 +90,10 @@ const COPY = {
     nameLabel: 'Аты / байланыс тұлғасы *',
     namePlaceholder: 'Мысалы, Айдан Нұрлан',
     phoneLabel: 'Негізгі телефон *',
-    companyLabel: 'Компания / ЖК',
-    companyPlaceholder: 'Компания атауы (міндетті емес)',
-    companyHint: 'Компания болса — атауын жазыңыз, жеке тұлға бос қалдыра алады',
+    companyLabel: 'Компания / ЖК *',
+    companyPlaceholder: 'Компания немесе ЖК атауы',
+    companyHint: 'Мәмілелер мен құжаттар реті үшін міндетті',
+    companyRequired: 'Компания немесе ЖК атауын көрсетіңіз',
     messengerLabel: 'Қалаулы мессенджер',
     messengerContact: 'Мессенджердегі байланыс',
     messengerPlaceholder: 'ID, логин немесе нөмір',
@@ -227,15 +231,17 @@ export default function ProfileV2Screen({ navigation, route }) {
 
   const validName = name.trim().length >= 2;
   const validPhone = isRealPhone(phone);
+  const validCompany = company.trim().length >= 2;
   const validMessenger = !messengerType
     || (messengerType === 'whatsapp' && sameAsPhone && validPhone)
     || messengerId.trim().length >= 2;
-  const formValid = validName && validPhone && validMessenger;
+  const formValid = validName && validPhone && validCompany && validMessenger;
 
   const validate = () => {
     const next = {};
     if (!validName) next.name = t('profile_v2_err_name');
     if (!validPhone) next.phone = t('prem_reg_phone_invalid');
+    if (!validCompany) next.company = ui.companyRequired;
     if (!validMessenger) next.messenger = ui.messengerRequired;
     setErrors(next);
     return Object.keys(next).length === 0;

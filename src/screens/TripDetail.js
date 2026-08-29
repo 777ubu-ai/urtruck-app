@@ -136,6 +136,12 @@ export default function TripDetail({ navigation, route }) {
     };
   }, [serverTrip, rawTrip, tripId]);
   const { t, lang } = useI18n();
+  const editBidLabel = ({
+    RU: 'Изменить цену',
+    EN: 'Edit price',
+    KK: 'Бағаны өзгерту',
+    ZH: '修改价格',
+  }[lang]) || t('edit_bid');
   const { theme } = useTheme();
   const { toast } = useToast();
   const { requireLevel, Gate } = useVerificationGate();
@@ -972,7 +978,7 @@ export default function TripDetail({ navigation, route }) {
             <SecondaryButton
               testID="trip-my-bid-edit"
               role="client"
-              label={t('edit_bid')}
+              label={editBidLabel}
               onPress={() => setBidModal(true)}
               disabled={cancelling}
             />

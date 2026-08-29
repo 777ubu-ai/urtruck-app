@@ -151,6 +151,12 @@ export default function CargoDetail({ navigation, route }) {
   const { cargo: paramCargo, cargoId, role, dealId: routeDealId } = route.params || {};
   // Canonical cargo: locale is explicit so normalizers stay pure and Node-testable.
   const { t, lang } = useI18n();
+  const editBidLabel = ({
+    RU: 'Изменить цену',
+    EN: 'Edit price',
+    KK: 'Бағаны өзгерту',
+    ZH: '修改价格',
+  }[lang]) || t('edit_bid');
   const cargo = normalizeCargo(paramCargo, lang) || {};
   const { theme } = useTheme();
   const { toast } = useToast();
@@ -799,7 +805,7 @@ export default function CargoDetail({ navigation, route }) {
                       testID="bid-edit"
                       role="driver"
                       icon="✏️"
-                      label={t('edit_bid')}
+                      label={editBidLabel}
                       onPress={() => {
                         setEditingBid(b);
                         setBidModalMode('edit');
@@ -893,7 +899,7 @@ export default function CargoDetail({ navigation, route }) {
                 <SecondaryButton
                   testID="cargo-my-bid-edit"
                   role="driver"
-                  label={t('edit_bid')}
+                  label={editBidLabel}
                   onPress={() => { setEditingBid(myPendingBid); setBidModalMode('edit'); setBidModal(true); }}
                   disabled={cancelling === myPendingBid.id}
                 />
