@@ -6,13 +6,15 @@ const profile = fs.readFileSync('src/screens/onboarding/ProfileV2Screen.js', 'ut
 const api = fs.readFileSync('backend/api/profile.py', 'utf8');
 const attachments = fs.readFileSync('src/components/deal/DealAttachments.js', 'utf8');
 
-test('active ProfileV2 requires name and phone for both roles while country/city stay optional', () => {
+test('active ProfileV2 requires name, phone and company for both roles while country/city stay optional', () => {
   assert.match(profile, /id="name"/);
   assert.match(profile, /id="phone"/);
   assert.match(profile, /id="company"/);
-  assert.match(profile, /const formValid = validName && validPhone && validMessenger/);
+  assert.match(profile, /const validCompany = company\.trim\(\)\.length >= 2/);
+  assert.match(profile, /const formValid = validName && validPhone && validCompany && validMessenger/);
   assert.match(profile, /if \(!validName\) next\.name/);
   assert.match(profile, /if \(!validPhone\) next\.phone/);
+  assert.match(profile, /if \(!validCompany\) next\.company/);
   assert.match(profile, /testID=\{`profile-v2-\$\{id\}`\}/);
   assert.match(profile, /name:\s*name\.trim\(\)/);
   assert.match(profile, /phone:\s*phone\.trim\(\)/);
@@ -22,11 +24,13 @@ test('active ProfileV2 requires name and phone for both roles while country/city
   assert.doesNotMatch(profile, /COUNTRY_REQUIRED/);
 });
 
-test('backend independently requires name+phone for completed driver/client onboarding, not country', () => {
+test('backend independently requires name+phone+company for completed driver/client onboarding, not country', () => {
   assert.match(api, /PHONE_REQUIRED/);
   assert.match(api, /NAME_REQUIRED/);
+  assert.match(api, /COMPANY_REQUIRED/);
   assert.match(api, /if not effective_phone:/);
   assert.match(api, /if not effective_name:/);
+  assert.match(api, /if not effective_company/);
   assert.match(api, /role_norm not in \("driver", "client"\)/);
   assert.doesNotMatch(api, /COUNTRY_REQUIRED/);
 });

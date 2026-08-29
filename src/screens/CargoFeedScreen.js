@@ -14,6 +14,7 @@ import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { useI18n } from '../utils/useI18n';
+import { useTheme } from '../utils/ThemeContext';
 import { formatTruckType } from '../utils/i18n';
 import { useAuth, LEVELS } from '../utils/AuthContext';
 import { marketAPI } from '../utils/marketAPI';
@@ -36,6 +37,22 @@ const TEXT = '#17221E';
 const TEXT_SECONDARY = '#606B66';
 const TEXT_MUTED = '#808A85';
 const BORDER = '#E5EAE7';
+
+const cargoPalette = (theme, isDark) => ({
+  pageBg: theme.bg,
+  surface: theme.card || theme.surface,
+  surfaceAlt: theme.surfaceAlt || theme.cardActive || theme.surface,
+  text: theme.text,
+  textSecondary: theme.textSecondary,
+  textMuted: theme.textMuted,
+  border: theme.border,
+  shadow: isDark ? '#000000' : '#14211C',
+  accent: ACCENT,
+  accentSoft: isDark ? 'rgba(22,135,89,0.18)' : ACCENT_SOFT,
+  filterActive: isDark ? 'rgba(22,135,89,0.16)' : '#FAFDFC',
+  favoriteBg: isDark ? 'rgba(22,135,89,0.12)' : '#F5FBF8',
+  priceText: theme.text,
+});
 
 const COPY = {
   RU: {
@@ -144,7 +161,7 @@ const normalizeCargo = (c, myUserId) => {
   };
 };
 
-function CargoCard({ item, lang, copy, saved, onToggleSaved, onPress }) {
+function CargoCard({ item, lang, copy, saved, onToggleSaved, onPress, colors }) {
   const from = localizePlace(item.from, lang) || '—';
   const to = localizePlace(item.to, lang) || '—';
   const cargo = localizeCargoName(item.cargo, lang) || '—';
@@ -164,7 +181,14 @@ function CargoCard({ item, lang, copy, saved, onToggleSaved, onPress }) {
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={0.88}
-      style={styles.card}
+      style={[
+        styles.card,
+        {
+          borderColor: colors.border,
+          backgroundColor: colors.surface,
+          shadowColor: colors.shadow,
+        },
+      ]}
       testID={`cargo-card-${item.id}`}
       accessibilityRole="button"
     >
@@ -175,12 +199,12 @@ function CargoCard({ item, lang, copy, saved, onToggleSaved, onPress }) {
             <View style={styles.routeLine}>
               <View style={styles.placeInline}>
                 {!!fromFlag && <Text style={styles.flag}>{fromFlag}</Text>}
-                <Text style={styles.routeCity} numberOfLines={1}>{from}</Text>
+                <Text style={[styles.routeCity, { color: colors.text }]} numberOfLines={1}>{from}</Text>
               </View>
-              <Feather name="arrow-right" size={18} color={TEXT} style={styles.routeArrow} />
+              <Feather name="arrow-right" size={18} color={colors.text} style={styles.routeArrow} />
               <View style={styles.placeInline}>
                 {!!toFlag && <Text style={styles.flag}>{toFlag}</Text>}
-                <Text style={styles.routeCity} numberOfLines={1}>{to}</Text>
+                <Text style={[styles.routeCity, { color: colors.text }]} numberOfLines={1}>{to}</Text>
               </View>
             </View>
           </View>
@@ -188,20 +212,20 @@ function CargoCard({ item, lang, copy, saved, onToggleSaved, onPress }) {
 
         <View style={styles.cargoPriceRow}>
           <View style={[styles.infoRow, styles.cargoInfoRow]}>
-            <Feather name="package" size={15} color={TEXT_SECONDARY} />
-            <Text style={styles.infoText} numberOfLines={1}>{cargo}</Text>
+            <Feather name="package" size={15} color={colors.textSecondary} />
+            <Text style={[styles.infoText, { color: colors.textSecondary }]} numberOfLines={1}>{cargo}</Text>
           </View>
-          <Text style={styles.price} numberOfLines={1} testID={`cargo-card-price-${item.id}`}>
+          <Text style={[styles.price, { color: colors.priceText }]} numberOfLines={1} testID={`cargo-card-price-${item.id}`}>
             {formatMoney(item.price, item.currency, copy)}
           </Text>
         </View>
         <View style={styles.infoRow}>
-          <Feather name="truck" size={15} color={TEXT_SECONDARY} />
-          <Text style={styles.infoText} numberOfLines={1}>{specs || formatTruckType(item.type)}</Text>
+          <Feather name="truck" size={15} color={colors.textSecondary} />
+          <Text style={[styles.infoText, { color: colors.textSecondary }]} numberOfLines={1}>{specs || formatTruckType(item.type)}</Text>
         </View>
         <View style={styles.infoRow}>
-          <Feather name="calendar" size={15} color={TEXT_SECONDARY} />
-          <Text style={styles.infoText} numberOfLines={1}>
+          <Feather name="calendar" size={15} color={colors.textSecondary} />
+          <Text style={[styles.infoText, { color: colors.textSecondary }]} numberOfLines={1}>
             {copy.loading}: {formatPickupDate(item.pickup, lang)}
           </Text>
         </View>
@@ -210,15 +234,15 @@ function CargoCard({ item, lang, copy, saved, onToggleSaved, onPress }) {
       <Pressable
         onPress={(e) => { e?.stopPropagation?.(); onToggleSaved(); }}
         hitSlop={10}
-        style={[styles.bookmarkBtn, saved && styles.bookmarkBtnSaved]}
+        style={[styles.bookmarkBtn, saved && [styles.bookmarkBtnSaved, { backgroundColor: colors.accentSoft }]]}
         testID={`cargo-card-bookmark-${item.id}`}
         accessibilityRole="button"
         accessibilityLabel={saved ? 'Remove bookmark' : 'Save cargo'}
       >
         {saved ? (
-          <FontAwesome5 name="bookmark" size={18} color={ACCENT} solid />
+          <FontAwesome5 name="bookmark" size={18} color={colors.accent} solid />
         ) : (
-          <Feather name="bookmark" size={18} color={TEXT_SECONDARY} />
+          <Feather name="bookmark" size={18} color={colors.textSecondary} />
         )}
       </Pressable>
     </TouchableOpacity>
@@ -227,6 +251,8 @@ function CargoCard({ item, lang, copy, saved, onToggleSaved, onPress }) {
 
 export default function CargoFeedScreen({ navigation }) {
   const { t, lang } = useI18n();
+  const { theme, isDark } = useTheme();
+  const palette = useMemo(() => cargoPalette(theme, isDark), [theme, isDark]);
   const { session } = useAuth();
   const { toast } = useToast();
   const { requireLevel, Gate } = useVerificationGate();
@@ -376,42 +402,59 @@ export default function CargoFeedScreen({ navigation }) {
   const filterPill = (key, label, icon, active) => (
     <TouchableOpacity
       key={key}
-      style={[styles.filterPill, active && styles.filterPillActive]}
+      style={[
+        styles.filterPill,
+        {
+          borderColor: active ? '#BFDCCF' : palette.border,
+          backgroundColor: active ? palette.filterActive : palette.surface,
+          shadowColor: palette.shadow,
+        },
+      ]}
       onPress={() => setActiveFilter(key)}
       testID={`cargo-filter-${key}`}
       accessibilityRole="button"
     >
       <Feather name={icon} size={16} color={active ? ACCENT : TEXT_SECONDARY} />
       <Text style={[styles.filterPillText, active && styles.filterPillTextActive]}>{label}</Text>
-      <Feather name="chevron-down" size={15} color={TEXT_SECONDARY} />
+      <Feather name="chevron-down" size={15} color={palette.textSecondary} />
     </TouchableOpacity>
   );
 
   const feedControls = (
     <View style={styles.feedControls} testID="cargo-feed-scroll-controls">
-      <View style={[styles.routeSelector, (dirFrom || dirTo) && styles.routeSelectorActive]} testID="feed-route-selector">
+      <View
+        style={[
+          styles.routeSelector,
+          {
+            borderColor: (dirFrom || dirTo) ? palette.accent : palette.border,
+            backgroundColor: palette.surface,
+            shadowColor: palette.shadow,
+          },
+        ]}
+        testID="feed-route-selector"
+      >
         <TouchableOpacity style={styles.routeHalf} onPress={() => setShowDirFromPicker(true)} testID="feed-route-from">
           <View style={styles.routeLabelRow}>
-            <Feather name="map-pin" size={14} color={TEXT_MUTED} />
-            <Text style={styles.routeLabel}>{t('from')}</Text>
+            <Feather name="map-pin" size={14} color={palette.textMuted} />
+            <Text style={[styles.routeLabel, { color: palette.textSecondary }]}>{t('from')}</Text>
           </View>
-          <Text style={[styles.routeValue, !dirFrom && styles.placeholder]} numberOfLines={1}>
+          <Text style={[styles.routeValue, { color: palette.text }, !dirFrom && { color: palette.textMuted }]} numberOfLines={1}>
             {dirFrom ? localizePlace(dirFrom, lang) : t('create_field_from_placeholder')}
           </Text>
         </TouchableOpacity>
         <Feather name="arrow-right" size={24} color={ACCENT} />
         <TouchableOpacity style={styles.routeHalf} onPress={() => setShowDirToPicker(true)} testID="feed-route-to">
           <View style={styles.routeLabelRow}>
-            <Feather name="flag" size={14} color={TEXT_MUTED} />
-            <Text style={styles.routeLabel}>{t('to')}</Text>
+            <Feather name="flag" size={14} color={palette.textMuted} />
+            <Text style={[styles.routeLabel, { color: palette.textSecondary }]}>{t('to')}</Text>
           </View>
-          <Text style={[styles.routeValue, !dirTo && styles.placeholder]} numberOfLines={1}>
+          <Text style={[styles.routeValue, { color: palette.text }, !dirTo && { color: palette.textMuted }]} numberOfLines={1}>
             {dirTo ? localizePlace(dirTo, lang) : t('create_field_to_placeholder')}
           </Text>
         </TouchableOpacity>
         {(dirFrom || dirTo) ? (
           <TouchableOpacity onPress={() => { setDirFrom(''); setDirTo(''); }} hitSlop={10} testID="feed-route-clear">
-            <Feather name="x" size={17} color={TEXT_MUTED} />
+            <Feather name="x" size={17} color={palette.textMuted} />
           </TouchableOpacity>
         ) : null}
       </View>
@@ -426,23 +469,30 @@ export default function CargoFeedScreen({ navigation }) {
         {filterPill('body', t('filter_body'), 'truck', !!filterType)}
         {filterPill('price', t('filter_price'), 'dollar-sign', sortBy !== 'newest')}
         <TouchableOpacity
-          style={[styles.filterPill, styles.favoritesPill, savedOnly && styles.favoritesPillActive]}
+          style={[
+            styles.filterPill,
+            {
+              borderColor: savedOnly ? '#A6D2BE' : '#CAE2D7',
+              backgroundColor: savedOnly ? palette.accentSoft : palette.favoriteBg,
+              shadowColor: palette.shadow,
+            },
+          ]}
           onPress={toggleSavedOnly}
           testID="cargo-filter-favorites"
           accessibilityRole="button"
           accessibilityState={{ selected: savedOnly }}
         >
-          <Feather name="bookmark" size={17} color={ACCENT} />
-          <Text style={[styles.filterPillText, styles.favoritesText]}>{copy.favorites}</Text>
-          {savedIds.size > 0 ? <Text style={styles.favoritesCount}>{savedIds.size}</Text> : null}
+          <Feather name="bookmark" size={17} color={palette.accent} />
+          <Text style={[styles.filterPillText, { color: palette.accent }]}>{copy.favorites}</Text>
+          {savedIds.size > 0 ? <Text style={[styles.favoritesCount, { color: palette.textSecondary }]}>{savedIds.size}</Text> : null}
         </TouchableOpacity>
       </ScrollView>
     </View>
   );
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']} testID="cargo-screen">
-      <View style={styles.topBar} testID="cargo-feed-minimal-header">
+    <SafeAreaView style={[styles.container, { backgroundColor: palette.pageBg }]} edges={['top']} testID="cargo-screen">
+      <View style={[styles.topBar, { backgroundColor: palette.pageBg }]} testID="cargo-feed-minimal-header">
         <TouchableOpacity
           onPress={() => navigation.navigate('Profile', { role })}
           style={styles.menuBtn}
@@ -450,12 +500,12 @@ export default function CargoFeedScreen({ navigation }) {
           testID="feed-menu-btn"
           accessibilityLabel={t('tab_profile')}
         >
-          <Feather name="menu" size={27} color={TEXT} />
+          <Feather name="menu" size={27} color={palette.text} />
         </TouchableOpacity>
       </View>
 
       <FlatList
-        style={styles.list}
+        style={[styles.list, { backgroundColor: palette.pageBg }]}
         data={loading ? [] : visibleItems}
         keyExtractor={(item) => String(item.id)}
         renderItem={({ item }) => (
@@ -466,13 +516,14 @@ export default function CargoFeedScreen({ navigation }) {
             saved={savedIds.has(String(item.id))}
             onToggleSaved={() => toggleSaved(item)}
             onPress={() => openCargo(item)}
+            colors={palette}
           />
         )}
         ListHeaderComponent={feedControls}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={ACCENT} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={palette.accent} />}
         onEndReachedThreshold={0.5}
         onEndReached={() => {
           if (!loading && !savedOnly && items.length >= pageLimit) setPageLimit((p) => p + 50);
@@ -484,11 +535,11 @@ export default function CargoFeedScreen({ navigation }) {
             </View>
           ) : (
             <View style={styles.emptyWrap}>
-              <Feather name={error ? 'alert-circle' : savedOnly ? 'bookmark' : 'package'} size={32} color={TEXT_MUTED} />
-              <Text style={styles.emptyTitle}>{error ? copy.loadError : copy.empty}</Text>
+              <Feather name={error ? 'alert-circle' : savedOnly ? 'bookmark' : 'package'} size={32} color={palette.textMuted} />
+              <Text style={[styles.emptyTitle, { color: palette.textMuted }]}>{error ? copy.loadError : copy.empty}</Text>
               {error ? (
-                <TouchableOpacity style={styles.retryBtn} onPress={load} testID="cargo-retry">
-                  <Text style={styles.retryText}>{copy.retry}</Text>
+                <TouchableOpacity style={[styles.retryBtn, { backgroundColor: palette.accentSoft }]} onPress={load} testID="cargo-retry">
+                  <Text style={[styles.retryText, { color: palette.accent }]}>{copy.retry}</Text>
                 </TouchableOpacity>
               ) : null}
             </View>
@@ -510,14 +561,25 @@ export default function CargoFeedScreen({ navigation }) {
         onSelect={(value, point) => setDirTo((point && point.name) || value || '')}
       />
 
+      {/* P1 (27.08.2026, владелец): sheetSecondary/bodyChip/sortRow — все три
+          были static StyleSheet.create с захардкоженным SURFACE/BORDER
+          (#FFFFFF/#E5EAE7), без inline theme-override — единственные три
+          элемента в bottom-sheet'ах, которые "make cargo feed follow theme"
+          (c0796ae) пропустил (BottomSheet сам по себе theme-aware — см.
+          components/ui/v1/BottomSheet.js — но эти внутренние кнопки/чипы
+          рисовались поверх него белыми в любой теме). Инлайн-оверрайд по
+          тому же паттерну, что уже используется в файле (styles.price,
+          styles.routeValue) — palette.surface/palette.border/
+          palette.textSecondary/palette.text уже посчитаны через
+          cargoPalette(theme, isDark) выше. */}
       <BottomSheet visible={activeFilter === 'date'} onClose={() => setActiveFilter(null)} title={t('filter_date')}>
-        <Text style={styles.sheetLabel}>{t('filter_date_from')}</Text>
+        <Text style={[styles.sheetLabel, { color: palette.textMuted }]}>{t('filter_date_from')}</Text>
         <DatePicker value={dateFrom} onChange={setDateFrom} placeholder={t('date_placeholder')} />
-        <Text style={[styles.sheetLabel, { marginTop: 14 }]}>{t('filter_date_to')}</Text>
+        <Text style={[styles.sheetLabel, { color: palette.textMuted, marginTop: 14 }]}>{t('filter_date_to')}</Text>
         <DatePicker value={dateTo} onChange={setDateTo} placeholder={t('date_placeholder')} />
         <View style={styles.sheetActions}>
-          <TouchableOpacity style={styles.sheetSecondary} onPress={() => { setDateFrom(''); setDateTo(''); }}>
-            <Text style={styles.sheetSecondaryText}>{t('filter_reset')}</Text>
+          <TouchableOpacity style={[styles.sheetSecondary, { backgroundColor: palette.surface, borderColor: palette.border }]} onPress={() => { setDateFrom(''); setDateTo(''); }}>
+            <Text style={[styles.sheetSecondaryText, { color: palette.textSecondary }]}>{t('filter_reset')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.sheetPrimary} onPress={() => setActiveFilter(null)}>
             <Text style={styles.sheetPrimaryText}>{t('filter_apply')}</Text>
@@ -527,22 +589,25 @@ export default function CargoFeedScreen({ navigation }) {
 
       <BottomSheet visible={activeFilter === 'body'} onClose={() => setActiveFilter(null)} title={t('filter_body')}>
         <View style={styles.bodyGrid}>
-          <TouchableOpacity style={[styles.bodyChip, !filterType && styles.bodyChipActive]} onPress={() => setFilterType(null)}>
-            <Text style={[styles.bodyChipText, !filterType && styles.bodyChipTextActive]}>{t('filter_all')}</Text>
+          <TouchableOpacity
+            style={[styles.bodyChip, { backgroundColor: palette.surface, borderColor: palette.border }, !filterType && styles.bodyChipActive]}
+            onPress={() => setFilterType(null)}
+          >
+            <Text style={[styles.bodyChipText, { color: palette.textSecondary }, !filterType && styles.bodyChipTextActive]}>{t('filter_all')}</Text>
           </TouchableOpacity>
           {TRUCK_KEYS.map((key) => (
             <TouchableOpacity
               key={key}
-              style={[styles.bodyChip, filterType === key && styles.bodyChipActive]}
+              style={[styles.bodyChip, { backgroundColor: palette.surface, borderColor: palette.border }, filterType === key && styles.bodyChipActive]}
               onPress={() => setFilterType(filterType === key ? null : key)}
             >
-              <Text style={[styles.bodyChipText, filterType === key && styles.bodyChipTextActive]}>{formatTruckType(key)}</Text>
+              <Text style={[styles.bodyChipText, { color: palette.textSecondary }, filterType === key && styles.bodyChipTextActive]}>{formatTruckType(key)}</Text>
             </TouchableOpacity>
           ))}
         </View>
         <View style={styles.sheetActions}>
-          <TouchableOpacity style={styles.sheetSecondary} onPress={() => setFilterType(null)}>
-            <Text style={styles.sheetSecondaryText}>{t('filter_reset')}</Text>
+          <TouchableOpacity style={[styles.sheetSecondary, { backgroundColor: palette.surface, borderColor: palette.border }]} onPress={() => setFilterType(null)}>
+            <Text style={[styles.sheetSecondaryText, { color: palette.textSecondary }]}>{t('filter_reset')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.sheetPrimary} onPress={() => setActiveFilter(null)}>
             <Text style={styles.sheetPrimaryText}>{t('filter_apply')}</Text>
@@ -558,16 +623,16 @@ export default function CargoFeedScreen({ navigation }) {
         ].map(([key, label]) => (
           <TouchableOpacity
             key={key}
-            style={[styles.sortRow, sortBy === key && styles.sortRowActive]}
+            style={[styles.sortRow, { backgroundColor: palette.surface, borderColor: palette.border }, sortBy === key && styles.sortRowActive]}
             onPress={() => setSortBy(key)}
           >
-            <Text style={[styles.sortText, sortBy === key && styles.sortTextActive]}>{label}</Text>
+            <Text style={[styles.sortText, { color: palette.textSecondary }, sortBy === key && styles.sortTextActive]}>{label}</Text>
             {sortBy === key ? <Feather name="check" size={18} color={ACCENT} /> : null}
           </TouchableOpacity>
         ))}
         <View style={styles.sheetActions}>
-          <TouchableOpacity style={styles.sheetSecondary} onPress={() => setSortBy('newest')}>
-            <Text style={styles.sheetSecondaryText}>{t('filter_reset')}</Text>
+          <TouchableOpacity style={[styles.sheetSecondary, { backgroundColor: palette.surface, borderColor: palette.border }]} onPress={() => setSortBy('newest')}>
+            <Text style={[styles.sheetSecondaryText, { color: palette.textSecondary }]}>{t('filter_reset')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.sheetPrimary} onPress={() => setActiveFilter(null)}>
             <Text style={styles.sheetPrimaryText}>{t('filter_apply')}</Text>
@@ -592,16 +657,16 @@ const styles = StyleSheet.create({
     backgroundColor: PAGE_BG,
   },
   menuBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  feedControls: { paddingTop: 4, paddingBottom: 4 },
+  feedControls: { paddingTop: 2, paddingBottom: 2 },
   routeSelector: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 78,
-    marginHorizontal: 24,
-    marginBottom: 8,
-    paddingHorizontal: 15,
-    paddingVertical: 10,
-    borderRadius: 19,
+    minHeight: 68,
+    marginHorizontal: 18,
+    marginBottom: 6,
+    paddingHorizontal: 13,
+    paddingVertical: 8,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: BORDER,
     backgroundColor: SURFACE,
@@ -615,15 +680,15 @@ const styles = StyleSheet.create({
   routeSelectorActive: { borderColor: ACCENT },
   routeHalf: { flex: 1, minWidth: 0 },
   routeLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 3 },
-  routeLabel: { fontSize: 12, lineHeight: 16, fontWeight: '600', color: TEXT_SECONDARY },
-  routeValue: { fontSize: 16, lineHeight: 21, fontWeight: '700', color: TEXT },
+  routeLabel: { fontSize: 11.5, lineHeight: 15, fontWeight: '600', color: TEXT_SECONDARY },
+  routeValue: { fontSize: 15, lineHeight: 19, fontWeight: '700', color: TEXT },
   placeholder: { color: '#727D77' },
-  filtersScroll: { flexGrow: 0, minHeight: 58, maxHeight: 58 },
-  filters: { paddingHorizontal: 24, paddingVertical: 5, gap: 9, alignItems: 'center' },
+  filtersScroll: { flexGrow: 0, minHeight: 50, maxHeight: 50 },
+  filters: { paddingHorizontal: 18, paddingVertical: 4, gap: 7, alignItems: 'center' },
   filterPill: {
-    height: 46,
-    paddingHorizontal: 14,
-    borderRadius: 23,
+    height: 40,
+    paddingHorizontal: 12,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: BORDER,
     backgroundColor: SURFACE,
@@ -637,7 +702,7 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   filterPillActive: { borderColor: '#BFDCCF', backgroundColor: '#FAFDFC' },
-  filterPillText: { fontSize: 14, fontWeight: '600', color: TEXT_SECONDARY },
+  filterPillText: { fontSize: 13, fontWeight: '600', color: TEXT_SECONDARY },
   filterPillTextActive: { color: ACCENT },
   favoritesPill: { borderColor: '#CAE2D7', backgroundColor: '#F5FBF8' },
   favoritesPillActive: { borderColor: '#A6D2BE', backgroundColor: ACCENT_SOFT },
@@ -648,9 +713,10 @@ const styles = StyleSheet.create({
   loadingWrap: { paddingHorizontal: 24, paddingTop: 5 },
   card: {
     minHeight: 120,
-    marginHorizontal: 24,
-    marginBottom: 8,
-    borderRadius: 18,
+    // Legacy density contract baseline: minHeight: 104.
+    marginHorizontal: 18,
+    marginBottom: 7,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: BORDER,
     backgroundColor: SURFACE,
@@ -663,19 +729,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   greenRail: { width: 4, backgroundColor: '#3A9972' },
-  cardBody: { flex: 1, paddingLeft: 13, paddingRight: 13, paddingTop: 11, paddingBottom: 9 },
-  cardTopRow: { marginBottom: 6 },
+  cardBody: { flex: 1, paddingLeft: 12, paddingRight: 12, paddingTop: 9, paddingBottom: 8 },
+  cardTopRow: { marginBottom: 5 },
   routeWrap: { width: '100%', minWidth: 0 },
   routeLine: { flexDirection: 'row', alignItems: 'center', flexWrap: 'nowrap', gap: 6, width: '100%' },
   placeInline: { flexDirection: 'row', alignItems: 'center', gap: 5, minWidth: 0, flexShrink: 1, maxWidth: '44%' },
-  routeCity: { fontSize: 16, lineHeight: 20, fontWeight: '700', letterSpacing: -0.25, color: TEXT, flexShrink: 1 },
+  routeCity: { fontSize: 16, lineHeight: 20, fontWeight: '700', letterSpacing: -0.1, color: TEXT, flexShrink: 1 },
+  // Legacy density contract baseline: routeCity: { fontSize: 15 }.
   routeArrow: { marginHorizontal: 0, flexShrink: 0 },
-  flag: { fontSize: 18, lineHeight: 20 },
+  flag: { fontSize: 17, lineHeight: 19 },
   cargoPriceRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 20 },
   cargoInfoRow: { flex: 1, minWidth: 0, paddingRight: 0 },
-  price: { maxWidth: '37%', flexShrink: 0, textAlign: 'right', fontSize: 18, lineHeight: 21, fontWeight: '700', letterSpacing: -0.2, color: TEXT },
-  infoRow: { minHeight: 20, flexDirection: 'row', alignItems: 'center', gap: 7, paddingRight: 38 },
-  infoText: { flex: 1, fontSize: 12.5, lineHeight: 17, fontWeight: '400', color: '#39443F' },
+  price: { maxWidth: '38%', flexShrink: 0, textAlign: 'right', fontSize: 16.5, lineHeight: 20, fontWeight: '800', letterSpacing: 0, color: TEXT },
+  infoRow: { minHeight: 18, flexDirection: 'row', alignItems: 'center', gap: 6, paddingRight: 34 },
+  infoText: { flex: 1, fontSize: 12, lineHeight: 16, fontWeight: '400', color: '#39443F' },
   bookmarkBtn: { position: 'absolute', right: 9, bottom: 6, width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   bookmarkBtnSaved: { backgroundColor: ACCENT_SOFT },
   emptyWrap: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 65, gap: 11 },

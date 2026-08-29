@@ -1,10 +1,11 @@
 """Регрессии двухшагового onboarding-профиля UrTruck.
 
-Канон после auth + выбора роли:
+Текущий канон после auth + выбора роли:
 - имя обязательно для driver и client;
 - реальный телефон обязателен для driver и client;
+- компания/ИП обязательна для driver и client;
 - страна/город не блокируют завершение короткого onboarding;
-- компания и preferred messenger необязательны;
+- preferred messenger необязателен;
 - если messenger выбран, контакт обязателен;
 - messenger_type=other поддерживается.
 """
@@ -25,6 +26,7 @@ def _run(monkeypatch, body, current=None):
         "id": "user-1",
         "phone": "auth_user-1",
         "full_name": "",
+        "company_name": "",
         "role": "guest",
         **(current or {}),
     }
@@ -64,12 +66,12 @@ def test_driver_name_is_required(monkeypatch):
     monkeypatch.setattr(
         profile.reg_dal,
         "get_driver",
-        lambda _uid: {"id": "user-1", "phone": "auth_user-1", "full_name": ""},
+        lambda _uid: {"id": "user-1", "phone": "auth_user-1", "full_name": "", "company_name": "Logistics"},
     )
 
     with pytest.raises(HTTPException) as exc:
         profile.update_profile(
-            profile.UpdateProfileIn(role="driver", name="", phone="+7 777 123 45 67"),
+            profile.UpdateProfileIn(role="driver", name="", phone="+7 777 123 45 67", company_name="Logistics"),
             user={"id": "user-1"},
         )
 
@@ -82,12 +84,12 @@ def test_real_phone_is_required_for_every_role(monkeypatch, role):
     monkeypatch.setattr(
         profile.reg_dal,
         "get_driver",
-        lambda _uid: {"id": "user-1", "phone": "auth_user-1", "full_name": "Owner"},
+        lambda _uid: {"id": "user-1", "phone": "auth_user-1", "full_name": "Owner", "company_name": "Owner Logistics"},
     )
 
     with pytest.raises(HTTPException) as exc:
         profile.update_profile(
-            profile.UpdateProfileIn(role=role, name="Owner"),
+            profile.UpdateProfileIn(role=role, name="Owner", company_name="Owner Logistics"),
             user={"id": "user-1"},
         )
 
@@ -95,14 +97,30 @@ def test_real_phone_is_required_for_every_role(monkeypatch, role):
     assert exc.value.detail["error"] == "PHONE_REQUIRED"
 
 
-def test_other_messenger_and_optional_company_are_persisted(monkeypatch):
+def test_company_is_required_for_every_role(monkeypatch):
+    with pytest.raises(HTTPException) as exc:
+        _run(
+            monkeypatch,
+            profile.UpdateProfileIn(
+                role="driver",
+                name="Wei Zhang",
+                phone="+86 138 0013 8000",
+                company_name="",
+            ),
+        )
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail["error"] == "COMPANY_REQUIRED"
+
+
+def test_other_messenger_and_company_are_persisted(monkeypatch):
     result, captured = _run(
         monkeypatch,
         profile.UpdateProfileIn(
             role="driver",
             name="Wei Zhang",
             phone="+86 138 0013 8000",
-            company_name="",
+            company_name="Wei Logistics",
             messenger_type="other",
             messenger_id="cargo_contact_88",
         ),
@@ -110,7 +128,7 @@ def test_other_messenger_and_optional_company_are_persisted(monkeypatch):
 
     assert result == {"ok": True}
     assert captured["values"]["role"] == "driver"
-    assert captured["values"]["company_name"] == ""
+    assert captured["values"]["company_name"] == "Wei Logistics"
     assert captured["values"]["messenger_type"] == "other"
     assert captured["values"]["messenger_id"] == "cargo_contact_88"
 
@@ -122,6 +140,7 @@ def test_whatsapp_contact_can_equal_primary_phone(monkeypatch):
             role="client",
             name="Aidan",
             phone="+7 701 111 22 33",
+            company_name="Aidan Logistics",
             messenger_type="whatsapp",
             messenger_id="+7 701 111 22 33",
         ),
@@ -129,6 +148,7 @@ def test_whatsapp_contact_can_equal_primary_phone(monkeypatch):
 
     assert result == {"ok": True}
     assert captured["values"]["phone"] == "+77011112233"
+    assert captured["values"]["company_name"] == "Aidan Logistics"
     assert captured["values"]["messenger_type"] == "whatsapp"
     assert captured["values"]["messenger_id"] == "+7 701 111 22 33"
 
@@ -141,6 +161,7 @@ def test_selected_messenger_without_contact_is_rejected(monkeypatch):
             "id": "user-1",
             "phone": "auth_user-1",
             "full_name": "",
+            "company_name": "Owner Logistics",
             "messenger_id": "",
         },
     )
@@ -151,6 +172,7 @@ def test_selected_messenger_without_contact_is_rejected(monkeypatch):
                 role="client",
                 name="Owner",
                 phone="+7 701 111 22 33",
+                company_name="Owner Logistics",
                 messenger_type="wechat",
                 messenger_id="",
             ),
@@ -168,6 +190,7 @@ def test_invalid_messenger_type_is_rejected(monkeypatch):
                 role="driver",
                 name="Owner",
                 phone="+7 701 111 22 33",
+                company_name="Owner Logistics",
                 messenger_type="unknown-chat",
                 messenger_id="owner42",
             ),

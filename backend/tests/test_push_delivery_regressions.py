@@ -21,3 +21,12 @@ def test_push_info_has_safe_registration_counts():
     assert '"native_android"' in src
     assert '"native_ios"' in src
     assert '"web_active"' in src
+
+
+def test_expo_push_uses_dedicated_audible_android_channel():
+    src = (ROOT / 'backend/services/push_sender.py').read_text(encoding='utf-8')
+    assert 'NATIVE_PUSH_CHANNEL_ID = "urtruck_messages_v2"' in src
+    assert '"sound": "default"' in src
+    assert '"priority": "high"' in src
+    assert '"channelId": NATIVE_PUSH_CHANNEL_ID' in src
+    assert '"channelId": "default"' not in src

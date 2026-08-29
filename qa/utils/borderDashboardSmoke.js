@@ -57,12 +57,13 @@ assert.ok(!scheduler.includes('id="cgr_scoreboard"'), 'Periodic all-checkpoint s
 assert.ok(!scheduler.includes('scoreboard_service.fetch_and_store()'), 'Bootstrap must not fetch live data for every checkpoint');
 assert.ok(scheduler.includes('checkpoint_catalog_service.seed_full_catalog()'), 'Backend must seed the complete lightweight paginated checkpoint catalogue once');
 
-// Border remains available as a stack tool, but Task 2 intentionally removes Queue/Border
-// from the four-item bottom navigation for both roles.
-assert.ok(!nav.includes('Queue: {'), 'Bottom navigation must not expose Queue/Border as a fifth tab');
-assert.ok(appNavigator.includes('<Stack.Screen name="Queue" component={QueueScreen}'), 'Border must remain reachable as a stack route');
+// Current product navigation: both roles expose exactly four bottom tabs,
+// including Queue/Border. Profile lives under the top-right menu.
+assert.ok(nav.includes('Queue:'), 'Bottom navigation must expose Queue/Border as one of the four tabs');
+assert.ok(appNavigator.includes('<Tab.Screen name="Queue"'), 'Queue/Border must be registered in MainTabs');
+assert.ok(appNavigator.includes('<Stack.Screen name="Queue" component={QueueScreen}'), 'Border must also remain reachable as a stack route');
 for (const marker of ["tab_border: 'Граница'", "tab_border: 'Шекара'", "tab_border: '边境'", "tab_border: 'Border'"]) {
   assert.ok(i18n.includes(marker), `Missing i18n marker: ${marker}`);
 }
 
-console.log('border dashboard smoke OK: full paginated CGR catalogue + stack-only Border tool + tappable carousel + tap-to-load live data + 5m cache');
+console.log('border dashboard smoke OK: full paginated CGR catalogue + four-tab Border navigation + tappable carousel + tap-to-load live data + 5m cache');

@@ -1,13 +1,40 @@
 // Запись и воспроизведение голосовых сообщений через expo-av
 // Web: MediaRecorder API с audio/mp4 fallback
 // Native: expo-av Audio.Recording
+//
+// Плеер (28.08.2026, WhatsApp/WeChat-паритет по заявке владельца): один
+// активный трек на всё приложение, play/pause/resume, seek по прогрессу,
+// скорость 1x/1.5x/2x, живой прогресс в UI через subscribe(). Раньше был
+// только play() без остановки: повторный тап по играющему сообщению делал
+// `return true` (ничего), пауза отсутствовала физически.
 
 import { Platform } from 'react-native';
 
 let _recording = null;
 let _sound = null;
-let _playResolve = null;
-let _playToken = 0;
+let _webAudio = null;
+let _playingUri = null;
+let _playPromise = null;
+let _webTick = null;
+
+// Состояние активного трека + подписчики (UI бабла голосового).
+const _listeners = new Set();
+let _state = { uri: null, isPlaying: false, positionMillis: 0, durationMillis: 0, rate: 1 };
+
+const _snapshot = () => ({ ..._state });
+
+const _emit = () => {
+  const snap = _snapshot();
+  _listeners.forEach((l) => { try { l(snap); } catch { /* один плохой подписчик не ломает остальных */ } });
+};
+
+const _setState = (patch) => {
+  _state = { ..._state, ...patch };
+  _emit();
+};
+
+// Скорость сохраняется между треками (как в WhatsApp), позиция — нет.
+const _resetState = () => _setState({ uri: null, isPlaying: false, positionMillis: 0, durationMillis: 0 });
 
 export const voice = {
   // ─── Запись ───
@@ -25,16 +52,6 @@ export const voice = {
         console.warn('[voice] microphone permission not granted');
         return false;
       }
-      // P0 crash guard (26.08.2026): если предыдущая запись осталась не
-      // выгруженной (двойной тап record, unmount экрана в момент stopRecording,
-      // navigateBack во время загрузки), Audio.Recording.createAsync
-      // выбрасывает native "Only one Recording object can be prepared at a
-      // given time" — на iOS это фатальный NSInternalInconsistencyException.
-      // Гарантируем чистое состояние ДО createAsync.
-      if (_recording) {
-        try { await _recording.stopAndUnloadAsync(); } catch { /* уже мёртв */ }
-        _recording = null;
-      }
       await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
       const { recording } = await Audio.Recording.createAsync(
         Audio.RecordingOptionsPresets.HIGH_QUALITY
@@ -43,9 +60,6 @@ export const voice = {
       return true;
     } catch (e) {
       console.warn('[voice] start failed:', e);
-      // Не оставляем битую ссылку — при следующем tap стартуем с чистой
-      // сессии, а не с полу-инициализированной, которая уронит нативку.
-      _recording = null;
       return false;
     }
   },
@@ -70,19 +84,124 @@ export const voice = {
   },
 
   // ─── Воспроизведение ───
-  async play(uri) {
-    const token = ++_playToken;
+  //
+  // Единый активный трек: старт нового голосового автоматически глушит
+  // предыдущее (как в WhatsApp — два голосовых никогда не играют разом).
+  // UI подписывается через voice.subscribe() и получает {uri, isPlaying,
+  // positionMillis, durationMillis, rate} на каждом тике (~80мс).
+
+  subscribe(listener) {
+    if (typeof listener !== 'function') return () => {};
+    _listeners.add(listener);
+    try { listener(_snapshot()); } catch { /* подписчик не должен ронять плеер */ }
+    return () => { _listeners.delete(listener); };
+  },
+
+  getState() {
+    return _snapshot();
+  },
+
+  /** Тап по кнопке в бабле: играет / ставит на паузу / возобновляет. */
+  async toggle(uri) {
+    if (!uri) return false;
+    if (_playingUri === uri) {
+      return _state.isPlaying ? this.pause() : this.resume();
+    }
+    return this.play(uri);
+  },
+
+  async pause() {
     try {
-      if (_sound) {
-        if (_playResolve) {
-          try { _playResolve(false); } catch {}
-          _playResolve = null;
-        }
-        await _sound.unloadAsync();
-        _sound = null;
+      if (Platform.OS === 'web') {
+        if (_webAudio) _webAudio.pause();
+      } else if (_sound) {
+        await _sound.pauseAsync();
       }
+      _setState({ isPlaying: false });
+      return true;
+    } catch (e) {
+      console.warn('[voice] pause failed:', e);
+      return false;
+    }
+  },
+
+  async resume() {
+    try {
+      if (Platform.OS === 'web') {
+        if (!_webAudio) return this.play(_playingUri);
+        await _webAudio.play();
+      } else {
+        if (!_sound) return this.play(_playingUri);
+        await _sound.playAsync();
+      }
+      _setState({ isPlaying: true });
+      return true;
+    } catch (e) {
+      console.warn('[voice] resume failed:', e);
+      return false;
+    }
+  },
+
+  /** Перемотка внутри активного трека (тап/драг по полосе прогресса). */
+  async seek(uri, positionMillis) {
+    if (!uri || _playingUri !== uri) return false;
+    const pos = Math.max(0, Math.round(positionMillis || 0));
+    try {
+      if (Platform.OS === 'web') {
+        if (!_webAudio) return false;
+        _webAudio.currentTime = pos / 1000;
+      } else {
+        if (!_sound) return false;
+        await _sound.setPositionAsync(pos);
+      }
+      _setState({ positionMillis: pos });
+      return true;
+    } catch (e) {
+      console.warn('[voice] seek failed:', e);
+      return false;
+    }
+  },
+
+  /** Скорость воспроизведения (WhatsApp: 1x → 1.5x → 2x). */
+  async setRate(rate) {
+    const r = Number(rate) || 1;
+    try {
+      if (Platform.OS === 'web') {
+        if (_webAudio) _webAudio.playbackRate = r;
+      } else if (_sound) {
+        // shouldCorrectPitch: голос не превращается в «бурундука».
+        await _sound.setRateAsync(r, true);
+      }
+      _setState({ rate: r });
+      return true;
+    } catch (e) {
+      console.warn('[voice] setRate failed:', e);
+      return false;
+    }
+  },
+
+  async play(uri) {
+    if (!uri) return false;
+    if (_playingUri === uri) {
+      if (Platform.OS === 'web' && _webAudio && !_webAudio.paused && !_webAudio.ended) return true;
+      if (_sound) {
+        try {
+          const status = await _sound.getStatusAsync();
+          if (status?.isLoaded && status.isPlaying) return true;
+        } catch { /* stale sound, fall through and recreate */ }
+      }
+      if (_playPromise) return _playPromise;
+    }
+
+    const run = (async () => {
       if (Platform.OS === 'web') {
         return this._playWeb(uri);
+      }
+
+    try {
+      if (_sound) {
+        await _sound.unloadAsync();
+        _sound = null;
       }
       const { Audio } = require('expo-av');
       // C1 (device-баг): голосовое не проигрывалось у получателя на iOS.
@@ -95,46 +214,65 @@ export const voice = {
       try {
         await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
       } catch { /* не критично — пытаемся играть в текущем режиме */ }
-      const { sound } = await Audio.Sound.createAsync({ uri }, { shouldPlay: false });
+      const { sound } = await Audio.Sound.createAsync(
+        { uri },
+        // progressUpdateIntervalMillis: полоса прогресса и таймер в бабле
+        // должны идти плавно, как в WhatsApp; дефолт (500мс) даёт рывки.
+        { shouldPlay: true, progressUpdateIntervalMillis: 80, rate: _state.rate, shouldCorrectPitch: true },
+      );
       _sound = sound;
-      return await new Promise(async (resolve) => {
-        _playResolve = resolve;
-        sound.setOnPlaybackStatusUpdate((status) => {
-          if (token !== _playToken) return;
-          if (status.didJustFinish) {
-            sound.unloadAsync().catch(() => {});
-            if (_sound === sound) _sound = null;
-            if (_playResolve === resolve) _playResolve = null;
-            resolve(true);
-          }
-        });
-        try {
-          await sound.playAsync();
-        } catch (error) {
-          console.warn('[voice] native play start failed:', error);
-          try { await sound.unloadAsync(); } catch {}
-          if (_sound === sound) _sound = null;
-          if (_playResolve === resolve) _playResolve = null;
-          resolve(false);
+      _playingUri = uri;
+      _setState({ uri, isPlaying: true, positionMillis: 0, durationMillis: 0 });
+      await sound.playAsync();
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (!status?.isLoaded) return;
+        if (_sound !== sound) return;
+        if (status.didJustFinish) {
+          // WhatsApp: по окончании трек сбрасывается в начало, кнопка снова
+          // «play» — но НЕ выгружаем звук, чтобы повторный тап играл сразу.
+          sound.setPositionAsync(0).catch(() => {});
+          sound.pauseAsync().catch(() => {});
+          _setState({ isPlaying: false, positionMillis: 0 });
+          return;
         }
+        _setState({
+          uri,
+          isPlaying: !!status.isPlaying,
+          positionMillis: status.positionMillis || 0,
+          durationMillis: status.durationMillis || _state.durationMillis || 0,
+        });
       });
+      return true;
     } catch (e) {
       console.warn('[voice] play failed:', e);
+      _resetState();
       return false;
+    }
+    })();
+
+    _playPromise = run;
+    try {
+      return await run;
+    } finally {
+      if (_playPromise === run) _playPromise = null;
     }
   },
 
   async stop() {
-    if (_playResolve) {
-      try { _playResolve(false); } catch {}
-      _playResolve = null;
+    if (_webAudio) {
+      _webAudio.pause();
+      if (_webTick) { clearInterval(_webTick); _webTick = null; }
+      _webAudio.src = '';
+      try { _webAudio.load?.(); } catch {}
+      _webAudio = null;
     }
-    _playToken += 1;
     if (_sound) {
       await _sound.stopAsync().catch(() => {});
       await _sound.unloadAsync().catch(() => {});
       _sound = null;
     }
+    _playingUri = null;
+    _resetState();
   },
 
   // ─── Web fallback (MediaRecorder) ───
@@ -191,10 +329,62 @@ export const voice = {
 
   _playWeb(uri) {
     return new Promise((resolve) => {
+      if (_webAudio && _playingUri === uri && !_webAudio.paused && !_webAudio.ended) {
+        resolve(true);
+        return;
+      }
+      if (_webAudio) {
+        _webAudio.pause();
+        if (_webTick) { clearInterval(_webTick); _webTick = null; }
+        _webAudio.src = '';
+        try { _webAudio.load?.(); } catch {}
+        _webAudio = null;
+      }
       const audio = new Audio(uri);
-      audio.onended = () => resolve(true);
-      audio.onerror = (e) => { console.warn('[voice] web play error:', e); resolve(false); };
-      audio.play().catch(() => resolve(false));
+      audio.playbackRate = _state.rate || 1;
+      _webAudio = audio;
+      _playingUri = uri;
+      _setState({ uri, isPlaying: true, positionMillis: 0, durationMillis: 0 });
+
+      // Живой прогресс: timeupdate у HTMLAudioElement стреляет ~4 раза/сек —
+      // для плавной полосы (как в WhatsApp) добавлен интервал 80мс.
+      const tick = () => {
+        if (_webAudio !== audio) return;
+        _setState({
+          positionMillis: Math.round((audio.currentTime || 0) * 1000),
+          durationMillis: Number.isFinite(audio.duration) ? Math.round(audio.duration * 1000) : (_state.durationMillis || 0),
+          isPlaying: !audio.paused && !audio.ended,
+        });
+      };
+      if (_webTick) clearInterval(_webTick);
+      _webTick = setInterval(tick, 80);
+
+      audio.onloadedmetadata = tick;
+      audio.ontimeupdate = tick;
+      audio.onpause = () => { if (_webAudio === audio) _setState({ isPlaying: false }); };
+      audio.onplay = () => { if (_webAudio === audio) _setState({ isPlaying: true }); };
+
+      const cleanup = (ok) => {
+        if (_webAudio === audio) {
+          if (_webTick) { clearInterval(_webTick); _webTick = null; }
+          _webAudio = null;
+          _playingUri = null;
+          _resetState();
+        }
+        resolve(ok);
+      };
+      // По окончании: сброс в начало + кнопка снова «play». Элемент НЕ
+      // уничтожаем — повторный тап играет мгновенно, без пере-загрузки.
+      audio.onended = () => {
+        if (_webAudio === audio) {
+          try { audio.currentTime = 0; } catch {}
+          if (_webTick) { clearInterval(_webTick); _webTick = null; }
+          _setState({ isPlaying: false, positionMillis: 0 });
+        }
+        resolve(true);
+      };
+      audio.onerror = (e) => { console.warn('[voice] web play error:', e); cleanup(false); };
+      audio.play().catch(() => cleanup(false));
     });
   },
 };

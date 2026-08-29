@@ -29,6 +29,28 @@ const PENDING_PROVIDER_KEY = 'ur_social_pending_provider';
 let exchangedCallbackKey = null;
 let completedCallbackKey = null;
 
+// P0 auth-fix 28.08.2026 («двойной тап Google»): App.js не имел глобального
+// Linking-слушателя, а возврат из OAuth ловили только смонтированные экраны
+// (PhoneV2/OnboardingV2). На native есть мёртвое окно: приложение
+// перезапускается после браузера Google (AuthContext.loading → пустой экран
+// → карусель), 'url'-событие с callback приходит ДО того, как хоть один
+// экран подписался — и теряется. Пользователь падает на карусель и вынужден
+// жать Google второй раз (тогда приложение тёплое, PhoneV2 ловит сам).
+// Фикс: module-level буфер — App.js подписывается на Linking НА УРОВНЕ
+// МОДУЛЯ (до монтирования React) и складывает callback сюда; экраны при
+// монтировании забирают. take* очищает буфер (одноразовый, как сам код).
+let bufferedCallbackUrl = null;
+
+export function captureSocialCallbackUrl(url) {
+  if (isSocialAuthCallback(url)) bufferedCallbackUrl = url;
+}
+
+export function takeBufferedSocialCallbackUrl() {
+  const url = bufferedCallbackUrl;
+  bufferedCallbackUrl = null;
+  return url;
+}
+
 /** Error taxonomy (#P0-B). Never collapse these into one generic message —
  * that is exactly the bug that made a genuine Apple provider_unavailable
  * indistinguishable from a real network outage in production. */

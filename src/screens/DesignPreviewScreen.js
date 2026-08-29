@@ -79,6 +79,7 @@ const mockPartner = { id: 'qa-preview-partner', name: 'Демо-собеседн
 const SECTIONS = [
   { title: 'Onboarding', items: [
     { label: 'Welcome / Role', screen: 'Role' },
+    { label: 'RoleV2 selection (onboarding)', screen: 'RoleV2' },
     // Stage 35: новые premium-экраны регистрации.
     { label: 'Premium Reg phone (driver)', screen: 'Reg',        params: { role: 'driver' } },
     { label: 'Premium Reg phone (client)', screen: 'Reg',        params: { role: 'client' } },

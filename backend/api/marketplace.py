@@ -256,6 +256,26 @@ def _init():
             with get_conn() as c:
                 c.executescript(schema.read_text(encoding="utf-8"))
                 c.commit()
+    # Предрелизный аудит 28.08.2026 (defense-in-depth): БД-гард «одна сделка
+    # на ставку». Приложение и так возвращает 409 на повторный accept (два
+    # слоя), но UNIQUE-индекс закрывает гонку на уровне SQLite окончательно.
+    # Guarded: если в проде вдруг есть исторические дубли — НЕ создаём индекс
+    # и НЕ роняем boot, только логируем (чинить дубли отдельно). Идемпотентно.
+    try:
+        with get_conn() as c:
+            dup = c.execute(
+                "SELECT bid_id, COUNT(*) n FROM deals WHERE bid_id IS NOT NULL "
+                "GROUP BY bid_id HAVING n > 1 LIMIT 1"
+            ).fetchone()
+            if dup:
+                print(f"[startup] deals.bid_id UNIQUE index SKIPPED — "
+                      f"есть дубли (bid_id={dup['bid_id']}), чинить отдельно", flush=True)
+            else:
+                c.execute("CREATE UNIQUE INDEX IF NOT EXISTS "
+                          "idx_deals_bid_unique ON deals(bid_id)")
+                c.commit()
+    except Exception as e:
+        print(f"[startup] deals.bid_id UNIQUE index migration skipped: {e}", flush=True)
     # Часть 3 (история цены): таблица price_events + связь chat_messages.event_id.
     # Аддитивно и идемпотентно. Бэкфилл старых ставок НЕ делаем.
     with get_conn() as c:
@@ -1386,13 +1406,29 @@ def create_bid(body: BidIn, user=Depends(require_level(1))):
         # M1: нельзя ставить на уже занятый/истёкший груз или рейс. Пустой/
         # None status (legacy-строки) не блокируем — только явный не-active.
         if body.cargo_id:
-            cg = c.execute("SELECT status FROM cargos WHERE id = ?", (body.cargo_id,)).fetchone()
+            cg = c.execute("SELECT status, owner_id FROM cargos WHERE id = ?", (body.cargo_id,)).fetchone()
             if cg and cg["status"] and cg["status"] != "active":
                 raise HTTPException(status_code=409, detail="Груз больше не доступен для ставок")
+            # Предрелизный аудит 28.08.2026 (P1): ставка на СОБСТВЕННЫЙ груз
+            # запрещена — иначе владелец сам себе принимал ставку и проходил
+            # всю FSM сделки в одиночку (shipper_id == driver_id): фиктивные
+            # сделки, накрутка рейтинга. Проверка владельца в accept это не
+            # ловила — там owner_id == user["id"] тождественно истинно.
+            if cg and cg["owner_id"] == user["id"]:
+                raise HTTPException(status_code=403, detail={
+                    "error": "self_bid_forbidden",
+                    "message": "Нельзя ставить на собственный груз",
+                })
         if body.trip_id:
-            tr = c.execute("SELECT status FROM trips WHERE id = ?", (body.trip_id,)).fetchone()
+            tr = c.execute("SELECT status, driver_id FROM trips WHERE id = ?", (body.trip_id,)).fetchone()
             if tr and tr["status"] and tr["status"] != "active":
                 raise HTTPException(status_code=409, detail="Рейс больше не доступен для ставок")
+            # Симметрично: водитель не может ставить на собственный рейс.
+            if tr and tr["driver_id"] == user["id"]:
+                raise HTTPException(status_code=403, detail={
+                    "error": "self_bid_forbidden",
+                    "message": "Нельзя ставить на собственный рейс",
+                })
         # M1: дедуп — у одного автора не должно быть двух активных ставок на
         # тот же груз/рейс (для изменения цены есть PATCH /bids/{id}).
         # Возвращаем id/сумму/сообщение старой ставки в теле 409 — фронт

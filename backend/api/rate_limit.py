@@ -35,6 +35,17 @@ def limit_otp_send(phone: str):
     check_rate(f"otp_send_hour:{phone}", max_per_window=5, window_sec=3600)
 
 
+# Предрелизный аудит 28.08.2026 (security): анти-SMS-фрод по IP. Существующий
+# limit_otp_send бьёт по номеру — но злоумышленник может перебирать ЧУЖИЕ
+# номера (5/час каждый), нагоняя реальные деньги на Mobizon SMS. Лимит на IP
+# закрывает bulk-перебор. 15/час на IP — с запасом для NAT/общих сетей, но
+# отсекает массовую рассылку. Неизвестный IP не лимитируем (нечего атрибутировать).
+def limit_otp_send_ip(ip: str):
+    if not ip or ip == "unknown":
+        return
+    check_rate(f"otp_send_ip:{ip}", max_per_window=15, window_sec=3600)
+
+
 def limit_otp_verify(phone: str):
     """Не более 5 попыток verify в 10 минут — защита от брутфорса кодов."""
     check_rate(f"otp_verify:{phone}", max_per_window=5, window_sec=600)

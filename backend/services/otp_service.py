@@ -6,6 +6,7 @@
 """
 import os
 import random
+import secrets
 import urllib.parse
 import sys
 from pathlib import Path
@@ -61,7 +62,11 @@ TG_MOCK = not TG_BOT_TOKEN
 
 
 def generate_code() -> str:
-    return f"{random.randint(1000, 9999)}"
+    # Предрелизный аудит 28.08.2026 (P1-security): криптостойкий RNG вместо
+    # random (Mersenne Twister предсказуем по нескольким выборкам). Длина 4
+    # сохранена — фронт-поле фиксировано CODE_LEN=4 (OtpV2Screen/PremiumOtp);
+    # перебор 9000 значений закрыт rate-limit'ом 5 попыток / 10 мин.
+    return f"{secrets.randbelow(9000) + 1000}"
 
 
 # ---------- WhatsApp ----------
