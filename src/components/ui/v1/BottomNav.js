@@ -161,13 +161,16 @@ export default function BottomNav({ state, navigation }) {
     syncIcon();
   }, [notifUnread]);
 
-  // Бейдж таба «Сделки» (05.08.2026, п.4/22 ТЗ): раньше = notifUnread +
-  // chatUnread — два счётчика, физически не связанных с тем, что реально
-  // видно в самом списке «Сделки» (там сумма берётся из per-deal
-  // unread_count + actionable-офферы). Теперь один источник — та же
-  // marketAPI.myDashboard(), что грузит ChatsListScreen, и та же формула
-  // (src/utils/dealsUnread.js) — бейдж таба и сумма по карточкам списка
-  // теперь считаются идентично и не могут разойтись.
+  // Бейдж таба «Сделки» (05.08.2026, п.4/22 ТЗ, обновлено 2026-08-29):
+  // раньше = notifUnread + chatUnread — два счётчика, физически не связанных
+  // с тем, что реально видно в самом списке «Сделки». Один источник данных
+  // (marketAPI.myDashboard()) завели ещё в августе, но DealsScreen.js до
+  // 2026-08-29 всё равно держал СВОИ копии предикатов (доп. фильтр
+  // isBidFresh + доп. условие delivered/awaiting_confirmation для client) —
+  // числа расходились. Теперь оба потребителя вызывают ОДНИ И ТЕ ЖЕ функции
+  // (computeDealsUnread/dealAttentionCount/bidAttentionCount из
+  // src/utils/dealsUnread.js) — бейдж таба и сумма по карточкам списка
+  // не могут разойтись, т.к. это буквально один и тот же код.
   const [dealsUnread, setDealsUnread] = useState(0);
   const dealsUnreadRef = useRef(0);
   const dealsUnreadReadyRef = useRef(false);
@@ -182,7 +185,7 @@ export default function BottomNav({ state, navigation }) {
     const fetchDealsUnread = async () => {
       try {
         const d = await marketAPI.myDashboard();
-        const next = computeDealsUnread(d);
+        const next = computeDealsUnread(d, { role });
         const prev = dealsUnreadRef.current || 0;
         dealsUnreadRef.current = next;
         if (mounted) setDealsUnread(next);
@@ -205,7 +208,7 @@ export default function BottomNav({ state, navigation }) {
     // Открытие чата сделки тоже гасит часть этого счётчика — пересчитать.
     const unsub = subscribeChatRead(fetchDealsUnread);
     return () => { mounted = false; clearInterval(iv); sub?.remove?.(); unsub?.(); };
-  }, [hasToken, navigation, state.routes, t, toast]);
+  }, [hasToken, role, navigation, state.routes, t, toast]);
 
   // Иконка приложения (C1) теперь синхронизируется внутри fetchUnread через
   // syncAppIconBadge() — безусловно на каждом fetch (mount/poll/AppState/

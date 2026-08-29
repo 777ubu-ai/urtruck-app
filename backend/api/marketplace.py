@@ -1466,7 +1466,13 @@ def create_bid(body: BidIn, user=Depends(require_level(1))):
                 bid_url = f"/cargos/{body.cargo_id}?bid={bid_id}"
                 title = f"💰 Ставка {money}"
                 text = f"{money} · {row['from_city']}→{row['to_city']}"
-                post_notifs.append((row["owner_id"], title, text, "💰", bid_url, True))
+                # P1 (аудит push/badge 2026-08-29): bid_id/cargo_id явно в
+                # data-пейлоаде push, а не только внутри url-строки —
+                # приложение (и любой будущий native-код: группировка
+                # уведомлений по сделке, аналитика) не обязано парсить url,
+                # чтобы понять точную цель события.
+                post_notifs.append((row["owner_id"], title, text, "💰", bid_url, True,
+                                     {"bid_id": bid_id, "cargo_id": body.cargo_id}))
 
         if body.trip_id:
             row = c.execute("SELECT driver_id, from_city, to_city, currency FROM trips WHERE id = ?", (body.trip_id,)).fetchone()
@@ -1475,16 +1481,17 @@ def create_bid(body: BidIn, user=Depends(require_level(1))):
                 bid_url = f"/trips/{body.trip_id}?bid={bid_id}"
                 title = f"📦 Заказ {money}"
                 text = f"{money} · {row['from_city']}→{row['to_city']}"
-                post_notifs.append((row["driver_id"], title, text, "📦", bid_url, True))
+                post_notifs.append((row["driver_id"], title, text, "📦", bid_url, True,
+                                     {"bid_id": bid_id, "trip_id": body.trip_id}))
 
     # PR-B: post-commit notifications — connection с bid INSERT уже закрыт,
     # create_notification открывает свой conn без conflict'а с транзакцией.
     # Раздельные try/except: push и InApp независимы — failure одного не
     # должен подавлять другое.
-    for recipient, title, text, icon, url, want_push in post_notifs:
+    for recipient, title, text, icon, url, want_push, data in post_notifs:
         if want_push:
             try:
-                send_to_user(recipient, title, text, url=url)
+                send_to_user(recipient, title, text, url=url, data=data)
             except Exception:
                 pass
         try:
@@ -2226,8 +2233,15 @@ def accept_bid(bid_id: str, user=Depends(require_level(1))):
         deal_url = f"/deals/{result['deal_id']}"
     title = "✅ Ставка принята!"
     text = f"Ваше предложение {_money(bid['amount'], _cur)} принято! Сделка создана."
+    # P1 (аудит push/badge 2026-08-29): явные id в data-пейлоаде (см. bid_created).
+    _push_data = {
+        "bid_id": bid_id,
+        "cargo_id": bid.get("cargo_id"),
+        "trip_id": bid.get("trip_id"),
+        "deal_id": result.get("deal_id"),
+    }
     try:
-        send_to_user(bid["bidder_id"], title, text, url=deal_url)
+        send_to_user(bid["bidder_id"], title, text, url=deal_url, data=_push_data)
     except Exception:
         pass
     try:
@@ -2497,8 +2511,10 @@ def counter_bid(bid_id: str, body: BidCounterIn, user=Depends(require_level(1)))
     # неверное «Владелец груза предложил».
     _owner_word = "Владелец груза" if bid.get("cargo_id") else "Владелец рейса"
     text = f"{_owner_word} предложил {_money(body.amount, cur)} вместо {_money(bid['amount'], cur)}"
+    # P1 (аудит push/badge 2026-08-29): явные id в data-пейлоаде (см. bid_created).
+    _push_data = {"bid_id": bid_id, "cargo_id": bid.get("cargo_id"), "trip_id": bid.get("trip_id")}
     try:
-        send_to_user(bid["bidder_id"], title, text, url=counter_url)
+        send_to_user(bid["bidder_id"], title, text, url=counter_url, data=_push_data)
     except Exception:
         pass
     try:
@@ -2557,9 +2573,16 @@ def accept_counter(bid_id: str, user=Depends(require_level(1))):
         (owner_id, "✅ Контр-оффер принят", f"{agreed_word} согласился на {money}. Сделка создана."),
         (bid["bidder_id"], "✅ Сделка создана", f"Цена: {money}"),
     )
+    # P1 (аудит push/badge 2026-08-29): явные id в data-пейлоаде (см. bid_created).
+    _push_data = {
+        "bid_id": bid_id,
+        "cargo_id": bid.get("cargo_id"),
+        "trip_id": bid.get("trip_id"),
+        "deal_id": result.get("deal_id"),
+    }
     for uid_, title_, text_ in recipients:
         try:
-            send_to_user(uid_, title_, text_, url=deal_url)
+            send_to_user(uid_, title_, text_, url=deal_url, data=_push_data)
         except Exception:
             pass
         try:
@@ -3015,8 +3038,17 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
                 deal_url = f"/trips/{deal['trip_id']}"
             else:
                 deal_url = f"/deals/{deal_id}"
+            # P1 (аудит push/badge 2026-08-29): явные id в data-пейлоаде
+            # (см. bid_created) — deal_id/cargo_id/trip_id/status, а не
+            # только внутри url-строки.
+            _push_data = {
+                "deal_id": deal_id,
+                "cargo_id": deal.get("cargo_id"),
+                "trip_id": deal.get("trip_id"),
+                "status": new_status,
+            }
             try:
-                send_to_user(other_id, labels[new_status], body_txt, url=deal_url)
+                send_to_user(other_id, labels[new_status], body_txt, url=deal_url, data=_push_data)
             except Exception:
                 pass
             try:

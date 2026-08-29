@@ -21,7 +21,7 @@ import { formatPrice } from '../utils/normalizers';
 import { localizeCargoName, localizePlace } from '../utils/places';
 import { countryFlag } from '../utils/countryFlags';
 import { accentFor } from '../components/deal/DealRoom';
-import { isBidActionable } from '../utils/dealsUnread';
+import { bidAttentionCount, dealAttentionCount, ACTIVE_DEAL_STATUSES } from '../utils/dealsUnread';
 import { formatBidRemaining, isBidFresh } from '../utils/bidExpiry';
 
 const PAGE_BG = '#F7F9F7';
@@ -57,7 +57,12 @@ const dealsPalette = (theme, isDark) => ({
 // `delivered` is intentionally ACTIVE, not terminal. The driver has finished
 // delivery, but the shipper still must confirm receipt (`delivered -> completed`).
 // Only true terminal deal states belong in Archive.
-const ACTIVE_STATUSES = new Set(['accepted', 'in_progress', 'at_border', 'awaiting_confirmation', 'delivered', 'received']);
+//
+// P1 (аудит 2026-08-29): раньше здесь был отдельный `const ACTIVE_STATUSES`
+// с тем же содержимым, что и `ACTIVE_DEAL_STATUSES` в utils/dealsUnread.js —
+// два независимо объявленных Set рисковали разойтись при будущей правке
+// одного без другого. Теперь единственное определение живёт в
+// dealsUnread.js и импортируется сюда.
 const ARCHIVE_DEAL_STATUSES = new Set(['completed', 'cancelled', 'rejected', 'expired']);
 const OPEN_BID_STATUSES = new Set(['pending', 'countered']);
 const CLOSED_BID_STATUSES = new Set(['rejected', 'cancelled', 'expired']);
@@ -344,7 +349,7 @@ export default function DealsScreen({ navigation, route }) {
 
   const activeDeals = useMemo(() => (
     allDeals
-      .filter((deal) => ACTIVE_STATUSES.has(deal.status))
+      .filter((deal) => ACTIVE_DEAL_STATUSES.has(deal.status))
       .sort((a, b) => {
         const ta = parseServerDate(a.last_message_at || a.updated_at || a.created_at)?.getTime() || 0;
         const tb = parseServerDate(b.last_message_at || b.updated_at || b.created_at)?.getTime() || 0;
@@ -364,19 +369,19 @@ export default function DealsScreen({ navigation, route }) {
 
   const offerCount = offersData.length;
 
+  // P1 (аудит 2026-08-29): оба счётчика теперь считаются ЧЕРЕЗ ТЕ ЖЕ функции,
+  // что использует бейдж вкладки "Сделки" в BottomNav.js
+  // (bidAttentionCount/dealAttentionCount из utils/dealsUnread.js), а не
+  // через локально продублированную копию фильтра. offersData уже
+  // отфильтрован через isBidFresh() при построении списка (см. выше) —
+  // bidAttentionCount проверяет её ещё раз, это идемпотентно и совпадает
+  // с тем, что считает бейдж таб-бара.
   const offerAttentionCount = useMemo(() => (
-    offersData.reduce((sum, item) => sum + (
-      isBidActionable(item, { asOwner: !!item._incoming }) ? 1 : 0
-    ), 0)
+    offersData.reduce((sum, item) => sum + bidAttentionCount(item, { asOwner: !!item._incoming }), 0)
   ), [offersData]);
 
   const activeAttentionCount = useMemo(() => (
-    activeDeals.reduce(
-      (sum, item) => sum + (item.unread_count || 0) + ((
-        item.tracking_action_required || (role === 'client' && (item.status === 'delivered' || item.status === 'awaiting_confirmation'))
-      ) ? 1 : 0),
-      0,
-    )
+    activeDeals.reduce((sum, item) => sum + dealAttentionCount(item, { role }), 0)
   ), [activeDeals, role]);
 
   const baseItems = useMemo(() => {
@@ -497,7 +502,7 @@ export default function DealsScreen({ navigation, route }) {
           time={isIncomingCargoOffer ? relTime(data.updated_at || data.created_at) : cardTime}
           meta={isIncomingCargoOffer ? offerMeta : undefined}
           dimmed={isClosed}
-          unread={!isClosed && isBidActionable(data, { asOwner: !!data._incoming }) ? 1 : 0}
+          unread={!isClosed ? bidAttentionCount(data, { asOwner: !!data._incoming }) : 0}
           onPress={() => openBid(data)}
           colors={palette}
         />
