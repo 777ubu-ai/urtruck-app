@@ -257,11 +257,11 @@ export default function FeedScreen({ navigation }) {
       if (dateEnd && departure && departure > dateEnd) return false;
       if (dirFromCountry) {
         const fromCountry = String(item.fromCountry || '').toUpperCase();
-        if (fromCountry !== dirFromCountry) return false;
+        if (!(fromCountry === dirFromCountry)) return false;
       }
       if (dirToCountry) {
         const toCountry = String(item.toCountry || '').toUpperCase();
-        if (toCountry !== dirToCountry) return false;
+        if (!(toCountry === dirToCountry)) return false;
       }
       if (savedOnly && !savedIds.has(String(item.id))) return false;
       return true;

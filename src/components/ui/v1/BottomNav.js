@@ -20,7 +20,7 @@ const ICONS = {
   Feed: { driver: 'package', client: 'truck' },
   MyWork: { driver: 'clipboard', client: 'clipboard' },
   Deals: { driver: 'handshake', client: 'handshake' },
-  Queue: { driver: 'map-pin', client: 'map-pin' },
+  Queue:   { driver: 'map-pin', client: 'map-pin' },
 };
 
 const ROLE_ACCENT = {
@@ -135,7 +135,7 @@ export default function BottomNav({ state, navigation }) {
     if (name === 'Feed') return isDriver ? t('tab_feed') : t('tab_feed_client');
     if (name === 'MyWork') return isDriver ? t('tab_my_work_driver') : t('tab_my_work_client');
     if (name === 'Deals') return t('tab_deals');
-    if (name === 'Queue') return t('tab_border');
+    if (name === 'Queue')   return t('tab_border');
     return name;
   };
 
