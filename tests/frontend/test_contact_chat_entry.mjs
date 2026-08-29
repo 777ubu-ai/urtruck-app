@@ -4,6 +4,7 @@ import fs from 'node:fs';
 
 const chatRouter = fs.readFileSync('src/screens/ChatScreenV2.js', 'utf8');
 const driverDetail = fs.readFileSync('src/screens/DriverDetail.js', 'utf8');
+const myTrips = fs.readFileSync('src/screens/MyTripsScreen.js', 'utf8');
 
 test('driver profile partner-only chat entry resolves a deal-linked room before legacy fallback', () => {
   assert.match(driverDetail, /navigation\.navigate\('Chat', \{ partner: driver, role \}\)/);
@@ -20,6 +21,13 @@ test('partner-only contact without an accepted deal fails closed instead of open
   assert.match(chatRouter, /setBlockedPartnerEntry\(partnerOnlyWithoutDeal\)/);
   assert.match(chatRouter, /navigation\.navigate\('Deals', \{ role: params\.role \}\)/);
   assert.match(chatRouter, /if \(!checked \|\| blockedPartnerEntry\)/);
+});
+
+test('driver active trip has the same management symmetry: edit plus unpublish', () => {
+  assert.match(myTrips, /testID="my-trip-edit-btn"/);
+  assert.match(myTrips, /testID="my-trip-unpublish-btn"/);
+  assert.match(myTrips, /marketAPI\.unpublishTrip\(item\.id\)/);
+  assert.match(myTrips, /confirmAction\(t\('trip_delete_q'\), t\('trip_delete'\), true\)/);
 });
 
 test('external phone Telegram WhatsApp handoff helper is absent from product source', () => {
