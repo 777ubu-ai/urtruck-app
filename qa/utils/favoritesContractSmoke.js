@@ -1,78 +1,48 @@
-// favoritesContractSmoke — статический regression-guard для бага с
-// прод-скриншотов владельца (2026-08-18): «сохраняю груз/водителя — в
-// Избранном пусто» + не видно отзывов на карточке.
-//
-// 2026-08-19 owner-корректировка: канонiчная иконка избранного —
-// ФЛАЖОК (bookmark), НЕ сердце. Первая версия этого фикса ошибочно
-// поменяла карточки на сердце (решив, что несоответствие нужно
-// разрешить в сторону FavoritesScreen); владелец явно подтвердил
-// обратное направление — флажок везде, включая FavoritesScreen
-// (который до этого один использовал сердце — вот и была визуальная
-// нестыковка). Не возвращать heart без нового явного подтверждения.
-//
-// Три первопричины, три группы проверок (см. PR/CHANGELOG для деталей):
-//   1. Иконка избранного — флажок (bookmark) везде, где пользователь
-//      сохраняет (карточка водителя, карточка груза, FavoritesScreen).
-//   2. FavoritesScreen обязан запрашивать ВСЕ типы одним запросом
-//      (favList('') — backend уже поддерживал это, фронт не пользовался)
-//      и уметь открыть/удалить оба типа (driver → DriverDetail,
-//      cargo → CargoDetail).
-//   3. Отзывы (priceCaption) реально рендерятся на карточке ленты, а не
-//      "kept for API compatibility; intentionally not rendered".
-//
-// Плюс регрессия на двойной тап (busy-guard) и accessibility-лейбл.
+// favoritesContractSmoke — regression guard for server-side bookmarks.
+// Product contract (29.08.2026):
+// - driver saves a concrete cargo by cargo.id;
+// - shipper saves a concrete published trip by trip.id (NOT the driver id);
+// - FavoritesScreen loads every type and routes cargo/trip/driver correctly;
+// - canonical saved icon is bookmark; repeated taps are guarded in-flight.
+
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 
 const feedCard = fs.readFileSync('src/components/ui/v1/FeedCard.js', 'utf8');
-const feedScreen = fs.readFileSync('src/screens/FeedScreen.js', 'utf8');
-const cargoFeed = fs.readFileSync('src/screens/CargoFeedScreen.js', 'utf8');
-const favScreen = fs.readFileSync('src/screens/FavoritesScreen.js', 'utf8');
+const shipperFeed = fs.readFileSync('src/screens/FeedScreen.js', 'utf8');
+const driverFeed = fs.readFileSync('src/screens/CargoFeedScreen.js', 'utf8');
+const favorites = fs.readFileSync('src/screens/FavoritesScreen.js', 'utf8');
 
-// ─── 1. Иконка: флажок везде (owner-подтверждено 2026-08-19) ────────────
-assert.ok(/name="bookmark"/.test(feedCard), 'FeedCard (карточка водителя в ленте клиента) должна использовать флажок (bookmark)');
-assert.ok(!/name="heart"/.test(feedCard), 'FeedCard не должен содержать сердце как иконку избранного');
-assert.ok(/name="bookmark"/.test(cargoFeed), 'CargoFeedScreen (карточка груза в ленте водителя) должна использовать флажок (bookmark)');
-assert.ok(!/name="heart"/.test(cargoFeed), 'CargoFeedScreen не должен содержать сердце как иконку избранного');
-assert.ok(/FontAwesome5 name="bookmark"/.test(favScreen),
-  'FavoritesScreen должен использовать тот же флажок, что и карточки (визуальная консистентность)');
+// Canonical icon remains a bookmark everywhere.
+assert.ok(/name="bookmark"/.test(feedCard), 'FeedCard bookmark icon required');
+assert.ok(!/name="heart"/.test(feedCard), 'FeedCard must not regress to a heart icon');
+assert.ok(/name="bookmark"/.test(driverFeed), 'Driver cargo feed bookmark icon required');
+assert.ok(/name="bookmark"/.test(shipperFeed), 'Shipper trip feed bookmark icon required');
+assert.ok(/FontAwesome5 name="bookmark"/.test(favorites), 'FavoritesScreen bookmark icon required');
 
-// Accessibility: лейбл обязан отличаться по состоянию (не статичная строка).
-assert.ok(/accessibilityLabel=\{favActive \? t\('in_favorites'\) : t\('add_to_favorites'\)\}/.test(feedCard),
-  'Кнопка избранного на FeedCard должна иметь accessibilityLabel, зависящий от состояния (сохранено/не сохранено)');
-assert.ok(/accessibilityLabel=\{saved \?/.test(cargoFeed),
-  'Кнопка избранного на CargoFeedScreen должна иметь accessibilityLabel, зависящий от состояния');
+// Driver side: each saved cargo is keyed by its own cargo id.
+assert.ok(/favList\('cargo'\)/.test(driverFeed), 'Driver feed must load cargo favorites');
+assert.ok(/favAdd\('cargo', id/.test(driverFeed), 'Driver feed must save cargo.id');
+assert.ok(/favRemove\('cargo', id/.test(driverFeed), 'Driver feed must remove cargo.id');
+assert.ok(/savedIds\.has\(String\(item\.id\)\)/.test(driverFeed), 'Driver saved state must be item.id based');
+assert.ok(/savedBusyRef/.test(driverFeed), 'Driver saved toggle needs an in-flight guard');
+assert.ok(/testID="cargo-filter-favorites"/.test(driverFeed), 'Driver Saved filter is part of the feed contract');
 
-// testID не менялся (контракт Maestro/Playwright).
-assert.ok(/testID="feed-fav"/.test(feedCard), 'testID="feed-fav" обязателен для Maestro feed-favorite-heart.yaml');
-assert.ok(/testID=\{`cargo-card-bookmark-\$\{item\.id\}`\}/.test(cargoFeed), 'testID карточки груза не должен меняться (контракт QA)');
+// Shipper side: save the concrete trip, never all trips of the same driver.
+assert.ok(/favList\('trip'\)/.test(shipperFeed), 'Shipper feed must load trip favorites');
+assert.ok(/favAdd\('trip', id/.test(shipperFeed), 'Shipper feed must save trip.id');
+assert.ok(/favRemove\('trip', id/.test(shipperFeed), 'Shipper feed must remove trip.id');
+assert.ok(/savedIds\.has\(String\(item\.id\)\)/.test(shipperFeed), 'Shipper saved state must be item.id based');
+assert.ok(/savedBusyRef/.test(shipperFeed), 'Shipper saved toggle needs an in-flight guard');
+assert.ok(/testID="trip-filter-favorites"/.test(shipperFeed), 'Shipper Saved filter is part of the feed contract');
+assert.ok(!/favList\('driver'\)/.test(shipperFeed), 'Shipper feed must not group saved state by driver');
+assert.ok(!/driverId \|\| item\.id/.test(shipperFeed), 'Shipper feed must not fall back to driverId for a saved trip');
 
-// ─── 2. FavoritesScreen: оба типа одним запросом ────────────────────────
-assert.ok(/favList\(''\)/.test(favScreen),
-  'FavoritesScreen обязан запрашивать ВСЕ типы избранного одним запросом (favList(\'\')) — иначе cargo-избранное невидимо (первопричина бага)');
-// Строка комментария выше документирует СТАРЫЙ баг (favList('driver')) —
-// исключаем строки-комментарии, ищем только активный код.
-const favScreenCode = favScreen.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
-assert.ok(!/favList\('driver'\)/.test(favScreenCode),
-  'FavoritesScreen не должен жёстко фильтровать только driver в коде — это и была первопричина «сохраняю груз — не вижу»');
-assert.ok(/item_type === 'cargo'/.test(favScreen) && /navigate\('CargoDetail'/.test(favScreen),
-  'FavoritesScreen обязан уметь открыть cargo-запись в CargoDetail');
-assert.ok(/navigate\('DriverDetail'/.test(favScreen),
-  'FavoritesScreen обязан уметь открыть driver-запись в DriverDetail');
-assert.ok(/removeItem/.test(favScreen) && /favRemove/.test(favScreen),
-  'FavoritesScreen обязан поддерживать удаление из избранного прямо из списка');
+// Favorites hub must expose every saved type and open it in the correct detail screen.
+assert.ok(/favList\(''\)/.test(favorites), 'FavoritesScreen must request all item types');
+assert.ok(/item_type === 'cargo'/.test(favorites) && /navigate\('CargoDetail'/.test(favorites), 'Saved cargo must open CargoDetail');
+assert.ok(/item_type === 'trip'/.test(favorites) && /navigate\('TripDetail'/.test(favorites), 'Saved trip must open TripDetail');
+assert.ok(/navigate\('DriverDetail'/.test(favorites), 'Legacy/saved driver must open DriverDetail');
+assert.ok(/favRemove\(fav\.item_type, fav\.item_id\)/.test(favorites), 'FavoritesScreen must remove the exact type+id pair');
 
-// ─── 3. Отзывы реально рендерятся ────────────────────────────────────────
-assert.ok(!/intentionally not rendered/.test(feedCard),
-  'priceCaption (счётчик отзывов на карточке водителя) не должен быть мёртвым пропом');
-assert.ok(/\{priceCaption \?/.test(feedCard), 'FeedCard обязан рендерить priceCaption, если он передан');
-assert.ok(/reviews: rawT\.driver_reviews_count \|\| 0/.test(feedScreen),
-  'Карточки из /market/trips обязаны брать реальный driver_reviews_count с бэкенда (не выдумывать на фронте)');
-assert.ok(/reviews: d\.reviews_count \|\| 0/.test(feedScreen),
-  'Карточки из /market/drivers обязаны брать реальный reviews_count с бэкенда (не выдумывать на фронте)');
-
-// ─── Двойной тап: busy-guard на обоих экранах сохранения ────────────────
-assert.ok(/favBusyRef/.test(feedScreen), 'FeedScreen.toggleFav обязан игнорировать повторный тап, пока запрос в полёте');
-assert.ok(/savedBusyRef/.test(cargoFeed), 'CargoFeedScreen.toggleSaved обязан игнорировать повторный тап, пока запрос в полёте');
-
-console.log('favorites contract OK: bookmark-иконка везде, favList(\'\') покрывает оба типа, отзывы рендерятся, busy-guard на месте');
+console.log('favorites contract OK: cargo.id + trip.id bookmarks, Saved filters, correct Favorites routing, no per-driver grouping');

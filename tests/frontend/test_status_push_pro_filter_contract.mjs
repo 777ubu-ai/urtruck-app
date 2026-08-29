@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const toast = fs.readFileSync('src/components/Toast.js', 'utf8');
 const bottomNav = fs.readFileSync('src/components/ui/v1/BottomNav.js', 'utf8');
 const workspace = fs.readFileSync('src/screens/DealWorkspaceScreenV2.js', 'utf8');
 const timeline = fs.readFileSync('src/components/deal/DealStatusTimeline.js', 'utf8');
@@ -12,15 +11,13 @@ const locationPicker = fs.readFileSync('src/components/LocationPickerModal.js', 
 const i18n = fs.readFileSync('src/utils/i18n.js', 'utf8');
 const push = fs.readFileSync('src/utils/push.js', 'utf8');
 
-test('foreground deal notifications show a top banner with an open action', () => {
-  assert.match(toast, /actionLabel:\s*options\?\.actionLabel/);
-  assert.match(toast, /onAction:\s*typeof options\?\.onAction === 'function'/);
-  assert.match(toast, /toast\.onAction\(\)/);
-  assert.match(bottomNav, /dealsUnreadReadyRef/);
-  assert.match(bottomNav, /next > prev/);
-  assert.match(bottomNav, /toast\(`\$\{t\('tab_deals'\)\}: новое событие`/);
-  assert.match(bottomNav, /actionLabel:\s*t\('open_action'\)/);
-  assert.match(bottomNav, /navigation\.navigate\('Deals'/);
+test('foreground deal activity uses the Deals badge without a duplicate top banner', () => {
+  assert.match(bottomNav, /computeDealsUnread/);
+  assert.match(bottomNav, /setDealsUnread\(next\)/);
+  assert.match(bottomNav, /bottom-nav-deals-badge/);
+  assert.doesNotMatch(bottomNav, /useToast/);
+  assert.doesNotMatch(bottomNav, /новое событие/);
+  assert.doesNotMatch(bottomNav, /actionLabel:\s*t\('open_action'\)/);
 });
 
 test('native push remains configured to show banners and play the default sound', () => {
@@ -28,6 +25,19 @@ test('native push remains configured to show banners and play the default sound'
   assert.match(push, /shouldPlaySound:\s*true/);
   assert.match(push, /AndroidImportance\.MAX/);
   assert.match(push, /sound:\s*'default'/);
+});
+
+test('shipper machine feed saves an individual trip and exposes the same saved filter as driver cargo feed', () => {
+  assert.match(feed, /favList\('trip'\)/);
+  assert.match(feed, /favAdd\('trip', id/);
+  assert.match(feed, /favRemove\('trip', id/);
+  assert.match(feed, /testID="trip-filter-favorites"/);
+  assert.match(feed, /savedIds\.has\(String\(item\.id\)\)/);
+  assert.match(feed, /testID="trip-feed-minimal-header"/);
+  assert.doesNotMatch(feed, /favList\('driver'\)/);
+  assert.doesNotMatch(feed, /driverId \|\| item\.id/);
+  assert.doesNotMatch(feed, /publish-cargo-button/);
+  assert.doesNotMatch(feed, /<SearchBar/);
 });
 
 test('deal header uses map and status buttons, not the old call button', () => {
