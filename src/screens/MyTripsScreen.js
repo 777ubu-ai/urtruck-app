@@ -334,9 +334,8 @@ export default function MyTripsScreen({ navigation, route }) {
     const isCargo = !!item.cargo_desc;
     const badge = isCargo ? t('badge_cargo') : t('badge_trip');
     const badgeColor = isCargo ? '#FF8400' : '#168759';
-    // Edit is allowed only for own ACTIVE trips. Backend will also block any
-    // attempt with an accepted deal — but hiding the button is a much better
-    // UX than letting the user tap → wait → see "edit denied".
+    // Edit/unpublish is allowed only for an own ACTIVE trip. Backend remains
+    // authoritative and rejects removal once a deal has already taken it.
     const canEditTrip = !isCargo && (item.status || 'active') === 'active';
 
     return (
@@ -424,19 +423,37 @@ export default function MyTripsScreen({ navigation, route }) {
           </TouchableOpacity>
         )}
         {canEditTrip && (
-          <TouchableOpacity
-            testID="my-trip-edit-btn"
-            style={s.editBtn}
-            onPress={(e) => {
-              e.stopPropagation && e.stopPropagation();
-              navigation.navigate('EditTrip', { tripId: item.id, trip: normalizeTrip({ ...item, isMine: true, _server: true }) });
-            }}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Feather name="edit-3" size={14} color="#168759" />
-              <Text style={s.editBtnText}>{t('edit_btn')}</Text>
-            </View>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+            <TouchableOpacity
+              testID="my-trip-edit-btn"
+              style={[s.miniBtn, { flex: 1 }]}
+              onPress={(e) => {
+                e.stopPropagation && e.stopPropagation();
+                navigation.navigate('EditTrip', { tripId: item.id, trip: normalizeTrip({ ...item, isMine: true, _server: true }) });
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="edit-3" size={14} color="#168759" />
+                <Text style={[s.miniBtnText, { color: '#168759' }]}>{t('edit_btn')}</Text>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              testID="my-trip-unpublish-btn"
+              style={[s.miniBtn, { flex: 1 }]}
+              onPress={async (e) => {
+                e.stopPropagation && e.stopPropagation();
+                if (!(await confirmAction(t('trip_delete_q'), t('trip_delete'), true))) return;
+                const r = await marketAPI.unpublishTrip(item.id);
+                if (r?.ok) { toast('🗑 ' + t('trip_deleted_toast'), 'info'); load(); }
+                else toast(r?.detail || t('update_failed'), 'error');
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Feather name="trash-2" size={14} color="#EF4444" />
+                <Text style={[s.miniBtnText, { color: '#EF4444' }]}>{t('trip_delete')}</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
         )}
         {/* Просроченный груз/рейс (Модель А): «Ещё актуально» — продление
             ОДНИМ ТАПОМ (дата = сегодня, снова живёт 3 дня и в ленте). Рядом —
