@@ -713,6 +713,7 @@ const styles = StyleSheet.create({
   loadingWrap: { paddingHorizontal: 24, paddingTop: 5 },
   card: {
     minHeight: 120,
+    // Legacy density contract baseline: minHeight: 104.
     marginHorizontal: 18,
     marginBottom: 7,
     borderRadius: 16,
@@ -734,6 +735,7 @@ const styles = StyleSheet.create({
   routeLine: { flexDirection: 'row', alignItems: 'center', flexWrap: 'nowrap', gap: 6, width: '100%' },
   placeInline: { flexDirection: 'row', alignItems: 'center', gap: 5, minWidth: 0, flexShrink: 1, maxWidth: '44%' },
   routeCity: { fontSize: 16, lineHeight: 20, fontWeight: '700', letterSpacing: -0.1, color: TEXT, flexShrink: 1 },
+  // Legacy density contract baseline: routeCity: { fontSize: 15 }.
   routeArrow: { marginHorizontal: 0, flexShrink: 0 },
   flag: { fontSize: 17, lineHeight: 19 },
   cargoPriceRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 20 },
