@@ -30,40 +30,48 @@ import { COUNTRIES as GEO_COUNTRIES } from '../utils/geography';
 
 const ACCENT = '#34936B';
 const ACCENT_SOFT = '#EAF5EF';
+const PAGE_BG = '#F7F9F7';
+const SURFACE = '#FFFFFF';
+const TEXT = '#17221E';
+const TEXT_SECONDARY = '#606B66';
+const TEXT_MUTED = '#808A85';
+const BORDER = '#E5EAE7';
 
 const COPY = {
   RU: {
     favorites: 'Избранное', empty: 'Подходящих машин пока нет', loadError: 'Не удалось загрузить машины',
-    retry: 'Повторить', perTrip: 'за рейс', date: 'Выезд',
+    retry: 'Повторить', perTrip: 'за рейс', departure: 'Выезд',
   },
   EN: {
     favorites: 'Saved', empty: 'No matching trucks yet', loadError: 'Could not load trucks',
-    retry: 'Retry', perTrip: 'per trip', date: 'Departure',
+    retry: 'Retry', perTrip: 'per trip', departure: 'Departure',
   },
   ZH: {
     favorites: '收藏', empty: '暂时没有合适的车辆', loadError: '无法加载车辆',
-    retry: '重试', perTrip: '每趟', date: '出发',
+    retry: '重试', perTrip: '每趟', departure: '出发',
   },
   KK: {
     favorites: 'Таңдаулы', empty: 'Сәйкес көлік әзірге жоқ', loadError: 'Көліктерді жүктеу мүмкін болмады',
-    retry: 'Қайталау', perTrip: 'рейске', date: 'Шығу',
+    retry: 'Қайталау', perTrip: 'рейске', departure: 'Шығу',
   },
 };
 
 const toIso = (value) => {
-  const s = String(value || '').trim();
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-  const m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(s);
-  return m ? `${m[3]}-${String(m[2]).padStart(2, '0')}-${String(m[1]).padStart(2, '0')}` : '';
+  const text = String(value || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(text)) return text.slice(0, 10);
+  const match = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(text);
+  return match
+    ? `${match[3]}-${String(match[2]).padStart(2, '0')}-${String(match[1]).padStart(2, '0')}`
+    : '';
 };
 
 const feedPalette = (theme, isDark) => ({
-  pageBg: theme.bg,
-  surface: theme.card || theme.surface,
-  text: theme.text,
-  textSecondary: theme.textSecondary,
-  textMuted: theme.textMuted,
-  border: theme.border,
+  pageBg: theme.bg || PAGE_BG,
+  surface: theme.card || theme.surface || SURFACE,
+  text: theme.text || TEXT,
+  textSecondary: theme.textSecondary || TEXT_SECONDARY,
+  textMuted: theme.textMuted || TEXT_MUTED,
+  border: theme.border || BORDER,
   shadow: isDark ? '#000000' : '#14211C',
   accent: ACCENT,
   accentSoft: isDark ? 'rgba(22,135,89,0.18)' : ACCENT_SOFT,
@@ -84,17 +92,24 @@ function TripCard({ item, lang, t, copy, saved, onToggleSaved, onPress, colors }
       activeOpacity={0.88}
       style={[
         styles.card,
-        { borderColor: colors.border, backgroundColor: colors.surface, shadowColor: colors.shadow },
+        {
+          borderColor: colors.border,
+          backgroundColor: colors.surface,
+          shadowColor: colors.shadow,
+        },
       ]}
       testID={`trip-card-${item.id}`}
       accessibilityRole="button"
     >
+      <View style={styles.greenRail} />
       <View style={styles.cardBody}>
         <Text style={[styles.route, { color: colors.text }]} numberOfLines={2}>
           {display.from} → {display.to}
         </Text>
         <Text style={[styles.meta, { color: colors.textMuted }]} numberOfLines={1}>
-          {[item.departure ? `${copy.date}: ${display.departure}` : null, specs || null].filter(Boolean).join(' · ')}
+          {[item.departure ? `${copy.departure}: ${display.departure}` : null, specs || null]
+            .filter(Boolean)
+            .join(' · ')}
         </Text>
       </View>
 
@@ -106,7 +121,11 @@ function TripCard({ item, lang, t, copy, saved, onToggleSaved, onPress, colors }
       <Pressable
         onPress={(event) => { event?.stopPropagation?.(); onToggleSaved(); }}
         hitSlop={10}
-        style={[styles.bookmarkBtn, { backgroundColor: colors.favoriteBg }, saved && { backgroundColor: colors.accentSoft }]}
+        style={[
+          styles.bookmarkBtn,
+          { backgroundColor: colors.favoriteBg },
+          saved && { backgroundColor: colors.accentSoft },
+        ]}
         testID={`trip-card-bookmark-${item.id}`}
         accessibilityRole="button"
         accessibilityLabel={saved ? 'Remove saved trip' : 'Save trip'}
@@ -115,7 +134,7 @@ function TripCard({ item, lang, t, copy, saved, onToggleSaved, onPress, colors }
         {saved ? (
           <FontAwesome5 name="bookmark" size={18} color={colors.accent} solid />
         ) : (
-          <Feather name="bookmark" size={20} color={colors.accent} />
+          <Feather name="bookmark" size={18} color={colors.accent} />
         )}
       </Pressable>
     </TouchableOpacity>
@@ -156,7 +175,9 @@ export default function FeedScreen({ navigation }) {
   const countryLabel = (code) => {
     if (!code) return '';
     const translated = t(`country_${code}`);
-    return translated && translated !== `country_${code}` ? translated : (GEO_COUNTRIES[code]?.name || code);
+    return translated && translated !== `country_${code}`
+      ? translated
+      : (GEO_COUNTRIES[code]?.name || code);
   };
 
   const routeValue = (city, countryCode, placeholder) => {
@@ -197,6 +218,7 @@ export default function FeedScreen({ navigation }) {
         limit: pageLimit,
       });
       if (result?.serverError) throw new Error('trip_feed_failed');
+
       const mapped = (result?.trips || [])
         .filter((trip) => !myUserId || trip.driver_id !== myUserId)
         .map((raw) => {
@@ -210,8 +232,8 @@ export default function FeedScreen({ navigation }) {
         })
         .filter((trip) => trip?.id && trip.from && trip.to);
       setItems(mapped);
-    } catch (e) {
-      console.warn('[FeedScreen] load trips failed:', e);
+    } catch (err) {
+      console.warn('[FeedScreen] load trips failed:', err);
       setError(true);
     } finally {
       setLoading(false);
@@ -244,9 +266,14 @@ export default function FeedScreen({ navigation }) {
       if (savedOnly && !savedIds.has(String(item.id))) return false;
       return true;
     });
-    if (sortBy === 'price-asc') data = [...data].sort((a, b) => Number(a.price || 0) - Number(b.price || 0));
-    if (sortBy === 'price-desc') data = [...data].sort((a, b) => Number(b.price || 0) - Number(a.price || 0));
-    if (sortBy === 'newest') data = [...data].sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+
+    if (sortBy === 'price-asc') {
+      data = [...data].sort((a, b) => Number(a.price || 0) - Number(b.price || 0));
+    } else if (sortBy === 'price-desc') {
+      data = [...data].sort((a, b) => Number(b.price || 0) - Number(a.price || 0));
+    } else {
+      data = [...data].sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+    }
     return data;
   }, [items, dateFrom, dateTo, dirFromCountry, dirToCountry, sortBy, savedOnly, savedIds]);
 
@@ -257,17 +284,22 @@ export default function FeedScreen({ navigation }) {
   };
 
   const toggleSaved = async (item) => {
-    const ok = myUserId || await requireLevel(LEVELS.PHONE, 'favorite_trip', 'client');
-    if (!ok) return;
+    if (!myUserId) {
+      const ok = await requireLevel(LEVELS.PHONE, 'favorite_trip', 'client');
+      if (!ok) return;
+    }
+
     const id = String(item.id);
     if (savedBusyRef.current.has(id)) return;
     savedBusyRef.current.add(id);
     const had = savedIds.has(id);
+
     setSavedIds((prev) => {
       const next = new Set(prev);
       if (had) next.delete(id); else next.add(id);
       return next;
     });
+
     try {
       const result = had
         ? await marketAPI.favRemove('trip', id)
@@ -344,28 +376,50 @@ export default function FeedScreen({ navigation }) {
         ]}
         testID="feed-route-selector"
       >
-        <TouchableOpacity style={styles.routeHalf} onPress={() => setShowDirFromPicker(true)} testID="feed-route-from">
+        <TouchableOpacity
+          style={styles.routeHalf}
+          onPress={() => setShowDirFromPicker(true)}
+          testID="feed-route-from"
+        >
           <View style={styles.routeLabelRow}>
             <Feather name="map-pin" size={14} color={colors.textMuted} />
             <Text style={[styles.routeLabel, { color: colors.textSecondary }]}>{t('from')}</Text>
           </View>
-          <Text style={[styles.routeValue, { color: (dirFrom || dirFromCountry) ? colors.text : colors.textMuted }]} numberOfLines={1}>
+          <Text
+            style={[styles.routeValue, { color: (dirFrom || dirFromCountry) ? colors.text : colors.textMuted }]}
+            numberOfLines={1}
+          >
             {routeValue(dirFrom, dirFromCountry, t('create_field_from_placeholder'))}
           </Text>
         </TouchableOpacity>
+
         <Feather name="arrow-right" size={24} color={ACCENT} />
-        <TouchableOpacity style={styles.routeHalf} onPress={() => setShowDirToPicker(true)} testID="feed-route-to">
+
+        <TouchableOpacity
+          style={styles.routeHalf}
+          onPress={() => setShowDirToPicker(true)}
+          testID="feed-route-to"
+        >
           <View style={styles.routeLabelRow}>
             <Feather name="flag" size={14} color={colors.textMuted} />
             <Text style={[styles.routeLabel, { color: colors.textSecondary }]}>{t('to')}</Text>
           </View>
-          <Text style={[styles.routeValue, { color: (dirTo || dirToCountry) ? colors.text : colors.textMuted }]} numberOfLines={1}>
+          <Text
+            style={[styles.routeValue, { color: (dirTo || dirToCountry) ? colors.text : colors.textMuted }]}
+            numberOfLines={1}
+          >
             {routeValue(dirTo, dirToCountry, t('create_field_to_placeholder'))}
           </Text>
         </TouchableOpacity>
+
         {(dirFrom || dirTo || dirFromCountry || dirToCountry) ? (
           <TouchableOpacity
-            onPress={() => { setDirFrom(''); setDirTo(''); setDirFromCountry(''); setDirToCountry(''); }}
+            onPress={() => {
+              setDirFrom('');
+              setDirTo('');
+              setDirFromCountry('');
+              setDirToCountry('');
+            }}
             hitSlop={10}
             testID="feed-route-clear"
           >
@@ -374,7 +428,12 @@ export default function FeedScreen({ navigation }) {
         ) : null}
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtersScroll} contentContainerStyle={styles.filters}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.filtersScroll}
+        contentContainerStyle={styles.filters}
+      >
         {filterPill('date', t('filter_date'), 'calendar', !!(dateFrom || dateTo))}
         {filterPill('body', t('filter_body'), 'truck', !!filterType)}
         {filterPill('price', t('filter_price'), 'dollar-sign', sortBy !== 'newest')}
@@ -394,15 +453,24 @@ export default function FeedScreen({ navigation }) {
         >
           <Feather name="bookmark" size={17} color={colors.accent} />
           <Text style={[styles.filterPillText, { color: colors.accent }]}>{copy.favorites}</Text>
-          {savedIds.size > 0 ? <Text style={[styles.favoritesCount, { color: colors.textSecondary }]}>{savedIds.size}</Text> : null}
+          {savedIds.size > 0 ? (
+            <Text style={[styles.favoritesCount, { color: colors.textSecondary }]}>{savedIds.size}</Text>
+          ) : null}
         </TouchableOpacity>
       </ScrollView>
     </View>
   );
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.pageBg }]} edges={['top']} testID="trip-feed-screen">
-      <View style={[styles.topBar, { backgroundColor: colors.pageBg }]} testID="trip-feed-minimal-header">
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: colors.pageBg }]}
+      edges={['top']}
+      testID="trip-feed-screen"
+    >
+      <View
+        style={[styles.topBar, { backgroundColor: colors.pageBg }]}
+        testID="trip-feed-minimal-header"
+      >
         <TouchableOpacity
           onPress={() => navigation.navigate('Profile', { role })}
           style={styles.menuBtn}
@@ -434,26 +502,42 @@ export default function FeedScreen({ navigation }) {
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
+        refreshControl={(
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.accent}
+          />
+        )}
         onEndReachedThreshold={0.5}
         onEndReached={() => {
-          if (!loading && !savedOnly && items.length >= pageLimit) setPageLimit((p) => p + 50);
+          if (!loading && !savedOnly && items.length >= pageLimit) setPageLimit((value) => value + 50);
         }}
-        ListEmptyComponent={
-          loading ? (
-            <View style={styles.loadingWrap}>{[0, 1, 2, 3].map((i) => <SkeletonCard key={i} />)}</View>
-          ) : (
-            <View style={styles.emptyWrap}>
-              <Feather name={error ? 'alert-circle' : savedOnly ? 'bookmark' : 'truck'} size={32} color={colors.textMuted} />
-              <Text style={[styles.emptyTitle, { color: colors.textMuted }]}>{error ? copy.loadError : copy.empty}</Text>
-              {error ? (
-                <TouchableOpacity style={[styles.retryBtn, { backgroundColor: colors.accentSoft }]} onPress={load} testID="trip-feed-retry">
-                  <Text style={[styles.retryText, { color: colors.accent }]}>{copy.retry}</Text>
-                </TouchableOpacity>
-              ) : null}
-            </View>
-          )
-        }
+        ListEmptyComponent={loading ? (
+          <View style={styles.loadingWrap}>
+            {[0, 1, 2, 3].map((index) => <SkeletonCard key={index} />)}
+          </View>
+        ) : (
+          <View style={styles.emptyWrap}>
+            <Feather
+              name={error ? 'alert-circle' : savedOnly ? 'bookmark' : 'truck'}
+              size={32}
+              color={colors.textMuted}
+            />
+            <Text style={[styles.emptyTitle, { color: colors.textMuted }]}>
+              {error ? copy.loadError : copy.empty}
+            </Text>
+            {error ? (
+              <TouchableOpacity
+                style={[styles.retryBtn, { backgroundColor: colors.accentSoft }]}
+                onPress={load}
+                testID="trip-feed-retry"
+              >
+                <Text style={[styles.retryText, { color: colors.accent }]}>{copy.retry}</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        )}
       />
 
       <LocationPickerModal
@@ -472,13 +556,20 @@ export default function FeedScreen({ navigation }) {
         onSelect={selectDirTo}
       />
 
-      <BottomSheet visible={activeFilter === 'date'} onClose={() => setActiveFilter(null)} title={t('filter_date')}>
+      <BottomSheet
+        visible={activeFilter === 'date'}
+        onClose={() => setActiveFilter(null)}
+        title={t('filter_date')}
+      >
         <Text style={[styles.sheetLabel, { color: colors.textMuted }]}>{t('filter_date_from')}</Text>
         <DatePicker value={dateFrom} onChange={setDateFrom} placeholder={t('date_placeholder')} />
         <Text style={[styles.sheetLabel, { color: colors.textMuted, marginTop: 14 }]}>{t('filter_date_to')}</Text>
         <DatePicker value={dateTo} onChange={setDateTo} placeholder={t('date_placeholder')} />
         <View style={styles.sheetActions}>
-          <TouchableOpacity style={[styles.sheetSecondary, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => { setDateFrom(''); setDateTo(''); }}>
+          <TouchableOpacity
+            style={[styles.sheetSecondary, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            onPress={() => { setDateFrom(''); setDateTo(''); }}
+          >
             <Text style={[styles.sheetSecondaryText, { color: colors.textSecondary }]}>{t('filter_reset')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.sheetPrimary} onPress={() => setActiveFilter(null)}>
@@ -487,26 +578,57 @@ export default function FeedScreen({ navigation }) {
         </View>
       </BottomSheet>
 
-      <BottomSheet visible={activeFilter === 'body'} onClose={() => setActiveFilter(null)} title={t('filter_body')}>
+      <BottomSheet
+        visible={activeFilter === 'body'}
+        onClose={() => setActiveFilter(null)}
+        title={t('filter_body')}
+      >
         <View style={styles.bodyGrid}>
           <TouchableOpacity
-            style={[styles.bodyChip, { backgroundColor: colors.surface, borderColor: colors.border }, !filterType && styles.bodyChipActive]}
+            style={[
+              styles.bodyChip,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+              !filterType && styles.bodyChipActive,
+            ]}
             onPress={() => setFilterType(null)}
           >
-            <Text style={[styles.bodyChipText, { color: colors.textSecondary }, !filterType && styles.bodyChipTextActive]}>{t('filter_all')}</Text>
+            <Text
+              style={[
+                styles.bodyChipText,
+                { color: colors.textSecondary },
+                !filterType && styles.bodyChipTextActive,
+              ]}
+            >
+              {t('filter_all')}
+            </Text>
           </TouchableOpacity>
           {TRUCK_KEYS.map((key) => (
             <TouchableOpacity
               key={key}
-              style={[styles.bodyChip, { backgroundColor: colors.surface, borderColor: colors.border }, filterType === key && styles.bodyChipActive]}
+              style={[
+                styles.bodyChip,
+                { backgroundColor: colors.surface, borderColor: colors.border },
+                filterType === key && styles.bodyChipActive,
+              ]}
               onPress={() => setFilterType(filterType === key ? null : key)}
             >
-              <Text style={[styles.bodyChipText, { color: colors.textSecondary }, filterType === key && styles.bodyChipTextActive]}>{t(key)}</Text>
+              <Text
+                style={[
+                  styles.bodyChipText,
+                  { color: colors.textSecondary },
+                  filterType === key && styles.bodyChipTextActive,
+                ]}
+              >
+                {t(key)}
+              </Text>
             </TouchableOpacity>
           ))}
         </View>
         <View style={styles.sheetActions}>
-          <TouchableOpacity style={[styles.sheetSecondary, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => setFilterType(null)}>
+          <TouchableOpacity
+            style={[styles.sheetSecondary, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            onPress={() => setFilterType(null)}
+          >
             <Text style={[styles.sheetSecondaryText, { color: colors.textSecondary }]}>{t('filter_reset')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.sheetPrimary} onPress={() => setActiveFilter(null)}>
@@ -515,7 +637,11 @@ export default function FeedScreen({ navigation }) {
         </View>
       </BottomSheet>
 
-      <BottomSheet visible={activeFilter === 'price'} onClose={() => setActiveFilter(null)} title={t('filter_price')}>
+      <BottomSheet
+        visible={activeFilter === 'price'}
+        onClose={() => setActiveFilter(null)}
+        title={t('filter_price')}
+      >
         {[
           ['newest', t('filter_newest')],
           ['price-asc', t('filter_price_asc')],
@@ -523,15 +649,30 @@ export default function FeedScreen({ navigation }) {
         ].map(([value, label]) => (
           <TouchableOpacity
             key={value}
-            style={[styles.sortRow, { backgroundColor: colors.surface, borderColor: colors.border }, sortBy === value && styles.sortRowActive]}
+            style={[
+              styles.sortRow,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+              sortBy === value && styles.sortRowActive,
+            ]}
             onPress={() => setSortBy(value)}
           >
-            <Text style={[styles.sortRowText, { color: colors.text }, sortBy === value && styles.sortRowTextActive]}>{label}</Text>
+            <Text
+              style={[
+                styles.sortRowText,
+                { color: colors.textSecondary },
+                sortBy === value && styles.sortRowTextActive,
+              ]}
+            >
+              {label}
+            </Text>
             {sortBy === value ? <Feather name="check" size={18} color={ACCENT} /> : null}
           </TouchableOpacity>
         ))}
         <View style={styles.sheetActions}>
-          <TouchableOpacity style={[styles.sheetSecondary, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => setSortBy('newest')}>
+          <TouchableOpacity
+            style={[styles.sheetSecondary, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            onPress={() => setSortBy('newest')}
+          >
             <Text style={[styles.sheetSecondaryText, { color: colors.textSecondary }]}>{t('filter_reset')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.sheetPrimary} onPress={() => setActiveFilter(null)}>
@@ -540,66 +681,117 @@ export default function FeedScreen({ navigation }) {
         </View>
       </BottomSheet>
 
-      <Gate />
+      {Gate}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  topBar: { minHeight: 50, alignItems: 'flex-end', justifyContent: 'center', paddingHorizontal: 20 },
-  menuBtn: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  list: { flex: 1 },
-  listContent: { paddingHorizontal: 16, paddingBottom: 120 },
-  feedControls: { marginHorizontal: -16, paddingBottom: 8 },
+  container: { flex: 1, backgroundColor: PAGE_BG },
+  topBar: {
+    minHeight: 42,
+    paddingHorizontal: 18,
+    paddingTop: 2,
+    paddingBottom: 2,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    backgroundColor: PAGE_BG,
+  },
+  menuBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  feedControls: { paddingTop: 2, paddingBottom: 2 },
   routeSelector: {
-    flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginBottom: 12,
-    borderWidth: 1.5, borderRadius: 18, paddingVertical: 14, paddingHorizontal: 14, gap: 10,
-    shadowOpacity: 0.03, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 68,
+    marginHorizontal: 18,
+    marginBottom: 6,
+    paddingHorizontal: 13,
+    paddingVertical: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: SURFACE,
+    shadowColor: '#14211C',
+    shadowOpacity: 0.03,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
+    gap: 10,
   },
   routeHalf: { flex: 1, minWidth: 0 },
-  routeLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 },
-  routeLabel: { fontSize: 13, fontWeight: '700' },
-  routeValue: { fontSize: 16, fontWeight: '800' },
-  filtersScroll: { flexGrow: 0 },
-  filters: { paddingHorizontal: 16, gap: 10, paddingBottom: 4 },
+  routeLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 3 },
+  routeLabel: { fontSize: 11.5, lineHeight: 15, fontWeight: '600' },
+  routeValue: { fontSize: 15, lineHeight: 19, fontWeight: '700' },
+  filtersScroll: { flexGrow: 0, minHeight: 50, maxHeight: 50 },
+  filters: { paddingHorizontal: 18, paddingVertical: 4, gap: 7, alignItems: 'center' },
   filterPill: {
-    minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 7,
-    borderWidth: 1, borderRadius: 24, paddingHorizontal: 15,
-    shadowOpacity: 0.025, shadowRadius: 5, shadowOffset: { width: 0, height: 2 }, elevation: 1,
+    height: 40,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    shadowOpacity: 0.025,
+    shadowRadius: 7,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
   },
-  filterPillText: { fontSize: 15, fontWeight: '700' },
-  favoritesCount: { fontSize: 13, fontWeight: '800', minWidth: 18, textAlign: 'center' },
+  filterPillText: { fontSize: 13, fontWeight: '600' },
+  favoritesCount: { fontSize: 13, lineHeight: 18, fontWeight: '600' },
+  list: { flex: 1 },
+  listContent: { paddingTop: 0, paddingBottom: 28 },
+  loadingWrap: { paddingHorizontal: 24, paddingTop: 5 },
   card: {
-    minHeight: 146, borderRadius: 22, borderWidth: 1, marginBottom: 14,
-    paddingLeft: 20, paddingRight: 20, paddingVertical: 18,
-    shadowOpacity: 0.035, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 1,
+    minHeight: 104,
+    marginHorizontal: 18,
+    marginBottom: 7,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: SURFACE,
+    overflow: 'hidden',
+    shadowColor: '#15211C',
+    shadowOpacity: 0.035,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
+    flexDirection: 'row',
   },
-  cardBody: { paddingRight: 150 },
-  route: { fontSize: 20, fontWeight: '800', letterSpacing: -0.35, lineHeight: 26 },
-  meta: { fontSize: 14, fontWeight: '600', marginTop: 8, lineHeight: 20 },
-  priceWrap: { position: 'absolute', right: 70, bottom: 25, alignItems: 'flex-end', maxWidth: 155 },
-  price: { fontSize: 21, fontWeight: '900', letterSpacing: -0.35 },
-  perTrip: { fontSize: 12, marginTop: 3 },
-  bookmarkBtn: { position: 'absolute', right: 16, bottom: 17, width: 50, height: 50, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  loadingWrap: { paddingTop: 8 },
-  emptyWrap: { paddingVertical: 54, alignItems: 'center', gap: 12 },
-  emptyTitle: { fontSize: 15, fontWeight: '600', textAlign: 'center' },
-  retryBtn: { borderRadius: 12, paddingHorizontal: 18, paddingVertical: 10 },
-  retryText: { fontSize: 14, fontWeight: '800' },
+  greenRail: { width: 4, backgroundColor: '#3A9972' },
+  cardBody: { flex: 1, paddingLeft: 12, paddingRight: 145, paddingTop: 12, paddingBottom: 10 },
+  route: { fontSize: 15.5, lineHeight: 20, fontWeight: '700', letterSpacing: -0.1 },
+  meta: { fontSize: 12, lineHeight: 16, fontWeight: '500', marginTop: 7 },
+  priceWrap: { position: 'absolute', right: 58, bottom: 12, alignItems: 'flex-end', maxWidth: 130 },
+  price: { fontSize: 16.5, lineHeight: 20, fontWeight: '800' },
+  perTrip: { fontSize: 11.5, lineHeight: 15, marginTop: 1 },
+  bookmarkBtn: {
+    position: 'absolute',
+    right: 9,
+    bottom: 6,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyWrap: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 65, gap: 11 },
+  emptyTitle: { fontSize: 14, lineHeight: 20, textAlign: 'center' },
+  retryBtn: { marginTop: 5, minHeight: 44, borderRadius: 22, paddingHorizontal: 22, alignItems: 'center', justifyContent: 'center' },
+  retryText: { fontSize: 14, fontWeight: '700' },
   sheetLabel: { fontSize: 12, fontWeight: '700', marginBottom: 7 },
-  sheetActions: { flexDirection: 'row', gap: 10, marginTop: 20 },
-  sheetSecondary: { flex: 1, minHeight: 48, borderWidth: 1, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  sheetSecondaryText: { fontSize: 14, fontWeight: '800' },
-  sheetPrimary: { flex: 1, minHeight: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: ACCENT },
-  sheetPrimaryText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
+  sheetActions: { flexDirection: 'row', gap: 10, marginTop: 22, paddingBottom: 8 },
+  sheetSecondary: { flex: 1, minHeight: 46, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  sheetSecondaryText: { fontSize: 14, fontWeight: '700' },
+  sheetPrimary: { flex: 1, minHeight: 46, borderRadius: 14, backgroundColor: ACCENT, alignItems: 'center', justifyContent: 'center' },
+  sheetPrimaryText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
   bodyGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  bodyChip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 13, paddingVertical: 9 },
-  bodyChipActive: { borderColor: '#9CCDB7', backgroundColor: ACCENT_SOFT },
-  bodyChipText: { fontSize: 13, fontWeight: '700' },
+  bodyChip: { minHeight: 40, paddingHorizontal: 13, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  bodyChipActive: { borderColor: '#BFDCCF', backgroundColor: ACCENT_SOFT },
+  bodyChipText: { fontSize: 13, fontWeight: '600' },
   bodyChipTextActive: { color: ACCENT },
-  sortRow: { minHeight: 52, borderWidth: 1, borderRadius: 14, paddingHorizontal: 15, marginBottom: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  sortRowActive: { borderColor: '#9CCDB7' },
-  sortRowText: { fontSize: 14, fontWeight: '700' },
+  sortRow: { minHeight: 48, borderRadius: 12, borderWidth: 1, paddingHorizontal: 14, marginBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  sortRowActive: { borderColor: '#BFDCCF', backgroundColor: ACCENT_SOFT },
+  sortRowText: { fontSize: 14, fontWeight: '600' },
   sortRowTextActive: { color: ACCENT },
 });
