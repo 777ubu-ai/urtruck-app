@@ -5,6 +5,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import Feather from '@expo/vector-icons/Feather';
 import { setLanguage, getLanguage } from '../utils/i18n';
 import { useI18n } from '../utils/useI18n';
+import { useUnreadNotifications } from '../utils/useUnreadNotifications';
 import { useTheme } from '../utils/ThemeContext';
 import { useV1Colors } from '../theme/designV1';
 import { useAuth } from '../utils/AuthContext';
@@ -169,7 +170,19 @@ export default function ProfileScreen({ navigation, route }) {
   // вкладке «Очередь» (единый Queue hub).
   // IA Phase 2: Chats — отдельная вкладка/путь (через сделку), НЕ дублируется
   // generic-рядом в Профиле. «Update app» убран из Профиля (см. ниже).
+  // P0-hotfix 28.08.2026: NotificationsScreen был зарегистрирован в
+  // навигаторе, но НИ ОДНА кнопка в приложении на него не вела — только
+  // deep-link url='/notifications', которого ни один backend push не
+  // отправляет (проверено: 0 совпадений). Итог: badge на иконке рос, а
+  // «список уведомлений» был физически недостижим — сирота того же
+  // класса, что чинили в Этапе 6.4 (HowItWorks/About). Пункт меню внизу.
+  // ProfileScreen монтируется ТОЛЬКО внутри авторизованного стека
+  // (AppNavigator: hasRole-ветка) — hasToken тут всегда true, отдельного
+  // деструктура из useAuth() не нужно.
+  const notifUnread = useUnreadNotifications(true);
+
   const menuItems = [
+    { icon: 'bell', label: t('menu_notifications'), screen: 'Notifications', testID: 'profile-notifications', badge: notifUnread },
     ...(isDriver ? [{ icon: 'shield', label: t('security_my_status'), sub: t('my_status_subtitle'), screen: 'Security', testID: 'profile-my-status' }] : []),
     { icon: 'star',          label: t('myReviews'),     screen: 'Reviews', testID: 'profile-my-reviews' },
     { icon: 'heart',         label: t('favorites_title'), screen: 'Favorites', testID: 'profile-favorites' },
@@ -409,6 +422,11 @@ export default function ProfileScreen({ navigation, route }) {
                   <Text style={[s.menuLabel, { color: theme.text }]}>{item.label}</Text>
                   {item.sub ? <Text style={[s.menuSub, { color: theme.textMuted }]}>{item.sub}</Text> : null}
                 </View>
+                {item.badge > 0 ? (
+                  <View style={[s.menuBadge, { backgroundColor: accent }]} testID="profile-notifications-badge">
+                    <Text style={s.menuBadgeText}>{item.badge > 99 ? '99+' : item.badge}</Text>
+                  </View>
+                ) : null}
                 <Feather name="chevron-right" size={18} color={theme.textMuted} />
               </TouchableOpacity>
             </React.Fragment>
@@ -641,6 +659,8 @@ const s = StyleSheet.create({
   menuSeparator: { height: StyleSheet.hairlineWidth, marginLeft: 50 },
   menuIconWrap: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   menuLabel: { fontSize: 14, fontWeight: '600' },
+  menuBadge: { minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center', marginRight: 6 },
+  menuBadgeText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
   menuSub: { fontSize: 11, marginTop: 1 },
 
   // PR-C2 (compact settings)
