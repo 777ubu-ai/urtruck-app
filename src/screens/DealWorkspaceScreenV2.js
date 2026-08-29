@@ -332,6 +332,18 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     Keyboard.dismiss();
   }, [input, recording]);
 
+  // P0-hotfix 28.08.2026 (§6): onScrollBeginDrag сворачивал composer до
+  // тонкой ручки-хэндла на КАЖДЫЙ скролл списка сообщений (обычнейший жест —
+  // прочитать историю выше), а обратно он разворачивался ТОЛЬКО ручным тапом
+  // по хэндлу. Итог — «строка ввода иногда пропадает» и не возвращается сама
+  // после того, как жест закончился. Составитель обязан быть виден «после
+  // scroll-to-bottom» (ТЗ §6) — сворачивание на время активного драга
+  // оставляем (даёт место для чтения), но по окончании жеста composer
+  // разворачивается сам, без дополнительного тапа.
+  const onMessageListScrollSettle = React.useCallback(() => {
+    expandComposer();
+  }, [expandComposer]);
+
   React.useEffect(() => {
     if (!recording) { setRecordSecs(0); return undefined; }
     const timer = setInterval(() => setRecordSecs(Math.max(0, Math.floor((Date.now() - recordStartRef.current) / 1000))), 500);
@@ -1143,6 +1155,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     nearBottomRef.current = true;
     setShowJumpLatest(false);
     listRef.current?.scrollToEnd?.({ animated: true });
+    // §6: явный «scroll to latest» обязан вернуть composer, если он был
+    // свёрнут предыдущим драгом по списку.
+    expandComposer();
   };
 
   const nextActionTestId = nextAction ? (
@@ -1231,6 +1246,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                       if (nearBottom && showJumpLatest) setShowJumpLatest(false);
                     }}
                     onScrollBeginDrag={collapseComposer}
+                    onScrollEndDrag={onMessageListScrollSettle}
+                    onMomentumScrollEnd={onMessageListScrollSettle}
                     scrollEventThrottle={80}
                     onContentSizeChange={() => { if (nearBottomRef.current) listRef.current?.scrollToEnd?.({ animated: false }); }}
                     ListEmptyComponent={<Text style={[s.emptyText, { color: colors.textMuted }]}>{ui.noMessages}</Text>}
