@@ -21,6 +21,10 @@ jobs:
     timeout-minutes: 180
     env:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      EXPO_PUBLIC_API_URL: https://urtruck.kz
+      EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
+      YANDEX_ROUTER_API_KEY: ${{ secrets.YANDEX_ROUTER_API_KEY }}
+      OPENROUTESERVICE_API_KEY: ${{ secrets.OPENROUTESERVICE_API_KEY }}
     steps:
       - name: Checkout exact release candidate
         uses: actions/checkout@v4
@@ -36,14 +40,44 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Verify release branch and Expo auth
+      - name: Verify release branch, Expo auth, and map config
         shell: bash
         run: |
           set -euo pipefail
           echo "SHA=$(git rev-parse HEAD)"
           test "${GITHUB_REF_NAME}" = "main"
           test -n "${EXPO_TOKEN:-}"
+          test -n "${EXPO_PUBLIC_API_URL:-}"
+          test -n "${EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY:-}" || {
+            echo "::error::YANDEX_MAPS_JS_API_KEY is required for TestFlight builds so iOS matches production web map behavior."
+            exit 1
+          }
           npx eas-cli@latest whoami
+
+      - name: Inject TestFlight runtime config into EAS profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const path = 'eas.json';
+          const eas = JSON.parse(fs.readFileSync(path, 'utf8'));
+          eas.build = eas.build || {};
+          eas.build.production = eas.build.production || {};
+          eas.build.production.env = {
+            ...(eas.build.production.env || {}),
+            EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL,
+            EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: process.env.EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY,
+          };
+          if (process.env.YANDEX_ROUTER_API_KEY) {
+            eas.build.production.env.YANDEX_ROUTER_API_KEY = process.env.YANDEX_ROUTER_API_KEY;
+          }
+          if (process.env.OPENROUTESERVICE_API_KEY) {
+            eas.build.production.env.OPENROUTESERVICE_API_KEY = process.env.OPENROUTESERVICE_API_KEY;
+          }
+          fs.writeFileSync(path, `${JSON.stringify(eas, null, 2)}\n`);
+          NODE
+          node -e "const eas=require('./eas.json'); const env=eas.build.production.env||{}; if(!env.EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY) process.exit(1); console.log('TESTFLIGHT_MAP_CONFIG=present')"
 
       - name: Show recent iOS EAS builds
         run: npx eas-cli@latest build:list --platform ios --limit 10 --non-interactive
@@ -53,7 +87,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npx eas-cli@latest build --platform ios --profile production --non-interactive --wait --json > eas-build.json
+          npx eas-cli@latest build --platform ios --profile production --clear-cache --non-interactive --wait --json > eas-build.json
           cat eas-build.json
           BUILD_ID=$(node -e "console.log(JSON.parse(require('fs').readFileSync('eas-build.json','utf8'))[0].id)")
           BUILD_COMMIT=$(node -e "console.log(JSON.parse(require('fs').readFileSync('eas-build.json','utf8'))[0].gitCommitHash)")
