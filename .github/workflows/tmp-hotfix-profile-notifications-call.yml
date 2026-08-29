@@ -1,0 +1,90 @@
+name: Temporary profile notification cleanup
+
+on:
+  push:
+    branches:
+      - fix/remove-profile-notifications-call-20260830
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/remove-profile-notifications-call-20260830
+          fetch-depth: 0
+
+      - name: Remove duplicate notification entry and lock chat-only contact UI
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('src/screens/ProfileScreen.js')
+          s = p.read_text()
+          s = s.replace("import { useUnreadNotifications } from '../utils/useUnreadNotifications';\n", '')
+          s = s.replace("  const notifUnread = useUnreadNotifications(true);\n\n", '')
+          s = s.replace("    { icon: 'bell', label: t('menu_notifications'), screen: 'Notifications', testID: 'profile-notifications', badge: notifUnread },\n", '')
+
+          old = """  // P0-hotfix 28.08.2026: NotificationsScreen был зарегистрирован в
+  // навигаторе, но НИ ОДНА кнопка в приложении на него не вела — только
+  // deep-link url='/notifications', которого ни один backend push не
+  // отправляет (проверено: 0 совпадений). Итог: badge на иконке рос, а
+  // «список уведомлений» был физически недостижим — сирота того же
+  // класса, что чинили в Этапе 6.4 (HowItWorks/About). Пункт меню внизу.
+  // ProfileScreen монтируется ТОЛЬКО внутри авторизованного стека
+  // (AppNavigator: hasRole-ветка) — hasToken тут всегда true, отдельного
+  // деструктура из useAuth() не нужно.
+"""
+          new = """  // IA 30.08.2026: уведомления о предложениях/сделках живут в разделе
+  // «Сделки» и его badge. Профиль не дублирует центр уведомлений и не
+  // показывает второй счётчик тех же событий.
+"""
+          s = s.replace(old, new)
+          p.write_text(s)
+
+          test = Path('tests/frontend/test_profile_notification_ia.mjs')
+          test.write_text("""import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+
+const profile = fs.readFileSync('src/screens/ProfileScreen.js', 'utf8');
+const headerMenu = fs.readFileSync('src/components/ui/v1/HeaderMenuButton.js', 'utf8');
+const cargoDetail = fs.readFileSync('src/screens/CargoDetail.js', 'utf8');
+
+test('profile does not duplicate deals notifications or their badge', () => {
+  assert.doesNotMatch(profile, /useUnreadNotifications/);
+  assert.doesNotMatch(profile, /profile-notifications/);
+  assert.doesNotMatch(profile, /menu_notifications/);
+});
+
+test('hamburger is profile navigation only and has no notification badge', () => {
+  assert.doesNotMatch(headerMenu, /useUnreadNotifications|badge|unread/i);
+  assert.match(headerMenu, /navigation\\.navigate\\('Profile'/);
+});
+
+test('accepted deal detail keeps users in UrTruck chat and exposes no external call CTA', () => {
+  assert.match(cargoDetail, /testID=\"deal-order-chat\"/);
+  assert.doesNotMatch(cargoDetail, /deal-order-call|wa\\.me|whatsapp|telegram|tg:\\/\\/|tel:/i);
+  assert.equal(fs.existsSync('src/utils/contactPartner.js'), false);
+});
+""")
+
+          # The workflow is a one-shot repository patcher. Remove it from the
+          # resulting commit so no permanent self-modifying CI remains.
+          Path('.github/workflows/tmp-hotfix-profile-notifications-call.yml').unlink()
+          PY
+
+          node tests/frontend/test_profile_notification_ia.mjs
+          git diff --check
+
+      - name: Commit hotfix to branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/screens/ProfileScreen.js tests/frontend/test_profile_notification_ia.mjs .github/workflows/tmp-hotfix-profile-notifications-call.yml
+          git commit -m "fix(ui): remove duplicate notifications and external call affordance"
+          git push origin HEAD:fix/remove-profile-notifications-call-20260830
