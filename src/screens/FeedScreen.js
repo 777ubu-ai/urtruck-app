@@ -74,9 +74,9 @@ const feedPalette = (theme, isDark) => ({
   border: theme.border || BORDER,
   shadow: isDark ? '#000000' : '#14211C',
   accent: ACCENT,
-  accentSoft: isDark ? 'rgba(22,135,89,0.18)' : ACCENT_SOFT,
-  filterActive: isDark ? 'rgba(22,135,89,0.16)' : '#FAFDFC',
-  favoriteBg: isDark ? 'rgba(22,135,89,0.12)' : '#F5FBF8',
+  accentSoft: ACCENT_SOFT,
+  filterActive: isDark ? (theme.surfaceAlt || theme.card || theme.surface || SURFACE) : '#FAFDFC',
+  favoriteBg: isDark ? (theme.surfaceAlt || theme.card || theme.surface || SURFACE) : '#F5FBF8',
 });
 
 function TripCard({ item, lang, t, copy, saved, onToggleSaved, onPress, colors }) {
