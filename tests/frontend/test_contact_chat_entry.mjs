@@ -14,6 +14,14 @@ test('driver profile partner-only chat entry resolves a deal-linked room before 
   assert.match(chatRouter, /return <DealWorkspaceRoute/);
 });
 
+test('partner-only contact without an accepted deal fails closed instead of opening legacy chat', () => {
+  assert.match(chatRouter, /const \[blockedPartnerEntry, setBlockedPartnerEntry\] = React\.useState\(false\)/);
+  assert.match(chatRouter, /const partnerOnlyWithoutDeal = Boolean\(partnerId && !roomId && !nextDealId\)/);
+  assert.match(chatRouter, /setBlockedPartnerEntry\(partnerOnlyWithoutDeal\)/);
+  assert.match(chatRouter, /navigation\.navigate\('Deals', \{ role: params\.role \}\)/);
+  assert.match(chatRouter, /if \(!checked \|\| blockedPartnerEntry\)/);
+});
+
 test('external phone Telegram WhatsApp handoff helper is absent from product source', () => {
   assert.equal(fs.existsSync('src/utils/contactPartner.js'), false);
 });
