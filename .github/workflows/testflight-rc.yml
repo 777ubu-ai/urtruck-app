@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   build-and-upload-testflight:
-    if: ${{ github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'push' }}
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
