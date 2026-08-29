@@ -8,6 +8,8 @@ const actionResolver = fs.readFileSync('src/utils/dealActionResolver.js', 'utf8'
 const chatRouter = fs.readFileSync('src/screens/ChatScreenV2.js', 'utf8');
 const tripRouter = fs.readFileSync('src/screens/TripDetailV2.js', 'utf8');
 const cargoRouter = fs.readFileSync('src/screens/CargoDetailV2.js', 'utf8');
+const cargoDetail = fs.readFileSync('src/screens/CargoDetail.js', 'utf8');
+const tripDetail = fs.readFileSync('src/screens/TripDetail.js', 'utf8');
 const nav = fs.readFileSync('src/navigation/AppNavigator.js', 'utf8');
 const brand = fs.readFileSync('src/components/ui/v1/BrandBarWithShare.js', 'utf8');
 const webMap = fs.readFileSync('src/components/TruckMap.web.js', 'utf8');
@@ -40,6 +42,15 @@ test('active cargo and trip details route into the same canonical gated workspac
   assert.match(tripRouter, /import DealWorkspaceRoute from '\.\.\/components\/deal\/DealWorkspaceRoute'/);
   assert.match(tripRouter, /<DealWorkspaceRoute/);
   assert.doesNotMatch(tripRouter, /from '\.\/DealWorkspaceScreenV2'/);
+});
+
+test('accepted deal details keep message CTA and hide external call handoff', () => {
+  for (const [name, src] of [['CargoDetail', cargoDetail], ['TripDetail', tripDetail]]) {
+    assert.match(src, /testID="deal-order-chat"/, `${name} must keep the deal message CTA`);
+    assert.doesNotMatch(src, /testID="deal-order-call"/, `${name} must not show external call CTA`);
+    assert.doesNotMatch(src, /openContactPartner/, `${name} must not open phone or WhatsApp handoff`);
+    assert.doesNotMatch(src, /setCounterpartyPhone/, `${name} must not keep call-only counterparty phone state`);
+  }
 });
 
 test('deal workspace has scroll-away compact information header and no repeated UrTruck brand bar', () => {

@@ -30,7 +30,6 @@ import { LEVELS, useAuth } from '../utils/AuthContext';
 import { marketAPI } from '../utils/marketAPI';
 import { reviewsAPI } from '../utils/reviews';
 import { pickDealStatus, userFacingDealStatus } from '../utils/dealStatusOrder';
-import { openContactPartner } from '../utils/contactPartner';
 import { normalizeCargo, cargoDisplay, sanitizeForDisplay, formatPrice } from '../utils/normalizers';
 import { localizePlace } from '../utils/places';
 import { formatDateForDisplay } from '../utils/dateInput';
@@ -187,10 +186,6 @@ export default function CargoDetail({ navigation, route }) {
   const [chatRoomId, setChatRoomId] = useState(null);
   const [dealId, setDealId] = useState(routeDealId || null);
   const [dealStatus, setDealStatus] = useState(null);
-  // Телефон контрагента — только после сделки (backend get_deal() гейтит
-  // counterparty_phone участием в сделке, т.е. только post-accept), для
-  // secondary-кнопки «Позвонить» (05.08.2026, п.6/17 ТЗ).
-  const [counterpartyPhone, setCounterpartyPhone] = useState(null);
   const [shipperId, setShipperId] = useState(null);
   const [driverId, setDriverId] = useState(null);
   const [reviewRating, setReviewRating] = useState(0);
@@ -353,7 +348,6 @@ export default function CargoDetail({ navigation, route }) {
     // числом» устаревшим cancelled.
     setDealStatus((prev) => pickDealStatus(prev, d.status || 'accepted'));
     if (d.chat_room_id) setChatRoomId(d.chat_room_id);
-    if (d.counterparty_phone) setCounterpartyPhone(d.counterparty_phone);
     if (d.shipper_id) setShipperId(d.shipper_id);
     if (d.driver_id) {
       setDriverId(d.driver_id);
@@ -961,9 +955,8 @@ export default function CargoDetail({ navigation, route }) {
               <View style={{ marginTop: 10, gap: 8 }}>
                 {/* «Написать сообщение» — главное действие по сделке
                     (05.08.2026, п.5/17 ТЗ): большая ролевая кнопка вместо
-                    мелкой ссылки «Чат по заказу». Звонок — secondary,
-                    видна только когда backend уже отдал counterparty_phone
-                    (гейт по участию в сделке = только post-accept). */}
+                    мелкой ссылки «Чат по заказу». Внешний звонок скрыт до
+                    появления собственного звонка внутри UrTruck. */}
                 <PrimaryCTA
                   testID="deal-order-chat"
                   role={isDriverSide ? 'driver' : 'client'}
@@ -972,15 +965,6 @@ export default function CargoDetail({ navigation, route }) {
                   onPress={() => navigation.navigate('Chat', { roomId: chatRoomId, role })}
                   style={{ height: 54 }}
                 />
-                {counterpartyPhone ? (
-                  <SecondaryButton
-                    testID="deal-order-call"
-                    role={isDriverSide ? 'driver' : 'client'}
-                    icon="📞"
-                    label={t('call_partner')}
-                    onPress={() => openContactPartner(counterpartyPhone, t)}
-                  />
-                ) : null}
               </View>
             )}
           </View>
