@@ -26,6 +26,7 @@ import BottomSheet from '../components/ui/v1/BottomSheet';
 import DatePicker from '../components/DatePicker';
 import LocationPickerModal from '../components/LocationPickerModal';
 import { TRUCK_KEYS } from '../utils/truckConstants';
+import { COUNTRIES as GEO_COUNTRIES } from '../utils/geography';
 
 const ACCENT = '#34936B';
 const ACCENT_SOFT = '#EAF5EF';
@@ -72,8 +73,9 @@ const feedPalette = (theme, isDark) => ({
 
 function TripCard({ item, lang, t, copy, saved, onToggleSaved, onPress, colors }) {
   const display = tripDisplay(item, t, lang);
+  const notSpecified = t('not_specified');
   const specs = [display.truckType, display.availableM3, display.capacityTons]
-    .filter((value) => value && value !== t('not_specified'))
+    .filter((value) => value && value !== notSpecified)
     .join(' · ');
 
   return (
@@ -138,6 +140,8 @@ export default function FeedScreen({ navigation }) {
   const [pageLimit, setPageLimit] = useState(50);
   const [dirFrom, setDirFrom] = useState('');
   const [dirTo, setDirTo] = useState('');
+  const [dirFromCountry, setDirFromCountry] = useState('');
+  const [dirToCountry, setDirToCountry] = useState('');
   const [showDirFromPicker, setShowDirFromPicker] = useState(false);
   const [showDirToPicker, setShowDirToPicker] = useState(false);
   const [activeFilter, setActiveFilter] = useState(null);
@@ -148,6 +152,28 @@ export default function FeedScreen({ navigation }) {
   const [savedIds, setSavedIds] = useState(() => new Set());
   const [savedOnly, setSavedOnly] = useState(false);
   const savedBusyRef = React.useRef(new Set());
+
+  const countryLabel = (code) => {
+    if (!code) return '';
+    const translated = t(`country_${code}`);
+    return translated && translated !== `country_${code}` ? translated : (GEO_COUNTRIES[code]?.name || code);
+  };
+
+  const routeValue = (city, countryCode, placeholder) => {
+    if (city) return localizePlace(city, lang);
+    if (countryCode) return `${GEO_COUNTRIES[countryCode]?.flag || ''} ${countryLabel(countryCode)}`.trim();
+    return placeholder;
+  };
+
+  const selectDirFrom = (value, point) => {
+    setDirFrom(point?.countryOnly ? '' : ((point && point.name) || value || ''));
+    setDirFromCountry(point?.country && point.country !== 'XX' ? point.country : '');
+  };
+
+  const selectDirTo = (value, point) => {
+    setDirTo(point?.countryOnly ? '' : ((point && point.name) || value || ''));
+    setDirToCountry(point?.country && point.country !== 'XX' ? point.country : '');
+  };
 
   const loadSaved = useCallback(async () => {
     if (!myUserId) {
@@ -173,7 +199,15 @@ export default function FeedScreen({ navigation }) {
       if (result?.serverError) throw new Error('trip_feed_failed');
       const mapped = (result?.trips || [])
         .filter((trip) => !myUserId || trip.driver_id !== myUserId)
-        .map((trip) => normalizeTrip({ ...trip, _server: true }))
+        .map((raw) => {
+          const trip = normalizeTrip({ ...raw, _server: true });
+          if (!trip) return null;
+          return {
+            ...trip,
+            fromCountry: String(raw.from_country || '').trim().toUpperCase(),
+            toCountry: String(raw.to_country || '').trim().toUpperCase(),
+          };
+        })
         .filter((trip) => trip?.id && trip.from && trip.to);
       setItems(mapped);
     } catch (e) {
@@ -199,6 +233,14 @@ export default function FeedScreen({ navigation }) {
       const departure = toIso(item.departure);
       if (dateStart && departure && departure < dateStart) return false;
       if (dateEnd && departure && departure > dateEnd) return false;
+      if (dirFromCountry) {
+        const fromCountry = String(item.fromCountry || '').toUpperCase();
+        if (fromCountry !== dirFromCountry) return false;
+      }
+      if (dirToCountry) {
+        const toCountry = String(item.toCountry || '').toUpperCase();
+        if (toCountry !== dirToCountry) return false;
+      }
       if (savedOnly && !savedIds.has(String(item.id))) return false;
       return true;
     });
@@ -206,7 +248,7 @@ export default function FeedScreen({ navigation }) {
     if (sortBy === 'price-desc') data = [...data].sort((a, b) => Number(b.price || 0) - Number(a.price || 0));
     if (sortBy === 'newest') data = [...data].sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
     return data;
-  }, [items, dateFrom, dateTo, sortBy, savedOnly, savedIds]);
+  }, [items, dateFrom, dateTo, dirFromCountry, dirToCountry, sortBy, savedOnly, savedIds]);
 
   const openTrip = async (item) => {
     const ok = await requireLevel(LEVELS.PHONE, 'open_detail', 'client');
@@ -295,7 +337,7 @@ export default function FeedScreen({ navigation }) {
         style={[
           styles.routeSelector,
           {
-            borderColor: (dirFrom || dirTo) ? colors.accent : colors.border,
+            borderColor: (dirFrom || dirTo || dirFromCountry || dirToCountry) ? colors.accent : colors.border,
             backgroundColor: colors.surface,
             shadowColor: colors.shadow,
           },
@@ -307,8 +349,8 @@ export default function FeedScreen({ navigation }) {
             <Feather name="map-pin" size={14} color={colors.textMuted} />
             <Text style={[styles.routeLabel, { color: colors.textSecondary }]}>{t('from')}</Text>
           </View>
-          <Text style={[styles.routeValue, { color: dirFrom ? colors.text : colors.textMuted }]} numberOfLines={1}>
-            {dirFrom ? localizePlace(dirFrom, lang) : t('create_field_from_placeholder')}
+          <Text style={[styles.routeValue, { color: (dirFrom || dirFromCountry) ? colors.text : colors.textMuted }]} numberOfLines={1}>
+            {routeValue(dirFrom, dirFromCountry, t('create_field_from_placeholder'))}
           </Text>
         </TouchableOpacity>
         <Feather name="arrow-right" size={24} color={ACCENT} />
@@ -317,12 +359,16 @@ export default function FeedScreen({ navigation }) {
             <Feather name="flag" size={14} color={colors.textMuted} />
             <Text style={[styles.routeLabel, { color: colors.textSecondary }]}>{t('to')}</Text>
           </View>
-          <Text style={[styles.routeValue, { color: dirTo ? colors.text : colors.textMuted }]} numberOfLines={1}>
-            {dirTo ? localizePlace(dirTo, lang) : t('create_field_to_placeholder')}
+          <Text style={[styles.routeValue, { color: (dirTo || dirToCountry) ? colors.text : colors.textMuted }]} numberOfLines={1}>
+            {routeValue(dirTo, dirToCountry, t('create_field_to_placeholder'))}
           </Text>
         </TouchableOpacity>
-        {(dirFrom || dirTo) ? (
-          <TouchableOpacity onPress={() => { setDirFrom(''); setDirTo(''); }} hitSlop={10} testID="feed-route-clear">
+        {(dirFrom || dirTo || dirFromCountry || dirToCountry) ? (
+          <TouchableOpacity
+            onPress={() => { setDirFrom(''); setDirTo(''); setDirFromCountry(''); setDirToCountry(''); }}
+            hitSlop={10}
+            testID="feed-route-clear"
+          >
             <Feather name="x" size={17} color={colors.textMuted} />
           </TouchableOpacity>
         ) : null}
@@ -415,13 +461,15 @@ export default function FeedScreen({ navigation }) {
         onClose={() => setShowDirFromPicker(false)}
         title={t('loc_from_title')}
         showGeo
-        onSelect={(value, point) => setDirFrom((point && point.name) || value || '')}
+        allowCountryOnly
+        onSelect={selectDirFrom}
       />
       <LocationPickerModal
         visible={showDirToPicker}
         onClose={() => setShowDirToPicker(false)}
         title={t('loc_to_title')}
-        onSelect={(value, point) => setDirTo((point && point.name) || value || '')}
+        allowCountryOnly
+        onSelect={selectDirTo}
       />
 
       <BottomSheet visible={activeFilter === 'date'} onClose={() => setActiveFilter(null)} title={t('filter_date')}>
@@ -528,7 +576,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.035, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 1,
   },
   cardBody: { paddingRight: 150 },
-  route: { fontSize: 20, fontWeight: '850', letterSpacing: -0.35, lineHeight: 26 },
+  route: { fontSize: 20, fontWeight: '800', letterSpacing: -0.35, lineHeight: 26 },
   meta: { fontSize: 14, fontWeight: '600', marginTop: 8, lineHeight: 20 },
   priceWrap: { position: 'absolute', right: 70, bottom: 25, alignItems: 'flex-end', maxWidth: 155 },
   price: { fontSize: 21, fontWeight: '900', letterSpacing: -0.35 },
