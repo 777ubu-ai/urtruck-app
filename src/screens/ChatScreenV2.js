@@ -19,18 +19,34 @@ export default function ChatScreenV2(props) {
 
   React.useEffect(() => {
     const roomId = params.roomId;
-    if (!roomId) {
+    const partnerId = params.partner?.id || null;
+
+    // A direct route with an explicit deal is already canonical. A route with
+    // neither a room nor a concrete partner is a support/general conversation
+    // and may keep using the legacy ChatScreen below.
+    if (!roomId && !partnerId) {
       setResolvedDealId(params.dealId || null);
       setResolvedPartner(params.partner || null);
       setChecked(true);
       return undefined;
     }
+
     let cancelled = false;
     (async () => {
       try {
         const data = await chatAPI.rooms();
         if (cancelled) return;
-        const room = (data?.rooms || []).find((item) => item.id === roomId);
+        const rooms = Array.isArray(data?.rooms) ? data.rooms : [];
+
+        // DriverDetail historically opened Chat with { partner } only. That
+        // bypassed room/deal resolution and always fell through to the old
+        // ChatScreen even when this driver was already the accepted carrier.
+        // Resolve a deal-linked room by partner id so every accepted-deal
+        // entry point converges on DealWorkspaceRoute.
+        const room = roomId
+          ? rooms.find((item) => String(item.id) === String(roomId))
+          : rooms.find((item) => item.deal_id && String(item.partner_id) === String(partnerId));
+
         const nextDealId = params.dealId || room?.deal_id || null;
         let nextPartner = params.partner || null;
         if (room?.partner_id) {
@@ -51,7 +67,7 @@ export default function ChatScreenV2(props) {
       }
     })();
     return () => { cancelled = true; };
-  }, [params.dealId, params.roomId, params.partner]);
+  }, [params.dealId, params.roomId, params.partner, params.partner?.id]);
 
   if (!checked) {
     return (
