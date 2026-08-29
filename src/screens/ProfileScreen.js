@@ -5,7 +5,6 @@ import { useFocusEffect } from '@react-navigation/native';
 import Feather from '@expo/vector-icons/Feather';
 import { setLanguage, getLanguage } from '../utils/i18n';
 import { useI18n } from '../utils/useI18n';
-import { useUnreadNotifications } from '../utils/useUnreadNotifications';
 import { useTheme } from '../utils/ThemeContext';
 import { useV1Colors } from '../theme/designV1';
 import { useAuth } from '../utils/AuthContext';
@@ -179,10 +178,8 @@ export default function ProfileScreen({ navigation, route }) {
   // ProfileScreen монтируется ТОЛЬКО внутри авторизованного стека
   // (AppNavigator: hasRole-ветка) — hasToken тут всегда true, отдельного
   // деструктура из useAuth() не нужно.
-  const notifUnread = useUnreadNotifications(true);
 
   const menuItems = [
-    { icon: 'bell', label: t('menu_notifications'), screen: 'Notifications', testID: 'profile-notifications', badge: notifUnread },
     ...(isDriver ? [{ icon: 'shield', label: t('security_my_status'), sub: t('my_status_subtitle'), screen: 'Security', testID: 'profile-my-status' }] : []),
     { icon: 'star',          label: t('myReviews'),     screen: 'Reviews', testID: 'profile-my-reviews' },
     { icon: 'heart',         label: t('favorites_title'), screen: 'Favorites', testID: 'profile-favorites' },
@@ -423,7 +420,6 @@ export default function ProfileScreen({ navigation, route }) {
                   {item.sub ? <Text style={[s.menuSub, { color: theme.textMuted }]}>{item.sub}</Text> : null}
                 </View>
                 {item.badge > 0 ? (
-                  <View style={[s.menuBadge, { backgroundColor: accent }]} testID="profile-notifications-badge">
                     <Text style={s.menuBadgeText}>{item.badge > 99 ? '99+' : item.badge}</Text>
                   </View>
                 ) : null}
