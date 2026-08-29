@@ -2,16 +2,22 @@ name: UrTruck TestFlight RC
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/testflight-rc.yml
 
 permissions:
   contents: read
 
 concurrency:
   group: urtruck-testflight-rc
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build-and-upload-testflight:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
