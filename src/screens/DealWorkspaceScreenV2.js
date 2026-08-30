@@ -2241,9 +2241,15 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                     <TouchableOpacity
                       onPress={toggleVoice}
                       style={s.recordStopBtn}
-                      testID="deal-chat-recording-stop"
+                      testID="deal-chat-recording-send"
+                      accessibilityLabel={t("voice_send")}
                     >
-                      <Feather name="square" size={13} color="#FFFFFF" />
+                      <FontAwesome5
+                        name="paper-plane"
+                        size={15}
+                        color="#FFFFFF"
+                        solid
+                      />
                     </TouchableOpacity>
                   </View>
                 ) : null}

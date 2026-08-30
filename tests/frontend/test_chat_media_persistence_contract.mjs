@@ -103,10 +103,11 @@ test('a failed text message keeps its optimistic bubble visible with a retry, ne
   assert.match(workspace, /sendStatus: 'queued'/);
 });
 
-test('voice recording shows a live indicator, timer, waveform, and both stop and cancel controls', () => {
+test('voice recording shows a live indicator, timer, waveform, and send/cancel controls', () => {
   assert.match(workspace, /testID="deal-chat-recording-bar"/);
   assert.match(workspace, /testID="deal-chat-recording-cancel"/);
-  assert.match(workspace, /testID="deal-chat-recording-stop"/);
+  assert.match(workspace, /testID="deal-chat-recording-send"/);
+  assert.match(workspace, /name="paper-plane"/);
   assert.match(workspace, /recordSecs % 60/);
   assert.match(workspace, /recordWaveBar/);
   assert.match(workspace, /const cancelRecording = React\.useCallback/);
