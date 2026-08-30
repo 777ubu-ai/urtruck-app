@@ -46,7 +46,7 @@ import {
 import { compressImage } from '../utils/imageCompress';
 import { voice } from '../utils/voiceRecorder';
 import VoiceMessageBubble from '../components/VoiceMessageBubble';
-import { enqueueOutbox } from '../utils/outbox';
+import { enqueueOutbox, flushOutbox } from '../utils/outbox';
 import { setActiveRoom } from '../utils/activeRoom';
 import { notifyChatRead } from '../utils/unreadEvents';
 import { refreshAppIconBadge } from '../utils/appBadge';
@@ -473,7 +473,14 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         const optimisticRemaining = previous.filter((item) => {
           if (!item.optimistic) return false;
           if (item.kind === 'document') return !serverDocs.some((d) => d.clientUploadId === item.id);
-          return !merged.some((server) => server.clientMsgId === item.id || (server.mine && item.text && server.text === item.text));
+          // P1 30.08.2026: сверять по client_msg_id, а текст — только когда
+          // сервер id не вернул (старый бэк). Прежнее «или по тексту» роняло
+          // ВТОРОЕ одинаковое сообщение: отправил «Привет» дважды — второй
+          // пузырь удалялся, как только приходил первый с сервера, хотя сам
+          // он ещё не был сохранён. Снаружи — «отправил, а оно исчезло».
+          return !merged.some((server) => (server.clientMsgId
+            ? server.clientMsgId === item.id
+            : (server.mine && item.text && server.text === item.text)));
         });
         return [...merged, ...optimisticRemaining];
       });
@@ -491,6 +498,35 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     const appState = AppState.addEventListener('change', (state) => { if (state === 'active') loadMessages(); });
     return () => { clearInterval(timer); appState?.remove?.(); setActiveRoom(null); };
   }, [roomId, loadMessages]);
+
+  // P0 30.08.2026: комната сделки — единственный реальный чат обеих ролей
+  // (CLAUDE.md: переписка живёт внутри «Сделок»), но она только КЛАЛА
+  // неотправленный текст в outbox и никогда его не разгружала: flushOutbox
+  // звался лишь из App.js (старт/возврат в active) и из старого ChatScreen.
+  // На вебе, пока страницу не перезагрузят, flush мог не случиться за всю
+  // сессию — текст висел в очереди, до собеседника не доходил, а после
+  // обновления пузырь пропадал. Прогоняем очередь при входе в комнату и при
+  // возврате приложения в active; onDrop помечает пузырь «не отправлено»,
+  // чтобы недоставленное не исчезало молча.
+  React.useEffect(() => {
+    if (!roomId) return undefined;
+    const doFlush = async () => {
+      try {
+        const sent = await flushOutbox((p) => chatAPI.send(p), session?.user?.id, {
+          onDrop: (item) => {
+            if (!mounted.current) return;
+            setMessages((items) => items.map((m) => (m.id === item.clientId
+              ? { ...m, sendStatus: 'failed', sendError: t('chat_send_failed') }
+              : m)));
+          },
+        });
+        if (sent > 0 && mounted.current) loadMessages();
+      } catch { /* следующий flush повторит */ }
+    };
+    doFlush();
+    const sub = AppState.addEventListener('change', (state) => { if (state === 'active') doFlush(); });
+    return () => sub?.remove?.();
+  }, [roomId, session?.user?.id, loadMessages, t]);
 
   React.useEffect(() => {
     if (messages.length > lastCountRef.current) {

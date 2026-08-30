@@ -58,9 +58,36 @@ export async function outboxCount() {
   return (await _load()).length;
 }
 
+// P0 30.08.2026 — «отравленная очередь». Раньше flushOutbox на ЛЮБОЙ ошибке
+// делал break и НЕ удалял элемент. Постоянная ошибка (403 «чат доступен
+// только после принятия», 400, 404 — комната/статус сделки успели измениться)
+// блокировала голову очереди НАВСЕГДА, а вместе с ней и все следующие
+// сообщения: они не отправлялись ни разу за всё время жизни очереди. Снаружи
+// это выглядело как «текст отправил → пузырь повисел → после обновления исчез
+// → до собеседника не дошёл», причём голос и фото доходили (они в очередь не
+// кладутся вообще — см. шапку файла).
+//
+// Теперь ошибки разделены:
+//   • сетевая (нет связи)      → break, ждём следующего flush (порядок цел);
+//   • постоянная 4xx           → элемент выбрасываем из очереди и идём дальше;
+//   • временная (5xx/408/429)  → break, но со счётчиком попыток; после
+//     MAX_ATTEMPTS элемент тоже выбрасывается, чтобы вечно живой 5xx не
+//     запирал очередь.
+// Выброшенные отдаются вызывающему через onDrop — чтобы UI пометил пузырь
+// «не отправлено», а не молча его потерял.
+const MAX_ATTEMPTS = 5;
+
+function isPermanentError(error) {
+  if (error?.isNetwork) return false;
+  const status = Number(error?.status || 0);
+  if (!status) return false;                        // причина неизвестна — считаем временной
+  if (status === 408 || status === 429) return false;  // тайм-аут/троттлинг — имеет смысл ретраить
+  return status >= 400 && status < 500;             // 400/403/404/413… сами не починятся
+}
+
 // Прогон очереди. sendFn(payload) должен бросать при неуспехе.
-// Возвращает число успешно отправленных. При первой сетевой ошибке
-// останавливаемся (сеть, вероятно, недоступна) — порядок сохраняется.
+// Возвращает число УСПЕШНО отправленных (контракт не менялся — вызывающие
+// проверяют `sent > 0`). Выброшенные без доставки приходят в opts.onDrop.
 //
 // activeUserId (Блок 2, P1-5): отправляем ТОЛЬКО записи текущего активного
 // пользователя. Запись без userId — legacy (поставлена в очередь до этого
@@ -68,10 +95,16 @@ export async function outboxCount() {
 // бы в очереди навсегда). Запись с ЧУЖИМ userId — не трогаем и не удаляем
 // («карантин»): она уедет либо когда её реальный владелец снова
 // залогинится, либо будет явно вычищена в signOut (см. clearOutbox).
-export async function flushOutbox(sendFn, activeUserId) {
+export async function flushOutbox(sendFn, activeUserId, opts = {}) {
+  const { onDrop } = opts;
   let arr = await _load();
   if (!arr.length) return 0;
   let sent = 0;
+  const drop = async (item, error) => {
+    arr = arr.filter((x) => x.clientId !== item.clientId);
+    await _save(arr);
+    if (onDrop) { try { onDrop(item, error); } catch {} }
+  };
   for (const item of [...arr]) {
     if (item.userId && activeUserId && item.userId !== activeUserId) continue;
     try {
@@ -79,8 +112,24 @@ export async function flushOutbox(sendFn, activeUserId) {
       arr = arr.filter((x) => x.clientId !== item.clientId);
       await _save(arr);
       sent++;
-    } catch {
-      break;  // сеть недоступна — не долбим, оставляем хвост на следующий flush
+    } catch (error) {
+      if (isPermanentError(error)) {
+        // Этот элемент не станет отправляемым сам по себе — убираем его и
+        // продолжаем очередь, иначе он заперёт все последующие сообщения.
+        await drop(item, error);
+        continue;
+      }
+      if (error?.isNetwork) break;         // сети нет — не долбим, хвост уедет позже
+      // Временная серверная ошибка: считаем попытки, чтобы очередь не
+      // застряла навсегда, если 5xx окажется постоянным.
+      const attempts = Number(item.attempts || 0) + 1;
+      if (attempts >= MAX_ATTEMPTS) {
+        await drop(item, error);
+        continue;
+      }
+      arr = arr.map((x) => (x.clientId === item.clientId ? { ...x, attempts } : x));
+      await _save(arr);
+      break;
     }
   }
   return sent;
