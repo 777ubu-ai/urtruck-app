@@ -2323,6 +2323,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                     onFocus={onComposerFocus}
                     onSubmitEditing={sendText}
                     returnKeyType="send"
+                    multiline={false}
                     style={[
                       s.input,
                       {
@@ -3027,12 +3028,13 @@ const s = StyleSheet.create({
   },
   input: {
     flex: 1,
+    height: 44,
     minHeight: 44,
+    maxHeight: 44,
     borderRadius: 16,
     borderWidth: 1,
     paddingHorizontal: 13,
-    paddingTop: 10,
-    paddingBottom: 10,
+    paddingVertical: 0,
     fontSize: 14.5,
     lineHeight: 19,
   },
