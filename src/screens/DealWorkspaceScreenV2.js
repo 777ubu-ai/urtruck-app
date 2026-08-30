@@ -538,13 +538,17 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     return () => {
       cancelled = true;
     };
-  }, [dealId, roomId]);
+  }, [dealId, roomId, deal?.cargo_id, deal?.trip_id]);
 
   const refreshDeal = React.useCallback(async () => {
     if (!dealId) return;
     try {
       const server = await marketAPI.getDeal(dealId);
       if (!mounted.current || !server || server.ok === false) return;
+      // The deal record owns the canonical room. Prefer it over a route or
+      // cached room id so a reload can never send/read through a legacy room.
+      if (server.chat_room_id && server.chat_room_id !== roomId)
+        setRoomId(server.chat_room_id);
       setDeal((prev) => ({
         ...prev,
         ...server,
@@ -578,7 +582,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     } catch {
       /* keep last authoritative response */
     }
-  }, [dealId]);
+  }, [dealId, roomId]);
 
   React.useEffect(() => {
     refreshDeal();
