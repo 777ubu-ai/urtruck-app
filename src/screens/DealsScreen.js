@@ -152,7 +152,7 @@ const dealStatus = (status, t) => {
   return { label: formatStatus(status), color: ARCHIVE };
 };
 
-function TabChip({ label, count, active, onPress, testID, icon = null, colors }) {
+function TabChip({ label, count, attentionCount = 0, active, onPress, testID, icon = null, colors }) {
   return (
     <TouchableOpacity
       testID={testID}
@@ -190,6 +190,13 @@ function TabChip({ label, count, active, onPress, testID, icon = null, colors })
           {count > 99 ? '99+' : count}
         </Text>
       </View>
+      {attentionCount > 0 ? (
+        <View style={styles.tabAttentionBadge} testID={`${testID}-attention`}>
+          <Text style={styles.tabAttentionText}>
+            {attentionCount > 99 ? '99+' : attentionCount}
+          </Text>
+        </View>
+      ) : null}
     </TouchableOpacity>
   );
 }
@@ -526,11 +533,7 @@ export default function DealsScreen({ navigation, route }) {
   const openBid = useCallback(
     (bid) => {
       if (bid.cargo_id) {
-        navigation.navigate("CargoDetail", {
-          cargoId: bid.cargo_id,
-          bidId: bid.id,
-          role,
-        });
+        navigation.navigate('CargoDetail', { cargoId: bid.cargo_id, bidId: bid.id, role });
         return;
       }
       if (bid.trip_id) {
@@ -567,106 +570,7 @@ export default function DealsScreen({ navigation, route }) {
     ({ item }) => {
       const { kind, data } = item;
 
-      if (kind === "offer") {
-        const count = data.active_bids_count || 0;
-        const fromPrice = data.min_bid_price
-          ? `${t("deals_offers_from")} ${priceText(data.min_bid_price, data.currency || "USD")}`
-          : "";
-        const meta = data.cargo_desc
-          ? localizeCargoName(data.cargo_desc, lang)
-          : "";
-        return (
-          <CompactDealCard
-            styles={s}
-            testID="deals-cargo-offer"
-            routeLabel={routeFor(data, "offer")}
-            price={fromPrice}
-            statusLabel={`${count} ${t("deals_offers_count")}`}
-            statusColor={WAITING}
-            time={relTime(data.latest_bid_at || data.created_at)}
-            meta={meta}
-            unread={count > 0 || unreadNotifPaths.includes(`/cargos/${data.id}`) ? 1 : 0}
-            onPress={() =>
-              navigation.navigate("CargoDetail", { cargoId: data.id, role })
-            }
-          />
-        );
-      }
-
-      if (kind === "bid") {
-        const isCountered = data.status === "countered";
-        const isClosed = CLOSED_BID_STATUSES.has(data.status);
-        const statusLabel =
-          data.status === 'expired'
-            ? t('status_expired')
-            : data.status === "rejected"
-              ? t("status_rejected")
-              : data.status === "cancelled"
-                ? t("status_cancelled")
-                : isCountered
-                  ? t("deals_offer_bargain")
-                  : data._incoming
-                    ? t("deals_offer_new")
-                    : t("deals_offer_waiting");
-        const statusColor = isClosed ? ARCHIVE : isCountered ? INFO : WAITING;
-        const amount = priceText(data.amount, data.currency || "USD");
-        const price =
-          isCountered && data.counter_amount
-            ? `${amount} → ${priceText(data.counter_amount, data.currency || "USD")}`
-            : amount;
-        const cardTime = isClosed
-          ? relTime(data.updated_at || data.created_at)
-          : formatBidRemaining(data, lang);
-        return (
-          <CompactDealCard
-            styles={s}
-            testID="deals-driver-bid"
-            routeLabel={routeFor(data, "bid")}
-            price={price}
-            statusLabel={statusLabel}
-            statusColor={statusColor}
-            time={cardTime}
-            dimmed={isClosed}
-            unread={
-              !isClosed &&
-              (isBidActionable(data, { asOwner: !!data._incoming }) ||
-                unreadNotifPaths.includes(
-                  data._incoming
-                    ? `/trips/${data.trip_id}`
-                    : `/cargos/${data.cargo_id}`,
-                ))
-                ? 1
-                : 0
-            }
-            onPress={() => openBid(data)}
-          />
-        );
-      }
-
-      const status = dealStatus(data.status, t);
-      const partnerName =
-        role === "client"
-          ? data.driver_name || t("role_driver")
-          : data.shipper_name || t("role_client");
-      const needsReceiptConfirmation = role === 'client' && (data.status === 'delivered' || data.status === 'awaiting_confirmation');
-      const trackingActionRequired = !!data.tracking_action_required;
-      const statusLabel = needsReceiptConfirmation
-          ? t('confirm_delivery')
-        : trackingActionRequired
-          ? t("tracking_action_required")
-          : status.label;
-      const statusColor =
-        needsReceiptConfirmation || trackingActionRequired
-          ? INFO
-          : status.color;
-      const meta = [partnerName, data.last_message].filter(Boolean).join(" · ");
-      const attentionRequired = needsReceiptConfirmation || trackingActionRequired ||
-        unreadNotifPaths.includes(`/deals/${data.id}`) ||
-        (data.cargo_id && unreadNotifPaths.includes(`/cargos/${data.cargo_id}`)) ||
-        (data.trip_id && unreadNotifPaths.includes(`/trips/${data.trip_id}`));
-      const unread = (data.unread_count || 0) + (attentionRequired ? 1 : 0);
-
-    if (kind === 'bid') {
+      if (kind === 'bid') {
       const isCountered = data.status === 'countered';
       const isClosed = CLOSED_BID_STATUSES.has(data.status);
       const statusLabel = data.status === 'expired'
@@ -706,55 +610,43 @@ export default function DealsScreen({ navigation, route }) {
           colors={palette}
         />
       );
-    },
-    [
-      lang,
-      navigation,
-      openBid,
-      openDeal,
-      priceText,
-      relTime,
-      role,
-      routeFor,
-      t,
-      unreadNotifPaths,
-    ],
-  );
+      }
+      const status = dealStatus(data.status, t);
+      const partnerName = role === 'client'
+        ? (data.driver_name || t('role_driver'))
+        : (data.shipper_name || t('role_client'));
+      const needsReceiptConfirmation = role === 'client' && (data.status === 'delivered' || data.status === 'awaiting_confirmation');
+      const trackingActionRequired = !!data.tracking_action_required;
+      const statusLabel = needsReceiptConfirmation
+        ? t('confirm_delivery')
+        : trackingActionRequired
+          ? t('tracking_action_required')
+          : status.label;
+      const statusColor = (needsReceiptConfirmation || trackingActionRequired) ? INFO : status.color;
+      const meta = [partnerName, data.last_message].filter(Boolean).join(' · ');
+      const attentionRequired = needsReceiptConfirmation || trackingActionRequired ||
+        unreadNotifPaths.includes(`/deals/${data.id}`) ||
+        (data.cargo_id && unreadNotifPaths.includes(`/cargos/${data.cargo_id}`)) ||
+        (data.trip_id && unreadNotifPaths.includes(`/trips/${data.trip_id}`));
+      const unread = (data.unread_count || 0) + (attentionRequired ? 1 : 0);
 
-    const status = dealStatus(data.status, t);
-    const partnerName = role === 'client'
-      ? (data.driver_name || t('role_driver'))
-      : (data.shipper_name || t('role_client'));
-    const needsReceiptConfirmation = role === 'client' && (data.status === 'delivered' || data.status === 'awaiting_confirmation');
-    const trackingActionRequired = !!data.tracking_action_required;
-    const statusLabel = needsReceiptConfirmation
-      ? t('confirm_delivery')
-      : trackingActionRequired
-        ? t('tracking_action_required')
-        : status.label;
-    const statusColor = (needsReceiptConfirmation || trackingActionRequired) ? INFO : status.color;
-    const meta = [partnerName, data.last_message].filter(Boolean).join(' · ');
-    const attentionRequired = needsReceiptConfirmation || trackingActionRequired;
-    const unread = (data.unread_count || 0) + (attentionRequired ? 1 : 0);
-
-    return (
-      <CompactDealCard
-        testID="deals-deal-card"
-        routeLabel={routeFor(data, 'deal')}
-        price={priceText(data.amount, data.currency || 'USD')}
-        statusLabel={statusLabel}
-        statusColor={statusColor}
-        time={relTime(data.last_message_at || data.updated_at || data.created_at)}
-        meta={meta}
-        unread={unread}
-        dimmed={ARCHIVE_DEAL_STATUSES.has(data.status)}
-        onPress={() => openDeal(data)}
-        colors={palette}
-      />
-    );
-  }, [
+      return (
+        <CompactDealCard
+          testID="deals-deal-card"
+          routeLabel={routeFor(data, 'deal')}
+          price={priceText(data.amount, data.currency || 'USD')}
+          statusLabel={statusLabel}
+          statusColor={statusColor}
+          time={relTime(data.last_message_at || data.updated_at || data.created_at)}
+          meta={meta}
+          unread={unread}
+          dimmed={ARCHIVE_DEAL_STATUSES.has(data.status)}
+          onPress={() => openDeal(data)}
+          colors={palette}
+        />
+      );
+    }, [
     lang,
-    navigation,
     openBid,
     openDeal,
     priceText,
@@ -763,6 +655,7 @@ export default function DealsScreen({ navigation, route }) {
     routeFor,
     t,
     palette,
+    unreadNotifPaths,
   ]);
 
   const emptyText = dealTab === 'active'
@@ -796,6 +689,7 @@ export default function DealsScreen({ navigation, route }) {
           testID="deals-tab-offers"
           label={copy.tabOffersLabel}
           count={offerCount}
+          attentionCount={offerAttentionCount}
           active={dealTab === 'offers'}
           onPress={() => setDealTab('offers')}
           colors={palette}
@@ -804,6 +698,7 @@ export default function DealsScreen({ navigation, route }) {
           testID="deals-tab-active"
           label={copy.tabActiveLabel}
           count={activeDeals.length}
+          attentionCount={activeAttentionCount}
           active={dealTab === 'active'}
           onPress={() => setDealTab('active')}
           colors={palette}
@@ -891,12 +786,12 @@ export default function DealsScreen({ navigation, route }) {
               onRefresh={onRefresh}
               tintColor={roleAccent}
             />
-          )}
+          }
           ListEmptyComponent={(
             <Text style={[styles.emptyText, { color: palette.textMuted }]}>
               {query ? t('chat_no_results') : emptyText}
             </Text>
-          }
+          )}
         />
       )}
     </SafeAreaView>
@@ -990,6 +885,25 @@ const styles = StyleSheet.create({
     color: '#7B8580',
     fontSize: 10.5,
     lineHeight: 12,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+  },
+  tabAttentionBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 6,
+    minWidth: 16,
+    height: 16,
+    paddingHorizontal: 4,
+    borderRadius: 8,
+    backgroundColor: '#D64545',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabAttentionText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    lineHeight: 11,
     fontWeight: '900',
     fontVariant: ['tabular-nums'],
   },

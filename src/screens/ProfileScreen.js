@@ -19,7 +19,6 @@ import { API_BASE } from '../config/env';
 import { IS_BETA } from '../config/supabase';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
 import { localizePlace } from '../utils/places';
-import { useUnreadNotifications } from '../utils/useUnreadNotifications';
 
 const LANGS = [
   { code: 'RU', flag: '🇷🇺' },
@@ -127,8 +126,6 @@ export default function ProfileScreen({ navigation, route }) {
   useFocusEffect(useCallback(() => {
     fetchProfile();
   }, [fetchProfile]));
-  const unreadNotifications = useUnreadNotifications(!!session?.user);
-
   // Notifications are not a second navigation hub anymore. Deal events and
   // their unread state live in the dedicated Deals area, so Profile must not
   // duplicate the same feed or badge.

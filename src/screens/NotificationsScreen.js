@@ -41,7 +41,19 @@ function formatNotifTime(raw) {
 
 function parseNotifUrl(url) {
   if (!url || typeof url !== 'string') return null;
-  const cleaned = url.replace(/^https?:\/\/[^/]+/i, '').replace(/^\/+/, '');
+  let cleaned = url.trim();
+  try {
+    const parsed = new URL(cleaned);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      cleaned = `${parsed.pathname || ""}${parsed.search || ""}`;
+    } else if (parsed.protocol === "urtruck:" || parsed.protocol === "com.urtruck.app:") {
+      const hostPart = parsed.hostname ? `/${parsed.hostname}` : "";
+      cleaned = `${hostPart}${parsed.pathname || ""}${parsed.search || ""}`;
+    }
+  } catch {
+    // Relative notification path.
+  }
+  cleaned = cleaned.replace(/^\/+/, '');
   if (!cleaned) return null;
   const [pathPart, queryPart = ""] = cleaned.split("?");
   const segments = pathPart.split("/").filter(Boolean);
@@ -142,10 +154,14 @@ export default function NotificationsScreen({ navigation }) {
     if (!parsed) return;
     const { kind, id, params } = parsed;
     try {
-      if (kind === 'cargos' && id) {
-        navigation.navigate('CargoDetail', { cargoId: id, bidId: params.bid || null, role });
-      } else if (kind === 'trips' && id) {
-        navigation.navigate('TripDetail', { tripId: id, bidId: params.bid || null, role });
+      if (kind === "cargos" && id) {
+        navigation.navigate("CargoDetail", { cargoId: id, bidId: params.bid || null, role });
+      } else if (kind === "trips" && id) {
+        navigation.navigate("TripDetail", { tripId: id, bidId: params.bid || null, role });
+      } else if (kind === "deals" && id) {
+        navigation.navigate("Chat", { dealId: id, role });
+      } else if ((kind === "chats" || kind === "chat") && id) {
+        navigation.navigate("Chat", { roomId: id, role });
       }
     } catch {}
   };

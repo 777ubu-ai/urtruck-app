@@ -55,6 +55,16 @@ const durationTextFromSeconds = (value, t) => {
   return `${minutes} ${m}`;
 };
 
+const YANDEX_PROVIDER_OVERLAY_CSS = `
+  [class*="gotoymaps"],
+  [class*="map-copyrights-promo"],
+  [class*="copyrights-pane"],
+  [class*="copyright_logo"] {
+    display: none !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+  }
+`;
 
 function StaticRouteFallback({ livePoint, plannedPoints, reason }) {
   const { t } = useI18n();
