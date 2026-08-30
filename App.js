@@ -258,11 +258,13 @@ function AppInner() {
   // не переоткроет тот же чат. Backend идемпотентен по client_msg_id — дублей нет.
   useEffect(() => {
     if (!hasToken) return;
-    const doFlush = () => { flushOutbox((p) => chatAPI.send(p)).catch(() => {}); };
+    const doFlush = () => {
+      flushOutbox((p) => chatAPI.send(p), session?.user?.id).catch(() => {});
+    };
     doFlush();
     const sub = AppState.addEventListener('change', (s) => { if (s === 'active') doFlush(); });
     return () => sub?.remove?.();
-  }, [hasToken]);
+  }, [hasToken, session?.user?.id]);
 
   // P5: пере-регистрация push-токена на запуске для уже залогиненного юзера.
   // Раньше autoRegister звался только сразу после OTP — при ротации Expo-токена

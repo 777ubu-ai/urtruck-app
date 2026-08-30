@@ -70,17 +70,29 @@ export async function outboxCount() {
 // залогинится, либо будет явно вычищена в signOut (см. clearOutbox).
 export async function flushOutbox(sendFn, activeUserId) {
   let arr = await _load();
-  if (!arr.length) return 0;
+  if (!arr.length || !activeUserId) return 0;
   let sent = 0;
   for (const item of [...arr]) {
-    if (item.userId && activeUserId && item.userId !== activeUserId) continue;
+    if (item.userId && item.userId !== activeUserId) continue;
     try {
       await sendFn(item.payload);          // success или deduped (backend) — оба ок
       arr = arr.filter((x) => x.clientId !== item.clientId);
       await _save(arr);
       sent++;
-    } catch {
-      break;  // сеть недоступна — не долбим, оставляем хвост на следующий flush
+    } catch (error) {
+      const status = Number(error?.status || 0);
+      if (status >= 400 && status < 500 && status !== 408 && status !== 429) {
+        // Постоянная ошибка этого элемента не должна запирать очередь.
+        arr = arr.filter((x) => x.clientId !== item.clientId);
+        await _save(arr);
+        continue;
+      }
+      // Сеть/5xx/429 временные: сохраняем порядок и счётчик попыток.
+      arr = arr.map((x) => x.clientId === item.clientId
+        ? { ...x, attempts: Number(x.attempts || 0) + 1, lastError: status || "network" }
+        : x);
+      await _save(arr);
+      break;
     }
   }
   return sent;

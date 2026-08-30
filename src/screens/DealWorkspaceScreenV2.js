@@ -52,7 +52,7 @@ import {
 } from "../utils/backgroundLocation";
 import { compressImage } from "../utils/imageCompress";
 import { voice } from "../utils/voiceRecorder";
-import { enqueueOutbox } from "../utils/outbox";
+import { enqueueOutbox, flushOutbox } from "../utils/outbox";
 import { setActiveRoom } from "../utils/activeRoom";
 import { notifyChatRead } from "../utils/unreadEvents";
 import { refreshAppIconBadge } from "../utils/appBadge";
@@ -716,6 +716,23 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       setActiveRoom(null);
     };
   }, [roomId, loadMessages]);
+
+  // The canonical deal workspace is also an outbox consumer. Without this,
+  // text queued during a brief outage waited forever unless the legacy chat
+  // screen happened to be opened afterwards.
+  React.useEffect(() => {
+    if (!roomId || !session?.user?.id) return undefined;
+    const flush = () => {
+      flushOutbox((payload) => chatAPI.send(payload), session.user.id)
+        .then((sent) => { if (sent > 0 && mounted.current) loadMessages(); })
+        .catch(() => {});
+    };
+    flush();
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") flush();
+    });
+    return () => sub?.remove?.();
+  }, [roomId, session?.user?.id, loadMessages]);
 
   React.useEffect(() => {
     if (messages.length > lastCountRef.current) {
