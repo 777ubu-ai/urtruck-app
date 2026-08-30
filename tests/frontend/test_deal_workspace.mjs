@@ -62,7 +62,8 @@ test('deal workspace is chat-first by default; the map is a deliberate, button-t
   assert.match(workspace, /const VIEW_MAP = 'map'/);
   assert.match(workspace, /useState\(VIEW_CHAT\)/, 'chat must be the default view, not the map');
   assert.match(workspace, /testID="deal-chat-fullscreen"/);
-  assert.match(workspace, /testID="deal-map-card-open"/);
+  assert.match(workspace, /testID="deal-header-map"/);
+  assert.doesNotMatch(workspace, /testID="deal-map-card-open"/);
   assert.match(workspace, /testID="deal-map-first-area"/);
   assert.match(workspace, /<TruckMap/);
   assert.match(workspace, /routePoints=\{routePoints\}/);
@@ -136,8 +137,8 @@ test('composer grows then scrolls, switches mic to send, has a dedicated camera 
   assert.match(workspace, /sendPhoto\(true\)/);
   assert.match(workspace, /testID:\s*'deal-chat-attach-document'/);
   assert.match(workspace, /testID:\s*'deal-chat-attach-location'/);
-  assert.match(workspace, /testID:\s*'deal-chat-attach-quick-reply'/);
-  assert.match(workspace, /testID:\s*'deal-chat-attach-call'/);
+  assert.doesNotMatch(workspace, /testID:\s*'deal-chat-attach-quick-reply'/);
+  assert.doesNotMatch(workspace, /testID:\s*'deal-chat-attach-call'/);
   assert.match(workspace, /testID="deal-chat-attach-menu"/);
   assert.match(workspace, /PLUS_MENU\.map/, 'attach menu must render all tiles from one data-driven list, not hand-written copies');
   assert.match(workspace, /key: 'translate'/, 'deal chat must keep the translation shortcut from the legacy chat');
@@ -154,7 +155,7 @@ test('every plus-menu tile has a real handler — no decorative buttons', () => 
   // Each tile object must carry an onPress that resolves to a real,
   // in-file function reference, not a no-op.
   const onPressMatches = [...items.matchAll(/onPress:\s*([^,}]+)/g)].map((m) => m[1].trim());
-  assert.equal(onPressMatches.length, 7, `expected 7 plus-menu tiles with onPress, found ${onPressMatches.length}`);
+  assert.equal(onPressMatches.length, 5, `expected 5 plus-menu tiles with onPress, found ${onPressMatches.length}`);
   for (const handler of onPressMatches) {
     assert.notEqual(handler, '() => {}', `plus-menu tile has a no-op handler: ${handler}`);
     assert.notEqual(handler, 'null', `plus-menu tile has a null handler: ${handler}`);

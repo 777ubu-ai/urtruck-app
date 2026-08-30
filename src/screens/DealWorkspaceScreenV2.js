@@ -410,7 +410,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [trackingLoading, setTrackingLoading] = React.useState(false);
   const [viewMode, setViewMode] = React.useState(VIEW_CHAT);
   const [attachOpen, setAttachOpen] = React.useState(false);
-  const [callMenuOpen, setCallMenuOpen] = React.useState(false);
   const [statusModalOpen, setStatusModalOpen] = React.useState(false);
   const [recording, setRecording] = React.useState(false);
   const [recordSecs, setRecordSecs] = React.useState(0);
@@ -476,7 +475,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   // construction, not by an extra branch.
   const onComposerFocus = React.useCallback(() => {
     setAttachOpen(false);
-    setCallMenuOpen(false);
   }, []);
 
   React.useEffect(() => {
@@ -956,7 +954,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
   const recipientId = partner?.id || null;
 
-  // Shared by the composer, quick-reply, and call-link — every "send a fixed
+  // Shared by the composer and attachment actions — every "send a fixed
   // string" action funnels through here so error handling (section 6) is
   // written once. Returns the local optimistic id so callers can retry.
   const sendRawText = React.useCallback(
@@ -1078,17 +1076,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     },
     [ui.voiceMessage],
   );
-
-  const sendQuickReply = React.useCallback(() => {
-    setAttachOpen(false);
-    sendRawText(t("deal_chat_quick_reply"));
-  }, [sendRawText, t]);
-
-  const sendCallLink = React.useCallback(() => {
-    setCallMenuOpen(false);
-    setAttachOpen(false);
-    sendRawText(t("deal_chat_call_link_text"));
-  }, [sendRawText, t]);
 
   const toggleAutoTranslate = React.useCallback(() => {
     setAttachOpen(false);
@@ -1959,7 +1946,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
   const openMap = () => {
     setAttachOpen(false);
-    setCallMenuOpen(false);
     setViewMode(VIEW_MAP);
   };
   const closeMap = () => setViewMode(VIEW_CHAT);
@@ -2011,28 +1997,11 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       testID: "deal-chat-attach-location",
     },
     {
-      key: "quick-reply",
-      icon: "zap",
-      label: ui.attachQuickReply,
-      onPress: sendQuickReply,
-      testID: "deal-chat-attach-quick-reply",
-    },
-    {
       key: "translate",
       icon: "globe",
       label: ui.attachTranslate,
       onPress: toggleAutoTranslate,
       testID: "deal-chat-attach-translate",
-    },
-    {
-      key: "call",
-      icon: "phone",
-      label: ui.attachCall,
-      onPress: () => {
-        setAttachOpen(false);
-        setCallMenuOpen(true);
-      },
-      testID: "deal-chat-attach-call",
     },
   ];
 
@@ -2102,12 +2071,12 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           </View>
           <View style={s.headerActions}>
             <TouchableOpacity
-              onPress={() => setCallMenuOpen(true)}
+              onPress={openMap}
               style={[s.headerIconBtn, { borderColor: colors.border }]}
-              testID="deal-header-call"
-              accessibilityLabel={ui.attachCall}
+              testID="deal-header-map"
+              accessibilityLabel={t("deal_map_card_title")}
             >
-              <Feather name="phone" size={16} color={colors.text} />
+              <Feather name="map" size={17} color="#168759" />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setStatusModalOpen(true)}
@@ -2115,7 +2084,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
               testID="deal-status-open"
               accessibilityLabel={ui.statuses}
             >
-              <Feather name="clock" size={16} color={colors.text} />
+              <Feather name="check-circle" size={17} color="#168759" />
             </TouchableOpacity>
           </View>
         </View>
@@ -2163,41 +2132,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                         ? "…"
                         : nextAction.label}
                     </Text>
-                  </TouchableOpacity>
-                ) : null}
-
-                {dealId ? (
-                  <TouchableOpacity
-                    style={[
-                      s.mapCard,
-                      {
-                        backgroundColor: colors.surface,
-                        borderColor: colors.border,
-                      },
-                    ]}
-                    onPress={openMap}
-                    testID="deal-map-card-open"
-                  >
-                    <View style={s.mapCardIcon}>
-                      <Feather name="map" size={17} color="#168759" />
-                    </View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={[s.mapCardTitle, { color: colors.text }]}>
-                        {t("deal_map_card_title")}
-                      </Text>
-                      <Text
-                        style={[s.mapCardStatus, { color: colors.textMuted }]}
-                        numberOfLines={1}
-                      >
-                        {statusLabel}
-                      </Text>
-                    </View>
-                    <View style={s.mapCardOpenPill}>
-                      <Text style={s.mapCardOpenText}>
-                        {t("deal_map_card_open")}
-                      </Text>
-                      <Feather name="chevron-right" size={14} color="#168759" />
-                    </View>
                   </TouchableOpacity>
                 ) : null}
 
@@ -2613,83 +2547,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
             >
               <Feather name="x" size={26} color="#fff" />
             </TouchableOpacity>
-          </Pressable>
-        </Modal>
-
-        {/* Call menu — only "send call link" is real. Audio/video/schedule are
-            explicitly disabled with a "coming soon" label rather than looking
-            active (section 9: WebRTC calling does not exist yet). */}
-        <Modal
-          visible={callMenuOpen}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setCallMenuOpen(false)}
-        >
-          <Pressable
-            style={s.modalBackdrop}
-            onPress={() => setCallMenuOpen(false)}
-          >
-            <Pressable
-              style={[s.callMenuCard, { backgroundColor: colors.bg }]}
-              onPress={() => {}}
-              testID="deal-call-menu"
-            >
-              {[
-                {
-                  key: "audio",
-                  icon: "phone",
-                  label: ui.callAudio,
-                  disabled: true,
-                },
-                {
-                  key: "video",
-                  icon: "video",
-                  label: ui.callVideo,
-                  disabled: true,
-                },
-                {
-                  key: "link",
-                  icon: "link",
-                  label: ui.callSendLink,
-                  disabled: false,
-                  onPress: sendCallLink,
-                  testID: "deal-call-send-link",
-                },
-                {
-                  key: "schedule",
-                  icon: "calendar",
-                  label: ui.callSchedule,
-                  disabled: true,
-                },
-              ].map((item) => (
-                <TouchableOpacity
-                  key={item.key}
-                  onPress={item.onPress}
-                  disabled={item.disabled}
-                  style={[s.callMenuRow, { borderBottomColor: colors.border }]}
-                  testID={item.testID}
-                >
-                  <Feather
-                    name={item.icon}
-                    size={18}
-                    color={item.disabled ? colors.textMuted : "#168759"}
-                  />
-                  <Text
-                    style={[
-                      s.callMenuLabel,
-                      { color: item.disabled ? colors.textMuted : colors.text },
-                    ]}
-                  >
-                    {item.label}
-                  </Text>
-                  {item.disabled ? (
-                    <View style={s.comingSoonPill}>
-                      <Text style={s.comingSoonText}>{ui.comingSoon}</Text>
-                    </View>
-                  ) : null}
-                </TouchableOpacity>
-              ))}
-            </Pressable>
           </Pressable>
         </Modal>
 
