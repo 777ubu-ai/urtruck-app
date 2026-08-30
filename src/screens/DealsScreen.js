@@ -36,20 +36,8 @@ const CANCELLED = "#A45A5A";
 // `delivered` is intentionally ACTIVE, not terminal. The driver has finished
 // delivery, but the shipper still must confirm receipt (`delivered -> completed`).
 // Only true terminal deal states belong in Archive.
-const ACTIVE_STATUSES = new Set([
-  "accepted",
-  "in_progress",
-  "at_border",
-  "awaiting_confirmation",
-  "delivered",
-  "received",
-]);
-const ARCHIVE_DEAL_STATUSES = new Set([
-  "completed",
-  "cancelled",
-  "rejected",
-  "expired",
-]);
+const ACTIVE_STATUSES = new Set(['accepted', 'in_progress', 'at_border', 'awaiting_confirmation', 'delivered', 'received']);
+const ARCHIVE_DEAL_STATUSES = new Set(['completed', 'cancelled', 'rejected', 'expired']);
 const OPEN_BID_STATUSES = new Set(["pending", "countered"]);
 const CLOSED_BID_STATUSES = new Set(["rejected", "cancelled", "expired"]);
 
@@ -124,11 +112,11 @@ const dealStatus = (status, t) => {
   if (status === "awaiting_confirmation" || status === "delivered") {
     return { label: t("status_awaiting_receipt"), color: INFO };
   }
-  if (status === "received") {
-    return { label: t("status_received"), color: ACCENT };
+  if (status === 'received') {
+    return { label: t('status_received'), color: ACCENT };
   }
-  if (status === "completed") {
-    return { label: t("status_completed"), color: ARCHIVE };
+  if (status === 'completed') {
+    return { label: t('status_completed'), color: ARCHIVE };
   }
   if (status === "cancelled" || status === "rejected") {
     return { label: t("status_cancelled"), color: CANCELLED };
@@ -632,8 +620,8 @@ export default function DealsScreen({ navigation, route }) {
         const isCountered = data.status === "countered";
         const isClosed = CLOSED_BID_STATUSES.has(data.status);
         const statusLabel =
-          data.status === "expired"
-            ? t("status_expired")
+          data.status === 'expired'
+            ? t('status_expired')
             : data.status === "rejected"
               ? t("status_rejected")
               : data.status === "cancelled"
@@ -683,13 +671,10 @@ export default function DealsScreen({ navigation, route }) {
         role === "client"
           ? data.driver_name || t("role_driver")
           : data.shipper_name || t("role_client");
-      const needsReceiptConfirmation =
-        role === "client" &&
-        (data.status === "delivered" ||
-          data.status === "awaiting_confirmation");
+      const needsReceiptConfirmation = role === 'client' && (data.status === 'delivered' || data.status === 'awaiting_confirmation');
       const trackingActionRequired = !!data.tracking_action_required;
       const statusLabel = needsReceiptConfirmation
-        ? t("confirm_delivery")
+          ? t('confirm_delivery')
         : trackingActionRequired
           ? t("tracking_action_required")
           : status.label;
@@ -698,9 +683,7 @@ export default function DealsScreen({ navigation, route }) {
           ? INFO
           : status.color;
       const meta = [partnerName, data.last_message].filter(Boolean).join(" · ");
-      const attentionRequired =
-        needsReceiptConfirmation ||
-        trackingActionRequired ||
+      const attentionRequired = needsReceiptConfirmation || trackingActionRequired ||
         unreadNotifPaths.includes(`/deals/${data.id}`) ||
         (data.cargo_id && unreadNotifPaths.includes(`/cargos/${data.cargo_id}`)) ||
         (data.trip_id && unreadNotifPaths.includes(`/trips/${data.trip_id}`));

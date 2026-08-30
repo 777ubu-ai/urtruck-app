@@ -118,9 +118,9 @@ const COPY = {
     deliveryDate: "Доставка",
     collapseMap: "Свернуть карту",
     tripFinished: "Сделка завершена",
-    tripDelivered: "Груз доставлен",
-    awaitingReceiptStatus: "Ожидает подтверждения",
-    tripAwaitingReceipt: "Ожидаем подтверждения грузоотправителя",
+    tripDelivered: 'Груз доставлен',
+    awaitingReceiptStatus: 'Ожидает подтверждения',
+    tripAwaitingReceipt: 'Ожидаем подтверждения грузоотправителя',
     tripAwaitingReceiptHint:
       "Водитель отметил груз как доставленный. Сделка завершится после подтверждения получения.",
     tripReceived: "Получение подтверждено",
@@ -353,7 +353,7 @@ const formatWeight = (value, lang) => {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return "";
   const amount = Number.isInteger(n) ? n : n.toFixed(1);
-  if (lang === "ZH") return `${amount} 吨`;
+  if (lang === 'ZH') return `${amount} 吨`;
   if (lang === "EN") return `${amount} t`;
   return `${amount} т`;
 };
@@ -418,6 +418,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [showJumpLatest, setShowJumpLatest] = React.useState(false);
   const [fullImage, setFullImage] = React.useState(null);
   const [locationSending, setLocationSending] = React.useState(false);
+  const [callMenuOpen, setCallMenuOpen] = React.useState(false);
   const [translations, setTranslations] = React.useState({});
   const [translating, setTranslating] = React.useState(null);
   const [voiceTranscripts, setVoiceTranscripts] = React.useState({});
@@ -690,7 +691,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       setMessages((previous) => {
         const optimisticRemaining = previous.filter((item) => {
           if (!item.optimistic) return false;
-          if (item.kind === "document")
+          if (item.kind === 'document')
             return !serverDocs.some((d) => d.clientUploadId === item.id);
           return !merged.some(
             (server) =>
@@ -1039,7 +1040,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           toast(t("chat_queued"), "info", 2200);
           setMessages((items) =>
             items.map((m) =>
-              m.id === clientId ? { ...m, sendStatus: "queued" } : m,
+              m.id === clientId ? { ...m, sendStatus: 'queued' } : m,
             ),
           );
           return;
@@ -1052,15 +1053,15 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         // see CLAUDE.md's known non-blocking findings).
         const errorText =
           error?.status === 403
-            ? t("chat_error_403")
+            ? t('chat_error_403')
             : error?.status === 400 && error?.detail
-              ? `${t("chat_error_prefix")}: ${error.detail}`
+              ? `${t('chat_error_prefix')}: ${error.detail}`
               : t("chat_send_failed");
         toast(errorText, "error");
         setMessages((items) =>
           items.map((m) =>
             m.id === clientId
-              ? { ...m, sendStatus: "failed", sendError: errorText }
+              ? { ...m, sendStatus: 'failed', sendError: errorText }
               : m,
           ),
         );
@@ -1110,7 +1111,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           voiceDuration: duration,
           time: nowTime(),
           optimistic: true,
-          sendStatus: "uploading",
+          sendStatus: 'uploading',
         },
       ]);
       nearBottomRef.current = true;
@@ -1141,12 +1142,12 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     try {
       const permission = await requestForegroundLocationPermission();
       if (!permission.ok) {
-        toast(t("location_denied"), "error");
+        toast(t('location_denied'), "error");
         return;
       }
       const point = await getCurrentLocationPayload();
       if (!point) {
-        toast(t("location_denied"), "error");
+        toast(t('location_denied'), "error");
         return;
       }
       const link = yandexMapsLink(point.lat, point.lng);
@@ -1227,8 +1228,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   // Documents: one clientUploadId drives both the initial attempt and any
   // Retry, mirroring DealAttachments.js's idempotency pattern so a double
   // tap on Retry cannot create a duplicate durable file server-side.
-  const uploadDocument = React.useCallback(
-    async (docItem) => {
+  const uploadDocument = React.useCallback(async (docItem) => {
       setMessages((items) =>
         items.map((m) =>
           m.id === docItem.id
@@ -1246,17 +1246,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         });
         setTimeout(loadMessages, 120);
       } catch (error) {
-        const key = error?.isNetwork
-          ? "doc_error_network"
-          : error?.status === 413
-            ? "doc_error_too_large"
-            : error?.status === 415
-              ? "doc_error_unsupported"
-              : error?.status === 401 || error?.status === 403
-                ? "doc_error_forbidden"
-                : error?.status >= 500
-                  ? "doc_error_server"
-                  : "doc_error_failed";
+        const key = error?.isNetwork ? 'doc_error_network' : error?.status === 413 ? 'doc_error_too_large' : error?.status === 415 ? 'doc_error_unsupported' : (error?.status === 401 || error?.status === 403) ? 'doc_error_forbidden' : error?.status >= 500 ? 'doc_error_server' : 'doc_error_failed';
         setMessages((items) =>
           items.map((m) =>
             m.id === docItem.id
@@ -1318,7 +1308,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       try {
         const ok = await voice.startRecording();
         if (!ok) {
-          toast(t("voice_error_record"), "error");
+          toast(t('voice_error_record'), "error");
           return;
         }
         recordStartRef.current = Date.now();
@@ -1333,11 +1323,11 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     try {
       result = await voice.stopRecording();
     } catch {
-      toast(t("voice_error_record"), "error");
+      toast(t('voice_error_record'), "error");
       return;
     }
     if (!result?.uri) {
-      toast(t("voice_error_record"), "error");
+      toast(t('voice_error_record'), "error");
       return;
     }
     const duration =
@@ -1356,13 +1346,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       // rejected the file" (502) instead of one flat error, and 413 is real
       // (voice/backend.py enforces a 10MB cap) — surface all of it instead of
       // one generic message regardless of cause.
-      const key = error?.isNetwork
-        ? null
-        : error?.status === 413
-          ? "doc_error_too_large"
-          : error?.status >= 500
-            ? "doc_error_server"
-            : "voice_error_upload";
+      const key = error?.isNetwork ? null : error?.status === 413 ? 'doc_error_too_large' : error?.status >= 500 ? 'doc_error_server' : 'voice_error_upload';
       setMessages((items) =>
         items.map((m) =>
           m.id === clientId
@@ -1378,7 +1362,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       return;
     }
     if (!upload?.voice_key) {
-      toast(t("voice_error_upload"), "error");
+      toast(t('voice_error_upload'), "error");
       return;
     }
     setMessages((items) =>
@@ -1407,7 +1391,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         toast(t("chat_queued"), "info", 2200);
         setMessages((items) =>
           items.map((m) =>
-            m.id === clientId ? { ...m, sendStatus: "queued" } : m,
+            m.id === clientId ? { ...m, sendStatus: 'queued' } : m,
           ),
         );
         return;
@@ -1415,11 +1399,11 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       setMessages((items) =>
         items.map((m) =>
           m.id === clientId
-            ? { ...m, sendStatus: "failed", sendError: t("voice_error_send") }
+              ? { ...m, sendStatus: "failed", sendError: t('voice_error_send') }
             : m,
         ),
       );
-      toast(t("voice_error_send"), "error");
+      toast(t('voice_error_send'), "error");
     }
   }, [
     recording,
@@ -1448,7 +1432,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           </View>
         );
 
-      if (item.kind === "document") {
+      if (item.kind === 'document') {
         const meta = item.docKind || {};
         const isBusy =
           item.docStatus === "uploading" ||
@@ -1853,7 +1837,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
               </>
             ) : null}
           </View>
-          {item.sendStatus === "failed" && !item.voice ? (
+          {item.sendStatus === 'failed' && !item.voice ? (
             <TouchableOpacity
               onPress={() => retryFailedText(item)}
               style={s.errorRow}
@@ -1899,10 +1883,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const trip = context.trip || {};
   const routeLabel = `${localizePlace(from, language)} → ${localizePlace(to, language)}`;
   const visibleDealStatus = userFacingDealStatus(deal?.status || "accepted");
-  const statusLabel =
-    visibleDealStatus === "delivered"
-      ? ui.awaitingReceiptStatus
-      : formatStatus(visibleDealStatus);
+  const statusLabel = visibleDealStatus === 'delivered' ? ui.awaitingReceiptStatus : formatStatus(visibleDealStatus);
   const partnerName = text(
     partner?.name,
     deal?.counterparty_name,
@@ -1920,6 +1901,17 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     setAttachOpen(false);
     sendRawText(`${t("contact_section")}: ${partnerName || "—"}`);
   }, [partnerName, sendRawText, t]);
+
+  const sendQuickReply = React.useCallback(() => {
+    setAttachOpen(false);
+    sendRawText(t('deal_chat_quick_reply'));
+  }, [sendRawText, t]);
+
+  const sendCallLink = React.useCallback(() => {
+    setCallMenuOpen(false);
+    setAttachOpen(false);
+    sendRawText(t('deal_chat_call_link_text'));
+  }, [sendRawText, t]);
 
   const rawCargoName = text(deal?.cargo_desc, cargo?.cargo_desc);
   const rawTruckType = text(
@@ -2089,6 +2081,13 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     },
   ];
 
+  const CALL_MENU = [
+    { key: 'link', icon: 'link', label: t('deal_chat_call_link_text'), testID: 'deal-call-send-link', onPress: sendCallLink },
+    { key: 'audio', icon: 'phone', label: t('call_partner'), disabled: true },
+    { key: 'video', icon: 'video', label: t('video_call'), disabled: true },
+    { key: 'schedule', icon: 'calendar', label: t('schedule'), disabled: true },
+  ];
+
   return (
     <SafeAreaView
       style={[s.safe, { backgroundColor: colors.bg }]}
@@ -2161,6 +2160,17 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
               accessibilityLabel={t("deal_map_card_title")}
             >
               <Feather name="map" size={17} color="#168759" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                setAttachOpen(false);
+                setCallMenuOpen(true);
+              }}
+              style={[s.headerIconBtn, { borderColor: colors.border }]}
+              testID="deal-call-open"
+              accessibilityLabel={t("call_partner")}
+            >
+              <Feather name="phone-call" size={17} color="#168759" />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setStatusModalOpen(true)}
@@ -2311,19 +2321,21 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                   ]}
                   testID="deal-chat-composer"
                 >
-                  <TouchableOpacity
-                    style={[
-                      s.composerIcon,
-                      {
-                        borderColor: colors.border,
-                        backgroundColor: colors.surface,
-                      },
-                    ]}
-                    onPress={toggleVoice}
-                    testID="deal-chat-voice"
-                  >
-                    <Feather name="volume-2" size={19} color={colors.text} />
-                  </TouchableOpacity>
+                  {!recording ? (
+                    <TouchableOpacity
+                      style={[
+                        s.composerIcon,
+                        {
+                          borderColor: colors.border,
+                          backgroundColor: colors.surface,
+                        },
+                      ]}
+                      onPress={() => sendPhoto(true)}
+                      testID="deal-chat-camera"
+                    >
+                      <Feather name="camera" size={19} color={colors.text} />
+                    </TouchableOpacity>
+                  ) : null}
                   <TextInput
                     value={input}
                     onChangeText={(value) => {
@@ -2364,10 +2376,10 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                     ) : (
                       <TouchableOpacity
                         style={[s.composerIcon, { borderColor: colors.border, backgroundColor: colors.surface }]}
-                        onPress={() => setInput((value) => `${value}🙂`)}
-                        testID="deal-chat-emoji"
+                        onPress={toggleVoice}
+                        testID="deal-chat-voice"
                       >
-                        <Feather name="smile" size={20} color={colors.text} />
+                        <Feather name="volume-2" size={19} color={colors.text} />
                       </TouchableOpacity>
                     )
                   ) : null}
@@ -2378,6 +2390,15 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                   >
                     <Feather name="plus" size={21} color={colors.text} />
                   </TouchableOpacity>
+                  {!recording ? (
+                    <TouchableOpacity
+                      style={[s.composerIcon, { borderColor: colors.border, backgroundColor: colors.surface }]}
+                      onPress={() => setInput((value) => `${value}🙂`)}
+                      testID="deal-chat-emoji"
+                    >
+                      <Feather name="smile" size={20} color={colors.text} />
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
 
                 {attachOpen ? (
@@ -2601,8 +2622,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
         {/* Photo full-screen viewer — explicit close button, not a reliance on
             the platform's own long-press "save image" menu (section 4). */}
-        <Modal
-          visible={!!fullImage}
+        <Modal visible={!!fullImage}
           transparent
           animationType="fade"
           onRequestClose={() => setFullImage(null)}
@@ -2627,6 +2647,44 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
             >
               <Feather name="x" size={26} color="#fff" />
             </TouchableOpacity>
+          </Pressable>
+        </Modal>
+
+        <Modal
+          visible={callMenuOpen}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setCallMenuOpen(false)}
+        >
+          <Pressable
+            style={s.modalBackdrop}
+            onPress={() => setCallMenuOpen(false)}
+            testID="deal-call-menu"
+          >
+            <Pressable
+              style={[s.callMenuCard, { backgroundColor: colors.bg }]}
+              onPress={() => {}}
+            >
+              {CALL_MENU.map((item) => (
+                <TouchableOpacity
+                  key={item.key}
+                  style={s.callMenuRow}
+                  onPress={item.onPress}
+                  disabled={item.disabled}
+                  testID={item.testID}
+                >
+                  <Feather name={item.icon} size={18} color={colors.text} />
+                  <Text style={[s.callMenuLabel, { color: colors.text }]}>
+                    {item.label}
+                  </Text>
+                  {item.disabled ? (
+                    <View style={s.comingSoonPill}>
+                      <Text style={s.comingSoonText}>{ui.comingSoon}</Text>
+                    </View>
+                  ) : null}
+                </TouchableOpacity>
+              ))}
+            </Pressable>
           </Pressable>
         </Modal>
 

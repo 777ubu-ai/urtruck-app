@@ -111,12 +111,7 @@ const CHAT_PHOTO_ENABLED = true;
 // проверка записи/воспроизведения — на реальном устройстве.
 const CHAT_VOICE_ENABLED = true;
 const TRACKING_STATUSES = ["in_progress", "at_border", "delivered"];
-const DRIVER_ROUTE_STATUSES = [
-  "accepted",
-  "in_progress",
-  "at_border",
-  "delivered",
-];
+const DRIVER_ROUTE_STATUSES = ['accepted', 'in_progress', 'at_border', 'delivered'];
 
 export default function ChatScreen({ navigation, route }) {
   const v1 = useV1Colors();
@@ -1197,8 +1192,7 @@ export default function ChatScreen({ navigation, route }) {
           // vehicle.payload_t (НЕ weight_t — это грузоподъёмность, не
           // фактическая полная масса автомобиля, см. openDealMap ниже).
           cargo_weight_tons: prev?.cargo_weight_tons ?? srv.cargo_weight_tons,
-          trip_capacity_tons:
-            prev?.trip_capacity_tons ?? srv.trip_capacity_tons,
+          trip_capacity_tons: prev?.trip_capacity_tons ?? srv.trip_capacity_tons,
         }));
         // GET /market/deals/{id} на бэке гасит deal/cargo/trip notifications
         // для этой сделки. Сразу пересинхронизируем UI-бейджи, иначе красный
@@ -1420,7 +1414,7 @@ export default function ChatScreen({ navigation, route }) {
       toast(t("track_permission_needed"), "error");
       return;
     }
-    const result = await changeDealStatus("in_progress");
+    const result = await changeDealStatus('in_progress');
     if (result?.ok) {
       const firstPoint = await getCurrentLocationPayload();
       if (firstPoint) {
@@ -1432,7 +1426,7 @@ export default function ChatScreen({ navigation, route }) {
 
   const openDealMap = () => {
     if (!dealId) return;
-    navigation.navigate("TrackTruck", {
+    navigation.navigate('TrackTruck', {
       dealId,
       from: deal?.from_city,
       to: deal?.to_city,
@@ -2335,20 +2329,12 @@ export default function ChatScreen({ navigation, route }) {
               let action = null;
               if (role === "driver") {
                 if (deal.status === "accepted") {
-                  action = {
-                    key: "in_progress",
-                    icon: "truck",
-                    label: t("start_delivery"),
-                  };
+                  action = { key: 'in_progress', icon: 'truck', label: t('start_delivery') };
                 } else if (
                   deal.status === "in_progress" &&
                   deal.is_international === true
                 ) {
-                  action = {
-                    key: "at_border",
-                    icon: "map-pin",
-                    label: t("mark_at_border"),
-                  };
+                  action = { key: 'at_border', icon: "map-pin", label: t("mark_at_border") };
                 } else if (
                   deal.status === "in_progress" &&
                   deal.is_international == null
@@ -2363,18 +2349,10 @@ export default function ChatScreen({ navigation, route }) {
                   deal.status === "in_progress" ||
                   deal.status === "at_border"
                 ) {
-                  action = {
-                    key: "delivered",
-                    icon: "package",
-                    label: t("mark_arrived"),
-                  };
+                  action = { key: 'delivered', icon: "package", label: t("mark_arrived") };
                 }
-              } else if (isShipperSide && deal.status === "delivered") {
-                action = {
-                  key: "completed",
-                  icon: "check-circle",
-                  label: t("confirm_delivery"),
-                };
+              } else if (isShipperSide && deal.status === 'delivered') {
+                action = { key: 'completed', icon: "check-circle", label: t("confirm_delivery") };
               }
               if (!action) return null;
               return (
@@ -2453,14 +2431,14 @@ export default function ChatScreen({ navigation, route }) {
                 testID="deal-open-driver-route"
                 style={s.driverRouteBtn}
                 onPress={openDealMap}
-                accessibilityLabel={t("open_route_btn")}
+                accessibilityLabel={t('open_route_btn')}
               >
                 <View
                   style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
                 >
                   <Feather name="navigation" size={15} color={v1.text} />
                   <Text style={s.driverRouteBtnText}>
-                    {t("open_route_btn")}
+                    {t('open_route_btn')}
                   </Text>
                 </View>
               </TouchableOpacity>

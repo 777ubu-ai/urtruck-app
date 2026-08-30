@@ -19,6 +19,7 @@ import { API_BASE } from '../config/env';
 import { IS_BETA } from '../config/supabase';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
 import { localizePlace } from '../utils/places';
+import { useUnreadNotifications } from '../utils/useUnreadNotifications';
 
 const LANGS = [
   { code: 'RU', flag: '🇷🇺' },
@@ -164,6 +165,7 @@ export default function ProfileScreen({ navigation, route }) {
   useFocusEffect(useCallback(() => {
     fetchProfile();
   }, [fetchProfile]));
+  const unreadNotifications = useUnreadNotifications(!!session?.user);
 
   // PR-C2 (WeChat redesign): grouped list — 4 items в одной карточке
   // с тонкими separators между ними. Иконки — Feather outline (унифицированный
@@ -176,6 +178,7 @@ export default function ProfileScreen({ navigation, route }) {
   // generic-рядом в Профиле. «Update app» убран из Профиля (см. ниже).
   const menuItems = [
     ...(isDriver ? [{ icon: 'shield', label: t('security_my_status'), sub: t('my_status_subtitle'), screen: 'Security', testID: 'profile-my-status' }] : []),
+    { icon: 'bell',          label: t('menu_notifications'), screen: 'Notifications', testID: 'profile-notifications', badgeCount: unreadNotifications },
     { icon: 'star',          label: t('myReviews'),     screen: 'Reviews', testID: 'profile-my-reviews' },
     { icon: 'heart',         label: t('favorites_title'), screen: 'Favorites', testID: 'profile-favorites' },
     // Этап 6.4: возвращаем полезные экраны, которые были недостижимы (сироты).

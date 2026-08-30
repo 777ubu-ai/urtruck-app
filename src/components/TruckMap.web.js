@@ -259,7 +259,7 @@ function YandexMap({ livePoint, plannedPoints, serverRoute, onRouteSummary }) {
           durationText,
           blocked: false,
           isRemaining: Boolean(livePoint),
-            provider: serverRoute?.provider || "server-road",
+            provider: serverRoute?.provider || 'server-road',
         });
       }
       return () => {
@@ -284,9 +284,9 @@ function YandexMap({ livePoint, plannedPoints, serverRoute, onRouteSummary }) {
           routingPoints,
           {},
           {
-            strokeColor: "#6B7B73",
+            strokeColor: '#6B7B73',
             strokeWidth: 3,
-            strokeStyle: "dash",
+            strokeStyle: 'dash',
             opacity: 0.58,
           },
         ),
@@ -441,7 +441,7 @@ export default function TruckMap({
     [pointKey(livePoint), JSON.stringify(plannedPoints)],
   );
   const effectiveKey = routeKey(effectivePoints);
-  const vehicleKey = vehicle ? JSON.stringify(vehicle) : "";
+  const vehicleKey = vehicle ? JSON.stringify(vehicle) : '';
   const [serverRoute, setServerRoute] = React.useState(null);
   const [serverLoading, setServerLoading] = React.useState(false);
 
