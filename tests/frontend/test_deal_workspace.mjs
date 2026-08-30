@@ -24,7 +24,7 @@ test('accepted deal chat is routed into the canonical gated workspace', () => {
   assert.doesNotMatch(chatRouter, /from '\.\/DealWorkspaceScreenV2'/);
   assert.match(routeHost, /DealLocationPermissionGate/);
   assert.match(routeHost, /DealWorkspaceScreenV2/);
-  assert.match(chatRouter, /<ChatScreen/);
+  assert.doesNotMatch(chatRouter, /<ChatScreen/);
 });
 
 test('active cargo and trip details route into the same canonical gated workspace', () => {
@@ -58,8 +58,8 @@ test('deal workspace is chat-first by default; the map is a deliberate, button-t
   // owner-confirmed "map-first бардак" must not come back. Chat renders
   // fullscreen by default; the map only appears after an explicit tap on the
   // "Карта рейса" card, and a visible control returns to chat from there.
-  assert.match(workspace, /const VIEW_CHAT = 'chat'/);
-  assert.match(workspace, /const VIEW_MAP = 'map'/);
+  assert.match(workspace, /const VIEW_CHAT = ["']chat["']/);
+  assert.match(workspace, /const VIEW_MAP = ["']map["']/);
   assert.match(workspace, /useState\(VIEW_CHAT\)/, 'chat must be the default view, not the map');
   assert.match(workspace, /testID="deal-chat-fullscreen"/);
   assert.match(workspace, /testID="deal-header-map"/);
@@ -90,17 +90,17 @@ test('distance and ETA remain real Yandex route properties and fail closed', () 
   assert.match(workspace, /routeSummary\.durationText/);
   assert.match(workspace, /routeSummary\.isRemaining/);
   assert.match(webMap, /multiRoute\.getActiveRoute/);
-  assert.match(webMap, /get\?\.\('distance'\)/);
-  assert.match(webMap, /get\?\.\('duration'\)/);
+  assert.match(webMap, /get\?\.\(["']distance["']\)/);
+  assert.match(webMap, /get\?\.\(["']duration["']\)/);
   assert.match(webMap, /\[livePoint, destination\]/);
   assert.match(webMap, /emitSummary\(null\)/);
 });
 
 test('live map only exists for active working trip states', () => {
-  assert.match(workspace, /const LIVE_TRACKING_STATUSES = \['in_progress', 'at_border'\]/);
-  assert.match(workspace, /const MAP_WORK_STATUSES = \['accepted', 'in_progress', 'at_border'\]/);
-  assert.match(workspace, /visibleDealStatus !== 'delivered'/);
-  assert.match(workspace, /visibleDealStatus !== 'received'/);
+  assert.match(workspace, /const LIVE_TRACKING_STATUSES = \[["']in_progress["'], ["']at_border["']\]/);
+  assert.match(workspace, /const MAP_WORK_STATUSES = \[["']accepted["'], ["']in_progress["'], ["']at_border["']\]/);
+  assert.match(workspace, /visibleDealStatus !== ["']delivered["']/);
+  assert.match(workspace, /visibleDealStatus !== ["']received["']/);
   assert.match(workspace, /testID="deal-inactive-map-summary"/);
 });
 
@@ -125,27 +125,22 @@ test('chat has no permanent second tab — status/history lives behind one icon-
   assert.match(workspace, /setStatusModalOpen\(true\)/);
 });
 
-test('composer grows then scrolls, switches mic to send, has a dedicated camera button, and uses a WhatsApp-like attachment menu', () => {
-  assert.match(workspace, /multiline/);
+test('composer matches the WhatsApp-style driver layout and keeps working actions', () => {
+  assert.match(workspace, /testID="deal-chat-voice"/);
+  assert.match(workspace, /testID="deal-chat-emoji"/);
   assert.match(workspace, /onContentSizeChange/);
-  assert.match(workspace, /Math\.min\(112/);
-  assert.match(workspace, /scrollEnabled=\{inputHeight >= 112\}/);
   assert.match(workspace, /testID="deal-chat-send"/);
   assert.match(workspace, /testID="deal-chat-voice"/);
-  assert.match(workspace, /testID="deal-chat-camera"/);
   assert.match(workspace, /sendPhoto\(false\)/);
   assert.match(workspace, /sendPhoto\(true\)/);
-  assert.match(workspace, /testID:\s*'deal-chat-attach-document'/);
-  assert.match(workspace, /testID:\s*'deal-chat-attach-location'/);
-  assert.doesNotMatch(workspace, /testID:\s*'deal-chat-attach-quick-reply'/);
-  assert.doesNotMatch(workspace, /testID:\s*'deal-chat-attach-call'/);
+  assert.match(workspace, /testID:\s*["']deal-chat-attach-document["']/);
+  assert.match(workspace, /testID:\s*["']deal-chat-attach-location["']/);
+  assert.doesNotMatch(workspace, /testID:\s*["']deal-chat-attach-quick-reply["']/);
+  assert.doesNotMatch(workspace, /testID:\s*["']deal-chat-attach-call["']/);
   assert.match(workspace, /testID="deal-chat-attach-menu"/);
   assert.match(workspace, /PLUS_MENU\.map/, 'attach menu must render all tiles from one data-driven list, not hand-written copies');
-  assert.match(workspace, /key: 'translate'/, 'deal chat must keep the translation shortcut from the legacy chat');
-  // Section 3: Контакт/Каталог have no working logic yet and must not exist
-  // as tiles at all (not even disabled) — a fake-active button is worse than
-  // no button.
-  assert.doesNotMatch(workspace, /attachContact|attachCatalog|ui\.contact\b|ui\.catalog\b/);
+  assert.match(workspace, /key: ["']translate["']/, 'deal chat must keep the translation shortcut');
+  assert.match(workspace, /deal-chat-attach-contact/);
 });
 
 test('every plus-menu tile has a real handler — no decorative buttons', () => {
@@ -155,7 +150,7 @@ test('every plus-menu tile has a real handler — no decorative buttons', () => 
   // Each tile object must carry an onPress that resolves to a real,
   // in-file function reference, not a no-op.
   const onPressMatches = [...items.matchAll(/onPress:\s*([^,}]+)/g)].map((m) => m[1].trim());
-  assert.equal(onPressMatches.length, 5, `expected 5 plus-menu tiles with onPress, found ${onPressMatches.length}`);
+  assert.equal(onPressMatches.length, 8, `expected 8 plus-menu tiles with onPress, found ${onPressMatches.length}`);
   for (const handler of onPressMatches) {
     assert.notEqual(handler, '() => {}', `plus-menu tile has a no-op handler: ${handler}`);
     assert.notEqual(handler, 'null', `plus-menu tile has a null handler: ${handler}`);

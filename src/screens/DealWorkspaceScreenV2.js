@@ -9,6 +9,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -1090,6 +1091,18 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     });
   }, [toast, t]);
 
+  const shareDeal = React.useCallback(async () => {
+    setAttachOpen(false);
+    try {
+      await Share.share({ message: routeLabel });
+    } catch {}
+  }, [routeLabel]);
+
+  const shareContact = React.useCallback(() => {
+    setAttachOpen(false);
+    sendRawText(`${t("contact_section")}: ${partnerName || "—"}`);
+  }, [partnerName, sendRawText, t]);
+
   const sendLocation = React.useCallback(async () => {
     setAttachOpen(false);
     if (locationSending) return;
@@ -1982,11 +1995,21 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       onPress: () => sendPhoto(true),
     },
     {
-      key: "document",
-      icon: "file-text",
-      label: ui.attachDocument,
-      onPress: pickAndSendDocument,
-      testID: "deal-chat-attach-document",
+      key: "share",
+      icon: "share-2",
+      label: t("share"),
+      onPress: shareDeal,
+      testID: "deal-chat-attach-share",
+    },
+    {
+      key: "statuses",
+      icon: "check-square",
+      label: ui.statuses,
+      onPress: () => {
+        setAttachOpen(false);
+        setStatusModalOpen(true);
+      },
+      testID: "deal-chat-attach-statuses",
     },
     {
       key: "location",
@@ -1995,6 +2018,20 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       onPress: sendLocation,
       busy: locationSending,
       testID: "deal-chat-attach-location",
+    },
+    {
+      key: "document",
+      icon: "file-text",
+      label: ui.attachDocument,
+      onPress: pickAndSendDocument,
+      testID: "deal-chat-attach-document",
+    },
+    {
+      key: "contact",
+      icon: "user",
+      label: t("contact_section"),
+      onPress: shareContact,
+      testID: "deal-chat-attach-contact",
     },
     {
       key: "translate",
@@ -2269,13 +2306,10 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                         backgroundColor: colors.surface,
                       },
                     ]}
-                    onPress={() => {
-                      setAttachOpen((value) => !value);
-                      setCallMenuOpen(false);
-                    }}
-                    testID="deal-chat-attach"
+                    onPress={toggleVoice}
+                    testID="deal-chat-voice"
                   >
-                    <Feather name="plus" size={21} color={colors.text} />
+                    <Feather name="volume-2" size={19} color={colors.text} />
                   </TouchableOpacity>
                   <TextInput
                     value={input}
@@ -2300,21 +2334,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                     testID="deal-chat-input"
                   />
                   {!recording ? (
-                    <TouchableOpacity
-                      style={[
-                        s.composerIcon,
-                        {
-                          borderColor: colors.border,
-                          backgroundColor: colors.surface,
-                        },
-                      ]}
-                      onPress={() => sendPhoto(true)}
-                      testID="deal-chat-camera"
-                    >
-                      <Feather name="camera" size={19} color={colors.text} />
-                    </TouchableOpacity>
-                  ) : null}
-                  {!recording ? (
                     input.trim() ? (
                       <TouchableOpacity
                         style={s.sendButton}
@@ -2330,14 +2349,21 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                       </TouchableOpacity>
                     ) : (
                       <TouchableOpacity
-                        style={s.sendButton}
-                        onPress={toggleVoice}
-                        testID="deal-chat-voice"
+                        style={[s.composerIcon, { borderColor: colors.border, backgroundColor: colors.surface }]}
+                        onPress={() => setInput((value) => `${value}🙂`)}
+                        testID="deal-chat-emoji"
                       >
-                        <Feather name="mic" size={18} color="#FFFFFF" />
+                        <Feather name="smile" size={20} color={colors.text} />
                       </TouchableOpacity>
                     )
                   ) : null}
+                  <TouchableOpacity
+                    style={[s.composerIcon, { borderColor: colors.border, backgroundColor: colors.surface }]}
+                    onPress={() => setAttachOpen((value) => !value)}
+                    testID="deal-chat-attach"
+                  >
+                    <Feather name="plus" size={21} color={colors.text} />
+                  </TouchableOpacity>
                 </View>
               </>
             )}
