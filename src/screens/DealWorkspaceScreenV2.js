@@ -503,8 +503,16 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         let room = roomId ? rooms.find((item) => item.id === roomId) : null;
         if (!room && dealId)
           room = rooms.find((item) => item.deal_id === dealId);
+        // A chat can be reopened from a cargo/trip card or a push deeplink
+        // with only the deal context. Recover the canonical room instead of
+        // leaving the user in an empty workspace when the cached roomId is
+        // absent or belongs to an old room.
+        if (!room && params.cargoId)
+          room = rooms.find((item) => item.cargo_id === params.cargoId);
+        if (!room && params.tripId)
+          room = rooms.find((item) => item.trip_id === params.tripId);
         if (room) {
-          if (!roomId) setRoomId(room.id);
+          if (room.id !== roomId) setRoomId(room.id);
           if (!dealId && room.deal_id) setDealId(room.deal_id);
           setPartner((prev) => ({
             id: prev?.id || room.partner_id || null,
