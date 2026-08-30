@@ -384,7 +384,7 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
             if ex:
                 return {"ok": True, "room_id": room_id, "deduped": True}
         try:
-            c.execute(
+            cursor = c.execute(
                 "INSERT INTO chat_messages (room_id, sender_id, text, photo_url, is_voice, voice_duration, client_msg_id) VALUES (?,?,?,?,?,?,?)",
                 (room_id, user["id"], body.text, body.photo_url, 1 if body.is_voice else 0, body.voice_duration, body.client_msg_id),
             )
@@ -430,7 +430,19 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
     if recipient_id == VOLODYA_ID and ENABLE_DEMO_CHAT:
         _volodya_reply(room_id, body.text or "", user)
 
-    return {"ok": True, "room_id": room_id}
+    # Return the authoritative row identity so the client can reconcile its
+    # optimistic bubble with the committed server message before the next poll.
+    with get_conn() as c:
+        created = c.execute(
+            "SELECT id, created_at FROM chat_messages WHERE room_id = ? AND sender_id = ? AND client_msg_id = ?",
+            (room_id, user["id"], body.client_msg_id),
+        ).fetchone() if body.client_msg_id else None
+    return {
+        "ok": True,
+        "room_id": room_id,
+        "message_id": created["id"] if created else None,
+        "created_at": created["created_at"] if created else None,
+    }
 
 
 @chat_router.get("/rooms")

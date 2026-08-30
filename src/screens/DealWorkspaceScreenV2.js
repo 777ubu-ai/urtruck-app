@@ -500,17 +500,23 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         const data = await chatAPI.rooms();
         if (cancelled) return;
         const rooms = data?.rooms || [];
-        let room = roomId ? rooms.find((item) => item.id === roomId) : null;
-        if (!room && dealId)
-          room = rooms.find((item) => item.deal_id === dealId);
-        // A chat can be reopened from a cargo/trip card or a push deeplink
-        // with only the deal context. Recover the canonical room instead of
-        // leaving the user in an empty workspace when the cached roomId is
-        // absent or belongs to an old room.
-        if (!room && params.cargoId)
-          room = rooms.find((item) => item.cargo_id === params.cargoId);
-        if (!room && params.tripId)
-          room = rooms.find((item) => item.trip_id === params.tripId);
+        const same = (left, right) =>
+          left != null && right != null && String(left) === String(right);
+        // The deal/cargo/trip context is authoritative after a reload. A
+        // cached roomId may be stale (or belong to the old chat route), which
+        // used to render an empty conversation while silently keeping the
+        // real server room out of view.
+        const contextRoom =
+          (dealId && rooms.find((item) => same(item.deal_id, dealId))) ||
+          (params.cargoId && rooms.find((item) => same(item.cargo_id, params.cargoId))) ||
+          (params.tripId && rooms.find((item) => same(item.trip_id, params.tripId)));
+        const cachedRoom = roomId ? rooms.find((item) => same(item.id, roomId)) : null;
+        const cachedMatchesContext =
+          cachedRoom &&
+          (!dealId || same(cachedRoom.deal_id, dealId)) &&
+          (!params.cargoId || same(cachedRoom.cargo_id, params.cargoId)) &&
+          (!params.tripId || same(cachedRoom.trip_id, params.tripId));
+        const room = contextRoom || (cachedMatchesContext ? cachedRoom : null);
         if (room) {
           if (room.id !== roomId) setRoomId(room.id);
           if (!dealId && room.deal_id) setDealId(room.deal_id);
@@ -521,8 +527,10 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           }));
           setUnreadCount(Number(room.unread_count || room.unread || 0));
         }
-      } catch {
-        /* keep navigation data */
+      } catch (error) {
+        // Keep the already rendered bubbles, but never replace them with an
+        // empty list when the authoritative request failed.
+        if (__DEV__) console.warn("[chat] room resolution failed", error);
       }
       if (!cancelled) setDealLoading(false);
     };
