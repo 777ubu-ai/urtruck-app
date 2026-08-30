@@ -238,13 +238,13 @@ export const regAPI = {
   // QA-аудит P1-7: серверный revoke токена при logout. Best-effort —
   // вызывать ДО clearToken (нужен сам токен). Сетевые/любые ошибки
   // глушим: logout на клиенте всё равно должен пройти.
-  async logout() {
+  async logout(token = null) {
     try {
-      const token = await this.getToken();
-      if (!token) return { ok: true, revoked: false };
+      const authToken = token || await this.getToken();
+      if (!authToken) return { ok: true, revoked: false };
       const r = await fetch(`${BASE}/logout`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
+        headers: { 'Authorization': `Bearer ${authToken}` },
       });
       return await r.json().catch(() => ({ ok: true }));
     } catch {

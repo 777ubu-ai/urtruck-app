@@ -1,0 +1,22 @@
+diff --git a/node_modules/@expo/cli/build/src/start/server/metro/dev-server/createMetroMiddleware.js b/node_modules/@expo/cli/build/src/start/server/metro/dev-server/createMetroMiddleware.js
+index 2d2dfc1..80975e5 100644
+--- a/node_modules/@expo/cli/build/src/start/server/metro/dev-server/createMetroMiddleware.js
++++ b/node_modules/@expo/cli/build/src/start/server/metro/dev-server/createMetroMiddleware.js
+@@ -70,7 +70,16 @@ const metroOpenStackFrameMiddleware = (req, res, next)=>{
+ };
+ function createMetroStatusMiddleware(metroConfig) {
+     return (_req, res)=>{
+-        res.setHeader("X-React-Native-Project-Root", metroConfig.projectRoot);
++        // Windows fix: non-ASCII project paths (e.g. Cyrillic) crash
++        // res.setHeader with "Invalid character in header content" — HTTP
++        // headers must be latin1/ASCII. encodeURIComponent keeps the header
++        // present (dev-launcher's connection check needs SOME response)
++        // without ever throwing on the raw path bytes.
++        try {
++            res.setHeader("X-React-Native-Project-Root", encodeURIComponent(metroConfig.projectRoot));
++        } catch (e) {
++            // never let a header-encoding edge case break the status check
++        }
+         res.end("packager-status:running");
+     };
+ }

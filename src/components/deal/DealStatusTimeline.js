@@ -75,6 +75,17 @@ function formatMoment(ev, lang) {
   }
 }
 
+function eventTime(ev) {
+  const raw = firstText(ev?.created_at, ev?.occurred_at, ev?.timestamp, ev?.at, ev?.updated_at);
+  if (!raw) return 0;
+  let source = raw;
+  if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(source) && !/[zZ]|[+\-]\d{2}:?\d{2}$/.test(source)) {
+    source = source.replace(' ', 'T') + 'Z';
+  }
+  const time = new Date(source).getTime();
+  return Number.isNaN(time) ? 0 : time;
+}
+
 function detailsFor(ev) {
   const p = ev?.payload || {};
   return {
@@ -102,15 +113,19 @@ export default function DealStatusTimeline({ events = [], fallbackStatus = '' })
     );
   }
 
+  const sortedEvents = [...events].sort((a, b) => {
+    return eventTime(b) - eventTime(a);
+  });
+
   return (
     <View style={s.list} testID="deal-status-timeline">
-      {events.map((ev, index) => {
+      {sortedEvents.map((ev, index) => {
         const key = eventKey(ev);
         const meta = detailsFor(ev);
         const title = systemEventText(t, ev);
         const moment = formatMoment(ev, lang);
         const localizedPlace = meta.place ? (localizePlace(meta.place, lang) || meta.place) : '';
-        const last = index === events.length - 1;
+        const last = index === sortedEvents.length - 1;
         return (
           <View key={String(ev?.id || `${key}-${index}`)} style={s.item} testID="deal-status-timeline-item">
             <View style={s.rail}>
@@ -120,7 +135,7 @@ export default function DealStatusTimeline({ events = [], fallbackStatus = '' })
               {!last ? <View style={s.line} /> : null}
             </View>
 
-            <View style={[s.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={[s.card, index === 0 ? s.currentCard : null, { backgroundColor: index === 0 ? '#E9F6EF' : colors.surface, borderColor: index === 0 ? '#A8DCC4' : colors.border }]}>
               <Text style={[s.title, { color: colors.text }]}>{title}</Text>
               {moment ? <Text style={[s.moment, { color: colors.textMuted }]}>{moment}</Text> : null}
               {localizedPlace ? (
@@ -151,6 +166,7 @@ const s = StyleSheet.create({
   dot: { width: 28, height: 28, borderRadius: 14, borderWidth: 2, alignItems: 'center', justifyContent: 'center', zIndex: 2 },
   line: { width: 2, flex: 1, minHeight: 52, backgroundColor: '#CFE9DB', marginVertical: -1 },
   card: { flex: 1, borderWidth: 1, borderRadius: 15, paddingHorizontal: 13, paddingVertical: 11, marginBottom: 12 },
+  currentCard: { borderWidth: 1.5 },
   title: { fontSize: 14, fontWeight: '900', lineHeight: 19 },
   moment: { fontSize: 11.5, fontWeight: '700', marginTop: 3, marginBottom: 7 },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },

@@ -26,6 +26,12 @@ const AuthContext = createContext({
 });
 
 const KEY = 'ur_session';
+const LOGOUT_NETWORK_TIMEOUT_MS = 3000;
+
+const withTimeout = (promise, timeoutMs = LOGOUT_NETWORK_TIMEOUT_MS) => Promise.race([
+  promise,
+  new Promise(resolve => setTimeout(() => resolve({ ok: false, reason: 'timeout' }), timeoutMs)),
+]);
 
 export const AuthProvider = ({ children }) => {
   const [session, setSession] = useState(null);
@@ -143,8 +149,21 @@ export const AuthProvider = ({ children }) => {
   const signOut = async () => {
     setAuthExpirySuppressed(true);
 
+    // Сохраняем токен только в памяти для best-effort серверной очистки.
+    // Auth-state сбрасываем сразу: навигация не должна ждать сеть.
+    const authToken = await regAPI.getToken();
+    setSession(null);
+    setVerificationLevel(0);
+    setHasToken(false);
+    await regAPI.clearToken();
+
+    // Блок 2 аудита (P1-3/P1-4): деактивируем push ТЕКУЩЕГО пользователя на
+    // backend, пока токен ещё валиден — ОБЯЗАТЕЛЬНО до regAPI.logout()
+    // (который отзывает сессию: после него /push/logout-cleanup вернёт 401
+    // и деактивация push не выполнится вовсе — не переставлять порядок).
+    // Best-effort: сетевая ошибка не блокирует сам logout.
     try {
-      await push.logoutCleanup();
+      await withTimeout(push.logoutCleanup(authToken));
     } catch {}
 
     try {
@@ -162,22 +181,18 @@ export const AuthProvider = ({ children }) => {
       ]);
     } catch {}
     try {
-      // Server-side revoke while the UrTruck token is still available.
-      await regAPI.logout();
-    } catch {}
-    try {
-      await regAPI.clearToken();
+      // QA-аудит P1-7: серверный revoke использует сохранённый в памяти токен;
+      // локальный токен уже удалён и навигация не зависит от сети.
+      await withTimeout(regAPI.logout(authToken));
     } catch {}
     // Google/Apple are identity providers, not the UrTruck authorization
     // session, but their local Supabase session must also be cleared so a
     // different person on the same device cannot inherit provider state.
+    // Timeout-wrapped for the same reason as the calls above — navigation
+    // must not stall on a slow/offline provider call.
     try {
-      await clearSocialAuthSession();
+      await withTimeout(clearSocialAuthSession());
     } catch {}
-
-    setSession(null);
-    setVerificationLevel(0);
-    setHasToken(false);
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
       // eslint-disable-next-line no-console
       console.warn('[Auth] logout cleared UrTruck + provider session + push + queues');

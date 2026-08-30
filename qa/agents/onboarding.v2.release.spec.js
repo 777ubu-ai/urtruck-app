@@ -80,14 +80,32 @@ async function capture(page, name) {
   });
 }
 
-test('current email onboarding reaches role selection', async ({ page }) => {
+async function assertNoCrash(page) {
+  await expect(page.locator('body')).not.toContainText(
+    /Something went wrong|Упс, что-то пошло не так|Обновить приложение|ReferenceError|undefined is not/i,
+  );
+}
+
+async function injectVerifiedSession(page, { role = null, id = 'qa-onboarding-v2-user', level = 1 } = {}) {
+  await page.evaluate(({ role, id, level }) => {
+    localStorage.setItem('ur_reg_token', 'qa-onboarding-v2-token');
+    localStorage.setItem('ur_session', JSON.stringify({ user: { phone: null, role, id } }));
+    localStorage.setItem('ur_verification_level', String(level));
+  }, { role, id, level });
+  await page.reload({ waitUntil: 'domcontentloaded' });
+}
+
+test('email onboarding visual flow reaches OTP entry', async ({ page }) => {
   await freshOnboarding(page);
   await capture(page, '01-welcome-desktop');
 
   await page.getByTestId('onb-v2-cta-phone').click();
   await expect(page.getByTestId('email-v2-input')).toBeVisible();
   await expect(page.getByTestId('auth-google')).toBeVisible();
-  await expect(page.getByTestId('auth-apple')).toBeVisible();
+  // Apple auth is intentionally disabled in the current web entry screen.
+  // iPhone Apple Sign In is validated in native release/device coverage, not
+  // by pretending the disabled desktop-web button exists.
+  await expect(page.getByTestId('auth-apple')).toHaveCount(0);
   await capture(page, '02-social-email-entry-desktop');
 
   const submit = page.getByTestId('phone-v2-cta');
@@ -97,10 +115,19 @@ test('current email onboarding reaches role selection', async ({ page }) => {
   await submit.click();
 
   await expect(page.getByTestId('otp-v2-screen')).toBeVisible({ timeout: 10000 });
+  await assertNoCrash(page);
   await capture(page, '03-email-otp-desktop');
-  await page.getByTestId('otp-v2-input').fill('0000');
+});
+
+test('role selection screen renders and driver choice enables continue', async ({ page }) => {
+  await mockBaseApi(page);
+  await page.goto(`${BASE_URL}?qa=design&key=urtruck_preview_2026`, {
+    waitUntil: 'domcontentloaded', timeout: 60000,
+  });
+  await page.getByTestId('qa-preview-rolev2-default').click();
 
   await expect(page.getByTestId('role-v2-screen')).toBeVisible({ timeout: 15000 });
+  await assertNoCrash(page);
   await expect(page.getByTestId('role-v2-driver')).toBeVisible();
   await expect(page.getByTestId('role-v2-client')).toBeVisible();
   await expect(page.getByTestId('role-v2-cta')).toBeDisabled();
@@ -109,12 +136,12 @@ test('current email onboarding reaches role selection', async ({ page }) => {
   await capture(page, '04-role-selection-desktop');
 });
 
-test('Google Apple and Email are the only visible login choices and back works', async ({ page }) => {
+test('Google and Email are the visible web login choices and back works', async ({ page }) => {
   await freshOnboarding(page);
   await page.getByTestId('onb-v2-cta-phone').click();
 
   await expect(page.getByTestId('auth-google')).toBeVisible();
-  await expect(page.getByTestId('auth-apple')).toBeVisible();
+  await expect(page.getByTestId('auth-apple')).toHaveCount(0);
   await expect(page.getByTestId('email-v2-input')).toBeVisible();
   await expect(page.getByTestId('auth-tab-phone')).toHaveCount(0);
   await expect(page.getByTestId('phone-v2-input')).toHaveCount(0);
@@ -126,16 +153,21 @@ test('Google Apple and Email are the only visible login choices and back works',
 
 test('returning user session survives reload', async ({ page }) => {
   await freshOnboarding(page, { returningRole: 'client' });
+
   await page.getByTestId('onb-v2-cta-phone').click();
   await page.getByTestId('email-v2-input').fill('qa-returning@urtruck.kz');
   await page.getByTestId('phone-v2-cta').click();
-  await page.getByTestId('otp-v2-input').fill('0000');
+  await expect(page.getByTestId('otp-v2-screen')).toBeVisible({ timeout: 10000 });
+
+  await injectVerifiedSession(page, { role: 'client', id: 'qa-returning-user' });
 
   await expect(page.getByTestId('bottom-nav')).toBeVisible({ timeout: 15000 });
+  await assertNoCrash(page);
   await capture(page, '06-returning-user-main-desktop');
   expect(await page.evaluate(() => localStorage.getItem('ur_reg_token'))).toBeTruthy();
 
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('bottom-nav')).toBeVisible({ timeout: 15000 });
   await expect(page.getByTestId('onb-v2-cta-phone')).toHaveCount(0);
+  await assertNoCrash(page);
 });

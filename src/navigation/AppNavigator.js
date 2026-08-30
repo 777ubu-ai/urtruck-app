@@ -201,8 +201,21 @@ export default function AppNavigator() {
     );
   }
 
+  // BUG FIX (logout не выкидывал на экран входа): React Navigation не
+  // сбрасывает свой ВНУТРЕННИЙ state (текущий route/индекс) сам по себе,
+  // когда меняется набор <Stack.Screen> — если пользователь был на
+  // "глубоком" экране (например Profile, который есть ТОЛЬКО в
+  // авторизованном наборе), после logout Navigator пытался остаться на
+  // маршруте "Profile", которого в новом (неавторизованном) наборе экранов
+  // нет — итог: завис на старом кадре, hasToken/session при этом уже
+  // корректно false (см. [NAV DIAG] лог). key меняет "категорию" стека
+  // (guest/norole/main) → React полностью размонтирует и заново монтирует
+  // Stack.Navigator при переходе между категориями, что сбрасывает его
+  // internal state и всегда стартует с initialRouteName нового набора.
+  const navKey = (!hasToken || !session) ? 'guest' : (!hasRole ? 'norole' : 'main');
+
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Navigator key={navKey} screenOptions={{ headerShown: false }}>
       {!hasToken || !session || !hasRole ? (
         // Нет токена / нет сессии / нет роли → inDrive-style onboarding.
         // RC2 batch 1: первый экран = OnboardingV2 (3-слайдовая карусель +

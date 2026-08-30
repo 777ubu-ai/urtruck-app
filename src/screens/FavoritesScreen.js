@@ -1,13 +1,6 @@
-// FavoritesScreen — сохранённые перевозчики И грузы пользователя.
-// Данные персистятся на сервере (/api/v1/favorites) — переживают
-// перезапуск приложения.
-//
-// Fix (08-2026): раньше экран запрашивал ТОЛЬКО favList('driver') — грузы,
-// сохранённые водителем через ❤️ на карточке груза (item_type='cargo'),
-// реально писались в БД, но никогда сюда не попадали («сохраняю — а там
-// пусто»). Теперь грузим все типы разом и рендерим по item_type.
-// Иконка действия унифицирована с флоу «избранное» — сердце (не флажок),
-// см. src/components/ui/v1/FeedCard.js и src/screens/CargoFeedScreen.js.
+// FavoritesScreen — сохранённые грузы, рейсы и перевозчики пользователя.
+// Данные персистятся на сервере (/api/v1/favorites) и переживают перезапуск.
+// cargo/trip сохраняются по ID конкретной публикации; driver — по ID профиля.
 
 import React, { useState, useCallback } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, RefreshControl } from 'react-native';
@@ -31,18 +24,13 @@ export default function FavoritesScreen({ navigation, route }) {
   const role = route?.params?.role;
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [refreshingList, setRefreshingList] = useState(false);
-  const [removingId, setRemovingId] = useState(null);
+  const [removingKey, setRemovingKey] = useState(null);
 
-  const load = useCallback(async ({ showLoading = true } = {}) => {
-    if (showLoading) setLoading(true);
-    else setRefreshingList(true);
-    // Без item_type — backend /api/v1/favorites отдаёт ВСЕ сохранённые
-    // карточки (и водителей, и грузы) одним списком, отсортированным по дате.
-    const r = await marketAPI.favList('');
-    setItems(Array.isArray(r?.favorites) ? r.favorites : []);
-    if (showLoading) setLoading(false);
-    else setRefreshingList(false);
+  const load = useCallback(async () => {
+    setLoading(true);
+    const result = await marketAPI.favList('');
+    setItems(Array.isArray(result?.favorites) ? result.favorites : []);
+    setLoading(false);
   }, []);
 
   const { refreshing, onRefresh } = useSafeRefresh(
@@ -52,78 +40,100 @@ export default function FavoritesScreen({ navigation, route }) {
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const openItem = (fav) => {
-    const d = fav.item_data || {};
+    const data = fav.item_data || {};
     if (fav.item_type === 'cargo') {
       navigation.navigate('CargoDetail', {
-        cargo: { ...d, id: fav.item_id },
+        cargo: { ...data, id: fav.item_id },
         cargoId: fav.item_id,
         role,
       });
       return;
     }
-    // driver (и legacy-записи без item_type)
+    if (fav.item_type === 'trip') {
+      navigation.navigate('TripDetail', {
+        trip: { ...data, id: fav.item_id, _server: true, isTrip: true },
+        tripId: fav.item_id,
+        role,
+      });
+      return;
+    }
     navigation.navigate('DriverDetail', {
-      driver: { id: fav.item_id, name: d.name, type: d.type, plate_truck: d.plate, _server: true, _isDriver: true },
+      driver: {
+        id: fav.item_id,
+        name: data.name,
+        type: data.type,
+        plate_truck: data.plate,
+        _server: true,
+        _isDriver: true,
+      },
       role,
     });
   };
 
   const removeItem = async (fav) => {
-    const id = String(fav.item_id);
-    setRemovingId(id);
-    setItems((prev) => prev.filter((it) => String(it.item_id) !== id || it.item_type !== fav.item_type));
+    const key = `${fav.item_type || 'driver'}:${fav.item_id}`;
+    setRemovingKey(key);
+    setItems((prev) => prev.filter((item) => (
+      String(item.item_id) !== String(fav.item_id) || item.item_type !== fav.item_type
+    )));
     try {
-      const r = await marketAPI.favRemove(fav.item_type, fav.item_id);
-      if (!r || r.ok !== true) throw new Error('remove_failed');
+      const result = await marketAPI.favRemove(fav.item_type, fav.item_id);
+      if (!result || result.ok !== true) throw new Error('remove_failed');
     } catch {
-      // Не удалось на сервере — откатываем и сообщаем, чтобы список не
-      // расходился с реальным состоянием (тот же принцип, что и toggleFav
-      // на карточках ленты).
       load();
       try { toast(t('favorites_remove_failed'), 'error'); } catch {}
     } finally {
-      setRemovingId(null);
+      setRemovingKey(null);
     }
   };
 
   const renderItem = ({ item }) => {
-    const d = item.item_data || {};
+    const data = item.item_data || {};
     const isCargo = item.item_type === 'cargo';
+    const isTrip = item.item_type === 'trip';
+    const routeText = `${localizePlace(data.from, lang) || t('not_specified')} → ${localizePlace(data.to, lang) || t('not_specified')}`;
+    const removalKey = `${item.item_type || 'driver'}:${item.item_id}`;
+
     return (
       <TouchableOpacity
-        style={[s.card, { backgroundColor: v1.card, borderColor: v1.border }]}
+        style={[styles.card, { backgroundColor: v1.card, borderColor: v1.border }]}
         onPress={() => openItem(item)}
         activeOpacity={0.8}
-        testID="favorite-card"
+        testID={`favorite-card-${item.item_type || 'driver'}`}
       >
-        <View style={[s.typeIcon, { backgroundColor: v1.surfaceMuted }]}>
+        <View style={[styles.typeIcon, { backgroundColor: v1.surfaceMuted }]}>
           <Feather name={isCargo ? 'package' : 'truck'} size={18} color={v1.textMuted} />
         </View>
         <View style={{ flex: 1 }}>
-          {isCargo ? (
+          {(isCargo || isTrip) ? (
             <>
-              <Text style={[s.name, { color: v1.text }]} numberOfLines={1}>
-                {localizePlace(d.from, lang) || t('not_specified')} → {localizePlace(d.to, lang) || t('not_specified')}
-              </Text>
-              <Text style={[s.sub, { color: v1.textMuted }]} numberOfLines={1}>
-                {formatPrice(d.price, d.currency, t)}{d.type ? ` · ${t(d.type)}` : ''}
+              <Text style={[styles.name, { color: v1.text }]} numberOfLines={1}>{routeText}</Text>
+              <Text style={[styles.sub, { color: v1.textMuted }]} numberOfLines={1}>
+                {formatPrice(data.price, data.currency, t)}
+                {isCargo && data.type ? ` · ${t(data.type)}` : ''}
+                {isTrip && data.truck_type ? ` · ${t(data.truck_type)}` : ''}
+                {isTrip && data.departure ? ` · ${data.departure}` : ''}
               </Text>
             </>
           ) : (
             <>
-              <Text style={[s.name, { color: v1.text }]} numberOfLines={1}>{d.name || t('anonymous')}</Text>
-              {d.type ? <Text style={[s.sub, { color: v1.textMuted }]} numberOfLines={1}>{t(d.type)}{d.plate ? ` · ${d.plate}` : ''}</Text> : null}
+              <Text style={[styles.name, { color: v1.text }]} numberOfLines={1}>{data.name || t('anonymous')}</Text>
+              {data.type ? (
+                <Text style={[styles.sub, { color: v1.textMuted }]} numberOfLines={1}>
+                  {t(data.type)}{data.plate ? ` · ${data.plate}` : ''}
+                </Text>
+              ) : null}
             </>
           )}
         </View>
         <TouchableOpacity
-          onPress={(e) => { e?.stopPropagation?.(); removeItem(item); }}
+          onPress={(event) => { event?.stopPropagation?.(); removeItem(item); }}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          disabled={removingId === String(item.item_id)}
+          disabled={removingKey === removalKey}
           testID="favorite-remove"
           accessibilityRole="button"
           accessibilityLabel={t('favorites_remove') || 'Remove from favorites'}
-          style={s.heartBtn}
+          style={styles.bookmarkBtn}
         >
           <FontAwesome5 name="bookmark" size={18} color={v1.driver} solid />
         </TouchableOpacity>
@@ -134,20 +144,20 @@ export default function FavoritesScreen({ navigation, route }) {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: v1.bg }} edges={['top']}>
       <BrandHeader onBack={() => navigation.goBack()} accent={v1.driver} compact />
-      <Text style={[s.title, { color: v1.text }]}>{t('favorites_title')}</Text>
+      <Text style={[styles.title, { color: v1.text }]}>{t('favorites_title')}</Text>
       {loading ? (
-        <View style={s.center}><ActivityIndicator color={v1.textMuted} /></View>
+        <View style={styles.center}><ActivityIndicator color={v1.textMuted} /></View>
       ) : (
         <FlatList
           data={items}
-          keyExtractor={(it) => `${it.item_type || 'driver'}_${it.id || it.item_id}`}
+          keyExtractor={(item) => `${item.item_type || 'driver'}_${item.id || item.item_id}`}
           renderItem={renderItem}
           contentContainerStyle={{ padding: 16, paddingTop: 8 }}
           refreshControl={<RefreshControl refreshing={refreshing || refreshingList} onRefresh={onRefresh} tintColor={v1.textMuted} />}
           ListEmptyComponent={
-            <View style={s.center} testID="favorites-empty">
-              <Text style={{ fontSize: 40, marginBottom: 10 }}>🤍</Text>
-              <Text style={[s.emptyText, { color: v1.textMuted }]}>{t('favorites_empty')}</Text>
+            <View style={styles.center} testID="favorites-empty">
+              <Feather name="bookmark" size={40} color={v1.textMuted} style={{ marginBottom: 10 }} />
+              <Text style={[styles.emptyText, { color: v1.textMuted }]}>{t('favorites_empty')}</Text>
             </View>
           }
         />
@@ -156,7 +166,7 @@ export default function FavoritesScreen({ navigation, route }) {
   );
 }
 
-const s = StyleSheet.create({
+const styles = StyleSheet.create({
   title: { fontSize: 22, fontWeight: '900', marginHorizontal: 16, marginTop: 8, marginBottom: 4 },
   center: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
   emptyText: { fontSize: 14, textAlign: 'center', paddingHorizontal: 30 },
@@ -164,5 +174,5 @@ const s = StyleSheet.create({
   typeIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   name: { fontSize: 15, fontWeight: '700' },
   sub: { fontSize: 12, marginTop: 2 },
-  heartBtn: { padding: 4 },
+  bookmarkBtn: { padding: 4 },
 });

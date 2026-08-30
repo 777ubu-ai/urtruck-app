@@ -46,7 +46,18 @@ def _verify_telegram_signature(secret_token: str) -> bool:
     import hmac
     expected = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
     if not expected:
-        return True  # secret не настроен — пропускаем (dev/polling mode)
+        # Предрелизный аудит 28.08.2026 (P0-hardening): fail-open здесь —
+        # это OTP-oracle. Пока бот в MOCK (нет TELEGRAM_BOT_TOKEN), эндпоинт
+        # ничего не отправляет и вреда нет. Но в момент, когда владелец задаст
+        # TELEGRAM_BOT_TOKEN на проде без WEBHOOK_SECRET, любой аноним сможет
+        # перебором вытащить чужой OTP-код. Поэтому: если бот АКТИВЕН на проде
+        # без секрета — закрываемся наглухо (fail-closed), а не пропускаем.
+        _is_prod = (os.getenv("URTRUCK_ENV", "production").strip().lower()
+                    == "production")
+        _bot_active = bool(os.getenv("TELEGRAM_BOT_TOKEN"))
+        if _is_prod and _bot_active:
+            return False  # активный бот без секрета — отказ, а не дыра
+        return True  # secret не настроен и бот неактивен — dev/polling mode
     if not secret_token:
         return False  # secret задан, а заголовка нет — отказ
     return hmac.compare_digest(secret_token, expected)

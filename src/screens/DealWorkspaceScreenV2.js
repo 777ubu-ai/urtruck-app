@@ -4,6 +4,7 @@ import {
   AppState,
   FlatList,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Linking,
   Modal,
@@ -49,19 +50,22 @@ import {
   ensureBackgroundLocationPermission,
   getCurrentLocationPayload,
   requestForegroundLocationPermission,
-} from "../utils/backgroundLocation";
-import { compressImage } from "../utils/imageCompress";
-import { voice } from "../utils/voiceRecorder";
-import { enqueueOutbox, flushOutbox } from "../utils/outbox";
-import { setActiveRoom } from "../utils/activeRoom";
-import { notifyChatRead } from "../utils/unreadEvents";
-import { refreshAppIconBadge } from "../utils/appBadge";
-import { SERVER_URL } from "../config/env";
-import VoiceMessageBubble from "../components/chat/VoiceMessageBubble";
+} from '../utils/backgroundLocation';
+import { compressImage } from '../utils/imageCompress';
+import { voice } from '../utils/voiceRecorder';
+import VoiceMessageBubble from '../components/VoiceMessageBubble';
+import { enqueueOutbox, flushOutbox } from '../utils/outbox';
+import { setActiveRoom } from '../utils/activeRoom';
+import { notifyChatRead } from '../utils/unreadEvents';
+import { refreshAppIconBadge } from '../utils/appBadge';
+import { SERVER_URL } from '../config/env';
 
-const LIVE_TRACKING_STATUSES = ["in_progress", "at_border"];
-const MAP_WORK_STATUSES = ["accepted", "in_progress", "at_border"];
-const TERMINAL_STATUSES = ["completed", "cancelled", "rejected", "expired"];
+const LIVE_TRACKING_STATUSES = ['in_progress', 'at_border'];
+const MAP_WORK_STATUSES = ['accepted', 'in_progress', 'at_border'];
+const TERMINAL_STATUSES = ['completed', 'cancelled', 'rejected', 'expired'];
+const COMPOSER_INPUT_MIN_HEIGHT = 32;
+const COMPOSER_INPUT_MAX_HEIGHT = 74;
+const COMPOSER_INPUT_VERTICAL_PADDING = 8;
 
 // WhatsApp-style chat is the default view; the trip map is a deliberate,
 // button-triggered secondary view (PR #255 review: "map-first бардак" was the
@@ -78,202 +82,76 @@ const DOC_ATTACH_TYPES = [
   "application/csv", // .csv
 ];
 
+const EMOJI_MENU = ['😀', '😂', '✅', '👍', '🙏', '🤝', '🚚', '📍', '📦', '⏱️', '💰', '❤️', '👌', '🔥', '👏', '💯'];
+
 const COPY = {
   RU: {
-    messages: "Сообщения",
-    write: "Написать водителю…",
-    writeShipper: "Написать грузоотправителю…",
-    distance: "Расстояние",
-    remaining: "Осталось",
-    travelTime: "Время",
-    eta: "ETA",
-    updatedNow: "Обновлено сейчас",
-    updated: "Обновлено",
-    ago: "назад",
-    min: "мин",
-    hour: "ч",
-    day: "д",
-    cargo: "Груз",
-    driver: "Водитель",
-    shipper: "Грузоотправитель",
-    noMessages: "Сообщений пока нет",
-    attachPhoto: "Фото",
-    attachCamera: "Камера",
-    attachDocument: "Документ",
-    attachLocation: "Местопол.",
-    attachQuickReply: "Быстрый ответ",
-    attachCall: "Звонок",
-    attachTranslate: "Перевод",
-    callAudio: "Аудиозвонок",
-    callVideo: "Видеозвонок",
-    callSendLink: "Отправить ссылку на звонок",
-    callSchedule: "Запланировать звонок",
-    comingSoon: "Скоро добавим",
-    recording: "Идёт запись…",
-    voiceMessage: "Голосовое сообщение",
-    cancelDeal: "Отменить сделку",
-    cancelDealConfirm: "Отменить эту сделку?",
-    loading: "Загрузка сделки…",
-    loadingDate: "Загрузка",
-    deliveryDate: "Доставка",
-    collapseMap: "Свернуть карту",
-    tripFinished: "Сделка завершена",
-    tripDelivered: 'Груз доставлен',
-    awaitingReceiptStatus: 'Ожидает подтверждения',
-    tripAwaitingReceipt: 'Ожидаем подтверждения грузоотправителя',
-    tripAwaitingReceiptHint:
-      "Водитель отметил груз как доставленный. Сделка завершится после подтверждения получения.",
-    tripReceived: "Получение подтверждено",
-    mapFinishedHint: "Live GPS для этого рейса больше не используется.",
-    jumpLatest: "Новые сообщения",
-    statuses: "Статусы и история",
+    messages: 'Сообщения',
+    write: 'Написать водителю…', writeShipper: 'Написать грузоотправителю…',
+    distance: 'Расстояние', remaining: 'Осталось', travelTime: 'Время', eta: 'ETA',
+    updatedNow: 'Обновлено сейчас', updated: 'Обновлено', ago: 'назад', min: 'мин', hour: 'ч', day: 'д',
+    cargo: 'Груз', driver: 'Водитель', shipper: 'Грузоотправитель',
+    noMessages: 'Сообщений пока нет', attachPhoto: 'Фото', attachCamera: 'Камера', attachShare: 'Поделиться', attachDocument: 'Документ',
+    attachLocation: 'Локация', attachQuickReply: 'Ответ', attachCall: 'Звонок', attachTranslate: 'Перевод', attachContact: 'Контакт',
+    dealShareTitle: 'Рейс UrTruck', contactCardTitle: 'Контакт по рейсу',
+    callAudio: 'Аудиозвонок', callVideo: 'Видеозвонок', callSendLink: 'Отправить ссылку на звонок',
+    callSchedule: 'Запланировать звонок', comingSoon: 'Скоро добавим',
+    recording: 'Идёт запись…', voiceMessage: 'Голосовое сообщение',
+    cancelDeal: 'Отменить сделку', cancelDealConfirm: 'Отменить эту сделку?', loading: 'Загрузка сделки…',
+    loadingDate: 'Загрузка', deliveryDate: 'Доставка', collapseMap: 'Свернуть карту',
+    tripFinished: 'Сделка завершена', tripDelivered: 'Груз доставлен', awaitingReceiptStatus: 'Ожидает подтверждения', tripAwaitingReceipt: 'Ожидаем подтверждения грузоотправителя', tripAwaitingReceiptHint: 'Водитель отметил груз как доставленный. Сделка завершится после подтверждения получения.', tripReceived: 'Получение подтверждено', mapFinishedHint: 'Live GPS для этого рейса больше не используется.',
+    jumpLatest: 'Новые сообщения', statuses: 'Статусы и история',
   },
   EN: {
-    messages: "Messages",
-    write: "Message driver…",
-    writeShipper: "Message shipper…",
-    distance: "Distance",
-    remaining: "Remaining",
-    travelTime: "Time",
-    eta: "ETA",
-    updatedNow: "Updated now",
-    updated: "Updated",
-    ago: "ago",
-    min: "min",
-    hour: "h",
-    day: "d",
-    cargo: "Cargo",
-    driver: "Driver",
-    shipper: "Shipper",
-    noMessages: "No messages yet",
-    attachPhoto: "Photo",
-    attachCamera: "Camera",
-    attachDocument: "Document",
-    attachLocation: "Location",
-    attachQuickReply: "Quick reply",
-    attachCall: "Call",
-    attachTranslate: "Translate",
-    callAudio: "Audio call",
-    callVideo: "Video call",
-    callSendLink: "Send call link",
-    callSchedule: "Schedule a call",
-    comingSoon: "Coming soon",
-    recording: "Recording…",
-    voiceMessage: "Voice message",
-    cancelDeal: "Cancel deal",
-    cancelDealConfirm: "Cancel this deal?",
-    loading: "Loading deal…",
-    loadingDate: "Pickup",
-    deliveryDate: "Delivery",
-    collapseMap: "Collapse map",
-    tripFinished: "Deal completed",
-    tripDelivered: "Cargo delivered",
-    awaitingReceiptStatus: "Awaiting confirmation",
-    tripAwaitingReceipt: "Awaiting shipper confirmation",
-    tripAwaitingReceiptHint:
-      "The driver marked the cargo as delivered. The deal is completed after receipt is confirmed.",
-    tripReceived: "Receipt confirmed",
-    mapFinishedHint: "Live GPS is no longer used for this trip.",
-    jumpLatest: "New messages",
-    statuses: "Status & history",
+    messages: 'Messages',
+    write: 'Message driver…', writeShipper: 'Message shipper…',
+    distance: 'Distance', remaining: 'Remaining', travelTime: 'Time', eta: 'ETA',
+    updatedNow: 'Updated now', updated: 'Updated', ago: 'ago', min: 'min', hour: 'h', day: 'd',
+    cargo: 'Cargo', driver: 'Driver', shipper: 'Shipper',
+    noMessages: 'No messages yet', attachPhoto: 'Photo', attachCamera: 'Camera', attachShare: 'Share', attachDocument: 'Document',
+    attachLocation: 'Location', attachQuickReply: 'Reply', attachCall: 'Call', attachTranslate: 'Translate', attachContact: 'Contact',
+    dealShareTitle: 'UrTruck trip', contactCardTitle: 'Trip contact',
+    callAudio: 'Audio call', callVideo: 'Video call', callSendLink: 'Send call link',
+    callSchedule: 'Schedule a call', comingSoon: 'Coming soon',
+    recording: 'Recording…', voiceMessage: 'Voice message',
+    cancelDeal: 'Cancel deal', cancelDealConfirm: 'Cancel this deal?', loading: 'Loading deal…',
+    loadingDate: 'Pickup', deliveryDate: 'Delivery', collapseMap: 'Collapse map',
+    tripFinished: 'Deal completed', tripDelivered: 'Cargo delivered', awaitingReceiptStatus: 'Awaiting confirmation', tripAwaitingReceipt: 'Awaiting shipper confirmation', tripAwaitingReceiptHint: 'The driver marked the cargo as delivered. The deal is completed after receipt is confirmed.', tripReceived: 'Receipt confirmed', mapFinishedHint: 'Live GPS is no longer used for this trip.',
+    jumpLatest: 'New messages', statuses: 'Status & history',
   },
   ZH: {
-    messages: "消息",
-    write: "给司机发消息…",
-    writeShipper: "给货主发消息…",
-    distance: "距离",
-    remaining: "剩余",
-    travelTime: "时间",
-    eta: "预计时间",
-    updatedNow: "刚刚更新",
-    updated: "更新于",
-    ago: "前",
-    min: "分钟",
-    hour: "小时",
-    day: "天",
-    cargo: "货物",
-    driver: "司机",
-    shipper: "货主",
-    noMessages: "暂无消息",
-    attachPhoto: "照片",
-    attachCamera: "相机",
-    attachDocument: "文件",
-    attachLocation: "位置",
-    attachQuickReply: "快速回复",
-    attachCall: "通话",
-    attachTranslate: "翻译",
-    callAudio: "语音通话",
-    callVideo: "视频通话",
-    callSendLink: "发送通话链接",
-    callSchedule: "安排通话",
-    comingSoon: "即将推出",
-    recording: "正在录音…",
-    voiceMessage: "语音消息",
-    cancelDeal: "取消交易",
-    cancelDealConfirm: "确认取消这笔交易？",
-    loading: "正在加载交易…",
-    loadingDate: "装货",
-    deliveryDate: "送达",
-    collapseMap: "收起地图",
-    tripFinished: "交易已完成",
-    tripDelivered: "货物已送达",
-    awaitingReceiptStatus: "等待确认",
-    tripAwaitingReceipt: "等待货主确认收货",
-    tripAwaitingReceiptHint:
-      "司机已标记货物送达。货主确认收货后，交易才能完成。",
-    tripReceived: "已确认收货",
-    mapFinishedHint: "本次运输已停止实时 GPS。",
-    jumpLatest: "新消息",
-    statuses: "状态与历史",
+    messages: '消息',
+    write: '给司机发消息…', writeShipper: '给货主发消息…',
+    distance: '距离', remaining: '剩余', travelTime: '时间', eta: '预计时间',
+    updatedNow: '刚刚更新', updated: '更新于', ago: '前', min: '分钟', hour: '小时', day: '天',
+    cargo: '货物', driver: '司机', shipper: '货主',
+    noMessages: '暂无消息', attachPhoto: '照片', attachCamera: '相机', attachShare: '分享', attachDocument: '文件',
+    attachLocation: '位置', attachQuickReply: '回复', attachCall: '通话', attachTranslate: '翻译', attachContact: '联系人',
+    dealShareTitle: 'UrTruck 运输', contactCardTitle: '运输联系人',
+    callAudio: '语音通话', callVideo: '视频通话', callSendLink: '发送通话链接',
+    callSchedule: '安排通话', comingSoon: '即将推出',
+    recording: '正在录音…', voiceMessage: '语音消息',
+    cancelDeal: '取消交易', cancelDealConfirm: '确认取消这笔交易？', loading: '正在加载交易…',
+    loadingDate: '装货', deliveryDate: '送达', collapseMap: '收起地图',
+    tripFinished: '交易已完成', tripDelivered: '货物已送达', awaitingReceiptStatus: '等待确认', tripAwaitingReceipt: '等待货主确认收货', tripAwaitingReceiptHint: '司机已标记货物送达。货主确认收货后，交易才能完成。', tripReceived: '已确认收货', mapFinishedHint: '本次运输已停止实时 GPS。',
+    jumpLatest: '新消息', statuses: '状态与历史',
   },
   KK: {
-    messages: "Хабарламалар",
-    write: "Жүргізушіге жазу…",
-    writeShipper: "Жүк иесіне жазу…",
-    distance: "Қашықтық",
-    remaining: "Қалды",
-    travelTime: "Уақыт",
-    eta: "ETA",
-    updatedNow: "Қазір жаңартылды",
-    updated: "Жаңартылды",
-    ago: "бұрын",
-    min: "мин",
-    hour: "сағ",
-    day: "күн",
-    cargo: "Жүк",
-    driver: "Жүргізуші",
-    shipper: "Жүк иесі",
-    noMessages: "Әзірге хабарлама жоқ",
-    attachPhoto: "Фото",
-    attachCamera: "Камера",
-    attachDocument: "Құжат",
-    attachLocation: "Орналасу",
-    attachQuickReply: "Жылдам жауап",
-    attachCall: "Қоңырау",
-    attachTranslate: "Аудару",
-    callAudio: "Аудиоқоңырау",
-    callVideo: "Бейнеқоңырау",
-    callSendLink: "Қоңырау сілтемесін жіберу",
-    callSchedule: "Қоңырауды жоспарлау",
-    comingSoon: "Жақында қосамыз",
-    recording: "Жазылып жатыр…",
-    voiceMessage: "Дауыстық хабарлама",
-    cancelDeal: "Мәмілені болдырмау",
-    cancelDealConfirm: "Осы мәмілені болдырмау керек пе?",
-    loading: "Мәміле жүктелуде…",
-    loadingDate: "Тиеу",
-    deliveryDate: "Жеткізу",
-    collapseMap: "Картаны жию",
-    tripFinished: "Мәміле аяқталды",
-    tripDelivered: "Жүк жеткізілді",
-    awaitingReceiptStatus: "Растауды күтуде",
-    tripAwaitingReceipt: "Жүк иесінің қабылдауды растауын күтеміз",
-    tripAwaitingReceiptHint:
-      "Жүргізуші жүкті жеткізілді деп белгіледі. Жүк иесі қабылдауды растағаннан кейін мәміле аяқталады.",
-    tripReceived: "Қабылдау расталды",
-    mapFinishedHint: "Бұл рейсте live GPS енді қолданылмайды.",
-    jumpLatest: "Жаңа хабарламалар",
-    statuses: "Мәртебе және тарих",
+    messages: 'Хабарламалар',
+    write: 'Жүргізушіге жазу…', writeShipper: 'Жүк иесіне жазу…',
+    distance: 'Қашықтық', remaining: 'Қалды', travelTime: 'Уақыт', eta: 'ETA',
+    updatedNow: 'Қазір жаңартылды', updated: 'Жаңартылды', ago: 'бұрын', min: 'мин', hour: 'сағ', day: 'күн',
+    cargo: 'Жүк', driver: 'Жүргізуші', shipper: 'Жүк иесі',
+    noMessages: 'Әзірге хабарлама жоқ', attachPhoto: 'Фото', attachCamera: 'Камера', attachShare: 'Бөлісу', attachDocument: 'Құжат',
+    attachLocation: 'Локация', attachQuickReply: 'Жауап', attachCall: 'Қоңырау', attachTranslate: 'Аудару', attachContact: 'Контакт',
+    dealShareTitle: 'UrTruck рейсі', contactCardTitle: 'Рейс контакті',
+    callAudio: 'Аудиоқоңырау', callVideo: 'Бейнеқоңырау', callSendLink: 'Қоңырау сілтемесін жіберу',
+    callSchedule: 'Қоңырауды жоспарлау', comingSoon: 'Жақында қосамыз',
+    recording: 'Жазылып жатыр…', voiceMessage: 'Дауыстық хабарлама',
+    cancelDeal: 'Мәмілені болдырмау', cancelDealConfirm: 'Осы мәмілені болдырмау керек пе?', loading: 'Мәміле жүктелуде…',
+    loadingDate: 'Тиеу', deliveryDate: 'Жеткізу', collapseMap: 'Картаны жию',
+    tripFinished: 'Мәміле аяқталды', tripDelivered: 'Жүк жеткізілді', awaitingReceiptStatus: 'Растауды күтуде', tripAwaitingReceipt: 'Жүк иесінің қабылдауды растауын күтеміз', tripAwaitingReceiptHint: 'Жүргізуші жүкті жеткізілді деп белгіледі. Жүк иесі қабылдауды растағаннан кейін мәміле аяқталады.', tripReceived: 'Қабылдау расталды', mapFinishedHint: 'Бұл рейсте live GPS енді қолданылмайды.',
+    jumpLatest: 'Жаңа хабарламалар', statuses: 'Мәртебе және тарих',
   },
 };
 
@@ -402,7 +280,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [dealLoading, setDealLoading] = React.useState(!params.dealId);
   const [messages, setMessages] = React.useState([]);
   const [unreadCount, setUnreadCount] = React.useState(0);
-  const [input, setInput] = React.useState("");
+  const [input, setInput] = React.useState('');
+  const [inputHeight, setInputHeight] = React.useState(COMPOSER_INPUT_MIN_HEIGHT);
   const [timeline, setTimeline] = React.useState([]);
   const [location, setLocation] = React.useState(null);
   const [locationLoading, setLocationLoading] = React.useState(false);
@@ -413,6 +292,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [attachOpen, setAttachOpen] = React.useState(false);
   const [statusModalOpen, setStatusModalOpen] = React.useState(false);
   const [recording, setRecording] = React.useState(false);
+  const [composerFocused, setComposerFocused] = React.useState(false);
+  const [emojiOpen, setEmojiOpen] = React.useState(false);
   const [recordSecs, setRecordSecs] = React.useState(0);
   const [confirmDialog, setConfirmDialog] = React.useState(null);
   const [showJumpLatest, setShowJumpLatest] = React.useState(false);
@@ -426,6 +307,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [autoTranslate, setAutoTranslate] = React.useState(false);
 
   const listRef = React.useRef(null);
+  const inputRef = React.useRef(null);
   const mounted = React.useRef(true);
   const recordStartRef = React.useRef(0);
   const nearBottomRef = React.useRef(true);
@@ -477,13 +359,24 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   // construction, not by an extra branch.
   const onComposerFocus = React.useCallback(() => {
     setAttachOpen(false);
-    // Android opens the keyboard after focus. Give the layout a moment to
-    // resize, then keep the newest message and composer visible like a
-    // messenger app instead of leaving the user at the old scroll position.
-    [80, 260, 520].forEach((delay) => {
-      setTimeout(() => listRef.current?.scrollToEnd?.({ animated: true }), delay);
-    });
+    setCallMenuOpen(false);
+    setEmojiOpen(false);
+    setComposerFocused(true);
   }, []);
+
+  const onComposerBlur = React.useCallback(() => {
+    setComposerFocused(false);
+  }, []);
+
+  const collapseComposer = React.useCallback(() => {
+    setEmojiOpen(false);
+    if (recording || input.trim()) return;
+    setAttachOpen(false);
+    setCallMenuOpen(false);
+    setComposerFocused(false);
+    inputRef.current?.blur?.();
+    Keyboard.dismiss();
+  }, [input, recording]);
 
   React.useEffect(() => {
     if (!recording) {
@@ -691,13 +584,15 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       setMessages((previous) => {
         const optimisticRemaining = previous.filter((item) => {
           if (!item.optimistic) return false;
-          if (item.kind === 'document')
-            return !serverDocs.some((d) => d.clientUploadId === item.id);
-          return !merged.some(
-            (server) =>
-              server.clientMsgId === item.id ||
-              (server.mine && item.text && server.text === item.text),
-          );
+          if (item.kind === 'document') return !serverDocs.some((d) => d.clientUploadId === item.id);
+          // P1 30.08.2026: сверять по client_msg_id, а текст — только когда
+          // сервер id не вернул (старый бэк). Прежнее «или по тексту» роняло
+          // ВТОРОЕ одинаковое сообщение: отправил «Привет» дважды — второй
+          // пузырь удалялся, как только приходил первый с сервера, хотя сам
+          // он ещё не был сохранён. Снаружи — «отправил, а оно исчезло».
+          return !merged.some((server) => (server.clientMsgId
+            ? server.clientMsgId === item.id
+            : (server.mine && item.text && server.text === item.text)));
         });
         return [...merged, ...optimisticRemaining];
       });
@@ -724,22 +619,34 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     };
   }, [roomId, loadMessages]);
 
-  // The canonical deal workspace is also an outbox consumer. Without this,
-  // text queued during a brief outage waited forever unless the legacy chat
-  // screen happened to be opened afterwards.
+  // P0 30.08.2026: комната сделки — единственный реальный чат обеих ролей
+  // (CLAUDE.md: переписка живёт внутри «Сделок»), но она только КЛАЛА
+  // неотправленный текст в outbox и никогда его не разгружала: flushOutbox
+  // звался лишь из App.js (старт/возврат в active) и из старого ChatScreen.
+  // На вебе, пока страницу не перезагрузят, flush мог не случиться за всю
+  // сессию — текст висел в очереди, до собеседника не доходил, а после
+  // обновления пузырь пропадал. Прогоняем очередь при входе в комнату и при
+  // возврате приложения в active; onDrop помечает пузырь «не отправлено»,
+  // чтобы недоставленное не исчезало молча.
   React.useEffect(() => {
-    if (!roomId || !session?.user?.id) return undefined;
-    const flush = () => {
-      flushOutbox((payload) => chatAPI.send(payload), session.user.id)
-        .then((sent) => { if (sent > 0 && mounted.current) loadMessages(); })
-        .catch(() => {});
+    if (!roomId) return undefined;
+    const doFlush = async () => {
+      try {
+        const sent = await flushOutbox((p) => chatAPI.send(p), session?.user?.id, {
+          onDrop: (item) => {
+            if (!mounted.current) return;
+            setMessages((items) => items.map((m) => (m.id === item.clientId
+              ? { ...m, sendStatus: 'failed', sendError: t('chat_send_failed') }
+              : m)));
+          },
+        });
+        if (sent > 0 && mounted.current) loadMessages();
+      } catch { /* следующий flush повторит */ }
     };
-    flush();
-    const sub = AppState.addEventListener("change", (state) => {
-      if (state === "active") flush();
-    });
+    doFlush();
+    const sub = AppState.addEventListener('change', (state) => { if (state === 'active') doFlush(); });
     return () => sub?.remove?.();
-  }, [roomId, session?.user?.id, loadMessages]);
+  }, [roomId, session?.user?.id, loadMessages, t]);
 
   React.useEffect(() => {
     if (messages.length > lastCountRef.current) {
@@ -1002,69 +909,34 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   // Shared by the composer and attachment actions — every "send a fixed
   // string" action funnels through here so error handling (section 6) is
   // written once. Returns the local optimistic id so callers can retry.
-  const sendRawText = React.useCallback(
-    async (body) => {
-      if (!body || (!roomId && !recipientId)) return;
-      const clientId = newClientId();
-      setMessages((items) => [
-        ...items,
-        {
-          id: clientId,
-          mine: true,
-          text: body,
-          time: nowTime(),
-          optimistic: true,
-          sendStatus: "sending",
-        },
-      ]);
-      setAttachOpen(false);
-      setCallMenuOpen(false);
-      nearBottomRef.current = true;
-      setShowJumpLatest(false);
-      setTimeout(() => listRef.current?.scrollToEnd?.({ animated: true }), 60);
-      const payload = {
-        roomId,
-        toUserId: recipientId,
-        text: body,
-        cargoId: deal?.cargo_id || params.cargoId || null,
-        tripId: deal?.trip_id || params.tripId || null,
-        clientMsgId: clientId,
-      };
-      try {
-        const result = await chatAPI.send(payload);
-        if (result?.room_id && !roomId) setRoomId(result.room_id);
-        setTimeout(loadMessages, 120);
-      } catch (error) {
-        if (error?.isNetwork) {
-          await enqueueOutbox({ clientId, payload }, session?.user?.id);
-          toast(t("chat_queued"), "info", 2200);
-          setMessages((items) =>
-            items.map((m) =>
-              m.id === clientId ? { ...m, sendStatus: 'queued' } : m,
-            ),
-          );
-          return;
-        }
-        // Section 6: never silently drop the bubble — surface the real reason.
-        // 403 is a known, finite case (chat gated until deal accepted) so it
-        // gets a fully localized message; 400 varies per input and the owner
-        // explicitly asked to show backend detail for it (accepted trade-off:
-        // backend error strings are Russian-only, same as the rest of the API —
-        // see CLAUDE.md's known non-blocking findings).
-        const errorText =
-          error?.status === 403
-            ? t('chat_error_403')
-            : error?.status === 400 && error?.detail
-              ? `${t('chat_error_prefix')}: ${error.detail}`
-              : t("chat_send_failed");
-        toast(errorText, "error");
-        setMessages((items) =>
-          items.map((m) =>
-            m.id === clientId
-              ? { ...m, sendStatus: 'failed', sendError: errorText }
-              : m,
-          ),
-        );
+  const sendRawText = React.useCallback(async (body) => {
+    if (!body || (!roomId && !recipientId)) return;
+    const clientId = newClientId();
+    setMessages((items) => [...items, {
+      id: clientId, mine: true, text: body, time: nowTime(), optimistic: true, sendStatus: 'sending',
+    }]);
+    setAttachOpen(false);
+    setCallMenuOpen(false);
+    setEmojiOpen(false);
+    nearBottomRef.current = true;
+    setShowJumpLatest(false);
+    setTimeout(() => listRef.current?.scrollToEnd?.({ animated: true }), 60);
+    const payload = {
+      roomId, toUserId: recipientId, text: body,
+      cargoId: deal?.cargo_id || params.cargoId || null,
+      tripId: deal?.trip_id || params.tripId || null,
+      clientMsgId: clientId,
+    };
+    try {
+      const result = await chatAPI.send(payload);
+      if (result?.room_id && !roomId) setRoomId(result.room_id);
+      setTimeout(loadMessages, 120);
+    } catch (error) {
+      if (error?.isNetwork) {
+        await enqueueOutbox({ clientId, payload }, session?.user?.id);
+        toast(t('chat_queued'), 'info', 2200);
+        setMessages((items) => items.map((m) => (m.id === clientId ? { ...m, sendStatus: 'queued' } : m)));
+        return;
       }
     },
     [
@@ -1084,7 +956,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const sendText = React.useCallback(() => {
     const body = input.trim();
     if (!body) return;
-    setInput("");
+    setInput('');
+    setInputHeight(40);
+    setEmojiOpen(false);
     sendRawText(body);
   }, [input, sendRawText]);
 
@@ -1225,6 +1099,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     ],
   );
 
+  const sendGalleryPhoto = React.useCallback(() => sendPhoto(false), [sendPhoto]);
+  const sendCameraPhoto = React.useCallback(() => sendPhoto(true), [sendPhoto]);
+
   // Documents: one clientUploadId drives both the initial attempt and any
   // Retry, mirroring DealAttachments.js's idempotency pattern so a double
   // tap on Retry cannot create a duplicate durable file server-side.
@@ -1268,6 +1145,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
   const pickAndSendDocument = React.useCallback(async () => {
     setAttachOpen(false);
+    setEmojiOpen(false);
     if (!roomId) return;
     const res = await DocumentPicker.getDocumentAsync({
       type: DOC_ATTACH_TYPES,
@@ -1306,6 +1184,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const toggleVoice = React.useCallback(async () => {
     if (!recording) {
       try {
+        setAttachOpen(false);
+        setCallMenuOpen(false);
+        setEmojiOpen(false);
         const ok = await voice.startRecording();
         if (!ok) {
           toast(t('voice_error_record'), "error");
@@ -1322,18 +1203,33 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     let result;
     try {
       result = await voice.stopRecording();
-    } catch {
-      toast(t('voice_error_record'), "error");
-      return;
-    }
-    if (!result?.uri) {
-      toast(t('voice_error_record'), "error");
-      return;
-    }
-    const duration =
-      result.duration ||
-      Math.max(1, Math.round((Date.now() - recordStartRef.current) / 1000));
-    const clientId = appendOptimisticVoice(result.uri, duration);
+    } catch { toast(t('voice_error_record'), 'error'); return; }
+    if (!result?.uri) { toast(t('voice_error_record'), 'error'); return; }
+    const duration = result.duration || Math.max(1, Math.round((Date.now() - recordStartRef.current) / 1000));
+    const clientId = newClientId('voice');
+    const voiceItem = {
+      id: clientId,
+      mine: true,
+      text: '',
+      voice: true,
+      mediaUrl: result.uri,
+      voiceDuration: duration,
+      time: nowTime(),
+      optimistic: true,
+      sendStatus: 'sending',
+      voiceUri: result.uri,
+      voiceBlob: result.blob || null,
+      voiceMime: result.blob?.type || null,
+    };
+    setMessages((items) => [...items, voiceItem]);
+    nearBottomRef.current = true;
+    setShowJumpLatest(false);
+    setTimeout(() => listRef.current?.scrollToEnd?.({ animated: true }), 40);
+
+    const failVoice = (message) => {
+      setMessages((items) => items.map((m) => (m.id === clientId ? { ...m, sendStatus: 'failed', sendError: message } : m)));
+    };
+
     let upload;
     try {
       upload = await chatAPI.uploadChatVoice(result.uri, {
@@ -1346,29 +1242,59 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       // rejected the file" (502) instead of one flat error, and 413 is real
       // (voice/backend.py enforces a 10MB cap) — surface all of it instead of
       // one generic message regardless of cause.
-      const key = error?.isNetwork ? null : error?.status === 413 ? 'doc_error_too_large' : error?.status >= 500 ? 'doc_error_server' : 'voice_error_upload';
-      setMessages((items) =>
-        items.map((m) =>
-          m.id === clientId
-            ? {
-                ...m,
-                sendStatus: "failed",
-                sendError: key ? t(key) : t("no_connection"),
-              }
-            : m,
-        ),
-      );
-      toast(key ? t(key) : t("no_connection"), "error");
+      const key = error?.isNetwork ? null
+        : error?.status === 413 ? 'doc_error_too_large'
+          : error?.status >= 500 ? 'doc_error_server'
+            : 'voice_error_upload';
+      const message = key ? t(key) : t('no_connection');
+      failVoice(message);
+      toast(message, 'error');
       return;
     }
     if (!upload?.voice_key) {
-      toast(t('voice_error_upload'), "error");
+      const message = t('voice_error_upload');
+      failVoice(message);
+      toast(message, 'error');
       return;
     }
-    setMessages((items) =>
-      items.map((m) =>
-        m.id === clientId ? { ...m, sendStatus: "sending" } : m,
-      ),
+    try {
+      await chatAPI.send({
+        roomId, toUserId: recipientId, text: `🎤 ${ui.voiceMessage}`, photoUrl: upload.voice_key,
+        isVoice: true, voiceDuration: duration,
+        cargoId: deal?.cargo_id || params.cargoId || null, tripId: deal?.trip_id || params.tripId || null,
+        clientMsgId: clientId,
+      });
+      setMessages((items) => items.map((m) => (m.id === clientId ? { ...m, sendStatus: 'sent' } : m)));
+      setTimeout(loadMessages, 120);
+    } catch {
+      const message = t('voice_error_send');
+      failVoice(message);
+      toast(message, 'error');
+    }
+  }, [recording, roomId, recipientId, deal?.cargo_id, deal?.trip_id, params.cargoId, params.tripId, ui.voiceMessage, loadMessages, toast, t]);
+
+  const toggleAttachMenu = React.useCallback(() => {
+    setCallMenuOpen(false);
+    setEmojiOpen(false);
+    setAttachOpen((value) => !value);
+  }, []);
+
+  const toggleEmojiMenu = React.useCallback(() => {
+    setAttachOpen(false);
+    setCallMenuOpen(false);
+    setComposerFocused(false);
+    Keyboard.dismiss();
+    inputRef.current?.blur?.();
+    setEmojiOpen((value) => !value);
+  }, []);
+
+  const insertEmoji = React.useCallback((emoji) => {
+    setInput((value) => `${value}${emoji}`);
+  }, []);
+
+  const renderMessage = React.useCallback(({ item }) => {
+    if (item.system) return (
+      <View style={s.systemRow}><Text style={[s.systemText, { color: colors.textMuted }]}>{item.text}</Text></View>
     );
     const payload = {
       roomId,
@@ -1589,11 +1515,38 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                   </View>
                 </View>
               </TouchableOpacity>
-            ) : null}
-            {item.voice ? (
-              <>
-                {false && (
-                <>
+            ) : item.docUrl ? <Feather name="chevron-right" size={16} color={item.mine ? 'rgba(255,255,255,0.75)' : colors.textMuted} /> : null}
+          </TouchableOpacity>
+          <Text style={[s.messageTime, { color: colors.textMuted, textAlign: item.mine ? 'right' : 'left' }]}>{item.time}</Text>
+        </View>
+      );
+    }
+
+    return (
+      <View style={[s.messageRow, item.mine ? s.messageMine : s.messageThem]}>
+        <View style={[s.bubble, item.mine ? s.bubbleMine : s.bubbleThem, !item.mine && { borderColor: colors.border, backgroundColor: colors.surface }]}>
+          {item.photo && item.mediaUrl ? (
+            <TouchableOpacity onPress={() => setFullImage(item.mediaUrl)} testID="deal-chat-photo-bubble">
+              <Image source={{ uri: item.mediaUrl }} style={s.photo} />
+            </TouchableOpacity>
+          ) : null}
+          {item.voice ? (
+            <VoiceMessageBubble
+              uri={item.mediaUrl}
+              fallbackDurationSec={item.voiceDuration}
+              mine={item.mine}
+              sending={item.sendStatus === 'sending'}
+              textColor={item.mine ? '#FFFFFF' : colors.text}
+              mutedColor={item.mine ? 'rgba(255,255,255,0.85)' : colors.textMuted}
+              onError={() => toast(t('voice_play_fail'), 'error')}
+              testID="deal-chat-voice-bubble"
+            />
+          ) : item.text ? (
+            <>
+              <Text style={[s.messageText, { color: item.mine ? '#FFFFFF' : colors.text }]}>
+                {translations[item.id] && !translations[item.id].showOriginal ? translations[item.id].text : item.text}
+              </Text>
+              {!item.mine && !item.system ? (
                 <TouchableOpacity
                   onPress={() => item.mediaUrl && voice.play(item.mediaUrl)}
                   style={s.voiceRow}
@@ -1851,22 +1804,22 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
             </TouchableOpacity>
           ) : null}
         </View>
-      );
-    },
-    [
-      colors,
-      ui.voiceMessage,
-      translations,
-      translating,
-      t,
-      toast,
-      retryDocument,
-      retryFailedText,
-      voiceTranscripts,
-      voiceTranscribing,
-      toggleVoiceTranscript,
-    ],
-  );
+        {item.sendStatus === 'failed' ? (
+          <TouchableOpacity
+            onPress={item.voice ? undefined : () => retryFailedText(item)}
+            disabled={!!item.voice}
+            style={s.errorRow}
+            testID={item.voice ? 'deal-chat-voice-error' : 'deal-chat-message-retry'}
+          >
+            <Feather name="alert-circle" size={12} color="#EF4444" />
+            <Text style={s.errorText} numberOfLines={2}>
+              {item.sendError || t('chat_send_failed')}{item.voice ? '' : ` · ${t('chat_attach_retry')}`}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+    );
+  }, [colors, translations, translating, t, toast, retryDocument, retryFailedText]);
 
   const latestMessage = messages.length ? messages[messages.length - 1] : null;
   const latestPreview = latestMessage
@@ -1884,34 +1837,13 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const routeLabel = `${localizePlace(from, language)} → ${localizePlace(to, language)}`;
   const visibleDealStatus = userFacingDealStatus(deal?.status || "accepted");
   const statusLabel = visibleDealStatus === 'delivered' ? ui.awaitingReceiptStatus : formatStatus(visibleDealStatus);
-  const partnerName = text(
-    partner?.name,
-    deal?.counterparty_name,
-    isDriver ? cargo?.owner_name : trip?.driver_display_name,
-  );
-
-  const shareDeal = React.useCallback(async () => {
-    setAttachOpen(false);
-    try {
-      await Share.share({ message: routeLabel });
-    } catch {}
-  }, [routeLabel]);
-
-  const shareContact = React.useCallback(() => {
-    setAttachOpen(false);
-    sendRawText(`${t("contact_section")}: ${partnerName || "—"}`);
-  }, [partnerName, sendRawText, t]);
-
-  const sendQuickReply = React.useCallback(() => {
-    setAttachOpen(false);
-    sendRawText(t('deal_chat_quick_reply'));
-  }, [sendRawText, t]);
-
-  const sendCallLink = React.useCallback(() => {
-    setCallMenuOpen(false);
-    setAttachOpen(false);
-    sendRawText(t('deal_chat_call_link_text'));
-  }, [sendRawText, t]);
+  const statusActionIcon =
+    visibleDealStatus === 'in_progress' ? 'truck'
+      : visibleDealStatus === 'at_border' ? 'map-pin'
+        : visibleDealStatus === 'delivered' ? 'package'
+          : visibleDealStatus === 'received' || visibleDealStatus === 'completed' ? 'check-circle'
+            : 'check-circle';
+  const partnerName = text(partner?.name, deal?.counterparty_name, isDriver ? cargo?.owner_name : trip?.driver_display_name);
 
   const rawCargoName = text(deal?.cargo_desc, cargo?.cargo_desc);
   const rawTruckType = text(
@@ -2002,6 +1934,26 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   };
   const closeMap = () => setViewMode(VIEW_CHAT);
 
+  const sendDealShare = React.useCallback(() => {
+    const parts = [
+      ui.dealShareTitle,
+      routeLabel,
+      cargoMeta,
+      scheduleMeta,
+      counterpartyMeta,
+    ].filter(Boolean);
+    sendRawText(parts.join('\n'));
+  }, [ui.dealShareTitle, routeLabel, cargoMeta, scheduleMeta, counterpartyMeta, sendRawText]);
+
+  const sendContactCard = React.useCallback(() => {
+    const parts = [
+      ui.contactCardTitle,
+      counterpartyMeta,
+      routeLabel,
+    ].filter(Boolean);
+    sendRawText(parts.join('\n'));
+  }, [ui.contactCardTitle, counterpartyMeta, routeLabel, sendRawText]);
+
   const jumpLatest = () => {
     nearBottomRef.current = true;
     setShowJumpLatest(false);
@@ -2021,168 +1973,57 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     : null;
 
   const PLUS_MENU = [
-    {
-      key: "photo",
-      icon: "image",
-      label: ui.attachPhoto,
-      onPress: () => sendPhoto(false),
-    },
-    {
-      key: "camera",
-      icon: "camera",
-      label: ui.attachCamera,
-      onPress: () => sendPhoto(true),
-    },
-    {
-      key: "share",
-      icon: "share-2",
-      label: t("share"),
-      onPress: shareDeal,
-      testID: "deal-chat-attach-share",
-    },
-    {
-      key: "statuses",
-      icon: "check-square",
-      label: ui.statuses,
-      onPress: () => {
-        setAttachOpen(false);
-        setStatusModalOpen(true);
-      },
-      testID: "deal-chat-attach-statuses",
-    },
-    {
-      key: "location",
-      icon: "map-pin",
-      label: ui.attachLocation,
-      onPress: sendLocation,
-      busy: locationSending,
-      testID: "deal-chat-attach-location",
-    },
-    {
-      key: "document",
-      icon: "file-text",
-      label: ui.attachDocument,
-      onPress: pickAndSendDocument,
-      testID: "deal-chat-attach-document",
-    },
-    {
-      key: "contact",
-      icon: "user",
-      label: t("contact_section"),
-      onPress: shareContact,
-      testID: "deal-chat-attach-contact",
-    },
-    {
-      key: "translate",
-      icon: "globe",
-      label: ui.attachTranslate,
-      onPress: toggleAutoTranslate,
-      testID: "deal-chat-attach-translate",
-    },
+    { key: 'photo', icon: 'image', label: ui.attachPhoto, onPress: sendGalleryPhoto, testID: 'deal-chat-attach-photo' },
+    { key: 'camera', icon: 'camera', label: ui.attachCamera, onPress: sendCameraPhoto, testID: 'deal-chat-attach-camera' },
+    { key: 'share', icon: 'share', label: ui.attachShare, onPress: sendDealShare, testID: 'deal-chat-attach-share' },
+    { key: 'status', icon: 'tasks', label: ui.statuses, onPress: () => { setAttachOpen(false); setStatusModalOpen(true); }, testID: 'deal-chat-attach-status' },
+    { key: 'location', icon: 'map-marker-alt', label: ui.attachLocation, onPress: sendLocation, busy: locationSending, testID: 'deal-chat-attach-location' },
+    { key: 'document', icon: 'file-alt', label: ui.attachDocument, onPress: pickAndSendDocument, testID: 'deal-chat-attach-document' },
+    { key: 'contact', icon: 'user-alt', label: ui.attachContact, onPress: sendContactCard, testID: 'deal-chat-attach-contact' },
+    { key: 'translate', icon: 'language', label: ui.attachTranslate, onPress: toggleAutoTranslate, testID: 'deal-chat-attach-translate' },
   ];
 
-  const CALL_MENU = [
-    { key: 'link', icon: 'link', label: t('deal_chat_call_link_text'), testID: 'deal-call-send-link', onPress: sendCallLink },
-    { key: 'audio', icon: 'phone', label: t('call_partner'), disabled: true },
-    { key: 'video', icon: 'video', label: t('video_call'), disabled: true },
-    { key: 'schedule', icon: 'calendar', label: t('schedule'), disabled: true },
-  ];
-
-  return (
-    <SafeAreaView
-      style={[s.safe, { backgroundColor: colors.bg }]}
-      edges={["top"]}
-      testID="deal-workspace-screen"
-    >
-      <KeyboardAvoidingView
-        style={s.safe}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={0}
-      >
-        <View
-          style={[
-            s.compactHeader,
-            { borderBottomColor: colors.border, backgroundColor: colors.bg },
-          ]}
-          testID="deal-compact-header"
-        >
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={s.backButton}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            testID="deal-workspace-back"
-          >
-            <Feather name="chevron-left" size={28} color={colors.text} />
-          </TouchableOpacity>
-          <View style={s.headerText}>
-            <View style={s.routeHeaderRow}>
-              <Text
-                style={[s.routeTitle, { color: colors.text }]}
-                numberOfLines={1}
-              >
-                {routeLabel}
-              </Text>
-              <View style={s.statusPill}>
-                <View style={s.statusDot} />
-                <Text style={s.statusPillText} numberOfLines={1}>
-                  {statusLabel}
-                </Text>
-              </View>
-            </View>
-            {cargoMeta ? (
-              <Text
-                style={[s.metaPrimary, { color: colors.text }]}
-                numberOfLines={1}
-              >
-                {cargoMeta}
-              </Text>
-            ) : null}
-            {scheduleMeta ? (
-              <Text
-                style={[s.metaSecondary, { color: colors.textMuted }]}
-                numberOfLines={1}
-              >
-                {scheduleMeta}
-              </Text>
-            ) : null}
-            <Text
-              style={[s.partnerText, { color: colors.textMuted }]}
-              numberOfLines={1}
-            >
-              {counterpartyMeta}
-            </Text>
-          </View>
-          <View style={s.headerActions}>
-            <TouchableOpacity
-              onPress={openMap}
-              style={[s.headerIconBtn, { borderColor: colors.border }]}
-              testID="deal-header-map"
-              accessibilityLabel={t("deal_map_card_title")}
-            >
-              <Feather name="map" size={17} color="#168759" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => {
-                setAttachOpen(false);
-                setCallMenuOpen(true);
-              }}
-              style={[s.headerIconBtn, { borderColor: colors.border }]}
-              testID="deal-call-open"
-              accessibilityLabel={t("call_partner")}
-            >
-              <Feather name="phone-call" size={17} color="#168759" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setStatusModalOpen(true)}
-              style={[s.headerIconBtn, { borderColor: colors.border }]}
-              testID="deal-status-open"
-              accessibilityLabel={ui.statuses}
-            >
-              <Feather name="check-circle" size={17} color="#168759" />
-            </TouchableOpacity>
+  const compactHeader = (
+    <View style={[s.compactHeader, { borderBottomColor: colors.border, backgroundColor: colors.bg }]} testID="deal-compact-header">
+      <TouchableOpacity onPress={() => navigation.goBack()} style={s.backButton} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} testID="deal-workspace-back">
+        <Feather name="chevron-left" size={28} color={colors.text} />
+      </TouchableOpacity>
+      <View style={s.headerText}>
+        <View style={s.routeHeaderRow}>
+          <Text style={[s.routeTitle, { color: colors.text }]} numberOfLines={1}>{routeLabel}</Text>
+          <View style={s.statusPill}>
+            <View style={s.statusDot} />
+            <Text style={s.statusPillText} numberOfLines={1}>{statusLabel}</Text>
           </View>
         </View>
+        {cargoMeta ? <Text style={[s.metaPrimary, { color: colors.text }]} numberOfLines={1}>{cargoMeta}</Text> : null}
+        {scheduleMeta ? <Text style={[s.metaSecondary, { color: colors.textMuted }]} numberOfLines={1}>{scheduleMeta}</Text> : null}
+        <Text style={[s.partnerText, { color: colors.textMuted }]} numberOfLines={1}>{counterpartyMeta}</Text>
+      </View>
+      <View style={s.headerActions}>
+        <TouchableOpacity
+          onPress={openMap}
+          style={s.headerIconBtn}
+          testID="deal-header-map"
+          accessibilityLabel={t('deal_map_card_title')}
+        >
+          <Feather name="map" size={22} color="#FFFFFF" />
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setStatusModalOpen(true)}
+          style={s.headerIconBtn}
+          testID="deal-status-open"
+          accessibilityLabel={ui.statuses}
+        >
+          <Feather name={statusActionIcon} size={22} color="#FFFFFF" />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
 
+  return (
+    <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={['top']} testID="deal-workspace-screen">
+      <KeyboardAvoidingView style={s.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
         {viewMode === VIEW_CHAT ? (
           <View style={s.chatFullscreen} testID="deal-chat-fullscreen">
             {dealLoading && !dealId ? (
@@ -2194,41 +2035,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
               </View>
             ) : (
               <>
-                {nextAction ? (
-                  <TouchableOpacity
-                    style={[
-                      s.actionBar,
-                      {
-                        backgroundColor: nextAction.disabled
-                          ? "#E4E8E5"
-                          : "#168759",
-                      },
-                    ]}
-                    onPress={runNextAction}
-                    disabled={
-                      nextAction.disabled || statusLoading || trackingLoading
-                    }
-                    testID={nextActionTestId}
-                  >
-                    <Feather
-                      name={nextAction.icon}
-                      size={16}
-                      color={nextAction.disabled ? "#7C8B82" : "#FFFFFF"}
-                    />
-                    <Text
-                      style={[
-                        s.actionBarText,
-                        { color: nextAction.disabled ? "#7C8B82" : "#FFFFFF" },
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {statusLoading || trackingLoading
-                        ? "…"
-                        : nextAction.label}
-                    </Text>
-                  </TouchableOpacity>
-                ) : null}
-
                 <View style={s.chatBody}>
                   <FlatList
                     ref={listRef}
@@ -2237,6 +2043,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                     keyExtractor={(item) => item.id}
                     style={s.messageList}
                     contentContainerStyle={s.messageContent}
+                    ListHeaderComponent={compactHeader}
                     keyboardShouldPersistTaps="handled"
                     onScroll={(event) => {
                       const { contentOffset, contentSize, layoutMeasurement } =
@@ -2295,18 +2102,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                     >
                       <Feather name="trash-2" size={15} color="#B91C1C" />
                     </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={toggleVoice}
-                      style={s.recordStopBtn}
-                      testID="deal-chat-recording-send"
-                      accessibilityLabel={t("voice_send")}
-                    >
-                      <FontAwesome5
-                        name="paper-plane"
-                        size={15}
-                        color="#FFFFFF"
-                        solid
-                      />
+                    <TouchableOpacity onPress={toggleVoice} style={s.recordSendBtn} testID="deal-chat-recording-send">
+                      <FontAwesome5 name="paper-plane" size={13} color="#FFFFFF" solid />
                     </TouchableOpacity>
                   </View>
                 ) : null}
@@ -2314,130 +2111,98 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                 <View
                   style={[
                     s.composer,
-                    {
-                      borderTopColor: colors.border,
-                      paddingBottom: Math.max(insets.bottom, 8),
-                    },
+                    composerFocused && s.composerFocused,
+                    { borderTopColor: colors.border, paddingBottom: attachOpen || emojiOpen ? 9 : Math.max(insets.bottom, 8) },
                   ]}
                   testID="deal-chat-composer"
                 >
-                  {!recording ? (
-                    <TouchableOpacity
-                      style={[
-                        s.composerIcon,
-                        {
-                          borderColor: colors.border,
-                          backgroundColor: colors.surface,
-                        },
-                      ]}
-                      onPress={() => sendPhoto(true)}
-                      testID="deal-chat-camera"
-                    >
-                      <Feather name="camera" size={19} color={colors.text} />
-                    </TouchableOpacity>
-                  ) : null}
-                  <TextInput
-                    value={input}
-                    onChangeText={(value) => {
-                      setInput(value);
-                      if (roomId) chatAPI.typing(roomId);
-                    }}
-                    onFocus={onComposerFocus}
-                    onSubmitEditing={sendText}
-                    returnKeyType="send"
-                    multiline={false}
-                    style={[
-                      s.input,
-                      {
-                        height: 44,
-                        color: colors.text,
-                        borderColor: colors.border,
-                        backgroundColor: colors.surface,
-                      },
-                    ]}
-                    placeholder={isDriver ? ui.writeShipper : ui.write}
-                    placeholderTextColor={colors.textMuted}
-                    testID="deal-chat-input"
-                  />
-                  {!recording ? (
-                    input.trim() ? (
-                      <TouchableOpacity
-                        style={s.sendButton}
-                        onPress={sendText}
-                        testID="deal-chat-send"
-                      >
-                        <FontAwesome5
-                          name="paper-plane"
-                          size={15}
-                          color="#FFFFFF"
-                          solid
-                        />
-                      </TouchableOpacity>
-                    ) : (
-                      <TouchableOpacity
-                        style={[s.composerIcon, { borderColor: colors.border, backgroundColor: colors.surface }]}
-                        onPress={toggleVoice}
-                        testID="deal-chat-voice"
-                      >
-                        <Feather name="volume-2" size={19} color={colors.text} />
-                      </TouchableOpacity>
-                    )
-                  ) : null}
                   <TouchableOpacity
-                    style={[s.composerIcon, { borderColor: colors.border, backgroundColor: colors.surface }]}
-                    onPress={() => setAttachOpen((value) => !value)}
-                    testID="deal-chat-attach"
+                    style={[s.composerCircle, recording && s.composerCircleDisabled]}
+                    onPress={toggleVoice}
+                    disabled={recording}
+                    testID="deal-chat-voice"
                   >
-                    <Feather name="plus" size={21} color={colors.text} />
+                    <Feather name="volume-2" size={22} color={recording ? '#8A8A8A' : '#202020'} />
                   </TouchableOpacity>
-                  {!recording ? (
+                  <View style={s.inputShell}>
+                    <TextInput
+                      ref={inputRef}
+                      value={input}
+                      onChangeText={(value) => {
+                        setInput(value);
+                        if (!value) setInputHeight(COMPOSER_INPUT_MIN_HEIGHT);
+                        if (roomId) chatAPI.typing(roomId);
+                      }}
+                      onFocus={onComposerFocus}
+                      onBlur={onComposerBlur}
+                      onContentSizeChange={(event) => {
+                        const nextHeight = Math.ceil(event.nativeEvent.contentSize.height + COMPOSER_INPUT_VERTICAL_PADDING);
+                        setInputHeight(Math.max(COMPOSER_INPUT_MIN_HEIGHT, Math.min(COMPOSER_INPUT_MAX_HEIGHT, nextHeight)));
+                      }}
+                      multiline
+                      scrollEnabled={inputHeight >= COMPOSER_INPUT_MAX_HEIGHT}
+                      style={[s.input, { height: inputHeight, color: colors.text }]}
+                      placeholder=""
+                      placeholderTextColor="transparent"
+                      testID="deal-chat-input"
+                    />
+                  </View>
+                  {!composerFocused ? (
                     <TouchableOpacity
-                      style={[s.composerIcon, { borderColor: colors.border, backgroundColor: colors.surface }]}
-                      onPress={() => setInput((value) => `${value}🙂`)}
+                      style={s.composerCircle}
+                      onPress={toggleEmojiMenu}
                       testID="deal-chat-emoji"
                     >
-                      <Feather name="smile" size={20} color={colors.text} />
+                      <Feather name="smile" size={26} color="#202020" />
                     </TouchableOpacity>
                   ) : null}
+                  {input.trim() ? (
+                    <TouchableOpacity style={s.sendButton} onPress={sendText} testID="deal-chat-send"><FontAwesome5 name="paper-plane" size={15} color="#FFFFFF" solid /></TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      style={s.composerCircle}
+                      onPress={toggleAttachMenu}
+                      testID="deal-chat-attach"
+                    >
+                      <Feather name="plus" size={27} color="#202020" />
+                    </TouchableOpacity>
+                  )}
                 </View>
 
+                {emojiOpen ? (
+                  <View style={[s.emojiMenu, { borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom + 14, 22) }]} testID="deal-chat-emoji-menu">
+                    <View style={s.emojiGrid}>
+                      {EMOJI_MENU.map((emoji, index) => (
+                        <TouchableOpacity
+                          key={`${emoji}-${index}`}
+                          style={s.emojiItem}
+                          onPress={() => insertEmoji(emoji)}
+                          testID={`deal-chat-emoji-option-${index}`}
+                        >
+                          <Text style={s.emojiText}>{emoji}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                ) : null}
+
                 {attachOpen ? (
-                  <View
-                    style={[s.attachMenu, { borderTopColor: colors.border }]}
-                    testID="deal-chat-attach-menu"
-                  >
+                  <View style={[s.attachMenu, { borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom + 18, 26) }]} testID="deal-chat-attach-menu">
+                    <TouchableOpacity style={s.attachHandleHit} onPress={collapseComposer} testID="deal-chat-attach-collapse" activeOpacity={0.8}>
+                      <View style={s.attachHandle} />
+                    </TouchableOpacity>
                     {PLUS_MENU.map((item) => (
-                      <TouchableOpacity
-                        key={item.key}
-                        style={s.attachItem}
-                        onPress={item.onPress}
-                        testID={item.testID}
-                        disabled={item.busy}
-                      >
-                        <View
-                          style={[
-                            s.attachIcon,
-                            { backgroundColor: colors.surface },
-                          ]}
-                        >
-                          {item.busy ? (
-                            <ActivityIndicator size="small" color="#168759" />
-                          ) : (
-                            <Feather
-                              name={item.icon}
-                              size={20}
-                              color={colors.text}
-                            />
-                          )}
+                      <TouchableOpacity key={item.key} style={s.attachItem} onPress={item.onPress} testID={item.testID} disabled={item.busy}>
+                        <View style={s.attachIcon}>
+                          {item.busy ? <ActivityIndicator size="small" color="#168759" /> : <FontAwesome5 name={item.icon} size={30} color="#686868" solid />}
                         </View>
-                        <Text
-                          style={[s.attachLabel, { color: colors.text }]}
-                          numberOfLines={1}
-                        >
-                          {item.label}
-                        </Text>
+                        <Text style={s.attachLabel} numberOfLines={1}>{item.label}</Text>
                       </TouchableOpacity>
                     ))}
+                    <View style={s.attachPager} pointerEvents="none">
+                      <View style={s.attachPagerDotActive} />
+                      <View style={s.attachPagerDot} />
+                    </View>
                   </View>
                 ) : null}
               </>
@@ -2731,14 +2496,19 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                 )}
                 contentContainerStyle={{ paddingBottom: 12 }}
               />
-              {deal?.status === "accepted" ? (
+              {nextAction ? (
                 <TouchableOpacity
-                  style={s.cancelLink}
-                  onPress={cancelDeal}
-                  testID="deal-cancel-link"
+                  style={[s.statusNextBtn, { opacity: nextAction.disabled || statusLoading || trackingLoading ? 0.6 : 1 }]}
+                  onPress={runNextAction}
+                  disabled={nextAction.disabled || statusLoading || trackingLoading}
+                  testID={nextActionTestId || 'deal-status-next-action'}
                 >
-                  <Text style={s.cancelLinkText}>{ui.cancelDeal}</Text>
+                  <Feather name={nextAction.icon} size={17} color="#FFFFFF" />
+                  <Text style={s.statusNextText}>{statusLoading || trackingLoading ? '…' : nextAction.label}</Text>
                 </TouchableOpacity>
+              ) : null}
+              {deal?.status === 'accepted' ? (
+                <TouchableOpacity style={s.cancelLink} onPress={cancelDeal} testID="deal-cancel-link"><Text style={s.cancelLinkText}>{ui.cancelDeal}</Text></TouchableOpacity>
               ) : null}
             </Pressable>
           </Pressable>
@@ -2780,93 +2550,34 @@ const s = StyleSheet.create({
     marginTop: 6,
   },
   headerText: { flex: 1, minWidth: 0, paddingRight: 8 },
-  headerActions: { flexDirection: "row", gap: 8, marginTop: 6 },
+  headerActions: { flexDirection: 'row', gap: 8, marginTop: 4 },
   headerIconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#168759',
+    shadowColor: '#0B2418',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
   },
-  routeHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    minHeight: 34,
-  },
-  routeTitle: {
-    flex: 1,
-    fontSize: 19,
-    fontWeight: "900",
-    letterSpacing: -0.35,
-  },
-  statusPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: 999,
-    backgroundColor: "#E9F6EF",
-  },
-  statusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: "#168759",
-  },
-  statusPillText: {
-    color: "#168759",
-    fontSize: 11.5,
-    fontWeight: "800",
-    maxWidth: 104,
-  },
-  metaPrimary: { fontSize: 12.7, fontWeight: "800", marginTop: 1 },
-  metaSecondary: { fontSize: 11.5, fontWeight: "650", marginTop: 3 },
-  partnerText: { fontSize: 11.5, fontWeight: "650", marginTop: 3 },
+  routeHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 34 },
+  routeTitle: { flex: 1, fontSize: 19, fontWeight: '900', letterSpacing: -0.35 },
+  statusPill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999, backgroundColor: '#E9F6EF' },
+  statusDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#168759' },
+  statusPillText: { color: '#168759', fontSize: 11.5, fontWeight: '800', maxWidth: 104 },
+  metaPrimary: { fontSize: 12.7, fontWeight: '800', marginTop: 1 },
+  metaSecondary: { fontSize: 11.5, fontWeight: '650', marginTop: 3 },
+  partnerText: { fontSize: 11.5, fontWeight: '650', marginTop: 3 },
 
   chatFullscreen: { flex: 1 },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 9 },
   loadingText: { fontSize: 13, fontWeight: "700" },
 
-  actionBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    minHeight: 44,
-    marginHorizontal: 12,
-    marginTop: 10,
-    borderRadius: 14,
-  },
-  actionBarText: { fontSize: 13.5, fontWeight: "900", flexShrink: 1 },
-
-  mapCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginHorizontal: 12,
-    marginTop: 10,
-    borderWidth: 1,
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  mapCardIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 13,
-    backgroundColor: "#E9F6EF",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  mapCardTitle: { fontSize: 13.5, fontWeight: "850" },
-  mapCardStatus: { fontSize: 11.5, fontWeight: "650", marginTop: 2 },
-  mapCardOpenPill: { flexDirection: "row", alignItems: "center", gap: 2 },
-  mapCardOpenText: { color: "#168759", fontSize: 12.5, fontWeight: "850" },
-
-  chatBody: { flex: 1, position: "relative" },
+  chatBody: { flex: 1, position: 'relative' },
   messageList: { flex: 1 },
   messageContent: { paddingHorizontal: 14, paddingTop: 10, paddingBottom: 12 },
   messageRow: { marginBottom: 10 },
@@ -3013,114 +2724,37 @@ const s = StyleSheet.create({
   docMeta: { fontSize: 11, fontWeight: "650", marginTop: 2 },
   docRetryBtn: { padding: 4 },
 
-  recordBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 9,
-    marginHorizontal: 10,
-    marginBottom: 7,
-    paddingHorizontal: 12,
-    minHeight: 44,
-    borderRadius: 22,
-    backgroundColor: "#F4F7F5",
-    borderWidth: 1,
-    borderColor: "#DDE8E2",
-  },
-  recordDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#168759",
-  },
-  recordWave: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 2,
-    height: 22,
-  },
-  recordWaveBar: {
-    width: 2.5,
-    borderRadius: 2,
-    backgroundColor: "#168759",
-    opacity: 0.58,
-  },
-  recordText: { color: "#15392B", fontSize: 12.5, fontWeight: "800", flex: 1 },
-  recordCancelBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#FFFFFF",
-  },
-  recordStopBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#168759",
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  recordBar: { flexDirection: 'row', alignItems: 'center', gap: 9, marginHorizontal: 10, marginBottom: 7, paddingHorizontal: 12, minHeight: 44, borderRadius: 22, backgroundColor: '#F4F7F5', borderWidth: 1, borderColor: '#DDE8E2' },
+  recordDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#168759' },
+  recordWave: { flexDirection: 'row', alignItems: 'center', gap: 2, height: 22 },
+  recordWaveBar: { width: 2.5, borderRadius: 2, backgroundColor: '#168759', opacity: 0.58 },
+  recordText: { color: '#15392B', fontSize: 12.5, fontWeight: '800', flex: 1 },
+  recordCancelBtn: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
+  recordSendBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#168759', alignItems: 'center', justifyContent: 'center' },
 
-  attachMenu: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  attachItem: {
-    width: "25%",
-    alignItems: "center",
-    gap: 5,
-    paddingVertical: 6,
-  },
-  attachIcon: {
-    width: 46,
-    height: 46,
-    borderRadius: 15,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  attachLabel: { fontSize: 10.5, fontWeight: "700", textAlign: "center" },
+  attachMenu: { position: 'relative', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', minHeight: 252, paddingHorizontal: 24, paddingTop: 30, backgroundColor: '#F4F4F4', borderTopWidth: StyleSheet.hairlineWidth },
+  attachHandleHit: { position: 'absolute', top: 0, left: 0, right: 0, height: 28, alignItems: 'center', justifyContent: 'center', zIndex: 2 },
+  attachHandle: { width: 48, height: 5, borderRadius: 3, backgroundColor: '#D5D8DA' },
+  attachItem: { width: '25%', alignItems: 'center', gap: 11, marginBottom: 24 },
+  attachIcon: { width: 64, height: 64, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
+  attachLabel: { color: '#737373', fontSize: 13.5, fontWeight: '400', textAlign: 'center' },
+  attachPager: { position: 'absolute', left: 0, right: 0, bottom: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 13 },
+  attachPagerDotActive: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#7A7A7A' },
+  attachPagerDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#E0E0E0' },
 
-  composer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-    paddingHorizontal: 10,
-    paddingTop: 9,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  composerIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-  },
-  input: {
-    flex: 1,
-    height: 44,
-    minHeight: 44,
-    maxHeight: 44,
-    borderRadius: 16,
-    borderWidth: 1,
-    paddingHorizontal: 13,
-    paddingVertical: 0,
-    fontSize: 14.5,
-    lineHeight: 19,
-  },
-  sendButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#168759",
-  },
-  recordingButton: { backgroundColor: "#168759" },
+  emojiMenu: { backgroundColor: '#F4F4F4', borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 14, paddingTop: 12 },
+  emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 10 },
+  emojiItem: { width: '12.5%', height: 42, alignItems: 'center', justifyContent: 'center' },
+  emojiText: { fontSize: 26, lineHeight: 32 },
+
+  composer: { minHeight: 52, flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 10, paddingTop: 6, backgroundColor: '#F3F3F3', borderTopWidth: StyleSheet.hairlineWidth },
+  composerFocused: { backgroundColor: '#F5F5F5' },
+  composerCircle: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F7F7F7', borderWidth: 2, borderColor: '#202020' },
+  composerCircleDisabled: { borderColor: '#8A8A8A', opacity: 0.55 },
+  inputShell: { flex: 1, minHeight: 32, maxHeight: 74, borderRadius: 16, backgroundColor: '#FFFFFF', justifyContent: 'center', position: 'relative' },
+  input: { minHeight: 32, maxHeight: 74, paddingLeft: 12, paddingRight: 12, paddingTop: 6, paddingBottom: 6, fontSize: 15, lineHeight: 20, textAlignVertical: 'top' },
+  sendButton: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: '#168759' },
+  recordingButton: { backgroundColor: '#168759' },
 
   mapFullscreen: { flex: 1 },
   mapArea: {
@@ -3300,24 +2934,10 @@ const s = StyleSheet.create({
   },
   comingSoonText: { fontSize: 10, fontWeight: "800", color: "#7C8B82" },
 
-  statusModalCard: {
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-    paddingHorizontal: 14,
-    paddingTop: 14,
-  },
-  statusModalHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 8,
-  },
-  cancelLink: {
-    alignSelf: "center",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    marginTop: 4,
-    marginBottom: 8,
-  },
-  cancelLinkText: { color: "#EF4444", fontSize: 12.5, fontWeight: "750" },
+  statusModalCard: { borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 14, paddingTop: 14 },
+  statusModalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  statusNextBtn: { minHeight: 50, borderRadius: 16, backgroundColor: '#168759', marginHorizontal: 2, marginBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  statusNextText: { color: '#FFFFFF', fontSize: 14, fontWeight: '900' },
+  cancelLink: { alignSelf: 'center', paddingHorizontal: 14, paddingVertical: 10, marginTop: 4, marginBottom: 8 },
+  cancelLinkText: { color: '#EF4444', fontSize: 12.5, fontWeight: '750' },
 });

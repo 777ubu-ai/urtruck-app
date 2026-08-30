@@ -96,7 +96,7 @@ test('text send failures keep the real backend status/detail instead of one gene
 
 test('a failed text message keeps its optimistic bubble visible with a retry, never silently disappears', () => {
   assert.match(workspace, /sendStatus: 'failed', sendError: errorText/);
-  assert.match(workspace, /testID="deal-chat-message-retry"/);
+  assert.match(workspace, /'deal-chat-message-retry'/);
   assert.match(workspace, /const retryFailedText = React\.useCallback/);
   // The queued (offline/outbox) path must stay visually distinct from a hard
   // failure — a transient network gap is not "your message failed".
@@ -108,11 +108,28 @@ test('voice recording shows a live indicator, timer, waveform, and send/cancel c
   assert.match(workspace, /testID="deal-chat-recording-cancel"/);
   assert.match(workspace, /testID="deal-chat-recording-send"/);
   assert.match(workspace, /name="paper-plane"/);
+  assert.doesNotMatch(workspace, /testID="deal-chat-recording-stop"/);
   assert.match(workspace, /recordSecs % 60/);
   assert.match(workspace, /recordWaveBar/);
   assert.match(workspace, /const cancelRecording = React\.useCallback/);
   assert.match(workspace, /!\s*recording \? \(\s*<TouchableOpacity[\s\S]*testID="deal-chat-camera"/);
   assert.match(workspace, /!\s*recording \? \(\s*input\.trim\(\) \? \(\s*<TouchableOpacity[\s\S]*testID="deal-chat-send"[\s\S]*\)\s*:\s*\(\s*<TouchableOpacity[\s\S]*testID="deal-chat-voice"/);
+});
+
+test('voice send renders an optimistic bubble immediately before upload and reuses its clientMsgId', () => {
+  const fn = workspace.match(/const toggleVoice = React\.useCallback\(async \(\) => \{([\s\S]*?)\n  \}, \[/);
+  assert.ok(fn, 'toggleVoice definition not found');
+  const body = fn[1];
+  const optimisticIndex = body.indexOf("setMessages((items) => [...items, voiceItem])");
+  const uploadIndex = body.indexOf('chatAPI.uploadChatVoice');
+  assert.ok(optimisticIndex >= 0, 'voice optimistic bubble must be appended before network work');
+  assert.ok(uploadIndex > optimisticIndex, 'voice upload must happen after the local bubble is visible');
+  assert.match(body, /const clientId = newClientId\('voice'\)/);
+  assert.match(body, /sendStatus: 'sending'/);
+  assert.match(body, /clientMsgId: clientId/);
+  assert.match(workspace, /server\.clientMsgId === item\.id/);
+  assert.match(body, /sendStatus: 'failed', sendError: message/);
+  assert.match(workspace, /testID=\{item\.voice \? 'deal-chat-voice-error' : 'deal-chat-message-retry'\}/);
 });
 
 test('voice failures distinguish record vs upload vs send, each with its own message', () => {
@@ -195,6 +212,59 @@ test('voiceRecorder produces a real, non-empty web Blob before upload is attempt
   // voice_error_record), not silently upload a 0-byte file the backend
   // would then reject anyway.
   assert.match(recorder, /if \(!blob \|\| blob\.size === 0\) \{ resolve\(null\); return; \}/);
+});
+
+test('voice playback is single-instance so repeated taps do not create echo', () => {
+  // 28.08.2026: воспроизведение переехало из инлайн-обработчика экрана в
+  // переиспользуемый VoiceMessageBubble (WhatsApp-паритет: pause/seek/rate).
+  // Смысл теста тот же — ОДИН активный трек, повторный тап не даёт эхо.
+  const recorder = fs.readFileSync('src/utils/voiceRecorder.js', 'utf8');
+  const bubble = fs.readFileSync('src/components/VoiceMessageBubble.js', 'utf8');
+
+  // Экран отдаёт голосовое в бабл и по-прежнему показывает ошибку тостом.
+  assert.match(workspace, /<VoiceMessageBubble/);
+  assert.match(workspace, /uri=\{item\.mediaUrl\}/);
+  assert.match(workspace, /toast\(t\('voice_play_fail'\), 'error'\)/);
+
+  // Повторный тап = toggle (пауза), а НЕ второй экземпляр воспроизведения.
+  assert.match(bubble, /voice\.toggle\(uri\)/);
+  assert.doesNotMatch(bubble, /voice\.play\(/, 'бабл не должен стартовать второй трек напрямую');
+
+  // Гарды единственного активного трека в плеере — без изменений.
+  assert.match(recorder, /let _webAudio = null/);
+  assert.match(recorder, /let _playingUri = null/);
+  assert.match(recorder, /let _playPromise = null/);
+  assert.match(recorder, /_playingUri === uri/);
+  assert.match(recorder, /!_webAudio\.paused && !_webAudio\.ended/);
+  assert.match(recorder, /_webAudio\.pause\(\)/);
+  assert.match(recorder, /_playingUri = null/);
+});
+
+test('voice bubble has WhatsApp-grade controls: pause, seek, rate, live progress', () => {
+  // Регрессия на заявку владельца 28.08.2026: «нажал — идёт без остановки,
+  // паузы нету». Раньше был статичный ▶ и play() без остановки.
+  const recorder = fs.readFileSync('src/utils/voiceRecorder.js', 'utf8');
+  const bubble = fs.readFileSync('src/components/VoiceMessageBubble.js', 'utf8');
+
+  // Плеер умеет всё, что нужно для WhatsApp-поведения.
+  for (const api of ['subscribe(listener)', 'async toggle(uri)', 'async pause()', 'async resume()', 'async seek(uri, positionMillis)', 'async setRate(rate)']) {
+    assert.ok(recorder.includes(api), `voiceRecorder должен экспортировать ${api}`);
+  }
+  // Живой прогресс: тик достаточно частый для плавной полосы.
+  assert.match(recorder, /progressUpdateIntervalMillis: 80/);
+  assert.match(recorder, /setInterval\(tick, 80\)/, 'web-плеер тоже должен тикать прогресс');
+  // По окончании — сброс в начало, кнопка снова play (не «залипает» в конце).
+  assert.match(recorder, /didJustFinish/);
+  assert.match(recorder, /isPlaying: false, positionMillis: 0/);
+
+  // UI: иконка реально переключается play↔pause, есть seek-полоса и скорость.
+  assert.match(bubble, /isPlaying \? 'pause' : 'play'/);
+  assert.match(bubble, /testID="voice-progress-track"/);
+  assert.match(bubble, /voice\.seek\?\.\(uri,/);
+  assert.match(bubble, /const RATES = \[1, 1\.5, 2\]/);
+  assert.match(bubble, /voice\.subscribe\?\./, 'бабл обязан подписываться на состояние плеера');
+  // Активен только тот бабл, чей трек играет — иначе все показывали бы pause.
+  assert.match(bubble, /state\.uri === uri/);
 });
 
 test('voice upload failures distinguish too-large, storage-rejected/unreachable, and generic causes, not one flat message', () => {

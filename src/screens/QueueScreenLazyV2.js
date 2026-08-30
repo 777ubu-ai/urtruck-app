@@ -24,6 +24,7 @@ const BASE = `${API_BASE}/borders`;
 const FAVORITES_KEY = 'ur_border_favorites_v2';
 const DEFAULT_COUNTRY = 'CN';
 const COUNTRY_ORDER = ['CN', 'KG', 'RU', 'UZ', 'TM', 'CASPIAN'];
+const MCI_KZT_2026 = 4325;
 
 const COUNTRY = {
   CN: { flag: '🇨🇳', RU: 'Китай', KK: 'Қытай', EN: 'China', ZH: '中国' },
@@ -133,6 +134,10 @@ function formatSourceTime(value) {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return value;
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+function formatKztAmount(mci) {
+  const amount = Math.max(0, Number(mci) || 0) * MCI_KZT_2026;
+  return `${Math.round(amount).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} ₸`;
 }
 
 // The nearest booking fields are also official backend data. Defensively merge
@@ -354,7 +359,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
                 return (
                   <View style={[s.dateCard, { borderColor: item.is_day_off ? theme.border : hasStandard ? '#70C49B' : hasPremium ? '#E4B35A' : '#E5B8B8', backgroundColor: item.is_day_off ? v1.bg : hasStandard ? '#F0FBF6' : hasPremium ? '#FFF8E8' : '#FFF7F7' }]} testID="border-booking-date-card">
                     <Text style={[s.dateText, { color: theme.text }]}>{formatShortDate(item.date, lang)}</Text>
-                    {item.is_day_off ? <Text style={[s.dateState, { color: theme.textDim }]}>{L.dayOff}</Text> : hasStandard ? <><Text style={s.dateFree}>{standardFree}</Text><Text style={[s.dateState, { color: '#168759' }]}>{L.standard}</Text></> : hasPremium ? <><Text style={s.datePremium}>{premiumFree}</Text><Text style={[s.dateState, { color: '#B7791F' }]}>{L.premium}</Text></> : <Text style={[s.dateState, { color: '#B42318' }]}>{L.noPlaces}</Text>}
+                    {item.is_day_off ? <Text style={[s.dateState, { color: theme.textDim }]}>{L.dayOff}</Text> : hasStandard ? <><Text style={s.dateFree}>{standardFree}</Text><Text style={[s.dateState, { color: '#168759' }]}>{L.standard}</Text><Text style={[s.dateAmount, { color: '#168759' }]}>{formatKztAmount(1)}</Text></> : hasPremium ? <><Text style={s.datePremium}>{premiumFree}</Text><Text style={[s.dateState, { color: '#B7791F' }]}>{L.premium}</Text><Text style={[s.dateAmount, { color: '#B7791F' }]}>{formatKztAmount(100)}</Text></> : <Text style={[s.dateState, { color: '#B42318' }]}>{L.noPlaces}</Text>}
                   </View>
                 );
               }}
@@ -436,11 +441,12 @@ const s = StyleSheet.create({
   swipeHint: { fontSize: 10.5, fontWeight: '650' },
   calendarList: { width: '100%', overflow: 'visible' },
   dateStrip: { gap: 8, paddingRight: 4, paddingBottom: 4 },
-  dateCard: { width: 90, minHeight: 88, borderWidth: 1, borderRadius: 13, padding: 9, alignItems: 'center', justifyContent: 'center' },
+  dateCard: { width: 90, minHeight: 101, borderWidth: 1, borderRadius: 13, padding: 9, alignItems: 'center', justifyContent: 'center' },
   dateText: { fontSize: 12, fontWeight: '850' },
   dateFree: { color: '#168759', fontSize: 20, fontWeight: '950', marginTop: 5 },
   datePremium: { color: '#B7791F', fontSize: 20, fontWeight: '950', marginTop: 5 },
   dateState: { fontSize: 9.5, fontWeight: '700', textAlign: 'center', marginTop: 3 },
+  dateAmount: { fontSize: 8.5, lineHeight: 11, fontWeight: '700', textAlign: 'center', marginTop: 2 },
   sourceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 15 },
   source: { fontSize: 11 },
   refreshButton: { minHeight: 34, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8 },

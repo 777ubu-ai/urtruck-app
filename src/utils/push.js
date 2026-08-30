@@ -9,6 +9,7 @@ const BASE = `${API_BASE}/push`;
 const TOKEN_KEY = 'ur_reg_token';
 const PUSH_ASKED = 'ur_push_asked';
 const NATIVE_TOKEN_KEY = 'ur_push_native_token';
+export const NATIVE_PUSH_CHANNEL_ID = 'urtruck_messages_v2';
 // P0-1 (аудит push-безопасности): технический идентификатор устройства —
 // НЕ секрет, НЕ user_id, НЕ сам push-токен. Генерируется один раз и живёт
 // в storage постоянно (переживает logout/login — это "глобальная" настройка
@@ -184,9 +185,9 @@ export const push = {
    * (окно между logout и login на общем устройстве). Best-effort — сетевая
    * ошибка не должна блокировать сам logout.
    */
-  async logoutCleanup() {
+  async logoutCleanup(token = null) {
     try {
-      const authToken = await storage.get(TOKEN_KEY);
+      const authToken = token || await storage.get(TOKEN_KEY);
       if (!authToken) return { ok: false, reason: 'no_token' };
       const deviceId = await getOrCreateDeviceId();
       const resp = await fetch(`${BASE}/logout-cleanup`, {
@@ -260,9 +261,10 @@ export const push = {
 
     // Android channel
     if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync('default', {
-        name: 'UrTruck',
-        importance: Notifications.AndroidImportance.HIGH,
+      await Notifications.setNotificationChannelAsync(NATIVE_PUSH_CHANNEL_ID, {
+        name: 'UrTruck сообщения',
+        importance: Notifications.AndroidImportance.MAX,
+        sound: 'default',
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#378ADD',
       });

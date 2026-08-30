@@ -91,14 +91,24 @@ def notify_matching_users(from_city: str, to_city: str, cargo_desc: str = "", ca
         if uid in seen:
             continue
         seen.add(uid)
+        title = f"📦 Новый груз: {from_city} → {to_city}"
+        text = cargo_desc[:100] if cargo_desc else "Появился груз по вашему маршруту!"
+        url = f"/cargos/{cargo_id}" if cargo_id else "/"
         try:
-            send_to_user(
-                uid,
-                f"📦 Новый груз: {from_city} → {to_city}",
-                cargo_desc[:100] if cargo_desc else "Появился груз по вашему маршруту!",
-                url=(f"/cargos/{cargo_id}" if cargo_id else "/"),
-            )
+            send_to_user(uid, title, text, url=url)
             sent += 1
+        except Exception:
+            pass
+        # P0-hotfix 28.08.2026: push шёл без записи в notifications — тот
+        # же разрыв, что чинили для reviews.py (§1: badge на иконке рос,
+        # список внутри приложения оставался пустым). event_key на
+        # (user_id, cargo_id) — повторный вызов на тот же груз не дублирует.
+        try:
+            from api.notifications import create_notification
+            create_notification(
+                uid, "saved_search", title, text, "📦", url=url,
+                event_key=f"saved_search:{cargo_id}" if cargo_id else None,
+            )
         except Exception:
             pass
     return sent

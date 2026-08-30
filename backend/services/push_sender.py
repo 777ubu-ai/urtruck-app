@@ -40,6 +40,7 @@ PUSH_MOCK_WEB = not (VAPID_PUBLIC and VAPID_PRIVATE)
 
 EXPO_ENDPOINT = "https://exp.host/--/api/v2/push/send"
 EXPO_TOKEN = os.getenv("EXPO_ACCESS_TOKEN", "")
+NATIVE_PUSH_CHANNEL_ID = "urtruck_messages_v2"
 
 FCM_SERVER_KEY = os.getenv("FCM_SERVER_KEY", "")
 FCM_MOCK = not FCM_SERVER_KEY
@@ -182,7 +183,7 @@ def _send_expo(tokens: list[str], title: str, body: str, data: dict, badge: Opti
         "data": data,
         "sound": "default",
         "priority": "high",
-        "channelId": "default",
+        "channelId": NATIVE_PUSH_CHANNEL_ID,
     }
     if badge is not None:
         msg_base["badge"] = int(badge)

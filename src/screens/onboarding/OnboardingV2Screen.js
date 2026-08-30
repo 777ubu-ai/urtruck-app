@@ -24,7 +24,7 @@ import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../utils/AuthContext';
-import { isSocialAuthCallback } from '../../utils/socialAuth';
+import { isSocialAuthCallback, takeBufferedSocialCallbackUrl } from '../../utils/socialAuth';
 import { brand, useBrand, radius, typography } from '../../theme/brandV2';
 
 const QA_HOOK_ALLOWED = (() => {
@@ -44,13 +44,13 @@ const HERO_SLIDE_1 = require('../../../assets/onboarding/slide-1-hero.jpg');
 const HERO_SLIDE_2 = require('../../../assets/onboarding/slide-2-driver-1.jpg');
 const HERO_SLIDE_3 = require('../../../assets/onboarding/slide-2-driver-2.jpg');
 
-const ASPECT_S1 = 853 / 1844;
-const ASPECT_S2 = 941 / 1672;
-const ASPECT_S3 = 853 / 1844;
+const ASPECT_S1 = 709 / 650;
+const ASPECT_S2 = 709 / 650;
+const ASPECT_S3 = 709 / 700;
 
-const WINDOW_S1 = { from: 0.06, to: 0.50 };
-const WINDOW_S2 = { from: 0.05, to: 0.55 };
-const WINDOW_S3 = { from: 0.05, to: 0.50 };
+const WINDOW_S1 = { from: 0, to: 1 };
+const WINDOW_S2 = { from: 0, to: 1 };
+const WINDOW_S3 = { from: 0, to: 1 };
 
 const HeroWindow = ({ source, imageAspect, win }) => {
   const imgHeight = SCREEN_W / imageAspect;
@@ -164,6 +164,12 @@ export default function OnboardingV2Screen({ navigation }) {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       handoff(window.location.href);
     } else {
+      // P0 auth-fix 28.08.2026: сперва — буфер module-level слушателя из
+      // App.js (callback, прилетевший в «мёртвое окно» перезапуска, когда ни
+      // один экран ещё не был смонтирован — раньше он терялся, и пользователю
+      // приходилось жать Google второй раз).
+      const buffered = takeBufferedSocialCallbackUrl();
+      if (buffered) handoff(buffered);
       Linking.getInitialURL().then(handoff).catch(() => {});
       // Defensive listener: normally PhoneV2 owns the live callback because
       // OAuth starts there, but this protects navigation races/recovery.

@@ -32,7 +32,6 @@ import PriceSavingsBadge from '../components/deal/PriceSavingsBadge';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
 import { reviewsAPI } from '../utils/reviews';
 import { pickDealStatus, userFacingDealStatus } from '../utils/dealStatusOrder';
-import { openContactPartner } from '../utils/contactPartner';
 
 export default function TripDetail({ navigation, route }) {
   const v1 = useV1Colors();
@@ -136,6 +135,12 @@ export default function TripDetail({ navigation, route }) {
     };
   }, [serverTrip, rawTrip, tripId]);
   const { t, lang } = useI18n();
+  const editBidLabel = ({
+    RU: 'Изменить цену',
+    EN: 'Edit price',
+    KK: 'Бағаны өзгерту',
+    ZH: '修改价格',
+  }[lang]) || t('edit_bid');
   const { theme } = useTheme();
   const { toast } = useToast();
   const { requireLevel, Gate } = useVerificationGate();
@@ -151,10 +156,6 @@ export default function TripDetail({ navigation, route }) {
   const [dealId, setDealId] = React.useState(routeDealId || null);
   const [dealStatus, setDealStatus] = React.useState(null);
   const [chatRoomId, setChatRoomId] = React.useState(null);
-  // Телефон контрагента — только после сделки (backend get_deal() гейтит
-  // counterparty_phone участием в сделке, т.е. только post-accept), для
-  // secondary-кнопки «Позвонить» (05.08.2026, п.6/17 ТЗ).
-  const [counterpartyPhone, setCounterpartyPhone] = React.useState(null);
   const [shipperId, setShipperId] = React.useState(null);
   const [driverId, setDriverId] = React.useState(null);
   // Моя активная ставка на ЭТОТ рейс — чтобы показать плашку «Вы предложили X»
@@ -197,7 +198,6 @@ export default function TripDetail({ navigation, route }) {
     // числом» устаревшим cancelled.
     setDealStatus((prev) => pickDealStatus(prev, d.status || 'accepted'));
     if (d.chat_room_id) setChatRoomId(d.chat_room_id);
-    if (d.counterparty_phone) setCounterpartyPhone(d.counterparty_phone);
     if (d.shipper_id) setShipperId(d.shipper_id);
     if (d.driver_id) setDriverId(d.driver_id);
   };
@@ -452,9 +452,10 @@ export default function TripDetail({ navigation, route }) {
           )}
           {chatRoomId && (
             <View style={{ marginTop: 10, gap: 8 }}>
-              {/* «Написать сообщение» — единственное действие связи по сделке.
-                  Прямой звонок убран: он уводил пользователя из UrTruck в
-                  системный телефон/WhatsApp и ломал рабочий сценарий чата. */}
+              {/* «Написать сообщение» — главное действие по сделке
+                  (05.08.2026, п.5/17 ТЗ): большая ролевая кнопка вместо
+                  мелкой ссылки «Чат по заказу». Внешний звонок скрыт до
+                  появления собственного звонка внутри UrTruck. */}
               <PrimaryCTA
                 testID="deal-order-chat"
                 role={isDriverSide ? 'driver' : 'client'}
@@ -961,7 +962,7 @@ export default function TripDetail({ navigation, route }) {
             <SecondaryButton
               testID="trip-my-bid-edit"
               role="client"
-              label={t('edit_bid')}
+              label={editBidLabel}
               onPress={() => setBidModal(true)}
               disabled={cancelling}
             />

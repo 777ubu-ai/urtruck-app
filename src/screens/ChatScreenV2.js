@@ -6,32 +6,49 @@ import { chatAPI } from '../utils/chatAPI';
 import { getDealCounterpartyProfile, compactCounterpartyName } from '../utils/dealCounterpartyAPI';
 import { useV1Colors } from '../theme/designV1';
 
-// Every in-app Chat route uses the canonical deal workspace. Keeping a
-// fallback to the legacy ChatScreen made the same conversation render with
-// different voice controls, composer and map behavior depending on how it was
-// opened.
+// Accepted deal rooms use the canonical gated workspace route. Support/general
+// conversations may keep the mature legacy ChatScreen, but a partner/profile
+// entry must never create or expose a pre-deal chat.
 export default function ChatScreenV2(props) {
-  const { route } = props;
+  const { route, navigation } = props;
   const params = route?.params || {};
   const colors = useV1Colors();
   const [resolvedDealId, setResolvedDealId] = React.useState(params.dealId || null);
   const [resolvedPartner, setResolvedPartner] = React.useState(params.partner || null);
   const [checked, setChecked] = React.useState(Boolean(params.dealId && params.partner));
+  const [blockedPartnerEntry, setBlockedPartnerEntry] = React.useState(false);
 
   React.useEffect(() => {
     const roomId = params.roomId;
-    if (!roomId) {
+    const partnerId = params.partner?.id || null;
+
+    // A direct route with an explicit deal is already canonical. A route with
+    // neither a room nor a concrete partner is a support/general conversation
+    // and may keep using the legacy ChatScreen below.
+    if (!roomId && !partnerId) {
       setResolvedDealId(params.dealId || null);
       setResolvedPartner(params.partner || null);
+      setBlockedPartnerEntry(false);
       setChecked(true);
       return undefined;
     }
+
     let cancelled = false;
     (async () => {
       try {
         const data = await chatAPI.rooms();
         if (cancelled) return;
-        const room = (data?.rooms || []).find((item) => item.id === roomId);
+        const rooms = Array.isArray(data?.rooms) ? data.rooms : [];
+
+        // DriverDetail historically opened Chat with { partner } only. That
+        // bypassed room/deal resolution and always fell through to the old
+        // ChatScreen even when this driver was already the accepted carrier.
+        // Resolve a deal-linked room by partner id so every accepted-deal
+        // entry point converges on DealWorkspaceRoute.
+        const room = roomId
+          ? rooms.find((item) => String(item.id) === String(roomId))
+          : rooms.find((item) => item.deal_id && String(item.partner_id) === String(partnerId));
+
         const nextDealId = params.dealId || room?.deal_id || null;
         let nextPartner = params.partner || null;
         if (room?.partner_id) {
@@ -45,6 +62,13 @@ export default function ChatScreenV2(props) {
             profile,
           };
         }
+
+        // Profile/contact is not a support chat. If there is no deal-linked
+        // room, fail closed and return the user to Deals instead of exposing
+        // the legacy pre-deal messenger. This matches the product rule that
+        // chat exists only after an accepted offer.
+        const partnerOnlyWithoutDeal = Boolean(partnerId && !roomId && !nextDealId);
+        setBlockedPartnerEntry(partnerOnlyWithoutDeal);
         setResolvedDealId(nextDealId);
         setResolvedPartner(nextPartner);
       } finally {
@@ -52,9 +76,14 @@ export default function ChatScreenV2(props) {
       }
     })();
     return () => { cancelled = true; };
-  }, [params.dealId, params.roomId, params.partner]);
+  }, [params.dealId, params.roomId, params.partner, params.partner?.id]);
 
-  if (!checked) {
+  React.useEffect(() => {
+    if (!blockedPartnerEntry) return;
+    navigation.navigate('Deals', { role: params.role });
+  }, [blockedPartnerEntry, navigation, params.role]);
+
+  if (!checked || blockedPartnerEntry) {
     return (
       <SafeAreaView style={[s.loading, { backgroundColor: colors.bg }]} edges={['top']}>
         <ActivityIndicator color="#168759" />

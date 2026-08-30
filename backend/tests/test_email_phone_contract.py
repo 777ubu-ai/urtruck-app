@@ -2,10 +2,10 @@
 
 Current product rule:
 - every completed onboarding profile requires a real phone;
-- both driver and shipper/client require a name + phone;
+- both driver and shipper/client require name + phone + company/business name;
 - country/city are optional during the short two-step onboarding and may be
   filled later in profile settings;
-- company and messenger are optional enrichment fields.
+- messenger is optional enrichment data.
 
 Run from backend/:
     DB_PATH=/tmp/urtruck_test_emailphone.db python -m tests.test_email_phone_contract
@@ -67,7 +67,7 @@ def patch_me(payload):
 def test_email_driver_without_phone_rejected():
     uid = seed("driver1@example.com")
     as_user(uid)
-    r = patch_me({"role": "driver", "name": "Иван"})
+    r = patch_me({"role": "driver", "name": "Иван", "company_name": "ИП Иван"})
     assert r.status_code == 400, r.text
     assert r.json()["detail"]["error"] == "PHONE_REQUIRED"
 
@@ -75,38 +75,64 @@ def test_email_driver_without_phone_rejected():
 def test_email_shipper_without_name_rejected():
     uid = seed("shipper1@example.com")
     as_user(uid)
-    r = patch_me({"role": "client", "phone": "+7 701 123 45 67"})
+    r = patch_me({"role": "client", "phone": "+7 701 123 45 67", "company_name": "Shipper One"})
     assert r.status_code == 400, r.text
     assert r.json()["detail"]["error"] == "NAME_REQUIRED"
 
 
-def test_email_shipper_without_country_is_accepted_with_name_and_phone():
-    uid = seed("shipper-country@example.com")
+def test_email_shipper_without_company_rejected():
+    uid = seed("shipper-company@example.com")
     as_user(uid)
     r = patch_me({"role": "client", "name": "Boris Zhang", "phone": "+8613800000000"})
+    assert r.status_code == 400, r.text
+    assert r.json()["detail"]["error"] == "COMPANY_REQUIRED"
+
+
+def test_email_shipper_without_country_is_accepted_with_required_contacts():
+    uid = seed("shipper-country@example.com")
+    as_user(uid)
+    r = patch_me({
+        "role": "client",
+        "name": "Boris Zhang",
+        "phone": "+8613800000000",
+        "company_name": "Boris Logistics",
+    })
     assert r.status_code == 200, r.text
     d = reg_dal.get_driver(uid)
     assert d["role"] == "client"
     assert d.get("country") in (None, "")
     assert d["full_name"] == "Boris Zhang"
+    assert d.get("company_name") == "Boris Logistics"
     assert "".join(ch for ch in d["phone"] if ch.isdigit()).endswith("8613800000000")
 
 
-def test_email_shipper_with_name_country_and_phone_ok():
+def test_email_shipper_with_name_country_phone_company_ok():
     uid = seed("shipper2@example.com")
     as_user(uid)
-    r = patch_me({"role": "client", "name": "ООО Ромашка", "country": "Китай", "phone": "+77011234567"})
+    r = patch_me({
+        "role": "client",
+        "name": "ООО Ромашка",
+        "country": "Китай",
+        "phone": "+77011234567",
+        "company_name": "ООО Ромашка",
+    })
     assert r.status_code == 200, r.text
     d = reg_dal.get_driver(uid)
     assert d["role"] == "client"
     assert d["country"] == "Китай"
+    assert d.get("company_name") == "ООО Ромашка"
     assert "".join(ch for ch in d["phone"] if ch.isdigit()).endswith("77011234567")
 
 
 def test_email_driver_with_phone_ok():
     uid = seed("driver2@example.com")
     as_user(uid)
-    r = patch_me({"role": "driver", "name": "Пётр", "phone": "+7 777 000 11 22"})
+    r = patch_me({
+        "role": "driver",
+        "name": "Пётр",
+        "phone": "+7 777 000 11 22",
+        "company_name": "ИП Пётр",
+    })
     assert r.status_code == 200, r.text
     assert reg_dal.get_driver(uid)["role"] == "driver"
 
@@ -114,22 +140,23 @@ def test_email_driver_with_phone_ok():
 def test_legacy_phone_identity_driver_with_name_not_broken():
     uid = seed("+77015550001")
     as_user(uid)
-    r = patch_me({"role": "driver", "name": "Legacy Driver"})
+    r = patch_me({"role": "driver", "name": "Legacy Driver", "company_name": "Legacy Logistics"})
     assert r.status_code == 200, r.text
     d = reg_dal.get_driver(uid)
     assert d["role"] == "driver"
     assert d["full_name"] == "Legacy Driver"
 
 
-def test_shipper_reuses_existing_name_and_phone_without_country():
+def test_shipper_reuses_existing_required_fields_without_country():
     uid = seed("+77015550002")
-    reg_dal.update_driver(uid, {"full_name": "Уже Есть"})
+    reg_dal.update_driver(uid, {"full_name": "Уже Есть", "company_name": "Уже Есть Logistics"})
     as_user(uid)
     r = patch_me({"role": "client"})
     assert r.status_code == 200, r.text
     d = reg_dal.get_driver(uid)
     assert d["role"] == "client"
     assert d["full_name"] == "Уже Есть"
+    assert d.get("company_name") == "Уже Есть Logistics"
 
 
 def test_invalid_phone_without_role_rejected():
@@ -145,11 +172,12 @@ if __name__ == "__main__":
     for fn in [
         test_email_driver_without_phone_rejected,
         test_email_shipper_without_name_rejected,
-        test_email_shipper_without_country_is_accepted_with_name_and_phone,
-        test_email_shipper_with_name_country_and_phone_ok,
+        test_email_shipper_without_company_rejected,
+        test_email_shipper_without_country_is_accepted_with_required_contacts,
+        test_email_shipper_with_name_country_phone_company_ok,
         test_email_driver_with_phone_ok,
         test_legacy_phone_identity_driver_with_name_not_broken,
-        test_shipper_reuses_existing_name_and_phone_without_country,
+        test_shipper_reuses_existing_required_fields_without_country,
         test_invalid_phone_without_role_rejected,
     ]:
         try:

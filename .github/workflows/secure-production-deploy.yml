@@ -30,6 +30,7 @@ jobs:
       BACKEND_DIR: ${{ secrets.BACKEND_DIR || '/home/ubuntu/urtruck-security' }}
       PUBLIC_BASE_URL: ${{ secrets.PUBLIC_BASE_URL || 'https://urtruck.kz' }}
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      EXPO_ACCESS_TOKEN: ${{ secrets.EXPO_ACCESS_TOKEN || secrets.EXPO_TOKEN }}
       YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
       YANDEX_ROUTER_API_KEY: ${{ secrets.YANDEX_ROUTER_API_KEY }}
       OPENROUTESERVICE_API_KEY: ${{ secrets.OPENROUTESERVICE_API_KEY }}
@@ -136,6 +137,9 @@ jobs:
           BOOTSTRAP_FILE=$(mktemp)
           trap 'rm -f "$BOOTSTRAP_FILE"' EXIT
           printf 'SUPABASE_SERVICE_KEY=%s\n' "$SUPABASE_SERVICE_KEY" > "$BOOTSTRAP_FILE"
+          if [ -n "${EXPO_ACCESS_TOKEN:-}" ]; then
+            printf 'EXPO_ACCESS_TOKEN=%s\n' "$EXPO_ACCESS_TOKEN" >> "$BOOTSTRAP_FILE"
+          fi
           if [ -n "${SELECTED_YANDEX_ROUTER_API_KEY:-}" ]; then
             printf 'YANDEX_ROUTER_API_KEY=%s\n' "$SELECTED_YANDEX_ROUTER_API_KEY" >> "$BOOTSTRAP_FILE"
           fi

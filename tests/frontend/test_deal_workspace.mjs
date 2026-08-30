@@ -8,6 +8,8 @@ const actionResolver = fs.readFileSync('src/utils/dealActionResolver.js', 'utf8'
 const chatRouter = fs.readFileSync('src/screens/ChatScreenV2.js', 'utf8');
 const tripRouter = fs.readFileSync('src/screens/TripDetailV2.js', 'utf8');
 const cargoRouter = fs.readFileSync('src/screens/CargoDetailV2.js', 'utf8');
+const cargoDetail = fs.readFileSync('src/screens/CargoDetail.js', 'utf8');
+const tripDetail = fs.readFileSync('src/screens/TripDetail.js', 'utf8');
 const nav = fs.readFileSync('src/navigation/AppNavigator.js', 'utf8');
 const brand = fs.readFileSync('src/components/ui/v1/BrandBarWithShare.js', 'utf8');
 const webMap = fs.readFileSync('src/components/TruckMap.web.js', 'utf8');
@@ -42,12 +44,23 @@ test('active cargo and trip details route into the same canonical gated workspac
   assert.doesNotMatch(tripRouter, /from '\.\/DealWorkspaceScreenV2'/);
 });
 
-test('deal workspace has fixed compact information header and no repeated UrTruck brand bar', () => {
+test('accepted deal details keep message CTA and hide external call handoff', () => {
+  for (const [name, src] of [['CargoDetail', cargoDetail], ['TripDetail', tripDetail]]) {
+    assert.match(src, /testID="deal-order-chat"/, `${name} must keep the deal message CTA`);
+    assert.doesNotMatch(src, /testID="deal-order-call"/, `${name} must not show external call CTA`);
+    assert.doesNotMatch(src, /openContactPartner/, `${name} must not open phone or WhatsApp handoff`);
+    assert.doesNotMatch(src, /setCounterpartyPhone/, `${name} must not keep call-only counterparty phone state`);
+  }
+});
+
+test('deal workspace has scroll-away compact information header and no repeated UrTruck brand bar', () => {
   assert.match(workspace, /testID="deal-compact-header"/);
   assert.match(workspace, /testID="deal-workspace-back"/);
   assert.match(workspace, /cargoMeta/);
   assert.match(workspace, /scheduleMeta/);
   assert.match(workspace, /counterpartyMeta/);
+  assert.match(workspace, /const compactHeader = \(/);
+  assert.match(workspace, /ListHeaderComponent=\{compactHeader\}/);
   assert.doesNotMatch(workspace, /BrandBarWithShare|>UrTruck</);
   assert.doesNotMatch(brand, />UrTruck</);
   assert.match(brand, /compact-child-header/);
@@ -57,13 +70,12 @@ test('deal workspace is chat-first by default; the map is a deliberate, button-t
   // PR #255 QA pass (2026-08-20): the prior map-first design was reverted —
   // owner-confirmed "map-first бардак" must not come back. Chat renders
   // fullscreen by default; the map only appears after an explicit tap on the
-  // "Карта рейса" card, and a visible control returns to chat from there.
-  assert.match(workspace, /const VIEW_CHAT = ["']chat["']/);
-  assert.match(workspace, /const VIEW_MAP = ["']map["']/);
+  // compact header map button, and a visible control returns to chat from there.
+  assert.match(workspace, /const VIEW_CHAT = 'chat'/);
+  assert.match(workspace, /const VIEW_MAP = 'map'/);
   assert.match(workspace, /useState\(VIEW_CHAT\)/, 'chat must be the default view, not the map');
   assert.match(workspace, /testID="deal-chat-fullscreen"/);
   assert.match(workspace, /testID="deal-header-map"/);
-  assert.doesNotMatch(workspace, /testID="deal-map-card-open"/);
   assert.match(workspace, /testID="deal-map-first-area"/);
   assert.match(workspace, /<TruckMap/);
   assert.match(workspace, /routePoints=\{routePoints\}/);
@@ -71,6 +83,20 @@ test('deal workspace is chat-first by default; the map is a deliberate, button-t
   assert.match(workspace, /testID="deal-map-collapse"/);
   assert.match(workspace, /setViewMode\(VIEW_CHAT\)/, 'the map view must have a way back to chat');
   assert.doesNotMatch(workspace, /open_route_btn|Открыть маршрут|navigation\.navigate\('TrackTruck'/);
+});
+
+test('deal workspace uses bright header action buttons instead of large map/status cards', () => {
+  assert.match(workspace, /testID="deal-header-map"/);
+  assert.match(workspace, /testID="deal-status-open"/);
+  assert.match(workspace, /headerIconBtn: \{/);
+  assert.match(workspace, /backgroundColor: '#168759'/);
+  assert.match(workspace, /width: 42/);
+  assert.doesNotMatch(workspace, /testID="deal-top-quick-actions"/);
+  assert.doesNotMatch(workspace, /testID="deal-map-card-open"/);
+  assert.doesNotMatch(workspace, /testID="deal-status-compact-open"/);
+  assert.doesNotMatch(workspace, /quickActionCard/);
+  assert.doesNotMatch(workspace, /actionBar: \{/);
+  assert.doesNotMatch(workspace, /mapCard: \{/);
 });
 
 test('the map is never mounted underneath the chat — chat and map are mutually exclusive views', () => {
@@ -125,22 +151,66 @@ test('chat has no permanent second tab — status/history lives behind one icon-
   assert.match(workspace, /setStatusModalOpen\(true\)/);
 });
 
-test('composer matches the WhatsApp-style driver layout and keeps working actions', () => {
-  assert.match(workspace, /testID="deal-chat-voice"/);
-  assert.match(workspace, /testID="deal-chat-emoji"/);
+test('composer uses the approved WeChat-like bottom bar and attachment menu', () => {
+  assert.match(workspace, /multiline/);
   assert.match(workspace, /onContentSizeChange/);
+  assert.match(workspace, /COMPOSER_INPUT_MIN_HEIGHT = 32/);
+  assert.match(workspace, /COMPOSER_INPUT_MAX_HEIGHT = 74/);
+  assert.match(workspace, /Math\.min\(COMPOSER_INPUT_MAX_HEIGHT/);
+  assert.match(workspace, /scrollEnabled=\{inputHeight >= COMPOSER_INPUT_MAX_HEIGHT\}/);
   assert.match(workspace, /testID="deal-chat-send"/);
   assert.match(workspace, /testID="deal-chat-voice"/);
+  assert.match(workspace, /testID="deal-chat-emoji"/);
+  assert.match(workspace, /testID="deal-chat-attach"/);
+  assert.match(workspace, /inputShell/);
+  assert.match(workspace, /composerCircle/);
   assert.match(workspace, /sendPhoto\(false\)/);
   assert.match(workspace, /sendPhoto\(true\)/);
-  assert.match(workspace, /testID:\s*["']deal-chat-attach-document["']/);
-  assert.match(workspace, /testID:\s*["']deal-chat-attach-location["']/);
-  assert.doesNotMatch(workspace, /testID:\s*["']deal-chat-attach-quick-reply["']/);
-  assert.doesNotMatch(workspace, /testID:\s*["']deal-chat-attach-call["']/);
+  assert.match(workspace, /testID:\s*'deal-chat-attach-camera'/);
+  assert.match(workspace, /testID:\s*'deal-chat-attach-share'/);
+  assert.match(workspace, /testID:\s*'deal-chat-attach-document'/);
+  assert.match(workspace, /testID:\s*'deal-chat-attach-location'/);
+  assert.match(workspace, /testID:\s*'deal-chat-attach-contact'/);
+  assert.match(workspace, /testID:\s*'deal-chat-attach-status'/);
+  assert.doesNotMatch(workspace, /testID:\s*'deal-chat-attach-call'/);
   assert.match(workspace, /testID="deal-chat-attach-menu"/);
   assert.match(workspace, /PLUS_MENU\.map/, 'attach menu must render all tiles from one data-driven list, not hand-written copies');
-  assert.match(workspace, /key: ["']translate["']/, 'deal chat must keep the translation shortcut');
-  assert.match(workspace, /deal-chat-attach-contact/);
+  assert.match(workspace, /key: 'translate'/, 'deal chat must keep the translation shortcut from the legacy chat');
+  assert.match(workspace, /const sendDealShare = React\.useCallback/);
+  assert.match(workspace, /const sendContactCard = React\.useCallback/);
+  assert.match(workspace, /attachIcon: \{ width: 64, height: 64/);
+  assert.match(workspace, /backgroundColor: '#F4F4F4'/);
+  assert.match(workspace, /composer: \{ minHeight: 52, flexDirection: 'row', alignItems: 'flex-end'/);
+  assert.match(workspace, /inputShell: \{ flex: 1, minHeight: 32, maxHeight: 74/);
+  assert.match(workspace, /placeholder=""/);
+  assert.doesNotMatch(workspace, /style=\{s\.inputMic\}/);
+});
+
+test('composer stays visible while scrolling and avoids duplicate emoji while typing', () => {
+  assert.match(workspace, /const \[composerFocused, setComposerFocused\] = React\.useState\(false\)/);
+  assert.doesNotMatch(workspace, /const \[composerCollapsed, setComposerCollapsed\] = React\.useState\(false\)/);
+  assert.doesNotMatch(workspace, /testID="deal-chat-composer-collapsed"/);
+  assert.doesNotMatch(workspace, /composerCollapsedHandle/);
+  assert.match(workspace, /\{!composerFocused \? \(/);
+  assert.match(workspace, /testID="deal-chat-attach-collapse"/);
+  assert.match(workspace, /attachHandle/);
+  assert.doesNotMatch(workspace, /onScrollBeginDrag=\{collapseComposer\}/);
+  assert.match(workspace, /Keyboard\.dismiss\(\)/);
+  assert.doesNotMatch(workspace, /Keyboard\.addListener/);
+  assert.doesNotMatch(workspace, /keyboardWillShow|keyboardDidShow/);
+});
+
+test('emoji button opens a real bottom emoji picker instead of a coming-soon toast', () => {
+  assert.match(workspace, /const EMOJI_MENU = \[/);
+  assert.match(workspace, /const \[emojiOpen, setEmojiOpen\] = React\.useState\(false\)/);
+  assert.match(workspace, /const toggleEmojiMenu = React\.useCallback/);
+  assert.match(workspace, /const insertEmoji = React\.useCallback/);
+  assert.match(workspace, /testID="deal-chat-emoji-menu"/);
+  assert.match(workspace, /testID=\{`deal-chat-emoji-option-\$\{index\}`\}/);
+  assert.match(workspace, /setInput\(\(value\) => `\$\{value\}\$\{emoji\}`\)/);
+  assert.match(workspace, /onPress=\{toggleEmojiMenu\}/);
+  assert.doesNotMatch(workspace, /showEmojiComingSoon/);
+  assert.doesNotMatch(workspace, /toast\(ui\.comingSoon/);
 });
 
 test('every plus-menu tile has a real handler — no decorative buttons', () => {
@@ -186,17 +256,20 @@ test('deal status actions use the shared canonical role FSM and GPS starts with 
   assert.match(workspace, /marketAPI\.sendDealLocation/);
 });
 
-test('short onboarding requires name and phone for both roles and cannot skip', () => {
+test('short onboarding requires name, phone and company for both roles and cannot skip', () => {
   assert.match(profile, /id="name"/);
   assert.match(profile, /id="phone"/);
   assert.match(profile, /id="company"/);
-  assert.match(profile, /const formValid = validName && validPhone && validMessenger/);
+  assert.match(profile, /const validCompany = company\.trim\(\)\.length >= 2/);
+  assert.match(profile, /const formValid = validName && validPhone && validCompany && validMessenger/);
   assert.match(profile, /if \(!validName\) next\.name/);
   assert.match(profile, /if \(!validPhone\) next\.phone/);
+  assert.match(profile, /if \(!validCompany\) next\.company/);
   assert.match(profile, /setRole\(role\)/);
   assert.doesNotMatch(profile, /id="country"/);
   assert.doesNotMatch(profile, /id="city"/);
   assert.match(profileApi, /PHONE_REQUIRED/);
   assert.match(profileApi, /NAME_REQUIRED/);
+  assert.match(profileApi, /COMPANY_REQUIRED/);
   assert.doesNotMatch(profileApi, /COUNTRY_REQUIRED/);
 });
