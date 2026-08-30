@@ -2248,46 +2248,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                   </View>
                 ) : null}
 
-                {attachOpen ? (
-                  <View
-                    style={[s.attachMenu, { borderTopColor: colors.border }]}
-                    testID="deal-chat-attach-menu"
-                  >
-                    {PLUS_MENU.map((item) => (
-                      <TouchableOpacity
-                        key={item.key}
-                        style={s.attachItem}
-                        onPress={item.onPress}
-                        testID={item.testID}
-                        disabled={item.busy}
-                      >
-                        <View
-                          style={[
-                            s.attachIcon,
-                            { backgroundColor: colors.surface },
-                          ]}
-                        >
-                          {item.busy ? (
-                            <ActivityIndicator size="small" color="#168759" />
-                          ) : (
-                            <Feather
-                              name={item.icon}
-                              size={20}
-                              color={colors.text}
-                            />
-                          )}
-                        </View>
-                        <Text
-                          style={[s.attachLabel, { color: colors.text }]}
-                          numberOfLines={1}
-                        >
-                          {item.label}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                ) : null}
-
                 <View
                   style={[
                     s.composer,
@@ -2365,6 +2325,46 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                     <Feather name="plus" size={21} color={colors.text} />
                   </TouchableOpacity>
                 </View>
+
+                {attachOpen ? (
+                  <View
+                    style={[s.attachMenu, { borderTopColor: colors.border }]}
+                    testID="deal-chat-attach-menu"
+                  >
+                    {PLUS_MENU.map((item) => (
+                      <TouchableOpacity
+                        key={item.key}
+                        style={s.attachItem}
+                        onPress={item.onPress}
+                        testID={item.testID}
+                        disabled={item.busy}
+                      >
+                        <View
+                          style={[
+                            s.attachIcon,
+                            { backgroundColor: colors.surface },
+                          ]}
+                        >
+                          {item.busy ? (
+                            <ActivityIndicator size="small" color="#168759" />
+                          ) : (
+                            <Feather
+                              name={item.icon}
+                              size={20}
+                              color={colors.text}
+                            />
+                          )}
+                        </View>
+                        <Text
+                          style={[s.attachLabel, { color: colors.text }]}
+                          numberOfLines={1}
+                        >
+                          {item.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                ) : null}
               </>
             )}
           </View>
