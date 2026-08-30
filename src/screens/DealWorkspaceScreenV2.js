@@ -476,6 +476,12 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   // construction, not by an extra branch.
   const onComposerFocus = React.useCallback(() => {
     setAttachOpen(false);
+    // Android opens the keyboard after focus. Give the layout a moment to
+    // resize, then keep the newest message and composer visible like a
+    // messenger app instead of leaving the user at the old scroll position.
+    [80, 260, 520].forEach((delay) => {
+      setTimeout(() => listRef.current?.scrollToEnd?.({ animated: true }), delay);
+    });
   }, []);
 
   React.useEffect(() => {
@@ -2087,7 +2093,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     >
       <KeyboardAvoidingView
         style={s.safe}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         keyboardVerticalOffset={0}
       >
         <View

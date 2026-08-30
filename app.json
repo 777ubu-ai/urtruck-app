@@ -47,6 +47,7 @@
     },
     "android": {
       "package": "com.urtruck.app",
+      "softwareKeyboardLayoutMode": "resize",
       "versionCode": 9,
       "googleServicesFile": "./google-services.json",
       "intentFilters": [
